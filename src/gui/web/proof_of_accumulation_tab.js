@@ -13,13 +13,16 @@
   var BUILT = "built";
   var CHAIN = "chain";
   var CLASSES = "classes";
+  var EVENT = "event";
   var HEADING = "heading";
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
   var METRIC_SOURCES = "metric_sources";
   var METHOD_FIELD = "method";
+  var MODES = "modes";
   var PARTICIPANTS = "participants";
   var PARTY = "party";
+  var PICK_NOTE = "pick_note";
   var STATE_TEXT = "state_text";
   var WALLET = "wallet";
   var ZONES = "zones";
@@ -29,13 +32,16 @@
     BUILT,
     CHAIN,
     CLASSES,
+    EVENT,
     HEADING,
     ISSUE,
     ISSUE_TEXT,
     METRIC_SOURCES,
     METHOD_FIELD,
+    MODES,
     PARTICIPANTS,
     PARTY,
+    PICK_NOTE,
     STATE_TEXT,
     WALLET,
     ZONES
@@ -74,7 +80,21 @@
   var PARTY_SLOT_PART = "party-slot";
   var SLOT_NAME_PART = "slot-name";
   var SLOT_CLASS_PART = "slot-class";
+  var SLOT_LEVEL_PART = "slot-level";
+  var SLOT_IMPETUS_PART = "slot-impetus";
   var SLOT_HEALTH_PART = "slot-health";
+  var EVENT_BAND_PART = "event-band";
+  var EVENT_LABEL_PART = "event-label";
+  var EVENT_VARIANT_PART = "event-variant";
+  var EVENT_TURN_PART = "event-turn";
+  var EVENT_IMPETUS_PART = "event-impetus";
+  var MODE_LIST_PART = "mode-list";
+  var MODE_ROW_PART = "mode-row";
+  var MODE_NAME_PART = "mode-name";
+  var MODE_VARIANT_PART = "mode-variant";
+  var MODE_TURN_PART = "mode-turn";
+  var MODE_RANKS_PART = "mode-ranks";
+  var PICK_NOTE_PART = "pick-note";
   var CLASS_LIST_PART = "class-list";
   var CLASS_ROW_PART = "class-row";
   var CLASS_NAME_PART = "class-name";
@@ -186,6 +206,20 @@
       ),
       element(
         "span",
+        named(TAB_CLASS + "-slot-level", SLOT_LEVEL_PART, text(row.participant)),
+        text(row.level_text)
+      ),
+      element(
+        "span",
+        named(
+          TAB_CLASS + "-slot-impetus",
+          SLOT_IMPETUS_PART,
+          text(row.participant)
+        ),
+        text(row.impetus_text)
+      ),
+      element(
+        "span",
         named(
           TAB_CLASS + "-slot-health",
           SLOT_HEALTH_PART,
@@ -231,6 +265,87 @@
       "div",
       part(TAB_CLASS + "-pages", PARTY_PAGES_PART),
       groups
+    );
+  }
+
+  // The turn readout and the Impetus remaining, which the fixed candle requires
+  // the player window to make legible.
+  function EventBand(props) {
+    var event = props.event;
+    return element(
+      "div",
+      named(TAB_CLASS + "-event-band", EVENT_BAND_PART, text(event.code)),
+      element(
+        "span",
+        named(TAB_CLASS + "-event-label", EVENT_LABEL_PART, text(event.code)),
+        text(event.label)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-event-variant", EVENT_VARIANT_PART, text(event.code)),
+        text(event.variant_label)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-event-turn", EVENT_TURN_PART, text(event.code)),
+        text(event.turn_text)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-event-impetus", EVENT_IMPETUS_PART, text(event.code)),
+        text(event.impetus_text)
+      )
+    );
+  }
+
+  function ranksText(row) {
+    return (
+      "difficulty " +
+      String(row.difficulty_rank) +
+      " - entry fee " +
+      String(row.entry_fee_rank) +
+      " - loot " +
+      String(row.loot_rarity_rank) +
+      "/" +
+      String(row.loot_drop_rank)
+    );
+  }
+
+  function ModeRow(props) {
+    var row = props.row;
+    return element(
+      "li",
+      named(TAB_CLASS + "-mode-row", MODE_ROW_PART, text(row.code)),
+      element(
+        "span",
+        named(TAB_CLASS + "-mode-name", MODE_NAME_PART, text(row.code)),
+        text(row.label)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-mode-variant", MODE_VARIANT_PART, text(row.code)),
+        text(row.variant_label)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-mode-turn", MODE_TURN_PART, text(row.code)),
+        text(row.turn_timeframe)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-mode-ranks", MODE_RANKS_PART, text(row.code)),
+        ranksText(row)
+      )
+    );
+  }
+
+  function ModeList(props) {
+    return element(
+      "ul",
+      part(TAB_CLASS + "-mode-list", MODE_LIST_PART),
+      props.rows.filter(isPlainObject).map(function (row) {
+        return element(ModeRow, { key: row.code, row: row });
+      })
     );
   }
 
@@ -405,19 +520,27 @@
 
   function UpperZone(props) {
     var zone = props.zone;
+    var titleProps = part(TAB_CLASS + "-zone-title", ZONE_TITLE_PART);
+    titleProps.key = ZONE_TITLE_PART;
+    var children = [element("h2", titleProps, text(zone.title))];
+    if (isPlainObject(props.event)) {
+      children.push(
+        element(EventBand, { key: EVENT_BAND_PART, event: props.event })
+      );
+    }
+    if (Array.isArray(props.modes)) {
+      children.push(element(ModeList, { key: MODE_LIST_PART, rows: props.modes }));
+    }
+    var placeholderProps = part(
+      TAB_CLASS + "-zone-placeholder",
+      ZONE_PLACEHOLDER_PART
+    );
+    placeholderProps.key = ZONE_PLACEHOLDER_PART;
+    children.push(element("p", placeholderProps, text(zone.placeholder)));
     return element(
       "section",
       zoneProps(zone, TAB_CLASS + "-" + ZONE_PART[zone.name]),
-      element(
-        "h2",
-        part(TAB_CLASS + "-zone-title", ZONE_TITLE_PART),
-        text(zone.title)
-      ),
-      element(
-        "p",
-        part(TAB_CLASS + "-zone-placeholder", ZONE_PLACEHOLDER_PART),
-        text(zone.placeholder)
-      )
+      children
     );
   }
 
@@ -441,6 +564,17 @@
       }),
       element(ClassList, { key: CLASS_LIST_PART, entries: props.classes })
     ];
+    if (props.pickNote !== undefined) {
+      children.push(
+        element(
+          "p",
+          Object.assign(part(TAB_CLASS + "-pick-note", PICK_NOTE_PART), {
+            key: PICK_NOTE_PART
+          }),
+          props.pickNote
+        )
+      );
+    }
     if (rows.length === 0) {
       children.push(
         element(
@@ -474,6 +608,8 @@
     var wallet = isPlainObject(model[WALLET]) ? model[WALLET] : {};
     var rows = Array.isArray(model[PARTICIPANTS]) ? model[PARTICIPANTS] : [];
     var entries = Array.isArray(model[CLASSES]) ? model[CLASSES] : [];
+    var event = isPlainObject(model[EVENT]) ? model[EVENT] : null;
+    var modeRows = Array.isArray(model[MODES]) ? model[MODES] : null;
     var tabProps = {
       className: TAB_CLASS,
       "aria-label": text(model[ACCESSIBLE_NAME])
@@ -489,7 +625,13 @@
       element(
         "div",
         part(TAB_CLASS + "-upper", UPPER_PART),
-        player === null ? null : element(UpperZone, { zone: player }),
+        player === null
+          ? null
+          : element(UpperZone, {
+              zone: player,
+              event: event,
+              modes: modeRows
+            }),
         enemy === null ? null : element(UpperZone, { zone: enemy })
       ),
       party === null
@@ -499,7 +641,8 @@
             party: paging,
             wallet: wallet,
             rows: rows,
-            classes: entries
+            classes: entries,
+            pickNote: text(model[PICK_NOTE])
           })
     );
   }

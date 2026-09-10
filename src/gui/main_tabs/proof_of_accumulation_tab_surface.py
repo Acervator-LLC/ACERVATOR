@@ -6,6 +6,9 @@
 participant holds, and ``loot_section`` carries no row.
 ``participants`` converts each bot in the chain's fleet load through
 ``profile_metrics`` and ``classes`` serves the seven a participant picks from.
+``modes`` serves the eight event types and ``event`` answers the running turn and
+the Impetus pool it grants, with ``class_pick`` calling ``pick_class`` for the
+class ``params`` names.
 ``src.core.desktop_bridge`` registers this module under ``METHOD``, and
 ``chain_of`` reads ``params`` so a TestNet demo run takes this code path against
 its own ledger files.
@@ -14,11 +17,30 @@ its own ledger files.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from ...competition.bot_identity import BotIdentity
+from ...competition.poa_modes import (
+    MODE_CODES,
+    EventVariant,
+    impetus_grant,
+    pool_for,
+    seat_at,
+    turn_at,
+    variant_of,
+    variant_row,
+    variant_rows,
+)
 from ...competition.quintessence_ledger import DEFAULT_LEDGER_PATH, QuintessenceLedger
-from ...competition.rpg_classes import class_rows
+from ...competition.rpg_classes import (
+    FIRST_LEVEL,
+    ClassPick,
+    ClassProgress,
+    UnknownClassError,
+    class_rows,
+    pick_class,
+)
 from ...competition.rpg_metrics import METRIC_SOURCES, profile_metrics, read_metrics
 from ...competition.token_ledger import TokenLedger
 from ...core.fmt import fmt_usd
@@ -28,7 +50,10 @@ METHOD = "proof_of_accumulation_tab.state"
 HEADING = "Accumulation"
 ISSUE = 147
 BUILT = True
-STATE_TEXT = "The shell draws three zones. Nothing inside them is built."
+STATE_TEXT = (
+    "The shell draws three zones. The eight event types, the turn and the "
+    "Impetus pool are built. No pixel art is drawn."
+)
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 
 CHAIN_FIELD = "chain"
@@ -87,8 +112,23 @@ IDENTITY_NAME = BotIdentity.KEY_FILE
 FLEET_NAME = "bot_state.json"
 LEDGER_DIR = DEFAULT_LEDGER_PATH.parent
 
+MODE_FIELD = "mode"
+ELITE_FIELD = "elite"
+EPOCH_FIELD = "at_epoch"
+PARTICIPANT_FIELD = "participant"
+CLASS_NAME_FIELD = "class_name"
+
+#: The mode a request that names none opens.
+DEFAULT_MODE = MODE_CODES[0]
+
+TURN_LABEL = "Turn"
+IMPETUS_LABEL = "Impetus"
+
 NO_CLASS_TEXT = "none"
 NO_HEALTH_TEXT = "--"
+NO_LEVEL_TEXT = "--"
+NO_IMPETUS_TEXT = "--"
+NO_PICK_NOTE = "No participant has picked a class for this event."
 PARTICIPANT_NAME_CHARS = 8
 
 NO_IDENTITY_TEXT = "none"
@@ -108,13 +148,16 @@ DECLARED_FIELDS = (
     "built",
     "chain",
     "classes",
+    "event",
     "heading",
     "issue",
     "issue_text",
     "metric_sources",
     "method",
+    "modes",
     "participants",
     "party",
+    "pick_note",
     "state_text",
     "wallet",
     "zones",
@@ -125,6 +168,38 @@ def chain_of(params: dict) -> str:
     """The chain ``params`` names, or ``LIVE_CHAIN`` when it names none in ``CHAINS``."""
     asked = params.get(CHAIN_FIELD) if isinstance(params, dict) else None
     return asked if asked in CHAINS else LIVE_CHAIN
+
+
+def variant_from(params: dict) -> EventVariant:
+    """The event ``params`` names, defaulting to ``DEFAULT_MODE`` and no Elite flag."""
+    asked = params.get(MODE_FIELD) if isinstance(params, dict) else None
+    elite = bool(params.get(ELITE_FIELD)) if isinstance(params, dict) else False
+    return variant_of(asked if asked in MODE_CODES else DEFAULT_MODE, elite)
+
+
+def epoch_of(params: dict) -> float:
+    """The epoch second ``params`` names, or the clock's own reading."""
+    asked = params.get(EPOCH_FIELD) if isinstance(params, dict) else None
+    if type(asked) in (int, float):
+        return float(asked)
+    return time.time()
+
+
+def class_pick(params: dict, event_id: str) -> tuple[ClassPick | None, str]:
+    """The pick ``params`` names for ``event_id``, with the refusal text beside it.
+
+    ``pick_class`` raises for a class name outside the seven, and that sentence
+    becomes the note the panel prints.
+    """
+    asked = params if isinstance(params, dict) else {}
+    participant = asked.get(PARTICIPANT_FIELD)
+    class_name = asked.get(CLASS_NAME_FIELD)
+    if type(participant) is not str or type(class_name) is not str:
+        return None, NO_PICK_NOTE
+    try:
+        return pick_class(participant, event_id, class_name), ""
+    except UnknownClassError as exc:
+        return None, str(exc)
 
 
 def chain_file(file_name: str, chain: str) -> Path:
@@ -291,24 +366,41 @@ def health_text(metrics: dict) -> str:
     return fmt_usd(float(maximum))
 
 
-def participant_row(bot_id: str, record: dict) -> dict:
-    """One party row: the participant, its market, its class, and its read metrics."""
+def progress_for(name: str, pick: ClassPick | None) -> ClassProgress | None:
+    """The ``ClassProgress`` for ``name``'s pick, or None when the pick is another's.
+
+    No field under ``src`` holds a class level, so a fresh pick stands at
+    ``FIRST_LEVEL``.
+    """
+    if pick is None or pick.participant != name:
+        return None
+    return ClassProgress(pick.class_name)
+
+
+def participant_row(bot_id: str, record: dict, pick: ClassPick | None = None) -> dict:
+    """One party row: the participant, its market, its picked class and its metrics."""
     config = record.get("config") if isinstance(record, dict) else None
     metrics = read_metrics(profile_metrics(record))
+    name = bot_id[:PARTICIPANT_NAME_CHARS]
+    progress = progress_for(name, pick)
     return {
-        "participant": bot_id[:PARTICIPANT_NAME_CHARS],
+        "participant": name,
         "symbol": (config or {}).get("symbol", ""),
-        "class_name": NO_CLASS_TEXT,
+        "class_name": NO_CLASS_TEXT if progress is None else progress.class_name,
+        "level_text": NO_LEVEL_TEXT if progress is None else str(progress.level),
+        "impetus_text": (
+            NO_IMPETUS_TEXT if progress is None else str(impetus_grant(progress.level))
+        ),
         "health_text": health_text(metrics),
         "metrics": metrics,
     }
 
 
-def participants(chain: str) -> list:
+def participants(chain: str, pick: ClassPick | None = None) -> list:
     """Every bot in ``chain``'s fleet load as a party row, ordered by participant."""
     records = fleet_records(chain)
     rows = [
-        participant_row(bot_id, record)
+        participant_row(bot_id, record, pick)
         for bot_id, record in records.items()
         if isinstance(record, dict)
     ]
@@ -318,6 +410,48 @@ def participants(chain: str) -> list:
 def classes() -> list:
     """The seven classes a participant picks from, from ``class_rows``."""
     return class_rows()
+
+
+def modes() -> list:
+    """The eight event types, from ``variant_rows``, each carrying its Elite flag."""
+    return variant_rows()
+
+
+def turn_text(variant: EventVariant, turn_index: int, seconds_left: float) -> str:
+    """The player window's turn line, naming the candle and the seconds remaining."""
+    return (
+        f"{TURN_LABEL} {turn_index} - one {variant.turn_timeframe} candle "
+        f"- {seconds_left:.0f}s left"
+    )
+
+
+def impetus_text(granted: int, level: int) -> str:
+    """The player window's Impetus line, naming the grant and the level behind it."""
+    return f"{IMPETUS_LABEL} {granted} this turn - level {level}"
+
+
+def event(variant: EventVariant, at_epoch: float, level: int) -> dict:
+    """The declared event: its variant row, the running turn, and the turn's pool.
+
+    ``seat_at`` takes the turn already running, so the seconds remaining are the
+    candle's own and never a fresh turn's worth.
+    """
+    turn = turn_at(variant, at_epoch)
+    seat = seat_at(variant, at_epoch)
+    pool = pool_for(turn, level)
+    return {
+        **variant_row(variant),
+        "turn_index": turn.index,
+        "opened_at": turn.opened_at,
+        "closes_at": turn.closes_at,
+        "seconds_left": seat.seconds_left,
+        "full_turn": seat.full_turn,
+        "turn_text": turn_text(variant, turn.index, seat.seconds_left),
+        "impetus_level": level,
+        "impetus_granted": pool.granted,
+        "impetus_remaining": pool.remaining,
+        "impetus_text": impetus_text(pool.granted, level),
+    }
 
 
 def metric_sources() -> dict:
@@ -336,21 +470,28 @@ def zones() -> list:
 def view_model(params: dict) -> dict:
     """Bridge handler for ``proof_of_accumulation_tab.state``.
 
-    Answers every name in ``DECLARED_FIELDS``, with ``chain_of`` reading ``params``.
+    Answers every name in ``DECLARED_FIELDS``, with ``chain_of``, ``variant_from``,
+    ``epoch_of`` and ``class_pick`` all reading ``params``.
     """
     chain = chain_of(params)
+    variant = variant_from(params)
+    pick, pick_note = class_pick(params, variant.code)
+    level = FIRST_LEVEL if pick is None else ClassProgress(pick.class_name).level
     return {
         "accessible_name": HEADING,
         "built": BUILT,
         "chain": chain,
         "classes": classes(),
+        "event": event(variant, epoch_of(params), level),
         "heading": HEADING,
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
         "metric_sources": metric_sources(),
         "method": METHOD,
-        "participants": participants(chain),
+        "modes": modes(),
+        "participants": participants(chain, pick),
         "party": party(),
+        "pick_note": pick_note,
         "state_text": STATE_TEXT,
         "wallet": wallet(chain),
         "zones": zones(),
