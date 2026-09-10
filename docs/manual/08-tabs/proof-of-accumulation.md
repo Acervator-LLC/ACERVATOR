@@ -7382,3 +7382,149 @@ window size the shell opens and 254 at a full-screen one, so the mode rows are s
 reached by scrolling that zone. The eight event types are named twice on this screen,
 once as the event buttons in the control bar and once as the mode rows here, and
 dropping either copy is a change to what the tab says rather than to how it is sized.
+
+## 2026-09-10 23:40 - #586 - the PvP vote, and who may destroy a Vessel
+
+### His words set the rule
+
+> "There will be PvP Worlds and Events. A world entering PvP mode is determined by an
+> active Player Vote and that can put forth once every 24hrs. The voting window
+> persists for 15m or three 5m candles. Only while in PvP mode or participating in PvP
+> events can one player destroy another's Vessels. This will allow players to have
+> specific Vessels they are willing to fight to the death with..."
+
+Somebody calls a vote in one world turn, and it settles on the next world-turn boundary.
+Actions placed in the peaceful turn resolve peacefully, and PvP begins with the next
+turn's placements. A participant has to log in once in an hour rather than be awake at one
+particular minute, and that is also what stops a vote called while a rival guild sleeps.
+
+```
+called on world turn 100     the peaceful turn
+settles on world turn 101    the first PvP turn
+resolution on turn 100       refused
+```
+
+### The window is three standard candles, and the clock already existed
+
+His fifteen minutes is three turns of the standard five-minute candle. The modes module
+already measures a turn off the shared candle clock, so the vote declares no clock of its
+own and counts three of those turns.
+
+```
+standard candle      300 s
+three candles        900 s
+his window       15 min  =  900 s
+```
+
+### Two thirds of the whole world, counted in whole votes
+
+A quorum is of every participant in the world, never of the people who happened to vote.
+Under a simple majority the largest guild alone would decide when everybody else's
+Vessels become destructible, so the bar is two thirds and it takes more than one guild.
+Every figure is whole numbers multiplied across, so no decimal fraction of a vote exists.
+
+```
+participants on one layer     79      votes to carry      53
+a full world of twenty layers  1,580   votes to carry   1,054
+```
+
+Driven on a layer's own roll. Fifty-three votes in favour carried the vote and turned the
+mode on at the next boundary. Fifty-two did not, and the mode stayed off. Every roll from
+one to one thousand five hundred and eighty then met a count-up search for the same
+figure, and the two agreed on every roll. A decimal version of the same sum disagreed on
+five hundred and twenty-six.
+
+```
+53 of 79 in favour     carried      mode on from world turn 101
+52 of 79 in favour     not carried  mode stays off
+rolls 1 to 1,580       whole-number disagreements 0     decimal disagreements 526
+```
+
+### The mode lasts twenty-four world turns and then lapses
+
+His cap is one vote every twenty-four hours and a world turn is an hour, so the life of
+the mode and the gap between two votes are one number. A world goes back to peace unless
+somebody votes it into PvP again.
+
+```
+turn 100   the vote is called
+turn 101   PvP begins
+turn 124   the last PvP turn, and the earliest a new vote may be called
+turn 125   the first mode lapses, and a vote called on 124 settles here
+```
+
+### What the permission answers
+
+One call answers whether one participant may destroy another's Vessels right now. The
+answer is yes only inside a live PvP mode or a PvP event. Every row below came off the
+built objects.
+
+```
+two participants, inside the mode                 yes
+the peaceful turn the vote was called in          no
+after the mode has lapsed                         no
+a participant against its own                     no
+a PvP event, with no mode at all                  yes
+```
+
+### Five refusals, each driven, each with its accepted neighbour
+
+A refusal is worth nothing unless the program accepts the case one step away. The run
+drove both sides of every boundary below.
+
+```
+a call 23 world turns after the last       refused
+a call 24 world turns after the last       accepted
+a vote at second 900 of the window         refused
+a vote at second 899 of the window         accepted
+the same participant voting twice          refused
+a vote past the roll counted at the call   refused
+a second resolution of one ballot          refused
+```
+
+### Nothing counts a world's participants
+
+The quorum counts against a roll the caller hands in, because no module keeps a list of a
+world's participants. The world store reports how many of them have discovered something,
+which is a different number, and the layer figure gives a capacity rather than a roll. The
+ballot freezes that roll at the moment of the call, so a participant who votes and then
+leaves cannot shrink the number their vote counted against.
+
+```
+PROPOSED
+src/competition/world_grid.py
+    PoaWorld.participants(world_id) -> tuple[str, ...]
+    the addresses enrolled in one world, which the vote would count
+```
+
+### No screen calls any of this
+
+No control calls a vote, casts one, or resolves one, and nothing in the running program
+reaches this module at all. The unused-function check names all six of its calls.
+
+```
+call_vote   cast_vote   resolve   mode_from   may_destroy   ballot_row
+```
+
+### Nothing keeps a Vessel, so there is nothing to destroy
+
+The permission is the gate and the thing it guards is absent. The tab already says so in
+its own words, on screen, for any participant.
+
+```
+"keeps no Vessel for this participant"
+```
+
+### What the PvP vote does not build
+
+Vessel destruction is not built, and neither is a PvP event. Whether any of the eight
+existing event types is a PvP one is his ruling, and nothing sets the event flag the
+permission reads. Who may call a vote is not settled either: the ballot records its caller
+and checks no privilege.
+
+```
+Vessel destruction         In development.
+a PvP event flag           In development.
+the right to call a vote   In development.
+a control to cast a vote   In development.
+```
