@@ -56,6 +56,12 @@ from .project_age import (
     MIN_PROJECT_AGE_MONTHS,
     REFUSAL_REASONS,
 )
+from .node_link import (
+    ChainRecord,
+    NodeLinkError,
+    PeerEndpoint,
+    PoaNodeLink,
+)
 from .rpg_classes import (
     CharacterClass,
     ClassPick,
@@ -117,6 +123,10 @@ __all__ = [
     "ProjectAgeError",
     "MIN_PROJECT_AGE_MONTHS",
     "REFUSAL_REASONS",
+    "ChainRecord",
+    "NodeLinkError",
+    "PeerEndpoint",
+    "PoaNodeLink",
     "CharacterClass",
     "ClassPick",
     "ClassProgress",
