@@ -1415,3 +1415,186 @@ Demo mode needs no second path. A start date is a fact about a project, not abou
 a chain, so a TestNet run reads the same dates from the same file through the same
 call. The lookup holds no chain and no competition name, so there is nothing for a
 demo run to switch.
+
+## 2026-09-10 00:00 - #147 - the rotating reward set and eligibility
+
+A market pays Quintessence only while three things are true at once. It sits in
+the top twenty by volume on that exchange, its project is at least six months
+old, and the live rotation drew it. Any one of the three missing, and the market
+pays nothing.
+
+`src/competition/market_rotation.py` — the draw, and the floor under it
+
+```python
+def draw_size(pool_size: int) -> int:
+    """``quarter_rounded_up`` of ``pool_size``, and 0 below ``MIN_ELIGIBLE_POOL``."""
+    if pool_size < MIN_ELIGIBLE_POOL:
+        return 0
+    return quarter_rounded_up(pool_size)
+```
+
+### The ranking now counts money, not coins
+
+The volume figure the old ranking read was a count of coins traded, and a coin
+count cannot be compared between two markets. Five thousand bitcoins and four
+billion meme tokens are both big numbers, and only one of them is real money.
+The rotation now ranks on the dollar value traded instead.
+
+The two rankings were taken from one live Coinbase snapshot, the same 403 assets,
+one sorted each way. They share one market out of twenty.
+
+```
+top 20 by dollars traded   BTC ETH ZEC XRP SOL HYPE VVV NEAR LINK DOGE
+                           USELESS UNI PUMP SUI ADA TAO XLM AERO LIGHTER LTC
+
+top 20 by coins traded     NEX MOG PEPE BONK SHIB FLOKI TOSHI VTHO PUMP NOICE
+                           SPELL BNKR DRB B3 AMP DOGINME NOM BLAST PENGU OXT
+```
+
+The second list is nineteen sub-cent tokens. Those are exactly the obscure pumps
+the rule exists to turn away, and the old figure would have handed them the whole
+reward surface.
+
+Coinbase serves the dollar figure for every market it lists. The platform asked
+for all 931 of its pairs and not one of them was missing it.
+
+| What the ranking reads | Where it comes from |
+| ---------------------- | ------------------- |
+| The dollar value traded in 24 hours | `quoteVolume`, served by the venue |
+| The same figure where a venue omits it | coins traded times the last price |
+| The coin count, unchanged and still recorded | `volume_24h`, read by the topology proposals |
+
+One market per asset is ranked. An asset quoted against both dollars and USDC was
+counted twice before, so a top twenty held only ten assets.
+
+### Five of twenty qualify today, and Coinbase pays nothing
+
+The six-month rule reads a project's start date, and most projects publish none.
+Run against Coinbase's real top twenty, fifteen of them are refused.
+
+```
+eligible          BTC/USD  ETH/USD  LINK/USD  DOGE/USD  LTC/USD
+no identifier     8 markets     the asset catalogue has no CoinGecko id
+no start date     7 markets     CoinGecko answers with no date
+pool size         5
+markets drawn     0
+```
+
+Five is under the floor of twelve, so the exchange draws nothing at all. That is
+the rule working as designed and it is also the measured cost of refusing an
+unknown age. Widening the asset catalogue is what widens the pool.
+
+### The draw is a quarter of the pool, and never reaches a single market
+
+A fixed draw of five from a shrinking pool would let an exchange pick the winner
+by removing everything else. The draw scales with the pool instead, so the odds
+on any one market stay near one in four however many markets remain.
+
+```
+pool  20   drawn 5      pool  13   drawn 4      pool  11   drawn 0
+pool  16   drawn 4      pool  12   drawn 3      pool   5   drawn 0
+```
+
+Below twelve the exchange draws nothing. Eleven eligible markets were reached by
+filing real exclusions, and the window refused to open.
+
+```
+open_window refused: pool_below_floor: coinbase holds 11 eligible markets,
+under the floor of 12, so it draws nothing
+```
+
+### An exclusion waits for the next season
+
+An exchange may remove its own markets from the rotation list. It cannot add one,
+choose one, or time one. The removal takes effect at the next season only, so it
+can never be filed against a window that is already running.
+
+A season is a counter that a call advances. It carries no date, so the boundary is
+an event and nobody can predict when it falls.
+
+```
+filed in season 1, binds from season 2   BTC/USD
+in effect in season 1                    nothing
+in effect in season 2                    BTC/USD
+season 1 BTC/USD                         eligible
+season 2 BTC/USD                         excluded_by_exchange
+```
+
+### What the chain carries while a window is open
+
+The chain carries a fingerprint of the chosen markets and the count, and no
+market name. The fingerprint is built from a random value held back until the
+window closes, so nobody can test a guess against it.
+
+```
+chain tx args: {"exchange": "coinbase", "season": 1,
+                "commitment": "2c69e1e853579c19...", "marketCount": 5}
+```
+
+At the close the markets and the random value are published together, and anyone
+can check that the published set is the one the fingerprint was made from.
+
+```
+reveal markets   ADA/USD  HYPE/USD  LIGHTER/USD  UNI/USD  VVV/USD
+proof verified   True
+```
+
+Asking which markets pay while the window is open is refused.
+
+```
+membership_proof refused: coinbase has an open window; a membership proof
+would reveal the set it conceals
+```
+
+What this hides, and from whom:
+
+| Reader | While the window is open |
+| ------ | ------------------------ |
+| A participant | cannot learn which markets pay |
+| Another node | cannot learn which markets pay |
+| The exchange | cannot learn which markets pay |
+| The node that drew the set | holds the answer on its own disk |
+
+Two things it does not do. The drawing node chose the set, so it could have
+chosen a set that suits it; the fingerprint only stops it changing its mind
+afterwards. And no other node can repeat the draw and check it was fair. Both
+need a shared random value that several nodes produce together, and the key
+type for that does not exist in the platform yet.
+
+The wording in the design is "encrypted on-chain". Encryption needs a recipient
+who holds a key, and no field anywhere holds an exchange key. A fingerprint is
+what ships instead, and on the property the design actually cares about it is
+stronger: encryption to an exchange would let that exchange read its own
+rotation early, and a fingerprint lets nobody read it.
+
+### Demo mode needs no second path
+
+The rotation takes its chain when it is built. A TestNet run is one rotation over
+a different chain with a different record file, calling the same methods. Nothing
+switches on a flag.
+
+```
+live      MarketRotation   market_rotation.json          chain A
+testnet   MarketRotation   market_rotation_testnet.json  chain B
+same class, same open_window path
+```
+
+### What the rotation still waits for
+
+Nothing asks for a rotation yet. The object is built on every launch and then
+waits for a caller.
+
+`src/gui/main_window.py:277` — the launch call that builds it
+
+```python
+                SharedTestnetBridge.install_on(self)
+```
+
+Three parts are still missing. No market has a Quintessence pool yet, so the five
+per cent share ceiling has a number to apply and nothing to apply it to. Nothing
+advances a season. And the walk that reads project ages waits thirteen seconds
+between calls, so it must never run on the thread that draws the screens.
+
+The pacing was measured. Asked two seconds apart, CoinGecko refused thirty-four
+of forty calls. Asked thirteen seconds apart, it answered every one, twelve of
+twelve on a cold cache and seven of seven on a warm one.

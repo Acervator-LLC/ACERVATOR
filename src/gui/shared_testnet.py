@@ -25,6 +25,7 @@ from ..core.io_utils import atomic_write_json
 
 if TYPE_CHECKING:
     from src.competition.certification_socket import CertificationSocket
+    from src.competition.market_rotation import MarketRotation
     from src.competition.quintessence_ledger import QuintessenceLedger
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
@@ -117,6 +118,7 @@ class SharedTestnetBridge(QObject):
         self._mutation_lock = threading.Lock()
         self._active_worker: Optional[_CompetitionWorker] = None
         self._certification_socket: Optional[CertificationSocket] = None
+        self._market_rotation: Optional[MarketRotation] = None
 
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
@@ -136,10 +138,11 @@ class SharedTestnetBridge(QObject):
         persist_path: Optional[Path] = None,
         quint_ledger_path: Optional[Path] = None,
         socket_path: Optional[Path] = None,
+        rotation_path: Optional[Path] = None,
     ):
         """Create the shared ``LocalTestnet``, the bridge, the
-        ``QuintessenceLedger`` and the ``CertificationSocket``, and attach
-        all four to ``main_win``.
+        ``QuintessenceLedger``, the ``CertificationSocket`` and the
+        ``MarketRotation``, and attach all five to ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -161,8 +164,40 @@ class SharedTestnetBridge(QObject):
         main_win._certification_socket = bridge.install_certification_socket(
             ledger, socket_path
         )
+        main_win._market_rotation = bridge.install_market_rotation(rotation_path)
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
+
+    def install_market_rotation(
+        self,
+        rotation_path: Optional[Path] = None,
+    ) -> MarketRotation:
+        """Build the ``MarketRotation`` over this bridge's chain and load its record.
+
+        The rotation draws from whichever chain this bridge holds, so a TestNet
+        run is the same ``open_window`` path over a different ``LocalTestnet``.
+        """
+        from src.competition.market_rotation import MarketRotation as _Rotation
+
+        rotation = _Rotation(self._testnet, rotation_path=rotation_path)
+        rotation.load()
+        self._market_rotation = rotation
+        summary = rotation.rotation_summary()
+        logger.info(
+            "MarketRotation installed (path=%s, open windows=%d, top %d by volume, "
+            "floor %d, share ceiling %s%%)",
+            rotation.rotation_path,
+            len(summary["open_windows"]),
+            summary["top_n_by_volume"],
+            summary["min_eligible_pool"],
+            summary["share_ceiling_pct"],
+        )
+        return rotation
+
+    @property
+    def market_rotation(self) -> Optional[MarketRotation]:
+        """Read the ``MarketRotation`` this bridge installed."""
+        return self._market_rotation
 
     def install_certification_socket(
         self,
