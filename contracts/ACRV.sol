@@ -4,22 +4,30 @@
 // =============================================================================
 // Hard-capped ERC-20 token awarded to winning Acervator bots.
 //
-// Key invariants (immutable after deployment):
+// Key invariants:
 //   • MAX_SUPPLY  = 10,000,000 ACRV (10_000_000 * 10^18 wei)
 //   • Only the CompetitionRegistry may mint new tokens
 //   • Tokens can never be burned — supply monotonically increases
-//   • The registry address is set once at construction and cannot change
+//   • The registry address is written once by setRegistry and never again
 //
 // These invariants make ACRV provably scarce on-chain.
-// The Ekthelius tier (21 tokens max) is enforced in the registry contract.
+// CompetitionRegistry caps Ekthelius-tier awards at 21.
+//
+// Deployment order. ACRV takes no constructor argument, so the three
+// contracts no longer form a circular construction sequence:
+//   1. ACRV()                                 registry unset, minting impossible
+//   2. CompetitionRegistry(acrv, feeds)       acrv is immutable there
+//   3. ACRV.setRegistry(registry)             locked from this call onward
+//   4. AcervatorTrophy(registry)              registry is immutable there
 // =============================================================================
-pragma solidity ^0.8.20;
+pragma solidity 0.8.36;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract ACRV is ERC20, Ownable, Pausable {
+contract ACRV is ERC20, Ownable2Step, Pausable {
 
     // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -28,8 +36,8 @@ contract ACRV is ERC20, Ownable, Pausable {
     // ── State ─────────────────────────────────────────────────────────────────
 
     /// The CompetitionRegistry — sole authorized minter.
-    /// Set once at construction; immutable thereafter.
-    address public immutable registry;
+    /// Zero until setRegistry writes it; unchangeable after that one write.
+    address public registry;
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -41,21 +49,42 @@ contract ACRV is ERC20, Ownable, Pausable {
         uint256 totalSupplyAfter
     );
 
+    event RegistrySet(address indexed registry);
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    constructor(address _registry)
+    constructor()
         ERC20("Acervator Token", "ACRV")
         Ownable(msg.sender)
-    {
-        require(_registry != address(0), "ACRV: registry cannot be zero address");
-        registry = _registry;
-    }
+    {}
 
     // ── Modifiers ─────────────────────────────────────────────────────────────
 
     modifier onlyRegistry() {
         require(msg.sender == registry, "ACRV: caller is not the registry");
         _;
+    }
+
+    // ── Minter wiring, once ───────────────────────────────────────────────────
+
+    /**
+     * @notice Name the CompetitionRegistry as the sole minter, permanently.
+     * @dev    Callable once. The second call reverts, so the minter is fixed
+     *         for the life of the contract. The target must already hold
+     *         code: an externally owned account can never become the minter,
+     *         which is the mis-wiring this check exists to refuse.
+     *
+     *         Before this call registry is the zero address. msg.sender is
+     *         never the zero address in a transaction, so onlyRegistry admits
+     *         nobody and mint is unreachable until the wiring lands.
+     *
+     * @param registryAddress The deployed CompetitionRegistry address
+     */
+    function setRegistry(address registryAddress) external onlyOwner {
+        require(registry == address(0),       "ACRV: registry already set");
+        require(registryAddress.code.length > 0, "ACRV: registry not a contract");
+        registry = registryAddress;
+        emit RegistrySet(registryAddress);
     }
 
     // ── Minting ───────────────────────────────────────────────────────────────

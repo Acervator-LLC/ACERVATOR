@@ -2,7 +2,8 @@
 // ACERVATOR TROPHY — ERC-721 NFT
 // Chain: Base (Coinbase L2)
 // =============================================================================
-// Soulbound-optional ERC-721 trophy NFTs awarded alongside ACRV tokens.
+// ERC-721 trophy NFTs awarded alongside ACRV tokens. Freely transferable: this
+// contract declares no transfer hook, no override and no soulbound flag.
 // Metadata and artwork are fully on-chain — no IPFS dependency.
 //
 // Each NFT encodes:
@@ -17,19 +18,22 @@
 // The SVG artwork is stored tier-by-tier as base64 constants set at deployment.
 // Each trophy of the same tier is visually identical; metadata differentiates them.
 //
-// Supply is bounded by the underlying competition caps:
-//   Ekthelius        — max 21 ever (enforced in CompetitionRegistry)
-//   Grand Accumulator — max 1,000 ever
-//   Others           — season-budget bounded
+// Supply is unbounded on-chain. This contract declares no tier ceiling and no
+// per-tier counter, and CompetitionRegistry holds no reference to it, so its
+// Ekthelius and Grand Accumulator caps bound ACRV awards and not these NFTs.
+// The only minter reachable today is this contract's owner.
 // =============================================================================
-pragma solidity ^0.8.20;
+pragma solidity 0.8.36;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/utils/Base64.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 
-contract AcervatorTrophy is ERC721, Ownable {
+contract AcervatorTrophy is ERC721, Ownable2Step {
     using Strings for uint256;
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -87,6 +91,7 @@ contract AcervatorTrophy is ERC721, Ownable {
         Ownable(msg.sender)
     {
         require(_registry != address(0), "Trophy: registry cannot be zero");
+        require(_registry.code.length > 0, "Trophy: registry not a contract");
         registry = _registry;
 
         // Tier colors (hex, for JSON attributes)
@@ -269,15 +274,17 @@ contract AcervatorTrophy is ERC721, Ownable {
         internal pure returns (string memory)
     {
         string memory v = value >= 0
-            ? uint256(value).toString()
-            : string.concat("-", uint256(-value).toString());
+            ? SafeCast.toUint256(value).toString()
+            : string.concat("-", SignedMath.abs(value).toString());
         return string.concat('{"trait_type":"', key, '","value":', v, '}');
     }
 
+    /// @dev SignedMath.abs carries the full int256 range, so the most negative
+    ///      basis-point value formats instead of reverting inside tokenURI.
     function _formatBps(int256 bps) internal pure returns (string memory) {
         // Convert basis points to percentage string: 2950 → "+29.50%"
         string memory sign   = bps >= 0 ? "+" : "-";
-        uint256 absBps       = bps >= 0 ? uint256(bps) : uint256(-bps);
+        uint256 absBps       = SignedMath.abs(bps);
         uint256 whole        = absBps / 100;
         uint256 frac         = absBps % 100;
         string memory fracStr = frac < 10

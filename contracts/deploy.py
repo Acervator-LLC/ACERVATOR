@@ -1,16 +1,22 @@
 """
 deploy.py — Deploy ACRV Contracts to Base
 ==========================================
-Deploys ACRV.sol and CompetitionRegistry.sol to Base Sepolia (testnet)
-or Base Mainnet.
+Deploys ACRV.sol, CompetitionRegistry.sol and AcervatorTrophy.sol to Base
+Sepolia (testnet) or Base Mainnet.
 
 Prerequisites:
+    forge build
     pip install -e ".[contracts]"
 
-web3, eth-account and py-solc-x are an OPT-IN extra. Issue #94 made
-`pyproject.toml` the one place a package name lives, and issue #92 put
-these three in it. This file names no package, so the set it needs and
-the set that installs cannot drift apart.
+`forge build` comes first and is not optional. This script deploys the
+artifacts Foundry wrote under `out/`, so the bytecode that reaches the chain
+is the bytecode `foundry.toml` declares and the analyzers read. It runs no
+compiler of its own.
+
+web3 and eth-account are an OPT-IN extra. Issue #94 made `pyproject.toml`
+the one place a package name lives, and issue #92 put these in it. This
+file names no package, so the set it needs and the set that installs
+cannot drift apart.
 
 Usage:
     # Testnet (Base Sepolia — do this first)
@@ -29,17 +35,23 @@ Get test ETH: https://www.coinbase.com/faucets/base-ethereum-goerli-faucet
               https://faucet.quicknode.com/base/sepolia
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.competition.base_config import BASE_MAINNET, BASE_SEPOLIA
+
+if TYPE_CHECKING:
+    from web3.types import TxReceipt
 
 # Issue #92. What stood here was `install_deps()`. It held the package
 # names ["web3", "eth-account", "py-solc-x"] as a literal list and ran
@@ -50,7 +62,7 @@ from src.competition.base_config import BASE_MAINNET, BASE_SEPOLIA
 # operator's live environment without being asked. The live Acervator
 # runs from that environment.
 #
-# The three imports below are now GUARDED. Each sits inside `try:` with
+# The two imports below are now GUARDED. Each sits inside `try:` with
 # an `except ImportError` that names the extra and stops. The script
 # states what to install; it does not install it.
 MISSING_EXTRA = """
@@ -65,60 +77,72 @@ MISSING_EXTRA = """
   dependency source. Do not install them by hand.
 """
 
+MISSING_ARTIFACT = """
+  Foundry artifact not found: {}
 
-def compile_contracts(contracts_dir: str) -> dict:
-    """Compile ACRV.sol and CompetitionRegistry.sol using solcx."""
-    # `type: ignore` is warranted here and is not hiding a finding. The
-    # distribution is `py-solc-x`, it is an opt-in extra, and it is
-    # absent from every environment this project checks by design. The
-    # `except` below is the behaviour that tolerates the absence.
+  Build the contracts before deploying:
+
+      forge build
+
+  This script deploys what `forge build` wrote. `foundry.toml` fixes the
+  compiler version, the EVM target, the optimizer and the IR pipeline, so
+  the deployed bytecode is the bytecode the analyzers read. Compiling here
+  with different settings would put unanalyzed bytecode on a chain.
+"""
+
+# Deployment order. ACRV takes no constructor argument, CompetitionRegistry
+# takes the token address, the trophy takes the registry address, and
+# ACRV.setRegistry names the minter once. Nothing needs an address that does
+# not exist yet, so the three contracts no longer form a cycle.
+DEPLOY_ARTIFACTS = {
+    "ACRV": "ACRV.sol/ACRV.json",
+    "CompetitionRegistry": "CompetitionRegistry.sol/CompetitionRegistry.json",
+    "AcervatorTrophy": "AcervatorTrophy.sol/AcervatorTrophy.json",
+}
+
+
+def load_artifacts(repo_root: Path) -> dict:
+    """Read the ABI and creation bytecode Foundry wrote for each contract.
+
+    Returns {contract_name: {"abi": [...], "bin": "0x..."}} for the three
+    contracts this script deploys. Raises SystemExit naming `forge build`
+    when an artifact is absent or carries no bytecode.
+    """
+    out_dir = repo_root / "out"
+    artifacts = {}
+    for name, relative in DEPLOY_ARTIFACTS.items():
+        path = out_dir / relative
+        if not path.is_file():
+            raise SystemExit(MISSING_ARTIFACT.format(path))
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        bytecode = payload.get("bytecode", {}).get("object", "")
+        if not bytecode or bytecode == "0x":
+            raise SystemExit(MISSING_ARTIFACT.format(path))
+        artifacts[name] = {"abi": payload["abi"], "bin": bytecode}
+    return artifacts
+
+
+def deploy(network: str, private_key: str, repo_root: Path) -> None:
+    """Deploy the three contracts in an order no immutable field forbids.
+
+    Steps, in sequence: ACRV with no argument, CompetitionRegistry holding
+    the token address, ACRV.setRegistry naming the registry as sole minter,
+    then AcervatorTrophy holding the registry address. The setRegistry call
+    is the one wiring step, and a second call to it reverts.
+    """
+    # Guarded for the reason written above MISSING_EXTRA.
     try:
-        from solcx import (  # type: ignore[import-not-found]
-            compile_files,
-            get_installed_solc_versions,
-            install_solc,
-        )
-    except ImportError as exc:
-        raise SystemExit(MISSING_EXTRA.format(exc)) from exc
-    SOLC = "0.8.20"
-    installed = get_installed_solc_versions()
-    if not any(str(v) == SOLC for v in installed):
-        print(f"  Installing solc {SOLC}...")
-        install_solc(SOLC)
-
-    print("  Compiling contracts...")
-    contracts_path = Path(contracts_dir)
-    compiled = compile_files(
-        [
-            str(contracts_path / "ACRV.sol"),
-            str(contracts_path / "CompetitionRegistry.sol"),
-        ],
-        output_values=["abi", "bin"],
-        solc_version=SOLC,
-        allow_paths=str(contracts_path),
-        import_remappings=[
-            "@openzeppelin=node_modules/@openzeppelin",
-            "@chainlink=node_modules/@chainlink",
-        ],
-    )
-    return compiled
-
-
-def deploy(network: str, private_key: str, contracts_dir: str):
-    """Full deployment flow: compile → deploy ACRV → deploy Registry → verify."""
-    # Guarded for the reason written above compile_contracts().
-    try:
-        from eth_account import Account  # type: ignore[import-not-found]
-        from web3 import Web3  # type: ignore[import-not-found]
+        from eth_account import Account
+        from web3 import Web3
     except ImportError as exc:
         raise SystemExit(MISSING_EXTRA.format(exc)) from exc
 
     cfg = BASE_SEPOLIA if network == "sepolia" else BASE_MAINNET
-    print(f"\n  ══════════════════════════════════════")
-    print(f"  Acervator Contract Deployment")
+    print("\n  ══════════════════════════════════════")
+    print("  Acervator Contract Deployment")
     print(f"  Network: {cfg.name}")
     print(f"  Chain ID: {cfg.chain_id}")
-    print(f"  ══════════════════════════════════════")
+    print("  ══════════════════════════════════════")
 
     # Connect
     w3 = Web3(Web3.HTTPProvider(cfg.rpc_url))
@@ -133,82 +157,82 @@ def deploy(network: str, private_key: str, contracts_dir: str):
     print(f"  ETH balance: {eth_bal:.6f}")
 
     if float(eth_bal) < 0.001 and network != "mainnet":
-        print(f"\n  WARNING: Low ETH balance. Get test ETH from:")
-        print(f"  https://www.coinbase.com/faucets/base-ethereum-goerli-faucet")
+        print("\n  WARNING: Low ETH balance. Get test ETH from:")
+        print("  https://www.coinbase.com/faucets/base-ethereum-goerli-faucet")
 
-    # Compile
-    try:
-        compiled = compile_contracts(contracts_dir)
-    except Exception as e:
-        print(f"\n  Compilation failed: {e}")
-        print(f"  Make sure OpenZeppelin and Chainlink are installed:")
-        print(f"  npm install @openzeppelin/contracts @chainlink/contracts")
-        sys.exit(1)
+    artifacts = load_artifacts(repo_root)
 
-    def deploy_contract(name, abi, bytecode, *args):
-        print(f"\n  Deploying {name}...")
-        contract = w3.eth.contract(abi=abi, bytecode=bytecode)
-        nonce = w3.eth.get_transaction_count(account.address)
-        tx = contract.constructor(*args).build_transaction(
-            {
-                "from": account.address,
-                "nonce": nonce,
-                "chainId": cfg.chain_id,
-            }
-        )
+    def send(name: str, tx: dict) -> TxReceipt:
+        """Sign, broadcast and await one transaction; raise on a failed receipt."""
+        tx.setdefault("from", account.address)
+        tx["nonce"] = w3.eth.get_transaction_count(account.address)
+        tx["chainId"] = cfg.chain_id
         signed = account.sign_transaction(tx)
-        tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+        raw = getattr(signed, "raw_transaction", None)
+        if raw is None:
+            raw = signed.rawTransaction  # web3 below 6.0 spells it this way
+        tx_hash = w3.eth.send_raw_transaction(raw)
         print(f"  Tx: {cfg.explorer_url}/tx/{tx_hash.hex()}")
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
-        if receipt.status != 1:
-            raise RuntimeError(f"{name} deployment failed")
-        addr = receipt.contractAddress
+        if receipt["status"] != 1:
+            message = f"{name} failed"
+            raise RuntimeError(message)
+        return receipt
+
+    def deploy_contract(name: str, *args: object) -> str:
+        print(f"\n  Deploying {name}...")
+        contract = w3.eth.contract(
+            abi=artifacts[name]["abi"], bytecode=artifacts[name]["bin"]
+        )
+        receipt = send(name, contract.constructor(*args).build_transaction({}))
+        addr = receipt["contractAddress"]
+        if addr is None:
+            message = f"{name} receipt carries no contract address"
+            raise RuntimeError(message)
         print(f"  {name} deployed: {cfg.explorer_url}/address/{addr}")
         return addr
 
-    # Deploy ACRV first (registry address not yet known — use dummy)
-    acrv_key = [k for k in compiled if "ACRV" in k and "Registry" not in k][0]
-    reg_key = [k for k in compiled if "CompetitionRegistry" in k][0]
-    acrv_abi = compiled[acrv_key]["abi"]
-    acrv_bin = compiled[acrv_key]["bin"]
-    reg_abi = compiled[reg_key]["abi"]
-    reg_bin = compiled[reg_key]["bin"]
+    # STEP 1 — ACRV. No constructor argument, so no wrong minter can be
+    # baked in. `registry` is zero and mint is unreachable until step 3.
+    acrv_addr = deploy_contract("ACRV")
 
-    # STEP 1: Deploy a temporary ACRV with a placeholder registry
-    # We'll deploy the real registry next and update the config
-    # NOTE: In production, use a CREATE2 factory or deploy registry first
-    # as a proxy pattern. For simplicity here we deploy ACRV with the
-    # deployer address as the initial registry, then deploy the actual
-    # registry and transfer ownership.
-
-    # Deploy CompetitionRegistry first with zero ACRV address (upgraded next)
-    # Better pattern: deploy registry, then deploy ACRV pointing to registry
-
-    # Deploy ACRV with deployer as initial "registry" (will be updated)
-    acrv_addr = deploy_contract("ACRV", acrv_abi, acrv_bin, account.address)
-
-    # Deploy CompetitionRegistry pointing to the ACRV contract
+    # STEP 2 — CompetitionRegistry, holding the token address in an
+    # immutable field. The token exists, so nothing is predicted.
     btc_feed = cfg.chainlink_btc_usd or "0x" + "0" * 40
     eth_feed = cfg.chainlink_eth_usd or "0x" + "0" * 40
-    reg_addr = deploy_contract(
-        "CompetitionRegistry", reg_abi, reg_bin, acrv_addr, btc_feed, eth_feed
+    reg_addr = deploy_contract("CompetitionRegistry", acrv_addr, btc_feed, eth_feed)
+
+    # STEP 3 — name the registry as ACRV's sole minter. One call, then
+    # locked: a second call reverts, and the contract refuses any target
+    # that holds no code, so a wallet can never become the minter.
+    print("\n  Wiring ACRV.setRegistry...")
+    acrv = w3.eth.contract(
+        address=w3.to_checksum_address(acrv_addr), abi=artifacts["ACRV"]["abi"]
     )
+    send("ACRV.setRegistry", acrv.functions.setRegistry(reg_addr).build_transaction({}))
+    wired = acrv.functions.registry().call()
+    if wired.lower() != reg_addr.lower():
+        message = f"ACRV.registry is {wired}, expected {reg_addr}"
+        raise RuntimeError(message)
+    print(f"  ACRV minter locked to: {wired}")
+
+    # STEP 4 — AcervatorTrophy, holding the registry address in an
+    # immutable field. Tier SVGs are uploaded afterwards by setTierSvg.
+    trophy_addr = deploy_contract("AcervatorTrophy", reg_addr)
 
     # Summary
-    print(f"\n  ══════════════════════════════════════")
-    print(f"  DEPLOYMENT COMPLETE")
-    print(f"  ──────────────────────────────────────")
+    print("\n  ══════════════════════════════════════")
+    print("  DEPLOYMENT COMPLETE")
+    print("  ──────────────────────────────────────")
     print(f"  ACRV Token:          {acrv_addr}")
     print(f"  CompetitionRegistry: {reg_addr}")
+    print(f"  AcervatorTrophy:     {trophy_addr}")
     print(f"  Network:             {cfg.name}")
-    print(f"  ══════════════════════════════════════")
-    print(f"\n  Update src/competition/base_config.py:")
-    if network == "sepolia":
-        print(f'  BASE_SEPOLIA.acrv_address     = "{acrv_addr}"')
-        print(f'  BASE_SEPOLIA.registry_address = "{reg_addr}"')
-    else:
-        print(f'  BASE_MAINNET.acrv_address     = "{acrv_addr}"')
-        print(f'  BASE_MAINNET.registry_address = "{reg_addr}"')
+    print("  ══════════════════════════════════════")
+    print("\n  Update src/competition/base_config.py:")
+    prefix = "BASE_SEPOLIA" if network == "sepolia" else "BASE_MAINNET"
+    print(f'  {prefix}.acrv_address     = "{acrv_addr}"')
+    print(f'  {prefix}.registry_address = "{reg_addr}"')
 
     # Write deployment record
     record = {
@@ -218,12 +242,13 @@ def deploy(network: str, private_key: str, contracts_dir: str):
         "deployed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "acrv_address": acrv_addr,
         "registry_address": reg_addr,
+        "trophy_address": trophy_addr,
         "btc_feed": btc_feed,
         "eth_feed": eth_feed,
     }
-    record_path = Path("deployment_record.json")
-    record_path.write_text(json.dumps(record, indent=2))
-    print(f"\n  Deployment record saved: {record_path.absolute()}")
+    record_path = repo_root / "deployment_record.json"
+    record_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    print(f"\n  Deployment record saved: {record_path}")
 
 
 if __name__ == "__main__":
@@ -238,7 +263,9 @@ if __name__ == "__main__":
         "--key", default=None, help="Private key (or set ACERVATOR_PRIVATE_KEY env var)"
     )
     parser.add_argument(
-        "--contracts-dir", default="contracts", help="Path to contracts directory"
+        "--repo-root",
+        default=None,
+        help="Repository root with foundry.toml and out/; default: this file's parent",
     )
     args = parser.parse_args()
 
@@ -247,6 +274,12 @@ if __name__ == "__main__":
         print("ERROR: Private key required.")
         print("  --key 0x...  or  export ACERVATOR_PRIVATE_KEY=0x...")
         sys.exit(1)
+
+    root = (
+        Path(args.repo_root)
+        if args.repo_root
+        else Path(__file__).resolve().parent.parent
+    )
 
     if args.network == "mainnet":
         confirm = input(
@@ -257,4 +290,4 @@ if __name__ == "__main__":
             print("  Deployment cancelled.")
             sys.exit(0)
 
-    deploy(args.network, key, args.contracts_dir)
+    deploy(args.network, key, root)

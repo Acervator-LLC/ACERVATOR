@@ -482,5 +482,169 @@ MIN_SEASON_REWARD = 100
 melee and the gauntlet. A local testnet module beside it simulates the whole
 Base environment in memory, with no wallet and no network.
 
+## 2026-09-09 19:39 - #147 - the contract repairs
+
+The three contracts could not be deployed. Each one needed another one's address
+at the moment it was built, and the deployment script handed the token the
+deployer's own wallet as its only minter. That address could never be corrected
+afterwards, so every award would have failed, and the wallet would have held the
+right to mint all ten million tokens for the life of the contract.
+
+The token now takes nothing at all when it is built. One call afterwards names
+the competition registry as the minter, and a second call to that function is
+refused. The call also refuses any target that is not itself a contract, so a
+wallet can no longer be named the minter by mistake.
+
+`contracts/ACRV.sol` — the one wiring call
+
+```solidity
+    function setRegistry(address registryAddress) external onlyOwner {
+        require(registry == address(0),          "ACRV: registry already set");
+        require(registryAddress.code.length > 0, "ACRV: registry not a contract");
+        registry = registryAddress;
+        emit RegistrySet(registryAddress);
+    }
+```
+
+Nothing now needs an address that does not yet exist. Four steps run in order,
+and the two remaining cross-references stay fixed at build time as before.
+
+```mermaid
+flowchart TD
+    A["1. ACRV()<br/>no argument, minting unreachable"]
+    B["2. CompetitionRegistry(token, feeds)<br/>token address fixed at build"]
+    C["3. ACRV.setRegistry(registry)<br/>one call, then refused for ever"]
+    D["4. AcervatorTrophy(registry)<br/>registry address fixed at build"]
+    A --> B --> C --> D
+```
+
+The other published route was to compute an address before the contract exists,
+and it does not solve this. A computed address commits to the values handed to
+the constructor, so computing the registry's address still needs the token's
+address first, and the circle closes again. The Solidity documentation states
+what goes into the computation.
+
+```text
+address   = keccak256(0xff ++ deployer ++ salt ++ keccak256(init_code))[12:]
+init_code = creation bytecode ++ the encoded constructor arguments
+```
+
+A factory contract could break the circle instead, by deploying both in one
+transaction and deriving the second address from its own count of deployments.
+That adds a fourth contract to the critical path, and that contract would hold
+the right to create the token. One locked field is the smaller change.
+
+The award function used to pay the winner and then write its own records. A
+token contract that called back during the payment would have found the
+competition still marked open. Every record and both log entries now land first,
+and the payment is the last statement in the function.
+
+`contracts/CompetitionRegistry.sol` — the end of `adjudicate`
+
+```solidity
+        emit Adjudicated(compId, winnerWallet, tierName, tokenAmount, c.season);
+        emit TierMinted(tierName, winnerWallet, tokenAmount, compId);
+
+        // Interaction, last
+        if (tokenAmount > 0) {
+            require(acrv.remainingSupply() >= tokenAmount,
+                    "Registry: insufficient ACRV supply remaining");
+            acrv.mint(winnerWallet, tokenAmount, compId, tierName);
+        }
+```
+
+A submitted result carried one unchecked number. A starting value of zero made
+the advantage calculation divide by zero, and a negative one reversed the
+ranking every award is built on. The function refuses both, and the conversion
+that squeezes the result into a small field now fails loudly instead of
+silently keeping the wrong digits.
+
+`contracts/CompetitionRegistry.sol` — the guard and the conversion
+
+```solidity
+        require(startValueCents > 0,    "Registry: start value <= 0");
+
+        int256 advantage   = finalValueCents - startValueCents;
+        int32  advBps      = SafeCast.toInt32((advantage * 10000) / startValueCents);
+```
+
+The price feed's answer was read and never checked. Five values come back from
+it and only two were kept. Every one is now checked, and a feed reporting no
+round, an unfinished round or a price of zero is refused rather than returned.
+
+`contracts/CompetitionRegistry.sol` — `getLatestPrice`
+
+```solidity
+        require(roundId != 0,               "Registry: oracle has no round");
+        require(answeredInRound >= roundId, "Registry: oracle answer is stale");
+        require(startedAt  != 0, "Registry: oracle round unstarted");
+        require(answeredAt != 0, "Registry: round incomplete");
+        require(answer      > 0, "Registry: price not positive");
+```
+
+Handing ownership of any of the three away used to take one call, with nothing
+asked of the receiver. All three now require the receiver to accept, so a
+mistyped address cannot take ownership and leave nobody able to act.
+
+The deployment script no longer compiles anything. It reads what the build
+already produced, so the bytecode that would reach a chain is the bytecode the
+analyzers read.
+
+`contracts/deploy.py` — what it loads
+
+```python
+DEPLOY_ARTIFACTS = {
+    "ACRV": "ACRV.sol/ACRV.json",
+    "CompetitionRegistry": "CompetitionRegistry.sol/CompetitionRegistry.json",
+    "AcervatorTrophy": "AcervatorTrophy.sol/AcervatorTrophy.json",
+}
+```
+
+Four analyzers read the contracts before and after. The table is what each one
+reported, not a difference between runs.
+
+| Analyzer | Measure | Before | After |
+| -------- | ------- | ------ | ----- |
+| forge build | compiler warnings | 0 | 0 |
+| forge lint | findings, of which warnings | 67, 11 | 57, 2 |
+| slither | medium and above | 2 | 0 |
+| slither | all bands | 13 | 11 |
+| solhint | errors | 37 | 34 |
+| semgrep | security findings | 0 | 0 |
+| semgrep | ownership transfer without acceptance | 3 | 0 |
+
+Three findings stand, and each has a reason.
+
+The season budget is still not checked on the chain. The registry records what a
+season has issued and reads that record nowhere. Checking it there would set a
+number deciding how many tokens a season may award, and the operator sets that
+number.
+
+The trophy has no ceiling on any tier and no count of what it has minted. Unit
+17 of issue #147 builds both.
+
+Seven functions are named for reading the chain clock. No decision in any of
+them reads it: every comparison the analyzer lists is on a competition's status
+or on how many bots entered. The clock is stored as a record of when each step
+happened, and removing that record would remove the on-chain history the design
+is built on.
+
+`contracts/CompetitionRegistry.sol` — what the analyzer points at in `adjudicate`
+
+```text
+CompetitionRegistry.adjudicate uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(c.status == CompStatus.SUBMISSION, "Registry: not in submission")
+```
+
+The conservation law the design names counts Quintessence and not this token:
+wallets plus held addresses plus the platonic equals the total ever distilled,
+at most 33,000,000. No Quintessence contract exists, so nothing on the chain can
+state that law yet, and the fuzzing the build tool offers has nothing to read.
+Unit 6 must carry the three balances and the total as values a caller can read,
+or the law stays unprovable on-chain however the token behaves.
+
+In development.
+
 
 Back to [the subsystem index](README.md).
