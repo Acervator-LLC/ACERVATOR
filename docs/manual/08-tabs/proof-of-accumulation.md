@@ -7697,3 +7697,234 @@ No salvage. The loot rows say what a destroyed item releases, and nothing
 destroys an item.
 
 No screen. The Accumulation tab draws no row of this table.
+
+## 2026-09-10 23:40 - #586 - the PvP vote, and who may destroy a Vessel
+
+### His words set the rule
+
+> "There will be PvP Worlds and Events. A world entering PvP mode is determined by an
+> active Player Vote and that can put forth once every 24hrs. The voting window
+> persists for 15m or three 5m candles. Only while in PvP mode or participating in PvP
+> events can one player destroy another's Vessels. This will allow players to have
+> specific Vessels they are willing to fight to the death with..."
+
+Somebody calls a vote in one world turn, and it settles on the next world-turn boundary.
+Actions placed in the peaceful turn resolve peacefully, and PvP begins with the next
+turn's placements. A participant has to log in once in an hour rather than be awake at one
+particular minute. A vote called while a rival guild sleeps also fails outright, because
+every absent player stays in the count the majority has to beat.
+
+```
+called on world turn 100     the peaceful turn
+settles on world turn 101    the first PvP turn
+resolution on turn 100       refused
+a sleeping majority          blocks the vote
+```
+
+### The window is three standard candles, and the clock already existed
+
+His fifteen minutes is three turns of the standard five-minute candle. The modes module
+already measures a turn off the shared candle clock, so the vote declares no clock of its
+own and counts three of those turns.
+
+```
+standard candle      300 s
+three candles        900 s
+his window       15 min  =  900 s
+```
+
+### A majority of the whole world carries it, and there is no separate quorum
+
+> "51% or higher. Proper Democracy over here..."
+
+The majority counts against every participant in the world, never against the people who
+happened to vote. No separate turnout test exists, because 51 per cent of the electorate
+cannot vote in favour at under 51 per cent turnout. The threshold is its own quorum. Every
+figure is whole numbers multiplied across, so no decimal fraction of a vote exists.
+
+```
+participants on one layer         79      votes to carry      41
+a full world of twenty layers  1,580      votes to carry     806
+```
+
+Driven on a full world. Eight hundred and six votes in favour carried the vote and turned
+the mode on at the next boundary, at a turnout of fifty-one per cent exactly. Eight
+hundred and five did not, and the mode stayed off. Every roll from one to one thousand
+five hundred and eighty then met a count-up search for the same figure, and the two agreed
+on every roll. A decimal version of the same sum disagreed on fifteen.
+
+```
+806 of 1,580 in favour   carried      turnout 51.0%   mode on from world turn 101
+805 of 1,580 in favour   not carried  turnout 50.9%   mode stays off
+rolls 1 to 1,580         whole-number disagreements 0     decimal disagreements 15
+```
+
+A world where more than half the participants have gone quiet can never enter PvP mode.
+Their silence protects their Vessels, and it follows from the threshold rather than from
+any separate rule.
+
+```
+participants who never vote      more than half
+the vote                         cannot carry
+```
+
+### The mode lasts twenty-four world turns and then lapses
+
+His cap is one vote every twenty-four hours and a world turn is an hour, so the life of
+the mode and the gap between two votes are one number. A world goes back to peace unless
+somebody votes it into PvP again. Nothing stops a world staying in PvP indefinitely, and
+that costs a fresh majority of the world every twenty-four turns.
+
+```
+turn 100   the vote is called
+turn 101   PvP begins
+turn 124   the last PvP turn, and the earliest a new vote may be called
+turn 125   the first mode lapses, and a vote called on 124 settles here
+```
+
+### Three carries in seventy-two turns lock the world for a week
+
+> "Three successive pro-PVP votes over 72hrs will lock the World in PvP mode for an entire
+> week starting from the third vote."
+
+Seventy-two turns is the window the three carries have to fit inside, not the gap between
+them. At the tightest rhythm the cadence allows, three carries span forty-nine turns, so a
+world that misses a beat still qualifies. The lock begins at the third vote's resolution
+and runs one hundred and sixty-eight turns, which is a week of one-hour turns. Sustained
+aggression is now a commitment with a payoff rather than a daily chore: three carries buy
+the week outright, where holding it otherwise takes seven more separate votes.
+
+```
+vote 1   called 100   resolves 101
+vote 2   called 124   resolves 125
+vote 3   called 148   resolves 149
+span     first call to third resolution    49 turns, inside the window of 72
+lock     149 to 317                       168 turns
+```
+
+Successive means consecutive carries with nothing failing between them. One failed vote
+breaks the chain and the count starts again. The run drove both halves, and the window has
+an exact edge.
+
+```
+carry, carry, carry          carry run 3   lock from turn 149
+carry, carry, FAIL, carry    carry run 1   no lock
+three carries spanning 72    lock from turn 172
+three carries spanning 73    no lock
+three carries spanning 81    no lock
+```
+
+The lock outlives the twenty-four-turn mode, so the lock is the outer authority. The third
+vote's own mode lapses on turn 173 and the world is still in PvP at turn 180.
+
+```
+turn 180, the mode alone          off
+turn 180, with the lock           on
+turn 316, the last locked turn    on
+turn 317, the lock lapsed         off
+```
+
+### The program refuses a vote called inside a lock
+
+A vote that cannot change the outcome is a control that lies, so the program refuses it
+rather than accepting it and doing nothing. The first turn past the lock accepts a vote
+again.
+
+```
+a vote called on turn 172, inside the lock     refused
+a vote called on turn 317, past the lock       accepted
+```
+
+Once a lock begins, nothing ends it early. A world that changes its mind on the second day
+stays in PvP for five more, and that holds every participant who voted against. The vote
+asked the majority three separate times, and this is the sharpest edge in the mechanism.
+
+```
+an unlock   Not built, and not asked for.
+```
+
+### What the permission answers
+
+One call answers whether one participant may destroy another's Vessels right now. The
+answer is yes inside a live PvP mode, inside a lock, or in a PvP event, and no everywhere
+else. Every row below came off the built objects.
+
+```
+two participants, inside the mode                 yes
+the peaceful turn the vote was called in          no
+after the mode has lapsed, with no lock           no
+after the mode has lapsed, inside a lock          yes
+a participant against its own                     no
+a PvP event, with no mode at all                  yes
+```
+
+### Nine refusals, each driven, each with its accepted neighbour
+
+A refusal is worth nothing unless the program accepts the case one step away. The run
+drove both sides of every boundary below.
+
+```
+a call 23 world turns after the last       refused
+a call 24 world turns after the last       accepted
+a call on a roll of nobody                 refused
+a call on a roll of one                    accepted
+a vote at second 900 of the window         refused
+a vote at second 899 of the window         accepted
+a resolution inside the calling turn       refused
+a resolution on the next turn              accepted
+a call on turn 172, inside a lock          refused
+a call on turn 317, past the lock          accepted
+the same participant voting twice          refused
+a vote past the roll counted at the call   refused
+a second resolution of one ballot          refused
+a vote after the ballot has settled        refused
+```
+
+### Nothing counts a world's participants
+
+The majority counts against a roll the caller hands in, because no module keeps a list of a
+world's participants. The world store reports how many of them have discovered something,
+which is a different number, and the layer figure gives a capacity rather than a roll. The
+ballot freezes that roll at the moment of the call, so a participant who votes and then
+leaves cannot shrink the number their vote counted against.
+
+```
+PROPOSED
+src/competition/world_grid.py
+    PoaWorld.participants(world_id) -> tuple[str, ...]
+    the addresses enrolled in one world, which the vote would count
+```
+
+### No screen calls any of this
+
+No control calls a vote, casts one, or resolves one, and nothing in the running program
+reaches this module at all. The unused-function check names the six calls a screen would
+make, and the two the module calls on itself do not appear.
+
+```
+named unused    call_vote  cast_vote  resolve  mode_from  may_destroy  ballot_row
+called inside   carry_run  lock_from
+```
+
+### Nothing keeps a Vessel, so there is nothing to destroy
+
+The permission is the gate and the thing it guards is absent. The tab already says so in
+its own words, on screen, for any participant.
+
+```
+"keeps no Vessel for this participant"
+```
+
+### What the PvP vote does not build
+
+Vessel destruction is not built, and neither is a PvP event. Whether any of the eight
+existing event types is a PvP one is his ruling, and nothing sets the event flag the
+permission reads. Who may call a vote is not settled either: the ballot records its caller
+and checks no privilege.
+
+```
+Vessel destruction         In development.
+a PvP event flag           In development.
+the right to call a vote   In development.
+a control to cast a vote   In development.
+```
