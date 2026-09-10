@@ -7443,3 +7443,246 @@ window size the shell opens and 254 at a full-screen one, so the mode rows are s
 reached by scrolling that zone. The eight event types are named twice on this screen,
 once as the event buttons in the control bar and once as the mode rows here, and
 dropping either copy is a change to what the tab says rather than to how it is sized.
+
+## 2026-09-10 23:05 - #147 - the conversion rates, and the figures still owed
+
+Every mechanism in this design turns something into Quintessence. Those rates sat
+in separate modules, or in nothing at all. One table now holds all of them, and
+every entry says where its figure came from.
+
+```
+src/competition/conversion_rates.py
+```
+
+### A figure is measured, decided or working
+
+An entry carries exactly one of three words. The third one is the point. A
+working figure is one this table chose so the stitching could exist, and it
+declares itself rather than sitting in the code as a number nobody chose.
+
+```
+measured   read back out of the module that owns it, and the entry names that module
+decided    the operator named it, and his figure is reproduced exactly
+working    chosen here so the table can exist, and the operator replaces it
+```
+
+### Nothing reads a working figure without seeing that it is working
+
+No function in the module hands back a bare number. The lookup answers the whole
+entry, so the provenance is in the reader's hand every time.
+
+```python
+def rate_named(name: str) -> ConversionRate:
+    """The entry in ``CONVERSION_RATES`` whose ``name`` matches, refusing any other.
+
+    The whole entry answers, so a reader always holds its ``provenance``.
+    """
+```
+
+The question "what figures does he still owe?" is answered by running something
+rather than by reading the file. Two readers list them, and both print their
+counts to the log.
+
+```
+working_rates()   every entry the operator still has to rule on
+absent_rates()    every entry that carries no figure at all
+```
+
+### Eleven rows are anchored, and eight check against their own module
+
+Three of the eleven are the operator's own figures, and this table is where they
+land. The other eight are figures a module already holds, so the table imports
+the real symbol and keeps no copy of its own.
+
+```
+stat_point_quintessence                      1             entity_stats.quintessence_requirement
+stat_quintessence_per_level_at_sphere_1      1             entity_stats.quintessence_per_level
+stat_quintessence_per_level_at_sphere_10     10            entity_stats.quintessence_per_level
+quintessence_per_certified_fee_usd           1             quintessence_ledger.QUINTESSENCE_PER_FEE_USD
+minimum_units_per_quintessence               100000000     quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+impetus_per_turn_at_level_1                  4             poa_modes.base_impetus
+impetus_per_turn_at_level_100                9             poa_modes.base_impetus
+steps_per_square                             100           world_grid.SQUARE_STEPS
+iron_ore_quintessence_low_quality            0.00000001    his figure, held by no module before now
+iron_ore_quintessence_high_quality           0.00000005    his figure, held by no module before now
+world_budget_per_participant_quintessence    1             his rule, held by no module before now
+```
+
+The fee rate is a ceiling rather than a payment. Distillation multiplies it by a
+trade grade of zero to one, so one dollar of certified venue fee mints one whole
+Quintessence only on a perfect grade.
+
+```python
+        amount = fee * QUINTESSENCE_PER_FEE_USD * grade
+```
+
+### The stat rate is the identity, and the table drives the real function to say so
+
+A stat amount already is a Quintessence amount. The table does not restate that
+as a coefficient. It builds a stat block holding one point and asks the stats
+module what that block requires.
+
+```python
+ONE_POINT_BLOCK = stat_block(
+    {name: (1 if name == STAT_NAMES[0] else 0) for name in STAT_NAMES}
+)
+```
+
+### His ore figures reach code here for the first time
+
+The operator gave a band rather than one number, because one unit of ore has a
+quality. Both ends land as named figures, and both print exactly as he wrote
+them.
+
+```
+one unit of iron ore, lowest quality    0.00000001 Quintessence
+one unit of iron ore, highest quality   0.00000005 Quintessence
+```
+
+### The smallest unit comes from the ledger, not from a copy here
+
+The operator set one hundred million minimum units to the whole Quintessence, the
+same resolution as Bitcoin. The Quintessence ledger declares that figure, so this
+table imports the real symbol and keeps no copy of its own.
+
+```
+minimum_units_per_quintessence   100000000   quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+```
+
+A rate is a ratio and needs no grid of its own. Rounding an amount onto the
+minimum unit belongs to the ledger, at the moment an amount enters a bucket.
+
+```python
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    """Return ``amount`` rounded down onto the QUINTESSENCE_MINIMUM_UNIT grid."""
+```
+
+### His lowest ore grade sits exactly on the resolution floor
+
+Two of his own figures meet here. The poorest unit of iron ore carries
+0.00000001 Quintessence, and that is one minimum unit exactly. Nothing poorer
+than his lowest ore grade can be held, so the ore band starts at the floor rather
+than above it.
+
+```
+QUINTESSENCE_MINIMUM_UNIT            0.00000001
+iron_ore_quintessence_low_quality    0.00000001
+iron_ore_quintessence_high_quality   0.00000005, five minimum units
+```
+
+### Twenty rows are working, and they are the list he still owes
+
+Seven of those carry no figure at all. Thirteen carry a placeholder that can be
+replaced without touching a function.
+
+```
+TempResource_0001_low_quality                 0.00000001   a non-ore material, lowest quality
+TempResource_0001_high_quality                0.00000005   a non-ore material, highest quality
+TempStat_0001                                 1            dexterity, effect unnamed
+TempStat_0002                                 1            intelligence, effect unnamed
+TempStat_0003                                 1            wisdom, effect unnamed
+item_cohesion_per_component_quintessence      1            what holds an item together
+TempWeight_0001                               1            the weight one material unit carries
+max_weight_per_strength_quintessence          1            what strength may haul
+impetus_speed_per_constitution_quintessence   absent       the carrying penalty
+loot_released_quintessence_calx               0.00000005   a destroyed Calx item
+loot_released_quintessence_cauda_pavonis      0.00000005   a destroyed Cauda Pavonis item
+loot_released_quintessence_flores             0.00000005   a destroyed Flores item
+loot_released_quintessence_elixir             0.00000005   a destroyed Elixir item
+loot_released_quintessence_magisterium        0.00000005   a destroyed Magisterium item
+TempMonsterTier_0001                          absent       a tier 1 creature
+TempMonsterTier_0002                          absent       a tier 2 creature
+TempMonsterTier_0003                          absent       a tier 3 creature
+TempMonsterTier_0004                          absent       a tier 4 creature
+TempMonsterTier_0005                          absent       a tier 5 creature
+TempMonsterTier_0006                          absent       a tier 6 creature
+```
+
+Three of the five stats name no effect in the stats table, so three rows stand in
+for them. Damage, restoration and support potency are the proposed readings, and
+they are the operator's to rule on.
+
+```
+dexterity      no effect named in the stats table    TempStat_0001
+intelligence   no effect named in the stats table    TempStat_0002
+wisdom         no effect named in the stats table    TempStat_0003
+```
+
+### A material other than iron ore takes the ore band, and no lore name is invented
+
+Naming materials is content and belongs to the content issue. This table holds
+one placeholder slot for a material, and that slot carries the ore band, so the
+scale is right while the material itself is unnamed.
+
+```
+TempResource_0001   the iron ore band, until the operator names this material's own scale
+```
+
+### The loot rows are flat on purpose
+
+Five loot tiers exist, each with a weight and two bonuses. What a destroyed item
+of each tier releases does not exist, so every tier carries the same placeholder.
+Flat is the honest placeholder: any slope across the five tiers is a design
+decision and it is his.
+
+```
+all five tiers   0.00000005 Quintessence released, no curve and no salvage loss
+```
+
+### A creature's Quintessence falls out of its stats, once a tier has a level
+
+Six creature tiers are drawn in the art brief and no module names one. Their rows
+carry no figure, and the missing figure is not a Quintessence amount at all. It
+is the level each tier sits at. The amount then comes from the stats requirement,
+the same way a Vessel's does.
+
+```
+TempMonsterTier_0001 to TempMonsterTier_0006   absent; the tier's level is what is owed
+```
+
+### Constitution's penalty has a door and no figure
+
+The stats table says constitution sets a penalty against a turn budget. The door
+it enters through already exists, because the Impetus grant takes a speed
+multiplier. No figure sets how much constitution buys back, and any figure here
+moves the turn economy, so the row stays absent and his.
+
+```python
+def impetus_grant(level: int, speed_multiplier: object = 1) -> int:
+```
+
+### One check runs on every real start
+
+The module drives every anchored rate against the module that owns it, at import,
+and refuses to load when one disagrees. A failure would mean a figure published
+here no longer matches the engine, and the two would drift apart with nothing
+reporting it. Zero disagreed on the first run. What the check would have caught
+is a wrong module or symbol name beside a figure, or a figure typed by hand
+instead of imported.
+
+```
+acervator.conversion_rates INFO drove 8 anchored conversion rates against their own modules, 0 disagreed
+```
+
+### What calls this table
+
+Nothing. The table is imported and built on a real start of the Accumulation tab
+path, and no code calls it yet. Materials, items, crafting, salvage and the
+creature roster are the consumers, and none of them exists.
+
+```
+In development.
+```
+
+### What the conversion rates do not build
+
+No materials and no items. This is the table of rates between things, not the
+things.
+
+No minimum-unit grid. The rates are ratios, and the ledger owns the grid an
+amount lands on.
+
+No salvage. The loot rows say what a destroyed item releases, and nothing
+destroys an item.
+
+No screen. The Accumulation tab draws no row of this table.
