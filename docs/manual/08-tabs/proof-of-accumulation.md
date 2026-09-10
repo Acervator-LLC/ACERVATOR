@@ -280,6 +280,7 @@ is_within_cap=self._total_ever_minted <= QUINTESSENCE_SUPPLY_CAP,
 | Grade curve | the trade's grade, zero to one, multiplies the award |
 | Destruction | never |
 | Transfer bleed | 8% at skill level one, falling to 4% at level ten |
+| Resolution | one Quintessence divides into 100,000,000 minimum units of 0.00000001 |
 
 The module holds the cap and the rate as constants, and the write path refuses a
 mint past the cap rather than reporting it afterwards.
@@ -288,10 +289,70 @@ mint past the cap rather than reporting it afterwards.
 
 ```python
 QUINTESSENCE_SUPPLY_CAP = Decimal(33_000_000)
+QUINTESSENCE_MINIMUM_UNIT = Decimal("0.00000001")
+QUINTESSENCE_UNITS_PER_WHOLE = 100_000_000
 QUINTESSENCE_PER_FEE_USD = Decimal(1)
 BLEED_FRACTION_AT_LEVEL_1 = Decimal("0.08")
 BLEED_FRACTION_AT_LEVEL_10 = Decimal("0.04")
 ```
+
+### One whole Quintessence divides into a hundred million minimum units
+
+The minimum unit is the smallest amount of Quintessence that can exist. A
+divine essence is potent at a minute amount, so one whole unit carries a hundred
+million places to hold power in, the way one bitcoin carries a hundred million
+satoshi.
+
+Every amount a bucket receives is a whole number of minimum units. The amount is
+rounded down onto that figure as it is written, so no wallet, held address,
+pleroma or embedded balance can carry a fraction the currency cannot express.
+
+`src/competition/quintessence_ledger.py` — the rounding and the refusal
+
+```python
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    return amount.quantize(QUINTESSENCE_MINIMUM_UNIT, rounding=ROUND_DOWN)
+
+
+def is_on_quintessence_grid(amount: Decimal) -> bool:
+    return amount == quantize_quintessence(amount)
+```
+
+### The rounding leftover returns to the pleroma, because nothing is destroyed
+
+A bleed of eight per cent down to four per cent does not divide evenly at eight
+of the ten skill levels. The amount the recipient receives is rounded down and
+the bleed takes the rest, so the fraction that cannot be paid joins the pleroma
+rather than vanishing. That keeps the four buckets equal to everything ever
+distilled, to the unit.
+
+`src/competition/quintessence_ledger.py` — the transfer split
+
+```python
+received = quantize_quintessence(sent - sent * fraction)
+bled = sent - received
+```
+
+A transfer too small for the recipient to receive one minimum unit is refused
+rather than paid as nothing, which is the refusal `contracts/Quintessence.sol`
+already makes.
+
+| Skill level | Bleed on 100 Quintessence | Received |
+| ----------- | ------------------------- | -------- |
+| 1 | 8 | 92 |
+| 2 | 7.55555556 | 92.44444444 |
+| 3 | 7.11111112 | 92.88888888 |
+| 4 | 6.66666667 | 93.33333333 |
+| 5 | 6.22222223 | 93.77777777 |
+| 6 | 5.77777778 | 94.22222222 |
+| 7 | 5.33333334 | 94.66666666 |
+| 8 | 4.88888889 | 95.11111111 |
+| 9 | 4.44444445 | 95.55555555 |
+| 10 | 4 | 96 |
+
+The five stat requirements are whole Quintessence already — one stat measures 550
+at level 100 and five of them measure 2,750 — so the resolution changes nothing
+about the stat scale.
 
 Every launch builds the ledger and attaches it to the window beside the local
 chain, so a later panel finds it where it finds the chain.
@@ -4070,8 +4131,8 @@ spending.
 ```
                 spent    actions   grade   axes   payout
 big_spender     0.800          8   F 0.0      4   0
-middle          0.030          3   C 0.5748   4   0.227485458470916941
-small_spender   0.001          1   A+ 1.0     4   0.395764541529083058
+middle          0.030          3   C 0.5748   4   0.22748545
+small_spender   0.001          1   A+ 1.0     4   0.39576454
 ```
 
 The participant who put 0.800 of a 0.831 pot in took nothing back. The one who put
@@ -4098,7 +4159,7 @@ Quintessence moves from the pot into wallets and none is made or lost.
 ```
 before   wallets 2.689                 held 0.311                 pleroma 0
          minted 3   delta 0   balanced True   negative buckets 0
-after    wallets 2.922249999999999999   held 0.077750000000000001   pleroma 0
+after    wallets 2.92224999            held 0.07775001            pleroma 0
          minted 3   delta 0   balanced True   negative buckets 0
 ```
 
@@ -4111,11 +4172,11 @@ joins the quarter that never left and rests at the pot address as the reserve.
 ```
 pot                   0.311
 return pool, 75%      0.23325
-paid to participants  0.233249999999999999
-division remainder    0.000000000000000001
-reserve               0.077750000000000001
+paid to participants  0.23324999
+division remainder    0.00000001
+reserve               0.07775001
 
-0.233249999999999999 + 0.077750000000000001 = 0.311
+0.23324999 + 0.07775001 = 0.311
 ```
 
 The reserve is also what the pot address still holds, so the figure on the screen and
@@ -4495,9 +4556,9 @@ nought.
 
 ```
                     fills  grade total  score     spent    payout
-0x3ecef1619dd90c8d      4       2.2955  0.573875  0.100    0.023488715820590074
-0x48cce07b5732795f      4       3.5     0.875     0.010    0.035813768404297652
-0xca3e3124a3226b20      4       3.0     0.75      0.010    0.030697515775112273
+0x3ecef1619dd90c8d      4       2.2955  0.573875  0.100    0.02348871
+0x48cce07b5732795f      4       3.5     0.875     0.010    0.03581376
+0xca3e3124a3226b20      4       3.0     0.75      0.010    0.03069751
 
 pot 0.120   return pool 0.090   paid 0.089999999999999999
 remainder 0.000000000000000001   reserve 0.030000000000000001   exact True
@@ -4544,7 +4605,7 @@ objects then read the event back off disk and asked to pay it again.
 ```
 before  wallets 8.6755                held 0.12                  pleroma 0
         minted 8.7955  delta 0  balanced True  negative buckets 0
-after   wallets 8.765499999999999999  held 0.030000000000000001   pleroma 0
+after   wallets 8.76549998           held 0.03000002            pleroma 0
         minted 8.7955  delta 0  balanced True  negative buckets 0
 
 restart  settled_at read off disk 1789037532.1853175
@@ -5836,9 +5897,9 @@ zero after every one of them.
 ```
 drawn into the world    w 0.0000496      p 0.00000039     e 0.00000001   delta 0
 put in by a maker       w 0.00004955     p 0.00000041     e 0.00000004   delta 0
-taken back out          w 0.000049567    p 0.000000433    e 0            delta 0
+taken back out          w 0.00004956     p 0.00000044     e 0            delta 0
 taken out with none
-  recovered             w 0.000049567    p 0.000000433    e 0            delta 0
+  recovered             w 0.00004955     p 0.00000045     e 0            delta 0
 ```
 
 On the chain the same five movements left the pleroma exactly 0.000000033 higher
