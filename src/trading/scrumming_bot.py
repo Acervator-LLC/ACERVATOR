@@ -2152,6 +2152,7 @@ class ScrummingBot(
         self._last_fill_venue_fee = self._venue_fee_record(
             order, fill_amount, fill_price
         )
+        await self._settle_venue_fee(order, fill_amount, fill_price)
 
         self._main_lots = []
         try:
