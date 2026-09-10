@@ -60,6 +60,9 @@ TIMESTAMP_DIGITS = 3
 #: How many altered records verify_integrity names in one log line.
 ALTERED_LOG_LIMIT = 5
 
+#: Seed for the synthetic price walk run_demo_competition trades against.
+DEMO_PRICE_SEED = 42
+
 
 def canonical_json(payload: dict | list) -> str:
     """Return ``payload`` as the JSON text every node produces byte for byte."""
@@ -842,7 +845,7 @@ class LocalTestnet:
         Run a complete competition end-to-end on the local testnet.
         Returns a summary dict with tx hashes, winner, and token award.
         """
-        import random
+        from numpy.random import default_rng
         from .competition_engine import CompetitionEngine
         from .bot_identity import BotIdentity
         from .token_ledger import TokenLedger
@@ -874,10 +877,11 @@ class LocalTestnet:
         engine.open()
 
         # Simulate trades on shared price feed
-        rng = random.Random(42)
+        rng = default_rng(DEMO_PRICE_SEED)
         prices = [62000.0]
         for _ in range(119):
-            prices.append(max(1, prices[-1] * (1 + rng.gauss(0, 0.022) + 0.0008)))
+            step = float(rng.normal(0, 0.022))
+            prices.append(max(1.0, prices[-1] * (1 + step + 0.0008)))
 
         intervals = [0.02 + i * 0.01 for i in range(n_bots)]
         finals = []

@@ -118,6 +118,48 @@ chain verified: 12 blocks and 11 transactions carry the id of their own contents
 git status: no competition_results entry
 ```
 
+## Error 4 — the demo price walk drew from the standard library random module
+
+```
+ruff:S311 line 877 [high]: Standard pseudo-random generators are not suitable
+                           for cryptographic purposes
+dev_harness.harness.coding_archetype: passed=False
+```
+
+Reproduction: `python -m dev_harness.harness.coding_archetype
+src/competition/local_testnet.py`. The finding predates this unit and the file
+carried it at `9a711411`.
+
+The cause: `run_demo_competition` built `random.Random(42)` and drew
+`rng.gauss(0, 0.022)` to fabricate 120 synthetic prices. S311 flags the standard
+library `random` module.
+
+The correction: `numpy.random.default_rng(DEMO_PRICE_SEED)` and
+`rng.normal(0, 0.022)`, cast to `float` so no numpy scalar reaches a record that
+`json.dumps` has to write. `numpy>=1.26.0` is already declared in
+`pyproject.toml`. The seed is unchanged, so the walk stays repeatable. No
+suppression was added.
+
+The rerun reaches `run_demo_competition` through `request_competition` and
+`_drain_queue`, with the home directory pointed at a scratch path. It completes,
+names a winner and mints the award.
+
+```
+participants        3
+winner_bot_id       5351c24c400382e0364c3f683687e8317c78cdee8841728e4dd1dac8f5d765d9
+winner_tier         Harvest
+winner_tokens       10
+rank 1 final_value  371.46
+sending transaction 0x7dd38320ea4c2125... calling mint
+sending transaction 0xedfe825e135f5178... calling adjudicate
+chain verified: 12 blocks and 11 transactions carry the id of their own contents
+```
+
+A second run on a fresh scratch home reproduced `371.46`, `370.79` and `370.58`,
+so the seed still replays one series.
+
+`coding_archetype` now reports `passed=True` on the file.
+
 ## Run 1 — two nodes, one id
 
 Two processes, two chain files, two identities, two Quintessence ledgers, one
@@ -242,7 +284,7 @@ Eleven transactions, no refusal, no traceback.
 ## Archetype verdicts
 
 ```
-src/competition/local_testnet.py       coding passed=False   ta  passed=True
+src/competition/local_testnet.py       coding passed=True    ta  passed=True
 src/competition/node_link.py           coding passed=True    ta  passed=True
 src/competition/competition_engine.py  coding passed=True    ta  passed=True
 src/gui/shared_testnet.py              coding passed=True    ta  passed=True
@@ -253,12 +295,8 @@ tests/debug_reports/
   2026-09-10_unit23_content_ids.md     docs   passed=True
 ```
 
-`local_testnet.py` carries one high finding, and it is the finding the file
-already carried at `9a711411`: `ruff:S311`, the seeded generator inside
-`run_demo_competition`. `src/trading/poa_tournament.py` carries seven of the same
-finding. Replacing a seeded generator changes the figures the demo competition
-reports, and adding a suppression to clear a finding is forbidden, so the finding
-stands and is named rather than cleared.
+Every tool reported `ok` in `tool_availability` on every run above, and every
+verdict was read out of the JSON on stdout rather than from an exit code.
 
 ```
 python -m tools.local_ci --lane black    VERDICT: PASSED

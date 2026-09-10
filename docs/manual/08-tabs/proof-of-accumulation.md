@@ -2363,6 +2363,21 @@ node-04b4e394a029 synced with node-2a283bba3115: held 3, offered 3, took 0, now 
 chain verified: 4 blocks and 3 transactions carry the id of their own contents
 ```
 
+### The demo competition's practice prices
+
+The demo competition trades against 120 made-up prices rather than a market. The
+generator behind them changed to the one the rest of the platform already depends
+on, so the figures that run reports are different from before. It is still seeded,
+so the same 120 prices come back on every run, and the competition still names a
+winner and mints the award.
+
+```
+participants   3
+winner tier    Harvest
+winner tokens  10
+rank 1 value   371.46   the same figure on a second run
+```
+
 ### What this does not cover
 
 The first block of a chain keeps a name of all zeros. It has no parent and holds
