@@ -1423,3 +1423,170 @@ per activation window.
 **The CoinGecko public rate limit.** The coin-detail page states a 30-second
 cache and no rate-limit figure. The limit belongs to the project-age unit, which
 has to confirm it before a design depends on the endpoint.
+
+---
+
+## 16. The Exchange Participation Layer — exclusion only, and the hole that opens
+
+This section answers the first entry under "What I could not research" above and
+supersedes it. That entry stands as written, because it was true when written.
+
+HIS RULE: *"The layer does not allow for direct rotation control. It only allows
+market exclusion from the volume-based rotation list."*
+
+An exchange may remove its own markets from the volume-based rotation list. It
+cannot add a market, cannot choose which market rotates, and cannot time a
+rotation. The power is subtractive and nothing else.
+
+### Subtraction becomes selection, and the size of it is arithmetic
+
+MINE. Decision 4 draws a fixed five markets from the top twenty eligible. With a
+fixed draw and a finite pool, removing markets raises the odds on every market
+left. An exchange wanting rewards on one book does not add it. It removes the
+others.
+
+Each row is the chance that any one surviving market is drawn in a window.
+
+```
+excluded   pool   drawn   chance per surviving market
+   0        20      5                25.0%
+   5        15      5                33.3%
+   8        12      5                41.7%
+  10        10      5                50.0%
+  13         7      5                71.4%
+  14         6      5                83.3%
+  15         5      5               100.0%
+  19         1      1               100.0%
+```
+
+Excluding fifteen of twenty makes the draw certain. Excluding nineteen makes one
+named market certain.
+
+Two properties break at once, not one. His rotation conceals which markets pay,
+and that concealment is what defeats targeted farming. At a pool of five every
+participant knows the answer, so the exclusion power destroys both the
+concentration bound and the concealment in the same act.
+
+### Three closures, and all three are needed
+
+MINE.
+
+**Scale the draw with the pool.** The draw becomes one quarter of the eligible
+pool, rounded up, never fewer than one. That holds decision 4's ratio at every
+pool size rather than only at twenty.
+
+```
+pool  20   drawn 5   chance 25.0%
+pool  16   drawn 4   chance 25.0%
+pool  13   drawn 4   chance 30.8%
+pool  12   drawn 3   chance 25.0%
+pool  10   drawn 3   chance 30.0%
+pool   7   drawn 2   chance 28.6%
+pool   5   drawn 2   chance 40.0%
+pool   1   drawn 1   chance 100.0%
+```
+
+Scaling alone does not close the hole. At a pool of one the draw is still
+certain, because a quarter of one rounds up to one.
+
+**A minimum eligible pool of twelve.** Below twelve eligible markets the exchange
+draws nothing at all that window. With scaling in place and a floor at twelve,
+the worst chance any market can reach is 30.8%, at a pool of thirteen. Against
+100% with no closure, that is the measured size of the repair.
+
+A floor of twelve lets an exchange exclude at most eight of its twenty. That is
+enough room to remove a market it has a real reason to remove, and not enough to
+choose the winner.
+
+The floor alone is also insufficient. With the draw fixed at five, a pool held at
+exactly twelve gives 41.7% per market — a 1.67 times concentration gain over the
+unexcluded 25%. Scaling is what removes that.
+
+**An exclusion takes effect at a season boundary only.** Delay alone closes
+nothing about concentration, because a permanent exclusion set concentrates just
+as well as a timed one. It closes a different attack: an exclusion filed against
+a live window, once the exchange can see how trading is going.
+
+### The season boundary exists, and its shape suits this better than a calendar
+
+MEASURED. A season is an integer counter, advanced by a call. No date, duration
+or calendar field exists anywhere in the schedule module.
+
+```
+src/competition/season_schedule.py:17   GENESIS_SEASON = 1
+src/competition/season_schedule.py      no date, duration, days, start, end or
+                                        calendar field — 0 occurrences
+contracts/CompetitionRegistry.sol:62    uint256 public currentSeason = 1;
+contracts/CompetitionRegistry.sol:350   function advanceSeason() external onlyOwner
+                                            currentSeason++;
+```
+
+The boundary is an event rather than a date, and the call that fires it is
+privileged. Under section 15 that privilege becomes a vote. An exchange therefore
+cannot predict when its own exclusion will take effect, which is a stronger
+property than any fixed calendar would give.
+
+### What exclusion costs the exchange, and why the brake is not enough
+
+MINE. A market excluded from the rotation earns its traders no Quintessence, so
+an exchange that excludes heavily makes itself less attractive to trade on. That
+is a real cost and it is the natural brake.
+
+It does not suffice, for two reasons.
+
+The exchange keeps its fee income either way. Quintessence is distilled from fees
+the exchange has already collected, so a trade on an excluded market still pays
+the venue its fee and simply awards the trader nothing. Exclusion removes a
+participant's reward, never the exchange's revenue.
+
+And the brake can invert. An exchange that concentrates the rotation on one book
+funnels every PoA trader into that book, which deepens it. The self-harm
+argument assumes the exchange loses volume. Concentration is how it would gain
+volume.
+
+A brake that the actor can turn into an incentive is not a brake. The three
+closures above are structural and do not depend on the exchange's preferences.
+
+**Source:** HIS RULE for exclusion-only. The arithmetic is MINE and derived from
+decision 4's own numbers. The three closures are CHOSEN: scaling to hold the 4:1
+ratio at every pool size, the floor of twelve to cap the worst per-market chance
+at 30.8%, and the season boundary to stop an exclusion being timed against a live
+window.
+
+**Checked against:** organically competitive at every level; reward play not
+position; Quintessence only from PoA activity. An exchange steering where
+Quintessence lands is position, and the same shape as a participant steering it.
+
+**Whale test, one line each.** Scaling: a large participant gains nothing,
+because the draw shrinks with the pool rather than the odds rising. The floor: a
+large participant gains nothing, and an exchange cannot hand one a certain
+market. The season boundary: a large participant gains nothing, because the
+window an exclusion lands in is not predictable by anyone.
+
+---
+
+## What an outside review reviews, given that changes are voted
+
+He asked the question and it deserves a plain answer rather than a decision.
+
+A vote decides whether to **adopt** a change. A review establishes whether the
+code **does what it claims**. Those are different questions and neither answers
+the other. Holders voting on a proposal are not reading Solidity, and approving a
+proposal establishes nothing about whether it carries a reentrancy hole.
+
+The specific case is narrower than the general one, and it is the reason the
+recommendation is about one deployment rather than all of them.
+
+**The genesis contracts exist before anyone can vote at all.** No holders exist
+until the first nodes connect, so nobody can govern the first deployment into
+existence. Every later change passes through his vote. The first one cannot.
+Under immutability, a flaw there is permanent and unreachable by the governance
+he has designed.
+
+**The recommendation therefore applies to the genesis deployment specifically.**
+Later migrations can have review written into the proposal process by the holders
+themselves — a rule that an L4 proposal touching the contract set carries a
+review before it reaches a vote. That part he can delegate to the system. The
+first one he cannot, because the system does not exist yet to delegate it to.
+
+The decision stays his.
