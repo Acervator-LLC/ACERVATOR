@@ -127,8 +127,16 @@ dev = [
     # coding_archetype.py shells out to SIX analyzers - ruff, mypy, pyright,
     # bandit, vulture, semgrep. pyright is a bare-executable runner, so it
     # must be on PATH or every archetype test fails closed with
-    # "pyright: not installed".
+    # "pyright: not installed". slither-analyzer below is a seventh
+    # analyzer that no archetype spawns; it is run on the Solidity sources.
     "semgrep>=1.0",
+    # Solidity static analysis over contracts/*.sol, proved against the
+    # pair in harness_fixtures/solidity_analyzers/. 0.11.6 is the version
+    # measured on those fixtures, and it carries its own solc-select, so
+    # no compiler is installed by hand. It is here rather than in
+    # `contracts` because that extra holds what contracts/deploy.py
+    # imports at run time, and nothing imports slither.
+    "slither-analyzer>=0.11.6",
     "opencv-python-headless>=4.8",
     "ruff>=0.16.0",
     "mypy>=2.1.0",
