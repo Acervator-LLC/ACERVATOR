@@ -7782,21 +7782,83 @@ turn 124   the last PvP turn, and the earliest a new vote may be called
 turn 125   the first mode lapses, and a vote called on 124 settles here
 ```
 
+### Three carries in seventy-two turns lock the world for a week
+
+> "Three successive pro-PVP votes over 72hrs will lock the World in PvP mode for an entire
+> week starting from the third vote."
+
+Seventy-two turns is the window the three carries have to fit inside, not the gap between
+them. At the tightest rhythm the cadence allows, three carries span forty-nine turns, so a
+world that misses a beat still qualifies. The lock begins at the third vote's resolution
+and runs one hundred and sixty-eight turns, which is a week of one-hour turns. Sustained
+aggression is now a commitment with a payoff rather than a daily chore: three carries buy
+the week outright, where holding it otherwise takes seven more separate votes.
+
+```
+vote 1   called 100   resolves 101
+vote 2   called 124   resolves 125
+vote 3   called 148   resolves 149
+span     first call to third resolution    49 turns, inside the window of 72
+lock     149 to 317                       168 turns
+```
+
+Successive means consecutive carries with nothing failing between them. One failed vote
+breaks the chain and the count starts again. The run drove both halves, and the window has
+an exact edge.
+
+```
+carry, carry, carry          carry run 3   lock from turn 149
+carry, carry, FAIL, carry    carry run 1   no lock
+three carries spanning 72    lock from turn 172
+three carries spanning 73    no lock
+three carries spanning 81    no lock
+```
+
+The lock outlives the twenty-four-turn mode, so the lock is the outer authority. The third
+vote's own mode lapses on turn 173 and the world is still in PvP at turn 180.
+
+```
+turn 180, the mode alone          off
+turn 180, with the lock           on
+turn 316, the last locked turn    on
+turn 317, the lock lapsed         off
+```
+
+### The program refuses a vote called inside a lock
+
+A vote that cannot change the outcome is a control that lies, so the program refuses it
+rather than accepting it and doing nothing. The first turn past the lock accepts a vote
+again.
+
+```
+a vote called on turn 172, inside the lock     refused
+a vote called on turn 317, past the lock       accepted
+```
+
+Once a lock begins, nothing ends it early. A world that changes its mind on the second day
+stays in PvP for five more, and that holds every participant who voted against. The vote
+asked the majority three separate times, and this is the sharpest edge in the mechanism.
+
+```
+an unlock   Not built, and not asked for.
+```
+
 ### What the permission answers
 
 One call answers whether one participant may destroy another's Vessels right now. The
-answer is yes only inside a live PvP mode or a PvP event. Every row below came off the
-built objects.
+answer is yes inside a live PvP mode, inside a lock, or in a PvP event, and no everywhere
+else. Every row below came off the built objects.
 
 ```
 two participants, inside the mode                 yes
 the peaceful turn the vote was called in          no
-after the mode has lapsed                         no
+after the mode has lapsed, with no lock           no
+after the mode has lapsed, inside a lock          yes
 a participant against its own                     no
 a PvP event, with no mode at all                  yes
 ```
 
-### Five refusals, each driven, each with its accepted neighbour
+### Nine refusals, each driven, each with its accepted neighbour
 
 A refusal is worth nothing unless the program accepts the case one step away. The run
 drove both sides of every boundary below.
@@ -7804,11 +7866,18 @@ drove both sides of every boundary below.
 ```
 a call 23 world turns after the last       refused
 a call 24 world turns after the last       accepted
+a call on a roll of nobody                 refused
+a call on a roll of one                    accepted
 a vote at second 900 of the window         refused
 a vote at second 899 of the window         accepted
+a resolution inside the calling turn       refused
+a resolution on the next turn              accepted
+a call on turn 172, inside a lock          refused
+a call on turn 317, past the lock          accepted
 the same participant voting twice          refused
 a vote past the roll counted at the call   refused
 a second resolution of one ballot          refused
+a vote after the ballot has settled        refused
 ```
 
 ### Nothing counts a world's participants
@@ -7829,10 +7898,12 @@ src/competition/world_grid.py
 ### No screen calls any of this
 
 No control calls a vote, casts one, or resolves one, and nothing in the running program
-reaches this module at all. The unused-function check names all six of its calls.
+reaches this module at all. The unused-function check names the six calls a screen would
+make, and the two the module calls on itself do not appear.
 
 ```
-call_vote   cast_vote   resolve   mode_from   may_destroy   ballot_row
+named unused    call_vote  cast_vote  resolve  mode_from  may_destroy  ballot_row
+called inside   carry_run  lock_from
 ```
 
 ### Nothing keeps a Vessel, so there is nothing to destroy

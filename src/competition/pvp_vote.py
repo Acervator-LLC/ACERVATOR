@@ -12,8 +12,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from .poa_modes import MONSTER_SMASH, EventVariant, Turn, turn_at, variant_of
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger("acervator.pvp_vote")
 
@@ -42,6 +46,15 @@ CARRY_DENOMINATOR = 100
 
 #: The smallest roll ``call_vote`` opens a ballot against.
 MIN_ELIGIBLE_ROLL = 1
+
+#: Successive carried votes that lock a world, his three.
+CARRIES_TO_LOCK = 3
+
+#: World turns the three carries may span, his 72 hours at one turn an hour.
+LOCK_LOOKBACK_WORLD_TURNS = 72
+
+#: World turns a lock holds, his entire week of one-hour turns.
+PVP_LOCK_WORLD_TURNS = 7 * 24
 
 
 class PvpVoteError(RuntimeError):
@@ -74,6 +87,10 @@ class EarlyResolutionError(PvpVoteError):
 
 class SettledBallotError(PvpVoteError):
     """Raised by ``cast_vote`` and ``resolve`` for a ballot already resolved."""
+
+
+class LockedWorldError(PvpVoteError):
+    """Raised by ``call_vote`` while a ``PvpLock`` holds the calling turn."""
 
 
 @dataclass
@@ -159,18 +176,60 @@ class PvpMode:
         return self.began_turn <= int(world_turn) < self.expires_turn
 
 
+@dataclass(frozen=True)
+class PvpLock:
+    """One world's PvP lock, begun on ``began_turn`` for ``PVP_LOCK_WORLD_TURNS``."""
+
+    world_id: str
+    began_turn: int
+
+    @property
+    def expires_turn(self) -> int:
+        """The world turn this lock runs out on, which nothing shortens."""
+        return self.began_turn + PVP_LOCK_WORLD_TURNS
+
+    def holds(self, world_turn: int) -> bool:
+        """Whether ``world_turn`` falls inside this lock's own span."""
+        return self.began_turn <= int(world_turn) < self.expires_turn
+
+
+def carry_run(history: Sequence[PvpBallot]) -> tuple[PvpBallot, ...]:
+    """Return the carried ballots ending ``history``, cut by the last failure."""
+    run: list[PvpBallot] = []
+    for ballot in reversed(list(history)):
+        if ballot.carried is not True:
+            break
+        run.append(ballot)
+    return tuple(reversed(run))
+
+
+def lock_from(history: Sequence[PvpBallot]) -> PvpLock | None:
+    """Return the ``PvpLock`` the latest ``CARRIES_TO_LOCK`` carries begin, or None.
+
+    None while the carry run is shorter, or while its span is wider than
+    ``LOCK_LOOKBACK_WORLD_TURNS``.
+    """
+    run = carry_run(history)
+    for start in range(len(run) - CARRIES_TO_LOCK, -1, -1):
+        window = run[start : start + CARRIES_TO_LOCK]
+        span = window[-1].resolving_turn - window[0].called_turn
+        if span <= LOCK_LOOKBACK_WORLD_TURNS:
+            return PvpLock(window[-1].world_id, window[-1].resolving_turn)
+    return None
+
+
 def call_vote(
     world_id: str,
     called_by: str,
     called_turn: int,
     eligible_at_call: int,
     window_open_epoch: float,
-    last_called_turn: int | None = None,
+    history: Sequence[PvpBallot] = (),
 ) -> PvpBallot:
     """Open a ``PvpBallot`` on world turn ``called_turn``, refusing an early call.
 
-    ``eligible_at_call`` is every participant in the world and
-    ``window_open_epoch`` seats the first casting candle on the event clock.
+    ``eligible_at_call`` is every participant in the world, ``window_open_epoch``
+    seats the first casting candle, and ``history`` is this world's prior ballots.
     """
     roll = int(eligible_at_call)
     if roll < MIN_ELIGIBLE_ROLL:
@@ -181,12 +240,21 @@ def call_vote(
         )
         raise EmptyRollError(refusal)
     turn = int(called_turn)
-    if last_called_turn is not None:
-        elapsed = turn - int(last_called_turn)
+    lock = lock_from(history)
+    if lock is not None and lock.holds(turn):
+        refusal = (
+            f"{CARRIES_TO_LOCK} successive votes locked {world_id} in PvP on "
+            f"world turn {lock.began_turn} until {lock.expires_turn}; turn "
+            f"{turn} is inside that lock and no vote changes it"
+        )
+        raise LockedWorldError(refusal)
+    if history:
+        last_called_turn = history[-1].called_turn
+        elapsed = turn - last_called_turn
         if elapsed < VOTE_CADENCE_WORLD_TURNS:
             refusal = (
                 f"{world_id} last called a PvP vote on world turn "
-                f"{int(last_called_turn)} and turn {turn} is {elapsed} turns "
+                f"{last_called_turn} and turn {turn} is {elapsed} turns "
                 f"later; one vote is put forth every "
                 f"{VOTE_CADENCE_WORLD_TURNS} world turns"
             )
@@ -304,17 +372,19 @@ def may_destroy(
     world_turn: int,
     mode: PvpMode | None = None,
     *,
+    lock: PvpLock | None = None,
     pvp_event: bool = False,
 ) -> bool:
     """Whether ``actor`` may destroy ``target``'s Vessels on world turn ``world_turn``.
 
-    True only while ``mode`` holds that world turn or ``pvp_event`` is set, and
-    never for ``actor`` against its own.
+    True while ``mode`` or ``lock`` holds that world turn or ``pvp_event`` is set,
+    and never for ``actor`` against its own.
     """
     if actor == target:
         return False
     in_mode = mode is not None and mode.holds(world_turn)
-    return bool(in_mode or pvp_event)
+    in_lock = lock is not None and lock.holds(world_turn)
+    return bool(in_mode or in_lock or pvp_event)
 
 
 def ballot_row(ballot: PvpBallot) -> dict:
