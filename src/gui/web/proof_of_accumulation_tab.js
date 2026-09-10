@@ -1,7 +1,9 @@
-// The Proof of Accumulation tab's empty state, as the Python surface serves it.
+// The Proof of Accumulation tab shell, as the Python surface serves it.
 //
-// Every word on screen comes from the payload. The module carries the
-// bridge method name and nothing else a reader would see.
+// Three zones: the player window and the square enemy screen across the upper
+// band, the party window across the lower half. The Quintessence balance sits
+// in the party header and the wallet opens as a panel over the party window.
+// Every word on screen comes from the payload.
 (function (global) {
   "use strict";
 
@@ -9,47 +11,80 @@
 
   var ACCESSIBLE_NAME = "accessible_name";
   var BUILT = "built";
+  var CHAIN = "chain";
   var HEADING = "heading";
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
   var METHOD_FIELD = "method";
+  var PARTY = "party";
   var STATE_TEXT = "state_text";
+  var WALLET = "wallet";
+  var ZONES = "zones";
 
   var DECLARED_FIELDS = [
     ACCESSIBLE_NAME,
     BUILT,
+    CHAIN,
     HEADING,
     ISSUE,
     ISSUE_TEXT,
     METHOD_FIELD,
-    STATE_TEXT
+    PARTY,
+    STATE_TEXT,
+    WALLET,
+    ZONES
   ];
+
+  var PLAYER_WINDOW = "player_window";
+  var ENEMY_SCREEN = "enemy_screen";
+  var PARTY_WINDOW = "party_window";
+  var ZONE_ORDER = [PLAYER_WINDOW, ENEMY_SCREEN, PARTY_WINDOW];
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
   var NOT_AN_OBJECT_FAULT = "not-an-object";
-  // Raised when the payload claims a built tab this module cannot draw.
-  var CLAIMS_BUILT_FAULT = "claims-built";
+  var ZONE_COUNT_FAULT = "zone-count";
+  var ZONE_ORDER_FAULT = "zone-order";
 
   var NO_BRIDGE = "the preload bridge is not present";
 
-  var TAB_CLASS = "acervator-empty-tab";
-  var HEADING_CLASS = "acervator-empty-tab-heading";
-  var STATE_CLASS = "acervator-empty-tab-state";
-  var ISSUE_CLASS = "acervator-empty-tab-issue";
+  var TAB_CLASS = "acervator-poa-tab";
 
   var PART_ATTR = "data-part";
-  var BUILT_ATTR = "data-built";
+  var ZONE_ATTR = "data-zone";
+  var CHAIN_ATTR = "data-chain";
   var ISSUE_ATTR = "data-issue";
+  var OPEN_ATTR = "data-wallet-open";
 
   var HEADING_PART = "heading";
   var STATE_PART = "state";
-  var ISSUE_PART = "issue";
+  var UPPER_PART = "upper-band";
+  var ZONE_TITLE_PART = "zone-title";
+  var ZONE_PLACEHOLDER_PART = "zone-placeholder";
+  var PARTY_HEADER_PART = "party-header";
+  var PARTY_PAGE_PART = "party-page";
+  var PARTY_PAGES_PART = "party-pages";
+  var PARTY_GROUP_PART = "party-group";
+  var PARTY_SLOT_PART = "party-slot";
+  var QUINT_LABEL_PART = "quint-label";
+  var QUINT_BALANCE_PART = "quint-balance";
+  var WALLET_OPEN_PART = "wallet-open";
+  var WALLET_PANEL_PART = "wallet-panel";
+  var WALLET_TITLE_PART = "wallet-title";
+  var WALLET_CLOSE_PART = "wallet-close";
+  var WALLET_SECTION_PART = "wallet-section";
+  var WALLET_PLACEHOLDER_PART = "wallet-placeholder";
+
+  var ZONE_PART = {};
+  ZONE_PART[PLAYER_WINDOW] = "player-window";
+  ZONE_PART[ENEMY_SCREEN] = "enemy-screen";
+  ZONE_PART[PARTY_WINDOW] = "party-window";
 
   var held = null;
   var tabFaults = [];
   var loadFault = null;
   var asked = null;
+  var walletOpen = false;
   var roots = [];
 
   function isPlainObject(value) {
@@ -83,23 +118,229 @@
     return props;
   }
 
-  function EmptyTab(props) {
+  function zoneList(model) {
+    return Array.isArray(model[ZONES]) ? model[ZONES] : [];
+  }
+
+  function zoneNamed(model, name) {
+    var found = null;
+    zoneList(model).forEach(function (zone) {
+      if (isPlainObject(zone) && zone.name === name) {
+        found = zone;
+      }
+    });
+    return found;
+  }
+
+  function Slot(props) {
+    var slotProps = part(TAB_CLASS + "-slot", PARTY_SLOT_PART);
+    slotProps.key = props.index;
+    slotProps["aria-label"] = props.label;
+    return element("li", slotProps);
+  }
+
+  function Group(props) {
+    var children = [];
+    var first = props.index * props.size;
+    for (var at = 0; at < props.size; at++) {
+      children.push(
+        element(Slot, {
+          key: first + at,
+          index: first + at,
+          label: props.slotLabel
+        })
+      );
+    }
+    var groupProps = part(TAB_CLASS + "-group", PARTY_GROUP_PART);
+    groupProps.key = props.index;
+    return element("ul", groupProps, children);
+  }
+
+  function PartyPages(props) {
+    var groups = [];
+    for (var at = 0; at < props.groups; at++) {
+      groups.push(
+        element(Group, {
+          key: at,
+          index: at,
+          size: props.size,
+          slotLabel: props.slotLabel
+        })
+      );
+    }
+    return element(
+      "div",
+      part(TAB_CLASS + "-pages", PARTY_PAGES_PART),
+      groups
+    );
+  }
+
+  function WalletPanel(props) {
+    var wallet = props.wallet;
+    var sections = Array.isArray(wallet.sections) ? wallet.sections : [];
+    var panelProps = part(TAB_CLASS + "-wallet", WALLET_PANEL_PART);
+    panelProps["aria-label"] = text(wallet.title);
+    return element(
+      "div",
+      panelProps,
+      element(
+        "h3",
+        part(TAB_CLASS + "-wallet-title", WALLET_TITLE_PART),
+        text(wallet.title)
+      ),
+      element(
+        "button",
+        buttonProps(WALLET_CLOSE_PART, text(wallet.close_text), closeWallet),
+        text(wallet.close_text)
+      ),
+      sections.map(function (name) {
+        var sectionProps = part(
+          TAB_CLASS + "-wallet-section",
+          WALLET_SECTION_PART
+        );
+        sectionProps.key = name;
+        sectionProps["aria-label"] = text(name);
+        return element("div", sectionProps, text(name));
+      }),
+      element(
+        "p",
+        part(TAB_CLASS + "-wallet-placeholder", WALLET_PLACEHOLDER_PART),
+        text(wallet.placeholder)
+      )
+    );
+  }
+
+  function buttonProps(name, label, onClick) {
+    var props = part(TAB_CLASS + "-button", name);
+    props.type = "button";
+    props["aria-label"] = label;
+    props.onClick = onClick;
+    return props;
+  }
+
+  function PartyHeader(props) {
+    var wallet = props.wallet;
+    return element(
+      "div",
+      part(TAB_CLASS + "-party-header", PARTY_HEADER_PART),
+      element(
+        "h2",
+        part(TAB_CLASS + "-zone-title", ZONE_TITLE_PART),
+        text(props.title)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-quint-label", QUINT_LABEL_PART),
+        text(wallet.balance_label)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-quint-balance", QUINT_BALANCE_PART),
+        text(wallet.balance_text)
+      ),
+      element(
+        "button",
+        buttonProps(WALLET_OPEN_PART, text(wallet.open_text), openWallet),
+        text(wallet.open_text)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-party-page", PARTY_PAGE_PART),
+        text(props.pageText)
+      )
+    );
+  }
+
+  function zoneProps(zone, className) {
+    var props = part(className, ZONE_PART[zone.name]);
+    props[ZONE_ATTR] = zone.name;
+    props["aria-label"] = text(zone.title);
+    return props;
+  }
+
+  function UpperZone(props) {
+    var zone = props.zone;
+    return element(
+      "section",
+      zoneProps(zone, TAB_CLASS + "-" + ZONE_PART[zone.name]),
+      element(
+        "h2",
+        part(TAB_CLASS + "-zone-title", ZONE_TITLE_PART),
+        text(zone.title)
+      ),
+      element(
+        "p",
+        part(TAB_CLASS + "-zone-placeholder", ZONE_PLACEHOLDER_PART),
+        text(zone.placeholder)
+      )
+    );
+  }
+
+  function PartyZone(props) {
+    var zone = props.zone;
+    var party = props.party;
+    var children = [
+      element(PartyHeader, {
+        key: PARTY_HEADER_PART,
+        title: zone.title,
+        wallet: props.wallet,
+        pageText: party.page_text
+      }),
+      element(PartyPages, {
+        key: PARTY_PAGES_PART,
+        groups: Number(party.groups),
+        size: Number(party.group_size),
+        slotLabel: text(zone.title)
+      }),
+      element(
+        "p",
+        part(TAB_CLASS + "-zone-placeholder", ZONE_PLACEHOLDER_PART),
+        text(zone.placeholder)
+      )
+    ];
+    if (walletOpen) {
+      children.push(
+        element(WalletPanel, { key: WALLET_PANEL_PART, wallet: props.wallet })
+      );
+    }
+    return element(
+      "section",
+      zoneProps(zone, TAB_CLASS + "-party-window"),
+      children
+    );
+  }
+
+  function PoaTab(props) {
     if (!isPlainObject(props.model)) {
       return null;
     }
     var model = props.model;
+    var player = zoneNamed(model, PLAYER_WINDOW);
+    var enemy = zoneNamed(model, ENEMY_SCREEN);
+    var party = zoneNamed(model, PARTY_WINDOW);
+    var paging = isPlainObject(model[PARTY]) ? model[PARTY] : {};
+    var wallet = isPlainObject(model[WALLET]) ? model[WALLET] : {};
     var tabProps = {
       className: TAB_CLASS,
       "aria-label": text(model[ACCESSIBLE_NAME])
     };
-    tabProps[BUILT_ATTR] = text(model[BUILT]);
+    tabProps[CHAIN_ATTR] = text(model[CHAIN]);
     tabProps[ISSUE_ATTR] = text(model[ISSUE]);
+    tabProps[OPEN_ATTR] = String(walletOpen);
     return element(
       "section",
       tabProps,
-      element("h1", part(HEADING_CLASS, HEADING_PART), text(model[HEADING])),
-      element("p", part(STATE_CLASS, STATE_PART), text(model[STATE_TEXT])),
-      element("p", part(ISSUE_CLASS, ISSUE_PART), text(model[ISSUE_TEXT]))
+      element("h1", part(TAB_CLASS + "-heading", HEADING_PART), text(model[HEADING])),
+      element("p", part(TAB_CLASS + "-state", STATE_PART), text(model[STATE_TEXT])),
+      element(
+        "div",
+        part(TAB_CLASS + "-upper", UPPER_PART),
+        player === null ? null : element(UpperZone, { zone: player }),
+        enemy === null ? null : element(UpperZone, { zone: enemy })
+      ),
+      party === null
+        ? null
+        : element(PartyZone, { zone: party, party: paging, wallet: wallet })
     );
   }
 
@@ -113,8 +354,18 @@
         tabFaults.push(fault(field, NULL_FAULT, null));
       }
     });
-    if (model[BUILT] === true) {
-      tabFaults.push(fault(BUILT, CLAIMS_BUILT_FAULT, kindOf(model[BUILT])));
+  }
+
+  function checkZones(model) {
+    var list = zoneList(model);
+    if (list.length !== ZONE_ORDER.length) {
+      tabFaults.push(fault(ZONES, ZONE_COUNT_FAULT, String(list.length)));
+      return;
+    }
+    for (var at = 0; at < ZONE_ORDER.length; at++) {
+      if (!isPlainObject(list[at]) || list[at].name !== ZONE_ORDER[at]) {
+        tabFaults.push(fault(ZONES, ZONE_ORDER_FAULT, String(at)));
+      }
     }
   }
 
@@ -126,8 +377,8 @@
 
   function report() {
     return {
-      declared: { fields: DECLARED_FIELDS.length },
-      held: { fields: heldFieldCount(held) },
+      declared: { fields: DECLARED_FIELDS.length, zones: ZONE_ORDER.length },
+      held: { fields: heldFieldCount(held), zones: zoneList(held).length },
       faults: tabFaults.slice()
     };
   }
@@ -141,6 +392,7 @@
     held = model;
     tabFaults = [];
     checkFields(model);
+    checkZones(model);
     return report();
   }
 
@@ -182,12 +434,28 @@
     return found;
   }
 
+  function drawAgain() {
+    roots.forEach(function (pair) {
+      renderTab(pair.node, held);
+    });
+  }
+
+  function openWallet() {
+    walletOpen = true;
+    drawAgain();
+  }
+
+  function closeWallet() {
+    walletOpen = false;
+    drawAgain();
+  }
+
   // flushSync so the document is current when renderTab returns.
   function renderTab(target, model) {
     var payload = isPlainObject(model) ? model : held;
     var root = rootFor(target);
     global.ReactDOM.flushSync(function () {
-      root.render(element(EmptyTab, { model: payload }));
+      root.render(element(PoaTab, { model: payload }));
     });
     return target;
   }
@@ -197,6 +465,7 @@
     tabFaults = [];
     loadFault = null;
     asked = null;
+    walletOpen = false;
   }
 
   // The shell draws this tab by its module name; the host reads that name
@@ -216,7 +485,13 @@
   global.acervatorLoadProofOfAccumulationTab = loadProofOfAccumulationTab;
   global.acervatorProofOfAccumulationTab = {
     method: METHOD,
-    EmptyTab: EmptyTab,
+    PoaTab: PoaTab,
+    zoneOrder: function () {
+      return ZONE_ORDER.slice();
+    },
+    zonePart: function (name) {
+      return ZONE_PART[name];
+    },
     declaredFields: function () {
       return DECLARED_FIELDS.slice();
     },
@@ -232,6 +507,11 @@
     isLoaded: function () {
       return held !== null && tabFaults.length === 0;
     },
+    walletOpen: function () {
+      return walletOpen;
+    },
+    openWallet: openWallet,
+    closeWallet: closeWallet,
     renderTab: renderTab,
     forget: forget
   };
