@@ -62,6 +62,28 @@ from .node_link import (
     PeerEndpoint,
     PoaNodeLink,
 )
+from .rpg_classes import (
+    CharacterClass,
+    ClassPick,
+    ClassProgress,
+    UnknownClassError,
+    CLASSES,
+    CLASS_NAMES,
+    ROLES,
+    PRINCIPLES,
+    ASSIGNMENTS,
+    ARC_LEVELS,
+    class_named,
+    class_rows,
+    pick_class,
+)
+from .rpg_metrics import (
+    METRIC_SOURCES,
+    METRIC_SEAMS,
+    METRIC_NAMES,
+    profile_metrics,
+    read_metrics,
+)
 
 __all__ = [
     "BotIdentity",
@@ -105,4 +127,22 @@ __all__ = [
     "NodeLinkError",
     "PeerEndpoint",
     "PoaNodeLink",
+    "CharacterClass",
+    "ClassPick",
+    "ClassProgress",
+    "UnknownClassError",
+    "CLASSES",
+    "CLASS_NAMES",
+    "ROLES",
+    "PRINCIPLES",
+    "ASSIGNMENTS",
+    "ARC_LEVELS",
+    "class_named",
+    "class_rows",
+    "pick_class",
+    "METRIC_SOURCES",
+    "METRIC_SEAMS",
+    "METRIC_NAMES",
+    "profile_metrics",
+    "read_metrics",
 ]

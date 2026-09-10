@@ -4,6 +4,8 @@
 ``wallet`` that opens over the party window. The wallet reads
 ``QuintessenceLedger`` for its balance and ``TokenLedger`` for the trophies the
 participant holds, and ``loot_section`` carries no row.
+``participants`` converts each bot in the chain's fleet load through
+``profile_metrics`` and ``classes`` serves the seven a participant picks from.
 ``src.core.desktop_bridge`` registers this module under ``METHOD``, and
 ``chain_of`` reads ``params`` so a TestNet demo run takes this code path against
 its own ledger files.
@@ -11,11 +13,15 @@ its own ledger files.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from ...competition.bot_identity import BotIdentity
 from ...competition.quintessence_ledger import DEFAULT_LEDGER_PATH, QuintessenceLedger
+from ...competition.rpg_classes import class_rows
+from ...competition.rpg_metrics import METRIC_SOURCES, profile_metrics, read_metrics
 from ...competition.token_ledger import TokenLedger
+from ...core.fmt import fmt_usd
 
 METHOD = "proof_of_accumulation_tab.state"
 
@@ -78,7 +84,12 @@ MOVEMENTS_ROW = "Movements"
 QUINT_LEDGER_NAME = DEFAULT_LEDGER_PATH.name
 AWARD_LEDGER_NAME = TokenLedger.LEDGER_FILE
 IDENTITY_NAME = BotIdentity.KEY_FILE
+FLEET_NAME = "bot_state.json"
 LEDGER_DIR = DEFAULT_LEDGER_PATH.parent
+
+NO_CLASS_TEXT = "none"
+NO_HEALTH_TEXT = "--"
+PARTICIPANT_NAME_CHARS = 8
 
 NO_IDENTITY_TEXT = "none"
 NO_IDENTITY_NOTE = f"{IDENTITY_NAME} does not exist, so no participant is named."
@@ -96,10 +107,13 @@ DECLARED_FIELDS = (
     "accessible_name",
     "built",
     "chain",
+    "classes",
     "heading",
     "issue",
     "issue_text",
+    "metric_sources",
     "method",
+    "participants",
     "party",
     "state_text",
     "wallet",
@@ -248,6 +262,69 @@ def wallet(chain: str = LIVE_CHAIN) -> dict:
     }
 
 
+def fleet_records(chain: str) -> dict:
+    """The ``bots`` map in ``chain``'s state file, or {} when it is unreadable.
+
+    ``src.core.state_manager.StateManager`` writes that file; this read never
+    creates it.
+    """
+    path = chain_file(FLEET_NAME, chain)
+    if not path.is_file():
+        return {}
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    bots = loaded.get("bots") if isinstance(loaded, dict) else None
+    return bots if isinstance(bots, dict) else {}
+
+
+def health_text(metrics: dict) -> str:
+    """``max_health_usd`` through ``fmt_usd``, or ``NO_HEALTH_TEXT`` without one.
+
+    ``read_metrics`` drops a metric whose field was absent, so a missing key is
+    the only no-value case.
+    """
+    maximum = metrics.get("max_health_usd")
+    if maximum is None:
+        return NO_HEALTH_TEXT
+    return fmt_usd(float(maximum))
+
+
+def participant_row(bot_id: str, record: dict) -> dict:
+    """One party row: the participant, its market, its class, and its read metrics."""
+    config = record.get("config") if isinstance(record, dict) else None
+    metrics = read_metrics(profile_metrics(record))
+    return {
+        "participant": bot_id[:PARTICIPANT_NAME_CHARS],
+        "symbol": (config or {}).get("symbol", ""),
+        "class_name": NO_CLASS_TEXT,
+        "health_text": health_text(metrics),
+        "metrics": metrics,
+    }
+
+
+def participants(chain: str) -> list:
+    """Every bot in ``chain``'s fleet load as a party row, ordered by participant."""
+    records = fleet_records(chain)
+    rows = [
+        participant_row(bot_id, record)
+        for bot_id, record in records.items()
+        if isinstance(record, dict)
+    ]
+    return sorted(rows, key=lambda row: row["participant"])
+
+
+def classes() -> list:
+    """The seven classes a participant picks from, from ``class_rows``."""
+    return class_rows()
+
+
+def metric_sources() -> dict:
+    """The field behind each metric, from ``rpg_metrics.METRIC_SOURCES``."""
+    return dict(METRIC_SOURCES)
+
+
 def zones() -> list:
     """The three ``ZONES``, in the order the layout places them."""
     return [
@@ -266,10 +343,13 @@ def view_model(params: dict) -> dict:
         "accessible_name": HEADING,
         "built": BUILT,
         "chain": chain,
+        "classes": classes(),
         "heading": HEADING,
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
+        "metric_sources": metric_sources(),
         "method": METHOD,
+        "participants": participants(chain),
         "party": party(),
         "state_text": STATE_TEXT,
         "wallet": wallet(chain),
