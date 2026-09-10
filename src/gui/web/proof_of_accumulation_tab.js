@@ -81,10 +81,16 @@
   var PARTY_GROUP_PART = "party-group";
   var PARTY_SLOT_PART = "party-slot";
   var SLOT_NAME_PART = "slot-name";
+  var SLOT_SYMBOL_PART = "slot-symbol";
   var SLOT_CLASS_PART = "slot-class";
   var SLOT_LEVEL_PART = "slot-level";
   var SLOT_IMPETUS_PART = "slot-impetus";
   var SLOT_HEALTH_PART = "slot-health";
+  var SLOT_MARK_PART = "slot-mark";
+  var MARK_SEAM_NOTE_PART = "mark-seam-note";
+
+  // A slot with no mark carries no data-mark, so the CSS paints nothing there.
+  var MARK_ATTR = "data-mark";
   var EVENT_BAND_PART = "event-band";
   var EVENT_LABEL_PART = "event-label";
   var EVENT_VARIANT_PART = "event-variant";
@@ -196,8 +202,23 @@
     return found;
   }
 
-  // An empty slot carries only its label; a held one carries the three fields
-  // the participant row shows.
+  // One mark slot a row. An absent mark leaves the slot empty and unpainted.
+  function MarkSlot(props) {
+    var mark = text(props.mark);
+    var markProps = named(
+      TAB_CLASS + "-slot-mark",
+      SLOT_MARK_PART,
+      mark ? props.participant + " " + mark : props.participant
+    );
+    if (mark) {
+      markProps[MARK_ATTR] = mark;
+      markProps.title = mark;
+    }
+    return element("span", markProps);
+  }
+
+  // An empty slot carries only its label; a held one carries the fields the
+  // participant row shows, its market symbol and its one mark slot.
   function Slot(props) {
     var row = props.row;
     var slotProps = part(TAB_CLASS + "-slot", PARTY_SLOT_PART);
@@ -215,6 +236,15 @@
         "span",
         named(TAB_CLASS + "-slot-name", SLOT_NAME_PART, text(row.participant)),
         text(row.participant)
+      ),
+      element(
+        "span",
+        named(
+          TAB_CLASS + "-slot-symbol",
+          SLOT_SYMBOL_PART,
+          text(row.participant)
+        ),
+        text(row.symbol)
       ),
       element(
         "span",
@@ -243,7 +273,12 @@
           text(row.participant)
         ),
         text(row.health_text)
-      )
+      ),
+      element(MarkSlot, {
+        key: "mark",
+        mark: row.mark,
+        participant: text(row.participant)
+      })
     );
   }
 
@@ -609,6 +644,11 @@
         "span",
         part(TAB_CLASS + "-party-page", PARTY_PAGE_PART),
         text(props.pageText)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-mark-seam-note", MARK_SEAM_NOTE_PART),
+        text(props.markSeamNote)
       )
     );
   }
@@ -655,7 +695,8 @@
         key: PARTY_HEADER_PART,
         title: zone.title,
         wallet: props.wallet,
-        pageText: party.page_text
+        pageText: party.page_text,
+        markSeamNote: party.mark_seam_note
       }),
       element(PartyPages, {
         key: PARTY_PAGES_PART,

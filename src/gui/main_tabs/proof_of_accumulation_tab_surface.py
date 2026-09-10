@@ -184,7 +184,44 @@ NO_HEALTH_TEXT = "--"
 NO_LEVEL_TEXT = "--"
 NO_IMPETUS_TEXT = "--"
 NO_PICK_NOTE = "No participant has picked a class for this event."
+
+#: The bot id characters the row shows. A bot record carries no name field.
 PARTICIPANT_NAME_CHARS = 8
+
+MARK_DEAD = "dead"
+MARK_MISSED_WINDOW = "missed the window"
+MARK_OUT_OF_IMPETUS = "out of Impetus"
+MARK_AFFLICTED = "afflicted"
+MARK_NO_CLASS = "no class picked"
+MARK_ALIGNMENT_SKEW = "alignment skew"
+
+#: The marks one slot may show, most urgent first. A row shows the first that holds.
+MARK_RANKS: tuple[str, ...] = (
+    MARK_DEAD,
+    MARK_MISSED_WINDOW,
+    MARK_OUT_OF_IMPETUS,
+    MARK_AFFLICTED,
+    MARK_NO_CLASS,
+    MARK_ALIGNMENT_SKEW,
+)
+
+#: Marks no field under ``src`` holds. ``participant_mark`` answers none of them.
+MARK_SEAMS: tuple[str, ...] = (
+    MARK_MISSED_WINDOW,
+    MARK_OUT_OF_IMPETUS,
+    MARK_AFFLICTED,
+    MARK_ALIGNMENT_SKEW,
+)
+
+#: What each mark in ``MARK_SEAMS`` waits on.
+MARK_SEAM_SOURCES: dict[str, str] = {
+    MARK_MISSED_WINDOW: "unit 13's action record, one a participant an event",
+    MARK_OUT_OF_IMPETUS: "unit 13's action record, one a participant an event",
+    MARK_AFFLICTED: "no unit; the art brief's tier 3 decans",
+    MARK_ALIGNMENT_SKEW: "no unit; the art brief's alignment score",
+}
+
+NO_MARK_TEXT = ""
 
 NO_IDENTITY_TEXT = "none"
 NO_IDENTITY_NOTE = f"{IDENTITY_NAME} does not exist, so no participant is named."
@@ -289,7 +326,7 @@ def page_text(page: int = PARTY_PAGE) -> str:
 
 
 def party() -> dict:
-    """The party window's paging: capacity, page size, group size and page count."""
+    """The party window's paging, plus ``MARK_RANKS`` and the ``MARK_SEAMS`` note."""
     return {
         "capacity": PARTY_CAPACITY,
         "per_page": PARTY_PER_PAGE,
@@ -299,6 +336,9 @@ def party() -> dict:
         "page": PARTY_PAGE,
         "page_text": page_text(),
         "placeholder": PARTY_WINDOW_PLACEHOLDER,
+        "mark_ranks": list(MARK_RANKS),
+        "mark_seams": list(MARK_SEAMS),
+        "mark_seam_note": mark_seam_note(),
     }
 
 
@@ -527,15 +567,41 @@ def progress_for(name: str, pick: ClassPick | None) -> ClassProgress | None:
     return ClassProgress(pick.class_name)
 
 
+def participant_mark(row: dict) -> str:
+    """The one mark ``row`` shows, by ``MARK_RANKS``, or ``NO_MARK_TEXT`` for none.
+
+    ``MARK_DEAD`` and ``MARK_NO_CLASS`` are the only answerable marks, and a row
+    holding both shows ``MARK_DEAD`` alone.
+    """
+    if row["health_text"] == NO_HEALTH_TEXT:
+        return MARK_DEAD
+    if row["class_name"] == NO_CLASS_TEXT:
+        return MARK_NO_CLASS
+    return NO_MARK_TEXT
+
+
+def mark_seam_note() -> str:
+    """The party window's sentence naming every mark in ``MARK_SEAMS`` and its source."""
+    detail = "; ".join(
+        f"{name} waits on {MARK_SEAM_SOURCES[name]}" for name in MARK_SEAMS
+    )
+    return (
+        f"{len(MARK_SEAMS)} of {len(MARK_RANKS)} marks have no state to read, "
+        f"so no slot draws one: {detail}."
+    )
+
+
 def participant_row(bot_id: str, record: dict, pick: ClassPick | None = None) -> dict:
-    """One party row: the participant, its market, its picked class and its metrics."""
+    """One party row: the participant, its market, its class, its metrics and its mark."""
     config = record.get("config") if isinstance(record, dict) else None
+    if not isinstance(config, dict):
+        config = {}
     metrics = read_metrics(profile_metrics(record))
     name = bot_id[:PARTICIPANT_NAME_CHARS]
     progress = progress_for(name, pick)
-    return {
+    built = {
         "participant": name,
-        "symbol": (config or {}).get("symbol", ""),
+        "symbol": config.get("symbol", ""),
         "class_name": NO_CLASS_TEXT if progress is None else progress.class_name,
         "level_text": NO_LEVEL_TEXT if progress is None else str(progress.level),
         "impetus_text": (
@@ -544,6 +610,8 @@ def participant_row(bot_id: str, record: dict, pick: ClassPick | None = None) ->
         "health_text": health_text(metrics),
         "metrics": metrics,
     }
+    built["mark"] = participant_mark(built)
+    return built
 
 
 def participants(chain: str, pick: ClassPick | None = None) -> list:

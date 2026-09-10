@@ -68,6 +68,8 @@ SKIN = {
     "--OUTLINE": ds.OUTLINE,
     "--OUTLINE_STRONG": ds.OUTLINE_STRONG,
     "--SUCCESS": ds.SUCCESS,
+    "--DANGER": ds.DANGER,
+    "--WARNING": ds.WARNING,
     "--TYPE_H2": ds.TYPE_H2,
     "--TYPE_H4": ds.TYPE_H4,
     "--TYPE_BODY": ds.TYPE_BODY,
