@@ -2639,3 +2639,146 @@ becoming eligible.
 Coinbase still awards no Quintessence, and one reason remains: fourteen of the
 twenty biggest markets publish no founding date. The age ruling decides whether
 the economy starts.
+## 2026-09-10 01:12 - #147 - the art brief for the enemies, the party and the rail
+
+The pixel art for this tab now has a commissioning document. An outside artist can
+work from it without asking a question. It specifies the register, the palette, every
+sprite size, every frame count and the sources each creature comes from.
+
+```
+docs/engineering-notes/2026-09-10_poa_art_brief.md    the brief
+```
+
+The manual points at the brief and does not carry it. This manual describes what the
+product does; the brief tells somebody outside the company what to draw and what it
+costs. Those are different documents for different readers.
+
+### Every creature names the old text it comes from
+
+The operator asked for the ancient sources and nothing from the modern occult
+revival. Every creature in the brief carries the text that attests it, and a creature
+with no text did not go in.
+
+```
+the surface floor  Lamashtu, Lilith, Empousa
+the executors      the gallu, Ammit, the Keres, the Sebitti, Humbaba, Mot
+the decan rank     thirty-six star powers, each owning one part of the body
+the floor bosses   Apophis, Anzu, Asag, Typhon, Echidna, the Gigantes, Azi Dahaka
+the fall tier      the Watchers and the Nephilim, Asmodeus, Angra Mainyu
+the summit         Old One Avatars and their direct servants
+```
+
+Twenty-one creatures carry their own name and the text that attests it. Three more
+arrive as ranks rather than as single names: the thirty-six decans, their daimones and
+their assistants. The two at the summit are the operator's own, built on Lovecraft,
+and the brief says that plainly rather than letting a modern invention look ancient.
+
+### Five things the brief could not supply, and it names them instead of inventing them
+
+The operator's rule was to name the gap rather than reach for the excluded source.
+Five gaps came up and the brief names all five.
+
+```
+a name for each of the ten husks     only the modern revival supplies one
+a look for each husk                 no old source draws one
+the thirty-six decan images          the roster sits behind editions not in hand
+a colour for Salt, Sulphur, Mercury  no design token holds one
+the panel's absolute height          nothing in the code declares it
+```
+
+The fourth one reaches the screen. The design makes the role colour the one thing a
+party row never drops, and no colour token carries a value for it. That is work for
+the design system, not for the artist.
+
+### The brief measured the party window and found four disagreements
+
+Four numbers in the design prose do not match the page as built. The built page is the
+fact in every case.
+
+```
+120 participants        confirmed
+40 to a page            confirmed
+eight groups of five    confirmed
+three pages             confirmed
+the name truncates      at eight characters, not twelve
+one mark slot           not built; the row carries five text columns
+a health bar            not built; health is a text figure
+a role colour           not built; no token carries one
+```
+
+The twelve-character short form is real and sits somewhere else. It names the
+participant identity and the competition identifier, and the party row shows neither.
+
+### The guaranteed art size is fourteen pixels square
+
+Every other size on the tab moves when the window moves. The party row's floor height
+does not, because the stylesheet fixes it at sixteen pixels and the row's own border
+takes one from each side.
+
+```
+the party row cell       14 x 14 pixels, guaranteed
+the class sigil          16 nominal, drawn at 1x
+the mark slot glyph      16 nominal, drawn at 1x
+an acting sprite         48 nominal, drawn at 4x
+an enemy                 32 to 160 nominal, by tier
+an Old One Avatar        160 nominal, drawn at 2x, alone on the enemy screen
+```
+
+Every frame count comes out of the platform's own motion settings rather than out of
+taste. An idle loop runs four frames over one second. An attack runs five frames over
+half a second. A full creature is twenty-six frames.
+
+### What the whole commission costs
+
+The operator pays for this, so the brief counts it.
+
+```
+enemies, five of the six tiers       531 frames
+player sprites, seven classes        147 frames
+sigils, marks and rail nodes          17 static drawings and 4 frames
+                                     -----
+                                     682 frames and 17 static drawings
+
+the decan rank, once specified       936 frames
+```
+
+The decan rank is thirty-six creatures and costs more than the other five tiers put
+together. That same tier is the one the brief cannot specify yet, so it goes last.
+
+### The 120-participant event has no dungeon map
+
+The mode table settles this. Team Based Monster Smash is the only mode that reaches a
+hundred and twenty participants, and it carries no map. The Raid reaches sixty and the
+Dungeon Crawl reaches six, and those two are the modes with a map rail.
+
+```
+Monster Smash               1 participant          no map
+Team Based Monster Smash    up to 120              no map
+Dungeon Crawl               1 to 6                 map
+Raid                        2 to 60                map
+```
+
+The Old One Avatar the operator wants in a 120-participant event therefore fights in
+an arena, and the dungeon rail sits beside a roster of at most sixty. The Avatar art
+gets an arena background first.
+
+### Three names mean two things each
+
+```
+tier         five trophy rarities, five loot tiers, and a rank a mode answers
+Mercury      a planet, a Paracelsian principle, and the metal quicksilver
+silver       the Silver Mirror's metal, and the Albedo trophy stage's colour
+```
+
+The brief reports these three and renames none of them. Every instruction in it names
+the thing instead of the number, so no artist has to guess which five is meant.
+
+### What the art brief does not do
+
+It draws nothing and it commissions nothing. Nobody contacted an artist, no sprite
+exists, and the tab still draws three empty zones with a sentence in each one saying
+no pixel art is drawn.
+
+```
+tests/debug_reports/2026-09-10_poa_art_brief.md    the unit's own record
+```
