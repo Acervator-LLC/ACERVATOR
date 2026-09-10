@@ -14,6 +14,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+#: Slippage at which ``_score_execution`` reaches 0.0; past it the score clamps.
+EXECUTION_SCORE_SPAN_BPS = 100.0
+
 
 @dataclass
 class TradeRecord:
@@ -59,7 +62,9 @@ class TradeGrade:
 
     ``execution_score``, ``timing_score``, ``strategic_score`` and
     ``outcome_score`` are each in [0.0, 1.0] or None, and ``overall`` is the
-    letter ``_letter_from_numeric`` gives ``overall_numeric``.
+    letter ``_letter_from_numeric`` gives ``overall_numeric``. ``scored_axes``
+    counts how many of the four carry a score, so a reader can tell a computed
+    ``overall_numeric`` from the default one.
     """
 
     trade_id: str
@@ -72,6 +77,7 @@ class TradeGrade:
     outcome_score: Optional[float]
     overall: str
     overall_numeric: float
+    scored_axes: int = 0
     execution_bps: Optional[float] = None
     mfe_pct: Optional[float] = None
     mae_pct: Optional[float] = None
@@ -87,8 +93,8 @@ def _score_execution(
     """Score ``record.price`` against ``ctx.ref_price_at_decision``.
 
     Returns the score and the slippage in basis points: 1.0 at no slippage
-    against ``record.side``, 0.0 at 100 bps or worse, and ``(None, None)``
-    when the reference price is missing or not positive.
+    against ``record.side``, 0.0 at ``EXECUTION_SCORE_SPAN_BPS`` or worse, and
+    ``(None, None)`` when the reference price is missing or not positive.
     """
     if ctx.ref_price_at_decision is None or ctx.ref_price_at_decision <= 0:
         return (None, None)
@@ -97,7 +103,7 @@ def _score_execution(
         bps = (record.price - ref) / ref * 10000.0
     else:
         bps = (ref - record.price) / ref * 10000.0
-    score = max(0.0, min(1.0, 1.0 - (bps / 100.0)))
+    score = max(0.0, min(1.0, 1.0 - (bps / EXECUTION_SCORE_SPAN_BPS)))
     return (score, bps)
 
 
@@ -193,6 +199,8 @@ def grade_trade(record: TradeRecord, ctx: PriceContext) -> TradeGrade:
 
     ``TradeGrade.overall_numeric`` is the unweighted mean of the sub-scores
     whose inputs were present, or 0.5 when no axis could be scored.
+    ``TradeGrade.scored_axes`` is 0 in that case, which is the only way a
+    caller can tell the default apart from a computed 0.5.
     """
     exec_score, exec_bps = _score_execution(record, ctx)
     timing_score, mfe, mae = _score_timing(record, ctx)
@@ -240,6 +248,7 @@ def grade_trade(record: TradeRecord, ctx: PriceContext) -> TradeGrade:
         outcome_score=outcome_score,
         overall=letter,
         overall_numeric=round(overall_num, 4),
+        scored_axes=len(sub_scores),
         execution_bps=round(exec_bps, 2) if exec_bps is not None else None,
         mfe_pct=round(mfe, 3) if mfe is not None else None,
         mae_pct=round(mae, 3) if mae is not None else None,
