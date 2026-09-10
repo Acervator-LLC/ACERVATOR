@@ -79,28 +79,68 @@ def content_id(payload: dict) -> str:
     return "0x" + hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+def _tx_payload(
+    from_addr: str,
+    to_addr: str,
+    function_name: str,
+    args: dict,
+    gas_used: int,
+    timestamp: float,
+    status: int,
+) -> dict:
+    """Return the fields both ``placement_id`` and ``transaction_id`` hash."""
+    return {
+        "from_addr": from_addr,
+        "to_addr": to_addr,
+        "function_name": function_name,
+        "args": args,
+        "gas_used": gas_used,
+        "timestamp": timestamp,
+        "status": status,
+    }
+
+
+def placement_id(
+    from_addr: str,
+    to_addr: str,
+    function_name: str,
+    args: dict,
+    gas_used: int,
+    timestamp: float,
+    status: int = TX_SUCCESS,
+) -> str:
+    """Return the id of one placed action, equal on every node holding it.
+
+    ``timestamp`` is the placing node's declared time and excludes
+    ``block_position``, which ``LocalChain.mine`` assigns at the close.
+    """
+    return content_id(
+        _tx_payload(
+            from_addr, to_addr, function_name, args, gas_used, timestamp, status
+        )
+    )
+
+
 def transaction_id(
     from_addr: str,
     to_addr: str,
     function_name: str,
     args: dict,
     gas_used: int,
+    timestamp: float,
+    block_position: int,
     status: int = TX_SUCCESS,
 ) -> str:
-    """Return the id of one transaction's contents, equal on every node holding it.
+    """Return the stored id of one transaction at its ``block_position``.
 
-    Excludes ``block_number`` and ``timestamp``, which differ between two nodes.
+    ``LocalChain.mine`` assigns ``block_position`` at the close, so two nodes
+    closing the same actions name each of them by the same id.
     """
-    return content_id(
-        {
-            "from_addr": from_addr,
-            "to_addr": to_addr,
-            "function_name": function_name,
-            "args": args,
-            "gas_used": gas_used,
-            "status": status,
-        }
+    payload = _tx_payload(
+        from_addr, to_addr, function_name, args, gas_used, timestamp, status
     )
+    payload["block_position"] = block_position
+    return content_id(payload)
 
 
 def block_id(
@@ -135,10 +175,25 @@ class TxRecord:
     args: dict
     status: int = TX_SUCCESS
     gas_used: int = 21_000
-    timestamp: float = field(default_factory=time.time)
+    timestamp: float = field(
+        default_factory=lambda: round(time.time(), TIMESTAMP_DIGITS)
+    )
+    block_position: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    def placement_id(self) -> str:
+        """Return the ``placement_id`` of this record's action, position aside."""
+        return placement_id(
+            self.from_addr,
+            self.to_addr,
+            self.function_name,
+            self.args,
+            self.gas_used,
+            self.timestamp,
+            self.status,
+        )
 
     def content_id(self) -> str:
         """Return the ``transaction_id`` this record's own fields produce."""
@@ -148,8 +203,19 @@ class TxRecord:
             self.function_name,
             self.args,
             self.gas_used,
+            self.timestamp,
+            self.block_position,
             self.status,
         )
+
+
+def block_order(txs: List[TxRecord]) -> List[TxRecord]:
+    """Return ``txs`` in the order a closing block runs them.
+
+    Sorts on ``timestamp`` then ``placement_id``, so arrival order decides
+    nothing and two nodes holding the same actions order them alike.
+    """
+    return sorted(txs, key=lambda tx: (tx.timestamp, tx.placement_id()))
 
 
 @dataclass
@@ -198,8 +264,10 @@ class LocalChain:
     def __init__(self):
         self._blocks: List[Block] = []
         self._txs: Dict[str, TxRecord] = {}
+        self._placements: set[str] = set()
         self._events: List[ChainEvent] = []
         self._block_number: int = 0
+        self._content_id_from_block: int = 0
         self._genesis()
 
     def _genesis(self):
@@ -212,15 +280,21 @@ class LocalChain:
         self._blocks.append(genesis)
 
     def mine(self, txs: Optional[List[TxRecord]] = None) -> Block:
-        """Mine a new block whose ``hash`` is the ``block_id`` of its own contents."""
+        """Close a block over ``txs`` in ``block_order``, each at its own position.
+
+        Every transaction takes its ``block_position`` and the ``transaction_id``
+        of its contents there, and the block ``hash`` is its own ``block_id``.
+        """
         self._block_number += 1
         parent = self._blocks[-1]
         tx_hashes = []
-        if txs:
-            for tx in txs:
-                tx.block_number = self._block_number
-                self._txs[tx.tx_hash] = tx
-                tx_hashes.append(tx.tx_hash)
+        for position, tx in enumerate(block_order(list(txs or []))):
+            tx.block_number = self._block_number
+            tx.block_position = position
+            tx.tx_hash = tx.content_id()
+            self._txs[tx.tx_hash] = tx
+            self._placements.add(tx.placement_id())
+            tx_hashes.append(tx.tx_hash)
         timestamp = round(time.time(), TIMESTAMP_DIGITS)
         block = Block(
             number=self._block_number,
@@ -258,18 +332,12 @@ class LocalChain:
         args: dict,
         gas_used: int = 50_000,
     ) -> TxRecord:
-        """Record a transaction under the ``transaction_id`` of its own contents.
+        """Place one transaction and close a block over it through ``mine``.
 
-        Raises ``ValueError`` when the chain already holds that id.
+        Raises ``ValueError`` when the chain already holds that ``placement_id``.
         """
-        tx_id = transaction_id(from_addr, to_addr, fn_name, args, gas_used)
-        if tx_id in self._txs:
-            already_held = (
-                f"transaction {tx_id} calling {fn_name} is already on this chain"
-            )
-            raise ValueError(already_held)
         tx = TxRecord(
-            tx_hash=tx_id,
+            tx_hash="",
             block_number=self._block_number + 1,
             from_addr=from_addr,
             to_addr=to_addr,
@@ -277,44 +345,89 @@ class LocalChain:
             args=args,
             gas_used=gas_used,
         )
-        logger.debug("sending transaction %s calling %s", tx_id, fn_name)
+        placement = tx.placement_id()
+        if placement in self._placements:
+            already_held = (
+                f"action {placement} calling {fn_name} is already on this chain"
+            )
+            raise ValueError(already_held)
+        logger.debug("placing transaction %s calling %s", placement, fn_name)
         self.mine([tx])
         return tx
+
+    def holds_placement(self, placement: str) -> bool:
+        """Answer whether some transaction on this chain carries ``placement``."""
+        return placement in self._placements
+
+    def reindex_placements(self) -> None:
+        """Rebuild ``_placements`` from the transactions ``_txs`` now holds."""
+        self._placements = {tx.placement_id() for tx in self._txs.values()}
+
+    def set_content_id_from_block(self, number: int) -> None:
+        """Record the first block number whose stored ids derive from contents."""
+        self._content_id_from_block = int(number)
+
+    @property
+    def content_id_from_block(self) -> int:
+        """Read the first block number ``verify_integrity`` holds to its content id."""
+        return self._content_id_from_block
 
     def verify_integrity(self) -> dict:
         """Report every block and transaction whose stored id is not its content id.
 
-        Block 0 carries ``GENESIS_BLOCK_ID``, so it is read against that constant.
+        A record below ``content_id_from_block`` is legacy rather than altered, and
+        block 0 is read against ``GENESIS_BLOCK_ID``.
         """
-        altered_blocks = [
-            b.number
-            for b in self._blocks
-            if b.hash != (GENESIS_BLOCK_ID if b.number == 0 else b.content_id())
-        ]
+        legacy_blocks = []
+        altered_blocks = []
+        for b in self._blocks:
+            expected = GENESIS_BLOCK_ID if b.number == 0 else b.content_id()
+            if b.hash == expected:
+                continue
+            if b.number < self._content_id_from_block:
+                legacy_blocks.append(b.number)
+            else:
+                altered_blocks.append(b.number)
         broken_parents = [
             child.number
             for parent, child in zip(self._blocks, self._blocks[1:], strict=False)
             if child.parent_hash != parent.hash
         ]
-        altered_txs = [
-            stored_id
-            for stored_id, tx in self._txs.items()
-            if stored_id != tx.content_id()
-        ]
+        legacy_txs = []
+        altered_txs = []
+        for stored_id, tx in self._txs.items():
+            if stored_id == tx.content_id():
+                continue
+            if tx.block_number < self._content_id_from_block:
+                legacy_txs.append(stored_id)
+            else:
+                altered_txs.append(stored_id)
         report = {
             "blocks": len(self._blocks),
             "blocks_altered": altered_blocks,
+            "blocks_legacy": len(legacy_blocks),
             "broken_parents": broken_parents,
             "transactions": len(self._txs),
             "transactions_altered": altered_txs,
+            "transactions_legacy": len(legacy_txs),
+            "content_ids_from_block": self._content_id_from_block,
             "is_verified": not (altered_blocks or broken_parents or altered_txs),
         }
+        if legacy_blocks or legacy_txs:
+            logger.info(
+                "chain holds %d legacy blocks and %d legacy transactions: written "
+                "before block %d, when ids began to derive from contents, so the "
+                "chain keeps them and does not vouch for them",
+                len(legacy_blocks),
+                len(legacy_txs),
+                self._content_id_from_block,
+            )
         if report["is_verified"]:
             logger.info(
                 "chain verified: %d blocks and %d transactions carry the id of "
                 "their own contents",
-                report["blocks"],
-                report["transactions"],
+                report["blocks"] - len(legacy_blocks),
+                report["transactions"] - len(legacy_txs),
             )
         else:
             logger.warning(

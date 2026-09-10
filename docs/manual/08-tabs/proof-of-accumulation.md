@@ -5394,27 +5394,29 @@ In development.
 ### Ordering a world turn needs a position inside the block
 
 World actions resolve in timestamp order when the block closes. The block's own id
-covers its timestamp; a transaction's id deliberately leaves its timestamp out, so
-that two nodes holding one transaction agree on its id.
+covers its timestamp, and a transaction's id covers its own declared time and the
+position the block gave it.
 
 ```
 block id        number, parent, timestamp, transaction list
-transaction id  sender, recipient, function, arguments, gas, status
-                block number and timestamp excluded
+transaction id  sender, recipient, function, arguments, gas, status,
+                declared time, position in the block
+placement id    the same fields, position aside
 ```
 
-Two nodes can therefore hold one transaction with different timestamps, both chains
-verify, and the two order the world turn differently. The recommended direction is
-for the block to assign each transaction its position at close and for that position
-to enter the transaction's id. A position costs about ten bytes, inside the rounding
-already taken, and it changes every id on the chain, so it is a schema change of its
-own.
+The block assigns each transaction its position at close and that position enters the
+transaction's id, so two nodes holding one transaction agree on where it ran. A
+position costs 27 bytes a record, measured, and it changes every id the chain writes
+from now on. The schema version does not move, so no saved file is discarded.
 
-In development.
+```
+sort key   the declared placement time, then the record's placement id
+position   0, 1, 2 and so on, in that sorted order
+```
 
-### The platform reports his own history as altered
+### His own history reports as legacy, not as altered
 
-Loading his chain makes the integrity check report every record as altered.
+Loading his chain reported every record as altered before this was repaired.
 
 ```
 chain NOT verified: 3135 of 3136 blocks altered, 0 parent links broken,
@@ -5425,10 +5427,15 @@ His file was written before records took the hash of their own contents as a nam
 and the schema version did not move when that landed. The state rebuilds correctly,
 and only the records written before content addressing cannot be verified. Raising
 the schema version would make the load delete his file and 3,136 blocks with it, and
-re-assigning ids on load is the one thing a tamper check must never do. The choice
-is his.
+re-assigning ids on load is the one thing a tamper check must never do. A saved chain
+now records the first block whose names come from contents, and every record below it
+is named legacy and kept.
 
-In development.
+```
+chain holds 3135 legacy blocks and 3135 legacy transactions: written before
+block 3136, when ids began to derive from contents, so the chain keeps them
+and does not vouch for them
+```
 
 ### What this measurement does not reach
 
@@ -5440,3 +5447,165 @@ No grid exists, so the square count the density constant gives has nothing in th
 code to apply it to. Nothing bounds the actions in a world turn, so the recommended
 ceiling has no enforcement point yet. Twenty layers is a reading of his wording and
 not a ruling, and ten sits beside it throughout.
+
+## 2026-09-10 14:18 - #147 - the block orders its records, and a legacy file is named as one
+
+### A block closes its records in one order, on every node
+
+A world turn collects actions for an hour and runs them when the block closes. The
+close sorts them, gives each one its position, and writes that position into the
+record's name, so the order is part of what the chain can check.
+
+```
+sort key       the declared placement time, then the record's own placement id
+position       0, 1, 2 and so on, in that sorted order
+stored name    the hash of the record's contents at that position
+placement id   the hash of the record's contents, position aside
+```
+
+A record now carries two names. The stored name says which action this is and where
+it ran; the placement id says only which action it is, and that is the one two nodes
+use to recognise the same action.
+
+### What a node chooses, and what it cannot
+
+A node declares when it placed its own action, to the millisecond, and that is the
+only thing about the order it can steer. Two actions placed in the same millisecond
+are separated by the hash of their own contents, which no node can aim at the
+position it would prefer.
+
+```
+a node can       say when it placed its own action
+a node cannot    move where another node's action lands
+a node cannot    make arrival order matter, because arrival order is not read
+a node cannot    change a time or an amount later, because both sit inside the name
+```
+
+### Two nodes, the same actions, two arrival orders
+
+Two processes on separate chain files were handed the same three actions in two
+different arrival orders. Both closed one block, and both finished with the same
+order and the same three names.
+
+```
+node A heard   charlie, alpha, bravo      applied 3
+node B heard   bravo, charlie, alpha      applied 3
+
+both closed    0  0x9218cce8...  bravo     placed 1789049829.404
+               1  0x46b36816...  alpha     placed 1789049829.404
+               2  0xc2de4239...  charlie   placed 1789049829.405
+```
+
+Neither arrival order matches the closed order. Alpha and bravo share a millisecond,
+so the tie-break put them in order and not the clock.
+
+### The same three actions, before the change
+
+Taken from the repository at the commit before this change, the same exercise left
+each node with whatever order it happened to hear, and every chain reported itself
+verified.
+
+```
+source node   alpha, bravo, charlie      verified
+node A        charlie, alpha, bravo      verified
+node B        bravo, charlie, alpha      verified
+```
+
+Three nodes, three orders, and nothing anywhere reported a disagreement. That is the
+silent failure the close replaces.
+
+### What a position costs, measured
+
+His chain was loaded and written out twice, once by the code before this change and
+once by the code after it, so only the new field separates the two files.
+
+```
+before   3,946,745 bytes
+after    4,031,424 bytes
+
++84,679 bytes over 3,135 transactions   27 bytes a transaction
++34 bytes once                          the file's own marker
+```
+
+Twenty-seven bytes takes one action from 988 bytes to 1,015 in this encoding, so a
+one-megabyte layer holds 1,033 actions an hour rather than 1,061. The recommended
+ceiling of one megabyte does not move, and 655 participants on one square each sits
+far under both figures.
+
+### A record written before content names is called legacy
+
+A saved chain now records the first block number whose names come from contents.
+Every record below that number was written under the older scheme, so the chain keeps
+it, says so, and does not claim to vouch for it.
+
+```
+before   chain NOT verified: 3135 of 3136 blocks altered [1, 2, 3, 4, 5],
+         0 parent links broken [], 3135 of 3135 transactions altered
+
+after    chain holds 3135 legacy blocks and 3135 legacy transactions: written
+         before block 3136, when ids began to derive from contents, so the
+         chain keeps them and does not vouch for them
+         chain verified: 1 blocks and 0 transactions carry the id of their
+         own contents
+```
+
+The schema version is untouched, so nothing about the load deletes anything. A file
+with no marker in it is read as written entirely under the older scheme, which is
+what his file is.
+
+### An edited amount inside his own chain is still caught
+
+One current record was added to a copy of his chain, the file was saved, and then one
+amount in that one record was edited by hand. The 3,135 legacy records stay forgiven
+and the edited record does not.
+
+```
+3,137 blocks   3,136 transactions
+legacy         3,135 blocks and 3,135 transactions
+altered        1 transaction, 0x86be12a8...
+verified       false
+```
+
+The same edit offered to a node over the link is refused and the two sound records
+beside it are taken, so the refusal picks out the record rather than the batch.
+
+### The marker decides it, and it was shown both ways
+
+A marker that forgave every mismatch would be worthless. The same file was read twice,
+once with its marker as saved and once with the marker set to zero by hand.
+
+```
+marker 3136   3,135 legacy, 0 altered, verified true
+marker 0      0 legacy, 3,135 altered, verified false
+```
+
+### His own file was never written
+
+The file on his machine was copied to a scratch directory, and every run above read
+the copy. His file is the same size and the same contents it was before this work.
+
+```
+4,059,629 bytes, sha256 f84458bc69c8e894794836b8658be7518cb6e108e78861cd9769f12fe25988be
+```
+
+### Demo mode runs the same close over its own chain
+
+Nothing here reads a flag. Each node in every run above was a separate chain handed in
+when the object was built, and the same close, the same link and the same integrity
+report ran over all of them.
+
+```
+four chains in this work, four scratch files, one set of methods
+no flag, no second code path
+```
+
+### What the ordering does not reach
+
+A block's membership is still whatever a node had when it closed. Two nodes that close
+different sets put one action at different positions, so its stored name differs on
+the two chains while its placement id stays the same. The hour boundary that would
+make every node close the same set does not exist yet.
+
+Nothing bounds the actions inside a one-hour turn, so a block can still close over any
+number of them. The millisecond is the finest the declared time goes, and below it the
+order comes from the contents.
