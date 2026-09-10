@@ -5,7 +5,7 @@ then recommends one set for Proof of Accumulation. It writes no code and edits
 no other page.
 
 The design asks for an original stat system rather than the classic six, and
-allows new names that fit the hermetic themes. Four things in the tree already
+allows new names that fit the hermetic themes. Five things in the tree already
 hold, and this page builds on them rather than around them.
 
 ```
@@ -16,6 +16,8 @@ src/competition/world_grid.py           TREE_SPHERES = 10, ten levels a sphere
                                         SEPHIROT_LAYERS = TREE_SPHERES * 2
 src/competition/quintessence_ledger.py  four buckets and a capped supply
 src/competition/poa_modes.py            the Impetus pool a turn grants
+src/competition/entity_stats.py         five stats in one declared table, each
+                                        measured in Quintessence
 ```
 
 Each claim below carries one of three marks: a link in the Sources list, a note
@@ -267,6 +269,24 @@ hermetic frame, and that property is the one worth copying.
 
 ## The count and structure that fit this design
 
+A five-stat table landed in the tree while this research ran, and that table is
+base reality now. Two of its five name what they set and three name nothing.
+
+```
+read from STATS in entity_stats.py
+  strength       Salt      "max weight"
+  dexterity      Sulphur   no effect named
+  constitution   Salt      "turn point penalty while carrying"
+  intelligence   Mercury   no effect named
+  wisdom         Mercury   no effect named
+```
+
+**This page reached the same count and the same split independently, before
+reading that table.** Five stats, grouped two under Salt, one under Sulphur and
+two under Mercury. The agreement is worth stating because the two routes differ:
+the table declares the split, and the reasoning below derives it from the role
+list. The page adds one thing: the three effects nobody has named yet.
+
 The design already fixes four numbers, and three of the four point one way.
 
 ```
@@ -336,15 +356,17 @@ design already names apart. The split across the principles runs uneven at two,
 one and two, and so does the class table at two, two and three, so an uneven stat
 split matches the tree rather than fighting it.
 
-One stat reads in a conserved currency, which settles the last structural
-question. The ledger caps the supply, and a rule that a participant must **hold**
-a balance moves nothing between the four buckets, so a holding-denominated stat
-leaves the conservation law alone. A stat that **spends** would not.
+Every stat reads in a conserved currency, which settles the last structural
+question, and the landed table already picked the safe form. A rule that a
+participant must **hold** a balance moves nothing between the four buckets, so a
+holding-denominated stat leaves the conservation law alone. A stat that **spends**
+would not.
 
 ```
-QUINTESSENCE_SUPPLY_CAP   a fixed ceiling over the whole supply
-a holding rule             no movement, conservation untouched
-a spending rule            a movement a turn, and a permanent drain
+read from entity_stats.py
+  quintessence_requirement   adds every amount of every block
+  potential_at               reads what fraction of that a balance covers
+                             — a holding gate, not a spend
 ```
 
 Numenera ships the spending form, where a stat is a pool a player spends to push
@@ -384,9 +406,19 @@ read from world_grid.py
   BASE_VIEWRANGE_SQUARES = 1       the squares base sight covers
 ```
 
-Job five is a threshold a Vessel sets from its own level, not a stat. A stat may
-lower it. Job six is cohesion, which the alchemical frame assigns to Salt, so it
-belongs with the Salt pair.
+Jobs five and six no longer need a stat of their own, because the landed table
+answers both by addition. A Vessel needs the sum of its own block, and an item's
+cohesion cost is the sum of one block for each of its components.
+
+```
+read from quintessence_requirement in entity_stats.py
+  one block a Vessel or a monster
+  one block a component
+  the requirement is every amount of every block, added exactly
+```
+
+Cohesion still sits under Salt in the alchemical frame, so Strength remains the
+stat that says how much cohesion one Vessel can hold.
 
 The combat roles already have measured sources, which the concept document names
 as the conversion from a trading profile.
@@ -407,34 +439,19 @@ the limit reads. Until that row exists, the weight limit has a name and no numbe
 ### The turn economy the carrying penalty speaks to
 
 Job four already exists in code and needs no new currency. A turn grants Impetus
-from the participant's level, and a speed multiplier scales that grant. Driving
-the real functions gives the grant at six levels and at four multipliers.
+from the participant's level, a speed figure multiplies that grant once, and the
+product stops at twice the level's own figure and never falls below one. The
+manual page for this tab already holds that grant table and those two bounds, so
+this page does not repeat them.
 
-```
-level   base   x1   x0.5   x0   x5
-    1      4    4      2     1    8
-   20      5    5      2     1   10
-   40      6    6      3     1   12
-   60      7    7      3     1   14
-   80      8    8      4     1   16
-  100      9    9      4     1   18
-```
+**The carrying penalty enters there, as a speed figure below one.** That route
+already exists, so nothing has to invent a second subtraction anywhere.
 
-**The carrying penalty enters here, as a speed multiplier below one.** That route
-already exists, so nothing has to invent a second subtraction. Two bounds in the
-code shape what a stat can do through it.
-
-```
-read from poa_modes.py
-  IMPETUS_SPEED_CAP_FACTOR = 2   no multiplier grants more than twice the base
-  IMPETUS_FLOOR = 1              a multiplier of zero still grants one
-```
-
-Two consequences follow and both matter to the recommendation. A fully loaded
-participant keeps one action a turn, so encumbrance alone can never freeze
-anybody, and the weight limit stays the only hard stop. And a Constitution
-benefit tops out at twice the level's own grant, so the curve that a later unit
-writes has a ceiling the code already sets.
+Two consequences follow and both reach the recommendation. A fully loaded
+participant keeps one action a turn, so load alone can never freeze anybody, and
+the weight limit stays the only hard stop. And a Constitution benefit tops out at
+twice the level's own grant, so the curve a later unit writes has a ceiling the
+code already sets.
 
 **A stat must touch the grant, never the cost.** Loot already takes Impetus off
 one action's cost through a relief field on every tier, so a stat that also cut an
@@ -503,12 +520,46 @@ hundred fits in one byte. Five stats packed run about five bytes an
 entity. **The encoding decides the cost far more than the count does**, which is
 a reason not to pick the count on storage grounds.
 
+### The supply cap decides the count, and bytes do not
+
+A second cost runs alongside the bytes and binds far harder. Every stat measures
+in Quintessence, the supply carries a fixed ceiling, and that ceiling caps how
+many fully levelled entities can ever exist at once. Driving the real functions
+gives one stat at the top level, and the cap divides by it.
+
+```
+measured by running entity_stats.py
+  one stat at level 100                   550 Quintessence
+  the rate a level costs                  the band's own number, 1 through 10
+  participant seats across all layers     13,100
+```
+
+```
+count   a maxed block   maxed entities the cap holds
+  3          1,650               20,000
+  4          2,200               15,000
+  5          2,750               12,000
+  6          3,300               10,000
+  7          3,850                8,571
+  9          4,950                6,666
+ 15          8,250                4,000
+```
+
+**At five stats the cap holds 12,000 maxed blocks against 13,100 participant
+seats, so not every seat can max one even now.** At seven it holds 8,571, and at
+fifteen it holds 4,000. A second Vessel and every item component draw on the same
+wallet, so each figure above is a ceiling rather than a plan.
+
+**This constraint decides the count, and it agrees with five.** The byte figures
+separate the candidates by a few percent. The cap separates them by thousands of
+participants.
+
 ---
 
 ## W5H over the stat system
 
-Six questions and the seventh, a line each. Two have no answer, and this page
-leaves them open rather than filling them.
+Six questions and the seventh, a line each. Two carry an unset figure, and this
+page leaves both open rather than filling them.
 
 ```
 WHO        the Reincarnate holds the stat block; the Vessel it occupies
@@ -521,21 +572,20 @@ WHEN       on a change, never once a world turn; the budget figures
            above decide it
 WHY        a participant raises a stat to hold a stronger Vessel and to
            carry more; the abuse case gets its own section below
-HOW        nothing in the tree reads a stat block today, and the
-           concurrent conversion unit declares the table
-HOW MUCH   OPEN. Nobody has set the weight unit, and nobody has set the
-           dollar field a carrying limit reads. Both belong to the operator.
+HOW        the declared table holds the five, and a block holds one amount
+           a stat; no screen reads that block yet
+HOW MUCH   the curve is set at the band's own number a level, so one stat
+           costs 550 Quintessence at the top level. OPEN: nobody has set
+           the weight unit, and nobody has named the dollar figure a
+           carrying limit reads. Both belong to the operator.
 ```
 
-Two further gaps stay open, and filling either to look finished would invent an
+One further gap stays open, and filling it to look finished would invent an
 answer.
 
 ```
-OPEN   what a band is worth across ten spheres of ten levels. ARC_LEVELS
-       and TREE_SPHERES agree at one hundred, so a band spans ten levels,
-       and the curve unit sets what a band carries
-OPEN   whether a stat lowers a Vessel's occupancy rule at all, or whether
-       that rule stays a flat threshold of the Vessel's own level
+OPEN   three of the five stats name no effect. This page proposes damage,
+       restoration and support for them, and the operator rules on all three
 ```
 
 ---
@@ -619,16 +669,23 @@ screen.
 
 ## What this page does not answer
 
-Four things stay open, and a confident answer to any of them would be an
+Three things stay open, and a confident answer to any of them would be an
 invention.
 
 ```
-the curve        what a band carries across ten spheres of ten levels
-the weight unit  what one unit of carried weight is, and what sets the limit
-the occupancy    whether a stat lowers a Vessel's rule at all
-the world turn   the one-hour turn has no action budget, so a carrying
-                 penalty during a world-time haul reduces nothing yet
+the weight unit   what one unit of carried weight is, and which dollar
+                  figure sets the limit
+three effects     dexterity, intelligence and wisdom name no effect in the
+                  declared table; this page proposes one for each, and the
+                  operator rules on all three
+the world turn    the one-hour turn carries no action budget, so a carrying
+                  penalty during a world-time haul reduces nothing yet
 ```
+
+Two questions this page opened have since closed, both in code rather than here.
+The code sets the level curve, at the band's own number a level and 550
+Quintessence for one stat at the top. A Vessel needs the sum of its own block, so
+nobody has to decide a separate threshold.
 
 One disagreement between sources reaches the reader rather than a verdict. The
 one published heuristic this page found caps a stat set at six, and two shipped
@@ -678,17 +735,21 @@ returned astrological reference material and general stat guides, and no system.
 ## The recommended set
 
 This is the page's one recommendation. **Five stats**, grouped under the three
-principles already in the code. Every row carries one mark: **tree**, meaning it
-follows from the code or from something the design already set, or **judgement**,
-meaning this page chose it and the operator may refuse it.
+principles already in the code. The count and the split match the table already
+in the tree, so the recommendation is one rename of the three stats that name no
+effect, plus the effect each one should take.
+
+Every row carries one mark: **tree**, meaning it follows from the code or from
+something the design already set, or **judgement**, meaning this page chose it and
+the operator may refuse it.
 
 | Themed name | Classic name | Principle | What it governs | Mark |
 |---|---|---|---|---|
-| Strength | Strength | Salt | The carried-weight limit. Also the cohesion cost a Vessel can hold | **tree** — the function stays as set; the alchemical frame puts cohesion under Salt |
-| Constitution | Constitution | Salt | The penalty while carrying, entering as a speed multiplier on the Impetus grant. Also the ten-round window before permadeath | **tree** — the function stays as set, and the grant route already exists in code |
-| Virtue | Strength, as damage | Sulphur | Damage on the sell side, and the threat a tank holds | **tree** — the Damage role and its named source field |
-| Tincture | Wisdom, as healing power | Mercury | Restoration on the buy side | **tree** — the Healer role and its named source field |
-| Sympathy | Charisma | Mercury | Support potency, sight range, and discovery reach | **judgement** — the tree carries the Support role; this page groups the reach jobs with it |
+| Strength | strength | Salt | The carried-weight limit. Also the cohesion cost a Vessel can hold | **tree** — the table already names this effect; cohesion sits under Salt in the alchemical frame |
+| Constitution | constitution | Salt | The penalty while carrying, entering as the speed figure on the Impetus grant. Also the ten-round window before permadeath | **tree** — the table already names this effect, and the grant route exists in code |
+| Virtue | dexterity | Sulphur | Damage on the sell side, and the threat a tank holds | **judgement** — the Damage role and its source field come from the tree; the table names no effect here |
+| Tincture | intelligence | Mercury | Restoration on the buy side | **judgement** — the Healer role and its source field come from the tree; the table names no effect here |
+| Sympathy | wisdom | Mercury | Support potency, sight range, and discovery reach | **judgement** — the Support role comes from the tree; this page groups the reach jobs with it |
 
 Three properties of the set deserve a plain statement, because each applies a
 test from the research above.
