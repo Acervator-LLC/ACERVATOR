@@ -49,6 +49,13 @@ from .challenge_protocol import (
     elo_update,
     ChallengeMessage,
 )
+from .project_age import (
+    ProjectAgeLookup,
+    ProjectAgeVerdict,
+    ProjectAgeError,
+    MIN_PROJECT_AGE_MONTHS,
+    REFUSAL_REASONS,
+)
 
 __all__ = [
     "BotIdentity",
@@ -83,4 +90,9 @@ __all__ = [
     "create_challenge",
     "elo_update",
     "ChallengeMessage",
+    "ProjectAgeLookup",
+    "ProjectAgeVerdict",
+    "ProjectAgeError",
+    "MIN_PROJECT_AGE_MONTHS",
+    "REFUSAL_REASONS",
 ]

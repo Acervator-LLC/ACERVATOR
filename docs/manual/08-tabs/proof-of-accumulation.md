@@ -1166,3 +1166,172 @@ What is still not built is the grade curve that scales an award, the rotation
 that decides which markets pay, and the caps on how much one participant may
 take. The socket passes a grade of one and applies no ceiling beyond the supply
 cap, so those three remain open.
+
+## 2026-09-09 22:57 - #147 - the project age rule
+
+A market rewards Quintessence only while its project is at least six months old.
+The platform now answers that question for one market at a time. It reads the
+project's start date from CoinGecko, keeps that date on disk for good, and
+refuses any market whose age it cannot establish. No figure a bot trades on
+changes: the lookup reads a published date and writes only its own cache file.
+
+`src/competition/project_age.py` — the whole decision
+
+```python
+        meets_age_rule_on = ""
+        if genesis is not None:
+            admits_on = months_after(genesis, MIN_PROJECT_AGE_MONTHS)
+            meets_age_rule_on = admits_on.isoformat()
+            if self._today() < admits_on:
+                reason = TOO_YOUNG
+```
+
+Six months means six calendar months, not a count of days. Bitcoin started on
+3 January 2009, so the rule first admitted it on 3 July 2009. Both edges of that
+day were run.
+
+```
+BTC asked on 2009-07-02   too_young    rewards Quintessence: no
+BTC asked on 2009-07-03   old_enough   rewards Quintessence: yes
+```
+
+### Where the date comes from
+
+CoinGecko serves a project's start date on its coin detail endpoint, in a field
+the API reference documents as nullable. Nothing in the platform had ever called
+that endpoint. Two other CoinGecko endpoints were already in use, and the new
+call shares no code with either of them.
+
+| What it asks for | The endpoint, and who calls it |
+| ---------------- | ------------------------------ |
+| The asset list and 24-hour volume | `/coins/markets`, from `market_data.py` |
+| The candle series | `/coins/{id}/ohlc`, from `chart_data.py` |
+| The project start date | `/coins/{id}`, from `project_age.py`, new |
+
+The Charts tab's one-hour timeframe asks the candle endpoint for two days and
+gets an HTTP 400 back. That fault is recorded elsewhere and is unchanged here.
+The age call reads no days value and builds its own address, so the two requests
+share the host name and nothing else.
+
+Most of this was already in the platform. The parts that are new are the rule
+itself, the refusals, and the file that keeps each date.
+
+| Part of the lookup | Where it comes from |
+| ------------------ | ------------------- |
+| The CoinGecko identifier for an asset | `crypto_assets.ASSETS`, 40 of 40 filled |
+| A request that refuses any address but http and https | `safe_url.SafeRequest` |
+| Opening that request | `safe_url.safe_urlopen` |
+| Writing the cache file without a torn write | `io_utils.atomic_write_json` |
+| Runtime data outside the repository | the same home folder the Stone Tablets use |
+| The six-month test | `months_after`, new |
+| One market's answer | `ProjectAgeVerdict`, new |
+| The four refusals | `ProjectAgeLookup.verdict_for`, new |
+
+### The identifier map is what limits this, not the rate limit
+
+The asset catalogue carries a CoinGecko identifier for forty base currencies.
+The eligibility rule reaches up to twenty markets on each of fifteen venues, so
+three hundred markets can ask and forty bases can answer.
+
+```
+bases with an identifier        40 of 40 in the asset catalogue
+markets the rule can reach      up to 300
+a market outside the forty      refused, reason no_coingecko_id
+```
+
+A market with no identifier is refused, and the refusal says which kind it is.
+Tron is a real project older than six months, and the lookup still turns it away
+because the catalogue carries no identifier for it.
+
+```
+TRX/USD   coingecko_id ''   rewards Quintessence: no   reason no_coingecko_id
+```
+
+Widening the map is the way to widen the rule. Either the asset catalogue grows,
+or a list call fetches every identifier CoinGecko carries. A ticker is not unique
+across projects, so the second route needs a tie-break where two projects share
+one symbol.
+
+### The four refusals, and what each one looks like
+
+Every answer carries a reason, so a refusal is never confused with a crash. A
+bad market string raises instead, and that is the only error path.
+
+| Reason | When | Measured |
+| ------ | ---- | -------- |
+| `too_young` | the project is under six months old | BTC asked on 2009-03-01 |
+| `no_coingecko_id` | the catalogue has no identifier | TRX/USD |
+| `no_genesis_date` | CoinGecko answers with no date | SHIB/USD |
+| `lookup_failed` | the call did not answer | ETH/USD, host unreachable |
+
+Taking away a guard makes the lookup admit whatever that guard stops, and a run
+of each one showed exactly that.
+
+```
+without the too_young guard         BTC at 2009-03-01 rewards Quintessence
+without the no_coingecko_id guard   TRX/USD rewards Quintessence
+without the no_genesis_date guard   SHIB/USD rewards Quintessence
+without the lookup_failed guard     an unreachable host rewards Quintessence
+```
+
+### A missing date is the common case, not the corner case
+
+Nine projects answered the endpoint. Two carried a date and seven carried none.
+Every one of those seven is refused.
+
+```
+with a date    bitcoin 2009-01-03, chainlink 2017-09-16
+with none      uniswap, shiba-inu, pepe, aave, thorchain, the-sandbox,
+               sei-network
+```
+
+Refusing an unknown age cannot be gamed by withholding data, which is why it is
+the answer recorded for this rule. The cost is now measured rather than guessed:
+most tokens in the catalogue carry no published start date, so the age half of
+the rule admits few markets today.
+
+### The date is fetched once and never again
+
+A project's start date is fixed on the day its chain starts, so the lookup keeps
+each one in a file under the runtime folder, with no expiry and no timer. A date
+already in that file is served without any network call at all.
+
+```
+~/.acervator/project_genesis_dates.json
+{ "genesis_dates": { "bitcoin": "2009-01-03" }, "version": 1 }
+```
+
+Proved by taking the network away. A second run with the host unreachable still
+answered for Bitcoin from the file, and in the same run a market that was not in
+the file could not be answered at all.
+
+```
+BTC/USD, host unreachable, in the file       old_enough
+ETH/USD, host unreachable, not in the file   lookup_failed
+```
+
+An empty answer is not written to the file. A project CoinGecko cannot date today
+may be dated tomorrow, and a stored blank would freeze that refusal for good.
+
+### What is not built
+
+Nothing in the running program asks a market for its age yet. The module loads on
+every launch, and the object that answers is built by whoever asks.
+
+`src/gui/main_window.py:277` — the launch call that loads the package
+
+```python
+                SharedTestnetBridge.install_on(self)
+```
+
+The volume ranking, the market rotation and the per-market caps are the other
+half of eligibility and are not here. One measurement belongs to whoever builds
+the backfill: asked forty times at two seconds apart, the detail endpoint refused
+thirty-four of those calls with HTTP 429. The lookup itself makes one call per
+project and then never again, so the pacing belongs in the loop that walks a
+venue, not in the lookup.
+
+Demo mode needs no second path. A start date is a fact about a project, not about
+a chain, so a TestNet run reads the same dates from the same file through the same
+call. The lookup holds no chain and no competition name, so there is nothing for a
+demo run to switch.
