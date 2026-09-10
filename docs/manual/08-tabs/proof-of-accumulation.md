@@ -6960,3 +6960,205 @@ store directly. The tab's controls own that.
 
 No drawing. The Map subtab still says no world is generated, and that sentence is
 still true.
+
+## 2026-09-10 21:26 - #147 - entity stats, measured in Quintessence
+
+Every entity in PoA now carries stats, and a stat holds an amount of
+Quintessence outright. Nothing converts a stat into Quintessence. A Vessel, a
+monster and one component of an item all hold the same kind of record, and the
+Quintessence needed to occupy and control that entity is the sum of the stats on
+it.
+
+```
+src/competition/entity_stats.py
+```
+
+### A stat is an amount of Quintessence, so no exchange rate exists
+
+The directive asked for stats that convert to a measurement or a function of
+Quintessence. The strongest reading makes the conversion identity: a stat value
+already is a Quintessence amount. Nothing multiplies, so there is no rate for
+anyone to pick and no second number to keep in step.
+
+```
+a stat value          IS a Quintessence quantity, carried as Decimal
+an entity's stats     sum to the Quintessence it requires
+a Vessel's occupancy  that sum
+an item's cohesion    the same sum over the item's components
+```
+
+One function does all three. A Vessel and a monster hand it one record; an item
+hands it one record a component.
+
+```python
+def quintessence_requirement(blocks: Iterable[StatBlock]) -> Decimal:
+    """Add every amount of every block in ``blocks``, exactly.
+
+    ``blocks`` holds one block a Vessel or a monster, and one block a component.
+    """
+```
+
+### The stat set is provisional and lives in one table
+
+A separate unit researches which stats exist. Until that answer lands the set is
+a placeholder, and it sits in one table so the answer has one place to go.
+Adding, removing or renaming a stat changes the table and nothing else.
+
+```python
+STATS: tuple[StatDef, ...] = (
+    StatDef("strength", SALT, "max weight"),
+    StatDef("dexterity", SULPHUR, NO_EFFECT_NAMED),
+    StatDef("constitution", SALT, "turn point penalty while carrying"),
+    StatDef("intelligence", MERCURY, NO_EFFECT_NAMED),
+    StatDef("wisdom", MERCURY, NO_EFFECT_NAMED),
+)
+```
+
+Strength sets max weight and Constitution sets the carrying penalty. Those two
+meanings hold. The other three carry no effect, and the table says so in plain
+words rather than leaving the field blank.
+
+Nothing in the code counts the stats. One runtime entry into the table moved
+every figure on its own:
+
+```
+shipped table        5 stats, a level 50 entity requires 750
+one entry added      6 stats, a level 50 entity requires 900
+rows on the page     5 becomes 6
+one stat's curve     unchanged, 550 at level 100
+no function edited
+```
+
+### Each stat sits in one of the three principles
+
+The seven classes already map the Paracelsian principles onto the four roles, so
+the stats follow that table rather than a new one. Salt is the body, Sulphur is
+the active and combustive, Mercury is spirit and mind.
+
+```
+Salt      strength, constitution     both fix a property of the body
+Sulphur   dexterity                  the principle the two Damage classes carry
+Mercury   intelligence, wisdom       the principle the Healer and Support classes carry
+```
+
+The first row follows from what the two stats already do. The other two rows read
+the class table, and they may change with the stat research.
+
+The principle changes no price. Giving one principle a cheaper rate would make
+one stat the correct stat for everyone, and it would need a figure nobody has
+chosen.
+
+### The curve climbs the ten spheres of the Tree
+
+A stat advances in ten bands of ten levels, and the band is a sphere on the
+Tree. The rate inside a band is the band's own position, so a level in the first
+sphere adds one Quintessence and a level in the tenth adds ten.
+
+```
+TREE_SPHERES        10, imported from the world grid, not declared twice
+LEVELS_PER_SPHERE   10, ARC_LEVELS over TREE_SPHERES
+```
+
+Driven across every level from one to one hundred:
+
+```
+sphere 1   opens at level   1   1 a level   stat reaches  10
+sphere 2   opens at level  11   2 a level   stat reaches  30
+sphere 3   opens at level  21   3 a level   stat reaches  60
+sphere 4   opens at level  31   4 a level   stat reaches 100
+sphere 5   opens at level  41   5 a level   stat reaches 150
+sphere 6   opens at level  51   6 a level   stat reaches 210
+sphere 7   opens at level  61   7 a level   stat reaches 280
+sphere 8   opens at level  71   8 a level   stat reaches 360
+sphere 9   opens at level  81   9 a level   stat reaches 450
+sphere 10  opens at level  91  10 a level   stat reaches 550
+```
+
+The requirement never falls and never stands still. Over all one hundred levels
+it fell on none and held on none, and the step grows from 5 to 50 as the bands
+change. An entity at the top of the arc needs 2,750 Quintessence against a
+supply cap of 33,000,000.
+
+### A Vessel under its requirement runs below full, and is never refused
+
+A holder short of the amount still occupies the Vessel. The reading answers what
+fraction of full potential the balance reaches, and full is one case of it.
+
+```
+a level 12 Vessel      band 2, every stat at 14, needs 70
+a balance of 40        reaches 0.5714285714285714285714285714 of full
+the shortfall          30
+is_full                False
+```
+
+The full reading compares the two Quintessence amounts directly and never the
+fraction, so a balance one hundredth short cannot round up into full.
+
+The program says the same thing in its own log:
+
+```
+acervator.entity_stats INFO a balance of 40 against a requirement of 70
+reaches 0.5714285714285714285714285714, shortfall 30
+```
+
+### No stat is cheaper than another
+
+If one stat bought more power a Quintessence than another, every player would
+raise that one. Under the identity reading a point costs the same everywhere,
+and moving points between stats changes nothing.
+
+```
+one extra point        costs 1, in every stat in the table
+all points in one      a level 50 entity requires 750
+spread evenly          a level 50 entity requires 750
+```
+
+The price therefore carries no cheap direction. Power per point is a different
+question, and it belongs to whatever reads a stat. Two stats have a named
+meaning and nothing built reads either, so no stat converts into an advantage
+today.
+
+An entity whose stats sum past the supply cap meets no refusal. Nobody could
+ever hold that much, so the reading stays under full permanently, which is the
+same answer the partial rule gives everywhere else.
+
+### Every figure, and where it came from
+
+```
+TREE_SPHERES = 10        already in the world grid, with ten levels a sphere
+ARC_LEVELS = 100         already in the classes module
+FIRST_LEVEL = 1          already in the classes module
+LEVELS_PER_SPHERE = 10   ARC_LEVELS over TREE_SPHERES, computed
+rate inside a band       the band's own number, no coefficient
+a stat point             one Quintessence, the identity itself
+supply cap 33,000,000    already in the Quintessence ledger
+FIRST_SPHERE = 1         the first of the ten bands
+```
+
+Nobody picked a figure here to make a curve feel right.
+
+### What reads this
+
+Nothing. The occupancy gate that would refuse or degrade a Vessel does not
+exist, and neither does the equip check that holds gear to the equipping
+player's Quintessence. The character stats subtab does not draw these rows.
+
+```
+In development.
+```
+
+### What the stats do not build
+
+No turn points. Constitution sets a penalty against a turn budget, and no turn
+budget exists to subtract one from.
+
+No weight and no encumbrance. Strength sets max weight, and nothing weighs
+anything. The journey store takes an encumbrance multiplier as an argument and
+no code derives one.
+
+No per-level record. A stat block comes out of the level on each call, so
+nothing holds it and nothing can drift.
+
+No spread rule. A level 100 entity may put every point in one stat for the same
+price as spreading them, and no rule gives a stat a floor. Whatever gate reads
+this will decide that.
