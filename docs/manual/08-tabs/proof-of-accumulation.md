@@ -2782,3 +2782,197 @@ no pixel art is drawn.
 ```
 tests/debug_reports/2026-09-10_poa_art_brief.md    the unit's own record
 ```
+
+## 2026-09-10 01:15 - #147 - the skill ladder and the transfer skill
+
+The tab now draws a skill ladder of ten levels under the classes, and the first
+skill on it is the one that moves Quintessence between participants. The ladder
+is what sets the loss on a transfer.
+
+### Ten levels, each one 2.5 times the one below
+
+> "All skills have levels that grow through use. Skills should be intelligently
+> designed with growth curves similar to Eve Online."
+
+The ladder counts uses, never elapsed time. The first level costs one use
+and every level above it costs two and a half times the level below, so the last
+level alone is most of the climb.
+
+`src/competition/skill_ladder.py` — the whole curve
+
+```python
+FIRST_LEVEL_COST = Decimal(1)
+LEVEL_COST_MULTIPLIER = Decimal("2.5")
+
+
+def cost_of_level(level: int) -> Decimal:
+    """Return the quality-weighted uses ``level`` itself costs."""
+    trained = _as_level(level, FIRST_SKILL_LEVEL)
+    return FIRST_LEVEL_COST * LEVEL_COST_MULTIPLIER ** (trained - FIRST_SKILL_LEVEL)
+```
+
+The program prints the ladder it builds. Level ten costs 3,814.7 uses on its own,
+which is 60 per cent of the whole climb.
+
+```
+level   cost of that level   cost to reach it   effect   bleed
+ 1                1.0                1.0        1.1x    8.00%
+ 2                2.5                3.5        1.2x    7.56%
+ 3                6.25               9.75       1.3x    7.11%
+ 4               15.625             25.375      1.4x    6.67%
+ 5               39.0625            64.4375     1.5x    6.22%
+ 6               97.65625          162.09375    1.6x    5.78%
+ 7              244.140625         406.234375   1.7x    5.33%
+ 8              610.3515625       1016.5859375  1.8x    4.89%
+ 9             1525.87890625      2542.46484375 1.9x    4.44%
+10             3814.697265625     6357.162109375 2.0x   4.00%
+```
+
+An untrained skill is worth 1.0 and a maxed one is worth 2.0. The step is a tenth
+a level and nothing else changes it.
+
+### Topping out takes 6,358 uses at full quality
+
+The design says about 6,357 quality-weighted uses. The ladder adds up to
+6,357.162109375, and a run that records perfect uses until the level stops rising
+reaches level ten on the 6,358th.
+
+```
+topped out: weighted_uses 6358.0   level 10   effect 2.0
+cost_to_reach(10)                  6357.162109375
+at quality 0.5: weighted_uses 6357.5   level 10
+```
+
+Half-quality uses cost twice as many of them for the same level. That is the
+whole point of weighting a use by its quality.
+
+### A worthless use is not recorded at all
+
+A use carries its own quality between nought and one. A use of nought advances
+nothing, and the program says so instead of quietly adding zero.
+
+```
+a use of quality 0.0 advances nothing; Quintessence Transfer stands at
+level 0 on 0 weighted uses
+```
+
+Two more refusals guard the same field. A quality above one and a true-or-false
+value are both turned away by name.
+
+```
+quality must be 0 to 1, got 1.5
+quality must be int, float or Decimal, not bool
+```
+
+### Nothing yet tells the ladder how good a use was
+
+The ledger records that a transfer happened. It records no quality for it, so
+nothing can weight a use today and every skill stands at level 0. The panel
+prints that plainly.
+
+```
+No field holds a use's quality, so no use is weighted and the skill stands
+at level 0.
+```
+
+The only nought-to-one quality the platform computes is the trade grade, and that
+grades a trade rather than a transfer. Unit 10 owns the grade.
+
+### The transfer skill sets the bleed, from 8 per cent to 4
+
+> "Quint is transferable between players via a specific skill isolated to common
+> Guild members, takes significant time to complete based on amount and skill
+> level, and has a negative effect of 'bleeding' quint back into the 'platonic'
+> where it can be respawned and redistributed to other PoA participants."
+
+The ledger already charged a bleed that falls with a level. This skill is where
+that level now comes from, and a skill below level one runs no transfer at all.
+
+`src/competition/skill_ladder.py` — the gate and the rate
+
+```python
+def transfer_bleed(progress: SkillProgress) -> Decimal:
+    """Return the bleed ``progress``'s level pays, gated by ``transfer_level``."""
+    return bleed_fraction(transfer_level(progress))
+```
+
+An untrained skill is refused in the program's own words, and that sentence is
+what the panel prints.
+
+```
+Quintessence Transfer stands at level 0 on 0 weighted uses; level 1 costs 1
+and no transfer runs below it
+```
+
+### Two real transfers, and the books balance after both
+
+One hundred Quintessence was sent at level one and again at level ten, on a
+throwaway ledger file. The bleed fell by half and the three buckets still add up
+to every unit ever distilled.
+
+```
+level 1    sent 100   received 92.00   bled 8.00   bled / sent 0.08
+           wallets 992.00 + held 0 + platonic 8.00 == minted 1000
+           delta 0.00   balanced true   negative buckets 0
+
+level 10   sent 100   received 96.00   bled 4.00   bled / sent 0.04
+           wallets 988.00 + held 0 + platonic 12.00 == minted 1000
+           delta 0.00   balanced true   negative buckets 0
+```
+
+The same file replayed from disk balances to the same three figures. Nothing about
+the conservation law changed in this unit.
+
+### The hours follow the amount and the level. The guild reads nothing.
+
+Four terms govern a transfer. This unit builds two of them, leaves one as
+arithmetic with no caller, and finds nothing for the fourth to read.
+
+| Term | State |
+| ---- | ----- |
+| gated by a skill | built - an untrained skill is refused |
+| lossy | built - 8 per cent at level one, 4 per cent at level ten |
+| slow | the program answers the hours; no clock holds a transfer open |
+| guild members only | nothing exists to check |
+
+The duration follows the amount and the level, floored at one hour.
+
+```
+1000 Quint at level 1     100 hours
+1000 Quint at level 10     10 hours
+5 Quint at level 10         1 hour, the floor
+```
+
+No guild, guild roster or membership record exists anywhere in the platform, so
+the guild term of a transfer has nothing to read. Nothing holds one transfer in
+flight at a time either, because no queue and no in-flight record is kept.
+
+### Demo mode reads the other chain's ledger file
+
+The chain rides in at construction, as it does for the wallet. Both runs build
+the same panel from the same module and read a differently named ledger file, so
+the transfer count differs and nothing else does.
+
+```
+chain live      transfers sent 1    quintessence_ledger.json
+chain testnet   transfers sent 3    quintessence_ledger_testnet.json
+```
+
+With the live ledger file removed the same panel prints two dashes rather than a
+nought, so an absent file never reads as a participant who has sent nothing.
+
+```
+live, file removed   transfers sent --
+```
+
+### What the skill system does not reach
+
+No control on the panel starts a transfer. The program computes the gate, the
+rate and the hours, and nothing on screen can move a balance.
+
+Only one skill exists. The rest of the tree, the alignment each skill carries and
+the abilities along the level arc are all later work.
+
+No store holds a participant's weighted uses, so a level cannot survive a restart.
+
+In development.
