@@ -5,10 +5,10 @@
 // invariant_ function after them.
 //
 // TrophyCapHandler is the registry, so its mint calls pass onlyRegistry. The
-// test contract deploys the trophy, so it is the owner and uploads every tier
+// test contract deploys the trophy, so it is DEPLOYER and fills every empty tier
 // SVG, including one under an unknown tier name so an unknown-tier refusal can
 // only come from the tier check and never from the missing-SVG check.
-// The owner reaches no mint, so every cap test mints through mintAs, which
+// The deployer reaches no mint, so every cap test mints through mintAs, which
 // forwards as the registry and lets the trophy's own refusal reason through.
 //
 // Gold Fold, Bear Slayer and Grand Accumulator cannot be minted to their caps in
@@ -32,8 +32,8 @@ interface Vm {
 contract TrophyCapHandler {
     uint256 private constant CAPPED_TIER_COUNT = 4;
 
-    /// tierMinted occupies slot 9 of AcervatorTrophy, per forge inspect storage.
-    uint256 private constant TIER_MINTED_SLOT = 9;
+    /// tierMinted occupies slot 8 of AcervatorTrophy, per forge inspect storage.
+    uint256 private constant TIER_MINTED_SLOT = 8;
 
     Vm private constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
@@ -294,23 +294,26 @@ contract TrophyTierCapsTest {
         _assertCapRefusesAtItsLimit(3, "Trophy: Gold Fold supply of 100,000 exhausted");
     }
 
-    /// @notice A failure means the owner still reaches mint, so a tier counter can
-    ///         be raised by an address the registry does not control.
-    function test_the_owner_cannot_mint_a_trophy_at_any_tier() public {
+    /// @notice A failure means the deployer still reaches mint, so a tier counter
+    ///         can be raised by an address the registry does not control.
+    function test_the_deployer_cannot_mint_a_trophy_at_any_tier() public {
         (AcervatorTrophy fresh, TrophyCapHandler freshHandler) = _freshPair();
         VM.store(address(fresh), freshHandler.tierMintedSlot("Ekthelius"), bytes32(0));
 
         try fresh.mint(
             address(0xBEEF), "Ekthelius", "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         ) {
-            revert("the owner minted a trophy");
+            revert("the deployer minted a trophy");
         } catch Error(string memory reason) {
             require(
                 keccak256(bytes(reason)) == keccak256("Trophy: caller is not registry"),
-                "the owner was refused for some other reason"
+                "the deployer was refused for some other reason"
             );
         }
-        require(fresh.tierMinted("Ekthelius") == 0, "the owner's refused mint raised the counter");
+        require(
+            fresh.tierMinted("Ekthelius") == 0,
+            "the deployer's refused mint raised the counter"
+        );
 
         freshHandler.mintAs(address(0xBEEF), "Ekthelius");
         require(fresh.tierMinted("Ekthelius") == 1, "the registry's mint was refused");

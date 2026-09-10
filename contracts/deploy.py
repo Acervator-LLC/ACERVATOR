@@ -91,21 +91,24 @@ MISSING_ARTIFACT = """
 """
 
 # Deployment order. ACRV takes no constructor argument, CompetitionRegistry
-# takes the token address, the trophy takes the registry address, and
-# ACRV.setRegistry names the minter once. Nothing needs an address that does
-# not exist yet, so the three contracts no longer form a cycle.
+# takes the token address, the trophy and Quintessence take the registry
+# address, and Governance takes the four. setRegistry and the three
+# setGovernance calls each run once. Nothing needs an address that does not
+# exist yet, so the five contracts form no cycle.
 DEPLOY_ARTIFACTS = {
     "ACRV": "ACRV.sol/ACRV.json",
     "CompetitionRegistry": "CompetitionRegistry.sol/CompetitionRegistry.json",
     "AcervatorTrophy": "AcervatorTrophy.sol/AcervatorTrophy.json",
+    "Quintessence": "Quintessence.sol/Quintessence.json",
+    "Governance": "Governance.sol/Governance.json",
 }
 
 
 def load_artifacts(repo_root: Path) -> dict:
     """Read the ABI and creation bytecode Foundry wrote for each contract.
 
-    Returns {contract_name: {"abi": [...], "bin": "0x..."}} for the three
-    contracts this script deploys. Raises SystemExit naming `forge build`
+    Returns {contract_name: {"abi": [...], "bin": "0x..."}} for every
+    contract this script deploys. Raises SystemExit naming `forge build`
     when an artifact is absent or carries no bytecode.
     """
     out_dir = repo_root / "out"
@@ -123,12 +126,10 @@ def load_artifacts(repo_root: Path) -> dict:
 
 
 def deploy(network: str, private_key: str, repo_root: Path) -> None:
-    """Deploy the three contracts in an order no immutable field forbids.
+    """Deploy every DEPLOY_ARTIFACTS contract in an order no immutable field forbids.
 
-    Steps, in sequence: ACRV with no argument, CompetitionRegistry holding
-    the token address, ACRV.setRegistry naming the registry as sole minter,
-    then AcervatorTrophy holding the registry address. The setRegistry call
-    is the one wiring step, and a second call to it reverts.
+    setRegistry and the three setGovernance calls are the wiring steps, each
+    read back before the next deploy and each reverting on a second call.
     """
     # Guarded for the reason written above MISSING_EXTRA.
     try:
@@ -217,8 +218,40 @@ def deploy(network: str, private_key: str, repo_root: Path) -> None:
     print(f"  ACRV minter locked to: {wired}")
 
     # STEP 4 — AcervatorTrophy, holding the registry address in an
-    # immutable field. Tier SVGs are uploaded afterwards by setTierSvg.
+    # immutable field. Tier SVGs are uploaded afterwards by setTierSvg,
+    # which admits the deployer only while a tier holds no art.
     trophy_addr = deploy_contract("AcervatorTrophy", reg_addr)
+
+    # STEP 5 — Quintessence, holding the registry address in an immutable
+    # field. Genesis mints nothing, so a wrong registry costs a redeployment.
+    quint_addr = deploy_contract("Quintessence", reg_addr)
+
+    # STEP 6 — Governance, holding the four addresses it reads or calls.
+    gov_addr = deploy_contract(
+        "Governance", quint_addr, reg_addr, trophy_addr, acrv_addr
+    )
+
+    # STEP 7 — name Governance on the three contracts it gates. Until each
+    # call lands no halt can reach that contract and setPriceFeed and a
+    # filled tier's setTierSvg have no caller at all.
+    print("\n  Wiring setGovernance...")
+    for name, addr in (
+        ("ACRV", acrv_addr),
+        ("CompetitionRegistry", reg_addr),
+        ("AcervatorTrophy", trophy_addr),
+    ):
+        contract = w3.eth.contract(
+            address=w3.to_checksum_address(addr), abi=artifacts[name]["abi"]
+        )
+        send(
+            f"{name}.setGovernance",
+            contract.functions.setGovernance(gov_addr).build_transaction({}),
+        )
+        wired = contract.functions.governance().call()
+        if wired.lower() != gov_addr.lower():
+            message = f"{name}.governance is {wired}, expected {gov_addr}"
+            raise RuntimeError(message)
+        print(f"  {name}.governance locked to: {wired}")
 
     # Summary
     print("\n  ══════════════════════════════════════")
@@ -227,6 +260,8 @@ def deploy(network: str, private_key: str, repo_root: Path) -> None:
     print(f"  ACRV Token:          {acrv_addr}")
     print(f"  CompetitionRegistry: {reg_addr}")
     print(f"  AcervatorTrophy:     {trophy_addr}")
+    print(f"  Quintessence:        {quint_addr}")
+    print(f"  Governance:          {gov_addr}")
     print(f"  Network:             {cfg.name}")
     print("  ══════════════════════════════════════")
     print("\n  Update src/competition/base_config.py:")
@@ -243,6 +278,8 @@ def deploy(network: str, private_key: str, repo_root: Path) -> None:
         "acrv_address": acrv_addr,
         "registry_address": reg_addr,
         "trophy_address": trophy_addr,
+        "quintessence_address": quint_addr,
+        "governance_address": gov_addr,
         "btc_feed": btc_feed,
         "eth_feed": eth_feed,
     }

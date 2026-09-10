@@ -6,9 +6,26 @@
 //
 // Lifecycle (mirrors Python competition_engine.py):
 //   1. registerBot()     — bot commits capital + config hash
-//   2. openCompetition() — owner locks registration, starts trading window
+//   2. openCompetition() — operations locks registration, starts trading window
 //   3. submitResult()    — bot posts Merkle root + performance claim
-//   4. adjudicate()      — owner ranks submissions, mints ACRV to winners
+//   4. adjudicate()      — operations ranks submissions, mints ACRV to winners
+//
+// Two privileged callers, and they are different kinds of thing.
+//
+//   OPERATIONS   an immutable address written at construction. It runs the
+//                season: openCompetition, activateCompetition,
+//                closeForSubmission, adjudicate, advanceSeason and
+//                cancelCompetition. Each of those runs every competition, so
+//                none can sit behind a vote carrying a delay in days. The
+//                address cannot move: there is no ownership handover and no
+//                renounce. A lost key is repaired the way every other
+//                unchangeable thing here is, by an L4 migration vote.
+//   governance   the Governance contract. setPriceFeed is the one rule-bearing
+//                function on this contract, because a feed decides what every
+//                award is measured against, and it answers to a vote alone.
+//
+// The halt council halts the six operations functions for seven days. isHalted
+// reads a timestamp in Governance and no call lifts a halt.
 //
 // Price verification:
 //   Chainlink Data Feeds on Base verify that submitted trade prices are
@@ -26,12 +43,11 @@
 // =============================================================================
 pragma solidity 0.8.36;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {AggregatorV3Interface} from
     "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {IHaltSource} from "./Governance.sol";
 
 interface IACRV {
     function mint(address recipient, uint256 amount,
@@ -40,11 +56,22 @@ interface IACRV {
     function remainingSupply() external view returns (uint256);
 }
 
-contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
+contract CompetitionRegistry is ReentrancyGuard {
 
     // ── Token reference ───────────────────────────────────────────────────────
 
     IACRV public immutable acrv;
+
+    // ── Privileged callers ────────────────────────────────────────────────────
+
+    /// Runs the season. Written at construction and unchangeable afterwards.
+    address public immutable OPERATIONS;
+
+    /// The deployer, and the only caller of setGovernance.
+    address public immutable DEPLOYER;
+
+    /// The Governance contract. Zero until setGovernance writes it, once.
+    address public governance;
 
     // ── Tier supply caps (enforced on-chain, immutable) ───────────────────────
 
@@ -60,7 +87,8 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
     //   ETH/USD: 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70  // sweep-ignore: contract address, not a secret key
     // Base Sepolia:
     //   ETH/USD: 0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1  // sweep-ignore: contract address, not a secret key
-    // Configured at deployment; can be updated by owner for additional assets.
+    // Seeded at construction. setPriceFeed is the only later writer and it
+    // admits governance alone, so every change to this mapping is a passed vote.
 
     mapping(string => address) public priceFeeds; // symbol → feed address
 
@@ -116,10 +144,6 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
 
     string[] public competitionIds;  // all-time list
 
-    // ── Errors ────────────────────────────────────────────────────────────────
-
-    error OwnershipCannotBeRenounced();
-
     // ── Award events (immutable on-chain record) ──────────────────────────────
 
     event CompetitionOpened(string indexed id, string symbol, uint256 season);
@@ -132,22 +156,72 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
                      string competitionId);
     event PriceFeedSet(string symbol, address feedAddress);
 
+    event GovernanceSet(address indexed governance);
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    constructor(address _acrv, address _btcFeed, address _ethFeed)
-        Ownable(msg.sender)
-    {
+    constructor(address _acrv, address _btcFeed, address _ethFeed) {
         require(_acrv != address(0), "Registry: ACRV address required");
         require(_acrv.code.length > 0, "Registry: ACRV not a contract");
         acrv = IACRV(_acrv);
+        OPERATIONS = msg.sender;
+        DEPLOYER = msg.sender;
         if (_btcFeed != address(0)) priceFeeds["BTC/USDT"] = _btcFeed;
         if (_ethFeed != address(0)) priceFeeds["ETH/USDT"] = _ethFeed;
     }
 
-    // ── Price feed management ─────────────────────────────────────────────────
+    // ── Modifiers ─────────────────────────────────────────────────────────────
 
+    modifier onlyOperations() {
+        require(msg.sender == OPERATIONS, "Registry: caller is not operations");
+        require(!isHalted(), "Registry: halted by the halt council");
+        _;
+    }
+
+    modifier onlyGovernance() {
+        require(governance != address(0), "Registry: governance not set");
+        require(msg.sender == governance, "Registry: caller is not governance");
+        _;
+    }
+
+    // ── Halt wiring, once ─────────────────────────────────────────────────────
+
+    /**
+     * @notice Name the Governance contract, permanently.
+     * @dev    Callable once, by the deployer, on an address that already holds
+     *         code. Until it lands setPriceFeed has no caller at all, so a feed
+     *         set at construction is the only feed that exists.
+     * @param governanceAddress The deployed Governance address
+     */
+    function setGovernance(address governanceAddress) external {
+        require(msg.sender == DEPLOYER, "Registry: caller is not the deployer");
+        require(governance == address(0), "Registry: governance already set");
+        require(governanceAddress.code.length > 0, "Registry: governance not a contract");
+        governance = governanceAddress;
+        emit GovernanceSet(governanceAddress);
+    }
+
+    /// @notice Return whether the halt council has this registry halted right now.
+    function isHalted() public view returns (bool) {
+        address source = governance;
+        if (source == address(0)) {
+            return false;
+        }
+        return IHaltSource(source).isHalted(address(this));
+    }
+
+    // ── Price feed management, on a vote ─────────────────────────────────────
+
+    /**
+     * @notice Point a symbol at a Chainlink feed, on a passed vote.
+     * @dev    Governance runs a new symbol at INTERFACE and a repointed symbol
+     *         at CORE, because repointing changes what every award already
+     *         measured against that symbol is compared to.
+     * @param symbol The market symbol, such as BTC/USDT
+     * @param feed   The Chainlink aggregator address
+     */
     function setPriceFeed(string calldata symbol, address feed)
-        external onlyOwner
+        external onlyGovernance
     {
         priceFeeds[symbol] = feed;
         emit PriceFeedSet(symbol, feed);
@@ -197,7 +271,7 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
         string calldata id,
         string calldata symbol,
         uint256         season
-    ) external onlyOwner {
+    ) external onlyOperations {
         require(!competitions[id].exists, "Registry: competition ID already exists");
         Competition storage c = competitions[id];
         c.id       = id;
@@ -237,7 +311,7 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
     }
 
     /// Close registration and move competition to ACTIVE.
-    function activateCompetition(string calldata compId) external onlyOwner {
+    function activateCompetition(string calldata compId) external onlyOperations {
         Competition storage c = competitions[compId];
         require(c.status == CompStatus.REGISTRATION, "Registry: not in registration");
         require(c.participants.length >= 2,          unicode"Registry: need ≥ 2 participants");
@@ -248,7 +322,7 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
     function closeForSubmission(
         string calldata compId,
         string calldata marketRegime
-    ) external onlyOwner {
+    ) external onlyOperations {
         Competition storage c = competitions[compId];
         require(c.status == CompStatus.ACTIVE, "Registry: not active");
         c.status      = CompStatus.SUBMISSION;
@@ -320,7 +394,7 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
         address          winnerWallet,
         string  calldata tierName,
         uint256          tokenAmount
-    ) external nonReentrant onlyOwner {
+    ) external nonReentrant onlyOperations {
         Competition storage c = competitions[compId];
         require(c.status == CompStatus.SUBMISSION, "Registry: not in submission");
         require(submissions[compId][winnerWallet].submitted,
@@ -392,21 +466,13 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
 
     // ── Season management ─────────────────────────────────────────────────────
 
-    function advanceSeason() external onlyOwner {
+    function advanceSeason() external onlyOperations {
         currentSeason++;
-    }
-
-    // ── Ownership cannot be abandoned ─────────────────────────────────────────
-
-    /// @notice Refuse to abandon ownership, because openCompetition,
-    ///         closeForSubmission and adjudicate are all owner-only.
-    function renounceOwnership() public pure override {
-        revert OwnershipCannotBeRenounced();
     }
 
     // ── Emergency cancel ──────────────────────────────────────────────────────
 
-    function cancelCompetition(string calldata compId) external onlyOwner {
+    function cancelCompetition(string calldata compId) external onlyOperations {
         Competition storage c = competitions[compId];
         require(c.status != CompStatus.ADJUDICATED, "Registry: already adjudicated");
         c.status = CompStatus.CANCELLED;

@@ -2977,6 +2977,270 @@ No store holds a participant's weighted uses, so a level cannot survive a restar
 
 In development.
 
+## 2026-09-10 01:47 - #147 - governance, the franchise, and the halt council
+
+The vote now exists. Four issue levels decide what a change needs, a holding buys
+access to a level and never buys weight inside it, and the three owner keys the
+last piece of work left behind are answered one by one.
+
+```
+level            holding   quorum  approval  delay
+INFORMATIONAL        1 Q      10%   simple    none
+PATCH               25 Q      20%   simple    2 days
+INTERFACE           75 Q      30%      60%    7 days
+CORE               150 Q      40%      67%   30 days
+```
+
+The delay is the time a proposal stays open before anybody can run it. An
+informational vote runs the moment it has the turnout and the agreement. A change
+to a rule holders rely on waits a month, whoever proposed it.
+
+### A large holder and a small holder count the same
+
+This is the rule that could have gone wrong quietly, so it is driven rather than
+described. One holder carries ten thousand of the currency. Another carries one
+hundred and fifty, which is the bare minimum for the top level. Each adds exactly
+one to the tally.
+
+```
+holder        holds      adds to the tally
+large     10,000 Q                      1
+small        150 Q                      1
+```
+
+The proof that matters is the other direction. On a vote where the large holder is
+against and the small holder is for, the count is one against one and the vote does
+not pass. A third small holder then votes for, the count is two against one, and it
+does pass. Two small holders outvote one holder sixty-six times their size.
+
+```
+large against, small for          1 - 1   refused
+large against, two small for      2 - 1   passes
+```
+
+### Turnout counts people, not coins
+
+Turnout is a fraction of the addresses that may vote at that level. It never looks
+at how much currency exists. Three addresses qualify for the top level while ten
+thousand three hundred and seventy-five units sit behind them, and the two numbers
+have nothing to do with each other.
+
+```
+addresses at the top level        3
+units distilled          10,375 Q
+```
+
+A control proves it. Distilling a million more units to the largest holder raises
+the supply ninety-seven fold and leaves the turnout figure at three, because one
+address is one address however much it holds.
+
+### Two separate gates, and trading opens only one of them
+
+A holding decides which levels an address may vote on. Playing decides whether that
+address has a live vote at all. These are different gates and only the second one
+is about activity.
+
+```
+holdings       which levels an address may vote on
+playing        whether the vote is live at all
+```
+
+An address that certifies trades for a year and never enters an event qualifies on
+its holdings and holds no vote. Driven both ways: a trade leaves the activity clock
+exactly where it was, and one action inside an event moves it.
+
+```
+a certified trade credited          the clock does not move
+one action inside an event          the clock moves to now
+a holding with no event action      reaches no level at all
+```
+
+### The franchise is a second number, and it moves nothing
+
+Beside the balance sits a remembered maximum. It is never below the balance, for
+every address, always. Three behaviours, each driven:
+
+```
+the balance rises     the franchise follows in the same block
+the balance falls     the franchise stays where it was
+the address goes      the franchise closes the gap slowly, and reaches
+quiet                 the balance after ninety days
+```
+
+A balance of one hundred and fifty spent down to fifty leaves the franchise at one
+hundred and fifty. Ninety quiet days later nothing has changed. Forty-five days
+after that, half the gap has closed and the franchise reads one hundred. Ninety
+days after that it reads fifty, which is the balance, and it stops there.
+
+```
+day   0   balance 150   franchise 150
+day   0   spend 100     balance  50   franchise 150
+day  90   balance  50   franchise 150
+day 135   balance  50   franchise 100
+day 180   balance  50   franchise  50
+```
+
+Not one unit of currency moves while that happens. The books were read before a
+full ninety-day resynchronization and again afterwards, and all four totals are
+identical.
+
+```
+                before        after
+wallets      150.000 Q    150.000 Q
+held         100.000 Q    100.000 Q
+platonic       0.000 Q      0.000 Q
+ever minted  250.000 Q    250.000 Q
+```
+
+One action inside an event stops the slide and keeps what has already closed. An
+address that had fallen to one hundred stays at one hundred. Nothing is handed back,
+and nothing is taken.
+
+### The halt council can only halt
+
+Five addresses are elected by the same one-vote-each franchise. Three of them stop
+one named mechanism, and that is the only thing any of them can do.
+
+```
+council size                5
+signals that stop something  3
+a halt lasts           7 days
+```
+
+Driven: one signal does nothing, two signals do nothing, the third stops the award
+token and a transfer is refused. The same member then tried four other things and
+was refused every time.
+
+```
+open a proposal            refused, the member holds no currency
+set a price feed           refused, that answers to the vote
+rewrite a tier's artwork   refused, that answers to the vote
+halt the entry currency    refused, it is not a haltable mechanism
+halt the award token       allowed, and that is the whole list
+```
+
+Nothing releases a halt, because there is no release. The contract asks what time
+it is and stops answering after seven days. One second before the seventh day the
+token is still frozen; one second later a transfer goes through, and nobody called
+anything in between.
+
+```
+seven days less one second   frozen
+seven days exactly           moving again
+calls made in between        none
+```
+
+A council that has stopped something cannot stop the same thing twice. Renewing a
+halt therefore needs a vote that elects a different council, which is the point.
+
+### Migration, never a replaceable contract
+
+Nothing deployed here can be edited later. The usual way round that is a contract
+whose logic can be swapped, and that is exactly what this design refuses, because
+whoever can swap it can rewrite every rule including the cap.
+
+A change no vote can make is made by deploying a new contract and pointing a
+top-level vote at it. Holders then move themselves across.
+
+```
+what a holder who moves does   spends their balance into the migration address
+what a holder who ignores it   keeps every unit on this contract, and reaches
+loses                          nothing the new contract governs
+```
+
+That cost is real and it is stated rather than discovered. An address that never
+acts keeps its currency and is left behind. The books still balance, because the
+units a holder moves are retired rather than destroyed.
+
+### The twelve owner keys, answered
+
+The previous piece of work removed two owner powers and left twelve on record as
+waiting for the vote. Each is now answered. Three moved behind the vote, five were
+removed outright, and the remaining six run the game every season, so a vote with a
+delay measured in days would stop the game rather than govern it.
+
+```
+moved behind the vote
+  set a price feed    a new market at INTERFACE, repointing one at CORE
+  upload tier art     at INTERFACE, and the first upload per tier stays a
+                      deployment step so a deployment can mint at all
+
+removed
+  freeze the token    the halt council does this now, and it expires
+  unfreeze the token  nothing releases a halt, so no release exists
+  hand over the token key
+  hand over the registry key
+  hand over the trophy key
+                      all three addresses are now fixed at deployment and
+                      cannot move to anybody
+
+left privileged, and why
+  open a competition        runs every competition
+  activate a competition    runs every competition
+  close for submission      runs every competition
+  adjudicate                ranks submissions, which no vote can do
+  advance the season        runs every season
+  cancel a competition      the emergency stop on one competition
+```
+
+The six that stay sit on one address written at deployment that can never move, and
+the halt council can freeze all six for seven days. The plan the contract already
+names for adjudication is on-chain proof of the result, which is separate work.
+
+Repointing an existing price feed changes what every award already measured against
+that market is compared to, so it runs at the top level. Pointing a market that has
+no feed at one is an addition and runs a level lower. The contract decides which of
+the two it is rather than trusting the proposer.
+
+```
+a market with no feed      INTERFACE, 7 days
+repointing a seeded market CORE, 30 days
+a holder at INTERFACE proposing the repoint    refused
+```
+
+### What the tools reported
+
+Each of the four tools was shown reporting a planted fault in a throwaway file
+before its clean verdict was believed, and the throwaway file was deleted
+afterwards. mythril is not installed on this machine and nothing was substituted
+for it.
+
+```
+                    on the plant              on the contracts
+forge test          1 failed                  43 passed, 0 failed
+slither             1 high, 1 medium          0 high, 0 medium
+solhint             2 errors, run fails       0 errors, run passes
+semgrep             1 blocking, run fails     0 blocking, run passes
+```
+
+The fuzzing runner drove the franchise rule and the currency rule together.
+
+```
+runs       256
+calls   16,384
+the franchise never below the balance        holds
+a governance call never moves currency       holds
+the three buckets still add up               holds
+```
+
+Two findings stand, both on the governance contract and both for the same reason
+the award contracts already carry. The delays, the quiet period and the seven-day
+halt rest on eleven readings of the chain's clock; the shortest of them spans two
+days and a validator can shift the clock by seconds. Six naming complaints are a
+disagreement between two tools: the compiler's own linter requires the style the
+other tool objects to, and the tree already follows the compiler.
+
+### What governance does not reach
+
+Nothing calls the activity clock yet. The action budget that will charge for an
+action inside an event is not on the chain, so the one caller allowed to refresh an
+address's clock has no code calling it today. Until it does, a live net would see
+holdings qualify and no vote go live.
+
+The turnout figure counts addresses as of their last refresh, and any address may
+refresh any other at no cost. A roster nobody has refreshed lately gives a stale
+turnout figure rather than a wrong one, and the contract still checks every vote
+against the voter's real franchise at the moment they cast it.
 ## 2026-09-10 01:47 - #147 - the mark slot on the party row
 
 Every party row now carries one mark slot on its right-hand edge. The slot shows
@@ -3106,6 +3370,215 @@ colour and names itself to a screen reader.
 
 No health bar and no role colour exist on the row yet. Both are listed in the art
 brief and neither has a token behind it.
+## 2026-09-10 01:59 - #147 - the per-action spend and the record store
+
+An action inside an Elite Event now costs Quintessence, and the cost comes off a
+real balance. Five prices stand on one curve, the cheapest a hundredth of the
+dearest, and every charge reaches the one spend path the ledger already had.
+
+### Five bands, a hundred to one
+
+The cheapest action is a move and the dearest is a multi-turn spell. Each band
+costs about three times the one below it, and the program prints the whole curve
+when it starts.
+
+```
+band   cost     what sits in it
+x1     0.001    move, switch weapon, take an item from a bag
+x3     0.003    a basic attack, a basic heal
+x10    0.010    a class ability on a cooldown
+x30    0.030    a group-wide ability, a threat move across the field
+x100   0.100    a multi-turn spell, and the decisive tactics beside it
+
+ratio dearest/cheapest = 100
+```
+
+A hundred to one is the ratio the design sets. Two hundred moves cost 0.2 and one
+decisive cast costs 0.1, so a guild argues about the expensive action without it
+ruining anybody.
+
+### The books balance after every one of the five
+
+A spend takes Quintessence out of a wallet and rests it at the event's held
+address. The spend creates nothing and destroys nothing, so the three buckets
+still add up to the total ever distilled after each of the five.
+
+```
+x1    cost 0.001  actor 1.00  -> 0.999  pot 0.001   balanced True  delta 0.000
+x3    cost 0.003  actor 0.999 -> 0.996  pot 0.004   balanced True  delta 0.000
+x10   cost 0.010  actor 0.996 -> 0.986  pot 0.014   balanced True  delta 0.000
+x30   cost 0.030  actor 0.986 -> 0.956  pot 0.044   balanced True  delta 0.000
+x100  cost 0.100  actor 0.956 -> 0.856  pot 0.144   balanced True  delta 0.000
+```
+
+The run asks the record store and the ledger one question two different ways at
+the end, and both give the same answer. One adds up what the records hold as
+paid and the other reads the held balance.
+
+```
+store event_spent 0.374   ledger pot 0.374   agree True
+```
+
+### The money moves when the spell lands, not when it starts
+
+A powerful action can occupy more than one turn. The charge opens, the turns pass,
+and the cast happens on the last of them. The wallet keeps every unit until that
+moment.
+
+The rule that no partial action exists decides this. A charge that never finishes
+produced no action, so charging for it would take money for nothing, and the
+ledger can move nothing back out of a held address.
+
+`src/competition/action_spend.py` — opening a charge debits nothing
+
+```python
+    def begin_charge(
+        self, draft: ActionDraft, turns: int, opened_turn: int
+    ) -> ActionCharge:
+        """Open ``draft`` over ``turns`` turns, refusing one its payer cannot afford.
+
+        Nothing is debited here; ``complete_charge`` is the only write path.
+        """
+```
+
+The run interrupted a charge and the balance did not move. The charge opened on
+turn 10 over three turns, the program refused an early cast, the charge then went
+away, and the wallet held the same amount throughout.
+
+```
+begun  x100 turns 3 casts turn 12
+actor after begin_charge   0.856 (was 0.856)
+REFUSED mid-charge: casts on turn 12 and it is turn 11; no partial action exists
+actor after abandon        0.856
+record actions before 5    after 5
+open charges 0
+```
+
+Carried to its own cast turn the same charge paid in full. The wallet either loses
+the whole cost or keeps the whole cost, and no half state exists.
+
+```
+cast on turn 22: cost 0.100, actor 0.856 -> 0.756   balanced True
+```
+
+### The program refuses an action nobody can afford
+
+A participant holding 0.050 cannot take the dearest action. The program names the
+balance and the band's cost, and then the same participant takes a cheaper action
+that does fit.
+
+```
+poor holds 0.050
+REFUSED x100: bot-poor-0004 holds 0.050 Quintessence and band x100 costs 0.100;
+no partial action exists and nobody borrows against the next turn
+PAID    x30: cost 0.030, poor now 0.020
+```
+
+### One record a participant an event, written once and read twice
+
+Each participant gets one record per event. It counts the actions, sums the cost
+of them, and stamps the second the participant last acted. Two different readers
+want it and neither writes it.
+
+```
+reader 1, the pot share:      spent 0.244  underwritten 0.100  actions 7
+reader 2, the dormancy clock: last_acted_at 1700000300.0
+```
+
+The store lives beside the other runtime files, under the home directory the
+platform already uses, and never inside the repository.
+
+```
+~/.acervator/poa_record_store.json
+```
+
+### A level and a record survive a restart
+
+The store holds the skill ladder's weighted uses as well. Four uses at 0.9
+quality put the transfer skill on level two, the first process then exited, and a
+second process read the level and the record back off disk.
+
+```
+PROCESS A EXITING
+
+PROCESS B pid=16428
+a level:          level 2   weighted_uses 3.6   bleed 7.5556%
+an action record: actions 7  spent 0.244  underwritten 0.100
+                  bands x1 1, x3 1, x10 1, x30 1, x100 3
+                  last_acted_at 1700000300.0
+```
+
+This closes the gap the skill ladder left open. A level now survives a restart,
+and the sentence in the earlier entry saying no store holds a participant's
+weighted uses describes the state before this store existed.
+
+### A guild officer may pay, and the actor must agree
+
+An officer commits treasury funds and the actor answers. Accepted, the treasury
+pays and the actor pays nothing. Refused, neither pays.
+
+```
+ACCEPTED   treasury 1.00  -> 0.900    actor 0.756 -> 0.756
+           record underwritten 0.100  spent 0.244   balanced True
+REFUSED    treasury 0.900 -> 0.900    actor 0.756 -> 0.756
+           record actions 7 -> 7                    balanced True
+```
+
+Only the actor may answer. The program turns away by name an officer who tries to
+accept on the actor's behalf.
+
+```
+offer is addressed to bot-actor-0001 and bot-officer-0002 cannot answer it;
+only the actor accepts
+```
+
+### What the officer check and the treasury still need
+
+No guild exists in the platform. The underwrite takes the officer's name and the
+treasury's address as given, and checks neither.
+
+Two things are missing and no unit on this issue builds either. A guild roster
+that maps a participant to a guild and a rank would answer whether the officer
+holds office. A treasury address that carries a spendable balance would let the
+commitment settle.
+
+A treasury with nothing spendable draws the same refusal as any other payer who
+is short.
+
+```
+REFUSED: guild-held-only-0005 holds 0 Quintessence and band x10 costs 0.010
+```
+
+The design calls a treasury a held address, and the ledger can only spend from a
+wallet. Whichever unit builds guilds has to settle that, because the two readings
+cannot both be true of one address.
+
+### Demo mode is the same code over a different chain
+
+The ledger, the store file and the held address all arrive at construction, so the
+demo chain runs the identical method. Nothing switches on a flag.
+
+```
+live store poa_record_store.json           pot poa_elite_event_pot
+demo store poa_record_store_testnet.json   pot poa_elite_event_pot_testnet
+same class True   same method True
+
+demo act x100 cost 0.100   demo pot 0.100   demo balanced True
+live pot untouched by the demo act: 0.374
+live store record actions 7   demo store record actions 1
+```
+
+### What the spend does not reach
+
+No control on screen starts a spend. The program prices an action, debits it and
+records it, and nothing a person can click reaches that path. The Quint Wallet
+unit owns the spend control.
+
+Nothing divides the pot. Every unit a participant spends rests at the event's held
+address, and the redistribution by performance is its own unit.
+
+In development.
+
 ## 2026-09-10 08:26 - #147 - the capture bounds and the grade curve
 
 A market's Quintessence pool now exists, and four bounds stand between a trade
