@@ -64,7 +64,7 @@ from .scrumming import (
     TickPhaseMixin,
     WireRoutingMixin,
 )
-from .scrumming.execution import MemorisedTrade, SettledSellFee
+from .scrumming.execution import MemorisedTrade, SettledFillFee
 from .scrumming.snapshots import yes_no as _yes_no
 from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
@@ -417,7 +417,8 @@ class ScrummingBot(
         self._fold_tranches: list[dict] = []
         self._main_lots: list[dict] = []
 
-        self._last_sell_venue_fee: Optional[SettledSellFee] = None
+        self._last_sell_venue_fee: Optional[SettledFillFee] = None
+        self._last_fill_venue_fee: Optional[SettledFillFee] = None
 
         self._stack_tranches: list[dict] = []
         self._stack_created: int = 0
@@ -1681,6 +1682,7 @@ class ScrummingBot(
                 "operator_initiated": True,
                 "accum_profit": float(_mf_profit),
                 "growth_applied": float(_mf_growth),
+                **self._fill_fee_fields(fill_price),
             },
         )
         self._emit_voting_panel_snapshot_at_fire(
@@ -2146,6 +2148,10 @@ class ScrummingBot(
             or ref_price
         )
         fill_usd = fill_amount * fill_price * float(self._quote_to_usd or 1.0)
+        # The only point on the SELF_DESTRUCT path holding the settled order.
+        self._last_fill_venue_fee = self._venue_fee_record(
+            order, fill_amount, fill_price
+        )
 
         self._main_lots = []
         try:
@@ -2193,6 +2199,7 @@ class ScrummingBot(
                     "operator_initiated": True,
                     "symbol": self.config.symbol,
                     "exchange": self.config.exchange_id,
+                    **self._fill_fee_fields(fill_price),
                 },
             )
             self._emit_voting_panel_snapshot_at_fire(
@@ -4201,6 +4208,7 @@ class ScrummingBot(
                             usd=_use,
                             size=_use,
                             profit=0,
+                            **self._fill_fee_fields(hedge_fill),
                         )
                         self._emit_voting_panel_snapshot_at_fire(
                             side="BUY", trade_action="HEDGE"

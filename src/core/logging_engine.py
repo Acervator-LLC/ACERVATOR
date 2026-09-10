@@ -771,8 +771,9 @@ class LogManager:
     def _on_trade_filled_bus(self, event_obj) -> None:
         """Route one ``trade.filled`` event into ``log_trade``.
 
-        ``side`` is normalised to BUY or SELL, and ``usd`` falls back to
-        ``amount`` times ``price`` when the payload carries neither.
+        ``side`` is normalised to BUY or SELL, ``usd`` falls back to ``amount``
+        times ``price``, and the row carries whichever of ``fee_usd`` or
+        ``fee_refusal`` the fill supplied.
         """
         try:
             data = getattr(event_obj, "data", None)
@@ -816,6 +817,13 @@ class LogManager:
                 "profit": profit,
                 "operator_initiated": bool(merged.get("operator_initiated", False)),
             }
+            if "fee_usd" in merged:
+                try:
+                    extra["fee_usd"] = float(merged["fee_usd"])
+                except (TypeError, ValueError):
+                    pass
+            elif "fee_refusal" in merged:
+                extra["fee_refusal"] = str(merged["fee_refusal"])
             if "confidence" in merged:
                 try:
                     extra["confidence"] = float(merged["confidence"])

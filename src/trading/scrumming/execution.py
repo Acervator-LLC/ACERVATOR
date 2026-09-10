@@ -1,7 +1,7 @@
 """Order execution for ScrummingBot: places venue orders and settles fills.
 
 Holds the sell, buy, detonation and manual-rebalance paths, plus the
-venue-fee record a settled sell produces.
+venue-fee records a settled fill produces on either side.
 """
 
 from __future__ import annotations
@@ -33,8 +33,8 @@ class MemorisedTrade:
 
 
 @dataclass(frozen=True)
-class SettledSellFee:
-    """The fee the venue reported for one settled sell.
+class SettledFillFee:
+    """The fee the venue reported for one settled fill, on either side.
 
     ``units`` and ``price`` identify the fill, ``reported`` is False when the
     venue gave no fee, and ``fee_amount`` is never derived from
@@ -106,8 +106,9 @@ class ExecutionEngineMixin:
     reset_swos_cycle: Callable[..., None]
     stats: Any
 
-    # Class-level default; every write lands on the instance, never on the class.
-    _last_sell_venue_fee: Optional["SettledSellFee"] = None
+    # Class-level defaults; every write lands on the instance, never on the class.
+    _last_sell_venue_fee: Optional["SettledFillFee"] = None
+    _last_fill_venue_fee: Optional["SettledFillFee"] = None
 
     _SETTLED_FILL_DEFAULT_LABEL = "MANUAL FIRE"
     _SETTLED_FILL_LABELS = frozenset(
@@ -149,10 +150,11 @@ class ExecutionEngineMixin:
         """Re-read a just-placed ``order`` until the venue reports a fill.
 
         Returns ``(fill_amount, fill_price, is_real)``, calls
-        ``_record_venue_fee`` on whichever order object settled, and clears
-        ``_last_sell_venue_fee`` when it books an estimate.
+        ``_record_venue_fee`` on whichever order object settled, and clears both
+        venue-fee records when it books an estimate.
         """
         self._last_sell_venue_fee = None
+        self._last_fill_venue_fee = None
 
         def _extract(o):
             if o is None:
@@ -193,6 +195,7 @@ class ExecutionEngineMixin:
         est_amt = amt if amt > 0 else float(requested_amount or 0.0)
         est_px = px if px > 0 else float(quoted_price or 0.0)
         self._last_sell_venue_fee = None
+        self._last_fill_venue_fee = None
         _label = self._settled_fill_label(label)
         self._bus.emit(
             "bot.log",
@@ -214,29 +217,41 @@ class ExecutionEngineMixin:
         return _quote.strip().upper()
 
     def _record_venue_fee(self, order, units: float, price: float) -> None:
-        """Store the fee the venue reported for a just-settled sell.
+        """Store the fee the venue reported for a just-settled fill.
 
-        Reads ``order.fee`` and ``order.fee_currency`` only, computes nothing,
-        clears ``_last_sell_venue_fee`` on a buy, and never raises.
+        Writes ``_last_fill_venue_fee`` on either side, writes
+        ``_last_sell_venue_fee`` for a sell only, reads ``order.fee`` and
+        ``order.fee_currency`` only, and never raises.
         """
+        self._last_fill_venue_fee = self._venue_fee_record(order, units, price)
         _side = getattr(order, "side", None)
         _side_txt = str(getattr(_side, "value", _side) or "").lower()
         if _side_txt != "sell":
             self._last_sell_venue_fee = None
             return
+        self._last_sell_venue_fee = self._last_fill_venue_fee
+
+    @staticmethod
+    def _venue_fee_record(
+        order, units: float, price: float
+    ) -> Optional[SettledFillFee]:
+        """Build a ``SettledFillFee`` from ``order.fee`` and ``order.fee_currency``.
+
+        Returns None when ``units`` or ``price`` is not a number, and computes no
+        fee of its own.
+        """
         try:
             _units = float(units)
             _price = float(price)
         except (TypeError, ValueError):
-            self._last_sell_venue_fee = None
-            return
+            return None
         try:
             _amount = float(getattr(order, "fee", 0) or 0)
             _currency = str(getattr(order, "fee_currency", "") or "")
         except (TypeError, ValueError):
             _amount = 0.0
             _currency = ""
-        self._last_sell_venue_fee = SettledSellFee(
+        return SettledFillFee(
             units=_units,
             price=_price,
             fee_amount=_amount,
@@ -244,7 +259,7 @@ class ExecutionEngineMixin:
             reported=_amount > 0.0,
         )
 
-    def _take_venue_fee(self, units: float, price: float) -> Optional[SettledSellFee]:
+    def _take_venue_fee(self, units: float, price: float) -> Optional[SettledFillFee]:
         """Consume the stored fee, and only for the fill it belongs to.
 
         ``_last_sell_venue_fee`` is cleared on every call, and a record whose
@@ -264,6 +279,42 @@ class ExecutionEngineMixin:
         if not math.isclose(_rec.price, _price, rel_tol=1e-9, abs_tol=1e-12):
             return None
         return _rec
+
+    def _fill_fee_fields(self, fill_price: float) -> dict:
+        """The ``trade.filled`` fee fields for the fill that settled at ``fill_price``.
+
+        Returns ``fee_usd`` when the venue reported a usable fee, otherwise
+        ``fee_refusal`` naming why, and never reads ``config.trading_fee_pct``.
+        """
+        _rec = self._last_fill_venue_fee
+        self._last_fill_venue_fee = None
+        try:
+            _price = float(fill_price)
+        except (TypeError, ValueError):
+            return {"fee_refusal": "the fill price is not a number"}
+        if _rec is None:
+            return {"fee_refusal": "no settled order was held for this fill"}
+        if not _rec.reported:
+            return {"fee_refusal": "the venue reported no fee"}
+        if not math.isclose(_rec.price, _price, rel_tol=1e-9, abs_tol=1e-12):
+            return {"fee_refusal": "the reported fee belongs to a different fill"}
+        if not _rec.currency:
+            return {"fee_refusal": "the venue named no fee currency"}
+        _quote = self._venue_quote_currency()
+        if _quote and _rec.currency != _quote:
+            return {
+                "fee_refusal": (
+                    f"the venue charged the fee in {_rec.currency}, not the "
+                    f"{_quote} this fill is priced in"
+                )
+            }
+        _rate = float(getattr(self, "_quote_to_usd", 0.0) or 0.0)
+        if _rate <= 0.0:
+            return {"fee_refusal": f"no {_quote or 'quote'}-to-USD rate is cached"}
+        _fee_usd = _rec.fee_amount * _rate
+        if not math.isfinite(_fee_usd) or _fee_usd <= 0.0:
+            return {"fee_refusal": "the reported fee converts to nothing in USD"}
+        return {"fee_usd": _fee_usd}
 
     def _settled_sale_proceeds(
         self, units: float, price: float, *, label: str
@@ -605,6 +656,7 @@ class ExecutionEngineMixin:
                     "usd": fill_usd,
                     "profit": 0.0,
                     "operator_initiated": _operator_initiated,
+                    **self._fill_fee_fields(fill_price),
                 },
             )
             self._emit_voting_panel_snapshot_at_fire(
@@ -1028,6 +1080,7 @@ class ExecutionEngineMixin:
                     "usd": fill_amount * fill_price,
                     "profit": _growth_applied,
                     "operator_initiated": _operator_initiated,
+                    **self._fill_fee_fields(fill_price),
                 },
             )
             self._emit_voting_panel_snapshot_at_fire(
@@ -1238,6 +1291,7 @@ class ExecutionEngineMixin:
                 "profit": excess_usd,
                 "auto_detonated": True,
                 "anchor": self._anchor_target_balance,
+                **self._fill_fee_fields(fill_price),
             },
         )
         self._emit_voting_panel_snapshot_at_fire(
@@ -1254,10 +1308,11 @@ class ExecutionEngineMixin:
     ) -> Optional[float]:
         """Place a market sell and return the fill price, or None when refused.
 
-        ``_last_sell_venue_fee`` is cleared on entry and written by
+        Both venue-fee records are cleared on entry and written by
         ``_record_venue_fee`` once the venue reports a settled order.
         """
         self._last_sell_venue_fee = None
+        self._last_fill_venue_fee = None
 
         if (
             not bypass_stack
@@ -1590,8 +1645,9 @@ class ExecutionEngineMixin:
         """Place a market buy and return the fill price, or None when refused.
 
         ``trace_context`` supplies the ``path`` named in the buy trace this
-        emits to ``bot.log``.
+        emits to ``bot.log``, and ``_last_fill_venue_fee`` is cleared on entry.
         """
+        self._last_fill_venue_fee = None
 
         try:
             _ctx = dict(trace_context or {})
@@ -1914,6 +1970,10 @@ class ExecutionEngineMixin:
             )
             if not actual_fill or actual_fill <= 0:
                 actual_fill = price
+            # The only point on the FOLD and ENTRY paths holding the settled order.
+            self._last_fill_venue_fee = self._venue_fee_record(
+                order, amount, actual_fill
+            )
             slippage_pct = ((actual_fill - price) / price * 100.0) if price > 0 else 0.0
 
             self.stats.trade_volume += amount * actual_fill

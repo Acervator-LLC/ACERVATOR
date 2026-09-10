@@ -46,6 +46,7 @@ class TickPhaseMixin:
     _fold_diag_tick: int
     _fold_eligible_tranches: Callable[..., list[dict]]
     _fold_queue_ref_price: float
+    _fill_fee_fields: Callable[..., dict]
     _fold_queue_usd: float
     _fold_tranches: list[dict]
     _get_balance: Callable[..., Any]
@@ -940,6 +941,7 @@ class TickPhaseMixin:
                 size=buy_cost,
                 profit=0.0,
                 operator_initiated=False,
+                **self._fill_fee_fields(entry_fill),
             )
             self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="ENTRY")
             self._emit_gate_decision_at_fire(side="BUY", trade_action="ENTRY")
@@ -1297,6 +1299,7 @@ class TickPhaseMixin:
                 amount=scrum_asset,
                 size=scrum_usd,
                 profit=0,
+                **self._fill_fee_fields(sell_fill),
             )
             self._emit_voting_panel_snapshot_at_fire(side="SELL", trade_action="SCRUM")
             self._emit_gate_decision_at_fire(side="SELL", trade_action="SCRUM")
@@ -1851,6 +1854,7 @@ class TickPhaseMixin:
                 amount=(buy_cost / buy_fill) if buy_fill else 0.0,
                 size=buy_cost,
                 profit=_growth_applied,
+                **self._fill_fee_fields(buy_fill),
             )
             self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="FOLD")
             self._emit_gate_decision_at_fire(side="BUY", trade_action="FOLD")
@@ -1961,6 +1965,7 @@ class TickPhaseMixin:
                         amount=dist_asset,
                         size=dist_usd,
                         profit=dist_usd * 0.02,
+                        **self._fill_fee_fields(dist_fill),
                     )
                     self._emit_voting_panel_snapshot_at_fire(
                         side="SELL", trade_action="DIST"
