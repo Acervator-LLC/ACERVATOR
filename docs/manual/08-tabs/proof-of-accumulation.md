@@ -6727,3 +6727,236 @@ movement names now   embed_from_pleroma, release_to_pleroma
 files on disk        none carried the old word
 file version         unchanged
 ```
+
+## 2026-09-10 20:38 - #147 - movement is derived, and costs one record a leg
+
+### His words set the shape
+
+> "Just need to be able to say that character A traversed x% of a given square in
+> a given turn and this will make it relatively easy to simulate varied terrain
+> within one or across multiple squares. Should be simple enough to make this
+> dynamic and per character or army or group with encumberance playing a role."
+
+> "Also, terrain grids do not need to overlap perfectly with the world grid. These
+> grids are varied in size and shape while be linked together at their own
+> borders."
+
+### A leg is one stretch at one rate, and a journey is a sequence of them
+
+A mover crosses the world in legs. One leg runs at one rate across one terrain
+region and ends at that region's border. A journey is the legs in order, and a
+new leg is written when the rate changes.
+
+```
+a leg      one constant-rate stretch, ending at a terrain border
+a journey  a sequence of legs
+a new leg  a border crossed, a load changed, a group split
+```
+
+### Progress is read, never written
+
+A leg records the turn it opened, its two end points and its rate. Everything
+else is worked out when somebody asks. No turn writes anything.
+
+```
+stored    the opening turn, the two end points, the rate, the zone
+derived   the steps covered, the percent of a square covered this turn,
+          the square the mover is in and how far across it, whether it arrived
+```
+
+A position is counted in steps, and a square is a hundred steps across, so one
+step is one percent of a square. His question is answered by reading the step
+count.
+
+```python
+row = journeys.progress("u40world", "march", 3)
+row["travelled_steps"]        # "300"
+row["square_pct_this_turn"]   # "100"
+```
+
+### The same leg read at two turns, and the chain replaying both
+
+One leg was opened and then read at two different turns. The two readings differ,
+because the turn is an input. The same two readings were then worked out again
+from the record on the chain alone, and both matched to the digit.
+
+```
+turn 1   100 steps covered, 100% of a square this turn
+turn 3   300 steps covered, 100% of a square this turn
+replay from the chain's own record    equal at turn 1 and at turn 3
+the chain verifies its own records    6 blocks, 5 transactions, verified
+```
+
+Nothing on the leg depends on the machine reading it. Every figure is worked out
+to a fixed number of digits, so the ambient setting of the program cannot move
+it.
+
+```
+digits set to 5    the same answer
+digits set to 60   the same answer
+digits set to 28   the same answer
+```
+
+### Crossing a terrain border makes a second leg at a different rate
+
+A walk began on open ground and crossed into marsh. The border crossing ended the
+first leg and opened a second, and the rate fell because the marsh carries a
+smaller multiplier.
+
+```
+leg 0   zone plain   100 steps a turn   400 steps to run, arrives on turn 4
+leg 1   zone marsh    40 steps a turn   opens on turn 4
+```
+
+The turn of the handover belongs to the leg that was moving during it, not to the
+one that opens at its end.
+
+```
+turn 4   leg 0, plain, 100% of a square covered
+turn 5   leg 1, marsh,  40% of a square covered
+turn 9   leg 1, marsh,  40% of a square covered
+```
+
+### Writing progress every turn against deriving it
+
+Three walks were driven, of three, six and twenty-four turns. Each cost one
+record on the chain, and each answered a progress question once per turn.
+
+```
+walk of  3 turns    1 record on the chain    3 progress readings
+walk of  6 turns    1                        6
+walk of 24 turns    1                       24
+all three journeys  3 transactions on the chain
+```
+
+### What one leg costs, in bytes
+
+Measured by letting the chain save itself and reading the file the chain wrote.
+The figure is the change in that file's size across 655 legs, divided by 655.
+
+```
+one leg, the path the program runs        1,305 bytes
+its event alone                             422
+one leg, packed argument, one block a turn  478
+```
+
+A leg is written twice, once as the action and once as the event, which is how
+every other record in this package is written. The packed figure drops the event
+and shares one block across the turn.
+
+Against one layer's turn budget of one megabyte, with 655 movers, the difference
+between writing progress and deriving it is the whole question.
+
+```
+655 movers, a record each turn              854,581 bytes   81.5% of the budget
+655 movers, a record each turn, packed      313,331         29.9%
+655 movers, one record a 24-turn journey     35,607 a turn    3.4%
+```
+
+Two earlier figures for this were 1,015 bytes and 399 bytes, and neither
+reproduces now. The save path changed to a running log that names every record by
+its own contents, which adds bytes to each one.
+
+```
+quoted earlier   1,015 bytes   63.4% of the budget
+measured now     1,305         81.5%
+quoted earlier     399         24.9%
+measured now        478        29.9%
+```
+
+The earlier conclusion is stronger rather than weaker. Walking would take more of
+the world's turn budget than the earlier figure said, not less.
+
+### What sets a rate
+
+A rate belongs to the mover and not to the square. Three things make it, and only
+the first is settled.
+
+```
+the base     one square a world turn. A one-hour turn and an hour's walk a
+             square agree with no adjustment.
+terrain      a multiplier, registered against the zone the leg crosses
+encumbrance  a multiplier, given when the leg opens
+```
+
+Neither multiplier has a default and neither has a value chosen here. A zone with
+no registered multiplier refuses to carry a leg, and says which zones have one.
+
+```
+no terrain multiplier is set for zone desert of world u40world;
+zones carrying one: marsh, plain, steppe
+```
+
+Nothing in the program holds what a mover carries, so the encumbrance multiplier
+is given by whoever opens the leg. An inventory would supply it, and no inventory
+exists.
+
+```
+In development.
+```
+
+### The kilometre label reaches no arithmetic
+
+A square can be called five kilometres, or fifteen, or thirty. No distance in
+kilometres appears anywhere in the code, and no rate is worked out from one. The
+travel rates behind those labels are unsourced, and a label needs a source before
+it reaches a screen.
+
+```
+In development.
+```
+
+### A leg must stay in the zone it names
+
+Two checks refuse a leg that wanders out of its region, and both use the zone
+test the grid already carries.
+
+```
+both end points   must sit in a square the zone's own extent covers
+the midpoint      must sit inside the zone's boundary
+```
+
+A region that bends back on itself, where a straight leg leaves and re-enters
+while staying inside the zone's own squares, is not decided by either check.
+
+```
+zone plain does not cover square 141 at (1199, 500) steps;
+a leg ends at the zone's border
+```
+
+### Demo mode walks on its own chain
+
+Two chains ran in one program. Each had its own world and its own journey store,
+and the journey store took its chain when it was built.
+
+```
+two chains in one program                 True
+the demo leg is on the demo chain         True
+the demo leg is NOT on the live chain     True
+both chains verify their own records      True
+live leg rate   100 steps a turn, arrives on turn 3
+demo leg rate    25 steps a turn, arrives on turn 12
+```
+
+No flag chose between them. The chain arrives when the store is built, the same
+way the world and the certification socket already take theirs.
+
+### What movement does not build
+
+No armies and no groups. A rate belongs to a mover, and whether that mover is one
+character or forty is the caller's business.
+
+No load. Nothing holds what a mover carries, so the encumbrance multiplier is
+given rather than read. Nothing bounds it either, so a caller may hand over a
+number that crosses the world in a turn. Whatever reads a mover's load will bound
+it, and no such reader exists.
+
+No route planning. A leg's two end points are given, and nothing here decides
+where a border crossing falls.
+
+No control. Nothing on the page opens a journey, registers a terrain multiplier or
+reads a progress figure, so every walk above was driven by reaching the installed
+store directly. The tab's controls own that.
+
+No drawing. The Map subtab still says no world is generated, and that sentence is
+still true.
