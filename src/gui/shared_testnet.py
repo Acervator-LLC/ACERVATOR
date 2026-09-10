@@ -174,12 +174,12 @@ class SharedTestnetBridge(QObject):
         main_win._testnet_bridge = bridge
         ledger = cls.install_quint_ledger(quint_ledger_path)
         main_win._quint_ledger = ledger
-        main_win._certification_socket = bridge.install_certification_socket(
-            ledger, socket_path
-        )
         main_win._market_rotation = bridge.install_market_rotation(rotation_path)
         main_win._capture_bounds = bridge.install_capture_bounds(
             main_win._market_rotation, bounds_path
+        )
+        main_win._certification_socket = bridge.install_certification_socket(
+            ledger, socket_path, main_win._capture_bounds
         )
         main_win._node_link = bridge.install_node_link(peer_dir, network)
         main_win._action_spend = bridge.install_action_spend(
@@ -346,12 +346,13 @@ class SharedTestnetBridge(QObject):
         self,
         quint_ledger: QuintessenceLedger,
         socket_path: Optional[Path] = None,
+        capture_bounds: Optional[CaptureBounds] = None,
     ) -> CertificationSocket:
-        """Build the ``CertificationSocket`` over this bridge's chain and
-        ``quint_ledger``, and load its per-bot certified-fee totals.
+        """Build the ``CertificationSocket`` over this bridge's chain,
+        ``quint_ledger`` and ``capture_bounds``, and load its certified-fee totals.
 
-        The socket shares ``_mutation_lock``, so a certification and a
-        ``_CompetitionWorker`` never write the chain at once.
+        The socket shares ``_mutation_lock`` with ``_CompetitionWorker`` and with
+        ``CaptureBounds.award``, so only one of them writes the chain at a time.
         """
         from src.competition.certification_socket import (
             CertificationSocket as _Socket,
@@ -362,13 +363,16 @@ class SharedTestnetBridge(QObject):
             quint_ledger,
             socket_path=socket_path,
             mutation_lock=self._mutation_lock,
+            capture_bounds=capture_bounds or self._capture_bounds,
         )
         socket.load()
         self._certification_socket = socket
+        summary = socket.socket_summary()
         logger.info(
-            "CertificationSocket installed (path=%s, bots=%d)",
+            "CertificationSocket installed (path=%s, bots=%d, awards bounded=%s)",
             socket_path or "default",
-            len(socket.socket_summary()["bots"]),
+            len(summary["bots"]),
+            summary["awards_bounded"],
         )
         return socket
 

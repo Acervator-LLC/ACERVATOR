@@ -135,11 +135,16 @@ from .capture_bounds import (
     MarketAllotment,
     COOLDOWN_CANDLES,
     COOLDOWN_FLOOR_S,
+    EMISSION_NOT_SET,
+    EMISSION_PER_ACTIVATION,
     EXECUTION_READABLE_BPS,
     MIN_SCORED_AXES,
+    NO_ACTIVATION_NAMED,
+    NOTHING_TO_AWARD,
     activation_key,
     allot_by_volume,
     cooldown_seconds,
+    pool_key,
 )
 
 __all__ = [
@@ -248,9 +253,14 @@ __all__ = [
     "MarketAllotment",
     "COOLDOWN_CANDLES",
     "COOLDOWN_FLOOR_S",
+    "EMISSION_NOT_SET",
+    "EMISSION_PER_ACTIVATION",
     "EXECUTION_READABLE_BPS",
     "MIN_SCORED_AXES",
+    "NOTHING_TO_AWARD",
+    "NO_ACTIVATION_NAMED",
     "activation_key",
     "allot_by_volume",
     "cooldown_seconds",
+    "pool_key",
 ]

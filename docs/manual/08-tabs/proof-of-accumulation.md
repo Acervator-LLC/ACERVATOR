@@ -3826,3 +3826,191 @@ How much longer a large award waits than a small one is also open. Three candles
 is the floor the design gives, and the gate holds there.
 
 In development.
+
+## 2026-09-10 09:47 - #147 - a certified fill names its activation
+
+A fill offered for certification now says which exchange it traded on and which
+season it traded in. Those two facts name the activation period, and the market
+symbol names the pool inside it, so the socket that mints Quintessence can find
+the pool an award would come out of. Every bound built yesterday is now asked
+before a single Quintessence is minted.
+
+### The fill carries the exchange and the season
+
+Five fields were added to the record one fill is offered as. Two of them name
+where the award comes from and three are what the bounds read off the trade.
+
+`src/competition/certification_socket.py` - the record
+
+```python
+    exchange_id: str = ""
+    season: int | None = None
+    scored_axes: int = 0
+    ta_timeframe: str = ""
+    execution_bps: float | None = None
+```
+
+A fill that carries neither an exchange nor a season names no activation, and the
+program says so rather than guessing one.
+
+```
+fill 04e1cafc:2026-09-10T07:21:39 on RE/USD names no activation, so no market
+pool pays it
+
+award_reason : no_activation_named
+distilled    : 0 Quintessence
+```
+
+### Certification asks the bounds before it mints
+
+The bounds arrive when the socket is built, the same way the chain and the ledger
+do. A fill the bounds refuse is still signed, logged and counted towards the
+bot's lifetime fee, and it mints nothing.
+
+`src/competition/certification_socket.py` - the one place the mint is decided
+
+```python
+            distilled = (
+                self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+                if award_reason == AWARDED
+                else Decimal(0)
+            )
+```
+
+The screen's own install line now says whether awards are bounded at all.
+
+```
+CertificationSocket installed (path=..., bots=0, awards bounded=True)
+```
+
+### The season comes from the chain, and nothing moves it
+
+A season is a counter on the chain, not a date. The running program reports it,
+and it has read one since the day it was written.
+
+```
+LocalTestnet.get_competition_stats() current_season = 1
+```
+
+`contracts/CompetitionRegistry.sol` holds the only thing that advances it, and
+nothing in the Python calls an equivalent, so every activation today is season
+one. Governance is the unit that turns that call into a vote.
+
+### A trade that can pay nothing is refused, not paid nothing
+
+A fill with no fee distils nothing. Granting it anyway would spend the
+participant's one allotment of that market and start their cooldown for no
+Quintessence at all, which is a pure loss to them and hides the missing fee.
+
+`src/competition/capture_bounds.py` - the new bound
+
+```python
+        if amount == 0:
+            raise CaptureRefusedError(
+                NOTHING_TO_AWARD,
+                f"a fee of {request.fee_usd} at a grade of {request.grade_numeric} "
+                f"distils nothing, and granting it would spend {participant}'s one "
+                f"allotment of {symbol} and open a cooldown for no Quintessence",
+            )
+```
+
+One real fill, driven twice. The venue's fee is the only difference between the
+two runs.
+
+```
+SUI/USD sell at 0.8223, two axes, grade 1.0
+
+no fee on the payload   nothing_to_award   0 Quintessence
+the venue fee supplied  awarded            1.00 Quintessence
+                        pool 817.1556  ceiling 40.8577  cooldown 900s
+```
+
+### Every bound, driven on his own fills
+
+1,709 entries were read from the live trade log and 1,668 of them graded. Each
+refusal below is the program's own sentence.
+
+```
+not_activated
+  RE/USD holds no Quintessence allotment in coinbase:1, so there is no pool
+  for an award to come out of
+
+sole_axis_clamped
+  SOL/USD sell at -646.3 basis points, one scored axis: a reference that far
+  out is stale, so the one axis reports a clamp and the grade of 1.0 rests
+  on nothing
+
+nothing_to_award
+  a fee of 0.0 at a grade of 1.0 distils nothing
+
+no_activation_named
+  the fill carries no exchange and no season
+
+awarded
+  SOL/USD sell at -80.3 basis points, two axes, grade 0.5
+  0.50 Quintessence of a 5902.5851 pool, ceiling 295.1292, cooldown 900s
+```
+
+The first refusal is the live configuration speaking. Coinbase holds six eligible
+markets today against a floor of twelve, so no activation can open, so no pool
+exists, so every real fill is refused at the first bound. That is the age rule
+working and the economy not starting, which is already on the page above.
+
+### The fee a fill should be measured on is not on the fill
+
+The live fill event carries a side, an amount and a price. It carries no fee, and
+the pinned log schema carries none either, so all 1,709 entries read zero. The
+venue does report a per-trade fee, and the platform already sums it per bot into
+the figure the status screen shows, but nothing puts it on the individual fill.
+
+Until it does, every certified fill distils nothing and the refusal says which
+number is missing. Supplying a per-fill venue fee to the fill event is the unit
+that finishes this.
+
+### The figure that sets the scale of the economy
+
+How much Quintessence one activation emits is still nobody's number. It is the
+caller's argument, and passing the absence now refuses by name rather than
+quietly becoming a zero.
+
+`src/competition/capture_bounds.py` - the absence, stated
+
+```python
+#: No figure sets how much Quintessence a market's pool holds in a window, so
+#: ``activate`` takes it as an argument and refuses this None.
+EMISSION_PER_ACTIVATION = None
+```
+
+```
+emission_not_set: no emission was named for this activation, and no figure here
+sets how much Quintessence a market's pool holds in a window; activate takes it
+as an argument and no default stands in
+```
+
+### Demo mode certifies against a second chain
+
+One class, two chains, one award path, no flag. The socket takes its chain and
+its bounds when it is built, so a TestNet run is a second set of the same three
+objects over a second chain.
+
+```
+the same class        : CertificationSocket and CertificationSocket
+the same chain object : False
+
+live chain   4 CaptureBounds records
+demo chain   1 CaptureBounds record
+
+on the demo chain
+  PUMP/USD sell, two axes, grade 1.0 -> awarded, 1.00 Quintessence
+  pool 964.6291  ceiling 48.2314  cooldown 900s
+```
+
+### What still does not reach this
+
+Nothing subscribes the socket to the live fill event. The object is built on every
+launch and its subscription method has no caller, so no real trade reaches
+certification while the platform runs. Wiring it would start minting against the
+live Quintessence ledger on every fill, which is a decision about real value
+rather than a repair, so it is named here and left for the unit that makes it.
+
+In development.
