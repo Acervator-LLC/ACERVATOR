@@ -8,6 +8,8 @@
 // test contract deploys the trophy, so it is the owner and uploads every tier
 // SVG, including one under an unknown tier name so an unknown-tier refusal can
 // only come from the tier check and never from the missing-SVG check.
+// The owner reaches no mint, so every cap test mints through mintAs, which
+// forwards as the registry and lets the trophy's own refusal reason through.
 //
 // Gold Fold, Bear Slayer and Grand Accumulator cannot be minted to their caps in
 // a test, so the handler parks a counter at one below its cap with vm.store and
@@ -147,6 +149,14 @@ contract TrophyCapHandler {
         }
     }
 
+    /// Mints as the registry and lets the revert through, so a caller reads the
+    /// trophy's own refusal reason rather than the onlyRegistry one.
+    function mintAs(address recipient, string calldata tier) external returns (uint256) {
+        return trophy.mint(
+            recipient, tier, "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
+        );
+    }
+
     function mintedAcrossEveryTier() external view returns (uint256 total) {
         for (uint256 i = 0; i < CAPPED_TIER_COUNT; ++i) {
             total += trophy.tierMinted(cappedTierName(i));
@@ -284,27 +294,26 @@ contract TrophyTierCapsTest {
         _assertCapRefusesAtItsLimit(3, "Trophy: Gold Fold supply of 100,000 exhausted");
     }
 
-    /// @notice A failure means the owner minted past a cap the registry is held to.
-    function test_the_owner_mints_at_twenty_and_is_refused_at_twenty_one() public {
+    /// @notice A failure means the owner still reaches mint, so a tier counter can
+    ///         be raised by an address the registry does not control.
+    function test_the_owner_cannot_mint_a_trophy_at_any_tier() public {
         (AcervatorTrophy fresh, TrophyCapHandler freshHandler) = _freshPair();
-        uint256 cap = fresh.MAX_EKTHELIUS();
-        VM.store(
-            address(fresh), freshHandler.tierMintedSlot("Ekthelius"), bytes32(cap - 1)
-        );
-
-        fresh.mint(address(0xBEEF), "Ekthelius", "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0));
-        require(fresh.tierMinted("Ekthelius") == cap, "the owner's mint at 20 was refused");
+        VM.store(address(fresh), freshHandler.tierMintedSlot("Ekthelius"), bytes32(0));
 
         try fresh.mint(
             address(0xBEEF), "Ekthelius", "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         ) {
-            revert("the owner minted past the Ekthelius cap");
+            revert("the owner minted a trophy");
         } catch Error(string memory reason) {
             require(
-                keccak256(bytes(reason)) == keccak256("Trophy: Ekthelius supply of 21 exhausted"),
+                keccak256(bytes(reason)) == keccak256("Trophy: caller is not registry"),
                 "the owner was refused for some other reason"
             );
         }
+        require(fresh.tierMinted("Ekthelius") == 0, "the owner's refused mint raised the counter");
+
+        freshHandler.mintAs(address(0xBEEF), "Ekthelius");
+        require(fresh.tierMinted("Ekthelius") == 1, "the registry's mint was refused");
     }
 
     /// @notice A failure means a tier name outside the five minted a trophy.
@@ -318,9 +327,7 @@ contract TrophyTierCapsTest {
         freshHandler.mintHarvest(7);
         require(fresh.tierMinted("Harvest") == 1, "a known tier was refused");
 
-        try fresh.mint(
-            address(0xCAFE), "Ekthelius ", "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
-        ) {
+        try freshHandler.mintAs(address(0xCAFE), "Ekthelius ") {
             revert("a tier name outside the five minted a trophy");
         } catch Error(string memory reason) {
             require(
@@ -356,9 +363,7 @@ contract TrophyTierCapsTest {
         freshHandler.mintToTheCap(index, index + 100);
         require(fresh.tierMinted(tier) == cap, "the mint one below the cap was refused");
 
-        try fresh.mint(
-            address(0xCAFE), tier, "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
-        ) {
+        try freshHandler.mintAs(address(0xCAFE), tier) {
             revert("a mint at the cap succeeded");
         } catch Error(string memory reason) {
             require(

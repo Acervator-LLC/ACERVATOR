@@ -2226,3 +2226,130 @@ entry fee is taken, and no participant is admitted or turned away at the door.
 
 In development.
 
+## 2026-09-10 00:38 - #147 - the contract repairs, and the keys that came out
+
+The audit found five things worth a decision. Three are repaired and the tool that
+reported each one is now silent on it. Two are left standing on purpose, with the
+reason written down, because repairing them would make the contracts worse.
+
+```
+repaired   34 quote errors in the trophy contract        solhint 34 -> 0
+repaired   an exact comparison on a pending transfer     slither 1 -> 0
+repaired   the trophy handed out a token before filling it
+                                                        slither 2 -> 0
+stands     reading the clock to time a transfer          the design needs it
+stands     eight writes a lint calls eventless           the lint is wrong
+```
+
+### The three repairs
+
+The trophy builds the text a wallet reads from the artwork and the award details.
+That text is full of quote marks, so it was written with the other kind of quote,
+and the linter calls that an error thirty-four times over. Thirty-four errors in
+one lane hide the thirty-fifth, so the quoting is now the style the linter asks
+for. The text a wallet displays is byte for byte what it was.
+
+```
+before  343 problems, 34 of them errors   the run fails
+after   307 problems, none of them errors the run passes
+```
+
+The second repair is one line. A holder may have only one transfer waiting at a
+time, and the check asked whether the waiting amount was exactly zero. The
+analyser objects to an exact comparison, because the record holding that amount
+also holds a clock reading. The check now asks whether an amount above zero is
+waiting, which admits exactly the same thing and reads better.
+
+```solidity
+    function _hasTransferInFlight(address sender) private view returns (bool) {
+        return pendingTransfer[sender].amount > 0;
+    }
+```
+
+### The two findings that stand
+
+A transfer takes time by design. The shortest window is one hour and it grows with
+the amount, so the contract has to read the chain's own clock to know whether a
+window has passed. A validator can shift that clock by seconds. Seconds against an
+hour is not a risk, and the chain offers no other clock, so the finding is
+recorded rather than repaired.
+
+```
+MIN_TRANSFER_SECONDS        3,600      one hour, the floor
+TRANSFER_SECONDS_PER_WHOLE    360      the window grows with the amount
+shortest window             1 hour
+a validator can shift       seconds
+```
+
+The other standing finding is a lint that says eight writes happen without an
+event. Six of the eight do emit an event in the same call, so the message is not
+describing what the rule measures. Four small test bodies settle it: the rule fires
+on any write to a value a safety check reads, event or no event. Clearing it would
+mean deleting the check that a wallet holds enough to spend, which is the wrong
+trade, so it stands.
+
+```
+write, safety check, no event    the rule fires
+write, safety check, then event  the rule fires
+event, then write, safety check  the rule fires
+write, no safety check           the rule is silent
+```
+
+### Fourteen owner keys, and what happened to each
+
+The entry currency has no owner at all. The other three contracts had fourteen
+powers only the owner could use. Two are gone from the code. Twelve stay, and each
+one is now written down as waiting for the vote, which is a separate piece of work
+and exists nowhere yet.
+
+```
+gone   the owner could mint any trophy directly
+       the trophy now admits the competition registry alone
+gone   the owner could abandon the contract
+       on the award token that would have made a freeze permanent
+```
+
+```
+waiting for the vote
+  the token      name the minter once, freeze, unfreeze, hand over ownership
+  the registry   set a price feed, open, activate, close, adjudicate,
+                 advance the season, cancel, hand over ownership
+  the trophy     upload a tier's artwork, hand over ownership
+```
+
+Removing the owner's route into the trophy mint has one consequence worth stating
+plainly. The competition registry still holds no reference to the trophy contract,
+so nothing can mint a trophy until that wiring lands. Before this change the owner
+was the only caller that ever reached it, which is the bypass the design says must
+come out.
+
+### The conservation law still holds
+
+The law is that every wallet, every held address and the platonic pool add up to
+everything ever distilled, and that the total never passes thirty-three million.
+The fuzzing runner drove it again after the repairs.
+
+```
+runs       256
+calls   16,384
+ten invariants   all pass
+```
+
+The count of refused calls inside that campaign moves from run to run, because the
+runner is not given a fixed starting seed. Three runs after the repairs gave 8,546,
+8,721 and 8,773, and the run before them gave 8,523. The two numbers the
+configuration fixes are the same before and after, and no sequence ever broke the
+law.
+
+### What the vote still has to take over
+
+No vote, no council and no delay was written here. Twelve owner powers are still
+owner powers today, exactly as they were, and the list above is the record of what
+the vote has to take over.
+
+Every finding the audit raised is accounted for in one place, each marked closed or
+standing, with the count the tool printed on each side.
+
+```
+tests/debug_reports/contract_repairs_second_pass.md   the full accounting
+```
