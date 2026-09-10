@@ -1,4 +1,4 @@
-"""Quintessence distil, spend, transfer and respawn over three buckets."""
+"""Quintessence distil, spend, transfer, payout and respawn over three buckets."""
 
 from __future__ import annotations
 
@@ -25,8 +25,9 @@ SPEND = "spend"
 TRANSFER = "transfer"
 BLEED = "bleed"
 RESPAWN = "respawn"
+PAYOUT = "payout"
 
-MOVEMENT_KINDS = (DISTIL, SPEND, TRANSFER, BLEED, RESPAWN)
+MOVEMENT_KINDS = (DISTIL, SPEND, TRANSFER, BLEED, RESPAWN, PAYOUT)
 
 _AMOUNT_TYPES = (int, float, Decimal)
 
@@ -47,6 +48,11 @@ def _as_amount(value: object, name: str) -> Decimal:
     if amount < 0:
         raise ValueError(f"{name} must not be negative, got {value!r}")
     return amount
+
+
+def amount_text(amount: Decimal) -> str:
+    """Return ``amount`` in plain notation, with no exponent and no trailing zeros."""
+    return format(amount.normalize(), "f")
 
 
 def _as_address(value: object, name: str) -> str:
@@ -90,7 +96,7 @@ class QuintessenceMovement:
         """Return this movement as a JSON-safe dict with amount as a string."""
         return {
             "kind": self.kind,
-            "amount": str(self.amount),
+            "amount": amount_text(self.amount),
             "source": self.source,
             "target": self.target,
             "timestamp": self.timestamp,
@@ -125,12 +131,12 @@ class QuintessenceConservation:
     def to_dict(self) -> dict:
         """Return this report as a JSON-safe dict with every Decimal as a string."""
         return {
-            "wallets_total": str(self.wallets_total),
-            "held_total": str(self.held_total),
-            "platonic_total": str(self.platonic_total),
-            "total_ever_minted": str(self.total_ever_minted),
-            "supply_cap": str(self.supply_cap),
-            "delta": str(self.delta),
+            "wallets_total": amount_text(self.wallets_total),
+            "held_total": amount_text(self.held_total),
+            "platonic_total": amount_text(self.platonic_total),
+            "total_ever_minted": amount_text(self.total_ever_minted),
+            "supply_cap": amount_text(self.supply_cap),
+            "delta": amount_text(self.delta),
             "is_balanced": self.is_balanced,
             "is_within_cap": self.is_within_cap,
             "negative_buckets": self.negative_buckets,
@@ -215,6 +221,33 @@ class QuintessenceLedger:
         self._commit(moves)
         return QuintessenceTransfer(sent=sent, received=received, bled=bled)
 
+    def payout(self, held_address: str, credits: dict) -> Decimal:
+        """Move each amount in ``credits`` from held_address into that wallet.
+
+        Every credit commits together, so a refused one pays nobody, and what stays
+        at held_address after the call is the reserve.
+        """
+        held = _as_address(held_address, "held_address")
+        if not isinstance(credits, dict):
+            raise TypeError(
+                f"credits must be a dict of address to amount, "
+                f"not {type(credits).__name__}"
+            )
+        moves: list[QuintessenceMovement] = []
+        total = Decimal(0)
+        for address, amount in credits.items():
+            wallet = _as_address(address, "address")
+            paid = _as_amount(amount, "amount")
+            if paid == 0:
+                continue
+            moves.append(self._movement(PAYOUT, paid, held, wallet))
+            total += paid
+        if not moves:
+            return Decimal(0)
+        self._require_held(held, total)
+        self._commit(moves)
+        return total
+
     def respawn(self, address: str, amount: object) -> Decimal:
         """Move ``amount`` from the platonic into address's wallet."""
         wallet = _as_address(address, "address")
@@ -282,7 +315,7 @@ class QuintessenceLedger:
     def supply_summary(self) -> dict:
         """Return the cap, total_ever_minted, remaining_ever and bucket totals."""
         summary = self.conservation().to_dict()
-        summary["remaining_ever"] = str(self.remaining_ever())
+        summary["remaining_ever"] = amount_text(self.remaining_ever())
         summary["wallet_count"] = len(self._wallets)
         summary["held_count"] = len(self._held)
         summary["movement_count"] = len(self._movements)
@@ -374,6 +407,12 @@ class QuintessenceLedger:
         if amount > held:
             raise ValueError(f"{wallet} holds {held}, cannot move {amount}")
 
+    def _require_held(self, held: str, amount: Decimal) -> None:
+        """Raise ValueError when held_address rests less Quintessence than ``amount``."""
+        resting = self.held_balance(held)
+        if amount > resting:
+            raise ValueError(f"{held} rests {resting}, cannot pay out {amount}")
+
     def _commit(self, movements: list[QuintessenceMovement]) -> None:
         """Apply movements, append them to the log, check conservation and save."""
         self._require_usable()
@@ -411,6 +450,9 @@ class QuintessenceLedger:
         elif movement.kind == BLEED:
             self._debit_wallet(movement.source, amount)
             self._platonic += amount
+        elif movement.kind == PAYOUT:
+            self._debit_held(movement.source, amount)
+            self._credit_wallet(movement.target, amount)
         elif movement.kind == RESPAWN:
             self._platonic -= amount
             self._credit_wallet(movement.target, amount)
@@ -434,6 +476,11 @@ class QuintessenceLedger:
         """Add ``amount`` to the held address named by address."""
         held = _as_address(address, "target")
         self._held[held] = self._held.get(held, Decimal(0)) + amount
+
+    def _debit_held(self, address: str | None, amount: Decimal) -> None:
+        """Take ``amount`` from the held address named by address."""
+        held = _as_address(address, "source")
+        self._held[held] = self._held.get(held, Decimal(0)) - amount
 
     def _require_conservation(self) -> None:
         """Raise QuintessenceLedgerError when buckets and total_ever_minted differ."""
