@@ -610,7 +610,14 @@ density_gate.py <tree>    one unit per paragraph or bullet
                           exit 1 while any unit carries three or more spans
 ```
 
-First run after it existed: 2,137 prose units, 42 over. None of them had been
+**CITED AS ABSENT, measured 2026-09-10: `density_gate.py` is NOT in the tree.**
+`git ls-files` matching that name returns nothing. The figures below were taken
+when it existed; the instrument behind them is gone, so the density rule is once
+again prose with no check — which is this row's own subject arriving a second
+time. **The row now reads as its own open finding rather than a closed one.**
+A unit reporting a density count today is counting by hand.
+
+First run, when it existed: 2,137 prose units, 42 over. None of them had been
 named by anybody. The operator was finding them by reading, which is the whole
 reason he kept seeing the same defect after it was fixed.
 
