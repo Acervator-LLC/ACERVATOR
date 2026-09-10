@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Optional
 from ..core.io_utils import atomic_write_json
 
 if TYPE_CHECKING:
+    from src.competition.capture_bounds import CaptureBounds
     from src.competition.certification_socket import CertificationSocket
     from src.competition.market_rotation import MarketRotation
     from src.competition.node_link import PoaNodeLink
@@ -121,6 +122,7 @@ class SharedTestnetBridge(QObject):
         self._active_worker: Optional[_CompetitionWorker] = None
         self._certification_socket: Optional[CertificationSocket] = None
         self._market_rotation: Optional[MarketRotation] = None
+        self._capture_bounds: Optional[CaptureBounds] = None
         self._node_link: Optional[PoaNodeLink] = None
 
         self._drain_timer = QTimer(self)
@@ -142,13 +144,14 @@ class SharedTestnetBridge(QObject):
         quint_ledger_path: Optional[Path] = None,
         socket_path: Optional[Path] = None,
         rotation_path: Optional[Path] = None,
+        bounds_path: Optional[Path] = None,
         peer_dir: Optional[Path] = None,
         network: Optional[str] = None,
     ):
         """Create the shared ``LocalTestnet``, the bridge, the
         ``QuintessenceLedger``, the ``CertificationSocket``, the
-        ``MarketRotation`` and the ``PoaNodeLink``, and attach all six to
-        ``main_win``.
+        ``MarketRotation``, the ``CaptureBounds`` and the ``PoaNodeLink``,
+        and attach all seven to ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -171,6 +174,9 @@ class SharedTestnetBridge(QObject):
             ledger, socket_path
         )
         main_win._market_rotation = bridge.install_market_rotation(rotation_path)
+        main_win._capture_bounds = bridge.install_capture_bounds(
+            main_win._market_rotation, bounds_path
+        )
         main_win._node_link = bridge.install_node_link(peer_dir, network)
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
@@ -205,6 +211,38 @@ class SharedTestnetBridge(QObject):
     def market_rotation(self) -> Optional[MarketRotation]:
         """Read the ``MarketRotation`` this bridge installed."""
         return self._market_rotation
+
+    def install_capture_bounds(
+        self,
+        rotation: MarketRotation,
+        bounds_path: Optional[Path] = None,
+    ) -> CaptureBounds:
+        """Build the ``CaptureBounds`` over this bridge's chain and ``rotation``.
+
+        A demo run is the same ``activate`` and ``award`` path over a different
+        ``LocalTestnet``.
+        """
+        from src.competition.capture_bounds import CaptureBounds as _Bounds
+
+        bounds = _Bounds(self._testnet, rotation, bounds_path=bounds_path)
+        bounds.load()
+        self._capture_bounds = bounds
+        summary = bounds.bounds_summary()
+        logger.info(
+            "CaptureBounds installed (path=%s, activations=%d, cooldown %d candles "
+            "floored at %ds, %d scored axis minimum)",
+            bounds.bounds_path,
+            len(summary["activations"]),
+            summary["cooldown_candles"],
+            summary["cooldown_floor_s"],
+            summary["min_scored_axes"],
+        )
+        return bounds
+
+    @property
+    def capture_bounds(self) -> Optional[CaptureBounds]:
+        """Read the ``CaptureBounds`` this bridge installed."""
+        return self._capture_bounds
 
     def install_node_link(
         self,
