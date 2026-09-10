@@ -56,6 +56,28 @@ from .project_age import (
     MIN_PROJECT_AGE_MONTHS,
     REFUSAL_REASONS,
 )
+from .rpg_classes import (
+    CharacterClass,
+    ClassPick,
+    ClassProgress,
+    UnknownClassError,
+    CLASSES,
+    CLASS_NAMES,
+    ROLES,
+    PRINCIPLES,
+    ASSIGNMENTS,
+    ARC_LEVELS,
+    class_named,
+    class_rows,
+    pick_class,
+)
+from .rpg_metrics import (
+    METRIC_SOURCES,
+    METRIC_SEAMS,
+    METRIC_NAMES,
+    profile_metrics,
+    read_metrics,
+)
 
 __all__ = [
     "BotIdentity",
@@ -95,4 +117,22 @@ __all__ = [
     "ProjectAgeError",
     "MIN_PROJECT_AGE_MONTHS",
     "REFUSAL_REASONS",
+    "CharacterClass",
+    "ClassPick",
+    "ClassProgress",
+    "UnknownClassError",
+    "CLASSES",
+    "CLASS_NAMES",
+    "ROLES",
+    "PRINCIPLES",
+    "ASSIGNMENTS",
+    "ARC_LEVELS",
+    "class_named",
+    "class_rows",
+    "pick_class",
+    "METRIC_SOURCES",
+    "METRIC_SEAMS",
+    "METRIC_NAMES",
+    "profile_metrics",
+    "read_metrics",
 ]

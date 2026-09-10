@@ -12,10 +12,13 @@
   var ACCESSIBLE_NAME = "accessible_name";
   var BUILT = "built";
   var CHAIN = "chain";
+  var CLASSES = "classes";
   var HEADING = "heading";
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
+  var METRIC_SOURCES = "metric_sources";
   var METHOD_FIELD = "method";
+  var PARTICIPANTS = "participants";
   var PARTY = "party";
   var STATE_TEXT = "state_text";
   var WALLET = "wallet";
@@ -25,10 +28,13 @@
     ACCESSIBLE_NAME,
     BUILT,
     CHAIN,
+    CLASSES,
     HEADING,
     ISSUE,
     ISSUE_TEXT,
+    METRIC_SOURCES,
     METHOD_FIELD,
+    PARTICIPANTS,
     PARTY,
     STATE_TEXT,
     WALLET,
@@ -66,6 +72,13 @@
   var PARTY_PAGES_PART = "party-pages";
   var PARTY_GROUP_PART = "party-group";
   var PARTY_SLOT_PART = "party-slot";
+  var SLOT_NAME_PART = "slot-name";
+  var SLOT_CLASS_PART = "slot-class";
+  var SLOT_HEALTH_PART = "slot-health";
+  var CLASS_LIST_PART = "class-list";
+  var CLASS_ROW_PART = "class-row";
+  var CLASS_NAME_PART = "class-name";
+  var CLASS_ROLE_PART = "class-role";
   var QUINT_LABEL_PART = "quint-label";
   var QUINT_BALANCE_PART = "quint-balance";
   var WALLET_OPEN_PART = "wallet-open";
@@ -146,11 +159,41 @@
     return found;
   }
 
+  // An empty slot carries only its label; a held one carries the three fields
+  // the participant row shows.
   function Slot(props) {
+    var row = props.row;
     var slotProps = part(TAB_CLASS + "-slot", PARTY_SLOT_PART);
     slotProps.key = props.index;
-    slotProps["aria-label"] = props.label;
-    return element("li", slotProps);
+    slotProps["aria-label"] = isPlainObject(row)
+      ? text(row.participant)
+      : props.label;
+    if (!isPlainObject(row)) {
+      return element("li", slotProps);
+    }
+    return element(
+      "li",
+      slotProps,
+      element(
+        "span",
+        named(TAB_CLASS + "-slot-name", SLOT_NAME_PART, text(row.participant)),
+        text(row.participant)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-slot-class", SLOT_CLASS_PART, text(row.participant)),
+        text(row.class_name)
+      ),
+      element(
+        "span",
+        named(
+          TAB_CLASS + "-slot-health",
+          SLOT_HEALTH_PART,
+          text(row.participant)
+        ),
+        text(row.health_text)
+      )
+    );
   }
 
   function Group(props) {
@@ -161,6 +204,7 @@
         element(Slot, {
           key: first + at,
           index: first + at,
+          row: props.rows[first + at],
           label: props.slotLabel
         })
       );
@@ -178,6 +222,7 @@
           key: at,
           index: at,
           size: props.size,
+          rows: props.rows,
           slotLabel: props.slotLabel
         })
       );
@@ -186,6 +231,34 @@
       "div",
       part(TAB_CLASS + "-pages", PARTY_PAGES_PART),
       groups
+    );
+  }
+
+  function ClassRow(props) {
+    var entry = props.entry;
+    return element(
+      "li",
+      named(TAB_CLASS + "-class-row", CLASS_ROW_PART, text(entry.name)),
+      element(
+        "span",
+        named(TAB_CLASS + "-class-name", CLASS_NAME_PART, text(entry.name)),
+        text(entry.name)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-class-role", CLASS_ROLE_PART, text(entry.name)),
+        text(entry.assignment)
+      )
+    );
+  }
+
+  function ClassList(props) {
+    return element(
+      "ul",
+      part(TAB_CLASS + "-class-list", CLASS_LIST_PART),
+      props.entries.filter(isPlainObject).map(function (entry) {
+        return element(ClassRow, { key: entry.name, entry: entry });
+      })
     );
   }
 
@@ -351,6 +424,7 @@
   function PartyZone(props) {
     var zone = props.zone;
     var party = props.party;
+    var rows = props.rows;
     var children = [
       element(PartyHeader, {
         key: PARTY_HEADER_PART,
@@ -362,14 +436,20 @@
         key: PARTY_PAGES_PART,
         groups: Number(party.groups),
         size: Number(party.group_size),
+        rows: rows,
         slotLabel: text(zone.title)
       }),
-      element(
-        "p",
-        part(TAB_CLASS + "-zone-placeholder", ZONE_PLACEHOLDER_PART),
-        text(zone.placeholder)
-      )
+      element(ClassList, { key: CLASS_LIST_PART, entries: props.classes })
     ];
+    if (rows.length === 0) {
+      children.push(
+        element(
+          "p",
+          part(TAB_CLASS + "-zone-placeholder", ZONE_PLACEHOLDER_PART),
+          text(zone.placeholder)
+        )
+      );
+    }
     if (walletOpen) {
       children.push(
         element(WalletPanel, { key: WALLET_PANEL_PART, wallet: props.wallet })
@@ -392,6 +472,8 @@
     var party = zoneNamed(model, PARTY_WINDOW);
     var paging = isPlainObject(model[PARTY]) ? model[PARTY] : {};
     var wallet = isPlainObject(model[WALLET]) ? model[WALLET] : {};
+    var rows = Array.isArray(model[PARTICIPANTS]) ? model[PARTICIPANTS] : [];
+    var entries = Array.isArray(model[CLASSES]) ? model[CLASSES] : [];
     var tabProps = {
       className: TAB_CLASS,
       "aria-label": text(model[ACCESSIBLE_NAME])
@@ -412,7 +494,13 @@
       ),
       party === null
         ? null
-        : element(PartyZone, { zone: party, party: paging, wallet: wallet })
+        : element(PartyZone, {
+            zone: party,
+            party: paging,
+            wallet: wallet,
+            rows: rows,
+            classes: entries
+          })
     );
   }
 

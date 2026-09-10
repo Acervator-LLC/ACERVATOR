@@ -1415,3 +1415,153 @@ Demo mode needs no second path. A start date is a fact about a project, not abou
 a chain, so a TestNet run reads the same dates from the same file through the same
 call. The lookup holds no chain and no competition name, so there is nothing for a
 demo run to switch.
+
+## 2026-09-09 23:43 - #147 - the classes and the RPG conversion
+
+The party window now lists real characters. Each row names one of the operator's
+bots, and the figure beside it shows that bot's health pool. Under the rows sit
+the seven classes a participant picks from.
+
+```
+04e1cafc | none | $54.19
+092428b2 | none | $101.98
+168b78e3 | none | $67.30
+```
+
+Every row says `none` for its class. A participant picks a class for an event,
+and no event exists yet.
+
+### The seven classes and the four roles
+
+The classes come from the seven classical planets and their metals. The roles
+come from the three principles of Paracelsus: Salt endures, Sulphur burns,
+Mercury flows. The operator's correction splits Mercury's three across healing
+and support, which adds Support as the fourth role.
+
+```
+Lead Ward              Saturn   lead         Salt     Tank
+Tin Bulwark            Jupiter  tin          Salt     Tank
+Iron Edge              Mars     iron         Sulphur  Damage
+Solar Lance            Sol      gold         Sulphur  Damage
+Quicksilver Draught    Mercury  quicksilver  Mercury  pure healer
+Copper Conduit         Venus    copper       Mercury  support healer
+Silver Mirror          Luna     silver       Mercury  pure support
+```
+
+Copper Conduit is the only class holding two roles. A support healer heals and
+supports, so it counts in both.
+
+Each class levels on its own. A level record holds the class name, its level and
+its experience, and it starts at level one. One ability arc is a hundred levels,
+and the chain opens another arc with each alchemical phase.
+
+```python
+ARC_LEVELS = 100
+FIRST_LEVEL = 1
+```
+
+### Health comes from the dollar target
+
+The operator's rule is that players take damage and never lose money. The health
+pool comes from the dollar line the engine defends, not from profit and loss. A
+bot below its line carries a wound and has lost nothing.
+
+These are the figures the conversion produced for one live bot on KAT/USD, with
+the field each one came from.
+
+```
+max health           209.20254   scrumming_state.target_balance
+base health          200.00000   scrumming_state.anchor_target_balance
+health from levels     9.202538  compounding_snapshot.accrued_growth_usd
+gain cap per cycle     2.0       compounding_snapshot.cycle_growth_budget_usd
+gain cap, percent      1.0       config.max_target_growth_pct
+current health       199.28538   max health plus the gate reading's delta
+```
+
+The target grows as folds land, and a per-cycle cap bounds that growth. The
+engine already computes that curve, so the pool rises through play on its own.
+
+### Damage is the scrum, healing is the fold
+
+The two halves of the cycle are the two award axes. The operator's rule awards
+tokens for most damage done or most healed, so one number serves both
+scoreboards.
+
+```
+damage, year to date      676.88404   stats.ytd_scrummed_usd
+healing, year to date     953.68802   stats.ytd_folded_usd
+this heal                  10.11134   the fill's usd on a BUY
+heals waiting              11         tranche_snapshot.fold_count
+heals waiting, usd         29.720012  tranche_snapshot.fold_total_usd
+```
+
+Accuracy and efficacy come from the grade the platform gives a trade. The same
+bot's last fill graded `A+` at 1.0, with accuracy 1.0 and timing 1.0. The crit
+reading is the twelve voters' agreement, 0.0005 on that tick. The three fumble
+counts were all zero.
+
+### Twenty-three of twenty-seven metrics read
+
+The conversion answers twenty-seven metrics. Twenty-three carried a value on the
+live run. The four that did not are honest gaps, not errors.
+
+```
+wound depth          GateContext.delta_pct is computed and never emitted
+this strike          the last fill was a BUY, so the SELL half is empty
+outcome efficacy     the grader needs a per-unit realised figure
+strategic efficacy   the grader needs a rolling sell-to-buy reading
+```
+
+### Breaking a source takes its metrics away
+
+A metric with no field answers nothing. Removing one part of a bot's record
+removes exactly the metrics that part feeds, and nothing else.
+
+```
+whole record and gate reading      16 metrics
+scrumming_state removed            13 - max, base and current health gone
+stats removed                       9 - damage, healing, fumbles, pool, cash gone
+config removed                     15 - the percent gain cap gone
+gate reading removed               10 - six gate-fed metrics gone
+```
+
+### Seven things the platform holds no field for
+
+Experience, level, character class, gear, an enemy, a threat value and a guild
+have no field anywhere in the source. They are state this design must create.
+Nothing in the trading profile stands in for them.
+
+```
+experience   level   character class   gear   enemy   threat   guild
+```
+
+One number is still the operator's to set. A critical hit fires above some
+confidence, and no design passage names that figure. The conversion reports the
+confidence and makes no judgement on it.
+
+### Demo mode takes the same path
+
+A TestNet run asks the same surface for the same model and names its own chain.
+The fleet file for a demo chain carries the chain in its name.
+
+```
+chain live      bot_state.json           exists   38 participants, 7 classes
+chain testnet   bot_state_testnet.json   absent    0 participants, 7 classes
+```
+
+The classes are not chain data, so both runs list all seven. The party window
+keeps its empty-state sentence on the demo chain and drops it on the live one.
+
+### What the classes and the conversion do not reach
+
+A participant cannot pick a class from the screen yet. No picker, no event and no
+turn exist, so the pick function has no caller.
+
+```python
+def pick_class(participant: str, event_id: str, class_name: str) -> ClassPick:
+```
+
+A row prints health as a figure, not as a bar, and carries no role colour.
+Current health and wound depth need the fire-time gate reading, which arrives on
+the bus rather than in the saved file. Nothing here reads an ability, a mode or a
+turn.
