@@ -280,6 +280,7 @@ is_within_cap=self._total_ever_minted <= QUINTESSENCE_SUPPLY_CAP,
 | Grade curve | the trade's grade, zero to one, multiplies the award |
 | Destruction | never |
 | Transfer bleed | 8% at skill level one, falling to 4% at level ten |
+| Resolution | one Quintessence divides into 100,000,000 minimum units of 0.00000001 |
 
 The module holds the cap and the rate as constants, and the write path refuses a
 mint past the cap rather than reporting it afterwards.
@@ -288,10 +289,70 @@ mint past the cap rather than reporting it afterwards.
 
 ```python
 QUINTESSENCE_SUPPLY_CAP = Decimal(33_000_000)
+QUINTESSENCE_MINIMUM_UNIT = Decimal("0.00000001")
+QUINTESSENCE_UNITS_PER_WHOLE = 100_000_000
 QUINTESSENCE_PER_FEE_USD = Decimal(1)
 BLEED_FRACTION_AT_LEVEL_1 = Decimal("0.08")
 BLEED_FRACTION_AT_LEVEL_10 = Decimal("0.04")
 ```
+
+### One whole Quintessence divides into a hundred million minimum units
+
+The minimum unit is the smallest amount of Quintessence that can exist. A
+divine essence is potent at a minute amount, so one whole unit carries a hundred
+million places to hold power in, the way one bitcoin carries a hundred million
+satoshi.
+
+Every amount a bucket receives is a whole number of minimum units. The amount is
+rounded down onto that figure as it is written, so no wallet, held address,
+pleroma or embedded balance can carry a fraction the currency cannot express.
+
+`src/competition/quintessence_ledger.py` — the rounding and the refusal
+
+```python
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    return amount.quantize(QUINTESSENCE_MINIMUM_UNIT, rounding=ROUND_DOWN)
+
+
+def is_on_quintessence_grid(amount: Decimal) -> bool:
+    return amount == quantize_quintessence(amount)
+```
+
+### The rounding leftover returns to the pleroma, because nothing is destroyed
+
+A bleed of eight per cent down to four per cent does not divide evenly at eight
+of the ten skill levels. The amount the recipient receives is rounded down and
+the bleed takes the rest, so the fraction that cannot be paid joins the pleroma
+rather than vanishing. That keeps the four buckets equal to everything ever
+distilled, to the unit.
+
+`src/competition/quintessence_ledger.py` — the transfer split
+
+```python
+received = quantize_quintessence(sent - sent * fraction)
+bled = sent - received
+```
+
+A transfer too small for the recipient to receive one minimum unit is refused
+rather than paid as nothing, which is the refusal `contracts/Quintessence.sol`
+already makes.
+
+| Skill level | Bleed on 100 Quintessence | Received |
+| ----------- | ------------------------- | -------- |
+| 1 | 8 | 92 |
+| 2 | 7.55555556 | 92.44444444 |
+| 3 | 7.11111112 | 92.88888888 |
+| 4 | 6.66666667 | 93.33333333 |
+| 5 | 6.22222223 | 93.77777777 |
+| 6 | 5.77777778 | 94.22222222 |
+| 7 | 5.33333334 | 94.66666666 |
+| 8 | 4.88888889 | 95.11111111 |
+| 9 | 4.44444445 | 95.55555555 |
+| 10 | 4 | 96 |
+
+The five stat requirements are whole Quintessence already — one stat measures 550
+at level 100 and five of them measure 2,750 — so the resolution changes nothing
+about the stat scale.
 
 Every launch builds the ledger and attaches it to the window beside the local
 chain, so a later panel finds it where it finds the chain.
@@ -4070,8 +4131,8 @@ spending.
 ```
                 spent    actions   grade   axes   payout
 big_spender     0.800          8   F 0.0      4   0
-middle          0.030          3   C 0.5748   4   0.227485458470916941
-small_spender   0.001          1   A+ 1.0     4   0.395764541529083058
+middle          0.030          3   C 0.5748   4   0.22748545
+small_spender   0.001          1   A+ 1.0     4   0.39576454
 ```
 
 The participant who put 0.800 of a 0.831 pot in took nothing back. The one who put
@@ -4098,7 +4159,7 @@ Quintessence moves from the pot into wallets and none is made or lost.
 ```
 before   wallets 2.689                 held 0.311                 pleroma 0
          minted 3   delta 0   balanced True   negative buckets 0
-after    wallets 2.922249999999999999   held 0.077750000000000001   pleroma 0
+after    wallets 2.92224999            held 0.07775001            pleroma 0
          minted 3   delta 0   balanced True   negative buckets 0
 ```
 
@@ -4111,11 +4172,11 @@ joins the quarter that never left and rests at the pot address as the reserve.
 ```
 pot                   0.311
 return pool, 75%      0.23325
-paid to participants  0.233249999999999999
-division remainder    0.000000000000000001
-reserve               0.077750000000000001
+paid to participants  0.23324999
+division remainder    0.00000001
+reserve               0.07775001
 
-0.233249999999999999 + 0.077750000000000001 = 0.311
+0.23324999 + 0.07775001 = 0.311
 ```
 
 The reserve is also what the pot address still holds, so the figure on the screen and
@@ -4495,9 +4556,9 @@ nought.
 
 ```
                     fills  grade total  score     spent    payout
-0x3ecef1619dd90c8d      4       2.2955  0.573875  0.100    0.023488715820590074
-0x48cce07b5732795f      4       3.5     0.875     0.010    0.035813768404297652
-0xca3e3124a3226b20      4       3.0     0.75      0.010    0.030697515775112273
+0x3ecef1619dd90c8d      4       2.2955  0.573875  0.100    0.02348871
+0x48cce07b5732795f      4       3.5     0.875     0.010    0.03581376
+0xca3e3124a3226b20      4       3.0     0.75      0.010    0.03069751
 
 pot 0.120   return pool 0.090   paid 0.089999999999999999
 remainder 0.000000000000000001   reserve 0.030000000000000001   exact True
@@ -4544,7 +4605,7 @@ objects then read the event back off disk and asked to pay it again.
 ```
 before  wallets 8.6755                held 0.12                  pleroma 0
         minted 8.7955  delta 0  balanced True  negative buckets 0
-after   wallets 8.765499999999999999  held 0.030000000000000001   pleroma 0
+after   wallets 8.76549998           held 0.03000002            pleroma 0
         minted 8.7955  delta 0  balanced True  negative buckets 0
 
 restart  settled_at read off disk 1789037532.1853175
@@ -5836,9 +5897,9 @@ zero after every one of them.
 ```
 drawn into the world    w 0.0000496      p 0.00000039     e 0.00000001   delta 0
 put in by a maker       w 0.00004955     p 0.00000041     e 0.00000004   delta 0
-taken back out          w 0.000049567    p 0.000000433    e 0            delta 0
+taken back out          w 0.00004956     p 0.00000044     e 0            delta 0
 taken out with none
-  recovered             w 0.000049567    p 0.000000433    e 0            delta 0
+  recovered             w 0.00004955     p 0.00000045     e 0            delta 0
 ```
 
 On the chain the same five movements left the pleroma exactly 0.000000033 higher
@@ -7382,6 +7443,249 @@ window size the shell opens and 254 at a full-screen one, so the mode rows are s
 reached by scrolling that zone. The eight event types are named twice on this screen,
 once as the event buttons in the control bar and once as the mode rows here, and
 dropping either copy is a change to what the tab says rather than to how it is sized.
+
+## 2026-09-10 23:05 - #147 - the conversion rates, and the figures still owed
+
+Every mechanism in this design turns something into Quintessence. Those rates sat
+in separate modules, or in nothing at all. One table now holds all of them, and
+every entry says where its figure came from.
+
+```
+src/competition/conversion_rates.py
+```
+
+### A figure is measured, decided or working
+
+An entry carries exactly one of three words. The third one is the point. A
+working figure is one this table chose so the stitching could exist, and it
+declares itself rather than sitting in the code as a number nobody chose.
+
+```
+measured   read back out of the module that owns it, and the entry names that module
+decided    the operator named it, and his figure is reproduced exactly
+working    chosen here so the table can exist, and the operator replaces it
+```
+
+### Nothing reads a working figure without seeing that it is working
+
+No function in the module hands back a bare number. The lookup answers the whole
+entry, so the provenance is in the reader's hand every time.
+
+```python
+def rate_named(name: str) -> ConversionRate:
+    """The entry in ``CONVERSION_RATES`` whose ``name`` matches, refusing any other.
+
+    The whole entry answers, so a reader always holds its ``provenance``.
+    """
+```
+
+The question "what figures does he still owe?" is answered by running something
+rather than by reading the file. Two readers list them, and both print their
+counts to the log.
+
+```
+working_rates()   every entry the operator still has to rule on
+absent_rates()    every entry that carries no figure at all
+```
+
+### Eleven rows are anchored, and eight check against their own module
+
+Three of the eleven are the operator's own figures, and this table is where they
+land. The other eight are figures a module already holds, so the table imports
+the real symbol and keeps no copy of its own.
+
+```
+stat_point_quintessence                      1             entity_stats.quintessence_requirement
+stat_quintessence_per_level_at_sphere_1      1             entity_stats.quintessence_per_level
+stat_quintessence_per_level_at_sphere_10     10            entity_stats.quintessence_per_level
+quintessence_per_certified_fee_usd           1             quintessence_ledger.QUINTESSENCE_PER_FEE_USD
+minimum_units_per_quintessence               100000000     quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+impetus_per_turn_at_level_1                  4             poa_modes.base_impetus
+impetus_per_turn_at_level_100                9             poa_modes.base_impetus
+steps_per_square                             100           world_grid.SQUARE_STEPS
+iron_ore_quintessence_low_quality            0.00000001    his figure, held by no module before now
+iron_ore_quintessence_high_quality           0.00000005    his figure, held by no module before now
+world_budget_per_participant_quintessence    1             his rule, held by no module before now
+```
+
+The fee rate is a ceiling rather than a payment. Distillation multiplies it by a
+trade grade of zero to one, so one dollar of certified venue fee mints one whole
+Quintessence only on a perfect grade.
+
+```python
+        amount = fee * QUINTESSENCE_PER_FEE_USD * grade
+```
+
+### The stat rate is the identity, and the table drives the real function to say so
+
+A stat amount already is a Quintessence amount. The table does not restate that
+as a coefficient. It builds a stat block holding one point and asks the stats
+module what that block requires.
+
+```python
+ONE_POINT_BLOCK = stat_block(
+    {name: (1 if name == STAT_NAMES[0] else 0) for name in STAT_NAMES}
+)
+```
+
+### His ore figures reach code here for the first time
+
+The operator gave a band rather than one number, because one unit of ore has a
+quality. Both ends land as named figures, and both print exactly as he wrote
+them.
+
+```
+one unit of iron ore, lowest quality    0.00000001 Quintessence
+one unit of iron ore, highest quality   0.00000005 Quintessence
+```
+
+### The smallest unit comes from the ledger, not from a copy here
+
+The operator set one hundred million minimum units to the whole Quintessence, the
+same resolution as Bitcoin. The Quintessence ledger declares that figure, so this
+table imports the real symbol and keeps no copy of its own.
+
+```
+minimum_units_per_quintessence   100000000   quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+```
+
+A rate is a ratio and needs no grid of its own. Rounding an amount onto the
+minimum unit belongs to the ledger, at the moment an amount enters a bucket.
+
+```python
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    """Return ``amount`` rounded down onto the QUINTESSENCE_MINIMUM_UNIT grid."""
+```
+
+### His lowest ore grade sits exactly on the resolution floor
+
+Two of his own figures meet here. The poorest unit of iron ore carries
+0.00000001 Quintessence, and that is one minimum unit exactly. Nothing poorer
+than his lowest ore grade can be held, so the ore band starts at the floor rather
+than above it.
+
+```
+QUINTESSENCE_MINIMUM_UNIT            0.00000001
+iron_ore_quintessence_low_quality    0.00000001
+iron_ore_quintessence_high_quality   0.00000005, five minimum units
+```
+
+### Twenty rows are working, and they are the list he still owes
+
+Seven of those carry no figure at all. Thirteen carry a placeholder that can be
+replaced without touching a function.
+
+```
+TempResource_0001_low_quality                 0.00000001   a non-ore material, lowest quality
+TempResource_0001_high_quality                0.00000005   a non-ore material, highest quality
+TempStat_0001                                 1            dexterity, effect unnamed
+TempStat_0002                                 1            intelligence, effect unnamed
+TempStat_0003                                 1            wisdom, effect unnamed
+item_cohesion_per_component_quintessence      1            what holds an item together
+TempWeight_0001                               1            the weight one material unit carries
+max_weight_per_strength_quintessence          1            what strength may haul
+impetus_speed_per_constitution_quintessence   absent       the carrying penalty
+loot_released_quintessence_calx               0.00000005   a destroyed Calx item
+loot_released_quintessence_cauda_pavonis      0.00000005   a destroyed Cauda Pavonis item
+loot_released_quintessence_flores             0.00000005   a destroyed Flores item
+loot_released_quintessence_elixir             0.00000005   a destroyed Elixir item
+loot_released_quintessence_magisterium        0.00000005   a destroyed Magisterium item
+TempMonsterTier_0001                          absent       a tier 1 creature
+TempMonsterTier_0002                          absent       a tier 2 creature
+TempMonsterTier_0003                          absent       a tier 3 creature
+TempMonsterTier_0004                          absent       a tier 4 creature
+TempMonsterTier_0005                          absent       a tier 5 creature
+TempMonsterTier_0006                          absent       a tier 6 creature
+```
+
+Three of the five stats name no effect in the stats table, so three rows stand in
+for them. Damage, restoration and support potency are the proposed readings, and
+they are the operator's to rule on.
+
+```
+dexterity      no effect named in the stats table    TempStat_0001
+intelligence   no effect named in the stats table    TempStat_0002
+wisdom         no effect named in the stats table    TempStat_0003
+```
+
+### A material other than iron ore takes the ore band, and no lore name is invented
+
+Naming materials is content and belongs to the content issue. This table holds
+one placeholder slot for a material, and that slot carries the ore band, so the
+scale is right while the material itself is unnamed.
+
+```
+TempResource_0001   the iron ore band, until the operator names this material's own scale
+```
+
+### The loot rows are flat on purpose
+
+Five loot tiers exist, each with a weight and two bonuses. What a destroyed item
+of each tier releases does not exist, so every tier carries the same placeholder.
+Flat is the honest placeholder: any slope across the five tiers is a design
+decision and it is his.
+
+```
+all five tiers   0.00000005 Quintessence released, no curve and no salvage loss
+```
+
+### A creature's Quintessence falls out of its stats, once a tier has a level
+
+Six creature tiers are drawn in the art brief and no module names one. Their rows
+carry no figure, and the missing figure is not a Quintessence amount at all. It
+is the level each tier sits at. The amount then comes from the stats requirement,
+the same way a Vessel's does.
+
+```
+TempMonsterTier_0001 to TempMonsterTier_0006   absent; the tier's level is what is owed
+```
+
+### Constitution's penalty has a door and no figure
+
+The stats table says constitution sets a penalty against a turn budget. The door
+it enters through already exists, because the Impetus grant takes a speed
+multiplier. No figure sets how much constitution buys back, and any figure here
+moves the turn economy, so the row stays absent and his.
+
+```python
+def impetus_grant(level: int, speed_multiplier: object = 1) -> int:
+```
+
+### One check runs on every real start
+
+The module drives every anchored rate against the module that owns it, at import,
+and refuses to load when one disagrees. A failure would mean a figure published
+here no longer matches the engine, and the two would drift apart with nothing
+reporting it. Zero disagreed on the first run. What the check would have caught
+is a wrong module or symbol name beside a figure, or a figure typed by hand
+instead of imported.
+
+```
+acervator.conversion_rates INFO drove 8 anchored conversion rates against their own modules, 0 disagreed
+```
+
+### What calls this table
+
+Nothing. The table is imported and built on a real start of the Accumulation tab
+path, and no code calls it yet. Materials, items, crafting, salvage and the
+creature roster are the consumers, and none of them exists.
+
+```
+In development.
+```
+
+### What the conversion rates do not build
+
+No materials and no items. This is the table of rates between things, not the
+things.
+
+No minimum-unit grid. The rates are ratios, and the ledger owns the grid an
+amount lands on.
+
+No salvage. The loot rows say what a destroyed item releases, and nothing
+destroys an item.
+
+No screen. The Accumulation tab draws no row of this table.
 
 ## 2026-09-10 23:40 - #586 - the PvP vote, and who may destroy a Vessel
 
