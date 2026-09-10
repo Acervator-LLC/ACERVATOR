@@ -1,0 +1,485 @@
+"""Certify one fill against the PoA chain and distil Quintessence from its fee.
+
+``CertificationSocket.certify`` signs a fill with ``BotIdentity``, appends it to
+that bot's ``MerkleTradeLog``, posts the commitment through ``LocalChain``, and
+calls ``QuintessenceLedger.distil`` with the fee the venue reported.
+``lifetime_certified_fee_usd`` is the socket's own total and only ever rises.
+``may_participate`` answers False for a bot that has certified nothing, and
+``SharedTestnetBridge.install_on`` builds one socket per process.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import threading
+import time
+from contextlib import AbstractContextManager
+from dataclasses import dataclass
+from decimal import Decimal
+from pathlib import Path
+from typing import Any, Callable
+
+from ..core.event_bus import Event, EventBus
+from ..core.io_utils import atomic_write_json
+from .bot_identity import BotIdentity, TradeRecord
+from .local_testnet import LocalTestnet
+from .merkle_log import MerkleTradeLog
+from .quintessence_ledger import QuintessenceLedger
+
+logger = logging.getLogger("acervator.certification_socket")
+
+DEFAULT_SOCKET_PATH = Path.home() / ".acervator" / "certification_socket.json"
+SOCKET_FILE_VERSION = 1
+
+CERTIFICATION_CONTRACT = "CertifiedTransactionSocket"
+CERTIFY_FUNCTION = "certifyTrade"
+CERTIFIED_EVENT = "TradeCertified"
+
+#: The competition a fill outside any event certifies against.
+STANDING_COMPETITION_ID = "POA-STANDING"
+
+_NUMBER_TYPES = (int, float, Decimal)
+
+
+def _no_identity(bot_id: str) -> BotIdentity | None:
+    """Return None for every ``bot_id``, until ``attach_to_bus`` takes a resolver."""
+    return None
+
+
+class CertificationRefusedError(RuntimeError):
+    """Raised when a fill may not be certified, or a bot may not participate."""
+
+
+def _as_fee_usd(value: object) -> Decimal:
+    """Return ``value`` as a non-negative finite Decimal fee; bool and str raise."""
+    if type(value) is bool or type(value) not in _NUMBER_TYPES:
+        raise TypeError(
+            f"fee_usd must be int, float or Decimal, not {type(value).__name__}"
+        )
+    fee = value if isinstance(value, Decimal) else Decimal(str(value))
+    if not fee.is_finite():
+        raise ValueError(f"fee_usd must be finite, got {value!r}")
+    if fee < 0:
+        raise ValueError(f"fee_usd must not be negative, got {value!r}")
+    return fee
+
+
+def _as_trade_grade(value: object) -> Decimal:
+    """Return ``value`` as a Decimal trade_grade of zero to one; outside that raises."""
+    if type(value) is bool or type(value) not in _NUMBER_TYPES:
+        raise TypeError(
+            f"trade_grade must be int, float or Decimal, not {type(value).__name__}"
+        )
+    grade = value if isinstance(value, Decimal) else Decimal(str(value))
+    if not grade.is_finite():
+        raise ValueError(f"trade_grade must be finite, got {value!r}")
+    if grade < 0 or grade > 1:
+        raise ValueError(f"trade_grade must be 0 to 1, got {value!r}")
+    return grade
+
+
+@dataclass(frozen=True)
+class CertifiedFill:
+    """One fill offered for certification.
+
+    ``fill_id`` is the venue's identifier and the key the replay refusal reads;
+    ``fee_usd`` is the fee the venue reported for this fill.
+    """
+
+    fill_id: str
+    symbol: str
+    side: str
+    quantity: float
+    price: float
+    fee_usd: float
+    role: str = "UNKNOWN"
+    timestamp: float | None = None
+    trade_grade: float = 1.0
+
+
+@dataclass(frozen=True)
+class CertificationReceipt:
+    """What one certification produced.
+
+    ``distilled`` is the Quintessence minted, ``lifetime_fee_usd`` the bot's
+    total after this fill, and ``conservation`` the ledger's three-bucket report.
+    """
+
+    bot_id: str
+    fill_id: str
+    trade_seq: int
+    leaf_hash: str
+    merkle_root: str
+    tx_hash: str
+    fee_usd: Decimal
+    distilled: Decimal
+    lifetime_fee_usd: Decimal
+    certified_fill_count: int
+    conservation: Any
+
+    def to_dict(self) -> dict:
+        """Return this receipt as a JSON-safe dict with every Decimal as a string."""
+        return {
+            "bot_id": self.bot_id,
+            "fill_id": self.fill_id,
+            "trade_seq": self.trade_seq,
+            "leaf_hash": self.leaf_hash,
+            "merkle_root": self.merkle_root,
+            "tx_hash": self.tx_hash,
+            "fee_usd": str(self.fee_usd),
+            "distilled": str(self.distilled),
+            "lifetime_fee_usd": str(self.lifetime_fee_usd),
+            "certified_fill_count": self.certified_fill_count,
+            "conservation": self.conservation.to_dict(),
+        }
+
+
+class CertificationSocket:
+    """Certify fills against one chain and distil from one Quintessence ledger.
+
+    The chain and the ledger arrive by construction, so a TestNet demo run is one
+    socket over a different ``LocalTestnet`` running the same ``certify`` path.
+    """
+
+    def __init__(
+        self,
+        testnet: LocalTestnet,
+        quint_ledger: QuintessenceLedger,
+        competition_id: str = STANDING_COMPETITION_ID,
+        socket_path: str | Path | None = None,
+        mutation_lock: AbstractContextManager[bool] | None = None,
+    ) -> None:
+        """Hold the chain, the ledger and the per-bot totals; no file is read."""
+        self._testnet = testnet
+        self._ledger = quint_ledger
+        self._competition_id = competition_id
+        self._path: Path = Path(socket_path) if socket_path else DEFAULT_SOCKET_PATH
+        self._chain_lock: AbstractContextManager[bool] = (
+            mutation_lock if mutation_lock is not None else threading.RLock()
+        )
+        self._state_lock = threading.RLock()
+        self._logs: dict[str, MerkleTradeLog] = {}
+        self._lifetime_fee_usd: dict[str, Decimal] = {}
+        self._certified_fill_ids: dict[str, set[str]] = {}
+        self._identity_resolver: Callable[[str], BotIdentity | None] = _no_identity
+        self._bus_unsubscribe: Callable[[], None] | None = None
+
+    # -- Certification -------------------------------------------------------
+
+    def certify(
+        self, identity: BotIdentity, fill: CertifiedFill
+    ) -> CertificationReceipt:
+        """Sign, log, post and distil one fill, and return its receipt.
+
+        Raises ``CertificationRefusedError`` for an empty ``fill_id``, a fill already
+        certified, or an award past the ledger's ``remaining_ever``.
+        """
+        bot_id = identity.bot_id
+        fill_id = str(fill.fill_id or "").strip()
+        if not fill_id:
+            raise CertificationRefusedError(
+                "a fill with no fill_id cannot be certified"
+            )
+        fee = _as_fee_usd(fill.fee_usd)
+        grade = _as_trade_grade(fill.trade_grade)
+        award = fee * grade
+
+        with self._state_lock:
+            if fill_id in self._certified_fill_ids.get(bot_id, ()):
+                raise CertificationRefusedError(
+                    f"fill {fill_id} is already certified for bot {bot_id[:12]}"
+                )
+            remaining = self._ledger.remaining_ever()
+            if award > remaining:
+                raise CertificationRefusedError(
+                    f"the supply cap leaves {remaining} Quintessence, short of "
+                    f"the {award} this fill would distil"
+                )
+            log = self._log_for(bot_id)
+            record = identity.sign_trade(
+                TradeRecord(
+                    bot_pubkey=bot_id,
+                    competition=self._competition_id,
+                    symbol=fill.symbol,
+                    side=fill.side,
+                    quantity=float(fill.quantity),
+                    price=float(fill.price),
+                    timestamp=(
+                        time.time() if fill.timestamp is None else float(fill.timestamp)
+                    ),
+                    trade_seq=log.size,
+                    role=fill.role,
+                )
+            )
+            leaf = log.append(record)
+            distilled = self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+            self._certified_fill_ids.setdefault(bot_id, set()).add(fill_id)
+            self._lifetime_fee_usd[bot_id] = (
+                self._lifetime_fee_usd.get(bot_id, Decimal(0)) + fee
+            )
+            root = log.root
+            count = len(self._certified_fill_ids[bot_id])
+            total = self._lifetime_fee_usd[bot_id]
+            self.save()
+
+        tx_hash = self._post_commitment(bot_id, record, leaf, root, fee, distilled)
+        receipt = CertificationReceipt(
+            bot_id=bot_id,
+            fill_id=fill_id,
+            trade_seq=record.trade_seq,
+            leaf_hash=leaf,
+            merkle_root=root,
+            tx_hash=tx_hash,
+            fee_usd=fee,
+            distilled=distilled,
+            lifetime_fee_usd=total,
+            certified_fill_count=count,
+            conservation=self._ledger.conservation(),
+        )
+        logger.info(
+            "certified fill %s for bot %s: fee $%s distilled %s Quintessence, "
+            "lifetime fee $%s over %d fills",
+            fill_id,
+            bot_id[:12],
+            fee,
+            distilled,
+            total,
+            count,
+        )
+        return receipt
+
+    def _post_commitment(
+        self,
+        bot_id: str,
+        record: TradeRecord,
+        leaf: str,
+        root: str,
+        fee: Decimal,
+        distilled: Decimal,
+    ) -> str:
+        """Send the commitment to the chain and emit ``CERTIFIED_EVENT``."""
+        args = {
+            "bot": bot_id[:16],
+            "competition": self._competition_id,
+            "merkleRoot": root[:16],
+            "leafHash": leaf[:16],
+            "tradeSeq": record.trade_seq,
+            "feeUsd": str(fee),
+            "distilled": str(distilled),
+        }
+        with self._chain_lock:
+            chain = self._testnet.chain
+            tx = chain.send_tx(
+                self._wallet_for(bot_id),
+                CERTIFICATION_CONTRACT,
+                CERTIFY_FUNCTION,
+                args,
+            )
+            chain.emit(tx.tx_hash, CERTIFICATION_CONTRACT, CERTIFIED_EVENT, args)
+        return str(tx.tx_hash)
+
+    # -- Participation -------------------------------------------------------
+
+    def may_participate(self, bot_id: str) -> bool:
+        """Answer whether ``bot_id`` has certified at least one fill."""
+        with self._state_lock:
+            return bool(self._certified_fill_ids.get(bot_id))
+
+    def require_participation(self, bot_id: str) -> None:
+        """Raise ``CertificationRefusedError`` while ``bot_id`` has certified nothing."""
+        if not self.may_participate(bot_id):
+            raise CertificationRefusedError(
+                f"bot {bot_id[:12]} has certified no trades and cannot enter a "
+                f"PoA event"
+            )
+
+    # -- Queries -------------------------------------------------------------
+
+    def lifetime_certified_fee_usd(self, bot_id: str) -> Decimal:
+        """Return the certified exchange fee ``bot_id`` has ever paid."""
+        with self._state_lock:
+            return self._lifetime_fee_usd.get(bot_id, Decimal(0))
+
+    def certified_fill_count(self, bot_id: str) -> int:
+        """Return how many distinct fills ``bot_id`` has certified."""
+        with self._state_lock:
+            return len(self._certified_fill_ids.get(bot_id, ()))
+
+    def merkle_root(self, bot_id: str) -> str:
+        """Return the commitment over every fill ``bot_id`` has certified."""
+        with self._state_lock:
+            return self._log_for(bot_id).root
+
+    def submission_summary(self, bot_id: str) -> dict:
+        """Return ``MerkleTradeLog.submission_summary`` for ``bot_id``."""
+        with self._state_lock:
+            return self._log_for(bot_id).submission_summary()
+
+    def proof_for(self, bot_id: str, trade_seq: int) -> dict:
+        """Return ``MerkleTradeLog.proof_for`` for one of ``bot_id``'s fills."""
+        with self._state_lock:
+            return self._log_for(bot_id).proof_for(trade_seq)
+
+    def ratchet_certified_fee_usd(
+        self, bot_id: str, observed_fee_usd: object
+    ) -> Decimal:
+        """Raise ``bot_id``'s total to ``observed_fee_usd`` when that is higher.
+
+        ``BotStats.fees_paid_exchange`` is re-derived from a bounded trade window
+        and falls, so this takes the max and never the observation alone.
+        """
+        observed = _as_fee_usd(observed_fee_usd)
+        with self._state_lock:
+            held = self._lifetime_fee_usd.get(bot_id, Decimal(0))
+            if observed > held:
+                self._lifetime_fee_usd[bot_id] = observed
+                self.save()
+                return observed
+            return held
+
+    def socket_summary(self) -> dict:
+        """Return the per-bot fee totals, fill counts and the ledger's supply."""
+        with self._state_lock:
+            return {
+                "competition_id": self._competition_id,
+                "bots": {
+                    bot_id: {
+                        "lifetime_fee_usd": str(total),
+                        "certified_fill_count": len(
+                            self._certified_fill_ids.get(bot_id, ())
+                        ),
+                        "merkle_root": self._log_for(bot_id).root,
+                    }
+                    for bot_id, total in sorted(self._lifetime_fee_usd.items())
+                },
+                "quintessence": self._ledger.supply_summary(),
+            }
+
+    # -- Bus ------------------------------------------------------------------
+
+    def attach_to_bus(
+        self,
+        bus: EventBus,
+        identity_for: Callable[[str], BotIdentity | None],
+    ) -> None:
+        """Subscribe ``trade.filled`` so every fill reaches ``certify``.
+
+        ``identity_for`` takes a bot id and returns that bot's ``BotIdentity``,
+        or None for a bot whose fill is then not certified.
+        """
+        self._identity_resolver = identity_for
+        self._bus_unsubscribe = bus.subscribe("trade.filled", self._on_trade_filled)
+        logger.info("CertificationSocket subscribed to trade.filled")
+
+    def detach_from_bus(self) -> None:
+        """Remove the ``trade.filled`` subscription."""
+        if self._bus_unsubscribe is not None:
+            self._bus_unsubscribe()
+            self._bus_unsubscribe = None
+
+    def _on_trade_filled(self, event: Event) -> None:
+        """Certify the fill one ``trade.filled`` event describes.
+
+        The payload nests the fill under ``data``, and ``fee_usd`` is absent from
+        every current emit site, so such a fill distils nothing.
+        """
+        try:
+            payload = getattr(event, "data", None)
+            if not isinstance(payload, dict):
+                return
+            merged = dict(payload)
+            inner = payload.get("data")
+            if isinstance(inner, dict):
+                merged.update(inner)
+            bot_id = str(merged.get("bot_id", "") or "")
+            if not bot_id:
+                return
+            identity = self._identity_resolver(bot_id)
+            if identity is None:
+                logger.debug("bot %s has no identity; fill not certified", bot_id)
+                return
+            fill = CertifiedFill(
+                fill_id=str(
+                    merged.get("fill_id")
+                    or merged.get("order_id")
+                    or f"{bot_id}:{getattr(event, 'timestamp', 0)}"
+                ),
+                symbol=str(merged.get("symbol", "") or ""),
+                side=str(merged.get("side", "") or "").lower(),
+                quantity=float(merged.get("amount", 0) or 0),
+                price=float(merged.get("price", 0) or 0),
+                fee_usd=float(merged.get("fee_usd", 0) or 0),
+                role=str(merged.get("type", "") or merged.get("role", "") or "UNKNOWN"),
+                timestamp=getattr(event, "timestamp", None),
+            )
+            self.certify(identity, fill)
+        except Exception:
+            logger.exception("trade.filled certification failed")
+
+    # -- Persistence ---------------------------------------------------------
+
+    def save(self) -> Path:
+        """Write the per-bot fee totals and certified fill ids to the socket path."""
+        return atomic_write_json(
+            self._path,
+            {
+                "version": SOCKET_FILE_VERSION,
+                "competition_id": self._competition_id,
+                "bots": {
+                    bot_id: {
+                        "lifetime_fee_usd": str(total),
+                        "certified_fill_ids": sorted(
+                            self._certified_fill_ids.get(bot_id, ())
+                        ),
+                    }
+                    for bot_id, total in sorted(self._lifetime_fee_usd.items())
+                },
+            },
+        )
+
+    def load(self) -> CertificationSocket:
+        """Replay the socket file, taking the max of the held and stored totals.
+
+        A missing, unreadable or foreign-version file leaves every total as held,
+        so no read can lower one.
+        """
+        if not self._path.exists():
+            return self
+        try:
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.exception("%s could not be read; totals stay as held", self._path)
+            return self
+        if data.get("version") != SOCKET_FILE_VERSION:
+            logger.warning(
+                "%s is version %r, this build reads version %d; totals stay as held",
+                self._path,
+                data.get("version"),
+                SOCKET_FILE_VERSION,
+            )
+            return self
+        with self._state_lock:
+            for bot_id, row in (data.get("bots") or {}).items():
+                stored = Decimal(str(row.get("lifetime_fee_usd", "0")))
+                held = self._lifetime_fee_usd.get(bot_id, Decimal(0))
+                self._lifetime_fee_usd[bot_id] = max(held, stored)
+                self._certified_fill_ids.setdefault(bot_id, set()).update(
+                    str(i) for i in row.get("certified_fill_ids", ())
+                )
+        return self
+
+    # -- Internals -----------------------------------------------------------
+
+    def _log_for(self, bot_id: str) -> MerkleTradeLog:
+        """Return ``bot_id``'s MerkleTradeLog, building it on first use."""
+        log = self._logs.get(bot_id)
+        if log is None:
+            log = MerkleTradeLog(self._competition_id, bot_id)
+            self._logs[bot_id] = log
+        return log
+
+    @staticmethod
+    def _wallet_for(bot_id: str) -> str:
+        """Return the ledger address and chain sender for ``bot_id``."""
+        return f"0x{bot_id[:40]}"

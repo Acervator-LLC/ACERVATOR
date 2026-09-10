@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Optional
 from ..core.io_utils import atomic_write_json
 
 if TYPE_CHECKING:
+    from src.competition.certification_socket import CertificationSocket
     from src.competition.quintessence_ledger import QuintessenceLedger
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
@@ -115,6 +116,7 @@ class SharedTestnetBridge(QObject):
         self._queue: queue.Queue = queue.Queue()
         self._mutation_lock = threading.Lock()
         self._active_worker: Optional[_CompetitionWorker] = None
+        self._certification_socket: Optional[CertificationSocket] = None
 
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
@@ -133,9 +135,11 @@ class SharedTestnetBridge(QObject):
         main_win,
         persist_path: Optional[Path] = None,
         quint_ledger_path: Optional[Path] = None,
+        socket_path: Optional[Path] = None,
     ):
-        """Create the shared ``LocalTestnet``, the bridge and the
-        ``QuintessenceLedger``, and attach all three to ``main_win``.
+        """Create the shared ``LocalTestnet``, the bridge, the
+        ``QuintessenceLedger`` and the ``CertificationSocket``, and attach
+        all four to ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -152,9 +156,48 @@ class SharedTestnetBridge(QObject):
         bridge._try_load()
         main_win._local_testnet = testnet
         main_win._testnet_bridge = bridge
-        main_win._quint_ledger = cls.install_quint_ledger(quint_ledger_path)
+        ledger = cls.install_quint_ledger(quint_ledger_path)
+        main_win._quint_ledger = ledger
+        main_win._certification_socket = bridge.install_certification_socket(
+            ledger, socket_path
+        )
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
+
+    def install_certification_socket(
+        self,
+        quint_ledger: QuintessenceLedger,
+        socket_path: Optional[Path] = None,
+    ) -> CertificationSocket:
+        """Build the ``CertificationSocket`` over this bridge's chain and
+        ``quint_ledger``, and load its per-bot certified-fee totals.
+
+        The socket shares ``_mutation_lock``, so a certification and a
+        ``_CompetitionWorker`` never write the chain at once.
+        """
+        from src.competition.certification_socket import (
+            CertificationSocket as _Socket,
+        )
+
+        socket = _Socket(
+            self._testnet,
+            quint_ledger,
+            socket_path=socket_path,
+            mutation_lock=self._mutation_lock,
+        )
+        socket.load()
+        self._certification_socket = socket
+        logger.info(
+            "CertificationSocket installed (path=%s, bots=%d)",
+            socket_path or "default",
+            len(socket.socket_summary()["bots"]),
+        )
+        return socket
+
+    @property
+    def certification_socket(self) -> Optional[CertificationSocket]:
+        """Read the ``CertificationSocket`` this bridge installed."""
+        return self._certification_socket
 
     @staticmethod
     def install_quint_ledger(
