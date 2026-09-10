@@ -1416,6 +1416,284 @@ a chain, so a TestNet run reads the same dates from the same file through the sa
 call. The lookup holds no chain and no competition name, so there is nothing for a
 demo run to switch.
 
+## 2026-09-09 23:41 - #147 - node linking between two instances
+
+Two copies of Acervator on one machine now hold the same records on their two
+chains. Each copy is a node. A node says where it is listening, finds the others
+that said the same, trades records with them, and keeps every record either side
+had. This is the run, two processes, each with its own chain and its own books.
+
+```
+node 8f3fd656e34e starts with 1 chain records on node_a
+node 8f3fd656e34e listening on 127.0.0.1:57019 (network=acervator-poa, records=1)
+node b3b38412206d starts with 1 chain records on node_b
+node b3b38412206d listening on 127.0.0.1:57040 (network=acervator-poa, records=1)
+node b3b38412206d synced with 8f3fd656e34e: held 1, offered 2, took 1, now holds 2
+node 8f3fd656e34e synced with b3b38412206d: held 2, offered 2, took 0, now holds 2
+node 8f3fd656e34e ends with 2 chain records
+node b3b38412206d ends with 2 chain records
+```
+
+Nothing opens a port by itself. Starting the application builds the node, and
+building the node binds nothing, announces nothing, and creates no directory.
+Linking is a thing somebody asks for afterwards. A node nobody has asked refuses
+to give out an address, because it does not have one.
+
+```
+PoaNodeLink installed (node=node-694eca0b8dc2, peers=...\poa_nodes,
+                       network=acervator-poa, listening=False)
+after install: listening=False, announced files=no directory, chain=[]
+endpoint before start_listening raised NodeLinkError:
+    node node-694eca0b8dc2 is not listening, so it has no endpoint
+```
+
+The link speaks to this machine and nowhere else. The address sits in one named
+constant, and no method anywhere takes an address to bind, so there is no
+setting to get wrong. A caller from any other machine is turned away before its
+message is read.
+
+`src/competition/node_link.py` - the only interface, and the refusal
+
+```python
+LOOPBACK_HOST = "127.0.0.1"
+
+    def verify_request(self, request: object, client_address: tuple) -> bool:
+        if client_address[0] != LOOPBACK_HOST:
+            logger.warning("node link refused non-loopback client %s", client_address)
+            return False
+        return True
+```
+
+Nothing from the trading side can travel over it. A record is six declared
+fields and nothing else, so a peer that sends a seventh is refused where the
+record is built. The node holds the chain and holds nothing else, and the only
+two calls it can make on that chain are to add a transaction and to add an
+event. A record names a function as text, and no part of this calls it.
+
+`src/competition/node_link.py` - the whole of what crosses
+
+```python
+    from_addr: str
+    to_addr: str
+    function_name: str
+    args: dict
+    gas_used: int
+    events: tuple
+```
+
+Agreement is on the records, not on the blocks, and that follows from the chain
+already in the tree. It keeps one list of blocks and always builds on the last
+one, so it has nowhere to put a second competing history. Each block's
+identifier is made from the clock and a random number instead of from the
+block's own contents, so two nodes holding the very same record still give their
+blocks different identifiers. **The chain cannot express a fork.** Nothing
+therefore has a branch to choose between, or a history to discard.
+
+`src/competition/local_testnet.py` - where a block's identifier comes from
+
+```python
+def _fake_hash(seed: str = "") -> str:
+    raw = f"{seed}{time.time_ns()}{uuid.uuid4()}"
+    return "0x" + hashlib.sha256(raw.encode()).hexdigest()
+```
+
+The rule is therefore to keep everything. A record is named by the hash of its
+own content, a node adds every record it does not already have, and nothing is
+ever thrown away. The order the two nodes talk in does not matter. What the rule
+refuses matters as much as what it does: it never removes a record, never
+reorders one already held, and never claims the two chains are identical block
+for block. The second exchange in the run above took nothing, which is the same
+record arriving twice and being recognised.
+
+```
+node 8f3fd656e34e synced with b3b38412206d: held 2, offered 2, took 0
+node b3b38412206d took 0 of 2 records from peer 8f3fd656e34e
+```
+
+Breaking the link breaks the agreement, which is how we know the agreement came
+over the wire. The same two processes, with the link built but never started,
+end one record apart and stay that way.
+
+```
+node 0a4dbe51b761 ends with 1 chain records, never having listened
+node 4629d5d46e1d ends with 1 chain records, never having listened
+```
+
+The TestNet demo runs the same code. A demo node is this same node over a
+different chain with a different chain name, not a second code path and not a
+switch. Two demo nodes link exactly as two live nodes do. A live node and a demo
+node sharing one announcement directory, both listening at the same moment, find
+no peer at all.
+
+```
+both on the demo chain
+  node efad997ddc19 synced with 56d934d38462: held 1, offered 2, took 1, now holds 2
+  network=acervator-poa-testnet
+
+one of each, one directory
+  node 883079b27380 discovered 0 peers      network=acervator-poa
+  node b1435252aa59 discovered 0 peers      network=acervator-poa-testnet
+  each ends with 1 chain records
+```
+
+Nothing in the running application starts a link yet. The node is built on every
+launch and waits. The control that would start it belongs on this tab, and no
+unit on the issue carries that control, so it is named here rather than invented.
+A node killed outright also leaves its announcement behind, and the next node to
+read it logs that it could not be reached and carries on.
+
+```
+In development.
+```
+## 2026-09-09 23:43 - #147 - the classes and the RPG conversion
+
+The party window now lists real characters. Each row names one of the operator's
+bots, and the figure beside it shows that bot's health pool. Under the rows sit
+the seven classes a participant picks from.
+
+```
+04e1cafc | none | $54.19
+092428b2 | none | $101.98
+168b78e3 | none | $67.30
+```
+
+Every row says `none` for its class. A participant picks a class for an event,
+and no event exists yet.
+
+### The seven classes and the four roles
+
+The classes come from the seven classical planets and their metals. The roles
+come from the three principles of Paracelsus: Salt endures, Sulphur burns,
+Mercury flows. The operator's correction splits Mercury's three across healing
+and support, which adds Support as the fourth role.
+
+```
+Lead Ward              Saturn   lead         Salt     Tank
+Tin Bulwark            Jupiter  tin          Salt     Tank
+Iron Edge              Mars     iron         Sulphur  Damage
+Solar Lance            Sol      gold         Sulphur  Damage
+Quicksilver Draught    Mercury  quicksilver  Mercury  pure healer
+Copper Conduit         Venus    copper       Mercury  support healer
+Silver Mirror          Luna     silver       Mercury  pure support
+```
+
+Copper Conduit is the only class holding two roles. A support healer heals and
+supports, so it counts in both.
+
+Each class levels on its own. A level record holds the class name, its level and
+its experience, and it starts at level one. One ability arc is a hundred levels,
+and the chain opens another arc with each alchemical phase.
+
+```python
+ARC_LEVELS = 100
+FIRST_LEVEL = 1
+```
+
+### Health comes from the dollar target
+
+The operator's rule is that players take damage and never lose money. The health
+pool comes from the dollar line the engine defends, not from profit and loss. A
+bot below its line carries a wound and has lost nothing.
+
+These are the figures the conversion produced for one live bot on KAT/USD, with
+the field each one came from.
+
+```
+max health           209.20254   scrumming_state.target_balance
+base health          200.00000   scrumming_state.anchor_target_balance
+health from levels     9.202538  compounding_snapshot.accrued_growth_usd
+gain cap per cycle     2.0       compounding_snapshot.cycle_growth_budget_usd
+gain cap, percent      1.0       config.max_target_growth_pct
+current health       199.28538   max health plus the gate reading's delta
+```
+
+The target grows as folds land, and a per-cycle cap bounds that growth. The
+engine already computes that curve, so the pool rises through play on its own.
+
+### Damage is the scrum, healing is the fold
+
+The two halves of the cycle are the two award axes. The operator's rule awards
+tokens for most damage done or most healed, so one number serves both
+scoreboards.
+
+```
+damage, year to date      676.88404   stats.ytd_scrummed_usd
+healing, year to date     953.68802   stats.ytd_folded_usd
+this heal                  10.11134   the fill's usd on a BUY
+heals waiting              11         tranche_snapshot.fold_count
+heals waiting, usd         29.720012  tranche_snapshot.fold_total_usd
+```
+
+Accuracy and efficacy come from the grade the platform gives a trade. The same
+bot's last fill graded `A+` at 1.0, with accuracy 1.0 and timing 1.0. The crit
+reading is the twelve voters' agreement, 0.0005 on that tick. The three fumble
+counts were all zero.
+
+### Twenty-three of twenty-seven metrics read
+
+The conversion answers twenty-seven metrics. Twenty-three carried a value on the
+live run. The four that did not are honest gaps, not errors.
+
+```
+wound depth          GateContext.delta_pct is computed and never emitted
+this strike          the last fill was a BUY, so the SELL half is empty
+outcome efficacy     the grader needs a per-unit realised figure
+strategic efficacy   the grader needs a rolling sell-to-buy reading
+```
+
+### Breaking a source takes its metrics away
+
+A metric with no field answers nothing. Removing one part of a bot's record
+removes exactly the metrics that part feeds, and nothing else.
+
+```
+whole record and gate reading      16 metrics
+scrumming_state removed            13 - max, base and current health gone
+stats removed                       9 - damage, healing, fumbles, pool, cash gone
+config removed                     15 - the percent gain cap gone
+gate reading removed               10 - six gate-fed metrics gone
+```
+
+### Seven things the platform holds no field for
+
+Experience, level, character class, gear, an enemy, a threat value and a guild
+have no field anywhere in the source. They are state this design must create.
+Nothing in the trading profile stands in for them.
+
+```
+experience   level   character class   gear   enemy   threat   guild
+```
+
+One number is still the operator's to set. A critical hit fires above some
+confidence, and no design passage names that figure. The conversion reports the
+confidence and makes no judgement on it.
+
+### Demo mode takes the same path
+
+A TestNet run asks the same surface for the same model and names its own chain.
+The fleet file for a demo chain carries the chain in its name.
+
+```
+chain live      bot_state.json           exists   38 participants, 7 classes
+chain testnet   bot_state_testnet.json   absent    0 participants, 7 classes
+```
+
+The classes are not chain data, so both runs list all seven. The party window
+keeps its empty-state sentence on the demo chain and drops it on the live one.
+
+### What the classes and the conversion do not reach
+
+A participant cannot pick a class from the screen yet. No picker, no event and no
+turn exist, so the pick function has no caller.
+
+```python
+def pick_class(participant: str, event_id: str, class_name: str) -> ClassPick:
+```
+
+A row prints health as a figure, not as a bar, and carries no role colour.
+Current health and wound depth need the fire-time gate reading, which arrives on
+the bus rather than in the saved file. Nothing here reads an ability, a mode or a
+turn.
 ## 2026-09-10 00:00 - #147 - the rotating reward set and eligibility
 
 A market pays Quintessence only while three things are true at once. It sits in

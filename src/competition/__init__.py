@@ -71,6 +71,34 @@ from .market_rotation import (
     MIN_ELIGIBLE_POOL,
     TOP_N_BY_VOLUME,
 )
+from .node_link import (
+    ChainRecord,
+    NodeLinkError,
+    PeerEndpoint,
+    PoaNodeLink,
+)
+from .rpg_classes import (
+    CharacterClass,
+    ClassPick,
+    ClassProgress,
+    UnknownClassError,
+    CLASSES,
+    CLASS_NAMES,
+    ROLES,
+    PRINCIPLES,
+    ASSIGNMENTS,
+    ARC_LEVELS,
+    class_named,
+    class_rows,
+    pick_class,
+)
+from .rpg_metrics import (
+    METRIC_SOURCES,
+    METRIC_SEAMS,
+    METRIC_NAMES,
+    profile_metrics,
+    read_metrics,
+)
 
 __all__ = [
     "BotIdentity",
@@ -123,4 +151,26 @@ __all__ = [
     "MAX_PARTICIPANT_SHARE_PCT",
     "MIN_ELIGIBLE_POOL",
     "TOP_N_BY_VOLUME",
+    "ChainRecord",
+    "NodeLinkError",
+    "PeerEndpoint",
+    "PoaNodeLink",
+    "CharacterClass",
+    "ClassPick",
+    "ClassProgress",
+    "UnknownClassError",
+    "CLASSES",
+    "CLASS_NAMES",
+    "ROLES",
+    "PRINCIPLES",
+    "ASSIGNMENTS",
+    "ARC_LEVELS",
+    "class_named",
+    "class_rows",
+    "pick_class",
+    "METRIC_SOURCES",
+    "METRIC_SEAMS",
+    "METRIC_NAMES",
+    "profile_metrics",
+    "read_metrics",
 ]

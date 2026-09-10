@@ -17,6 +17,7 @@ import logging
 import queue
 import threading
 import time
+import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -26,6 +27,7 @@ from ..core.io_utils import atomic_write_json
 if TYPE_CHECKING:
     from src.competition.certification_socket import CertificationSocket
     from src.competition.market_rotation import MarketRotation
+    from src.competition.node_link import PoaNodeLink
     from src.competition.quintessence_ledger import QuintessenceLedger
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
@@ -119,6 +121,7 @@ class SharedTestnetBridge(QObject):
         self._active_worker: Optional[_CompetitionWorker] = None
         self._certification_socket: Optional[CertificationSocket] = None
         self._market_rotation: Optional[MarketRotation] = None
+        self._node_link: Optional[PoaNodeLink] = None
 
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
@@ -139,10 +142,13 @@ class SharedTestnetBridge(QObject):
         quint_ledger_path: Optional[Path] = None,
         socket_path: Optional[Path] = None,
         rotation_path: Optional[Path] = None,
+        peer_dir: Optional[Path] = None,
+        network: Optional[str] = None,
     ):
         """Create the shared ``LocalTestnet``, the bridge, the
-        ``QuintessenceLedger``, the ``CertificationSocket`` and the
-        ``MarketRotation``, and attach all five to ``main_win``.
+        ``QuintessenceLedger``, the ``CertificationSocket``, the
+        ``MarketRotation`` and the ``PoaNodeLink``, and attach all six to
+        ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -165,6 +171,7 @@ class SharedTestnetBridge(QObject):
             ledger, socket_path
         )
         main_win._market_rotation = bridge.install_market_rotation(rotation_path)
+        main_win._node_link = bridge.install_node_link(peer_dir, network)
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
 
@@ -198,6 +205,59 @@ class SharedTestnetBridge(QObject):
     def market_rotation(self) -> Optional[MarketRotation]:
         """Read the ``MarketRotation`` this bridge installed."""
         return self._market_rotation
+
+    def install_node_link(
+        self,
+        peer_dir: Optional[Path] = None,
+        network: Optional[str] = None,
+    ) -> PoaNodeLink:
+        """Build the ``PoaNodeLink`` over this bridge's chain, binding no port.
+
+        The link shares ``_mutation_lock``, so applying a peer's records and a
+        ``_CompetitionWorker`` never write the chain at once. Only
+        ``start_listening`` opens a socket, and nothing here calls it.
+        """
+        from src.competition.node_link import DEFAULT_NETWORK, PoaNodeLink
+
+        link = PoaNodeLink(
+            self._testnet,
+            self.node_id(),
+            peer_dir=peer_dir,
+            network=network or DEFAULT_NETWORK,
+            mutation_lock=self._mutation_lock,
+        )
+        self._node_link = link
+        logger.info(
+            "PoaNodeLink installed (node=%s, peers=%s, network=%s, listening=%s)",
+            link.node_id,
+            link.peer_dir,
+            link.network,
+            link.is_listening,
+        )
+        return link
+
+    @property
+    def node_link(self) -> Optional[PoaNodeLink]:
+        """Read the ``PoaNodeLink`` this bridge installed."""
+        return self._node_link
+
+    @staticmethod
+    def node_id() -> str:
+        """This node's PoA identity, or a fresh id when no key file is readable."""
+        from src.competition.bot_identity import BotIdentity
+
+        key_path = DEFAULT_PERSIST_PATH.parent / BotIdentity.KEY_FILE
+        try:
+            return BotIdentity(str(key_path)).load().short_id
+        except Exception as e:
+            node_id = f"node-{uuid.uuid4().hex[:12]}"
+            logger.info(
+                "no PoA identity at %s (%s), so this node is %s for as long as it runs",
+                key_path,
+                e,
+                node_id,
+            )
+            return node_id
 
     def install_certification_socket(
         self,
