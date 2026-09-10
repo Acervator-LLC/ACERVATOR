@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Optional
 from ..core.io_utils import atomic_write_json
 
 if TYPE_CHECKING:
+    from src.competition.action_spend import ActionSpend
     from src.competition.certification_socket import CertificationSocket
     from src.competition.market_rotation import MarketRotation
     from src.competition.node_link import PoaNodeLink
@@ -122,6 +123,7 @@ class SharedTestnetBridge(QObject):
         self._certification_socket: Optional[CertificationSocket] = None
         self._market_rotation: Optional[MarketRotation] = None
         self._node_link: Optional[PoaNodeLink] = None
+        self._action_spend: Optional[ActionSpend] = None
 
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
@@ -144,11 +146,13 @@ class SharedTestnetBridge(QObject):
         rotation_path: Optional[Path] = None,
         peer_dir: Optional[Path] = None,
         network: Optional[str] = None,
+        action_store_path: Optional[Path] = None,
+        event_pot_address: Optional[str] = None,
     ):
         """Create the shared ``LocalTestnet``, the bridge, the
         ``QuintessenceLedger``, the ``CertificationSocket``, the
-        ``MarketRotation`` and the ``PoaNodeLink``, and attach all six to
-        ``main_win``.
+        ``MarketRotation``, the ``PoaNodeLink`` and the ``ActionSpend``,
+        and attach all seven to ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -172,8 +176,49 @@ class SharedTestnetBridge(QObject):
         )
         main_win._market_rotation = bridge.install_market_rotation(rotation_path)
         main_win._node_link = bridge.install_node_link(peer_dir, network)
+        main_win._action_spend = bridge.install_action_spend(
+            ledger, action_store_path, event_pot_address
+        )
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
+
+    def install_action_spend(
+        self,
+        quint_ledger: QuintessenceLedger,
+        store_path: Optional[Path] = None,
+        held_address: Optional[str] = None,
+    ) -> ActionSpend:
+        """Build the ``ActionSpend`` and load its ``PoaRecordStore``.
+
+        The ledger, the store path and the held address arrive by
+        construction, so a demo run is one ``ActionSpend`` over another
+        chain's ledger and store running the same ``act`` path.
+        """
+        from src.competition.action_spend import (
+            EVENT_POT_ADDRESS,
+            PoaRecordStore,
+            band_ratio,
+            band_rows,
+        )
+        from src.competition.action_spend import ActionSpend as _Spend
+
+        store = PoaRecordStore(store_path)
+        store.load()
+        spend = _Spend(quint_ledger, store, held_address or EVENT_POT_ADDRESS)
+        self._action_spend = spend
+        logger.info(
+            "ActionSpend installed (store=%s, pot=%s, bands=%s, ratio=%s)",
+            store.store_path,
+            spend.held_address,
+            ", ".join(f"{row['band']} {row['cost']}" for row in band_rows()),
+            band_ratio(),
+        )
+        return spend
+
+    @property
+    def action_spend(self) -> Optional[ActionSpend]:
+        """Read the ``ActionSpend`` this bridge installed."""
+        return self._action_spend
 
     def install_market_rotation(
         self,

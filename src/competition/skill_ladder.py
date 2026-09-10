@@ -157,8 +157,8 @@ def effect_at(level: int) -> Decimal:
 class SkillProgress:
     """One participant's standing in one skill, held in quality-weighted uses.
 
-    ``weighted_uses`` sums each use's own quality and is never a count of uses; no
-    field under ``src`` stores it.
+    ``weighted_uses`` sums each use's own quality and is never a count of uses;
+    ``action_spend.PoaRecordStore`` is what holds it across a restart.
     """
 
     skill_name: str
