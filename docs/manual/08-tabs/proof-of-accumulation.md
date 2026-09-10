@@ -647,4 +647,63 @@ or the law stays unprovable on-chain however the token behaves.
 In development.
 
 
+## 2026-09-09 20:10 - #147 - the two pieces a new surface would have made live
+
+Two pieces of code were harmless only while nothing built them. The first added
+to a token balance without taking a lock first, so two threads adding at the same
+moment could both read the old figure and one award would vanish. The chain file
+asked for no thread protection at all.
+
+Sixteen threads made 4,800 awards of one unit each against the chain the window
+builds at start-up. The token counted all 4,800 into its supply and gave the
+winner 3,709. The other 1,091 were gone, and nothing reported a fault. One lock
+now covers the supply cap check, the balance, the running total and the award
+record together, and the same run gives the winner all 4,800.
+
+`src/competition/local_testnet.py` — the guarded award
+
+```python
+        with self._supply_lock:
+            if self._total_supply + amount_wei > MAX_SUPPLY_WEI:
+                raise OverflowError("ACRV: mint would exceed MAX_SUPPLY")
+            self._balances[recipient] = self._balances.get(recipient, 0) + amount_wei
+            self._total_supply += amount_wei
+```
+
+Reading a balance or the total takes the same lock, so a reader can no longer
+catch the two halfway apart.
+
+The second piece built a private chain of its own whenever nothing handed it the
+shared one. A tab built that way sat at block zero while the shared chain stood
+at block one, showed numbers, and raised nothing. The shared chain is now a
+required argument.
+
+`src/gui/testnet_tab.py` — the required chain
+
+```python
+        def __init__(self, parent=None, *, shared_testnet, bridge):
+            """Read the chain through ``shared_testnet`` and ``bridge``; neither may be None."""
+            super().__init__(parent)
+            self.setAccessibleName("Testnet Tab")
+            if shared_testnet is None or bridge is None:
+                raise ValueError(
+```
+
+Asking for the tab with nothing attached now stops on the call itself.
+
+```text
+TypeError: TestnetTab.__init__() missing 2 required keyword-only arguments:
+'shared_testnet' and 'bridge'
+```
+
+Handing it an empty chain on purpose stops as well, and the refusal names where
+a real one comes from.
+
+```text
+ValueError: TestnetTab needs the process-wide chain: pass the shared_testnet
+and bridge that SharedTestnetBridge.install_on attached to the MainWindow.
+A private LocalTestnet would diverge from every other reader.
+```
+
+
 Back to [the subsystem index](README.md).
