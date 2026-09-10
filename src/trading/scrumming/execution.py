@@ -110,6 +110,10 @@ class ExecutionEngineMixin:
     _last_sell_venue_fee: Optional["SettledFillFee"] = None
     _last_fill_venue_fee: Optional["SettledFillFee"] = None
 
+    # One get_order per fill whose placed order reported no fee, and none otherwise.
+    _VENUE_FEE_REREADS = 1
+    _VENUE_FEE_REREAD_DELAY_S = 0.2
+
     _SETTLED_FILL_DEFAULT_LABEL = "MANUAL FIRE"
     _SETTLED_FILL_LABELS = frozenset(
         (
@@ -172,6 +176,7 @@ class ExecutionEngineMixin:
         amt, px = _extract(order)
         if amt > 0 and px > 0:
             self._record_venue_fee(order, amt, px)
+            await self._settle_venue_fee(order, amt, px)
             return amt, px, True
 
         order_id = str(getattr(order, "id", "") or "")
@@ -188,6 +193,7 @@ class ExecutionEngineMixin:
                 f_amt, f_px = _extract(fetched)
                 if f_amt > 0 and f_px > 0:
                     self._record_venue_fee(fetched, f_amt, f_px)
+                    await self._settle_venue_fee(fetched, f_amt, f_px)
                     return f_amt, f_px, True
                 amt = f_amt or amt
                 px = f_px or px
@@ -258,6 +264,31 @@ class ExecutionEngineMixin:
             currency=_currency.strip().upper(),
             reported=_amount > 0.0,
         )
+
+    async def _settle_venue_fee(self, order, units: float, price: float) -> None:
+        """Re-reads ``order`` by its id and takes the settled venue fee from that body.
+
+        Writes ``_last_fill_venue_fee`` only, and leaves it unchanged when
+        ``get_order`` reports no fee.
+        """
+        _held = self._last_fill_venue_fee
+        if _held is not None and _held.reported:
+            return
+        _order_id = str(getattr(order, "id", "") or "")
+        _symbol = str(getattr(self.config, "symbol", "") or "")
+        if not _order_id or not _symbol:
+            return
+        for _attempt in range(self._VENUE_FEE_REREADS):
+            try:
+                await asyncio.sleep(self._VENUE_FEE_REREAD_DELAY_S)
+                _settled = await self.exchange.get_order(_order_id, _symbol)
+            except Exception as exc:
+                logger.debug("venue-fee re-read failed for %s: %s", _order_id, exc)
+                return
+            _probe = self._venue_fee_record(_settled, units, price)
+            if _probe is not None and _probe.reported:
+                self._last_fill_venue_fee = _probe
+                return
 
     def _take_venue_fee(self, units: float, price: float) -> Optional[SettledFillFee]:
         """Consume the stored fee, and only for the fill it belongs to.
@@ -1549,6 +1580,7 @@ class ExecutionEngineMixin:
                 actual_fill = price
             # The only point on the SCRUM and DIST paths holding the settled order.
             self._record_venue_fee(order, amount, actual_fill)
+            await self._settle_venue_fee(order, amount, actual_fill)
             slippage_pct = ((actual_fill - price) / price * 100.0) if price > 0 else 0.0
 
             self.stats.trade_volume += amount * actual_fill
@@ -1974,6 +2006,7 @@ class ExecutionEngineMixin:
             self._last_fill_venue_fee = self._venue_fee_record(
                 order, amount, actual_fill
             )
+            await self._settle_venue_fee(order, amount, actual_fill)
             slippage_pct = ((actual_fill - price) / price * 100.0) if price > 0 else 0.0
 
             self.stats.trade_volume += amount * actual_fill

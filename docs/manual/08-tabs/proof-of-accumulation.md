@@ -4706,3 +4706,134 @@ On live Coinbase the reply to a newly placed order carries no fee, so a fill
 announces one only where the settled order is re-read. Until the exchange supplies
 a fee at placement, a live Coinbase fill will usually carry the refusal rather than
 a figure.
+
+## 2026-09-10 12:18 - #147 - the settled order is read back for its fee
+
+### Coinbase answers the fee on a second call, never on the first
+
+The reply to a placed order names the order and nothing else. No fill size, no
+average price, and no fee. The fee appears only when the same order is asked for
+again by its own identifier, and only once the exchange marks it settled.
+
+`src/exchange/ccxt_connector.py` - what each call returns, from the exchange's own
+published replies
+
+```
+placing an order      order_id, product_id, side, client_order_id
+reading it, open      status OPEN,    settled false, filled 0,        fee "0"
+reading it, settled   status FILLED,  settled true,  filled 0.000297, fee "0.0379"
+```
+
+The platform's own record agrees. Every order it placed on the exchange was
+logged as accepted with nothing filled.
+
+```
+ORDER_PLACED | BUY order accepted by exchange | status=open filled=0.0/2672.0
+9 of 9 placements read status=open filled=0.0
+```
+
+### The sell and the fold read the fee off the placed reply, so they read nothing
+
+The two paths a bot trades on took the fee from the reply to the placement. On
+Coinbase that reply has no fee in it, so every live fill announced a refusal and
+earned nothing, while the exchange held the figure all along.
+
+`src/trading/scrumming/execution.py` - the read that was missing
+
+```python
+    async def _settle_venue_fee(self, order, units: float, price: float) -> None:
+        """Re-reads ``order`` by its id and takes the settled venue fee from that body.
+
+        Writes ``_last_fill_venue_fee`` only, and leaves it unchanged when
+        ``get_order`` reports no fee.
+        """
+```
+
+### One extra call, and only for a fill that has no fee yet
+
+The read runs after the trade is placed and filled, never before. A fill whose
+reply already carried a fee makes no extra call at all. A fill with no fee makes
+exactly one, and the number of units and the price come from the fill rather than
+from the second reply, so the second reply can move no trading figure.
+
+```
+_VENUE_FEE_REREADS         1
+_VENUE_FEE_REREAD_DELAY_S  0.2
+
+a reply that already held a fee   0 reads, fee $0.062153808 on the fill
+a reply that held none            1 read,  fee $0.062153808 on the fill
+```
+
+### A read that is refused, or never answered, costs the fill its award and nothing else
+
+The exchange refusing the read leaves the fill carrying a refusal. A read that
+never answers ends at the connector's own twenty-five second ceiling and leaves
+the same refusal. The sale or the purchase is already done in both cases, at the
+same size and the same price.
+
+```
+the exchange refuses the read   sold 1409 @ $0.003676, fee_refusal, 0 Quintessence
+the read never answers          sold 1409 @ $0.003676, fee_refusal, 0 Quintessence
+```
+
+### A real trade of his, earning through the second call
+
+His own sale and his own purchase, with the fee arriving from the settled read
+rather than from a downloaded statement.
+
+```
+SELL  PUMP/USD 1409 @ $0.003676   settled fee $0.062153808 -> 0.0621538080 Q
+BUY   PUMP/USD 1325 @ $0.002286   settled fee $0.0363474   -> 0.03634740 Q
+```
+
+An order the exchange has not settled reports a fee of zero, and that fill earns
+nothing and says so.
+
+```
+fee_refusal  the venue reported no fee
+distilled    0 Quintessence
+```
+
+### Demo mode reads the fee the same way over its own chain
+
+The same class, the same sale and the same settled read, on a second chain with
+its own ledger and its own record file. No flag selects the behaviour; the chain
+the page was built over decides which books move.
+
+```
+the same class        : CertificationSocket and CertificationSocket
+the same chain object : False
+the same ledger       : False
+
+PUMP/USD, settled fee $0.062153808 -> 0.0621538080 Quintessence
+demo ledger total ever minted 0.0621538080   balanced
+```
+
+### The second call moved no figure a bot trades on
+
+Eight runs across the previous build and this one, twenty-four figures each, and
+every figure the same. The same comparison reports one difference on the three
+runs where a fee arrived, which is the fee itself.
+
+```
+order size and side sent to the exchange, the fill price, holdings, both target
+balances, the fold queue, the standing surplus, the last trade price and side,
+both pivot references and both armed flags, the quote rate, the distribution
+accumulator, the hedge reserve, every main lot, every fold tranche and seven
+running totals
+
+trading differences   0 of 24, on all eight runs
+fee field difference  the venue reported no fee -> fee_usd 0.062153808
+```
+
+### What the settled read does not reach
+
+The sale's proceeds still book gross. The record a sale settles on is left
+untouched on purpose, because taking the exchange's cut out of a sale now would
+move figures the operator reads.
+
+A partly filled order reports the fee for the part that filled at the moment of
+the read, not for the whole order.
+
+Nothing subscribes certification to the live fill event, so no live trade reaches
+an award while the platform runs. That remains a decision about real value.
