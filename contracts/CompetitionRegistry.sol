@@ -116,6 +116,10 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
 
     string[] public competitionIds;  // all-time list
 
+    // ── Errors ────────────────────────────────────────────────────────────────
+
+    error OwnershipCannotBeRenounced();
+
     // ── Award events (immutable on-chain record) ──────────────────────────────
 
     event CompetitionOpened(string indexed id, string symbol, uint256 season);
@@ -390,6 +394,14 @@ contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
 
     function advanceSeason() external onlyOwner {
         currentSeason++;
+    }
+
+    // ── Ownership cannot be abandoned ─────────────────────────────────────────
+
+    /// @notice Refuse to abandon ownership, because openCompetition,
+    ///         closeForSubmission and adjudicate are all owner-only.
+    function renounceOwnership() public pure override {
+        revert OwnershipCannotBeRenounced();
     }
 
     // ── Emergency cancel ──────────────────────────────────────────────────────

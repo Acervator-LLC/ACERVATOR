@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import time
+from decimal import Decimal
 from pathlib import Path
 
 from ...competition.bot_identity import BotIdentity
@@ -32,7 +33,11 @@ from ...competition.poa_modes import (
     variant_row,
     variant_rows,
 )
-from ...competition.quintessence_ledger import DEFAULT_LEDGER_PATH, QuintessenceLedger
+from ...competition.quintessence_ledger import (
+    DEFAULT_LEDGER_PATH,
+    QuintessenceLedger,
+    QuintessenceLedgerError,
+)
 from ...competition.rpg_classes import (
     FIRST_LEVEL,
     ClassPick,
@@ -42,6 +47,19 @@ from ...competition.rpg_classes import (
     pick_class,
 )
 from ...competition.rpg_metrics import METRIC_SOURCES, profile_metrics, read_metrics
+from ...competition.skill_ladder import (
+    FIRST_SKILL_LEVEL,
+    MAX_SKILL_LEVEL,
+    TRANSFER_SKILL_NAME,
+    LadderStep,
+    SkillGateError,
+    SkillProgress,
+    top_out_uses,
+    transfer_bleed,
+    transfer_hours,
+    transfer_ladder,
+    transfers_sent,
+)
 from ...competition.token_ledger import TokenLedger
 from ...core.fmt import fmt_usd
 
@@ -51,8 +69,8 @@ HEADING = "Accumulation"
 ISSUE = 147
 BUILT = True
 STATE_TEXT = (
-    "The shell draws three zones. The eight event types, the turn and the "
-    "Impetus pool are built. No pixel art is drawn."
+    "The shell draws three zones. The eight event types, the turn, the Impetus "
+    "pool and the ten-level skill ladder are built. No pixel art is drawn."
 )
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 
@@ -90,6 +108,43 @@ WALLET_ADDRESS_LABEL = "Participant"
 WALLET_CHAIN_LABEL = "Chain"
 WALLET_OPEN_TEXT = "Open wallet"
 WALLET_CLOSE_TEXT = "Close"
+
+SKILLS_TITLE = "Skills"
+SKILL_LEVEL_PREFIX = "L"
+SKILL_COST_WORD = "uses"
+SKILL_REACH_WORD = "to reach"
+SKILL_EFFECT_WORD = "effect"
+SKILL_BLEED_WORD = "bleed"
+
+#: A fraction times this is a percentage.
+PERCENT_SCALE = Decimal(100)
+
+#: The places a cost column and a bleed column print.
+USES_PLACES = Decimal("0.1")
+BLEED_PLACES = Decimal("0.01")
+
+#: The amount the duration sentence works through ``transfer_hours``.
+DURATION_EXAMPLE_QUINT = Decimal(1000)
+
+STANDING_TEXT = (
+    "{name} - level {level} - effect {effect} - bleed {bleed} "
+    "- transfers sent {uses}"
+)
+TOP_OUT_TEXT = "{uses} quality-weighted uses reach level {level}."
+DURATION_TEXT = (
+    "{amount} Quint takes {first_hours} hours at level {first_level} "
+    "and {last_hours} hours at level {last_level}."
+)
+NO_USES_TEXT = "--"
+NO_BLEED_TEXT = "--"
+NO_QUALITY_NOTE = (
+    "No field holds a use's quality, so no use is weighted and the skill stands "
+    "at level 0."
+)
+NO_GUILD_NOTE = (
+    "No guild roster is built, so the guild term of a transfer reads nothing."
+)
+NO_SLOT_NOTE = "No in-flight record is kept, so nothing holds a transfer in a queue."
 
 QUINTESSENCE_SECTION = "Quintessence"
 TROPHIES_SECTION = "Trophies"
@@ -158,6 +213,7 @@ DECLARED_FIELDS = (
     "participants",
     "party",
     "pick_note",
+    "skills",
     "state_text",
     "wallet",
     "zones",
@@ -316,6 +372,100 @@ def trophies_section(chain: str, address: str | None) -> dict:
 def loot_section() -> dict:
     """The ``LOOT_SECTION`` with no row, carrying the ``LOOT_NOTE`` sentence."""
     return section(LOOT_SECTION, [], LOOT_NOTE)
+
+
+def uses_text(uses: Decimal) -> str:
+    """``uses`` at ``USES_PLACES``, as a cost column prints it."""
+    return str(uses.quantize(USES_PLACES))
+
+
+def bleed_text(fraction: Decimal) -> str:
+    """``fraction`` as a percentage at ``BLEED_PLACES``, with no per-cent sign."""
+    return str((fraction * PERCENT_SCALE).quantize(BLEED_PLACES))
+
+
+def skill_row(step: LadderStep) -> dict:
+    """One ladder level: what it costs, what it reaches, its effect and its bleed."""
+    return {
+        "level": step.level,
+        "level_text": f"{SKILL_LEVEL_PREFIX}{step.level}",
+        "cost_text": f"{uses_text(step.level_cost)} {SKILL_COST_WORD}",
+        "reach_text": f"{uses_text(step.cost_to_reach)} {SKILL_REACH_WORD}",
+        "effect_text": f"{step.effect}x {SKILL_EFFECT_WORD}",
+        "bleed_text": f"{bleed_text(step.bleed)}% {SKILL_BLEED_WORD}",
+    }
+
+
+def sent_transfers(chain: str, address: str | None) -> int | None:
+    """The transfers ``address`` sent on ``chain``'s ledger.
+
+    Returns None with no ``address``, and None when the ledger file is absent or
+    refuses to replay, so neither reads as a count of nought.
+    """
+    if address is None:
+        return None
+    path = chain_file(QUINT_LEDGER_NAME, chain)
+    if not path.exists():
+        return None
+    try:
+        ledger = QuintessenceLedger(path).load()
+    except (QuintessenceLedgerError, OSError):
+        return None
+    return transfers_sent(ledger, address)
+
+
+def transfer_standing(chain: str, address: str | None) -> dict:
+    """The transfer skill's level and effect, the uses ``chain`` records, and its bleed.
+
+    ``transfer_bleed`` raises while the skill is untrained, and that sentence
+    becomes ``gate_text``.
+    """
+    progress = SkillProgress(TRANSFER_SKILL_NAME)
+    try:
+        bleed = f"{bleed_text(transfer_bleed(progress))}%"
+        gate = ""
+    except SkillGateError as exc:
+        bleed = NO_BLEED_TEXT
+        gate = str(exc)
+    sent = sent_transfers(chain, address)
+    standing = {
+        "name": progress.skill_name,
+        "level_text": str(progress.level),
+        "effect_text": f"{progress.effect}x",
+        "uses_text": NO_USES_TEXT if sent is None else str(sent),
+        "bleed_text": bleed,
+        "gate_text": gate,
+    }
+    standing["standing_text"] = STANDING_TEXT.format(
+        name=standing["name"],
+        level=standing["level_text"],
+        effect=standing["effect_text"],
+        bleed=standing["bleed_text"],
+        uses=standing["uses_text"],
+    )
+    return standing
+
+
+def skills(chain: str = LIVE_CHAIN) -> dict:
+    """The ten-level ladder, the transfer skill's standing, and the terms with none."""
+    identity = participant_identity()
+    address = None if identity is None else identity.bot_id
+    return {
+        "title": SKILLS_TITLE,
+        "top_out_text": TOP_OUT_TEXT.format(
+            uses=uses_text(top_out_uses()), level=MAX_SKILL_LEVEL
+        ),
+        "duration_text": DURATION_TEXT.format(
+            amount=DURATION_EXAMPLE_QUINT,
+            first_hours=transfer_hours(DURATION_EXAMPLE_QUINT, FIRST_SKILL_LEVEL),
+            first_level=FIRST_SKILL_LEVEL,
+            last_hours=transfer_hours(DURATION_EXAMPLE_QUINT, MAX_SKILL_LEVEL),
+            last_level=MAX_SKILL_LEVEL,
+        ),
+        "transfer": transfer_standing(chain, address),
+        "levels": [skill_row(step) for step in transfer_ladder()],
+        "notes": [NO_QUALITY_NOTE, NO_GUILD_NOTE, NO_SLOT_NOTE],
+    }
 
 
 def wallet(chain: str = LIVE_CHAIN) -> dict:
@@ -492,6 +642,7 @@ def view_model(params: dict) -> dict:
         "participants": participants(chain, pick),
         "party": party(),
         "pick_note": pick_note,
+        "skills": skills(chain),
         "state_text": STATE_TEXT,
         "wallet": wallet(chain),
         "zones": zones(),

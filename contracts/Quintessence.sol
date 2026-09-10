@@ -171,6 +171,12 @@ contract Quintessence {
 
     // ── transfer, in two calls ────────────────────────────────────────────────
 
+    /// @dev A pendingTransfer amount above zero is the one mark of an
+    ///      authorized transfer awaiting cancelTransfer or executeTransfer.
+    function _hasTransferInFlight(address sender) private view returns (bool) {
+        return pendingTransfer[sender].amount > 0;
+    }
+
     /**
      * @notice Authorize one transfer out of the caller's own wallet.
      * @param recipient The wallet to credit when REGISTRY executes it.
@@ -181,7 +187,7 @@ contract Quintessence {
         require(recipient != msg.sender, "Quint: recipient is sender");
         require(amount > 0, "Quint: amount is zero");
         require(balance[msg.sender] >= amount, "Quint: balance below amount");
-        require(pendingTransfer[msg.sender].amount == 0, "Quint: transfer in flight");
+        require(!_hasTransferInFlight(msg.sender), "Quint: transfer in flight");
 
         pendingTransfer[msg.sender] = PendingTransfer({
             recipient: recipient,

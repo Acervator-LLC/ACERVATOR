@@ -471,6 +471,78 @@ for sym, name, cgid, cat, desc in [
     )
 
 
+# Each coingecko_id below was confirmed against CoinGecko's own record of the
+# Coinbase Exchange market for that base, not by matching the ticker symbol.
+for sym, name, cgid, cat, desc in [
+    (
+        "ZEC",
+        "Zcash",
+        "zcash",
+        "Privacy",
+        "Privacy coin on a proof-of-work layer 1, shielding transfers with zero-knowledge proofs.",
+    ),
+    (
+        "HYPE",
+        "Hyperliquid",
+        "hyperliquid",
+        "DEX / Derivatives",
+        "Exchange token of a derivatives DEX that is its own layer 1 smart contract platform.",
+    ),
+    (
+        "VVV",
+        "Venice Token",
+        "venice-token",
+        "AI",
+        "AI application and AI agent token on Base.",
+    ),
+    (
+        "USELESS",
+        "Useless Coin",
+        "useless-3",
+        "Meme",
+        "Meme coin on Solana and BNB Chain.",
+    ),
+    (
+        "PUMP",
+        "Pump.fun",
+        "pump-fun",
+        "DEX",
+        "Exchange token of a SocialFi automated market maker on Solana.",
+    ),
+    (
+        "TAO",
+        "Bittensor",
+        "bittensor",
+        "AI",
+        "Layer 1 smart contract platform for machine-learning work, classed as DePIN.",
+    ),
+    (
+        "AERO",
+        "Aerodrome Finance",
+        "aerodrome-finance",
+        "DEX",
+        "Automated market maker DEX on Base, with its own exchange token.",
+    ),
+    (
+        "LIGHTER",
+        "Lighter",
+        "lighter",
+        "DEX / Derivatives",
+        "Perpetuals DEX on Ethereum; CoinGecko carries it under the symbol LIT.",
+    ),
+]:
+    # No logo_url: the CoinGecko image id for these is unconfirmed, so
+    # get_logo_url falls through to logo_fallback_url.
+    _register(
+        sym,
+        name=name,
+        coingecko_id=cgid,
+        logo_fallback_url=f"https://www.cryptocompare.com/media/img/cc_icons/{sym}.png",
+        category=cat,
+        description=desc,
+    )
+
+
 # Asset manager
 class AssetManager:
     """

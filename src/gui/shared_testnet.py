@@ -521,6 +521,11 @@ class SharedTestnetBridge(QObject):
                 payload.get("block_number", 0),
                 age_min,
             )
+            try:
+                self._testnet.verify_integrity()
+            except (TypeError, ValueError) as e:
+                # A raise here must not reach the handler below, which unlinks.
+                logger.warning("restored chain could not be verified: %s", e)
         except Exception as e:
             logger.warning("chain restore failed (%s) — starting fresh", e)
             # Don't leave a corrupt file in place

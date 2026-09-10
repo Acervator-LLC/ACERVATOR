@@ -23,6 +23,7 @@
   var PARTICIPANTS = "participants";
   var PARTY = "party";
   var PICK_NOTE = "pick_note";
+  var SKILLS = "skills";
   var STATE_TEXT = "state_text";
   var WALLET = "wallet";
   var ZONES = "zones";
@@ -42,6 +43,7 @@
     PARTICIPANTS,
     PARTY,
     PICK_NOTE,
+    SKILLS,
     STATE_TEXT,
     WALLET,
     ZONES
@@ -99,6 +101,21 @@
   var CLASS_ROW_PART = "class-row";
   var CLASS_NAME_PART = "class-name";
   var CLASS_ROLE_PART = "class-role";
+  var SKILL_PANEL_PART = "skill-panel";
+  var SKILL_TITLE_PART = "skill-title";
+  var SKILL_STANDING_PART = "skill-standing";
+  var SKILL_GATE_PART = "skill-gate";
+  var SKILL_TOP_OUT_PART = "skill-top-out";
+  var SKILL_DURATION_PART = "skill-duration";
+  var SKILL_LIST_PART = "skill-list";
+  var SKILL_ROW_PART = "skill-row";
+  var SKILL_LEVEL_PART = "skill-level";
+  var SKILL_COST_PART = "skill-cost";
+  var SKILL_REACH_PART = "skill-reach";
+  var SKILL_EFFECT_PART = "skill-effect";
+  var SKILL_BLEED_PART = "skill-bleed";
+  var SKILL_NOTE_PART = "skill-note";
+
   var QUINT_LABEL_PART = "quint-label";
   var QUINT_BALANCE_PART = "quint-balance";
   var WALLET_OPEN_PART = "wallet-open";
@@ -377,6 +394,91 @@
     );
   }
 
+  function SkillRow(props) {
+    var row = props.row;
+    var label = text(row.level_text);
+    return element(
+      "li",
+      named(TAB_CLASS + "-skill-row", SKILL_ROW_PART, label),
+      element(
+        "span",
+        named(TAB_CLASS + "-skill-level", SKILL_LEVEL_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-skill-cost", SKILL_COST_PART, label),
+        text(row.cost_text)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-skill-reach", SKILL_REACH_PART, label),
+        text(row.reach_text)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-skill-effect", SKILL_EFFECT_PART, label),
+        text(row.effect_text)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-skill-bleed", SKILL_BLEED_PART, label),
+        text(row.bleed_text)
+      )
+    );
+  }
+
+  function skillLine(name, value, label) {
+    var lineProps = named(TAB_CLASS + "-" + name, name, label);
+    lineProps.key = name;
+    return element("p", lineProps, value);
+  }
+
+  // The gate line is drawn only while the skill gate refuses a transfer.
+  function SkillPanel(props) {
+    var skills = props.skills;
+    var transfer = isPlainObject(skills.transfer) ? skills.transfer : {};
+    var rows = Array.isArray(skills.levels) ? skills.levels : [];
+    var notes = Array.isArray(skills.notes) ? skills.notes : [];
+    var titleProps = part(TAB_CLASS + "-skill-title", SKILL_TITLE_PART);
+    titleProps.key = SKILL_TITLE_PART;
+    var label = text(transfer.name);
+    var children = [
+      element("h4", titleProps, text(skills.title)),
+      skillLine(SKILL_STANDING_PART, text(transfer.standing_text), label)
+    ];
+    if (text(transfer.gate_text)) {
+      children.push(
+        skillLine(SKILL_GATE_PART, text(transfer.gate_text), label)
+      );
+    }
+    children.push(
+      element(
+        "ul",
+        Object.assign(part(TAB_CLASS + "-skill-list", SKILL_LIST_PART), {
+          key: SKILL_LIST_PART
+        }),
+        rows.filter(isPlainObject).map(function (row) {
+          return element(SkillRow, { key: row.level, row: row });
+        })
+      ),
+      skillLine(SKILL_TOP_OUT_PART, text(skills.top_out_text), label),
+      skillLine(SKILL_DURATION_PART, text(skills.duration_text), label)
+    );
+    notes.forEach(function (note, at) {
+      var noteProps = named(
+        TAB_CLASS + "-skill-note",
+        SKILL_NOTE_PART,
+        text(note)
+      );
+      noteProps.key = SKILL_NOTE_PART + "-" + String(at);
+      children.push(element("p", noteProps, text(note)));
+    });
+    var panelProps = part(TAB_CLASS + "-skill-panel", SKILL_PANEL_PART);
+    panelProps["aria-label"] = text(skills.title);
+    return element("div", panelProps, children);
+  }
+
   function WalletRow(props) {
     var rowProps = named(TAB_CLASS + "-wallet-row", props.name, props.label);
     return element(
@@ -564,6 +666,11 @@
       }),
       element(ClassList, { key: CLASS_LIST_PART, entries: props.classes })
     ];
+    if (isPlainObject(props.skills)) {
+      children.push(
+        element(SkillPanel, { key: SKILL_PANEL_PART, skills: props.skills })
+      );
+    }
     if (props.pickNote !== undefined) {
       children.push(
         element(
@@ -642,6 +749,7 @@
             wallet: wallet,
             rows: rows,
             classes: entries,
+            skills: isPlainObject(model[SKILLS]) ? model[SKILLS] : null,
             pickNote: text(model[PICK_NOTE])
           })
     );
