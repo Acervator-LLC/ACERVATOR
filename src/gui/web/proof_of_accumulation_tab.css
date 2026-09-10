@@ -145,11 +145,49 @@ body {
   background: var(--SURFACE_INPUT);
   min-height: calc(var(--SPACE_M) * 1px);
   display: grid;
-  grid-template-columns: 1fr auto auto auto auto;
+  grid-template-columns: 1fr auto auto auto auto auto 14px;
   align-items: center;
   gap: calc(var(--SPACE_XS) * 1px);
   padding: 0 calc(var(--SPACE_XS) * 1px);
   overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="slot-symbol"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+/* The mark slot. 14px is the party cell's guaranteed square at forty to a page. */
+.acervator-poa-tab [data-part="slot-mark"] {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.acervator-poa-tab [data-part="slot-mark"][data-mark="dead"],
+.acervator-poa-tab [data-part="slot-mark"][data-mark="missed the window"],
+.acervator-poa-tab [data-part="slot-mark"][data-mark="out of Impetus"] {
+  background: var(--DANGER);
+}
+
+.acervator-poa-tab [data-part="slot-mark"][data-mark="afflicted"] {
+  background: var(--WARNING);
+}
+
+.acervator-poa-tab [data-part="slot-mark"][data-mark="no class picked"] {
+  background: var(--TEXT_PLACEHOLDER);
+}
+
+.acervator-poa-tab [data-part="slot-mark"][data-mark="alignment skew"] {
+  background: var(--SUCCESS);
+}
+
+.acervator-poa-tab [data-part="mark-seam-note"] {
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  flex-basis: 100%;
 }
 
 .acervator-poa-tab [data-part="slot-name"] {
