@@ -9,7 +9,9 @@ printing what ``augment_action`` gives one action of the running turn.
 ``profile_metrics`` and ``classes`` serves the seven a participant picks from.
 ``modes`` serves the eight event types and ``event`` answers the running turn and
 the Impetus pool it grants, with ``class_pick`` calling ``pick_class`` for the
-class ``params`` names.
+class ``params`` names. ``redistribution`` reads
+``EventRedistribution.summary`` for the pot, the normalised shares and the
+reserve, and moves no Quintessence.
 ``src.core.desktop_bridge`` registers this module under ``METHOD``, and
 ``chain_of`` reads ``params`` so a TestNet demo run takes this code path against
 its own ledger files.
@@ -22,7 +24,17 @@ import time
 from decimal import Decimal
 from pathlib import Path
 
+from ...competition.action_spend import (
+    DEFAULT_STORE_PATH,
+    EVENT_POT_ADDRESS,
+    PoaRecordStore,
+)
 from ...competition.bot_identity import BotIdentity
+from ...competition.event_redistribution import (
+    RETURN_PERCENT,
+    EventRedistribution,
+    RedistributionError,
+)
 from ...competition.loot_drop import (
     DEFAULT_LOOT_PATH,
     LootError,
@@ -46,6 +58,7 @@ from ...competition.quintessence_ledger import (
     DEFAULT_LEDGER_PATH,
     QuintessenceLedger,
     QuintessenceLedgerError,
+    amount_text,
 )
 from ...competition.rpg_classes import (
     FIRST_LEVEL,
@@ -146,14 +159,32 @@ DURATION_TEXT = (
 )
 NO_USES_TEXT = "--"
 NO_BLEED_TEXT = "--"
-NO_QUALITY_NOTE = (
-    "No field holds a use's quality, so no use is weighted and the skill stands "
+USE_QUALITY_NOTE = (
+    "The record store holds each use's quality as weighted uses, and this panel "
+    "reads the participant's own. Nothing records a use yet, so the skill stands "
     "at level 0."
 )
 NO_GUILD_NOTE = (
     "No guild roster is built, so the guild term of a transfer reads nothing."
 )
 NO_SLOT_NOTE = "No in-flight record is kept, so nothing holds a transfer in a queue."
+
+REDISTRIBUTION_TITLE = "Redistribution"
+POT_ROW = "Pot"
+RETURN_POOL_ROW = f"Return pool, {RETURN_PERCENT}%"
+PAID_ROW = "Paid to participants"
+RESERVE_ROW = "Reserve, resting on-chain"
+REMAINDER_ROW = "Division remainder"
+SHARE_TEXT = "{address} - score {score} - share {share} - {amount} Quint"
+UNSCORED_TEXT = "{address} - no scored axis, so no share"
+NO_POT_NOTE = "No action is paid for in {event}, so no pot divides."
+SPEND_BASIS_NOTE = (
+    "A share is the participant's own performance score over every score in the "
+    "event. What a participant spent sizes the pot and never sizes a share."
+)
+NO_REDISTRIBUTION_NOTE = "No control starts a payout. Nothing on screen settles a pot."
+
+EVENT_ID_FIELD = "event_id"
 
 QUINTESSENCE_SECTION = "Quintessence"
 TROPHIES_SECTION = "Trophies"
@@ -171,6 +202,7 @@ CAP_ROW = "Supply cap"
 MOVEMENTS_ROW = "Movements"
 
 QUINT_LEDGER_NAME = DEFAULT_LEDGER_PATH.name
+STORE_NAME = DEFAULT_STORE_PATH.name
 AWARD_LEDGER_NAME = TokenLedger.LEDGER_FILE
 LOOT_STORE_NAME = DEFAULT_LOOT_PATH.name
 IDENTITY_NAME = BotIdentity.KEY_FILE
@@ -267,6 +299,7 @@ DECLARED_FIELDS = (
     "participants",
     "party",
     "pick_note",
+    "redistribution",
     "skills",
     "state_text",
     "wallet",
@@ -393,7 +426,9 @@ def quintessence_section(chain: str, address: str | None) -> tuple[dict, str]:
             WALLET_BALANCE_TEXT,
         )
     summary = ledger.supply_summary()
-    balance = WALLET_BALANCE_TEXT if address is None else str(ledger.balance(address))
+    balance = (
+        WALLET_BALANCE_TEXT if address is None else amount_text(ledger.balance(address))
+    )
     rows = [
         row(BALANCE_ROW, balance),
         row(DISTILLED_ROW, summary["total_ever_minted"]),
@@ -514,13 +549,31 @@ def sent_transfers(chain: str, address: str | None) -> int | None:
     return transfers_sent(ledger, address)
 
 
+def record_store(chain: str) -> PoaRecordStore:
+    """``chain``'s ``PoaRecordStore``, replayed off its own store file."""
+    return PoaRecordStore(chain_file(STORE_NAME, chain)).load()
+
+
+def skill_standing(chain: str, address: str | None) -> SkillProgress:
+    """``address``'s transfer-skill ``SkillProgress`` in ``chain``'s record store.
+
+    An unreadable store or no ``address`` answers a standing of no weighted uses.
+    """
+    if address is None:
+        return SkillProgress(TRANSFER_SKILL_NAME)
+    try:
+        return record_store(chain).skill_progress(address, TRANSFER_SKILL_NAME)
+    except Exception:
+        return SkillProgress(TRANSFER_SKILL_NAME)
+
+
 def transfer_standing(chain: str, address: str | None) -> dict:
     """The transfer skill's level and effect, the uses ``chain`` records, and its bleed.
 
     ``transfer_bleed`` raises while the skill is untrained, and that sentence
     becomes ``gate_text``.
     """
-    progress = SkillProgress(TRANSFER_SKILL_NAME)
+    progress = skill_standing(chain, address)
     try:
         bleed = f"{bleed_text(transfer_bleed(progress))}%"
         gate = ""
@@ -564,7 +617,7 @@ def skills(chain: str = LIVE_CHAIN) -> dict:
         ),
         "transfer": transfer_standing(chain, address),
         "levels": [skill_row(step) for step in transfer_ladder()],
-        "notes": [NO_QUALITY_NOTE, NO_GUILD_NOTE, NO_SLOT_NOTE],
+        "notes": [USE_QUALITY_NOTE, NO_GUILD_NOTE, NO_SLOT_NOTE],
     }
 
 
@@ -593,6 +646,71 @@ def wallet(chain: str = LIVE_CHAIN, action_cost: int = IMPETUS_AT_FIRST_LEVEL) -
             loot_section(chain, address, action_cost),
         ],
     }
+
+
+def event_id_of(params: dict, variant: EventVariant) -> str:
+    """The event ``params`` names, or ``variant.code`` when it names none."""
+    asked = params.get(EVENT_ID_FIELD) if isinstance(params, dict) else None
+    if type(asked) is str and asked.strip():
+        return asked.strip()
+    return variant.code
+
+
+def redistribution(chain: str, event_id: str) -> dict:
+    """The pot, the shares its normalised scores divide it into, and the reserve.
+
+    ``EventRedistribution.summary`` reads ``chain``'s own ledger and store and moves
+    no Quintessence, so opening the panel settles nothing.
+    """
+    ledger_path = chain_file(QUINT_LEDGER_NAME, chain)
+    panel: dict = {
+        "title": REDISTRIBUTION_TITLE,
+        "event_id": event_id,
+        "return_percent": RETURN_PERCENT,
+        "rows": [],
+        "shares": [],
+        "unscored": [],
+        "notes": [SPEND_BASIS_NOTE, NO_REDISTRIBUTION_NOTE],
+    }
+    try:
+        ledger = QuintessenceLedger(ledger_path)
+        if ledger_path.exists():
+            ledger.load()
+        summary = EventRedistribution(
+            ledger, record_store(chain), EVENT_POT_ADDRESS
+        ).summary(event_id)
+    except (QuintessenceLedgerError, RedistributionError, OSError) as exc:
+        panel["note"] = fault_note(ledger_path, exc)
+        return panel
+    panel["rows"] = [
+        row(POT_ROW, summary["pot"]),
+        row(RETURN_POOL_ROW, summary["return_pool"]),
+        row(PAID_ROW, summary["paid_total"]),
+        row(REMAINDER_ROW, summary["division_remainder"]),
+        row(RESERVE_ROW, summary["reserve"]),
+    ]
+    panel["shares"] = [
+        SHARE_TEXT.format(
+            address=share["address"],
+            score=share["score"],
+            share=share["normalised_share"],
+            amount=share["amount"],
+        )
+        for share in summary["shares"]
+    ]
+    panel["unscored"] = [
+        UNSCORED_TEXT.format(address=address) for address in summary["unscored"]
+    ]
+    panel["is_exact"] = summary["is_exact"]
+    panel["is_settled"] = summary["is_settled"]
+    panel["settled_at"] = summary["settled_at"]
+    panel["held_address"] = summary["held_address"]
+    panel["note"] = (
+        ledger_path.name
+        if summary["shares"] or summary["unscored"]
+        else NO_POT_NOTE.format(event=event_id)
+    )
+    return panel
 
 
 def fleet_records(chain: str) -> dict:
@@ -779,6 +897,7 @@ def view_model(params: dict) -> dict:
         "participants": participants(chain, pick),
         "party": party(),
         "pick_note": pick_note,
+        "redistribution": redistribution(chain, event_id_of(params, variant)),
         "skills": skills(chain),
         "state_text": STATE_TEXT,
         "wallet": wallet(chain, running["impetus_granted"]),

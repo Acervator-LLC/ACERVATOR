@@ -5,7 +5,9 @@ that bot's ``MerkleTradeLog``, posts the commitment through ``LocalChain``, and
 calls ``QuintessenceLedger.distil`` with the fee the venue reported.
 ``lifetime_certified_fee_usd`` is the socket's own total and only ever rises.
 ``may_participate`` answers False for a bot that has certified nothing, and
-``SharedTestnetBridge.install_on`` builds one socket per process.
+``SharedTestnetBridge.install_on`` builds one socket per process. A fill carrying
+an ``exchange_id`` and a ``season`` names an ``Activation``, and ``certify`` then
+puts it through ``CaptureBounds.award`` before ``distil`` mints anything.
 """
 
 from __future__ import annotations
@@ -23,6 +25,16 @@ from typing import Any, Callable
 from ..core.event_bus import Event, EventBus
 from ..core.io_utils import atomic_write_json
 from .bot_identity import BotIdentity, TradeRecord
+from .capture_bounds import (
+    AWARDED,
+    NO_ACTIVATION_NAMED,
+    AwardRequest,
+    CaptureAward,
+    CaptureBounds,
+    CaptureRefusedError,
+    activation_key,
+    pool_key,
+)
 from .local_testnet import LocalTestnet
 from .merkle_log import MerkleTradeLog
 from .quintessence_ledger import QuintessenceLedger
@@ -81,10 +93,11 @@ def _as_trade_grade(value: object) -> Decimal:
 
 @dataclass(frozen=True)
 class CertifiedFill:
-    """One fill offered for certification.
+    """One fill offered for certification, and the activation it earns against.
 
-    ``fill_id`` is the venue's identifier and the key the replay refusal reads;
-    ``fee_usd`` is the fee the venue reported for this fill.
+    ``fee_usd`` is the fee the venue reported, ``exchange_id`` and ``season`` name
+    the ``Activation`` whose pool pays, and ``scored_axes``, ``execution_bps`` and
+    ``ta_timeframe`` are what ``CaptureBounds`` reads.
     """
 
     fill_id: str
@@ -96,14 +109,39 @@ class CertifiedFill:
     role: str = "UNKNOWN"
     timestamp: float | None = None
     trade_grade: float = 1.0
+    exchange_id: str = ""
+    season: int | None = None
+    scored_axes: int = 0
+    ta_timeframe: str = ""
+    execution_bps: float | None = None
+
+    @property
+    def names_activation(self) -> bool:
+        """Answer whether this fill carries both an ``exchange_id`` and a ``season``."""
+        return bool(str(self.exchange_id or "").strip()) and self.season is not None
+
+    @property
+    def activation(self) -> str:
+        """The ``activation_key`` this fill names, or "" while it names none."""
+        if not self.names_activation:
+            return ""
+        return activation_key(self.exchange_id, int(self.season or 0))
+
+    @property
+    def pool(self) -> str:
+        """The ``pool_key`` of the market pool this fill's award comes out of."""
+        if not self.names_activation or not str(self.symbol or "").strip():
+            return ""
+        return pool_key(self.exchange_id, int(self.season or 0), self.symbol)
 
 
 @dataclass(frozen=True)
 class CertificationReceipt:
-    """What one certification produced.
+    """What one certification produced, and which bound decided its award.
 
-    ``distilled`` is the Quintessence minted, ``lifetime_fee_usd`` the bot's
-    total after this fill, and ``conservation`` the ledger's three-bucket report.
+    ``distilled`` is the Quintessence minted, ``activation`` the period the fill
+    named, and ``award_reason`` either ``AWARDED`` or the ``CaptureBounds`` reason
+    that paid nothing.
     """
 
     bot_id: str
@@ -117,6 +155,10 @@ class CertificationReceipt:
     lifetime_fee_usd: Decimal
     certified_fill_count: int
     conservation: Any
+    activation: str = ""
+    pool: str = ""
+    award_reason: str = AWARDED
+    award: CaptureAward | None = None
 
     def to_dict(self) -> dict:
         """Return this receipt as a JSON-safe dict with every Decimal as a string."""
@@ -132,14 +174,19 @@ class CertificationReceipt:
             "lifetime_fee_usd": str(self.lifetime_fee_usd),
             "certified_fill_count": self.certified_fill_count,
             "conservation": self.conservation.to_dict(),
+            "activation": self.activation,
+            "pool": self.pool,
+            "award_reason": self.award_reason,
+            "award": None if self.award is None else self.award.to_dict(),
         }
 
 
 class CertificationSocket:
     """Certify fills against one chain and distil from one Quintessence ledger.
 
-    The chain and the ledger arrive by construction, so a TestNet demo run is one
-    socket over a different ``LocalTestnet`` running the same ``certify`` path.
+    The chain, the ledger and the ``CaptureBounds`` arrive by construction, so a
+    TestNet demo run is one socket over a different ``LocalTestnet`` and a
+    ``CaptureBounds`` over that same chain, running the one ``certify`` path.
     """
 
     def __init__(
@@ -149,10 +196,12 @@ class CertificationSocket:
         competition_id: str = STANDING_COMPETITION_ID,
         socket_path: str | Path | None = None,
         mutation_lock: AbstractContextManager[bool] | None = None,
+        capture_bounds: CaptureBounds | None = None,
     ) -> None:
-        """Hold the chain, the ledger and the per-bot totals; no file is read."""
+        """Hold the chain, the ledger, the bounds and the per-bot totals."""
         self._testnet = testnet
         self._ledger = quint_ledger
+        self._bounds = capture_bounds
         self._competition_id = competition_id
         self._path: Path = Path(socket_path) if socket_path else DEFAULT_SOCKET_PATH
         self._chain_lock: AbstractContextManager[bool] = (
@@ -173,7 +222,8 @@ class CertificationSocket:
         """Sign, log, post and distil one fill, and return its receipt.
 
         Raises ``CertificationRefusedError`` for an empty ``fill_id``, a fill already
-        certified, or an award past the ledger's ``remaining_ever``.
+        certified, or an award past the ledger's ``remaining_ever``; a fill a
+        ``CaptureBounds`` refuses is still logged and distils nothing.
         """
         bot_id = identity.bot_id
         fill_id = str(fill.fill_id or "").strip()
@@ -196,6 +246,7 @@ class CertificationSocket:
                     f"the supply cap leaves {remaining} Quintessence, short of "
                     f"the {award} this fill would distil"
                 )
+            award_reason, capture = self._award_for(bot_id, fill, fee, grade)
             log = self._log_for(bot_id)
             record = identity.sign_trade(
                 TradeRecord(
@@ -213,7 +264,11 @@ class CertificationSocket:
                 )
             )
             leaf = log.append(record)
-            distilled = self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+            distilled = (
+                self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+                if award_reason == AWARDED
+                else Decimal(0)
+            )
             self._certified_fill_ids.setdefault(bot_id, set()).add(fill_id)
             self._lifetime_fee_usd[bot_id] = (
                 self._lifetime_fee_usd.get(bot_id, Decimal(0)) + fee
@@ -236,18 +291,72 @@ class CertificationSocket:
             lifetime_fee_usd=total,
             certified_fill_count=count,
             conservation=self._ledger.conservation(),
+            activation=fill.activation,
+            pool=fill.pool,
+            award_reason=award_reason,
+            award=capture,
         )
         logger.info(
             "certified fill %s for bot %s: fee $%s distilled %s Quintessence, "
-            "lifetime fee $%s over %d fills",
+            "lifetime fee $%s over %d fills, activation %r pool %r award %s",
             fill_id,
             bot_id[:12],
             fee,
             distilled,
             total,
             count,
+            fill.activation,
+            fill.pool,
+            award_reason,
         )
         return receipt
+
+    def _award_for(
+        self,
+        bot_id: str,
+        fill: CertifiedFill,
+        fee: Decimal,
+        grade: Decimal,
+    ) -> tuple[str, CaptureAward | None]:
+        """Put ``fill`` through the ``CaptureBounds`` and return its reason and award.
+
+        Answers ``AWARDED`` with no award while no bounds were constructed, and
+        ``NO_ACTIVATION_NAMED`` for a fill carrying no ``exchange_id`` and season.
+        """
+        if self._bounds is None:
+            return (AWARDED, None)
+        if not fill.names_activation:
+            logger.info(
+                "fill %s on %s names no activation, so no market pool pays it",
+                fill.fill_id,
+                fill.symbol,
+            )
+            return (NO_ACTIVATION_NAMED, None)
+        request = AwardRequest(
+            exchange_id=str(fill.exchange_id),
+            season=int(fill.season or 0),
+            symbol=str(fill.symbol),
+            participant=self._wallet_for(bot_id),
+            fee_usd=float(fee),
+            grade_numeric=float(grade),
+            scored_axes=int(fill.scored_axes),
+            ta_timeframe=str(fill.ta_timeframe),
+            execution_bps=fill.execution_bps,
+            at_epoch=fill.timestamp,
+        )
+        try:
+            with self._chain_lock:
+                award = self._bounds.award(request)
+        except CaptureRefusedError as refused:
+            logger.info(
+                "capture bounds refused fill %s in %s as %s: %s",
+                fill.fill_id,
+                fill.activation,
+                refused.reason,
+                refused,
+            )
+            return (refused.reason, None)
+        return (AWARDED, award)
 
     def _post_commitment(
         self,
@@ -339,10 +448,14 @@ class CertificationSocket:
             return held
 
     def socket_summary(self) -> dict:
-        """Return the per-bot fee totals, fill counts and the ledger's supply."""
+        """Return the per-bot fee totals, fill counts and the ledger's supply.
+
+        ``awards_bounded`` is False while no ``CaptureBounds`` was constructed.
+        """
         with self._state_lock:
             return {
                 "competition_id": self._competition_id,
+                "awards_bounded": self._bounds is not None,
                 "bots": {
                     bot_id: {
                         "lifetime_fee_usd": str(total),
@@ -381,8 +494,9 @@ class CertificationSocket:
     def _on_trade_filled(self, event: Event) -> None:
         """Certify the fill one ``trade.filled`` event describes.
 
-        The payload nests the fill under ``data``, and ``fee_usd`` is absent from
-        every current emit site, so such a fill distils nothing.
+        The payload nests the fill under ``data``, and ``fee_usd``, ``exchange_id``
+        and ``season`` are absent from every current emit site, so such a fill
+        names no activation and distils nothing.
         """
         try:
             payload = getattr(event, "data", None)
@@ -412,6 +526,11 @@ class CertificationSocket:
                 fee_usd=float(merged.get("fee_usd", 0) or 0),
                 role=str(merged.get("type", "") or merged.get("role", "") or "UNKNOWN"),
                 timestamp=getattr(event, "timestamp", None),
+                exchange_id=str(merged.get("exchange_id", "") or ""),
+                season=self._season_in(merged),
+                scored_axes=int(merged.get("scored_axes", 0) or 0),
+                ta_timeframe=str(merged.get("ta_timeframe", "") or ""),
+                execution_bps=self._execution_bps_in(merged),
             )
             self.certify(identity, fill)
         except Exception:
@@ -470,6 +589,28 @@ class CertificationSocket:
         return self
 
     # -- Internals -----------------------------------------------------------
+
+    @staticmethod
+    def _season_in(merged: dict) -> int | None:
+        """Return the payload's ``season`` as an int, or None when it carries none."""
+        season = merged.get("season")
+        if season is None or isinstance(season, bool):
+            return None
+        try:
+            return int(season)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _execution_bps_in(merged: dict) -> float | None:
+        """Return the payload's ``execution_bps`` as a float, or None for none."""
+        bps = merged.get("execution_bps")
+        if bps is None or isinstance(bps, bool):
+            return None
+        try:
+            return float(bps)
+        except (TypeError, ValueError):
+            return None
 
     def _log_for(self, bot_id: str) -> MerkleTradeLog:
         """Return ``bot_id``'s MerkleTradeLog, building it on first use."""

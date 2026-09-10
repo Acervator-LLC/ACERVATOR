@@ -23,6 +23,7 @@
   var PARTICIPANTS = "participants";
   var PARTY = "party";
   var PICK_NOTE = "pick_note";
+  var REDISTRIBUTION = "redistribution";
   var SKILLS = "skills";
   var STATE_TEXT = "state_text";
   var WALLET = "wallet";
@@ -43,6 +44,7 @@
     PARTICIPANTS,
     PARTY,
     PICK_NOTE,
+    REDISTRIBUTION,
     SKILLS,
     STATE_TEXT,
     WALLET,
@@ -121,6 +123,16 @@
   var SKILL_EFFECT_PART = "skill-effect";
   var SKILL_BLEED_PART = "skill-bleed";
   var SKILL_NOTE_PART = "skill-note";
+
+  var POT_PANEL_PART = "pot-panel";
+  var POT_TITLE_PART = "pot-title";
+  var POT_ROW_PART = "pot-row";
+  var POT_ROW_LABEL_PART = "pot-row-label";
+  var POT_ROW_VALUE_PART = "pot-row-value";
+  var POT_SHARE_PART = "pot-share";
+  var POT_UNSCORED_PART = "pot-unscored";
+  var POT_NOTE_PART = "pot-note";
+  var SETTLED_ATTR = "data-settled";
 
   var QUINT_LABEL_PART = "quint-label";
   var QUINT_BALANCE_PART = "quint-balance";
@@ -514,6 +526,70 @@
     return element("div", panelProps, children);
   }
 
+  function PotRow(props) {
+    var row = props.row;
+    var label = text(row.label);
+    return element(
+      "div",
+      named(TAB_CLASS + "-pot-row", POT_ROW_PART, label),
+      element(
+        "span",
+        named(TAB_CLASS + "-pot-row-label", POT_ROW_LABEL_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-pot-row-value", POT_ROW_VALUE_PART, label),
+        text(row.value)
+      )
+    );
+  }
+
+  // A share line names the score and the amount; no line names what was spent.
+  function PotPanel(props) {
+    var pot = props.redistribution;
+    var rows = Array.isArray(pot.rows) ? pot.rows : [];
+    var shares = Array.isArray(pot.shares) ? pot.shares : [];
+    var unscored = Array.isArray(pot.unscored) ? pot.unscored : [];
+    var notes = Array.isArray(pot.notes) ? pot.notes : [];
+    var titleProps = part(TAB_CLASS + "-pot-title", POT_TITLE_PART);
+    titleProps.key = POT_TITLE_PART;
+    var children = [element("h4", titleProps, text(pot.title))];
+    rows.filter(isPlainObject).forEach(function (row) {
+      children.push(element(PotRow, { key: text(row.label), row: row }));
+    });
+    shares.forEach(function (line, at) {
+      var shareProps = named(
+        TAB_CLASS + "-pot-share",
+        POT_SHARE_PART,
+        text(line)
+      );
+      shareProps.key = POT_SHARE_PART + "-" + String(at);
+      children.push(element("p", shareProps, text(line)));
+    });
+    unscored.forEach(function (line, at) {
+      var missProps = named(
+        TAB_CLASS + "-pot-unscored",
+        POT_UNSCORED_PART,
+        text(line)
+      );
+      missProps.key = POT_UNSCORED_PART + "-" + String(at);
+      children.push(element("p", missProps, text(line)));
+    });
+    notes.concat([text(pot.note)]).forEach(function (note, at) {
+      if (!text(note)) {
+        return;
+      }
+      var noteProps = named(TAB_CLASS + "-pot-note", POT_NOTE_PART, text(note));
+      noteProps.key = POT_NOTE_PART + "-" + String(at);
+      children.push(element("p", noteProps, text(note)));
+    });
+    var panelProps = part(TAB_CLASS + "-pot-panel", POT_PANEL_PART);
+    panelProps["aria-label"] = text(pot.title);
+    panelProps[SETTLED_ATTR] = String(pot.is_settled === true);
+    return element("div", panelProps, children);
+  }
+
   function WalletRow(props) {
     var rowProps = named(TAB_CLASS + "-wallet-row", props.name, props.label);
     return element(
@@ -712,6 +788,14 @@
         element(SkillPanel, { key: SKILL_PANEL_PART, skills: props.skills })
       );
     }
+    if (isPlainObject(props.redistribution)) {
+      children.push(
+        element(PotPanel, {
+          key: POT_PANEL_PART,
+          redistribution: props.redistribution
+        })
+      );
+    }
     if (props.pickNote !== undefined) {
       children.push(
         element(
@@ -791,6 +875,9 @@
             rows: rows,
             classes: entries,
             skills: isPlainObject(model[SKILLS]) ? model[SKILLS] : null,
+            redistribution: isPlainObject(model[REDISTRIBUTION])
+              ? model[REDISTRIBUTION]
+              : null,
             pickNote: text(model[PICK_NOTE])
           })
     );

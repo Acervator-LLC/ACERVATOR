@@ -69,7 +69,8 @@ MIN_CHARGE_TURNS = 1
 DEFAULT_STORE_PATH = Path.home() / ".acervator" / "poa_record_store.json"
 STORE_FILE_VERSION = 1
 
-#: The held address every Elite action's Quintessence rests at; no payout reads it yet.
+#: The held address every Elite action's Quintessence rests at, and the pot a payout
+#: divides; what stays there after a payout is the reserve.
 EVENT_POT_ADDRESS = "poa_elite_event_pot"
 
 PAYER_ACTOR = "actor"
@@ -185,8 +186,9 @@ class ActionDraft:
 class ActionRecord:
     """One participant's acting in one event, the only record either reader reads.
 
-    ``spent`` and ``underwritten`` sum what each payer moved, and ``last_acted_at``
-    is the epoch second the dormancy clock reads.
+    ``spent`` and ``underwritten`` sum what each payer moved, ``last_acted_at`` is
+    the epoch second the dormancy clock reads, and ``grade_numeric`` with
+    ``scored_axes`` carry the ``TradeGrade`` the payout divides on.
     """
 
     event_id: str
@@ -197,6 +199,10 @@ class ActionRecord:
     bands: dict[str, int] = field(default_factory=dict)
     first_acted_at: float = 0.0
     last_acted_at: float = 0.0
+    grade_numeric: Decimal = Decimal(0)
+    scored_axes: int = 0
+    paid: Decimal = Decimal(0)
+    settled_at: float = 0.0
 
     def to_dict(self) -> dict:
         """Return this record as a JSON-safe dict with every Decimal as a string."""
@@ -209,6 +215,10 @@ class ActionRecord:
             "bands": dict(self.bands),
             "first_acted_at": self.first_acted_at,
             "last_acted_at": self.last_acted_at,
+            "grade_numeric": str(self.grade_numeric),
+            "scored_axes": self.scored_axes,
+            "paid": str(self.paid),
+            "settled_at": self.settled_at,
         }
 
     @classmethod
@@ -223,6 +233,10 @@ class ActionRecord:
             bands={str(k): int(v) for k, v in (d.get("bands") or {}).items()},
             first_acted_at=float(d.get("first_acted_at", 0.0)),
             last_acted_at=float(d.get("last_acted_at", 0.0)),
+            grade_numeric=Decimal(str(d.get("grade_numeric", "0"))),
+            scored_axes=int(d.get("scored_axes", 0)),
+            paid=Decimal(str(d.get("paid", "0"))),
+            settled_at=float(d.get("settled_at", 0.0)),
         )
 
 
@@ -282,8 +296,9 @@ class PoaRecordStore:
     """The durable store behind the skill ladder and the action records.
 
     ``skill_progress`` and ``record_skill_use`` hold a participant's
-    ``SkillProgress``, ``action_record`` and ``last_acted_at`` are the record's two
-    readers, and ``save`` and ``load`` carry both across a restart.
+    ``SkillProgress``, ``action_record`` and ``last_acted_at`` read the record,
+    ``write_grade`` puts the graded trade a payout divides on, and ``save`` and
+    ``load`` carry both across a restart.
     """
 
     def __init__(self, store_path: str | Path | None = None) -> None:
@@ -407,6 +422,78 @@ class PoaRecordStore:
             record.last_acted_at = stamp
             self.save()
         return record
+
+    def write_grade(
+        self, event_id: str, address: str, grade_numeric: object, scored_axes: object
+    ) -> ActionRecord:
+        """Put one graded trade's ``grade_numeric`` and ``scored_axes`` on the record.
+
+        ``scored_axes`` of nought leaves ``grade_numeric`` a default, which the
+        payout refuses a share on.
+        """
+        if type(scored_axes) is not int or scored_axes < 0:
+            raise ActionSpendError(
+                f"scored_axes must be a whole number of axes, got {scored_axes!r}"
+            )
+        if (
+            type(grade_numeric) not in (int, float, Decimal)
+            or type(grade_numeric) is bool
+        ):
+            raise ActionSpendError(
+                f"grade_numeric must be int, float or Decimal, "
+                f"not {type(grade_numeric).__name__}"
+            )
+        numeric = Decimal(str(grade_numeric))
+        if not numeric.is_finite() or numeric < 0 or numeric > 1:
+            raise ActionSpendError(
+                f"grade_numeric must be 0 to 1, got {grade_numeric!r}"
+            )
+        record = self.action_record(event_id, address)
+        with self._lock:
+            record.grade_numeric = numeric
+            record.scored_axes = scored_axes
+            self.save()
+        return record
+
+    def event_settled_at(self, event_id: str) -> float:
+        """Return the latest ``settled_at`` in ``event_id``, or nought when unpaid."""
+        return max(
+            (record.settled_at for record in self.event_records(event_id)),
+            default=0.0,
+        )
+
+    def write_payout(
+        self, event_id: str, credits: dict, at_epoch: float
+    ) -> list[ActionRecord]:
+        """Stamp ``credits`` and ``at_epoch`` onto every record in ``event_id``.
+
+        Every record in the event takes the stamp, so an event with no credit is
+        still marked settled and ``event_settled_at`` refuses a second payout.
+        """
+        event = _as_identifier(event_id, "event_id")
+        if not isinstance(credits, dict):
+            raise ActionSpendError(
+                f"credits must be a dict of address to amount, "
+                f"not {type(credits).__name__}"
+            )
+        stamp = float(at_epoch)
+        with self._lock:
+            records = self.event_records(event)
+            for record in records:
+                record.paid = Decimal(str(credits.get(record.address, 0)))
+                record.settled_at = stamp
+            self.save()
+        return records
+
+    def clear_payout(self, event_id: str) -> list[ActionRecord]:
+        """Take the payout stamp back off every record in ``event_id``."""
+        with self._lock:
+            records = self.event_records(event_id)
+            for record in records:
+                record.paid = Decimal(0)
+                record.settled_at = 0.0
+            self.save()
+        return records
 
     # -- Persistence ---------------------------------------------------------
 

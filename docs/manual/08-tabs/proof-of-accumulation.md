@@ -3845,6 +3845,324 @@ is the floor the design gives, and the gate holds there.
 
 In development.
 
+## 2026-09-10 09:47 - #147 - a certified fill names its activation
+
+A fill offered for certification now says which exchange it traded on and which
+season it traded in. Those two facts name the activation period, and the market
+symbol names the pool inside it, so the socket that mints Quintessence can find
+the pool an award would come out of. Every bound built yesterday is now asked
+before a single Quintessence is minted.
+
+### The fill carries the exchange and the season
+
+Five fields were added to the record one fill is offered as. Two of them name
+where the award comes from and three are what the bounds read off the trade.
+
+`src/competition/certification_socket.py` - the record
+
+```python
+    exchange_id: str = ""
+    season: int | None = None
+    scored_axes: int = 0
+    ta_timeframe: str = ""
+    execution_bps: float | None = None
+```
+
+A fill that carries neither an exchange nor a season names no activation, and the
+program says so rather than guessing one.
+
+```
+fill 04e1cafc:2026-09-10T07:21:39 on RE/USD names no activation, so no market
+pool pays it
+
+award_reason : no_activation_named
+distilled    : 0 Quintessence
+```
+
+### Certification asks the bounds before it mints
+
+The bounds arrive when the socket is built, the same way the chain and the ledger
+do. A fill the bounds refuse is still signed, logged and counted towards the
+bot's lifetime fee, and it mints nothing.
+
+`src/competition/certification_socket.py` - the one place the mint is decided
+
+```python
+            distilled = (
+                self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+                if award_reason == AWARDED
+                else Decimal(0)
+            )
+```
+
+The screen's own install line now says whether awards are bounded at all.
+
+```
+CertificationSocket installed (path=..., bots=0, awards bounded=True)
+```
+
+### The season comes from the chain, and nothing moves it
+
+A season is a counter on the chain, not a date. The running program reports it,
+and it has read one since the day it was written.
+
+```
+LocalTestnet.get_competition_stats() current_season = 1
+```
+
+`contracts/CompetitionRegistry.sol` holds the only thing that advances it, and
+nothing in the Python calls an equivalent, so every activation today is season
+one. Governance is the unit that turns that call into a vote.
+
+### A trade that can pay nothing is refused, not paid nothing
+
+A fill with no fee distils nothing. Granting it anyway would spend the
+participant's one allotment of that market and start their cooldown for no
+Quintessence at all, which is a pure loss to them and hides the missing fee.
+
+`src/competition/capture_bounds.py` - the new bound
+
+```python
+        if amount == 0:
+            raise CaptureRefusedError(
+                NOTHING_TO_AWARD,
+                f"a fee of {request.fee_usd} at a grade of {request.grade_numeric} "
+                f"distils nothing, and granting it would spend {participant}'s one "
+                f"allotment of {symbol} and open a cooldown for no Quintessence",
+            )
+```
+
+One real fill, driven twice. The venue's fee is the only difference between the
+two runs.
+
+```
+SUI/USD sell at 0.8223, two axes, grade 1.0
+
+no fee on the payload   nothing_to_award   0 Quintessence
+the venue fee supplied  awarded            1.00 Quintessence
+                        pool 817.1556  ceiling 40.8577  cooldown 900s
+```
+
+### Every bound, driven on his own fills
+
+1,709 entries were read from the live trade log and 1,668 of them graded. Each
+refusal below is the program's own sentence.
+
+```
+not_activated
+  RE/USD holds no Quintessence allotment in coinbase:1, so there is no pool
+  for an award to come out of
+
+sole_axis_clamped
+  SOL/USD sell at -646.3 basis points, one scored axis: a reference that far
+  out is stale, so the one axis reports a clamp and the grade of 1.0 rests
+  on nothing
+
+nothing_to_award
+  a fee of 0.0 at a grade of 1.0 distils nothing
+
+no_activation_named
+  the fill carries no exchange and no season
+
+awarded
+  SOL/USD sell at -80.3 basis points, two axes, grade 0.5
+  0.50 Quintessence of a 5902.5851 pool, ceiling 295.1292, cooldown 900s
+```
+
+The first refusal is the live configuration speaking. Coinbase holds six eligible
+markets today against a floor of twelve, so no activation can open, so no pool
+exists, so every real fill is refused at the first bound. That is the age rule
+working and the economy not starting, which is already on the page above.
+
+### The fee a fill should be measured on is not on the fill
+
+The live fill event carries a side, an amount and a price. It carries no fee, and
+the pinned log schema carries none either, so all 1,709 entries read zero. The
+venue does report a per-trade fee, and the platform already sums it per bot into
+the figure the status screen shows, but nothing puts it on the individual fill.
+
+Until it does, every certified fill distils nothing and the refusal says which
+number is missing. Supplying a per-fill venue fee to the fill event is the unit
+that finishes this.
+
+### The figure that sets the scale of the economy
+
+How much Quintessence one activation emits is still nobody's number. It is the
+caller's argument, and passing the absence now refuses by name rather than
+quietly becoming a zero.
+
+`src/competition/capture_bounds.py` - the absence, stated
+
+```python
+#: No figure sets how much Quintessence a market's pool holds in a window, so
+#: ``activate`` takes it as an argument and refuses this None.
+EMISSION_PER_ACTIVATION = None
+```
+
+```
+emission_not_set: no emission was named for this activation, and no figure here
+sets how much Quintessence a market's pool holds in a window; activate takes it
+as an argument and no default stands in
+```
+
+### Demo mode certifies against a second chain
+
+One class, two chains, one award path, no flag. The socket takes its chain and
+its bounds when it is built, so a TestNet run is a second set of the same three
+objects over a second chain.
+
+```
+the same class        : CertificationSocket and CertificationSocket
+the same chain object : False
+
+live chain   4 CaptureBounds records
+demo chain   1 CaptureBounds record
+
+on the demo chain
+  PUMP/USD sell, two axes, grade 1.0 -> awarded, 1.00 Quintessence
+  pool 964.6291  ceiling 48.2314  cooldown 900s
+```
+
+### What still does not reach this
+
+Nothing subscribes the socket to the live fill event. The object is built on every
+launch and its subscription method has no caller, so no real trade reaches
+certification while the platform runs. Wiring it would start minting against the
+live Quintessence ledger on every fill, which is a decision about real value
+rather than a repair, so it is named here and left for the unit that makes it.
+## 2026-09-10 10:07 - #147 - the pot divides on performance, and the remainder rests
+
+An Elite Event ends and the Quintessence its participants spent is divided back to
+them. Seventy-five per cent of the pot returns. The share each one takes is their
+own performance score over every score in the event, and nothing in that sum reads
+what anybody spent.
+
+```python
+RETURN_PERCENT = 75
+BASE_UNITS_PER_QUINTESSENCE = 10**18
+
+return_pool_units = pot_units * RETURN_PERCENT // 100
+amount_units = return_pool_units * own // total_score_units
+```
+
+### The top spender performed worst and took nothing
+
+Three participants distilled four Quintessence each and acted in one event. One
+bought the dearest band eight times, one bought the cheapest band once. The real
+trade grader graded three real fills, and the grades run the other way from the
+spending.
+
+```
+                spent    actions   grade   axes   payout
+big_spender     0.800          8   F 0.0      4   0
+middle          0.030          3   C 0.5748   4   0.227485458470916941
+small_spender   0.001          1   A+ 1.0     4   0.395764541529083058
+```
+
+The participant who put 0.800 of a 0.831 pot in took nothing back. The one who put
+0.001 in took the largest payout. Dividing by spend would have paid the first one
+almost everything.
+
+### A grade the platform could not compute takes no share
+
+A fill with no surrounding price data scores no axis, and the grader answers 0.5 as
+its default. That 0.5 is not a measurement, so the division refuses it a share, the
+same refusal the capture bounds already make on an award.
+
+```
+alpha   grade 0.8008   axes 2   share 0.444691248334073745   0.103724233673922701
+beta    grade 1        axes 2   share 0.555308751665926254   0.129525766326077298
+gamma   grade 0.5      axes 0   no scored axis, so no share
+```
+
+### The books balance through the payout, and no bucket goes negative
+
+The three buckets and the supply are read before the payout and again after it.
+Quintessence moves from the pot into wallets and none is made or lost.
+
+```
+before   wallets 2.689                 held 0.311                 platonic 0
+         minted 3   delta 0   balanced True   negative buckets 0
+after    wallets 2.922249999999999999   held 0.077750000000000001   platonic 0
+         minted 3   delta 0   balanced True   negative buckets 0
+```
+
+### The pot equals the payouts plus the reserve, exactly
+
+This division does not divide evenly. The return pool is 0.23325 and the two shares
+come to one indivisible unit less. That unit is not dropped and not rounded away; it
+joins the quarter that never left and rests at the pot address as the reserve.
+
+```
+pot                   0.311
+return pool, 75%      0.23325
+paid to participants  0.233249999999999999
+division remainder    0.000000000000000001
+reserve               0.077750000000000001
+
+0.233249999999999999 + 0.077750000000000001 = 0.311
+```
+
+The reserve is also what the pot address still holds, so the figure on the screen and
+the figure on the chain are the same figure.
+
+### A settled event is refused a second payout, across a restart
+
+The store is stamped before the ledger moves. One program run paid the event and
+exited. A second run read the same files back and refused to pay again.
+
+```
+SETTLED AT live 1700000500.0
+SECOND SETTLE REFUSED live raid was settled at 1700000500.0; a second payout
+  would take Quintessence the pot no longer rests
+```
+
+### The page draws it, on both chains
+
+The Accumulation page carries a Redistribution panel under the skill ladder. The
+page was drawn and its own text read back.
+
+```
+chain live      3180 characters   Pot 0.311   reserve 0.077750000000000001
+chain testnet   3188 characters   Pot 0.311   reserve 0.077750000000000001
+
+quintessence_ledger.json           poa_record_store.json
+quintessence_ledger_testnet.json   poa_record_store_testnet.json
+```
+
+Demo mode is the same code over a different chain. The panel takes its ledger, its
+store and its pot address at construction, so the demo run is one more object over
+its own files and there is no flag anywhere in the division.
+
+### One sentence on the skills panel was corrected
+
+The panel said no field holds a use's quality. The record store now holds each use's
+quality as weighted uses, so the sentence was wrong on screen. It now reads:
+
+```
+The record store holds each use's quality as weighted uses, and this panel reads
+the participant's own. Nothing records a use yet, so the skill stands at level 0.
+```
+
+The panel also reads the participant's own standing out of the store rather than
+building a fresh one, so the level it prints is the level the store holds.
+
+### What the redistribution does not reach
+
+No control starts a payout. Nothing on screen settles a pot, and the Quint Wallet is
+where that control belongs.
+
+Nothing writes a performance score during live play. The score is the trade grade,
+read through the RPG conversion, and the writer is reached only from inside the
+redistribution itself. A certified fill now carries both its grade and its count of
+scored axes, so the figures a share needs exist; nothing joins a fill to a
+participant's event record, and that join is what is missing.
+
+No guild exists, so a treasury's spend sizes the pot under the actor's own address
+and no officer is checked.
+
+In development.
+
 ## 2026-09-10 10:15 - #147 - the loot system
 
 A qualifying market now drops loot, the wallet holds it, and each item augments a
