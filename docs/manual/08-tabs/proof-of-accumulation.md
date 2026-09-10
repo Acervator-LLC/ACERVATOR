@@ -4951,3 +4951,180 @@ trophy refuses to mint a tier with no art. Deployment uploads all five.
 
 The season pool bounds the tokens a season pays out. It does not bound how many
 trophies a season mints, because the uncapped tier costs no tokens.
+
+## 2026-09-10 13:04 - #147 - the loot contract has forge coverage
+
+Four contract suites sat in the tree and none of them read the loot contract. Its
+rarity scale and its metadata were held by four analyzers that look for known
+weakness classes, and by nothing that drives the contract and reads what it
+returns. A fifth suite now sits beside the four.
+
+### A fifth suite reads the loot contract
+
+The suite deploys the contract, fills the art for all five tiers, and drives every
+mint through a handler that is the only address the contract admits as the dropper.
+
+```
+tests/contracts/AcervatorLoot.t.sol   14 checks, 7 of them invariants
+forge test                            5 suites, 57 checks, 0 failed
+```
+
+### The five weights add up to the draw span
+
+The scale is read back out of the contract rather than out of the source. Each
+tier's weight is asked for by name and the five are added together.
+
+```
+Calx            600
+Cauda Pavonis   250
+Flores          110
+Elixir           35
+Magisterium       5
+                ---
+total          1000   ==  WEIGHT_TOTAL_PER_MILLE
+```
+
+A total that matches is worth nothing unless the total can also miss. One tier's
+weight is moved in storage from 600 to 599 and the same reader is asked again.
+
+```
+before        total 1000, the draw span
+weight 599    total  999, reported short
+restored      total 1000, the draw span again
+```
+
+### The refusal the draw span governs
+
+The draw span is the weight total, and a mint refuses a roll that falls outside
+it. Both sides are driven on the same contract.
+
+```
+roll  999                   admitted, the holder ends with one item
+roll 1000                   "Loot: roll outside the draw span"
+roll at the largest number  "Loot: roll outside the draw span"
+the minted total afterwards  1, so a refused roll counts nothing
+```
+
+Four more refusals are driven beside it, so the roll refusal is the only reason
+the roll case can fail.
+
+```
+tier id 0 and tier id 6     "Loot: unknown tier"
+a tier holding no art       "Loot: SVG not uploaded for this tier"
+any address but the dropper "Loot: caller is not the dropper"
+the zero address            "Loot: mint to zero address"
+```
+
+### The constructor's own refusal cannot be driven from a test
+
+The deployment refuses a tier set whose weights miss the total. That refusal takes
+no input. The five weights are written by a private helper, from fixed numbers,
+inside the constructor, and the only thing a caller passes in is the dropper
+address. The compiler says so when a test tries to reach the helper.
+
+```
+Error (7576): Undeclared identifier.
+    _setTier(CALX, "Calx", "Calx", 599, 0, 20, "#C8C0B4");
+```
+
+A contract built on top of the loot contract can write a weight, and the
+deployment still succeeds, because the refusal has already run by then. The
+accepting side is therefore driven, and the refusing side is not reachable without
+editing the contract, which this unit does not do.
+
+```solidity
+    uint256 total = 0;
+    for (uint256 id = CALX; id <= TIER_COUNT; ++id) {
+        total += tiers[id].weightPerMille;
+    }
+    require(total == WEIGHT_TOTAL_PER_MILLE, "Loot: weights do not total 1000");
+```
+
+### The uri, and a token id that does not exist
+
+Every tier serves its metadata as base64 text carried inside the answer itself, so
+a reader needs no web address. The lowest tier's answer is compared against the
+JSON written out by hand below, character for character.
+
+```
+{"name":"Acervator Loot — Calx","description":"A Proof-of-Accumulation loot item
+dropped by a qualifying market. Tier 1 of 5, weight 600 of 1000. It augments a
+tournament action and no trading figure: 0 Impetus off one action's cost and 20 of
+1000 added to that action's effect.","image":"data:image/svg+xml;base64,c3Zn",
+"attributes":[{"trait_type":"Tier","value":"Calx"},{"trait_type":"Short Form",
+"value":"Calx"},{"trait_type":"Weight (per mille)","value":600},{"trait_type":
+"Impetus Relief","value":0},{"trait_type":"Effect Bonus (per mille)","value":20},
+{"trait_type":"Minted","value":0},{"trait_type":"Tier Color","value":"#C8C0B4"}]}
+```
+
+Changing one digit of that hand-written JSON, from weight 600 to 601, makes the
+comparison report, which is how the comparison is known to read the contract's
+answer rather than itself.
+
+A token id outside the five gets no metadata at all. It is refused rather than
+answered with an empty item.
+
+```
+id 1 to 5                 each serves its own answer, all five different
+id 0                      "Loot: unknown tier"
+id 6                      "Loot: unknown tier"
+the largest number        "Loot: unknown tier"
+the answer after a drop   moves, because it carries the minted count
+the answer after new art  moves, because it carries the tier's art
+```
+
+### One fuzz target, named, and forty seeds
+
+The random runner is told to drive the handler and nothing else. Without that, it
+also drives the loot contract directly and a mint can land that no counter
+recorded. Measured with the declaration removed: about 1,350 direct mints per
+campaign, and on one earlier revision one of them landed and the count check went
+red.
+
+```
+with the target named, 40 seeds        40 of 40 green, 57 checks each
+each campaign                          256 runs, 16,384 calls
+without the target, 140 seeds          all green, but ~1,350 direct mints a run
+without the target, earlier revision   1 seed of 40 red, an uncounted mint
+```
+
+One seed is not a measurement. The rare red is the reason the target is named.
+
+### What every tool printed
+
+Each tool was shown failing on a broken file and quiet on a sound one before any
+verdict here was read.
+
+| tool | broken file | sound file | the new suite |
+| --- | --- | --- | --- |
+| forge | 1 check failed | 16,384 calls, passed | 57 passed, 0 failed |
+| slither | 1 high result | 0 results | 0 results in project code |
+| solhint | 1 error | 0 errors | 0 errors, 210 warnings |
+| semgrep | 1 finding | 0 findings | 0 findings at error level |
+
+The warnings and the lint notes sit in the same classes and the same counts as the
+four suites already in the tree.
+
+```
+solhint warnings    153 to 235 across the four, 210 here, 0 errors in all five
+forge lint results   23 to  48 across the four,  37 here, 0 errors in all five
+semgrep, all levels  67 to  70 across two,       92 here, 0 at error level
+```
+
+mythril is still absent from this machine, so symbolic execution over the loot
+bytecode has not been run and nothing was put in its place.
+
+### What the forge coverage does not reach
+
+No contract changed. The loot contract is read and driven and not edited, and the
+comparison over the contract directory is empty.
+
+The refusal inside the deployment is still unproved, for the reason given above.
+Proving it would need the weights to arrive from outside the constructor, which is
+a change to the contract and a decision about what the contract is.
+
+Nothing is deployed and no network is reached. Every run here is local.
+
+No control on screen drops an item, so the operator sees nothing new today. The
+coverage protects the rarity scale and the item page a marketplace would read,
+before either reaches a chain.
