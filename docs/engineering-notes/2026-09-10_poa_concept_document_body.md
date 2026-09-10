@@ -30,9 +30,9 @@ this page in **seven parts**: this body, then six comments below it.
 | **part 6 of 7** | 13 to 16 in full · the choices, with every option and its cost |
 | **part 7 of 7** | every superseded reading in full · 17 The naming standard, in full |
 
-The units and the list of what he owes sit in this body, because those are the parts
-that get dispatched and the parts he answers. Sections 1 to 3, 6 and 13 to 17 sit here
-too, because they carry the rules he set.
+The units and what he owes sit in this body: those are the parts that get dispatched and the
+parts he answers. Sections 1 to 3, 6 and 13 to 17 sit here too, because they carry the rules
+he set.
 
 Section 9 in part 3 is the rotation mechanism. Section 15 here is his exclusion rule
 over it, set after that research landed.
@@ -143,9 +143,9 @@ structures.
 header and stays visible at all times. The full wallet opens as a panel over the
 party window, and over nothing else.
 
-Not a fourth zone: his layout fixes a ratio, and a fourth zone takes space from one
-of the three he named. Not a tab mode: Elite Events spend Quintessence per action, so
-a mode that replaces the tab hides the fight when the balance matters most.
+Not a fourth zone: his layout fixes a ratio, and a fourth zone takes space from one of the
+three he named. Not a tab mode: Elite Events spend per action, so replacing the tab hides
+the fight when the balance matters most.
 
 The party window is the right host for three reasons from his own spec. It already
 paginates at forty a page, so it owns a header and a panel is one more page class.
@@ -262,9 +262,8 @@ Level ten alone is 60% of the lifetime cost, and topping out takes about 6,357
 quality-weighted uses. A constant multiplier with a heavy tail is what Eve Online,
 RuneScape and EverQuest publish.
 
-**Eve trains on elapsed time and he has said through use.** The shape transfers and
-the mechanism does not, so the unit of progress is a counted use and never a duration.
-Quality-weighting stops repetition from being the strategy.
+**Eve trains on elapsed time and he has said through use**, so the shape transfers and the
+mechanism does not: the unit of progress is a counted use, never a duration.
 
 ### Class abilities run a hundred levels a phase
 
@@ -391,10 +390,9 @@ stacking    none; an unspent pool does not carry into the next turn
 expiry      use it or lose it, with the candle that grants it
 ```
 
-Two per-turn costs now exist and they do different work. The pool is tempo: granted free,
-expiring unspent, sized by level and speed, and it limits **how much** a participant
-does. Quintessence is economy: earned by certifying trades, spent permanently, and it
-limits **what** a participant will spend on. An action costs both.
+Two per-turn costs now exist and they do different work. The pool is tempo and limits **how
+much** a participant does. Quintessence is economy and limits **what** they will spend on.
+An action costs both.
 
 **PROPOSED.** The pool needs a name that is not "action budget", because the Quintessence
 mechanism already owns that phrase. **Impetus** is proposed: it names an impressed force
@@ -415,9 +413,8 @@ away. The same answer covers a guild negotiating an expensive cast inside one ca
 fantasy while appearing to improve the experience.
 
 **PROPOSED.** If power is agency per unit of real time, the interface delivers the fantasy
-rather than the numbers. The player window owes how many actions commit inside one candle,
-whether actions queue before it opens, and whether the pool remaining is legible at a
-glance under time.
+rather than the numbers, so issuing speed and a legible remaining pool become requirements
+on the player window.
 
 ### A stronger ability costs more, or takes longer
 
@@ -538,15 +535,14 @@ the candle cooldown    never fewer than three candles
 the grade curve        the award is multiplied by the trade grade, 0.0 to 1.0
 ```
 
-The effective rate is far below one to one, because a wash trade scores near the bottom
-of the grade range. At a grade-neutral mean near 0.5 the 33,000,000 cap mints out
-against roughly 66,000,000 USD of certified fees.
+The effective rate is far below one to one, because a wash trade grades near the bottom. At
+a grade-neutral mean near 0.5 the 33,000,000 cap mints out against roughly 66,000,000 USD of
+certified fees.
 
-**MEASURED.** The platform cannot answer how much fee a bot has ever paid. The only
-existing total is re-derived from a bounded window of 500 trades, so it falls, and
-`_record_venue_fee` in `src/trading/scrumming/execution.py` discards every buy, so half
-of each cycle records no fee at all. Unit 7 builds the lifetime total, following the
-monotonic shape `sync_ytd_trade_count` already uses.
+**MEASURED.** The platform cannot answer how much fee a bot has ever paid: the only total
+is re-derived from a 500-trade window, and `_record_venue_fee` in
+`src/trading/scrumming/execution.py` discards every buy. Unit 7 builds the lifetime total,
+following the monotonic shape `sync_ytd_trade_count` already uses.
 
 ### Eligibility — all three conditions are required
 
@@ -571,8 +567,7 @@ a market's pool in one activation period.
 
 Five of twenty sets the blanket-farming cost at four to one: a participant who cannot see
 the rotation must trade all twenty eligible markets to cover the five that pay. Three of
-twenty would raise the ratio to 6.7 and leave only sixty participant-slots a window;
-five gives one hundred.
+twenty would leave only sixty participant-slots a window; five gives one hundred.
 
 Five per cent means at least twenty distinct participants must earn from a market before
 its allotment can be exhausted, which keeps his third end condition reachable. At 25%
@@ -623,14 +618,12 @@ single-slot rule closes the split attack, because the slot serialises parallel t
 
 ### The conservation law has three buckets
 
-**DECIDED.** The platonic is a third place Quintessence can be, so the invariant a
-contract audit holds gains a term.
+**DECIDED.** The platonic is a third place Quintessence can be, so the invariant a contract
+audit holds gains a term. A verifier that omits it reports a shortfall that is not a defect.
 
 ```
 wallets + held addresses + the platonic == total ever distilled <= 33,000,000
 ```
-
-A verifier that omits the platonic reports a shortfall that is not a defect.
 
 ### The trophy tier caps, and where they must live
 
@@ -683,21 +676,34 @@ and no path runs back to a personal wallet, so a treasury is a held address.
 
 ### Loot — five rarity tiers, and its own contract
 
-**DECIDED.** Five tiers, named for five of the twelve gates of the Great Work in the
-order George Ripley's *The Compound of Alchemy* gives them.
+**DECIDED.** Five tiers, with these weights. The Elite column multiplies the two rarest
+weights by three and renormalises the rest, which is his rule: rarity and drop rate both
+rise. Both columns total 100.0%.
 
 ```
-tier           gate   base weight   Elite weight
-CALCINATION      1        60.0%         55.0%
-PUTREFACTION     5        25.0%         22.9%
-SUBLIMATION      8        11.0%         10.1%
-FERMENTATION     9         3.5%         10.5%
-EXALTATION      10         0.5%          1.5%
+tier           short form   base weight   Elite weight
+Calx           Calx             60.0%         55.0%
+Cauda Pavonis  Pavonis          25.0%         22.9%
+Flores         Flores           11.0%         10.1%
+Elixir         Elixir            3.5%         10.5%
+Magisterium    Magisterium       0.5%          1.5%
 ```
 
-Both columns total 100.0%. The Elite column multiplies the two rarest weights by three and
-renormalises the rest, which is his rule: rarity and drop rate both rise. Four of the
-twelve gates were rejected because the tree already uses the word.
+**HIS, and it replaced the names this page carried.**
+
+> "Loot Tier - Alchemical Operation Naming Conflict - Will need to rename the Tiers to mean
+> 'the result of...'."
+
+> "Could use something alchemical meaning coalesced or focused power..."
+
+The tiers were named for alchemical operations — Calcination, Putrefaction, Sublimation,
+Fermentation and Exaltation. An operation is a process and an item is a product, so the old
+names described the wrong thing. The operations become the crafting verbs, and each tier now
+names what its operation leaves behind.
+
+**PROPOSED**, with a source per term in the rename comment below, and each short form inside
+the twelve-character limit. Exaltation could not take its natural product because the
+quintessence is the currency, so the rarest tier takes his second direction instead.
 
 **DECIDED.** Loot gets its own ERC-1155 contract, and the metadata helpers come out of
 the trophy contract into a library both use. Three measured reasons, in full in part 6:
@@ -721,14 +727,13 @@ the summit   the highest items tied to hermetic figures and ideals
 ```
 
 Alchemy is already a crafting system, which is why this fits: the tradition supplies
-transformations through stages, with apparatus, reagents and failure states. The lens is
-the system rather than decoration applied afterwards.
+transformations through stages, with apparatus, reagents and failure states. The lens is the
+system rather than decoration applied afterwards.
 
-**PROPOSED, and it needs settling before anything is built.** The five loot tiers are
-named for alchemical operations, so a crafting system built on the operations would reuse
-those words as its verbs. The tiers are already decided, so **crafting names its stations
-from the apparatus instead** — the athanor, the alembic, the crucible, the retort, the
-pelican, and the water bath named for Maria the Jewess.
+**HIS ruling settles the one collision.** Crafting takes the operations as its verbs,
+because the tiers now name results instead. Naming the stations from the apparatus — the
+athanor, the alembic, the crucible, the retort — is no longer needed to resolve a conflict,
+and may still be taken on its own merit.
 
 The summit figures are attested rather than invented, and **two are already spoken for**:
 Paracelsus names the roles and Ripley names the loot tiers. The Emerald Tablet also sits
@@ -775,9 +780,8 @@ L4 CORE           any change to a rule a holder relies    150 Q     40%   67%   
 ```
 
 Quorum counts eligible voters at that level, never supply. Security is a severity rather
-than a level: a Low or Medium finding repairs at L2, a High or Critical one at L4. A
-modest participant distils about 190 Quintessence in six months, so L4 at 150 meets his
-six-month-to-a-year test.
+than a level: a Low or Medium finding repairs at L2, a High or Critical one at L4. A modest
+participant distils about 190 Quintessence in six months, so L4 at 150 meets his test.
 
 **Two defaults can deadlock the system with no path out**: the L4 threshold of 150 and the
 L4 quorum of 40%. Both belong at the low end of any range he is comfortable with.
@@ -809,10 +813,9 @@ franchise level  the remembered maximum, converging toward balance on
 burn or a transfer would break the three-bucket law and contradict indestructibility in
 one stroke. **The decay floor is the address's actual balance, and he confirmed it.**
 
-**DECIDED.** Acting inside an event refreshes the clock — one attack, heal, cast, tactic
-or movement. Entry alone does not, and completion is not required. The hold period and
-the inactivity window are 90 days each, and the franchise converges on the balance over a
-further 90, so losing a level takes as long as earning it.
+**DECIDED.** Acting inside an event refreshes the clock; entry alone does not, and
+completion is not required. The hold period and the inactivity window are 90 days each, and
+the franchise converges over a further 90, so losing a level takes as long as earning it.
 
 ### The admin surface, the halt council, and migration
 
@@ -840,10 +843,9 @@ franchise level >= current balance, for every address, always
 
 ### Sybil resistance, because equal votes makes it the attack
 
-One vote each means the cheapest attack is many identities. A holding comes only from
-Quintessence distilled by certified trades, and each one costs a real exchange fee, so a
-second identity at L4 costs another six months of fees and its own event-anchored
-activity.
+One vote each makes many identities the cheapest attack, and the certification socket is the
+defence: a holding comes only from certified trades, so a second identity at L4 costs
+another six months of real fees.
 
 **MEASURED**, today, on `origin/current`. `src/competition/bot_identity.py` holds 252
 lines and carries `sign_trade` and `verify_trade`; `merkle_log.py` holds 251 and refuses a
@@ -880,8 +882,8 @@ excluded   pool   drawn   chance per surviving market
   19         1      1               100.0%
 ```
 
-Two properties break at once. His rotation conceals which markets pay, and concealment is
-what defeats targeted farming, so exclusion destroys both in one act.
+His rotation conceals which markets pay, and concealment defeats targeted farming, so
+exclusion destroys both at once.
 
 ### Three closures, and all three are needed
 
@@ -951,9 +953,9 @@ Both are real and neither replaces the other. A design that folds building into 
 structure loses the persistence; one that folds turns into world time loses the market
 anchor that turns exist to provide.
 
-Three rules of his already cover the rest. Skills grow through use, so life skills need no
-separate rule. A town is a larger guild holding under the treasury's rules. And generation
-is one subsystem: dungeons, loot drops and the world are all generative.
+Three rules of his cover the rest: skills grow through use, a town is a larger guild holding
+under the treasury's rules, and generation is one subsystem serving dungeons, loot and the
+world.
 
 **PROPOSED.** This issue is the PoA tab's initial implementation, and a persistent
 generative world is not one. **The unit list stays scoped to the tab and the economy**, and
@@ -989,7 +991,7 @@ design owes.
 
 ## Superseded readings
 
-Six earlier readings are withdrawn, each superseded by a later statement of his, and two
+Eight earlier readings are withdrawn, each superseded by a later statement of his, and two
 measurements this page carried are corrected. **The later statement wins every time.**
 **Part 7 carries every withdrawal in full**, so no builder picks an old reading up from a
 comment.
@@ -1002,6 +1004,8 @@ comment.
 | Quintessence is bound to the participant who distilled it and never transferable | **HIS:** transferable by a skill, guild members only, slow and lossy. Section 13 carries the four terms |
 | The manipulation protection on the Exchange Participation Layer cannot be answered from any source | **HIS:** *"It only allows market exclusion from the volume-based rotation list."* Section 15 carries the rule and its three closures |
 | Mercury's three classes are three healers | **HIS:** *"Also need pure healer, support healer, and pure support classes."* Section 3 carries the mapping |
+| The loot tiers are named for five alchemical operations | **HIS:** *"rename the Tiers to mean 'the result of...'."* The operations become the crafting verbs and the weights stand |
+| Crafting must take apparatus names so the tiers keep the operations | **HIS** third way: the tiers move instead, and apparatus names stay optional |
 
 ### Two measurements this page carried wrongly
 
@@ -1024,10 +1028,9 @@ The second changes what unit 17 builds. Bear Slayer was never a missing number.
 Twenty-two units. Each is dispatchable on its own. The order respects every
 dependency: no unit depends on one later in the list.
 
-**Two units are blocked, and both wait on him.** Eleven were blocked this morning, and
-the decisions of 2026-09-09 and 2026-09-10 closed nine of those blocks. Unit 18 waits on
-whether an outside firm reviews the contracts before mainnet; unit 20 waits on his art
-direction.
+**Two units are blocked, and both wait on him.** Eleven were blocked this morning, and the
+decisions of 2026-09-09 and 2026-09-10 closed nine of those blocks. Unit 18 waits on whether
+an outside firm reviews the contracts before mainnet; unit 20 waits on his art direction.
 
 Units 21 and 22 are new. His rulings on skills and on governance created build work that
 no existing unit carries, and a rule with no unit never gets built.
@@ -1261,10 +1264,11 @@ deliverable   every finding from unit 5 is closed or recorded with the reason
 ### 19 — The loot system
 
 ```
-depends on    12            blocked by   nothing — five tiers, its own contract
+depends on    12            blocked by   nothing — the renamed tiers are proposed
 deliverable   a loot drop from a qualifying market, held in the wallet, with
-              functions and bonuses that augment a translated trade action; an
-              ERC-1155 contract of its own; the metadata helpers factored out
+              functions and bonuses that augment a translated trade action; the
+              five tiers as Calx, Cauda Pavonis, Flores, Elixir and Magisterium;
+              an ERC-1155 contract of its own; the metadata helpers factored out
               of the trophy contract into a shared library
 ```
 
@@ -1312,10 +1316,10 @@ what it costs**, which is the part worth reading before overruling one.
 | ------ | ----- | ---------------------- |
 | 1 — how many classes | PROPOSED | Seven, the planetary set |
 | 2 — who is a participant | PROPOSED | One bot, one participant; the engine already registers per bot |
-| 3 — where health comes from | PROPOSED | The dollar target, which rises through play and is already capped per cycle |
+| 3 — where health comes from | PROPOSED | The dollar target, already capped per cycle |
 | 4 — the dungeon's shape | PROPOSED | A linear room graph, the only shape that lets the Player window do both jobs |
 | 5 — the currency of each fee | PROPOSED | External for the charter, tokens for every stake |
-| 6 — what a fee may never take | PROPOSED | No in-network exchange into tokens, which keeps his no-pay-wall rule true |
+| 6 — what a fee may never take | PROPOSED | No in-network exchange into tokens |
 | 7 — can Quintessence move | **CLOSED by him** | Yes, by a skill, guild-only, slow and lossy — section 13 |
 | 8 — markets per window | **CLOSED, decided** | Five of the twenty eligible, and a participant may draw from several |
 | 9 — how an allotment divides | **CLOSED by him** | One allotment, a 5% ceiling, a candle cooldown, a graded curve |
@@ -1328,10 +1332,11 @@ unit is in flight.
 
 ## What he owes
 
-**Two things, not fifteen.** Fifteen items sat here this morning and fourteen are
-decided, with the evidence in part 6. The fifteenth held two questions: governance
-answers the pause key by removing the key, and the outside review stays his. His art
-direction joins the list because unit 20 has always waited on it.
+**Two things, not fifteen.** Fifteen items sat here this morning, and fourteen are decided
+with the evidence in part 6. The fifteenth held two questions: governance answers the pause
+key by removing the key, and the outside review stays his. His art direction joins the list
+because unit 20 has always waited on it. Every item his later directives raised is decided
+in the record below headed "what he owes, closed".
 
 | What he owes | Blocks unit |
 | ------------ | ----------- |
@@ -1348,55 +1353,39 @@ deployment the cheapest repair is a migration that strands every holder who does
 act. For every later change he can delegate a review into the proposal process
 itself; the first deployment he cannot.
 
-### Calls his own directives of today raise
+### Everything else his directives raised is decided
 
-None of these blocks a unit. Each is a product question only he can settle. The
-negotiation-inside-one-candle question that stood here is closed: he ruled that the
-clock stays fixed and that the fixed clock is the power fantasy.
-
-```
-the persistent world   where it is seen inside the one tab — section 16
-the event's candles    the market it is anchored to, or one reference market
-the chain's phases     whether they are the five alchemical stages the trophy
-                       generator already letters
-the fourth role        confirmation of the pure healer, support healer and
-                       pure support mapping
-crafting names         whether crafting takes the apparatus, leaving the loot
-                       tiers on Ripley's gates
-a consumed item        whether it is destroyed, given that Quintessence is not
-the charge commit      whether a multi-turn cast spends at the start or at the
-                       cast — this one reaches unit 1's spend path
-the pool at level one  the granted amount, and its growth per level
-a block filling        what the player window shows while playback trails
-```
-
-### Three numbers that set how strong a bound is
-
-Each sets strength rather than existence, so a unit builds the bound and a later vote can
-move the value.
+**The comment headed "what he owes, closed" decides thirty-three further items**, numbered
+17 to 49, and nothing in it waits on him. The values a builder needs most:
 
 ```
-the curve exponent     how steep the graded award curve runs — section 9
-the cooldown floor     a minimum in wall-clock time as well as in candles, so a
-                       one-minute bot cannot clear its gate before the market moves
-the window length      how long one rotation window stays open
+the grade curve      linear in the grade, no exponent
+the cooldown         a hard gate in the bot's own candles, floor fifteen minutes
+the window           twenty-four hours, aligned to UTC midnight
+the pool              Impetus; four at level one, one more every twenty levels,
+                      costed in the same five bands, no partial actions
+the event's candles  the clock is shared, the anchor market supplies price
+the chain's phases   the five colour stages already in the tree, advancing on a
+                     fifth of the cap minted
+the fourth role      the proposed mapping stands
+a consumed item      destroyed; craft inputs never include Quintessence
+the short form       twelve characters
 ```
 
-### Four things this page still does not design
+The negotiation-inside-one-candle question is closed too: the clock stays fixed, and the
+fixed clock is the power fantasy.
 
-This list replaces the one that stood here this morning. The loot rarity scale and the
-loot contract moved off it into section 13, and the art stays unit 20's.
+### Two things this page still does not design
+
+This list replaces the one that stood here this morning. The loot rarity scale, the tier
+names, the loot contract and what a town is on-chain all moved off it into decisions.
 
 **The later arcs.** Class abilities across a hundred levels a phase, gear and consumables,
 a crafting system, and a persistent world are four arcs of their own. This page names them
 so no unit forecloses them, and designs none of them.
 
-**What a town is on-chain.** A holding, an NFT, or chain state, and which contract.
-
 **The manipulation protection inside a venue.** His exclusion rule and the three closures
 cover what an exchange can do to the rotation. What an exchange would run inside its own
-books is not answerable from any published source.
-
-**A live participant count per market.** The 5% ceiling and the five-market window are
-sized against it, and no participant has certified a trade yet, so both should be
-re-derived from the first live season.
+books is not answerable from any published source. A live participant count per market is
+the other unmeasurable: the 5% ceiling and the five-market window are sized against it, so
+both should be re-derived from the first live season.
