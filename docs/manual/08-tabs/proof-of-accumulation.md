@@ -1198,12 +1198,30 @@ picture the screen chose.
 acrv_ledger.json
 ```
 
-Loot shows nothing and says why. No loot contract exists and no loot store
-exists, so the panel prints one sentence instead of an invented item. That
-sentence is the whole of the loot holding until unit 19 builds the store.
+Loot is read from the loot store, one row an item. A row carries the tier's short
+form, the market that dropped it, the season, and the bonus that item gives one
+action. Two rows close the section: what the whole holding does to the Impetus an
+action costs, and the multiplier it puts on that action's effect.
 
 ```
-No loot contract and no loot store is built. Nothing is read.
+Magisterium      AAVE/USD - Season 1 - Impetus -2, effect +50%
+Elixir           AAVE/USD - Season 1 - Impetus -1, effect +20%
+Flores           AAVE/USD - Season 1 - Impetus -1, effect +10%
+Pavonis          BTC/USD - Season 1 - effect +5%
+Calx             LTC/USD - Season 1 - effect +2%
+Action Impetus   4 becomes 1
+Action effect    1.87x
+loot_store.json
+```
+
+A chain with no store file, a store holding nobody's loot, and a store that will
+not replay each print their own sentence in place of a row.
+
+```
+loot_store.json does not exist. No market has dropped loot on this chain.
+loot_store.json records no loot for this participant.
+loot_store.json could not be replayed: Expecting property name enclosed in
+double quotes: line 1 column 2 (char 1)
 ```
 
 The participant is this node's own competition identity. Its key file is read,
@@ -4144,6 +4162,238 @@ No guild exists, so a treasury's spend sizes the pot under the actor's own addre
 and no officer is checked.
 
 In development.
+
+## 2026-09-10 10:15 - #147 - the loot system
+
+A qualifying market now drops loot, the wallet holds it, and each item augments a
+tournament action. Loot has its own ERC-1155 contract, and the JSON helpers the
+trophy contract carried now sit in a library both contracts share.
+
+### The five tiers
+
+Each tier is named for what its alchemical operation leaves behind. The weights
+are percentages and they add up to a hundred exactly.
+
+`src/competition/loot_drop.py` — the table
+
+```python
+LOOT_TIERS: tuple[LootTier, ...] = (
+    LootTier(CALX, "Calx", Decimal(60), 0, Decimal(2)),
+    LootTier(CAUDA_PAVONIS, "Pavonis", Decimal(25), 0, Decimal(5)),
+    LootTier(FLORES, "Flores", Decimal(11), 1, Decimal(10)),
+    LootTier(ELIXIR, "Elixir", Decimal("3.5"), 1, Decimal(20)),
+    LootTier(MAGISTERIUM, "Magisterium", Decimal("0.5"), 2, Decimal(50)),
+)
+```
+
+The long name of the second tier runs thirteen characters, over the twelve a row
+holds, so the table carries `Pavonis` as its short form and the wallet prints
+that. A short form longer than twelve characters is refused.
+
+### A weight never becomes a fraction
+
+Every weight is a decimal, and the draw is a whole number rather than a fraction
+of one. The most decimal places any weight carries is one, so the weights scale by
+ten and the draw runs over a thousand whole numbers. Each tier owns a block of
+them.
+
+```
+Calx         rolls   0..599 span 600
+Pavonis      rolls 600..849 span 250
+Flores       rolls 850..959 span 110
+Elixir       rolls 960..994 span  35
+Magisterium  rolls 995..999 span   5
+
+weights_total()  Decimal('100.0')   equals Decimal(100)   True
+spans add to     1000 of 1000
+```
+
+Driving the real function at every roll from nought to 999 puts 600 on Calx, 250
+on Pavonis, 110 on Flores, 35 on Elixir and 5 on Magisterium. Those are the
+declared percentages to the last place, and the rarest tier is one roll in two
+hundred rather than one in two.
+
+### The draw is seeded and reproducible
+
+The roll comes from numpy's own generator under a named seed. Two generators built
+from that seed produce the same rolls, so a drop can be replayed.
+
+```
+LOOT_DROP_SEED 1155
+first eight rolls  [370, 405, 844, 802, 811, 407, 148, 944]
+same seed again    [370, 405, 844, 802, 811, 407, 148, 944]
+```
+
+Over twenty thousand seeded draws the observed rate sits on the declared weight
+for every tier.
+
+```
+Calx          11900 of 20000  59.500%  declared 60%
+Pavonis        5087 of 20000  25.435%  declared 25%
+Flores         2207 of 20000  11.035%  declared 11%
+Elixir          701 of 20000   3.505%  declared 3.5%
+Magisterium     105 of 20000   0.525%  declared 0.5%
+```
+
+### What counts as a qualifying market
+
+The rotating reward set decides, and the loot system writes no second rule. A drop
+asks the rotation for the market's reward reason, and anything other than a drawn
+market refuses in words.
+
+`src/competition/loot_drop.py` — the one question asked
+
+```python
+    reason = rotation.reward_reason(request.exchange_id, request.symbol)
+    if reason != IN_ROTATION:
+        refusal = (
+            f"{request.symbol} on {request.exchange_id} does not qualify: "
+            f"{reason}; a drop comes from a market the open rotation window drew"
+        )
+        raise LootDropRefusedError(refusal)
+```
+
+Three refusals, each driven on the running rotation.
+
+```
+BTC/USD on coinbase does not qualify: not_drawn; a drop comes from a market the
+open rotation window drew
+
+ETH/USD on coinbase does not qualify: no_open_window; a drop comes from a market
+the open rotation window drew
+```
+
+### An exchange under the floor drops nothing, out loud
+
+The reward set needs twelve eligible markets before it draws anything. Coinbase
+carries five, so no window opens there and no loot drops. The refusal names the
+count and the floor rather than returning an empty hand.
+
+```
+pool  5: kraken holds 5 eligible markets, under the floor of 12, so no window
+         opens, no market qualifies and no loot drops
+pool  6: kraken holds 6 eligible markets, under the floor of 12, ...
+pool 11: kraken holds 11 eligible markets, under the floor of 12, ...
+pool 12: BTC/USD on kraken does not qualify: no_open_window
+```
+
+A pool of twelve clears the floor and then waits on a window, which is the next
+refusal rather than a silent drop.
+
+### A bonus augments an action and never a trading figure
+
+An item gives two things: Impetus off what one action costs, and a multiplier on
+that action's effect. Both live inside the tournament. No figure a bot trades on
+is read, written or scaled anywhere in the loot system.
+
+`src/competition/loot_drop.py` — the augmentation
+
+```python
+    relief = held_relief(held)
+    return AugmentedAction(
+        base_cost=base,
+        cost=max(IMPETUS_FLOOR, base - relief),
+        relief=relief,
+        effect_multiplier=held_effect_multiplier(held),
+    )
+```
+
+Both numbers have a floor and a ceiling. An action never costs less than one
+Impetus, whatever the holding relieves, and the effect never more than doubles.
+
+```
+ 0 of each  relief   0  cost 999 -> 999  cost 1 -> 1  effect 1x
+ 1 of each  relief   4  cost 999 -> 995  cost 1 -> 1  effect 1.87x
+ 2 of each  relief   8  cost 999 -> 991  cost 1 -> 1  effect 2x
+10 of each  relief  40  cost 999 -> 959  cost 1 -> 1  effect 2x
+
+effect floor 1   ceiling 2   cost floor 1
+an action costing 0 Impetus is below 1
+```
+
+### The store, one file a chain
+
+A drop names itself by the sha256 of its own contents, so the same item cannot be
+taken twice. The store sits beside the other ledgers and takes the chain's suffix
+the way they do.
+
+```
+saved loot_store.json 1910 bytes
+replayed 5 drops
+rarest first ['Magisterium', 'Elixir', 'Flores', 'Pavonis', 'Calx']
+duplicate refused: item 9312b43ba83e6c81 is already held
+nobody else holds any: []
+demo store loot_store_testnet.json 417 bytes
+```
+
+### The contract, and the library the trophy gave up
+
+Loot is ERC-1155 with one token id a tier, so every item of a tier shares one
+image and one attribute set while the drop that made it rides in the mint event.
+The constructor refuses a tier set whose weights do not total a thousand tenths of
+a per cent.
+
+`contracts/AcervatorLoot.sol` — the deployment refuses a half-declared scale
+
+```solidity
+        uint256 total = 0;
+        for (uint256 id = CALX; id <= TIER_COUNT; ++id) {
+            total += tiers[id].weightPerMille;
+        }
+        require(total == WEIGHT_TOTAL_PER_MILLE, "Loot: weights do not total 1000");
+```
+
+Five helpers left the trophy contract for `contracts/MetadataLib.sol`, which both
+contracts now call. Every one is internal and pure, so the compiler inlines each
+call and no library address is deployed.
+
+The trophy's behaviour did not change, and the compiler says so: with the metadata
+tail stripped, its deployed bytecode is identical before and after the move.
+
+```
+before the move   sha256 aadf925232c4a98e6ad5cd37ee10e653dea4a9badf783cd8eeb97fb679dce18f
+after the move    sha256 aadf925232c4a98e6ad5cd37ee10e653dea4a9badf783cd8eeb97fb679dce18f
+one constant changed from 21 to 22   sha256 858bc92892966dafa5777dbc04edd19afe84561a05b06b7473743470d0471670
+```
+
+The four tier ceilings still hold and an unknown tier is still refused, driven
+rather than read.
+
+```
+[PASS] test_the_four_ceilings_hold_the_numbers_the_tier_list_declares
+[PASS] test_gold_fold_mints_at_99999_and_is_refused_at_100000
+[PASS] test_bear_slayer_mints_at_9999_and_is_refused_at_10000
+[PASS] test_grand_accumulator_mints_at_999_and_is_refused_at_1000
+[PASS] test_ekthelius_mints_at_twenty_and_is_refused_at_twenty_one
+[PASS] test_a_tier_name_outside_the_five_is_refused
+43 tests passed, 0 failed across the four contract suites
+```
+
+Every tool verdict on the trophy is the same or better after the move.
+
+| tool | before | after |
+| --- | --- | --- |
+| forge build | exit 0 | exit 0 |
+| forge lint | 23 notes | 20 notes |
+| forge test, tier caps | 9 passed | 9 passed |
+| slither | 1 result, naming-convention | 1 result, naming-convention |
+| solhint | 84 warnings, 0 errors | 81 warnings, 0 errors |
+| semgrep | 32 findings | 30 findings |
+
+### What the loot system does not reach
+
+No control on screen drops an item. The program draws a tier, names the item and
+writes it to the store, and nothing a person can click reaches that path.
+
+Nothing mints the ERC-1155 contract. It compiles, its tools report on it, and no
+caller deploys it, so the wallet reads the store file rather than a chain.
+
+No armour, weapon, accessory, consumable or crafting recipe exists, and no glyph
+art is drawn. Those are their own arc.
+
+No forge test covers the loot contract's own metadata or its weight-total refusal.
+The four named tools are its whole instrument.
+
 ## 2026-09-10 10:53 - #147 - a certified fill reaches a participant's event record
 
 The division had nothing real to divide on. A certified fill held a grade and a

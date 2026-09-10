@@ -37,9 +37,8 @@ pragma solidity 0.8.36;
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 import {IGovernedTrophy} from "./Governance.sol";
+import {MetadataLib} from "./MetadataLib.sol";
 
 contract AcervatorTrophy is ERC721, IGovernedTrophy {
     using Strings for uint256;
@@ -244,20 +243,20 @@ contract AcervatorTrophy is ERC721, IGovernedTrophy {
         // Build the JSON attributes array
         string memory attrs = string.concat(
             "[",
-            _attr("Tier",           m.tier),          ",",
-            _attr("Emoji",          m.tierEmoji),      ",",
-            _attrNum("Season",      m.season),         ",",
-            _attr("Competition",    m.competitionId),  ",",
-            _attrNum("Rank",        m.rank),           ",",
-            _attrNum("Field Size",  m.fieldSize),      ",",
-            _attrSigned("Advantage (bps)", m.advantageBps), ",",
-            _attr("Market Regime",  m.marketRegime),   ",",
-            _attr("Tier Color",     _tierColor[m.tier]),
+            MetadataLib.attr("Tier",           m.tier),          ",",
+            MetadataLib.attr("Emoji",          m.tierEmoji),      ",",
+            MetadataLib.attrNum("Season",      m.season),         ",",
+            MetadataLib.attr("Competition",    m.competitionId),  ",",
+            MetadataLib.attrNum("Rank",        m.rank),           ",",
+            MetadataLib.attrNum("Field Size",  m.fieldSize),      ",",
+            MetadataLib.attrSigned("Advantage (bps)", m.advantageBps), ",",
+            MetadataLib.attr("Market Regime",  m.marketRegime),   ",",
+            MetadataLib.attr("Tier Color",     _tierColor[m.tier]),
             "]"
         );
 
         // Advantage in human-readable form (e.g. "+29.50%")
-        string memory advStr = _formatBps(m.advantageBps);
+        string memory advStr = MetadataLib.formatBps(m.advantageBps);
 
         string memory json = string.concat(
             "{\"name\":\"",
@@ -270,7 +269,7 @@ contract AcervatorTrophy is ERC721, IGovernedTrophy {
             " (Season ", m.season.toString(), "). ",
             "Advantage: ", advStr, ". ",
             "Market: ", m.marketRegime, ". ",
-            "Merkle root: 0x", _bytes32ToHex(m.merkleRoot),
+            "Merkle root: 0x", MetadataLib.bytes32ToHex(m.merkleRoot),
             "\",\"image\":\"data:image/svg+xml;base64,", svgB64,
             "\",\"attributes\":", attrs,
             "}"
@@ -330,52 +329,5 @@ contract AcervatorTrophy is ERC721, IGovernedTrophy {
             require(tierHash == keccak256("Harvest"), "Trophy: unknown tier");
         }
         ++tierMinted[tier];
-    }
-
-    function _attr(string memory key, string memory value)
-        internal pure returns (string memory)
-    {
-        return string.concat(
-            "{\"trait_type\":\"", key, "\",\"value\":\"", value, "\"}");
-    }
-
-    function _attrNum(string memory key, uint256 value)
-        internal pure returns (string memory)
-    {
-        return string.concat(
-            "{\"trait_type\":\"", key, "\",\"value\":", value.toString(), "}");
-    }
-
-    function _attrSigned(string memory key, int256 value)
-        internal pure returns (string memory)
-    {
-        string memory v = value >= 0
-            ? SafeCast.toUint256(value).toString()
-            : string.concat("-", SignedMath.abs(value).toString());
-        return string.concat("{\"trait_type\":\"", key, "\",\"value\":", v, "}");
-    }
-
-    /// @dev SignedMath.abs carries the full int256 range, so the most negative
-    ///      basis-point value formats instead of reverting inside tokenURI.
-    function _formatBps(int256 bps) internal pure returns (string memory) {
-        // Convert basis points to percentage string: 2950 → "+29.50%"
-        string memory sign   = bps >= 0 ? "+" : "-";
-        uint256 absBps       = SignedMath.abs(bps);
-        uint256 whole        = absBps / 100;
-        uint256 frac         = absBps % 100;
-        string memory fracStr = frac < 10
-            ? string.concat("0", frac.toString())
-            : frac.toString();
-        return string.concat(sign, whole.toString(), ".", fracStr, "%");
-    }
-
-    function _bytes32ToHex(bytes32 b) internal pure returns (string memory) {
-        bytes memory hexChars = "0123456789abcdef";
-        bytes memory str = new bytes(64);
-        for (uint256 i = 0; i < 32; i++) {
-            str[i*2]   = hexChars[uint8(b[i]) >> 4];
-            str[i*2+1] = hexChars[uint8(b[i]) & 0x0f];
-        }
-        return string(str);
     }
 }
