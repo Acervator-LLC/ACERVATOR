@@ -72,10 +72,19 @@ CONTRACTS: tuple[EmitContract, ...] = (
     EmitContract(
         topic="trade.filled",
         required=("side", "amount", "price"),
-        optional=("type", "usd", "profit", "operator_initiated"),
+        optional=(
+            "type",
+            "usd",
+            "profit",
+            "operator_initiated",
+            "fee_usd",
+            "fee_refusal",
+        ),
         vocab={"side": ("BUY", "SELL", "buy", "sell")},
         description="A fill. NOTE: the trade kind is `type` here, not "
-        "`action` — the log schema uses `action`.",
+        "`action` — the log schema uses `action`. `fee_usd` is the venue's "
+        "own fee for this fill; `fee_refusal` replaces it when the venue "
+        "reported none, and exactly one of the two is present.",
     ),
     EmitContract(
         topic="bot.gate_decision",

@@ -4559,3 +4559,150 @@ came from the real grader reading the operator's trade log.
 No control on screen starts a payout, and none starts a join.
 
 In development.
+
+## 2026-09-10 11:15 - #147 - the fill event carries its venue fee
+
+### The fee the venue charged now rides on the fill
+
+Every fill the platform announces now carries the fee the exchange actually took
+for that fill, in dollars. Certification reads that one number and distils
+Quintessence from it, so a real trade finally earns.
+
+`src/trading/scrumming/execution.py` - what a fill now says
+
+```
+{'bot_id': '650df31a', 'type': 'CARTRIDGE_SCRUM', 'side': 'SELL',
+ 'amount': 1409.0, 'price': 0.003676, 'usd': 5.117330192, 'profit': 0.0,
+ 'operator_initiated': False, 'fee_usd': 0.062153808}
+```
+
+### The fee is carried from the venue and is never worked out
+
+The exchange reports the fee on the settled order. The platform stores that
+figure and nothing else, converts it to dollars at the cached quote rate, and puts
+it on the fill. The fee percentage in a bot's settings is never used here.
+
+`src/trading/scrumming/execution.py` - the record, and the five refusals
+
+```python
+    def _fill_fee_fields(self, fill_price: float) -> dict:
+        """The ``trade.filled`` fee fields for the fill that settled at ``fill_price``.
+
+        Returns ``fee_usd`` when the venue reported a usable fee, otherwise
+        ``fee_refusal`` naming why, and never reads ``config.trading_fee_pct``.
+        """
+```
+
+```
+no settled order was held for this fill
+the venue reported no fee
+the reported fee belongs to a different fill
+the venue named no fee currency
+the venue charged the fee in <currency>, not the <quote> this fill is priced in
+```
+
+### The buy side was left out on purpose, and is carried now
+
+The fee record was built to take the exchange's cut out of a sale's proceeds. A
+purchase has no proceeds, so the record was written for sales only and cleared on
+a purchase. That was right for its job and wrong for this one, because a Fold is a
+purchase and the exchange charges for it.
+
+A second record now holds the fee for either side. It is read only by the fill
+announcement, and the sale-proceeds record is untouched.
+
+```
+the sale record   written on a sale, cleared on a purchase, spent on proceeds
+the fill record   written on both sides, spent on the fill announcement
+```
+
+### Both sides earn, driven on his own trades and the exchange's own fees
+
+Two real trades of his, each matched to its row in his own Coinbase transaction
+export by asset, size, price and second. Six hundred and fifty-seven of his 1,709
+trades have such a row.
+
+```
+SELL  PUMP/USD 1409 @ $0.003676    2026-08-20 15:02
+      venue row 6a8716ec03b6f3f5c260f0f6   fee $0.062153808
+      on the fill   fee_usd 0.062153808
+      awarded       0.0310769040 Quintessence   pool coinbase:1|PUMP/USD
+
+BUY   PUMP/USD 1325 @ $0.002286    2026-08-07 20:35
+      venue row 6a7641a1facc93c97c34e93b   fee $0.0363474
+      on the fill   fee_usd 0.0363474
+      awarded       0.03634740 Quintessence
+```
+
+### A fill the exchange charged nothing for earns nothing, and says why
+
+Coinbase's reply to a newly placed order carries no fee figure at all. A fill like
+that carries no fee and carries the reason instead, and the award is refused by
+name rather than granted for nothing.
+
+```
+on the fill   fee_refusal 'the venue reported no fee'
+refused       nothing_to_award
+distilled     0 Quintessence
+
+a fee of 0.0 at a grade of 0.5 distils nothing, and granting it would spend the
+participant's one allotment of PUMP/USD and open a cooldown for no Quintessence
+```
+
+### No figure a bot trades on moved
+
+The same two fills were driven through the same order path on the tree before this
+change and on the tree after it. Twenty-four figures were compared each time,
+including the order actually sent to the exchange, every lot, every tranche and
+every running total.
+
+```
+sell with a fee      24 figures identical
+sell with none       24 figures identical
+buy with a fee       24 figures identical
+buy with none        24 figures identical
+
+the same comparison of the announcement itself
+  + fee_usd 0.062153808          the one and only difference
+```
+
+### His own records now carry the fee
+
+The trade log takes whichever of the two the fill supplied, so a row either names
+the dollars the exchange took or names why it took none.
+
+```
+with a fee  {..., 'usd': 5.117330192, 'fee_usd': 0.062153808}
+with none   {..., 'usd': 5.179484,    'fee_refusal': 'the venue reported no fee'}
+```
+
+### Demo mode reads the same fee over a second chain
+
+One class, two chains, one award path, no flag. The demo chain reads the fee off
+the same announcement and mints from its own ledger.
+
+```
+the same class        : CertificationSocket and CertificationSocket
+the same chain object : False
+
+on the demo chain
+  BTC/USD, venue fee $0.1369262274012 -> awarded 0.1369262274012 Quintessence
+
+live ledger   total ever minted 0.067424304     balanced
+demo ledger   total ever minted 0.1369262274012  balanced
+```
+
+### What the venue fee does not reach
+
+Nothing subscribes the socket to the live fill event, so no trade reaches
+certification while the platform runs. That wiring would mint against the live
+ledger on every fill and is a decision about real value.
+
+A fill still carries no exchange and no season, so the socket cannot name the
+activation from the announcement alone. Those two fields reach the record through
+certification's own caller today.
+
+On live Coinbase the reply to a newly placed order carries no fee, so a fill
+announces one only where the settled order is re-read. Until the exchange supplies
+a fee at placement, a live Coinbase fill will usually carry the refusal rather than
+a figure.

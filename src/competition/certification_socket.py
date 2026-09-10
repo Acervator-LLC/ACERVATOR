@@ -494,9 +494,9 @@ class CertificationSocket:
     def _on_trade_filled(self, event: Event) -> None:
         """Certify the fill one ``trade.filled`` event describes.
 
-        The payload nests the fill under ``data``, and ``fee_usd``, ``exchange_id``
-        and ``season`` are absent from every current emit site, so such a fill
-        names no activation and distils nothing.
+        The payload carries ``fee_usd`` when the venue reported a fee, and
+        ``exchange_id`` and ``season`` are absent from every current emit site,
+        so such a fill names no activation and distils nothing.
         """
         try:
             payload = getattr(event, "data", None)
@@ -513,6 +513,12 @@ class CertificationSocket:
             if identity is None:
                 logger.debug("bot %s has no identity; fill not certified", bot_id)
                 return
+            if "fee_usd" not in merged and merged.get("fee_refusal"):
+                logger.info(
+                    "fill on %s carries no venue fee and distils nothing: %s",
+                    merged.get("symbol", "") or bot_id,
+                    merged["fee_refusal"],
+                )
             fill = CertifiedFill(
                 fill_id=str(
                     merged.get("fill_id")
