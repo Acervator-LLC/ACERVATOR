@@ -24,7 +24,11 @@ from .entity_stats import (
 )
 from .loot_drop import TIER_NAMES
 from .poa_modes import base_impetus
-from .quintessence_ledger import QUINTESSENCE_PER_FEE_USD, amount_text
+from .quintessence_ledger import (
+    QUINTESSENCE_PER_FEE_USD,
+    QUINTESSENCE_UNITS_PER_WHOLE,
+    amount_text,
+)
 from .rpg_classes import ARC_LEVELS, FIRST_LEVEL
 from .world_grid import SQUARE_STEPS, TREE_SPHERES
 
@@ -310,15 +314,14 @@ _ANCHORED_RATES: tuple[ConversionRate, ...] = (
         name="minimum_units_per_quintessence",
         per_unit="one whole Quintessence",
         yields_unit="minimum units",
-        rate=RATE_ABSENT,
-        provenance=DECIDED,
-        source_module=NO_SOURCE_MODULE,
-        source_symbol=NO_SOURCE_SYMBOL,
+        rate=Decimal(QUINTESSENCE_UNITS_PER_WHOLE),
+        provenance=MEASURED,
+        source_module="quintessence_ledger",
+        source_symbol="QUINTESSENCE_UNITS_PER_WHOLE",
         source_args=(),
         note=(
-            "the operator set 100,000,000, the same resolution as BTC. This "
-            "table imports the constant once quintessence_ledger declares it "
-            "and keeps no copy of its own"
+            "the operator set this resolution, the same as BTC. The ledger "
+            "rounds an amount onto the grid; a rate here stays a ratio"
         ),
     ),
     ConversionRate(

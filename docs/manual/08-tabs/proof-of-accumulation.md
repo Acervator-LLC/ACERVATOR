@@ -7488,24 +7488,24 @@ working_rates()   every entry the operator still has to rule on
 absent_rates()    every entry that carries no figure at all
 ```
 
-### Eleven rows are anchored, and seven check against their own module
+### Eleven rows are anchored, and eight check against their own module
 
-Four of the eleven are the operator's own figures, and this table is where they
-land. The other seven are figures a module already holds, so the table imports
+Three of the eleven are the operator's own figures, and this table is where they
+land. The other eight are figures a module already holds, so the table imports
 the real symbol and keeps no copy of its own.
 
 ```
-stat_point_quintessence                      1            entity_stats.quintessence_requirement
-stat_quintessence_per_level_at_sphere_1      1            entity_stats.quintessence_per_level
-stat_quintessence_per_level_at_sphere_10     10           entity_stats.quintessence_per_level
-quintessence_per_certified_fee_usd           1            quintessence_ledger.QUINTESSENCE_PER_FEE_USD
-impetus_per_turn_at_level_1                  4            poa_modes.base_impetus
-impetus_per_turn_at_level_100                9            poa_modes.base_impetus
-steps_per_square                             100          world_grid.SQUARE_STEPS
-iron_ore_quintessence_low_quality            0.00000001   his figure, held by no module before now
-iron_ore_quintessence_high_quality           0.00000005   his figure, held by no module before now
-world_budget_per_participant_quintessence    1            his rule, held by no module before now
-minimum_units_per_quintessence               absent       owed from the Quintessence ledger
+stat_point_quintessence                      1             entity_stats.quintessence_requirement
+stat_quintessence_per_level_at_sphere_1      1             entity_stats.quintessence_per_level
+stat_quintessence_per_level_at_sphere_10     10            entity_stats.quintessence_per_level
+quintessence_per_certified_fee_usd           1             quintessence_ledger.QUINTESSENCE_PER_FEE_USD
+minimum_units_per_quintessence               100000000     quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+impetus_per_turn_at_level_1                  4             poa_modes.base_impetus
+impetus_per_turn_at_level_100                9             poa_modes.base_impetus
+steps_per_square                             100           world_grid.SQUARE_STEPS
+iron_ore_quintessence_low_quality            0.00000001    his figure, held by no module before now
+iron_ore_quintessence_high_quality           0.00000005    his figure, held by no module before now
+world_budget_per_participant_quintessence    1             his rule, held by no module before now
 ```
 
 The fee rate is a ceiling rather than a payment. Distillation multiplies it by a
@@ -7539,27 +7539,40 @@ one unit of iron ore, lowest quality    0.00000001 Quintessence
 one unit of iron ore, highest quality   0.00000005 Quintessence
 ```
 
-### The smallest unit is his decision and no module declares it yet
+### The smallest unit comes from the ledger, not from a copy here
 
 The operator set one hundred million minimum units to the whole Quintessence, the
-same resolution as Bitcoin. No module holds that constant today. This table keeps
-no copy of it on purpose: it records the figure as absent, names what would set
-it, and imports the real symbol once the ledger declares one.
+same resolution as Bitcoin. The Quintessence ledger declares that figure, so this
+table imports the real symbol and keeps no copy of its own.
 
 ```
-minimum_units_per_quintessence   absent, decided, owed from quintessence_ledger
+minimum_units_per_quintessence   100000000   quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
 ```
 
 A rate is a ratio and needs no grid of its own. Rounding an amount onto the
 minimum unit belongs to the ledger, at the moment an amount enters a bucket.
 
+```python
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    """Return ``amount`` rounded down onto the QUINTESSENCE_MINIMUM_UNIT grid."""
 ```
-In development.
+
+### His lowest ore grade sits exactly on the resolution floor
+
+Two of his own figures meet here. The poorest unit of iron ore carries
+0.00000001 Quintessence, and that is one minimum unit exactly. Nothing poorer
+than his lowest ore grade can be held, so the ore band starts at the floor rather
+than above it.
+
+```
+QUINTESSENCE_MINIMUM_UNIT            0.00000001
+iron_ore_quintessence_low_quality    0.00000001
+iron_ore_quintessence_high_quality   0.00000005, five minimum units
 ```
 
 ### Twenty rows are working, and they are the list he still owes
 
-Eight of those carry no figure at all. Twelve carry a placeholder that can be
+Seven of those carry no figure at all. Thirteen carry a placeholder that can be
 replaced without touching a function.
 
 ```
@@ -7648,7 +7661,7 @@ is a wrong module or symbol name beside a figure, or a figure typed by hand
 instead of imported.
 
 ```
-acervator.conversion_rates INFO drove 7 anchored conversion rates against their own modules, 0 disagreed
+acervator.conversion_rates INFO drove 8 anchored conversion rates against their own modules, 0 disagreed
 ```
 
 ### What calls this table
