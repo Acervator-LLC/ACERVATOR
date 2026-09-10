@@ -210,6 +210,20 @@ class ProjectAgeLookup:
         self._store(coingecko_id, served)
         return served
 
+    def has_cached_answer(self, market: str) -> bool:
+        """True when ``verdict_for`` answers ``market`` with no coin detail call.
+
+        A caller walking many markets reads this to pace only the asks that
+        reach CoinGecko.
+        """
+        if not isinstance(market, str) or not market.strip():
+            return True
+        asset = ASSETS.get(_base_of(market.strip()))
+        coingecko_id = asset.coingecko_id if asset is not None else ""
+        if not coingecko_id:
+            return True
+        return coingecko_id in self._load() or coingecko_id in self._ids_without_a_date
+
     # -- The rule -----------------------------------------------------------
 
     def verdict_for(self, market: str) -> ProjectAgeVerdict:

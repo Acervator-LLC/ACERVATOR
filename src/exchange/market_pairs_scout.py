@@ -50,6 +50,39 @@ logger = logging.getLogger("acervator.market_pairs_scout")
 DEFAULT_REFRESH_SECONDS = 10.0  # per prior-art research § 6.2
 
 
+def row_quote_volume_24h(row: object) -> float:
+    """Return one raw ticker ``row``'s 24h volume in quote units.
+
+    Reads ``quoteVolume`` where the venue serves it, and otherwise multiplies
+    ``baseVolume`` by ``last``, so a ranking across markets never mixes a
+    base-unit figure with a quote-unit one. Returns 0.0 for a row carrying
+    neither.
+    """
+    getter = getattr(row, "get", None)
+    if not callable(getter):
+        return 0.0
+    try:
+        quote_volume = float(getter("quoteVolume") or 0.0)
+    except (TypeError, ValueError):
+        quote_volume = 0.0
+    if quote_volume > 0:
+        return quote_volume
+    try:
+        base_volume = float(getter("baseVolume") or 0.0)
+        last = float(getter("last") or 0.0) or float(getter("close") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    derived = base_volume * last
+    if derived > 0:
+        logger.debug(
+            "row_quote_volume_24h: %s served no quoteVolume; %s x %s used",
+            getter("symbol"),
+            base_volume,
+            last,
+        )
+    return max(0.0, derived)
+
+
 @dataclass
 class PairSnapshot:
     """One trading pair on one exchange at one moment.
@@ -67,6 +100,7 @@ class PairSnapshot:
     bid: float = 0.0  # best-bid price (quote per base)
     ask: float = 0.0  # best-ask price (quote per base)
     volume_24h: float = 0.0  # 24h base-unit volume
+    quote_volume_24h: float = 0.0  # 24h volume in quote units; rank on this one
     exchange_id: str = ""
     last_updated: float = 0.0
 
@@ -153,6 +187,11 @@ class MarketPairsScout:
                 out.extend(s for s in book.values() if s.base == _asset)
         out.sort(key=lambda s: s.symbol)
         return out
+
+    def pairs_on(self, exchange_id: str) -> list[PairSnapshot]:
+        """Every pair the last poll of ``exchange_id`` recorded, symbol ascending."""
+        book = self._snapshots.get(exchange_id, {})
+        return sorted(book.values(), key=lambda s: s.symbol)
 
     def quote_currencies_for(
         self,
@@ -251,6 +290,7 @@ class MarketPairsScout:
                     bid=bid,
                     ask=ask,
                     volume_24h=vol,
+                    quote_volume_24h=row_quote_volume_24h(row),
                     exchange_id=exchange_id,
                     last_updated=_now,
                 )
