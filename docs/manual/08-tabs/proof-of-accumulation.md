@@ -1167,6 +1167,86 @@ that decides which markets pay, and the caps on how much one participant may
 take. The socket passes a grade of one and applies no ceiling beyond the supply
 cap, so those three remain open.
 
+## 2026-09-09 22:47 - #147 - the Quintessence wallet
+
+The wallet holds real state. The balance in the party window's header is the
+figure the Quintessence ledger computed for this node, and it stays on screen
+while the wallet is closed. Opening the wallet lays three holdings side by side
+across the party window: Quintessence, trophies, loot.
+
+Quintessence reads the ledger file belonging to the chain the tab is showing.
+Five figures, every one of them the ledger's own, none of them worked out on the
+screen. This is a run against a throwaway home holding two distillations.
+
+```
+Balance                17.25
+Distilled, all time    17.25
+Still mintable         32999982.75
+Supply cap             33000000
+Movements              2
+quintessence_ledger.json
+```
+
+Trophies are the awards this participant has won, one row each, read from the
+ACRV award ledger. A row carries the tier's own emblem and name, the season, and
+the competition it was won in. The emblem is the one the tier declares, not a
+picture the screen chose.
+
+```
+🐻 Bear Slayer   Season 4 - comp-autumn-0002
+🪙 Gold Fold     Season 3 - comp-autumn-0001
+acrv_ledger.json
+```
+
+Loot shows nothing and says why. No loot contract exists and no loot store
+exists, so the panel prints one sentence instead of an invented item. That
+sentence is the whole of the loot holding until unit 19 builds the store.
+
+```
+No loot contract and no loot store is built. Nothing is read.
+```
+
+The participant is this node's own competition identity. Its key file is read,
+never created, so a machine with no identity yet names none, the balance falls
+back to two dashes, and the trophy section says which file it was looking for.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — where each figure
+comes from
+
+```python
+def participant_identity() -> BotIdentity | None:
+    """This node's PoA identity from ``IDENTITY_NAME``, or None when unreadable."""
+    try:
+        return BotIdentity(str(LEDGER_DIR / IDENTITY_NAME)).load()
+    except Exception:
+        return None
+```
+
+The wallet displays and does nothing else. It carries no button that spends, no
+field that sends and no path that moves a balance. Spending belongs to unit 13
+and transfer to the skill in unit 21, and until they land a wallet that could
+move value would be a defect rather than a feature.
+
+Each holding falls back on its own. Corrupting the Quintessence ledger empties
+that section, prints the ledger's own refusal under it, and drops the header
+balance to two dashes, while the trophy rows stay on screen. Taking the identity
+away does the reverse.
+
+```
+ledger corrupted   Quintessence 0 rows, the refusal printed, trophies 2 rows
+identity removed   Participant none, balance --, trophies 0 rows with a reason
+both intact        Quintessence 5 rows, trophies 2 rows, balance 17.25
+```
+
+The demo chain reads its own book through the same bridge method. Asking for the
+TestNet chain returns a different balance from a differently named file, on the
+same page, with no second surface and no second module.
+
+```
+live      Balance 17.25   quintessence_ledger.json
+testnet   Balance 50.00   quintessence_ledger_testnet.json
+```
+
 ## 2026-09-09 22:57 - #147 - the project age rule
 
 A market rewards Quintessence only while its project is at least six months old.

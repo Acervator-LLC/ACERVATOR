@@ -159,6 +159,16 @@ body {
   background: var(--SURFACE_3);
 }
 
+/* The three holdings share the band the party window leaves, so none of them
+   falls below the panel. */
+.acervator-poa-tab [data-part="wallet-sections"] {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(var(--SPACE_S) * 1px);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .acervator-poa-tab [data-part="wallet-title"] {
   margin: 0;
   color: var(--TEXT_MAX);
@@ -172,10 +182,42 @@ body {
   border-radius: calc(var(--RADIUS_XS) * 1px);
   background: var(--SURFACE_2);
   color: var(--TEXT_HIGH);
+  min-height: 0;
+  overflow-y: auto;
 }
 
-.acervator-poa-tab [data-part="wallet-placeholder"] {
-  margin: 0;
+.acervator-poa-tab [data-part="wallet-section-name"] {
+  margin: 0 0 calc(var(--SPACE_XS) * 1px) 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+/* One row is a label on the left and the ledger's figure on the right. */
+.acervator-poa-tab [data-part="wallet-row"],
+.acervator-poa-tab [data-part="wallet-address"],
+.acervator-poa-tab [data-part="wallet-chain"] {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(var(--SPACE_S) * 1px);
+}
+
+.acervator-poa-tab [data-part="wallet-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="wallet-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  text-align: right;
+  word-break: break-all;
+}
+
+.acervator-poa-tab [data-part="wallet-note"] {
+  margin: calc(var(--SPACE_XS) * 1px) 0 0 0;
   color: var(--TEXT_PLACEHOLDER);
   font-size: calc(var(--TYPE_SMALL) * 1px);
   font-style: italic;
