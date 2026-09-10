@@ -705,5 +705,138 @@ and bridge that SharedTestnetBridge.install_on attached to the MainWindow.
 A private LocalTestnet would diverge from every other reader.
 ```
 
+## 2026-09-09 20:43 - #147 - the Quintessence contract
+
+Quintessence now has a contract. It holds the same three places the platform's
+own ledger holds, and it reports all three plus the running total as numbers
+anyone can read off the chain at any block.
+
+`contracts/Quintessence.sol` — the four numbers a reader gets
+
+```solidity
+    uint256 public walletsTotal;
+    uint256 public heldTotal;
+    uint256 public platonicTotal;
+    uint256 public totalEverMinted;
+```
+
+The law is that the first three always add up to the fourth, and the fourth can
+never pass thirty-three million. The contract also answers both halves in one
+call, so a reader does not have to do the sum themselves.
+
+`contracts/Quintessence.sol` — the single call that answers the law
+
+```solidity
+        isBalanced = wallets + held + platonic == everMinted;
+        isWithinCap = everMinted <= cap;
+```
+
+| Term | Value |
+| ---- | ----- |
+| Smallest unit | one Quintessence divided into 10^18 parts |
+| Hard cap | 33,000,000 Quintessence, as 33 followed by 24 zeros of those parts |
+| Owner | none |
+| Pause | none |
+| Upgrade hook | none |
+| Burn | none |
+| Minting | the Proof-of-Accumulation registry only, named once when built |
+
+The smallest unit matches the prize token, which splits each coin into the same
+number of parts. Quintessence needs the split because the award is a dollar of
+exchange fee multiplied by a trade grade between zero and one, and because a
+transfer loses a single-digit percentage. Whole numbers would round both of
+those away.
+
+The contract has no owner and no pause. A wallet cannot move Quintessence on its
+own either, because moving it between players is a skill, not a wallet button. A
+transfer therefore takes two calls: the holder authorizes it, and the registry
+runs it once the waiting time has passed.
+
+`contracts/Quintessence.sol` — the holder's half and the registry's half
+
+```solidity
+    function authorizeTransfer(address recipient, uint256 amount) external {
+    function executeTransfer(address sender, uint256 skillLevel) external onlyRegistry {
+```
+
+Neither side can act alone. The registry cannot move a wallet that authorized
+nothing, and a holder cannot move their own units without the registry. One
+authorization is held per holder at a time, which is what stops a large transfer
+being split into many fast ones.
+
+The contract works out the loss and the waiting time itself, from the published
+rates, rather than taking either as a number it is handed. A transfer always
+loses at least four per cent and always takes at least one hour.
+
+```mermaid
+flowchart LR
+    FEE[certified exchange fee] -->|distil| WALLET[wallet]
+    WALLET -->|spend| HELD[held address]
+    WALLET -->|authorize, then the registry runs it| OTHER[another wallet]
+    WALLET -->|bleed| PLATONIC[the platonic]
+    PLATONIC -->|respawn| OTHER
+```
+
+Nothing in the contract destroys a unit. A spend moves units to a held address
+where they rest, and that address is never drained, so a spend can never become
+a free transfer. The running total only ever rises.
+
+The build tool's own fuzzing now holds ten properties over the contract, by
+throwing random sequences of calls at it. Each property was also broken on
+purpose once, to watch the tool report it, and then put back.
+
+`tests/contracts/QuintessenceConservation.t.sol` — what the fuzzing reported
+
+```text
+QuintessenceConservationTest invariants (runs: 256, calls: 16384, reverts: 8607)
+[PASS] invariant_threeBucketsEqualTotalEverMinted
+[PASS] invariant_walletsTotalEqualsSumOfBalances
+[PASS] invariant_totalEverMintedWithinCap
+[PASS] invariant_totalEverMintedNeverFalls
+[PASS] invariant_noUnitIsDestroyed
+[PASS] invariant_capRefusesAMintPastIt
+[PASS] invariant_onlyRegistryMovesUnits
+[PASS] invariant_registryCannotMoveAnUnauthorizedWallet
+[PASS] invariant_transferRefusedBeforeItsDurationElapsed
+[PASS] invariant_everyTransferBleedsFourPercentOrMore
+```
+
+A mint of one unit more than the cap is refused, and the tool printed the
+refusal itself while nothing had been minted at all.
+
+`contracts/Quintessence.sol` — the refusal, quoted from the run
+
+```text
+    │   └─ ← [Return] 33000000000000000000000000 [3.3e25]
+    ├─ Quintessence::distil(QuintessenceActor, 33000000000000000000000001 [3.3e25])
+    │   └─ ← [Revert] Quint: supply cap reached
+```
+
+Nothing is deployed. No transaction was sent and no network was reached, so the
+four deployment steps themselves are unproven. The contract is also not yet
+wired to anything: no registry contract exists to name as its minter, and the
+platform's own ledger and the contract do not yet read each other.
+
+Three analyzers ran over the new file and none reported a security finding. The
+fourth, the one that walks the compiled bytecode, is still missing from this
+machine for the reason the earlier audit records.
+
+| Tool | Result on the new contract |
+| ---- | -------------------------- |
+| the build tool's linter | no errors, one warning about reading the chain clock |
+| the static analyzer | one medium finding, on an exact comparison against zero |
+| the style linter | 86 warnings, no errors |
+| the pattern scanner | 29 findings, none of them about security |
+
+The exact comparison is on the contract's own marker for a waiting transfer,
+which holds either zero or a real amount and nothing else, so no third value
+exists for it to miss. The contract reads the chain clock to decide whether a
+transfer's waiting time has passed, and the shortest waiting time is one hour,
+far longer than the few seconds a block producer could shift.
+
+No archetype covers Solidity. Each contract file reports zero analyzers and says
+plainly that it was not examined, so the four tools above are the whole coverage
+for this file.
+
 
 Back to [the subsystem index](README.md).

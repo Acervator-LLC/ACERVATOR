@@ -1,5 +1,7 @@
 [profile.default]
 src = "contracts"
+# tests/ holds every test in this repository, so forge reads its Solidity from there.
+test = "tests/contracts"
 out = "out"
 libs = ["node_modules"]
 cache_path = "cache/forge"
@@ -15,3 +17,8 @@ remappings = [
     "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
     "@chainlink/contracts/=node_modules/@chainlink/contracts/",
 ]
+
+[invariant]
+runs = 256
+depth = 64
+fail_on_revert = false
