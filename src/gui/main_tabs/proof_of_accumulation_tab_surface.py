@@ -2,8 +2,9 @@
 
 ``view_model`` answers the three ``ZONES``, the ``party`` paging and the
 ``wallet`` that opens over the party window. The wallet reads
-``QuintessenceLedger`` for its balance and ``TokenLedger`` for the trophies the
-participant holds, and ``loot_section`` carries no row.
+``QuintessenceLedger`` for its balance, ``TokenLedger`` for the trophies the
+participant holds, and ``LootStore`` for the loot, with ``loot_section``
+printing what ``augment_action`` gives one action of the running turn.
 ``participants`` converts each bot in the chain's fleet load through
 ``profile_metrics`` and ``classes`` serves the seven a participant picks from.
 ``modes`` serves the eight event types and ``event`` answers the running turn and
@@ -22,7 +23,15 @@ from decimal import Decimal
 from pathlib import Path
 
 from ...competition.bot_identity import BotIdentity
+from ...competition.loot_drop import (
+    DEFAULT_LOOT_PATH,
+    LootError,
+    LootStore,
+    augment_action,
+    bonus_text,
+)
 from ...competition.poa_modes import (
+    IMPETUS_AT_FIRST_LEVEL,
     MODE_CODES,
     EventVariant,
     impetus_grant,
@@ -163,6 +172,7 @@ MOVEMENTS_ROW = "Movements"
 
 QUINT_LEDGER_NAME = DEFAULT_LEDGER_PATH.name
 AWARD_LEDGER_NAME = TokenLedger.LEDGER_FILE
+LOOT_STORE_NAME = DEFAULT_LOOT_PATH.name
 IDENTITY_NAME = BotIdentity.KEY_FILE
 FLEET_NAME = "bot_state.json"
 LEDGER_DIR = DEFAULT_LEDGER_PATH.parent
@@ -227,7 +237,14 @@ NO_IDENTITY_TEXT = "none"
 NO_IDENTITY_NOTE = f"{IDENTITY_NAME} does not exist, so no participant is named."
 NO_TROPHY_NOTE = "{name} records no trophy for this participant."
 NO_LEDGER_NOTE = "{name} does not exist. Nothing is distilled on this chain."
-LOOT_NOTE = "No loot contract and no loot store is built. Nothing is read."
+NO_LOOT_NOTE = "{name} records no loot for this participant."
+NO_LOOT_STORE_NOTE = "{name} does not exist. No market has dropped loot on this chain."
+
+LOOT_ITEM_TEXT = "{symbol} - Season {season} - {bonus}"
+LOOT_IMPETUS_ROW = "Action Impetus"
+LOOT_EFFECT_ROW = "Action effect"
+LOOT_IMPETUS_TEXT = "{base} becomes {cost}"
+LOOT_EFFECT_TEXT = "{multiplier}x"
 
 ZONES: tuple[tuple[str, str, str], ...] = (
     (PLAYER_WINDOW, PLAYER_WINDOW_TITLE, PLAYER_WINDOW_PLACEHOLDER),
@@ -409,9 +426,52 @@ def trophies_section(chain: str, address: str | None) -> dict:
     return section(TROPHIES_SECTION, [], NO_TROPHY_NOTE.format(name=path.name))
 
 
-def loot_section() -> dict:
-    """The ``LOOT_SECTION`` with no row, carrying the ``LOOT_NOTE`` sentence."""
-    return section(LOOT_SECTION, [], LOOT_NOTE)
+def loot_rows(store: LootStore, address: str, action_cost: int) -> list:
+    """One row an item, then what ``augment_action`` gives one action of this turn."""
+    held = store.held(address)
+    if not held:
+        return []
+    rows = [
+        row(
+            drop.short_form,
+            LOOT_ITEM_TEXT.format(
+                symbol=drop.symbol,
+                season=drop.season,
+                bonus=bonus_text(drop.tier),
+            ),
+        )
+        for drop in held
+    ]
+    action = augment_action(action_cost, store.held_tiers(address))
+    rows.append(
+        row(
+            LOOT_IMPETUS_ROW,
+            LOOT_IMPETUS_TEXT.format(base=action.base_cost, cost=action.cost),
+        )
+    )
+    rows.append(
+        row(
+            LOOT_EFFECT_ROW,
+            LOOT_EFFECT_TEXT.format(multiplier=action.effect_multiplier),
+        )
+    )
+    return rows
+
+
+def loot_section(chain: str, address: str | None, action_cost: int) -> dict:
+    """Serve the loot ``address`` holds on ``chain``, from that chain's loot store."""
+    if address is None:
+        return section(LOOT_SECTION, [], NO_IDENTITY_NOTE)
+    path = chain_file(LOOT_STORE_NAME, chain)
+    if not path.exists():
+        return section(LOOT_SECTION, [], NO_LOOT_STORE_NOTE.format(name=path.name))
+    try:
+        rows = loot_rows(LootStore(path).load(), address, action_cost)
+    except (LootError, OSError) as exc:
+        return section(LOOT_SECTION, [], fault_note(path, exc))
+    if rows:
+        return section(LOOT_SECTION, rows, path.name)
+    return section(LOOT_SECTION, [], NO_LOOT_NOTE.format(name=path.name))
 
 
 def uses_text(uses: Decimal) -> str:
@@ -508,8 +568,12 @@ def skills(chain: str = LIVE_CHAIN) -> dict:
     }
 
 
-def wallet(chain: str = LIVE_CHAIN) -> dict:
-    """The wallet panel and the balance readout the party header keeps on screen."""
+def wallet(chain: str = LIVE_CHAIN, action_cost: int = IMPETUS_AT_FIRST_LEVEL) -> dict:
+    """The wallet panel and the balance readout the party header keeps on screen.
+
+    ``action_cost`` is the Impetus the loot section augments, taken from the
+    running turn's grant.
+    """
     identity = participant_identity()
     address = None if identity is None else identity.bot_id
     quintessence, balance = quintessence_section(chain, address)
@@ -523,7 +587,11 @@ def wallet(chain: str = LIVE_CHAIN) -> dict:
         "chain": chain,
         "open_text": WALLET_OPEN_TEXT,
         "close_text": WALLET_CLOSE_TEXT,
-        "sections": [quintessence, trophies_section(chain, address), loot_section()],
+        "sections": [
+            quintessence,
+            trophies_section(chain, address),
+            loot_section(chain, address, action_cost),
+        ],
     }
 
 
@@ -695,12 +763,13 @@ def view_model(params: dict) -> dict:
     variant = variant_from(params)
     pick, pick_note = class_pick(params, variant.code)
     level = FIRST_LEVEL if pick is None else ClassProgress(pick.class_name).level
+    running = event(variant, epoch_of(params), level)
     return {
         "accessible_name": HEADING,
         "built": BUILT,
         "chain": chain,
         "classes": classes(),
-        "event": event(variant, epoch_of(params), level),
+        "event": running,
         "heading": HEADING,
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
@@ -712,6 +781,6 @@ def view_model(params: dict) -> dict:
         "pick_note": pick_note,
         "skills": skills(chain),
         "state_text": STATE_TEXT,
-        "wallet": wallet(chain),
+        "wallet": wallet(chain, running["impetus_granted"]),
         "zones": zones(),
     }
