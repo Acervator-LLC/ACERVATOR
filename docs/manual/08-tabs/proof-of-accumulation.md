@@ -3370,6 +3370,215 @@ colour and names itself to a screen reader.
 
 No health bar and no role colour exist on the row yet. Both are listed in the art
 brief and neither has a token behind it.
+## 2026-09-10 01:59 - #147 - the per-action spend and the record store
+
+An action inside an Elite Event now costs Quintessence, and the cost comes off a
+real balance. Five prices stand on one curve, the cheapest a hundredth of the
+dearest, and every charge reaches the one spend path the ledger already had.
+
+### Five bands, a hundred to one
+
+The cheapest action is a move and the dearest is a multi-turn spell. Each band
+costs about three times the one below it, and the program prints the whole curve
+when it starts.
+
+```
+band   cost     what sits in it
+x1     0.001    move, switch weapon, take an item from a bag
+x3     0.003    a basic attack, a basic heal
+x10    0.010    a class ability on a cooldown
+x30    0.030    a group-wide ability, a threat move across the field
+x100   0.100    a multi-turn spell, and the decisive tactics beside it
+
+ratio dearest/cheapest = 100
+```
+
+A hundred to one is the ratio the design sets. Two hundred moves cost 0.2 and one
+decisive cast costs 0.1, so a guild argues about the expensive action without it
+ruining anybody.
+
+### The books balance after every one of the five
+
+A spend takes Quintessence out of a wallet and rests it at the event's held
+address. The spend creates nothing and destroys nothing, so the three buckets
+still add up to the total ever distilled after each of the five.
+
+```
+x1    cost 0.001  actor 1.00  -> 0.999  pot 0.001   balanced True  delta 0.000
+x3    cost 0.003  actor 0.999 -> 0.996  pot 0.004   balanced True  delta 0.000
+x10   cost 0.010  actor 0.996 -> 0.986  pot 0.014   balanced True  delta 0.000
+x30   cost 0.030  actor 0.986 -> 0.956  pot 0.044   balanced True  delta 0.000
+x100  cost 0.100  actor 0.956 -> 0.856  pot 0.144   balanced True  delta 0.000
+```
+
+The run asks the record store and the ledger one question two different ways at
+the end, and both give the same answer. One adds up what the records hold as
+paid and the other reads the held balance.
+
+```
+store event_spent 0.374   ledger pot 0.374   agree True
+```
+
+### The money moves when the spell lands, not when it starts
+
+A powerful action can occupy more than one turn. The charge opens, the turns pass,
+and the cast happens on the last of them. The wallet keeps every unit until that
+moment.
+
+The rule that no partial action exists decides this. A charge that never finishes
+produced no action, so charging for it would take money for nothing, and the
+ledger can move nothing back out of a held address.
+
+`src/competition/action_spend.py` — opening a charge debits nothing
+
+```python
+    def begin_charge(
+        self, draft: ActionDraft, turns: int, opened_turn: int
+    ) -> ActionCharge:
+        """Open ``draft`` over ``turns`` turns, refusing one its payer cannot afford.
+
+        Nothing is debited here; ``complete_charge`` is the only write path.
+        """
+```
+
+The run interrupted a charge and the balance did not move. The charge opened on
+turn 10 over three turns, the program refused an early cast, the charge then went
+away, and the wallet held the same amount throughout.
+
+```
+begun  x100 turns 3 casts turn 12
+actor after begin_charge   0.856 (was 0.856)
+REFUSED mid-charge: casts on turn 12 and it is turn 11; no partial action exists
+actor after abandon        0.856
+record actions before 5    after 5
+open charges 0
+```
+
+Carried to its own cast turn the same charge paid in full. The wallet either loses
+the whole cost or keeps the whole cost, and no half state exists.
+
+```
+cast on turn 22: cost 0.100, actor 0.856 -> 0.756   balanced True
+```
+
+### The program refuses an action nobody can afford
+
+A participant holding 0.050 cannot take the dearest action. The program names the
+balance and the band's cost, and then the same participant takes a cheaper action
+that does fit.
+
+```
+poor holds 0.050
+REFUSED x100: bot-poor-0004 holds 0.050 Quintessence and band x100 costs 0.100;
+no partial action exists and nobody borrows against the next turn
+PAID    x30: cost 0.030, poor now 0.020
+```
+
+### One record a participant an event, written once and read twice
+
+Each participant gets one record per event. It counts the actions, sums the cost
+of them, and stamps the second the participant last acted. Two different readers
+want it and neither writes it.
+
+```
+reader 1, the pot share:      spent 0.244  underwritten 0.100  actions 7
+reader 2, the dormancy clock: last_acted_at 1700000300.0
+```
+
+The store lives beside the other runtime files, under the home directory the
+platform already uses, and never inside the repository.
+
+```
+~/.acervator/poa_record_store.json
+```
+
+### A level and a record survive a restart
+
+The store holds the skill ladder's weighted uses as well. Four uses at 0.9
+quality put the transfer skill on level two, the first process then exited, and a
+second process read the level and the record back off disk.
+
+```
+PROCESS A EXITING
+
+PROCESS B pid=16428
+a level:          level 2   weighted_uses 3.6   bleed 7.5556%
+an action record: actions 7  spent 0.244  underwritten 0.100
+                  bands x1 1, x3 1, x10 1, x30 1, x100 3
+                  last_acted_at 1700000300.0
+```
+
+This closes the gap the skill ladder left open. A level now survives a restart,
+and the sentence in the earlier entry saying no store holds a participant's
+weighted uses describes the state before this store existed.
+
+### A guild officer may pay, and the actor must agree
+
+An officer commits treasury funds and the actor answers. Accepted, the treasury
+pays and the actor pays nothing. Refused, neither pays.
+
+```
+ACCEPTED   treasury 1.00  -> 0.900    actor 0.756 -> 0.756
+           record underwritten 0.100  spent 0.244   balanced True
+REFUSED    treasury 0.900 -> 0.900    actor 0.756 -> 0.756
+           record actions 7 -> 7                    balanced True
+```
+
+Only the actor may answer. The program turns away by name an officer who tries to
+accept on the actor's behalf.
+
+```
+offer is addressed to bot-actor-0001 and bot-officer-0002 cannot answer it;
+only the actor accepts
+```
+
+### What the officer check and the treasury still need
+
+No guild exists in the platform. The underwrite takes the officer's name and the
+treasury's address as given, and checks neither.
+
+Two things are missing and no unit on this issue builds either. A guild roster
+that maps a participant to a guild and a rank would answer whether the officer
+holds office. A treasury address that carries a spendable balance would let the
+commitment settle.
+
+A treasury with nothing spendable draws the same refusal as any other payer who
+is short.
+
+```
+REFUSED: guild-held-only-0005 holds 0 Quintessence and band x10 costs 0.010
+```
+
+The design calls a treasury a held address, and the ledger can only spend from a
+wallet. Whichever unit builds guilds has to settle that, because the two readings
+cannot both be true of one address.
+
+### Demo mode is the same code over a different chain
+
+The ledger, the store file and the held address all arrive at construction, so the
+demo chain runs the identical method. Nothing switches on a flag.
+
+```
+live store poa_record_store.json           pot poa_elite_event_pot
+demo store poa_record_store_testnet.json   pot poa_elite_event_pot_testnet
+same class True   same method True
+
+demo act x100 cost 0.100   demo pot 0.100   demo balanced True
+live pot untouched by the demo act: 0.374
+live store record actions 7   demo store record actions 1
+```
+
+### What the spend does not reach
+
+No control on screen starts a spend. The program prices an action, debits it and
+records it, and nothing a person can click reaches that path. The Quint Wallet
+unit owns the spend control.
+
+Nothing divides the pot. Every unit a participant spends rests at the event's held
+address, and the redistribution by performance is its own unit.
+
+In development.
+
 ## 2026-09-10 08:26 - #147 - the capture bounds and the grade curve
 
 A market's Quintessence pool now exists, and four bounds stand between a trade
