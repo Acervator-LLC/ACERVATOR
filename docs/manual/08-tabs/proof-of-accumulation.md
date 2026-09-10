@@ -235,18 +235,18 @@ def distil(self, address: str, fee_usd: object, trade_grade: object) -> Decimal:
 def spend(self, address: str, amount: object, held_address: str) -> Decimal:
 def transfer(self, sender, recipient, amount, skill_level) -> QuintessenceTransfer:
 def respawn(self, address: str, amount: object) -> Decimal:
-def embed_from_platonic(self, amount: object) -> Decimal:
+def embed_from_pleroma(self, amount: object) -> Decimal:
 def embed_from_wallet(self, address, amount, embedded_amount) -> QuintessenceEmbed:
 def release_from_embedded(self, address, amount, recovered_amount) -> QuintessenceRelease:
-def release_all_to_platonic(self, amount: object) -> Decimal:
+def release_all_to_pleroma(self, amount: object) -> Decimal:
 ```
 
 Quintessence can be in exactly four places, and the four always add up to
 everything ever distilled. A wallet holds what a participant can spend. A held
 address holds what they have already spent, which rests there and funds later
-awards. The platonic holds what bled out of a transfer, and the ledger respawns
+awards. The pleroma holds what bled out of a transfer, and the ledger respawns
 that to other participants. The embedded bucket holds what a thing in the world
-carries in itself, drawn out of the platonic and returned there when the thing is
+carries in itself, drawn out of the pleroma and returned there when the thing is
 broken.
 
 ```mermaid
@@ -254,12 +254,12 @@ flowchart LR
     FEE[certified exchange fee] -->|distil| WALLET[wallet]
     WALLET -->|spend| HELD[held address]
     WALLET -->|transfer| OTHER[another wallet]
-    WALLET -->|bleed| PLATONIC[the platonic]
-    PLATONIC -->|respawn| OTHER
-    PLATONIC -->|embed| EMBEDDED[embedded]
+    WALLET -->|bleed| PLEROMA[the pleroma]
+    PLEROMA -->|respawn| OTHER
+    PLEROMA -->|embed| EMBEDDED[embedded]
     WALLET -->|embed| EMBEDDED
     EMBEDDED -->|release| OTHER
-    EMBEDDED -->|release| PLATONIC
+    EMBEDDED -->|release| PLEROMA
 ```
 
 Every operation checks that sum before it writes, and refuses the write when it
@@ -648,7 +648,7 @@ CompetitionRegistry.adjudicate uses timestamp for comparisons
 ```
 
 The conservation law the design names counts Quintessence and not this token:
-wallets plus held addresses plus the platonic plus the embedded bucket equals the
+wallets plus held addresses plus the pleroma plus the embedded bucket equals the
 total ever distilled, at most 33,000,000. No Quintessence contract exists, so
 nothing on the chain can state that law yet, and the fuzzing the build tool offers
 has nothing to read. Unit 6 must carry the balances and the total as values a
@@ -727,7 +727,7 @@ anyone can read off the chain at any block.
 ```solidity
     uint256 public walletsTotal;
     uint256 public heldTotal;
-    uint256 public platonicTotal;
+    uint256 public pleromaTotal;
     uint256 public embeddedTotal;
     uint256 public totalEverMinted;
 ```
@@ -739,7 +739,7 @@ call, so a reader does not have to do the sum themselves.
 `contracts/Quintessence.sol` — the single call that answers the law
 
 ```solidity
-        isBalanced = wallets + held + platonic + embedded == everMinted;
+        isBalanced = wallets + held + pleroma + embedded == everMinted;
         isWithinCap = everMinted <= cap;
 ```
 
@@ -785,12 +785,12 @@ flowchart LR
     FEE[certified exchange fee] -->|distil| WALLET[wallet]
     WALLET -->|spend| HELD[held address]
     WALLET -->|authorize, then the registry runs it| OTHER[another wallet]
-    WALLET -->|bleed| PLATONIC[the platonic]
-    PLATONIC -->|respawn| OTHER
-    PLATONIC -->|embedFromPlatonic| EMBEDDED[embedded]
+    WALLET -->|bleed| PLEROMA[the pleroma]
+    PLEROMA -->|respawn| OTHER
+    PLEROMA -->|embedFromPleroma| EMBEDDED[embedded]
     WALLET -->|embedFromWallet| EMBEDDED
     EMBEDDED -->|releaseFromEmbedded| OTHER
-    EMBEDDED -->|releaseAllToPlatonic| PLATONIC
+    EMBEDDED -->|releaseAllToPleroma| PLEROMA
 ```
 
 Nothing in the contract destroys a unit. A spend moves units to a held address
@@ -1138,9 +1138,9 @@ distilled. The socket reads that report back and carries it in the receipt, so a
 caller sees the sum rather than trusting it.
 
 ```
-after the scrum    wallets 4.650 + held 0 + platonic 0 = 4.650 ever minted
-after the fold     wallets 9.230 + held 0 + platonic 0 = 9.230 ever minted
-after a refusal    wallets 9.230 + held 0 + platonic 0 = 9.230 ever minted
+after the scrum    wallets 4.650 + held 0 + pleroma 0 = 4.650 ever minted
+after the fold     wallets 9.230 + held 0 + pleroma 0 = 9.230 ever minted
+after a refusal    wallets 9.230 + held 0 + pleroma 0 = 9.230 ever minted
 ```
 
 Every launch builds the socket beside the chain and the ledger, in the same call
@@ -2525,7 +2525,7 @@ come out.
 
 ### The conservation law still holds
 
-The law is that every wallet, every held address, the platonic pool and the
+The law is that every wallet, every held address, the pleroma pool and the
 embedded bucket add up to everything ever distilled, and that the total never
 passes thirty-three million. The fuzzing runner drove it again after the repairs.
 
@@ -2946,11 +2946,11 @@ to every unit ever distilled.
 
 ```
 level 1    sent 100   received 92.00   bled 8.00   bled / sent 0.08
-           wallets 992.00 + held 0 + platonic 8.00 == minted 1000
+           wallets 992.00 + held 0 + pleroma 8.00 == minted 1000
            delta 0.00   balanced true   negative buckets 0
 
 level 10   sent 100   received 96.00   bled 4.00   bled / sent 0.04
-           wallets 988.00 + held 0 + platonic 12.00 == minted 1000
+           wallets 988.00 + held 0 + pleroma 12.00 == minted 1000
            delta 0.00   balanced true   negative buckets 0
 ```
 
@@ -3122,7 +3122,7 @@ identical.
                 before        after
 wallets      150.000 Q    150.000 Q
 held         100.000 Q    100.000 Q
-platonic       0.000 Q      0.000 Q
+pleroma        0.000 Q      0.000 Q
 ever minted  250.000 Q    250.000 Q
 ```
 
@@ -4096,9 +4096,9 @@ The four buckets and the supply are read before the payout and again after it.
 Quintessence moves from the pot into wallets and none is made or lost.
 
 ```
-before   wallets 2.689                 held 0.311                 platonic 0
+before   wallets 2.689                 held 0.311                 pleroma 0
          minted 3   delta 0   balanced True   negative buckets 0
-after    wallets 2.922249999999999999   held 0.077750000000000001   platonic 0
+after    wallets 2.922249999999999999   held 0.077750000000000001   pleroma 0
          minted 3   delta 0   balanced True   negative buckets 0
 ```
 
@@ -4542,9 +4542,9 @@ into being and nothing vanished, and no bucket went negative. A second set of
 objects then read the event back off disk and asked to pay it again.
 
 ```
-before  wallets 8.6755                held 0.12                  platonic 0
+before  wallets 8.6755                held 0.12                  pleroma 0
         minted 8.7955  delta 0  balanced True  negative buckets 0
-after   wallets 8.765499999999999999  held 0.030000000000000001   platonic 0
+after   wallets 8.765499999999999999  held 0.030000000000000001   pleroma 0
         minted 8.7955  delta 0  balanced True  negative buckets 0
 
 restart  settled_at read off disk 1789037532.1853175
@@ -5768,8 +5768,8 @@ Quintessence now rests in four places, not three. The fourth holds what a thing 
 the world carries in itself.
 
 ```
-before   wallets + held + platonic             == total ever minted <= 33,000,000
-after    wallets + held + platonic + embedded  == total ever minted <= 33,000,000
+before   wallets + held + pleroma             == total ever minted <= 33,000,000
+after    wallets + held + pleroma + embedded  == total ever minted <= 33,000,000
 ```
 
 The fourth bucket does not circulate, because only a wallet circulates. It sits
@@ -5778,21 +5778,21 @@ fill it.
 
 ### Where a thing's Quintessence comes from
 
-It is drawn out of the platonic, which is where Quintessence at rest already lives
+It is drawn out of the pleroma, which is where Quintessence at rest already lives
 and which already had a way out. That is what keeps the ceiling honest: if a newly
 drawn material's Quintessence appeared from nowhere, the cap would be a number with
 nothing behind it.
 
 ```
-drawn into the world   platonic -> embedded
-put in by a maker      wallet -> embedded, and wallet -> platonic for the rest
-taken back out         embedded -> wallet, and embedded -> platonic for the rest
+drawn into the world   pleroma -> embedded
+put in by a maker      wallet -> embedded, and wallet -> pleroma for the rest
+taken back out         embedded -> wallet, and embedded -> pleroma for the rest
 taken out with none
-  recovered            embedded -> platonic, all of it
+  recovered            embedded -> pleroma, all of it
 ```
 
 Nothing is created and nothing is destroyed at any step. A break that recovers
-nothing sends the whole amount back to the platonic rather than losing any of it,
+nothing sends the whole amount back to the pleroma rather than losing any of it,
 which is what the rule against destruction requires.
 
 ### The movements are named for the buckets, not for what holds the units
@@ -5803,14 +5803,14 @@ names says what kind of thing is involved.
 `src/competition/quintessence_ledger.py` — the four new movements
 
 ```python
-def embed_from_platonic(self, amount: object) -> Decimal:
+def embed_from_pleroma(self, amount: object) -> Decimal:
 def embed_from_wallet(self, address, amount, embedded_amount) -> QuintessenceEmbed:
 def release_from_embedded(self, address, amount, recovered_amount) -> QuintessenceRelease:
-def release_all_to_platonic(self, amount: object) -> Decimal:
+def release_all_to_pleroma(self, amount: object) -> Decimal:
 ```
 
 The part that is lost when a maker puts Quintessence into a thing is recorded under
-the same name the platform already uses for a wallet losing units to the platonic,
+the same name the platform already uses for a wallet losing units to the pleroma,
 because it is the same movement between the same two buckets.
 
 ### The books balance at the smallest figure he gave
@@ -5837,7 +5837,7 @@ taken out with none
   recovered             w 0.000049567    p 0.000000433    e 0            delta 0
 ```
 
-On the chain the same five movements left the platonic exactly 0.000000033 higher
+On the chain the same five movements left the pleroma exactly 0.000000033 higher
 and the wallets exactly 0.000000033 lower. Changing that figure by one part in
 a million million million makes the check fail, so it is reading the real numbers.
 
@@ -5891,10 +5891,10 @@ The earlier audit confirmed a three-bucket law. That property no longer describe
 the contract, and saying so plainly matters more than the new one passing.
 
 An auditor now has to confirm four things. That the four buckets add to the total
-ever minted. That the fourth bucket can only be filled from the platonic or from a
+ever minted. That the fourth bucket can only be filled from the pleroma or from a
 wallet, and never from a new mint. That every unit taken out of the fourth bucket
-lands in a wallet or the platonic, and that a break recovering nothing sends all of
-it to the platonic. That only the registry can draw into the fourth bucket or take
+lands in a wallet or the pleroma, and that a break recovering nothing sends all of
+it to the pleroma. That only the registry can draw into the fourth bucket or take
 out of it, while putting units in from a wallet stays the wallet holder's own call.
 
 ### The same code, a different chain
@@ -6075,7 +6075,7 @@ calls the mechanism's own entry point.
 ```
 Distil              mints Quintessence against a fee and a grade
 Train transfer      records one use on the skill ladder
-Send Quint          sends an amount, less the bleed to the platonic
+Send Quint          sends an amount, less the bleed to the pleroma
 Spend a band        casts an action and rests its cost in the event pot
 Score the action    puts a performance score on the participant's record
 Settle the pot      divides the pot and pays every share
@@ -6091,7 +6091,7 @@ whether it acted or refused. Nothing on the page writes a second message for a
 condition a mechanism already states.
 
 ```
-acted     Sent 0.001 Quint at level 1: 0.00092 received, 0.00008 bled to the platonic.
+acted     Sent 0.001 Quint at level 1: 0.00092 received, 0.00008 bled to the pleroma.
 refused   Quintessence Transfer stands at level 0 on 0 weighted uses; level 1 costs 1
           and no transfer runs below it
 ```
@@ -6173,7 +6173,7 @@ Buckets balance the mint   True
 Negative buckets           0
 Wallets                    0.09867
 Held                       0.00125
-Platonic                   0.00008
+Pleroma                    0.00008
 Embedded                   0
 Distilled, all time        0.1
 ```
@@ -6646,3 +6646,84 @@ four buckets.
 The distribution curve is unset, so no kind of asset has a band until one is
 registered. That curve decides how long a world takes to reach Ancient, and it is
 his to set.
+
+## 2026-09-10 19:49 - #147 - the third bucket is the pleroma
+
+The bucket that holds Quintessence at rest is called the pleroma. That is the word
+everywhere now: every field, every method, every constant, every log line, every
+screen row and every sentence on this page. Nothing else changed.
+
+```
+wallets + held + pleroma + embedded  == total ever minted <= 33,000,000
+```
+
+The law is the same law. The supply cap is the same 33,000,000. The bleed, the
+respawn, the two embed paths and the two release paths move the same amounts
+between the same places.
+
+### What the panel prints
+
+The Conservation panel's third row now reads Pleroma.
+
+```
+Buckets balance the mint   True
+Negative buckets           0
+Wallets                    0.09867
+Held                       0.00125
+Pleroma                    0.00008
+Embedded                   0
+Distilled, all time        0.1
+```
+
+### What an auditor must verify
+
+The property has a new name and the old one is stale. An audit record written
+before today names a three-bucket law over `platonicTotal`; neither the count nor
+the name is current.
+
+```
+verify   walletsTotal + heldTotal + pleromaTotal + embeddedTotal
+             == totalEverMinted <= SUPPLY_CAP
+
+read     pleromaTotal is credited by bleed, by releaseFromEmbedded and by
+         releaseAllToPleroma, and debited by respawn and by embedFromPleroma
+stale    the recorded property name invariant_threeBucketsEqualTotalEverMinted,
+         and every citation of platonicTotal in an audit dated before today
+```
+
+Sixteen invariants hold the sentence. Each was driven on forty different fuzzing
+seeds and each was shown able to report before the pass was believed.
+
+```
+seeds                        40
+invariants per seed          16
+passes                       640, no failures
+blinded, one inversion each  16 of 16 reported FAIL
+pleroma debit halved in
+  respawn                    invariant_fourBucketsEqualTotalEverMinted caught it
+```
+
+### The contract's code changes and no other contract's does
+
+The bucket is a named identifier inside the Quintessence contract, so its compiled
+code moves. Six other contracts were rebuilt from scratch and came out identical to
+the byte.
+
+```
+ACRV, Governance, AcervatorTrophy, AcervatorLoot, MetadataLib,
+CompetitionRegistry                       identical
+Quintessence                              changed, same length
+```
+
+### Nothing saved on disk carried the old word
+
+A saved ledger records each movement by name, and two of those names carried the
+old word. No such file exists on this machine, and no file under the runtime
+directories holds the word at all, so the rename loses no state and the file
+version is unchanged.
+
+```
+movement names now   embed_from_pleroma, release_to_pleroma
+files on disk        none carried the old word
+file version         unchanged
+```

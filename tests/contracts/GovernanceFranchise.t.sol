@@ -86,11 +86,11 @@ contract GovernanceFranchiseHandler {
     }
 
     function respawn(uint256 holderSeed, uint256 amount) external {
-        uint256 platonic = quint.platonicTotal();
-        if (platonic == 0) {
+        uint256 pleroma = quint.pleromaTotal();
+        if (pleroma == 0) {
             return;
         }
-        quint.respawn(_holder(holderSeed), (amount % platonic) + 1);
+        quint.respawn(_holder(holderSeed), (amount % pleroma) + 1);
         respawnCalls += 1;
     }
 
@@ -139,7 +139,7 @@ contract GovernanceFranchiseHandler {
     }
 
     function _bucketSum() private view returns (uint256) {
-        return quint.walletsTotal() + quint.heldTotal() + quint.platonicTotal()
+        return quint.walletsTotal() + quint.heldTotal() + quint.pleromaTotal()
             + quint.embeddedTotal();
     }
 }
@@ -304,7 +304,7 @@ contract GovernanceFranchiseTest {
         (
             uint256 walletsBefore,
             uint256 heldBefore,
-            uint256 platonicBefore,
+            uint256 pleromaBefore,
             uint256 embeddedBefore,
             uint256 mintedBefore,
             ,
@@ -317,7 +317,7 @@ contract GovernanceFranchiseTest {
         (
             uint256 walletsAfter,
             uint256 heldAfter,
-            uint256 platonicAfter,
+            uint256 pleromaAfter,
             uint256 embeddedAfter,
             uint256 mintedAfter,
             ,
@@ -326,7 +326,7 @@ contract GovernanceFranchiseTest {
 
         require(walletsAfter == walletsBefore, "walletsTotal moved during a resynchronization");
         require(heldAfter == heldBefore, "heldTotal moved during a resynchronization");
-        require(platonicAfter == platonicBefore, "platonicTotal moved during a resynchronization");
+        require(pleromaAfter == pleromaBefore, "pleromaTotal moved during a resynchronization");
         require(embeddedAfter == embeddedBefore, "embeddedTotal moved during a resynchronization");
         require(mintedAfter == mintedBefore, "totalEverMinted moved during a resynchronization");
         require(balancedBefore && balancedAfter, "the conservation law did not hold on both sides");

@@ -61,7 +61,7 @@ He closed it.
 
 The answer is transferable, and every term on the transfer costs the sender. A
 skill gate, guild membership, a duration that scales with the amount, and a
-bleed to the platonic. The anti-whale property survives because concentration is
+bleed to the pleroma. The anti-whale property survives because concentration is
 taxed at the moment it is attempted.
 
 ### Four more rulings of his that landed after the body's table was written

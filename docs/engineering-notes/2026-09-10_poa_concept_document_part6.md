@@ -434,7 +434,7 @@ activation window can be counted. No participant has certified a trade yet.
 gated by a skill    one specific skill, never a wallet function
 guild members only  common members of the same guild
 slow                duration scales with the amount and the skill level
-lossy               part bleeds into the platonic
+lossy               part bleeds into the pleroma
 ```
 
 Each term closes a route a whale would use. A skill gate means the buyer must
@@ -485,15 +485,15 @@ case that invites a second identity, and their recovery is already bounded twice
 
 ### The conservation law has three buckets
 
-**DECIDED.** The platonic is a third place Quintessence can be, so the invariant
+**DECIDED.** The pleroma is a third place Quintessence can be, so the invariant
 a contract audit holds gains a term.
 
 ```
-wallets + held addresses + the platonic == total ever distilled <= 33,000,000
+wallets + held addresses + the pleroma == total ever distilled <= 33,000,000
 ```
 
 Still exact, still checkable at every block, and now complete. A verifier that
-omits the platonic reports a shortfall that is not a defect.
+omits the pleroma reports a shortfall that is not a defect.
 
 A bleed despawns transferable units and reduces no supply. The word is already
 this project's own: despawn removes, beside merge and clear, and it does not
@@ -811,7 +811,7 @@ and conflating them is the failure mode.
 
 ```
 balance          real Quintessence, moved by distilling, spending, transfer,
-                 the platonic bleed and respawn
+                 the pleroma bleed and respawn
 franchise level  the remembered maximum, converging toward balance on
                  dormancy, moving nothing
 ```
@@ -825,7 +825,7 @@ Two invariants belong to the contracts work, and `forge` invariant testing can
 hold each at every block.
 
 ```
-wallets + held addresses + the platonic == total ever distilled <= 33,000,000
+wallets + held addresses + the pleroma == total ever distilled <= 33,000,000
 franchise level >= current balance, for every address, always
 ```
 
