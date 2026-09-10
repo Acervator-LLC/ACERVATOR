@@ -23,15 +23,17 @@
 // halt council members halt this token for seven days, and the window closes by
 // itself, because _update reads a timestamp and no call lifts a halt.
 //
-// Deployment order. ACRV takes no constructor argument, so the contracts do not
-// form a circular construction sequence:
+// Deployment order. No constructor takes an address that does not exist yet:
+// ACRV takes none, and setRegistry, setTrophy and setGovernance each point back
+// afterwards, which is what cuts the registry-and-trophy cycle:
 //   1. ACRV()                                 registry unset, minting impossible
 //   2. CompetitionRegistry(acrv, feeds)       acrv is immutable there
 //   3. ACRV.setRegistry(registry)             locked from this call onward
 //   4. AcervatorTrophy(registry)              registry is immutable there
-//   5. Quintessence(registry)                 registry is immutable there
-//   6. Governance(quint, registry, trophy, acrv)
-//   7. ACRV.setGovernance(governance)         locked from this call onward
+//   5. CompetitionRegistry.setTrophy(trophy)  locked from this call onward
+//   6. Quintessence(registry)                 registry is immutable there
+//   7. Governance(quint, registry, trophy, acrv)
+//   8. ACRV.setGovernance(governance)         locked from this call onward
 // =============================================================================
 pragma solidity 0.8.36;
 

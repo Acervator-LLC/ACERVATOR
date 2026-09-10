@@ -4837,3 +4837,117 @@ the read, not for the whole order.
 
 Nothing subscribes certification to the live fill event, so no live trade reaches
 an award while the platform runs. That remains a decision about real value.
+
+## 2026-09-10 13:02 - #147 - the registry mints the trophy
+
+### Nothing on the chain could mint a trophy
+
+The trophy contract admits one caller for its mint and names it the registry. The
+registry held no address for the trophy at all, so that mint had nobody able to
+call it. A competition could hand out tokens and leave no trophy behind.
+
+The two halves, as they stood
+
+```
+AcervatorTrophy.mint       admits the registry alone
+AcervatorTrophy.registry   fixed at construction, cannot be changed
+CompetitionRegistry        no trophy address, no trophy call, no NFT
+```
+
+### The registry holds the trophy in an address written once
+
+Each contract needed the other first. The trophy refuses to be built without a
+live registry address, so the registry is built first and then pointed back at
+the trophy by a single call. That call admits the deployer only, refuses a second
+call for ever, and refuses any address that holds no code, so the trophy a
+deployment mints through can never be redirected afterwards.
+
+`contracts/CompetitionRegistry.sol` - the call that cuts the cycle
+
+```solidity
+    function setTrophy(address trophyAddress) external {
+        require(msg.sender == DEPLOYER, "Registry: caller is not the deployer");
+        require(address(trophy) == address(0), "Registry: trophy already set");
+        require(trophyAddress.code.length > 0, "Registry: trophy not a contract");
+        trophy = ITrophy(trophyAddress);
+        emit TrophySet(trophyAddress);
+    }
+```
+
+### One tier ceiling, and it belongs to the contract that mints
+
+Two contracts held tier limits and neither knew about the other. The registry
+counted two tiers and the trophy counted four. The registry's two numbers and its
+two counters are gone, and awarding now runs through the trophy's mint, so the
+trophy refusing a tier at its limit undoes the token award in the same
+transaction. One set of numbers, in the contract that creates the thing counted.
+
+The four lifetime limits, all of them in the trophy
+
+```
+Gold Fold             100,000
+Bear Slayer            10,000
+Grand Accumulator       1,000
+Ekthelius                  21
+Harvest                no limit
+```
+
+### Every limit was driven to its edge and the next award refused
+
+Ekthelius was awarded twenty-one times over twenty-one competitions with nothing
+faked, and the twenty-second was refused. The other three cannot be reached by
+awarding inside a test, so their counters were moved to one below the limit, the
+award at the limit was made, and the next one was refused. A tier name outside
+the five is refused as well, and Harvest keeps awarding past every other tier's
+limit because the lowest tier has no limit at all.
+
+```
+Ekthelius           21 awarded, 22nd refused   driven, nothing faked
+Grand Accumulator   1,000 awarded, next refused
+Bear Slayer         10,000 awarded, next refused
+Gold Fold           100,000 awarded, next refused
+"Ekthelius " (a name outside the five)         refused
+Harvest above every other limit                awarded
+```
+
+### The season budget is on the chain and refuses the award past it
+
+The season pool used to exist only in the Python. The chain recorded what a season
+had paid out and checked it against nothing, so the limit held only for as long as
+the software did. The registry now works the pool out on the chain and refuses any
+award that would pass it. An award that exactly fills a season lands; one wei more
+is refused; and the next season opens with its own pool untouched.
+
+The pool each season carries, in ACRV
+
+```
+season 1     500,000
+season 2     425,000
+season 3     361,250
+season 4     307,062
+season 53        106
+season 54        100   the floor, and every season after it
+```
+
+### No award can be made before the trophy is named
+
+While the trophy address is unset, adjudicating an award is refused outright. That
+is deliberate: a token award with no trophy behind it is the defect this work
+closes, so the chain now refuses to make one. Deployment names the trophy before
+any competition can open.
+
+```
+trophy unset    adjudicate refused, "Registry: trophy not set"
+trophy named    the same award lands and mints trophy #1 to the winner
+```
+
+### What the registry's mint does not reach
+
+Rank is always first, because a competition adjudicates one winner. A field of
+runners-up earns nothing and holds no trophy.
+
+A tier whose artwork was never uploaded cannot be awarded at all, because the
+trophy refuses to mint a tier with no art. Deployment uploads all five.
+
+The season pool bounds the tokens a season pays out. It does not bound how many
+trophies a season mints, because the uncapped tier costs no tokens.
