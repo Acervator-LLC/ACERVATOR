@@ -7700,12 +7700,14 @@ No screen. The Accumulation tab draws no row of this table.
 Somebody calls a vote in one world turn, and it settles on the next world-turn boundary.
 Actions placed in the peaceful turn resolve peacefully, and PvP begins with the next
 turn's placements. A participant has to log in once in an hour rather than be awake at one
-particular minute, and that is also what stops a vote called while a rival guild sleeps.
+particular minute. A vote called while a rival guild sleeps also fails outright, because
+every absent player stays in the count the majority has to beat.
 
 ```
 called on world turn 100     the peaceful turn
 settles on world turn 101    the first PvP turn
 resolution on turn 100       refused
+a sleeping majority          blocks the vote
 ```
 
 ### The window is three standard candles, and the clock already existed
@@ -7720,35 +7722,47 @@ three candles        900 s
 his window       15 min  =  900 s
 ```
 
-### Two thirds of the whole world, counted in whole votes
+### A majority of the whole world carries it, and there is no separate quorum
 
-A quorum is of every participant in the world, never of the people who happened to vote.
-Under a simple majority the largest guild alone would decide when everybody else's
-Vessels become destructible, so the bar is two thirds and it takes more than one guild.
-Every figure is whole numbers multiplied across, so no decimal fraction of a vote exists.
+> "51% or higher. Proper Democracy over here..."
 
-```
-participants on one layer     79      votes to carry      53
-a full world of twenty layers  1,580   votes to carry   1,054
-```
-
-Driven on a layer's own roll. Fifty-three votes in favour carried the vote and turned the
-mode on at the next boundary. Fifty-two did not, and the mode stayed off. Every roll from
-one to one thousand five hundred and eighty then met a count-up search for the same
-figure, and the two agreed on every roll. A decimal version of the same sum disagreed on
-five hundred and twenty-six.
+The majority counts against every participant in the world, never against the people who
+happened to vote. No separate turnout test exists, because 51 per cent of the electorate
+cannot vote in favour at under 51 per cent turnout. The threshold is its own quorum. Every
+figure is whole numbers multiplied across, so no decimal fraction of a vote exists.
 
 ```
-53 of 79 in favour     carried      mode on from world turn 101
-52 of 79 in favour     not carried  mode stays off
-rolls 1 to 1,580       whole-number disagreements 0     decimal disagreements 526
+participants on one layer         79      votes to carry      41
+a full world of twenty layers  1,580      votes to carry     806
+```
+
+Driven on a full world. Eight hundred and six votes in favour carried the vote and turned
+the mode on at the next boundary, at a turnout of fifty-one per cent exactly. Eight
+hundred and five did not, and the mode stayed off. Every roll from one to one thousand
+five hundred and eighty then met a count-up search for the same figure, and the two agreed
+on every roll. A decimal version of the same sum disagreed on fifteen.
+
+```
+806 of 1,580 in favour   carried      turnout 51.0%   mode on from world turn 101
+805 of 1,580 in favour   not carried  turnout 50.9%   mode stays off
+rolls 1 to 1,580         whole-number disagreements 0     decimal disagreements 15
+```
+
+A world where more than half the participants have gone quiet can never enter PvP mode.
+Their silence protects their Vessels, and it follows from the threshold rather than from
+any separate rule.
+
+```
+participants who never vote      more than half
+the vote                         cannot carry
 ```
 
 ### The mode lasts twenty-four world turns and then lapses
 
 His cap is one vote every twenty-four hours and a world turn is an hour, so the life of
 the mode and the gap between two votes are one number. A world goes back to peace unless
-somebody votes it into PvP again.
+somebody votes it into PvP again. Nothing stops a world staying in PvP indefinitely, and
+that costs a fresh majority of the world every twenty-four turns.
 
 ```
 turn 100   the vote is called
@@ -7788,7 +7802,7 @@ a second resolution of one ballot          refused
 
 ### Nothing counts a world's participants
 
-The quorum counts against a roll the caller hands in, because no module keeps a list of a
+The majority counts against a roll the caller hands in, because no module keeps a list of a
 world's participants. The world store reports how many of them have discovered something,
 which is a different number, and the layer figure gives a capacity rather than a roll. The
 ballot freezes that roll at the moment of the call, so a participant who votes and then

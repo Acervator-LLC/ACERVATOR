@@ -33,11 +33,12 @@ PVP_MODE_WORLD_TURNS = VOTE_CADENCE_WORLD_TURNS
 #: World turns past ``called_turn`` a ballot resolves on, one world-turn boundary.
 RESOLUTION_WORLD_TURNS = 1
 
-#: The carry fraction's numerator over the whole roll, two thirds, not a majority.
-CARRY_NUMERATOR = 2
+#: The carry fraction's numerator, his 51 per cent of the whole roll.
+CARRY_NUMERATOR = 51
 
-#: The carry fraction's denominator; two thirds of the roll needs more than one guild.
-CARRY_DENOMINATOR = 3
+#: The carry fraction's denominator; 51 of 100 is its own quorum, so no second
+#: turnout test exists.
+CARRY_DENOMINATOR = 100
 
 #: The smallest roll ``call_vote`` opens a ballot against.
 MIN_ELIGIBLE_ROLL = 1
@@ -128,18 +129,13 @@ class PvpBallot:
 
     @property
     def carry_threshold(self) -> int:
-        """The whole votes two thirds of ``eligible_at_call`` takes, rounding up."""
+        """The whole votes a majority of ``eligible_at_call`` takes, rounding up."""
         scaled = self.eligible_at_call * CARRY_NUMERATOR
         return -(-scaled // CARRY_DENOMINATOR)
 
     @property
-    def quorum_reached(self) -> bool:
-        """Whether ``cast`` reaches two thirds of ``eligible_at_call``."""
-        return self.cast * CARRY_DENOMINATOR >= self.eligible_at_call * CARRY_NUMERATOR
-
-    @property
     def would_carry(self) -> bool:
-        """Whether ``votes_for`` reaches two thirds of ``eligible_at_call``."""
+        """Whether ``votes_for`` reaches a majority of ``eligible_at_call``."""
         return (
             self.votes_for * CARRY_DENOMINATOR
             >= self.eligible_at_call * CARRY_NUMERATOR
@@ -179,9 +175,9 @@ def call_vote(
     roll = int(eligible_at_call)
     if roll < MIN_ELIGIBLE_ROLL:
         refusal = (
-            f"a roll of {roll} participants carries no vote in {world_id}; two "
-            f"thirds of the whole world must vote for PvP and a roll below "
-            f"{MIN_ELIGIBLE_ROLL} has nobody to count"
+            f"a roll of {roll} participants carries no vote in {world_id}; "
+            f"{CARRY_NUMERATOR} in {CARRY_DENOMINATOR} of the whole world must "
+            f"vote for PvP and a roll below {MIN_ELIGIBLE_ROLL} has nobody to count"
         )
         raise EmptyRollError(refusal)
     turn = int(called_turn)
@@ -243,7 +239,7 @@ def cast_vote(ballot: PvpBallot, voter: str, at_epoch: float, *, support: bool) 
         refusal = (
             f"{ballot.cast} votes are cast and {ballot.world_id} carried "
             f"{ballot.eligible_at_call} participants when the vote was called; "
-            f"{voter} is past the roll the quorum is read against"
+            f"{voter} is past the roll the majority is read against"
         )
         raise RollExceededError(refusal)
     ballot.votes[voter] = bool(support)
@@ -282,7 +278,7 @@ def resolve(ballot: PvpBallot, at_world_turn: int) -> bool:
     ballot.carried = ballot.would_carry
     logger.info(
         "the PvP vote in %s resolved on world turn %d carried=%s; %d of %d "
-        "cast, %d for, %d against, quorum=%s, %d needed",
+        "cast, %d for, %d against, %d needed to carry",
         ballot.world_id,
         turn,
         ballot.carried,
@@ -290,7 +286,6 @@ def resolve(ballot: PvpBallot, at_world_turn: int) -> bool:
         ballot.eligible_at_call,
         ballot.votes_for,
         ballot.votes_against,
-        ballot.quorum_reached,
         ballot.carry_threshold,
     )
     return ballot.carried
@@ -341,6 +336,7 @@ def ballot_row(ballot: PvpBallot) -> dict:
         "votes_for": ballot.votes_for,
         "votes_against": ballot.votes_against,
         "carry_threshold": ballot.carry_threshold,
-        "quorum_reached": ballot.quorum_reached,
+        "carry_numerator": CARRY_NUMERATOR,
+        "carry_denominator": CARRY_DENOMINATOR,
         "carried": ballot.carried,
     }
