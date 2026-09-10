@@ -1,4 +1,4 @@
-"""Quintessence distil, spend, transfer, payout and respawn over three buckets."""
+"""Quintessence movements over four buckets: wallets, held, platonic and embedded."""
 
 from __future__ import annotations
 
@@ -26,8 +26,23 @@ TRANSFER = "transfer"
 BLEED = "bleed"
 RESPAWN = "respawn"
 PAYOUT = "payout"
+EMBED_FROM_PLATONIC = "embed_from_platonic"
+EMBED_FROM_WALLET = "embed_from_wallet"
+RELEASE_TO_WALLET = "release_to_wallet"
+RELEASE_TO_PLATONIC = "release_to_platonic"
 
-MOVEMENT_KINDS = (DISTIL, SPEND, TRANSFER, BLEED, RESPAWN, PAYOUT)
+MOVEMENT_KINDS = (
+    DISTIL,
+    SPEND,
+    TRANSFER,
+    BLEED,
+    RESPAWN,
+    PAYOUT,
+    EMBED_FROM_PLATONIC,
+    EMBED_FROM_WALLET,
+    RELEASE_TO_WALLET,
+    RELEASE_TO_PLATONIC,
+)
 
 _AMOUNT_TYPES = (int, float, Decimal)
 
@@ -116,11 +131,12 @@ class QuintessenceMovement:
 
 @dataclass(frozen=True)
 class QuintessenceConservation:
-    """The three bucket totals, total_ever_minted, supply_cap, and is_balanced."""
+    """The four bucket totals, total_ever_minted, supply_cap, and is_balanced."""
 
     wallets_total: Decimal
     held_total: Decimal
     platonic_total: Decimal
+    embedded_total: Decimal
     total_ever_minted: Decimal
     supply_cap: Decimal
     delta: Decimal
@@ -134,6 +150,7 @@ class QuintessenceConservation:
             "wallets_total": amount_text(self.wallets_total),
             "held_total": amount_text(self.held_total),
             "platonic_total": amount_text(self.platonic_total),
+            "embedded_total": amount_text(self.embedded_total),
             "total_ever_minted": amount_text(self.total_ever_minted),
             "supply_cap": amount_text(self.supply_cap),
             "delta": amount_text(self.delta),
@@ -152,8 +169,26 @@ class QuintessenceTransfer:
     bled: Decimal
 
 
+@dataclass(frozen=True)
+class QuintessenceEmbed:
+    """What one embed took from a wallet: the amount spent, embedded, and bled."""
+
+    spent: Decimal
+    embedded: Decimal
+    bled: Decimal
+
+
+@dataclass(frozen=True)
+class QuintessenceRelease:
+    """What one release took out of embedded: the amount released, recovered, returned."""
+
+    released: Decimal
+    recovered: Decimal
+    returned: Decimal
+
+
 class QuintessenceLedger:
-    """Quintessence accounting where the three buckets equal total_ever_minted."""
+    """Quintessence accounting where the four buckets equal total_ever_minted."""
 
     def __init__(self, ledger_path: str | Path | None = None) -> None:
         """Point the ledger at ledger_path or DEFAULT_LEDGER_PATH; no file is read."""
@@ -162,6 +197,7 @@ class QuintessenceLedger:
         self._wallets: dict[str, Decimal] = {}
         self._held: dict[str, Decimal] = {}
         self._platonic: Decimal = Decimal(0)
+        self._embedded: Decimal = Decimal(0)
         self._total_ever_minted: Decimal = Decimal(0)
         self._load_failed: bool = False
 
@@ -261,6 +297,85 @@ class QuintessenceLedger:
         self._commit([self._movement(RESPAWN, respawned, None, wallet)])
         return respawned
 
+    def embed_from_platonic(self, amount: object) -> Decimal:
+        """Move ``amount`` out of the platonic into the embedded bucket."""
+        embedded = _as_amount(amount, "amount")
+        if embedded == 0:
+            return Decimal(0)
+        if embedded > self._platonic:
+            raise ValueError(
+                f"the platonic holds {self._platonic}, cannot embed {embedded}"
+            )
+        self._commit([self._movement(EMBED_FROM_PLATONIC, embedded, None, None)])
+        return embedded
+
+    def embed_from_wallet(
+        self,
+        address: str,
+        amount: object,
+        embedded_amount: object,
+    ) -> QuintessenceEmbed:
+        """Move ``amount`` out of address's wallet, ``embedded_amount`` of it into
+        the embedded bucket and the remainder into the platonic.
+        """
+        wallet = _as_address(address, "address")
+        spent = _as_amount(amount, "amount")
+        embedded = _as_amount(embedded_amount, "embedded_amount")
+        if embedded > spent:
+            raise ValueError(
+                f"embedded_amount {embedded} is above the amount {spent} spent"
+            )
+        if spent == 0:
+            return QuintessenceEmbed(Decimal(0), Decimal(0), Decimal(0))
+        self._require_balance(wallet, spent)
+        bled = spent - embedded
+        moves = []
+        if embedded > 0:
+            moves.append(self._movement(EMBED_FROM_WALLET, embedded, wallet, None))
+        if bled > 0:
+            moves.append(self._movement(BLEED, bled, wallet, None))
+        self._commit(moves)
+        return QuintessenceEmbed(spent=spent, embedded=embedded, bled=bled)
+
+    def release_from_embedded(
+        self,
+        address: str,
+        amount: object,
+        recovered_amount: object,
+    ) -> QuintessenceRelease:
+        """Move ``amount`` out of the embedded bucket, ``recovered_amount`` of it
+        into address's wallet and the remainder into the platonic.
+        """
+        wallet = _as_address(address, "address")
+        released = _as_amount(amount, "amount")
+        recovered = _as_amount(recovered_amount, "recovered_amount")
+        if recovered > released:
+            raise ValueError(
+                f"recovered_amount {recovered} is above the amount {released} released"
+            )
+        if released == 0:
+            return QuintessenceRelease(Decimal(0), Decimal(0), Decimal(0))
+        self._require_embedded(released)
+        returned = released - recovered
+        moves = []
+        if recovered > 0:
+            moves.append(self._movement(RELEASE_TO_WALLET, recovered, None, wallet))
+        if returned > 0:
+            moves.append(self._movement(RELEASE_TO_PLATONIC, returned, None, None))
+        self._commit(moves)
+        return QuintessenceRelease(
+            released=released, recovered=recovered, returned=returned
+        )
+
+    def release_all_to_platonic(self, amount: object) -> Decimal:
+        """Move all of ``amount`` out of the embedded bucket into the platonic."""
+        released = _as_amount(amount, "amount")
+        if released == 0:
+            return Decimal(0)
+        self._require_embedded(released)
+        self._commit([self._movement(RELEASE_TO_PLATONIC, released, None, None)])
+        return released
+
     # -- Queries -------------------------------------------------------------
 
     def balance(self, address: str) -> Decimal:
@@ -274,6 +389,10 @@ class QuintessenceLedger:
     def platonic_balance(self) -> Decimal:
         """Return the Quintessence resting in the platonic."""
         return self._platonic
+
+    def embedded_balance(self) -> Decimal:
+        """Return the Quintessence in the embedded bucket, which no wallet can spend."""
+        return self._embedded
 
     def total_ever_minted(self) -> Decimal:
         """Return the Quintessence distilled since genesis."""
@@ -290,13 +409,18 @@ class QuintessenceLedger:
         return [m for m in self._movements if address in (m.source, m.target)]
 
     def conservation(self) -> QuintessenceConservation:
-        """Return the three bucket totals and whether their sum balances."""
+        """Return the four bucket totals and whether their sum balances."""
         wallets_total = sum(self._wallets.values(), Decimal(0))
         held_total = sum(self._held.values(), Decimal(0))
-        buckets = wallets_total + held_total + self._platonic
+        buckets = wallets_total + held_total + self._platonic + self._embedded
         negatives = [
             v
-            for v in (*self._wallets.values(), *self._held.values(), self._platonic)
+            for v in (
+                *self._wallets.values(),
+                *self._held.values(),
+                self._platonic,
+                self._embedded,
+            )
             if v < 0
         ]
         delta = buckets - self._total_ever_minted
@@ -304,6 +428,7 @@ class QuintessenceLedger:
             wallets_total=wallets_total,
             held_total=held_total,
             platonic_total=self._platonic,
+            embedded_total=self._embedded,
             total_ever_minted=self._total_ever_minted,
             supply_cap=QUINTESSENCE_SUPPLY_CAP,
             delta=delta,
@@ -413,12 +538,20 @@ class QuintessenceLedger:
         if amount > resting:
             raise ValueError(f"{held} rests {resting}, cannot pay out {amount}")
 
+    def _require_embedded(self, amount: Decimal) -> None:
+        """Raise ValueError when the embedded bucket holds less than ``amount``."""
+        if amount > self._embedded:
+            raise ValueError(
+                f"the embedded bucket holds {self._embedded}, cannot release {amount}"
+            )
+
     def _commit(self, movements: list[QuintessenceMovement]) -> None:
         """Apply movements, append them to the log, check conservation and save."""
         self._require_usable()
         wallets = dict(self._wallets)
         held = dict(self._held)
         platonic = self._platonic
+        embedded = self._embedded
         minted = self._total_ever_minted
         count = len(self._movements)
         try:
@@ -431,6 +564,7 @@ class QuintessenceLedger:
             self._wallets = wallets
             self._held = held
             self._platonic = platonic
+            self._embedded = embedded
             self._total_ever_minted = minted
             del self._movements[count:]
             raise
@@ -456,6 +590,18 @@ class QuintessenceLedger:
         elif movement.kind == RESPAWN:
             self._platonic -= amount
             self._credit_wallet(movement.target, amount)
+        elif movement.kind == EMBED_FROM_PLATONIC:
+            self._platonic -= amount
+            self._embedded += amount
+        elif movement.kind == EMBED_FROM_WALLET:
+            self._debit_wallet(movement.source, amount)
+            self._embedded += amount
+        elif movement.kind == RELEASE_TO_WALLET:
+            self._embedded -= amount
+            self._credit_wallet(movement.target, amount)
+        elif movement.kind == RELEASE_TO_PLATONIC:
+            self._embedded -= amount
+            self._platonic += amount
         else:
             raise QuintessenceLedgerError(
                 f"unknown movement kind {movement.kind!r}; "
@@ -488,7 +634,8 @@ class QuintessenceLedger:
         if not report.is_balanced or not report.is_within_cap:
             raise QuintessenceLedgerError(
                 f"conservation broken: wallets {report.wallets_total} + held "
-                f"{report.held_total} + platonic {report.platonic_total} against "
+                f"{report.held_total} + platonic {report.platonic_total} + embedded "
+                f"{report.embedded_total} against "
                 f"{report.total_ever_minted} ever minted, delta {report.delta}, "
                 f"{report.negative_buckets} negative bucket(s)"
             )

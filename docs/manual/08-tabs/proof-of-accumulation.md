@@ -228,20 +228,26 @@ it, and nothing destroys it. It keeps its own ledger, apart from the token
 ledger above, because the two obey opposite rules: the token only ever moves
 outward into a balance, while Quintessence circulates.
 
-`src/competition/quintessence_ledger.py` — the four operations
+`src/competition/quintessence_ledger.py` — the eight operations
 
 ```python
 def distil(self, address: str, fee_usd: object, trade_grade: object) -> Decimal:
 def spend(self, address: str, amount: object, held_address: str) -> Decimal:
 def transfer(self, sender, recipient, amount, skill_level) -> QuintessenceTransfer:
 def respawn(self, address: str, amount: object) -> Decimal:
+def embed_from_platonic(self, amount: object) -> Decimal:
+def embed_from_wallet(self, address, amount, embedded_amount) -> QuintessenceEmbed:
+def release_from_embedded(self, address, amount, recovered_amount) -> QuintessenceRelease:
+def release_all_to_platonic(self, amount: object) -> Decimal:
 ```
 
-Quintessence can be in exactly three places, and the three always add up to
+Quintessence can be in exactly four places, and the four always add up to
 everything ever distilled. A wallet holds what a participant can spend. A held
 address holds what they have already spent, which rests there and funds later
 awards. The platonic holds what bled out of a transfer, and the ledger respawns
-that to other participants.
+that to other participants. The embedded bucket holds what a thing in the world
+carries in itself, drawn out of the platonic and returned there when the thing is
+broken.
 
 ```mermaid
 flowchart LR
@@ -250,6 +256,10 @@ flowchart LR
     WALLET -->|transfer| OTHER[another wallet]
     WALLET -->|bleed| PLATONIC[the platonic]
     PLATONIC -->|respawn| OTHER
+    PLATONIC -->|embed| EMBEDDED[embedded]
+    WALLET -->|embed| EMBEDDED
+    EMBEDDED -->|release| OTHER
+    EMBEDDED -->|release| PLATONIC
 ```
 
 Every operation checks that sum before it writes, and refuses the write when it
@@ -638,10 +648,11 @@ CompetitionRegistry.adjudicate uses timestamp for comparisons
 ```
 
 The conservation law the design names counts Quintessence and not this token:
-wallets plus held addresses plus the platonic equals the total ever distilled,
-at most 33,000,000. No Quintessence contract exists, so nothing on the chain can
-state that law yet, and the fuzzing the build tool offers has nothing to read.
-Unit 6 must carry the three balances and the total as values a caller can read,
+wallets plus held addresses plus the platonic plus the embedded bucket equals the
+total ever distilled, at most 33,000,000. No Quintessence contract exists, so
+nothing on the chain can state that law yet, and the fuzzing the build tool offers
+has nothing to read. Unit 6 must carry the balances and the total as values a
+caller can read,
 or the law stays unprovable on-chain however the token behaves.
 
 In development.
@@ -707,27 +718,28 @@ A private LocalTestnet would diverge from every other reader.
 
 ## 2026-09-09 20:43 - #147 - the Quintessence contract
 
-Quintessence now has a contract. It holds the same three places the platform's
-own ledger holds, and it reports all three plus the running total as numbers
+Quintessence now has a contract. It holds the same places the platform's own
+ledger holds, and it reports every one of them plus the running total as numbers
 anyone can read off the chain at any block.
 
-`contracts/Quintessence.sol` — the four numbers a reader gets
+`contracts/Quintessence.sol` — the five numbers a reader gets
 
 ```solidity
     uint256 public walletsTotal;
     uint256 public heldTotal;
     uint256 public platonicTotal;
+    uint256 public embeddedTotal;
     uint256 public totalEverMinted;
 ```
 
-The law is that the first three always add up to the fourth, and the fourth can
+The law is that the first four always add up to the fifth, and the fifth can
 never pass thirty-three million. The contract also answers both halves in one
 call, so a reader does not have to do the sum themselves.
 
 `contracts/Quintessence.sol` — the single call that answers the law
 
 ```solidity
-        isBalanced = wallets + held + platonic == everMinted;
+        isBalanced = wallets + held + platonic + embedded == everMinted;
         isWithinCap = everMinted <= cap;
 ```
 
@@ -775,6 +787,10 @@ flowchart LR
     WALLET -->|authorize, then the registry runs it| OTHER[another wallet]
     WALLET -->|bleed| PLATONIC[the platonic]
     PLATONIC -->|respawn| OTHER
+    PLATONIC -->|embedFromPlatonic| EMBEDDED[embedded]
+    WALLET -->|embedFromWallet| EMBEDDED
+    EMBEDDED -->|releaseFromEmbedded| OTHER
+    EMBEDDED -->|releaseAllToPlatonic| PLATONIC
 ```
 
 Nothing in the contract destroys a unit. A spend moves units to a held address
@@ -1117,7 +1133,7 @@ whatever that guard stops, and a run of each one showed exactly that.
 | A forged signature | 500 Quintessence mints for a bot that signed nothing |
 | An award past the 33,000,000 cap | the log keeps a fill that never distilled |
 
-After every mint the ledger's three places still add up to everything ever
+After every mint the ledger's four places still add up to everything ever
 distilled. The socket reads that report back and carries it in the receipt, so a
 caller sees the sum rather than trusting it.
 
@@ -1937,7 +1953,7 @@ switched on and working while it found none.
 
 ### The books balance, and this is the run that proves it
 
-Quintessence rests in three places and the three always add up to everything ever
+Quintessence rests in four places and the four always add up to everything ever
 minted. That sentence is now a property a machine holds rather than a claim on a
 page. The fuzzing runner drove the contract through random sequences of every
 movement it has.
@@ -2509,9 +2525,9 @@ come out.
 
 ### The conservation law still holds
 
-The law is that every wallet, every held address and the platonic pool add up to
-everything ever distilled, and that the total never passes thirty-three million.
-The fuzzing runner drove it again after the repairs.
+The law is that every wallet, every held address, the platonic pool and the
+embedded bucket add up to everything ever distilled, and that the total never
+passes thirty-three million. The fuzzing runner drove it again after the repairs.
 
 ```
 runs       256
@@ -2925,7 +2941,7 @@ and no transfer runs below it
 ### Two real transfers, and the books balance after both
 
 One hundred Quintessence was sent at level one and again at level ten, on a
-throwaway ledger file. The bleed fell by half and the three buckets still add up
+throwaway ledger file. The bleed fell by half and the four buckets still add up
 to every unit ever distilled.
 
 ```
@@ -3238,7 +3254,7 @@ runs       256
 calls   16,384
 the franchise never below the balance        holds
 a governance call never moves currency       holds
-the three buckets still add up               holds
+the four buckets still add up                holds
 ```
 
 Two findings stand, both on the governance contract and both for the same reason
@@ -3418,7 +3434,7 @@ ruining anybody.
 ### The books balance after every one of the five
 
 A spend takes Quintessence out of a wallet and rests it at the event's held
-address. The spend creates nothing and destroys nothing, so the three buckets
+address. The spend creates nothing and destroys nothing, so the four buckets
 still add up to the total ever distilled after each of the five.
 
 ```
@@ -4077,7 +4093,7 @@ gamma   grade 0.5      axes 0   no scored axis, so no share
 
 ### The books balance through the payout, and no bucket goes negative
 
-The three buckets and the supply are read before the payout and again after it.
+The four buckets and the supply are read before the payout and again after it.
 Quintessence moves from the pot into wallets and none is made or lost.
 
 ```
@@ -4521,7 +4537,7 @@ scores  0.2869375  0.875  0.75  shares  0.0562788074  0.1716191036  0.1471020888
 
 ### The books balance and a second settle gets nothing
 
-This run read the three buckets before the payout and again after it. Nothing came
+This run read the four buckets before the payout and again after it. Nothing came
 into being and nothing vanished, and no bucket went negative. A second set of
 objects then read the event back off disk and asked to pay it again.
 
@@ -5742,3 +5758,156 @@ answer recorded above it.
 
 The throwaway home held no fleet file, so every metric printed its no-value mark. The
 run proved the 27 rows and their field names off the page, and proved no value.
+
+## 2026-09-10 15:38 - #147 - the conservation law takes a fourth bucket
+
+Quintessence now rests in four places, not three. The fourth holds what a thing in
+the world carries in itself.
+
+```
+before   wallets + held + platonic             == total ever minted <= 33,000,000
+after    wallets + held + platonic + embedded  == total ever minted <= 33,000,000
+```
+
+The fourth bucket does not circulate, because only a wallet circulates. It sits
+inside the thirty-three million like every other bucket. Nothing new is minted to
+fill it.
+
+### Where a thing's Quintessence comes from
+
+It is drawn out of the platonic, which is where Quintessence at rest already lives
+and which already had a way out. That is what keeps the ceiling honest: if a newly
+drawn material's Quintessence appeared from nowhere, the cap would be a number with
+nothing behind it.
+
+```
+drawn into the world   platonic -> embedded
+put in by a maker      wallet -> embedded, and wallet -> platonic for the rest
+taken back out         embedded -> wallet, and embedded -> platonic for the rest
+taken out with none
+  recovered            embedded -> platonic, all of it
+```
+
+Nothing is created and nothing is destroyed at any step. A break that recovers
+nothing sends the whole amount back to the platonic rather than losing any of it,
+which is what the rule against destruction requires.
+
+### The movements are named for the buckets, not for what holds the units
+
+A creature, an item and a lump of ore all use the same four paths, so none of the
+names says what kind of thing is involved.
+
+`src/competition/quintessence_ledger.py` — the four new movements
+
+```python
+def embed_from_platonic(self, amount: object) -> Decimal:
+def embed_from_wallet(self, address, amount, embedded_amount) -> QuintessenceEmbed:
+def release_from_embedded(self, address, amount, recovered_amount) -> QuintessenceRelease:
+def release_all_to_platonic(self, amount: object) -> Decimal:
+```
+
+The part that is lost when a maker puts Quintessence into a thing is recorded under
+the same name the platform already uses for a wallet losing units to the platonic,
+because it is the same movement between the same two buckets.
+
+### The books balance at the smallest figure he gave
+
+His ore values are 0.00000001 and 0.00000005. Both are whole numbers once written
+in the smallest unit, so nothing rounds.
+
+```
+0.00000001   as the smallest unit   10,000,000,000
+0.00000005   as the smallest unit   50,000,000,000
+1,000 ore at the richest value      0.00005000, exact
+the whole cap, at the richest value 660 trillion ore units
+```
+
+All four movements were driven at that size, on a throwaway ledger file and again
+on the chain. The difference between the four buckets and the total ever minted was
+zero after every one of them.
+
+```
+drawn into the world    w 0.0000496      p 0.00000039     e 0.00000001   delta 0
+put in by a maker       w 0.00004955     p 0.00000041     e 0.00000004   delta 0
+taken back out          w 0.000049567    p 0.000000433    e 0            delta 0
+taken out with none
+  recovered             w 0.000049567    p 0.000000433    e 0            delta 0
+```
+
+On the chain the same five movements left the platonic exactly 0.000000033 higher
+and the wallets exactly 0.000000033 lower. Changing that figure by one part in
+a million million million makes the check fail, so it is reading the real numbers.
+
+### The fourth bucket is read, and here is the proof
+
+The old three-bucket sum was run over the same state. It reports the books short by
+0.00000004 — exactly what the fourth bucket holds. Setting the fourth bucket to
+zero, and then one ore unit too high, both make the ledger refuse to write.
+
+```
+four-bucket sum    delta 0                 balanced
+three-bucket sum   delta -0.00000004       short by what is embedded
+fourth bucket zeroed    refused
+fourth bucket inflated  refused
+fourth bucket negative  refused, one negative bucket
+```
+
+### Sixteen checks, forty runs
+
+The chain checks were rewritten for four buckets and grew from ten to sixteen. They
+name their own target, so the runner drives nothing else. Every one of the sixteen
+was shown failing on a broken law before it was trusted passing.
+
+```
+runs per campaign    256
+calls per campaign   16,384
+campaigns            40, each with its own starting number
+result               40 of 40 pass
+checks               16 of 16 shown able to fail
+```
+
+Twelve separate breakages were put into the contract one at a time, and each was
+taken out again leaving the file identical to the byte.
+
+### Only this contract changed
+
+Every other contract was rebuilt from scratch and came out identical. The
+comparison was then shown able to report, by moving a number in a contract this
+unit never touched and watching its result change.
+
+```
+ACRV, Governance, AcervatorTrophy, AcervatorLoot,
+MetadataLib, CompetitionRegistry                  identical
+Quintessence                                      changed, by intent
+ACRV with one number moved                        changed, then identical again
+```
+
+### What an auditor must now check instead
+
+The earlier audit confirmed a three-bucket law. That property no longer describes
+the contract, and saying so plainly matters more than the new one passing.
+
+An auditor now has to confirm four things. That the four buckets add to the total
+ever minted. That the fourth bucket can only be filled from the platonic or from a
+wallet, and never from a new mint. That every unit taken out of the fourth bucket
+lands in a wallet or the platonic, and that a break recovering nothing sends all of
+it to the platonic. That only the registry can draw into the fourth bucket or take
+out of it, while putting units in from a wallet stays the wallet holder's own call.
+
+### The same code, a different chain
+
+The panel already takes its chain when it is built, and the chain only decides
+which file the ledger reads. The four movements were driven on the demo chain's own
+file and the live chain's file was left at zero, through one shared install path
+and no flag of any kind.
+
+```
+live      quintessence_ledger.json
+testnet   quintessence_ledger_testnet.json
+```
+
+### What this does not build
+
+No material list, no quality scale, no recipe and no skill curve for recovery. The
+split between what is kept and what is lost is handed in by the caller, so those
+later pieces decide it without this law changing again.
