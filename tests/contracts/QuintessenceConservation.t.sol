@@ -4,10 +4,25 @@
 // forge drives QuintessenceHandler with random call sequences and checks every
 // invariant_ function after them.
 //
+// The law is four buckets:
+//
+//   walletsTotal + heldTotal + platonicTotal + embeddedTotal
+//       == totalEverMinted <= SUPPLY_CAP
+//
+// embeddedTotal is what a thing in the world holds. embedFromPlatonic draws it
+// out of platonicTotal, embedFromWallet out of a wallet, releaseFromEmbedded
+// returns part of it to a wallet, and releaseAllToPlatonic returns all of it to
+// platonicTotal. None of the four mints a unit, so each wrapper below records its
+// own bucket deltas and a counting invariant reads them. A wrapper that only
+// called the function would leave the fourth bucket unread, and every invariant
+// would pass on a law that moved nothing into it.
+//
 // QuintessenceHandler is the registry, so it is the only caller that reaches
-// distil, respawn and executeTransfer. Each QuintessenceActor is an ordinary
-// holder, and QuintessenceIntruder holds code and is not the registry, so every
-// call it makes to those three functions must be refused.
+// distil, respawn, executeTransfer, embedFromPlatonic, releaseFromEmbedded and
+// releaseAllToPlatonic. Each QuintessenceActor is an ordinary holder, and
+// embedFromWallet is holder-called. QuintessenceIntruder holds code and is not
+// the registry, so every call it makes to the six registry functions must be
+// refused.
 //
 // A counting invariant asserts its attempt counter is above zero before it reads
 // its refusal counter, so a path no sequence reached fails instead of passing on
@@ -66,6 +81,10 @@ contract QuintessenceActor {
     function cancelTransfer() external {
         _quint.cancelTransfer();
     }
+
+    function embedFromWallet(uint256 amount, uint256 embeddedAmount) external {
+        _quint.embedFromWallet(amount, embeddedAmount);
+    }
 }
 
 contract QuintessenceIntruder {
@@ -106,6 +125,35 @@ contract QuintessenceIntruder {
             refusals += 1;
         }
     }
+
+    function tryEmbedFromPlatonic(uint256 amount) external {
+        attempts += 1;
+        try _quint.embedFromPlatonic(amount) {
+            successes += 1;
+        } catch {
+            refusals += 1;
+        }
+    }
+
+    function tryReleaseFromEmbedded(address wallet, uint256 amount, uint256 recoveredAmount)
+        external
+    {
+        attempts += 1;
+        try _quint.releaseFromEmbedded(wallet, amount, recoveredAmount) {
+            successes += 1;
+        } catch {
+            refusals += 1;
+        }
+    }
+
+    function tryReleaseAllToPlatonic(uint256 amount) external {
+        attempts += 1;
+        try _quint.releaseAllToPlatonic(amount) {
+            successes += 1;
+        } catch {
+            refusals += 1;
+        }
+    }
 }
 
 contract QuintessenceHandler {
@@ -134,12 +182,31 @@ contract QuintessenceHandler {
     uint256 public transfersExecuted;
     uint256 public transfersBleedingFourPercentOrMore;
 
+    uint256 public embedFromPlatonicAttempts;
+    uint256 public embedFromPlatonicConserving;
+
+    uint256 public embedFromWalletAttempts;
+    uint256 public embedFromWalletConserving;
+
+    uint256 public releaseFromEmbeddedAttempts;
+    uint256 public releaseFromEmbeddedConserving;
+
+    uint256 public releaseAllToPlatonicAttempts;
+    uint256 public releaseAllToPlatonicConserving;
+
+    uint256 public embeddedMovementAttempts;
+    uint256 public embeddedMovementsMintingNothing;
+
     uint256 public distilCalls;
     uint256 public spendCalls;
     uint256 public authorizeCalls;
     uint256 public executeCalls;
     uint256 public respawnCalls;
     uint256 public cancelCalls;
+    uint256 public embedFromPlatonicCalls;
+    uint256 public embedFromWalletCalls;
+    uint256 public releaseFromEmbeddedCalls;
+    uint256 public releaseAllToPlatonicCalls;
 
     constructor() {
         walletSet = new WalletSet();
@@ -297,6 +364,132 @@ contract QuintessenceHandler {
         _snapshot();
     }
 
+    /// Draw base units out of platonicTotal into embeddedTotal and record the
+    /// delta of every bucket the movement is allowed to touch.
+    function embedFromPlatonic(uint256 amount) external {
+        uint256 platonicBefore = quint.platonicTotal();
+        if (platonicBefore == 0) {
+            return;
+        }
+        uint256 drawn = (amount % platonicBefore) + 1;
+        uint256 embeddedBefore = quint.embeddedTotal();
+        uint256 walletsBefore = quint.walletsTotal();
+        uint256 mintedBefore = quint.totalEverMinted();
+
+        quint.embedFromPlatonic(drawn);
+
+        embedFromPlatonicAttempts += 1;
+        embeddedMovementAttempts += 1;
+        if (
+            quint.platonicTotal() == platonicBefore - drawn
+                && quint.embeddedTotal() == embeddedBefore + drawn
+                && quint.walletsTotal() == walletsBefore
+        ) {
+            embedFromPlatonicConserving += 1;
+        }
+        if (quint.totalEverMinted() == mintedBefore) {
+            embeddedMovementsMintingNothing += 1;
+        }
+        embedFromPlatonicCalls += 1;
+        _snapshot();
+    }
+
+    /// Spend an actor's own units into embeddedTotal, the rest into
+    /// platonicTotal, and record the delta of every bucket.
+    function embedFromWallet(uint256 actorSeed, uint256 amount, uint256 embeddedSeed) external {
+        QuintessenceActor actor = actors[actorSeed % ACTOR_COUNT];
+        uint256 walletHolds = quint.balance(address(actor));
+        if (walletHolds == 0) {
+            return;
+        }
+        uint256 spent = (amount % walletHolds) + 1;
+        uint256 embedded = embeddedSeed % (spent + 1);
+        uint256 walletsBefore = quint.walletsTotal();
+        uint256 embeddedBefore = quint.embeddedTotal();
+        uint256 platonicBefore = quint.platonicTotal();
+        uint256 mintedBefore = quint.totalEverMinted();
+
+        actor.embedFromWallet(spent, embedded);
+
+        embedFromWalletAttempts += 1;
+        embeddedMovementAttempts += 1;
+        if (
+            quint.walletsTotal() == walletsBefore - spent
+                && quint.embeddedTotal() == embeddedBefore + embedded
+                && quint.platonicTotal() == platonicBefore + (spent - embedded)
+        ) {
+            embedFromWalletConserving += 1;
+        }
+        if (quint.totalEverMinted() == mintedBefore) {
+            embeddedMovementsMintingNothing += 1;
+        }
+        embedFromWalletCalls += 1;
+        _snapshot();
+    }
+
+    /// Take units out of embeddedTotal, recovering part into a wallet and
+    /// returning the rest to platonicTotal, and record every bucket delta.
+    function releaseFromEmbedded(uint256 actorSeed, uint256 amount, uint256 recoveredSeed)
+        external
+    {
+        uint256 embeddedBefore = quint.embeddedTotal();
+        if (embeddedBefore == 0) {
+            return;
+        }
+        uint256 released = (amount % embeddedBefore) + 1;
+        uint256 recovered = recoveredSeed % (released + 1);
+        uint256 walletsBefore = quint.walletsTotal();
+        uint256 platonicBefore = quint.platonicTotal();
+        uint256 mintedBefore = quint.totalEverMinted();
+
+        quint.releaseFromEmbedded(_actor(actorSeed), released, recovered);
+
+        releaseFromEmbeddedAttempts += 1;
+        embeddedMovementAttempts += 1;
+        if (
+            quint.embeddedTotal() == embeddedBefore - released
+                && quint.walletsTotal() == walletsBefore + recovered
+                && quint.platonicTotal() == platonicBefore + (released - recovered)
+        ) {
+            releaseFromEmbeddedConserving += 1;
+        }
+        if (quint.totalEverMinted() == mintedBefore) {
+            embeddedMovementsMintingNothing += 1;
+        }
+        releaseFromEmbeddedCalls += 1;
+        _snapshot();
+    }
+
+    /// Take units out of embeddedTotal recovering none, and record that every one
+    /// of them reached platonicTotal and no wallet was credited.
+    function releaseAllToPlatonic(uint256 amount) external {
+        uint256 embeddedBefore = quint.embeddedTotal();
+        if (embeddedBefore == 0) {
+            return;
+        }
+        uint256 released = (amount % embeddedBefore) + 1;
+        uint256 platonicBefore = quint.platonicTotal();
+        uint256 walletsBefore = quint.walletsTotal();
+        uint256 mintedBefore = quint.totalEverMinted();
+
+        quint.releaseAllToPlatonic(released);
+
+        releaseAllToPlatonicAttempts += 1;
+        embeddedMovementAttempts += 1;
+        if (
+            quint.embeddedTotal() == embeddedBefore - released
+                && quint.platonicTotal() == platonicBefore + released
+                && quint.walletsTotal() == walletsBefore
+        ) {
+            releaseAllToPlatonicConserving += 1;
+        }
+        if (quint.totalEverMinted() == mintedBefore) {
+            embeddedMovementsMintingNothing += 1;
+        }
+        releaseAllToPlatonicCalls += 1;
+        _snapshot();
+    }
+
     function intruderDistil(uint256 actorSeed, uint256 amount) external {
         intruder.tryDistil(_actor(actorSeed), (amount % ONE_WHOLE) + 1);
         _snapshot();
@@ -312,8 +505,24 @@ contract QuintessenceHandler {
         _snapshot();
     }
 
+    function intruderEmbedFromPlatonic(uint256 amount) external {
+        intruder.tryEmbedFromPlatonic((amount % ONE_WHOLE) + 1);
+        _snapshot();
+    }
+
+    function intruderReleaseFromEmbedded(uint256 actorSeed, uint256 amount) external {
+        uint256 released = (amount % ONE_WHOLE) + 1;
+        intruder.tryReleaseFromEmbedded(_actor(actorSeed), released, released);
+        _snapshot();
+    }
+
+    function intruderReleaseAllToPlatonic(uint256 amount) external {
+        intruder.tryReleaseAllToPlatonic((amount % ONE_WHOLE) + 1);
+        _snapshot();
+    }
+
     /// Sum over every wallet WalletSet has recorded, which is every wallet a
-    /// distil, transfer or respawn in this run could have credited.
+    /// distil, transfer, respawn or release in this run could have credited.
     function recordedWalletSum() external view returns (uint256 total) {
         uint256 recorded = walletSet.count();
         for (uint256 i = 0; i < recorded; ++i) {
@@ -330,7 +539,8 @@ contract QuintessenceHandler {
         if (everMinted > highEverMinted) {
             highEverMinted = everMinted;
         }
-        uint256 bucketSum = quint.walletsTotal() + quint.heldTotal() + quint.platonicTotal();
+        uint256 bucketSum = quint.walletsTotal() + quint.heldTotal() + quint.platonicTotal()
+            + quint.embeddedTotal();
         if (bucketSum > highBucketSum) {
             highBucketSum = bucketSum;
         }
@@ -338,6 +548,21 @@ contract QuintessenceHandler {
 }
 
 contract QuintessenceConservationTest {
+    /// 0.00000001 Quintessence in base units, the poorest ore value.
+    uint256 private constant ORE_LOW = 10_000_000_000;
+
+    /// 0.00000005 Quintessence in base units, the richest ore value.
+    uint256 private constant ORE_HIGH = 50_000_000_000;
+
+    /// 0.00000003, the part of ORE_HIGH that embedFromWallet embeds in setUp.
+    uint256 private constant ORE_EMBEDDED_FROM_WALLET = 30_000_000_000;
+
+    /// 0.000000017, the part releaseFromEmbedded recovers in setUp.
+    uint256 private constant ORE_RECOVERED = 17_000_000_000;
+
+    /// 0.000000033, what the five ore-scale movements in setUp leave in the platonic.
+    uint256 private constant ORE_PLATONIC_GAIN = 33_000_000_000;
+
     Quintessence public quint;
     QuintessenceHandler public handler;
     QuintessenceIntruder public intruder;
@@ -355,9 +580,43 @@ contract QuintessenceConservationTest {
         handler.intruderDistil(0, 1);
         handler.intruderRespawn(0, 1);
         handler.intruderExecuteTransfer(0, 1);
+        handler.intruderEmbedFromPlatonic(1);
+        handler.intruderReleaseFromEmbedded(0, 1);
+        handler.intruderReleaseAllToPlatonic(1);
         handler.tryExecuteBeforeDue(0);
         handler.authorizeTransfer(0, 0, 500 * 10**18);
         handler.executeTransfer(0, 1);
+        uint256 platonicBeforeOre = quint.platonicTotal();
+        uint256 walletsBeforeOre = quint.walletsTotal();
+
+        handler.embedFromPlatonic(ORE_LOW - 1);
+        require(quint.embeddedTotal() == ORE_LOW, "setUp: the platonic embed was not 0.00000001");
+
+        handler.embedFromWallet(1, ORE_HIGH - 1, ORE_EMBEDDED_FROM_WALLET);
+        require(
+            quint.embeddedTotal() == ORE_LOW + ORE_EMBEDDED_FROM_WALLET,
+            "setUp: the wallet embed was not 0.00000003"
+        );
+
+        handler.releaseFromEmbedded(
+            1,
+            ORE_LOW + ORE_EMBEDDED_FROM_WALLET - 1,
+            ORE_RECOVERED
+        );
+        require(quint.embeddedTotal() == 0, "setUp: the release left units embedded");
+
+        handler.embedFromPlatonic(ORE_LOW - 1);
+        handler.releaseAllToPlatonic(ORE_LOW - 1);
+        require(quint.embeddedTotal() == 0, "setUp: the full release left units embedded");
+
+        require(
+            quint.platonicTotal() == platonicBeforeOre + ORE_PLATONIC_GAIN,
+            "setUp: the ore-scale movements did not balance to 0.000000033 in the platonic"
+        );
+        require(
+            quint.walletsTotal() == walletsBeforeOre - ORE_PLATONIC_GAIN,
+            "setUp: the ore-scale movements did not take 0.000000033 out of the wallets"
+        );
     }
 
     /// @notice forge drives only the handler, whose wrappers record every wallet.
@@ -366,11 +625,11 @@ contract QuintessenceConservationTest {
         targets[0] = address(handler);
     }
 
-    /// @notice A failure means the three buckets no longer hold every unit minted.
-    function invariant_threeBucketsEqualTotalEverMinted() public view {
+    /// @notice A failure means the four buckets no longer hold every unit minted.
+    function invariant_fourBucketsEqualTotalEverMinted() public view {
         require(
             quint.walletsTotal() + quint.heldTotal() + quint.platonicTotal()
-                == quint.totalEverMinted(),
+                + quint.embeddedTotal() == quint.totalEverMinted(),
             "buckets do not equal totalEverMinted"
         );
     }
@@ -399,12 +658,20 @@ contract QuintessenceConservationTest {
         );
     }
 
-    /// @notice A failure means the bucket sum fell, so a unit was destroyed.
+    /// @notice A failure means the four-bucket sum fell, so a unit was destroyed.
     function invariant_noUnitIsDestroyed() public view {
         require(
             quint.walletsTotal() + quint.heldTotal() + quint.platonicTotal()
-                >= handler.highBucketSum(),
+                + quint.embeddedTotal() >= handler.highBucketSum(),
             "the bucket sum fell below a value already seen"
+        );
+    }
+
+    /// @notice A failure means embeddedTotal holds units that were never minted.
+    function invariant_embeddedTotalIsWithinTotalEverMinted() public view {
+        require(
+            quint.embeddedTotal() <= quint.totalEverMinted(),
+            "embeddedTotal is above totalEverMinted"
         );
     }
 
@@ -450,6 +717,54 @@ contract QuintessenceConservationTest {
         require(
             handler.unauthorizedExecuteSuccesses() == 0,
             "the registry moved a wallet that authorized nothing"
+        );
+    }
+
+    /// @notice A failure means an embed took units from somewhere other than the platonic.
+    function invariant_everyEmbedFromPlatonicDrawsOnlyFromThePlatonic() public view {
+        require(handler.embedFromPlatonicAttempts() > 0, "no embedFromPlatonic was attempted");
+        require(
+            handler.embedFromPlatonicConserving() == handler.embedFromPlatonicAttempts(),
+            "an embed did not move its units out of platonicTotal into embeddedTotal"
+        );
+    }
+
+    /// @notice A failure means an embed's units did not all reach embedded or the platonic.
+    function invariant_everyEmbedFromWalletMovesEveryUnitItSpends() public view {
+        require(handler.embedFromWalletAttempts() > 0, "no embedFromWallet was attempted");
+        require(
+            handler.embedFromWalletConserving() == handler.embedFromWalletAttempts(),
+            "an embed did not move every unit it spent into embeddedTotal or platonicTotal"
+        );
+    }
+
+    /// @notice A failure means a release's units did not all reach a wallet or the platonic.
+    function invariant_everyReleaseMovesEveryUnitItTakesFromEmbedded() public view {
+        require(handler.releaseFromEmbeddedAttempts() > 0, "no release was attempted");
+        require(
+            handler.releaseFromEmbeddedConserving() == handler.releaseFromEmbeddedAttempts(),
+            "a release did not move every unit into a wallet or platonicTotal"
+        );
+    }
+
+    /// @notice A failure means a release recovering nothing lost units instead of returning them.
+    function invariant_everyReleaseAllToPlatonicReturnsEveryUnit() public view {
+        require(
+            handler.releaseAllToPlatonicAttempts() > 0,
+            "no releaseAllToPlatonic was attempted"
+        );
+        require(
+            handler.releaseAllToPlatonicConserving() == handler.releaseAllToPlatonicAttempts(),
+            "a release recovering nothing did not return every unit to platonicTotal"
+        );
+    }
+
+    /// @notice A failure means an embed or a release changed totalEverMinted.
+    function invariant_noEmbeddedMovementMintsAUnit() public view {
+        require(handler.embeddedMovementAttempts() > 0, "no embedded movement was attempted");
+        require(
+            handler.embeddedMovementsMintingNothing() == handler.embeddedMovementAttempts(),
+            "an embedded movement changed totalEverMinted"
         );
     }
 }

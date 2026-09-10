@@ -2,7 +2,7 @@
 // ACERVATOR — Quintessence
 // Chain: Base (Coinbase L2)
 // =============================================================================
-// The Proof-of-Accumulation entry currency. Balances and five movements, with
+// The Proof-of-Accumulation entry currency. Balances and nine movements, with
 // no ERC-20 surface: a holder cannot move units by a wallet call alone, so the
 // ERC-20 transfer and approve functions are absent rather than reverting.
 //
@@ -12,24 +12,36 @@
 //     transfer a holder has already authorized
 //   • no owner, no pause, no upgrade hook, no burn, no setter of any kind
 //
-// Quintessence rests in exactly three places, and the three always sum to
+// Quintessence rests in exactly four places, and the four always sum to
 // totalEverMinted:
 //
-//   walletsTotal + heldTotal + platonicTotal == totalEverMinted <= SUPPLY_CAP
+//   walletsTotal + heldTotal + platonicTotal + embeddedTotal
+//       == totalEverMinted <= SUPPLY_CAP
 //
-// The five movements are the five src/competition/quintessence_ledger.py
+// embeddedTotal is what a thing in the world holds intrinsically. No wallet call
+// reaches it, so it does not circulate, and it is inside SUPPLY_CAP like every
+// other bucket. It is drawn out of platonicTotal, never out of a new mint.
+//
+// The movements are named for the buckets they move between, not for what is
+// holding the units, so a material, an item and a creature share one path.
+//
+// The nine movements are the nine src/competition/quintessence_ledger.py
 // applies off-chain, with the same buckets on each side:
 //
-//   distil    REGISTRY credits a wallet and raises totalEverMinted
-//   spend     a holder moves own units to a held address, where they rest
-//   transfer  a holder authorizes, REGISTRY executes, the recipient is credited
-//   bleed     part of every executed transfer joins platonicTotal
-//   respawn   REGISTRY moves platonicTotal units into a wallet
+//   distil                REGISTRY credits a wallet and raises totalEverMinted
+//   spend                 a holder moves own units to a held address, where they rest
+//   transfer              a holder authorizes, REGISTRY executes, recipient credited
+//   bleed                 walletsTotal to platonicTotal, on a transfer or an embed
+//   respawn               REGISTRY moves platonicTotal units into a wallet
+//   embedFromPlatonic     REGISTRY moves platonicTotal units into embeddedTotal
+//   embedFromWallet       a holder moves own units into embeddedTotal, the rest bleeds
+//   releaseFromEmbedded   REGISTRY moves embeddedTotal units into a wallet, rest to platonic
+//   releaseAllToPlatonic  REGISTRY moves embeddedTotal units into platonicTotal only
 //
 // heldTotal is terminal: no function moves units out of a held address. A
 // withdrawal from one would make spend a transfer that pays no bleed.
 //
-// Nothing reduces totalEverMinted, and nothing reduces the sum of the three
+// Nothing reduces totalEverMinted, and nothing reduces the sum of the four
 // buckets, so no unit can be destroyed.
 // =============================================================================
 pragma solidity 0.8.36;
@@ -75,6 +87,10 @@ contract Quintessence {
     uint256 public walletsTotal;
     uint256 public heldTotal;
     uint256 public platonicTotal;
+
+    /// What things in the world hold intrinsically. No wallet call spends it.
+    uint256 public embeddedTotal;
+
     uint256 public totalEverMinted;
 
     /// One authorized transfer per sender, which serialises a split transfer.
@@ -106,6 +122,28 @@ contract Quintessence {
     event Bled(address indexed sender, uint256 amount, uint256 platonicTotalAfter);
 
     event Respawned(address indexed wallet, uint256 amount, uint256 platonicTotalAfter);
+
+    event EmbeddedFromPlatonic(
+        uint256 amount,
+        uint256 embeddedTotalAfter,
+        uint256 platonicTotalAfter
+    );
+
+    event EmbeddedFromWallet(
+        address indexed wallet,
+        uint256 amount,
+        uint256 embedded,
+        uint256 bled
+    );
+
+    event ReleasedFromEmbedded(
+        address indexed wallet,
+        uint256 amount,
+        uint256 recovered,
+        uint256 returned
+    );
+
+    event ReleasedAllToPlatonic(uint256 amount, uint256 platonicTotalAfter);
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -258,6 +296,86 @@ contract Quintessence {
         emit Respawned(wallet, amount, platonicTotal);
     }
 
+    // ── embed ─────────────────────────────────────────────────────────────────
+
+    /**
+     * @notice Move units out of platonicTotal into embeddedTotal, minting nothing.
+     * @param amount Base units the thing drawn into the world holds.
+     */
+    function embedFromPlatonic(uint256 amount) external onlyRegistry {
+        require(amount > 0, "Quint: amount is zero");
+        require(platonicTotal >= amount, "Quint: platonic below amount");
+
+        platonicTotal -= amount;
+        embeddedTotal += amount;
+
+        emit EmbeddedFromPlatonic(amount, embeddedTotal, platonicTotal);
+    }
+
+    /**
+     * @notice Move the caller's own units into embeddedTotal, the remainder into
+     *         platonicTotal.
+     * @param amount Base units the caller commits.
+     * @param embeddedAmount The part of amount the thing ends up holding. What is
+     *        left over bleeds into platonicTotal, so no unit is destroyed.
+     */
+    function embedFromWallet(uint256 amount, uint256 embeddedAmount) external {
+        require(amount > 0, "Quint: amount is zero");
+        require(embeddedAmount <= amount, "Quint: embedded above amount");
+        require(balance[msg.sender] >= amount, "Quint: balance below amount");
+
+        uint256 bled = amount - embeddedAmount;
+
+        balance[msg.sender] -= amount;
+        walletsTotal -= amount;
+        embeddedTotal += embeddedAmount;
+        platonicTotal += bled;
+
+        emit EmbeddedFromWallet(msg.sender, amount, embeddedAmount, bled);
+    }
+
+    // ── release ───────────────────────────────────────────────────────────────
+
+    /**
+     * @notice Move units out of embeddedTotal, recoveredAmount into a wallet and
+     *         the remainder into platonicTotal.
+     * @param wallet The wallet credited with recoveredAmount.
+     * @param amount Base units the thing held before it was broken.
+     * @param recoveredAmount The part of amount the wallet keeps.
+     */
+    function releaseFromEmbedded(address wallet, uint256 amount, uint256 recoveredAmount)
+        external
+        onlyRegistry
+    {
+        require(wallet != address(0), "Quint: wallet is zero");
+        require(amount > 0, "Quint: amount is zero");
+        require(recoveredAmount <= amount, "Quint: recovered above amount");
+        require(embeddedTotal >= amount, "Quint: embedded below amount");
+
+        uint256 returned = amount - recoveredAmount;
+
+        embeddedTotal -= amount;
+        balance[wallet] += recoveredAmount;
+        walletsTotal += recoveredAmount;
+        platonicTotal += returned;
+
+        emit ReleasedFromEmbedded(wallet, amount, recoveredAmount, returned);
+    }
+
+    /**
+     * @notice Move units out of embeddedTotal into platonicTotal, crediting nobody.
+     * @param amount Base units the thing held before it was broken.
+     */
+    function releaseAllToPlatonic(uint256 amount) external onlyRegistry {
+        require(amount > 0, "Quint: amount is zero");
+        require(embeddedTotal >= amount, "Quint: embedded below amount");
+
+        embeddedTotal -= amount;
+        platonicTotal += amount;
+
+        emit ReleasedAllToPlatonic(amount, platonicTotal);
+    }
+
     // ── Reads ─────────────────────────────────────────────────────────────────
 
     /**
@@ -291,14 +409,15 @@ contract Quintessence {
     }
 
     /**
-     * @notice Return the three bucket totals, totalEverMinted, SUPPLY_CAP, and
+     * @notice Return the four bucket totals, totalEverMinted, SUPPLY_CAP, and
      *         whether the conservation law and the cap hold at this block.
      * @return wallets walletsTotal
      * @return held heldTotal
      * @return platonic platonicTotal
+     * @return embedded embeddedTotal
      * @return everMinted totalEverMinted
      * @return cap SUPPLY_CAP
-     * @return isBalanced wallets plus held plus platonic equals everMinted
+     * @return isBalanced wallets plus held plus platonic plus embedded equals everMinted
      * @return isWithinCap everMinted is at most cap
      */
     function conservation()
@@ -308,6 +427,7 @@ contract Quintessence {
             uint256 wallets,
             uint256 held,
             uint256 platonic,
+            uint256 embedded,
             uint256 everMinted,
             uint256 cap,
             bool isBalanced,
@@ -317,9 +437,10 @@ contract Quintessence {
         wallets = walletsTotal;
         held = heldTotal;
         platonic = platonicTotal;
+        embedded = embeddedTotal;
         everMinted = totalEverMinted;
         cap = SUPPLY_CAP;
-        isBalanced = wallets + held + platonic == everMinted;
+        isBalanced = wallets + held + platonic + embedded == everMinted;
         isWithinCap = everMinted <= cap;
     }
 
