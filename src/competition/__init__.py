@@ -37,6 +37,12 @@ from .competition_engine import (
     PerformanceSubmission,
 )
 from .local_testnet import LocalTestnet
+from .certification_socket import (
+    CertificationSocket,
+    CertificationRefusedError,
+    CertificationReceipt,
+    CertifiedFill,
+)
 from .challenge_protocol import (
     RatingRegistry,
     create_challenge,
@@ -69,6 +75,10 @@ __all__ = [
     "CompetitionResult",
     "PerformanceSubmission",
     "LocalTestnet",
+    "CertificationSocket",
+    "CertificationRefusedError",
+    "CertificationReceipt",
+    "CertifiedFill",
     "RatingRegistry",
     "create_challenge",
     "elo_update",

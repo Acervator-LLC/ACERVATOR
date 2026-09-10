@@ -1034,3 +1034,135 @@ What is still not built is everything inside the zones: the pixel art, the
 character classes, the event modes and the turn structure. The wallet holds no
 Quintessence, no trophy and no loot, because there is no debit path and no
 participant identity to read one for.
+
+## 2026-09-09 22:28 - #147 - the certified transaction socket
+
+A bot now certifies each of its fills against the local chain, and every
+certified fill distils Quintessence from the fee the exchange charged. An event
+turns away a bot that has certified nothing. No figure a bot trades on changes:
+the socket reads a fee the platform already recorded, then writes to the chain
+and to the Quintessence ledger.
+
+`src/competition/certification_socket.py` — what one certification writes
+
+```python
+            leaf = log.append(record)
+            distilled = self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+            self._certified_fill_ids.setdefault(bot_id, set()).add(fill_id)
+            self._lifetime_fee_usd[bot_id] = (
+                self._lifetime_fee_usd.get(bot_id, Decimal(0)) + fee
+            )
+```
+
+Most of certification was already in the package. Signing belongs to the bot
+identity, the append-only log already refuses three kinds of bad record, and the
+chain already takes a transaction and an event. The socket is what joins those
+parts to the fee and to the ledger.
+
+| Part of certification | Where it comes from |
+| --------------------- | ------------------- |
+| Signing one fill | `BotIdentity.sign_trade` |
+| Refusing a wrong competition, a wrong bot, a bad signature | `MerkleTradeLog.append` |
+| The commitment over every certified fill | `MerkleTradeLog.root` |
+| Proof of one fill without the log | `MerkleTradeLog.proof_for` |
+| A summary revealing no fill | `MerkleTradeLog.submission_summary` |
+| The transaction and the event on chain | `LocalChain.send_tx`, `LocalChain.emit` |
+| Minting the award | `QuintessenceLedger.distil` |
+| One chain and one ledger per launch | `SharedTestnetBridge.install_on` |
+| A fill offered for certification | `CertifiedFill`, new |
+| What one certification produced | `CertificationReceipt`, new |
+| The replay, stranger and cap refusals | `CertificationSocket.certify`, new |
+| The lifetime fee total | `lifetime_certified_fee_usd`, new |
+| The fill subscriber | `attach_to_bus`, new |
+
+Nothing in the platform holds a lifetime fee total, so the socket holds its own.
+The exchange health refresh re-derives its figure from the last five hundred
+trades, so that figure falls as older fills age out, and an earned quantity may
+never fall. The socket's total takes every certified fee, takes the higher of the
+stored and the held figure on a reload, and rises rather than follows a windowed
+reading from the exchange.
+
+`src/competition/certification_socket.py` — the windowed reading raises the total
+or leaves it alone
+
+```python
+        observed = _as_fee_usd(observed_fee_usd)
+        with self._state_lock:
+            held = self._lifetime_fee_usd.get(bot_id, Decimal(0))
+            if observed > held:
+                self._lifetime_fee_usd[bot_id] = observed
+                self.save()
+                return observed
+            return held
+```
+
+The total rises on both sides of the cycle. A scrum and a fold each carry the
+fee the venue reported for that fill, and the socket adds whichever arrives. A
+fill whose fee is zero certifies and distils nothing.
+
+```
+one scrum, fee $4.65   distilled 4.650   lifetime total $4.65
+one fold,  fee $4.58   distilled 4.580   lifetime total $9.23
+a window reading $500  distilled 0       lifetime total $500.00
+a window reading $12   distilled 0       lifetime total $500.00
+```
+
+The socket refuses four things. Taking away a guard makes the socket admit
+whatever that guard stops, and a run of each one showed exactly that.
+
+| Refused | Without its guard |
+| ------- | ----------------- |
+| A fill already certified | the fee total doubles, $4.00 to $8.00 |
+| A bot that has certified nothing | it enters an event |
+| A forged signature | 500 Quintessence mints for a bot that signed nothing |
+| An award past the 33,000,000 cap | the log keeps a fill that never distilled |
+
+After every mint the ledger's three places still add up to everything ever
+distilled. The socket reads that report back and carries it in the receipt, so a
+caller sees the sum rather than trusting it.
+
+```
+after the scrum    wallets 4.650 + held 0 + platonic 0 = 4.650 ever minted
+after the fold     wallets 9.230 + held 0 + platonic 0 = 9.230 ever minted
+after a refusal    wallets 9.230 + held 0 + platonic 0 = 9.230 ever minted
+```
+
+Every launch builds the socket beside the chain and the ledger, in the same call
+that builds those two. It shares the bridge's lock, so a certification and a
+competition run never write the chain at the same moment.
+
+`src/gui/shared_testnet.py` — the line that builds it
+
+```python
+        main_win._certification_socket = bridge.install_certification_socket(
+            ledger, socket_path
+        )
+```
+
+Demo mode is the same socket over a second chain. The chain, the ledger and the
+competition name all arrive at construction, so a TestNet run is a second socket
+holding different ones, and no flag anywhere decides which path runs. A demo
+certification leaves the live ledger at the figure it already held.
+
+```
+live socket   chain from SharedTestnetBridge   competition POA-STANDING
+demo socket   its own LocalTestnet             competition POA-DEMO
+measured      demo minted 3.720; live stayed at 9.230
+```
+
+One thing a fill on the bus cannot yet supply is its fee. The fill notification
+carries the type, the side, the amount, the price, the dollars and the profit,
+and no fee. A fill arriving that way certifies, reaches the chain and distils
+nothing until the notification carries the number the venue charged.
+
+```
+trade.filled fields today   type, side, amount, price, usd, profit,
+                            operator_initiated
+the field the socket reads  fee_usd, absent from every emit site
+the result                  the fill certifies, the award is zero
+```
+
+What is still not built is the grade curve that scales an award, the rotation
+that decides which markets pay, and the caps on how much one participant may
+take. The socket passes a grade of one and applies no ceiling beyond the supply
+cap, so those three remain open.
