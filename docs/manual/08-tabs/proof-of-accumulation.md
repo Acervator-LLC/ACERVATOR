@@ -6728,6 +6728,442 @@ files on disk        none carried the old word
 file version         unchanged
 ```
 
+## 2026-09-10 20:38 - #147 - movement is derived, and costs one record a leg
+
+### His words set the shape
+
+> "Just need to be able to say that character A traversed x% of a given square in
+> a given turn and this will make it relatively easy to simulate varied terrain
+> within one or across multiple squares. Should be simple enough to make this
+> dynamic and per character or army or group with encumberance playing a role."
+
+> "Also, terrain grids do not need to overlap perfectly with the world grid. These
+> grids are varied in size and shape while be linked together at their own
+> borders."
+
+### A leg is one stretch at one rate, and a journey is a sequence of them
+
+A mover crosses the world in legs. One leg runs at one rate across one terrain
+region and ends at that region's border. A journey is the legs in order, and a
+new leg is written when the rate changes.
+
+```
+a leg      one constant-rate stretch, ending at a terrain border
+a journey  a sequence of legs
+a new leg  a border crossed, a load changed, a group split
+```
+
+### Progress is read, never written
+
+A leg records the turn it opened, its two end points and its rate. Everything
+else is worked out when somebody asks. No turn writes anything.
+
+```
+stored    the opening turn, the two end points, the rate, the zone
+derived   the steps covered, the percent of a square covered this turn,
+          the square the mover is in and how far across it, whether it arrived
+```
+
+A position is counted in steps, and a square is a hundred steps across, so one
+step is one percent of a square. His question is answered by reading the step
+count.
+
+```python
+row = journeys.progress("u40world", "march", 3)
+row["travelled_steps"]        # "300"
+row["square_pct_this_turn"]   # "100"
+```
+
+### The same leg read at two turns, and the chain replaying both
+
+One leg was opened and then read at two different turns. The two readings differ,
+because the turn is an input. The same two readings were then worked out again
+from the record on the chain alone, and both matched to the digit.
+
+```
+turn 1   100 steps covered, 100% of a square this turn
+turn 3   300 steps covered, 100% of a square this turn
+replay from the chain's own record    equal at turn 1 and at turn 3
+the chain verifies its own records    6 blocks, 5 transactions, verified
+```
+
+Nothing on the leg depends on the machine reading it. Every figure is worked out
+to a fixed number of digits, so the ambient setting of the program cannot move
+it.
+
+```
+digits set to 5    the same answer
+digits set to 60   the same answer
+digits set to 28   the same answer
+```
+
+### Crossing a terrain border makes a second leg at a different rate
+
+A walk began on open ground and crossed into marsh. The border crossing ended the
+first leg and opened a second, and the rate fell because the marsh carries a
+smaller multiplier.
+
+```
+leg 0   zone plain   100 steps a turn   400 steps to run, arrives on turn 4
+leg 1   zone marsh    40 steps a turn   opens on turn 4
+```
+
+The turn of the handover belongs to the leg that was moving during it, not to the
+one that opens at its end.
+
+```
+turn 4   leg 0, plain, 100% of a square covered
+turn 5   leg 1, marsh,  40% of a square covered
+turn 9   leg 1, marsh,  40% of a square covered
+```
+
+### Writing progress every turn against deriving it
+
+Three walks were driven, of three, six and twenty-four turns. Each cost one
+record on the chain, and each answered a progress question once per turn.
+
+```
+walk of  3 turns    1 record on the chain    3 progress readings
+walk of  6 turns    1                        6
+walk of 24 turns    1                       24
+all three journeys  3 transactions on the chain
+```
+
+### What one leg costs, in bytes
+
+Measured by letting the chain save itself and reading the file the chain wrote.
+The figure is the change in that file's size across 655 legs, divided by 655.
+
+```
+one leg, the path the program runs        1,305 bytes
+its event alone                             422
+one leg, packed argument, one block a turn  478
+```
+
+A leg is written twice, once as the action and once as the event, which is how
+every other record in this package is written. The packed figure drops the event
+and shares one block across the turn.
+
+Against one layer's turn budget of one megabyte, with 655 movers, the difference
+between writing progress and deriving it is the whole question.
+
+```
+655 movers, a record each turn              854,581 bytes   81.5% of the budget
+655 movers, a record each turn, packed      313,331         29.9%
+655 movers, one record a 24-turn journey     35,607 a turn    3.4%
+```
+
+Two earlier figures for this were 1,015 bytes and 399 bytes, and neither
+reproduces now. The save path changed to a running log that names every record by
+its own contents, which adds bytes to each one.
+
+```
+quoted earlier   1,015 bytes   63.4% of the budget
+measured now     1,305         81.5%
+quoted earlier     399         24.9%
+measured now        478        29.9%
+```
+
+The earlier conclusion is stronger rather than weaker. Walking would take more of
+the world's turn budget than the earlier figure said, not less.
+
+### What sets a rate
+
+A rate belongs to the mover and not to the square. Three things make it, and only
+the first is settled.
+
+```
+the base     one square a world turn. A one-hour turn and an hour's walk a
+             square agree with no adjustment.
+terrain      a multiplier, registered against the zone the leg crosses
+encumbrance  a multiplier, given when the leg opens
+```
+
+Neither multiplier has a default and neither has a value chosen here. A zone with
+no registered multiplier refuses to carry a leg, and says which zones have one.
+
+```
+no terrain multiplier is set for zone desert of world u40world;
+zones carrying one: marsh, plain, steppe
+```
+
+Nothing in the program holds what a mover carries, so the encumbrance multiplier
+is given by whoever opens the leg. An inventory would supply it, and no inventory
+exists.
+
+```
+In development.
+```
+
+### The kilometre label reaches no arithmetic
+
+A square can be called five kilometres, or fifteen, or thirty. No distance in
+kilometres appears anywhere in the code, and no rate is worked out from one. The
+travel rates behind those labels are unsourced, and a label needs a source before
+it reaches a screen.
+
+```
+In development.
+```
+
+### A leg must stay in the zone it names
+
+Two checks refuse a leg that wanders out of its region, and both use the zone
+test the grid already carries.
+
+```
+both end points   must sit in a square the zone's own extent covers
+the midpoint      must sit inside the zone's boundary
+```
+
+A region that bends back on itself, where a straight leg leaves and re-enters
+while staying inside the zone's own squares, is not decided by either check.
+
+```
+zone plain does not cover square 141 at (1199, 500) steps;
+a leg ends at the zone's border
+```
+
+### Demo mode walks on its own chain
+
+Two chains ran in one program. Each had its own world and its own journey store,
+and the journey store took its chain when it was built.
+
+```
+two chains in one program                 True
+the demo leg is on the demo chain         True
+the demo leg is NOT on the live chain     True
+both chains verify their own records      True
+live leg rate   100 steps a turn, arrives on turn 3
+demo leg rate    25 steps a turn, arrives on turn 12
+```
+
+No flag chose between them. The chain arrives when the store is built, the same
+way the world and the certification socket already take theirs.
+
+### What movement does not build
+
+No armies and no groups. A rate belongs to a mover, and whether that mover is one
+character or forty is the caller's business.
+
+No load. Nothing holds what a mover carries, so the encumbrance multiplier is
+given rather than read. Nothing bounds it either, so a caller may hand over a
+number that crosses the world in a turn. Whatever reads a mover's load will bound
+it, and no such reader exists.
+
+No route planning. A leg's two end points are given, and nothing here decides
+where a border crossing falls.
+
+No control. Nothing on the page opens a journey, registers a terrain multiplier or
+reads a progress figure, so every walk above was driven by reaching the installed
+store directly. The tab's controls own that.
+
+No drawing. The Map subtab still says no world is generated, and that sentence is
+still true.
+
+## 2026-09-10 21:26 - #147 - entity stats, measured in Quintessence
+
+Every entity in PoA now carries stats, and a stat holds an amount of
+Quintessence outright. Nothing converts a stat into Quintessence. A Vessel, a
+monster and one component of an item all hold the same kind of record, and the
+Quintessence needed to occupy and control that entity is the sum of the stats on
+it.
+
+```
+src/competition/entity_stats.py
+```
+
+### A stat is an amount of Quintessence, so no exchange rate exists
+
+The directive asked for stats that convert to a measurement or a function of
+Quintessence. The strongest reading makes the conversion identity: a stat value
+already is a Quintessence amount. Nothing multiplies, so there is no rate for
+anyone to pick and no second number to keep in step.
+
+```
+a stat value          IS a Quintessence quantity, carried as Decimal
+an entity's stats     sum to the Quintessence it requires
+a Vessel's occupancy  that sum
+an item's cohesion    the same sum over the item's components
+```
+
+One function does all three. A Vessel and a monster hand it one record; an item
+hands it one record a component.
+
+```python
+def quintessence_requirement(blocks: Iterable[StatBlock]) -> Decimal:
+    """Add every amount of every block in ``blocks``, exactly.
+
+    ``blocks`` holds one block a Vessel or a monster, and one block a component.
+    """
+```
+
+### The stat set is provisional and lives in one table
+
+A separate unit researches which stats exist. Until that answer lands the set is
+a placeholder, and it sits in one table so the answer has one place to go.
+Adding, removing or renaming a stat changes the table and nothing else.
+
+```python
+STATS: tuple[StatDef, ...] = (
+    StatDef("strength", SALT, "max weight"),
+    StatDef("dexterity", SULPHUR, NO_EFFECT_NAMED),
+    StatDef("constitution", SALT, "turn point penalty while carrying"),
+    StatDef("intelligence", MERCURY, NO_EFFECT_NAMED),
+    StatDef("wisdom", MERCURY, NO_EFFECT_NAMED),
+)
+```
+
+Strength sets max weight and Constitution sets the carrying penalty. Those two
+meanings hold. The other three carry no effect, and the table says so in plain
+words rather than leaving the field blank.
+
+Nothing in the code counts the stats. One runtime entry into the table moved
+every figure on its own:
+
+```
+shipped table        5 stats, a level 50 entity requires 750
+one entry added      6 stats, a level 50 entity requires 900
+rows on the page     5 becomes 6
+one stat's curve     unchanged, 550 at level 100
+no function edited
+```
+
+### Each stat sits in one of the three principles
+
+The seven classes already map the Paracelsian principles onto the four roles, so
+the stats follow that table rather than a new one. Salt is the body, Sulphur is
+the active and combustive, Mercury is spirit and mind.
+
+```
+Salt      strength, constitution     both fix a property of the body
+Sulphur   dexterity                  the principle the two Damage classes carry
+Mercury   intelligence, wisdom       the principle the Healer and Support classes carry
+```
+
+The first row follows from what the two stats already do. The other two rows read
+the class table, and they may change with the stat research.
+
+The principle changes no price. Giving one principle a cheaper rate would make
+one stat the correct stat for everyone, and it would need a figure nobody has
+chosen.
+
+### The curve climbs the ten spheres of the Tree
+
+A stat advances in ten bands of ten levels, and the band is a sphere on the
+Tree. The rate inside a band is the band's own position, so a level in the first
+sphere adds one Quintessence and a level in the tenth adds ten.
+
+```
+TREE_SPHERES        10, imported from the world grid, not declared twice
+LEVELS_PER_SPHERE   10, ARC_LEVELS over TREE_SPHERES
+```
+
+Driven across every level from one to one hundred:
+
+```
+sphere 1   opens at level   1   1 a level   stat reaches  10
+sphere 2   opens at level  11   2 a level   stat reaches  30
+sphere 3   opens at level  21   3 a level   stat reaches  60
+sphere 4   opens at level  31   4 a level   stat reaches 100
+sphere 5   opens at level  41   5 a level   stat reaches 150
+sphere 6   opens at level  51   6 a level   stat reaches 210
+sphere 7   opens at level  61   7 a level   stat reaches 280
+sphere 8   opens at level  71   8 a level   stat reaches 360
+sphere 9   opens at level  81   9 a level   stat reaches 450
+sphere 10  opens at level  91  10 a level   stat reaches 550
+```
+
+The requirement never falls and never stands still. Over all one hundred levels
+it fell on none and held on none, and the step grows from 5 to 50 as the bands
+change. An entity at the top of the arc needs 2,750 Quintessence against a
+supply cap of 33,000,000.
+
+### A Vessel under its requirement runs below full, and is never refused
+
+A holder short of the amount still occupies the Vessel. The reading answers what
+fraction of full potential the balance reaches, and full is one case of it.
+
+```
+a level 12 Vessel      band 2, every stat at 14, needs 70
+a balance of 40        reaches 0.5714285714285714285714285714 of full
+the shortfall          30
+is_full                False
+```
+
+The full reading compares the two Quintessence amounts directly and never the
+fraction, so a balance one hundredth short cannot round up into full.
+
+The program says the same thing in its own log:
+
+```
+acervator.entity_stats INFO a balance of 40 against a requirement of 70
+reaches 0.5714285714285714285714285714, shortfall 30
+```
+
+### No stat is cheaper than another
+
+If one stat bought more power a Quintessence than another, every player would
+raise that one. Under the identity reading a point costs the same everywhere,
+and moving points between stats changes nothing.
+
+```
+one extra point        costs 1, in every stat in the table
+all points in one      a level 50 entity requires 750
+spread evenly          a level 50 entity requires 750
+```
+
+The price therefore carries no cheap direction. Power per point is a different
+question, and it belongs to whatever reads a stat. Two stats have a named
+meaning and nothing built reads either, so no stat converts into an advantage
+today.
+
+An entity whose stats sum past the supply cap meets no refusal. Nobody could
+ever hold that much, so the reading stays under full permanently, which is the
+same answer the partial rule gives everywhere else.
+
+### Every figure, and where it came from
+
+```
+TREE_SPHERES = 10        already in the world grid, with ten levels a sphere
+ARC_LEVELS = 100         already in the classes module
+FIRST_LEVEL = 1          already in the classes module
+LEVELS_PER_SPHERE = 10   ARC_LEVELS over TREE_SPHERES, computed
+rate inside a band       the band's own number, no coefficient
+a stat point             one Quintessence, the identity itself
+supply cap 33,000,000    already in the Quintessence ledger
+FIRST_SPHERE = 1         the first of the ten bands
+```
+
+Nobody picked a figure here to make a curve feel right.
+
+### What reads this
+
+Nothing. The occupancy gate that would refuse or degrade a Vessel does not
+exist, and neither does the equip check that holds gear to the equipping
+player's Quintessence. The character stats subtab does not draw these rows.
+
+```
+In development.
+```
+
+### What the stats do not build
+
+No turn points. Constitution sets a penalty against a turn budget, and no turn
+budget exists to subtract one from.
+
+No weight and no encumbrance. Strength sets max weight, and nothing weighs
+anything. The journey store takes an encumbrance multiplier as an argument and
+no code derives one.
+
+No per-level record. A stat block comes out of the level on each call, so
+nothing holds it and nothing can drift.
+
+No spread rule. A level 100 entity may put every point in one stat for the same
+price as spreading them, and no rule gives a stat a floor. Whatever gate reads
+this will decide that.
+
+
 ## 2026-09-10 21:30 - #147 - a reset control, two meters and the wallet's fourth holding
 
 > "PoA - Demo Mode - ... Must be able to reset the testnet."
@@ -6881,3 +7317,4 @@ that already keeps skill uses against an address is where one would sit.
 The reset loads the chain it is about to clear, so a press costs one replay of
 that chain. The live chain is refused before any load, and nothing here changes
 the saved schema version.
+
