@@ -592,7 +592,7 @@ risk and work done.
 gated by a skill    one specific skill, never a wallet function
 guild members only  common members of the same guild
 slow                duration scales with the amount and the skill level
-lossy               part bleeds into the platonic
+lossy               part bleeds into the pleroma
 ```
 
 Each term closes a route a whale would use: the skill gate, the relationship rather than a
@@ -618,11 +618,11 @@ single-slot rule closes the split attack, because the slot serialises parallel t
 
 ### The conservation law has three buckets
 
-**DECIDED.** The platonic is a third place Quintessence can be, so the invariant a contract
+**DECIDED.** The pleroma is a third place Quintessence can be, so the invariant a contract
 audit holds gains a term. A verifier that omits it reports a shortfall that is not a defect.
 
 ```
-wallets + held addresses + the platonic == total ever distilled <= 33,000,000
+wallets + held addresses + the pleroma == total ever distilled <= 33,000,000
 ```
 
 ### The trophy tier caps, and where they must live
@@ -804,7 +804,7 @@ Trading does not preserve a vote. Spending costs no franchise; dormancy does.
 
 ```
 balance          real Quintessence, moved by distilling, spending, transfer,
-                 the platonic bleed and respawn
+                 the pleroma bleed and respawn
 franchise level  the remembered maximum, converging toward balance on
                  dormancy, moving nothing
 ```
@@ -837,7 +837,7 @@ the old total ever distilled at the migration block. Findings classify against t
 EthTrust Security Levels.
 
 ```
-wallets + held addresses + the platonic == total ever distilled <= 33,000,000
+wallets + held addresses + the pleroma == total ever distilled <= 33,000,000
 franchise level >= current balance, for every address, always
 ```
 
@@ -1081,7 +1081,7 @@ flowchart TD
 ```
 depends on    none          blocked by   nothing
 deliverable   Quintessence mints on certification, falls when spent, and rests
-              at a held address or in the platonic; the 33,000,000 cap is
+              at a held address or in the pleroma; the 33,000,000 cap is
               enforced in the write path; a check holds the three-bucket
               conservation law
 ```
@@ -1132,7 +1132,7 @@ depends on    1, 3          blocked by   nothing — transferability is decided
 deliverable   a contract that compiles, caps total ever distilled at
               33,000,000, never burns, holds no pre-owned balance at genesis,
               carries a skill-gated guild-only transfer that bleeds to the
-              platonic, and passes the three-bucket invariant under forge
+              pleroma, and passes the three-bucket invariant under forge
 ```
 
 ### 7 — The Certified Transaction Socket

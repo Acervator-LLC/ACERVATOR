@@ -15,12 +15,12 @@
 // Quintessence rests in exactly four places, and the four always sum to
 // totalEverMinted:
 //
-//   walletsTotal + heldTotal + platonicTotal + embeddedTotal
+//   walletsTotal + heldTotal + pleromaTotal + embeddedTotal
 //       == totalEverMinted <= SUPPLY_CAP
 //
 // embeddedTotal is what a thing in the world holds intrinsically. No wallet call
 // reaches it, so it does not circulate, and it is inside SUPPLY_CAP like every
-// other bucket. It is drawn out of platonicTotal, never out of a new mint.
+// other bucket. It is drawn out of pleromaTotal, never out of a new mint.
 //
 // The movements are named for the buckets they move between, not for what is
 // holding the units, so a material, an item and a creature share one path.
@@ -31,12 +31,12 @@
 //   distil                REGISTRY credits a wallet and raises totalEverMinted
 //   spend                 a holder moves own units to a held address, where they rest
 //   transfer              a holder authorizes, REGISTRY executes, recipient credited
-//   bleed                 walletsTotal to platonicTotal, on a transfer or an embed
-//   respawn               REGISTRY moves platonicTotal units into a wallet
-//   embedFromPlatonic     REGISTRY moves platonicTotal units into embeddedTotal
+//   bleed                 walletsTotal to pleromaTotal, on a transfer or an embed
+//   respawn               REGISTRY moves pleromaTotal units into a wallet
+//   embedFromPleroma      REGISTRY moves pleromaTotal units into embeddedTotal
 //   embedFromWallet       a holder moves own units into embeddedTotal, the rest bleeds
-//   releaseFromEmbedded   REGISTRY moves embeddedTotal units into a wallet, rest to platonic
-//   releaseAllToPlatonic  REGISTRY moves embeddedTotal units into platonicTotal only
+//   releaseFromEmbedded   REGISTRY moves embeddedTotal units into a wallet, rest to pleroma
+//   releaseAllToPleroma   REGISTRY moves embeddedTotal units into pleromaTotal only
 //
 // heldTotal is terminal: no function moves units out of a held address. A
 // withdrawal from one would make spend a transfer that pays no bleed.
@@ -86,7 +86,7 @@ contract Quintessence {
 
     uint256 public walletsTotal;
     uint256 public heldTotal;
-    uint256 public platonicTotal;
+    uint256 public pleromaTotal;
 
     /// What things in the world hold intrinsically. No wallet call spends it.
     uint256 public embeddedTotal;
@@ -119,14 +119,14 @@ contract Quintessence {
 
     event Transferred(address indexed sender, address indexed recipient, uint256 received);
 
-    event Bled(address indexed sender, uint256 amount, uint256 platonicTotalAfter);
+    event Bled(address indexed sender, uint256 amount, uint256 pleromaTotalAfter);
 
-    event Respawned(address indexed wallet, uint256 amount, uint256 platonicTotalAfter);
+    event Respawned(address indexed wallet, uint256 amount, uint256 pleromaTotalAfter);
 
-    event EmbeddedFromPlatonic(
+    event EmbeddedFromPleroma(
         uint256 amount,
         uint256 embeddedTotalAfter,
-        uint256 platonicTotalAfter
+        uint256 pleromaTotalAfter
     );
 
     event EmbeddedFromWallet(
@@ -143,7 +143,7 @@ contract Quintessence {
         uint256 returned
     );
 
-    event ReleasedAllToPlatonic(uint256 amount, uint256 platonicTotalAfter);
+    event ReleasedAllToPleroma(uint256 amount, uint256 pleromaTotalAfter);
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -248,7 +248,7 @@ contract Quintessence {
 
     /**
      * @notice Execute a transfer the sender authorized, crediting the recipient
-     *         and bleeding the rest into platonicTotal.
+     *         and bleeding the rest into pleromaTotal.
      * @param sender The wallet that authorized the transfer.
      * @param skillLevel The sender's transfer skill level, which sets the bleed
      *        and the duration. Its bounds hold the bleed at 4% or more.
@@ -271,53 +271,53 @@ contract Quintessence {
         balance[sender] -= pending.amount;
         balance[pending.recipient] += received;
         walletsTotal -= bled;
-        platonicTotal += bled;
+        pleromaTotal += bled;
 
         emit Transferred(sender, pending.recipient, received);
-        emit Bled(sender, bled, platonicTotal);
+        emit Bled(sender, bled, pleromaTotal);
     }
 
     // ── respawn ───────────────────────────────────────────────────────────────
 
     /**
-     * @notice Move units out of platonicTotal into a wallet, minting nothing.
+     * @notice Move units out of pleromaTotal into a wallet, minting nothing.
      * @param wallet The wallet credited.
      * @param amount Base units to respawn.
      */
     function respawn(address wallet, uint256 amount) external onlyRegistry {
         require(wallet != address(0), "Quint: wallet is zero");
         require(amount > 0, "Quint: amount is zero");
-        require(platonicTotal >= amount, "Quint: platonic below amount");
+        require(pleromaTotal >= amount, "Quint: pleroma below amount");
 
-        platonicTotal -= amount;
+        pleromaTotal -= amount;
         balance[wallet] += amount;
         walletsTotal += amount;
 
-        emit Respawned(wallet, amount, platonicTotal);
+        emit Respawned(wallet, amount, pleromaTotal);
     }
 
     // ── embed ─────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Move units out of platonicTotal into embeddedTotal, minting nothing.
+     * @notice Move units out of pleromaTotal into embeddedTotal, minting nothing.
      * @param amount Base units the thing drawn into the world holds.
      */
-    function embedFromPlatonic(uint256 amount) external onlyRegistry {
+    function embedFromPleroma(uint256 amount) external onlyRegistry {
         require(amount > 0, "Quint: amount is zero");
-        require(platonicTotal >= amount, "Quint: platonic below amount");
+        require(pleromaTotal >= amount, "Quint: pleroma below amount");
 
-        platonicTotal -= amount;
+        pleromaTotal -= amount;
         embeddedTotal += amount;
 
-        emit EmbeddedFromPlatonic(amount, embeddedTotal, platonicTotal);
+        emit EmbeddedFromPleroma(amount, embeddedTotal, pleromaTotal);
     }
 
     /**
      * @notice Move the caller's own units into embeddedTotal, the remainder into
-     *         platonicTotal.
+     *         pleromaTotal.
      * @param amount Base units the caller commits.
      * @param embeddedAmount The part of amount the thing ends up holding. What is
-     *        left over bleeds into platonicTotal, so no unit is destroyed.
+     *        left over bleeds into pleromaTotal, so no unit is destroyed.
      */
     function embedFromWallet(uint256 amount, uint256 embeddedAmount) external {
         require(amount > 0, "Quint: amount is zero");
@@ -329,7 +329,7 @@ contract Quintessence {
         balance[msg.sender] -= amount;
         walletsTotal -= amount;
         embeddedTotal += embeddedAmount;
-        platonicTotal += bled;
+        pleromaTotal += bled;
 
         emit EmbeddedFromWallet(msg.sender, amount, embeddedAmount, bled);
     }
@@ -338,7 +338,7 @@ contract Quintessence {
 
     /**
      * @notice Move units out of embeddedTotal, recoveredAmount into a wallet and
-     *         the remainder into platonicTotal.
+     *         the remainder into pleromaTotal.
      * @param wallet The wallet credited with recoveredAmount.
      * @param amount Base units the thing held before it was broken.
      * @param recoveredAmount The part of amount the wallet keeps.
@@ -357,23 +357,23 @@ contract Quintessence {
         embeddedTotal -= amount;
         balance[wallet] += recoveredAmount;
         walletsTotal += recoveredAmount;
-        platonicTotal += returned;
+        pleromaTotal += returned;
 
         emit ReleasedFromEmbedded(wallet, amount, recoveredAmount, returned);
     }
 
     /**
-     * @notice Move units out of embeddedTotal into platonicTotal, crediting nobody.
+     * @notice Move units out of embeddedTotal into pleromaTotal, crediting nobody.
      * @param amount Base units the thing held before it was broken.
      */
-    function releaseAllToPlatonic(uint256 amount) external onlyRegistry {
+    function releaseAllToPleroma(uint256 amount) external onlyRegistry {
         require(amount > 0, "Quint: amount is zero");
         require(embeddedTotal >= amount, "Quint: embedded below amount");
 
         embeddedTotal -= amount;
-        platonicTotal += amount;
+        pleromaTotal += amount;
 
-        emit ReleasedAllToPlatonic(amount, platonicTotal);
+        emit ReleasedAllToPleroma(amount, pleromaTotal);
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -383,7 +383,7 @@ contract Quintessence {
      *         executed transfer bleeds at least one base unit.
      * @param amount Base units sent.
      * @param skillLevel The sender's transfer skill level.
-     * @return The base units that join platonicTotal.
+     * @return The base units that join pleromaTotal.
      */
     function bleedAmount(uint256 amount, uint256 skillLevel) public pure returns (uint256) {
         uint256 numerator = BLEED_NUMERATOR_AT_LEVEL_1
@@ -413,11 +413,11 @@ contract Quintessence {
      *         whether the conservation law and the cap hold at this block.
      * @return wallets walletsTotal
      * @return held heldTotal
-     * @return platonic platonicTotal
+     * @return pleroma pleromaTotal
      * @return embedded embeddedTotal
      * @return everMinted totalEverMinted
      * @return cap SUPPLY_CAP
-     * @return isBalanced wallets plus held plus platonic plus embedded equals everMinted
+     * @return isBalanced wallets plus held plus pleroma plus embedded equals everMinted
      * @return isWithinCap everMinted is at most cap
      */
     function conservation()
@@ -426,7 +426,7 @@ contract Quintessence {
         returns (
             uint256 wallets,
             uint256 held,
-            uint256 platonic,
+            uint256 pleroma,
             uint256 embedded,
             uint256 everMinted,
             uint256 cap,
@@ -436,11 +436,11 @@ contract Quintessence {
     {
         wallets = walletsTotal;
         held = heldTotal;
-        platonic = platonicTotal;
+        pleroma = pleromaTotal;
         embedded = embeddedTotal;
         everMinted = totalEverMinted;
         cap = SUPPLY_CAP;
-        isBalanced = wallets + held + platonic + embedded == everMinted;
+        isBalanced = wallets + held + pleroma + embedded == everMinted;
         isWithinCap = everMinted <= cap;
     }
 

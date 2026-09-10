@@ -422,7 +422,7 @@ DISTIL_DONE_TEXT = "Distilled {amount} Quint."
 TRAIN_DONE_TEXT = "{name} stands at level {level} on {uses} weighted uses."
 TRANSFER_DONE_TEXT = (
     "Sent {sent} Quint at level {level}: {received} received, {bled} bled to the "
-    "platonic."
+    "pleroma."
 )
 SPEND_DONE_TEXT = "Band {band} cost {cost} Quint, resting at {held}."
 GRADE_DONE_TEXT = "{address} scores {grade} on {axes} axis in {event}."
@@ -443,7 +443,7 @@ SEASON_DONE_TEXT = (
 MINTED_ROW = "Distilled"
 SKILL_LEVEL_ROW = "Skill level"
 RECEIVED_ROW = "Received"
-BLED_ROW = "Bled to the platonic"
+BLED_ROW = "Bled to the pleroma"
 COST_ROW = "Band cost"
 POT_HELD_ROW = "Resting in the pot"
 GRADE_ROW = "Score"
@@ -459,7 +459,7 @@ BALANCED_ROW = "Buckets balance the mint"
 NEGATIVE_ROW = "Negative buckets"
 WALLETS_ROW = "Wallets"
 HELD_ROW = "Held"
-PLATONIC_ROW = "Platonic"
+PLEROMA_ROW = "Pleroma"
 EMBEDDED_ROW = "Embedded"
 MINT_ROW = "Distilled, all time"
 CONSERVATION_TEXT = (
@@ -1756,7 +1756,7 @@ def conservation(chain: str) -> dict:
         row(NEGATIVE_ROW, str(report["negative_buckets"])),
         row(WALLETS_ROW, report["wallets_total"]),
         row(HELD_ROW, report["held_total"]),
-        row(PLATONIC_ROW, report["platonic_total"]),
+        row(PLEROMA_ROW, report["pleroma_total"]),
         row(EMBEDDED_ROW, report["embedded_total"]),
         row(MINT_ROW, report["total_ever_minted"]),
     ]

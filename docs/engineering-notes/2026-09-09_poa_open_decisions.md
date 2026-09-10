@@ -405,7 +405,7 @@ A treasury is a held address. The conservation law keeps three buckets and gains
 no fourth.
 
 ```
-wallets + held addresses + the platonic == total ever distilled <= 33,000,000
+wallets + held addresses + the pleroma == total ever distilled <= 33,000,000
 ```
 
 **Source:** CHOSEN, derived from his guild-rank staking rule and his action-budget
@@ -801,7 +801,7 @@ A level costs counted uses and Quintessence cannot buy a use.
 
 ---
 
-## 14. The bleed rate, the transfer duration, and how the platonic redistributes
+## 14. The bleed rate, the transfer duration, and how the pleroma redistributes
 
 **Decided, three parts.**
 
@@ -871,13 +871,13 @@ bounded twice over — by the 5% share ceiling and by their own trade grades. Th
 bleed is a tax paid to everyone, and everyone includes the payer at everyone's
 rate.
 
-The platonic is the third bucket, so the conservation law is exact and complete.
+The pleroma is the third bucket, so the conservation law is exact and complete.
 
 ```
-wallets + held addresses + the platonic == total ever distilled <= 33,000,000
+wallets + held addresses + the pleroma == total ever distilled <= 33,000,000
 ```
 
-A verifier omitting the platonic reports a shortfall that is not a defect.
+A verifier omitting the pleroma reports a shortfall that is not a defect.
 
 **Source:** the bleed band is TAKEN FROM the two published transaction sinks
 above; the skill-reducible shape is Eve Online's Accounting mechanic. The 8%-to-4%
@@ -1083,7 +1083,7 @@ who sits still loses standing over time. Position decays, participation holds.
 
 ```
 balance          real Quintessence, moved only by distilling, spending,
-                 transfer, the platonic bleed and respawn
+                 transfer, the pleroma bleed and respawn
 franchise level  the remembered maximum, converging toward balance on
                  dormancy, moving nothing
 ```
@@ -1098,7 +1098,7 @@ stroke.
 to trust.
 
 ```
-wallets + held addresses + the platonic == total ever distilled <= 33,000,000
+wallets + held addresses + the pleroma == total ever distilled <= 33,000,000
 franchise level >= current balance, for every address, always
 ```
 
@@ -1141,7 +1141,7 @@ been in one.
 **A transfer does not qualify. Settled by his rule** — a transfer is not event
 anchored, and no reading of his sentence makes it so. His transfer mechanism
 already carries its own costs through the skill gate, the guild restriction, the
-duration and the platonic bleed, and none of those is a reason to let it buy a
+duration and the pleroma bleed, and none of those is a reason to let it buy a
 vote.
 
 ### The analogue family, and it is not a game
@@ -1296,7 +1296,7 @@ the old migration address is a held address; the units in it are retired
 The live total therefore never rises, and the law keeps three buckets.
 
 ```
-wallets + held addresses + the platonic == total ever distilled <= 33,000,000
+wallets + held addresses + the pleroma == total ever distilled <= 33,000,000
 ```
 
 A governance contract holds no Quintessence, so it adds no fourth bucket.
