@@ -3,7 +3,9 @@
 // Three zones: the player window and the square enemy screen across the upper
 // band, the party window across the lower half. The Quintessence balance sits
 // in the party header and the wallet opens as a panel over the party window.
-// Every word on screen comes from the payload.
+// Four subtabs sit above the zones and selectSubtab draws one of them; the map
+// entry and the player window's map button both read the payload's reachable
+// flag. Every word on screen comes from the payload.
 (function (global) {
   "use strict";
 
@@ -12,11 +14,14 @@
   var ACCESSIBLE_NAME = "accessible_name";
   var BUILT = "built";
   var CHAIN = "chain";
+  var CHARACTER_STATS = "character_stats";
   var CLASSES = "classes";
   var EVENT = "event";
+  var GEAR = "gear";
   var HEADING = "heading";
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
+  var MAP = "map";
   var METRIC_SOURCES = "metric_sources";
   var METHOD_FIELD = "method";
   var MODES = "modes";
@@ -24,8 +29,11 @@
   var PARTY = "party";
   var PICK_NOTE = "pick_note";
   var REDISTRIBUTION = "redistribution";
+  var SKILL_TREE = "skill_tree";
   var SKILLS = "skills";
   var STATE_TEXT = "state_text";
+  var SUBTAB = "subtab";
+  var SUBTABS = "subtabs";
   var WALLET = "wallet";
   var ZONES = "zones";
 
@@ -33,11 +41,14 @@
     ACCESSIBLE_NAME,
     BUILT,
     CHAIN,
+    CHARACTER_STATS,
     CLASSES,
     EVENT,
+    GEAR,
     HEADING,
     ISSUE,
     ISSUE_TEXT,
+    MAP,
     METRIC_SOURCES,
     METHOD_FIELD,
     MODES,
@@ -45,8 +56,11 @@
     PARTY,
     PICK_NOTE,
     REDISTRIBUTION,
+    SKILL_TREE,
     SKILLS,
     STATE_TEXT,
+    SUBTAB,
+    SUBTABS,
     WALLET,
     ZONES
   ];
@@ -75,6 +89,50 @@
   var HEADING_PART = "heading";
   var STATE_PART = "state";
   var UPPER_PART = "upper-band";
+  var SUBTAB_BAR_PART = "subtab-bar";
+  var SUBTAB_BUTTON_PART = "subtab-button";
+  var SUBTAB_PANEL_PART = "subtab-panel";
+  var SUBTAB_TITLE_PART = "subtab-title";
+
+  // A button the running event does not open carries data-reachable="false".
+  var REACHABLE_ATTR = "data-reachable";
+  var SELECTED_ATTR = "data-selected";
+  var SUBTAB_ATTR = "data-subtab";
+
+  var STATS_PANEL_PART = "stats-panel";
+  var STAT_LIST_PART = "stat-list";
+  var STAT_ROW_PART = "stat-row";
+  var STAT_METRIC_PART = "stat-metric";
+  var STAT_SOURCE_PART = "stat-source";
+  var STAT_VALUE_PART = "stat-value";
+  var STAT_COUNT_PART = "stat-count";
+  var STAT_NOTE_PART = "stat-note";
+  var STAT_SEAM_PART = "stat-seam";
+
+  var GEAR_PANEL_PART = "gear-panel";
+  var GEAR_LIST_PART = "gear-list";
+  var GEAR_ROW_PART = "gear-row";
+  var GEAR_LABEL_PART = "gear-label";
+  var GEAR_VALUE_PART = "gear-value";
+  var GEAR_NOTE_PART = "gear-note";
+  var GEAR_ABSENT_PART = "gear-absent";
+
+  var TREE_PANEL_PART = "tree-panel";
+  var TREE_LIST_PART = "tree-list";
+  var TREE_ROW_PART = "tree-row";
+  var TREE_LEVEL_PART = "tree-level";
+  var TREE_COST_PART = "tree-cost";
+  var TREE_EFFECT_PART = "tree-effect";
+  var TREE_BLEED_PART = "tree-bleed";
+  var TREE_STANDING_PART = "tree-standing";
+  var TREE_LIST_NOTE_PART = "tree-list-note";
+  var TREE_NOTE_PART = "tree-note";
+
+  var MAP_PANEL_PART = "map-panel";
+  var MAP_NOTE_PART = "map-note";
+  var MAP_CONTROL_PART = "map-control";
+  var MAP_REFUSAL_PART = "map-refusal";
+  var MAP_OPEN_PART = "map-open";
   var ZONE_TITLE_PART = "zone-title";
   var ZONE_PLACEHOLDER_PART = "zone-placeholder";
   var PARTY_HEADER_PART = "party-header";
@@ -161,6 +219,11 @@
   var asked = null;
   var walletOpen = false;
   var roots = [];
+
+  // null until a subtab is chosen, when the payload's own subtab is drawn.
+  var subtabName = null;
+
+  var NO_SUCH_SUBTAB = "no subtab carries that name";
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -691,6 +754,279 @@
     return props;
   }
 
+  function subtabList(model) {
+    return Array.isArray(model[SUBTABS]) ? model[SUBTABS] : [];
+  }
+
+  function subtabNamed(model, name) {
+    var found = null;
+    subtabList(model).forEach(function (entry) {
+      if (isPlainObject(entry) && entry.name === name) {
+        found = entry;
+      }
+    });
+    return found;
+  }
+
+  // An entry the running event does not open is never the drawn one, so a
+  // chosen map falls back to the payload's subtab when the mode changes.
+  function selectedSubtab(model) {
+    var chosen = subtabNamed(model, subtabName);
+    if (chosen !== null && chosen.reachable !== false) {
+      return subtabName;
+    }
+    return text(model[SUBTAB]);
+  }
+
+  function SubtabButton(props) {
+    var entry = props.entry;
+    var label = text(entry.title);
+    var buttonArgs = buttonProps(SUBTAB_BUTTON_PART, label, function () {
+      selectSubtab(entry.name);
+    });
+    buttonArgs.key = entry.name;
+    buttonArgs[SUBTAB_ATTR] = text(entry.name);
+    buttonArgs[SELECTED_ATTR] = String(entry.name === props.selected);
+    buttonArgs[REACHABLE_ATTR] = String(entry.reachable !== false);
+    if (entry.reachable === false) {
+      buttonArgs.disabled = true;
+      buttonArgs.title = text(entry.refusal);
+    }
+    return element("button", buttonArgs, label);
+  }
+
+  function SubtabBar(props) {
+    return element(
+      "nav",
+      named(TAB_CLASS + "-subtab-bar", SUBTAB_BAR_PART, props.selected),
+      props.entries.filter(isPlainObject).map(function (entry) {
+        return element(SubtabButton, {
+          key: entry.name,
+          entry: entry,
+          selected: props.selected
+        });
+      })
+    );
+  }
+
+  function StatRow(props) {
+    var row = props.row;
+    var label = text(row.metric);
+    return element(
+      "li",
+      named(TAB_CLASS + "-stat-row", STAT_ROW_PART, label),
+      element(
+        "span",
+        named(TAB_CLASS + "-stat-metric", STAT_METRIC_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-stat-source", STAT_SOURCE_PART, label),
+        text(row.source)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-stat-value", STAT_VALUE_PART, label),
+        text(row.value_text)
+      )
+    );
+  }
+
+  function note(className, name, value) {
+    if (!text(value)) {
+      return null;
+    }
+    var noteProps = named(TAB_CLASS + "-" + className, name, text(value));
+    noteProps.key = name;
+    return element("p", noteProps, text(value));
+  }
+
+  function StatsPanel(props) {
+    var stats = props.stats;
+    var rows = Array.isArray(stats.rows) ? stats.rows : [];
+    return element(
+      "div",
+      part(TAB_CLASS + "-stats", STATS_PANEL_PART),
+      element(
+        "ul",
+        part(TAB_CLASS + "-stat-list", STAT_LIST_PART),
+        rows.filter(isPlainObject).map(function (row) {
+          return element(StatRow, { key: row.metric, row: row });
+        })
+      ),
+      note("stat-count", STAT_COUNT_PART, stats.count_text),
+      note("stat-note", STAT_NOTE_PART, stats.note),
+      note("stat-seam", STAT_SEAM_PART, stats.seam_text)
+    );
+  }
+
+  function GearRow(props) {
+    var row = props.row;
+    var label = text(row.label);
+    return element(
+      "li",
+      named(TAB_CLASS + "-gear-row", GEAR_ROW_PART, label),
+      element(
+        "span",
+        named(TAB_CLASS + "-gear-label", GEAR_LABEL_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-gear-value", GEAR_VALUE_PART, label),
+        text(row.value)
+      )
+    );
+  }
+
+  function GearPanel(props) {
+    var gear = props.gear;
+    var rows = Array.isArray(gear.rows) ? gear.rows : [];
+    return element(
+      "div",
+      part(TAB_CLASS + "-gear", GEAR_PANEL_PART),
+      element(
+        "ul",
+        part(TAB_CLASS + "-gear-list", GEAR_LIST_PART),
+        rows.filter(isPlainObject).map(function (row) {
+          return element(GearRow, { key: row.label, row: row });
+        })
+      ),
+      note("gear-note", GEAR_NOTE_PART, gear.note),
+      note("gear-absent", GEAR_ABSENT_PART, gear.absent_text)
+    );
+  }
+
+  function TreeRow(props) {
+    var row = props.row;
+    var label = text(row.level_text);
+    return element(
+      "li",
+      named(TAB_CLASS + "-tree-row", TREE_ROW_PART, label),
+      element(
+        "span",
+        named(TAB_CLASS + "-tree-level", TREE_LEVEL_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-tree-cost", TREE_COST_PART, label),
+        text(row.reach_text)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-tree-effect", TREE_EFFECT_PART, label),
+        text(row.effect_text)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-tree-bleed", TREE_BLEED_PART, label),
+        text(row.bleed_text)
+      )
+    );
+  }
+
+  function TreePanel(props) {
+    var tree = props.tree;
+    var rows = Array.isArray(tree.levels) ? tree.levels : [];
+    var transfer = isPlainObject(tree.transfer) ? tree.transfer : {};
+    var notes = Array.isArray(tree.notes) ? tree.notes : [];
+    var children = [
+      note("tree-list-note", TREE_LIST_NOTE_PART, tree.list_text),
+      note("tree-standing", TREE_STANDING_PART, transfer.standing_text),
+      element(
+        "ul",
+        Object.assign(part(TAB_CLASS + "-tree-list", TREE_LIST_PART), {
+          key: TREE_LIST_PART
+        }),
+        rows.filter(isPlainObject).map(function (row) {
+          return element(TreeRow, { key: row.level, row: row });
+        })
+      )
+    ];
+    notes.forEach(function (line, at) {
+      var lineProps = named(TAB_CLASS + "-tree-note", TREE_NOTE_PART, text(line));
+      lineProps.key = TREE_NOTE_PART + "-" + String(at);
+      children.push(element("p", lineProps, text(line)));
+    });
+    return element("div", part(TAB_CLASS + "-tree", TREE_PANEL_PART), children);
+  }
+
+  function MapPanel(props) {
+    return element(
+      "div",
+      part(TAB_CLASS + "-map", MAP_PANEL_PART),
+      note("map-note", MAP_NOTE_PART, props.map.absent_text)
+    );
+  }
+
+  var SUBTAB_BODY = {};
+  SUBTAB_BODY[CHARACTER_STATS] = function (model) {
+    return isPlainObject(model[CHARACTER_STATS])
+      ? element(StatsPanel, { stats: model[CHARACTER_STATS] })
+      : null;
+  };
+  SUBTAB_BODY[GEAR] = function (model) {
+    return isPlainObject(model[GEAR])
+      ? element(GearPanel, { gear: model[GEAR] })
+      : null;
+  };
+  SUBTAB_BODY[SKILL_TREE] = function (model) {
+    return isPlainObject(model[SKILL_TREE])
+      ? element(TreePanel, { tree: model[SKILL_TREE] })
+      : null;
+  };
+  SUBTAB_BODY[MAP] = function (model) {
+    return isPlainObject(model[MAP])
+      ? element(MapPanel, { map: model[MAP] })
+      : null;
+  };
+
+  function SubtabArea(props) {
+    var model = props.model;
+    var name = props.selected;
+    var entry = subtabNamed(model, name);
+    var body = owns(SUBTAB_BODY, name) ? SUBTAB_BODY[name](model) : null;
+    var areaProps = named(
+      TAB_CLASS + "-subtab-panel",
+      SUBTAB_PANEL_PART,
+      entry === null ? name : text(entry.title)
+    );
+    areaProps[SUBTAB_ATTR] = text(name);
+    return element(
+      "section",
+      areaProps,
+      element(
+        "h3",
+        part(TAB_CLASS + "-subtab-title", SUBTAB_TITLE_PART),
+        entry === null ? text(name) : text(entry.title)
+      ),
+      body
+    );
+  }
+
+  // The player window's own map control. It opens the map subtab through the
+  // same selectSubtab the bar uses, so one mode property decides both.
+  function MapControl(props) {
+    var map = props.map;
+    var label = text(map.open_text);
+    var openProps = buttonProps(MAP_OPEN_PART, label, function () {
+      selectSubtab(MAP);
+    });
+    openProps.key = MAP_OPEN_PART;
+    openProps[REACHABLE_ATTR] = String(map.reachable !== false);
+    if (map.reachable === false) {
+      openProps.disabled = true;
+    }
+    return element(
+      "div",
+      named(TAB_CLASS + "-map-control", MAP_CONTROL_PART, label),
+      element("button", openProps, label),
+      note("map-refusal", MAP_REFUSAL_PART, map.refusal)
+    );
+  }
+
   function PartyHeader(props) {
     var wallet = props.wallet;
     return element(
@@ -745,6 +1081,9 @@
       children.push(
         element(EventBand, { key: EVENT_BAND_PART, event: props.event })
       );
+    }
+    if (isPlainObject(props.map)) {
+      children.push(element(MapControl, { key: MAP_CONTROL_PART, map: props.map }));
     }
     if (Array.isArray(props.modes)) {
       children.push(element(ModeList, { key: MODE_LIST_PART, rows: props.modes }));
@@ -842,6 +1181,8 @@
     var entries = Array.isArray(model[CLASSES]) ? model[CLASSES] : [];
     var event = isPlainObject(model[EVENT]) ? model[EVENT] : null;
     var modeRows = Array.isArray(model[MODES]) ? model[MODES] : null;
+    var map = isPlainObject(model[MAP]) ? model[MAP] : null;
+    var chosen = selectedSubtab(model);
     var tabProps = {
       className: TAB_CLASS,
       "aria-label": text(model[ACCESSIBLE_NAME])
@@ -849,11 +1190,14 @@
     tabProps[CHAIN_ATTR] = text(model[CHAIN]);
     tabProps[ISSUE_ATTR] = text(model[ISSUE]);
     tabProps[OPEN_ATTR] = String(walletOpen);
+    tabProps[SUBTAB_ATTR] = chosen;
     return element(
       "section",
       tabProps,
       element("h1", part(TAB_CLASS + "-heading", HEADING_PART), text(model[HEADING])),
       element("p", part(TAB_CLASS + "-state", STATE_PART), text(model[STATE_TEXT])),
+      element(SubtabBar, { entries: subtabList(model), selected: chosen }),
+      element(SubtabArea, { model: model, selected: chosen }),
       element(
         "div",
         part(TAB_CLASS + "-upper", UPPER_PART),
@@ -862,7 +1206,8 @@
           : element(UpperZone, {
               zone: player,
               event: event,
-              modes: modeRows
+              modes: modeRows,
+              map: map
             }),
         enemy === null ? null : element(UpperZone, { zone: enemy })
       ),
@@ -979,6 +1324,29 @@
     });
   }
 
+  // Answers which subtab is drawn afterwards and, when the ask was refused,
+  // the payload's own sentence saying why the running event does not open it.
+  function selectSubtab(name) {
+    var entry = held === null ? null : subtabNamed(held, name);
+    if (entry === null) {
+      return {
+        name: held === null ? null : selectedSubtab(held),
+        opened: false,
+        refusal: NO_SUCH_SUBTAB
+      };
+    }
+    if (entry.reachable === false) {
+      return {
+        name: selectedSubtab(held),
+        opened: false,
+        refusal: text(entry.refusal)
+      };
+    }
+    subtabName = name;
+    drawAgain();
+    return { name: selectedSubtab(held), opened: true, refusal: "" };
+  }
+
   function openWallet() {
     walletOpen = true;
     drawAgain();
@@ -1005,6 +1373,7 @@
     loadFault = null;
     asked = null;
     walletOpen = false;
+    subtabName = null;
   }
 
   // The shell draws this tab by its module name; the host reads that name
@@ -1051,6 +1420,17 @@
     },
     openWallet: openWallet,
     closeWallet: closeWallet,
+    subtabNames: function () {
+      return held === null
+        ? []
+        : subtabList(held).map(function (entry) {
+            return entry.name;
+          });
+    },
+    subtab: function () {
+      return held === null ? null : selectedSubtab(held);
+    },
+    selectSubtab: selectSubtab,
     renderTab: renderTab,
     forget: forget
   };

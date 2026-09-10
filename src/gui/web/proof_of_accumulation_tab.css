@@ -9,12 +9,12 @@ body {
   height: 100%;
 }
 
-/* Two equal rows below the heading: the upper band, then the party window as
-   the lower half. */
+/* Three equal rows below the heading, the state line and the subtab bar: the
+   subtab panel, the upper band, then the party window. */
 .acervator-poa-tab {
   box-sizing: border-box;
   display: grid;
-  grid-template-rows: auto auto 1fr 1fr;
+  grid-template-rows: auto auto auto 1fr 1fr 1fr;
   height: 100%;
   margin: 0;
   padding: calc(var(--SPACE_M) * 1px);
@@ -35,6 +35,162 @@ body {
 .acervator-poa-tab [data-part="state"] {
   margin: 0;
   color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+/* The subtab bar and the panel one subtab draws into. */
+.acervator-poa-tab [data-part="subtab-bar"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--SPACE_XS) * 1px);
+}
+
+.acervator-poa-tab [data-part="subtab-button"] {
+  padding: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="subtab-button"][data-selected="true"] {
+  border-color: var(--OUTLINE_STRONG);
+  background: var(--SURFACE_3);
+  color: var(--TEXT_MAX);
+  font-weight: bold;
+}
+
+/* A subtab the running event does not open, and the map button in the same
+   state. Both read the payload's reachable flag. */
+.acervator-poa-tab [data-part="subtab-button"][data-reachable="false"],
+.acervator-poa-tab [data-part="map-open"][data-reachable="false"] {
+  border-style: dashed;
+  background: var(--SURFACE_1);
+  color: var(--TEXT_PLACEHOLDER);
+}
+
+.acervator-poa-tab [data-part="subtab-panel"] {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_SM) * 1px);
+  background: var(--SURFACE_1);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.acervator-poa-tab [data-part="subtab-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+/* Every metric, the field behind it and the value the party row holds. */
+.acervator-poa-tab [data-part="stat-list"],
+.acervator-poa-tab [data-part="gear-list"],
+.acervator-poa-tab [data-part="tree-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acervator-poa-tab [data-part="stat-row"],
+.acervator-poa-tab [data-part="gear-row"],
+.acervator-poa-tab [data-part="tree-row"] {
+  display: grid;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="stat-row"] {
+  grid-template-columns: 1fr 1fr auto;
+}
+
+.acervator-poa-tab [data-part="gear-row"] {
+  grid-template-columns: auto 1fr;
+}
+
+.acervator-poa-tab [data-part="tree-row"] {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+.acervator-poa-tab [data-part="stat-metric"],
+.acervator-poa-tab [data-part="gear-label"],
+.acervator-poa-tab [data-part="tree-level"] {
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="stat-source"],
+.acervator-poa-tab [data-part="gear-value"],
+.acervator-poa-tab [data-part="tree-cost"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="stat-value"],
+.acervator-poa-tab [data-part="tree-effect"],
+.acervator-poa-tab [data-part="tree-bleed"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="stat-count"],
+.acervator-poa-tab [data-part="tree-standing"],
+.acervator-poa-tab [data-part="tree-list-note"] {
+  margin: 0;
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="stat-note"],
+.acervator-poa-tab [data-part="stat-seam"],
+.acervator-poa-tab [data-part="gear-note"],
+.acervator-poa-tab [data-part="gear-absent"],
+.acervator-poa-tab [data-part="tree-note"],
+.acervator-poa-tab [data-part="map-note"],
+.acervator-poa-tab [data-part="map-refusal"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+/* The player window's map button, beside the sentence a mode with no map
+   prints. */
+.acervator-poa-tab [data-part="map-control"] {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: calc(var(--SPACE_XS) * 1px);
+}
+
+.acervator-poa-tab [data-part="map-open"] {
+  padding: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+  color: var(--TEXT_HIGH);
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 

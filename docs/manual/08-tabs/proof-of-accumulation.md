@@ -5609,3 +5609,136 @@ make every node close the same set does not exist yet.
 Nothing bounds the actions inside a one-hour turn, so a block can still close over any
 number of them. The millisecond is the finest the declared time goes, and below it the
 order comes from the contents.
+
+---
+
+## 2026-09-10 15:09 - #147 - four subtabs, and a map that opens on a crawl
+
+### A row of four buttons sits under the state line
+
+The tab draws a subtab bar beneath its heading and state sentence, and one panel under
+that bar. Nothing below moved: the player window, the enemy screen and the party window
+keep their places, and the Quintessence wallet still opens over the party window. A
+subtab lives inside this tab, so the tab row still carries one Accumulation entry and
+this adds no window.
+
+```
+Character Stats    Gear    Skill Tree    Map
+```
+
+### Character stats is the full one
+
+The panel lists every RPG metric the conversion derives, each with the field it reads and
+the value the party row holds. Twenty-seven rows draw, and none of them needed a new
+source.
+
+```
+max_health_usd         scrumming_state.target_balance
+base_health_usd        scrumming_state.anchor_target_balance
+levelled_health_usd    compounding_snapshot.accrued_growth_usd
+...
+blocked                bot.gate_decision scrum_blockers and fold_blockers
+```
+
+Under the rows the page counts what carried a value, and names what nothing holds.
+
+```
+Metrics carrying a value: 0 of 27.
+bot_state.json holds no bot under this chain, so every metric reads --.
+Nothing holds these, so no metric reads them: experience, level, character class,
+gear, enemy, threat, guild.
+```
+
+One metric holds a list rather than a number. The blocked row joins the gate labels with
+commas, so the value column reads as a sentence and never as program syntax.
+
+```
+blocked   bot.gate_decision scrum_blockers and fold_blockers   interval, trend_hold, cash
+```
+
+### Gear manages loot and says what it cannot manage
+
+The gear subtab draws the same loot holding the wallet draws: one row an item, then what
+one action of the running turn costs and what it does afterwards. Two items in a scratch
+store drew four rows.
+
+```
+Magisterium   BTC-USD - Season 1 - Impetus -2, effect +50%
+Calx          ETH-USD - Season 1 - effect +2%
+Action Impetus   4 becomes 2
+Action effect    1.52x
+```
+
+No armour slot, no weapon slot and no empty frame waits for an item class the design has
+not reached. The panel states that in one sentence instead.
+
+```
+Nothing builds armour, weapons, accessories, consumables, so this subtab manages
+loot alone.
+```
+
+### The skill tree is a list, and it admits it
+
+The ladder carries one skill. A tree of one member is a list, so the panel draws ten
+level rows and opens with a sentence naming the count.
+
+```
+Skills on the ladder: 1. Quintessence Transfer. A tree needs more than one, so
+this draws a list.
+```
+
+### The mode decides whether the map opens
+
+`EventMode.has_map` already holds on Dungeon Crawl and Raid and fails on both Monster
+Smash modes. The subtab reads that one property, the same way the turn length reads one
+property of the variant, so no second rule names which modes allow a map.
+
+```python
+def map_reachable(variant: EventVariant) -> bool:
+    """Whether ``variant``'s mode carries a map, read off ``EventMode.has_map``."""
+    return variant.mode.has_map
+```
+
+The player window carries its own map button beside the mode list, and it opens the same
+subtab the bar opens. In a crawl or a raid the button is live and the click draws the map
+panel. In either smash the button is dead, the bar entry is dead, and the sentence under
+the button says which modes do carry a map.
+
+```
+Monster Smash carries no map, so this subtab does not open. Dungeon Crawl and Raid do.
+```
+
+That sentence names its modes off the same property, so a mode that gains a map appears
+there with no second edit.
+
+### The map panel says no world exists
+
+Nothing generates a world, so the map subtab opens on one sentence rather than an empty
+frame.
+
+```
+No world is generated. No grid, no tile and no position is held anywhere, so this
+subtab draws no map.
+```
+
+### Demo mode navigates all four
+
+No flag selects the chain. The panel takes a chain name at construction and every subtab
+reads that chain's own files, so one walk covered the four subtabs on the TestNet and
+another covered the same four on the live chain. The gear panel named the TestNet's own
+loot file.
+
+```
+live      loot_store.json
+testnet   loot_store_testnet.json
+```
+
+### What the subtabs do not reach
+
+No control records a use, so the skill tree stands at level 0 on both chains. No control
+drops an item, so the loot a gear panel shows is whatever the chain's store already
+holds. The map has no content of any kind, and the world it would draw waits on the size
+answer recorded above it.
+
+The throwaway home held no fleet file, so every metric printed its no-value mark. The
+run proved the 27 rows and their field names off the page, and proved no value.
