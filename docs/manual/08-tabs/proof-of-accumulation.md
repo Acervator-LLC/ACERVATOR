@@ -5159,13 +5159,13 @@ Driving records through the chain, letting the chain save itself and reading the
 file size gives this.
 
 ```
-one action on the chain today            988 bytes
+one action on the chain today          1,473 bytes
 one action in a chosen encoding          399 bytes
 recommended ceiling                      1 MB per layer per one-hour world turn
-participants a layer                     655
-squares a layer                          655
+participants a layer                     177
+squares a layer                          177
 squares per participant                  1, fixed rather than chosen
-a twenty-layer world                     20 MB an hour, 13,100 participants
+a twenty-layer world                     20 MB an hour, 3,540 participants
 his 3,136-block chain reloads in         65 ms
 a hundred times those records            4.9 s
 what binds                               the save, not the size and not the load
@@ -5279,7 +5279,7 @@ In development.
 
 ### One megabyte an hour, recommended
 
-The per-action cost rounds up to 400 bytes and the budget rounds down from the 1.28
+The per-action cost rounds up to 1,473 bytes and the budget rounds down from the 1.28
 megabytes a ten-second load would allow. Both roundings keep the bound safe.
 
 Maximum world size and maximum participants reach the ceiling together, so nothing
@@ -5287,18 +5287,18 @@ is left over to spend on world and no trade-off exists between the two. One numb
 moves and both caps land on the same budget point.
 
 ```
-1,048,576 / 400  = 2,621 action records a world turn
+1,048,576 / 1,473  = 711 action records a world turn
 
 actions each   participants   world squares   squares per participant
-      4             655            655                  1
-      8             327            327                  1
-     20             131            131                  1
-     40              65             65                  1
+      4             177            177                  1
+      8              88             88                  1
+     20              35             35                  1
+     40              17             17                  1
 
 a 720-turn season = 720 MB, which reloads in 14.7 s
 ```
 
-The recommended point is the first row: 655 participants on 655 squares, per layer.
+The recommended point is the first row: 177 participants on 177 squares, per layer.
 One megabyte rests on the ten-second load ceiling and nothing else.
 
 ### A world is a cube, so the layer count multiplies the chain
@@ -5309,9 +5309,9 @@ wording rather than a ruling, so ten sits beside it.
 
 ```
 layers   chain an hour   participants   squares   a 720-turn season
-   1         1 MB              655        655        720 MB
-  10        10 MB            6,550      6,550      7,200 MB
-  20        20 MB           13,100     13,100     14,400 MB
+   1         1 MB              177        177        720 MB
+  10        10 MB            1,770      1,770      7,200 MB
+  20        20 MB            3,540      3,540     14,400 MB
 ```
 
 The cube figure is the real one. The flat figure is a comparison, and quoting it for
@@ -5323,15 +5323,15 @@ Capping size and participants together fixes area per participant, and a third a
 can honour that two ways.
 
 ```
-density per world   655 participants over 20 layers, so a layer holds 33 of them
-                    on 33 squares, about six by six
+density per world   177 participants over 20 layers, so a layer holds 8 of them
+                    on 8 squares, about three by three
 density per layer   each layer keeps the cap, so every layer stays a world and the
                     cube holds twenty times the participants and the storage
 ```
 
 These figures take the second reading. The first holds the density constant only by
-shrinking a layer to a six-by-six board, which is not a world and leaves a zone
-thirty-three participants to take a level from. Keeping every layer a world means the
+shrinking a layer to a three-by-three board, which is not a world and leaves a zone
+eight participants to take a level from. Keeping every layer a world means the
 cap is per layer, and a twenty-layer world then costs twenty megabytes an hour.
 
 ### How often a checkpoint has to be written
@@ -5398,13 +5398,13 @@ so the two figures pull apart. A participant sees a higher or lower layer only o
 able to enter it.
 
 ```
-the chain holds, twenty layers         52,420 records a world turn
+the chain holds, twenty layers         14,220 records a world turn
 one participant, one layer                  4 records a world turn
 one participant, all twenty layers         80 records a world turn
 ```
 
-At base viewrange on one layer a participant receives one record in thirteen
-thousand. A range boost multiplies that share by the squares it adds and changes
+At base viewrange on one layer a participant receives one record in three thousand
+five hundred. A range boost multiplies that share by the squares it adds and changes
 nothing about what the chain stores. Nothing in the competition package carries a
 zone, a square, a tile, a layer or a viewrange, so neither figure has a consumer yet.
 
@@ -5548,7 +5548,7 @@ after    4,031,424 bytes
 
 Twenty-seven bytes takes one action from 988 bytes to 1,015 in this encoding, so a
 one-megabyte layer holds 1,033 actions an hour rather than 1,061. The recommended
-ceiling of one megabyte does not move, and 655 participants on one square each sits
+ceiling of one megabyte does not move, and 177 participants on one square each sits
 far under both figures.
 
 ### A record written before content names is called legacy
@@ -5964,11 +5964,11 @@ since the last snapshot, so bounding that count bounds the wait whatever the hou
 CHECKPOINT_RECORD_INTERVAL = 50_000
 ```
 
-At twenty layers 52,420 records fill one world turn, so this is about one snapshot an
-hour and a load that never replays more than about half a second of records. The
-world budget recommended about once a day; a day at twenty layers leaves 1.26 million
-records to replay, which is longer than the 4.9 seconds that same measurement called
-free.
+At twenty layers 14,220 records fill one world turn, so this is about one snapshot
+every three and a half hours and a load that never replays more than about a second
+of records. The world budget recommended about once a day; a day at twenty layers
+leaves 341,280 records to replay, which is longer than the 4.9 seconds that same
+measurement called free.
 
 ### A load reads the snapshot and the tail, or the whole log
 
@@ -6259,7 +6259,7 @@ with one another. The grid is regular and carries addressing. A zone is a patch 
 terrain with its own shape. The tree levels are the third axis.
 
 ```
-the world grid    regular. 676 addressable squares, 655 of them budgeted at one
+the world grid    regular. 196 addressable squares, 177 of them budgeted at one
                   square a participant. Addressing, the byte budget and sight.
 zone regions      irregular, varied in size and shape, joined at their own
                   borders. A zone IS a terrain region.
@@ -6275,17 +6275,17 @@ TREE_SPHERES = 10
 SEPHIROT_LAYERS = TREE_SPHERES * 2
 ```
 
-### The grid holds 676 squares and base sight covers one
+### The grid holds 196 squares and base sight covers one
 
-655 participants at one square each is the measured figure from the world budget.
-655 squares is a grid 25.6 on a side, which is not a whole number of squares, so
+177 participants at one square each is the measured figure from the world budget.
+177 squares is a grid 13.3 on a side, which is not a whole number of squares, so
 the grid takes the smallest whole side that holds them.
 
 ```
-participants a layer carries       655
-squares a layer holds, one each    655
-smallest whole side holding 655    26
-addressable squares                676
+participants a layer carries       177
+squares a layer holds, one each    177
+smallest whole side holding 177     14
+addressable squares                196
 ```
 
 The declared size is free. The byte budget bounds how much a world writes in one
@@ -6293,19 +6293,19 @@ turn, never how large the world is.
 
 ```
 square (0, 0)                  0
-square (25, 25)                675
-index 340 back to x and y      (2, 13)
-square (26, 0)                 refused - off a grid 26 across holding 676
-index 676                      refused - off a grid holding 676
+square (13, 13)                195
+index 100 back to x and y      (2, 7)
+square (14, 0)                 refused - off a grid 14 across holding 196
+index 196                      refused - off a grid holding 196
 ```
 
 Sight is one square, which is the participant's own.
 
 ```
 squares base sight covers             1
-squares in view from 340 at base      (340,)
-squares in view from 340 at radius 1  (313, 314, 315, 339, 340, 341, 365, 366, 367)
-squares in view from 0 at radius 1    (0, 1, 26, 27)
+squares in view from 100 at base      (100,)
+squares in view from 100 at radius 1  (85, 86, 87, 99, 100, 101, 113, 114, 115)
+squares in view from 0 at radius 1    (0, 1, 14, 15)
 ```
 
 The last row is a corner. A radius that reaches off the grid yields fewer squares
@@ -6585,8 +6585,8 @@ creates: a brand-new participant in an undiscovered world has exactly one place 
 go.
 
 ```
-arena square      324, the middle of a grid 26 across
-as x and y        (12, 12)
+arena square      90, the middle of a grid 14 across
+as x and y        (6, 6)
 reachable with no discovery   True
 the square beside it          False
 zones discovered at creation  none
