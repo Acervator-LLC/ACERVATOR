@@ -7,7 +7,9 @@
 // entry and the player window's map button both read the payload's reachable
 // flag. A row of control buttons sits under the state line and fireControl sends
 // the params the payload gave that control, then redraws from the answer, so the
-// verdict and the figures on screen are the mechanism's own.
+// verdict and the figures on screen are the mechanism's own. MeterPair draws the
+// block fill and the turn completion side by side in the player window, and
+// ResetPanel names the two chain files and both reasons a reset carries.
 // Every word on screen comes from the payload.
 (function (global) {
   "use strict";
@@ -17,6 +19,7 @@
   var ACCESSIBLE_NAME = "accessible_name";
   var BUILT = "built";
   var CHAIN = "chain";
+  var CHAIN_RESET = "chain_reset";
   var CHARACTER_STATS = "character_stats";
   var CLASSES = "classes";
   var CONSERVATION = "conservation";
@@ -27,6 +30,7 @@
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
   var MAP = "map";
+  var METERS = "meters";
   var METRIC_SOURCES = "metric_sources";
   var METHOD_FIELD = "method";
   var MODES = "modes";
@@ -47,6 +51,7 @@
     ACCESSIBLE_NAME,
     BUILT,
     CHAIN,
+    CHAIN_RESET,
     CHARACTER_STATS,
     CLASSES,
     CONSERVATION,
@@ -57,6 +62,7 @@
     ISSUE,
     ISSUE_TEXT,
     MAP,
+    METERS,
     METRIC_SOURCES,
     METHOD_FIELD,
     MODES,
@@ -218,6 +224,29 @@
   var KEEP_ROW_LABEL_PART = "keep-row-label";
   var KEEP_ROW_VALUE_PART = "keep-row-value";
   var KEEP_NOTE_PART = "keep-note";
+
+  var METER_PAIR_PART = "meter-pair";
+  var METER_PAIR_TITLE_PART = "meter-pair-title";
+  var METER_PART = "meter";
+  var METER_LABEL_PART = "meter-label";
+  var METER_BAR_PART = "meter-bar";
+  var METER_FILL_PART = "meter-fill";
+  var METER_PERCENT_PART = "meter-percent";
+  var METER_VALUE_PART = "meter-value";
+  var METER_NOTE_PART = "meter-note";
+
+  // The meter a card draws, which is what the style sheet colours its bar by.
+  var METER_ATTR = "data-meter";
+
+  // The share the bar draws. A chain past its capacity still draws a full bar.
+  var FULL_BAR = 100;
+
+  var RESET_PANEL_PART = "reset-panel";
+  var RESET_TITLE_PART = "reset-title";
+  var RESET_ROW_PART = "reset-row";
+  var RESET_ROW_LABEL_PART = "reset-row-label";
+  var RESET_ROW_VALUE_PART = "reset-row-value";
+  var RESET_NOTE_PART = "reset-note";
 
   var SEASON_PANEL_PART = "season-panel";
   var SEASON_TITLE_PART = "season-title";
@@ -470,6 +499,85 @@
         named(TAB_CLASS + "-event-impetus", EVENT_IMPETUS_PART, text(event.code)),
         text(event.impetus_text)
       )
+    );
+  }
+
+  // One meter: its label, a bar at its own share, the percentage and the figures
+  // behind it. The bar stops at FULL_BAR so a chain past its capacity still draws.
+  // A meter carrying no note draws none, so the pair keeps one baseline.
+  function Meter(props) {
+    var row = props.row;
+    var label = text(row.label);
+    var share = Number(row.percent);
+    var barProps = named(TAB_CLASS + "-meter-bar", METER_BAR_PART, label);
+    barProps["aria-valuenow"] = text(row.percent);
+    var fillProps = named(TAB_CLASS + "-meter-fill", METER_FILL_PART, label);
+    fillProps.style = {
+      width: String(share > FULL_BAR ? FULL_BAR : share) + "%"
+    };
+    var meterProps = named(TAB_CLASS + "-meter", METER_PART, label);
+    meterProps[METER_ATTR] = text(row.name);
+    var children = [
+      element(
+        "span",
+        Object.assign(
+          named(TAB_CLASS + "-meter-label", METER_LABEL_PART, label),
+          { key: METER_LABEL_PART }
+        ),
+        label
+      ),
+      element(
+        "div",
+        Object.assign(barProps, { key: METER_BAR_PART }),
+        element("div", fillProps)
+      ),
+      element(
+        "span",
+        Object.assign(
+          named(TAB_CLASS + "-meter-percent", METER_PERCENT_PART, label),
+          { key: METER_PERCENT_PART }
+        ),
+        text(row.percent_text)
+      ),
+      element(
+        "span",
+        Object.assign(
+          named(TAB_CLASS + "-meter-value", METER_VALUE_PART, label),
+          { key: METER_VALUE_PART }
+        ),
+        text(row.value_text)
+      )
+    ];
+    if (text(row.note)) {
+      children.push(
+        element(
+          "p",
+          Object.assign(
+            named(TAB_CLASS + "-meter-note", METER_NOTE_PART, label),
+            { key: METER_NOTE_PART }
+          ),
+          text(row.note)
+        )
+      );
+    }
+    return element("div", meterProps, children);
+  }
+
+  // The two meters read as one unit: one heading over two equal columns, in the
+  // order the payload lists them.
+  function MeterPair(props) {
+    var meters = props.meters;
+    var rows = Array.isArray(meters.rows) ? meters.rows : [];
+    var titleProps = part(TAB_CLASS + "-meter-pair-title", METER_PAIR_TITLE_PART);
+    titleProps.key = METER_PAIR_TITLE_PART;
+    var children = [element("h4", titleProps, text(meters.title))];
+    rows.filter(isPlainObject).forEach(function (row) {
+      children.push(element(Meter, { key: text(row.name), row: row }));
+    });
+    return element(
+      "div",
+      named(TAB_CLASS + "-meter-pair", METER_PAIR_PART, text(meters.title)),
+      children
     );
   }
 
@@ -830,6 +938,11 @@
       lines.push(element("p", noteProps, note));
     }
     children.push(element("div", resultProps, lines));
+    if (isPlainObject(props.reset)) {
+      children.push(
+        element(ResetPanel, { key: RESET_PANEL_PART, reset: props.reset })
+      );
+    }
     var barProps = named(TAB_CLASS + "-control-bar", CONTROL_BAR_PART, text(bar.title));
     return element("div", barProps, children);
   }
@@ -856,6 +969,40 @@
       KEEP_PANEL_PART,
       text(keep.title)
     );
+    return element("div", panelProps, children);
+  }
+
+  // The two chain files the reset control deletes, and both reasons one signal
+  // carries, so a deliberate reset and a schema wipe read differently here. It
+  // sits in the control bar, under the two buttons it reports on.
+  function ResetPanel(props) {
+    var panel = props.reset;
+    var titleProps = part(TAB_CLASS + "-reset-title", RESET_TITLE_PART);
+    titleProps.key = RESET_TITLE_PART;
+    var children = [element("h4", titleProps, text(panel.title))];
+    children = children.concat(
+      figureRows(
+        panel.rows,
+        RESET_ROW_PART,
+        RESET_ROW_LABEL_PART,
+        RESET_ROW_VALUE_PART
+      )
+    );
+    if (text(panel.note)) {
+      var noteProps = named(
+        TAB_CLASS + "-reset-note",
+        RESET_NOTE_PART,
+        text(panel.note)
+      );
+      noteProps.key = RESET_NOTE_PART;
+      children.push(element("p", noteProps, text(panel.note)));
+    }
+    var panelProps = named(
+      TAB_CLASS + "-reset-panel",
+      RESET_PANEL_PART,
+      text(panel.title)
+    );
+    panelProps[CHAIN_ATTR] = text(panel.chain);
     return element("div", panelProps, children);
   }
 
@@ -1364,6 +1511,11 @@
         element(EventBand, { key: EVENT_BAND_PART, event: props.event })
       );
     }
+    if (isPlainObject(props.meters)) {
+      children.push(
+        element(MeterPair, { key: METER_PAIR_PART, meters: props.meters })
+      );
+    }
     if (isPlainObject(props.map)) {
       children.push(element(MapControl, { key: MAP_CONTROL_PART, map: props.map }));
     }
@@ -1477,6 +1629,7 @@
     var event = isPlainObject(model[EVENT]) ? model[EVENT] : null;
     var modeRows = Array.isArray(model[MODES]) ? model[MODES] : null;
     var map = isPlainObject(model[MAP]) ? model[MAP] : null;
+    var meters = isPlainObject(model[METERS]) ? model[METERS] : null;
     var chosen = selectedSubtab(model);
     var tabProps = {
       className: TAB_CLASS,
@@ -1492,7 +1645,10 @@
       element("h1", part(TAB_CLASS + "-heading", HEADING_PART), text(model[HEADING])),
       element("p", part(TAB_CLASS + "-state", STATE_PART), text(model[STATE_TEXT])),
       isPlainObject(model[CONTROLS])
-        ? element(ControlBar, { controls: model[CONTROLS] })
+        ? element(ControlBar, {
+            controls: model[CONTROLS],
+            reset: isPlainObject(model[CHAIN_RESET]) ? model[CHAIN_RESET] : null
+          })
         : null,
       element(SubtabBar, { entries: subtabList(model), selected: chosen }),
       element(SubtabArea, { model: model, selected: chosen }),
@@ -1504,6 +1660,7 @@
           : element(UpperZone, {
               zone: player,
               event: event,
+              meters: meters,
               modes: modeRows,
               map: map
             }),

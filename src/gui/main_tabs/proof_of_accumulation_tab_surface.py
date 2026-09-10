@@ -18,7 +18,12 @@ only a mode carrying a map opens the map subtab. ``character_stats`` pairs every
 loot section beside the item classes nothing builds, ``skill_tree`` draws the
 ladder as a list over ``SKILL_NAMES``, and ``map_panel`` states that no world is
 generated.
-``controls`` serves the nine buttons that drive the mechanisms and fires the one
+``meters`` serves the two the player window draws side by side: ``turn_meter``
+reads the candle's own seconds left and ``fill_meter`` reads the bytes the chain's
+two files hold against ``TURN_BYTE_CAPACITY``. ``reset_panel`` names those files
+and both reasons ``chain_reset`` carries, so a deliberate reset and a schema wipe
+read differently on screen.
+``controls`` serves the eleven buttons that drive the mechanisms and fires the one
 ``params`` names through ``control_result``, which calls each mechanism's own
 entry point and answers its refusal sentence unchanged. ``conservation`` reads
 ``QuintessenceLedger.conservation`` after a control acts and ``season`` reads the
@@ -122,6 +127,7 @@ from ...competition.skill_ladder import (
 )
 from ...competition.token_ledger import TokenLedger
 from ...core.fmt import fmt_usd
+from .shared_testnet_surface import PERSIST_PARTS
 
 METHOD = "proof_of_accumulation_tab.state"
 
@@ -230,10 +236,12 @@ EVENT_ID_FIELD = "event_id"
 QUINTESSENCE_SECTION = "Quintessence"
 TROPHIES_SECTION = "Trophies"
 LOOT_SECTION = "Loot"
+VESSELS_SECTION = "Vessels"
 WALLET_SECTIONS: tuple[str, ...] = (
     QUINTESSENCE_SECTION,
     TROPHIES_SECTION,
     LOOT_SECTION,
+    VESSELS_SECTION,
 )
 
 BALANCE_ROW = "Balance"
@@ -248,6 +256,7 @@ AWARD_LEDGER_NAME = TokenLedger.LEDGER_FILE
 LOOT_STORE_NAME = DEFAULT_LOOT_PATH.name
 IDENTITY_NAME = BotIdentity.KEY_FILE
 FLEET_NAME = "bot_state.json"
+CHAIN_NAME = PERSIST_PARTS[-1]
 LEDGER_DIR = DEFAULT_LEDGER_PATH.parent
 
 MODE_FIELD = "mode"
@@ -313,11 +322,59 @@ NO_LEDGER_NOTE = "{name} does not exist. Nothing is distilled on this chain."
 NO_LOOT_NOTE = "{name} records no loot for this participant."
 NO_LOOT_STORE_NOTE = "{name} does not exist. No market has dropped loot on this chain."
 
+VESSEL_STANDING_TEXT = "level {level} - Impetus {impetus}"
+VESSEL_REQUIREMENT_ROW = "Summed requirement"
+VESSEL_REQUIREMENT_TEXT = "--"
+NO_VESSEL_REQUIREMENT_NOTE = (
+    "No field holds the Quintessence a Vessel's level requires, so no requirement "
+    "sums against the balance above."
+)
+NO_VESSEL_NOTE = (
+    "{name} keeps no Vessel for this participant. A Vessel is the class a "
+    "Reincarnate occupies, and only a class pick names one."
+)
+
 LOOT_ITEM_TEXT = "{symbol} - Season {season} - {bonus}"
 LOOT_IMPETUS_ROW = "Action Impetus"
 LOOT_EFFECT_ROW = "Action effect"
 LOOT_IMPETUS_TEXT = "{base} becomes {cost}"
 LOOT_EFFECT_TEXT = "{multiplier}x"
+
+METERS_TITLE = "Block fill and turn completion"
+TURN_METER = "turn_completion"
+FILL_METER = "block_fill"
+TURN_METER_LABEL = "Turn completion"
+FILL_METER_LABEL = "Block fill"
+
+#: The places a meter's percentage prints.
+METER_PLACES = Decimal("0.1")
+
+METER_TURN_TEXT = "{done}s of {length}s elapsed"
+METER_FILL_TEXT = "{held} of {capacity} bytes"
+
+#: The turn meter carries no note: the event band already prints the seconds left.
+METER_TURN_NOTE = ""
+
+METER_FILL_NOTE = (
+    "Each chain file's own length against the bytes one layer may write in a world "
+    "turn. Nothing records what one turn wrote, so this reads every byte the chain "
+    "holds since its last reset."
+)
+
+RESET_PANEL_TITLE = "Chain reset"
+CHAIN_FILE_ROW = "Checkpoint"
+CHAIN_LOG_ROW = "Log"
+CHAIN_BYTES_ROW = "Bytes both files hold"
+DELIBERATE_REASON_ROW = "A deliberate reset reads"
+WIPE_REASON_ROW = "A schema wipe reads"
+
+#: What the wipe reason names where a checkpoint carries a schema number.
+WIPE_FOUND_WORD = "another schema"
+
+RESET_PANEL_NOTE = (
+    "One signal carries both. {confirm} carries the first and a checkpoint of "
+    "another schema carries the second."
+)
 
 ZONES: tuple[tuple[str, str, str], ...] = (
     (PLAYER_WINDOW, PLAYER_WINDOW_TITLE, PLAYER_WINDOW_PLACEHOLDER),
@@ -349,6 +406,10 @@ PAYOUT_ACTION = "payout"
 CLOSE_ACTION = "close"
 DROP_ACTION = "drop"
 SEASON_ACTION = "season"
+RESET_ACTION = "reset"
+RESET_CONFIRM_ACTION = "reset_confirm"
+
+CONFIRM_FIELD = "confirm"
 
 #: The fee one distil mints against, the dearest band's own cost.
 DEMO_FEE_USD = float(band_cost(DEAREST_BAND))
@@ -385,6 +446,8 @@ PAYOUT_TITLE = "Settle the pot"
 CLOSE_TITLE = "Close unpaid"
 DROP_TITLE = "Draw loot"
 SEASON_TITLE = "File an exclusion"
+RESET_TITLE = "Reset the chain"
+RESET_CONFIRM_TITLE = "Confirm the reset"
 
 DISTIL_LABEL = f"Distil a {DEMO_FEE_USD} fee at grade {DEMO_TRADE_GRADE}"
 TRAIN_LABEL = f"Record one use at quality {DEMO_USE_QUALITY}"
@@ -395,6 +458,8 @@ PAYOUT_LABEL = f"Pay {RETURN_PERCENT}% of the pot"
 CLOSE_LABEL = "Close with nothing paid"
 DROP_LABEL = "Open the window and draw"
 SEASON_LABEL = "Exclude this market"
+RESET_LABEL = "Ask what a reset deletes"
+RESET_CONFIRM_LABEL = "Delete both files and start fresh"
 
 DISTIL_NOTE = "Mints at the fee times the grade, under the supply cap."
 TRAIN_NOTE = "One use of quality 0 advances nothing and the ladder refuses it."
@@ -416,6 +481,27 @@ DROP_NOTE = (
     f"before, so the first draw of a season is slow."
 )
 SEASON_NOTE = "An exclusion filed in a season binds at the next season boundary."
+RESET_NOTE = (
+    "Asks only. Nothing is deleted and the block height does not move, so a press "
+    "here cannot lose a chain."
+)
+RESET_CONFIRM_NOTE = (
+    "Deletes the checkpoint and the log, and the chain restarts at its genesis "
+    "block. Nothing replays what it held."
+)
+RESET_REASON = "the Accumulation tab's reset control"
+RESET_ASK_TEXT = (
+    "{name} and {log} hold {bytes} bytes at block height {height}. {confirm} "
+    "deletes both; this control deletes nothing."
+)
+RESET_DONE_TEXT = (
+    "{name} and {log} are deleted and the {chain} chain stands at block height "
+    "{height} for the reason {reason}."
+)
+RESET_LIVE_REFUSAL = (
+    "Reset clears the {demo} chain. The {live} chain is the one a running window "
+    "holds in memory, which would write it back, so this refuses there."
+)
 NO_MARKET_NOTE = "{name} names no market, so no exclusion has a subject to file."
 
 DISTIL_DONE_TEXT = "Distilled {amount} Quint."
@@ -450,6 +536,8 @@ GRADE_ROW = "Score"
 SCORED_AXES_ROW = "Scored axes"
 PAID_TOTAL_ROW = "Paid out"
 ITEM_ROW = "Item"
+BLOCK_HEIGHT_ROW = "Block height"
+CHAIN_EVENTS_ROW = "Chain events"
 POOL_ROW = "Eligible markets"
 IN_EFFECT_NOW_ROW = "In effect this season"
 IN_EFFECT_NEXT_ROW = "In effect next season"
@@ -558,6 +646,7 @@ DECLARED_FIELDS = (
     "accessible_name",
     "built",
     "chain",
+    "chain_reset",
     "character_stats",
     "classes",
     "conservation",
@@ -568,6 +657,7 @@ DECLARED_FIELDS = (
     "issue",
     "issue_text",
     "map",
+    "meters",
     "metric_sources",
     "method",
     "modes",
@@ -622,6 +712,17 @@ def class_pick(params: dict, event_id: str) -> tuple[ClassPick | None, str]:
         return pick_class(participant, event_id, class_name), ""
     except UnknownClassError as exc:
         return None, str(exc)
+
+
+def chain_module():
+    """``src.gui.shared_testnet``, imported on call so this module needs no Qt to load.
+
+    ``src.core.desktop_bridge.build_registry`` imports every surface, and a module
+    import here would make PySide6 a requirement of all 73 handlers.
+    """
+    from .. import shared_testnet
+
+    return shared_testnet
 
 
 def chain_file(file_name: str, chain: str) -> Path:
@@ -788,6 +889,32 @@ def loot_section(chain: str, address: str | None, action_cost: int) -> dict:
     return section(LOOT_SECTION, [], NO_LOOT_NOTE.format(name=path.name))
 
 
+def vessels_section(address: str | None, pick: ClassPick | None) -> dict:
+    """The Vessel ``address`` occupies, which is the class ``pick`` names for it.
+
+    No module keeps a Vessel against an address, so a ``pick`` naming another
+    participant leaves the section printing ``NO_VESSEL_NOTE``.
+    """
+    if address is None:
+        return section(VESSELS_SECTION, [], NO_IDENTITY_NOTE)
+    if pick is None or pick.participant != address:
+        return section(VESSELS_SECTION, [], NO_VESSEL_NOTE.format(name=STORE_NAME))
+    progress = ClassProgress(pick.class_name)
+    return section(
+        VESSELS_SECTION,
+        [
+            row(
+                progress.class_name,
+                VESSEL_STANDING_TEXT.format(
+                    level=progress.level, impetus=impetus_grant(progress.level)
+                ),
+            ),
+            row(VESSEL_REQUIREMENT_ROW, VESSEL_REQUIREMENT_TEXT),
+        ],
+        NO_VESSEL_REQUIREMENT_NOTE,
+    )
+
+
 def uses_text(uses: Decimal) -> str:
     """``uses`` at ``USES_PLACES``, as a cost column prints it."""
     return str(uses.quantize(USES_PLACES))
@@ -900,11 +1027,15 @@ def skills(chain: str = LIVE_CHAIN) -> dict:
     }
 
 
-def wallet(chain: str = LIVE_CHAIN, action_cost: int = IMPETUS_AT_FIRST_LEVEL) -> dict:
+def wallet(
+    chain: str = LIVE_CHAIN,
+    action_cost: int = IMPETUS_AT_FIRST_LEVEL,
+    pick: ClassPick | None = None,
+) -> dict:
     """The wallet panel and the balance readout the party header keeps on screen.
 
     ``action_cost`` is the Impetus the loot section augments, taken from the
-    running turn's grant.
+    running turn's grant, and ``pick`` is the Vessel ``vessels_section`` reads.
     """
     identity = participant_identity()
     address = None if identity is None else identity.bot_id
@@ -923,6 +1054,7 @@ def wallet(chain: str = LIVE_CHAIN, action_cost: int = IMPETUS_AT_FIRST_LEVEL) -
             quintessence,
             trophies_section(chain, address),
             loot_section(chain, address, action_cost),
+            vessels_section(address, pick),
         ],
     }
 
@@ -1150,6 +1282,96 @@ def zones() -> list:
         {"name": name, "title": title, "placeholder": placeholder}
         for name, title, placeholder in ZONES
     ]
+
+
+def share_percent(held: Decimal, capacity: Decimal) -> Decimal:
+    """``held`` over ``capacity`` as a percentage at ``METER_PLACES``.
+
+    A ``capacity`` of nought or below answers nought, so a chain with no capacity
+    draws an empty meter.
+    """
+    if capacity <= 0:
+        return Decimal(0)
+    return ((held / capacity) * PERCENT_SCALE).quantize(METER_PLACES)
+
+
+def meter(name: str, label: str, percent: Decimal, value_text: str, note: str) -> dict:
+    """One meter: its ``percent`` of the whole, the figures behind it, and its note."""
+    return {
+        "name": name,
+        "label": label,
+        "percent": float(percent),
+        "percent_text": f"{percent}%",
+        "value_text": value_text,
+        "note": note,
+    }
+
+
+def turn_meter(running: dict, variant: EventVariant) -> dict:
+    """The share of this turn's candle that has elapsed, from its own seconds left."""
+    length = Decimal(variant.turn_seconds)
+    done = length - Decimal(str(running["seconds_left"])).quantize(Decimal(1))
+    return meter(
+        TURN_METER,
+        TURN_METER_LABEL,
+        share_percent(done, length),
+        METER_TURN_TEXT.format(done=done, length=length),
+        METER_TURN_NOTE,
+    )
+
+
+def fill_meter(chain: str) -> dict:
+    """The bytes ``chain``'s two files hold against ``TURN_BYTE_CAPACITY``.
+
+    ``chain_bytes`` reads each file's own length, so the meter costs two reads a
+    redraw and parses no record.
+    """
+    module = chain_module()
+    held = module.chain_bytes(chain_file(CHAIN_NAME, chain))
+    capacity = module.TURN_BYTE_CAPACITY
+    return meter(
+        FILL_METER,
+        FILL_METER_LABEL,
+        share_percent(Decimal(held), Decimal(capacity)),
+        METER_FILL_TEXT.format(held=held, capacity=capacity),
+        METER_FILL_NOTE,
+    )
+
+
+def meters(running: dict, variant: EventVariant, chain: str) -> dict:
+    """The two meters the player window draws side by side, fill first."""
+    return {
+        "title": METERS_TITLE,
+        "rows": [fill_meter(chain), turn_meter(running, variant)],
+    }
+
+
+def reset_panel(chain: str) -> dict:
+    """``chain``'s two files, the bytes they hold, and both reasons ``chain_reset`` carries.
+
+    A deliberate reset and a checkpoint of another schema raise the same signal, so
+    the panel draws ``RESET_REASON`` and ``SCHEMA_WIPE_REASON`` side by side.
+    """
+    module = chain_module()
+    path = chain_file(CHAIN_NAME, chain)
+    log = path.with_suffix(module.LOG_SUFFIX)
+    return {
+        "title": RESET_PANEL_TITLE,
+        "chain": chain,
+        "rows": [
+            row(CHAIN_FILE_ROW, path.name),
+            row(CHAIN_LOG_ROW, log.name),
+            row(DELIBERATE_REASON_ROW, RESET_REASON),
+            row(
+                WIPE_REASON_ROW,
+                module.SCHEMA_WIPE_REASON.format(
+                    found=WIPE_FOUND_WORD, wanted=module.SCHEMA_VERSION
+                ),
+            ),
+            row(CHAIN_BYTES_ROW, str(module.chain_bytes(path))),
+        ],
+        "note": RESET_PANEL_NOTE.format(confirm=RESET_CONFIRM_TITLE),
+    }
 
 
 def map_reachable(variant: EventVariant) -> bool:
@@ -1569,6 +1791,59 @@ def season_control(chain: str, address: str, event_id: str, params: dict) -> tup
     )
 
 
+def reset_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Clear ``chain``'s saved chain through ``shared_testnet.reset_chain``.
+
+    Answers the standing without deleting anything until ``params`` carries
+    ``CONFIRM_FIELD``, and refuses on ``LIVE_CHAIN`` altogether.
+    """
+    del address, event_id
+    module = chain_module()
+    path = chain_file(CHAIN_NAME, chain)
+    log = path.with_suffix(module.LOG_SUFFIX)
+    if chain == LIVE_CHAIN:
+        return (
+            False,
+            RESET_LIVE_REFUSAL.format(
+                demo=CHAIN_LABELS[DEMO_CHAIN], live=CHAIN_LABELS[LIVE_CHAIN]
+            ),
+            [],
+        )
+    if not (isinstance(params, dict) and params.get(CONFIRM_FIELD) is True):
+        standing = module.chain_standing(path)
+        return (
+            False,
+            RESET_ASK_TEXT.format(
+                name=path.name,
+                log=log.name,
+                bytes=standing["bytes"],
+                height=standing["block_height"],
+                confirm=RESET_CONFIRM_TITLE,
+            ),
+            [
+                row(BLOCK_HEIGHT_ROW, str(standing["block_height"])),
+                row(CHAIN_EVENTS_ROW, str(standing["events"])),
+                row(CHAIN_BYTES_ROW, str(standing["bytes"])),
+            ],
+        )
+    standing = module.reset_chain(path, RESET_REASON)
+    return (
+        True,
+        RESET_DONE_TEXT.format(
+            name=path.name,
+            log=log.name,
+            chain=CHAIN_LABELS[chain],
+            height=standing["block_height"],
+            reason=", ".join(standing["reasons"]),
+        ),
+        [
+            row(BLOCK_HEIGHT_ROW, str(standing["block_height"])),
+            row(CHAIN_EVENTS_ROW, str(standing["events"])),
+            row(CHAIN_BYTES_ROW, str(standing["bytes"])),
+        ],
+    )
+
+
 #: Every control, in the order the row of buttons draws them.
 CONTROL_HANDLERS = {
     DISTIL_ACTION: distil_control,
@@ -1580,6 +1855,8 @@ CONTROL_HANDLERS = {
     CLOSE_ACTION: close_control,
     DROP_ACTION: drop_control,
     SEASON_ACTION: season_control,
+    RESET_ACTION: reset_control,
+    RESET_CONFIRM_ACTION: reset_control,
 }
 
 CONTROL_TITLES = {
@@ -1592,6 +1869,8 @@ CONTROL_TITLES = {
     CLOSE_ACTION: CLOSE_TITLE,
     DROP_ACTION: DROP_TITLE,
     SEASON_ACTION: SEASON_TITLE,
+    RESET_ACTION: RESET_TITLE,
+    RESET_CONFIRM_ACTION: RESET_CONFIRM_TITLE,
 }
 
 CONTROL_LABELS = {
@@ -1604,6 +1883,8 @@ CONTROL_LABELS = {
     CLOSE_ACTION: CLOSE_LABEL,
     DROP_ACTION: DROP_LABEL,
     SEASON_ACTION: SEASON_LABEL,
+    RESET_ACTION: RESET_LABEL,
+    RESET_CONFIRM_ACTION: RESET_CONFIRM_LABEL,
 }
 
 CONTROL_NOTES = {
@@ -1616,6 +1897,8 @@ CONTROL_NOTES = {
     CLOSE_ACTION: CLOSE_NOTE,
     DROP_ACTION: DROP_NOTE,
     SEASON_ACTION: SEASON_NOTE,
+    RESET_ACTION: RESET_NOTE,
+    RESET_CONFIRM_ACTION: RESET_CONFIRM_NOTE,
 }
 
 #: Every control name, in the order the row of buttons draws them.
@@ -1653,6 +1936,8 @@ def control_params(
     if name in (DROP_ACTION, SEASON_ACTION):
         sending[EXCHANGE_FIELD] = exchange
         sending[SYMBOL_FIELD] = symbol
+    if name == RESET_CONFIRM_ACTION:
+        sending[CONFIRM_FIELD] = True
     return sending
 
 
@@ -1823,6 +2108,7 @@ def view_model(params: dict) -> dict:
         "accessible_name": HEADING,
         "built": BUILT,
         "chain": chain,
+        "chain_reset": reset_panel(chain),
         "character_stats": character_stats(rows, params),
         "classes": classes(),
         "conservation": conservation(chain),
@@ -1833,6 +2119,7 @@ def view_model(params: dict) -> dict:
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
         "map": map_panel(variant),
+        "meters": meters(running, variant, chain),
         "metric_sources": metric_sources(),
         "method": METHOD,
         "modes": modes(),
@@ -1846,6 +2133,6 @@ def view_model(params: dict) -> dict:
         "state_text": STATE_TEXT,
         "subtab": subtab_of(params, variant),
         "subtabs": subtabs(variant),
-        "wallet": wallet(chain, running["impetus_granted"]),
+        "wallet": wallet(chain, running["impetus_granted"], pick),
         "zones": zones(),
     }
