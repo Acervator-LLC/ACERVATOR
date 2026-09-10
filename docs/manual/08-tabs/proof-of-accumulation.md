@@ -5256,7 +5256,7 @@ load buys about 125,000 records, and ten seconds buys 1.28 million.
 
 ### The save is what binds
 
-The save path rewrites the whole file every time, and the timer fires half a second
+A whole-file write costs its whole size every time, and the timer fires half a second
 after the last change.
 
 ```
@@ -5265,14 +5265,14 @@ after the last change.
 247,769,048 bytes  3,444 ms
 ```
 
-At fifteen milliseconds a megabyte a save finishes inside that half second only
+At fifteen milliseconds a megabyte such a write finishes inside that half second only
 while the chain stays under about 34 megabytes, which is roughly 85,000 actions for
-the life of the world. A ten-second load would allow 1.28 million. The current save
-path therefore stops a world at one fifteenth of what its own load time allows.
+the life of the world. A ten-second load would allow 1.28 million. A save path built
+that way therefore stops a world at one fifteenth of what its own load time allows.
 
 The shape that removes it appends each record to the log rather than rewriting the
 file, and writes a full snapshot now and then so a load reads one snapshot and a
-short tail. Neither is built.
+short tail. Both are built.
 
 In development.
 
@@ -5347,11 +5347,13 @@ layers   reaches 512 MB in       reaches 34 MB in
   20      26 turns, about a day   1.7 turns, under 2 hours
 ```
 
-A cube saturates the current save path inside two hours. Appending each record and
+A cube saturates a whole-file save path inside two hours. Appending each record and
 snapshotting now and then is the condition on the first multi-layer world running at
 all, not an improvement for later.
 
-In development.
+```python
+CHECKPOINT_RECORD_INTERVAL = 50_000
+```
 
 ### Why the two caps arrive together
 
@@ -5911,3 +5913,155 @@ testnet   quintessence_ledger_testnet.json
 No material list, no quality scale, no recipe and no skill curve for recovery. The
 split between what is kept and what is lost is handed in by the caller, so those
 later pieces decide it without this law changing again.
+
+## 2026-09-10 17:12 - #147 - the chain adds what changed, and a snapshot shortens the load
+
+### A save costs what changed, not what the chain holds
+
+The chain now keeps two files. The chain file holds a full snapshot, and a log file
+beside it takes each new record on the end. Driving 550 saves while the log grew from
+75 kilobytes to 41.6 megabytes, the platform reported its own cost every time.
+
+```
+log already holds   records added   bytes added   cost
+75 KB               202             75,319        3.5 ms
+19 MB               200             75,700        3.3 ms
+41.6 MB             200             75,638        3.5 ms
+over 550 saves      least 3.0 ms, most 14.3 ms
+```
+
+A save at a 41.6 megabyte log costs what a save at a 75 kilobyte log costs. The cost
+follows the records added and nothing else.
+
+### Where a whole-file write stops, and where this one does not
+
+The whole-file write is now only the snapshot, and it carries the same cost it always
+did. The platform reported that cost at two sizes, split into building the payload
+and writing it.
+
+```
+snapshot bytes   build      write      together   per megabyte
+18,075,873       153.8 ms   112.9 ms   266.7 ms   15.5 ms
+36,156,441       388.9 ms   241.7 ms   630.6 ms   18.3 ms
+```
+
+Fifteen milliseconds a megabyte is confirmed, and at 34.5 megabytes a whole-file
+write takes 630 milliseconds. The half-second timer is past at exactly the size the
+world budget named. An append at that same chain size takes 3.5 milliseconds.
+
+```
+34.5 MB whole-file write   630.6 ms, over the 500 ms timer
+same chain, one append     3.5 ms
+```
+
+### What makes a snapshot happen
+
+A count of records, not a clock. The load a world has to wait through is the records
+since the last snapshot, so bounding that count bounds the wait whatever the hour.
+
+```python
+CHECKPOINT_RECORD_INTERVAL = 50_000
+```
+
+At twenty layers 52,420 records fill one world turn, so this is about one snapshot an
+hour and a load that never replays more than about half a second of records. The
+world budget recommended about once a day; a day at twenty layers leaves 1.26 million
+records to replay, which is longer than the 4.9 seconds that same measurement called
+free.
+
+### A load reads the snapshot and the tail, or the whole log
+
+Both were driven on one chain of 25,196 blocks and 25,195 transactions, with a
+competition in it. The second run had the snapshot file removed.
+
+```
+load                          records replayed   cost
+snapshot and the tail         368                429 ms
+log alone, snapshot removed   50,401             663 ms
+```
+
+Every figure the platform reports about the two was the same: 25,196 blocks, 25,195
+transactions, 9 events, 1 competition, 10 ACRV to one holder, verified, nothing
+legacy and nothing altered. The saving grows with the history, because the log read
+is 3.8 milliseconds for a tail and 485.7 milliseconds for the whole log.
+
+### The log decides, and the snapshot is refused when it disagrees
+
+A snapshot names the last log record it absorbed. Chain A's snapshot was put beside
+chain B's log, and the chain that loaded was B's.
+
+```
+A snapshot + B log   loads B, competition COMP-1DA0EFC1
+A snapshot + A log   loads A, competition COMP-489CF6D4
+```
+
+A log shorter than the snapshot is a different case and is not a disagreement. It
+holds nothing the snapshot does not, so the snapshot stands and the short log is
+emptied.
+
+### A record cut part way through is refused, and every earlier one kept
+
+The log was cut by 150 bytes, which lands inside its last record. The load kept
+everything before it and dropped the rest of the file.
+
+```
+whole records read   367 of 368
+bytes dropped        218
+transactions         25,194, one fewer
+everything else      25,196 blocks, 9 events, 1 competition, 10 ACRV, verified
+```
+
+The same cut was driven twice, once with the snapshot and once without it, and both
+read 367 records. Nothing partial was taken for a real record.
+
+### A record that was changed fails its own name
+
+Every record is named by a number taken from its own contents. One digit was changed
+inside the last record, leaving a line that still reads as valid, and the load refused
+it for the name alone.
+
+```
+line length      unchanged, still valid
+whole records    367 of 368
+transactions     25,194
+```
+
+Nothing was invented to mark a record's end. A cut record fails to read, and a changed
+record fails the number its own contents give it.
+
+### His own chain loads, and a save no longer rewrites it
+
+His chain file was copied and loaded through the same install path the window uses.
+A competition was then run on it and saved.
+
+```
+loaded          3,136 blocks, 3,135 transactions, 2,565 events, 285 competitions
+                2,850 ACRV, 285 holders, verified, 3,135 legacy
+a competition   32 records added, 185,843 bytes, 4.3 ms
+his chain file  4,059,629 bytes, not rewritten
+reloaded        3,147 blocks, 3,146 transactions, 2,574 events, 286 competitions
+```
+
+The old path would have rewritten 4.2 megabytes for those 32 records. His file is not
+rewritten at all until 50,000 records have gone by, and it was still byte for byte
+what it was when the run finished.
+
+### Demo mode saves the same way
+
+Each panel takes its chain when it is built, and the chain decides which file it
+saves to. A live chain and a demo chain ran in one program through one save path, with
+no flag of any kind.
+
+```
+live      testnet_chain.json            testnet_chain.log
+testnet   testnet_chain_testnet.json    testnet_chain_testnet.log
+```
+
+Both added records and both wrote a snapshot, and each wrote only its own two files.
+
+### What this does not reach
+
+The snapshot is still a whole-file write, so the half-second stall returns once every
+50,000 records and grows with the chain. Writing it away from the drawing thread is
+not built. A log damaged below the snapshot loses the records after it, because a
+damaged log cannot be asked what it held.

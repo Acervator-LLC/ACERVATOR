@@ -5,8 +5,10 @@
 timer. Each queued
 ``CompetitionRequest`` runs in a ``_CompetitionWorker``, which mutates
 the chain on its own thread while it holds ``_mutation_lock``, one
-worker at a time. ``_save_now`` writes the chain to
-``DEFAULT_PERSIST_PATH`` and ``_try_load`` drops a file whose
+worker at a time. ``_save_now`` appends every new record to the log beside
+``DEFAULT_PERSIST_PATH`` and writes that path as a checkpoint once per
+``CHECKPOINT_RECORD_INTERVAL`` records, and ``_try_load`` restores the
+checkpoint and replays the log after it. ``_try_load`` drops a checkpoint whose
 ``schema_version`` is not ``SCHEMA_VERSION``.
 """
 
@@ -14,15 +16,21 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import threading
 import time
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from ..core.io_utils import atomic_write_json
+from ..core.io_utils import (
+    append_json_lines,
+    atomic_write_json,
+    read_json_line_before,
+    read_json_lines,
+)
 
 if TYPE_CHECKING:
     from src.competition.action_spend import ActionSpend
@@ -42,6 +50,56 @@ SCHEMA_VERSION = 1
 DEFAULT_PERSIST_PATH = Path.home() / ".acervator" / "testnet_chain.json"
 QUEUE_DRAIN_INTERVAL_MS = 250
 PERSIST_DEBOUNCE_MS = 500
+
+#: Records the log may hold past a checkpoint before ``_save_now`` writes one.
+#: At the twenty layers the world budget measures, 52,420 records fill one world
+#: turn, so this is about one checkpoint an hour.
+CHECKPOINT_RECORD_INTERVAL = 50_000
+
+#: What one log line carries. ``state`` holds what no block, transaction or
+#: event does: the token balances, the competitions and the id origin.
+LOG_KINDS = ("block", "transaction", "event", "state")
+
+#: The log sits beside the checkpoint under this suffix.
+LOG_SUFFIX = ".log"
+
+
+def _log_line(kind: str, record: dict, content_id: Callable[[dict], str]) -> dict:
+    """Return one log line naming ``record`` by the content id of its own fields."""
+    return {"kind": kind, "id": content_id(record), "record": record}
+
+
+def _line_names_its_record(line: Any, content_id: Callable[[dict], str]) -> bool:
+    """Answer whether ``line`` is a log line whose id is its record's content id.
+
+    A line cut part way through never reaches here, because it does not parse;
+    this refuses one that parses and no longer names what it carries.
+    """
+    if not isinstance(line, dict) or line.get("kind") not in LOG_KINDS:
+        return False
+    record = line.get("record")
+    if not isinstance(record, dict):
+        return False
+    try:
+        return line.get("id") == content_id(record)
+    except ValueError:
+        return False
+
+
+@dataclass
+class _SavePlan:
+    """What one ``_save_now`` writes, and the counters it advances afterwards.
+
+    ``_plan_save`` builds it under ``_mutation_lock`` so the file writes happen
+    outside that lock against a snapshot nothing can still be mutating.
+    """
+
+    lines: list = field(default_factory=list)
+    blocks: int = 0
+    transactions: int = 0
+    events: int = 0
+    derived_state: dict = field(default_factory=dict)
+    checkpoint: Optional[dict] = None
 
 
 @dataclass
@@ -119,6 +177,14 @@ class SharedTestnetBridge(QObject):
         super().__init__(parent)
         self._testnet = testnet
         self._persist_path = persist_path
+        self._log_path = persist_path.with_suffix(LOG_SUFFIX) if persist_path else None
+        self._logged_blocks = 0
+        self._logged_transactions = 0
+        self._logged_events = 0
+        self._log_bytes = 0
+        self._log_tail_id: Optional[str] = None
+        self._records_since_checkpoint = 0
+        self._logged_derived_state: Optional[dict] = None
         self._queue: queue.Queue = queue.Queue()
         self._mutation_lock = threading.Lock()
         self._active_worker: Optional[_CompetitionWorker] = None
@@ -468,20 +534,29 @@ class SharedTestnetBridge(QObject):
         self._queue.put(req)
 
     def reset(self, reason: str = "user-requested") -> None:
-        """Replace the chain with a fresh ``LocalTestnet`` and unlink
-        ``_persist_path``.
+        """Replace the chain with a fresh ``LocalTestnet`` and unlink both files.
 
-        Emits ``chain_reset`` with ``reason`` and then ``chain_updated``.
+        The checkpoint at ``_persist_path`` and the log at ``_log_path`` go
+        together: a log kept past a reset would replay the history the reset
+        dropped. Emits ``chain_reset`` with ``reason`` and then ``chain_updated``.
         """
         from src.competition.local_testnet import LocalTestnet
 
         with self._mutation_lock:
             self._testnet.__dict__.update(LocalTestnet().__dict__)
-        try:
-            if self._persist_path and self._persist_path.is_file():
-                self._persist_path.unlink()
-        except Exception as e:
-            logger.warning("failed to delete persist file: %s", e)
+        self._logged_blocks = 0
+        self._logged_transactions = 0
+        self._logged_events = 0
+        self._log_bytes = 0
+        self._log_tail_id = None
+        self._records_since_checkpoint = 0
+        self._logged_derived_state = None
+        for path in (self._persist_path, self._log_path):
+            try:
+                if path and path.is_file():
+                    path.unlink()
+            except Exception as e:
+                logger.warning("failed to delete %s: %s", path, e)
         logger.info("chain reset (%s)", reason)
         self.chain_reset.emit(reason)
         self.chain_updated.emit()
@@ -531,47 +606,146 @@ class SharedTestnetBridge(QObject):
         self._persist_timer.start()
 
     def _save_now(self) -> None:
-        """Write ``_serialize_state`` to ``_persist_path`` through
-        ``atomic_write_json``.
+        """Append every record the log does not hold, then checkpoint when due.
 
-        Does nothing while ``_persist_path`` is ``None``.
+        Does nothing while ``_persist_path`` is ``None``. Re-arms
+        ``_persist_timer`` and returns while another thread holds
+        ``_mutation_lock``, so an append never reads a record a worker is still
+        writing. The append costs the new records only; the checkpoint costs the
+        whole chain and fires once per ``CHECKPOINT_RECORD_INTERVAL`` records.
         """
-        if self._persist_path is None:
+        if self._persist_path is None or self._log_path is None:
             return
         try:
-            payload = self._serialize_state()
+            plan = self._plan_save()
         except Exception as e:
             logger.warning("failed to serialize chain state: %s", e)
             return
-        try:
-            atomic_write_json(self._persist_path, payload, indent=2)
-            logger.debug(
-                "chain persisted (block=%d, txs=%d)",
-                payload.get("block_number", 0),
-                len(payload.get("transactions", [])),
-            )
-        except Exception as e:
-            logger.warning("chain persist failed: %s", e)
+        if plan is None:
+            self._persist_timer.start()
+            return
+        if plan.lines and not self._append_log(plan):
+            return
+        if plan.checkpoint is not None:
+            self._write_checkpoint(plan)
 
-    def _serialize_state(self) -> dict:
-        """Return the ``_chain``, ``_acrv`` and ``_registry`` state as a
-        JSON dict.
+    def _plan_save(self) -> Optional[_SavePlan]:
+        """Snapshot the lines to append and the checkpoint to write, or ``None``.
 
-        ``_restore_state`` reads the same keys, and ``content_ids_from_block``
-        carries the block number from which stored ids derive from contents.
+        Takes ``_mutation_lock`` without waiting and returns ``None`` when it
+        cannot, so a mutation in progress defers the save rather than being read
+        half written. The file writes happen after the release.
         """
-        chain = self._testnet._chain
+        from src.competition.local_testnet import content_id
+
+        if not self._mutation_lock.acquire(blocking=False):
+            return None
+        started = time.perf_counter()
+        try:
+            chain = self._testnet._chain
+            transactions = list(chain._txs.values())
+            lines = [
+                _log_line("block", b.to_dict(), content_id)
+                for b in chain._blocks[self._logged_blocks :]
+            ]
+            lines += [
+                _log_line("transaction", t.to_dict(), content_id)
+                for t in transactions[self._logged_transactions :]
+            ]
+            lines += [
+                _log_line("event", e.to_dict(), content_id)
+                for e in chain._events[self._logged_events :]
+            ]
+            derived_state = self._derived_state()
+            if derived_state != self._logged_derived_state:
+                lines.append(_log_line("state", derived_state, content_id))
+            due = (
+                self._records_since_checkpoint + len(lines)
+                >= CHECKPOINT_RECORD_INTERVAL
+            )
+            plan = _SavePlan(
+                lines=lines,
+                blocks=len(chain._blocks),
+                transactions=len(transactions),
+                events=len(chain._events),
+                derived_state=derived_state,
+                checkpoint=self._serialize_state() if due else None,
+            )
+        finally:
+            self._mutation_lock.release()
+        logger.debug(
+            "chain save planned (records=%d, checkpoint=%s, ms=%.1f)",
+            len(plan.lines),
+            plan.checkpoint is not None,
+            (time.perf_counter() - started) * 1000,
+        )
+        return plan
+
+    def _append_log(self, plan: _SavePlan) -> bool:
+        """Append ``plan.lines`` to ``_log_path`` and advance what the log holds.
+
+        Returns False when the append raised, leaving every counter as it was so
+        the next ``_save_now`` offers the same records again.
+        """
+        started = time.perf_counter()
+        try:
+            written = append_json_lines(self._log_path, plan.lines)
+        except Exception as e:
+            logger.warning("chain log append failed: %s", e)
+            return False
+        self._logged_blocks = plan.blocks
+        self._logged_transactions = plan.transactions
+        self._logged_events = plan.events
+        self._logged_derived_state = plan.derived_state
+        self._log_bytes += written
+        self._log_tail_id = plan.lines[-1]["id"]
+        self._records_since_checkpoint += len(plan.lines)
+        logger.debug(
+            "chain log appended (records=%d, bytes=%d, log bytes=%d, ms=%.1f)",
+            len(plan.lines),
+            written,
+            self._log_bytes,
+            (time.perf_counter() - started) * 1000,
+        )
+        return True
+
+    def _write_checkpoint(self, plan: _SavePlan) -> None:
+        """Write ``plan.checkpoint`` over ``_persist_path`` with ``atomic_write_json``.
+
+        That call stages a temp file, fsyncs it and renames it, so a reader never
+        sees half a checkpoint and a failed write leaves the previous one whole.
+        ``_append_log`` has already run, so ``_log_bytes`` and ``_log_tail_id``
+        name the log position this checkpoint absorbs.
+        """
+        started = time.perf_counter()
+        plan.checkpoint["log_bytes"] = self._log_bytes
+        plan.checkpoint["log_tail_id"] = self._log_tail_id
+        try:
+            path = atomic_write_json(self._persist_path, plan.checkpoint, indent=2)
+        except Exception as e:
+            logger.warning("chain checkpoint failed: %s", e)
+            return
+        self._records_since_checkpoint = 0
+        logger.info(
+            "chain checkpoint written (block=%d, txs=%d, log bytes absorbed=%d, "
+            "bytes=%d, ms=%.1f)",
+            plan.checkpoint.get("block_number", 0),
+            len(plan.checkpoint.get("transactions", [])),
+            self._log_bytes,
+            path.stat().st_size,
+            (time.perf_counter() - started) * 1000,
+        )
+
+    def _derived_state(self) -> dict:
+        """Return the state no block, transaction or event on the log carries.
+
+        ``_restore_derived_state`` reads the same keys, from a checkpoint or from
+        the log's last ``state`` record, so both load paths reach one state.
+        """
         acrv = self._testnet._acrv
         registry = self._testnet._registry
         return {
-            "schema_version": SCHEMA_VERSION,
-            "saved_at": time.time(),
-            "content_ids_from_block": chain.content_id_from_block,
-            "block_number": chain._block_number,
-            "blocks": [b.to_dict() for b in chain._blocks],
-            # _txs is a dict keyed by hash → preserve as list of tx dicts
-            "transactions": [t.to_dict() for t in chain._txs.values()],
-            "events": [e.to_dict() for e in chain._events],
+            "content_ids_from_block": self._testnet._chain.content_id_from_block,
             "acrv_balances": dict(acrv._balances),
             "acrv_allowances": {a: dict(b) for a, b in acrv._allowances.items()},
             "acrv_total_supply": acrv._total_supply,
@@ -579,19 +753,191 @@ class SharedTestnetBridge(QObject):
             "competitions": {k: v for k, v in registry._comps.items()},
         }
 
-    def _try_load(self) -> None:
-        """Fill the chain from ``_persist_path`` through ``_restore_state``.
+    def _serialize_state(self) -> dict:
+        """Return the whole chain as the checkpoint payload ``_restore_state`` reads.
 
-        A ``schema_version`` other than ``SCHEMA_VERSION`` or a failed
-        restore unlinks the file; unreadable JSON leaves it in place.
+        ``_write_checkpoint`` adds ``log_bytes`` and ``log_tail_id`` to it after the
+        append that this payload covers.
+        """
+        chain = self._testnet._chain
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "saved_at": time.time(),
+            "block_number": chain._block_number,
+            "blocks": [b.to_dict() for b in chain._blocks],
+            # _txs is a dict keyed by hash → preserve as list of tx dicts
+            "transactions": [t.to_dict() for t in chain._txs.values()],
+            "events": [e.to_dict() for e in chain._events],
+            **self._derived_state(),
+        }
+
+    def _try_load(self) -> None:
+        """Fill the chain from the checkpoint, then replay the log after it.
+
+        The log decides. A checkpoint naming a last log record the log does not
+        carry is ignored and the whole log replayed instead. A checkpoint that
+        absorbed no log bytes is the only source for the records it holds, which is
+        how a whole-file chain written before the log loads. A failed restore
+        unlinks the checkpoint.
+        """
+        started = time.perf_counter()
+        payload = self._read_checkpoint()
+        start = self._confirmed_log_start(payload) if payload is not None else 0
+        if start is None:
+            payload = None
+            start = 0
+        lines, log_end = self._read_log(start)
+        if payload is None and not lines:
+            return
+        chain = self._testnet._chain
+        try:
+            if payload is not None:
+                self._restore_state(payload)
+            else:
+                chain._blocks = []
+                chain._txs = {}
+                chain._events = []
+            self._replay_log(lines)
+            if lines:
+                chain._block_number = chain._blocks[-1].number if chain._blocks else 0
+                chain.reindex_placements()
+            self._logged_blocks = len(chain._blocks)
+            self._logged_transactions = len(chain._txs)
+            self._logged_events = len(chain._events)
+            self._log_bytes = log_end
+            self._log_tail_id = (
+                lines[-1]["id"] if lines else (payload or {}).get("log_tail_id")
+            )
+            self._records_since_checkpoint = len(lines)
+            self._logged_derived_state = self._derived_state()
+            saved_at = self._saved_at(payload)
+            logger.info(
+                "chain restored from disk (block=%d, log records replayed=%d, "
+                "log bytes=%d, age=%.0f min, ms=%.1f)",
+                chain.block_number,
+                len(lines),
+                log_end,
+                max(0, (time.time() - saved_at) / 60) if saved_at else 0,
+                (time.perf_counter() - started) * 1000,
+            )
+            try:
+                self._testnet.verify_integrity()
+            except (TypeError, ValueError) as e:
+                # A raise here must not reach the handler below, which unlinks.
+                logger.warning("restored chain could not be verified: %s", e)
+        except Exception as e:
+            logger.warning("chain restore failed (%s) — starting fresh", e)
+            # Don't leave a corrupt file in place
+            try:
+                if self._persist_path is not None:
+                    self._persist_path.unlink()
+            except Exception as e:
+                logger.warning("corrupt chain file not removed: %s", e)
+
+    def _saved_at(self, payload: Optional[dict]) -> float:
+        """When the state now loading was written, by the checkpoint or the log."""
+        stamp = float((payload or {}).get("saved_at") or 0.0)
+        if stamp or self._log_path is None or not self._log_path.is_file():
+            return stamp
+        return self._log_path.stat().st_mtime
+
+    def _read_log(self, start: int) -> tuple[list, int]:
+        """Return the whole log lines after byte ``start``, and where they end.
+
+        A line counts only when it parses and still names its own record, so a write
+        cut part way through contributes nothing; the bytes after the last counted
+        line are dropped, because an append onto them would produce a line no load
+        can read. The lines before ``start`` are not read at all: the checkpoint
+        that named that offset already holds them.
+        """
+        from src.competition.local_testnet import content_id
+
+        if self._log_path is None or not self._log_path.is_file():
+            return [], start
+        started = time.perf_counter()
+        try:
+            lines, end = read_json_lines(
+                self._log_path,
+                start=start,
+                accept=lambda line: _line_names_its_record(line, content_id),
+            )
+            size = self._log_path.stat().st_size
+        except OSError as e:
+            logger.warning("chain log unreadable (%s) — replaying none of it", e)
+            return [], start
+        logger.info(
+            "chain log read %d whole records from byte %d of %d (ms=%.1f)",
+            len(lines),
+            start,
+            size,
+            (time.perf_counter() - started) * 1000,
+        )
+        if size > end:
+            logger.warning(
+                "chain log carries %d bytes past its %d whole records, which no "
+                "load can read — dropping them",
+                size - end,
+                len(lines),
+            )
+            try:
+                os.truncate(self._log_path, end)
+            except OSError as e:
+                logger.warning("incomplete chain log tail not removed: %s", e)
+        return lines, end
+
+    def _confirmed_log_start(self, payload: dict) -> Optional[int]:
+        """Return the byte the log continues ``payload`` from, or ``None``.
+
+        ``None`` means the log carries a different record where the checkpoint
+        names ``log_tail_id``, and the log is the history; a log too short to reach
+        that offset holds nothing the checkpoint does not, so it is emptied and the
+        checkpoint stands.
+        """
+        end = int(payload.get("log_bytes", 0))
+        if end <= 0 or self._log_path is None or not self._log_path.is_file():
+            return 0
+        if self._log_path.stat().st_size < end:
+            logger.warning(
+                "chain log is shorter than the %d bytes this checkpoint absorbed, "
+                "so it carries nothing the checkpoint does not — emptying it",
+                end,
+            )
+            try:
+                os.truncate(self._log_path, 0)
+            except OSError as e:
+                logger.warning("short chain log not emptied: %s", e)
+            return 0
+        standing = read_json_line_before(self._log_path, end)
+        if isinstance(standing, dict) and standing.get("id") == payload.get(
+            "log_tail_id"
+        ):
+            return end
+        logger.warning(
+            "checkpoint absorbed %d log bytes and names %s as the last record "
+            "there, which the log does not carry — replaying the log instead, "
+            "because the log is the history",
+            end,
+            payload.get("log_tail_id"),
+        )
+        return None
+
+    def _read_checkpoint(self) -> Optional[dict]:
+        """Return the checkpoint payload at ``_persist_path``, or ``None``.
+
+        A ``schema_version`` other than ``SCHEMA_VERSION`` unlinks the file under
+        the wipe-and-warn policy, and unreadable JSON leaves it in place and hands
+        the load to the log.
         """
         if self._persist_path is None or not self._persist_path.is_file():
-            return
+            return None
         try:
             payload = json.loads(self._persist_path.read_text(encoding="utf-8"))
         except Exception as e:
-            logger.warning("persisted chain unreadable (%s) — starting " "fresh", e)
-            return
+            logger.warning(
+                "persisted checkpoint unreadable (%s) — replaying the log " "instead",
+                e,
+            )
+            return None
         ver = payload.get("schema_version")
         if ver != SCHEMA_VERSION:
             logger.warning(
@@ -605,43 +951,39 @@ class SharedTestnetBridge(QObject):
             except Exception as e:
                 logger.warning("stale chain file not removed: %s", e)
             self.chain_reset.emit(f"schema version upgrade ({ver} → {SCHEMA_VERSION})")
-            return
-        try:
-            self._restore_state(payload)
-            saved_at = payload.get("saved_at", 0)
-            age_min = max(0, (time.time() - saved_at) / 60)
-            logger.info(
-                "chain restored from disk (block=%d, age=%.0f min)",
-                payload.get("block_number", 0),
-                age_min,
-            )
-            try:
-                self._testnet.verify_integrity()
-            except (TypeError, ValueError) as e:
-                # A raise here must not reach the handler below, which unlinks.
-                logger.warning("restored chain could not be verified: %s", e)
-        except Exception as e:
-            logger.warning("chain restore failed (%s) — starting fresh", e)
-            # Don't leave a corrupt file in place
-            try:
-                self._persist_path.unlink()
-            except Exception as e:
-                logger.warning("corrupt chain file not removed: %s", e)
+            return None
+        return payload
+
+    def _replay_log(self, lines: list) -> None:
+        """Apply ``lines`` to the chain in the order they were appended."""
+        from src.competition.local_testnet import Block, ChainEvent, TxRecord
+
+        chain = self._testnet._chain
+        for line in lines:
+            kind = line["kind"]
+            record = line["record"]
+            if kind == "block":
+                chain._blocks.append(Block(**record))
+            elif kind == "transaction":
+                tx = TxRecord(**record)
+                chain._txs[tx.tx_hash] = tx
+            elif kind == "event":
+                chain._events.append(ChainEvent(**record))
+            else:
+                self._restore_derived_state(
+                    record, int(record["content_ids_from_block"])
+                )
 
     def _restore_state(self, payload: dict) -> None:
-        """Rebuild ``_chain``, ``_acrv`` and ``_registry`` from a
-        ``_serialize_state`` payload.
+        """Rebuild ``_chain``, ``_acrv`` and ``_registry`` from a checkpoint payload.
 
         A missing or mismatched field raises out of ``Block``, ``TxRecord`` or
         ``ChainEvent``. A payload with no ``content_ids_from_block`` marks every
         record it carries legacy.
         """
-        from src.competition.local_testnet import Block, TxRecord, ChainEvent
+        from src.competition.local_testnet import Block, ChainEvent, TxRecord
 
         chain = self._testnet._chain
-        acrv = self._testnet._acrv
-        registry = self._testnet._registry
-
         chain._blocks = [Block(**b) for b in payload.get("blocks", [])]
         # Restore _txs as the dict LocalChain expects: hash → TxRecord
         chain._txs = {
@@ -650,15 +992,24 @@ class SharedTestnetBridge(QObject):
         chain._events = [ChainEvent(**e) for e in payload.get("events", [])]
         chain._block_number = payload.get("block_number", 0)
         chain.reindex_placements()
-        chain.set_content_id_from_block(
-            payload.get("content_ids_from_block", chain._block_number + 1)
+        self._restore_derived_state(
+            payload,
+            int(payload.get("content_ids_from_block", chain._block_number + 1)),
         )
 
-        acrv._balances = dict(payload.get("acrv_balances", {}))
-        acrv._allowances = {
-            a: dict(b) for a, b in payload.get("acrv_allowances", {}).items()
-        }
-        acrv._total_supply = int(payload.get("acrv_total_supply", 0))
-        acrv._mint_log = list(payload.get("acrv_mint_log", []))
+    def _restore_derived_state(self, state: dict, content_ids_from_block: int) -> None:
+        """Fill the token, registry and id-origin state from ``state``.
 
-        registry._comps = dict(payload.get("competitions", {}))
+        A checkpoint payload and a log ``state`` record carry the same keys, so
+        restoring either reaches the same balances and competitions.
+        """
+        acrv = self._testnet._acrv
+        registry = self._testnet._registry
+        self._testnet._chain.set_content_id_from_block(content_ids_from_block)
+        acrv._balances = dict(state.get("acrv_balances", {}))
+        acrv._allowances = {
+            a: dict(b) for a, b in state.get("acrv_allowances", {}).items()
+        }
+        acrv._total_supply = int(state.get("acrv_total_supply", 0))
+        acrv._mint_log = list(state.get("acrv_mint_log", []))
+        registry._comps = dict(state.get("competitions", {}))
