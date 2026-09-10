@@ -56,6 +56,12 @@ from .project_age import (
     MIN_PROJECT_AGE_MONTHS,
     REFUSAL_REASONS,
 )
+from .node_link import (
+    ChainRecord,
+    NodeLinkError,
+    PeerEndpoint,
+    PoaNodeLink,
+)
 
 __all__ = [
     "BotIdentity",
@@ -95,4 +101,8 @@ __all__ = [
     "ProjectAgeError",
     "MIN_PROJECT_AGE_MONTHS",
     "REFUSAL_REASONS",
+    "ChainRecord",
+    "NodeLinkError",
+    "PeerEndpoint",
+    "PoaNodeLink",
 ]
