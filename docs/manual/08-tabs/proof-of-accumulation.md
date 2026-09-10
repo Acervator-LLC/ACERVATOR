@@ -3241,6 +3241,135 @@ The turnout figure counts addresses as of their last refresh, and any address ma
 refresh any other at no cost. A roster nobody has refreshed lately gives a stale
 turnout figure rather than a wrong one, and the contract still checks every vote
 against the voter's real franchise at the moment they cast it.
+## 2026-09-10 01:47 - #147 - the mark slot on the party row
+
+Every party row now carries one mark slot on its right-hand edge. The slot shows
+a single mark at a time, and it shows nothing at all when the participant is in
+good order. The row also prints its market beside the identifier, which is the
+first readable thing a party row has ever carried.
+
+### A bot has no name, so the row shows its market
+
+The design asked for a truncated name. No name exists to truncate. Every bot
+record was read through the loader the tab already uses, and not one of the
+thirty-eight carries a field holding a name or a label.
+
+```
+bots read from the fleet file                      38
+bot id length                                      8 characters
+config keys containing "name" or "label"           0, across all 38
+the only readable field on the record              symbol, for example RE/USD
+```
+
+The identifier is therefore shown whole rather than truncated, because eight
+characters is the whole of it. The market symbol now sits next to it and carries
+the meaning. A row reads as its market, not as a string of hexadecimal.
+
+```
+04e1cafc   RE/USD      $54.19
+092428b2   BONK/USD    $101.98
+168b78e3   IMU/USDC    $67.30
+45e9e720   ALLO/USDC   $134.05
+```
+
+### Six marks, ranked, and the slot shows only the first that holds
+
+The slot holds one mark and never two. When several conditions are true at once
+the most urgent wins and the rest are not drawn.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the ranking
+
+```python
+MARK_RANKS: tuple[str, ...] = (
+    MARK_DEAD,
+    MARK_MISSED_WINDOW,
+    MARK_OUT_OF_IMPETUS,
+    MARK_AFFLICTED,
+    MARK_NO_CLASS,
+    MARK_ALIGNMENT_SKEW,
+)
+```
+
+Death outranks everything because it ends the participant's turn. A missed window
+and an empty Impetus pool come next, as they cost an action. An affliction is a
+condition a participant can act through. No class picked is a setup step rather
+than a fault. The alignment lean sits last because it names no fault at all.
+
+### Two marks read real state today
+
+A dead participant is one the program can find no health figure for. An unclassed
+participant is one with no class chosen for the running event. Both are read off
+values the tab already computes.
+
+```
+dead              the health figure is absent        paints #ff5577
+no class picked   the class reads as none            paints #555555
+```
+
+The running page was read back after it drew. Thirty-seven of the thirty-eight
+rows carried the unclassed mark and the one with a class carried none.
+
+```
+rows drawn          38
+mark slots drawn    38
+rows marked         37
+rows unmarked        1
+```
+
+### Two conditions at once still show one mark
+
+A participant with no health and no class satisfies both the first rank and the
+fifth. The slot drew the first and dropped the other.
+
+```
+aaaa1111  $120.00  Lead Ward   no mark        transparent
+bbbb2222  $75.50   none        no class picked  rgb(85, 85, 85)
+cccc3333  --       none        dead             rgb(255, 85, 119)
+```
+
+The third row is the proof. It is unclassed as well as dead, and only the dead
+mark reached the screen.
+
+### Four marks have nothing to read, and the screen says so
+
+The other four conditions have no value behind them anywhere in the program. No
+mark is drawn for them, because a mark wired to a value that is always absent
+would read as working. The party window prints what each one is waiting for.
+
+```
+4 of 6 marks have no state to read, so no slot draws one: missed the window
+waits on unit 13's action record, one a participant an event; out of Impetus
+waits on unit 13's action record, one a participant an event; afflicted waits
+on no unit; the art brief's tier 3 decans; alignment skew waits on no unit;
+the art brief's alignment score.
+```
+
+Two of the four wait on the action record that unit 13 writes, one per
+participant per event. The other two are named only in the art brief and no unit
+is assigned to either.
+
+### The marks draw on the demo chain too
+
+The demo chain takes the same code path. Nothing switches on a flag; the panel is
+given a chain name when it is built and the surface reads that chain's own fleet
+file.
+
+```
+panel chain at construction   testnet
+the chain the page carries    testnet
+the fleet file read           bot_state_testnet.json
+dddd4444  DDD/USD  no class picked  rgb(85, 85, 85)
+eeee5555  EEE/USD  dead             rgb(255, 85, 119)
+```
+
+### What the mark slot does not reach
+
+The slot is a coloured square, not a picture. The six glyphs the art brief
+specifies are a commission that has not been made, so each mark is drawn as its
+colour and names itself to a screen reader.
+
+No health bar and no role colour exist on the row yet. Both are listed in the art
+brief and neither has a token behind it.
 ## 2026-09-10 08:26 - #147 - the capture bounds and the grade curve
 
 A market's Quintessence pool now exists, and four bounds stand between a trade
