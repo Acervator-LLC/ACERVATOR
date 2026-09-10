@@ -1187,8 +1187,8 @@ cap, so those three remain open.
 
 The wallet holds real state. The balance in the party window's header is the
 figure the Quintessence ledger computed for this node, and it stays on screen
-while the wallet is closed. Opening the wallet lays three holdings side by side
-across the party window: Quintessence, trophies, loot.
+while the wallet is closed. Opening the wallet lays four holdings side by side
+across the party window: Quintessence, trophies, loot, Vessels.
 
 Quintessence reads the ledger file belonging to the chain the tab is showing.
 Five figures, every one of them the ledger's own, none of them worked out on the
@@ -6727,3 +6727,157 @@ movement names now   embed_from_pleroma, release_to_pleroma
 files on disk        none carried the old word
 file version         unchanged
 ```
+
+## 2026-09-10 21:30 - #147 - a reset control, two meters and the wallet's fourth holding
+
+> "PoA - Demo Mode - ... Must be able to reset the testnet."
+
+The reset itself was already built and locked, on a screen that was retired. Two
+buttons now sit at the end of the control row and reach it.
+
+```
+Ask what a reset deletes            names both files, their bytes and the block height
+Delete both files and start fresh   calls the reset the shared chain already carried
+```
+
+### The first button deletes nothing
+
+Pressing Ask loads the chain and reports what a reset would take. The verdict
+reads refused, and every figure under it is the chain's own.
+
+```
+testnet_chain_testnet.json and testnet_chain_testnet.log hold 38778 bytes at
+block height 32. Confirm the reset deletes both; this control deletes nothing.
+
+Block height             32
+Chain events             24
+Bytes both files hold    38778
+```
+
+Reading the page again after that press showed the same block height and the same
+38,778 bytes. Nothing moved.
+
+### The second button acts, and the chain starts again at its genesis block
+
+```
+testnet_chain_testnet.json and testnet_chain_testnet.log are deleted and the
+Demo TestNet chain stands at block height 0 for the reason the Accumulation
+tab's reset control.
+
+Block height             0
+Chain events             0
+Bytes both files hold    0
+```
+
+### A deliberate reset and a schema wipe do not read the same
+
+One signal announces both. Every reset carries a reason, and the panel under the
+buttons prints the two reasons together, so a reader can tell which one happened.
+
+```
+A deliberate reset reads   the Accumulation tab's reset control
+A schema wipe reads        schema version upgrade (another schema → 1)
+```
+
+### Reset acts on the demo chain and refuses on the live one
+
+The live chain is the one a running window holds in memory. Deleting its files
+would leave that window free to write the chain back, so both buttons refuse
+there and say why.
+
+```
+Reset clears the Demo TestNet chain. The Live chain is the one a running window
+holds in memory, which would write it back, so this refuses there.
+```
+
+### Two meters, side by side
+
+> "A block fill and real time turn completion meter next to each other."
+
+They sit in the player window as one pair under one heading, two equal cards on
+one baseline.
+
+```
+BLOCK FILL         2.7%    28230 of 1048576 bytes
+TURN COMPLETION   98.7%    296s of 300s elapsed
+```
+
+Together they answer a question neither answers alone. A block near full with the
+turn barely begun is a world running hot; a quiet block with the turn nearly
+closed is a world with room to spare.
+
+### The byte bound is now a number the program reads
+
+The fill meter needs something to fill against, and the only bound is the one the
+world budget recommends: one megabyte a layer a world turn. That figure was a
+line in a report until this unit, and it is now a constant beside the chain's
+checkpoint cadence.
+
+```python
+#: One layer's byte ceiling for one world turn, which buys 2,621 records at 400 bytes.
+TURN_BYTE_CAPACITY = 1_048_576
+```
+
+### The fill meter costs two reads and parses nothing
+
+A meter that redraws every second must not walk the chain. This one asks the file
+system for the length of the checkpoint and the length of the log, which is what
+the save path wrote, and adds them.
+
+```
+28230 of 1048576 bytes   2.7%
+38778 of 1048576 bytes   3.7%   after ten more records were saved
+0 of 1048576 bytes       0.0%   after the reset deleted both files
+```
+
+Nothing records the bytes one world turn wrote, so the meter reads every byte the
+chain holds since its last reset, and its note on the page says so.
+
+### The wallet's fourth holding
+
+The requirement, in his own words:
+
+```
+So a Quint wallet must be able to show Quint, NFTs, Loot, and Vessels all
+tied to PoA.
+```
+
+Vessels joins Quintessence, trophies and loot, drawn the same way as the other
+three and reading the same way: a real Vessel, or a plain sentence saying there is
+none.
+
+```
+Vessels
+Iron Edge             level 1 - Impetus 4
+Summed requirement    --
+```
+
+A Vessel is the class a Reincarnate occupies. Nothing on disk keeps a set of
+Vessels against a wallet address, so the section reads the class pick the running
+request names and says plainly when that names nobody.
+
+```
+poa_record_store.json keeps no Vessel for this participant. A Vessel is the
+class a Reincarnate occupies, and only a class pick names one.
+```
+
+### The summed requirement has no figure yet
+
+Several Vessels are meant to sum their Quintessence requirement against one
+wallet total. No field anywhere holds what a Vessel's level requires, so the row
+is there and its value is two dashes.
+
+```
+No field holds the Quintessence a Vessel's level requires, so no requirement
+sums against the balance above.
+```
+
+### What these three do not reach
+
+No control on the page picks a class, so the Vessels section reads a Vessel only
+when a request names one. Nothing writes a Vessel to a file, and the record store
+that already keeps skill uses against an address is where one would sit.
+
+The reset loads the chain it is about to clear, so a press costs one replay of
+that chain. The live chain is refused before any load, and nothing here changes
+the saved schema version.

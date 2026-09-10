@@ -10,6 +10,9 @@ worker at a time. ``_save_now`` appends every new record to the log beside
 ``CHECKPOINT_RECORD_INTERVAL`` records, and ``_try_load`` restores the
 checkpoint and replays the log after it. ``_try_load`` drops a checkpoint whose
 ``schema_version`` is not ``SCHEMA_VERSION``.
+
+``chain_standing`` and ``reset_chain`` build one bridge over a saved chain and
+read or reset it, so a screen reaches ``reset`` without a MainWindow.
 """
 
 from __future__ import annotations
@@ -48,6 +51,10 @@ logger = logging.getLogger("acervator.shared_testnet")
 
 
 SCHEMA_VERSION = 1
+
+#: The reason ``_read_checkpoint`` emits when it drops a checkpoint of another schema.
+SCHEMA_WIPE_REASON = "schema version upgrade ({found} → {wanted})"
+
 DEFAULT_PERSIST_PATH = Path.home() / ".acervator" / "testnet_chain.json"
 QUEUE_DRAIN_INTERVAL_MS = 250
 PERSIST_DEBOUNCE_MS = 500
@@ -56,6 +63,9 @@ PERSIST_DEBOUNCE_MS = 500
 #: At the twenty layers the world budget measures, 52,420 records fill one world
 #: turn, so this is about one checkpoint an hour.
 CHECKPOINT_RECORD_INTERVAL = 50_000
+
+#: One layer's byte ceiling for one world turn, which buys 2,621 records at 400 bytes.
+TURN_BYTE_CAPACITY = 1_048_576
 
 #: What one log line carries. ``state`` holds what no block, transaction or
 #: event does: the token balances, the competitions and the id origin.
@@ -263,6 +273,25 @@ class SharedTestnetBridge(QObject):
         main_win._poa_world = bridge.install_world(world_path)
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
+
+    @classmethod
+    def load_from(cls, persist_path: Path) -> "SharedTestnetBridge":
+        """One bridge over ``persist_path``, its chain replayed and both timers stopped.
+
+        Nothing is attached to a MainWindow, so a screen reads or resets a saved
+        chain without the installed bridge.
+        """
+        from src.competition.local_testnet import LocalTestnet
+
+        bridge = cls(LocalTestnet(), persist_path=persist_path)
+        bridge.stand_down()
+        bridge._try_load()
+        return bridge
+
+    def stand_down(self) -> None:
+        """Stop ``_drain_timer`` and ``_persist_timer``, so this bridge runs nothing."""
+        self._drain_timer.stop()
+        self._persist_timer.stop()
 
     def install_event_redistribution(
         self,
@@ -986,7 +1015,9 @@ class SharedTestnetBridge(QObject):
                 self._persist_path.unlink()
             except Exception as e:
                 logger.warning("stale chain file not removed: %s", e)
-            self.chain_reset.emit(f"schema version upgrade ({ver} → {SCHEMA_VERSION})")
+            self.chain_reset.emit(
+                SCHEMA_WIPE_REASON.format(found=ver, wanted=SCHEMA_VERSION)
+            )
             return None
         return payload
 
@@ -1049,3 +1080,50 @@ class SharedTestnetBridge(QObject):
         acrv._total_supply = int(state.get("acrv_total_supply", 0))
         acrv._mint_log = list(state.get("acrv_mint_log", []))
         registry._comps = dict(state.get("competitions", {}))
+
+
+def chain_bytes(persist_path: Optional[Path]) -> int:
+    """The bytes the checkpoint at ``persist_path`` and its ``LOG_SUFFIX`` log hold.
+
+    Each file's own length as the file system records it, which is what
+    ``_write_checkpoint`` and ``_append_log`` wrote; no record is parsed.
+    """
+    if persist_path is None:
+        return 0
+    total = 0
+    for path in (persist_path, persist_path.with_suffix(LOG_SUFFIX)):
+        try:
+            total += path.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _standing(bridge: SharedTestnetBridge, persist_path: Path, reasons: list) -> dict:
+    """The chain's own stats, the bytes its files hold, and the ``reasons`` emitted."""
+    stats = bridge.testnet.get_competition_stats()
+    return {
+        "block_height": int(stats["block_number"]),
+        "transactions": int(stats["total_transactions"]),
+        "events": int(stats["total_events"]),
+        "bytes": chain_bytes(persist_path),
+        "reasons": list(reasons),
+    }
+
+
+def chain_standing(persist_path: Path) -> dict:
+    """What the saved chain at ``persist_path`` holds, read through one loaded bridge."""
+    return _standing(SharedTestnetBridge.load_from(persist_path), persist_path, [])
+
+
+def reset_chain(persist_path: Path, reason: str) -> dict:
+    """Reset the chain at ``persist_path`` through ``SharedTestnetBridge.reset``.
+
+    The returned ``reasons`` carry what ``chain_reset`` emitted, which is what tells
+    a deliberate reset from the schema wipe raising the same signal.
+    """
+    bridge = SharedTestnetBridge.load_from(persist_path)
+    reasons: list = []
+    bridge.chain_reset.connect(reasons.append)
+    bridge.reset(reason)
+    return _standing(bridge, persist_path, reasons)
