@@ -18,6 +18,12 @@ only a mode carrying a map opens the map subtab. ``character_stats`` pairs every
 loot section beside the item classes nothing builds, ``skill_tree`` draws the
 ladder as a list over ``SKILL_NAMES``, and ``map_panel`` states that no world is
 generated.
+``controls`` serves the nine buttons that drive the mechanisms and fires the one
+``params`` names through ``control_result``, which calls each mechanism's own
+entry point and answers its refusal sentence unchanged. ``conservation`` reads
+``QuintessenceLedger.conservation`` after a control acts and ``season`` reads the
+chain's own season, the exclusions its boundary binds, and the fact that nothing
+under ``src`` advances the counter.
 ``src.core.desktop_bridge`` registers this module under ``METHOD``, and
 ``chain_of`` reads ``params`` so a TestNet demo run takes this code path against
 its own ledger files.
@@ -31,22 +37,38 @@ from decimal import Decimal
 from pathlib import Path
 
 from ...competition.action_spend import (
+    CHEAPEST_BAND,
+    DEAREST_BAND,
     DEFAULT_STORE_PATH,
     EVENT_POT_ADDRESS,
+    ActionSpend,
+    ActionSpendError,
     PoaRecordStore,
+    band_cost,
 )
 from ...competition.bot_identity import BotIdentity
+from ...competition.capture_bounds import MIN_SCORED_AXES
 from ...competition.event_redistribution import (
     RETURN_PERCENT,
     EventRedistribution,
     RedistributionError,
 )
+from ...competition.local_testnet import LocalTestnet
 from ...competition.loot_drop import (
     DEFAULT_LOOT_PATH,
     LootError,
     LootStore,
     augment_action,
     bonus_text,
+    drop_from_pool,
+    request_from_pool,
+)
+from ...competition.market_rotation import (
+    AGE_LOOKUP_INTERVAL_S,
+    DEFAULT_ROTATION_PATH,
+    MIN_ELIGIBLE_POOL,
+    MarketRotation,
+    RotationRefusedError,
 )
 from ...competition.poa_modes import (
     IMPETUS_AT_FIRST_LEVEL,
@@ -84,15 +106,18 @@ from ...competition.rpg_metrics import (
 from ...competition.skill_ladder import (
     FIRST_SKILL_LEVEL,
     MAX_SKILL_LEVEL,
+    MAX_USE_QUALITY,
     SKILL_NAMES,
     TRANSFER_SKILL_NAME,
     LadderStep,
     SkillGateError,
+    SkillLadderError,
     SkillProgress,
     top_out_uses,
     transfer_bleed,
     transfer_hours,
     transfer_ladder,
+    transfer_level,
     transfers_sent,
 )
 from ...competition.token_ledger import TokenLedger
@@ -174,8 +199,8 @@ NO_USES_TEXT = "--"
 NO_BLEED_TEXT = "--"
 USE_QUALITY_NOTE = (
     "The record store holds each use's quality as weighted uses, and this panel "
-    "reads the participant's own. Nothing records a use yet, so the skill stands "
-    "at level 0."
+    "reads the participant's own. The Train transfer control records one, and an "
+    "untrained skill stands at level 0."
 )
 NO_GUILD_NOTE = (
     "No guild roster is built, so the guild term of a transfer reads nothing."
@@ -195,7 +220,10 @@ SPEND_BASIS_NOTE = (
     "A share is the participant's own performance score over every score in the "
     "event. What a participant spent sizes the pot and never sizes a share."
 )
-NO_REDISTRIBUTION_NOTE = "No control starts a payout. Nothing on screen settles a pot."
+NO_REDISTRIBUTION_NOTE = (
+    "Opening this panel settles nothing. The Settle the pot control is the one "
+    "thing on screen that pays a share."
+)
 
 EVENT_ID_FIELD = "event_id"
 
@@ -297,6 +325,176 @@ ZONES: tuple[tuple[str, str, str], ...] = (
     (PARTY_WINDOW, PARTY_WINDOW_TITLE, PARTY_WINDOW_PLACEHOLDER),
 )
 
+ROTATION_NAME = DEFAULT_ROTATION_PATH.name
+
+ACTION_FIELD = "action"
+AMOUNT_FIELD = "amount"
+RECIPIENT_FIELD = "recipient"
+BAND_FIELD = "band"
+QUALITY_FIELD = "quality"
+FEE_USD_FIELD = "fee_usd"
+TRADE_GRADE_FIELD = "trade_grade"
+GRADE_NUMERIC_FIELD = "grade_numeric"
+SCORED_AXES_FIELD = "scored_axes"
+SYMBOL_FIELD = "symbol"
+EXCHANGE_FIELD = "exchange"
+SEASON_FIELD = "season"
+
+DISTIL_ACTION = "distil"
+TRAIN_ACTION = "train"
+TRANSFER_ACTION = "transfer"
+SPEND_ACTION = "spend"
+GRADE_ACTION = "grade"
+PAYOUT_ACTION = "payout"
+CLOSE_ACTION = "close"
+DROP_ACTION = "drop"
+SEASON_ACTION = "season"
+
+#: The fee one distil mints against, the dearest band's own cost.
+DEMO_FEE_USD = float(band_cost(DEAREST_BAND))
+
+#: A trade graded at the top of the grade range, which mints the whole fee.
+DEMO_TRADE_GRADE = float(MAX_USE_QUALITY)
+
+#: One use at the top quality, which reaches the ladder's first level exactly.
+DEMO_USE_QUALITY = float(MAX_USE_QUALITY)
+
+#: The amount one transfer sends, the cheapest band's own cost.
+DEMO_TRANSFER_QUINT = float(band_cost(CHEAPEST_BAND))
+
+#: The top grade ``PoaRecordStore.write_grade`` accepts, whose range is nought to one.
+DEMO_GRADE_NUMERIC = 1.0
+
+#: Axes enough for a grade to be a measurement rather than a default.
+DEMO_SCORED_AXES = MIN_SCORED_AXES
+
+CONTROLS_TITLE = "Controls"
+CONTROL_IDLE_TEXT = "No control is fired."
+CHAIN_PICKER_LABEL = "Chain"
+CHAIN_LABELS = {LIVE_CHAIN: "Live", DEMO_CHAIN: "Demo TestNet"}
+EVENT_PICKER_LABEL = "Event"
+CONTROL_ACTED_WORD = "acted"
+CONTROL_REFUSED_WORD = "refused"
+
+DISTIL_TITLE = "Distil"
+TRAIN_TITLE = "Train transfer"
+TRANSFER_TITLE = "Send Quint"
+SPEND_TITLE = "Spend a band"
+GRADE_TITLE = "Score the action"
+PAYOUT_TITLE = "Settle the pot"
+CLOSE_TITLE = "Close unpaid"
+DROP_TITLE = "Draw loot"
+SEASON_TITLE = "File an exclusion"
+
+DISTIL_LABEL = f"Distil a {DEMO_FEE_USD} fee at grade {DEMO_TRADE_GRADE}"
+TRAIN_LABEL = f"Record one use at quality {DEMO_USE_QUALITY}"
+TRANSFER_LABEL = f"Send {DEMO_TRANSFER_QUINT} Quint"
+SPEND_LABEL = f"Cast band {CHEAPEST_BAND} at {band_cost(CHEAPEST_BAND)} Quint"
+GRADE_LABEL = f"Grade {DEMO_GRADE_NUMERIC} on {DEMO_SCORED_AXES} axis"
+PAYOUT_LABEL = f"Pay {RETURN_PERCENT}% of the pot"
+CLOSE_LABEL = "Close with nothing paid"
+DROP_LABEL = "Open the window and draw"
+SEASON_LABEL = "Exclude this market"
+
+DISTIL_NOTE = "Mints at the fee times the grade, under the supply cap."
+TRAIN_NOTE = "One use of quality 0 advances nothing and the ladder refuses it."
+TRANSFER_NOTE = "Refused while the skill is untrained, and while the balance is short."
+SPEND_NOTE = "Refused while the wallet holds under the band's cost."
+GRADE_NOTE = "A grade outside nought to one is refused, and so is a part of an axis."
+PAYOUT_NOTE = (
+    "Refused while no participant carries a score, because the stamp is permanent "
+    "and would deny whoever scores next. A second payout is refused too."
+)
+CLOSE_NOTE = (
+    "Stamps an event nobody earned in, leaving the whole pot as reserve. Refused "
+    "the moment any participant carries a score."
+)
+DROP_NOTE = (
+    f"A window draws only above {MIN_ELIGIBLE_POOL} eligible markets. The pool "
+    f"reads the exchange scout this process polled, and asks the age rule once "
+    f"every {AGE_LOOKUP_INTERVAL_S:.0f} seconds for a market it has not asked "
+    f"before, so the first draw of a season is slow."
+)
+SEASON_NOTE = "An exclusion filed in a season binds at the next season boundary."
+NO_MARKET_NOTE = "{name} names no market, so no exclusion has a subject to file."
+
+DISTIL_DONE_TEXT = "Distilled {amount} Quint."
+TRAIN_DONE_TEXT = "{name} stands at level {level} on {uses} weighted uses."
+TRANSFER_DONE_TEXT = (
+    "Sent {sent} Quint at level {level}: {received} received, {bled} bled to the "
+    "platonic."
+)
+SPEND_DONE_TEXT = "Band {band} cost {cost} Quint, resting at {held}."
+GRADE_DONE_TEXT = "{address} scores {grade} on {axes} axis in {event}."
+PAYOUT_DONE_TEXT = (
+    "{event} divided {pot} Quint: {paid} paid over {shares} share(s), {reserve} "
+    "reserve, {unscored} unscored."
+)
+CLOSE_DONE_TEXT = (
+    "{event} closed with nothing paid: {pot} Quint rests as reserve and "
+    "{unscored} participant(s) stood unscored."
+)
+DROP_DONE_TEXT = "{symbol} on {exchange} dropped {short} on roll {roll}."
+SEASON_DONE_TEXT = (
+    "{symbol} is excluded on {exchange} from season {binds}; season {season} is "
+    "unaffected."
+)
+
+MINTED_ROW = "Distilled"
+SKILL_LEVEL_ROW = "Skill level"
+RECEIVED_ROW = "Received"
+BLED_ROW = "Bled to the platonic"
+COST_ROW = "Band cost"
+POT_HELD_ROW = "Resting in the pot"
+GRADE_ROW = "Score"
+SCORED_AXES_ROW = "Scored axes"
+PAID_TOTAL_ROW = "Paid out"
+ITEM_ROW = "Item"
+POOL_ROW = "Eligible markets"
+IN_EFFECT_NOW_ROW = "In effect this season"
+IN_EFFECT_NEXT_ROW = "In effect next season"
+
+CONSERVATION_TITLE = "Conservation"
+BALANCED_ROW = "Buckets balance the mint"
+NEGATIVE_ROW = "Negative buckets"
+WALLETS_ROW = "Wallets"
+HELD_ROW = "Held"
+PLATONIC_ROW = "Platonic"
+EMBEDDED_ROW = "Embedded"
+MINT_ROW = "Distilled, all time"
+CONSERVATION_TEXT = (
+    "The four buckets sum to {minted} and the ledger reports balanced {balanced} "
+    "with {negative} negative bucket(s)."
+)
+
+SEASON_PANEL_TITLE = "Season"
+SEASON_ROW = "Season the chain holds"
+SEASON_EXCLUSIONS_ROW = "Exclusions in effect"
+SEASON_ADVANCE_TEXT = (
+    "Nothing advances the season. currentSeason lives in "
+    "contracts/CompetitionRegistry.sol behind advanceSeason, which onlyOperations "
+    "gates, and no module under src reaches it. The governance unit that calls a "
+    "gated registry function is the one that would."
+)
+SEASON_BOUNDARY_TEXT = (
+    "An exclusion filed in season {season} binds from season {binds}, so the "
+    "boundary is what puts it in effect."
+)
+
+#: Every fault a mechanism raises when it refuses a control.
+CONTROL_FAULTS = (
+    ActionSpendError,
+    LootError,
+    OSError,
+    OverflowError,
+    QuintessenceLedgerError,
+    RedistributionError,
+    RotationRefusedError,
+    SkillLadderError,
+    TypeError,
+    ValueError,
+)
+
 CHARACTER_STATS = "character_stats"
 GEAR = "gear"
 SKILL_TREE = "skill_tree"
@@ -362,6 +560,8 @@ DECLARED_FIELDS = (
     "chain",
     "character_stats",
     "classes",
+    "conservation",
+    "controls",
     "event",
     "gear",
     "heading",
@@ -375,6 +575,7 @@ DECLARED_FIELDS = (
     "party",
     "pick_note",
     "redistribution",
+    "season",
     "skill_tree",
     "skills",
     "state_text",
@@ -792,12 +993,14 @@ def redistribution(chain: str, event_id: str) -> dict:
 
 
 def fleet_records(chain: str) -> dict:
-    """The ``bots`` map in ``chain``'s state file, or {} when it is unreadable.
+    """The ``bots`` map in the fleet state file, or {} when it is unreadable.
 
     ``src.core.state_manager.StateManager`` writes that file; this read never
-    creates it.
+    creates it. The fleet is not chain state, so every chain reads the one file
+    and a demo run lists the same participants as a live one.
     """
-    path = chain_file(FLEET_NAME, chain)
+    del chain
+    path = LEDGER_DIR / FLEET_NAME
     if not path.is_file():
         return {}
     try:
@@ -1088,6 +1291,513 @@ def map_panel(variant: EventVariant) -> dict:
     }
 
 
+def loaded_ledger(chain: str) -> QuintessenceLedger:
+    """``chain``'s ``QuintessenceLedger``, replayed off that chain's own file."""
+    return QuintessenceLedger(chain_file(QUINT_LEDGER_NAME, chain)).load()
+
+
+def loaded_loot(chain: str) -> LootStore:
+    """``chain``'s ``LootStore``, replayed off that chain's own file."""
+    return LootStore(chain_file(LOOT_STORE_NAME, chain)).load()
+
+
+def chain_rotation(chain: str) -> MarketRotation:
+    """``chain``'s ``MarketRotation`` over a ``LocalTestnet``, replayed off its record."""
+    return MarketRotation(
+        LocalTestnet(), rotation_path=chain_file(ROTATION_NAME, chain)
+    ).load()
+
+
+def chain_season() -> int:
+    """The season the chain's registry holds, through ``get_competition_stats``."""
+    return int(LocalTestnet().get_competition_stats()["current_season"])
+
+
+def number_of(params: dict, field: str, default: float) -> float:
+    """The number ``params`` names under ``field``, or ``default`` when it names none."""
+    asked = params.get(field) if isinstance(params, dict) else None
+    if type(asked) in (int, float):
+        return float(asked)
+    return default
+
+
+def text_of(params: dict, field: str, default: str) -> str:
+    """The string ``params`` names under ``field``, or ``default`` when it names none."""
+    asked = params.get(field) if isinstance(params, dict) else None
+    if type(asked) is str and asked.strip():
+        return asked.strip()
+    return default
+
+
+def other_participant(chain: str, address: str) -> str:
+    """The first bot id in ``chain``'s fleet load other than ``address``, else ""."""
+    for bot_id in sorted(fleet_records(chain)):
+        if bot_id != address:
+            return bot_id
+    return ""
+
+
+def first_market(chain: str) -> tuple[str, str]:
+    """The exchange and symbol the first bot in ``chain``'s fleet load trades."""
+    records = fleet_records(chain)
+    for bot_id in sorted(records):
+        config = records[bot_id].get("config")
+        if isinstance(config, dict):
+            return str(config.get("exchange_id", "")), str(config.get("symbol", ""))
+    return "", ""
+
+
+def market_of(params: dict, chain: str) -> tuple[str, str]:
+    """The exchange and symbol ``params`` name, falling back to ``first_market``."""
+    exchange, symbol = first_market(chain)
+    return (
+        text_of(params, EXCHANGE_FIELD, exchange),
+        text_of(params, SYMBOL_FIELD, symbol),
+    )
+
+
+def distil_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Mint through ``QuintessenceLedger.distil``, which commits and saves itself."""
+    del event_id
+    ledger = loaded_ledger(chain)
+    minted = ledger.distil(
+        address,
+        number_of(params, FEE_USD_FIELD, DEMO_FEE_USD),
+        number_of(params, TRADE_GRADE_FIELD, DEMO_TRADE_GRADE),
+    )
+    return (
+        True,
+        DISTIL_DONE_TEXT.format(amount=amount_text(minted)),
+        [
+            row(MINTED_ROW, amount_text(minted)),
+            row(BALANCE_ROW, amount_text(ledger.balance(address))),
+        ],
+    )
+
+
+def train_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Record one transfer-skill use through ``PoaRecordStore.record_skill_use``."""
+    del event_id
+    progress = record_store(chain).record_skill_use(
+        address,
+        TRANSFER_SKILL_NAME,
+        number_of(params, QUALITY_FIELD, DEMO_USE_QUALITY),
+    )
+    return (
+        True,
+        TRAIN_DONE_TEXT.format(
+            name=progress.skill_name,
+            level=progress.level,
+            uses=uses_text(progress.weighted_uses),
+        ),
+        [row(SKILL_LEVEL_ROW, str(progress.level))],
+    )
+
+
+def transfer_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Send Quintessence through ``QuintessenceLedger.transfer`` at the ladder's level.
+
+    ``transfer_level`` raises while the skill is untrained, so the control carries
+    the ladder's own gate rather than a second one.
+    """
+    del event_id
+    level = transfer_level(skill_standing(chain, address))
+    ledger = loaded_ledger(chain)
+    moved = ledger.transfer(
+        address,
+        text_of(params, RECIPIENT_FIELD, other_participant(chain, address)),
+        number_of(params, AMOUNT_FIELD, DEMO_TRANSFER_QUINT),
+        level,
+    )
+    return (
+        True,
+        TRANSFER_DONE_TEXT.format(
+            sent=amount_text(moved.sent),
+            level=level,
+            received=amount_text(moved.received),
+            bled=amount_text(moved.bled),
+        ),
+        [
+            row(RECEIVED_ROW, amount_text(moved.received)),
+            row(BLED_ROW, amount_text(moved.bled)),
+            row(BALANCE_ROW, amount_text(ledger.balance(address))),
+        ],
+    )
+
+
+def spend_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Debit one band through ``ActionSpend.act`` into the event pot."""
+    ledger = loaded_ledger(chain)
+    spend = ActionSpend(ledger, record_store(chain), EVENT_POT_ADDRESS)
+    receipt = spend.act(event_id, address, text_of(params, BAND_FIELD, CHEAPEST_BAND))
+    return (
+        True,
+        SPEND_DONE_TEXT.format(
+            band=receipt.draft.band,
+            cost=amount_text(receipt.cost),
+            held=receipt.held_address,
+        ),
+        [
+            row(COST_ROW, amount_text(receipt.cost)),
+            row(POT_HELD_ROW, amount_text(ledger.held_balance(EVENT_POT_ADDRESS))),
+            row(BALANCE_ROW, amount_text(ledger.balance(address))),
+        ],
+    )
+
+
+def grade_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Put a score on the participant's record through ``PoaRecordStore.write_grade``.
+
+    A payout reads this score, so a record with none is what ``settle`` refuses on.
+    """
+    record = record_store(chain).write_grade(
+        event_id,
+        address,
+        number_of(params, GRADE_NUMERIC_FIELD, DEMO_GRADE_NUMERIC),
+        int(number_of(params, SCORED_AXES_FIELD, DEMO_SCORED_AXES)),
+    )
+    return (
+        True,
+        GRADE_DONE_TEXT.format(
+            address=record.address,
+            grade=amount_text(record.grade_numeric),
+            axes=record.scored_axes,
+            event=record.event_id,
+        ),
+        [
+            row(GRADE_ROW, amount_text(record.grade_numeric)),
+            row(SCORED_AXES_ROW, str(record.scored_axes)),
+        ],
+    )
+
+
+def close_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Close an event nobody earned in, through ``EventRedistribution.close_unpaid``."""
+    del address, params
+    division = EventRedistribution(
+        loaded_ledger(chain), record_store(chain), EVENT_POT_ADDRESS
+    ).close_unpaid(event_id)
+    return (
+        True,
+        CLOSE_DONE_TEXT.format(
+            event=division.event_id,
+            pot=amount_text(division.pot),
+            unscored=len(division.unscored),
+        ),
+        [
+            row(PAID_TOTAL_ROW, amount_text(division.paid_total)),
+            row(RESERVE_ROW, amount_text(division.reserve)),
+        ],
+    )
+
+
+def payout_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Pay every share of the event's pot through ``EventRedistribution.settle``."""
+    del address, params
+    division = EventRedistribution(
+        loaded_ledger(chain), record_store(chain), EVENT_POT_ADDRESS
+    ).settle(event_id)
+    return (
+        True,
+        PAYOUT_DONE_TEXT.format(
+            event=division.event_id,
+            pot=amount_text(division.pot),
+            paid=amount_text(division.paid_total),
+            shares=len(division.shares),
+            reserve=amount_text(division.reserve),
+            unscored=len(division.unscored),
+        ),
+        [
+            row(PAID_TOTAL_ROW, amount_text(division.paid_total)),
+            row(RESERVE_ROW, amount_text(division.reserve)),
+        ],
+    )
+
+
+def drop_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Draw one item through ``drop_from_pool`` and keep it in ``chain``'s loot store.
+
+    ``eligible_pool`` answers which markets qualify and ``open_window`` draws from
+    it, so the floor of twelve is the rotation's own refusal and not a second rule.
+    """
+    del event_id
+    rotation = chain_rotation(chain)
+    exchange, symbol = market_of(params, chain)
+    pool = rotation.eligible_pool(exchange, chain_season())
+    if rotation.open_window_for(exchange) is None:
+        rotation.open_window(pool)
+    drop = drop_from_pool(rotation, pool, request_from_pool(pool, symbol, address))
+    store = loaded_loot(chain)
+    store.add(drop)
+    store.save()
+    return (
+        True,
+        DROP_DONE_TEXT.format(
+            symbol=drop.symbol,
+            exchange=drop.exchange_id,
+            short=drop.short_form,
+            roll=drop.roll,
+        ),
+        [
+            row(ITEM_ROW, f"{drop.short_form} {drop.tier_name}"),
+            row(POOL_ROW, str(pool.pool_size)),
+        ],
+    )
+
+
+def season_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """File an exclusion through ``MarketRotation.file_exclusion`` at the boundary."""
+    del address, event_id
+    rotation = chain_rotation(chain)
+    exchange, symbol = market_of(params, chain)
+    if not exchange or not symbol:
+        raise ValueError(NO_MARKET_NOTE.format(name=FLEET_NAME))
+    season = int(number_of(params, SEASON_FIELD, chain_season()))
+    binds = rotation.file_exclusion(exchange, symbol, season)
+    rotation.save()
+    now = rotation.exclusions_in_effect(exchange, season)
+    later = rotation.exclusions_in_effect(exchange, binds)
+    return (
+        True,
+        SEASON_DONE_TEXT.format(
+            symbol=symbol, exchange=exchange, binds=binds, season=season
+        ),
+        [
+            row(IN_EFFECT_NOW_ROW, str(symbol in now)),
+            row(IN_EFFECT_NEXT_ROW, str(symbol in later)),
+        ],
+    )
+
+
+#: Every control, in the order the row of buttons draws them.
+CONTROL_HANDLERS = {
+    DISTIL_ACTION: distil_control,
+    TRAIN_ACTION: train_control,
+    TRANSFER_ACTION: transfer_control,
+    SPEND_ACTION: spend_control,
+    GRADE_ACTION: grade_control,
+    PAYOUT_ACTION: payout_control,
+    CLOSE_ACTION: close_control,
+    DROP_ACTION: drop_control,
+    SEASON_ACTION: season_control,
+}
+
+CONTROL_TITLES = {
+    DISTIL_ACTION: DISTIL_TITLE,
+    TRAIN_ACTION: TRAIN_TITLE,
+    TRANSFER_ACTION: TRANSFER_TITLE,
+    SPEND_ACTION: SPEND_TITLE,
+    GRADE_ACTION: GRADE_TITLE,
+    PAYOUT_ACTION: PAYOUT_TITLE,
+    CLOSE_ACTION: CLOSE_TITLE,
+    DROP_ACTION: DROP_TITLE,
+    SEASON_ACTION: SEASON_TITLE,
+}
+
+CONTROL_LABELS = {
+    DISTIL_ACTION: DISTIL_LABEL,
+    TRAIN_ACTION: TRAIN_LABEL,
+    TRANSFER_ACTION: TRANSFER_LABEL,
+    SPEND_ACTION: SPEND_LABEL,
+    GRADE_ACTION: GRADE_LABEL,
+    PAYOUT_ACTION: PAYOUT_LABEL,
+    CLOSE_ACTION: CLOSE_LABEL,
+    DROP_ACTION: DROP_LABEL,
+    SEASON_ACTION: SEASON_LABEL,
+}
+
+CONTROL_NOTES = {
+    DISTIL_ACTION: DISTIL_NOTE,
+    TRAIN_ACTION: TRAIN_NOTE,
+    TRANSFER_ACTION: TRANSFER_NOTE,
+    SPEND_ACTION: SPEND_NOTE,
+    GRADE_ACTION: GRADE_NOTE,
+    PAYOUT_ACTION: PAYOUT_NOTE,
+    CLOSE_ACTION: CLOSE_NOTE,
+    DROP_ACTION: DROP_NOTE,
+    SEASON_ACTION: SEASON_NOTE,
+}
+
+#: Every control name, in the order the row of buttons draws them.
+CONTROL_NAMES: tuple[str, ...] = tuple(CONTROL_HANDLERS)
+
+
+def control_params(
+    name: str, chain: str, address: str | None, variant: EventVariant
+) -> dict:
+    """The params the button for ``name`` sends, every figure read off a mechanism.
+
+    ``chain``, ``variant.mode`` and ``variant.elite`` ride along, so the control acts
+    on the event the tab is drawn for.
+    """
+    exchange, symbol = first_market(chain)
+    sending: dict = {
+        CHAIN_FIELD: chain,
+        MODE_FIELD: variant.mode.code,
+        ELITE_FIELD: variant.elite,
+        ACTION_FIELD: name,
+    }
+    if name == DISTIL_ACTION:
+        sending[FEE_USD_FIELD] = DEMO_FEE_USD
+        sending[TRADE_GRADE_FIELD] = DEMO_TRADE_GRADE
+    if name == TRAIN_ACTION:
+        sending[QUALITY_FIELD] = DEMO_USE_QUALITY
+    if name == TRANSFER_ACTION:
+        sending[AMOUNT_FIELD] = DEMO_TRANSFER_QUINT
+        sending[RECIPIENT_FIELD] = other_participant(chain, address or "")
+    if name == SPEND_ACTION:
+        sending[BAND_FIELD] = CHEAPEST_BAND
+    if name == GRADE_ACTION:
+        sending[GRADE_NUMERIC_FIELD] = DEMO_GRADE_NUMERIC
+        sending[SCORED_AXES_FIELD] = DEMO_SCORED_AXES
+    if name in (DROP_ACTION, SEASON_ACTION):
+        sending[EXCHANGE_FIELD] = exchange
+        sending[SYMBOL_FIELD] = symbol
+    return sending
+
+
+def control_row(
+    name: str, chain: str, address: str | None, variant: EventVariant
+) -> dict:
+    """One control: its action, the label the button prints, and the params it sends."""
+    return {
+        "name": name,
+        "title": CONTROL_TITLES[name],
+        "label": CONTROL_LABELS[name],
+        "note": CONTROL_NOTES[name],
+        "params": control_params(name, chain, address, variant),
+    }
+
+
+def control_result(
+    params: dict, chain: str, address: str | None, event_id: str
+) -> dict:
+    """Fire the control ``params`` names and answer what the mechanism did or refused.
+
+    A refusal is the mechanism's own sentence, so nothing here writes a second
+    message for a condition a mechanism already states.
+    """
+    name = params.get(ACTION_FIELD) if isinstance(params, dict) else None
+    if name not in CONTROL_NAMES:
+        return {"action": "", "acted": False, "message": CONTROL_IDLE_TEXT, "rows": []}
+    if address is None:
+        return {"action": name, "acted": False, "message": NO_IDENTITY_NOTE, "rows": []}
+    try:
+        acted, message, rows = CONTROL_HANDLERS[name](chain, address, event_id, params)
+    except CONTROL_FAULTS as exc:
+        return {"action": name, "acted": False, "message": str(exc), "rows": []}
+    return {"action": name, "acted": acted, "message": message, "rows": rows}
+
+
+def chain_rows(chain: str) -> list:
+    """One row a chain, each carrying the params that redraws the tab against it."""
+    return [
+        {
+            "name": name,
+            "label": CHAIN_LABELS[name],
+            "selected": name == chain,
+            "params": {CHAIN_FIELD: name},
+        }
+        for name in CHAINS
+    ]
+
+
+def event_rows(chain: str, variant: EventVariant) -> list:
+    """One row an event type, each carrying the params that redraws the tab against it."""
+    return [
+        {
+            "name": row["code"],
+            "label": f"{row['label']} {row['variant_label']}",
+            "selected": row["code"] == variant.code,
+            "params": {
+                CHAIN_FIELD: chain,
+                MODE_FIELD: row[MODE_FIELD],
+                ELITE_FIELD: row["elite"],
+            },
+        }
+        for row in variant_rows()
+    ]
+
+
+def controls(
+    chain: str,
+    address: str | None,
+    params: dict,
+    variant: EventVariant,
+    event_id: str,
+) -> dict:
+    """The row of buttons, the chain and event pickers, and what ``params`` fired."""
+    fired = control_result(params, chain, address, event_id)
+    return {
+        "title": CONTROLS_TITLE,
+        "chain": chain,
+        "chain_label": CHAIN_PICKER_LABEL,
+        "chains": chain_rows(chain),
+        "event_label": EVENT_PICKER_LABEL,
+        "event_id": event_id,
+        "events": event_rows(chain, variant),
+        "rows": [control_row(name, chain, address, variant) for name in CONTROL_NAMES],
+        "result": fired,
+        "verdict": CONTROL_ACTED_WORD if fired["acted"] else CONTROL_REFUSED_WORD,
+    }
+
+
+def conservation(chain: str) -> dict:
+    """The ledger's own four-bucket report for ``chain``, read after a control acts."""
+    path = chain_file(QUINT_LEDGER_NAME, chain)
+    panel: dict = {"title": CONSERVATION_TITLE, "rows": [], "note": ""}
+    try:
+        report = loaded_ledger(chain).conservation().to_dict()
+    except (QuintessenceLedgerError, OSError) as exc:
+        panel["note"] = fault_note(path, exc)
+        return panel
+    panel["rows"] = [
+        row(BALANCED_ROW, str(report["is_balanced"])),
+        row(NEGATIVE_ROW, str(report["negative_buckets"])),
+        row(WALLETS_ROW, report["wallets_total"]),
+        row(HELD_ROW, report["held_total"]),
+        row(PLATONIC_ROW, report["platonic_total"]),
+        row(EMBEDDED_ROW, report["embedded_total"]),
+        row(MINT_ROW, report["total_ever_minted"]),
+    ]
+    panel["is_balanced"] = report["is_balanced"]
+    panel["negative_buckets"] = report["negative_buckets"]
+    panel["note"] = CONSERVATION_TEXT.format(
+        minted=report["total_ever_minted"],
+        balanced=report["is_balanced"],
+        negative=report["negative_buckets"],
+    )
+    return panel
+
+
+def season(chain: str) -> dict:
+    """The season the chain holds, the exclusions it binds, and what advances it.
+
+    Nothing under ``src`` writes the counter, so the panel says so rather than
+    drawing a control that would claim to.
+    """
+    held = chain_season()
+    path = chain_file(ROTATION_NAME, chain)
+    panel: dict = {
+        "title": SEASON_PANEL_TITLE,
+        "season": held,
+        "rows": [row(SEASON_ROW, str(held))],
+        "advance_text": SEASON_ADVANCE_TEXT,
+        "boundary_text": SEASON_BOUNDARY_TEXT.format(season=held, binds=held + 1),
+        "note": "",
+    }
+    exchange, _ = first_market(chain)
+    try:
+        in_effect = chain_rotation(chain).exclusions_in_effect(exchange, held)
+    except (RotationRefusedError, OSError, ValueError) as exc:
+        panel["note"] = fault_note(path, exc)
+        return panel
+    panel["rows"].append(row(SEASON_EXCLUSIONS_ROW, str(len(in_effect))))
+    panel["exclusions"] = list(in_effect)
+    panel["note"] = path.name if path.exists() else ""
+    return panel
+
+
 def view_model(params: dict) -> dict:
     """Bridge handler for ``proof_of_accumulation_tab.state``.
 
@@ -1099,6 +1809,14 @@ def view_model(params: dict) -> dict:
     pick, pick_note = class_pick(params, variant.code)
     level = FIRST_LEVEL if pick is None else ClassProgress(pick.class_name).level
     running = event(variant, epoch_of(params), level)
+    identity = participant_identity()
+    fired = controls(
+        chain,
+        None if identity is None else identity.bot_id,
+        params,
+        variant,
+        event_id_of(params, variant),
+    )
     rows = participants(chain, pick)
     built_skills = skills(chain)
     return {
@@ -1107,6 +1825,8 @@ def view_model(params: dict) -> dict:
         "chain": chain,
         "character_stats": character_stats(rows, params),
         "classes": classes(),
+        "conservation": conservation(chain),
+        "controls": fired,
         "event": running,
         "gear": gear(chain, running["impetus_granted"]),
         "heading": HEADING,
@@ -1120,6 +1840,7 @@ def view_model(params: dict) -> dict:
         "party": party(),
         "pick_note": pick_note,
         "redistribution": redistribution(chain, event_id_of(params, variant)),
+        "season": season(chain),
         "skill_tree": skill_tree(built_skills),
         "skills": built_skills,
         "state_text": STATE_TEXT,

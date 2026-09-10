@@ -5,7 +5,10 @@
 // in the party header and the wallet opens as a panel over the party window.
 // Four subtabs sit above the zones and selectSubtab draws one of them; the map
 // entry and the player window's map button both read the payload's reachable
-// flag. Every word on screen comes from the payload.
+// flag. A row of control buttons sits under the state line and fireControl sends
+// the params the payload gave that control, then redraws from the answer, so the
+// verdict and the figures on screen are the mechanism's own.
+// Every word on screen comes from the payload.
 (function (global) {
   "use strict";
 
@@ -16,6 +19,8 @@
   var CHAIN = "chain";
   var CHARACTER_STATS = "character_stats";
   var CLASSES = "classes";
+  var CONSERVATION = "conservation";
+  var CONTROLS = "controls";
   var EVENT = "event";
   var GEAR = "gear";
   var HEADING = "heading";
@@ -29,6 +34,7 @@
   var PARTY = "party";
   var PICK_NOTE = "pick_note";
   var REDISTRIBUTION = "redistribution";
+  var SEASON = "season";
   var SKILL_TREE = "skill_tree";
   var SKILLS = "skills";
   var STATE_TEXT = "state_text";
@@ -43,6 +49,8 @@
     CHAIN,
     CHARACTER_STATS,
     CLASSES,
+    CONSERVATION,
+    CONTROLS,
     EVENT,
     GEAR,
     HEADING,
@@ -56,6 +64,7 @@
     PARTY,
     PICK_NOTE,
     REDISTRIBUTION,
+    SEASON,
     SKILL_TREE,
     SKILLS,
     STATE_TEXT,
@@ -182,6 +191,42 @@
   var SKILL_BLEED_PART = "skill-bleed";
   var SKILL_NOTE_PART = "skill-note";
 
+  var CHAIN_LABEL_PART = "chain-label";
+  var CHAIN_BUTTON_PART = "chain-button";
+  var EVENT_PICK_LABEL_PART = "event-pick-label";
+  var EVENT_BUTTON_PART = "event-button";
+
+  // The event type a picker button selects, which its own params carry.
+  var EVENT_ATTR = "data-event";
+
+  var CONTROL_BAR_PART = "control-bar";
+  var CONTROL_BUTTON_PART = "control-button";
+  var CONTROL_RESULT_PART = "control-result";
+  var CONTROL_MESSAGE_PART = "control-message";
+  var CONTROL_ROW_PART = "control-row";
+  var CONTROL_ROW_LABEL_PART = "control-row-label";
+  var CONTROL_ROW_VALUE_PART = "control-row-value";
+  var CONTROL_NOTE_PART = "control-note";
+
+  // The verdict the surface answered for the control that was fired last.
+  var ACTION_ATTR = "data-action";
+  var ACTED_ATTR = "data-acted";
+
+  var KEEP_PANEL_PART = "keep-panel";
+  var KEEP_TITLE_PART = "keep-title";
+  var KEEP_ROW_PART = "keep-row";
+  var KEEP_ROW_LABEL_PART = "keep-row-label";
+  var KEEP_ROW_VALUE_PART = "keep-row-value";
+  var KEEP_NOTE_PART = "keep-note";
+
+  var SEASON_PANEL_PART = "season-panel";
+  var SEASON_TITLE_PART = "season-title";
+  var SEASON_ROW_PART = "season-row";
+  var SEASON_ROW_LABEL_PART = "season-row-label";
+  var SEASON_ROW_VALUE_PART = "season-row-value";
+  var SEASON_ADVANCE_PART = "season-advance";
+  var SEASON_BOUNDARY_PART = "season-boundary";
+
   var POT_PANEL_PART = "pot-panel";
   var POT_TITLE_PART = "pot-title";
   var POT_ROW_PART = "pot-row";
@@ -224,6 +269,9 @@
   var subtabName = null;
 
   var NO_SUCH_SUBTAB = "no subtab carries that name";
+  var NO_SUCH_CONTROL = "no control carries that name";
+  var NO_SUCH_CHAIN = "no chain carries that name";
+  var NO_SUCH_EVENT = "no event type carries that name";
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -609,6 +657,240 @@
   }
 
   // A share line names the score and the amount; no line names what was spent.
+  // One labelled figure a mechanism answered, in the panel the props name.
+  function FigureRow(props) {
+    var rowProps = named(TAB_CLASS + "-" + props.rowPart, props.rowPart, props.label);
+    return element(
+      "div",
+      rowProps,
+      element(
+        "span",
+        named(TAB_CLASS + "-" + props.labelPart, props.labelPart, props.label),
+        text(props.label)
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-" + props.valuePart, props.valuePart, props.label),
+        text(props.value)
+      )
+    );
+  }
+
+  function figureRows(rows, rowPart, labelPart, valuePart) {
+    return (Array.isArray(rows) ? rows : [])
+      .filter(isPlainObject)
+      .map(function (row, at) {
+        return element(FigureRow, {
+          key: rowPart + "-" + String(at),
+          label: text(row.label),
+          value: text(row.value),
+          rowPart: rowPart,
+          labelPart: labelPart,
+          valuePart: valuePart
+        });
+      });
+  }
+
+  // One button a control. Clicking it sends that control's own params.
+  function ControlButton(props) {
+    var row = props.row;
+    var buttonProps = named(
+      TAB_CLASS + "-control-button",
+      CONTROL_BUTTON_PART,
+      text(row.title)
+    );
+    buttonProps[ACTION_ATTR] = text(row.name);
+    buttonProps.type = "button";
+    buttonProps.title = text(row.note);
+    buttonProps.onClick = function () {
+      fireControl(row.name);
+    };
+    return element("button", buttonProps, text(row.label));
+  }
+
+  // The note of the control that was fired, so the page says what it refuses.
+  function noteFor(rows, action) {
+    var found = "";
+    rows.filter(isPlainObject).forEach(function (row) {
+      if (row.name === action) {
+        found = text(row.note) || "";
+      }
+    });
+    return found;
+  }
+
+  // One button a chain. Clicking it redraws the whole tab against that chain.
+  function ChainButton(props) {
+    var entry = props.entry;
+    var buttonProps = named(
+      TAB_CLASS + "-chain-button",
+      CHAIN_BUTTON_PART,
+      text(entry.label)
+    );
+    buttonProps[CHAIN_ATTR] = text(entry.name);
+    buttonProps[SELECTED_ATTR] = String(entry.selected === true);
+    buttonProps.type = "button";
+    buttonProps.onClick = function () {
+      selectChain(entry.name);
+    };
+    return element("button", buttonProps, text(entry.label));
+  }
+
+  // One button an event type. Clicking it redraws the tab against that event.
+  function EventButton(props) {
+    var entry = props.entry;
+    var buttonProps = named(
+      TAB_CLASS + "-event-button",
+      EVENT_BUTTON_PART,
+      text(entry.label)
+    );
+    buttonProps[EVENT_ATTR] = text(entry.name);
+    buttonProps[SELECTED_ATTR] = String(entry.selected === true);
+    buttonProps.type = "button";
+    buttonProps.onClick = function () {
+      selectEvent(entry.name);
+    };
+    return element("button", buttonProps, text(entry.label));
+  }
+
+  function pickerRow(entries, labelPart, labelText, Button, keyPart) {
+    var children = [];
+    if (!entries.length) {
+      return children;
+    }
+    var labelProps = part(TAB_CLASS + "-" + labelPart, labelPart);
+    labelProps.key = labelPart;
+    children.push(element("span", labelProps, text(labelText)));
+    entries.filter(isPlainObject).forEach(function (entry) {
+      children.push(
+        element(Button, { key: keyPart + text(entry.name), entry: entry })
+      );
+    });
+    return children;
+  }
+
+  function ControlBar(props) {
+    var bar = props.controls;
+    var rows = Array.isArray(bar.rows) ? bar.rows : [];
+    var chains = Array.isArray(bar.chains) ? bar.chains : [];
+    var events = Array.isArray(bar.events) ? bar.events : [];
+    var fired = isPlainObject(bar.result) ? bar.result : {};
+    var children = pickerRow(
+      chains,
+      CHAIN_LABEL_PART,
+      bar.chain_label,
+      ChainButton,
+      CHAIN_BUTTON_PART
+    ).concat(
+      pickerRow(
+        events,
+        EVENT_PICK_LABEL_PART,
+        bar.event_label,
+        EventButton,
+        EVENT_BUTTON_PART
+      )
+    );
+    rows.filter(isPlainObject).forEach(function (row) {
+      children.push(element(ControlButton, { key: text(row.name), row: row }));
+    });
+    var resultProps = named(
+      TAB_CLASS + "-control-result",
+      CONTROL_RESULT_PART,
+      text(bar.title)
+    );
+    resultProps.key = CONTROL_RESULT_PART;
+    resultProps[ACTED_ATTR] = String(fired.acted === true);
+    resultProps[ACTION_ATTR] = text(fired.action);
+    var lines = [
+      element(
+        "span",
+        Object.assign(
+          named(
+            TAB_CLASS + "-control-message",
+            CONTROL_MESSAGE_PART,
+            text(bar.verdict)
+          ),
+          { key: CONTROL_MESSAGE_PART }
+        ),
+        text(fired.message)
+      )
+    ];
+    lines = lines.concat(
+      figureRows(
+        fired.rows,
+        CONTROL_ROW_PART,
+        CONTROL_ROW_LABEL_PART,
+        CONTROL_ROW_VALUE_PART
+      )
+    );
+    var note = noteFor(rows, fired.action);
+    if (note) {
+      var noteProps = named(TAB_CLASS + "-control-note", CONTROL_NOTE_PART, note);
+      noteProps.key = CONTROL_NOTE_PART;
+      lines.push(element("p", noteProps, note));
+    }
+    children.push(element("div", resultProps, lines));
+    var barProps = named(TAB_CLASS + "-control-bar", CONTROL_BAR_PART, text(bar.title));
+    return element("div", barProps, children);
+  }
+
+  function KeepPanel(props) {
+    var keep = props.conservation;
+    var titleProps = part(TAB_CLASS + "-keep-title", KEEP_TITLE_PART);
+    titleProps.key = KEEP_TITLE_PART;
+    var children = [element("h4", titleProps, text(keep.title))];
+    children = children.concat(
+      figureRows(keep.rows, KEEP_ROW_PART, KEEP_ROW_LABEL_PART, KEEP_ROW_VALUE_PART)
+    );
+    if (text(keep.note)) {
+      var noteProps = named(
+        TAB_CLASS + "-keep-note",
+        KEEP_NOTE_PART,
+        text(keep.note)
+      );
+      noteProps.key = KEEP_NOTE_PART;
+      children.push(element("p", noteProps, text(keep.note)));
+    }
+    var panelProps = named(
+      TAB_CLASS + "-keep-panel",
+      KEEP_PANEL_PART,
+      text(keep.title)
+    );
+    return element("div", panelProps, children);
+  }
+
+  function SeasonPanel(props) {
+    var run = props.season;
+    var titleProps = part(TAB_CLASS + "-season-title", SEASON_TITLE_PART);
+    titleProps.key = SEASON_TITLE_PART;
+    var children = [element("h4", titleProps, text(run.title))];
+    children = children.concat(
+      figureRows(
+        run.rows,
+        SEASON_ROW_PART,
+        SEASON_ROW_LABEL_PART,
+        SEASON_ROW_VALUE_PART
+      )
+    );
+    [
+      [SEASON_BOUNDARY_PART, run.boundary_text],
+      [SEASON_ADVANCE_PART, run.advance_text]
+    ].forEach(function (pair) {
+      if (!text(pair[1])) {
+        return;
+      }
+      var lineProps = named(TAB_CLASS + "-" + pair[0], pair[0], text(pair[1]));
+      lineProps.key = pair[0];
+      children.push(element("p", lineProps, text(pair[1])));
+    });
+    var panelProps = named(
+      TAB_CLASS + "-season-panel",
+      SEASON_PANEL_PART,
+      text(run.title)
+    );
+    return element("div", panelProps, children);
+  }
+
   function PotPanel(props) {
     var pot = props.redistribution;
     var rows = Array.isArray(pot.rows) ? pot.rows : [];
@@ -1135,6 +1417,19 @@
         })
       );
     }
+    if (isPlainObject(props.conservation)) {
+      children.push(
+        element(KeepPanel, {
+          key: KEEP_PANEL_PART,
+          conservation: props.conservation
+        })
+      );
+    }
+    if (isPlainObject(props.season)) {
+      children.push(
+        element(SeasonPanel, { key: SEASON_PANEL_PART, season: props.season })
+      );
+    }
     if (props.pickNote !== undefined) {
       children.push(
         element(
@@ -1196,6 +1491,9 @@
       tabProps,
       element("h1", part(TAB_CLASS + "-heading", HEADING_PART), text(model[HEADING])),
       element("p", part(TAB_CLASS + "-state", STATE_PART), text(model[STATE_TEXT])),
+      isPlainObject(model[CONTROLS])
+        ? element(ControlBar, { controls: model[CONTROLS] })
+        : null,
       element(SubtabBar, { entries: subtabList(model), selected: chosen }),
       element(SubtabArea, { model: model, selected: chosen }),
       element(
@@ -1223,6 +1521,10 @@
             redistribution: isPlainObject(model[REDISTRIBUTION])
               ? model[REDISTRIBUTION]
               : null,
+            conservation: isPlainObject(model[CONSERVATION])
+              ? model[CONSERVATION]
+              : null,
+            season: isPlainObject(model[SEASON]) ? model[SEASON] : null,
             pickNote: text(model[PICK_NOTE])
           })
     );
@@ -1347,6 +1649,107 @@
     return { name: selectedSubtab(held), opened: true, refusal: "" };
   }
 
+  function controlRows(model) {
+    var bar = isPlainObject(model) && isPlainObject(model[CONTROLS])
+      ? model[CONTROLS]
+      : null;
+    return bar === null || !Array.isArray(bar.rows) ? [] : bar.rows;
+  }
+
+  function controlNamed(model, name) {
+    var found = null;
+    controlRows(model).forEach(function (row) {
+      if (isPlainObject(row) && row.name === name) {
+        found = row;
+      }
+    });
+    return found;
+  }
+
+  // Asks the surface again with the params a button carries, then redraws from
+  // the answer, so every figure on screen is the one the surface just computed.
+  function askWith(name, params) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve({ name: name, acted: false, message: NO_BRIDGE });
+    }
+    return global.acervator
+      .call(METHOD, isPlainObject(params) ? params : {})
+      .then(function (model) {
+        loadFault = null;
+        setProofOfAccumulationTab(model);
+        drawAgain();
+        return controlResult();
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return { name: name, acted: false, message: err.message };
+      });
+  }
+
+  function fireControl(name) {
+    var row = held === null ? null : controlNamed(held, name);
+    if (row === null) {
+      return Promise.resolve({
+        name: name,
+        acted: false,
+        message: NO_SUCH_CONTROL
+      });
+    }
+    return askWith(name, row.params);
+  }
+
+  function pickerNamed(model, field, name) {
+    var bar = isPlainObject(model) && isPlainObject(model[CONTROLS])
+      ? model[CONTROLS]
+      : null;
+    var entries = bar === null || !Array.isArray(bar[field]) ? [] : bar[field];
+    var found = null;
+    entries.forEach(function (entry) {
+      if (isPlainObject(entry) && entry.name === name) {
+        found = entry;
+      }
+    });
+    return found;
+  }
+
+  function selectChain(name) {
+    var entry = held === null ? null : pickerNamed(held, "chains", name);
+    if (entry === null) {
+      return Promise.resolve({
+        name: name,
+        acted: false,
+        message: NO_SUCH_CHAIN
+      });
+    }
+    return askWith(name, entry.params);
+  }
+
+  function selectEvent(name) {
+    var entry = held === null ? null : pickerNamed(held, "events", name);
+    if (entry === null) {
+      return Promise.resolve({
+        name: name,
+        acted: false,
+        message: NO_SUCH_EVENT
+      });
+    }
+    return askWith(name, entry.params);
+  }
+
+  function controlResult() {
+    var bar = held === null ? null : held[CONTROLS];
+    if (!isPlainObject(bar) || !isPlainObject(bar.result)) {
+      return null;
+    }
+    return {
+      name: bar.result.action,
+      acted: bar.result.acted === true,
+      message: bar.result.message,
+      rows: Array.isArray(bar.result.rows) ? bar.result.rows.slice() : []
+    };
+  }
+
   function openWallet() {
     walletOpen = true;
     drawAgain();
@@ -1431,6 +1834,15 @@
       return held === null ? null : selectedSubtab(held);
     },
     selectSubtab: selectSubtab,
+    controlNames: function () {
+      return controlRows(held).map(function (row) {
+        return row.name;
+      });
+    },
+    controlResult: controlResult,
+    fireControl: fireControl,
+    selectChain: selectChain,
+    selectEvent: selectEvent,
     renderTab: renderTab,
     forget: forget
   };

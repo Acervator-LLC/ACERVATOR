@@ -3001,8 +3001,8 @@ live, file removed   transfers sent --
 
 ### What the skill system does not reach
 
-No control on the panel starts a transfer. The program computes the gate, the
-rate and the hours, and nothing on screen can move a balance.
+A Send Quint button now starts a transfer, and the section dated 17:40 below
+records it. The rate and the hours are still read out rather than chosen.
 
 Only one skill exists. The rest of the tree, the alignment each skill carries and
 the abilities along the level arc are all later work.
@@ -3604,9 +3604,8 @@ live store record actions 7   demo store record actions 1
 
 ### What the spend does not reach
 
-No control on screen starts a spend. The program prices an action, debits it and
-records it, and nothing a person can click reaches that path. The Quint Wallet
-unit owns the spend control.
+A Spend a band button now starts a spend, and the section dated 17:40 below
+records it. The band it casts is the cheapest one.
 
 Nothing divides the pot. Every unit a participant spends rests at the event's held
 address, and the redistribution by performance is its own unit.
@@ -4157,7 +4156,8 @@ quality as weighted uses, so the sentence was wrong on screen. It now reads:
 
 ```
 The record store holds each use's quality as weighted uses, and this panel reads
-the participant's own. Nothing records a use yet, so the skill stands at level 0.
+the participant's own. The Train transfer control records one, and an untrained
+skill stands at level 0.
 ```
 
 The panel also reads the participant's own standing out of the store rather than
@@ -4165,8 +4165,8 @@ building a fresh one, so the level it prints is the level the store holds.
 
 ### What the redistribution does not reach
 
-No control starts a payout. Nothing on screen settles a pot, and the Quint Wallet is
-where that control belongs.
+A Settle the pot button now starts a payout, and the section dated 17:40 below
+records it. A second press is refused.
 
 Nothing writes a performance score during live play. The score is the trade grade,
 read through the RPG conversion, and the writer is reached only from inside the
@@ -4398,8 +4398,8 @@ Every tool verdict on the trophy is the same or better after the move.
 
 ### What the loot system does not reach
 
-No control on screen drops an item. The program draws a tier, names the item and
-writes it to the store, and nothing a person can click reaches that path.
+A Draw loot button now reaches the drop, and the section dated 17:40 below
+records it. It was only ever seen to refuse, because no pool reached twelve.
 
 Nothing mints the ERC-1155 contract. It compiles, its tools report on it, and no
 caller deploys it, so the wallet reads the store file rather than a chain.
@@ -4572,7 +4572,8 @@ The live fill payload carries no grade and no axis count, so a fill arriving tha
 today carries the record's own defaults and stays out of the score. The grades above
 came from the real grader reading the operator's trade log.
 
-No control on screen starts a payout, and none starts a join.
+The payout now has a button, recorded in the section dated 17:40 below. Nothing
+starts a join.
 
 In development.
 
@@ -5141,9 +5142,9 @@ a change to the contract and a decision about what the contract is.
 
 Nothing is deployed and no network is reached. Every run here is local.
 
-No control on screen drops an item, so the operator sees nothing new today. The
-coverage protects the rarity scale and the item page a marketplace would read,
-before either reaches a chain.
+No control on screen dropped an item on the day this was written, so the operator
+saw nothing new. The coverage protects the rarity scale and the item page a
+marketplace would read, before either reaches a chain.
 
 ## 2026-09-10 13:28 - #147 - what a world costs on the chain
 
@@ -5753,10 +5754,10 @@ testnet   loot_store_testnet.json
 
 ### What the subtabs do not reach
 
-No control records a use, so the skill tree stands at level 0 on both chains. No control
-drops an item, so the loot a gear panel shows is whatever the chain's store already
-holds. The map has no content of any kind, and the world it would draw waits on the size
-answer recorded above it.
+The skill tree stood at level 0 on both chains when the subtabs landed, and the loot a
+gear panel showed was whatever the chain's store already held. The controls dated 17:40
+below change both. The map has no content of any kind, and the world it would draw waits
+on the size answer recorded above it.
 
 The throwaway home held no fleet file, so every metric printed its no-value mark. The
 run proved the 27 rows and their field names off the page, and proved no value.
@@ -6065,3 +6066,186 @@ The snapshot is still a whole-file write, so the half-second stall returns once 
 50,000 records and grows with the chain. Writing it away from the drawing thread is
 not built. A log damaged below the snapshot loses the records after it, because a
 damaged log cannot be asked what it held.
+## 2026-09-10 17:40 - #147 - the controls that drive the mechanisms
+
+Five units each reported that their mechanism works and that nothing on screen
+starts it. A row of buttons now sits under the state line, and every one of them
+calls the mechanism's own entry point.
+
+```
+Distil              mints Quintessence against a fee and a grade
+Train transfer      records one use on the skill ladder
+Send Quint          sends an amount, less the bleed to the platonic
+Spend a band        casts an action and rests its cost in the event pot
+Score the action    puts a performance score on the participant's record
+Settle the pot      divides the pot and pays every share
+Close unpaid        closes an event nobody earned a share in
+Draw loot           opens a rotation window and draws an item
+File an exclusion   excludes a market from the next season
+```
+
+### Every button says what it did, in the mechanism's own words
+
+The verdict line under the buttons carries the sentence the mechanism answered,
+whether it acted or refused. Nothing on the page writes a second message for a
+condition a mechanism already states.
+
+```
+acted     Sent 0.001 Quint at level 1: 0.00092 received, 0.00008 bled to the platonic.
+refused   Quintessence Transfer stands at level 0 on 0 weighted uses; level 1 costs 1
+          and no transfer runs below it
+```
+
+### Each one was seen to act and to refuse
+
+Every refusal below is one the mechanism already carried. Each was reached by
+pressing the same button in a different state, so no second rule decides it.
+
+```
+transfer   refuses while the skill is untrained, refuses while the balance is
+           short, and then sends
+spend      refuses while the wallet holds under the band's cost, and then casts
+payout     refuses while nobody has a score, pays the scored, and refuses a
+           second press
+close      refuses while anybody has a score, and closes an event nobody earned in
+drop       refuses while fewer than twelve markets qualify
+season     files an exclusion, and the next season is what puts it in effect
+```
+
+### A premature payout would have denied whoever scored next, for ever
+
+The payout stamps the records before the Quintessence moves, and that stamp is
+permanent by design, so a second payout cannot take Quintessence the pot no longer
+rests. There was no check that the division paid anybody. One press on an event
+before any participant had a score stamped it settled, paid nobody, and left the
+whole pot unreachable by the people who later earned it.
+
+A payout that would pay nobody is now refused, and the refusal says which condition
+it is.
+
+```
+too early   monster_smash holds 0.001 Quintessence and no participant carries 1
+            scored axis, so a payout would pay nobody and stamp the event settled
+            for ever; 1 participant(s) stand unscored, and close_unpaid is the
+            deliberate close
+already     monster_smash was settled at 1789063555.8413775; a second payout would
+            take Quintessence the pot no longer rests
+```
+
+Closing an event nobody earned in is still possible, through its own button rather
+than through a setting on the payout. Two buttons cannot be confused for one
+another, and the close refuses the moment anybody holds a score, so an earned share
+can never be closed away.
+
+```
+close refuses    monster_smash carries 1 scored participant(s) owed 0.00075
+                 Quintessence; settle pays them and a close would deny them
+close acts       dungeon_crawl closed with nothing paid: 0.001 Quint rests as
+                 reserve and 1 participant(s) stood unscored.
+```
+
+The proof that the stamp was not burned is the payout that follows. The same event
+that refused the premature press paid its share once a participant was scored.
+
+```
+monster_smash divided 0.001 Quint: 0.00075 paid over 1 share(s), 0.00025 reserve,
+0 unscored.
+```
+
+### An event picker, so every event type is reachable
+
+The tab draws one button an event type, eight of them, beside the chain buttons.
+Every control button carries the selected event in what it sends, so a spend, a
+payout and a close all act on the event on screen.
+
+```
+monster_smash, monster_smash_elite, team_monster_smash, team_monster_smash_elite,
+dungeon_crawl, dungeon_crawl_elite, raid, raid_elite
+```
+
+### The books balance after every press
+
+The four-bucket report sits beside the pot division and is read again after each
+control acts. It held through all nineteen presses.
+
+```
+Buckets balance the mint   True
+Negative buckets           0
+Wallets                    0.09867
+Held                       0.00125
+Platonic                   0.00008
+Embedded                   0
+Distilled, all time        0.1
+```
+
+### Nothing advances a season, and the page says so
+
+The season counter lives in the competition registry contract behind a call that
+only the operations role may make, and no module under the source tree reaches
+it. The panel prints that rather than drawing a button that would claim to.
+
+```
+Nothing advances the season. currentSeason lives in
+contracts/CompetitionRegistry.sol behind advanceSeason, which onlyOperations
+gates, and no module under src reaches it. The governance unit that calls a gated
+registry function is the one that would.
+```
+
+What the season boundary does reach is the exclusion rule. A market excluded in
+one season is unaffected in that season and excluded in the next, and the control
+reads both answers back off the rotation record.
+
+```
+In effect this season   False
+In effect next season   True
+```
+
+### A chain picker, so the demo run needs no flag
+
+The tab now draws one button a chain. Pressing Demo TestNet redraws the whole tab
+against the TestNet's own files, and every control button afterwards carries that
+chain in what it sends. No second code path exists, and no flag.
+
+```
+live      quintessence_ledger.json
+testnet   quintessence_ledger_testnet.json
+```
+
+### The demo run cost nothing
+
+Every control above was pressed on the TestNet chain. The live chain was then
+selected again and read back. Its wallet, its pot and all four of its buckets
+stood at nought, and the only files the run wrote were the TestNet's own.
+
+```
+live after the run      Balance 0, Distilled 0, Movements 0, Pot 0
+files written           market_rotation_testnet.json
+                        poa_record_store_testnet.json
+                        quintessence_ledger_testnet.json
+```
+
+### The party window lists the fleet on both chains
+
+The participant list was reading a chain-suffixed fleet file, so the demo chain
+drew an empty party. A fleet is not chain state: the same bots play on either
+chain and only the ledger changes. The list now reads the one fleet file, and the
+demo chain draws the same forty slots the live chain draws.
+
+### Nothing is subscribed to the live fill event
+
+Minting from a real trade remains the operator's decision and no code here takes
+it. The Distil button is the only thing that mints, and a person has to press it.
+
+### What these controls do not reach
+
+The Draw loot button was never seen to return an item. A draw needs a rotation
+window, a window needs twelve qualifying markets, and the qualifying pool is
+built from the exchange scout the running program polled. The page's own process
+polls nothing, so the pool read nought and the floor refused every press.
+
+The capture-bounds activation is the one place that builds a pool and opens a
+window together, and it refuses without a figure saying how much Quintessence a
+market's pool holds in a window. No unit has set that figure.
+
+No button scores another participant. The Score the action button scores this node's
+own participant, so every payout proved above paid one share.
