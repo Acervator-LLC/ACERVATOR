@@ -1,7 +1,8 @@
 """Shared LocalTestnet bridge.
 
-``SharedTestnetBridge.install_on`` attaches one ``LocalTestnet`` to a
-MainWindow and starts ``_drain_queue`` on a timer. Each queued
+``SharedTestnetBridge.install_on`` attaches one ``LocalTestnet`` and one
+``QuintessenceLedger`` to a MainWindow and starts ``_drain_queue`` on a
+timer. Each queued
 ``CompetitionRequest`` runs in a ``_CompetitionWorker``, which mutates
 the chain on its own thread while it holds ``_mutation_lock``, one
 worker at a time. ``_save_now`` writes the chain to
@@ -18,9 +19,12 @@ import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ..core.io_utils import atomic_write_json
+
+if TYPE_CHECKING:
+    from src.competition.quintessence_ledger import QuintessenceLedger
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
@@ -124,9 +128,14 @@ class SharedTestnetBridge(QObject):
 
     # ── Installation factory (called once by MainWindow) ──────────────
     @classmethod
-    def install_on(cls, main_win, persist_path: Optional[Path] = None):
-        """Create the shared ``LocalTestnet`` and bridge, and attach both
-        to ``main_win``.
+    def install_on(
+        cls,
+        main_win,
+        persist_path: Optional[Path] = None,
+        quint_ledger_path: Optional[Path] = None,
+    ):
+        """Create the shared ``LocalTestnet``, the bridge and the
+        ``QuintessenceLedger``, and attach all three to ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -143,8 +152,38 @@ class SharedTestnetBridge(QObject):
         bridge._try_load()
         main_win._local_testnet = testnet
         main_win._testnet_bridge = bridge
+        main_win._quint_ledger = cls.install_quint_ledger(quint_ledger_path)
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
+
+    @staticmethod
+    def install_quint_ledger(
+        ledger_path: Optional[Path] = None,
+    ) -> QuintessenceLedger:
+        """Return a loaded ``QuintessenceLedger``, or one that refuses every write."""
+        from src.competition.quintessence_ledger import (
+            QuintessenceLedger as _Ledger,
+        )
+        from src.competition.quintessence_ledger import (
+            QuintessenceLedgerError,
+        )
+
+        ledger = _Ledger(ledger_path)
+        try:
+            ledger.load()
+        except (QuintessenceLedgerError, OSError):
+            logger.exception(
+                "QuintessenceLedger at %s raised while replaying its movements",
+                ledger_path or "default",
+            )
+        report = ledger.conservation()
+        logger.info(
+            "QuintessenceLedger installed (path=%s, ever minted=%s, balanced=%s)",
+            ledger_path or "default",
+            report.total_ever_minted,
+            report.is_balanced,
+        )
+        return ledger
 
     # ── Public API ────────────────────────────────────────────────────
 

@@ -221,6 +221,83 @@ RarityTier(
 ),
 ```
 
+## Quintessence
+
+A certified trade distils the platform's second asset. Entering an event spends
+it, and nothing destroys it. It keeps its own ledger, apart from the token
+ledger above, because the two obey opposite rules: the token only ever moves
+outward into a balance, while Quintessence circulates.
+
+`src/competition/quintessence_ledger.py` — the four operations
+
+```python
+def distil(self, address: str, fee_usd: object, trade_grade: object) -> Decimal:
+def spend(self, address: str, amount: object, held_address: str) -> Decimal:
+def transfer(self, sender, recipient, amount, skill_level) -> QuintessenceTransfer:
+def respawn(self, address: str, amount: object) -> Decimal:
+```
+
+Quintessence can be in exactly three places, and the three always add up to
+everything ever distilled. A wallet holds what a participant can spend. A held
+address holds what they have already spent, which rests there and funds later
+awards. The platonic holds what bled out of a transfer, and the ledger respawns
+that to other participants.
+
+```mermaid
+flowchart LR
+    FEE[certified exchange fee] -->|distil| WALLET[wallet]
+    WALLET -->|spend| HELD[held address]
+    WALLET -->|transfer| OTHER[another wallet]
+    WALLET -->|bleed| PLATONIC[the platonic]
+    PLATONIC -->|respawn| OTHER
+```
+
+Every operation checks that sum before it writes, and refuses the write when it
+does not balance.
+
+`src/competition/quintessence_ledger.py` — the two conditions the check reads
+
+```python
+is_balanced=delta == 0 and not negatives,
+is_within_cap=self._total_ever_minted <= QUINTESSENCE_SUPPLY_CAP,
+```
+
+| Term | Value |
+| ---- | ----- |
+| Hard cap | 33,000,000 Quintessence, total ever distilled |
+| Pre-ownership | none, for anyone |
+| Distil rate | one Quintessence for one dollar of certified exchange fee |
+| Grade curve | the trade's grade, zero to one, multiplies the award |
+| Destruction | never |
+| Transfer bleed | 8% at skill level one, falling to 4% at level ten |
+
+The module holds the cap and the rate as constants, and the write path refuses a
+mint past the cap rather than reporting it afterwards.
+
+`src/competition/quintessence_ledger.py` — the recorded numbers
+
+```python
+QUINTESSENCE_SUPPLY_CAP = Decimal(33_000_000)
+QUINTESSENCE_PER_FEE_USD = Decimal(1)
+BLEED_FRACTION_AT_LEVEL_1 = Decimal("0.08")
+BLEED_FRACTION_AT_LEVEL_10 = Decimal("0.04")
+```
+
+Every launch builds the ledger and attaches it to the window beside the local
+chain, so a later panel finds it where it finds the chain.
+
+`src/gui/shared_testnet.py` — the line that builds it
+
+```python
+main_win._quint_ledger = cls.install_quint_ledger(quint_ledger_path)
+```
+
+Nothing spends Quintessence yet. No screen shows a balance and no trade
+certifies, so the ledger loads empty on every launch and reports nothing ever
+distilled. The transfer duration, the skill that gates a transfer, the guild
+check, and the share of a market pool a participant may take are all other
+units.
+
 ## Head to head
 
 `challenge_protocol.py` carries the Elo ladder. A challenger sends a signed
