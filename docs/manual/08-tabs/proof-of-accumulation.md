@@ -1415,3 +1415,133 @@ Demo mode needs no second path. A start date is a fact about a project, not abou
 a chain, so a TestNet run reads the same dates from the same file through the same
 call. The lookup holds no chain and no competition name, so there is nothing for a
 demo run to switch.
+
+## 2026-09-09 23:41 - #147 - node linking between two instances
+
+Two copies of Acervator on one machine now hold the same records on their two
+chains. Each copy is a node. A node says where it is listening, finds the others
+that said the same, trades records with them, and keeps every record either side
+had. This is the run, two processes, each with its own chain and its own books.
+
+```
+node 8f3fd656e34e starts with 1 chain records on node_a
+node 8f3fd656e34e listening on 127.0.0.1:57019 (network=acervator-poa, records=1)
+node b3b38412206d starts with 1 chain records on node_b
+node b3b38412206d listening on 127.0.0.1:57040 (network=acervator-poa, records=1)
+node b3b38412206d synced with 8f3fd656e34e: held 1, offered 2, took 1, now holds 2
+node 8f3fd656e34e synced with b3b38412206d: held 2, offered 2, took 0, now holds 2
+node 8f3fd656e34e ends with 2 chain records
+node b3b38412206d ends with 2 chain records
+```
+
+Nothing opens a port by itself. Starting the application builds the node, and
+building the node binds nothing, announces nothing, and creates no directory.
+Linking is a thing somebody asks for afterwards. A node nobody has asked refuses
+to give out an address, because it does not have one.
+
+```
+PoaNodeLink installed (node=node-694eca0b8dc2, peers=...\poa_nodes,
+                       network=acervator-poa, listening=False)
+after install: listening=False, announced files=no directory, chain=[]
+endpoint before start_listening raised NodeLinkError:
+    node node-694eca0b8dc2 is not listening, so it has no endpoint
+```
+
+The link speaks to this machine and nowhere else. The address sits in one named
+constant, and no method anywhere takes an address to bind, so there is no
+setting to get wrong. A caller from any other machine is turned away before its
+message is read.
+
+`src/competition/node_link.py` - the only interface, and the refusal
+
+```python
+LOOPBACK_HOST = "127.0.0.1"
+
+    def verify_request(self, request: object, client_address: tuple) -> bool:
+        if client_address[0] != LOOPBACK_HOST:
+            logger.warning("node link refused non-loopback client %s", client_address)
+            return False
+        return True
+```
+
+Nothing from the trading side can travel over it. A record is six declared
+fields and nothing else, so a peer that sends a seventh is refused where the
+record is built. The node holds the chain and holds nothing else, and the only
+two calls it can make on that chain are to add a transaction and to add an
+event. A record names a function as text, and no part of this calls it.
+
+`src/competition/node_link.py` - the whole of what crosses
+
+```python
+    from_addr: str
+    to_addr: str
+    function_name: str
+    args: dict
+    gas_used: int
+    events: tuple
+```
+
+Agreement is on the records, not on the blocks, and that follows from the chain
+already in the tree. It keeps one list of blocks and always builds on the last
+one, so it has nowhere to put a second competing history. Each block's
+identifier is made from the clock and a random number instead of from the
+block's own contents, so two nodes holding the very same record still give their
+blocks different identifiers. **The chain cannot express a fork.** Nothing
+therefore has a branch to choose between, or a history to discard.
+
+`src/competition/local_testnet.py` - where a block's identifier comes from
+
+```python
+def _fake_hash(seed: str = "") -> str:
+    raw = f"{seed}{time.time_ns()}{uuid.uuid4()}"
+    return "0x" + hashlib.sha256(raw.encode()).hexdigest()
+```
+
+The rule is therefore to keep everything. A record is named by the hash of its
+own content, a node adds every record it does not already have, and nothing is
+ever thrown away. The order the two nodes talk in does not matter. What the rule
+refuses matters as much as what it does: it never removes a record, never
+reorders one already held, and never claims the two chains are identical block
+for block. The second exchange in the run above took nothing, which is the same
+record arriving twice and being recognised.
+
+```
+node 8f3fd656e34e synced with b3b38412206d: held 2, offered 2, took 0
+node b3b38412206d took 0 of 2 records from peer 8f3fd656e34e
+```
+
+Breaking the link breaks the agreement, which is how we know the agreement came
+over the wire. The same two processes, with the link built but never started,
+end one record apart and stay that way.
+
+```
+node 0a4dbe51b761 ends with 1 chain records, never having listened
+node 4629d5d46e1d ends with 1 chain records, never having listened
+```
+
+The TestNet demo runs the same code. A demo node is this same node over a
+different chain with a different chain name, not a second code path and not a
+switch. Two demo nodes link exactly as two live nodes do. A live node and a demo
+node sharing one announcement directory, both listening at the same moment, find
+no peer at all.
+
+```
+both on the demo chain
+  node efad997ddc19 synced with 56d934d38462: held 1, offered 2, took 1, now holds 2
+  network=acervator-poa-testnet
+
+one of each, one directory
+  node 883079b27380 discovered 0 peers      network=acervator-poa
+  node b1435252aa59 discovered 0 peers      network=acervator-poa-testnet
+  each ends with 1 chain records
+```
+
+Nothing in the running application starts a link yet. The node is built on every
+launch and waits. The control that would start it belongs on this tab, and no
+unit on the issue carries that control, so it is named here rather than invented.
+A node killed outright also leaves its announcement behind, and the next node to
+read it logs that it could not be reached and carries on.
+
+```
+In development.
+```
