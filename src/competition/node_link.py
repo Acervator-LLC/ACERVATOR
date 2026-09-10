@@ -3,9 +3,9 @@
 ``PoaNodeLink`` takes its ``LocalTestnet`` at construction and binds no socket
 until ``start_listening`` runs. ``announce`` writes one ``PeerEndpoint`` file into
 ``peer_dir``, ``peers`` reads the others, and ``sync_with`` trades every
-``ChainRecord`` both ways. ``apply_records`` keeps a record whose ``tx_id`` the
-chain does not already hold, so no record is ever dropped or reordered, and
-refuses one whose ``tx_id`` is not the ``transaction_id`` of its own contents.
+``ChainRecord`` both ways. ``apply_records`` keeps a record whose ``placement_id``
+the chain does not already hold and closes one block over the batch, so arrival
+order decides nothing, and refuses one whose id its own contents do not name.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..core.io_utils import atomic_write_json
-from .local_testnet import LocalTestnet, canonical_json, transaction_id
+from .local_testnet import LocalTestnet, TxRecord, canonical_json
 
 logger = logging.getLogger("acervator.node_link")
 
@@ -42,9 +42,9 @@ class NodeLinkError(RuntimeError):
 
 @dataclass(frozen=True)
 class ChainRecord:
-    """One ``LocalChain`` transaction, its ``tx_id`` and the events it emitted.
+    """One ``LocalChain`` transaction, its ``placement_id`` and the events it emitted.
 
-    The seven declared fields are the whole of the wire record, so ``from_payload``
+    The eight declared fields are the whole of the wire record, so ``from_payload``
     raises ``TypeError`` for any other key.
     """
 
@@ -53,7 +53,8 @@ class ChainRecord:
     function_name: str
     args: dict
     gas_used: int
-    tx_id: str
+    placement_id: str
+    placed_at: float
     events: tuple
 
     @classmethod
@@ -77,23 +78,31 @@ class ChainRecord:
             "function_name": self.function_name,
             "args": self.args,
             "gas_used": self.gas_used,
-            "tx_id": self.tx_id,
+            "placement_id": self.placement_id,
+            "placed_at": self.placed_at,
             "events": [list(event) for event in self.events],
         }
 
-    def content_id(self) -> str:
-        """Return the chain's ``transaction_id`` for this record's five fields."""
-        return transaction_id(
-            self.from_addr,
-            self.to_addr,
-            self.function_name,
-            self.args,
-            self.gas_used,
+    def as_tx(self) -> TxRecord:
+        """Return this record as an unmined ``TxRecord`` for ``LocalChain.mine``."""
+        return TxRecord(
+            tx_hash="",
+            block_number=0,
+            from_addr=self.from_addr,
+            to_addr=self.to_addr,
+            function_name=self.function_name,
+            args=dict(self.args),
+            gas_used=self.gas_used,
+            timestamp=self.placed_at,
         )
 
+    def content_id(self) -> str:
+        """Return the ``TxRecord.placement_id`` this record's own fields produce."""
+        return self.as_tx().placement_id()
+
     def id_matches_contents(self) -> bool:
-        """Answer whether ``tx_id`` equals the ``content_id`` of this record."""
-        return self.tx_id == self.content_id()
+        """Answer whether ``placement_id`` equals the ``content_id`` of this record."""
+        return self.placement_id == self.content_id()
 
 
 @dataclass(frozen=True)
@@ -274,46 +283,46 @@ class PoaNodeLink:
                     function_name=tx.function_name,
                     args=dict(tx.args),
                     gas_used=int(tx.gas_used),
-                    tx_id=str(tx.tx_hash),
+                    placement_id=tx.placement_id(),
+                    placed_at=float(tx.timestamp),
                     events=tuple(events.get(tx.tx_hash, ())),
                 )
                 for tx in chain._txs.values()
             ]
 
     def apply_records(self, records: Iterable[ChainRecord]) -> int:
-        """Mine every record this chain does not hold, and return how many were added.
+        """Close one block over every record this chain lacks, and return how many.
 
-        Refuses a record whose ``tx_id`` is not the ``content_id`` of its own fields,
-        and reaches ``LocalChain.send_tx`` and ``LocalChain.emit`` only.
+        Refuses a record whose ``placement_id`` is not the ``content_id`` of its own
+        fields, and reaches ``LocalChain.mine`` and ``LocalChain.emit`` only.
         """
-        added = 0
+        placed: list[tuple[ChainRecord, TxRecord]] = []
         with self._chain_lock:
             chain = self._testnet.chain
-            held = set(chain._txs)
+            held = set()
             for record in records:
                 if not record.id_matches_contents():
                     logger.warning(
                         "node %s refused record %s calling %s: its contents name %s",
                         self._node_id,
-                        record.tx_id,
+                        record.placement_id,
                         record.function_name,
                         record.content_id(),
                     )
                     continue
-                if record.tx_id in held:
+                if record.placement_id in held or chain.holds_placement(
+                    record.placement_id
+                ):
                     continue
-                tx = chain.send_tx(
-                    record.from_addr,
-                    record.to_addr,
-                    record.function_name,
-                    dict(record.args),
-                    gas_used=record.gas_used,
-                )
+                held.add(record.placement_id)
+                placed.append((record, record.as_tx()))
+            if not placed:
+                return 0
+            chain.mine([tx for _, tx in placed])
+            for record, tx in placed:
                 for contract, event_name, event_args in record.events:
                     chain.emit(tx.tx_hash, contract, event_name, dict(event_args))
-                held.add(record.tx_id)
-                added += 1
-        return added
+        return len(placed)
 
     # -- Listening -----------------------------------------------------------
 

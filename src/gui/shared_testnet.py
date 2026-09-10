@@ -557,8 +557,8 @@ class SharedTestnetBridge(QObject):
         """Return the ``_chain``, ``_acrv`` and ``_registry`` state as a
         JSON dict.
 
-        ``_restore_state`` reads the same keys, and ``schema_version``
-        carries ``SCHEMA_VERSION``.
+        ``_restore_state`` reads the same keys, and ``content_ids_from_block``
+        carries the block number from which stored ids derive from contents.
         """
         chain = self._testnet._chain
         acrv = self._testnet._acrv
@@ -566,6 +566,7 @@ class SharedTestnetBridge(QObject):
         return {
             "schema_version": SCHEMA_VERSION,
             "saved_at": time.time(),
+            "content_ids_from_block": chain.content_id_from_block,
             "block_number": chain._block_number,
             "blocks": [b.to_dict() for b in chain._blocks],
             # _txs is a dict keyed by hash → preserve as list of tx dicts
@@ -631,8 +632,9 @@ class SharedTestnetBridge(QObject):
         """Rebuild ``_chain``, ``_acrv`` and ``_registry`` from a
         ``_serialize_state`` payload.
 
-        A missing or mismatched field raises out of ``Block``,
-        ``TxRecord`` or ``ChainEvent``.
+        A missing or mismatched field raises out of ``Block``, ``TxRecord`` or
+        ``ChainEvent``. A payload with no ``content_ids_from_block`` marks every
+        record it carries legacy.
         """
         from src.competition.local_testnet import Block, TxRecord, ChainEvent
 
@@ -647,6 +649,10 @@ class SharedTestnetBridge(QObject):
         }
         chain._events = [ChainEvent(**e) for e in payload.get("events", [])]
         chain._block_number = payload.get("block_number", 0)
+        chain.reindex_placements()
+        chain.set_content_id_from_block(
+            payload.get("content_ids_from_block", chain._block_number + 1)
+        )
 
         acrv._balances = dict(payload.get("acrv_balances", {}))
         acrv._allowances = {
