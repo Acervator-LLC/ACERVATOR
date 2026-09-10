@@ -4837,3 +4837,226 @@ the read, not for the whole order.
 
 Nothing subscribes certification to the live fill event, so no live trade reaches
 an award while the platform runs. That remains a decision about real value.
+
+## 2026-09-10 13:28 - #147 - what a world costs on the chain
+
+### The question turns round, and then it closes
+
+He asked how large a full world state must be. A chain keeps the transitions and
+never a copy of the state in every block, so the answer is what one action costs
+and what a budget buys. His own rule sets it that way round: a maximum world state
+size dictates the participant count and how large a generative world may be.
+
+Driving records through the chain, letting the chain save itself and reading the
+file size gives this.
+
+```
+one action on the chain today            988 bytes
+one action in a chosen encoding          399 bytes
+recommended ceiling                      1 MB per one-hour world turn
+participants that buys, 4 actions each   655
+his 3,136-block chain reloads in         65 ms
+a hundred times those records            4.9 s
+what binds                               the save, not the size and not the load
+```
+
+### His own chain, confirmed
+
+The platform reports its own record counts, and the file system reports the bytes.
+Both agree with the figures already recorded for this tab.
+
+```
+blocks         3,136
+transactions   3,135
+events         2,565
+file bytes 4,059,629
+```
+
+Re-saving that chain through the platform's own save path writes 3,946,745 bytes
+with every section unchanged. The 112,884-byte difference is one carriage return a
+line, left by an older build writing in Windows text mode. The per-record averages
+of 291, 369 and 322 bytes therefore run 2.86% high, and correct to 283, 359 and 313.
+
+### One action, measured eight ways
+
+One hundred grid moves were driven through the chain for each row, as a transaction
+carrying an event, a turn, the actor, the action, two squares and an Impetus cost.
+They exist to be measured and they are not a design. Each figure includes the block
+the action rides in.
+
+```
+one block per action, named fields, indented   988   what the chain does today
+one block per action, packed argument          781
+one block per action, named fields, compact    969
+one block per action, packed argument, compact 616
+one block per turn,   named fields, indented   714
+one block per turn,   packed argument          508
+one block per turn,   named fields, compact    526
+one block per turn,   packed argument, compact 399   the chosen encoding
+```
+
+### What the smaller encoding gives up
+
+Dropping the indentation saves 875,348 bytes on his chain, 22 per cent, and costs a
+file a person can read. Packing the arguments saves 207 bytes an action and leaves
+a record nothing can interpret without the code that wrote it. Sharing one block
+across a turn saves 274 bytes an action and gives up the ordering that block number
+supplies today.
+
+```
+his chain indented   3,946,745 bytes
+his chain compact    3,071,397 bytes
+```
+
+### Two clocks, and only one of them is bounded
+
+A world turn is one hour. A dungeon or raid turn is one candle. The hour divides
+exactly into both.
+
+```
+elite event turn       60 s, sixty turns an hour
+standard event turn   300 s, twelve turns an hour
+world turn           3600 s, one turn an hour
+```
+
+The Impetus pool bounds an event turn: four at the first level, one more every
+twenty levels, and a speed multiplier may at most double the level's own grant.
+The modes module holds no one-hour term at all, so nothing bounds the actions in a
+world turn. The ceiling below can be stated and not enforced until a world-turn
+allowance exists.
+
+In development.
+
+### A world rebuilds from its own history in well under a second
+
+His real chain, and then ten and a hundred times its records, were loaded through
+the platform's own load path. Each figure subtracts a control run that builds the
+same objects without loading.
+
+```
+records    file bytes       load   per record
+  8,836     4,059,629      65 ms     7.4 us
+ 65,265    26,031,824     516 ms     7.9 us
+629,565   247,769,048   4,901 ms     7.8 us
+```
+
+The cost per record stays flat across seventy-one times the history. One second of
+load buys about 125,000 records, and ten seconds buys 1.28 million.
+
+### The save is what binds
+
+The save path rewrites the whole file every time, and the timer fires half a second
+after the last change.
+
+```
+ 3,946,745 bytes      67 ms
+26,031,824 bytes     336 ms
+247,769,048 bytes  3,444 ms
+```
+
+At fifteen milliseconds a megabyte a save finishes inside that half second only
+while the chain stays under about 34 megabytes, which is roughly 85,000 actions for
+the life of the world. A ten-second load would allow 1.28 million. The current save
+path therefore stops a world at one fifteenth of what its own load time allows.
+
+The shape that removes it appends each record to the log rather than rewriting the
+file, and writes a full snapshot now and then so a load reads one snapshot and a
+short tail. Neither is built.
+
+In development.
+
+### One megabyte an hour, recommended
+
+The per-action cost rounds up to 400 bytes and the budget rounds down from the 1.28
+megabytes a ten-second load would allow. Both roundings keep the bound safe.
+
+```
+1,048,576 / 400        = 2,621 action records a world turn
+4 actions each         =   655 participants
+8 actions each         =   327 participants
+20 actions each        =   131 participants
+120 participants at 4  =   480 records, leaving 2,141 records of world change
+a 720-turn season      =   720 MB, which reloads in 14.7 s
+```
+
+The trade divides world change against participant count, and one megabyte is a
+recommendation resting on the ten-second load ceiling and nothing else.
+
+### World size is free and world change is not
+
+A thousand-square map and a ten-square map cost the same when a recorded seed
+produces both. Only a square that changes costs a record.
+
+```
+the seed            one record, once
+a square unchanged  nothing
+a square changed    one action record
+```
+
+The budget caps how much of a world moves in an hour and never how large it is.
+
+### Sight is bounded and storage is not
+
+Viewrange bounds what a participant sees. A chain holding only what one participant
+can see would not be a chain, so the two figures stay separate.
+
+```
+the chain holds        every record, 2,621 a world turn
+a participant receives the records inside their own viewrange
+```
+
+Nothing in the competition package carries a zone, a square, a tile or a viewrange,
+so the square count has no value yet and none is invented. A participant receives
+the turn's records divided by the square count, and a range boost raises that share
+without changing what the chain stores.
+
+In development.
+
+### Ordering a world turn needs a position inside the block
+
+World actions resolve in timestamp order when the block closes. The block's own id
+covers its timestamp; a transaction's id deliberately leaves its timestamp out, so
+that two nodes holding one transaction agree on its id.
+
+```
+block id        number, parent, timestamp, transaction list
+transaction id  sender, recipient, function, arguments, gas, status
+                block number and timestamp excluded
+```
+
+Two nodes can therefore hold one transaction with different timestamps, both chains
+verify, and the two order the world turn differently. The recommended direction is
+for the block to assign each transaction its position at close and for that position
+to enter the transaction's id. A position costs about ten bytes, inside the rounding
+already taken, and it changes every id on the chain, so it is a schema change of its
+own.
+
+In development.
+
+### The platform reports his own history as altered
+
+Loading his chain makes the integrity check report every record as altered.
+
+```
+chain NOT verified: 3135 of 3136 blocks altered, 0 parent links broken,
+3135 of 3135 transactions altered
+```
+
+His file was written before records took the hash of their own contents as a name,
+and the schema version did not move when that landed. The state rebuilds correctly,
+and only the records written before content addressing cannot be verified. Raising
+the schema version would make the load delete his file and 3,136 blocks with it, and
+re-assigning ids on load is the one thing a tamper check must never do. The choice
+is his.
+
+In development.
+
+### What this measurement does not reach
+
+An identity on this chain is text: 66 characters for a hash and 42 for an address.
+Bytes would halve both, and that changes the chain's identity model rather than its
+encoding, so nothing here measures it.
+
+No grid exists, so the figure a participant receives stays a relation and never a
+number. Nothing bounds the actions in a world turn, so the recommended ceiling has
+no enforcement point yet.
