@@ -9,7 +9,7 @@ Simulates:
   • ACRV ERC-20 token state (balances, supply, mint history)
   • CompetitionRegistry state (competitions, submissions, adjudications)
   • Chainlink oracle (configurable mock price)
-  • Transaction receipts with realistic-looking hashes
+  • Transaction receipts whose tx_hash is the sha256 of the transaction
   • Event emission and log
 
 The LocalTestnet implements the exact same interface as BaseConnector
@@ -30,9 +30,10 @@ Usage:
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 import threading
 import time
-import uuid
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -40,15 +41,80 @@ from typing import Dict, List, Optional
 from .competition_engine import CompetitionResult
 from .season_schedule import TOTAL_SUPPLY_CAP
 
+logger = logging.getLogger("acervator.local_testnet")
+
 # ── Chain primitives ──────────────────────────────────────────────────────────
 
 TOKEN_DECIMALS = 18
 MAX_SUPPLY_WEI = TOTAL_SUPPLY_CAP * (10**TOKEN_DECIMALS)
 
+#: The TxRecord.status of a transaction that was not reverted.
+TX_SUCCESS = 1
 
-def _fake_hash(seed: str = "") -> str:
-    raw = f"{seed}{time.time_ns()}{uuid.uuid4()}"
-    return "0x" + hashlib.sha256(raw.encode()).hexdigest()
+#: Genesis holds no parent and no transaction, so its id is this constant.
+GENESIS_BLOCK_ID = "0x" + "0" * 64
+
+#: Decimal places a stored timestamp keeps, so an id covers the value on disk.
+TIMESTAMP_DIGITS = 3
+
+#: How many altered records verify_integrity names in one log line.
+ALTERED_LOG_LIMIT = 5
+
+
+def canonical_json(payload: dict | list) -> str:
+    """Return ``payload`` as the JSON text every node produces byte for byte."""
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def content_id(payload: dict) -> str:
+    """Return the 0x-prefixed sha256 of ``payload``'s ``canonical_json``."""
+    return "0x" + hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def transaction_id(
+    from_addr: str,
+    to_addr: str,
+    function_name: str,
+    args: dict,
+    gas_used: int,
+    status: int = TX_SUCCESS,
+) -> str:
+    """Return the id of one transaction's contents, equal on every node holding it.
+
+    Excludes ``block_number`` and ``timestamp``, which differ between two nodes.
+    """
+    return content_id(
+        {
+            "from_addr": from_addr,
+            "to_addr": to_addr,
+            "function_name": function_name,
+            "args": args,
+            "gas_used": gas_used,
+            "status": status,
+        }
+    )
+
+
+def block_id(
+    number: int,
+    parent_hash: str,
+    timestamp: float,
+    transactions: List[str],
+) -> str:
+    """Return the id of one block's contents, the parent's id among them."""
+    return content_id(
+        {
+            "number": number,
+            "parent_hash": parent_hash,
+            "timestamp": timestamp,
+            "transactions": list(transactions),
+        }
+    )
 
 
 def _fake_addr(seed: str) -> str:
@@ -64,12 +130,23 @@ class TxRecord:
     to_addr: str
     function_name: str
     args: dict
-    status: int = 1  # 1 = success, 0 = reverted
+    status: int = TX_SUCCESS
     gas_used: int = 21_000
     timestamp: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    def content_id(self) -> str:
+        """Return the ``transaction_id`` this record's own fields produce."""
+        return transaction_id(
+            self.from_addr,
+            self.to_addr,
+            self.function_name,
+            self.args,
+            self.gas_used,
+            self.status,
+        )
 
 
 @dataclass
@@ -82,6 +159,15 @@ class Block:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    def content_id(self) -> str:
+        """Return the ``block_id`` this block's own fields produce."""
+        return block_id(
+            self.number,
+            self.parent_hash,
+            self.timestamp,
+            self.transactions,
+        )
 
 
 @dataclass
@@ -116,14 +202,14 @@ class LocalChain:
     def _genesis(self):
         genesis = Block(
             number=0,
-            hash="0x" + "0" * 64,
-            parent_hash="0x" + "0" * 64,
-            timestamp=time.time(),
+            hash=GENESIS_BLOCK_ID,
+            parent_hash=GENESIS_BLOCK_ID,
+            timestamp=round(time.time(), TIMESTAMP_DIGITS),
         )
         self._blocks.append(genesis)
 
     def mine(self, txs: Optional[List[TxRecord]] = None) -> Block:
-        """Mine a new block, optionally including transactions."""
+        """Mine a new block whose ``hash`` is the ``block_id`` of its own contents."""
         self._block_number += 1
         parent = self._blocks[-1]
         tx_hashes = []
@@ -132,14 +218,22 @@ class LocalChain:
                 tx.block_number = self._block_number
                 self._txs[tx.tx_hash] = tx
                 tx_hashes.append(tx.tx_hash)
+        timestamp = round(time.time(), TIMESTAMP_DIGITS)
         block = Block(
             number=self._block_number,
-            hash=_fake_hash(f"block{self._block_number}"),
+            hash=block_id(self._block_number, parent.hash, timestamp, tx_hashes),
             parent_hash=parent.hash,
-            timestamp=time.time(),
+            timestamp=timestamp,
             transactions=tx_hashes,
         )
         self._blocks.append(block)
+        logger.debug(
+            "mined block %d %s over parent %s holding %d transactions",
+            block.number,
+            block.hash,
+            block.parent_hash,
+            len(tx_hashes),
+        )
         return block
 
     def emit(self, tx_hash: str, contract: str, event_name: str, args: dict):
@@ -161,9 +255,18 @@ class LocalChain:
         args: dict,
         gas_used: int = 50_000,
     ) -> TxRecord:
-        """Record a transaction and mine it into a block."""
+        """Record a transaction under the ``transaction_id`` of its own contents.
+
+        Raises ``ValueError`` when the chain already holds that id.
+        """
+        tx_id = transaction_id(from_addr, to_addr, fn_name, args, gas_used)
+        if tx_id in self._txs:
+            already_held = (
+                f"transaction {tx_id} calling {fn_name} is already on this chain"
+            )
+            raise ValueError(already_held)
         tx = TxRecord(
-            tx_hash=_fake_hash(fn_name),
+            tx_hash=tx_id,
             block_number=self._block_number + 1,
             from_addr=from_addr,
             to_addr=to_addr,
@@ -171,8 +274,59 @@ class LocalChain:
             args=args,
             gas_used=gas_used,
         )
+        logger.debug("sending transaction %s calling %s", tx_id, fn_name)
         self.mine([tx])
         return tx
+
+    def verify_integrity(self) -> dict:
+        """Report every block and transaction whose stored id is not its content id.
+
+        Block 0 carries ``GENESIS_BLOCK_ID``, so it is read against that constant.
+        """
+        altered_blocks = [
+            b.number
+            for b in self._blocks
+            if b.hash != (GENESIS_BLOCK_ID if b.number == 0 else b.content_id())
+        ]
+        broken_parents = [
+            child.number
+            for parent, child in zip(self._blocks, self._blocks[1:], strict=False)
+            if child.parent_hash != parent.hash
+        ]
+        altered_txs = [
+            stored_id
+            for stored_id, tx in self._txs.items()
+            if stored_id != tx.content_id()
+        ]
+        report = {
+            "blocks": len(self._blocks),
+            "blocks_altered": altered_blocks,
+            "broken_parents": broken_parents,
+            "transactions": len(self._txs),
+            "transactions_altered": altered_txs,
+            "is_verified": not (altered_blocks or broken_parents or altered_txs),
+        }
+        if report["is_verified"]:
+            logger.info(
+                "chain verified: %d blocks and %d transactions carry the id of "
+                "their own contents",
+                report["blocks"],
+                report["transactions"],
+            )
+        else:
+            logger.warning(
+                "chain NOT verified: %d of %d blocks altered %s, %d parent links "
+                "broken %s, %d of %d transactions altered %s",
+                len(altered_blocks),
+                report["blocks"],
+                altered_blocks[:ALTERED_LOG_LIMIT],
+                len(broken_parents),
+                broken_parents[:ALTERED_LOG_LIMIT],
+                len(altered_txs),
+                report["transactions"],
+                [i[:18] for i in altered_txs[:ALTERED_LOG_LIMIT]],
+            )
+        return report
 
     @property
     def block_number(self) -> int:
@@ -561,8 +715,6 @@ class LocalTestnet:
     def register_bot_onchain(
         self, comp_id: str, wallet: str, config: dict, capital_usd: float
     ) -> str:
-        import json, hashlib
-
         config_hash = bytes.fromhex(
             hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
         )
@@ -662,6 +814,10 @@ class LocalTestnet:
 
     def tx_url(self, tx_hash: str) -> str:
         return f"local://tx/{tx_hash}"
+
+    def verify_integrity(self) -> dict:
+        """Return ``LocalChain.verify_integrity`` for the chain this testnet holds."""
+        return self._chain.verify_integrity()
 
     # ── Chain data for block explorer UI ─────────────────────────────────────
 

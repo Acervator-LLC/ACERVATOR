@@ -1694,3 +1694,154 @@ A row prints health as a figure, not as a bar, and carries no role colour.
 Current health and wound depth need the fire-time gate reading, which arrives on
 the bus rather than in the saved file. Nothing here reads an ability, a mode or a
 turn.
+
+## 2026-09-10 00:34 - #147 - a block and a transaction named by their own contents
+
+An identifier on this chain used to come from the clock and a random number. Two
+copies of Acervator holding the identical record gave that record two different
+names, and editing an amount in a stored record left every name in the chain
+still valid. Both identifiers are now the SHA-256 of the record's own contents.
+
+`src/competition/local_testnet.py` - what names a transaction
+
+```python
+def transaction_id(
+    from_addr: str,
+    to_addr: str,
+    function_name: str,
+    args: dict,
+    gas_used: int,
+    status: int = TX_SUCCESS,
+) -> str:
+    return content_id(
+        {
+            "from_addr": from_addr,
+            "to_addr": to_addr,
+            "function_name": function_name,
+            "args": args,
+            "gas_used": gas_used,
+            "status": status,
+        }
+    )
+```
+
+### What goes into each identifier, and what stays out
+
+A transaction is named by who sent it, who received it, the call, the amounts and
+addresses that call carried, the gas and the success flag. The block it landed in
+and the moment of recording stay out, because two machines record one
+transaction at different moments into differently numbered blocks. A block is
+named by its own number, its parent's name, its timestamp and the list of
+transactions it holds.
+
+| value | names a transaction | names a block |
+|---|---|---|
+| sender and recipient | yes | no |
+| the call and its arguments | yes | no |
+| gas | yes | no |
+| success flag | yes | no |
+| block number | no | yes |
+| timestamp | no | yes |
+| parent block's name | no | yes |
+| the transactions held | no | yes |
+
+The bytes are fixed so two machines cannot differ: keys in sorted order, no
+spaces, and a refusal for any number that is not finite. A block keeps its
+timestamp to the millisecond, so the name covers the figure written to disk
+rather than a longer one that is not.
+
+The amounts and the addresses reach the name. That was the hole: a transaction
+used to be named from its function name alone, so what it moved and who it moved
+it to had no bearing on its name.
+
+### Two machines, one name
+
+Two copies, two separate chains, two processes. Each certified one fill of its
+own, and each then held the other's record under the identical name.
+
+```
+node-952ca991e4da  sending transaction 0xc69ee5a4fa90328a9f730da334451160430c3e3c4279e8a863a83099d86d5cc0
+node-ae8a2c70bb84  sending transaction 0xc69ee5a4fa90328a9f730da334451160430c3e3c4279e8a863a83099d86d5cc0
+node-ae8a2c70bb84  sending transaction 0xaab8eefd0d4f2e481a6a7a79b3bfb730d8765846f4376c660d9534abc54ccf18
+node-952ca991e4da  sending transaction 0xaab8eefd0d4f2e481a6a7a79b3bfb730d8765846f4376c660d9534abc54ccf18
+chain verified: 3 blocks and 2 transactions carry the id of their own contents
+```
+
+The same pair of processes on the previous build gave the identical transfer two
+different names.
+
+```
+before   node_a  0x692edd3d07a1b2019b3ce1ed84a262ce9e2a033181ab24805455ee580c84965d
+         node_b  0x3d3153c056bb1bc55c4f613bebfc81d3b9ab6a7581e436c7263fb24684ac6b03
+after    node_a  0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+         node_b  0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+```
+
+### A changed record is named, and the other machine refuses it
+
+One stored record had its amount edited from 12.5 to 99.5 and its name left
+alone. The chain that loaded that file says so at load. The other machine refuses
+the record outright, and the same exchange still accepted the good record sent
+beside it.
+
+```
+chain NOT verified: 0 of 3 blocks altered [], 0 parent links broken [],
+                    1 of 2 transactions altered ['0x3472b3435c6b9c84']
+
+node-a7904d78dd27 refused record 0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+    calling transferQuintessence: its contents name
+    0x1a4bdf2cbbfd171da96b52a51aab69358b7fdbff4ef8c4809c904fb6b1b0a54f
+node-a7904d78dd27 synced with node-6feb24ca8462: held 2, offered 3, took 1, now holds 3
+chain verified: 4 blocks and 3 transactions carry the id of their own contents
+```
+
+The refusal sits in the code that adds a peer's records to a chain, so an altered
+record never reaches the chain at all.
+
+### The chain already on disk
+
+The saved chain on this machine loads exactly as before and nothing is lost. Its
+3,135 blocks and 3,135 transactions were named the old way, so the chain reports
+that none of them carries the name of its own contents. Every block mined from
+now on does.
+
+```
+chain restored from disk (block=3135, age=204388 min)
+chain NOT verified: 3135 of 3136 blocks altered [1, 2, 3, 4, 5],
+                    0 parent links broken [],
+                    3135 of 3135 transactions altered ['0x3f79536e53815466', ...]
+```
+
+Renaming those 3,135 records was considered and refused. The node rule already in
+place never removes a record and never reorders one, and renaming every record on
+the chain is the largest possible change of identity. A load that recomputed every
+name would also destroy the one property this work adds, because a name recomputed
+from whatever is on disk can never disagree with what is on disk.
+
+### Demo mode
+
+A demo run is the same code over a different chain and a different network name.
+The run takes no setting and no flag. The transfer carried the same name on the demo
+chain as on the live one, because the name comes from the contents and from
+nothing else.
+
+```
+PoaNodeLink installed (node=node-04b4e394a029, network=acervator-poa-testnet, listening=False)
+sending transaction 0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a calling transferQuintessence
+node-04b4e394a029 synced with node-2a283bba3115: held 3, offered 3, took 0, now holds 3
+chain verified: 4 blocks and 3 transactions carry the id of their own contents
+```
+
+### What this does not cover
+
+The first block of a chain keeps a name of all zeros. It has no parent and holds
+no transaction, so the only thing in it that a name could cover is its timestamp,
+and that timestamp is not covered.
+
+A record sent between two machines now carries seven declared fields rather than
+six. The seventh is the name the chain gave it, and the receiving side recomputes
+that name from the other six before it accepts anything.
+
+A chain file is not protected from whoever owns the machine. Editing a record and
+recomputing its name by hand produces a file that verifies. What the names buy is
+that a second machine holding the same record disagrees out loud.
