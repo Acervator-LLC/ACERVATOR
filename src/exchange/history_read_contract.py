@@ -429,11 +429,17 @@ def _trade_id_cell(row: dict) -> HistoryCell:
 
 
 def grade_row(row_index: int, page_rows: list[dict], row: dict) -> str:
-    """The A-to-F letter for one row, graded against ``page_rows``.
+    """The A-to-F letter ``graded_row`` gives one row, or ``_EMPTY`` for none."""
+    grade = graded_row(row_index, page_rows, row)
+    return _EMPTY if grade is None else grade.overall
+
+
+def graded_row(row_index: int, page_rows: list[dict], row: dict):
+    """The whole ``TradeGrade`` for one row, graded against ``page_rows``.
 
     ``page_rows`` is newest-first, so ``prior_prices`` come from indexes above
-    ``row_index``; ``_EMPTY`` comes back only for an unusable ``price``,
-    ``amount`` or ``side``, never for a missing ``reference``.
+    ``row_index``; None comes back only for an unusable ``price``, ``amount`` or
+    ``side``, never for a missing ``reference``.
     """
     try:
         from src.trading.trade_grader import (
@@ -442,13 +448,13 @@ def grade_row(row_index: int, page_rows: list[dict], row: dict) -> str:
             grade_trade,
         )
     except Exception:
-        return _EMPTY
+        return None
     symbol = str(row.get("symbol", ""))
     side = str(row.get("side", "")).lower()
     price = float(row.get("price", 0) or 0)
     quantity = float(row.get("amount", 0) or 0)
     if price <= 0 or quantity <= 0 or side not in ("buy", "sell"):
-        return _EMPTY
+        return None
     prior_prices: list[float] = []
     future_prices: list[float] = []
     for position, other in enumerate(page_rows):
@@ -480,7 +486,7 @@ def grade_row(row_index: int, page_rows: list[dict], row: dict) -> str:
         future_prices=future_prices[-10:],
         regime_tag="LIVE",
     )
-    return grade_trade(record, context).overall
+    return grade_trade(record, context)
 
 
 def _grade_cell(row_index: int, page_rows: list[dict], row: dict) -> HistoryCell:

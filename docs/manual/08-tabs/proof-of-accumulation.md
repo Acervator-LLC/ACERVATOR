@@ -3241,3 +3241,250 @@ The turnout figure counts addresses as of their last refresh, and any address ma
 refresh any other at no cost. A roster nobody has refreshed lately gives a stale
 turnout figure rather than a wrong one, and the contract still checks every vote
 against the voter's real franchise at the moment they cast it.
+## 2026-09-10 08:26 - #147 - the capture bounds and the grade curve
+
+A market's Quintessence pool now exists, and four bounds stand between a trade
+and an award from it. One participant takes at most a twentieth of any one pool,
+once per activation period, and waits out three of their bot's own candles
+afterwards. A trade the platform could not grade earns nothing at all.
+
+### A market's pool is sized once, from the volume it carried
+
+The rotating reward set draws the markets. Each drawn market then takes a share
+of the activation's Quintessence in proportion to the dollars traded on it, read
+once and never refreshed.
+
+`src/competition/capture_bounds.py` — the split
+
+```python
+    ordered = sorted(volumes, key=lambda symbol: (-float(volumes[symbol]), symbol))
+    shares: dict[str, Decimal] = {}
+    for symbol in ordered[1:]:
+        volume = _as_decimal(volumes[symbol], f"volume of {symbol}")
+        shares[symbol] = total_emission * volume / total_volume
+    shares[ordered[0]] = total_emission - sum(shares.values(), Decimal(0))
+```
+
+The largest book takes the division remainder, so the five pools add up to the
+activation's figure exactly. One real Coinbase draw, 10,000 Quintessence:
+
+```
+BTC/USD    volume $404,975,607.15   pool 8849.2539   one participant's 5%  442.4627
+UNI/USD    volume $ 16,254,055.62   pool  355.1727   one participant's 5%   17.7586
+PUMP/USD   volume $ 16,048,824.74   pool  350.6881   one participant's 5%   17.5344
+SUI/USD    volume $ 12,378,533.61   pool  270.4874   one participant's 5%   13.5244
+LTC/USD    volume $  7,981,113.83   pool  174.3979   one participant's 5%    8.7199
+
+the five pools sum to 10000.00000000000000000000000, the figure activated
+```
+
+### The cooldown counts the awarding bot's own candles
+
+A bot's timeframe is a field on its own configuration, and the platform already
+measures how many seconds each candle holds. Three candles of that timeframe is
+the wait after an award, and fifteen minutes is the floor under it.
+
+`src/competition/capture_bounds.py` — the two figures
+
+```python
+#: Candles of the awarding bot's own timeframe that must close after an award.
+COOLDOWN_CANDLES = 3
+
+#: No cooldown runs shorter, so three 1m candles still wait out 15 minutes.
+COOLDOWN_FLOOR_S = 900
+```
+
+Three candles is not always a length of time, so on the two fastest candles the
+floor decides instead.
+
+| Bot timeframe | Three candles | The wait | What decides it |
+| ------------- | ------------- | -------- | --------------- |
+| 1m | 180 s | 900 s | the floor |
+| 3m | 540 s | 900 s | the floor |
+| 5m | 900 s | 900 s | they agree |
+| 15m | 2,700 s | 2,700 s | three candles |
+| 1h | 10,800 s | 10,800 s | three candles |
+| 1d | 259,200 s | 259,200 s | three candles |
+
+An Elite event's turn is one 1m candle and every other turn is one 5m candle, so
+three turns of either come to the floor or under it. Both land on fifteen
+minutes, and nothing in the design shortens the wait below that.
+
+```
+  Elite turn candle 1m: 3 candles 180s, cooldown 900s
+Standard turn candle 5m: 3 candles 900s, cooldown 900s
+
+the live fleet: 38 bots, every one on a 5m candle, so every one waits 900s
+```
+
+A timeframe the platform does not measure is refused rather than given the
+shortest wait.
+
+```
+'7m' is not a candle the platform measures; the cooldown counts 3 candles of
+the awarding bot's own timeframe, one of 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h,
+8h, 12h, 1d, 1w
+```
+
+### A trade the platform could not grade earns nothing
+
+The grader answers a half when no axis had inputs to score, and that half is a
+default rather than a reading. The award path now counts the axes that scored,
+and pays on none of them.
+
+`src/trading/trade_grader.py` — the count the award path reads
+
+```python
+        overall_numeric=round(overall_num, 4),
+        scored_axes=len(sub_scores),
+```
+
+Driven on a real Coinbase fill with no reference price and no later prices, the
+grade reports the default and the award is refused.
+
+```
+no reference price, no future prices -> scored_axes 0  overall_numeric 0.5  overall D
+
+the grade on this trade scored 0 of four axes, so its 0.5 is the default and
+not a measurement; an award needs at least 1 scored axis
+```
+
+The same fill against the venue's own 24-hour opening price scores one axis and
+is paid.
+
+```
+FLOCK/USD fill 0.061947 against its 24h open 0.06214
+  scored_axes 1   overall_numeric 1.0   overall A+   execution_bps -31.06
+
+LTC/USD awarded 1.0 Quintessence, cooldown 900s of 3 5m candles
+```
+
+### A grade standing on one clamped axis earns nothing
+
+The accuracy axis runs out at one per cent. A fill a hundred basis points worse
+than its reference scores nothing, and so does one fifty per cent worse; a fill a
+hundred points better scores full marks, and so does one twelve per cent better.
+Past that distance the score is a clamp rather than a reading of the fill.
+
+The distance on its own decides nothing, and the operator's own trading says why.
+Across 1,560 of his fills that carry a reference price, 1,368 of them — 87.7% —
+sit more than a hundred basis points from it, and the middle fill of the set is
+552 basis points away on the favourable side.
+
+```
+fills carrying a reference        1560
+  favourable, nearer than refused 1246   79.9%
+  adverse                          299   19.2%
+
+past a hundred basis points       1368   87.7%
+  favourable                      1154   74.0%
+  adverse                          214   13.7%
+
+the signed spread, basis points
+  lowest  -5030.57    middle  -552.35    highest  3253.80
+```
+
+A Scrum sells above its earlier fills and a Fold buys below them, so a large
+favourable gap is the strategy working rather than a lucky fill. Refusing on
+distance alone would refuse seven awards in eight.
+
+What cannot be trusted is a grade with nothing else in it. When accuracy is the
+only axis that scored and it has clamped, the grade is exactly 1.0 or exactly 0.0
+and carries no reading at all, because a reference price that far from the fill is
+stale. That case is 35 of his 1,560 fills, 2.2%: twenty-eight at a flat 1.0 and
+seven at a flat 0.0.
+
+`src/competition/capture_bounds.py` — the distance, and what the measurement says
+about it
+
+```python
+#: Basis points past which the execution axis clamps and stops reading the fill.
+#: Measured on 1,560 live fills: 87.7% sit past it, so distance alone is no bound.
+EXECUTION_READABLE_BPS = 100.0
+```
+
+One of his own fills, refused, and one paid.
+
+```
+REFUSED  2026-09-10 05:23  KAT/USD buy at 0.0052147215059309
+         bps -1439.06   accuracy 1.0   axes 1   grade 1.0   A+
+         this grade scored execution and nothing else, and its reference price
+         sits -1439.1 basis points from the fill, past the 100 the axis reads;
+         a reference that far out is stale, so the one axis reports a clamp and
+         the grade of 1.0 rests on nothing
+
+PAID     2026-09-10 03:22  KAT/USD buy at 0.005468
+         bps -1023.25   accuracy 1.0   axes 2   grade 0.5   D
+         0.5 Quintessence
+```
+
+The second fill is further from nothing and further from a clamp: a second axis
+scored, so the grade is half rather than full marks, and the award is half. The
+grade itself is unchanged either way, so every screen that reads a letter still
+reads the same letter.
+
+### Each bound refuses, and each one pays when it should
+
+Every line below came out of the program on real Coinbase pools. The permitting
+case sits beside each refusal, because a bound only ever seen to refuse proves
+nothing.
+
+```
+one allotment a participant a market an activation period
+  REFUSED  participant-scored already took an allotment of LTC/USD in
+           coinbase:1; one allotment a participant a market an activation period
+  PAID     participant-second on that same market, 1.0 Quintessence
+
+at most a twentieth of a market's pool
+  REFUSED  9.719895940131813527748492105 Quintessence is above the
+           8.719895940131813527748492105 ceiling on LTC/USD, which holds a pool
+           of 174.3979188026362705549698421; one participant takes at most 5%
+           of a market's pool
+  PAID     8.719895940131813527748492105 Quintessence, exactly the ceiling
+
+three candles, floored at fifteen minutes
+  REFUSED  participant-scored has 1s left of a 900s cooldown of 3 5m candles;
+           the gate pays nothing until it clears
+  PAID     the same participant on UNI/USD the second the cooldown clears
+
+the pool runs out
+  REFUSED  allotment_exhausted, on a request for the full ceiling against
+           5E-25 of SUI/USD's 270.4873712360626776914103408 pool
+  PAID     twenty earners in turn, each taking the full 13.52436856180313388
+           ceiling
+```
+
+Twenty distinct earners empty a pool, which is what the share ceiling is set to
+produce. The twenty-first is refused, and the five hundred-thousand-billionths
+left over are the tail of a twenty-eight digit division rather than a prize.
+
+### Demo mode answers the same bounds
+
+A TestNet run builds the same object over its own chain and takes the same path
+through it. Neither the pools nor the bounds are chain data, so the two runs
+differ only in which chain carries the record.
+
+```
+chain live      5 market allotments   25 CaptureBounds records   QuintessenceAwarded
+chain testnet   5 market allotments    1 CaptureBounds record    QuintessenceAwarded
+
+the testnet run's second award on one market
+  participant-scored already took an allotment of LIGHTER/USD in coinbase:1
+```
+
+### What the bounds do not reach
+
+No certified fill asks them. A fill carries its venue, its fee and its grade, and
+it carries no exchange, no season and no market pool, so the socket that mints
+Quintessence cannot yet name the activation an award would come out of. The
+bounds are built, loaded at every launch and driven, and nothing in the live
+award path consults them.
+
+The Quintessence one activation emits is not a figure the design sets. The split
+across markets is fixed and the share of it one participant may take is fixed, so
+the figure is the caller's to supply until a number is chosen.
+
+How much longer a large award waits than a small one is also open. Three candles
+is the floor the design gives, and the gate holds there.
+
+In development.
