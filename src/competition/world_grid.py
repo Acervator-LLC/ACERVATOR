@@ -23,7 +23,8 @@ from pathlib import Path
 from typing import Optional
 
 from ..core.io_utils import atomic_write_json
-from .poa_modes import IMPETUS_AT_FIRST_LEVEL
+from .poa_modes import base_impetus
+from .rpg_classes import ARC_LEVELS
 
 logger = logging.getLogger("acervator.world_grid")
 
@@ -36,8 +37,8 @@ TURN_BYTE_CAPACITY = 1_048_576
 #: Records one layer writes a world turn, each a block, a transaction and an event.
 RECORDS_PER_LAYER_TURN = TURN_BYTE_CAPACITY // WORLD_RECORD_BYTES
 
-#: Records a participant writes a world turn, one an action at the first level's Impetus grant.
-RECORDS_PER_PARTICIPANT_TURN = IMPETUS_AT_FIRST_LEVEL
+#: Records a participant writes a world turn, the highest Impetus grant on the arc.
+RECORDS_PER_PARTICIPANT_TURN = base_impetus(ARC_LEVELS)
 
 #: Participants one layer carries, the count ``DEFAULT_GRID_WIDTH`` sizes its grid for.
 PARTICIPANTS_PER_LAYER = RECORDS_PER_LAYER_TURN // RECORDS_PER_PARTICIPANT_TURN
