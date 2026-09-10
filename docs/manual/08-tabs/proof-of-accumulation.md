@@ -96,31 +96,31 @@ feed, or between two machines exchanging signed submissions.
 
 ## Tournaments
 
-`TournamentEngine` in `src/trading/poa_tournament.py` builds the game shapes.
-Each builder returns a tournament from a configuration, and one run method
-plays it over a candle provider to an outcome.
+`EventVariant` in `src/competition/poa_modes.py` builds the event shapes. Each
+of the four modes pairs with one Elite flag, so there are eight event types and
+no mode is written twice.
 
-| Builder | Shape |
-| ------- | ----- |
-| `build_duel` | Two participants, head to head |
-| `build_melee` | A whole field at once |
-| `build_gauntlet` | One challenger against a sequence |
+| Mode | Shape |
+| ---- | ----- |
+| `monster_smash` | One participant against low to midlevel creatures |
+| `team_monster_smash` | A certified guild, up to 120 against 1 |
+| `dungeon_crawl` | One participant, or a group of six, through a dungeon |
+| `raid` | A group of sixty, the most challenging and the most rewarding |
 
-`src/trading/poa_tournament.py` — `TournamentEngine.build_duel`
+`src/competition/poa_modes.py` — the one table the Elite flag indexes
 
 ```python
-def build_duel(
-    self,
-    a: Participant,
-    b: Participant,
-    season: Season,
-    acrv_purse: int = 10,
-    seed: Optional[int] = None,
+STANDARD_RULES = VariantRules(
+    STANDARD_SUFFIX, STANDARD_LABEL, STANDARD_TIMEFRAME, 0, 0, 0, 0
+)
+ELITE_RULES = VariantRules(ELITE_SUFFIX, ELITE_LABEL, ELITE_TIMEFRAME, 1, -1, 1, 1)
+
+VARIANT_RULES: dict[bool, VariantRules] = {False: STANDARD_RULES, True: ELITE_RULES}
 ```
 
-`DynamicEventScheduler` places market shocks, puzzle events and regime flips
-from the configuration's seed, so the same seed replays the same tournament.
-`LocalACRVAdapter` settles the award and each tournament persists as JSON.
+A turn is one candle of the market clock, and `turn_at` names the turn that
+clock is in. `ImpetusPool` holds the points one turn grants and loses what that
+turn does not spend.
 
 ## The token
 
@@ -478,8 +478,8 @@ DECAY_FACTOR = 0.85
 MIN_SEASON_REWARD = 100
 ```
 
-`TournamentEngine` in `src/trading/poa_tournament.py` builds the duel, the
-melee and the gauntlet. A local testnet module beside it simulates the whole
+`EventVariant` in `src/competition/poa_modes.py` builds the four modes and the
+Elite variant of each. A local testnet module beside it simulates the whole
 Base environment in memory, with no wallet and no network.
 
 ## 2026-09-09 19:39 - #147 - the contract repairs
@@ -1694,3 +1694,199 @@ A row prints health as a figure, not as a bar, and carries no role colour.
 Current health and wound depth need the fire-time gate reading, which arrives on
 the bus rather than in the saved file. Nothing here reads an ability, a mode or a
 turn.
+
+## 2026-09-10 00:28 - #147 - the four modes, the Elite flag and the turn
+
+The tab now carries the eight event types the design names, a turn tied to the
+market's own candle, and the per-turn pool of points a participant spends inside
+it. A real bot also picks a character class for the first time.
+
+### Four modes, one Elite flag, eight event types
+
+The design carries four modes and one Elite flag, not eight modes. Difficulty,
+entry fee and both loot ranks are properties the variant answers, and one table
+is the only place the flag is read.
+
+`src/competition/poa_modes.py` — the whole Elite difference
+
+```python
+STANDARD_RULES = VariantRules(
+    STANDARD_SUFFIX, STANDARD_LABEL, STANDARD_TIMEFRAME, 0, 0, 0, 0
+)
+ELITE_RULES = VariantRules(ELITE_SUFFIX, ELITE_LABEL, ELITE_TIMEFRAME, 1, -1, 1, 1)
+```
+
+Elite is one step harder, one step cheaper to enter, and one step richer in both
+loot ranks. Those three directions are the whole of it.
+
+| Event type | Turn | Difficulty | Entry fee | Loot rarity | Loot drop |
+| ---------- | ---- | ---------- | --------- | ----------- | --------- |
+| `monster_smash` | 5m | 1 | 1 | 1 | 1 |
+| `monster_smash_elite` | 1m | 2 | 1 | 2 | 2 |
+| `team_monster_smash` | 5m | 2 | 2 | 2 | 2 |
+| `team_monster_smash_elite` | 1m | 3 | 1 | 3 | 3 |
+| `dungeon_crawl` | 5m | 3 | 3 | 3 | 3 |
+| `dungeon_crawl_elite` | 1m | 4 | 2 | 4 | 4 |
+| `raid` | 5m | 4 | 4 | 4 | 4 |
+| `raid_elite` | 1m | 5 | 3 | 5 | 5 |
+
+A rank is a place in an order, never a price. No entry fee amount and no loot
+table exist yet, so the ranks say which event is dearer and richer, not by how
+much. Unit 19 builds the loot.
+
+### The turn length follows the mode, and nothing branches on the flag
+
+An Elite turn is one 1m candle and every other turn is one 5m candle. No rule
+asks whether an event is Elite; each one reads a property instead, and that
+property reads the table above.
+
+`src/competition/poa_modes.py` — the turn's own length
+
+```python
+    @property
+    def turn_timeframe(self) -> str:
+        """The candle one turn is one of, from ``rules.timeframe``."""
+        return self.rules.timeframe
+
+    @property
+    def turn_seconds(self) -> int:
+        """The seconds in ``turn_timeframe``, read from ``TF_SECONDS``."""
+        return TF_SECONDS[self.turn_timeframe]
+```
+
+The seconds in a candle come from `TF_SECONDS`, which is the map the platform's
+own candle cache already uses. The game keeps no clock of its own.
+
+### The clock is fixed, and three refusals prove it
+
+A turn cannot be paused, extended or negotiated, because its boundary belongs to
+the market and every participant shares it. The program refuses each attempt in
+its own words.
+
+```
+a deadline past the candle close
+  turn 16666667 of the 1m candle closes at 1000000080; a deadline of
+  1000000100 would extend it by 20s, and the candle clock is fixed for
+  every participant
+
+acting after the candle closed
+  turn 16666667 of the 1m candle closed at 1000000080 and it is
+  1000000080; the 1 Impetus for this action is lost with that turn
+
+spending last turn's leftover
+  this pool granted 4 Impetus for turn 16666667 and 3 is unspent; turn
+  16666668 is a different turn, and Impetus expires with the candle that
+  granted it
+
+paying part of an action
+  this action costs 4 Impetus and 3 remains in turn 16666667; no partial
+  action exists and nobody borrows against the next turn
+```
+
+### A participant who joins midturn takes what is left of the candle
+
+Joining late does not move the deadline. Both participants below sit in the same
+turn and both lose it at the same instant.
+
+```
+joined at the candle open    deadline 1000000080   60s in hand
+joined 40s later             deadline 1000000080   20s in hand
+```
+
+### The pool is called Impetus, and level decides how much
+
+A turn grants four Impetus at level one and one more every twenty levels. The
+candle never grows, so a higher level acts more inside the same window.
+
+`src/competition/poa_modes.py` — the grant
+
+```python
+def base_impetus(level: int) -> int:
+    """Four at ``FIRST_LEVEL``, one more every ``IMPETUS_LEVELS_PER_STEP`` levels."""
+    if int(level) < FIRST_LEVEL:
+        raise PoaModeError(f"level {level} is below {FIRST_LEVEL}")
+    return IMPETUS_AT_FIRST_LEVEL + int(level) // IMPETUS_LEVELS_PER_STEP
+```
+
+| Level | Impetus a turn |
+| ----- | -------------- |
+| 1 | 4 |
+| 21 | 5 |
+| 40 | 6 |
+| 60 | 7 |
+| 80 | 8 |
+| 100 | 9 |
+
+A haste or a slow effect multiplies that grant once. The product stops at twice
+the level's own figure and never falls below one, so nobody is frozen out of a
+turn and speed cannot become the only statistic worth raising.
+
+```
+level 40 grants 6     a 1.5x haste gives 9     the cap holds it at 12
+                      a 0.5x slow gives 3      the floor holds it at 1
+```
+
+What an action costs is not here. Unit 13 prices the five bands.
+
+### A class is picked, and the pool follows the level
+
+The pick function had no caller until now. The screen passes a participant and a
+class name, the event it is for is the variant's own code, and the party row then
+carries the class, its level and the Impetus that level grants.
+
+```
+04e1cafc  RE/USD    Iron Edge   level 1   Impetus 4   health $54.19
+092428b2  BONK/USD  none        --        --          health $101.98
+```
+
+A class name outside the seven is refused and the panel prints the refusal.
+
+```
+'Iron Sword' is not a PoA class; the seven are Lead Ward, Tin Bulwark,
+Iron Edge, Solar Lance, Quicksilver Draught, Copper Conduit, Silver Mirror
+```
+
+No field under `src` holds a class level, so a fresh pick stands at level one
+and nothing saves it between asks.
+
+### The unreachable tournament module is retired
+
+The tournament module under `src/trading` held 832 lines and nothing imported
+it. None of its nine public names appeared anywhere outside its own file, the
+coding archetype refused it, and it wrote generated output into the repository.
+Its three shapes were a duel, a melee and a gauntlet, which are not the four
+modes the design names.
+
+```
+832 lines        zero importers        zero uses of its nine public names
+passed=False     8 high findings       wrote <repo>/logs/tournaments
+```
+
+Two things in it were worth keeping and both carried over. A participant is
+named by its bot id rather than by holding a bot object, and one event shape
+serves the screen as a plain row. The seeded simulation, the scorer for
+computer-run participants, the invented candles and the settlement adapter that
+paid nobody are all gone.
+
+### Demo mode answers the same event
+
+A TestNet run asks the same surface and names its own chain. The modes, the turn
+and the pool are not chain data, so both runs answer the same event.
+
+```
+chain live      38 participants   8 event types   raid_elite, 1m candle
+chain testnet    0 participants   8 event types   raid_elite, 1m candle
+```
+
+### What the modes and the turn do not reach
+
+No action exists to spend Impetus on from the screen. The pool is granted and
+refuses what it cannot pay, but nothing draws a move, an attack or a spell.
+
+A charge that spans more than one turn is not built. Whether it pays its pool at
+the start or per turn, and what an interruption does to it, are open.
+
+The event is whichever one the request names. No schedule opens an event, no
+entry fee is taken, and no participant is admitted or turned away at the door.
+
+In development.
