@@ -9,12 +9,12 @@ body {
   height: 100%;
 }
 
-/* Three equal rows below the heading, the state line and the subtab bar: the
-   subtab panel, the upper band, then the party window. */
+/* Three equal rows below the heading, the state line, the control bar and the
+   subtab bar: the subtab panel, the upper band, then the party window. */
 .acervator-poa-tab {
   box-sizing: border-box;
   display: grid;
-  grid-template-rows: auto auto auto 1fr 1fr 1fr;
+  grid-template-rows: auto auto auto auto 1fr 1fr 1fr;
   height: 100%;
   margin: 0;
   padding: calc(var(--SPACE_M) * 1px);
@@ -36,6 +36,96 @@ body {
   margin: 0;
   color: var(--TEXT_LOW);
   font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+/* The control bar: one button a mechanism, then the verdict of the last one
+   fired. The verdict carries data-acted, which paints it. */
+.acervator-poa-tab [data-part="control-bar"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+}
+
+.acervator-poa-tab [data-part="chain-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="chain-button"] {
+  padding: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="chain-button"][data-selected="true"] {
+  border-color: var(--OUTLINE_STRONG);
+  background: var(--SURFACE_3);
+  color: var(--TEXT_MAX);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="control-button"] {
+  padding: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE_STRONG);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="control-result"] {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+}
+
+.acervator-poa-tab [data-part="control-message"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="control-result"][data-acted="true"] {
+  border-color: var(--SUCCESS);
+}
+
+.acervator-poa-tab [data-part="control-result"][data-acted="false"] {
+  border-color: var(--WARNING);
+}
+
+.acervator-poa-tab [data-part="control-row"] {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--SPACE_XXS) * 1px);
+}
+
+.acervator-poa-tab [data-part="control-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="control-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="control-note"] {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
 }
 
 /* The subtab bar and the panel one subtab draws into. */
@@ -644,6 +734,67 @@ body {
 }
 
 .acervator-poa-tab [data-part="pot-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+/* The four-bucket report and the season, under the pot division. Both scroll
+   inside themselves so the party pages keep the space they already have. */
+.acervator-poa-tab [data-part="keep-panel"],
+.acervator-poa-tab [data-part="season-panel"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+  max-height: 30%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.acervator-poa-tab [data-part="keep-title"],
+.acervator-poa-tab [data-part="season-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="keep-row"],
+.acervator-poa-tab [data-part="season-row"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="keep-row-label"],
+.acervator-poa-tab [data-part="season-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="keep-row-value"],
+.acervator-poa-tab [data-part="season-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="keep-note"],
+.acervator-poa-tab [data-part="season-boundary"],
+.acervator-poa-tab [data-part="season-advance"] {
   margin: 0;
   color: var(--TEXT_PLACEHOLDER);
   font-size: calc(var(--TYPE_SMALL) * 1px);
