@@ -72,8 +72,15 @@
   var WALLET_PANEL_PART = "wallet-panel";
   var WALLET_TITLE_PART = "wallet-title";
   var WALLET_CLOSE_PART = "wallet-close";
+  var WALLET_SECTIONS_PART = "wallet-sections";
   var WALLET_SECTION_PART = "wallet-section";
-  var WALLET_PLACEHOLDER_PART = "wallet-placeholder";
+  var WALLET_SECTION_NAME_PART = "wallet-section-name";
+  var WALLET_NOTE_PART = "wallet-note";
+  var WALLET_ROW_PART = "wallet-row";
+  var WALLET_ROW_LABEL_PART = "wallet-row-label";
+  var WALLET_ROW_VALUE_PART = "wallet-row-value";
+  var WALLET_ADDRESS_PART = "wallet-address";
+  var WALLET_CHAIN_PART = "wallet-chain";
 
   var ZONE_PART = {};
   ZONE_PART[PLAYER_WINDOW] = "player-window";
@@ -115,6 +122,13 @@
   function part(className, name) {
     var props = { className: className };
     props[PART_ATTR] = name;
+    return props;
+  }
+
+  // aria-label so a reader can pick one row out of the panel by its label.
+  function named(className, name, label) {
+    var props = part(className, name);
+    props["aria-label"] = label;
     return props;
   }
 
@@ -175,6 +189,59 @@
     );
   }
 
+  function WalletRow(props) {
+    var rowProps = named(TAB_CLASS + "-wallet-row", props.name, props.label);
+    return element(
+      "div",
+      rowProps,
+      element(
+        "span",
+        named(
+          TAB_CLASS + "-wallet-row-label",
+          WALLET_ROW_LABEL_PART,
+          props.label
+        ),
+        text(props.label)
+      ),
+      element(
+        "span",
+        named(
+          TAB_CLASS + "-wallet-row-value",
+          WALLET_ROW_VALUE_PART,
+          props.label
+        ),
+        text(props.value)
+      )
+    );
+  }
+
+  function WalletSection(props) {
+    var section = props.section;
+    var rows = Array.isArray(section.rows) ? section.rows : [];
+    return element(
+      "div",
+      named(TAB_CLASS + "-wallet-section", WALLET_SECTION_PART, section.name),
+      element(
+        "h4",
+        part(TAB_CLASS + "-wallet-section-name", WALLET_SECTION_NAME_PART),
+        text(section.name)
+      ),
+      rows.filter(isPlainObject).map(function (row) {
+        return element(WalletRow, {
+          key: row.label,
+          name: WALLET_ROW_PART,
+          label: row.label,
+          value: row.value
+        });
+      }),
+      element(
+        "p",
+        named(TAB_CLASS + "-wallet-note", WALLET_NOTE_PART, section.name),
+        text(section.note)
+      )
+    );
+  }
+
   function WalletPanel(props) {
     var wallet = props.wallet;
     var sections = Array.isArray(wallet.sections) ? wallet.sections : [];
@@ -193,19 +260,24 @@
         buttonProps(WALLET_CLOSE_PART, text(wallet.close_text), closeWallet),
         text(wallet.close_text)
       ),
-      sections.map(function (name) {
-        var sectionProps = part(
-          TAB_CLASS + "-wallet-section",
-          WALLET_SECTION_PART
-        );
-        sectionProps.key = name;
-        sectionProps["aria-label"] = text(name);
-        return element("div", sectionProps, text(name));
+      element(WalletRow, {
+        key: WALLET_ADDRESS_PART,
+        name: WALLET_ADDRESS_PART,
+        label: wallet.address_label,
+        value: wallet.address_text
+      }),
+      element(WalletRow, {
+        key: WALLET_CHAIN_PART,
+        name: WALLET_CHAIN_PART,
+        label: wallet.chain_label,
+        value: wallet.chain
       }),
       element(
-        "p",
-        part(TAB_CLASS + "-wallet-placeholder", WALLET_PLACEHOLDER_PART),
-        text(wallet.placeholder)
+        "div",
+        part(TAB_CLASS + "-wallet-sections", WALLET_SECTIONS_PART),
+        sections.filter(isPlainObject).map(function (section) {
+          return element(WalletSection, { key: section.name, section: section });
+        })
       )
     );
   }
