@@ -971,3 +971,66 @@ Nothing is deployed. No transaction was sent and no network was reached, so the
 ceilings are proved on a local chain the build tool runs in memory and not on Base.
 
 Back to [the subsystem index](README.md).
+
+## 2026-09-09 21:37 - #147 - the tab shell and its three zones
+
+The Accumulation tab is no longer three lines of text. It draws the arrangement
+the operator set out on 9 September: the player window on the left, the square
+enemy screen upper right, and the party window across the lower half. Nothing
+inside the zones is built, and each one says so on screen.
+
+The player window and the enemy screen each draw a title and one placeholder
+sentence. The party window draws a header, eight groups of five empty slots, and
+its own placeholder sentence. Forty slots is one page of the hundred and twenty
+the largest event carries.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the paging the party
+window draws
+
+```python
+PARTY_CAPACITY = 120
+PARTY_PER_PAGE = 40
+PARTY_GROUP_SIZE = 5
+PARTY_PAGE = 1
+```
+
+The Quintessence balance sits in the party window's header and stays on screen
+whichever zone is drawing. The full wallet opens as a panel over the party
+window and over nothing else, carrying one section each for Quintessence,
+trophies and loot. No balance is read: the panel says so rather than showing a
+number nothing produced.
+
+```
+header, always on screen   Quint  --   Open wallet   Page 1 of 3 - 40 a page
+wallet closed              0 panels
+wallet open                1 panel over the party window, 3 sections
+the balance                "--", because no ledger is read yet
+```
+
+The whole screen is one payload from one bridge method. The chain that payload
+answers for is a field of it, so a demo run against the TestNet asks the same
+method with a different chain and reaches the same page. No second surface and
+no second module exist for the demo.
+
+```python
+CHAIN_FIELD = "chain"
+LIVE_CHAIN = "live"
+DEMO_CHAIN = "testnet"
+CHAINS: tuple[str, ...] = (LIVE_CHAIN, DEMO_CHAIN)
+```
+
+Neither shelved Qt class was restored and neither was built on. Sixteen screens
+are registered in the variant seam and none of them draws a competition, testnet
+or proof-of-accumulation surface, so this tab had no Qt original to match and no
+Qt picture was taken.
+
+```
+seam screens                                     16
+PoA, competition or testnet entries among them   none
+CompetitionTab and TestnetTab constructed        never; both sentinels are None
+```
+
+What is still not built is everything inside the zones: the pixel art, the
+character classes, the event modes and the turn structure. The wallet holds no
+Quintessence, no trophy and no loot, because there is no debit path and no
+participant identity to read one for.

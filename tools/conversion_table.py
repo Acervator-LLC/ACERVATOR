@@ -72,17 +72,21 @@ def join_cells(cells: list[str]) -> str:
 
 
 def table_span(lines: list[str]) -> tuple[int, int]:
-    """The first and last index of the ``TABLE_HEAD`` table in ``lines``.
+    """The first and last index of the longest ``TABLE_HEAD`` table in ``lines``.
 
-    Raises ``LookupError`` when no line starts with ``TABLE_HEAD``.
+    A page quoting the head above a two-row excerpt holds several; the widest is
+    the conversion table, and ``LookupError`` names an absent head.
     """
+    spans = []
     for start, line in enumerate(lines):
         if line.startswith(TABLE_HEAD):
             end = start + 2
             while end < len(lines) and lines[end].startswith("|"):
                 end += 1
-            return start, end - 1
-    raise LookupError("no line starts with " + TABLE_HEAD)
+            spans.append((start, end - 1))
+    if not spans:
+        raise LookupError("no line starts with " + TABLE_HEAD)
+    return max(spans, key=lambda span: span[1] - span[0])
 
 
 def place_cell(cells: list[str], value: str, at: int) -> list[str]:

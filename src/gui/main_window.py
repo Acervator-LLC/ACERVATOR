@@ -62,12 +62,12 @@ try:
     from .main_tabs.bot_swarm_tab import BotSwarmTabMixin
     from .main_tabs.charts_tab import ChartsTabMixin
     from .main_tabs.console_tab import ConsoleTabMixin
-    from .main_tabs.empty_tabs import EmptyTabsMixin
     from .main_tabs import header_strip_surface
     from .main_tabs.header_strip import HeaderStripMixin
     from .main_tabs.history_tab import HistoryTabMixin
     from .main_tabs.market_inspector_tab import MarketInspectorTabMixin
     from .main_tabs.paper_trader_tab import PaperTraderTabMixin
+    from .main_tabs.proof_of_accumulation_tab import ProofOfAccumulationTabMixin
     from .main_tabs.retired_tabs import RetiredTabsMixin
     from .main_tabs.simulator_tab import SimulatorTabMixin
     from .main_tabs.system_status_tab import SystemStatusTabMixin
@@ -156,11 +156,11 @@ if _HAS_QT:
         BotSwarmTabMixin,
         ChartsTabMixin,
         ConsoleTabMixin,
-        EmptyTabsMixin,
         HeaderStripMixin,
         HistoryTabMixin,
         MarketInspectorTabMixin,
         PaperTraderTabMixin,
+        ProofOfAccumulationTabMixin,
         RetiredTabsMixin,
         SimulatorTabMixin,
         SystemStatusTabMixin,

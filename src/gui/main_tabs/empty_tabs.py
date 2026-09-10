@@ -1,11 +1,10 @@
-"""``EmptyTabsMixin`` builds the tabs whose screens are not written yet.
+"""``EmptyTabsMixin`` builds a tab whose screen is not written yet.
 
-One builder per tab hands ``_add_empty_tab`` a surface, and
-``_empty_tab_class`` answers with ``EmptyTabQtPanel`` or the React panel for
-the running build. The heading, the state sentence and the issue sentence come
-from the one view model that ``src.core.desktop_bridge`` also serves to the
-``src/gui/web`` module, and ``SKIN`` carries the colours and sizes both sides
-paint.
+``_add_empty_tab`` takes a surface and ``_empty_tab_class`` answers with
+``EmptyTabQtPanel`` or the React panel for the running build. The heading, the
+state sentence and the issue sentence come from the one view model that
+``src.core.desktop_bridge`` also serves to the ``src/gui/web`` module, and
+``SKIN`` carries the colours and sizes both sides paint.
 """
 
 from __future__ import annotations
@@ -15,9 +14,6 @@ from typing import Any
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .. import design_system as ds
-from . import proof_of_accumulation_tab_surface as proof_of_accumulation
-
-EMPTY_TAB_SURFACES = (proof_of_accumulation,)
 
 HEADING_NAME = "empty-tab-heading"
 STATE_NAME = "empty-tab-state"
@@ -87,7 +83,7 @@ def _empty_tab_class() -> type:
 
 
 class EmptyTabsMixin:
-    """Supplies the three empty-tab builders to the main window."""
+    """Supplies ``_add_empty_tab`` to the main window."""
 
     # Annotation only; MainWindow supplies this and no attribute is created here.
     _main_tabs: Any
@@ -108,7 +104,3 @@ class EmptyTabsMixin:
         else:
             self._main_tabs.insertTab(index, panel, model["heading"])
         return panel
-
-    def _build_proof_of_accumulation_tab(self) -> None:
-        """Add the Proof of Accumulation tab to ``_main_tabs``."""
-        self._add_empty_tab(proof_of_accumulation)

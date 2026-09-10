@@ -1,0 +1,182 @@
+/* The Proof of Accumulation tab shell. Every colour and size is a design token:
+   `src/gui/react_proof_of_accumulation_tab.py` writes them for the desktop
+   window's page and `design_tokens.js` writes them for the Electron shell, so
+   this sheet holds no value of its own. Selected by the `data-part` names the
+   renderer module stamps. */
+
+html,
+body {
+  height: 100%;
+}
+
+/* Two equal rows below the heading: the upper band, then the party window as
+   the lower half. */
+.acervator-poa-tab {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto auto 1fr 1fr;
+  height: 100%;
+  margin: 0;
+  padding: calc(var(--SPACE_M) * 1px);
+  gap: calc(var(--SPACE_S) * 1px);
+  background: var(--SURFACE_0);
+  color: var(--TEXT_HIGH);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: calc(var(--TYPE_BODY) * 1px);
+}
+
+.acervator-poa-tab [data-part="heading"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H2) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="state"] {
+  margin: 0;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+/* The upper band: the player window takes the width the square enemy screen
+   leaves, which is the only place the two zone sizes are related. */
+.acervator-poa-tab [data-part="upper-band"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: calc(var(--SPACE_S) * 1px);
+  min-height: 0;
+}
+
+.acervator-poa-tab [data-part="player-window"],
+.acervator-poa-tab [data-part="enemy-screen"],
+.acervator-poa-tab [data-part="party-window"] {
+  box-sizing: border-box;
+  padding: calc(var(--SPACE_S) * 1px);
+  border: 1px dashed var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_SM) * 1px);
+  background: var(--SURFACE_1);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="enemy-screen"] {
+  aspect-ratio: 1 / 1;
+}
+
+.acervator-poa-tab [data-part="party-window"] {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_S) * 1px);
+}
+
+.acervator-poa-tab [data-part="zone-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="zone-placeholder"] {
+  margin: calc(var(--SPACE_XS) * 1px) 0 0 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+.acervator-poa-tab [data-part="party-header"] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--SPACE_S) * 1px);
+  padding-bottom: calc(var(--SPACE_XS) * 1px);
+  border-bottom: 1px solid var(--OUTLINE);
+}
+
+.acervator-poa-tab [data-part="quint-label"] {
+  margin-left: auto;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="quint-balance"] {
+  color: var(--SUCCESS);
+  font-size: calc(var(--TYPE_CARD_VALUE) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="party-page"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="wallet-open"],
+.acervator-poa-tab [data-part="wallet-close"] {
+  align-self: flex-end;
+  padding: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="party-pages"] {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: calc(var(--SPACE_S) * 1px);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.acervator-poa-tab [data-part="party-group"] {
+  display: grid;
+  grid-template-rows: repeat(5, 1fr);
+  gap: calc(var(--SPACE_XXS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acervator-poa-tab [data-part="party-slot"] {
+  border: 1px dashed var(--TEXT_PLACEHOLDER);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  min-height: calc(var(--SPACE_M) * 1px);
+}
+
+/* The wallet opens over the party window and over nothing else. */
+.acervator-poa-tab [data-part="wallet-panel"] {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_M) * 1px);
+  border: 1px solid var(--OUTLINE_STRONG);
+  border-radius: calc(var(--RADIUS_SM) * 1px);
+  background: var(--SURFACE_3);
+}
+
+.acervator-poa-tab [data-part="wallet-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="wallet-section"] {
+  padding: calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+  color: var(--TEXT_HIGH);
+}
+
+.acervator-poa-tab [data-part="wallet-placeholder"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}

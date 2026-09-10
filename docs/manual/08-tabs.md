@@ -1253,8 +1253,9 @@ rather than typed.
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | - | in scope |
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/main_tabs/empty_tabs.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | yes | in scope |
+| `src/gui/main_tabs/empty_tabs.py` | no | - | no | no | no | - | - | shelved |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | shell | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | shell | in scope |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | - | in scope |
@@ -1268,6 +1269,7 @@ rather than typed.
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_paper_trader_tab.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/react_proof_of_accumulation_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_system_status_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no | shelved |
@@ -2419,3 +2421,95 @@ gaps alone, 37 waits       0.6 s -> 22.2 s        3.5 s -> 129.5 s
 measured pass, per bot     mean 5.318 s           mean 8.218 s
 38 bots, three retried     3 min 17 s             about 5 min 45 s
 ```
+
+### 2026-09-09 21:37 - #147 - the Accumulation tab leaves the empty-tab pair
+
+Accumulation is no longer a skeleton, so it leaves `empty_tabs.py` and takes a
+row of its own. It draws three zones: the player window on the left, the square
+enemy screen upper right, and the party window across the lower half. Every zone
+draws a placeholder and no art, class or mode is built.
+
+`src/gui/main_tabs/proof_of_accumulation_tab.py` — what the window builds
+
+```python
+    def _build_proof_of_accumulation_tab(self) -> None:
+        """Append the Accumulation tab, and hold None when its page cannot be built."""
+        try:
+            from ..react_proof_of_accumulation_tab import ProofOfAccumulationReactPanel
+
+            self._proof_of_accumulation_tab = ProofOfAccumulationReactPanel()
+            self._main_tabs.addTab(self._proof_of_accumulation_tab, HEADING)
+        except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
+            logger.warning("Accumulation tab unavailable: %s", exc)
+            self._proof_of_accumulation_tab = None
+```
+
+Three cells move and two rows are new. The empty-tab row names no module now, so
+nothing the window builds reaches it.
+
+| Qt file | React module | RENDERS | Scope |
+| --- | --- | --- | --- |
+| `src/gui/main_tabs/empty_tabs.py` | no | - | shelved |
+| `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | shell | in scope |
+| `src/gui/react_proof_of_accumulation_tab.py` | no | - | React side |
+
+The new cell reads `shell`, and the reason is the seam. Sixteen screens are
+registered there and none of them is this one, because no Qt widget ever drew a
+proof-of-accumulation screen. The two shelved Qt classes are set aside by the
+operator's directive of 21 April 2026 and this tab is built on neither.
+
+```
+seam screens             16
+a PoA, competition or testnet entry among them   none
+registered               proof_of_accumulation_tab, with no fault
+tab bar                  Accumulation, seventh of ten
+zones drawn              player window 2, enemy screen 2, party window 56
+party window             8 groups of 5, 40 slots on page 1 of 3
+wallet                   0 panels closed, 1 panel and 3 sections open
+```
+
+Removing the registration is the control. The panel name leaves the register,
+the Accumulation tab leaves the bar, and every zone count falls to nought while
+the same counter still reads 154 elements elsewhere on the page.
+
+```
+registered               proof_of_accumulation_tab absent, 18 names
+reasonFor                proof_of_accumulation_tab.js registered no panel to draw
+tab bar                  nine tabs, Accumulation gone
+zones drawn              0, 0, 0
+whole page               154 elements, so the noughts are the zones
+```
+
+The chain the shell draws is a field of the payload, so a demo run on the
+TestNet asks the same bridge method with a different chain and reaches the same
+page. Nothing else in the request changes.
+
+```python
+def chain_of(params: dict) -> str:
+    """The chain ``params`` names, or ``LIVE_CHAIN`` when it names none in ``CHAINS``."""
+    asked = params.get(CHAIN_FIELD) if isinstance(params, dict) else None
+    return asked if asked in CHAINS else LIVE_CHAIN
+```
+
+One tooling defect surfaced and is fixed here. The page carries three tables
+under the same header, and the Scope writer took the first, which is a two-row
+excerpt inside an earlier entry. It wrote a totals block into that excerpt. The
+span now picks the widest table.
+
+```python
+    spans = []
+    for start, line in enumerate(lines):
+        if line.startswith(TABLE_HEAD):
+            end = start + 2
+            while end < len(lines) and lines[end].startswith("|"):
+                end += 1
+            spans.append((start, end - 1))
+    if not spans:
+        raise LookupError("no line starts with " + TABLE_HEAD)
+    return max(spans, key=lambda span: span[1] - span[0])
+```
+
+Pointed at the real table the writer disagrees with the committed Scope column
+on twenty rows and moves five totals. That disagreement is not this entry's to
+resolve, so the column was not rewritten and the three cells above were set by
+the rule the column states.
