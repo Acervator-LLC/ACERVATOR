@@ -16,15 +16,21 @@
 //   Full ZK circuit verification is a planned upgrade (see TODO below).
 //
 // Immutable guarantees:
-//   • Ekthelius tier: maximum 21 ever minted (enforced on-chain)
-//   • Grand Accumulator: maximum 1,000 ever minted
+//   • Ekthelius tier: at most 21 ACRV awards ever carry that tier name
+//   • Grand Accumulator: at most 1,000 ACRV awards ever carry that tier name
 //   • All competition results are permanently on-chain (append-only)
+//
+// Neither cap reaches AcervatorTrophy. This contract holds no reference to the
+// NFT contract and mints no NFT, so an NFT tier is uncapped on-chain.
 // =============================================================================
-pragma solidity ^0.8.20;
+pragma solidity 0.8.36;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {AggregatorV3Interface} from
+    "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 interface IACRV {
     function mint(address recipient, uint256 amount,
@@ -33,7 +39,7 @@ interface IACRV {
     function remainingSupply() external view returns (uint256);
 }
 
-contract CompetitionRegistry is Ownable, ReentrancyGuard {
+contract CompetitionRegistry is Ownable2Step, ReentrancyGuard {
 
     // ── Token reference ───────────────────────────────────────────────────────
 
@@ -62,7 +68,8 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
     uint256 public currentSeason = 1;
 
     // Season reward curve: 500_000, 425_000, 361_250, ... (× 0.85 each season)
-    // Stored as a simple counter; Python-side validates against the full curve.
+    // Records season issuance only. No on-chain check reads seasonMinted, so
+    // the season budget is enforced off-chain by the Python engine.
     mapping(uint256 => uint256) public seasonMinted;
 
     // ── Competition storage ───────────────────────────────────────────────────
@@ -126,6 +133,7 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
         Ownable(msg.sender)
     {
         require(_acrv != address(0), "Registry: ACRV address required");
+        require(_acrv.code.length > 0, "Registry: ACRV not a contract");
         acrv = IACRV(_acrv);
         if (_btcFeed != address(0)) priceFeeds["BTC/USDT"] = _btcFeed;
         if (_ethFeed != address(0)) priceFeeds["ETH/USDT"] = _ethFeed;
@@ -142,7 +150,16 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
 
     /**
      * @notice Get the latest price from Chainlink for a symbol.
+     * @dev    All five values latestRoundData returns are checked. Chainlink
+     *         marks answeredInRound deprecated and its own feeds set it equal
+     *         to roundId, but setPriceFeed accepts any address, so the
+     *         comparison still screens a feed that is not a Chainlink one.
+     *
+     *         A caller that needs a freshness ceiling compares updatedAt
+     *         against that feed's heartbeat. No ceiling is set here, because
+     *         the heartbeat differs per feed.
      * @return price in USD * 10^8 (Chainlink standard)
+     * @return updatedAt timestamp the feed last wrote this answer
      */
     function getLatestPrice(string calldata symbol)
         external view returns (int256 price, uint256 updatedAt)
@@ -150,7 +167,20 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
         address feed = priceFeeds[symbol];
         require(feed != address(0), "Registry: no price feed for symbol");
         AggregatorV3Interface oracle = AggregatorV3Interface(feed);
-        (, price, , updatedAt,) = oracle.latestRoundData();
+        (
+            uint80  roundId,
+            int256  answer,
+            uint256 startedAt,
+            uint256 answeredAt,
+            uint80  answeredInRound
+        ) = oracle.latestRoundData();
+        require(roundId != 0,               "Registry: oracle has no round");
+        require(answeredInRound >= roundId, "Registry: oracle answer is stale");
+        require(startedAt  != 0, "Registry: oracle round unstarted");
+        require(answeredAt != 0, "Registry: round incomplete");
+        require(answer      > 0, "Registry: price not positive");
+        price     = answer;
+        updatedAt = answeredAt;
     }
 
     // ── Competition lifecycle ─────────────────────────────────────────────────
@@ -223,6 +253,9 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
 
     /**
      * @notice Submit a performance result.
+     * @dev    startValueCents must be positive. At zero the advantage
+     *         division panics; below zero it inverts the sign of every
+     *         ranking built on advantageBps.
      * @param compId          Competition ID
      * @param merkleRoot      Merkle root of all signed trades
      * @param startValueCents Starting portfolio value (USD cents)
@@ -242,9 +275,10 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
         require(!submissions[compId][msg.sender].submitted,    "Registry: already submitted");
         require(tradeCount > 0,                                "Registry: no trades recorded");
         require(merkleRoot != bytes32(0),                      "Registry: null Merkle root");
+        require(startValueCents > 0,                           "Registry: start value <= 0");
 
         int256 advantage   = finalValueCents - startValueCents;
-        int32  advBps      = int32(int256(advantage * 10000) / startValueCents);
+        int32  advBps      = SafeCast.toInt32((advantage * 10000) / startValueCents);
 
         submissions[compId][msg.sender] = Submission({
             merkleRoot:          merkleRoot,
@@ -267,6 +301,10 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
      *         enforces supply caps and executes the mint.
      *         TODO: Replace owner call with on-chain ZK proof verification.
      *
+     *         acrv.mint is the last statement. Every state write and both
+     *         events land before it, so a re-entering token contract finds
+     *         this competition already ADJUDICATED.
+     *
      * @param compId       Competition ID
      * @param winnerWallet Wallet address of the winning bot
      * @param tierName     Rarity tier name ("Harvest", "Gold Fold", etc.)
@@ -277,7 +315,7 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
         address          winnerWallet,
         string  calldata tierName,
         uint256          tokenAmount
-    ) external onlyOwner nonReentrant {
+    ) external nonReentrant onlyOwner {
         Competition storage c = competitions[compId];
         require(c.status == CompStatus.SUBMISSION, "Registry: not in submission");
         require(submissions[compId][winnerWallet].submitted,
@@ -295,22 +333,24 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
             mintedGrandAccumulator++;
         }
 
-        // Mint tokens
+        // Finalise competition state
+        c.status            = CompStatus.ADJUDICATED;
+        c.adjudicatedAt     = block.timestamp;
+        winners[compId]     = winnerWallet;
+        winnerTiers[compId] = tierName;
+        if (tokenAmount > 0) {
+            seasonMinted[c.season] += tokenAmount;
+        }
+
+        emit Adjudicated(compId, winnerWallet, tierName, tokenAmount, c.season);
+        emit TierMinted(tierName, winnerWallet, tokenAmount, compId);
+
+        // Interaction, last
         if (tokenAmount > 0) {
             require(acrv.remainingSupply() >= tokenAmount,
                     "Registry: insufficient ACRV supply remaining");
             acrv.mint(winnerWallet, tokenAmount, compId, tierName);
-            seasonMinted[c.season] += tokenAmount;
         }
-
-        // Finalise competition state
-        c.status           = CompStatus.ADJUDICATED;
-        c.adjudicatedAt    = block.timestamp;
-        winners[compId]    = winnerWallet;
-        winnerTiers[compId] = tierName;
-
-        emit Adjudicated(compId, winnerWallet, tierName, tokenAmount, c.season);
-        emit TierMinted(tierName, winnerWallet, tokenAmount, compId);
     }
 
     // ── Views ─────────────────────────────────────────────────────────────────
