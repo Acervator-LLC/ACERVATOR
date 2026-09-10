@@ -47,7 +47,7 @@ class RarityTier:
     description: str
     rank_pct_max: float  # top N% of field qualifies (1.0 = all)
     condition: str
-    max_ever: Optional[int]  # None = unlimited within season budget
+    max_ever: Optional[int]  # None = no lifetime ceiling; Harvest only
     base_value: int  # ACRV tokens awarded per win
 
     def qualifies(self, rank_pct: float, market_regime: str = "ANY") -> bool:
@@ -78,7 +78,7 @@ RARITY_TIERS = [
         description="Top 10% of competition field",
         rank_pct_max=0.10,
         condition="Advantage/capital in top 10% of field",
-        max_ever=None,
+        max_ever=100_000,
         base_value=50,
     ),
     RarityTier(

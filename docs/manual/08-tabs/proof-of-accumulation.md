@@ -839,4 +839,135 @@ plainly that it was not examined, so the four tools above are the whole coverage
 for this file.
 
 
+## 2026-09-09 21:16 - #147 - the trophy tier supply caps
+
+Four of the five trophy tiers now carry a lifetime ceiling, and the ceiling is
+held in the contract that mints the trophy. Harvest is the only tier left open,
+which is what the design asks for: a cap on every tier except the lowest.
+
+| Tier | Trophies ever | Where the ceiling is held |
+| ---- | ------------- | ------------------------- |
+| Harvest | no limit | nowhere, by design |
+| Gold Fold | 100,000 | the trophy contract |
+| Bear Slayer | 10,000 | the trophy contract |
+| Grand Accumulator | 1,000 | the trophy contract |
+| Ekthelius | 21 | the trophy contract |
+
+`contracts/AcervatorTrophy.sol` — the four ceilings
+
+```solidity
+    uint256 public constant MAX_GOLD_FOLD         = 100_000;
+    uint256 public constant MAX_BEAR_SLAYER       = 10_000;
+    uint256 public constant MAX_GRAND_ACCUMULATOR = 1_000;
+    uint256 public constant MAX_EKTHELIUS         = 21;
+```
+
+Only one of those numbers is new. Bear Slayer at 10,000, Grand Accumulator at
+1,000 and Ekthelius at 21 were already written into the platform's own tier list.
+Gold Fold at 100,000 continues the same ten-fold step the other three make.
+
+Before this, the two top ceilings were held in the competition registry, and the
+registry awards the prize token rather than the trophy. The registry could
+therefore refuse a twenty-second Ekthelius token award while the trophy contract
+minted a twenty-second Ekthelius NFT. Each contract now holds the ceiling for the
+thing it actually mints.
+
+The check sits inside the mint call, so every caller meets it. The owner of the
+trophy contract is allowed to call mint, and the owner is now refused at a
+ceiling exactly as the registry is.
+
+A tier name outside the five is also refused. The counter is kept per tier name,
+so a near-miss name such as a trailing space would otherwise start a fresh
+counter of its own and mint without limit.
+
+`contracts/AcervatorTrophy.sol` — the refusal a caller reads at each ceiling
+
+```text
+Trophy: Gold Fold supply of 100,000 exhausted
+Trophy: Bear Slayer supply of 10,000 exhausted
+Trophy: Grand Accumulator supply of 1,000 exhausted
+Trophy: Ekthelius supply of 21 exhausted
+Trophy: unknown tier
+```
+
+Each of those four refusals was watched. The build tool minted the last trophy a
+tier allows, then asked for one more and printed the refusal.
+
+`tests/contracts/TrophyTierCaps.t.sol` — the last Ekthelius trophy, then the refusal
+
+```text
+AcervatorTrophy::tierMinted("Ekthelius")  → 20
+AcervatorTrophy::mint(..., "Ekthelius", ...)
+  emit TrophyMinted(tokenId: 1, tier: "Ekthelius", ...)
+AcervatorTrophy::tierMinted("Ekthelius")  → 21
+AcervatorTrophy::mint(..., "Ekthelius", ...)
+  ← [Revert] Trophy: Ekthelius supply of 21 exhausted
+```
+
+The build tool's own fuzzing holds five properties over the contract, by throwing
+random sequences of calls at it. Each property was also broken on purpose once,
+to watch the tool report it, and then put back.
+
+`tests/contracts/TrophyTierCaps.t.sol` — what the fuzzing reported
+
+```text
+TrophyTierCapsTest invariants (runs: 256, calls: 16384, reverts: 9687)
+[PASS] invariant_noCappedTierExceedsItsMaximum
+[PASS] invariant_everyCapRefusedAMintAtIt
+[PASS] invariant_unknownTierNameIsRefused
+[PASS] invariant_harvestIsNeverRefused
+[PASS] invariant_everyMintIsCounted
+```
+
+The last one is the guard against a counter that is never raised. A ceiling read
+off a counter nothing increments would never be reached, and the tier would mint
+for ever while every other check stayed green.
+
+Breaking each property on purpose found a sixth thing that needed covering. Every
+one of the five reads the ceiling out of the contract, so raising a ceiling to an
+absurd number left all five green. A separate check now holds the four numbers as
+written figures, and it goes red the moment one of them moves.
+
+`tests/contracts/TrophyTierCaps.t.sol` — the four figures held as written numbers
+
+```solidity
+        require(trophy.MAX_GOLD_FOLD() == 100_000, "MAX_GOLD_FOLD is not 100,000");
+        require(trophy.MAX_BEAR_SLAYER() == 10_000, "MAX_BEAR_SLAYER is not 10,000");
+        require(trophy.MAX_EKTHELIUS() == 21, "MAX_EKTHELIUS is not 21");
+```
+
+Each number is still written twice, once in the platform's own tier list and once
+in the contract. Nothing fails if those two copies disagree. No check reads both
+languages, and no archetype covers a contract file, so the pair is held by reading
+and not by a tool. A check that compares them is a rule for the harness, which is
+not this unit's to write.
+
+`src/competition/season_schedule.py` — the platform's own copy of the same numbers
+
+```python
+  Harvest            max_ever = None
+  Gold Fold          max_ever = 100_000
+  Bear Slayer        max_ever = 10_000
+  Grand Accumulator  max_ever = 1_000
+  Ekthelius          max_ever = 21
+```
+
+The season budget is unchanged and still decides nothing on the chain. It sets how
+many prize tokens a season may award, and that number is the operator's.
+
+| Tool | Result on the trophy contract |
+| ---- | ----------------------------- |
+| the build tool | compiled from scratch, no errors |
+| the build tool's linter | no errors |
+| the static analyzer | no finding above informational |
+| the style linter | no errors |
+| the pattern scanner | no security finding |
+
+No archetype covers Solidity. Each contract file reports zero analyzers and says
+plainly that it was not examined, so the four tools above are the whole coverage
+for the contract.
+
+Nothing is deployed. No transaction was sent and no network was reached, so the
+ceilings are proved on a local chain the build tool runs in memory and not on Base.
+
 Back to [the subsystem index](README.md).
