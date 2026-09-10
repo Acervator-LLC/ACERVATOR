@@ -14,6 +14,8 @@ import time
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
+from .market_pairs_scout import row_quote_volume_24h
+
 logger = logging.getLogger("acervator.market_inspector_fetcher")
 
 
@@ -43,6 +45,7 @@ STABLECOIN_DENYLIST = {
     "USDS",
     "PYUSD",
     "FDUSD",
+    "EURC",
     "EUR",
     "GBP",
     "JPY",
@@ -89,12 +92,7 @@ def _pick_universe(
             continue
         if base_u in STABLECOIN_DENYLIST:
             continue
-        vol = 0.0
-        try:
-            vol = float(tk.get("quoteVolume") or tk.get("baseVolume", 0) or 0)
-        except (TypeError, ValueError):
-            vol = 0.0
-        scored.append((vol, base_u, sym))
+        scored.append((row_quote_volume_24h(tk), base_u, sym))
     scored.sort(key=lambda t: -t[0])
     top = [sym for _v, _b, sym in scored[:top_n]]
     seen_bases = {sym.split("/", 1)[0].upper() for sym in top}
