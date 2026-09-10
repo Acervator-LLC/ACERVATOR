@@ -1694,3 +1694,155 @@ A row prints health as a figure, not as a bar, and carries no role colour.
 Current health and wound depth need the fire-time gate reading, which arrives on
 the bus rather than in the saved file. Nothing here reads an ability, a mode or a
 turn.
+## 2026-09-10 00:03 - #147 - the contract audit against a published standard
+
+Four security tools now run over the four contracts, and every finding they give
+carries a level from a published standard. Nothing was repaired in this pass, and
+no line of Solidity changed. The standard is the EEA EthTrust Security Levels
+Specification Version 3, published by the Enterprise Ethereum Alliance in March
+2025, and the older SWC numbers sit beside each finding so a reader can match
+them to what the tools print.
+
+The tools, and the version of each one as the tool itself reports it:
+
+```
+forge     1.8.1     build, lint, and the fuzzing runner
+slither   0.11.6    static analysis
+solhint   6.2.4     the Solidity linter
+semgrep   1.171.0   50 Solidity rules
+mythril   absent    see below
+```
+
+### Not one tool was trusted until it had been shown failing
+
+A tool that has only ever reported nothing has not been shown able to report at
+all. Each of the four was pointed at a small broken file and a matching sound
+one, and each told the two apart.
+
+```
+forge      broken file   FAIL   buckets do not equal totalEverMinted
+           sound file    PASS   16,384 calls, nothing broken
+slither    broken file   1 result at its top severity
+           sound file    0 results
+solhint    broken file   1 error   "Avoid to use tx.origin"
+           sound file    0 errors
+semgrep    broken file   1 finding at its top severity
+           sound file    0 findings
+```
+
+The last pair is the one that carries the headline. semgrep found no security
+problem in the contracts, and the broken file proves the same security rules were
+switched on and working while it found none.
+
+### The books balance, and this is the run that proves it
+
+Quintessence rests in three places and the three always add up to everything ever
+minted. That sentence is now a property a machine holds rather than a claim on a
+page. The fuzzing runner drove the contract through random sequences of every
+movement it has.
+
+```
+256 runs   16,384 calls   8,661 of them correctly refused
+
+ten properties checked after every call, all held
+no sequence broke the books
+```
+
+### mythril could not be installed, and the audit says so
+
+The fifth tool reads the compiled bytecode. One of the pieces it needs cannot be
+built on this machine, because a Microsoft C++ compiler is absent and there is no
+Docker to fall back on. Nothing was put in its place.
+
+```
+mythril needs pyethash, which needs Microsoft C++ Build Tools
+docker                                not installed
+```
+
+Two things unblock it, and both are a spend decision:
+
+```
+install Microsoft C++ Build Tools on this machine
+install Docker and use the mythril maintainers' own image
+```
+
+### What the tools found, in their own words
+
+Every severity below is the tool's own. None was assigned here.
+
+| Tool | Its top band | Findings in that band |
+| ---- | ------------ | --------------------- |
+| slither | High | 0 |
+| slither | Medium | 1 |
+| forge | warning | 9 |
+| solhint | error | 34 |
+| semgrep | ERROR | 0 |
+
+The thirty-four solhint errors are all one thing, and all in one file: a single
+quote where the linter wants a double one. They sit in the trophy's artwork and
+metadata assembly, where single quotes build the JSON a marketplace reads.
+
+The one slither Medium sits on the guard that stops a second Quintessence
+transfer starting while one is already in flight.
+
+```
+contracts/Quintessence.sol   authorizeTransfer
+EthTrust level [M]           a human auditor decides whether the exact
+                             comparison is necessary
+```
+
+### Eighteen findings from the first pass are gone
+
+The repair unit landed before this one ran. Eighteen findings the first pass
+reported are absent from every run here, so the audit does not carry them
+forward.
+
+```
+slither   3   reentrancy in adjudicate, and the unchecked oracle answer
+forge     9   five unsafe number casts, and four ordering warnings
+solhint   3   the floating compiler version, now fixed at one release
+semgrep   3   one-step ownership transfer, now a two-step handover
+```
+
+### The four questions the design raised, answered
+
+**Who can pause the token.** The owner, and only the owner, and the owner is
+whoever sends the deployment transaction. A pause freezes every transfer and
+every award at once, because both run through one gate. The owner can never mint.
+Nothing limits how long a pause may last, and nothing requires a second signature
+to start one. The entry currency is a different shape: Quintessence has no owner
+and no pause at all.
+
+**Where spent Quintessence rests.** At a held address, and it never leaves one.
+Spending moves a holder's own units out of the wallet bucket into the held bucket,
+and no function takes them back out. The award token is the half still open: it
+has no burn and no resting place, so spending one has nowhere to go yet.
+
+**Which trophy tiers have a lifetime ceiling.** Four of the five, enforced inside
+the trophy contract. Harvest has none by design. On the token side two tiers are
+capped and the rest share the ten million supply cap. The season budget is still a
+Python rule and reaches no contract.
+
+**What a wrong address at deployment costs.** A redeployment for three of the four
+contracts, and nothing at all for the token, whose minter is now named by a
+one-time call that refuses an address with no code behind it. The circular
+deployment order is gone.
+
+### Where the findings are written down
+
+The full report is a document. The raw tool output is not, because captured output
+never belongs in the documentation tree.
+
+```
+docs/audits/2026-09-10_contract_audit_ethtrust_levels.md   the report
+artifacts/solidity_audit/                                   the raw output,
+                                                            untracked
+```
+
+### What running these tools is not
+
+It is not an audit in the sense the industry means. Tools find known weakness
+classes. They do not find a flaw in what a contract is for, and the standard says
+as much by putting business logic at its highest level. Contracts holding real
+value go to an outside firm before they reach a main network. That is a timing and
+cost decision, and it is named here so nobody discovers it late.
