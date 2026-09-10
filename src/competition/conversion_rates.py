@@ -73,7 +73,7 @@ LOOT_RELEASED_QUINTESSENCE = IRON_ORE_QUINTESSENCE_HIGH_QUALITY
 #: Creature tiers the art brief draws. No module names one.
 MONSTER_TIERS = 6
 
-#: The widths ``TempMonsterTier_0001`` and its siblings number their slots to.
+#: Digits ``_temp_slot`` pads an ordinal to, as in ``TempResource_0001``.
 TEMP_SLOT_DIGITS = 4
 
 
