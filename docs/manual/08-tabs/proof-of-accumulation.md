@@ -4115,10 +4115,21 @@ what anybody spent.
 
 ```python
 RETURN_PERCENT = 75
-BASE_UNITS_PER_QUINTESSENCE = 10**18
 
 return_pool_units = pot_units * RETURN_PERCENT // 100
-amount_units = return_pool_units * own // total_score_units
+amount_units = int(return_pool_units * own / total_score_ratio)
+```
+
+The grain is the ledger's own. ``QUINTESSENCE_UNITS_PER_WHOLE`` and
+``QUINTESSENCE_MINIMUM_UNIT`` arrive by import, so the division cannot divide a
+Quintessence more finely than a wallet can hold one.
+
+```python
+from .quintessence_ledger import (
+    QUINTESSENCE_MINIMUM_UNIT,
+    QUINTESSENCE_UNITS_PER_WHOLE,
+    amount_text,
+)
 ```
 
 ### The top spender performed worst and took nothing
@@ -4146,8 +4157,8 @@ its default. That 0.5 is not a measurement, so the division refuses it a share, 
 same refusal the capture bounds already make on an award.
 
 ```
-alpha   grade 0.8008   axes 2   share 0.444691248334073745   0.103724233673922701
-beta    grade 1        axes 2   share 0.555308751665926254   0.129525766326077298
+alpha   grade 0.8008   axes 2   share 0.44469124   0.10372423
+beta    grade 1        axes 2   share 0.55530875   0.12952576
 gamma   grade 0.5      axes 0   no scored axis, so no share
 ```
 
@@ -4166,7 +4177,7 @@ after    wallets 2.92224999            held 0.07775001            pleroma 0
 ### The pot equals the payouts plus the reserve, exactly
 
 This division does not divide evenly. The return pool is 0.23325 and the two shares
-come to one indivisible unit less. That unit is not dropped and not rounded away; it
+come to one minimum unit less. That unit is not dropped and not rounded away; it
 joins the quarter that never left and rests at the pot address as the reserve.
 
 ```
@@ -4199,8 +4210,8 @@ The Accumulation page carries a Redistribution panel under the skill ladder. The
 page was drawn and its own text read back.
 
 ```
-chain live      3180 characters   Pot 0.311   reserve 0.077750000000000001
-chain testnet   3188 characters   Pot 0.311   reserve 0.077750000000000001
+chain live      3180 characters   Pot 0.311   reserve 0.07775001
+chain testnet   3188 characters   Pot 0.311   reserve 0.07775001
 
 quintessence_ledger.json           poa_record_store.json
 quintessence_ledger_testnet.json   poa_record_store_testnet.json
@@ -4542,7 +4553,7 @@ KAT/USD   grade A+  1.0  axes 0  ->  total 0  fills 0  score 0
 score    {'address': '0xadf9793469cec8ae...', 'score': '0', 'scored_axes': 0,
           'standing': 'no_score'}
 shares   []
-reserve  1.000000000000000000
+reserve  1
 ```
 
 ### Real fills off the operator's own log, divided
@@ -4560,8 +4571,8 @@ nought.
 0x48cce07b5732795f      4       3.5     0.875     0.010    0.03581376
 0xca3e3124a3226b20      4       3.0     0.75      0.010    0.03069751
 
-pot 0.120   return pool 0.090   paid 0.089999999999999999
-remainder 0.000000000000000001   reserve 0.030000000000000001   exact True
+pot 0.120   return pool 0.090   paid 0.08999998
+remainder 0.00000002   reserve 0.03000002   exact True
 ```
 
 The biggest spender of the three scored worst and took the smallest payout.
@@ -4590,10 +4601,10 @@ that participant's score halved instead moved all three, which proves the readin
 was live.
 
 ```
-spends  0.100    0.010  0.010   shares  0.0978696492  0.1492240350  0.1279063157
-spends  100.000  0.010  0.010   shares  0.0978696492  0.1492240350  0.1279063157
+spends  0.100    0.010  0.010   shares  0.09786964  0.14922403  0.12790631
+spends  100.000  0.010  0.010   shares  0.09786964  0.14922403  0.12790631
 
-scores  0.2869375  0.875  0.75  shares  0.0562788074  0.1716191036  0.1471020888
+scores  0.2869375  0.875  0.75  shares  0.0562788  0.1716191  0.14710208
 ```
 
 ### The books balance and a second settle gets nothing
@@ -4620,8 +4631,8 @@ construction. A demo run is one more of the same object over the demo chain's ow
 files, running the same join and the same division. No flag chooses between them.
 
 ```
-live     chain 2322666782976   poa_record_store.json           paid 0.089999999999999999
-testnet  chain 2322667254944   poa_record_store_testnet.json   paid 0.089999999999999999
+live     chain 2322666782976   poa_record_store.json           paid 0.08999998
+testnet  chain 2322667254944   poa_record_store_testnet.json   paid 0.08999998
 ```
 
 ### What the join does not reach

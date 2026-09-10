@@ -18,10 +18,15 @@ import threading
 import time
 from dataclasses import dataclass
 from decimal import Decimal
+from fractions import Fraction
 from typing import TYPE_CHECKING
 
 from .capture_bounds import GRADE_NOT_COMPUTED, MIN_SCORED_AXES
-from .quintessence_ledger import amount_text
+from .quintessence_ledger import (
+    QUINTESSENCE_MINIMUM_UNIT,
+    QUINTESSENCE_UNITS_PER_WHOLE,
+    amount_text,
+)
 from .rpg_metrics import grade_metrics
 
 if TYPE_CHECKING:
@@ -33,9 +38,6 @@ logger = logging.getLogger("acervator.event_redistribution")
 
 #: The share of a pot that returns to participants; what is left is the reserve.
 RETURN_PERCENT = 75
-
-#: One Quintessence in the indivisible units ``contracts/Quintessence.sol`` counts.
-BASE_UNITS_PER_QUINTESSENCE = 10**18
 
 SCORED = "scored"
 NO_SCORE = "no_score"
@@ -69,19 +71,19 @@ def _as_name(value: object, name: str) -> str:
 
 
 def to_base_units(amount: object, name: str = "amount") -> int:
-    """Return ``amount`` as whole indivisible units, dropping anything below one."""
+    """Return ``amount`` as whole minimum units, dropping anything below one."""
     quantity = _as_quantity(amount, name)
-    scaled = quantity * BASE_UNITS_PER_QUINTESSENCE
+    scaled = quantity * QUINTESSENCE_UNITS_PER_WHOLE
     return int(scaled.to_integral_value(rounding="ROUND_DOWN"))
 
 
 def from_base_units(units: int) -> Decimal:
-    """Return ``units`` indivisible units as a Decimal amount, with no rounding."""
+    """Return ``units`` minimum units as a Decimal amount, with no rounding."""
     if type(units) is not int:
         raise RedistributionError(
             f"units must be a whole number, not {type(units).__name__}"
         )
-    return Decimal(units).scaleb(-len(str(BASE_UNITS_PER_QUINTESSENCE)) + 1)
+    return Decimal(units) * QUINTESSENCE_MINIMUM_UNIT
 
 
 @dataclass(frozen=True)
@@ -232,8 +234,9 @@ def scores_from_records(records: list) -> list[PerformanceScore]:
 def divide_pot(event_id: str, pot: object, scores: list) -> PotDivision:
     """Divide ``pot`` across ``scores`` in proportion to each normalised score.
 
-    A score below ``MIN_SCORED_AXES`` takes nothing and every indivisible unit
-    ``divide_pot`` cannot place rests in ``reserve``.
+    A score below ``MIN_SCORED_AXES`` takes nothing and every minimum unit
+    ``divide_pot`` cannot place rests in ``reserve``. A score is a ratio rather
+    than an amount, so ``Fraction`` carries it and no grid rounds it.
     """
     event = _as_name(event_id, "event_id")
     pot_units = to_base_units(pot, "pot")
@@ -245,17 +248,20 @@ def divide_pot(event_id: str, pot: object, scores: list) -> PotDivision:
     unscored = tuple(
         sorted(score.address for score in scores if not score.is_scoreable)
     )
-    score_units = {
-        score.address: to_base_units(score.score, "score") for score in scoreable
+    score_ratios = {
+        score.address: Fraction(_as_quantity(score.score, "score"))
+        for score in scoreable
     }
-    total_score_units = sum(score_units.values())
+    total_score_ratio = sum(score_ratios.values(), Fraction(0))
     shares: list[PayoutShare] = []
     for score in scoreable:
-        if total_score_units == 0:
+        if total_score_ratio == 0:
             continue
-        own = score_units[score.address]
-        amount_units = return_pool_units * own // total_score_units
-        normalised_units = own * BASE_UNITS_PER_QUINTESSENCE // total_score_units
+        own = score_ratios[score.address]
+        amount_units = int(return_pool_units * own / total_score_ratio)
+        normalised_units = int(
+            QUINTESSENCE_UNITS_PER_WHOLE * own / total_score_ratio
+        )
         shares.append(
             PayoutShare(
                 address=score.address,
