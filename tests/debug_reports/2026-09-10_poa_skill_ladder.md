@@ -150,8 +150,11 @@ The heading names what this block's demo run actually reads.
 ### 3.5 the rerun
 
 ```
-passed=True, 170 findings, no high or critical, errors []
+passed=True, no high or critical, errors []
 ```
+
+The page's finding count moves with every dated block other units add to it, so
+the verdict is what this rerun pins.
 
 ---
 
