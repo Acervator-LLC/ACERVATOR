@@ -12,6 +12,12 @@
 // A counting invariant asserts its attempt counter is above zero before it reads
 // its refusal counter, so a path no sequence reached fails instead of passing on
 // an absence.
+//
+// targetContracts names QuintessenceHandler alone. Without it forge also drives
+// Quintessence, QuintessenceActor and WalletSet directly, using the handler's
+// and the actors' own addresses as senders, so a direct respawn or a direct
+// authorizeTransfer credits a wallet that never passed through WalletSet.add
+// and recordedWalletSum under-reports a walletsTotal that is correct.
 // =============================================================================
 pragma solidity 0.8.36;
 
@@ -352,6 +358,12 @@ contract QuintessenceConservationTest {
         handler.tryExecuteBeforeDue(0);
         handler.authorizeTransfer(0, 0, 500 * 10**18);
         handler.executeTransfer(0, 1);
+    }
+
+    /// @notice forge drives only the handler, whose wrappers record every wallet.
+    function targetContracts() public view returns (address[] memory targets) {
+        targets = new address[](1);
+        targets[0] = address(handler);
     }
 
     /// @notice A failure means the three buckets no longer hold every unit minted.
