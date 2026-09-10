@@ -1,8 +1,8 @@
 """Shared LocalTestnet bridge.
 
-``SharedTestnetBridge.install_on`` attaches one ``LocalTestnet`` and one
-``QuintessenceLedger`` to a MainWindow and starts ``_drain_queue`` on a
-timer. Each queued
+``SharedTestnetBridge.install_on`` attaches one ``LocalTestnet``, one
+``QuintessenceLedger`` and one ``PoaWorld`` to a MainWindow and starts
+``_drain_queue`` on a timer. Each queued
 ``CompetitionRequest`` runs in a ``_CompetitionWorker``, which mutates
 the chain on its own thread while it holds ``_mutation_lock``, one
 worker at a time. ``_save_now`` appends every new record to the log beside
@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from src.competition.market_rotation import MarketRotation
     from src.competition.node_link import PoaNodeLink
     from src.competition.quintessence_ledger import QuintessenceLedger
+    from src.competition.world_grid import PoaWorld
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
@@ -194,6 +195,7 @@ class SharedTestnetBridge(QObject):
         self._node_link: Optional[PoaNodeLink] = None
         self._action_spend: Optional[ActionSpend] = None
         self._event_redistribution: Optional[EventRedistribution] = None
+        self._poa_world: Optional[PoaWorld] = None
 
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
@@ -219,12 +221,13 @@ class SharedTestnetBridge(QObject):
         network: Optional[str] = None,
         action_store_path: Optional[Path] = None,
         event_pot_address: Optional[str] = None,
+        world_path: Optional[Path] = None,
     ):
         """Create the shared ``LocalTestnet``, the bridge, the
         ``QuintessenceLedger``, the ``CertificationSocket``, the
         ``MarketRotation``, the ``CaptureBounds``, the ``PoaNodeLink``, the
-        ``ActionSpend`` and the ``EventRedistribution``, and attach all nine to
-        ``main_win``.
+        ``ActionSpend``, the ``EventRedistribution`` and the ``PoaWorld``, and
+        attach all ten to ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -257,6 +260,7 @@ class SharedTestnetBridge(QObject):
         main_win._event_redistribution = bridge.install_event_redistribution(
             ledger, main_win._action_spend
         )
+        main_win._poa_world = bridge.install_world(world_path)
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
 
@@ -398,6 +402,38 @@ class SharedTestnetBridge(QObject):
     def capture_bounds(self) -> Optional[CaptureBounds]:
         """Read the ``CaptureBounds`` this bridge installed."""
         return self._capture_bounds
+
+    def install_world(self, world_path: Optional[Path] = None) -> PoaWorld:
+        """Build the ``PoaWorld`` over this bridge's chain and read its record.
+
+        A demo run is the same ``discover`` path over a different ``LocalTestnet``,
+        and an install with no record on disk holds no world and no layer.
+        """
+        from src.competition.world_grid import (
+            DEFAULT_GRID_WIDTH,
+            SEPHIROT_LAYERS,
+            addressable_squares,
+        )
+        from src.competition.world_grid import PoaWorld as _World
+
+        world = _World(self._testnet, world_path=world_path)
+        world.load()
+        self._poa_world = world
+        logger.info(
+            "PoaWorld installed (path=%s, worlds=%d, default grid %d across "
+            "holding %d squares, %d declared layers)",
+            world.world_path,
+            len(world.world_ids),
+            DEFAULT_GRID_WIDTH,
+            addressable_squares(DEFAULT_GRID_WIDTH),
+            SEPHIROT_LAYERS,
+        )
+        return world
+
+    @property
+    def poa_world(self) -> Optional[PoaWorld]:
+        """Read the ``PoaWorld`` this bridge installed."""
+        return self._poa_world
 
     def install_node_link(
         self,

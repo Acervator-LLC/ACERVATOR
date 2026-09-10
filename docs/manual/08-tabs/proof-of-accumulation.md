@@ -6249,3 +6249,400 @@ market's pool holds in a window. No unit has set that figure.
 
 No button scores another participant. The Score the action button scores this node's
 own participant, so every payout proved above paid one share.
+
+## 2026-09-10 18:57 - #147 - the world grid, its zones and what a discovery writes
+
+### Three layers, and each one does a different job
+
+A world now has three layers of structure, and they deliberately do not line up
+with one another. The grid is regular and carries addressing. A zone is a patch of
+terrain with its own shape. The tree levels are the third axis.
+
+```
+the world grid    regular. 676 addressable squares, 655 of them budgeted at one
+                  square a participant. Addressing, the byte budget and sight.
+zone regions      irregular, varied in size and shape, joined at their own
+                  borders. A zone IS a terrain region.
+Sephirot layers   the third axis. Twenty, read as the ten spheres and their ten
+                  inversions.
+```
+
+Twenty is a reading of his wording and not a ruling. The code carries twenty as
+one derived line, and making it ten is a one-word change.
+
+```python
+TREE_SPHERES = 10
+SEPHIROT_LAYERS = TREE_SPHERES * 2
+```
+
+### The grid holds 676 squares and base sight covers one
+
+655 participants at one square each is the measured figure from the world budget.
+655 squares is a grid 25.6 on a side, which is not a whole number of squares, so
+the grid takes the smallest whole side that holds them.
+
+```
+participants a layer carries       655
+squares a layer holds, one each    655
+smallest whole side holding 655    26
+addressable squares                676
+```
+
+The declared size is free. The byte budget bounds how much a world writes in one
+turn, never how large the world is.
+
+```
+square (0, 0)                  0
+square (25, 25)                675
+index 340 back to x and y      (2, 13)
+square (26, 0)                 refused - off a grid 26 across holding 676
+index 676                      refused - off a grid holding 676
+```
+
+Sight is one square, which is the participant's own.
+
+```
+squares base sight covers             1
+squares in view from 340 at base      (340,)
+squares in view from 340 at radius 1  (313, 314, 315, 339, 340, 341, 365, 366, 367)
+squares in view from 0 at radius 1    (0, 1, 26, 27)
+```
+
+The last row is a corner. A radius that reaches off the grid yields fewer squares
+rather than an error.
+
+### A zone is a terrain region, and it crosses squares
+
+A grid square needs no description, since its index implies its shape. A region
+has to carry a boundary, and that boundary is the first thing in this design that
+costs bytes for shape. It is stored as a closed ring of points in world
+coordinates, each point named once, with the last point joining the first.
+
+```
+boundary  ((3.5, 3.5), (5.5, 3.2), (6.2, 5.1), (4.0, 6.0), (2.8, 4.9))
+vertices  5
+```
+
+That ring form is what his rule asks for. Two neighbouring regions share the
+points along the border they meet at, so regions link at their own borders with no
+extra record. A ring of fewer than three points is refused, since it encloses
+nothing.
+
+```
+a 2-point ring   refused - zone ZONE-THIN carries 2 vertices, under the 3 a
+                 closed ring needs
+```
+
+The five-point zone above spans parts of twenty squares.
+
+```
+squares in its extent   (80, 81, 82, 83, 84, 106, 107, 108, 109, 110,
+                         132, 133, 134, 135, 136, 158, 159, 160, 161, 162)
+as x and y              (2,3) (3,3) (4,3) (5,3) (6,3) (2,4) (3,4) (4,4) (5,4)
+                        (6,4) (2,5) (3,5) (4,5) (5,5) (6,5) (2,6) (3,6) (4,6)
+                        (5,6) (6,6)
+zones over square 107   ('ZONE-1',)
+zones over square 0     ()
+```
+
+### A zone's level reads the people across its squares
+
+His rule is that a zone's level follows the participants in it. Because a zone
+spans several squares, that reading crosses squares rather than staying inside
+one. The squares give the candidates and the boundary decides who is actually in.
+
+```
+0xA  square 108  (4,4)    point (4.5, 4.5)  inside  level 40
+0xB  square 109  (5,4)    point (5.1, 4.2)  inside  level 60
+0xC  square 134  (4,5)    point (4.2, 5.1)  inside  level 20
+0xD  square 84   (6,3)    point (6.9, 3.1)  outside level 99
+0xE  square 540  (20,20)  point (20.0, 20.0) outside level 99
+```
+
+0xD is the row that matters. It sits in a square the zone's extent covers and
+outside the zone itself, so it is left out.
+
+```
+population            ('0xA', '0xB', '0xC')
+squares they came in   (108, 109, 134)
+level                  40, the mean of 40, 60 and 20
+```
+
+A zone with nobody in it reports no level at all, rather than a low one.
+
+```
+an empty zone's level   None
+```
+
+### A fact, a piece of knowledge, and one extraction
+
+Discovery has three separate levels, and keeping them apart is what protects the
+Quintessence cap.
+
+```
+the FACT        the asset exists at that place. Written ONCE, by the first
+                discoverer, and permanent. Its amount is fixed at that moment.
+the KNOWLEDGE   this participant knows about it. Written PER PARTICIPANT, as a
+                reference.
+the EXTRACTION  the Quintessence is taken. Happens ONCE, since it is one asset.
+```
+
+The world is never stored per participant. A second discoverer writes one
+identifier, never a second boundary and never a second amount.
+
+### Two people find one creature and it pays once
+
+Two participants discovered the same place on the same layer.
+
+```
+0xFirst    wrote the fact  True   amount 0.957
+0xSecond   wrote the fact  False  amount 0.957
+same place id   WORLD-A:3:108:50:50
+same amount     True
+same leaf       True
+facts the world holds  1
+```
+
+Then the extraction.
+
+```
+0xFirst extracts    0.957
+0xSecond extracts   refused - WORLD-A:3:108:50:50 was already extracted by
+                    0xFirst; one asset allows one extraction
+two rolls would have paid   1.914
+one reality paid            0.957
+```
+
+That refusal is the cap holding. If each discovery rolled its own amount, a
+world's fixed Quintessence budget would be multiplied by its population.
+
+Knowledge is also required to take anything.
+
+```
+0xFirst extracting a place it has not found  refused - 0xFirst holds no knowledge
+                                             of WORLD-A:3:108:51:51
+```
+
+### The amount is fixed before anyone arrives
+
+If the amount were undecided until found, whichever node resolved the discovery
+would choose its own loot. The world therefore commits to a concealed seed when it
+is created, and an amount is a plain function of that seed and the place.
+
+```python
+def discovery_leaf(seed: str, locator: str) -> str:
+    """The leaf ``locator`` takes under ``seed``, which ``seed_commitment`` hides."""
+    return hashlib.sha256(f"{seed}|{locator}".encode()).hexdigest()
+```
+
+That is the same salted-hash shape the rotating reward markets already use, where
+the chain carries a commitment, no field names a market, and the salt is published
+afterwards. The world reuses the shape rather than inventing one: the seed plays
+the salt's part and the place plays the market's.
+
+```
+at creation    the chain carries sha256(seed). No field carries the seed.
+at discovery   the amount comes from sha256(seed|place), inside the band set for
+               that kind of asset.
+afterwards     the seed is published and anyone recomputes every amount.
+```
+
+Nothing invents a distribution curve. An asset kind has no amount until a band is
+registered for it, and the curve across ore, creatures and the deep layers is
+still his to set.
+
+```
+creature  0.001 to 1.000 in steps of 0.001    1000 amounts
+ore       0.000001 to 0.000010                10
+avatar    500 to 1000 in steps of 100         6
+```
+
+Driven over 20,000 places under one seed, every draw landed inside its band, both
+ends of each band were reachable, and the creature band produced all 1,000 of its
+amounts.
+
+### The amount cannot be read early, and checks out later
+
+Before the discovery the chain carries nothing that names the amount.
+
+```
+reading the amount    refused - no fact 'WORLD-A:3:108:50:50' is discovered
+chain events so far   WorldCreated (arena, commitment, layers, width, world)
+                      LayerBreached (by, layer, world)
+                      ZoneDiscovered (boundary, by, layer, world, zone)
+the chain carries the seed   False
+```
+
+After the discovery the same place checks out against the commitment.
+
+```
+leaf recomputed from the seed and the place   matches
+amount recomputed from that leaf             matches
+the seed still hashes to the posted value    matches
+verified                                     True
+```
+
+The check was watched failing before it was trusted. An amount raised by one step,
+which is the smallest the band allows, a replaced leaf, and a swapped seed each
+turned it red, and restoring the value turned it green again.
+
+```
+amount 0.568 raised to 0.569   amount_matches False, verified False
+leaf replaced with zeros       leaf_matches   False, verified False
+seed swapped                   all three      False, verified False
+restored                       verified       True
+```
+
+### What a region costs, in bytes
+
+Measured by letting the chain save itself and reading the file the chain wrote.
+Every figure below is the size of that log file.
+
+```
+install, no world        545
+a world nobody entered   1,844
+one layer breached       2,960
+a 3-point zone           4,208
+a 6-point zone           4,276
+a 100-point zone         6,341
+a creature found         4,446
+a second person knows    5,613
+the Quintessence taken   6,834
+```
+
+Subtracting gives what one record costs.
+
+```
+a world's declaration    1,299
+a layer breach           1,116
+a 3-point zone           1,248
+a 6-point zone           1,316
+a 100-point zone         3,381
+a creature's fact        1,486
+a knowledge reference    1,167
+an extraction            1,221
+```
+
+A point costs 22 bytes and a zone record carries 1,182 bytes of envelope around
+them. Each point is written twice, once in the action and once in the event the
+chain log shows, which is how every other record in this package is written.
+
+```
+each extra point     22 bytes
+fixed envelope       1,182 bytes
+the crossover        the envelope outweighs the geometry up to about 54 points
+```
+
+His warning holds for the geometry and not for the whole record. A hundred points
+cost fifty times two points in geometry, exactly, and the whole record grows only
+2.7 times, because the envelope is paid once either way.
+
+The commonest region shape is not set in the design, so here is the capacity each
+shape would buy against one layer's turn budget of 1 MB.
+
+```
+3-point regions     840 a turn
+6-point regions     796
+100-point regions   310
+```
+
+### An undeclared world costs nothing
+
+This is the claim the whole world budget rests on. A world nobody has entered
+stores its declaration and nothing else, and the declared size is almost free.
+
+```
+a world 26 squares across, one layer breached    2,960 bytes
+a world 1,000 squares across, one layer breached 2,974 bytes
+squares the first declares                       676
+squares the second declares                      1,000,000
+```
+
+A world 1,479 times larger costs 14 more bytes, which is the extra digits in its
+width and its arena. Nothing is spent on ground nobody has walked.
+
+```
+an undiscovered zone    has no boundary stored
+an unvisited layer      does not exist
+undiscovered Quint      has no location
+```
+
+Work on a layer nobody has breached is refused outright, which is what makes the
+second line true rather than aspirational.
+
+```
+a zone on an unbreached layer   refused - layer 3 of world WORLD-A does not
+                                exist; layers breached: none
+a layer past the declared count refused - layer 20 is outside the 20 layers
+                                world WORLD-A declares
+```
+
+### The arena is the one place known without being found
+
+Monster Smash happens at an arena, it is where everyone starts, and every other
+dungeon type is found out in the world. That solves the problem lazy discovery
+creates: a brand-new participant in an undiscovered world has exactly one place to
+go.
+
+```
+arena square      324, the middle of a grid 26 across
+as x and y        (12, 12)
+reachable with no discovery   True
+the square beside it          False
+zones discovered at creation  none
+layers breached at creation   none
+```
+
+Four things separate the arena from a discovered zone.
+
+```
+it is a grid square, so its index implies its shape and it stores no boundary
+it has no discoverer and no discovery record
+every participant reaches it without a knowledge reference
+it holds no Quintessence commitment, so nothing is extracted from it
+```
+
+A world still holds no zone, no layer and no asset at creation. The Map subtab's
+sentence that no world is generated stays true, because installing the mechanism
+creates no world.
+
+### Demo mode builds a world on its own chain
+
+Two chains ran in one program, each with its own world store, and the world took
+its chain at construction.
+
+```
+two chains in one program    True
+the demo world writes to the demo chain   True
+live chain blocks   10
+demo chain blocks   4
+both chains verify their own records   True
+```
+
+The same three calls ran on both. Different seeds gave different amounts, and each
+chain's amount checked out against its own commitment.
+
+```
+live amount   0.957
+demo amount   0.184
+demo verified True
+```
+
+No flag chose between them. The chain arrives by construction, the same way the
+certification socket and the rotating markets already take theirs.
+
+### What the world grid does not build
+
+No movement. A journey leg, a terrain cost and encumbrance are the next unit, and
+they needed zones to exist first.
+
+No drawing. The Map subtab still says no world is generated, and that sentence is
+still true.
+
+No link to the Quintessence books. Taking an asset records the extraction and
+returns the amount. Crediting a wallet belongs with the conservation law and its
+four buckets.
+
+The distribution curve is unset, so no kind of asset has a band until one is
+registered. That curve decides how long a world takes to reach Ancient, and it is
+his to set.
