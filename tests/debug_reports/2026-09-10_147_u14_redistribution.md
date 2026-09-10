@@ -226,7 +226,8 @@ PAGE READY live True        PAGE READY testnet True
 
 ## What the run could not answer
 
-No certified fill carries a count of scored axes, so a live fill cannot say
-whether its grade is a measurement or the grader's default. The field sits on
-`CertifiedFill` in `src/competition/certification_socket.py`, which another unit
-holds.
+Nothing joins a certified fill to a participant's event record, so no run could
+show a live performance score reaching a share. `CertifiedFill` in
+`src/competition/certification_socket.py` carries `trade_grade` and
+`scored_axes`, and `EventRedistribution.write_grade` takes a grade, but no code
+path connects the two.

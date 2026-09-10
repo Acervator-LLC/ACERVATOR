@@ -5,9 +5,11 @@
 carries, so ``max_participant_share`` has a pool to take 5% of. ``award``
 refuses a second allotment inside one ``Activation``, an amount above that
 share, an award still inside the candle cooldown, an amount the allotment cannot
-pay, a grade no axis could score and a grade resting on one clamped axis. Every
+pay, an amount of zero, a grade no axis could score and one resting on a clamp. Every
 granted award is recorded on the ``LocalTestnet`` this object was built over, so
 a demo run is the same ``award`` path over a different chain.
+``CertificationSocket.certify`` calls ``award`` for every fill naming an
+activation, and ``activation_key`` and ``pool_key`` build the names it resolves.
 """
 
 from __future__ import annotations
@@ -37,6 +39,10 @@ COOLDOWN_FLOOR_S = 900
 #: Sub-scores a grade needs before it may curve an award.
 MIN_SCORED_AXES = 1
 
+#: No figure sets how much Quintessence a market's pool holds in a window, so
+#: ``activate`` takes it as an argument and refuses this None.
+EMISSION_PER_ACTIVATION = None
+
 #: Basis points past which the execution axis clamps and stops reading the fill.
 #: Measured on 1,560 live fills: 87.7% sit past it, so distance alone is no bound.
 EXECUTION_READABLE_BPS = 100.0
@@ -57,6 +63,9 @@ COOLDOWN_RUNNING = "cooldown_running"
 ALLOTMENT_TAKEN = "allotment_taken"
 ABOVE_SHARE_CEILING = "above_share_ceiling"
 ALLOTMENT_EXHAUSTED = "allotment_exhausted"
+NO_ACTIVATION_NAMED = "no_activation_named"
+EMISSION_NOT_SET = "emission_not_set"
+NOTHING_TO_AWARD = "nothing_to_award"
 
 _NUMBER_TYPES = (int, float, Decimal)
 
@@ -102,6 +111,12 @@ def _as_name(value: object, name: str) -> str:
 def activation_key(exchange_id: str, season: int) -> str:
     """The key one exchange's activation period is held under."""
     return f"{_as_name(exchange_id, 'exchange_id')}:{int(season)}"
+
+
+def pool_key(exchange_id: str, season: int, symbol: str) -> str:
+    """The key one market's pool is drawn against inside one activation period."""
+    activation = activation_key(exchange_id, season)
+    return f"{activation}|{_as_name(symbol, 'symbol')}"
 
 
 def cooldown_seconds(ta_timeframe: str) -> int:
@@ -332,8 +347,16 @@ class CaptureBounds:
         """Open a ``MarketRotation`` window and size one allotment a drawn market.
 
         Splits ``emission`` by the ``quote_volume_24h`` each drawn market carries
-        at this call.
+        at this call. No figure in this module sets ``emission``, so an
+        ``emission`` of None refuses with ``EMISSION_NOT_SET``.
         """
+        if emission is None:
+            raise CaptureRefusedError(
+                EMISSION_NOT_SET,
+                "no emission was named for this activation, and no figure here "
+                "sets how much Quintessence a market's pool holds in a window; "
+                "activate takes it as an argument and no default stands in",
+            )
         exchange = _as_name(exchange_id, "exchange_id")
         key = activation_key(exchange, season)
         with self._state_lock:
@@ -401,7 +424,9 @@ class CaptureBounds:
             del self._activations[key]
             self._taken.pop(key, None)
             for symbol in activation.allotments:
-                self._drawn.pop(f"{key}|{symbol}", None)
+                self._drawn.pop(
+                    pool_key(activation.exchange_id, activation.season, symbol), None
+                )
             self.save()
         logger.info("%s closed; %d allotments retired", key, len(activation.allotments))
         return (reveal, activation.allotments)
@@ -415,8 +440,7 @@ class CaptureBounds:
 
     def pool_drawn(self, exchange_id: str, season: int, symbol: str) -> Decimal:
         """The Quintessence already awarded from one market's allotment."""
-        key = activation_key(exchange_id, season)
-        return self._drawn.get(f"{key}|{_as_name(symbol, 'symbol')}", Decimal(0))
+        return self._drawn.get(pool_key(exchange_id, season, symbol), Decimal(0))
 
     def may_award(self, request: AwardRequest) -> str:
         """``AWARDED`` while every bound admits ``request``, else the refusing reason."""
@@ -477,6 +501,13 @@ class CaptureBounds:
                 f"one allotment a participant a market an activation period",
             )
         amount = request.amount
+        if amount == 0:
+            raise CaptureRefusedError(
+                NOTHING_TO_AWARD,
+                f"a fee of {request.fee_usd} at a grade of {request.grade_numeric} "
+                f"distils nothing, and granting it would spend {participant}'s one "
+                f"allotment of {symbol} and open a cooldown for no Quintessence",
+            )
         ceiling = allotment.share_ceiling
         if amount > ceiling:
             raise CaptureRefusedError(
@@ -509,7 +540,7 @@ class CaptureBounds:
             )
             until = request.epoch + cooldown_s
             self._taken.setdefault(key, set()).add(f"{participant}|{symbol}")
-            self._drawn[f"{key}|{symbol}"] = drawn
+            self._drawn[pool_key(request.exchange_id, request.season, symbol)] = drawn
             self._cooldown_until[participant] = until
             self.save()
         tx_hash = self._post_award(participant, allotment, amount, until)
@@ -621,13 +652,17 @@ class CaptureBounds:
         return self
 
     def bounds_summary(self) -> dict:
-        """The four bounds, the open activations and every running cooldown."""
+        """The four bounds, the open activations and every running cooldown.
+
+        ``emission_per_activation`` is None because nothing here sets it.
+        """
         return {
             "bounds_path": str(self._path),
             "cooldown_candles": COOLDOWN_CANDLES,
             "cooldown_floor_s": COOLDOWN_FLOOR_S,
             "min_scored_axes": MIN_SCORED_AXES,
             "execution_readable_bps": EXECUTION_READABLE_BPS,
+            "emission_per_activation": EMISSION_PER_ACTIVATION,
             "activations": {k: v.to_dict() for k, v in self._activations.items()},
             "taken": {k: sorted(v) for k, v in self._taken.items()},
             "drawn": {k: str(v) for k, v in self._drawn.items()},
