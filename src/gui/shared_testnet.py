@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from src.competition.node_link import PoaNodeLink
     from src.competition.quintessence_ledger import QuintessenceLedger
     from src.competition.world_grid import PoaWorld
+    from src.competition.world_movement import WorldJourneys
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
@@ -196,6 +197,7 @@ class SharedTestnetBridge(QObject):
         self._action_spend: Optional[ActionSpend] = None
         self._event_redistribution: Optional[EventRedistribution] = None
         self._poa_world: Optional[PoaWorld] = None
+        self._poa_journeys: Optional[WorldJourneys] = None
 
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
@@ -222,12 +224,13 @@ class SharedTestnetBridge(QObject):
         action_store_path: Optional[Path] = None,
         event_pot_address: Optional[str] = None,
         world_path: Optional[Path] = None,
+        journey_path: Optional[Path] = None,
     ):
         """Create the shared ``LocalTestnet``, the bridge, the
         ``QuintessenceLedger``, the ``CertificationSocket``, the
         ``MarketRotation``, the ``CaptureBounds``, the ``PoaNodeLink``, the
-        ``ActionSpend``, the ``EventRedistribution`` and the ``PoaWorld``, and
-        attach all ten to ``main_win``.
+        ``ActionSpend``, the ``EventRedistribution``, the ``PoaWorld`` and the
+        ``WorldJourneys``, and attach all eleven to ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -261,6 +264,9 @@ class SharedTestnetBridge(QObject):
             ledger, main_win._action_spend
         )
         main_win._poa_world = bridge.install_world(world_path)
+        main_win._poa_journeys = bridge.install_journeys(
+            main_win._poa_world, journey_path
+        )
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
 
@@ -434,6 +440,33 @@ class SharedTestnetBridge(QObject):
     def poa_world(self) -> Optional[PoaWorld]:
         """Read the ``PoaWorld`` this bridge installed."""
         return self._poa_world
+
+    def install_journeys(
+        self, world: PoaWorld, journey_path: Optional[Path] = None
+    ) -> WorldJourneys:
+        """Build the ``WorldJourneys`` over this bridge's chain and ``world``.
+
+        A demo run is the same ``open_leg`` path over a different ``LocalTestnet``,
+        and an install with no record on disk holds no journey and no leg.
+        """
+        from src.competition.world_movement import BASE_STEPS_PER_TURN
+        from src.competition.world_movement import WorldJourneys as _Journeys
+
+        journeys = _Journeys(self._testnet, world, journey_path=journey_path)
+        journeys.load()
+        self._poa_journeys = journeys
+        logger.info(
+            "WorldJourneys installed (path=%s, worlds=%d, base %d steps a turn)",
+            journeys.journey_path,
+            len(journeys.world_ids),
+            BASE_STEPS_PER_TURN,
+        )
+        return journeys
+
+    @property
+    def poa_journeys(self) -> Optional[WorldJourneys]:
+        """Read the ``WorldJourneys`` this bridge installed."""
+        return self._poa_journeys
 
     def install_node_link(
         self,
