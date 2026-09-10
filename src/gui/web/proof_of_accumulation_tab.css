@@ -145,7 +145,7 @@ body {
   background: var(--SURFACE_INPUT);
   min-height: calc(var(--SPACE_M) * 1px);
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto auto;
   align-items: center;
   gap: calc(var(--SPACE_XS) * 1px);
   padding: 0 calc(var(--SPACE_XS) * 1px);
@@ -166,10 +166,102 @@ body {
   white-space: nowrap;
 }
 
+.acervator-poa-tab [data-part="slot-level"],
+.acervator-poa-tab [data-part="slot-impetus"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
 .acervator-poa-tab [data-part="slot-health"] {
   color: var(--TEXT_MAX);
   font-size: calc(var(--TYPE_SMALL) * 1px);
   white-space: nowrap;
+}
+
+/* The event band and the eight event types, inside the player window. */
+.acervator-poa-tab [data-part="event-band"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+}
+
+.acervator-poa-tab [data-part="event-label"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_BODY) * 1px);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="event-variant"] {
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="event-turn"],
+.acervator-poa-tab [data-part="event-impetus"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="mode-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.acervator-poa-tab [data-part="mode-row"] {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="mode-name"] {
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="mode-variant"] {
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="mode-turn"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="mode-ranks"] {
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="pick-note"] {
+  margin: 0;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
 /* The seven classes a participant picks from, under the party pages. */
