@@ -8250,3 +8250,154 @@ what the log says  "12 monster tiers, 6 below and 6 above, count 57 drawing jobs
                     12 levels are owed, and ['Watchers'] appear on both sides"
 on a screen        nothing
 ```
+
+## 2026-09-11 01:45 - #585 - monster generation
+
+### A monster's identity comes out of the seed, the layer and the place
+
+The operator set the rule. Generation derives a monster the way a world fact's
+Quintessence already comes out: a world commits to a concealed seed at creation,
+and every place on every layer has a locator. Hash those two together and the
+result decides what stands there. The derivation rolls nothing and keeps no
+record, so two people who derive the same place always get the same creature.
+
+`src/competition/monster_spawn.py` - the whole of the derivation
+
+```python
+def derive_monster(seed, locator, weights):
+    layer, _ = require_locator(locator)
+    leaf = discovery_leaf(seed, locator)
+    tier_roll, depth = tier_for_leaf(leaf, weights)
+    design_roll, design_name = design_for_leaf(leaf, depth)
+```
+
+### The hash is one value and the two draws read different digits of it
+
+The world grid already reads the first sixteen digits of that hash to set a
+place's Quintessence. Generation never touches those sixteen. It reads the next
+sixteen to choose the tier and the sixteen after that to choose the creature. The
+amount at a place and the monster at a place are separate draws off one hash, and
+a reader cannot work either one back from the other.
+
+```
+digits  1 to 16    the Quintessence amount, which the world grid sets
+digits 17 to 32    which of the twelve tiers
+digits 33 to 48    which creature inside that tier
+digits 49 to 64    unread
+```
+
+### Nothing reads a place nobody has found
+
+Anyone holding the seed derives every place in a world, found or not. Anyone
+without it derives nothing at all. The chain carries no field naming a seed until
+the world publishes it, so before publication nobody can list a world's creatures
+in advance. After publication anyone can, which is the same trade the
+Quintessence amounts already make.
+
+```
+at creation            the chain posts the hash of the seed. Chain fields
+                       naming a seed, measured: none
+with the seed          3:40:7:11 derives depth -2, the gallû, and nobody has
+                       discovered that place
+with the posted hash   the same place derives depth -3, a different tier, so
+                       the public value tells a reader nothing
+after the seed is published   anyone recomputes every place
+```
+
+### How often a tier appears is the one figure nobody has set
+
+A hash is even. Drawn evenly, a world would hold as many summit Avatars as
+surface afflicters, and the art brief says the opposite: four to eight creatures
+on the surface floor, one alone at a floor boss. An even draw is wrong. The brief
+publishes how many of a tier stand in one square at once, as a low figure and a
+high figure. It names no rule saying which of the two carries a draw share, and
+four ways of reading that one pair order the twelve tiers three different ways.
+
+```
+reading      the order it gives, most common tier first
+low          -2  -1  -3  -6  -5  -4
+high         -1  -2  -6  -3  -5  -4
+span width   -1  -6  -2  -5  -3  -4
+span sum     -1  -2  -6  -3  -5  -4
+distinct orders across the four readings   3
+```
+
+Three of the four readings put the summit above the decan rank and one drops the
+surface floor to second. Nobody has set the figure, and the module holds no curve
+of its own. A caller passes the weighting in, and the module refuses a weighting
+that leaves any of the twelve tiers unnamed.
+
+```
+what is owed    how often each of the twelve tiers is encountered
+what is built   the draw, which honours whatever weighting it is given
+the refusal     "a tier weighting names every depth in [-6, -5, -4, -3, -2, -1,
+                 1, 2, 3, 4, 5, 6] and carries no share for [...]"
+```
+
+### The decan rank hands back a tier with no creature name
+
+Seven of the twelve tiers name no creature. The decan rank counts thirty-six and
+the art brief leaves every one of the thirty-six unnamed, and the six tiers above
+the participant's plane hold no creature at all. A derivation landing on one of
+those returns the tier and leaves the creature name empty, with a line saying what
+would fill it. It does not refuse, because the tier is real and populated, and it
+invents no name.
+
+```
+depth -3          36 entities, 0 names, so the creature name is empty
+depths 1 to 6     no entity at all, so the creature name is empty
+every other tier  one of the 21 designs the brief names
+```
+
+### Generation derives identity and refuses power
+
+No tier has a character level. No derived monster therefore has stats, and none
+has an amount of embedded Quintessence. The derived record carries no level field
+at all, and asking it for its Quintessence raises, with the refusal naming the
+level as the thing that is missing.
+
+```
+the record holds   the place, the layer, the hash, the tier, the creature name
+                   and the two rolls
+it does not hold   a level, a stat, or an amount of Quintessence
+asking anyway      LevelAbsentError - "the tier at depth -1 has no level, so no
+                   Quintessence amount follows"
+```
+
+### Ten thousand places on one square
+
+One run drove the derivation over every step pair of one square on one layer, ten
+thousand places, under one world's published seed. Every place landed on one of
+the six weighted tiers, and twenty-two outcomes came up. Each tier took the share
+the run handed it, to within one and a half parts in a hundred.
+
+```
+places derived      10,000
+distinct tiers           6
+distinct outcomes       22    the 21 named designs and the unnamed decan rank
+
+depth -1   share 4   expected 30.77%   got 30.28%
+depth -2   share 4   expected 30.77%   got 32.11%
+depth -3   share 2   expected 15.38%   got 14.27%
+depth -4   share 1   expected  7.69%   got  7.71%
+depth -5   share 1   expected  7.69%   got  7.96%
+depth -6   share 1   expected  7.69%   got  7.67%
+
+the same place twice    the same monster
+one step away           a different tier and a different creature
+a different world seed   a different monster at the same place
+```
+
+### Nothing calls the derivation yet
+
+The enemy screen is the zone a monster would draw in, and it states in words that
+it draws no pixel art. Nothing reads a derived monster. The package does not
+import the new module either, so opening the Proof of Accumulation path does not
+reach it. One entry in the package's own export list would change that.
+
+```
+reached by the PoA path   src.competition, and monster_table inside it
+not reached               src/competition/monster_spawn.py
+owed                      the module's entry in the package export list
+on a screen               nothing
+```
