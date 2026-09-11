@@ -2,13 +2,14 @@
 
 ``Recipe`` names the ``ItemType`` it makes, the grade it makes it at, its list of
 ``Component`` entries, the ``loss_share`` it pays and the ``turns_required`` it
-occupies. ``CraftRegister.begin_craft`` opens one for a ``Vessel`` and debits
-nothing, ``abandon_craft`` drops it and debits nothing, and ``complete_craft`` is
-the only write path: it puts the made item in the crafting Vessel's
-``inventory.VesselStore`` and then one
+occupies. ``CraftRegister.begin_craft`` opens one for a ``Vessel`` and takes the
+recipe's component units out of that Vessel's ``inventory.VesselStore``,
+``abandon_craft`` puts those units back, and both make no ledger call.
+``complete_craft`` puts the made item in the same store and then one
 ``QuintessenceLedger.embed_from_wallet`` call puts the item's cohesion in the
-embedded bucket and the loss in the pleroma. ``CRAFT_DELIVERY`` names the order
-those two writes run in and what a refused store leaves behind.
+embedded bucket and the loss in the pleroma. ``COMPONENT_CONSUMPTION`` names when
+the components leave, ``ABANDON_RETURNS_COMPONENTS`` names what brings them back
+and ``CRAFT_DELIVERY`` names the order the two completion writes run in.
 ``grid_faults`` drives every item type at every grade once at import.
 """
 
@@ -65,6 +66,57 @@ CRAFT_DELIVERY = (
     "inventory.vessel_key of the crafting Vessel, in the storage class the "
     "ItemType declares and at the Recipe's produced_quality, and it calls "
     "embed_from_wallet only once that store has taken it"
+)
+
+#: When a recipe's component units leave the crafting Vessel's store, and why then.
+COMPONENT_CONSUMPTION = (
+    "begin_craft takes every Component's units out of the store StoreBook holds "
+    "under inventory.vessel_key of the crafting Vessel, at the Component's own "
+    "quality, before the craft reaches open_crafts. A craft runs over "
+    "turns_required world turns and a Vessel cannot carry material it is already "
+    "working, so the units cannot wait for complete_craft: a store that still held "
+    "them could hand them to another store or open a second craft on the same unit"
+)
+
+#: What a store that is short of a component leaves behind.
+COMPONENT_REFUSAL_HOLDS = (
+    "begin_craft reads units_held for every Component before it takes any, so a "
+    "store short of one unit raises CraftComponentError with no unit moved, no "
+    "craft in open_crafts and no ledger call made; a refusal part-way through the "
+    "list puts back every unit already taken"
+)
+
+#: What ``abandon_craft`` puts back, and why it keeps every unit.
+ABANDON_RETURNS_COMPONENTS = (
+    "abandon_craft puts every Component's units back in the store begin_craft took "
+    "them from, because the craft made no item and the ledger moved nothing, so a "
+    "unit kept back would leave the world holding less material than it did with "
+    "no bucket and no wallet recording the difference. No source sets a part-worked "
+    "loss, so the whole list returns"
+)
+
+#: What an abandonment the store refuses leaves behind.
+ABANDON_REFUSAL_HOLDS = (
+    "abandon_craft puts the units back before it takes the craft out of "
+    "open_crafts, so a store whose stack ceiling has since been reached leaves the "
+    "craft open holding its components and the same call carries them back once "
+    "the stack has room; a refusal part-way through the list takes back every unit "
+    "already returned"
+)
+
+#: The one thing an open craft holds, now that ``begin_craft`` takes the components.
+OPEN_CRAFT_HOLDS_COMPONENTS = (
+    "an open craft holds the component units begin_craft took out of the store, so "
+    "open_crafts is where those units are counted between begin_craft and either "
+    "complete_craft or abandon_craft"
+)
+
+#: What no bucket records about the Quintessence a material unit carries.
+MATERIAL_QUINTESSENCE_UNLEDGERED = (
+    "Recipe.material_quintessence and material_surplus are read off the materials "
+    "table, and no QuintessenceLedger movement credits the embedded bucket for a "
+    "material unit a store holds, so consuming a component moves nothing in the "
+    "ledger and the surplus is an amount nothing banks"
 )
 
 #: What a store refusal leaves behind, and why no item and no Quintessence is lost.
@@ -140,11 +192,12 @@ WALLET_BUDGET_SHARED = (
     "runs at"
 )
 
-#: What an open craft holds. Nothing.
+#: What an open craft holds of the ledger. Nothing.
 OPEN_CRAFT_HOLDS_NOTHING = (
     "begin_craft and abandon_craft make no ledger call, so an abandoned craft "
     "leaves its Quintessence in the wallet and conservation cannot break "
-    "part-way through a craft"
+    "part-way through a craft; the component units are the one thing an open "
+    "craft does hold, and OPEN_CRAFT_HOLDS_COMPONENTS says where they are counted"
 )
 
 #: What stops one craft completing twice.
@@ -157,10 +210,11 @@ SINGLE_COMPLETION = (
 
 #: What inventory holds of a craft, and what a Recipe's own units still stand on.
 INVENTORY_ABSENT = (
-    "inventory.VesselStore holds what a Vessel carries and complete_craft puts "
-    "the made item in it, so the store's slots and its stack ceiling refuse a "
-    "craft alongside the wallet balance; nothing takes a Recipe's component units "
-    "out of a store, so a Recipe still names units nothing has counted"
+    "inventory.VesselStore holds what a Vessel carries, begin_craft takes a "
+    "Recipe's component units out of it and complete_craft puts the made item in, "
+    "so the store's units held, its slots and its stack ceiling each refuse a "
+    "craft alongside the wallet balance; no module puts a material unit in a store "
+    "except a caller's own put_in, so a craft consumes units no world supply counts"
 )
 
 #: The two ends ``grid_faults`` drives. Neither sets a craft's loss.
@@ -202,8 +256,11 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
         "the competition package entry imports crafting and lists its names in "
         "__all__, so report_unbound_modules names no module at all and a name this "
         "module repeats from one bound above it stays unexported. "
-        "UNITS_PER_CRAFT, CRAFT_DELIVERY, DELIVERY_REFUSAL_HOLDS and "
-        "CraftDeliveryError repeat no bound name and the entry file lists none of "
+        "UNITS_PER_CRAFT, CRAFT_DELIVERY, DELIVERY_REFUSAL_HOLDS, "
+        "CraftDeliveryError, COMPONENT_CONSUMPTION, COMPONENT_REFUSAL_HOLDS, "
+        "ABANDON_RETURNS_COMPONENTS, ABANDON_REFUSAL_HOLDS, "
+        "OPEN_CRAFT_HOLDS_COMPONENTS, MATERIAL_QUINTESSENCE_UNLEDGERED and "
+        "CraftComponentError repeat no bound name and the entry file lists none of "
         "them, so each is reached by importing src.competition.crafting directly"
     ),
 }
@@ -237,6 +294,10 @@ class HeldCraftError(CraftError):
 
 class CraftDeliveryError(CraftError):
     """Raised when the crafting Vessel's store has none or will not take the item."""
+
+
+class CraftComponentError(CraftError):
+    """Raised when the crafting Vessel's store cannot give or take back a component."""
 
 
 def _as_share(value: object, name: str) -> Decimal:
@@ -418,6 +479,8 @@ class Recipe:
             "quintessence_lost": amount_text(self.quintessence_lost),
             "quintessence_from_wallet": amount_text(self.quintessence_from_wallet),
             "material_surplus": amount_text(self.material_surplus),
+            "material_quintessence_unledgered": MATERIAL_QUINTESSENCE_UNLEDGERED,
+            "component_consumption": COMPONENT_CONSUMPTION,
             "loss_share": amount_text(self.loss_share),
             "loss_share_base": LOSS_SHARE_BASE,
             "turns_required": self.turns_required,
@@ -429,8 +492,9 @@ class Recipe:
 class Craft:
     """One ``Recipe`` opened by one ``Vessel``, before ``complete_craft`` pays it.
 
-    ``begin_craft`` debits nothing, ``completes_turn`` is the turn it finishes on
-    and ``store_key`` is where ``complete_craft`` will put the item.
+    ``begin_craft`` makes no ledger call and holds the component units it took out
+    of the store, ``completes_turn`` is the turn it finishes on and ``store_key``
+    is both where those units came from and where the made item goes.
     """
 
     craft_id: str
@@ -471,6 +535,9 @@ class Craft:
             "clock": CLOCK,
             "world_turn_seconds_absent": CRAFT_CLOCK_NOTE,
             "holds": OPEN_CRAFT_HOLDS_NOTHING,
+            "holds_components": OPEN_CRAFT_HOLDS_COMPONENTS,
+            "component_consumption": COMPONENT_CONSUMPTION,
+            "abandonment": ABANDON_RETURNS_COMPONENTS,
             "delivery": CRAFT_DELIVERY,
         }
 
@@ -550,8 +617,24 @@ class CraftResult:
             "completed_turn": self.completed_turn,
             "clock": CLOCK,
             "movement": CRAFT_MOVEMENT,
+            "component_consumption": COMPONENT_CONSUMPTION,
             "delivery": CRAFT_DELIVERY,
         }
+
+
+def _component_text(parts: tuple[Component, ...]) -> str:
+    """``parts`` as ``units material at quality``, joined, for a log line or refusal."""
+    return ", ".join(
+        f"{part.units} {part.material} at {part.quality}" for part in parts
+    )
+
+
+def _shortfall_text(short: tuple[tuple[str, str, int, int], ...]) -> str:
+    """Each short component as its units, material, grade and the units held."""
+    return ", ".join(
+        f"{units} {material} at {quality}, holding {held}"
+        for material, quality, units, held in short
+    )
 
 
 def craft_id_for(recipe: Recipe, vessel: Vessel, opened_turn: int) -> str:
@@ -568,11 +651,11 @@ def craft_id_for(recipe: Recipe, vessel: Vessel, opened_turn: int) -> str:
 
 
 class CraftRegister:
-    """Opens a craft, holds it over its turns, and completes it into a store.
+    """Takes a craft's components out of a store, holds it over its turns, delivers.
 
     The ledger and the ``StoreBook`` both arrive by construction, so a demo run is
     one ``CraftRegister`` over another chain's ledger and another book running the
-    same ``complete_craft`` path.
+    same ``begin_craft`` and ``complete_craft`` path.
     """
 
     def __init__(self, ledger: QuintessenceLedger, store_book: object) -> None:
@@ -615,10 +698,10 @@ class CraftRegister:
         vessel: Vessel,
         opened_turn: object,
     ) -> Craft:
-        """Open ``recipe`` for ``vessel``, refusing a wallet or a book without one.
+        """Open ``recipe`` for ``vessel`` and take its components out of that store.
 
-        Nothing is debited and nothing is stored here; ``complete_craft`` is the
-        only write path.
+        No ledger call is made here. ``COMPONENT_CONSUMPTION`` says why the units
+        leave now and ``COMPONENT_REFUSAL_HOLDS`` says what a short store leaves.
         """
         if not isinstance(recipe, Recipe):
             raise CraftError(f"a Recipe was expected, got {type(recipe).__name__}")
@@ -646,14 +729,17 @@ class CraftRegister:
                     f"{craft.craft_id} is already open; one Vessel opens one craft "
                     f"of one recipe on one {CLOCK}",
                 )
+            self._take_components(craft, store)
             self._open[craft.craft_id] = craft
         logger.info(
-            "craft %s opened on %s %s, finishing on %s; %s stays in %s until then "
-            "and the item goes to %s",
+            "craft %s opened on %s %s, finishing on %s; %s left %s, %s stays in %s "
+            "until then and the item goes to %s",
             craft.craft_id,
             CLOCK,
             opened,
             craft.completes_turn,
+            _component_text(recipe.components),
+            store.store_key,
             amount_text(owed),
             crafter.owner,
             store.store_key,
@@ -671,24 +757,118 @@ class CraftRegister:
             return sorted(self._completed)
 
     def abandon_craft(self, craft_id: str, reason: str) -> Craft:
-        """Drop an open craft, debiting nothing and producing no item."""
-        craft = self._take_craft(craft_id)
+        """Drop an open craft, put its components back, and debit nothing.
+
+        ``ABANDON_RETURNS_COMPONENTS`` says why the whole list goes back and
+        ``ABANDON_REFUSAL_HOLDS`` says what a store that refuses them leaves behind.
+        """
+        with self._lock:
+            held = self._open.get(craft_id)
+            if held is None:
+                raise UnknownCraftError(self._missing_craft(craft_id))
+            store = self._store_for(held.vessel)
+            self._put_components_back(
+                store,
+                held.recipe.components,
+                ABANDON_REFUSAL_HOLDS,
+            )
+            craft = self._take_craft(craft_id)
         logger.info(
-            "craft %s abandoned (%s); %s stays in %s and no item is made",
+            "craft %s abandoned (%s); %s stays in %s, %s went back to %s and no "
+            "item is made",
             craft.craft_id,
             reason,
             amount_text(craft.recipe.quintessence_from_wallet),
             craft.crafter,
+            _component_text(craft.recipe.components),
+            store.store_key,
         )
         return craft
+
+    def _component_shortfalls(
+        self,
+        recipe: Recipe,
+        store: VesselStore,
+    ) -> tuple[tuple[str, str, int, int], ...]:
+        """Each component ``store`` is short of: material, grade, units, units held."""
+        short: list[tuple[str, str, int, int]] = []
+        for part in recipe.components:
+            held = store.units_held(part.material, part.quality)
+            if held < part.units:
+                short.append((part.material, part.quality, part.units, held))
+        return tuple(short)
+
+    def _take_components(
+        self,
+        craft: Craft,
+        store: VesselStore,
+    ) -> tuple[StoreChange, ...]:
+        """Take every component's units out of ``store``, moving none if one is short.
+
+        Every shortfall is read before the first unit moves, so a store that cannot
+        cover the whole material list gives out nothing.
+        """
+        recipe = craft.recipe
+        short = self._component_shortfalls(recipe, store)
+        if short:
+            raise CraftComponentError(
+                f"craft {craft.craft_id} consumes "
+                f"{_component_text(recipe.components)} and {store.store_key} is "
+                f"short of {_shortfall_text(short)}. {COMPONENT_REFUSAL_HOLDS}",
+            )
+        taken: list[StoreChange] = []
+        for part in recipe.components:
+            try:
+                taken.append(store.take_out(part.material, part.quality, part.units))
+            except InventoryError as exc:
+                self._put_components_back(
+                    store,
+                    recipe.components[: len(taken)],
+                    COMPONENT_REFUSAL_HOLDS,
+                )
+                raise CraftComponentError(
+                    f"craft {craft.craft_id} could not take {part.units} "
+                    f"{part.material} at {part.quality} out of {store.store_key}: "
+                    f"{exc}. {COMPONENT_REFUSAL_HOLDS}",
+                ) from exc
+        logger.info(
+            "craft %s took %s out of %s, which now carries weight %s",
+            craft.craft_id,
+            _component_text(recipe.components),
+            store.store_key,
+            amount_text(store.weight_carried),
+        )
+        return tuple(taken)
+
+    def _put_components_back(
+        self,
+        store: VesselStore,
+        parts: tuple[Component, ...],
+        holds: str,
+    ) -> tuple[StoreChange, ...]:
+        """Put ``parts`` back in ``store``, taking back out every part it did take."""
+        given: list[StoreChange] = []
+        for part in parts:
+            try:
+                given.append(store.put_in(part.material, part.quality, part.units))
+            except InventoryError as exc:
+                for done in parts[: len(given)]:
+                    store.take_out(done.material, done.quality, done.units)
+                raise CraftComponentError(
+                    f"{store.store_key} would not take back {part.units} "
+                    f"{part.material} at {part.quality}: {exc}. {holds}",
+                ) from exc
+        return tuple(given)
 
     def complete_craft(self, craft_id: str, at_turn: object) -> CraftResult:
         """Make the item at ``completes_turn``, store it, and move the Quintessence.
 
-        The crafting Vessel's store takes the item first, then one
+        ``begin_craft`` already took the components, so nothing more is consumed
+        here. The crafting Vessel's store takes the item first, then one
         ``embed_from_wallet`` call debits the wallet, embeds the item's cohesion
         and sends the loss to the pleroma. ``DELIVERY_REFUSAL_HOLDS`` names what
-        either refusal leaves behind.
+        either refusal leaves behind, and a craft left open by one keeps its
+        components.
         """
         reached = _as_turn_index(at_turn, "at_turn")
         with self._lock:
