@@ -6,7 +6,8 @@ squares and ``squares_in_view`` bounds sight at ``BASE_VIEWRANGE_SQUARES``.
 ``squares_in_extent`` with ``holds`` reads a zone's population across squares.
 ``PoaWorld.create_world`` commits a concealed seed, ``discover`` writes one
 ``WorldFact`` a location and one knowledge reference a participant, and
-``extract`` runs once.
+``extract`` runs once. ``arena_position`` with ``arena_locator`` answer the place
+a participant stands on before it walks anywhere, which ``ARENA_LAYER`` layers.
 """
 
 from __future__ import annotations
@@ -51,6 +52,9 @@ TREE_SPHERES = 10
 
 #: The spheres and their inversions, read as the cube's third axis.
 SEPHIROT_LAYERS = TREE_SPHERES * 2
+
+#: The layer the arena sits on, the lowest ordinal ``breach_layer`` admits.
+ARENA_LAYER = 0
 
 #: Squares base sight covers, the participant's own.
 BASE_VIEWRANGE_SQUARES = 1
@@ -509,6 +513,19 @@ class PoaWorld:
     def arena_square(self, world_id: str) -> int:
         """The square every participant starts on, known with no discovery record."""
         return self.world(world_id).arena_square
+
+    def arena_position(self, world_id: str) -> GridPosition:
+        """Where a participant of ``world_id`` stands before it walks anywhere.
+
+        ``world_movement.WorldJourneys.mover_standing`` answers this position for
+        a mover holding no journey leg, so the arena is a place and not an
+        absence. Raises ``WorldGridError`` for a world this store does not hold.
+        """
+        return GridPosition(square_index=self.world(world_id).arena_square)
+
+    def arena_locator(self, world_id: str) -> str:
+        """``arena_position`` as the locator text on ``ARENA_LAYER``."""
+        return self.arena_position(world_id).locator(ARENA_LAYER)
 
     def is_reachable_without_discovery(self, world_id: str, square: int) -> bool:
         """Answer whether ``square`` is this world's arena, the one known origin."""
