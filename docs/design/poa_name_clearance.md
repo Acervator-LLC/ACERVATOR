@@ -575,7 +575,7 @@ software architecture, a delivery tool and an image model, and games use it free
 
 **MEASURED.** A driven run redirected the home into a session scratch directory,
 imported the package, read every module-level string the package declares, then
-looked for each candidate as a whole word. The read covered 8,649 strings across
+looked for each candidate as a whole word. The read covered 8,653 strings across
 45 modules.
 
 ```
@@ -597,16 +597,21 @@ A second measurement searched the text of `src/`, `contracts/` and `docs/`, beca
 a name can sit in a note before it reaches a module. Athanor is the case that
 makes the second measurement necessary.
 
+The four files this unit changed are excluded from that search, because this page
+and the manual section both name every candidate and would report themselves.
+
 ```
-searched by  grep -rionI over src/ contracts/ docs/, text file types only
+searched by  grep -rionI over src/ contracts/ docs/, text file types only, with
+             poa_name_clearance.md, proof-of-accumulation.md,
+             quintessence_ledger.py and __init__.py excluded
 
 Cibation      1 line, a twelve-gate list in an engineering note
 Athanor       4 lines, three of them naming the crafting station
 Fluor         0 lines
 Vectura       0 lines
 Pabulum       0 lines
-Quintessence  1,478 lines
-Calx          134 lines
+Quintessence  970 lines
+Calx          43 lines
 ```
 
 ### Every fee the game charges, and every fee a venue reports
