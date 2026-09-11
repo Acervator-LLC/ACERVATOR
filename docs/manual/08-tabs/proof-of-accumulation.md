@@ -8643,7 +8643,7 @@ on a screen                    nothing
 
 ---
 
-## 2026-09-11 02:20 - #585 - the Vessel, and one wallet behind all of them
+## 2026-09-11 02:45 - #585 - the Vessel, and one wallet behind all of them
 
 A Vessel is now a thing on disk rather than a word in other modules' docstrings.
 It carries an owner, a class and a level, and every Vessel a player holds reads
