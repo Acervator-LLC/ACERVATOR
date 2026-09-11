@@ -65,7 +65,9 @@ class TokenLedger:
     award()  — mint tokens for a competition result (idempotent)
     balance()  — current balance for a bot
     total_minted()  — total ACRV in existence
-    remaining_supply()  — tokens still mintable this season
+    remaining_ever()  — tokens still mintable under TOTAL_SUPPLY_CAP
+    season_minted()  — ACRV minted so far in one season, the figure award()
+    checks against season_reward() for that season
     """
 
     LEDGER_FILE = "acrv_ledger.json"
@@ -189,7 +191,7 @@ class TokenLedger:
         ]
 
     def supply_summary(self) -> dict:
-        tier_counts = {}
+        tier_counts: Dict[str, int] = {}
         for e in self._events:
             tier_counts[e.tier_name] = tier_counts.get(e.tier_name, 0) + 1
         return {
