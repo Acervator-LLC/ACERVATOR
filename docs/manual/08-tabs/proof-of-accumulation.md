@@ -152,12 +152,15 @@ feed, or between two machines exchanging signed submissions.
 of the four modes pairs with one Elite flag, so there are eight event types and
 no mode is written twice.
 
-| Mode | Shape |
-| ---- | ----- |
-| `monster_smash` | One participant against low to midlevel creatures |
-| `team_monster_smash` | A certified guild, up to 120 against 1 |
-| `dungeon_crawl` | One participant, or a group of six, through a dungeon |
-| `raid` | A group of sixty, the most challenging and the most rewarding |
+| Mode | Label on screen | Shape |
+| ---- | --------------- | ----- |
+| `monster_smash` | Fixation | One participant against low to midlevel creatures |
+| `team_monster_smash` | Coagulation | A certified guild, up to 120 against 1 |
+| `dungeon_crawl` | Descension | One participant, or a group of six, through a dungeon |
+| `raid` | Cementation | A group of sixty, the most challenging and the most rewarding |
+
+The code is what every other module keys on. The label is what the screen draws
+beside the Standard or Elite word, so a reader matches a row above to a button.
 
 `src/competition/poa_modes.py` — the one table the Elite flag indexes
 
@@ -176,20 +179,24 @@ turn does not spend.
 
 ## The token
 
-The ledger is append-only, and four methods are its whole surface.
+The ledger is append-only. Ask the class for its public names and ten methods
+answer. Its own docstring lists four of them, and one of those four names
+nothing: no method answers to `remaining_supply`. The method that reports what
+is still mintable is `remaining_ever`.
 
-`src/competition/token_ledger.py` — `TokenLedger`
+`src/competition/token_ledger.py` — the ten methods `TokenLedger` declares
 
 ```python
-class TokenLedger:
-    """
-    Append-only ACRV token ledger.
-
-    award()  — mint tokens for a competition result (idempotent)
-    balance()  — current balance for a bot
-    total_minted()  — total ACRV in existence
-    remaining_supply()  — tokens still mintable this season
-    """
+    def award(
+    def balance(self, bot_id: str) -> int:
+    def awards(self, bot_id: str) -> List[AwardRecord]:
+    def total_minted(self) -> int:
+    def remaining_ever(self) -> int:
+    def season_minted(self, season: int) -> int:
+    def leaderboard(self, top_n: int = 20) -> List[dict]:
+    def supply_summary(self) -> dict:
+    def save(self):
+    def load(self) -> "TokenLedger":
 ```
 
 The hard cap is ten million, and the ledger refuses an award that would pass
@@ -209,17 +216,44 @@ MIN_SEASON_REWARD = 100  # Floor — never less than this per season
 Awards are idempotent: settling the same result twice writes one record.
 Balances are replayed from the log, and no operation edits a balance.
 
-Five tiers are awarded on rank within the field, and the rarest three carry a
-lifetime cap on how many can ever exist. Each tier is named for a stage of the
-Corpus Hermeticum alchemical path, and pays a fixed number of tokens.
+Five tiers are awarded on rank within the field. Iterate the tier table and four
+of the five carry a lifetime cap on how many can ever exist. Harvest is the one
+that carries none. Each tier is named for a stage of the Corpus Hermeticum
+alchemical path, and pays a fixed number of tokens.
 
 | Tier | Stage | Rank | ACRV paid | Ever minted, at most |
 | ---- | ----- | ---- | --------: | -------------------: |
 | Harvest | NIGREDO | top 50% | 10 | no cap |
-| Gold Fold | ALBEDO | top 10% | 50 | no cap |
+| Gold Fold | ALBEDO | top 10% | 50 | 100,000 |
 | Bear Slayer | CITRINITAS | top 25% in a verified bear market | 100 | 10,000 |
 | Grand Accumulator | RUBEDO | top 1% across three consecutive seasons | 500 | 1,000 |
 | Ekthelius | UNIO MYSTICA | perfect score across every metric | 10,000 | 21 |
+
+The cap field is `max_ever`. It holds nothing for Harvest alone. The first two
+tiers show both cases.
+
+`src/competition/season_schedule.py` — the uncapped tier, then the next one
+
+```python
+    RarityTier(
+        name="Harvest",
+        emoji="🌾",
+        description="Top 50% of competition field",
+        rank_pct_max=0.50,
+        condition="Win rate > 50% of competing bots",
+        max_ever=None,
+        base_value=10,
+    ),
+    RarityTier(
+        name="Gold Fold",
+        emoji="🪙",
+        description="Top 10% of competition field",
+        rank_pct_max=0.10,
+        condition="Advantage/capital in top 10% of field",
+        max_ever=100_000,
+        base_value=50,
+    ),
+```
 
 ## The token contract
 
@@ -280,12 +314,13 @@ it, and nothing destroys it. It keeps its own ledger, apart from the token
 ledger above, because the two obey opposite rules: the token only ever moves
 outward into a balance, while Quintessence circulates.
 
-`src/competition/quintessence_ledger.py` — the eight operations
+`src/competition/quintessence_ledger.py` — the nine operations
 
 ```python
 def distil(self, address: str, fee_usd: object, trade_grade: object) -> Decimal:
 def spend(self, address: str, amount: object, held_address: str) -> Decimal:
 def transfer(self, sender, recipient, amount, skill_level) -> QuintessenceTransfer:
+def payout(self, held_address: str, credits: dict) -> Decimal:
 def respawn(self, address: str, amount: object) -> Decimal:
 def embed_from_pleroma(self, amount: object) -> Decimal:
 def embed_from_wallet(self, address, amount, embedded_amount) -> QuintessenceEmbed:
@@ -296,7 +331,9 @@ def release_all_to_pleroma(self, amount: object) -> Decimal:
 Quintessence can be in exactly four places, and the four always add up to
 everything ever distilled. A wallet holds what a participant can spend. A held
 address holds what they have already spent, which rests there and funds later
-awards. The pleroma holds what bled out of a transfer, and the ledger respawns
+awards. The payout operation is what pays one out, and it moves the award from
+the held address into the winner's wallet. The pleroma holds what bled out of a
+transfer, and the ledger respawns
 that to other participants. The embedded bucket holds what a thing in the world
 carries in itself, drawn out of the pleroma and returned there when the thing is
 broken.
@@ -305,7 +342,8 @@ broken.
 flowchart LR
     FEE[certified exchange fee] -->|distil| WALLET[wallet]
     WALLET -->|spend| HELD[held address]
-    WALLET -->|transfer| OTHER[another wallet]
+    HELD -->|payout| OTHER[another wallet]
+    WALLET -->|transfer| OTHER
     WALLET -->|bleed| PLEROMA[the pleroma]
     PLEROMA -->|respawn| OTHER
     PLEROMA -->|embed| EMBEDDED[embedded]
@@ -407,19 +445,73 @@ at level 100 and five of them measure 2,750 — so the resolution changes nothin
 about the stat scale.
 
 Every launch builds the ledger and attaches it to the window beside the local
-chain, so a later panel finds it where it finds the chain.
+chain, so a later panel finds it where it finds the chain. The same launch hands
+that ledger to the certification socket, so the socket and the panels move one
+ledger and not two.
 
-`src/gui/shared_testnet.py` — the line that builds it
+`src/gui/shared_testnet.py` — the two lines that build it, and the socket that takes it
 
 ```python
-main_win._quint_ledger = cls.install_quint_ledger(quint_ledger_path)
+        ledger = cls.install_quint_ledger(quint_ledger_path)
+        main_win._quint_ledger = ledger
+        main_win._market_rotation = bridge.install_market_rotation(rotation_path)
+        main_win._capture_bounds = bridge.install_capture_bounds(
+            main_win._market_rotation, bounds_path
+        )
+        main_win._certification_socket = bridge.install_certification_socket(
+            ledger, socket_path, main_win._capture_bounds
+        )
 ```
 
-Nothing spends Quintessence yet. No screen shows a balance and no trade
-certifies, so the ledger loads empty on every launch and reports nothing ever
-distilled. The transfer duration, the skill that gates a transfer, the guild
-check, and the share of a market pool a participant may take are all other
-units.
+The screen spends Quintessence. The distil control mints from a trade
+fee. The spend control then casts a band and rests its cost in the event pot.
+The wallet over the party window draws what the spend left. Fire the two in that
+order on the Demo TestNet chain and each prints what its mechanism did.
+
+```
+distil   Distilled 0.1 Quint.
+spend    Band x1 cost 0.001 Quint, resting at poa_elite_event_pot.
+wallet   Quint reads -- before the distil and 0.099 after the spend
+```
+
+A trade certifies through `CertificationSocket.certify`, which signs one fill,
+logs it, posts it and distils the venue's fee. It refuses a fill already
+certified.
+
+`src/competition/certification_socket.py` — what the method contracts to do
+
+```python
+    def certify(self, identity: BotIdentity, fill: CertifiedFill) -> CertificationReceipt:
+        """Sign, log, post and distil one fill, and return its receipt.
+```
+
+The ledger loads whatever its file holds. On a chain that has distilled, the
+Quint subtab names the file as held and reports the figure minted on it.
+
+```
+Ledger file      quintessence_ledger_testnet.json - held
+Minted so far    0.1
+Smallest unit    0.00000001
+Supply cap       33000000
+```
+
+The transfer duration, the transfer skill, the guild and the share of a pot are
+all drawn. The skills subtab states the duration and the bleed. The train control
+records one use and reports the level it reached. A Guild subtab opens on Ctrl+7
+and reports the roster. The pot returns three quarters of itself to the
+participants.
+
+```
+duration      1000 Quint takes 100 hours at level 1 and 10 hours at level 10.
+train         Quintessence Transfer stands at level 1 on 1.0 weighted uses.
+standing      level 1 - effect 1.1x - bleed 8.00% - transfers sent 0
+guild         Guild, Ctrl+7 - 0 guilds, 0 members, ranks officer and member
+return pool   Return pool, 75%
+```
+
+No module writes a guild roster file, so the roster loads empty and no control
+founds a guild. Nothing advances the season either: the counter lives behind a
+gated registry function on the chain and no module under `src` reaches it.
 
 ## Head to head
 
@@ -484,7 +576,9 @@ so a trophy lasts as long as the chain does.
 ## The chain
 
 `local_testnet.py` simulates the whole Base environment in memory, with no
-wallet, no ETH and no network. Four classes make it up.
+wallet, no ETH and no network. Ask the module for the classes it declares and
+seven answer. Four are the chain and its contracts. Three are the records those
+four store.
 
 | Class | Holds |
 | ----- | ----- |
@@ -492,6 +586,9 @@ wallet, no ETH and no network. Four classes make it up.
 | `LocalACRV` | The ERC-20 balances and the mint history |
 | `LocalRegistry` | Competitions, submissions and adjudications |
 | `LocalTestnet` | The three above, plus a mock oracle and transaction receipts |
+| `Block` | One block's number, hash, parent hash, timestamp and transactions |
+| `TxRecord` | One transaction's hash, block, sender, function, arguments and gas |
+| `ChainEvent` | One event a contract emitted, with its block and its arguments |
 
 One call runs a whole competition on that chain and returns the result table.
 It registers the entrants, trades them, takes their submissions, adjudicates,
@@ -517,14 +614,43 @@ The real targets sit ready for the day it deploys.
   Base Sepolia: chain_id=84532 — testnet (deploy here first)
 ```
 
-The contract addresses and ABIs sit beside them.
+The two ABIs sit beside them, and the four address fields are empty. Read the
+two configs and both the token address and the registry address answer an empty
+string on each network, because no deploy has put a contract on either. The ABIs
+are complete, so the calls are already described the day an address arrives.
+
+`src/competition/base_config.py` — what the two configs answer
+
+```
+BASE_MAINNET   acrv_address = ''   registry_address = ''
+BASE_SEPOLIA   acrv_address = ''   registry_address = ''
+ACRV_ABI       12 entries
+REGISTRY_ABI   16 entries
+```
 
 ## The two shelved tabs
 
 Both tab modules exist and the window builds neither. Their surfaces stay
 registered in the bridge, so the view models answer with no Qt tab in front of
 them. The Testnet tab is where a competition would be run and its blocks read
-in a block explorer; today the demo run above is the only way to reach either.
+in a block explorer.
+
+The local chain is reachable without either tab. Pick the Demo TestNet chain on
+the Accumulation tab, press the identity control twice, then the distil control
+and the spend control. Each one writes a file under the runtime directory.
+
+```
+the identity control writes   bot_identity.json
+the distil control writes     quintessence_ledger_testnet.json
+the spend control writes      poa_record_store_testnet.json
+```
+
+Nothing draws a block explorer. The Quint subtab says so in its own words.
+
+```
+No block height and no merkle root is drawn. merkle_log writes the trade log
+and no subtab reads its root.
+```
 
 `src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
 
