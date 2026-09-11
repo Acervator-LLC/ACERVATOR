@@ -20,11 +20,12 @@ body > #panel-root {
 }
 
 /* The last two rows are the upper band and the party window, an equal half each.
-   The control bar caps at its buttons and verdict, the subtab panel at three rows. */
+   The control bar caps at its buttons and verdict; the subtab panel takes 22% so a
+   seven-page subtab draws more than three rows before it scrolls. */
 .acervator-poa-tab {
   box-sizing: border-box;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 15%) auto minmax(0, 13%) 1fr 1fr;
+  grid-template-rows: auto auto minmax(0, 15%) auto minmax(0, 22%) 1fr 1fr;
   height: 100%;
   margin: 0;
   padding: calc(var(--SPACE_M) * 1px);
@@ -164,11 +165,32 @@ body > #panel-root {
 }
 
 .acervator-poa-tab [data-part="subtab-button"] {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
   padding: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
   border: 1px solid var(--OUTLINE);
   border-radius: calc(var(--RADIUS_XS) * 1px);
   background: var(--SURFACE_2);
   color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+/* The key each button opens on, shown so nobody has to find it in a tooltip. */
+.acervator-poa-tab [data-part="subtab-key"] {
+  padding: 0 calc(var(--SPACE_XXS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  color: var(--TEXT_MED);
+  font-family: inherit;
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="subtab-key-note"] {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--TEXT_LOW);
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
@@ -432,10 +454,22 @@ body > #panel-root {
 
 /* The left half's Vessel card: its four facts, then its details, then the eight
    mechanisms no module builds for it. */
+/* The whole card opens the Character Details subtab, so it is a target and not text. */
 .acervator-poa-tab [data-part="vessel-panel"] {
   display: flex;
   flex-direction: column;
   gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XXS) * 1px);
+  border: 1px solid transparent;
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  text-align: left;
+  cursor: pointer;
+}
+
+.acervator-poa-tab [data-part="vessel-panel"]:hover,
+.acervator-poa-tab [data-part="vessel-panel"]:focus-visible {
+  border-color: var(--OUTLINE_STRONG);
+  background: var(--SURFACE_2);
 }
 
 .acervator-poa-tab [data-part="vessel-list"],
@@ -1351,4 +1385,100 @@ body > #panel-root {
   color: var(--TEXT_PLACEHOLDER);
   font-size: calc(var(--TYPE_SMALL) * 1px);
   font-style: italic;
+}
+
+/* The five subtabs that draw labelled lists: Character Details, Resources, Quint,
+   Guild and the grid under Maps. Every one goes through titledRows. */
+.acervator-poa-tab [data-part="details-panel"],
+.acervator-poa-tab [data-part="resource-panel"],
+.acervator-poa-tab [data-part="quint-panel"],
+.acervator-poa-tab [data-part="guild-panel"],
+.acervator-poa-tab [data-part="gear-panel"],
+.acervator-poa-tab [data-part="map-panel"],
+.acervator-poa-tab [data-part="tree-panel-pages"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+}
+
+/* The Character Details subtab puts its stat table beside the metric list. */
+.acervator-poa-tab [data-part="details-panel-pair"] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(var(--SPACE_S) * 1px);
+  align-items: start;
+}
+
+.acervator-poa-tab [data-part="details-title"] {
+  margin: 0;
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part^="details-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+}
+
+.acervator-poa-tab [data-part="details-row"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: baseline;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="details-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="details-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow-wrap: anywhere;
+}
+
+.acervator-poa-tab [data-part^="details-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+/* One page a skill kind. The absence sits above the ladder so neither page can read
+   as a tree or a ring that failed to draw. */
+.acervator-poa-tab [data-part="skill-page"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px dashed var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+}
+
+.acervator-poa-tab [data-part="skill-page-title"] {
+  margin: 0;
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="skill-page-absent"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+@media (width <= 900px) {
+  .acervator-poa-tab [data-part="details-panel-pair"] {
+    grid-template-columns: 1fr;
+  }
 }

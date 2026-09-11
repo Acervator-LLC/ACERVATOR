@@ -11,13 +11,18 @@ printing what ``augment_action`` gives one action of the running turn.
 the Impetus pool it grants, with ``class_pick`` calling ``pick_class`` for the
 class ``params`` names. ``redistribution`` reads
 ``EventRedistribution.summary`` for the pot, the normalised shares and the
-reserve, and moves no Quintessence. ``subtabs`` serves the four ``SUBTABS`` the
-tab opens over its zones, and ``map_reachable`` reads ``EventMode.has_map`` so
-only a mode carrying a map opens the map subtab. ``character_stats`` pairs every
-``METRIC_SOURCES`` entry with the value one party row holds, ``gear`` serves the
-loot section beside the item classes nothing builds, ``skill_tree`` draws the
-ladder as a list over ``SKILL_NAMES``, and ``map_panel`` states that no world is
-generated.
+reserve, and moves no Quintessence. ``subtabs`` serves the seven ``SUBTABS`` the
+tab opens over its zones, each carrying the ``SUBTAB_SHORTCUTS`` key that opens it,
+and ``map_reachable`` reads ``EventMode.has_map`` so only a mode carrying a map
+opens the maps subtab. ``character_stats`` pairs every ``METRIC_SOURCES`` entry
+with the value one party row holds and ``character_details`` adds the
+``entity_stats`` table beside it; ``gear`` serves the loot section beside
+``ITEM_TYPE_NAMES`` and every mechanism ``ITEM_MECHANISM_NOTES`` names;
+``resources_panel`` serves ``material_rows``; ``quint_panel`` serves the chain's
+two files against the Quintessence grain and cap; ``skill_pages`` names the Vessel
+and Reincarnate pages over ``SKILL_NAMES``; ``guild_panel`` serves
+``GuildRoster.roster_summary``; and ``map_panel`` serves the ``world_grid`` bounds
+and states that no world is generated.
 ``vessel_panel`` fills the left half of the bisected top row: ``current_vessel``
 builds the ``Vessel`` the class pick names and ``vessel_details`` reads
 ``Reincarnate.requirement`` and ``Reincarnate.potential`` against the chain balance,
@@ -59,12 +64,33 @@ from ...competition.action_spend import (
     PoaRecordStore,
     band_cost,
 )
+from ...competition.alignment import WORLD_TIE_ABSENT
 from ...competition.bot_identity import BotIdentity
 from ...competition.capture_bounds import MIN_SCORED_AXES
+from ...competition.entity_stats import (
+    NO_EFFECT_NAMED,
+    STAT_NAMES,
+    sphere_rows,
+    stat_rows,
+)
 from ...competition.event_redistribution import (
     RETURN_PERCENT,
     EventRedistribution,
     RedistributionError,
+)
+from ...competition.guild_roster import (
+    RANK_MEMBER,
+    RANK_OFFICER,
+    TREASURY_ADDRESS_PREFIX,
+    TREASURY_LEDGER_BUCKET,
+    GuildRoster,
+)
+from ...competition.items import (
+    ABSENT_MECHANISM_NOTES as ITEM_MECHANISM_NOTES,
+)
+from ...competition.items import (
+    ITEM_TYPE_NAMES,
+    item_rows,
 )
 from ...competition.local_testnet import LocalTestnet
 from ...competition.loot_drop import (
@@ -82,6 +108,13 @@ from ...competition.map_glyphs import (
     family_rows,
     mark_for,
     mark_kinds,
+)
+from ...competition.materials import (
+    MATERIAL_NAMES,
+    QUALITY_GRADES,
+    STORAGE_CLASSES,
+    material_rows,
+    salvage_loss_rule,
 )
 from ...competition.market_rotation import (
     AGE_LOOKUP_INTERVAL_S,
@@ -105,6 +138,8 @@ from ...competition.poa_modes import (
 )
 from ...competition.quintessence_ledger import (
     DEFAULT_LEDGER_PATH,
+    QUINTESSENCE_MINIMUM_UNIT,
+    QUINTESSENCE_SUPPLY_CAP,
     QuintessenceLedger,
     QuintessenceLedgerError,
     amount_text,
@@ -150,6 +185,14 @@ from ...competition.vessels import (
     VesselError,
     has_ever_held_quintessence,
     pleroma_standing,
+)
+from ...competition.world_grid import (
+    BASE_VIEWRANGE_SQUARES,
+    DEFAULT_GRID_WIDTH,
+    DEFAULT_WORLD_PATH,
+    PARTICIPANTS_PER_LAYER,
+    SEPHIROT_LAYERS,
+    addressable_squares,
 )
 from ...core.fmt import fmt_usd
 from .shared_testnet_surface import PERSIST_PARTS
@@ -371,8 +414,7 @@ VESSEL_POTENTIAL_ROW = "Potential"
 VESSEL_STANDING_ROW = "Pleroma standing"
 VESSEL_DETAILS_ABSENT_TITLE = "Nothing a Vessel takes part in"
 VESSEL_CLICK_NOTE = (
-    "Clicking the Vessel opens its details subtab. No subtab carries them, so "
-    "nothing opens yet."
+    "Click this Vessel to open the Character Details subtab, or press its shortcut."
 )
 
 LOOT_ITEM_TEXT = "{symbol} - Season {season} - {bonus}"
@@ -624,30 +666,57 @@ CONTROL_FAULTS = (
     ValueError,
 )
 
-CHARACTER_STATS = "character_stats"
-GEAR = "gear"
-SKILL_TREE = "skill_tree"
 MAP = "map"
+CHARACTER_DETAILS = "character_details"
+GEAR = "gear"
+RESOURCES = "resources"
+QUINT = "quint"
+SKILLS = "skills"
+GUILD = "guild"
+
+#: The subtab heading. ``MAP_TITLE`` stays the heading of the top row's map region.
+MAP_SUBTAB_TITLE = "Maps"
+CHARACTER_DETAILS_TITLE = "Character Details"
+GEAR_TITLE = "Gear"
+RESOURCES_TITLE = "Resources"
+QUINT_TITLE = "Quint"
+SKILLS_TITLE = "Skills"
+GUILD_TITLE = "Guild"
 
 CHARACTER_STATS_TITLE = "Character Stats"
-GEAR_TITLE = "Gear"
-SKILL_TREE_TITLE = "Skill Tree"
 MAP_TITLE = "Map"
 
-SUBTABS: tuple[tuple[str, str], ...] = (
-    (CHARACTER_STATS, CHARACTER_STATS_TITLE),
-    (GEAR, GEAR_TITLE),
-    (SKILL_TREE, SKILL_TREE_TITLE),
-    (MAP, MAP_TITLE),
+#: One entry a subtab: its name, its heading, and the key sequence that opens it.
+SUBTABS: tuple[tuple[str, str, str], ...] = (
+    (MAP, MAP_SUBTAB_TITLE, "Ctrl+1"),
+    (CHARACTER_DETAILS, CHARACTER_DETAILS_TITLE, "Ctrl+2"),
+    (GEAR, GEAR_TITLE, "Ctrl+3"),
+    (RESOURCES, RESOURCES_TITLE, "Ctrl+4"),
+    (QUINT, QUINT_TITLE, "Ctrl+5"),
+    (SKILLS, SKILLS_TITLE, "Ctrl+6"),
+    (GUILD, GUILD_TITLE, "Ctrl+7"),
 )
 
 #: Every subtab name, in the order ``SUBTABS`` declares them.
-SUBTAB_NAMES: tuple[str, ...] = tuple(name for name, _ in SUBTABS)
+SUBTAB_NAMES: tuple[str, ...] = tuple(name for name, _, _ in SUBTABS)
+
+#: One ``(key, subtab)`` pair a shortcut, as ``bot_live_settings_surface.SHORTCUTS``
+#: pairs a key with the step it walks.
+SUBTAB_SHORTCUTS: tuple[tuple[str, str], ...] = tuple(
+    (key, name) for name, _, key in SUBTABS
+)
+
+#: The modifier every entry in ``SUBTAB_SHORTCUTS`` carries.
+SUBTAB_SHORTCUT_MODIFIER = "Ctrl"
+
+SUBTAB_SHORTCUT_TEXT = (
+    "{first} to {last} open these subtabs, in the order the bar lists them."
+)
 
 SUBTAB_FIELD = "subtab"
 
 #: The subtab a request that names none, or names an unopenable one, opens.
-DEFAULT_SUBTAB = CHARACTER_STATS
+DEFAULT_SUBTAB = CHARACTER_DETAILS
 
 #: The label of every mode whose ``EventMode.has_map`` is set.
 MAP_MODE_LABELS: tuple[str, ...] = tuple(mode.label for mode in MODES if mode.has_map)
@@ -659,6 +728,19 @@ MAP_REFUSED_TEXT = (
 MAP_ABSENT_TEXT = (
     "No world is generated. No grid, no tile and no position is held anywhere, so "
     "this subtab draws no map."
+)
+
+MAP_GRID_TITLE = "The grid a world would be laid on"
+MAP_GRID_SIDE_ROW = "Squares a side"
+MAP_GRID_SQUARES_ROW = "Squares a layer"
+MAP_GRID_LAYERS_ROW = "Layers"
+MAP_GRID_PARTICIPANTS_ROW = "Participants a layer"
+MAP_GRID_VIEW_ROW = "Squares in view"
+MAP_WORLD_HELD_TEXT = "{name} is on disk, and no subtab reads a square out of it."
+MAP_WORLD_ABSENT_TEXT = "{name} does not exist, so no world is declared to draw."
+MAP_TACTICAL_ABSENT_TEXT = (
+    "During an encounter this becomes a tactical map. Nothing holds an encounter's "
+    "enemies or their turn order, so no tactical map is drawn."
 )
 
 #: What the right-hand region prints while no encounter runs.
@@ -686,19 +768,92 @@ STATS_NO_PARTICIPANT_TEXT = (
 )
 STATS_SEAM_TEXT = "Nothing holds these, so no metric reads them: {names}."
 
-#: Item classes no module builds. Loot is the only thing the gear subtab manages.
-GEAR_ABSENT_CLASSES: tuple[str, ...] = (
-    "armour",
-    "weapons",
-    "accessories",
-    "consumables",
+#: The item classes the gear subtab names, read off ``items.ITEM_TYPES`` itself.
+GEAR_ABSENT_CLASSES: tuple[str, ...] = ITEM_TYPE_NAMES
+GEAR_ABSENT_TEXT = (
+    "{names} are declared as classes. {inventory}, so this subtab lists the loot the "
+    "wallet holds and no item a Vessel wears."
 )
-GEAR_ABSENT_TEXT = "Nothing builds {names}, so this subtab manages loot alone."
+GEAR_NAMES_JOIN = ", "
+GEAR_INVENTORY_MECHANISM = "inventory"
+GEAR_TYPES_TITLE = "Item classes and what holds one together"
+GEAR_TYPE_TEXT = "{name} - {storage_class} - cohesion {cohesion} Quint"
+GEAR_MECHANISM_TITLE = "Nothing supplies these"
 
+SKILL_LADDER_TITLE = "Skill ladder"
+SKILL_VESSEL_PAGE = "vessel"
+SKILL_REINCARNATE_PAGE = "reincarnate"
+SKILL_VESSEL_PAGE_TITLE = "Vessel skills"
+SKILL_REINCARNATE_PAGE_TITLE = "Reincarnate skills"
 SKILL_TREE_LIST_TEXT = (
     "Skills on the ladder: {count}. {names}. A tree needs more than one, so this "
     "draws a list."
 )
+SKILL_VESSEL_ABSENT_TEXT = (
+    "A Vessel carries a skill tree. No module declares an ability and no module "
+    "declares a tree, so no tree is drawn."
+)
+SKILL_REINCARNATE_ABSENT_TEXT = (
+    "A Reincarnate carries a skill ring. No module declares a ring, a tier or a "
+    "Sephirot position for a skill, so no ring is drawn."
+)
+SKILL_PAGE_NOTE = "Both pages are named. Only the ladder below carries a skill."
+
+RESOURCES_LIST_TITLE = "Every material and the Quintessence one unit embeds"
+RESOURCES_ROW_TEXT = "{lowest} to {highest} Quint a unit, {provenance}"
+RESOURCES_COUNT_TEXT = (
+    "Materials declared: {count}. Quality grades a material: {grades}. Storage "
+    "classes: {classes}."
+)
+RESOURCES_HELD_ABSENT_TEXT = (
+    "Nothing holds how many units a participant carries, so no material shows an "
+    "amount."
+)
+RESOURCES_CEILING_ABSENT_TEXT = (
+    "No stack ceiling is set and no salvage recovery fraction is set. {rule}"
+)
+
+QUINT_ROWS_TITLE = "The chain and the Quintessence it holds"
+QUINT_CHAIN_ROW = "Chain"
+QUINT_LEDGER_ROW = "Ledger file"
+QUINT_RECORDS_ROW = "Record store"
+QUINT_GRAIN_ROW = "Smallest unit"
+QUINT_CAP_ROW = "Supply cap"
+QUINT_MINTED_ROW = "Minted so far"
+QUINT_BALANCED_ROW = "Buckets balanced"
+QUINT_FILE_HELD = "{name} - held"
+QUINT_FILE_ABSENT = "{name} - no file yet"
+QUINT_WALLET_NOTE = (
+    "The full wallet opens over the party window. This subtab carries the chain "
+    "the wallet reads."
+)
+QUINT_ABSENT_TEXT = (
+    "No block height and no merkle root is drawn. merkle_log writes the trade log "
+    "and no subtab reads its root."
+)
+
+GUILD_ROWS_TITLE = "Guilds on the roster"
+GUILD_COUNT_ROW = "Guilds"
+GUILD_MEMBERS_ROW = "Members"
+GUILD_RANKS_ROW = "Ranks"
+GUILD_TREASURY_ROW = "Treasury address"
+GUILD_BUCKET_ROW = "Treasury bucket"
+GUILD_EMPTY_TEXT = (
+    "No module writes a roster file, so the roster loads empty and no guild is "
+    "listed. Founding one through a control is not built."
+)
+
+DETAILS_STATS_TITLE = "Stats, each measured in Quintessence"
+DETAILS_SPHERE_TITLE = "The ten bands a stat climbs"
+DETAILS_STAT_TEXT = "{principle} - {effect}"
+
+#: What a stat whose ``StatDef.effect`` is ``NO_EFFECT_NAMED`` prints instead of it.
+DETAILS_NO_EFFECT_TEXT = "no effect a built figure reads"
+DETAILS_SPHERE_TEXT = "opens at level {opens_at_level}, {per_level} Quint a level"
+DETAILS_COUNT_TEXT = (
+    "Stats declared: {count}. {unnamed} of them name no effect a built figure reads."
+)
+DETAILS_VESSEL_TEXT = "The Vessel this page reads: {name}."
 
 MARKS_TITLE = "Map marks"
 MARKS_ABSENT_TITLE = "Nothing supplies these"
@@ -711,12 +866,15 @@ DECLARED_FIELDS = (
     "built",
     "chain",
     "chain_reset",
+    "character_details",
     "character_stats",
     "classes",
     "conservation",
     "controls",
+    "encounter",
     "event",
     "gear",
+    "guild",
     "heading",
     "issue",
     "issue_text",
@@ -729,13 +887,17 @@ DECLARED_FIELDS = (
     "participants",
     "party",
     "pick_note",
+    "quint",
     "redistribution",
+    "resources",
     "season",
-    "skill_tree",
+    "skill_pages",
     "skills",
     "state_text",
     "subtab",
+    "subtab_shortcut_text",
     "subtabs",
+    "vessel",
     "wallet",
     "zones",
 )
@@ -1017,6 +1179,7 @@ def vessel_panel(chain: str, address: str | None, pick: ClassPick | None) -> dic
         "details": [],
         "note": "",
         "click_note": VESSEL_CLICK_NOTE,
+        "click_subtab": CHARACTER_DETAILS,
         "bound": VESSEL_COUNT_UNCAPPED,
         "absent": [
             {"name": name, "note": ABSENT_MECHANISM_NOTES[name]}
@@ -1563,17 +1726,25 @@ def subtab_of(params: dict, variant: EventVariant) -> str:
 
 
 def subtabs(variant: EventVariant) -> list:
-    """The four subtabs, each carrying whether ``variant`` opens it and why not."""
+    """The seven subtabs, each carrying its shortcut, whether ``variant`` opens it, and why not."""
     refusal = map_refusal(variant)
     return [
         {
             "name": name,
             "title": title,
+            "shortcut": shortcut,
             "reachable": name != MAP or map_reachable(variant),
             "refusal": refusal if name == MAP else "",
         }
-        for name, title in SUBTABS
+        for name, title, shortcut in SUBTABS
     ]
+
+
+def subtab_shortcut_text() -> str:
+    """The bar's own sentence naming the first and last key in ``SUBTAB_SHORTCUTS``."""
+    return SUBTAB_SHORTCUT_TEXT.format(
+        first=SUBTAB_SHORTCUTS[0][0], last=SUBTAB_SHORTCUTS[-1][0]
+    )
 
 
 def metric_value_text(value: object) -> str:
@@ -1635,8 +1806,27 @@ def character_stats(rows: list, params: dict) -> dict:
     }
 
 
+def item_type_rows() -> list:
+    """One row an entry in ``items.ITEM_TYPES``, naming its storage class and cohesion."""
+    return [
+        row(
+            entry["name"],
+            GEAR_TYPE_TEXT.format(
+                name=entry["name"],
+                storage_class=entry["storage_class"],
+                cohesion=entry["cohesion"],
+            ),
+        )
+        for entry in item_rows()
+    ]
+
+
 def gear(chain: str, action_cost: int) -> dict:
-    """The loot one participant holds on ``chain``, and the item classes nothing builds."""
+    """The loot one participant holds on ``chain``, every item class, and what builds none.
+
+    ``ITEM_TYPE_NAMES`` supplies the classes and ``ABSENT_MECHANISM_NOTES`` supplies
+    each absent mechanism.
+    """
     identity = participant_identity()
     address = None if identity is None else identity.bot_id
     loot = loot_section(chain, address, action_cost)
@@ -1645,32 +1835,230 @@ def gear(chain: str, action_cost: int) -> dict:
         "rows": loot["rows"],
         "note": loot["note"],
         "absent_classes": list(GEAR_ABSENT_CLASSES),
-        "absent_text": GEAR_ABSENT_TEXT.format(names=", ".join(GEAR_ABSENT_CLASSES)),
+        "absent_text": GEAR_ABSENT_TEXT.format(
+            names=raised(GEAR_NAMES_JOIN.join(GEAR_ABSENT_CLASSES)),
+            inventory=raised(ITEM_MECHANISM_NOTES[GEAR_INVENTORY_MECHANISM]),
+        ),
+        "types_title": GEAR_TYPES_TITLE,
+        "types": item_type_rows(),
+        "mechanism_title": GEAR_MECHANISM_TITLE,
+        "mechanisms": [
+            row(name, note) for name, note in ITEM_MECHANISM_NOTES.items()
+        ],
     }
 
 
-def skill_tree(built: dict) -> dict:
-    """``built``'s ladder as a list, naming every skill on it and why it is no tree."""
+def skill_pages(built: dict) -> dict:
+    """The skills subtab's Vessel and Reincarnate pages, the ladder, and both absences.
+
+    ``SKILL_NAMES`` holds one skill, so the Vessel page carries ``built``'s ladder and
+    no tree, and the Reincarnate page carries no ring.
+    """
     return {
-        "title": SKILL_TREE_TITLE,
+        "title": SKILLS_TITLE,
+        "ladder_title": SKILL_LADDER_TITLE,
         "levels": built["levels"],
         "transfer": built["transfer"],
         "notes": built["notes"],
         "list_text": SKILL_TREE_LIST_TEXT.format(
             count=len(SKILL_NAMES), names=", ".join(SKILL_NAMES)
         ),
+        "page_note": SKILL_PAGE_NOTE,
+        "pages": [
+            {
+                "name": SKILL_VESSEL_PAGE,
+                "title": SKILL_VESSEL_PAGE_TITLE,
+                "absent_text": SKILL_VESSEL_ABSENT_TEXT,
+                "holds_ladder": True,
+            },
+            {
+                "name": SKILL_REINCARNATE_PAGE,
+                "title": SKILL_REINCARNATE_PAGE_TITLE,
+                "absent_text": SKILL_REINCARNATE_ABSENT_TEXT,
+                "holds_ladder": False,
+            },
+        ],
     }
 
 
+def grid_rows() -> list:
+    """The world grid's own bounds, each read off a ``world_grid`` constant."""
+    return [
+        row(MAP_GRID_SIDE_ROW, str(DEFAULT_GRID_WIDTH)),
+        row(MAP_GRID_SQUARES_ROW, str(addressable_squares())),
+        row(MAP_GRID_LAYERS_ROW, str(SEPHIROT_LAYERS)),
+        row(MAP_GRID_PARTICIPANTS_ROW, str(PARTICIPANTS_PER_LAYER)),
+        row(MAP_GRID_VIEW_ROW, str(BASE_VIEWRANGE_SQUARES)),
+    ]
+
+
 def map_panel(variant: EventVariant) -> dict:
-    """The map subtab: whether ``variant`` opens it, and that no world is generated."""
+    """The maps subtab: whether ``variant`` opens it, the grid's bounds, and what draws none."""
     return {
-        "title": MAP_TITLE,
+        "title": MAP_SUBTAB_TITLE,
+        "region_title": MAP_TITLE,
         "reachable": map_reachable(variant),
         "open_text": MAP_OPEN_TEXT,
         "refusal": map_refusal(variant),
         "absent_text": MAP_ABSENT_TEXT,
         "region_absent_text": MAP_REGION_ABSENT_TEXT,
+        "grid_title": MAP_GRID_TITLE,
+        "grid": grid_rows(),
+        "world_text": (
+            MAP_WORLD_HELD_TEXT.format(name=DEFAULT_WORLD_PATH.name)
+            if DEFAULT_WORLD_PATH.exists()
+            else MAP_WORLD_ABSENT_TEXT.format(name=DEFAULT_WORLD_PATH.name)
+        ),
+        "tactical_absent_text": MAP_TACTICAL_ABSENT_TEXT,
+    }
+
+
+def resources_panel() -> dict:
+    """Every material, the Quintessence band one unit embeds, and that no amount is held.
+
+    ``material_rows`` supplies each band and its provenance, and ``salvage_loss_rule``
+    supplies the loss a destroyed item takes.
+    """
+    return {
+        "title": RESOURCES_TITLE,
+        "list_title": RESOURCES_LIST_TITLE,
+        "rows": [
+            row(
+                entry["name"],
+                RESOURCES_ROW_TEXT.format(
+                    lowest=entry["quintessence_at_lowest_quality"],
+                    highest=entry["quintessence_at_highest_quality"],
+                    provenance=entry["provenance"],
+                ),
+            )
+            for entry in material_rows()
+        ],
+        "count_text": RESOURCES_COUNT_TEXT.format(
+            count=len(MATERIAL_NAMES),
+            grades=len(QUALITY_GRADES),
+            classes=", ".join(STORAGE_CLASSES),
+        ),
+        "held_absent_text": RESOURCES_HELD_ABSENT_TEXT,
+        "ceiling_absent_text": RESOURCES_CEILING_ABSENT_TEXT.format(
+            rule=opened_sentence(salvage_loss_rule())
+        ),
+    }
+
+
+def raised(body: str) -> str:
+    """``body`` with its first letter raised, leaving every other name intact."""
+    return body[0].upper() + body[1:] if body else body
+
+
+def opened_sentence(body: str) -> str:
+    """``body`` raised and given a full stop, leaving its names intact."""
+    if not body:
+        return body
+    return raised(body if body.endswith(".") else body + ".")
+
+
+def file_state_text(path: Path) -> str:
+    """``path``'s name, and whether a file is there to read."""
+    if path.exists():
+        return QUINT_FILE_HELD.format(name=path.name)
+    return QUINT_FILE_ABSENT.format(name=path.name)
+
+
+def quint_panel(chain: str, keep: dict) -> dict:
+    """The chain the wallet reads, its two files, the Quintessence grain and its cap.
+
+    ``keep`` is ``conservation``'s report, so the minted figure here and the one the
+    party window draws come from one read of the ledger.
+    """
+    ledger_path = chain_file(QUINT_LEDGER_NAME, chain)
+    records_path = chain_file(STORE_NAME, chain)
+    minted = ""
+    balanced = ""
+    for held in keep["rows"]:
+        if held["label"] == MINT_ROW:
+            minted = held["value"]
+        if held["label"] == BALANCED_ROW:
+            balanced = held["value"]
+    return {
+        "title": QUINT_TITLE,
+        "rows_title": QUINT_ROWS_TITLE,
+        "rows": [
+            row(QUINT_CHAIN_ROW, CHAIN_LABELS[chain]),
+            row(QUINT_LEDGER_ROW, file_state_text(ledger_path)),
+            row(QUINT_RECORDS_ROW, file_state_text(records_path)),
+            row(QUINT_GRAIN_ROW, amount_text(QUINTESSENCE_MINIMUM_UNIT)),
+            row(QUINT_CAP_ROW, amount_text(QUINTESSENCE_SUPPLY_CAP)),
+            row(QUINT_MINTED_ROW, minted),
+            row(QUINT_BALANCED_ROW, balanced),
+        ],
+        "wallet_note": QUINT_WALLET_NOTE,
+        "absent_text": QUINT_ABSENT_TEXT,
+    }
+
+
+def guild_panel() -> dict:
+    """The roster a fresh ``GuildRoster`` holds, its ranks, and that no file fills one."""
+    roster = GuildRoster()
+    summary = roster.roster_summary()
+    return {
+        "title": GUILD_TITLE,
+        "rows_title": GUILD_ROWS_TITLE,
+        "rows": [
+            row(GUILD_COUNT_ROW, str(summary["guild_count"])),
+            row(GUILD_MEMBERS_ROW, str(summary["member_count"])),
+            row(GUILD_RANKS_ROW, ", ".join((RANK_OFFICER, RANK_MEMBER))),
+            row(GUILD_TREASURY_ROW, TREASURY_ADDRESS_PREFIX),
+            row(GUILD_BUCKET_ROW, TREASURY_LEDGER_BUCKET),
+        ],
+        "guilds": summary["guilds"],
+        "empty_text": GUILD_EMPTY_TEXT if summary["guild_count"] == 0 else "",
+        "world_tie_text": opened_sentence(WORLD_TIE_ABSENT),
+    }
+
+
+def stat_effect_text(entry: dict) -> str:
+    """``entry``'s effect, with ``NO_EFFECT_NAMED`` read out as a sentence."""
+    if entry["effect"] == NO_EFFECT_NAMED:
+        return DETAILS_NO_EFFECT_TEXT
+    return str(entry["effect"])
+
+
+def character_details(stats: dict) -> dict:
+    """The stat table and the ten bands a stat climbs, beside the Vessel ``stats`` names.
+
+    ``stat_rows`` supplies each stat's principle and effect, and ``NO_EFFECT_NAMED``
+    counts the stats whose effect no built figure reads.
+    """
+    unnamed = [one for one in stat_rows() if one["effect"] == NO_EFFECT_NAMED]
+    return {
+        "title": CHARACTER_DETAILS_TITLE,
+        "stats_title": DETAILS_STATS_TITLE,
+        "stats": [
+            row(
+                entry["name"],
+                DETAILS_STAT_TEXT.format(
+                    principle=entry["principle"], effect=stat_effect_text(entry)
+                ),
+            )
+            for entry in stat_rows()
+        ],
+        "sphere_title": DETAILS_SPHERE_TITLE,
+        "spheres": [
+            row(
+                str(entry["sphere"]),
+                DETAILS_SPHERE_TEXT.format(
+                    opens_at_level=entry["opens_at_level"],
+                    per_level=entry["quintessence_per_level"],
+                ),
+            )
+            for entry in sphere_rows()
+        ],
+        "count_text": DETAILS_COUNT_TEXT.format(
+            count=len(STAT_NAMES), unnamed=len(unnamed)
+        ),
+        "vessel_text": DETAILS_VESSEL_TEXT.format(
+            name=stats["participant"] or FLEET_NAME
+        ),
     }
 
 
@@ -2279,18 +2667,22 @@ def view_model(params: dict) -> dict:
     rows = participants(chain, pick)
     built_skills = skills(chain)
     pot = redistribution(chain, event_id_of(params, variant))
+    stats = character_stats(rows, params)
+    keep = conservation(chain)
     return {
         "accessible_name": HEADING,
         "built": BUILT,
         "chain": chain,
         "chain_reset": reset_panel(chain),
-        "character_stats": character_stats(rows, params),
+        "character_details": character_details(stats),
+        "character_stats": stats,
         "classes": classes(),
-        "conservation": conservation(chain),
+        "conservation": keep,
         "controls": fired,
         "encounter": encounter(pot),
         "event": running,
         "gear": gear(chain, running["impetus_granted"]),
+        "guild": guild_panel(),
         "heading": HEADING,
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
@@ -2303,12 +2695,15 @@ def view_model(params: dict) -> dict:
         "participants": rows,
         "party": party(),
         "pick_note": pick_note,
+        "quint": quint_panel(chain, keep),
         "redistribution": pot,
+        "resources": resources_panel(),
         "season": season(chain),
-        "skill_tree": skill_tree(built_skills),
+        "skill_pages": skill_pages(built_skills),
         "skills": built_skills,
         "state_text": STATE_TEXT,
         "subtab": subtab_of(params, variant),
+        "subtab_shortcut_text": subtab_shortcut_text(),
         "subtabs": subtabs(variant),
         "vessel": vessel_panel(
             chain, None if identity is None else identity.bot_id, pick
