@@ -14582,3 +14582,228 @@ the wallet section       takes the grant as one action's Impetus cost
 
 No figure sets what one action costs in Impetus. The turn economy owes that
 figure, and the two sections stand in with the grant until it exists.
+
+## 2026-09-11 12:25 - #586 - a dungeon entry refuses a party that is not all standing there
+
+### A dungeon is a place, and the whole party has to be at it
+
+A dungeon sits at one locator on the world map. A party walks to that locator and
+goes in. Every member of the party has to be standing at the place, because a
+dungeon is a place and not an invitation.
+
+The entry took one position for the whole party and checked nobody. A member on
+the far side of the world went in with the party, and nothing refused it.
+
+The entry now reads each member's own locator and refuses the party when any
+member is somewhere else. A member's locator comes from that member's own journey
+leg, which is the one record movement writes.
+
+`src/competition/world_movement.py` - where one mover stands, read from its own leg
+
+```python
+def mover_locator(self, world_id: str, address: str, turn: int) -> str | None:
+    """The ``GridPosition.locator`` ``address`` stands at during ``turn``.
+
+    None answers a mover whose own journeys all open after ``turn`` and one
+    that has opened none, and the locator carries the covering leg's own
+    ``layer``, so a position on two layers never reads as one place.
+    """
+```
+
+`src/competition/dungeon_entry.py` - the one reader that holds a party's places together
+
+```python
+def party_locators(
+    self,
+    journeys: WorldJourneys,
+    world_id: str,
+    members: Sequence[object],
+    world_turn: int,
+) -> dict[str, str | None]:
+```
+
+### What the program printed when one member stood elsewhere
+
+Three participants walked on a real eight-square grid. The dungeon is a crypt at
+square 9, half a square in each direction. Two of them walked to it. The third
+walked to square 0 instead.
+
+What movement derived for the three, at the world turn the entry names:
+
+```
+0xLeader      square 9  step (50, 50)   arrived
+0xStander     square 9  step (50, 50)   arrived
+0xWanderer    square 0  step (90, 10)   arrived
+```
+
+The same three read as locators, which is the form the entry compares:
+
+```
+dungeon locator    0:9:50:50
+0xLeader           0:9:50:50
+0xStander          0:9:50:50
+0xWanderer         0:0:90:10
+```
+
+Before this change the entry opened and held all three. The register printed:
+
+```
+enter RETURNED entry_id=u93world:0:9:50:50:0xLeader:w2:e5866666
+entry members = ('0xLeader', '0xStander', '0xWanderer')
+clock_row 0xWanderer  clock=event turn  locator=0:9:50:50
+```
+
+The wanderer was on square 0 and the register put it on the event clock inside
+the crypt. After this change the same call refuses:
+
+```
+0xLeader leads this Descension into 0:9:50:50 and 1 of 3 members stand away
+from it: 0xWanderer at 0:0:90:10; a party walks into a dungeon from the
+dungeon's own position
+```
+
+### The same square on another layer is a different place
+
+A locator carries the layer, the square and the two steps. Two participants can
+hold the same square and the same steps on two different layers, and they are not
+in the same place.
+
+A fourth participant walked to square 9 step (50, 50) on layer 1, while the crypt
+sits on layer 0. The entry refuses it:
+
+```
+0xLeader       at 0:9:50:50
+0xOtherLayer   at 1:9:50:50
+
+0xLeader leads this Descension into 0:9:50:50 and 1 of 2 members stand away
+from it: 0xOtherLayer at 1:9:50:50; a party walks into a dungeon from the
+dungeon's own position
+```
+
+Comparing the square and the steps alone would have let that member in. The
+comparison is on the whole locator for that reason.
+
+### A member that has walked nowhere gets no entry
+
+Movement writes one record a leg. A participant that has opened no leg has no
+leg to derive a position from, so it has no locator at all. That is an absence
+and not a place.
+
+The entry refuses such a member. The module refuses every other absence the same
+way: an undiscovered locator, a zone with no terrain multiplier, a world it cannot
+name. Admitting this one would pass the check for exactly the members nothing in
+the tree can place, and a party could then walk in with a member nobody can find.
+
+What the program printed for a participant with no leg:
+
+```
+mover_journeys(0xNewcomer) = ()
+mover_locator(0xNewcomer)  = None
+
+0xLeader leads this Descension into 0:9:50:50 and 1 of 2 members stand away
+from it: 0xNewcomer at no journey leg open by this turn; a party walks into a
+dungeon from the dungeon's own position
+```
+
+Every participant starts at the arena, and a player discovers a dungeon out in
+the world. A member that has walked nowhere has not left the arena, and nothing
+in the tree records a participant standing still there.
+
+### The party standing together enters as it always did
+
+The two participants that walked to the crypt entered with nothing changed about
+the entry record. The row the register serves:
+
+```
+entry_id             u93world:0:9:50:50:0xLeader:w2:e5866666
+locator              0:9:50:50
+kind                 crypt
+variant_code         dungeon_crawl
+leader               0xLeader
+party_size           2
+members              ['0xLeader', '0xStander']
+entered_world_turn   2
+entered_event_turn   5866666
+turn_timeframe       5m
+clock                event turn
+```
+
+### The refusals a dungeon already had still read the same
+
+Three earlier refusals ran on the same register, after the crypt held an open
+entry. Each printed its own message word for word as before.
+
+A leader already inside:
+
+```
+0xLeader is inside 0:9:50:50 on entry u93world:0:9:50:50:0xLeader:w2:e5866666
+and answers to the event turn; entry u93world:0:9:50:50:0xLeader:w2:e5866666
+would put one participant on two event clocks at once
+```
+
+A leader that has not discovered the place:
+
+```
+0xStander leads this Descension and holds no reference to u93world:0:9:50:50;
+a dungeon is entered only where it has been discovered, and this leader knows
+0 place(s)
+```
+
+A party formed in the wrong mode:
+
+```
+this party was formed for Fixation and admits 1 to 1; entering a Descension
+needs a party formed in dungeon_crawl
+```
+
+### A refused entry leaves the register alone
+
+The check runs before the entry record exists and before anything reaches the
+file. A refused entry opens no entry, moves no clock and writes no file.
+
+The register before and after a refused entry, printed both times:
+
+```
+entry_ids     ()
+open_entries  []
+0xLeader      clock=world turn  entry_id=None
+0xStander     clock=world turn  entry_id=None
+0xWanderer    clock=world turn  entry_id=None
+```
+
+The register wrote its own file and a second register read that file back. The
+loaded register answered the same as the one in memory:
+
+```
+entry_ids equal   True
+entry_rows equal  True
+clock_rows equal  True
+```
+
+The loaded register refuses a scattered party as well, so the refusal is not a
+property of one register in memory.
+
+### What reaches this refusal at runtime
+
+Nothing on the Accumulation tab reaches a dungeon entry. No screen file builds a
+register, and the bridge that installs the world and the journeys installs no
+register beside them. Only an import of the package reaches the module.
+
+The Maps subtab is where the control belongs. The operator set that himself: a
+click on the map during a Crawl or a Raid opens the Maps subtab, and a location
+carries its own options when the player moves into the right square. Entering is
+one of those options, and the player's own square is the square this refusal
+reads.
+
+### What a dungeon entry still does not know
+
+The entry reads where every member stands at the world turn it names, and nothing
+holds a member there. A member can open a leg away from the locator after the
+check reads it and before the party goes in.
+
+Nothing records a participant standing still. A position exists only while a
+journey leg covers it, so the arena every participant starts on is not a position
+any module can read.
+
+The rest of the dungeon stands where it stood. Nothing rules the inside, nothing
+resolves a fight, and a round still has no length.
