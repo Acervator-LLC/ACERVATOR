@@ -88,7 +88,7 @@ EQUIP_REFUSED = "the item's cohesion is above the total Quintessence held"
 
 #: What an item takes part in that no module builds.
 ABSENT_MECHANISMS: tuple[str, ...] = (
-    "crafting",
+    "a crafting recipe",
     "salvage",
     "equipping",
     "inventory",
@@ -100,7 +100,11 @@ ABSENT_MECHANISMS: tuple[str, ...] = (
 
 #: What each entry in ``ABSENT_MECHANISMS`` waits on.
 ABSENT_MECHANISM_NOTES: dict[str, str] = {
-    "crafting": "nothing turns a material list into an item",
+    "a crafting recipe": (
+        "crafting.CraftRegister.complete_craft turns a component list into an "
+        "item, and no Recipe is declared because loss_share and turns_required "
+        "are two figures no source sets"
+    ),
     "salvage": "nothing destroys an item for the Quintessence it embeds",
     "equipping": "nothing holds an item to a Vessel, so equip_check has no caller",
     "inventory": "nothing holds the items one Vessel carries",

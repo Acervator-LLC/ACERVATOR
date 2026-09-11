@@ -11356,8 +11356,8 @@ supplies a surface         every finished craft serves a dict the gear subtab
                            could print without any further work
 declares a recipe          nothing. A recipe needs the loss share and the turn
                            count, so no recipe table is declared here
-package export             owed. The entry file binds no name from this module,
-                           so the package warns about it at every load
+package export             bound. The entry file imports 28 of this module's
+                           names, and the package report names no module
 absent                     assignments, notifications, lifeskilling, salvage,
                            inventory, a crafting skill
 absent figures             the loss share, and how many turns a craft takes
@@ -11514,16 +11514,178 @@ GEAR_ABSENT_TEXT = (
 
 ### Still owed
 
-The items module still lists crafting among the things nothing supplies, while
-the crafting module now completes one. The Gear subtab prints that module's own
-sentence, so correcting the module corrects the screen.
+The items module listed crafting among the things nothing supplies, while the
+crafting module now completes one. That entry now names the recipe instead. The
+Gear subtab prints that module's own sentence, so correcting the module corrected
+the screen.
 
 ```python
 ABSENT_MECHANISM_NOTES = {
-    "crafting": "nothing turns a material list into an item",
+    "a crafting recipe": (
+        "crafting.CraftRegister.complete_craft turns a component list into an "
+        "item, and no Recipe is declared because loss_share and turns_required "
+        "are two figures no source sets"
+    ),
     ...
 }
 ```
+
+## 2026-09-11 07:10 - #585 - the package binds crafting, and the gear list names the real gap
+
+### The package named the module it could not reach, at every start
+
+The crafting module landed and the package entry file imported nothing from it. The
+entry file reads its own folder at every load and compares the module files it holds
+against the names it binds, so it named crafting on every start.
+
+What a fresh interpreter printed before this unit
+
+```
+acervator.competition WARNING competition package holds 1 module(s) it does not
+                             bind: crafting
+```
+
+### What the entry file binds from crafting
+
+The entry file imports crafting last, after prayer. The module reads items,
+materials, the Quintessence ledger, vessels and one name from consecration, so every
+module it reads is already imported above it. A module placed before the one it reads
+would stop the package from loading, and the package loads before the operator sees
+a window.
+
+```python
+# crafting imports items, materials, quintessence_ledger, vessels and consecration.
+# 6 repeats of names bound above, grid_faults among them, stay unexported.
+from .crafting import (
+    MIN_CRAFT_TURNS,
+    CRAFT_MOVEMENT,
+    RELEASE_IS_SALVAGE,
+    LOSS_SHARE_ABSENT,
+    ...
+    recipe_for,
+    recipe_rows,
+)
+```
+
+Every existing import line and every existing name is kept.
+
+```
+names in the export list before   817
+names added                        28
+names in the export list after    845
+module files on the disk           41
+module files the package binds     41
+```
+
+### Six names stay unexported, and four of them would have overwritten a value
+
+A package name carries one value. Six of crafting's names repeat a name the entry
+file already binds. Exporting one would replace a value that already works, so the
+entry file skips all six, and a reader reaches them by naming the crafting module.
+
+Measured by reading the value out of each module
+
+```
+the name the package keeps        crafting's own value        the two
+materials.grid_faults            a different function         differ
+vessels.ABSENT_MECHANISMS        nine absences of a craft     differ
+vessels.ABSENT_MECHANISM_NOTES   nine notes of a craft        differ
+the package logger               acervator.crafting           differ
+monster_table.FIGURE_ABSENT      None                         are the same
+items.MIN_COMPONENTS             1                            are the same
+```
+
+Two of the six carry the same value in both modules, so holding those two back
+changes nothing a reader sees. No module's own surface is redefined.
+
+### The items module said nothing builds a craft
+
+The items module listed crafting among the mechanisms no module builds. The crafting
+module completes a craft, so that entry named the wrong gap. It now names the recipe.
+The recipe is absent because two figures are owed, the loss share and the turn count,
+and one decided pair of figures is all a recipe for each item type would need.
+
+The absent-mechanism list and its notes in `src/competition/items.py`
+
+```python
+ABSENT_MECHANISMS: tuple[str, ...] = (
+    "a crafting recipe",
+    ...
+)
+
+ABSENT_MECHANISM_NOTES: dict[str, str] = {
+    "a crafting recipe": (
+        "crafting.CraftRegister.complete_craft turns a component list into an "
+        "item, and no Recipe is declared because loss_share and turns_required "
+        "are two figures no source sets"
+    ),
+    ...
+}
+```
+
+### The Gear subtab prints the module's own sentence
+
+The gear panel builds its mechanism rows straight from the items module's notes, so
+correcting the module corrected the screen and no screen file changed.
+
+```python
+"mechanisms": [
+    row(name, note) for name, note in ITEM_MECHANISM_NOTES.items()
+],
+```
+
+### Driven on the real tab path
+
+The desktop bridge registry was built and the PoA tab's own handler was called
+through it, under the interpreter's development checks with every warning raised as
+an error. The eight rows the Gear subtab draws were read off the payload the handler
+returned, and the package's own log line came from that same run.
+
+```
+acervator.competition DEBUG competition package binds every module it holds
+
+a crafting recipe   crafting.CraftRegister.complete_craft turns a component list
+                    into an item, and no Recipe is declared because loss_share and
+                    turns_required are two figures no source sets
+salvage             nothing destroys an item for the Quintessence it embeds
+equipping           nothing holds an item to a Vessel, so equip_check has no caller
+inventory           nothing holds the items one Vessel carries
+slot count          no figure sets how many gear slots a Vessel has
+encumbrance         nothing weighs what a Vessel hauls
+loot generation     loot_drop.drop_from_pool draws a tier and names no item
+named instances     no artefact is named here; every entry in ITEM_TYPES is a type,
+                    and a named instance waits on crafting naming what it made
+```
+
+Each crafting name was read off the package and compared against the object the
+crafting module holds.
+
+```
+crafting names read off the package      28
+names that did not match the module       0
+names held back                           6
+imported by the package name alone       Recipe, CraftRegister, recipe_for
+```
+
+### What reads the crafting export, and what is still owed
+
+```
+reads the export list      every module that imports a PoA form by the package
+                           name, and src/gui/competition_tab.py
+reads the gear list        proof_of_accumulation_tab_surface.gear builds the Gear
+                           subtab's mechanism rows from it
+on a screen                the Gear subtab, eight rows
+owed                       a recipe. Nothing declares one, and the operator naming
+                           one loss share and one turn count would set both figures
+                           every recipe needs
+absent figures             the loss share and the turn count, both absent. No
+                           module defaults either, and Recipe refuses a craft
+                           without them
+```
+
+The crafting module's own text still says the package binds no name from it, and the
+06:10 entry above still counts 40 modules on the disk. Each held on the day its unit
+wrote it, and this unit changes neither.
 
 ## 2026-09-11 07:15 - #586 - the world turn's pool, counted in steps
 
@@ -11726,6 +11888,6 @@ a surface          the tab's turn meter reads the event turn's candle and its
                    nothing shows a turn's steps remaining
 
 the package entry  does not yet name this module. The package says so itself on
-                   every launch: competition package holds 2 module(s) it does
-                   not bind: crafting, world_turn
+                   every launch: competition package holds 1 module(s) it does
+                   not bind: world_turn
 ```
