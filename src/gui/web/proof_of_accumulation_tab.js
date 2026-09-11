@@ -19,7 +19,9 @@
 // block fill and the turn completion side by side in the player window, and
 // ResetPanel names the two chain files and both reasons a reset carries.
 // Glyph draws one stand-in mark a kind; GlyphLegend lists them all and
-// GlyphAbsence names what nothing supplies.
+// GlyphAbsence names what nothing supplies. MapGrid lays the payload's squares
+// out at its own width and MapSquare draws one, its glyph only where the
+// participant holds a knowledge reference.
 // Every word on screen comes from the payload.
 (function (global) {
   "use strict";
@@ -223,6 +225,17 @@
   var MAP_OPEN_PART = "map-open";
   var MAP_REGION_PART = "map-region";
   var MAP_REGION_TITLE_PART = "map-region-title";
+  var MAP_GRID_PART = "map-grid";
+  var MAP_SQUARE_PART = "map-square";
+  var MAP_VIEW_NOTE_PART = "map-note-view";
+  var MAP_UNDISCOVERED_NOTE_PART = "map-note-undiscovered";
+  var MAP_POSITION_NOTE_PART = "map-note-position";
+  var MAP_ACTIONS_NOTE_PART = "map-note-actions";
+
+  // A square carries its relation to the participant, its index and its sight.
+  var STATE_ATTR = "data-state";
+  var SQUARE_ATTR = "data-square";
+  var IN_VIEW_ATTR = "data-in-view";
 
   // The top row's divider and the right half it separates the Vessel from.
   var TOP_DIVIDER_PART = "top-divider";
@@ -1684,13 +1697,64 @@
     return element("div", part(TAB_CLASS + "-tree", TREE_PANEL_PART), children);
   }
 
+  // One square a cell. A square carrying no glyph is one this participant has not
+  // discovered, and it draws nothing.
+  function MapSquare(props) {
+    var square = props.square;
+    var mark = isPlainObject(square.mark) ? square.mark : null;
+    var squareProps = named(
+      TAB_CLASS + "-map-square",
+      MAP_SQUARE_PART,
+      text(square.label)
+    );
+    squareProps[STATE_ATTR] = text(square.state);
+    squareProps[SQUARE_ATTR] = String(square.index);
+    squareProps[IN_VIEW_ATTR] = String(square.in_view === true);
+    if (mark === null || !text(mark.glyph)) {
+      return element("span", squareProps);
+    }
+    return element(
+      "span",
+      squareProps,
+      element(Glyph, { mark: mark, label: text(square.label) })
+    );
+  }
+
+  // The layer drawn, width squares to a row off the payload's own width.
+  function MapGrid(props) {
+    var squares = Array.isArray(props.squares) ? props.squares : [];
+    if (squares.length === 0) {
+      return null;
+    }
+    var gridProps = part(TAB_CLASS + "-map-grid", MAP_GRID_PART);
+    gridProps.style = {
+      gridTemplateColumns: "repeat(" + String(props.width) + ", 1fr)"
+    };
+    return element(
+      "div",
+      gridProps,
+      squares.filter(isPlainObject).map(function (square) {
+        return element(MapSquare, { key: square.index, square: square });
+      })
+    );
+  }
+
   function MapPanel(props) {
     var map = props.map;
+    var layerRows = Array.isArray(map.layer_rows) ? map.layer_rows : [];
     return element(
       "div",
       part(TAB_CLASS + "-map", MAP_PANEL_PART),
-      titledRows(map.grid_title, map.grid, DETAILS_LIST_PART + "-grid"),
+      element(MapGrid, { squares: map.squares, width: map.width }),
+      note("map-note", MAP_VIEW_NOTE_PART, map.view_text),
+      note("map-note", MAP_UNDISCOVERED_NOTE_PART, map.undiscovered_text),
+      note("map-note", MAP_POSITION_NOTE_PART, map.position_text),
+      note("map-note", MAP_ACTIONS_NOTE_PART, map.actions_absent_text),
       note("map-note", MAP_NOTE_PART, map.absent_text),
+      layerRows.length === 0
+        ? null
+        : titledRows(map.layer_title, layerRows, DETAILS_LIST_PART + "-layer"),
+      titledRows(map.grid_title, map.grid, DETAILS_LIST_PART + "-grid"),
       note("details-note", DETAILS_NOTE_PART, map.world_text),
       note("details-note", DETAILS_NOTE_PART + "-tactical", map.tactical_absent_text)
     );
@@ -2114,7 +2178,7 @@
       element(
         "span",
         part(TAB_CLASS + "-map-note", MAP_NOTE_PART),
-        text(map.region_absent_text)
+        text(map.region_text)
       ),
       element(
         "span",
