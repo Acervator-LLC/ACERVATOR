@@ -2,9 +2,11 @@
 
 ``DUNGEON_MODES`` reads ``poa_modes.EventMode.has_map``, and
 ``event_turns_per_world_turn`` refuses a world turn the event candle leaves a
-remainder of. ``DungeonRegister.enter`` takes one ``EntryRequest`` and writes one
-``DungeonEntry``, ``leave`` writes the matching ``DungeonExit``, and ``clock_of``
-answers ``EVENT_CLOCK`` inside an open entry and ``WORLD_CLOCK`` outside.
+remainder of. ``DungeonRegister.enter`` takes one ``EntryRequest``, refuses a
+party ``world_movement.mover_locator`` does not place at the dungeon and writes
+one ``DungeonEntry``; ``leave`` writes the matching ``DungeonExit``, and
+``clock_of`` answers ``EVENT_CLOCK`` inside an open entry and ``WORLD_CLOCK``
+outside.
 ``ABSENT_MECHANISMS`` names what a dungeon still lacks, the interior and combat
 among them.
 """
@@ -38,6 +40,7 @@ if TYPE_CHECKING:
 
     from .army_command import Party
     from .world_grid import PoaWorld, WorldFact
+    from .world_movement import WorldJourneys
 
 logger = logging.getLogger("acervator.dungeon_entry")
 
@@ -93,6 +96,10 @@ class AlreadyInsideError(DungeonEntryError):
     """Raised by ``enter`` for a member an open entry already holds."""
 
 
+class PartyScatteredError(DungeonEntryError):
+    """Raised by ``enter`` for a member ``mover_locator`` does not stand at the dungeon."""
+
+
 class EntryHeldError(DungeonEntryError):
     """Raised by ``enter`` for an entry id the register already holds."""
 
@@ -144,9 +151,10 @@ TACTICAL_MAP_ABSENT = (
 
 #: What happens when a party loses a member inside. Nothing states it.
 MEMBER_LOSS_ABSENT = (
-    "an entry holds the whole party and one exit closes it, and no module holds "
-    "a position a member could be lost at. Whether one member leaves alone, and "
-    "what a party of none becomes, is unanswered"
+    "an entry holds the whole party and one exit closes it. party_locators reads "
+    "where every member stood at entry, and no module writes a position inside a "
+    "dungeon, so there is no place a member could be lost at. Whether one member "
+    "leaves alone, and what a party of none becomes, is unanswered"
 )
 
 #: What happens when the world turn closes while a party is inside. Nothing states it.
@@ -156,11 +164,16 @@ WORLD_TURN_CLOSE_ABSENT = (
     "operator has written no rule for it"
 )
 
-#: Whether every member stands where the leader does. No module holds one.
+#: Whether every member stands where the dungeon is, and what a still member lacks.
 MEMBER_POSITION_ABSENT = (
-    "one GridPosition is taken for the whole party. world_movement derives a "
-    "mover's position from that mover's own journey leg, and no module holds a "
-    "party's positions together, so a member standing elsewhere is not refused"
+    "enter reads every member's own locator through party_locators, which calls "
+    "world_movement.mover_locator one member at a time, and PartyScatteredError "
+    "refuses a party not all standing at the dungeon's own locator. What is still "
+    "absent is a place for a member that has walked nowhere: such a member holds "
+    "no locator at all and is refused rather than placed, because nothing records "
+    "a participant standing still at the arena every participant starts on, and "
+    "nothing holds a member in place between the world turn the check reads and "
+    "the entry itself"
 )
 
 #: What every absent mechanism waits on, one entry each.
@@ -463,12 +476,18 @@ class DungeonRegister:
 
     # -- Entering, which is the clock switch ---------------------------------
 
-    def enter(self, world: PoaWorld, request: EntryRequest) -> DungeonEntry:
+    def enter(
+        self,
+        world: PoaWorld,
+        request: EntryRequest,
+        journeys: WorldJourneys,
+    ) -> DungeonEntry:
         """Move ``request.party`` off ``WORLD_CLOCK`` onto the ``EVENT_CLOCK``.
 
-        The locator is derived from the request's own position and layer, and the
-        refusals are ``NotADungeonError``, ``PartyModeError``,
-        ``UndiscoveredDungeonError``, ``AlreadyInsideError`` and ``EntryHeldError``.
+        The locator is derived from the request's own position and layer, every
+        member's own locator is read from ``journeys``, and the refusals are
+        ``NotADungeonError``, ``PartyModeError``, ``UndiscoveredDungeonError``,
+        ``PartyScatteredError``, ``AlreadyInsideError`` and ``EntryHeldError``.
         """
         variant = require_dungeon(request.variant)
         party = request.party
@@ -483,6 +502,12 @@ class DungeonRegister:
         locator = position.locator(int(request.layer))
         fact_id = f"{world_id}:{locator}"
         fact = self._require_discovered(world, world_id, fact_id, leader, variant)
+        self._require_party_at(
+            self.party_locators(journeys, world_id, members, entered_world_turn),
+            locator,
+            leader,
+            variant,
+        )
 
         seat = seat_at(variant, entered_at)
         entered_event_turn = seat.turn.index
@@ -683,6 +708,25 @@ class DungeonRegister:
             )
         return rows
 
+    def party_locators(
+        self,
+        journeys: WorldJourneys,
+        world_id: str,
+        members: Sequence[object],
+        world_turn: int,
+    ) -> dict[str, str | None]:
+        """Return the locator each of ``members`` stands at on ``world_turn``.
+
+        ``world_movement.mover_locator`` answers one member at a time, so this is
+        the one reader that holds a whole party's places together, and a member
+        with no journey leg open by ``world_turn`` holds None.
+        """
+        standing: dict[str, str | None] = {}
+        for member in members:
+            wallet = _as_identifier(member, "member")
+            standing[wallet] = journeys.mover_locator(world_id, wallet, world_turn)
+        return standing
+
     def absent_notes(self) -> dict:
         """Return every mechanism ``ABSENT_MECHANISMS`` names and what it waits on."""
         return dict(ABSENT_MECHANISMS)
@@ -699,6 +743,35 @@ class DungeonRegister:
             f"{variant.mode.label} needs a party formed in {variant.mode.code}"
         )
         raise PartyModeError(refusal)
+
+    def _require_party_at(
+        self,
+        standing: dict[str, str | None],
+        locator: str,
+        leader: str,
+        variant: EventVariant,
+    ) -> None:
+        """Raise unless every member in ``standing`` stands at ``locator`` itself.
+
+        A member holding None has walked no leg by the entry's own world turn, so
+        no journey places it at ``locator`` and it is refused beside the members
+        standing somewhere else.
+        """
+        elsewhere = [
+            f"{member} at "
+            + ("no journey leg open by this turn" if held is None else held)
+            for member, held in standing.items()
+            if held != locator
+        ]
+        if not elsewhere:
+            return
+        refusal = (
+            f"{leader} leads this {variant.mode.label} into {locator} and "
+            f"{len(elsewhere)} of {len(standing)} members stand away from it: "
+            f"{'; '.join(elsewhere)}; a party walks into a dungeon from the "
+            f"dungeon's own position"
+        )
+        raise PartyScatteredError(refusal)
 
     def _require_discovered(
         self,

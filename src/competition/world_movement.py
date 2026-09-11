@@ -5,7 +5,8 @@ its rate, and ``JourneyLeg.progress_at`` derives the steps travelled at any
 later turn, so no turn writes a record. ``WorldJourneys.open_leg`` writes one
 leg and ``_require_zone_covers_leg`` refuses one the named ``ZoneRegion`` does
 not cover, while ``WorldJourneys.replay_progress`` rebuilds a leg from the
-chain's own record and derives the same figures. ``terrain_rate`` and the
+chain's own record and derives the same figures and ``mover_locator`` answers the
+locator one mover's own latest leg reaches. ``terrain_rate`` and the
 ``encumbrance`` argument are the two multipliers on ``BASE_STEPS_PER_TURN``, and
 neither carries a default.
 """
@@ -434,6 +435,37 @@ class WorldJourneys:
         record = self._world.world(world_id)
         leg = self.leg_covering(world_id, journey_id, turn)
         return leg.progress_at(turn, record.width)
+
+    def mover_journeys(self, world_id: str, address: str) -> tuple[str, ...]:
+        """The journeys of ``world_id`` ``address`` opened, in opening order."""
+        held = self._legs.get(world_id, {})
+        return tuple(
+            journey_id
+            for journey_id, legs in held.items()
+            if legs and legs[0].mover == address
+        )
+
+    def mover_locator(self, world_id: str, address: str, turn: int) -> str | None:
+        """The ``GridPosition.locator`` ``address`` stands at during ``turn``.
+
+        None answers a mover whose own journeys all open after ``turn`` and one
+        that has opened none, and the locator carries the covering leg's own
+        ``layer``, so a position on two layers never reads as one place.
+        """
+        standing: str | None = None
+        latest: int | None = None
+        for journey_id in self.mover_journeys(world_id, address):
+            if self.legs(world_id, journey_id)[0].opened_turn > turn:
+                continue
+            here = self.progress(world_id, journey_id, turn)
+            if latest is None or here["opened_turn"] >= latest:
+                latest = here["opened_turn"]
+                standing = GridPosition(
+                    square_index=here["square_index"],
+                    step_x=here["square_step_x"],
+                    step_y=here["square_step_y"],
+                ).locator(here["layer"])
+        return standing
 
     def replay_progress(
         self, world_id: str, journey_id: str, leg_index: int, turn: int
