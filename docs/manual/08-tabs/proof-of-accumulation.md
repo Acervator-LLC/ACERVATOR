@@ -12554,6 +12554,20 @@ what it holds      worlds, seeds, breached, zones, facts, knowledge,
                    extracted, published, bands, version
 ```
 
+Two buttons and a panel cost the control bar height, and the bar was already
+scrolling before them. It shows 169 points of its content and the rest scrolls,
+which is how the bar has always worked. The panel sits beside the reset readout
+rather than under it, and that placement gives back 89 of the 189 points the
+stacked version took.
+
+```
+control bar, before this unit     178 points of content in a 169 point window
+the two buttons, stacked panel    367 points
+the two buttons, panel beside     278 points
+what stays visible with no scroll the buttons, and the green result line
+                                  carrying the sentence and all eight figures
+```
+
 ### Three refusals, and the live chain is one of them
 
 The control that deletes a chain already refuses the live chain and already
