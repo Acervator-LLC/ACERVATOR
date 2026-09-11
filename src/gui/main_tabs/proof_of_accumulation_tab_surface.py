@@ -21,7 +21,8 @@ with the value one party row holds and ``character_details`` adds the
 ``resources_panel`` serves ``material_rows``; ``quint_panel`` serves the chain's
 two files against the Quintessence grain and cap; ``skill_pages`` names the Vessel
 and Reincarnate pages over ``SKILL_NAMES``; ``guild_panel`` serves
-``GuildRoster.roster_summary``; and ``map_panel`` serves the ``world_grid`` bounds
+``GuildRoster.roster_summary`` off the roster file ``roster_store`` replays for the
+picked chain; and ``map_panel`` serves the ``world_grid`` bounds
 beside one layer's squares, which ``map_squares`` marks from ``known_facts`` alone so
 an undiscovered square draws nothing.
 ``vessel_panel`` fills the left half of the bisected top row: ``current_vessel``
@@ -86,6 +87,7 @@ from ...competition.event_redistribution import (
     RedistributionError,
 )
 from ...competition.guild_roster import (
+    DEFAULT_ROSTER_PATH,
     RANK_MEMBER,
     RANK_OFFICER,
     TREASURY_ADDRESS_PREFIX,
@@ -295,7 +297,8 @@ USE_QUALITY_NOTE = (
     "untrained skill stands at level 0."
 )
 NO_GUILD_NOTE = (
-    "No guild roster is built, so the guild term of a transfer reads nothing."
+    "A guild roster saves to and loads from its own file, and the guild term of a "
+    "transfer calls that roster nowhere, so the term still reads nothing."
 )
 NO_SLOT_NOTE = "No in-flight record is kept, so nothing holds a transfer in a queue."
 
@@ -342,6 +345,7 @@ AWARD_LEDGER_NAME = TokenLedger.LEDGER_FILE
 LOOT_STORE_NAME = DEFAULT_LOOT_PATH.name
 IDENTITY_NAME = BotIdentity.KEY_FILE
 WORLD_NAME = DEFAULT_WORLD_PATH.name
+ROSTER_NAME = DEFAULT_ROSTER_PATH.name
 FLEET_NAME = "bot_state.json"
 CHAIN_NAME = PERSIST_PARTS[-1]
 LEDGER_DIR = DEFAULT_LEDGER_PATH.parent
@@ -999,9 +1003,11 @@ GUILD_MEMBERS_ROW = "Members"
 GUILD_RANKS_ROW = "Ranks"
 GUILD_TREASURY_ROW = "Treasury address"
 GUILD_BUCKET_ROW = "Treasury bucket"
+GUILD_FILE_ROW = "Roster file"
 GUILD_EMPTY_TEXT = (
-    "No module writes a roster file, so the roster loads empty and no guild is "
-    "listed. Founding one through a control is not built."
+    "GuildRoster.save writes this chain's roster file and this subtab reads it "
+    "back, so a guild founded once is listed on every later draw. No control on "
+    "this page founds a guild, so nothing has written that file yet."
 )
 
 DETAILS_STATS_TITLE = "Stats, each measured in Quintessence"
@@ -2458,10 +2464,19 @@ def quint_panel(chain: str, keep: dict) -> dict:
     }
 
 
-def guild_panel() -> dict:
-    """The roster a fresh ``GuildRoster`` holds, its ranks, and that no file fills one."""
-    roster = GuildRoster()
-    summary = roster.roster_summary()
+def roster_store(chain: str) -> GuildRoster:
+    """``chain``'s ``GuildRoster``, read back off that chain's own roster file."""
+    return GuildRoster(chain_file(ROSTER_NAME, chain)).load()
+
+
+def guild_panel(chain: str) -> dict:
+    """The roster ``chain``'s own file holds, its ranks, and where that file is.
+
+    ``roster_store`` replays the file, so the guilds a founding wrote are the guilds
+    this panel lists on every later draw.
+    """
+    roster_path = chain_file(ROSTER_NAME, chain)
+    summary = roster_store(chain).roster_summary()
     return {
         "title": GUILD_TITLE,
         "rows_title": GUILD_ROWS_TITLE,
@@ -2471,6 +2486,7 @@ def guild_panel() -> dict:
             row(GUILD_RANKS_ROW, ", ".join((RANK_OFFICER, RANK_MEMBER))),
             row(GUILD_TREASURY_ROW, TREASURY_ADDRESS_PREFIX),
             row(GUILD_BUCKET_ROW, TREASURY_LEDGER_BUCKET),
+            row(GUILD_FILE_ROW, file_state_text(roster_path)),
         ],
         "guilds": summary["guilds"],
         "empty_text": GUILD_EMPTY_TEXT if summary["guild_count"] == 0 else "",
@@ -3270,7 +3286,7 @@ def view_model(params: dict) -> dict:
         "encounter": encounter(pot),
         "event": running,
         "gear": gear(chain, running["impetus_granted"]),
-        "guild": guild_panel(),
+        "guild": guild_panel(chain),
         "heading": HEADING,
         "identity": identity_panel(),
         "issue": ISSUE,
