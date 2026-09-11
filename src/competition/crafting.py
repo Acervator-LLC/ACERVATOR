@@ -213,8 +213,9 @@ INVENTORY_ABSENT = (
     "inventory.VesselStore holds what a Vessel carries, begin_craft takes a "
     "Recipe's component units out of it and complete_craft puts the made item in, "
     "so the store's units held, its slots and its stack ceiling each refuse a "
-    "craft alongside the wallet balance; no module puts a material unit in a store "
-    "except a caller's own put_in, so a craft consumes units no world supply counts"
+    "craft alongside the wallet balance; foraging.ForageRegister.forage is the one "
+    "module that puts a material unit in a store, and no world supply counts what "
+    "it yields, so a craft consumes units nothing deducts from a total"
 )
 
 #: The two ends ``grid_faults`` drives. Neither sets a craft's loss.
