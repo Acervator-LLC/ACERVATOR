@@ -6,7 +6,8 @@ else reads, so one square under one seed always forages the same material and
 another square does not. ``ForageRegister.forage`` puts the units one run yields
 into the standing Vessel's ``inventory.VesselStore`` and moves no Quintessence.
 ``FORAGE_YIELD_RATE_NAME`` names the working rate that sets those units,
-``STANDING_POSITION_ABSENT`` names what no module records, ``ABSENT_MECHANISMS``
+``STANDING_POSITION_ABSENT`` names where a standing position comes from and what
+a Vessel's own position still lacks, ``ABSENT_MECHANISMS``
 names what a run still does not do, and ``require_foraging`` drives the window
 guard once at import.
 """
@@ -90,10 +91,12 @@ SQUARE_HOLDS_ONE_MATERIAL = (
 
 #: What no module records about where a Vessel stands, and what reads it here.
 STANDING_POSITION_ABSENT = (
-    "no module records where a Vessel stands. world_movement.JourneyLeg derives a "
-    "position from the turn a leg opened and names a mover address, not a Vessel, "
-    "so forage takes the standing GridPosition from its caller the way "
-    "monster_spawn.derive_monster takes its tier weighting"
+    "no module records where a Vessel stands. world_movement.MoverStanding places "
+    "an address, and a mover that has walked nowhere reads the world's own arena "
+    "square, so a caller can hand forage the arena position of a Vessel's owner "
+    "and that Vessel forages the arena. What stays absent is a Vessel's own "
+    "position apart from its owner's, so forage takes the standing GridPosition "
+    "from its caller the way monster_spawn.derive_monster takes its tier weighting"
 )
 
 #: What a run banks of the Quintessence the gathered units embed, which is nothing.

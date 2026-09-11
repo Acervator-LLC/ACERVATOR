@@ -5,8 +5,10 @@ its rate, and ``JourneyLeg.progress_at`` derives the steps travelled at any
 later turn, so no turn writes a record. ``WorldJourneys.open_leg`` writes one
 leg and ``_require_zone_covers_leg`` refuses one the named ``ZoneRegion`` does
 not cover, while ``WorldJourneys.replay_progress`` rebuilds a leg from the
-chain's own record and derives the same figures and ``mover_locator`` answers the
-locator one mover's own latest leg reaches. ``terrain_rate`` and the
+chain's own record and derives the same figures and ``mover_standing`` answers
+the place one mover's own latest leg reaches, or the world's arena for a mover
+that has opened no leg, with ``mover_locator`` reading that place as the locator
+text every comparison uses. ``terrain_rate`` and the
 ``encumbrance`` argument are the two multipliers on ``BASE_STEPS_PER_TURN``, and
 neither carries a default.
 """
@@ -22,6 +24,7 @@ from pathlib import Path
 
 from ..core.io_utils import atomic_write_json
 from .world_grid import (
+    ARENA_LAYER,
     SQUARE_STEPS,
     GridPosition,
     square_index,
@@ -39,6 +42,15 @@ MOVEMENT_PRECISION = 28
 #: Steps across one square, read from ``SQUARE_STEPS`` so a step is one percent.
 STEPS_PER_SQUARE = SQUARE_STEPS
 
+#: The source naming a standing a mover's own journey leg derives.
+STANDING_FROM_LEG = "journey leg"
+
+#: The source naming a standing the world's own arena square answers.
+STANDING_FROM_ARENA = "arena"
+
+#: Every source a standing can come from. There is no third.
+STANDING_SOURCES: tuple[str, ...] = (STANDING_FROM_LEG, STANDING_FROM_ARENA)
+
 JOURNEY_CONTRACT = "PoaJourneys"
 OPEN_LEG_FUNCTION = "openLeg"
 LEG_OPENED_EVENT = "LegOpened"
@@ -49,6 +61,20 @@ JOURNEY_FILE_VERSION = 1
 
 class MovementError(RuntimeError):
     """Raised for a leg that does not move, a rate that is not positive, a turn before it opened."""
+
+
+def require_mover(value: object) -> str:
+    """Return ``value`` as a non-blank mover address; every other value raises.
+
+    ``mover_standing`` answers the arena for a mover holding no leg, so a blank
+    address would read as somebody standing there.
+    """
+    if type(value) is not str or not value.strip():
+        raise MovementError(
+            f"a mover must be a non-empty wallet address, got {value!r}"
+        )
+    # Returned unstripped: open_leg keys a leg on the address it was given.
+    return value
 
 
 def absolute_steps(position: GridPosition, width: int) -> tuple[int, int]:
@@ -242,6 +268,55 @@ def leg_from_chain(args: dict, mover: str, tx_hash: str) -> JourneyLeg:
         rate=str(args["rate"]),
         open_tx=tx_hash,
     )
+
+
+@dataclass(frozen=True)
+class MoverStanding:
+    """Where one mover stands on one turn, and which of ``STANDING_SOURCES`` said so.
+
+    ``source`` separates a place a mover's own leg derives from the arena the
+    world answers for a mover that has opened no leg, so a consumer that must
+    refuse an assumed place can read it rather than guess.
+    """
+
+    world_id: str
+    mover: str
+    turn: int
+    layer: int
+    position: GridPosition
+    source: str
+
+    def __post_init__(self) -> None:
+        """Refuse a ``source`` ``STANDING_SOURCES`` does not name."""
+        if self.source not in STANDING_SOURCES:
+            raise MovementError(
+                f"{self.source!r} names no standing source; a standing comes "
+                f"from [{', '.join(STANDING_SOURCES)}]"
+            )
+
+    @property
+    def locator(self) -> str:
+        """This standing as the locator text every place comparison reads."""
+        return self.position.locator(self.layer)
+
+    @property
+    def walked_nowhere(self) -> bool:
+        """Whether the world's arena answered this standing, not a journey leg."""
+        return self.source == STANDING_FROM_ARENA
+
+    def to_dict(self) -> dict:
+        """Return this standing as a JSON-safe dict."""
+        return {
+            "world_id": self.world_id,
+            "mover": self.mover,
+            "turn": self.turn,
+            "layer": self.layer,
+            "square_index": self.position.square_index,
+            "step_x": self.position.step_x,
+            "step_y": self.position.step_y,
+            "locator": self.locator,
+            "source": self.source,
+        }
 
 
 class WorldJourneys:
@@ -445,27 +520,57 @@ class WorldJourneys:
             if legs and legs[0].mover == address
         )
 
-    def mover_locator(self, world_id: str, address: str, turn: int) -> str | None:
-        """The ``GridPosition.locator`` ``address`` stands at during ``turn``.
+    def mover_standing(self, world_id: str, address: str, turn: int) -> MoverStanding:
+        """Where ``address`` stands in ``world_id`` during ``turn``, and what said so.
 
-        None answers a mover whose own journeys all open after ``turn`` and one
-        that has opened none, and the locator carries the covering leg's own
-        ``layer``, so a position on two layers never reads as one place.
+        A mover's own latest covering leg answers first. A mover whose journeys
+        all open after ``turn``, and one that has opened none, stands on the
+        world's own ``world_grid.PoaWorld.arena_position``, because the arena is
+        where every participant starts. Raises ``WorldGridError`` for a world the
+        grid store does not hold, and ``MovementError`` for a blank address, so no
+        place is answered for a world that declares no arena or for nobody.
         """
-        standing: str | None = None
+        mover = require_mover(address)
+        standing: MoverStanding | None = None
         latest: int | None = None
-        for journey_id in self.mover_journeys(world_id, address):
+        for journey_id in self.mover_journeys(world_id, mover):
             if self.legs(world_id, journey_id)[0].opened_turn > turn:
                 continue
             here = self.progress(world_id, journey_id, turn)
             if latest is None or here["opened_turn"] >= latest:
                 latest = here["opened_turn"]
-                standing = GridPosition(
-                    square_index=here["square_index"],
-                    step_x=here["square_step_x"],
-                    step_y=here["square_step_y"],
-                ).locator(here["layer"])
-        return standing
+                standing = MoverStanding(
+                    world_id=world_id,
+                    mover=address,
+                    turn=turn,
+                    layer=here["layer"],
+                    position=GridPosition(
+                        square_index=here["square_index"],
+                        step_x=here["square_step_x"],
+                        step_y=here["square_step_y"],
+                    ),
+                    source=STANDING_FROM_LEG,
+                )
+        if standing is not None:
+            return standing
+        return MoverStanding(
+            world_id=world_id,
+            mover=mover,
+            turn=turn,
+            layer=ARENA_LAYER,
+            position=self._world.arena_position(world_id),
+            source=STANDING_FROM_ARENA,
+        )
+
+    def mover_locator(self, world_id: str, address: str, turn: int) -> str:
+        """The ``GridPosition.locator`` ``address`` stands at during ``turn``.
+
+        ``mover_standing`` answers the place, so a mover that has opened no leg
+        reads the world's arena rather than nothing, and the locator carries the
+        covering leg's own ``layer``, so a position on two layers never reads as
+        one place.
+        """
+        return self.mover_standing(world_id, address, turn).locator
 
     def replay_progress(
         self, world_id: str, journey_id: str, leg_index: int, turn: int

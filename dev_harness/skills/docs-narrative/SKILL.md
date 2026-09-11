@@ -49,6 +49,50 @@ describes. Two descriptions of one control is worse than none.
 
 Where he has written nothing, you write it, in his voice and his format.
 
+## An issue body is anchored rows, not prose
+
+Operator, 2026-09-11:
+
+> "Reduce it down to relevant notes that are code anchored and divided neatly
+>  into units worked on... I need organized, sectioned work, bug lists and
+>  resolutions. Notes with code blocks. Specific diagrams for code block or
+>  subsystem flow if needed... Its soup."
+
+> "Writing issues this way is exactly what causes hallucinations. Substance is
+>  improved over all but you are using too many words and saying too much that
+>  makes no sense or is not relevant to what was worked on..."
+
+> "if I do not like the reporting style here or in code comments, that I will not
+>  like it anywhere else...."
+
+**The volume IS the defect, not a side effect of it.** An issue body is read back
+as the grounding for the next unit's brief. An unanchored sentence in it becomes
+that unit's premise, and the unit builds on it. Measured this session: two wrong
+claims of mine reached briefs that way, and the units built against them.
+
+One section a concept he named. Inside it, rows and code blocks:
+
+```
+## <the concept, in his words>
+
+> his directive, quoted, unedited
+
+src/<path>.py
+<a code block copied from the file>
+
+| unit | built | PR |
+| bug | where | resolution |
+
+owed: <figures he has not set>
+```
+
+**Every row carries a path, a symbol, or a constant.** No anchor, no row.
+
+**Nothing about what was discovered, tried, or used to be true.** Comments hold
+history. The body holds the current state.
+
+**A mermaid diagram only where call order or a value's movement is the point.**
+
 ## Reports to him obey the same rule
 
 A status message is documentation. The same density rule applies. A reply that
@@ -78,7 +122,7 @@ The interesting part is        What is notable here
 
 If a fact earns a place, it goes in the body under its own heading or in its own
 sentence, ranked with everything else. If it does not earn a place, it is cut.
-There is no third category for a fact that needs an usher.
+No third category exists for a fact that needs an usher.
 
 The same applies to the closing paragraph that restates what was just said, and
 to a final line offering to do more. He asks when he wants more.

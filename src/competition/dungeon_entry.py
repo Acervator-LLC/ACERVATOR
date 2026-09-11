@@ -168,12 +168,13 @@ WORLD_TURN_CLOSE_ABSENT = (
 MEMBER_POSITION_ABSENT = (
     "enter reads every member's own locator through party_locators, which calls "
     "world_movement.mover_locator one member at a time, and PartyScatteredError "
-    "refuses a party not all standing at the dungeon's own locator. What is still "
-    "absent is a place for a member that has walked nowhere: such a member holds "
-    "no locator at all and is refused rather than placed, because nothing records "
-    "a participant standing still at the arena every participant starts on, and "
-    "nothing holds a member in place between the world turn the check reads and "
-    "the entry itself"
+    "refuses a party not all standing at the dungeon's own locator. A member that "
+    "has walked nowhere now reads the world's own arena square through "
+    "world_movement.MoverStanding, so it is refused for standing at the arena "
+    "rather than for holding no place at all. What is still absent is a roster "
+    "saying which addresses a world holds, so the arena answers any address a "
+    "caller names, and anything holding a member in place between the world turn "
+    "the check reads and the entry itself"
 )
 
 #: What every absent mechanism waits on, one entry each.
@@ -719,7 +720,7 @@ class DungeonRegister:
 
         ``world_movement.mover_locator`` answers one member at a time, so this is
         the one reader that holds a whole party's places together, and a member
-        with no journey leg open by ``world_turn`` holds None.
+        with no journey leg open by ``world_turn`` holds the world's arena.
         """
         standing: dict[str, str | None] = {}
         for member in members:
@@ -753,9 +754,10 @@ class DungeonRegister:
     ) -> None:
         """Raise unless every member in ``standing`` stands at ``locator`` itself.
 
-        A member holding None has walked no leg by the entry's own world turn, so
-        no journey places it at ``locator`` and it is refused beside the members
-        standing somewhere else.
+        ``party_locators`` places a member that walked no leg at the world's
+        arena, so such a member is refused beside the members standing somewhere
+        else unless the dungeon is at the arena itself. None stays refused for a
+        ``standing`` dict a caller built another way.
         """
         elsewhere = [
             f"{member} at "
