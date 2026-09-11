@@ -9006,7 +9006,282 @@ owed   the module's entry in the package export list
 owed   the wallet's Vessels section reading a Reincarnate
 ```
 
-## 2026-09-11 03:30 - #586 - alignment, and the three levels it rolls up
+## 2026-09-11 03:30 - #586 - the world tier, and the Quintessence a slaying imports
+
+A world now has a tier. The tier runs from one to six, and it names the deepest
+dimension the world reaches. Raising it reaches further down, where the
+creatures are harder, so a mature world grows harder and pays more.
+
+```
+src/competition/world_tier.py
+```
+
+### The cataclysm rule, in his own words
+
+```
+PoA - Cataclysms - Monsters - Creatures fought during a cataclysm (alignment
+skewed world event) actually 'import' additional Quint that is added to the
+World if they are slain. This is also the mechanism whereby a World's tier
+(lowest dimension on which it resides) is raised thus permanently increasing
+difficulty and proportionate rewards. This allows loot and resources to roll off
+of charts for mature worlds having predominantly players that do not need their
+statistical bandwith being consumed by unneeded items.
+```
+
+### A higher tier number reaches a lower dimension
+
+His definition reads straight through. The tier counts from one to six. The count
+names the lowest dimension the world sits on. Raising the count reaches deeper,
+and deeper runs harder. That reading is the one this unit took, and nothing he
+has written asks for the opposite.
+
+The depths are not new. The monster table already declares twelve tiers at
+signed depths, six below the player's own plane and six above. A world at tier
+one reaches only the first depth below it. A world at tier six reaches all six.
+This module declares no second scale.
+
+```
+world_tier.lowest_depth_of   reads monster_table.monster_tier_at
+
+tier 1   depth -1   the surface floor
+tier 2   depth -2   executors of a mandate or of fate
+tier 3   depth -3   the decan rank
+tier 4   depth -4   floor bosses
+tier 5   depth -5   the fall tier
+tier 6   depth -6   the summit
+```
+
+Driving the module produced those six names, and nothing copied them from a
+table. The module refuses a seventh tier, and refuses a tier below one.
+
+```
+world w rises to tier 6, reaching depth -6
+WorldTierBoundError: world 'w' sits at tier 6 of 6 and reaches depth -6 already
+WorldTierBoundError: a world tier runs 1 to 6, the 6 descending ranks
+monster_table declares, got 7
+```
+
+### The import moves Quintessence and creates none
+
+Quintessence has a cap of thirty-three million, and that cap holds only while
+every amount sits in one of four places. An import can make none. The ledger
+already had the door. One call takes an amount out of the pleroma, where
+Quintessence rests while nothing holds it, and puts it in the embedded place,
+where a world holds it. His own rule sends a slain creature's Quintessence back
+to the pleroma. The import uses that same door the other way.
+
+```python
+def import_on_slaying(self, ledger, world_id, amount) -> Decimal:
+    standing = self.world(world_id)
+    imported = ledger.embed_from_pleroma(amount)
+```
+
+### One import, driven on a real ledger
+
+The run opened a ledger on a temporary file. It distilled a hundred
+Quintessence, then bled four of that into the pleroma with a transfer. It made
+one import of 1.25 for a world, and read the four totals off the ledger either
+side of the call.
+
+```
+quintessence_ledger.embed_from_pleroma, through
+world_tier.WorldTierRegistry.import_on_slaying
+
+              wallets   held   pleroma   embedded   ever minted   difference
+before          96.00      0      4.00       0.00        100.00         0.00
+after           96.00      0      2.75       1.25        100.00         0.00
+```
+
+The import created nothing. The amount ever minted did not move, and the four
+totals still add to it with no difference. Had that mint figure risen, the
+import would have been making Quintessence, and the thirty-three million cap
+would no longer bound the supply at all. The module said what it did as it did
+it.
+
+```
+acervator.world_tier world world-1 opens at tier 1, reaching depth -1
+acervator.world_tier world world-1 imports 1.25 Quintessence out of the pleroma
+```
+
+### What happens when the pleroma runs dry
+
+Every world draws on one finite pleroma, so an import draws on a shared pool.
+The run drove the ledger dry to find out what it does.
+
+```
+pleroma 0      import 1      ValueError: the pleroma holds 0, cannot embed
+                             1.00000000
+pleroma 0.4    import 1      ValueError: the pleroma holds 0.40000000, cannot
+                             embed 1.00000000
+pleroma 0.4    import 0.4    moved 0.40000000, pleroma left at 0
+```
+
+An import never part-fills. The ledger refuses an amount larger than the pleroma
+holds, whole, and credits the world nothing. After both refusals the world's own
+total still read zero and the four totals still balanced. An amount smaller than
+the smallest unit the currency can express moves nothing and answers zero.
+
+### Farming a world to raise its tier
+
+A world can reach tier six by farming, and nothing in the tree stops it. The
+raise takes one call, and no figure says how much imported Quintessence earns
+one. Six calls to the raise walk a world from tier one to tier six. The module
+declares that figure absent and refuses to answer for it, rather than choosing a
+number nobody chose.
+
+```
+world_tier.tier_raise_threshold
+
+FigureAbsentError: no threshold raises a world tier: the imported Quintessence
+that raises a world one tier. No statement names one, so nothing bounds how
+often raise_tier may be called and a world can be farmed to MAX_WORLD_TIER by
+repeated slaying
+```
+
+The pleroma is the only real brake today, and it brakes the import, not the
+tier.
+
+### The monster table owes the amount one creature imports
+
+Asking what a slain creature imports hands back a refusal, and the monster table
+raises it rather than this module. All twelve of its tiers carry no character
+level, so no Quintessence amount follows from any of them. The monster table
+already counts twelve levels it owes.
+
+```
+world_tier.slaying_import_amount, through
+monster_table.tier_embedded_quintessence
+
+LevelAbsentError: the tier at depth -1 has no level, so no Quintessence amount
+follows: the character level this tier sits at. No source names one.
+```
+
+This module refuses a depth the world does not reach, and that one check is all
+it adds to that path.
+
+```
+WorldTierBoundError: a world at tier 2 reaches [-1, -2], and no creature of it
+sits at depth -5
+```
+
+### Loot rolls off the low end, and one figure decides how much
+
+His sentence rolls loot and resources off the chart as a world matures, because
+mature players do not want their item lists full of things they cannot use. A
+tier picks a band of the chart instead of the whole chart.
+
+The five loot tiers already run commonest first, and the material quality grades
+take the same five names in the same order from the same place. One band answers
+loot and resources together. Cutting from the low end takes the commonest items
+first, which is what his sentence asks for.
+
+```
+world_tier.loot_band   cuts loot_drop.TIER_NAMES, which materials.QUALITY_GRADES
+                       also reads
+
+cut 0    Calx, Cauda Pavonis, Flores, Elixir, Magisterium
+cut 1    Cauda Pavonis, Flores, Elixir, Magisterium
+cut 2    Flores, Elixir, Magisterium
+cut 3    Elixir, Magisterium
+cut 4    Magisterium
+```
+
+How many tiers one world tier cuts is the figure nobody has set. Six world tiers
+and five loot tiers divide by no whole count, so the module refuses to answer a
+band from a tier until someone names that figure.
+
+```
+world_tier.loot_band_at_tier
+
+FigureAbsentError: no band follows from a world tier: how many loot tiers leave
+the chart for each world tier above FIRST_WORLD_TIER. No statement names one.
+```
+
+### A cut band is not yet a drop table
+
+A drop roll needs weights that add to a hundred. A cut band falls short, and
+adding the weights at each cut shows by how much.
+
+```
+world_tier.band_weight_total, against loot_drop.WEIGHT_TOTAL_PCT of 100
+
+cut 0    weights total 100.0
+cut 1    weights total  40.0
+cut 2    weights total  15.0
+cut 3    weights total   4.0
+cut 4    weights total   0.5
+```
+
+Only the uncut chart passes the check the loot module already runs on itself. A
+band names which items a mature world can drop. Nothing reweights what the cut
+leaves, so no roll comes out of a band yet.
+
+### Which clock
+
+The import belongs to the event turn, because a participant slays a creature
+inside an event. The tier raise belongs to the world turn, because the tier is a
+fact about the world that every participant has to see the same way, and a raise
+part way through an event would change the difficulty of a fight already
+running. Nothing schedules either one.
+
+```
+event turn   300 seconds, 60 for an Elite event, read from
+             poa_modes.EventVariant.turn_seconds
+world turn   one hour, counted in whole turns and in seconds nowhere under src
+```
+
+### The registry holds the tier in memory
+
+The registry keeps every world's tier in memory and writes no file, the same as
+the guild roster. His word is permanently, so a world's tier has to outlive a
+restart before this work finishes.
+
+```
+owed   a world's tier surviving a restart
+```
+
+### Nothing calls it
+
+Four things this needs do not exist, and a count found each absence.
+
+```
+cataclysm    no module under src names one
+alignment    no module under src/competition names one
+combat       no module under src names one, so nothing can slay a creature
+world tier   world_grid declares layers and declared no tier before this module
+```
+
+The module provides the two calls a cataclysm would make, and nothing calls it.
+Twelve of the thirteen findings the coding review returned say exactly that: the
+registry, its methods and the reading functions have no caller. The thirteenth
+names a missing copyright line, which no file in the package carries.
+
+Nothing shows a world tier either. Driving the tab's own handler returns
+thirty-one sections, and searching each one finds the words world tier zero
+times, and cataclysm zero times. The conservation panel does already print the
+pleroma and the embedded totals, so an import would show its effect there the
+moment something made one.
+
+```
+owed   a cataclysm, which would raise the tier
+owed   a combat result, which would make the import
+owed   the module's entry in the package export list
+owed   a surface showing a world's tier
+```
+
+### What the world tier reads, and what it hands back
+
+```
+reads, nothing provides   the amount one slain creature imports. The monster
+                          table refuses it, because no tier carries a level
+reads, nothing provides   the imported Quintessence that earns one tier raise
+reads, nothing provides   how many loot tiers one world tier cuts
+reads, nothing provides   a reweighting rule for a cut band
+provides, nothing reads   a world's tier, and the depths that tier reaches
+provides, nothing reads   the import, and the total each world has imported
+provides, nothing reads   the loot band a cut leaves on the chart
+```
+## 2026-09-11 03:50 - #586 - alignment, and the three levels it rolls up
 
 Alignment is now a running total of what a Vessel has done. A player does not pick
 a side. Each action carries its own ratio of Creation to Destruction, and a
