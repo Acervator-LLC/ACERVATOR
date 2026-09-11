@@ -9905,3 +9905,306 @@ pixel art                               no art is commissioned
 
 The map region opens the existing map subtab when it is clicked, which is the
 one route of his sentence that a built subtab already answers.
+
+## 2026-09-11 04:50 - #586 - domination, and the two forms a taking takes
+
+A Vessel now carries a condition, and only a condition of incapacity opens it to
+a taking. A taking comes in two forms. In the first the owner keeps the Vessel and
+another player acts with it. In the second the Vessel changes hands.
+
+```
+src/competition/domination.py
+```
+
+### His words, in full
+
+```
+PoA - Classes - Abilities - Destruction - Another example of an ability or group
+of abilities that sits far on the demonic side of things would be domination or
+possession which allows one player (during PvP) to temporarily control or
+literally steal a Vessel from another. This can only be done to Vessels that are
+incapacitated in some way.
+```
+
+```
+Vessel Incapacitation causes: Health At Zero or Mentally Comprimised by Daze or
+similar.
+```
+
+```
+Do not get too far down the hole on the incapacitation. This will tied to what
+certain abilities do and the length of time it lasts depends on what was used to
+cause it.
+```
+
+### The ability is absent, and these are the two mechanisms it would call
+
+No ability system exists. The skill ladder holds one entry, the Quintessence
+Transfer. This work builds no ability, no ability table and no skill tree. It
+builds the state his rule gates on, and the taking itself.
+
+```
+skill_ladder.SKILL_NAMES   one entry, the Quintessence Transfer
+an ability                 absent. The ability that invokes them is absent
+a skill slot               absent, and a separate item
+```
+
+### Both gates bind, and neither one is optional
+
+His sentence carries two conditions. A taking happens during PvP, and only to a
+Vessel carrying an incapacitation. The PvP half already existed, and this work
+reads it rather than writing a second one. The permission already honours a
+carried mode, a week-long lock and a PvP event flag, and it already refuses a
+player acting against their own address.
+
+```
+during PvP only        pvp_vote.may_destroy answers it. No second permission
+                       exists in this work
+incapacitated only     require_incapacitated refuses a Vessel that reads able
+
+driven, both refusals
+
+no PvP mode      refused   0xthief may not take 0xvictim's Vessel on world turn
+                           0; may_destroy permits a taking while a PvP mode or a
+                           PvP lock holds that turn or a PvP event is set
+health above zero,
+no effect        refused   0xvictim's Lead Ward reads able and only a Vessel
+                           reading incapacitated may be taken
+```
+
+### Two causes, and the line he drew between them
+
+His sentence names a body and a mind. The code keeps them apart, as two kinds. A
+taking reads either kind and asks for neither in particular, because nothing in
+his words prefers one.
+
+```
+physical   health at zero
+mental     compromised by a daze or similar
+```
+
+His phrase, or similar, makes the mental kind a class and not one effect. The
+daze is the one member he named. A second joins the list without any other
+change, and nothing here invents what the others are.
+
+```
+INCAPACITATION_KINDS   physical, mental
+MENTAL_EFFECTS         daze
+an unnamed effect      refused. 'stun' is no mental effect
+```
+
+### How long it lasts belongs to the ability, not to the state
+
+His second sentence settles the length. It depends on what caused it, which makes
+it a property of each ability. No ability exists, so nothing here decides a length
+and nothing here runs a timer. The state records an end its caller gives, and
+reports whether a Vessel is incapacitated now.
+
+```
+one run, a daze given an end of world turn 1
+
+on world turn 0   kinds (mental,)   a taking is permitted
+on world turn 1   kinds ()          refused, the Vessel reads able
+given no end      holds at every world turn
+```
+
+That keeps the length out of this work entirely. A caller that applies an
+incapacitation says how long it holds. This module compares that end against one
+world turn and computes nothing.
+
+### Both causes read a value nothing supplies
+
+This is the honest half. His causes are now named and both are still out of
+reach, because nothing can reduce a health value and nothing can apply a daze.
+
+```
+a Vessel's health    vessels.Vessel carries an owner, a class and a level. There
+                     is no health field, and this work adds none
+health as a stat     the five stats are strength, dexterity, constitution,
+                     intelligence and wisdom. Health is not among them
+a maximum            no figure names full health
+a daze               no module applies one, and no module removes one
+```
+
+A bot's health in dollars is a different thing and is not reused. The trading
+metaphor reads a dollar target and names no Vessel, so no Vessel's health comes
+from it.
+
+```
+rpg_metrics.health_metrics   max_health_usd from scrumming_state.target_balance
+```
+
+The register takes a health reading from whoever calls it, and says as much in its
+own output. Health is a decimal, never a binary fraction.
+
+### Two forms, and they are not one call
+
+His sentence draws a line between controlling a Vessel and stealing it. Two
+separate calls keep that line. Only one of them moves an owner.
+
+```
+take_control   the owner keeps the Vessel, and another player acts with it
+steal_vessel   the owner changes, and both players are rebuilt around the move
+
+driven, a dazed Vessel under another player's control
+
+controller 0xthief   owner 0xvictim   ownership moved  False
+the victim still holds four Vessels
+```
+
+What ends a temporary control is not stated and nothing ends it. The only clock
+figure within reach is the turn the PvP permission lapses on, and that lapses the
+permission rather than the hold.
+
+```
+owed   how long a temporary control lasts, and what ends it
+```
+
+### A stolen Vessel makes the thief weaker, and that rule was already there
+
+Every Vessel a player owns draws on one wallet balance. Adding a Vessel raises
+what the wallet must cover, and the same balance then stretches further. Taking a
+Vessel costs the thief on every Vessel it already had. This work adds no penalty
+for theft. The existing rule already charges for it, and a second charge would be
+a figure nobody chose.
+
+```
+one owner at level 12, against a balance of 100
+
+3 Vessels   requirement 210   each reaches 0.4761904761 of full
+4 Vessels   requirement 280   each reaches 0.3571428571
+5 Vessels   requirement 350   each reaches 0.2857142857
+```
+
+### One theft, driven on real objects
+
+One run drove a theft between two players and read both sides off the objects
+themselves, before and after. The victim held four Vessels and the thief held
+three. Both readings used one balance, which a theft does not touch.
+
+```
+steal_vessel, driven under python -X dev -X faulthandler
+
+the Vessel moved      0xvictim's Lead Ward now reads owner 0xthief
+0xvictim  4 -> 3      requirement 280 -> 210    0.3571428571 -> 0.4761904761
+0xthief   3 -> 4      requirement 210 -> 280    0.4761904761 -> 0.3571428571
+```
+
+The victim's remaining Vessels grew stronger. Every Vessel the thief owns grew
+weaker. That is the whole cost of a theft and it needed nothing new to price it.
+
+A first run of this went red. The module's own report of the result carried more
+placeholders than values, and it raised a type error instead of printing. A
+failure of that run would have meant a taking whose outcome nobody could read. The
+correction landed, and the same run now prints both sides.
+
+### The four abuse questions, answered
+
+Four ways a player might misuse a taking. One run drove each of them, and each
+answer is what the code did rather than what it intends.
+
+```
+take a Vessel they cannot power     YES. The shortfall is simply larger, and the
+                                    thief carries it. Driven: the thief ends at
+                                    0.3571428571 of full with a shortfall of 180
+take an already taken Vessel        YES, by a third player. The condition moves
+                                    with the Vessel, and nothing removes it
+dump a Vessel on an enemy           NO. A taking has no recipient field. The new
+                                    owner is always the taker, so the dilution
+                                    lands on whoever takes
+take their own Vessel               NO. The PvP permission already refuses a
+                                    player acting against their own address
+```
+
+The third answer is the one worth stating plainly. Because extra Vessels weaken
+their owner, forcing a Vessel onto an enemy would harm them. No call does it. A
+taking moves a Vessel to the taker and to nobody else.
+
+### The condition stayed behind on a theft, and now moves with the Vessel
+
+A Vessel's condition files under its owner and its class. A theft changes the
+owner, so the entry must move with the Vessel. It did not at first. The taken
+Vessel read able under its new owner, and the victim's next Vessel of that same
+class read incapacitated with nothing having touched it. Both readings were
+wrong and both are now right.
+
+```
+the taken Lead Ward, after the theft   incapacitated, under its new owner
+a fresh Lead Ward of 0xvictim          able
+```
+
+The scored actions a Vessel has taken do not move with it. They stay filed under
+the old owner. A Vessel carries no id of its own, which is the field that would
+carry them across, and that absence is already recorded against alignment.
+
+### Whose alignment moves
+
+A taking can carry a score on the Creation to Destruction scale, and the score
+files against the Vessel that performed it. His rule makes alignment a function of
+all a Vessel's life choices, so the acting Vessel is the reading this work takes.
+Adding a player's Vessels still gives a player-level reading.
+
+This work chooses no ratio. An action carries its own ratio, this module declares
+none, and the figure is his.
+
+```
+score_taking, driven with a caller-supplied ratio of 0 creation to 1 destruction
+
+scored against   0xthief's Quicksilver Draught, the acting Vessel
+polarity         -1
+action           theft of another player's Vessel
+a wrong Vessel   refused
+
+owed   the ratio a control and a theft each carry
+```
+
+### Which clock a taking answers to
+
+The world clock. The permission reads a world turn, and a taking records that same
+turn. Neither kind of incapacitation carries a clock of its own.
+
+```
+world turn   one hour, and the turn may_destroy reads the permission on
+event turn   not read by a taking
+a given end  recorded against a world turn, and supplied by the caller
+```
+
+### What stays absent around a taking
+
+Seven things read a taking or an incapacitation, and none of them exists.
+
+```
+an ability                    nothing invokes either form
+combat                        nothing resolves a fight, so nothing empties a
+                              health value
+a surface                     no tab or panel shows a taking or a condition
+a health reading              no module holds a Vessel's health
+a mental effect               nothing applies a daze, and nothing removes one
+a control duration            no figure names one
+a ratio                       the operator sets it
+```
+
+### Nothing in the running program yet takes a Vessel
+
+Nothing outside this module's own driven check calls either form. The package
+export list carries no name from it, so a taking needs a direct import of the
+module.
+
+```
+owed   the module's entry in the package export list
+owed   a control on a screen that starts a taking
+```
+
+### What a taking reads, and what it hands back
+
+```
+reads, nothing provides   a health value, and anything that lowers one to zero
+reads, nothing provides   a daze, and anything that applies or removes one
+reads, nothing provides   a domination ability, which is the caller of both forms
+reads, nothing provides   a ratio of Creation to Destruction for either form
+reads, nothing provides   an end for an incapacitation, which each ability carries
+provides, nothing reads   a Vessel's condition, and the kind behind it
+provides, nothing reads   a control hold, naming the controller and the owner
+provides, nothing reads   a theft record, reconstructible after the owner moved
+provides, nothing reads   both players' potential before and after a taking
+```
