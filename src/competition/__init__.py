@@ -31,6 +31,9 @@ from .quintessence_ledger import (
     QuintessenceConservation,
     QuintessenceTransfer,
     QUINTESSENCE_SUPPLY_CAP,
+    FLUOR,
+    FLUOR_SOURCE,
+    FLUOR_RATE_ABSENT,
     bleed_fraction,
 )
 from .competition_engine import (
@@ -1108,6 +1111,9 @@ __all__ = [
     "QuintessenceConservation",
     "QuintessenceTransfer",
     "QUINTESSENCE_SUPPLY_CAP",
+    "FLUOR",
+    "FLUOR_SOURCE",
+    "FLUOR_RATE_ABSENT",
     "bleed_fraction",
     "CompetitionEngine",
     "CompetitionStatus",
