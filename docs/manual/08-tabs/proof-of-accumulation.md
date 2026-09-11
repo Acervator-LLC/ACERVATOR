@@ -10525,3 +10525,180 @@ provides, nothing reads   each priest's own shift in the same direction
 provides, nothing reads   a prayer record naming who prayed over whom
 provides, nothing reads   a Vessel's own choices, separable from what was done to it
 ```
+
+## 2026-09-11 05:30 - #586 - consecrated places, and the prayer that holds one
+
+A priest can now consecrate a place for a guild. The place adds its own weight to
+that guild's alignment, and the guilds add up to the world, so a held place is
+the third thing that steers a world. The first is what a Vessel does. The second
+is a prayer said over another player. This one is ground, and it is held only
+while priests keep attending to it.
+
+```
+src/competition/consecration.py
+```
+
+### His words on a consecrated place
+
+```
+PoA - Classes - Abilities - Priests - Blessed and Cursed Places - Priests can
+further effect world alignment by consecrating locations for their Guilds. These
+can be single simple buildings or entire Guild Halls. Size defines the required
+time and cost.
+```
+
+```
+Without persistent and repeated prayer by one or more priests, a place will
+slowly lose its consecration status.
+```
+
+### Blessed and cursed are one act in two directions
+
+The direction a place is consecrated in is not chosen. It is read off the
+consecrating priest's own running alignment. A priest on the Creation side
+blesses, a priest on the Destruction side curses, and the record is otherwise
+identical. A priest who has done nothing, and a priest whose good and bad cancel
+exactly, cannot consecrate at all, because neither has a side to read.
+
+```
+priest reads  0.5   ->  blessed, the weight goes to Creation
+priest reads -1     ->  cursed,  the weight goes to Destruction
+priest reads  0     ->  refused, neither side is named
+priest unscored     ->  refused, there is no reading at all
+```
+
+### A place joins the chain at the guild level
+
+His sentence puts the effect on world alignment and the holding on the guild, so a
+place enters the chain one level above a Vessel. The module holding the running
+totals was not touched. A guild reading is now its members' Vessels plus the
+places it holds, and a world reading is every guild's Vessels plus every guild's
+held places.
+
+```python
+register.guild_alignment(ledger, guild, world_turn, rates)
+register.world_alignment(ledger, roster, world_turn, rates)
+```
+
+One run, two blessed places of different size for one guild:
+
+```
+world before any place      net   2   total  4   polarity  0.5
+world after two places      net  47   total 49   polarity  0.959
+```
+
+The same act by a priest on the other side, on a second guild's place:
+
+```
+world before the cursed place    net  38   total 58   polarity  0.655
+world after the cursed place     net  -2   total 98   polarity -0.020
+```
+
+One cursed place carried that whole world across the middle.
+
+### Size sets the required time and cost, and no figure names either
+
+Size is a whole rank, smallest first. Nothing names how many ranks there are, nor
+which rank a single simple building holds and which an entire Guild Hall holds.
+The required turns and the required cost arrive with the size, and a size that
+lacks either is refused outright.
+
+What is enforced with no figure at all is his relation. A larger place must
+require at least as much time and at least as much cost as a smaller one, and a
+ladder that breaks either is refused.
+
+```
+REFUSED  size 4 requires 1 world turns and the smaller size 1 requires 2;
+         a larger size requires at least as much time
+REFUSED  size 4 costs 1 and the smaller size 1 costs 10;
+         a larger size requires at least as much cost
+```
+
+The cost is declared and nothing spends it. The Quintessence ledger owns every
+movement of Quintessence, and debiting a guild belongs to a later unit.
+
+### A place without prayer loses its status
+
+A consecration opens at full status and falls by a flat amount for every world
+turn of silence. A prayer puts the status back up and never down, and more
+priests praying together restore at least as much as fewer do, which is the same
+group rule the prayer module already applies to a congregation. The fall rate,
+the amount a priest restores, and the point at which a place is no longer
+consecrated are three figures nobody has named, so every reading asks the caller
+for all three and refuses without them.
+
+One run, at a fall of 0.25 a turn and a lapse point of zero:
+
+```
+turn 100   status 1.00   consecrated   the guild's places add 45
+turn 101   status 0.75   consecrated   the guild's places add 45
+turn 102   status 0.50   consecrated   the guild's places add 45
+turn 103   status 0.25   consecrated   the guild's places add 45
+turn 104   status 0      lapsed        the guild's places add 0
+```
+
+At turn 104 the place stops steering the world and the guild falls back to its
+Vessels alone. One priest praying on turn 102 took that status from 0.50 to 1.00.
+Three priests restored 1.5 where one restored 0.5.
+
+A set of figures that no amount of prayer could hold is refused before it is
+used:
+
+```
+REFUSED  a status falls 0.25 a world turn and a praying priest restores 0,
+         so no amount of prayer holds a place consecrated
+```
+
+### One locator holds one consecration
+
+A place is named by a locator, which is its layer, its square, and the whole
+percent across that square. One locator carries one consecration. A second
+consecration there is refused while the first still holds, whoever asks and in
+whichever direction.
+
+```
+REFUSED  3:7:68:12 is already consecrated as blessed for guild
+         order_of_the_kiln, last prayed over on world turn 102;
+         guild sworn_of_ash cannot consecrate it as cursed
+```
+
+A rival takes a place only after it has lapsed. Nothing breaks a consecration
+that priests are still praying over, and no act exists that would.
+
+### How far stacking reaches, measured
+
+A guild holding enough places could outweigh everything its players have ever
+done. Twenty places against one Vessel action were measured:
+
+```
+turn 100, twenty places held      net 801   total 801   the places carried 800
+turn 104, nobody prayed           net   1   total   1   the places carried 0
+```
+
+The arithmetic caps nothing, and his decay rule is the bound. Every held place
+lapses four turns after its last prayer at these figures, so holding twenty
+places costs twenty prayers every four turns. A guild reaches exactly as far as
+its priests keep reaching, and no cap of any kind was added.
+
+### Which clock, and what a consecration does not have
+
+Every turn on a consecration is a whole world turn, counted the way the PvP vote
+counts one. A world turn is one hour by his own words, and no constant in the
+code names its length, so the hour lives in prose.
+
+A consecration records the guild it is held for and confers no ownership of the
+place. The world grid carries no owner on a square, a zone, or a fact. No
+building, guild hall or structure is constructed either: his own rule made a
+building system conditional on world instance storage on chain being viable, the
+world grid is now built with its byte budget measured, so the condition is met
+and the building is a later unit.
+
+```
+no caller       nothing in the running program yet consecrates a place
+no priest       no class is a priest, so any Vessel can consecrate
+no membership   nothing checks that the priest belongs to the guild named
+no prayer       the prayer module writes a player's alignment and targets no
+                place, so nothing yet restores a consecration's status
+no surface      no tab, no panel and no map glyph shows a consecrated place
+no warning      nothing tells a guild that a place it holds is lapsing
+```
