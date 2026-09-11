@@ -3,9 +3,11 @@
 ``LOOT_TIERS`` carries the five weights and ``tier_bounds`` cuts them into whole
 spans of ``draw_span``. ``drop_from_pool`` refuses a pool under
 ``MIN_ELIGIBLE_POOL`` and ``drop_for_market`` refuses a market
-``MarketRotation.reward_reason`` does not answer ``IN_ROTATION`` for.
+``MarketRotation.reward_reason`` does not answer ``IN_ROTATION`` for, and a
+``yields`` mapping names the ``items.ITEM_TYPES`` entry each tier drops.
 ``augment_action`` applies a holding's bonuses to one action's Impetus cost and
-effect, and ``LootStore`` holds every ``LootDrop``, one file a chain.
+effect, ``LootStore`` holds every ``LootDrop``, one file a chain, and
+``LootStore.deliver`` puts one drop in an ``inventory.VesselStore`` once.
 """
 
 from __future__ import annotations
@@ -13,9 +15,11 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from numpy.random import Generator, default_rng
 
@@ -27,6 +31,9 @@ from .market_rotation import (
     MarketRotation,
 )
 from .poa_modes import IMPETUS_FLOOR, IMPETUS_SPEED_CAP_FACTOR
+
+if TYPE_CHECKING:
+    from .inventory import StoreChange, VesselStore
 
 CALX = "Calx"
 CAUDA_PAVONIS = "Cauda Pavonis"
@@ -47,7 +54,23 @@ PERCENT_SCALE = Decimal(100)
 LOOT_DROP_SEED = 1155
 
 DEFAULT_LOOT_PATH = Path.home() / ".acervator" / "loot_store.json"
-LOOT_FILE_VERSION = 1
+LOOT_FILE_VERSION = 2
+
+#: The units one drop puts in a store. One drop is one item.
+UNITS_PER_DROP = 1
+
+#: What no source sets, and what ``require_yields`` refuses a drop without.
+TIER_YIELD_ABSENT = (
+    "no source names the item type a loot tier yields, so drop_for_market takes a "
+    "yields mapping from its caller and refuses a drop without one"
+)
+
+#: What a ``LootDrop`` does not name, so ``LootStore.deliver`` is given the store.
+DROP_VESSEL_ABSENT = (
+    "a LootDrop names a holder by wallet address and names no Vessel, and "
+    "inventory.StoreBook keys one store a Vessel, so LootStore.deliver takes the "
+    "receiving store from its caller"
+)
 
 
 class LootError(RuntimeError):
@@ -64,6 +87,18 @@ class UnknownTierError(LootError):
 
 class LootDropRefusedError(LootError):
     """Raised by ``drop_from_pool`` and ``drop_for_market`` when no market qualifies."""
+
+
+class DropItemError(LootError):
+    """Raised for an item type or a quality grade the item tables do not declare."""
+
+
+class TierYieldError(LootError):
+    """Raised by ``require_yields`` for a tier carrying no item type."""
+
+
+class DropDeliveryError(LootError):
+    """Raised by ``LootStore.deliver`` for an unheld item or a second delivery."""
 
 
 class LootStoreError(LootError):
@@ -247,6 +282,66 @@ def augment_action(cost: int, held: tuple[LootTier, ...]) -> AugmentedAction:
     )
 
 
+# -- What a tier yields, which the item table declares and no figure maps -----
+
+
+def declared_item_types() -> tuple[str, ...]:
+    """Every name ``items.ITEM_TYPE_NAMES`` declares, imported inside this function."""
+    # materials imports this module for TIER_NAMES, so items is read at call time.
+    from .items import ITEM_TYPE_NAMES
+
+    return ITEM_TYPE_NAMES
+
+
+def drop_storage_class(item_type: str, quality: str) -> str:
+    """Return the class ``items.ITEM_TYPES`` stores ``item_type`` under."""
+    # A drop's storage class comes from the item type and never from the drop.
+    from .items import UnknownItemTypeError, item_type_named
+    from .materials import UnknownQualityError, quality_index
+
+    try:
+        quality_index(quality)
+        return item_type_named(item_type).storage_class
+    except (UnknownItemTypeError, UnknownQualityError) as exc:
+        raise DropItemError(str(exc)) from exc
+
+
+def require_yields(yields: Mapping[str, str] | None) -> dict[str, str]:
+    """Return ``yields`` once every ``TIER_NAMES`` entry maps to a declared type."""
+    if yields is None:
+        raise TierYieldError(TIER_YIELD_ABSENT)
+    extra = tuple(sorted(set(yields) - set(TIER_NAMES)))
+    if extra:
+        refusal = (
+            f"{', '.join(extra)} names no loot tier; the five are "
+            f"{', '.join(TIER_NAMES)}"
+        )
+        raise UnknownTierError(refusal)
+    declared = declared_item_types()
+    mapped: dict[str, str] = {}
+    for name in TIER_NAMES:
+        item_type = yields.get(name)
+        if item_type is None:
+            refusal = (
+                f"{name} carries no item type, so a roll landing on it would name "
+                f"no thing; {TIER_YIELD_ABSENT}"
+            )
+            raise TierYieldError(refusal)
+        if item_type not in declared:
+            refusal = (
+                f"{name} yields {item_type!r}, which is not a PoA item type; "
+                f"the table carries {', '.join(declared)}"
+            )
+            raise DropItemError(refusal)
+        mapped[name] = item_type
+    return mapped
+
+
+def item_type_for_tier(tier: LootTier, yields: Mapping[str, str] | None) -> str:
+    """Return the item type ``yields`` gives ``tier``, after ``require_yields``."""
+    return require_yields(yields)[tier.name]
+
+
 # -- The drop ----------------------------------------------------------------
 
 
@@ -281,11 +376,16 @@ def request_from_pool(
 
 @dataclass(frozen=True)
 class LootDrop:
-    """One item a qualifying market dropped, and the ``roll`` choosing its tier."""
+    """One item a qualifying market dropped: its tier, its ``item_type``, its holder.
+
+    ``quality`` is this drop's own ``tier_name`` and ``storage_class`` is read off
+    ``items.ITEM_TYPES``.
+    """
 
     item_id: str
     tier_name: str
     short_form: str
+    item_type: str
     exchange_id: str
     symbol: str
     season: int
@@ -293,17 +393,34 @@ class LootDrop:
     holder: str
     dropped_at: float
 
+    def __post_init__(self) -> None:
+        """Refuse an ``item_type`` or a ``quality`` the item tables do not declare."""
+        drop_storage_class(self.item_type, self.quality)
+
     @property
     def tier(self) -> LootTier:
         """Return the entry in ``LOOT_TIERS`` this drop's ``tier_name`` names."""
         return tier_named(self.tier_name)
 
+    @property
+    def quality(self) -> str:
+        """This drop's quality grade, which is its own ``tier_name``."""
+        return self.tier_name
+
+    @property
+    def storage_class(self) -> str:
+        """The class ``items.ITEM_TYPES`` stores this drop's ``item_type`` under."""
+        return drop_storage_class(self.item_type, self.quality)
+
     def to_dict(self) -> dict:
-        """Return this drop as a JSON-safe dict."""
+        """Return this drop as a JSON-safe dict, ``storage_class`` among the reads."""
         return {
             "item_id": self.item_id,
             "tier_name": self.tier_name,
             "short_form": self.short_form,
+            "item_type": self.item_type,
+            "quality": self.quality,
+            "storage_class": self.storage_class,
             "exchange_id": self.exchange_id,
             "symbol": self.symbol,
             "season": self.season,
@@ -314,11 +431,12 @@ class LootDrop:
 
     @classmethod
     def from_dict(cls, d: dict) -> LootDrop:
-        """Rebuild a ``LootDrop`` from a ``to_dict`` record."""
+        """Rebuild a ``LootDrop``, deriving ``quality`` and ``storage_class`` afresh."""
         return cls(
             item_id=str(d["item_id"]),
             tier_name=str(d["tier_name"]),
             short_form=str(d["short_form"]),
+            item_type=str(d["item_type"]),
             exchange_id=str(d["exchange_id"]),
             symbol=str(d["symbol"]),
             season=int(d["season"]),
@@ -337,12 +455,13 @@ def item_id_for(payload: dict) -> str:
 def drop_for_market(
     rotation: MarketRotation,
     request: DropRequest,
+    yields: Mapping[str, str] | None = None,
     rng: Generator | None = None,
 ) -> LootDrop:
     """Draw one ``LootDrop`` for ``request``, refusing a market outside the rotation.
 
-    ``MarketRotation.reward_reason`` decides what qualifies and this writes no
-    second rule.
+    ``MarketRotation.reward_reason`` decides what qualifies, ``require_yields``
+    decides what the rolled tier names, and this writes no second rule.
     """
     reason = rotation.reward_reason(request.exchange_id, request.symbol)
     if reason != IN_ROTATION:
@@ -351,12 +470,15 @@ def drop_for_market(
             f"{reason}; a drop comes from a market the open rotation window drew"
         )
         raise LootDropRefusedError(refusal)
+    mapped = require_yields(yields)
     generator = drop_rng() if rng is None else rng
     roll = int(generator.integers(0, draw_span()))
     tier = tier_for_roll(roll)
+    item_type = mapped[tier.name]
     dropped_at = time.time() if request.at_epoch is None else float(request.at_epoch)
     payload = {
         "tier_name": tier.name,
+        "item_type": item_type,
         "exchange_id": request.exchange_id,
         "symbol": request.symbol,
         "season": int(request.season),
@@ -368,6 +490,7 @@ def drop_for_market(
         item_id=item_id_for(payload),
         tier_name=tier.name,
         short_form=tier.short_form,
+        item_type=item_type,
         exchange_id=request.exchange_id,
         symbol=request.symbol,
         season=int(request.season),
@@ -381,6 +504,7 @@ def drop_from_pool(
     rotation: MarketRotation,
     pool: EligiblePool,
     request: DropRequest,
+    yields: Mapping[str, str] | None = None,
     rng: Generator | None = None,
 ) -> LootDrop:
     """Draw for ``request`` once ``pool.pool_size`` clears ``MIN_ELIGIBLE_POOL``.
@@ -400,7 +524,7 @@ def drop_from_pool(
             f"qualifies and no loot drops"
         )
         raise LootDropRefusedError(refusal)
-    return drop_for_market(rotation, request, rng)
+    return drop_for_market(rotation, request, yields, rng)
 
 
 # -- The store ---------------------------------------------------------------
@@ -413,6 +537,7 @@ class LootStore:
         """Point the store at ``store_path`` or ``DEFAULT_LOOT_PATH``, reading none."""
         self._path: Path = Path(store_path) if store_path else DEFAULT_LOOT_PATH
         self._drops: list[LootDrop] = []
+        self._delivered: dict[str, str] = {}
 
     @property
     def store_path(self) -> Path:
@@ -431,6 +556,55 @@ class LootStore:
         self._drops.append(drop)
         return drop
 
+    def drop(self, item_id: str) -> LootDrop:
+        """Return the drop ``item_id`` names, refusing an id this store lacks."""
+        wanted = str(item_id)
+        for held in self._drops:
+            if held.item_id == wanted:
+                return held
+        refusal = (
+            f"{wanted[:16]} names no item this store holds; it holds "
+            f"{len(self._drops)}"
+        )
+        raise DropDeliveryError(refusal)
+
+    def delivered_to(self, item_id: str) -> str | None:
+        """Return the ``store_key`` that took ``item_id``, or None while none has."""
+        return self._delivered.get(str(item_id))
+
+    def undelivered(self, holder: str) -> list[LootDrop]:
+        """``holder``'s drops no store has taken, in ``held`` order."""
+        return [
+            drop for drop in self.held(holder)
+            if drop.item_id not in self._delivered
+        ]
+
+    def deliver(self, item_id: str, store: VesselStore) -> StoreChange:
+        """Put the drop ``item_id`` names into ``store``, once and only on success.
+
+        ``VesselStore.put_in`` decides whether a slot or a stack takes it, and a
+        refusal leaves the drop undelivered.
+        """
+        from .inventory import VesselStore as VesselStoreClass
+
+        if not isinstance(store, VesselStoreClass):
+            refusal = (
+                f"a VesselStore was expected, got {type(store).__name__}; "
+                f"{DROP_VESSEL_ABSENT}"
+            )
+            raise DropDeliveryError(refusal)
+        held = self.drop(item_id)
+        taken = self.delivered_to(held.item_id)
+        if taken is not None:
+            refusal = (
+                f"item {held.item_id[:16]} already went to {taken}; one drop "
+                f"reaches one store"
+            )
+            raise DropDeliveryError(refusal)
+        change = store.put_in(held.item_type, held.quality, UNITS_PER_DROP)
+        self._delivered[held.item_id] = change.store_key
+        return change
+
     def held(self, holder: str) -> list[LootDrop]:
         """Return ``holder``'s drops, rarest first and newest first inside one tier."""
         order = {tier.name: index for index, tier in enumerate(LOOT_TIERS)}
@@ -442,18 +616,19 @@ class LootStore:
         return tuple(drop.tier for drop in self.held(holder))
 
     def save(self) -> Path:
-        """Write every drop to ``store_path`` through ``atomic_write_json``."""
+        """Write every drop and every delivery through ``atomic_write_json``."""
         return atomic_write_json(
             self._path,
             {
                 "version": LOOT_FILE_VERSION,
                 "drops": [drop.to_dict() for drop in self._drops],
+                "deliveries": dict(self._delivered),
             },
         )
 
     def load(self) -> LootStore:
         """Replay ``store_path``, raising on an unreadable file or a second replay."""
-        if self._drops:
+        if self._drops or self._delivered:
             already = f"{self._path} is already loaded; a second replay would double it"
             raise LootStoreError(already)
         if not self._path.exists():
@@ -473,7 +648,23 @@ class LootStore:
         try:
             for record in data.get("drops", []):
                 self._drops.append(LootDrop.from_dict(record))
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, LootError) as exc:
             unreadable = f"{self._path} could not be replayed: {exc}"
             raise LootStoreError(unreadable) from exc
+        self._replay_deliveries(data.get("deliveries", {}))
         return self
+
+    def _replay_deliveries(self, recorded: object) -> None:
+        """Take ``recorded`` back, refusing a delivery naming an item no drop holds."""
+        if not isinstance(recorded, dict):
+            wrong = f"{self._path} carries deliveries as {type(recorded).__name__}"
+            raise LootStoreError(wrong)
+        ids = {drop.item_id for drop in self._drops}
+        for item_id, store_key in recorded.items():
+            if str(item_id) not in ids:
+                wrong = (
+                    f"{self._path} records {str(item_id)[:16]} delivered to "
+                    f"{store_key} and holds no such drop"
+                )
+                raise LootStoreError(wrong)
+            self._delivered[str(item_id)] = str(store_key)

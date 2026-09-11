@@ -12707,7 +12707,7 @@ what it blocks     every control on this tab, with the sentence the tab
 Four modules each recorded the same gap in their own words. The item table said
 nothing holds the items one Vessel carries. The craft register said a recipe
 names material units nothing has counted. The material table sets no ceiling on
-how far a stack runs. A loot drop names the wallet it went to and names no item.
+how far a stack runs. A loot drop named the wallet it went to and named no item.
 A store now exists, and it has two halves, under the operator's rule that gear,
 consumables and resources must not conflict.
 
@@ -12966,4 +12966,278 @@ owed  a Vessel id. Two Vessels of one class at one level under one owner are one
 
 absent  encumbrance, a hauling trip, a foraging run, equipping, trading, a
         surface. Each is named in the module and none is built here
+```
+
+## 2026-09-11 08:50 - #585 - a drop names the thing that dropped
+
+### A drop carried a tier and no thing
+
+Two units recorded the same gap in their own words. The loot module made a drop
+that named a rarity tier and a wallet, and named nothing that had dropped. The
+item table declares four types. The store holds items in two halves. A drop had
+nowhere to go, and the drop record is what changed.
+
+`src/competition/loot_drop.py` — the record names the type, and refuses one the
+item table does not declare
+
+```python
+    item_id: str
+    tier_name: str
+    short_form: str
+    item_type: str
+    exchange_id: str
+    symbol: str
+    season: int
+    roll: int
+    holder: str
+    dropped_at: float
+
+    def __post_init__(self) -> None:
+        """Refuse an ``item_type`` or a ``quality`` the item tables do not declare."""
+        drop_storage_class(self.item_type, self.quality)
+```
+
+Nothing about the five tiers changed. Their names, short forms, weights, Impetus
+relief and effect bonuses are the same bytes as before, the weights still total
+100, and the map mark registry still resolves all five.
+
+### The five quality grades are the five loot tiers, in one tuple
+
+An item's cohesion varies by quality grade. A previous unit measured that the
+grades are the loot tiers themselves. The run read both sets off the real
+modules and they are one object.
+
+```
+TIER_NAMES          ('Calx', 'Cauda Pavonis', 'Flores', 'Elixir', 'Magisterium')
+QUALITY_GRADES      ('Calx', 'Cauda Pavonis', 'Flores', 'Elixir', 'Magisterium')
+same tuple object   True
+```
+
+The material table assigns its grade tuple from the loot module's tier names, so
+the two cannot drift apart. A drop's tier already names its quality.
+No second scale exists, and the module adds none. The drop carries no separate
+grade field and reads its own tier name instead.
+
+### Which type a tier yields is an input, and an absent one refuses the drop
+
+No source names the item type a tier yields. The operator has not set it and no
+module holds it. The loot module decides nothing and asks its caller.
+
+```python
+#: What no source sets, and what ``require_yields`` refuses a drop without.
+TIER_YIELD_ABSENT = (
+    "no source names the item type a loot tier yields, so drop_for_market takes a "
+    "yields mapping from its caller and refuses a drop without one"
+)
+```
+
+One figure stays owed: the mapping from each of the five tiers to one of the four
+item types. Without that mapping the module draws no drop at all.
+
+### Four ways a drop is refused before it exists
+
+Each refusal ran on the real objects. Each sentence is the module's own.
+
+```
+no mapping at all
+  TierYieldError: no source names the item type a loot tier yields, so
+  drop_for_market takes a yields mapping from its caller and refuses a drop
+  without one
+
+a type the item table does not declare
+  DropItemError: Calx yields 'potions', which is not a PoA item type; the table
+  carries armour, weapons, accessories, consumables
+
+a tier that is not one of the five
+  UnknownTierError: Lapis names no loot tier; the five are Calx, Cauda Pavonis,
+  Flores, Elixir, Magisterium
+
+a tier left without a type
+  TierYieldError: Elixir carries no item type, so a roll landing on it would
+  name no thing
+```
+
+The item type list in that second message is the item table's own. The loot
+module writes no second list of types and no second list of grades.
+
+### The item table is read when a drop is made, not when the module loads
+
+The material table imports the loot module for its tier names, and the item table
+imports the material table. The plain import the other way was driven and it
+failed.
+
+```
+ImportError: cannot import name 'rate_named' from partially initialized module
+'src.competition.conversion_rates' (most likely due to a circular import)
+```
+
+The item table is read inside the call that needs it. One comment in the file
+carries the rule a reader needs, and it is that a drop's storage class comes from
+the item type and never from the drop.
+
+### A drop delivered into the slot half, read off the store
+
+A store was opened for one Vessel with one gear slot and a hundred unit stack
+ceiling. The drops came from eight real rolls under the module's own seed. The
+store was read off the real object before and after.
+
+```
+before    held_gear () held_stacks () slots_used 0 weight_carried 0
+
+roll  844 tier Cauda Pavonis  item_type accessories  storage_class gear
+
+deliver   vessel-u84 took in 1 accessories at Cauda Pavonis; it now holds 1,
+          1 of 1 gear slots, weight 1
+
+after     held_gear (SlotItem(name='accessories', quality='Cauda Pavonis'),)
+          held_stacks ()
+          slots_used 1 weight_carried 1
+```
+
+The store decided which half took it. The drop named a type and a grade, and the
+storage class the item table gives that type is what sent it to a counted slot.
+
+### The same drop refused a second time, and refused to a second store
+
+A delivery is recorded against the item's own identifier, which is the hash of
+the drop's own contents. A second delivery of the same item is refused, to the
+same store and to any other.
+
+```
+again, same store     DropDeliveryError: item 2d960fa0e8cfab76 already went to
+                      vessel-u84; one drop reaches one store
+
+to a second store     DropDeliveryError: item 2d960fa0e8cfab76 already went to
+                      vessel-u84; one drop reaches one store
+
+the second store held ()  ()
+```
+
+### A consumable drop goes on a stack and takes no slot
+
+The same store had no free gear slot left. A consumable drop still went in,
+because a consumable stacks and takes no slot.
+
+```
+roll  370 tier Calx  item_type consumables  storage_class consumable
+
+deliver   vessel-u84 took in 1 consumables at Calx; it now holds 1, 1 of 1 gear
+          slots, weight 2
+
+after     held_gear (SlotItem(name='accessories', quality='Cauda Pavonis'),)
+          held_stacks (Stack(name='consumables', quality='Calx', units=1),)
+          slots_used 1
+```
+
+The two halves did not take each other's space. That is the operator's own rule
+on gear, consumables and resources, and the store already enforced it.
+
+### A gear drop into a store with no free slot stays earned
+
+This is the question that matters for a player. A full store refuses gear, so a
+gear drop can be unplaceable. The delivery is recorded only after the
+store accepts it, so a refused drop stays undelivered and can be placed later.
+
+```
+slots_free            0
+refused               SlotsFullError: vessel-u84 holds 1 of 1 gear slots and 1
+                      accessories takes 1 more; no gear is held in a slot this
+                      Vessel does not have
+
+the store after       held_gear (SlotItem(name='accessories',
+                      quality='Cauda Pavonis'),)  slots_used 1
+delivered_to          None
+still undelivered     6 of 8
+
+the same drop into a store with a free slot
+                      vessel-u84-b took in 1 accessories at Cauda Pavonis; it
+                      now holds 1, 1 of 4 gear slots, weight 1
+```
+
+Nothing was lost. The store was unchanged by the refusal and the drop was still
+the player's to place.
+
+### The file carries the deliveries, and a swapped type is refused
+
+The loot file now records which store took each item, and the file version moved
+from one to two. No version one file exists on this machine, so nothing had to be
+converted.
+
+```
+drops replayed        8
+deliveries replayed   vessel-u84, vessel-u84-b
+still undelivered     5
+
+a second replay       LootStoreError: ... is already loaded; a second replay
+                      would double it
+
+a file whose item type was swapped for 'potions'
+                      LootStoreError: ... could not be replayed: 'potions' is
+                      not a PoA item type; the table carries armour, weapons,
+                      accessories, consumables
+```
+
+The run compared the swapped file against the good one and printed that the bytes
+differed, so that last refusal is a reading and not an assumption.
+
+### Nothing in the running program delivers a drop into a store
+
+The tab's drop button was pressed on the real handler. It refuses before it
+reaches any of this, because no market qualifies on this machine.
+
+```
+action   drop
+acted    False
+message  pool_below_floor:  holds 0 eligible markets, under the floor of 12, so
+         it draws nothing
+```
+
+The button adds a drop to the loot file and never puts one in a Vessel's store.
+No module calls the delivery. The three new refusals are all raised as loot
+faults, which the tab already catches and prints as its own message, so a press
+after the mapping is set will read the owed figure on screen rather than crash.
+
+### One sentence in the items module is now false
+
+The items module still prints that loot generation draws a tier and names no
+item, and the Gear subtab prints that sentence word for word. That file and the
+screen files belong to other units, so neither was touched.
+
+```
+the sentence   loot generation     loot_drop.drop_from_pool draws a tier and
+                                   names no item
+where          src/competition/items.py, in ABSENT_MECHANISM_NOTES
+now false      a drop names one of armour, weapons, accessories, consumables
+owed           the owning unit rewrites that note, and the Gear subtab stops
+               printing it
+```
+
+One sentence in the 08:35 entry above is corrected by this change, from "A loot
+drop names the wallet it went to and names no item" to "A loot drop named the
+wallet it went to and named no item". Nothing else on this page is reworded.
+
+### What reads a drop's item type, and what is still owed
+
+The Gear subtab lists the loot a wallet holds. It prints the tier short form, the
+market symbol, the season and the tier bonus, and it reads no item type.
+
+```
+reads the item type   nothing
+
+provides and unread   item_type, quality and storage_class on every drop,
+                      LootStore.deliver, LootStore.drop, LootStore.delivered_to
+                      and LootStore.undelivered
+
+owed                  the mapping from each of the five tiers to one of the four
+                      item types. One figure, and the only one
+
+owed                  a Vessel on the drop. A drop names a wallet address and a
+                      store is keyed per Vessel, so the delivery is given the
+                      receiving store by its caller
+
+owed                  the package entry binds no new name from this module
+
+absent                a loot table per monster, a chest, a dungeon drop, a
+                      control that delivers, a surface that shows an item type.
+                      None is built here
 ```
