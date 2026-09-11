@@ -2842,15 +2842,15 @@ together. That same tier is the one the brief cannot specify yet, so it goes las
 
 ### The 120-participant event has no dungeon map
 
-The mode table settles this. Team Based Monster Smash is the only mode that reaches a
-hundred and twenty participants, and it carries no map. The Raid reaches sixty and the
-Dungeon Crawl reaches six, and those two are the modes with a map rail.
+The mode table settles this. Coagulation is the only mode that reaches a
+hundred and twenty participants, and it carries no map. Cementation reaches sixty and
+Descension reaches six, and those two are the modes with a map rail.
 
 ```
-Monster Smash               1 participant          no map
-Team Based Monster Smash    up to 120              no map
-Dungeon Crawl               1 to 6                 map
-Raid                        2 to 60                map
+Fixation                    1 participant          no map
+Coagulation                 up to 120              no map
+Descension                  1 to 6                 map
+Cementation                 2 to 60                map
 ```
 
 The Old One Avatar the operator wants in a 120-participant event therefore fights in
@@ -5784,8 +5784,8 @@ this draws a list.
 
 ### The mode decides whether the map opens
 
-`EventMode.has_map` already holds on Dungeon Crawl and Raid and fails on both Monster
-Smash modes. The subtab reads that one property, the same way the turn length reads one
+`EventMode.has_map` already holds on Descension and Cementation and fails on Fixation
+and Coagulation. The subtab reads that one property, the same way the turn length reads one
 property of the variant, so no second rule names which modes allow a map.
 
 ```python
@@ -5800,7 +5800,7 @@ panel. In either smash the button is dead, the bar entry is dead, and the senten
 the button says which modes do carry a map.
 
 ```
-Monster Smash carries no map, so this subtab does not open. Dungeon Crawl and Raid do.
+Fixation carries no map, so this subtab does not open. Descension and Cementation do.
 ```
 
 That sentence names its modes off the same property, so a mode that gains a map appears
@@ -6655,7 +6655,7 @@ a layer past the declared count refused - layer 20 is outside the 20 layers
 
 ### The arena is the one place known without being found
 
-Monster Smash happens at an arena, it is where everyone starts, and every other
+Fixation happens at an arena, it is where everyone starts, and every other
 dungeon type is found out in the world. That solves the problem lazy discovery
 creates: a brand-new participant in an undiscovered world has exactly one place to
 go.
@@ -7983,10 +7983,10 @@ barred circle of the calcined residue to the pentagram of the Great Work. The fo
 event modes take a heraldic mark each.
 
 ```
-Calx           U+2296      Monster Smash         U+2720
-Cauda Pavonis  U+26B9      Team Monster Smash    U+2691
-Flores         U+2698      Dungeon Crawl         U+2656
-Elixir         U+2625      Raid                  U+26E8
+Calx           U+2296      Fixation              U+2720
+Cauda Pavonis  U+26B9      Coagulation           U+2691
+Flores         U+2698      Descension            U+2656
+Elixir         U+2625      Cementation           U+26E8
 Magisterium    U+26E4
 ```
 
@@ -9596,10 +9596,10 @@ a leader holding no seat
 This work changes no range. It adds no mode, and it raises no ceiling.
 
 ```
-Monster Smash              1 to 1      no guild
-Team Based Monster Smash   2 to 120    one guild
-Dungeon Crawl              1 to 6      no guild
-Raid                       2 to 60     one guild
+Fixation                   1 to 1      no guild
+Coagulation                2 to 120    one guild
+Descension                 1 to 6      no guild
+Cementation                2 to 60     one guild
 ```
 
 ### An army links Raids and refuses every other kind of party
@@ -11980,10 +11980,10 @@ dungeon_crawl             yes      1 to 6     no
 raid                      yes      2 to 60    yes
 ```
 
-This matches his own two sentences. Monster Smash is where every player starts,
-so the arena is not a dungeon and nobody enters one there. A Dungeon Crawl takes
-one to six and a Raid takes two to sixty, and the Raid needs a guild where the
-Crawl does not.
+This matches his own two sentences. Fixation is where every player starts,
+so the arena is not a dungeon and nobody enters one there. Descension takes
+one to six and Cementation takes two to sixty, and Cementation needs a guild where
+Descension does not.
 
 ### A dungeon is a locator, and no module declares one
 
@@ -13643,3 +13643,174 @@ One figure is owed and is not invented here.
 a second identity  there is no way to retire one and start again. The control
                    refuses a replacement and nothing else removes the file, so
                    an operator who wants a fresh address deletes it by hand
+```
+
+---
+
+## 2026-09-11 09:45 - #586 - the four event modes take the names of alchemical operations
+
+**HIS.**
+
+> "Please rename events to match Hermetic tests or similar..."
+
+The four modes carried game-genre names. Each now carries the name of an operation
+the pre-modern alchemical corpus describes, picked so the operation's own meaning
+matches what that mode does. Only the label moved.
+
+```
+mode code            was                       now
+monster_smash        Monster Smash             Fixation
+team_monster_smash   Team Based Monster Smash  Coagulation
+dungeon_crawl        Dungeon Crawl             Descension
+raid                 Raid                      Cementation
+```
+
+Every label is now eleven characters or fewer, which the twelve-character short-form
+rule asks for. Three of the four old labels were longer than that.
+
+### The operation behind each mode, and why it fits
+
+Three of the four come from the eight operations of the Summa perfectionis
+magisterii of pseudo-Geber, written shortly before 1310. The fourth is the parting
+assay of the pre-modern metal testers.
+
+```
+Fixation      a volatile body made to stay in the fire without flight.
+              One party seat, no guild, no map, the lowest tier.
+              A single body, alone in the fire, that holds or does not
+
+Coagulation   a fluid brought to one solid body, the coagula of solve et coagula.
+              Two to a hundred and twenty seats, and one guild required.
+              Separate parts set into a single mass
+
+Descension    the active part driven down to the bottom of the vessel instead of
+              rising as vapour, worked in a pierced-base descensory.
+              One to six seats, and the mode carries a map
+
+Cementation   a mass packed in a corrosive cement and held in fire until the base
+              part is eaten out. The parting assay of the German assay booklets of
+              about 1510 and of Agricola's seventh book, 1556.
+              Two to sixty seats, one guild, a map, the highest tier
+```
+
+Cementation is the widest of the four readings. Its source meaning parts a mass by
+fire, and the mode applies a guild host of up to sixty to one target. Ceration was
+the alternative and it lost: it softens a hard body for admission, which matches a
+raid less well than parting a mass does.
+
+### Sublimation was the first pick and the Flores tier already holds it
+
+Sublimation fitted the solo mode and is not available. The five loot tiers are gates
+1, 5, 8, 9 and 10 of Ripley's twelve, and the eighth gate is Sublimation, which
+named the Flores tier. Two different things would have shared one word.
+
+```
+gate   operation        already names
+  1    Calcination      the Calx tier
+  5    Putrefaction     the Cauda Pavonis tier
+  8    Sublimation      the Flores tier
+  9    Fermentation     the Elixir tier
+ 10    Exaltation       the Magisterium tier
+```
+
+Conjunction and Projection were rejected on the rule this project already applied to
+the tier names: a word that carries another meaning in the tree is not taken twice.
+Conjunction means a boolean AND in the engine's own comments, and the charts surface
+already holds a price projection.
+
+```
+candidate        files naming it across src, contracts and docs
+Fixation          1   a quoted source in a design note, no second meaning
+Descension        0
+Coagulation       0
+Cementation       0
+Conjunction       5   rejected
+Projection        4   rejected
+Separation        7   rejected
+Multiplication    4   rejected
+```
+
+### The codes did not move, and a saved record is why
+
+A mode has a code and a label. The label is what a person reads. Every other module
+keys on the code, and a saved record stores the code. The four codes are unchanged.
+
+```
+a saved party record     {'mode': 'raid', 'leader': 'a', 'members': ['a', 'b'],
+                          'guild_key': 'g'}
+a saved dungeon entry    carries mode_code, replayed through mode_named
+a renamed code on replay UnknownModeError | 'cementation' is not a PoA event mode;
+                          the four are monster_smash, team_monster_smash,
+                          dungeon_crawl, raid
+```
+
+No saved PoA file exists yet, so renaming a code would break nothing today. It would
+refuse every saved record the first time anyone plays, and no migration exists.
+
+### The screen took the new names with no edit of its own
+
+The tab reads the label out of the module, so no screen file changed. All eight event
+rows the tab serves carry the new label.
+
+```
+monster_smash             -> Fixation    | Standard | party 1 - 1   | map False
+monster_smash_elite       -> Fixation    | Elite    | party 1 - 1   | map False
+team_monster_smash        -> Coagulation | Standard | party 2 - 120 | map False
+team_monster_smash_elite  -> Coagulation | Elite    | party 2 - 120 | map False
+dungeon_crawl             -> Descension  | Standard | party 1 - 6   | map True
+dungeon_crawl_elite       -> Descension  | Elite    | party 1 - 6   | map True
+raid                      -> Cementation | Standard | party 2 - 60  | map True
+raid_elite                -> Cementation | Elite    | party 2 - 60  | map True
+```
+
+The map refusal, the party refusals and the army refusal read the label too, so all
+of them now name the operations.
+
+```
+Fixation carries no map, so this subtab does not open. Descension and Cementation do.
+Cementation admits 2 to 60 participants and this party holds 61
+a Descension party links into no army; an army is built from Cementation parties
+```
+
+The map glyph table keys on the code, not the label, so each mode kept its mark. The
+registry answered all sixteen marks and the distinctness check passed.
+
+```
+kind= monster_smash       glyph= U+2720  label= Fixation     token= STATE_ARMED
+kind= team_monster_smash  glyph= U+2691  label= Coagulation  token= WARNING
+kind= dungeon_crawl       glyph= U+2656  label= Descension   token= WARNING_STRONG
+kind= raid                glyph= U+26E8  label= Cementation  token= DANGER
+```
+
+### What the rename did not touch
+
+Every field of all four modes was read off the module before and after the change.
+One hundred and twenty-eight field readings across the eight event rows, sixteen
+lines differ, and all sixteen are the label.
+
+```
+before   EventMode(code='raid', label='Raid', tier=4, party_min=2, party_max=60,
+                   guild_required=True, has_map=True)
+after    EventMode(code='raid', label='Cementation', tier=4, party_min=2,
+                   party_max=60, guild_required=True, has_map=True)
+
+non-label fields changed   0
+```
+
+No figure changed. No party range, no guild flag, no map flag, no turn length, no
+tier, and no difficulty, entry fee, loot rarity or loot drop rank.
+
+Dated sections above this one quote refusals and keypress readings from the runs that
+produced them. Those blocks keep the label those runs printed, so the record of each
+run stays true, and the table at the head of this section is where the retired names
+are declared.
+
+### The name clearance on these four is owed
+
+The clearance page checks every PoA name against similar content, and against its own
+source meaning. These four labels landed after that page and have not been through it.
+
+```
+owed   Fixation, Coagulation, Descension and Cementation through the
+       similar-content search in docs/design/poa_name_clearance.md
+```
