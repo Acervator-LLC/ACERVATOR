@@ -475,7 +475,7 @@ class Consecration:
 
     locator: str
     guild_key: str
-    priest: tuple[str, str]
+    priest: tuple[str, str, str]
     requirement: SizeRequirement
     direction: str
     scored_weight: Decimal
@@ -962,7 +962,7 @@ def require_consecration_scale() -> None:
             f"{turns_until_lapse(LOST_CONSECRATION, rates)} {CLOCK}s; a status "
             f"at or below lapse_at_or_below has already lapsed",
         )
-    priest = ("owner", CLASS_NAMES[0])
+    priest = Vessel("owner", CLASS_NAMES[0]).record_key
     blessed = Consecration("0:0:0:0", "g", priest, ranked[0], BLESSED, Decimal(1), 0)
     cursed = Consecration("0:0:0:1", "g", priest, ranked[0], CURSED, Decimal(1), 0)
     if blessed.score().polarity <= NEUTRAL or cursed.score().polarity >= NEUTRAL:

@@ -51,11 +51,13 @@ WEIGHT_PER_UNIT_RATE_NAME = "TempWeight_0001"
 #: The ``conversion_rates`` row holding the weight one Quintessence of strength lifts.
 MAX_WEIGHT_RATE_NAME = "max_weight_per_strength_quintessence"
 
-#: Why two Vessels of one class at one level under one owner need separate keys.
+#: How two Vessels of one class at one level under one owner reach separate keys.
 VESSEL_ID_ABSENT = (
-    "vessels.Vessel carries an owner, a class_name and a level and no id, so "
-    "vessel_key cannot separate two Vessels of one class at one level under one "
-    "owner; StoreBook.open_store takes the key from its caller"
+    "vessels.Vessel.record_key carries an owner, a class_name and a vessel_id, "
+    "so vessel_key separates two Vessels of one class at one level under one "
+    "owner and follows one Vessel across a level gained. StoreBook.open_store "
+    "still takes the key from its caller, so a caller that builds its own key "
+    "can still name one store twice"
 )
 
 #: What no figure sets about a Vessel's gear slots.
@@ -290,9 +292,13 @@ def unit_weight(name: str) -> Decimal:
 
 
 def vessel_key(vessel: Vessel) -> str:
-    """``owner``, ``class_name`` and ``level`` joined, the ``craft_id_for`` shape."""
+    """``Vessel.record_key`` joined, the ``store_key`` shape ``craft_id_for`` copies.
+
+    The string renders the one key ``alignment.vessel_key`` returns, so a store
+    and an alignment cannot disagree about which Vessel a record belongs to.
+    """
     held = _as_vessel(vessel)
-    return f"{held.owner}:{held.class_name}:{held.level}"
+    return ":".join(held.record_key)
 
 
 @dataclass(frozen=True)

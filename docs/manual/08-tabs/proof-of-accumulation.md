@@ -13815,7 +13815,117 @@ owed   Fixation, Coagulation, Descension and Cementation through the
        similar-content search in docs/design/poa_name_clearance.md
 ```
 
-## 2026-09-11 10:10 - #147 - the package binds its last module, and the item notes say what exists
+## 2026-09-11 10:10 - #147 - every Vessel record keys on the Vessel id
+
+A player owns several Vessels. Each record the package files must name one of
+them. One Vessel now holds one key, and `Vessel.record_key` is that key. It
+carries the owner, the class and the `vessel_id`. The level is not in it.
+
+Two modules each built their own key before. Both read `record_key` now, so a
+store and an alignment cannot disagree about which Vessel a record belongs to.
+
+```
+vessels      record_key returns the owner, the class_name and the vessel_id
+alignment    vessel_key returns record_key unchanged
+inventory    vessel_key joins record_key with colons, the store_key shape
+crafting     craft_id_for joins record_key between the recipe and the turn
+```
+
+### Two Vessels of one class under one owner read two records
+
+A run built two Vessels with one owner, one class and one level. It scored one
+action against each.
+
+before
+```
+vessel_key(first)   ('addr_owner_one', 'Lead Ward')
+vessel_key(second)  ('addr_owner_one', 'Lead Ward')
+vessel_count        1
+actions_of(first)   ['forge a blade', 'raze a village']
+actions_of(second)  ['forge a blade', 'raze a village']
+```
+
+after
+```
+vessel_key(first)   ('addr_owner_one', 'Lead Ward', 'fb244aa7d4...')
+vessel_key(second)  ('addr_owner_one', 'Lead Ward', 'b7d1569db1...')
+vessel_count        2
+actions_of(first)   ['forge a blade']
+actions_of(second)  ['raze a village']
+```
+
+The owner stays in the key, so the roll-up still reads it. The same run read 2
+scored actions at the address, 2 at the guild and 2 at the world, on both sides.
+
+### A level gained keeps the store
+
+A run opened a store for a Vessel at level 7 and put one armour in a gear slot.
+It then raised the same Vessel to level 8 and asked the book for the store.
+
+before
+```
+key at level 7   addr_owner_one:Tin Bulwark:7
+key at level 8   addr_owner_one:Tin Bulwark:8
+the book         UnknownStoreError: 'addr_owner_one:Tin Bulwark:8' names no
+                 store; the book holds addr_owner_one:Tin Bulwark:7
+```
+
+after
+```
+key at level 7   addr_owner_one:Tin Bulwark:15ac17bff769edc2...
+key at level 8   addr_owner_one:Tin Bulwark:15ac17bff769edc2...
+the book         the same store, holding armour
+```
+
+### Two Vessels of one class open two crafts
+
+The same run gave one recipe and one turn to two Vessels of one class at one
+level under one owner.
+
+before
+```
+craft_id_for(first)   armour:Calx:addr_owner_one:Tin Bulwark:7:0
+craft_id_for(second)  armour:Calx:addr_owner_one:Tin Bulwark:7:0
+the second craft      HeldCraftError: already open
+```
+
+after
+```
+craft_id_for(first)   armour:Calx:addr_owner_one:Tin Bulwark:15ac17bff7...:0
+craft_id_for(second)  armour:Calx:addr_owner_one:Tin Bulwark:fba9b6fe10...:0
+the second craft      open
+```
+
+### The three modules that read the key
+
+```
+domination   a health of zero on one Vessel read incapacitated on its twin
+             before. The twin reads able now, and the marked Vessel still
+             reads incapacitated
+prayer       two Vessels of one class in one congregation were refused as one
+             Vessel before. The prayer files at a congregation of 2 now, and
+             the same Vessel named twice is still refused
+consecration a place records the priest's key. The record carries three parts
+             now, and the class stays the second part the log reads
+```
+
+### A theft still moves the key
+
+`steal_vessel` copies the `vessel_id` onto the moved Vessel and writes a new
+owner. The owner is in the key, so the key still changes. `carry_to` moves the
+incapacitation onto the new key, and the scored actions stay under the
+victim's key. No other Vessel of the victim's ever held that key now.
+
+### What the Vessel key leaves owed
+
+```
+owed  the scored actions a stolen Vessel earned. A key of the vessel_id alone
+      would carry them, and it would leave alignment_of_address and
+      unguilded_addresses no owner to read
+owed  a screen that shows a key. No subtab draws one
+owed  open_store still takes its key from a caller, so a caller that builds
+      its own key can still name one store twice
+## 2026-09-11 10:25 - #147 - the package binds its last module, and the item notes say what exists
 
 The PoA package reads its own folder at import. It compares the files it holds
 against the names it binds, and it logs the difference. That log line is the

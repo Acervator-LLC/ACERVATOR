@@ -478,10 +478,15 @@ class CraftResult:
 
 
 def craft_id_for(recipe: Recipe, vessel: Vessel, opened_turn: int) -> str:
-    """Return the identifier one craft is held under, from its recipe and Vessel."""
+    """Return the identifier one craft is held under, from its recipe and Vessel.
+
+    The Vessel part is ``Vessel.record_key`` joined, the shape
+    ``inventory.vessel_key`` renders, so two Vessels of one class at one level
+    under one owner open two crafts under two ids.
+    """
     return (
-        f"{recipe.item_type_name}:{recipe.produced_quality}:{vessel.owner}:"
-        f"{vessel.class_name}:{vessel.level}:{opened_turn}"
+        f"{recipe.item_type_name}:{recipe.produced_quality}:"
+        f"{':'.join(vessel.record_key)}:{opened_turn}"
     )
 
 
