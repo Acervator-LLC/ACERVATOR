@@ -115,10 +115,11 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
     "inventory": (
         "inventory.VesselStore holds them, gear in counted slots and consumables "
         "and resources in stacks, StoreBook.hand_over is still the only move "
-        "between two stores, and a craft is the other way a store changes: "
-        "crafting.CraftRegister.complete_craft puts a made item in the crafting "
-        "Vessel's store and begin_craft takes that recipe's component units out of "
-        "it; no panel calls either"
+        "between two stores, and a craft and a foraging run are the other two ways "
+        "a store changes: crafting.CraftRegister.complete_craft puts a made item in "
+        "the crafting Vessel's store, begin_craft takes that recipe's component "
+        "units out of it, and foraging.ForageRegister.forage puts in the units the "
+        "square a Vessel stands on yields; no panel calls any of them"
     ),
     "slot count": "no figure sets how many gear slots a Vessel has",
     "encumbrance": (
