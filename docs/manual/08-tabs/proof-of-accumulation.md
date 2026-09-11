@@ -8306,11 +8306,10 @@ Quintessence amounts already make.
 ```
 at creation            the chain posts the hash of the seed. Chain fields
                        naming a seed, measured: none
-with the seed          3:40:7:11 derives depth -2, the gallû, and nobody has
-                       discovered that place
-with the posted hash   the same place derives depth -3, a different tier, so
-                       the public value tells a reader nothing
-after the seed is published   anyone recomputes every place
+a discovered place     its own hash is already on the chain, so anyone derives
+                       that place's creature and learns nothing about any other
+an undiscovered place  a seed holder derives it and nobody else can
+after the seed is published   anyone recomputes every place in the world
 ```
 
 ### How often a tier appears is the one figure nobody has set
@@ -8376,25 +8375,26 @@ asking anyway      LevelAbsentError - "the tier at depth -1 has no level, so no
 ### Ten thousand places on one square
 
 One run drove the derivation over every step pair of one square on one layer, ten
-thousand places, under one world's published seed. Every place landed on one of
-the six weighted tiers, and twenty-two outcomes came up. Each tier took the share
-the run handed it, to within one and a half parts in a hundred.
+thousand places, under a world seed of thirty-two letter a. Every place landed on
+one of the six weighted tiers, and twenty-two outcomes came up. Each tier took the
+share the run handed it, to within four tenths of a part in a hundred. Anyone with
+that seed gets these same numbers again.
 
 ```
 places derived      10,000
 distinct tiers           6
 distinct outcomes       22    the 21 named designs and the unnamed decan rank
 
-depth -1   share 4   expected 30.77%   got 30.28%
-depth -2   share 4   expected 30.77%   got 32.11%
-depth -3   share 2   expected 15.38%   got 14.27%
-depth -4   share 1   expected  7.69%   got  7.71%
-depth -5   share 1   expected  7.69%   got  7.96%
-depth -6   share 1   expected  7.69%   got  7.67%
+depth -1   share 4   expected 30.77%   got 30.67%
+depth -2   share 4   expected 30.77%   got 30.83%
+depth -3   share 2   expected 15.38%   got 15.41%
+depth -4   share 1   expected  7.69%   got  8.07%
+depth -5   share 1   expected  7.69%   got  7.54%
+depth -6   share 1   expected  7.69%   got  7.48%
 
-the same place twice    the same monster
-one step away           a different tier and a different creature
-a different world seed   a different monster at the same place
+3:40:50:50   depth -6, the summit, a direct servant
+3:40:50:50   derived again, the same creature
+3:40:50:51   depth -1, the surface floor, Lilith
 ```
 
 ### Nothing calls the derivation yet
