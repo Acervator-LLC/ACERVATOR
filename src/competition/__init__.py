@@ -568,6 +568,8 @@ from .monster_table import (
 # consecration, domination and prayer import alignment.
 # 16 repeats of names bound above, DIRECTIONS among them, stay unexported.
 from .guild_roster import (
+    DEFAULT_ROSTER_PATH,
+    ROSTER_FILE_VERSION,
     TREASURY_ADDRESS_PREFIX,
     TREASURY_LEDGER_BUCKET,
     RANK_OFFICER,
@@ -1596,6 +1598,8 @@ __all__ = [
     "tier_embedded_quintessence",
     "tiers_without_a_nature",
     "unspecified_entities",
+    "DEFAULT_ROSTER_PATH",
+    "ROSTER_FILE_VERSION",
     "TREASURY_ADDRESS_PREFIX",
     "TREASURY_LEDGER_BUCKET",
     "RANK_OFFICER",

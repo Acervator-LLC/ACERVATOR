@@ -24,7 +24,8 @@ and event mode shows a stand-in glyph. Nothing gives a Vessel assignments,
 lifeskilling, crafting, notifications, gear, equipping, destruction or
 permadeath, and the page lists all eight. Nothing holds a field for experience,
 level, character class, gear, enemy, threat or guild, so those seven metrics
-read nothing. Nothing builds a guild roster, and nothing advances the season.
+read nothing. A guild roster saves to a file and the Guild subtab reads it back,
+and no control founds a guild. Nothing advances the season.
 `src/competition/` is the Proof of Accumulation package, and issue #147 carries
 the rest of the build-out. The sections below describe that engine and the
 contract design behind it.
@@ -509,9 +510,10 @@ guild         Guild, Ctrl+7 - 0 guilds, 0 members, ranks officer and member
 return pool   Return pool, 75%
 ```
 
-No module writes a guild roster file, so the roster loads empty and no control
-founds a guild. Nothing advances the season either: the counter lives behind a
-gated registry function on the chain and no module under `src` reaches it.
+`GuildRoster.save` writes a guild roster file and the subtab reads it back, so the
+roster loads empty only until something writes that file, and no control founds a
+guild. Nothing advances the season either: the counter lives behind a gated
+registry function on the chain and no module under `src` reaches it.
 
 ## Head to head
 
@@ -15658,3 +15660,192 @@ the seconds in a turn   unset, so nothing in the program can say which world
 
 The rest of a dungeon stands where it stood. Nothing rules the inside, nothing
 resolves a fight, and a round still has no length.
+
+## 2026-09-11 13:10 - #585 - a guild roster saves to a file, and the Guild subtab reads it back
+
+A guild lived until the screen drew itself again. The Guild subtab built a new
+empty roster each draw, and no module wrote a roster to disk. A roster now has a
+file of its own. The subtab reads that file. A guild founded once is on the page
+on every later draw.
+
+`src/competition/guild_roster.py` holds the roster. It now carries `save`, `load`
+and a default file. Twelve other modules in the package already declare a default
+path under `~/.acervator`, and this one follows them:
+
+```
+DEFAULT_ROSTER_PATH   ~/.acervator/poa_guild_roster.json
+ROSTER_FILE_VERSION   1
+save                  writes every guild, its members and its officers
+load                  reads that file back into the roster that asks
+roster_path           the file this roster saves to and loads from
+```
+
+A roster takes its file by construction, as a world and a journey store do. A
+caller that names no file gets `DEFAULT_ROSTER_PATH`.
+
+### The next draw loses a founding that nothing wrote
+
+The readings below come off the screen route. A driving script called the bridge
+handler the React tab calls, and printed the strings the Guild panel draws.
+
+```
+before, the Guild subtab after one founding of a guild with two members
+  Guilds            : 0
+  Members           : 0
+  Roster file       : the row did not exist
+  the panel drew no guild list
+  note: No module writes a roster file, so the roster loads empty and no guild
+        is listed. Founding one through a control is not built.
+
+after, the same founding, and the roster was not saved
+  Guilds            : 0
+  Members           : 0
+  Roster file       : poa_guild_roster.json - no file yet
+  the panel drew no guild list
+
+after, the same founding, and the roster was saved
+  Guilds            : 1
+  Members           : 2
+  Roster file       : poa_guild_roster.json - held
+  listed guild      : The Salt Wardens - 2 member(s)
+```
+
+The third block held on the next draw, and on the draw after it. Only a save puts
+a guild on the page, and a save is enough.
+
+### The same guild, read back into a second roster
+
+One roster saved its file. A second roster object read the same file. Both answer
+the same.
+
+```
+first  guild_count 2   member_count 3
+second guild_count 2   member_count 3
+bot-u100-founder-0001    first officer   second officer
+bot-u100-joiner-0002     first officer   second officer
+bot-u100-second-0004     first member    second member
+bot-u100-outsider-0003   first None      second None
+keys  both ['silver_mirrors', 'the_salt_wardens']
+rows  both name, founder, treasury, 2 members and 2 officers, then 1 and 0
+```
+
+Every treasury address matched. A treasury address follows from the guild key, so
+a roster read back pays from the address it paid from before.
+
+### What an absent, an empty and a foreign file each do
+
+A read the module cannot trust changes nothing. The roster keeps what it holds, and
+the module writes one line to the log. This matches `PoaWorld.load` and
+`WorldJourneys.load`, which the same bridge installs.
+
+```
+an absent file             guild_count 0, and no file is created
+an absent file, under a
+  roster holding a guild   that guild is still there after the load
+an empty file              guild_count 0
+                           log: failed to read ...: Expecting value
+a file of version 99       guild_count 0
+                           log: carries version 99, not 1; nothing was read
+a file naming the pleroma
+  treasury bucket          guild_count 0
+                           log: the stored roster holds its treasuries in the
+                           'pleroma' bucket and this one reads 'wallets'
+a file carrying one key
+  twice                    guild_count 0
+                           log: the stored roster carries 'twins' twice and one
+                           key names one treasury address
+the same reader on a
+  sound file               guild_count 2, member_count 3
+```
+
+The last line is the control. The same reader that answered nought five times
+answered two guilds and three members on a file that was sound.
+
+### Where the program holds its roster
+
+Two places hold a roster, and one file joins them.
+
+The Guild subtab reads the picked chain's own roster file, through `roster_store`.
+This is what `world_store` does for the world and what `loaded_ledger` does for the
+Quintessence ledger. The bridge handler gets parameters and no window, so a file is
+the only thing it can read.
+
+```
+Live chain           ~/.acervator/poa_guild_roster.json
+Demo TestNet chain   ~/.acervator/poa_guild_roster_testnet.json
+```
+
+The live file and `DEFAULT_ROSTER_PATH` are the same file. A demo guild is on the
+demo subtab and not on the live one, and the live guild did not change when a caller
+wrote the demo file.
+
+`SharedTestnetBridge.install_roster` builds the running program's own roster and
+reads its file at launch, beside the world and the journeys. `install_on` attaches
+it to the window as `_guild_roster`. Driven on a stand-in host, the window held a
+roster of one guild and two members off a file another caller had saved.
+
+Three modules take a roster and none builds one: `alignment.world_alignment`,
+`consecration.add_guild_places` and `army_command.open_party`. `install_roster`
+builds the roster those three can take. Nothing reads the window's copy yet, which
+is also true of the world and the journeys beside it.
+
+### The refusals a roster already had, unchanged
+
+```
+a duplicate guild name   'The Salt Wardens' already holds the key
+                         'the_salt_wardens' and its treasury
+                         poa_guild_treasury_the_salt_wardens; two guilds never
+                         share one treasury address
+a member joining twice    address bot-u100-joiner-0002 already belongs to
+                         the_salt_wardens; one address belongs to one guild, so a
+                         transfer between guild members reads one guild
+promote, no membership   bot-u100-outsider-0003 is no member of the_salt_wardens,
+                         which holds 2 member(s)
+demote, no membership    bot-u100-outsider-0003 is no member of the_salt_wardens,
+                         which holds 2 member(s)
+leave, no membership     bot-u100-outsider-0003 is no member of the_salt_wardens,
+                         which holds 2 member(s)
+an unknown guild key     'no_such_guild' is no guild in this roster; it holds 1
+                         of them
+a name with no letter    a guild name carries at least one letter or digit, got
+                         '   '
+```
+
+### What founding a guild still costs
+
+Nothing. `found` takes a name and a founder, and no third value:
+
+```
+found's parameters        ['self', 'name', 'founder']
+found with a third value  GuildRoster.found() takes 3 positional arguments but 4
+                          were given
+a stored guild's fields   founder, key, members, name, officers, treasury
+the stored roster fields  guilds, treasury_bucket
+```
+
+No stored field names a price. The operator owes three figures, and no unit invents
+one:
+
+```
+how many tokens found a guild
+the stake a rank locks
+a cap on how many officers a guild holds
+```
+
+### Which control reaches a roster
+
+None. The page draws fifteen controls, and no control name carries the word guild:
+
+```
+identity, identity_confirm, distil, train, transfer, spend, grade, payout, close,
+drop, season, reset, reset_confirm, world, world_confirm
+```
+
+Founding, joining, leaving, promoting and demoting are each reached by no control.
+A caller reaches all five, and a roster saved by a caller is on the page. The Guild
+subtab, `Ctrl+7`, is the surface that would carry a founding control, the way the
+world control declares a world.
+
+The reset control deletes the Demo TestNet chain's record file and its log, and it
+refuses on the Live chain. It does not touch a roster file, so a reset leaves the
+guilds standing.
