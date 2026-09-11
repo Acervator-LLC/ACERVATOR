@@ -7581,9 +7581,9 @@ iron_ore_quintessence_low_quality    0.00000001
 iron_ore_quintessence_high_quality   0.00000005, five minimum units
 ```
 
-### Twenty rows are working, and they are the list he still owes
+### Twenty-six rows are working, and they are the list he still owes
 
-Seven of those carry no figure at all. Thirteen carry a placeholder that can be
+Thirteen of those carry no figure at all. Thirteen carry a placeholder that can be
 replaced without touching a function.
 
 ```
@@ -7601,12 +7601,18 @@ loot_released_quintessence_cauda_pavonis      0.00000005   a destroyed Cauda Pav
 loot_released_quintessence_flores             0.00000005   a destroyed Flores item
 loot_released_quintessence_elixir             0.00000005   a destroyed Elixir item
 loot_released_quintessence_magisterium        0.00000005   a destroyed Magisterium item
-TempMonsterTier_0001                          absent       a tier 1 creature
-TempMonsterTier_0002                          absent       a tier 2 creature
-TempMonsterTier_0003                          absent       a tier 3 creature
-TempMonsterTier_0004                          absent       a tier 4 creature
-TempMonsterTier_0005                          absent       a tier 5 creature
-TempMonsterTier_0006                          absent       a tier 6 creature
+TempMonsterTier_descending_0006               absent       a creature at depth -6
+TempMonsterTier_descending_0005               absent       a creature at depth -5
+TempMonsterTier_descending_0004               absent       a creature at depth -4
+TempMonsterTier_descending_0003               absent       a creature at depth -3
+TempMonsterTier_descending_0002               absent       a creature at depth -2
+TempMonsterTier_descending_0001               absent       a creature at depth -1
+TempMonsterTier_ascending_0001                absent       a creature at depth 1
+TempMonsterTier_ascending_0002                absent       a creature at depth 2
+TempMonsterTier_ascending_0003                absent       a creature at depth 3
+TempMonsterTier_ascending_0004                absent       a creature at depth 4
+TempMonsterTier_ascending_0005                absent       a creature at depth 5
+TempMonsterTier_ascending_0006                absent       a creature at depth 6
 ```
 
 Three of the five stats name no effect in the stats table, so three rows stand in
@@ -7642,13 +7648,14 @@ all five tiers   0.00000005 Quintessence released, no curve and no salvage loss
 
 ### A creature's Quintessence falls out of its stats, once a tier has a level
 
-Six creature tiers are drawn in the art brief and no module names one. Their rows
+The monster table declares twelve tiers, and each has a row here. Their rows
 carry no figure, and the missing figure is not a Quintessence amount at all. It
 is the level each tier sits at. The amount then comes from the stats requirement,
 the same way a Vessel's does.
 
 ```
-TempMonsterTier_0001 to TempMonsterTier_0006   absent; the tier's level is what is owed
+the descending six   absent; the tier's level is what is owed
+the ascending six    absent; the tier's level is what is owed
 ```
 
 ### Constitution's penalty has a door and no figure
@@ -8013,13 +8020,14 @@ glyph spans drawn        31
 
 ### What nothing supplies
 
-The enemy screen is the zone that would draw an enemy, and nothing in the package
-declares one, so that zone names what is missing instead of drawing an empty
-frame. Two more kinds the directive names have no entity behind them either, and
-the same panel carries both.
+The enemy screen is the zone that would draw an enemy, and no monster kind carries
+a mark, so that zone names what is missing instead of drawing an empty frame. Two
+more kinds the directive names have no entity behind them either, and the same
+panel carries both.
 
 ```
-Monster           no module declares one; the art brief's 21 designs are in no file
+Monster           12 tiers and 21 names are declared; six tiers carry no name, and
+                  no hermetic glyph set covers twelve positions
 World fact kind   WorldFact.kind is text the caller passes in
 Zone terrain      ZoneRegion carries a boundary and no terrain kind
 ```
@@ -8151,12 +8159,12 @@ once a level is named
   level 50   embeds 750 Quintessence
 ```
 
-The rate table already records six creature tiers as owing this figure. The true
-figure is twelve, and the six rows there cover the descending half alone.
+The rate table records all twelve creature tiers as owing this figure. It reads the
+depths off this table, so neither module can hold its own count of the tiers.
 
 ```
-TempMonsterTier_0001 to TempMonsterTier_0006   the descending six
-the six above                                  no row names them yet
+TempMonsterTier_descending_0001 to _0006   depth -1 down to depth -6
+TempMonsterTier_ascending_0001 to _0006    depth 1 up to depth 6
 ```
 
 ### A creature earns its place two ways, and the refusals sit beside them
@@ -8240,7 +8248,8 @@ a level, twelve times    the only figure standing between a tier and its
 
 The program reaches the table. Opening the Proof of Accumulation path loads the
 package, the package loads the table, and the table checks itself against the art
-brief's published counts before the program carries on. No screen reads it.
+brief's published counts before the program carries on. The glyph registry and the
+rate table read its counts, and the enemy screen prints them in a sentence.
 
 ```
 reached            src/competition/monster_table.py, through the package import
@@ -8248,5 +8257,5 @@ checks on start    six, all passing
 what the log says  "12 monster tiers, 6 below and 6 above, count 57 drawing jobs
                     and 1467 frames. 21 designs are named, 36 entities are not,
                     12 levels are owed, and ['Watchers'] appear on both sides"
-on a screen        nothing
+on a screen        the enemy screen names the counts; no creature is drawn
 ```

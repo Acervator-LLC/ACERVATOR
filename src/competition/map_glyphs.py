@@ -3,8 +3,8 @@
 ``PLANET_GLYPHS`` gives a class its glyph through the ``planet`` field
 ``rpg_classes.CLASSES`` already carries, ``TIER_GLYPHS`` ranks the five loot
 tiers and ``MODE_GLYPHS`` the four event modes. ``marks`` serves all sixteen
-after ``require_distinct_marks`` refuses a repeated glyph, and
-``ABSENT_FAMILIES`` names each kind no module under ``src`` builds an entity for.
+after ``require_distinct_marks`` refuses a repeated glyph or a repeated kind, and
+``ABSENT_FAMILIES`` names each kind carrying no mark, monsters among them.
 """
 
 from __future__ import annotations
@@ -19,6 +19,12 @@ from .loot_drop import (
     LOOT_TIERS,
     MAGISTERIUM,
     LootTier,
+)
+from .monster_table import (
+    MONSTER_TIER_TABLE,
+    TEXT_ABSENT,
+    attested_name_count,
+    drawing_jobs,
 )
 from .poa_modes import (
     DUNGEON_CRAWL,
@@ -100,11 +106,20 @@ MODE_COLOUR_TOKENS: dict[str, str] = {
     RAID: "DANGER",
 }
 
-#: Each kind the directive names that no module under ``src`` holds an entity for.
+#: Tiers ``monster_table`` declares, and how many of them carry no name to draw.
+MONSTER_TIERS = len(MONSTER_TIER_TABLE)
+MONSTER_TIERS_UNNAMED = len(
+    tuple(tier for tier in MONSTER_TIER_TABLE if tier.name == TEXT_ABSENT)
+)
+
+#: Each kind carrying no mark, and the sentence the enemy screen prints for it.
 ABSENT_FAMILIES: dict[str, str] = {
     "Monster": (
-        "No module declares a monster, so nothing supplies a name to draw. The "
-        "art brief's 21 designs across 6 tiers are in no file under src."
+        f"monster_table declares {MONSTER_TIERS} tiers, "
+        f"{attested_name_count()} attested names and {drawing_jobs()} drawing "
+        f"jobs, so names exist to draw. {MONSTER_TIERS_UNNAMED} of the tiers "
+        f"carry no name and no hermetic glyph set covers {MONSTER_TIERS} "
+        f"positions, so no monster kind has a mark."
     ),
     "World fact kind": (
         "world_grid.WorldFact.kind is text the caller passes in, and no module "
@@ -126,7 +141,7 @@ class MissingGlyphError(MapMarkError):
 
 
 class RepeatedGlyphError(MapMarkError):
-    """Raised by ``require_distinct_marks`` when two kinds carry one glyph."""
+    """Raised by ``require_distinct_marks`` when two marks share a glyph or a kind."""
 
 
 class UnknownMarkError(MapMarkError):
@@ -230,6 +245,7 @@ def mode_mark(mode: EventMode) -> MapMark:
 def require_distinct_marks(held: tuple[MapMark, ...]) -> tuple[MapMark, ...]:
     """Return ``held`` after refusing a glyph or a kind two marks share."""
     by_glyph: dict[str, str] = {}
+    by_kind: dict[str, str] = {}
     for mark in held:
         standing = by_glyph.get(mark.glyph)
         if standing is not None:
@@ -239,8 +255,14 @@ def require_distinct_marks(held: tuple[MapMark, ...]) -> tuple[MapMark, ...]:
             )
             raise RepeatedGlyphError(refusal)
         by_glyph[mark.glyph] = mark.kind
-    if len(by_glyph) != len(held):
-        raise RepeatedGlyphError(f"{len(held)} marks carry {len(by_glyph)} kinds")
+        drawn = by_kind.get(mark.kind)
+        if drawn is not None:
+            refusal = (
+                f"{mark.kind!r} draws {drawn} and {mark.codepoint}; "
+                f"mark_for answers the first, so the second is unreachable"
+            )
+            raise RepeatedGlyphError(refusal)
+        by_kind[mark.kind] = mark.codepoint
     return held
 
 
