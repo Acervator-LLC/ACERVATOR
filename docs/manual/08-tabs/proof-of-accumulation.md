@@ -15869,6 +15869,74 @@ The two on-chain names are a contract interface and a stored record shape.
 Renaming either changes what a chain record holds, so both stand and neither is
 read as a participant count of nodes.
 
+## 2026-09-11 13:07 - #147 - every game fee is Quintessence, and a movement on the chain costs Fluor
+
+**HIS.**
+
+> "Everything is Quint and we can invent our version of gas using an alchemical
+> term for 'flow' or 'move' or 'fuel'"
+
+Two rules follow, and they do not overlap.
+
+```
+the game charges a fee     the fee is Quintessence
+an exchange reports a fee  the fee stays in US dollars
+```
+
+### What the game charges, and what the exchange charges
+
+The game charges Quintessence for every act it prices. An action band costs
+Quintessence. A transfer between two wallets loses a share to the pleroma, 8% at
+transfer skill level 1 and 4% at level 10. A first skill level costs
+quality-weighted uses. A consecration declares a Quintessence cost. An event's
+entry fee carries a rank today and no currency.
+
+A trading fee is different. The exchange took that fee, the exchange reports it,
+and the exchange is the authority on it. The platform stores the figure the venue
+gave and changes nothing about it.
+
+```
+the fill carries      fee_usd, in dollars
+certification reads   that one figure
+the ledger converts   at QUINTESSENCE_PER_FEE_USD, which stands at 1
+```
+
+Nothing in the package charges a game fee in dollars. The Base layer two also
+charges its own gas in gwei, and that is a public chain's charge, not this game's.
+
+### Fluor is the name of what a movement on the chain costs
+
+A movement of value on the PoA chain costs **Fluor**, and Fluor is paid in
+Quintessence like every other game fee.
+
+Georgius Agricola printed the word in *Bermannus, sive de re metallica dialogus*,
+1530. Miners called stones that melt in fire *fluores*. A smelter adds them to a
+charge so the metal runs. The singular is *fluor*, a flowing.
+
+The name fits the thing. A flux is not burnt for heat. It is spent so a mass can
+move, and it is gone when the work ends. That is what a charge for moving value is.
+
+```
+src/competition/quintessence_ledger.py
+  FLUOR              the name, five characters
+  FLUOR_SOURCE       the book and the year
+  FLUOR_RATE_ABSENT  says no source sets a figure
+```
+
+The package entry binds all three, so `from src.competition import FLUOR` reaches
+the name.
+
+### No figure is set, and none is written
+
+Nobody has set what one movement costs. No module holds a Fluor figure and no
+screen shows one. The nearest charge that exists today is the transfer bleed, and
+whether Fluor names that charge or a separate charge on every chain write is still
+open.
+
+Six other names were researched and each lost on a named ground. The clearance
+work, the sources and the collision counts sit in
+[the PoA name clearance page](../../design/poa_name_clearance.md).
+
 ## 2026-09-11 13:10 - #585 - a guild roster saves to a file, and the Guild subtab reads it back
 
 A guild lived until the screen drew itself again. The Guild subtab built a new

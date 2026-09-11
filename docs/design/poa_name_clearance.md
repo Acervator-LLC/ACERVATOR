@@ -461,6 +461,208 @@ measurement against them.
 
 ---
 
+## Every fee's currency, and the chain's own cost of moving value
+
+**HIS.**
+
+> "Everything is Quint and we can invent our version of gas using an alchemical
+> term for 'flow' or 'move' or 'fuel'"
+
+Three rules come out of that sentence. The third is this section's work.
+
+```
+a fee the game charges       Quintessence
+a fee a venue reports        US dollars. The exchange is the authority on it and
+                             the figure measures the real world
+a movement of value on the   Fluor
+PoA chain
+```
+
+The dollar boundary is his own standing rule about the venue. The package carries
+a venue fee as `certification_socket.CertifiedFill.fee_usd` and converts it at
+`quintessence_ledger.QUINTESSENCE_PER_FEE_USD`, which reads 1 in a driven import
+of the package. Nothing turns a venue fee into Quintessence before that rate does.
+
+### Fluor, and the text that prints it
+
+**DECIDED.** Fluor names what a movement of value on the PoA chain costs. Five
+characters, read off `src.competition.FLUOR` in a driven run, inside the
+twelve-character short-form rule.
+
+Georgius Agricola printed the word in *Bermannus, sive de re metallica dialogus*,
+1530. Miners of the Erzgebirge called stones that melt in fire *fluores*. A
+smelter adds them to a charge to lower its melting point, so the metal runs. The
+singular is *fluor*, a flowing.
+
+```
+Wikipedia, Fluorine, the history section
+  "In 1529 Georgius Agricola described fluorite as an additive used to lower the
+   melting point of metals during smelting. He penned the Latin word fluores
+   (fluor, flow) for fluorite rocks."
+
+the Latin the fluorspar histories quote from De re metallica, 1556
+  "Lapides qui facile igni liquescunt"
+  stones which easily become liquid in fire
+```
+
+**The source meaning matches what the thing does.** A flux is not burnt for its
+heat. It is spent so a mass can move, and it is gone when the smelt ends. A charge
+for moving value on a chain is the same shape. Gas burns to do work, which sits one
+step further from a transfer charge than a flux does.
+
+Agricola is already a source this design cites. The Cementation event mode takes
+its parting assay from his seventh book, 1556. Fluor comes from the same author,
+twenty-six years earlier.
+
+### What proved this unit's search could report a hit
+
+A clear verdict from an unwatched search is a claim about the search. Three
+calibration cases ran on the instrument that cleared Fluor.
+
+```
+"Nigredo" as a game item   returned The Witcher 3's alchemy ingredient across
+                           seven game wikis on the first page. An obscure
+                           alchemical Latin word, in use as a game item
+"Phlogiston" as a game     returned Genshin Impact's Natlan resource, 2024,
+resource                   consumed to traverse and to fuel abilities. A
+                           pre-modern chemistry word, in use as a movement fuel
+"Cauda Pavonis" as a band  returned the English gothic rock act and its six
+                           albums, the case this page already rests on
+```
+
+The second case is the exact shape of the verdict this unit needed. The instrument
+finds a pre-modern word in use as a game resource spent to move.
+
+### Fluor against similar content
+
+| name | similar content | source |
+|---|---|---|
+| Fluor | no | no game, band, token or chain surfaced for the bare word. `Fluorite` is a Final Fantasy XI crafting material and a Minecraft mod ore. That is a different word, cleared the way Calx was cleared against Calyx |
+
+Two uses outside similar content stand. Neither is a game, an occult work, a
+bestiary or a rarity scale.
+
+```
+Fluor Corporation   an American engineering and construction firm, NYSE FLR,
+                    founded 1912, 292nd in the Fortune 500 on $15.5bn of 2025
+                    revenue
+the element         Fluor is the name of fluorine in German and Dutch, and
+                    flúor in Spanish and Portuguese
+```
+
+**The element reading is not a bar, and this package's own shipped names settle
+it.** Ten chemical substances already name things here. Lead, tin, iron, gold,
+quicksilver, copper and silver name the seven class metals, and Salt, Sulphur and
+Mercury name the three Paracelsian principles. Each reads in its alchemical sense
+because of the company it keeps. Fluor keeps that company.
+
+### The six rivals, and the ground each lost on
+
+| candidate | source | why it lost |
+|---|---|---|
+| Cibation | George Ripley, *The Compound of Alchemy*, 1471, the seventh of the twelve gates. "Cibation is called a feeding of our dry matter, With milk and meat, which moderately you do" | the closest rival, and it lost on the set rather than on the word. The five loot tiers are gates 1, 5, 8, 9 and 10 of those same twelve. A sixth gate naming a fee puts one source behind two unrelated ladders |
+| Phlogiston | Becher, 1669, and Stahl, 1703. The fiery principle a burning body releases | Genshin Impact has used Phlogiston since 2024 for a resource a player spends to traverse. The same word for the same job, in a game of that size |
+| Vectura | classical Latin. Lewis and Short give "passage-money, freight-money, fare, freight", attested at Plautus *Mostellaria* 3.2.138, Seneca *De beneficiis* 6.15.4 and Petronius 101.5. Cicero writes "misimus qui pro vectura solveret" | the exact word for a charge on carriage, and off the corpus he named. Vectura is Roman commerce, not alchemy. Vectura Group plc also traded on the London Stock Exchange until 2021 |
+| Pabulum | *pabulum ignis*, the food of fire, Boerhaave's alternative to phlogiston | Pablum is a Mead Johnson cereal trademark from 1932, and English pabulum means bland or infantile matter |
+| Fomes | Latin tinder. Virgil, *Aeneid* 1.176, "rapuitque in fomite flammam", and Aquinas on the *fomes peccati* | no alchemical attestation surfaced for it, and he asked for an alchemical term. `fomite` is also the modern word for a surface that carries infection |
+| Athanor | the self-feeding alchemical furnace | the design already spends it. Three engineering notes name athanor as a crafting station, beside alembic, crucible, retort and pelican |
+
+Flux was weighed and is not counted among the six. The naming standard takes a
+plain English word only where it is exact. Flux is exact and spent: it names a
+software architecture, a delivery tool and an image model, and games use it freely.
+
+### The collision count, measured off the running package
+
+**MEASURED.** A driven run redirected the home into a session scratch directory,
+imported the package, read every module-level string the package declares, then
+looked for each candidate as a whole word. The read covered 8,822 strings across
+46 modules.
+
+```
+driven by  PYTHONWARNINGS=error python -X dev -X faulthandler
+           u102_drive_chain_flow_name.py
+
+Fluor         declared in 1 module, quintessence_ledger, the one this unit wrote
+Calx          declared in 8 modules
+Quintessence  declared in 19 modules
+Impetus       declared in 3 modules
+Cibation      declared in 0 modules
+Athanor       declared in 0 modules
+```
+
+Calx, Quintessence and Impetus are the positive controls. They prove the read
+reports a hit.
+
+A second measurement searched the text of `src/`, `contracts/` and `docs/`, because
+a name can sit in a note before it reaches a module. Athanor is the case that
+makes the second measurement necessary.
+
+The four files this unit changed are excluded from that search, because this page
+and the manual section both name every candidate and would report themselves.
+
+```
+searched by  grep -rionI over src/ contracts/ docs/, text file types only, with
+             poa_name_clearance.md, proof-of-accumulation.md,
+             quintessence_ledger.py and __init__.py excluded
+
+Cibation      1 line, a twelve-gate list in an engineering note
+Athanor       4 lines, three of them naming the crafting station
+Fluor         0 lines
+Vectura       0 lines
+Pabulum       0 lines
+Quintessence  983 lines
+Calx          43 lines
+```
+
+### Every fee the game charges, and every fee a venue reports
+
+**MEASURED** by reading each charge site in `src/competition/`.
+
+```
+the game charges it, and it is Quintessence
+  action_spend.BANDS              what a band costs, debited through
+                                  QuintessenceLedger.spend
+  quintessence_ledger BLEED       the share a wallet-to-wallet transfer loses to
+                                  the pleroma, 8% at transfer skill level 1 and
+                                  4% at level 10
+  skill_ladder.FIRST_LEVEL_COST   the quality-weighted uses a first skill level
+                                  costs
+  consecration.cost_quintessence  a declared requirement no module debits
+  poa_modes.entry_fee_rank        an event's entry fee as a rank, carrying no
+                                  currency and no figure
+  world_turn action cost          steps out of the turn's pool, not Quintessence
+
+the venue reports it, and it stays in dollars
+  certification_socket.CertifiedFill.fee_usd
+  certification_socket.lifetime_certified_fee_usd
+  certification_socket.ratchet_certified_fee_usd
+  capture_bounds CaptureRequest.fee_usd
+  quintessence_ledger.distil(address, fee_usd, trade_grade)
+  quintessence_ledger.QUINTESSENCE_PER_FEE_USD
+  conversion_rates quintessence_per_certified_fee_usd, whose per_unit reads
+                   "one US dollar of certified venue fee"
+
+a public chain charges its own gas, and it is neither of those
+  base_config max_fee_per_gas_gwei and max_priority_fee_per_gas_gwei, the Base
+  layer-two gas, paid in gwei on a chain this project does not own
+```
+
+**No module says a game fee is charged in dollars.** A case-insensitive search for
+`dollar` and `usd` over the 45 modules returns the venue-fee fields above, the Base
+gas settings, and dollar figures that measure a trade rather than charge for one:
+the `rpg_metrics` health and damage fields, `competition_engine.advantage_usd`, the
+`local_testnet` start and final values, and the `market_rotation` USD books. No
+sentence needed restating, and this section restated none.
+
+### What Fluor does not name yet
+
+The nearest charge on moving value that exists today is the transfer bleed. Whether
+Fluor names that charge, or a separate charge on every chain write, is a mechanic
+the operator has not set. `quintessence_ledger.FLUOR_RATE_ABSENT` records that no
+source sets a figure, and no module holds one.
+
+---
+
 ## Sources
 
 - [Cauda Pavonis, the band](http://www.caudapavonis.com/biog.html)
@@ -490,3 +692,18 @@ measurement against them.
 - [Pliny, Natural History 37](https://www.attalus.org/translate/pliny_hn37b.html)
 - [Flowers of sulfur](https://en.wikipedia.org/wiki/Flowers_of_sulfur)
 - [The seven alchemical metals](https://www.astroak.com/en/blog/the-seven-metals-alchemy-and-the-planets)
+- [Fluorine, the history section](https://en.wikipedia.org/wiki/Fluorine)
+- [Fluorite, and Agricola's Bermannus of 1530](https://en.wikipedia.org/wiki/Fluorite)
+- [A history of fluorspar](https://briandcolwell.com/a-history-of-fluorspar/)
+- [De re metallica](https://en.wikipedia.org/wiki/De_re_metallica)
+- [Fluor Corporation](https://en.wikipedia.org/wiki/Fluor_Corporation)
+- [Fluorite, Final Fantasy XI](https://ffxiclopedia.fandom.com/wiki/Fluorite)
+- [Cibation, the seventh gate](https://www.arthistoryproject.com/artists/george-ripley/the-compound-of-alchemy/cibation/)
+- [cibation, Merriam-Webster](https://www.merriam-webster.com/dictionary/cibation)
+- [Phlogiston, Genshin Impact Wiki](https://genshin-impact.fandom.com/wiki/Phlogiston)
+- [Nigredo, The Witcher 3](https://witcher.fandom.com/wiki/Nigredo)
+- [vectura, Lewis and Short](http://www.perseus.tufts.edu/hopper/text?doc=Perseus:text:1999.04.0059:entry%3Dvectura)
+- [Vectura Group](https://en.wikipedia.org/wiki/Vectura)
+- [Pablum](https://en.wikipedia.org/wiki/Pablum)
+- [pabulum, Wiktionary](https://en.wiktionary.org/wiki/pabulum)
+- [Fire in the mind, on pabulum ignis](https://pmc.ncbi.nlm.nih.gov/articles/PMC4874404/)
