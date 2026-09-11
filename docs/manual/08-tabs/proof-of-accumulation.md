@@ -10209,7 +10209,324 @@ provides, nothing reads   a theft record, reconstructible after the owner moved
 provides, nothing reads   both players' potential before and after a taking
 ```
 
-## 2026-09-11 05:10 - #585 - an item is a material list, and cohesion holds it together
+## 2026-09-11 05:10 - #586 - prayer, the first thing that writes another player's alignment
+
+Every alignment score until now was a Vessel scoring its own action. A prayer is
+the first mechanism that reaches across and writes somebody else. A priest prays
+in the direction of their own alignment, the target moves that way, and the priest
+moves the same way by a smaller amount.
+
+```
+src/competition/prayer.py
+```
+
+### His words, and the three rules in them
+
+```
+PoA - Classes - Abilities - Priests - Can use prayer (of their particular
+alignment) to shift that of other players but this also further shifts the
+priest's in the same direction but a slower rate and multiple priests can act
+together to speed up the process while reducing their own penalties.
+```
+
+Three rules sit in that sentence, and all three are built.
+
+```
+the target    a prayer moves another player toward the priest's own pole
+the priest    moves the same way, at a strictly smaller rate
+a group       moves the target faster, and each priest pays less
+```
+
+### The prayer writes through the ledger that was already there
+
+Nothing new keeps alignment. A prayer files two scores through the same ledger
+every other action files through, one against the target and one against each
+priest. The scale is untouched and no second store exists.
+
+```python
+roll = PrayerRoll(ledger, may_pray)
+filed = roll.pray((priest,), target, rates)
+```
+
+### The direction is the priest's own pole, read off their own alignment
+
+His words say the prayer is of the priest's particular alignment, so the
+direction is not chosen. The module reads the praying Vessel's running total and
+takes the side it sits on.
+
+```
+net above the middle    the prayer is Creation
+net below the middle    the prayer is Destruction
+no scored action        refused; the Vessel carries no alignment to pray
+exactly the middle      refused; the middle names neither pole
+```
+
+Priests praying together must read one pole. A congregation holding two poles is
+refused, because the two halves would pull the target in opposite directions and
+the prayer would name no direction at all.
+
+```
+MixedPoleError: priests praying together hold one pole;
+Copper Conduit reads creation, Silver Mirror reads destruction
+```
+
+### The priest's own shift is a penalty, not a reward
+
+A reader seeing a priest pushed toward their own alignment could easily read it as
+a bonus. It is the opposite. In his design a strong polarity is dangerous.
+
+```
+PoA - Single Guild Worlds - Mechanically will be Quint polarized and, as such,
+will have a high amount of cataclysms and world events making it extremely
+difficult to survive.
+```
+
+```
+Unless the victorious Guild manages its alignment smartly and maintains a
+neutral Quint polarity
+```
+
+Every prayer a priest leads pushes that priest further from the neutral position
+his own rule rewards. Praying steers a world, and the priest pays the bill in its
+own polarity.
+
+### Four figures are owed, and a prayer without them is refused
+
+None of the four numbers a prayer needs has been set. The module holds the four
+as a record the caller fills in, and it defaults none of them.
+
+```
+target_shift    how far one prayer moves the target
+priest_shift    how far the same prayer moves each priest that led it
+group_speedup   what each priest past the first adds to the target's shift
+group_relief    what each priest past the first takes off every priest's shift
+```
+
+A missing figure is refused by name, and the refusal says who sets it. The
+operator sets all four.
+
+```
+FigureAbsentError: target_shift is not set; how much Creation or Destruction
+one prayer scores against the target. No figure names it and the operator sets it
+```
+
+### What holds even with the figures absent, which is the whole point of this unit
+
+His sentence gives no numbers. It gives relations, and relations can be enforced
+without a number. The module refuses any set of figures that breaks one of them.
+
+```
+at every size    each priest's own shift is strictly under the target's
+as size rises    the target's shift never falls
+as size rises    each priest's own shift never rises
+```
+
+That is his design holding whatever the four figures turn out to be. A figure set
+that breaks a relation is refused at the moment it is built, not when it is used.
+
+### One prayer and one group prayer, driven on real alignments
+
+Both were run against real Vessels with real running totals. The figures below
+were supplied by the run and are set by nobody. A priest with a Creation total of
+four over ten prays over a target sitting at six Destruction over ten.
+
+```
+rates                 target 10, priest 6, speedup 3, relief 1
+
+one priest
+  target before       net -6 over 10, reading -0.6
+  target after        net  4 over 20, reading  0.2
+  priest before       net  4 over 10, reading  0.4
+  priest after        net 10 over 16, reading  0.625
+  shifts filed        target 10, priest 6
+
+three priests, an identical target
+  target before       net -6 over 10, reading -0.6
+  target after        net 10 over 26, reading  0.3846
+  priest before       net  4 over 10, reading  0.4
+  priest after        net  8 over 14, reading  0.5714
+  shifts filed        target 16, priest 4
+```
+
+The target moved toward Creation both times. Three priests moved it sixteen where
+one moved it ten, and each of the three paid four where the single priest paid
+six. That is all three of his rules, read off the objects the run built.
+
+### The ordering is on the shift, not on how far a reading moves
+
+This distinction matters and it is easy to miss. The rule the module enforces is
+on the amount scored. How far a Vessel's reading actually travels depends on how
+much that Vessel has already done.
+
+```
+the priest above    paid 6 and its reading moved 0.225
+the target above    took 10 and its reading moved 0.800
+```
+
+A priest with almost no history can see its own reading move further than a
+heavily scored target's, while still paying the strictly smaller shift. The
+relation is honoured on the shift in every case.
+
+### A large congregation cannot pray the penalty away
+
+This is the dangerous case, and the answer is no. Relief reduces each priest's
+own shift as the congregation grows, so a large enough group would drive that
+shift to nothing and steer a world at no cost to itself.
+
+```
+six priests    each pays 1, and the prayer files
+seven priests  each would pay 0, and the prayer is refused
+```
+
+The refusal is not a number anybody invented. A score carrying nothing on either
+pole is already refused by the module that keeps alignment, so the last workable
+size falls out of his own two figures.
+
+```
+CongregationError: 7 priests reduce each own shift to 0, which scores nothing;
+6 is the last size that files
+```
+
+With relief set to nothing there is no last size, and a congregation of any size
+still costs each priest the full amount. Either way the penalty never reaches
+zero. A smallest own shift, if he sets one, would replace the refusal with a floor
+and let a congregation grow without limit.
+
+### Being prayed over is not the target's choice, and that is a question for him
+
+His alignment rule reads one way and this mechanism reads another.
+
+```
+alignment becomes a function all a Vessel's 'life' choices
+```
+
+A prayer is somebody else's choice. After this unit a Vessel's total is its own
+choices plus what other players did to it. Two readings were available and only
+one keeps his sentence true.
+
+```
+record it as the target's own action   his sentence stops being true
+record it apart from the target's own  his sentence survives
+```
+
+**The second was built.** A prayer's shift on the target files under its own
+action name, so the two can always be told apart afterwards. The running total
+still adds both, which is his roll-up unchanged.
+
+```
+the target's own run   razed a field
+worked on the target   prayer received
+reading from choices   -0.6
+reading from prayers    1
+reading from both       0.2
+```
+
+Whether that is the separation he wants is his to say. The alternative is that a
+prayer counts as the target's own life choice, which cannot be undone later
+without rereading every score ever filed.
+
+### Who counts as a priest is not settled
+
+No class in this design is called a priest. The seven are named for planets and
+metals, and the roles across them are Tank, Damage, pure healer, support healer
+and pure support.
+
+```
+"Should be period consistent with ancient technologies and time aligned to our
+core themes while also including all of our magic systems (mage, priest,
+necromancer w/ sub specialities)."
+```
+
+Mage, priest and necromancer are a third axis over the seven classes, and that
+axis has never been recorded in code. The three Mercury classes carry the healing
+and support roles and are the obvious guess. **The guess was not made.**
+
+```
+the eligible classes are an argument the caller supplies
+a class outside the list is refused by name
+the operator names which classes may pray
+```
+
+### Which clock a prayer answers to
+
+None. A prayer's shift has no duration to measure, because no scored action
+decays and the ledger stores neither a turn nor a timestamp. The shift is
+permanent the moment it files.
+
+```
+the world turn   not read; a prayer's shift does not expire
+the event turn   not read; the same
+a cadence        the one part that would need a clock, and no figure sets one
+```
+
+Nothing limits how often one target takes a prayer, from one priest or from many.
+No consent record exists either. A cadence measured in world turns is the shape
+the PvP vote already uses for the same kind of limit, and the number is his.
+
+### One received prayer can silence a priest
+
+This came out of the run rather than out of the design, and it is worth stating.
+A priest sitting at exactly the middle carries no pole, so it cannot pray. One
+prayer of the opposite direction is enough to put a priest there.
+
+```
+priest at the start        net  4 over 10, reading 0.4
+after leading one prayer   net 10 over 16, reading 0.625
+after receiving one        net  0 over 26, reading 0, exactly balanced
+praying again              refused; the middle names neither pole
+```
+
+Two priests of opposite alignment cannot cancel each other's penalty with one
+prayer apiece. The shift a priest takes always exceeds the shift it pays, so one
+prayer each overshoots the middle. Over an unequal run of prayers they can land on
+exact balance, and whichever lands there loses the ability to pray at all.
+
+### A place is a second kind of target, and it is not built here
+
+A later directive makes a consecrated place something prayer maintains against
+decay. That case belongs to another unit and no place exists in this code.
+
+```
+Without persistent and repeated prayer by one or more priests, a place will
+slowly lose its consecration status.
+```
+
+The figures and the relations in this module name no target at all, so a place
+reuses them without a change. Only the step that files the two scores needs a
+Vessel, and a place would need its own.
+
+```
+the four figures and the relations   target-agnostic, reusable as they stand
+the filing step                     needs a Vessel, so a place needs its own
+the group pair                      one pair of figures, read by both mechanisms
+```
+
+### Nothing prays in the running program
+
+The module is reached by no caller. No ability exists to pray with, no screen
+shows a prayer or an alignment, and the package entry file does not re-export it
+yet.
+
+```
+In development.
+```
+
+### What a prayer reads, and what it hands back
+
+```
+reads, nothing provides   how far one prayer moves the target
+reads, nothing provides   how far it moves each priest that led it
+reads, nothing provides   what each priest past the first adds to the target
+reads, nothing provides   what each priest past the first takes off the penalty
+reads, nothing provides   which classes count as priests
+reads, nothing provides   a priest ability, which is the caller of all of it
+provides, nothing reads   a target's alignment moved by another player
+provides, nothing reads   each priest's own shift in the same direction
+provides, nothing reads   a prayer record naming who prayed over whom
+provides, nothing reads   a Vessel's own choices, separable from what was done to it
+```
+
+## 2026-09-11 05:30 - #585 - an item is a material list, and cohesion holds it together
 
 ### Four item types, and not one name was invented
 
