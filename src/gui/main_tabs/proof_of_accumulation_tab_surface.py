@@ -40,7 +40,10 @@ read differently on screen. ``world_control`` declares the demo chain's one worl
 through ``PoaWorld.create_world`` and breaches ``FIRST_LAYER_INDEX``, which is what
 ``map_layer_view`` needs before a square draws, and ``world_panel`` reports that
 world through ``world_summary`` with the concealed seed reaching no row.
-``controls`` serves the thirteen buttons that drive the mechanisms and fires the one
+``identity_control`` writes this node's identity through ``BotIdentity.generate`` and
+refuses a second one, and ``identity_panel`` names the identity by its public half
+with the stored private key reaching no row.
+``controls`` serves the fifteen buttons that drive the mechanisms and fires the one
 ``params`` names through ``control_result``, which calls each mechanism's own
 entry point and answers its refusal sentence unchanged. ``conservation`` reads
 ``QuintessenceLedger.conservation`` after a control acts and ``season`` reads the
@@ -493,6 +496,8 @@ SYMBOL_FIELD = "symbol"
 EXCHANGE_FIELD = "exchange"
 SEASON_FIELD = "season"
 
+IDENTITY_ACTION = "identity"
+IDENTITY_CONFIRM_ACTION = "identity_confirm"
 DISTIL_ACTION = "distil"
 TRAIN_ACTION = "train"
 TRANSFER_ACTION = "transfer"
@@ -538,6 +543,8 @@ EVENT_PICKER_LABEL = "Event"
 CONTROL_ACTED_WORD = "acted"
 CONTROL_REFUSED_WORD = "refused"
 
+IDENTITY_TITLE = "Create the identity"
+IDENTITY_CONFIRM_TITLE = "Confirm the identity"
 DISTIL_TITLE = "Distil"
 TRAIN_TITLE = "Train transfer"
 TRANSFER_TITLE = "Send Quint"
@@ -552,6 +559,8 @@ RESET_CONFIRM_TITLE = "Confirm the reset"
 WORLD_TITLE = "Create a world"
 WORLD_CONFIRM_TITLE = "Confirm the world"
 
+IDENTITY_LABEL = "Ask what an identity would write"
+IDENTITY_CONFIRM_LABEL = f"Write {IDENTITY_NAME} and name this node"
 DISTIL_LABEL = f"Distil a {DEMO_FEE_USD} fee at grade {DEMO_TRADE_GRADE}"
 TRAIN_LABEL = f"Record one use at quality {DEMO_USE_QUALITY}"
 TRANSFER_LABEL = f"Send {DEMO_TRANSFER_QUINT} Quint"
@@ -569,6 +578,14 @@ WORLD_CONFIRM_LABEL = (
     f"{FIRST_LAYER_INDEX}"
 )
 
+IDENTITY_NOTE = (
+    "Asks only. No key is generated and the identity file is not written, so a "
+    "press here cannot create anything."
+)
+IDENTITY_CONFIRM_NOTE = (
+    "Generates one keypair and names this node by its public half. Refused while "
+    "an identity exists, because replacing one abandons everything it owns."
+)
 DISTIL_NOTE = "Mints at the fee times the grade, under the supply cap."
 TRAIN_NOTE = "One use of quality 0 advances nothing and the ladder refuses it."
 TRANSFER_NOTE = "Refused while the skill is untrained, and while the balance is short."
@@ -652,6 +669,34 @@ WORLD_PANEL_ABSENT_TEXT = (
 WORLD_PANEL_HELD_TEXT = (
     "The seed is concealed. Only its commitment is held on the chain and shown "
     "here, so no amount and no creature can be derived from this panel."
+)
+IDENTITY_ASK_TEXT = (
+    "{confirm} writes {name} and names this node by the public half of one "
+    "keypair. One identity a node, and both chains read it. This control writes "
+    "nothing."
+)
+IDENTITY_DONE_TEXT = (
+    "{name} holds this node's identity and the participant is {participant}. "
+    "Every other control here stops refusing for want of one."
+)
+IDENTITY_HELD_REFUSAL = (
+    "{name} already holds the identity of participant {participant}. One identity "
+    "a node, so this refuses a second: replacing it abandons the wallet, the "
+    "Vessel, the guild seat and the store that one owns."
+)
+IDENTITY_PANEL_TITLE = "The identity this node holds"
+IDENTITY_FILE_ROW = "File"
+IDENTITY_PARTICIPANT_ROW = "Participant"
+IDENTITY_PUBLIC_KEY_ROW = "Public key"
+IDENTITY_CREATED_ROW = "Created"
+IDENTITY_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+IDENTITY_PANEL_ABSENT_TEXT = (
+    "{name} holds no identity. {confirm} is the only thing that writes one, and "
+    "until it is pressed every other control here refuses."
+)
+IDENTITY_PANEL_HELD_TEXT = (
+    "The private half stays in the file. No row here, no log line and no report "
+    "reads it, so nothing drawn on this tab can sign for this participant."
 )
 NO_MARKET_NOTE = "{name} names no market, so no exclusion has a subject to file."
 
@@ -990,6 +1035,7 @@ DECLARED_FIELDS = (
     "gear",
     "guild",
     "heading",
+    "identity",
     "issue",
     "issue_text",
     "map",
@@ -1129,12 +1175,73 @@ def fault_note(path: Path, exc: Exception) -> str:
     return str(exc).replace(str(path), path.name)
 
 
+def identity_path() -> Path:
+    """The one file ``participant_identity`` reads, carrying no chain suffix.
+
+    ``shared_testnet.node_id`` reads the same path, so both chains name this node
+    by one identity.
+    """
+    return LEDGER_DIR / IDENTITY_NAME
+
+
 def participant_identity() -> BotIdentity | None:
     """This node's PoA identity from ``IDENTITY_NAME``, or None when unreadable."""
     try:
-        return BotIdentity(str(LEDGER_DIR / IDENTITY_NAME)).load()
+        return BotIdentity(str(identity_path())).load()
     except Exception:
         return None
+
+
+def identity_created_text(path: Path) -> str:
+    """The ``created_at`` second the identity record holds, as a clock reading.
+
+    Takes that one field and drops the rest of the record, so ``privkey_b64``
+    reaches no caller.
+    """
+    try:
+        made = json.loads(path.read_text()).get("created_at")
+    except (OSError, ValueError, AttributeError):
+        return NO_IDENTITY_TEXT
+    if type(made) not in (int, float) or not made:
+        return NO_IDENTITY_TEXT
+    return time.strftime(IDENTITY_TIME_FORMAT, time.localtime(float(made)))
+
+
+def identity_rows(identity: BotIdentity | None, path: Path) -> list:
+    """Every figure the identity record carries, the private half excluded.
+
+    ``bot_id`` is the public key in hex and ``short_id`` its first twelve
+    characters; nothing here reads the stored private key.
+    """
+    rows = [row(IDENTITY_FILE_ROW, file_state_text(path))]
+    if identity is None:
+        return rows
+    rows.append(row(IDENTITY_PARTICIPANT_ROW, identity.short_id))
+    rows.append(row(IDENTITY_PUBLIC_KEY_ROW, identity.bot_id))
+    rows.append(row(IDENTITY_CREATED_ROW, identity_created_text(path)))
+    return rows
+
+
+def identity_panel() -> dict:
+    """The identity this node holds, named by its public half, or what writes one.
+
+    ``participant_identity`` is the same read every other panel takes its address
+    from, so this panel and the wallet never disagree.
+    """
+    path = identity_path()
+    identity = participant_identity()
+    return {
+        "title": IDENTITY_PANEL_TITLE,
+        "held": identity is not None,
+        "rows": identity_rows(identity, path),
+        "note": (
+            IDENTITY_PANEL_HELD_TEXT
+            if identity is not None
+            else IDENTITY_PANEL_ABSENT_TEXT.format(
+                name=path.name, confirm=IDENTITY_CONFIRM_TITLE
+            )
+        ),
+    }
 
 
 def quintessence_section(chain: str, address: str | None) -> tuple[dict, str]:
@@ -2797,8 +2904,47 @@ def world_control(chain: str, address: str, event_id: str, params: dict) -> tupl
     )
 
 
+def identity_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Write this node's identity through ``BotIdentity.generate``.
+
+    Refuses while ``identity_path`` exists, because the identity is the address
+    that owns the wallet, the Vessel, the guild seat and the store, and a second
+    one abandons all four. Writes nothing until ``params`` carries
+    ``CONFIRM_FIELD``.
+    """
+    del chain, address, event_id
+    path = identity_path()
+    held = participant_identity()
+    if path.exists():
+        return (
+            False,
+            IDENTITY_HELD_REFUSAL.format(
+                name=path.name,
+                participant=NO_IDENTITY_TEXT if held is None else held.short_id,
+            ),
+            identity_rows(held, path),
+        )
+    if not (isinstance(params, dict) and params.get(CONFIRM_FIELD) is True):
+        return (
+            False,
+            IDENTITY_ASK_TEXT.format(
+                confirm=IDENTITY_CONFIRM_TITLE, name=path.name
+            ),
+            identity_rows(None, path),
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    made = BotIdentity(str(path)).generate()
+    return (
+        True,
+        IDENTITY_DONE_TEXT.format(name=path.name, participant=made.short_id),
+        identity_rows(made, path),
+    )
+
+
 #: Every control, in the order the row of buttons draws them.
 CONTROL_HANDLERS = {
+    IDENTITY_ACTION: identity_control,
+    IDENTITY_CONFIRM_ACTION: identity_control,
     DISTIL_ACTION: distil_control,
     TRAIN_ACTION: train_control,
     TRANSFER_ACTION: transfer_control,
@@ -2815,6 +2961,8 @@ CONTROL_HANDLERS = {
 }
 
 CONTROL_TITLES = {
+    IDENTITY_ACTION: IDENTITY_TITLE,
+    IDENTITY_CONFIRM_ACTION: IDENTITY_CONFIRM_TITLE,
     DISTIL_ACTION: DISTIL_TITLE,
     TRAIN_ACTION: TRAIN_TITLE,
     TRANSFER_ACTION: TRANSFER_TITLE,
@@ -2831,6 +2979,8 @@ CONTROL_TITLES = {
 }
 
 CONTROL_LABELS = {
+    IDENTITY_ACTION: IDENTITY_LABEL,
+    IDENTITY_CONFIRM_ACTION: IDENTITY_CONFIRM_LABEL,
     DISTIL_ACTION: DISTIL_LABEL,
     TRAIN_ACTION: TRAIN_LABEL,
     TRANSFER_ACTION: TRANSFER_LABEL,
@@ -2847,6 +2997,8 @@ CONTROL_LABELS = {
 }
 
 CONTROL_NOTES = {
+    IDENTITY_ACTION: IDENTITY_NOTE,
+    IDENTITY_CONFIRM_ACTION: IDENTITY_CONFIRM_NOTE,
     DISTIL_ACTION: DISTIL_NOTE,
     TRAIN_ACTION: TRAIN_NOTE,
     TRANSFER_ACTION: TRANSFER_NOTE,
@@ -2864,6 +3016,9 @@ CONTROL_NOTES = {
 
 #: Every control name, in the order the row of buttons draws them.
 CONTROL_NAMES: tuple[str, ...] = tuple(CONTROL_HANDLERS)
+
+#: The two controls that run with no address, because they are what creates one.
+IDENTITY_ACTIONS: tuple[str, ...] = (IDENTITY_ACTION, IDENTITY_CONFIRM_ACTION)
 
 
 def control_params(
@@ -2897,7 +3052,11 @@ def control_params(
     if name in (DROP_ACTION, SEASON_ACTION):
         sending[EXCHANGE_FIELD] = exchange
         sending[SYMBOL_FIELD] = symbol
-    if name in (RESET_CONFIRM_ACTION, WORLD_CONFIRM_ACTION):
+    if name in (
+        IDENTITY_CONFIRM_ACTION,
+        RESET_CONFIRM_ACTION,
+        WORLD_CONFIRM_ACTION,
+    ):
         sending[CONFIRM_FIELD] = True
     return sending
 
@@ -2921,15 +3080,18 @@ def control_result(
     """Fire the control ``params`` names and answer what the mechanism did or refused.
 
     A refusal is the mechanism's own sentence, so nothing here writes a second
-    message for a condition a mechanism already states.
+    message for a condition a mechanism already states. An ``IDENTITY_ACTIONS``
+    name runs with no ``address``, because it is what makes one.
     """
     name = params.get(ACTION_FIELD) if isinstance(params, dict) else None
     if name not in CONTROL_NAMES:
         return {"action": "", "acted": False, "message": CONTROL_IDLE_TEXT, "rows": []}
-    if address is None:
+    if address is None and name not in IDENTITY_ACTIONS:
         return {"action": name, "acted": False, "message": NO_IDENTITY_NOTE, "rows": []}
     try:
-        acted, message, rows = CONTROL_HANDLERS[name](chain, address, event_id, params)
+        acted, message, rows = CONTROL_HANDLERS[name](
+            chain, address or "", event_id, params
+        )
     except CONTROL_FAULTS as exc:
         return {"action": name, "acted": False, "message": str(exc), "rows": []}
     return {"action": name, "acted": acted, "message": message, "rows": rows}
@@ -3083,6 +3245,7 @@ def view_model(params: dict) -> dict:
         "gear": gear(chain, running["impetus_granted"]),
         "guild": guild_panel(),
         "heading": HEADING,
+        "identity": identity_panel(),
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
         "map": map_panel(variant, chain, identity),

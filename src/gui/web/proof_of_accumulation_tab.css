@@ -1242,6 +1242,69 @@ body > #panel-root {
   overflow-y: auto;
 }
 
+/* The identity this node holds, on its own row above the reset and world pair.
+   Its public key is 64 characters, which needs the full width of the bar. */
+.acervator-poa-tab [data-part="identity-panel"] {
+  display: grid;
+  flex: 1 1 100%;
+  grid-template-columns: repeat(2, 1fr);
+  gap: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+}
+
+.acervator-poa-tab [data-part="identity-panel"][data-held="true"] {
+  border-color: var(--ACCENT);
+}
+
+.acervator-poa-tab [data-part="identity-title"],
+.acervator-poa-tab [data-part="identity-note"] {
+  grid-column: 1 / -1;
+}
+
+.acervator-poa-tab [data-part="identity-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="identity-row"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="identity-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+/* A public key is 64 characters with no space in it, so the value wraps. */
+.acervator-poa-tab [data-part="identity-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  text-align: right;
+  word-break: break-all;
+}
+
+.acervator-poa-tab [data-part="identity-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
 /* The chain reset's own readout, on the row under the two buttons it reports on.
    Its rows pair off across the width, so five readings take three lines. */
 .acervator-poa-tab [data-part="reset-panel"] {
