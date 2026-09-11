@@ -1401,6 +1401,48 @@ body > #panel-root {
   gap: calc(var(--SPACE_XS) * 1px);
 }
 
+/* The layer drawn under Maps. One cell a square, the payload's own width to a row,
+   and the cell stays square at any panel width. */
+.acervator-poa-tab [data-part="map-grid"] {
+  display: grid;
+  gap: 1px;
+  align-self: start;
+  max-width: 100%;
+  padding: 1px;
+  border: 1px solid var(--OUTLINE_STRONG);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--OUTLINE);
+}
+
+.acervator-poa-tab [data-part="map-square"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  min-width: calc(var(--TYPE_CARD_VALUE) * 1px);
+  min-height: calc(var(--TYPE_CARD_VALUE) * 1px);
+  background: var(--SURFACE_1);
+}
+
+/* An undiscovered square carries no glyph and no fill of its own. */
+.acervator-poa-tab [data-part="map-square"][data-state="unknown"] {
+  background: var(--SURFACE_0);
+}
+
+.acervator-poa-tab [data-part="map-square"][data-state="known"] {
+  background: var(--SURFACE_2);
+}
+
+.acervator-poa-tab [data-part="map-square"][data-state="own"] {
+  background: var(--SURFACE_3);
+}
+
+/* Viewrange. The outline is inset so the grid's own 1px gaps stay visible. */
+.acervator-poa-tab [data-part="map-square"][data-in-view="true"] {
+  outline: 2px solid var(--ACCENT_GOLD);
+  outline-offset: -2px;
+}
+
 /* The Character Details subtab puts its stat table beside the metric list. */
 .acervator-poa-tab [data-part="details-panel-pair"] {
   display: grid;
