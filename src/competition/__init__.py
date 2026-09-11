@@ -202,8 +202,8 @@ from .capture_bounds import (
     pool_key,
 )
 
-# Order follows the sibling edges: action_spend reads skill_ladder, map_glyphs
-# reads loot_drop, world_movement reads world_grid.
+# action_spend imports skill_ladder, map_glyphs imports loot_drop,
+# world_movement imports world_grid.
 from .base_config import (
     BaseNetworkConfig,
     BASE_MAINNET,
