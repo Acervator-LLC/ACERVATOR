@@ -23,6 +23,7 @@ from .entity_stats import (
     stat_block,
 )
 from .loot_drop import TIER_NAMES
+from .monster_table import MONSTER_TIER_TABLE
 from .poa_modes import base_impetus
 from .quintessence_ledger import (
     QUINTESSENCE_PER_FEE_USD,
@@ -74,8 +75,8 @@ WEIGHT_PER_STRENGTH_QUINTESSENCE = Decimal(1)
 #: The working Quintessence one destroyed item of any loot tier releases.
 LOOT_RELEASED_QUINTESSENCE = IRON_ORE_QUINTESSENCE_HIGH_QUALITY
 
-#: Creature tiers the art brief draws. No module names one.
-MONSTER_TIERS = 6
+#: Tiers ``monster_table.MONSTER_TIER_TABLE`` declares, each owed a row here.
+MONSTER_TIERS = len(MONSTER_TIER_TABLE)
 
 #: Digits ``_temp_slot`` pads an ordinal to, as in ``TempResource_0001``.
 TEMP_SLOT_DIGITS = 4
@@ -211,11 +212,11 @@ def _loot_release_rates() -> tuple[ConversionRate, ...]:
 
 
 def _monster_embedded_rates() -> tuple[ConversionRate, ...]:
-    """One absent working entry each of the ``MONSTER_TIERS`` the art brief draws."""
+    """One absent working entry a tier of ``monster_table.MONSTER_TIER_TABLE``."""
     return tuple(
         ConversionRate(
-            name=_temp_slot("TempMonsterTier", ordinal),
-            per_unit=f"one creature of art-brief tier {ordinal}",
+            name=_temp_slot(f"TempMonsterTier_{tier.direction}", tier.rank),
+            per_unit=f"one creature of the {tier.direction} tier at depth {tier.depth}",
             yields_unit=QUINTESSENCE,
             rate=RATE_ABSENT,
             provenance=WORKING,
@@ -223,12 +224,14 @@ def _monster_embedded_rates() -> tuple[ConversionRate, ...]:
             source_symbol=NO_SOURCE_SYMBOL,
             source_args=(),
             note=(
-                "end function: the Quintessence embedded in a creature of this "
-                "tier, which falls out of entity_stats.quintessence_requirement "
-                "once the tier's level is named. The level is the missing figure"
+                f"end function: the Quintessence embedded in a creature of this "
+                f"tier, one of the {MONSTER_TIERS} monster_table declares. "
+                f"monster_table.tier_embedded_quintessence reads the amount out "
+                f"of entity_stats.quintessence_requirement once the tier's level "
+                f"is named, and the level is the missing figure"
             ),
         )
-        for ordinal in range(1, MONSTER_TIERS + 1)
+        for tier in MONSTER_TIER_TABLE
     )
 
 
