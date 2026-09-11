@@ -8040,3 +8040,213 @@ drawn as an empty box          0                0
 Each page also carried a character no font holds, which proves a missing glyph
 shows as an empty box. Two permanently unassigned characters drew as empty boxes
 on both pages, next to marks that drew as marks.
+
+## 2026-09-11 01:10 - #585 - the twelve monster tiers
+
+### Monsters run six tiers down and six tiers up
+
+The operator set the shape. Demons, Old Ones and Pure Nightmare Entities go below;
+Angels, Watchers and Others go above. A tier is not a species list. A tier names a
+position on an axis of dominant nature, so a goblin, a dragon and a slime each sit
+somewhere on that axis according to what the creature fundamentally is. Toward
+either extreme the nature fixes the form. In the middle bands a creature may still
+read as an animal or a person.
+
+`src/competition/monster_table.py` - one row a tier
+
+```python
+@dataclass(frozen=True)
+class MonsterTier:
+    depth: int
+    name: str
+    nature: str
+    entities: int | None
+    nominal_cell_px: tuple[int, ...]
+    level: int | None
+```
+
+The number carries the side. A negative depth sits below the participant's own
+plane and a positive one above it, and there is no zero, so no tier reads as
+neutral and no reader has to learn that seven means up.
+
+```
+depth -6 to -1   six tiers down, every figure transcribed from the art brief
+depth  1 to  6   six tiers up, declared and undescribed
+no depth 0       the participant's own plane is not a monster tier
+```
+
+### The six below come out of the art brief, and the six above stay deliberately empty
+
+The art brief commissions the tab's pixel art, and its six tiers make up the
+descending half. The table transcribes each one as the brief writes it: the
+creatures, the old text attesting each creature, the sprite size, the frame count,
+how many appear on screen at once, what the creature does in a fight and how it
+reads visually.
+
+```
+depth  name                                creatures   source examples
+  -1   the surface floor                        3      Mesopotamian incantations
+  -2   executors of a mandate or of fate        6      Epic of Gilgamesh, Theogony
+  -3   the decan rank                          36      hermetic texts, unnamed
+  -4   floor bosses                             7      Lugal-e, Theogony
+  -5   the fall tier                            3      1 Enoch 6-16, Tobit
+  -6   the summit                               2      invented, built on Lovecraft
+```
+
+Nothing in the operator's material names a single entity for the six tiers above.
+Those six tiers exist on the axis and carry nothing else. Their nature sentence is
+empty, their sprite size is empty, and they hold no creature. Inventing an angelic
+roster would break the one rule the art brief states about itself, which demands
+that every creature name the old text attesting it.
+
+```
+Angels, Watchers, Others   the three words he gave, held as waypoints
+what each tier above owes  a nature sentence, a form rule, and its creatures
+what is in code today      the six tiers, present and empty
+```
+
+### The thirty-six decans are thirty-six drawing jobs
+
+The brief counts twenty-one designs across five tiers, and the decan rank is the
+sixth tier it leaves out of that count. Its own frame arithmetic settles what the
+decans are: nine hundred and thirty-six frames at twenty-six frames each makes
+thirty-six separate animations, not one animation under thirty-six names. The names
+themselves sit behind manuscript editions nobody has in hand, so the tier counts
+thirty-six and names none of them.
+
+```
+named designs                    21       across five tiers
+creature names                   23       21 attested in a text, 2 invented
+drawing jobs, all twelve tiers   57       21 named, 36 unnamed
+frames, all twelve tiers      1,467       531 for the named set, 936 decans
+```
+
+### A pixel size is how big the drawing is, and nothing else
+
+Each descending tier says what size an artist draws its sprites at, rising from
+thirty-two pixels on the surface floor to one hundred and sixty at the summit. That
+figure instructs an artist. It carries no power rating, no character level and no
+amount of Quintessence, and the table keeps it in a field named for authoring so
+nobody reads it as strength.
+
+```
+depth -1   32 pixels        depth -4    96 pixels
+depth -2   48 pixels        depth -5    96 pixels
+depth -3   64 pixels        depth -6   160 and 96 pixels
+```
+
+### All twelve owe a level, and that is the only missing number
+
+Nobody picks a creature's embedded Quintessence. Once a tier has a character level,
+the amount falls out of its stats, exactly the way a Vessel's does. No source names
+a level for any of the twelve, so every row carries the level as absent and the
+program refuses to answer rather than handing back a stand-in.
+
+```
+levels owed        12
+asked anyway       "the tier at depth -6 has no level, so no Quintessence
+                    amount follows"
+once a level is named
+  level  1   embeds 5 Quintessence
+  level 50   embeds 750 Quintessence
+```
+
+The rate table already records six creature tiers as owing this figure. The true
+figure is twelve, and the six rows there cover the descending half alone.
+
+```
+TempMonsterTier_0001 to TempMonsterTier_0006   the descending six
+the six above                                  no row names them yet
+```
+
+### A creature earns its place two ways, and the refusals sit beside them
+
+The operator wants a wide range of encounters without losing the tone. A creature
+meets both conditions: it holds a position on the nature axis, and it carries a
+source attested in its own pre-modern text. The table also records the excluded
+material as data beside those conditions, because a table holding only the
+inclusions cannot report that a proposed creature fails.
+
+```
+refused   nineteenth and twentieth century occult revival
+refused   correspondence tables, tarot-to-sphere charts, planetary seal sets
+refused   Golden Dawn godforms, Enochian alphabet plates
+refused   reconstructed Egypt, against attested temple and funerary imagery
+refused   anything Crowley, or beyond the old verified texts
+```
+
+Four proposals went through the refusal, and it named the term excluding each one.
+The real sources admitted cleanly.
+
+```
+"Crowley, Liber 777"            refused, carries crowley
+"a Golden Dawn godform plate"   refused, carries golden dawn
+"a tarot-to-sphere chart"       refused, carries tarot
+no source at all                refused, needs an attested text
+"1 Enoch 6-16", "Tobit"         admitted
+```
+
+The structure takes a far larger roster than the brief commissions. A creature is a
+row naming its own tier, so a hundred creatures at one tier need no change of
+shape, only a larger count on that tier. The brief's published frame totals stay
+pinned to the twenty-one designs it commissioned.
+
+### The Watchers stand on both sides of the plane
+
+The art brief puts the Watchers below, at the fall tier, citing the story of their
+descent and calling them the corrupt lineage that perverted the craft. The operator
+has since named Watchers as a family above. Both readings come out of that same
+text, because the Watchers are angels who fell, so that one family occupies both
+directions: above as what they were, below as what they became.
+
+```
+below, depth -5   the Watchers and the Nephilim, one design, 1 Enoch 6-16
+above             Watchers, one of the three families he named
+measured          Watchers is the only name appearing on both sides
+```
+
+The hinge of the twelve-tier structure sits here, and this page reports it rather
+than settling it. The table holds the overlap as a measured fact and refuses to
+start if that fact ever changes and nothing declares it.
+
+### Nothing ties a monster tier to a world layer
+
+The world has twenty Sephirot layers, being ten spheres and their inversions, and a
+dungeon has ten floors taking the ten sphere names. The monster axis has twelve
+positions. Twelve does not divide into twenty, nothing in the operator's material
+connects a tier to a layer, and the table says so rather than aligning them.
+
+```
+world layers       20   ten spheres and their inversions
+dungeon floors     10   each takes its sphere's attested name
+monster tiers      12   tied to neither
+```
+
+### What the monster table still owes
+
+Two tiers below name a membership where the others name a nature, and the axis has
+no rule for placing an arbitrary creature. The table records both gaps instead of
+filling them.
+
+```
+a nature sentence        depth -3 names the decan rank, depth -6 names the summit
+a placement rule         nothing says which tier an arbitrary creature belongs to
+the six tiers above      nature, form rule and creatures, all absent
+a level, twelve times    the only figure standing between a tier and its
+                         embedded Quintessence
+```
+
+### Nothing draws it yet
+
+The program reaches the table. Opening the Proof of Accumulation path loads the
+package, the package loads the table, and the table checks itself against the art
+brief's published counts before the program carries on. No screen reads it.
+
+```
+reached            src/competition/monster_table.py, through the package import
+checks on start    six, all passing
+what the log says  "12 monster tiers, 6 below and 6 above, count 57 drawing jobs
+                    and 1467 frames. 21 designs are named, 36 entities are not,
+                    12 levels are owed, and ['Watchers'] appear on both sides"
+on a screen        nothing
+```
