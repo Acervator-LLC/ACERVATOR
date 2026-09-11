@@ -9145,22 +9145,26 @@ a figure that caps the count     absent
 
 ### What a Vessel still cannot do
 
-Eight mechanisms name a Vessel and none of them is built. The module lists all
-eight by name and what each one waits on, so none of them is silently missing.
+Eight mechanisms name a Vessel and six of them are unbuilt. The module lists all
+eight by name and what each one waits on, so none of them is silently missing. Two
+of the eight now ship, and their notes say which code holds them.
 
 ```
 assignments     nothing gives a Vessel a task to carry over several turns
 lifeskilling    one skill ladder exists and no Vessel runs it
-crafting        no module makes an item
+crafting        crafting.CraftRegister makes one. begin_craft takes the components
+                and complete_craft delivers the item
 notifications   nothing tells a player that a Vessel finished
 gear            no module holds an item a Vessel wears
-equipping       nothing holds gear to the equipping holder's Quintessence
+equipping       items.equip_check holds it: an item type's cohesion read against
+                the total Quintessence held
 destruction     the PvP vote answers who may, and nothing destroys
 permadeath      no module ends a Vessel
 ```
 
 His rule that the Quintessence level of gear cannot exceed the total of the
-equipping player has nothing to hold, because no gear exists to equip.
+equipping player is the one `equip_check` answers. No module records an item as
+worn, so the answer reaches no wearer yet.
 
 ```
 In development.
@@ -11063,8 +11067,8 @@ its priests keep reaching, and no cap of any kind was added.
 ### Which clock, and what a consecration does not have
 
 Every turn on a consecration is a whole world turn, counted the way the PvP vote
-counts one. A world turn is one hour by his own words, and no constant in the
-code names its length, so the hour lives in prose.
+counts one. A world turn is one hour by his own words, and `poa_modes` now names
+that length, so the figure is in the code and not only in prose.
 
 A consecration records the guild it is held for and confers no ownership of the
 place. The world grid carries no owner on a square, a zone, or a fact. No
@@ -11412,16 +11416,17 @@ his much of it will be lost permits. Only the wallet balance bounds it.
 ### Which clock a craft counts in
 
 A craft counts world turns, and the module takes that name from the one place that
-already declares it rather than spelling it a second time. Nothing in the tree
-names how many seconds a world turn lasts. The hour he mentioned lives in a
-comment beside the voting cadence and in no constant, so every turn field here is
-a whole turn index and no craft converts to wall clock time.
+already declares it rather than spelling it a second time. One world turn lasts
+3,600 seconds, which the same place now names. Every turn field here is still a
+whole turn index, and no craft converts to wall clock time.
 
-`src/competition/consecration.py` - the clock name and the gap, both imported
+`src/competition/consecration.py` - the clock name and its length, both imported
 
 ```
 CLOCK                        "world turn"
-WORLD_TURN_SECONDS_ABSENT    "no constant names the seconds in a world turn"
+WORLD_TURN_SECONDS           3600, read from poa_modes
+WORLD_TURN_SECONDS_ABSENT    "one world turn is 3600 seconds, the operator's one
+                             turn an hour"
 ```
 
 A craft opens on a turn and finishes on the turn its required count reaches, using
@@ -12049,9 +12054,9 @@ why not   leg_rate already multiplies 100 steps by terrain and by encumbrance, s
 refused   a pool built without it, by name, with that sentence in the refusal
 ```
 
-Nothing still names a world turn's length. The hour lives in his words and in no
-constant, so every turn field here is a whole turn index, the same way the PvP
-vote and a consecration both count one.
+A world turn's length is 3,600 seconds, and `poa_modes` names it. Every turn field
+here is still a whole turn index, the same way the PvP vote and a consecration both
+count one.
 
 ### What spends this, and what is still owed
 
@@ -12336,9 +12341,9 @@ closing mid-dungeon  inside. The entry records the turn they left and the exit
                      records the turn they returned to, and no rule of his covers
                      the turns between
 
-the world turn's     still no constant names the seconds in a world turn. The
-length               hour lives in his own words, so the count of event turns an
-                     hour holds is worked out from a figure the caller supplies
+the world turn's     3,600 seconds, named in poa_modes as the 1h timeframe.
+length               event_turns_per_world_turn takes that length as its own
+                     default, so no caller supplies one
 
 the screen           this module draws nothing. His map click opens the map
                     subtab, and the screen belongs elsewhere
@@ -12494,7 +12499,7 @@ derivation needs the index of the running world turn.
 
 ```
 world_movement.JourneyLeg.progress_at   derives a square from a turn index
-consecration.WORLD_TURN_SECONDS_ABSENT  nothing names the seconds in a world turn
+poa_modes.WORLD_TURN_SECONDS            3600 seconds in one world turn
 ```
 
 No module can say which turn is running now, and the map stays on the arena. The
@@ -12868,8 +12873,9 @@ Nothing in the program can say which world turn is running, so nothing can deriv
 a later square. That figure is still owed.
 
 ```
-the seconds in a world turn   unset. A number here would let the map move the
-                              participant off the arena
+the seconds in a world turn   3,600, in poa_modes. What is still unset is the
+                              index of the turn running now, which would let the
+                              map move the participant off the arena
 ```
 
 A second gate already sat in front of every button on this tab, and it now sits in
@@ -16125,3 +16131,189 @@ world control declares a world.
 The reset control deletes the Demo TestNet chain's record file and its log, and it
 refuses on the Live chain. It does not touch a roster file, so a reset leaves the
 guilds standing.
+
+## 2026-09-11 13:30 - #586 - one world turn is 3,600 seconds, and a constant says so
+
+The operator set the length himself: world turns are 1hr. No constant carried it.
+The code said so out loud, in a sentence four modules read, and a clock ratio that
+needed the figure had to be handed one by its caller. The hour is now a constant.
+
+`src/competition/poa_modes.py` already named both event timeframes. The world turn
+sits beside them, in the same shape:
+
+```
+ELITE_TIMEFRAME        "1m"
+STANDARD_TIMEFRAME     "5m"
+WORLD_TURN_TIMEFRAME   "1h"
+WORLD_TURN_SECONDS     TF_SECONDS["1h"], which is 3600
+```
+
+`TF_SECONDS` is the one table the event candle already read. The world turn reads
+the same table, so one scale measures both clocks and no second figure exists to
+drift from the first.
+
+### The hour now has a name in the code
+
+`consecration.WORLD_TURN_SECONDS_ABSENT` keeps its name, because the package entry
+binds it, and it no longer reports an absence. It reports the length and where the
+length came from.
+
+```
+before   "no constant names the seconds in a world turn. pvp_vote counts whole
+         world turns and its own notes carry the operator's one turn an hour, so
+         the hour lives in prose and every turn field here is a whole turn index"
+
+after    "one world turn is 3600 seconds, the operator's one turn an hour.
+         poa_modes declares it as WORLD_TURN_TIMEFRAME 1h beside ELITE_TIMEFRAME
+         and STANDARD_TIMEFRAME and reads the seconds off the one TF_SECONDS table
+         both clocks are measured by, so no second scale names it. Every turn
+         field here stays a whole turn index"
+```
+
+### Twelve standard turns and sixty elite turns an hour
+
+`event_turns_per_world_turn` could not answer before. It took the length as a
+required value and no constant could supply one. It now answers from the two
+declared lengths, and both divide the hour with nothing left over.
+
+```
+before   event_turns_per_world_turn(standard)
+         TypeError: missing 1 required positional argument: 'world_turn_seconds'
+
+before   event_turns_per_world_turn(standard, WORLD_TURN_SECONDS_ABSENT)
+         ClockNestingError: a world turn of "no constant names the seconds in a
+         world turn..." is not a count of seconds
+
+after    event_turns_per_world_turn(standard)   12
+         event_turns_per_world_turn(elite)      60
+```
+
+The run printed every dungeon variant's count off `nesting_rows`, which now takes
+the length as its own default too:
+
+```
+dungeon_crawl         5m candle, 300s   12 event turns a world turn   remainder 0s
+dungeon_crawl_elite   1m candle,  60s   60 event turns a world turn   remainder 0s
+raid                  5m candle, 300s   12 event turns a world turn   remainder 0s
+raid_elite            1m candle,  60s   60 event turns a world turn   remainder 0s
+```
+
+Both candles divide the hour exactly, so the refusal for a part-turn remainder
+never fires on the declared pair. A caller may still pass its own length, and a
+length the candle does not divide is still refused.
+
+### Every reader of the note now carries the number
+
+Four modules read the sentence. Each one now reads the length beside it.
+
+```
+consecration   ConsecrationRegister.to_dict gains a world_turn_seconds key of 3600
+world_turn     turn_economy_row gains the same key; the refusal for a fractional
+               turn index now quotes the length
+crafting       CRAFT_CLOCK_NOTE says turns_required counts 3600-second turns, and
+               Craft.to_dict gains the key
+dungeon_entry  WORLD_TURN_SECONDS_NOTE says both clock functions default to the
+               length; ABSENT_MECHANISMS keeps its world_turn_seconds entry
+```
+
+No key was dropped from any of those dictionaries and no sentence was deleted. A
+reader that asked for the absence note still gets a sentence at that key, and the
+sentence now carries the figure.
+
+### Only one name holds the seconds
+
+Every module in the package was imported and every module-level whole number
+compared against 3,600. Five names hold it, all of them the same name, and all five
+are the one object `poa_modes` declared.
+
+```
+src/competition/consecration.py::WORLD_TURN_SECONDS    the declared object
+src/competition/crafting.py::WORLD_TURN_SECONDS        the declared object
+src/competition/dungeon_entry.py::WORLD_TURN_SECONDS   the declared object
+src/competition/poa_modes.py::WORLD_TURN_SECONDS       the declaration
+src/competition/world_turn.py::WORLD_TURN_SECONDS      the declared object
+46 modules scanned
+```
+
+One other `3600` is written in the package, and it is not a turn length:
+`challenge_protocol.py` defaults a challenge to expire an hour after it is raised.
+The PvP vote's three figures count world turns rather than seconds, so its 24, 72
+and 7 x 24 stay as they are and read no length.
+
+### The screen reads the length in one place
+
+The turn meter does not read a world turn. It reads the running event candle, which
+is 300 seconds standard and 60 elite, and the event band draws the mode and the
+Impetus. The map panel is the one surface that names a world turn, and it was saying
+the length did not exist.
+
+```
+turn_meter      120s of 300s left, 40.0% - the event candle, not the world turn
+event band      the mode code, its label, its variant and the Impetus line
+map panel       before: "No module names the seconds in a world turn, so
+                JourneyLeg.progress_at is given no turn"
+                after:  "A world turn is 3600 seconds and no module turns a clock
+                reading into a turn index, so JourneyLeg.progress_at is given no
+                turn"
+```
+
+The first clause was false after this change and the second clause was always the
+real blocker. `progress_at` takes a turn index, not a count of seconds, so the
+length was never what stopped it. The panel was driven on a real world with one
+layer breached, and it printed the new sentence.
+
+### Crafting and equipping exist, and the notes say so now
+
+`vessels.ABSENT_MECHANISM_NOTES` said crafting and equipping were both missing.
+Both ship. A craft was driven end to end and an equip check was driven on both
+sides of its own test.
+
+```
+begin_craft      took 1 iron ore at Calx out of the crafting Vessel's store
+complete_craft   delivered armour at Calx into a gear slot, is_stored True,
+                 is_accounted True, embedded 0.00000001, unaccounted 0
+equip_check      cohesion 0.00000001 against a total of 0.00000001 - allowed
+equip_check      cohesion 0.00000001 against a total of 0        - refused,
+                 shortfall 0.00000001
+```
+
+No key left that dictionary. The two notes now name the code that holds each
+mechanism and the gap each one still has.
+
+```
+crafting    before: "no module makes an item"
+            after:  "crafting.CraftRegister makes one. begin_craft takes a
+            Recipe's components out of the crafting Vessel's store and
+            complete_craft delivers the item and embeds its Quintessence, and
+            crafting.TURNS_ABSENT names the turn count no source sets"
+
+equipping   before: "nothing holds gear to the equipping holder's Quintessence"
+            after:  "items.equip_check holds it: the ItemType's cohesion is read
+            against the total Quintessence held and EquipCheck.is_allowed is that
+            Potential.is_full. No module writes the gear a Vessel wears, so
+            nothing records an item as worn"
+```
+
+The `gear` note beside them still reads correctly. A store carries gear in counted
+slots, and carrying is not wearing: nothing records a worn item, so that note stays
+as it was.
+
+### What the world turn still does not say
+
+The length is the only figure this unit added. Four things the operator named in
+the same breath carry no figure, and no unit invents one.
+
+```
+what a world turn costs        no module prices one action in Impetus or steps
+how many world-level actions
+  fit in one block             nothing counts actions against a block
+the UTC sequencing rule        nothing orders two zones' actions by a clock
+the view range                 base sight is the participant's own square and
+                              squares_in_view takes a radius nobody supplies
+the index of the turn running
+  now                         no module turns a clock reading into a turn index,
+                              so the map cannot move a participant off the arena
+```
+
+The last row is what the map panel needs, and it needs an origin second as well as
+a length: nothing records when world turn zero opened.

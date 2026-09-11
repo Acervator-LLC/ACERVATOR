@@ -138,6 +138,7 @@ from ...competition.poa_modes import (
     IMPETUS_AT_FIRST_LEVEL,
     MODE_CODES,
     MODES,
+    WORLD_TURN_SECONDS,
     EventVariant,
     ImpetusPool,
     Turn,
@@ -894,8 +895,9 @@ MAP_VIEW_TEXT = (
 )
 MAP_POSITION_TEXT = (
     "Square {square} is this world's arena, the one square known with no discovery "
-    "record. No module names the seconds in a world turn, so JourneyLeg.progress_at "
-    "is given no turn and supplies no later square."
+    "record. A world turn is {world_turn_seconds} seconds and no module turns a clock "
+    "reading into a turn index, so JourneyLeg.progress_at is given no turn and "
+    "supplies no later square."
 )
 MAP_ACTIONS_ABSENT_TEXT = (
     "A square offers no action. Nothing holds an enter, a scout or a camp, so no "
@@ -2327,7 +2329,10 @@ def map_layer_view(chain: str, identity: BotIdentity | None) -> dict:
             name=identity.short_id,
         ),
         "view_text": MAP_VIEW_TEXT.format(count=in_view),
-        "position_text": MAP_POSITION_TEXT.format(square=record.arena_square),
+        "position_text": MAP_POSITION_TEXT.format(
+            square=record.arena_square,
+            world_turn_seconds=WORLD_TURN_SECONDS,
+        ),
         "rows": [
             row(MAP_LAYER_WORLD_ROW, world_id),
             row(MAP_LAYER_INDEX_ROW, str(layer)),

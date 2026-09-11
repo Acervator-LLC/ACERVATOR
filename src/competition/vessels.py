@@ -70,10 +70,19 @@ ABSENT_MECHANISMS: tuple[str, ...] = (
 ABSENT_MECHANISM_NOTES: dict[str, str] = {
     "assignments": "nothing gives a Vessel a task to carry over several turns",
     "lifeskilling": "one skill ladder exists and no Vessel runs it",
-    "crafting": "no module makes an item",
+    "crafting": (
+        "crafting.CraftRegister makes one. begin_craft takes a Recipe's components "
+        "out of the crafting Vessel's store and complete_craft delivers the item and "
+        "embeds its Quintessence, and crafting.TURNS_ABSENT names the turn count no "
+        "source sets"
+    ),
     "notifications": "nothing tells a player that a Vessel finished",
     "gear": "no module holds an item a Vessel wears",
-    "equipping": "nothing holds gear to the equipping holder's Quintessence",
+    "equipping": (
+        "items.equip_check holds it: the ItemType's cohesion is read against the "
+        "total Quintessence held and EquipCheck.is_allowed is that Potential.is_full. "
+        "No module writes the gear a Vessel wears, so nothing records an item as worn"
+    ),
     "destruction": "pvp_vote.may_destroy answers who may, and nothing destroys",
     "permadeath": "no module ends a Vessel",
 }

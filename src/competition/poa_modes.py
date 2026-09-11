@@ -6,6 +6,8 @@ timeframe, the difficulty, the entry fee and both loot ranks are properties of
 ``EventVariant``. ``turn_at`` reads the candle clock ``TF_SECONDS`` measures,
 ``seat_at`` seats a midturn entrant in the turn already running, and ``act``
 spends the ``impetus_grant`` a level earns from an ``ImpetusPool``.
+``WORLD_TURN_SECONDS`` reads the world clock's own length off ``TF_SECONDS``,
+so both clocks are measured here.
 """
 
 from __future__ import annotations
@@ -24,6 +26,13 @@ RAID = "raid"
 #: The timeframe a turn is one candle of, by Elite flag.
 ELITE_TIMEFRAME = "1m"
 STANDARD_TIMEFRAME = "5m"
+
+#: The timeframe one world turn runs for, the operator's one turn an hour.
+WORLD_TURN_TIMEFRAME = "1h"
+
+#: The seconds in ``WORLD_TURN_TIMEFRAME``, read off the one ``TF_SECONDS`` table
+#: ``EventVariant.turn_seconds`` reads, so one scale measures both clocks.
+WORLD_TURN_SECONDS = TF_SECONDS[WORLD_TURN_TIMEFRAME]
 
 ELITE_SUFFIX = "_elite"
 STANDARD_SUFFIX = ""

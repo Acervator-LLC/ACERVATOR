@@ -24,6 +24,7 @@ from ..core.io_utils import atomic_write_json
 from .consecration import CLOCK, WORLD_TURN_SECONDS_ABSENT
 from .poa_modes import (
     MODES,
+    WORLD_TURN_SECONDS,
     EventMode,
     EventVariant,
     PoaModeError,
@@ -177,6 +178,14 @@ MEMBER_POSITION_ABSENT = (
     "the check reads and the entry itself"
 )
 
+#: What names the world turn's length both clocks of an entry are counted on.
+WORLD_TURN_SECONDS_NOTE = (
+    f"{WORLD_TURN_SECONDS_ABSENT}. event_turns_per_world_turn and nesting_rows take "
+    f"that length as their own default, so no caller supplies one, and "
+    f"WORLD_TURN_CLOSE_ABSENT still names what a closing world turn does to a party "
+    f"inside"
+)
+
 #: What every absent mechanism waits on, one entry each.
 ABSENT_MECHANISMS: dict[str, str] = {
     "interior": INTERIOR_ABSENT,
@@ -186,7 +195,7 @@ ABSENT_MECHANISMS: dict[str, str] = {
     "member_loss": MEMBER_LOSS_ABSENT,
     "member_position": MEMBER_POSITION_ABSENT,
     "world_turn_close": WORLD_TURN_CLOSE_ABSENT,
-    "world_turn_seconds": WORLD_TURN_SECONDS_ABSENT,
+    "world_turn_seconds": WORLD_TURN_SECONDS_NOTE,
     "dungeon_object": DUNGEON_IS_A_LOCATOR,
 }
 
@@ -266,7 +275,7 @@ def dungeon_variant(code: str, *, elite: bool = False) -> EventVariant:
 
 def event_turns_per_world_turn(
     variant: EventVariant,
-    world_turn_seconds: object,
+    world_turn_seconds: object = WORLD_TURN_SECONDS,
 ) -> int:
     """Return the ``variant`` event turns one world turn of that length holds.
 
@@ -920,7 +929,7 @@ def mode_rows() -> list[dict]:
     ]
 
 
-def nesting_rows(world_turn_seconds: object) -> list[dict]:
+def nesting_rows(world_turn_seconds: object = WORLD_TURN_SECONDS) -> list[dict]:
     """Return each dungeon variant's event turns in one world turn of that length."""
     rows = []
     for mode in DUNGEON_MODES:

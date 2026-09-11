@@ -29,6 +29,7 @@ from .alignment import (
     vessel_key,
 )
 from .guild_roster import Guild, GuildRoster
+from .poa_modes import WORLD_TURN_SECONDS, WORLD_TURN_TIMEFRAME
 from .rpg_classes import CLASS_NAMES
 from .vessels import Vessel
 from .world_grid import GridPosition
@@ -62,11 +63,13 @@ FIGURE_ABSENT = None
 #: The clock every turn field in this module counts.
 CLOCK = "world turn"
 
-#: What names the world turn's length. Nothing does.
+#: What names the world turn's length, and where the figure came from.
 WORLD_TURN_SECONDS_ABSENT = (
-    "no constant names the seconds in a world turn. pvp_vote counts whole world "
-    "turns and its own notes carry the operator's one turn an hour, so the hour "
-    "lives in prose and every turn field here is a whole turn index"
+    f"one world turn is {WORLD_TURN_SECONDS} seconds, the operator's one turn an "
+    f"hour. poa_modes declares it as WORLD_TURN_TIMEFRAME {WORLD_TURN_TIMEFRAME} "
+    f"beside ELITE_TIMEFRAME and STANDARD_TIMEFRAME and reads the seconds off the "
+    f"one TF_SECONDS table both clocks are measured by, so no second scale names "
+    f"it. Every turn field here stays a whole turn index"
 )
 
 #: What names the size scale. Nothing does.
@@ -873,6 +876,7 @@ class ConsecrationRegister:
             "directions": list(DIRECTIONS),
             "direction_poles": dict(DIRECTION_POLES),
             "clock": CLOCK,
+            "world_turn_seconds": WORLD_TURN_SECONDS,
             "world_turn_seconds_absent": WORLD_TURN_SECONDS_ABSENT,
             "size_scale_absent": SIZE_SCALE_ABSENT,
             "size_figures_absent": SIZE_FIGURES_ABSENT,

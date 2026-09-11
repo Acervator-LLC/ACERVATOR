@@ -615,16 +615,15 @@ src/competition/dungeon_entry.py
   event_turns_per_world_turn   refuses a world turn the candle leaves a remainder of
 ```
 
-**The seconds in a world turn are absent.** The operator's one turn an hour lives
-in prose, and the module that would hold the constant says so.
+**A constant names the seconds in a world turn.** The operator's one turn an hour
+sits beside the two event timeframes, and both candles divide it whole.
 
 ```
-src/competition/consecration.py
-WORLD_TURN_SECONDS_ABSENT = (
-    "no constant names the seconds in a world turn. pvp_vote counts whole world "
-    "turns and its own notes carry the operator's one turn an hour, so the hour "
-    "lives in prose and every turn field here is a whole turn index"
-)
+src/competition/poa_modes.py
+WORLD_TURN_TIMEFRAME = "1h"
+WORLD_TURN_SECONDS = TF_SECONDS[WORLD_TURN_TIMEFRAME]
+
+event_turns_per_world_turn   12 at the 5m candle, 60 at the 1m candle
 ```
 
 ### The two dungeon modes
