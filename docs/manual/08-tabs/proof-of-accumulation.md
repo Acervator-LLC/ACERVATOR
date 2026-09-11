@@ -10899,3 +10899,177 @@ no prayer       the prayer module writes a player's alignment and targets no
 no surface      no tab, no panel and no map glyph shows a consecrated place
 no warning      nothing tells a guild that a place it holds is lapsing
 ```
+
+## 2026-09-11 06:10 - #147 - the package entry reaches every module, and says so when it does not
+
+### Eleven modules exist and the package could not reach them
+
+The package `src/competition` holds 40 modules. Its entry file imported 29 of
+them. The other eleven were unreachable by the package name, so a reader had to
+name each module file directly.
+
+Counted by listing the files on the disk and asking the imported package for each
+name
+
+```
+modules on the disk              40
+bound by the entry file before   29
+unreachable before               11
+
+  alignment      domination      materials       prayer      world_tier
+  army_command   guild_roster    monster_spawn   vessels
+  consecration   items
+```
+
+One unit built each of the eleven, and the brief for each unit forbade editing
+the entry file. Each unit then wrote down that the entry file still owed its
+export, and moved on. The manual carries ten such lines, one per module, and the
+`consecration` unit is the only one of the eleven that never wrote one. One
+module went further and put the note in its own code, where it prints on every
+launch.
+
+The constant in `src/competition/domination.py`, read at line 204
+
+```python
+PACKAGE_EXPORT_OWED = (
+    "src/competition/__init__.py re-exports no name from this module, so every "
+    "form is reachable by importing src.competition.domination directly"
+)
+```
+
+Ten units named the gap. None could close it. A note that tells nobody in
+particular is a queue with no owner, and the same eleven names came back.
+
+### What the entry file now binds
+
+The entry file imports all eleven modules and names their public forms. The order
+follows what each module reads, because a module placed before the one it reads
+would stop the package from loading.
+
+```
+guild_roster, vessels, materials, monster_spawn, world_tier   read nothing new
+alignment     reads guild_roster and vessels
+army_command  reads guild_roster
+items         reads materials
+consecration  reads alignment, guild_roster and vessels
+domination    reads alignment and vessels
+prayer        reads alignment
+```
+
+The entry file adds 322 names. It keeps every existing import line and every
+existing name.
+
+```
+names in the export list before   494
+names added                       322
+names in the export list after    817
+```
+
+### The entry file holds back sixteen names, and each would have overwritten a value
+
+A package name carries one value. Sixteen of the new modules' names repeat a name
+the entry file already binds, and nine of the ten repeated names carry a
+different value in each module. Exporting one would silently replace a value that
+already works, so the entry file skips all sixteen and a reader reaches them by
+naming their own module.
+
+The two clearest, measured by reading the value from each module
+
+```
+DIRECTIONS    monster_table  ('descending', 'ascending')
+              consecration   ('blessed', 'cursed')
+
+tier_bounds   loot_drop      the loot tier function
+              monster_spawn  a different function of the same name
+```
+
+The tenth repeated name is `FIGURE_ABSENT`, and its value is the same string in
+all four modules that declare it. The entry file skips it with the other fifteen,
+so this unit redefines no module's own surface.
+
+```
+held back from   the name kept      the names held back
+monster_spawn    loot_drop          tier_bounds
+world_tier       monster_table      FIGURE_ABSENT
+alignment        monster_table      FIGURE_ABSENT
+consecration     monster_table      DIRECTIONS, FIGURE_ABSENT
+consecration     monster_spawn      LocatorError
+consecration     alignment          ABSENT_READERS, ABSENT_READER_NOTES
+items            vessels            ABSENT_MECHANISMS, ABSENT_MECHANISM_NOTES
+items            materials          grid_faults
+domination       alignment          ABSENT_READERS, ABSENT_READER_NOTES
+prayer           alignment          ABSENT_READERS, ABSENT_READER_NOTES
+prayer           world_tier         FigureAbsentError
+```
+
+### The package now reports the gap itself, every time it loads
+
+Reconciling the list once does not stop it growing again. The entry file now
+reads its own folder and compares the module files it holds against the names it
+binds. The log line names every module file the package holds and does not bind.
+
+`report_unbound_modules` in `src/competition/__init__.py`
+
+```python
+def report_unbound_modules(held: list[str] | None = None) -> list[str]:
+    """Log and return each module file in this package that the imports do not bind."""
+    if held is None:
+        try:
+            held = [path.stem for path in Path(__file__).parent.glob("*.py")]
+        except OSError as exc:
+            logger.debug("competition package directory unreadable: %s", exc)
+            return []
+    unbound = sorted(
+        name for name in held if name != "__init__" and name not in globals()
+    )
+    if unbound:
+        logger.warning(
+            "competition package holds %d module(s) it does not bind: %s",
+            len(unbound),
+            ", ".join(unbound),
+        )
+    else:
+        logger.debug("competition package binds every module it holds")
+    return unbound
+```
+
+It never stops the program. The package loads on the path that builds the desktop
+bridge, and that path runs before the operator sees a window, so a refusal here
+would be a failed launch over a missing export. Reading the folder is the only
+step that can fail, and a folder it cannot read returns an empty list and a debug
+line.
+
+What the program printed on the path from `main.py`, with all 40 modules bound
+
+```
+acervator.competition DEBUG competition package binds every module it holds
+```
+
+What it prints when the package holds a module it does not bind, read by passing
+the function a module list with one extra name
+
+```
+acervator.competition WARNING competition package holds 1 module(s) it does not
+                             bind: tarot_spread
+```
+
+The warning goes to the `acervator` log tree, the same place every other part of
+the platform writes. The healthy line is a debug line, so a normal launch stays
+quiet and a missing export does not.
+
+### What reads this, and what is still owed
+
+```
+reads the export list      src/gui/competition_tab.py, and every module that
+                           imports a PoA form by the package name
+reads the report           nothing branches on it; it writes to the log only
+on a screen                nothing shows it
+owed                       a reader that acts on the warning, rather than
+                           printing it
+absent figures             none; this section measures the module count, the
+                           bound count and every name count
+```
+
+The earlier entries on this page still say the entry file owes a module's export.
+Each of those sentences held on the day its unit wrote it, and this unit changes
+none of them. The export list above closes all ten.
