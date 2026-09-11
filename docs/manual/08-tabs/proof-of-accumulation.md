@@ -14045,6 +14045,185 @@ no artefact carries an instance name
 no panel calls the store
 ```
 
+## 2026-09-11 11:05 - #585 - a finished craft puts its item in the crafting Vessel's store
+
+### The store takes the item before the Quintessence moves
+
+The craft register made an item and the store held nothing of it. The register
+returned a `CraftResult` naming the item, and no module read that name. The two
+modules are now wired. `CraftRegister` is built with a `StoreBook` as well as a
+ledger, and `complete_craft` puts the made item in the store the book holds for
+the crafting Vessel.
+
+The store key is never built by hand. `inventory.vessel_key` renders it from the
+Vessel's own `record_key`, so the craft and the store name the same Vessel.
+
+`src/competition/crafting.py` — the store takes the item, then the ledger moves
+
+```python
+            recipe = craft.recipe
+            store = self._store_for(craft.vessel)
+            stored = self._store_item(craft, store)
+            try:
+                moved = self._ledger.embed_from_wallet(
+                    craft.crafter,
+                    recipe.quintessence_from_wallet,
+                    recipe.quintessence_embedded,
+                )
+            except Exception:
+                store.take_out(
+                    recipe.item_type_name,
+                    recipe.produced_quality,
+                    UNITS_PER_CRAFT,
+                )
+```
+
+`VesselStore.put_in` reads the storage class off the item type itself. Armour,
+weapons and accessories are gear and reach a counted slot. A consumable reaches
+a stack. The craft sets no class of its own.
+
+One craft was driven end to end. The store, the wallet and the four buckets were
+read off the real objects on each side of the one `complete_craft` call. The
+recipe figures and both store figures are driving inputs of that run. No module
+holds either of them.
+
+```
+driving inputs   loss_share 0.25, turns_required 3, slot_count 2,
+                 stack_ceiling 4, fee_usd 1000, trade_grade 1
+
+before   held_gear []            held_stacks []       slots_used 0 of 2
+         units_held armour at Calx 0
+         wallet 1000             embedded 0           delta 0
+
+after    held_gear [armour, Calx, storage_class gear, weight 1]
+         held_stacks []          slots_used 1 of 2
+         units_held armour at Calx 1
+         wallet 999.99999999     embedded 0.00000001  delta 0
+         is_stored True          is_accounted True
+```
+
+The item in the slot carries the grade the craft made it at. The Quintessence
+that left the wallet equals what the embedded bucket gained, and conservation
+balances on both sides.
+
+### A full store refuses, and the craft waits
+
+A store can refuse. Its slots fill and its stack ceiling is reached. A refused
+store raises before `embed_from_wallet` runs, so the craft stays in
+`open_crafts`, the wallet keeps what the craft owes, and the store holds what it
+held. Nothing is made and nothing is lost.
+
+A store was opened with no gear slot at all. The craft opened, then the
+completion was refused.
+
+```
+driving inputs   slot_count 0, stack_ceiling 1
+
+CraftDeliveryError, raised from SlotsFullError
+  ... holds 0 of 0 gear slots and 1 armour takes 1 more; no gear is held in a
+  slot this Vessel does not have
+
+after    held_gear []            slots_used 0 of 0
+         wallet 1000             embedded 0           delta 0
+         ledger movements 1      open_crafts 1        completed_crafts 0
+```
+
+The one ledger movement is the distil that funded the wallet. The craft made no
+movement of its own.
+
+A second store was opened with a stack ceiling of one unit and one consumable
+already on the stack. The same refusal held for the stacking half.
+
+```
+CraftDeliveryError, raised from StackCeilingError
+  ... holds 1 consumables at Calx and 1 more reaches 2, above the 1 stack
+  ceiling it was built with
+
+after    held_stacks [consumables, Calx, 1 unit]
+         wallet 1000             embedded 0           delta 0
+         open_crafts 1           completed_crafts 0
+```
+
+A book that holds no store for the Vessel refuses earlier still. `begin_craft`
+asks the book for the store and raises, so no craft opens that would have
+nowhere to put its item.
+
+```
+CraftDeliveryError at begin_craft
+  ... names no store in the book this register holds, so a finished craft would
+  have nowhere to put its item
+
+after    open_crafts 0           wallet 1000          delta 0
+```
+
+Each refused craft completed later. The store was given two slots, the same
+craft id opened again, and the item reached the slot.
+
+### A drained wallet sends the item back out of the store
+
+The store takes the item first, so a ledger that refuses leaves an item in a
+slot. The register takes that item back out before it raises.
+
+A craft opened while the wallet covered it. The wallet was then emptied into
+another address. The completion was driven on the empty wallet.
+
+```
+the craft takes out of the wallet   0.00000001
+drained out of the wallet           1000.00000000
+
+ValueError from the ledger
+  u89-reincarnate-undo holds 0E-8, cannot move 1E-8
+
+after    held_gear []            slots_used 0        weight_carried 0
+         units_held armour 0
+         wallet 0                embedded 0          delta 0
+         ledger movements 2      open_crafts 1       completed_crafts 0
+```
+
+The two ledger movements are the distil and the drain. The craft moved nothing.
+The store holds nothing. The craft still stands open, and it completed once
+0.00000001 was paid back into the wallet.
+
+### Two Vessels of one owner, two stores, two items
+
+One Reincarnate holds many Vessels. Two Vessels of one class at one level under
+one owner carry two Vessel ids, so `vessel_key` renders two store keys and the
+book holds two stores. Each craft reaches its own crafter's store.
+
+Two Vessels of one owner opened one craft each on the same turn, one for armour
+and one for consumables, and both completed.
+
+```
+vessel a key   u89-reincarnate:Lead Ward:3dc1540b...
+vessel b key   u89-reincarnate:Lead Ward:5dc6cb9e...
+keys differ    True
+
+store a   held_gear [armour, Calx]      armour 1   consumables 0
+store b   held_stacks [consumables, Calx, 1 unit]  armour 0   consumables 1
+
+wallet 999.99999998   embedded 0.00000002   delta 0
+```
+
+The gear item reached the slot half of one store. The consumable reached the
+stack half of the other. Neither item reached the wrong store.
+
+### What a craft still does not take out of a store
+
+A craft puts in. It takes nothing out.
+
+```
+a Recipe names component units and nothing deducts them from a store
+no figure sets a Vessel's gear slot count
+no figure sets the stack ceiling
+no table names a recipe, so a loss share and a turn count arrive from the caller
+nothing tells a player that a craft finished
+nothing hands a Vessel a craft to carry
+```
+
+No control on screen reaches this. The PoA tab surface names no store and no
+craft register. The Gear subtab, `Ctrl+3`, is the surface that would: it already
+prints the four item classes and reads the note saying what holds them.
+
 ## 2026-09-11 11:45 - #586 - the player window reads what is left of the turn
 
 The player window reported the turn that was gone. It now reports the turn that

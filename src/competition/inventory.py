@@ -103,7 +103,7 @@ REQUIRED_FIGURES: tuple[str, ...] = (
     "the stack ceiling",
 )
 
-#: What a store takes part in that no module builds.
+#: What a store takes part in, each note naming what fills it and what stays absent.
 ABSENT_MECHANISMS: tuple[str, ...] = (
     "encumbrance",
     "a hauling trip",
@@ -126,7 +126,12 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
         "the operator's rule is that encumbrance matters only while a Vessel moves "
         "items itself, and world_movement moves a participant and carries nothing"
     ),
-    "a foraging run": "nothing gathers a material, so every put_in is a caller's",
+    "a foraging run": (
+        "nothing gathers a material. crafting.CraftRegister.complete_craft puts in "
+        "the item one Recipe produced and loot_drop.LootStore.deliver puts in one "
+        "drop, so every material unit a store holds still arrives from a caller's "
+        "own put_in"
+    ),
     "equipping": (
         "items.equip_check reads one total against one cohesion and no slot here "
         "holds gear to a Vessel's Quintessence"

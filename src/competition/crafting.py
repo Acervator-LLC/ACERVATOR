@@ -4,8 +4,11 @@
 ``Component`` entries, the ``loss_share`` it pays and the ``turns_required`` it
 occupies. ``CraftRegister.begin_craft`` opens one for a ``Vessel`` and debits
 nothing, ``abandon_craft`` drops it and debits nothing, and ``complete_craft`` is
-the only write path: one ``QuintessenceLedger.embed_from_wallet`` call puts the
-item's cohesion in the embedded bucket and the loss in the pleroma.
+the only write path: it puts the made item in the crafting Vessel's
+``inventory.VesselStore`` and then one
+``QuintessenceLedger.embed_from_wallet`` call puts the item's cohesion in the
+embedded bucket and the loss in the pleroma. ``CRAFT_DELIVERY`` names the order
+those two writes run in and what a refused store leaves behind.
 ``grid_faults`` drives every item type at every grade once at import.
 """
 
@@ -22,6 +25,13 @@ from .items import (
     Component,
     ItemType,
     item_type_named,
+)
+from .inventory import (
+    InventoryError,
+    StoreBook,
+    StoreChange,
+    VesselStore,
+    vessel_key,
 )
 from .materials import QUALITY_GRADES, quality_index
 from .quintessence_ledger import (
@@ -45,6 +55,25 @@ MIN_CRAFT_TURNS = 1
 
 #: The fewest components one ``Recipe`` may list.
 MIN_COMPONENTS = 1
+
+#: The units one craft puts in a store. One craft makes one item.
+UNITS_PER_CRAFT = 1
+
+#: Where a finished craft's item goes, and the order its two writes run in.
+CRAFT_DELIVERY = (
+    "complete_craft puts the item in the store StoreBook holds under "
+    "inventory.vessel_key of the crafting Vessel, in the storage class the "
+    "ItemType declares and at the Recipe's produced_quality, and it calls "
+    "embed_from_wallet only once that store has taken it"
+)
+
+#: What a store refusal leaves behind, and why no item and no Quintessence is lost.
+DELIVERY_REFUSAL_HOLDS = (
+    "a store that has no free slot or has reached its stack ceiling raises before "
+    "embed_from_wallet runs, so the craft stays in open_crafts, the wallet keeps "
+    "quintessence_from_wallet and the store holds what it held; a ledger refusal "
+    "after the store took the item takes that item back out before it raises"
+)
 
 #: The one movement a craft makes, and the two buckets it reaches.
 CRAFT_MOVEMENT = (
@@ -120,21 +149,24 @@ OPEN_CRAFT_HOLDS_NOTHING = (
 
 #: What stops one craft completing twice.
 SINGLE_COMPLETION = (
-    "complete_craft takes the craft out of open_crafts before it moves anything "
-    "and records its craft_id, so a second call raises and consumes no second "
-    "set of materials"
+    "complete_craft records the craft_id and takes the craft out of open_crafts "
+    "only once the store has taken the item and the ledger has moved, and it "
+    "holds one lock across all three, so a second call raises, no refusal "
+    "consumes a craft and no craft consumes a second set of materials"
 )
 
-#: What no module holds, so nothing proves a material existed before a craft.
+#: What inventory holds of a craft, and what a Recipe's own units still stand on.
 INVENTORY_ABSENT = (
-    "no module holds the materials a Vessel carries, so a Recipe names units "
-    "nothing has counted and only the wallet balance refuses a craft"
+    "inventory.VesselStore holds what a Vessel carries and complete_craft puts "
+    "the made item in it, so the store's slots and its stack ceiling refuse a "
+    "craft alongside the wallet balance; nothing takes a Recipe's component units "
+    "out of a store, so a Recipe still names units nothing has counted"
 )
 
 #: The two ends ``grid_faults`` drives. Neither sets a craft's loss.
 LOSS_SHARE_ENDS: tuple[Decimal, ...] = (Decimal(0), Decimal(1))
 
-#: What a craft takes part in that no module builds.
+#: What a craft takes part in, each note naming what builds it and what stays absent.
 ABSENT_MECHANISMS: tuple[str, ...] = (
     "a recipe table",
     "assignments",
@@ -169,7 +201,10 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
     "a package export": (
         "the competition package entry imports crafting and lists its names in "
         "__all__, so report_unbound_modules names no module at all and a name this "
-        "module repeats from one bound above it stays unexported"
+        "module repeats from one bound above it stays unexported. "
+        "UNITS_PER_CRAFT, CRAFT_DELIVERY, DELIVERY_REFUSAL_HOLDS and "
+        "CraftDeliveryError repeat no bound name and the entry file lists none of "
+        "them, so each is reached by importing src.competition.crafting directly"
     ),
 }
 
@@ -198,6 +233,10 @@ class UnknownCraftError(CraftError):
 
 class HeldCraftError(CraftError):
     """Raised by ``begin_craft`` for a ``craft_id`` another open craft holds."""
+
+
+class CraftDeliveryError(CraftError):
+    """Raised when the crafting Vessel's store has none or will not take the item."""
 
 
 def _as_share(value: object, name: str) -> Decimal:
@@ -264,6 +303,16 @@ def _as_vessel(value: object) -> Vessel:
     """Return ``value`` as a ``Vessel``; every other type raises."""
     if not isinstance(value, Vessel):
         raise CraftError(f"a Vessel was expected, got {type(value).__name__}")
+    return value
+
+
+def _as_store_book(value: object) -> StoreBook:
+    """Return ``value`` as the ``StoreBook`` every finished craft delivers into."""
+    if not isinstance(value, StoreBook):
+        raise CraftDeliveryError(
+            f"a StoreBook was expected, got {type(value).__name__}; "
+            f"{CRAFT_DELIVERY}",
+        )
     return value
 
 
@@ -380,8 +429,8 @@ class Recipe:
 class Craft:
     """One ``Recipe`` opened by one ``Vessel``, before ``complete_craft`` pays it.
 
-    ``begin_craft`` debits nothing and ``completes_turn`` is the turn it finishes
-    on.
+    ``begin_craft`` debits nothing, ``completes_turn`` is the turn it finishes on
+    and ``store_key`` is where ``complete_craft`` will put the item.
     """
 
     craft_id: str
@@ -393,6 +442,11 @@ class Craft:
     def crafter(self) -> str:
         """The wallet address this craft debits, which is the Vessel's own owner."""
         return self.vessel.owner
+
+    @property
+    def store_key(self) -> str:
+        """The key the item goes under, ``inventory.vessel_key`` of this Vessel."""
+        return vessel_key(self.vessel)
 
     @property
     def completes_turn(self) -> int:
@@ -413,9 +467,11 @@ class Craft:
             "recipe": self.recipe.to_dict(),
             "opened_turn": self.opened_turn,
             "completes_turn": self.completes_turn,
+            "store_key": self.store_key,
             "clock": CLOCK,
             "world_turn_seconds_absent": CRAFT_CLOCK_NOTE,
             "holds": OPEN_CRAFT_HOLDS_NOTHING,
+            "delivery": CRAFT_DELIVERY,
         }
 
 
@@ -423,8 +479,9 @@ class Craft:
 class CraftResult:
     """One finished craft, carrying enough to rebuild what it consumed and moved.
 
-    ``moved`` is what ``embed_from_wallet`` answered, and ``is_accounted``
-    compares it against this record's own three amounts.
+    ``moved`` is what ``embed_from_wallet`` answered and ``is_accounted``
+    compares it against this record's own three amounts. ``delivered`` is what
+    the crafting Vessel's store answered and ``is_stored`` reads it back.
     """
 
     craft_id: str
@@ -438,6 +495,7 @@ class CraftResult:
     turns_taken: int
     completed_turn: int
     moved: QuintessenceEmbed
+    delivered: StoreChange
 
     @property
     def is_accounted(self) -> bool:
@@ -447,6 +505,21 @@ class CraftResult:
             and self.quintessence_embedded == self.moved.embedded
             and self.quintessence_lost == self.moved.bled
             and self.moved.spent == self.moved.embedded + self.moved.bled
+        )
+
+    @property
+    def store_key(self) -> str:
+        """The store that took the item, read off the change it answered."""
+        return self.delivered.store_key
+
+    @property
+    def is_stored(self) -> bool:
+        """Whether the store took this craft's own item at its own grade."""
+        return (
+            self.delivered.is_put_in
+            and self.delivered.name == self.item_name
+            and self.delivered.quality == self.produced_quality
+            and self.delivered.units == UNITS_PER_CRAFT
         )
 
     @property
@@ -470,10 +543,14 @@ class CraftResult:
             "ledger_pleroma": amount_text(self.moved.bled),
             "unaccounted": amount_text(self.unaccounted),
             "is_accounted": self.is_accounted,
+            "store_key": self.store_key,
+            "delivered": self.delivered.to_dict(),
+            "is_stored": self.is_stored,
             "turns_taken": self.turns_taken,
             "completed_turn": self.completed_turn,
             "clock": CLOCK,
             "movement": CRAFT_MOVEMENT,
+            "delivery": CRAFT_DELIVERY,
         }
 
 
@@ -491,22 +568,35 @@ def craft_id_for(recipe: Recipe, vessel: Vessel, opened_turn: int) -> str:
 
 
 class CraftRegister:
-    """Opens a craft, holds it over its turns, and completes it on one ledger call.
+    """Opens a craft, holds it over its turns, and completes it into a store.
 
-    The ledger arrives by construction, so a demo run is one ``CraftRegister``
-    over another chain's ledger running the same ``complete_craft`` path.
+    The ledger and the ``StoreBook`` both arrive by construction, so a demo run is
+    one ``CraftRegister`` over another chain's ledger and another book running the
+    same ``complete_craft`` path.
     """
 
-    def __init__(self, ledger: QuintessenceLedger) -> None:
-        """Hold the ledger every craft debits, and the crafts standing open."""
+    def __init__(self, ledger: QuintessenceLedger, store_book: object) -> None:
+        """Hold the ledger every craft debits, the book it delivers into, the open."""
         if not isinstance(ledger, QuintessenceLedger):
             raise CraftError(
                 f"a QuintessenceLedger was expected, got {type(ledger).__name__}",
             )
         self._ledger = ledger
+        self._store_book = _as_store_book(store_book)
         self._open: dict[str, Craft] = {}
         self._completed: set[str] = set()
         self._lock = threading.RLock()
+
+    def _store_for(self, vessel: Vessel) -> VesselStore:
+        """The store the book holds for ``vessel``, keyed by ``inventory.vessel_key``."""
+        wanted = vessel_key(vessel)
+        try:
+            return self._store_book.store(wanted)
+        except InventoryError as exc:
+            raise CraftDeliveryError(
+                f"{wanted} names no store in the book this register holds, so a "
+                f"finished craft would have nowhere to put its item: {exc}",
+            ) from exc
 
     def quote(self, recipe: Recipe) -> Decimal:
         """Return what ``recipe`` takes out of a wallet, from its own amounts."""
@@ -525,14 +615,16 @@ class CraftRegister:
         vessel: Vessel,
         opened_turn: object,
     ) -> Craft:
-        """Open ``recipe`` for ``vessel``, refusing a wallet that cannot cover it.
+        """Open ``recipe`` for ``vessel``, refusing a wallet or a book without one.
 
-        Nothing is debited here; ``complete_craft`` is the only write path.
+        Nothing is debited and nothing is stored here; ``complete_craft`` is the
+        only write path.
         """
         if not isinstance(recipe, Recipe):
             raise CraftError(f"a Recipe was expected, got {type(recipe).__name__}")
         crafter = _as_vessel(vessel)
         opened = _as_turn_index(opened_turn, "opened_turn")
+        store = self._store_for(crafter)
         owed = recipe.quintessence_from_wallet
         balance = self._ledger.balance(crafter.owner)
         if balance < owed:
@@ -556,13 +648,15 @@ class CraftRegister:
                 )
             self._open[craft.craft_id] = craft
         logger.info(
-            "craft %s opened on %s %s, finishing on %s; %s stays in %s until then",
+            "craft %s opened on %s %s, finishing on %s; %s stays in %s until then "
+            "and the item goes to %s",
             craft.craft_id,
             CLOCK,
             opened,
             craft.completes_turn,
             amount_text(owed),
             crafter.owner,
+            store.store_key,
         )
         return craft
 
@@ -589,10 +683,12 @@ class CraftRegister:
         return craft
 
     def complete_craft(self, craft_id: str, at_turn: object) -> CraftResult:
-        """Make the item at ``completes_turn`` and move the Quintessence once.
+        """Make the item at ``completes_turn``, store it, and move the Quintessence.
 
-        One ``embed_from_wallet`` call debits the wallet, embeds the item's
-        cohesion and sends the loss to the pleroma.
+        The crafting Vessel's store takes the item first, then one
+        ``embed_from_wallet`` call debits the wallet, embeds the item's cohesion
+        and sends the loss to the pleroma. ``DELIVERY_REFUSAL_HOLDS`` names what
+        either refusal leaves behind.
         """
         reached = _as_turn_index(at_turn, "at_turn")
         with self._lock:
@@ -605,15 +701,32 @@ class CraftRegister:
                     f"{craft.completes_turn} and it is {CLOCK} {reached}; no part "
                     f"of an item exists",
                 )
+            recipe = craft.recipe
+            store = self._store_for(craft.vessel)
+            stored = self._store_item(craft, store)
+            # embed_from_wallet is the one movement a craft makes; it mints nothing.
+            try:
+                moved = self._ledger.embed_from_wallet(
+                    craft.crafter,
+                    recipe.quintessence_from_wallet,
+                    recipe.quintessence_embedded,
+                )
+            except Exception:
+                store.take_out(
+                    recipe.item_type_name,
+                    recipe.produced_quality,
+                    UNITS_PER_CRAFT,
+                )
+                logger.warning(
+                    "craft %s stays open: %s took the %s back out because the "
+                    "ledger moved nothing",
+                    craft.craft_id,
+                    store.store_key,
+                    recipe.item_type_name,
+                )
+                raise
             del self._open[craft_id]
             self._completed.add(craft_id)
-        recipe = craft.recipe
-        # embed_from_wallet is the one movement a craft makes; it mints nothing.
-        moved = self._ledger.embed_from_wallet(
-            craft.crafter,
-            recipe.quintessence_from_wallet,
-            recipe.quintessence_embedded,
-        )
         result = CraftResult(
             craft_id=craft.craft_id,
             recipe=recipe,
@@ -626,10 +739,11 @@ class CraftRegister:
             turns_taken=recipe.turns_required,
             completed_turn=reached,
             moved=moved,
+            delivered=stored,
         )
         logger.info(
             "craft %s made %s at %s: %s left %s, %s is embedded, %s joined the "
-            "pleroma, %s unaccounted",
+            "pleroma, %s unaccounted, and %s now holds %d",
             result.craft_id,
             result.item_name,
             result.produced_quality,
@@ -638,6 +752,8 @@ class CraftRegister:
             amount_text(result.quintessence_embedded),
             amount_text(result.quintessence_lost),
             amount_text(result.unaccounted),
+            result.store_key,
+            result.delivered.units_held,
         )
         if not result.is_accounted:
             raise CraftValueError(
@@ -648,6 +764,26 @@ class CraftRegister:
                 f"{amount_text(moved.bled)} to the pleroma",
             )
         return result
+
+    def _store_item(self, craft: Craft, store: VesselStore) -> StoreChange:
+        """Put one made item in ``store``, raising before any Quintessence moves.
+
+        ``VesselStore.put_in`` reads the ``ItemType``'s own storage class, so gear
+        reaches a counted slot and a consumable reaches a stack.
+        """
+        recipe = craft.recipe
+        try:
+            return store.put_in(
+                recipe.item_type_name,
+                recipe.produced_quality,
+                UNITS_PER_CRAFT,
+            )
+        except InventoryError as exc:
+            raise CraftDeliveryError(
+                f"craft {craft.craft_id} made {recipe.item_type_name} at "
+                f"{recipe.produced_quality} and {store.store_key} would not take "
+                f"it: {exc}. {DELIVERY_REFUSAL_HOLDS}",
+            ) from exc
 
     def _take_craft(self, craft_id: str) -> Craft:
         """Take an open craft out of ``open_crafts``, refusing one nothing holds."""
