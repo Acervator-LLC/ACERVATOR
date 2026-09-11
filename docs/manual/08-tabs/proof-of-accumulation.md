@@ -12338,3 +12338,157 @@ monster marks      map_glyphs gives monsters no mark on purpose, because six of
 A fact whose kind carries no mark is drawn as discovered with no glyph. One of
 the five places above was given such a kind, and the square read as discovered
 and empty on both pages.
+
+## 2026-09-11 08:15 - #147 - the package binds its last two modules
+
+The PoA package held 43 module files and named 41 of them. Two were reachable
+only by their own full path. The package reported that gap itself on every
+launch, because it reads its own folder and compares the files it holds against
+the names it binds.
+
+What a fresh interpreter printed before this unit
+
+```
+acervator.competition WARNING competition package holds 2 module(s) it does not
+                             bind: dungeon_entry, world_turn
+```
+
+The entry file now imports both. It keeps every existing import line and every
+existing name, and adds no line of arithmetic.
+
+```
+names in the export list before   845
+names added                        56
+names in the export list after    901
+
+names added from world_turn        17
+names added from dungeon_entry     39
+
+module files on the disk           43
+module files the package binds     43
+```
+
+### Where the two imports sit, and why that order holds
+
+Both imports go after crafting, at the end of the import section. A module
+placed before the one it reads would stop the package from loading, and the
+package loads before the operator sees a window. Every module these two read is
+already bound above them.
+
+The import edges, read out of the two module files
+
+```
+world_turn     reads consecration and world_movement
+
+dungeon_entry  reads world_turn, poa_modes, world_grid, consecration and the
+               platform's own atomic JSON writer
+
+army_command   named in dungeon_entry only under TYPE_CHECKING, so it is not a
+               runtime edge and sets no order
+```
+
+The entry file takes the world turn first, because the dungeon entry reads its
+first turn index. The reverse order would put a module before the one it reads.
+
+```python
+# world_turn imports consecration and world_movement, dungeon_entry imports world_turn,
+# poa_modes, world_grid and consecration.
+# 4 repeats of names bound above, ABSENT_READERS among them, stay unexported.
+from .world_turn import (
+    STEP_UNIT,
+    ...
+    turn_economy_row,
+)
+from .dungeon_entry import (
+    WORLD_CLOCK,
+    ...
+    nesting_rows,
+)
+```
+
+### Four names stay unexported, and three would have overwritten a value
+
+A package name carries one value. Four of the two modules' names repeat a name
+the entry file already binds. Three of the four carry a different value in each
+module, so exporting one would silently replace a value that already works. The
+entry file skips all four. A reader reaches them by naming their own module.
+
+Measured by reading the value out of each module
+
+```
+held back from   the name the package keeps       the two values
+world_turn       alignment.ABSENT_READERS         differ
+world_turn       alignment.ABSENT_READER_NOTES    differ
+world_turn       monster_table.FIGURE_ABSENT      are the same
+dungeon_entry    vessels.ABSENT_MECHANISMS        differ
+```
+
+The three that differ, read side by side
+
+```
+ABSENT_READERS        alignment      7 names, cataclysms first
+                      world_turn     4 names, movement first
+
+ABSENT_READER_NOTES   alignment      one note for each of its 7
+                      world_turn     one note for each of its 4
+
+ABSENT_MECHANISMS     vessels        a tuple of 8 absences
+                      dungeon_entry  a dictionary of 9 absences and their notes
+```
+
+Each module also holds its own logger, and the entry file exports neither. The
+package keeps one logger of its own, named for the package.
+
+```
+the package     acervator.competition
+world_turn      acervator.world_turn
+dungeon_entry   acervator.dungeon_entry
+```
+
+### Driven through the PoA tab's own handler
+
+The run built the desktop bridge registry and called the PoA tab's own handler
+through it, under the interpreter's development checks with every warning raising
+an error. That same run read both modules' names off the package, and the
+package's own log line came from it.
+
+```
+acervator.competition DEBUG competition package binds every module it holds
+
+the PoA handler returned          38 sections
+the surface module imported       src.gui.main_tabs.proof_of_accumulation_tab_surface
+
+world_turn off the package        STEP_UNIT 'step', MIN_SPEND_STEPS 1
+dungeon_entry off the package     CLOCKS ('world turn', 'event turn')
+                                  DUNGEON_MODE_CODES ('dungeon_crawl', 'raid')
+
+report_unbound_modules returned   an empty list
+```
+
+A circular import would stop the launch rather than slow it, so the surface
+module importing is the proof that the order holds.
+
+### What the two prior entries said, and what is owed
+
+The 07:15 and 07:40 entries above each end with a line saying the package entry
+does not yet name that module, and each quotes the warning it drew at the time.
+Both held on the day their unit wrote them. This unit changes neither, the same
+way the 07:10 entry left the counts before it standing.
+
+```
+owed  dungeon_entry.EXPORT_OWED still reads "src/competition/__init__.py binds
+      no name from dungeon_entry". The package now binds 39 of its names, so
+      that sentence is stale. The module is not this unit's to edit, and the
+      export is now on the package, so a reader sees the stale sentence and not
+      a warning
+
+owed  domination.PACKAGE_EXPORT_OWED reads "src/competition/__init__.py
+      re-exports no name from this module". The package has bound domination for
+      two entries, and the module logs that sentence at every load
+
+absent  world_turn carries no owed-export note of its own, so nothing in it went
+        stale
+
+absent  no file under src/gui or desktop names either module, so neither note
+        reaches a screen and no screen file changed
+```
