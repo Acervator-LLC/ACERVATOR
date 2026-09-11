@@ -41,25 +41,55 @@ NFT trophy.
 
 ## The skeleton
 
-The tab exists and draws three lines: its name, one sentence saying it is not
-built, and the issue that owns it. It reads no competition, no token balance
-and no trophy.
+The window builds this tab on every launch. `ProofOfAccumulationTabMixin` appends
+one panel to the tab bar and names it Accumulation. The panel holds a single web
+view, and React draws the whole screen inside that view. This screen has no Qt
+version, so nothing chooses between two frontends.
 
-`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
+`src/gui/main_tabs/proof_of_accumulation_tab.py` — the method the window calls
 
 ```python
+    def _build_proof_of_accumulation_tab(self) -> None:
+        """Append the Accumulation tab, and hold None when its page cannot be built."""
+        try:
+            from ..react_proof_of_accumulation_tab import ProofOfAccumulationReactPanel
+
+            self._proof_of_accumulation_tab = ProofOfAccumulationReactPanel()
+            self._main_tabs.addTab(self._proof_of_accumulation_tab, HEADING)
+        except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
+            logger.warning("Accumulation tab unavailable: %s", exc)
+            self._proof_of_accumulation_tab = None
+```
+
+Built through that method, the tab reads Accumulation on the bar and its page
+loads. The page draws 35 buttons. The control bar holds 25 of them: two name the
+chain, eight name the event type, and fifteen fire a mechanism. Seven more open
+the seven subtabs.
+
+One module serves that whole screen as data, and it alone declares the shell. It
+reads the Quintessence ledger, the token ledger and the loot store, so the wallet
+over the party window carries a balance and a list each for trophies, loot and
+Vessels.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — what the screen declares
+
+```python
+METHOD = "proof_of_accumulation_tab.state"
+
 HEADING = "Accumulation"
 ISSUE = 147
-BUILT = False
-STATE_TEXT = "This tab is not built."
+BUILT = True
+STATE_TEXT = (
+    "The top row is halved: the current Vessel on the left, the Map or the "
+    "Encounter on the right. The party window takes the lower half. No pixel art "
+    "is drawn."
+)
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
-Two frontends draw that one view model. `EmptyTabsMixin` in
-`src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
-`src/gui/web/proof_of_accumulation_tab.js` registers a panel with the Electron
-shell's panel host. `src.core.desktop_bridge` serves the model under
-`proof_of_accumulation_tab.state`.
+`src/gui/web/proof_of_accumulation_tab.js` is the renderer module that draws the
+zones. `src.core.desktop_bridge` registers the surface under the method name
+above, so the renderer asks the bridge for the shell by that one name.
 
 ## Identity
 
@@ -14582,6 +14612,210 @@ the wallet section       takes the grant as one action's Impetus cost
 
 No figure sets what one action costs in Impetus. The turn economy owes that
 figure, and the two sections stand in with the grant until it exists.
+
+---
+
+## 2026-09-11 12:10 - #585 - a Vessel on a square gathers what the square holds
+
+A Vessel stands on a square. A foraging run takes the material that square holds
+and puts it in that Vessel's store. Before this, nothing gathered a material. A
+craft and a hand-over were the only things that changed a store, and every
+material unit in a store was put there by a caller.
+
+The run lives in `src/competition/foraging.py`. The package binds it, so every
+name reads as `src.competition.<name>`.
+
+### A square holds one material, and the same square always holds it
+
+The square decides. It decides which of the seven materials it holds, and which
+of the five quality grades that material is at. Both come out of the square's own
+discovery leaf, which is the hash of the world seed and the square's locator.
+
+A creature already comes off the same leaf. `monster_spawn` draws a tier from one
+window of the leaf and a design from the next. A square's material is two more
+windows of that same leaf, so the material, the grade, the creature and the
+committed Quintessence are four draws off one hash. No new seed and no new hash
+is added.
+
+```mermaid
+flowchart LR
+    seed[world seed] --> leaf[discovery leaf of the square]
+    locator[square locator] --> leaf
+    leaf --> amount[digits 0 to 16: committed Quintessence]
+    leaf --> tier[digits 16 to 32: monster tier]
+    leaf --> design[digits 32 to 48: monster design]
+    leaf --> material[digits 48 to 56: the material]
+    leaf --> grade[digits 56 to 64: the grade]
+    material --> store[the Vessel store]
+    grade --> store
+```
+
+The locator names the square's origin step, never the step the Vessel stands on.
+A Vessel anywhere inside a square forages the same material. The step it stands
+on is read once, to name the square.
+
+The module refuses at import if a foraging window reads any digit another draw
+already reads. That keeps a square's material independent of its creature.
+
+### The two windows the draw reads, and what already reads the leaf
+
+A leaf is 64 hex digits. The other draws read 16 digits each. A foraging draw
+reads 8, so the two draws fit in the last 16 digits that nothing else reads.
+
+```
+leaf digits                 64
+draws elsewhere             digits 0 to 16, 16 to 32, 32 to 48
+the material draw           digits 48 to 56
+the grade draw              digits 56 to 64
+```
+
+The spread was measured over 10,000 squares of one layer under one seed.
+
+```
+materials declared / drawn    7 / 7
+grades declared / drawn       5 / 5
+material and grade pairs      35 of 35 possible
+even share a material         1428.57     lowest 1394    highest 1466
+even share a grade            2000        lowest 1957    highest 2065
+even share a pair             285.71      lowest 251     highest 323
+```
+
+The same 10,000 squares were then derived under a second seed and compared.
+
+```
+same material under both seeds    1361    an even draw gives 1428.57
+same grade under both seeds       1975    an even draw gives 2000
+same material and grade           283     an even draw gives 285.71
+```
+
+The seed reaches the draw. One square was watched where both seeds named silver
+ore at Cauda Pavonis. Its two leaves differ and its two window values differ,
+779,275,405 against 2,597,397,249. Both land on the same material because both
+divide by seven materials and leave six. At 64 squares that looked like a fault.
+At 10,000 squares the rate is 283 against 285.71, so one coincidence caused it
+and not a correlation.
+
+### What one run puts in the store
+
+One run was driven on a world whose seed is published, on square 21 of layer 3.
+
+```
+before the run
+    units_held silver ore at Cauda Pavonis   0
+    weight_carried                           0
+
+after the run
+    units_held silver ore at Cauda Pavonis   1
+    weight_carried                           1
+    units_gathered                           1
+    Quintessence the unit embeds             0.00000002
+```
+
+The square named silver ore at Cauda Pavonis off material roll 6 and grade roll
+1. A second run on the same square named the same material at the same grade and
+raised the stack to two. A run on square 22 named gold ore at Flores.
+
+The run moves no Quintessence. The amount one gathered unit embeds is read off
+the materials table and reported, and no bucket records it. A craft already says
+the same about the units it consumes.
+
+### What the yield figure stands on
+
+Nobody has set how many units one run yields. The figure sits in the conversion
+rate table, marked as a working figure, beside the other figures the operator
+owes.
+
+```
+rate name       material_units_per_forage_run
+per unit        one foraging run on one square
+yields          material units
+figure          1
+provenance      working
+```
+
+No number is written into the foraging module. The module reads the rate and
+refuses a figure that is absent, a fraction of a unit, or under one unit.
+
+**The operator owes this figure.** A yield of one unit a run is a placeholder and
+nothing more.
+
+### Every way a run refuses, and what the store holds after
+
+Each refusal was driven. In every case the store held exactly what it held before
+the call, and the register recorded no run.
+
+```
+the Vessel is on another square
+  VesselNotOnSquareError - Lead Ward of ... stands on square 21 of layer 3 and
+  square 22 was named; a Vessel forages the square it stands on
+  store units before / after   2 / 2
+
+the store cannot take what is gathered
+  ForageStoreError - ... cannot take the 1 quicksilver ore at Cauda Pavonis that
+  square 7 of layer 3 yielded ..., so the store holds what it held
+  store units before / after   1 / 1
+
+the world has not published its seed
+  SeedNotPublishedError - world ... holds its seed under commitment
+  d6b2c308a93f08a2 and has not published it, so Lead Ward of ... reads no leaf at
+  square 21 of layer 3
+  store units before / after   2 / 2
+
+the seed offered is not the published one
+  SeedCommitmentError - the seed offered rebuilds commitment d6b2c308a93f08a2 and
+  world u94-world published 75b8bddf70267c93
+  store units before / after   2 / 2
+
+the square is off the layer
+  ForageSquareError - ... stands on no square of world u94-world: square 64 is
+  off a grid holding 64
+
+nobody has breached the layer
+  ForageWorldError - ... cannot forage square 21 of layer 5: layer 5 of world
+  u94-world does not exist; layers breached: 3
+
+the book holds no store for this Vessel
+  ForageStoreError - ... names no store in the book this register holds, so a run
+  would have nowhere to put what it gathered
+
+the yield figure is not whole units
+  ForageYieldError - ... of 0.5 is not a whole number of units, and a store holds
+  no part unit
+```
+
+A control ran after every refusal. The same call with every argument right gathered
+one lead ore at Cauda Pavonis on square 9, so the refusals above are refusals and
+not a broken call.
+
+### Which subtab would reach a run, and which does
+
+The Resources subtab, which opens on Ctrl+4, is the subtab a run belongs on. It
+already prints every material and the Quintessence one unit embeds. It also
+prints that nothing holds how many units a participant carries.
+
+**Nothing on screen opens a run today.** No control on any subtab calls this
+module. The Maps subtab draws the squares and names no material. The run was
+driven from the real modules and not from the screen.
+
+### What a foraging run still does not do
+
+```
+a square that runs out   no source sets a deposit size, so the same square
+                         yields the same material and the same units every time
+a world supply           nothing counts how many units of a material a world
+                         holds, and a run deducts from no total
+a turn cost              a run spends nothing out of the world turn's pool
+encumbrance              the weight is read and nothing turns it into a refusal
+                         or a turn point penalty
+a skill                  no skill gates a run, raises its yield, or reaches a
+                         grade the square does not already hold
+a surface                no control opens a run
+```
+
+The operator's rule is that encumbrance counts only while a Vessel moves items
+itself, such as after a foraging run. The run now exists. Nothing moves a Vessel
+with its load, and both figures an encumbrance rule needs are still working
+figures.
 
 ## 2026-09-11 12:25 - #586 - a dungeon entry refuses a party that is not all standing there
 
