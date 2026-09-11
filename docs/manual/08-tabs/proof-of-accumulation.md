@@ -4,7 +4,7 @@ Reference. **Built.** React draws this tab inside the desktop window, and the
 tab row carries it under the name Accumulation. The window still builds neither
 the Competition tab nor the Local Testnet tab. The page halves its top row: the
 current Vessel on the left, the Map or the Encounter on the right. The party
-window takes the lower half, and it lists up to 120 participants, 40 a page.
+window takes the lower half, and it lists up to 120 party rows, 40 a page.
 Seven subtabs open over those zones — Maps, Character Details, Gear, Resources,
 Quint, Skills and Guild. Ctrl+1 to Ctrl+7 open them in that order. Maps opens
 only in an event that carries a map.
@@ -1947,8 +1947,8 @@ A TestNet run asks the same surface for the same model and names its own chain.
 The fleet file for a demo chain carries the chain in its name.
 
 ```
-chain live      bot_state.json           exists   38 participants, 7 classes
-chain testnet   bot_state_testnet.json   absent    0 participants, 7 classes
+chain live      bot_state.json           exists   38 source bots, 7 classes
+chain testnet   bot_state_testnet.json   absent    0 source bots, 7 classes
 ```
 
 The classes are not chain data, so both runs list all seven. The party window
@@ -2470,10 +2470,10 @@ modes the design names.
 passed=False     8 high findings       wrote <repo>/logs/tournaments
 ```
 
-Two things in it were worth keeping and both carried over. A participant is
-named by its bot id rather than by holding a bot object, and one event shape
+Two things in it were worth keeping and both carried over. A party row is named
+by its bot id rather than by holding a bot object, and one event shape
 serves the screen as a plain row. The seeded simulation, the scorer for
-computer-run participants, the invented candles and the settlement adapter that
+computer-run party rows, the invented candles and the settlement adapter that
 paid nobody are all gone.
 
 ### Demo mode answers the same event
@@ -2482,8 +2482,8 @@ A TestNet run asks the same surface and names its own chain. The modes, the turn
 and the pool are not chain data, so both runs answer the same event.
 
 ```
-chain live      38 participants   8 event types   raid_elite, 1m candle
-chain testnet    0 participants   8 event types   raid_elite, 1m candle
+chain live      38 source bots   8 event types   raid_elite, 1m candle
+chain testnet    0 source bots   8 event types   raid_elite, 1m candle
 ```
 
 ### What the modes and the turn do not reach
@@ -2645,7 +2645,8 @@ so the same 120 prices come back on every run, and the competition still names a
 winner and mints the award.
 
 ```
-participants   3
+participant nodes   0
+source bots         3
 winner tier    Harvest
 winner tokens  10
 rank 1 value   371.46   the same figure on a second run
@@ -6480,7 +6481,7 @@ files written           market_rotation_testnet.json
 
 ### The party window lists the fleet on both chains
 
-The participant list was reading a chain-suffixed fleet file, so the demo chain
+The party list was reading a chain-suffixed fleet file, so the demo chain
 drew an empty party. A fleet is not chain state: the same bots play on either
 chain and only the ledger changes. The list now reads the one fleet file, and the
 demo chain draws the same forty slots the live chain draws.
@@ -15378,3 +15379,209 @@ world stays at the tier it opened on, and every world rolls the full chart today
 
 A band rolls, and nothing reaches it. A caller that hands a band to the drop call
 gets a correct roll. No control and no subtab hands it one.
+
+## 2026-09-11 13:05 - #147 - a participant is a node, and a bot is a source that feeds one
+
+A participant is one active Acervator node. The node qualifies by holding a
+Quintessence wallet address the ledger can answer for. One or more bots feed that
+node with their trading activity. A node running ten bots is one participant with
+ten sources. A bot is a source of activity, not a player.
+
+The engine counted bot registrations and called the total its participants. One
+node with three bots therefore read as three participants. The count now counts
+nodes, and a new count beside it counts the bots.
+
+### One node, three bots, one participant
+
+The run below registers three bots on one node twice, on the old reading and on
+the new one. Nothing else about the run changes.
+
+`src/competition/competition_engine.py` - the same three bots on the same node
+
+```
+before   bot registrations filed            3
+         CompetitionResult.participants     3
+         the results table                  3 bots
+
+after    bot registrations filed            3
+         participant_count()                1
+         source_bot_count()                 3
+         CompetitionResult.participants     1
+         CompetitionResult.source_bots      3
+         the results table                  1 participant node(s)
+                                            3 source bot(s)
+```
+
+The node that registers is named by the identity file the tab writes. The node id
+is the first twelve characters of its public key and the wallet address is the
+whole of it. Both readings come off one file.
+
+```
+bot_identity.json            one file under the runtime directory
+node id                      c3838662e5ea
+wallet address               c3838662e5ea37ce9ac0e908165297aac9e7f2a77cb9215
+                             0dfc0f034f4715640
+the node id is its first 12  true
+```
+
+The shared TestNet bridge reads that same file and answers with that same node
+id, so the participant and the chain peer are one node.
+
+```
+SharedTestnetBridge.node_id()      dc61ee1c59a3
+the file's own short id            dc61ee1c59a3
+the participant registered         node dc61ee1c59a3, wallet dc61ee1c59a3...
+```
+
+### The wallet a participant registers is one the ledger can answer for
+
+Two things are checked and both are checked against the Quintessence ledger
+itself. The address must pass the ledger's own address rule. The ledger must hold
+a wallet record for it, which happens only after a movement has fed that wallet.
+
+`src/competition/participant_node.py` - the two refusals, in full
+
+```
+the address rule    node d960314c3eba gave '   ', which is no wallet address
+
+no wallet record    node d960314c3eba gave wallet d960314c3eba9f1d209ceaa801
+                    db9b4289050ba8e1414c02f060f6dcd6903990, which the
+                    Quintessence ledger holds no record of; a participant's
+                    wallet is one the ledger can answer for
+```
+
+The same node registers once Quintessence has moved into that wallet. The run
+distilled four Quintessence into it and the register call then took it.
+
+```
+before the movement   holds_wallet    false     register_node   refused
+after the movement    holds_wallet    true      register_node   took it
+                      balance         4.00000000
+                      participant_count()       1
+```
+
+The ledger answers a balance of nothing for an address no movement names, so a
+balance alone cannot tell an unknown wallet from a wallet spent down to nothing.
+A new query answers that one question and the check reads it.
+
+A bot that names a node nobody registered is turned away. A bot that names no
+node at all registers, trades and signs as before, and feeds no participant.
+
+```
+names an unfiled node   bot d3526f03b07e names node node-nobody-filed, which
+                        registered no participant wallet; a node registers
+                        before its bots feed it
+names no node           registered, node_of_bot None
+                        participant_count()   1
+                        source_bot_count()    0
+                        unattached_bot_count()   1
+```
+
+### Two nodes count as two, and each reads only its own bots
+
+Two nodes registered two wallets. Two bots fed the first and three fed the
+second. The count read two, and each node's list held only its own.
+
+```
+node A   032307a2ebc5   ad2c2447e93e, 92423dabc184
+node B   f314c2ee858c   7c5ee511d482, 22578d0b8fa6, 87b9a0c71f89
+
+node A's list holding any of B's bots    empty
+node B's list holding any of A's bots    empty
+a bot read back to its node              A's first bot -> 032307a2ebc5
+                                         B's first bot -> f314c2ee858c
+
+participant_count()                      2
+source_bot_count()                       5
+the results table                        2 participant node(s)
+                                         5 source bot(s)
+```
+
+One wallet cannot carry two nodes. The second node to name a wallet another node
+registered is turned away, so one wallet never reads as two participants.
+
+### A bot still signs its own trades, and the log stays keyed by the bot
+
+A bot is what signs a trade, and none of this moves that. The trade log keys on
+the bot id, the signature verifies against the bot's public key, and the Merkle
+proof verifies.
+
+```
+the signing bot                  c5baf7827ace
+the record's public key is its   true
+signature length                 128 hex characters
+verify_trade on the sell         true
+verify_trade on the buy          true
+the log key is the bot id        true
+log size                         2
+Merkle inclusion of trade 0      true
+Merkle inclusion of trade 1      true
+a second bot keeps its own log   true
+```
+
+### What a reader of the participant count should read now
+
+Four readers carry the count and each reads nodes now.
+
+```
+CompetitionResult.participants    participant nodes registered
+CompetitionResult.source_bots     bots whose submissions the result ranks
+the results table line            both counts, named
+the saved result file             both counts, and each node with its own bots
+```
+
+The saved result file carries the nodes themselves, so a finished competition
+records which wallet each participant held and which bots fed it.
+
+```json
+{"participants": 1, "source_bots": 3,
+ "participant_nodes": [{"node_id": "711224c3165c",
+   "wallet_address": "711224c3165c5ebe745fedf08ace5b94d04079c3267278cb0029a8973bd7246b",
+   "source_bots": ["db8f5f8e3cf7...", "74240b2f425e...", "1ca0f82cb76a..."]}]}
+```
+
+The TestNet demo control registers three bots and registers no node, because it
+holds no Quintessence ledger to check a wallet against. Its table therefore reads
+nought participants and three source bots, which is what is true of it.
+
+```
+LocalTestnet.run_demo_competition(n_bots=3)
+  0 participant node(s)  ·  3 source bot(s)
+  winner tier Harvest, award 10 ACRV
+```
+
+### What still counts one wallet a bot
+
+The certification socket derives one ledger address from each bot id and passes
+it as the participant of a capture award. The address is the bot's, not the
+node's, so the market share ceiling and the cooldown still bound a bot rather
+than a participant.
+
+`src/competition/certification_socket.py` - one wallet a bot
+
+```python
+    @staticmethod
+    def _wallet_for(bot_id: str) -> str:
+        """Return the ledger address and chain sender for ``bot_id``."""
+        return f"0x{bot_id[:40]}"
+```
+
+Moving that address to the node's wallet changes which address Quintessence
+lands in and which address a ceiling counts against. No statement names that
+move, so nothing here makes it.
+
+The party window is the other place. It lists one row a bot from the fleet load
+and its row field is named for a participant. Those rows are source bots under
+this reading, and the wallet panel above them is the one that names the
+participant.
+
+```
+the party row field          participant, holding a bot id
+the wallet panel label       Participant, holding the node id
+the on-chain view name       getParticipantCount, counting one wallet a bot
+the on-chain record key      participants, holding one wallet a bot
+```
+
+The two on-chain names are a contract interface and a stored record shape.
+Renaming either changes what a chain record holds, so both stand and neither is
+read as a participant count of nodes.

@@ -7,8 +7,12 @@ Quick start:
     from src.competition import BotIdentity, CompetitionEngine, TokenLedger
 
     identity = BotIdentity().generate()
-    engine   = CompetitionEngine(season=1, symbol="BTC/USDT")
-    engine.register_bot(identity, capital_usd=400.0)
+    engine   = CompetitionEngine(season=1, symbol="BTC/USDT", quint_ledger=quint)
+    engine.register_participant(node_id, wallet_address)
+    engine.register_bot(identity, capital_usd=400.0, node_id=node_id)
+
+A participant is one node holding a Quintessence wallet the ledger can answer for,
+and each bot registers as one source of the trading activity feeding that node.
 """
 
 import logging
@@ -32,6 +36,13 @@ from .quintessence_ledger import (
     QuintessenceTransfer,
     QUINTESSENCE_SUPPLY_CAP,
     bleed_fraction,
+    is_wallet_address,
+)
+from .participant_node import (
+    NO_LEDGER_REASON,
+    ParticipantNode,
+    ParticipantRegistry,
+    ParticipantRegistryError,
 )
 from .competition_engine import (
     CompetitionEngine,
@@ -1108,6 +1119,11 @@ __all__ = [
     "QuintessenceConservation",
     "QuintessenceTransfer",
     "QUINTESSENCE_SUPPLY_CAP",
+    "is_wallet_address",
+    "NO_LEDGER_REASON",
+    "ParticipantNode",
+    "ParticipantRegistry",
+    "ParticipantRegistryError",
     "bleed_fraction",
     "CompetitionEngine",
     "CompetitionStatus",
