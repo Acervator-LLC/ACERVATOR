@@ -575,8 +575,8 @@ software architecture, a delivery tool and an image model, and games use it free
 
 **MEASURED.** A driven run redirected the home into a session scratch directory,
 imported the package, read every module-level string the package declares, then
-looked for each candidate as a whole word. The read covered 8,653 strings across
-45 modules.
+looked for each candidate as a whole word. The read covered 8,822 strings across
+46 modules.
 
 ```
 driven by  PYTHONWARNINGS=error python -X dev -X faulthandler
@@ -584,7 +584,7 @@ driven by  PYTHONWARNINGS=error python -X dev -X faulthandler
 
 Fluor         declared in 1 module, quintessence_ledger, the one this unit wrote
 Calx          declared in 8 modules
-Quintessence  declared in 18 modules
+Quintessence  declared in 19 modules
 Impetus       declared in 3 modules
 Cibation      declared in 0 modules
 Athanor       declared in 0 modules
@@ -610,7 +610,7 @@ Athanor       4 lines, three of them naming the crafting station
 Fluor         0 lines
 Vectura       0 lines
 Pabulum       0 lines
-Quintessence  970 lines
+Quintessence  983 lines
 Calx          43 lines
 ```
 
