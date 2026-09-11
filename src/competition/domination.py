@@ -108,9 +108,10 @@ CONTROL_END_ABSENT = (
 
 #: What reduces a health reading to ``HEALTH_AT_ZERO``. Nothing does.
 HEALTH_SOURCE_ABSENT = (
-    "no module holds a Vessel's health. vessels.Vessel carries owner, class_name "
-    "and level, entity_stats.STAT_NAMES holds strength, dexterity, constitution, "
-    "intelligence and wisdom and no health, and no figure names a maximum. "
+    "no module holds a Vessel's health. vessels.Vessel carries owner, class_name, "
+    "level and vessel_id, entity_stats.STAT_NAMES holds strength, dexterity, "
+    "constitution, intelligence and wisdom and no health, and no figure names a "
+    "maximum. "
     "set_health takes the reading from its caller, and combat is absent, so "
     "nothing reduces one to HEALTH_AT_ZERO"
 )
@@ -156,11 +157,12 @@ ALIGNMENT_SUBJECT = (
 
 #: What ``alignment.vessel_key`` carries across a theft, and what stays behind.
 KEY_FOLLOWS_THE_OWNER = (
-    "alignment.vessel_key files a Vessel under its owner and its class, so a "
-    "theft moves the taken Vessel to a new key. steal_vessel moves the "
+    "alignment.vessel_key files a Vessel under its owner, its class and its "
+    "vessel_id, so a theft moves the taken Vessel to a new key and no other "
+    "Vessel of the victim's ever held that key. steal_vessel moves the "
     "incapacitation onto the new key and clears the old one, and the scored "
     "actions AlignmentLedger holds stay under the victim's key. "
-    "alignment.VESSEL_ID_OWED names the field that would carry those across"
+    "alignment.VESSEL_ID_OWED names the key shape that would carry those across"
 )
 
 #: Why no call hands a Vessel to a third address.
@@ -320,7 +322,7 @@ class IncapacitationRegister:
 
     def __init__(self) -> None:
         """Open a register holding no Vessel."""
-        self._held: dict[tuple[str, str], dict[str, Incapacitation]] = {}
+        self._held: dict[tuple[str, str, str], dict[str, Incapacitation]] = {}
 
     @property
     def marked_count(self) -> int:
@@ -429,11 +431,12 @@ class IncapacitationRegister:
         return self.condition_of(vessel, world_turn) == CONDITION_INCAPACITATED
 
     def rows(self) -> list[dict]:
-        """One row a marked Vessel, carrying its ``vessel_key`` pair and every kind."""
+        """One row a marked Vessel, carrying its ``vessel_key`` triple and every kind."""
         return [
             {
                 "owner": owner,
                 "class_name": class_name,
+                "vessel_id": vessel_id,
                 "condition": CONDITION_INCAPACITATED,
                 "incapacitations": [
                     by_kind[kind].to_dict()
@@ -441,7 +444,7 @@ class IncapacitationRegister:
                     if kind in by_kind
                 ],
             }
-            for (owner, class_name), by_kind in sorted(self._held.items())
+            for (owner, class_name, vessel_id), by_kind in sorted(self._held.items())
         ]
 
     def to_dict(self) -> dict:
@@ -460,11 +463,11 @@ class IncapacitationRegister:
             "key_follows_the_owner": KEY_FOLLOWS_THE_OWNER,
         }
 
-    def _add(self, key: tuple[str, str], entry: Incapacitation) -> None:
+    def _add(self, key: tuple[str, str, str], entry: Incapacitation) -> None:
         """File ``entry`` under ``key``, replacing any entry of the same kind."""
         self._held.setdefault(key, {})[entry.kind] = entry
 
-    def _drop(self, key: tuple[str, str], kind: str) -> None:
+    def _drop(self, key: tuple[str, str, str], kind: str) -> None:
         """Drop ``kind`` from ``key``, dropping the key once it holds nothing."""
         by_kind = self._held.get(key)
         if by_kind is None:
@@ -785,8 +788,8 @@ def steal_vessel(
     )
     index = _taken_index(victim, taken_vessel)
     moved = replace(taken_vessel, owner=thief.address)
-    # vessel_key carries the owner, so the kinds move or the victim's next
-    # Vessel of this class reads incapacitated.
+    # replace copies the vessel_id and moved names a new owner, so carry_to
+    # moves the kinds onto the key moved holds.
     register.carry_to(taken_vessel, moved)
     theft = Theft(
         Taking(
