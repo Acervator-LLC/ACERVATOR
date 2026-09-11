@@ -8,7 +8,7 @@ runtime counters. ``make_bot_config`` refuses a kwarg foreign to the given
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import Optional
 
@@ -641,6 +641,44 @@ def make_bot_config(mode, **kwargs) -> BotConfig:
             f"produced an invalid config. Violations:\n  " + "\n  ".join(violations)
         )
     return cfg
+
+
+def bot_config_kwargs(mode, collected: dict, *, exchange_id: str = "") -> dict:
+    """Return the `make_bot_config` kwargs for `mode` out of `collected`.
+
+    `exchange_id` names the venue when `collected` carries no `exchange_id`.
+    """
+    foreign = (
+        _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
+        if mode == BotMode.EXTRACTOR
+        else _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS
+    )
+    # make_bot_config sets mode itself and raises on a foreign field.
+    carried = {f.name for f in fields(BotConfig)} - foreign - {"mode"}
+    kwargs = {
+        key: value
+        for key, value in _sanitize_deprecated_kwargs(collected).items()
+        if key in carried
+    }
+    # BotConfig declares no default for either, and make_bot_config defaults
+    # target_asset itself.
+    kwargs.setdefault("exchange_id", exchange_id)
+    kwargs.setdefault("base_currency", "USDT")
+    # An Extractor's parameter page offers no target_balance row; its pool is
+    # the figure the bot trades against.
+    kwargs.setdefault(
+        "target_balance",
+        (
+            collected.get("extractor_chunk_size_usd", 200.0)
+            if mode == BotMode.EXTRACTOR
+            else 200.0
+        ),
+    )
+    # An absent key is the retired Grid checkbox, not STACK_MODE_DEFAULT.
+    kwargs.setdefault("stack_mode", collected.get("bulk_trading", False))
+    if "extractor_alt_targets" in kwargs:
+        kwargs["extractor_alt_targets"] = list(kwargs["extractor_alt_targets"] or [])
+    return kwargs
 
 
 @dataclass

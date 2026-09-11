@@ -2420,3 +2420,88 @@ stood in the upper right. The bot selector and its privacy dot moved there.
 [07-indicators.md](07-indicators.md) carries the panel's own entry.
 
 ![The Trading tab in the Electron shell](../audits/2026-09-07_units/trading_tab_electron.png)
+
+## 2026-09-11 16:48 - #665 - the wizard's values reach a new bot
+
+Bot creation held two dict literals. Each named the settings it would pass to a
+new bot, and the wizard collected more settings than either named. A name absent
+from both lists was collected, held in memory and never read, so the bot took the
+declared default for that field instead. Twenty-five Scrumming settings and six
+Extractor settings went that way.
+
+One function now selects the kwargs, and it reads the declaration rather than a
+list of names. `bot_config_kwargs` keeps every key that names a field `BotConfig`
+declares, and drops the keys that belong to the other mode — which is the same
+rule `make_bot_config` applies when it refuses one. A field added to `BotConfig`
+and emitted by the wizard arrives with no second edit.
+
+`src/trading/container/config.py` — `bot_config_kwargs`, the selection
+
+```python
+foreign = (
+    _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
+    if mode == BotMode.EXTRACTOR
+    else _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS
+)
+# make_bot_config sets mode itself and raises on a foreign field.
+carried = {f.name for f in fields(BotConfig)} - foreign - {"mode"}
+```
+
+### What the entries above now read
+
+Five entries on this page state that bot creation does not pass a setting. Each
+sentence described the creation path as it stood, and the creation path has
+moved. The corrected reading for each:
+
+| entry | the sentence above | what it now does |
+|---|---|---|
+| Wire Inflow Stack | "Bot creation does not pass this setting, so a new bot takes the declared default of 1.00 whatever you type here." | Bot creation passes `wire_inflow_stack_pct`. A new bot takes the figure on the row. |
+| Profit Routing | "Issue #336 carries this, with the rest of the settings the wizard writes and bot creation drops." | Bot creation passes `profit_route` and `profit_route_bot_id`. No module under `src/trading/` reads either one, so the destination a bot holds still reaches no trade. |
+| Standing alt units (inverted) | "Bot creation passes neither this number nor the Direction beside it, so a new Extractor runs Normal with a standing position of zero whatever you enter." | Bot creation passes `inverted_extractor_standing_alt_units` and `extractor_direction`. `set_initial_chunk_rate` still has no caller in the product source. |
+| Correction skip candles | "Bot creation does not pass it, so a new bot takes the declared default of 4." | Bot creation passes `extractor_correction_skip_candles`. The reader still counts ticks rather than candles. |
+| Drawdown threshold | "bot creation does not pass it, so a new bot takes the declared default of 3.00" | Bot creation passes `extractor_drawdown_threshold_pct`. |
+
+Five entries already read "bot creation passes it through": Read Rate, Band
+Travel, Pool Reserve, Exit % and Max cost-basis multiple. Those sentences stand
+unchanged.
+
+### What the run measured
+
+One run drove the real wizard on both modes. It moved every control on every
+page the wizard reaches, collected the config, built a real bot through the
+creation path, and read each value back off that bot's own config.
+
+```
+scrumming   wizard emits 52 keys
+            before   26 passed, 24 settings held the default against a typed value
+            after    48 passed, 0 held a default against a typed value
+extractor   wizard emits 23 keys
+            before   20 passed, 6 settings held the default against a typed value
+            after    22 passed, 0 of those 6 held a default
+```
+
+The Extractor's 22 names hold two the wizard does not emit: Target Balance and
+Stack Mode, each supplied at creation as it was before. One Extractor key still
+holds a default and it is the Profit Folding flag, which the table below covers.
+
+The same run drove a save and a restore of a bot built from typed values. All 72
+fields came back holding what was saved, so a restart puts back what it put back
+before.
+
+A wizard left untouched still builds a bot at the declared defaults. Every
+Scrumming field matches its declaration. Two Extractor fields do not, and both
+are deliberate: the Extractor's parameter page offers no Target Balance row, so
+its pool figure stands in; and the page offers no Stack Mode box, so an absent
+key reads as off rather than as `STACK_MODE_DEFAULT`.
+
+### Three settings the wizard still collects and a new bot still cannot read
+
+| setting | why |
+|---|---|
+| Lock duration (candles) | `lock_candle_count` is no field on `BotConfig` and no argument of `ScrummingBot.__init__`. The phantom coordinator holds an attribute of that name, and Bot Settings writes it there on a running bot. |
+| Profit Folding, on an Extractor | `BotCreationWizard.get_bot_config` writes `profit_folding_active: False` for an Extractor. The field is Scrumming-only, so `make_bot_config` refuses it on an Extractor config. No control types it. |
+| Max adoptable USD | `max_adoptable_usd` is the one `BotConfig` field no page offers and the restore path does not read either. Nothing writes it and nothing types it. |
+
+`enable_phantoms` and `phantom_timeframes` are not on that list. Both already
+reach the bot, as arguments to `ScrummingBot.__init__` rather than through the
+bot config.

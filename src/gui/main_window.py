@@ -3293,100 +3293,17 @@ if _HAS_QT:
                         _mode = BotMode.EXTRACTOR
                     else:
                         _mode = BotMode.SCRUMMING
-                    from ..trading.bot_container import make_bot_config
+                    from ..trading.bot_container import (
+                        bot_config_kwargs,
+                        make_bot_config,
+                    )
 
-                    _ta_default = "*" if _mode == BotMode.EXTRACTOR else "BTC"
-
-                    _shared_kwargs = {
-                        "exchange_id": config.get("exchange_id", exchange_id),
-                        "base_currency": config.get("base_currency", "USDT"),
-                        "target_asset": config.get("target_asset", _ta_default),
-                        "target_balance": config.get(
-                            "target_balance",
-                            (
-                                config.get("extractor_chunk_size_usd", 200.0)
-                                if _mode == BotMode.EXTRACTOR
-                                else 200.0
-                            ),
-                        ),
-                        "ta_timeframe": config.get("ta_timeframe", "1h"),
-                        "visibility": config.get("visibility", "orderbook"),
-                        "aggressive_trading": config.get("aggressive_trading", False),
-                        "stack_mode": config.get(
-                            "stack_mode", config.get("bulk_trading", False)
-                        ),
-                        "split_distance": config.get("split_distance", 1.0),
-                        "stack_tranche_count_target": config.get(
-                            "stack_tranche_count_target", 3
-                        ),
-                        "stack_spacing_mode": config.get(
-                            "stack_spacing_mode", "linear"
-                        ),
-                    }
-
-                    if _mode == BotMode.SCRUMMING:
-                        _mode_kwargs = {
-                            "investment_amount": config.get("investment_amount", 200.0),
-                            "increment_style": config.get("increment_style", "linear"),
-                            "max_target_growth_pct": config.get(
-                                "max_target_growth_pct", 1.0
-                            ),
-                            "scrumming_interval_pct": config.get(
-                                "scrumming_interval_pct", 1.0
-                            ),
-                            "profit_folding_active": config.get(
-                                "profit_folding_active", True
-                            ),
-                            "bb_tolerance_pct": config.get("bb_tolerance_pct", 1.0),
-                            "bb_landing_strip_candles": config.get(
-                                "bb_landing_strip_candles", 3
-                            ),
-                            "scrum_detect_pct": config.get("scrum_detect_pct", 75),
-                            "scrum_fire_pct": config.get("scrum_fire_pct", 0.5),
-                            "bb_midline_gate": config.get("bb_midline_gate", True),
-                            "scrum_read_rate_min": config.get("scrum_read_rate_min", 5),
-                            "band_travel_pct": config.get("band_travel_pct", 70),
-                            "bb_bullseye_check": config.get("bb_bullseye_check", True),
-                            "hedge_rebalance_active": config.get(
-                                "hedge_rebalance_active", True
-                            ),
-                            "hedge_balance": config.get("hedge_balance", 200.0),
-                        }
-                    else:
-                        _mode_kwargs = {
-                            "extractor_chunk_size_usd": config.get(
-                                "extractor_chunk_size_usd", 100.0
-                            ),
-                            "extractor_artillery_size_usd": config.get(
-                                "extractor_artillery_size_usd", 5.0
-                            ),
-                            "extractor_scan_top_n": config.get(
-                                "extractor_scan_top_n", 8
-                            ),
-                            "extractor_scan_refresh_candles": config.get(
-                                "extractor_scan_refresh_candles", 60
-                            ),
-                            "extractor_pool_reserve_pct": config.get(
-                                "extractor_pool_reserve_pct", 50.0
-                            ),
-                            "extractor_exit_pct": config.get(
-                                "extractor_exit_pct", 100.0
-                            ),
-                            "extractor_max_compounding_tier": config.get(
-                                "extractor_max_compounding_tier", 3
-                            ),
-                            "extractor_max_cost_basis_multiple": config.get(
-                                "extractor_max_cost_basis_multiple", 2.0
-                            ),
-                            "extractor_alt_targets": list(
-                                config.get("extractor_alt_targets", []) or []
-                            ),
-                        }
+                    _wizard_kwargs = bot_config_kwargs(
+                        _mode, config, exchange_id=exchange_id
+                    )
 
                     try:
-                        bot_config = make_bot_config(
-                            _mode, **_shared_kwargs, **_mode_kwargs
-                        )
+                        bot_config = make_bot_config(_mode, **_wizard_kwargs)
                     except (ValueError, TypeError) as _bc_err:
                         msg = (
                             f"Bot creation REJECTED — mode-shape "
