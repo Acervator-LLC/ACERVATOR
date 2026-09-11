@@ -643,6 +643,87 @@ def make_bot_config(mode, **kwargs) -> BotConfig:
     return cfg
 
 
+def bot_config_kwargs(mode, collected: dict, *, exchange_id: str = "") -> dict:
+    """Return the `make_bot_config` kwargs for `mode` out of `collected`.
+
+    `exchange_id` names the venue when `collected` carries no `exchange_id`.
+    """
+    _ta_default = "*" if mode == BotMode.EXTRACTOR else "BTC"
+    kwargs = {
+        "exchange_id": collected.get("exchange_id", exchange_id),
+        "base_currency": collected.get("base_currency", "USDT"),
+        "target_asset": collected.get("target_asset", _ta_default),
+        "target_balance": collected.get(
+            "target_balance",
+            (
+                collected.get("extractor_chunk_size_usd", 200.0)
+                if mode == BotMode.EXTRACTOR
+                else 200.0
+            ),
+        ),
+        "ta_timeframe": collected.get("ta_timeframe", "1h"),
+        "visibility": collected.get("visibility", "orderbook"),
+        "aggressive_trading": collected.get("aggressive_trading", False),
+        "stack_mode": collected.get(
+            "stack_mode", collected.get("bulk_trading", False)
+        ),
+        "split_distance": collected.get("split_distance", 1.0),
+        "stack_tranche_count_target": collected.get("stack_tranche_count_target", 3),
+        "stack_spacing_mode": collected.get("stack_spacing_mode", "linear"),
+    }
+    if mode == BotMode.SCRUMMING:
+        kwargs.update(
+            {
+                "investment_amount": collected.get("investment_amount", 200.0),
+                "increment_style": collected.get("increment_style", "linear"),
+                "max_target_growth_pct": collected.get("max_target_growth_pct", 1.0),
+                "scrumming_interval_pct": collected.get("scrumming_interval_pct", 1.0),
+                "profit_folding_active": collected.get("profit_folding_active", True),
+                "bb_tolerance_pct": collected.get("bb_tolerance_pct", 1.0),
+                "bb_landing_strip_candles": collected.get(
+                    "bb_landing_strip_candles", 3
+                ),
+                "scrum_detect_pct": collected.get("scrum_detect_pct", 75),
+                "scrum_fire_pct": collected.get("scrum_fire_pct", 0.5),
+                "bb_midline_gate": collected.get("bb_midline_gate", True),
+                "scrum_read_rate_min": collected.get("scrum_read_rate_min", 5),
+                "band_travel_pct": collected.get("band_travel_pct", 70),
+                "bb_bullseye_check": collected.get("bb_bullseye_check", True),
+                "hedge_rebalance_active": collected.get("hedge_rebalance_active", True),
+                "hedge_balance": collected.get("hedge_balance", 200.0),
+            }
+        )
+    else:
+        kwargs.update(
+            {
+                "extractor_chunk_size_usd": collected.get(
+                    "extractor_chunk_size_usd", 100.0
+                ),
+                "extractor_artillery_size_usd": collected.get(
+                    "extractor_artillery_size_usd", 5.0
+                ),
+                "extractor_scan_top_n": collected.get("extractor_scan_top_n", 8),
+                "extractor_scan_refresh_candles": collected.get(
+                    "extractor_scan_refresh_candles", 60
+                ),
+                "extractor_pool_reserve_pct": collected.get(
+                    "extractor_pool_reserve_pct", 50.0
+                ),
+                "extractor_exit_pct": collected.get("extractor_exit_pct", 100.0),
+                "extractor_max_compounding_tier": collected.get(
+                    "extractor_max_compounding_tier", 3
+                ),
+                "extractor_max_cost_basis_multiple": collected.get(
+                    "extractor_max_cost_basis_multiple", 2.0
+                ),
+                "extractor_alt_targets": list(
+                    collected.get("extractor_alt_targets", []) or []
+                ),
+            }
+        )
+    return kwargs
+
+
 @dataclass
 class BotStats:
     """Mutable runtime statistics — updated by the bot during operation."""
