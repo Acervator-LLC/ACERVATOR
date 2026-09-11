@@ -17,6 +17,23 @@ QUINTESSENCE_MINIMUM_UNIT = Decimal("0.00000001")
 QUINTESSENCE_UNITS_PER_WHOLE = 100_000_000
 
 QUINTESSENCE_PER_FEE_USD = Decimal(1)
+
+#: What a movement of value on the PoA chain costs, charged in Quintessence.
+FLUOR = "Fluor"
+
+FLUOR_SOURCE = (
+    "Georgius Agricola printed fluores in Bermannus, sive de re metallica "
+    "dialogus, 1530, for the stones a smelter adds to lower a melting point so "
+    "the metal runs. The singular is fluor, a flowing"
+)
+
+FLUOR_RATE_ABSENT = (
+    "no source sets what one movement costs in Fluor, so this module declares "
+    "the name and no figure. Every fee the game charges is Quintessence, and a "
+    "fee a venue reports stays in dollars, which QUINTESSENCE_PER_FEE_USD "
+    "converts"
+)
+
 BLEED_FRACTION_AT_LEVEL_1 = Decimal("0.08")
 BLEED_FRACTION_AT_LEVEL_10 = Decimal("0.04")
 MIN_TRANSFER_SKILL_LEVEL = 1
