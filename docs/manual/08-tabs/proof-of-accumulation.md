@@ -12179,3 +12179,162 @@ the package entry  does not yet name this module. The package says so itself on
                    every launch: competition package holds 2 module(s) it does
                    not bind: dungeon_entry, world_turn
 ```
+
+## 2026-09-11 08:00 - #147 - the world map draws one layer, and only what one participant found
+
+### The grid is nine squares a side, and the module says so
+
+The Maps subtab now draws squares. Before this it drew the grid's bounds as a
+table of five numbers and nothing else. The width is not written on the screen or
+in this page. It falls out of the byte budget, and the module computes it.
+
+`src/competition/world_grid.py` - the width, derived from the budget
+
+```python
+#: The default grid side, holding ``BUDGETED_SQUARES_PER_LAYER`` squares.
+DEFAULT_GRID_WIDTH = smallest_whole_side(BUDGETED_SQUARES_PER_LAYER)
+```
+
+What the module answered when asked:
+
+```
+squares a side          9
+squares a layer        81
+layers                 20
+participants a layer   79
+squares in view         1
+```
+
+### A square draws only what that participant has found
+
+His rule is that a zone appears on the map after player discovery, and that one
+player discovering something does not discover it for everyone. The map is
+therefore drawn per participant. The surface reads the knowledge references that
+one participant holds, and nothing else reaches a square.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - the only source of a mark
+
+```python
+def known_facts(world: PoaWorld, world_id: str, address: str, layer: int) -> tuple:
+    """Every ``WorldFact`` on ``layer`` that ``address`` holds a knowledge reference to."""
+    found = []
+    for reference in world.knows(world_id, address):
+        try:
+            fact = world.fact(world_id, reference)
+        except WorldGridError:
+            continue
+        if fact.layer == layer:
+            found.append(fact)
+    return tuple(found)
+```
+
+A square with no fact in that list carries a mark with no glyph, so it draws
+nothing at all. That is the whole of the lazy-discovery rule on screen.
+
+### Four states, and each one looks different
+
+A square is the participant's own, or discovered, or undiscovered. Sight is a
+fourth reading laid over the first three, and today it covers one square.
+
+```
+own          the arena square, a stronger ground
+in view      a gold outline, from BASE_VIEWRANGE_SQUARES
+discovered   a lighter ground, and the glyph of the thing found there
+undiscovered the darkest ground, and nothing drawn inside it
+```
+
+### Both variants drew the same layer, read off the pictures
+
+A world was created in a scratch home, one layer breached, and five places
+discovered. A second participant discovered a sixth place that the first
+participant was never told about. The tab was then drawn twice. Every figure
+below comes off the rendered pages, not off the payload behind them.
+
+```
+                             desktop window   Electron shell
+squares drawn                      81               81
+grid columns                        9                9
+grid side in pixels             155.6            155.6
+the participant's own square       40               40
+squares in view                     1                1
+squares drawing a glyph             4                4
+squares drawing nothing            77               77
+```
+
+The sixth place, found by the other participant, read as undiscovered and drew
+nothing on both pages. That is his rule holding on screen.
+
+### A missing glyph draws as a box, and the reading can see one
+
+A code point that exists in Unicode is not a glyph that exists on the machine.
+Two permanently reserved noncharacters were drawn in the page's own resolved
+font, and their pixels were counted. Both produced the same 71 inked pixels,
+which is the replacement box. Each mark on the map was then measured the same way
+and compared against it.
+
+```
+the box, twice          71 inked pixels, identical
+Magisterium  U+26E4     68 inked pixels, gold
+Elixir       U+2625     59 inked pixels, pink
+Calx         U+2296     83 inked pixels, grey
+Flores       U+2698     68 inked pixels, blue
+```
+
+No mark matched the box on either page.
+
+### Nothing creates a world on a normal start
+
+No module in the tree calls the function that makes a world. The map above was
+produced by calling it directly against a local test chain in a scratch home.
+On the operator's machine the subtab therefore says there is no world, and draws
+no grid rather than an empty one.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - the three reasons nothing draws
+
+```
+no world file      No world is generated. No grid, no tile and no position is
+                   held anywhere, so this subtab draws no map.
+no breached layer  World <name> declares 20 layers and nobody has breached one,
+                   so no layer exists to draw.
+no identity        bot_identity.json does not exist, so no participant is named.
+```
+
+Each sentence names what would set it. The screen with no world was rendered and
+read: zero squares drawn, and no grid element on the page at all.
+
+### Where a participant is, and why it does not move
+
+The arena is the one square known with no discovery record, and it is where the
+map puts the participant. A journey record can derive a later square, but the
+derivation needs the index of the running world turn.
+
+```
+world_movement.JourneyLeg.progress_at   derives a square from a turn index
+consecration.WORLD_TURN_SECONDS_ABSENT  nothing names the seconds in a world turn
+```
+
+No module can say which turn is running now, and the map stays on the arena. The
+subtab prints that sentence, so a reader knows the position is a default and not
+a choice.
+
+### What this map does not draw
+
+Four things his design names and nothing supplies.
+
+```
+the tactical map   his words turn the map into a tactical map during an
+                   encounter. Nothing holds an encounter's enemies or their turn
+                   order, so no tactical map is drawn
+an action menu     his words give a location options when a player moves into
+                   the correct square. Movement exists and no module holds an
+                   enter, a scout or a camp, so no menu is drawn
+pixel art          no sprite exists anywhere. The glyphs are the stand-in, which
+                   is the point of the Dwarf Fortress decision
+monster marks      map_glyphs gives monsters no mark on purpose, because six of
+                   the twelve tiers carry no name and no hermetic set covers
+                   twelve positions
+```
+
+A fact whose kind carries no mark is drawn as discovered with no glyph. One of
+the five places above was given such a kind, and the square read as discovered
+and empty on both pages.

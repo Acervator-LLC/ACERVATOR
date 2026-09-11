@@ -22,7 +22,8 @@ with the value one party row holds and ``character_details`` adds the
 two files against the Quintessence grain and cap; ``skill_pages`` names the Vessel
 and Reincarnate pages over ``SKILL_NAMES``; ``guild_panel`` serves
 ``GuildRoster.roster_summary``; and ``map_panel`` serves the ``world_grid`` bounds
-and states that no world is generated.
+beside one layer's squares, which ``map_squares`` marks from ``known_facts`` alone so
+an undiscovered square draws nothing.
 ``vessel_panel`` fills the left half of the bisected top row: ``current_vessel``
 builds the ``Vessel`` the class pick names and ``vessel_details`` reads
 ``Reincarnate.requirement`` and ``Reincarnate.potential`` against the chain balance,
@@ -103,11 +104,13 @@ from ...competition.loot_drop import (
     request_from_pool,
 )
 from ...competition.map_glyphs import (
+    UnknownMarkError,
     absent_rows,
     colour_token_names,
     family_rows,
     mark_for,
     mark_kinds,
+    marks,
 )
 from ...competition.materials import (
     MATERIAL_NAMES,
@@ -187,12 +190,17 @@ from ...competition.vessels import (
     pleroma_standing,
 )
 from ...competition.world_grid import (
+    BASE_VIEWRANGE_RADIUS,
     BASE_VIEWRANGE_SQUARES,
     DEFAULT_GRID_WIDTH,
     DEFAULT_WORLD_PATH,
     PARTICIPANTS_PER_LAYER,
     SEPHIROT_LAYERS,
+    PoaWorld,
+    WorldGridError,
     addressable_squares,
+    square_xy,
+    squares_in_view,
 )
 from ...core.fmt import fmt_usd
 from .shared_testnet_surface import PERSIST_PARTS
@@ -324,6 +332,7 @@ STORE_NAME = DEFAULT_STORE_PATH.name
 AWARD_LEDGER_NAME = TokenLedger.LEDGER_FILE
 LOOT_STORE_NAME = DEFAULT_LOOT_PATH.name
 IDENTITY_NAME = BotIdentity.KEY_FILE
+WORLD_NAME = DEFAULT_WORLD_PATH.name
 FLEET_NAME = "bot_state.json"
 CHAIN_NAME = PERSIST_PARTS[-1]
 LEDGER_DIR = DEFAULT_LEDGER_PATH.parent
@@ -736,17 +745,62 @@ MAP_GRID_SQUARES_ROW = "Squares a layer"
 MAP_GRID_LAYERS_ROW = "Layers"
 MAP_GRID_PARTICIPANTS_ROW = "Participants a layer"
 MAP_GRID_VIEW_ROW = "Squares in view"
-MAP_WORLD_HELD_TEXT = "{name} is on disk, and no subtab reads a square out of it."
+MAP_WORLD_HELD_TEXT = "{name} is on disk, and this subtab draws one layer out of it."
+MAP_WORLD_QUIET_TEXT = "{name} is on disk and no square draws out of it."
 MAP_WORLD_ABSENT_TEXT = "{name} does not exist, so no world is declared to draw."
+
+MAP_LAYER_TITLE = "The layer this participant sees"
+MAP_LAYER_WORLD_ROW = "World"
+MAP_LAYER_INDEX_ROW = "Layer"
+MAP_LAYER_PARTICIPANT_ROW = "Participant"
+MAP_LAYER_OWN_ROW = "Own square"
+MAP_LAYER_VIEW_ROW = "Squares in view"
+MAP_LAYER_KNOWN_ROW = "Squares discovered"
+MAP_LAYER_FACT_ROW = "Facts known"
+MAP_LAYER_ZONE_ROW = "Zones known"
+
+#: Every field ``MapMark.to_dict`` carries, read off a real mark so no name is typed.
+MARK_FIELDS: tuple[str, ...] = tuple(marks()[0].to_dict())
+
+#: The three relations a square holds to the participant the map is drawn for.
+MAP_OWN_STATE = "own"
+MAP_KNOWN_STATE = "known"
+MAP_UNKNOWN_STATE = "unknown"
+
+MAP_SQUARE_LABEL = "Square {index} at {x}, {y} - {state}"
+
+MAP_LAYER_ABSENT_TEXT = (
+    "World {world} declares {layers} layers and nobody has breached one, so no layer "
+    "exists to draw. PoaWorld.breach_layer writes the breach that makes one."
+)
+MAP_UNDISCOVERED_TEXT = (
+    "{unknown} of {total} squares draw nothing. One participant's discovery is not "
+    "another's, so this grid holds only what {name} has found."
+)
+MAP_VIEW_TEXT = (
+    "Base sight covers {count} square, so viewrange is the participant's own square. "
+    "squares_in_view takes a wider radius and no module supplies one."
+)
+MAP_POSITION_TEXT = (
+    "Square {square} is this world's arena, the one square known with no discovery "
+    "record. No module names the seconds in a world turn, so JourneyLeg.progress_at "
+    "is given no turn and supplies no later square."
+)
+MAP_ACTIONS_ABSENT_TEXT = (
+    "A square offers no action. Nothing holds an enter, a scout or a camp, so no "
+    "location menu is drawn."
+)
 MAP_TACTICAL_ABSENT_TEXT = (
     "During an encounter this becomes a tactical map. Nothing holds an encounter's "
     "enemies or their turn order, so no tactical map is drawn."
 )
 
-#: What the right-hand region prints while no encounter runs.
-MAP_REGION_ABSENT_TEXT = (
-    "This region draws the world map. No map is drawn: a world has to be declared "
-    "on the chain first."
+#: What the right-hand region prints while no encounter runs and no square draws.
+MAP_REGION_NONE_TEXT = "This region draws the world map. {reason}"
+
+#: What that region prints once a layer's squares draw under the Maps subtab.
+MAP_REGION_HELD_TEXT = (
+    "This region draws the world map. The layer's squares draw under the Maps subtab."
 )
 
 ENCOUNTER_TITLE = "Encounter"
@@ -1842,9 +1896,7 @@ def gear(chain: str, action_cost: int) -> dict:
         "types_title": GEAR_TYPES_TITLE,
         "types": item_type_rows(),
         "mechanism_title": GEAR_MECHANISM_TITLE,
-        "mechanisms": [
-            row(name, note) for name, note in ITEM_MECHANISM_NOTES.items()
-        ],
+        "mechanisms": [row(name, note) for name, note in ITEM_MECHANISM_NOTES.items()],
     }
 
 
@@ -1892,23 +1944,196 @@ def grid_rows() -> list:
     ]
 
 
-def map_panel(variant: EventVariant) -> dict:
-    """The maps subtab: whether ``variant`` opens it, the grid's bounds, and what draws none."""
+def world_store(chain: str) -> PoaWorld:
+    """``chain``'s ``PoaWorld``, replayed off that chain's own world file."""
+    return PoaWorld(LocalTestnet(), world_path=chain_file(WORLD_NAME, chain)).load()
+
+
+def empty_mark() -> dict:
+    """A mark with no glyph, carried by a square holding no fact this participant knows."""
+    return {name: "" for name in MARK_FIELDS}
+
+
+def fact_mark(kind: str) -> dict:
+    """``kind``'s ``map_glyphs`` mark, or an ``empty_mark`` for a kind carrying none."""
+    try:
+        return mark_for(kind).to_dict()
+    except UnknownMarkError:
+        mark = empty_mark()
+        mark["kind"] = kind
+        mark["label"] = kind
+        return mark
+
+
+def known_facts(world: PoaWorld, world_id: str, address: str, layer: int) -> tuple:
+    """Every ``WorldFact`` on ``layer`` that ``address`` holds a knowledge reference to."""
+    found = []
+    for reference in world.knows(world_id, address):
+        try:
+            fact = world.fact(world_id, reference)
+        except WorldGridError:
+            continue
+        if fact.layer == layer:
+            found.append(fact)
+    return tuple(found)
+
+
+def known_zones(world: PoaWorld, world_id: str, address: str, layer: int) -> tuple:
+    """Every zone id on ``layer`` that ``address`` holds a knowledge reference to."""
+    found = []
+    for reference in world.knows(world_id, address):
+        try:
+            zone = world.zone(world_id, reference)
+        except WorldGridError:
+            continue
+        if zone.layer == layer:
+            found.append(zone.zone_id)
+    return tuple(found)
+
+
+def fact_marks_by_square(facts: tuple) -> dict:
+    """One mark a square from ``facts``. A square holds 10,000 steps and the first draws."""
+    held: dict = {}
+    for fact in facts:
+        held.setdefault(fact.square_index, fact_mark(fact.kind))
+    return held
+
+
+def map_squares(width: int, own_square: int, facts: tuple) -> list:
+    """One entry every square of a grid ``width`` across, marked from ``facts`` alone.
+
+    A square holding no fact in ``facts`` carries ``empty_mark`` and draws nothing.
+    """
+    in_view = set(squares_in_view(own_square, width, BASE_VIEWRANGE_RADIUS))
+    marks = fact_marks_by_square(facts)
+    built = []
+    for index in range(addressable_squares(width)):
+        x, y = square_xy(index, width)
+        mark = marks.get(index)
+        if index == own_square:
+            state = MAP_OWN_STATE
+        elif mark is not None:
+            state = MAP_KNOWN_STATE
+        else:
+            state = MAP_UNKNOWN_STATE
+        built.append(
+            {
+                "index": index,
+                "x": x,
+                "y": y,
+                "state": state,
+                "known": mark is not None,
+                "in_view": index in in_view,
+                "own": index == own_square,
+                "mark": mark if mark is not None else empty_mark(),
+                "label": MAP_SQUARE_LABEL.format(index=index, x=x, y=y, state=state),
+            }
+        )
+    return built
+
+
+def map_layer_absent(said: str) -> dict:
+    """A layer view drawing no square, carrying ``said`` as its one sentence."""
+    return {
+        "squares": [],
+        "rows": [],
+        "width": 0,
+        "absent_text": said,
+        "undiscovered_text": "",
+        "view_text": "",
+        "position_text": "",
+    }
+
+
+def map_layer_view(chain: str, identity: BotIdentity | None) -> dict:
+    """One layer of ``chain``'s world as ``identity`` knows it, or why no square draws.
+
+    ``known_facts`` supplies every mark, so a place this participant holds no
+    reference to draws nothing.
+    """
+    path = chain_file(WORLD_NAME, chain)
+    try:
+        world = world_store(chain)
+    except Exception as exc:
+        return map_layer_absent(fault_note(path, exc))
+    held = world.world_ids
+    if not held:
+        return map_layer_absent(MAP_ABSENT_TEXT)
+    world_id = held[0]
+    record = world.world(world_id)
+    layers = world.breached_layers(world_id)
+    if not layers:
+        return map_layer_absent(
+            MAP_LAYER_ABSENT_TEXT.format(world=world_id, layers=record.declared_layers)
+        )
+    if identity is None:
+        return map_layer_absent(NO_IDENTITY_NOTE)
+    layer = layers[0]
+    facts = known_facts(world, world_id, identity.bot_id, layer)
+    zones = known_zones(world, world_id, identity.bot_id, layer)
+    squares = map_squares(record.width, record.arena_square, facts)
+    discovered = sum(1 for square in squares if square["known"])
+    in_view = sum(1 for square in squares if square["in_view"])
+    return {
+        "squares": squares,
+        "width": record.width,
+        "absent_text": "",
+        "undiscovered_text": MAP_UNDISCOVERED_TEXT.format(
+            unknown=len(squares) - discovered,
+            total=len(squares),
+            name=identity.short_id,
+        ),
+        "view_text": MAP_VIEW_TEXT.format(count=in_view),
+        "position_text": MAP_POSITION_TEXT.format(square=record.arena_square),
+        "rows": [
+            row(MAP_LAYER_WORLD_ROW, world_id),
+            row(MAP_LAYER_INDEX_ROW, str(layer)),
+            row(MAP_LAYER_PARTICIPANT_ROW, identity.short_id),
+            row(MAP_LAYER_OWN_ROW, str(record.arena_square)),
+            row(MAP_LAYER_VIEW_ROW, str(in_view)),
+            row(MAP_LAYER_KNOWN_ROW, f"{discovered} of {len(squares)}"),
+            row(MAP_LAYER_FACT_ROW, str(len(facts))),
+            row(MAP_LAYER_ZONE_ROW, str(len(zones))),
+        ],
+    }
+
+
+def map_panel(variant: EventVariant, chain: str, identity: BotIdentity | None) -> dict:
+    """The maps subtab: whether ``variant`` opens it, the grid's bounds, and one layer.
+
+    ``map_layer_view`` supplies every square ``identity`` knows.
+    """
+    drawn = map_layer_view(chain, identity)
+    world_name = chain_file(WORLD_NAME, chain).name
+    if drawn["squares"]:
+        region_text = MAP_REGION_HELD_TEXT
+        world_text = MAP_WORLD_HELD_TEXT.format(name=world_name)
+    else:
+        region_text = MAP_REGION_NONE_TEXT.format(reason=drawn["absent_text"])
+        world_text = (
+            MAP_WORLD_QUIET_TEXT.format(name=world_name)
+            if chain_file(WORLD_NAME, chain).exists()
+            else MAP_WORLD_ABSENT_TEXT.format(name=world_name)
+        )
     return {
         "title": MAP_SUBTAB_TITLE,
         "region_title": MAP_TITLE,
         "reachable": map_reachable(variant),
         "open_text": MAP_OPEN_TEXT,
         "refusal": map_refusal(variant),
-        "absent_text": MAP_ABSENT_TEXT,
-        "region_absent_text": MAP_REGION_ABSENT_TEXT,
+        "absent_text": drawn["absent_text"],
+        "region_text": region_text,
         "grid_title": MAP_GRID_TITLE,
         "grid": grid_rows(),
-        "world_text": (
-            MAP_WORLD_HELD_TEXT.format(name=DEFAULT_WORLD_PATH.name)
-            if DEFAULT_WORLD_PATH.exists()
-            else MAP_WORLD_ABSENT_TEXT.format(name=DEFAULT_WORLD_PATH.name)
-        ),
+        "layer_title": MAP_LAYER_TITLE,
+        "layer_rows": drawn["rows"],
+        "squares": drawn["squares"],
+        "width": drawn["width"],
+        "undiscovered_text": drawn["undiscovered_text"],
+        "view_text": drawn["view_text"],
+        "position_text": drawn["position_text"],
+        "actions_absent_text": MAP_ACTIONS_ABSENT_TEXT,
+        "world_text": world_text,
         "tactical_absent_text": MAP_TACTICAL_ABSENT_TEXT,
     }
 
@@ -2686,7 +2911,7 @@ def view_model(params: dict) -> dict:
         "heading": HEADING,
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
-        "map": map_panel(variant),
+        "map": map_panel(variant, chain, identity),
         "map_marks": map_marks(),
         "meters": meters(running, variant, chain),
         "metric_sources": metric_sources(),
