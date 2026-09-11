@@ -106,6 +106,18 @@ body > #panel-root {
   color: var(--DANGER);
 }
 
+/* The world pair writes chain state where the reset pair deletes it, so the row
+   separates them and marks the one that writes. */
+.acervator-poa-tab [data-part="control-button"][data-action="world"] {
+  margin-left: calc(var(--SPACE_M) * 1px);
+  border-left: 2px solid var(--OUTLINE_STRONG);
+}
+
+.acervator-poa-tab [data-part="control-button"][data-action="world_confirm"] {
+  border-color: var(--ACCENT);
+  color: var(--ACCENT);
+}
+
 .acervator-poa-tab [data-part="control-result"] {
   display: flex;
   flex: 1 1 100%;
@@ -1234,7 +1246,7 @@ body > #panel-root {
    Its rows pair off across the width, so five readings take three lines. */
 .acervator-poa-tab [data-part="reset-panel"] {
   display: grid;
-  flex: 1 1 100%;
+  flex: 1 1 calc(50% - var(--SPACE_XS) * 1px);
   grid-template-columns: repeat(2, 1fr);
   gap: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_S) * 1px);
   padding: calc(var(--SPACE_XS) * 1px);
@@ -1246,6 +1258,70 @@ body > #panel-root {
 .acervator-poa-tab [data-part="reset-title"],
 .acervator-poa-tab [data-part="reset-note"] {
   grid-column: 1 / -1;
+}
+
+/* The world this chain holds, beside the reset panel so the pair takes one row of
+   the control bar. data-held="false" is the state where the map draws no square. */
+.acervator-poa-tab [data-part="world-panel"] {
+  display: grid;
+  flex: 1 1 calc(50% - var(--SPACE_XS) * 1px);
+  grid-template-columns: repeat(2, 1fr);
+  gap: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+}
+
+.acervator-poa-tab [data-part="world-panel"][data-held="true"] {
+  border-color: var(--ACCENT);
+}
+
+.acervator-poa-tab [data-part="world-title"],
+.acervator-poa-tab [data-part="world-note"] {
+  grid-column: 1 / -1;
+}
+
+.acervator-poa-tab [data-part="world-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="world-row"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="world-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+/* A world row carries a 64-character commitment, so it wraps where the bucket
+   and season values do not. */
+.acervator-poa-tab [data-part="world-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  text-align: right;
+  word-break: break-all;
+}
+
+.acervator-poa-tab [data-part="world-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
 }
 
 .acervator-poa-tab [data-part="keep-title"],

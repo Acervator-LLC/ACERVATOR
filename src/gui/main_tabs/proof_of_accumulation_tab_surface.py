@@ -36,8 +36,11 @@ does.
 reads the candle's own seconds left and ``fill_meter`` reads the bytes the chain's
 two files hold against ``TURN_BYTE_CAPACITY``. ``reset_panel`` names those files
 and both reasons ``chain_reset`` carries, so a deliberate reset and a schema wipe
-read differently on screen.
-``controls`` serves the eleven buttons that drive the mechanisms and fires the one
+read differently on screen. ``world_control`` declares the demo chain's one world
+through ``PoaWorld.create_world`` and breaches ``FIRST_LAYER_INDEX``, which is what
+``map_layer_view`` needs before a square draws, and ``world_panel`` reports that
+world through ``world_summary`` with the concealed seed reaching no row.
+``controls`` serves the thirteen buttons that drive the mechanisms and fires the one
 ``params`` names through ``control_result``, which calls each mechanism's own
 entry point and answers its refusal sentence unchanged. ``conservation`` reads
 ``QuintessenceLedger.conservation`` after a control acts and ``season`` reads the
@@ -199,6 +202,7 @@ from ...competition.world_grid import (
     PoaWorld,
     WorldGridError,
     addressable_squares,
+    centre_square,
     square_xy,
     squares_in_view,
 )
@@ -500,8 +504,13 @@ DROP_ACTION = "drop"
 SEASON_ACTION = "season"
 RESET_ACTION = "reset"
 RESET_CONFIRM_ACTION = "reset_confirm"
+WORLD_ACTION = "world"
+WORLD_CONFIRM_ACTION = "world_confirm"
 
 CONFIRM_FIELD = "confirm"
+
+#: The lowest layer ``breach_layer`` accepts on a world declaring any layer at all.
+FIRST_LAYER_INDEX = 0
 
 #: The fee one distil mints against, the dearest band's own cost.
 DEMO_FEE_USD = float(band_cost(DEAREST_BAND))
@@ -540,6 +549,8 @@ DROP_TITLE = "Draw loot"
 SEASON_TITLE = "File an exclusion"
 RESET_TITLE = "Reset the chain"
 RESET_CONFIRM_TITLE = "Confirm the reset"
+WORLD_TITLE = "Create a world"
+WORLD_CONFIRM_TITLE = "Confirm the world"
 
 DISTIL_LABEL = f"Distil a {DEMO_FEE_USD} fee at grade {DEMO_TRADE_GRADE}"
 TRAIN_LABEL = f"Record one use at quality {DEMO_USE_QUALITY}"
@@ -552,6 +563,11 @@ DROP_LABEL = "Open the window and draw"
 SEASON_LABEL = "Exclude this market"
 RESET_LABEL = "Ask what a reset deletes"
 RESET_CONFIRM_LABEL = "Delete both files and start fresh"
+WORLD_LABEL = "Ask what a world would declare"
+WORLD_CONFIRM_LABEL = (
+    f"Declare a world {DEFAULT_GRID_WIDTH} squares across and breach layer "
+    f"{FIRST_LAYER_INDEX}"
+)
 
 DISTIL_NOTE = "Mints at the fee times the grade, under the supply cap."
 TRAIN_NOTE = "One use of quality 0 advances nothing and the ladder refuses it."
@@ -593,6 +609,49 @@ RESET_DONE_TEXT = (
 RESET_LIVE_REFUSAL = (
     "Reset clears the {demo} chain. The {live} chain is the one a running window "
     "holds in memory, which would write it back, so this refuses there."
+)
+WORLD_NOTE = (
+    "Asks only. No world is declared and the world file is not written, so a press "
+    "here cannot create anything."
+)
+WORLD_CONFIRM_NOTE = (
+    "Declares one world on the demo chain and breaches its first layer, which is "
+    "what the Maps subtab needs before a square draws. A second world is refused."
+)
+WORLD_ID_TEXT = "WORLD-{chain}"
+WORLD_ASK_TEXT = (
+    "{confirm} writes {name} and declares world {world}: {side} squares a side, "
+    "{squares} a layer, {layers} layers, arena at {arena}. This control writes "
+    "nothing."
+)
+WORLD_DONE_TEXT = (
+    "World {world} is declared in {name} with {squares} squares on each of its "
+    "{layers} layers, layer {layer} breached by {by}, and the arena at {arena}."
+)
+WORLD_HELD_REFUSAL = (
+    "{name} already holds world {world}. One world a chain, so this refuses a "
+    "second. {reset} clears the chain and the world with it."
+)
+WORLD_LIVE_REFUSAL = (
+    "A world is created on the {demo} chain only. The {live} chain is the one a "
+    "running window holds, so this refuses there."
+)
+WORLD_PANEL_TITLE = "The world this chain holds"
+WORLD_ID_ROW = "World"
+WORLD_SIDE_ROW = "Squares a side"
+WORLD_SQUARES_ROW = "Squares a layer"
+WORLD_LAYERS_ROW = "Layers declared"
+WORLD_BREACHED_ROW = "Layers breached"
+WORLD_ARENA_ROW = "Arena square"
+WORLD_COMMITMENT_ROW = "Seed commitment"
+WORLD_PUBLISHED_ROW = "Seed published"
+WORLD_PANEL_ABSENT_TEXT = (
+    "{name} declares no world. {confirm} is the only thing that declares one, and "
+    "until it is pressed the Maps subtab draws no square."
+)
+WORLD_PANEL_HELD_TEXT = (
+    "The seed is concealed. Only its commitment is held on the chain and shown "
+    "here, so no amount and no creature can be derived from this panel."
 )
 NO_MARKET_NOTE = "{name} names no market, so no exclusion has a subject to file."
 
@@ -673,6 +732,7 @@ CONTROL_FAULTS = (
     SkillLadderError,
     TypeError,
     ValueError,
+    WorldGridError,
 )
 
 MAP = "map"
@@ -953,6 +1013,7 @@ DECLARED_FIELDS = (
     "subtabs",
     "vessel",
     "wallet",
+    "world",
     "zones",
 )
 
@@ -1749,6 +1810,53 @@ def reset_panel(chain: str) -> dict:
         ],
         "note": RESET_PANEL_NOTE.format(confirm=RESET_CONFIRM_TITLE),
     }
+
+
+def world_rows(summary: dict) -> list:
+    """Every figure ``PoaWorld.world_summary`` reports about one world, the seed excluded.
+
+    The concealed seed reaches no row; ``commitment`` is the only thing drawn from it.
+    """
+    return [
+        row(WORLD_ID_ROW, str(summary["world_id"])),
+        row(WORLD_SIDE_ROW, str(summary["width"])),
+        row(WORLD_SQUARES_ROW, str(summary["addressable_squares"])),
+        row(WORLD_LAYERS_ROW, str(summary["declared_layers"])),
+        row(WORLD_BREACHED_ROW, str(summary["breached_layers"])),
+        row(WORLD_ARENA_ROW, str(summary["arena_square"])),
+        row(WORLD_COMMITMENT_ROW, str(summary["commitment"])),
+        row(WORLD_PUBLISHED_ROW, str(summary["seed_published"])),
+    ]
+
+
+def world_panel(chain: str) -> dict:
+    """``chain``'s world as ``world_summary`` reports it, or the sentence naming what declares one.
+
+    ``world_store`` reads the same file ``map_layer_view`` draws from, so this panel
+    and the Maps subtab never disagree.
+    """
+    path = chain_file(WORLD_NAME, chain)
+    panel = {
+        "title": WORLD_PANEL_TITLE,
+        "chain": chain,
+        "held": False,
+        "rows": [],
+        "note": WORLD_PANEL_ABSENT_TEXT.format(
+            name=path.name, confirm=WORLD_CONFIRM_TITLE
+        ),
+    }
+    try:
+        world = world_store(chain)
+    except Exception as exc:
+        panel["note"] = fault_note(path, exc)
+        return panel
+    held = world.world_ids
+    if not held:
+        return panel
+    panel["held"] = True
+    panel["rows"] = world_rows(world.world_summary(held[0]))
+    panel["note"] = WORLD_PANEL_HELD_TEXT
+    return panel
 
 
 def map_reachable(variant: EventVariant) -> bool:
@@ -2631,6 +2739,64 @@ def reset_control(chain: str, address: str, event_id: str, params: dict) -> tupl
     )
 
 
+def world_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Declare ``chain``'s one world through ``create_world`` and breach ``FIRST_LAYER_INDEX``.
+
+    Refuses ``LIVE_CHAIN``, refuses a chain already holding a world, and writes nothing
+    until ``params`` carries ``CONFIRM_FIELD``.
+    """
+    del event_id
+    path = chain_file(WORLD_NAME, chain)
+    if chain == LIVE_CHAIN:
+        return (
+            False,
+            WORLD_LIVE_REFUSAL.format(
+                demo=CHAIN_LABELS[DEMO_CHAIN], live=CHAIN_LABELS[LIVE_CHAIN]
+            ),
+            [],
+        )
+    world = world_store(chain)
+    held = world.world_ids
+    if held:
+        return (
+            False,
+            WORLD_HELD_REFUSAL.format(
+                name=path.name, world=held[0], reset=RESET_CONFIRM_TITLE
+            ),
+            world_rows(world.world_summary(held[0])),
+        )
+    world_id = WORLD_ID_TEXT.format(chain=chain)
+    if not (isinstance(params, dict) and params.get(CONFIRM_FIELD) is True):
+        return (
+            False,
+            WORLD_ASK_TEXT.format(
+                confirm=WORLD_CONFIRM_TITLE,
+                name=path.name,
+                world=world_id,
+                side=DEFAULT_GRID_WIDTH,
+                squares=addressable_squares(),
+                layers=SEPHIROT_LAYERS,
+                arena=centre_square(),
+            ),
+            grid_rows(),
+        )
+    record = world.create_world(world_id)
+    layer = world.breach_layer(world_id, address, FIRST_LAYER_INDEX)
+    return (
+        True,
+        WORLD_DONE_TEXT.format(
+            world=record.world_id,
+            name=path.name,
+            squares=addressable_squares(record.width),
+            layers=record.declared_layers,
+            layer=layer,
+            by=address,
+            arena=record.arena_square,
+        ),
+        world_rows(world.world_summary(record.world_id)),
+    )
+
+
 #: Every control, in the order the row of buttons draws them.
 CONTROL_HANDLERS = {
     DISTIL_ACTION: distil_control,
@@ -2644,6 +2810,8 @@ CONTROL_HANDLERS = {
     SEASON_ACTION: season_control,
     RESET_ACTION: reset_control,
     RESET_CONFIRM_ACTION: reset_control,
+    WORLD_ACTION: world_control,
+    WORLD_CONFIRM_ACTION: world_control,
 }
 
 CONTROL_TITLES = {
@@ -2658,6 +2826,8 @@ CONTROL_TITLES = {
     SEASON_ACTION: SEASON_TITLE,
     RESET_ACTION: RESET_TITLE,
     RESET_CONFIRM_ACTION: RESET_CONFIRM_TITLE,
+    WORLD_ACTION: WORLD_TITLE,
+    WORLD_CONFIRM_ACTION: WORLD_CONFIRM_TITLE,
 }
 
 CONTROL_LABELS = {
@@ -2672,6 +2842,8 @@ CONTROL_LABELS = {
     SEASON_ACTION: SEASON_LABEL,
     RESET_ACTION: RESET_LABEL,
     RESET_CONFIRM_ACTION: RESET_CONFIRM_LABEL,
+    WORLD_ACTION: WORLD_LABEL,
+    WORLD_CONFIRM_ACTION: WORLD_CONFIRM_LABEL,
 }
 
 CONTROL_NOTES = {
@@ -2686,6 +2858,8 @@ CONTROL_NOTES = {
     SEASON_ACTION: SEASON_NOTE,
     RESET_ACTION: RESET_NOTE,
     RESET_CONFIRM_ACTION: RESET_CONFIRM_NOTE,
+    WORLD_ACTION: WORLD_NOTE,
+    WORLD_CONFIRM_ACTION: WORLD_CONFIRM_NOTE,
 }
 
 #: Every control name, in the order the row of buttons draws them.
@@ -2723,7 +2897,7 @@ def control_params(
     if name in (DROP_ACTION, SEASON_ACTION):
         sending[EXCHANGE_FIELD] = exchange
         sending[SYMBOL_FIELD] = symbol
-    if name == RESET_CONFIRM_ACTION:
+    if name in (RESET_CONFIRM_ACTION, WORLD_CONFIRM_ACTION):
         sending[CONFIRM_FIELD] = True
     return sending
 
@@ -2934,5 +3108,6 @@ def view_model(params: dict) -> dict:
             chain, None if identity is None else identity.bot_id, pick
         ),
         "wallet": wallet(chain, running["impetus_granted"], pick),
+        "world": world_panel(chain),
         "zones": zones(),
     }
