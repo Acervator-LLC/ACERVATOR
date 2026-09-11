@@ -312,17 +312,29 @@ body > #panel-root {
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
-/* The upper band: the player window takes the width the square enemy screen
-   leaves, which is the only place the two zone sizes are related. */
+/* The top row is bisected: the current Vessel left, the Map or the Encounter right,
+   and the 1px divider column between them. */
 .acervator-poa-tab [data-part="upper-band"] {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr 1px 1fr;
   gap: calc(var(--SPACE_S) * 1px);
+  min-height: 0;
+}
+
+.acervator-poa-tab [data-part="top-divider"] {
+  background: var(--OUTLINE_STRONG);
+}
+
+.acervator-poa-tab [data-part="right-region"] {
+  display: grid;
+  min-width: 0;
   min-height: 0;
 }
 
 .acervator-poa-tab [data-part="player-window"],
 .acervator-poa-tab [data-part="enemy-screen"],
+.acervator-poa-tab [data-part="map-region"],
+.acervator-poa-tab [data-part="encounter-region"],
 .acervator-poa-tab [data-part="party-window"] {
   box-sizing: border-box;
   padding: calc(var(--SPACE_S) * 1px);
@@ -333,18 +345,177 @@ body > #panel-root {
   overflow: hidden;
 }
 
-/* The square keeps its width and its content scrolls, so the absence list below
-   the title is reachable at every window height. */
+/* The Encounter state of the right half: its title and notes take the width the
+   square leaves, the way the enemy screen used to sit beside the player window. */
+.acervator-poa-tab [data-part="encounter-region"] {
+  container-type: size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: calc(var(--SPACE_S) * 1px);
+  min-width: 0;
+}
+
+.acervator-poa-tab [data-part="encounter-text"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.acervator-poa-tab [data-part="encounter-text"] > * {
+  flex-shrink: 0;
+}
+
+/* The slot squares off the region's height, so the enemy screen keeps the side the
+   top row gives it. Reading 100cqw here instead loops against the auto track. */
+.acervator-poa-tab [data-part="enemy-slot"] {
+  width: 100cqh;
+  height: 100cqh;
+  max-width: 100%;
+}
+
+.acervator-poa-tab [data-part="encounter-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
 .acervator-poa-tab [data-part="enemy-screen"] {
   display: flex;
   flex-direction: column;
   gap: calc(var(--SPACE_XS) * 1px);
-  aspect-ratio: 1 / 1;
+  width: 100%;
+  height: 100%;
   overflow-y: auto;
 }
 
 .acervator-poa-tab [data-part="enemy-screen"] > * {
   flex-shrink: 0;
+}
+
+/* The whole map region is the button that opens the map subtab, so it carries the
+   zone border and no button look of its own. */
+.acervator-poa-tab [data-part="map-region"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+  color: var(--TEXT_HIGH);
+  font-family: inherit;
+  font-size: calc(var(--TYPE_BODY) * 1px);
+  text-align: left;
+  overflow-y: auto;
+}
+
+.acervator-poa-tab [data-part="map-region"] > * {
+  flex-shrink: 0;
+}
+
+.acervator-poa-tab [data-part="map-region"] [data-part="map-open"] {
+  align-self: flex-start;
+}
+
+.acervator-poa-tab [data-part="map-region-title"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="encounter-note"],
+.acervator-poa-tab [data-part="tactical-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+/* The left half's Vessel card: its four facts, then its details, then the eight
+   mechanisms no module builds for it. */
+.acervator-poa-tab [data-part="vessel-panel"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+}
+
+.acervator-poa-tab [data-part="vessel-list"],
+.acervator-poa-tab [data-part="vessel-details-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+}
+
+.acervator-poa-tab [data-part="vessel-row"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="vessel-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="vessel-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="vessel-details-title"],
+.acervator-poa-tab [data-part="vessel-absent-title"] {
+  margin: calc(var(--SPACE_XS) * 1px) 0 0 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="vessel-note"],
+.acervator-poa-tab [data-part="vessel-bound"],
+.acervator-poa-tab [data-part="vessel-click-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+.acervator-poa-tab [data-part="vessel-absent-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acervator-poa-tab [data-part="vessel-absent-row"] {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: calc(var(--SPACE_XS) * 1px);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="vessel-absent-name"] {
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="vessel-absent-note"] {
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The event band, the meters, the map control and the mode list stack past the

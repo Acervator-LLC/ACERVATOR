@@ -1,7 +1,9 @@
 // The Proof of Accumulation tab shell, as the Python surface serves it.
 //
-// Three zones: the player window and the square enemy screen across the upper
-// band, the party window across the lower half. The Quintessence balance sits
+// The top row is bisected: VesselPanel draws the current Vessel and its details
+// left of the divider, RightRegion draws MapRegion right of it until
+// encounter.running is set and EncounterRegion after that, with the square enemy
+// screen inside it. The party window takes the lower half. The Quintessence balance sits
 // in the party header and the wallet opens as a panel over the party window.
 // Four subtabs sit above the zones and selectSubtab draws one of them; the map
 // entry and the player window's map button both read the payload's reachable
@@ -26,6 +28,7 @@
   var CLASSES = "classes";
   var CONSERVATION = "conservation";
   var CONTROLS = "controls";
+  var ENCOUNTER = "encounter";
   var EVENT = "event";
   var GEAR = "gear";
   var HEADING = "heading";
@@ -47,6 +50,7 @@
   var STATE_TEXT = "state_text";
   var SUBTAB = "subtab";
   var SUBTABS = "subtabs";
+  var VESSEL = "vessel";
   var WALLET = "wallet";
   var ZONES = "zones";
 
@@ -59,6 +63,7 @@
     CLASSES,
     CONSERVATION,
     CONTROLS,
+    ENCOUNTER,
     EVENT,
     GEAR,
     HEADING,
@@ -80,6 +85,7 @@
     STATE_TEXT,
     SUBTAB,
     SUBTABS,
+    VESSEL,
     WALLET,
     ZONES
   ];
@@ -180,6 +186,37 @@
   var MAP_CONTROL_PART = "map-control";
   var MAP_REFUSAL_PART = "map-refusal";
   var MAP_OPEN_PART = "map-open";
+  var MAP_REGION_PART = "map-region";
+  var MAP_REGION_TITLE_PART = "map-region-title";
+
+  // The top row's divider and the right half it separates the Vessel from.
+  var TOP_DIVIDER_PART = "top-divider";
+  var RIGHT_REGION_PART = "right-region";
+  var ENCOUNTER_REGION_PART = "encounter-region";
+  var ENCOUNTER_TEXT_PART = "encounter-text";
+  var ENCOUNTER_TITLE_PART = "encounter-title";
+  var ENEMY_SLOT_PART = "enemy-slot";
+  var ENCOUNTER_NOTE_PART = "encounter-note";
+  var TACTICAL_NOTE_PART = "tactical-note";
+
+  // The right half carries data-encounter, which says which of its two states drew.
+  var ENCOUNTER_ATTR = "data-encounter";
+
+  var VESSEL_PANEL_PART = "vessel-panel";
+  var VESSEL_LIST_PART = "vessel-list";
+  var VESSEL_ROW_PART = "vessel-row";
+  var VESSEL_ROW_LABEL_PART = "vessel-row-label";
+  var VESSEL_ROW_VALUE_PART = "vessel-row-value";
+  var VESSEL_DETAILS_TITLE_PART = "vessel-details-title";
+  var VESSEL_DETAILS_LIST_PART = "vessel-details-list";
+  var VESSEL_NOTE_PART = "vessel-note";
+  var VESSEL_BOUND_PART = "vessel-bound";
+  var VESSEL_ABSENT_TITLE_PART = "vessel-absent-title";
+  var VESSEL_ABSENT_LIST_PART = "vessel-absent-list";
+  var VESSEL_ABSENT_ROW_PART = "vessel-absent-row";
+  var VESSEL_ABSENT_NAME_PART = "vessel-absent-name";
+  var VESSEL_ABSENT_NOTE_PART = "vessel-absent-note";
+  var VESSEL_CLICK_NOTE_PART = "vessel-click-note";
   var ZONE_TITLE_PART = "zone-title";
   var ZONE_PLACEHOLDER_PART = "zone-placeholder";
   var PARTY_HEADER_PART = "party-header";
@@ -1664,11 +1701,179 @@
     return props;
   }
 
+  // One absent mechanism and what it waits on, from the vessels module's own list.
+  function VesselAbsentRow(props) {
+    var entry = props.entry;
+    var rowProps = part(TAB_CLASS + "-vessel-absent-row", VESSEL_ABSENT_ROW_PART);
+    rowProps.key = VESSEL_ABSENT_ROW_PART + "-" + text(entry.name);
+    return element(
+      "li",
+      rowProps,
+      element(
+        "span",
+        part(TAB_CLASS + "-vessel-absent-name", VESSEL_ABSENT_NAME_PART),
+        text(entry.name)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-vessel-absent-note", VESSEL_ABSENT_NOTE_PART),
+        text(entry.note)
+      )
+    );
+  }
+
+  // The left half: the Vessel the class pick names, its details against the wallet
+  // balance, and the mechanisms no module builds for it.
+  function VesselPanel(props) {
+    var vessel = props.vessel;
+    var absent = Array.isArray(vessel.absent) ? vessel.absent : [];
+    var children = [
+      element(
+        "div",
+        part(TAB_CLASS + "-vessel-list", VESSEL_LIST_PART),
+        figureRows(
+          vessel.rows,
+          VESSEL_ROW_PART,
+          VESSEL_ROW_LABEL_PART,
+          VESSEL_ROW_VALUE_PART
+        )
+      ),
+      element(
+        "h3",
+        part(TAB_CLASS + "-vessel-details-title", VESSEL_DETAILS_TITLE_PART),
+        text(vessel.details_title)
+      ),
+      element(
+        "div",
+        part(TAB_CLASS + "-vessel-details-list", VESSEL_DETAILS_LIST_PART),
+        figureRows(
+          vessel.details,
+          VESSEL_ROW_PART,
+          VESSEL_ROW_LABEL_PART,
+          VESSEL_ROW_VALUE_PART
+        )
+      ),
+      note("vessel-note", VESSEL_NOTE_PART, vessel.note),
+      note("vessel-note", VESSEL_BOUND_PART, vessel.bound),
+      note("vessel-note", VESSEL_CLICK_NOTE_PART, vessel.click_note),
+      element(
+        "h3",
+        part(TAB_CLASS + "-vessel-absent-title", VESSEL_ABSENT_TITLE_PART),
+        text(vessel.absent_title)
+      ),
+      element(
+        "ul",
+        part(TAB_CLASS + "-vessel-absent-list", VESSEL_ABSENT_LIST_PART),
+        absent.filter(isPlainObject).map(function (entry) {
+          return element(VesselAbsentRow, {
+            key: VESSEL_ABSENT_ROW_PART + "-" + text(entry.name),
+            entry: entry
+          });
+        })
+      )
+    ];
+    return element(
+      "div",
+      part(TAB_CLASS + "-vessel-panel", VESSEL_PANEL_PART),
+      children
+    );
+  }
+
+  // The right half while an encounter runs. The enemy screen draws inside it as its
+  // own zone, squared off the row height, with the title and the absence beside it.
+  function EncounterRegion(props) {
+    var encounter = props.encounter;
+    return element(
+      "section",
+      named(
+        TAB_CLASS + "-encounter-region",
+        ENCOUNTER_REGION_PART,
+        text(encounter.title)
+      ),
+      element(
+        "div",
+        part(TAB_CLASS + "-encounter-text", ENCOUNTER_TEXT_PART),
+        element(
+          "h2",
+          part(TAB_CLASS + "-encounter-title", ENCOUNTER_TITLE_PART),
+          text(encounter.title)
+        ),
+        note("encounter-note", ENCOUNTER_NOTE_PART, encounter.running_text),
+        note("tactical-note", TACTICAL_NOTE_PART, encounter.tactical_absent)
+      ),
+      element(
+        "div",
+        part(TAB_CLASS + "-enemy-slot", ENEMY_SLOT_PART),
+        props.zone === null
+          ? null
+          : element(UpperZone, { zone: props.zone, absent: props.marks })
+      )
+    );
+  }
+
+  // The right-hand half while no encounter runs. The whole region is the button,
+  // so clicking the map opens the map subtab through selectSubtab.
+  function MapRegion(props) {
+    var map = props.map;
+    var label = text(map.title);
+    var regionProps = buttonProps(MAP_REGION_PART, label, function () {
+      selectSubtab(MAP);
+    });
+    return element(
+      "button",
+      regionProps,
+      element(
+        "span",
+        part(TAB_CLASS + "-map-region-title", MAP_REGION_TITLE_PART),
+        label
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-map-note", MAP_NOTE_PART),
+        text(map.region_absent_text)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-encounter-note", ENCOUNTER_NOTE_PART),
+        text(props.encounter.resting_text)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-map-open", MAP_OPEN_PART),
+        text(map.open_text)
+      )
+    );
+  }
+
+  // The right half of the top row: the Encounter while one runs, the Map otherwise.
+  function RightRegion(props) {
+    var encounter = props.encounter;
+    var running = isPlainObject(encounter) && encounter.running === true;
+    var regionProps = part(TAB_CLASS + "-right-region", RIGHT_REGION_PART);
+    regionProps[ENCOUNTER_ATTR] = String(running);
+    var body = null;
+    if (running) {
+      body = element(EncounterRegion, {
+        encounter: encounter,
+        zone: props.zone,
+        marks: props.marks
+      });
+    } else if (isPlainObject(props.map) && isPlainObject(encounter)) {
+      body = element(MapRegion, { map: props.map, encounter: encounter });
+    }
+    return element("div", regionProps, body);
+  }
+
   function UpperZone(props) {
     var zone = props.zone;
     var titleProps = part(TAB_CLASS + "-zone-title", ZONE_TITLE_PART);
     titleProps.key = ZONE_TITLE_PART;
     var children = [element("h2", titleProps, text(zone.title))];
+    if (isPlainObject(props.vessel)) {
+      children.push(
+        element(VesselPanel, { key: VESSEL_PANEL_PART, vessel: props.vessel })
+      );
+    }
     if (isPlainObject(props.event)) {
       children.push(
         element(EventBand, { key: EVENT_BAND_PART, event: props.event })
@@ -1802,6 +2007,8 @@
     var event = isPlainObject(model[EVENT]) ? model[EVENT] : null;
     var modeRows = Array.isArray(model[MODES]) ? model[MODES] : null;
     var map = isPlainObject(model[MAP]) ? model[MAP] : null;
+    var encounter = isPlainObject(model[ENCOUNTER]) ? model[ENCOUNTER] : null;
+    var vessel = isPlainObject(model[VESSEL]) ? model[VESSEL] : null;
     var marks = isPlainObject(model[MAP_MARKS]) ? model[MAP_MARKS] : null;
     var meters = isPlainObject(model[METERS]) ? model[METERS] : null;
     var chosen = selectedSubtab(model);
@@ -1833,15 +2040,20 @@
           ? null
           : element(UpperZone, {
               zone: player,
+              vessel: vessel,
               event: event,
               meters: meters,
               modes: modeRows,
               map: map,
               marks: marks
             }),
-        enemy === null
-          ? null
-          : element(UpperZone, { zone: enemy, absent: marks })
+        element("div", part(TAB_CLASS + "-top-divider", TOP_DIVIDER_PART)),
+        element(RightRegion, {
+          zone: enemy,
+          map: map,
+          marks: marks,
+          encounter: encounter
+        })
       ),
       party === null
         ? null

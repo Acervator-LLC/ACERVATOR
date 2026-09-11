@@ -9761,3 +9761,147 @@ provides, nothing reads   a party's members, its mode, its leader and its guild
 provides, nothing reads   an army's linked raids, and the General of each one
 provides, nothing reads   one row a linked raid, as a surface would serve it
 ```
+## 2026-09-11 04:30 - #147 - the top row is halved, and the right half is the map or the encounter
+
+### His words set the top row
+
+The operator settled the top row on 2026-09-10.
+
+```
+"So top row of PoA GUI should be Current Vessel and Current Vessel Details on
+ the left half and Map or Encounter on the right half."
+```
+
+The top row used to be one wide region beside a small square. It is now two
+halves of the same width with a divider down the middle. The lower half is
+unchanged and still holds the party window.
+
+### Two halves and a divider
+
+The top row is a three-column grid. The first and third columns are equal
+fractions and the middle one is a single pixel that draws the divider.
+
+`src/gui/web/proof_of_accumulation_tab.css` - the top row's columns
+
+```css
+grid-template-columns: 1fr 1px 1fr;
+```
+
+### What each half measures now
+
+Read off the rendered page in the Electron shell and off the rendered page in
+the desktop window, at the window size the shell opens and at a narrow one.
+
+```
+                         left half        right half
+                       before  after    before  after
+Electron shell  1386    1165    669       181    669
+Electron shell   900     684    426       176    426
+desktop window  1386    1164    669       183    669
+desktop window   900     683    426       177    426
+```
+
+The before figures are the player window and the square enemy screen beside it.
+The after figures are the two halves.
+
+### A record on the event decides which state the right half draws
+
+The right half draws the map until an encounter runs, and the encounter after
+that. Nothing in the platform held a flag for a running encounter, so the tab
+reads one off the pot the payout panel was already reading: a participant record
+on the declared event with no payout yet is an encounter in progress.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py`
+
+```python
+def encounter(pot: dict) -> dict:
+    """Whether ``pot``'s event holds participant records and no payout, which runs one."""
+    joined = len(pot["shares"]) + len(pot["unscored"])
+    running = joined > 0 and not bool(pot.get("is_settled"))
+```
+
+Both directions were driven from the page itself on the demo chain. The grade
+button wrote one record and the right half became the encounter; the payout
+button settled the event and the right half went back to the map.
+
+```
+control fired   right half
+none            Map
+grade           Encounter - "Records on this event: 1. No payout yet."
+payout          Map
+```
+
+### The square keeps its shape, and the row's height sets its side
+
+The enemy screen is square and draws inside the encounter, beside its title and
+its notes rather than under them. Its side is the height of the top row, which
+is what the side used to be, so halving the width did not shrink it.
+
+```
+                         enemy screen
+                       before   after
+Electron shell  1386     181     164
+Electron shell   900     176     158
+desktop window  1386     183     165
+desktop window   900     177     160
+```
+
+The remaining difference is the region's own padding and border. The square
+grows with the window the way it did before.
+
+### The left half is the Vessel, and it says what keeps none
+
+The left half prints the class, the planet, the assignment and the level of the
+Vessel a class pick names, then its own requirement, the summed requirement of
+every Vessel the participant occupies, the wallet balance, the fraction of full
+power that balance reaches, and the pleroma standing.
+
+No module keeps a Vessel against an address, so with no class pick the half
+prints no rows and says why instead of drawing an empty frame.
+
+```
+poa_record_store.json keeps no Vessel for this participant. A Vessel is the
+class a Reincarnate occupies, and only a class pick names one.
+```
+
+Under that it lists the eight mechanisms a Vessel takes part in that no module
+builds, each with the sentence naming what it waits on. Those eight come from
+the Vessel module's own list, not from a second copy here.
+
+### The wallet's summed requirement is a figure now
+
+The wallet's Vessels section printed two dashes where the summed requirement
+goes, because nothing held the figure. The Vessel module holds it, so that row
+prints it and the note beside it says what the sum covers. The section still
+takes its Vessel from a class pick rather than from a stored Reincarnate.
+
+### Both variants, matched reading by reading
+
+The same reading script ran against the desktop window's page and the shell's
+page.
+
+```
+readings compared   145
+identical            96
+differing            49
+```
+
+Every difference is one of three things: the page box, since the shell window
+is taller than the harness window; one pixel a text line, which the two engines
+round differently; and the participant address, which each run generates fresh
+in its own scratch home. No width of either half differs on any reading. The
+four box readings whose width does differ are the enemy square, which follows
+the row height.
+
+### What the top row does not draw
+
+```
+the seven subtabs and their shortcuts   four subtabs exist; the row is unchanged
+clicking the Vessel                     no character details subtab carries them
+the tactical map                        nothing holds an encounter's enemies
+skill trees and skill rings             content inside a subtab
+pixel art                               no art is commissioned
+```
+
+The map region opens the existing map subtab when it is clicked, which is the
+one route of his sentence that a built subtab already answers.

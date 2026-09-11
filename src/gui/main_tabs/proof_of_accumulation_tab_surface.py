@@ -18,6 +18,14 @@ only a mode carrying a map opens the map subtab. ``character_stats`` pairs every
 loot section beside the item classes nothing builds, ``skill_tree`` draws the
 ladder as a list over ``SKILL_NAMES``, and ``map_panel`` states that no world is
 generated.
+``vessel_panel`` fills the left half of the bisected top row: ``current_vessel``
+builds the ``Vessel`` the class pick names and ``vessel_details`` reads
+``Reincarnate.requirement`` and ``Reincarnate.potential`` against the chain balance,
+with ``ABSENT_MECHANISMS`` listing what no module builds for a Vessel.
+``encounter`` reads the pot ``redistribution`` already built and answers whether the
+event holds participant records with no payout, which is what the right half switches
+on: the map while no encounter runs, the encounter with its enemy screen while one
+does.
 ``meters`` serves the two the player window draws side by side: ``turn_meter``
 reads the candle's own seconds left and ``fill_meter`` reads the bytes the chain's
 two files hold against ``TURN_BYTE_CAPACITY``. ``reset_panel`` names those files
@@ -133,6 +141,16 @@ from ...competition.skill_ladder import (
     transfers_sent,
 )
 from ...competition.token_ledger import TokenLedger
+from ...competition.vessels import (
+    ABSENT_MECHANISM_NOTES,
+    ABSENT_MECHANISMS,
+    VESSEL_COUNT_UNCAPPED,
+    Reincarnate,
+    Vessel,
+    VesselError,
+    has_ever_held_quintessence,
+    pleroma_standing,
+)
 from ...core.fmt import fmt_usd
 from .shared_testnet_surface import PERSIST_PARTS
 
@@ -142,8 +160,9 @@ HEADING = "Accumulation"
 ISSUE = 147
 BUILT = True
 STATE_TEXT = (
-    "The shell draws three zones. The eight event types, the turn, the Impetus "
-    "pool and the ten-level skill ladder are built. No pixel art is drawn."
+    "The top row is halved: the current Vessel on the left, the Map or the "
+    "Encounter on the right. The party window takes the lower half. No pixel art "
+    "is drawn."
 )
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 
@@ -156,13 +175,13 @@ PLAYER_WINDOW = "player_window"
 ENEMY_SCREEN = "enemy_screen"
 PARTY_WINDOW = "party_window"
 
-PLAYER_WINDOW_TITLE = "Player Window"
+PLAYER_WINDOW_TITLE = "Current Vessel"
 ENEMY_SCREEN_TITLE = "Enemy Screen"
 PARTY_WINDOW_TITLE = "Party Window"
 
 PLAYER_WINDOW_PLACEHOLDER = (
-    "Players acting alone or in groups, and the dungeon maps for the crawl and "
-    "the raid. No pixel art is drawn."
+    "Players acting alone or in groups. No pixel art is drawn. The dungeon maps "
+    "draw in the right half."
 )
 ENEMY_SCREEN_PLACEHOLDER = (
     "Every enemy, animated, taking damage or attacking. No pixel art is drawn."
@@ -331,14 +350,29 @@ NO_LOOT_STORE_NOTE = "{name} does not exist. No market has dropped loot on this 
 
 VESSEL_STANDING_TEXT = "level {level} - Impetus {impetus}"
 VESSEL_REQUIREMENT_ROW = "Summed requirement"
-VESSEL_REQUIREMENT_TEXT = "--"
-NO_VESSEL_REQUIREMENT_NOTE = (
-    "No field holds the Quintessence a Vessel's level requires, so no requirement "
-    "sums against the balance above."
+VESSEL_REQUIREMENT_NOTE = (
+    "The requirement sums every Vessel this participant occupies, and the balance "
+    "above runs all of them at once."
 )
 NO_VESSEL_NOTE = (
     "{name} keeps no Vessel for this participant. A Vessel is the class a "
     "Reincarnate occupies, and only a class pick names one."
+)
+
+VESSEL_DETAILS_TITLE = "Current Vessel Details"
+VESSEL_CLASS_ROW = "Class"
+VESSEL_PLANET_ROW = "Planet"
+VESSEL_ASSIGNMENT_ROW = "Assignment"
+VESSEL_LEVEL_ROW = "Level"
+VESSEL_OWN_REQUIREMENT_ROW = "This Vessel requires"
+VESSEL_WALLET_REQUIREMENT_ROW = "Every Vessel requires"
+VESSEL_BALANCE_ROW = "Wallet balance"
+VESSEL_POTENTIAL_ROW = "Potential"
+VESSEL_STANDING_ROW = "Pleroma standing"
+VESSEL_DETAILS_ABSENT_TITLE = "Nothing a Vessel takes part in"
+VESSEL_CLICK_NOTE = (
+    "Clicking the Vessel opens its details subtab. No subtab carries them, so "
+    "nothing opens yet."
 )
 
 LOOT_ITEM_TEXT = "{symbol} - Season {season} - {bonus}"
@@ -625,6 +659,23 @@ MAP_REFUSED_TEXT = (
 MAP_ABSENT_TEXT = (
     "No world is generated. No grid, no tile and no position is held anywhere, so "
     "this subtab draws no map."
+)
+
+#: What the right-hand region prints while no encounter runs.
+MAP_REGION_ABSENT_TEXT = (
+    "This region draws the world map. No map is drawn: a world has to be declared "
+    "on the chain first."
+)
+
+ENCOUNTER_TITLE = "Encounter"
+ENCOUNTER_RESTING_TEXT = (
+    "No encounter is in progress. A participant record on this event starts one and "
+    "the payout ends it."
+)
+ENCOUNTER_RUNNING_TEXT = "Records on this event: {joined}. No payout yet."
+ENCOUNTER_TACTICAL_TEXT = (
+    "No tactical map is drawn. Nothing holds an encounter's enemies or their turn "
+    "order, so this region draws the enemy screen alone."
 )
 
 STATS_VALUE_NONE = "--"
@@ -914,6 +965,7 @@ def vessels_section(address: str | None, pick: ClassPick | None) -> dict:
     if pick is None or pick.participant != address:
         return section(VESSELS_SECTION, [], NO_VESSEL_NOTE.format(name=STORE_NAME))
     progress = ClassProgress(pick.class_name)
+    held = Reincarnate(address, (current_vessel(address, pick),))
     return section(
         VESSELS_SECTION,
         [
@@ -923,10 +975,76 @@ def vessels_section(address: str | None, pick: ClassPick | None) -> dict:
                     level=progress.level, impetus=impetus_grant(progress.level)
                 ),
             ),
-            row(VESSEL_REQUIREMENT_ROW, VESSEL_REQUIREMENT_TEXT),
+            row(VESSEL_REQUIREMENT_ROW, amount_text(held.requirement)),
         ],
-        NO_VESSEL_REQUIREMENT_NOTE,
+        VESSEL_REQUIREMENT_NOTE,
     )
+
+
+def current_vessel(address: str, pick: ClassPick) -> Vessel:
+    """The ``Vessel`` ``pick`` names for ``address``, at the level that class has reached."""
+    return Vessel(address, pick.class_name, ClassProgress(pick.class_name).level)
+
+
+def vessel_details(chain: str, held: Reincarnate, vessel: Vessel) -> tuple[list, str]:
+    """``held``'s requirement and potential against ``chain``'s balance, and the file note."""
+    path = chain_file(QUINT_LEDGER_NAME, chain)
+    rows = [
+        row(VESSEL_OWN_REQUIREMENT_ROW, amount_text(vessel.requirement)),
+        row(VESSEL_WALLET_REQUIREMENT_ROW, amount_text(held.requirement)),
+    ]
+    try:
+        ledger = QuintessenceLedger(path).load()
+    except Exception as exc:
+        return rows, fault_note(path, exc)
+    balance = ledger.balance(held.address)
+    reading = held.potential(balance)
+    standing = pleroma_standing(
+        held.address, balance, has_ever_held_quintessence(ledger, held.address)
+    )
+    rows.append(row(VESSEL_BALANCE_ROW, amount_text(balance)))
+    rows.append(row(VESSEL_POTENTIAL_ROW, amount_text(reading.fraction)))
+    rows.append(row(VESSEL_STANDING_ROW, standing.reason))
+    return rows, path.name
+
+
+def vessel_panel(chain: str, address: str | None, pick: ClassPick | None) -> dict:
+    """The left half: the Vessel ``pick`` names, its details, and what no module keeps."""
+    panel: dict = {
+        "details_title": VESSEL_DETAILS_TITLE,
+        "absent_title": VESSEL_DETAILS_ABSENT_TITLE,
+        "rows": [],
+        "details": [],
+        "note": "",
+        "click_note": VESSEL_CLICK_NOTE,
+        "bound": VESSEL_COUNT_UNCAPPED,
+        "absent": [
+            {"name": name, "note": ABSENT_MECHANISM_NOTES[name]}
+            for name in ABSENT_MECHANISMS
+        ],
+    }
+    if address is None:
+        panel["note"] = NO_IDENTITY_NOTE
+        return panel
+    if pick is None or pick.participant != address:
+        panel["note"] = NO_VESSEL_NOTE.format(name=STORE_NAME)
+        return panel
+    try:
+        vessel = current_vessel(address, pick)
+    except (VesselError, UnknownClassError) as exc:
+        panel["note"] = str(exc)
+        return panel
+    facts = vessel.to_dict()
+    panel["rows"] = [
+        row(VESSEL_CLASS_ROW, facts["class_name"]),
+        row(VESSEL_PLANET_ROW, facts["planet"]),
+        row(VESSEL_ASSIGNMENT_ROW, facts["assignment"]),
+        row(VESSEL_LEVEL_ROW, str(facts["level"])),
+    ]
+    panel["details"], panel["note"] = vessel_details(
+        chain, Reincarnate(address, (vessel,)), vessel
+    )
+    return panel
 
 
 def uses_text(uses: Decimal) -> str:
@@ -1552,6 +1670,20 @@ def map_panel(variant: EventVariant) -> dict:
         "open_text": MAP_OPEN_TEXT,
         "refusal": map_refusal(variant),
         "absent_text": MAP_ABSENT_TEXT,
+        "region_absent_text": MAP_REGION_ABSENT_TEXT,
+    }
+
+
+def encounter(pot: dict) -> dict:
+    """Whether ``pot``'s event holds participant records and no payout, which runs one."""
+    joined = len(pot["shares"]) + len(pot["unscored"])
+    running = joined > 0 and not bool(pot.get("is_settled"))
+    return {
+        "title": ENCOUNTER_TITLE,
+        "running": running,
+        "resting_text": ENCOUNTER_RESTING_TEXT,
+        "running_text": ENCOUNTER_RUNNING_TEXT.format(joined=joined),
+        "tactical_absent": ENCOUNTER_TACTICAL_TEXT,
     }
 
 
@@ -2146,6 +2278,7 @@ def view_model(params: dict) -> dict:
     )
     rows = participants(chain, pick)
     built_skills = skills(chain)
+    pot = redistribution(chain, event_id_of(params, variant))
     return {
         "accessible_name": HEADING,
         "built": BUILT,
@@ -2155,6 +2288,7 @@ def view_model(params: dict) -> dict:
         "classes": classes(),
         "conservation": conservation(chain),
         "controls": fired,
+        "encounter": encounter(pot),
         "event": running,
         "gear": gear(chain, running["impetus_granted"]),
         "heading": HEADING,
@@ -2169,13 +2303,16 @@ def view_model(params: dict) -> dict:
         "participants": rows,
         "party": party(),
         "pick_note": pick_note,
-        "redistribution": redistribution(chain, event_id_of(params, variant)),
+        "redistribution": pot,
         "season": season(chain),
         "skill_tree": skill_tree(built_skills),
         "skills": built_skills,
         "state_text": STATE_TEXT,
         "subtab": subtab_of(params, variant),
         "subtabs": subtabs(variant),
+        "vessel": vessel_panel(
+            chain, None if identity is None else identity.bot_id, pick
+        ),
         "wallet": wallet(chain, running["impetus_granted"], pick),
         "zones": zones(),
     }
