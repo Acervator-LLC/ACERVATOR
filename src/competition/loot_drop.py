@@ -1,7 +1,11 @@
 """The five loot tiers, the drop a qualifying market makes, and the store holding it.
 
 ``LOOT_TIERS`` carries the five weights and ``tier_bounds`` cuts them into whole
-spans of ``draw_span``. ``drop_from_pool`` refuses a pool under
+spans of ``draw_span``. ``band_tier_bounds`` cuts the same spans from a band of
+the tiers a world leaves on its chart, spreading the weight of the tiers off the
+chart across the tiers left in proportion, so ``band_weights_total`` reaches
+``WEIGHT_TOTAL_PCT`` on every band and each surviving pair keeps the odds it held
+on the full chart. ``drop_from_pool`` refuses a pool under
 ``MIN_ELIGIBLE_POOL`` and ``drop_for_market`` refuses a market
 ``MarketRotation.reward_reason`` does not answer ``IN_ROTATION`` for, and a
 ``yields`` mapping names the ``items.ITEM_TYPES`` entry each tier drops.
@@ -15,9 +19,10 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -44,7 +49,8 @@ MAGISTERIUM = "Magisterium"
 #: The characters a short form may run to. Cauda Pavonis prints Pavonis.
 SHORT_FORM_CHARS = 12
 
-#: Every tier weight adds up to this, and tier_bounds refuses a set that does not.
+#: Every tier weight adds up to this. tier_bounds refuses a set that does not,
+#: and band_tier_bounds refuses a band whose renormalised weights do not.
 WEIGHT_TOTAL_PCT = Decimal(100)
 
 #: A fraction times this is a percentage.
@@ -78,7 +84,10 @@ class LootError(RuntimeError):
 
 
 class LootTableError(LootError):
-    """Raised by ``tier_bounds`` when the five weights do not total 100."""
+    """Raised when a chart's weights do not total ``WEIGHT_TOTAL_PCT``.
+
+    ``tier_bounds`` raises it for the five, and ``band_tier_bounds`` for a band.
+    """
 
 
 class UnknownTierError(LootError):
@@ -208,6 +217,115 @@ def tier_for_roll(roll: int) -> LootTier:
     refusal = (
         f"a roll of {value} sits outside the draw span of 0 to "
         f"{draw_span() - 1}; every roll lands on one of {', '.join(TIER_NAMES)}"
+    )
+    raise UnknownTierError(refusal)
+
+
+# -- The band, which rolls only the tiers a world leaves on its chart ---------
+
+
+def require_band(band: object) -> tuple[LootTier, ...]:
+    """Return the ``LOOT_TIERS`` entries ``band`` names, in the declared order.
+
+    A band is what ``world_tier.loot_band`` keeps on a world's chart, and
+    ``require_whole_table`` governs this path too, so a hand-written table not
+    totalling ``WEIGHT_TOTAL_PCT`` is refused before any band is read.
+    """
+    require_whole_table()
+    if isinstance(band, str) or not isinstance(band, Sequence):
+        refusal = (
+            f"a band is a sequence of loot tier names, got "
+            f"{type(band).__name__}; the five are {', '.join(TIER_NAMES)}"
+        )
+        raise UnknownTierError(refusal)
+    named = [str(name) for name in band]
+    if not named:
+        refusal = (
+            f"an empty band leaves no tier to roll; the five are "
+            f"{', '.join(TIER_NAMES)}"
+        )
+        raise UnknownTierError(refusal)
+    if len(set(named)) != len(named):
+        refusal = f"the band {', '.join(named)} names a tier twice"
+        raise UnknownTierError(refusal)
+    for name in named:
+        tier_named(name)
+    kept = set(named)
+    return tuple(tier for tier in LOOT_TIERS if tier.name in kept)
+
+
+def band_draw_span(band: object) -> int:
+    """Return the whole numbers a roll on ``band`` is drawn from.
+
+    Every tier keeps the ``tier_span`` it owns on the full chart, so the span
+    shrinks by exactly what the tiers off the chart took.
+    """
+    tiers = require_band(band)
+    span = 0
+    for tier in tiers:
+        span += tier_span(tier)
+    if span <= 0:
+        refusal = (
+            f"the band {', '.join(tier.name for tier in tiers)} owns none of the "
+            f"{draw_span()} rolls a full chart holds, so no roll lands on it"
+        )
+        raise LootTableError(refusal)
+    return span
+
+
+def band_weight_pct(band: object) -> tuple[tuple[LootTier, Fraction], ...]:
+    """Return every tier in ``band`` beside the percent it owns of the band.
+
+    The weight of each tier off the chart is spread across the tiers left in
+    proportion to what they already held, so every surviving pair keeps the odds
+    it had on the full chart and a ``Fraction`` carries the share exactly.
+    """
+    tiers = require_band(band)
+    share = Fraction(WEIGHT_TOTAL_PCT) / band_draw_span(band)
+    return tuple((tier, tier_span(tier) * share) for tier in tiers)
+
+
+def band_weights_total(band: object) -> Fraction:
+    """Add the percent every tier in ``band`` owns, exactly."""
+    total = Fraction(0)
+    for _tier, weight in band_weight_pct(band):
+        total += weight
+    return total
+
+
+def require_whole_band(band: object) -> None:
+    """Refuse ``band`` unless ``band_weights_total`` reaches ``WEIGHT_TOTAL_PCT``."""
+    total = band_weights_total(band)
+    if total != WEIGHT_TOTAL_PCT:
+        refusal = (
+            f"the band's renormalised weights total {total}, not "
+            f"{WEIGHT_TOTAL_PCT}; no roll span can be cut from them"
+        )
+        raise LootTableError(refusal)
+
+
+def band_tier_bounds(band: object) -> tuple[tuple[int, int, LootTier], ...]:
+    """Cut ``band`` into half-open roll spans after ``require_whole_band``."""
+    require_whole_band(band)
+    bounds: list[tuple[int, int, LootTier]] = []
+    lower = 0
+    for tier in require_band(band):
+        upper = lower + tier_span(tier)
+        bounds.append((lower, upper, tier))
+        lower = upper
+    return tuple(bounds)
+
+
+def band_tier_for_roll(roll: int, band: object) -> LootTier:
+    """Return the tier whose span in ``band_tier_bounds`` holds ``roll``."""
+    value = int(roll)
+    for lower, upper, tier in band_tier_bounds(band):
+        if lower <= value < upper:
+            return tier
+    names = ", ".join(tier.name for tier in require_band(band))
+    refusal = (
+        f"a roll of {value} sits outside the band's draw span of 0 to "
+        f"{band_draw_span(band) - 1}; every roll lands on one of {names}"
     )
     raise UnknownTierError(refusal)
 
@@ -457,11 +575,13 @@ def drop_for_market(
     request: DropRequest,
     yields: Mapping[str, str] | None = None,
     rng: Generator | None = None,
+    band: Sequence[str] | None = None,
 ) -> LootDrop:
     """Draw one ``LootDrop`` for ``request``, refusing a market outside the rotation.
 
-    ``MarketRotation.reward_reason`` decides what qualifies, ``require_yields``
-    decides what the rolled tier names, and this writes no second rule.
+    ``MarketRotation.reward_reason`` decides what qualifies and ``require_yields``
+    decides what the rolled tier names; a ``band`` of None rolls ``TIER_NAMES``
+    and any other band rolls only the tiers it keeps.
     """
     reason = rotation.reward_reason(request.exchange_id, request.symbol)
     if reason != IN_ROTATION:
@@ -471,9 +591,10 @@ def drop_for_market(
         )
         raise LootDropRefusedError(refusal)
     mapped = require_yields(yields)
+    rolled = TIER_NAMES if band is None else band
     generator = drop_rng() if rng is None else rng
-    roll = int(generator.integers(0, draw_span()))
-    tier = tier_for_roll(roll)
+    roll = int(generator.integers(0, band_draw_span(rolled)))
+    tier = band_tier_for_roll(roll, rolled)
     item_type = mapped[tier.name]
     dropped_at = time.time() if request.at_epoch is None else float(request.at_epoch)
     payload = {
@@ -506,10 +627,12 @@ def drop_from_pool(
     request: DropRequest,
     yields: Mapping[str, str] | None = None,
     rng: Generator | None = None,
+    band: Sequence[str] | None = None,
 ) -> LootDrop:
     """Draw for ``request`` once ``pool.pool_size`` clears ``MIN_ELIGIBLE_POOL``.
 
-    A pool under that floor raises ``LootDropRefusedError`` naming both numbers.
+    A pool under that floor raises ``LootDropRefusedError`` naming both numbers,
+    and ``band`` reaches ``drop_for_market`` unread here.
     """
     if request.exchange_id != pool.exchange_id:
         refusal = (
@@ -524,7 +647,7 @@ def drop_from_pool(
             f"qualifies and no loot drops"
         )
         raise LootDropRefusedError(refusal)
-    return drop_for_market(rotation, request, yields, rng)
+    return drop_for_market(rotation, request, yields, rng, band)
 
 
 # -- The store ---------------------------------------------------------------

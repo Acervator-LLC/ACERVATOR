@@ -5,8 +5,9 @@ step deeper, and ``import_on_slaying`` moves Quintessence out of the pleroma
 through ``QuintessenceLedger.embed_from_pleroma`` while minting none.
 ``lowest_depth_of`` reads the depths ``monster_table`` declares, so
 ``MAX_WORLD_TIER`` adds no second scale. ``loot_band`` cuts ``TIER_NAMES`` from
-its low end, ``loot_band_at_tier`` raises ``FigureAbsentError``, and
-``NO_CALLER_NOTE`` names what would reach any of this.
+its low end and ``loot_drop.band_tier_bounds`` rolls what it leaves,
+``loot_band_at_tier`` raises ``FigureAbsentError``, and ``NO_CALLER_NOTE`` names
+what would reach any of this.
 """
 
 from __future__ import annotations
@@ -62,11 +63,14 @@ TIER_RAISE_THRESHOLD_OWED_NOTE = (
     "be farmed to MAX_WORLD_TIER by repeated slaying"
 )
 
-#: Why a cut band is no drop table, which ``band_weight_total`` measures.
+#: What a cut band rolls on, and what ``band_weight_total`` measures before it.
 BAND_REWEIGHT_OWED_NOTE = (
     "the weights a cut band carries. loot_drop.require_whole_table refuses any "
-    "set not totalling loot_drop.WEIGHT_TOTAL_PCT, so loot_drop.tier_bounds "
-    "cuts no roll span from a band until a reweighting rule is named"
+    "set not totalling loot_drop.WEIGHT_TOTAL_PCT, and loot_drop.band_tier_bounds "
+    "answers it by spreading the weight of the tiers off the chart across the "
+    "tiers left in proportion, so every band totals WEIGHT_TOTAL_PCT exactly and "
+    "each surviving pair keeps the odds it held on the full chart. What is still "
+    "owed is TIERS_OFF_CHART_PER_WORLD_TIER, so no world tier names a band"
 )
 
 
@@ -169,7 +173,11 @@ def loot_band(tiers_off_chart: object) -> tuple[str, ...]:
 
 
 def band_weight_total(tiers_off_chart: object) -> Decimal:
-    """Add the ``weight_pct`` of every tier ``loot_band`` leaves on the chart."""
+    """Add the ``weight_pct`` of every tier ``loot_band`` leaves on the chart.
+
+    This is the band's total before ``loot_drop.band_weight_pct`` spreads the
+    weight of the cut tiers across it.
+    """
     band = loot_band(tiers_off_chart)
     total = Decimal(0)
     for tier in LOOT_TIERS:
