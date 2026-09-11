@@ -14807,3 +14807,214 @@ any module can read.
 
 The rest of the dungeon stands where it stood. Nothing rules the inside, nothing
 resolves a fight, and a round still has no length.
+
+## 2026-09-11 12:45 - #586 - a trimmed chart rolls, and keeps the odds it had
+
+### A mature world stops dropping junk
+
+His sentence: loot and resources roll off the chart as a world matures, so that
+mature players do not spend their item lists on things they cannot use.
+
+The code already cut the chart. Nothing rolled on what the cut left. A trimmed
+chart existed and no drop could come out of it.
+
+### What the roll refused, and what it answers now
+
+A roll needs weights that add to a hundred. The five declared weights add to a
+hundred. A band is the chart with its commonest tiers cut off the low end, so a
+band adds to less than a hundred and the roll turned it away.
+
+What the program printed when a band met the roll:
+
+```
+band Cauda Pavonis, Flores, Elixir, Magisterium
+LootTableError: the 4 loot weights total 40.0, not 100; no roll span can be
+cut from them
+```
+
+The weight the cut tiers held now spreads across the tiers that stay, in
+proportion to what each one already held. A tier that held twice another tier's
+weight still holds twice it. Every band adds to exactly a hundred.
+
+`src/competition/loot_drop.py` - the rule, in the one function that states it
+
+```python
+def band_weight_pct(band: object) -> tuple[tuple[LootTier, Fraction], ...]:
+    """Return every tier in ``band`` beside the percent it owns of the band.
+
+    The weight of each tier off the chart is spread across the tiers left in
+    proportion to what they already held, so every surviving pair keeps the odds
+    it had on the full chart and a ``Fraction`` carries the share exactly.
+    """
+```
+
+The share is an exact fraction and not a decimal. Three tiers left on the chart
+give each one a third of a whole number, and a decimal cannot hold a third. A
+fraction holds it, so the total lands on a hundred and not near it.
+
+### Every band, and the odds it keeps
+
+Five bands exist. Nothing off the chart, one tier off, and so on to four tiers
+off. Cutting all five leaves nothing to roll, and the module turns that away.
+
+What the program printed for each band. The span is the whole numbers a roll comes
+from, out of the thousand a full chart holds:
+
+```
+tiers off   band                                          span   total
+0           Calx, Cauda Pavonis, Flores, Elixir, Magist.  1000   100/1
+1           Cauda Pavonis, Flores, Elixir, Magisterium     400   100/1
+2           Flores, Elixir, Magisterium                    150   100/1
+3           Elixir, Magisterium                             40   100/1
+4           Magisterium                                      5   100/1
+```
+
+Every weight, before the cut and after it:
+
+```
+band            tier             before   span   after exact   after pct
+0 off chart     Calx                 60    600          60/1   60.000000
+                Cauda Pavonis        25    250          25/1   25.000000
+                Flores               11    110          11/1   11.000000
+                Elixir              3.5     35           7/2    3.500000
+                Magisterium         0.5      5           1/2    0.500000
+
+1 off chart     Cauda Pavonis        25    250         125/2   62.500000
+                Flores               11    110          55/2   27.500000
+                Elixir              3.5     35          35/4    8.750000
+                Magisterium         0.5      5           5/4    1.250000
+
+2 off chart     Flores               11    110         220/3   73.333333
+                Elixir              3.5     35          70/3   23.333333
+                Magisterium         0.5      5          10/3    3.333333
+
+3 off chart     Elixir              3.5     35         175/2   87.500000
+                Magisterium         0.5      5          25/2   12.500000
+
+4 off chart     Magisterium         0.5      5         100/1  100.000000
+```
+
+The band with two tiers off the chart is the one a decimal cannot carry. Its three
+weights are 220/3, 70/3 and 10/3. Each one repeats forever as a decimal, and the
+three add to exactly 300/3, which is a hundred.
+
+### The odds between the tiers that stay
+
+Each pair of tiers holds one ratio on the full chart. The same pair holds the same
+ratio on every band that keeps both. The program printed each pair twice, once off
+the full chart and once off the band:
+
+```
+band 1 off chart
+  Cauda Pavonis : Flores         full     25/11   band     25/11   same True
+  Cauda Pavonis : Elixir         full      50/7   band      50/7   same True
+  Cauda Pavonis : Magisterium    full      50/1   band      50/1   same True
+  Flores        : Elixir         full      22/7   band      22/7   same True
+  Flores        : Magisterium    full      22/1   band      22/1   same True
+  Elixir        : Magisterium    full       7/1   band       7/1   same True
+
+band 3 off chart
+  Elixir        : Magisterium    full       7/1   band       7/1   same True
+```
+
+Elixir stays seven times as likely as Magisterium on every band that holds both.
+Elixir holds seven times on the full chart, seven times with one tier cut, and
+seven times with three cut.
+
+### A real drop on a trimmed band
+
+The program drew four thousand drops on each trimmed band, through the same
+rotation and the same drop call the rest of the package uses. What came out:
+
+```
+band Flores, Elixir, Magisterium
+
+tier              drawn    drawn pct     band pct
+Calx                  0     0.000000    off chart
+Cauda Pavonis         0     0.000000    off chart
+Flores             2907    72.675000    73.333333
+Elixir              950    23.750000    23.333333
+Magisterium         143     3.575000     3.333333
+```
+
+Nothing landed on a tier off the chart, on any band. The rarest tier left on the
+chart still came out: Magisterium reached 143 drops of four thousand on this band,
+56 on the band with one tier cut, and 495 on the band with three cut.
+
+Four thousand draws a band shows that the odds sit near the weights. It does not
+prove the exact share, and it cannot show a tier rarer than about one draw in four
+thousand.
+
+The same four thousand draws on the full chart do reach the cut tiers:
+
+```
+Calx           drawn 2358 times on the full chart
+Cauda Pavonis  drawn 1045 times on the full chart
+Flores          428
+Elixir          149
+Magisterium      20
+```
+
+A count of zero on a trimmed band therefore means the band works. It does not mean
+the counter missed a drop.
+
+One drop on a trimmed band went into a real Vessel store, and onto disk:
+
+```
+band             = Elixir, Magisterium
+drop             = roll 14, Elixir, armour
+delivered to     = u96vessel
+held_tiers       = ['Elixir']
+```
+
+### The full chart did not move
+
+One script drove the full chart's roll and its refusal before this change and
+after it. The two runs printed the same thing to the character. That includes the
+name the drop hashes itself under:
+
+```
+roll          = 370
+tier_name     = Calx
+item_id       = 3a9fe5488c13c80e767e61dae6ff5a37760494547fd85727974958df4d005b20
+```
+
+A hand-written set of five weights that does not add to a hundred still gets
+turned away, and the refusal still names both numbers:
+
+```
+dropping Calx         the 4 loot weights total 40.0, not 100
+dropping Magisterium  the 4 loot weights total 99.5, not 100
+```
+
+Dropping Magisterium takes only half a point off the total, and the roll turns
+that set away too. The check reads the total, and not how many tiers there are.
+
+### What a band means for material grades
+
+The material quality grades are the same five names, read from the same place as
+the loot tiers. They are one list and not two.
+
+A band cuts both. A world that drops no Calx loot also yields no Calx grade of any
+material.
+
+A grade that left the chart is still a grade. The grade table still answers for
+Calx, because items already held carry their own grade. A band decides what a
+world drops, and not what a grade is.
+
+### What still has no figure
+
+How many tiers leave the chart for each world tier. Nobody has set that number.
+The module turns away a band read from a world tier until somebody does:
+
+```
+world_tier.loot_band_at_tier(2)
+FigureAbsentError: no band follows from a world tier: how many loot tiers leave
+the chart for each world tier above FIRST_WORLD_TIER. No statement names one.
+```
+
+Nothing raises a world's tier on its own either. No module names a cataclysm, so a
+world stays at the tier it opened on, and every world rolls the full chart today.
+
+A band rolls, and nothing reaches it. A caller that hands a band to the drop call
+gets a correct roll. No control and no subtab hands it one.
