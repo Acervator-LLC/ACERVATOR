@@ -7928,3 +7928,115 @@ a PvP event flag           In development.
 the right to call a vote   In development.
 a control to cast a vote   In development.
 ```
+## 2026-09-10 23:55 - #585 - a glyph and a colour for each kind
+
+### Dwarf Fortress draws its world in characters, and so does this
+
+The operator asked for a world map in the manner of Dwarf Fortress, sharper, with
+hermetic icons. Sixteen kinds in the package now carry a stand-in mark: the seven
+classes, the five loot tiers and the four event modes. A mark is one character and
+one colour, and the module derives both.
+
+`src/competition/map_glyphs.py` - one mark a kind
+
+```python
+@dataclass(frozen=True)
+class MapMark:
+    kind: str
+    family: str
+    label: str
+    glyph: str
+    colour_token: str
+```
+
+### A class's glyph comes from its planet, not from a choice
+
+The class table already gives each of the seven classes one classical planet, and
+every one of those planets has its own character in Unicode. The module reads the
+glyph out of that table instead of picking one, so a class cannot drift from its
+mark.
+
+`src/competition/map_glyphs.py` - the seven planets
+
+```
+Saturn    U+2644  Lead Ward            Luna      U+263D  Silver Mirror
+Jupiter   U+2643  Tin Bulwark          Mercury   U+263F  Quicksilver Draught
+Mars      U+2642  Iron Edge            Venus     U+2640  Copper Conduit
+Sol       U+2609  Solar Lance
+```
+
+Mars and Venus are the codepoints Unicode names MALE SIGN and FEMALE SIGN. Those
+are the standard astronomical and alchemical marks for iron and copper, and the
+module says so where a later reader would otherwise correct them.
+
+### The other eleven marks
+
+The five loot tiers take the alchemical stage each name denotes, rising from the
+barred circle of the calcined residue to the pentagram of the Great Work. The four
+event modes take a heraldic mark each.
+
+```
+Calx           U+2296      Monster Smash         U+2720
+Cauda Pavonis  U+26B9      Team Monster Smash    U+2691
+Flores         U+2698      Dungeon Crawl         U+2656
+Elixir         U+2625      Raid                  U+26E8
+Magisterium    U+26E4
+```
+
+### A colour is a style name, never a new colour
+
+Every mark names a colour out of the one style table the whole interface draws
+from. A class takes the colour of its role, a loot tier takes its place on a
+rarity ramp from grey to gold, and an event mode takes its place on a heat ramp
+from the easiest to the hardest. Ten names cover the sixteen kinds.
+
+`src/gui/react_proof_of_accumulation_tab.py` - the page carries what the marks name
+
+```python
+MARK_SKIN = {f"--{name}": getattr(ds, name) for name in colour_token_names()}
+```
+
+### Where they are on screen
+
+The player window carries a Map marks band under the mode list, listing every mark
+with its name and its codepoint. The seven class marks also sit in the class list
+in the party window, and the four mode marks sit on the mode rows. At the window
+size the shell opens, the player window's own scrollbar reaches the band, the way
+it already reached the mode rows.
+
+```
+glyph spans drawn        31
+  Map marks band         16
+  class list              7
+  mode rows               8
+```
+
+### What nothing supplies
+
+The enemy screen is the zone that would draw an enemy, and nothing in the package
+declares one, so that zone names what is missing instead of drawing an empty
+frame. Two more kinds the directive names have no entity behind them either, and
+the same panel carries both.
+
+```
+Monster           no module declares one; the art brief's 21 designs are in no file
+World fact kind   WorldFact.kind is text the caller passes in
+Zone terrain      ZoneRegion carries a boundary and no terrain kind
+```
+
+### Both variants draw every mark
+
+The tab rendered twice, once in the desktop window and once in the Electron
+shell, and every figure below comes off those two pictures, not off the code. All
+thirty-one drew, each as its own mark, with the same colour on both.
+
+```
+                        desktop window   Electron shell
+glyph spans                   31               31
+distinct codepoints           16               16
+drawn as an empty box          0                0
+```
+
+Each page also carried a character no font holds, which proves a missing glyph
+shows as an empty box. Two permanently unassigned characters drew as empty boxes
+on both pages, next to marks that drew as marks.

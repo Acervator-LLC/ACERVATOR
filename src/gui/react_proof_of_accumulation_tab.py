@@ -16,6 +16,7 @@ import json
 import logging
 from typing import Any
 
+from ..competition.map_glyphs import colour_token_names
 from . import design_system as ds
 from .main_tabs import proof_of_accumulation_tab_surface as surface
 from .react_history_panel import page_html, read_asset
@@ -79,9 +80,16 @@ SKIN = {
     "--SPACE_XS": ds.SPACE_XS,
     "--SPACE_S": ds.SPACE_S,
     "--SPACE_M": ds.SPACE_M,
+    "--SPACE_XXL": ds.SPACE_XXL,
     "--RADIUS_XS": ds.RADIUS_XS,
     "--RADIUS_SM": ds.RADIUS_SM,
 }
+
+#: Every colour ``map_glyphs.colour_token_names`` paints a mark in, read from
+#: ``design_system`` so a mark's colour and the page's own come from one table.
+MARK_SKIN = {f"--{name}": getattr(ds, name) for name in colour_token_names()}
+
+SKIN.update(MARK_SKIN)
 
 #: The JS expression that reads back the whole text the page drew.
 DRAWN_TEXT_JS = 'document.getElementById("' + PANEL_ROOT_ID + '").textContent'

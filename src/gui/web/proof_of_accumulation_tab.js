@@ -10,6 +10,8 @@
 // verdict and the figures on screen are the mechanism's own. MeterPair draws the
 // block fill and the turn completion side by side in the player window, and
 // ResetPanel names the two chain files and both reasons a reset carries.
+// Glyph draws one stand-in mark a kind; GlyphLegend lists them all and
+// GlyphAbsence names what nothing supplies.
 // Every word on screen comes from the payload.
 (function (global) {
   "use strict";
@@ -30,6 +32,7 @@
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
   var MAP = "map";
+  var MAP_MARKS = "map_marks";
   var METERS = "meters";
   var METRIC_SOURCES = "metric_sources";
   var METHOD_FIELD = "method";
@@ -62,6 +65,7 @@
     ISSUE,
     ISSUE_TEXT,
     MAP,
+    MAP_MARKS,
     METERS,
     METRIC_SOURCES,
     METHOD_FIELD,
@@ -142,6 +146,34 @@
   var TREE_STANDING_PART = "tree-standing";
   var TREE_LIST_NOTE_PART = "tree-list-note";
   var TREE_NOTE_PART = "tree-note";
+
+  // One glyph span a kind. data-kind names the kind and data-codepoint the glyph,
+  // so a reader can tell which mark drew without reading the character itself.
+  var GLYPH_PART = "glyph";
+  var GLYPH_LEGEND_PART = "glyph-legend";
+  var GLYPH_ABSENCE_PART = "glyph-absence";
+  var GLYPH_TITLE_PART = "glyph-title";
+  var GLYPH_FAMILY_PART = "glyph-family";
+  var GLYPH_FAMILY_NAME_PART = "glyph-family-name";
+  var GLYPH_LIST_PART = "glyph-list";
+  var GLYPH_ROW_PART = "glyph-row";
+  var GLYPH_LABEL_PART = "glyph-label";
+  var GLYPH_CODEPOINT_PART = "glyph-codepoint";
+  var GLYPH_COUNT_PART = "glyph-count";
+  var GLYPH_COLOUR_PART = "glyph-colour";
+  var GLYPH_ART_PART = "glyph-art";
+  var GLYPH_ABSENT_TITLE_PART = "glyph-absent-title";
+  var GLYPH_ABSENT_LIST_PART = "glyph-absent-list";
+  var GLYPH_ABSENT_ROW_PART = "glyph-absent-row";
+  var GLYPH_ABSENT_NAME_PART = "glyph-absent-name";
+  var GLYPH_ABSENT_NOTE_PART = "glyph-absent-note";
+
+  var KIND_ATTR = "data-kind";
+  var CODEPOINT_ATTR = "data-codepoint";
+  var FAMILY_ATTR = "data-family";
+
+  var CSS_VAR_OPEN = "var(--";
+  var CSS_VAR_CLOSE = ")";
 
   var MAP_PANEL_PART = "map-panel";
   var MAP_NOTE_PART = "map-note";
@@ -352,6 +384,135 @@
       }
     });
     return found;
+  }
+
+  // The glyph draws in the colour colour_token names, read off the page root.
+  function Glyph(props) {
+    var mark = props.mark;
+    var label = text(props.label === undefined ? mark.label : props.label);
+    var glyphProps = named(TAB_CLASS + "-glyph", GLYPH_PART, label);
+    glyphProps[KIND_ATTR] = text(mark.kind);
+    glyphProps[CODEPOINT_ATTR] = text(mark.codepoint);
+    glyphProps.style = {
+      color: CSS_VAR_OPEN + String(mark.colour_token) + CSS_VAR_CLOSE
+    };
+    return element("span", glyphProps, text(mark.glyph));
+  }
+
+  function GlyphRow(props) {
+    var mark = props.mark;
+    var label = text(mark.label);
+    return element(
+      "li",
+      named(TAB_CLASS + "-glyph-row", GLYPH_ROW_PART, label),
+      element(Glyph, { mark: mark }),
+      element(
+        "span",
+        named(TAB_CLASS + "-glyph-label", GLYPH_LABEL_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-glyph-codepoint", GLYPH_CODEPOINT_PART, label),
+        text(mark.codepoint)
+      )
+    );
+  }
+
+  function GlyphFamily(props) {
+    var entry = props.entry;
+    var marks = Array.isArray(entry.marks) ? entry.marks : [];
+    var familyProps = part(TAB_CLASS + "-glyph-family", GLYPH_FAMILY_PART);
+    familyProps[FAMILY_ATTR] = text(entry.family);
+    return element(
+      "div",
+      familyProps,
+      element(
+        "h5",
+        part(TAB_CLASS + "-glyph-family-name", GLYPH_FAMILY_NAME_PART),
+        text(entry.family)
+      ),
+      element(
+        "ul",
+        part(TAB_CLASS + "-glyph-list", GLYPH_LIST_PART),
+        marks.filter(isPlainObject).map(function (mark) {
+          return element(GlyphRow, { key: mark.kind, mark: mark });
+        })
+      )
+    );
+  }
+
+  function GlyphAbsentRow(props) {
+    var row = props.row;
+    var label = text(row.family);
+    return element(
+      "li",
+      named(TAB_CLASS + "-glyph-absent-row", GLYPH_ABSENT_ROW_PART, label),
+      element(
+        "span",
+        named(TAB_CLASS + "-glyph-absent-name", GLYPH_ABSENT_NAME_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-glyph-absent-note", GLYPH_ABSENT_NOTE_PART, label),
+        text(row.note)
+      )
+    );
+  }
+
+  function GlyphLegend(props) {
+    var marks = props.marks;
+    var families = Array.isArray(marks.families) ? marks.families : [];
+    return element(
+      "div",
+      part(TAB_CLASS + "-glyph-legend", GLYPH_LEGEND_PART),
+      element(
+        "h4",
+        part(TAB_CLASS + "-glyph-title", GLYPH_TITLE_PART),
+        text(marks.title)
+      ),
+      element(
+        "p",
+        part(TAB_CLASS + "-glyph-count", GLYPH_COUNT_PART),
+        text(marks.count_text)
+      ),
+      families.filter(isPlainObject).map(function (entry) {
+        return element(GlyphFamily, { key: entry.family, entry: entry });
+      }),
+      element(
+        "p",
+        part(TAB_CLASS + "-glyph-colour", GLYPH_COLOUR_PART),
+        text(marks.colour_text)
+      ),
+      element(
+        "p",
+        part(TAB_CLASS + "-glyph-art", GLYPH_ART_PART),
+        text(marks.art_text)
+      )
+    );
+  }
+
+  // Drawn in the enemy screen, the zone a monster would draw in.
+  function GlyphAbsence(props) {
+    var marks = props.marks;
+    var absent = Array.isArray(marks.absent) ? marks.absent : [];
+    return element(
+      "div",
+      part(TAB_CLASS + "-glyph-absence", GLYPH_ABSENCE_PART),
+      element(
+        "h5",
+        part(TAB_CLASS + "-glyph-absent-title", GLYPH_ABSENT_TITLE_PART),
+        text(marks.absent_title)
+      ),
+      element(
+        "ul",
+        part(TAB_CLASS + "-glyph-absent-list", GLYPH_ABSENT_LIST_PART),
+        absent.filter(isPlainObject).map(function (row) {
+          return element(GlyphAbsentRow, { key: row.family, row: row });
+        })
+      )
+    );
   }
 
   // One mark slot a row. An absent mark leaves the slot empty and unpainted.
@@ -599,6 +760,7 @@
     return element(
       "li",
       named(TAB_CLASS + "-mode-row", MODE_ROW_PART, text(row.code)),
+      element(Glyph, { mark: row, label: text(row.code) }),
       element(
         "span",
         named(TAB_CLASS + "-mode-name", MODE_NAME_PART, text(row.code)),
@@ -637,6 +799,7 @@
     return element(
       "li",
       named(TAB_CLASS + "-class-row", CLASS_ROW_PART, text(entry.name)),
+      element(Glyph, { mark: entry, label: text(entry.name) }),
       element(
         "span",
         named(TAB_CLASS + "-class-name", CLASS_NAME_PART, text(entry.name)),
@@ -1522,6 +1685,16 @@
     if (Array.isArray(props.modes)) {
       children.push(element(ModeList, { key: MODE_LIST_PART, rows: props.modes }));
     }
+    if (isPlainObject(props.marks)) {
+      children.push(
+        element(GlyphLegend, { key: GLYPH_LEGEND_PART, marks: props.marks })
+      );
+    }
+    if (isPlainObject(props.absent)) {
+      children.push(
+        element(GlyphAbsence, { key: GLYPH_ABSENCE_PART, marks: props.absent })
+      );
+    }
     var placeholderProps = part(
       TAB_CLASS + "-zone-placeholder",
       ZONE_PLACEHOLDER_PART
@@ -1629,6 +1802,7 @@
     var event = isPlainObject(model[EVENT]) ? model[EVENT] : null;
     var modeRows = Array.isArray(model[MODES]) ? model[MODES] : null;
     var map = isPlainObject(model[MAP]) ? model[MAP] : null;
+    var marks = isPlainObject(model[MAP_MARKS]) ? model[MAP_MARKS] : null;
     var meters = isPlainObject(model[METERS]) ? model[METERS] : null;
     var chosen = selectedSubtab(model);
     var tabProps = {
@@ -1662,9 +1836,12 @@
               event: event,
               meters: meters,
               modes: modeRows,
-              map: map
+              map: map,
+              marks: marks
             }),
-        enemy === null ? null : element(UpperZone, { zone: enemy })
+        enemy === null
+          ? null
+          : element(UpperZone, { zone: enemy, absent: marks })
       ),
       party === null
         ? null
