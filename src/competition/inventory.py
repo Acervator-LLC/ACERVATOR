@@ -124,13 +124,16 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
     ),
     "a hauling trip": (
         "the operator's rule is that encumbrance matters only while a Vessel moves "
-        "items itself, and world_movement moves a participant and carries nothing"
+        "items itself, such as after a foraging run. A run now fills a store and "
+        "world_movement still moves a mover address carrying nothing, so no trip "
+        "reads weight_carried"
     ),
     "a foraging run": (
-        "nothing gathers a material. crafting.CraftRegister.complete_craft puts in "
-        "the item one Recipe produced and loot_drop.LootStore.deliver puts in one "
-        "drop, so every material unit a store holds still arrives from a caller's "
-        "own put_in"
+        "foraging.ForageRegister.forage gathers one, putting in the units the "
+        "square a Vessel stands on yields, at the material and the grade that "
+        "square's own discovery leaf names, so a material unit reaches a store "
+        "without a caller naming it. The units one run yields is a working rate "
+        "and no source sets it"
     ),
     "equipping": (
         "items.equip_check reads one total against one cohesion and no slot here "
@@ -141,8 +144,9 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
         "module prices a holding"
     ),
     "a world supply of material units": (
-        "no module counts how many units of a material a world holds, so a stack "
-        "is bounded by stack_ceiling alone"
+        "no module counts how many units of a material a world holds, and "
+        "foraging.ForageRegister.forage adds units without deducting them from any "
+        "total, so a stack is bounded by stack_ceiling alone"
     ),
     "named instances": ITEM_MECHANISM_NOTES["named instances"],
     "a surface": (

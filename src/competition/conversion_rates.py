@@ -72,6 +72,9 @@ WEIGHT_PER_MATERIAL_UNIT = Decimal(1)
 #: The working weight one Quintessence of strength may carry.
 WEIGHT_PER_STRENGTH_QUINTESSENCE = Decimal(1)
 
+#: The working units one foraging run gathers off one square.
+MATERIAL_UNITS_PER_FORAGE_RUN = Decimal(1)
+
 #: The working Quintessence one destroyed item of any loot tier releases.
 LOOT_RELEASED_QUINTESSENCE = IRON_ORE_QUINTESSENCE_HIGH_QUALITY
 
@@ -478,6 +481,21 @@ _WORKING_RATES: tuple[ConversionRate, ...] = (
         note=(
             "end function: the maximum weight a Vessel may haul. STATS names this "
             "effect for strength and no figure sets the rate"
+        ),
+    ),
+    ConversionRate(
+        name="material_units_per_forage_run",
+        per_unit="one foraging run on one square",
+        yields_unit="material units",
+        rate=MATERIAL_UNITS_PER_FORAGE_RUN,
+        provenance=WORKING,
+        source_module=NO_SOURCE_MODULE,
+        source_symbol=NO_SOURCE_SYMBOL,
+        source_args=(),
+        note=(
+            "end function: the units foraging.ForageRegister.forage puts in the "
+            "standing Vessel's store. No source sets what one square yields, no "
+            "module deducts a yield from a world supply, and no skill raises it"
         ),
     ),
     ConversionRate(
