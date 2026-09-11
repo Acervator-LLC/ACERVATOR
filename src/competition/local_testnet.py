@@ -664,7 +664,7 @@ class LocalRegistry:
     def activate(self, comp_id: str, owner: str) -> TxRecord:
         c = self._require_comp(comp_id, "REGISTRATION")
         if len(c["participants"]) < 2:
-            raise ValueError("Need ≥ 2 participants")
+            raise ValueError("Need ≥ 2 registered bots")
         c["status"] = "ACTIVE"
         return self._chain.send_tx(
             owner, self.ADDRESS, "activateCompetition", {"compId": comp_id}

@@ -103,6 +103,19 @@ def _as_address(value: object, name: str) -> str:
     return value
 
 
+def is_wallet_address(value: object) -> bool:
+    """Answer whether ``_as_address`` takes ``value`` as a wallet address.
+
+    Every caller that checks an address before a movement reads this one rule, so
+    no second reading of a valid address exists.
+    """
+    try:
+        _as_address(value, "address")
+    except ValueError:
+        return False
+    return True
+
+
 def _as_skill_level(value: object) -> int:
     """Return ``value`` as an int skill_level between the two transfer level bounds."""
     if type(value) is not int:
@@ -421,6 +434,14 @@ class QuintessenceLedger:
     def balance(self, address: str) -> Decimal:
         """Return the Quintessence in address's wallet."""
         return self._wallets.get(address, Decimal(0))
+
+    def holds_wallet(self, address: str) -> bool:
+        """Answer whether any movement has put ``address`` in the wallet book.
+
+        ``balance`` answers zero for an address no movement names, so this is the
+        one query telling an unknown wallet from a wallet spent down to nothing.
+        """
+        return address in self._wallets
 
     def held_balance(self, held_address: str) -> Decimal:
         """Return the Quintessence resting at held_address."""
