@@ -144,8 +144,10 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
         "carried; neither calls this module"
     ),
     "a package export": (
-        "the competition package entry binds no name from this module, so "
-        "report_unbound_modules names inventory at every start"
+        "the competition package entry imports inventory and lists its names in "
+        "__all__, so report_unbound_modules names no module at all. ABSENT_MECHANISMS, "
+        "ABSENT_MECHANISM_NOTES and vessel_key repeat names bound above and stay "
+        "unexported, so each is reached by importing src.competition.inventory directly"
     ),
 }
 
