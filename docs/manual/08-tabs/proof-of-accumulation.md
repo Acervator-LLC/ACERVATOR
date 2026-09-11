@@ -12685,3 +12685,271 @@ what writes it     src/gui/competition_tab.py, on a shelved screen
 what it blocks     every control on this tab, with the sentence the tab
                    already prints
 ```
+
+## 2026-09-11 08:35 - #585 - what one Vessel carries, in two halves
+
+### The two halves of one Vessel's store
+
+Four modules each recorded the same gap in their own words. The item table said
+nothing holds the items one Vessel carries. The craft register said a recipe
+names material units nothing has counted. The material table sets no ceiling on
+how far a stack runs. A loot drop names the wallet it went to and names no item.
+A store now exists, and it has two halves, under the operator's rule that gear,
+consumables and resources must not conflict.
+
+`src/competition/inventory.py` — the storage class decides which half
+
+```python
+    def put_in(
+        self,
+        name: str,
+        quality: str,
+        units: object = MIN_MOVED_UNITS,
+    ) -> StoreChange:
+        moved = _as_moved_units(units, "units")
+        held = _as_holding(name, quality)
+        with self._lock:
+            if occupies_slot(held):
+                self._fill_slots(name, quality, moved)
+            else:
+                self._raise_stack(name, quality, moved)
+            return self._change(name, quality, moved, is_put_in=True)
+```
+
+The three class names are the ones the material table already declares. Gear
+takes a counted slot. A consumable and a resource go on a stack and take no
+slot. Nothing here adds a fourth class and nothing renames one.
+
+### Three gear slots filled, and the fourth item refused
+
+A store was opened for one Vessel with three gear slots. Three pieces of armour
+went in, one at a time, and the slot count and the weight were read off the real
+object after each one. The fourth piece was refused, and the store was read
+again afterwards to show it held what it held before.
+
+```
+slot_count=3 slots_used=0 slots_free=3 stack_ceiling=100 weight_carried=0
+
+put_in armour #1: held=1 slots_used=1 weight_carried=1
+put_in armour #2: held=2 slots_used=2 weight_carried=2
+put_in armour #3: held=3 slots_used=3 weight_carried=3
+
+a fourth armour: refused, SlotsFullError: vessel-a holds 3 of 3 gear slots and
+1 armour takes 1 more; no gear is held in a slot this Vessel does not have
+
+after the refusal slots_used=3 weight_carried=3
+```
+
+The refusal changed nothing. A store never holds gear in a slot the Vessel was
+not given.
+
+### Forty units of ore stacked, and fifteen taken back out
+
+Forty units of lead ore went into the same store at the lowest grade. The slot
+count did not move, which is the whole point of the two halves. Fifteen units
+came back out, and then three ways of taking out too much were each refused.
+
+```
+put_in 40 lead ore: held=40 slots_used=3 weight_carried=43
+take_out 15 lead ore: held=25 weight_carried=28
+
+taking more than is held: refused, HoldingUnitsError: vessel-a holds 25 lead ore
+at Calx and 26 was asked for; a stack never falls under nothing
+
+taking zero units: refused, HoldingUnitsError: units must be a whole number of
+units at or above 1, got 0
+
+taking gear never put in: refused, HoldingUnitsError: vessel-a holds 0 weapons
+at Calx and 1 was asked for; a store gives out nothing it does not hold
+```
+
+A stack cannot go negative and cannot give out what it does not hold. Forty
+units took no slot at all.
+
+### The weight carried adds up to what is held
+
+The store was then read item by item, and each weight was added by hand off the
+two lists the store serves. That hand total was compared with the one number the
+store reports.
+
+```
+  gear  armour at Calx weighs 1
+  gear  armour at Calx weighs 1
+  stack 25 lead ore at Calx weighs 25 (1 a unit)
+
+added by hand off held_gear and held_stacks = 27
+store.weight_carried                        = 27
+the two readings agree: True
+```
+
+An empty store read zero. The weight carried is the sum of what is held and of
+nothing else.
+
+### A Vessel carries no id, so its store is named by the caller
+
+A Vessel holds an owner address, a class name and a level. It holds no id. Two
+Vessels built from the same three values compare equal, so a key made from them
+alone cannot separate a player's second Iron Edge from the first. The craft
+register already keys a Vessel this way, and the same collision sits in it.
+
+```
+two Vessels built the same compare equal: True
+vessel_key(vessel)  = 0xEkthelius:Iron Edge:1
+vessel_key(second)  = 0xEkthelius:Iron Edge:1
+```
+
+The store takes its key from whoever opens it, and the book refuses a key it
+already holds. That is how two Vessels of one class under one owner get two
+stores. The derived key is still served, and its collision is written next to
+it. A Vessel id is the clean answer and it would change the Vessel file, which
+this unit does not own.
+
+### Two figures stop a store opening, and two more wait on a hauling rule
+
+No module sets how many gear slots a Vessel has. No module sets how far a stack
+runs. Both arrive from whoever opens the store, and a store refuses to open
+without either of them. The weight one material unit carries, and the weight one
+Quintessence of strength can lift, both sit in the conversion table as working
+figures of one. The operator has not decided either.
+
+```
+a Vessel's gear slot count                   no figure, required to open a store
+the stack ceiling                            no figure, required to open a store
+weight per material unit                     1, working
+maximum weight per Quintessence of strength  1, working
+
+slot_count absent: refused, StoreFigureError: slot_count is absent; no figure
+sets how many gear slots a Vessel has
+
+stack_ceiling absent: refused, StoreFigureError: stack_ceiling is absent;
+materials.STACK_CEILING_ABSENT carries no figure and the operator's word is
+'large', so every VesselStore takes its stack_ceiling from its caller
+```
+
+The first two are refusals, so no store ever runs on a slot count nobody chose.
+The third is read off every material and is used in every weight above. The
+fourth is read by nothing here, and an encumbrance rule is what would read it.
+
+### One hand-over, and what a refused one leaves behind
+
+Moving something between two Vessels is one call. It takes out of the first
+store before it puts into the second, and it puts the units back when the second
+store refuses them.
+
+```
+10 lead ore at Calx moved from vessel-a to vessel-b
+  the giver holds 15, the taker holds 10
+  vessel-a weight_carried=17  vessel-b weight_carried=10  added = 27
+
+a handover past the taker's ceiling: refused, StackCeilingError: vessel-c holds
+0 lead ore at Calx and 15 more reaches 15, above the 5 stack ceiling it was
+built with
+  vessel-a held 15 before and 15 after
+  vessel-c holds []
+
+gear into a no-slot store: refused, SlotsFullError: vessel-c holds 0 of 0 gear
+slots and 1 armour takes 1 more
+  vessel-a gear unchanged, two pieces of armour
+```
+
+The weight the first store carried before the move, twenty-seven, is the weight
+the two stores carry after it. A move moves; it does not mint and it does not
+lose.
+
+### A bad grade landed in the store before the refusal
+
+The first version of this module checked the quality grade too late. A grade the
+table does not carry was written onto a stack, and the refusal then came from the
+reading that followed the write. The caller saw a refusal and the store was left
+holding a thing nothing could read.
+
+```
+before the fix
+  put_in with grade 'Pristine'   refused, UnknownQualityError
+  held_stacks                    raised UnknownQualityError
+  weight_carried                 raised UnknownQualityError
+  to_dict                        raised UnknownQualityError
+  a later good put_in            raised UnknownQualityError
+
+after the fix
+  put_in with grade 'Pristine'   refused, UnknownQualityError
+  held_stacks                    ()
+  weight_carried                 0
+  to_dict                        read back clean
+  a later good put_in            held 1 lead ore
+```
+
+For a player that was every item in the Vessel becoming unreadable from one
+mistyped grade. The grade and the name are now checked before anything is
+written, on the way in and on the way out.
+
+### Can the same thing be in two stores at once
+
+It cannot be put in two stores by a hand-over. The hand-over removes before it
+adds, and its refusal path was driven above and returned the units. The store
+keyed under one name exists once, and a repeated key is refused.
+
+```
+a repeated store_key: refused, StoreKeyError: vessel-a already names a store
+
+can a stack exceed what exists        no module counts a world supply of a
+                                      material, so stack_ceiling is the only
+                                      bound there is
+can gear sit in a slot that is not
+there                                 no, the slot count refuses it
+can weight be carried with no store   no, weight_carried is a reading on a
+                                      store and no free function weighs a list
+```
+
+The open half is honest and is named. An item carries no name of its own yet, so
+two stores each holding one piece of armour cannot be told apart from one piece
+recorded twice. Nothing outside this module creates units, so today the only
+writer is a caller. Named instances come with a craft that names what it made.
+
+### What a store does not do
+
+```
+encumbrance        the weight is read and nothing turns it into a refusal or a
+                   turn point penalty; both figures it needs are working
+a hauling trip     the operator's rule is that encumbrance counts only while a
+                   Vessel moves items itself, and nothing carries anything
+a foraging run     nothing gathers a material, so every put-in is a caller's
+equipping          the item table answers one total against one cohesion, and no
+                   slot here holds gear to a Vessel's Quintessence
+trading            a hand-over asks no price and nothing prices a holding
+a surface          no panel calls this module
+a package export   the package entry binds no name from it
+```
+
+### What the two subtabs read, and what is still owed
+
+The Gear subtab and the Resources subtab each print a sentence about this gap
+today, and the run read both off the real handler.
+
+```
+Gear       "Nothing holds the items one Vessel carries, so this subtab lists the
+           loot the wallet holds and no item a Vessel wears."
+Resources  "Nothing holds how many units a participant carries, so no material
+           shows an amount."
+Resources  "No stack ceiling is set and no salvage recovery fraction is set."
+```
+
+The store answers the first two of those three. The gear list and the slot count
+are what the Gear subtab needs, and the units held at a grade are what the
+Resources subtab needs. Neither subtab calls the module, and the screen files
+belong to another unit, so nothing on screen changes today.
+
+```
+owed  src/competition/__init__.py binds no name from inventory. The package says
+      so itself at every start: "competition package holds 1 module(s) it does
+      not bind: inventory"
+
+owed  a slot count a Vessel actually has, and a stack ceiling for the operator's
+      word 'large'
+
+owed  a Vessel id. Two Vessels of one class at one level under one owner are one
+      value today, and the store works round it with a caller-supplied key
+
+absent  encumbrance, a hauling trip, a foraging run, equipping, trading, a
+        surface. Each is named in the module and none is built here
+```
