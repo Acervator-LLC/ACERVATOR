@@ -504,12 +504,12 @@ class Prayer:
     priest_scores: tuple[ActionScore, ...]
 
     @property
-    def target_key(self) -> tuple[str, str]:
+    def target_key(self) -> tuple[str, str, str]:
         """The key ``AlignmentLedger`` filed the target's shift under."""
         return vessel_key(self.target)
 
     @property
-    def priest_keys(self) -> tuple[tuple[str, str], ...]:
+    def priest_keys(self) -> tuple[tuple[str, str, str], ...]:
         """One key a priest, in the order the prayer named them."""
         return tuple(vessel_key(priest) for priest in self.priests)
 

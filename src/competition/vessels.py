@@ -2,7 +2,8 @@
 
 ``Vessel`` pairs a ``CLASSES`` entry with a level and a ``vessel_id`` that
 ``new_vessel_id`` draws, reads its ``StatBlock`` from ``stat_block_at_level``,
-and ``Reincarnate`` holds an address with every Vessel owned by it.
+and ``Vessel.record_key`` is the one key every module files a record about that
+Vessel under. ``Reincarnate`` holds an address with every Vessel owned by it.
 ``Reincarnate.requirement`` adds every Vessel's block through
 ``quintessence_requirement`` and ``Reincarnate.potential`` reads that one sum
 against one balance through ``potential_at``, so ``vessel_potentials`` hands
@@ -135,7 +136,8 @@ class Vessel:
 
     ``stats`` reads ``stat_block_at_level`` and ``requirement`` is the
     Quintessence that block holds. ``vessel_id`` separates two Vessels of one
-    class at one level under one owner.
+    class at one level under one owner, and ``record_key`` carries it to every
+    module that files a record about this Vessel.
     """
 
     owner: str
@@ -151,6 +153,17 @@ class Vessel:
         stat_block_at_level(self.level)
         held_id = _as_vessel_id(self.vessel_id, self.owner)
         object.__setattr__(self, "vessel_id", held_id)
+
+    @property
+    def record_key(self) -> tuple[str, str, str]:
+        """The key every module files a record about this Vessel under.
+
+        ``alignment.vessel_key`` returns this tuple and ``inventory.vessel_key``
+        and ``crafting.craft_id_for`` join it, so one Vessel reads one key
+        wherever a record is filed. ``vessel_id`` alone separates two Vessels,
+        and ``level`` is left out so a level gained keeps the record.
+        """
+        return (self.owner, self.class_name, self.vessel_id)
 
     @property
     def character_class(self) -> CharacterClass:

@@ -70,14 +70,17 @@ OFFSETTING_OPEN = (
 )
 
 #: What a Vessel's alignment files under. ``level`` is left out of the key.
-VESSEL_KEY_FIELDS: tuple[str, ...] = ("owner", "class_name")
+VESSEL_KEY_FIELDS: tuple[str, ...] = ("owner", "class_name", "vessel_id")
 
-#: What the key cannot separate, and the field that would separate it.
+#: What the key separates, and the one move it still does not carry a record across.
 VESSEL_ID_OWED = (
-    "two Vessels of one class under one owner share a key and share one "
-    "alignment. Vessel carries no id field. A vessel_id on vessels.Vessel would "
-    "separate them, and level is left out of the key so a level gained keeps the "
-    "alignment the Vessel earned"
+    "vessels.Vessel.record_key carries the vessel_id, so two Vessels of one "
+    "class under one owner hold two keys and two alignments, and level is left "
+    "out of the key so a level gained keeps the alignment the Vessel earned. "
+    "The owner is still in the key, so domination.steal_vessel moves a taken "
+    "Vessel to a new key and the scored actions stay under the victim's. A key "
+    "of the vessel_id alone would carry them across, and it would leave "
+    "alignment_of_address and unguilded_addresses no owner to read"
 )
 
 #: What the roll-up cannot reach, measured on ``GuildRoster.guild_of``.
@@ -191,13 +194,17 @@ def _as_action_name(value: object) -> str:
     return value
 
 
-def vessel_key(vessel: object) -> tuple[str, str]:
-    """Return the ``VESSEL_KEY_FIELDS`` pair one Vessel's alignment files under."""
+def vessel_key(vessel: object) -> tuple[str, str, str]:
+    """Return the ``VESSEL_KEY_FIELDS`` triple one Vessel's alignment files under.
+
+    The triple is ``Vessel.record_key``, which ``inventory.vessel_key`` and
+    ``crafting.craft_id_for`` join, so no second key shape is built by hand.
+    """
     if not isinstance(vessel, Vessel):
         raise VesselKeyError(
             f"a Vessel was expected, got {type(vessel).__name__}; {VESSEL_ID_OWED}",
         )
-    return (vessel.owner, vessel.class_name)
+    return vessel.record_key
 
 
 @dataclass(frozen=True)
@@ -357,7 +364,7 @@ class AlignmentLedger:
 
     def __init__(self) -> None:
         """Open an empty ledger, holding no Vessel and no score."""
-        self._scores: dict[tuple[str, str], list[ActionScore]] = {}
+        self._scores: dict[tuple[str, str, str], list[ActionScore]] = {}
 
     @property
     def vessel_count(self) -> int:
@@ -386,10 +393,11 @@ class AlignmentLedger:
         self._scores.setdefault(key, []).append(entry)
         running = self.alignment_of(vessel)
         logger.info(
-            "%s %s scored %s at %s %s to %s %s, and now reads %s over %s at "
+            "%s %s %s scored %s at %s %s to %s %s, and now reads %s over %s at "
             "polarity %s across %d actions",
             key[0],
             key[1],
+            key[2],
             entry.action,
             entry.creation,
             CREATION,
@@ -475,10 +483,11 @@ class AlignmentLedger:
             {
                 "owner": owner,
                 "class_name": class_name,
+                "vessel_id": vessel_id,
                 "alignment": alignment_from_scores(run).to_dict(),
                 "actions": [score.to_dict() for score in run],
             }
-            for (owner, class_name), run in sorted(self._scores.items())
+            for (owner, class_name, vessel_id), run in sorted(self._scores.items())
         ]
 
     def to_dict(self) -> dict:
