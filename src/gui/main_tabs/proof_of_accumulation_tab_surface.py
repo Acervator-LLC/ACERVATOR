@@ -937,7 +937,7 @@ GEAR_NAMES_JOIN = ", "
 GEAR_INVENTORY_MECHANISM = "inventory"
 GEAR_TYPES_TITLE = "Item classes and what holds one together"
 GEAR_TYPE_TEXT = "{name} - {storage_class} - cohesion {cohesion} Quint"
-GEAR_MECHANISM_TITLE = "Nothing supplies these"
+GEAR_MECHANISM_TITLE = "What supplies these, and what does not"
 
 SKILL_LADDER_TITLE = "Skill ladder"
 SKILL_VESSEL_PAGE = "vessel"

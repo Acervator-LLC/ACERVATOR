@@ -202,10 +202,12 @@ ABSENT_READER_NOTES: dict[str, str] = {
     "a Creation to Destruction ratio": TAKING_RATIO_ABSENT,
 }
 
-#: What no importer reaches, measured on the package's own export list.
+#: What an importer reaches, measured on the package's own export list.
 PACKAGE_EXPORT_OWED = (
-    "src/competition/__init__.py re-exports no name from this module, so every "
-    "form is reachable by importing src.competition.domination directly"
+    "src/competition/__init__.py imports this module and lists its names in "
+    "__all__, so every form is reachable as src.competition.<name>. A name this "
+    "module repeats from a module bound above it stays unexported and is reached "
+    "by importing src.competition.domination directly"
 )
 
 

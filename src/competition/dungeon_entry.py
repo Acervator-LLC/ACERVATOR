@@ -176,10 +176,13 @@ ABSENT_MECHANISMS: dict[str, str] = {
     "dungeon_object": DUNGEON_IS_A_LOCATOR,
 }
 
-#: What binds this module into the package. The entry file does not name it yet.
+#: What binds this module into the package, and what that leaves owed.
 EXPORT_OWED = (
-    "src/competition/__init__.py binds no name from dungeon_entry, so "
-    "report_unbound_modules logs this module at every launch until it does"
+    "src/competition/__init__.py imports dungeon_entry and lists its names in "
+    "__all__, so report_unbound_modules no longer logs this module and every form "
+    "is reachable as src.competition.<name>. A name this module repeats from a "
+    "module bound above it stays unexported and is reached by importing "
+    "src.competition.dungeon_entry directly"
 )
 
 

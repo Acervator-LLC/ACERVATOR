@@ -13925,4 +13925,122 @@ owed  the scored actions a stolen Vessel earned. A key of the vessel_id alone
 owed  a screen that shows a key. No subtab draws one
 owed  open_store still takes its key from a caller, so a caller that builds
       its own key can still name one store twice
+## 2026-09-11 10:25 - #147 - the package binds its last module, and the item notes say what exists
+
+The PoA package reads its own folder at import. It compares the files it holds
+against the names it binds, and it logs the difference. That log line is the
+package's own statement about itself.
+
+The package held 44 module files and bound 43. One file was reachable only by its
+own full path.
+
+```
+before   acervator.competition WARNING
+         competition package holds 1 module(s) it does not bind: inventory
+
+after    acervator.competition DEBUG
+         competition package binds every module it holds
+```
+
+`report_unbound_modules` returned `['inventory']` before the change and `[]` after
+it. The entry file now imports the module. It keeps every existing import line and
+every existing name.
+
+```
+names in the export list before   901
+names added                        36
+names in the export list after    937
+
+public names inventory declares    39
+names held back                     3
+```
+
+### Three names stay unexported
+
+A package name carries one value. Three of inventory's names repeat a name the
+entry file already binds, and each repeat carries a different value. The entry file
+skips all three, so no value that already works is replaced. A reader reaches them
+by naming the module.
+
+```
+ABSENT_MECHANISMS        vessels holds this name
+ABSENT_MECHANISM_NOTES   vessels holds this name
+vessel_key               alignment holds this name
+```
+
+The import goes after the dungeon entry, at the end of the import section. Every
+module inventory reads is bound above it: the conversion rates, the items, the
+materials, the Quintessence ledger and the vessels.
+
+### Four modules said the package did not bind them
+
+Four modules each carry a sentence about their own export surface. Three of those
+sentences were false before this unit, and the fourth became false when the package
+bound inventory. Each sentence is now restated. None is removed.
+
+```
+dungeon_entry   EXPORT_OWED              the entry file already imported it
+domination      PACKAGE_EXPORT_OWED      the entry file already imported it
+crafting        the package export note  the entry file already imported it
+inventory       the package export note  the entry file imports it in this unit
+```
+
+Each restated sentence names what the package binds and what stays out of reach. A
+name a module repeats from a module bound above it is still reached by importing
+that module directly.
+
+### The Gear subtab prints eight item notes, and five were false
+
+The Gear subtab reads its mechanism rows from the items module. Each row is a claim
+about what the tree builds. All eight were driven against the real modules, one at a
+time. Five were false.
+
+```
+a crafting recipe   FALSE   recipe_for returned a Recipe: loss_share 0.25,
+                            turns_required 3. A Recipe with no loss_share refused
+salvage             holds   no module destroys an item for its Quintessence
+equipping           FALSE   put_in held armour in slot 1 of 4
+inventory           FALSE   put_in held 7 units of lead ore, units_held 7
+slot count          holds   a store built with no slot figure refused
+encumbrance         FALSE   weight_carried returned 7 on that store
+loot generation     FALSE   a drop carried item_type armour, quality Calx,
+                            storage_class gear
+named instances     holds   an item type carries a name, a storage class, a
+                            component list and a note, and no instance name
+```
+
+The tuple keeps all eight entries and all eight keys. An entry whose mechanism now
+exists keeps its place, and its note says what builds it and what is still missing.
+The tuple's own description now says that.
+
+### What the screen shows
+
+The subtab payload was read off the bridge method `proof_of_accumulation_tab.state`,
+the same request the screen sends. The corrected sentences reached the payload with
+no change to the panel that prints them, because the panel reads the module.
+
+```
+mechanism rows in the payload   8
+rows whose text this unit changed   5
+```
+
+The heading above those rows read "Nothing supplies these". Five rows now name
+something that is supplied, so the heading was false. It now reads "What supplies
+these, and what does not".
+
+### What is still absent
+
+Binding a module does not build a mechanism. These gaps are unchanged.
+
+```
+no figure sets a Vessel's gear slot count
+no figure sets the stack ceiling
+nothing turns a carried weight into a refusal or a turn point penalty
+nothing reads an item's cohesion against a Vessel's Quintessence, so the
+    equip check has no caller
+nothing destroys an item for the Quintessence it embeds
+no table names a recipe, and both recipe figures arrive from the caller
+no source names the item type a loot tier yields
+no artefact carries an instance name
+no panel calls the store
 ```

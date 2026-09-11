@@ -86,7 +86,7 @@ EQUIP_ALLOWED = "the total Quintessence covers the item's cohesion"
 #: What an ``EquipCheck`` whose total falls short reads.
 EQUIP_REFUSED = "the item's cohesion is above the total Quintessence held"
 
-#: What an item takes part in that no module builds.
+#: What an item takes part in, each note naming what builds it and what stays absent.
 ABSENT_MECHANISMS: tuple[str, ...] = (
     "a crafting recipe",
     "salvage",
@@ -98,19 +98,36 @@ ABSENT_MECHANISMS: tuple[str, ...] = (
     "named instances",
 )
 
-#: What each entry in ``ABSENT_MECHANISMS`` waits on.
+#: What each entry in ``ABSENT_MECHANISMS`` stands on, and what it still waits on.
 ABSENT_MECHANISM_NOTES: dict[str, str] = {
     "a crafting recipe": (
-        "crafting.CraftRegister.complete_craft turns a component list into an "
-        "item, and no Recipe is declared because loss_share and turns_required "
-        "are two figures no source sets"
+        "crafting.Recipe is declared and crafting.recipe_for builds one out of an "
+        "item type's own component list; no table names a Recipe, because "
+        "loss_share and turns_required are two figures no source sets and Recipe "
+        "refuses an absent one"
     ),
     "salvage": "nothing destroys an item for the Quintessence it embeds",
-    "equipping": "nothing holds an item to a Vessel, so equip_check has no caller",
-    "inventory": "nothing holds the items one Vessel carries",
+    "equipping": (
+        "inventory.VesselStore.put_in holds a gear item in one of a Vessel's "
+        "counted slots, and nothing reads that item's cohesion against the "
+        "Vessel's Quintessence, so equip_check still has no caller"
+    ),
+    "inventory": (
+        "inventory.VesselStore holds them, gear in counted slots and consumables "
+        "and resources in stacks, and StoreBook.hand_over is the only move between "
+        "two stores"
+    ),
     "slot count": "no figure sets how many gear slots a Vessel has",
-    "encumbrance": "nothing weighs what a Vessel hauls",
-    "loot generation": "loot_drop.drop_from_pool draws a tier and names no item",
+    "encumbrance": (
+        "inventory.VesselStore.weight_carried weighs it, adding unit_weight over "
+        "every holding, and nothing turns that weight into a refusal or a turn "
+        "point penalty"
+    ),
+    "loot generation": (
+        "loot_drop.drop_from_pool draws a tier and a LootDrop names an item_type, "
+        "a quality and a storage_class; no source names the item type a tier "
+        "yields, so drop_for_market takes a yields mapping from its caller"
+    ),
     "named instances": NAMED_INSTANCES_ABSENT,
 }
 

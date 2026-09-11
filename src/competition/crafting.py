@@ -167,8 +167,9 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
         "or consumables, and no panel calls begin_craft"
     ),
     "a package export": (
-        "the competition package entry binds no name from this module, so "
-        "report_unbound_modules names crafting at every load"
+        "the competition package entry imports crafting and lists its names in "
+        "__all__, so report_unbound_modules names no module at all and a name this "
+        "module repeats from one bound above it stays unexported"
     ),
 }
 
