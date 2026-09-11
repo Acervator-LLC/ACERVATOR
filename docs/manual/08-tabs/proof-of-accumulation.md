@@ -11367,3 +11367,160 @@ Nothing counts the materials a Vessel carries, because no inventory exists, so a
 recipe names units that nothing has checked against a store. The wallet balance is
 the only thing that refuses a craft today. The module names that gap in its own
 text rather than hiding it.
+
+## 2026-09-11 06:50 - #147 - seven subtabs, a key each, and the Vessel opens its own page
+
+### What the bar carried before, and what it carries now
+
+The subtab bar held four entries and no keyboard binding. Searching the tab's
+three files for a key handler returned nothing.
+
+Counted off `SUBTABS` in `src/gui/main_tabs/proof_of_accumulation_tab_surface.py`
+
+```
+                        before   after
+subtabs on the bar           4       7
+keys bound                   0       7
+new subtabs                          3     Resources, Quint, Guild
+```
+
+The operator named seven: maps, character details, gear, resources, Quint, skills
+and guild. Four already existed under other labels and three are new. `Skill Tree`
+became `Skills`, because his own words divide it into a Vessel page and a
+Reincarnate page, and a tree is one thing a page could hold.
+
+### The key each subtab opens on
+
+Each button carries its key on its face, so nobody has to hunt for it. A sentence
+under the bar names the range, and each button also carries the key as an
+`aria-keyshortcuts` attribute for a screen reader.
+
+```
+Ctrl+1  Maps               Ctrl+5  Quint
+Ctrl+2  Character Details  Ctrl+6  Skills
+Ctrl+3  Gear               Ctrl+7  Guild
+Ctrl+4  Resources
+```
+
+Ctrl and a digit is the published way to reach the Nth tab in the browser engine
+both hosts run. Nothing in the application takes those keys. Measured by asking
+the running Electron shell for its own menu, and by reading the Qt side
+
+```
+Electron default menu accelerators      15
+  of those on Ctrl and a digit           0     Ctrl+0 is Actual Size
+globally registered Ctrl+1 to Ctrl+7     0
+Qt menu bar mnemonics                    Alt+F, Alt+E, Alt+T, Alt+H
+Qt key sequences elsewhere               Ctrl+Left, Ctrl+Right, in one dialog
+```
+
+### Clicking the Vessel opens its page
+
+The Vessel card in the top-left half is now the click target itself. Clicking it,
+or pressing Enter or Space on it, opens Character Details. The card says so on its
+face.
+
+The card carries a heading and a list, which HTML does not allow inside a button,
+so it takes the published pattern for making any element behave as one.
+
+```javascript
+panelProps.role = "button";
+panelProps.tabIndex = 0;
+panelProps.onClick = open;
+panelProps.onKeyDown = function (event) {
+  if (event.key === ENTER_KEY || event.key === SPACE_KEY) {
+    event.preventDefault();
+    open();
+  }
+};
+```
+
+### What each subtab draws, and what it says it cannot
+
+Every figure below is read from a module at draw time. No number is typed into the
+screen.
+
+| Subtab | What it draws | Module behind it |
+| ------ | ------------- | ---------------- |
+| Maps | 5 grid bounds: 9 squares a side, 81 a layer, 20 layers, 79 participants a layer, 1 square in view | `world_grid` |
+| Character Details | 5 stats with their principle and effect, the 10 bands a stat climbs, and the 27 trading metrics | `entity_stats`, `rpg_metrics` |
+| Gear | the loot the wallet holds, 4 item classes with their cohesion, 8 mechanisms | `loot_drop`, `items` |
+| Resources | 7 materials, each with the Quintessence band one unit embeds and where that band came from | `materials` |
+| Quint | the chain, its two files, the smallest unit, the supply cap, the minted total | `quintessence_ledger` |
+| Skills | two named pages and the one skill on the ladder, over its 10 levels | `skill_ladder` |
+| Guild | 0 guilds, 0 members, the two ranks and the treasury address shape | `guild_roster` |
+
+Three things the operator named are not built, and each subtab says so in its own
+words rather than showing an empty frame.
+
+```
+skill trees    no module declares an ability and no module declares a tree
+skill rings    no module declares a ring, a tier or a Sephirot position
+tactical map   nothing holds an encounter's enemies or their turn order
+```
+
+The Skills subtab names both pages, Vessel and Reincarnate, and says under each
+that nothing supplies its tree or its ring. The Guild roster loads empty because
+no module writes a roster file, and it says that too.
+
+### Maps opens only where a map exists
+
+The rule that already governed the map subtab still governs its key. Under an
+event whose mode carries no map, Ctrl+1 does nothing and the button is disabled
+with the reason on it.
+
+```
+Monster Smash   Ctrl+1 refused    "Monster Smash carries no map, so this subtab
+                                   does not open. Dungeon Crawl and Raid do."
+Dungeon Crawl   Ctrl+1 opens Maps
+```
+
+### Both builds were driven, and every reading matched
+
+Each of the seven keys was pressed as a real keypress and the subtab showing
+afterwards was read off the drawn page, not off the code. The Vessel was clicked
+the same way. The Qt window and the Electron shell were driven separately against
+the same live backend.
+
+```
+readings compared                            157
+readings that differed                         0
+seven keys, seven different subtabs          Qt yes, Electron yes
+Vessel click opens Character Details         Qt yes, Electron yes
+Ctrl+9, which nothing binds, changes nothing Qt yes, Electron yes
+```
+
+### One sentence on the tab was wrong and is corrected
+
+The Vessel card used to say that no subtab carried its details, so nothing opened.
+That subtab now exists, so the card names it instead.
+
+```python
+VESSEL_CLICK_NOTE = (
+    "Click this Vessel to open the Character Details subtab, or press its shortcut."
+)
+```
+
+The Gear subtab used to say nothing builds the four item classes. Those classes
+are now declared with their material lists, and a craft that makes one landed the
+same day, so the sentence now names the limit that is real.
+
+```python
+GEAR_ABSENT_TEXT = (
+    "{names} are declared as classes. {inventory}, so this subtab lists the loot the "
+    "wallet holds and no item a Vessel wears."
+)
+```
+
+### Still owed
+
+The items module still lists crafting among the things nothing supplies, while
+the crafting module now completes one. The Gear subtab prints that module's own
+sentence, so correcting the module corrects the screen.
+
+```python
+ABSENT_MECHANISM_NOTES = {
+    "crafting": "nothing turns a material list into an item",
+    ...
+}
+```

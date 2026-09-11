@@ -5,9 +5,15 @@
 // encounter.running is set and EncounterRegion after that, with the square enemy
 // screen inside it. The party window takes the lower half. The Quintessence balance sits
 // in the party header and the wallet opens as a panel over the party window.
-// Four subtabs sit above the zones and selectSubtab draws one of them; the map
-// entry and the player window's map button both read the payload's reachable
-// flag. A row of control buttons sits under the state line and fireControl sends
+// Seven subtabs sit above the zones and selectSubtab draws one of them. Each
+// SubtabButton carries its own shortcut as a kbd and an aria-keyshortcuts, and
+// pressSubtabKey reads the same shortcut off the payload, so the tab's keydown and
+// the bar open the same subtab. VesselPanel is a role="button" that opens the subtab
+// vessel.click_subtab names. The map entry and the player window's map button both
+// read the payload's reachable flag. DetailsPanel, ResourcePanel, QuintPanel,
+// GuildPanel and SkillPagesPanel draw the other subtabs through titledRows, and
+// SkillPage names the Vessel and Reincarnate pages.
+// A row of control buttons sits under the state line and fireControl sends
 // the params the payload gave that control, then redraws from the answer, so the
 // verdict and the figures on screen are the mechanism's own. MeterPair draws the
 // block fill and the turn completion side by side in the player window, and
@@ -24,6 +30,7 @@
   var BUILT = "built";
   var CHAIN = "chain";
   var CHAIN_RESET = "chain_reset";
+  var CHARACTER_DETAILS = "character_details";
   var CHARACTER_STATS = "character_stats";
   var CLASSES = "classes";
   var CONSERVATION = "conservation";
@@ -31,6 +38,7 @@
   var ENCOUNTER = "encounter";
   var EVENT = "event";
   var GEAR = "gear";
+  var GUILD = "guild";
   var HEADING = "heading";
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
@@ -43,12 +51,15 @@
   var PARTICIPANTS = "participants";
   var PARTY = "party";
   var PICK_NOTE = "pick_note";
+  var QUINT = "quint";
   var REDISTRIBUTION = "redistribution";
+  var RESOURCES = "resources";
   var SEASON = "season";
-  var SKILL_TREE = "skill_tree";
+  var SKILL_PAGES = "skill_pages";
   var SKILLS = "skills";
   var STATE_TEXT = "state_text";
   var SUBTAB = "subtab";
+  var SUBTAB_SHORTCUT_TEXT = "subtab_shortcut_text";
   var SUBTABS = "subtabs";
   var VESSEL = "vessel";
   var WALLET = "wallet";
@@ -59,6 +70,7 @@
     BUILT,
     CHAIN,
     CHAIN_RESET,
+    CHARACTER_DETAILS,
     CHARACTER_STATS,
     CLASSES,
     CONSERVATION,
@@ -66,6 +78,7 @@
     ENCOUNTER,
     EVENT,
     GEAR,
+    GUILD,
     HEADING,
     ISSUE,
     ISSUE_TEXT,
@@ -78,12 +91,15 @@
     PARTICIPANTS,
     PARTY,
     PICK_NOTE,
+    QUINT,
     REDISTRIBUTION,
+    RESOURCES,
     SEASON,
-    SKILL_TREE,
+    SKILL_PAGES,
     SKILLS,
     STATE_TEXT,
     SUBTAB,
+    SUBTAB_SHORTCUT_TEXT,
     SUBTABS,
     VESSEL,
     WALLET,
@@ -116,13 +132,32 @@
   var UPPER_PART = "upper-band";
   var SUBTAB_BAR_PART = "subtab-bar";
   var SUBTAB_BUTTON_PART = "subtab-button";
+  var SUBTAB_KEY_PART = "subtab-key";
+  var SUBTAB_KEY_NOTE_PART = "subtab-key-note";
   var SUBTAB_PANEL_PART = "subtab-panel";
   var SUBTAB_TITLE_PART = "subtab-title";
+
+  var DETAILS_PANEL_PART = "details-panel";
+  var DETAILS_LIST_PART = "details-list";
+  var DETAILS_ROW_PART = "details-row";
+  var DETAILS_LABEL_PART = "details-label";
+  var DETAILS_VALUE_PART = "details-value";
+  var DETAILS_TITLE_PART = "details-title";
+  var DETAILS_NOTE_PART = "details-note";
+
+  var RESOURCE_PANEL_PART = "resource-panel";
+  var QUINT_PANEL_PART = "quint-panel";
+  var GUILD_PANEL_PART = "guild-panel";
+  var SKILL_PAGE_PART = "skill-page";
+  var SKILL_PAGE_TITLE_PART = "skill-page-title";
+  var SKILL_PAGE_ABSENT_PART = "skill-page-absent";
 
   // A button the running event does not open carries data-reachable="false".
   var REACHABLE_ATTR = "data-reachable";
   var SELECTED_ATTR = "data-selected";
   var SUBTAB_ATTR = "data-subtab";
+  var KEYS_ATTR = "aria-keyshortcuts";
+  var PAGE_ATTR = "data-page";
 
   var STATS_PANEL_PART = "stats-panel";
   var STAT_LIST_PART = "stat-list";
@@ -367,6 +402,17 @@
   var subtabName = null;
 
   var NO_SUCH_SUBTAB = "no subtab carries that name";
+  var NO_KEY_BOUND = "no subtab carries that shortcut";
+
+  // Every shortcut the payload serves is this modifier and one more key.
+  var SHORTCUT_MODIFIER = "Ctrl";
+  var KEY_JOIN = "+";
+
+  // The tab takes focus so its own keydown runs, and never enters the tab order.
+  var KEYBOARD_TAB_INDEX = -1;
+
+  var ENTER_KEY = "Enter";
+  var SPACE_KEY = " ";
   var NO_SUCH_CONTROL = "no control carries that name";
   var NO_SUCH_CHAIN = "no chain carries that name";
   var NO_SUCH_EVENT = "no event type carries that name";
@@ -1397,6 +1443,33 @@
     return found;
   }
 
+  // The subtab whose own shortcut ends in `key`, so the binding is the payload's.
+  function subtabForKey(model, key) {
+    var found = null;
+    subtabList(model).forEach(function (entry) {
+      if (!isPlainObject(entry) || typeof entry.shortcut !== "string") {
+        return;
+      }
+      var parts = entry.shortcut.split(KEY_JOIN);
+      if (parts[0] === SHORTCUT_MODIFIER && parts[parts.length - 1] === key) {
+        found = entry.name;
+      }
+    });
+    return found;
+  }
+
+  // Answers the same shape selectSubtab does, so a refused key reads like a refused click.
+  function pressSubtabKey(key, withModifier) {
+    if (withModifier !== true || held === null) {
+      return { name: held === null ? null : selectedSubtab(held), opened: false, refusal: NO_KEY_BOUND };
+    }
+    var name = subtabForKey(held, key);
+    if (name === null) {
+      return { name: selectedSubtab(held), opened: false, refusal: NO_KEY_BOUND };
+    }
+    return selectSubtab(name);
+  }
+
   // An entry the running event does not open is never the drawn one, so a
   // chosen map falls back to the payload's subtab when the mode changes.
   function selectedSubtab(model) {
@@ -1407,9 +1480,11 @@
     return text(model[SUBTAB]);
   }
 
+  // The shortcut rides in the button, so a reader finds the key without a tooltip.
   function SubtabButton(props) {
     var entry = props.entry;
     var label = text(entry.title);
+    var key = text(entry.shortcut);
     var buttonArgs = buttonProps(SUBTAB_BUTTON_PART, label, function () {
       selectSubtab(entry.name);
     });
@@ -1417,11 +1492,29 @@
     buttonArgs[SUBTAB_ATTR] = text(entry.name);
     buttonArgs[SELECTED_ATTR] = String(entry.name === props.selected);
     buttonArgs[REACHABLE_ATTR] = String(entry.reachable !== false);
+    if (key !== undefined) {
+      buttonArgs[KEYS_ATTR] = key;
+    }
     if (entry.reachable === false) {
       buttonArgs.disabled = true;
       buttonArgs.title = text(entry.refusal);
     }
-    return element("button", buttonArgs, label);
+    return element(
+      "button",
+      buttonArgs,
+      element(
+        "span",
+        named(TAB_CLASS + "-subtab-label", SUBTAB_BUTTON_PART + "-label", label),
+        label
+      ),
+      key === undefined
+        ? null
+        : element(
+            "kbd",
+            named(TAB_CLASS + "-subtab-key", SUBTAB_KEY_PART, key),
+            key
+          )
+    );
   }
 
   function SubtabBar(props) {
@@ -1434,7 +1527,8 @@
           entry: entry,
           selected: props.selected
         });
-      })
+      }),
+      note("subtab-key-note", SUBTAB_KEY_NOTE_PART, props.keyNote)
     );
   }
 
@@ -1517,13 +1611,21 @@
       part(TAB_CLASS + "-gear", GEAR_PANEL_PART),
       element(
         "ul",
-        part(TAB_CLASS + "-gear-list", GEAR_LIST_PART),
+        Object.assign(part(TAB_CLASS + "-gear-list", GEAR_LIST_PART), {
+          key: GEAR_LIST_PART
+        }),
         rows.filter(isPlainObject).map(function (row) {
           return element(GearRow, { key: row.label, row: row });
         })
       ),
       note("gear-note", GEAR_NOTE_PART, gear.note),
-      note("gear-absent", GEAR_ABSENT_PART, gear.absent_text)
+      note("gear-absent", GEAR_ABSENT_PART, gear.absent_text),
+      titledRows(gear.types_title, gear.types, DETAILS_LIST_PART + "-item-types"),
+      titledRows(
+        gear.mechanism_title,
+        gear.mechanisms,
+        DETAILS_LIST_PART + "-item-mechanisms"
+      )
     );
   }
 
@@ -1583,27 +1685,194 @@
   }
 
   function MapPanel(props) {
+    var map = props.map;
     return element(
       "div",
       part(TAB_CLASS + "-map", MAP_PANEL_PART),
-      note("map-note", MAP_NOTE_PART, props.map.absent_text)
+      titledRows(map.grid_title, map.grid, DETAILS_LIST_PART + "-grid"),
+      note("map-note", MAP_NOTE_PART, map.absent_text),
+      note("details-note", DETAILS_NOTE_PART, map.world_text),
+      note("details-note", DETAILS_NOTE_PART + "-tactical", map.tactical_absent_text)
+    );
+  }
+
+  // A heading over one labelled list, which is the shape five subtabs draw in.
+  function titledRows(title, rows, listPart) {
+    var heading = text(title);
+    var children = [];
+    if (heading !== undefined) {
+      children.push(
+        element(
+          "h4",
+          Object.assign(
+            named(TAB_CLASS + "-details-title", DETAILS_TITLE_PART, heading),
+            { key: DETAILS_TITLE_PART + "-" + listPart }
+          ),
+          heading
+        )
+      );
+    }
+    children.push(
+      element(
+        "div",
+        Object.assign(part(TAB_CLASS + "-details-list", listPart), {
+          key: listPart
+        }),
+        figureRows(rows, DETAILS_ROW_PART, DETAILS_LABEL_PART, DETAILS_VALUE_PART)
+      )
+    );
+    return element(
+      "div",
+      Object.assign(part(TAB_CLASS + "-details-group", listPart + "-group"), {
+        key: listPart + "-group"
+      }),
+      children
+    );
+  }
+
+  function DetailsPanel(props) {
+    var details = props.details;
+    return element(
+      "div",
+      part(TAB_CLASS + "-details", DETAILS_PANEL_PART),
+      note("details-note", DETAILS_NOTE_PART + "-vessel", details.vessel_text),
+      titledRows(details.stats_title, details.stats, DETAILS_LIST_PART + "-stats"),
+      note("details-note", DETAILS_NOTE_PART + "-count", details.count_text),
+      titledRows(details.sphere_title, details.spheres, DETAILS_LIST_PART + "-spheres")
+    );
+  }
+
+  function ResourcePanel(props) {
+    var resources = props.resources;
+    return element(
+      "div",
+      part(TAB_CLASS + "-resource", RESOURCE_PANEL_PART),
+      titledRows(
+        resources.list_title,
+        resources.rows,
+        DETAILS_LIST_PART + "-materials"
+      ),
+      note("details-note", DETAILS_NOTE_PART + "-count", resources.count_text),
+      note("details-note", DETAILS_NOTE_PART + "-held", resources.held_absent_text),
+      note(
+        "details-note",
+        DETAILS_NOTE_PART + "-ceiling",
+        resources.ceiling_absent_text
+      )
+    );
+  }
+
+  function QuintPanel(props) {
+    var quint = props.quint;
+    return element(
+      "div",
+      part(TAB_CLASS + "-quint", QUINT_PANEL_PART),
+      titledRows(quint.rows_title, quint.rows, DETAILS_LIST_PART + "-quint"),
+      note("details-note", DETAILS_NOTE_PART + "-wallet", quint.wallet_note),
+      note("details-note", DETAILS_NOTE_PART + "-absent", quint.absent_text)
+    );
+  }
+
+  function GuildPanel(props) {
+    var guild = props.guild;
+    var guilds = Array.isArray(guild.guilds) ? guild.guilds : [];
+    return element(
+      "div",
+      part(TAB_CLASS + "-guild", GUILD_PANEL_PART),
+      titledRows(guild.rows_title, guild.rows, DETAILS_LIST_PART + "-guild"),
+      guilds.length === 0
+        ? null
+        : titledRows(
+            guild.rows_title,
+            guilds.map(function (entry) {
+              return { label: entry.name, value: String(entry.members) };
+            }),
+            DETAILS_LIST_PART + "-guilds"
+          ),
+      note("details-note", DETAILS_NOTE_PART + "-empty", guild.empty_text),
+      note("details-note", DETAILS_NOTE_PART + "-tie", guild.world_tie_text)
+    );
+  }
+
+  // One page a skill kind. Only the page whose holds_ladder is set carries the ladder.
+  function SkillPage(props) {
+    var page = props.page;
+    var title = text(page.title);
+    var pageProps = named(TAB_CLASS + "-skill-page", SKILL_PAGE_PART, title);
+    pageProps.key = SKILL_PAGE_PART + "-" + text(page.name);
+    pageProps[PAGE_ATTR] = text(page.name);
+    return element(
+      "section",
+      pageProps,
+      element(
+        "h4",
+        named(TAB_CLASS + "-skill-page-title", SKILL_PAGE_TITLE_PART, title),
+        title
+      ),
+      note("skill-page-absent", SKILL_PAGE_ABSENT_PART, page.absent_text),
+      page.holds_ladder === true ? props.ladder : null
+    );
+  }
+
+  function SkillPagesPanel(props) {
+    var pages = Array.isArray(props.skillPages.pages) ? props.skillPages.pages : [];
+    var ladder = element(TreePanel, { tree: props.skillPages });
+    return element(
+      "div",
+      part(TAB_CLASS + "-skill-pages", TREE_PANEL_PART + "-pages"),
+      note("details-note", DETAILS_NOTE_PART + "-pages", props.skillPages.page_note),
+      pages.filter(isPlainObject).map(function (page) {
+        return element(SkillPage, {
+          key: SKILL_PAGE_PART + "-" + text(page.name),
+          page: page,
+          ladder: page.holds_ladder === true ? ladder : null
+        });
+      })
     );
   }
 
   var SUBTAB_BODY = {};
-  SUBTAB_BODY[CHARACTER_STATS] = function (model) {
-    return isPlainObject(model[CHARACTER_STATS])
-      ? element(StatsPanel, { stats: model[CHARACTER_STATS] })
-      : null;
+  SUBTAB_BODY[CHARACTER_DETAILS] = function (model) {
+    return element(
+      "div",
+      part(TAB_CLASS + "-details-pair", DETAILS_PANEL_PART + "-pair"),
+      isPlainObject(model[CHARACTER_DETAILS])
+        ? element(DetailsPanel, {
+            key: DETAILS_PANEL_PART,
+            details: model[CHARACTER_DETAILS]
+          })
+        : null,
+      isPlainObject(model[CHARACTER_STATS])
+        ? element(StatsPanel, {
+            key: STATS_PANEL_PART,
+            stats: model[CHARACTER_STATS]
+          })
+        : null
+    );
   };
   SUBTAB_BODY[GEAR] = function (model) {
     return isPlainObject(model[GEAR])
       ? element(GearPanel, { gear: model[GEAR] })
       : null;
   };
-  SUBTAB_BODY[SKILL_TREE] = function (model) {
-    return isPlainObject(model[SKILL_TREE])
-      ? element(TreePanel, { tree: model[SKILL_TREE] })
+  SUBTAB_BODY[RESOURCES] = function (model) {
+    return isPlainObject(model[RESOURCES])
+      ? element(ResourcePanel, { resources: model[RESOURCES] })
+      : null;
+  };
+  SUBTAB_BODY[QUINT] = function (model) {
+    return isPlainObject(model[QUINT])
+      ? element(QuintPanel, { quint: model[QUINT] })
+      : null;
+  };
+  SUBTAB_BODY[SKILLS] = function (model) {
+    return isPlainObject(model[SKILL_PAGES])
+      ? element(SkillPagesPanel, { skillPages: model[SKILL_PAGES] })
+      : null;
+  };
+  SUBTAB_BODY[GUILD] = function (model) {
+    return isPlainObject(model[GUILD])
+      ? element(GuildPanel, { guild: model[GUILD] })
       : null;
   };
   SUBTAB_BODY[MAP] = function (model) {
@@ -1772,11 +2041,26 @@
         })
       )
     ];
-    return element(
-      "div",
-      part(TAB_CLASS + "-vessel-panel", VESSEL_PANEL_PART),
-      children
+    var opens = text(vessel.click_subtab);
+    function open() {
+      return selectSubtab(opens);
+    }
+    var panelProps = named(
+      TAB_CLASS + "-vessel-panel",
+      VESSEL_PANEL_PART,
+      text(vessel.click_note)
     );
+    panelProps.role = "button";
+    panelProps.tabIndex = 0;
+    panelProps.onClick = open;
+    panelProps.onKeyDown = function (event) {
+      if (event.key === ENTER_KEY || event.key === SPACE_KEY) {
+        event.preventDefault();
+        open();
+      }
+    };
+    panelProps[SUBTAB_ATTR] = opens;
+    return element("div", panelProps, children);
   }
 
   // The right half while an encounter runs. The enemy screen draws inside it as its
@@ -2014,8 +2298,14 @@
     var chosen = selectedSubtab(model);
     var tabProps = {
       className: TAB_CLASS,
-      "aria-label": text(model[ACCESSIBLE_NAME])
+      "aria-label": text(model[ACCESSIBLE_NAME]),
+      onKeyDown: function (event) {
+        if (pressSubtabKey(event.key, event.ctrlKey).opened) {
+          event.preventDefault();
+        }
+      }
     };
+    tabProps.tabIndex = KEYBOARD_TAB_INDEX;
     tabProps[CHAIN_ATTR] = text(model[CHAIN]);
     tabProps[ISSUE_ATTR] = text(model[ISSUE]);
     tabProps[OPEN_ATTR] = String(walletOpen);
@@ -2031,7 +2321,11 @@
             reset: isPlainObject(model[CHAIN_RESET]) ? model[CHAIN_RESET] : null
           })
         : null,
-      element(SubtabBar, { entries: subtabList(model), selected: chosen }),
+      element(SubtabBar, {
+        entries: subtabList(model),
+        selected: chosen,
+        keyNote: text(model[SUBTAB_SHORTCUT_TEXT])
+      }),
       element(SubtabArea, { model: model, selected: chosen }),
       element(
         "div",
@@ -2379,7 +2673,15 @@
     subtab: function () {
       return held === null ? null : selectedSubtab(held);
     },
+    subtabShortcuts: function () {
+      return held === null
+        ? []
+        : subtabList(held).map(function (entry) {
+            return [entry.shortcut, entry.name];
+          });
+    },
     selectSubtab: selectSubtab,
+    pressSubtabKey: pressSubtabKey,
     controlNames: function () {
       return controlRows(held).map(function (row) {
         return row.name;
