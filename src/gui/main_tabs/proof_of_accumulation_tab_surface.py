@@ -68,6 +68,13 @@ from ...competition.loot_drop import (
     drop_from_pool,
     request_from_pool,
 )
+from ...competition.map_glyphs import (
+    absent_rows,
+    colour_token_names,
+    family_rows,
+    mark_for,
+    mark_kinds,
+)
 from ...competition.market_rotation import (
     AGE_LOOKUP_INTERVAL_S,
     DEFAULT_ROTATION_PATH,
@@ -642,6 +649,12 @@ SKILL_TREE_LIST_TEXT = (
     "draws a list."
 )
 
+MARKS_TITLE = "Map marks"
+MARKS_ABSENT_TITLE = "Nothing supplies these"
+MARKS_COUNT_TEXT = "{count} kinds carry a mark, and every glyph is its own."
+MARKS_COLOUR_TEXT = "Each colour is a design style name: {names}."
+MARKS_ART_TEXT = "These are stand-in marks. No pixel art is drawn."
+
 DECLARED_FIELDS = (
     "accessible_name",
     "built",
@@ -657,6 +670,7 @@ DECLARED_FIELDS = (
     "issue",
     "issue_text",
     "map",
+    "map_marks",
     "meters",
     "metric_sources",
     "method",
@@ -1224,14 +1238,42 @@ def participants(chain: str, pick: ClassPick | None = None) -> list:
     return sorted(rows, key=lambda row: row["participant"])
 
 
+def marked(row: dict, kind: str) -> dict:
+    """``row`` with the glyph and the colour name ``mark_for`` holds for ``kind``."""
+    mark = mark_for(kind)
+    return {
+        **row,
+        "kind": mark.kind,
+        "glyph": mark.glyph,
+        "colour_token": mark.colour_token,
+        "codepoint": mark.codepoint,
+    }
+
+
 def classes() -> list:
-    """The seven classes a participant picks from, from ``class_rows``."""
-    return class_rows()
+    """The seven classes a participant picks from, each carrying its own mark."""
+    return [marked(entry, entry["name"]) for entry in class_rows()]
 
 
 def modes() -> list:
-    """The eight event types, from ``variant_rows``, each carrying its Elite flag."""
-    return variant_rows()
+    """The eight event types, each carrying the mark of the mode behind it."""
+    return [marked(row, row["mode"]) for row in variant_rows()]
+
+
+def map_marks() -> dict:
+    """Every mark by family, the colours they name, and the kinds nothing supplies."""
+    kinds = mark_kinds()
+    names = colour_token_names()
+    return {
+        "title": MARKS_TITLE,
+        "families": family_rows(),
+        "count": len(kinds),
+        "count_text": MARKS_COUNT_TEXT.format(count=len(kinds)),
+        "colour_text": MARKS_COLOUR_TEXT.format(names=", ".join(names)),
+        "art_text": MARKS_ART_TEXT,
+        "absent_title": MARKS_ABSENT_TITLE,
+        "absent": absent_rows(),
+    }
 
 
 def turn_text(variant: EventVariant, turn_index: int, seconds_left: float) -> str:
@@ -2119,6 +2161,7 @@ def view_model(params: dict) -> dict:
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
         "map": map_panel(variant),
+        "map_marks": map_marks(),
         "meters": meters(running, variant, chain),
         "metric_sources": metric_sources(),
         "method": METHOD,

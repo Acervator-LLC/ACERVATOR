@@ -333,8 +333,18 @@ body > #panel-root {
   overflow: hidden;
 }
 
+/* The square keeps its width and its content scrolls, so the absence list below
+   the title is reachable at every window height. */
 .acervator-poa-tab [data-part="enemy-screen"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
   aspect-ratio: 1 / 1;
+  overflow-y: auto;
+}
+
+.acervator-poa-tab [data-part="enemy-screen"] > * {
+  flex-shrink: 0;
 }
 
 /* The event band, the meters, the map control and the mode list stack past the
@@ -552,7 +562,7 @@ body > #panel-root {
 
 .acervator-poa-tab [data-part="mode-row"] {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: calc(var(--SPACE_XS) * 1px);
   padding: 0 calc(var(--SPACE_XS) * 1px);
@@ -586,6 +596,142 @@ body > #panel-root {
   color: var(--TEXT_LOW);
   font-size: calc(var(--TYPE_SMALL) * 1px);
   white-space: nowrap;
+}
+
+/* The stand-in mark of one kind. The renderer writes the colour as a style name
+   off the page root, so this rule sets the size and the box and never a colour. */
+.acervator-poa-tab [data-part="glyph"] {
+  display: inline-block;
+  min-width: calc(var(--TYPE_CARD_VALUE) * 1px);
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
+  font-size: calc(var(--TYPE_CARD_VALUE) * 1px);
+  text-align: center;
+}
+
+/* The mark table, under the mode list in the player window. */
+.acervator-poa-tab [data-part="glyph-legend"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+}
+
+.acervator-poa-tab [data-part="glyph-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="glyph-count"],
+.acervator-poa-tab [data-part="glyph-colour"] {
+  margin: 0;
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="glyph-art"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+.acervator-poa-tab [data-part="glyph-family"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+}
+
+.acervator-poa-tab [data-part="glyph-family-name"] {
+  margin: 0;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+/* The rows wrap into as many columns as the zone is wide, and a column never
+   narrows past the width a kind's name and its codepoint need side by side. */
+.acervator-poa-tab [data-part="glyph-list"] {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(calc(var(--SPACE_XXL) * 4px), 1fr)
+  );
+  gap: calc(var(--SPACE_XS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acervator-poa-tab [data-part="glyph-row"] {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+  min-width: 0;
+}
+
+.acervator-poa-tab [data-part="glyph-label"] {
+  flex: 1 1 auto;
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="glyph-codepoint"] {
+  margin-left: auto;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+/* The kinds nothing supplies, in the enemy screen. */
+.acervator-poa-tab [data-part="glyph-absence"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  min-height: 0;
+}
+
+.acervator-poa-tab [data-part="glyph-absent-title"] {
+  margin: 0;
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="glyph-absent-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acervator-poa-tab [data-part="glyph-absent-row"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_XS) * 1px);
+  border-left: 2px solid var(--OUTLINE);
+}
+
+.acervator-poa-tab [data-part="glyph-absent-name"] {
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="glyph-absent-note"] {
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
 .acervator-poa-tab [data-part="pick-note"] {
