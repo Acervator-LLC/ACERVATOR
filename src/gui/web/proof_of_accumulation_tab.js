@@ -17,7 +17,8 @@
 // the params the payload gave that control, then redraws from the answer, so the
 // verdict and the figures on screen are the mechanism's own. MeterPair draws the
 // block fill and the turn completion side by side in the player window, and
-// ResetPanel names the two chain files and both reasons a reset carries.
+// ResetPanel names the two chain files and both reasons a reset carries, and
+// WorldPanel names the world the chain holds, its grid and its seed commitment.
 // Glyph draws one stand-in mark a kind; GlyphLegend lists them all and
 // GlyphAbsence names what nothing supplies. MapGrid lays the payload's squares
 // out at its own width and MapSquare draws one, its glyph only where the
@@ -65,6 +66,7 @@
   var SUBTABS = "subtabs";
   var VESSEL = "vessel";
   var WALLET = "wallet";
+  var WORLD = "world";
   var ZONES = "zones";
 
   var DECLARED_FIELDS = [
@@ -105,6 +107,7 @@
     SUBTABS,
     VESSEL,
     WALLET,
+    WORLD,
     ZONES
   ];
 
@@ -364,6 +367,16 @@
   var RESET_ROW_LABEL_PART = "reset-row-label";
   var RESET_ROW_VALUE_PART = "reset-row-value";
   var RESET_NOTE_PART = "reset-note";
+
+  var WORLD_PANEL_PART = "world-panel";
+  var WORLD_TITLE_PART = "world-title";
+  var WORLD_ROW_PART = "world-row";
+  var WORLD_ROW_LABEL_PART = "world-row-label";
+  var WORLD_ROW_VALUE_PART = "world-row-value";
+  var WORLD_NOTE_PART = "world-note";
+
+  // Set while the chain holds a world, so the style sheet can mark the panel.
+  var HELD_ATTR = "data-held";
 
   var SEASON_PANEL_PART = "season-panel";
   var SEASON_TITLE_PART = "season-title";
@@ -1202,6 +1215,11 @@
         element(ResetPanel, { key: RESET_PANEL_PART, reset: props.reset })
       );
     }
+    if (isPlainObject(props.world)) {
+      children.push(
+        element(WorldPanel, { key: WORLD_PANEL_PART, world: props.world })
+      );
+    }
     var barProps = named(TAB_CLASS + "-control-bar", CONTROL_BAR_PART, text(bar.title));
     return element("div", barProps, children);
   }
@@ -1262,6 +1280,40 @@
       text(panel.title)
     );
     panelProps[CHAIN_ATTR] = text(panel.chain);
+    return element("div", panelProps, children);
+  }
+
+  // The world the chain holds, beside the two buttons that declare one. The
+  // concealed seed is never in these rows; only its commitment is.
+  function WorldPanel(props) {
+    var panel = props.world;
+    var titleProps = part(TAB_CLASS + "-world-title", WORLD_TITLE_PART);
+    titleProps.key = WORLD_TITLE_PART;
+    var children = [element("h4", titleProps, text(panel.title))];
+    children = children.concat(
+      figureRows(
+        panel.rows,
+        WORLD_ROW_PART,
+        WORLD_ROW_LABEL_PART,
+        WORLD_ROW_VALUE_PART
+      )
+    );
+    if (text(panel.note)) {
+      var noteProps = named(
+        TAB_CLASS + "-world-note",
+        WORLD_NOTE_PART,
+        text(panel.note)
+      );
+      noteProps.key = WORLD_NOTE_PART;
+      children.push(element("p", noteProps, text(panel.note)));
+    }
+    var panelProps = named(
+      TAB_CLASS + "-world-panel",
+      WORLD_PANEL_PART,
+      text(panel.title)
+    );
+    panelProps[CHAIN_ATTR] = text(panel.chain);
+    panelProps[HELD_ATTR] = String(panel.held === true);
     return element("div", panelProps, children);
   }
 
@@ -2382,7 +2434,8 @@
       isPlainObject(model[CONTROLS])
         ? element(ControlBar, {
             controls: model[CONTROLS],
-            reset: isPlainObject(model[CHAIN_RESET]) ? model[CHAIN_RESET] : null
+            reset: isPlainObject(model[CHAIN_RESET]) ? model[CHAIN_RESET] : null,
+            world: isPlainObject(model[WORLD]) ? model[WORLD] : null
           })
         : null,
       element(SubtabBar, {
