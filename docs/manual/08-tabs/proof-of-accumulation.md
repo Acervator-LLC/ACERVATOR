@@ -1304,12 +1304,20 @@ and to the Quintessence ledger.
 
 ```python
             leaf = log.append(record)
-            distilled = self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+            distilled = (
+                self._ledger.distil(participant, fee, grade)
+                if award_reason == AWARDED
+                else Decimal(0)
+            )
             self._certified_fill_ids.setdefault(bot_id, set()).add(fill_id)
             self._lifetime_fee_usd[bot_id] = (
                 self._lifetime_fee_usd.get(bot_id, Decimal(0)) + fee
             )
 ```
+
+``participant`` is the wallet the award credits. It is the node's wallet for a
+bot that feeds a participant node, and the bot's own synthesised address for a
+bot that feeds none.
 
 Most of certification was already in the package. Signing belongs to the bot
 identity, the append-only log already refuses three kinds of bad record, and the
@@ -4146,7 +4154,7 @@ bot's lifetime fee, and it mints nothing.
 
 ```python
             distilled = (
-                self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+                self._ledger.distil(participant, fee, grade)
                 if award_reason == AWARDED
                 else Decimal(0)
             )
@@ -15833,25 +15841,30 @@ LocalTestnet.run_demo_competition(n_bots=3)
   winner tier Harvest, award 10 ACRV
 ```
 
-### What still counts one wallet a bot
+### Where one wallet a bot still stands
 
-The certification socket derives one ledger address from each bot id and passes
-it as the participant of a capture award. The address is the bot's, not the
-node's, so the market share ceiling and the cooldown still bound a bot rather
-than a participant.
+The certification socket derives one address from each bot id. That address is
+still the sender of the bot's own trade commitment, and it is still the credited
+wallet for a bot that feeds no participant node. A bot that feeds one credits
+that node's wallet instead, so the market share ceiling and the cooldown bound
+the participant.
 
-`src/competition/certification_socket.py` - one wallet a bot
+`src/competition/certification_socket.py` - the synthesised address
 
 ```python
     @staticmethod
     def _wallet_for(bot_id: str) -> str:
-        """Return the ledger address and chain sender for ``bot_id``."""
+        """Return the address synthesised from ``bot_id``.
+
+        ``_post_commitment`` sends every trade commitment from this address,
+        because a trade is the bot's own, and ``award_wallet_for`` returns it as the
+        credited wallet for a bot feeding no participant node.
+        """
         return f"0x{bot_id[:40]}"
 ```
 
-Moving that address to the node's wallet changes which address Quintessence
-lands in and which address a ceiling counts against. No statement names that
-move, so nothing here makes it.
+The dated section below carries the move, the readings on both sides of it, and
+the reason a bot on no node keeps this address.
 
 The party window is the other place. It lists one row a bot from the fleet load
 and its row field is named for a participant. Those rows are source bots under
@@ -16125,3 +16138,207 @@ world control declares a world.
 The reset control deletes the Demo TestNet chain's record file and its log, and it
 refuses on the Live chain. It does not touch a roster file, so a reset leaves the
 guilds standing.
+
+## 2026-09-11 14:30 - #147 - an award credits the participant's wallet, and the ceiling bounds the participant
+
+A participant is one active Acervator node with a connected Quint wallet address,
+and one or more bots feed that node. The certification socket used to derive one
+address from each bot id and credit that. The market share ceiling and the
+cooldown then bounded a bot. Both now count against the participant.
+
+The socket takes the participant register the same way it takes the chain, the
+ledger and the capture bounds: by construction. One reader answers which wallet
+an award credits, and the socket asks it once, before it writes anything.
+
+`src/competition/certification_socket.py` - the one reader
+
+```python
+    def award_wallet_for(self, bot_id: str) -> str:
+        if self._participants is None:
+            return self._wallet_for(bot_id)
+        node_id = self._participants.node_of_bot(bot_id)
+        if node_id is None:
+            return self._wallet_for(bot_id)
+        wallet = self._participants.wallet_of(node_id)
+        if wallet is None or not self._ledger.holds_wallet(wallet):
+            raise CertificationRefusedError(...)
+        return wallet
+```
+
+### One bot on one node credits that node's wallet
+
+The run below certifies one fill twice. The first socket holds no register. The
+second holds one, with the node registered and the bot attached to it. Each side
+ran its own node and its own bot, so each side prints its own addresses. The fee
+was thirty dollars at a grade of one, which distils thirty Quintessence.
+
+```
+no register        node wallet          c2dc8100979e04184762b2a54b...
+                  synthesised address  0x3d182c3cf23714fc4bc183b6e42d1a1319978e62
+                  socket credits       0x3d182c3cf23714fc4bc183b6e42d1a1319978e62
+                  award_reason         awarded, distilled 30.00000000
+                  node wallet          0 -> 0
+                  bot address          0 -> 30.00000000
+                  ledger answers for the node wallet   False
+
+with the register  node wallet          bdb615176fccc081dd346e2de8...
+                  synthesised address  0x002c27ddf67cad9a8414f8cdac8cee7a6df19274
+                  socket credits       bdb615176fccc081dd346e2de8...
+                  award_reason         awarded, distilled 30.00000000
+                  node wallet          1.00000000 -> 31.00000000
+                  bot address          0 -> 0
+                  ledger answers for the bot address   False
+```
+
+The one Quintessence already in the node wallet is the movement the register
+needs before it files a node. The section on the unattached bot says why.
+
+### The ceiling now counts two bots as one participant
+
+This is the money change. Two bots fed one node. Each had one fill worth thirty
+Quintessence of a pool of a thousand, and the ceiling on that pool is fifty. Each
+fill passed the ceiling on its own. The second fill sat past the cooldown, so the
+cooldown could not be what refused it.
+
+```
+market pool on BTC/USD     1000 Quintessence
+share ceiling              50, which is 5% of the pool
+each fill's award          30 Quintessence, under the ceiling alone
+both fills together        60 Quintessence, over the ceiling
+
+no register        bot A credits   0xfa761491d5752447b7943b74e3667a2c1d5d7c61
+                  bot B credits   0x558db9285fe7be2a3e20527b69d0cf966e366b25
+                  bot A           awarded, distilled 30.00000000
+                  bot B           awarded, distilled 30.00000000
+                  pool drawn      60.00 of 1000
+                  drawn past the ceiling   True
+
+with the register  bot A credits   36d7c52da3996e391e205138d9...
+                  bot B credits   36d7c52da3996e391e205138d9...
+                  bot A           awarded, distilled 30.00000000
+                  bot B           allotment_taken, distilled 0
+                  pool drawn      30.00 of 1000
+                  drawn past the ceiling   False
+```
+
+Two bots on one node took sixty Quintessence of a pool that allows one
+participant fifty. They now take thirty. The bound that refuses the second fill
+is the one allotment a participant a market an activation period, not the ceiling
+test: `_refusal_for` reads the allotment rule first, so the node's second fill on
+the same market never reaches the ceiling comparison. The ceiling is what sets
+what the node may hold of that market, and the allotment rule is what keeps the
+node inside it.
+
+### The cooldown now runs on the participant
+
+The same two bots on one node, on two different markets, with the second fill six
+hundred seconds after the first. The cooldown is three candles of the bot's own
+timeframe, floored at nine hundred seconds, which is ten thousand eight hundred
+seconds on an hour candle.
+
+```
+no register        bot A credits   0x661a690670a3c1d4f1e91a6e2fd65ac9f88b3167
+                  bot B credits   0x6ac0a4fac6021d5ba2baa6f51f590da28869cbee
+                  one address for both     False
+                  bot A           awarded, distilled 30.00000000
+                  bot B           awarded, distilled 30.00000000
+                  A's cooldown left       10200s
+                  B's cooldown left       10800s
+                  ETH/USD drawn           30.00
+
+with the register  one address for both     True
+                  bot A           awarded, distilled 30.00000000
+                  bot B           cooldown_running, distilled 0
+                  A's cooldown left       10200s
+                  B's cooldown left       10200s
+                  ETH/USD drawn           0
+```
+
+Two bots used to hold two cooldowns. A node that runs ten bots could take ten
+awards inside one window. One node now holds one cooldown, and both bots read the
+same seconds left on it.
+
+### A bot that feeds no node keeps its own address
+
+A bot that feeds no node credits the address the socket synthesises from its bot
+id, as it did before. That is a decision, and the register itself gives the
+reason. `ParticipantRegistry.register_node` refuses a wallet no movement has put
+in the ledger's wallet book. Distilling a certified fill is the movement that
+puts one there. Refusing such a fill would leave no wallet ever fed, so no node
+could ever register.
+
+`src/competition/participant_node.py` - the refusal, read before any movement
+
+```
+register_node, wallet unfed   refused: node d90f2deced15 gave wallet
+                              d90f2deced157f42a15088eff7c47f9d993c22303a28d5cc...,
+                              which the Quintessence ledger holds no record of
+ledger answers for it         False
+movements on the ledger       0
+
+the bot's node                None
+socket credits                0x8e835c1b6daa2e01a9543057d8826292d3bbc892
+award_reason                  awarded, distilled 30.00000000
+ledger answers for it         True
+
+then the node registers       took it, node d90f2deced15
+socket credits now            d90f2deced157f42a15088eff7c47f9d993c22303a28d5cc...
+```
+
+No path credits a wallet the ledger cannot answer for. A node whose wallet this
+socket's own ledger holds no record of is refused, and the refusal lands before
+the socket writes anything. The run below gave the register one ledger and the
+socket another.
+
+```
+the register's ledger answers for it   True
+the socket's ledger answers for it     False
+certify                                refused
+the bot's certified fill count         0
+the bot's trade log                    No trades in log
+total ever minted                      0
+```
+
+### What did not change
+
+The bot is still what signs a trade. The trade log still keys on the bot id. The
+socket's lifetime certified fee still only rises. Conservation balanced on every
+path the run drove, including every refusal.
+
+```
+signature verifies                True, 128 hex characters
+the record's public key is the bot's   True
+A's log keyed by A's bot id       True
+B's log keyed by B's bot id       True
+A's log size 2, B's log size 1    two bots, two roots
+A's lifetime fee, in order        0, 30.0, 60.0, 60.0
+that total only rises             True
+
+conservation on every path        balanced True, delta 0, negative buckets 0
+no fill_id                        refused, nothing minted
+a fill already certified          refused, nothing minted
+the same market again             allotment_taken, distilled 0
+inside the cooldown               cooldown_running, distilled 0
+a fill naming no activation       no_activation_named, distilled 0
+```
+
+The chain sender of a trade commitment is still the address synthesised from the
+bot id, because a trade is the bot's own. The award record on the chain is sent
+from the participant's wallet, because the award is the participant's.
+
+### Nothing reaches a certified fill in the running app
+
+The socket is built at launch. `SharedTestnetBridge.install_on` builds it and
+attaches it to the main window, reached from `src/gui/main_window.py` line 277.
+Nothing then subscribes it to a fill.
+
+```
+certify callers              one, _on_trade_filled inside the socket
+_on_trade_filled runs        only after attach_to_bus subscribes trade.filled
+attach_to_bus callers        none, anywhere in src or main.py
+controls on the PoA tab that reach certify   none
+```
+
+No fill reaches certification in the running application, and no control on the
+tab reaches it. The register arrives by construction the way the bounds do, so
+whoever subscribes the bus passes the register in the same call.
