@@ -8,14 +8,22 @@ guild an address belongs to, ``guild_name_of`` answers the guild metric, and
 ``require_underwrite`` answers whether an officer may commit treasury funds to one
 actor's action, and ``require_party`` answers a party against an ``EventMode``'s
 ``guild_required``, ``party_min`` and ``party_max``.
+
+``save`` writes the whole roster to ``roster_path`` and ``load`` reads it back, so
+a guild outlives the screen that drew it. ``DEFAULT_ROSTER_PATH`` is the file the
+program holds its own roster in, beside the world and the journeys.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ..core.io_utils import atomic_write_json
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -23,6 +31,10 @@ if TYPE_CHECKING:
     from .poa_modes import EventMode
 
 logger = logging.getLogger("acervator.guild_roster")
+
+#: Where a roster is held when no caller names a file, beside poa_world.json.
+DEFAULT_ROSTER_PATH = Path.home() / ".acervator" / "poa_guild_roster.json"
+ROSTER_FILE_VERSION = 1
 
 #: Every treasury address begins with this, as EVENT_POT_ADDRESS names the event pot.
 TREASURY_ADDRESS_PREFIX = "poa_guild_treasury_"
@@ -172,12 +184,20 @@ class GuildRoster:
 
     ``found`` and ``join`` refuse an address another guild already carries, so
     ``guild_of`` answers one guild an address and an underwrite reads one membership.
+    ``roster_path`` is the file ``save`` writes and ``load`` reads, so the guilds
+    a caller opens outlive the caller.
     """
 
-    def __init__(self) -> None:
-        """Open an empty roster holding no guild and no membership."""
+    def __init__(self, roster_path: str | Path | None = None) -> None:
+        """Open an empty roster over ``roster_path`` or ``DEFAULT_ROSTER_PATH``."""
+        self._path: Path = Path(roster_path) if roster_path else DEFAULT_ROSTER_PATH
         self._guilds: dict[str, Guild] = {}
         self._guild_by_member: dict[str, str] = {}
+
+    @property
+    def roster_path(self) -> Path:
+        """Return the file this roster saves to and loads from."""
+        return self._path
 
     @property
     def guild_count(self) -> int:
@@ -425,6 +445,68 @@ class GuildRoster:
         for row in d.get("guilds") or []:
             roster._adopt(Guild.from_dict(row))
         return roster
+
+    # -- The file the roster is held in --------------------------------------
+
+    def save(self) -> None:
+        """Write every guild, its members and its officers to ``roster_path``."""
+        payload = {"version": ROSTER_FILE_VERSION, **self.to_dict()}
+        try:
+            atomic_write_json(self._path, payload)
+        except OSError as exc:
+            logger.warning("failed to write %s: %s", self._path, exc)
+            return
+        logger.info(
+            "wrote %d guild(s) and %d member(s) to %s",
+            self.guild_count,
+            self.member_count,
+            self._path,
+        )
+
+    def load(self) -> GuildRoster:
+        """Read ``roster_path`` back, keeping this roster as it is when none is there.
+
+        An absent, unreadable, foreign-version or self-contradicting file leaves
+        every guild as held, so the subtab drawing the roster draws what it has.
+        """
+        if not self._path.exists():
+            return self
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("failed to read %s: %s", self._path, exc)
+            return self
+        if not isinstance(payload, dict):
+            logger.warning(
+                "%s carries a %s, not a roster; nothing was read",
+                self._path,
+                type(payload).__name__,
+            )
+            return self
+        if payload.get("version") != ROSTER_FILE_VERSION:
+            logger.warning(
+                "%s carries version %s, not %d; nothing was read",
+                self._path,
+                payload.get("version"),
+                ROSTER_FILE_VERSION,
+            )
+            return self
+        try:
+            stored = GuildRoster.from_dict(payload)
+        except (GuildRosterError, KeyError, TypeError) as exc:
+            logger.warning("%s could not be read back: %s", self._path, exc)
+            return self
+        self._guilds = {}
+        self._guild_by_member = {}
+        for guild in stored.guilds():
+            self._adopt(guild)
+        logger.info(
+            "read %d guild(s) and %d member(s) from %s",
+            self.guild_count,
+            self.member_count,
+            self._path,
+        )
+        return self
 
     def roster_rows(self) -> list[dict]:
         """Return one row a guild, as a surface would serve the roster."""
