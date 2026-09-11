@@ -1,8 +1,9 @@
 """Every Vessel a Reincarnate occupies, and the one wallet balance they all read.
 
-``Vessel`` pairs a ``CLASSES`` entry with a level and reads its ``StatBlock``
-from ``stat_block_at_level``, and ``Reincarnate`` holds an address with every
-Vessel owned by it. ``Reincarnate.requirement`` adds every Vessel's block through
+``Vessel`` pairs a ``CLASSES`` entry with a level and a ``vessel_id`` that
+``new_vessel_id`` draws, reads its ``StatBlock`` from ``stat_block_at_level``,
+and ``Reincarnate`` holds an address with every Vessel owned by it.
+``Reincarnate.requirement`` adds every Vessel's block through
 ``quintessence_requirement`` and ``Reincarnate.potential`` reads that one sum
 against one balance through ``potential_at``, so ``vessel_potentials`` hands
 every Vessel the same ``fraction`` and another Vessel lowers it.
@@ -13,7 +14,9 @@ which needs a zero balance and ``has_ever_held_quintessence`` together, and
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import secrets
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -46,6 +49,9 @@ NEVER_HELD_A_BALANCE = "has never held a Quintessence balance"
 
 #: What bounds a Reincarnate's Vessel count. No figure caps it.
 VESSEL_COUNT_UNCAPPED = "the wallet balance is the only bound on Vessel count"
+
+#: How many bytes ``new_vessel_id`` draws, the ``world_grid`` world seed width.
+VESSEL_ID_BYTES = 32
 
 #: What a Vessel takes part in that no module builds.
 ABSENT_MECHANISMS: tuple[str, ...] = (
@@ -80,12 +86,36 @@ class VesselOwnerError(VesselError):
     """Raised for a blank address, or a Vessel whose owner is another address."""
 
 
+class VesselIdError(VesselError):
+    """Raised by ``_as_vessel_id`` for a ``vessel_id`` that is not a string."""
+
+
 def _as_address(value: object, name: str) -> str:
     """Return ``value`` as a non-empty address string; every other value raises."""
     if type(value) is not str or not value.strip():
         raise VesselOwnerError(
             f"{name} must be a non-empty address string, got {value!r}"
         )
+    return value
+
+
+def new_vessel_id(owner: object) -> str:
+    """Draw one id for a Vessel of ``owner``, hashing the address with a drawn value."""
+    address = _as_address(owner, "owner")
+    drawn = hashlib.sha256(
+        f"{address}|{secrets.token_hex(VESSEL_ID_BYTES)}".encode(),
+    ).hexdigest()
+    logger.info("%s drew vessel id %s", address, drawn)
+    return drawn
+
+
+def _as_vessel_id(value: object, owner: object) -> str:
+    """Return ``value`` as a vessel id, drawn by ``new_vessel_id`` when blank."""
+    if type(value) is not str:
+        refusal = f"vessel_id must be a string, got {type(value).__name__}"
+        raise VesselIdError(refusal)
+    if not value.strip():
+        return new_vessel_id(owner)
     return value
 
 
@@ -104,18 +134,23 @@ class Vessel:
     """One class a Reincarnate occupies, at one level, owned by one address.
 
     ``stats`` reads ``stat_block_at_level`` and ``requirement`` is the
-    Quintessence that block holds.
+    Quintessence that block holds. ``vessel_id`` separates two Vessels of one
+    class at one level under one owner.
     """
 
     owner: str
     class_name: str
     level: int = FIRST_LEVEL
+    # Drawn once and copied by dataclasses.replace, so a level change keeps one id.
+    vessel_id: str = ""
 
     def __post_init__(self) -> None:
-        """Refuse a blank ``owner``, a name outside ``CLASS_NAMES``, and a bad ``level``."""
+        """Refuse a bad ``owner``, ``class_name``, ``level`` or ``vessel_id``."""
         _as_address(self.owner, "owner")
         require_class(self.class_name)
         stat_block_at_level(self.level)
+        held_id = _as_vessel_id(self.vessel_id, self.owner)
+        object.__setattr__(self, "vessel_id", held_id)
 
     @property
     def character_class(self) -> CharacterClass:
@@ -136,6 +171,7 @@ class Vessel:
         """This Vessel as a JSON-safe dict, the requirement a plain string."""
         entry = self.character_class
         return {
+            "vessel_id": self.vessel_id,
             "owner": self.owner,
             "class_name": self.class_name,
             "planet": entry.planet,

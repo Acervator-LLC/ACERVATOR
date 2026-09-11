@@ -8825,8 +8825,8 @@ a cap on members             none, by his own words
 ## 2026-09-11 03:10 - #585 - the Vessel, and one wallet behind all of them
 
 A Vessel is now a thing on disk rather than a word in other modules' docstrings.
-It carries an owner, a class and a level, and every Vessel a player holds reads
-the same single wallet balance.
+It carries an owner, a class, a level and an id, and every Vessel a player holds
+reads the same single wallet balance.
 
 ```
 src/competition/vessels.py
@@ -8847,12 +8847,13 @@ crafting (all multi-turn and sometimes lengthy processes) assuming their total
 Quint wallet budget supports this...
 ```
 
-### A Vessel is a class, a level and an owner
+### A Vessel is a class, a level, an owner and an id
 
 The class is one of the seven already in the package, so nothing new decides what
 a Vessel can be. The level is one of the hundred on the arc. The owner is the
 wallet address, and a Reincarnate refuses a Vessel whose owner is a different
-address, so no player can attribute a Vessel to someone else's balance.
+address, so no player can attribute a Vessel to someone else's balance. The id is
+drawn at construction and holds two Vessels of one class apart.
 
 ```python
 @dataclass(frozen=True)
@@ -8860,6 +8861,7 @@ class Vessel:
     owner: str
     class_name: str
     level: int = FIRST_LEVEL
+    vessel_id: str = ""
 ```
 
 Its requirement comes from the stat table and nowhere else. Asking the Vessel for
@@ -9371,9 +9373,9 @@ DECAY_ABSENT   no scored action is ever dropped from a total, and no clock
 
 ### The Vessel holds it, and its key leaves the level out
 
-A Vessel is a frozen record of an owner, a class and a level, in
-`src/competition/vessels.py`. It carries no identity field, and this unit left that
-file alone. The module files each score under the owner and the class name, so a
+A Vessel is a frozen record of an owner, a class, a level and an id, in
+`src/competition/vessels.py`. It carries an identity field, and this key does not
+read it yet. The module files each score under the owner and the class name, so a
 Vessel that gains a level keeps the alignment it earned.
 
 ```
@@ -9383,8 +9385,8 @@ left out      level, so levelling up loses nothing
 
 One thing that key cannot do is separate two Vessels of the same class under one
 owner. Nothing stops a player holding two, and today they would share one
-alignment. Separating them needs an identity field on the Vessel record, and
-nothing provides one.
+alignment. Separating them needs the identity field on the Vessel record, which
+the Vessel now carries and this key does not read.
 
 ### A Vessel informs its guild, and the guilds define the world
 
@@ -10018,8 +10020,8 @@ This is the honest half. His causes are now named and both are still out of
 reach, because nothing can reduce a health value and nothing can apply a daze.
 
 ```
-a Vessel's health    vessels.Vessel carries an owner, a class and a level. There
-                     is no health field, and this work adds none
+a Vessel's health    vessels.Vessel carries an owner, a class, a level and an
+                     id. There is no health field, and this work adds none
 health as a stat     the five stats are strength, dexterity, constitution,
                      intelligence and wisdom. Health is not among them
 a maximum            no figure names full health
@@ -10134,8 +10136,8 @@ a fresh Lead Ward of 0xvictim          able
 ```
 
 The scored actions a Vessel has taken do not move with it. They stay filed under
-the old owner. A Vessel carries no id of its own, which is the field that would
-carry them across, and that absence is already recorded against alignment.
+the old owner. A Vessel carries an id of its own, which is the field that would
+carry them across, and the alignment key does not read it yet.
 
 ### Whose alignment moves
 
@@ -11288,8 +11290,9 @@ def begin_craft(self, recipe, vessel, opened_turn) -> Craft:
 
 His words put crafting on secondary Vessels, so a craft names a Vessel and takes
 its owner as the wallet. Nothing marks a Vessel primary or secondary: the Vessel
-record carries an owner, a class and a level and no such field. A craft takes any
-Vessel and refuses none on that ground, so which Vessels may craft is owed.
+record carries an owner, a class, a level and an id and no such field. A craft
+takes any Vessel and refuses none on that ground, so which Vessels may craft is
+owed.
 
 The wallet a craft debits is the same one every Vessel of that Reincarnate runs
 on, which is his own rule that a player's total wallet budget has to support the
@@ -12799,15 +12802,14 @@ the two readings agree: True
 An empty store read zero. The weight carried is the sum of what is held and of
 nothing else.
 
-### A Vessel carries no id, so its store is named by the caller
+### The derived store key drops the id, so the store is named by the caller
 
-A Vessel holds an owner address, a class name and a level. It holds no id. Two
-Vessels built from the same three values compare equal, so a key made from them
+A Vessel holds an owner address, a class name, a level and an id. The derived key
+reads the first three and not the id, so a key made from them
 alone cannot separate a player's second Iron Edge from the first. The craft
 register already keys a Vessel this way, and the same collision sits in it.
 
 ```
-two Vessels built the same compare equal: True
 vessel_key(vessel)  = 0xEkthelius:Iron Edge:1
 vessel_key(second)  = 0xEkthelius:Iron Edge:1
 ```
@@ -12815,8 +12817,7 @@ vessel_key(second)  = 0xEkthelius:Iron Edge:1
 The store takes its key from whoever opens it, and the book refuses a key it
 already holds. That is how two Vessels of one class under one owner get two
 stores. The derived key is still served, and its collision is written next to
-it. A Vessel id is the clean answer and it would change the Vessel file, which
-this unit does not own.
+it. The Vessel id is the clean answer and this module does not read it yet.
 
 ### Two figures stop a store opening, and two more wait on a hauling rule
 
@@ -12961,14 +12962,179 @@ owed  src/competition/__init__.py binds no name from inventory. The package says
 owed  a slot count a Vessel actually has, and a stack ceiling for the operator's
       word 'large'
 
-owed  a Vessel id. Two Vessels of one class at one level under one owner are one
-      value today, and the store works round it with a caller-supplied key
+owed  the store reading the Vessel id. Two Vessels of one class at one level
+      under one owner are two values, and the store still works round the
+      derived key with a caller-supplied one
 
 absent  encumbrance, a hauling trip, a foraging run, equipping, trading, a
         surface. Each is named in the module and none is built here
 ```
 
-## 2026-09-11 08:50 - #585 - a drop names the thing that dropped
+## 2026-09-11 08:50 - #585 - a Vessel has an id, and a level gained keeps it
+
+A Vessel carries a fourth field. Two Vessels of the same class, at the same level,
+under the same owner were one value, and three other modules each wrote that
+collision down beside a workaround for it. The field closes the collision at the
+record. None of the three workarounds changes here.
+
+```
+src/competition/vessels.py
+```
+
+### Where the id comes from, and the three shapes that could not answer
+
+The package already makes identifiers four ways, and one of them makes a value
+that is new on every call. A world draws its seed and then hashes it, so the same
+call twice gives two worlds. The Vessel id follows that shape, with the owner
+address hashed in beside the drawn value.
+
+```python
+VESSEL_ID_BYTES = 32
+
+
+def new_vessel_id(owner: object) -> str:
+    """Draw one id for a Vessel of ``owner``, hashing the address with a drawn value."""
+    address = _as_address(owner, "owner")
+    drawn = hashlib.sha256(
+        f"{address}|{secrets.token_hex(VESSEL_ID_BYTES)}".encode(),
+    ).hexdigest()
+    logger.info("%s drew vessel id %s", address, drawn)
+    return drawn
+```
+
+The other three shapes were read and set aside, each for a reason the code states
+about itself.
+
+```
+the craft register    joins the owner, the class and the level with colons. That
+                      is the colliding triple itself, and the module says so
+the guild roster      normalises a name its caller gives. No Vessel carries a
+                      name, and no register holds Vessels to refuse a repeat
+a counter per owner   needs a register that counts. Nothing keeps a Vessel
+                      against an address, so there is nothing to count in
+```
+
+The owner goes into the hash with the drawn value, so one drawn value under two
+addresses gives two ids. The result is sixty-four hex characters, the width every
+other identifier in this package already has.
+
+### Two Vessels of one class under one owner are two values
+
+The run built two Vessels with the same owner, the same class and the same level,
+then read the id off each object. The same two compared equal before the field
+existed.
+
+```
+before   a == b: True
+         Vessel(owner='0xEkthelius', class_name='Iron Edge', level=1)
+         Vessel(owner='0xEkthelius', class_name='Iron Edge', level=1)
+
+after    a == b: False
+         a  8ded319904cf1dbbd4765b27795c9937055a6706308126c602bb8ecb39f1717a
+         b  eb5d96cf18ace2abd1aacf3b728451f0304d9e4af7a1fbd3287133a1012a085e
+```
+
+A failure here would mean a player's second Iron Edge is the first Iron Edge to
+every module that holds one. One store, one alignment and one craft history would
+cover both.
+
+### A level gained keeps the id, and so does a theft
+
+The level is not in the drawn value, and the field is copied when a Vessel is
+rebuilt, so the id survives both changes a Vessel goes through today. An id that
+moved on a level-up would orphan the Vessel's store and reset the alignment it
+earned.
+
+```
+level 1 to level 2   id unchanged: True
+owner moved          id unchanged: True
+```
+
+The package proves the second half without being asked. Importing it builds seven
+Vessels and steals one, and the program's own log shows seven ids drawn for eight
+Vessel objects, because the stolen one kept its own.
+
+```
+acervator.vessels INFO 0xvictim drew vessel id f19c44141db54d5ed0193c0a2af1d07bca069ae4f8fc446626b9c569df16e306
+acervator.vessels INFO 0xthief drew vessel id be929363404f610478e19abe412e694f694b2806a259473182f038d0cdc9bfca
+acervator.domination INFO 0xthief stole 0xvictim's Lead Ward on world turn 0
+```
+
+### What stops a forged claim
+
+Nothing in the id stops one, and nothing needs to. The owner field stops it, and
+it did so before this change. A caller can copy another player's id onto a Vessel
+of their own address, and the Reincarnate record refuses that Vessel because its
+owner is a different address.
+
+```
+same id under another owner   accepted at the Vessel
+Reincarnate refuses it        Iron Edge is owned by '0xThief', not by '0xEkthelius'
+```
+
+What the id adds is that it cannot be guessed. It is a hash over thirty-two drawn
+bytes, so naming one Vessel's id needs that Vessel's record. No store reads the
+field yet, so no store can be reached with one either way.
+
+### A Vessel cannot be built without an id
+
+A blank id, a run of spaces and a tab each draw one. A value that is not text is
+refused. No call in the module returns a Vessel whose id is empty.
+
+```
+given ''      id length 64
+given '   '   id length 64
+given a tab   id length 64
+given None    vessel_id must be a string, got NoneType
+given 7       vessel_id must be a string, got int
+```
+
+Two Vessels can still share an id, because a caller may pass a copy of one and
+nothing refuses it. Nothing keys on the field yet, so nothing is in a position to.
+Each of the three modules below already refuses a repeated key of its own, and
+each becomes the refuser when it keys on this field.
+
+### What the three consumers may read now
+
+All three can read the field today with no change to the record. None of them
+does, and each is its own unit.
+
+```
+inventory   vessel_key joins the owner, the class and the level. The module states
+            the collision beside it, and a store still takes its key from a caller
+crafting    craft_id_for joins the recipe with those same three fields
+alignment   vessel_key files a score under the owner and the class, leaving the
+            level out so a level gained keeps the alignment
+```
+
+Every module that builds a Vessel still builds one. The three construction sites
+all pass three values in order, so the field takes its default and draws.
+
+```
+src/competition/domination.py      the driven theft, seven Vessels
+src/gui/main_tabs/proof_of_accumulation_tab_surface.py   current_vessel, one
+```
+
+### What this entry leaves owed
+
+No screen shows the id. The wallet's Vessels section and the Character Details
+subtab each draw a Vessel and neither prints it, and the screen files belong to
+another unit.
+
+```
+owed  inventory keys a store on the Vessel id
+owed  crafting keys a craft on the Vessel id
+owed  alignment files a score under the Vessel id
+owed  the package entry binds new_vessel_id and VesselIdError. Neither name is in
+      the export list, and the module itself is bound
+owed  three constants say a Vessel carries no id, each in a file this entry does
+      not edit: inventory.VESSEL_ID_ABSENT, alignment.VESSEL_ID_OWED and
+      domination.HEALTH_SOURCE_ABSENT
+owed  something that keeps a Vessel against an address. current_vessel builds one
+      on every read, so the id behind the tab is a new id each time
+```
+
+## 2026-09-11 08:55 - #585 - a drop names the thing that dropped
 
 ### A drop carried a tier and no thing
 
