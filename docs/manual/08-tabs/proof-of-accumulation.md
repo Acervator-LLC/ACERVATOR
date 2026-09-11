@@ -4115,10 +4115,21 @@ what anybody spent.
 
 ```python
 RETURN_PERCENT = 75
-BASE_UNITS_PER_QUINTESSENCE = 10**18
 
 return_pool_units = pot_units * RETURN_PERCENT // 100
-amount_units = return_pool_units * own // total_score_units
+amount_units = int(return_pool_units * own / total_score_ratio)
+```
+
+The grain is the ledger's own. ``QUINTESSENCE_UNITS_PER_WHOLE`` and
+``QUINTESSENCE_MINIMUM_UNIT`` arrive by import, so the division cannot divide a
+Quintessence more finely than a wallet can hold one.
+
+```python
+from .quintessence_ledger import (
+    QUINTESSENCE_MINIMUM_UNIT,
+    QUINTESSENCE_UNITS_PER_WHOLE,
+    amount_text,
+)
 ```
 
 ### The top spender performed worst and took nothing
@@ -4146,8 +4157,8 @@ its default. That 0.5 is not a measurement, so the division refuses it a share, 
 same refusal the capture bounds already make on an award.
 
 ```
-alpha   grade 0.8008   axes 2   share 0.444691248334073745   0.103724233673922701
-beta    grade 1        axes 2   share 0.555308751665926254   0.129525766326077298
+alpha   grade 0.8008   axes 2   share 0.44469124   0.10372423
+beta    grade 1        axes 2   share 0.55530875   0.12952576
 gamma   grade 0.5      axes 0   no scored axis, so no share
 ```
 
@@ -4166,7 +4177,7 @@ after    wallets 2.92224999            held 0.07775001            pleroma 0
 ### The pot equals the payouts plus the reserve, exactly
 
 This division does not divide evenly. The return pool is 0.23325 and the two shares
-come to one indivisible unit less. That unit is not dropped and not rounded away; it
+come to one minimum unit less. That unit is not dropped and not rounded away; it
 joins the quarter that never left and rests at the pot address as the reserve.
 
 ```
@@ -4199,8 +4210,8 @@ The Accumulation page carries a Redistribution panel under the skill ladder. The
 page was drawn and its own text read back.
 
 ```
-chain live      3180 characters   Pot 0.311   reserve 0.077750000000000001
-chain testnet   3188 characters   Pot 0.311   reserve 0.077750000000000001
+chain live      3180 characters   Pot 0.311   reserve 0.07775001
+chain testnet   3188 characters   Pot 0.311   reserve 0.07775001
 
 quintessence_ledger.json           poa_record_store.json
 quintessence_ledger_testnet.json   poa_record_store_testnet.json
@@ -4542,7 +4553,7 @@ KAT/USD   grade A+  1.0  axes 0  ->  total 0  fills 0  score 0
 score    {'address': '0xadf9793469cec8ae...', 'score': '0', 'scored_axes': 0,
           'standing': 'no_score'}
 shares   []
-reserve  1.000000000000000000
+reserve  1
 ```
 
 ### Real fills off the operator's own log, divided
@@ -4560,8 +4571,8 @@ nought.
 0x48cce07b5732795f      4       3.5     0.875     0.010    0.03581376
 0xca3e3124a3226b20      4       3.0     0.75      0.010    0.03069751
 
-pot 0.120   return pool 0.090   paid 0.089999999999999999
-remainder 0.000000000000000001   reserve 0.030000000000000001   exact True
+pot 0.120   return pool 0.090   paid 0.08999998
+remainder 0.00000002   reserve 0.03000002   exact True
 ```
 
 The biggest spender of the three scored worst and took the smallest payout.
@@ -4590,10 +4601,10 @@ that participant's score halved instead moved all three, which proves the readin
 was live.
 
 ```
-spends  0.100    0.010  0.010   shares  0.0978696492  0.1492240350  0.1279063157
-spends  100.000  0.010  0.010   shares  0.0978696492  0.1492240350  0.1279063157
+spends  0.100    0.010  0.010   shares  0.09786964  0.14922403  0.12790631
+spends  100.000  0.010  0.010   shares  0.09786964  0.14922403  0.12790631
 
-scores  0.2869375  0.875  0.75  shares  0.0562788074  0.1716191036  0.1471020888
+scores  0.2869375  0.875  0.75  shares  0.0562788  0.1716191  0.14710208
 ```
 
 ### The books balance and a second settle gets nothing
@@ -4620,8 +4631,8 @@ construction. A demo run is one more of the same object over the demo chain's ow
 files, running the same join and the same division. No flag chooses between them.
 
 ```
-live     chain 2322666782976   poa_record_store.json           paid 0.089999999999999999
-testnet  chain 2322667254944   poa_record_store_testnet.json   paid 0.089999999999999999
+live     chain 2322666782976   poa_record_store.json           paid 0.08999998
+testnet  chain 2322667254944   poa_record_store_testnet.json   paid 0.08999998
 ```
 
 ### What the join does not reach
@@ -7444,7 +7455,480 @@ reached by scrolling that zone. The eight event types are named twice on this sc
 once as the event buttons in the control bar and once as the mode rows here, and
 dropping either copy is a change to what the tab says rather than to how it is sized.
 
-## 2026-09-10 23:40 - #585 - a glyph and a colour for each kind
+## 2026-09-10 23:05 - #147 - the conversion rates, and the figures still owed
+
+Every mechanism in this design turns something into Quintessence. Those rates sat
+in separate modules, or in nothing at all. One table now holds all of them, and
+every entry says where its figure came from.
+
+```
+src/competition/conversion_rates.py
+```
+
+### A figure is measured, decided or working
+
+An entry carries exactly one of three words. The third one is the point. A
+working figure is one this table chose so the stitching could exist, and it
+declares itself rather than sitting in the code as a number nobody chose.
+
+```
+measured   read back out of the module that owns it, and the entry names that module
+decided    the operator named it, and his figure is reproduced exactly
+working    chosen here so the table can exist, and the operator replaces it
+```
+
+### Nothing reads a working figure without seeing that it is working
+
+No function in the module hands back a bare number. The lookup answers the whole
+entry, so the provenance is in the reader's hand every time.
+
+```python
+def rate_named(name: str) -> ConversionRate:
+    """The entry in ``CONVERSION_RATES`` whose ``name`` matches, refusing any other.
+
+    The whole entry answers, so a reader always holds its ``provenance``.
+    """
+```
+
+The question "what figures does he still owe?" is answered by running something
+rather than by reading the file. Two readers list them, and both print their
+counts to the log.
+
+```
+working_rates()   every entry the operator still has to rule on
+absent_rates()    every entry that carries no figure at all
+```
+
+### Eleven rows are anchored, and eight check against their own module
+
+Three of the eleven are the operator's own figures, and this table is where they
+land. The other eight are figures a module already holds, so the table imports
+the real symbol and keeps no copy of its own.
+
+```
+stat_point_quintessence                      1             entity_stats.quintessence_requirement
+stat_quintessence_per_level_at_sphere_1      1             entity_stats.quintessence_per_level
+stat_quintessence_per_level_at_sphere_10     10            entity_stats.quintessence_per_level
+quintessence_per_certified_fee_usd           1             quintessence_ledger.QUINTESSENCE_PER_FEE_USD
+minimum_units_per_quintessence               100000000     quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+impetus_per_turn_at_level_1                  4             poa_modes.base_impetus
+impetus_per_turn_at_level_100                9             poa_modes.base_impetus
+steps_per_square                             100           world_grid.SQUARE_STEPS
+iron_ore_quintessence_low_quality            0.00000001    his figure, held by no module before now
+iron_ore_quintessence_high_quality           0.00000005    his figure, held by no module before now
+world_budget_per_participant_quintessence    1             his rule, held by no module before now
+```
+
+The fee rate is a ceiling rather than a payment. Distillation multiplies it by a
+trade grade of zero to one, so one dollar of certified venue fee mints one whole
+Quintessence only on a perfect grade.
+
+```python
+        amount = fee * QUINTESSENCE_PER_FEE_USD * grade
+```
+
+### The stat rate is the identity, and the table drives the real function to say so
+
+A stat amount already is a Quintessence amount. The table does not restate that
+as a coefficient. It builds a stat block holding one point and asks the stats
+module what that block requires.
+
+```python
+ONE_POINT_BLOCK = stat_block(
+    {name: (1 if name == STAT_NAMES[0] else 0) for name in STAT_NAMES}
+)
+```
+
+### His ore figures reach code here for the first time
+
+The operator gave a band rather than one number, because one unit of ore has a
+quality. Both ends land as named figures, and both print exactly as he wrote
+them.
+
+```
+one unit of iron ore, lowest quality    0.00000001 Quintessence
+one unit of iron ore, highest quality   0.00000005 Quintessence
+```
+
+### The smallest unit comes from the ledger, not from a copy here
+
+The operator set one hundred million minimum units to the whole Quintessence, the
+same resolution as Bitcoin. The Quintessence ledger declares that figure, so this
+table imports the real symbol and keeps no copy of its own.
+
+```
+minimum_units_per_quintessence   100000000   quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+```
+
+A rate is a ratio and needs no grid of its own. Rounding an amount onto the
+minimum unit belongs to the ledger, at the moment an amount enters a bucket.
+
+```python
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    """Return ``amount`` rounded down onto the QUINTESSENCE_MINIMUM_UNIT grid."""
+```
+
+### His lowest ore grade sits exactly on the resolution floor
+
+Two of his own figures meet here. The poorest unit of iron ore carries
+0.00000001 Quintessence, and that is one minimum unit exactly. Nothing poorer
+than his lowest ore grade can be held, so the ore band starts at the floor rather
+than above it.
+
+```
+QUINTESSENCE_MINIMUM_UNIT            0.00000001
+iron_ore_quintessence_low_quality    0.00000001
+iron_ore_quintessence_high_quality   0.00000005, five minimum units
+```
+
+### Twenty rows are working, and they are the list he still owes
+
+Seven of those carry no figure at all. Thirteen carry a placeholder that can be
+replaced without touching a function.
+
+```
+TempResource_0001_low_quality                 0.00000001   a non-ore material, lowest quality
+TempResource_0001_high_quality                0.00000005   a non-ore material, highest quality
+TempStat_0001                                 1            dexterity, effect unnamed
+TempStat_0002                                 1            intelligence, effect unnamed
+TempStat_0003                                 1            wisdom, effect unnamed
+item_cohesion_per_component_quintessence      1            what holds an item together
+TempWeight_0001                               1            the weight one material unit carries
+max_weight_per_strength_quintessence          1            what strength may haul
+impetus_speed_per_constitution_quintessence   absent       the carrying penalty
+loot_released_quintessence_calx               0.00000005   a destroyed Calx item
+loot_released_quintessence_cauda_pavonis      0.00000005   a destroyed Cauda Pavonis item
+loot_released_quintessence_flores             0.00000005   a destroyed Flores item
+loot_released_quintessence_elixir             0.00000005   a destroyed Elixir item
+loot_released_quintessence_magisterium        0.00000005   a destroyed Magisterium item
+TempMonsterTier_0001                          absent       a tier 1 creature
+TempMonsterTier_0002                          absent       a tier 2 creature
+TempMonsterTier_0003                          absent       a tier 3 creature
+TempMonsterTier_0004                          absent       a tier 4 creature
+TempMonsterTier_0005                          absent       a tier 5 creature
+TempMonsterTier_0006                          absent       a tier 6 creature
+```
+
+Three of the five stats name no effect in the stats table, so three rows stand in
+for them. Damage, restoration and support potency are the proposed readings, and
+they are the operator's to rule on.
+
+```
+dexterity      no effect named in the stats table    TempStat_0001
+intelligence   no effect named in the stats table    TempStat_0002
+wisdom         no effect named in the stats table    TempStat_0003
+```
+
+### A material other than iron ore takes the ore band, and no lore name is invented
+
+Naming materials is content and belongs to the content issue. This table holds
+one placeholder slot for a material, and that slot carries the ore band, so the
+scale is right while the material itself is unnamed.
+
+```
+TempResource_0001   the iron ore band, until the operator names this material's own scale
+```
+
+### The loot rows are flat on purpose
+
+Five loot tiers exist, each with a weight and two bonuses. What a destroyed item
+of each tier releases does not exist, so every tier carries the same placeholder.
+Flat is the honest placeholder: any slope across the five tiers is a design
+decision and it is his.
+
+```
+all five tiers   0.00000005 Quintessence released, no curve and no salvage loss
+```
+
+### A creature's Quintessence falls out of its stats, once a tier has a level
+
+Six creature tiers are drawn in the art brief and no module names one. Their rows
+carry no figure, and the missing figure is not a Quintessence amount at all. It
+is the level each tier sits at. The amount then comes from the stats requirement,
+the same way a Vessel's does.
+
+```
+TempMonsterTier_0001 to TempMonsterTier_0006   absent; the tier's level is what is owed
+```
+
+### Constitution's penalty has a door and no figure
+
+The stats table says constitution sets a penalty against a turn budget. The door
+it enters through already exists, because the Impetus grant takes a speed
+multiplier. No figure sets how much constitution buys back, and any figure here
+moves the turn economy, so the row stays absent and his.
+
+```python
+def impetus_grant(level: int, speed_multiplier: object = 1) -> int:
+```
+
+### One check runs on every real start
+
+The module drives every anchored rate against the module that owns it, at import,
+and refuses to load when one disagrees. A failure would mean a figure published
+here no longer matches the engine, and the two would drift apart with nothing
+reporting it. Zero disagreed on the first run. What the check would have caught
+is a wrong module or symbol name beside a figure, or a figure typed by hand
+instead of imported.
+
+```
+acervator.conversion_rates INFO drove 8 anchored conversion rates against their own modules, 0 disagreed
+```
+
+### What calls this table
+
+Nothing. The table is imported and built on a real start of the Accumulation tab
+path, and no code calls it yet. Materials, items, crafting, salvage and the
+creature roster are the consumers, and none of them exists.
+
+```
+In development.
+```
+
+### What the conversion rates do not build
+
+No materials and no items. This is the table of rates between things, not the
+things.
+
+No minimum-unit grid. The rates are ratios, and the ledger owns the grid an
+amount lands on.
+
+No salvage. The loot rows say what a destroyed item releases, and nothing
+destroys an item.
+
+No screen. The Accumulation tab draws no row of this table.
+
+## 2026-09-10 23:40 - #586 - the PvP vote, and who may destroy a Vessel
+
+### His words set the rule
+
+> "There will be PvP Worlds and Events. A world entering PvP mode is determined by an
+> active Player Vote and that can put forth once every 24hrs. The voting window
+> persists for 15m or three 5m candles. Only while in PvP mode or participating in PvP
+> events can one player destroy another's Vessels. This will allow players to have
+> specific Vessels they are willing to fight to the death with..."
+
+Somebody calls a vote in one world turn, and it settles on the next world-turn boundary.
+Actions placed in the peaceful turn resolve peacefully, and PvP begins with the next
+turn's placements. A participant has to log in once in an hour rather than be awake at one
+particular minute. A vote called while a rival guild sleeps also fails outright, because
+every absent player stays in the count the majority has to beat.
+
+```
+called on world turn 100     the peaceful turn
+settles on world turn 101    the first PvP turn
+resolution on turn 100       refused
+a sleeping majority          blocks the vote
+```
+
+### The window is three standard candles, and the clock already existed
+
+His fifteen minutes is three turns of the standard five-minute candle. The modes module
+already measures a turn off the shared candle clock, so the vote declares no clock of its
+own and counts three of those turns.
+
+```
+standard candle      300 s
+three candles        900 s
+his window       15 min  =  900 s
+```
+
+### A majority of the whole world carries it, and there is no separate quorum
+
+> "51% or higher. Proper Democracy over here..."
+
+The majority counts against every participant in the world, never against the people who
+happened to vote. No separate turnout test exists, because 51 per cent of the electorate
+cannot vote in favour at under 51 per cent turnout. The threshold is its own quorum. Every
+figure is whole numbers multiplied across, so no decimal fraction of a vote exists.
+
+```
+participants on one layer         79      votes to carry      41
+a full world of twenty layers  1,580      votes to carry     806
+```
+
+Driven on a full world. Eight hundred and six votes in favour carried the vote and turned
+the mode on at the next boundary, at a turnout of fifty-one per cent exactly. Eight
+hundred and five did not, and the mode stayed off. Every roll from one to one thousand
+five hundred and eighty then met a count-up search for the same figure, and the two agreed
+on every roll. A decimal version of the same sum disagreed on fifteen.
+
+```
+806 of 1,580 in favour   carried      turnout 51.0%   mode on from world turn 101
+805 of 1,580 in favour   not carried  turnout 50.9%   mode stays off
+rolls 1 to 1,580         whole-number disagreements 0     decimal disagreements 15
+```
+
+A world where more than half the participants have gone quiet can never enter PvP mode.
+Their silence protects their Vessels, and it follows from the threshold rather than from
+any separate rule.
+
+```
+participants who never vote      more than half
+the vote                         cannot carry
+```
+
+### The mode lasts twenty-four world turns and then lapses
+
+His cap is one vote every twenty-four hours and a world turn is an hour, so the life of
+the mode and the gap between two votes are one number. A world goes back to peace unless
+somebody votes it into PvP again. Nothing stops a world staying in PvP indefinitely, and
+that costs a fresh majority of the world every twenty-four turns.
+
+```
+turn 100   the vote is called
+turn 101   PvP begins
+turn 124   the last PvP turn, and the earliest a new vote may be called
+turn 125   the first mode lapses, and a vote called on 124 settles here
+```
+
+### Three carries in seventy-two turns lock the world for a week
+
+> "Three successive pro-PVP votes over 72hrs will lock the World in PvP mode for an entire
+> week starting from the third vote."
+
+Seventy-two turns is the window the three carries have to fit inside, not the gap between
+them. At the tightest rhythm the cadence allows, three carries span forty-nine turns, so a
+world that misses a beat still qualifies. The lock begins at the third vote's resolution
+and runs one hundred and sixty-eight turns, which is a week of one-hour turns. Sustained
+aggression is now a commitment with a payoff rather than a daily chore: three carries buy
+the week outright, where holding it otherwise takes seven more separate votes.
+
+```
+vote 1   called 100   resolves 101
+vote 2   called 124   resolves 125
+vote 3   called 148   resolves 149
+span     first call to third resolution    49 turns, inside the window of 72
+lock     149 to 317                       168 turns
+```
+
+Successive means consecutive carries with nothing failing between them. One failed vote
+breaks the chain and the count starts again. The run drove both halves, and the window has
+an exact edge.
+
+```
+carry, carry, carry          carry run 3   lock from turn 149
+carry, carry, FAIL, carry    carry run 1   no lock
+three carries spanning 72    lock from turn 172
+three carries spanning 73    no lock
+three carries spanning 81    no lock
+```
+
+The lock outlives the twenty-four-turn mode, so the lock is the outer authority. The third
+vote's own mode lapses on turn 173 and the world is still in PvP at turn 180.
+
+```
+turn 180, the mode alone          off
+turn 180, with the lock           on
+turn 316, the last locked turn    on
+turn 317, the lock lapsed         off
+```
+
+### The program refuses a vote called inside a lock
+
+A vote that cannot change the outcome is a control that lies, so the program refuses it
+rather than accepting it and doing nothing. The first turn past the lock accepts a vote
+again.
+
+```
+a vote called on turn 172, inside the lock     refused
+a vote called on turn 317, past the lock       accepted
+```
+
+Once a lock begins, nothing ends it early. A world that changes its mind on the second day
+stays in PvP for five more, and that holds every participant who voted against. The vote
+asked the majority three separate times, and this is the sharpest edge in the mechanism.
+
+```
+an unlock   Not built, and not asked for.
+```
+
+### What the permission answers
+
+One call answers whether one participant may destroy another's Vessels right now. The
+answer is yes inside a live PvP mode, inside a lock, or in a PvP event, and no everywhere
+else. Every row below came off the built objects.
+
+```
+two participants, inside the mode                 yes
+the peaceful turn the vote was called in          no
+after the mode has lapsed, with no lock           no
+after the mode has lapsed, inside a lock          yes
+a participant against its own                     no
+a PvP event, with no mode at all                  yes
+```
+
+### Nine refusals, each driven, each with its accepted neighbour
+
+A refusal is worth nothing unless the program accepts the case one step away. The run
+drove both sides of every boundary below.
+
+```
+a call 23 world turns after the last       refused
+a call 24 world turns after the last       accepted
+a call on a roll of nobody                 refused
+a call on a roll of one                    accepted
+a vote at second 900 of the window         refused
+a vote at second 899 of the window         accepted
+a resolution inside the calling turn       refused
+a resolution on the next turn              accepted
+a call on turn 172, inside a lock          refused
+a call on turn 317, past the lock          accepted
+the same participant voting twice          refused
+a vote past the roll counted at the call   refused
+a second resolution of one ballot          refused
+a vote after the ballot has settled        refused
+```
+
+### Nothing counts a world's participants
+
+The majority counts against a roll the caller hands in, because no module keeps a list of a
+world's participants. The world store reports how many of them have discovered something,
+which is a different number, and the layer figure gives a capacity rather than a roll. The
+ballot freezes that roll at the moment of the call, so a participant who votes and then
+leaves cannot shrink the number their vote counted against.
+
+```
+PROPOSED
+src/competition/world_grid.py
+    PoaWorld.participants(world_id) -> tuple[str, ...]
+    the addresses enrolled in one world, which the vote would count
+```
+
+### No screen calls any of this
+
+No control calls a vote, casts one, or resolves one, and nothing in the running program
+reaches this module at all. The unused-function check names the six calls a screen would
+make, and the two the module calls on itself do not appear.
+
+```
+named unused    call_vote  cast_vote  resolve  mode_from  may_destroy  ballot_row
+called inside   carry_run  lock_from
+```
+
+### Nothing keeps a Vessel, so there is nothing to destroy
+
+The permission is the gate and the thing it guards is absent. The tab already says so in
+its own words, on screen, for any participant.
+
+```
+"keeps no Vessel for this participant"
+```
+
+### What the PvP vote does not build
+
+Vessel destruction is not built, and neither is a PvP event. Whether any of the eight
+existing event types is a PvP one is his ruling, and nothing sets the event flag the
+permission reads. Who may call a vote is not settled either: the ballot records its caller
+and checks no privilege.
+
+```
+Vessel destruction         In development.
+a PvP event flag           In development.
+the right to call a vote   In development.
+a control to cast a vote   In development.
+```
+## 2026-09-10 23:55 - #585 - a glyph and a colour for each kind
 
 ### Dwarf Fortress draws its world in characters, and so does this
 
