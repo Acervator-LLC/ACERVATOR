@@ -11524,3 +11524,208 @@ ABSENT_MECHANISM_NOTES = {
     ...
 }
 ```
+
+## 2026-09-11 07:15 - #586 - the world turn's pool, counted in steps
+
+> "Its a function of Strength (max weight) and Constitution (turn point penalty
+> while carrying)."
+
+> "Just need to be able to say that character A traversed x% of a given square in
+> a given turn... Should be simple enough to make this dynamic and per character
+> or army or group with encumberance playing a role."
+
+### One clock was bounded and the other was not
+
+The event turn has an action economy. Impetus grants four actions at the first
+level and one more every twenty levels, so a Vessel at level 100 acts nine times
+in one candle and the pool refuses a tenth.
+
+Read by asking the modes module for each figure
+
+```
+IMPETUS_AT_FIRST_LEVEL      4
+IMPETUS_LEVELS_PER_STEP     20
+base_impetus(1)             4
+base_impetus(100)           9
+```
+
+The world turn had none of it. No pool, no budget and no action count existed for
+the hour a participant spends out in the world, so a choice made in world time
+cost nothing.
+
+### The step was already a world turn's denomination
+
+A square divides into one hundred steps, so a step is one whole percent of a
+square. His sentence about traversing a percentage of a square in a turn names a
+step count, and movement already spends steps by the turn.
+
+The rate a journey leg runs at, in `world_movement`
+
+```python
+#: Steps a mover covers in one world turn before any multiplier, one square.
+BASE_STEPS_PER_TURN = SQUARE_STEPS
+
+
+def leg_rate(terrain: Decimal, encumbrance: Decimal) -> Decimal:
+    """``BASE_STEPS_PER_TURN`` under the ``terrain`` and ``encumbrance`` multipliers."""
+```
+
+That is a rate, not a pool, and the difference is the whole of this unit. Three
+readings separate them, each taken off the movement module itself.
+
+```
+it holds no remainder    progress_at derives every figure from the turn a leg
+                         opened, its rate and its length, and writes no record.
+                         Nothing is subtracted, so no participant has steps left
+                         to read
+
+it is bounded per leg    open_leg checks the legs of the one journey it is given,
+                         so no rule there compares two journeys of one mover
+
+only movement spends it  a craft counts whole turns to its completion turn and
+                         spends no step in any of them
+```
+
+The budget did not exist under another name. The step is the right unit for one,
+because a penalty measured in steps removes distance, and removed distance is
+exactly how carrying a load slows a journey.
+
+### The pool, and what it refuses
+
+One participant holds one pool for one world turn. The pool keys on a wallet
+address, because the mover on a journey leg carries an address and a Reincarnate
+answers to one. Impetus counts per level, which belongs to a Vessel, and no
+directive says which of the two holds a world turn's pool.
+
+The grant, and the only figure that lowers it
+
+```python
+    @property
+    def granted_steps(self) -> int:
+        """``unladen_steps`` less ``penalty_steps``, never below ``MIN_GRANT_STEPS``."""
+        return max(MIN_GRANT_STEPS, self.unladen_steps - self.penalty_steps)
+```
+
+The spend, which refuses another turn and refuses a cost above what is left
+
+```python
+    def spend(self, cost: int, at_turn: int) -> int:
+        """Spend ``cost`` steps, refusing another turn or a cost above ``remaining``.
+
+        Returns the steps remaining after the spend.
+        """
+        asked = _as_turn_index(at_turn, "at_turn")
+        if asked != self.turn_index:
+            refusal = (
+                f"this pool granted {self.granted} {STEP_UNIT}s to "
+                f"{self.participant} for {CLOCK} {self.turn_index} and "
+                f"{self.remaining} is unspent; {CLOCK} {asked} is a different "
+                f"turn, and a {CLOCK}'s steps expire with the turn that "
+                f"granted them"
+            )
+            raise ExpiredTurnError(refusal)
+        steps = _as_steps(cost, "cost", COST_SOURCE, MIN_SPEND_STEPS)
+        if steps > self.remaining:
+            refusal = (
+                f"this action costs {steps} {STEP_UNIT}s and {self.remaining} "
+                f"remains of {self.granted} in {CLOCK} {self.turn_index}; no "
+                f"partial action exists and nobody borrows against the next turn"
+            )
+            raise ExhaustedPoolError(refusal)
+        self.spent += steps
+        return self.remaining
+```
+
+Seven refusals were driven through the real module, each one quoting what the
+module said
+
+```
+a pool with no figure   unladen_steps is absent; unladen_steps arrives with the
+                        grant and no source names it ... The operator sets the
+                        figure
+
+a fractional grant      unladen_steps must be a whole number of steps, not float;
+                        a world turn figure decided by binary floating point is
+                        refused
+
+a penalty that raises   penalty_steps must be 0 or more steps, got -5
+
+a second pool           0xalice already holds a pool of 40 steps for world turn 0
+                        with 40 unspent; one participant holds one pool a world
+                        turn
+
+a closed turn reopened  0xalice holds a pool for world turn 5, and world turn 4
+                        has closed; a closed turn grants nothing a second time
+
+a spend in another turn 0xalice holds a pool for world turn 0, not world turn 1;
+                        a world turn's steps expire with the turn that granted
+                        them
+
+a spend of nothing      cost must be 1 or more steps, got 0
+```
+
+### What the program printed
+
+One participant's turn was driven from its grant to its refusal, on the path that
+loads the PoA package. Every figure below is the module reporting its own pool.
+
+```
+acervator.world_turn INFO 0xalice holds 40 steps for world turn 0, 40 unladen less 0 penalty
+acervator.world_turn INFO 0xalice spent 25 of 40 steps in world turn 0, 15 remaining
+acervator.world_turn INFO 0xalice spent 40 of 40 steps in world turn 0, 0 remaining
+acervator.world_turn INFO 0xcarol holds 0 steps for world turn 0, 40 unladen less 55 penalty
+acervator.world_turn INFO 0xbob holds 40 steps for world turn 1, 40 unladen less 0 penalty
+acervator.world_turn INFO 0xbob spent 10 of 40 steps in world turn 1, 30 remaining
+acervator.world_turn INFO 0xbob lost 30 of 40 steps unspent when world turn 1 closed
+acervator.world_turn INFO 0xbob holds 40 steps for world turn 2, 40 unladen less 0 penalty
+acervator.world_turn INFO 0xalice holds 28 steps for world turn 1, 40 unladen less 12 penalty
+
+src.competition.world_turn.ExhaustedPoolError: this action costs 29 steps and 28
+remains of 28 in world turn 1; no partial action exists and nobody borrows
+against the next turn
+```
+
+Four lines carry the answers a reader needs. A penalty of 55 against a grant of
+40 reads zero and never less, so a fully laden turn buys nothing and never owes
+anything. Thirty unspent steps are lost when the turn closes, and the next turn
+grants a fresh forty. The penalty of twelve takes the grant to twenty-eight, and
+a spend of twenty-nine is refused.
+
+### The figure is owed, and it is one number
+
+```
+owed      unladen_steps, the steps one participant may spend in one world turn
+          at zero encumbrance
+
+why not   leg_rate already multiplies 100 steps by terrain and by encumbrance, so
+100       a grant read off that rate would count both multipliers twice
+
+refused   a pool built without it, by name, with that sentence in the refusal
+```
+
+Nothing still names a world turn's length. The hour lives in his words and in no
+constant, so every turn field here is a whole turn index, the same way the PvP
+vote and a consecration both count one.
+
+### What spends this, and what is still owed
+
+```
+reads it today     nothing. No module constructs a world-turn pool, and the only
+                   lines above came from driving it directly
+
+movement           derives a leg's progress from its own rate and reads no pool
+
+encumbrance        absent. It needs a Vessel's carried weight and a weight per
+                   material, and no module holds either, so nothing computes the
+                   penalty a grant takes
+
+crafting           counts whole turns to its completion turn and spends no step
+
+a surface          the tab's turn meter reads the event turn's candle and its
+                   Impetus line reads that pool. No panel names a world turn, so
+                   nothing shows a turn's steps remaining
+
+the package entry  does not yet name this module. The package says so itself on
+                   every launch: competition package holds 2 module(s) it does
+                   not bind: crafting, world_turn
+```
