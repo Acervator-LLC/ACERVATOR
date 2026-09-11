@@ -8,6 +8,9 @@ calls ``QuintessenceLedger.distil`` with the fee the venue reported.
 ``SharedTestnetBridge.install_on`` builds one socket per process. A fill carrying
 an ``exchange_id`` and a ``season`` names an ``Activation``, and ``certify`` then
 puts it through ``CaptureBounds.award`` before ``distil`` mints anything.
+``award_wallet_for`` answers which wallet that award credits: a bot feeding a
+``ParticipantRegistry`` node credits that node's wallet, so every bot on one node
+shares one wallet, one market share ceiling and one cooldown.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ from .capture_bounds import (
 )
 from .local_testnet import LocalTestnet
 from .merkle_log import MerkleTradeLog
+from .participant_node import ParticipantRegistry
 from .quintessence_ledger import QuintessenceLedger
 
 logger = logging.getLogger("acervator.certification_socket")
@@ -197,11 +201,13 @@ class CertificationSocket:
         socket_path: str | Path | None = None,
         mutation_lock: AbstractContextManager[bool] | None = None,
         capture_bounds: CaptureBounds | None = None,
+        participants: ParticipantRegistry | None = None,
     ) -> None:
-        """Hold the chain, the ledger, the bounds and the per-bot totals."""
+        """Hold the chain, the ledger, the bounds, the register and the per-bot totals."""
         self._testnet = testnet
         self._ledger = quint_ledger
         self._bounds = capture_bounds
+        self._participants = participants
         self._competition_id = competition_id
         self._path: Path = Path(socket_path) if socket_path else DEFAULT_SOCKET_PATH
         self._chain_lock: AbstractContextManager[bool] = (
@@ -222,8 +228,9 @@ class CertificationSocket:
         """Sign, log, post and distil one fill, and return its receipt.
 
         Raises ``CertificationRefusedError`` for an empty ``fill_id``, a fill already
-        certified, or an award past the ledger's ``remaining_ever``; a fill a
-        ``CaptureBounds`` refuses is still logged and distils nothing.
+        certified, a participant wallet the ledger cannot answer for, or an award
+        past the ledger's ``remaining_ever``; a fill a ``CaptureBounds`` refuses is
+        still logged and distils nothing.
         """
         bot_id = identity.bot_id
         fill_id = str(fill.fill_id or "").strip()
@@ -234,6 +241,8 @@ class CertificationSocket:
         fee = _as_fee_usd(fill.fee_usd)
         grade = _as_trade_grade(fill.trade_grade)
         award = fee * grade
+        # Resolved before any mutation, so a refused wallet logs no trade.
+        participant = self.award_wallet_for(bot_id)
 
         with self._state_lock:
             if fill_id in self._certified_fill_ids.get(bot_id, ()):
@@ -246,7 +255,7 @@ class CertificationSocket:
                     f"the supply cap leaves {remaining} Quintessence, short of "
                     f"the {award} this fill would distil"
                 )
-            award_reason, capture = self._award_for(bot_id, fill, fee, grade)
+            award_reason, capture = self._award_for(participant, fill, fee, grade)
             log = self._log_for(bot_id)
             record = identity.sign_trade(
                 TradeRecord(
@@ -265,7 +274,7 @@ class CertificationSocket:
             )
             leaf = log.append(record)
             distilled = (
-                self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+                self._ledger.distil(participant, fee, grade)
                 if award_reason == AWARDED
                 else Decimal(0)
             )
@@ -297,12 +306,13 @@ class CertificationSocket:
             award=capture,
         )
         logger.info(
-            "certified fill %s for bot %s: fee $%s distilled %s Quintessence, "
-            "lifetime fee $%s over %d fills, activation %r pool %r award %s",
+            "certified fill %s for bot %s: fee $%s distilled %s Quintessence into "
+            "%s, lifetime fee $%s over %d fills, activation %r pool %r award %s",
             fill_id,
             bot_id[:12],
             fee,
             distilled,
+            participant,
             total,
             count,
             fill.activation,
@@ -313,14 +323,16 @@ class CertificationSocket:
 
     def _award_for(
         self,
-        bot_id: str,
+        participant: str,
         fill: CertifiedFill,
         fee: Decimal,
         grade: Decimal,
     ) -> tuple[str, CaptureAward | None]:
-        """Put ``fill`` through the ``CaptureBounds`` and return its reason and award.
+        """Bound ``fill`` against ``participant``, and return its reason and award.
 
-        Answers ``AWARDED`` with no award while no bounds were constructed, and
+        ``participant`` is the wallet ``award_wallet_for`` resolved, so the share
+        ceiling and the cooldown count against that one address. Answers
+        ``AWARDED`` with no award while no bounds were constructed, and
         ``NO_ACTIVATION_NAMED`` for a fill carrying no ``exchange_id`` and season.
         """
         if self._bounds is None:
@@ -336,7 +348,7 @@ class CertificationSocket:
             exchange_id=str(fill.exchange_id),
             season=int(fill.season or 0),
             symbol=str(fill.symbol),
-            participant=self._wallet_for(bot_id),
+            participant=participant,
             fee_usd=float(fee),
             grade_numeric=float(grade),
             scored_axes=int(fill.scored_axes),
@@ -405,6 +417,39 @@ class CertificationSocket:
 
     # -- Queries -------------------------------------------------------------
 
+    @property
+    def participants(self) -> ParticipantRegistry | None:
+        """The ``ParticipantRegistry`` an award credits through, or None for none."""
+        return self._participants
+
+    def award_wallet_for(self, bot_id: str) -> str:
+        """The wallet a certified fill for ``bot_id`` credits and the bounds count.
+
+        A bot feeding a registered participant node credits that node's wallet, so
+        every bot on one node shares one wallet, one market share ceiling and one
+        cooldown. A bot feeding no node, and every bot while no
+        ``ParticipantRegistry`` was constructed, keeps the ``_wallet_for`` address:
+        ``ParticipantRegistry.register_node`` refuses a wallet no movement has put
+        in the ledger's book, and this ``distil`` is the movement that puts one
+        there, so refusing such a fill would leave no node able to register.
+        Raises ``CertificationRefusedError`` for a node wallet this socket's ledger
+        holds no record of, because no award credits an address the ledger cannot
+        answer for.
+        """
+        if self._participants is None:
+            return self._wallet_for(bot_id)
+        node_id = self._participants.node_of_bot(bot_id)
+        if node_id is None:
+            return self._wallet_for(bot_id)
+        wallet = self._participants.wallet_of(node_id)
+        if wallet is None or not self._ledger.holds_wallet(wallet):
+            raise CertificationRefusedError(
+                f"bot {bot_id[:12]} feeds node {node_id}, whose wallet "
+                f"{wallet!r} this socket's Quintessence ledger holds no record "
+                f"of; an award credits a wallet the ledger can answer for"
+            )
+        return wallet
+
     def lifetime_certified_fee_usd(self, bot_id: str) -> Decimal:
         """Return the certified exchange fee ``bot_id`` has ever paid."""
         with self._state_lock:
@@ -450,12 +495,15 @@ class CertificationSocket:
     def socket_summary(self) -> dict:
         """Return the per-bot fee totals, fill counts and the ledger's supply.
 
-        ``awards_bounded`` is False while no ``CaptureBounds`` was constructed.
+        ``awards_bounded`` is False while no ``CaptureBounds`` was constructed, and
+        ``awards_to_participants`` is False while no ``ParticipantRegistry`` was, so
+        every award then credits a ``_wallet_for`` address.
         """
         with self._state_lock:
             return {
                 "competition_id": self._competition_id,
                 "awards_bounded": self._bounds is not None,
+                "awards_to_participants": self._participants is not None,
                 "bots": {
                     bot_id: {
                         "lifetime_fee_usd": str(total),
@@ -628,5 +676,10 @@ class CertificationSocket:
 
     @staticmethod
     def _wallet_for(bot_id: str) -> str:
-        """Return the ledger address and chain sender for ``bot_id``."""
+        """Return the address synthesised from ``bot_id``.
+
+        ``_post_commitment`` sends every trade commitment from this address,
+        because a trade is the bot's own, and ``award_wallet_for`` returns it as the
+        credited wallet for a bot feeding no participant node.
+        """
         return f"0x{bot_id[:40]}"
