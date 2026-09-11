@@ -11073,3 +11073,297 @@ absent figures             none; this section measures the module count, the
 The earlier entries on this page still say the entry file owes a module's export.
 Each of those sentences held on the day its unit wrote it, and this unit changes
 none of them. The export list above closes all ten.
+
+## 2026-09-11 06:30 - #585 - a craft takes Quintessence out of a wallet and destroys none
+
+### His two sentences on crafting are one rule
+
+He said Quintessence used in crafting is burned, or back in the platonic space,
+and in the same breath that it remains budgeted against the hard limit. Those read
+as opposites and they are not. The platonic space is the pleroma, and the pleroma
+is one of the four buckets the supply already counts. What a craft spends leaves a
+wallet and arrives in a bucket that is still inside the thirty-three million cap,
+so nothing is created and nothing is destroyed.
+
+His own words, and where each half lands
+
+```
+"Quint used in crafting is effectively 'burned' or 'back in the platonic
+ space' but remains budgeted against the hard limit"
+
+what the item holds      the embedded bucket
+what the craft lost      the pleroma
+what the cap counts      both of those, plus the wallets and the held addresses
+```
+
+### The movement a craft needs was already built, and nothing had called it
+
+The ledger already carried one movement that does the whole of a craft. It debits
+a wallet once, puts a named part of that debit into the embedded bucket, and puts
+the rest into the pleroma. Both halves commit together, and the ledger rolls
+the whole thing back if any part of it refuses. Measured before this unit: nothing
+in the tree called it. A craft is now its only caller, and no second mover was
+written.
+
+`src/competition/quintessence_ledger.py` - the movement, unchanged by this unit
+
+```python
+def embed_from_wallet(
+    self,
+    address: str,
+    amount: object,
+    embedded_amount: object,
+) -> QuintessenceEmbed:
+    """Move ``amount`` out of address's wallet, ``embedded_amount`` of it into
+    the embedded bucket and the remainder into the pleroma.
+    """
+```
+
+The paired release movement runs the other way, out of embedded and back toward a
+wallet. That is what destroying an item does, not what making one does, so no
+craft calls it. Salvage is still absent, and the earlier entry on this page that
+names it absent is unchanged.
+
+### The amount leaving the wallet equals what the item holds plus what is lost
+
+That equality is the whole of this unit, and it holds without any figure he has
+not given. The item's cohesion is what the item itself holds, and the built
+cohesion sum already computes it. The loss is whatever the craft paid above that.
+Add the two and you have the wallet debit, exactly, with nothing left over. Two
+separate objects answer those three amounts, so they can be compared rather than
+assumed.
+
+`src/competition/crafting.py` - the three amounts, each read off its own source
+
+```python
+@property
+def quintessence_embedded(self) -> Decimal:
+    """The produced item's cohesion, which is what the item itself holds."""
+    return self.item_type.cohesion_at(self.produced_quality)
+
+@property
+def quintessence_lost(self) -> Decimal:
+    """``loss_share`` of ``quintessence_embedded``, rounded down onto the grid."""
+    return quantize_quintessence(self.quintessence_embedded * self.loss_share)
+
+@property
+def quintessence_from_wallet(self) -> Decimal:
+    """``quintessence_embedded`` plus ``quintessence_lost``, and nothing else."""
+    return self.quintessence_embedded + self.quintessence_lost
+```
+
+The finished record keeps its own three amounts beside the three the ledger
+reported, and reads whether they agree. A disagreement refuses the craft rather
+than recording it. Nothing is compared to itself: one set is arithmetic on an
+item, the other is what the ledger moved.
+
+Read off a finished craft, at the highest grade and a loss equal to the item
+
+```
+the record says         0.0000001 left the wallet
+                        0.00000005 is embedded
+                        0.00000005 joined the pleroma
+the ledger says         spent 0.0000001
+                        embedded 0.00000005
+                        pleroma 0.00000005
+unaccounted             0
+```
+
+### A recipe names a material list, a grade, a loss and a turn count
+
+A recipe is the thing that says what is consumed and what comes out. It reuses the
+component entry the item table already declares, so a material, its whole units
+and its quality grade are spelled one way across the package. The item it makes
+comes from the item table by name, and the grade it carries is one of the five
+quality grades already in use.
+
+`src/competition/crafting.py` - the recipe, as its fields declare it
+
+```python
+@dataclass(frozen=True)
+class Recipe:
+    item_type_name: str
+    produced_quality: str
+    components: tuple[Component, ...]
+    loss_share: Decimal
+    turns_required: int
+```
+
+### Two figures are owed, and a craft without either is refused
+
+He set a salvage loss in words and set no crafting loss at all, and he said
+crafting is multi-turn and lengthy without naming a turn count. Neither figure is
+invented here. Both arrive with the recipe, and a recipe built without one refuses
+at once with a sentence saying what would set it. A loss share of zero is a
+different thing from an absent loss share, and only the absent one is refused.
+
+Driven, both refusals read off the real objects
+
+```
+loss_share absent      "the operator set a salvage loss and set no crafting
+                        loss, so loss_share arrives with the Recipe and this
+                        module holds no table of it"
+turns absent           "The operator's words say crafting is multi-turn and
+                        sometimes lengthy and name no figure, and nothing here
+                        derives turns from an item's grade, its material count
+                        or its cohesion"
+```
+
+The loss share multiplies what the item holds, rather than dividing the wallet
+amount. That choice is made so every amount stays a whole number of the smallest
+unit the currency can express. Dividing would leave a part no bucket could hold,
+and the ledger refuses an amount off that grid.
+
+Measured consequence, at the smallest item there is
+
+```
+cohesion        0.00000001     one minimum unit
+loss share      0.5
+loss            0              rounds down, the same rule distil already uses
+wallet debit    0.00000001
+```
+
+A share above one is allowed and loses more than the item holds, which is what
+his much of it will be lost permits. Only the wallet balance bounds it.
+
+### Which clock a craft counts in
+
+A craft counts world turns, and the module takes that name from the one place that
+already declares it rather than spelling it a second time. Nothing in the tree
+names how many seconds a world turn lasts. The hour he mentioned lives in a
+comment beside the voting cadence and in no constant, so every turn field here is
+a whole turn index and no craft converts to wall clock time.
+
+`src/competition/consecration.py` - the clock name and the gap, both imported
+
+```
+CLOCK                        "world turn"
+WORLD_TURN_SECONDS_ABSENT    "no constant names the seconds in a world turn"
+```
+
+A craft opens on a turn and finishes on the turn its required count reaches, using
+the same arithmetic the action charge already uses. Completing before that turn is
+refused, and the refusal says no part of an item exists.
+
+### Four ways to abuse a craft, and the answer to each
+
+Every one of these was asked before the code was written, and each has an answer
+that can be driven.
+
+```
+make an item worth more than     refused. A recipe whose item needs more
+what was consumed                Quintessence than its material list embeds
+                                 cannot be built at all
+
+craft with no loss at all        allowed. A loss share of zero takes only the
+                                 cohesion out of the wallet, the pleroma gets
+                                 nothing, and conservation still holds
+
+consume the same materials       refused. Completing a craft removes it and
+twice                            records its identifier, so a second call
+                                 raises and moves nothing
+
+abandon a craft part way         nothing to lose. An open craft holds no
+                                 Quintessence at all, so there is nothing in
+                                 flight to go missing
+```
+
+The last one is the dangerous case, and the shape of the code answers it rather
+than a guard. Opening a craft makes no ledger call and abandoning one makes no
+ledger call. The only write path is completion, and completion is a single
+movement that either commits whole or rolls back whole. No moment exists at which
+Quintessence has left a wallet and not yet reached a bucket.
+
+`src/competition/crafting.py` - opening a craft, which moves nothing
+
+```python
+def begin_craft(self, recipe, vessel, opened_turn) -> Craft:
+    """Open ``recipe`` for ``vessel``, refusing a wallet that cannot cover it.
+
+    Nothing is debited here; ``complete_craft`` is the only write path.
+    """
+```
+
+### A Vessel crafts, and the wallet it spends is shared with every other Vessel
+
+His words put crafting on secondary Vessels, so a craft names a Vessel and takes
+its owner as the wallet. Nothing marks a Vessel primary or secondary: the Vessel
+record carries an owner, a class and a level and no such field. A craft takes any
+Vessel and refuses none on that ground, so which Vessels may craft is owed.
+
+The wallet a craft debits is the same one every Vessel of that Reincarnate runs
+on, which is his own rule that a player's total wallet budget has to support the
+work. Spending on a craft lowers the fraction each of them reaches, with no second
+rule needed.
+
+Measured on a real ledger, one craft at the highest grade
+
+```
+before        wallets 1.00000000   pleroma 0           embedded 0
+after         wallets 0.99999990   pleroma 0.00000005  embedded 0.00000005
+minted        1.00000000 both times, unchanged
+delta         0 both times
+```
+
+### Driven on a real ledger, and the delta never left zero
+
+The whole path ran against a real ledger at a temporary file, under the
+interpreter's development checks with warnings promoted to errors. Every reading
+below came off the constructed objects, not off a description of them. The
+exercise covered an open craft, an early completion, a finished craft, a second
+completion, an abandoned craft, a recipe that cannot hold its item together, both
+absent figures, and a wallet too small to pay.
+
+What the run reported
+
+```
+conservation delta          0 at every reading, nine readings
+total ever minted           1.00000000 before and after, unchanged
+wallet change               -0.0000001
+embedded change             +0.00000005
+pleroma change              +0.00000005
+unaccounted                 0
+ledger movement log         distil, then embed_from_wallet, then bleed
+exit code                   0
+```
+
+The module also drives itself once at import, across every item type at every
+grade at both ends of the loss range, and reports its own count. That check runs
+on every launch and raises if a craft would ever move an amount no bucket holds.
+
+The module's own line from the run
+
+```
+drove 4 item types across 5 quality grades at 2 loss ends,
+0 amounts broke a rule
+```
+
+Reading those deltas is itself a check worth naming. Had the reader been blind the
+three changes would all have read zero while a movement plainly existed in the
+log. They read the amounts above, and two recipes of genuinely different size were
+run through the same reader and answered different numbers.
+
+### What reads a craft, and what is still owed
+
+Nothing in the running program yet crafts. The module supplies the recipe, the
+craft and the accounting, and no panel and no assignment calls any of it. The gear
+subtab still prints that nothing builds armour, weapons, accessories or
+consumables, and that sentence is still true from a player's side.
+
+```
+reads a craft              nothing. No surface and no Vessel assignment exists
+supplies a surface         every finished craft serves a dict the gear subtab
+                           could print without any further work
+declares a recipe          nothing. A recipe needs the loss share and the turn
+                           count, so no recipe table is declared here
+package export             owed. The entry file binds no name from this module,
+                           so the package warns about it at every load
+absent                     assignments, notifications, lifeskilling, salvage,
+                           inventory, a crafting skill
+absent figures             the loss share, and how many turns a craft takes
+```
+
+Nothing counts the materials a Vessel carries, because no inventory exists, so a
+recipe names units that nothing has checked against a store. The wallet balance is
+the only thing that refuses a craft today. The module names that gap in its own
+text rather than hiding it.
