@@ -41,25 +41,55 @@ NFT trophy.
 
 ## The skeleton
 
-The tab exists and draws three lines: its name, one sentence saying it is not
-built, and the issue that owns it. It reads no competition, no token balance
-and no trophy.
+The window builds this tab on every launch. `ProofOfAccumulationTabMixin` appends
+one panel to the tab bar and names it Accumulation. The panel holds a single web
+view, and React draws the whole screen inside that view. This screen has no Qt
+version, so nothing chooses between two frontends.
 
-`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
+`src/gui/main_tabs/proof_of_accumulation_tab.py` — the method the window calls
 
 ```python
+    def _build_proof_of_accumulation_tab(self) -> None:
+        """Append the Accumulation tab, and hold None when its page cannot be built."""
+        try:
+            from ..react_proof_of_accumulation_tab import ProofOfAccumulationReactPanel
+
+            self._proof_of_accumulation_tab = ProofOfAccumulationReactPanel()
+            self._main_tabs.addTab(self._proof_of_accumulation_tab, HEADING)
+        except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
+            logger.warning("Accumulation tab unavailable: %s", exc)
+            self._proof_of_accumulation_tab = None
+```
+
+Built through that method, the tab reads Accumulation on the bar and its page
+loads. The page draws 35 buttons. The control bar holds 25 of them: two name the
+chain, eight name the event type, and fifteen fire a mechanism. Seven more open
+the seven subtabs.
+
+One module serves that whole screen as data, and it alone declares the shell. It
+reads the Quintessence ledger, the token ledger and the loot store, so the wallet
+over the party window carries a balance and a list each for trophies, loot and
+Vessels.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — what the screen declares
+
+```python
+METHOD = "proof_of_accumulation_tab.state"
+
 HEADING = "Accumulation"
 ISSUE = 147
-BUILT = False
-STATE_TEXT = "This tab is not built."
+BUILT = True
+STATE_TEXT = (
+    "The top row is halved: the current Vessel on the left, the Map or the "
+    "Encounter on the right. The party window takes the lower half. No pixel art "
+    "is drawn."
+)
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
-Two frontends draw that one view model. `EmptyTabsMixin` in
-`src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
-`src/gui/web/proof_of_accumulation_tab.js` registers a panel with the Electron
-shell's panel host. `src.core.desktop_bridge` serves the model under
-`proof_of_accumulation_tab.state`.
+`src/gui/web/proof_of_accumulation_tab.js` is the renderer module that draws the
+zones. `src.core.desktop_bridge` registers the surface under the method name
+above, so the renderer asks the bridge for the shell by that one name.
 
 ## Identity
 
