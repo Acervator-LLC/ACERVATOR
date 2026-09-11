@@ -201,7 +201,10 @@ ABSENT_MECHANISM_NOTES: dict[str, str] = {
     "a package export": (
         "the competition package entry imports crafting and lists its names in "
         "__all__, so report_unbound_modules names no module at all and a name this "
-        "module repeats from one bound above it stays unexported"
+        "module repeats from one bound above it stays unexported. "
+        "UNITS_PER_CRAFT, CRAFT_DELIVERY, DELIVERY_REFUSAL_HOLDS and "
+        "CraftDeliveryError repeat no bound name and the entry file lists none of "
+        "them, so each is reached by importing src.competition.crafting directly"
     ),
 }
 
