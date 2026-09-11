@@ -84,11 +84,13 @@ class EventMode:
     has_map: bool
 
 
+#: Labels name pre-modern alchemical operations: fixation holds in fire, coagulation
+#: binds parts, descension drives downward, cementation parts a mass.
 MODES: tuple[EventMode, ...] = (
-    EventMode(MONSTER_SMASH, "Monster Smash", 1, 1, 1, False, False),
-    EventMode(TEAM_MONSTER_SMASH, "Team Based Monster Smash", 2, 2, 120, True, False),
-    EventMode(DUNGEON_CRAWL, "Dungeon Crawl", 3, 1, 6, False, True),
-    EventMode(RAID, "Raid", 4, 2, 60, True, True),
+    EventMode(MONSTER_SMASH, "Fixation", 1, 1, 1, False, False),
+    EventMode(TEAM_MONSTER_SMASH, "Coagulation", 2, 2, 120, True, False),
+    EventMode(DUNGEON_CRAWL, "Descension", 3, 1, 6, False, True),
+    EventMode(RAID, "Cementation", 4, 2, 60, True, True),
 )
 
 #: Every mode code, in the order ``MODES`` declares them.
