@@ -8819,3 +8819,189 @@ the stake each rank locks    no number exists
 a cap on officers            no number exists
 a cap on members             none, by his own words
 ```
+
+---
+
+## 2026-09-11 03:10 - #585 - the Vessel, and one wallet behind all of them
+
+A Vessel is now a thing on disk rather than a word in other modules' docstrings.
+It carries an owner, a class and a level, and every Vessel a player holds reads
+the same single wallet balance.
+
+```
+src/competition/vessels.py
+```
+
+### The requirement, in his own words
+
+```
+Players in PoA are actually Reincarnates and their Class at a given point is a
+Vessel. Vessel have levels and require increasing amount of Quint to 'power' or
+operate... A Reincarnate cannot be completely destroyed... but they can be
+'fully merged with the pleroma' if they do not hold a Quint balance.
+```
+
+```
+Players can have multiple Vessels that they micromanage to do lifeskilling and
+crafting (all multi-turn and sometimes lengthy processes) assuming their total
+Quint wallet budget supports this...
+```
+
+### A Vessel is a class, a level and an owner
+
+The class is one of the seven already in the package, so nothing new decides what
+a Vessel can be. The level is one of the hundred on the arc. The owner is the
+wallet address, and a Reincarnate refuses a Vessel whose owner is a different
+address, so no player can attribute a Vessel to someone else's balance.
+
+```python
+@dataclass(frozen=True)
+class Vessel:
+    owner: str
+    class_name: str
+    level: int = FIRST_LEVEL
+```
+
+Its requirement comes from the stat table and nowhere else. Asking the Vessel for
+its requirement adds the five stats the level gives it.
+
+```
+Iron Edge at level 12          needs  70
+Silver Mirror at level 25      needs 225
+Lead Ward at level 1           needs   5
+```
+
+### Many Vessels, one balance, and that is the whole rule
+
+His sentence says a player may run several Vessels *assuming their total Quint
+wallet budget supports this*. The budget is the wallet, so the requirements of
+every Vessel are added together and read against the one balance. A player with
+five Vessels holds no more Quintessence than a player with one.
+
+One run drove a real wallet holding 100 Quintessence and added a Vessel at a
+time:
+
+```
+1 Vessel     summed requirement  70    each runs at 1 of full
+2 Vessels    summed requirement 295    each runs at 0.3389830508474576271186440678
+3 Vessels    summed requirement 300    each runs at 0.3333333333333333333333333333
+```
+
+The first Vessel never changed and its power fell twice. That is the point of the
+shared reading, and the alternative is the reason for it. Had each Vessel carried
+its own budget, the same three Vessels on the same balance would read:
+
+```
+Iron Edge        1 of full     full power
+Silver Mirror    0.4444444444444444444444444444
+Lead Ward        1 of full     full power
+```
+
+Two of the three at full, and a player could add Vessels for ever at no cost. The
+shared reading closes that.
+
+### Powering a Vessel spends nothing
+
+The requirement is a threshold a balance is measured against. It is not a charge,
+and nothing is moved or burned. The same Quintessence satisfies the requirement
+and stays in the wallet where it can be spent on something else.
+
+```
+balance before every reading   100.00000000
+balance after                  100.00000000
+four-bucket conservation        balanced
+```
+
+### Under the requirement a Vessel is not refused
+
+A player short of the amount still occupies the Vessel and runs it below full
+potential. No call anywhere in this module refuses a Vessel for want of
+Quintessence, and the fraction above is what a player gets instead.
+
+```
+acervator.vessels INFO reincarnate-holder runs 3 Vessels needing 300 against a
+balance of 100, each at 0.3333333333333333333333333333 of full
+```
+
+### The zero-balance rule, and the newcomer it would have deleted
+
+His rule merges a Reincarnate with the pleroma at a zero balance. Read on the
+balance alone it also merges every person who has just arrived, because a wallet
+nobody has paid into holds nothing. Nobody could ever start.
+
+The ledger already tells the two apart. It keeps every movement that has touched
+an address, and a brand-new address has none.
+
+```
+a newcomer        balance 0       movements 0
+a spent player    balance 0E-8    movements 2
+```
+
+The merger therefore needs two things together, and the second one is a balance
+the player once held. Driven against three real addresses on one ledger:
+
+```
+a holder          balance 100.00000000   merged False   holds a Quintessence balance
+a newcomer        balance 0              merged False   has never held a Quintessence balance
+a spent player    balance 0E-8           merged True    fully merged with the pleroma
+```
+
+Nothing is destroyed by this reading. It answers a question and removes no
+record, which keeps his rule that a Reincarnate cannot be completely destroyed.
+
+### No figure caps how many Vessels a player may hold
+
+Nobody has named a limit, and none was invented here. The wallet balance is the
+only bound: a player who adds Vessels keeps diluting all of them, so the cost of
+a twentieth Vessel is the power of the other nineteen.
+
+```
+the only bound on Vessel count   the wallet balance
+a figure that caps the count     absent
+```
+
+### What a Vessel still cannot do
+
+Eight mechanisms name a Vessel and none of them is built. The module lists all
+eight by name and what each one waits on, so none of them is silently missing.
+
+```
+assignments     nothing gives a Vessel a task to carry over several turns
+lifeskilling    one skill ladder exists and no Vessel runs it
+crafting        no module makes an item
+notifications   nothing tells a player that a Vessel finished
+gear            no module holds an item a Vessel wears
+equipping       nothing holds gear to the equipping holder's Quintessence
+destruction     the PvP vote answers who may, and nothing destroys
+permadeath      no module ends a Vessel
+```
+
+His rule that the Quintessence level of gear cannot exceed the total of the
+equipping player has nothing to hold, because no gear exists to equip.
+
+```
+In development.
+```
+
+### What reads this today
+
+Nothing. The wallet's Vessels section on the tab still reads a class pick rather
+than a Vessel, and the summed requirement row still prints two dashes. Driving
+the tab on both chains shows the section stops earlier than that, because no
+participant identity exists on this machine at all.
+
+```
+section 'Vessels'
+    note   bot_identity.json does not exist, so no participant is named.
+```
+
+The wallet section already prints a movement count beside the balance, which is
+the second half of the merger rule, so the page is reading the right ledger
+already. Two things are owed before any of this shows: the module's entry in the
+package export list, and the wallet section reading a Reincarnate instead of a
+class pick.
+
+```
+owed   the module's entry in the package export list
+owed   the wallet's Vessels section reading a Reincarnate
+```
