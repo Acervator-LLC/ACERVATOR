@@ -8,8 +8,8 @@ printing what ``augment_action`` gives one action of the running turn.
 ``participants`` converts each bot in the chain's fleet load through
 ``profile_metrics`` and ``classes`` serves the seven a participant picks from.
 ``modes`` serves the eight event types and ``event`` answers the running turn and
-the Impetus pool it grants, with ``class_pick`` calling ``pick_class`` for the
-class ``params`` names. ``redistribution`` reads
+the Impetus pool ``held_pool`` keeps in ``HELD_POOLS`` for it, with ``class_pick``
+calling ``pick_class`` for the class ``params`` names. ``redistribution`` reads
 ``EventRedistribution.summary`` for the pot, the normalised shares and the
 reserve, and moves no Quintessence. ``subtabs`` serves the seven ``SUBTABS`` the
 tab opens over its zones, each carrying the ``SUBTAB_SHORTCUTS`` key that opens it,
@@ -33,7 +33,7 @@ event holds participant records with no payout, which is what the right half swi
 on: the map while no encounter runs, the encounter with its enemy screen while one
 does.
 ``meters`` serves the two the player window draws side by side: ``turn_meter``
-reads the candle's own seconds left and ``fill_meter`` reads the bytes the chain's
+draws the candle's own seconds left and ``fill_meter`` reads the bytes the chain's
 two files hold against ``TURN_BYTE_CAPACITY``. ``reset_panel`` names those files
 and both reasons ``chain_reset`` carries, so a deliberate reset and a schema wipe
 read differently on screen. ``world_control`` declares the demo chain's one world
@@ -137,6 +137,8 @@ from ...competition.poa_modes import (
     MODE_CODES,
     MODES,
     EventVariant,
+    ImpetusPool,
+    Turn,
     impetus_grant,
     pool_for,
     seat_at,
@@ -439,19 +441,19 @@ LOOT_EFFECT_ROW = "Action effect"
 LOOT_IMPETUS_TEXT = "{base} becomes {cost}"
 LOOT_EFFECT_TEXT = "{multiplier}x"
 
-METERS_TITLE = "Block fill and turn completion"
-TURN_METER = "turn_completion"
+METERS_TITLE = "Block fill and turn remaining"
+TURN_METER = "turn_remaining"
 FILL_METER = "block_fill"
-TURN_METER_LABEL = "Turn completion"
+TURN_METER_LABEL = "Turn remaining"
 FILL_METER_LABEL = "Block fill"
 
 #: The places a meter's percentage prints.
 METER_PLACES = Decimal("0.1")
 
-METER_TURN_TEXT = "{done}s of {length}s elapsed"
+METER_TURN_TEXT = "{left}s of {length}s left"
 METER_FILL_TEXT = "{held} of {capacity} bytes"
 
-#: The turn meter carries no note: the event band already prints the seconds left.
+#: The turn meter carries no note: the event band prints the same seconds left.
 METER_TURN_NOTE = ""
 
 METER_FILL_NOTE = (
@@ -1787,20 +1789,39 @@ def turn_text(variant: EventVariant, turn_index: int, seconds_left: float) -> st
     )
 
 
-def impetus_text(granted: int, level: int) -> str:
-    """The player window's Impetus line, naming the grant and the level behind it."""
-    return f"{IMPETUS_LABEL} {granted} this turn - level {level}"
+def impetus_text(remaining: int, granted: int, level: int) -> str:
+    """The player window's Impetus line, naming what is unspent against the grant."""
+    return f"{IMPETUS_LABEL} {remaining} of {granted} left this turn - level {level}"
 
 
-def event(variant: EventVariant, at_epoch: float, level: int) -> dict:
-    """The declared event: its variant row, the running turn, and the turn's pool.
+#: One pool a participant an event, keyed on the participant and the event code.
+#: The pool is not chain data: a live run and a demo run share the one pool.
+HELD_POOLS: dict[tuple[str, str], ImpetusPool] = {}
 
-    ``seat_at`` takes the turn already running, so the seconds remaining are the
-    candle's own and never a fresh turn's worth.
+
+def held_pool(participant: str, turn: Turn, level: int) -> ImpetusPool:
+    """The pool ``participant`` holds for ``turn``, granted at ``level``.
+
+    ``HELD_POOLS`` keeps that pool across a redraw, and a turn index the held pool
+    was not granted for takes a new one.
+    """
+    key = (participant, turn.variant.code)
+    pool = HELD_POOLS.get(key)
+    if pool is None or pool.turn_index != turn.index:
+        pool = pool_for(turn, level)
+        HELD_POOLS[key] = pool
+    return pool
+
+
+def event(variant: EventVariant, at_epoch: float, level: int, participant: str) -> dict:
+    """The declared event: its variant row, the running turn, and the pool it holds.
+
+    ``seat_at`` takes the turn already running, and ``held_pool`` keeps the pool a
+    spend inside that turn draws on.
     """
     turn = turn_at(variant, at_epoch)
     seat = seat_at(variant, at_epoch)
-    pool = pool_for(turn, level)
+    pool = held_pool(participant, turn, level)
     return {
         **variant_row(variant),
         "turn_index": turn.index,
@@ -1811,8 +1832,9 @@ def event(variant: EventVariant, at_epoch: float, level: int) -> dict:
         "turn_text": turn_text(variant, turn.index, seat.seconds_left),
         "impetus_level": level,
         "impetus_granted": pool.granted,
+        "impetus_spent": pool.spent,
         "impetus_remaining": pool.remaining,
-        "impetus_text": impetus_text(pool.granted, level),
+        "impetus_text": impetus_text(pool.remaining, pool.granted, level),
     }
 
 
@@ -1853,14 +1875,14 @@ def meter(name: str, label: str, percent: Decimal, value_text: str, note: str) -
 
 
 def turn_meter(running: dict, variant: EventVariant) -> dict:
-    """The share of this turn's candle that has elapsed, from its own seconds left."""
+    """The share of this turn's candle that is left, from its own seconds left."""
     length = Decimal(variant.turn_seconds)
-    done = length - Decimal(str(running["seconds_left"])).quantize(Decimal(1))
+    left = Decimal(str(running["seconds_left"])).quantize(Decimal(1))
     return meter(
         TURN_METER,
         TURN_METER_LABEL,
-        share_percent(done, length),
-        METER_TURN_TEXT.format(done=done, length=length),
+        share_percent(left, length),
+        METER_TURN_TEXT.format(left=left, length=length),
         METER_TURN_NOTE,
     )
 
@@ -3216,8 +3238,13 @@ def view_model(params: dict) -> dict:
     variant = variant_from(params)
     pick, pick_note = class_pick(params, variant.code)
     level = FIRST_LEVEL if pick is None else ClassProgress(pick.class_name).level
-    running = event(variant, epoch_of(params), level)
     identity = participant_identity()
+    running = event(
+        variant,
+        epoch_of(params),
+        level,
+        "" if identity is None else identity.bot_id,
+    )
     fired = controls(
         chain,
         None if identity is None else identity.bot_id,
