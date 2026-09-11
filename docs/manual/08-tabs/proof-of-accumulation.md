@@ -152,12 +152,15 @@ feed, or between two machines exchanging signed submissions.
 of the four modes pairs with one Elite flag, so there are eight event types and
 no mode is written twice.
 
-| Mode | Shape |
-| ---- | ----- |
-| `monster_smash` | One participant against low to midlevel creatures |
-| `team_monster_smash` | A certified guild, up to 120 against 1 |
-| `dungeon_crawl` | One participant, or a group of six, through a dungeon |
-| `raid` | A group of sixty, the most challenging and the most rewarding |
+| Mode | Label on screen | Shape |
+| ---- | --------------- | ----- |
+| `monster_smash` | Fixation | One participant against low to midlevel creatures |
+| `team_monster_smash` | Coagulation | A certified guild, up to 120 against 1 |
+| `dungeon_crawl` | Descension | One participant, or a group of six, through a dungeon |
+| `raid` | Cementation | A group of sixty, the most challenging and the most rewarding |
+
+The code is what every other module keys on. The label is what the screen draws
+beside the Standard or Elite word, so a reader matches a row above to a button.
 
 `src/competition/poa_modes.py` — the one table the Elite flag indexes
 
@@ -176,20 +179,24 @@ turn does not spend.
 
 ## The token
 
-The ledger is append-only, and four methods are its whole surface.
+The ledger is append-only. Ask the class for its public names and ten methods
+answer. Its own docstring lists four of them, and one of those four names
+nothing: no method answers to `remaining_supply`. The method that reports what
+is still mintable is `remaining_ever`.
 
-`src/competition/token_ledger.py` — `TokenLedger`
+`src/competition/token_ledger.py` — the ten methods `TokenLedger` declares
 
 ```python
-class TokenLedger:
-    """
-    Append-only ACRV token ledger.
-
-    award()  — mint tokens for a competition result (idempotent)
-    balance()  — current balance for a bot
-    total_minted()  — total ACRV in existence
-    remaining_supply()  — tokens still mintable this season
-    """
+    def award(
+    def balance(self, bot_id: str) -> int:
+    def awards(self, bot_id: str) -> List[AwardRecord]:
+    def total_minted(self) -> int:
+    def remaining_ever(self) -> int:
+    def season_minted(self, season: int) -> int:
+    def leaderboard(self, top_n: int = 20) -> List[dict]:
+    def supply_summary(self) -> dict:
+    def save(self):
+    def load(self) -> "TokenLedger":
 ```
 
 The hard cap is ten million, and the ledger refuses an award that would pass
@@ -209,17 +216,44 @@ MIN_SEASON_REWARD = 100  # Floor — never less than this per season
 Awards are idempotent: settling the same result twice writes one record.
 Balances are replayed from the log, and no operation edits a balance.
 
-Five tiers are awarded on rank within the field, and the rarest three carry a
-lifetime cap on how many can ever exist. Each tier is named for a stage of the
-Corpus Hermeticum alchemical path, and pays a fixed number of tokens.
+Five tiers are awarded on rank within the field. Iterate the tier table and four
+of the five carry a lifetime cap on how many can ever exist. Harvest is the one
+that carries none. Each tier is named for a stage of the Corpus Hermeticum
+alchemical path, and pays a fixed number of tokens.
 
 | Tier | Stage | Rank | ACRV paid | Ever minted, at most |
 | ---- | ----- | ---- | --------: | -------------------: |
 | Harvest | NIGREDO | top 50% | 10 | no cap |
-| Gold Fold | ALBEDO | top 10% | 50 | no cap |
+| Gold Fold | ALBEDO | top 10% | 50 | 100,000 |
 | Bear Slayer | CITRINITAS | top 25% in a verified bear market | 100 | 10,000 |
 | Grand Accumulator | RUBEDO | top 1% across three consecutive seasons | 500 | 1,000 |
 | Ekthelius | UNIO MYSTICA | perfect score across every metric | 10,000 | 21 |
+
+The cap field is `max_ever`. It holds nothing for Harvest alone. The first two
+tiers show both cases.
+
+`src/competition/season_schedule.py` — the uncapped tier, then the next one
+
+```python
+    RarityTier(
+        name="Harvest",
+        emoji="🌾",
+        description="Top 50% of competition field",
+        rank_pct_max=0.50,
+        condition="Win rate > 50% of competing bots",
+        max_ever=None,
+        base_value=10,
+    ),
+    RarityTier(
+        name="Gold Fold",
+        emoji="🪙",
+        description="Top 10% of competition field",
+        rank_pct_max=0.10,
+        condition="Advantage/capital in top 10% of field",
+        max_ever=100_000,
+        base_value=50,
+    ),
+```
 
 ## The token contract
 
@@ -280,12 +314,13 @@ it, and nothing destroys it. It keeps its own ledger, apart from the token
 ledger above, because the two obey opposite rules: the token only ever moves
 outward into a balance, while Quintessence circulates.
 
-`src/competition/quintessence_ledger.py` — the eight operations
+`src/competition/quintessence_ledger.py` — the nine operations
 
 ```python
 def distil(self, address: str, fee_usd: object, trade_grade: object) -> Decimal:
 def spend(self, address: str, amount: object, held_address: str) -> Decimal:
 def transfer(self, sender, recipient, amount, skill_level) -> QuintessenceTransfer:
+def payout(self, held_address: str, credits: dict) -> Decimal:
 def respawn(self, address: str, amount: object) -> Decimal:
 def embed_from_pleroma(self, amount: object) -> Decimal:
 def embed_from_wallet(self, address, amount, embedded_amount) -> QuintessenceEmbed:
@@ -296,7 +331,9 @@ def release_all_to_pleroma(self, amount: object) -> Decimal:
 Quintessence can be in exactly four places, and the four always add up to
 everything ever distilled. A wallet holds what a participant can spend. A held
 address holds what they have already spent, which rests there and funds later
-awards. The pleroma holds what bled out of a transfer, and the ledger respawns
+awards. The payout operation is what pays one out, and it moves the award from
+the held address into the winner's wallet. The pleroma holds what bled out of a
+transfer, and the ledger respawns
 that to other participants. The embedded bucket holds what a thing in the world
 carries in itself, drawn out of the pleroma and returned there when the thing is
 broken.
@@ -305,7 +342,8 @@ broken.
 flowchart LR
     FEE[certified exchange fee] -->|distil| WALLET[wallet]
     WALLET -->|spend| HELD[held address]
-    WALLET -->|transfer| OTHER[another wallet]
+    HELD -->|payout| OTHER[another wallet]
+    WALLET -->|transfer| OTHER
     WALLET -->|bleed| PLEROMA[the pleroma]
     PLEROMA -->|respawn| OTHER
     PLEROMA -->|embed| EMBEDDED[embedded]
@@ -407,19 +445,73 @@ at level 100 and five of them measure 2,750 — so the resolution changes nothin
 about the stat scale.
 
 Every launch builds the ledger and attaches it to the window beside the local
-chain, so a later panel finds it where it finds the chain.
+chain, so a later panel finds it where it finds the chain. The same launch hands
+that ledger to the certification socket, so the socket and the panels move one
+ledger and not two.
 
-`src/gui/shared_testnet.py` — the line that builds it
+`src/gui/shared_testnet.py` — the two lines that build it, and the socket that takes it
 
 ```python
-main_win._quint_ledger = cls.install_quint_ledger(quint_ledger_path)
+        ledger = cls.install_quint_ledger(quint_ledger_path)
+        main_win._quint_ledger = ledger
+        main_win._market_rotation = bridge.install_market_rotation(rotation_path)
+        main_win._capture_bounds = bridge.install_capture_bounds(
+            main_win._market_rotation, bounds_path
+        )
+        main_win._certification_socket = bridge.install_certification_socket(
+            ledger, socket_path, main_win._capture_bounds
+        )
 ```
 
-Nothing spends Quintessence yet. No screen shows a balance and no trade
-certifies, so the ledger loads empty on every launch and reports nothing ever
-distilled. The transfer duration, the skill that gates a transfer, the guild
-check, and the share of a market pool a participant may take are all other
-units.
+The screen spends Quintessence. The distil control mints from a trade
+fee. The spend control then casts a band and rests its cost in the event pot.
+The wallet over the party window draws what the spend left. Fire the two in that
+order on the Demo TestNet chain and each prints what its mechanism did.
+
+```
+distil   Distilled 0.1 Quint.
+spend    Band x1 cost 0.001 Quint, resting at poa_elite_event_pot.
+wallet   Quint reads -- before the distil and 0.099 after the spend
+```
+
+A trade certifies through `CertificationSocket.certify`, which signs one fill,
+logs it, posts it and distils the venue's fee. It refuses a fill already
+certified.
+
+`src/competition/certification_socket.py` — what the method contracts to do
+
+```python
+    def certify(self, identity: BotIdentity, fill: CertifiedFill) -> CertificationReceipt:
+        """Sign, log, post and distil one fill, and return its receipt.
+```
+
+The ledger loads whatever its file holds. On a chain that has distilled, the
+Quint subtab names the file as held and reports the figure minted on it.
+
+```
+Ledger file      quintessence_ledger_testnet.json - held
+Minted so far    0.1
+Smallest unit    0.00000001
+Supply cap       33000000
+```
+
+The transfer duration, the transfer skill, the guild and the share of a pot are
+all drawn. The skills subtab states the duration and the bleed. The train control
+records one use and reports the level it reached. A Guild subtab opens on Ctrl+7
+and reports the roster. The pot returns three quarters of itself to the
+participants.
+
+```
+duration      1000 Quint takes 100 hours at level 1 and 10 hours at level 10.
+train         Quintessence Transfer stands at level 1 on 1.0 weighted uses.
+standing      level 1 - effect 1.1x - bleed 8.00% - transfers sent 0
+guild         Guild, Ctrl+7 - 0 guilds, 0 members, ranks officer and member
+return pool   Return pool, 75%
+```
+
+No module writes a guild roster file, so the roster loads empty and no control
+founds a guild. Nothing advances the season either: the counter lives behind a
+gated registry function on the chain and no module under `src` reaches it.
 
 ## Head to head
 
@@ -484,7 +576,9 @@ so a trophy lasts as long as the chain does.
 ## The chain
 
 `local_testnet.py` simulates the whole Base environment in memory, with no
-wallet, no ETH and no network. Four classes make it up.
+wallet, no ETH and no network. Ask the module for the classes it declares and
+seven answer. Four are the chain and its contracts. Three are the records those
+four store.
 
 | Class | Holds |
 | ----- | ----- |
@@ -492,6 +586,9 @@ wallet, no ETH and no network. Four classes make it up.
 | `LocalACRV` | The ERC-20 balances and the mint history |
 | `LocalRegistry` | Competitions, submissions and adjudications |
 | `LocalTestnet` | The three above, plus a mock oracle and transaction receipts |
+| `Block` | One block's number, hash, parent hash, timestamp and transactions |
+| `TxRecord` | One transaction's hash, block, sender, function, arguments and gas |
+| `ChainEvent` | One event a contract emitted, with its block and its arguments |
 
 One call runs a whole competition on that chain and returns the result table.
 It registers the entrants, trades them, takes their submissions, adjudicates,
@@ -517,14 +614,43 @@ The real targets sit ready for the day it deploys.
   Base Sepolia: chain_id=84532 — testnet (deploy here first)
 ```
 
-The contract addresses and ABIs sit beside them.
+The two ABIs sit beside them, and the four address fields are empty. Read the
+two configs and both the token address and the registry address answer an empty
+string on each network, because no deploy has put a contract on either. The ABIs
+are complete, so the calls are already described the day an address arrives.
+
+`src/competition/base_config.py` — what the two configs answer
+
+```
+BASE_MAINNET   acrv_address = ''   registry_address = ''
+BASE_SEPOLIA   acrv_address = ''   registry_address = ''
+ACRV_ABI       12 entries
+REGISTRY_ABI   16 entries
+```
 
 ## The two shelved tabs
 
 Both tab modules exist and the window builds neither. Their surfaces stay
 registered in the bridge, so the view models answer with no Qt tab in front of
 them. The Testnet tab is where a competition would be run and its blocks read
-in a block explorer; today the demo run above is the only way to reach either.
+in a block explorer.
+
+The local chain is reachable without either tab. Pick the Demo TestNet chain on
+the Accumulation tab, press the identity control twice, then the distil control
+and the spend control. Each one writes a file under the runtime directory.
+
+```
+the identity control writes   bot_identity.json
+the distil control writes     quintessence_ledger_testnet.json
+the spend control writes      poa_record_store_testnet.json
+```
+
+Nothing draws a block explorer. The Quint subtab says so in its own words.
+
+```
+No block height and no merkle root is drawn. merkle_log writes the trade log
+and no subtab reads its root.
+```
 
 `src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
 
@@ -15042,7 +15168,217 @@ any module can read.
 The rest of the dungeon stands where it stood. Nothing rules the inside, nothing
 resolves a fight, and a round still has no length.
 
-## 2026-09-11 12:45 - #586 - a participant who has not moved stands at the arena
+## 2026-09-11 12:45 - #586 - a trimmed chart rolls, and keeps the odds it had
+
+### A mature world stops dropping junk
+
+His sentence: loot and resources roll off the chart as a world matures, so that
+mature players do not spend their item lists on things they cannot use.
+
+The code already cut the chart. Nothing rolled on what the cut left. A trimmed
+chart existed and no drop could come out of it.
+
+### What the roll refused, and what it answers now
+
+A roll needs weights that add to a hundred. The five declared weights add to a
+hundred. A band is the chart with its commonest tiers cut off the low end, so a
+band adds to less than a hundred and the roll turned it away.
+
+What the program printed when a band met the roll:
+
+```
+band Cauda Pavonis, Flores, Elixir, Magisterium
+LootTableError: the 4 loot weights total 40.0, not 100; no roll span can be
+cut from them
+```
+
+The weight the cut tiers held now spreads across the tiers that stay, in
+proportion to what each one already held. A tier that held twice another tier's
+weight still holds twice it. Every band adds to exactly a hundred.
+
+`src/competition/loot_drop.py` - the rule, in the one function that states it
+
+```python
+def band_weight_pct(band: object) -> tuple[tuple[LootTier, Fraction], ...]:
+    """Return every tier in ``band`` beside the percent it owns of the band.
+
+    The weight of each tier off the chart is spread across the tiers left in
+    proportion to what they already held, so every surviving pair keeps the odds
+    it had on the full chart and a ``Fraction`` carries the share exactly.
+    """
+```
+
+The share is an exact fraction and not a decimal. Three tiers left on the chart
+give each one a third of a whole number, and a decimal cannot hold a third. A
+fraction holds it, so the total lands on a hundred and not near it.
+
+### Every band, and the odds it keeps
+
+Five bands exist. Nothing off the chart, one tier off, and so on to four tiers
+off. Cutting all five leaves nothing to roll, and the module turns that away.
+
+What the program printed for each band. The span is the whole numbers a roll comes
+from, out of the thousand a full chart holds:
+
+```
+tiers off   band                                          span   total
+0           Calx, Cauda Pavonis, Flores, Elixir, Magist.  1000   100/1
+1           Cauda Pavonis, Flores, Elixir, Magisterium     400   100/1
+2           Flores, Elixir, Magisterium                    150   100/1
+3           Elixir, Magisterium                             40   100/1
+4           Magisterium                                      5   100/1
+```
+
+Every weight, before the cut and after it:
+
+```
+band            tier             before   span   after exact   after pct
+0 off chart     Calx                 60    600          60/1   60.000000
+                Cauda Pavonis        25    250          25/1   25.000000
+                Flores               11    110          11/1   11.000000
+                Elixir              3.5     35           7/2    3.500000
+                Magisterium         0.5      5           1/2    0.500000
+
+1 off chart     Cauda Pavonis        25    250         125/2   62.500000
+                Flores               11    110          55/2   27.500000
+                Elixir              3.5     35          35/4    8.750000
+                Magisterium         0.5      5           5/4    1.250000
+
+2 off chart     Flores               11    110         220/3   73.333333
+                Elixir              3.5     35          70/3   23.333333
+                Magisterium         0.5      5          10/3    3.333333
+
+3 off chart     Elixir              3.5     35         175/2   87.500000
+                Magisterium         0.5      5          25/2   12.500000
+
+4 off chart     Magisterium         0.5      5         100/1  100.000000
+```
+
+The band with two tiers off the chart is the one a decimal cannot carry. Its three
+weights are 220/3, 70/3 and 10/3. Each one repeats forever as a decimal, and the
+three add to exactly 300/3, which is a hundred.
+
+### The odds between the tiers that stay
+
+Each pair of tiers holds one ratio on the full chart. The same pair holds the same
+ratio on every band that keeps both. The program printed each pair twice, once off
+the full chart and once off the band:
+
+```
+band 1 off chart
+  Cauda Pavonis : Flores         full     25/11   band     25/11   same True
+  Cauda Pavonis : Elixir         full      50/7   band      50/7   same True
+  Cauda Pavonis : Magisterium    full      50/1   band      50/1   same True
+  Flores        : Elixir         full      22/7   band      22/7   same True
+  Flores        : Magisterium    full      22/1   band      22/1   same True
+  Elixir        : Magisterium    full       7/1   band       7/1   same True
+
+band 3 off chart
+  Elixir        : Magisterium    full       7/1   band       7/1   same True
+```
+
+Elixir stays seven times as likely as Magisterium on every band that holds both.
+Elixir holds seven times on the full chart, seven times with one tier cut, and
+seven times with three cut.
+
+### A real drop on a trimmed band
+
+The program drew four thousand drops on each trimmed band, through the same
+rotation and the same drop call the rest of the package uses. What came out:
+
+```
+band Flores, Elixir, Magisterium
+
+tier              drawn    drawn pct     band pct
+Calx                  0     0.000000    off chart
+Cauda Pavonis         0     0.000000    off chart
+Flores             2907    72.675000    73.333333
+Elixir              950    23.750000    23.333333
+Magisterium         143     3.575000     3.333333
+```
+
+Nothing landed on a tier off the chart, on any band. The rarest tier left on the
+chart still came out: Magisterium reached 143 drops of four thousand on this band,
+56 on the band with one tier cut, and 495 on the band with three cut.
+
+Four thousand draws a band shows that the odds sit near the weights. It does not
+prove the exact share, and it cannot show a tier rarer than about one draw in four
+thousand.
+
+The same four thousand draws on the full chart do reach the cut tiers:
+
+```
+Calx           drawn 2358 times on the full chart
+Cauda Pavonis  drawn 1045 times on the full chart
+Flores          428
+Elixir          149
+Magisterium      20
+```
+
+A count of zero on a trimmed band therefore means the band works. It does not mean
+the counter missed a drop.
+
+One drop on a trimmed band went into a real Vessel store, and onto disk:
+
+```
+band             = Elixir, Magisterium
+drop             = roll 14, Elixir, armour
+delivered to     = u96vessel
+held_tiers       = ['Elixir']
+```
+
+### The full chart did not move
+
+One script drove the full chart's roll and its refusal before this change and
+after it. The two runs printed the same thing to the character. That includes the
+name the drop hashes itself under:
+
+```
+roll          = 370
+tier_name     = Calx
+item_id       = 3a9fe5488c13c80e767e61dae6ff5a37760494547fd85727974958df4d005b20
+```
+
+A hand-written set of five weights that does not add to a hundred still gets
+turned away, and the refusal still names both numbers:
+
+```
+dropping Calx         the 4 loot weights total 40.0, not 100
+dropping Magisterium  the 4 loot weights total 99.5, not 100
+```
+
+Dropping Magisterium takes only half a point off the total, and the roll turns
+that set away too. The check reads the total, and not how many tiers there are.
+
+### What a band means for material grades
+
+The material quality grades are the same five names, read from the same place as
+the loot tiers. They are one list and not two.
+
+A band cuts both. A world that drops no Calx loot also yields no Calx grade of any
+material.
+
+A grade that left the chart is still a grade. The grade table still answers for
+Calx, because items already held carry their own grade. A band decides what a
+world drops, and not what a grade is.
+
+### What still has no figure
+
+How many tiers leave the chart for each world tier. Nobody has set that number.
+The module turns away a band read from a world tier until somebody does:
+
+```
+world_tier.loot_band_at_tier(2)
+FigureAbsentError: no band follows from a world tier: how many loot tiers leave
+the chart for each world tier above FIRST_WORLD_TIER. No statement names one.
+```
+
+Nothing raises a world's tier on its own either. No module names a cataclysm, so a
+world stays at the tier it opened on, and every world rolls the full chart today.
+
+A band rolls, and nothing reaches it. A caller that hands a band to the drop call
+gets a correct roll. No control and no subtab hands it one.
+## 2026-09-11 12:50 - #586 - a participant who has not moved stands at the arena
 
 Every participant is somewhere. A participant who has never walked is standing at
 the arena. Before this, nothing could say that. Movement wrote one record a leg,
