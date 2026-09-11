@@ -8410,3 +8410,233 @@ not reached               src/competition/monster_spawn.py
 owed                      the module's entry in the package export list
 on a screen               nothing
 ```
+
+## 2026-09-11 02:30 - #585 - materials and the Quintessence they embed
+
+### His two sentences about the cap are one rule, and the ledger already holds it
+
+The operator said the Quintessence inside a material does not count against the
+circulating hard cap. He also said it stays budgeted against the hard limit.
+Those read as opposites and they are not. The ledger keeps four buckets, not one,
+and every movement it allows keeps the four adding up to everything ever
+distilled. Embedded is one of the four. An embedded amount is inside the
+33,000,000 limit and inside nobody's wallet at the same time, which is exactly
+budgeted and not circulating.
+
+`src/competition/quintessence_ledger.py` - `conservation`, the sum every
+movement has to keep
+
+```python
+buckets = wallets_total + held_total + self._pleroma + self._embedded
+delta = buckets - self._total_ever_minted
+```
+
+### A material states what it holds, and moves nothing
+
+The new module declares a band and reads it back. It mints nothing, spends
+nothing and moves nothing between buckets. Four methods on the ledger already do
+every movement an embedded amount can make, and the material module calls none of
+them. That split is deliberate: one place owns the accounting, and the content
+layer only declares figures for it to move.
+
+`src/competition/materials.py` calls none of these, which is the whole of the
+movement path
+
+```
+quintessence_ledger.embed_from_pleroma       a world's own Quintessence embeds
+quintessence_ledger.embed_from_wallet        a player's Quintessence embeds
+quintessence_ledger.release_from_embedded    part comes back, the rest bleeds
+quintessence_ledger.release_all_to_pleroma   none comes back
+```
+
+### The lowest grade of ore is the smallest amount the currency can express
+
+He gave one figure pair: a unit of iron ore holds 0.00000001 to 0.00000005
+Quintessence. Measured against the ledger, the low end is the minimum unit
+exactly and the high end is five of them. Ore spans the smallest amounts that can
+exist at all, and nothing embeds less than one minimum unit. The module refuses a
+band that tries to.
+
+Measured, all four read off the running program
+
+```
+QUINTESSENCE_MINIMUM_UNIT                 0.00000001
+iron ore at its lowest quality            0.00000001    one minimum unit
+iron ore at its highest quality           0.00000005    five minimum units
+a declared band under one minimum unit    refused, with the refusal naming both
+```
+
+### Quality has five grades, and nobody had to invent them
+
+Quality is the axis that turns one material into a spread of amounts, so the
+grades had to come from something already settled. Three candidates were checked
+against his band. The five loot tiers fit it exactly, one minimum unit a step.
+The ten sphere bands cannot: they need a step of four ninths of a minimum unit,
+and the second grade then lands on an amount no bucket can hold. A trade grade is
+a reading of a real trade fill, runs continuously from zero to one, and is not a
+property of a material at all.
+
+Measured, each scale driven across his band
+
+```
+scale               step across the band        every amount on the grid
+five loot tiers     one minimum unit            yes
+ten sphere bands    0.4444... minimum units     no, the second grade is off it
+trade grade         continuous, zero to one     not a grade of a material
+```
+
+The five tiers were the closest fit for another reason as well. The conversion
+table already pairs them with these same ore figures: it carries one
+Quintessence-release row a tier, every one of them at his high figure. The grade
+ladder and the ore band were already sitting next to each other before this unit
+existed.
+
+`src/competition/conversion_rates.py` - the pairing that was already there
+
+```python
+def _loot_release_rates() -> tuple[ConversionRate, ...]:
+    """One working entry a ``TIER_NAMES`` name, at ``LOOT_RELEASED_QUINTESSENCE``."""
+```
+
+### One unit of iron ore, at each of its five grades
+
+Read off the constructed objects, not off the source. Every amount is a whole
+number of minimum units, his two ends reproduce exactly, and the three grades
+between them are the second, third and fourth minimum unit.
+
+```
+Calx            0.00000001
+Cauda Pavonis   0.00000002
+Flores          0.00000003
+Elixir          0.00000004
+Magisterium     0.00000005
+```
+
+### Seven materials, one an ore of each metal the classes already name
+
+The class table gives every class a classical planet and that planet's metal.
+Seven classes, seven distinct metals, and iron is one of them, the metal his own
+example names. The material table therefore reads the metals out of the class
+table and names no material of its own. Change the classes and the materials
+follow.
+
+`src/competition/materials.py` - `MATERIAL_NAMES`, in the order the class table
+declares the metals
+
+```
+lead ore    tin ore    iron ore    gold ore    quicksilver ore    copper ore
+silver ore
+
+iron ore          its band is the operator's, and marked decided
+the other six     they take the iron band, and are marked working
+```
+
+That marking matters. Only one of the seven carries a figure he gave. The other
+six carry a placeholder with his figures in it, and the conversion table already
+says what that means: a material other than iron ore takes the iron ore band
+until he names its own scale.
+
+### Gear takes a slot, consumables and resources stack
+
+His rule was that the three must not conflict. Only gear takes fixed storage
+space, counted in slots. Consumables and resources stack to a large amount and
+take no slot. All seven materials are resources, so nothing here declares a piece
+of gear or a consumable; items are a later unit's work and they will name their
+own class.
+
+`src/competition/materials.py` - `STORAGE_CLASSES`, with what each one is
+declared to do
+
+```
+gear          takes one fixed slot, does not stack    none declared here
+consumable    stacks, takes no slot                   none declared here
+resource      stacks, takes no slot                   seven declared here
+```
+
+How large a stack runs is absent. He said large, and no figure anywhere says how
+large. Whatever sets it will be read from the same place the slot count is read
+from, and neither exists yet.
+
+### Weight is declared on every material, and nothing weighs anything
+
+Weight is what the two stacking classes share; a slot count is not, because only
+gear takes slots. Every material declares a weight a unit. The figure is one
+weight unit, it comes from the conversion table, and the conversion table marks
+it working and says plainly that nothing weighs anything today. A real figure is
+owed and it is his.
+
+Measured, read back off the conversion table
+
+```
+the row            TempWeight_0001, one unit of any material
+its figure         1 weight unit
+its provenance     working
+its own note       "Nothing weighs anything today and no figure sets a
+                   material's weight"
+```
+
+Weight is read on one occasion only, by his narrowing: encumbrance matters while
+a Vessel is moving items itself, such as after a foraging run. It is a function
+of strength for the maximum weight and constitution for the turn point penalty
+while carrying. Nothing in this unit builds any of that. No Vessel exists to
+carry anything, so the declared weight has no reader.
+
+### Salvage is named here and built nowhere
+
+Destroying an item to get its Quintessence back is his rule and a later unit's
+work. What this unit can say is the ceiling: the most a salvage could ever return
+from one unit of a material is everything that unit embeds, and not one minimum
+unit more. What share of that a salvage actually returns is absent.
+
+`src/competition/materials.py` - the rule stated, with no figure attached
+
+```
+the ceiling          the embedded amount at that grade, and no more
+the share returned   absent
+his rule             much is lost without proportionate skill, and salvage of a
+                     powerful item without it is destructive
+what would set it    a salvaging skill level, and the loss curve he puts on it
+the movement         quintessence_ledger.release_from_embedded already takes a
+                     recovered amount and sends the remainder to the pleroma
+```
+
+### Every amount is checked at import, and the check has been seen refusing
+
+The module drives all seven materials across all five grades every time it is
+imported, and refuses to finish loading if any amount breaks one of three rules.
+A failure would mean a material declaring Quintessence that no bucket can hold,
+which would take that amount outside the four-bucket sum and let the 33,000,000
+limit be passed with nothing reporting it.
+
+What the program printed, from the module's own logging
+
+```
+acervator.materials INFO drove 7 materials across 5 quality grades,
+                         0 amounts broke a rule
+```
+
+The three rules were each driven against a band built to break them, and each one
+refused in its own words.
+
+```
+half a minimum unit        "is under the 0.00000001 minimum unit, and no material
+                            embeds less Quintessence than the currency expresses"
+one and a half units       "is not a whole number of 0.00000001, and no bucket
+                            holds it"
+an end that drifts         reported as not reproducing the declared figure
+```
+
+### What nothing supplies, and what nothing reads
+
+Nothing in the running program reads a material. The module imports cleanly
+through the Proof of Accumulation path and the package does not export it, so a
+reader has to name it directly. One entry in the package's own export list would
+change that, and no screen shows a material either way.
+
+```
+reads this module              nothing
+owed                           the module's entry in the package export list
+owed to this module            a real weight a unit, and a salvage loss curve
+owed by this module to others   a material list for an item, which crafting reads
+on a screen                    nothing
+```
