@@ -1,11 +1,33 @@
 # Proof of Accumulation
 
-Reference. **Not built.** The window builds neither the Competition tab nor the
-Local Testnet tab. The tab row carries an empty tab labelled Accumulation in
-their place, and issue #147 carries the build-out. `src/competition/` is the
-Proof of Accumulation package, and its engine runs today with no screen in
-front of it. The rest of this file describes that engine and the contract
-design behind it, as a design, not as a shipped feature.
+Reference. **Built.** React draws this tab inside the desktop window, and the
+tab row carries it under the name Accumulation. The window still builds neither
+the Competition tab nor the Local Testnet tab. The page halves its top row: the
+current Vessel on the left, the Map or the Encounter on the right. The party
+window takes the lower half, and it lists up to 120 participants, 40 a page.
+Seven subtabs open over those zones — Maps, Character Details, Gear, Resources,
+Quint, Skills and Guild. Ctrl+1 to Ctrl+7 open them in that order. Maps opens
+only in an event that carries a map.
+
+The page draws 35 buttons. A player picks a chain, Live or Demo TestNet, then
+picks one of eight event types. A bar of fifteen controls drives the engine
+from the screen: they write this node's identity, distil a trade fee into
+Quintessence, record a skill use, send Quint to another participant, cast a
+band, grade a trade, pay out a pot, close an event, draw loot, file a market
+exclusion, reset the chain and declare a world. The identity, the reset and the
+world each ask first and act on a second press. Every control prints what its
+mechanism did, or that mechanism's own refusal. Until this node writes
+`bot_identity.json`, every other control refuses for want of a participant.
+
+The page names what is absent. It draws no pixel art, so every class, loot tier
+and event mode shows a stand-in glyph. Nothing gives a Vessel assignments,
+lifeskilling, crafting, notifications, gear, equipping, destruction or
+permadeath, and the page lists all eight. Nothing holds a field for experience,
+level, character class, gear, enemy, threat or guild, so those seven metrics
+read nothing. Nothing builds a guild roster, and nothing advances the season.
+`src/competition/` is the Proof of Accumulation package, and issue #147 carries
+the rest of the build-out. The sections below describe that engine and the
+contract design behind it.
 
 The design is an on-chain competition layer where bots compete publicly and the
 winners are awarded ACRV tokens on Base, which is Coinbase's L2. It evolved
