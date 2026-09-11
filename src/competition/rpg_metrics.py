@@ -9,8 +9,13 @@ behind each metric, and a metric whose field is absent answers None.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 SELL = "SELL"
 BUY = "BUY"
+
+#: The number types a metric field may carry; Decimal is the Quintessence amount type.
+_NUMBER_TYPES = (int, float, Decimal)
 
 #: The field behind each metric, as the emitter or the record names it.
 METRIC_SOURCES: dict[str, str] = {
@@ -65,14 +70,15 @@ def _read(holder: object, name: str) -> object:
     return getattr(holder, name, None)
 
 
-def _number(holder: object, name: str) -> float | None:
-    """Return the named value as a float, or None when it is absent or not numeric."""
+def _number(holder: object, name: str) -> float | Decimal | None:
+    """Return the named value as a float, or as the Decimal it already is, else None."""
     value = _read(holder, name)
-    if type(value) is int:
-        return float(value)
-    if type(value) is float:
+    # bool is an int subclass and a flag is not an amount, so True answers None.
+    if isinstance(value, bool) or not isinstance(value, _NUMBER_TYPES):
+        return None
+    if isinstance(value, Decimal):
         return value
-    return None
+    return float(value)
 
 
 def _whole(holder: object, name: str) -> int | None:
@@ -84,9 +90,16 @@ def _whole(holder: object, name: str) -> int | None:
 def _words(holder: object, name: str) -> str | None:
     """Return the named value as a non-empty string, or None."""
     value = _read(holder, name)
-    if type(value) is not str or value == "":
+    if not isinstance(value, str) or value == "":
         return None
     return value
+
+
+def _sum(first: float | Decimal, second: float | Decimal) -> float | Decimal:
+    """Return the two numbers added, as a Decimal when either is one."""
+    if isinstance(first, Decimal) or isinstance(second, Decimal):
+        return Decimal(str(first)) + Decimal(str(second))
+    return first + second
 
 
 def _labels(holder: object, name: str) -> list[str]:
@@ -94,7 +107,7 @@ def _labels(holder: object, name: str) -> list[str]:
     value = _read(holder, name)
     if not isinstance(value, list):
         return []
-    return [member for member in value if type(member) is str]
+    return [member for member in value if isinstance(member, str)]
 
 
 def health_metrics(record: object, gate: object) -> dict:
@@ -108,7 +121,7 @@ def health_metrics(record: object, gate: object) -> dict:
     compounding = _read(gate, "compounding_snapshot")
     maximum = _number(scrumming, "target_balance")
     delta = _number(_read(gate, "scrum_fixture"), "delta")
-    current = None if maximum is None or delta is None else maximum + delta
+    current = None if maximum is None or delta is None else _sum(maximum, delta)
     return {
         "max_health_usd": maximum,
         "base_health_usd": _number(scrumming, "anchor_target_balance"),
@@ -177,7 +190,7 @@ def profile_metrics(
     grade: object = None,
     voting: object = None,
 ) -> dict:
-    """Return every name in ``METRIC_NAMES``, off ``record`` and the readings beside it."""
+    """Every name in ``METRIC_NAMES``, off ``record`` and the readings beside it."""
     metrics: dict = {}
     metrics.update(health_metrics(record, gate))
     metrics.update(cycle_metrics(record, gate, fill))
