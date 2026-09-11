@@ -9281,3 +9281,228 @@ provides, nothing reads   a world's tier, and the depths that tier reaches
 provides, nothing reads   the import, and the total each world has imported
 provides, nothing reads   the loot band a cut leaves on the chart
 ```
+
+## 2026-09-11 03:50 - #586 - parties, and the armies their Raids link into
+
+A party now exists as a record. A party holds its members, its event mode, and
+the one member who leads it. Above the party sits an army. An army links two or
+more Raid parties and reads a General off each one.
+
+```
+src/competition/army_command.py
+```
+
+### His structure, in his own words
+
+```
+Armies are comprised from multiple, linked Raids. Raid Leaders become Generals
+under such structures. Generals must coordinate their raids while avoiding
+devastating multi-square type abilities and AoEs that last multiple turns. These
+events should be intense and always a bit chaotic.
+```
+
+```
+Idea is for cataclysms to be the peak event type for PoA since it effects all
+players in a world. My vision is to have entire player armies fighting cosmic /
+nightmare type bosses at some point during one of these.
+```
+
+### Nothing held a party's members until now
+
+Every event mode has declared a party range from the start, and one check already
+read those ranges. The party itself was missing. Nothing anywhere held a list of
+members, so the range had nothing to measure.
+
+```
+poa_modes.MODES             every mode's party range, declared
+guild_roster.require_party  checks a list of addresses against one range
+army_command.Party          the record that holds the members
+```
+
+### A party forms inside its mode's own range and nowhere outside it
+
+Forming runs through the check that already existed. The range that refuses a
+party is the mode's own declared range, and no second copy of it exists. A Raid
+admits two to sixty. One run drove both ends and both refusals.
+
+```
+form_party, through guild_roster.require_party
+
+a Raid of  2   forms     w0 leads a Raid party of 2
+a Raid of 60   forms     w10 leads a Raid party of 60
+a Raid of  1   refused   Raid admits 2 to 60 participants and this party holds 1
+a Raid of 61   refused   Raid admits 2 to 60 participants and this party holds 61
+a leader holding no seat
+               refused   'w99' leads this Raid party of 2 and holds no seat in it
+```
+
+This work changes no range. It adds no mode, and it raises no ceiling.
+
+```
+Monster Smash              1 to 1      no guild
+Team Based Monster Smash   2 to 120    one guild
+Dungeon Crawl              1 to 6      no guild
+Raid                       2 to 60     one guild
+```
+
+### An army links Raids and refuses every other kind of party
+
+His sentence names Raids, so Raids are what an army links. A Dungeon Crawl party
+forms normally, and the link then refuses it. One raid is not an army either. The
+smallest army links two raids.
+
+```
+a Dungeon Crawl party   refused   a Dungeon Crawl party links into no army; an
+                                  army is built from Raid parties
+an army of one raid     refused   army 'The Fourfold Host' links 1 Raid party(s);
+                                  an army links at least 2 of them
+```
+
+### One address holds one seat in one army
+
+This is the refusal a size check cannot see. Two raids can each be a legal Raid
+party and still name the same player. An army admitting both would count that
+player twice in every fight, under two Generals.
+
+```
+two disjoint raids of four   linked    2 raids, 8 members
+a third raid naming w3, who already sits in raid 0
+                             refused   w3 already hold seats in army 'The
+                                       Fourfold Host' across its 2 linked raid(s)
+the same third raid, in a fresh army
+                             linked    2 raids, 7 members
+```
+
+The third line is the one that matters. The party the first army refused links
+into a fresh army without complaint. The refusal came from the shared address and
+from nothing else about that party.
+
+### A General is a role a leader takes, not an appointment
+
+His sentence gives one General to each linked raid. Raid Leaders is plural and
+Generals is plural, and the sentence maps one onto the other. Nothing he has
+written names a single commander standing over a whole army.
+
+The army records no General of its own. Each raid keeps its leader, and the army
+reads each linked raid's leader as that raid's General at read time. The same
+wallet answers differently to a party and to an army.
+
+```
+the party alone calls w4 a leader
+the army calls the same wallet a general
+a stored raid carries leader, members, mode and guild_key, and no general field
+```
+
+That shape answers a General leaving in the middle of an event without a rule of
+its own. No separate record exists to go stale. Forming freezes a party, so
+nothing in the package removes a member from one, and the departure path is an
+open item of its own.
+
+### An army reconstructs through the same refusals that formed it
+
+A stored army rebuilds raid by raid, and each raid goes back through forming and
+linking. Every refusal above applies to a stored army and to a new one. The load
+refuses a stored party whose members have since left the guild.
+
+```
+two raids of four, stored as 280 bytes of JSON
+rebuilt   generals ('w0', 'w4')   2 raids   8 members   round trip identical
+```
+
+### Which clock a party and an army answer to
+
+No clock times either object. A party forms before an event begins, and an army
+forms before a cataclysm, so neither forming sits inside a turn of either clock.
+Once an event runs, the seating call that already exists puts a party's members on
+the event turn. A cataclysm reaches every player in a world, so an army belongs to
+the world turn. Nothing schedules either one.
+
+```
+event turn   300 seconds, 60 for an Elite event, from
+             poa_modes.EventVariant.turn_seconds
+world turn   one hour
+owed         a deadline for forming a party, and one for linking an army
+```
+
+### The party window holds two raids and no more
+
+The screen that would show an army has a measured ceiling. The window pages forty
+participants at a time and holds a hundred and twenty in all.
+
+```
+proof_of_accumulation_tab_surface.party(), driven
+
+capacity 120   per page 40   pages 3   group size 5   groups 8
+header "Page 1 of 3 - 40 a page - up to 120"
+```
+
+Two full Raids of sixty fill it exactly. A third raid does not fit. The window
+shows no leader and no General, and carries no army section at all.
+
+```
+owed   a party window that pages an army, not one party
+owed   a mark on the window for the General of each raid
+```
+
+### How many raids one army may link is his to set
+
+No cap sits in the code. A world seats a fixed number of participants, and
+dividing that by a Raid's own ceiling gives the raids a world could field at once.
+Whether that is the bound he wants is his decision, so nothing declares it.
+
+```
+79 participants a layer  x  20 layers     = 1,580 seats a world
+1,580 seats  /  60 a Raid                 = 26 raids
+declared in army_command                  = no cap
+```
+
+### What stays absent
+
+Four things an army exists to fight do not exist. A count found each absence.
+
+```
+combat           no module under src resolves a fight
+abilities        skill_ladder holds one skill, the Quintessence transfer
+an area effect   needs an ability and a turn resolution
+a cataclysm      no module under src names one
+```
+
+The multi-square reach his sentence describes has a real anchor already. The world
+grid addresses squares and gives every position a locator, so an ability covering
+more than one square would read those. Nothing builds one here.
+
+### Nothing forms a party in the running program
+
+Driving the tab's own handler returns the party window's paging and nothing else.
+No member, no leader, no army. The handler imports twenty-nine modules from the
+competition package, and neither the guild roster nor this module is among them.
+
+```
+proof_of_accumulation_tab_surface.view_model({}), under python -X dev
+
+party block keys   capacity, group_size, groups, mark_ranks, mark_seam_note,
+                   mark_seams, page, page_text, pages, per_page, placeholder
+army key           absent
+general key        absent
+```
+
+The coding review returns seven findings on the new module. Six of them say a
+method has no caller, which is the same sentence in another form. The seventh
+names a missing copyright line, which no file in the package carries.
+
+```
+owed   the module's entry in the package export list
+owed   who may form an army, and whether its raids must share one guild
+```
+
+### What a party reads, and what an army hands back
+
+```
+reads, nothing provides   a party, from a screen or an event entry. Nothing
+                          forms one
+reads, nothing provides   a combat result, which is what a General coordinates
+reads, nothing provides   a cataclysm, which is the event an army is raised for
+provides, nothing reads   a party's members, its mode, its leader and its guild
+provides, nothing reads   an army's linked raids, and the General of each one
+provides, nothing reads   one row a linked raid, as a surface would serve it
+```
