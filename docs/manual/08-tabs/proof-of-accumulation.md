@@ -10208,3 +10208,200 @@ provides, nothing reads   a control hold, naming the controller and the owner
 provides, nothing reads   a theft record, reconstructible after the owner moved
 provides, nothing reads   both players' potential before and after a taking
 ```
+
+## 2026-09-11 05:10 - #585 - an item is a material list, and cohesion holds it together
+
+### Four item types, and not one name was invented
+
+His rule for this layer is that content is sourced, not made up. The gear subtab
+already prints the four kinds of item that nothing builds. Those four names were
+decided before this unit existed, so the item table takes them exactly as the
+screen spells them. No artefact is named: every entry is a type, and a named
+instance waits on crafting, which does not exist.
+
+Read off the running surface module and off the new table
+
+```
+the subtab prints   "Nothing builds armour, weapons, accessories, consumables,
+                     so this subtab manages loot alone."
+the table declares   armour, weapons, accessories, consumables
+named instances      none, and ITEM_TYPES says so in every row it serves
+```
+
+### An item is a material list, and the list is what a salvage would read
+
+One entry in a list names a material, how many whole units of it, and at which
+quality grade. Every declared type holds one unit of iron ore at the lowest
+grade. Iron ore is the one material whose embedded band the operator set himself;
+the other six take iron's band as a working figure, so a list naming one of them
+would rest on a figure he has not given. One unit is the count because no recipe
+sets a larger one.
+
+`src/competition/items.py` - one item read off the constructed object
+
+```json
+{
+ "name": "armour",
+ "storage_class": "gear",
+ "occupies_slot": true,
+ "stacks": false,
+ "components": [
+  {"material": "iron ore", "units": 1, "quality": "Calx", "embedded": "0.00000001"}
+ ],
+ "cohesion": "0.00000001"
+}
+```
+
+Every field a rebuild needs is in that row. A salvage reads the material, the
+units and the grade, and can work out what the item embeds without holding the
+item.
+
+### What holds an item together is the sum a Vessel already uses
+
+He asked for the Quintessence needed to hold an item together, read down its
+components. That sum was already built. One function adds a stat block for a
+Vessel, for a monster, or for an item's components, and it is the same function
+behind a Vessel's occupancy requirement. This unit writes no second sum: each
+component becomes one block, and the built function adds them.
+
+`src/competition/entity_stats.py` - the one sum, unchanged by this unit
+
+```python
+def quintessence_requirement(blocks: Iterable[StatBlock]) -> Decimal:
+    """Add every amount of every block in ``blocks``, exactly.
+
+    ``blocks`` holds one block a Vessel or a monster, and one block a component.
+    """
+```
+
+The conversion table already carried the row that turns a component's stats into
+cohesion. Measured, it holds a figure of one and marks it working, so cohesion is
+one for one with that sum today. A coefficient other than one is his to set, and
+the import check below would report at once if it took a cohesion off the grid.
+
+`src/competition/conversion_rates.py` - the row, read back at import
+
+```
+name          item_cohesion_per_component_quintessence
+figure        1
+provenance    working
+its own note  "One for one with entity_stats.quintessence_requirement until a
+               component model names a coefficient"
+```
+
+### Twenty cohesion amounts, and every one is a whole number of minimum units
+
+Quality is the axis that spreads one material over five amounts, so it spreads an
+item over five as well. Four types across five grades is twenty readings. Every
+one is a whole number of the smallest amount the currency can express, the lowest
+grade is exactly one of them, and nothing lands between two.
+
+Read off the constructed objects, every type identical because no recipe differs
+
+```
+grade            cohesion       minimum units
+Calx             0.00000001     1
+Cauda Pavonis    0.00000002     2
+Flores           0.00000003     3
+Elixir           0.00000004     4
+Magisterium      0.00000005     5
+```
+
+### Gear takes a slot, consumables stack, and a resource is a material
+
+His third storage rule is that the three classes must not conflict. Three of the
+four types take a counted slot and one stacks. No item type takes the resource
+class, and that is deliberate rather than missing: every material in the material
+table already declares itself a resource, so a resource item type would restate a
+material under a second name.
+
+Read off the item table by storage class
+
+```
+gear          armour, weapons, accessories      each takes a counted slot
+consumable    consumables                       stacks
+resource      none                              a resource is a material
+stack ceiling absent                            no figure sets how large a stack runs
+slot count    absent                            no figure sets a Vessel's slots
+```
+
+### His gear rule is one comparison, and nothing asks it
+
+Gear may not carry more Quintessence than the player who equips it. That refusal
+can be asked today, because a total is already a built figure and the reader that
+compares a balance to a requirement already exists. One call reads the item's own
+blocks against a total and answers full or short. Nothing equips anything, so the
+question has no caller.
+
+`src/competition/items.py` - the same reading at three totals
+
+```
+total held     cohesion      answer
+0              0.00000001    refused, short by 0.00000001
+0.00000001     0.00000001    allowed, exactly covered
+5              0.00000001    allowed, a level one Vessel's own requirement
+```
+
+The comparison reads the blocks that the cohesion sum adds, so the two figures
+cannot drift apart. A second subtraction would have been two numbers that can
+disagree, and there is only one.
+
+### Three ways to abuse a material list, and the answer to each
+
+A list is data, so the question is what a hostile list can declare. Three were
+driven against the real module and each one refused, with the refusal naming the
+rule it broke.
+
+What the program raised, quoted from the runs
+
+```
+a list with no material
+  "a type lists no material, so nothing holds it together and its cohesion
+   would be under the 0.00000001 minimum unit"
+
+one material listed twice
+  "a type lists ('iron ore', 'iron ore') and names one material twice; raise
+   that component's units instead"
+
+a cohesion above everything that can exist
+  "a type is held together by 40000000, above the 33000000 Quintessence that
+   can exist, so no holder could ever cover it"
+```
+
+The third refusal is bounded at the supply cap and no lower. Under the cap, a
+list can still ask for more than any real player holds, and the gear comparison
+above is what refuses it. That is the design, not a gap.
+
+### Every cohesion is checked at import, and the check reports its own count
+
+The module drives all four types across all five grades every time it loads. A
+fault row would mean an item claiming Quintessence that no bucket can hold, which
+would put that amount outside the ledger's four-bucket sum and let the 33,000,000
+limit be passed with nothing reporting it.
+
+What the program printed, from the module's own logging
+
+```
+acervator.items INFO drove 4 item types across 5 quality grades,
+                     0 cohesions broke a rule
+```
+
+### What an item is owed, and what reads one today
+
+Nothing in the running program reads an item. The module loads cleanly through
+the Proof of Accumulation path, and the package export list does not name it, so
+a reader has to name the module directly. The material table it is built on sits
+in the same state.
+
+```
+reads this module               nothing
+owed                            the module's entry in the package export list
+on a screen                     nothing; the gear subtab still prints that the
+                                four classes are built by nothing
+what this module owes nothing   crafting, salvage, equipping, an inventory, a
+                                Vessel's slot count, encumbrance, loot generation
+absent figures                  a stack ceiling, a Vessel's slot count, a salvage
+                                recovery share
+working figures                 the cohesion coefficient at one, and a weight of
+                                one per material unit, which nothing multiplies
+```
