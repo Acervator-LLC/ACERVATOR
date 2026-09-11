@@ -11605,7 +11605,7 @@ module completes a craft, so that entry named the wrong gap. It now names the re
 The recipe is absent because two figures are owed, the loss share and the turn count,
 and one decided pair of figures is all a recipe for each item type would need.
 
-`ABSENT_MECHANISMS` and `ABSENT_MECHANISM_NOTES` in `src/competition/items.py`
+The absent-mechanism list and its notes in `src/competition/items.py`
 
 ```python
 ABSENT_MECHANISMS: tuple[str, ...] = (
