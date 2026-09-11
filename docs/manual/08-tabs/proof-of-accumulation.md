@@ -12492,3 +12492,196 @@ absent  world_turn carries no owed-export note of its own, so nothing in it went
 absent  no file under src/gui or desktop names either module, so neither note
         reaches a screen and no screen file changed
 ```
+
+## 2026-09-11 08:30 - #147 - a control creates the world, and the map draws it
+
+### The press declares a world and breaches its first layer
+
+Nothing in the program created a world. The function that makes one had no caller
+anywhere under `src`, so the map had nothing to draw and every module that
+addresses a world sat idle for that one reason. The Accumulation tab now carries
+two more buttons, beside the two that reset the chain. The first asks and writes
+nothing. The second declares the world and opens its first layer in one press.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - the press, in full
+
+```python
+record = world.create_world(world_id)
+layer = world.breach_layer(world_id, address, FIRST_LAYER_INDEX)
+```
+
+Two calls, because one is not enough. A world on its own draws nothing: the map
+asks for the layers somebody has breached, and a new world has none. The map says
+so itself, and the run read both of its refusals straight off the screen.
+
+```
+no world          No world is generated. No grid, no tile and no position is
+                  held anywhere, so this subtab draws no map.
+no breached layer World WORLD-testnet declares 20 layers and nobody has
+                  breached one, so no layer exists to draw.
+```
+
+The second sentence is the one a world alone would leave on screen. Breaching
+layer zero in the same press is what clears it.
+
+### The figures a world declares, each read off the module
+
+A new panel sits under the two buttons and reports the world the chain holds. It
+draws nothing of its own: every figure comes from the world store's own summary.
+The width, the layer count and the arena are the module's constants and
+functions, not numbers written here or on screen.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - what the panel drew
+
+```
+World              WORLD-testnet
+Squares a side     9
+Squares a layer    81
+Layers declared    20
+Layers breached    1
+Arena square       40
+Seed commitment    3ccc798a7a12165e056c33eef0c09bb83b7007042219d0286ffe94d1b19d3fb8
+Seed published     False
+```
+
+Before the press the same panel holds no rows and one sentence instead, naming
+the button that would fill it. The world lands in its own file on the demo chain,
+and that file is what the Maps subtab reads back.
+
+```
+the file           poa_world_testnet.json
+what it holds      worlds, seeds, breached, zones, facts, knowledge,
+                   extracted, published, bands, version
+```
+
+### Three refusals, and the live chain is one of them
+
+The control that deletes a chain already refuses the live chain and already
+refuses without a confirmation. A control that writes chain state keeps the same
+two, and adds a third of its own: one world a chain. The run drove all three, and
+each sentence below is the one the program printed.
+
+```
+the live chain     A world is created on the Demo TestNet chain only. The Live
+                   chain is the one a running window holds, so this refuses
+                   there.
+no confirmation    Confirm the world writes poa_world_testnet.json and declares
+                   world WORLD-testnet: 9 squares a side, 81 a layer, 20
+                   layers, arena at 40. This control writes nothing.
+a second world     poa_world_testnet.json already holds world WORLD-testnet.
+                   One world a chain, so this refuses a second. Confirm the
+                   reset clears the chain and the world with it.
+```
+
+After the unconfirmed press the run looked for the file, and the file was still
+absent. The second press came after a world existed, and found the first one
+unchanged.
+
+### The seed never reaches a screen, and the run searched the output for it
+
+A world's seed decides every creature and every amount in it. Anyone holding it
+could work out the whole world in advance, so the module keeps it back and
+publishes only its commitment. That makes the seed the one value this work had to
+keep off the screen, and a search proves that better than a reading does.
+
+```
+the seed              32 hex characters, drawn by the module
+its commitment        matches the hash of that seed, confirmed
+files searched        9 - both rendered pages, both reports, the payload,
+                      the console output of both runs
+files holding it      none
+files holding the
+commitment            7 of the 9
+```
+
+The last line is the control. A search that finds the commitment in seven files
+is a search able to find a string of that shape, so the empty seed result is a
+fact about the output and not about the search. A line carrying the seed was then
+written into a tenth file, found, and the file removed.
+
+### Both variants drew the board, read off the pictures
+
+The run drew both the desktop window and the Electron shell with a world on the
+demo chain, and every figure below comes off the saved picture. The count comes
+from the grid's own gap lines in the image: nine columns and nine rows leave ten
+lines across and ten down.
+
+```
+                              desktop window   Electron shell
+squares in the picture              81               81
+columns, from the picture            9                9
+rows, from the picture               9                9
+gap lines across                    10               10
+gap lines down                      10               10
+the participant's own square          1                1
+squares drawing nothing             80               80
+squares drawn as discovered          0                0
+```
+
+All eight panel figures matched across the two, and so did the sentence under
+them. One reading differed, and that difference belongs to the screen rather than
+to the product: the desktop window runs at a device pixel ratio of 1.25 and
+reports the grid side as 155.6 points, the shell runs at 1.0 and reports 156. The
+same ratio
+accounts for the gold ring around the participant's square measuring 144 device
+pixels in one and 112 in the other.
+
+### Two earlier sentences are now conditional
+
+Two sentences on this page said the Map subtab still reports no world, and both
+were true when written. They stay true of a program nobody has pressed anything
+in, and they stop being true after the press.
+
+```
+what it said       "No drawing. The Map subtab still says no world is
+                   generated, and that sentence is still true."
+what replaces it   The subtab says that until the world control is confirmed,
+                   and draws 81 squares after it.
+
+what it said       "The Map subtab's sentence that no world is generated stays
+                   true, because installing the mechanism creates no world."
+what replaces it   Installing the mechanism still creates no world. The
+                   control does, on a press, on the demo chain only.
+```
+
+The heading that says nothing creates a world on a normal start stands exactly as
+written. A start creates no world; an operator pressing a button does.
+
+### What the press does not create
+
+The press stops at a world and its first layer. It reaches none of the five
+things below, and this page names each one rather than half-building it.
+
+```
+participants       nobody is entered into the world. The control's sender is
+                   this node's own identity and no player record is written
+discovery          no place is found. All 81 squares read as undiscovered, so
+                   the board draws no mark at all
+monsters           none are generated. The seed that would decide them is
+                   committed and nothing reads it yet
+dungeons           none exist. A dungeon is a locator and no module declares
+                   one
+consecration       no ground is consecrated, and the press reaches no part of
+                   that mechanism
+```
+
+The participant stands on the arena square, and this press does not change that.
+Nothing in the program can say which world turn is running, so nothing can derive
+a later square. That figure is still owed.
+
+```
+the seconds in a world turn   unset. A number here would let the map move the
+                              participant off the arena
+```
+
+A second gate already sat in front of every button on this tab, and it now sits in
+front of these two as well. The node needs an identity file before any control
+will act, and on the operator's machine that file does not exist. The one piece of
+the program that writes it belongs to the Competition tab, a shelved screen.
+
+```
+the file           bot_identity.json, under the runtime directory
+what writes it     src/gui/competition_tab.py, on a shelved screen
+what it blocks     every control on this tab, with the sentence the tab
+                   already prints
+```
