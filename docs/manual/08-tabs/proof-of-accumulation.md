@@ -9281,8 +9281,263 @@ provides, nothing reads   a world's tier, and the depths that tier reaches
 provides, nothing reads   the import, and the total each world has imported
 provides, nothing reads   the loot band a cut leaves on the chart
 ```
+## 2026-09-11 03:50 - #586 - alignment, and the three levels it rolls up
 
-## 2026-09-11 03:50 - #586 - parties, and the armies their Raids link into
+Alignment is now a running total of what a Vessel has done. A player does not pick
+a side. Each action carries its own ratio of Creation to Destruction, and a
+Vessel's alignment adds every one of those scores together. The same total rolls
+up to a guild, and the guilds add up to a world.
+
+```
+src/competition/alignment.py
+```
+
+### His words, and what they ask for
+
+```
+Remember to note how alignment is going to work in PoA. Abilities are ratios of
+Creation and Destruction on a gradient that persistently scores every vessels
+action so that alignment becomes a function all a Vessel's 'life' choices.
+```
+
+```
+Individual Vessel alignment informs Guild Alignment which then defines World
+Alignment.
+```
+
+### An action carries the ratio, and this module holds no ratios
+
+A score arrives with the action that earned it. The module that keeps the totals
+holds no table of ratios and picks none, because no ability exists yet to carry
+one. The caller hands over the two parts and the module adds them.
+
+```python
+ledger.score(vessel, "raised a wall", 3, 1)
+```
+
+The one action the package builds is the Quintessence Transfer in
+`src/competition/skill_ladder.py`. Whether a transfer scores at all, and which
+way, is a ruling nobody has made. This module gives it no ratio.
+
+### The scale runs pole to pole, with a real middle
+
+One action's reading is its Creation less its Destruction, divided by the two
+added together. All Creation reads 1. All Destruction reads -1. A ratio of three
+to one reads 0.5. Nothing can leave that range, because neither part is ever
+negative.
+
+```
+all Creation            polarity   1
+three Creation to one   polarity   0.5
+one to one              polarity   0
+one Creation to three   polarity  -0.5
+all Destruction         polarity  -1
+```
+
+Every amount stays exact. The module refuses a ratio handed to it as a binary
+fraction, and rounds nothing.
+
+```
+creation must be int, str or Decimal, not float; a ratio between
+('creation', 'destruction') decided by binary floating point is refused
+```
+
+### An unscored Vessel and a balanced one are not the same thing
+
+A Vessel that has done nothing and a Vessel whose good and bad cancel both show
+a net of zero. They are still different, and the difference falls out of the
+arithmetic: a reading is a net divided by a total, and a Vessel with no actions
+has a total of zero, so it has no reading at all.
+
+```
+before any score   actions=0   net=0   total=0   polarity=None   balanced=False
+after 3 to 1       actions=1   net=2   total=4   polarity=0.5    balanced=False
+after 1 to 3       actions=2   net=0   total=8   polarity=0      balanced=True
+```
+
+The balanced Vessel reads zero. The unscored one reads nothing. A world event can
+tell them apart on either the reading or the action count.
+
+### The total never decays
+
+Nothing removes a score, and no clock reduces one. His sentence says alignment is
+a function of all a Vessel's life choices, and a total that faded would stop being
+that. The design has no decay, so no figure sets a decay rate.
+
+```
+DECAY_ABSENT   no scored action is ever dropped from a total, and no clock
+               reduces one
+```
+
+### The Vessel holds it, and its key leaves the level out
+
+A Vessel is a frozen record of an owner, a class and a level, in
+`src/competition/vessels.py`. It carries no identity field, and this unit left that
+file alone. The module files each score under the owner and the class name, so a
+Vessel that gains a level keeps the alignment it earned.
+
+```
+the key       owner, class_name
+left out      level, so levelling up loses nothing
+```
+
+One thing that key cannot do is separate two Vessels of the same class under one
+owner. Nothing stops a player holding two, and today they would share one
+alignment. Separating them needs an identity field on the Vessel record, and
+nothing provides one.
+
+### A Vessel informs its guild, and the guilds define the world
+
+His two verbs differ and the difference is worth stating plainly. A guild's
+alignment is the sum of its members' Vessels, and other things may inform it
+later, such as the guild's own acts. A world's alignment is the sum of its
+guilds and nothing else, which is what defines means.
+
+```
+a Vessel     every score it has taken
+a guild      every Vessel of every member
+a world      every guild on the roster
+```
+
+The sum is the same operation at both levels today. The verbs differ only in
+whether more contributors may arrive, and nothing else contributes yet.
+
+Summing rather than averaging is what makes his single-guild rule come out right.
+A world with one guild takes that guild's reading exactly, with nothing to pull
+it back toward the middle. A world with guilds on opposite sides cancels toward
+the middle in the sum, which is the position a victor has to hold.
+
+### One run, three levels, and a change at the bottom moved the top
+
+One run drove two Vessels in one guild. The second Vessel drained a creature at
+nothing to forty, which is as far toward Destruction as a score goes.
+
+```
+alpha Iron Edge        net   0   total  8   polarity  0
+beta Silver Mirror     net -40   total 40   polarity -1
+the guild              net -40   total 48   polarity -0.8333333333333333333333333333
+the world              net -40   total 48   polarity -0.8333333333333333333333333333
+```
+
+The first Vessel then restored a spring at twenty to nothing. Its own reading
+moved, and so did both levels above it.
+
+```
+alpha Iron Edge        net  20   total 28   polarity  0.7142857142857142857142857143
+the guild              net -20   total 68   polarity -0.2941176470588235294117647059
+the world              net -20   total 68   polarity -0.2941176470588235294117647059
+```
+
+One action changed all three readings. That is the roll-up working.
+
+### A player in no guild reaches the world nowhere
+
+The chain runs Vessel, then guild, then world. The roster in
+`src/competition/guild_roster.py` allows a player to belong to no guild, and
+answers nothing when asked which guild such a player is in. An unguilded player's
+actions therefore reach no guild and no world.
+
+A third Vessel, owned by a player in no guild, mended a road at five to nothing.
+The world did not move.
+
+```
+gamma Lead Ward        net   5   total  5   polarity  1
+the world              net -20   total 68   unchanged
+unguilded addresses    ('gamma',)
+```
+
+The module reports those addresses rather than hiding them, and invents no route
+for them. **This is a question for the operator:** either an unguilded player's
+actions should not count toward a world, or the chain needs a fourth step that
+carries them.
+
+### Offsetting is open, and the consequence is his to see
+
+The net is a plain sum, so light good acts cancel heavy bad ones. One run scored
+a single profound Destruction of a thousand, then a thousand trivial Creations of
+one each. The Vessel came out exactly balanced.
+
+```
+actions 1001      net 0      total 2000      polarity 0      balanced True
+```
+
+A player can also park a Vessel near the middle by alternating. His own rule
+calls necromancy and energy vampirism profoundly evil, which reads as weight
+rather than count, and weight is the ratio the action carries. Nothing in the
+totals stops many light acts cancelling one heavy act.
+
+The one thing the totals do keep is how much weight went in. A Vessel at zero with
+a total of two thousand is not the same as a Vessel at zero with a total of two,
+and a reader can tell them apart.
+
+```
+a brake on offsetting   nothing sets one, and the operator would set it
+```
+
+### The monster tiers are a different axis, and the module says why
+
+The twelve monster tiers run six below the player's plane and six above. One
+reading makes them the same Creation-to-Destruction axis, and the table in
+`src/competition/monster_table.py` refutes it on five counts, so the two axes stay
+separate.
+
+```
+a tier is never at depth 0, and this scale needs a middle
+the decan rank below the plane is invoked to HEAL, not to destroy
+one tier of the twelve is marked morally wicked; the rest are indifferent
+the Watchers sit below the plane AND in the families named above it
+no rule places an arbitrary creature on the tier axis at all
+```
+
+The last line is the decisive one. The tier axis answers what a creature is. This
+scale answers what a Vessel has done. Nothing could score an action from a table
+that cannot place a creature.
+
+### The neutral band is the one figure nobody has set
+
+Exact balance needs no figure. A net of zero against any total above zero reads
+balanced, and the module answers that today. Naming a reading neutral over a range
+needs a width around zero, and no source gives one.
+
+```
+NEUTRAL_BAND   absent. The operator sets how far from zero still reads neutral
+```
+
+A three-way naming of a world's polarity is what the width would buy. His guild
+rule says a victor must hold a neutral polarity to survive, so a world event that
+asks whether a world is neutral will need it.
+
+### What reads this, and what it reads
+
+Nothing reads a Vessel's alignment, a guild's, or a world's. The module provides a
+world alignment that a cascade would read, and nothing reads it. The module names
+seven absent readers, each with the thing it waits on.
+
+```
+cataclysms          no module names one
+world polarity      this module derives one, and nothing stores or shows it
+abilities           one skill exists, and no ability carries a ratio
+combat              nothing resolves a fight, so no fight scores anything
+necromancy          no skill exists to score, and its ratio is the operator's
+energy vampirism    no skill exists to score, and its ratio is the operator's
+a surface           no tab or panel shows an alignment at any level
+```
+
+The module owes two more things. It has no entry in the package's export list, and
+nothing ties a roster to one world on the map, so a world alignment comes off
+whichever roster the caller hands over.
+
+```
+owed   the module's entry in the package export list
+owed   a tie between a guild roster and a world on the map
+```
+
+The cascade his directive describes has no brake. Creatures pushing a world
+further toward its own end would make more of those creatures appear, and nothing
+stated sets a ceiling or slows it down. A reader of the world alignment will need
+one.
+
+## 2026-09-11 04:10 - #586 - parties, and the armies their Raids link into
 
 A party now exists as a record. A party holds its members, its event mode, and
 the one member who leads it. Above the party sits an army. An army links two or
