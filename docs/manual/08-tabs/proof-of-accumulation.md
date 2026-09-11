@@ -8640,3 +8640,182 @@ owed to this module            a real weight a unit, and a salvage loss curve
 owed by this module to others   a material list for an item, which crafting reads
 on a screen                    nothing
 ```
+
+## 2026-09-11 02:50 - #585 - the guild roster, and where a treasury holds
+
+A guild now exists as a record. It carries its members, its officers and one
+treasury address, and four mechanisms that were already built can read it.
+
+### A guild forms, and it holds a treasury
+
+His own terms set both halves.
+
+> "only those holding PoA tokens can form a guild... guild membership locks and
+> stakes PoA tokens, by guild rank... a guild may hold any number of members"
+
+> "A guild holds a Quintessence treasury, filled two ways and spent one way.
+> Filled by the transfer skill, from a member, paying the bleed. Filled by the
+> guild's own event awards. Spent on action costs for guild members, inside an
+> event. Never paid out to a member's personal wallet."
+
+The record is a name, a key, a founder, a list of members and a list of officers.
+The founder is the first member and the first officer, because an officer is the
+only one who can commit the treasury, and a guild opened without one could never
+spend.
+
+```python
+guild = roster.found("The Gold Fold Collective", "bot-officer-0002")
+roster.join(guild.key, "bot-actor-0001")
+
+key        the_gold_fold_collective
+treasury   poa_guild_treasury_the_gold_fold_collective
+founder    bot-officer-0002, member and officer
+```
+
+The treasury address comes from the guild's key, so the same guild always derives
+the same address and two guilds can never share one. The name and the key derive
+the same address, which one run confirmed.
+
+### The treasury holds in the wallets bucket, and one run measured it
+
+An earlier entry on this page left a question open: the design calls a treasury a
+held address, and the ledger can only spend from a wallet. The two built paths
+that touch a treasury both answer the wallets side, so that is where a treasury
+holds.
+
+```mermaid
+graph LR
+  M["a member's wallet"] -->|transfer skill| T["the guild treasury, wallets bucket"]
+  M -->|bleed| P["the pleroma"]
+  T -->|an action's cost| POT["the event pot, held bucket"]
+  POT -->|payout by performance| W["participants' wallets"]
+```
+
+The transfer skill credits a wallet, and an action's cost leaves a wallet. One run
+drove both ends against one treasury address and read the two balances off the
+ledger.
+
+```
+transfer    sent 0.50000000   received 0.48000000   bled 0.02000000
+treasury    wallet balance 0.48000000    held balance 0
+the action  treasury 0.48000000 -> 0.47000000    actor 0 -> 0
+the record  underwritten 0.010   spent 0   actions 1
+the pot     held balance 0.01000000
+```
+
+The run added no bucket and minted nothing beyond the one unit it distilled. The
+four totals still balance and still sit under the cap.
+
+```
+wallets 0.97000000 + held 0.01000000 + pleroma 0.02000000 + embedded 0
+  == 1.00000000 ever minted     delta 0     balanced true     within cap true
+```
+
+### Four things an officer's commitment now refuses
+
+Before the roster, the treasury payment took an officer's name and a treasury
+address as given and checked neither. A caller could name a stranger as the
+officer, and the program accepted it.
+
+```
+offer_underwrite accepted a stranger as officer: 'bot-outsider-0004'
+REFUSED: guild-held-only-0005 holds 0 Quintessence and band x10 costs 0.010
+```
+
+The roster answers four questions the payment could not. Each refusal names the
+guild and the addresses involved.
+
+```
+no guild        bot-outsider-0004 belongs to no guild and commits no treasury
+no office       bot-plain-0003 is a member of the_gold_fold_collective and not
+                an officer; 1 officer(s) commit its treasury
+not a member    bot-outsider-0004 is no member of the_gold_fold_collective, so
+                treasury poa_guild_treasury_... pays nothing for that action
+paying oneself  bot-officer-0002 is both the officer and the actor; an underwrite
+                takes two addresses and nobody underwrites their own act
+```
+
+The last one keeps his rule that the commitment takes two acts by two people. A
+guild of one is still allowed, because he wrote that a guild may hold any number
+of members. The roster refuses one address playing both parts.
+
+### Every mode's guild flag, read for the first time
+
+Every event mode declares whether it needs a guild. Until now nothing read that
+flag. The roster answers it, beside the same mode's own party floor and ceiling.
+
+```
+team_monster_smash   guild_required true    party 2 to 120
+two members of one guild            admitted
+one member only                     admits 2 to 120 and this party holds 1
+an outsider in the party            1 of 2 are no members of that guild
+one address seated twice            one address takes one seat
+monster_smash with two seats        admits 1 to 1 and this party holds 2
+```
+
+The PvP vote freezes its roll of participants at the call, so nobody can move the
+threshold during the window. The roster does the opposite on purpose. A vote
+counts an eligibility total once; a treasury payment moves money, so it reads the
+roster at the moment it moves. The roster turns away a member who leaves between
+the officer's commitment and their own acceptance.
+
+```
+before leaving   require_underwrite answers guild the_gold_fold_collective
+the member left  the guild now holds 2 member(s) and 1 officer(s)
+after leaving    bot-actor-0001 is no member of the_gold_fold_collective, so
+                 treasury poa_guild_treasury_... pays nothing for that action
+```
+
+### One address belongs to one guild
+
+Quintessence moves only between members of the same guild. If one participant
+could belong to two guilds, that participant becomes a bridge between them and the
+rule stops closing anything. Membership is exclusive, and the roster turns away a
+second guild.
+
+```
+founder bot-officer-0002 already belongs to the_gold_fold_collective;
+one address belongs to one guild, so a transfer between guild members
+reads one guild
+```
+
+The roster writes out and reads back whole, so a transfer and a payout read the
+same membership after a restart. The stored file also names the bucket its
+treasuries hold in, and the roster turns away a file naming a different one.
+
+```
+to_dict / from_dict round trip equal: true
+summary  guild_count 1   member_count 2   treasury_bucket wallets
+```
+
+### Nothing reads the roster yet, and nothing shows a guild
+
+The roster exists and no other module calls it. Nothing in the running program
+builds a guild. One sentence on the transfer subtab still reads "No guild roster
+is built, so the guild term of a transfer reads nothing", and that is the only
+place a guild appears on any screen.
+
+```
+built        src/competition/guild_roster.py
+read by      nothing
+on a screen  nothing, beyond the sentence saying a roster is not built
+```
+
+This entry leaves five things owed and builds none of them.
+
+```
+the package export list     one entry, so other modules can import the roster
+the transfer skill          its guild term reads the roster
+the action payment          its officer check and its treasury call read the roster
+the guild metric            the metric named as held by no field reads the roster
+a surface                   a control that forms a guild, and a list that shows one
+```
+
+Four figures stay owed, and this entry invents none of them.
+
+```
+PoA tokens to form a guild   no number exists
+the stake each rank locks    no number exists
+a cap on officers            no number exists
+a cap on members             none, by his own words
+```
