@@ -14044,3 +14044,108 @@ no source names the item type a loot tier yields
 no artefact carries an instance name
 no panel calls the store
 ```
+
+## 2026-09-11 11:45 - #586 - the player window reads what is left of the turn
+
+The player window reported the turn that was gone. It now reports the turn that
+is left: the seconds left in the candle, and the actions left in the pool.
+
+The reading below is pinned twelve seconds before a 5m candle closes, and every
+figure in it was read off the page the tab draws.
+
+```
+                  was                             now
+turn meter label  Turn completion                 Turn remaining
+turn meter        96.0%  288s of 300s elapsed      4.0%  12s of 300s left
+Impetus line      Impetus 4 this turn - level 1    Impetus 4 of 4 left this
+                                                  turn - level 1
+```
+
+### The turn meter counts down, and its own text says so
+
+The meter keeps the same arithmetic over the same two figures. It draws the
+seconds left against the candle's length, where it drew the seconds gone.
+
+```python
+def turn_meter(running: dict, variant: EventVariant) -> dict:
+    """The share of this turn's candle that is left, from its own seconds left."""
+    length = Decimal(variant.turn_seconds)
+    left = Decimal(str(running["seconds_left"])).quantize(Decimal(1))
+```
+
+The row name moved with the label. Nothing reads the old name: the style sheet
+colours the fill meter's bar by `data-meter="block_fill"`, and it names no other
+meter.
+
+```
+meter row name    was turn_completion    now turn_remaining
+meter pair title  was Block fill and turn completion
+                  now Block fill and turn remaining
+```
+
+### The Impetus line names what is unspent
+
+The line printed the grant. It prints what is unspent against the grant, so the
+line that reports the pool falls when the pool falls.
+
+```
+Impetus 3 of 4 left this turn - level 1
+```
+
+### The window holds a pool against the turn that granted it
+
+The window built a fresh pool on every redraw. A fresh pool has spent nothing, so
+a spend could not survive a redraw and the window could never fall. The surface
+holds the pool now, keyed on the participant and the event code, and a turn index
+the held pool was not granted for takes a new pool.
+
+```
+HELD_POOLS keyed     [('', 'monster_smash')]
+spend(1) returns     3
+the payload then     granted 4   spent 1   remaining 3
+the line then        Impetus 3 of 4 left this turn - level 1
+one turn later       granted 4   spent 0   remaining 4
+```
+
+The pool is not chain data, so the key carries no chain name. A live run and a
+demo run share the one pool a participant holds for one event.
+
+Both refusals stand unchanged. A spend against a turn the pool was not granted
+for raises, and a cost above what remains raises.
+
+```
+this pool granted 4 Impetus for turn 5890752 and 3 is unspent; turn 5890753 is a
+different turn, and Impetus expires with the candle that granted it
+
+this action costs 5 Impetus and 4 remains in turn 5890752; no partial action
+exists and nobody borrows against the next turn
+```
+
+### The payload carries the pool's three figures
+
+The grant, the spend and what is left all ride in the event payload, so nothing
+on screen recomputes a figure the pool already answers.
+
+```
+impetus_granted     4
+impetus_spent       1
+impetus_remaining   3
+```
+
+### The grant and what is left read the same until something spends
+
+No control on this tab spends Impetus. `spent` is nought on every draw the screen
+makes on its own, and what is left equals the grant. The reading above spends
+through the held pool, and the window's figures then fall.
+
+Three places still read the grant where the design asks for another figure.
+
+```
+the party slot column    prints each participant's grant, and nothing holds a
+                         pool for another participant
+the gear section         takes the grant as one action's Impetus cost
+the wallet section       takes the grant as one action's Impetus cost
+```
+
+No figure sets what one action costs in Impetus. The turn economy owes that
+figure, and the two sections stand in with the grant until it exists.
