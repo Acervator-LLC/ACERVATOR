@@ -19,6 +19,8 @@
 // block fill and the turn completion side by side in the player window, and
 // ResetPanel names the two chain files and both reasons a reset carries, and
 // WorldPanel names the world the chain holds, its grid and its seed commitment.
+// IdentityPanel names the identity this node holds by its public half, and the
+// stored private key reaches no row in it.
 // Glyph draws one stand-in mark a kind; GlyphLegend lists them all and
 // GlyphAbsence names what nothing supplies. MapGrid lays the payload's squares
 // out at its own width and MapSquare draws one, its glyph only where the
@@ -43,6 +45,7 @@
   var GEAR = "gear";
   var GUILD = "guild";
   var HEADING = "heading";
+  var IDENTITY = "identity";
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
   var MAP = "map";
@@ -84,6 +87,7 @@
     GEAR,
     GUILD,
     HEADING,
+    IDENTITY,
     ISSUE,
     ISSUE_TEXT,
     MAP,
@@ -360,6 +364,13 @@
 
   // The share the bar draws. A chain past its capacity still draws a full bar.
   var FULL_BAR = 100;
+
+  var IDENTITY_PANEL_PART = "identity-panel";
+  var IDENTITY_TITLE_PART = "identity-title";
+  var IDENTITY_ROW_PART = "identity-row";
+  var IDENTITY_ROW_LABEL_PART = "identity-row-label";
+  var IDENTITY_ROW_VALUE_PART = "identity-row-value";
+  var IDENTITY_NOTE_PART = "identity-note";
 
   var RESET_PANEL_PART = "reset-panel";
   var RESET_TITLE_PART = "reset-title";
@@ -1210,6 +1221,14 @@
       lines.push(element("p", noteProps, note));
     }
     children.push(element("div", resultProps, lines));
+    if (isPlainObject(props.identity)) {
+      children.push(
+        element(IdentityPanel, {
+          key: IDENTITY_PANEL_PART,
+          identity: props.identity
+        })
+      );
+    }
     if (isPlainObject(props.reset)) {
       children.push(
         element(ResetPanel, { key: RESET_PANEL_PART, reset: props.reset })
@@ -1246,6 +1265,40 @@
       KEEP_PANEL_PART,
       text(keep.title)
     );
+    return element("div", panelProps, children);
+  }
+
+  // The identity this node holds, named by its public half. The stored private
+  // key is in no row: replacing an identity orphans the wallet, Vessel, guild
+  // seat and store it owns, so the panel reports and never offers a replacement.
+  function IdentityPanel(props) {
+    var panel = props.identity;
+    var titleProps = part(TAB_CLASS + "-identity-title", IDENTITY_TITLE_PART);
+    titleProps.key = IDENTITY_TITLE_PART;
+    var children = [element("h4", titleProps, text(panel.title))];
+    children = children.concat(
+      figureRows(
+        panel.rows,
+        IDENTITY_ROW_PART,
+        IDENTITY_ROW_LABEL_PART,
+        IDENTITY_ROW_VALUE_PART
+      )
+    );
+    if (text(panel.note)) {
+      var noteProps = named(
+        TAB_CLASS + "-identity-note",
+        IDENTITY_NOTE_PART,
+        text(panel.note)
+      );
+      noteProps.key = IDENTITY_NOTE_PART;
+      children.push(element("p", noteProps, text(panel.note)));
+    }
+    var panelProps = named(
+      TAB_CLASS + "-identity-panel",
+      IDENTITY_PANEL_PART,
+      text(panel.title)
+    );
+    panelProps[HELD_ATTR] = String(panel.held === true);
     return element("div", panelProps, children);
   }
 
@@ -2434,6 +2487,7 @@
       isPlainObject(model[CONTROLS])
         ? element(ControlBar, {
             controls: model[CONTROLS],
+            identity: isPlainObject(model[IDENTITY]) ? model[IDENTITY] : null,
             reset: isPlainObject(model[CHAIN_RESET]) ? model[CHAIN_RESET] : null,
             world: isPlainObject(model[WORLD]) ? model[WORLD] : null
           })

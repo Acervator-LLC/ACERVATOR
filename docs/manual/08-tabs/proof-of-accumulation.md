@@ -12967,3 +12967,241 @@ owed  a Vessel id. Two Vessels of one class at one level under one owner are one
 absent  encumbrance, a hauling trip, a foraging run, equipping, trading, a
         surface. Each is named in the module and none is built here
 ```
+
+## 2026-09-11 09:20 - #147 - a control creates the node identity, and the other controls stop refusing
+
+### The press writes one keypair and names this node
+
+Every control on this tab refused, and all of them refused for one reason. The
+file that names the participant was written by nothing a running window builds.
+The only code that wrote it sits on the Competition tab, a screen nothing
+constructs. The tab now carries two more buttons, at the head of the control row.
+The first asks and writes nothing. The second writes the file and names this node.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - the press, in full
+
+```python
+path.parent.mkdir(parents=True, exist_ok=True)
+made = BotIdentity(str(path)).generate()
+```
+
+One call is enough, because the identity module already loads an existing record
+rather than replacing it. The control refuses before it reaches that call anyway,
+so a second press answers with a sentence on screen instead of a silent
+no-change.
+
+### What the identity record holds, and what the panel never draws
+
+A new panel sits in the control bar and reports the identity this node holds. It
+draws four readings. The run below was made on a scratch home with no identity in
+it, and every line is what the program printed.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - what the panel drew
+
+```
+File           bot_identity.json - held
+Participant    429a35254f71
+Public key     429a35254f710d3c6355fa127e45bf4b8a83e2938862a902689e6d25a721879f
+Created        2026-09-11 09:06:42
+```
+
+The record on disk holds five fields. Four of them are above. The fifth is the
+private key, and it reaches no row here and no line anywhere else.
+
+```
+the file         bot_identity.json, 288 bytes
+what it holds    version, bot_id, created_at, pubkey_hex, privkey_b64
+what is drawn    the four readings above
+what is not      privkey_b64, the half that signs
+```
+
+Before the press the same panel holds one reading and one sentence instead,
+naming the button that would fill it.
+
+```
+File             bot_identity.json - no file yet
+the sentence     bot_identity.json holds no identity. Confirm the identity is
+                 the only thing that writes one, and until it is pressed every
+                 other control here refuses.
+```
+
+### The control that refused now runs, and both readings came off the page
+
+The panel filling up is the smaller half of the proof. The half that matters is a
+different control, one that refused before the press, running after it. The run
+drew the page in both builds and read the result line off the drawn document.
+
+```
+before the press   Distil   refused   bot_identity.json does not exist, so no
+                                      participant is named.
+after the press    Distil   acted     Distilled 0.1 Quint.
+```
+
+Nothing about the Distil button changed. The only thing that changed between
+those two lines is that an identity exists.
+
+### Two refusals, and the replacement is the one that matters
+
+A control that writes lasting state on this tab asks first and acts second, which
+is how the chain reset and the world control already work. This control keeps
+that, and adds one of its own: one identity a node, with no way back.
+
+```
+no confirmation  Confirm the identity writes bot_identity.json and names this
+                 node by the public half of one keypair. One identity a node,
+                 and both chains read it. This control writes nothing.
+a second one     bot_identity.json already holds the identity of participant
+                 429a35254f71. One identity a node, so this refuses a second:
+                 replacing it abandons the wallet, the Vessel, the guild seat
+                 and the store that one owns.
+```
+
+The second sentence is the whole reason this control is careful. An identity is
+the address that owns things. A new keypair would not lose the old wallet, the
+old Vessel or the old guild seat; it would leave them on an address nobody on
+this machine can sign for again. After the refused second press the run read the
+file back, and the participant was the first one, unchanged.
+
+### One identity a node, and both chains read it
+
+The reset control and the world control both refuse the live chain, because both
+write chain state. This control writes none, and the file it writes carries no
+chain name.
+
+```
+the path          the runtime directory, and the file name with no suffix
+who reads it      the tab's own participant lookup, and the node name the
+                  shared TestNet bridge answers with
+what that means   the Demo TestNet chain and the Live chain name this node the
+                  same way, off one file
+```
+
+The control therefore acts on either chain, and pressing it twice from two chains
+is the same second press, refused the same way.
+
+### The private key reaches no output, and the search proved it can find one
+
+The private key is the one value this work had to keep off every surface. A
+search proves that better than a reading does, and a search nobody has watched
+find anything proves nothing at all. The run searched every file it wrote for the
+stored key in all three of its shapes, then planted the key in one more file to
+show the search works.
+
+```
+files searched                 27 - both rendered pages, four payloads, both
+                               readings files, both console outputs, the
+                               scratch runtime tree
+shapes looked for              the stored text, the same bytes in hex, and the
+                               raw bytes
+files holding the private key  none
+files holding the public key   12 of 27
+planted one file with the key  found, 1 file
+removed that file              none again
+```
+
+The public key line is the control. A search that finds it in twelve files can
+find a string of that shape, so the empty result for the private key is a fact
+about the output rather than about the search. The pictures are covered
+separately: the panel's rows were counted off the drawn document, four labels and
+four values, and the private key is in none of them.
+
+### What the file lands with, and what already guards a credential here
+
+The identity file lands beside the exchange credentials, so the run measured both
+rather than inventing a rule.
+
+```
+bot_identity.json          0o666
+coinbase_credentials.json  0o666
+instance.lock              0o666, and the code that opens it asks for 0o600
+a plain write              0o666
+an open asking for 0o600   0o666
+a change to 0o600 after    0o666
+```
+
+Windows does not carry those permission bits, so all three ways of asking give
+the same answer on this machine. Nothing in the tree narrows a credential file
+either, which makes this file consistent with the one beside it. The guard that
+does exist here is a habit rather than a permission: the suite's own walk over
+the runtime tree reads sizes and never opens a file, so it cannot read the
+credentials it walks past.
+
+### Both variants drew the panel, read off the pictures
+
+The run drew all four pages twice, once in the desktop window and once in the
+Electron shell, and compared them reading by reading off the drawn document.
+
+```
+pages drawn         4 - before the press, the press, the refused second press,
+                    and the control that now runs
+readings compared   64 in each build
+differences         0
+the control         one value changed by hand, 1 difference reported
+panel height        75 device pixels with no identity, 97 with one, in both
+```
+
+Four readings were left out of the comparison on purpose, because each is a fact
+about the window the host gave rather than about the tab: the two window sizes,
+the height the control bar was given, and where on screen the panel landed.
+
+### Where the panel sits, and what it costs the bar
+
+The control bar scrolled before this unit and scrolls after it. The two new
+buttons and the result line are visible with no scrolling; the new panel joins
+the reset readout and the world readout below the fold.
+
+```
+control bar content     320 points with no identity, 338 with one
+what the bar showed     136 points, in a window 1600 by 1000
+visible with no scroll  both new buttons, and the result line
+below the fold          the identity panel, the reset readout, the world readout
+```
+
+The result line is what carries the press, and it carries all four identity
+readings the moment the button is pressed, so the panel below is a standing
+readout rather than the only place the figures appear. The Quint subtab is the
+nearest subtab home, because it already lists the chain's files. It was not used:
+the two controls that already write lasting state put their readouts in the
+control bar, and a readout for the thing every control needs should not sit
+behind a keyboard shortcut.
+
+### Two earlier sentences stop being true on a press
+
+Two sentences on this page said nothing here creates an identity, and both were
+true when written. They stay true of a program nobody has pressed anything in.
+
+```
+what it said       "Its key file is read, never created, so a machine with no
+                   identity yet names none."
+what replaces it   The participant lookup still only reads. The identity
+                   control creates the file, and the lookup reads it after.
+
+what it said       "The one piece of the program that writes it belongs to the
+                   Competition tab, a shelved screen."
+what replaces it   That screen still writes one and is still shelved. This tab
+                   now writes one too, on a press, and that is the path an
+                   operator can reach.
+```
+
+### What no press here creates yet
+
+The press stops at an identity. It reaches none of the five things below, and
+each is named here rather than half-built.
+
+```
+a participant      nobody is entered into anything. The identity is an address
+                   and no player record is written
+a registration     no bot is registered in a competition
+a distillation     no Quintessence is minted. The Distil button does that, and
+                   it is a different press
+a world            no world is declared. The world control does that
+an ability         nothing is designed, chosen or granted
+```
+
+One figure is owed and is not invented here.
+
+```
+a second identity  there is no way to retire one and start again. The control
+                   refuses a replacement and nothing else removes the file, so
+                   an operator who wants a fresh address deletes it by hand
+```
