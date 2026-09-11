@@ -14224,6 +14224,238 @@ No control on screen reaches this. The PoA tab surface names no store and no
 craft register. The Gear subtab, `Ctrl+3`, is the surface that would: it already
 prints the four item classes and reads the note saying what holds them.
 
+## 2026-09-11 11:40 - #585 - a craft consumes the material list it names
+
+### The components leave when the craft opens
+
+A recipe named its materials and took none of them. `Recipe` carried a list of
+`Component` entries, and no store ever lost a unit to a craft. The two are now
+wired. `CraftRegister.begin_craft` takes every component's units out of the store
+the book holds for the crafting Vessel, at the grade that component names.
+
+The units leave at the start, not at the finish. A craft runs over the world turns
+its recipe names, and a Vessel cannot carry material it already works. A store
+that still held the ore could hand it to a second store, or open a second craft on
+the same unit, so the deduction cannot wait for `complete_craft`.
+
+`src/competition/crafting.py` — `begin_craft` reads every shortfall before it moves a unit
+
+```python
+        recipe = craft.recipe
+        short = self._component_shortfalls(recipe, store)
+        if short:
+            raise CraftComponentError(
+                f"craft {craft.craft_id} consumes "
+                f"{_component_text(recipe.components)} and {store.store_key} is "
+                f"short of {_shortfall_text(short)}. {COMPONENT_REFUSAL_HOLDS}",
+            )
+        taken: list[StoreChange] = []
+        for part in recipe.components:
+            try:
+                taken.append(store.take_out(part.material, part.quality, part.units))
+            except InventoryError as exc:
+                self._put_components_back(
+                    store,
+                    recipe.components[: len(taken)],
+                    COMPONENT_REFUSAL_HOLDS,
+                )
+```
+
+One craft was driven end to end on two trees, the tree before this change and the
+tree after it, by one script with one set of figures. The recipe figures and both
+store figures are driving inputs of those runs. No module holds any of them.
+
+```
+driving inputs   loss_share 0.25, turns_required 3, slot_count 2,
+                 stack_ceiling 4, fee_usd 1000, trade_grade 1,
+                 armour at Calx out of 1 iron ore at Calx
+
+before the change, after the craft finished
+    units_held iron ore at Calx 1     units_held armour at Calx 1
+    weight_carried 2
+    wallet 999.99999999   embedded 0.00000001   delta 0
+
+after the change, after begin_craft
+    units_held iron ore at Calx 0     units_held armour at Calx 0
+    weight_carried 0
+    wallet 1000.00000000  embedded 0             delta 0
+
+after the change, after complete_craft
+    units_held iron ore at Calx 0     units_held armour at Calx 1
+    weight_carried 1
+    wallet 999.99999999   embedded 0.00000001   delta 0
+```
+
+The ore came through a whole craft untouched on the earlier tree. It does not
+now. The Quintessence reading is the same on both trees, because a material unit
+in a store carries no ledger entry of its own.
+
+### A store short of one unit refuses and moves nothing
+
+`begin_craft` reads what the store holds of every component before it takes any
+of them. A store that cannot cover the whole material list gives out nothing.
+
+A store was opened and given no component unit at all.
+
+```
+CraftComponentError at begin_craft
+  craft armour:Calx:... consumes 1 iron ore at Calx and ... is short of 1 iron
+  ore at Calx, holding 0
+
+after    held_stacks []         weight_carried 0
+         wallet 1000.00000000   embedded 0        delta 0
+         ledger movements 1     open_crafts 0     completed_crafts 0
+```
+
+The one ledger movement is the distil that funded the wallet. The craft made no
+movement of its own.
+
+A second store was driven against a recipe naming two materials. It held the
+first material in full and was two units short on the second.
+
+```
+driving inputs   a recipe of 2 iron ore and 3 lead ore, both at Calx
+                 the store holds 2 iron ore and 1 lead ore
+
+CraftComponentError at begin_craft
+  ... is short of 3 lead ore at Calx, holding 1
+
+after    units_held iron ore at Calx 2   units_held lead ore at Calx 1
+         weight_carried 3
+         wallet 1000.00000000   embedded 0   delta 0
+         open_crafts 0          completed_crafts 0
+```
+
+The first material was not touched. A refusal part-way down a list returns every
+unit already taken, so no half-consumed list reaches the store.
+
+### An abandoned craft gives the units back
+
+An abandoned craft made no item, and the ledger moved nothing for it. The
+components go back where `begin_craft` found them. A unit kept back would leave
+the world holding less material with no bucket and no wallet recording the
+difference. No source sets a part-worked loss, so the whole list returns.
+
+```
+after begin_craft     units_held iron ore at Calx 0   weight_carried 0
+after abandon_craft   units_held iron ore at Calx 1   weight_carried 1
+                      wallet 1000.00000000   embedded 0   delta 0
+                      ledger movements 1     open_crafts 0
+```
+
+### A store with no room leaves the craft holding its components
+
+A store can refuse the units back. Another put-in can fill its stack to the
+ceiling while the craft runs. `abandon_craft` puts the units back before it takes
+the craft out of `open_crafts`, so a refusal leaves the craft standing and holding
+its components. No unit leaves the world, and the same call carries them back once
+the stack has room.
+
+A store with a four unit stack ceiling was filled to that ceiling while its craft
+ran. The abandonment was then driven.
+
+```
+CraftComponentError at abandon_craft, raised from StackCeilingError
+  ... would not take back 1 iron ore at Calx: ... holds 4 iron ore at Calx and
+  1 more reaches 5, above the 4 stack ceiling it was built with
+
+after the refusal   units_held iron ore at Calx 4   weight_carried 4
+                    open_crafts 1                   completed_crafts 0
+                    wallet 1000.00000000   embedded 0   delta 0
+
+after one unit was taken off the stack by hand
+                    units_held iron ore at Calx 3   weight_carried 3
+
+after the same abandon_craft was driven again
+                    units_held iron ore at Calx 4   weight_carried 4
+                    open_crafts 0
+                    wallet 1000.00000000   embedded 0   delta 0
+```
+
+### A refused completion keeps the components with the craft
+
+The store or the wallet can refuse a completion. The components left at
+`begin_craft`, so a refused completion consumes nothing more and the craft stays
+open holding them.
+
+A craft was opened while the wallet covered it. The wallet was then emptied. The
+completion was driven on the empty wallet, and the craft was completed once the
+wallet was funded again. A second completion of the same craft was then driven.
+
+```
+ValueError from the ledger
+  u91-reincarnate-drain holds 0E-8, cannot move 1E-8
+
+after the ledger refusal   units_held iron ore 0   units_held armour 0
+                           wallet 0   embedded 0   delta 0
+                           open_crafts 1           completed_crafts 0
+
+after the wallet was funded and the craft completed
+                           units_held armour at Calx 1   weight_carried 1
+                           open_crafts 0                 completed_crafts 1
+
+UnknownCraftError from the second completion
+  ... has already completed
+
+after the second refusal   units_held iron ore 0   units_held armour at Calx 1
+                           weight_carried 1        embedded 0.00000001
+                           delta 0
+```
+
+One craft consumed one material list once. A refusal consumed none.
+
+### The Gear subtab says what a craft now does to a store
+
+The Gear subtab, `Ctrl+3`, prints a note for each mechanism an item takes part in.
+Its inventory note said that a hand-over is the only move between two stores.
+That stays true, and it no longer covers every way a store changes: a craft is the
+other way. The note now says both halves, and the two readings below come off the
+screen route, not off the module.
+
+```
+before, as the subtab printed it
+  Inventory.VesselStore holds them, gear in counted slots and consumables and
+  resources in stacks, and StoreBook.hand_over is the only move between two
+  stores, so this subtab lists the loot the wallet holds and no item a Vessel
+  wears.
+
+after, as the subtab prints it
+  Inventory.VesselStore holds them, gear in counted slots and consumables and
+  resources in stacks, StoreBook.hand_over is still the only move between two
+  stores, and a craft is the other way a store changes:
+  crafting.CraftRegister.complete_craft puts a made item in the crafting
+  Vessel's store and begin_craft takes that recipe's component units out of it;
+  no panel calls either, so this subtab lists the loot the wallet holds and no
+  item a Vessel wears.
+```
+
+The subtab prints the same eight mechanism names on both trees. No name left the
+list to make room.
+
+### What a craft's material list still stands on
+
+A craft takes its materials out and puts its item in. Nothing fills the store in
+the first place.
+
+```
+no module gathers a material unit, so every unit a craft consumes was put in by
+  a caller's own put_in
+no module counts how many units of a material a world holds
+no bucket records the Quintessence a material unit in a store carries, so
+  consuming a component moves nothing in the ledger
+material_surplus reads 0 for all four item types at all five grades, because each
+  declared list is one unit of iron ore and one component of Quintessence holds
+  one Quintessence of an item together
+no figure sets a Vessel's gear slot count
+no figure sets the stack ceiling
+no table names a recipe, so a loss share and a turn count arrive from the caller
+no source sets what an abandoned craft loses, so it loses nothing
+```
+
+No control on screen reaches this. The PoA tab surface names no store and no
+craft register, and the one thing it reads of this work is the prose above. The
+Gear subtab is the surface that would call a craft: it already prints the four
+item classes and the note that now names both halves of what a craft does.
 ## 2026-09-11 11:45 - #586 - the player window reads what is left of the turn
 
 The player window reported the turn that was gone. It now reports the turn that
