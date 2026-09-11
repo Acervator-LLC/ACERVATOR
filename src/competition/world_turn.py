@@ -15,6 +15,7 @@ import threading
 from dataclasses import dataclass
 
 from .consecration import CLOCK, WORLD_TURN_SECONDS_ABSENT
+from .poa_modes import WORLD_TURN_SECONDS
 from .world_movement import BASE_STEPS_PER_TURN
 
 logger = logging.getLogger("acervator.world_turn")
@@ -404,6 +405,7 @@ def turn_economy_row() -> dict:
         "min_grant_steps": MIN_GRANT_STEPS,
         "min_spend_steps": MIN_SPEND_STEPS,
         "first_turn_index": FIRST_TURN_INDEX,
+        "world_turn_seconds": WORLD_TURN_SECONDS,
         "world_turn_seconds_absent": WORLD_TURN_SECONDS_ABSENT,
         "unladen_steps_absent": UNLADEN_STEPS_ABSENT,
         "penalty_absent": PENALTY_ABSENT,

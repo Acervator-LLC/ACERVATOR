@@ -35,6 +35,7 @@ from .inventory import (
     vessel_key,
 )
 from .materials import QUALITY_GRADES, quality_index
+from .poa_modes import WORLD_TURN_SECONDS
 from .quintessence_ledger import (
     QUINTESSENCE_MINIMUM_UNIT,
     QUINTESSENCE_SUPPLY_CAP,
@@ -168,8 +169,12 @@ TURNS_ABSENT = (
     "derives turns from an item's grade, its material count or its cohesion"
 )
 
-#: What names a world turn's length. Nothing does.
-CRAFT_CLOCK_NOTE = WORLD_TURN_SECONDS_ABSENT
+#: What names a world turn's length, and what a craft still cannot read off it.
+CRAFT_CLOCK_NOTE = (
+    f"{WORLD_TURN_SECONDS_ABSENT}, so turns_required is a count of "
+    f"{WORLD_TURN_SECONDS}-second turns. TURNS_ABSENT still names the count no "
+    f"source sets, and no figure here is derived from the length"
+)
 
 #: Why no recipe is declared in this module.
 RECIPE_TABLE_ABSENT = (
@@ -534,6 +539,7 @@ class Craft:
             "completes_turn": self.completes_turn,
             "store_key": self.store_key,
             "clock": CLOCK,
+            "world_turn_seconds": WORLD_TURN_SECONDS,
             "world_turn_seconds_absent": CRAFT_CLOCK_NOTE,
             "holds": OPEN_CRAFT_HOLDS_NOTHING,
             "holds_components": OPEN_CRAFT_HOLDS_COMPONENTS,
