@@ -11891,3 +11891,291 @@ the package entry  does not yet name this module. The package says so itself on
                    every launch: competition package holds 1 module(s) it does
                    not bind: world_turn
 ```
+---
+
+## 2026-09-11 07:40 - #586 - entering a dungeon moves a participant to the other clock
+
+### His question, and the answer it has
+
+He asked it as a design question rather than a work item.
+
+> "PoA - Dungeons - World Map - Another example of needed inference. What happens
+> after a player enters a dungeon? These are the sorts of design questions I want
+> you to ask while proceeding. Who. What Where. When. Why. How."
+
+The answer is a clock change. Outside a dungeon a participant counts world turns,
+which run continuously and survive an absence. Inside one they count event turns,
+which last one market candle and expire when that candle closes. Entering a
+dungeon moves a participant from the first clock to the second, and leaving moves
+them back.
+
+`src/competition/dungeon_entry.py` - the two clock names, each read from one place
+
+```python
+#: The clock outside a dungeon, the name ``consecration`` already declares.
+WORLD_CLOCK = CLOCK
+
+#: The clock inside a dungeon, one candle of ``EventVariant.turn_timeframe``.
+EVENT_CLOCK = "event turn"
+
+#: The two clocks a participant can be on. There is no third.
+CLOCKS: tuple[str, ...] = (WORLD_CLOCK, EVENT_CLOCK)
+```
+
+### The two clocks nest exactly, and the program printed the count
+
+The event turn is one candle of the event type's own timeframe. A Standard event
+runs on the five-minute candle and an Elite event on the one-minute candle, both
+taken from the same table the exchange reads. A world turn is an hour. Every
+dungeon variant divides an hour with nothing left over, so a participant inside a
+dungeon never holds part of a turn.
+
+`src/exchange/data_pool.py` - the one table both clocks read
+
+```
+TF_SECONDS["1h"]  3600    the world turn, an hour
+TF_SECONDS["5m"]   300    the Standard event turn
+TF_SECONDS["1m"]    60    the Elite event turn
+```
+
+What the program printed, driven directly:
+
+```
+dungeon_crawl        5m   300s   12 event turns an hour
+dungeon_crawl_elite  1m    60s   60 event turns an hour
+raid                 5m   300s   12 event turns an hour
+raid_elite           1m    60s   60 event turns an hour
+```
+
+The module refuses a world turn the candle does not divide, and rounds nothing.
+Driven with 3,500 seconds against the five-minute candle the refusal reads:
+
+```
+a world turn of 3500s holds 11 whole 5m candles and 200s over; the two clocks
+nest as exact multiples or a participant inside holds part of a turn
+```
+
+### Two of the four event types hold a dungeon, and the mode table says which
+
+Nothing lists the dungeon modes by name. The event mode table already carries a
+map flag, and reading that flag answers the question once for each caller.
+
+`src/competition/dungeon_entry.py` - the dungeon modes, derived
+
+```python
+#: The modes held at a map locator, read off ``EventMode.has_map``.
+DUNGEON_MODES: tuple[EventMode, ...] = tuple(mode for mode in MODES if mode.has_map)
+```
+
+The table the program printed:
+
+```
+mode                      dungeon  party      guild
+monster_smash             no       1 to 1     no
+team_monster_smash        no       2 to 120   yes
+dungeon_crawl             yes      1 to 6     no
+raid                      yes      2 to 60    yes
+```
+
+This matches his own two sentences. Monster Smash is where every player starts,
+so the arena is not a dungeon and nobody enters one there. A Dungeon Crawl takes
+one to six and a Raid takes two to sixty, and the Raid needs a guild where the
+Crawl does not.
+
+### A dungeon is a locator, and no module declares one
+
+No module in the tree declares a dungeon object. A place on the world map is a
+fact with a kind, and the kind is whatever text the discovering caller passed.
+No list of valid kinds exists, so a dungeon is a locator plus a name.
+
+`src/competition/dungeon_entry.py` - what the module says about this itself
+
+```python
+DUNGEON_IS_A_LOCATOR = (
+    "no module declares a dungeon. world_grid.WorldFact carries a kind and that "
+    "kind is caller text with no declared values, so a dungeon is the locator a "
+    "fact sits at plus the kind whoever discovered it named"
+)
+```
+
+An entry names the square and the position across it that the party stands on,
+and the module derives the locator from those. No caller can claim an entry at a
+place the party does not stand on.
+
+### One entry, one exit, and both are rebuildable from the record
+
+An entry records who went in, which place, which event type, the world turn they
+left, and the event turn they joined. An exit records both turn indexes again.
+Nothing edits either record afterwards, so the two rebuild the whole visit.
+
+`src/competition/dungeon_entry.py` - the entry record's own fields
+
+```python
+entry_id: str
+world_id: str
+fact_id: str
+locator: str
+layer: int
+square_index: int
+step_x: int
+step_y: int
+kind: str
+mode_code: str
+elite: bool
+leader: str
+members: tuple[str, ...]
+entered_world_turn: int
+entered_event_turn: int
+entered_at: float
+```
+
+Driven on a real world with a real party of three, the program printed:
+
+```
+0xLeader took 3 into ruined_keep at 3:45:68:12,
+off world turn 41 onto event turn 5856666 of the 5m candle
+
+0xLeader brought 3 out of 3:45:68:12,
+off event turn 5856696 back onto world turn 44
+```
+
+Written to a file and read back, the rebuilt entry and exit compared equal to the
+originals and the clock reading after the replay was the world turn.
+
+### The run read the clock three times off the real objects
+
+Before the entry, during it and after it, for each of the three party members and
+for one participant who never entered.
+
+```
+                 before entry   inside        after exit
+0xLeader         world turn     event turn    world turn
+0xSecond         world turn     event turn    world turn
+0xThird          world turn     event turn    world turn
+0xElsewhere      world turn     world turn    world turn
+```
+
+The last row is the control. The same reading that moves for each member inside
+does not move for someone who is not, so a reading of `event turn` means the
+participant is genuinely in a dungeon and not that the reader always says so.
+
+### Five things make an entry impossible
+
+The run drove each one and each refused. Every refusal below comes from that run.
+
+```
+an arena mode          Monster Smash is held at no map locator, so nothing is
+                       entered in it. Only [dungeon_crawl, raid] hold a dungeon
+
+the wrong party        this party was formed for Dungeon Crawl and admits 1 to 6;
+                       entering a Raid needs a party formed in raid
+
+an undiscovered place  0xElsewhere leads this Dungeon Crawl and holds no
+                       reference to u76world:3:49:1:2; a dungeon is entered only
+                       where it has been discovered
+
+already inside         0xSecond is inside 3:45:68:12 on entry ... and answers to
+                       the event turn; entry ... would put one participant on two
+                       event clocks at once
+
+leaving twice          entry ... returned to world turn 44 already; nothing is
+                       inside it to bring out a second time
+```
+
+The third refusal is his own rule in code. He wrote that a party must find a
+dungeon out in the world first, so the party's leader must already hold a
+reference to the place. The leader is the one who navigates, which is his rule too.
+
+### Four ways to abuse an entry, and what each one does
+
+```
+enter twice              refused. One participant holds at most one open entry
+
+enter while inside       refused, the same check. Driven on a member of a party
+                         that was already in, not only on the leader
+
+enter with a member       not refused, and this is a gap. One position is taken
+who is elsewhere          for the whole party, and no module holds a position per
+                          member, so nothing can tell that a member stands away
+
+escape a world-time       no. Measured: a journey leg kept covering ground on
+threat by going in        world turns 41 to 44 while the party was inside, and an
+                          incapacitation set to end on world turn 44 still held on
+                          41 and 43 and lapsed on 44. Neither reads the dungeon
+                          register, so world time does not pause for anyone inside
+```
+
+The last one was the question worth asking. Because world time keeps running, a
+dungeon is not a hiding place, and that is the same answer his own rule gives for
+a secondary Vessel whose work survives an absence.
+
+### Two parties can stand in one dungeon at once
+
+Nothing caps how many parties hold an open entry at one locator. Driven, a party
+of three and a separate participant both entered the same place on the same event
+turn, and the register admitted both.
+
+**In development.** Whether a dungeon admits one party at a time belongs with the
+inside of a dungeon, which is the ruling below.
+
+### What a dungeon still does not have
+
+Every one of these is absent rather than partly built, and the module says so
+itself through a reader that lists them.
+
+```
+the inside          HIS RULING IS OWED, and the two readings cost very different
+                    amounts. A dungeon may be a place ON the world grid, in which
+                    case a participant keeps the square and the step it already
+                    has and nothing new is needed. Or a dungeon may be a separate
+                    space with its own coordinates, which is a second grid with
+                    its own sight range and its own set of positions, roughly
+                    doubling the world state. His seven-level dungeon points at
+                    the second. The entry is built so either can follow it
+
+combat              nothing resolves a fight. The monster tiers exist and the
+                    stat blocks exist, and no module turns two of them into a
+                    result
+
+permadeath          his ten-round window has no code and a round has no declared
+                    length, so entering a dungeon currently costs nothing
+
+a member's position  one position is taken for the party. Movement derives a
+                    position from each mover's own journey leg, so a member
+                    standing somewhere else is not refused
+
+losing a member      one exit closes the whole entry. Whether a single member can
+                    leave alone, and what a party of none becomes, is unanswered
+
+the world turn       nothing acts on a world turn closing while a party is
+closing mid-dungeon  inside. The entry records the turn they left and the exit
+                     records the turn they returned to, and no rule of his covers
+                     the turns between
+
+the world turn's     still no constant names the seconds in a world turn. The
+length               hour lives in his own words, so the count of event turns an
+                     hour holds is worked out from a figure the caller supplies
+
+the screen           this module draws nothing. His map click opens the map
+                    subtab, and the screen belongs elsewhere
+```
+
+### What reads a dungeon entry, and what is still owed
+
+```
+reads it today     nothing. No module enters a dungeon, and every line above
+                   came from driving the entry directly
+
+combat             would read the entry to know which event turn a fight is on,
+                   and does not exist
+
+a surface          would read the entry to show a party inside a dungeon, and the
+                   map subtab reads no entry
+
+the world-turn     grants one pool a world turn. Nothing connects it to an entry,
+pool               so a party inside still holds its world-turn steps
+
+the package entry  does not yet name this module. The package says so itself on
+                   every launch: competition package holds 2 module(s) it does
+                   not bind: dungeon_entry, world_turn
+```
