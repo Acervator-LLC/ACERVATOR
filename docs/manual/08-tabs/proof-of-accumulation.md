@@ -9006,7 +9006,762 @@ owed   the module's entry in the package export list
 owed   the wallet's Vessels section reading a Reincarnate
 ```
 
-## 2026-09-11 03:40 - #147 - the top row is halved, and the right half is the map or the encounter
+## 2026-09-11 03:30 - #586 - the world tier, and the Quintessence a slaying imports
+
+A world now has a tier. The tier runs from one to six, and it names the deepest
+dimension the world reaches. Raising it reaches further down, where the
+creatures are harder, so a mature world grows harder and pays more.
+
+```
+src/competition/world_tier.py
+```
+
+### The cataclysm rule, in his own words
+
+```
+PoA - Cataclysms - Monsters - Creatures fought during a cataclysm (alignment
+skewed world event) actually 'import' additional Quint that is added to the
+World if they are slain. This is also the mechanism whereby a World's tier
+(lowest dimension on which it resides) is raised thus permanently increasing
+difficulty and proportionate rewards. This allows loot and resources to roll off
+of charts for mature worlds having predominantly players that do not need their
+statistical bandwith being consumed by unneeded items.
+```
+
+### A higher tier number reaches a lower dimension
+
+His definition reads straight through. The tier counts from one to six. The count
+names the lowest dimension the world sits on. Raising the count reaches deeper,
+and deeper runs harder. That reading is the one this unit took, and nothing he
+has written asks for the opposite.
+
+The depths are not new. The monster table already declares twelve tiers at
+signed depths, six below the player's own plane and six above. A world at tier
+one reaches only the first depth below it. A world at tier six reaches all six.
+This module declares no second scale.
+
+```
+world_tier.lowest_depth_of   reads monster_table.monster_tier_at
+
+tier 1   depth -1   the surface floor
+tier 2   depth -2   executors of a mandate or of fate
+tier 3   depth -3   the decan rank
+tier 4   depth -4   floor bosses
+tier 5   depth -5   the fall tier
+tier 6   depth -6   the summit
+```
+
+Driving the module produced those six names, and nothing copied them from a
+table. The module refuses a seventh tier, and refuses a tier below one.
+
+```
+world w rises to tier 6, reaching depth -6
+WorldTierBoundError: world 'w' sits at tier 6 of 6 and reaches depth -6 already
+WorldTierBoundError: a world tier runs 1 to 6, the 6 descending ranks
+monster_table declares, got 7
+```
+
+### The import moves Quintessence and creates none
+
+Quintessence has a cap of thirty-three million, and that cap holds only while
+every amount sits in one of four places. An import can make none. The ledger
+already had the door. One call takes an amount out of the pleroma, where
+Quintessence rests while nothing holds it, and puts it in the embedded place,
+where a world holds it. His own rule sends a slain creature's Quintessence back
+to the pleroma. The import uses that same door the other way.
+
+```python
+def import_on_slaying(self, ledger, world_id, amount) -> Decimal:
+    standing = self.world(world_id)
+    imported = ledger.embed_from_pleroma(amount)
+```
+
+### One import, driven on a real ledger
+
+The run opened a ledger on a temporary file. It distilled a hundred
+Quintessence, then bled four of that into the pleroma with a transfer. It made
+one import of 1.25 for a world, and read the four totals off the ledger either
+side of the call.
+
+```
+quintessence_ledger.embed_from_pleroma, through
+world_tier.WorldTierRegistry.import_on_slaying
+
+              wallets   held   pleroma   embedded   ever minted   difference
+before          96.00      0      4.00       0.00        100.00         0.00
+after           96.00      0      2.75       1.25        100.00         0.00
+```
+
+The import created nothing. The amount ever minted did not move, and the four
+totals still add to it with no difference. Had that mint figure risen, the
+import would have been making Quintessence, and the thirty-three million cap
+would no longer bound the supply at all. The module said what it did as it did
+it.
+
+```
+acervator.world_tier world world-1 opens at tier 1, reaching depth -1
+acervator.world_tier world world-1 imports 1.25 Quintessence out of the pleroma
+```
+
+### What happens when the pleroma runs dry
+
+Every world draws on one finite pleroma, so an import draws on a shared pool.
+The run drove the ledger dry to find out what it does.
+
+```
+pleroma 0      import 1      ValueError: the pleroma holds 0, cannot embed
+                             1.00000000
+pleroma 0.4    import 1      ValueError: the pleroma holds 0.40000000, cannot
+                             embed 1.00000000
+pleroma 0.4    import 0.4    moved 0.40000000, pleroma left at 0
+```
+
+An import never part-fills. The ledger refuses an amount larger than the pleroma
+holds, whole, and credits the world nothing. After both refusals the world's own
+total still read zero and the four totals still balanced. An amount smaller than
+the smallest unit the currency can express moves nothing and answers zero.
+
+### Farming a world to raise its tier
+
+A world can reach tier six by farming, and nothing in the tree stops it. The
+raise takes one call, and no figure says how much imported Quintessence earns
+one. Six calls to the raise walk a world from tier one to tier six. The module
+declares that figure absent and refuses to answer for it, rather than choosing a
+number nobody chose.
+
+```
+world_tier.tier_raise_threshold
+
+FigureAbsentError: no threshold raises a world tier: the imported Quintessence
+that raises a world one tier. No statement names one, so nothing bounds how
+often raise_tier may be called and a world can be farmed to MAX_WORLD_TIER by
+repeated slaying
+```
+
+The pleroma is the only real brake today, and it brakes the import, not the
+tier.
+
+### The monster table owes the amount one creature imports
+
+Asking what a slain creature imports hands back a refusal, and the monster table
+raises it rather than this module. All twelve of its tiers carry no character
+level, so no Quintessence amount follows from any of them. The monster table
+already counts twelve levels it owes.
+
+```
+world_tier.slaying_import_amount, through
+monster_table.tier_embedded_quintessence
+
+LevelAbsentError: the tier at depth -1 has no level, so no Quintessence amount
+follows: the character level this tier sits at. No source names one.
+```
+
+This module refuses a depth the world does not reach, and that one check is all
+it adds to that path.
+
+```
+WorldTierBoundError: a world at tier 2 reaches [-1, -2], and no creature of it
+sits at depth -5
+```
+
+### Loot rolls off the low end, and one figure decides how much
+
+His sentence rolls loot and resources off the chart as a world matures, because
+mature players do not want their item lists full of things they cannot use. A
+tier picks a band of the chart instead of the whole chart.
+
+The five loot tiers already run commonest first, and the material quality grades
+take the same five names in the same order from the same place. One band answers
+loot and resources together. Cutting from the low end takes the commonest items
+first, which is what his sentence asks for.
+
+```
+world_tier.loot_band   cuts loot_drop.TIER_NAMES, which materials.QUALITY_GRADES
+                       also reads
+
+cut 0    Calx, Cauda Pavonis, Flores, Elixir, Magisterium
+cut 1    Cauda Pavonis, Flores, Elixir, Magisterium
+cut 2    Flores, Elixir, Magisterium
+cut 3    Elixir, Magisterium
+cut 4    Magisterium
+```
+
+How many tiers one world tier cuts is the figure nobody has set. Six world tiers
+and five loot tiers divide by no whole count, so the module refuses to answer a
+band from a tier until someone names that figure.
+
+```
+world_tier.loot_band_at_tier
+
+FigureAbsentError: no band follows from a world tier: how many loot tiers leave
+the chart for each world tier above FIRST_WORLD_TIER. No statement names one.
+```
+
+### A cut band is not yet a drop table
+
+A drop roll needs weights that add to a hundred. A cut band falls short, and
+adding the weights at each cut shows by how much.
+
+```
+world_tier.band_weight_total, against loot_drop.WEIGHT_TOTAL_PCT of 100
+
+cut 0    weights total 100.0
+cut 1    weights total  40.0
+cut 2    weights total  15.0
+cut 3    weights total   4.0
+cut 4    weights total   0.5
+```
+
+Only the uncut chart passes the check the loot module already runs on itself. A
+band names which items a mature world can drop. Nothing reweights what the cut
+leaves, so no roll comes out of a band yet.
+
+### Which clock
+
+The import belongs to the event turn, because a participant slays a creature
+inside an event. The tier raise belongs to the world turn, because the tier is a
+fact about the world that every participant has to see the same way, and a raise
+part way through an event would change the difficulty of a fight already
+running. Nothing schedules either one.
+
+```
+event turn   300 seconds, 60 for an Elite event, read from
+             poa_modes.EventVariant.turn_seconds
+world turn   one hour, counted in whole turns and in seconds nowhere under src
+```
+
+### The registry holds the tier in memory
+
+The registry keeps every world's tier in memory and writes no file, the same as
+the guild roster. His word is permanently, so a world's tier has to outlive a
+restart before this work finishes.
+
+```
+owed   a world's tier surviving a restart
+```
+
+### Nothing calls it
+
+Four things this needs do not exist, and a count found each absence.
+
+```
+cataclysm    no module under src names one
+alignment    no module under src/competition names one
+combat       no module under src names one, so nothing can slay a creature
+world tier   world_grid declares layers and declared no tier before this module
+```
+
+The module provides the two calls a cataclysm would make, and nothing calls it.
+Twelve of the thirteen findings the coding review returned say exactly that: the
+registry, its methods and the reading functions have no caller. The thirteenth
+names a missing copyright line, which no file in the package carries.
+
+Nothing shows a world tier either. Driving the tab's own handler returns
+thirty-one sections, and searching each one finds the words world tier zero
+times, and cataclysm zero times. The conservation panel does already print the
+pleroma and the embedded totals, so an import would show its effect there the
+moment something made one.
+
+```
+owed   a cataclysm, which would raise the tier
+owed   a combat result, which would make the import
+owed   the module's entry in the package export list
+owed   a surface showing a world's tier
+```
+
+### What the world tier reads, and what it hands back
+
+```
+reads, nothing provides   the amount one slain creature imports. The monster
+                          table refuses it, because no tier carries a level
+reads, nothing provides   the imported Quintessence that earns one tier raise
+reads, nothing provides   how many loot tiers one world tier cuts
+reads, nothing provides   a reweighting rule for a cut band
+provides, nothing reads   a world's tier, and the depths that tier reaches
+provides, nothing reads   the import, and the total each world has imported
+provides, nothing reads   the loot band a cut leaves on the chart
+```
+## 2026-09-11 03:50 - #586 - alignment, and the three levels it rolls up
+
+Alignment is now a running total of what a Vessel has done. A player does not pick
+a side. Each action carries its own ratio of Creation to Destruction, and a
+Vessel's alignment adds every one of those scores together. The same total rolls
+up to a guild, and the guilds add up to a world.
+
+```
+src/competition/alignment.py
+```
+
+### His words, and what they ask for
+
+```
+Remember to note how alignment is going to work in PoA. Abilities are ratios of
+Creation and Destruction on a gradient that persistently scores every vessels
+action so that alignment becomes a function all a Vessel's 'life' choices.
+```
+
+```
+Individual Vessel alignment informs Guild Alignment which then defines World
+Alignment.
+```
+
+### An action carries the ratio, and this module holds no ratios
+
+A score arrives with the action that earned it. The module that keeps the totals
+holds no table of ratios and picks none, because no ability exists yet to carry
+one. The caller hands over the two parts and the module adds them.
+
+```python
+ledger.score(vessel, "raised a wall", 3, 1)
+```
+
+The one action the package builds is the Quintessence Transfer in
+`src/competition/skill_ladder.py`. Whether a transfer scores at all, and which
+way, is a ruling nobody has made. This module gives it no ratio.
+
+### The scale runs pole to pole, with a real middle
+
+One action's reading is its Creation less its Destruction, divided by the two
+added together. All Creation reads 1. All Destruction reads -1. A ratio of three
+to one reads 0.5. Nothing can leave that range, because neither part is ever
+negative.
+
+```
+all Creation            polarity   1
+three Creation to one   polarity   0.5
+one to one              polarity   0
+one Creation to three   polarity  -0.5
+all Destruction         polarity  -1
+```
+
+Every amount stays exact. The module refuses a ratio handed to it as a binary
+fraction, and rounds nothing.
+
+```
+creation must be int, str or Decimal, not float; a ratio between
+('creation', 'destruction') decided by binary floating point is refused
+```
+
+### An unscored Vessel and a balanced one are not the same thing
+
+A Vessel that has done nothing and a Vessel whose good and bad cancel both show
+a net of zero. They are still different, and the difference falls out of the
+arithmetic: a reading is a net divided by a total, and a Vessel with no actions
+has a total of zero, so it has no reading at all.
+
+```
+before any score   actions=0   net=0   total=0   polarity=None   balanced=False
+after 3 to 1       actions=1   net=2   total=4   polarity=0.5    balanced=False
+after 1 to 3       actions=2   net=0   total=8   polarity=0      balanced=True
+```
+
+The balanced Vessel reads zero. The unscored one reads nothing. A world event can
+tell them apart on either the reading or the action count.
+
+### The total never decays
+
+Nothing removes a score, and no clock reduces one. His sentence says alignment is
+a function of all a Vessel's life choices, and a total that faded would stop being
+that. The design has no decay, so no figure sets a decay rate.
+
+```
+DECAY_ABSENT   no scored action is ever dropped from a total, and no clock
+               reduces one
+```
+
+### The Vessel holds it, and its key leaves the level out
+
+A Vessel is a frozen record of an owner, a class and a level, in
+`src/competition/vessels.py`. It carries no identity field, and this unit left that
+file alone. The module files each score under the owner and the class name, so a
+Vessel that gains a level keeps the alignment it earned.
+
+```
+the key       owner, class_name
+left out      level, so levelling up loses nothing
+```
+
+One thing that key cannot do is separate two Vessels of the same class under one
+owner. Nothing stops a player holding two, and today they would share one
+alignment. Separating them needs an identity field on the Vessel record, and
+nothing provides one.
+
+### A Vessel informs its guild, and the guilds define the world
+
+His two verbs differ and the difference is worth stating plainly. A guild's
+alignment is the sum of its members' Vessels, and other things may inform it
+later, such as the guild's own acts. A world's alignment is the sum of its
+guilds and nothing else, which is what defines means.
+
+```
+a Vessel     every score it has taken
+a guild      every Vessel of every member
+a world      every guild on the roster
+```
+
+The sum is the same operation at both levels today. The verbs differ only in
+whether more contributors may arrive, and nothing else contributes yet.
+
+Summing rather than averaging is what makes his single-guild rule come out right.
+A world with one guild takes that guild's reading exactly, with nothing to pull
+it back toward the middle. A world with guilds on opposite sides cancels toward
+the middle in the sum, which is the position a victor has to hold.
+
+### One run, three levels, and a change at the bottom moved the top
+
+One run drove two Vessels in one guild. The second Vessel drained a creature at
+nothing to forty, which is as far toward Destruction as a score goes.
+
+```
+alpha Iron Edge        net   0   total  8   polarity  0
+beta Silver Mirror     net -40   total 40   polarity -1
+the guild              net -40   total 48   polarity -0.8333333333333333333333333333
+the world              net -40   total 48   polarity -0.8333333333333333333333333333
+```
+
+The first Vessel then restored a spring at twenty to nothing. Its own reading
+moved, and so did both levels above it.
+
+```
+alpha Iron Edge        net  20   total 28   polarity  0.7142857142857142857142857143
+the guild              net -20   total 68   polarity -0.2941176470588235294117647059
+the world              net -20   total 68   polarity -0.2941176470588235294117647059
+```
+
+One action changed all three readings. That is the roll-up working.
+
+### A player in no guild reaches the world nowhere
+
+The chain runs Vessel, then guild, then world. The roster in
+`src/competition/guild_roster.py` allows a player to belong to no guild, and
+answers nothing when asked which guild such a player is in. An unguilded player's
+actions therefore reach no guild and no world.
+
+A third Vessel, owned by a player in no guild, mended a road at five to nothing.
+The world did not move.
+
+```
+gamma Lead Ward        net   5   total  5   polarity  1
+the world              net -20   total 68   unchanged
+unguilded addresses    ('gamma',)
+```
+
+The module reports those addresses rather than hiding them, and invents no route
+for them. **This is a question for the operator:** either an unguilded player's
+actions should not count toward a world, or the chain needs a fourth step that
+carries them.
+
+### Offsetting is open, and the consequence is his to see
+
+The net is a plain sum, so light good acts cancel heavy bad ones. One run scored
+a single profound Destruction of a thousand, then a thousand trivial Creations of
+one each. The Vessel came out exactly balanced.
+
+```
+actions 1001      net 0      total 2000      polarity 0      balanced True
+```
+
+A player can also park a Vessel near the middle by alternating. His own rule
+calls necromancy and energy vampirism profoundly evil, which reads as weight
+rather than count, and weight is the ratio the action carries. Nothing in the
+totals stops many light acts cancelling one heavy act.
+
+The one thing the totals do keep is how much weight went in. A Vessel at zero with
+a total of two thousand is not the same as a Vessel at zero with a total of two,
+and a reader can tell them apart.
+
+```
+a brake on offsetting   nothing sets one, and the operator would set it
+```
+
+### The monster tiers are a different axis, and the module says why
+
+The twelve monster tiers run six below the player's plane and six above. One
+reading makes them the same Creation-to-Destruction axis, and the table in
+`src/competition/monster_table.py` refutes it on five counts, so the two axes stay
+separate.
+
+```
+a tier is never at depth 0, and this scale needs a middle
+the decan rank below the plane is invoked to HEAL, not to destroy
+one tier of the twelve is marked morally wicked; the rest are indifferent
+the Watchers sit below the plane AND in the families named above it
+no rule places an arbitrary creature on the tier axis at all
+```
+
+The last line is the decisive one. The tier axis answers what a creature is. This
+scale answers what a Vessel has done. Nothing could score an action from a table
+that cannot place a creature.
+
+### The neutral band is the one figure nobody has set
+
+Exact balance needs no figure. A net of zero against any total above zero reads
+balanced, and the module answers that today. Naming a reading neutral over a range
+needs a width around zero, and no source gives one.
+
+```
+NEUTRAL_BAND   absent. The operator sets how far from zero still reads neutral
+```
+
+A three-way naming of a world's polarity is what the width would buy. His guild
+rule says a victor must hold a neutral polarity to survive, so a world event that
+asks whether a world is neutral will need it.
+
+### What reads this, and what it reads
+
+Nothing reads a Vessel's alignment, a guild's, or a world's. The module provides a
+world alignment that a cascade would read, and nothing reads it. The module names
+seven absent readers, each with the thing it waits on.
+
+```
+cataclysms          no module names one
+world polarity      this module derives one, and nothing stores or shows it
+abilities           one skill exists, and no ability carries a ratio
+combat              nothing resolves a fight, so no fight scores anything
+necromancy          no skill exists to score, and its ratio is the operator's
+energy vampirism    no skill exists to score, and its ratio is the operator's
+a surface           no tab or panel shows an alignment at any level
+```
+
+The module owes two more things. It has no entry in the package's export list, and
+nothing ties a roster to one world on the map, so a world alignment comes off
+whichever roster the caller hands over.
+
+```
+owed   the module's entry in the package export list
+owed   a tie between a guild roster and a world on the map
+```
+
+The cascade his directive describes has no brake. Creatures pushing a world
+further toward its own end would make more of those creatures appear, and nothing
+stated sets a ceiling or slows it down. A reader of the world alignment will need
+one.
+
+## 2026-09-11 04:10 - #586 - parties, and the armies their Raids link into
+
+A party now exists as a record. A party holds its members, its event mode, and
+the one member who leads it. Above the party sits an army. An army links two or
+more Raid parties and reads a General off each one.
+
+```
+src/competition/army_command.py
+```
+
+### His structure, in his own words
+
+```
+Armies are comprised from multiple, linked Raids. Raid Leaders become Generals
+under such structures. Generals must coordinate their raids while avoiding
+devastating multi-square type abilities and AoEs that last multiple turns. These
+events should be intense and always a bit chaotic.
+```
+
+```
+Idea is for cataclysms to be the peak event type for PoA since it effects all
+players in a world. My vision is to have entire player armies fighting cosmic /
+nightmare type bosses at some point during one of these.
+```
+
+### Nothing held a party's members until now
+
+Every event mode has declared a party range from the start, and one check already
+read those ranges. The party itself was missing. Nothing anywhere held a list of
+members, so the range had nothing to measure.
+
+```
+poa_modes.MODES             every mode's party range, declared
+guild_roster.require_party  checks a list of addresses against one range
+army_command.Party          the record that holds the members
+```
+
+### A party forms inside its mode's own range and nowhere outside it
+
+Forming runs through the check that already existed. The range that refuses a
+party is the mode's own declared range, and no second copy of it exists. A Raid
+admits two to sixty. One run drove both ends and both refusals.
+
+```
+form_party, through guild_roster.require_party
+
+a Raid of  2   forms     w0 leads a Raid party of 2
+a Raid of 60   forms     w10 leads a Raid party of 60
+a Raid of  1   refused   Raid admits 2 to 60 participants and this party holds 1
+a Raid of 61   refused   Raid admits 2 to 60 participants and this party holds 61
+a leader holding no seat
+               refused   'w99' leads this Raid party of 2 and holds no seat in it
+```
+
+This work changes no range. It adds no mode, and it raises no ceiling.
+
+```
+Monster Smash              1 to 1      no guild
+Team Based Monster Smash   2 to 120    one guild
+Dungeon Crawl              1 to 6      no guild
+Raid                       2 to 60     one guild
+```
+
+### An army links Raids and refuses every other kind of party
+
+His sentence names Raids, so Raids are what an army links. A Dungeon Crawl party
+forms normally, and the link then refuses it. One raid is not an army either. The
+smallest army links two raids.
+
+```
+a Dungeon Crawl party   refused   a Dungeon Crawl party links into no army; an
+                                  army is built from Raid parties
+an army of one raid     refused   army 'The Fourfold Host' links 1 Raid party(s);
+                                  an army links at least 2 of them
+```
+
+### One address holds one seat in one army
+
+This is the refusal a size check cannot see. Two raids can each be a legal Raid
+party and still name the same player. An army admitting both would count that
+player twice in every fight, under two Generals.
+
+```
+two disjoint raids of four   linked    2 raids, 8 members
+a third raid naming w3, who already sits in raid 0
+                             refused   w3 already hold seats in army 'The
+                                       Fourfold Host' across its 2 linked raid(s)
+the same third raid, in a fresh army
+                             linked    2 raids, 7 members
+```
+
+The third line is the one that matters. The party the first army refused links
+into a fresh army without complaint. The refusal came from the shared address and
+from nothing else about that party.
+
+### A General is a role a leader takes, not an appointment
+
+His sentence gives one General to each linked raid. Raid Leaders is plural and
+Generals is plural, and the sentence maps one onto the other. Nothing he has
+written names a single commander standing over a whole army.
+
+The army records no General of its own. Each raid keeps its leader, and the army
+reads each linked raid's leader as that raid's General at read time. The same
+wallet answers differently to a party and to an army.
+
+```
+the party alone calls w4 a leader
+the army calls the same wallet a general
+a stored raid carries leader, members, mode and guild_key, and no general field
+```
+
+That shape answers a General leaving in the middle of an event without a rule of
+its own. No separate record exists to go stale. Forming freezes a party, so
+nothing in the package removes a member from one, and the departure path is an
+open item of its own.
+
+### An army reconstructs through the same refusals that formed it
+
+A stored army rebuilds raid by raid, and each raid goes back through forming and
+linking. Every refusal above applies to a stored army and to a new one. The load
+refuses a stored party whose members have since left the guild.
+
+```
+two raids of four, stored as 280 bytes of JSON
+rebuilt   generals ('w0', 'w4')   2 raids   8 members   round trip identical
+```
+
+### Which clock a party and an army answer to
+
+No clock times either object. A party forms before an event begins, and an army
+forms before a cataclysm, so neither forming sits inside a turn of either clock.
+Once an event runs, the seating call that already exists puts a party's members on
+the event turn. A cataclysm reaches every player in a world, so an army belongs to
+the world turn. Nothing schedules either one.
+
+```
+event turn   300 seconds, 60 for an Elite event, from
+             poa_modes.EventVariant.turn_seconds
+world turn   one hour
+owed         a deadline for forming a party, and one for linking an army
+```
+
+### The party window holds two raids and no more
+
+The screen that would show an army has a measured ceiling. The window pages forty
+participants at a time and holds a hundred and twenty in all.
+
+```
+proof_of_accumulation_tab_surface.party(), driven
+
+capacity 120   per page 40   pages 3   group size 5   groups 8
+header "Page 1 of 3 - 40 a page - up to 120"
+```
+
+Two full Raids of sixty fill it exactly. A third raid does not fit. The window
+shows no leader and no General, and carries no army section at all.
+
+```
+owed   a party window that pages an army, not one party
+owed   a mark on the window for the General of each raid
+```
+
+### How many raids one army may link is his to set
+
+No cap sits in the code. A world seats a fixed number of participants, and
+dividing that by a Raid's own ceiling gives the raids a world could field at once.
+Whether that is the bound he wants is his decision, so nothing declares it.
+
+```
+79 participants a layer  x  20 layers     = 1,580 seats a world
+1,580 seats  /  60 a Raid                 = 26 raids
+declared in army_command                  = no cap
+```
+
+### What stays absent
+
+Four things an army exists to fight do not exist. A count found each absence.
+
+```
+combat           no module under src resolves a fight
+abilities        skill_ladder holds one skill, the Quintessence transfer
+an area effect   needs an ability and a turn resolution
+a cataclysm      no module under src names one
+```
+
+The multi-square reach his sentence describes has a real anchor already. The world
+grid addresses squares and gives every position a locator, so an ability covering
+more than one square would read those. Nothing builds one here.
+
+### Nothing forms a party in the running program
+
+Driving the tab's own handler returns the party window's paging and nothing else.
+No member, no leader, no army. The handler imports twenty-nine modules from the
+competition package, and neither the guild roster nor this module is among them.
+
+```
+proof_of_accumulation_tab_surface.view_model({}), under python -X dev
+
+party block keys   capacity, group_size, groups, mark_ranks, mark_seam_note,
+                   mark_seams, page, page_text, pages, per_page, placeholder
+army key           absent
+general key        absent
+```
+
+The coding review returns seven findings on the new module. Six of them say a
+method has no caller, which is the same sentence in another form. The seventh
+names a missing copyright line, which no file in the package carries.
+
+```
+owed   the module's entry in the package export list
+owed   who may form an army, and whether its raids must share one guild
+```
+
+### What a party reads, and what an army hands back
+
+```
+reads, nothing provides   a party, from a screen or an event entry. Nothing
+                          forms one
+reads, nothing provides   a combat result, which is what a General coordinates
+reads, nothing provides   a cataclysm, which is the event an army is raised for
+provides, nothing reads   a party's members, its mode, its leader and its guild
+provides, nothing reads   an army's linked raids, and the General of each one
+provides, nothing reads   one row a linked raid, as a surface would serve it
+```
+## 2026-09-11 04:30 - #147 - the top row is halved, and the right half is the map or the encounter
 
 ### His words set the top row
 
