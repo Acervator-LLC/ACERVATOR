@@ -15380,6 +15380,286 @@ world stays at the tier it opened on, and every world rolls the full chart today
 
 A band rolls, and nothing reaches it. A caller that hands a band to the drop call
 gets a correct roll. No control and no subtab hands it one.
+## 2026-09-11 12:50 - #586 - a participant who has not moved stands at the arena
+
+Every participant is somewhere. A participant who has never walked is standing at
+the arena. Before this, nothing could say that. Movement wrote one record a leg,
+and a participant with no leg had no place at all.
+
+Two units reached the same absence from two sides. One could not place a party
+member who had walked nowhere. One could not forage with a Vessel whose owner had
+walked nowhere. The world already declared its arena square. Nothing read it as a
+position.
+
+### The arena is where a participant stands before it walks
+
+`PoaWorld.create_world` fixes the arena square at the middle of the grid and puts
+it on the chain. The world has always known it. Now a reader answers it.
+
+`src/competition/world_grid.py` - the world answers its own arena as a place
+
+```python
+def arena_position(self, world_id: str) -> GridPosition:
+    """Where a participant of ``world_id`` stands before it walks anywhere."""
+
+def arena_locator(self, world_id: str) -> str:
+    """``arena_position`` as the locator text on ``ARENA_LAYER``."""
+```
+
+`ARENA_LAYER` is 0, the lowest layer ordinal `breach_layer` admits. The arena
+position sits on the square's origin step, so its locator is `0:40:0:0` on a grid
+9 squares across.
+
+`src/competition/world_movement.py` - one reader answers where a mover stands
+
+```python
+def mover_standing(self, world_id: str, address: str, turn: int) -> MoverStanding:
+    """Where ``address`` stands in ``world_id`` during ``turn``, and what said so."""
+
+def mover_locator(self, world_id: str, address: str, turn: int) -> str:
+    """The ``GridPosition.locator`` ``address`` stands at during ``turn``."""
+```
+
+`mover_locator` reads `mover_standing`, so one rule decides a place and the
+locator text cannot disagree with it.
+
+A `MoverStanding` carries its own source. A standing has one of two sources, and
+no third source exists.
+
+```
+journey leg    the mover's own latest covering leg derived the place
+arena          the mover held no covering leg, so the world answered its arena
+```
+
+```mermaid
+flowchart TD
+    ask[a consumer asks where an address stands] --> legs{does a covering leg exist?}
+    legs -- yes --> leg[progress_at derives the square and the two steps]
+    legs -- no --> arena[PoaWorld.arena_position]
+    leg --> standing[MoverStanding source = journey leg]
+    arena --> standing2[MoverStanding source = arena]
+    standing --> locator[locator text every place comparison reads]
+    standing2 --> locator
+```
+
+### What the world answers for a participant with no journey leg
+
+Two participants on a real grid 9 squares across, arena at square 40. One walked
+from the arena to square 9, half a square in each direction. One opened no leg.
+
+What the reader answered before this change:
+
+```
+0xNewcomer   mover_journeys = ()                   mover_locator = None
+0xWalker     mover_journeys = ('walker-journey',)  mover_locator = '0:9:50:50'
+```
+
+What the reader answers now:
+
+```
+0xNewcomer   mover_locator = '0:40:0:0'   source = 'arena'        walked_nowhere = True
+0xWalker     mover_locator = '0:9:50:50'  source = 'journey leg'  walked_nowhere = False
+```
+
+The walker reads the same locator on both sides. A leg still decides a place for
+every mover that opened one.
+
+### The party check still refuses a member who walked nowhere
+
+The walker discovered a crypt at square 9, out in the world. A party of two tried
+to enter it: the walker, and the participant that had opened no leg.
+
+Before, the entry refused the member with no leg for an absence:
+
+```
+party_locators = {'0xWalker': '0:9:50:50', '0xNewcomer': None}
+
+0xWalker leads this Descension into 0:9:50:50 and 1 of 2 members stand away from
+it: 0xNewcomer at no journey leg open by this turn; a party walks into a dungeon
+from the dungeon's own position
+```
+
+Now the entry refuses the same member for standing at the arena:
+
+```
+party_locators = {'0xWalker': '0:9:50:50', '0xNewcomer': '0:40:0:0'}
+
+0xWalker leads this Descension into 0:9:50:50 and 1 of 2 members stand away from
+it: 0xNewcomer at 0:40:0:0; a party walks into a dungeon from the dungeon's own
+position
+```
+
+The refusal is the same refusal. `register.entry_ids()` answered `()` after the
+attempt on both sides, so the register held nothing either time. The message now
+names a place instead of a gap in the records.
+
+### A Vessel whose owner walked nowhere forages the arena
+
+A foraging run takes a standing `GridPosition` from its caller. Before this, a
+caller had nothing to build one from for an owner that had never moved, so the
+run refused:
+
+```
+forage REFUSED ForageError:
+  a GridPosition was expected, got NoneType; no module records where a Vessel
+  stands ...
+```
+
+Now the caller reads the standing off the world and hands it over. The run
+gathers:
+
+```
+standing = {'mover': '0xNewcomer', 'layer': 0, 'square_index': 40,
+            'step_x': 0, 'step_y': 0, 'locator': '0:40:0:0', 'source': 'arena'}
+
+material        iron ore at Magisterium
+units_gathered  1
+units_held      1
+weight_carried  1
+square foraged  40 on layer 0
+store now holds (Stack(name='iron ore', quality='Magisterium', units=1),)
+```
+
+The forage path itself never refused the arena square. A position handed in by
+hand foraged square 40 on both sides. What was absent was a module that could say
+a Vessel stood there.
+
+A Vessel still forages only the square it stands on. The walker stands on square
+9, and naming the arena square refuses it:
+
+```
+Quicksilver Draught of 0xWalker stands on square 9 of layer 0 and square 40 was
+named; a Vessel forages the square it stands on
+```
+
+### The same square, reached two ways
+
+A third participant walked off the arena to square 41 and walked back. Its
+locator reads `0:40:0:0`, the arena's own text, and its source reads
+`journey leg`:
+
+```
+0xReturner   mover_locator = '0:40:0:0'   source = 'journey leg'   walked_nowhere = False
+```
+
+The locator alone cannot separate a participant that returned from one that never
+left. The source can. A consumer that must refuse an assumed place reads the
+source.
+
+### A dungeon at the arena admits a party that never moved
+
+Nothing refuses a discovery at the arena locator. A still leader discovered a
+crypt at `0:40:0:0`. A party of two, neither of which had opened a leg, tried to
+enter it.
+
+Before, the entry refused both members:
+
+```
+party_locators = {'0xStillLeader': None, '0xStillMember': None}
+
+0xStillLeader leads this Descension into 0:40:0:0 and 2 of 2 members stand away
+from it: 0xStillLeader at no journey leg open by this turn; 0xStillMember at no
+journey leg open by this turn
+```
+
+Now both stand at the door and the entry admits them:
+
+```
+party_locators = {'0xStillLeader': '0:40:0:0', '0xStillMember': '0:40:0:0'}
+
+entry_id             u99world:0:40:0:0:0xStillLeader:w7:e5866666
+locator              0:40:0:0
+kind                 crypt
+mode_code            dungeon_crawl
+members              ['0xStillLeader', '0xStillMember']
+entered_world_turn   7
+entered_event_turn   5866666
+
+clock_row 0xStillLeader   clock=event turn  locator=0:40:0:0
+clock_row 0xStillMember   clock=event turn  locator=0:40:0:0
+```
+
+This change makes that entry possible. The rule matches every other entry: a
+party enters from the dungeon's own position, and the arena is now a position.
+The check on the mode stands apart from the check on the place. Monster Smash and
+team Monster Smash hold no map locator, and `require_dungeon` refuses both
+wherever they run.
+
+### The three edges, and the one the world cannot answer
+
+Nothing can build a world with no arena. `WorldRecord.arena_square` carries no
+default, and `create_world` always sets the middle square. A world the store does
+not hold now refuses instead of answering:
+
+```
+before   mover_locator('nosuchworld', ...) RETURNED None
+now      mover_locator('nosuchworld', ...) RAISED WorldGridError:
+         no world 'nosuchworld' is held; worlds: u99world
+```
+
+A blank address names nobody, and the reader refuses it:
+
+```
+mover_locator('')     RAISED MovementError: a mover must be a non-empty wallet address, got ''
+mover_locator('   ')  RAISED MovementError: a mover must be a non-empty wallet address, got '   '
+mover_locator(None)   RAISED MovementError: a mover must be a non-empty wallet address, got None
+```
+
+The third edge is open. No module holds the list of addresses a world has, so any
+address string that is not blank reads the arena:
+
+```
+knows(0xNobody)          = ()
+mover_journeys(0xNobody) = ()
+mover_locator(0xNobody)  = '0:40:0:0'
+```
+
+The caller holds the participant. A party names its own members and a run names
+its own Vessel, so each consumer already knows whose place it wants. The package
+does not, and `dungeon_entry.MEMBER_POSITION_ABSENT` records that.
+
+### What reaches the arena position at runtime
+
+No control on the Accumulation tab calls the reader. Two of the three consumers
+are not built on any screen.
+
+```
+WorldJourneys        installed. src/gui/shared_testnet.py builds one over the
+                     demo chain and attaches it to the main window
+DungeonRegister      no screen file builds one
+ForageRegister       no screen file builds one
+Map subtab           prints the arena square as "Own square", read straight off
+                     the world record, not through the reader
+```
+
+The Map subtab already says a participant stands on the arena square. It reads
+`record.arena_square` itself. The reader now answers the same square as a
+position, with the layer and the two steps the locator needs.
+
+The Maps subtab is where a dungeon entry belongs, by the operator's own ruling: a
+map click during a Crawl or a Raid opens it, and a location carries its options
+when the player moves into the square. The Resources subtab is where a foraging
+run belongs. Neither carries the control yet.
+
+### What a standing position still does not know
+
+```
+who a world holds       no roster names the addresses of a world, so the arena
+                        answers any address a caller names
+a Vessel's own place    a standing places an address. A Vessel is placed by its
+                        owner's address and has no position of its own
+a turn that is real     a turn index below the first one the clocks count still
+                        reads the arena. world_movement cannot read
+                        world_turn.FIRST_TURN_INDEX, because world_turn imports
+                        world_movement
+holding a member still  a member can open a leg away from a dungeon after the
+                        entry check reads its place and before the party goes in
+the seconds in a turn   unset, so nothing in the program can say which world
+                        turn is running and derive a later square
+```
+
+The rest of a dungeon stands where it stood. Nothing rules the inside, nothing
+resolves a fight, and a round still has no length.
 
 ## 2026-09-11 13:10 - #585 - a guild roster saves to a file, and the Guild subtab reads it back
 
