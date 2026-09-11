@@ -1,7 +1,8 @@
 """Shared LocalTestnet bridge.
 
 ``SharedTestnetBridge.install_on`` attaches one ``LocalTestnet``, one
-``QuintessenceLedger`` and one ``PoaWorld`` to a MainWindow and starts
+``QuintessenceLedger``, one ``PoaWorld`` and one ``GuildRoster`` to a MainWindow
+and starts
 ``_drain_queue`` on a timer. Each queued
 ``CompetitionRequest`` runs in a ``_CompetitionWorker``, which mutates
 the chain on its own thread while it holds ``_mutation_lock``, one
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from src.competition.capture_bounds import CaptureBounds
     from src.competition.certification_socket import CertificationSocket
     from src.competition.event_redistribution import EventRedistribution
+    from src.competition.guild_roster import GuildRoster
     from src.competition.market_rotation import MarketRotation
     from src.competition.node_link import PoaNodeLink
     from src.competition.quintessence_ledger import QuintessenceLedger
@@ -208,6 +210,7 @@ class SharedTestnetBridge(QObject):
         self._event_redistribution: Optional[EventRedistribution] = None
         self._poa_world: Optional[PoaWorld] = None
         self._poa_journeys: Optional[WorldJourneys] = None
+        self._guild_roster: Optional[GuildRoster] = None
 
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
@@ -235,12 +238,14 @@ class SharedTestnetBridge(QObject):
         event_pot_address: Optional[str] = None,
         world_path: Optional[Path] = None,
         journey_path: Optional[Path] = None,
+        roster_path: Optional[Path] = None,
     ):
         """Create the shared ``LocalTestnet``, the bridge, the
         ``QuintessenceLedger``, the ``CertificationSocket``, the
         ``MarketRotation``, the ``CaptureBounds``, the ``PoaNodeLink``, the
-        ``ActionSpend``, the ``EventRedistribution``, the ``PoaWorld`` and the
-        ``WorldJourneys``, and attach all eleven to ``main_win``.
+        ``ActionSpend``, the ``EventRedistribution``, the ``PoaWorld``, the
+        ``WorldJourneys`` and the ``GuildRoster``, and attach all twelve to
+        ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -277,6 +282,7 @@ class SharedTestnetBridge(QObject):
         main_win._poa_journeys = bridge.install_journeys(
             main_win._poa_world, journey_path
         )
+        main_win._guild_roster = bridge.install_roster(roster_path)
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
 
@@ -496,6 +502,31 @@ class SharedTestnetBridge(QObject):
     def poa_journeys(self) -> Optional[WorldJourneys]:
         """Read the ``WorldJourneys`` this bridge installed."""
         return self._poa_journeys
+
+    def install_roster(self, roster_path: Optional[Path] = None) -> GuildRoster:
+        """Build the ``GuildRoster`` and read the guilds its own file holds.
+
+        ``alignment.world_alignment``, ``consecration.add_guild_places`` and
+        ``army_command.open_party`` each take a roster and none builds one, so this
+        is the roster the running program holds for them.
+        """
+        from src.competition.guild_roster import GuildRoster as _Roster
+
+        roster = _Roster(roster_path)
+        roster.load()
+        self._guild_roster = roster
+        logger.info(
+            "GuildRoster installed (path=%s, guilds=%d, members=%d)",
+            roster.roster_path,
+            roster.guild_count,
+            roster.member_count,
+        )
+        return roster
+
+    @property
+    def guild_roster(self) -> Optional[GuildRoster]:
+        """Read the ``GuildRoster`` this bridge installed."""
+        return self._guild_roster
 
     def install_node_link(
         self,
