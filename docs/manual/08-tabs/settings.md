@@ -1922,4 +1922,127 @@ first run.
 
 `MASTER_FORMAT` formats to the same text the three literals carry.
 
+## 2026-09-11 - The exchange picker and the venue list
+
+The Exchange row on the Exchanges page offers fifteen crypto venues. This
+section records which list fills it, which build paints it, and every place the
+chosen venue id arrives.
+
+### Which build paints the picker
+
+Two builds draw the row. `src/_variant.py` sets `DEFAULT_VARIANT = REACT`, so a
+checkout with no baked variant file and no `ACERVATOR_VARIANT` draws the React
+page:
+
+```
+resolve_variant()                 react
+draws_react('Settings dialog')    True
+surface_class('Settings dialog')  SettingsDialogReact
+```
+
+The React page is `src/gui/react_settings_dialog.py`, and it reads its picker
+items from `src/gui/main_tabs/settings_dialog_surface.py` — `exchange_items`.
+The Qt build, `src/gui/settings_dialog.py` — `_create_exchange_tab`, reads
+`SUPPORTED_EXCHANGES` from the connector directly.
+
+```mermaid
+flowchart LR
+  REG["ccxt_connector.SUPPORTED_EXCHANGES<br/>+ exchange_label"]
+  QT["settings_dialog.py<br/>_create_exchange_tab"]
+  SURF["settings_dialog_surface.py<br/>crypto_exchange_items"]
+  PAGE["react_settings_dialog.py<br/>the loaded page"]
+  BRIDGE["view_model<br/>settings_dialog.state"]
+  REG --> QT
+  REG --> SURF
+  SURF --> PAGE
+  SURF --> BRIDGE
+```
+
+### The two lists, entry by entry
+
+The page once carried its own frozen copy of the fifteen labels. Three readings
+were taken and each offered the same fifteen entries, in the same order, label
+for label:
+
+| Reading | Where it comes from | Count |
+| ------- | ------------------- | ----- |
+| The connector registry | `SUPPORTED_EXCHANGES` through `exchange_label` | 15 |
+| The surface list | `settings_dialog_surface.exchange_items` | 15 |
+| The loaded React page | the `<option>` elements the page drew | 15 |
+
+In order: Binance (blocked from US), Bitfinex, Bitget (passphrase required),
+Bitstamp, Bybit (blocked from US), Coinbase, Cryptocom, Gateio, Gemini, Huobi,
+Kraken, Kucoin (passphrase required), Mexc, Okx (passphrase required),
+Poloniex. Every label except Coinbase carries a note, because `exchange_label`
+marks a venue that is blocked from a US address, or untested, or needs a
+passphrase.
+
+Binance stands first because the list is in id order and `binance` sorts first.
+
+### Every reader of the chosen venue id
+
+The picker writes its id into an `ExchangeConfig`, and `add_exchange` stores it
+keyed by that id. `gemini` was chosen on both builds and each reader printed
+what it saw.
+
+| Reader | What it saw |
+| ------ | ----------- |
+| `SettingsManager.list_exchanges` | `exchange_id: 'gemini'` |
+| `SettingsManager.get_exchange` | the same entry, matched on the id |
+| `_load_current`, the Qt Configured list | `Gemini (gemini)` |
+| The React Configured list | `Gemini (gemini)` |
+| `_remove_exchange`, which reads the id back out of that row | the store emptied |
+| `trading_tab_surface.exchange_display_name` | `Gemini`, the tab caption |
+| `trading_tab_surface.is_equity_exchange` | `False`, so the crypto layer |
+| `CCXTConnector.__init__` | the registry accepts the id |
+
+Five further sites read the stored id rather than the picker: the startup loop
+in `main.py` that builds one exchange tab per entry, the startup credential
+report and the bot-connect credential lookup in `src/gui/main_window.py`, the
+wizard's venue choices, and the API panel's stored-credential lookup. Each
+matches on the same `exchange_id` field.
+
+Nothing else reads it. No bot reads the picker, and no gate reads it.
+`src/core/usb_auth.py` looks like a reader and is not one: it reads
+`CredentialVault.list_exchanges`, a separate store the picker never writes to.
+
+### The drift, measured
+
+The connector is the authority over the id. A venue it does not carry is
+refused before any object exists:
+
+```
+CCXTConnector('notavenue') refused  Unsupported exchange 'notavenue'.
+Supported: ['binance', 'coinbase', 'kraken', ... 'cryptocom']
+```
+
+With the frozen copy in place, one venue added to the connector alone reached
+the Qt picker and not the React page:
+
+| Reading | Before the connector gained a venue | After |
+| ------- | ----------------------------------- | ----- |
+| The Qt picker | 15 | 16 |
+| The surface list | 15 | 15 |
+| The bridge list | 15 | 15 |
+
+A venue offered on the page and missing from the registry would be stored and
+then refused at the first connect. A venue in the registry and missing from the
+page would never appear.
+
+### What changed
+
+`crypto_exchange_items` in `src/gui/main_tabs/settings_dialog_surface.py` now
+builds the pairs from `SUPPORTED_EXCHANGES` and `exchange_label`, imported when
+first asked so the module still loads no exchange library. The frozen copy is
+gone, and the registry is the only list of venues.
+
+The screen offers the same fifteen venues in the same order as before. The Qt
+picker, the surface list, the bridge list and the stock-wing list were read from
+a tree at the earlier commit and from the changed tree, and the two readings
+agree in every entry. The same connector mutation now reaches all three crypto
+readings together.
+
+Which venues are supported is still decided in one place only:
+`src/exchange/ccxt_connector.py`.
+
 Back to [the subsystem index](README.md).

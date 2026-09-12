@@ -99,24 +99,6 @@ EQUITY_EXCHANGE_IDS = frozenset(
 
 PASSPHRASE_EXCHANGE_IDS = frozenset({"bitget", "kucoin", "okx"})
 
-CRYPTO_EXCHANGE_ITEMS = (
-    ("Binance (blocked from US)", "binance"),
-    ("Bitfinex (untested)", "bitfinex"),
-    ("Bitget (untested, passphrase required)", "bitget"),
-    ("Bitstamp (untested)", "bitstamp"),
-    ("Bybit (blocked from US)", "bybit"),
-    ("Coinbase", "coinbase"),
-    ("Cryptocom (untested)", "cryptocom"),
-    ("Gateio (untested)", "gateio"),
-    ("Gemini (untested)", "gemini"),
-    ("Huobi (untested)", "huobi"),
-    ("Kraken (untested)", "kraken"),
-    ("Kucoin (untested, passphrase required)", "kucoin"),
-    ("Mexc (untested)", "mexc"),
-    ("Okx (untested, passphrase required)", "okx"),
-    ("Poloniex (untested)", "poloniex"),
-)
-
 EQUITY_ITEM_FORMAT = "{name} (planned, not yet live)"
 
 STRONG_OPEN = "<b>"
@@ -1684,6 +1666,19 @@ def wing_or_default(wing: Any) -> str:
     return wing if wing in KNOWN_WINGS else DEFAULT_WING
 
 
+def crypto_exchange_items() -> tuple:
+    """Every ``SUPPORTED_EXCHANGES`` id with its ``exchange_label``, in id order.
+
+    ``SUPPORTED_EXCHANGES`` is imported when first asked, so importing this
+    file loads no exchange library and reads no settings.
+    """
+    from ...exchange.ccxt_connector import SUPPORTED_EXCHANGES, exchange_label
+
+    return tuple(
+        (exchange_label(eid), eid) for eid in sorted(SUPPORTED_EXCHANGES.keys())
+    )
+
+
 def exchange_items(wing: str) -> tuple:
     """The Add-exchange dropdown items for one wing, as (text, id) pairs."""
     if wing == STOCK_WING:
@@ -1691,7 +1686,7 @@ def exchange_items(wing: str) -> tuple:
             (EQUITY_ITEM_FORMAT.format(name=eid.capitalize()), eid)
             for eid in sorted(EQUITY_EXCHANGE_IDS)
         )
-    return CRYPTO_EXCHANGE_ITEMS
+    return crypto_exchange_items()
 
 
 def list_label_for(wing: str) -> str:
