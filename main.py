@@ -750,6 +750,18 @@ def main() -> int:
         sound_config_from_settings(settings.get("sound", {}))
     )
 
+    # Before the first fill: get_sms_engine holds SMSConfig defaults until
+    # something pushes the stored group.
+    from src.core.sms_engine import (
+        SETTINGS_GROUP,
+        get_sms_engine,
+        sms_config_from_settings,
+    )
+
+    get_sms_engine().update_config(
+        sms_config_from_settings(settings.get(SETTINGS_GROUP, {}))
+    )
+
     _preflight = state_mgr.preflight_snapshot()
     if _preflight:
         log_manager.info(

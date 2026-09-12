@@ -497,6 +497,7 @@ ACTION_HANDLERS: dict[str, str] = {
 #: calls with no argument, so every entry names a method that takes none.
 EDIT_HANDLERS: dict[str, str] = {
     "new_exchange": "_on_exchange_changed",
+    "sms_carrier": "_fill_gateway_email",
     surface.VOLUME_NAME: "_push_sound_config",
     **{name: "_push_sound_config" for _key, name in surface.SOUND_CONFIG_FIELDS},
 }
