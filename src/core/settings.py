@@ -142,7 +142,9 @@ class AppSettings:
     aggressive_trading: bool = False
 
     theme: str = VisualTheme.CYBERPUNK_DARK.value
-    accent_color: str = "#00ffcc"
+    # Empty leaves each theme's own accent painting. theme_engine.stored_accent
+    # takes a hex colour here and refuses anything else.
+    accent_color: str = ""
 
     # These four mirror the font widgets in settings_dialog._create_theme_tab.
     font_family: str = "Segoe UI"

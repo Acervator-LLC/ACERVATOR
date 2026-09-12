@@ -6,11 +6,15 @@ Qt stylesheet themes, as flat colour tokens.
 renders them into a stylesheet. ``ThemeManager`` serves Cyberpunk Dark, Neon
 Light, Classic Terminal, Minimal Modern and Glass Metal. Every ``ThemeTokens``
 pair meets WCAG 2.2 AA contrast, and a changed hex value needs a fresh audit.
+
+``stored_accent`` reads the operator's accent field and ``accented`` puts an
+accepted one over a theme's own ``accent_primary``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from .color_alpha import rgba
@@ -405,6 +409,37 @@ def stored_theme(name: object) -> str:
     store reads in ``main`` and in the main window pass through here.
     """
     return name if isinstance(name, str) and name in THEMES else DEFAULT_THEME_NAME
+
+
+#: The accent field's value that leaves a theme's own ``accent_primary`` painting.
+THEME_ACCENT = ""
+
+# Three or six hex digits are the two forms generate_qss paints as asked. Neither
+# can carry the ';' or '}' that would end the declaration it sits in.
+_ACCENT_HEX = re.compile(r"\A#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\Z")
+
+
+def stored_accent(value: object) -> str:
+    """Return ``value`` when it is a hex colour, else ``THEME_ACCENT``.
+
+    The store's accent field is free text, and a value ``generate_qss`` cannot
+    read either drops its declaration or escapes it, so the reads in ``main``
+    and in the main window pass through here.
+    """
+    if not isinstance(value, str):
+        return THEME_ACCENT
+    asked = value.strip()
+    return asked if _ACCENT_HEX.match(asked) else THEME_ACCENT
+
+
+def accented(theme: ThemeTokens, accent: object) -> ThemeTokens:
+    """Return ``theme`` with ``accent_primary`` at ``accent``, or ``theme`` itself.
+
+    An accent ``stored_accent`` refuses leaves every token of ``theme`` alone,
+    which keeps that theme's audited contrast.
+    """
+    taken = stored_accent(accent)
+    return replace(theme, accent_primary=taken) if taken else theme
 
 
 # QSS generator
@@ -812,18 +847,21 @@ class ThemeManager:
             raise ValueError(f"Unknown theme: {name}. Available: {list(THEMES.keys())}")
         return THEMES[name]
 
-    def get_qss(self, name: str) -> str:
-        """Generate QSS for the named theme."""
-        return generate_qss(self.get_theme(name))
+    def get_qss(self, name: str, accent: object = THEME_ACCENT) -> str:
+        """Generate QSS for the named theme, with ``accent`` over its own."""
+        return generate_qss(accented(self.get_theme(name), accent))
 
-    def apply_theme(self, name: str, app: object) -> None:
+    def apply_theme(
+        self, name: str, app: object, accent: object = THEME_ACCENT
+    ) -> None:
         """
         Apply a theme to a QApplication instance.
         *app* should be a ``QApplication`` — we accept ``object`` to avoid
-        importing Qt at module level.
+        importing Qt at module level. ``accent`` paints over the theme's
+        ``accent_primary`` when ``stored_accent`` accepts it.
         """
-        qss = self.get_qss(name)
-        self._current = self.get_theme(name)
+        qss = self.get_qss(name, accent)
+        self._current = accented(self.get_theme(name), accent)
         if hasattr(app, "setStyleSheet"):
             app.setStyleSheet(qss)
 

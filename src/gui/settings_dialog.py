@@ -1088,6 +1088,7 @@ if _HAS_QT:
             can be written without also being loaded.
             """
             from src.gui.main_tabs.settings_dialog_surface import (
+                ACCENT_DEFAULT,
                 LOCK_CANDLE_DEFAULT,
                 PHANTOM_TIMEFRAME_DEFAULT,
             )
@@ -1128,7 +1129,7 @@ if _HAS_QT:
                 ("accent_color",
                  lambda: self._accent_color.text().strip(),
                  self._accent_color.setText,
-                 "#00ffcc"),
+                 ACCENT_DEFAULT),
                 ("font_family",
                  self._font_family.currentText,
                  lambda value: self._show_text(self._font_family, value),

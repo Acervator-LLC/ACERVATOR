@@ -461,6 +461,9 @@ AI_GROUP_KEY = "ai_monitor"
 FOLDING_GROUP_KEY = "profit_folding"
 THEME_KEY = "theme"
 THEME_DEFAULT = "cyberpunk_dark"
+#: Empty leaves the theme's own accent painting, so the box opens on its
+#: placeholder.
+ACCENT_DEFAULT = ""
 FOLDING_ACTIVE_KEY = "active"
 FOLDING_ACTIVE_DEFAULT = True
 EXCHANGE_ID_KEY = "exchange_id"
@@ -483,7 +486,7 @@ PERSISTED_ROWS = (
     ("default_phantom_timeframe", "phantom_timeframe", PHANTOM_TIMEFRAME_DEFAULT),
     ("default_lock_candle_count", "lock_candles", LOCK_CANDLE_DEFAULT),
     (THEME_KEY, "theme_combo", THEME_DEFAULT),
-    ("accent_color", "accent_color", "#00ffcc"),
+    ("accent_color", "accent_color", ACCENT_DEFAULT),
     ("font_family", "font_family", "Segoe UI"),
     ("font_size", "font_size", 11),
     ("heading_font_size", "heading_size", 14),

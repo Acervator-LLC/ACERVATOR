@@ -687,7 +687,13 @@ def main() -> int:
     # A parentless timer needs a module-level reference to stay alive.
     globals()["_persistent_gc_timer"] = _gc_timer
 
-    from src.gui.theme_engine import DEFAULT_THEME_NAME, ThemeManager, stored_theme
+    from src.gui.theme_engine import (
+        DEFAULT_THEME_NAME,
+        THEME_ACCENT,
+        ThemeManager,
+        stored_accent,
+        stored_theme,
+    )
 
     theme_mgr = ThemeManager()
     stored_name = settings.get("theme", DEFAULT_THEME_NAME)
@@ -697,7 +703,14 @@ def main() -> int:
             f"Stored theme {stored_name!r} is not a known theme; "
             f"painting {theme_name}"
         )
-    theme_mgr.apply_theme(theme_name, app)
+    stored_hex = settings.get("accent_color", THEME_ACCENT)
+    accent = stored_accent(stored_hex)
+    if not accent and str(stored_hex).strip():
+        log_manager.warning(
+            f"Stored accent colour {stored_hex!r} is not a hex colour; "
+            f"painting the {theme_name} accent"
+        )
+    theme_mgr.apply_theme(theme_name, app, accent)
 
     username = settings.get("username", "")
     stored_version = settings.get("app_version", "")
