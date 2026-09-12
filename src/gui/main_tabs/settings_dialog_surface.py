@@ -37,6 +37,7 @@ from functools import partial
 from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines
+from ...core.settings import AppSettings
 from ...trading.ta_engine import DEFAULT_WEIGHTS
 from ..color_alpha import ALPHA_HIGHEST, rgba
 
@@ -251,7 +252,9 @@ PHANTOM_TIMEFRAMES = (
     "1d",
     "1w",
 )
-PHANTOM_TIMEFRAMES_ON = ("5m", "15m", "1h", "4h", "1d")
+PHANTOM_TIMEFRAME_ITEMS = tuple((one, one) for one in PHANTOM_TIMEFRAMES)
+#: The store declares the opening choice, so the page and the schema agree.
+PHANTOM_TIMEFRAME_DEFAULT = AppSettings().default_phantom_timeframe
 
 THEME_ITEMS = (
     ("Cyberpunk Dark", "cyberpunk_dark"),
@@ -474,6 +477,7 @@ PERSISTED_ROWS = (
     ("bot_visibility", "visibility", "orderbook"),
     ("aggressive_trading", "aggressive", False),
     ("default_enable_phantoms", "phantoms_enabled", True),
+    ("default_phantom_timeframe", "phantom_timeframe", PHANTOM_TIMEFRAME_DEFAULT),
     (THEME_KEY, "theme_combo", THEME_DEFAULT),
     ("accent_color", "accent_color", "#00ffcc"),
     ("font_family", "font_family", "Segoe UI"),
@@ -631,6 +635,16 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "kind": CHECK,
         "text": "Enable Phantom Balance Bots for Scrumming",
         "checked": True,
+    },
+    {
+        "tab": PHANTOM_TAB,
+        "group": None,
+        "label": None,
+        "name": "phantom_timeframe",
+        "kind": COMBO_DATA,
+        "items": PHANTOM_TIMEFRAME_ITEMS,
+        "current_data": PHANTOM_TIMEFRAME_DEFAULT,
+        "tooltip": "The one phantom timeframe a new bot starts with",
     },
     {
         "tab": PHANTOM_TAB,
@@ -1255,7 +1269,6 @@ BUTTON = "button"
 STRETCH = "stretch"
 BANNER = "banner"
 TA_ROWS = "ta_rows"
-TF_ROW = "tf_row"
 SOUND_ROW = "sound_row"
 ADD_GROUP_BY_WING = "add_group"
 
@@ -1325,7 +1338,7 @@ LAYOUT = {
         (
             (CONTROL, "phantoms_enabled"),
             (LABEL, PHANTOM_HEADING),
-            (TF_ROW,),
+            (CONTROL, "phantom_timeframe"),
             (GROUP, LOCK_GROUP_TITLE, (FORM, ((CONTROL, "lock_candles"),))),
             (STRETCH,),
         ),
@@ -2014,9 +2027,6 @@ class SettingsDialogModel:
             list(one) for one in exchange_items(self.wing)
         ]
         self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
-        self.values["phantom_timeframes"] = [
-            [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
-        ]
         self.texts["vol_label"] = volume_label_text(spec_for("sound_volume")["value"])
         self.texts["api_feedback"] = ""
         self.styles["api_feedback"] = ""
@@ -2043,6 +2053,8 @@ class SettingsDialogModel:
         if kind == DOUBLE_SPIN:
             return self._decimal(spec, spec.get("value", spec["range"][0]))
         if kind == COMBO_DATA:
+            if "current_data" in spec:
+                return index_of_data(spec["items"], spec["current_data"])
             return FIRST_INDEX
         if kind == COMBO_TEXT:
             if "current_text" in spec:
@@ -2687,10 +2699,6 @@ class _Walker:
                 self.emit("slider", EMPTY_TEXT)
                 self.emit(LABEL, printed)
             return
-        if role == TF_ROW:
-            for timeframe in PHANTOM_TIMEFRAMES:
-                self.emit("check", timeframe)
-            return
         if role == SOUND_ROW:
             for printed, _name, _tip in SOUND_TEST_BUTTONS:
                 self.emit(BUTTON, printed)
@@ -2731,9 +2739,6 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "control_specs": [_plain(dict(one)) for one in CONTROL_SPECS],
         "exchange_items": [list(one) for one in exchange_items(model.wing)],
         TA_ROWS: [list(one) for one in ta_rows(model.values)],
-        "phantom_timeframes": [
-            [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
-        ],
         "sound_test_buttons": [list(one) for one in SOUND_TEST_BUTTONS],
         "spacing": {
             "content": dict(CONTENT_SPACING),

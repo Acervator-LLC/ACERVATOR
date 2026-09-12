@@ -162,6 +162,11 @@ class AppSettings:
     # which bot_container writes per bot, is a separate value.
     default_enable_phantoms: bool = True
 
+    # The one phantom timeframe a new bot starts with. 1d is the only entry
+    # above the wizard's 1h ta_timeframe default that every venue offers;
+    # coinbase has no 4h, 12h or 1w, and kraken no 2h or 6h.
+    default_phantom_timeframe: str = "1d"
+
 
 _DEFAULT_DIR = Path.home() / ".acervator"
 

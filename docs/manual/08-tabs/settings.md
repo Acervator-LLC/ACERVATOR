@@ -934,6 +934,23 @@ self._phantom_tf_checks[tf] = cb
 tf_grid.addWidget(cb)
 ```
 
+The row is now one drop-down holding the same eleven names, and the page stores
+the one name it shows. The opening choice is the daily chart, which is the only
+entry above the wizard's own hourly default that every venue offers.
+
+`src/gui/settings_dialog.py` — the one drop-down that replaced the grid
+
+```python
+layout.addWidget(QLabel("Default Phantom Timeframes:"))
+self._phantom_timeframe = QComboBox()
+for tf in PHANTOM_TIMEFRAMES:
+    self._phantom_timeframe.addItem(tf, tf)
+self._phantom_timeframe.setCurrentIndex(
+    self._phantom_timeframe.findData(PHANTOM_TIMEFRAME_DEFAULT)
+)
+layout.addWidget(self._phantom_timeframe)
+```
+
 Lock duration (candles) - Sets how many candles a higher-timeframe lock holds
 an opposing trade back for. Per-bot key `lock_candle_count`, 1 to 10, at 2.
 
@@ -4069,5 +4086,164 @@ belongs to the wizard request rather than to this row.
 
 Measured on the page's declared controls: the Phantom tab carries two of them,
 the master box and the lock spin box, and the timeframe grid is neither.
+
+## 2026-09-12 - The timeframe grid becomes one phantom selection
+
+The Phantom Bots page's eleven tick boxes are now one drop-down, the page stores
+the name it shows, and the bot creation wizard opens its own phantom box on that
+name. A name at or below the bot's own TA Timeframe, or one the venue does not
+offer, is refused on the wizard page rather than dropped in silence. Driven on
+the Qt dialog, the React host dialog and the shared surface. The home was
+redirected into a scratch directory before the settings module was imported, so
+the settings directory and the log root bound under that directory. No stored
+setting of the running install was read and no venue was contacted.
+
+### What the page offered before and what it offers now
+
+| | Before | Now |
+| --- | --- | --- |
+| Control | eleven tick boxes in one row | one drop-down |
+| Choices | eleven, five ticked at build | eleven, one selected at build |
+| Opens at | 5m, 15m, 1h, 4h and 1d | 1d |
+| Declared as a control | no | yes, `phantom_timeframe` |
+| In the list that carries Save and load | no | yes |
+| Store key | none, the store refused four candidate names | `default_phantom_timeframe` |
+
+### The selection round-tripping through the store
+
+Driven on the shared surface and on both dialog hosts against one scratch store.
+
+```
+he picks               : 12h
+save reported          : {'saved': 16, 'failed': [], 'closed': True}
+store fields changed   : ['default_phantom_timeframe', 'ta_indicator_weights']
+stored value           : '12h'
+read back off disk     : '12h'
+a fresh dialog shows   : 12h
+pressing Save again keeps it: '12h'
+```
+
+The same run before the change reported one changed field, the indicator weight
+bag, and the store refused every candidate name for this row.
+
+```
+refuses phantom_timeframes         -> KeyError 'Unknown setting: phantom_timeframes'
+refuses default_phantom_timeframes -> KeyError 'Unknown setting: default_phantom_timeframes'
+refuses default_phantom_timeframe  -> KeyError 'Unknown setting: default_phantom_timeframe'
+refuses phantom_timeframe          -> KeyError 'Unknown setting: phantom_timeframe'
+```
+
+### Why the daily chart is the opening choice
+
+A phantom must sit above the bot's own TA Timeframe, and the wizard's timeframe
+drop-down opens on the hourly chart. Of the five entries above it, only one is
+offered by every venue the application knows.
+
+| Timeframe | Above the hourly chart | Offered by coinbase | Offered by kraken |
+| --- | --- | --- | --- |
+| 2h | yes | yes | no |
+| 4h | yes | no | yes |
+| 6h | yes | yes | no |
+| 12h | yes | no | no |
+| 1d | yes | yes | yes |
+| 1w | yes | no | yes |
+
+Measured against the venue lists the application holds.
+
+```
+  coinbase: offers ['1m', '5m', '15m', '30m', '1h', '2h', '6h', '1d']
+    kraken: offers ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w']
+   binance: offers ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d', '1w']
+```
+
+The store declares the opening choice and the page reads it from there, so the
+schema and the screen cannot drift apart.
+
+`src/core/settings.py` — the one declaration of the opening choice
+
+```python
+# The one phantom timeframe a new bot starts with. 1d is the only entry
+# above the wizard's 1h ta_timeframe default that every venue offers;
+# coinbase has no 4h, 12h or 1w, and kraken no 2h or 6h.
+default_phantom_timeframe: str = "1d"
+```
+
+### Where the stored selection reaches a phantom bot
+
+```mermaid
+graph LR
+  A["Settings row<br/>default_phantom_timeframe"] --> B["SettingsManager<br/>settings.toml"]
+  B --> C["main_window.py:3201<br/>settings.get_all"]
+  C --> D["bot_wizard.py<br/>set_parent_timeframe"]
+  D --> E["PhantomConfigPage.get_config<br/>phantom_timeframes"]
+  E --> F["main_window.py:3370<br/>ScrummingBot(phantom_timeframes=)"]
+  F --> G["tick_phases.py:390<br/>create_phantom_set"]
+  G --> H["main_window.py:1178<br/>the Comp field"]
+```
+
+The Comp field rank-weights the parent's Net with every phantom summary above
+the parent's own rank, and skips the rest at `src/gui/main_window.py:1198`. One
+selection above the parent means one phantom reaches that field and none is
+skipped.
+
+### The refusal the wizard page shows
+
+Both refusal reasons were driven on the shared surface and on the Qt page.
+
+```
+stored  1d parent  1h -> selection ['1d'] refusal ''
+stored  4h parent  1h -> selection []     refusal 'phantom_not_offered'
+    the box says: Timeframe 4h: REFUSED, coinbase does not offer it
+stored  5m parent  1h -> selection []     refusal 'phantom_not_higher'
+    the box says: Timeframe 5m: REFUSED, a phantom must sit above the bot's own TA Timeframe of 1h
+stored  1d parent  1d -> selection []     refusal 'phantom_not_higher'
+    the box says: Timeframe 1d: REFUSED, a phantom must sit above the bot's own TA Timeframe of 1d
+```
+
+A box the operator has already ticked keeps his choice, so the stored name seeds
+a page he has not touched and never overwrites a page he has.
+
+### What a bot already on disk does
+
+A running bot's phantom set never came from this page and still does not.
+
+| Read | What it answers |
+| --- | --- |
+| `src/trading/bot_container.py:601` | writes the enable flag into the bot's record and writes no timeframe list |
+| `src/trading/container/restore.py:363-366` | builds the bot without a timeframe argument |
+| `src/trading/scrumming_bot.py:377` | the bot therefore takes its class default |
+
+Driven on a bot built the restore way, before and after this change, against a
+parent on the hourly chart.
+
+```
+built the restore way      : ['5m', '15m', '30m', '1h', '1d']
+class default              : ['5m', '15m', '30m', '1h', '4h', '1d']
+survives the Comp skip     : ['1d']
+silently skipped           : ['5m', '15m', '30m', '1h']
+```
+
+Identical on both sides of the change. Four of the five a restored bot runs sit
+at or below the hourly parent and never reach the Comp field, and the sixth is
+dropped because coinbase has no four-hour chart. That belongs to row 131, which
+owns a bot's own phantom selection.
+
+### The sentences this change leaves standing
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "Default Phantom Timeframes - Chooses which charts a phantom watches." | One chart, not several. The name it shows is the chart the one phantom watches. |
+| "Per-bot key `phantom_timeframes`, eleven boxes, five of them checked at build." | Eleven names in one drop-down, one selected at build, and the page's own store key is `default_phantom_timeframe`. |
+| "One box per timeframe in a single row. The build decides which five open checked, and those five are the ones the figure shows." | One drop-down in that row. The figure shows the eleven boxes the page no longer draws. |
+| "These three controls carry the same gap the TA Indicators page carries. Save reads none of them, the load path restores none." | Save reads two of the three and the load path restores both. The lock spin box still carries the gap. |
+| "The one spin box on the page, inside its own group. It opens at 2 and Save reads it no more than it reads the other two." | It still opens at 2 and Save still does not read it. The other two are now read. |
+
+### What this row still waits on
+
+| Absence | What was measured |
+| ------- | ----------------- |
+| the wizard still draws eleven boxes | `src/gui/bot_wizard.py:1679-1699` builds eleven tick boxes, so the operator can still tick several. One selection is seeded and not enforced there; the wizard's own control belongs to the bot's phantom rows |
+| the figure on this page shows the old grid | `p39-i0.png` was captured from the eleven boxes and has not been retaken |
+| the rank order is written twice | `src/trading/phantom_balance.py:29-41` and `src/gui/main_tabs/bot_wizard_surface.py:521-533` hold the same eleven names in the same order, and the Qt-free surface takes no import, so nothing reconciles them. Measured identical today |
 
 Back to [the subsystem index](README.md).

@@ -169,7 +169,6 @@ textarea.acervator-settings-dialog[data-part="control"] {
 }
 
 .acervator-settings-dialog[data-part="ta-rows"],
-.acervator-settings-dialog[data-part="tf-row"],
 .acervator-settings-dialog[data-part="sound-row"] {
   gap: 6px;
 }

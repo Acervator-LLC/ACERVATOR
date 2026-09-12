@@ -560,7 +560,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._page_ready = False
             self._last_model: dict = {}
             self._passphrase_exchanges = surface.PASSPHRASE_EXCHANGE_IDS
-            self._phantom_tf_checks: dict = {}
             self._build_holders()
 
             self.setAccessibleName(ACCESSIBLE_NAME)

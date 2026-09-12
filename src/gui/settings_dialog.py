@@ -523,27 +523,22 @@ if _HAS_QT:
             )
             self._phantoms_enabled.setChecked(True)
             layout.addWidget(self._phantoms_enabled)
+            from src.gui.main_tabs.settings_dialog_surface import (
+                PHANTOM_TIMEFRAME_DEFAULT,
+                PHANTOM_TIMEFRAMES,
+            )
+
             layout.addWidget(QLabel("Default Phantom Timeframes:"))
-            self._phantom_tf_checks = {}
-            tf_grid = QHBoxLayout()
-            for tf in [
-                "1m",
-                "5m",
-                "15m",
-                "30m",
-                "1h",
-                "2h",
-                "4h",
-                "6h",
-                "12h",
-                "1d",
-                "1w",
-            ]:
-                cb = QCheckBox(tf)
-                cb.setChecked(tf in ["5m", "15m", "1h", "4h", "1d"])
-                self._phantom_tf_checks[tf] = cb
-                tf_grid.addWidget(cb)
-            layout.addLayout(tf_grid)
+            self._phantom_timeframe = QComboBox()
+            for tf in PHANTOM_TIMEFRAMES:
+                self._phantom_timeframe.addItem(tf, tf)
+            self._phantom_timeframe.setCurrentIndex(
+                self._phantom_timeframe.findData(PHANTOM_TIMEFRAME_DEFAULT)
+            )
+            self._phantom_timeframe.setToolTip(
+                "The one phantom timeframe a new bot starts with"
+            )
+            layout.addWidget(self._phantom_timeframe)
             lock_group = QGroupBox("Higher-TF Lock Settings")
             lock_form = QFormLayout(lock_group)
             self._lock_candles = QSpinBox()
@@ -1091,6 +1086,10 @@ if _HAS_QT:
             key. ``_save`` and ``_load_current`` walk these same rows, so no row
             can be written without also being loaded.
             """
+            from src.gui.main_tabs.settings_dialog_surface import (
+                PHANTOM_TIMEFRAME_DEFAULT,
+            )
+
             return (
                 ("username",
                  lambda: self._username.text().strip(),
@@ -1112,6 +1111,10 @@ if _HAS_QT:
                  self._phantoms_enabled.isChecked,
                  lambda value: self._phantoms_enabled.setChecked(bool(value)),
                  True),
+                ("default_phantom_timeframe",
+                 self._phantom_timeframe.currentData,
+                 lambda value: self._show_data(self._phantom_timeframe, value),
+                 PHANTOM_TIMEFRAME_DEFAULT),
                 ("theme",
                  self._theme_combo.currentData,
                  lambda value: self._show_data(self._theme_combo, value),

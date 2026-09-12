@@ -1667,6 +1667,12 @@ if _HAS_QT:
                 "Multi-timeframe shadow bots. Higher TFs override lower TFs."
             )
             self._exchange_id: str | None = None
+            from src.core.settings import AppSettings
+
+            self._stored_timeframe = str(
+                (defaults or {}).get("default_phantom_timeframe")
+                or AppSettings().default_phantom_timeframe
+            )
             layout = QVBoxLayout(self)
             self._enable = QCheckBox("Enable Phantom Balance Bots")
             self._enable.setChecked(
@@ -1740,6 +1746,44 @@ if _HAS_QT:
                         else f"NOT supported by {exchange_id or 'this exchange'}"
                     )
                 )
+
+        def set_parent_timeframe(self, ta_timeframe: str | None) -> None:
+            """Tick the stored phantom timeframe, refusing one the bot cannot use.
+
+            The Settings dialog writes ``default_phantom_timeframe``. A
+            timeframe at or below ``ta_timeframe``, or one the venue does not
+            offer, stays clear and its box says why. A box the operator has
+            already ticked keeps his choice.
+            """
+            from src.gui.main_tabs.bot_wizard_surface import (
+                PHANTOM_NOT_HIGHER_FORMAT,
+                PHANTOM_NOT_OFFERED_FORMAT,
+                PHANTOM_UNKNOWN_EXCHANGE,
+            )
+            from src.trading.phantom_balance import is_higher_tf
+
+            parent = str(ta_timeframe or "")
+            if any(one.isChecked() for one in self._tf_checks.values()):
+                return
+            cb = self._tf_checks.get(self._stored_timeframe)
+            if cb is None:
+                return
+            if not is_higher_tf(self._stored_timeframe, parent):
+                cb.setToolTip(
+                    PHANTOM_NOT_HIGHER_FORMAT.format(
+                        timeframe=self._stored_timeframe, parent=parent
+                    )
+                )
+                return
+            if not cb.isEnabled():
+                cb.setToolTip(
+                    PHANTOM_NOT_OFFERED_FORMAT.format(
+                        timeframe=self._stored_timeframe,
+                        exchange=self._exchange_id or PHANTOM_UNKNOWN_EXCHANGE,
+                    )
+                )
+                return
+            cb.setChecked(True)
 
         def validatePage(self) -> bool:
             """v3.23.40 — API-load gate. If phantoms are enabled and
@@ -1835,6 +1879,14 @@ if _HAS_QT:
                     self._phantom_page.set_exchange_id(eid)
                 except Exception as _ph_tf_exc:  # noqa: BLE001 - TF-filter best-effort
                     logger.debug("phantom_page.set_exchange_id failed: %s", _ph_tf_exc)
+                try:
+                    self._phantom_page.set_parent_timeframe(
+                        self._params_page._ta_timeframe.currentData()
+                    )
+                except Exception as _ph_parent_exc:  # noqa: BLE001 - seed best-effort
+                    logger.debug(
+                        "phantom_page.set_parent_timeframe failed: %s", _ph_parent_exc
+                    )
 
         def nextId(self):
             current = self.currentId()

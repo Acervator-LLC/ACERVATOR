@@ -532,6 +532,21 @@ PHANTOM_TIMEFRAMES = (
     "1w",
 )
 PHANTOM_TIMEFRAME_DEFAULT = False
+#: Reached only by a wizard built with no settings; the store declares the
+#: same value and always carries the key the page reads.
+PHANTOM_TIMEFRAME_STORED_DEFAULT = "1d"
+
+
+def is_higher_timeframe(timeframe: Any, parent: Any) -> bool:
+    """Say whether ``timeframe`` sits above ``parent`` in ``PHANTOM_TIMEFRAMES``.
+
+    The tuple's order is the rank order, matching ``TIMEFRAME_ORDER`` in
+    ``phantom_balance``, which the Comp field reads.
+    """
+    order = list(PHANTOM_TIMEFRAMES)
+    if timeframe not in order or parent not in order:
+        return False
+    return order.index(timeframe) > order.index(parent)
 
 GROUP_TITLES = {
     "mode_group": "Trading Parameters",
@@ -1201,6 +1216,13 @@ PHANTOM_SUPPORTED_TEXT = "supported"
 PHANTOM_UNSUPPORTED_FORMAT = "NOT supported by {exchange}"
 PHANTOM_UNKNOWN_EXCHANGE = "this exchange"
 PHANTOM_TOOL_TIP_FORMAT = "Timeframe {timeframe}: {state}"
+PHANTOM_NOT_HIGHER_FORMAT = (
+    "Timeframe {timeframe}: REFUSED, a phantom must sit above the bot's own "
+    "TA Timeframe of {parent}"
+)
+PHANTOM_NOT_OFFERED_FORMAT = (
+    "Timeframe {timeframe}: REFUSED, {exchange} does not offer it"
+)
 
 API_WARNING_TITLE = "Phantom Bots — API load warning"
 API_WARNING_FORMAT = (
@@ -1223,6 +1245,7 @@ SAFE_EVENTS_REASON = "legacy P4.1 site"
 
 DEFAULT_TARGET_BALANCE_KEY = "default_target_balance"
 DEFAULT_ENABLE_PHANTOMS_KEY = "default_enable_phantoms"
+DEFAULT_PHANTOM_TIMEFRAME_KEY = "default_phantom_timeframe"
 EXCHANGE_DISPLAY_KEY = "display_name"
 EXCHANGE_ID_KEY = "exchange_id"
 MARKET_SYMBOL_KEY = "symbol"
@@ -1253,12 +1276,16 @@ REFUSAL_API_LOAD = "api_load"
 REFUSAL_NOT_FINAL = "not_final_page"
 REFUSAL_NO_ROUTE = "no_next_page"
 REFUSAL_NO_HISTORY = "no_previous_page"
+REFUSAL_PHANTOM_NOT_HIGHER = "phantom_not_higher"
+REFUSAL_PHANTOM_NOT_OFFERED = "phantom_not_offered"
 REFUSAL_TYPES = (
     REFUSAL_NONE,
     REFUSAL_API_LOAD,
     REFUSAL_NOT_FINAL,
     REFUSAL_NO_ROUTE,
     REFUSAL_NO_HISTORY,
+    REFUSAL_PHANTOM_NOT_HIGHER,
+    REFUSAL_PHANTOM_NOT_OFFERED,
 )
 
 WIZARD_SET_WINDOW_TITLE = "wizard.setWindowTitle"
@@ -2107,6 +2134,47 @@ class BotWizardModel:
                 [CHECK_SET_TOOL_TIP, found, self.phantom_tool_tips[found]]
             )
 
+    def apply_stored_phantom_timeframe(self) -> None:
+        """Tick the one stored phantom timeframe, refusing one the bot cannot use.
+
+        The Settings dialog writes ``default_phantom_timeframe`` and this is
+        where it reaches a new bot. A timeframe at or below the bot's own TA
+        Timeframe, or one the venue does not offer, stays clear and its box
+        carries the refusal. A box the operator has already ticked keeps his
+        choice.
+        """
+        wanted = str(
+            self.defaults.get(
+                DEFAULT_PHANTOM_TIMEFRAME_KEY, PHANTOM_TIMEFRAME_STORED_DEFAULT
+            )
+        )
+        parent = str(self.combo_data(TA_COMBO_NAME) or EMPTY_TEXT)
+        if any(self.phantom_checks.values()):
+            return
+        if wanted not in self.phantom_checks:
+            return
+        refused = EMPTY_TEXT
+        why = REFUSAL_NONE
+        if not is_higher_timeframe(wanted, parent):
+            why = REFUSAL_PHANTOM_NOT_HIGHER
+            refused = PHANTOM_NOT_HIGHER_FORMAT.format(
+                timeframe=wanted, parent=parent
+            )
+        elif not self.phantom_enabled_timeframes[wanted]:
+            why = REFUSAL_PHANTOM_NOT_OFFERED
+            refused = PHANTOM_NOT_OFFERED_FORMAT.format(
+                timeframe=wanted,
+                exchange=self.exchange_id or PHANTOM_UNKNOWN_EXCHANGE,
+            )
+        if refused:
+            self.refusal = why
+            self.refusals.append(why)
+            self.phantom_tool_tips[wanted] = refused
+            self.calls.append([CHECK_SET_TOOL_TIP, wanted, refused])
+            return
+        self.phantom_checks[wanted] = True
+        self.calls.append([CHECK_SET_CHECKED, wanted, True])
+
     def set_phantom_timeframe(self, timeframe: str, value: Any) -> None:
         """Tick or clear one phantom timeframe."""
         if timeframe not in self.phantom_checks:
@@ -2349,6 +2417,7 @@ class BotWizardModel:
             self.set_exchange_id(venue, offered)
         elif self.current_page == PHANTOM:
             self.set_phantom_exchange_id(venue, offered)
+            self.apply_stored_phantom_timeframe()
 
     def cancel(self) -> None:
         """Close the wizard without creating a bot.
