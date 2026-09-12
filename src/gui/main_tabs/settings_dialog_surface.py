@@ -1700,6 +1700,19 @@ def add_group_title(wing: str) -> str:
     return STOCK_ADD_GROUP if wing == STOCK_WING else CRYPTO_ADD_GROUP
 
 
+def listed_exchange_position(listed: Any, exchange_id: Any) -> int:
+    """Where ``exchange_id`` already sits in ``listed``, or ``NO_MATCH_INDEX``.
+
+    Both builds call this before adding a line, so one venue cannot be drawn
+    twice while ``add_exchange`` holds one entry for it.
+    """
+    tail = "(" + str(exchange_id) + ")"
+    for at, line in enumerate(listed or []):
+        if str(line).endswith(tail):
+            return at
+    return NO_MATCH_INDEX
+
+
 def banner_of(wing: str) -> dict:
     """The stock-wing banner, its words, its pieces and its colours."""
     return {
@@ -2481,9 +2494,10 @@ class SettingsDialogModel:
                     config[PHRASE_FIELD] = self.encryptor(phrase, master)
 
             self.settings.add_exchange(config)
-            self.listed_exchanges.append(
-                EXCHANGE_ITEM_FORMAT.format(name=eid.capitalize(), eid=eid)
-            )
+            if listed_exchange_position(self.listed_exchanges, eid) == NO_MATCH_INDEX:
+                self.listed_exchanges.append(
+                    EXCHANGE_ITEM_FORMAT.format(name=eid.capitalize(), eid=eid)
+                )
             self.values["exchange_list"] = list(self.listed_exchanges)
             for name in TYPED_CREDENTIAL_CONTROLS:
                 self.values[name] = EMPTY_TEXT

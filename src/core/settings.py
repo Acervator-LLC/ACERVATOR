@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import threading
 from copy import deepcopy
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, fields, asdict
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
@@ -136,6 +136,12 @@ class ExchangeConfig:
     hw_volume_serial: str = ""  # USB volume serial that holds .acervator_auth
 
 
+#: Every ``ExchangeConfig`` field holding an encrypted token.
+CREDENTIAL_FIELDS: tuple[str, ...] = tuple(
+    one.name for one in fields(ExchangeConfig) if one.name.endswith("_enc")
+)
+
+
 @dataclass
 class AppSettings:
     """Every field ``SettingsManager`` persists.
@@ -248,13 +254,27 @@ class SettingsManager:
             self._save()
 
     def add_exchange(self, config: ExchangeConfig) -> None:
-        """Replace any entry sharing ``config.exchange_id``, then append it."""
+        """Store ``config``, keeping the place any entry sharing its id held.
+
+        A ``CREDENTIAL_FIELDS`` token that ``config`` leaves empty keeps the
+        token the stored entry carried, so re-adding a venue with the rows
+        blank cannot erase credentials the operator never retyped.
+        """
         with self._lock:
-            exchanges = self._settings.exchanges
-            exchanges = [
-                e for e in exchanges if e.get("exchange_id") != config.exchange_id
-            ]
-            exchanges.append(asdict(config))
+            entry = asdict(config)
+            exchanges = list(self._settings.exchanges)
+            at = -1
+            for found, e in enumerate(exchanges):
+                if e.get("exchange_id") == config.exchange_id:
+                    at = found
+                    break
+            if at < 0:
+                exchanges.append(entry)
+            else:
+                for name in CREDENTIAL_FIELDS:
+                    if not entry.get(name):
+                        entry[name] = exchanges[at].get(name, "")
+                exchanges[at] = entry
             self._settings.exchanges = exchanges
             self._save()
 
