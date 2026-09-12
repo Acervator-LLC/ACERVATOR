@@ -1181,6 +1181,126 @@ self._accent_color.setPlaceholderText("#00ffcc")
 layout.addWidget(self._accent_color)
 ```
 
+An empty box means the theme's own accent. A hex colour in the box paints over
+it. Everything else is refused, and the theme's own accent paints.
+
+`src/gui/theme_engine.py` — what the box is read through
+
+```python
+def stored_accent(value: object) -> str:
+    """Return ``value`` when it is a hex colour, else ``THEME_ACCENT``.
+
+    The store's accent field is free text, and a value ``generate_qss`` cannot
+    read either drops its declaration or escapes it, so the reads in ``main``
+    and in the main window pass through here.
+    """
+    if not isinstance(value, str):
+        return THEME_ACCENT
+    asked = value.strip()
+    return asked if _ACCENT_HEX.match(asked) else THEME_ACCENT
+```
+
+Three hex digits or six, either case, surrounding spaces trimmed. Each value
+below was typed in and the accent button was then read off an offscreen render.
+
+| typed | the accent button paints |
+|---|---|
+| `#ff0000` | #ff0000 |
+| `#0f0` | #00ff00 |
+| `#FF00AA` | #ff00aa |
+| `  #ff0000  ` | #ff0000 |
+| `red` | the theme's accent |
+| `rgb(255,0,0)` | the theme's accent |
+| `#00ffc` | the theme's accent |
+| `#00ffccff` | the theme's accent |
+| `notacolour` | the theme's accent |
+| `#ff0000;` | the theme's accent |
+| `url(x)` | the theme's accent |
+| empty, spaces, or no value at all | the theme's accent |
+
+A colour name is refused on purpose: the box takes a hex colour, and the four
+forms Qt would also read bring a wider parser with nothing to paint that hex
+cannot.
+
+The refusal matters because the box is free text. A value that ends one
+declaration and opens another repaints the window, and that was measured: with
+`red; } QWidget { background-color: #000000` standing in the accent token, a
+plain pane rendered 3,840 pixels of #000000 where its ground is #0a0a0f. The
+same string typed into the box now leaves that pane on its ground. A hex colour
+carries no semicolon and no brace, so no accepted value can reach that.
+
+Six surfaces carry the accent. The figures are pixel counts off an offscreen
+render of each one.
+
+| surface | pixels |
+|---|---|
+| accent button | 3,289 |
+| full progress bar | 2,092 |
+| ticked box | 464 |
+| slider handle | 164 |
+| selected tab underline | 134 |
+| focused text box border | 304 |
+
+A typed `#ff0000` moves all six, on all five themes. Text a theme paints from
+its own `text_accent` stays where it was: on Classic Terminal 160 pixels of
+#00ff00 remain after the override, 96 in the tab label and 64 in the checkbox
+label.
+
+`main.py` — the startup read
+
+```python
+    stored_hex = settings.get("accent_color", THEME_ACCENT)
+    accent = stored_accent(stored_hex)
+    if not accent and str(stored_hex).strip():
+        log_manager.warning(
+            f"Stored accent colour {stored_hex!r} is not a hex colour; "
+            f"painting the {theme_name} accent"
+        )
+    theme_mgr.apply_theme(theme_name, app, accent)
+```
+
+A refused value is named on the Activity Log when the dialog saves and when the
+Theme menu switches. The box keeps what was typed, so the value and the line
+that says it did not paint are both on screen.
+
+`src/gui/main_window.py` — `_switch_theme`, the refusal
+
+```python
+            taken = stored_accent(accent)
+            if not taken and str(accent or "").strip():
+                self._status_log.log(
+                    f"Accent colour {accent!r} is not a hex colour; "
+                    f"painting the {name} accent.",
+                    "warning",
+                )
+```
+
+Driven with `notacolour` against Neon Light, that line read: Accent colour
+'notacolour' is not a hex colour; painting the neon_light accent.
+
+The React tab pages do not follow the typed value. Each page receives an
+`--accent` variable built from a theme name alone, so the seven rules in the
+Settings page's own stylesheet that read that variable stay on the theme's
+accent.
+
+`src/gui/main_tabs/react_history_panel_surface.py` — `palette`, which takes a
+theme and no accent
+
+```python
+def palette(theme: str) -> dict:
+    """The six chrome colours one theme paints the page in.
+
+    A theme the table does not carry falls back to the default theme.
+    """
+    colors = THEME_CHROME.get(theme) or THEME_CHROME[DEFAULT_THEME]
+    return {
+        key: colors[source] for key, source in zip(PALETTE_KEYS, PALETTE_SOURCE_KEYS)
+    }
+```
+
+Contrast is not checked. Every theme's own accent clears WCAG 2.2 AA against
+the ground it sits on, and a typed one is painted as given.
+
 Font Family - Sets the typeface for application text. Key `font_family`, an
 editable combo over twelve named families, at Segoe UI.
 
@@ -1293,6 +1413,20 @@ font_family: str = "Segoe UI"
 font_size: int = 11
 heading_font_size: int = 14
 log_font_size: int = 10
+```
+
+Of those five, the accent field now reaches the window. The four font rows do
+not. The stored default for the accent is empty, so a store that has never been
+typed into leaves every theme on its own accent rather than handing Cyberpunk
+Dark's to the other four.
+
+`src/core/settings.py` — `AppSettings`, the accent field today
+
+```python
+    theme: str = VisualTheme.CYBERPUNK_DARK.value
+    # Empty leaves each theme's own accent painting. theme_engine.stored_accent
+    # takes a hex colour here and refuses anything else.
+    accent_color: str = ""
 ```
 
 ### Settings > Logging

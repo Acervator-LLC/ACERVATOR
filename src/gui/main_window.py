@@ -263,7 +263,7 @@ if _HAS_QT:
             for name, tokens in THEMES.items():
                 theme_menu.addAction(
                     tokens.display_name,
-                    lambda n=name: self._switch_theme(n),
+                    lambda n=name: self._switch_theme(n, self._stored_accent()),
                 )
             help_menu = menu_bar.addMenu("&Help")
             help_menu.addAction("&About", self._show_about)
@@ -2855,7 +2855,7 @@ if _HAS_QT:
             from .theme_engine import DEFAULT_THEME_NAME, stored_theme
 
             theme = stored_theme(self._settings.get("theme", DEFAULT_THEME_NAME))
-            self._switch_theme(theme)
+            self._switch_theme(theme, self._stored_accent())
 
             ai_cfg = self._settings.get("ai_monitor", {})
             if self._bot_manager:
@@ -3448,17 +3448,28 @@ if _HAS_QT:
                     data_usage="No action taken",
                 )
 
-        def _switch_theme(self, name: str) -> None:
-            from .theme_engine import ThemeManager
+        def _stored_accent(self) -> object:
+            """The accent field the store holds, None when there is no store."""
+            return self._settings.get("accent_color") if self._settings else None
+
+        def _switch_theme(self, name: str, accent: object = None) -> None:
+            from .theme_engine import ThemeManager, stored_accent
 
             tm = ThemeManager()
+            taken = stored_accent(accent)
+            if not taken and str(accent or "").strip():
+                self._status_log.log(
+                    f"Accent colour {accent!r} is not a hex colour; "
+                    f"painting the {name} accent.",
+                    "warning",
+                )
             app = self.parent()
             if app is None:
                 from PySide6.QtWidgets import QApplication
 
                 app = QApplication.instance()
             if app:
-                tm.apply_theme(name, app)
+                tm.apply_theme(name, app, taken)
                 book = getattr(self, "_main_tabs", None)
                 if hasattr(book, "set_theme"):
                     book.set_theme(name)
