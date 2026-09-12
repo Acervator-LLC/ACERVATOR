@@ -2243,4 +2243,88 @@ them hides nothing, and masking this one would mean replacing the text area with
 a single line that cannot take a multi-line PEM. Both rows are recorded and
 neither is changed.
 
+## 2026-09-11 - The Passphrase row and the venue that needs one
+
+The box labelled **This exchange uses an API passphrase** decides whether the
+field under it is drawn. Picking Kucoin, Okx or Bitget ticks the box, and the
+field appears with it on the React build and on the Qt build alike.
+
+### Which trigger draws the field
+
+One method decides the field's visibility, and three triggers call it.
+
+`src/gui/settings_dialog.py` — `_sync_passphrase_row`
+
+```python
+def _sync_passphrase_row(self) -> None:
+    self._new_passphrase.setVisible(self._pp_check.isChecked())
+```
+
+```mermaid
+flowchart LR
+    A[Click on the box, Qt] --> M[_sync_passphrase_row]
+    B[Click on the box, React page] --> M
+    C[Venue pick, _on_exchange_changed] --> M
+    M --> F[new_passphrase drawn or hidden]
+```
+
+| Trigger | Where it is wired |
+| ------- | ----------------- |
+| A click on the box | `_pp_check.toggled`, on the Qt build |
+| A click on the box | `SettingsDialogReact.apply_edit`, on a `pp_check` edit from the page |
+| A venue pick | `_on_exchange_changed`, which the React dialog inherits and runs |
+
+`_on_exchange_changed` sets the box with `setChecked` and then calls the method.
+Qt emits `toggled` from `setChecked` and the React page-backed holder emits
+nothing, so the direct call is what draws the field on each build.
+
+The Qt-free model carries the same rule for the page the dialog opens on.
+`SettingsDialogModel.on_exchange_changed` calls its own `show_passphrase`, so the
+Exchanges page draws the field for a venue that needs one from the first paint.
+
+### The row read on each venue
+
+Driven on the real React page and on the Qt dialog, with the Exchanges tab open.
+
+| Venue | Needs one | Box ticked | Field drawn |
+| ----- | --------- | ---------- | ----------- |
+| kucoin | yes | yes | yes |
+| okx | yes | yes | yes |
+| bitget | yes | yes | yes |
+| binance | no | no | no |
+| coinbase | no | no | no |
+| kraken | no | no | no |
+
+Both builds report that table. A direct click on the box draws the field for a
+venue that needs no passphrase, and a second click hides it again.
+
+### What the typed value reaches
+
+The field takes focus once it is drawn, and the typed string runs the whole
+stored path.
+
+| Step | What it carries |
+| ---- | --------------- |
+| The field | the typed passphrase |
+| `validate_credentials` | the same string, as its fourth argument |
+| `config.passphrase_enc` | an AES-256-GCM token, 84 characters |
+| `decrypt` | the typed passphrase, byte for byte |
+
+Test Connection answers `Kucoin requires an API passphrase.` while the field is
+empty, and the venue is never reached. With the field filled, the connector is
+handed the key, the secret and the passphrase together.
+
+### Where the venue set is declared
+
+Three declarations hold the same three ids.
+
+| Declaration | Read by |
+| ----------- | ------- |
+| `src/exchange/ccxt_connector.py` — `PASSPHRASE_EXCHANGES` | the Qt dialog, `src/exchange/api_validator.py`, `sync_connect` |
+| `src/gui/main_tabs/settings_dialog_surface.py` — `PASSPHRASE_EXCHANGE_IDS` | the React dialog and the Qt-free model |
+| `src/gui/main_tabs/init_wizard_surface.py` — `PASSPHRASE_EXCHANGE_IDS` | the first-run wizard |
+
+`_sync_passphrase_row` reads the box and no set, so the field follows the box
+whichever declaration ticked it.
+
 Back to [the subsystem index](README.md).

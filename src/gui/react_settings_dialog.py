@@ -655,7 +655,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 return
             self._holders[name].admit(asked.get("value"))
             if name == "pp_check":
-                self._new_passphrase.setVisible(self._pp_check.isChecked())
+                self._sync_passphrase_row()
             if name == "sound_volume":
                 self._vol_label.setText(f"{self._sound_volume.value()}%")
             handler = EDIT_HANDLERS.get(name)

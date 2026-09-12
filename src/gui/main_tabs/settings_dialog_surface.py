@@ -2360,11 +2360,15 @@ class SettingsDialogModel:
         return items[at][1]
 
     def on_exchange_changed(self) -> None:
-        """Tick the passphrase box for an exchange that needs one."""
+        """Tick the passphrase box for an exchange that needs one.
+
+        ``show_passphrase`` then draws ``new_passphrase`` for that venue alone.
+        """
         eid = self.current_exchange_id()
         self.values["pp_check"] = eid in PASSPHRASE_EXCHANGE_IDS
         self.texts["api_feedback"] = ""
         self._record("on_exchange_changed", eid)
+        self.show_passphrase(self.values["pp_check"])
 
     def show_passphrase(self, on: Any) -> None:
         """Show or hide the passphrase field."""
