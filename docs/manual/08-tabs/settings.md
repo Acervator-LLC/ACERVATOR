@@ -1783,4 +1783,81 @@ self._live_monitor = LiveMonitor(
 )
 ```
 
+## 2026-09-11 - Save keeps what the store holds
+
+`_save` and `_load_current` read one declaration. `_stored_rows` names every
+setting the store holds at its top level. `_stored_groups` names every group the
+store holds as one key, with the rows inside it. One row carries the store key,
+the read off its control, the write back into that control, and what stands in
+for a store without the key. Both methods walk the same rows. No setting can be
+written without also being loaded.
+
+`src/gui/settings_dialog.py` — one row of `_stored_rows`
+
+```python
+("bot_visibility",
+ self._visibility.currentText,
+ lambda value: self._show_text(self._visibility, value),
+ "orderbook"),
+```
+
+`_show_stored` puts one stored value into one control. A value the control
+refuses leaves that control on its build figure and names the key in the log.
+One unreadable entry in the settings file cannot stop the dialog opening.
+
+`SettingsDialogReact` replaces `_setup_ui` alone, so the React build and the Qt
+build load and save the same way.
+
+### What each page restores now
+
+This table replaces the restores column in
+[What each page persists](#what-each-page-persists). Every other column holds.
+
+| Page | Controls | `_save` writes | `_load_current` restores |
+| ---- | -------: | -------------- | ------------------------ |
+| User | 1 | the row | the row |
+| Exchanges | 6 plus 3 buttons | on Add and Remove | the configured list |
+| Trading | 6 | all six | all six |
+| Profit Folding | 11 | the whole group | the whole group |
+| TA Indicators | 12 | nothing | nothing |
+| Phantom Bots | 13 | nothing | nothing |
+| Theme | 6 | all six | all six |
+| Logging | 6 | the whole group | the whole group |
+| Sound | 10 plus 6 buttons | nothing | nothing |
+| SMS | 17 | nothing | nothing |
+| AI Monitor | 7 | all seven | all seven |
+
+### The fourteen rows a Save overwrote
+
+Save wrote these fourteen rows and no load read them back. A Save with no edit
+wrote the build figure over the stored value. Each of the fourteen now reopens on
+what was stored.
+
+| Page | Rows |
+| ---- | ---- |
+| Trading | Bot Visibility, Enable aggressive trading mode |
+| Profit Folding | Distribution Mode, Profit Folding Target, Fold to X# of buy positions, Upward Distribution Target, Distribute to X# of sell positions |
+| Theme | Font Family, Base Font Size, Heading Font Size, Log Font Size |
+| Logging | Log TA signal samples with all values and timestamps, Highlight entries near Scrumming Bot trades, P/L Log Periodicity |
+
+What each row means has not changed. No reader outside the dialog reads any of
+the fourteen. Whether each one is wired to a reader or taken off the page is a
+separate question, and the Settings audit carries it row by row.
+
+### The sentences this section replaces
+
+Each sentence below stands in an earlier dated section and no longer describes
+the code. The earlier text stays where it is.
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "Save writes the name and the load path never reads it." | The load path reads `bot_visibility`. The box opens on the stored name. |
+| "The box opens on orderbook whatever was stored, and a Save with no edit writes that first entry back over the stored value." | The box opens on the stored name. A Save with no edit writes that same name back. |
+| "Save writes it, the load path skips it, and the box opens clear." | The load path reads `aggressive_trading`. The box opens ticked when the store holds true. |
+| "Save writes all six keys. The load path restores the first four, which is why the last two rows on the page open at their built-in defaults." | The load path restores all six keys on the Trading page. |
+| "This is the one control on the page the load path restores, so it is the only one of the six that reopens on what was stored." | The load path restores all six keys in the stored `profit_folding` group. |
+| "Nothing reads any of the four, and the load path does not restore them either, so the whole Font Settings group reopens at its built-in figures." | Nothing outside the dialog reads the four font keys. The load path restores all four, so the Font Settings group reopens on what was stored. |
+| "The load path reads none of them back, so every open shows the build state rather than the stored one." | The load path reads all three `data_logging` keys back. Every open shows the stored state. |
+| "In development. What the load path should restore for this page has not been settled against the rest of the dialog, so nothing is proposed here." | The load path restores the whole group: both flags and the list of active periodicities. |
+
 Back to [the subsystem index](README.md).

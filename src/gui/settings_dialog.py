@@ -5,6 +5,7 @@ settings_dialog.py - Settings Menu Dialog v1.1
 from __future__ import annotations
 
 import logging
+from typing import Callable
 
 logger = logging.getLogger("acervator.gui")
 
@@ -51,6 +52,26 @@ if _HAS_QT:
         "etrade",
         "interactivebrokers",
     }
+
+    # Read order decides the stored value when more than one button is ticked.
+    FOLD_MODE_BUTTONS = (("_fold_log", "logarithmic"), ("_fold_equal", "equal"))
+    FOLD_TARGET_BUTTONS = (
+        ("_fold_x", "x_buy"),
+        ("_fold_recent", "most_recent_buy"),
+        ("_fold_all", "all_buy"),
+    )
+    DIST_TARGET_BUTTONS = (
+        ("_dist_x", "x_sell"),
+        ("_dist_recent", "most_recent_sell"),
+        ("_dist_all", "all_sell"),
+    )
+    PERIOD_BUTTONS = (
+        ("_log_24h", "24h"),
+        ("_log_1w", "1_week"),
+        ("_log_1m", "1_month"),
+        ("_log_1y", "1_year"),
+    )
+    DEFAULT_PERIODS = ("24h", "1_week")
 
     class SettingsDialog(QDialog):
 
@@ -1050,35 +1071,227 @@ if _HAS_QT:
             self._ai_status.setText("Settings saved — handshake runs on next bot cycle")
             self._ai_status.setStyleSheet("color: #00ddff; font-weight: bold;")
 
+        def _show_text(self, combo: QComboBox, value: object) -> None:
+            """Shows ``value`` in a drop-down, by its row or as typed text.
+
+            A fixed list that does not offer ``value`` keeps the row it is on.
+            """
+            at = combo.findText(str(value))
+            if at >= 0:
+                combo.setCurrentIndex(at)
+            elif combo.isEditable():
+                combo.setCurrentText(str(value))
+
+        def _show_data(self, combo: QComboBox, value: object) -> None:
+            """Shows the drop-down row carrying ``value``, or keeps the row it is on."""
+            at = combo.findData(value)
+            if at >= 0:
+                combo.setCurrentIndex(at)
+
+        def _picked(self, buttons: tuple, fallback: object) -> object:
+            """The value the first ticked button of ``buttons`` carries.
+
+            Answers ``fallback`` when no button of the group is ticked.
+            """
+            for attr, value in buttons:
+                if getattr(self, attr).isChecked():
+                    return value
+            return fallback
+
+        def _show_picked(
+            self, buttons: tuple, value: object, fallback: object
+        ) -> None:
+            """Ticks the one button of ``buttons`` carrying ``value``, and no other."""
+            wanted = value if any(value == one for _attr, one in buttons) else fallback
+            for attr, one in buttons:
+                getattr(self, attr).setChecked(one == wanted)
+
+        def _ticked_periods(self) -> list:
+            """The periodicities whose boxes are ticked, in page order."""
+            return [
+                value
+                for attr, value in PERIOD_BUTTONS
+                if getattr(self, attr).isChecked()
+            ]
+
+        def _show_periods(self, value: object) -> None:
+            """Ticks the periodicity box of every entry ``value`` names."""
+            wanted = value if isinstance(value, (list, tuple)) else DEFAULT_PERIODS
+            for attr, one in PERIOD_BUTTONS:
+                getattr(self, attr).setChecked(one in wanted)
+
+        def _stored_rows(self) -> tuple:
+            """Every setting this dialog persists at the top level of the store.
+
+            One row carries the store key, the read off its control, the write
+            back into that control, and what stands in for a store without the
+            key. ``_save`` and ``_load_current`` walk these same rows, so no row
+            can be written without also being loaded.
+            """
+            return (
+                ("username",
+                 lambda: self._username.text().strip(),
+                 self._username.setText,
+                 ""),
+                ("position_distance_pct",
+                 self._pos_distance.value,
+                 self._pos_distance.setValue,
+                 2.0),
+                ("increment_style",
+                 self._increment_style.currentText,
+                 lambda value: self._show_text(self._increment_style, value),
+                 "linear"),
+                ("default_position_count",
+                 self._default_positions.value,
+                 self._default_positions.setValue,
+                 10),
+                ("default_target_balance",
+                 self._default_balance.value,
+                 self._default_balance.setValue,
+                 200.0),
+                ("bot_visibility",
+                 self._visibility.currentText,
+                 lambda value: self._show_text(self._visibility, value),
+                 "orderbook"),
+                ("aggressive_trading",
+                 self._aggressive.isChecked,
+                 lambda value: self._aggressive.setChecked(bool(value)),
+                 False),
+                ("theme",
+                 self._theme_combo.currentData,
+                 lambda value: self._show_data(self._theme_combo, value),
+                 "cyberpunk_dark"),
+                ("accent_color",
+                 lambda: self._accent_color.text().strip(),
+                 self._accent_color.setText,
+                 "#00ffcc"),
+                ("font_family",
+                 self._font_family.currentText,
+                 lambda value: self._show_text(self._font_family, value),
+                 "Segoe UI"),
+                ("font_size",
+                 self._font_size.value,
+                 self._font_size.setValue,
+                 11),
+                ("heading_font_size",
+                 self._heading_size.value,
+                 self._heading_size.setValue,
+                 14),
+                ("log_font_size",
+                 self._log_font_size.value,
+                 self._log_font_size.setValue,
+                 10),
+            )
+
+        def _stored_groups(self) -> tuple:
+            """Every group this dialog persists as one key, with the rows inside it.
+
+            A row reads and writes the same way a ``_stored_rows`` row does.
+            """
+            return (
+                ("profit_folding", (
+                    ("active",
+                     self._folding_active.isChecked,
+                     lambda value: self._folding_active.setChecked(bool(value)),
+                     True),
+                    ("mode",
+                     lambda: self._picked(FOLD_MODE_BUTTONS, "equal"),
+                     lambda value: self._show_picked(
+                         FOLD_MODE_BUTTONS, value, "equal"
+                     ),
+                     "equal"),
+                    ("fold_target",
+                     lambda: self._picked(FOLD_TARGET_BUTTONS, "all_buy"),
+                     lambda value: self._show_picked(
+                         FOLD_TARGET_BUTTONS, value, "all_buy"
+                     ),
+                     "all_buy"),
+                    ("fold_target_count",
+                     self._fold_x_count.value,
+                     self._fold_x_count.setValue,
+                     5),
+                    ("distribute_target",
+                     lambda: self._picked(DIST_TARGET_BUTTONS, "all_sell"),
+                     lambda value: self._show_picked(
+                         DIST_TARGET_BUTTONS, value, "all_sell"
+                     ),
+                     "all_sell"),
+                    ("distribute_target_count",
+                     self._dist_x_count.value,
+                     self._dist_x_count.setValue,
+                     5),
+                )),
+                ("data_logging", (
+                    ("ta_signal_logging",
+                     self._ta_logging.isChecked,
+                     lambda value: self._ta_logging.setChecked(bool(value)),
+                     True),
+                    ("highlight_trade_proximity",
+                     self._highlight_trades.isChecked,
+                     lambda value: self._highlight_trades.setChecked(bool(value)),
+                     True),
+                    ("active_periodicities",
+                     self._ticked_periods,
+                     self._show_periods,
+                     DEFAULT_PERIODS),
+                )),
+                ("ai_monitor", (
+                    ("api_key",
+                     lambda: self._ai_api_key.text().strip(),
+                     self._ai_api_key.setText,
+                     ""),
+                    ("interval_hours",
+                     self._ai_interval.value,
+                     self._ai_interval.setValue,
+                     4.0),
+                    ("connect_phrase",
+                     lambda: self._ai_connect_phrase.text().strip(),
+                     self._ai_connect_phrase.setText,
+                     ""),
+                    ("confirm_phrase",
+                     lambda: self._ai_confirm_phrase.text().strip(),
+                     self._ai_confirm_phrase.setText,
+                     ""),
+                    ("enabled",
+                     self._ai_enabled.isChecked,
+                     lambda value: self._ai_enabled.setChecked(bool(value)),
+                     False),
+                    ("auto_handshake",
+                     self._ai_auto_handshake.isChecked,
+                     lambda value: self._ai_auto_handshake.setChecked(bool(value)),
+                     True),
+                    ("log_feedback",
+                     self._ai_log_feedback.isChecked,
+                     lambda value: self._ai_log_feedback.setChecked(bool(value)),
+                     True),
+                )),
+            )
+
+        def _show_stored(
+            self, key: str, show: Callable[[object], None], value: object
+        ) -> None:
+            """Puts one stored value into its control.
+
+            A value the control refuses leaves that control on its build figure
+            and names ``key`` in the log, so one unreadable entry in the
+            settings file cannot stop the dialog opening.
+            """
+            try:
+                show(value)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Settings kept the default for %s: %s", key, exc)
+
         def _load_current(self) -> None:
             if not self._sm:
                 return
-            self._username.setText(self._sm.get("username", ""))
-            self._pos_distance.setValue(self._sm.get("position_distance_pct", 2.0))
-            self._default_positions.setValue(self._sm.get("default_position_count", 10))
-            self._default_balance.setValue(
-                self._sm.get("default_target_balance", 200.0)
-            )
-            self._accent_color.setText(self._sm.get("accent_color", "#00ffcc"))
-
-            ai = self._sm.get("ai_monitor", {})
-            self._ai_api_key.setText(ai.get("api_key", ""))
-            self._ai_interval.setValue(ai.get("interval_hours", 4.0))
-            self._ai_connect_phrase.setText(ai.get("connect_phrase", ""))
-            self._ai_confirm_phrase.setText(ai.get("confirm_phrase", ""))
-            self._ai_enabled.setChecked(ai.get("enabled", False))
-            self._ai_auto_handshake.setChecked(ai.get("auto_handshake", True))
-            self._ai_log_feedback.setChecked(ai.get("log_feedback", True))
-            theme = self._sm.get("theme", "cyberpunk_dark")
-            idx = self._theme_combo.findData(theme)
-            if idx >= 0:
-                self._theme_combo.setCurrentIndex(idx)
-            style = self._sm.get("increment_style", "linear")
-            idx = self._increment_style.findText(style)
-            if idx >= 0:
-                self._increment_style.setCurrentIndex(idx)
-            pf = self._sm.get("profit_folding", {})
-            self._folding_active.setChecked(pf.get("active", True))
+            for key, _read, show, fallback in self._stored_rows():
+                self._show_stored(key, show, self._sm.get(key, fallback))
+            for group, rows in self._stored_groups():
+                stored = self._sm.get(group, {})
+                for key, _read, show, fallback in rows:
+                    self._show_stored(
+                        f"{group}.{key}", show, stored.get(key, fallback)
+                    )
             for exch in self._sm.list_exchanges():
                 _eid = (exch.get("exchange_id", "") or "").lower()
                 _is_equity = _eid in EQUITY_EXCHANGE_IDS
@@ -1107,19 +1320,7 @@ if _HAS_QT:
 
             # A setting that fails to save never blocks the close.
             pairs = {
-                "username": lambda: self._username.text().strip(),
-                "position_distance_pct": lambda: self._pos_distance.value(),
-                "increment_style": lambda: self._increment_style.currentText(),
-                "default_position_count": lambda: self._default_positions.value(),
-                "default_target_balance": lambda: self._default_balance.value(),
-                "bot_visibility": lambda: self._visibility.currentText(),
-                "aggressive_trading": lambda: self._aggressive.isChecked(),
-                "theme": lambda: self._theme_combo.currentData(),
-                "accent_color": lambda: self._accent_color.text().strip(),
-                "font_family": lambda: self._font_family.currentText(),
-                "font_size": lambda: self._font_size.value(),
-                "heading_font_size": lambda: self._heading_size.value(),
-                "log_font_size": lambda: self._log_font_size.value(),
+                key: read for key, read, _show, _fallback in self._stored_rows()
             }
             saved = 0
             failed: list[str] = []
@@ -1131,79 +1332,18 @@ if _HAS_QT:
                     failed.append(f"{key} ({e})")
                     print(f"[SETTINGS ERROR] {key}: {e}", file=sys.stderr, flush=True)
 
-            try:
-                fold_target = "all_buy"
-                if self._fold_x.isChecked():
-                    fold_target = "x_buy"
-                elif self._fold_recent.isChecked():
-                    fold_target = "most_recent_buy"
-                dist_target = "all_sell"
-                if self._dist_x.isChecked():
-                    dist_target = "x_sell"
-                elif self._dist_recent.isChecked():
-                    dist_target = "most_recent_sell"
-                self._sm.set(
-                    "profit_folding",
-                    {
-                        "active": self._folding_active.isChecked(),
-                        "mode": (
-                            "logarithmic" if self._fold_log.isChecked() else "equal"
-                        ),
-                        "fold_target": fold_target,
-                        "fold_target_count": self._fold_x_count.value(),
-                        "distribute_target": dist_target,
-                        "distribute_target_count": self._dist_x_count.value(),
-                    },
-                )
-                saved += 1
-            except Exception as e:
-                failed.append(f"profit_folding ({e})")
-                print(
-                    f"[SETTINGS ERROR] profit_folding: {e}", file=sys.stderr, flush=True
-                )
-
-            try:
-                periods = []
-                if self._log_24h.isChecked():
-                    periods.append("24h")
-                if self._log_1w.isChecked():
-                    periods.append("1_week")
-                if self._log_1m.isChecked():
-                    periods.append("1_month")
-                if self._log_1y.isChecked():
-                    periods.append("1_year")
-                self._sm.set(
-                    "data_logging",
-                    {
-                        "ta_signal_logging": self._ta_logging.isChecked(),
-                        "highlight_trade_proximity": self._highlight_trades.isChecked(),
-                        "active_periodicities": periods,
-                    },
-                )
-                saved += 1
-            except Exception as e:
-                failed.append(f"data_logging ({e})")
-                print(
-                    f"[SETTINGS ERROR] data_logging: {e}", file=sys.stderr, flush=True
-                )
-
-            try:
-                self._sm.set(
-                    "ai_monitor",
-                    {
-                        "api_key": self._ai_api_key.text().strip(),
-                        "interval_hours": self._ai_interval.value(),
-                        "connect_phrase": self._ai_connect_phrase.text().strip(),
-                        "confirm_phrase": self._ai_confirm_phrase.text().strip(),
-                        "enabled": self._ai_enabled.isChecked(),
-                        "auto_handshake": self._ai_auto_handshake.isChecked(),
-                        "log_feedback": self._ai_log_feedback.isChecked(),
-                    },
-                )
-                saved += 1
-            except Exception as e:
-                failed.append(f"ai_monitor ({e})")
-                print(f"[SETTINGS ERROR] ai_monitor: {e}", file=sys.stderr, flush=True)
+            for group, rows in self._stored_groups():
+                try:
+                    self._sm.set(
+                        group,
+                        {key: read() for key, read, _show, _fallback in rows},
+                    )
+                    saved += 1
+                except Exception as e:
+                    failed.append(f"{group} ({e})")
+                    print(
+                        f"[SETTINGS ERROR] {group}: {e}", file=sys.stderr, flush=True
+                    )
 
             try:
                 self.settings_changed.emit()
