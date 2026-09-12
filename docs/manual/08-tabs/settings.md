@@ -3932,4 +3932,142 @@ earlier text stays where it is.
 The master switch is the last row on the page, and its own verdict was that it waits on
 the wizard's folding page. Nothing on this page gates anything now.
 
+## 2026-09-12 - The phantom master box becomes a new bot's phantom default
+
+The Phantom Bots page's master checkbox now stores a boolean and the bot creation
+wizard's own phantom box opens on it. Driven on the React build, which is what
+the running application draws. The home was redirected into a scratch directory
+before the settings module was imported, so the settings directory and the log
+root bound under that directory. No stored setting of the running install was
+read and no venue was contacted.
+
+### The Settings master box and the wizard's phantom box
+
+| | The Settings row | The wizard box |
+| --- | --- | --- |
+| Where, Qt | `src/gui/settings_dialog.py:521-525` | `src/gui/bot_wizard.py:1671-1674` |
+| Where, React | `src/gui/main_tabs/settings_dialog_surface.py:625-633` | `src/gui/main_tabs/bot_wizard_surface.py:1721-1735` |
+| Text | Enable Phantom Balance Bots for Scrumming | Enable Phantom Balance Bots |
+| Choices | on, off | on, off |
+| Opens at | on | the stored default, off when no bag arrives |
+| What it writes | the store key `default_enable_phantoms` | the config key `enable_phantoms` |
+
+The two agree on meaning and on both choices. They disagree on the name, and the
+names are kept apart on purpose.
+
+### The two phantom names that share a word
+
+The page's own name and a bot's own name are two settings, not one. The store
+accepts the first and refuses the second, driven:
+
+```
+store accepts key default_enable_phantoms
+store refuses key enable_phantoms   -> KeyError 'Unknown setting: enable_phantoms'
+store refuses key phantoms_enabled  -> KeyError 'Unknown setting: phantoms_enabled'
+```
+
+| Set | Occurrences in `src` | What they are |
+| --- | ----: | ------------- |
+| the application setting | 6 | the `AppSettings` field, the Qt dialog's row, the same row on the Qt-free surface, the two wizard lookups |
+| a bot's own config field | 27 | the constructor argument, the restore read, the bot's own flag, the live toggle, the wizard write and the live settings box |
+| a bot's own saved record | 10 | the key the container writes per bot and the restore path reads back |
+
+Counted with `git grep -ow` over the 1081 files the index reports. Three files
+hold a name from both sets and each is a crossing point: the store's declaration
+names the bot key in its comment, and the two wizard files write the bot key from
+the application default.
+
+### Every reader of the stored phantom default
+
+Five sites name the application key. Two of them read it outside the Settings
+dialog.
+
+| Site | What it does with the default |
+| ---- | ---------------------------- |
+| `src/core/settings.py:163` | declares `default_enable_phantoms: bool = True` |
+| `src/gui/settings_dialog.py:1111-1114` | the Qt row, read on Save and written on load |
+| `src/gui/main_tabs/settings_dialog_surface.py:476` | the same row on the Qt-free surface |
+| `src/gui/bot_wizard.py:1672-1674` | the Qt wizard's phantom box opens here |
+| `src/gui/main_tabs/bot_wizard_surface.py:1721-1735` | the Qt-free wizard's box opens here |
+
+Before this section there was no reader at all, and no store key to read. The
+dialog saved 14 groups and none of them carried the box; it saves 15 now.
+
+### Where the stored default reaches a phantom bot
+
+```mermaid
+flowchart LR
+  A["Settings row<br/>default_enable_phantoms"] --> B["SettingsManager<br/>settings.toml"]
+  B --> C["main_window._create_bot<br/>get_all()"]
+  C --> D["bot_wizard.py:1673<br/>Enable Phantom Balance Bots"]
+  D --> E["PhantomConfigPage.get_config<br/>enable_phantoms"]
+  E --> F["main_window.py:3369<br/>ScrummingBot(enable_phantoms=)"]
+  F --> G["scrumming_bot.py:402<br/>_phantoms_enabled"]
+  G --> H["tick_phases.py:390<br/>create_phantom_set"]
+  H --> I["main_window.py:1178<br/>the Comp field"]
+```
+
+The constructor argument at `src/trading/scrumming_bot.py:402` is where the flag
+stops being this setting. From there the bot owns it, and the Comp field on the
+TA Indicator Voter Panel is the last reader. That field already refuses a phantom
+timeframe at or below the parent's own rank, at `src/gui/main_window.py:1196`, so
+the higher-timeframe rule is not new here.
+
+### The round trip on both phantom choices
+
+| Stored | React box on reopen | React wizard box | Qt box on reopen | Qt wizard box | The config a new bot reads |
+| ------ | ------------------- | ---------------- | ---------------- | ------------- | -------------------------- |
+| off | off | off | off | off | off |
+| on | on | on | on | on | on |
+
+Two different stored flags gave two different readings on every column, so the
+reading discriminates. Driven before the change with the box ticked, both wizards
+answered off, which is the reading this section repairs.
+
+### What a new bot opens with, and what a restored bot keeps
+
+Driven through the real restore path with the application default set on.
+
+| The saved record | What the restored bot holds |
+| ---------------- | --------------------------- |
+| its own flag off | off |
+| its own flag on | on |
+| no flag at all | on, which is the constructor's own default |
+
+A restored bot reads its own saved record at
+`src/trading/container/restore.py:361` and reads no application setting. A record
+holding off stayed off while the store held on, so the application default cannot
+reach a bot already on disk.
+
+### The sentences this wiring leaves standing
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "This is the only control on the page that starts on. Save never reads it, so the page stores nothing under the name it shows." | It still opens on. Save reads it and stores it under `default_enable_phantoms`, so the name on screen and the name in the store differ. |
+| "These three controls carry the same gap the TA Indicators page carries. Save reads none of them, the load path restores none, and the schema refuses a key it does not declare rather than storing it somewhere unread." | Save reads the master box and the load path restores it. The other two controls on the page still carry the gap. |
+| "Enable Phantom Balance Bots for Scrumming - Turns the phantom overrides on for a new bot." | Unchanged, and true for the first time: the wizard's own box opens on this row. |
+
+### The wizard request this wiring still waits on
+
+The Electron shell's wizard request carries no stored defaults, so the Qt-free
+wizard opens its box at the build figure whatever the store holds.
+
+| Absence | What was measured |
+| ------- | ----------------- |
+| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js` names `defaults` no times, and `src/gui/main_tabs/bot_wizard_surface.py:2823` reads it out of the request. The lookup added here fires on any call that carries a bag, and the shipped call carries none |
+| the bridge hands the request through unchanged | `src/core/desktop_bridge.py:284` maps the wizard method straight to the surface, so nothing on the way in adds the stored settings |
+
+This absence is shared with every other stored default the wizard opens on, so it
+belongs to the wizard request rather than to this row.
+
+### Rows 34 and 35 stay for their own units
+
+| Row | Why it did not come with this one |
+| --- | -------------------------------- |
+| 34, Default Phantom Timeframes | Its eleven boxes are not a declared control on either surface, so the one list that carries Save and load cannot hold them. The rule for this group turns eleven boxes into one selection above the parent's own timeframe, which is a change of control, not a change of wiring |
+| 35, Lock duration (candles) | It is a declared control and would persist through the same one line, but its destination is the wizard's own lock box, which is a second lookup this row does not make |
+
+Measured on the page's declared controls: the Phantom tab carries two of them,
+the master box and the lock spin box, and the timeframe grid is neither.
+
 Back to [the subsystem index](README.md).
