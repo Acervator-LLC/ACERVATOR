@@ -2958,4 +2958,137 @@ Two absences stand outside this row and sit here as measured facts.
 | the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js:1775` calls `bot_wizard.state` with the step values alone. `src/gui/main_tabs/bot_wizard_surface.py:2796` reads `defaults` from the request, so the Qt-free wizard surface receives an empty bag on every call and `_apply_stored_target_balance` falls back to its built-in figure |
 | the Qt-free wizard surface has no visibility lookup | `src/gui/main_tabs/bot_wizard_surface.py:1702` applies the stored target balance and nothing applies a stored visibility. Its `visibility` combo at `:472-474` carries the same two entries as the Qt one and opens at index 0 |
 
+## 2026-09-12 - Enable aggressive trading mode opens the wizard's own box
+
+The Trading page row stores a boolean under the key `aggressive_trading` and
+opens clear. The row is now the default the bot creation wizard's own Aggressive
+Trading checkbox opens on. It was unwired, and removing it was refused: the
+behaviour it names runs on the bot, and the wizard carries a checkbox for it.
+
+### The Settings box and the wizard box, side by side
+
+| | The Settings row | The wizard box |
+| --- | --- | --- |
+| Where | `src/gui/main_tabs/settings_dialog_surface.py:614-622` | `src/gui/bot_wizard.py:688-699` |
+| Text | `Enable aggressive trading mode` | `Aggressive Trading (force IOC-limit takers)` |
+| Choices | on, off | on, off |
+| Opens at | off | the stored flag, off when the store holds none |
+| What it writes | the store key `aggressive_trading` | the config key `aggressive_trading` |
+
+The two agree on meaning, on both choices and on the default, and here the two
+keys are the same word.
+
+### The two sets that share the word
+
+The bare name `aggressive_trading` stands in 19 python lines of the 1081 files
+`git ls-files` reports. They split into two sets, and no line crosses between
+them.
+
+| Set | Lines | What they are |
+| --- | ----: | ------------- |
+| the application setting | 3 | the `AppSettings` field, the dialog's `_stored_rows` row, the same row on the Qt-free surface |
+| a bot's own config field | 16 | the `BotConfig` field, the restore read, the bot's own `_aggressive`, the live toggle, the wizard write and the live settings box |
+
+The bot's own field is a separate setting with its own screen row, and this
+section changes nothing in that set.
+
+### Every reader of the stored flag
+
+Four sites name the application key. One of them reads it outside the Settings
+dialog.
+
+| Site | What it does with the flag |
+| ---- | ------------------------- |
+| `src/core/settings.py:164` | declares `aggressive_trading: bool = False` |
+| `src/gui/settings_dialog.py:1170-1173` | `_stored_rows`, the read on Save and the write on load |
+| `src/gui/main_tabs/settings_dialog_surface.py:469` | the same row on the Qt-free surface |
+| `src/gui/bot_wizard.py:689-691` | the wizard's Aggressive Trading box opens here |
+
+Before this section there was no reader outside the dialog. The bare name was
+searched in every tracked file, and the search was proved against
+`default_target_balance`, read out of the settings dict, and against
+`ai_monitor`, read through `getattr`. Both controls answered with their known
+reading sites, so the zero was a measurement.
+
+### Where the stored flag reaches the bot
+
+```mermaid
+flowchart LR
+  A["Settings row<br/>aggressive_trading"] --> B["SettingsManager<br/>settings.toml"]
+  B --> C["main_window._create_bot<br/>get_all()"]
+  C --> D["bot_wizard.py:691<br/>Aggressive Trading box"]
+  D --> E["TradingParamsPage.get_config<br/>aggressive_trading"]
+  E --> F["BotConfig.aggressive_trading"]
+  F --> G["scrumming_bot.py:339<br/>_aggressive"]
+  G --> H["scrumming_bot.py:4551<br/>OrderType.IOC_LIMIT"]
+```
+
+`BotConfig.aggressive_trading` at `src/trading/container/config.py:142` is where
+the flag stops being this setting. From there the bot owns it, and
+`src/trading/scrumming_bot.py:1015` changes it live on one bot without touching
+the store.
+
+### The round trip on both choices
+
+Driven on the class the running build opens. `resolve_variant` answered `react`
+and `surface_class('Settings dialog')` returned `SettingsDialogReact`. The home
+was redirected into a scratch directory before the settings module was imported,
+so the settings default directory bound under that directory. No venue was
+contacted. A name-lookup guard refused eight lookups, every one of them the
+wizard's own market scan.
+
+| Stored | The box opened at | The store after a Save with no edit | The box on reopening |
+| ------ | ----------------- | ----------------------------------- | -------------------- |
+| on | on | on | on |
+| off | off | off | off |
+
+Two different stored flags gave two different readings, so the reading
+discriminates. The payload the dialog pushes to the page carries 69 control
+specs and the page draws 68, the same two figures before and after.
+
+### What a new bot carries, and what an existing bot keeps
+
+| Driven | What it answered |
+| ------ | ---------------- |
+| on stored, the wizard opened | on |
+| off stored, the wizard opened | off |
+| on stored, through `bot_config_kwargs` and `make_bot_config` | `BotConfig.aggressive_trading` on |
+| off stored, the same path | `BotConfig.aggressive_trading` off |
+| the setting on, a saved bot holding off | the restored bot holds off |
+| the setting off, a saved bot holding on | the restored bot holds on |
+
+A restored bot reads `cfg.get("aggressive_trading", False)` from its own saved
+config at `src/trading/container/restore.py:204` and reads no application
+setting. Every `SettingsManager.get` and `get_all` call of the run was recorded
+with its calling file. The wizard and the restore paths read the key no times,
+and the driver read it once. The recorder saw the read it was meant to see, so
+the two zeros are measurements.
+
+### What this wiring retires
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "The wizard carries its own aggressive trading checkbox, and that is the one a new bot reads." | A new bot still reads the wizard's checkbox, and that checkbox now opens at this row's stored flag. |
+
+The two revert sentences in the same paragraph were already retired by
+[Save keeps what the store holds](#2026-09-11---save-keeps-what-the-store-holds),
+and that section's reading was re-driven here and holds.
+
+### What the one lookup adds
+
+One lookup on one checkbox, in the file the + New Bot button reaches. Nothing a
+running bot does changed, nothing on the Settings page changed and no order
+placement path changed.
+
+### The wizard path this wiring does not reach
+
+The Electron shell's wizard request carries no stored defaults, so the Qt-free
+wizard surface opens its box at the build figure whatever the store holds.
+
+| Absence | What was measured |
+| ------- | ----------------- |
+| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js` never names `defaults`, and `src/gui/main_tabs/bot_wizard_surface.py:2806` reads `defaults` out of the request. A request with no bag left `target_balance` at its built-in 200.0 |
+| the Qt-free wizard surface has no aggressive lookup | `bot_wizard_surface.view_model` with a bag holding the flag on still answered off. `CHECK_FIELDS` at `:425` seeds the box at `False` and nothing reads the store |
+| a hand-edited word in the store reads as on | The store declares a boolean. A word put there by hand ticks the box on the Settings page and in the wizard alike, because both admit the value as `bool(value)` |
+
 Back to [the subsystem index](README.md).

@@ -686,6 +686,9 @@ if _HAS_QT:
             mf.addRow("Order Visibility:", self._visibility)
 
             self._aggressive = QCheckBox("Aggressive Trading (force IOC-limit takers)")
+            # defaults carries the stored aggressive_trading, admitted the way
+            # the Settings dialog's own load row admits it.
+            self._aggressive.setChecked(bool(defaults.get("aggressive_trading", False)))
             self._aggressive.setToolTip(
                 "When ON, every engine-initiated buy/sell executes as "
                 "an Immediate-Or-Cancel limit order priced through "
