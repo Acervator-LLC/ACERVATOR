@@ -3336,4 +3336,158 @@ The master switch above this row gated five rows. It gates four now, and the
 four are Profit Folding Target, Fold to X# of buy positions, Upward Distribution
 Target and Distribute to X# of sell positions.
 
+## 2026-09-12 - Profit Folding Target waits on its count row
+
+The third row on the Profit Folding page offers three choices: fold to all buy
+positions, to a counted number of them, or to the most recent. It stores the
+chosen word under the key `fold_target` inside the `profit_folding` group and
+reads it back. Nothing outside the dialog reads the word, and no fold in the
+engine reaches a chosen set of buy positions. The row is therefore dead, and it
+stays on the page until the count row beside it comes off with it.
+
+### What the three buttons choose, and what reads the word
+
+| Build | The controls |
+| ----- | ------------ |
+| React, the build that runs | `fold_all`, `fold_x` and `fold_recent`, three radio specs under `FOLD_GROUP_TITLE` in `src/gui/main_tabs/settings_dialog_surface.py` |
+| Qt, preserved beside it | three `QRadioButton` inside `QGroupBox("Profit Folding Target")` in `src/gui/settings_dialog.py` |
+
+Both write `profit_folding.fold_target` through one `_stored_groups` row, and
+`FOLD_TARGET_BUTTONS` fixes the read order that decides the stored word.
+
+The bare name `fold_target` was searched over the 1077 tracked files outside
+`dist/` and `docs-archive/`. It returns 16 hits: three declare the row, five
+belong to the bot wizard's own group, and eight are the strip list and this
+manual quoting it. No site reads the word.
+
+| Read shape | Sites |
+| ---------- | ----: |
+| `getattr(x, "fold_target", ...)` | 0 |
+| `x["fold_target"]` | 0 |
+| `sm.get_nested("profit_folding", "fold_target")` | 0 |
+| `getattr(bot.config, "fold_target", ...)` | 0 |
+| `cfg.fold_target` | 0 |
+
+The same five shapes, spelled for the sibling key `profit_folding_active`, return
+16 sites in the same files, so the zeros read the repository rather than a blind
+search. `FoldTarget` in `src/core/settings.py` has two sites, both its own
+declaration.
+
+`fold_target` stays in `_DEPRECATED_KWARGS` at
+`src/trading/container/config.py:387`, so a `bot_state.json` still carrying it
+restores without a `TypeError`. `BotConfig` declares no field of that name, and
+`_sanitize_deprecated_kwargs` drops the key before `BotConfig.__init__`. This is
+where the row differs from [Profit Folding
+Active](#2026-09-12---profit-folding-active-waits-on-the-wizards-folding-page):
+`profit_folding_active` is a real `BotConfig` field, so that row has a
+destination behind one cut route. `fold_target` has no field to land in, so
+repairing the wizard's folding page would not give it one.
+
+### Why no fold reaches a chosen set of buy positions
+
+Every fold path was asked for its runtime signature. None takes a target of
+positions or a count of them.
+
+| Where | What it does |
+| ----- | ------------ |
+| `src/trading/profit_fold.py:14` `apply_profit_fold` | grows one dollar target balance; its `target` parameter is annotated `float`, and its own docstring records that no module imports it |
+| `src/trading/scrumming_bot.py:767` `_apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no set |
+| `src/trading/smart_wire.py:589` `distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
+| `src/trading/scrumming/wire_routing.py:487` `_spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the share is fixed at the dollars divided by the tranche count |
+| `src/trading/scrumming/fold_tranches.py:51` `_fold_eligible_tranches` | picks the tranches a fold may reach by price alone |
+| `src/trading/scrumming/fold_tranches.py:515` `_fold_discharge_order` | orders those tranches by `ref`, highest first |
+| `src/trading/stack_math.py:304` `fold_ladder_prices` | places fold prices and decides no size; its `levels` counts prices on a ladder |
+
+The two paths that do decide which tranches a fold reaches were driven over
+three tranches at refs 120, 110 and 100. `_fold_discharge_order` returned them in
+price order and not in `created_ts` order, so "most recent" is not even the order
+the queue discharges in. `_fold_eligible_tranches` at 105 returned the two
+tranches above that price and at 50 returned all three, so the set is price and
+no count narrows it.
+
+The even spread handed each of three tranches the same share, and the share is
+the dollars divided by the tranche count. It is fed by wire income rather than by
+a fold, and no second way of spreading exists.
+
+The one selector near folding refuses this row's words. `SPACING_MODES` in
+`src/trading/stack_math.py` holds `quadratic`, `fibonacci`, `linear` and
+`exponential`. `level_multipliers("x_buy", 3)` raises `ValueError`, while
+`level_multipliers("linear", 3)` returns `[1.0, 2.0, 3.0]`.
+
+### The count that has no other referent
+
+The count row beside this one, [Fold to X# of buy
+positions](#settings--profit-folding), is not a setting in its own right. It is
+the number one of these three choices uses, and four readings tie it to this row.
+
+| What ties them | Measured |
+| -------------- | -------- |
+| the group | the spin `fold_x_count` carries the group title `Profit Folding Target`, which is this row's title |
+| the layout | the Qt-free surface puts `fold_x` and `fold_x_count` in one row tuple, and the Qt tab puts them in one `QHBoxLayout` |
+| the words | the spin's spec carries `label` `None` and no `text`. Every word beside it on screen belongs to the radio `fold_x` |
+| the sentence | "Fold to X# of buy positions - Sets that counted number" points at this row's sentence for what "that" names |
+
+Driven with this row's three radios taken out, the group titled `Profit Folding
+Target` holds one control: a spin box named `fold_x_count`, with no label and no
+text. Taking this row off alone would leave a numeric box with no words, under a
+title describing a choice the page no longer offers.
+
+The two rows are one decision, so one change takes both off together.
+
+### A five-key group opening with the row gone
+
+`SettingsManager._apply_dict` copies the whole `profit_folding` dict off the
+file, so a store written before the row comes off still carries its `fold_target`
+entry and still opens. The figures below come from driving
+`SettingsDialogReact` on one store holding all five keys, with the row present
+and then with the row taken out.
+
+| | the row present | the row gone |
+| --- | --- | --- |
+| the dialog built | yes | yes |
+| control specs in the payload | 67 | 64 |
+| control specs on the Profit Folding tab | 9 | 6 |
+| control specs in the Profit Folding Target group | 4 | 1 |
+| a legacy store's five keys opened | yes | yes |
+| keys the group holds after one Save | 5 | 4 |
+| keys and groups one Save wrote | 13 | 13 |
+| warning boxes raised | 0 | 0 |
+| `active` read back off a legacy store | `False` | `False` |
+| `fold_target_count` | `9` | `9` |
+| `distribute_target` | `x_sell` | `x_sell` |
+| `distribute_target_count` | `7` | `7` |
+
+Every one of the four siblings in the shared group reads back at its stored
+value, both before and after the Save, and the four read back again when the
+store is reopened.
+
+With the row present, all three stored words round-trip. Each opens the page on
+its own button, each is read back as itself, and each survives a Save that
+changed nothing.
+
+| Stored `fold_target` | The radio ticked | The store after a Save with no edit |
+| --- | --- | --- |
+| `all_buy` | `fold_all` | `all_buy` |
+| `x_buy` | `fold_x` | `x_buy` |
+| `most_recent_buy` | `fold_recent` | `most_recent_buy` |
+
+### The claim the page makes that the page does not keep
+
+The sentence "Three radio buttons and the count box the middle one gates" stands
+in an earlier section. No gate exists. Driven on `SettingsDialogReact`, the count
+box stays able to take an edit with each of the three radios ticked in turn, and
+the same reading returns a refusal when the box is deliberately disabled. The Qt
+folding tab makes no `toggled` connection and calls no `setEnabled`, and the
+Qt-free surface holds no enable rule for either name.
+
+### The two sentences the engine no longer keeps
+
+The sentence below stands in an earlier section and no longer describes the
+engine. The earlier text stays where it is.
+
+| Earlier sentence | What the engine does now |
+| ---------------- | ------------------------ |
+| "Profit Folding Target - Chooses which buy positions a fold reaches: all of them, a counted number of them, or the most recent." | No fold chooses a set of buy positions. A fold reaches the tranches whose reference price is above the market and discharges them in price order. |
+| "Three radio buttons and the count box the middle one gates." | The count box is live with any of the three radios ticked. |
+
 Back to [the subsystem index](README.md).
