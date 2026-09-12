@@ -2471,4 +2471,61 @@ and the status log, and nothing else.
 `_sync_exchange_tabs` only adds a tab, so the removed venue's tab stays on
 screen until the next launch.
 
+## 2026-09-11 - Position Distance is off the Trading page
+
+The Trading page carries five rows. The Position Distance row is removed. The row
+set a percent the dialog stored and read back, and no bot read the value.
+
+Three files declared the row and every declaration is gone.
+
+| File | What it declared |
+| ---- | ---------------- |
+| `src/core/settings.py` | the `position_distance_pct` field on `AppSettings` |
+| `src/gui/settings_dialog.py` | the `QDoubleSpinBox` and its `_stored_rows` entry |
+| `src/gui/main_tabs/settings_dialog_surface.py` | the `pos_distance` spec, its Trading layout step and its `PERSISTED_ROWS` entry |
+
+`_DEPRECATED_KWARGS` in `src/trading/container/config.py` keeps the name. A
+`bot_state.json` still carrying the key restores without a `TypeError`.
+
+### Why the row had no wizard control to open
+
+The row set a percent from 1.0 to 50.0 at 2.0, spacing a bot's positions. Three
+wizard controls carry a spacing and none carries that quantity.
+
+| Control | Key | Range | At | What it spaces |
+| ------- | --- | ----- | -- | -------------- |
+| Split Distance | `split_distance` | 0.10 % to 20.00 % | 1.00 % | one Stack tranche from the next |
+| Spacing | `stack_spacing_mode` | Linear, Quadratic, Exponential | Linear | how that tranche gap grows |
+| Opposing Trade Interval | `scrumming_interval_pct` | 0.10 % to 20.00 % | 1.00 % | the price travel a reversal needs |
+
+The key belongs to the retired Grid Bot. The module docstring of
+`src/gui/bot_wizard.py` names the mode and its rows: "Grid Bot: Investment
+Amount, Position Count/Distance/Increment". `BotMode` declares `SCRUMMING` and
+`EXTRACTOR`, and `bot_config_kwargs` names "the retired Grid checkbox" in the
+same file as the strip list.
+
+### A store that still carries the key
+
+`SettingsManager._apply_dict` walks the fields `AppSettings` declares and copies
+the ones the file carries. A key the file holds and `AppSettings` does not
+declare is passed over. A store holding `position_distance_pct = 7.5` opens, its
+`username` and `default_target_balance` read back, the dialog draws its controls,
+and the next Save writes the file without the key.
+
+### The sentences the removal replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+page. The earlier text stays where it is.
+
+| Earlier sentence | What the page does now |
+| ---------------- | ---------------------- |
+| "Six rows carry the defaults a new bot starts from, not a running bot's settings." | Five rows carry those defaults. |
+| "Position Distance - Sets the spacing a new bot puts between its positions." and the three sentences and the code block under it | The page carries no Position Distance row, and no control on it sets position spacing. |
+| "The strip list holds eleven names. This page contributes one of them and the Profit Folding page below contributes four more." | The strip list holds the same eleven names. The Profit Folding page contributes four and this page contributes none. |
+| "Save writes all six keys." | Save writes five keys. |
+| "The load path restores all six keys on the Trading page." | The load path restores all five keys on the Trading page. |
+| "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the `self._pos_distance.setValue` line inside that block | `_stored_rows` carries no `position_distance_pct` row, so the load path names four keys and the page has five rows. |
+| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 5 controls, `_save` writes all five, `_load_current` restores all five. |
+| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same five. |
+
 Back to [the subsystem index](README.md).

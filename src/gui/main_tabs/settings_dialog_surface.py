@@ -466,7 +466,6 @@ LOGGING_GROUP_KEY = SAVE_GROUP_KEYS[1]
 #: without also being loaded.
 PERSISTED_ROWS = (
     ("username", "username", EMPTY_TEXT),
-    ("position_distance_pct", "pos_distance", 2.0),
     (INCREMENT_KEY, "increment_style", INCREMENT_DEFAULT),
     ("default_position_count", "default_positions", 10),
     ("default_target_balance", "default_balance", 200.0),
@@ -597,16 +596,6 @@ CONTROL_SPECS = (
         "echo": "password",
         "visible": False,
         "placeholder": "Passphrase set when creating API key",
-    },
-    {
-        "tab": TRADING_TAB,
-        "group": None,
-        "label": "Position Distance:",
-        "name": "pos_distance",
-        "kind": DOUBLE_SPIN,
-        "range": (1.0, 50.0),
-        "suffix": "%",
-        "decimals": 1,
     },
     {
         "tab": TRADING_TAB,
@@ -1418,7 +1407,6 @@ LAYOUT = {
     TRADING_TAB: (
         FORM,
         (
-            (CONTROL, "pos_distance"),
             (CONTROL, "increment_style"),
             (CONTROL, "default_positions"),
             (CONTROL, "default_balance"),

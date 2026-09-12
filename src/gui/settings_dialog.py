@@ -468,11 +468,6 @@ if _HAS_QT:
         def _create_trading_tab(self) -> QWidget:
             w = QWidget()
             form = QFormLayout(w)
-            self._pos_distance = QDoubleSpinBox()
-            self._pos_distance.setRange(1.0, 50.0)
-            self._pos_distance.setSuffix("%")
-            self._pos_distance.setDecimals(1)
-            form.addRow("Position Distance:", self._pos_distance)
             self._increment_style = QComboBox()
             self._increment_style.addItems(["linear", "logarithmic"])
             form.addRow("Increment Style:", self._increment_style)
@@ -1170,10 +1165,6 @@ if _HAS_QT:
                  lambda: self._username.text().strip(),
                  self._username.setText,
                  ""),
-                ("position_distance_pct",
-                 self._pos_distance.value,
-                 self._pos_distance.setValue,
-                 2.0),
                 ("increment_style",
                  self._increment_style.currentText,
                  lambda value: self._show_text(self._increment_style, value),
