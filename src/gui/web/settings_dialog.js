@@ -25,7 +25,6 @@
   var METHOD_FIELD = "method";
   var MINIMUM_SIZE = "minimum_size";
   var PAINTED = "painted";
-  var PHANTOM_TIMEFRAMES = "phantom_timeframes";
   var PRINTS = "prints";
   var PROCESSED_EVENTS = "processed_events";
   var REJECTED = "rejected";
@@ -69,7 +68,6 @@
     MESSAGE_BOXES,
     MINIMUM_SIZE,
     PAINTED,
-    PHANTOM_TIMEFRAMES,
     PRINTS,
     PROCESSED_EVENTS,
     REJECTED,
@@ -123,7 +121,6 @@
     LISTED_EXCHANGES,
     MESSAGE_BOXES,
     MINIMUM_SIZE,
-    PHANTOM_TIMEFRAMES,
     PRINTS,
     PROCESSED_EVENTS,
     ROWS,
@@ -216,7 +213,6 @@
   var STRETCH_ROLE = "stretch";
   var BANNER_ROLE = "banner";
   var TA_ROWS_ROLE = "ta_rows";
-  var TF_ROW_ROLE = "tf_row";
   var SOUND_ROW_ROLE = "sound_row";
   var ADD_GROUP_ROLE = "add_group";
 
@@ -311,9 +307,6 @@
   var TA_LABEL_PART = "ta-label";
   var TA_SLIDER_PART = "ta-slider";
   var TA_VALUE_PART = "ta-value";
-  var TF_ROW_PART = "tf-row";
-  var TF_CHECK_PART = "tf-check";
-  var TF_BOX_PART = "tf-box";
   var SOUND_ROW_PART = "sound-row";
   var SOUND_BUTTON_PART = "sound-button";
   var FOOTER_PART = "footer";
@@ -667,26 +660,6 @@
     taRows().forEach(function (row) {
       if (Array.isArray(row) && String(at(row, ZERO)) === String(name)) {
         found = row;
-      }
-    });
-    return found;
-  }
-
-  function phantomTimeframes() {
-    return listField(model(), PHANTOM_TIMEFRAMES);
-  }
-
-  function timeframeNames() {
-    return phantomTimeframes().map(function (row) {
-      return text(at(row, ZERO));
-    });
-  }
-
-  function timeframeTicked(name) {
-    var found;
-    phantomTimeframes().forEach(function (row) {
-      if (Array.isArray(row) && String(at(row, ZERO)) === String(name)) {
-        found = at(row, STEP);
       }
     });
     return found;
@@ -1095,11 +1068,6 @@
   }
 
   function checkPaired(found) {
-    listField(found, PHANTOM_TIMEFRAMES).forEach(function (row, index) {
-      if (!Array.isArray(row) || row.length !== SECOND) {
-        note(AT + String(index), PHANTOM_TIMEFRAMES, SHORT_LIST_FAULT, kindOf(row));
-      }
-    });
     listField(found, TA_ROWS_FIELD).forEach(function (row, index) {
       if (!Array.isArray(row) || row.length !== THIRD) {
         note(AT + String(index), TA_ROWS_FIELD, SHORT_LIST_FAULT, kindOf(row));
@@ -1562,34 +1530,6 @@
     );
   }
 
-  function TimeframeRow() {
-    var rowProps = partProps(TF_ROW_PART, {
-      display: FLEX,
-      flexDirection: ROW_DIRECTION
-    });
-    rowProps[COUNT_ATTR] = text(phantomTimeframes().length);
-    return element(
-      DIV_TAG,
-      rowProps,
-      phantomTimeframes().map(function (row, index) {
-        var one = partProps(TF_CHECK_PART);
-        one.key = String(index);
-        one[NAME_ATTR] = text(at(row, ZERO));
-        one[TICKED_ATTR] = text(at(row, STEP));
-        var boxProps = partProps(TF_BOX_PART);
-        boxProps.type = CHECKBOX_TYPE;
-        boxProps.defaultChecked = at(row, STEP) === true;
-        boxProps[NAME_ATTR] = text(at(row, ZERO));
-        return element(
-          SPAN_TAG,
-          one,
-          element(INPUT_TAG, boxProps),
-          text(at(row, ZERO))
-        );
-      })
-    );
-  }
-
   function SoundRow() {
     var rowProps = partProps(SOUND_ROW_PART, {
       display: FLEX,
@@ -1673,9 +1613,6 @@
     }
     if (role === TA_ROWS_ROLE) {
       return element(TaRows, null);
-    }
-    if (role === TF_ROW_ROLE) {
-      return element(TimeframeRow, null);
     }
     if (role === SOUND_ROW_ROLE) {
       return element(SoundRow, null);
@@ -2143,8 +2080,6 @@
     textRowNames: textRowNames,
     taRows: taRows,
     taRowNamed: taRowNamed,
-    timeframeNames: timeframeNames,
-    timeframeTicked: timeframeTicked,
     soundButtons: soundButtons,
     soundButtonNamed: soundButtonNamed,
     exchangeItems: exchangeItems,
