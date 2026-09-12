@@ -468,9 +468,6 @@ if _HAS_QT:
         def _create_trading_tab(self) -> QWidget:
             w = QWidget()
             form = QFormLayout(w)
-            self._default_positions = QSpinBox()
-            self._default_positions.setRange(1, 100)
-            form.addRow("Default Positions:", self._default_positions)
             self._default_balance = QDoubleSpinBox()
             self._default_balance.setRange(1.0, 1000000.0)
             self._default_balance.setPrefix("$")
@@ -1162,10 +1159,6 @@ if _HAS_QT:
                  lambda: self._username.text().strip(),
                  self._username.setText,
                  ""),
-                ("default_position_count",
-                 self._default_positions.value,
-                 self._default_positions.setValue,
-                 10),
                 ("default_target_balance",
                  self._default_balance.value,
                  self._default_balance.setValue,
