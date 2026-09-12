@@ -10,8 +10,8 @@ every tab and then seeds every control from the settings store, which is
 the order the shipped dialog does it in. ``save`` runs the Save button
 and reports which groups persisted and which were discarded.
 ``test_api_connection``, ``add_exchange`` and ``remove_exchange`` run the
-three Exchanges buttons. ``sfx_volume_changed``, ``test_sound``,
-``update_font_preview`` and ``test_ai_handshake`` run the rest.
+three Exchanges buttons. ``sfx_volume_changed``, ``test_sound`` and
+``test_ai_handshake`` run the rest.
 
 ``SettingsSource``, ``StatusLogSink``, ``ValidatorSource``,
 ``ValidationResult`` and ``SoundEngineSink`` are plain stand-ins for the
@@ -182,7 +182,6 @@ STOCK_ADD_GROUP = "Add Stock Broker"
 REMOVE_BUTTON_TEXT = "Remove Selected"
 
 LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
-FONT_GROUP_TITLE = "Font Settings"
 SMS_PROVIDER_GROUP_TITLE = "SMS Provider"
 SMS_EVENTS_GROUP_TITLE = "Notification Events"
 SMS_RATE_GROUP_TITLE = "Rate Limiting"
@@ -265,27 +264,6 @@ THEME_ITEMS = (
     ("Classic Terminal", "classic_terminal"),
     ("Minimal Modern", "minimal_modern"),
     ("Glass & Metal", "glass_metal"),
-)
-
-FONT_FAMILIES = (
-    "Segoe UI",
-    "Consolas",
-    "Cascadia Code",
-    "Courier New",
-    "Arial",
-    "Helvetica",
-    "Roboto",
-    "Fira Code",
-    "JetBrains Mono",
-    "Source Code Pro",
-    "Ubuntu",
-    "Verdana",
-)
-FONT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog"
-FONT_PREVIEW_STYLE = "padding: 8px; border: 1px solid #333;"
-FONT_PREVIEW_FORMAT = (
-    "font-family: '{family}'; font-size: {size}pt; "
-    "padding: 8px; border: 1px solid #333;"
 )
 
 CARRIER_NAMES = (
@@ -487,10 +465,6 @@ PERSISTED_ROWS = (
     ("default_lock_candle_count", "lock_candles", LOCK_CANDLE_DEFAULT),
     (THEME_KEY, "theme_combo", THEME_DEFAULT),
     ("accent_color", "accent_color", ACCENT_DEFAULT),
-    ("font_family", "font_family", "Segoe UI"),
-    ("font_size", "font_size", 11),
-    ("heading_font_size", "heading_size", 14),
-    ("log_font_size", "log_font_size", 10),
 )
 SAVE_PAIRS = tuple((key, name) for key, name, _fallback in PERSISTED_ROWS)
 SETTING_LOAD_KEYS = tuple(
@@ -677,51 +651,6 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "accent_color",
         "kind": LINE,
         "placeholder": "#00ffcc",
-    },
-    {
-        "tab": THEME_TAB,
-        "group": FONT_GROUP_TITLE,
-        "label": "Font Family:",
-        "name": "font_family",
-        "kind": COMBO_TEXT,
-        "signal": "currentTextChanged",
-        "items": FONT_FAMILIES,
-        "editable": True,
-        "current_text": "Segoe UI",
-        "tooltip": "Font family for all application text",
-    },
-    {
-        "tab": THEME_TAB,
-        "group": FONT_GROUP_TITLE,
-        "label": "Base Font Size:",
-        "name": "font_size",
-        "kind": SPIN,
-        "range": (8, 24),
-        "value": 11,
-        "suffix": " pt",
-        "tooltip": "Base font size for all UI text",
-    },
-    {
-        "tab": THEME_TAB,
-        "group": FONT_GROUP_TITLE,
-        "label": "Heading Font Size:",
-        "name": "heading_size",
-        "kind": SPIN,
-        "range": (10, 32),
-        "value": 14,
-        "suffix": " pt",
-        "tooltip": "Font size for headings and stat card values",
-    },
-    {
-        "tab": THEME_TAB,
-        "group": FONT_GROUP_TITLE,
-        "label": "Log Font Size:",
-        "name": "log_font_size",
-        "kind": SPIN,
-        "range": (8, 18),
-        "value": 10,
-        "suffix": " pt",
-        "tooltip": "Font size for Activity Log and API Log panels",
     },
     {
         "tab": LOGGING_TAB,
@@ -1137,7 +1066,6 @@ CONTROL_SPECS: tuple[dict, ...] = (
 GROUPS = (
     (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
     (PHANTOM_TAB, LOCK_GROUP_TITLE),
-    (THEME_TAB, FONT_GROUP_TITLE),
     (SMS_TAB, SMS_PROVIDER_GROUP_TITLE),
     (SMS_TAB, SMS_EVENTS_GROUP_TITLE),
     (SMS_TAB, SMS_RATE_GROUP_TITLE),
@@ -1150,14 +1078,6 @@ GROUPS = (
 NO_STYLE = ""
 
 TEXT_ROWS = (
-    (
-        THEME_TAB,
-        FONT_GROUP_TITLE,
-        "Preview:",
-        "font_preview",
-        FONT_PREVIEW_TEXT,
-        FONT_PREVIEW_STYLE,
-    ),
     (
         AI_TAB,
         AI_STATUS_GROUP_TITLE,
@@ -1197,10 +1117,6 @@ EXCHANGE_CONNECTIONS = (
     ("add_btn.clicked", "add_exchange"),
     ("remove_btn.clicked", "remove_exchange"),
 )
-THEME_CONNECTIONS = (
-    ("font_family.currentTextChanged", "update_font_preview"),
-    ("font_size.valueChanged", "update_font_preview"),
-)
 SOUND_CONNECTIONS = (
     ("sound_volume.valueChanged", "update_volume_label"),
     ("sound_volume.valueChanged.2", "sfx_volume_changed"),
@@ -1226,7 +1142,6 @@ def connect_order() -> tuple:
                 TA_SLIDER_HANDLER,
             )
         )
-    found.extend(THEME_CONNECTIONS)
     found.extend(SOUND_CONNECTIONS)
     for _text, name, _tip in SOUND_TEST_BUTTONS:
         found.append(
@@ -1239,7 +1154,6 @@ def connect_order() -> tuple:
 
 ACTION_HANDLERS = dict(
     EXCHANGE_CONNECTIONS
-    + THEME_CONNECTIONS
     + SOUND_CONNECTIONS
     + AI_CONNECTIONS
     + FOOTER_CONNECTIONS
@@ -1357,20 +1271,6 @@ LAYOUT = {
             (CONTROL, "theme_combo"),
             (LABEL, ACCENT_HEADING),
             (CONTROL, "accent_color"),
-            (
-                GROUP,
-                FONT_GROUP_TITLE,
-                (
-                    FORM,
-                    (
-                        (CONTROL, "font_family"),
-                        (CONTROL, "font_size"),
-                        (CONTROL, "heading_size"),
-                        (CONTROL, "log_font_size"),
-                        (TEXT, "font_preview"),
-                    ),
-                ),
-            ),
             (STRETCH,),
         ),
     ),
@@ -1667,11 +1567,6 @@ def slider_label_text(position: Any) -> str:
 def volume_label_text(position: Any) -> str:
     """The figure printed beside the volume slider."""
     return VOLUME_LABEL_FORMAT.format(value=position)
-
-
-def font_preview_style(family: Any, size: Any) -> str:
-    """The preview label's rule after the family or the size moves."""
-    return FONT_PREVIEW_FORMAT.format(family=family, size=size)
 
 
 def index_of_data(items: Any, wanted: Any) -> int:
@@ -2413,16 +2308,6 @@ class SettingsDialogModel:
         if self.status_log:
             self.status_log.log(REMOVED_LOG_FORMAT.format(eid=eid), WARNING_LEVEL)
 
-    def update_font_preview(self) -> None:
-        """Repaint the preview line in the chosen family and size."""
-        family = self.values["font_family"]
-        if isinstance(family, int):
-            family = FONT_FAMILIES[family]
-        self.styles["font_preview"] = font_preview_style(
-            family, self.values["font_size"]
-        )
-        self._record("update_font_preview")
-
     def update_volume_label(self, position: Any) -> None:
         """Print the volume figure beside the slider."""
         self.texts["vol_label"] = volume_label_text(position)
@@ -2795,7 +2680,6 @@ def build_view_model(model: SettingsDialogModel) -> dict:
                 "test_api_connection",
                 "add_exchange",
                 "remove_exchange",
-                "update_font_preview",
                 "update_volume_label",
                 "sfx_volume_changed",
                 "sfx_volume_failed",

@@ -1429,6 +1429,91 @@ Dark's to the other four.
     accent_color: str = ""
 ```
 
+The Font Settings group is gone. Font Family, Base Font Size, Heading Font Size
+and Log Font Size are no longer on the Theme page, the preview line went with
+them, and the four stored keys are no longer fields of the settings record. The
+theme declares the typography instead: every palette carries a typeface, a
+monospace face and four sizes.
+
+`src/gui/theme_engine.py` — the typography tokens a theme declares
+
+```python
+    # Font
+    font_family: str = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
+    font_mono: str = "'JetBrains Mono', 'Fira Code', 'Consolas', monospace"
+    font_size: str = "13px"
+    font_size_small: str = "11px"
+    font_size_large: str = "16px"
+    font_size_title: str = "20px"
+```
+
+Three of the five palettes name a typeface of their own. Classic Terminal takes a
+monospace family, Minimal Modern and Glass & Metal each name their own, and the
+other two keep the declared default above.
+
+```python
+# CLASSIC_TERMINAL
+font_family="'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+
+# MINIMAL_MODERN
+font_family="'SF Pro Display', 'Inter', 'Segoe UI', sans-serif",
+
+# GLASS_METAL
+font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",
+```
+
+The stylesheet generator reads those tokens, so the typeface and the size arrive
+with the palette rather than from a control.
+
+`src/gui/theme_engine.py` — `generate_qss`, the global rule
+
+```python
+QWidget {{
+    background-color: {t.bg_primary};
+    color: {t.text_primary};
+    font-family: {t.font_family};
+    font-size: {t.font_size};
+    selection-background-color: {t.accent_primary};
+    selection-color: {t.bg_primary};
+}}
+```
+
+A typeface the operator sets would have split that. The theme engine audits a
+palette as one set and says so in its own opening words, and a size set outside
+the palette moves the text the audit was taken against while nothing asks for the
+audit again.
+
+`src/gui/theme_engine.py` — the module's own rule
+
+```
+Every ``ThemeTokens`` pair meets WCAG 2.2 AA contrast, and a changed hex value
+needs a fresh audit.
+```
+
+The Theme page now carries two controls, the theme picker and the accent field.
+The dialog payload carries 68 controls where it carried 72, the rendered page
+draws 55 where it drew 59, and Save writes nine top-level keys where it wrote
+thirteen. The five generated stylesheets are unchanged byte for byte, because the
+removal touched no palette.
+
+A settings file written before the removal still loads. The load copies only the
+fields the record declares, so a font key in such a file is read past and every
+other setting arrives at its stored value.
+
+`src/core/settings.py` — `SettingsManager._apply_dict`
+
+```python
+defaults = asdict(AppSettings())
+for key, default_val in defaults.items():
+    if key in data:
+        setattr(self._settings, key, data[key])
+```
+
+Driven on a file holding all four font keys beside nine other settings: nothing
+raised, and the username, the target balance, the visibility, the aggressive
+flag, the theme, the accent, the three phantom values, the indicator weights and
+the logging group all arrived as stored.
+
 ### Settings > Logging
 
 ![Settings, the Logging page.](p41-i0.png)
