@@ -24,6 +24,7 @@ class StateRestoreMixin:
     _restore_ledger: dict
     _smart_wire_mgr: Any
     _state_manager: Any
+    _ta_weights: Any
     register: Callable[..., tuple]
 
     # -- State persistence -----------------------------------------------
@@ -362,6 +363,7 @@ class StateRestoreMixin:
                         config,
                         _PlaceholderExchangeForRestore(cfg["exchange_id"]),
                         enable_phantoms=bool(_restored_phantoms_enabled),
+                        ta_weights=self._ta_weights,
                     )
                     logger.info(
                         "P0g-DIAG | bot=%s saved_phantoms_enabled=%s "

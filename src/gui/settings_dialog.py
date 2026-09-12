@@ -481,22 +481,33 @@ if _HAS_QT:
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.addWidget(QLabel("Adjust indicator weights in the voting engine."))
+            from src.gui.main_tabs.settings_dialog_surface import (
+                TA_LABEL_MIN_WIDTH,
+                TA_SLIDER_RANGE,
+                TA_SLIDER_SCALE,
+                TA_VALUE_MIN_WIDTH,
+                ta_label,
+                ta_slider_value,
+                ta_value_text,
+            )
             from src.trading.ta_engine import DEFAULT_WEIGHTS
 
             self._ta_weight_sliders = {}
             for ind_name, default_w in DEFAULT_WEIGHTS.items():
                 row = QHBoxLayout()
-                label = QLabel(f"{ind_name.replace('_', ' ').title()}:")
-                label.setMinimumWidth(140)
+                label = QLabel(ta_label(ind_name))
+                label.setMinimumWidth(TA_LABEL_MIN_WIDTH)
                 row.addWidget(label)
                 slider = QSlider(Qt.Horizontal)
-                slider.setRange(0, 200)
-                slider.setValue(int(default_w * 100))
+                slider.setRange(*TA_SLIDER_RANGE)
+                slider.setValue(ta_slider_value(default_w))
                 row.addWidget(slider)
-                val_label = QLabel(f"{default_w:.2f}")
-                val_label.setMinimumWidth(40)
+                val_label = QLabel(ta_value_text(default_w))
+                val_label.setMinimumWidth(TA_VALUE_MIN_WIDTH)
                 slider.valueChanged.connect(
-                    lambda v, lbl=val_label: lbl.setText(f"{v/100:.2f}")
+                    lambda v, lbl=val_label: lbl.setText(
+                        ta_value_text(v / TA_SLIDER_SCALE)
+                    )
                 )
                 row.addWidget(val_label)
                 self._ta_weight_sliders[ind_name] = slider
@@ -1179,6 +1190,31 @@ if _HAS_QT:
                      lambda value: self._ai_log_feedback.setChecked(bool(value)),
                      True),
                 )),
+                ("ta_indicator_weights", self._ta_weight_rows()),
+            )
+
+        def _ta_weight_rows(self) -> tuple:
+            """One ``_stored_groups`` row per indicator weight slider.
+
+            A slider holds the weight times ``TA_SLIDER_SCALE``, so a row reads
+            the weight out of the position and writes the position back in.
+            """
+            from src.gui.main_tabs.settings_dialog_surface import TA_SLIDER_SCALE
+            from src.trading.ta_engine import DEFAULT_WEIGHTS
+
+            def read(name: str) -> Callable[[], float]:
+                return lambda: (
+                    self._ta_weight_sliders[name].value() / TA_SLIDER_SCALE
+                )
+
+            def show(name: str) -> Callable[[object], None]:
+                return lambda value: self._ta_weight_sliders[name].setValue(
+                    int(round(float(value) * TA_SLIDER_SCALE))
+                )
+
+            return tuple(
+                (name, read(name), show(name), figure)
+                for name, figure in DEFAULT_WEIGHTS.items()
             )
 
         def _show_stored(

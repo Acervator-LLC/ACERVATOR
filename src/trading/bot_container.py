@@ -638,6 +638,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         self._restore_completed: bool = False
         self._bus = bus if bus is not None else get_event_bus()
         self._state_manager = None
+        self._ta_weights: Optional[dict] = None  # set from the settings store
         self._volume_guard = None  # one VolumeGuard shared by every bot
         self._data_pool = None  # one MarketDataPool shared by every bot
         self._ticker_refresh_task = None
@@ -751,6 +752,24 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
     def set_state_manager(self, sm) -> None:
         """Attach a StateManager for persistence."""
         self._state_manager = sm
+
+    def set_ta_weights(self, weights) -> None:
+        """Hold the indicator weights every bot built from here votes with.
+
+        Set before ``restore_bots_from_state`` so a restored bot carries the
+        figures the Settings dialog stored. None leaves each bot on
+        ``ta_engine.DEFAULT_WEIGHTS``.
+        """
+        self._ta_weights = dict(weights) if weights else None
+        logger.info(
+            "TA weights attached to BotManager (%d names)",
+            0 if not self._ta_weights else len(self._ta_weights),
+        )
+
+    @property
+    def ta_weights(self):
+        """The indicator weights a new bot is built with, or None."""
+        return None if self._ta_weights is None else dict(self._ta_weights)
 
     def force_fire(self, bot_id: str, aggressive: bool = False) -> bool:
         """Call ``force_fire`` on ``bot_id``; returns False for an

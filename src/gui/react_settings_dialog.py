@@ -560,7 +560,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._page_ready = False
             self._last_model: dict = {}
             self._passphrase_exchanges = surface.PASSPHRASE_EXCHANGE_IDS
-            self._ta_weight_sliders: dict = {}
             self._phantom_tf_checks: dict = {}
             self._build_holders()
 
@@ -718,6 +717,12 @@ if _HAS_QT and _HAS_WEBENGINE:
                 setattr(self, "_" + name, PageText(self, name))
             for name in PRESS_NAMES:
                 setattr(self, "_" + name, PagePress(self, name))
+            # _stored_groups reads the weights out of this dict, so the page
+            # holders go in it under the same keys the Qt sliders use.
+            self._ta_weight_sliders = {
+                indicator: self._holders[surface.ta_slider_name(indicator)]
+                for indicator, _weight in surface.TA_INDICATOR_WEIGHTS
+            }
 
         def _run(self, script: str) -> None:
             self._web.page().runJavaScript(script)

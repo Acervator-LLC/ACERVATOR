@@ -818,6 +818,82 @@ construction site takes
 self.weights = weights or DEFAULT_WEIGHTS.copy()
 ```
 
+#### Where an indicator weight lands
+
+Each of the twelve sliders is a named control, saved under one key and restored
+from it. Save writes all twelve; reopening the page shows what was saved. The
+key is `ta_indicator_weights`, and an empty one means every indicator votes at
+its published figure.
+
+`src/core/settings.py` — the stored group
+
+```python
+# Indicator name -> voting weight. Empty means every indicator votes at the
+# figure ta_engine.DEFAULT_WEIGHTS declares for it.
+ta_indicator_weights: dict = field(default_factory=dict)
+```
+
+A bot reads the group when it is built, so a weight changed here applies to the
+next bot created and to every bot on the next launch. A bot already ticking
+keeps the figures it started with until it is rebuilt.
+
+```mermaid
+flowchart LR
+  S["slider<br/>TA Indicators page"] --> K[("ta_indicator_weights")]
+  K --> M["weights_from_settings"]
+  M --> B["ScrummingBot<br/>ta_weights"]
+  B --> V["VotingEngine"]
+  V --> I["each indicator's weight"]
+```
+
+`src/trading/ta_engine.py` — the one reader every path goes through
+
+```python
+def weights_from_settings(stored: Optional[dict]) -> dict[str, float]:
+    found = dict(DEFAULT_WEIGHTS)
+    for name, figure in (stored or {}).items():
+        ...
+        found[name] = number
+    return found
+```
+
+An entry naming no indicator, an entry that is not a number, and a negative
+figure are each dropped with a line in the log, so a hand-edited settings file
+cannot give an indicator a weight the engine refuses to explain.
+
+#### One declaration of the twelve figures
+
+`DEFAULT_WEIGHTS` is the only place the twelve figures are written. The voting
+engine builds one indicator per key, in that order, and the page reads the same
+mapping for its starting positions. Neither holds a second copy, so the two
+cannot drift apart.
+
+`src/trading/ta_engine.py` — `_create_indicators`
+
+```python
+return [
+    INDICATOR_CLASSES[name](weight=self.weights.get(name, default))
+    for name, default in DEFAULT_WEIGHTS.items()
+]
+```
+
+#### The figures stay as they are
+
+Driven on a record shaped the way the restore path reads `bot_state.json`, a
+restored bot arrives with no stored weight of its own and takes the declared
+figures. A zero written into the declaration would therefore reach every bot
+already on disk and stop all twelve indicators contributing, while the vote
+counts stayed the same. The figures are unchanged for that reason.
+
+```
+declared defaults   consensus 0.1684   BULLISH   votes 6/4/2
+all twelve at zero  consensus 0.0      NEUTRAL   votes 6/4/2
+```
+
+A zero for one indicator is a different matter and is available today: setting
+a single slider to 0.00 removes that indicator's vote and leaves the other
+eleven voting.
+
 ### Settings > Phantom Bots
 
 ![Settings, the Phantom Bots page.](p39-i0.png)
