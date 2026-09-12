@@ -1054,6 +1054,25 @@ self._scrumming_interval.setSuffix(" %")
 self._scrumming_interval.setValue(1.0)
 ```
 
+Driven on a bot restored from a stored configuration, the percentage sets two
+thresholds. One is the dollar drift the position must show before the tick looks
+at anything else. The other is the price a reversal must reach after an opposite
+trade, and the Trading Fee is inside both of them.
+
+```
+target $200.00
+  interval 1.00 %   drift threshold $2.00    the tick reads the gates
+  interval 5.00 %   drift threshold $10.00   the tick holds and says so
+
+pivot $100.00000000, one tick later at $101.00000000
+  interval 0.10 %   required $100.70000000   cleared, no hysteresis blocker
+  interval 1.00 %   required $101.60000000   hysteresis blocker raised
+  interval 5.00 %   required $105.60000000   hysteresis blocker raised
+```
+
+Asked for a figure under its floor the box answers the floor: asked for 0.00 it
+answers 0.10.
+
 BB Tolerance - Determines the minimum distance of the Bollinger Band extent price action must be in order for a trade action to occur.
 
 A percentage from 0.25 to 5.00, at 1.00 % to start. The band-proximity detector
@@ -1070,6 +1089,17 @@ self._bb_tolerance.setSuffix(" %")
 self._bb_tolerance.setValue(1.0)
 ```
 
+Driven on one tape whose last close sat at band position 0.976123, the tolerance
+decides whether that close counts as sitting at the upper band, and the landing
+strip follows that answer. Asked for 0.00 the box answers 0.25, so it cannot be
+set to zero.
+
+```
+band position 0.976123, one tape, one tick
+  tolerance 0.25 %   near upper False   landing strip False
+  tolerance 5.00 %   near upper True    landing strip True, upper side
+```
+
 Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
 
 A whole number of candles from 2 to 10, at 3 to start. The widget accepts 2,
@@ -1083,6 +1113,41 @@ self._ls_candles = QSpinBox()
 self._ls_candles.setRange(2, 10)
 self._ls_candles.setValue(3)
 self._ls_candles.setSuffix(" candles")
+```
+
+Both halves of the correction above were re-measured, and both hold. The box does
+accept 2: its declared floor is 2, asked for 0 or 1 it answers 2, and 2 is the
+one figure under three it keeps. The number does reach one detector of the two
+the tick runs over the same candles.
+
+```
+the tick runs two detectors, and they count different things
+  band proximity   its minimum pattern candles = the stored figure
+  tightening       its minimum consecutive run = a platform constant of 3
+
+one tape, trailing tight bodies 2
+  stored 2    landing strip True     confidence boost 0.1900
+  stored 3    landing strip False    confidence boost 0.0000
+  stored 2 and stored 12 both logged: TIGHTENING (upper BB): 3 candles
+```
+
+Raising the floor to three is not taken, and the reason is a measurement. A box
+holding a stored 2 answers 3 the moment its range starts at three, and putting
+the range back leaves the 3 behind, so the next Save would write three into a
+bot whose record says two.
+
+The tightening detector keeps its own run length, because a run of shrinking
+bodies is not a count of tight bodies at a band. The four figures the tick hands
+that detector are now the names the gate scan already declared for them, and the
+values are unchanged.
+
+```python
+tightening = detect_landing_strip_v2(
+    candles,
+    min_consecutive=TIGHTENING_MIN_CONSECUTIVE,
+    shrink_threshold=TIGHTENING_SHRINK_THRESHOLD,
+    bb_tolerance_pct=TIGHTENING_TOLERANCE_PCT,
+)
 ```
 
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
@@ -1102,6 +1167,15 @@ self._ta_timeframe = QComboBox()
 self._ta_timeframe.setCurrentIndex(4)  # Default 1h
 ```
 
+Driven on a bot restored from a stored configuration, the name decides which
+chart the bot fetches, and every indicator vote is then computed on that chart.
+
+```
+one bot, one tick each, two stored names
+  1h   chart asked for 1h   consensus BULLISH 0.0219   band position 0.500000
+  1d   chart asked for 1d   consensus BEARISH 0.0863   band position 0.976123
+```
+
 Target Balance - This is the intended starting and locked value for the investment position that the Scrumming Bot is controlling.
 
 From $1.00 to $1,000,000.00. Its start value is whatever default the wizard was
@@ -1116,6 +1190,21 @@ self._target_balance.setDecimals(2)
 self._target_balance.setPrefix("$ ")
 self._target_balance.setValue(defaults.get("default_target_balance", 200.0))
 ```
+
+Driven on one position worth $203.00, the figure is the line the excess is
+measured from, and the Opposing Trade Interval above is a percentage of it. A
+dollar and a half of target turns the same position from one the tick evaluates
+into one it holds.
+
+```
+one position of $203.00, one tick each
+  target $200.00   excess +$3.00   scrum side   interval $2.0000   gates read
+  target $201.50   excess +$1.50   scrum side   interval $2.0150   tick holds
+```
+
+The start value does come from the figure the wizard is handed: handed 200.00 the
+row opens at 200.00, and handed 777.50 it opens at 777.50. Asked for 0.00 the box
+answers 1.00.
 
 Max Entry Price - If the new bot does not detect the requisite amount (as dictated by Target Balance) of the Target Asset, this price threshold sets a limit at which it will attempt to perform the initiating Fold.
 
