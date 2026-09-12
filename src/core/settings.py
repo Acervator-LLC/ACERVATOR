@@ -161,7 +161,6 @@ class AppSettings:
 
     default_position_count: int = 10
     default_target_balance: float = 200.0
-    position_distance_pct: float = 2.0
     increment_style: str = IncrementStyle.LINEAR.value
 
     profit_folding: dict = field(
