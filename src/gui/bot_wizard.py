@@ -674,6 +674,13 @@ if _HAS_QT:
             self._visibility = QComboBox()
             self._visibility.addItem("Order Book (Visible)", "orderbook")
             self._visibility.addItem("Internal (Invisible)", "internal")
+            # defaults carries the stored bot_visibility; findData refuses a name
+            # the two items do not offer, leaving the box on orderbook.
+            _vis_at = self._visibility.findData(
+                defaults.get("bot_visibility", "orderbook")
+            )
+            if _vis_at >= 0:
+                self._visibility.setCurrentIndex(_vis_at)
             self._visibility.setToolTip("How orders appear on the exchange.")
             self._visibility.currentIndexChanged.connect(self._on_visibility_changed)
             mf.addRow("Order Visibility:", self._visibility)
