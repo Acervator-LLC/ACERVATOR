@@ -96,6 +96,38 @@ Gating from outside the repo reports every real path as dead: the hallucination 
 
 GitHub keeps the previous body in its own edit history, so a rewrite destroys nothing.
 
+## A unit's absences become rows, before the next unit goes out
+
+Operator, twice: *"Still Absent - Make sure these all get units if needed. Make it
+a habit please. Might as well fill in as many related gaps under one Issue as we
+can."*
+
+Every unit brief ends by asking for a **Still Absent** list. When the report
+arrives, each item on that list ends in exactly one of three places, and none of
+them is a sentence in a reply:
+
+- **a new row** in the issue's raised-units section, numbered in sequence
+- **an addition to a row that already exists**, when the item is that row's
+  subject
+- **the issue's standing harness proposal**, when the item is a missing check,
+  which is the operator's to accept and never a unit
+
+A gap is a new unit or an addition to the current unit. It is never a caveat.
+
+**Do this before the next unit is dispatched, not at the end of the issue.** The
+habit holds only if it runs while the report is in front of you.
+
+**Then count.** Read the row numbers out of the published body and check the
+sequence has no gap:
+
+```bash
+gh issue view <n> --json body --jq .body > <gitignored path>/body.md
+```
+
+and count the rows against the highest number. A missing number means an item was
+dropped between the report and the body, which is the one failure this section
+exists to catch.
+
 ## Folding one issue into another
 
 When a feature's issues are consolidated: map every concept from the absorbed issue onto a concept in the host, report the mapping, add only what is missing, carry each absorbed blocker into its concept's status cell, then comment on the absorbed issue naming the host and close it. Its comments stay — they are the record.
