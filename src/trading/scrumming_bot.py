@@ -48,6 +48,14 @@ from .phantom_balance import (
     TimeframeCoordinator,
 )
 
+from .ata_gate_scan import (
+    LANDING_STRIP_FAVOUR,
+    LANDING_STRIP_STRENGTH_FAVOUR,
+    TIGHTENING_MIN_CANDLES,
+    TIGHTENING_MIN_CONSECUTIVE,
+    TIGHTENING_SHRINK_THRESHOLD,
+    TIGHTENING_TOLERANCE_PCT,
+)
 from .gate_chain import (
     GateContext,
     build_scrumming_scrum_chain,
@@ -2927,7 +2935,11 @@ class ScrummingBot(
         bb_confidence_boost = 0.0
         bb_override_direction = None
         if bb_result and bb_result.landing_strip:
-            bb_confidence_boost = 0.15 + bb_result.consolidation_strength * 0.20
+            # The same favour ata_gate_scan.landing_strip_favour sums.
+            bb_confidence_boost = (
+                LANDING_STRIP_FAVOUR
+                + bb_result.consolidation_strength * LANDING_STRIP_STRENGTH_FAVOUR
+            )
             if bb_result.landing_strip_side == "upper":
                 bb_override_direction = SignalDirection.BEARISH
                 self._bus.emit(
@@ -2948,13 +2960,15 @@ class ScrummingBot(
                 )
 
         tightening = None
-        if len(candles) >= 25:
+        if len(candles) >= TIGHTENING_MIN_CANDLES:
             try:
+                # min_consecutive counts shrinking bodies, not the tight
+                # candles bb_landing_strip_candles counts.
                 tightening = detect_landing_strip_v2(
                     candles,
-                    min_consecutive=3,
-                    shrink_threshold=0.90,
-                    bb_tolerance_pct=3.0,
+                    min_consecutive=TIGHTENING_MIN_CONSECUTIVE,
+                    shrink_threshold=TIGHTENING_SHRINK_THRESHOLD,
+                    bb_tolerance_pct=TIGHTENING_TOLERANCE_PCT,
                 )
                 if tightening and tightening.detected:
                     bb_confidence_boost += tightening.confidence_boost
