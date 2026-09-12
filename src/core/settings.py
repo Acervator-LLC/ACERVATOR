@@ -42,13 +42,6 @@ class BotVisibility(str, Enum):
     INTERNAL = "internal"
 
 
-class LogPeriodicity(str, Enum):
-    DAILY = "24h"
-    WEEKLY = "1_week"
-    MONTHLY = "1_month"
-    YEARLY = "1_year"
-
-
 class VisualTheme(str, Enum):
     CYBERPUNK_DARK = "cyberpunk_dark"
     NEON_LIGHT = "neon_light"
@@ -62,20 +55,6 @@ class ProfitFoldingSettings:
     """Field defaults for the ``AppSettings.profit_folding`` group."""
 
     active: bool = True
-
-
-@dataclass
-class DataLoggingSettings:
-    """Field defaults for the ``AppSettings.data_logging`` group."""
-
-    ta_signal_logging: bool = True
-    highlight_trade_proximity: bool = True
-    active_periodicities: list[str] = field(
-        default_factory=lambda: [
-            LogPeriodicity.DAILY.value,
-            LogPeriodicity.WEEKLY.value,
-        ]
-    )
 
 
 @dataclass
@@ -148,8 +127,6 @@ class AppSettings:
 
     ai_monitor: dict = field(default_factory=lambda: asdict(AIMonitorSettings()))
 
-    data_logging: dict = field(default_factory=lambda: asdict(DataLoggingSettings()))
-
     # Indicator name -> voting weight. Empty means every indicator votes at the
     # figure ta_engine.DEFAULT_WEIGHTS declares for it.
     ta_indicator_weights: dict = field(default_factory=dict)
@@ -175,8 +152,8 @@ class SettingsManager:
     """Thread-safe reader and writer for one ``AppSettings``.
 
     ``get`` and ``set`` address a top-level field while ``get_nested`` and
-    ``set_nested`` address a key inside ``profit_folding``, ``ai_monitor``,
-    ``data_logging`` or ``ta_indicator_weights``.
+    ``set_nested`` address a key inside ``profit_folding``, ``ai_monitor`` or
+    ``ta_indicator_weights``.
     """
 
     _lock = threading.RLock()

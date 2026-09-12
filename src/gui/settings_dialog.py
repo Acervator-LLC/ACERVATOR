@@ -52,14 +52,6 @@ if _HAS_QT:
         "interactivebrokers",
     }
 
-    PERIOD_BUTTONS = (
-        ("_log_24h", "24h"),
-        ("_log_1w", "1_week"),
-        ("_log_1m", "1_month"),
-        ("_log_1y", "1_year"),
-    )
-    DEFAULT_PERIODS = ("24h", "1_week")
-
     class SettingsDialog(QDialog):
 
         settings_changed = Signal()
@@ -110,7 +102,6 @@ if _HAS_QT:
             tabs.addTab(self._create_ta_tab(), "TA Indicators")
             tabs.addTab(self._create_phantom_tab(), "Phantom Bots")
             tabs.addTab(self._create_theme_tab(), "Theme")
-            tabs.addTab(self._create_logging_tab(), "Logging")
             tabs.addTab(self._create_sound_tab(), "Sound")
             tabs.addTab(self._create_sms_tab(), "SMS")
             tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
@@ -570,33 +561,6 @@ if _HAS_QT:
             layout.addStretch()
             return w
 
-        def _create_logging_tab(self) -> QWidget:
-            w = QWidget()
-            layout = QVBoxLayout(w)
-            self._ta_logging = QCheckBox(
-                "Log TA signal samples with all values and timestamps"
-            )
-            self._ta_logging.setChecked(True)
-            layout.addWidget(self._ta_logging)
-            self._highlight_trades = QCheckBox(
-                "Highlight entries near Scrumming Bot trades"
-            )
-            self._highlight_trades.setChecked(True)
-            layout.addWidget(self._highlight_trades)
-            layout.addWidget(QLabel("P/L Log Periodicity:"))
-            self._log_24h = QCheckBox("24 Hours")
-            self._log_24h.setChecked(True)
-            self._log_1w = QCheckBox("1 Week")
-            self._log_1w.setChecked(True)
-            self._log_1m = QCheckBox("1 Month")
-            self._log_1y = QCheckBox("1 Year")
-            layout.addWidget(self._log_24h)
-            layout.addWidget(self._log_1w)
-            layout.addWidget(self._log_1m)
-            layout.addWidget(self._log_1y)
-            layout.addStretch()
-            return w
-
         def _create_sound_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
@@ -1003,20 +967,6 @@ if _HAS_QT:
             if at >= 0:
                 combo.setCurrentIndex(at)
 
-        def _ticked_periods(self) -> list:
-            """The periodicities whose boxes are ticked, in page order."""
-            return [
-                value
-                for attr, value in PERIOD_BUTTONS
-                if getattr(self, attr).isChecked()
-            ]
-
-        def _show_periods(self, value: object) -> None:
-            """Ticks the periodicity box of every entry ``value`` names."""
-            wanted = value if isinstance(value, (list, tuple)) else DEFAULT_PERIODS
-            for attr, one in PERIOD_BUTTONS:
-                getattr(self, attr).setChecked(one in wanted)
-
         def _stored_rows(self) -> tuple:
             """Every setting this dialog persists at the top level of the store.
 
@@ -1081,20 +1031,6 @@ if _HAS_QT:
                      self._folding_active.isChecked,
                      lambda value: self._folding_active.setChecked(bool(value)),
                      True),
-                )),
-                ("data_logging", (
-                    ("ta_signal_logging",
-                     self._ta_logging.isChecked,
-                     lambda value: self._ta_logging.setChecked(bool(value)),
-                     True),
-                    ("highlight_trade_proximity",
-                     self._highlight_trades.isChecked,
-                     lambda value: self._highlight_trades.setChecked(bool(value)),
-                     True),
-                    ("active_periodicities",
-                     self._ticked_periods,
-                     self._show_periods,
-                     DEFAULT_PERIODS),
                 )),
                 ("ai_monitor", (
                     ("api_key",

@@ -4737,4 +4737,220 @@ The eleven entries stay. The comment above them states why.
 | the creation log line's `position_count` read | kept. It is the row that owns the line that always prints zero |
 | the handoff files, the archive chronicle, the census note, the debug report | kept. Each is a dated record of an earlier state, not a description of a control |
 
+## 2026-09-12 - The Logging page comes off the Settings dialog
+
+The Logging page carried two checkboxes and four periodicity boxes. All six are
+removed, and the tab goes with them, because every control on the page wrote into
+one stored group that nothing outside the dialog ever read.
+
+Each of the three names on the page was judged on its own evidence. Two of them
+name logging the platform already writes under a different name. The third names
+a summary no code in the tree writes at all.
+
+Three files declared the page and every declaration is gone.
+
+| File | What it declared |
+| ---- | ---------------- |
+| `src/core/settings.py` | `LogPeriodicity`, the whole `DataLoggingSettings` class, and the `data_logging` field on `AppSettings` |
+| `src/gui/settings_dialog.py` | `PERIOD_BUTTONS`, `DEFAULT_PERIODS`, `_create_logging_tab` with its six check boxes, its `addTab` step, `_ticked_periods`, `_show_periods`, and the three `_stored_groups` rows |
+| `src/gui/main_tabs/settings_dialog_surface.py` | `LOGGING_TAB`, `LOGGING_HEADING`, `LOGGING_GROUP_KEY`, `LOGGING_FLAG_DEFAULT`, `PERIOD_CONTROLS`, `DEFAULT_PERIODS`, the six control specs, the tab title, the layout page, the heading entry, `_logging_rows`, `_logging_group`, and the save-group entry |
+
+### The six controls the page held
+
+| The control | What it stored |
+| ----------- | -------------- |
+| the box `ta_logging`, "Log TA signal samples with all values and timestamps", checked at build | `data_logging.ta_signal_logging` |
+| the box `highlight_trades`, "Highlight entries near Scrumming Bot trades", checked at build | `data_logging.highlight_trade_proximity` |
+| the box `log_24h`, "24 Hours", checked at build | one entry in `data_logging.active_periodicities` |
+| the box `log_1w`, "1 Week", checked at build | the same list |
+| the box `log_1m`, "1 Month", clear at build | the same list |
+| the box `log_1y`, "1 Year", clear at build | the same list |
+
+The four periodicity boxes were one setting spread over four controls. Save
+walked them in page order and wrote the ticked ones as a list.
+
+### Nothing outside the dialog read the group
+
+Each of the four stored names occurs in exactly three files, and all three are
+the declaration plus the two dialog surfaces. The scan walked every Python and
+JavaScript file under the source, tooling and desktop trees, plus the entry
+point.
+
+```
+data_logging               3 files
+ta_signal_logging          3 files
+highlight_trade_proximity  3 files
+active_periodicities       3 files
+    src/core/settings.py
+    src/gui/settings_dialog.py
+    src/gui/main_tabs/settings_dialog_surface.py
+```
+
+Every writer of every log file the platform keeps sits in one module,
+`src/core/logging_engine.py`, and that file holds no occurrence of any of the
+four names. The same count over the word "timestamp" in the same file returns
+three, so the zeros read the file rather than a blind search.
+
+### Each indicator reading is already written with its value and its time
+
+The voting panel snapshot writes one record for every fired trade, carrying the
+whole vote that drove it. Each vote is one indicator's own reading, and it
+carries its own clock value beside the record's.
+
+`src/trading/indicators/types.py` — one indicator's output
+
+```python
+@dataclass
+class Signal:
+    """One indicator's output at a point in time."""
+
+    indicator: str
+    timeframe: str
+    direction: SignalDirection
+    confidence: float  # 0.0 - 1.0
+    weight: float = 1.0
+    details: dict = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
+```
+
+Driven through the real writer into a scratch directory, one record landed with
+the reading, the weight, the raw values and two separate times:
+
+```
+row timestamp  2026-09-12T17:07:05.855494+00:00
+signal in row  {"indicator":"rsi","timeframe":"1h","direction":-1,
+                "confidence":0.72,"weight":1.4,
+                "details":{"rsi":71.25,"period":14},
+                "timestamp":1789232825.8554606,"abstained":false}
+```
+
+That is what the removed checkbox described, already written, for every fired
+trade, with no setting consulted. The operator's own file carries it: his
+`voting.log` measured 8,078,180 bytes on the day of this change.
+
+### Every row in the two decision logs already sits at a fire
+
+The gate log and the voting log are both written once per fired trade, never per
+tick. Each file therefore holds fire-adjacent rows and nothing else, and each row
+already names the action that fired it.
+
+`src/core/logging_engine.py` — the voting writer's own contract
+
+```python
+"""Write one entry with category "voting" to ``voting.log``.
+
+``ScrummingBot._emit_voting_panel_snapshot_at_fire`` reaches this once
+per fired trade, not per tick.
+"""
+```
+
+A flag that marked the lines near a fire would mark every line in both files, so
+it distinguishes nothing. The record type does declare a `highlight` field, and
+nothing in the tree sets it and nothing reads it.
+
+### No profit and loss figure is summarised over any window
+
+The cascade declares four windows and creates a directory for each one at
+construction. Only the daily writer has a caller.
+
+`src/core/logging_engine.py` — the four windows, and the three that nothing fills
+
+```python
+PERIODS = {
+    "daily": 1,
+    "weekly": 7,
+    "monthly": 30,
+    "yearly": 365,
+}
+```
+
+The three builders that would fill the other three directories have no call site
+anywhere. Parsed from every Python file under the source, tooling and desktop
+trees, plus the entry point:
+
+| What was counted | Result |
+| ---------------- | -----: |
+| call sites of the weekly, monthly and yearly builders | 0 |
+| occurrences of those three names, as a control | 9 |
+| files under `tests/` naming any of the three | 0 |
+
+The nine occurrences are the three definitions and six mentions inside
+docstrings, so the zero is a count of calls and not a fact about the file set.
+
+The runtime tree reads the same way. The daily directory holds 66 files and the
+other three have held none since they were created on 2026-06-09. A driven run
+reproduced it exactly: one daily file written, and nothing in weekly, monthly or
+yearly.
+
+### A store carrying the retired group still opens
+
+`SettingsManager._apply_dict` walks the declared fields and takes only the keys a
+file shares with them, so a stored group with no field behind it is passed over
+and every other value loads. A file holding the three retired keys beside
+thirteen other settings was driven through the real store:
+
+| | before the removal | after the removal |
+| --- | --- | --- |
+| the dialog built | yes | yes |
+| tabs in the payload | 11 | 10 |
+| a Logging tab is drawn | yes | no |
+| layout pages in the payload | 11 | 10 |
+| control specs in the payload | 68 | 62 |
+| control specs on the Logging tab | 6 | 0 |
+| check boxes on the built window | 30 | 24 |
+| the six retired labels found on that window | 6 | 0 |
+| stored groups the dialog persists | 4 | 3 |
+| rows the retired group declared | 3 | 0 |
+| other settings read back at their stored value | 13 of 13 | 13 of 13 |
+| the retired group read off the store | a dict of three keys | `None` |
+| anything raised on load | no | no |
+
+The thirteen siblings include the username, the theme, the accent colour, the
+folding group, the monitor group and the indicator weights, and each one reads
+back at its stored value. The three remaining groups still round-trip through a
+Save.
+
+Both columns were driven, on the unchanged tree and on the change, from one
+store holding the same fifteen keys. The reader that finds none of the six
+labels on the new window found all six on the old one, so the zero is a fact
+about the dialog and not about the reader.
+
+### What a live trade still writes
+
+Nothing about a live trade changed. The same three writers were driven on the
+branch and each produced what it produced before: the voting record with its
+indicator reading and its two times, the gate record with its armed flags and its
+blocker list, and one daily profit and loss file.
+
+### The sentences this section leaves behind
+
+Each sentence below stands in an earlier section and no longer describes the
+dialog. The earlier text stays where it is.
+
+| Earlier sentence | What the dialog does now |
+| ---------------- | ------------------------ |
+| "Two checkboxes and four periodicity boxes. Every key below sits inside one stored `data_logging` group." | The dialog has no Logging page, and the store declares no such group. |
+| "Log TA signal samples with all values and timestamps - Writes each indicator reading out with its value and its time." | The voting record writes each indicator reading with its value and its time, for every fired trade, with no setting in front of it. |
+| "The first of the two flags on the page, and the one that decides whether the indicator record is written at all." | No flag decides it. The record is written on every fired trade. |
+| "Highlight entries near Scrumming Bot trades - Marks the log lines that sit close to a fire." | Both decision logs hold one row per fired trade, so every row already sits at a fire. |
+| "The second flag, built the same way and checked at build like the first." | Neither flag exists. |
+| "P/L Log Periodicity - Chooses the windows a profit and loss figure is summarised over." | No window is summarised. The daily file is the only one anything writes. |
+| "Four separate boxes rather than one control. Save walks them in page order and writes the checked ones into a list." | The four boxes are gone and the list is no longer stored. |
+| "Save collapses all six into one dictionary holding the two flags and the list of active periodicities." | Save writes three groups and none of them is this one. |
+| "No reader outside the dialog reads the group either, which leaves the six controls writing to a key nothing consults." | The six controls are off the page, so nothing writes to the key. |
+| "In development. What the load path should restore for this page has not been settled against the rest of the dialog, so nothing is proposed here." | The page is gone, so nothing restores it. |
+| "The load path restores the whole group: both flags and the list of active periodicities." | No group, and no rows to restore. |
+| "\| Logging \| Log TA signal samples with all values and timestamps, Highlight entries near Scrumming Bot trades, P/L Log Periodicity \|" | No rows on this page, because there is no page. |
+| "Eleven tabs -- User, Exchanges, Trading, Profit Folding, TA Indicators, Phantom Bots, Theme, Logging, Sound, SMS and AI Monitor" | Ten tabs, and Logging is not one of them. |
+
+### What is still owed
+
+The roll-up itself is absent, and taking the control off the page does not build
+it. A weekly, monthly or yearly profit and loss file needs something that calls
+the builder, and no such caller exists. That is a behaviour to build, not a
+setting to wire, and it belongs to whatever owns the profit and loss evidence
+layer.
+
+In development.
+
 Back to [the subsystem index](README.md).
