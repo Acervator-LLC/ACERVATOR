@@ -128,6 +128,19 @@ them is a sentence in a reply:
 
 A gap is a new unit or an addition to the current unit. It is never a caveat.
 
+**And say so in the reply, naming the row numbers.** Placing them is half the
+rule; he cannot see the issue body from the terminal, so an unreported placement
+reads as a skipped one. He has asked twice — *"Make sure the Still Absent items
+are added as Units"*, then *"Did not see the notice"* — after every item was
+already placed. One line per report is enough:
+
+```
+Absences went in as rows 248-250.
+```
+
+Name any item that did NOT become a row, and where it went instead.
+
+
 **Do this before the next unit is dispatched, not at the end of the issue.** The
 habit holds only if it runs while the report is in front of you.
 
