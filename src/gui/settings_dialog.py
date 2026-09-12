@@ -567,70 +567,8 @@ if _HAS_QT:
             self._accent_color.setPlaceholderText("#00ffcc")
             layout.addWidget(self._accent_color)
 
-            font_group = QGroupBox("Font Settings")
-            font_form = QFormLayout(font_group)
-
-            self._font_family = QComboBox()
-            self._font_family.setEditable(True)
-            fonts = [
-                "Segoe UI",
-                "Consolas",
-                "Cascadia Code",
-                "Courier New",
-                "Arial",
-                "Helvetica",
-                "Roboto",
-                "Fira Code",
-                "JetBrains Mono",
-                "Source Code Pro",
-                "Ubuntu",
-                "Verdana",
-            ]
-            self._font_family.addItems(fonts)
-            self._font_family.setCurrentText("Segoe UI")
-            self._font_family.setToolTip("Font family for all application text")
-            font_form.addRow("Font Family:", self._font_family)
-
-            self._font_size = QSpinBox()
-            self._font_size.setRange(8, 24)
-            self._font_size.setValue(11)
-            self._font_size.setSuffix(" pt")
-            self._font_size.setToolTip("Base font size for all UI text")
-            font_form.addRow("Base Font Size:", self._font_size)
-
-            self._heading_size = QSpinBox()
-            self._heading_size.setRange(10, 32)
-            self._heading_size.setValue(14)
-            self._heading_size.setSuffix(" pt")
-            self._heading_size.setToolTip("Font size for headings and stat card values")
-            font_form.addRow("Heading Font Size:", self._heading_size)
-
-            self._log_font_size = QSpinBox()
-            self._log_font_size.setRange(8, 18)
-            self._log_font_size.setValue(10)
-            self._log_font_size.setSuffix(" pt")
-            self._log_font_size.setToolTip(
-                "Font size for Activity Log and API Log panels"
-            )
-            font_form.addRow("Log Font Size:", self._log_font_size)
-
-            self._font_preview = QLabel("The quick brown fox jumps over the lazy dog")
-            self._font_preview.setStyleSheet("padding: 8px; border: 1px solid #333;")
-            self._font_family.currentTextChanged.connect(self._update_font_preview)
-            self._font_size.valueChanged.connect(self._update_font_preview)
-            font_form.addRow("Preview:", self._font_preview)
-
-            layout.addWidget(font_group)
             layout.addStretch()
             return w
-
-        def _update_font_preview(self) -> None:
-            family = self._font_family.currentText()
-            size = self._font_size.value()
-            self._font_preview.setStyleSheet(
-                f"font-family: '{family}'; font-size: {size}pt; "
-                f"padding: 8px; border: 1px solid #333;"
-            )
 
         def _create_logging_tab(self) -> QWidget:
             w = QWidget()
@@ -1130,22 +1068,6 @@ if _HAS_QT:
                  lambda: self._accent_color.text().strip(),
                  self._accent_color.setText,
                  ACCENT_DEFAULT),
-                ("font_family",
-                 self._font_family.currentText,
-                 lambda value: self._show_text(self._font_family, value),
-                 "Segoe UI"),
-                ("font_size",
-                 self._font_size.value,
-                 self._font_size.setValue,
-                 11),
-                ("heading_font_size",
-                 self._heading_size.value,
-                 self._heading_size.setValue,
-                 14),
-                ("log_font_size",
-                 self._log_font_size.value,
-                 self._log_font_size.setValue,
-                 10),
             )
 
         def _stored_groups(self) -> tuple:

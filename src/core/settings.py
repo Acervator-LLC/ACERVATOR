@@ -146,12 +146,6 @@ class AppSettings:
     # takes a hex colour here and refuses anything else.
     accent_color: str = ""
 
-    # These four mirror the font widgets in settings_dialog._create_theme_tab.
-    font_family: str = "Segoe UI"
-    font_size: int = 11
-    heading_font_size: int = 14
-    log_font_size: int = 10
-
     ai_monitor: dict = field(default_factory=lambda: asdict(AIMonitorSettings()))
 
     data_logging: dict = field(default_factory=lambda: asdict(DataLoggingSettings()))

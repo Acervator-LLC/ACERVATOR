@@ -477,7 +477,6 @@ TEXT_NAMES: tuple[str, ...] = (
     "ai_status",
     "ai_hash",
     "ai_checks",
-    "font_preview",
     "vol_label",
 )
 
@@ -497,8 +496,6 @@ ACTION_HANDLERS: dict[str, str] = {
 #: The control whose edit runs a method, and the method it runs.
 EDIT_HANDLERS: dict[str, str] = {
     "new_exchange": "_on_exchange_changed",
-    "font_family": "_update_font_preview",
-    "font_size": "_update_font_preview",
     "sound_volume": "_on_sfx_volume_changed",
 }
 

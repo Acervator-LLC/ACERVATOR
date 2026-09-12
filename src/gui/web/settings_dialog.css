@@ -1,8 +1,8 @@
 /* React Settings dialog chrome: the page ground, the tab bar, the eleven tab
- * pages, the form rows and the footer `settings_dialog.js` draws. The banner,
- * the font preview and the AI status line each arrive with their own `style`
- * attribute from the Python payload, so no rule here may set a `color` on a
- * part carrying `data-styled`.
+ * pages, the form rows and the footer `settings_dialog.js` draws. The banner
+ * and the AI status line each arrive with their own `style` attribute from the
+ * Python payload, so no rule here may set a `color` on a part carrying
+ * `data-styled`.
  */
 * {
   margin: 0;
