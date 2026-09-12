@@ -2847,4 +2847,115 @@ Two gaps stand outside this row and sit here as measured facts.
 | a text figure in the settings file | `src/gui/settings_dialog.py:1284-1296` catches it, logs "Settings kept the default for default_target_balance", and draws $1.00. `src/gui/bot_wizard.py:810` carries no guard, so `QDoubleSpinBox.setValue(str)` raises `TypeError` and `BotCreationWizard` cannot open. Only an edited file puts a text figure in the store |
 | a write to a control the page already drew | The React page draws every control with `defaultValue`, which seeds the DOM once. A write from Python after the page is up moved the store and not the drawn figure: the node held 321 while the holder answered 654.0. This row stands clear of it, because `_load_current` runs before the page mounts and nothing writes the row afterwards |
 
+## 2026-09-12 - Bot Visibility opens the wizard's Order Visibility control
+
+The Trading page row stores `orderbook` or `internal` under the key
+`bot_visibility` and opens at `orderbook`. The row is now the default the bot
+creation wizard's own control opens on. It was unwired, and removing it was
+refused: the behaviour it names runs on the bot, and the wizard carries a control
+for it.
+
+### The row and the wizard control, side by side
+
+| | The Settings row | The wizard control |
+| --- | --- | --- |
+| Where | `src/gui/main_tabs/settings_dialog_surface.py:606-613` | `src/gui/bot_wizard.py:674-686` |
+| Label | `Bot Visibility:` | `Order Visibility:` |
+| Choices | `orderbook`, `internal` | `orderbook`, `internal` |
+| Opens at | `orderbook` | the stored name, `orderbook` when the store holds none |
+| What it writes | the store key `bot_visibility` | the config key `visibility` |
+
+The two agree on meaning, on both choices and on the default, so the row is a
+legitimate application default for the control.
+
+### Every reader of the stored visibility
+
+Four sites name the key. One of them reads it outside the Settings dialog.
+
+| Site | What it does with the name |
+| ---- | ------------------------- |
+| `src/core/settings.py:163` | declares `bot_visibility: str = BotVisibility.ORDERBOOK.value` |
+| `src/gui/settings_dialog.py:1166-1169` | `_stored_rows`, the read on Save and the write on load |
+| `src/gui/main_tabs/settings_dialog_surface.py:468` | the same row on the Qt-free surface |
+| `src/gui/bot_wizard.py:677-683` | the wizard's Order Visibility control opens here |
+
+Before this section there was no reader outside the dialog. The bare name was
+searched in all 1081 files `git ls-files` reports, and the search was proved
+against `default_target_balance`, read out of the settings dict, and against
+`ai_monitor`, read through `getattr`. Both controls answered with their known
+reading sites, so the zero was a measurement.
+
+### Where the stored name reaches the bot
+
+```mermaid
+flowchart LR
+  A["Settings row<br/>bot_visibility"] --> B["SettingsManager<br/>settings.toml"]
+  B --> C["main_window._create_bot<br/>get_all()"]
+  C --> D["bot_wizard.py:679<br/>Order Visibility control"]
+  D --> E["TradingParamsPage.get_config<br/>visibility"]
+  E --> F["BotConfig.visibility"]
+  F --> G["scrumming_bot.py:338<br/>_invisible"]
+```
+
+`BotConfig.visibility` at `src/trading/container/config.py:139` is where the name
+stops being this setting. From there the bot owns it, and
+`src/trading/scrumming_bot.py:974` changes it live on one bot without touching the
+store.
+
+### The round trip, with a Save that changed nothing
+
+Driven on the class the running build opens. `resolve_variant` answered `react`
+and `surface_class('Settings dialog')` returned `SettingsDialogReact`. The home
+was redirected into a scratch directory before the settings module was imported,
+so the settings default directory bound under that directory.
+
+| Stored | The box opened at | The store after a Save with no edit | The box on reopening |
+| ------ | ----------------- | ----------------------------------- | -------------------- |
+| `internal` | `internal` | `internal` | `internal` |
+| `orderbook` | `orderbook` | `orderbook` | `orderbook` |
+
+Two different stored names gave two different readings, so the reading
+discriminates. The payload the dialog pushes to the page carries 69 control
+specs, and the figure is the same before and after.
+
+### What a new bot opens at, and what an existing bot keeps
+
+| Driven | What it answered |
+| ------ | ---------------- |
+| `internal` stored, the wizard opened | `internal` |
+| `orderbook` stored, the wizard opened | `orderbook` |
+| a name the two items do not offer | `orderbook`, the build figure |
+| app setting `internal`, a saved bot holding `orderbook` | the restored config holds `orderbook` |
+| app setting `orderbook`, a saved bot holding `internal` | the restored config holds `internal` |
+
+A restored bot reads `cfg.get("visibility", "orderbook")` from its own saved
+config at `src/trading/container/restore.py:203` and reads no application setting.
+Every `SettingsManager.get` call of the run was recorded with its calling file:
+the wizard and the restore paths read the key no times, and the Settings dialog
+read it once. The recorder saw the read it was meant to see, so the two zeros are
+measurements.
+
+### The sentence this wiring replaces
+
+| Earlier sentence | What the code does now |
+| ---------------- | ---------------------- |
+| "A bot takes its visibility from the wizard, under a different name." | A new bot still takes its visibility from the wizard, and the wizard's control now opens at this row's stored name. |
+
+The two revert sentences in the same paragraph were already retired by
+[Save keeps what the store holds](#2026-09-11---save-keeps-what-the-store-holds),
+and that section's reading was re-driven here and holds.
+
+### What the wiring adds
+
+One lookup on one control, in the file the + New Bot button reaches. Nothing a
+running bot does changed, nothing on the Settings page changed and no order
+placement path changed.
+
+Two absences stand outside this row and sit here as measured facts.
+
+| Absence | What was measured |
+| ------- | ----------------- |
+| the shell's wizard request carries no stored defaults | `src/gui/web/bot_wizard.js:1775` calls `bot_wizard.state` with the step values alone. `src/gui/main_tabs/bot_wizard_surface.py:2796` reads `defaults` from the request, so the Qt-free wizard surface receives an empty bag on every call and `_apply_stored_target_balance` falls back to its built-in figure |
+| the Qt-free wizard surface has no visibility lookup | `src/gui/main_tabs/bot_wizard_surface.py:1702` applies the stored target balance and nothing applies a stored visibility. Its `visibility` combo at `:472-474` carries the same two entries as the Qt one and opens at index 0 |
+
 Back to [the subsystem index](README.md).
