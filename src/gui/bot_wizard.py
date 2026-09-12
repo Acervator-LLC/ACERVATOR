@@ -1673,6 +1673,10 @@ if _HAS_QT:
                 (defaults or {}).get("default_phantom_timeframe")
                 or AppSettings().default_phantom_timeframe
             )
+            self._stored_lock_candles = int(
+                (defaults or {}).get("default_lock_candle_count")
+                or AppSettings().default_lock_candle_count
+            )
             layout = QVBoxLayout(self)
             self._enable = QCheckBox("Enable Phantom Balance Bots")
             self._enable.setChecked(
@@ -1704,7 +1708,7 @@ if _HAS_QT:
             lf = QFormLayout(lock_group)
             self._lock_candles = QSpinBox()
             self._lock_candles.setRange(1, 10)
-            self._lock_candles.setValue(2)
+            self._lock_candles.setValue(self._stored_lock_candles)
             lf.addRow("Candles to lock:", self._lock_candles)
             layout.addWidget(lock_group)
             layout.addStretch()

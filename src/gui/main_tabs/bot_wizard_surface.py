@@ -1246,6 +1246,7 @@ SAFE_EVENTS_REASON = "legacy P4.1 site"
 DEFAULT_TARGET_BALANCE_KEY = "default_target_balance"
 DEFAULT_ENABLE_PHANTOMS_KEY = "default_enable_phantoms"
 DEFAULT_PHANTOM_TIMEFRAME_KEY = "default_phantom_timeframe"
+DEFAULT_LOCK_CANDLE_COUNT_KEY = "default_lock_candle_count"
 EXCHANGE_DISPLAY_KEY = "display_name"
 EXCHANGE_ID_KEY = "exchange_id"
 MARKET_SYMBOL_KEY = "symbol"
@@ -1718,6 +1719,7 @@ class BotWizardModel:
             self.calls.append([TEXT_SET_TEXT, name, text])
         self._apply_stored_target_balance()
         self._apply_stored_phantom_enable()
+        self._apply_stored_lock_candles()
         for found in PHANTOM_TIMEFRAMES:
             self.calls.append([CHECK_SET_CHECKED, found, PHANTOM_TIMEFRAME_DEFAULT])
         for name in PAGE_REGISTER_ORDER:
@@ -1743,6 +1745,22 @@ class BotWizardModel:
         )
         self.calls.append(
             [NUMBER_SET_VALUE, "target_balance", self.numbers["target_balance"]]
+        )
+
+    def _apply_stored_lock_candles(self) -> None:
+        """Open the lock spin box on the stored default, as the wizard does.
+
+        The Settings dialog writes ``default_lock_candle_count``, and the box
+        holds whatever that figure settles on inside its own range.
+        """
+        stored = self.defaults.get(
+            DEFAULT_LOCK_CANDLE_COUNT_KEY, NUMBER_FIELDS["lock_candles"]["value"]
+        )
+        self.numbers["lock_candles"] = number_value(
+            stored, NUMBER_FIELDS["lock_candles"]
+        )
+        self.calls.append(
+            [NUMBER_SET_VALUE, "lock_candles", self.numbers["lock_candles"]]
         )
 
     def _apply_stored_phantom_enable(self) -> None:

@@ -524,6 +524,7 @@ if _HAS_QT:
             self._phantoms_enabled.setChecked(True)
             layout.addWidget(self._phantoms_enabled)
             from src.gui.main_tabs.settings_dialog_surface import (
+                LOCK_CANDLE_DEFAULT,
                 PHANTOM_TIMEFRAME_DEFAULT,
                 PHANTOM_TIMEFRAMES,
             )
@@ -543,7 +544,7 @@ if _HAS_QT:
             lock_form = QFormLayout(lock_group)
             self._lock_candles = QSpinBox()
             self._lock_candles.setRange(1, 10)
-            self._lock_candles.setValue(2)
+            self._lock_candles.setValue(LOCK_CANDLE_DEFAULT)
             lock_form.addRow("Lock duration (candles):", self._lock_candles)
             layout.addWidget(lock_group)
             layout.addStretch()
@@ -1087,6 +1088,7 @@ if _HAS_QT:
             can be written without also being loaded.
             """
             from src.gui.main_tabs.settings_dialog_surface import (
+                LOCK_CANDLE_DEFAULT,
                 PHANTOM_TIMEFRAME_DEFAULT,
             )
 
@@ -1115,6 +1117,10 @@ if _HAS_QT:
                  self._phantom_timeframe.currentData,
                  lambda value: self._show_data(self._phantom_timeframe, value),
                  PHANTOM_TIMEFRAME_DEFAULT),
+                ("default_lock_candle_count",
+                 self._lock_candles.value,
+                 lambda value: self._lock_candles.setValue(int(value)),
+                 LOCK_CANDLE_DEFAULT),
                 ("theme",
                  self._theme_combo.currentData,
                  lambda value: self._show_data(self._theme_combo, value),

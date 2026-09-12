@@ -968,6 +968,68 @@ self._lock_candles.setValue(2)
 lock_form.addRow("Lock duration (candles):", self._lock_candles)
 ```
 
+The page now stores that figure. One row carries the store key and the control
+it reads, so Save writes it and the load path puts it back.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — the row both surfaces persist
+
+```python
+("default_lock_candle_count", "lock_candles", LOCK_CANDLE_DEFAULT),
+```
+
+Both wizard surfaces open their own lock box on the stored figure, so a new bot
+starts on the number the page shows. A run with no settings file at all opens at
+2, the figure the store itself declares.
+
+`src/gui/bot_wizard.py` — the wizard's lock box, opened on the store
+
+```python
+self._stored_lock_candles = int(
+    (defaults or {}).get("default_lock_candle_count")
+    or AppSettings().default_lock_candle_count
+)
+```
+
+Driven on one store, typed as 7 and saved: the page reopens at 7, the React page
+paints 7, and both wizard lock boxes open at 7. A settings file written before
+the key existed still loads, and its box opens at 2.
+
+```
+store before   KeyError 'Unknown setting: default_lock_candle_count'
+store after    7
+page reopen    Qt 7   React 7   React payload 7
+wizard boxes   Qt 7   React 7   with no store at all 2
+old file       loads, theme carried, box opens at 2
+```
+
+The figure stops at the bot's phantom coordinator and holds no lock yet. Nothing
+in the application calls the method that appends a lock, so the countdown never
+starts and the lock test answers False on every tick.
+
+`src/trading/phantom_balance.py` — `create_lock`, which has no caller
+
+```python
+count = candle_count or self.lock_candle_count
+```
+
+Driven: a fresh coordinator holds no locks and reports none on an hourly chart.
+Called by hand at 7 it appends a lock of seven candles and the same test then
+answers True, so the figure sizes a real lock the moment something creates one.
+
+```
+fresh coordinator      locks 0     is_locked("1h", BULLISH) False
+create_lock by hand    candles 7   is_locked("1h", BULLISH) True
+```
+
+The wizard's own key still stops before the bot. The bot configuration declares
+no field of that name, and the bot class takes no argument for it.
+
+```
+BotConfig has a lock_candle_count field        False
+bot_config_kwargs carries lock_candle_count    False
+ScrummingBot.__init__ has lock_candle_count    False
+```
+
 Those eleven boxes are the eleven timeframes the voting engine already weights,
 from 1m at 0.3 up to 1w at 1.6, so a slower chart counts for more when several
 are combined.

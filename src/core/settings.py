@@ -167,6 +167,10 @@ class AppSettings:
     # coinbase has no 4h, 12h or 1w, and kraken no 2h or 6h.
     default_phantom_timeframe: str = "1d"
 
+    # The wizard's lock box opens on this. A bot's own lock_candle_count, held
+    # by its TimeframeCoordinator, is a separate value.
+    default_lock_candle_count: int = 2
+
 
 _DEFAULT_DIR = Path.home() / ".acervator"
 
