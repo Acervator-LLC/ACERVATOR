@@ -375,7 +375,10 @@ _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(
 )
 
 
-#: Keys `_sanitize_deprecated_kwargs` drops before `BotConfig.__init__`.
+#: A retirement record, not a setting set. Each name is a setting removed from
+#: the product, kept so a config stored before its removal still builds;
+#: `_sanitize_deprecated_kwargs` drops each before `BotConfig.__init__`.
+#: Add no name. Only `bulk_trading` is read, by `bot_config_kwargs`.
 _DEPRECATED_KWARGS: frozenset = frozenset(
     {
         "bulk_trading",  # renamed to stack_mode
@@ -674,7 +677,8 @@ def bot_config_kwargs(mode, collected: dict, *, exchange_id: str = "") -> dict:
             else 200.0
         ),
     )
-    # An absent key is the retired Grid checkbox, not STACK_MODE_DEFAULT.
+    # An absent bulk_trading is the retired Grid checkbox, so False rather
+    # than STACK_MODE_DEFAULT.
     kwargs.setdefault("stack_mode", collected.get("bulk_trading", False))
     if "extractor_alt_targets" in kwargs:
         kwargs["extractor_alt_targets"] = list(kwargs["extractor_alt_targets"] or [])

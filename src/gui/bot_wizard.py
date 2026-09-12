@@ -1488,14 +1488,9 @@ if _HAS_QT:
                 )
 
         def get_config(self):
-            """v3.23.34 — restructured to emit only fields that
-            correspond to widgets present in the 8-QGroupBox layout.
+            """Return one key per widget this page draws, and no other key.
 
-            Retired keys dropped: bulk_trading, bulk_partial_on_return
-            (Grid dead), upward_distribution (dead schema field),
-            profit_fold_pct (retired v3.23.3). profit_folding_active
-            is set by the dedicated ProfitFoldingPage (page 4), not
-            this page.
+            profit_folding_active comes from ProfitFoldingPage, not this page.
             """
             cfg = {
                 "visibility": self._visibility.currentData(),
