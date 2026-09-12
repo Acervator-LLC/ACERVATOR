@@ -3091,4 +3091,136 @@ wizard surface opens its box at the build figure whatever the store holds.
 | the Qt-free wizard surface has no aggressive lookup | `bot_wizard_surface.view_model` with a bag holding the flag on still answered off. `CHECK_FIELDS` at `:425` seeds the box at `False` and nothing reads the store |
 | a hand-edited word in the store reads as on | The store declares a boolean. A word put there by hand ticks the box on the Settings page and in the wizard alike, because both admit the value as `bool(value)` |
 
+## 2026-09-12 - Profit Folding Active waits on the wizard's folding page
+
+Driven on the React build, which is what the running application draws. The home
+was redirected into a scratch directory before `src.core.settings` was imported,
+so the settings directory and the log root bound under that directory. No stored
+setting of the running install was read and no venue was contacted.
+
+The row stays on the page exactly as it is. It stores and restores correctly, and
+the value it stores has no reader. The one place a new bot could read it is a
+wizard page no route reaches, so a default pointed at that page would change no
+reading. The row therefore waits, and this section records what it waits on.
+
+### The Settings box and the wizard box it would open
+
+| | The Settings row | The wizard control |
+| --- | --- | --- |
+| Where | `src/gui/main_tabs/settings_dialog_surface.py:627` | `src/gui/bot_wizard.py:1590-1597` |
+| Kind | checkbox | checkbox |
+| Text | `Profit Folding / Upward Distribution Active` | `Enable Profit Folding` |
+| Choices | on, off | on, off |
+| Default | on | on |
+| What it writes | the store key `profit_folding.active` | the bot config key `profit_folding_active` |
+
+The two agree on meaning, on both choices and on the default.
+
+### Every reader of the stored group
+
+Nothing outside the dialog. The bare name `profit_folding` returns 52 hits across
+the 1,081 files the repository tracks, 41 of them Python. Eight name the
+application setting, and all eight are the dialog or the declaration behind it.
+
+| Site | What it is |
+| ---- | ---------- |
+| `src/core/settings.py:79` | the field defaults for the group |
+| `src/core/settings.py:159` | the `AppSettings` field that declares the group |
+| `src/core/settings.py:187` | the manager docstring naming the group |
+| `src/gui/settings_dialog.py:1206` | the row the save and the load path both walk |
+| `src/gui/main_tabs/settings_dialog_surface.py:417` | the group in the save list |
+| `src/gui/main_tabs/settings_dialog_surface.py:449` | the group key |
+| `src/gui/main_tabs/settings_dialog_surface.py:2234` | the same six rows on the Qt-free surface |
+| `src/gui/main_tabs/settings_dialog_surface.py:2576` | the group read off the page |
+
+The other 33 name a bot's own field `profit_folding_active`, which is a different
+name and a different thing. That field is read seven times inside the trading
+engine and gates the fold at `src/trading/scrumming_bot.py:781` and `:927`.
+
+The nested getter and setter on `SettingsManager` still have no callers. The bare
+names `get_nested` and `set_nested` return two hits each, and both are the
+declaration and the class docstring in `src/core/settings.py`.
+
+### The round trip of the whole stored group
+
+All six keys in the group survive a Save that changed nothing, in both stored
+states. The ten top-level rows and the two sibling groups came back unchanged
+across the same Save.
+
+| Key | Stored | The control showed | The store after Save |
+| --- | --- | --- | --- |
+| `active` | `false` | `false` | `false` |
+| `mode` | `logarithmic` | `logarithmic` | `logarithmic` |
+| `fold_target` | `most_recent_buy` | `most_recent_buy` | `most_recent_buy` |
+| `fold_target_count` | `9` | `9` | `9` |
+| `distribute_target` | `x_sell` | `x_sell` | `x_sell` |
+| `distribute_target_count` | `7` | `7` | `7` |
+
+The same read with the group stored at its defaults reported all six kept as
+well, so the reading tells the two states apart.
+
+### Why no route reaches the wizard's folding page
+
+The wizard registers six pages and routes to five. `nextId` was read from each
+page in turn, with that page set as the start page.
+
+```mermaid
+flowchart LR
+    MODE[Trading Mode] --> ASSET[Select Asset Pair]
+    MODE --> POOL[Extractor Pool]
+    ASSET --> PARAMS[Trading Parameters]
+    POOL --> PARAMS
+    PARAMS --> PHANTOM[Phantom Balance Bots]
+    PHANTOM --> DONE[finish]
+    PARAMS --> DONE
+    FOLDING[Profit Folding and Upward Distribution] --> DONE
+    FOLDING:::unreached
+    classDef unreached stroke-dasharray: 5 5
+```
+
+No page answers the folding page. The only branch that would is guarded behind
+`is_grid()` at `src/gui/bot_wizard.py:1851`, and `is_grid()` returns `False`
+always. The Qt-free wizard surface states the same in a named constant,
+`UNREACHABLE_PAGES` at `src/gui/main_tabs/bot_wizard_surface.py:110`, and its
+view model reports the folding page unreachable.
+
+A second cut sits behind the first. `BotCreationWizard.get_bot_config` never
+calls the folding page's `get_config`. A Scrumming bot collects 52 keys and
+`profit_folding_active` is not among them, against the six keys that page's own
+`get_config` returns.
+
+### What a new bot opens at whatever is stored
+
+| Driven | Reading |
+| ------ | ------- |
+| the group stored with `active` off, the wizard's box | on, the build figure |
+| `profit_folding_active` among the keys the wizard collects | no |
+| `profit_folding_active` on the new bot's config | on |
+| the declared default on the bot config field | on |
+| `profit_folding_active` carried when anything collects it | yes |
+
+The carriage from the wizard to the bot is already built, so the field arrives
+the moment the folding page is reached and collected. An existing bot is
+untouched either way: it takes the flag from its own saved config at
+`src/trading/container/restore.py:222`, which reads no application setting.
+
+### The sentence this section leaves standing
+
+`Profit Folding / Upward Distribution Active - Turns the whole page on.`
+
+The box does not turn the page on. It carries no toggle connection and no enable
+rule on either build, so the three groups below it stay live with the box clear.
+The sentence stands as the specification and the page does not yet meet it.
+
+### What waits on what
+
+| The blocker | What it needs |
+| ----------- | ------------- |
+| the wizard's folding page is unreachable | a route to the page and a call to its `get_config` |
+| the box does not turn the page on | an enable rule over the three groups below it, which are the other five rows |
+| the Electron shell's wizard request carries no stored defaults | the request carrying the defaults bag the receiving surface reads |
+
+Until the first of the three lands, a stored choice on this row has nowhere to
+arrive, and the row is left as it stands.
+
 Back to [the subsystem index](README.md).
