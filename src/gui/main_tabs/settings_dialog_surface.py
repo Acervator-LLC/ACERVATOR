@@ -1,8 +1,8 @@
 """settings_dialog_surface.py -- the Settings dialog, without Qt.
 
-Describes the window the operator opens from the Settings menu. Eleven
+Describes the window the operator opens from the Settings menu. Ten
 tabs -- User, Exchanges, Trading, Profit Folding, TA Indicators, Phantom
-Bots, Theme, Logging, Sound, SMS and AI Monitor -- above one Cancel and
+Bots, Theme, Sound, SMS and AI Monitor -- above one Cancel and
 one Save button.
 
 ``SettingsDialogModel`` holds the dialog's state. ``build`` lays out
@@ -61,7 +61,6 @@ FOLDING_TAB = "Profit Folding"
 TA_TAB = "TA Indicators"
 PHANTOM_TAB = "Phantom Bots"
 THEME_TAB = "Theme"
-LOGGING_TAB = "Logging"
 SOUND_TAB = "Sound"
 SMS_TAB = "SMS"
 AI_TAB = "AI Monitor"
@@ -74,7 +73,6 @@ TAB_TITLES = (
     TA_TAB,
     PHANTOM_TAB,
     THEME_TAB,
-    LOGGING_TAB,
     SOUND_TAB,
     SMS_TAB,
     AI_TAB,
@@ -194,7 +192,6 @@ TA_HEADING = "Adjust indicator weights in the voting engine."
 PHANTOM_HEADING = "Default Phantom Timeframes:"
 THEME_HEADING = "Visual Theme:"
 ACCENT_HEADING = "Accent Color:"
-LOGGING_HEADING = "P/L Log Periodicity:"
 SOUND_EVENTS_HEADING = "Sound Events:"
 VOLUME_HEADING = "SFX Volume:"
 SMS_GATEWAY_HEADING = "Email Gateway Settings"
@@ -391,20 +388,12 @@ SOUND_CONFIG_FIELDS = (
     ("drip_sound", "sound_drip"),
 )
 
-PERIOD_CONTROLS = (
-    ("log_24h", "24h"),
-    ("log_1w", "1_week"),
-    ("log_1m", "1_month"),
-    ("log_1y", "1_year"),
-)
-
 SAVE_GROUP_KEYS = (
     "profit_folding",
-    "data_logging",
     "ai_monitor",
     "ta_indicator_weights",
 )
-TA_WEIGHT_GROUP_KEY = SAVE_GROUP_KEYS[3]
+TA_WEIGHT_GROUP_KEY = SAVE_GROUP_KEYS[2]
 
 SAVE_CALLED_PRINT = "[SETTINGS] _save called"
 NO_MANAGER_PRINT = "[SETTINGS] No settings manager, closing"
@@ -449,7 +438,6 @@ DISPLAY_NAME_KEY = "display_name"
 NO_MATCH_INDEX = -1
 FIRST_INDEX = 0
 
-LOGGING_GROUP_KEY = SAVE_GROUP_KEYS[1]
 
 #: One entry per setting the store holds at its top level: the store key, the
 #: control carrying it, and what stands in for a store without the key. ``save``
@@ -470,10 +458,6 @@ SAVE_PAIRS = tuple((key, name) for key, name, _fallback in PERSISTED_ROWS)
 SETTING_LOAD_KEYS = tuple(
     (key, fallback, name) for key, name, fallback in PERSISTED_ROWS
 )
-
-#: The two periodicity boxes the build ticks.
-DEFAULT_PERIODS = (PERIOD_CONTROLS[0][1], PERIOD_CONTROLS[1][1])
-LOGGING_FLAG_DEFAULT = True
 
 LINE = "line"
 TEXT_AREA = "text_area"
@@ -651,60 +635,6 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "accent_color",
         "kind": LINE,
         "placeholder": "#00ffcc",
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "ta_logging",
-        "kind": CHECK,
-        "text": "Log TA signal samples with all values and timestamps",
-        "checked": True,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "highlight_trades",
-        "kind": CHECK,
-        "text": "Highlight entries near Scrumming Bot trades",
-        "checked": True,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "log_24h",
-        "kind": CHECK,
-        "text": "24 Hours",
-        "checked": True,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "log_1w",
-        "kind": CHECK,
-        "text": "1 Week",
-        "checked": True,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "log_1m",
-        "kind": CHECK,
-        "text": "1 Month",
-        "checked": False,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "log_1y",
-        "kind": CHECK,
-        "text": "1 Year",
-        "checked": False,
     },
     {
         "tab": SOUND_TAB,
@@ -1271,19 +1201,6 @@ LAYOUT = {
             (CONTROL, "theme_combo"),
             (LABEL, ACCENT_HEADING),
             (CONTROL, "accent_color"),
-            (STRETCH,),
-        ),
-    ),
-    LOGGING_TAB: (
-        COLUMN,
-        (
-            (CONTROL, "ta_logging"),
-            (CONTROL, "highlight_trades"),
-            (LABEL, LOGGING_HEADING),
-            (CONTROL, "log_24h"),
-            (CONTROL, "log_1w"),
-            (CONTROL, "log_1m"),
-            (CONTROL, "log_1y"),
             (STRETCH,),
         ),
     ),
@@ -2016,16 +1933,6 @@ class SettingsDialogModel:
         except Exception as exc:  # noqa: BLE001
             self._record("load_refused", key, str(exc))
 
-    def _ticked_periods(self) -> list:
-        """The periodicities whose boxes are ticked, in page order."""
-        return [period for name, period in PERIOD_CONTROLS if self.values[name]]
-
-    def _show_periods(self, value: Any) -> None:
-        """Ticks the periodicity box of every entry ``value`` names."""
-        wanted = value if isinstance(value, (list, tuple)) else DEFAULT_PERIODS
-        for name, period in PERIOD_CONTROLS:
-            self.values[name] = period in wanted
-
     def _folding_rows(self) -> tuple:
         """Every ``profit_folding`` key, with the read and the write its row needs."""
         return (
@@ -2033,23 +1940,6 @@ class SettingsDialogModel:
              partial(self._pair_value, "folding_active"),
              partial(self._show_stored, "folding_active"),
              FOLDING_ACTIVE_DEFAULT),
-        )
-
-    def _logging_rows(self) -> tuple:
-        """Every ``data_logging`` key, with the read and the write its row needs."""
-        return (
-            ("ta_signal_logging",
-             partial(self._pair_value, "ta_logging"),
-             partial(self._show_stored, "ta_logging"),
-             LOGGING_FLAG_DEFAULT),
-            ("highlight_trade_proximity",
-             partial(self._pair_value, "highlight_trades"),
-             partial(self._show_stored, "highlight_trades"),
-             LOGGING_FLAG_DEFAULT),
-            ("active_periodicities",
-             self._ticked_periods,
-             self._show_periods,
-             DEFAULT_PERIODS),
         )
 
     def _ai_rows(self) -> tuple:
@@ -2092,7 +1982,6 @@ class SettingsDialogModel:
         """Every group the dialog persists as one key, with the rows inside it."""
         return (
             (FOLDING_GROUP_KEY, self._folding_rows()),
-            (LOGGING_GROUP_KEY, self._logging_rows()),
             (AI_GROUP_KEY, self._ai_rows()),
             (TA_WEIGHT_GROUP_KEY, self._ta_weight_rows()),
         )
@@ -2372,10 +2261,6 @@ class SettingsDialogModel:
         """The stored ``profit_folding`` group, read off the Profit Folding page."""
         return {key: read() for key, read, _show, _fallback in self._folding_rows()}
 
-    def _logging_group(self) -> dict:
-        """The stored ``data_logging`` group, read off the Logging page."""
-        return {key: read() for key, read, _show, _fallback in self._logging_rows()}
-
     def _ai_group(self) -> dict:
         """The stored ``ai_monitor`` group, read off the AI Monitor page."""
         return {key: read() for key, read, _show, _fallback in self._ai_rows()}
@@ -2405,9 +2290,8 @@ class SettingsDialogModel:
 
         for key, builder in (
             (SAVE_GROUP_KEYS[0], self._folding_group),
-            (SAVE_GROUP_KEYS[1], self._logging_group),
-            (SAVE_GROUP_KEYS[2], self._ai_group),
-            (SAVE_GROUP_KEYS[3], self._ta_weight_group),
+            (SAVE_GROUP_KEYS[1], self._ai_group),
+            (SAVE_GROUP_KEYS[2], self._ta_weight_group),
         ):
             try:
                 self.settings.set(key, builder())
@@ -2655,7 +2539,6 @@ def build_view_model(model: SettingsDialogModel) -> dict:
             "phantom": PHANTOM_HEADING,
             "theme": THEME_HEADING,
             "accent": ACCENT_HEADING,
-            "logging": LOGGING_HEADING,
             "sound_events": SOUND_EVENTS_HEADING,
             "volume": VOLUME_HEADING,
             "sms_gateway": SMS_GATEWAY_HEADING,
