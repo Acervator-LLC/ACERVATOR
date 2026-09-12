@@ -37,12 +37,6 @@ except ImportError:
     _CAN_WRITE_TOML = False
 
 
-class FoldTarget(str, Enum):
-    ALL_BUY = "all_buy"
-    X_BUY = "x_buy"
-    MOST_RECENT_BUY = "most_recent_buy"
-
-
 class DistributeTarget(str, Enum):
     ALL_SELL = "all_sell"
     X_SELL = "x_sell"
@@ -74,8 +68,6 @@ class ProfitFoldingSettings:
     """Field defaults for the ``AppSettings.profit_folding`` group."""
 
     active: bool = True
-    fold_target: FoldTarget = FoldTarget.ALL_BUY
-    fold_target_count: int = 5
     distribute_target: DistributeTarget = DistributeTarget.ALL_SELL
     distribute_target_count: int = 5
 

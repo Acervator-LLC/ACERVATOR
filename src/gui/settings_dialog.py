@@ -54,11 +54,6 @@ if _HAS_QT:
     }
 
     # Read order decides the stored value when more than one button is ticked.
-    FOLD_TARGET_BUTTONS = (
-        ("_fold_x", "x_buy"),
-        ("_fold_recent", "most_recent_buy"),
-        ("_fold_all", "all_buy"),
-    )
     DIST_TARGET_BUTTONS = (
         ("_dist_x", "x_sell"),
         ("_dist_recent", "most_recent_sell"),
@@ -486,23 +481,6 @@ if _HAS_QT:
                 "Profit Folding / Upward Distribution Active"
             )
             layout.addWidget(self._folding_active)
-
-            fold_group = QGroupBox("Profit Folding Target")
-            fold_layout = QVBoxLayout(fold_group)
-            self._fold_all = QRadioButton("Fold to ALL buy positions")
-            self._fold_x = QRadioButton("Fold to X# of buy positions:")
-            self._fold_recent = QRadioButton("Fold to most recent buy positions")
-            self._fold_x_count = QSpinBox()
-            self._fold_x_count.setRange(1, 100)
-            self._fold_x_count.setValue(5)
-            self._fold_all.setChecked(True)
-            fold_layout.addWidget(self._fold_all)
-            x_row = QHBoxLayout()
-            x_row.addWidget(self._fold_x)
-            x_row.addWidget(self._fold_x_count)
-            fold_layout.addLayout(x_row)
-            fold_layout.addWidget(self._fold_recent)
-            layout.addWidget(fold_group)
 
             dist_group = QGroupBox("Upward Distribution Target")
             dist_layout = QVBoxLayout(dist_group)
@@ -1198,16 +1176,6 @@ if _HAS_QT:
                      self._folding_active.isChecked,
                      lambda value: self._folding_active.setChecked(bool(value)),
                      True),
-                    ("fold_target",
-                     lambda: self._picked(FOLD_TARGET_BUTTONS, "all_buy"),
-                     lambda value: self._show_picked(
-                         FOLD_TARGET_BUTTONS, value, "all_buy"
-                     ),
-                     "all_buy"),
-                    ("fold_target_count",
-                     self._fold_x_count.value,
-                     self._fold_x_count.setValue,
-                     5),
                     ("distribute_target",
                      lambda: self._picked(DIST_TARGET_BUTTONS, "all_sell"),
                      lambda value: self._show_picked(
