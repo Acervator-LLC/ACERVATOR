@@ -663,7 +663,18 @@ if _HAS_QT and _HAS_WEBENGINE:
             name = str(asked.get("name") or "")
             if name not in self._holders:
                 return
-            self._holders[name].admit(asked.get("value"))
+            try:
+                self._holders[name].admit(asked.get("value"))
+            except Exception as exc:  # noqa: BLE001
+                # A cleared number box reports null, which admit refuses; redraw
+                # puts the held figure back instead of leaving the box empty.
+                logger.warning(
+                    "Settings page sent %s a value its control refuses: %s",
+                    name,
+                    exc,
+                )
+                self.redraw()
+                return
             if name == "pp_check":
                 self._sync_passphrase_row()
             if name == "sound_volume":

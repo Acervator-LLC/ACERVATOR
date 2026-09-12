@@ -5207,4 +5207,269 @@ layer.
 
 In development.
 
+## 2026-09-12 - The AI Monitor page reaches the monitor it names
+
+Seven settings, one store group, one carry. The page was driven end to end on the
+React build, which is what the application draws, and again on the Qt build. Six
+of the seven arrive at the monitor. The seventh still arrives nowhere.
+
+`src/core/settings.py` - the one declaration behind all seven
+
+```python
+@dataclass
+class AIMonitorSettings:
+    """Field defaults for the ``AppSettings.ai_monitor`` group."""
+
+    api_key: str = ""
+    interval_hours: float = 4.0
+    connect_phrase: str = ""
+    confirm_phrase: str = ""
+    enabled: bool = False
+    auto_handshake: bool = True
+    log_feedback: bool = True
+```
+
+### What the page was asked and what it answered
+
+A store holding an obvious fake key and both phrases was opened, the dialog was
+built, and every control was read off the running object. All seven opened on the
+stored figures on both builds. Typing into them and pressing Save wrote all seven
+back. Reopening a fresh manager read all seven.
+
+```
+api_key         wrote the fake key          read the fake key
+interval_hours  wrote 1.5                   read 1.5
+connect_phrase  wrote u75-connect-phrase    read u75-connect-phrase
+confirm_phrase  wrote u75-confirm-phrase    read u75-confirm-phrase
+enabled         wrote True                  read True
+auto_handshake  wrote False                 read False
+log_feedback    wrote False                 read False
+```
+
+### The key is masked on both builds
+
+One entry on the control list carries the masking, so neither build can lose it
+without the other losing it too. On the drawn page the key row is a password
+field, read off the browser twice in one process and `password` both times. On the
+Qt build the same row reads `EchoMode.Password`.
+
+`src/gui/main_tabs/settings_dialog_surface.py` - the masked row
+
+```python
+{
+    "tab": AI_TAB,
+    "group": AI_API_GROUP_TITLE,
+    "label": "Anthropic API Key:",
+    "name": "ai_api_key",
+    "kind": LINE,
+    "min_height": SMS_CONTROL_MIN_HEIGHT,
+    "echo": "password",
+    "placeholder": "sk-ant-api03-...",
+}
+```
+
+Neither phrase row is masked, which is what the page already says about them.
+
+### No provider was contacted to prove any of this
+
+The two phrases and the journal hash were read out of the composed prompt, which
+is built without a request. The request arm itself was reached with the transport
+made unimportable, so the arm ran and no socket opened.
+
+```
+connect phrase in the prompt  True
+confirm phrase in the prompt  True
+journal hash in the prompt    True
+the key in the prompt         False
+handshake arm reached         no transport, no call
+with no key                   {'authenticated': False, 'message': 'No API key'}
+analysis with no key          {'status': 'disabled'}
+```
+
+The key never enters the prompt. It goes in one header field and nowhere else.
+
+### A check interval the monitor cannot count is refused
+
+The page holds the figure between half an hour and twenty four hours, so nothing
+the operator types can leave that range. The store is a file, and a figure that
+reaches it another way used to go straight through. Zero, a negative and a true
+flag each made the review due on every dashboard pass; a word and an empty
+value each raised inside the due test, once per pass, with nothing on screen.
+
+`src/trading/live_monitor.py` - the refusal
+
+```python
+@classmethod
+def wait_hours(cls, raw) -> float:
+    """Return ``raw`` as the wait ``should_check`` counts, else the default.
+
+    A stored ``interval_hours`` of zero, a negative, a string or None would
+    make ``should_check`` answer True on every tick or raise inside it, so
+    ``configure_live_monitor`` cannot hand either through.
+    """
+    hours = float(raw) if isinstance(raw, (int, float)) else 0.0
+    if not math.isfinite(hours) or hours <= 0:
+        logger.warning(
+            "LiveMonitor: check interval %r is not a wait; using %.1fh",
+            raw,
+            cls.DEFAULT_INTERVAL_HOURS,
+        )
+        return cls.DEFAULT_INTERVAL_HOURS
+    return hours
+```
+
+Driven through the real manager, each refused figure now holds four hours and the
+review waits for it. The log names the figure it refused.
+
+```
+interval 'four'  held 4.0  due right after a check  False
+interval 0.0     held 4.0  due right after a check  False
+interval -3.0    held 4.0  due right after a check  False
+interval None    held 4.0  due right after a check  False
+interval 1.5     held 1.5  due right after a check  False
+interval 1.5     held 1.5  one interval later       True
+```
+
+### The journal switch now writes a line
+
+The switch is read when an answer arrives. The note it built was the record type
+the monitor's own journal keeps, and the journal the window holds is a different
+one that keeps a different entry. Driven with the note the window built, the write
+produced no file and no line, and the window logged that the note was not written.
+
+```
+record handed over     TradeRecord, from live_monitor
+journal files          []
+lines on disk          0
+what it raised         'TradeRecord' object has no attribute 'symbol'
+```
+
+`src/gui/main_window.py` - the note as the held journal takes it
+
+```python
+if ai_cfg.get("log_feedback"):
+    try:
+        # _journal is reconciliation.TradeJournal, so the note
+        # goes in through record_from_trade as a JournalEntry.
+        self._journal.record_from_trade(
+            bot_id="AI_MONITOR",
+            symbol="SYSTEM",
+            action="AI_FEEDBACK",
+            side="neutral",
+            price=0.0,
+            quantity=0.0,
+            reason=feedback[:500],
+        )
+    except Exception:
+        logger.exception(
+            "AI feedback note was not written to " "the journal"
+        )
+```
+
+The same call now lands one row, and the journal counts it.
+
+```
+journal files        ['journal_2026-09-12.jsonl']
+on disk              AI_MONITOR SYSTEM AI_FEEDBACK | the answer text
+lines on disk        1
+entries in memory    1
+statistics           {'total_entries': 1, 'actions': {'AI_FEEDBACK': 1}}
+```
+
+### What the drawn page now does with a figure it refuses
+
+The number box reports whatever the browser read out of it, and an empty box reads
+as no figure at all. That reached the control, the control refused it, and the
+refusal left the dialog through the channel the page's console lines arrive on.
+The figure was kept and nothing said so.
+
+`src/gui/react_settings_dialog.py` - the refused edit
+
+```python
+try:
+    self._holders[name].admit(asked.get("value"))
+except Exception as exc:  # noqa: BLE001
+    # A cleared number box reports null, which admit refuses; redraw
+    # puts the held figure back instead of leaving the box empty.
+    logger.warning(
+        "Settings page sent %s a value its control refuses: %s",
+        name,
+        exc,
+    )
+    self.redraw()
+    return
+```
+
+Driven on the drawn page, a cleared box is now named in the log and the held
+figure is kept. A typed phrase and a typed figure both still arrive, which is what
+proves the channel itself is alive.
+
+```
+typed 2.5 into the box        the dialog holds 2.5
+typed a phrase into the row   the dialog holds the phrase
+cleared the box               the dialog still holds 2.5, the refusal is logged
+```
+
+The box itself still draws empty until the next figure is typed, because the drawn
+controls take their figure once, when the page first builds them. Every control on
+every page of this dialog takes its figure that way, so a figure the dialog pushes
+after the page is up reaches the store and not the box. That is one change to how
+the page builds a control, and it is owed.
+
+In development.
+
+### The drawdown share says what it is
+
+The monitor's own journal keeps the deepest fall from peak as a share of peak, and
+the name said nothing about that. The figure the review line prints and the figure
+the report file publishes are both unchanged.
+
+`src/trading/live_monitor.py` - the running deepest fall
+
+```python
+if s["peak"] > 0:
+    dd_pct = (s["peak"] - trade.portfolio_value) / s["peak"] * 100
+    s["max_dd_pct"] = max(s["max_dd_pct"], dd_pct)
+```
+
+Driven across a peak of two hundred and a fall to one hundred, the share reads
+twenty five at one hundred and fifty, holds at one hundred and eighty, and reads
+fifty at one hundred. The report's own field keeps the name it published.
+
+```
+value 200.0  peak 200.0  share  0.0
+value 150.0  peak 200.0  share 25.0
+value 180.0  peak 200.0  share 25.0
+value 100.0  peak 200.0  share 50.0
+report       {'advantage_pct': -50.0, 'max_dd': 50.0}
+```
+
+### Auto-handshake still reaches nothing, and why it is not wired
+
+The box stores and restores. Nothing reads it. The phrase exchange it describes is
+what the review already does on its own, every time the connection is not yet
+proved, and it asks no switch.
+
+`src/trading/live_monitor.py` - the review's own exchange
+
+```python
+async def analyze(self, portfolio=0.0, passive=0.0, bots=0) -> dict:
+    """Send performance snapshot. Auto-handshakes if needed."""
+    if not self._enabled:
+        return {"status": "disabled"}
+    if not self._authenticated:
+        hs = await self.handshake()
+        if not hs.get("authenticated"):
+            return {"status": "auth_failed", **hs}
+```
+
+The exchange has one caller in the whole application, and that is the line above.
+The box's ticked position is therefore the only behaviour there is, and its cleared
+position asks for an exchange the operator requests, which nothing can request:
+Test Handshake requests none. Wiring the box today would make its cleared position
+a second way of turning the monitor off, which the box above it already does. The
+box waits on a Test Handshake that performs one.
+
+In development.
+
 Back to [the subsystem index](README.md).

@@ -2205,28 +2205,17 @@ if _HAS_QT:
                 ai_cfg = self._settings.get("ai_monitor", {}) if self._settings else {}
                 if ai_cfg.get("log_feedback"):
                     try:
-                        from ..trading.live_monitor import TradeRecord
-
-                        rec = TradeRecord(
-                            timestamp=data.get("timestamp", ""),
-                            unix_ts=time.time(),
+                        # _journal is reconciliation.TradeJournal, so the note
+                        # goes in through record_from_trade as a JournalEntry.
+                        self._journal.record_from_trade(
                             bot_id="AI_MONITOR",
-                            asset="SYSTEM",
+                            symbol="SYSTEM",
                             action="AI_FEEDBACK",
                             side="neutral",
-                            price=0,
-                            quantity=0,
-                            usd_value=0,
-                            target_balance=0,
-                            portfolio_value=0,
-                            delta_pct=0,
-                            confidence=0,
-                            notes=feedback[:500],
+                            price=0.0,
+                            quantity=0.0,
+                            reason=feedback[:500],
                         )
-                        if hasattr(self, "_journal") and hasattr(
-                            self._journal, "record"
-                        ):
-                            self._journal.record(rec)
                     except Exception:
                         logger.exception(
                             "AI feedback note was not written to " "the journal"

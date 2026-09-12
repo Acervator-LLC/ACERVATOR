@@ -973,7 +973,8 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
     def configure_live_monitor(self, settings: dict) -> None:
         """Create or clear the LiveMonitor from ``settings``, reading
         enabled, api_key, interval_hours, connect_phrase and
-        confirm_phrase."""
+        confirm_phrase. ``LiveMonitor.wait_hours`` refuses an interval
+        ``should_check`` cannot count."""
         if not settings.get("enabled") or not settings.get("api_key"):
             self._live_monitor = None
             logger.info("LiveMonitor disabled")
@@ -984,13 +985,16 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         self._live_monitor = LiveMonitor(
             api_key=settings["api_key"],
             journal=journal,
-            interval_hours=settings.get("interval_hours", 4.0),
+            interval_hours=settings.get(
+                "interval_hours", LiveMonitor.DEFAULT_INTERVAL_HOURS
+            ),
             connect_phrase=settings.get("connect_phrase", ""),
             confirm_phrase=settings.get("confirm_phrase", ""),
         )
+        # interval_hours is the figure wait_hours kept, not the stored one.
         logger.info(
             "LiveMonitor configured (interval=%.1fh, phrase='%s')",
-            settings.get("interval_hours", 4.0),
+            self._live_monitor.interval_hours,
             settings.get("connect_phrase", "")[:20],
         )
 
