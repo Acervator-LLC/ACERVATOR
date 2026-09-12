@@ -17,6 +17,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
+from .sound_engine import SoundConfig
+
 try:
     import tomllib  # Python 3.11+
 
@@ -143,6 +145,10 @@ class AppSettings:
     # The wizard's lock box opens on this. A bot's own lock_candle_count, held
     # by its TimeframeCoordinator, is a separate value.
     default_lock_candle_count: int = 2
+
+    # The Sound page's nine switches and its volume.
+    # sound_engine.sound_config_from_settings reads this group back.
+    sound: dict = field(default_factory=lambda: asdict(SoundConfig()))
 
 
 _DEFAULT_DIR = Path.home() / ".acervator"

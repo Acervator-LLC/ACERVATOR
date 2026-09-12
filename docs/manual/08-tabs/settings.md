@@ -1818,6 +1818,127 @@ drip_sound: bool = True
 volume: float = 0.7
 ```
 
+Every tick box reaches the engine on its own. Each box's toggle runs the same
+push the slider runs, so a box cleared with nothing else touched silences that
+sound at once.
+
+`src/gui/settings_dialog.py` — each box wired to the push
+
+```python
+for _key, name in SOUND_CONFIG_FIELDS:
+    getattr(self, f"_{name}").toggled.connect(self._push_sound_config)
+```
+
+The push reads the slider itself, so one method serves a box, the slider and a
+Test button alike.
+
+`src/gui/settings_dialog.py` — the push
+
+```python
+def _push_sound_config(self) -> None:
+    self._on_sfx_volume_changed(self._sound_volume.value())
+```
+
+The React page draws the same ten controls. Its edit route named one handler, for
+the slider, and that handler wanted an argument the page never sends, so the
+press raised and reached nothing. Every sound control names the push, which wants
+no argument.
+
+`src/gui/react_settings_dialog.py` — the edit route
+
+```python
+EDIT_HANDLERS: dict[str, str] = {
+    "new_exchange": "_on_exchange_changed",
+    surface.VOLUME_NAME: "_push_sound_config",
+    **{name: "_push_sound_config" for _key, name in surface.SOUND_CONFIG_FIELDS},
+}
+```
+
+The settings file holds the page as one group, and the schema declares that group
+from the engine's own defaults, so the two cannot disagree over what the page
+holds.
+
+`src/core/settings.py` — the group on the schema
+
+```python
+sound: dict = field(default_factory=lambda: asdict(SoundConfig()))
+```
+
+Save and load walk one row list for the group, the way the Profit Folding and AI
+Monitor groups do, so no row reaches the file without also reaching a control.
+The slider shows whole percent and the engine holds a fraction, so the volume row
+divides out and multiplies back.
+
+`src/gui/settings_dialog.py` — the sound rows
+
+```python
+switches = tuple(
+    (
+        key,
+        getattr(self, f"_{name}").isChecked,
+        show(getattr(self, f"_{name}")),
+        getattr(built, key),
+    )
+    for key, name in SOUND_CONFIG_FIELDS
+)
+```
+
+One reader carries a stored group into the engine, and it keeps the default for
+anything the generators cannot take. A switch reads as on or off: the play gate
+tests it for truth, so a non-empty word would open a sound the operator closed.
+A volume reads as a finite number from zero to one: each generator multiplies it
+into every sample before packing the samples, and a volume of four leaves the
+engine holding no clips and playing nothing.
+
+`src/core/sound_engine.py` — the reader
+
+```python
+def sound_config_from_settings(stored: Optional[dict]) -> SoundConfig:
+    taken = SoundConfig()
+    for name, value in (stored or {}).items():
+        if name in SOUND_SWITCHES:
+            if isinstance(value, bool):
+                setattr(taken, name, value)
+```
+
+The engine takes the stored group at startup, before the first fill, so a
+silenced sound stays silent whether or not the operator opens this page.
+
+`main.py` — the startup push
+
+```python
+get_sound_engine().update_config(
+    sound_config_from_settings(settings.get("sound", {}))
+)
+```
+
+Two of the nine switches gate a clip no trade path plays. Nothing calls the buy
+helper or the sell helper, so Test Buy and Test Sell are the only presses that
+reach those two samples. Both boxes store and reload, and the sound itself waits
+on a caller.
+
+`src/core/sound_engine.py` — the two helpers with no caller
+
+```python
+def play_buy(self) -> None:
+    self.play("buy")
+
+def play_sell(self) -> None:
+    self.play("sell")
+```
+
+The six Test buttons carry a part name of their own, and the page's click
+listener reports the plain button part alone, so a press on the React page
+reports nothing to the dialog. Those six are buttons, not settings, and the
+switches beside them do not depend on them.
+
+`src/gui/web/settings_dialog.js` — the two part names
+
+```javascript
+var BUTTON_PART = "button";
+var SOUND_BUTTON_PART = "sound-button";
+```
+
 ### Settings > SMS
 
 ![Settings, the SMS page.](p43-i0.png)

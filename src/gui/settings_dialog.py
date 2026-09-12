@@ -646,6 +646,11 @@ if _HAS_QT:
             vol_row.addWidget(self._vol_label)
             layout.addLayout(vol_row)
 
+            from src.gui.main_tabs.settings_dialog_surface import SOUND_CONFIG_FIELDS
+
+            for _key, name in SOUND_CONFIG_FIELDS:
+                getattr(self, f"_{name}").toggled.connect(self._push_sound_config)
+
             test_row = QHBoxLayout()
             test_buy = QPushButton("Test Buy")
             test_buy.clicked.connect(lambda: self._test_sound("buy"))
@@ -675,39 +680,44 @@ if _HAS_QT:
             return w
 
         def _on_sfx_volume_changed(self, v: int) -> None:
-            """MEM-236 — Slider → SoundEngine live wiring.
-            Because sound wavs bake volume at synth time, we must
-            clear the cache and re-generate. The regen happens lazily
-            on next play(), so cost here is just clearing state."""
-            try:
-                from src.core.sound_engine import get_sound_engine, SoundConfig
+            """Hand the engine this page's switches at volume ``v``, in percent.
 
-                se = get_sound_engine()
-                new_cfg = SoundConfig(
-                    enabled=self._sound_enabled.isChecked(),
-                    buy_sound=self._sound_buy.isChecked(),
-                    sell_sound=self._sound_sell.isChecked(),
-                    error_sound=self._sound_error.isChecked(),
-                    bot_state_sound=self._sound_state.isChecked(),
-                    fire_sound=self._sound_fire.isChecked(),
-                    track_sound=self._sound_track.isChecked(),
-                    profit_sound=self._sound_profit.isChecked(),
-                    drip_sound=self._sound_drip.isChecked(),
-                    volume=v / 100.0,
+            Each sample bakes its volume when it is made, so the engine's cache
+            is dropped and the next ``play`` regenerates. The switches come from
+            ``SOUND_CONFIG_FIELDS``, which is also what ``_sound_rows`` persists.
+            """
+            try:
+                from src.core.sound_engine import SoundConfig, get_sound_engine
+                from src.gui.main_tabs.settings_dialog_surface import (
+                    SOUND_CONFIG_FIELDS,
+                    VOLUME_SCALE,
                 )
-                se.update_config(new_cfg)
+
+                asked = {
+                    key: getattr(self, f"_{name}").isChecked()
+                    for key, name in SOUND_CONFIG_FIELDS
+                }
+                se = get_sound_engine()
+                se.update_config(SoundConfig(volume=v / VOLUME_SCALE, **asked))
                 se._available = False
                 se._cache = {}
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.warning(
-                    "settings widget population failed — a field may show a default instead of its saved value: %s",
-                    _sf_exc,
+                    "sound settings did not reach the engine: %s", _sf_exc
                 )
+
+        def _push_sound_config(self) -> None:
+            """Hand the engine every switch at the volume the slider is showing.
+
+            Wired to each sound box, so one box ticked on its own reaches the
+            engine without the slider moving.
+            """
+            self._on_sfx_volume_changed(self._sound_volume.value())
 
         def _test_sound(self, name: str) -> None:
             from src.core.sound_engine import get_sound_engine
 
-            self._on_sfx_volume_changed(self._sound_volume.value())
+            self._push_sound_config()
             get_sound_engine().play(name)
 
         def _create_sms_tab(self) -> QWidget:
@@ -1063,6 +1073,42 @@ if _HAS_QT:
                      True),
                 )),
                 ("ta_indicator_weights", self._ta_weight_rows()),
+                ("sound", self._sound_rows()),
+            )
+
+        def _sound_rows(self) -> tuple:
+            """One ``_stored_groups`` row per sound switch, plus the volume.
+
+            The slider shows whole percent and ``SoundConfig.volume`` holds a
+            fraction, so the volume row divides out and multiplies back.
+            """
+            from src.core.sound_engine import SoundConfig
+            from src.gui.main_tabs.settings_dialog_surface import (
+                SOUND_CONFIG_FIELDS,
+                VOLUME_SCALE,
+            )
+
+            built = SoundConfig()
+
+            def show(box) -> Callable[[object], None]:
+                return lambda value: box.setChecked(bool(value))
+
+            switches = tuple(
+                (
+                    key,
+                    getattr(self, f"_{name}").isChecked,
+                    show(getattr(self, f"_{name}")),
+                    getattr(built, key),
+                )
+                for key, name in SOUND_CONFIG_FIELDS
+            )
+            return switches + (
+                ("volume",
+                 lambda: self._sound_volume.value() / VOLUME_SCALE,
+                 lambda value: self._sound_volume.setValue(
+                     int(round(float(value) * VOLUME_SCALE))
+                 ),
+                 built.volume),
             )
 
         def _ta_weight_rows(self) -> tuple:
@@ -1124,6 +1170,7 @@ if _HAS_QT:
                 self._exchange_list.addItem(
                     f"{exch.get('display_name', '')} ({exch.get('exchange_id', '')})"
                 )
+            self._push_sound_config()
 
         def _save(self) -> None:
             """Save all settings and close. ALWAYS closes the dialog."""

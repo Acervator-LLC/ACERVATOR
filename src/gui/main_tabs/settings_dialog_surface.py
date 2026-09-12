@@ -387,13 +387,11 @@ SOUND_CONFIG_FIELDS = (
     ("profit_sound", "sound_profit"),
     ("drip_sound", "sound_drip"),
 )
+SOUND_GROUP_KEY = "sound"
+VOLUME_FIELD = "volume"
+VOLUME_NAME = "sound_volume"
 
-SAVE_GROUP_KEYS = (
-    "profit_folding",
-    "ai_monitor",
-    "ta_indicator_weights",
-)
-TA_WEIGHT_GROUP_KEY = SAVE_GROUP_KEYS[2]
+TA_WEIGHT_GROUP_KEY = "ta_indicator_weights"
 
 SAVE_CALLED_PRINT = "[SETTINGS] _save called"
 NO_MANAGER_PRINT = "[SETTINGS] No settings manager, closing"
@@ -1047,9 +1045,14 @@ EXCHANGE_CONNECTIONS = (
     ("add_btn.clicked", "add_exchange"),
     ("remove_btn.clicked", "remove_exchange"),
 )
+SOUND_BOX_HANDLER = "push_sound_config"
+SOUND_BOX_SIGNAL_FORMAT = "{name}.toggled"
 SOUND_CONNECTIONS = (
     ("sound_volume.valueChanged", "update_volume_label"),
     ("sound_volume.valueChanged.2", "sfx_volume_changed"),
+) + tuple(
+    (SOUND_BOX_SIGNAL_FORMAT.format(name=name), SOUND_BOX_HANDLER)
+    for _field, name in SOUND_CONFIG_FIELDS
 )
 AI_CONNECTIONS = (("ai_test_btn.clicked", "test_ai_handshake"),)
 FOOTER_CONNECTIONS = (
@@ -1974,9 +1977,37 @@ class SettingsDialogModel:
             for name, weight in TA_INDICATOR_WEIGHTS
         )
 
-    def _ta_weight_group(self) -> dict:
-        """The stored weights group, read off the TA Indicators page."""
-        return {key: read() for key, read, _show, _fallback in self._ta_weight_rows()}
+    def _volume_read(self) -> float:
+        """The fraction the engine holds for the percent the slider is showing."""
+        return self.values[VOLUME_NAME] / VOLUME_SCALE
+
+    def _volume_show(self, value: Any) -> None:
+        """Put the stored fraction on the slider as whole percent."""
+        self.admit(VOLUME_NAME, int(round(float(value) * VOLUME_SCALE)))
+
+    def _sound_rows(self) -> tuple:
+        """Every ``sound`` key, from the one list naming its controls.
+
+        The slider shows whole percent and ``SoundConfig.volume`` holds a
+        fraction, so the volume row divides out and multiplies back.
+        """
+        switches = tuple(
+            (
+                key,
+                partial(self._pair_value, name),
+                partial(self._show_stored, name),
+                spec_for(name)["checked"],
+            )
+            for key, name in SOUND_CONFIG_FIELDS
+        )
+        return switches + (
+            (
+                VOLUME_FIELD,
+                self._volume_read,
+                self._volume_show,
+                spec_for(VOLUME_NAME)["value"] / VOLUME_SCALE,
+            ),
+        )
 
     def _stored_groups(self) -> tuple:
         """Every group the dialog persists as one key, with the rows inside it."""
@@ -1984,6 +2015,7 @@ class SettingsDialogModel:
             (FOLDING_GROUP_KEY, self._folding_rows()),
             (AI_GROUP_KEY, self._ai_rows()),
             (TA_WEIGHT_GROUP_KEY, self._ta_weight_rows()),
+            (SOUND_GROUP_KEY, self._sound_rows()),
         )
 
     def _load_current(self) -> None:
@@ -2019,6 +2051,8 @@ class SettingsDialogModel:
                 )
             )
         self.values["exchange_list"] = list(self.listed_exchanges)
+        if self.sound:
+            self.push_sound_config()
 
     def current_exchange_id(self) -> Any:
         """The id of the exchange the dropdown is showing."""
@@ -2223,10 +2257,19 @@ class SettingsDialogModel:
         except Exception as exc:
             self._record("sfx_volume_failed", type(exc).__name__)
 
+    def push_sound_config(self) -> None:
+        """Hand the engine every switch at the volume the slider is showing.
+
+        Wired to each sound box, so one box ticked on its own reaches the
+        engine without the slider moving.
+        """
+        self._record("push_sound_config")
+        self.sfx_volume_changed(self.values[VOLUME_NAME])
+
     def test_sound(self, name: Any) -> None:
         """Apply the current volume, then play one sound."""
         self._record("test_sound", name)
-        self.sfx_volume_changed(self.values["sound_volume"])
+        self.sfx_volume_changed(self.values[VOLUME_NAME])
         self.sound.play(name)
 
     def test_ai_handshake(self) -> None:
@@ -2257,14 +2300,6 @@ class SettingsDialogModel:
             return value.strip()
         return value
 
-    def _folding_group(self) -> dict:
-        """The stored ``profit_folding`` group, read off the Profit Folding page."""
-        return {key: read() for key, read, _show, _fallback in self._folding_rows()}
-
-    def _ai_group(self) -> dict:
-        """The stored ``ai_monitor`` group, read off the AI Monitor page."""
-        return {key: read() for key, read, _show, _fallback in self._ai_rows()}
-
     def save(self) -> dict:
         """Write every setting, report what failed, and close the dialog.
 
@@ -2288,13 +2323,11 @@ class SettingsDialogModel:
                 failed.append(FAILED_ENTRY_FORMAT.format(key=key, error=exc))
                 self.prints.append(SAVE_ERROR_PRINT_FORMAT.format(key=key, error=exc))
 
-        for key, builder in (
-            (SAVE_GROUP_KEYS[0], self._folding_group),
-            (SAVE_GROUP_KEYS[1], self._ai_group),
-            (SAVE_GROUP_KEYS[2], self._ta_weight_group),
-        ):
+        for key, rows in self._stored_groups():
             try:
-                self.settings.set(key, builder())
+                self.settings.set(
+                    key, {name: read() for name, read, _show, _fallback in rows}
+                )
                 saved += 1
             except Exception as exc:
                 failed.append(FAILED_ENTRY_FORMAT.format(key=key, error=exc))
@@ -2566,6 +2599,7 @@ def build_view_model(model: SettingsDialogModel) -> dict:
                 "update_volume_label",
                 "sfx_volume_changed",
                 "sfx_volume_failed",
+                "push_sound_config",
                 "test_sound",
                 "test_ai_handshake",
                 "save",
