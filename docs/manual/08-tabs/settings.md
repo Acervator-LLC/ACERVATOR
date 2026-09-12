@@ -1087,7 +1087,7 @@ self._switch_theme(theme)
 
 A stored name the theme table does not hold opens on Cyberpunk Dark. The store
 accepts any text under that key, and the theme manager refuses a name it does not
-carry, so both store reads pass their value through a guard first. Driven on ten
+carry, so every store read passes its value through a guard first. Driven on ten
 stored values, five of them names the table does not hold: without the guard the
 application refused five and painted five, and with it all ten paint, while the
 five real names still paint their own five colours.
@@ -1101,7 +1101,23 @@ def stored_theme(name: object) -> str:
 ```
 
 The guard covers the read the block above shows and the read at startup, which
-also says in the log when a stored name was not recognised.
+also says in the log when a stored name was not recognised. It covers the
+dialog's own page read as well: that one never refused, because the page palette
+falls back on its own table, so the guard there removes a second fallback and one
+copy of the default name rather than a refusal. Driven on eight stored values,
+four of them names the table does not hold: the page drew 8 of 8 and refused none
+both before and after, and all four unknown names paint a picture identical to
+Cyberpunk Dark and different from Neon Light.
+
+`src/gui/react_settings_dialog.py` — `_theme_name`
+
+```python
+        def _theme_name(self) -> str:
+            """The stored theme the page paints in, always a name ``THEMES`` holds."""
+            if not self._sm:
+                return DEFAULT_THEME_NAME
+            return stored_theme(self._sm.get("theme", DEFAULT_THEME_NAME))
+```
 
 `main.py` — the startup read
 

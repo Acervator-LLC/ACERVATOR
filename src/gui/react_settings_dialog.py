@@ -18,6 +18,7 @@ from typing import Any, Callable, Optional
 from .main_tabs import settings_dialog_surface as surface
 from .react_history_panel import page_html
 from .settings_dialog import _HAS_QT, SettingsDialog
+from .theme_engine import DEFAULT_THEME_NAME, stored_theme
 
 try:
     from PySide6.QtWebEngineCore import QWebEnginePage
@@ -142,7 +143,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def dialog_html(theme: str = "cyberpunk_dark") -> str:
+def dialog_html(theme: str = DEFAULT_THEME_NAME) -> str:
     """The whole dialog page as one string, with no network fetch."""
     return page_html(
         DIALOG_STYLE_ASSETS, DIALOG_SCRIPT_ASSETS, DIALOG_BODY, theme, (HOST_SCRIPT,)
@@ -697,9 +698,10 @@ if _HAS_QT and _HAS_WEBENGINE:
         # -- internals ----------------------------------------------------
 
         def _theme_name(self) -> str:
+            """The stored theme the page paints in, always a name ``THEMES`` holds."""
             if not self._sm:
-                return "cyberpunk_dark"
-            return str(self._sm.get("theme", "cyberpunk_dark"))
+                return DEFAULT_THEME_NAME
+            return stored_theme(self._sm.get("theme", DEFAULT_THEME_NAME))
 
         def _build_holders(self) -> None:
             self._holders: dict = {}
