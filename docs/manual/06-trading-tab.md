@@ -777,6 +777,22 @@ self._visibility.currentIndexChanged.connect(self._on_visibility_changed)
 mf.addRow("Order Visibility:", self._visibility)
 ```
 
+Driven on a bot rebuilt from a stored record, the two choices take different
+branches on the same tick: Internal activated all three stored Stack tranches,
+and Order Book activated none of them. The order type an engine trade carries is
+chosen off the same flag, on the sell side and the buy side alike.
+
+`src/trading/scrumming/execution.py` — the sell side's order type
+
+```python
+if self._invisible:
+    ot = OrderType.MARKET
+    exec_price = None
+else:
+    ot = OrderType.LIMIT
+    exec_price = vh_fp
+```
+
 Aggressive Trading - Trades are priced so that they fill immediately. Trading like this is a bit like guerilla warfare. In and out before anyone notices.
 
 A checkbox, off at the start. Every engine-initiated order then leaves as an
@@ -787,6 +803,20 @@ for an immediate fill. Manual Fire is unaffected.
 
 ```python
 self._aggressive = QCheckBox("Aggressive Trading (force IOC-limit takers)")
+```
+
+The box's value reaches the bot and reaches no order. One place in the trading
+package builds an immediate-or-cancel order, inside the method that opens a Stack
+from a SCRUM, and that method raises before it gets there. The two places that do
+choose an order type read Order Visibility and never this flag.
+
+`src/trading/scrumming_bot.py` — the only reader that would change an order
+
+```python
+_aggressive = bool(getattr(self, "_aggressive", False))
+_order_type_for_visible = (
+    OrderType.IOC_LIMIT if _aggressive else OrderType.LIMIT
+)
 ```
 
 Stack Mode - Stack Mode enables Stack Tranches which operate on the Sell or Scrum side. This forms the “upside” of the organic ladder structure whereas Fold Tranches form its “downside”.
@@ -806,6 +836,19 @@ self._stack_mode = QCheckBox(
 self._stack_mode.setChecked(STACK_MODE_DEFAULT)
 ```
 
+The box's value arrives on the bot and gates four places: the branch that turns a
+SCRUM into a Stack, and the three reconciliation stages. Driven, the guard
+discriminates — on, all three stored tranches activated; off, none did. No tranche
+can be created today, because the one method that appends one raises on an
+attribute no object in the tree carries. That raise is the reason the four rows
+below report a value that arrives and a behaviour that waits.
+
+`src/trading/scrumming_bot.py` — the refusal, read from a restored bot
+
+```
+AttributeError: 'ScrummingBot' object has no attribute 'exchange_interface'
+```
+
 Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
 
 A percentage from 0.10 to 20.00, at 1.00 % to start. The bot hands it to the
@@ -822,6 +865,17 @@ self._split_distance.setSuffix(" %")
 self._split_distance.setValue(1.0)
 ```
 
+Driven at the maths the bot hands it to, 1.00 % priced three rungs a gap of
+0.9901 and 0.9804 per cent apart, and 2.50 % priced the same three 2.439 and 2.381
+per cent apart. The figure reaches that maths only through the method named under
+Stack Mode above, so the value is correct and the ladder is not yet built.
+
+`src/trading/scrumming_bot.py` — the hand-off
+
+```python
+split_dist = float(getattr(self.config, "split_distance", 1.0) or 1.0)
+```
+
 Tranche Spread - This allows a given Scrum or Fold to divide its result X# of times across multiple incremented (as dictated by Split Distance) positions.
 
 The page carries no control of that name, and no setting named
@@ -831,6 +885,18 @@ The same sweep run for `split_distance` returns a declaration, a restore entry
 and a reader, so the sweep itself finds a setting when one is there.
 
 In development.
+
+The sentence that opens this row is retired. Counted over the whole tracked tree,
+the name appears once, and that once is this page describing its own absence.
+Spacing is the control that exists and is read, and it names the four models the
+engine carries. Tranche Count decides how many pieces a Scrum becomes, and Spacing
+decides where each piece sits.
+
+`src/trading/stack_math.py` — the models Spacing chooses from
+
+```python
+SPACING_MODES = ("quadratic", "fibonacci", "linear", "exponential")
+```
 
 Tranche Count - This can also be referred to as Spread Count. It determines how pieces a given Scrum or Fold is split into and distributed across incremented tranches as opposed to just one.
 
@@ -847,6 +913,17 @@ self._stack_count.setRange(2, 20)
 self._stack_count.setValue(3)
 ```
 
+Driven at the same maths, a target of 3 built three rungs and a target of 7 built
+seven, each rung's size falling from 0.4 to 0.171429 units out of one 1.2-unit
+Scrum. The count reaches that maths through the method named under Stack Mode, so
+it too is a correct value waiting on a ladder.
+
+`src/trading/scrumming_bot.py` — the hand-off
+
+```python
+n_target = int(getattr(self.config, "stack_tranche_count_target", 3) or 3)
+```
+
 Spacing - This adds a scaling factor Split Distance and works in conjunction with Tranche Spread and Tranche Count to induce curves and more aggressive growth within the ladder structure.
 
 Three entries: Linear, Quadratic and Exponential. The sequence beside each name
@@ -859,6 +936,21 @@ self._stack_spacing = QComboBox()
 self._stack_spacing.addItem("Linear (1, 2, 3, 4…)", "linear")
 self._stack_spacing.addItem("Quadratic (1, 2, 4, 7…)", "quadratic")
 self._stack_spacing.addItem("Exponential (1, 2, 4, 8…)", "exponential")
+```
+
+The Quadratic entry read 1, 2, 4, 7 and the engine prices that model at n squared,
+so the row named a ladder the engine has never built. Both the wizard row and the
+live bot window now read 1, 4, 9, 16, which is what the engine publishes. The
+engine also carries a fourth model, Fibonacci at 1, 2, 3, 5, that neither control
+offers.
+
+`src/trading/stack_math.py` — `level_multipliers`, driven for four levels
+
+```
+linear       [1.0, 2.0, 3.0, 4.0]
+quadratic    [1.0, 4.0, 9.0, 16.0]
+exponential  [1.0, 2.0, 4.0, 8.0]
+fibonacci    [1.0, 2.0, 3.0, 5.0]
 ```
 
 Personal Hold - Setting to be removed.
