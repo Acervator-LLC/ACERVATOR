@@ -1538,6 +1538,17 @@
         sliderProps.type = RANGE_TYPE;
         sliderProps.defaultValue = text(at(row, STEP));
         sliderProps[INDEX_ATTR] = text(at(row, STEP));
+        // The host's change listener reports a node only once it carries both,
+        // so these two are what carry a dragged weight back to the dialog.
+        var sliderName = at(row, THIRD);
+        var sliderSpec = specFor(sliderName);
+        var sliderRange = isPlainObject(sliderSpec) ? sliderSpec[RANGE] : undefined;
+        sliderProps[NAME_ATTR] = text(sliderName);
+        sliderProps[KIND_ATTR] = SLIDER_KIND;
+        if (Array.isArray(sliderRange)) {
+          sliderProps.min = text(at(sliderRange, ZERO));
+          sliderProps.max = text(at(sliderRange, STEP));
+        }
         var valueProps = partProps(TA_VALUE_PART);
         valueProps[KEY_ATTR] = text(at(row, ZERO));
         return element(

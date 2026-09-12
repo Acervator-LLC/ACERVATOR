@@ -716,6 +716,13 @@ def main() -> int:
     state_mgr = StateManager()
     bot_manager.set_state_manager(state_mgr)
 
+    # Before restore, so a restored bot votes with the stored weights.
+    from src.trading.ta_engine import weights_from_settings
+
+    bot_manager.set_ta_weights(
+        weights_from_settings(settings.get("ta_indicator_weights", {}))
+    )
+
     _preflight = state_mgr.preflight_snapshot()
     if _preflight:
         log_manager.info(

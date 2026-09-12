@@ -24,7 +24,9 @@ holds its values in memory and records every write.
 the ``settings_dialog.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
 ``src.gui.settings_dialog``, so a value changed on one side alone is
-reported. Nothing here imports Qt, and nothing runs at import time that
+reported. The twelve indicator weights are the exception: both pages read
+``ta_engine.DEFAULT_WEIGHTS``, so they cannot drift apart.
+Nothing here imports Qt, and nothing runs at import time that
 reads a clock, opens a file or reaches a network.
 """
 
@@ -35,6 +37,7 @@ from functools import partial
 from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines
+from ...trading.ta_engine import DEFAULT_WEIGHTS
 from ..color_alpha import ALPHA_HIGHEST, rgba
 
 METHOD = "settings_dialog.state"
@@ -205,26 +208,35 @@ AI_INFO_TEXT = (
 AI_INFO_STYLE = "color: #888; font-size: 10px;"
 AI_INFO_WORD_WRAP = True
 
-TA_INDICATOR_WEIGHTS = (
-    ("bollinger_bands", 1.0),
-    ("vortex", 0.9),
-    ("macd", 1.2),
-    ("stochastic_rsi", 1.0),
-    ("ichimoku", 1.1),
-    ("volume", 0.8),
-    ("slingshot", 1.0),
-    ("adx", 1.0),
-    ("kaufman_er", 1.0),
-    ("supertrend", 1.0),
-    ("zscore", 0.9),
-    ("rsi", 0.8),
-)
+#: Read off DEFAULT_WEIGHTS so the page cannot hold a second set of figures.
+TA_INDICATOR_WEIGHTS = tuple(DEFAULT_WEIGHTS.items())
 TA_LABEL_FORMAT = "{name}:"
 TA_VALUE_FORMAT = "{weight:.2f}"
 TA_SLIDER_RANGE = (0, 200)
 TA_SLIDER_SCALE = 100
 TA_LABEL_MIN_WIDTH = 140
 TA_VALUE_MIN_WIDTH = 40
+TA_SLIDER_NAME_FORMAT = "ta_weight_{name}"
+
+
+def ta_label(name: str) -> str:
+    """The printed name of one indicator weight row."""
+    return TA_LABEL_FORMAT.format(name=name.replace("_", " ").title())
+
+
+def ta_slider_name(name: str) -> str:
+    """The control name the indicator ``name`` weight slider answers to."""
+    return TA_SLIDER_NAME_FORMAT.format(name=name)
+
+
+def ta_slider_value(weight: float) -> int:
+    """One indicator weight as its slider position."""
+    return int(round(weight * TA_SLIDER_SCALE))
+
+
+def ta_value_text(weight: float) -> str:
+    """One indicator weight as the figure printed beside its slider."""
+    return TA_VALUE_FORMAT.format(weight=weight)
 
 PHANTOM_TIMEFRAMES = (
     "1m",
@@ -402,7 +414,13 @@ PERIOD_CONTROLS = (
     ("log_1y", "1_year"),
 )
 
-SAVE_GROUP_KEYS = ("profit_folding", "data_logging", "ai_monitor")
+SAVE_GROUP_KEYS = (
+    "profit_folding",
+    "data_logging",
+    "ai_monitor",
+    "ta_indicator_weights",
+)
+TA_WEIGHT_GROUP_KEY = SAVE_GROUP_KEYS[3]
 
 SAVE_CALLED_PRINT = "[SETTINGS] _save called"
 NO_MANAGER_PRINT = "[SETTINGS] No settings manager, closing"
@@ -501,7 +519,7 @@ TIMERS_STARTED: tuple = ()
 THREADS_BUILT: tuple = ()
 THREADS_STARTED: tuple = ()
 
-CONTROL_SPECS = (
+CONTROL_SPECS: tuple[dict, ...] = (
     {
         "tab": USER_TAB,
         "group": None,
@@ -1078,6 +1096,20 @@ CONTROL_SPECS = (
         "text": "Log AI feedback to trade journal",
         "checked": True,
     },
+    # One per indicator weight. label None keeps them out of `rows`; the TA_ROWS
+    # layout item draws them.
+    *(
+        {
+            "tab": TA_TAB,
+            "group": None,
+            "label": None,
+            "name": ta_slider_name(name),
+            "kind": SLIDER,
+            "range": TA_SLIDER_RANGE,
+            "value": ta_slider_value(weight),
+        }
+        for name, weight in TA_INDICATOR_WEIGHTS
+    ),
 )
 
 GROUPS = (
@@ -1158,7 +1190,7 @@ FOOTER_CONNECTIONS = (
 )
 TA_SLIDER_HANDLER = "update_weight_label"
 SOUND_BUTTON_HANDLER = "test_sound"
-TA_SLIDER_SIGNAL_FORMAT = "ta_slider[{name}].valueChanged"
+TA_SLIDER_SIGNAL_FORMAT = "{name}.valueChanged"
 SOUND_BUTTON_SIGNAL_FORMAT = "sound_test[{name}].clicked"
 
 
@@ -1166,7 +1198,12 @@ def connect_order() -> tuple:
     """Every signal connected, with its handler, in the order wired."""
     found = list(EXCHANGE_CONNECTIONS)
     for name, _weight in TA_INDICATOR_WEIGHTS:
-        found.append((TA_SLIDER_SIGNAL_FORMAT.format(name=name), TA_SLIDER_HANDLER))
+        found.append(
+            (
+                TA_SLIDER_SIGNAL_FORMAT.format(name=ta_slider_name(name)),
+                TA_SLIDER_HANDLER,
+            )
+        )
     found.extend(THEME_CONNECTIONS)
     found.extend(SOUND_CONNECTIONS)
     for _text, name, _tip in SOUND_TEST_BUTTONS:
@@ -1574,27 +1611,31 @@ def feedback_style(level: Any) -> str:
     )
 
 
-def ta_label(name: str) -> str:
-    """The printed name of one indicator weight row."""
-    return TA_LABEL_FORMAT.format(name=name.replace("_", " ").title())
+#: Every control name the TA Indicators page holds a weight slider under.
+TA_SLIDER_NAMES = frozenset(
+    ta_slider_name(name) for name, _weight in TA_INDICATOR_WEIGHTS
+)
 
 
-def ta_slider_value(weight: float) -> int:
-    """One indicator weight as its slider position."""
-    return int(weight * TA_SLIDER_SCALE)
+def ta_rows(values: Optional[dict] = None) -> tuple:
+    """Every indicator weight row: label, position, figure and control name.
 
-
-def ta_value_text(weight: float) -> str:
-    """One indicator weight as the figure printed beside its slider."""
-    return TA_VALUE_FORMAT.format(weight=weight)
-
-
-def ta_rows() -> tuple:
-    """Every indicator weight row: label, slider position and figure."""
-    return tuple(
-        (ta_label(name), ta_slider_value(weight), ta_value_text(weight))
-        for name, weight in TA_INDICATOR_WEIGHTS
-    )
+    ``values`` is a control-name-to-value mapping; a row whose slider it
+    carries draws at that position, and every other row at its default.
+    """
+    rows = []
+    for name, weight in TA_INDICATOR_WEIGHTS:
+        held = (values or {}).get(ta_slider_name(name))
+        position = ta_slider_value(weight) if held is None else int(held)
+        rows.append(
+            (
+                ta_label(name),
+                position,
+                slider_label_text(position),
+                ta_slider_name(name),
+            )
+        )
+    return tuple(rows)
 
 
 def slider_label_text(position: Any) -> str:
@@ -1971,7 +2012,7 @@ class SettingsDialogModel:
         self.values["new_exchange_items"] = [
             list(one) for one in exchange_items(self.wing)
         ]
-        self.values["ta_rows"] = [list(one) for one in ta_rows()]
+        self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
         self.values["phantom_timeframes"] = [
             [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
         ]
@@ -2108,12 +2149,37 @@ class SettingsDialogModel:
             for key, fallback, name in AI_LOAD_KEYS
         )
 
+    def _ta_weight_read(self, name: str) -> float:
+        """The weight the slider named ``name`` is showing."""
+        return self.values[name] / TA_SLIDER_SCALE
+
+    def _ta_weight_show(self, name: str, value: Any) -> None:
+        """Put the stored weight ``value`` on the slider named ``name``."""
+        self.admit(name, int(round(float(value) * TA_SLIDER_SCALE)))
+
+    def _ta_weight_rows(self) -> tuple:
+        """Every ``ta_indicator_weights`` key, one per indicator weight slider."""
+        return tuple(
+            (
+                name,
+                partial(self._ta_weight_read, ta_slider_name(name)),
+                partial(self._ta_weight_show, ta_slider_name(name)),
+                weight,
+            )
+            for name, weight in TA_INDICATOR_WEIGHTS
+        )
+
+    def _ta_weight_group(self) -> dict:
+        """The stored weights group, read off the TA Indicators page."""
+        return {key: read() for key, read, _show, _fallback in self._ta_weight_rows()}
+
     def _stored_groups(self) -> tuple:
         """Every group the dialog persists as one key, with the rows inside it."""
         return (
             (FOLDING_GROUP_KEY, self._folding_rows()),
             (LOGGING_GROUP_KEY, self._logging_rows()),
             (AI_GROUP_KEY, self._ai_rows()),
+            (TA_WEIGHT_GROUP_KEY, self._ta_weight_rows()),
         )
 
     def _load_current(self) -> None:
@@ -2342,6 +2408,11 @@ class SettingsDialogModel:
         self.texts["vol_label"] = volume_label_text(position)
         self._record("update_volume_label", position)
 
+    def update_weight_label(self) -> None:
+        """Redraw the twelve weight rows so each prints its slider's figure."""
+        self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
+        self._record("update_weight_label")
+
     def sfx_volume_changed(self, position: Any) -> None:
         """Hand the sound engine a fresh config and clear its cache.
 
@@ -2431,6 +2502,7 @@ class SettingsDialogModel:
             (SAVE_GROUP_KEYS[0], self._folding_group),
             (SAVE_GROUP_KEYS[1], self._logging_group),
             (SAVE_GROUP_KEYS[2], self._ai_group),
+            (SAVE_GROUP_KEYS[3], self._ta_weight_group),
         ):
             try:
                 self.settings.set(key, builder())
@@ -2489,6 +2561,8 @@ class SettingsDialogModel:
             self.values[name] = list(value or [])
         else:
             self.values[name] = self._seed_control(name, value)
+        if name in TA_SLIDER_NAMES:
+            self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
         return self.values[name]
 
     def edit(self, name: str, value: Any) -> None:
@@ -2607,7 +2681,7 @@ class _Walker:
             self.block(item[2])
             return
         if role == TA_ROWS:
-            for label, _position, printed in ta_rows():
+            for label, _position, printed, _name in ta_rows(self.model.values):
                 self.emit(LABEL, label)
                 self.emit("slider", EMPTY_TEXT)
                 self.emit(LABEL, printed)
@@ -2655,7 +2729,7 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "tooltips": dict(model.tooltips),
         "control_specs": [_plain(dict(one)) for one in CONTROL_SPECS],
         "exchange_items": [list(one) for one in exchange_items(model.wing)],
-        "ta_rows": [list(one) for one in ta_rows()],
+        TA_ROWS: [list(one) for one in ta_rows(model.values)],
         "phantom_timeframes": [
             [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
         ],

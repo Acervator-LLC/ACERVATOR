@@ -3070,6 +3070,22 @@ if _HAS_QT:
                     },
                 )
 
+        def _stored_ta_weights(self):
+            """The indicator weights a new bot votes with, read off the store.
+
+            Falls back to the manager's copy, then to None, which leaves the
+            engine on ``ta_engine.DEFAULT_WEIGHTS``.
+            """
+            if self._settings is not None:
+                from ..trading.ta_engine import weights_from_settings
+
+                return weights_from_settings(
+                    self._settings.get("ta_indicator_weights", {})
+                )
+            if self._bot_manager is not None:
+                return getattr(self._bot_manager, "ta_weights", None)
+            return None
+
         def _refuse_extractor_without_parent(
             self,
             base_currency: str,
@@ -3352,6 +3368,7 @@ if _HAS_QT:
                             _PlaceholderExchange(bot_config.exchange_id),
                             enable_phantoms=config.get("enable_phantoms", False),
                             phantom_timeframes=config.get("phantom_timeframes", []),
+                            ta_weights=self._stored_ta_weights(),
                         )
 
                     if self._bot_manager:

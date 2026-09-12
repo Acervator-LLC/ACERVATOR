@@ -154,6 +154,10 @@ class AppSettings:
 
     data_logging: dict = field(default_factory=lambda: asdict(DataLoggingSettings()))
 
+    # Indicator name -> voting weight. Empty means every indicator votes at the
+    # figure ta_engine.DEFAULT_WEIGHTS declares for it.
+    ta_indicator_weights: dict = field(default_factory=dict)
+
 
 _DEFAULT_DIR = Path.home() / ".acervator"
 
@@ -162,8 +166,8 @@ class SettingsManager:
     """Thread-safe reader and writer for one ``AppSettings``.
 
     ``get`` and ``set`` address a top-level field while ``get_nested`` and
-    ``set_nested`` address a key inside ``profit_folding``, ``ai_monitor`` or
-    ``data_logging``.
+    ``set_nested`` address a key inside ``profit_folding``, ``ai_monitor``,
+    ``data_logging`` or ``ta_indicator_weights``.
     """
 
     _lock = threading.RLock()
