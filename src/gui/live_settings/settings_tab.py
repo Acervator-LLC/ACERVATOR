@@ -278,17 +278,18 @@ class SettingsTabMixin:
         mf.addRow("Tranche Count:", self._stack_count)
 
         self._stack_spacing = QComboBox()
+        # Each sequence is level_multipliers(mode, 4) from stack_math.
         self._stack_spacing.addItem("Linear (1, 2, 3, 4…)", "linear")
-        self._stack_spacing.addItem("Quadratic (1, 2, 4, 7…)", "quadratic")
+        self._stack_spacing.addItem("Quadratic (1, 4, 9, 16…)", "quadratic")
         self._stack_spacing.addItem("Exponential (1, 2, 4, 8…)", "exponential")
         _cur_spacing = getattr(cfg, "stack_spacing_mode", "linear")
         _idx = self._stack_spacing.findData(_cur_spacing)
         if _idx >= 0:
             self._stack_spacing.setCurrentIndex(_idx)
         self._stack_spacing.setToolTip(
-            "Spacing model for successive Stack tranches. The "
-            "sequences show Δp in units of Split Distance between "
-            "consecutive tranches."
+            "Spacing model for successive Stack tranches. Each "
+            "sequence is the cumulative distance from the anchor, "
+            "in units of Split Distance."
         )
         self._stack_spacing.currentIndexChanged.connect(
             lambda: self._mark_changed(
