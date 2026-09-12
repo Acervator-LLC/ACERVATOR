@@ -1377,6 +1377,18 @@ half = detect_frac * 0.5
 return (0.5 - half, 0.5 + half)
 ```
 
+Driven on one 40-candle tape, both marks move with the figure: 10 gave 0.45 and
+0.55, 50 gave 0.25 and 0.75, 75 gave 0.125 and 0.875, and 90 gave 0.05 and 0.95.
+The tick reads the pair twice, and the upper mark is a hard gate. On a tape at
+band position 0.75 the figure at 75 held the scrum and named two blockers, and
+the same tape at 40 cleared both and armed it.
+
+`src/trading/scrumming_bot.py` — the two readings in one tick
+
+```python
+_bb_lower_dt_pre, _bb_upper_dt_pre = self._bb_detect_thresholds()
+```
+
 Fire Threshold - The final Bollinger Band approach metric. Once satisfied, the bot can fire a trade.
 
 A percentage from 0.10 to 10.00, at 0.50 % to start. It measures distance from
@@ -1393,6 +1405,18 @@ self._scrum_fire_pct.setSuffix(" %")
 self._scrum_fire_pct.setValue(0.5)
 ```
 
+The ramp's near-band test is the only place this figure lands. Driven on one tape
+at band position 0.75, 0.50 % and 2.00 % each left the ramp short of FIRE and the
+scrum blocked; 10.00 % took the ramp from SEARCH to FIRE in one tick and removed
+that blocker.
+
+`src/trading/scrumming/tick_phases.py` — the near-band test
+
+```python
+fire_pct_frac = self.config.scrum_fire_pct / 100.0
+_near_band = abs(_price - _bb_upper) <= fire_pct_frac * _bb_upper
+```
+
 BB Midline Gate - This is another, perhaps redundant layer, of Bollinger Band travel protection. It is different in that it is concerned with distance from the midline instead of the entire local width.
 
 A checkbox, on at the start. While it is on, a scrum fires only above the
@@ -1403,6 +1427,22 @@ midline and a fold only below it.
 ```python
 self._bb_midline_gate = QCheckBox("BB Midline Gate")
 self._bb_midline_gate.setChecked(True)
+```
+
+Driven on one tape at band position 0.27 with the position above target: on, the
+tick refused the scrum and named the band gate in its blocker list; off, that
+blocker was gone. The fold half of the same reading stayed open both ways,
+because the price sat below the midline.
+
+`src/trading/scrumming_bot.py` — the midline block
+
+```python
+if self.config.bb_midline_gate:
+    scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
+    fold_ok_midline = bb_pos < 0.50
+else:
+    scrum_ok = not self._phantom_locked
+    fold_ok_midline = True
 ```
 
 Read Rate - To be re-evaluated.
@@ -1425,6 +1465,19 @@ if self.config.scrum_read_rate_min > 0 and not self._manual_fire_pending:
         self._tick_skip = max(1, _base_skip // 10)
     else:
         self._tick_skip = _base_skip
+```
+
+The tick itself runs every five seconds, so the figure in minutes becomes a count
+of skipped ticks. Driven over eighty ticks: 1 minute skipped 12 and worked 6, 5
+minutes skipped 60 and worked 1, and 60 minutes skipped 720 and worked none. A
+skipped tick fetches no price and runs no gate.
+
+`src/trading/scrumming_bot.py` — the tick period the count divides
+
+```python
+@property
+def tick_interval(self) -> float:
+    return 5.0
 ```
 
 Band Travel - Previously described. To be re-evaluated.
@@ -1450,6 +1503,19 @@ if (
     band_travel_triggered = True
 ```
 
+Driven on one rising tape where 95 % of the last twenty candles closed up, with
+price 37 % of the band width above the last trade: 0 left the trend hold in place
+and suppressed the scrum, 30 raised the trigger and the override released it, and
+70 left the hold in place again, because 37 is under 70. The figure decides, not
+an on and an off.
+
+`src/trading/scrumming_bot.py` — the override the trigger feeds
+
+```python
+trend_override = abs(delta) >= _interval_usd * 2.0 or band_travel_triggered
+if trend_hold and trend_override:
+```
+
 BB Bullseye Check - If current price and Bollinger Band thresholds are equal, the user can opt to perform a double-sized trade.
 
 A checkbox, on at the start.
@@ -1459,6 +1525,46 @@ A checkbox, on at the start.
 ```python
 self._bb_bullseye = QCheckBox("BB Bullseye Check")
 self._bb_bullseye.setChecked(True)
+```
+
+A double size is not in the engine. Nothing sizes a trade off this box. Its one
+decision reader counts a band touch within 0.5 %, or a candle wick within 0.2 %,
+as band proximity, and proximity with the delta at or over the interval arms the
+BB priority skew. Driven on one tape with price at the upper band, on emitted the
+skew and took the confidence floor from 0.25 to 0.1923; off emitted nothing and
+left the floor where it was.
+
+`src/trading/scrumming_bot.py` — the band touch the box admits
+
+```python
+_bb_proximity_upper = (
+    (bb_pos >= _bb_upper_dt_pre) or _be_upper or _be_upper_wick
+)
+```
+
+It does not bypass the Fire Threshold. Driven with price 0.3 % under the upper
+band and the Fire Threshold at its lowest 0.10 %, the ramp stayed short of FIRE
+with the box on and with it off, and the scrum carried the same blocker both ways.
+What changes is the floor the TA confidence must clear.
+
+`src/trading/scrumming_bot.py` — the floor the skew divides
+
+```python
+_ta_conf_skew = position_boost + bb_confidence_boost
+if _bb_priority_arm:
+    _ta_conf_skew += _BB_PRIORITY_SKEW
+_eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
+```
+
+The second reader writes the two BULLSEYE notices onto the Activity Log and
+changes no decision.
+
+`src/trading/scrumming/tick_phases.py` — the notice reader
+
+```python
+if bullseye_upper or bullseye_upper_wick:
+    _ramp = self._scrum_target_mode.upper()
+    _fire_gate = "passes" if _ramp == "FIRE" else "holds"
 ```
 
 Wire Inflow Stack - To be re-evaluated.
@@ -1486,6 +1592,39 @@ _stack_reason = ""
 _target = 0.0
 _entry_px = 0.0
 if stack_pct > 0:
+```
+
+Bot creation passes it now. One declaration serves the wizard path and the restore
+path together, so every field the config declares reaches a new bot. Driven
+through the creation route the wizard uses, a stored 0.00 arrived on the bot as
+0.00 rather than the declared 1.00, which is what the sentence above was written
+against.
+
+`src/trading/container/config.py` — the one carried set
+
+```python
+carried = {f.name for f in fields(BotConfig)} - foreign - {"mode"}
+kwargs = {
+    key: value
+    for key, value in _sanitize_deprecated_kwargs(collected).items()
+    if key in carried
+}
+```
+
+The caller is live. A fold routes its compounded profit through Smart Wire, which
+hands the share to the target bot, and that is where this figure decides. Driven
+on one bot sitting at its target and at its entry price, 0.00 parked ten dollars
+as pending and left the target at 200.00, while 1.00 stacked it, took the target
+to 210.00 and queued ten dollars for the next tick.
+
+`src/trading/scrumming/tick_phases.py` — the live caller
+
+```python
+mgr.distribute_fold_profit(
+    source_id=self.bot_id,
+    profit_usd=float(_growth_applied),
+    ref=f"fold-compound@{buy_fill:.8f}",
+)
 ```
 
 Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.

@@ -665,10 +665,11 @@ class SettingsTabMixin:
         self._bullseye = QCheckBox("BB Bullseye Check")
         self._bullseye.setChecked(bool(cfg.bb_bullseye_check))
         self._bullseye.setToolTip(
-            "Rapid Fire override when price touches BB band within 0.5% "
-            "(or the candle wick reaches within 0.2%).\n"
-            "When triggered, bypasses the fire threshold — bullseye "
-            "alone can arm a fire, subject to midline gate."
+            "Counts a band touch within 0.5% (or a candle wick within "
+            "0.2%) as BB proximity.\n"
+            "With the delta at or over the interval that arms the BB "
+            "priority skew, which lowers the TA confidence floor. The "
+            "fire threshold and the midline gate are unchanged."
         )
         self._bullseye.toggled.connect(
             lambda v: self._mark_changed("bb_bullseye_check", v)

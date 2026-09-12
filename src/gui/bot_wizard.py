@@ -953,11 +953,11 @@ if _HAS_QT:
             self._bb_bullseye = QCheckBox("BB Bullseye Check")
             self._bb_bullseye.setChecked(True)
             self._bb_bullseye.setToolTip(
-                "Rapid Fire override when price touches BB band "
-                "within 0.5 % (or the candle wick reaches within "
-                "0.2 %). When triggered, bypasses the fire threshold "
-                "— bullseye alone can arm a fire, subject to midline "
-                "gate."
+                "Counts a band touch within 0.5 % (or a candle wick "
+                "within 0.2 %) as BB proximity. With the delta at or "
+                "over the interval that arms the BB priority skew, "
+                "which lowers the TA confidence floor. The fire "
+                "threshold and the midline gate are unchanged."
             )
             af.addRow(self._bb_bullseye)
 
