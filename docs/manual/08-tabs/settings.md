@@ -3490,4 +3490,167 @@ engine. The earlier text stays where it is.
 | "Profit Folding Target - Chooses which buy positions a fold reaches: all of them, a counted number of them, or the most recent." | No fold chooses a set of buy positions. A fold reaches the tranches whose reference price is above the market and discharges them in price order. |
 | "Three radio buttons and the count box the middle one gates." | The count box is live with any of the three radios ticked. |
 
+## 2026-09-12 - Fold to X# of buy positions takes the whole target group off the page
+
+The Profit Folding page carried one master checkbox and two groups of radio
+buttons. The `Profit Folding Target` group is removed, all four controls
+together: the three radio buttons and the count box inside them. The group
+offered a choice of which buy positions a fold reaches and a number for the
+middle choice. No fold in the engine offers that choice, and no fold counts the
+positions it reaches.
+
+Three files declared the group and every declaration is gone.
+
+| File | What it declared |
+| ---- | ---------------- |
+| `src/core/settings.py` | `FoldTarget`, and the `fold_target` and `fold_target_count` fields on `ProfitFoldingSettings` |
+| `src/gui/settings_dialog.py` | `FOLD_TARGET_BUTTONS`, the `QGroupBox` with its three `QRadioButton`s and its `QSpinBox`, and the two `_stored_groups` rows |
+| `src/gui/main_tabs/settings_dialog_surface.py` | `FOLD_GROUP_TITLE`, `FOLD_ALL`, `FOLD_X`, `FOLD_RECENT`, `FOLD_TARGET_BUTTONS`, the four control specs, the `GROUPS` entry, the Profit Folding layout step, and the two `_folding_rows` entries |
+
+`FOLD_COUNT_DEFAULT` stays, because the sell-side count row reads it.
+
+### The four controls the group held
+
+| The control | What it stored |
+| ----------- | -------------- |
+| the radio `fold_all`, "Fold to ALL buy positions", checked at build | `profit_folding.fold_target` as `all_buy` |
+| the radio `fold_x`, "Fold to X# of buy positions:" | the same key as `x_buy` |
+| the radio `fold_recent`, "Fold to most recent buy positions" | the same key as `most_recent_buy` |
+| the spin `fold_x_count`, 1 to 100, at 5, with no label and no text | `profit_folding.fold_target_count` |
+
+The spin carried the group title of the three radios and shared one layout row
+with `fold_x`. Every word beside it on screen belonged to that radio, so the
+count had no words of its own and no meaning apart from the choice it sized.
+
+### What the number was meant to count
+
+The bare name `fold_target_count` appears at 11 sites across the 1077 tracked
+files outside `dist/` and `docs-archive/`: three declared this row, two belong to
+the bot wizard's own count, and six are the strip list and this manual quoting
+it. Six read shapes were spelled for the name and each returned nothing.
+
+| Read shape | Sites |
+| ---------- | ----: |
+| `getattr(x, "fold_target_count", ...)` | 0 |
+| `getattr(bot.config, "fold_target_count", ...)` | 0 |
+| `x["fold_target_count"]` | 0 |
+| `get_nested(..., "fold_target_count")` | 0 |
+| `get(..., "fold_target_count")` | 0 |
+| `cfg.fold_target_count` | 0 |
+
+The same six shapes, spelled for the sibling key `profit_folding_active`, return
+17 sites over the same files, so the zeros read the repository rather than a
+blind search.
+
+`fold_target` and `fold_target_count` both stay in `_DEPRECATED_KWARGS` at
+`src/trading/container/config.py:387-388`, so a `bot_state.json` still carrying
+either restores without a `TypeError`. `BotConfig` declares neither name as a
+field, and `_sanitize_deprecated_kwargs` drops both before `BotConfig.__init__`.
+
+### One dollar cap bounds a fold, and no count does
+
+`src/trading/scrumming/tick_phases.py:1494-1534` is the live fold-back route. It
+asks `_fold_eligible_tranches` which queued tranches the market price reaches,
+sorts them by `initial_buy_price`, then hands the sorted list and one dollar
+figure to `_plan_fold_consumption` at
+`src/trading/scrumming/fold_tranches.py:123`. That dollar figure is
+`cycle_growth_cap_usd` less what the cycle has already consumed.
+
+Driven over five queued tranches at refs 150 down to 110, on a bot config
+carrying `fold_target_count = 2`:
+
+| What was asked | Tranches the fold reached |
+| -------------- | ------------------------: |
+| a cap of $1000 | 5 of 5 |
+| a cap of $25 | 3 of 5, one of them part-consumed |
+| a cap of $0 | 0 of 5 |
+
+The stored count of 2 narrowed nothing. The two tighter caps show the reading can
+report a narrowed plan, so the unnarrowed plan at $1000 is a reading.
+
+`_fold_eligible_tranches` narrows by price alone: at a market price of 100 it
+returned all five, and at 135 it returned the two tranches above that price.
+`_fold_discharge_order` returned the five in `ref` order, highest first. The same
+five rows in `created_ts` order, newest first, are the reverse of that, so "most
+recent" is not the order the queue discharges in.
+
+`_spread_wire_usd_over_fold_queue` handed each of the five the same $10 share out
+of $50. The share is the dollars divided by the tranche count, it is fed by wire
+income rather than by a fold, and it reaches every standing tranche.
+
+`fold_ladder_prices` at `src/trading/stack_math.py:304` takes `levels`, which
+counts prices on a ladder. `fold_ladder_prices(100.0, 4)` returned four prices
+and decided no size and no position.
+
+### Nine calls that refused a counted fold
+
+Each live fold path was asked for a count or a target by keyword.
+
+| The call | What it did |
+| -------- | ----------- |
+| `_plan_fold_consumption(eligible, cap, count=2)` | `TypeError`, unexpected keyword argument |
+| `_plan_fold_consumption(eligible, cap, fold_target_count=2)` | `TypeError`, unexpected keyword argument |
+| `_fold_eligible_tranches(100.0, 1.0, count=2)` | `TypeError`, unexpected keyword argument |
+| `_fold_eligible_tranches(100.0, 1.0, fold_target='x_buy')` | `TypeError`, unexpected keyword argument |
+| `_fold_discharge_order(count=2)` | `TypeError`, unexpected keyword argument |
+| `_fold_discharge_order(most_recent_first=True)` | `TypeError`, unexpected keyword argument |
+| `_spread_wire_usd_over_fold_queue(30.0, [], count=2)` | `TypeError`, unexpected keyword argument |
+| `apply_profit_fold(..., fold_target_count=2)` | `TypeError`, unexpected keyword argument |
+| `apply_profit_fold(..., target='x_buy')` | `TypeError`, a word compared against a number |
+
+The `target` parameter of `apply_profit_fold` is a dollar balance, not one of
+this group's three words, and `src/trading/profit_fold.py` records in its own
+module docstring that no module imports it.
+
+### A five-key store opening on three rows
+
+`SettingsManager._apply_dict` copies the whole `profit_folding` dict off the
+file, so a store written before the removal still carries its `fold_target` and
+`fold_target_count` entries and still opens. The page reads back the three keys
+it has rows for, and the next Save writes the group without the other two.
+
+| | before the removal | after the removal |
+| --- | --- | --- |
+| the dialog built | yes | yes |
+| control specs in the payload | 67 | 63 |
+| control specs on the Profit Folding tab | 9 | 5 |
+| control specs in the `Profit Folding Target` group | 4 | 0 |
+| a `Profit Folding Target` group is drawn | yes | no |
+| an `Upward Distribution Target` group is drawn | yes | yes |
+| groups declared on the surface | 12 | 11 |
+| rows the `profit_folding` group declares | 5 | 3 |
+| `ProfitFoldingSettings` fields | 5 | 3 |
+| keys a legacy store's group holds on opening | 5 | 5 |
+| keys the group holds after one Save | 5 | 3 |
+| warning boxes raised | 0 | 0 |
+| `active` read back off a legacy store | `False` | `False` |
+| `distribute_target` | `x_sell` | `x_sell` |
+| `distribute_target_count` | `7` | `7` |
+| `username` beside the group | `u18_driver` | `u18_driver` |
+| `bot_visibility` beside the group | `internal` | `internal` |
+
+Every one of the three remaining siblings reads back at its stored value and
+survives a Save that changed nothing. No holder named `_fold_all`, `_fold_x`,
+`_fold_x_count` or `_fold_recent` exists on the dialog any more, while
+`_dist_x_count` still does.
+
+### The sentences both rows leave behind
+
+Each sentence below stands in an earlier section and no longer describes the
+page. The earlier text stays where it is.
+
+| Earlier sentence | What the page does now |
+| ---------------- | ---------------------- |
+| "One master checkbox and three groups of radio buttons, eleven controls in all." | One master checkbox and one group of radio buttons, five controls in all. |
+| "Profit Folding Target - Chooses which buy positions a fold reaches", the two sentences and the code block under it | The page carries no `Profit Folding Target` group. |
+| "Three radio buttons and the count box the middle one gates." | Neither the radios nor the count box exists, so nothing is left to gate. |
+| "Fold to X# of buy positions - Sets that counted number. Key `fold_target_count`, 1 to 100, at 5." | The page sets no count, and one dollar cap bounds how many tranches a fold reaches. |
+| "Save collapses the two target groups into one dictionary." | Save collapses one target group, the sell side. |
+| "Four of the six keys then fail a second time further down: the two target names and their two counts are four of the eleven the bot factory strips." | Two of the three keys the page still stores are on the strip list: `distribute_target` and `distribute_target_count`. |
+| "\| Profit Folding \| 11 \| the whole group \| the whole group \|" in [What each page restores now](#what-each-page-restores-now) | Five controls, and three keys in the group. |
+| "\| Profit Folding \| Distribution Mode, Profit Folding Target, Fold to X# of buy positions, Upward Distribution Target, Distribute to X# of sell positions \|" | Two rows on this page, Upward Distribution Target and Distribute to X# of sell positions. |
+
+The master switch above the removed group gated four rows. It gates two now, and
+the two are Upward Distribution Target and Distribute to X# of sell positions.
+
 Back to [the subsystem index](README.md).

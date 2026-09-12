@@ -177,7 +177,6 @@ CRYPTO_ADD_GROUP = "Add Crypto Exchange"
 STOCK_ADD_GROUP = "Add Stock Broker"
 REMOVE_BUTTON_TEXT = "Remove Selected"
 
-FOLD_GROUP_TITLE = "Profit Folding Target"
 DIST_GROUP_TITLE = "Upward Distribution Target"
 LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
 FONT_GROUP_TITLE = "Font Settings"
@@ -397,9 +396,6 @@ SOUND_CONFIG_FIELDS = (
     ("drip_sound", "sound_drip"),
 )
 
-FOLD_ALL = "all_buy"
-FOLD_X = "x_buy"
-FOLD_RECENT = "most_recent_buy"
 DIST_ALL = "all_sell"
 DIST_X = "x_sell"
 DIST_RECENT = "most_recent_sell"
@@ -477,11 +473,6 @@ SETTING_LOAD_KEYS = tuple(
 )
 
 # Read order decides the stored value when more than one button is ticked.
-FOLD_TARGET_BUTTONS = (
-    ("fold_x", FOLD_X),
-    ("fold_recent", FOLD_RECENT),
-    ("fold_all", FOLD_ALL),
-)
 DIST_TARGET_BUTTONS = (
     ("dist_x", DIST_X),
     ("dist_recent", DIST_RECENT),
@@ -623,42 +614,6 @@ CONTROL_SPECS = (
         "name": "folding_active",
         "kind": CHECK,
         "text": "Profit Folding / Upward Distribution Active",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": FOLD_GROUP_TITLE,
-        "label": None,
-        "name": "fold_all",
-        "kind": RADIO,
-        "text": "Fold to ALL buy positions",
-        "checked": True,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": FOLD_GROUP_TITLE,
-        "label": None,
-        "name": "fold_x",
-        "kind": RADIO,
-        "text": "Fold to X# of buy positions:",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": FOLD_GROUP_TITLE,
-        "label": None,
-        "name": "fold_x_count",
-        "kind": SPIN,
-        "range": (1, 100),
-        "value": 5,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": FOLD_GROUP_TITLE,
-        "label": None,
-        "name": "fold_recent",
-        "kind": RADIO,
-        "text": "Fold to most recent buy positions",
         "checked": False,
     },
     {
@@ -1175,7 +1130,6 @@ CONTROL_SPECS = (
 
 GROUPS = (
     (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
-    (FOLDING_TAB, FOLD_GROUP_TITLE),
     (FOLDING_TAB, DIST_GROUP_TITLE),
     (PHANTOM_TAB, LOCK_GROUP_TITLE),
     (THEME_TAB, FONT_GROUP_TITLE),
@@ -1373,18 +1327,6 @@ LAYOUT = {
         COLUMN,
         (
             (CONTROL, "folding_active"),
-            (
-                GROUP,
-                FOLD_GROUP_TITLE,
-                (
-                    COLUMN,
-                    (
-                        (CONTROL, "fold_all"),
-                        (ROW, ((CONTROL, "fold_x"), (CONTROL, "fold_x_count"))),
-                        (CONTROL, "fold_recent"),
-                    ),
-                ),
-            ),
             (
                 GROUP,
                 DIST_GROUP_TITLE,
@@ -2209,14 +2151,6 @@ class SettingsDialogModel:
              partial(self._pair_value, "folding_active"),
              partial(self._show_stored, "folding_active"),
              FOLDING_ACTIVE_DEFAULT),
-            ("fold_target",
-             partial(self._picked, FOLD_TARGET_BUTTONS, FOLD_ALL),
-             lambda value: self._show_picked(FOLD_TARGET_BUTTONS, value, FOLD_ALL),
-             FOLD_ALL),
-            ("fold_target_count",
-             partial(self._pair_value, "fold_x_count"),
-             partial(self._show_stored, "fold_x_count"),
-             FOLD_COUNT_DEFAULT),
             ("distribute_target",
              partial(self._picked, DIST_TARGET_BUTTONS, DIST_ALL),
              lambda value: self._show_picked(DIST_TARGET_BUTTONS, value, DIST_ALL),
