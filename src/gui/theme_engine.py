@@ -394,6 +394,18 @@ THEMES: dict[str, ThemeTokens] = {
     for t in [CYBERPUNK_DARK, NEON_LIGHT, CLASSIC_TERMINAL, MINIMAL_MODERN, GLASS_METAL]
 }
 
+#: The theme name every store read falls back to.
+DEFAULT_THEME_NAME = CYBERPUNK_DARK.name
+
+
+def stored_theme(name: object) -> str:
+    """Return ``name`` when ``THEMES`` holds it, else ``DEFAULT_THEME_NAME``.
+
+    ``ThemeManager.apply_theme`` raises for a name the table lacks, so the
+    store reads in ``main`` and in the main window pass through here.
+    """
+    return name if isinstance(name, str) and name in THEMES else DEFAULT_THEME_NAME
+
 
 # QSS generator
 def generate_qss(theme: ThemeTokens) -> str:
