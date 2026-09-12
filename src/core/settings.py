@@ -17,6 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
+from .sms_engine import SMSConfig
 from .sound_engine import SoundConfig
 
 try:
@@ -149,6 +150,10 @@ class AppSettings:
     # The Sound page's nine switches and its volume.
     # sound_engine.sound_config_from_settings reads this group back.
     sound: dict = field(default_factory=lambda: asdict(SoundConfig()))
+
+    # The SMS page's twenty-two values.
+    # sms_engine.sms_config_from_settings reads this group back.
+    sms: dict = field(default_factory=lambda: asdict(SMSConfig()))
 
 
 _DEFAULT_DIR = Path.home() / ".acervator"

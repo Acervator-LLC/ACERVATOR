@@ -2237,6 +2237,118 @@ twilio_auth_token: str = ""
 twilio_from_number: str = ""
 ```
 
+The page persists now. Save writes one stored group and the dialog reads that
+group back on the way in, so every row reopens on the figure it was left at.
+
+`src/core/settings.py` — the SMS group the schema declares
+
+```python
+    # The SMS page's twenty-two values.
+    # sms_engine.sms_config_from_settings reads this group back.
+    sms: dict = field(default_factory=lambda: asdict(SMSConfig()))
+```
+
+One list pairs each stored field with the control carrying it, and the save and
+the load both walk that list, so no row can be written without also being read.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — the first rows of the pairing
+
+```python
+SMS_CONFIG_FIELDS = (
+    ("enabled", "sms_enabled"),
+    ("provider", "sms_provider"),
+    ("phone_number", "sms_phone"),
+```
+
+The stored group reaches the engine at two moments. The startup path hands it
+over before the first fill, and the window hands it over again when the dialog
+saves, so a changed figure applies without a restart.
+
+`main.py` — the startup push, before the first fill
+
+```python
+    get_sms_engine().update_config(
+        sms_config_from_settings(settings.get("sms", {}))
+    )
+```
+
+Each provider entry carries a short code beside its printed label, and the
+picker stores the code rather than the label. The send path tests that code, so
+the Twilio entry reaches the Twilio route and the gateway entry reaches the mail
+route.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — the two provider entries
+
+```python
+SMS_PROVIDERS = (
+    ("Email-to-SMS Gateway", EMAIL_GATEWAY),
+    ("Twilio API", TWILIO),
+)
+```
+
+Carrier has a stored field of its own. With the Gateway Email row left blank,
+the carrier and the phone number build the address between them: a gateway takes
+the national digits alone, so a leading country digit is dropped and a number of
+any other length answers nothing. The manual choice at the end of the list
+answers nothing by design, and an address typed by hand is always kept.
+
+`src/core/sms_engine.py` — the address a carrier builds
+
+```python
+def gateway_address(carrier: str, number: str) -> str:
+    template = CARRIER_GATEWAYS.get(carrier, "")
+    if not template:
+        return ""
+```
+
+Five rows are new. Three fill the Twilio credentials the send path reads, with
+the auth token masked like the mailbox password above it, and two set the mail
+server and the port the email route opens. The page holds twenty-two controls
+now, one for every field of the message configuration.
+
+`src/gui/settings_dialog.py` — the mail server and port rows
+
+```python
+self._sms_smtp_server = QLineEdit()
+self._sms_smtp_server.setMinimumHeight(28)
+self._sms_smtp_server.setPlaceholderText(built.smtp_server)
+pf.addRow("Mail Server:", self._sms_smtp_server)
+```
+
+The figure that set what counts as a low balance is gone. No row set it, nothing
+read it, and no sentence above asks for one, so the low balance row carries its
+switch alone as it always did. A settings file still holding the old key loads
+with every other value intact, and the engine names the key it dropped.
+
+`src/core/sms_engine.py` — the line the engine prints for a name it does not hold
+
+```python
+        logger.warning("sms %r is not a message setting; ignored", name)
+```
+
+A value the engine cannot use is refused instead of reaching it. A provider
+outside the two entries, a switch that is neither on nor off, a cap or a
+cooldown outside its range, and a carrier with no gateway are each dropped with
+a line on the log and the build figure kept.
+
+`src/core/sms_engine.py` — the range each numeric row may hold
+
+```python
+FIELD_BOUNDS: dict[str, tuple[float, float]] = {
+    "smtp_port": (1, 65535),
+    "pl_threshold_amount": (1.0, 100000.0),
+    "max_messages_per_hour": (1, 100),
+    "cooldown_seconds": (5, 300),
+}
+```
+
+The eight event rows wait on a trigger. Each one names an event type the engine
+checks before it sends, and nothing in the application calls the send method
+with one of those types, so no fill, no bot state and no venue error reaches a
+message yet.
+
+In development.
+
 ### Settings > AI Monitor
 
 ![Settings, the AI Monitor page.](p44-i0.png)

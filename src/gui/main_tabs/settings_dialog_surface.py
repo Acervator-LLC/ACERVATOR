@@ -38,6 +38,13 @@ from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines
 from ...core.settings import AppSettings
+from ...core.sms_engine import (
+    CARRIER_GATEWAYS,
+    EMAIL_GATEWAY,
+    FIELD_BOUNDS,
+    TWILIO,
+    SMSConfig,
+)
 from ...trading.ta_engine import DEFAULT_WEIGHTS
 from ..color_alpha import ALPHA_HIGHEST, rgba
 
@@ -263,19 +270,19 @@ THEME_ITEMS = (
     ("Glass & Metal", "glass_metal"),
 )
 
-CARRIER_NAMES = (
-    "AT&T",
-    "T-Mobile",
-    "Verizon",
-    "Sprint",
-    "US Cellular",
-    "Cricket",
-    "Boost",
-    "Metro PCS",
-    "Google Fi",
-    "Other (Manual)",
+#: Read off CARRIER_GATEWAYS so the picker cannot offer a name the engine has
+#: no gateway template for.
+CARRIER_NAMES = tuple(CARRIER_GATEWAYS)
+
+#: The engine's own opening figures, so the page declares no second set.
+SMS_BUILT = SMSConfig()
+
+#: The printed label beside the value the send path tests, so the picker stores
+#: a provider the engine routes on.
+SMS_PROVIDERS = (
+    ("Email-to-SMS Gateway", EMAIL_GATEWAY),
+    ("Twilio API", TWILIO),
 )
-SMS_PROVIDERS = ("Email-to-SMS Gateway", "Twilio API")
 SMS_FORM_SPACING_PX = 6
 SMS_FORM_MARGINS = (8, 16, 8, 8)
 SMS_CONTENT_SPACING_PX = 8
@@ -390,6 +397,34 @@ SOUND_CONFIG_FIELDS = (
 SOUND_GROUP_KEY = "sound"
 VOLUME_FIELD = "volume"
 VOLUME_NAME = "sound_volume"
+
+#: One entry per SMSConfig field the SMS page sets: the field, and the control
+#: carrying it. The save and the load both walk this list.
+SMS_CONFIG_FIELDS = (
+    ("enabled", "sms_enabled"),
+    ("provider", "sms_provider"),
+    ("phone_number", "sms_phone"),
+    ("twilio_sid", "sms_twilio_sid"),
+    ("twilio_auth_token", "sms_twilio_token"),
+    ("twilio_from_number", "sms_twilio_from"),
+    ("carrier", "sms_carrier"),
+    ("gateway_email", "sms_gateway"),
+    ("smtp_server", "sms_smtp_server"),
+    ("smtp_port", "sms_smtp_port"),
+    ("smtp_username", "sms_smtp_user"),
+    ("smtp_password", "sms_smtp_pass"),
+    ("notify_buy_fills", "sms_buy"),
+    ("notify_sell_fills", "sms_sell"),
+    ("notify_bot_state_changes", "sms_state"),
+    ("notify_errors", "sms_errors"),
+    ("notify_pl_threshold", "sms_pl"),
+    ("pl_threshold_amount", "sms_pl_amount"),
+    ("notify_balance_warning", "sms_balance"),
+    ("notify_connection_status", "sms_connection"),
+    ("max_messages_per_hour", "sms_max_hour"),
+    ("cooldown_seconds", "sms_cooldown"),
+)
+SMS_GROUP_KEY = "sms"
 
 TA_WEIGHT_GROUP_KEY = "ta_indicator_weights"
 
@@ -754,7 +789,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "sms_enabled",
         "kind": CHECK,
         "text": "Enable SMS notifications",
-        "checked": False,
+        "checked": SMS_BUILT.enabled,
         "tooltip": "Send text messages to your phone for trading events",
     },
     {
@@ -762,7 +797,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Provider:",
         "name": "sms_provider",
-        "kind": COMBO_TEXT,
+        "kind": COMBO_DATA,
         "items": SMS_PROVIDERS,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
     },
@@ -774,6 +809,34 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "+15551234567",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Twilio Account SID:",
+        "name": "sms_twilio_sid",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "AC...",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Twilio Auth Token:",
+        "name": "sms_twilio_token",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "echo": "password",
+        "placeholder": "Auth token from the Twilio console",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Twilio From Number:",
+        "name": "sms_twilio_from",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "+15559876543",
     },
     {
         "tab": SMS_TAB,
@@ -815,12 +878,31 @@ CONTROL_SPECS: tuple[dict, ...] = (
     },
     {
         "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Mail Server:",
+        "name": "sms_smtp_server",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": SMS_BUILT.smtp_server,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Mail Port:",
+        "name": "sms_smtp_port",
+        "kind": SPIN,
+        "range": FIELD_BOUNDS["smtp_port"],
+        "value": SMS_BUILT.smtp_port,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+    },
+    {
+        "tab": SMS_TAB,
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_buy",
         "kind": CHECK,
         "text": "Buy fills",
-        "checked": True,
+        "checked": SMS_BUILT.notify_buy_fills,
     },
     {
         "tab": SMS_TAB,
@@ -829,7 +911,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "sms_sell",
         "kind": CHECK,
         "text": "Sell fills",
-        "checked": True,
+        "checked": SMS_BUILT.notify_sell_fills,
     },
     {
         "tab": SMS_TAB,
@@ -838,7 +920,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "sms_state",
         "kind": CHECK,
         "text": "Bot state changes (start/stop/error)",
-        "checked": True,
+        "checked": SMS_BUILT.notify_bot_state_changes,
     },
     {
         "tab": SMS_TAB,
@@ -847,7 +929,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "sms_errors",
         "kind": CHECK,
         "text": "API errors and failures",
-        "checked": True,
+        "checked": SMS_BUILT.notify_errors,
     },
     {
         "tab": SMS_TAB,
@@ -856,7 +938,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "sms_pl",
         "kind": CHECK,
         "text": "P/L threshold alerts",
-        "checked": False,
+        "checked": SMS_BUILT.notify_pl_threshold,
     },
     {
         "tab": SMS_TAB,
@@ -864,8 +946,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "label": "P/L threshold:",
         "name": "sms_pl_amount",
         "kind": DOUBLE_SPIN,
-        "range": (1.0, 100000.0),
-        "value": 100,
+        "range": FIELD_BOUNDS["pl_threshold_amount"],
+        "value": SMS_BUILT.pl_threshold_amount,
         "prefix": "$",
         "min_height": SMS_CONTROL_MIN_HEIGHT,
     },
@@ -876,7 +958,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "sms_balance",
         "kind": CHECK,
         "text": "Low balance warnings",
-        "checked": False,
+        "checked": SMS_BUILT.notify_balance_warning,
     },
     {
         "tab": SMS_TAB,
@@ -885,7 +967,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "sms_connection",
         "kind": CHECK,
         "text": "Exchange connection status",
-        "checked": False,
+        "checked": SMS_BUILT.notify_connection_status,
     },
     {
         "tab": SMS_TAB,
@@ -893,8 +975,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "label": "Max messages per hour:",
         "name": "sms_max_hour",
         "kind": SPIN,
-        "range": (1, 100),
-        "value": 20,
+        "range": FIELD_BOUNDS["max_messages_per_hour"],
+        "value": SMS_BUILT.max_messages_per_hour,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
     },
     {
@@ -903,8 +985,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "label": "Min time between messages:",
         "name": "sms_cooldown",
         "kind": SPIN,
-        "range": (5, 300),
-        "value": 30,
+        "range": FIELD_BOUNDS["cooldown_seconds"],
+        "value": SMS_BUILT.cooldown_seconds,
         "suffix": " sec",
         "min_height": SMS_CONTROL_MIN_HEIGHT,
     },
@@ -1246,11 +1328,16 @@ LAYOUT = {
                         (
                             (CONTROL, "sms_provider"),
                             (CONTROL, "sms_phone"),
+                            (CONTROL, "sms_twilio_sid"),
+                            (CONTROL, "sms_twilio_token"),
+                            (CONTROL, "sms_twilio_from"),
                             (LABEL, SMS_GATEWAY_HEADING),
                             (CONTROL, "sms_carrier"),
                             (CONTROL, "sms_gateway"),
                             (CONTROL, "sms_smtp_user"),
                             (CONTROL, "sms_smtp_pass"),
+                            (CONTROL, "sms_smtp_server"),
+                            (CONTROL, "sms_smtp_port"),
                         ),
                     ),
                 ),
@@ -2009,6 +2096,18 @@ class SettingsDialogModel:
             ),
         )
 
+    def _sms_rows(self) -> tuple:
+        """Every ``sms`` key, from the one list naming its controls."""
+        return tuple(
+            (
+                key,
+                partial(self._pair_value, name),
+                partial(self._show_stored, name),
+                getattr(SMS_BUILT, key),
+            )
+            for key, name in SMS_CONFIG_FIELDS
+        )
+
     def _stored_groups(self) -> tuple:
         """Every group the dialog persists as one key, with the rows inside it."""
         return (
@@ -2016,6 +2115,7 @@ class SettingsDialogModel:
             (AI_GROUP_KEY, self._ai_rows()),
             (TA_WEIGHT_GROUP_KEY, self._ta_weight_rows()),
             (SOUND_GROUP_KEY, self._sound_rows()),
+            (SMS_GROUP_KEY, self._sms_rows()),
         )
 
     def _load_current(self) -> None:

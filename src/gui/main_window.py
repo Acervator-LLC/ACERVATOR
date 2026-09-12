@@ -2857,6 +2857,14 @@ if _HAS_QT:
             theme = stored_theme(self._settings.get("theme", DEFAULT_THEME_NAME))
             self._switch_theme(theme, self._stored_accent())
 
+            # A saved SMS page reaches the engine here, so a changed number or
+            # switch applies without a restart.
+            from src.core.sms_engine import get_sms_engine, sms_config_from_settings
+
+            get_sms_engine().update_config(
+                sms_config_from_settings(self._settings.get("sms", {}))
+            )
+
             ai_cfg = self._settings.get("ai_monitor", {})
             if self._bot_manager:
                 self._bot_manager.configure_live_monitor(ai_cfg)

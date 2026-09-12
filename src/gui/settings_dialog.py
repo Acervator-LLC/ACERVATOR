@@ -742,9 +742,15 @@ if _HAS_QT:
             pf.setSpacing(6)
             pf.setContentsMargins(8, 16, 8, 8)
 
+            from src.core.sms_engine import CARRIER_GATEWAYS, FIELD_BOUNDS, SMSConfig
+            from src.gui.main_tabs.settings_dialog_surface import SMS_PROVIDERS
+
+            built = SMSConfig()
+
             self._sms_provider = QComboBox()
             self._sms_provider.setMinimumHeight(28)
-            self._sms_provider.addItems(["Email-to-SMS Gateway", "Twilio API"])
+            for label, value in SMS_PROVIDERS:
+                self._sms_provider.addItem(label, value)
             pf.addRow("Provider:", self._sms_provider)
 
             self._sms_phone = QLineEdit()
@@ -752,14 +758,30 @@ if _HAS_QT:
             self._sms_phone.setPlaceholderText("+15551234567")
             pf.addRow("Phone Number:", self._sms_phone)
 
+            self._sms_twilio_sid = QLineEdit()
+            self._sms_twilio_sid.setMinimumHeight(28)
+            self._sms_twilio_sid.setPlaceholderText("AC...")
+            pf.addRow("Twilio Account SID:", self._sms_twilio_sid)
+
+            self._sms_twilio_token = QLineEdit()
+            self._sms_twilio_token.setMinimumHeight(28)
+            self._sms_twilio_token.setEchoMode(QLineEdit.Password)
+            self._sms_twilio_token.setPlaceholderText(
+                "Auth token from the Twilio console"
+            )
+            pf.addRow("Twilio Auth Token:", self._sms_twilio_token)
+
+            self._sms_twilio_from = QLineEdit()
+            self._sms_twilio_from.setMinimumHeight(28)
+            self._sms_twilio_from.setPlaceholderText("+15559876543")
+            pf.addRow("Twilio From Number:", self._sms_twilio_from)
+
             sep = QLabel("Email Gateway Settings")
             sep.setStyleSheet("color: #00cccc; font-weight: bold; margin-top: 6px;")
             pf.addRow(sep)
 
             self._sms_carrier = QComboBox()
             self._sms_carrier.setMinimumHeight(28)
-            from src.core.sms_engine import CARRIER_GATEWAYS
-
             for carrier in CARRIER_GATEWAYS:
                 self._sms_carrier.addItem(carrier)
             pf.addRow("Carrier:", self._sms_carrier)
@@ -783,6 +805,17 @@ if _HAS_QT:
             )
             pf.addRow("SMTP Password:", self._sms_smtp_pass)
 
+            self._sms_smtp_server = QLineEdit()
+            self._sms_smtp_server.setMinimumHeight(28)
+            self._sms_smtp_server.setPlaceholderText(built.smtp_server)
+            pf.addRow("Mail Server:", self._sms_smtp_server)
+
+            self._sms_smtp_port = QSpinBox()
+            self._sms_smtp_port.setMinimumHeight(28)
+            self._sms_smtp_port.setRange(*FIELD_BOUNDS["smtp_port"])
+            self._sms_smtp_port.setValue(built.smtp_port)
+            pf.addRow("Mail Port:", self._sms_smtp_port)
+
             layout.addWidget(provider_group)
 
             events_group = QGroupBox("Notification Events")
@@ -790,23 +823,23 @@ if _HAS_QT:
             ef.setSpacing(6)
             ef.setContentsMargins(8, 16, 8, 8)
             self._sms_buy = QCheckBox("Buy fills")
-            self._sms_buy.setChecked(True)
+            self._sms_buy.setChecked(built.notify_buy_fills)
             ef.addRow(self._sms_buy)
             self._sms_sell = QCheckBox("Sell fills")
-            self._sms_sell.setChecked(True)
+            self._sms_sell.setChecked(built.notify_sell_fills)
             ef.addRow(self._sms_sell)
             self._sms_state = QCheckBox("Bot state changes (start/stop/error)")
-            self._sms_state.setChecked(True)
+            self._sms_state.setChecked(built.notify_bot_state_changes)
             ef.addRow(self._sms_state)
             self._sms_errors = QCheckBox("API errors and failures")
-            self._sms_errors.setChecked(True)
+            self._sms_errors.setChecked(built.notify_errors)
             ef.addRow(self._sms_errors)
             self._sms_pl = QCheckBox("P/L threshold alerts")
             ef.addRow(self._sms_pl)
             self._sms_pl_amount = QDoubleSpinBox()
             self._sms_pl_amount.setMinimumHeight(28)
-            self._sms_pl_amount.setRange(1, 100000)
-            self._sms_pl_amount.setValue(100)
+            self._sms_pl_amount.setRange(*FIELD_BOUNDS["pl_threshold_amount"])
+            self._sms_pl_amount.setValue(built.pl_threshold_amount)
             self._sms_pl_amount.setPrefix("$")
             ef.addRow("P/L threshold:", self._sms_pl_amount)
             self._sms_balance = QCheckBox("Low balance warnings")
@@ -822,13 +855,13 @@ if _HAS_QT:
             rf.setContentsMargins(8, 16, 8, 8)
             self._sms_max_hour = QSpinBox()
             self._sms_max_hour.setMinimumHeight(28)
-            self._sms_max_hour.setRange(1, 100)
-            self._sms_max_hour.setValue(20)
+            self._sms_max_hour.setRange(*FIELD_BOUNDS["max_messages_per_hour"])
+            self._sms_max_hour.setValue(built.max_messages_per_hour)
             rf.addRow("Max messages per hour:", self._sms_max_hour)
             self._sms_cooldown = QSpinBox()
             self._sms_cooldown.setMinimumHeight(28)
-            self._sms_cooldown.setRange(5, 300)
-            self._sms_cooldown.setValue(30)
+            self._sms_cooldown.setRange(*FIELD_BOUNDS["cooldown_seconds"])
+            self._sms_cooldown.setValue(built.cooldown_seconds)
             self._sms_cooldown.setSuffix(" sec")
             rf.addRow("Min time between messages:", self._sms_cooldown)
             layout.addWidget(rate_group)
@@ -1074,7 +1107,59 @@ if _HAS_QT:
                 )),
                 ("ta_indicator_weights", self._ta_weight_rows()),
                 ("sound", self._sound_rows()),
+                ("sms", self._sms_rows()),
             )
+
+        def _sms_rows(self) -> tuple:
+            """One ``_stored_groups`` row per SMS page control.
+
+            ``SMS_CONFIG_FIELDS`` pairs each ``SMSConfig`` field with the control
+            carrying it, and the control's spec kind decides how a row reads it.
+            """
+            from src.core.sms_engine import SMSConfig
+            from src.gui.main_tabs.settings_dialog_surface import (
+                CHECK,
+                COMBO_DATA,
+                COMBO_TEXT,
+                DOUBLE_SPIN,
+                LINE,
+                SMS_CONFIG_FIELDS,
+                spec_for,
+            )
+
+            built = SMSConfig()
+
+            def pick_text(box) -> Callable[[object], None]:
+                # findText and setCurrentIndex are the two calls both builds'
+                # drop-downs answer; isEditable is Qt's alone.
+                def put(value: object) -> None:
+                    at = box.findText(str(value))
+                    if at >= 0:
+                        box.setCurrentIndex(at)
+
+                return put
+
+            def row(key: str, name: str) -> tuple:
+                box = getattr(self, f"_{name}")
+                fallback = getattr(built, key)
+                kind = spec_for(name)["kind"]
+                if kind == CHECK:
+                    return (key, box.isChecked,
+                            lambda value: box.setChecked(bool(value)), fallback)
+                if kind == LINE:
+                    return (key, lambda: box.text().strip(), box.setText, fallback)
+                if kind == COMBO_DATA:
+                    return (key, box.currentData,
+                            lambda value: self._show_data(box, value), fallback)
+                if kind == COMBO_TEXT:
+                    return (key, box.currentText, pick_text(box), fallback)
+                if kind == DOUBLE_SPIN:
+                    return (key, box.value,
+                            lambda value: box.setValue(float(value)), fallback)
+                return (key, box.value,
+                        lambda value: box.setValue(int(value)), fallback)
+
+            return tuple(row(key, name) for key, name in SMS_CONFIG_FIELDS)
 
         def _sound_rows(self) -> tuple:
             """One ``_stored_groups`` row per sound switch, plus the volume.

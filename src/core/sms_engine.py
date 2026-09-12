@@ -3,28 +3,41 @@ sms_engine.py - SMS notification system for trading events
 ============================================================
 All network imports (smtplib, urllib, email) are lazy-loaded
 inside methods to avoid AV heuristic triggers when bundled.
+
+``SMSConfig`` carries every value the Settings SMS page sets and
+``sms_config_from_settings`` reads the stored ``sms`` group into one. The startup
+path pushes that config through ``update_config`` before any fill.
 """
 
 from __future__ import annotations
 
 from .safe_url import safe_urlopen
 import logging
+import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger("acervator.sms")
 
+EMAIL_GATEWAY = "email_gateway"
+TWILIO = "twilio"
+
+#: Every value ``provider`` may hold. ``send`` tests ``TWILIO`` and routes
+#: everything else through the email gateway.
+PROVIDERS: tuple[str, ...] = (EMAIL_GATEWAY, TWILIO)
+
 
 @dataclass
 class SMSConfig:
     enabled: bool = False
-    provider: str = "email_gateway"
+    provider: str = EMAIL_GATEWAY
     phone_number: str = ""
     twilio_sid: str = ""
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
+    carrier: str = ""
     gateway_email: str = ""
     smtp_server: str = "smtp.gmail.com"
     smtp_port: int = 587
@@ -37,7 +50,6 @@ class SMSConfig:
     notify_pl_threshold: bool = False
     pl_threshold_amount: float = 100.0
     notify_balance_warning: bool = False
-    balance_warning_threshold: float = 50.0
     notify_connection_status: bool = False
     max_messages_per_hour: int = 20
     cooldown_seconds: int = 30
@@ -55,6 +67,121 @@ CARRIER_GATEWAYS = {
     "Google Fi": "{number}@msg.fi.google.com",
     "Other (Manual)": "",
 }
+
+PROVIDER_FIELD = "provider"
+CARRIER_FIELD = "carrier"
+
+#: A field whose value must be one of a fixed set, and the set it may hold.
+#: A field added to SMSConfig that offers a choice needs one entry here.
+CHOICE_FIELDS: dict[str, tuple[str, ...]] = {
+    PROVIDER_FIELD: PROVIDERS,
+    CARRIER_FIELD: ("",) + tuple(CARRIER_GATEWAYS),
+}
+
+#: A North American number, and the country digit a gateway address drops.
+NATIONAL_DIGITS = 10
+COUNTRY_DIGIT = "1"
+
+#: The closed range each numeric field may hold. The Settings SMS page reads
+#: this mapping for its own spin-box ranges, so the two cannot disagree.
+FIELD_BOUNDS: dict[str, tuple[float, float]] = {
+    "smtp_port": (1, 65535),
+    "pl_threshold_amount": (1.0, 100000.0),
+    "max_messages_per_hour": (1, 100),
+    "cooldown_seconds": (5, 300),
+}
+
+_BUILT = SMSConfig()
+
+#: Each field class, taken off the dataclass defaults so none can drift.
+SMS_SWITCHES: tuple[str, ...] = tuple(
+    one.name for one in fields(SMSConfig) if isinstance(getattr(_BUILT, one.name), bool)
+)
+SMS_NUMBERS: tuple[str, ...] = tuple(
+    one.name for one in fields(SMSConfig) if one.name in FIELD_BOUNDS
+)
+SMS_TEXTS: tuple[str, ...] = tuple(
+    one.name
+    for one in fields(SMSConfig)
+    if isinstance(getattr(_BUILT, one.name), str) and one.name not in CHOICE_FIELDS
+)
+
+
+def gateway_address(carrier: str, number: str) -> str:
+    """The carrier gateway address ``number`` is reached at, or '' for none.
+
+    ``CARRIER_GATEWAYS`` holds one template per carrier, and a gateway takes the
+    national digits alone, so ``COUNTRY_DIGIT`` is dropped from eleven digits.
+    """
+    template = CARRIER_GATEWAYS.get(carrier, "")
+    if not template:
+        return ""
+    digits = "".join(one for one in str(number) if one.isdigit())
+    if len(digits) == NATIONAL_DIGITS + 1 and digits.startswith(COUNTRY_DIGIT):
+        digits = digits[1:]
+    if len(digits) != NATIONAL_DIGITS:
+        return ""
+    return template.format(number=digits)
+
+
+def _taken_number(name: str, value: object) -> Optional[float]:
+    """``value`` as a number inside ``FIELD_BOUNDS[name]``, or None when refused."""
+    if isinstance(value, bool):
+        logger.warning("sms %s=%r is not a number; default kept", name, value)
+        return None
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        logger.warning("sms %s=%r is not a number; default kept", name, value)
+        return None
+    if not math.isfinite(number):
+        logger.warning("sms %s=%r is not a finite number; default kept", name, value)
+        return None
+    low, high = FIELD_BOUNDS[name]
+    if not low <= number <= high:
+        logger.warning("sms %s=%r is out of range; default kept", name, value)
+        return None
+    return number
+
+
+def sms_config_from_settings(stored: Optional[dict]) -> SMSConfig:
+    """The message configuration, with every entry the ``sms`` group carries.
+
+    A value the engine cannot use is dropped with a warning: ``send`` compares
+    ``max_messages_per_hour`` and ``cooldown_seconds`` against a clock outside
+    its own guard, a switch is read for truth, and a value outside its
+    ``CHOICE_FIELDS`` set reaches the email gateway silently.
+    """
+    taken = SMSConfig()
+    for name, value in (stored or {}).items():
+        if name in SMS_SWITCHES:
+            if isinstance(value, bool):
+                setattr(taken, name, value)
+            else:
+                logger.warning("sms %s=%r is not on or off; default kept", name, value)
+            continue
+        if name in SMS_NUMBERS:
+            number = _taken_number(name, value)
+            if number is not None:
+                whole = not isinstance(getattr(_BUILT, name), float)
+                setattr(taken, name, int(number) if whole else number)
+            continue
+        if name in CHOICE_FIELDS:
+            if value in CHOICE_FIELDS[name]:
+                setattr(taken, name, str(value))
+            else:
+                logger.warning("sms %s=%r is not offered; default kept", name, value)
+            continue
+        if name in SMS_TEXTS:
+            if isinstance(value, str):
+                setattr(taken, name, value)
+            else:
+                logger.warning("sms %s=%r is not text; default kept", name, value)
+            continue
+        logger.warning("sms %r is not a message setting; ignored", name)
+    if not taken.gateway_email:
+        taken.gateway_email = gateway_address(taken.carrier, taken.phone_number)
+    return taken
 
 
 class SMSEngine:
@@ -98,7 +225,7 @@ class SMSEngine:
         full_msg = f"[QAT {ts}] {message}"
 
         try:
-            if self._config.provider == "twilio":
+            if self._config.provider == TWILIO:
                 success = self._send_twilio(full_msg)
             else:
                 success = self._send_email_gateway(full_msg)
