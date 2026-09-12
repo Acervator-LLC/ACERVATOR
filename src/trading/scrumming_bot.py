@@ -537,7 +537,7 @@ class ScrummingBot(
             _interval = float(
                 getattr(self.config, "scrumming_interval_pct", 1.0) or 1.0
             )
-            _growth = float(getattr(self.config, "max_target_growth_pct", 0.0) or 0.0)
+            _growth = float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0)
             _cash = float(getattr(self.stats, "cash_balance_usd", 0.0) or 0.0)
             _retained = float(getattr(self, "_retained_this_cycle_usd", 0.0) or 0.0)
             if _price <= 0 or _target <= 0:
@@ -3811,7 +3811,6 @@ class ScrummingBot(
                 f"higher-TF BULLISH bias ({_bull_w:.2f} vs {_bear_w:.2f})",
             )
 
-        float(getattr(self.config, "max_target_growth_pct", 1.0))
         _anchor = float(getattr(self, "_anchor_target_balance", self._target_balance))
         _mem253_current_pos = float(self._current_holdings) * float(ticker.last)
 

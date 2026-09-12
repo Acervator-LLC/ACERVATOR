@@ -510,7 +510,7 @@ class ExecutionEngineMixin:
                 return
             if delta_usd < 0:
                 _growth = float(
-                    getattr(self.config, "max_target_growth_pct", 0.0) or 0.0
+                    getattr(self.config, "max_target_growth_pct", 1.0) or 0.0
                 )
                 _ceiling = float(self._target_balance) * (1.0 + _growth / 100.0)
                 _prospective = _xvalue + abs(delta_usd)

@@ -2740,3 +2740,229 @@ key reads as off rather than as `STACK_MODE_DEFAULT`.
 `enable_phantoms` and `phantom_timeframes` are not on that list. Both already
 reach the bot, as arguments to `ScrummingBot.__init__` rather than through the
 bot config.
+
+## 2026-09-12 - the second half of the Scrumming Settings group, driven
+
+Six rows of that group were driven on a bot built from a record written for the
+run. The home was redirected into a scratch directory before the settings module
+was imported, so the settings directory and the log root both bound under it. No
+stored file of the running install was opened, no venue was contacted, and the
+exchange object handed to the bot defines no order method at all, so the run
+could not place an order even where a path reached for one.
+
+```
+Max Entry Price        the price an auto-buy is refused above
+Min Entry Price        the price an auto-buy is refused below
+Trading Fee %          the figure added to the opposing-trade distance
+Max Target Growth %    the ceiling one fold cycle may add to Target Balance
+Scrum Fold Ratio       the share of a sale's tranches kept for the fold
+Profit Folding Active  whether a fold may raise Target Balance at all
+```
+
+### What each row did when it was driven
+
+Every reading below is one call into the shipped engine, with the figure on the
+row as the only thing changed between the two sides.
+
+```
+Max Entry Price    ceiling $90 against a price of $100   buy refused at the gate
+                   ceiling $110 against the same price   gate silent
+Min Entry Price    floor $110 against a price of $100    buy refused at the gate
+                   the same floor, the same price, sell  no refusal of any kind
+Trading Fee %      fee 0.60 %, pivot $100, buy at $98.70 refused, needs 1.60 %
+                   fee 0.00 %, pivot $100, buy at $98.70 not refused
+                   fee 0.60 %, pivot $100, sell at $101.30 refused, needs 1.60 %
+                   fee 0.00 %, pivot $100, sell at $101.30 not refused
+Max Target Growth  1.00 % on a $200 target   cap $2.00, target became $202.00
+                   0.00 % on a $200 target   cap $0.00, target stayed $200.00
+                   5.00 % on a $200 target   cap $10.00, target became $210.00
+Scrum Fold Ratio   100 % on two $100 tranches  queued $200.00, 2.0000 units
+                   40 %  on the same two       queued $80.00, 0.8000 units
+                   1 %   on the same two       queued $2.00, 0.0200 units
+Profit Folding     on   applied $2.00, target $202.00, preview $2.00
+                   off  applied $0.00, target $200.00, preview $0.00
+```
+
+The Profit Folding row emits its own line when it is off, and that line is the
+one a reader should look for rather than the absence of a growth.
+
+`src/trading/scrumming_bot.py` — the line the off state emits
+
+```python
+f"[COMPOUND SKIPPED] ({source}): "
+f"profit_folding_active=False — the "
+f"compound-growth feature is off for "
+f"this bot. No target bump."
+```
+
+### A zero in either entry-price box is not the same thing in both
+
+Both entries above say zero means no ceiling and no floor, and both controls
+honour that: a box left at zero emits nothing rather than a number, measured on
+the wizard the Electron shell draws. The engine's own guard is narrower than the
+sentence. It treats only the absent value as off, so a record carrying a literal
+zero in the ceiling refuses **every** auto-buy for as long as it stands — driven,
+a ceiling of zero against a price of one hundred refused the buy at the gate. The
+same zero in the floor is harmless, because no price is below it.
+
+`src/trading/scrumming/execution.py` — the two guards, as they stand
+
+```python
+if _max_ep is not None and _px > 0 and _px > float(_max_ep):
+if _min_ep is not None and _px > 0 and _px < float(_min_ep):
+```
+
+No control can write that zero. The three places that collect the value each
+write an absent value in its place, so a record carrying a literal zero came from
+an older build or from an edit outside the application.
+
+```
+src/gui/bot_wizard.py:1540                    absent unless the box reads above 0
+src/gui/live_settings/settings_tab.py:517     absent unless the box reads above 0
+src/gui/main_tabs/bot_wizard_surface.py:2267  absent unless the box reads above 0
+```
+
+*Proposed, not present, in both guards:*
+
+```python
+if _max_ep and float(_max_ep) > 0 and _px > 0 and _px > float(_max_ep):
+```
+
+It is proposed rather than taken because a bot standing on such a record is
+refusing every buy today, and a build that reads the zero as off would have it
+buying on its next tick. That is his decision, not this unit's.
+
+### The floor on the Scrum, measured on both sides
+
+The entry above records that the buy path is the only reader. Driven, that is
+exactly what happens, and the reading is worth stating as a pair because the
+pair is what proves the instrument was working.
+
+```
+floor $110, price $100, buy   BUY REFUSED (min_entry_price gate)
+floor $110, price $100, sell  no refusal emitted, the sale went on
+```
+
+The count agrees with the drive. `_execute_sell` runs from line 1333 to line
+1669 of that module and the floor's name appears **nowhere** in it, against three
+appearances inside the buy executor above. The number his own sentence ties to a
+Scrum therefore reaches no sell, and a bot sitting at the floor holding the asset
+sells as if the figure were not set.
+
+Read against the standing test, the behaviour the code does have is the part no
+sentence on this page asks for: nothing here specifies a floor under a buy. The
+sell-side proposal already on this page stands, and the removal of the buy-side
+floor is the other half of the same decision. Both move money on the next tick of
+any bot carrying the figure, so both are reported here and neither is taken.
+
+### A fee of zero is read two ways at once
+
+The entry above says the fee is added to the Minimum Opposing Trade Distance, and
+it is. At every figure the box offers except one, every reader agrees. At a stored
+zero they split: ten reads inside the trading package treat a zero as six tenths
+of a percent, and two inside the same executor honour the zero.
+
+```
+stored 0.60 %   distance filter 1.60 %   buy and sell hysteresis 1.60 %
+stored 2.50 %   distance filter 3.50 %   buy and sell hysteresis 3.50 %
+stored 0.00 %   distance filter 1.60 %   buy and sell hysteresis 1.00 %
+```
+
+The box accepts a zero, and so does the wizard the shell draws — typed at zero it
+emitted a zero. The two controls then show six tenths when that record is
+reopened, because each seeds itself the same way the ten reads do.
+
+`src/trading/otd_math.py` — the read, and its own note on the quirk
+
+```python
+return minimum_opposing_trade_distance_pct(
+    getattr(config, "scrumming_interval_pct", 0) or 0,
+    getattr(config, "trading_fee_pct", 0.6) or 0.6,
+)
+```
+
+That module's docstring already names the quirk and says it is named there and
+not repaired there, so the split is known rather than newly found. Closing it
+changes the distance a reversal must travel for any bot whose fee is zero, which
+is a live figure on a live tick, so it is reported here and not taken.
+
+### What the Max Target Growth entry above now reads
+
+That entry records ten read sites, seven falling back to one and three to zero,
+and a bot that compounds or freezes depending on which read first. The first half
+holds and the second does not.
+
+| the entry's reading | what the run measured |
+| --- | --- |
+| three sites fall back to zero against a declared default of one | Held before this change. The three were the manual rebalance, the compounding snapshot and the Smart Wire inputs, exactly as named |
+| a bot compounds or freezes depending on which site read first | Does not hold. No bot can reach the fallback: every construction path builds the config through one factory, and the class declares the field, so the value is never absent |
+| ten read sites take it with a fallback | Nine now. One of the ten was an expression whose value was discarded, and it is gone |
+
+The three sites now name the declared default. Driven against a stand-in that
+genuinely lacks the field, the two reachable ones moved from zero to one and then
+agreed with the cycle cap; every other reading in the run was identical before
+and after, which is what makes the change inert on a real bot.
+
+```
+before   swos 0.0   snapshot 0.0   cycle cap $2.00
+after    swos 1.0   snapshot 1.0   cycle cap $2.00
+```
+
+`src/trading/scrumming_bot.py` — the shape all nine now share
+
+```python
+_growth = float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0)
+```
+
+### Where the Scrum Fold Ratio is read
+
+The entry above gives the row its range and its start value and says nothing
+about where the engine reads it. One method does, once per sale, and it runs on
+the slice of tranches that sale appended rather than on the whole queue.
+
+`src/trading/scrumming/fold_tranches.py` — the read and the clamp
+
+```python
+_fold_pct = max(0, min(100, int(getattr(self.config, "scrum_fold_pct", 100))))
+_new_tranches = self._fold_tranches[_tranche_count_before:]
+if _fold_pct < 100 and _new_tranches:
+```
+
+At a hundred the branch does not run and the sale's tranches keep every dollar.
+Below a hundred each tranche keeps the ratio's share of units and of the sale's
+own proceeds, and the remainder is retired as cash with a realised profit line.
+Money in a tranche that did not come from this sale is wired-in credit and keeps
+its full value.
+
+The clamp's lower bound is zero and both controls start at one. A record carrying
+a zero therefore empties the sale's whole fold queue — driven, one hundred
+dollars and one unit became zero dollars and zero units, with the cash retired
+instead. Raising the clamp to match the controls would change what such a bot
+rebuys on its next sale, so it is reported here and not taken.
+
+### The Profit Folding Active row on a running bot
+
+No entry above describes this row, because the group on the creation wizard does
+not carry it. The running bot's own Scrumming Settings group does, and so does
+the row list the shell draws from.
+
+| | the control |
+| --- | --- |
+| Where | `src/gui/live_settings/settings_tab.py:575` |
+| React row | `src/gui/main_tabs/live_settings_tab_surface.py:769` |
+| Kind | checkbox, on at the start |
+| What it writes | the bot config key the engine reads four times |
+
+Profit Folding Active - When it is on, a fold's surplus may raise Target Balance
+up to the Max Target Growth % cap above. When it is off, the surplus is not
+applied, the preview of a prospective fold reads zero, and the bot writes a
+skipped line naming the flag. A bot restored from its own record takes its own
+flag and reads no application setting.
+
+```
+on   surplus $10.00 applied $2.00   target $200.00 became $202.00   preview $2.00
+off  surplus $10.00 applied $0.00   target stayed $200.00           preview $0.00
+```
+
+The creation wizard holds a checkbox for the same flag on a page no route
+reaches, so a new bot opens on the declared default until that page is reachable.
