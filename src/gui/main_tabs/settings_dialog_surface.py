@@ -177,7 +177,6 @@ CRYPTO_ADD_GROUP = "Add Crypto Exchange"
 STOCK_ADD_GROUP = "Add Stock Broker"
 REMOVE_BUTTON_TEXT = "Remove Selected"
 
-MODE_GROUP_TITLE = "Distribution Mode"
 FOLD_GROUP_TITLE = "Profit Folding Target"
 DIST_GROUP_TITLE = "Upward Distribution Target"
 LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
@@ -404,8 +403,6 @@ FOLD_RECENT = "most_recent_buy"
 DIST_ALL = "all_sell"
 DIST_X = "x_sell"
 DIST_RECENT = "most_recent_sell"
-EQUAL_MODE = "equal"
-LOG_MODE = "logarithmic"
 
 PERIOD_CONTROLS = (
     ("log_24h", "24h"),
@@ -480,7 +477,6 @@ SETTING_LOAD_KEYS = tuple(
 )
 
 # Read order decides the stored value when more than one button is ticked.
-FOLD_MODE_BUTTONS = (("fold_log", LOG_MODE), ("fold_equal", EQUAL_MODE))
 FOLD_TARGET_BUTTONS = (
     ("fold_x", FOLD_X),
     ("fold_recent", FOLD_RECENT),
@@ -627,24 +623,6 @@ CONTROL_SPECS = (
         "name": "folding_active",
         "kind": CHECK,
         "text": "Profit Folding / Upward Distribution Active",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": MODE_GROUP_TITLE,
-        "label": None,
-        "name": "fold_equal",
-        "kind": RADIO,
-        "text": "Equal distribution",
-        "checked": True,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": MODE_GROUP_TITLE,
-        "label": None,
-        "name": "fold_log",
-        "kind": RADIO,
-        "text": "Logarithmic distribution",
         "checked": False,
     },
     {
@@ -1197,7 +1175,6 @@ CONTROL_SPECS = (
 
 GROUPS = (
     (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
-    (FOLDING_TAB, MODE_GROUP_TITLE),
     (FOLDING_TAB, FOLD_GROUP_TITLE),
     (FOLDING_TAB, DIST_GROUP_TITLE),
     (PHANTOM_TAB, LOCK_GROUP_TITLE),
@@ -1396,11 +1373,6 @@ LAYOUT = {
         COLUMN,
         (
             (CONTROL, "folding_active"),
-            (
-                GROUP,
-                MODE_GROUP_TITLE,
-                (COLUMN, ((CONTROL, "fold_equal"), (CONTROL, "fold_log"))),
-            ),
             (
                 GROUP,
                 FOLD_GROUP_TITLE,
@@ -2237,10 +2209,6 @@ class SettingsDialogModel:
              partial(self._pair_value, "folding_active"),
              partial(self._show_stored, "folding_active"),
              FOLDING_ACTIVE_DEFAULT),
-            ("mode",
-             partial(self._picked, FOLD_MODE_BUTTONS, EQUAL_MODE),
-             lambda value: self._show_picked(FOLD_MODE_BUTTONS, value, EQUAL_MODE),
-             EQUAL_MODE),
             ("fold_target",
              partial(self._picked, FOLD_TARGET_BUTTONS, FOLD_ALL),
              lambda value: self._show_picked(FOLD_TARGET_BUTTONS, value, FOLD_ALL),

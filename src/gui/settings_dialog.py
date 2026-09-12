@@ -54,7 +54,6 @@ if _HAS_QT:
     }
 
     # Read order decides the stored value when more than one button is ticked.
-    FOLD_MODE_BUTTONS = (("_fold_log", "logarithmic"), ("_fold_equal", "equal"))
     FOLD_TARGET_BUTTONS = (
         ("_fold_x", "x_buy"),
         ("_fold_recent", "most_recent_buy"),
@@ -487,15 +486,6 @@ if _HAS_QT:
                 "Profit Folding / Upward Distribution Active"
             )
             layout.addWidget(self._folding_active)
-
-            mode_group = QGroupBox("Distribution Mode")
-            mode_layout = QVBoxLayout(mode_group)
-            self._fold_equal = QRadioButton("Equal distribution")
-            self._fold_log = QRadioButton("Logarithmic distribution")
-            self._fold_equal.setChecked(True)
-            mode_layout.addWidget(self._fold_equal)
-            mode_layout.addWidget(self._fold_log)
-            layout.addWidget(mode_group)
 
             fold_group = QGroupBox("Profit Folding Target")
             fold_layout = QVBoxLayout(fold_group)
@@ -1208,12 +1198,6 @@ if _HAS_QT:
                      self._folding_active.isChecked,
                      lambda value: self._folding_active.setChecked(bool(value)),
                      True),
-                    ("mode",
-                     lambda: self._picked(FOLD_MODE_BUTTONS, "equal"),
-                     lambda value: self._show_picked(
-                         FOLD_MODE_BUTTONS, value, "equal"
-                     ),
-                     "equal"),
                     ("fold_target",
                      lambda: self._picked(FOLD_TARGET_BUTTONS, "all_buy"),
                      lambda value: self._show_picked(

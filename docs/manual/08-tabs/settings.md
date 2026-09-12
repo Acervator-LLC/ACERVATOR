@@ -3223,4 +3223,117 @@ The sentence stands as the specification and the page does not yet meet it.
 Until the first of the three lands, a stored choice on this row has nowhere to
 arrive, and the row is left as it stands.
 
+## 2026-09-12 - Distribution Mode is off the Profit Folding page
+
+The Profit Folding page carried one master checkbox and three groups of radio
+buttons. The Distribution Mode group is removed. It offered two choices, `equal`
+and `logarithmic`, stored the chosen word under the key `mode` inside the
+`profit_folding` group, and read it back. Nothing outside the dialog read the
+word.
+
+Three files declared the row and every declaration is gone.
+
+| File | What it declared |
+| ---- | ---------------- |
+| `src/core/settings.py` | `FoldDistributeMode`, and the `mode` field on `ProfitFoldingSettings` |
+| `src/gui/settings_dialog.py` | `FOLD_MODE_BUTTONS`, the `QGroupBox` with its two `QRadioButton`s, and the `_stored_groups` row |
+| `src/gui/main_tabs/settings_dialog_surface.py` | `MODE_GROUP_TITLE`, `EQUAL_MODE`, `LOG_MODE`, `FOLD_MODE_BUTTONS`, the `fold_equal` and `fold_log` specs, the `GROUPS` entry, the Profit Folding layout step, and the `_folding_rows` entry |
+
+### The two spellings this row carried
+
+The Settings dialog stored the word under `mode`. The bot wizard's own
+Distribution Mode group writes the same word under `fold_mode`. The two names
+addressed the same choice, and the dialog said so itself: the tuple holding this
+row's two buttons was named `FOLD_MODE_BUTTONS` while the row it fed wrote `mode`.
+
+| What matched | The Settings row | The wizard's group |
+| ------------ | ---------------- | ------------------ |
+| the group title | Distribution Mode | Distribution Mode |
+| the two controls | `fold_equal`, `fold_log` | `fold_equal`, `fold_log` |
+| the two stored words | `equal`, `logarithmic` | `equal`, `logarithmic` |
+| the default | Equal checked at build | Equal checked at build |
+| the key it wrote | `profit_folding.mode` | the bot config key `fold_mode` |
+
+`fold_mode` stays in `_DEPRECATED_KWARGS` at
+`src/trading/container/config.py:386`, so a `bot_state.json` still carrying it
+restores without a `TypeError`. `_sanitize_deprecated_kwargs` drops it before
+`BotConfig.__init__`, and `BotConfig` declares no field of that name. The
+wizard's group is the only control left that writes it, and it sits on the
+wizard page no route reaches.
+
+Because `mode` never matched a strip-list name, the count at
+[Settings > Trading](#settings--trading) stands as written: the Profit Folding
+page contributes four of the eleven names, and this row was never one of them.
+
+### Why no fold takes a distribution mode
+
+The row offered a choice between two ways of spreading a fold across positions.
+No code in the engine offers that choice. Every fold path was read for a mode
+parameter and none takes one.
+
+| Where | What it does |
+| ----- | ------------ |
+| `src/trading/scrumming_bot.py:767` `_apply_fold_target_growth` | drains fold surplus into one target balance; no positions, no spread |
+| `src/trading/smart_wire.py:589` `distribute_fold_profit` | splits realised fold profit across wires to other bots by per-wire percent |
+| `src/trading/scrumming/wire_routing.py:487` `_spread_wire_usd_over_fold_queue` | adds wire income evenly to every standing fold tranche; the even split is fixed and has no alternative |
+| `src/trading/stack_math.py:304` `fold_ladder_prices` | places fold prices from `stack_spacing_mode` and decides no size |
+| `src/trading/profit_fold.py:14` `apply_profit_fold` | grows one target balance; its own docstring records that no module imports it |
+
+The one mode-like selector near folding refuses this row's value.
+`SPACING_MODES` in `src/trading/stack_math.py:25` holds `quadratic`,
+`fibonacci`, `linear` and `exponential`. `level_multipliers("logarithmic", 3)`
+raises `ValueError`, while `level_multipliers("quadratic", 3)` returns
+`[1.0, 4.0, 9.0]`.
+
+The two choices belong to the retired Grid Bot. The earliest tracked copy of the
+strip list names the block in its own words, as grid-legacy fields kept so a
+stored bot does not crash on load, and
+`src/trading/container/restore.py:183-184` records that the grid mode was
+removed.
+
+### A six-key group opening with five rows
+
+`SettingsManager._apply_dict` copies the whole `profit_folding` dict off the
+file, so a store written before the removal still carries its `mode` entry and
+still opens. The page reads back the five keys it has rows for, and the next Save
+writes the group without the sixth.
+
+| | before the removal | after the removal |
+| --- | --- | --- |
+| control specs in the payload | 69 | 67 |
+| control specs on the Profit Folding tab | 11 | 9 |
+| groups declared on the surface | 13 | 12 |
+| a Distribution Mode group is drawn | yes | no |
+| rows the `profit_folding` group declares | 6 | 5 |
+| keys a legacy store's group holds on opening | 6 | 6 |
+| keys the group holds after one Save | 6 | 5 |
+| keys and groups one Save wrote | 13 | 13 |
+| `active` read back off a legacy store | `False` | `False` |
+| `fold_target` | `most_recent_buy` | `most_recent_buy` |
+| `fold_target_count` | `9` | `9` |
+| `distribute_target` | `x_sell` | `x_sell` |
+| `distribute_target_count` | `7` | `7` |
+| `username` beside the group | `u16_driver` | `u16_driver` |
+| `bot_visibility` beside the group | `internal` | `internal` |
+
+Every sibling in the shared group reads back at its stored value, and Save
+raised no warning box.
+
+### The sentences the page keeps that no longer describe it
+
+Each sentence below stands in an earlier section and no longer describes the
+page. The earlier text stays where it is.
+
+| Earlier sentence | What the page does now |
+| ---------------- | ---------------------- |
+| "One master checkbox and three groups of radio buttons, eleven controls in all." | One master checkbox and two groups of radio buttons, nine controls in all. |
+| "Distribution Mode - Chooses whether a fold spreads evenly across the chosen positions or on a curve." and the key line, the two sentences and the code block under it | The page carries no Distribution Mode group, and no fold in the engine takes a distribution mode. |
+| "\| Profit Folding \| 11 \| the whole group \| `active` alone \|" in [What each page persists](#what-each-page-persists) | Profit Folding, 9 controls, `_save` writes the whole group, `_load_current` restores the whole group. |
+| "\| Profit Folding \| 11 \| the whole group \| the whole group \|" in [What each page restores now](#what-each-page-restores-now) | The same nine controls and five keys. |
+| "\| Profit Folding \| Distribution Mode, Profit Folding Target, Fold to X# of buy positions, Upward Distribution Target, Distribute to X# of sell positions \|" in [The fourteen rows a Save overwrote](#the-fourteen-rows-a-save-overwrote) | Thirteen rows, four of them on this page. Distribution Mode is off the page. |
+
+The master switch above this row gated five rows. It gates four now, and the
+four are Profit Folding Target, Fold to X# of buy positions, Upward Distribution
+Target and Distribute to X# of sell positions.
+
 Back to [the subsystem index](README.md).

@@ -37,11 +37,6 @@ except ImportError:
     _CAN_WRITE_TOML = False
 
 
-class FoldDistributeMode(str, Enum):
-    EQUAL = "equal"
-    LOGARITHMIC = "logarithmic"
-
-
 class FoldTarget(str, Enum):
     ALL_BUY = "all_buy"
     X_BUY = "x_buy"
@@ -79,7 +74,6 @@ class ProfitFoldingSettings:
     """Field defaults for the ``AppSettings.profit_folding`` group."""
 
     active: bool = True
-    mode: FoldDistributeMode = FoldDistributeMode.EQUAL
     fold_target: FoldTarget = FoldTarget.ALL_BUY
     fold_target_count: int = 5
     distribute_target: DistributeTarget = DistributeTarget.ALL_SELL
