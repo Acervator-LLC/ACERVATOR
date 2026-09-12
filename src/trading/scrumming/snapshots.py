@@ -374,7 +374,7 @@ class SnapshotEmitterMixin(_Host):
             target = float(getattr(self, "_target_balance", 0.0) or 0.0)
             anchor = float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
             growth_pct = float(
-                getattr(self.config, "max_target_growth_pct", 0.0) or 0.0
+                getattr(self.config, "max_target_growth_pct", 1.0) or 0.0
             )
             snap["target_balance"] = round(target, 6)
             snap["anchor_target_balance"] = round(anchor, 6)
