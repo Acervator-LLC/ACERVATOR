@@ -493,10 +493,12 @@ ACTION_HANDLERS: dict[str, str] = {
     "save_btn": "_save",
 }
 
-#: The control whose edit runs a method, and the method it runs.
+#: The control whose edit runs a method, and the method it runs. ``apply_edit``
+#: calls with no argument, so every entry names a method that takes none.
 EDIT_HANDLERS: dict[str, str] = {
     "new_exchange": "_on_exchange_changed",
-    "sound_volume": "_on_sfx_volume_changed",
+    surface.VOLUME_NAME: "_push_sound_config",
+    **{name: "_push_sound_config" for _key, name in surface.SOUND_CONFIG_FIELDS},
 }
 
 
@@ -543,7 +545,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._owner.run_action(message[len(ACTION_PREFIX) :])
 
     class SettingsDialogReact(SettingsDialog):
-        """The Settings dialog with all eleven tabs drawn by React."""
+        """The Settings dialog with all ten tabs drawn by React."""
 
         def _setup_ui(self) -> None:
             """Build the one web view the whole dialog is drawn in.

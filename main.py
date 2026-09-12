@@ -742,6 +742,14 @@ def main() -> int:
         weights_from_settings(settings.get("ta_indicator_weights", {}))
     )
 
+    # Before the first fill: get_sound_engine holds SoundConfig defaults until
+    # something pushes the stored group.
+    from src.core.sound_engine import get_sound_engine, sound_config_from_settings
+
+    get_sound_engine().update_config(
+        sound_config_from_settings(settings.get("sound", {}))
+    )
+
     _preflight = state_mgr.preflight_snapshot()
     if _preflight:
         log_manager.info(
