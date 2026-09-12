@@ -375,6 +375,17 @@ class PageList(_Held):
         lines.append(str(words))
         self._put(lines)
 
+    def item(self, at: Any) -> Optional[ListRow]:
+        """The line at ``at``, or None when ``at`` is outside the list."""
+        lines = self._lines()
+        try:
+            found = int(at)
+        except (TypeError, ValueError):
+            return None
+        if not 0 <= found < len(lines):
+            return None
+        return ListRow(lines[found])
+
     def setCurrentRow(self, at: Any) -> None:  # noqa: N802
         """Select the line at ``at``."""
         try:

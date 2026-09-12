@@ -2327,4 +2327,148 @@ Three declarations hold the same three ids.
 `_sync_passphrase_row` reads the box and no set, so the field follows the box
 whichever declaration ticked it.
 
+## 2026-09-11 - The saved exchange list
+
+The list under Configured Crypto Exchanges is the stored `exchanges` field.
+Each entry is one saved venue: its id, its display name, three encrypted
+tokens, an enabled flag and two hardware fields. The list was driven on the
+running React page, two venues at a time.
+
+### Where the list is written
+
+Two buttons write it, and Save is not one of them.
+
+```mermaid
+graph LR
+  ADD["Test and Add Exchange<br/>add_btn"]
+  RM["Remove Selected<br/>remove_btn"]
+  DLG["settings_dialog.py<br/>_add_exchange / _remove_exchange"]
+  SM["settings.py<br/>add_exchange / remove_exchange"]
+  TOML["settings.toml<br/>exchanges"]
+  ADD --> DLG
+  RM --> DLG
+  DLG --> SM
+  SM --> TOML
+```
+
+On React a click on a list line reports its index, and `run_action` turns that
+into `setCurrentRow`, so Remove Selected has a row to drop. `_save` never
+names `exchanges`, so pressing Save changes nothing here.
+
+### Every reader of the saved list
+
+Ten readers, all through `SettingsManager.list_exchanges` or `get_exchange`.
+
+| Site | What it does with the list |
+| ---- | -------------------------- |
+| `main.py` | One `add_exchange_tab` per entry, in stored order |
+| `src/gui/main_window.py` — `_report_stored_credentials_on_startup` | An empty list is a warning and an early return |
+| `src/gui/main_window.py` — `_connect_exchange_for_bot` | Walks the list for the bot's id; a missing id and a missing key are two refusals |
+| `src/gui/main_window.py` — `_sync_exchange_tabs` | Adds a tab for every listed id that has none |
+| `src/gui/main_window.py` — `_create_bot` | Hands the whole list to `BotCreationWizard` |
+| `src/gui/widgets/api_tester_tab.py` — `_do_connect` | Walks the list for the picked id and decrypts its tokens |
+| `src/gui/settings_dialog.py` — `_load_current` | Fills the on-screen list, filtered by wing |
+| `src/gui/main_tabs/settings_dialog_surface.py` — `_load_current` | The same fill in the Qt-free model |
+| `src/gui/main_tabs/header_strip_surface.py` — `configured_exchange_count` | The length, and nothing else |
+| `src/gui/main_tabs/trading_tab_surface.py` — `live_view_model` | `layer_exchanges` splits it into the crypto and stock layers |
+
+`src/core/usb_auth.py` calls a different `list_exchanges`, the one on
+`CredentialVault`. That is a separate store this list never writes to. No
+JavaScript file reads the stored list: the page is handed `listed_exchanges`,
+words already formatted.
+
+### Two adds, in the order added
+
+Two venues were added through the page, each with its own generated
+credentials.
+
+| Reading | Answer |
+| ------- | ------ |
+| Order added | `binance`, `kucoin` |
+| Order stored | `binance`, `kucoin` |
+| Binance key decrypts to its own | True |
+| Kucoin key decrypts to its own | True |
+| Kucoin passphrase decrypts to its own | True |
+
+Each entry carries its own tokens. `list_exchanges` and `get_exchange` both
+deep-copy, so no reader can change the stored list by holding what it returned.
+
+### Removing one
+
+The first line was clicked and Remove Selected pressed. The store kept the
+other entry, and its three tokens still decrypt.
+
+| Reading | Answer |
+| ------- | ------ |
+| Lines on screen before | `Binance (binance)`, `Kucoin (kucoin)` |
+| Lines on screen after | `Kucoin (kucoin)` |
+| The store after | one entry, `kucoin` |
+| The survivor's key decrypts | True |
+| The survivor's passphrase decrypts | True |
+| The feedback line | `Binance removed.` |
+
+### Adding a venue the list already holds
+
+`add_exchange` stores one entry per venue id, so a second add is never a
+second entry. It now keeps that entry's place, and a credential token the new
+entry leaves empty keeps the token the stored entry carried.
+
+| The press | What the store holds after |
+| --------- | -------------------------- |
+| The same venue with new credentials typed | One entry, carrying the newly typed tokens |
+| The same venue with both rows empty | One entry, byte for byte what it held before |
+| The same venue with the key typed and the secret empty | One entry, byte for byte what it held before |
+
+With two venues stored, re-adding the first leaves the order as
+`binance`, `kucoin`. The on-screen list is asked whether a line already names
+the venue, so one venue is drawn once:
+
+| Reading | Answer |
+| ------- | ------ |
+| Lines on screen before the re-add | `Binance (binance)`, `Kucoin (kucoin)` |
+| Lines on screen after the re-add | `Binance (binance)`, `Kucoin (kucoin)` |
+| Entries in the store | 2 |
+
+`listed_exchange_position` in
+`src/gui/main_tabs/settings_dialog_surface.py` answers that question, and both
+the Qt dialog and the Qt-free model call it.
+
+The feedback line still reads `added without credentials` after a press with
+both rows empty, which names what was typed rather than what is stored. With the
+key typed and the secret empty it reads `added with credentials (verified)`,
+because it tests the key alone while `_add_exchange` needs both rows before it
+contacts a venue or encrypts anything.
+
+### What the readers see on an empty list
+
+An empty list is the state on a fresh install. Every reader answers, and none
+raises.
+
+| Reader | Empty | One entry | Two entries |
+| ------ | ----- | --------- | ----------- |
+| `main.py` venue tabs | none | `kucoin` | `binance`, `kucoin` |
+| `configured_exchange_count` | 0 | 1 | 2 |
+| The crypto layer | placeholder shown | opens on `kucoin` | opens on `binance` |
+| The Settings page list | none | `Kucoin (kucoin)` | `Binance (binance)`, `Kucoin (kucoin)` |
+| A bot asking for `kucoin` | `Exchange kucoin not found in settings.` | connects | connects |
+| The API panel asking for `kucoin` | `No stored credentials for Kucoin.` | decrypts | decrypts |
+
+An entry stored with no tokens reads differently from a missing entry: the bot
+path answers `No API credentials for Kucoin.` instead.
+
+### Removing the venue a bot uses
+
+Nothing on this path can see a bot. The dialog is handed the settings manager
+and the status log, and nothing else.
+
+| Reading | Answer |
+| ------- | ------ |
+| Refused | False |
+| Warned about the bot | False |
+| Silently allowed | True |
+| What the bot's next connect reads | `Exchange binance not found in settings. Add it in Settings first.` |
+
+`_sync_exchange_tabs` only adds a tab, so the removed venue's tab stays on
+screen until the next launch.
+
 Back to [the subsystem index](README.md).

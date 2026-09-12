@@ -410,7 +410,7 @@ if _HAS_QT:
                         config.passphrase_enc = encrypt(pp, master)
 
                 self._sm.add_exchange(config)
-                self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
+                self._list_exchange_once(eid)
                 self._new_api_key.clear()
                 self._new_api_secret.clear()
                 self._new_passphrase.clear()
@@ -433,6 +433,24 @@ if _HAS_QT:
             finally:
                 self._add_btn.setEnabled(True)
                 self._test_btn.setEnabled(True)
+
+        def _list_exchange_once(self, eid: str) -> None:
+            """Draw ``eid`` in ``_exchange_list`` while no line names it yet.
+
+            Both builds run this method and the Qt-free model calls the same
+            ``listed_exchange_position``.
+            """
+            from .main_tabs.settings_dialog_surface import (
+                NO_MATCH_INDEX,
+                listed_exchange_position,
+            )
+
+            drawn = [
+                self._exchange_list.item(at).text()
+                for at in range(self._exchange_list.count())
+            ]
+            if listed_exchange_position(drawn, eid) == NO_MATCH_INDEX:
+                self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
 
         def _remove_exchange(self) -> None:
             item = self._exchange_list.currentItem()
