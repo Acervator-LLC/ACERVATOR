@@ -256,6 +256,9 @@ PHANTOM_TIMEFRAME_ITEMS = tuple((one, one) for one in PHANTOM_TIMEFRAMES)
 #: The store declares the opening choice, so the page and the schema agree.
 PHANTOM_TIMEFRAME_DEFAULT = AppSettings().default_phantom_timeframe
 
+#: The lock spin box's opening figure and its fallback, declared once.
+LOCK_CANDLE_DEFAULT = AppSettings().default_lock_candle_count
+
 THEME_ITEMS = (
     ("Cyberpunk Dark", "cyberpunk_dark"),
     ("Neon Light", "neon_light"),
@@ -478,6 +481,7 @@ PERSISTED_ROWS = (
     ("aggressive_trading", "aggressive", False),
     ("default_enable_phantoms", "phantoms_enabled", True),
     ("default_phantom_timeframe", "phantom_timeframe", PHANTOM_TIMEFRAME_DEFAULT),
+    ("default_lock_candle_count", "lock_candles", LOCK_CANDLE_DEFAULT),
     (THEME_KEY, "theme_combo", THEME_DEFAULT),
     ("accent_color", "accent_color", "#00ffcc"),
     ("font_family", "font_family", "Segoe UI"),
@@ -653,7 +657,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "lock_candles",
         "kind": SPIN,
         "range": (1, 10),
-        "value": 2,
+        "value": LOCK_CANDLE_DEFAULT,
     },
     {
         "tab": THEME_TAB,
