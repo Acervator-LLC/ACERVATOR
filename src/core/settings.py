@@ -151,9 +151,9 @@ class AppSettings:
     # sound_engine.sound_config_from_settings reads this group back.
     sound: dict = field(default_factory=lambda: asdict(SoundConfig()))
 
-    # The SMS page's twenty-two values.
-    # sms_engine.sms_config_from_settings reads this group back.
-    sms: dict = field(default_factory=lambda: asdict(SMSConfig()))
+    # The SMS page's twenty-two values. The name carries the channels the page
+    # is to hold; sms_engine.sms_config_from_settings reads this group back.
+    message_channels: dict = field(default_factory=lambda: asdict(SMSConfig()))
 
 
 _DEFAULT_DIR = Path.home() / ".acervator"

@@ -2240,12 +2240,17 @@ twilio_from_number: str = ""
 The page persists now. Save writes one stored group and the dialog reads that
 group back on the way in, so every row reopens on the figure it was left at.
 
-`src/core/settings.py` — the SMS group the schema declares
+The group is named for the channels this page is to carry rather than for the one
+it carries today, so a channel added beside the text messages joins it instead of
+renaming it. One constant in the engine holds that name and every reader takes it
+from there, so the schema field is the only other place the name is written.
+
+`src/core/settings.py` — the group the schema declares
 
 ```python
-    # The SMS page's twenty-two values.
-    # sms_engine.sms_config_from_settings reads this group back.
-    sms: dict = field(default_factory=lambda: asdict(SMSConfig()))
+    # The SMS page's twenty-two values. The name carries the channels the page
+    # is to hold; sms_engine.sms_config_from_settings reads this group back.
+    message_channels: dict = field(default_factory=lambda: asdict(SMSConfig()))
 ```
 
 One list pairs each stored field with the control carrying it, and the save and
@@ -2268,7 +2273,7 @@ saves, so a changed figure applies without a restart.
 
 ```python
     get_sms_engine().update_config(
-        sms_config_from_settings(settings.get("sms", {}))
+        sms_config_from_settings(settings.get("message_channels", {}))
     )
 ```
 
@@ -2337,7 +2342,9 @@ with every other value intact, and the engine names the key it dropped.
 `src/core/sms_engine.py` — the line the engine prints for a name it does not hold
 
 ```python
-        logger.warning("sms %r is not a message setting; ignored", name)
+        logger.warning(
+            "message_channels %r is not a message setting; ignored", name
+        )
 ```
 
 A value the engine cannot use is refused instead of reaching it. A provider

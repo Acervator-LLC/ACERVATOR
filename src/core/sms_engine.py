@@ -5,8 +5,9 @@ All network imports (smtplib, urllib, email) are lazy-loaded
 inside methods to avoid AV heuristic triggers when bundled.
 
 ``SMSConfig`` carries every value the Settings SMS page sets and
-``sms_config_from_settings`` reads the stored ``sms`` group into one. The startup
-path pushes that config through ``update_config`` before any fill.
+``sms_config_from_settings`` reads the stored ``message_channels`` group into
+one. The startup path pushes that config through ``update_config`` before any
+fill.
 """
 
 from __future__ import annotations
@@ -20,6 +21,10 @@ from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger("acervator.sms")
+
+#: The ``AppSettings`` field this configuration is stored in. Every reader and
+#: every log line takes the group's name from here.
+SETTINGS_GROUP = "message_channels"
 
 EMAIL_GATEWAY = "email_gateway"
 TWILIO = "twilio"
@@ -124,28 +129,33 @@ def gateway_address(carrier: str, number: str) -> str:
     return template.format(number=digits)
 
 
+def _refused(name: str, value: object, why: str) -> None:
+    """Name the stored value the engine dropped, with ``why`` it was dropped."""
+    logger.warning("%s %s=%r %s; default kept", SETTINGS_GROUP, name, value, why)
+
+
 def _taken_number(name: str, value: object) -> Optional[float]:
     """``value`` as a number inside ``FIELD_BOUNDS[name]``, or None when refused."""
     if isinstance(value, bool):
-        logger.warning("sms %s=%r is not a number; default kept", name, value)
+        _refused(name, value, "is not a number")
         return None
     try:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        logger.warning("sms %s=%r is not a number; default kept", name, value)
+        _refused(name, value, "is not a number")
         return None
     if not math.isfinite(number):
-        logger.warning("sms %s=%r is not a finite number; default kept", name, value)
+        _refused(name, value, "is not a finite number")
         return None
     low, high = FIELD_BOUNDS[name]
     if not low <= number <= high:
-        logger.warning("sms %s=%r is out of range; default kept", name, value)
+        _refused(name, value, "is out of range")
         return None
     return number
 
 
 def sms_config_from_settings(stored: Optional[dict]) -> SMSConfig:
-    """The message configuration, with every entry the ``sms`` group carries.
+    """The message configuration, with every entry ``message_channels`` carries.
 
     A value the engine cannot use is dropped with a warning: ``send`` compares
     ``max_messages_per_hour`` and ``cooldown_seconds`` against a clock outside
@@ -159,7 +169,7 @@ def sms_config_from_settings(stored: Optional[dict]) -> SMSConfig:
             if isinstance(value, bool):
                 setattr(taken, name, value)
             else:
-                logger.warning("sms %s=%r is not on or off; default kept", name, value)
+                _refused(name, value, "is not on or off")
             continue
         if name in SMS_NUMBERS:
             number = _taken_number(name, value)
@@ -171,15 +181,17 @@ def sms_config_from_settings(stored: Optional[dict]) -> SMSConfig:
             if value in CHOICE_FIELDS[name]:
                 setattr(taken, name, str(value))
             else:
-                logger.warning("sms %s=%r is not offered; default kept", name, value)
+                _refused(name, value, "is not offered")
             continue
         if name in SMS_TEXTS:
             if isinstance(value, str):
                 setattr(taken, name, value)
             else:
-                logger.warning("sms %s=%r is not text; default kept", name, value)
+                _refused(name, value, "is not text")
             continue
-        logger.warning("sms %r is not a message setting; ignored", name)
+        logger.warning(
+            "%s %r is not a message setting; ignored", SETTINGS_GROUP, name
+        )
     return taken
 
 

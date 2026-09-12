@@ -2859,10 +2859,14 @@ if _HAS_QT:
 
             # A saved SMS page reaches the engine here, so a changed number or
             # switch applies without a restart.
-            from src.core.sms_engine import get_sms_engine, sms_config_from_settings
+            from src.core.sms_engine import (
+                SETTINGS_GROUP,
+                get_sms_engine,
+                sms_config_from_settings,
+            )
 
             get_sms_engine().update_config(
-                sms_config_from_settings(self._settings.get("sms", {}))
+                sms_config_from_settings(self._settings.get(SETTINGS_GROUP, {}))
             )
 
             ai_cfg = self._settings.get("ai_monitor", {})

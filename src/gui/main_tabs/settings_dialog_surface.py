@@ -42,6 +42,7 @@ from ...core.sms_engine import (
     CARRIER_GATEWAYS,
     EMAIL_GATEWAY,
     FIELD_BOUNDS,
+    SETTINGS_GROUP,
     TWILIO,
     SMSConfig,
     gateway_address,
@@ -425,7 +426,9 @@ SMS_CONFIG_FIELDS = (
     ("max_messages_per_hour", "sms_max_hour"),
     ("cooldown_seconds", "sms_cooldown"),
 )
-SMS_GROUP_KEY = "sms"
+#: The store key both builds persist the SMS page into, read off the engine so
+#: the page cannot name a group the engine does not read.
+MESSAGE_CHANNELS_GROUP_KEY = SETTINGS_GROUP
 
 TA_WEIGHT_GROUP_KEY = "ta_indicator_weights"
 
@@ -2103,7 +2106,7 @@ class SettingsDialogModel:
         )
 
     def _sms_rows(self) -> tuple:
-        """Every ``sms`` key, from the one list naming its controls."""
+        """Every ``message_channels`` key, from the one list naming its controls."""
         return tuple(
             (
                 key,
@@ -2121,7 +2124,7 @@ class SettingsDialogModel:
             (AI_GROUP_KEY, self._ai_rows()),
             (TA_WEIGHT_GROUP_KEY, self._ta_weight_rows()),
             (SOUND_GROUP_KEY, self._sound_rows()),
-            (SMS_GROUP_KEY, self._sms_rows()),
+            (MESSAGE_CHANNELS_GROUP_KEY, self._sms_rows()),
         )
 
     def _load_current(self) -> None:

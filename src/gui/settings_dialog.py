@@ -1071,6 +1071,8 @@ if _HAS_QT:
 
             A row reads and writes the same way a ``_stored_rows`` row does.
             """
+            from src.core.sms_engine import SETTINGS_GROUP as MESSAGE_CHANNELS_GROUP_KEY
+
             return (
                 ("profit_folding", (
                     ("active",
@@ -1110,7 +1112,7 @@ if _HAS_QT:
                 )),
                 ("ta_indicator_weights", self._ta_weight_rows()),
                 ("sound", self._sound_rows()),
-                ("sms", self._sms_rows()),
+                (MESSAGE_CHANNELS_GROUP_KEY, self._sms_rows()),
             )
 
         def _fill_gateway_email(self) -> None:
