@@ -1860,4 +1860,66 @@ the code. The earlier text stays where it is.
 | "The load path reads none of them back, so every open shows the build state rather than the stored one." | The load path reads all three `data_logging` keys back. Every open shows the stored state. |
 | "In development. What the load path should restore for this page has not been settled against the rest of the dialog, so nothing is proposed here." | The load path restores the whole group: both flags and the list of active periodicities. |
 
+## 2026-09-11 - The Username row and the vault phrase
+
+Driven on the real dialog and the real vault. The home was redirected into a
+scratch directory before `src.core.settings` was imported, so `_DEFAULT_DIR`
+bound under that directory. No stored credential of the running install was
+read.
+
+### Every reader of the stored name
+
+The row reaches four readers. Each one ran with a generated name, and each
+printed the phrase it built.
+
+| Site | What it does with the name | Driven result |
+| ---- | ------------------------- | ------------- |
+| `main.py`, the startup read | Decides whether to write the default | reads the stored name |
+| `src/gui/settings_dialog.py`, `_add_exchange` | Builds the phrase, encrypts the key and the secret | encrypts under `qat_<name>_vault` |
+| `src/gui/main_window.py`, `_connect_exchange_for_bot` | Rebuilds the phrase, decrypts | opens the stored secret |
+| `src/gui/widgets/api_tester_tab.py`, `_do_connect` | Rebuilds the phrase, decrypts | opens the stored secret |
+
+Nothing else reads the stored name. No bot reads it. No log line carries it. No
+title bar shows it.
+
+`_stored_rows` carries the row that loads the stored name into the control and
+saves the control back. `SettingsDialogReact` replaces `_setup_ui` alone, and
+the page declares the row as one line control, so both builds carry the same
+row.
+
+`src/gui/init_wizard.py` collects a name into `get_results`. `get_results` has
+no caller, and `InitWizard` is never built. The name on the User page comes from
+the startup write.
+
+### What a rename does to a stored secret
+
+A secret went in under one name. The row then changed to a second name, and
+Save ran.
+
+| Question | Observed |
+| -------- | -------- |
+| Does a box warn? | No box appears |
+| Is the rename refused? | No. The store holds the new name |
+| Is the stored token rewrapped? | No. The token stays the one that was written |
+| Does the secret open? | No. Both decrypt sites refuse |
+
+Both decrypt sites raise `Decryption failed — wrong passphrase or corrupted
+data`. The bot connect reports `Connection failed`, and the API tester label
+reads `Failed`. Neither message names the rename.
+
+The earlier name typed back opens the same secret again. Nothing records that
+earlier name, and nothing shows it after the change.
+
+No code handles the rename. The unlock the name will belong to is the
+Quintessence Wallet, and the Quintessence Wallet is not built.
+
+### The empty middle
+
+`get('username', 'user')` on a store written without the entry returns an empty
+string, so the `'user'` fallback in the three phrase literals never fires. Such
+a store builds the phrase `qat__vault`. The startup write closes that gap on the
+first run.
+
+`MASTER_FORMAT` formats to the same text the three literals carry.
+
 Back to [the subsystem index](README.md).
