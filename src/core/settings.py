@@ -37,11 +37,6 @@ except ImportError:
     _CAN_WRITE_TOML = False
 
 
-class IncrementStyle(str, Enum):
-    LINEAR = "linear"
-    LOGARITHMIC = "logarithmic"
-
-
 class FoldDistributeMode(str, Enum):
     EQUAL = "equal"
     LOGARITHMIC = "logarithmic"
@@ -161,7 +156,6 @@ class AppSettings:
 
     default_position_count: int = 10
     default_target_balance: float = 200.0
-    increment_style: str = IncrementStyle.LINEAR.value
 
     profit_folding: dict = field(
         default_factory=lambda: asdict(ProfitFoldingSettings())

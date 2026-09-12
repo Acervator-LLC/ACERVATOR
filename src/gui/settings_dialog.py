@@ -468,9 +468,6 @@ if _HAS_QT:
         def _create_trading_tab(self) -> QWidget:
             w = QWidget()
             form = QFormLayout(w)
-            self._increment_style = QComboBox()
-            self._increment_style.addItems(["linear", "logarithmic"])
-            form.addRow("Increment Style:", self._increment_style)
             self._default_positions = QSpinBox()
             self._default_positions.setRange(1, 100)
             form.addRow("Default Positions:", self._default_positions)
@@ -1165,10 +1162,6 @@ if _HAS_QT:
                  lambda: self._username.text().strip(),
                  self._username.setText,
                  ""),
-                ("increment_style",
-                 self._increment_style.currentText,
-                 lambda value: self._show_text(self._increment_style, value),
-                 "linear"),
                 ("default_position_count",
                  self._default_positions.value,
                  self._default_positions.setValue,

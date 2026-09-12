@@ -2528,4 +2528,98 @@ page. The earlier text stays where it is.
 | "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 5 controls, `_save` writes all five, `_load_current` restores all five. |
 | "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same five. |
 
+## 2026-09-11 - Increment Style is off the Trading page
+
+The Trading page carries four rows. The Increment Style row is removed. The row
+stored one of two words and read it back, and nothing in the program read the
+word.
+
+Three files declared the row and every declaration is gone.
+
+| File | What it declared |
+| ---- | ---------------- |
+| `src/core/settings.py` | the `increment_style` field on `AppSettings`, and the `IncrementStyle` enum that supplied its default and its two words |
+| `src/gui/settings_dialog.py` | the `QComboBox` and its `_stored_rows` entry |
+| `src/gui/main_tabs/settings_dialog_surface.py` | the `increment_style` spec, its Trading layout step, its `PERSISTED_ROWS` entry, and the `INCREMENT_KEY` and `INCREMENT_DEFAULT` names |
+
+`_DEPRECATED_KWARGS` in `src/trading/container/config.py` never held this name,
+so the strip list is unchanged.
+
+### The bot config field of the same name stays
+
+`increment_style` names a field on two objects that never meet. `AppSettings`
+held the page's word. `BotConfig` declares its own at
+`src/trading/container/config.py:59`, `_BOT_CONFIG_SCRUMMING_ONLY_FIELDS` names
+it at `:307` so an Extractor is refused it, and
+`src/trading/container/restore.py:220` copies it out of a saved bot. All three
+stay. The page never wrote any of them, and a bot built through the real
+creation path holds the same `linear` it held before.
+
+Nothing reads the bot field either. `git grep "\.increment_style"` finds no
+reader, and the same search shape finds thirteen reads of `.target_balance`, so
+the absence is a fact about the code rather than about the search.
+
+### Why no wizard control could open at it
+
+A row on this page earns its keep by opening a wizard field at the stored
+figure, the way Default Target Balance opens the wizard's Target Balance. No
+wizard control sets an increment style. The wizard collects 52 keys and none is
+this name. Its nearest control is Spacing, a different quantity under a
+different key.
+
+| | Increment Style | Spacing |
+| --- | --- | --- |
+| key | `increment_style` | `stack_spacing_mode` |
+| choices | linear, logarithmic | Linear, Quadratic, Exponential |
+| at | linear | Linear |
+| what it shapes | how the gap between a bot's positions grows | how the gap between Stack tranches grows |
+
+The word belongs to the retired Grid Bot. The module docstring of
+`src/gui/bot_wizard.py` names the mode and its rows: "Grid Bot: Investment
+Amount, Position Count/Distance/Increment". The other two of that trio,
+`position_count` and `position_distance_pct`, already sit on the strip list as
+grid legacy. This one stayed on `BotConfig` instead, unread.
+
+One place still carries the word `logarithmic` for a spacing, and it carries it
+only to replace it. `_sanitize_deprecated_kwargs` at
+`src/trading/container/config.py:577` promotes
+`stack_spacing_mode="logarithmic"` to `"quadratic"`.
+
+### A store carrying the key after the removal
+
+`SettingsManager._apply_dict` walks the fields `AppSettings` declares and copies
+the ones the file carries. A key the file holds and `AppSettings` does not
+declare is passed over rather than refused. A store holding
+`increment_style = "logarithmic"` opens, its `username` and
+`default_target_balance` read back, the page draws its controls, and the next
+Save writes the file without the key.
+
+| | before the removal | after the removal |
+| --- | --- | --- |
+| drawn controls on the page | 70 | 69 |
+| the Increment Style row is drawn | yes | no |
+| the Default Positions row beside it | drawn | drawn |
+| `username` read back off the store | `u10_operator` | `u10_operator` |
+| `default_target_balance` read back | 777.0 | 777.0 |
+| `BotConfig.increment_style` on a new bot | `linear` | `linear` |
+
+### The sentences this removal replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+page. The earlier text stays where it is.
+
+| Earlier sentence | What the page does now |
+| ---------------- | ---------------------- |
+| "Six rows carry the defaults a new bot starts from, not a running bot's settings." | Four rows carry those defaults. |
+| "Increment Style - Chooses whether that spacing stays even or widens on a curve." and the two sentences and the code block under it | The page carries no Increment Style row, and no control on it chooses how spacing grows. |
+| "A bot takes its own increment style from the wizard rather than from this page." | No wizard control sets an increment style, and nothing reads the `BotConfig` field of that name. |
+| "Save writes all six keys." | Save writes four keys. |
+| "The load path restores all six keys on the Trading page." | The load path restores all four keys on the Trading page. |
+| "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the three `self._increment_style` lines inside that block | `_stored_rows` carries no `increment_style` row, so the load path names three keys and the page has four rows. |
+| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 4 controls, `_save` writes all four, `_load_current` restores all four. |
+| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same four. |
+
+The 2026-09-11 Position Distance section above restated the same rows at five.
+Four is the count after both rows are gone.
+
 Back to [the subsystem index](README.md).
