@@ -154,7 +154,6 @@ class AppSettings:
 
     exchanges: list[dict] = field(default_factory=list)  # asdict(ExchangeConfig)
 
-    default_position_count: int = 10
     default_target_balance: float = 200.0
 
     profit_folding: dict = field(

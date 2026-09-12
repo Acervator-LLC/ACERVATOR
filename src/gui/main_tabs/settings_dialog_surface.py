@@ -464,7 +464,6 @@ LOGGING_GROUP_KEY = SAVE_GROUP_KEYS[1]
 #: without also being loaded.
 PERSISTED_ROWS = (
     ("username", "username", EMPTY_TEXT),
-    ("default_position_count", "default_positions", 10),
     ("default_target_balance", "default_balance", 200.0),
     ("bot_visibility", "visibility", "orderbook"),
     ("aggressive_trading", "aggressive", False),
@@ -593,14 +592,6 @@ CONTROL_SPECS = (
         "echo": "password",
         "visible": False,
         "placeholder": "Passphrase set when creating API key",
-    },
-    {
-        "tab": TRADING_TAB,
-        "group": None,
-        "label": "Default Positions:",
-        "name": "default_positions",
-        "kind": SPIN,
-        "range": (1, 100),
     },
     {
         "tab": TRADING_TAB,
@@ -1396,7 +1387,6 @@ LAYOUT = {
     TRADING_TAB: (
         FORM,
         (
-            (CONTROL, "default_positions"),
             (CONTROL, "default_balance"),
             (CONTROL, "visibility"),
             (CONTROL, "aggressive"),

@@ -2622,4 +2622,103 @@ page. The earlier text stays where it is.
 The 2026-09-11 Position Distance section above restated the same rows at five.
 Four is the count after both rows are gone.
 
+## 2026-09-11 - Default Positions is off the Trading page
+
+The Trading page carries three rows. The Default Positions row is removed. The
+row stored a count between 1 and 100 and read it back, and nothing outside the
+dialog read the count.
+
+Three files declared the row and every declaration is gone.
+
+| File | What it declared |
+| ---- | ---------------- |
+| `src/core/settings.py` | the `default_position_count` field on `AppSettings` |
+| `src/gui/settings_dialog.py` | the `QSpinBox` with its `setRange(1, 100)` and its form row, and its `_stored_rows` entry |
+| `src/gui/main_tabs/settings_dialog_surface.py` | the `default_positions` spec, its Trading layout step, and its `PERSISTED_ROWS` entry |
+
+`AppSettings` no longer declares the name, so `SettingsManager.set` refuses it.
+Driven after the removal, `set("default_position_count", 42)` raised
+`KeyError: 'Unknown setting: default_position_count'`. That is the schema doing
+its stated job rather than a fault.
+
+### The bot-side spelling stays on the strip list
+
+`position_count` is the name a bot-side kwarg would carry, and
+`_DEPRECATED_KWARGS` in `src/trading/container/config.py:384` holds it beside
+unit 9's `position_distance_pct` at `:385`. Both stay on the list, so a
+`bot_state.json` still carrying either key restores without a `TypeError`.
+`_sanitize_deprecated_kwargs` drops `position_count` before
+`BotConfig.__init__`, and `BotConfig` declares no field of that name and no
+field of this row's name.
+
+The word belongs to the retired Grid Bot. The module docstring of
+`src/gui/bot_wizard.py:6-7` names the mode and its rows: "Grid Bot: Investment
+Amount, Position Count/Distance/Increment". `BotMode` at
+`src/trading/container/config.py:39-41` declares `SCRUMMING` and `EXTRACTOR`
+alone. With this row gone, all three of that group are off the page.
+
+### No wizard control counts the positions a bot opens with
+
+A row on this page earns its keep by opening a wizard field at the stored
+figure, the way Default Target Balance opens the wizard's Target Balance. The
+wizard collects 52 keys and none of them is a count of positions a new bot
+opens with. The nearest control is Tranche Count, and it counts something else.
+
+| | Default Positions | Tranche Count |
+| --- | --- | --- |
+| key | `default_position_count` | `stack_tranche_count_target` |
+| range | 1 to 100 | 2 to 20 |
+| at | 10 | 3 |
+| what it counts | positions a new bot opens with | Stack tranches created from one SCRUM |
+
+The meaning, the range and the default all differ, so the row had no wizard
+field to open at its figure.
+
+One site in the repository counts positions, and it counts ones already open.
+`open_position_count` at `src/gui/main_tabs/stock_main_window_surface.py:545`
+reads a live status list and reports how many positions stand now, on the stock
+window. That is a runtime count rather than an opening count, and it never
+touches this row's name.
+
+### A legacy store after the removal
+
+`SettingsManager._apply_dict` walks the fields `AppSettings` declares and copies
+the ones the file carries. A key the file holds and `AppSettings` does not
+declare is passed over rather than refused. A store holding
+`default_position_count = 55` opens, its `username` and
+`default_target_balance` read back, the page draws its controls, and the next
+Save writes a file without the key while leaving the stored `username` intact.
+
+| | before the removal | after the removal |
+| --- | --- | --- |
+| drawn controls on the page | 69 | 68 |
+| control specs in the payload | 70 | 69 |
+| the Default Positions row is drawn | yes | no |
+| the Default Target Balance row beside it | drawn | drawn |
+| keys and groups one Save wrote | 14 | 13 |
+| `username` read back off the store | `u11_driver` | `u11_driver` |
+| a legacy store's `username` | `u11_legacy` | `u11_legacy` |
+| a legacy store's `default_target_balance` | 321.0 | 321.0 |
+| a legacy store's `default_position_count` | 55 | not answered |
+| `stack_tranche_count_target` on a new bot | 3 | 3 |
+
+### The sentences this row's removal replaces
+
+Each sentence below stands in an earlier section and no longer describes the
+page. The earlier text stays where it is.
+
+| Earlier sentence | What the page does now |
+| ---------------- | ---------------------- |
+| "Six rows carry the defaults a new bot starts from, not a running bot's settings." | Three rows carry those defaults. |
+| "Default Positions - Sets how many positions a new bot opens with." and the key line, the two sentences and the code block under it | The page carries no Default Positions row, and no bot holds a count of positions it opens with. |
+| "The dialog stores the count and restores it." | The dialog stores and restores nothing under this name. |
+| "Save writes all six keys." | Save writes three keys. |
+| "The load path restores all six keys on the Trading page." | The load path restores all three keys on the Trading page. |
+| "`src/gui/settings_dialog.py` — `_load_current`, the four it restores", and the `self._default_positions.setValue` line inside that block | `_stored_rows` carries no `default_position_count` row, so of the four lines in that block one remains and the page has three rows. |
+| "\| Trading \| 6 \| all six \| four of six \|" in [What each page persists](#what-each-page-persists) | Trading, 3 controls, `_save` writes all three, `_load_current` restores all three. |
+| "\| Trading \| 6 \| all six \| all six \|" in [What each page restores now](#what-each-page-restores-now) | The same three. |
+
+The 2026-09-11 Increment Style section above restated the same rows at four.
+Three is the count after all three of the Grid Bot group are gone.
+
 Back to [the subsystem index](README.md).
