@@ -31,6 +31,7 @@ reads a clock, opens a file or reaches a network.
 from __future__ import annotations
 
 import math
+from functools import partial
 from typing import Any, Optional
 
 from ..color_alpha import ALPHA_HIGHEST, rgba
@@ -430,21 +431,6 @@ PERIOD_CONTROLS = (
     ("log_1y", "1_year"),
 )
 
-SAVE_PAIRS = (
-    ("username", "username"),
-    ("position_distance_pct", "pos_distance"),
-    ("increment_style", "increment_style"),
-    ("default_position_count", "default_positions"),
-    ("default_target_balance", "default_balance"),
-    ("bot_visibility", "visibility"),
-    ("aggressive_trading", "aggressive"),
-    ("theme", "theme_combo"),
-    ("accent_color", "accent_color"),
-    ("font_family", "font_family"),
-    ("font_size", "font_size"),
-    ("heading_font_size", "heading_size"),
-    ("log_font_size", "log_font_size"),
-)
 SAVE_GROUP_KEYS = ("profit_folding", "data_logging", "ai_monitor")
 
 SAVE_CALLED_PRINT = "[SETTINGS] _save called"
@@ -467,13 +453,6 @@ PARTIAL_BOX_JOIN = "\n"
 WARNING_ICON = "warning"
 INFORMATION_ICON = "information"
 
-SETTING_LOAD_KEYS = (
-    ("username", "", "username"),
-    ("position_distance_pct", 2.0, "pos_distance"),
-    ("default_position_count", 10, "default_positions"),
-    ("default_target_balance", 200.0, "default_balance"),
-    ("accent_color", "#00ffcc", "accent_color"),
-)
 AI_LOAD_KEYS = (
     ("api_key", "", "ai_api_key"),
     ("interval_hours", 4.0, "ai_interval"),
@@ -495,6 +474,49 @@ EXCHANGE_ID_KEY = "exchange_id"
 DISPLAY_NAME_KEY = "display_name"
 NO_MATCH_INDEX = -1
 FIRST_INDEX = 0
+
+LOGGING_GROUP_KEY = SAVE_GROUP_KEYS[1]
+
+#: One entry per setting the store holds at its top level: the store key, the
+#: control carrying it, and what stands in for a store without the key. ``save``
+#: and ``_load_current`` read this one list, so no setting can be written
+#: without also being loaded.
+PERSISTED_ROWS = (
+    ("username", "username", EMPTY_TEXT),
+    ("position_distance_pct", "pos_distance", 2.0),
+    (INCREMENT_KEY, "increment_style", INCREMENT_DEFAULT),
+    ("default_position_count", "default_positions", 10),
+    ("default_target_balance", "default_balance", 200.0),
+    ("bot_visibility", "visibility", "orderbook"),
+    ("aggressive_trading", "aggressive", False),
+    (THEME_KEY, "theme_combo", THEME_DEFAULT),
+    ("accent_color", "accent_color", "#00ffcc"),
+    ("font_family", "font_family", "Segoe UI"),
+    ("font_size", "font_size", 11),
+    ("heading_font_size", "heading_size", 14),
+    ("log_font_size", "log_font_size", 10),
+)
+SAVE_PAIRS = tuple((key, name) for key, name, _fallback in PERSISTED_ROWS)
+SETTING_LOAD_KEYS = tuple(
+    (key, fallback, name) for key, name, fallback in PERSISTED_ROWS
+)
+
+# Read order decides the stored value when more than one button is ticked.
+FOLD_MODE_BUTTONS = (("fold_log", LOG_MODE), ("fold_equal", EQUAL_MODE))
+FOLD_TARGET_BUTTONS = (
+    ("fold_x", FOLD_X),
+    ("fold_recent", FOLD_RECENT),
+    ("fold_all", FOLD_ALL),
+)
+DIST_TARGET_BUTTONS = (
+    ("dist_x", DIST_X),
+    ("dist_recent", DIST_RECENT),
+    ("dist_all", DIST_ALL),
+)
+#: The two periodicity boxes the build ticks.
+DEFAULT_PERIODS = (PERIOD_CONTROLS[0][1], PERIOD_CONTROLS[1][1])
+FOLD_COUNT_DEFAULT = 5
+LOGGING_FLAG_DEFAULT = True
 
 LINE = "line"
 TEXT_AREA = "text_area"
@@ -2185,37 +2207,138 @@ class SettingsDialogModel:
             return self.values["new_exchange_items"]
         return spec["items"]
 
+    def _show_stored(self, name: str, raw: Any) -> None:
+        """One stored value put into one control, as that control admits it.
+
+        A drop-down holds a row number, so a value its list does not offer
+        leaves the row the build chose.
+        """
+        spec = spec_for(name)
+        kind = spec["kind"]
+        if kind == COMBO_TEXT:
+            found = text_index(self._items_for(spec), raw)
+        elif kind == COMBO_DATA:
+            found = data_index(self._items_for(spec), raw)
+        else:
+            self.values[name] = self._seed_control(name, raw)
+            return
+        if found >= FIRST_INDEX:
+            self.values[name] = found
+
+    def _load_stored(self, key: str, show: Any, raw: Any) -> None:
+        """Puts one stored value into its control, recording a value it refuses."""
+        try:
+            show(raw)
+        except Exception as exc:  # noqa: BLE001
+            self._record("load_refused", key, str(exc))
+
+    def _picked(self, buttons: tuple, fallback: Any) -> Any:
+        """The value of the first ticked button of ``buttons``, else ``fallback``."""
+        for name, value in buttons:
+            if self.values[name]:
+                return value
+        return fallback
+
+    def _show_picked(self, buttons: tuple, value: Any, fallback: Any) -> None:
+        """Ticks the one button of ``buttons`` carrying ``value``, and no other."""
+        wanted = value if any(value == one for _name, one in buttons) else fallback
+        for name, one in buttons:
+            self.values[name] = one == wanted
+
+    def _ticked_periods(self) -> list:
+        """The periodicities whose boxes are ticked, in page order."""
+        return [period for name, period in PERIOD_CONTROLS if self.values[name]]
+
+    def _show_periods(self, value: Any) -> None:
+        """Ticks the periodicity box of every entry ``value`` names."""
+        wanted = value if isinstance(value, (list, tuple)) else DEFAULT_PERIODS
+        for name, period in PERIOD_CONTROLS:
+            self.values[name] = period in wanted
+
+    def _folding_rows(self) -> tuple:
+        """Every ``profit_folding`` key, with the read and the write its row needs."""
+        return (
+            (FOLDING_ACTIVE_KEY,
+             partial(self._pair_value, "folding_active"),
+             partial(self._show_stored, "folding_active"),
+             FOLDING_ACTIVE_DEFAULT),
+            ("mode",
+             partial(self._picked, FOLD_MODE_BUTTONS, EQUAL_MODE),
+             lambda value: self._show_picked(FOLD_MODE_BUTTONS, value, EQUAL_MODE),
+             EQUAL_MODE),
+            ("fold_target",
+             partial(self._picked, FOLD_TARGET_BUTTONS, FOLD_ALL),
+             lambda value: self._show_picked(FOLD_TARGET_BUTTONS, value, FOLD_ALL),
+             FOLD_ALL),
+            ("fold_target_count",
+             partial(self._pair_value, "fold_x_count"),
+             partial(self._show_stored, "fold_x_count"),
+             FOLD_COUNT_DEFAULT),
+            ("distribute_target",
+             partial(self._picked, DIST_TARGET_BUTTONS, DIST_ALL),
+             lambda value: self._show_picked(DIST_TARGET_BUTTONS, value, DIST_ALL),
+             DIST_ALL),
+            ("distribute_target_count",
+             partial(self._pair_value, "dist_x_count"),
+             partial(self._show_stored, "dist_x_count"),
+             FOLD_COUNT_DEFAULT),
+        )
+
+    def _logging_rows(self) -> tuple:
+        """Every ``data_logging`` key, with the read and the write its row needs."""
+        return (
+            ("ta_signal_logging",
+             partial(self._pair_value, "ta_logging"),
+             partial(self._show_stored, "ta_logging"),
+             LOGGING_FLAG_DEFAULT),
+            ("highlight_trade_proximity",
+             partial(self._pair_value, "highlight_trades"),
+             partial(self._show_stored, "highlight_trades"),
+             LOGGING_FLAG_DEFAULT),
+            ("active_periodicities",
+             self._ticked_periods,
+             self._show_periods,
+             DEFAULT_PERIODS),
+        )
+
+    def _ai_rows(self) -> tuple:
+        """Every ``ai_monitor`` key, from the one list naming its controls."""
+        return tuple(
+            (
+                key,
+                partial(self._pair_value, name),
+                partial(self._show_stored, name),
+                fallback,
+            )
+            for key, fallback, name in AI_LOAD_KEYS
+        )
+
+    def _stored_groups(self) -> tuple:
+        """Every group the dialog persists as one key, with the rows inside it."""
+        return (
+            (FOLDING_GROUP_KEY, self._folding_rows()),
+            (LOGGING_GROUP_KEY, self._logging_rows()),
+            (AI_GROUP_KEY, self._ai_rows()),
+        )
+
     def _load_current(self) -> None:
         if not self.settings:
             self._record("load_skipped")
             return
         self._record("load_current")
         for key, fallback, name in SETTING_LOAD_KEYS:
-            self.values[name] = self._seed_control(
-                name, self.settings.get(key, fallback)
+            self._load_stored(
+                key,
+                partial(self._show_stored, name),
+                self.settings.get(key, fallback),
             )
 
-        stored_ai = self.settings.get(AI_GROUP_KEY, {})
-        for key, fallback, name in AI_LOAD_KEYS:
-            self.values[name] = self._seed_control(
-                name, read_mapping(stored_ai, key, fallback)
-            )
-
-        theme = self.settings.get(THEME_KEY, THEME_DEFAULT)
-        found = data_index(THEME_ITEMS, theme)
-        if found >= FIRST_INDEX:
-            self.values["theme_combo"] = found
-
-        style = self.settings.get(INCREMENT_KEY, INCREMENT_DEFAULT)
-        found = text_index(spec_for("increment_style")["items"], style)
-        if found >= FIRST_INDEX:
-            self.values["increment_style"] = found
-
-        stored_folding = self.settings.get(FOLDING_GROUP_KEY, {})
-        self.values["folding_active"] = self._seed_control(
-            "folding_active",
-            read_mapping(stored_folding, FOLDING_ACTIVE_KEY, FOLDING_ACTIVE_DEFAULT),
-        )
+        for group, rows in self._stored_groups():
+            stored = self.settings.get(group, {})
+            for key, _read, show, fallback in rows:
+                self._load_stored(
+                    group + "." + key, show, read_mapping(stored, key, fallback)
+                )
 
         for entry in self.settings.list_exchanges():
             eid = (entry.get(EXCHANGE_ID_KEY, "") or "").lower()
@@ -2468,43 +2591,16 @@ class SettingsDialogModel:
         return value
 
     def _folding_group(self) -> dict:
-        fold_target = FOLD_ALL
-        if self.values["fold_x"]:
-            fold_target = FOLD_X
-        elif self.values["fold_recent"]:
-            fold_target = FOLD_RECENT
-        dist_target = DIST_ALL
-        if self.values["dist_x"]:
-            dist_target = DIST_X
-        elif self.values["dist_recent"]:
-            dist_target = DIST_RECENT
-        return {
-            "active": self.values["folding_active"],
-            "mode": LOG_MODE if self.values["fold_log"] else EQUAL_MODE,
-            "fold_target": fold_target,
-            "fold_target_count": self.values["fold_x_count"],
-            "distribute_target": dist_target,
-            "distribute_target_count": self.values["dist_x_count"],
-        }
+        """The stored ``profit_folding`` group, read off the Profit Folding page."""
+        return {key: read() for key, read, _show, _fallback in self._folding_rows()}
 
     def _logging_group(self) -> dict:
-        periods = [period for name, period in PERIOD_CONTROLS if self.values[name]]
-        return {
-            "ta_signal_logging": self.values["ta_logging"],
-            "highlight_trade_proximity": self.values["highlight_trades"],
-            "active_periodicities": periods,
-        }
+        """The stored ``data_logging`` group, read off the Logging page."""
+        return {key: read() for key, read, _show, _fallback in self._logging_rows()}
 
     def _ai_group(self) -> dict:
-        return {
-            "api_key": self.values["ai_api_key"].strip(),
-            "interval_hours": self.values["ai_interval"],
-            "connect_phrase": self.values["ai_connect_phrase"].strip(),
-            "confirm_phrase": self.values["ai_confirm_phrase"].strip(),
-            "enabled": self.values["ai_enabled"],
-            "auto_handshake": self.values["ai_auto_handshake"],
-            "log_feedback": self.values["ai_log_feedback"],
-        }
+        """The stored ``ai_monitor`` group, read off the AI Monitor page."""
+        return {key: read() for key, read, _show, _fallback in self._ai_rows()}
 
     def save(self) -> dict:
         """Write every setting, report what failed, and close the dialog.
