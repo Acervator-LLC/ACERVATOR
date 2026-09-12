@@ -96,6 +96,20 @@ Gating from outside the repo reports every real path as dead: the hallucination 
 
 GitHub keeps the previous body in its own edit history, so a rewrite destroys nothing.
 
+**The gate has to BLOCK the publish, not print beside it.** A reader that prints
+`passed` and exits 0 either way lets a red body through, and it did: two sentences
+the rule refuses reached a published body because the publish ran in the same
+chained command. Make the reader exit non-zero on a false verdict, so the chain
+stops:
+
+```python
+sys.exit(0 if report["passed"] else 1)
+```
+
+Then `gate && gh issue edit ...` cannot publish a body the archetype refuses. A
+verdict nothing branches on is not a gate.
+
+
 ## A unit's absences become rows, before the next unit goes out
 
 Operator, twice: *"Still Absent - Make sure these all get units if needed. Make it
