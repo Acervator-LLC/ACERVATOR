@@ -98,7 +98,8 @@ class BotConfig:
     scrum_read_rate_min: int = 5
     # % of BB band width price must travel since the last fold; 0 is off.
     band_travel_pct: int = 70
-    # Rapid Fire override when price touches a BB band within 0.1%.
+    # A band touch inside 0.5%, or a wick inside 0.2%, lowers the TA
+    # confidence floor; scrum_fire_pct is untouched.
     bb_bullseye_check: bool = True
     # A separate USD reserve for buying sharp drawdowns.
     hedge_rebalance_active: bool = True

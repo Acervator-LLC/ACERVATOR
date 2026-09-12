@@ -924,11 +924,11 @@ TOOL_TIPS = {
         "must travel since last fold. 0 disables."
     ),
     "bb_bullseye": (
-        "Rapid Fire override when price touches BB band "
-        "within 0.5 % (or the candle wick reaches within "
-        "0.2 %). When triggered, bypasses the fire threshold "
-        "— bullseye alone can arm a fire, subject to midline "
-        "gate."
+        "Counts a band touch within 0.5 % (or a candle wick "
+        "within 0.2 %) as BB proximity. With the delta at or "
+        "over the interval that arms the BB priority skew, "
+        "which lowers the TA confidence floor. The fire "
+        "threshold and the midline gate are unchanged."
     ),
     "wire_inflow_stack_pct": (
         "Wire inflow stacking percentage. Controls how "
