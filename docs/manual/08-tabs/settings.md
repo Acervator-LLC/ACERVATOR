@@ -521,6 +521,28 @@ if key and secret:
 Six rows carry the defaults a new bot starts from, not a running bot's
 settings.
 
+Three of those six rows are off the page. The descriptions below, and the code
+blocks under them, record what the page held before the removal. Each removal
+has its own dated section further down this page.
+
+| the row | the dated section that records its removal |
+| --- | --- |
+| Position Distance | 2026-09-11 - Position Distance is off the Trading page |
+| Increment Style | 2026-09-11 - Increment Style is off the Trading page |
+| Default Positions | 2026-09-11 - Default Positions is off the Trading page |
+
+The strip list quoted further down this section now says in its own words that
+it is a retirement record and not a set of settings.
+
+`src/trading/container/config.py` — what the strip list says about itself
+
+```python
+#: A retirement record, not a setting set. Each name is a setting removed from
+#: the product, kept so a config stored before its removal still builds;
+#: `_sanitize_deprecated_kwargs` drops each before `BotConfig.__init__`.
+#: Add no name. Only `bulk_trading` is read, by `bot_config_kwargs`.
+```
+
 Position Distance - Sets the spacing a new bot puts between its positions.
 Key `position_distance_pct`, 1.0 % to 50.0 %, at 2.0 %.
 
@@ -654,12 +676,40 @@ if idx >= 0:
     self._increment_style.setCurrentIndex(idx)
 ```
 
+Three of the four reads in that block belonged to rows now off the page. The
+page saves and restores Default Target Balance alone out of the four.
+
 ### Settings > Profit Folding
 
 ![Settings, the Profit Folding page.](p37-i0.png)
 
 One master checkbox and three groups of radio buttons, eleven controls in all.
 Every key below sits inside one stored `profit_folding` group.
+
+All three radio groups are off the page, and the five rows they held went with
+them. The descriptions below, and the code blocks under them, record what the
+page held before the removals. Each removal has its own dated section further
+down this page.
+
+| the row | the dated section that records its removal |
+| --- | --- |
+| Distribution Mode | 2026-09-12 - Distribution Mode is off the Profit Folding page |
+| Profit Folding Target | 2026-09-12 - Profit Folding Target waits on its count row |
+| Fold to X# of buy positions | 2026-09-12 - Fold to X# of buy positions takes the whole target group off the page |
+| Upward Distribution Target | 2026-09-12 - Upward Distribution Target takes the sell-side group off the page |
+| Distribute to X# of sell positions | carried by the Upward Distribution Target section above |
+
+The stored group holds one field after those removals.
+
+`src/core/settings.py` — the group the page writes now
+
+```python
+@dataclass
+class ProfitFoldingSettings:
+    """Field defaults for the ``AppSettings.profit_folding`` group."""
+
+    active: bool = True
+```
 
 Profit Folding / Upward Distribution Active - Turns the whole page on. Key
 `active`, a checkbox, clear at build and set to on when the stored group
@@ -4521,5 +4571,85 @@ owns a bot's own phantom selection.
 | the wizard still draws eleven boxes | `src/gui/bot_wizard.py:1679-1699` builds eleven tick boxes, so the operator can still tick several. One selection is seeded and not enforced there; the wizard's own control belongs to the bot's phantom rows |
 | the figure on this page shows the old grid | `p39-i0.png` was captured from the eleven boxes and has not been retaken |
 | the rank order is written twice | `src/trading/phantom_balance.py:29-41` and `src/gui/main_tabs/bot_wizard_surface.py:521-533` hold the same eleven names in the same order, and the Qt-free surface takes no import, so nothing reconciles them. Measured identical today |
+
+## 2026-09-12 - Every retired setting name says what it is
+
+Eight settings came off these pages, and their names did not all leave the
+tree with them. A name sitting in a comment with no explanation reads as a
+setting, so each one that stays now says what it is.
+
+### Where the retired names still sit
+
+Counted over the git index, matches rather than lines, in both the code
+spelling and the words the page shows.
+
+| the name | matches | where they are |
+| --- | --- | --- |
+| `position_distance_pct` | 9 | this page 8, the strip list 1 |
+| `increment_style` | 21 | this page 15, the bot config 2, the restore path 1, a debug report 1 |
+| `default_position_count` | 9 | this page only |
+| `position_count` | 19 | this page 14, the strip list 1, a creation log line 1, a census note 1, a stock helper 2 |
+| `fold_mode` | 10 | this page 4, the two wizard files 5, the strip list 1 |
+| `fold_target` | 31 | this page 24, the two wizard files 5, the strip list 1 |
+| `fold_target_count` | 23 | this page 20, the two wizard files 2, the strip list 1 |
+| `distribute_target` | 34 | this page 27, the two wizard files 5, the strip list 1 |
+| `distribute_target_count` | 21 | this page 18, the two wizard files 2, the strip list 1 |
+| `profit_fold_pct` | 3 | this page 1, a wizard docstring 1, the strip list 1 |
+| `upward_distribution` | 1 | a wizard docstring, and nowhere else |
+
+The settings store and both settings dialog modules hold none of them. Thirteen
+camelCase spellings were searched beside the snake_case ones and all read zero,
+so no shipped JavaScript names a retired setting.
+
+### What emptying the strip list does
+
+A record shaped like `bot_state.json` was built carrying thirty config keys, of
+which eleven are the retired names, and driven through all three build routes
+with the strip list as shipped and then emptied.
+
+```
+the list as shipped, 11 names
+  make_bot_config(**stored)             OK  symbol='BTC/USD'
+  bot_config_kwargs then make_bot_config OK  kwargs=18 retired leaked=0
+  restore_bots_from_state               OK  restored=1 skips=0
+
+the list emptied
+  make_bot_config(**stored)             TypeError: unexpected keyword
+                                        argument 'bulk_trading'
+  bot_config_kwargs then make_bot_config OK  kwargs=18 retired leaked=0
+  restore_bots_from_state               OK  restored=1 skips=0
+```
+
+Dropping the eleven one at a time raises that error naming each key in turn,
+eleven times out of eleven, so every entry is load-bearing on that route. The
+launch restore names each kwarg it wants one at a time rather than passing the
+stored config whole, so the restore arm does not move. A retired key that did
+reach the factory is caught at `src/trading/container/restore.py:322`, which
+skips the bot and leaves its record on disk.
+
+### What the declaration says now
+
+The eleven entries stay. The comment above them states why.
+
+`src/trading/container/config.py` — the strip list, with its own description
+
+```python
+#: A retirement record, not a setting set. Each name is a setting removed from
+#: the product, kept so a config stored before its removal still builds;
+#: `_sanitize_deprecated_kwargs` drops each before `BotConfig.__init__`.
+#: Add no name. Only `bulk_trading` is read, by `bot_config_kwargs`.
+```
+
+### The names taken out, and the ones left standing
+
+| occurrence | what happened to it |
+| --- | --- |
+| the parameter page's `get_config` docstring | removed. It listed four retired keys the method does not emit, and carried two version names. `upward_distribution` had no other occurrence in the tree and now has none |
+| the restore path's Grid-legacy comment | it read "nothing here reads them" above three lines that read three of them. It now states what the hand-written kwarg list does |
+| the stack-mode fallback comment | it named no key. It now names `bulk_trading` |
+| the eleven strip-list entries | kept, for the measured reason above |
+| the two wizard files' folding groups | kept. The wizard's folding page is unreachable, and the rows that own those files are still open |
+| the creation log line's `position_count` read | kept. It is the row that owns the line that always prints zero |
+| the handoff files, the archive chronicle, the census note, the debug report | kept. Each is a dated record of an earlier state, not a description of a control |
 
 Back to [the subsystem index](README.md).

@@ -203,8 +203,8 @@ class StateRestoreMixin:
                 "ta_timeframe": cfg.get("ta_timeframe", "1h"),
                 "visibility": cfg.get("visibility", "orderbook"),
                 "aggressive_trading": cfg.get("aggressive_trading", False),
-                # An absent key resolves to STACK_MODE_DEFAULT; the retired
-                # bulk_trading key is dropped by _sanitize_deprecated_kwargs.
+                # An absent stack_mode resolves to STACK_MODE_DEFAULT; a
+                # stored bulk_trading reaches no kwarg on this path.
                 "stack_mode": cfg.get("stack_mode", STACK_MODE_DEFAULT),
                 "split_distance": cfg.get("split_distance", 1.0),
                 "stack_tranche_count_target": cfg.get("stack_tranche_count_target", 3),
@@ -214,8 +214,8 @@ class StateRestoreMixin:
                 "trading_fee_pct": cfg.get("trading_fee_pct", 0.6),
             }
             if mode == BotMode.SCRUMMING:
-                # Grid-legacy keys still in bot_state.json are ignored;
-                # nothing here reads them.
+                # Every kwarg below is named one at a time, so a
+                # _DEPRECATED_KWARGS name in cfg reaches none of them.
                 _mode_kwargs = {
                     "investment_amount": cfg.get("investment_amount", 200.0),
                     "increment_style": cfg.get("increment_style", "linear"),
