@@ -22,7 +22,6 @@ try:
         QSpinBox,
         QDoubleSpinBox,
         QCheckBox,
-        QRadioButton,
         QGroupBox,
         QPushButton,
         QSlider,
@@ -53,12 +52,6 @@ if _HAS_QT:
         "interactivebrokers",
     }
 
-    # Read order decides the stored value when more than one button is ticked.
-    DIST_TARGET_BUTTONS = (
-        ("_dist_x", "x_sell"),
-        ("_dist_recent", "most_recent_sell"),
-        ("_dist_all", "all_sell"),
-    )
     PERIOD_BUTTONS = (
         ("_log_24h", "24h"),
         ("_log_1w", "1_week"),
@@ -481,23 +474,6 @@ if _HAS_QT:
                 "Profit Folding / Upward Distribution Active"
             )
             layout.addWidget(self._folding_active)
-
-            dist_group = QGroupBox("Upward Distribution Target")
-            dist_layout = QVBoxLayout(dist_group)
-            self._dist_all = QRadioButton("Distribute to ALL sell positions")
-            self._dist_x = QRadioButton("Distribute to X# of sell positions:")
-            self._dist_recent = QRadioButton("Distribute to most recent sell positions")
-            self._dist_x_count = QSpinBox()
-            self._dist_x_count.setRange(1, 100)
-            self._dist_x_count.setValue(5)
-            self._dist_all.setChecked(True)
-            dist_layout.addWidget(self._dist_all)
-            dx_row = QHBoxLayout()
-            dx_row.addWidget(self._dist_x)
-            dx_row.addWidget(self._dist_x_count)
-            dist_layout.addLayout(dx_row)
-            dist_layout.addWidget(self._dist_recent)
-            layout.addWidget(dist_group)
             layout.addStretch()
             return w
 
@@ -1082,24 +1058,6 @@ if _HAS_QT:
             if at >= 0:
                 combo.setCurrentIndex(at)
 
-        def _picked(self, buttons: tuple, fallback: object) -> object:
-            """The value the first ticked button of ``buttons`` carries.
-
-            Answers ``fallback`` when no button of the group is ticked.
-            """
-            for attr, value in buttons:
-                if getattr(self, attr).isChecked():
-                    return value
-            return fallback
-
-        def _show_picked(
-            self, buttons: tuple, value: object, fallback: object
-        ) -> None:
-            """Ticks the one button of ``buttons`` carrying ``value``, and no other."""
-            wanted = value if any(value == one for _attr, one in buttons) else fallback
-            for attr, one in buttons:
-                getattr(self, attr).setChecked(one == wanted)
-
         def _ticked_periods(self) -> list:
             """The periodicities whose boxes are ticked, in page order."""
             return [
@@ -1176,16 +1134,6 @@ if _HAS_QT:
                      self._folding_active.isChecked,
                      lambda value: self._folding_active.setChecked(bool(value)),
                      True),
-                    ("distribute_target",
-                     lambda: self._picked(DIST_TARGET_BUTTONS, "all_sell"),
-                     lambda value: self._show_picked(
-                         DIST_TARGET_BUTTONS, value, "all_sell"
-                     ),
-                     "all_sell"),
-                    ("distribute_target_count",
-                     self._dist_x_count.value,
-                     self._dist_x_count.setValue,
-                     5),
                 )),
                 ("data_logging", (
                     ("ta_signal_logging",

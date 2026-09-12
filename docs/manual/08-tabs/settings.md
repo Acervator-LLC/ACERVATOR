@@ -3653,4 +3653,207 @@ page. The earlier text stays where it is.
 The master switch above the removed group gated four rows. It gates two now, and
 the two are Upward Distribution Target and Distribute to X# of sell positions.
 
+## 2026-09-12 - Upward Distribution Target takes the sell-side group off the page
+
+The Profit Folding page carried one master checkbox and one group of radio buttons.
+The `Upward Distribution Target` group is removed, all four controls together: the
+three radio buttons and the count box inside them. The group offered a choice of
+which sell positions a distribution reaches and a number for the middle choice. No
+distribution in the engine offers that choice, and no distribution counts the
+positions it reaches.
+
+Three files declared the group and every declaration is gone.
+
+| File | What it declared |
+| ---- | ---------------- |
+| `src/core/settings.py` | `DistributeTarget`, and the `distribute_target` and `distribute_target_count` fields on `ProfitFoldingSettings` |
+| `src/gui/settings_dialog.py` | `DIST_TARGET_BUTTONS`, the `QGroupBox` with its three `QRadioButton`s and its `QSpinBox`, the `QRadioButton` import, the two `_stored_groups` rows, and `_picked` with `_show_picked` |
+| `src/gui/main_tabs/settings_dialog_surface.py` | `DIST_GROUP_TITLE`, `DIST_ALL`, `DIST_X`, `DIST_RECENT`, `DIST_TARGET_BUTTONS`, `FOLD_COUNT_DEFAULT`, the four control specs, the `GROUPS` entry, the Profit Folding layout step, the two `_folding_rows` entries, and `_picked` with `_show_picked` |
+
+`_picked` and `_show_picked` held one caller each in each file, the
+`distribute_target` row, so both pairs go with it.
+
+### The group's four controls on the sell side
+
+| The control | What it stored |
+| ----------- | -------------- |
+| the radio `dist_all`, "Distribute to ALL sell positions", checked at build | `profit_folding.distribute_target` as `all_sell` |
+| the radio `dist_x`, "Distribute to X# of sell positions:" | the same key as `x_sell` |
+| the radio `dist_recent`, "Distribute to most recent sell positions" | the same key as `most_recent_sell` |
+| the spin `dist_x_count`, 1 to 100, at 5, with no label and no text | `profit_folding.distribute_target_count` |
+
+The spin carried the group title of the three radios and shared one layout row with
+`dist_x`. Every word beside it on screen belonged to that radio, so the count had no
+words of its own and no meaning apart from the choice it sized. The two rows are one
+decision, so one change takes both off together.
+
+### What the three sell-side words chose
+
+The bare name `distribute_target` appeared at 16 sites across the 1077 tracked files
+outside `dist/` and `docs-archive/`, and `distribute_target_count` at 13. Three of
+each declared these rows, five of the first and three of the second belong to the bot
+wizard's own copy, one of each is the strip list, and the rest are this manual quoting
+the keys. Six read shapes were spelled for each name and every one returned nothing.
+
+| Read shape | Sites |
+| ---------- | ----: |
+| `getattr(x, "distribute_target", ...)` | 0 |
+| `getattr(bot.config, "distribute_target", ...)` | 0 |
+| `x["distribute_target"]` | 0 |
+| `get_nested(..., "distribute_target")` | 0 |
+| `get(..., "distribute_target")` | 0 |
+| `cfg.distribute_target` | 0 |
+
+The same six shapes, spelled for the sibling key `profit_folding_active`, return 17
+sites over the same files, so the zeros read the repository rather than a blind
+search. A planted file spelling all six shapes for `distribute_target` grew every one
+of the six counts.
+
+`distribute_target` and `distribute_target_count` both stay in `_DEPRECATED_KWARGS` at
+`src/trading/container/config.py:390-391`, so a `bot_state.json` still carrying either
+restores without a `TypeError`. `BotConfig` declares neither name as a field, and
+`_sanitize_deprecated_kwargs` drops both before `BotConfig.__init__`. A
+`make_bot_config` call asking for all four of `distribute_target`,
+`distribute_target_count`, `profit_folding_active` and `scrum_fold_pct` kept the last
+two and built a config carrying neither removed name.
+
+### One accumulator bounds a distribution, and no count does
+
+`src/trading/scrumming/tick_phases.py:1919` `_tick_distribute` is the live route, and
+`src/trading/scrumming_bot.py:4222` calls it. It sells `_dist_accumulator` units of the
+asset, takes the lesser of that figure and the venue balance, then walks `_main_lots`
+sorted by `initial_buy_price` and opens one fold tranche per lot it consumes.
+
+Driven over five held lots, on a config carrying `distribute_target = 'x_sell'` and
+`distribute_target_count = 2`:
+
+| What was asked | Lots the distribution reached |
+| -------------- | ----------------------------: |
+| an accumulator of 5.0 units | 5 of 5 |
+| an accumulator of 2.5 units | 2 of 5 |
+| an accumulator of 1.0 units | 1 of 5 |
+| an accumulator of 0.0 units | 0 of 5, and no sell placed |
+
+The stored count of 2 narrowed nothing. The three smaller accumulators show the
+reading can report a narrowed walk, so the unnarrowed walk at 5.0 units is a reading.
+The venue balance is the only other bound: at a balance of 2.0 units against an
+accumulator of 5.0 the sell was 2.0 units and the walk reached 2 of 5.
+
+The five lots were built with buy-price order and age order deliberately opposite. The
+walk consumed `['p150_oldest', 'p140']`, which is buy price highest first, and the
+newest-first order is the exact reverse of it. "Most recent" is not the order a
+distribution takes.
+
+One DIST sell leaves one tranche behind. `_bound_new_fold_tranches` merges the slice
+the build loop appended back to a single record, so the number of positions a
+distribution opens is 1 at an accumulator of 5.0 units and 1 at 3.0.
+
+### Nine sell-side calls that refused a count
+
+Each sell-side path was asked for a count or a target by keyword.
+
+| The call | What it did |
+| -------- | ----------- |
+| `_tick_distribute(..., count=2)` | `TypeError`, unexpected keyword argument |
+| `_tick_distribute(..., distribute_target='x_sell')` | `TypeError`, unexpected keyword argument |
+| `_tick_distribute(..., distribute_target_count=2)` | `TypeError`, unexpected keyword argument |
+| `_execute_sell(1.0, 200.0, None, count=2)` | `TypeError`, unexpected keyword argument |
+| `_settled_sale_proceeds(1.0, 200.0, label='DIST', count=2)` | `TypeError`, unexpected keyword argument |
+| `_bound_new_fold_tranches(0, count=2)` | `TypeError`, unexpected keyword argument |
+| `_apply_scrum_fold_pct(0, 100.0, 1.0, distribute_target='x_sell')` | `TypeError`, unexpected keyword argument |
+| `scrum_ladder_prices(100.0, 'x_sell')` | `ValueError`, levels must be an int |
+| `split_scrum_into_tranches(..., spacing_mode='most_recent_sell')` | `ValueError`, unknown spacing_mode |
+
+`scrum_ladder_prices(100.0, 3)` returned `[101.0, 104.0, 109.0]`, three prices on an
+upward ladder, and decided no position and no set. `SPACING_MODES` in
+`src/trading/stack_math.py` holds `quadratic`, `fibonacci`, `linear` and
+`exponential`, and none of this group's three words.
+
+### The count default that kept the constant alive
+
+`FOLD_COUNT_DEFAULT` at `src/gui/main_tabs/settings_dialog_surface.py` had exactly one
+reader, the `distribute_target_count` row. That row is gone, so the constant goes with
+it. The bare name fell from 3 sites to 1, and the one left is this manual.
+
+| Name | Sites before | Sites after |
+| ---- | -----------: | ----------: |
+| `distribute_target` | 16 | 13 |
+| `distribute_target_count` | 13 | 10 |
+| `DistributeTarget` | 2 | 0 |
+| `DIST_TARGET_BUTTONS` | 6 | 0 |
+| `DIST_GROUP_TITLE` | 7 | 0 |
+| `FOLD_COUNT_DEFAULT` | 3 | 1 |
+| `dist_x_count` | 8 | 4 |
+
+Every site still standing is either this manual or the bot wizard's own copy of the
+same three words, which carries its own controls and its own count of 1 to 50.
+
+### A six-key store opening on one row
+
+`SettingsManager._apply_dict` copies the whole `profit_folding` dict off the file, so a
+store written before the removal still carries all six keys the group ever held and
+still opens. The page reads back the one key it has a row for, and the next Save writes
+the group without the other five.
+
+| | before the removal | after the removal |
+| --- | --- | --- |
+| the dialog built | yes | yes |
+| control specs in the payload | 63 | 59 |
+| control specs on the Profit Folding tab | 5 | 1 |
+| control specs in the `Upward Distribution Target` group | 4 | 0 |
+| an `Upward Distribution Target` group is drawn | yes | no |
+| groups declared on the surface | 11 | 10 |
+| rows the `profit_folding` group declares | 3 | 1 |
+| `ProfitFoldingSettings` fields | 3 | 1 |
+| keys a legacy store's group holds on opening | 6 | 6 |
+| keys the group holds after one Save | 3 | 1 |
+| warning boxes raised | 0 | 0 |
+| `active` read back off a legacy store | `False` | `False` |
+| `username` beside the group | `u19_driver` | `u19_driver` |
+| `bot_visibility` beside the group | `internal` | `internal` |
+| the Qt dialog built on a legacy store | yes | yes |
+| a `_dist_x_count` holder on the Qt dialog | yes | no |
+
+`active` is the one remaining sibling and it reads back at its stored value on every
+run, before and after, and survives a Save that changed nothing. The three rows the
+dialog keeps beside the group, `username`, `bot_visibility` and the stored group
+itself, all read back unchanged.
+
+With the group present, all three stored words round-tripped. Each opened the page on
+its own button, each was read back as itself, and each survived a Save that changed
+nothing.
+
+| Stored `distribute_target` | The radio ticked | The store after a Save with no edit |
+| --- | --- | --- |
+| `all_sell` | `dist_all` | `all_sell` |
+| `x_sell` | `dist_x` | `x_sell` |
+| `most_recent_sell` | `dist_recent` | `most_recent_sell` |
+
+### What the Profit Folding page holds now
+
+One checkbox, `Profit Folding / Upward Distribution Active`, and nothing else. It is
+the page's only control and the only `profit_folding` key the dialog stores. The
+Settings dialog draws no radio button on any tab any more: the three removed here were
+the last three `RADIO` control specs on the surface.
+
+### The sentences the sell side leaves behind
+
+Each sentence below stands in an earlier section and no longer describes the page. The
+earlier text stays where it is.
+
+| Earlier sentence | What the page does now |
+| ---------------- | ---------------------- |
+| "Upward Distribution Target - The same three choices on the sell side. Key `distribute_target`, at all sell positions." | The page carries no `Upward Distribution Target` group. |
+| "The sell-side group is built the same way as the buy-side group above, with its own count box at 5 and its own all-sell button checked at build." | Neither group exists. |
+| "Distribute to X# of sell positions - Sets the sell-side count. Key `distribute_target_count`, 1 to 100, at 5." | The page sets no count, and the accumulated asset bounds how many lots a distribution reaches. |
+| "Save collapses the two target groups into one dictionary." | Save collapses no target group. It writes one key, `active`. |
+| "Save collapses one target group, the sell side." | Save collapses none. |
+| "Two of the three keys the page still stores are on the strip list: `distribute_target` and `distribute_target_count`." | The page stores one key and it is not on the strip list. |
+| "`FOLD_COUNT_DEFAULT` stays, because the sell-side count row reads it." | The sell-side count row is gone and so is the constant. |
+| "The master switch above the removed group gated four rows. It gates two now, and the two are Upward Distribution Target and Distribute to X# of sell positions." | The master switch gates no row. |
+| "One master checkbox and three groups of radio buttons, eleven controls in all." | One master checkbox, one control in all. |
+
+The master switch is the last row on the page, and its own verdict was that it waits on
+the wizard's folding page. Nothing on this page gates anything now.
+
 Back to [the subsystem index](README.md).

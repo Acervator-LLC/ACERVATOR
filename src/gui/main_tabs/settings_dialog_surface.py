@@ -177,7 +177,6 @@ CRYPTO_ADD_GROUP = "Add Crypto Exchange"
 STOCK_ADD_GROUP = "Add Stock Broker"
 REMOVE_BUTTON_TEXT = "Remove Selected"
 
-DIST_GROUP_TITLE = "Upward Distribution Target"
 LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
 FONT_GROUP_TITLE = "Font Settings"
 SMS_PROVIDER_GROUP_TITLE = "SMS Provider"
@@ -396,10 +395,6 @@ SOUND_CONFIG_FIELDS = (
     ("drip_sound", "sound_drip"),
 )
 
-DIST_ALL = "all_sell"
-DIST_X = "x_sell"
-DIST_RECENT = "most_recent_sell"
-
 PERIOD_CONTROLS = (
     ("log_24h", "24h"),
     ("log_1w", "1_week"),
@@ -472,15 +467,8 @@ SETTING_LOAD_KEYS = tuple(
     (key, fallback, name) for key, name, fallback in PERSISTED_ROWS
 )
 
-# Read order decides the stored value when more than one button is ticked.
-DIST_TARGET_BUTTONS = (
-    ("dist_x", DIST_X),
-    ("dist_recent", DIST_RECENT),
-    ("dist_all", DIST_ALL),
-)
 #: The two periodicity boxes the build ticks.
 DEFAULT_PERIODS = (PERIOD_CONTROLS[0][1], PERIOD_CONTROLS[1][1])
-FOLD_COUNT_DEFAULT = 5
 LOGGING_FLAG_DEFAULT = True
 
 LINE = "line"
@@ -614,42 +602,6 @@ CONTROL_SPECS = (
         "name": "folding_active",
         "kind": CHECK,
         "text": "Profit Folding / Upward Distribution Active",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": DIST_GROUP_TITLE,
-        "label": None,
-        "name": "dist_all",
-        "kind": RADIO,
-        "text": "Distribute to ALL sell positions",
-        "checked": True,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": DIST_GROUP_TITLE,
-        "label": None,
-        "name": "dist_x",
-        "kind": RADIO,
-        "text": "Distribute to X# of sell positions:",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": DIST_GROUP_TITLE,
-        "label": None,
-        "name": "dist_x_count",
-        "kind": SPIN,
-        "range": (1, 100),
-        "value": 5,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": DIST_GROUP_TITLE,
-        "label": None,
-        "name": "dist_recent",
-        "kind": RADIO,
-        "text": "Distribute to most recent sell positions",
         "checked": False,
     },
     {
@@ -1130,7 +1082,6 @@ CONTROL_SPECS = (
 
 GROUPS = (
     (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
-    (FOLDING_TAB, DIST_GROUP_TITLE),
     (PHANTOM_TAB, LOCK_GROUP_TITLE),
     (THEME_TAB, FONT_GROUP_TITLE),
     (SMS_TAB, SMS_PROVIDER_GROUP_TITLE),
@@ -1327,18 +1278,6 @@ LAYOUT = {
         COLUMN,
         (
             (CONTROL, "folding_active"),
-            (
-                GROUP,
-                DIST_GROUP_TITLE,
-                (
-                    COLUMN,
-                    (
-                        (CONTROL, "dist_all"),
-                        (ROW, ((CONTROL, "dist_x"), (CONTROL, "dist_x_count"))),
-                        (CONTROL, "dist_recent"),
-                    ),
-                ),
-            ),
             (STRETCH,),
         ),
     ),
@@ -2121,19 +2060,6 @@ class SettingsDialogModel:
         except Exception as exc:  # noqa: BLE001
             self._record("load_refused", key, str(exc))
 
-    def _picked(self, buttons: tuple, fallback: Any) -> Any:
-        """The value of the first ticked button of ``buttons``, else ``fallback``."""
-        for name, value in buttons:
-            if self.values[name]:
-                return value
-        return fallback
-
-    def _show_picked(self, buttons: tuple, value: Any, fallback: Any) -> None:
-        """Ticks the one button of ``buttons`` carrying ``value``, and no other."""
-        wanted = value if any(value == one for _name, one in buttons) else fallback
-        for name, one in buttons:
-            self.values[name] = one == wanted
-
     def _ticked_periods(self) -> list:
         """The periodicities whose boxes are ticked, in page order."""
         return [period for name, period in PERIOD_CONTROLS if self.values[name]]
@@ -2151,14 +2077,6 @@ class SettingsDialogModel:
              partial(self._pair_value, "folding_active"),
              partial(self._show_stored, "folding_active"),
              FOLDING_ACTIVE_DEFAULT),
-            ("distribute_target",
-             partial(self._picked, DIST_TARGET_BUTTONS, DIST_ALL),
-             lambda value: self._show_picked(DIST_TARGET_BUTTONS, value, DIST_ALL),
-             DIST_ALL),
-            ("distribute_target_count",
-             partial(self._pair_value, "dist_x_count"),
-             partial(self._show_stored, "dist_x_count"),
-             FOLD_COUNT_DEFAULT),
         )
 
     def _logging_rows(self) -> tuple:
