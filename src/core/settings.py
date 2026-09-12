@@ -37,12 +37,6 @@ except ImportError:
     _CAN_WRITE_TOML = False
 
 
-class DistributeTarget(str, Enum):
-    ALL_SELL = "all_sell"
-    X_SELL = "x_sell"
-    MOST_RECENT_SELL = "most_recent_sell"
-
-
 class BotVisibility(str, Enum):
     ORDERBOOK = "orderbook"
     INTERNAL = "internal"
@@ -68,8 +62,6 @@ class ProfitFoldingSettings:
     """Field defaults for the ``AppSettings.profit_folding`` group."""
 
     active: bool = True
-    distribute_target: DistributeTarget = DistributeTarget.ALL_SELL
-    distribute_target_count: int = 5
 
 
 @dataclass
