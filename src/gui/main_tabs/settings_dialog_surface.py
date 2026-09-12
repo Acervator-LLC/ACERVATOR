@@ -44,6 +44,7 @@ from ...core.sms_engine import (
     FIELD_BOUNDS,
     TWILIO,
     SMSConfig,
+    gateway_address,
 )
 from ...trading.ta_engine import DEFAULT_WEIGHTS
 from ..color_alpha import ALPHA_HIGHEST, rgba
@@ -1136,6 +1137,9 @@ SOUND_CONNECTIONS = (
     (SOUND_BOX_SIGNAL_FORMAT.format(name=name), SOUND_BOX_HANDLER)
     for _field, name in SOUND_CONFIG_FIELDS
 )
+SMS_CARRIER_CONNECTIONS = (
+    ("sms_carrier.currentIndexChanged", "fill_gateway_email"),
+)
 AI_CONNECTIONS = (("ai_test_btn.clicked", "test_ai_handshake"),)
 FOOTER_CONNECTIONS = (
     ("cancel_btn.clicked", "reject"),
@@ -1162,6 +1166,7 @@ def connect_order() -> tuple:
         found.append(
             (SOUND_BUTTON_SIGNAL_FORMAT.format(name=name), SOUND_BUTTON_HANDLER)
         )
+    found.extend(SMS_CARRIER_CONNECTIONS)
     found.extend(AI_CONNECTIONS)
     found.extend(FOOTER_CONNECTIONS)
     return tuple(found)
@@ -1170,6 +1175,7 @@ def connect_order() -> tuple:
 ACTION_HANDLERS = dict(
     EXCHANGE_CONNECTIONS
     + SOUND_CONNECTIONS
+    + SMS_CARRIER_CONNECTIONS
     + AI_CONNECTIONS
     + FOOTER_CONNECTIONS
 )
@@ -2365,6 +2371,18 @@ class SettingsDialogModel:
         """
         self._record("push_sound_config")
         self.sfx_volume_changed(self.values[VOLUME_NAME])
+
+    def fill_gateway_email(self) -> None:
+        """Build the Gateway Email row from the carrier and the typed number.
+
+        A number the carrier's gateway cannot address, and the manual choice,
+        both leave the row as the operator left it.
+        """
+        self._record("fill_gateway_email")
+        carrier = CARRIER_NAMES[self.values["sms_carrier"]]
+        built = gateway_address(carrier, self.values["sms_phone"])
+        if built:
+            self.admit("sms_gateway", built)
 
     def test_sound(self, name: Any) -> None:
         """Apply the current volume, then play one sound."""

@@ -784,6 +784,9 @@ if _HAS_QT:
             self._sms_carrier.setMinimumHeight(28)
             for carrier in CARRIER_GATEWAYS:
                 self._sms_carrier.addItem(carrier)
+            self._sms_carrier.currentIndexChanged.connect(
+                lambda _at: self._fill_gateway_email()
+            )
             pf.addRow("Carrier:", self._sms_carrier)
 
             self._sms_gateway = QLineEdit()
@@ -1109,6 +1112,20 @@ if _HAS_QT:
                 ("sound", self._sound_rows()),
                 ("sms", self._sms_rows()),
             )
+
+        def _fill_gateway_email(self) -> None:
+            """Build the Gateway Email row from the carrier and the typed number.
+
+            A number the carrier's gateway cannot address, and the manual choice,
+            both leave the row as the operator left it.
+            """
+            from src.core.sms_engine import gateway_address
+
+            built = gateway_address(
+                self._sms_carrier.currentText(), self._sms_phone.text()
+            )
+            if built:
+                self._sms_gateway.setText(built)
 
         def _sms_rows(self) -> tuple:
             """One ``_stored_groups`` row per SMS page control.

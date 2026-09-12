@@ -2286,11 +2286,25 @@ SMS_PROVIDERS = (
 )
 ```
 
-Carrier has a stored field of its own. With the Gateway Email row left blank,
-the carrier and the phone number build the address between them: a gateway takes
-the national digits alone, so a leading country digit is dropped and a number of
-any other length answers nothing. The manual choice at the end of the list
-answers nothing by design, and an address typed by hand is always kept.
+Carrier has a stored field of its own, and picking one fills the Gateway Email
+row below it from the number already typed. The row is filled only by that
+choice, never by a save or by opening the page, so an operator who never touches
+the picker is never given an address for a carrier they are not on.
+
+`src/gui/settings_dialog.py` — the fill a carrier choice runs
+
+```python
+built = gateway_address(
+    self._sms_carrier.currentText(), self._sms_phone.text()
+)
+if built:
+    self._sms_gateway.setText(built)
+```
+
+A gateway takes the national digits alone, so a leading country digit is dropped
+and a number of any other length builds nothing. The manual choice at the end of
+the list builds nothing by design, and a row the carrier cannot fill keeps
+whatever is in it.
 
 `src/core/sms_engine.py` — the address a carrier builds
 

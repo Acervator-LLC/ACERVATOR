@@ -150,7 +150,8 @@ def sms_config_from_settings(stored: Optional[dict]) -> SMSConfig:
     A value the engine cannot use is dropped with a warning: ``send`` compares
     ``max_messages_per_hour`` and ``cooldown_seconds`` against a clock outside
     its own guard, a switch is read for truth, and a value outside its
-    ``CHOICE_FIELDS`` set reaches the email gateway silently.
+    ``CHOICE_FIELDS`` set reaches the email gateway silently. Nothing here
+    composes ``gateway_email``; the Carrier row on the page does that.
     """
     taken = SMSConfig()
     for name, value in (stored or {}).items():
@@ -179,8 +180,6 @@ def sms_config_from_settings(stored: Optional[dict]) -> SMSConfig:
                 logger.warning("sms %s=%r is not text; default kept", name, value)
             continue
         logger.warning("sms %r is not a message setting; ignored", name)
-    if not taken.gateway_email:
-        taken.gateway_email = gateway_address(taken.carrier, taken.phone_number)
     return taken
 
 
