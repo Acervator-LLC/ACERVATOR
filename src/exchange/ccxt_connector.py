@@ -6,6 +6,7 @@ CCXT-backed :class:`ExchangeInterface` for the venues in ``SUPPORTED_EXCHANGES``
 
 from __future__ import annotations
 
+from ..core.encryption import unescape_pem_newlines
 from ..core.fmt import fmt_price_coerced
 from ..core.retry import linear_delay, retry_any, retry_sync, with_retry
 from ..core.safe_url import SafeRequest, safe_urlopen
@@ -333,18 +334,12 @@ class CCXTConnector(ExchangeInterface):
         _log = get_api_log()
 
         # --- Coinbase CDP key PEM newline fix ---
+        # A secret stored before the dialog converted on the way in still
+        # arrives escaped, so this repeats the conversion and changes nothing
+        # when the stored secret already carries real newlines.
         if self._exchange_id == "coinbase" and api_secret:
-            if "\\n" in api_secret:
-                api_secret = api_secret.replace("\\n", "\n")
-                config["secret"] = api_secret
-            if "BEGIN EC PRIVATE KEY" in api_secret and "\n" not in api_secret.strip():
-                api_secret = api_secret.replace(
-                    "-----BEGIN EC PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----\n"
-                )
-                api_secret = api_secret.replace(
-                    "-----END EC PRIVATE KEY-----", "\n-----END EC PRIVATE KEY-----\n"
-                )
-                config["secret"] = api_secret
+            api_secret = unescape_pem_newlines(api_secret)
+            config["secret"] = api_secret
 
             is_cdp = api_key.startswith("organizations/")
             # Log the last four characters only, never the key prefix.

@@ -292,10 +292,23 @@ if _HAS_QT:
             self._pp_check.setChecked(needs_pp)
             self._api_feedback.setText("")
 
+        def _typed_secret(self) -> str:
+            """The API Secret row, with a pasted PEM's escaped newlines made real.
+
+            The row's tooltip promises the conversion, so it runs here rather
+            than at connect, and every venue receives the same bytes.
+            """
+            from src.core.encryption import looks_like_pem, unescape_pem_newlines
+
+            typed = self._new_api_secret.toPlainText().strip()
+            if looks_like_pem(typed):
+                return unescape_pem_newlines(typed)
+            return typed
+
         def _test_api_connection(self):
             eid = self._new_exchange.currentData()
             key = self._new_api_key.text().strip()
-            secret = self._new_api_secret.toPlainText().strip()
+            secret = self._typed_secret()
             pp = (
                 self._new_passphrase.text().strip()
                 if self._pp_check.isChecked()
@@ -364,7 +377,7 @@ if _HAS_QT:
             try:
                 eid = self._new_exchange.currentData()
                 key = self._new_api_key.text().strip()
-                secret = self._new_api_secret.toPlainText().strip()
+                secret = self._typed_secret()
                 pp = (
                     self._new_passphrase.text().strip()
                     if self._pp_check.isChecked()
