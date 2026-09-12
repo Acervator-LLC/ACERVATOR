@@ -2721,4 +2721,130 @@ page. The earlier text stays where it is.
 The 2026-09-11 Increment Style section above restated the same rows at four.
 Three is the count after all three of the Grid Bot group are gone.
 
+## 2026-09-11 - Default Target Balance opens the wizard's field
+
+The Trading page carries three rows. This row is the one that reaches a new bot.
+It stores a dollar figure between $1.00 and $1,000,000.00 under the key
+`default_target_balance` and opens at $200.00. The row is verified and unchanged.
+
+### The row, drawn and driven
+
+React draws the row. The build answers `react`, `draws_react('Settings dialog')`
+answers `True`, and the class is `SettingsDialogReact`. The Trading tab draws 68
+controls and this row is one of them.
+
+| What was driven | What it answered |
+| --------------- | ---------------- |
+| the drawn node | `INPUT`, `type="number"`, `min="1"`, `max="1000000"` |
+| $777.00 typed on the page | the holder answered 777.0 |
+| Save pressed on the page | the store answered 777.0 |
+| a fresh manager on the same folder | 777.0 |
+| the page reopened | the row drew 777.0 |
+
+The round trip holds. A figure typed on the page survives a Save, a new manager
+and a new page.
+
+### Every reader of the stored figure
+
+Seven sites name the key. One of them reads it outside the Settings dialog.
+
+| Site | What it does with the figure |
+| ---- | ---------------------------- |
+| `src/core/settings.py:157` | declares `default_target_balance: float = 200.0` |
+| `src/gui/main_tabs/settings_dialog_surface.py:467` | the React model's save and load row |
+| `src/gui/settings_dialog.py:1162-1165` | `_stored_rows`, the read on Save and the write on load |
+| `src/gui/bot_wizard.py:810` | the wizard's Target Balance field opens here |
+| `src/gui/main_window.py:1735` | writes an override for one wizard opening |
+| `src/gui/main_tabs/bot_wizard_surface.py:1224` and `:1702-1716` | the React wizard module's own read |
+| `src/gui/main_tabs/bot_wizard_surface.py:2768` | names the key in the payload catalogue |
+
+[The tab conversion table](../08-tabs.md) gives the wizard's seam row: both
+builds open `BotCreationWizard`. **+ New Bot** reaches
+`src/gui/bot_wizard.py:810`, and the React wizard module is a second reader that
+the button does not reach.
+
+Nothing under `desktop/` names the row. The control specs travel from Python into
+the page payload, and the drawn node carries `data-name="default_balance"` as
+data.
+
+### Where the figure stops being this setting
+
+```mermaid
+flowchart LR
+  A["Settings row<br/>default_target_balance"] --> B["SettingsManager<br/>settings.toml"]
+  B --> C["main_window._create_bot<br/>get_all()"]
+  C --> D["bot_wizard.py:810<br/>Target Balance field"]
+  D --> E["TradingParamsPage.get_config<br/>target_balance"]
+  E --> F["bot_config_kwargs"]
+  F --> G["BotConfig.target_balance"]
+```
+
+`TradingParamsPage.get_config` at `src/gui/bot_wizard.py:1533` renames the figure
+`target_balance`. From that step on the figure is the bot's own setting.
+
+Driven with $4,321.55 stored:
+
+| Step | What it answered |
+| ---- | ---------------- |
+| the wizard's Target Balance | 4321.55 |
+| keys the wizard collected | 52 |
+| `default_target_balance` among them | no |
+| `target_balance` among them | 4321.55 |
+| `bot_config_kwargs` `target_balance` | 4321.55 |
+| the built config | `BotConfig` |
+| `BotConfig.target_balance` | 4321.55 |
+| `BotConfig` holds `default_target_balance` | no |
+
+Two more stored figures opened the wizard at themselves: $777.00 and $12.75.
+Market Inspector topology adoption hands `defaults_override` in place of the
+stored figure, and $25.00 opened the wizard at $25.00.
+
+### The range, at both ends and past them
+
+The page, the wizard and this manual declare the same range. The page and the
+wizard hold a figure to that range in the same way.
+
+| Written to the store | The store holds | The page draws | The wizard opens at |
+| -------------------- | --------------- | -------------- | ------------------- |
+| 1.00 | 1.0 | 1 | 1.0 |
+| 1000000.00 | 1000000.0 | 1000000 | 1000000.0 |
+| 0.50 | 0.5 | 1 | 1.0 |
+| 1000001.00 | 1000001.0 | 1000000 | 1000000.0 |
+
+The row holds a typed figure to the range before the store sees it, so the page
+stores no figure outside the range. A figure written into the file by hand meets
+the nearer end on the page and in the wizard alike, so no bot opens at a refused
+figure.
+
+### A store with the figure removed
+
+| What was driven | What it answered |
+| --------------- | ---------------- |
+| `AppSettings` declares | 200.0 |
+| a settings file with the key deleted | 200.0 |
+| the wizard on that store | 200.0 |
+| the wizard on an empty defaults dict | 200.0 |
+
+`get_all()` is `asdict` of a dataclass that declares the field, so the dict the
+wizard takes always carries the key. `_apply_dict` keeps the declared default for
+a field the file omits. The wizard's own fallback at `src/gui/bot_wizard.py:810`
+fires only where `main_window.py:3185` hands `{}`, which is a run with no
+settings manager, and the fallback gives the same $200.00.
+
+The page's build figure for this control is $1.00, because the spec carries a
+range and no `value`. The store always answers, so the page draws $1.00 only
+where it refuses the stored figure.
+
+### What this section adds
+
+Nothing on the page, in the store or in the wizard changed. The row matches every
+sentence written about it, and this section records the driven readings.
+
+Two gaps stand outside this row and sit here as measured facts.
+
+| Gap | What was measured |
+| --- | ----------------- |
+| a text figure in the settings file | `src/gui/settings_dialog.py:1284-1296` catches it, logs "Settings kept the default for default_target_balance", and draws $1.00. `src/gui/bot_wizard.py:810` carries no guard, so `QDoubleSpinBox.setValue(str)` raises `TypeError` and `BotCreationWizard` cannot open. Only an edited file puts a text figure in the store |
+| a write to a control the page already drew | The React page draws every control with `defaultValue`, which seeds the DOM once. A write from Python after the page is up moved the store and not the drawn figure: the node held 321 while the holder answered 654.0. This row stands clear of it, because `_load_current` runs before the page mounts and nothing writes the row afterwards |
+
 Back to [the subsystem index](README.md).
