@@ -149,6 +149,36 @@ def _kdf_stream(key: bytes, nonce: bytes, length: int) -> bytes:
     return b"".join(blocks)[:length]
 
 
+PEM_ARMOUR = ("-----BEGIN ", "-----END ")
+ESCAPED_NEWLINE = "\\n"
+EC_PEM_NAME = "BEGIN EC PRIVATE KEY"
+EC_PEM_HEADER = "-----BEGIN EC PRIVATE KEY-----"
+EC_PEM_FOOTER = "-----END EC PRIVATE KEY-----"
+
+
+def looks_like_pem(text: str) -> bool:
+    """True when *text* carries both PEM_ARMOUR lines, in either newline form."""
+    return all(line in text for line in PEM_ARMOUR)
+
+
+def unescape_pem_newlines(text: str) -> str:
+    """Turn the escaped newlines of a pasted PEM block into real ones.
+
+    A paste through a text field can carry every newline as the two characters
+    backslash and n. The Settings dialog calls this before ``encrypt``, and
+    ``sync_connect`` calls it on a secret stored before that, so the stored
+    secret and the connecting secret hold the same bytes.
+    """
+    if not text:
+        return text
+    if ESCAPED_NEWLINE in text:
+        text = text.replace(ESCAPED_NEWLINE, "\n")
+    if EC_PEM_NAME in text and "\n" not in text.strip():
+        text = text.replace(EC_PEM_HEADER, EC_PEM_HEADER + "\n")
+        text = text.replace(EC_PEM_FOOTER, "\n" + EC_PEM_FOOTER + "\n")
+    return text
+
+
 class KeyringManager:
     """Stores and retrieves the master passphrase in the OS ``keyring``.
 

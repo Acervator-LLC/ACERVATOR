@@ -2182,4 +2182,65 @@ read later, at connect, by `src/exchange/ccxt_connector.py` — `sync_connect`,
 which reports the format it detected and writes only the last four characters of
 the key into the API log.
 
+## 2026-09-11 - The API Secret row converts a pasted PEM
+
+The row takes a plain secret or a PEM elliptic-curve private key. A paste that
+carried every newline as the two characters backslash and n is converted before
+the secret is encrypted, so the stored token holds the real key and every venue
+is handed the same bytes.
+
+`src/core/encryption.py` holds the two functions the conversion rests on.
+`looks_like_pem` reports whether the text carries both `PEM_ARMOUR` lines.
+`unescape_pem_newlines` replaces every escaped newline, and breaks the armour
+lines off the body when a PEM arrives on one line.
+
+### Where the conversion runs
+
+| Site | What it converts |
+| ---- | ---------------- |
+| `src/gui/settings_dialog.py` — `_typed_secret` | the row, read by the venue check and by the store write |
+| `src/gui/main_tabs/settings_dialog_surface.py` — `_typed_credentials` | the same row in the Qt-free model |
+| `src/exchange/ccxt_connector.py` — `sync_connect` | a Coinbase secret stored before the dialog converted |
+
+`SettingsDialogReact` inherits `_add_exchange`, so the React build runs
+`_typed_secret` through a `PageTextArea` holder.
+
+`_typed_secret` converts only a value `looks_like_pem` accepts. A plain secret
+that carries a literal backslash and n reaches the store unchanged.
+
+### What the row stores
+
+A throwaway PEM whose body reads THIS-IS-NOT-A-KEY was pasted into the row and
+the Add button was pressed. The stored token was then decrypted.
+
+```
+the escaped paste          3 escaped, 0 real newlines
+decrypted out of the store 0 escaped, 3 real newlines
+```
+
+A PEM pasted with real newlines already is stored byte for byte, and so is a
+plain secret carrying a literal backslash and n.
+
+### What each venue is handed
+
+At the point `sync_connect` builds the CCXT config, from the stored value the
+escaped paste produced:
+
+| Venue | Escaped | Real newlines | Usable PEM |
+| ----- | ------- | ------------- | ---------- |
+| coinbase | 0 | 3 | yes |
+| kraken | 0 | 3 | yes |
+
+A second connect on the same stored value produces the same bytes, so the
+Coinbase branch in `sync_connect` never converts a converted secret twice.
+
+### What the row does not mask
+
+The row is a text area and a text area carries no echo mode, so the secret is
+readable on screen while it is typed. The API Key row beside it is a text field
+with no echo mode either, and the two authenticate as a pair. Masking one of
+them hides nothing, and masking this one would mean replacing the text area with
+a single line that cannot take a multi-line PEM. Both rows are recorded and
+neither is changed.
+
 Back to [the subsystem index](README.md).

@@ -34,6 +34,7 @@ import math
 from functools import partial
 from typing import Any, Optional
 
+from ...core.encryption import looks_like_pem, unescape_pem_newlines
 from ..color_alpha import ALPHA_HIGHEST, rgba
 
 METHOD = "settings_dialog.state"
@@ -2379,6 +2380,8 @@ class SettingsDialogModel:
     def _typed_credentials(self) -> tuple:
         key = self.values["new_api_key"].strip()
         secret = self.values["new_api_secret"].strip()
+        if looks_like_pem(secret):
+            secret = unescape_pem_newlines(secret)
         phrase = (
             self.values["new_passphrase"].strip() if self.values["pp_check"] else ""
         )
