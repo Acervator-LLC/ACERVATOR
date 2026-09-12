@@ -205,18 +205,20 @@ if _HAS_QT:
             )
             add_form.addRow("API Secret:", self._new_api_secret)
 
-            self._pp_check = QCheckBox("This exchange uses an API passphrase")
-            self._pp_check.toggled.connect(
-                lambda on: self._new_passphrase.setVisible(on)
-            )
-            add_form.addRow(self._pp_check)
-
+            # _new_passphrase is built above _pp_check because the toggled
+            # lambda names it. The rows keep the painted order below.
             self._new_passphrase = QLineEdit()
             self._new_passphrase.setEchoMode(QLineEdit.Password)
             self._new_passphrase.setPlaceholderText(
                 "Passphrase set when creating API key"
             )
             self._new_passphrase.setVisible(False)
+
+            self._pp_check = QCheckBox("This exchange uses an API passphrase")
+            self._pp_check.toggled.connect(
+                lambda on: self._new_passphrase.setVisible(on)
+            )
+            add_form.addRow(self._pp_check)
             add_form.addRow("", self._new_passphrase)
 
             btn_row = QHBoxLayout()
@@ -240,6 +242,8 @@ if _HAS_QT:
                     "no live brokers ship yet. Use the Crypto Wing "
                     "for active trading."
                 )
+                # setEnabled and setToolTip refuse only a deleted C++ object,
+                # and _create_exchange_tab builds every widget named here.
                 for _w in (
                     self._test_btn,
                     self._add_btn,
@@ -248,13 +252,8 @@ if _HAS_QT:
                     self._new_passphrase,
                     self._pp_check,
                 ):
-                    try:
-                        _w.setEnabled(False)
-                        _w.setToolTip(_disabled_tip)
-                    except (
-                        Exception
-                    ):  # R28-OK: defensive disable; tooltip is best-effort UX
-                        pass
+                    _w.setEnabled(False)
+                    _w.setToolTip(_disabled_tip)
 
             layout.addWidget(add_group)
 
