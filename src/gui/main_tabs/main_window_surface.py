@@ -1393,7 +1393,7 @@ class MainWindowModel:
         self.tab_labels = reordered_tabs(built, CANONICAL_TAB_ORDER)
         self._record("tabs", list(self.tab_labels))
         if self.settings is not None:
-            self.theme = self.settings.get("theme", DEFAULT_THEME)
+            self.theme = self.stored_theme()
         self.tab_colours = tab_colours(self.theme)
         self.timers = [
             {"name": "dashboard", "interval_ms": DASHBOARD_TICK_MS, "started": True},
@@ -1544,6 +1544,17 @@ class MainWindowModel:
         self._record("trading_mode", self.trading_mode)
         return self
 
+    def stored_theme(self) -> Any:
+        """The stored theme name, or ``DEFAULT_THEME`` when the menu lacks it.
+
+        ``switch_theme`` raises for a name the menu does not offer, so a
+        store holding an unknown name opens on the default instead.
+        """
+        if self.settings is None:
+            return DEFAULT_THEME
+        name = self.settings.get("theme", DEFAULT_THEME)
+        return name if name in self.themes.names() else DEFAULT_THEME
+
     def switch_theme(self, name: Any) -> "MainWindowModel":
         """A Theme menu item."""
         if name not in self.themes.names():
@@ -1559,7 +1570,7 @@ class MainWindowModel:
         if self.settings is None:
             self._record("settings_changed_skipped", True)
             return self
-        self.switch_theme(self.settings.get("theme", DEFAULT_THEME))
+        self.switch_theme(self.stored_theme())
         ai_config = self.settings.get("ai_monitor", {})
         if self.fleet is not None:
             pill = ai_pill(ai_config)

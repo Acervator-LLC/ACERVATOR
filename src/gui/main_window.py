@@ -2852,7 +2852,9 @@ if _HAS_QT:
         def _on_settings_changed(self) -> None:
             if not self._settings:
                 return
-            theme = self._settings.get("theme", "cyberpunk_dark")
+            from .theme_engine import DEFAULT_THEME_NAME, stored_theme
+
+            theme = stored_theme(self._settings.get("theme", DEFAULT_THEME_NAME))
             self._switch_theme(theme)
 
             ai_cfg = self._settings.get("ai_monitor", {})

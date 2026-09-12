@@ -1085,6 +1085,86 @@ theme = self._settings.get("theme", "cyberpunk_dark")
 self._switch_theme(theme)
 ```
 
+A stored name the theme table does not hold opens on Cyberpunk Dark. The store
+accepts any text under that key, and the theme manager refuses a name it does not
+carry, so every store read passes its value through a guard first. Driven on ten
+stored values, five of them names the table does not hold: without the guard the
+application refused five and painted five, and with it all ten paint, while the
+five real names still paint their own five colours.
+
+`src/gui/theme_engine.py` — `stored_theme`
+
+```python
+def stored_theme(name: object) -> str:
+    """Return ``name`` when ``THEMES`` holds it, else ``DEFAULT_THEME_NAME``."""
+    return name if isinstance(name, str) and name in THEMES else DEFAULT_THEME_NAME
+```
+
+The guard covers the read the block above shows and the read at startup, which
+also says in the log when a stored name was not recognised. It covers the
+dialog's own page read as well: that one never refused, because the page palette
+falls back on its own table, so the guard there removes a second fallback and one
+copy of the default name rather than a refusal. Driven on eight stored values,
+four of them names the table does not hold: the page drew 8 of 8 and refused none
+both before and after, and all four unknown names paint a picture identical to
+Cyberpunk Dark and different from Neon Light.
+
+`src/gui/react_settings_dialog.py` — `_theme_name`
+
+```python
+        def _theme_name(self) -> str:
+            """The stored theme the page paints in, always a name ``THEMES`` holds."""
+            if not self._sm:
+                return DEFAULT_THEME_NAME
+            return stored_theme(self._sm.get("theme", DEFAULT_THEME_NAME))
+```
+
+`main.py` — the startup read
+
+```python
+stored_name = settings.get("theme", DEFAULT_THEME_NAME)
+theme_name = stored_theme(stored_name)
+if theme_name != stored_name:
+    log_manager.warning(
+        f"Stored theme {stored_name!r} is not a known theme; "
+        f"painting {theme_name}"
+    )
+theme_mgr.apply_theme(theme_name, app)
+```
+
+The palette reaches every Qt control and the Settings dialog's own page. It does
+not reach the React tab pages: each of those paints from the one design system,
+and their panes carry their own ground on every row. Rendered offscreen at 64,680
+pixels a page, the Market Inspector, History, Console and Alerts pages come back
+identical under a stored Cyberpunk Dark and a stored Neon Light, and the Console
+page is identical even when the theme is handed straight to it.
+
+`src/gui/react_history_panel.py` — the six values a page receives
+
+```python
+    return {
+        "--bg": colors["bg"],
+        "--text": colors["text"],
+        "--grid": colors["grid"],
+        "--border": colors["border"],
+        "--accent": colors["accent"],
+        "--btn-bg": colors["btn_bg"],
+    }
+```
+
+The main tab bar is the one React surface that follows a switch, and it follows
+it in part. Rendered at 8,232 pixels, one colour of eight moves from `#fcee0a` to
+`#f0cf1f` and returns when the theme returns; the bar's ground does not move.
+
+`src/gui/react_main_window.py` — `MainTabBookReact.set_theme`
+
+```python
+        def set_theme(self, name: str) -> None:
+            """Repaint the bar's tabs from ``name``'s own tab tokens."""
+            self._theme = name
+            self._push_tabs()
+```
+
 Accent Color - Sets the highlight colour. Key `accent_color`, a free-text
 field, at `#00ffcc`.
 
