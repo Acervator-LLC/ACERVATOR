@@ -449,8 +449,6 @@ AI_GROUP_KEY = "ai_monitor"
 FOLDING_GROUP_KEY = "profit_folding"
 THEME_KEY = "theme"
 THEME_DEFAULT = "cyberpunk_dark"
-INCREMENT_KEY = "increment_style"
-INCREMENT_DEFAULT = "linear"
 FOLDING_ACTIVE_KEY = "active"
 FOLDING_ACTIVE_DEFAULT = True
 EXCHANGE_ID_KEY = "exchange_id"
@@ -466,7 +464,6 @@ LOGGING_GROUP_KEY = SAVE_GROUP_KEYS[1]
 #: without also being loaded.
 PERSISTED_ROWS = (
     ("username", "username", EMPTY_TEXT),
-    (INCREMENT_KEY, "increment_style", INCREMENT_DEFAULT),
     ("default_position_count", "default_positions", 10),
     ("default_target_balance", "default_balance", 200.0),
     ("bot_visibility", "visibility", "orderbook"),
@@ -596,14 +593,6 @@ CONTROL_SPECS = (
         "echo": "password",
         "visible": False,
         "placeholder": "Passphrase set when creating API key",
-    },
-    {
-        "tab": TRADING_TAB,
-        "group": None,
-        "label": "Increment Style:",
-        "name": "increment_style",
-        "kind": COMBO_TEXT,
-        "items": ("linear", "logarithmic"),
     },
     {
         "tab": TRADING_TAB,
@@ -1407,7 +1396,6 @@ LAYOUT = {
     TRADING_TAB: (
         FORM,
         (
-            (CONTROL, "increment_style"),
             (CONTROL, "default_positions"),
             (CONTROL, "default_balance"),
             (CONTROL, "visibility"),
