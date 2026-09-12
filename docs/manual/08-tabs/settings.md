@@ -2417,6 +2417,7 @@ entry leaves empty keeps the token the stored entry carried.
 | --------- | -------------------------- |
 | The same venue with new credentials typed | One entry, carrying the newly typed tokens |
 | The same venue with both rows empty | One entry, byte for byte what it held before |
+| The same venue with the key typed and the secret empty | One entry, byte for byte what it held before |
 
 With two venues stored, re-adding the first leaves the order as
 `binance`, `kucoin`. The on-screen list is asked whether a line already names
@@ -2433,7 +2434,10 @@ the venue, so one venue is drawn once:
 the Qt dialog and the Qt-free model call it.
 
 The feedback line still reads `added without credentials` after a press with
-both rows empty, which names what was typed rather than what is stored.
+both rows empty, which names what was typed rather than what is stored. With the
+key typed and the secret empty it reads `added with credentials (verified)`,
+because it tests the key alone while `_add_exchange` needs both rows before it
+contacts a venue or encrypts anything.
 
 ### What the readers see on an empty list
 
