@@ -158,6 +158,10 @@ class AppSettings:
     # figure ta_engine.DEFAULT_WEIGHTS declares for it.
     ta_indicator_weights: dict = field(default_factory=dict)
 
+    # The wizard's phantom box opens on this. A bot's own enable_phantoms,
+    # which bot_container writes per bot, is a separate value.
+    default_enable_phantoms: bool = True
+
 
 _DEFAULT_DIR = Path.home() / ".acervator"
 

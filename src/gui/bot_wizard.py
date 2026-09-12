@@ -1660,7 +1660,7 @@ if _HAS_QT:
             }
 
     class PhantomConfigPage(QWizardPage):
-        def __init__(self, parent=None):
+        def __init__(self, defaults: dict, parent=None):
             super().__init__(parent)
             self.setTitle("Phantom Balance Bots")
             self.setSubTitle(
@@ -1669,7 +1669,9 @@ if _HAS_QT:
             self._exchange_id: str | None = None
             layout = QVBoxLayout(self)
             self._enable = QCheckBox("Enable Phantom Balance Bots")
-            self._enable.setChecked(False)
+            self._enable.setChecked(
+                bool((defaults or {}).get("default_enable_phantoms", False))
+            )
             layout.addWidget(self._enable)
             layout.addWidget(QLabel("Active Timeframes:"))
             self._tf_checks: dict[str, QCheckBox] = {}
@@ -1805,7 +1807,7 @@ if _HAS_QT:
             self._extractor_pool_page = ExtractorPoolPage(exchanges)
             self._params_page = TradingParamsPage(defaults)
             self._folding_page = ProfitFoldingPage()
-            self._phantom_page = PhantomConfigPage()
+            self._phantom_page = PhantomConfigPage(defaults)
             self.setPage(PAGE_ASSET, self._asset_page)
             self.setPage(PAGE_MODE, self._mode_page)
             self.setPage(PAGE_EXTRACTOR_POOL, self._extractor_pool_page)

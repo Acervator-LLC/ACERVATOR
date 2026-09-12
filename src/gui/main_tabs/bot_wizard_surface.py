@@ -1222,6 +1222,7 @@ API_WARNING_CONTINUE_ROLE = "AcceptRole"
 SAFE_EVENTS_REASON = "legacy P4.1 site"
 
 DEFAULT_TARGET_BALANCE_KEY = "default_target_balance"
+DEFAULT_ENABLE_PHANTOMS_KEY = "default_enable_phantoms"
 EXCHANGE_DISPLAY_KEY = "display_name"
 EXCHANGE_ID_KEY = "exchange_id"
 MARKET_SYMBOL_KEY = "symbol"
@@ -1689,6 +1690,7 @@ class BotWizardModel:
         for name, text in TEXT_FIELDS.items():
             self.calls.append([TEXT_SET_TEXT, name, text])
         self._apply_stored_target_balance()
+        self._apply_stored_phantom_enable()
         for found in PHANTOM_TIMEFRAMES:
             self.calls.append([CHECK_SET_CHECKED, found, PHANTOM_TIMEFRAME_DEFAULT])
         for name in PAGE_REGISTER_ORDER:
@@ -1714,6 +1716,21 @@ class BotWizardModel:
         )
         self.calls.append(
             [NUMBER_SET_VALUE, "target_balance", self.numbers["target_balance"]]
+        )
+
+    def _apply_stored_phantom_enable(self) -> None:
+        """Open the phantom enable box on the stored default, as the wizard does.
+
+        The Settings dialog's phantom master box writes
+        ``default_enable_phantoms``, and this is the only place it reaches a
+        new bot. A bot already on disk keeps its own stored flag.
+        """
+        stored = self.defaults.get(
+            DEFAULT_ENABLE_PHANTOMS_KEY, CHECK_FIELDS["phantom_enable"]
+        )
+        self.checks["phantom_enable"] = bool(stored)
+        self.calls.append(
+            [CHECK_SET_CHECKED, "phantom_enable", self.checks["phantom_enable"]]
         )
 
     # -- fields --------------------------------------------------------

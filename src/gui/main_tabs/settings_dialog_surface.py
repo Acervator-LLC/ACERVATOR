@@ -473,6 +473,7 @@ PERSISTED_ROWS = (
     ("default_target_balance", "default_balance", 200.0),
     ("bot_visibility", "visibility", "orderbook"),
     ("aggressive_trading", "aggressive", False),
+    ("default_enable_phantoms", "phantoms_enabled", True),
     (THEME_KEY, "theme_combo", THEME_DEFAULT),
     ("accent_color", "accent_color", "#00ffcc"),
     ("font_family", "font_family", "Segoe UI"),
