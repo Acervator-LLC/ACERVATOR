@@ -981,6 +981,60 @@ group emits, in the order of the rows above
 The same method writes `visibility` and `aggressive_trading` before it branches
 on the kind of bot, so an Extractor carries those two as well.
 
+Five sites read the number, not one. Two of them change what the engine decides.
+The other three carry the value to those two, or draw the row the operator types
+into.
+
+```
+src/trading/container/restore.py:254                    stored key into the kwarg
+src/trading/scrumming/capital_reservation_mixin.py:67   the size of the claim
+src/trading/scrumming/capital_reservation_mixin.py:134  the text of the claim
+src/trading/scrumming/reconciliation.py:412             the adoption ceiling
+src/gui/live_settings/settings_tab.py:304               seeds the live row
+```
+
+Both deciding readers are reached on every run. The claim is sized at the top of
+every tick. The adoption ceiling is read once when a bot starts, and again every
+reconcile interval after that.
+
+```
+src/trading/scrumming_bot.py:2571   the claim, once per tick
+src/trading/bot_container.py:891    the ceiling, on bot start
+src/trading/scrumming_bot.py:2643   the ceiling, every reconcile interval
+```
+
+The adoption ceiling is the reader that bears on a sale. A bot whose venue
+balance stands above its own book adopts the difference as a lot, and the hold is
+subtracted before that adoption, so the held units never enter the book the sell
+pre-check is measured against.
+
+```
+src/trading/scrumming/execution.py:1408 — the sell pre-check reads the book
+```
+
+Driven on a restored record carrying a five-unit hold, with twenty units in the
+book, thirty at the venue and a price of one hundred, against the same code with
+all five readers taken out:
+
+```
+with the readers    claimable 25.0   adopted 5.0    book 25.0
+readers removed     claimable 30.0   adopted 10.0   book 30.0
+```
+
+That bot may sell 25 units as the code stands and 30 with the readers gone. The
+five it holds back are the hold itself. The claim a bot places against its
+siblings moves the same way, 16.0 units down to 11.0, which raises a co-tenant
+bot's own permitted sale from 14.0 units to 19.0.
+
+```
+src/trading/capital_reservation.py:443 — effective_available, the co-tenant's cap
+```
+
+The removal is not taken. Stored state does load without the value — three
+records of three restored, 26 of 27 stored fields identical, none different, and
+nothing raised — but a bot carrying a hold would be free to sell the units the
+hold keeps back. The removal is safe only for a bot whose hold reads zero.
+
 ![The Scrumming Settings group.](p19-i0.png)
 
 Scrolling down we next find the first block of Scrumming Settings. These are the core or basic metrics for a Scrumming Bot.
