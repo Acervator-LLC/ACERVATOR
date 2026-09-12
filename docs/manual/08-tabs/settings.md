@@ -2045,4 +2045,141 @@ readings together.
 Which venues are supported is still decided in one place only:
 `src/exchange/ccxt_connector.py`.
 
+## 2026-09-11 - The API Key row, from the typed string to the stored token
+
+The API Key row on the Exchanges page was typed into on the running React page,
+the Add button was pressed, and every place the typed string could come to rest
+was then searched. This section records what was found. The string used was a
+throwaway that is not a key, and no venue was contacted.
+
+### Where the typed key goes, and where it stops
+
+The row is an entry field and nothing else. The operator fills it, the Add
+handler reads it once, and the row is cleared.
+
+```mermaid
+flowchart LR
+  ROW["the API Key row<br/>new_api_key"]
+  TEST["api_validator.validate_credentials<br/>the venue check"]
+  ENC["core.encryption.encrypt<br/>PBKDF2 then AES-256-GCM"]
+  STORE["settings.toml<br/>exchanges api_key_enc"]
+  DEC["core.encryption.decrypt"]
+  VENUE["CCXTConnector.sync_connect<br/>apiKey"]
+  ROW --> TEST
+  TEST --> ENC
+  ENC --> STORE
+  STORE --> DEC
+  DEC --> VENUE
+```
+
+`src/gui/settings_dialog.py` — `_add_exchange`, the two lines the row causes
+
+```python
+master = f"qat_{self._sm.get('username', 'user')}_vault"
+config.api_key_enc = encrypt(key, master)
+```
+
+| Moment | What happens to the row |
+| ------ | ----------------------- |
+| At dialog load | Nothing. No stored value is ever put back into it |
+| On the Save button | Nothing. The row is not in the save path |
+| On Test and Add Exchange | The venue check runs, then the key is encrypted and the file is written |
+| Straight after that press | The row is cleared |
+| On the next cycle | Nothing. No running bot re-reads the row |
+| On restart | The stored token is decrypted fresh on each connect |
+
+A thirty-two character key was stored as a token of one hundred and four
+characters, and the longer Coinbase string as one of one hundred and fifty-six.
+The typed string appears nowhere in the stored entry.
+
+### Every reader of the stored key
+
+| Reader | What it does |
+| ------ | ------------ |
+| `src/gui/main_window.py` — `_connect_exchange_for_bot` | decrypts it for a bot connect |
+| `src/gui/widgets/api_tester_tab.py` — `_do_connect` | decrypts it for the API panel |
+| the same two methods, one step earlier | refuse the connect while the field is empty |
+| `src/gui/main_window.py`, the startup credential report | reads presence only, never the value |
+
+Both decrypt paths were driven and each recovered the typed string byte for byte,
+then handed those same bytes to the connector. Nothing in the frontend reads the
+stored field, measured by searching the whole index in three naming conventions.
+A separate credential store in `src/core/encryption.py` carries a field of the
+same name, and this row never writes there.
+
+### The clear-text hunt, twenty places
+
+Twenty places were searched for the typed string after the press. Three hold it,
+and each of the three is a consumer that cannot do its work without it.
+
+| Place | Result |
+| ----- | ------ |
+| every file under the settings directory | not found |
+| every log file the run produced | not found |
+| the payload the dialog pushes to the page | not found |
+| the page store values, labels, tooltips, calls, prints and boxes | not found |
+| the rendered page markup | not found |
+| the feedback line and the added-exchange box | not found |
+| the message the bot-connect reader returned | not found |
+| the API panel result view and status label | not found |
+| every log record the run emitted, and the API Log ring buffer | not found |
+| the API Key field the page draws | found, because the field shows what is typed |
+| the venue check the Add ran first | found, because it authenticates with the key |
+| the connector call each reader makes | found, because it authenticates with the key |
+
+Two controls prove the search can report. The typed string was written into the
+stored settings file, the search named that file, the file was put back and its
+digest matched. The typed string was then written through the application's own
+logger, the search named both the log file and the captured record, and that file
+was put back to the same digest.
+
+```
+hunt with the plant      [('...\.acervator\settings.toml', 1218)]
+bytes unchanged by hash  True
+log file hunt with it    [('...\.acervator_logs\console\system.log', 10258)]
+bytes unchanged by hash  True
+```
+
+A wrong Username refuses rather than returning a wrong key, and the refusal names
+no part of the key:
+
+```
+decrypt refused                  ValueError: Decryption failed - wrong passphrase or corrupted data
+the refusal names the typed key  False
+```
+
+### What the row echoes
+
+The row is drawn as a text field, so the key is readable on screen while it is
+typed. Three credential rows on the same dialog are drawn as password fields:
+
+| Row | Control kind | Echo |
+| --- | ------------ | ---- |
+| API Key | line | none |
+| API Secret | text area | none, and a text area carries no echo mode |
+| Passphrase | line | password |
+| Anthropic API Key | line | password |
+| SMTP Password | line | password |
+
+The Qt build sets no echo mode on this row either, so both builds agree. Masking
+the key alone would hide nothing, because the secret beside it authenticates with
+it and stays in view. The complete change reaches the API Secret row, which is
+held as its own unit, so it is recorded here and not made.
+
+### The Coinbase CDP key string
+
+The page says the row takes a plain key or a Coinbase CDP key string. Both were
+typed and both round-trip:
+
+```
+the CDP string decrypts byte for byte                 True
+the stored entry carries the CDP string in the clear  False
+```
+
+The row treats the two alike. It accepts any string, and the venue check in front
+of the store is what refuses a key the exchange will not take. The key shape is
+read later, at connect, by `src/exchange/ccxt_connector.py` — `sync_connect`,
+which reports the format it detected and writes only the last four characters of
+the key into the API log.
+
 Back to [the subsystem index](README.md).
