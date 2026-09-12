@@ -226,8 +226,8 @@ if _HAS_QT:
             )
             add_form.addRow("API Secret:", self._new_api_secret)
 
-            # _new_passphrase is built above _pp_check because the toggled
-            # lambda names it. The rows keep the painted order below.
+            # _new_passphrase is built above _pp_check so _sync_passphrase_row
+            # has both names. The rows keep the painted order below.
             self._new_passphrase = QLineEdit()
             self._new_passphrase.setEchoMode(QLineEdit.Password)
             self._new_passphrase.setPlaceholderText(
@@ -236,9 +236,7 @@ if _HAS_QT:
             self._new_passphrase.setVisible(False)
 
             self._pp_check = QCheckBox("This exchange uses an API passphrase")
-            self._pp_check.toggled.connect(
-                lambda on: self._new_passphrase.setVisible(on)
-            )
+            self._pp_check.toggled.connect(lambda: self._sync_passphrase_row())
             add_form.addRow(self._pp_check)
             add_form.addRow("", self._new_passphrase)
 
@@ -290,7 +288,16 @@ if _HAS_QT:
             eid = self._new_exchange.currentData()
             needs_pp = eid in self._passphrase_exchanges
             self._pp_check.setChecked(needs_pp)
+            self._sync_passphrase_row()
             self._api_feedback.setText("")
+
+        def _sync_passphrase_row(self) -> None:
+            """Draw ``_new_passphrase`` while ``_pp_check`` is ticked.
+
+            Both builds call this; the React holder's ``setChecked`` emits no
+            Qt ``toggled``.
+            """
+            self._new_passphrase.setVisible(self._pp_check.isChecked())
 
         def _typed_secret(self) -> str:
             """The API Secret row, with a pasted PEM's escaped newlines made real.
