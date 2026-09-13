@@ -53,6 +53,11 @@ not repeated here.
   `src/trading/scrumming_bot.py` decides and places it.
 - **Fold** — the buy back on the dip that follows a scrum, carried by
   `apply_profit_fold` in `src/trading/profit_fold.py`.
+- **Fold, corrected 2026-09-13** — the sentence above names a module that no
+  code ever called, and it is removed. A fold runs on the tranche book:
+  `_fold_eligible_tranches` picks the tranches the fold may reach, and
+  `_apply_fold_target_growth` in `src/trading/scrumming_bot.py` grows the target
+  from the surplus, gated by the bot's own Profit Folding Active row.
 - **Interval** — the smallest price move between two fires, in percent.
   `scrumming_interval_pct` in `src/trading/container/config.py`, default 1.0.
 - **Scrum/Fold cycle** — the pair, run against volatility rather than against a
