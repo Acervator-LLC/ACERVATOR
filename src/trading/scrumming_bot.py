@@ -4395,7 +4395,7 @@ class ScrummingBot(
         if report["kept_live_order"]:
             _kept_note = (
                 f" {report['kept_live_order']} tranche(s) KEPT: they "
-                f"hold resting exchange orders, and delisting a record "
+                f"hold resting exchange orders, and removing a record "
                 f"that owns a live order would strand it."
             )
         _unreadable_note = ""
