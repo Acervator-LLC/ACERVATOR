@@ -6289,4 +6289,136 @@ reaches for is Tranche Spacing, which the wizard does carry, and the derived
 placement the engine works out from Opposing Trade Distance is what decides
 where a tranche lands.
 
+## 2026-09-13 - The wizard's Profit Folding page is removed
+
+The bot creation wizard registered six pages and routed to five. The sixth was
+Profit Folding & Upward Distribution, and it is gone from both builds. Nothing a
+person can press changed, because nothing could reach it.
+
+Driven with the home redirected into a scratch directory before the first
+product import, so the settings directory and the log root bound under that
+directory. No stored setting of the running install was read, no credentials
+file was opened and no venue was contacted.
+
+### Which switch is which
+
+Three controls wear almost the same words. Only one of them does anything, and
+this section removed neither that one nor the Settings row.
+
+| The words on screen | Where it lives | What happened to it |
+| ------------------- | -------------- | ------------------- |
+| Profit Folding Active | a running bot's own settings | untouched. It gates the fold and it works |
+| Profit Folding / Upward Distribution Active | the Settings dialog's Profit Folding page | untouched. It is the last row on that page |
+| Enable Profit Folding | the wizard's folding page | removed with the page it sat on |
+
+The removed one is the wizard's. A bot already running reads its own flag from
+its saved record, and that reading is unchanged.
+
+```python
+if not self.config.profit_folding_active:
+```
+
+### The page that no route reached
+
+`nextId` was read from each page in turn with that page set as the start page,
+on both modes. No page answered the folding page in either.
+
+```
+before, accumulation      before, extractor
+  asset  -> params          asset  -> params
+  mode   -> asset           mode   -> pool
+  params -> phantom         params -> finish
+  pool   -> params          pool   -> params
+  folding -> finish         folding -> finish     no page answers folding
+  phantom -> finish         phantom -> finish
+```
+
+The Qt-free surface said the same in a named constant rather than by omission,
+and published it as a payload key. Both builds now register five pages, every
+one of the five is on a route, and the constant and its key are gone with the
+page that was the only entry either ever held.
+
+### The bot the wizard builds, before and after
+
+The collection was driven on both builds and both modes, and every key and every
+value was compared.
+
+| Arm | keys before | keys after | key set identical | values different |
+| --- | --- | --- | --- | --- |
+| Qt, accumulation | 49 | 49 | yes | 0 |
+| shell, accumulation | 49 | 49 | yes | 0 |
+| Qt, extractor | 49 | 49 | yes | 0 |
+| shell, extractor | 49 | 49 | yes | 0 |
+| Qt, on stored figures | 49 | 49 | yes | 0 |
+| shell, on stored figures | 49 | 49 | yes | 0 |
+
+The last two arms opened the wizard on a stored bag rather than on the build
+figures, and that bag moved five values on both builds either side of the
+change: target balance 200.00 to 512.00, the visibility from order book to
+internal, aggressive trading on, phantoms on, and the lock from 2 candles to 5.
+A bag that moved nothing would have made those two arms prove nothing.
+
+The same comparison reported ten differences in the routing and payload
+readings taken in the same run, so a zero on the six config arms is a fact
+about the bot and not a blind comparator.
+
+An Extractor still carries `profit_folding_active`, because both builds write it
+from a literal on the extractor branch and never from the folding page.
+
+```python
+config["enable_phantoms"] = False
+config["profit_folding_active"] = False
+```
+
+### The stored record that still loads
+
+A record shaped like `bot_state.json` was written carrying all six of the page's
+names, and restored through the two calls the restore path makes.
+
+| Stored name | On the built config, before | after |
+| ----------- | --------------------------- | ----- |
+| `fold_mode` | absent | absent |
+| `fold_target` | absent | absent |
+| `fold_target_count` | absent | absent |
+| `distribute_target` | absent | absent |
+| `distribute_target_count` | absent | absent |
+| `profit_folding_active` | False | False |
+
+Sixteen fields were compared and none differed. Nothing raised on either side.
+The five names stay on the retirement record in the container config, which is
+what drops them, so a record written before the page came off still builds.
+
+### The fold ladder half nobody called
+
+`stack_math` declared a matched pair of ladder-price helpers. The scrum half is
+called when a stack is split into tranches; the fold half had one definition and
+no call, no import and no aliased binding anywhere in the tree.
+
+```python
+prices = scrum_ladder_prices(
+```
+
+The fold half is removed. The shared helper keeps its direction argument,
+because the Extractor passes the fold sign to the placement floor on a live path
+of its own.
+
+### The sentences the wizard page leaves behind
+
+Each sentence below stands in an earlier section and no longer describes the
+tree. The earlier text stays where it is.
+
+| Earlier sentence | What is there now |
+| ---------------- | ----------------- |
+| "the wizard's folding page is unreachable - a route to the page and a call to its `get_config`" | The page is removed, so there is nothing to route to |
+| "the box does not turn the page on - an enable rule over the three groups below it" | The wizard's box and its three groups are gone together |
+| "No page answers the folding page. The only branch that would is guarded behind `is_grid()`" | That branch is removed and `is_grid` keeps its one live caller on the parameter page |
+| "The field arrives the moment the folding page is reached and collected." | No page collects it. A new accumulation bot takes the declared default on its config |
+| "Until the first of the three lands, a stored choice on this row has nowhere to arrive" | The first will not land. The Settings row's own answer is now free of the wizard |
+| "The wizard registers six pages and routes to five." | It registers five and routes to all five |
+| "the wizard lays out its six pages as usual" | It lays out five |
+| "its view model reports the folding page unreachable" | The view model no longer carries an unreachable list, because no page is |
+
+The Settings dialog's own Profit Folding row is untouched by this section and
+still holds the page alone.
+
 Back to [the subsystem index](README.md).

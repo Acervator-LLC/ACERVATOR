@@ -6,7 +6,7 @@ the base-currency extractor. Accumulation goes on to the pair page, the
 trading-parameter page and the phantom page. The extractor goes on to
 the pool page and the trading-parameter page, and ends there.
 
-``PAGE_IDS`` names the six pages and the number each is registered
+``PAGE_IDS`` names the five pages and the number each is registered
 under. ``NEXT_PAGE`` is the route the wizard takes out of each page, and
 ``FINAL_PAGES`` names the pages the route ends on. The route depends on
 the mode, so ``next_page_id`` takes it as an argument.
@@ -70,21 +70,19 @@ OPENING_SIZE_PX = (1100, 750)
 ASSET = "asset"
 MODE = "mode"
 PARAMS = "params"
-FOLDING = "folding"
 PHANTOM = "phantom"
 EXTRACTOR_POOL = "extractor_pool"
 
-PAGES = (ASSET, MODE, PARAMS, FOLDING, PHANTOM, EXTRACTOR_POOL)
+PAGES = (ASSET, MODE, PARAMS, PHANTOM, EXTRACTOR_POOL)
 PAGE_IDS = {
     ASSET: 0,
     MODE: 1,
     PARAMS: 2,
-    FOLDING: 3,
-    PHANTOM: 4,
-    EXTRACTOR_POOL: 5,
+    PHANTOM: 3,
+    EXTRACTOR_POOL: 4,
 }
 PAGE_NAMES = {number: name for name, number in PAGE_IDS.items()}
-PAGE_REGISTER_ORDER = (ASSET, MODE, EXTRACTOR_POOL, PARAMS, FOLDING, PHANTOM)
+PAGE_REGISTER_ORDER = (ASSET, MODE, EXTRACTOR_POOL, PARAMS, PHANTOM)
 START_PAGE = MODE
 START_PAGE_ID = PAGE_IDS[MODE]
 NO_PAGE_ID = -1
@@ -98,7 +96,6 @@ SCRUMMING_ROUTE = {
     ASSET: PARAMS,
     EXTRACTOR_POOL: PARAMS,
     PARAMS: PHANTOM,
-    FOLDING: None,
     PHANTOM: None,
 }
 EXTRACTOR_ROUTE = {
@@ -106,19 +103,16 @@ EXTRACTOR_ROUTE = {
     ASSET: PARAMS,
     EXTRACTOR_POOL: PARAMS,
     PARAMS: None,
-    FOLDING: None,
     PHANTOM: None,
 }
 NEXT_PAGE = {SCRUMMING_MODE: SCRUMMING_ROUTE, EXTRACTOR_MODE: EXTRACTOR_ROUTE}
-FINAL_PAGES = {SCRUMMING_MODE: (PHANTOM, FOLDING), EXTRACTOR_MODE: (PARAMS, FOLDING)}
-UNREACHABLE_PAGES = (FOLDING,)
+FINAL_PAGES = {SCRUMMING_MODE: (PHANTOM,), EXTRACTOR_MODE: (PARAMS,)}
 GRID_IS_SELECTABLE = False
 
 PAGE_TITLES = {
     ASSET: "Select Asset Pair",
     MODE: "Trading Mode",
     PARAMS: "Trading Parameters",
-    FOLDING: "Profit Folding & Upward Distribution",
     PHANTOM: "Phantom Bots",
     EXTRACTOR_POOL: "Extractor Pool",
 }
@@ -126,7 +120,6 @@ PAGE_SUBTITLES = {
     ASSET: "Choose the exchange and trading pair.",
     MODE: "Select the trading engine for this bot.",
     PARAMS: EMPTY_TEXT,
-    FOLDING: "Configure how realized profits are recycled into new positions.",
     PHANTOM: "Multi-timeframe shadow bots. Higher TFs override lower TFs.",
     EXTRACTOR_POOL: (
         "Choose the base currency the pool accumulates and "
@@ -418,8 +411,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "step": 0.05,
         "value": 0.65,
     },
-    "fold_x_count": {"kind": SPIN_INT, "minimum": 1, "maximum": 50, "value": 5},
-    "dist_x_count": {"kind": SPIN_INT, "minimum": 1, "maximum": 50, "value": 5},
     "lock_candles": {"kind": SPIN_INT, "minimum": 1, "maximum": 10, "value": 2},
 }
 
@@ -439,21 +430,12 @@ CHECK_FIELDS: dict[str, bool] = {
     "gate_scrum_htf_chk": True,
     "gate_fold_ta_chk": True,
     "gate_fold_htf_chk": True,
-    "folding_active": True,
     "phantom_enable": False,
 }
 
 RADIO_FIELDS: dict[str, bool] = {
     "scrumming": True,
     "extractor": False,
-    "fold_equal": True,
-    "fold_log": False,
-    "fold_all": True,
-    "fold_x": False,
-    "fold_recent": False,
-    "dist_all": True,
-    "dist_x": False,
-    "dist_recent": False,
 }
 
 COMBO_FIELDS: dict[str, tuple] = {
@@ -555,11 +537,6 @@ GROUP_TITLES = {
     "risk_group": "Risk Controls (MEM-244)",
     "gates_group": "Strategy Gate Flags (v3.16.15)",
     "extractor_group": "Extractor — Pool & Artillery",
-    "fold_mode_group": "Distribution Mode",
-    "fold_target_group": "Profit Folding Target (sell profits -> buy positions)",
-    "dist_target_group": (
-        "Upward Distribution Target (accumulated asset -> sell positions)"
-    ),
     "lock_group": "Higher-TF Lock Duration",
 }
 GROUP_ROWS = {
@@ -632,9 +609,6 @@ GROUP_ROWS = {
         "ext_hedge_budget",
         "ext_trend_strength",
     ),
-    "fold_mode_group": ("fold_equal", "fold_log"),
-    "fold_target_group": ("fold_all", "fold_x", "fold_x_count", "fold_recent"),
-    "dist_target_group": ("dist_all", "dist_x", "dist_x_count", "dist_recent"),
     "lock_group": ("lock_candles",),
 }
 
@@ -648,14 +622,12 @@ SCRUM_GROUPS = (
     "gates_group",
 )
 EXTRACTOR_GROUPS = ("extractor_group",)
-FOLDING_GROUPS = ("fold_mode_group", "fold_target_group", "dist_target_group")
 PHANTOM_GROUPS = ("lock_group",)
 
 PAGE_GROUPS = {
     ASSET: (),
     MODE: (),
     PARAMS: SCRUM_GROUPS + EXTRACTOR_GROUPS,
-    FOLDING: FOLDING_GROUPS,
     PHANTOM: PHANTOM_GROUPS,
     EXTRACTOR_POOL: (),
 }
@@ -663,7 +635,6 @@ PAGE_ROWS = {
     ASSET: ("exchange", "base", "target"),
     MODE: MODES,
     PARAMS: (),
-    FOLDING: ("folding_active",),
     PHANTOM: ("phantom_enable",),
     EXTRACTOR_POOL: ("exchange", "pool_base"),
 }
@@ -717,8 +688,6 @@ ROW_LABELS = {
     "ext_drawdown_threshold": "Drawdown threshold:",
     "ext_hedge_budget": "Hedge budget (USD):",
     "ext_trend_strength": "Trend strength threshold:",
-    "fold_x_count": "  Count:",
-    "dist_x_count": "  Count:",
     "lock_candles": "Candles to lock:",
 }
 
@@ -736,21 +705,12 @@ CHECK_TEXTS = {
     "gate_scrum_htf_chk": "SCRUM defers to higher-TF bullish",
     "gate_fold_ta_chk": "FOLD requires bearish TA",
     "gate_fold_htf_chk": "FOLD defers to higher-TF bearish",
-    "folding_active": "Enable Profit Folding",
     "phantom_enable": "Enable Phantom Bots",
 }
 
 RADIO_TEXTS = {
     "scrumming": "Accumulation Trading (Scrumming)",
     "extractor": "Base Currency Extractor (Multi-Target)",
-    "fold_equal": "Equal - spread evenly",
-    "fold_log": "Logarithmic - weight toward nearest",
-    "fold_all": "All buy positions",
-    "fold_x": "Nearest X buys:",
-    "fold_recent": "Most recent buy only",
-    "dist_all": "All sell positions",
-    "dist_x": "Nearest X sells:",
-    "dist_recent": "Most recent sell only",
 }
 
 BUTTON_TEXTS = {
@@ -1118,11 +1078,6 @@ TOOL_TIPS = {
         "trigger; at/above, trend-hold suppresses noise fires. "
         "Tighter = fewer fires in choppy ranges; looser = more "
         "fires, more cost-basis churn."
-    ),
-    "folding_active": (
-        "Realized sell profits fold into buy positions. "
-        "Accumulated asset distributes into sell positions. "
-        "Extended Positions created when enough accumulates."
     ),
 }
 
@@ -1622,7 +1577,7 @@ class BotWizardModel:
         markets: Any = None,
         timeframes: Any = None,
     ) -> None:
-        """Lay out the six pages from the venue list and the stored defaults."""
+        """Lay out the five pages from the venue list and the stored defaults."""
         self.calls: list[list] = []
         self.exchanges = [readable_bag(one) for one in (readable_list(exchanges) or [])]
         self.defaults = readable_bag(defaults)
@@ -1678,7 +1633,7 @@ class BotWizardModel:
     # -- build ---------------------------------------------------------
 
     def _build(self) -> None:
-        """Record the calls that lay out the wizard and its six pages."""
+        """Record the calls that lay out the wizard and its five pages."""
         self.calls.append([WIZARD_SET_WINDOW_TITLE, WINDOW_TITLE])
         self.calls.append([WIZARD_SET_ACCESSIBLE_NAME, ACCESSIBLE_NAME])
         self.calls.append([WIZARD_SET_ACCESSIBLE_DESCRIPTION, ACCESSIBLE_DESCRIPTION])
@@ -2316,30 +2271,7 @@ class BotWizardModel:
         )
         return config
 
-    # -- the folding and phantom pages ---------------------------------
-
-    def folding_config(self) -> dict:
-        """The recycling settings the folding page collected."""
-        fold_target = FOLD_TARGET_ALL
-        if self.radios["fold_x"]:
-            fold_target = FOLD_TARGET_X
-        elif self.radios["fold_recent"]:
-            fold_target = FOLD_TARGET_RECENT
-        distribute_target = DIST_TARGET_ALL
-        if self.radios["dist_x"]:
-            distribute_target = DIST_TARGET_X
-        elif self.radios["dist_recent"]:
-            distribute_target = DIST_TARGET_RECENT
-        return {
-            "profit_folding_active": self.checks["folding_active"],
-            "fold_mode": (
-                FOLD_MODE_LOGARITHMIC if self.radios["fold_log"] else FOLD_MODE_EQUAL
-            ),
-            "fold_target": fold_target,
-            "fold_target_count": int(self.numbers["fold_x_count"]),
-            "distribute_target": distribute_target,
-            "distribute_target_count": int(self.numbers["dist_x_count"]),
-        }
+    # -- the phantom page ----------------------------------------------
 
     def phantom_config(self) -> dict:
         """The phantom settings the phantom page collected."""
@@ -2502,18 +2434,6 @@ class BotWizardModel:
             config.update(self.phantom_config())
         return config
 
-
-FOLD_MODE_EQUAL = "equal"
-FOLD_MODE_LOGARITHMIC = "logarithmic"
-FOLD_TARGET_ALL = "all_buy"
-FOLD_TARGET_X = "x_buy"
-FOLD_TARGET_RECENT = "most_recent_buy"
-DIST_TARGET_ALL = "all_sell"
-DIST_TARGET_X = "x_sell"
-DIST_TARGET_RECENT = "most_recent_sell"
-FOLD_MODES = (FOLD_MODE_EQUAL, FOLD_MODE_LOGARITHMIC)
-FOLD_TARGETS = (FOLD_TARGET_ALL, FOLD_TARGET_X, FOLD_TARGET_RECENT)
-DIST_TARGETS = (DIST_TARGET_ALL, DIST_TARGET_X, DIST_TARGET_RECENT)
 
 CONFIG_FIELDS = (
     "mode",
@@ -2707,7 +2627,6 @@ def page_state(model: BotWizardModel) -> dict:
         "no_page_id": NO_PAGE_ID,
         "titles": dict(PAGE_TITLES),
         "subtitles": dict(PAGE_SUBTITLES),
-        "unreachable": list(UNREACHABLE_PAGES),
         "groups": {name: list(found) for name, found in PAGE_GROUPS.items()},
         "rows": {name: list(found) for name, found in PAGE_ROWS.items()},
         "current": model.current_page,
@@ -2827,7 +2746,6 @@ def build_view_model(
             "titles": dict(GROUP_TITLES),
             "scrum": list(SCRUM_GROUPS),
             "extractor": list(EXTRACTOR_GROUPS),
-            "folding": list(FOLDING_GROUPS),
             "phantom": list(PHANTOM_GROUPS),
             "rows": {name: list(found) for name, found in GROUP_ROWS.items()},
             "visible": dict(model.group_visible),
@@ -2839,12 +2757,6 @@ def build_view_model(
         "asset_page": asset_page_state(model),
         "pool_page": pool_page_state(model),
         "phantom_page": phantom_page_state(model),
-        "folding_page": {
-            "config": model.folding_config(),
-            "modes": list(FOLD_MODES),
-            "fold_targets": list(FOLD_TARGETS),
-            "distribute_targets": list(DIST_TARGETS),
-        },
         "timeframes": {
             "offered": {name: list(found) for name, found in model.timeframes.items()},
             "ta": list(TA_TIMEFRAMES),
