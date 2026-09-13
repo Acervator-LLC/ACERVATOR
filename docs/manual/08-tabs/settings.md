@@ -5946,4 +5946,120 @@ it on either build. The two lines written before it were read off the running
 dialog, and the box text was read off the Qt-free model, which records the box
 instead of showing it. All three take their phrase from the one function above.
 
+## 2026-09-13 - The bot's increment style comes off BotConfig
+
+The Increment Style row left the Trading page on 11 September and the bot field
+of the same name stayed. Nothing wrote that field and nothing read it. Both of
+its declarations are now gone.
+
+```python
+# src/trading/container/config.py, both lines removed
+increment_style: str = "linear"          # the BotConfig field
+"increment_style",                       # the Scrumming-only name
+```
+
+The sweep was run twice on the same name, once matching case and once ignoring
+it, because a case-sensitive search has already missed a site twice in this
+audit.
+
+| probe | before | after |
+| ----- | ------ | ----- |
+| occurrences in code | 2 | 0 |
+| occurrences repo-wide, matching case | 22 | 20 |
+| occurrences repo-wide, ignoring case | 22 | 20 |
+| writers anywhere | 0 | 0 |
+| readers anywhere | 0 | 0 |
+
+The twenty that remain are this page, the Trading tab page and one captured
+report. None of them is code.
+
+### A record carrying the retired name still restores
+
+The restore path builds its arguments through one helper, and that helper keeps
+only the names the dataclass declares. A record holding a name the product has
+retired loses it at that filter instead of raising.
+
+```
+record            43 stored keys, four of them retired names
+restored          1 bot, ScrummingBot, on the read-only restore placeholder
+fields compared   65
+fields different  1, the removed name
+raised            nothing
+```
+
+The creation path reads that same declaration, so one removal reaches both
+paths at once. A wizard-shaped dictionary driven through the same two calls gave
+the same 65 compared against 1 different, and a record holding only a venue,
+a pair and a mode still restored with nothing raised.
+
+### The bot's own behaviour does not move
+
+One restore and one tick were driven before the change and after it, against the
+read-only placeholder the restore path already uses. That placeholder answers
+False to every order method, so no order can be placed from the run.
+
+| reading | before | after |
+| ------- | ------ | ----- |
+| tick readings compared | 10 | 10 |
+| tick readings different | - | 0 |
+| what the tick raised | the placeholder has no ticker reader | the same |
+
+The comparison can report a difference. A control run moved the stored target
+balance and the stored read rate, and the same comparison then named three
+fields instead of one and two tick readings instead of none.
+
+### The bot's spacing style was already gone
+
+The bot-side spacing style was removed with the Settings-side one. Nothing was
+left to take out.
+
+```
+spacing_style   0 occurrences in src, tests, tools, desktop and dev_harness
+                4 occurrences repo-wide, both files dated history
+```
+
+### The wizard stops advertising the retired Grid Bot
+
+The wizard's opening description named a mode the product does not build, listed
+three rows already off the Settings dialog, and carried a version string. A
+second description inside the parameter page named the same mode again, with two
+more version strings.
+
+```python
+# src/gui/bot_wizard.py, the opening description now reads
+#   Accumulation Bot: Target Balance, Scrumming Interval, TA Engine, Phantoms
+#   Extractor Bot: base-currency chunk, artillery sizing, compounding tier
+#   Both: Visibility, Aggressive Trading
+```
+
+The page subtitle that named the retired mode is now one sentence with no
+version in it. No caller can draw it: the mode page answers False to the grid
+question on every call, so that branch has never been reached.
+
+### The retired names this unit left in place
+
+Each of these carries a reason, and none of them is in the wizard's own text.
+
+| where | what it says | why it stays |
+| ----- | ------------ | ------------ |
+| the launcher | two screen strings naming the retired mode | that file does not pass its own coding verdict, so nothing ships from it |
+| the mode page | a comment beside a constant return | it states why the method returns a constant |
+| the restore path | one comment naming the retired mode | it explains why a stored mode is skipped |
+| a captured report | one occurrence of the removed name | captured output, already owned by another row |
+
+### The second wizard module keeps its stored-default read
+
+The second wizard module reads a stored target balance that never arrives,
+because the shell's request carries the step values alone. The read itself is
+live: the model calls it on every build, and three sibling reads of the same bag
+sit beside it, two of them built deliberately by the phantom rows above.
+
+```
+_apply_stored_target_balance   called on every model build
+sibling reads of the same bag  3
+```
+
+Removing it would delete one of four reads of one bag and settle three rows that
+are still open. It stays, and the empty bag is what those rows address.
+
 Back to [the subsystem index](README.md).
