@@ -199,7 +199,8 @@ class ExtractorBot(BotContainer):
         self._tick_counter: int = 0
 
         # ── TA signal provider (one per bot; reused across pairs) ──
-        # _timeframe also lengths a candle for _watch_list_due_for_refresh.
+        # _timeframe lengths a candle for _candle_seconds, so it sizes both
+        # the watch-list refresh and the correction throttle.
         self._timeframe: str = (
             getattr(config, "ta_timeframe", self.DEFAULT_TIMEFRAME)
             or self.DEFAULT_TIMEFRAME
@@ -209,9 +210,6 @@ class ExtractorBot(BotContainer):
             timeframe=self._timeframe,
             trend_strength_threshold=float(config.extractor_trend_strength_threshold),
         )
-
-        # ── Per-position last-correction tick counters (for skip-candles) ──
-        self._last_correction_tick: dict[str, int] = {}
 
         # ── Trade metrics ──
         self._cycle_extracted_total: float = 0.0  # this session
@@ -607,6 +605,22 @@ class ExtractorBot(BotContainer):
         self._watch_list = new_watch
         self._watch_list_refreshed_at = time.time()
 
+    def _candle_seconds(self) -> float:
+        """Seconds in one candle of ``_timeframe``, falling back to
+        ``DEFAULT_TIMEFRAME`` for a timeframe ``TIMEFRAME_SECONDS`` does
+        not carry.
+
+        Both candle-counted settings length a candle through this one
+        method — ``extractor_scan_refresh_candles`` and
+        ``extractor_correction_skip_candles`` — so neither can drift
+        into counting ticks while the other counts candles.
+        """
+        return float(
+            TIMEFRAME_SECONDS.get(
+                self._timeframe, TIMEFRAME_SECONDS[self.DEFAULT_TIMEFRAME]
+            )
+        )
+
     def _refresh_interval_seconds(self) -> float:
         """Seconds in ``extractor_scan_refresh_candles`` candles of ``_timeframe``.
 
@@ -614,10 +628,20 @@ class ExtractorBot(BotContainer):
         ticks every ``tick_interval`` seconds whatever the timeframe is.
         """
         candles = int(self.config.extractor_scan_refresh_candles)
-        candle_seconds = TIMEFRAME_SECONDS.get(
-            self._timeframe, TIMEFRAME_SECONDS[self.DEFAULT_TIMEFRAME]
-        )
-        return float(candles * candle_seconds)
+        return float(candles) * self._candle_seconds()
+
+    def _correction_skip_seconds(self) -> float:
+        """Seconds in ``extractor_correction_skip_candles`` candles of
+        ``_timeframe``.
+
+        The averaging-down throttle reads this rather than a tick count,
+        so the figure the operator types is the number of candles the
+        screen's suffix names on every timeframe.
+        """
+        candles = int(self.config.extractor_correction_skip_candles)
+        if candles <= 0:
+            return 0.0
+        return float(candles) * self._candle_seconds()
 
     def _watch_list_due_for_refresh(self) -> bool:
         """True once ``_refresh_interval_seconds`` have elapsed since
@@ -995,18 +1019,18 @@ class ExtractorBot(BotContainer):
         snapshot: TASnapshot,
     ) -> None:
         """Average down to restore notional, gated four ways: at least
-        `extractor_correction_skip_candles` ticks since the last
-        correction on this position; `alt_price_in_base` at or below the
-        `_reentry_floor_price` the parent sets for a rolled tier; hedge
-        budget used before chunk budget, and a no-op if neither has room;
-        and `cost_basis_base` held below `artillery_size_base ×
-        max_cost_basis_multiple`, above which this holds and waits for
-        the exit instead.
+        `extractor_correction_skip_candles` candles of `_timeframe`
+        elapsed since `pos.last_correction_ts`; `alt_price_in_base` at or
+        below the `_reentry_floor_price` the parent sets for a rolled
+        tier; hedge budget used before chunk budget, and a no-op if
+        neither has room; and `cost_basis_base` held below
+        `artillery_size_base × max_cost_basis_multiple`, above which this
+        holds and waits for the exit instead.
         """
-        last_tick = self._last_correction_tick.get(pos.pair, -(10**9))
-        if self._tick_counter - last_tick < int(
-            self.config.extractor_correction_skip_candles
-        ):
+        skip_seconds = self._correction_skip_seconds()
+        # last_correction_ts is stamped on artillery fire too, so the first
+        # correction after entry waits the same span.
+        if skip_seconds > 0 and (time.time() - pos.last_correction_ts) < skip_seconds:
             return  # skip-candles throttle
 
         floor_price = self._reentry_floor_price(pos, snapshot)
@@ -1104,7 +1128,6 @@ class ExtractorBot(BotContainer):
             pos.avg_buy_price_base_per_alt = pos.cost_basis_base / pos.alt_units
         pos.corrections_fired += 1
         pos.last_correction_ts = time.time()
-        self._last_correction_tick[pos.pair] = self._tick_counter
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -1364,7 +1387,6 @@ class ExtractorBot(BotContainer):
                     -self._closed_log_max :
                 ]
             self._positions.pop(pos.pair, None)
-            self._last_correction_tick.pop(pos.pair, None)
 
         self._bus.emit(
             "bot.log",
@@ -1390,8 +1412,6 @@ class ExtractorBot(BotContainer):
         parent, no manager, or a refused booking is a no-op with no
         retry. A failure here is caught and logged; it never blocks the
         exit that already happened.
-
-        Tests: tests/test_extractor_tranche_return_call.py.
         """
         if base_received <= 0 or self._bot_manager is None:
             return
@@ -1503,7 +1523,6 @@ class ExtractorBot(BotContainer):
             opened_at=time.time(),
         )
         self._positions[pair] = pos
-        self._last_correction_tick[pair] = self._tick_counter
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
