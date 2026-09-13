@@ -662,10 +662,12 @@
     return listField(model(), TA_ROWS_FIELD);
   }
 
+  // name is the slider's control name, the key the engine weights, the same
+  // column TaRows draws into the row's NAME_ATTR.
   function taRowNamed(name) {
     var found;
     taRows().forEach(function (row) {
-      if (Array.isArray(row) && String(at(row, ZERO)) === String(name)) {
+      if (Array.isArray(row) && String(at(row, THIRD)) === String(name)) {
         found = row;
       }
     });
@@ -1504,8 +1506,11 @@
           display: FLEX,
           flexDirection: ROW_DIRECTION
         });
+        var sliderName = at(row, THIRD);
         rowProps.key = String(index);
-        rowProps[NAME_ATTR] = text(at(row, ZERO));
+        // ControlRow and FormRow name a row by its control, and taRowNamed
+        // matches this attribute, not the printed label at index ZERO.
+        rowProps[NAME_ATTR] = text(sliderName);
         rowProps[INDEX_ATTR] = text(at(row, STEP));
         var labelProps = partProps(TA_LABEL_PART);
         labelProps[KEY_ATTR] = text(at(row, ZERO));
@@ -1515,7 +1520,6 @@
         sliderProps[INDEX_ATTR] = text(at(row, STEP));
         // The host's change listener reports a node only once it carries both,
         // so these two are what carry a dragged weight back to the dialog.
-        var sliderName = at(row, THIRD);
         var sliderSpec = specFor(sliderName);
         var sliderRange = isPlainObject(sliderSpec) ? sliderSpec[RANGE] : undefined;
         sliderProps[NAME_ATTR] = text(sliderName);
