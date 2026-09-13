@@ -1,0 +1,345 @@
+/* React Create Auto Trader chrome: the page ground, the page rail, the five
+ * page heads, the field groups, the alt list, the timeframe strip, the
+ * warning box and the walk row `bot_wizard.js` draws. The info button carries
+ * its own `style` attribute from the Python payload, so no rule here may set
+ * a colour on it.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* A hidden field group carries no display of its own, so the browser rule
+ * has to outrank the flex the group rule below gives every shown group. */
+[hidden] {
+  display: none !important;
+}
+
+[data-part="bot-wizard-page"] {
+  height: 100vh;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.acervator-bot-wizard[data-part="bot-wizard"] {
+  min-height: 100%;
+}
+
+.acervator-bot-wizard [data-part="wizard-title"] {
+  font-size: 15px;
+  color: var(--accent);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* QWizard's own page list, drawn as one stop per registered page. */
+.acervator-bot-wizard [data-part="page-rail"] {
+  gap: 6px;
+}
+
+/* A stop the walk has not reached dims the page text rather than taking
+ * `--grid`, which theme_engine paints chart lines with and no text in. */
+.acervator-bot-wizard [data-part="page-rail-stop"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2px 10px;
+  color: var(--text);
+  opacity: 0.55;
+}
+
+.acervator-bot-wizard [data-part="page-rail-stop"][data-current="true"] {
+  color: var(--PRIMARY, var(--accent));
+  border-color: var(--PRIMARY, var(--accent));
+  font-weight: bold;
+  opacity: 1;
+}
+
+.acervator-bot-wizard [data-part="page-head"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.acervator-bot-wizard [data-part="page-title"] {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.acervator-bot-wizard [data-part="page-subtitle"] {
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.acervator-bot-wizard [data-part="page-body"] {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* QGroupBox: a titled frame around the rows of one settings block. */
+.acervator-bot-wizard [data-part="field-group"] {
+  display: flex;
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.acervator-bot-wizard [data-part="field-group-title"] {
+  color: var(--accent);
+  padding-bottom: 4px;
+}
+
+/* QFormLayout: a right-aligned label against one growing field. */
+.acervator-bot-wizard [data-part="field-row-label"] {
+  flex: 0 0 190px;
+  text-align: right;
+}
+
+.acervator-bot-wizard [data-part="field"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--SURFACE_INPUT, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font: inherit;
+}
+
+.acervator-bot-wizard input[data-part="field"][type="checkbox"],
+.acervator-bot-wizard input[data-part="field"][type="radio"] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.acervator-bot-wizard [data-part="field"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+.acervator-bot-wizard [data-part="field"]:disabled {
+  opacity: 0.5;
+}
+
+.acervator-bot-wizard [data-part="field-option"] {
+  background: var(--SURFACE_INPUT, var(--btn-bg));
+  color: var(--text);
+}
+
+.acervator-bot-wizard [data-part="field-prefix"],
+.acervator-bot-wizard [data-part="field-suffix"] {
+  flex: none;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.acervator-bot-wizard [data-part="field-check-text"] {
+  flex: 1 1 auto;
+}
+
+/* The pair drop-down, wide enough for the longest symbol the venue lists. */
+.acervator-bot-wizard [data-part="target-combo"] {
+  background: var(--SURFACE_INPUT, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font: inherit;
+}
+
+/* Qt paints a lettered circle here from a hue the payload carries. */
+.acervator-bot-wizard [data-part="target-icon"] {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  vertical-align: middle;
+}
+
+/* The payload writes this button's colour, border and radius on its style
+ * attribute, so only its box sits here. */
+.acervator-bot-wizard [data-part="info-button"] {
+  align-self: flex-start;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.acervator-bot-wizard [data-part="info-box"] {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  background: var(--SURFACE_1, var(--btn-bg));
+}
+
+.acervator-bot-wizard [data-part="page-status"],
+.acervator-bot-wizard [data-part="page-note"],
+.acervator-bot-wizard [data-part="mode-note"] {
+  color: var(--text);
+}
+
+.acervator-bot-wizard [data-muted="true"] {
+  opacity: 0.7;
+}
+
+.acervator-bot-wizard [data-part="mode-note"] {
+  border-left: 2px solid var(--border);
+  padding: 2px 0 2px 8px;
+}
+
+/* QListWidget: the alt pairs that trade against the pool base. */
+.acervator-bot-wizard [data-part="alt-list"] {
+  background: var(--SURFACE_INPUT, var(--btn-bg));
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.acervator-bot-wizard [data-part="alt-row"] {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.acervator-bot-wizard [data-part="alt-text"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.acervator-bot-wizard [data-part="timeframe-strip"] {
+  gap: 6px;
+}
+
+.acervator-bot-wizard [data-part="timeframe-row"] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--SURFACE_2, var(--btn-bg));
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+}
+
+.acervator-bot-wizard [data-part="timeframe-row"][data-enabled="false"] {
+  opacity: 0.4;
+}
+
+.acervator-bot-wizard [data-part="timeframe-row"][data-checked="true"] {
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+.acervator-bot-wizard [data-part="timeframe-check"] {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent);
+}
+
+/* QMessageBox: the call-budget warning the phantom page raises. */
+.acervator-bot-wizard [data-part="warning-box"] {
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: var(--SURFACE_1, var(--btn-bg));
+}
+
+.acervator-bot-wizard [data-part="warning-title"] {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.acervator-bot-wizard [data-part="warning-informative"] {
+  color: var(--text);
+  opacity: 0.75;
+}
+
+/* QWizard's button box, which the walk steps stand in for. */
+.acervator-bot-wizard [data-part="walk-row"] {
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.acervator-bot-wizard [data-part="walk-step"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 16px;
+  font: inherit;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.acervator-bot-wizard [data-part="walk-step"]:hover {
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+.acervator-bot-wizard [data-part="walk-step"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+/* A walk with no refusal carries an empty value, and takes no room. */
+.acervator-bot-wizard [data-part="refusal-line"][data-value=""] {
+  display: none;
+}
+
+.acervator-bot-wizard [data-part="refusal-line"] {
+  color: var(--accent);
+  padding: 2px 0;
+}
+
+/* The asset page draws the pair box, its lettered circle and the info button
+ * as three siblings, and `bot_wizard.js` writes the column direction inline. */
+.acervator-bot-wizard [data-part="page-body"][data-page="asset"] {
+  display: grid !important;
+  grid-template-columns: minmax(0, 190px) 8px auto 24px auto minmax(0, 1fr);
+  align-items: center;
+  align-content: start;
+  min-width: 0;
+}
+
+.acervator-bot-wizard [data-part="page-body"][data-page="asset"] > [data-part="field-row"],
+.acervator-bot-wizard [data-part="page-body"][data-page="asset"] > [data-part="page-status"],
+.acervator-bot-wizard [data-part="page-body"][data-page="asset"] > [data-part="info-box"] {
+  grid-column: 1 / -1;
+}
+
+.acervator-bot-wizard [data-part="page-body"][data-page="asset"] > [data-part="target-combo"] {
+  grid-column: 3;
+}
+
+.acervator-bot-wizard [data-part="page-body"][data-page="asset"] > [data-part="target-icon"] {
+  grid-column: 4;
+}
+
+.acervator-bot-wizard [data-part="page-body"][data-page="asset"] > [data-part="info-button"] {
+  grid-column: 5;
+}
+
+/* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
+[data-part="bot-wizard-page"]::-webkit-scrollbar,
+.acervator-bot-wizard [data-part="alt-list"]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-part="bot-wizard-page"]::-webkit-scrollbar-thumb,
+.acervator-bot-wizard [data-part="alt-list"]::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
