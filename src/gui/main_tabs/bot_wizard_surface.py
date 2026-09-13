@@ -115,7 +115,7 @@ PAGE_TITLES = {
     MODE: "Trading Mode",
     PARAMS: "Trading Parameters",
     FOLDING: "Profit Folding & Upward Distribution",
-    PHANTOM: "Phantom Balance Bots",
+    PHANTOM: "Phantom Bots",
     EXTRACTOR_POOL: "Extractor Pool",
 }
 PAGE_SUBTITLES = {
@@ -744,7 +744,7 @@ CHECK_TEXTS = {
     "gate_fold_ta_chk": "FOLD requires bearish TA",
     "gate_fold_htf_chk": "FOLD defers to higher-TF bearish",
     "folding_active": "Enable Profit Folding",
-    "phantom_enable": "Enable Phantom Balance Bots",
+    "phantom_enable": "Enable Phantom Bots",
 }
 
 RADIO_TEXTS = {
@@ -772,7 +772,7 @@ LABEL_TEXTS = {
     "scrumming_description": (
         "The core trading engine. Uses 12-indicator TA voting to optimize "
         "scrum-fold cycles relative to a Target Balance. Supports multi-timeframe "
-        "Phantom Balance coordination, Landing Strip detection, MR Inspector "
+        "Phantom Bot coordination, Landing Strip detection, MR Inspector "
         "Boosted Fold, and Smart Wire cross-compounding."
     ),
     "extractor_description": (

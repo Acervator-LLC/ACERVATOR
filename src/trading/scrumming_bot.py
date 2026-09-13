@@ -4945,7 +4945,7 @@ class ScrummingBot(
         return [p.get_status() for p in self._phantom_mgr.get_phantoms(self.bot_id)]
 
     async def stop(self) -> None:
-        """Stop this bot and all its phantom balance bots."""
+        """Stop this bot and all its phantom bots."""
         self._release_capital_reservation()
         await self._phantom_mgr.stop_all(self.bot_id)
         self._phantom_mgr.remove_set(self.bot_id)

@@ -635,7 +635,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "label": None,
         "name": "phantoms_enabled",
         "kind": CHECK,
-        "text": "Enable Phantom Balance Bots for Scrumming",
+        "text": "Enable Phantom Bots for Scrumming",
         "checked": True,
     },
     {

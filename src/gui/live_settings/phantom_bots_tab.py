@@ -33,7 +33,7 @@ class PhantomBotsTabMixin:
     _phantom_tf_checks: dict
 
     def _create_phantom_bots_tab(self) -> QWidget:
-        """Combined Phantom Balance Bots config + runtime view.
+        """Combined Phantom Bots config + runtime view.
 
         Config sections (top): enable toggle, active-TF checkboxes,
         lock duration. Writes route through ScrummingBot's
@@ -63,9 +63,9 @@ class PhantomBotsTabMixin:
         layout.addWidget(info)
 
         # ── Config: Enable toggle ─────────────────────────────────
-        enable_group = QGroupBox("Phantom Balance Bots")
+        enable_group = QGroupBox("Phantom Bots")
         ef = QVBoxLayout(enable_group)
-        self._phantom_enable = QCheckBox("Enable Phantom Balance Bots")
+        self._phantom_enable = QCheckBox("Enable Phantom Bots")
         self._phantom_enable.setChecked(bool(getattr(bot, "_phantoms_enabled", False)))
         self._phantom_enable.toggled.connect(
             lambda v: self._mark_changed("enable_phantoms", bool(v))
@@ -336,7 +336,7 @@ class PhantomBotsTabMixin:
             if not phantoms_enabled:
                 msg = QLabel(
                     "Phantom Bots are DISABLED on this bot. "
-                    "Toggle 'Enable Phantom Balance Bots' above "
+                    "Toggle 'Enable Phantom Bots' above "
                     "to activate the multi-TF coordinator."
                 )
             elif not phantoms_started:

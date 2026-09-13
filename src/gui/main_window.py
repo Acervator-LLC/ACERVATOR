@@ -834,7 +834,7 @@ if _HAS_QT:
                 "Extended": "Extended Position - extra position created when accumulated profit reaches position size",
                 "Grid": "Grid Mode - stacked buy/sell pairs at fixed price intervals",
                 "Scrumming": "Speculative Scrumming - TA-driven delta trading against a target balance",
-                "Phantom": "Phantom Balance Bot - shadow bot analyzing a different timeframe",
+                "Phantom": "Phantom Bot - shadow bot analyzing a different timeframe",
                 "Folding": "Profit Folding - distributing realized sell profits back into buy positions",
                 "Distribution": "Upward Distribution - distributing accumulated asset into sell positions",
                 "TA": "Technical Analysis - mathematical indicators computed from price/volume data",
@@ -3487,7 +3487,7 @@ if _HAS_QT:
                 "A multi-exchange crypto auto-trading platform.\n"
                 "Grid Mode - Speculative Scrumming\n"
                 "Profit Folding - Upward Distribution\n"
-                "Phantom Balance Bots - 7-Indicator TA Voting\n"
+                "Phantom Bots - 7-Indicator TA Voting\n"
                 "TradingView Charts - Multi-Timeframe Analysis\n"
                 "Verbose API Interaction Logging",
             )
