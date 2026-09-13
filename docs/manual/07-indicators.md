@@ -2552,3 +2552,9 @@ out.reconstruction_note = (
     "bot-state fields null by design"
 )
 ```
+
+**What the program does now.** No screen and no command starts this rebuild.
+`reconstruct_market_gate` has one caller, `heal_gate_gaps`, in the same module.
+No other module imports `src/trading/gate_healer.py`, so `heal_gate_gaps` has no
+caller of its own and the rebuild never runs. The gate rows you read come from
+the live writer alone.

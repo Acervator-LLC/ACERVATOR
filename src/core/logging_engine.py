@@ -63,7 +63,6 @@ class LogEntry:
     exchange: str = ""
     bot_id: str = ""
     data: dict = field(default_factory=dict)
-    highlight: bool = False
 
     def __post_init__(self) -> None:
         if not self.timestamp:

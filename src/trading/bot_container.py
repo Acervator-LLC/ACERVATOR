@@ -643,7 +643,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
     aggregate fleet stats, and save or restore state."""
 
     def __init__(self, bus=None) -> None:
-        """Subscribe three handlers on ``bus``, defaulting to the
+        """Subscribe two handlers on ``bus``, defaulting to the
         process-wide bus."""
         self._bots: dict[str, BotContainer] = {}
         # Retained so detach_bus can retract them.
@@ -666,9 +666,6 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         from .smart_wire import SmartWireManager
 
         self._smart_wire_mgr = SmartWireManager(bus=self._bus)
-        self._bus_unsubs.append(
-            self._bus.subscribe("profit.cross_bot", self._on_cross_bot_profit)
-        )
         self._bus_unsubs.append(
             self._bus.subscribe("wire.created", self._on_wire_created_mgr)
         )
@@ -734,35 +731,6 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
                 self._smart_wire_mgr.unregister_wire(src, tgt)
         except Exception as exc:
             logger.warning("BotManager wire.removed handler raised: %s", exc)
-
-    def _on_cross_bot_profit(self, event) -> None:
-        """Book a cross-bot profit transfer to the recipient's
-        ``realised_pnl``, never to its target balance."""
-        target_id = event.data.get("target_bot_id", "")
-        amount = event.data.get("amount", 0)
-        source_id = event.data.get("source_bot_id", "")
-        target_bot = self._bots.get(target_id)
-        if target_bot and amount > 0:
-            if hasattr(target_bot, "stats") and hasattr(
-                target_bot.stats, "realised_pnl"
-            ):
-                target_bot.stats.realised_pnl += float(amount)
-            self._bus.emit(
-                "bot.log",
-                bot_id=target_id,
-                message=(
-                    f"CROSS-BOT RECEIVED: +${amount:.4f} from "
-                    f"{source_id[:8]} booked to realised_pnl "
-                    f"(Target frozen at ${target_bot.config.target_balance:.2f} — "
-                    f"MEM-249 cross-wire no longer touches Target)."
-                ),
-            )
-        elif not target_bot:
-            self._bus.emit(
-                "bot.log",
-                bot_id=source_id,
-                message=f"CROSS-BOT FAILED: target bot {target_id[:8]} not found",
-            )
 
     def set_state_manager(self, sm) -> None:
         """Attach a StateManager for persistence."""
