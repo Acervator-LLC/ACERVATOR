@@ -60,8 +60,6 @@ class BotConfig:
     profit_folding_active: bool = True
 
     target_balance: float = 200.0  # Balance the bot trades relative to
-    # Caps USD adopted from an existing exchange balance; 0.0 uses target_balance.
-    max_adoptable_usd: float = 0.0
     scrumming_interval_pct: float = 1.0  # % market move between actions
 
     scrum_fold_pct: int = 100  # 1-100: % of scrum proceeds queued for fold
@@ -164,8 +162,6 @@ class BotConfig:
         0.75  # BULLISH confidence threshold; operator-adjustable 0.50-1.00
     )
 
-    # Reserves target-balance-worth of the target asset in CapitalReservationRegistry.
-    self_reserve_capital: bool = True
     # Target-asset units held out of the bot's decision math and reservation.
     personal_hold_qty: float = 0.0
 
@@ -332,7 +328,6 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "detonation_timeframe",
         "detonation_confidence_min",
         # interop fields
-        "self_reserve_capital",
         "personal_hold_qty",
     }
 )

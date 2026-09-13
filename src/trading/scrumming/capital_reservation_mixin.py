@@ -79,12 +79,10 @@ class CapitalReservationMixin(_Host):
     async def _ensure_capital_reservation(self, current_price: float) -> None:
         """Reserve on the first eligible call and update on later ones.
 
-        Returns without claiming when ``self_reserve_capital`` is off, when
-        ``current_price`` or ``target_asset`` is unusable, or when ``_crr``
-        answers None; failures log at WARNING and clear ``_crr_token``.
+        Returns without claiming when ``current_price`` or ``target_asset``
+        is unusable, or when ``_crr`` answers None; failures log at WARNING
+        and clear ``_crr_token``. No setting turns the claim off.
         """
-        if not bool(getattr(self.config, "self_reserve_capital", True)):
-            return
         if current_price is None or current_price <= 0:
             return
         _asset = str(getattr(self.config, "target_asset", "") or "").upper()

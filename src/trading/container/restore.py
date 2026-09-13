@@ -246,7 +246,6 @@ class StateRestoreMixin:
                     "detonation_confidence_min": cfg.get(
                         "detonation_confidence_min", 0.75
                     ),
-                    "self_reserve_capital": cfg.get("self_reserve_capital", True),
                     "personal_hold_qty": cfg.get("personal_hold_qty", 0.0),
                     "circuit_breaker_soft_pct": cfg.get(
                         "circuit_breaker_soft_pct", 25.0

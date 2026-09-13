@@ -229,9 +229,7 @@ class TickPhaseMixin:
             _own = max(0.0, float(_h2) - _sib_units)
 
             _px_cap = float(getattr(ticker, "last", 0.0) or 0.0)
-            _cap_usd = float(getattr(self.config, "max_adoptable_usd", 0.0) or 0.0)
-            if _cap_usd <= 0:
-                _cap_usd = float(self._target_balance or 0.0)
+            _cap_usd = float(self._target_balance or 0.0)
             _uncapped = _own
             _was_capped = False
             if _cap_usd > 0 and _px_cap > 0 and _own * _px_cap > _cap_usd:
@@ -247,8 +245,8 @@ class TickPhaseMixin:
                         f"this bot may adopt at most ${_cap_usd:.2f} "
                         f"({_own:.6f} units @ ${_px_cap:.8f}). The "
                         f"remaining {_uncapped - _own:.6f} units stay "
-                        f"unmanaged. Raise max_adoptable_usd to change "
-                        f"this."
+                        f"unmanaged. Raise this bot's Target Balance to "
+                        f"change this."
                     ),
                 )
                 try:

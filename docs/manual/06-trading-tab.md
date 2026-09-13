@@ -3712,3 +3712,82 @@ sweep     ageless_kept  fold_removed  stack_kept_live_order  stack_removed
           threshold_days  usd_removed
 preview   the same six, plus fold_open, stack_open and units_removed
 ```
+
+## 2026-09-12 - two settings the engine read and no screen set
+
+Two values sat on a bot's configuration with no row on any page. Neither was a
+preference the operator had ever been asked for, and both are gone. The
+behaviour each one bounded stays exactly where it was.
+
+### The adoption cap comes from Target Balance
+
+A bot that has never scrummed adopts the holding already sitting on the venue as
+its opening position, and a dollar ceiling bounds what it may take. That ceiling
+was read from a stored figure with a fallback to Target Balance. The stored
+figure never arrived: the restore path names its values one at a time and that
+name was not among them, so a record carrying 750 restored to a configuration
+holding zero, and the fallback was the only branch that ever ran.
+
+`src/trading/scrumming/tick_phases.py` - the ceiling, in `_tick_initialise`
+
+```python
+_cap_usd = float(self._target_balance or 0.0)
+```
+
+Target Balance is the figure the operator types. The creation wizard carries the
+row, and so does the live Bot Settings page, so the ceiling is now set from two
+screens instead of from nowhere.
+
+```
+src/gui/bot_wizard.py:826                 Target Balance, on the wizard
+src/gui/live_settings/settings_tab.py:407 Target Balance, on a running bot
+```
+
+### The log line that named a field nothing writes
+
+When the ceiling holds a bot back, the Activity Log says so and tells the
+operator what to raise. It named an internal field that no page offered, so the
+instruction could not be followed. It names the control instead.
+
+```
+before   ... units stay unmanaged. Raise max_adoptable_usd to change this.
+after    ... units stay unmanaged. Raise this bot's Target Balance to change this.
+```
+
+### The reservation has no off switch
+
+A bot claims the funds it is allowed to work with, which is what stops two bots
+on one asset from taking each other's money. A stored flag could turn that claim
+off, and nothing on any screen set it. The flag is gone and the claim is
+unconditional.
+
+`src/trading/scrumming/capital_reservation_mixin.py` - the claim, once per tick
+
+```python
+async def _ensure_capital_reservation(self, current_price: float) -> None:
+    if current_price is None or current_price <= 0:
+        return
+```
+
+Driven on two records that differed in that one flag, with the flag present and
+then removed. A record carrying the flag off placed no claim. The same record
+places one now.
+
+```
+flag off, before   reservation token None
+flag off, after    reservation token 8c4f5907ff4d4634b8db1ddcd8ab9ba8
+flag on,  before   reservation token 4fd7f1ce796540008fb4ebf0c0c6a70a
+flag on,  after    reservation token 762010f49abf452f8371841243828f31
+```
+
+### What a stored record does now
+
+A record written before the removal still loads. Two bots were restored from a
+record carrying both retired names, nothing was raised, and every field that
+remains came back holding what it held before.
+
+```
+declared fields      67 before, 65 after
+field readings       134 before, 130 after, 0 values different
+the four that moved  the two retired names, on each of the two bots
+```
