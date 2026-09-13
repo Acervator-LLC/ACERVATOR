@@ -130,11 +130,8 @@ class BotConfig:
         True  # trend_hold blocks scrum during sustained uptrend
     )
     scrum_defer_to_htf: bool = True  # Refuses scrum when higher-TF phantom is BULLISH
-    # FOLD-side (buy at bottom), mirroring the three above:
+    # FOLD-side (buy at bottom); scrum_hold_in_uptrend has no fold twin.
     fold_require_ta_bearish: bool = True  # Requires is_bearish for auto-fold
-    fold_hold_in_downtrend: bool = (
-        True  # trend_hold blocks fold during sustained downtrend
-    )
     fold_defer_to_htf: bool = True  # Refuses fold when higher-TF phantom is BEARISH
 
     visibility: str = "orderbook"  # "orderbook" or "internal"
@@ -341,7 +338,6 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "scrum_hold_in_uptrend",
         "scrum_defer_to_htf",
         "fold_require_ta_bearish",
-        "fold_hold_in_downtrend",
         "fold_defer_to_htf",
         # risk-control fields
         "position_ceiling_enabled",

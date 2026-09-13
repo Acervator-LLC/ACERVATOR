@@ -1566,7 +1566,6 @@ if _HAS_QT:
                     "scrum_hold_in_uptrend": self._gate_scrum_uptrend_chk.isChecked(),
                     "scrum_defer_to_htf": self._gate_scrum_htf_chk.isChecked(),
                     "fold_require_ta_bearish": self._gate_fold_ta_chk.isChecked(),
-                    "fold_hold_in_downtrend": True,  # reserved, no gate
                     "fold_defer_to_htf": self._gate_fold_htf_chk.isChecked(),
                     "profit_route": self._profit_route.currentData(),
                     "profit_route_bot_id": self._profit_route_bot_id.text().strip(),

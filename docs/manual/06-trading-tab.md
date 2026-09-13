@@ -2198,6 +2198,25 @@ The gate would join the fold chain beside its scrum twin, and
 checkbox has to arrive with it, or the flag stays a hard True. Issue #419
 carries this.
 
+**Functional.** The sixth flag is gone. It is removed from the bot config, from
+the restore round-trip and from both wizard surfaces, so the wizard emits five
+gate flags and the box still draws five checkboxes. A bot record written before
+the removal still loads. Bot creation keeps only the fields the config declares,
+so the old key is dropped on the way in and every other flag arrives unchanged.
+
+Nothing the engine does changes. The field had no reader that moved a decision,
+so no running bot fires differently on its next tick. Driven on both sides over
+five candle tapes, every gate verdict read the same before the removal and
+after it.
+
+Two measured facts bear on the proposal above. The engine holds one trend
+figure, a count of the last twenty candles that close above their open, and it
+holds no downtrend figure for a gate to read. The proposed gate reads
+`ctx.eff_trend_hold`, which is that bullish count after the scrum checkbox has
+been applied to it. As written it would hold a buy during an uptrend, and the
+scrum checkbox would switch it. A fold hold needs its own measurement and its
+own control before it needs a flag.
+
 ![The Profit Routing group.](p22-i1.png)
 
 Moving onto the final section, we have Profit Routing which was intended to allow profits to be routed differently during initial set-up. This will be re-evaluated and potentially removed.

@@ -2297,7 +2297,6 @@ class BotWizardModel:
                 "scrum_hold_in_uptrend": self.checks["gate_scrum_uptrend_chk"],
                 "scrum_defer_to_htf": self.checks["gate_scrum_htf_chk"],
                 "fold_require_ta_bearish": self.checks["gate_fold_ta_chk"],
-                "fold_hold_in_downtrend": FOLD_HOLD_IN_DOWNTREND,
                 "fold_defer_to_htf": self.checks["gate_fold_htf_chk"],
                 "profit_route": self.combo_data("profit_route"),
                 "profit_route_bot_id": self.texts["profit_route_bot_id"].strip(),
@@ -2492,7 +2491,6 @@ class BotWizardModel:
         return config
 
 
-FOLD_HOLD_IN_DOWNTREND = True
 FOLD_MODE_EQUAL = "equal"
 FOLD_MODE_LOGARITHMIC = "logarithmic"
 FOLD_TARGET_ALL = "all_buy"
@@ -2834,7 +2832,6 @@ def build_view_model(
             "modes": list(FOLD_MODES),
             "fold_targets": list(FOLD_TARGETS),
             "distribute_targets": list(DIST_TARGETS),
-            "fold_hold_in_downtrend": FOLD_HOLD_IN_DOWNTREND,
         },
         "timeframes": {
             "offered": {name: list(found) for name, found in model.timeframes.items()},
