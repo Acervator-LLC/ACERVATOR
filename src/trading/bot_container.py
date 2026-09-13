@@ -597,13 +597,15 @@ class BotContainer:
         if hasattr(self, "_phantoms_enabled"):
             state["phantoms_enabled"] = bool(self._phantoms_enabled)
 
-        # One phantom per bot. A longer list is a bot nothing has chosen for,
-        # so no key is written and DEFAULT_PHANTOM_TIMEFRAMES stays in charge.
-        _phantom_tfs = [
-            str(one) for one in (getattr(self, "_phantom_timeframes", None) or [])
-        ]
         # The key spells the field and the attribute: phantom_timeframes.
-        if len(_phantom_tfs) == 1 and _phantom_tfs[0] in ALL_TIMEFRAMES:
+        # Every name the bot holds is written, however many, so a set of
+        # several survives a restart instead of falling back to a default.
+        _phantom_tfs = [
+            str(one)
+            for one in (getattr(self, "_phantom_timeframes", None) or [])
+            if str(one) in ALL_TIMEFRAMES
+        ]
+        if _phantom_tfs:
             state["phantom_timeframes"] = _phantom_tfs
 
         # The coordinator owns the count; no BotConfig field carries it.

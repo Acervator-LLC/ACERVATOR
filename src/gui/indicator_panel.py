@@ -1975,6 +1975,11 @@ if _HAS_QT:
                 elif comp_val < 0:
                     item.setForeground(QBrush(QColor("#ff3366")))
             item.setTextAlignment(Qt.AlignCenter)
+            from src.gui.main_tabs.indicator_panel_surface import (
+                comp_skipped_tooltip,
+            )
+
+            item.setToolTip(comp_skipped_tooltip(tf_data))
             table.setItem(row, col, item)
 
         def _populate_conf_cell(self, table, row, col, tf_data) -> None:

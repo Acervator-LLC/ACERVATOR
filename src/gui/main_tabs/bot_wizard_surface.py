@@ -40,10 +40,11 @@ reaches it, and ``bind_live`` replaces that handler while the program is
 running. ``live_view_model`` is the one place that reads the running
 program's ``settings_manager``: it puts the stored defaults into the
 request the frontend sends without them, and reaches no disk of its own.
-Every value below is written out here rather than read from
-``src.gui.bot_wizard``, from ``src.gui.design_system``, from
-``src.exchange.timeframes`` or from ``src.trading.bot_container``, so a
-value changed on one side alone is reported. Nothing here imports Qt.
+``PHANTOM_TIMEFRAMES`` is ``src.exchange.timeframes.ALL_TIMEFRAMES``, the
+one ranked declaration ``src.trading.phantom_balance`` also reads. Every
+other value below is written out here rather than read from
+``src.gui.bot_wizard``, from ``src.gui.design_system`` or from
+``src.trading.bot_container``. Nothing here imports Qt.
 """
 
 from __future__ import annotations
@@ -51,6 +52,8 @@ from __future__ import annotations
 import math
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
+
+from ...exchange.timeframes import ALL_TIMEFRAMES
 
 METHOD = "bot_wizard.state"
 
@@ -120,7 +123,7 @@ PAGE_SUBTITLES = {
     ASSET: "Choose the exchange and trading pair.",
     MODE: "Select the trading engine for this bot.",
     PARAMS: EMPTY_TEXT,
-    PHANTOM: "Multi-timeframe shadow bots. Higher TFs override lower TFs.",
+    PHANTOM: "One shadow bot, on a timeframe above this bot's own.",
     EXTRACTOR_POOL: (
         "Choose the base currency the pool accumulates and "
         "select target alt pairs from the exchange scan. "
@@ -437,19 +440,7 @@ TA_COMBO_NAME = "ta_timeframe"
 TEXT_FIELDS: dict[str, str] = {}
 PLACEHOLDERS: dict[str, str] = {}
 
-PHANTOM_TIMEFRAMES = (
-    "1m",
-    "5m",
-    "15m",
-    "30m",
-    "1h",
-    "2h",
-    "4h",
-    "6h",
-    "12h",
-    "1d",
-    "1w",
-)
+PHANTOM_TIMEFRAMES = ALL_TIMEFRAMES
 PHANTOM_TIMEFRAME_DEFAULT = False
 #: Reached only by a wizard built with no settings; the store declares the
 #: same value and always carries the key the page reads.
@@ -641,7 +632,9 @@ BUTTON_TEXTS = {
 
 LABEL_TEXTS = {
     "alt_list_heading": "Compatible alt pairs (auto-scanned):",
-    "phantom_timeframes_heading": "Active Timeframes:",
+    "phantom_timeframes_heading": (
+        "Active Timeframe — pick one, above this bot's TA Timeframe:"
+    ),
     "scrumming_description": (
         "The core trading engine. Uses 12-indicator TA voting to optimize "
         "scrum-fold cycles relative to a Target Balance. Supports multi-timeframe "
@@ -1934,9 +1927,9 @@ class BotWizardModel:
                 if offered
                 else PHANTOM_UNSUPPORTED_FORMAT.format(exchange=named)
             )
-            self.phantom_tool_tips[found] = PHANTOM_TOOL_TIP_FORMAT.format(
-                timeframe=found, state=state
-            )
+            self.phantom_tool_tips[found] = self.phantom_refusal(
+                found
+            ) or PHANTOM_TOOL_TIP_FORMAT.format(timeframe=found, state=state)
             self.calls.append(
                 [CHECK_SET_TOOL_TIP, found, self.phantom_tool_tips[found]]
             )
@@ -1955,48 +1948,70 @@ class BotWizardModel:
                 DEFAULT_PHANTOM_TIMEFRAME_KEY, PHANTOM_TIMEFRAME_STORED_DEFAULT
             )
         )
-        parent = str(self.combo_data(TA_COMBO_NAME) or EMPTY_TEXT)
         if any(self.phantom_checks.values()):
             return
         if wanted not in self.phantom_checks:
             return
-        refused = EMPTY_TEXT
-        why = REFUSAL_NONE
-        if not is_higher_timeframe(wanted, parent):
-            why = REFUSAL_PHANTOM_NOT_HIGHER
-            refused = PHANTOM_NOT_HIGHER_FORMAT.format(
-                timeframe=wanted, parent=parent
+        self.set_phantom_timeframe(wanted, True)
+
+    def phantom_refusal(self, timeframe: str) -> str:
+        """The line refusing ``timeframe`` as a phantom, empty when it runs.
+
+        A timeframe at or below the bot's own TA Timeframe, or one the venue
+        does not offer, can never reach the Comp field.
+        """
+        parent = str(self.combo_data(TA_COMBO_NAME) or EMPTY_TEXT)
+        if not is_higher_timeframe(timeframe, parent):
+            return PHANTOM_NOT_HIGHER_FORMAT.format(
+                timeframe=timeframe, parent=parent
             )
-        elif not self.phantom_enabled_timeframes[wanted]:
-            why = REFUSAL_PHANTOM_NOT_OFFERED
-            refused = PHANTOM_NOT_OFFERED_FORMAT.format(
-                timeframe=wanted,
+        if not self.phantom_enabled_timeframes[timeframe]:
+            return PHANTOM_NOT_OFFERED_FORMAT.format(
+                timeframe=timeframe,
                 exchange=self.exchange_id or PHANTOM_UNKNOWN_EXCHANGE,
             )
-        if refused:
-            self.refusal = why
-            self.refusals.append(why)
-            self.phantom_tool_tips[wanted] = refused
-            self.calls.append([CHECK_SET_TOOL_TIP, wanted, refused])
-            return
-        self.phantom_checks[wanted] = True
-        self.calls.append([CHECK_SET_CHECKED, wanted, True])
+        return EMPTY_TEXT
 
     def set_phantom_timeframe(self, timeframe: str, value: Any) -> None:
-        """Tick or clear one phantom timeframe."""
+        """Tick or clear one phantom timeframe, keeping the selection at one.
+
+        Ticking clears every other box. A timeframe ``phantom_refusal``
+        names stays clear and carries the reason in its tool tip.
+        """
         if timeframe not in self.phantom_checks:
             raise KeyError(REFUSAL_UNKNOWN_FIELD.format(name=timeframe))
-        self.phantom_checks[timeframe] = check_value(value)
-        self.calls.append(
-            [CHECK_SET_CHECKED, timeframe, self.phantom_checks[timeframe]]
-        )
+        wanted = check_value(value)
+        if not wanted:
+            self.phantom_checks[timeframe] = False
+            self.calls.append([CHECK_SET_CHECKED, timeframe, False])
+            return
+        refused = self.phantom_refusal(timeframe)
+        if refused:
+            why = (
+                REFUSAL_PHANTOM_NOT_OFFERED
+                if not self.phantom_enabled_timeframes[timeframe]
+                else REFUSAL_PHANTOM_NOT_HIGHER
+            )
+            self.refusal = why
+            self.refusals.append(why)
+            self.phantom_tool_tips[timeframe] = refused
+            self.calls.append([CHECK_SET_TOOL_TIP, timeframe, refused])
+            self.calls.append([CHECK_SET_CHECKED, timeframe, False])
+            return
+        for found in PHANTOM_TIMEFRAMES:
+            if found != timeframe and self.phantom_checks[found]:
+                self.phantom_checks[found] = False
+                self.calls.append([CHECK_SET_CHECKED, found, False])
+        self.phantom_checks[timeframe] = True
+        self.calls.append([CHECK_SET_CHECKED, timeframe, True])
 
     def phantom_selection(self) -> list:
-        """The phantom timeframes both ticked and offered by the venue."""
+        """The one ticked phantom timeframe that the venue offers and that
+        outranks the bot's own TA Timeframe."""
         return [
             found
             for found in PHANTOM_TIMEFRAMES
-            if self.phantom_checks[found] and self.phantom_enabled_timeframes[found]
+            if self.phantom_checks[found] and not self.phantom_refusal(found)
         ]
 
     def params_config(self) -> dict:

@@ -247,7 +247,7 @@ class StateRestoreMixin:
                     # file without the flag keeps prior behaviour.
                     _restored_phantoms_enabled = bot_data.get("phantoms_enabled", True)
                     # Absent leaves phantom_timeframes None, so
-                    # DEFAULT_PHANTOM_TIMEFRAMES keeps prior behaviour.
+                    # default_phantom_timeframes picks the one above the parent.
                     _restored_phantom_tfs = [
                         str(one)
                         for one in (bot_data.get("phantom_timeframes") or [])
