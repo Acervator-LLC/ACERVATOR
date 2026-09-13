@@ -341,6 +341,27 @@ The reservation table reaches the frontend through its own bridge method, named
 in the table at the foot of this file. The Qt panel beside it,
 `CapitalRegistryPanel`, is declared and no screen builds it.
 
+### The dollar registry and its table are gone
+
+The paragraph above describes a subsystem the tree no longer holds. Nothing
+imported the dollar registry, so nothing built one, and the table it fed could
+draw no row.
+
+Four modules are removed: the registry in `src/trading/capital_registry.py`, the
+Qt table in `src/gui/widgets/capital_registry_panel.py`, the view model in
+`src/gui/main_tabs/capital_registry_surface.py`, and the renderer page in
+`src/gui/web/capital_registry.js`.
+
+The bridge no longer offers the method. `build_registry` in
+`src/core/desktop_bridge.py` returns 72 methods, and none of them starts with
+`capital_registry`. The renderer manifest lists 68 modules, and every one has a
+file on disk.
+
+Claims in asset units are a different mechanism and they stay.
+`CapitalReservationRegistry` in `src/trading/capital_reservation.py` holds one
+claim per bot in target-asset units. The saved claim state held 38 of them on
+2026-09-13.
+
 ## Bridge
 
 Seven methods serve this screen, and the renderer modules carry the matching
@@ -355,6 +376,11 @@ names.
 | `quick_routing.state` | The quick routing matrix |
 | `capital_registry.rows` | The reservation table |
 | `fold_tranches_tab.state` | The tranche book |
+
+The row for `capital_registry.rows` names a method the bridge no longer offers.
+Six methods serve this screen now. `build_registry` in
+`src/core/desktop_bridge.py` is the table that decides, and it registers the
+other six.
 
 ## 2026-09-07 15:58 - no issue recorded - ten single-word tabs, each on its own ground
 

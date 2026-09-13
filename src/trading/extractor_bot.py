@@ -204,12 +204,21 @@ class ExtractorBot(BotContainer):
 
     # ── Public chunk-rate setter ────────────────────────────────────
 
-    def set_initial_chunk_rate(self, usd_per_base: float) -> None:
+    def set_initial_chunk_rate(
+        self, usd_per_base: float, *, total_holdings: Optional[float]
+    ) -> None:
         """Rebase the USD-denominated chunk into base-currency units.
 
         ``usd_per_base`` is the dollar price of one base unit, the number
         ``BotContainer._usd_per_base_for`` returns:
         ``chunk_size_base = chunk_size_usd / usd_per_base``.
+
+        ``total_holdings`` is this bot's base-currency balance, read by
+        ``_read_base_holdings``. A ``None`` means the balance did not read,
+        which is not a holdings figure and not a licence to claim: the chunk
+        still rebases, no claim is placed, and one warning names the bot and
+        the asset. A figure bounds the claim inside
+        ``CapitalReservationRegistry.reserve``.
         """
         if usd_per_base <= 0:
             logger.warning(
@@ -226,7 +235,14 @@ class ExtractorBot(BotContainer):
         # Reserved in asset quantity, not USD; a raising registry leaves this bot unreserved.
         base_asset = (self.config.base_currency or "").upper()
         total_reserved_base = self._chunk_size_base
-        if base_asset and total_reserved_base > 0:
+        if base_asset and total_reserved_base > 0 and total_holdings is None:
+            logger.warning(
+                "Bot %s could not read its %s balance; placing no claim, "
+                "because no holdings figure bounds it.",
+                self.bot_id,
+                base_asset,
+            )
+        elif base_asset and total_reserved_base > 0:
             try:
                 from .capital_reservation import get_registry as _crr_get_registry
 
@@ -241,6 +257,7 @@ class ExtractorBot(BotContainer):
                         f"usd_per_base={usd_per_base:.6g}"
                     ),
                     bot_kind="extractor",
+                    total_holdings=total_holdings,
                 )
                 logger.info(
                     "Bot %s reserved %.10g %s with "
@@ -556,7 +573,8 @@ class ExtractorBot(BotContainer):
 
         A base in ``DOLLAR_PEGGED_CURRENCIES`` takes 1.0 and reads no
         ticker. The first rate on a bot with nothing deployed goes to
-        ``set_initial_chunk_rate``, which rebases ``_chunk_size_base``
+        ``set_initial_chunk_rate`` together with the balance
+        ``_read_base_holdings`` answers, which rebases ``_chunk_size_base``
         and writes the registry claim; every
         rate after that goes to ``update_usd_per_base_rate``. A read runs no
         more often than ``_refresh_interval_seconds``, whether it succeeds
@@ -599,12 +617,42 @@ class ExtractorBot(BotContainer):
         # set_initial_chunk_rate reserves, so _recent_rates, _tick_counter
         # and _positions together hold it to one call per process.
         if not self._recent_rates and self._tick_counter <= 1 and not self._positions:
-            self.set_initial_chunk_rate(rate)
+            self.set_initial_chunk_rate(
+                rate, total_holdings=await self._read_base_holdings(base)
+            )
         accepted, reason = self.update_usd_per_base_rate(rate)
         if not accepted:
             logger.info(
                 "Bot %s %s/USD rate %s", self.bot_id, base, reason
             )
+
+    async def _read_base_holdings(self, base: str) -> Optional[float]:
+        """Return the free balance of ``base`` on the venue, or None unread.
+
+        None means the read did not answer, which ``set_initial_chunk_rate``
+        treats as no room to claim rather than as a balance of zero.
+        """
+        _base = (base or "").upper()
+        if not _base:
+            return None
+        try:
+            _bal = await self.exchange.get_balance(_base)
+        except Exception as _bal_exc:  # an unread balance is None, never 0
+            logger.warning(
+                "Bot %s could not read its %s balance (%s: %s).",
+                self.bot_id,
+                _base,
+                type(_bal_exc).__name__,
+                _bal_exc,
+            )
+            return None
+        _free = getattr(_bal, "free", None)
+        if _free is None:
+            return None
+        try:
+            return float(_free)
+        except (TypeError, ValueError):
+            return None
 
     # ── Pair filter and signals ───────────────────────────────────────
 

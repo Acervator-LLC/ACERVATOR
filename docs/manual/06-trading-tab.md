@@ -4334,6 +4334,33 @@ set_capital_registry   0 callers
 CapitalRegistry built  0 times
 ```
 
+#### What the counts above point at is removed
+
+Three of those five rows named code with no caller, and that code is gone.
+
+The dollar registry is gone. `src/trading/capital_registry.py` is removed, with
+the Qt table, the view model and the renderer page that drew it.
+
+The whole-table read is gone. `CapitalReservationRegistry` in
+`src/trading/capital_reservation.py` no longer declares `snapshot`. A bot reads
+another bot's claim through `reservations_for`, and a sale is decided by
+`effective_available`. Both stay.
+
+The two operator overrides are gone. That registry no longer declares
+`force_release` or `force_release_all`. A claim still leaves the table five
+ways: its owner calls `release`, a bot drops its own with `release_for`, the
+expiry sweep calls `prune_expired`, the fleet sweep calls `sweep_unknown_bots`,
+and a silent bot loses its claim on the heartbeat schedule.
+
+| Name | Call sites before | Call sites after | State |
+| ---- | ----------------: | ---------------: | ----- |
+| `CapitalRegistry` | 0 | 0 | removed |
+| `snapshot` on the claim registry | 0 | 0 | removed |
+| `force_release` | 0 | 0 | removed |
+| `force_release_all` | 0 | 0 | removed |
+| `effective_available` | 1 | 1 | kept |
+| `reservations_for` | 1 | 1 | kept |
+
 Five places let a bot through with no claim behind it. Each one is a choice to
 keep trading rather than to stop, and making any of them stop means refusing a
 bot that trades today.
@@ -4348,6 +4375,39 @@ bot that trades today.
 
 Seven further places on the same path behave the same way. The sell pre-check is
 the one that bears on money directly, because it is the only reader.
+
+#### The Extractor now reads its holdings before it claims
+
+The fourth row above described a claim placed with no holdings figure behind it.
+The Extractor reads the balance first now.
+
+`ExtractorBot._read_base_holdings` in `src/trading/extractor_bot.py` asks the
+venue for the free balance of the base currency. It answers a figure, or it
+answers nothing when the read fails.
+
+Nothing is not zero, and it is not room to claim. `set_initial_chunk_rate` takes
+that answer. It still rebases the chunk. It places no claim, and it writes one
+warning that names the bot and the asset.
+
+A figure goes to the registry with the claim, so the registry can compare the
+request against what the bot owns. This is the check the Scrumming bot already
+passes, and the Extractor now takes the same path.
+
+Driven three ways on a real Extractor, with the venue read stubbed and no
+network:
+
+| The balance read | The claim | What the log says |
+| ---------------- | --------- | ----------------- |
+| the read failed | none placed | the bot and the asset are named |
+| 1000 units free, chunk 100 | placed, 100 units | the token and the chunk are named |
+| 1 unit free, chunk 100 | refused, none placed | the request and the holdings are named |
+
+The second row is the control. It proves the run would have seen a claim if one
+had been placed.
+
+No bot on the saved fleet is an Extractor. All 38 records carry the Scrumming
+mode, and all 38 live claims carry the Scrumming kind, so this change moves
+nothing that trades today.
 
 ### The log lines a missing claim writes
 

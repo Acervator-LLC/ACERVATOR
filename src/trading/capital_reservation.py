@@ -275,8 +275,7 @@ class CapitalReservationRegistry:
             if r.bot_id != bot_id:
                 raise ValueError(
                     f"release: token {token[:8]} owned by {r.bot_id!r}, "
-                    f"not {bot_id!r}. Use force_release() for operator "
-                    f"override."
+                    f"not {bot_id!r}. Only the owner releases a claim."
                 )
             del self._reservations[token]
             self._heartbeats[bot_id] = time.time()
@@ -372,52 +371,6 @@ class CapitalReservationRegistry:
                 new_qty,
             )
             return True
-
-    def force_release(self, token: str, operator_note: str = "") -> bool:
-        """Drop the ``Reservation`` at ``token`` without checking its ``bot_id``.
-
-        Returns False when ``token`` is unknown, and logs ``operator_note`` at
-        WARNING.
-        """
-        with self._lock:
-            r = self._reservations.get(token)
-            if r is None:
-                return False
-            del self._reservations[token]
-            self._save()
-            logger.warning(
-                "CRR.force_release: OPERATOR override — released %s "
-                "(was %s/%.10g %s). Note: %r",
-                token[:8],
-                r.bot_id,
-                r.qty,
-                r.asset,
-                operator_note,
-            )
-            return True
-
-    def force_release_all(self, bot_id: str, operator_note: str = "") -> int:
-        """Drop every ``Reservation`` owned by ``bot_id``, and its heartbeat.
-
-        Returns the count dropped, and logs ``operator_note`` at WARNING.
-        """
-        with self._lock:
-            to_release = [
-                t for t, r in self._reservations.items() if r.bot_id == bot_id
-            ]
-            for t in to_release:
-                del self._reservations[t]
-            self._heartbeats.pop(bot_id, None)
-            if to_release:
-                self._save()
-                logger.warning(
-                    "CRR.force_release_all: OPERATOR override — released "
-                    "%d reservations held by %s. Note: %r",
-                    len(to_release),
-                    bot_id,
-                    operator_note,
-                )
-            return len(to_release)
 
     def sweep_unknown_bots(self, known_bot_ids, note: str = "") -> list[Reservation]:
         """Drop every ``Reservation``, and every heartbeat, whose ``bot_id`` is
@@ -526,24 +479,6 @@ class CapitalReservationRegistry:
                     continue
                 out.append(Reservation.from_dict(r.to_dict()))
             return out
-
-    def snapshot(self) -> dict:
-        """Return the whole table under the keys "reservations", "heartbeats",
-        "total_by_asset" and "now".
-
-        "total_by_asset" sums ``qty`` per ``asset`` across every owner.
-        """
-        with self._lock:
-            now = time.time()
-            total_by_asset: dict[str, float] = {}
-            for r in self._reservations.values():
-                total_by_asset[r.asset] = total_by_asset.get(r.asset, 0.0) + r.qty
-            return {
-                "reservations": [r.to_dict() for r in self._reservations.values()],
-                "heartbeats": dict(self._heartbeats),
-                "total_by_asset": total_by_asset,
-                "now": now,
-            }
 
     def heartbeat(self, bot_id: str):
         """Stamp ``bot_id`` in ``_heartbeats`` with the current epoch.

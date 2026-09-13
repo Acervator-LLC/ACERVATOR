@@ -1375,6 +1375,12 @@ rather than typed.
 | `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | shell | in scope |
 The Simulator rebuild removed the files above; they are not in the tree.
 
+The Capital Registry row names a file the tree no longer holds. The registry it
+drew was built nowhere, so the table could draw no row. Four modules went
+together: `src/gui/widgets/capital_registry_panel.py`, its view model, its
+renderer page, and the registry behind them. The bridge no longer offers the
+method, and the renderer manifest no longer names the page.
+
 Totals across the 76 rows above, measured on 5 September 2026:
 
 ```
@@ -2036,6 +2042,10 @@ than a screen, and it stays where it is.
 | `widgets/capital_registry_panel.py` | Not reachable from a live tab |
 | `widgets/notification_spool.py` | Not reachable from a live tab |
 | `widgets/pulse_manager.py` | Not reachable from a live tab |
+
+One row in that table names a file the tree no longer holds. The Capital
+Registry panel is removed with the registry that fed it, so no conversion is
+owed for it.
 
 The rows in that table are inside this item. The operator's 6 September 2026
 directive puts the whole interface in scope, so a screen the window does not

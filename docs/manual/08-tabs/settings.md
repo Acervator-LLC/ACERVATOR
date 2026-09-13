@@ -5275,6 +5275,27 @@ other three have held none since they were created on 2026-06-09. A driven run
 reproduced it exactly: one daily file written, and nothing in weekly, monthly or
 yearly.
 
+#### The three builders are gone
+
+The cascade now declares one window. `PnLCascade` in
+`src/core/logging_engine.py` holds a single `PERIODS` key, `daily`, and one
+writer, `record_daily`. The three builders and the helper that wrote their
+files are removed.
+
+The cascade makes one directory. A start reaches `daily/` only. It no longer
+makes `weekly/`, `monthly/` or `yearly/`.
+
+| What was counted | Before | After |
+| ---------------- | -----: | ----: |
+| occurrences of the three builder names in the tree | 9 | 0 |
+| windows the cascade declares | 4 | 1 |
+| directories the cascade makes at a start | 4 | 1 |
+| the daily writer | present | present |
+
+The runtime tree keeps every file it holds. The daily directory held 67 files on
+2026-09-13, and the other three held none. Nothing was written or deleted under
+the runtime tree to prove this.
+
 ### A store carrying the retired group still opens
 
 `SettingsManager._apply_dict` walks the declared fields and takes only the keys a
