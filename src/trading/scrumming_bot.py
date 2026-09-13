@@ -455,12 +455,9 @@ class ScrummingBot(
         self._detonation_last_check_ts: float = 0.0
         self._detonation_last_signal_bullish: bool = False
 
-        self._hedge_bal: float = (
-            float(config.hedge_balance) if config.hedge_rebalance_active else 0.0
-        )
-        self._hedge_balance_initial: float = (
-            float(config.hedge_balance) if config.hedge_rebalance_active else 0.0
-        )
+        # _hedge_balance_initial reads config.hedge_balance, so the seed cannot
+        # drift from the ceiling a restart rebuilds.
+        self._hedge_bal: float = self._hedge_balance_initial
         self._hedge_trades: int = 0
 
         self._last_trade_price: float = 0.0
@@ -1044,6 +1041,68 @@ class ScrummingBot(
         logger.info("Bot %s aggressive_trading live: %s -> %s", self.bot_id, old, nv)
         return {"applied": True, "old": old, "new": nv}
 
+    def set_hedge_rebalance_active_live(self, active: bool) -> dict:
+        """Set hedge_rebalance_active on a running bot and arm _hedge_bal.
+
+        Ticking on raises _hedge_bal to _hedge_balance_initial and never lowers
+        it; unticking leaves _hedge_bal alone because the arm gate and the
+        refill gate both read hedge_rebalance_active first.
+        """
+        if not isinstance(active, bool):
+            return {
+                "applied": False,
+                "reason": (
+                    f"hedge_rebalance_active must be true or false; "
+                    f"got {active!r}"
+                ),
+            }
+        old = bool(self.config.hedge_rebalance_active)
+        old_reserve = float(getattr(self, "_hedge_bal", 0.0) or 0.0)
+        self.config.hedge_rebalance_active = active
+        cap = float(self._hedge_balance_initial)
+        if active and old_reserve < cap:
+            self._hedge_bal = cap
+        new_reserve = float(self._hedge_bal)
+        if not active:
+            note = (
+                f"Reserve ${new_reserve:.2f} is kept and frozen; every hedge "
+                f"buy and every refill is refused while the box is unticked."
+            )
+        elif cap <= 0.0:
+            note = (
+                "Hedge Balance is $0.00, so the reserve stays empty and no "
+                "hedge buy can fire. Type a Hedge Balance above zero to arm it."
+            )
+        else:
+            note = (
+                f"Reserve armed at ${new_reserve:.2f} against a "
+                f"${cap:.2f} ceiling."
+            )
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"HEDGE REBALANCE ACTIVE LIVE UPDATE: {old} -> {active}. "
+                f"Reserve ${old_reserve:.2f} -> ${new_reserve:.2f}. {note}"
+            ),
+        )
+        logger.info(
+            "Bot %s hedge_rebalance_active live: %s -> %s (reserve %.2f -> %.2f)",
+            self.bot_id,
+            old,
+            active,
+            old_reserve,
+            new_reserve,
+        )
+        return {
+            "applied": True,
+            "old": old,
+            "new": active,
+            "old_reserve": old_reserve,
+            "reserve": new_reserve,
+            "cap": cap,
+        }
+
     def set_hedge_balance_live(self, new_hedge_balance: float) -> dict:
         """Apply a live hedge-balance cap change.
 
@@ -1053,6 +1112,8 @@ class ScrummingBot(
           - _hedge_bal is the CURRENT drainable reserve; it drains on
             hedge spends and refills on scrum skims up to the cap.
           - Raising or lowering the cap leaves _hedge_bal unchanged.
+          - The cap is stored once, on config.hedge_balance;
+            _hedge_balance_initial reads and writes that one field.
 
         """
         try:
@@ -1067,32 +1128,52 @@ class ScrummingBot(
             return {"applied": False, "reason": f"hedge_balance must be ≥ 0; got {nv}"}
         old_cap = float(getattr(self, "_hedge_balance_initial", 0.0) or 0.0)
         old_reserve = float(getattr(self, "_hedge_bal", 0.0) or 0.0)
-        self._hedge_balance_initial = nv
         try:
-            self.config.hedge_balance = nv
-        except Exception as _sup:
-            logger.debug(
-                "suppressed in %s: %s: %s",
-                "set_hedge_balance_live",
-                type(_sup).__name__,
-                _sup,
+            self._hedge_balance_initial = nv
+        except Exception as _wr:
+            return {
+                "applied": False,
+                "reason": (
+                    f"hedge_balance is not writable on this config: "
+                    f"{type(_wr).__name__}: {_wr}"
+                ),
+            }
+        new_cap = float(self._hedge_balance_initial)
+        if not self.config.hedge_rebalance_active:
+            note = (
+                f"${nv:.2f} is stored, and the ceiling stays $0.00 until "
+                f"Hedge Rebalance Active is ticked."
+            )
+        elif nv == 0.0:
+            note = (
+                f"A $0.00 Hedge Balance is an empty reserve that never "
+                f"refills, not an off switch. Untick Hedge Rebalance Active "
+                f"to turn the hedge off. Reserve ${old_reserve:.2f} stays "
+                f"spendable until it drains."
+            )
+        else:
+            note = (
+                f"Current reserve ${old_reserve:.2f} unchanged (refill will "
+                f"target the new cap)."
             )
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
             message=(
                 f"HEDGE BALANCE CAP LIVE UPDATE: ${old_cap:.2f} -> "
-                f"${nv:.2f}. Current reserve ${old_reserve:.2f} "
-                f"unchanged (refill will target the new cap)."
+                f"${new_cap:.2f}. {note}"
             ),
         )
         logger.info(
-            "Bot %s hedge_balance cap live: %.2f -> %.2f", self.bot_id, old_cap, nv
+            "Bot %s hedge_balance cap live: %.2f -> %.2f",
+            self.bot_id,
+            old_cap,
+            new_cap,
         )
         return {
             "applied": True,
             "old_cap": old_cap,
-            "new_cap": nv,
+            "new_cap": new_cap,
             "current_reserve": old_reserve,
         }
 

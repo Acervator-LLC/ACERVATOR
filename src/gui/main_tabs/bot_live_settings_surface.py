@@ -193,6 +193,8 @@ RUNTIME_ROUTED = {
     "visibility": "set_visibility_live",
     "aggressive_trading": "set_aggressive_live",
     "hedge_balance": "set_hedge_balance_live",
+    # setattr alone moves the flag and leaves _hedge_bal at zero.
+    "hedge_rebalance_active": "set_hedge_rebalance_active_live",
     "extractor_chunk_size_usd": "set_chunk_size_usd",
 }
 ROUTE_APPLIED_KEY = "applied"

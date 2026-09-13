@@ -758,7 +758,11 @@ class SettingsTabMixin:
         self._hedge_active.setChecked(bool(cfg.hedge_rebalance_active))
         self._hedge_active.setToolTip(
             "Separate USD reserve for buying on sharp drawdowns.\n"
-            "NOT taken from Target Balance."
+            "NOT taken from Target Balance.\n\n"
+            "Ticking this on a running bot fills the reserve up to "
+            "Hedge Balance at once.\n"
+            "Unticking keeps the reserve and refuses every hedge buy "
+            "and every refill."
         )
         self._hedge_active.toggled.connect(
             lambda v: self._mark_changed("hedge_rebalance_active", v)
@@ -772,7 +776,12 @@ class SettingsTabMixin:
         self._hedge_balance.setValue(float(cfg.hedge_balance))
         self._hedge_balance.setToolTip(
             "USD reserve amount for hedge rebalancing (separate from "
-            "Target Balance)."
+            "Target Balance).\n\n"
+            "$ 0.00 is NOT an off switch. It is an empty reserve that "
+            "never refills,\n"
+            "and any reserve the bot already holds stays spendable until "
+            "it drains.\n"
+            "Untick Hedge Rebalance Active to turn the hedge off."
         )
         self._hedge_balance.valueChanged.connect(
             lambda v: self._mark_changed("hedge_balance", v)
