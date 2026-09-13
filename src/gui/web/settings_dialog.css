@@ -123,8 +123,7 @@ button.acervator-settings-dialog[data-part="tab-button"]:focus {
   font: inherit;
 }
 
-input.acervator-settings-dialog[data-part="control"][type="checkbox"],
-input.acervator-settings-dialog[data-part="control"][type="radio"] {
+input.acervator-settings-dialog[data-part="control"][type="checkbox"] {
   flex: none;
   width: 14px;
   height: 14px;

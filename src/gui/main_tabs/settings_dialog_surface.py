@@ -493,7 +493,6 @@ TEXT_AREA = "text_area"
 COMBO_TEXT = "combo_text"
 COMBO_DATA = "combo_data"
 CHECK = "check"
-RADIO = "radio"
 SPIN = "spin"
 DOUBLE_SPIN = "double_spin"
 SLIDER = "slider"
@@ -504,7 +503,6 @@ SIGNAL_FOR_KIND = {
     COMBO_TEXT: "currentIndexChanged",
     COMBO_DATA: "currentIndexChanged",
     CHECK: "toggled",
-    RADIO: "toggled",
     SPIN: "valueChanged",
     DOUBLE_SPIN: "valueChanged",
     SLIDER: "valueChanged",
@@ -1413,7 +1411,6 @@ PAINTED_KIND = {
     COMBO_TEXT: "combo",
     COMBO_DATA: "combo",
     CHECK: "check",
-    RADIO: "radio",
     SPIN: "spin",
     DOUBLE_SPIN: "double_spin",
     SLIDER: "slider",
@@ -1992,7 +1989,7 @@ class SettingsDialogModel:
 
     def _seed(self, spec: dict) -> Any:
         kind = spec["kind"]
-        if kind in (CHECK, RADIO):
+        if kind == CHECK:
             return spec["checked"]
         if kind in (SPIN, SLIDER):
             return seed_whole(spec.get("value", spec["range"][0]), *spec["range"])
@@ -2020,7 +2017,7 @@ class SettingsDialogModel:
         kind = spec["kind"]
         if kind in (LINE, TEXT_AREA):
             return seed_text(raw)
-        if kind in (CHECK, RADIO):
+        if kind == CHECK:
             return seed_flag(raw)
         if kind in (SPIN, SLIDER):
             return seed_whole(raw, *spec["range"])
@@ -2577,7 +2574,7 @@ def control_painted_text(spec: dict, values: dict) -> str:
     kind = painted_kind(spec)
     if kind in SILENT_KINDS:
         return EMPTY_TEXT
-    if kind in ("check", "radio"):
+    if kind == "check":
         return spec["text"]
     if kind == "combo":
         if spec["kind"] == COMBO_DATA:
