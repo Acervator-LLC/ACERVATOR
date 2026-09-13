@@ -15,7 +15,6 @@
   var EMPTY_TEXT = "empty_text";
   var FETCHED = "fetched";
   var FIELDS = "fields";
-  var FOLDING_PAGE = "folding_page";
   var FORMATS = "formats";
   var GROUPS = "groups";
   var ICON = "icon";
@@ -67,7 +66,6 @@
     EMPTY_TEXT,
     FETCHED,
     FIELDS,
-    FOLDING_PAGE,
     FORMATS,
     GROUPS,
     ICON,
@@ -110,7 +108,6 @@
     ASSET_PAGE,
     CONFIG,
     FIELDS,
-    FOLDING_PAGE,
     FORMATS,
     GROUPS,
     ICON,
@@ -234,18 +231,16 @@
   // NULLABLE_FIELDS names the values a healthy payload may carry as null.
   var NULLABLE_FIELDS = [INFO_BOX, WARNING_BOX, TARGET_DATA];
 
-  // The six page names the payload keys its titles, rows and groups by.
+  // The five page names the payload keys its titles, rows and groups by.
   var ASSET_PAGE_NAME = "asset";
   var MODE_PAGE_NAME = "mode";
   var PARAMS_PAGE_NAME = "params";
-  var FOLDING_PAGE_NAME = "folding";
   var PHANTOM_PAGE_NAME = "phantom";
   var POOL_PAGE_NAME = "extractor_pool";
   var PAGE_NAMES_READ = [
     ASSET_PAGE_NAME,
     MODE_PAGE_NAME,
     PARAMS_PAGE_NAME,
-    FOLDING_PAGE_NAME,
     PHANTOM_PAGE_NAME,
     POOL_PAGE_NAME
   ];

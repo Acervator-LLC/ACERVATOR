@@ -3,9 +3,9 @@
 ``ladder_offsets_pct`` places level n at ``level_multipliers(spacing_mode, n)``
 times ``initial_gap_pct``, numbering levels from 1 and giving level 1 a
 multiplier of 1.0 in every mode. ``scrum_ladder_prices`` walks up from the
-anchor and ``fold_ladder_prices`` walks down, both through ``_ladder_prices``
-with an opposite ``direction``. ``split_scrum_into_tranches`` prices a SCRUM
-ladder, then reshapes it with ``_apply_merge_rule`` and
+anchor through ``_ladder_prices``, whose ``direction`` also carries the FOLD
+sign for ``placement_floor_price``. ``split_scrum_into_tranches`` prices a
+SCRUM ladder, then reshapes it with ``_apply_merge_rule`` and
 ``_apply_min_order_size``.
 
     quadratic     n^2                     DEFAULT_SPACING_MODE
@@ -114,8 +114,7 @@ def ladder_offsets_pct(
 ) -> list[float]:
     """Return each level's distance from the ladder anchor, in percent.
 
-    The offsets carry no direction; `scrum_ladder_prices` and
-    `fold_ladder_prices` share them.
+    The offsets carry no direction; `_ladder_prices` applies the sign.
     """
     gap = _number("initial_gap_pct", initial_gap_pct)
     if gap < 0:
@@ -290,34 +289,6 @@ def scrum_ladder_prices(
     """
     return _ladder_prices(
         +1,
-        trigger_price,
-        levels,
-        initial_gap_pct,
-        spacing_mode,
-        min_opposing_pct,
-        exponential_ratio,
-        last_candle_close,
-        bb_bounds,
-    )
-
-
-def fold_ladder_prices(
-    trigger_price: float,
-    levels: int,
-    initial_gap_pct: float = DEFAULT_INITIAL_GAP_PCT,
-    spacing_mode: str = DEFAULT_SPACING_MODE,
-    min_opposing_pct: float = 0.0,
-    exponential_ratio: float = DEFAULT_EXPONENTIAL_RATIO,
-    last_candle_close: Optional[float] = None,
-    bb_bounds: Optional[Sequence[float]] = None,
-) -> list[float]:
-    """Return descending FOLD (buy) prices, level 1 nearest the anchor.
-
-    Every level takes the same `ladder_offsets_pct` as `scrum_ladder_prices`
-    with the sign of `direction` reversed, and no size is decided here.
-    """
-    return _ladder_prices(
-        -1,
         trigger_price,
         levels,
         initial_gap_pct,
