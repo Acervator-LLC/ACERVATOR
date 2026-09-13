@@ -141,6 +141,11 @@ textarea.acervator-settings-dialog[data-part="control"] {
   resize: vertical;
 }
 
+/* A textarea has no password type, so -webkit-text-security masks it. */
+textarea.acervator-settings-dialog[data-part="control"][data-echo="password"] {
+  -webkit-text-security: disc;
+}
+
 .acervator-settings-dialog[data-part="control"]:focus {
   outline: 1px solid var(--accent);
 }

@@ -554,6 +554,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "label": "API Key:",
         "name": "new_api_key",
         "kind": LINE,
+        "echo": "password",
         "placeholder": "API Key or organizations/.../.../apiKeys/...",
         "tooltip": (
             "For Coinbase CDP keys, paste the full "
@@ -566,6 +567,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "label": "API Secret:",
         "name": "new_api_secret",
         "kind": TEXT_AREA,
+        "echo": "password",
         "max_height": 60,
         "placeholder": "API Secret or EC Private Key (PEM format with \\n is OK)",
         "tooltip": (
