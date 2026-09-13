@@ -55,8 +55,6 @@ class BotConfig:
     symbol: str = ""  # Derived: "BTC/USDT"
     mode: BotMode = BotMode.SCRUMMING
 
-    increment_style: str = "linear"  # "linear" or "logarithmic"
-
     profit_folding_active: bool = True
 
     target_balance: float = 200.0  # Balance the bot trades relative to
@@ -289,7 +287,6 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
 #: raises ValueError if any of these is passed.
 _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
     {
-        "increment_style",
         "profit_folding_active",
         # Scrumming-specific accumulation
         "scrumming_interval_pct",

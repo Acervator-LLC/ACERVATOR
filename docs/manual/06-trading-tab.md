@@ -4407,3 +4407,27 @@ stored '6h'   bot holds ['6h']
 stored '4h'   bot holds []      available_timeframes('coinbase') has no 4h
 absent        bot holds ['5m', '15m', '30m', '1h', '1d']
 ```
+
+## 2026-09-13 - #665 - the bot's increment style is off the dataclass
+
+The bot field named for the retired mode's increment is gone. Nothing wrote it
+and nothing read it, on either build.
+
+```
+occurrences in code    2 before, 0 after
+writers                0 before, 0 after
+readers                0 before, 0 after
+```
+
+### The code block above no longer matches the restore path
+
+The block earlier on this page showing the scrumming fields a restart rebuilds
+lists a line for the removed name. The restore path stopped naming its fields
+one at a time when it moved to the shared declaration, and the dataclass no
+longer declares that name, so no such line exists in either place.
+
+```
+restore arguments   built from the fields the dataclass declares
+retired names       dropped at that filter, never passed on
+fields restored     65 before, 64 after, one different and it is the removed one
+```

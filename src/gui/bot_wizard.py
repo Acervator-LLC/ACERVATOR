@@ -1,12 +1,11 @@
 """
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-bot_wizard.py - Bot Creation Wizard v1.9.7
-===========================================
+bot_wizard.py - Bot Creation Wizard
+===================================
 Feature split:
-  Grid Bot: Position Count/Distance/Increment,
-            Profit Folding, Upward Distribution, Extended Positions
   Accumulation Bot: Target Balance, Scrumming Interval, TA Engine, Phantoms
-  Both: Visibility, Aggressive Trading, Bulk Trading (when Aggressive on)
+  Extractor Bot: base-currency chunk, artillery sizing, compounding tier
+  Both: Visibility, Aggressive Trading
 """
 
 from __future__ import annotations
@@ -1419,13 +1418,11 @@ if _HAS_QT:
             self._ta_timeframe.blockSignals(False)
 
         def set_mode(self, is_grid: bool, is_extractor: bool = False):
-            """v3.23.34 — group-level visibility toggle.
+            """Show the seven Scrumming groups, the Extractor group, or neither.
 
-            Post-refactor layout has 8 QGroupBoxes for Scrumming
-            (mirroring Bot Details Settings) + 1 Extractor group. Grid
-            mode has been dead since v3.23.21; the ``is_grid`` argument
-            is preserved for signature compatibility but hides all 8
-            Scrumming groups when True (nothing to show).
+            ``is_grid`` hides every Scrumming group.
+            ``ModeSelectionPage.is_grid`` returns False, so no caller
+            reaches that branch.
             """
             self._is_grid = is_grid
             self._is_extractor = is_extractor
@@ -1447,10 +1444,7 @@ if _HAS_QT:
                     "and compounding-tier policy."
                 )
             elif is_grid:
-                self.setSubTitle(
-                    "Grid mode is retired (v3.23.21); no configurable "
-                    "fields on this page."
-                )
+                self.setSubTitle("No configurable fields on this page.")
             else:
                 self.setSubTitle(
                     "Configure target balance, scrumming interval, " "and compounding."
