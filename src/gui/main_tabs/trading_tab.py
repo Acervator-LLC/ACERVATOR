@@ -30,13 +30,33 @@ PLACEHOLDER_CARD_BORDER_ALPHA = 68
 
 
 class TradingTabMixin:
-    """Exchange layers, the indicator panel and the two log panes."""
+    """Exchange layers, the indicator panel and the two log panes.
+
+    ``variant_surface`` decides whether the Live tab shows that Qt page or the
+    React one, and ``_react_trading_page`` keeps the Qt page either way.
+    """
 
     # Annotations only; MainWindow supplies these at runtime.
     _add_exchange: Callable[..., Any]
     _bot_manager: Any
     _main_tabs: Any
     _on_api_event: Callable[..., Any]
+    _settings: Any
+
+    def _react_trading_page(self, qt_page: QWidget) -> QWidget:
+        """The React Live tab, holding ``qt_page`` as a hidden child.
+
+        ``LiveSystem`` carries ``_bot_manager`` and ``_settings`` to
+        ``trading_tab_surface``, which is the bridge method the Qt tab reads.
+        """
+        from ...core.desktop_bridge import LiveSystem
+        from ..variant_surface import TRADING, surface_class
+
+        page = surface_class(TRADING)(LiveSystem(self._bot_manager, self._settings))
+        # MainWindow writes to the Qt widgets, so qt_page stays alive off screen.
+        qt_page.setParent(page)
+        qt_page.setVisible(False)
+        return page
 
     def _build_trading_tab(self) -> None:
         """Build the Trading tab and add it to the main tab widget."""
@@ -436,4 +456,9 @@ class TradingTabMixin:
         self._api_logger = get_api_log()
         self._api_logger.add_listener(self._on_api_event)
 
+        from ..variant_surface import TRADING, draws_react
+
+        if draws_react(TRADING):
+            trading_tab = self._react_trading_page(trading_tab)
+        self._trading_tab = trading_tab
         self._main_tabs.addTab(trading_tab, LIVE_TAB)
