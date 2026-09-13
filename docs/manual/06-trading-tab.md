@@ -3105,3 +3105,248 @@ off  surplus $10.00 applied $0.00   target stayed $200.00           preview $0.0
 
 The creation wizard holds a checkbox for the same flag on a page no route
 reaches, so a new bot opens on the declared default until that page is reachable.
+
+## 2026-09-12 - the Hedge Rebalance group and the despawn timer, driven
+
+Three rows were driven on a bot built from a record written for the run. The home
+was redirected into a scratch directory before the settings module was imported,
+so the settings directory and the log root both bound under it. No stored file of
+the running install was opened, no venue was contacted, and the exchange object
+handed to the bot defines no order method at all, so the run could not place an
+order even where a path reached for one.
+
+```
+Hedge Rebalance Active  whether the bot holds a reserve outside Target Balance
+Hedge Balance           the size of that reserve, and the ceiling it refills to
+Tranche Despawn Timer   the age at which a tranche record is removed
+```
+
+### What the hedge switch decides
+
+The switch reaches four places in the engine and every one of them moves a
+decision. Two are the seeds that set the reserve at construction, one is the gate
+that arms a hedge buy on a tick, and one is the gate that refills the reserve out
+of a completed fold's profit.
+
+`src/trading/scrumming_bot.py` — the two seeds
+
+```python
+self._hedge_bal: float = (
+    float(config.hedge_balance) if config.hedge_rebalance_active else 0.0
+)
+self._hedge_balance_initial: float = (
+    float(config.hedge_balance) if config.hedge_rebalance_active else 0.0
+)
+```
+
+Driven both ways at three figures, the seeds read what the two sentences above
+this section promise.
+
+```
+active=True   balance $200.00   reserve $200.00   cap $200.00
+active=True   balance  $50.00   reserve  $50.00   cap  $50.00
+active=True   balance   $0.00   reserve   $0.00   cap   $0.00
+active=False  balance $200.00   reserve   $0.00   cap   $0.00
+active=False  balance  $50.00   reserve   $0.00   cap   $0.00
+active=False  balance   $0.00   reserve   $0.00   cap   $0.00
+```
+
+The budget layer that refuses an oversized buy reads the same reserve, so the
+switch decides the ceiling as well as the gate. With half a unit held at one
+hundred dollars, the hedge path's ceiling is the position plus the reserve.
+
+```
+active=True   balance $200.00   a $25 buy allowed, a $210 buy refused at $251.00
+active=True   balance  $50.00   a $25 buy allowed, a  $75 buy refused at $100.25
+active=False  balance $200.00   every buy refused at $50.00, the position alone
+```
+
+The control for the figure on the scrum path is the same call with a different
+path name. At a reserve of zero it still allows a seventy-five dollar buy, which
+is what proves the refusals above came from the hedge reserve and not from the
+position.
+
+### The reserve a restart re-seeds and a toggle does not
+
+Turning the switch on while the bot runs arms nothing. The two reserve fields are
+read once, at construction, and nothing on the live path writes them again, so a
+bot built with the switch off keeps a reserve of zero and a ceiling of zero for
+as long as it stands.
+
+```
+built with the switch off   reserve $0.00   cap $0.00
+config flipped to on        reserve $0.00   cap $0.00
+a $25 hedge buy then reads  refused
+```
+
+A restart is the one route back, and it is a partial one. The ceiling is rebuilt
+from the stored config, because it is not itself persisted, while the drainable
+reserve is restored from the saved record.
+
+```
+rebuilt with the switch on        reserve $200.00   cap $200.00
+then restored from the off record reserve   $0.00   cap $200.00
+the fold replenish terms then     open
+```
+
+The reserve then refills from compound growth at eight hundredths of each fold's
+profit, and only after a restart. Making the toggle re-seed the reserve would
+hand a drained bot its full reserve back the moment the operator flicked the box
+twice, which is money on a live tick and his decision rather than this unit's.
+
+*Proposed, not present, in the live-settings route:*
+
+```python
+RUNTIME_ROUTED = {
+    "hedge_rebalance_active": "set_hedge_active_live",
+}
+```
+
+### What the Hedge Balance figure bounds
+
+The figure is the reserve's starting size and the ceiling a refill stops at. Six
+of its ten engine readers decide something: the two seeds, the arm test, the size
+of the buy, and the two budget layers that refuse an oversized one.
+
+`src/trading/scrumming_bot.py` — the figure that sizes one hedge buy
+
+```python
+_use = min(self._hedge_bal * 0.5, _gap)
+```
+
+The running bot's own row is routed through a method rather than written straight
+onto the config, and that method refuses a figure it cannot use.
+
+```
+set $500.00  applied   cap $500.00  reserve $120.00 unchanged
+set   $0.00  applied   cap   $0.00  reserve $120.00 unchanged
+set  -$5.00  refused   hedge_balance must be >= 0
+set   "abc"  refused   hedge_balance must be numeric
+set  $75.00  applied   cap  $75.00  reserve $120.00 unchanged
+```
+
+A cap of zero is accepted, and it shuts the refill gate for good while leaving
+the old reserve drainable. The bot can still spend what it holds and can never
+get any of it back. Raising the cap back above zero re-opens the gate, so the
+state is recoverable by the same control that caused it, and the refusal that
+would make a zero mean off instead of empty would change what a bot carrying one
+does on its next fold. Reported here and not taken.
+
+### The despawn timer has no creation-wizard control
+
+The timer is the one row of these three that a new bot cannot be given. Searching
+both wizard builds for the word returns nothing, so a new bot opens at the
+declared default of zero, which is off.
+
+```
+src/gui/bot_wizard.py                      0 matches
+src/gui/main_tabs/bot_wizard_surface.py     0 matches
+src/gui/live_settings/settings_tab.py      the one control, 0 to 365 days
+src/gui/main_tabs/live_settings_tab_surface.py   the React row for it
+```
+
+The label on both screens reads Tranche Despawn Timer. The engine reads the
+stored figure exactly once, through one shared helper, and the sweep that uses it
+runs once per tick outside every exception handler.
+
+`src/trading/container/config.py` — the one reading
+
+```python
+def despawn_threshold_days(config) -> int:
+    days = as_finite_float(getattr(config, "tranche_despawn_days", 0))
+    if days is None:
+        return 0
+    return min(DESPAWN_MAX_DAYS, max(0, int(days)))
+```
+
+Driven across thirteen stored values, every shape the control cannot type reads
+as off rather than as a number.
+
+```
+0 -> 0      1 -> 1      7 -> 7      365 -> 365      30.9 -> 30
+-5 -> 0     True -> 0   "7" -> 0    None -> 0       nan -> 0    inf -> 0
+the field absent altogether -> 0
+```
+
+### The five claims the despawn tooltip makes
+
+The tooltip on that control is the only specification the row has, and it makes
+five checkable claims. Each one was driven on a bot holding seven fold records
+and five stack records.
+
+| The claim | What the run measured |
+| --- | --- |
+| Despawn is not a trade | Zero calls reached the exchange object across every sweep, at every threshold |
+| No order is placed or cancelled | The exchange object defines none of the five order methods, and the sweep calls none of them |
+| Holdings and cost basis are untouched | Holdings 0.5 before and after; both cost-basis lots identical, 0.3 at $91.00 and 0.2 at $103.00 |
+| A tranche with no timestamp is never despawned | At a one-day threshold the ageless record survived alone, counted as kept |
+| A stack tranche holding a resting order is kept until it settles | Pending with an order id was kept at four hundred days; the same record removed once filled, and once cancelled |
+
+The target balance and the anchor are unchanged too, which the line the operator
+reads already claims.
+
+```
+_current_holdings          0.5   ->  0.5
+_target_balance          200.0   ->  200.0
+_anchor_target_balance   200.0   ->  200.0
+_hedge_bal               200.0   ->  200.0
+exchange calls               0   ->  0
+```
+
+The threshold is inclusive, as the tooltip says. A record at exactly seven days
+goes at a seven-day threshold and a record one second younger stays.
+
+```
+exactly 7 days     removed 1, 0 rows left
+one second under   removed 0, 1 row left
+```
+
+### Three declarations of one despawn predicate agree
+
+The predicate is written three times: once in the sweep that removes, once in the
+shared preview the Qt panel reads, and once again inside the React surface. Driven
+on one tape of records across thirteen thresholds, all three answer the same
+counts on every row.
+
+```
+days    sweep   shared preview   React preview
+   0     0/0             0/0            0/0
+   1     2/2             2/2            2/2
+   7     2/2             2/2            2/2
+  30     1/2             1/2            1/2
+ 365     0/0             0/0            0/0
+30.9     1/2             1/2            1/2
+```
+
+The dollars agree as well, and the queue total recomputes to match what is left
+rather than being decremented.
+
+```
+ 7 days   queue $138.00 -> $68.00   the sweep reports $70.00 removed
+30 days   queue $138.00 -> $98.00   the sweep reports $40.00 removed
+```
+
+A third copy of a predicate is a drift hazard rather than a present fault, and
+collapsing it would reach files other rows own.
+
+### The word a removal now uses
+
+Merge, despawn and clear are the only three things that collapse or remove a
+tranche, and despawn removes rather than delists. The sweep's own report and the
+line the operator read said delisted in five places, against a preview beside it
+that already said removed. The words now agree and the counts did not move.
+
+```
+before   TRANCHES DESPAWNED (>= 7d): delisted 2 fold tranche(s) holding $70.0000
+after    TRANCHES DESPAWNED (>= 7d): removed 2 fold tranche(s) holding $70.0000
+```
+
+The sweep's key set is now a subset of the preview's, so either report can be
+read by one consumer. [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) carries the
+block.
+
+```
+sweep     ageless_kept  fold_removed  stack_kept_live_order  stack_removed
+          threshold_days  usd_removed
+preview   the same six, plus fold_open, stack_open and units_removed
+```

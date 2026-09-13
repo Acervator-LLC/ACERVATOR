@@ -268,6 +268,31 @@ tracking it. The threshold reads the same shared helper the settings spinbox
 reads, so the sweep and the control cannot disagree about what a stored value
 means.
 
+The sweep's report now names its counts the way the preview beside it already
+did, so the two agree on the word as well as on the number. The key set below
+replaces the one in the block above, and the line the operator reads says
+removed where it used to say delisted. Nothing outside the sweep read the old
+names.
+
+```python
+report = {
+    "threshold_days": _days,
+    "fold_removed": 0,
+    "stack_removed": 0,
+    "stack_kept_live_order": 0,
+    "ageless_kept": 0,
+    "usd_removed": 0.0,
+}
+```
+
+Two removers touch the stack ledger, not one. The age-driven sweep is one and
+the operator's own clear is the other, and both move the same discarded counter.
+
+```python
+def clear_stack_tranches(self, reason: str = "operator") -> dict:
+    """Discard this bot's standing Stack tranches, trading nothing."""
+```
+
 **Clear.** `clear_fold_tranches` discards every queued tranche and trades
 nothing. Holdings, the main lots, the target balance and the parked wire
 credits all survive it, and the report warns when parked credits remain.
