@@ -471,4 +471,52 @@ src/trading/extractor_bot.py           at the chunk-rate claim
 src/trading/capital_registry.py        at the dollar grant
 ```
 
+### A claim that never reached the disk
+
+The registry keeps the claim table in memory and writes it to a file. The
+writer is `_save` in `src/trading/capital_reservation.py`. A failed write does
+not stop the bot. It logs an error that names the file, the reason, and the
+count of changes that are not on the disk.
+
+The line that records the claim now carries the answer as well.
+`CapitalReservationRegistry.reserve` logs the field `on_disk`. The line is an
+error when the value is False, and information when the value is True. Read
+the last line, not the first: a claim with `on_disk=False` exists for this run
+only, and the next start loses it.
+
+### A claim the bot refuses to place
+
+The bot reads its exchange balance before it claims. The reader is
+`_get_cached_exchange_balance` in `src/trading/scrumming_bot.py`. The reader
+answers None when the venue call fails.
+
+A balance that did not read is not a balance of zero, and it is not a licence
+to claim. `CapitalReservationMixin._ensure_capital_reservation` in
+`src/trading/scrumming/capital_reservation_mixin.py` stops on that answer. It
+places no new claim. It resizes no standing claim. It writes a warning that
+names the bot and the asset, and it tries again on the next call.
+
+### The bot named in a refused sale
+
+A sale stops when another bot claims the units. The check is
+`effective_available` in `src/trading/capital_reservation.py`, and the caller
+is `src/trading/scrumming/execution.py`.
+
+The refusal names the bots that hold the claim and the units each one holds.
+Stop a named bot to release its claim: `ScrummingBot.stop` calls
+`_release_capital_reservation`. The refusal names no page, because no page
+edits this table.
+
+### A claim that expires on its own clock
+
+A bot pulses a heartbeat while it runs. A bot that stops pulsing leaves a
+claim that blocks every other bot on the same asset.
+
+`prune_expired` in `src/trading/capital_reservation.py` drops a claim after
+`HEARTBEAT_TTL` seconds of silence, which is 120. `_prune_on_schedule` runs it
+once every HEARTBEAT_INTERVAL seconds, which is 30. Two methods call it:
+`effective_available`, before it answers, and `heartbeat`, after it stamps.
+A running bot stamps first, so it never drops its own claim. No setting
+changes either interval.
+
 Back to [the subsystem index](README.md).

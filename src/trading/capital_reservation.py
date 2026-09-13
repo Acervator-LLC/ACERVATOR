@@ -5,7 +5,9 @@ other bot's ``Reservation`` on the same asset, excluding the caller's own.
 ``reserve``, ``update`` and ``release`` take quantities in asset units.
 ``prune_expired`` drops a ``Reservation`` past its ``expires_at`` or past
 ``HEARTBEAT_TTL`` of silence, and ``sweep_unknown_bots`` drops one whose
-``bot_id`` is outside the fleet it is given.
+``bot_id`` is outside the fleet it is given. ``effective_available`` and
+``heartbeat`` run ``_prune_on_schedule`` first, so a dead bot's claim expires
+on ``HEARTBEAT_INTERVAL`` rather than waiting for a sibling to reserve.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ def _resolve_state_file() -> Path:
     return _DEFAULT_STATE_FILE
 
 
-# HEARTBEAT_INTERVAL is advisory: no timer in this codebase reads it.
+# _prune_on_schedule reads HEARTBEAT_INTERVAL; no operator setting changes it.
 HEARTBEAT_INTERVAL = 30.0
 HEARTBEAT_TTL = 120.0
 
@@ -115,16 +117,20 @@ class CapitalReservationRegistry:
         self._reservations: dict[str, Reservation] = {}
         # bot_id -> last heartbeat, in epoch seconds.
         self._heartbeats: dict[str, float] = {}
+        self._last_prune = self._boot_time
+        self._unpersisted = 0
 
         self._load()
 
-    def _save(self):
+    def _save(self) -> bool:
         """Write ``_reservations`` and ``_heartbeats`` to ``_state_path``.
 
-        Returns without writing when ``_autosave`` is False.
+        Returns False only when a write was attempted and failed, leaving the
+        table in memory alone and ``_unpersisted`` counting the lost changes.
+        Writes nothing, and returns True, when ``_autosave`` is False.
         """
         if not self._autosave:
-            return
+            return True
         try:
             payload = {
                 "version": "1.0",
@@ -134,8 +140,20 @@ class CapitalReservationRegistry:
             }
             atomic_write_json(self._state_path, payload, indent=2)
         except Exception as e:
-            logger.error("CapitalReservationRegistry persist failed: %s", e)
+            self._unpersisted += 1
+            logger.error(
+                "CapitalReservationRegistry persist failed (%s): %s — the "
+                "table is in memory only. %d change(s) are not on disk: a "
+                "restart loses them, and no other reader of %s can see them.",
+                self._state_path,
+                e,
+                self._unpersisted,
+                self._state_path.name,
+            )
             # A failed write never raises; _reservations stays authoritative.
+            return False
+        self._unpersisted = 0
+        return True
 
     def _load(self):
         """Read ``_state_path`` into ``_reservations`` and ``_heartbeats``.
@@ -231,13 +249,16 @@ class CapitalReservationRegistry:
             )
             self._reservations[token] = r
             self._heartbeats[bot_id] = now
-            self._save()
-            logger.info(
-                "CRR.reserve: %s reserved %.10g %s (token %s, reason=%r)",
+            persisted = self._save()
+            logger.log(
+                logging.INFO if persisted else logging.ERROR,
+                "CRR.reserve: %s reserved %.10g %s (token %s, on_disk=%s, "
+                "reason=%r)",
                 bot_id,
                 qty,
                 asset,
                 token[:8],
+                persisted,
                 reason,
             )
             return token
@@ -440,14 +461,26 @@ class CapitalReservationRegistry:
                 )
             return dropped
 
+    def _prune_on_schedule(self) -> None:
+        """Run ``prune_expired`` once ``HEARTBEAT_INTERVAL`` has passed.
+
+        Takes no lock of its own: ``prune_expired`` takes it, so every caller
+        must be outside the lock.
+        """
+        if (time.time() - self._last_prune) >= HEARTBEAT_INTERVAL:
+            self.prune_expired()
+
     def effective_available(
         self, asset: str, bot_id: str, total_holdings: float
     ) -> float:
         """Return ``total_holdings`` minus every ``Reservation`` on ``asset``
         whose owner is not ``bot_id``.
 
-        A negative result is logged at ERROR and clamped to 0.0.
+        Runs ``_prune_on_schedule`` first, so a dead owner's claim does not
+        bound this caller. A negative result is logged at ERROR and clamped
+        to 0.0.
         """
+        self._prune_on_schedule()
         with self._lock:
             others_reserved = sum(
                 r.qty
@@ -513,21 +546,28 @@ class CapitalReservationRegistry:
             }
 
     def heartbeat(self, bot_id: str):
-        """Stamp ``bot_id`` in ``_heartbeats`` with the current epoch."""
+        """Stamp ``bot_id`` in ``_heartbeats`` with the current epoch.
+
+        Stamps before ``_prune_on_schedule`` so a live caller never prunes
+        its own claim.
+        """
         with self._lock:
             self._heartbeats[bot_id] = time.time()
             # Not persisted here; the next _save call writes _heartbeats.
+        self._prune_on_schedule()
 
     def prune_expired(self, now: Optional[float] = None) -> list[Reservation]:
         """Drop each ``Reservation`` past ``is_expired``, or whose owner has
         been silent longer than ``HEARTBEAT_TTL``.
 
         Silence is ignored for ``_restart_grace`` seconds after construction,
-        and the dropped objects are returned.
+        and the dropped objects are returned. Stamps ``_last_prune``, which
+        is what ``_prune_on_schedule`` measures its interval from.
         """
         if now is None:
             now = time.time()
         within_grace = (now - self._boot_time) < self._restart_grace
+        self._last_prune = time.time()
 
         with self._lock:
             pruned: list[Reservation] = []
