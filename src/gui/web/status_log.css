@@ -1,0 +1,75 @@
+/* React Activity Log chrome: the page ground, the read-only pane
+ * `status_log.js` paints its lines into, and the placeholder that stands in
+ * for an empty pane. Every line's stamp and body carry their own `color` on
+ * a `style` attribute from the Python payload, so no rule here may set one
+ * on a stamp or a body.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--SURFACE_0, var(--bg));
+  color: var(--TEXT_HIGH, var(--text));
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* The element the host draws the pane into. */
+#status-log-root {
+  height: 100%;
+}
+
+/* A part carries `display:flex` on its own style attribute, which outranks
+ * the browser's own rule for a hidden element. */
+[hidden] {
+  display: none !important;
+}
+
+/* QTextEdit: one bordered, read-only ground the lines scroll inside. */
+.acervator-status-log[data-part="log"] {
+  height: 100%;
+  background: var(--SURFACE_INPUT, var(--bg));
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+
+/* One QTextEdit block. A long message wraps rather than widening the pane. */
+.acervator-status-log-line[data-part="line"] {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The leading `[hh:mm:ss]` span, painted by the payload in tabular figures. */
+.acervator-status-log-stamp[data-part="stamp"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The message span. A trade or wire line raises its own size and weight. */
+.acervator-status-log-body[data-part="body"] {
+  font: inherit;
+}
+
+/* QTextEdit's placeholder, which the pane shows while it holds no line. */
+[data-part="placeholder"] {
+  color: var(--grid);
+}
+
+/* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
+.acervator-status-log[data-part="log"]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.acervator-status-log[data-part="log"]::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}

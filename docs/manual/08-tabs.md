@@ -2867,3 +2867,107 @@ The venue page keeps a dash in the table above. `TradingTabMixin` holds the Qt
 layer page as a hidden child in `_react_trading_page`, and that page holds the
 venue tabs. The React venue page draws its nine modules as soon as a run shows
 that layer page, so the host is built and reachable, and the Live tab hides it.
+
+### 2026-09-13 - #23 - the two strips get a host and a stylesheet
+
+`react_status_log.py` builds the Activity Log page. `status_log.css` paints it.
+`react_crypto_news_ticker.py` builds the news strip page.
+`crypto_news_ticker.css` paints it. Each host answers the calls the window
+already makes on the Qt widget, so one set of calls drives either build.
+
+| the window calls on `StatusLog` | `StatusLogReact` answers with |
+| --- | --- |
+| log | `StatusLogReact.log` |
+| force_log | `StatusLogReact.force_log` |
+| pause, resume | `StatusLogReact.pause`, `StatusLogReact.resume` |
+| is_paused, toggle_pause | `StatusLogReact.is_paused`, `StatusLogReact.toggle_pause` |
+| health_stats | `StatusLogReact.health_stats` |
+| setMaximumHeight | `QWidget.setMaximumHeight` |
+
+| the header calls on `CryptoNewsTicker` | `CryptoNewsTickerReact` answers with |
+| --- | --- |
+| the class | `CryptoNewsTickerReact.__init__` |
+| start | `CryptoNewsTickerReact.start` |
+| stop | `CryptoNewsTickerReact.stop` |
+| force_refresh | `CryptoNewsTickerReact.force_refresh` |
+| current_headlines | `CryptoNewsTickerReact.current_headlines` |
+
+**Each page carries every asset it needs.** `panel_html` inlines React, the four
+style sources, the strip's own module and its sheet. Neither page fetches over
+the network. `MODULE_GLOBALS` names the global each asset defines once its
+script tag has run.
+
+**Each page says what it loaded.** `LOADED_MODULES_JS` reads those globals back.
+`LOADED_STYLES_JS` names each sheet and counts the rules the browser parsed from
+it. One run of the built hosts read this:
+
+```
+status log   modules  design_tokens theme_engine shared_widgets header_strip status_log
+             styles   status_log.css 12 rules             lines drawn 8
+news strip   modules  design_tokens theme_engine shared_widgets header_strip crypto_news_ticker
+             styles   crypto_news_ticker.css 8 rules      headlines drawn 1
+```
+
+**The readings fall when an asset goes.** The same run with each sheet emptied
+read no rules, and the browser drew both strips on white. The same run with each
+module emptied dropped that module from the roster and drew no line and no
+headline.
+
+```
+run         status log            news strip
+live        12 rules, 8 lines     8 rules, 1 headline
+no sheet     0 rules, 8 lines     0 rules, 1 headline
+no module   12 rules, 0 lines     8 rules, 0 headlines
+```
+
+**The pane paints a line by its kind.** `status_log_surface.line_style` reads the
+message prefix first and the level second. A pixel census of each saved picture
+read these counts.
+
+```
+live        0a0a0f 238504   0e0e1a 193353   7a7a9c 2594   00ff88 478   ffaa00 458
+no sheet    ffffff 430648   ffaa00 1759     00ff88 1365   ff66dd 531   ffcc44 461
+no module   0a0a0f 450000
+```
+
+The sheet carries the page ground, the pane ground and the border. The payload
+carries every line colour, so a line keeps its colour with no sheet at all.
+
+**One payload draws the whole pane.** `pane_payload` asks
+`status_log_surface.build_view_model` for the pane state, then puts every line
+the model holds under `document`. `build_view_model` drains `take_painted`, so
+its own `document` carries one call's batch. `document_blocks` counts the whole
+document, and the two agree once `pane_payload` has run.
+
+**The strip shows the story it holds.** `CryptoNewsTickerReact._run_fetch` runs
+the strip's worker only when the strip carries a `fetcher`.
+`CryptoNewsTickerModel.on_headlines` writes `NO_FEEDS_TEXT` for an empty answer,
+so a strip with no reader would report no feeds over the stories it holds.
+
+**The strip reached no feed.** A run built the host with four recorded stories
+and no `fetcher`. The strip drew the first story with its position and its feed
+name. The run refused every connect away from loopback and counted none.
+
+```
+fetcher              None
+fetches started      1
+headlines held       4
+connects attempted   0
+label                [1/4] The Defiant - SEC crypto custody rewrite enters White House review
+```
+
+**Each sheet paints the parts its module names.**
+
+| part | what the sheet paints |
+| ---- | --------------------- |
+| log | the read-only pane, its ground, its border and its scrollbar |
+| line | one block, wrapped rather than widened |
+| stamp | the leading time, in tabular figures |
+| body | the message span, which takes its colour from the payload |
+| placeholder | the line an empty pane shows |
+| ticker | the frame around the strip |
+| headline | one story on one line, clipped at the strip's edge |
+
+**Both table rows above still read `shell`.** `variant_surface.py` records no
+loader pair for either strip, so the running window builds the Qt pane and the
+Qt strip. Each row changes when its pair is recorded.
