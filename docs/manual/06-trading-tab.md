@@ -1864,6 +1864,40 @@ self._position_ceiling_enabled = QCheckBox("Enable Position Ceiling")
 self._position_ceiling_enabled.setChecked(False)
 ```
 
+**Functional.** The box gates six places in the engine. Five refuse or shrink a
+buy: the ceiling figure itself, the pre-buy check, the buy executor, the first
+entry of a brand-new bot, and the fold hold. The sixth runs on restore and pulls
+a stored target back down to the ceiling. The box is read at the moment of each
+decision and never copied aside, so unticking it releases the brake on the very
+next read. Driven on a two hundred dollar anchor at three times: with the box
+off, a fold rebuy of fifty dollars onto a seven hundred dollar position passed;
+with it on, the same buy was refused; untick, and it passed again.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.position_ceiling_usd`
+
+```python
+if not getattr(self.config, "position_ceiling_enabled", False):
+    return None
+```
+
+**Where the code departs.** Two of the three Detonation rows below do not wait
+for this box. The detonation check reads its own box and the anchor, and a search
+of the engine for a detonation site that reads the ceiling box returns nothing.
+Driven: with the ceiling box off and Detonation on, the hourly check ran and
+asked the venue for candles. The sentence above holds for the ceiling and the
+fold taper, and Detonation is the exception.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._check_detonation_trigger`, its
+first two conditions
+
+```python
+if not getattr(self.config, "detonation_enabled", False):
+    return False
+...
+if current_value <= self._anchor_target_balance:
+    return False
+```
+
 Ceiling Multiple - This setting caps the maximum amount of growth a position at a multiple of the Target Balance (anchor) and, once reached (and under higher timeframe bullish conditions with Detonation enabled) will allow the entire position to be sold and the corresponding bot will pause all further operations. Without Detonation enabled, this becomes a user notification.
 
 From 1.0 to 10.0, at 5.0x anchor to start. The anchor is the target balance the
@@ -1879,6 +1913,79 @@ self._position_ceiling_multiple.setDecimals(1)
 self._position_ceiling_multiple.setSingleStep(0.5)
 self._position_ceiling_multiple.setSuffix("x anchor")
 self._position_ceiling_multiple.setValue(5.0)
+```
+
+**Functional.** The figure becomes a dollar ceiling, the anchor times the
+multiple. On a two hundred dollar anchor the four corners of the range read: one
+gives two hundred dollars, three gives six hundred, five gives one thousand, ten
+gives two thousand. The refusal is strictly above, so a projected position of
+exactly six hundred dollars is allowed against a six hundred dollar ceiling and
+six hundred dollars and one cent is refused. The same seven hundred and fifty
+dollar projection is refused at three and allowed at six, which is the figure
+changing the answer.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._pre_buy_allowed`, layer two
+
+```python
+_smart_mult = max(1.0, min(10.0, _smart_mult))
+_smart_ceiling_usd = _anchor * _smart_mult
+if _projected > _smart_ceiling_usd:
+```
+
+**Functional.** While the ceiling binds, the bot still sells and stops buying.
+The fold side shrinks first and then stops: the fold's dollar size is multiplied
+by a taper that is full below half the ceiling, falls in a straight line to a
+tenth across the upper half, and reaches zero at the ceiling. Measured against a
+six hundred dollar ceiling: two hundred and ninety dollars held full size, five
+hundred and ninety dollars cut the fold to thirteen per cent, and six hundred
+dollars stopped it. Three things release the brake — price falling back under the
+ceiling, a detonation resetting the target to the anchor, and unticking the box.
+
+`src/trading/scrumming/tick_phases.py` — `_tick_execute_fold` spends the taper
+
+```python
+_taper = self.fold_rate_taper
+...
+buy_cost = _fusd * _taper
+```
+
+**Where the code departs.** The sentence above says the bot pauses all further
+operations once the ceiling is reached and the position is sold. The executor
+does not pause it. It resets the target balance to the anchor, clears the fold
+queue and the tranches, reseeds the lots at the fill price, and logs that the bot
+will re-accumulate from scratch on the next dip. A search of the detonation
+executor for a pause call returns nothing. The second half of the sentence does
+hold: with Detonation off, the ceiling only brakes, and the operator is told
+through the Console line and through the Fire button's own tooltip on the Bot
+Swarm row.
+
+`src/trading/scrumming/execution.py` — `_execute_detonation`, what it resets
+
+```python
+prior_target = self._target_balance
+self._target_balance = self._anchor_target_balance
+...
+self._fold_tranches.clear()
+self._fold_queue_usd = 0.0
+```
+
+**Functional.** One name serves two unrelated mechanisms, and the engine's own
+wording has been corrected in this unit. The percentage box in Circuit Breakers
+labelled Smart Ceiling caps the cartridge threshold, and the engine reports it
+inside its cartridge line as a percentage. This dollar ceiling is what every
+ceiling refusal in the engine names, and those lines now read Position Ceiling
+and Ceiling Multiple, which are the labels on this screen. A reader can now tell
+the two apart: one is a percentage under a cartridge heading, the other is a
+dollar figure under the name of the control that set it.
+
+`src/trading/scrumming/tick_phases.py` — the cartridge line, for contrast
+
+```python
+f"SMART CARTRIDGE calibrated to "
+f"{_smart_pct:.2f}% "
+f"(BB range {_bb_range_pct:.2f}%, "
+f"floor={_interval_floor:.2f}%, "
+f"ceiling={_smart_ceiling:.2f}%). "
 ```
 
 Enable Detonation - Enables an entire remaining position to be sold after the Ceiling Multiple growth threshold is crossed.
@@ -1900,6 +2007,39 @@ is_bullish = (
 fired = is_bullish and not self._detonation_last_signal_bullish
 ```
 
+**Where the code departs.** The sentence above says the sale happens after the
+Ceiling Multiple threshold is crossed. The engine's bar is the anchor, not the
+ceiling. Driven on a two hundred dollar anchor: a position worth two hundred
+dollars and one thousandth of a cent passed the bar and the hourly check fetched
+candles; a position worth exactly two hundred dollars was refused before any
+fetch. A bot with Detonation on and the ceiling left off can therefore harvest at
+any value above its starting target, well below any multiple.
+
+`src/trading/scrumming_bot.py` — the bar `_check_detonation_trigger` actually uses
+
+```python
+current_value = (
+    self._current_holdings * price * float(self._quote_to_usd or 1.0)
+)
+if current_value <= self._anchor_target_balance:
+    return False
+```
+
+**Functional.** The box is what starts the whole path. Driven with the box off,
+the detonation phase returned at once and asked the venue for nothing; with it on,
+the check ran and asked for one candle series. Behind the box sits an hourly rate
+limit, measured: a gap of three thousand five hundred and ninety-nine seconds
+since the last check fetched nothing and a gap of three thousand six hundred
+fetched once.
+
+`src/trading/scrumming/tick_phases.py` — `_tick_detonation`
+
+```python
+if getattr(self.config, "detonation_enabled", False):
+    try:
+        fired = await self._check_detonation_trigger(ticker)
+```
+
 Detonation TF - Selects the timeframe for the chart that is being evaluated for bullish conditions that will allow the detonation to occur.
 
 Two entries, 1d and 1w. The label and the stored value are the same string on
@@ -1913,9 +2053,91 @@ self._detonation_timeframe.addItem("1d", "1d")
 self._detonation_timeframe.addItem("1w", "1w")
 ```
 
+**Functional.** The pick does two jobs. It names the candle series the vote reads,
+and it sets how long the one-shot bullish latch survives between checks. One day
+keeps the latch eighty-six thousand four hundred seconds and one week keeps it six
+hundred and four thousand eight hundred. Driven on one bullish tape with the latch
+already set and exactly eighty-six thousand four hundred seconds since the last
+check: the daily pick retired the latch and fired, the weekly pick kept the latch
+and did not. One second earlier, neither fired. That is the pick changing the
+answer on identical candles.
+
+`src/trading/scrumming_bot.py` — the latch life
+
+```python
+latch_ttl = max(
+    float(TIMEFRAME_SECONDS.get(tf, TIMEFRAME_SECONDS["1d"])),
+    _DETONATION_LATCH_MIN_TTL_S,
+)
+if elapsed >= latch_ttl:
+    self._detonation_last_signal_bullish = False
+```
+
 Min Confidence - This is the minimum technical analysis confidence index (via the Indicator Voting Panel) that will allow the detonation to occur.
 
 From 0.50 to 1.00, at 0.75 to start.
+
+**Functional.** The reader works, and it is exact. On one tape whose consensus
+read zero point two three three four, a bar of zero point two three three three
+fired and a bar of zero point two three three five did not, on the same candles
+with the same state. The comparison is at or above, so a bar set to the reading
+itself fires.
+
+`src/trading/scrumming_bot.py` — the comparison
+
+```python
+conf_min = float(getattr(self.config, "detonation_confidence_min", 0.75))
+is_bullish = (
+    summary.consensus_direction == SignalDirection.BULLISH
+    and summary.consensus_confidence >= conf_min
+)
+```
+
+**Where the code departs.** No figure this box can emit was reached. The box
+starts at zero point five, and across one hundred and seventy-one tapes — nine
+shapes, three lengths, three noise levels — the highest bullish consensus the
+voting panel produced was zero point two five three four. The engine's own floors
+on the same quantity sit lower still: a quarter for an ordinary trade, and
+nineteen hundredths on the band-priority arm. A bar of zero point five refused
+every tape driven, including the strongest. Nothing in this reading is impossible
+in principle: with every voter agreed at its own best reading the panel would
+reach eighty-four hundredths, and the twelve voters simply cancel each other long
+before that. The gap is between the range the box offers and the range the panel
+produces.
+
+`src/trading/scrumming_bot.py` — the quantity, and the two floors the rest of the
+engine uses against it
+
+```python
+_TA_CONFIDENCE_FLOOR = 0.25
+_BB_PRIORITY_CONFIDENCE_FLOOR = _TA_CONFIDENCE_FLOOR / (1.0 + _BB_PRIORITY_SKEW)
+```
+
+**Design intention.** Two repairs are possible and both change what a live bot
+does on its next tick, so neither is shipped here. The box's floor could move down
+to meet the panel, or the detonation could compare against the same floor the rest
+of the engine uses. Either one arms a control that is quiet today, on bots holding
+real money, which is the operator's decision and not a wiring job.
+
+PROPOSED — `src/gui/main_tabs/live_settings_tab_surface.py`, the row's range
+
+```python
+"range": (0.10, 1.00),
+```
+
+**Functional.** Two things the bar does not reach. It is absent from the record
+the Bot Swarm row reads, so that tooltip can report the timeframe a bot is
+watching and never the bar it must clear. And the detonation check builds a fresh
+voting panel with no weights, so a bot carrying the operator's own indicator
+weights is judged for detonation by the default weights instead.
+
+`src/trading/scrumming_bot.py` — the panel the detonation check builds
+
+```python
+engine = VotingEngine()
+parsed = candles_from_raw(candles)
+summary = engine.compute_all(parsed, tf)
+```
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
 group emits, in the order of the rows above

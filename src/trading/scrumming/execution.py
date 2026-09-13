@@ -1892,11 +1892,11 @@ class ExecutionEngineMixin:
             if _smart_ceiling_usd is not None and _smart_ceiling_usd > 0:
                 if _projected_position_usd > _smart_ceiling_usd:
                     _reason = (
-                        f"MEM-251 v2 LAYER 2 (SMART CEILING) BREACH — "
+                        f"MEM-251 v2 LAYER 2 (POSITION CEILING) BREACH — "
                         f"buy REFUSED. Path={_path}. Projected position "
-                        f"${_projected_position_usd:.2f} > Smart Ceiling "
+                        f"${_projected_position_usd:.2f} > Position Ceiling "
                         f"${_smart_ceiling_usd:.2f} (anchor "
-                        f"${_anchor:.2f} × multiple "
+                        f"${_anchor:.2f} × Ceiling Multiple "
                         f"{self.config.position_ceiling_multiple}). "
                         f"Bot has reached configured maturity — no further "
                         f"acquisition until detonation harvests grown "

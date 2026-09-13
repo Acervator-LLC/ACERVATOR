@@ -164,11 +164,13 @@ class BotConfig:
     trading_fee_pct: float = 0.6
 
     # Caps accumulation at position_ceiling_multiple x the anchor target_balance;
-    # only fold is capped, and its interval tapers 100%->10% over ratio 0.5->1.0.
+    # fold_rate_taper shrinks the fold's USD size 100%->10% over ratio 0.5->1.0.
     position_ceiling_enabled: bool = False
     position_ceiling_multiple: float = 5.0  # Range [1.0, 10.0]
     # A BULLISH reversal on detonation_timeframe at or above
     # detonation_confidence_min market-sells above the anchor, once per reversal.
+    # position_ceiling_enabled gates none of the three: detonation fires on the
+    # anchor, not on the ceiling.
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"  # "1d", "1w"
     detonation_confidence_min: float = (

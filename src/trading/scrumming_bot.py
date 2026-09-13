@@ -1553,7 +1553,7 @@ class ScrummingBot(
                 f"(usd ${cost:.4f}, ref ${tranche.get('ref', 0):.8f}, "
                 f"IBP ${ibp:.8f}) at current "
                 f"${price:.8f}. Bypasses TA/OTD/Target-Delta gates; "
-                f"Smart Ceiling + MEM-257 still apply."
+                f"Position Ceiling + MEM-257 still apply."
             ),
         )
 
@@ -2452,10 +2452,14 @@ class ScrummingBot(
 
     @property
     def fold_rate_taper(self) -> float:
-        """Fold interval multiplier in [0.0, 1.0], 1.0 when the ceiling is disabled.
+        """Multiplier on the fold's USD size in [0.0, 1.0], 1.0 when the ceiling
+        is disabled.
+
+        ``_tick_execute_fold`` spends the eligible tranche USD times this, so it
+        shrinks the buy, not the interval between buys.
 
         Taper schedule:
-            ratio < 0.5   → 1.0 (full rate)
+            ratio < 0.5   → 1.0 (full size)
             ratio 0.5-1.0 → linear 1.0 → 0.1
             ratio >= 1.0  → 0.0 (hard stop)
 
@@ -2505,7 +2509,7 @@ class ScrummingBot(
             fold_rebuy / unspecified: projected ≤ target + per_cycle_growth_budget
             zero_balance_initial_entry: projected ≤ target_balance × (1 + tol)
             hedge_replenish: projected ≤ current_position + hedge_bal
-        • Layer 2 — Smart Ceiling (when enabled): projected ≤ anchor × multiple
+        • Layer 2 — Position Ceiling (when enabled): projected ≤ anchor × multiple
 
         """
         try:
@@ -2554,8 +2558,9 @@ class ScrummingBot(
                         return False, (
                             f"MEM-253 PRE-BUY REFUSED (path={path}, Layer 2): "
                             f"projected position ${_projected:.2f} would "
-                            f"exceed Smart Ceiling ${_smart_ceiling_usd:.2f} "
-                            f"(anchor ${_anchor:.2f} × {_smart_mult:.1f}x). "
+                            f"exceed Position Ceiling ${_smart_ceiling_usd:.2f} "
+                            f"(anchor ${_anchor:.2f} × Ceiling Multiple "
+                            f"{_smart_mult:.1f}x). "
                             f"Bot at maturity — awaiting detonation harvest."
                         )
                 except (TypeError, ValueError, AttributeError) as _sup:
@@ -3841,10 +3846,10 @@ class ScrummingBot(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                        f"FOLD HOLD (Smart Ceiling): position "
-                        f"${_mem253_current_pos:.2f} ≥ Smart Ceiling "
+                        f"FOLD HOLD (Position Ceiling): position "
+                        f"${_mem253_current_pos:.2f} ≥ Position Ceiling "
                         f"${_mem253_smart_ceiling_usd:.2f} "
-                        f"(anchor ${_anchor:.2f} × multiple). "
+                        f"(anchor ${_anchor:.2f} × Ceiling Multiple). "
                         f"Fold branch skipped — bot at maturity, "
                         f"awaiting detonation harvest on bullish vote."
                     ),
