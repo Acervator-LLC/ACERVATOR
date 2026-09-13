@@ -4,8 +4,8 @@
 ``_check_public_endpoints`` opens every ``PREFLIGHT_URLS`` entry that
 ``is_https_url`` allows, and ``_verify_ccxt_classes`` resolves every
 ``SUPPORTED_EXCHANGES`` id through ``resolve_ccxt_class``. The authenticated
-half prompts at the keyboard, so this is an operator tool and not a test;
-``tests/test_exchange_registry.py`` holds the network-free checks.
+half prompts at the keyboard and converts a pasted PEM secret for every venue
+through ``looks_like_pem``, so this is an operator tool and not a test.
 
     python -m tools.exchange_diagnostic
 """
@@ -17,7 +17,6 @@ import argparse
 import sys
 import time
 import urllib.error
-import urllib.request
 from pathlib import Path
 
 # Allow ``python tools/exchange_diagnostic.py`` as well as ``-m``.
@@ -25,12 +24,16 @@ _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+from src.core.encryption import looks_like_pem, unescape_pem_newlines  # noqa: E402
+from src.core.safe_url import SafeRequest, safe_urlopen  # noqa: E402
 from src.exchange.ccxt_connector import (  # noqa: E402
     PASSPHRASE_EXCHANGES,
     PREFLIGHT_URLS,
     SUPPORTED_EXCHANGES,
     resolve_ccxt_class,
 )
+
+HTTPS_ONLY = ("https",)
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -65,10 +68,12 @@ def _check_public_endpoints(ctx: ssl.SSLContext) -> dict[str, tuple[str, int, fl
             continue
         start = time.monotonic()
         try:
-            req = urllib.request.Request(url)  # noqa: S310 - fixed https registry
+            req = SafeRequest(url, allowed_schemes=HTTPS_ONLY)
             req.add_header("User-Agent", "Acervator/diagnostic")
             req.add_header("Accept", "application/json")
-            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            with safe_urlopen(
+                req, timeout=15, allowed_schemes=HTTPS_ONLY, context=ctx
+            ) as resp:
                 elapsed = (time.monotonic() - start) * 1000
                 print(f"{label} HTTP {resp.status}  {elapsed:6.0f}ms")
                 results[eid] = ("PASS", resp.status, elapsed)
@@ -115,6 +120,8 @@ def _authenticated_test() -> None:
 
     key = input("  API Key: ").strip()
     secret = input("  API Secret: ").strip()
+    if looks_like_pem(secret):
+        secret = unescape_pem_newlines(secret)
     passphrase: str | None = None
     if choice in PASSPHRASE_EXCHANGES:
         passphrase = input("  Passphrase: ").strip()
@@ -134,8 +141,6 @@ def _authenticated_test() -> None:
         if passphrase:
             config["password"] = passphrase
         if choice == "coinbase":
-            if "\\n" in secret:
-                config["secret"] = secret.replace("\\n", "\n")
             config["options"].update(
                 {
                     "advanced": True,

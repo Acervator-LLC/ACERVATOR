@@ -29,9 +29,11 @@ fields are held as text for the length of one call.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``init_wizard.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.init_wizard``, from ``src.gui.design_system`` or from
-``src.exchange.ccxt_connector``, so a value changed on one side alone is
-reported. Nothing here imports Qt.
+``src.gui.init_wizard`` or from ``src.gui.design_system``, and nothing
+compares the two copies. The venue list and the passphrase set are not
+written out and so cannot drift: ``exchange_ids`` and
+``passphrase_exchange_ids`` read ``src.exchange.ccxt_connector``. Nothing
+here imports Qt.
 """
 
 from __future__ import annotations
@@ -187,24 +189,6 @@ FEEDBACK_WORD_WRAP = True
 MUTED_PROPERTY = "muted"
 MUTED_VALUE = True
 
-EXCHANGE_IDS = (
-    "binance",
-    "bitfinex",
-    "bitget",
-    "bitstamp",
-    "bybit",
-    "coinbase",
-    "cryptocom",
-    "gateio",
-    "gemini",
-    "huobi",
-    "kraken",
-    "kucoin",
-    "mexc",
-    "okx",
-    "poloniex",
-)
-PASSPHRASE_EXCHANGE_IDS = ("bitget", "kucoin", "okx")
 EXCHANGE_NOTES = {"suffix": " (requires passphrase)"}
 PASSPHRASE_SUFFIX = EXCHANGE_NOTES["suffix"]
 DEFAULT_EXCHANGE_INDEX = 0
@@ -400,16 +384,44 @@ TEST_PATHS = (
 NO_TEST_PATH = EMPTY_TEXT
 
 
+def exchange_ids() -> tuple:
+    """``SUPPORTED_EXCHANGES`` in id order, the venues page two lists.
+
+    ``SUPPORTED_EXCHANGES`` is imported when first asked, so importing this
+    file loads no exchange library and reads no settings.
+    """
+    from ...exchange.ccxt_connector import SUPPORTED_EXCHANGES
+
+    return tuple(sorted(SUPPORTED_EXCHANGES.keys()))
+
+
+def passphrase_exchange_ids() -> tuple:
+    """``PASSPHRASE_EXCHANGES`` in id order, the venues ``exchange_label`` notes.
+
+    ``PASSPHRASE_EXCHANGES`` is imported when first asked, so importing this
+    file loads no exchange library and reads no settings.
+    """
+    from ...exchange.ccxt_connector import PASSPHRASE_EXCHANGES
+
+    return tuple(sorted(PASSPHRASE_EXCHANGES))
+
+
 def exchange_label(exchange_id: str) -> str:
     """One venue's list entry, with the passphrase note when it needs one."""
     label = exchange_id.capitalize()
-    if exchange_id in PASSPHRASE_EXCHANGE_IDS:
+    if exchange_id in passphrase_exchange_ids():
         label += PASSPHRASE_SUFFIX
     return label
 
 
-EXCHANGE_LABELS = tuple(exchange_label(found) for found in EXCHANGE_IDS)
-EXCHANGE_ITEMS = tuple(zip(EXCHANGE_LABELS, EXCHANGE_IDS, strict=True))
+def exchange_labels() -> tuple:
+    """One ``exchange_label`` for every ``exchange_ids`` entry, in that order."""
+    return tuple(exchange_label(found) for found in exchange_ids())
+
+
+def exchange_items() -> tuple:
+    """Every venue's list entry beside its id, the pairs page two draws."""
+    return tuple(zip(exchange_labels(), exchange_ids(), strict=True))
 
 
 def text_value(value: Any) -> str:
@@ -464,21 +476,22 @@ def list_position(index: int) -> int:
     A position outside the list leaves no entry selected, which the
     drop-down reports as -1 whatever number it was given.
     """
-    if 0 <= index < len(EXCHANGE_IDS):
+    if 0 <= index < len(exchange_ids()):
         return index
     return NO_EXCHANGE_INDEX
 
 
 def selected_exchange(index: int) -> tuple:
     """Give back the venue id and list entry at `index`, nothing outside it."""
-    if 0 <= index < len(EXCHANGE_IDS):
-        return EXCHANGE_IDS[index], EXCHANGE_LABELS[index]
+    offered = exchange_ids()
+    if 0 <= index < len(offered):
+        return offered[index], exchange_labels()[index]
     return NO_EXCHANGE_ID, NO_EXCHANGE_LABEL
 
 
 def needs_passphrase(exchange_id: Any) -> bool:
     """Say whether the named venue asks for a passphrase as well as a key."""
-    return exchange_id in PASSPHRASE_EXCHANGE_IDS
+    return exchange_id in passphrase_exchange_ids()
 
 
 def page_titles(is_upgrade: Any) -> dict:
@@ -589,7 +602,7 @@ class InitWizardModel:
         self.calls.append([LABEL_CREATE, EXCHANGE_LABEL, LABEL_TEXTS[EXCHANGE_LABEL]])
         self.calls.append([LAYOUT_ADD_WIDGET, EXCHANGE, EXCHANGE_LABEL])
         self.calls.append([COMBO_CREATE, EXCHANGE_COMBO])
-        for label, found in EXCHANGE_ITEMS:
+        for label, found in exchange_items():
             self.calls.append([COMBO_ADD_ITEM, EXCHANGE_COMBO, label, found])
         self.calls.append([LAYOUT_ADD_WIDGET, EXCHANGE, EXCHANGE_COMBO])
 
@@ -924,11 +937,11 @@ def build_view_model(is_upgrade: Any = False, steps: Optional[dict] = None) -> d
                 "enabled": model.test_button_enabled,
             },
         },
-        "exchange_ids": list(EXCHANGE_IDS),
-        "exchange_labels": list(EXCHANGE_LABELS),
-        "exchange_items": [list(item) for item in EXCHANGE_ITEMS],
+        "exchange_ids": list(exchange_ids()),
+        "exchange_labels": list(exchange_labels()),
+        "exchange_items": [list(item) for item in exchange_items()],
         "exchange_notes": dict(EXCHANGE_NOTES),
-        "passphrase_exchange_ids": list(PASSPHRASE_EXCHANGE_IDS),
+        "passphrase_exchange_ids": list(passphrase_exchange_ids()),
         "passphrase_suffix": PASSPHRASE_SUFFIX,
         "default_exchange_index": DEFAULT_EXCHANGE_INDEX,
         "no_exchange_index": NO_EXCHANGE_INDEX,
