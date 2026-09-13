@@ -248,16 +248,20 @@ class StateRestoreMixin:
                     _restored_phantoms_enabled = bot_data.get("phantoms_enabled", True)
                     # Absent leaves phantom_timeframes None, so
                     # DEFAULT_PHANTOM_TIMEFRAMES keeps prior behaviour.
-                    _restored_phantom_tf = bot_data.get("phantom_timeframe")
+                    _restored_phantom_tfs = [
+                        str(one)
+                        for one in (bot_data.get("phantom_timeframes") or [])
+                    ]
+                    if not _restored_phantom_tfs:
+                        # Records saved before the key took the plural spelling.
+                        _legacy_tf = bot_data.get("phantom_timeframe")
+                        if _legacy_tf:
+                            _restored_phantom_tfs = [str(_legacy_tf)]
                     bot = ScrummingBot(
                         config,
                         _PlaceholderExchangeForRestore(cfg["exchange_id"]),
                         enable_phantoms=bool(_restored_phantoms_enabled),
-                        phantom_timeframes=(
-                            [str(_restored_phantom_tf)]
-                            if _restored_phantom_tf
-                            else None
-                        ),
+                        phantom_timeframes=_restored_phantom_tfs or None,
                         ta_weights=self._ta_weights,
                     )
                     _restored_lock_candles = bot_data.get("lock_candle_count")
@@ -268,11 +272,15 @@ class StateRestoreMixin:
                     logger.info(
                         "P0g-DIAG | bot=%s saved_phantoms_enabled=%s "
                         "constructed_with_enable_phantoms=%s "
-                        "bot._phantoms_enabled=%s",
+                        "bot._phantoms_enabled=%s "
+                        "saved_phantom_timeframes=%s "
+                        "bot._phantom_timeframes=%s",
                         bid[:8],
                         _restored_phantoms_enabled,
                         bool(_restored_phantoms_enabled),
                         bot._phantoms_enabled,
+                        _restored_phantom_tfs,
+                        bot._phantom_timeframes,
                     )
                 else:
                     # Unreachable: the mode parse above already skips an

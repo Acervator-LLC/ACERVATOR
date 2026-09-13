@@ -54,6 +54,8 @@ TIMEFRAME_SECONDS: dict[str, int] = {
     "1w": 604800,
 }
 
+MIN_TICK_CANDLES: int = 30
+
 
 def tf_rank(timeframe: str) -> int:
     """Return the index of ``timeframe`` in ``TIMEFRAME_ORDER``, or -1."""
@@ -113,7 +115,7 @@ class PhantomBot:
     ) -> None:
         # When True, _run_loop never self-schedules; tick_for_cursor drives ticks.
         self._sim_mode = bool(sim_mode)
-        self._last_cursor_bucket: Optional[int] = None
+        self._last_cursor_ts: Optional[float] = None
         self.parent_bot_id = parent_bot_id
         self.phantom_id = phantom_id
         self.timeframe = timeframe
@@ -167,15 +169,20 @@ class PhantomBot:
         bucket, and return whether it ran.
 
         Repeated calls inside one bucket return False without ticking.
+        ``_last_cursor_ts`` keeps the cursor itself, so both bucket numbers
+        come from one ``candle_seconds`` divisor on every call.
         """
         try:
             _period = max(1, int(self.candle_seconds))
         except Exception:
             return False
-        _bucket = int(float(cursor_ts) // _period)
-        if _bucket == getattr(self, "_last_cursor_bucket", None):
-            return False
-        self._last_cursor_bucket = _bucket
+        _last_ts = self._last_cursor_ts
+        if _last_ts is not None:
+            _last_bucket = int(float(_last_ts) // _period)
+            _bucket = int(float(cursor_ts) // _period)
+            if _bucket == _last_bucket:
+                return False
+        self._last_cursor_ts = float(cursor_ts)
         await self._tick()
         return True
 
@@ -203,8 +210,8 @@ class PhantomBot:
         """Fetch candles for ``timeframe`` and set ``last_summary`` from
         ``voting_engine``.
 
-        Returns without setting ``last_summary`` on fewer than 30 candles, and
-        constructs no order on any path.
+        Returns without setting ``last_summary`` below ``MIN_TICK_CANDLES``,
+        and constructs no order on any path.
         """
         raw = await self.exchange.get_ohlcv(
             self.symbol,
@@ -212,7 +219,7 @@ class PhantomBot:
             limit=100,
         )
         candles = candles_from_raw(raw)
-        if len(candles) < 30:
+        if len(candles) < MIN_TICK_CANDLES:
             return
 
         summary = self.voting_engine.compute_all(candles, self.timeframe)
