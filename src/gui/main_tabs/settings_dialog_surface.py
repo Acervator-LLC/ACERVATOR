@@ -1,7 +1,7 @@
 """settings_dialog_surface.py -- the Settings dialog, without Qt.
 
-Describes the window the operator opens from the Settings menu. Ten
-tabs -- User, Exchanges, Trading, Profit Folding, TA Indicators, Phantom
+Describes the window the operator opens from the Settings menu. Nine
+tabs -- User, Exchanges, Trading, TA Indicators, Phantom
 Bots, Theme, Sound, SMS and AI Monitor -- above one Cancel and
 one Save button.
 
@@ -67,7 +67,6 @@ DEFAULT_WING = CRYPTO_WING
 USER_TAB = "User"
 EXCHANGE_TAB = "Exchanges"
 TRADING_TAB = "Trading"
-FOLDING_TAB = "Profit Folding"
 TA_TAB = "TA Indicators"
 PHANTOM_TAB = "Phantom Bots"
 THEME_TAB = "Theme"
@@ -79,7 +78,6 @@ TAB_TITLES = (
     USER_TAB,
     EXCHANGE_TAB,
     TRADING_TAB,
-    FOLDING_TAB,
     TA_TAB,
     PHANTOM_TAB,
     THEME_TAB,
@@ -459,14 +457,11 @@ AI_LOAD_KEYS = (
     ("log_feedback", True, "ai_log_feedback"),
 )
 AI_GROUP_KEY = "ai_monitor"
-FOLDING_GROUP_KEY = "profit_folding"
 THEME_KEY = "theme"
 THEME_DEFAULT = "cyberpunk_dark"
 #: Empty leaves the theme's own accent painting, so the box opens on its
 #: placeholder.
 ACCENT_DEFAULT = ""
-FOLDING_ACTIVE_KEY = "active"
-FOLDING_ACTIVE_DEFAULT = True
 EXCHANGE_ID_KEY = "exchange_id"
 DISPLAY_NAME_KEY = "display_name"
 NO_MATCH_INDEX = -1
@@ -617,15 +612,6 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "name": "aggressive",
         "kind": CHECK,
         "text": "Enable aggressive trading mode",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": None,
-        "label": None,
-        "name": "folding_active",
-        "kind": CHECK,
-        "text": "Profit Folding / Upward Distribution Active",
         "checked": False,
     },
     {
@@ -1267,13 +1253,6 @@ LAYOUT = {
             (CONTROL, "default_balance"),
             (CONTROL, "visibility"),
             (CONTROL, "aggressive"),
-        ),
-    ),
-    FOLDING_TAB: (
-        COLUMN,
-        (
-            (CONTROL, "folding_active"),
-            (STRETCH,),
         ),
     ),
     TA_TAB: (COLUMN, ((LABEL, TA_HEADING), (TA_ROWS,), (STRETCH,))),
@@ -2081,15 +2060,6 @@ class SettingsDialogModel:
         except Exception as exc:  # noqa: BLE001
             self._record("load_refused", key, str(exc))
 
-    def _folding_rows(self) -> tuple:
-        """Every ``profit_folding`` key, with the read and the write its row needs."""
-        return (
-            (FOLDING_ACTIVE_KEY,
-             partial(self._pair_value, "folding_active"),
-             partial(self._show_stored, "folding_active"),
-             FOLDING_ACTIVE_DEFAULT),
-        )
-
     def _ai_rows(self) -> tuple:
         """Every ``ai_monitor`` key, from the one list naming its controls."""
         return tuple(
@@ -2169,7 +2139,6 @@ class SettingsDialogModel:
     def _stored_groups(self) -> tuple:
         """Every group the dialog persists as one key, with the rows inside it."""
         return (
-            (FOLDING_GROUP_KEY, self._folding_rows()),
             (AI_GROUP_KEY, self._ai_rows()),
             (TA_WEIGHT_GROUP_KEY, self._ta_weight_rows()),
             (SOUND_GROUP_KEY, self._sound_rows()),

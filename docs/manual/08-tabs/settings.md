@@ -6421,4 +6421,166 @@ tree. The earlier text stays where it is.
 The Settings dialog's own Profit Folding row is untouched by this section and
 still holds the page alone.
 
+## 2026-09-13 - The Settings dialog's Profit Folding page is removed
+
+The page held one checkbox and nothing else. That checkbox reached no bot, no
+engine and no fold, so the page is gone from both builds and the dialog opens on
+nine tabs. Folding is still switched on and off per bot, on the running bot's
+own settings row, and that row is untouched.
+
+The orphaned target-growth module goes with the page. `apply_profit_fold` had no
+caller anywhere in the tree, and the glossary named it as the fold's entry point
+while the live path is the fold tranches.
+
+Driven with the home redirected into a scratch directory before the first
+product import, so the settings directory and the log root bound under that
+directory. No stored setting of the running install was read, no credentials
+file was opened and no venue was contacted. One connection to a venue host was
+attempted on purpose and refused.
+
+### The three switches, and the one this section removed
+
+Three controls wear almost the same words. Only one of them changes what a bot
+does, and this section left that one alone.
+
+| The words on screen | Where it lives | What happened to it |
+| ------------------- | -------------- | ------------------- |
+| Profit Folding Active | a running bot's own settings | untouched. It gates the fold and it works |
+| Profit Folding / Upward Distribution Active | the Settings dialog's Profit Folding page | removed with the page |
+| Enable Profit Folding | the wizard's folding page | removed earlier, with that page |
+
+The stored names behind them are three different words, which is what keeps them
+apart.
+
+```
+per-bot switch    profit_folding_active     a BotConfig field, 10 read sites
+Settings switch   profit_folding.active     an AppSettings group, 0 readers
+wizard switch     -                         no longer in the tree
+```
+
+### The nine tabs the dialog draws now
+
+Both builds take the tab list from one declaration, so removing the page removed
+the tab from the Qt window and from the shell together.
+
+| | before | after |
+| --- | --- | --- |
+| Tabs | 10 | 9 |
+| Controls on the dialog | 67 | 66 |
+| Controls on the Profit Folding tab | 1 | 0 |
+| Layout entries | 10 | 9 |
+| Groups the dialog persists | 5 | 4 |
+| Keys a Save writes | 14 | 13 |
+
+The tab list after the removal, read off the payload the shell draws:
+
+```
+User, Exchanges, Trading, TA Indicators, Phantom Bots,
+Theme, Sound, SMS, AI Monitor
+```
+
+A tab holding no control is worse than no tab. What a reader of this page
+expects to find there is one master checkbox and three groups of radio buttons,
+eleven controls in all, and none of the eleven remains. Where folding is
+switched now is the running bot's own settings row, which the dated sections
+above already describe.
+
+### The stored group a settings file still carries
+
+A settings file written before the removal still carries its `profit_folding`
+entry. The loader copies only the fields the settings record declares, so an
+entry it no longer declares is passed over and every other value arrives.
+
+Driven on a file carrying ten keys, one of them the folding group:
+
+| | before | after |
+| --- | --- | --- |
+| Fields on the settings record | 17 | 16 |
+| The folding group is one of them | yes | no |
+| Every other stored key arrived | yes | yes |
+| Anything raised | no | no |
+
+The next Save writes the file without the group.
+
+### The per-bot switch, driven either side
+
+A record shaped like `bot_state.json` was written, restored through the two
+calls the restore path makes, and the bot it built was driven with the switch on
+and then off. The readings are the same on both sides of the removal.
+
+| The switch | applier returned | target after | preview returned | the gate read |
+| ---------- | ---------------- | ------------ | ---------------- | ------------- |
+| on | $6.00 | $200.00 to $206.00 | $6.00 | on |
+| off | $0.00 | held at $200.00 | $0.00 | off |
+
+Two controls prove the comparison can report a difference rather than agreeing
+by being blind. Moving the units the preview is asked about took its answer from
+$6.00 to $4.00, and lowering the growth cap from three percent to one took the
+applier from $6.00 to $2.00 and the target to $202.00.
+
+```
+[switch] ON   apply 6.0  target 206.0  preview 6.0  gate true
+[switch] OFF  apply 0.0  target 200.0  preview 0.0  gate false
+[control] units 0.2        preview 4.0     moved
+[control] growth cap 1.0%  apply   2.0     moved
+```
+
+The record and the wizard collection go through one declaration, so creation and
+restore cannot drift. Both carried twelve values into the config, sixty-four
+config fields were compared between the two, and none differed, on both sides of
+the removal.
+
+### The orphaned target-growth module
+
+`src/trading/profit_fold.py` held one function and forty-six lines. Its own
+module docstring recorded that no module imported it, and that was still true:
+four occurrences in the product, all four inside that file, three of them in the
+docstring and one on the definition line.
+
+The live fold path is the tranche book, and the glossary now says so.
+
+```python
+_fold_eligible_tranches      picks the tranches a fold may reach
+_apply_fold_target_growth    grows the target from the fold surplus
+```
+
+### The sentences the Settings folding page leaves behind
+
+Each sentence below stands in an earlier section and no longer describes the
+tree. The earlier text stays where it is.
+
+| Earlier sentence | What is there now |
+| ---------------- | ----------------- |
+| "One master checkbox and three groups of radio buttons, eleven controls in all." | The page is removed and the dialog draws nine tabs |
+| "Every key below sits inside one stored `profit_folding` group." | No page writes that group and the settings record no longer declares it |
+| "The stored group holds one field after those removals." | The group is gone. A stored file still carrying it loads and the field is passed over |
+| "Profit Folding / Upward Distribution Active - Turns the whole page on." | No page remains for it to turn on |
+| "This is the one control on the page the load path restores." | The load path restores no control on that page |
+| "What the Profit Folding page holds now - One checkbox and nothing else." | It holds no checkbox, because the page is removed |
+| "The master switch is the last row on the page, and its own verdict was that it waits on the wizard's folding page." | Both pages are removed. The verdict is settled by removal, not by waiting |
+| "`SettingsManager._apply_dict` copies the whole `profit_folding` dict off the file, so a store written before the removal still carries its `mode` entry and still opens." | It copies the fields the record declares, and the folding group is no longer one. The store still opens |
+
+Three earlier citations name a ladder helper removed with the wizard's folding
+page, and nobody had answered them. They are answered here.
+
+| Earlier citation | What is there now |
+| ---------------- | ----------------- |
+| "`src/trading/stack_math.py:304` `fold_ladder_prices` - places fold prices from `stack_spacing_mode` and decides no size" | The fold half is removed. Its twin still places scrum prices |
+| "`src/trading/stack_math.py:304` `fold_ladder_prices` - places fold prices and decides no size; its `levels` counts prices on a ladder" | The same helper, named a second time in the count table. It is gone |
+| "`fold_ladder_prices(100.0, 4)` returned four prices and decided no size and no position." | That reading was taken before the helper was removed, and no call can be made now |
+
+Five earlier citations name the target-growth module this section removes.
+
+| Earlier citation | What is there now |
+| ---------------- | ----------------- |
+| "`src/trading/profit_fold.py:14` `apply_profit_fold` - grows one target balance" | The module is removed. The target grows through the tranche applier |
+| "`src/trading/profit_fold.py:14` `apply_profit_fold` - grows one dollar target balance; its `target` parameter is annotated `float`" | The same module, named a second time in the count table |
+| "`apply_profit_fold(..., fold_target_count=2)` - `TypeError`, unexpected keyword argument" | No call can be made. The refusal it recorded stands for the applier that replaced it |
+| "`apply_profit_fold(..., target='x_buy')` - `TypeError`, a word compared against a number" | The same, and the point it made is unchanged: a fold is bounded in dollars |
+| "`src/trading/profit_fold.py` records in its own module docstring that no module imports it." | The docstring went with the file. Nothing imported it, which is why it went |
+
+The glossary entry that named the removed module as the fold's entry point is
+answered in place, in
+[the ADR index and glossary](../12-adr-index-and-glossary.md).
+
 Back to [the subsystem index](README.md).

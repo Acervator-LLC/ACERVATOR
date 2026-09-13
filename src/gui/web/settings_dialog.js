@@ -1,4 +1,5 @@
-// The settings_dialog.state payload draws this dialog and its eleven tabs.
+// The settings_dialog.state payload draws this dialog. Its tabs list names
+// every page, so no tab name is written here.
 (function (global) {
   "use strict";
   var METHOD = "settings_dialog.state";

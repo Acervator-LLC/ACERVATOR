@@ -54,13 +54,6 @@ class VisualTheme(str, Enum):
 
 
 @dataclass
-class ProfitFoldingSettings:
-    """Field defaults for the ``AppSettings.profit_folding`` group."""
-
-    active: bool = True
-
-
-@dataclass
 class AIMonitorSettings:
     """Field defaults for the ``AppSettings.ai_monitor`` group."""
 
@@ -115,10 +108,6 @@ class AppSettings:
     exchanges: list[dict] = field(default_factory=list)  # asdict(ExchangeConfig)
 
     default_target_balance: float = 200.0
-
-    profit_folding: dict = field(
-        default_factory=lambda: asdict(ProfitFoldingSettings())
-    )
 
     bot_visibility: str = BotVisibility.ORDERBOOK.value
     aggressive_trading: bool = False
@@ -187,7 +176,7 @@ class SettingsManager:
     """Thread-safe reader and writer for one ``AppSettings``.
 
     ``get`` and ``set`` address a top-level field while ``get_nested`` and
-    ``set_nested`` address a key inside ``profit_folding``, ``ai_monitor`` or
+    ``set_nested`` address a key inside ``ai_monitor`` or
     ``ta_indicator_weights``.
     """
 

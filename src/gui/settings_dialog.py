@@ -98,7 +98,6 @@ if _HAS_QT:
             tabs.addTab(self._create_user_tab(), "User")
             tabs.addTab(self._create_exchange_tab(), "Exchanges")
             tabs.addTab(self._create_trading_tab(), "Trading")
-            tabs.addTab(self._create_folding_tab(), "Profit Folding")
             tabs.addTab(self._create_ta_tab(), "TA Indicators")
             tabs.addTab(self._create_phantom_tab(), "Phantom Bots")
             tabs.addTab(self._create_theme_tab(), "Theme")
@@ -458,16 +457,6 @@ if _HAS_QT:
             form.addRow("Bot Visibility:", self._visibility)
             self._aggressive = QCheckBox("Enable aggressive trading mode")
             form.addRow(self._aggressive)
-            return w
-
-        def _create_folding_tab(self) -> QWidget:
-            w = QWidget()
-            layout = QVBoxLayout(w)
-            self._folding_active = QCheckBox(
-                "Profit Folding / Upward Distribution Active"
-            )
-            layout.addWidget(self._folding_active)
-            layout.addStretch()
             return w
 
         def _create_ta_tab(self) -> QWidget:
@@ -1076,12 +1065,6 @@ if _HAS_QT:
             from src.core.sms_engine import SETTINGS_GROUP as MESSAGE_CHANNELS_GROUP_KEY
 
             return (
-                ("profit_folding", (
-                    ("active",
-                     self._folding_active.isChecked,
-                     lambda value: self._folding_active.setChecked(bool(value)),
-                     True),
-                )),
                 ("ai_monitor", (
                     ("api_key",
                      lambda: self._ai_api_key.text().strip(),
