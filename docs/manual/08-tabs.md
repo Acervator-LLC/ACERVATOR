@@ -243,6 +243,75 @@ file_menu.addAction("&Settings", self._open_settings)
 file_menu.addAction("&Reset All Settings", self._reset_settings)
 ```
 
+#### What the Theme menu does
+
+The Theme menu paints and it stores. One press applies the theme to the Qt
+window, repaints the tab labels, repaints every React page already open, and
+writes the name under the `theme` key, so the choice is still there at the next
+start.
+
+`src/gui/main_window.py` — `_switch_theme`
+
+```python
+painted = repaint_pages(self, name)
+self._remember_theme(name)
+```
+
+A page already up takes the new palette without being rebuilt. One statement per
+web view rewrites the six chrome colours on the document root, so every drawn row
+and the scroll position stay where they were.
+
+```
+the Market Inspector page, 900x600, 92,250 sampled pixels of ground
+
+before the press   #0a0a0f
+after the press    #f5f5fa    184,500 sampled pixels differing
+pressed back       #0a0a0f    identical to before
+the Activity Log   1 React pages repainted in neon_light
+```
+
+A page built later opens on the same theme. Every React page host named one
+theme in its own source; each now leaves the name unset, and the page reads back
+the theme the window is painted in.
+
+`src/gui/react_history_panel.py` — `page_theme`
+
+```python
+return stored_theme(applied_theme() if theme is None else theme)
+```
+
+Driven with nothing passed to the builder, the Alerts, Console, History and
+Market Inspector pages each painted a different ground under a stored Cyberpunk
+Dark and a stored Neon Light, at 184,500 to 187,500 sampled pixels differing per
+page. All four were identical before.
+
+The window's theme table and the chart chrome table are one declaration now. The
+chart table is built from the names the theme table declares, so a name cannot
+sit in one and not the other, and the five colour bodies it holds are unchanged.
+
+`src/gui/tradingview_chart.py` — `CHART_THEMES`
+
+```python
+CHART_THEMES: dict[str, dict[str, str]] = {
+    name: _CHART_CHROME.get(name, _CHART_CHROME[DEFAULT_THEME_NAME])
+    for name in THEMES
+}
+```
+
+The theme does not reach the contents of a page. A page's rows, panes and
+buttons arrive on the payload as a Qt stylesheet string built from the one dark
+token table, which carries no theme dimension. The Console tab, driven under
+three themes, painted the same five grounds every time, and each of the five is
+a token from that table.
+
+`src/gui/design_system.py` — the grounds the Console tab painted under all three
+
+```python
+SURFACE_CHART = "#0a0a12"  # Chart, console and group-box ground
+SURFACE_CONSOLE = "#05050a"  # Console ground
+SURFACE_CONSOLE_HEADER = "#0a0a14"  # Console header ground
+```
+
 Privacy Mode is off in the figure, so each field draws its own value rather
 than four asterisks. SPENDABLE and LOCKED carry dollar figures. EXCH counts the
 open exchange sub-tabs. Crypto Mode at the right swaps the window between the

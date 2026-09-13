@@ -89,7 +89,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def strip_html(theme: str = "cyberpunk_dark") -> str:
+def strip_html(theme: object = None) -> str:
     """The whole strip page as one string, with no network fetch."""
     return page_html((), STRIP_SCRIPT_ASSETS, STRIP_BODY, theme, (HOST_SCRIPT,))
 

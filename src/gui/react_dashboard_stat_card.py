@@ -108,7 +108,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def card_html(theme: str = "cyberpunk_dark") -> str:
+def card_html(theme: object = None) -> str:
     """The whole card page as one string, with no network fetch."""
     return page_html((), CARD_SCRIPT_ASSETS, CARD_BODY, theme, (HOST_SCRIPT,))
 

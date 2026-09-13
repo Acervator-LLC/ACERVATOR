@@ -3524,7 +3524,14 @@ if _HAS_QT:
             """The accent field the store holds, None when there is no store."""
             return self._settings.get("accent_color") if self._settings else None
 
+        def _remember_theme(self, name: str) -> None:
+            """Store ``name`` under ``theme`` so the Theme menu survives a restart."""
+            if not self._settings or self._settings.get("theme") == name:
+                return
+            self._settings.set("theme", name)
+
         def _switch_theme(self, name: str, accent: object = None) -> None:
+            from .react_history_panel import repaint_pages
             from .theme_engine import ThemeManager, stored_accent
 
             tm = ThemeManager()
@@ -3548,7 +3555,12 @@ if _HAS_QT:
                 swarm = getattr(self, "_bot_viz", None)
                 if hasattr(swarm, "set_app_theme"):
                     swarm.set_app_theme(name)
+                painted = repaint_pages(self, name)
+                self._remember_theme(name)
                 self._status_log.log(f"Theme switched to {name}.", "info")
+                self._status_log.log(
+                    f"{painted} React pages repainted in {name}.", "info"
+                )
 
         def _show_about(self) -> None:
             QMessageBox.about(
