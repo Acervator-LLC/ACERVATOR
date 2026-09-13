@@ -2558,3 +2558,10 @@ out.reconstruction_note = (
 No other module imports `src/trading/gate_healer.py`, so `heal_gate_gaps` has no
 caller of its own and the rebuild never runs. The gate rows you read come from
 the live writer alone.
+
+**Nothing rebuilds a gate row.** The tree no longer holds
+`src/trading/gate_healer.py`, so `reconstruct_market_gate`, `heal_gate_gaps`,
+`split_by_provenance` and `format_heal_lines` no longer exist. The two code
+blocks above record what that file held. A gate row reaches `gate.log` only when
+`LogManager.log_gate_decision`, in `src/core/logging_engine.py`, writes it at the
+moment the gate decides.
