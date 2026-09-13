@@ -6062,4 +6062,86 @@ sibling reads of the same bag  3
 Removing it would delete one of four reads of one bag and settle three rows that
 are still open. It stays, and the empty bag is what those rows address.
 
+## 2026-09-13 - The shell's wizard request carries the store
+
+The desktop shell asks for the Create Auto Trader pages and sends the step
+values alone. The running program now puts its own stored settings into that
+request before the pages are laid out, so the wizard the shell draws opens on
+the same figures as the wizard the Qt window opens.
+
+```python
+# src/gui/main_tabs/bot_wizard_surface.py, the handler the bridge registers
+def live_view_model(params: dict, live: Any) -> dict:
+    asked = dict(params or {})
+    manager = getattr(live, "settings_manager", None)
+    if asked.get("defaults") is None and hasattr(manager, "get_all"):
+        asked["defaults"] = manager.get_all()
+    return view_model(asked)
+```
+
+The bag the request carries went from no keys to seventeen. That was read on
+the request the shell sends when the New Bot space mounts, and again on the
+request every control press sends, so a press does not put the wizard back on
+its built-in figures.
+
+### What the request now carries
+
+Five Settings rows reach a control on the shell build. Two of them are lookups
+this section adds to the wizard surface; the other three were already written
+and had nothing to read.
+
+| Settings row | store key | wizard control | opened at | opens at |
+| ------------ | --------- | -------------- | --------- | -------- |
+| Default Target Balance | `default_target_balance` | Target Balance | 200.00 | the stored figure |
+| Bot Visibility | `bot_visibility` | Order Visibility | Order Book | the stored name |
+| Enable aggressive trading mode | `aggressive_trading` | Aggressive Trading | clear | the stored flag |
+| Enable Phantom Balance Bots for Scrumming | `default_enable_phantoms` | Enable Phantom Bots | clear | the stored flag |
+| Lock duration (candles) | `default_lock_candle_count` | Candles to lock | 2 | the stored figure |
+
+The two new lookups sit beside the three already there, and all five run inside
+the model build, before the page is drawn.
+
+```python
+# src/gui/main_tabs/bot_wizard_surface.py, inside _build
+self._apply_stored_target_balance()
+self._apply_stored_visibility()
+self._apply_stored_aggressive()
+self._apply_stored_phantom_enable()
+self._apply_stored_lock_candles()
+```
+
+### The five figures on both builds
+
+One store, written with five values that differ from every built-in figure, was
+read by both wizards. Both opened on the same five.
+
+| control | the store | the Qt wizard | the shell wizard |
+| ------- | --------- | ------------- | ---------------- |
+| Target Balance | 777.00 | 777.00 | 777.00 |
+| Order Visibility | internal | internal | internal |
+| Aggressive Trading | on | on | on |
+| Enable Phantom Bots | on | on | on |
+| Candles to lock | 7 | 7 | 7 |
+
+Before the change the shell wizard opened at 200.00, Order Book, clear, clear
+and 2, on the same store. A bot created from those pages carried those five
+figures, so the shell built a different bot from the Qt window on identical
+settings. It no longer does.
+
+### An older store still opens the wizard
+
+A store written before these rows existed carries none of the five keys. The
+request then hands over the twelve keys it does hold, every lookup falls to its
+own built-in figure, and the wizard lays out its six pages as usual.
+
+```
+bag keys 12    target balance 200.00    visibility Order Book
+               aggressive clear         phantoms clear
+               lock candles 2           pages 6
+```
+
+The shell reaches the store only while the trading program serves the bridge.
+Started as the surfaces alone, with no running system behind it, the bridge has
+no settings manager to read and the wizard opens on its built-in figures.
+
 Back to [the subsystem index](README.md).

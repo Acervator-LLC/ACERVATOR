@@ -36,7 +36,11 @@ the lowest, and text is refused.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``bot_wizard.state`` method, which is how the Electron renderer
-reaches it. Every value below is written out here rather than read from
+reaches it, and ``bind_live`` replaces that handler while the program is
+running. ``live_view_model`` is the one place that reads the running
+program's ``settings_manager``: it puts the stored defaults into the
+request the frontend sends without them, and reaches no disk of its own.
+Every value below is written out here rather than read from
 ``src.gui.bot_wizard``, from ``src.gui.design_system``, from
 ``src.exchange.timeframes`` or from ``src.trading.bot_container``, so a
 value changed on one side alone is reported. Nothing here imports Qt.
@@ -540,6 +544,7 @@ def is_higher_timeframe(timeframe: Any, parent: Any) -> bool:
     if timeframe not in order or parent not in order:
         return False
     return order.index(timeframe) > order.index(parent)
+
 
 GROUP_TITLES = {
     "mode_group": "Trading Parameters",
@@ -1224,6 +1229,8 @@ DEFAULT_TARGET_BALANCE_KEY = "default_target_balance"
 DEFAULT_ENABLE_PHANTOMS_KEY = "default_enable_phantoms"
 DEFAULT_PHANTOM_TIMEFRAME_KEY = "default_phantom_timeframe"
 DEFAULT_LOCK_CANDLE_COUNT_KEY = "default_lock_candle_count"
+BOT_VISIBILITY_KEY = "bot_visibility"
+AGGRESSIVE_TRADING_KEY = "aggressive_trading"
 EXCHANGE_DISPLAY_KEY = "display_name"
 EXCHANGE_ID_KEY = "exchange_id"
 MARKET_SYMBOL_KEY = "symbol"
@@ -1695,6 +1702,8 @@ class BotWizardModel:
         for name, text in TEXT_FIELDS.items():
             self.calls.append([TEXT_SET_TEXT, name, text])
         self._apply_stored_target_balance()
+        self._apply_stored_visibility()
+        self._apply_stored_aggressive()
         self._apply_stored_phantom_enable()
         self._apply_stored_lock_candles()
         for found in PHANTOM_TIMEFRAMES:
@@ -1723,6 +1732,34 @@ class BotWizardModel:
         self.calls.append(
             [NUMBER_SET_VALUE, "target_balance", self.numbers["target_balance"]]
         )
+
+    def _apply_stored_visibility(self) -> None:
+        """Open the visibility drop-down on the stored default, as the wizard does.
+
+        The Settings dialog writes ``bot_visibility``. A name neither entry
+        carries leaves the box on its first entry, the way ``findData``
+        refuses one on the Qt build.
+        """
+        stored = self.defaults.get(BOT_VISIBILITY_KEY)
+        items = self._combo_items("visibility")
+        for at, one in enumerate(items):
+            if one[1] == stored:
+                self.combo_indexes["visibility"] = at
+                break
+        self.calls.append(
+            [COMBO_SET_CURRENT_INDEX, "visibility", self.combo_indexes["visibility"]]
+        )
+
+    def _apply_stored_aggressive(self) -> None:
+        """Open the aggressive box on the stored default, as the wizard does.
+
+        The Settings dialog writes ``aggressive_trading``, and this is the
+        only place it reaches a new bot. A bot already on disk keeps its own
+        stored flag.
+        """
+        stored = self.defaults.get(AGGRESSIVE_TRADING_KEY, CHECK_FIELDS["aggressive"])
+        self.checks["aggressive"] = bool(stored)
+        self.calls.append([CHECK_SET_CHECKED, "aggressive", self.checks["aggressive"]])
 
     def _apply_stored_lock_candles(self) -> None:
         """Open the lock spin box on the stored default, as the wizard does.
@@ -2884,3 +2921,28 @@ def view_model(params: dict) -> dict:
         steps,
         params.get("timeframes"),
     )
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Answer the request with the running program's stored settings in it.
+
+    The frontend sends the step values alone, so the defaults bag is put in
+    here before the model is built. A request carrying its own bag keeps it.
+    """
+    asked = dict(params or {})
+    manager = getattr(live, "settings_manager", None)
+    if asked.get("defaults") is None and hasattr(manager, "get_all"):
+        asked["defaults"] = manager.get_all()
+    return view_model(asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``bot_wizard.state`` handler reading ``live``.
+
+    ``build_registry`` calls this when the running program serves the bridge.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler
