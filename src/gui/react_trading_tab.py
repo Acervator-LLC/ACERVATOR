@@ -6,8 +6,8 @@
 so the page in the desktop window and the page in the shell run the same
 module. ``trading_tab.js`` mounts ``indicator_panel.js`` and ``status_log.js``
 into slots it keeps for them, so the voting panel and the Activity Log need no
-registration of their own. ``page_html`` inlines every script, so the page
-fetches nothing.
+registration of their own. ``page_html`` inlines ``trading_tab.css`` and every
+script, so the page fetches nothing.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import logging
 from typing import Any, Optional
 
 from .main_tabs import indicator_panel_surface, status_log_surface, trading_tab_surface
-from .react_history_panel import page_html, read_asset
+from .react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from .react_main_window import read_renderer_asset
 
 try:
@@ -43,6 +43,9 @@ PANEL_MODULE = "trading_tab.js"
 #: The modules ``trading_tab.js`` mounts into its own slots. Order is load
 #: order, and each one registers with ``panel_host.js`` under its own name.
 CHILD_MODULES: tuple[str, ...] = ("status_log.js", "indicator_panel.js")
+
+#: The style sheet the page carries.
+STYLE_ASSETS: tuple[str, ...] = ("trading_tab.css",)
 
 #: The scripts every page carries before the modules. Order is load order.
 BASE_SCRIPT_ASSETS: tuple[str, ...] = (
@@ -113,8 +116,12 @@ def module_name(asset: str = PANEL_MODULE) -> str:
 
 
 def roster() -> tuple[str, ...]:
-    """Every module the page carries, in load order."""
-    return CHILD_MODULES + (PANEL_MODULE,)
+    """Every module the page carries, in load order.
+
+    ``STYLE_SOURCE_ASSETS`` leads: ``trading_tab.js`` parses every Qt style
+    sheet in its payload with ``header_strip.styleOf``.
+    """
+    return STYLE_SOURCE_ASSETS + CHILD_MODULES + (PANEL_MODULE,)
 
 
 def models(live: Any = None) -> dict:
@@ -184,8 +191,12 @@ def page_body() -> str:
 
 
 def panel_html(built: dict, theme: object = None) -> str:
-    """The whole Live page as one string, with no network fetch."""
-    return page_html((), (), page_body(), theme, (host_script(built),))
+    """The whole Live page as one string, with no network fetch.
+
+    ``STYLE_ASSETS`` is inlined into the page head, so the tab's chrome
+    reaches the browser without a stylesheet request.
+    """
+    return page_html(STYLE_ASSETS, (), page_body(), theme, (host_script(built),))
 
 
 if _HAS_WEBENGINE:

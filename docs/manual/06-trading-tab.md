@@ -4798,3 +4798,82 @@ panel faults        indicator_panel: the manifest names no indicator_panel.js
 Both pages were drawn at 1743 by 1088 pixels and compared. 91.67 percent of the
 sampled pixels differ. The Qt page paints its ground `#2d2d2d`. The React page
 paints its ground `#0a0a0f`.
+
+## 2026-09-13 - what the React Live page draws
+
+`src/gui/web/trading_tab.css` gives the React Live tab its chrome. The page
+carried no stylesheet of its own before. It painted flat text on a plain ground.
+
+`react_trading_tab.STYLE_ASSETS` names the file. `panel_html` inlines it into the
+page head, so the page still fetches nothing over the network.
+
+The page also carries four style-source modules. `react_trading_tab.roster` puts
+them ahead of the three panel modules. They are design_tokens.js, theme_engine.js,
+shared_widgets.js and header_strip.js.
+
+`trading_tab.js` parses every Qt style sheet in its payload with `styleOf`. That
+function reads header_strip.js. A page that leaves the four modules out gets an
+empty object back, and it paints no colour the payload asks for.
+
+The reading below comes from the running page under the React build.
+
+```
+registered panels   header_strip, indicator_panel, status_log, trading_tab
+panel faults        none
+stylesheet rules    23
+network requests    0
+```
+
+The same reading with the stylesheet emptied counts one stylesheet rule. That is
+how the reading above is known to discriminate.
+
+```
+registered panels   header_strip, indicator_panel, status_log, trading_tab
+panel faults        none
+stylesheet rules    1
+network requests    0
+```
+
+### The page chrome
+
+`trading_tab.css` sets colour, border and type. `trading_tab.js` writes every
+layout value on the element's own style attribute from the payload.
+
+One exchange layer shows at a time. A stack page carries a flex display on its own
+style attribute, and that outranks the browser rule for a hidden element. The
+stylesheet marks a hidden page `display:none`. Before that rule the Crypto layer
+and the Stock layer both drew, one above the other, each at half the height.
+
+The empty-state card takes its ground and its edge from the stylesheet. Qt counts
+the alpha of both in bytes. `keptSheet` drops a byte alpha from the payload, so
+only the card's corner radius survives the trip.
+
+Two buttons add an exchange, and the Qt page draws both. The corner button beside
+the tabs is plain chrome. The card button below it carries the layer accent, which
+`placeholder_add_style` publishes. The stylesheet paints the corner button only,
+so the two read as different controls.
+
+Each log pane is one bordered ground. The pane carries the border. The status log
+and the API log carry the read-only ground inside it. The lower half of the page
+was blank before those rules.
+
+Each splitter handle carries the border colour, so the pointer can see what it
+takes hold of.
+
+### The Indicator Voting Panel
+
+The panel draws one row per timeframe and one column per indicator. Each cell
+prints its vote direction as an arrow and its confidence as a percentage. Green is
+bullish and red is bearish.
+
+`indicator_panel_surface.indicator_cell_colors` publishes each cell's text colour
+and its tint. `indicator_panel.js` writes both on the cell. No rule in the
+stylesheet sets a colour on a cell.
+
+The stylesheet gives the head cells a ground of their own. It also clips a cell
+that is wider than its column, so a narrow panel shows an ellipsis instead of
+running one vote over the column beside it.
+
+Each mini-table holds its header plus two timeframe rows. The confidence bars
+below it take the rest of the height. A summary carrying more timeframes is cut at
+two rows. `indicator_panel.py` fixes the same height with `setFixedHeight`.

@@ -1,0 +1,156 @@
+/* React Live tab chrome: the splitter handles, the exchange layers, the
+ * Indicator Voting Panel beside them and the two log panes below.
+ * `react_trading_tab.PAGE_STYLE` carries the reset and the page ground, so
+ * this file adds colour, border and type only. Every colour a voter cell
+ * or a pane label paints arrives on its own `style` attribute from the
+ * Python payload, so no rule here may set a `color` on one.
+ */
+
+/* A stack page carries `display:flex` on its own style attribute, which
+ * outranks the browser's own rule for a hidden element. */
+[hidden] {
+  display: none !important;
+}
+
+/* A flex child keeps its content's size without a floor of its own, so a
+ * pane that overflows pushes its neighbour out of the splitter. */
+.acervator-trading-splitter > *,
+.acervator-trading-pane {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* QSplitter::handle, which the pointer takes hold of to resize a pane. */
+.acervator-trading-handle {
+  background: var(--border);
+}
+
+.acervator-trading-handle:hover {
+  background: var(--PRIMARY, var(--accent));
+}
+
+/* QTabBar over one layer's exchange pages. */
+[data-part="tab-bar"] {
+  align-items: flex-end;
+  gap: 2px;
+  padding: 3px 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+[data-part="tab-button"],
+[data-part="exchange-tab-button"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  padding: 3px 12px;
+  font: inherit;
+}
+
+[data-part="exchange-tab-button"][data-current="true"] {
+  color: var(--PRIMARY, var(--accent));
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+/* QTabWidget's corner widget: plain chrome beside the tabs. The card's own
+ * button below it is drawn in the layer accent by the payload, which is
+ * what tells the two apart. */
+[data-part="add-button"] {
+  align-self: center;
+  margin: 0 2px 3px 8px;
+  background: var(--SURFACE_2, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 10px;
+  font: inherit;
+}
+
+[data-part="add-button"]:hover {
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+[data-part="tab-body"] {
+  background: var(--SURFACE_0, var(--bg));
+}
+
+/* QFrame: the card's radius arrives from the payload; its ground and its
+ * edge do not, because Qt counts their alpha in bytes and CSS does not. */
+[data-part="placeholder-card"] {
+  background: var(--SURFACE_1, var(--btn-bg));
+  border: 1px solid var(--OUTLINE, var(--border));
+}
+
+[data-part="placeholder-add"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  font: inherit;
+}
+
+/* QTextEdit: each log pane is one bordered, read-only ground. */
+[data-part="pane:activity_pane"],
+[data-part="pane:api_pane"] {
+  margin: 2px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+[data-part="header-row"] {
+  gap: 6px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+[data-part="status-log"],
+[data-part="api-log"] {
+  background: var(--SURFACE_INPUT, var(--bg));
+  padding: 4px 6px;
+}
+
+[data-part="api-placeholder"] {
+  color: var(--grid);
+}
+
+/* The Indicator Voting Panel. `indicator_panel.js` writes each vote's own
+ * text colour and tint on the cell, so this is the grid around them. */
+[data-part="indicator-panel"] {
+  min-height: 0;
+}
+
+/* A fixed table gives every column one width, so a narrow panel clips a
+ * vote rather than letting it run over the column beside it. */
+[data-part="indicator-head-cell"],
+[data-part="indicator-body-cell"] {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+[data-part="indicator-head-cell"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+}
+
+[data-part="indicator-bot-selector"] {
+  background: var(--SURFACE_INPUT, var(--bg));
+  color: var(--text);
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 2px;
+  font: inherit;
+}
+
+/* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
+[data-part="indicator-panel"]::-webkit-scrollbar,
+[data-part="status-log"]::-webkit-scrollbar,
+[data-part="api-log"]::-webkit-scrollbar,
+[data-part="tab-body"]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-part="indicator-panel"]::-webkit-scrollbar-thumb,
+[data-part="status-log"]::-webkit-scrollbar-thumb,
+[data-part="api-log"]::-webkit-scrollbar-thumb,
+[data-part="tab-body"]::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
