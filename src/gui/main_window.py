@@ -78,7 +78,6 @@ try:
     from .widgets.api_tester_tab import APITesterTab
     from .widgets.bot_selection import _reanchor_bot_selection, _select_row_for_bot
     from .widgets.bot_status_table import SCRUMMING_COLUMNS, BotStatusTable
-    from .widgets.capital_registry_panel import CapitalRegistryPanel
     from .widgets.dashboard_stat_card import StatCard
     from .widgets.exchange_tab import ExchangeTab
     from .widgets.extractor_bot_table import EXTRACTOR_COLUMNS, ExtractorBotTable
@@ -98,7 +97,6 @@ from src.gui.qt_safe_events import safe_process_events
 __all__ = [
     "APITesterTab",
     "BotStatusTable",
-    "CapitalRegistryPanel",
     "EXTRACTOR_COLUMNS",
     "ExchangeTab",
     "ExtractorBotTable",

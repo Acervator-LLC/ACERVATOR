@@ -471,6 +471,11 @@ src/trading/extractor_bot.py           at the chunk-rate claim
 src/trading/capital_registry.py        at the dollar grant
 ```
 
+Two of those three lines have changed. `src/trading/capital_registry.py` is
+removed, so no dollar grant is made and that warning can no longer be written.
+The Extractor writes a second warning now, described under the next heading but
+one.
+
 ### A claim that never reached the disk
 
 The registry keeps the claim table in memory and writes it to a file. The
@@ -495,6 +500,23 @@ to claim. `CapitalReservationMixin._ensure_capital_reservation` in
 `src/trading/scrumming/capital_reservation_mixin.py` stops on that answer. It
 places no new claim. It resizes no standing claim. It writes a warning that
 names the bot and the asset, and it tries again on the next call.
+
+#### The Extractor refuses on the same answer
+
+The Extractor reads its base currency the same way. The reader is
+`_read_base_holdings` in `src/trading/extractor_bot.py`, and it answers nothing
+when the venue call fails.
+
+`set_initial_chunk_rate` stops on that answer. It places no claim, and it writes
+one warning at the upper pane that names the bot and the asset. The line reads:
+
+```
+Bot <id> could not read its <asset> balance; placing no claim, because no
+holdings figure bounds it.
+```
+
+The Extractor claims once for each run, so it does not try again on a later
+call. A start reads the balance again.
 
 ### The bot named in a refused sale
 

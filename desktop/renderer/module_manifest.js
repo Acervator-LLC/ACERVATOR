@@ -43,7 +43,6 @@ window.ACERVATOR_MODULES = [
   "tradingview_chart.js",
   "crypto_news_ticker.js",
   "settings_dialog.js",
-  "capital_registry.js",
   "preflight_check.js",
   "pulse_manager.js",
   "spendable_profits.js",
