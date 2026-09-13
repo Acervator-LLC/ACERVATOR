@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     )
 
 from ..core.event_bus import get_event_bus
+from ..exchange.timeframes import ALL_TIMEFRAMES
 from .container import (
     BotRegistryMixin,
     FleetAggregationMixin,
@@ -599,6 +600,20 @@ class BotContainer:
         # Persist the phantom flag so an explicit OFF survives restart.
         if hasattr(self, "_phantoms_enabled"):
             state["phantoms_enabled"] = bool(self._phantoms_enabled)
+
+        # One phantom per bot. A longer list is a bot nothing has chosen for,
+        # so no key is written and DEFAULT_PHANTOM_TIMEFRAMES stays in charge.
+        _phantom_tfs = [
+            str(one) for one in (getattr(self, "_phantom_timeframes", None) or [])
+        ]
+        if len(_phantom_tfs) == 1 and _phantom_tfs[0] in ALL_TIMEFRAMES:
+            state["phantom_timeframe"] = _phantom_tfs[0]
+
+        # The coordinator owns the count; no BotConfig field carries it.
+        _coordinator = getattr(self, "_coordinator", None)
+        _lock_candles = getattr(_coordinator, "lock_candle_count", None)
+        if _lock_candles is not None:
+            state["lock_candle_count"] = int(_lock_candles)
 
         # Fetched by name: this parent does not define the exporter.
         _export_scrumming = getattr(self, "export_scrumming_state", None)

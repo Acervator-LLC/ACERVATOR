@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -17,9 +18,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
 from .. import design_system as ds
+from ..main_tabs import phantom_bots_tab_surface as surface
 
 
 class PhantomBotsTabMixin:
@@ -30,7 +33,12 @@ class PhantomBotsTabMixin:
     _bot: Any
     _configure_form: Callable[..., Any]
     _mark_changed: Callable[..., Any]
-    _phantom_tf_checks: dict
+    _phantom_timeframe: Any
+    _phantom_tf_refusal: Any
+    _phantom_tf_allowed: Any
+    _phantom_tf_parent: str
+    _phantom_tf_exchange: Any
+    _phantom_tf_current: str
 
     def _create_phantom_bots_tab(self) -> QWidget:
         """Combined Phantom Bots config + runtime view.
@@ -73,70 +81,51 @@ class PhantomBotsTabMixin:
         ef.addWidget(self._phantom_enable)
         layout.addWidget(enable_group)
 
-        # ── Config: Timeframe checkboxes ─────────────────────────
-        tf_group = QGroupBox("Active Timeframes")
+        # ── Config: one phantom timeframe ────────────────────────
+        tf_group = QGroupBox(surface.TF_GROUP_TITLE)
         tf_layout = QVBoxLayout(tf_group)
-        tf_hint = QLabel(
-            "v3.15.61 — TFs not supported by this bot's exchange "
-            "are disabled (greyed). Coinbase: 1m/5m/15m/30m/1h/2h/6h/1d. "
-            "Binance: full set. Others vary."
-        )
+        tf_hint = QLabel(surface.TF_HINT_TEXT)
         tf_hint.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px;")
         tf_hint.setWordWrap(True)
         tf_layout.addWidget(tf_hint)
 
-        self._phantom_tf_checks: dict = {}
-        current_tfs = set(getattr(bot, "_phantom_timeframes", []) or [])
-        try:
-            from ...exchange.timeframes import available_timeframes
-
-            _ex_id = getattr(bot.config, "exchange_id", None)
-            _ph_allowed = set(available_timeframes(_ex_id))
-        except Exception:
-            _ph_allowed = {
-                "1m",
-                "5m",
-                "15m",
-                "30m",
-                "1h",
-                "2h",
-                "4h",
-                "6h",
-                "12h",
-                "1d",
-                "1w",
-            }
-        tf_row = QHBoxLayout()
-        for tf in [
-            "1m",
-            "5m",
-            "15m",
-            "30m",
-            "1h",
-            "2h",
-            "4h",
-            "6h",
-            "12h",
-            "1d",
-            "1w",
-        ]:
-            cb = QCheckBox(tf)
-            supported = tf in _ph_allowed
-            cb.setChecked(tf in current_tfs and supported)
-            cb.setEnabled(supported)
-            cb.setToolTip(
-                f"{tf}: "
-                + (
-                    "supported"
-                    if supported
-                    else f"NOT supported by exchange "
-                    f"({getattr(bot.config, 'exchange_id', '?')})"
-                )
+        self._phantom_tf_allowed = surface.allowed_timeframes(
+            getattr(bot.config, "exchange_id", None)
+        )
+        self._phantom_tf_parent = str(
+            getattr(bot.config, "ta_timeframe", surface.PARENT_TIMEFRAME_DEFAULT)
+            or surface.PARENT_TIMEFRAME_DEFAULT
+        )
+        self._phantom_tf_exchange = getattr(bot.config, "exchange_id", None)
+        self._phantom_timeframe = QComboBox()
+        _named = getattr(
+            bot.config, "exchange_id", surface.UNKNOWN_EXCHANGE_TEXT
+        )
+        for tf in surface.TIMEFRAMES:
+            self._phantom_timeframe.addItem(tf, tf)
+            self._phantom_timeframe.setItemData(
+                self._phantom_timeframe.count() - 1,
+                surface.timeframe_tooltip(
+                    tf, tf in self._phantom_tf_allowed, _named
+                ),
+                Qt.ToolTipRole,
             )
-            cb.toggled.connect(self._phantom_tfs_changed)
-            self._phantom_tf_checks[tf] = cb
-            tf_row.addWidget(cb)
+        self._phantom_tf_current = surface.chosen_timeframe(
+            getattr(bot, "_phantom_timeframes", []) or []
+        )
+        self._phantom_timeframe.setCurrentIndex(
+            max(0, self._phantom_timeframe.findData(self._phantom_tf_current))
+        )
+        self._phantom_timeframe.setToolTip(surface.TF_TOOLTIP)
+        self._phantom_tf_refusal = QLabel("")
+        self._phantom_tf_refusal.setStyleSheet(f"color: {ds.ERROR}; font-size: 10px;")
+        self._phantom_tf_refusal.setWordWrap(True)
+        self._phantom_timeframe.currentIndexChanged.connect(self._phantom_tf_chosen)
+        tf_row = QHBoxLayout()
+        tf_row.addWidget(QLabel(surface.TF_ROW_LABEL))
+        tf_row.addWidget(self._phantom_timeframe)
         tf_layout.addLayout(tf_row)
+        tf_layout.addWidget(self._phantom_tf_refusal)
         layout.addWidget(tf_group)
 
         # ── Config: Lock duration ─────────────────────────────────
@@ -362,8 +351,26 @@ class PhantomBotsTabMixin:
         layout.addStretch()
         return w
 
-    def _phantom_tfs_changed(self):
-        """Called when any phantom TF checkbox toggles. Collect the
-        full selected set and mark it as a single config change."""
-        selected = [tf for tf, cb in self._phantom_tf_checks.items() if cb.isChecked()]
-        self._mark_changed("phantom_timeframes", selected)
+    def _phantom_tf_chosen(self):
+        """Take the picked phantom timeframe, or write the refusal beside it.
+
+        A refused pick leaves the box on the timeframe it already held, so the
+        box and ``PhantomBotsTabModel.timeframe_current`` agree on both builds.
+        """
+        picked = self._phantom_timeframe.currentData()
+        refused = surface.timeframe_refusal(
+            picked,
+            self._phantom_tf_parent,
+            self._phantom_tf_allowed,
+            self._phantom_tf_exchange,
+        )
+        self._phantom_tf_refusal.setText(refused)
+        if refused:
+            self._phantom_timeframe.blockSignals(True)
+            self._phantom_timeframe.setCurrentIndex(
+                max(0, self._phantom_timeframe.findData(self._phantom_tf_current))
+            )
+            self._phantom_timeframe.blockSignals(False)
+            return
+        self._phantom_tf_current = picked
+        self._mark_changed("phantom_timeframes", [picked])

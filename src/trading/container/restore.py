@@ -354,12 +354,25 @@ class StateRestoreMixin:
                     # Default True matches ScrummingBot.__init__, so a state
                     # file without the flag keeps prior behaviour.
                     _restored_phantoms_enabled = bot_data.get("phantoms_enabled", True)
+                    # Absent leaves phantom_timeframes None, so
+                    # DEFAULT_PHANTOM_TIMEFRAMES keeps prior behaviour.
+                    _restored_phantom_tf = bot_data.get("phantom_timeframe")
                     bot = ScrummingBot(
                         config,
                         _PlaceholderExchangeForRestore(cfg["exchange_id"]),
                         enable_phantoms=bool(_restored_phantoms_enabled),
+                        phantom_timeframes=(
+                            [str(_restored_phantom_tf)]
+                            if _restored_phantom_tf
+                            else None
+                        ),
                         ta_weights=self._ta_weights,
                     )
+                    _restored_lock_candles = bot_data.get("lock_candle_count")
+                    if _restored_lock_candles is not None and bot._coordinator:
+                        bot._coordinator.lock_candle_count = max(
+                            1, int(_restored_lock_candles)
+                        )
                     logger.info(
                         "P0g-DIAG | bot=%s saved_phantoms_enabled=%s "
                         "constructed_with_enable_phantoms=%s "

@@ -2513,3 +2513,77 @@ Pointed at the real table the writer disagrees with the committed Scope column
 on twenty rows and moves five totals. That disagreement is not this entry's to
 resolve, so the column was not rewritten and the three cells above were set by
 the rule the column states.
+
+### 2026-09-12 - #665 - the Phantom Bots page takes one timeframe and keeps it
+
+The page holds three settings. All three now reach the bot they are drawn for,
+and two of them survive a restart.
+
+**One phantom, not a set.** The eleven timeframe boxes are one picker. It offers
+all eleven names, greys the ones the bot's venue does not serve, and opens on the
+timeframe the bot holds. A bot holding several, because it was restored before
+this, opens on the highest of them.
+
+| setting | label on the page | what it reaches |
+| ------- | ----------------- | --------------- |
+| enable | Enable Phantom Bots | the tick gate that builds the phantom set |
+| timeframe | Timeframe: | the timeframe list the phantom set is built from |
+| lock | Candles to lock: | the coordinator's candle count |
+
+**The constraint is the one the Comp field already stated.** A timeframe at or
+below the bot's own TA Timeframe is refused, and the reason is written beside the
+picker. A timeframe the venue does not serve carries a second message. Each pick
+below was made on a page freshly opened on 1d, on a Coinbase bot whose TA
+Timeframe is 1h:
+
+```
+picked  kept   told to the window       reason written beside the picker
+1d      1d     phantom_timeframes 1d    -
+6h      6h     phantom_timeframes 6h    -
+1h      1d     nothing                  1h is not above this bot's TA Timeframe 1h
+15m     1d     nothing                  15m is not above this bot's TA Timeframe 1h
+4h      1d     nothing                  4h is not offered by coinbase
+```
+
+The refusal is not new work for the engine. A phantom at or below the parent's
+own timeframe is already dropped twice over: the higher-timeframe bias keeps only
+a higher rank, and the Comp calculation skips a rank at or below the parent's. On
+the bot above, four of the five phantoms a restart used to build reached neither.
+
+**Two of the three now survive a restart.** The saved record carries the one
+timeframe and the candle count beside the enable flag it already carried. Driven
+through the fleet-load path on a record written for the run:
+
+```
+record carries                  restored bot holds                     lock
+phantom_timeframe 1d            1d                                        2
+lock_candle_count 7             5m 15m 30m 1h 1d                          7
+neither key                     5m 15m 30m 1h 1d                          2
+```
+
+**A bot nobody has chosen for is left exactly as it was.** The record takes a
+timeframe only when the bot holds one. A bot still on the engine's own six, which
+a Coinbase filter cuts to five, writes no timeframe key and restores to the same
+five. The narrowing to one happens when the operator picks one, and not before.
+
+```
+bot                 saved keys                                   restored holds  lock
+untouched           phantoms_enabled lock_candle_count                 5 names       2
+one timeframe set   phantoms_enabled lock_candle_count                 1 name        7
+                    phantom_timeframe
+```
+
+**The window now publishes what the page reads.** The answer a tab is asked for
+carried four values, and the page read five others off it that were never there,
+so every phantom reading on the React build drew at its own default. The answer
+carries them now.
+
+```
+published before    bot_id symbol mode state
+published now       bot_id symbol mode state exchange_id ta_timeframe
+                    enabled timeframes lock_candle_count
+```
+
+The candle count the page sets still sizes nothing. `TimeframeCoordinator`
+defines the one function that would read it and nothing calls that function, so
+the figure persists and waits.

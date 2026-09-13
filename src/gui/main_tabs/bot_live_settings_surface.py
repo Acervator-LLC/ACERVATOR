@@ -962,17 +962,28 @@ def pane_model() -> BotLiveSettingsModel:
 def tab_bot(model: BotLiveSettingsModel) -> dict:
     """The bot a tab of this window is asked for, read off ``model.bot``.
 
-    The tab surfaces build against the bot named in their request, so the
-    window publishes the one it holds rather than each tab opening on its
-    own stand-in.
+    Carries the three phantom readings the Phantom Bots tab builds on, so
+    ``enabled``, ``timeframes`` and ``lock_candle_count`` reach it from the
+    bot rather than from that tab's own defaults.
     """
     config = model.bot.config
-    return {
+    coordinator = getattr(model.bot, COORDINATOR_ATTRIBUTE, None)
+    published = {
         "bot_id": model.bot.bot_id,
         "symbol": config.symbol,
         "mode": config.mode,
         "state": model.bot.state,
+        "exchange_id": getattr(config, "exchange_id", None),
+        "ta_timeframe": getattr(config, "ta_timeframe", None),
+        "enabled": bool(getattr(model.bot, PHANTOM_ENABLE_ATTRIBUTE, False)),
+        "timeframes": list(
+            getattr(model.bot, PHANTOM_TIMEFRAMES_ATTRIBUTE, None) or []
+        ),
     }
+    lock_candles = getattr(coordinator, COORDINATOR_LOCK_ATTRIBUTE, None)
+    if lock_candles is not None:
+        published["lock_candle_count"] = int(lock_candles)
+    return published
 
 
 def build_view_model(model: BotLiveSettingsModel) -> dict:

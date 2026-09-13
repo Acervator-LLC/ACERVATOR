@@ -2,14 +2,14 @@
 
 Describes the sixth tab of the Live Bot Settings window, which opens on
 Detail for a running bot. The tab holds a note, three setting boxes --
-an enable switch, eleven timeframe switches and a lock-duration number
+an enable switch, one timeframe picker and a lock-duration number
 -- then a Coordinator Status box with four labelled rows, and, when the
 bot has them, a seven-column per-phantom table and a four-column
 cross-bot lock table. With neither table it shows one of three
 explanatory lines instead.
 
 ``PhantomBotsTabModel`` holds the tab's state. ``build`` reads the bot
-and fills every box. ``enable_changed``, ``timeframes_changed`` and
+and fills every box. ``enable_changed``, ``timeframe_chosen`` and
 ``lock_changed`` are the three settings the operator can move; each
 records the change the host dialog is told about. ``run_steps`` drives a
 list of those in order and reports the step that refused.
@@ -52,14 +52,21 @@ INFO_WORD_WRAP = True
 ENABLE_GROUP_TITLE = "Phantom Bots"
 ENABLE_CHECK_TEXT = "Enable Phantom Bots"
 
-TF_GROUP_TITLE = "Active Timeframes"
+TF_GROUP_TITLE = "Phantom Timeframe"
+TF_ROW_LABEL = "Timeframe:"
+TF_TOOLTIP = "The one phantom timeframe this bot runs"
 TF_HINT_TEXT = (
-    "v3.15.61 — TFs not supported by this bot's exchange "
-    "are disabled (greyed). Coinbase: 1m/5m/15m/30m/1h/2h/6h/1d. "
-    "Binance: full set. Others vary."
+    "One phantom, above this bot's own TA Timeframe. A timeframe at or "
+    "below it is refused, and so is one the venue does not offer. "
+    "Coinbase: 1m/5m/15m/30m/1h/2h/6h/1d. Binance: full set. Others vary."
 )
 TF_HINT_STYLE_FORMAT = "color: {color_hex}; font-size: 10px;"
 TF_HINT_WORD_WRAP = True
+
+TIMEFRAME_DEFAULT = "1d"
+NOT_HIGHER_FORMAT = "{timeframe} is not above this bot's TA Timeframe {parent}"
+NOT_OFFERED_FORMAT = "{timeframe} is not offered by {exchange}"
+REFUSAL_NONE = ""
 
 TIMEFRAMES = (
     "1m",
@@ -206,6 +213,8 @@ BOT_ID_ATTRIBUTE = "bot_id"
 CONFIG_ATTRIBUTE = "config"
 EXCHANGE_ID_ATTRIBUTE = "exchange_id"
 LOCK_COUNT_ATTRIBUTE = "lock_candle_count"
+TA_TIMEFRAME_ATTRIBUTE = "ta_timeframe"
+PARENT_TIMEFRAME_DEFAULT = "1h"
 
 TIMEFRAME_KEY = "timeframe"
 STATE_KEY = "state"
@@ -236,7 +245,7 @@ LOCK_FIELD = "lock_candle_count"
 
 ACTIONS = {
     "phantom_enable.toggled": "enable_changed",
-    "timeframe_check.toggled": "timeframes_changed",
+    "timeframe_combo.changed": "timeframe_chosen",
     "lock_spin.valueChanged": "lock_changed",
 }
 TIMERS: dict = {}
@@ -258,7 +267,8 @@ BUILD_INFO = "build.info"
 BUILD_ENABLE = "build.enable"
 BUILD_TF_ALLOWED = "build.tf_allowed"
 BUILD_TF_FALLBACK = "build.tf_fallback"
-BUILD_TF_CHECK = "build.tf_check"
+BUILD_TF_ITEM = "build.tf_item"
+BUILD_TF_CURRENT = "build.tf_current"
 BUILD_LOCK_FORM = "build.lock_form"
 BUILD_LOCK_FROM_COORDINATOR = "build.lock_from_coordinator"
 BUILD_LOCK_WITHOUT_COORDINATOR = "build.lock_without_coordinator"
@@ -283,7 +293,8 @@ BUILD_EMPTY_NOT_STARTED = "build.empty_not_started"
 BUILD_EMPTY_NO_STATE = "build.empty_no_state"
 BUILD_RETURN = "build.return"
 ENABLE_CHANGED = "enable.changed"
-TIMEFRAMES_CHANGED = "timeframes.changed"
+TIMEFRAME_CHOSEN = "timeframe.chosen"
+TIMEFRAME_REFUSED = "timeframe.refused"
 LOCK_CHANGED = "lock.changed"
 
 ModelCall = list
@@ -294,7 +305,8 @@ CALL_NAMES = (
     BUILD_ENABLE,
     BUILD_TF_ALLOWED,
     BUILD_TF_FALLBACK,
-    BUILD_TF_CHECK,
+    BUILD_TF_ITEM,
+    BUILD_TF_CURRENT,
     BUILD_LOCK_FORM,
     BUILD_LOCK_FROM_COORDINATOR,
     BUILD_LOCK_WITHOUT_COORDINATOR,
@@ -319,7 +331,8 @@ CALL_NAMES = (
     BUILD_EMPTY_NO_STATE,
     BUILD_RETURN,
     ENABLE_CHANGED,
-    TIMEFRAMES_CHANGED,
+    TIMEFRAME_CHOSEN,
+    TIMEFRAME_REFUSED,
     LOCK_CHANGED,
 )
 
@@ -340,12 +353,53 @@ def allowed_timeframes(exchange_id: Any) -> tuple:
 
 
 def timeframe_tooltip(timeframe: Any, supported: bool, exchange_id: Any) -> str:
-    """The note on one timeframe switch, naming the exchange when greyed."""
+    """The note on one timeframe entry, naming the exchange when greyed."""
     if supported:
         return TF_SUPPORTED_TOOLTIP_FORMAT.format(timeframe=timeframe)
     return TF_UNSUPPORTED_TOOLTIP_FORMAT.format(
         timeframe=timeframe, exchange_id=exchange_id
     )
+
+
+def is_higher_timeframe(timeframe: Any, parent: Any) -> bool:
+    """Say whether ``timeframe`` outranks ``parent`` in ``TIMEFRAMES``.
+
+    ``TIMEFRAMES`` runs in the rank order ``TIMEFRAME_ORDER`` uses, which the
+    Comp field and the higher-timeframe bias both read.
+    """
+    order = list(TIMEFRAMES)
+    if timeframe not in order or parent not in order:
+        return False
+    return order.index(timeframe) > order.index(parent)
+
+
+def chosen_timeframe(timeframes: Any) -> str:
+    """Pick the highest-ranked name in ``timeframes``, else ``TIMEFRAME_DEFAULT``.
+
+    A bot restored before one timeframe became the selection holds several, and
+    the highest is the one the higher-timeframe bias weighs most.
+    """
+    order = list(TIMEFRAMES)
+    held = [one for one in list(timeframes or ()) if one in order]
+    if not held:
+        return TIMEFRAME_DEFAULT
+    return max(held, key=order.index)
+
+
+def timeframe_refusal(
+    timeframe: Any, parent: Any, offered: Any, exchange_id: Any
+) -> str:
+    """Refuse ``timeframe`` at or below ``parent``, or outside ``offered``.
+
+    Hands back ``REFUSAL_NONE`` for a timeframe that passes both.
+    """
+    if not is_higher_timeframe(timeframe, parent):
+        return NOT_HIGHER_FORMAT.format(timeframe=timeframe, parent=parent)
+    if timeframe not in list(offered or ()):
+        return NOT_OFFERED_FORMAT.format(
+            timeframe=timeframe, exchange=exchange_id or UNKNOWN_EXCHANGE_TEXT
+        )
+    return REFUSAL_NONE
 
 
 def clamp_lock(value: Any) -> int:
@@ -492,10 +546,15 @@ def empty_text(enabled: Any, started: Any) -> str:
 
 
 class BotConfig:
-    """The one config reading the tab takes: the bot's exchange."""
+    """The two config readings the tab takes: the bot's exchange and timeframe."""
 
-    def __init__(self, exchange_id: Any = NO_EXCHANGE_ID) -> None:
+    def __init__(
+        self,
+        exchange_id: Any = NO_EXCHANGE_ID,
+        ta_timeframe: Any = PARENT_TIMEFRAME_DEFAULT,
+    ) -> None:
         setattr(self, EXCHANGE_ID_ATTRIBUTE, exchange_id)
+        setattr(self, TA_TIMEFRAME_ATTRIBUTE, ta_timeframe)
 
 
 class PhantomSource:
@@ -577,9 +636,10 @@ class BotSource:
         coordinator: Any = None,
         with_config: bool = True,
         missing: Any = None,
+        ta_timeframe: Any = PARENT_TIMEFRAME_DEFAULT,
     ) -> None:
         if with_config:
-            setattr(self, CONFIG_ATTRIBUTE, BotConfig(exchange_id))
+            setattr(self, CONFIG_ATTRIBUTE, BotConfig(exchange_id, ta_timeframe))
         absent = list(missing or ())
         held = [
             [ENABLED_ATTRIBUTE, enabled],
@@ -601,7 +661,7 @@ class PhantomBotsTabModel:
 
     ``build`` reads the bot and fills the note, the three setting boxes,
     the four status rows and either the two tables or one explanatory
-    line. ``enable_changed``, ``timeframes_changed`` and ``lock_changed``
+    line. ``enable_changed``, ``timeframe_chosen`` and ``lock_changed``
     are the three settings the operator moves. Every step is appended to
     ``calls`` in the order the shipped tab makes it.
     """
@@ -611,7 +671,10 @@ class PhantomBotsTabModel:
         self.accessible_name = ACCESSIBLE_NAME
         self.forms_configured = 0
         self.enable_checked = False
-        self.timeframe_checks: list = []
+        self.timeframe_items: list = []
+        self.timeframe_current = TIMEFRAME_DEFAULT
+        self.parent_timeframe = PARENT_TIMEFRAME_DEFAULT
+        self.refusal = REFUSAL_NONE
         self.exchange_id: Any = NO_EXCHANGE_ID
         self.allowed: tuple = ()
         self.lock_requested = LOCK_DEFAULT
@@ -639,7 +702,10 @@ class PhantomBotsTabModel:
         dialog rather than on the tab the dialog rebuilds.
         """
         self.enable_checked = False
-        self.timeframe_checks = []
+        self.timeframe_items = []
+        self.timeframe_current = TIMEFRAME_DEFAULT
+        self.parent_timeframe = PARENT_TIMEFRAME_DEFAULT
+        self.refusal = REFUSAL_NONE
         self.exchange_id = NO_EXCHANGE_ID
         self.allowed = ()
         self.lock_requested = LOCK_DEFAULT
@@ -672,7 +738,6 @@ class PhantomBotsTabModel:
         self.enable_checked = bool(getattr(bot, ENABLED_ATTRIBUTE, False))
         self.calls.append([BUILD_ENABLE, self.enable_checked])
 
-        current = set(getattr(bot, TIMEFRAMES_ATTRIBUTE, []) or [])
         config = getattr(bot, CONFIG_ATTRIBUTE, NO_CONFIG)
         if config is NO_CONFIG:
             self.exchange_id = NO_EXCHANGE_ID
@@ -683,17 +748,26 @@ class PhantomBotsTabModel:
             self.allowed = allowed_timeframes(self.exchange_id)
             self.calls.append([BUILD_TF_ALLOWED, len(self.allowed)])
         named = getattr(config, EXCHANGE_ID_ATTRIBUTE, UNKNOWN_EXCHANGE_TEXT)
+        self.parent_timeframe = str(
+            getattr(config, TA_TIMEFRAME_ATTRIBUTE, PARENT_TIMEFRAME_DEFAULT)
+            or PARENT_TIMEFRAME_DEFAULT
+        )
         for timeframe in TIMEFRAMES:
             supported = timeframe in self.allowed
-            self.timeframe_checks.append(
+            self.timeframe_items.append(
                 [
                     timeframe,
-                    timeframe in current and supported,
                     supported,
                     timeframe_tooltip(timeframe, supported, named),
                 ]
             )
-            self.calls.append([BUILD_TF_CHECK, timeframe, supported])
+            self.calls.append([BUILD_TF_ITEM, timeframe, supported])
+        self.timeframe_current = chosen_timeframe(
+            getattr(bot, TIMEFRAMES_ATTRIBUTE, []) or []
+        )
+        self.calls.append(
+            [BUILD_TF_CURRENT, self.timeframe_current, self.parent_timeframe]
+        )
 
         self.forms_configured += 1
         self.calls.append([BUILD_LOCK_FORM])
@@ -830,22 +904,25 @@ class PhantomBotsTabModel:
         self.calls.append([ENABLE_CHANGED, bool(checked)])
         return None
 
-    def timeframes_changed(self, timeframe: Any = None, checked: Any = None) -> None:
-        """One timeframe switch moved; the host is told the whole set.
+    def timeframe_chosen(self, timeframe: Any) -> None:
+        """Take one phantom timeframe, refusing one at or below the parent's.
 
-        The shipped tab collects every ticked switch rather than the one
-        that moved, so a set is what the host sees.
+        A refused timeframe leaves ``timeframe_current`` alone, writes the
+        reason into ``refusal``, and tells the host nothing.
         """
-        if timeframe is not None:
-            for check in self.timeframe_checks:
-                if check[0] == timeframe:
-                    check[1] = bool(checked)
-                    break
-            else:
-                raise KeyError(timeframe)
-        selected = [check[0] for check in self.timeframe_checks if check[1]]
-        self.changes.append([TIMEFRAMES_FIELD, selected])
-        self.calls.append([TIMEFRAMES_CHANGED, list(selected)])
+        if timeframe not in [item[0] for item in self.timeframe_items]:
+            raise KeyError(timeframe)
+        refused = timeframe_refusal(
+            timeframe, self.parent_timeframe, self.allowed, self.exchange_id
+        )
+        if refused:
+            self.refusal = refused
+            self.calls.append([TIMEFRAME_REFUSED, timeframe, refused])
+            return None
+        self.refusal = REFUSAL_NONE
+        self.timeframe_current = timeframe
+        self.changes.append([TIMEFRAMES_FIELD, [timeframe]])
+        self.calls.append([TIMEFRAME_CHOSEN, timeframe])
         return None
 
     def lock_changed(self, value: Any) -> None:
@@ -870,12 +947,8 @@ class PhantomBotsTabModel:
             if bool(step[1]) != self.enable_checked:
                 self.enable_changed(step[1])
         elif name == STEP_TIMEFRAME:
-            for check in self.timeframe_checks:
-                if check[0] == step[1]:
-                    if bool(step[2]) != check[1]:
-                        self.timeframes_changed(step[1], step[2])
-                    return None
-            raise KeyError(step[1])
+            if step[1] != self.timeframe_current:
+                self.timeframe_chosen(step[1])
         elif name == STEP_LOCK:
             kept = clamp_lock(step[1])
             if kept != self.lock_value:
@@ -937,7 +1010,15 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
             "style_sheet": TF_HINT_STYLE_FORMAT.format(color_hex=NOTE_COLOR),
             "word_wrap": TF_HINT_WORD_WRAP,
         },
-        "timeframe_checks": [list(check) for check in model.timeframe_checks],
+        "timeframe_combo": {
+            "row_label": TF_ROW_LABEL,
+            "tooltip": TF_TOOLTIP,
+            "items": [list(item) for item in model.timeframe_items],
+            "current": model.timeframe_current,
+            "parent": model.parent_timeframe,
+            "default": TIMEFRAME_DEFAULT,
+            "refusal": model.refusal,
+        },
         "timeframes": list(TIMEFRAMES),
         "fallback_timeframes": list(FALLBACK_TIMEFRAMES),
         "allowed_timeframes": list(model.allowed),
@@ -1034,6 +1115,8 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
             "unlocked_style": UNLOCKED_STYLE_FORMAT,
             "tf_supported_tooltip": TF_SUPPORTED_TOOLTIP_FORMAT,
             "tf_unsupported_tooltip": TF_UNSUPPORTED_TOOLTIP_FORMAT,
+            "tf_not_higher": NOT_HIGHER_FORMAT,
+            "tf_not_offered": NOT_OFFERED_FORMAT,
             "phantom_group_title": PHANTOM_GROUP_TITLE_FORMAT,
             "locks_group_title": LOCKS_GROUP_TITLE_FORMAT,
             "target": TARGET_FORMAT,
@@ -1074,6 +1157,7 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
             "config": CONFIG_ATTRIBUTE,
             "exchange_id": EXCHANGE_ID_ATTRIBUTE,
             "lock_count": LOCK_COUNT_ATTRIBUTE,
+            "ta_timeframe": TA_TIMEFRAME_ATTRIBUTE,
         },
         "keys": {
             "timeframe": TIMEFRAME_KEY,
@@ -1137,6 +1221,7 @@ def view_model(params: dict) -> dict:
         given_phantoms = bot.get("phantoms")
         PANE_MODEL.bot = BotSource(
             exchange_id=bot.get("exchange_id", NO_EXCHANGE_ID),
+            ta_timeframe=bot.get("ta_timeframe", PARENT_TIMEFRAME_DEFAULT),
             enabled=bot.get("enabled", False),
             started=bot.get("started", False),
             timeframes=bot.get("timeframes"),
