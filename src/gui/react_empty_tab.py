@@ -107,7 +107,7 @@ def host_script(model: dict) -> str:
     }
 
 
-def panel_html(model: dict, theme: str = "cyberpunk_dark") -> str:
+def panel_html(model: dict, theme: object = None) -> str:
     """The whole empty-tab page as one string, with no network fetch.
 
     The panel host rides in the body, so it is on the page before the renderer

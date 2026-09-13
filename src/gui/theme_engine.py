@@ -411,6 +411,19 @@ def stored_theme(name: object) -> str:
     return name if isinstance(name, str) and name in THEMES else DEFAULT_THEME_NAME
 
 
+_applied_name = DEFAULT_THEME_NAME
+
+
+def applied_theme() -> str:
+    """Return the theme name ``ThemeManager.apply_theme`` last painted.
+
+    ``main`` applies ``stored_theme`` before the window is built and the Theme
+    menu applies every switch after it, so ``applied_theme`` answers the theme
+    the application is painted in now.
+    """
+    return _applied_name
+
+
 #: The accent field's value that leaves a theme's own ``accent_primary`` painting.
 THEME_ACCENT = ""
 
@@ -860,8 +873,10 @@ class ThemeManager:
         importing Qt at module level. ``accent`` paints over the theme's
         ``accent_primary`` when ``stored_accent`` accepts it.
         """
+        global _applied_name
         qss = self.get_qss(name, accent)
         self._current = accented(self.get_theme(name), accent)
+        _applied_name = self._current.name
         if hasattr(app, "setStyleSheet"):
             app.setStyleSheet(qss)
 

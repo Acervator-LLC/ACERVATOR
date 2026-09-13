@@ -152,7 +152,7 @@ def host_script(model: dict) -> str:
     }
 
 
-def panel_html(model: dict, theme: str = "cyberpunk_dark") -> str:
+def panel_html(model: dict, theme: object = None) -> str:
     """The whole Accumulation page as one string, with no network fetch.
 
     The panel host rides in the body, ahead of the renderer module that asks it

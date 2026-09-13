@@ -89,14 +89,22 @@ def read_asset(name: str) -> str:
         ) from exc
 
 
-def _palette(theme: str) -> dict:
-    """The six chrome colours, read from ``CHART_THEMES``.
+def page_theme(theme: object = None) -> str:
+    """The theme name a page opens in, always a name ``THEMES`` holds.
 
-    An unknown ``theme`` falls back to ``cyberpunk_dark``.
+    A ``theme`` of None takes ``applied_theme``, which is the theme the
+    application is painted in, so a page opens on the operator's choice.
     """
+    from .theme_engine import applied_theme, stored_theme
+
+    return stored_theme(applied_theme() if theme is None else theme)
+
+
+def _palette(theme: object = None) -> dict:
+    """The six chrome colours ``page_theme`` selects out of ``CHART_THEMES``."""
     from .tradingview_chart import CHART_THEMES
 
-    colors = CHART_THEMES.get(theme) or CHART_THEMES["cyberpunk_dark"]
+    colors = CHART_THEMES[page_theme(theme)]
     return {
         "--bg": colors["bg"],
         "--text": colors["text"],
@@ -107,11 +115,40 @@ def _palette(theme: str) -> dict:
     }
 
 
+def palette_script(theme: object = None) -> str:
+    """The one JS statement rewriting a drawn page's six chrome colours.
+
+    ``repaint_pages`` runs it on a page already up, which keeps every drawn
+    row and the scroll position that a fresh ``page_html`` would lose.
+    """
+    calls = "".join(
+        "d.style.setProperty(%s,%s);" % (json.dumps(name), json.dumps(value))
+        for name, value in _palette(theme).items()
+    )
+    return "(function(){var d=document.documentElement;" + calls + "})();"
+
+
+def repaint_pages(root: Any, theme: object = None) -> int:
+    """Run ``palette_script`` on every ``QWebEngineView`` under ``root``.
+
+    Returns how many views took it, and 0 without WebEngine or without a
+    ``root``.
+    """
+    if not _HAS_WEBENGINE or root is None:
+        return 0
+    script = palette_script(theme)
+    painted = 0
+    for view in root.findChildren(QWebEngineView):
+        view.page().runJavaScript(script)
+        painted += 1
+    return painted
+
+
 def page_html(
     style_assets: tuple,
     script_assets: tuple,
     body: str,
-    theme: str = "cyberpunk_dark",
+    theme: object = None,
     inline_scripts: tuple = (),
 ) -> str:
     """One page as a string: styles, ``body``, the assets, then ``inline_scripts``.
@@ -148,7 +185,7 @@ def page_html(
     return "\n".join(parts)
 
 
-def panel_html(theme: str = "cyberpunk_dark") -> str:
+def panel_html(theme: object = None) -> str:
     """The whole page as one string, with no network fetch."""
     return page_html((STYLE_ASSET,), ASSET_NAMES, '<div id="root"></div>', theme)
 
@@ -220,7 +257,7 @@ if _HAS_WEBENGINE:
         counts the rows the DOM drew.
         """
 
-        def __init__(self, parent=None, theme: str = "cyberpunk_dark") -> None:
+        def __init__(self, parent=None, theme: object = None) -> None:
             super().__init__(parent)
             self.setAccessibleName("React History Table")
             self._last_model: dict = {}

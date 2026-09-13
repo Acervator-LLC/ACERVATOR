@@ -76,7 +76,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def tab_html(theme: str = "cyberpunk_dark") -> str:
+def tab_html(theme: object = None) -> str:
     """The whole tab page as one string, with no network fetch."""
     return page_html(
         TAB_STYLE_ASSETS, TAB_SCRIPT_ASSETS, TAB_BODY, theme, (HOST_SCRIPT,)
@@ -125,7 +125,7 @@ if _HAS_WEBENGINE:
             self,
             feed: Optional[LiveFeedSource] = None,
             parent: Optional[QWidget] = None,
-            theme: str = "cyberpunk_dark",
+            theme: object = None,
         ) -> None:
             """Load the page; the first successful load draws the model."""
             super().__init__(parent)

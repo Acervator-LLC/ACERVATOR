@@ -197,7 +197,7 @@ _HOST_SOURCE = """(function (global) {
 })(window);"""
 
 
-def chrome_html(theme: str = "cyberpunk_dark") -> str:
+def chrome_html(theme: object = None) -> str:
     """The whole bar page as one string, with no network fetch."""
     body = (
         "<style>"
