@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ..bot_container import BotState
 
@@ -21,7 +21,17 @@ else:
 
 
 class CircuitBreakerMixin(_Host):
+    # ScrummingBot.__init__ assigns each of these; _Host resolves back to
+    # ScrummingBot, so the annotations break that cycle for a type reader.
     state: BotState
+    _cb_hard_tripped: bool
+    _cb_hard_tripped_at: float
+    _cb_hard_trip_pct: float
+    _cb_soft_active_side: Optional[str]
+    _cb_soft_cooldown_remaining: int
+    _cb_soft_tripped_at: float
+    _cb_soft_trip_pct: float
+    _cb_last_candle_ts: float
 
     def _check_circuit_breakers(self, candles) -> bool:
         """Evaluate the most recent candle for circuit-breaker triggers.
