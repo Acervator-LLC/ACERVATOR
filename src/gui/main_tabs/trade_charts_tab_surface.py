@@ -38,7 +38,9 @@ from typing import Any, Optional
 from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
 from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
 from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
+from .native_chart_surface import LEGEND_INVISIBLE_STYLE as PANEL_LEGEND_INVISIBLE_STYLE
 from .native_chart_surface import LEGEND_INVISIBLE_TEXT as PANEL_LEGEND_INVISIBLE
+from .native_chart_surface import LEGEND_ON_BOOK_STYLE as PANEL_LEGEND_ON_BOOK_STYLE
 from .native_chart_surface import LEGEND_SPACING_PX as PANEL_LEGEND_GAP_PX
 from .native_chart_surface import LEGEND_ON_BOOK_TEXT as PANEL_LEGEND_ON_BOOK
 from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
@@ -1536,6 +1538,10 @@ def build_view_model(
                 for key, label, colour in PANEL_INDICATOR_TOGGLES
             ],
             "legend": [PANEL_LEGEND_INVISIBLE, PANEL_LEGEND_ON_BOOK],
+            "legend_styles": [
+                PANEL_LEGEND_INVISIBLE_STYLE,
+                PANEL_LEGEND_ON_BOOK_STYLE,
+            ],
             "toggle_gap_px": PANEL_TOGGLE_GAP_PX,
             "legend_gap_px": PANEL_LEGEND_GAP_PX,
         },
