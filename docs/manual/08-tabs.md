@@ -2667,6 +2667,87 @@ The candle count the page sets still sizes nothing. `TimeframeCoordinator`
 defines the one function that would read it and nothing calls that function, so
 the figure persists and waits.
 
+### 2026-09-13 - #23 - the venue page draws in the second build
+
+The venue page now has a host. `src/gui/react_exchange_tab.py` builds one web
+view for each venue and draws `exchange_tab.js` inside it.
+
+The host answers the four calls the main window already makes on the Qt venue
+tab. Each call drives a surface model and pushes the answer into the page.
+
+```
+call the window makes             what the host runs
+exchange_id                       the attribute the constructor sets
+update_bots(statuses)             the screen model, then both bot tables
+_refresh_privacy_mode_btn_style   the screen model, then the header dots
+stop_feeds                        the page script that takes the bridge away
+```
+
+The page carries nine modules and one style sheet. It fetches nothing, because
+every script and every rule is written into the document.
+
+```
+design_tokens.js         theme_engine.js          shared_widgets.js
+header_strip.js          table_cells.js           bot_status_table.js
+extractor_bot_table.js   crypto_news_ticker.js    exchange_tab.js
+one style sheet          exchange_tab.css         26 rules
+```
+
+The screen draws a header row, a data-pool line, two bot sections and a command
+bar of five buttons. `bot_status_table.js` draws the Scrumming rows and
+`extractor_bot_table.js` draws the Extractor rows, each into a space the screen
+keeps for it.
+
+The page names what it loaded. A venue holding seven bots reads like this.
+
+```
+page modules       all nine, exchange_tab.js last
+page style sheets  exchange_tab.css, 26 rules
+scrum-table rows   5
+extractor rows     2
+```
+
+The style sheet paints what the payload leaves unpainted. The Privacy Mode
+button, the data-pool line and the two section labels carry their own colours
+from the backend, so no rule touches them. The five command buttons and the New
+Bot button carry none, so the sheet gives each one a ground, an edge and a text
+colour.
+
+An emptied style sheet reads as zero rules, and a withheld module drops out of
+the module list and draws no row. Both readings fall when the thing they
+measure is taken away.
+
+```
+run              module list       style sheet rules   scrum rows
+whole page       nine modules                     26            5
+style emptied    nine modules                      0            5
+table withheld   eight modules                    26            0
+```
+
+The page reports every control press back to Python. `ExchangePage` reads the
+console line the page writes and hands it to `run_action`, which drives the
+surface that owns the method and then pushes the new payload.
+
+```
+pressed           reached Python             the screen recorded
+Start on row 1    bot-eth-02, start          command.sent start scrumming
+nothing pressed   no call                    no entry
+```
+
+The host starts no bot and places no order while it builds or draws. It reaches
+three names under the trading package, and none of them is a bot, a container or
+an exchange client.
+
+```
+src.trading                   the package
+src.trading.gate_vocabulary   the gate names
+src.trading.target_bands      the Target BTC and Target ETH arithmetic
+```
+
+The news strip is fed. `bind_news_transport` gives the strip the same reader the
+desktop bridge gives it, and the first ask carries the start the Qt strip
+performs as it builds.
+
 ### 2026-09-13 - #23 - the bot wizard gets a host and a stylesheet
 
 `react_bot_wizard.py` builds the wizard page. `bot_wizard.css` paints it. The
