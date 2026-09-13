@@ -1296,7 +1296,7 @@ rather than typed.
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | - | in scope |
+| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | - | yes | shell | in scope |
@@ -1324,16 +1324,16 @@ rather than typed.
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/empty_tabs.py` | no | - | no | no | no | - | - | shelved |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | yes | shell | in scope |
+| `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | shell | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | yes | shell | in scope |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | shell | in scope |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | - | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | shell | in scope |
-| `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
@@ -1345,10 +1345,10 @@ rather than typed.
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
 | `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | no | yes | shelved |
-| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | no | yes | shelved |
-| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | no | yes | shelved |
-| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | no | yes | shelved |
+| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | shelved |
 | `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | shelved |
 | `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
@@ -1372,7 +1372,7 @@ rather than typed.
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | yes | yes | shell | in scope |
-| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | shell | in scope |
+| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 The Simulator rebuild removed the files above; they are not in the tree.
 
 The Capital Registry row names a file the tree no longer holds. The registry it
@@ -1390,8 +1390,8 @@ Bridge                   72
 Manifest                 62
 Registers in Electron    25
 Ships in the build       58
-RENDERS                  41
-RENDERS, in scope        29 of 43
+RENDERS                  42
+RENDERS, in scope        31 of 43
 out of scope             41
 ```
 
@@ -2816,3 +2816,54 @@ built the host and drew all five pages at three widths imported no module under
 **The table row above still reads a dash.** `variant_surface.py` records no
 loader pair for this screen, so the running window builds the Qt wizard. The row
 changes when that pair is recorded.
+
+### 2026-09-13 - #23 - the window chooses the three new hosts
+
+`variant_surface.py` records three more loader pairs. `register` holds one Qt
+loader and one React loader for each screen. The running build selects one side
+of each pair.
+
+| screen name | the Qt loader returns | the React loader returns |
+| --- | --- | --- |
+| Charts | `TradeChartsTab`, in `widgets/trade_charts_tab.py` | `ChartsTabReact`, in `react_charts_tab.py` |
+| Exchange page | `ExchangeTab`, in `widgets/exchange_tab.py` | `ExchangeTabReact`, in `react_exchange_tab.py` |
+| Bot creation wizard | `BotCreationWizard`, in `bot_wizard.py` | `BotWizardReactDialog`, in `react_bot_wizard.py` |
+
+Three call sites ask `surface_class` for the class. `ChartsTabMixin` builds the
+Charts tab in `_build_charts_tab`. `MainWindow` builds one venue page in
+`add_exchange_tab` and opens the wizard in `_create_bot`. Each call site keeps
+the Qt class as its fallback, so a screen with no recorded pair still builds the
+original.
+
+The window names what it built. One window ran under each build, and each class
+came off the live object.
+
+```
+screen          qt build            react build
+Charts tab      TradeChartsTab      ChartsTabReact
+venue page      ExchangeTab         ExchangeTabReact
+wizard          BotCreationWizard   BotWizardReactDialog
+```
+
+Each React page names what it loaded, once the window reaches it.
+
+```
+Charts tab   header_strip, native_chart, trade_charts_tab, no faults
+venue page   nine modules, exchange_tab.js last, exchange_tab.css, 26 rules
+wizard       eight module globals, all true, one sheet, 56 rules
+```
+
+The reading falls when one pair goes away. A run with the Charts pair deleted
+built the Qt tab and logged the refusal. The venue page and the wizard still
+answered with their hosts.
+
+```
+recorded pairs        Charts tab       venue page         wizard
+all three             ChartsTabReact   ExchangeTabReact   BotWizardReactDialog
+Charts pair deleted   TradeChartsTab   ExchangeTabReact   BotWizardReactDialog
+```
+
+The venue page keeps a dash in the table above. `TradingTabMixin` holds the Qt
+layer page as a hidden child in `_react_trading_page`, and that page holds the
+venue tabs. The React venue page draws its nine modules as soon as a run shows
+that layer page, so the host is built and reachable, and the Live tab hides it.

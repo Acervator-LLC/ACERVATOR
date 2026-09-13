@@ -1355,7 +1355,14 @@ if _HAS_QT:
                     target_widget.removeTab(idx)
                     _ph_dropped = True
 
-            tab = ExchangeTab(
+            from .variant_surface import EXCHANGE, surface_class
+
+            try:
+                page_class = surface_class(EXCHANGE)
+            except Exception as exc:
+                logger.warning("React exchange page unavailable: %s", exc)
+                page_class = ExchangeTab
+            tab = page_class(
                 exchange_id,
                 display_name,
                 on_new_bot=self._create_bot,
@@ -3261,13 +3268,20 @@ if _HAS_QT:
                 data_usage="Wizard will fetch available markets from exchange API for asset selection",
             )
 
-            from .bot_wizard import BotCreationWizard
+            from .variant_surface import BOT_WIZARD, surface_class
 
+            try:
+                wizard_class = surface_class(BOT_WIZARD)
+            except Exception as exc:
+                logger.warning("React bot wizard unavailable: %s", exc)
+                from .bot_wizard import BotCreationWizard
+
+                wizard_class = BotCreationWizard
             exchanges = self._settings.list_exchanges() if self._settings else []
             defaults = self._settings.get_all() if self._settings else {}
             if defaults_override:
                 defaults = {**defaults, **defaults_override}
-            wizard = BotCreationWizard(exchanges, defaults, self)
+            wizard = wizard_class(exchanges, defaults, self)
             if wizard.exec() == wizard.DialogCode.Accepted:
                 config = wizard.get_bot_config()
                 logger.info("Bot creation config: %s", config)

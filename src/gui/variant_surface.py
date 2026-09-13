@@ -15,10 +15,13 @@ from src._variant import QT, resolve_variant
 ALERTS = "Notifications and Alerts"
 BOT_LIVE_SETTINGS = "Bot live settings"
 BOT_SWARM = "Bot Swarm"
+BOT_WIZARD = "Bot creation wizard"
 BUY_CONFIRMATION = "Buy confirmation dialog"
+CHARTS = "Charts"
 CONSOLE = "Console"
 DASHBOARD_STAT_CARD = "Dashboard stat card"
 EMPTY_TAB = "Empty tab"
+EXCHANGE = "Exchange page"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MAIN_TAB_BOOK = "Main tab book"
@@ -288,6 +291,48 @@ def _react_trading() -> type:
     return TradingTabReact
 
 
+def _qt_charts() -> type:
+    """Import and return the Qt Charts tab."""
+    from .widgets.trade_charts_tab import TradeChartsTab
+
+    return TradeChartsTab
+
+
+def _react_charts() -> type:
+    """Import and return the React Charts tab."""
+    from .react_charts_tab import ChartsTabReact
+
+    return ChartsTabReact
+
+
+def _qt_exchange() -> type:
+    """Import and return the Qt page of one venue."""
+    from .widgets.exchange_tab import ExchangeTab
+
+    return ExchangeTab
+
+
+def _react_exchange() -> type:
+    """Import and return the React page of one venue."""
+    from .react_exchange_tab import ExchangeTabReact
+
+    return ExchangeTabReact
+
+
+def _qt_bot_wizard() -> type:
+    """Import and return the Qt bot creation wizard."""
+    from .bot_wizard import BotCreationWizard
+
+    return BotCreationWizard
+
+
+def _react_bot_wizard() -> type:
+    """Import and return the React bot creation wizard."""
+    from .react_bot_wizard import BotWizardReactDialog
+
+    return BotWizardReactDialog
+
+
 def _qt_buy_confirmation() -> type:
     """Import and return the Qt buy confirmation dialog."""
     from .buy_confirmation_dialog import BuyConfirmationDialog
@@ -319,3 +364,6 @@ register(BUY_CONFIRMATION, _qt_buy_confirmation, _react_buy_confirmation)
 register(SIMULATOR, _qt_simulator, _react_simulator)
 register(PAPER_TRADER, _qt_paper_trader, _react_paper_trader)
 register(TRADING, _qt_trading, _react_trading)
+register(CHARTS, _qt_charts, _react_charts)
+register(EXCHANGE, _qt_exchange, _react_exchange)
+register(BOT_WIZARD, _qt_bot_wizard, _react_bot_wizard)
