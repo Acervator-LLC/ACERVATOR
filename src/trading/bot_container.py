@@ -104,7 +104,6 @@ class BotContainer:
         self._data_pool = None  # set by BotManager.set_data_pool
         self._market_limits_cache: dict[str, tuple] = {}
         self._phantoms_enabled: bool = False
-        self._phantom_config: dict = {}
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual fire hook; the base implementation does nothing."""
@@ -594,9 +593,6 @@ class BotContainer:
         }
         state["config"]["mode"] = self.config.mode.value
 
-        if hasattr(self, "_phantom_config"):
-            state["phantom_config"] = self._phantom_config
-
         # Persist the phantom flag so an explicit OFF survives restart.
         if hasattr(self, "_phantoms_enabled"):
             state["phantoms_enabled"] = bool(self._phantoms_enabled)
@@ -606,8 +602,9 @@ class BotContainer:
         _phantom_tfs = [
             str(one) for one in (getattr(self, "_phantom_timeframes", None) or [])
         ]
+        # The key spells the field and the attribute: phantom_timeframes.
         if len(_phantom_tfs) == 1 and _phantom_tfs[0] in ALL_TIMEFRAMES:
-            state["phantom_timeframe"] = _phantom_tfs[0]
+            state["phantom_timeframes"] = _phantom_tfs
 
         # The coordinator owns the count; no BotConfig field carries it.
         _coordinator = getattr(self, "_coordinator", None)
