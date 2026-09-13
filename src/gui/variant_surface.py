@@ -28,6 +28,7 @@ SETTINGS_DIALOG = "Settings dialog"
 SIMULATOR = "Sim"
 SPENDABLE_PROFITS = "Spendable profits"
 START_ALL_PROGRESS = "Start All progress dialog"
+TRADING = "Trading"
 
 Loader = Callable[[], type]
 
@@ -273,6 +274,20 @@ def _react_paper_trader() -> type:
     return PaperTraderTabReact
 
 
+def _qt_trading() -> type:
+    """Import and return the Qt Live tab page, which ``TradingTabMixin`` fills."""
+    from PySide6.QtWidgets import QWidget
+
+    return QWidget
+
+
+def _react_trading() -> type:
+    """Import and return the React Live tab."""
+    from .react_trading_tab import TradingTabReact
+
+    return TradingTabReact
+
+
 def _qt_buy_confirmation() -> type:
     """Import and return the Qt buy confirmation dialog."""
     from .buy_confirmation_dialog import BuyConfirmationDialog
@@ -303,3 +318,4 @@ register(START_ALL_PROGRESS, _qt_start_all_progress, _react_start_all_progress)
 register(BUY_CONFIRMATION, _qt_buy_confirmation, _react_buy_confirmation)
 register(SIMULATOR, _qt_simulator, _react_simulator)
 register(PAPER_TRADER, _qt_paper_trader, _react_paper_trader)
+register(TRADING, _qt_trading, _react_trading)

@@ -4729,3 +4729,72 @@ Active to turn the hedge off. Reserve $200.00 stays spendable until it drains.
 Making zero mean off was not taken. Four of the thirty-eight running bots carry
 the switch on with a Hedge Balance of $0.00, so that meaning would change what
 those four do on their next fold.
+
+## 2026-09-13 - which build draws the Live tab
+
+The Live tab now picks its page from the variant seam. `src/gui/variant_surface.py`
+registers the screen `TRADING` and holds two loaders for it. `_qt_trading` returns
+the Qt page. `_react_trading` returns `TradingTabReact`.
+
+`src/gui/main_tabs/trading_tab.py` builds the Qt page on every start. `draws_react`
+then decides which page the tab shows. Under the Qt build the tab shows that page.
+Under the React build `_react_trading_page` makes the Qt page a hidden child of the
+React page and shows the React page.
+
+The Qt page keeps every widget the main window writes to. `MainWindow` writes to
+`_status_log` and `_indicator_panel` under both builds, so neither build may skip
+the Qt build step.
+
+`src/gui/react_trading_tab.py` — the page the React build shows
+
+```python
+def models(live: Any = None) -> dict:
+    tab = (
+        trading_tab_surface.bind_live(live)
+        if live is not None
+        else trading_tab_surface.view_model
+    )
+    return {
+        trading_tab_surface.METHOD: tab({}),
+        status_log_surface.METHOD: status_log_surface.view_model({}),
+        indicator_panel_surface.METHOD: indicator_panel_surface.view_model({}),
+    }
+```
+
+`TradingTabReact` reads the same bridge method the Qt tab reads. That method is
+`trading.tab`, and `trading_tab_surface.bind_live` serves it from the running
+program's own exchange list.
+
+The page carries five scripts and fetches nothing. `panel_host.js` comes first,
+then React, then `status_log.js`, `indicator_panel.js` and `trading_tab.js`. Each
+module is inlined, so no module can read its own file name off its script tag.
+`marker_script` names the module whose script tag comes next, and `namer_script`
+hands that name to the panel host.
+
+### The voting panel takes no entry of its own
+
+`trading_tab.js` mounts the voting panel itself. It keeps a slot for the panel and
+hands the slot to the panel host. `variant_surface.py` therefore registers no
+screen for the voting panel, and none is needed.
+
+The reading below comes from the running page under the React build.
+
+```
+registered panels   indicator_panel, status_log, trading_tab
+panel faults        none
+trading.tab         loaded
+```
+
+The same reading with `indicator_panel.js` taken off the page names the panel that
+did not draw, which is how the reading above is known to discriminate.
+
+```
+registered panels   status_log, trading_tab
+panel faults        indicator_panel: the manifest names no indicator_panel.js
+```
+
+### What the two builds draw
+
+Both pages were drawn at 1743 by 1088 pixels and compared. 91.67 percent of the
+sampled pixels differ. The Qt page paints its ground `#2d2d2d`. The React page
+paints its ground `#0a0a0f`.
