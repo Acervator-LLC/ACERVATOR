@@ -1324,16 +1324,16 @@ rather than typed.
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/empty_tabs.py` | no | - | no | no | no | - | - | shelved |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | shell | in scope |
+| `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | yes | shell | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | shell | in scope |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | yes | shell | in scope |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | - | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
+| `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | shell | in scope |
-| `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
+| `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
@@ -1345,10 +1345,10 @@ rather than typed.
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
 | `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | shelved |
-| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | shelved |
-| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | shelved |
-| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | no | yes | shelved |
+| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | no | yes | shelved |
+| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | no | yes | shelved |
+| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | no | yes | shelved |
 | `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | shelved |
 | `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
@@ -1384,15 +1384,15 @@ method, and the renderer manifest no longer names the page.
 Totals across the 76 rows above, measured on 5 September 2026:
 
 ```
-React module             62
+React module             63
 Uses React               60
 Bridge                   72
 Manifest                 62
-Registers in Electron    18
-Ships in the build       59
-RENDERS                  48
-RENDERS, in scope        43 of 43
-out of scope             37
+Registers in Electron    25
+Ships in the build       58
+RENDERS                  41
+RENDERS, in scope        29 of 43
+out of scope             41
 ```
 
 Four columns are all but complete. RENDERS, the column that is the item, is not.

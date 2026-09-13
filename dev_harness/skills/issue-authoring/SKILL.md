@@ -34,6 +34,68 @@ Operator, same day:
 ## <Verb set, where the feature has one>
 | Verb | Subsystem | Status |
 
+## W5H is the format for every issue
+
+Operator, 2026-09-13: *"W5H will now be the format for ALL issues."*
+
+Not the settings audit alone, and not the large issues alone. Every issue, every
+row in it, and every unit dispatched against one.
+
+**In the body.** An issue states the six questions once, near the top, so a
+reader knows what an answered row looks like:
+
+- **who** — what builds or calls the thing, in the running program
+- **what** — what changes when it runs
+- **where** — every site that names it
+- **when** — at which moments it runs
+- **why** — the manual sentence that says what it is for, quoted with its
+  location. Where none exists, the answer is **nothing** with the count that
+  shows it
+- **how** — the path from the operator's action to the value or the pixel at
+  the end of it
+
+**Per unit.** The six answers are posted as a comment on the issue **before any
+code changes**, each carrying a file and a line. A unit that changed code before
+posting has broken the format, whatever the code does.
+
+**Where the answer is nothing**, write nothing and give the count that proves
+it. An absence stated with a figure is an answer; an absence left silent is a
+gap.
+
+**A row closes on one of five outcomes** — verified, fixed, completed, removed,
+it waits — and a row that waits names the row it waits on.
+
+**The evidence is the running program.** A value driven through the real path, a
+picture of the screen, a count taken with a control that proves the search could
+report. Never a passing check on its own: a check reports on code, and he reads
+the program.
+
+## A W5H miss informs OCIR
+
+Operator, 2026-09-13: *"W5H misses inform OCIR."*
+
+A question that could not be answered, or that was answered and later proved
+wrong, is not a footnote in the report. It is a defect in how the thing was
+measured, and it becomes a row in the OCIR catalogue.
+
+Three kinds of miss, and each earns a row:
+
+- **Unanswerable.** No route in the canon reaches the question. The row names
+  the question and what would have to exist to answer it.
+- **Answered wrongly.** The answer was stated and the running program then said
+  otherwise. The row names the shape that produced the wrong answer, not the
+  wrong answer itself.
+- **Answered narrowly.** The answer was true of the filter and not of the world
+  — a count taken with a pattern narrower than the thing being counted.
+
+The row carries what every OCIR row carries: the shape, the measurement that
+showed it, one question to ask before trusting a result of that kind, and the
+command to run instead. A row with no measurement behind it is not written.
+
+**This closes the loop.** W5H asks the six questions, OCIR records how the
+answers went wrong, and the next brief carries the question that would have
+caught it.
+
 ## Build order
 ### Layer 0 — <name>
 | # | Concept | Subsystem | Status |
@@ -191,6 +253,49 @@ code. Neither becomes a new row.
 **The count is the check.** After writing an add-on unit's outcomes, the highest
 row number must not have moved. If it did, the unit handed back work and the
 brief did not bind.
+
+## No Still Absent. Fix it, then, in the unit that found it
+
+Operator, 2026-09-13: *"THERE WILL BE NO STILL ABSENT OR STILL NEEDS SHIT
+ACCEPTED FOR ANY W5H ITEMS GOING FORWARD. YOU FIX IT ALL. YOU DO IT RIGHT. YOU
+DO IT THEN. YOU LEAVE NO GAPS. YOU APPLY HYPER FOCUS AND SEE IF THE OBSERVED
+ABSENCE APPLIES TO THE WORK IN WHICH IT WAS OBSERVED."*
+
+**The Still Absent section is retired**, and with it every phrasing of it:
+owed, still needed, follow-on, next unit, out of scope for now. A brief that asks for one is
+wrong and a report that carries one is not finished.
+
+### The test, run on every absence the moment it is observed
+
+**Does this absence apply to the work in which it was observed?**
+
+- **Yes** — fix it now, inside that unit, with the same proof the unit owes for
+  everything else. Not a row, not a note, not a queue entry. Then.
+- **No** — it is not that unit's finding. Drop it. Do not caveat it, do not
+  mention it in the report, do not open anything for it. Noticing something true
+  while working elsewhere is drift, and it defends itself by feeling like
+  diligence.
+
+No third answer exists. "It is real but it belongs to another file" is the
+second answer, and the second answer is silence.
+
+### The one thing that still comes back
+
+A decision that is his: a product capability, a surface he can see, or a
+sentence of his own prose. One line, inside the item it belongs to, phrased so
+he can answer it without reading code. Never a code question.
+
+### Do not manufacture a gap by scheduling
+
+An absence that is genuinely this unit's work, blocked only because another unit
+holds the file, is a gap **I created** by running two units over one file. Run
+one at a time instead. A scheduling collision is not an exemption.
+
+### Why this rule exists
+
+Measured 2026-09-13: six add-on units returned 6, 7, 6, 5, 7 and 6 absences
+each. They closed four to six rows apiece and opened about as many, so the open
+count never fell. Work that hands back as much as it finishes is not work.
 
 ## Folding one issue into another
 
