@@ -4255,3 +4255,155 @@ declared fields      67 before, 65 after
 field readings       134 before, 130 after, 0 values different
 the four that moved  the two retired names, on each of the two bots
 ```
+
+## 2026-09-13 - #665 - the restore path reads the same declaration
+
+A launch used to rebuild every bot from a second list of field names. Creation
+had already stopped doing that: one helper reads the declaration and keeps every
+key naming a field the config declares. The restore path kept its own list —
+fifteen shared names, thirty-four Scrumming names and fifteen Extractor names,
+each carrying a default typed beside it. Both paths now call the one helper.
+
+`src/trading/container/restore.py` — the whole selection
+
+```python
+_kwargs = bot_config_kwargs(mode, cfg, exchange_id=cfg["exchange_id"])
+if "stack_mode" not in cfg:
+    _kwargs["stack_mode"] = STACK_MODE_DEFAULT
+```
+
+### Every place the field set is declared
+
+The three frozensets partition the dataclass exactly: their union holds 65 names,
+no field sits outside them, and no name in them is absent from the dataclass. The
+restore file now adds no fourth list.
+
+```
+BotConfig, 65 fields                         config.py:49
+_BOT_CONFIG_SHARED_FIELDS, 16                config.py:267
+_BOT_CONFIG_SCRUMMING_ONLY_FIELDS, 34        config.py:290
+_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS, 15        config.py:337
+bot_config_kwargs reads all four             config.py:629
+```
+
+### A field added to the declaration reaches both paths
+
+One run added a field to the declaration, typed 55.50 into it, and read that
+figure back off a bot built each way. The field count moved from 65 to 66, and a
+restored bot held the declared default until the restore path read the
+declaration.
+
+```
+before   creation 55.50      restore 0.00      1 of 2 paths carried it
+after    creation 55.50      restore 55.50     2 of 2 paths carried it
+```
+
+### What a stored record restores to
+
+A record shaped like the saved fleet file carried a value away from the default in
+every field it can hold, for one Scrumming bot and one Extractor. A third record
+held a venue and a mode and nothing else. All three restored on both sides of the
+change, and every reading matched.
+
+```
+record config fields      65 of 65 away from the declared default
+readings compared         213
+readings different        0
+the bare record           60 of 60 fields at the default they declare
+```
+
+The comparison can report a difference. One stored figure moved from 3.75 to
+9.99, the record restored again through the same path, and the comparison named
+that one field.
+
+```
+scrum_fire_pct   before 3.75   after 9.99   1 of 213 different
+```
+
+### The one value that changes, and the record that carries it
+
+An Extractor whose record holds a pool figure and no Target Balance used to come
+back at 200.00. Creation gives that bot its pool figure, and the restore path now
+agrees.
+
+```
+record      extractor_chunk_size_usd 777.00, no target_balance key
+before      restored target_balance 200.00
+after       restored target_balance 777.00
+creation    777.00, both before and after
+```
+
+Two writers reach the saved fleet file, and neither can write a configuration
+section short of a field. One writes the whole dataclass through `asdict`, and
+the other loads the file, edits a wire route and writes the file back. A record
+the program wrote therefore carries Target Balance, so no saved bot reaches the
+branch above.
+
+```
+src/trading/bot_container.py:591     "config": asdict(self.config)
+src/gui/bot_visualizer.py:1474       loads, edits one route, writes back
+```
+
+### Two defaults the restore path keeps as its own
+
+Stack Mode has two defaults, and they answer two different questions. Creation
+reads the retired Grid checkbox and treats its absence as off. A saved record
+never holds that key, so an absent Stack Mode on a restore takes the declared
+default instead.
+
+```
+creation   bulk_trading absent   stack_mode False
+restore    stack_mode absent     stack_mode True, STACK_MODE_DEFAULT
+```
+
+A stored null on the standing alt units, or on the pool picker's list, reaches a
+number and an empty list rather than a null. Both readings are unchanged by this
+entry and both are driven.
+
+```python
+if "inverted_extractor_standing_alt_units" in _kwargs:
+    # A stored null reaches float() as 0.0.
+    _kwargs["inverted_extractor_standing_alt_units"] = float(
+        _kwargs["inverted_extractor_standing_alt_units"] or 0.0
+    )
+```
+
+### One bad stored value used to stop the whole fleet
+
+The build of a bot's configuration now sits inside the handler that was already
+written for it. A record holding a boolean where the pool picker's list belongs,
+or a word where a quantity belongs, used to raise out of the loop: the bots
+already processed stayed, the rest never loaded, and no line named the record at
+fault. Each such record is now one skipped bot, named in the restore ledger, and
+the fleet around it comes back.
+
+```
+three bots, the middle record holding a boolean pool list
+before   the restore raised, 1 bot in the fleet, no ledger entry
+after    2 of 3 restored, ledger names the middle bot
+the same reading for a word where the standing quantity belongs
+```
+
+### What the earlier entries on this page now read
+
+Two sentences above describe the restore path as it stood. The corrected reading
+for each:
+
+| entry | the sentence above | what it now does |
+|---|---|---|
+| One declaration, at creation | "One declaration serves the wizard path and the restore path together, so every field the config declares reaches a new bot." | True of both paths now. The restore path reads the same helper, so a field added to the declaration reaches a restored bot with no second edit. |
+| Max adoptable USD | "`max_adoptable_usd` is the one `BotConfig` field no page offers and the restore path does not read either." | The field is gone. Row 135 removed it and its reader, and the accumulation ceiling reads Target Balance. No field on the dataclass is unread by the restore path. |
+
+### A stored phantom timeframe, read again
+
+The restore path passes the stored timeframe to the bot, and the bot keeps it
+where the venue offers that granularity. A stored 4h on Coinbase reaches an empty
+list because the venue has no 4h candle, and the bot writes its own note naming
+the entry it dropped.
+
+```
+stored '1d'   bot holds ['1d']
+stored '6h'   bot holds ['6h']
+stored '4h'   bot holds []      available_timeframes('coinbase') has no 4h
+absent        bot holds ['5m', '15m', '30m', '1h', '1d']
+```
