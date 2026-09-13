@@ -302,6 +302,17 @@ class ExtractorBot(BotContainer):
                     base_asset,
                 )
                 self._crr_token = None
+        else:
+            # base_currency is allowed to be empty by make_bot_config, and an
+            # empty base_asset skips the claim with nothing else said.
+            logger.warning(
+                "Bot %s placed NO capital reservation: base_currency %r, "
+                "chunk plus hedge %.10g. A concurrent ScrummingBot may spend "
+                "these units.",
+                self.bot_id,
+                base_asset,
+                total_reserved_base,
+            )
 
     def set_chunk_size_usd(self, new_value: float) -> dict:
         """Apply a new operator-set Pool Size (USD) to a running bot.

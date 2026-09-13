@@ -1436,11 +1436,16 @@ class ExecutionEngineMixin:
                 )
                 return None
         except Exception as _crr_exc:
-            logger.debug(
-                "Bot %s capital reservation pre-check raised %s — "
-                "falling through to existing gates; v3.20.1 backstop "
-                "remains active.",
+            # The only reader of another bot's claim; without it this sell is
+            # bounded by _current_holdings alone.
+            logger.warning(
+                "Bot %s sell of %.6f %s is NOT bounded by any other bot's "
+                "capital reservation: the pre-check raised %s: %s. A sibling "
+                "bot's claim on this asset is invisible to this sell.",
                 self.bot_id,
+                amount,
+                self.config.target_asset,
+                type(_crr_exc).__name__,
                 _crr_exc,
             )
 

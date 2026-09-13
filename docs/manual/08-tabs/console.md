@@ -445,4 +445,30 @@ own text prefix, a voting-panel snapshot at fire time, and a gate decision at
 fire time. The last two emit events rather than text lines, and the Console
 tab's signal pane reads them.
 
+### A missing capital reservation in the log
+
+A bot claims the units it is allowed to work with so that a second bot on the
+same asset cannot sell them. Four places let a bot carry on when that claim is
+not there, and all four now write a warning naming what was lost. They appear in
+the upper pane at warning level.
+
+`src/trading/scrumming/execution.py` — the one that bears on a sale
+
+```python
+logger.warning(
+    "Bot %s sell of %.6f %s is NOT bounded by any other bot's "
+    "capital reservation: the pre-check raised %s: %s. A sibling "
+    "bot's claim on this asset is invisible to this sell.",
+```
+
+The other three name an allocation that is not held aside at admission, an
+Extractor whose base currency is empty, and a dollar grant made without an
+over-allocation check.
+
+```
+src/trading/container/registry.py      at admission
+src/trading/extractor_bot.py           at the chunk-rate claim
+src/trading/capital_registry.py        at the dollar grant
+```
+
 Back to [the subsystem index](README.md).
