@@ -184,8 +184,9 @@ class StateSerializerMixin:
                 if _restored_target > _smart_ceiling_target:
                     logger.warning(
                         "restore: persisted target_balance $%.2f "
-                        "exceeds Smart Ceiling $%.2f (anchor $%.2f × %.1fx). "
-                        "Snapping to Smart Ceiling — likely stale "
+                        "exceeds Position Ceiling $%.2f (anchor $%.2f × "
+                        "Ceiling Multiple %.1fx). "
+                        "Snapping to Position Ceiling — likely stale "
                         "pre-detonation state.",
                         _restored_target,
                         _smart_ceiling_target,

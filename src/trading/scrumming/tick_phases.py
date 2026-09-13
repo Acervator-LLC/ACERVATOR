@@ -691,15 +691,15 @@ class TickPhaseMixin:
                             bot_id=self.bot_id,
                             message=(
                                 f"INITIAL ENTRY BLOCKED "
-                                f"(Smart Ceiling): prospective "
+                                f"(Position Ceiling): prospective "
                                 f"position ${_prospective:.2f} "
                                 f"(existing ${_fresh_usd:.2f} + "
                                 f"buy ${self._target_balance:.2f}) "
-                                f"would exceed Smart Ceiling "
+                                f"would exceed Position Ceiling "
                                 f"${_smart_ceiling_usd:.2f} "
                                 f"(anchor "
                                 f"${self._anchor_target_balance:.2f} "
-                                f"× {_smart_mult:.1f}x). "
+                                f"× Ceiling Multiple {_smart_mult:.1f}x). "
                                 f"Refusing buy."
                             ),
                         )
