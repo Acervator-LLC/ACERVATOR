@@ -1,0 +1,176 @@
+/* React exchange page chrome: the page ground, the header row, the two bot
+ * table spaces `bot_status_table.js` and `extractor_bot_table.js` draw into,
+ * and the command bar under them. The Privacy Mode button, the freshness
+ * line and the two section labels carry their own `style` attribute from the
+ * Python payload, so no rule here may set a colour on one.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--SURFACE_0, var(--bg));
+  color: var(--TEXT_HIGH, var(--text));
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* The element the host draws the page into. */
+#exchange-root {
+  height: 100%;
+}
+
+/* A part carries `display:flex` on its own style attribute, which outranks
+ * the browser's own rule for a hidden element. */
+[hidden] {
+  display: none !important;
+}
+
+.acervator-exchange-tab[data-part="exchange-tab"] {
+  gap: 6px;
+  padding: 6px;
+}
+
+[data-part="header-row"] {
+  flex: none;
+  gap: 6px;
+}
+
+/* QFrame around the strip crypto_news_ticker.js fills. */
+[data-part="news-ticker"] {
+  min-width: 0;
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+button.acervator-exchange-tab {
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+button.acervator-exchange-tab:focus-visible {
+  outline: 1px solid var(--OUTLINE_STRONG, var(--accent));
+}
+
+/* QPushButton: the payload marks this button accent and paints none of it,
+ * so the sheet gives it the body text colour a button does not inherit. */
+[data-part="add-bot-button"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  color: var(--TEXT_HIGH, var(--text));
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 3px;
+  padding: 4px 12px;
+}
+
+[data-part="add-bot-button"][data-accent="true"] {
+  color: var(--PRIMARY, var(--accent));
+  border-color: var(--PRIMARY, var(--accent));
+  font-weight: bold;
+}
+
+[data-part="add-bot-button"]:hover {
+  background: var(--SURFACE_3, var(--btn-bg));
+}
+
+/* QLabel: the freshness line keeps its own colour and size from the payload,
+ * so this is the edge above it only. */
+[data-part="pull-rate"] {
+  flex: none;
+  border-bottom: 1px solid var(--OUTLINE, var(--border));
+}
+
+[data-part="scrum-section"],
+[data-part="extractor-section"] {
+  flex: none;
+}
+
+/* QTableWidget: each bot table sits on the raised ground with one edge. */
+[data-part="scrum-table"],
+[data-part="extractor-table"] {
+  background: var(--SURFACE_1, var(--btn-bg));
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 3px;
+}
+
+/* The grid around the rows bot_status_table.js and extractor_bot_table.js
+ * draw. Each cell paints its own colour from the payload, so this sets the
+ * column rule and the spacing only. */
+[data-part="scrum-table"] table,
+[data-part="extractor-table"] table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+[data-part="scrum-table"] th,
+[data-part="extractor-table"] th {
+  background: var(--SURFACE_2, var(--btn-bg));
+  border-bottom: 1px solid var(--OUTLINE, var(--border));
+  padding: 4px 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+[data-part="scrum-table"] td,
+[data-part="extractor-table"] td {
+  border-bottom: 1px solid var(--SURFACE_3, var(--grid));
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+[data-part="command-bar"] {
+  flex: none;
+  gap: 4px;
+  padding-top: 2px;
+  border-top: 1px solid var(--OUTLINE, var(--border));
+}
+
+/* The five command buttons carry no style attribute, so the sheet gives
+ * each one the body text colour a button does not inherit. */
+[data-part="command-button"] {
+  flex: 1 1 auto;
+  background: var(--SURFACE_2, var(--btn-bg));
+  color: var(--TEXT_HIGH, var(--text));
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 3px;
+  padding: 4px 10px;
+}
+
+[data-part="command-button"]:hover {
+  background: var(--SURFACE_3, var(--btn-bg));
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+/* QPushButton with danger=true: the Delete button on the command bar. */
+[data-part="command-button"][data-danger="true"] {
+  color: var(--DANGER, var(--accent));
+  border-color: var(--DANGER, var(--accent));
+}
+
+/* The space bot_wizard.js fills once "+ New Bot" has been pressed. */
+[data-part="bot-wizard-page"] {
+  border-top: 1px solid var(--OUTLINE, var(--border));
+}
+
+/* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
+[data-part="scrum-table"]::-webkit-scrollbar,
+[data-part="extractor-table"]::-webkit-scrollbar,
+[data-part="bot-wizard-page"]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-part="scrum-table"]::-webkit-scrollbar-thumb,
+[data-part="extractor-table"]::-webkit-scrollbar-thumb,
+[data-part="bot-wizard-page"]::-webkit-scrollbar-thumb {
+  background: var(--OUTLINE, var(--border));
+  border-radius: 5px;
+}
