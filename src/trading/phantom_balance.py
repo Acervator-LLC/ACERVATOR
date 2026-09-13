@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-"""``PhantomBalanceBot`` read-only TA observers, one per timeframe.
+"""``PhantomBot`` read-only TA observers, one per timeframe.
 
-Each ``PhantomBalanceBot._tick`` computes TA on its own timeframe and stores it
+Each ``PhantomBot._tick`` computes TA on its own timeframe and stores it
 on ``last_summary``, constructing no order. ``TimeframeCoordinator`` weights
 those summaries by ``tf_rank`` in ``get_higher_tf_bias`` and returns them per
 timeframe in ``get_multi_tf_summary``. ``TIMEFRAME_ORDER`` runs 1m to 1w,
@@ -90,7 +90,7 @@ class TradeLock:
         return self.candles_remaining <= 0
 
 
-class PhantomBalanceBot:
+class PhantomBot:
     """A read-only TA observer registered on one ``TimeframeCoordinator``.
 
     ``_tick`` refreshes ``last_summary`` for ``timeframe``; ``target_balance``,
@@ -249,7 +249,7 @@ class PhantomBalanceBot:
 
 
 class TimeframeCoordinator:
-    """Registry of ``PhantomBalanceBot`` instances and their ``TradeLock`` list.
+    """Registry of ``PhantomBot`` instances and their ``TradeLock`` list.
 
     ``get_higher_tf_bias`` and ``get_multi_tf_summary`` read the registered
     phantoms; ``create_lock``, ``is_locked`` and ``tick_candle`` own the locks.
@@ -258,23 +258,23 @@ class TimeframeCoordinator:
     def __init__(self, lock_candle_count: int = 2, bus=None) -> None:
         self.lock_candle_count = lock_candle_count
         self._locks: list[TradeLock] = []
-        self._phantoms: dict[str, PhantomBalanceBot] = {}
+        self._phantoms: dict[str, PhantomBot] = {}
         self._bus = bus if bus is not None else get_event_bus()
 
-    def register_phantom(self, phantom: PhantomBalanceBot) -> None:
+    def register_phantom(self, phantom: PhantomBot) -> None:
         self._phantoms[phantom.phantom_id] = phantom
 
     def unregister_phantom(self, phantom_id: str) -> None:
         self._phantoms.pop(phantom_id, None)
 
-    def get_phantoms_for_parent(self, parent_bot_id: str) -> list[PhantomBalanceBot]:
+    def get_phantoms_for_parent(self, parent_bot_id: str) -> list[PhantomBot]:
         return [p for p in self._phantoms.values() if p.parent_bot_id == parent_bot_id]
 
     def get_phantom_by_timeframe(
         self,
         parent_bot_id: str,
         timeframe: str,
-    ) -> Optional[PhantomBalanceBot]:
+    ) -> Optional[PhantomBot]:
         for p in self._phantoms.values():
             if p.parent_bot_id == parent_bot_id and p.timeframe == timeframe:
                 return p
@@ -472,7 +472,7 @@ class TimeframeCoordinator:
 
 
 class PhantomBalanceManager:
-    """Owns one ``PhantomBalanceBot`` set per parent bot id.
+    """Owns one ``PhantomBot`` set per parent bot id.
 
     ``create_phantom_set`` builds and registers them on ``coordinator``, and
     ``start_all``, ``stop_all`` and ``remove_set`` act on a whole set.
@@ -480,7 +480,7 @@ class PhantomBalanceManager:
 
     def __init__(self, coordinator: TimeframeCoordinator) -> None:
         self.coordinator = coordinator
-        self._sets: dict[str, list[PhantomBalanceBot]] = {}
+        self._sets: dict[str, list[PhantomBot]] = {}
 
     def create_phantom_set(
         self,
@@ -491,8 +491,8 @@ class PhantomBalanceManager:
         symbol: str,
         balance_scaling: str = "equal",
         ta_weights: Optional[dict[str, float]] = None,
-    ) -> list[PhantomBalanceBot]:
-        """Build one ``PhantomBalanceBot`` per entry in ``timeframes`` and
+    ) -> list[PhantomBot]:
+        """Build one ``PhantomBot`` per entry in ``timeframes`` and
         register each on ``coordinator``.
 
         ``balance_scaling`` of "weighted" scales ``target_balance`` by
@@ -508,7 +508,7 @@ class PhantomBalanceManager:
             else:
                 ptb = target_balance
 
-            phantom = PhantomBalanceBot(
+            phantom = PhantomBot(
                 parent_bot_id=parent_bot_id,
                 phantom_id=f"{parent_bot_id}_phantom_{tf}",
                 timeframe=tf,
@@ -534,7 +534,7 @@ class PhantomBalanceManager:
         for phantom in self._sets.get(parent_bot_id, []):
             await phantom.stop()
 
-    def get_phantoms(self, parent_bot_id: str) -> list[PhantomBalanceBot]:
+    def get_phantoms(self, parent_bot_id: str) -> list[PhantomBot]:
         return self._sets.get(parent_bot_id, [])
 
     def remove_set(self, parent_bot_id: str) -> None:

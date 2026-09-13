@@ -510,7 +510,7 @@ if _HAS_QT:
             w = QWidget()
             layout = QVBoxLayout(w)
             self._phantoms_enabled = QCheckBox(
-                "Enable Phantom Balance Bots for Scrumming"
+                "Enable Phantom Bots for Scrumming"
             )
             self._phantoms_enabled.setChecked(True)
             layout.addWidget(self._phantoms_enabled)

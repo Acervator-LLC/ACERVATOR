@@ -359,7 +359,7 @@ ABOUT_TEXT = (
     "A multi-exchange crypto auto-trading platform.\n"
     "Grid Mode - Speculative Scrumming\n"
     "Profit Folding - Upward Distribution\n"
-    "Phantom Balance Bots - 7-Indicator TA Voting\n"
+    "Phantom Bots - 7-Indicator TA Voting\n"
     "TradingView Charts - Multi-Timeframe Analysis\n"
     "Verbose API Interaction Logging"
 )
@@ -569,7 +569,7 @@ ABBREVIATION_TOOLTIPS = (
     ),
     (
         "Phantom",
-        "Phantom Balance Bot - shadow bot analyzing a different timeframe",
+        "Phantom Bot - shadow bot analyzing a different timeframe",
     ),
     (
         "Folding",

@@ -585,7 +585,7 @@ class SplashScreen(AnimatedScreenBase):
             "Landing Strip Detection",
             "Boosted Fold",
             "Smart Wire Cross-Compounding",
-            "Multi-TF Phantom Balance",
+            "Multi-TF Phantom Bots",
             "SADP — AI Dev Governance",
             "AcervatorOS Appliance",
         ]

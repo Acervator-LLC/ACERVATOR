@@ -953,7 +953,7 @@ The master checkbox, eleven timeframe boxes — 1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h
 candles, 1 to 10. The build checks 5m, 15m, 1h, 4h and 1d, which is the state
 the figure shows.
 
-Enable Phantom Balance Bots for Scrumming - Turns the phantom overrides on for
+Enable Phantom Bots for Scrumming - Turns the phantom overrides on for
 a new bot. Per-bot key `enable_phantoms`, a checkbox, checked at build.
 
 This is the only control on the page that starts on. Save never reads it, so
@@ -963,7 +963,7 @@ the page stores nothing under the name it shows.
 
 ```python
 self._phantoms_enabled = QCheckBox(
-    "Enable Phantom Balance Bots for Scrumming"
+    "Enable Phantom Bots for Scrumming"
 )
 self._phantoms_enabled.setChecked(True)
 layout.addWidget(self._phantoms_enabled)
@@ -3928,7 +3928,7 @@ flowchart LR
     MODE --> POOL[Extractor Pool]
     ASSET --> PARAMS[Trading Parameters]
     POOL --> PARAMS
-    PARAMS --> PHANTOM[Phantom Balance Bots]
+    PARAMS --> PHANTOM[Phantom Bots]
     PHANTOM --> DONE[finish]
     PARAMS --> DONE
     FOLDING[Profit Folding and Upward Distribution] --> DONE
@@ -4629,7 +4629,7 @@ read and no venue was contacted.
 | --- | --- | --- |
 | Where, Qt | `src/gui/settings_dialog.py:521-525` | `src/gui/bot_wizard.py:1671-1674` |
 | Where, React | `src/gui/main_tabs/settings_dialog_surface.py:625-633` | `src/gui/main_tabs/bot_wizard_surface.py:1721-1735` |
-| Text | Enable Phantom Balance Bots for Scrumming | Enable Phantom Balance Bots |
+| Text | Enable Phantom Bots for Scrumming | Enable Phantom Bots |
 | Choices | on, off | on, off |
 | Opens at | on | the stored default, off when no bag arrives |
 | What it writes | the store key `default_enable_phantoms` | the config key `enable_phantoms` |
@@ -4681,7 +4681,7 @@ dialog saved 14 groups and none of them carried the box; it saves 15 now.
 flowchart LR
   A["Settings row<br/>default_enable_phantoms"] --> B["SettingsManager<br/>settings.toml"]
   B --> C["main_window._create_bot<br/>get_all()"]
-  C --> D["bot_wizard.py:1673<br/>Enable Phantom Balance Bots"]
+  C --> D["bot_wizard.py:1673<br/>Enable Phantom Bots"]
   D --> E["PhantomConfigPage.get_config<br/>enable_phantoms"]
   E --> F["main_window.py:3369<br/>ScrummingBot(enable_phantoms=)"]
   F --> G["scrumming_bot.py:402<br/>_phantoms_enabled"]
@@ -4727,7 +4727,7 @@ reach a bot already on disk.
 | ---------------- | ---------------------- |
 | "This is the only control on the page that starts on. Save never reads it, so the page stores nothing under the name it shows." | It still opens on. Save reads it and stores it under `default_enable_phantoms`, so the name on screen and the name in the store differ. |
 | "These three controls carry the same gap the TA Indicators page carries. Save reads none of them, the load path restores none, and the schema refuses a key it does not declare rather than storing it somewhere unread." | Save reads the master box and the load path restores it. The other two controls on the page still carry the gap. |
-| "Enable Phantom Balance Bots for Scrumming - Turns the phantom overrides on for a new bot." | Unchanged, and true for the first time: the wizard's own box opens on this row. |
+| "Enable Phantom Bots for Scrumming - Turns the phantom overrides on for a new bot." | Unchanged, and true for the first time: the wizard's own box opens on this row. |
 
 ### The wizard request this wiring still waits on
 

@@ -2268,13 +2268,13 @@ group emits, in the order of the rows above
 "profit_route_bot_id": self._profit_route_bot_id.text().strip(),
 ```
 
-![The Phantom Balance Bots page.](p23-i0.png)
+![The Phantom Bots page.](p23-i0.png)
 
 Lastly we have the selection for the Phantom (Balance) Bots. These are intended to provide trade action overrides from higher timeframe charts and indicator sets which, in turn, may result in an improved trade or prevent a premature one.
 
 **Functional.** This is the last page on the scrumming path:
 
-- Enable Phantom Balance Bots, a checkbox, off at the start.
+- Enable Phantom Bots, a checkbox, off at the start.
 - Active Timeframes, eleven checkboxes: 1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 12h,
   1d and 1w. All start clear. A timeframe the chosen venue does not carry is
   greyed out and cleared, with the reason written into its tooltip.

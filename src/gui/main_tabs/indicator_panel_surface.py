@@ -674,8 +674,8 @@ HEADER_TOOLTIPS = {
         "Composite Net — parent Net rank-weighted with all "
         "active higher-TF phantom bot summaries. "
         "Phantoms boost (bullish) or suppress (bearish) "
-        "the parent's signal only when Phantom Balance "
-        "Bots are enabled and have completed their first "
+        "the parent's signal only when Phantom Bots "
+        "are enabled and have completed their first "
         "signal cycle. Populated on the parent bot's TF "
         "row only; phantom TF rows read “—”."
     ),

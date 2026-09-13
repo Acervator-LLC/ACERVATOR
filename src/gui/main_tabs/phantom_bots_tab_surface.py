@@ -49,8 +49,8 @@ INFO_TEXT = (
 INFO_STYLE_FORMAT = "color: {color_hex}; font-size: 11px;"
 INFO_WORD_WRAP = True
 
-ENABLE_GROUP_TITLE = "Phantom Balance Bots"
-ENABLE_CHECK_TEXT = "Enable Phantom Balance Bots"
+ENABLE_GROUP_TITLE = "Phantom Bots"
+ENABLE_CHECK_TEXT = "Enable Phantom Bots"
 
 TF_GROUP_TITLE = "Active Timeframes"
 TF_HINT_TEXT = (
@@ -176,7 +176,7 @@ BEARISH_MARK = "BEARISH"
 
 EMPTY_DISABLED_TEXT = (
     "Phantom Bots are DISABLED on this bot. "
-    "Toggle 'Enable Phantom Balance Bots' above "
+    "Toggle 'Enable Phantom Bots' above "
     "to activate the multi-TF coordinator."
 )
 EMPTY_NOT_STARTED_TEXT = (

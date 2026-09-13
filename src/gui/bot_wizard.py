@@ -378,7 +378,7 @@ if _HAS_QT:
             sd = QLabel(
                 "The core trading engine. Uses 12-indicator TA voting to optimize "
                 "scrum-fold cycles relative to a Target Balance. Supports multi-timeframe "
-                "Phantom Balance coordination, Landing Strip detection, MR Inspector "
+                "Phantom Bot coordination, Landing Strip detection, MR Inspector "
                 "Boosted Fold, and Smart Wire cross-compounding."
             )
             sd.setWordWrap(True)
@@ -1657,7 +1657,7 @@ if _HAS_QT:
     class PhantomConfigPage(QWizardPage):
         def __init__(self, defaults: dict, parent=None):
             super().__init__(parent)
-            self.setTitle("Phantom Balance Bots")
+            self.setTitle("Phantom Bots")
             self.setSubTitle(
                 "Multi-timeframe shadow bots. Higher TFs override lower TFs."
             )
@@ -1673,7 +1673,7 @@ if _HAS_QT:
                 or AppSettings().default_lock_candle_count
             )
             layout = QVBoxLayout(self)
-            self._enable = QCheckBox("Enable Phantom Balance Bots")
+            self._enable = QCheckBox("Enable Phantom Bots")
             self._enable.setChecked(
                 bool((defaults or {}).get("default_enable_phantoms", False))
             )
