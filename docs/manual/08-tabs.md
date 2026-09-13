@@ -2747,3 +2747,72 @@ src.trading.target_bands      the Target BTC and Target ETH arithmetic
 The news strip is fed. `bind_news_transport` gives the strip the same reader the
 desktop bridge gives it, and the first ask carries the start the Qt strip
 performs as it builds.
+
+### 2026-09-13 - #23 - the bot wizard gets a host and a stylesheet
+
+`react_bot_wizard.py` builds the wizard page. `bot_wizard.css` paints it. The
+host answers the calls the window already makes on the Qt wizard, so one set of
+calls drives either build.
+
+| the window calls | the host answers with |
+| ---------------- | --------------------- |
+| the class, with the venue list and the stored defaults | `BotWizardReactDialog.__init__` |
+| exec | `QDialog.exec` |
+| DialogCode.Accepted | `QDialog.DialogCode` |
+| get_bot_config | `BotWizardReactDialog.get_bot_config` |
+
+**The page carries every asset it needs.** `dialog_html` inlines React, the four
+style sources, the table cells module, the wizard module and the sheet. The page
+fetches nothing over the network. `MODULE_GLOBALS` names the global each asset
+defines once its script tag has run.
+
+**The page says what it loaded.** `LOADED_MODULES_JS` reads each of those globals
+back. `LOADED_STYLES_JS` counts the sheets the browser parsed and the rules whose
+selector names the wizard class. One run of the built host read this:
+
+```
+modules   react  react-dom  design_tokens  theme_engine  shared_widgets
+          header_strip  table_cells  bot_wizard        all true
+styles    sheets 1    rules 56    wizard rules 50
+rail      asset  mode  params  phantom  extractor_pool   params current
+rows      47 field rows drawn
+```
+
+The same run with the sheet emptied on disk read `wizard rules 0`, and the
+browser drew all 47 rows in its own plain type. The same run with the module
+emptied on disk read `bot_wizard.js false`, no rail stops and no rows.
+
+**One model draws every page.** `BotWizardReactDialog.model` asks
+`bot_wizard_surface.view_model` for the whole wizard as one payload. The venue
+list, the stored defaults, the market list and the offered timeframes go in
+around the steps the page sends.
+
+**A press on the page comes back to Python.** The page writes one console line.
+`BotWizardPage` hands that line to `answer_call`, which builds a fresh payload
+and hands it back. A finished walk accepts the dialog, and a cancelled walk
+rejects it.
+
+**The sheet paints the parts the module names.** Every rule sits under the
+`acervator-bot-wizard` class and selects one `data-part` value.
+
+| part | what the sheet paints |
+| ---- | --------------------- |
+| wizard-title | the window name, in the accent colour, over a rule |
+| page-rail-stop | one pill per page, and the current page takes the accent |
+| page-title, page-subtitle | the page heading and its line of help |
+| field-group | a bordered block with its title in the accent |
+| field-row-label, field | a right-aligned label against a growing control |
+| target-combo, info-button | the pair box, its circle and the info button, on one line |
+| timeframe-row | one chip per timeframe, and a chip the venue refuses dims |
+| alt-list, alt-row | the pair list the pool page fills |
+| warning-box | the call-budget message the phantom page raises |
+| walk-step | the Next, Back, Cancel and Finish buttons |
+
+**The host reaches no venue and creates no bot.** The venue list and the market
+list are arguments, so the dialog opens no connection of its own. A run that
+built the host and drew all five pages at three widths imported no module under
+`src/trading` and wrote no file under the runtime tree.
+
+**The table row above still reads a dash.** `variant_surface.py` records no
+loader pair for this screen, so the running window builds the Qt wizard. The row
+changes when that pair is recorded.
