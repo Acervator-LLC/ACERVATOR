@@ -2644,6 +2644,12 @@ The one method that reads the number, `set_initial_chunk_rate`, has no caller in
 the product source either. Only tests call it. Issue #437 carries the method,
 and issue #336 the settings creation drops.
 
+Creation carries both names today. Driven on a wizard dictionary holding all
+fifteen Extractor names, the creation path carried fifteen of fifteen, and a
+restored bot read Inverted back — taking its entry side as a sell and its exit
+as a buy. The reader of the standing number is still uncalled, so the number
+itself reaches nothing.
+
 `src/trading/extractor_bot.py` — `ExtractorBot.set_initial_chunk_rate`, the
 inverted branch
 
@@ -2665,6 +2671,10 @@ Extractor ticks every five seconds, so 4 is twenty seconds on any timeframe.
 
 Bot creation does not pass it, so a new bot takes the declared default of 4.
 Issue #438 carries the counting, and issue #336 the drop.
+
+Creation passes it today. Driven with a typed 9, a restored bot read 9 rather
+than the default of 4. What it counts is unchanged: the throttle compares
+ticks.
 
 `src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the
 throttle
@@ -2688,6 +2698,9 @@ The wizard writes it as `extractor_drawdown_threshold_pct`, and bot creation
 does not pass it, so a new bot takes the declared default of 3.00. Issue #336
 carries this.
 
+Creation passes it today. Driven with a typed 11.00, a restored bot read 11.00
+rather than the default of 3.00.
+
 `src/trading/extractor_bot.py` — `ExtractorBot._is_in_drawdown`
 
 ```python
@@ -2702,10 +2715,20 @@ Trend Strength Threshold - To be re-evaluated.
 
 From 0.000 to 1.000, at 0.650 to start.
 
+Creation passes it, and it reaches the bot's technical-analysis signal provider
+once, at construction. Driven with a typed 0.875, the provider read 0.875. The
+provider is built one time per bot, so a later edit to the stored figure does
+not reach it.
+
 A sixth control sits in this part of the group and no entry above names it.
 Hedge budget (USD) starts at $0.00, which switches it off. Above zero, the bot
 converts it into a base-currency reserve held out of artillery rotation. This
 manual states that the control exists and claims nothing about what it is for.
+
+The budget is read at construction, and the line that turns it into base-currency
+units sits in a method with no caller, so the reserve it names stays at zero.
+Driven with $40.00, the restored bot read a hedge budget of 40.00 and a free
+hedge reserve of 0.00.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the remaining
 Extractor settings
@@ -2719,6 +2742,77 @@ Extractor settings
 "extractor_hedge_budget_usd": self._ext_hedge_budget.value(),
 "extractor_trend_strength_threshold": self._ext_trend_strength.value(),
 ```
+
+#### The fifteen Extractor-only settings the engine declares
+
+**Functional.** One declaration names every setting that belongs to an Extractor
+and to no Scrumming Bot. A Scrumming config carrying any of the fifteen is
+refused when it is built, and so is an Extractor config carrying a Scrumming-only
+name. Creation filters the wizard's dictionary against that one declaration, so a
+name added to it reaches a new bot without a second list being edited.
+
+`src/trading/container/config.py` — `bot_config_kwargs`, how the fifteen are
+carried
+
+```python
+carried = {f.name for f in fields(BotConfig)} - foreign - {"mode"}
+kwargs = {
+    key: value
+    for key, value in _sanitize_deprecated_kwargs(collected).items()
+    if key in carried
+}
+```
+
+All fifteen reach a new bot, and all fifteen survive a restore. Driven on a
+stored record holding every one of them, creation carried fifteen of fifteen and
+a restored bot read every value back unchanged. The same record with all fifteen
+dropped still restores the bot, on the declared defaults, and the behaviour moves
+with them: the entry side flips, and the watch list switches from the typed pair
+list to the ranked top-N.
+
+| setting | engine read | what the read decides |
+|---|---|---|
+| Chunk size (USD) | `extractor_bot.py:156` | the pool every round draws from |
+| Artillery size (USD) | `extractor_bot.py:1265` | the size of one round |
+| Watch list top-N | `extractor_bot.py:581` | how many ranked pairs are kept |
+| Watch list refresh | `extractor_bot.py:597` | when the list is re-ranked |
+| Pool Reserve | `extractor_bot.py:434` | the share a round may not take |
+| Exit % | `extractor_bot.py:799` | the share an exit sells |
+| Max compounding tier | `extractor_bot.py:1144` | roll to the next tier, or lock to the pool |
+| Max cost-basis multiple | `extractor_bot.py:858` | the averaging-down ceiling |
+| Correction skip candles | `extractor_bot.py:853` | the averaging-down throttle |
+| Drawdown threshold | `extractor_bot.py:786` | when a position counts as down |
+| Hedge budget (USD) | `extractor_bot.py:170` | the reserve corrections draw from first |
+| Trend Strength Threshold | `extractor_bot.py:193` | the threshold the signal provider is built with |
+| Target alt pairs | `extractor_bot.py:478` | the typed pair list against the ranked scan |
+| Direction | `extractor_bot.py:620` | whether entry buys or sells |
+| Standing alt units (inverted) | `extractor_bot.py:228` | nothing; its method has no caller |
+
+Three of the fifteen are read once, at construction, and never again: the pool
+size, the hedge budget and the trend strength threshold. The other twelve are
+read off the config as the bot ticks, so an edit to a running bot reaches them.
+The running-bot screen draws eight of the fifteen, so seven can only be set
+before the bot exists.
+
+**Three places the path from a control to a trade stops.** The dollar-to-base
+rate stays at one, the hedge reserve stays at zero, and the bot writes no capital
+claim of its own.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.__init__`, the rate
+
+```python
+self._usd_per_base_rate: float = 1.0  # dollars per base unit; set externally
+self._chunk_size_base: float = self._chunk_size_usd  # rebased when rate is set
+```
+
+All three sit behind one method. `set_initial_chunk_rate` is the only code that
+rebases the pool into base-currency units, converts the hedge budget, and claims
+the funds with the capital reservation registry, and it has no caller in the
+product source. Registration reads a rate of its own and writes a registry claim
+from it, but never hands that rate to the bot. Driven with a $250.00 pool, a
+$7.50 artillery size and a $40.00 hedge budget, the restored bot read a pool of
+250 base units, a round of 7.5 base units, a hedge reserve of zero, and no
+reservation token.
 
 ### Additional Main Window > Trading Tab Features
 
