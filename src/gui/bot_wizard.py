@@ -3,7 +3,7 @@
 bot_wizard.py - Bot Creation Wizard v1.9.7
 ===========================================
 Feature split:
-  Grid Bot: Investment Amount, Position Count/Distance/Increment,
+  Grid Bot: Position Count/Distance/Increment,
             Profit Folding, Upward Distribution, Extended Positions
   Accumulation Bot: Target Balance, Scrumming Interval, TA Engine, Phantoms
   Both: Visibility, Aggressive Trading, Bulk Trading (when Aggressive on)
@@ -25,7 +25,6 @@ try:
         QHBoxLayout,
         QFormLayout,
         QLabel,
-        QLineEdit,
         QComboBox,
         QSpinBox,
         QDoubleSpinBox,
@@ -1204,36 +1203,6 @@ if _HAS_QT:
 
             groups.addWidget(self._gates_group)
 
-            self._routing_group = QGroupBox("Profit Routing (v3.20.85)")
-            pr = _mkform()
-            self._routing_group.setLayout(pr)
-
-            self._profit_route = QComboBox()
-            self._profit_route.addItem("Fold back to target balance", "fold_to_target")
-            self._profit_route.addItem("Send to spendable", "spendable")
-            self._profit_route.addItem("Split fold/spendable per %", "split")
-            self._profit_route.addItem("Route to another bot (cross-bot)", "cross_bot")
-            self._profit_route.setToolTip(
-                "Where realized profit flows on fold. "
-                "fold_to_target = increase target balance "
-                "(compound); spendable = mark for withdrawal; "
-                "split = use fold % below; cross_bot = route to "
-                "the target bot ID."
-            )
-            pr.addRow("Route:", self._profit_route)
-
-            self._profit_route_bot_id = QLineEdit()
-            self._profit_route_bot_id.setPlaceholderText(
-                "leave blank unless route = cross_bot"
-            )
-            self._profit_route_bot_id.setToolTip(
-                "Target bot ID for cross-bot profit routing. Only "
-                "consulted when route = cross_bot."
-            )
-            pr.addRow("Target bot ID:", self._profit_route_bot_id)
-
-            groups.addWidget(self._routing_group)
-
             # One group, so every Extractor widget shows and hides together.
             self._extractor_group = QGroupBox("Extractor — Pool & Artillery")
             self._extractor_group.setVisible(False)
@@ -1469,7 +1438,6 @@ if _HAS_QT:
                 self._cb_group,
                 self._risk_group,
                 self._gates_group,
-                self._routing_group,
             ):
                 g.setVisible(scrum_visible)
             self._extractor_group.setVisible(is_extractor)
@@ -1567,8 +1535,6 @@ if _HAS_QT:
                     "scrum_defer_to_htf": self._gate_scrum_htf_chk.isChecked(),
                     "fold_require_ta_bearish": self._gate_fold_ta_chk.isChecked(),
                     "fold_defer_to_htf": self._gate_fold_htf_chk.isChecked(),
-                    "profit_route": self._profit_route.currentData(),
-                    "profit_route_bot_id": self._profit_route_bot_id.text().strip(),
                 }
             )
             return cfg

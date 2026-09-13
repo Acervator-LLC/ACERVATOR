@@ -217,13 +217,9 @@ class StateRestoreMixin:
                 # Every kwarg below is named one at a time, so a
                 # _DEPRECATED_KWARGS name in cfg reaches none of them.
                 _mode_kwargs = {
-                    "investment_amount": cfg.get("investment_amount", 200.0),
                     "increment_style": cfg.get("increment_style", "linear"),
-                    "spacing_style": cfg.get("spacing_style", "expanding"),
                     "profit_folding_active": cfg.get("profit_folding_active", True),
                     "scrumming_interval_pct": cfg.get("scrumming_interval_pct", 1.0),
-                    "profit_route": cfg.get("profit_route", "fold_to_target"),
-                    "profit_route_bot_id": cfg.get("profit_route_bot_id", ""),
                     "scrum_fold_pct": cfg.get("scrum_fold_pct", 100),
                     # Absent from older state files, so those bots restore
                     # with the despawn timer at 0.

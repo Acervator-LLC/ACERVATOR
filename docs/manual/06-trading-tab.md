@@ -2268,6 +2268,48 @@ group emits, in the order of the rows above
 "profit_route_bot_id": self._profit_route_bot_id.text().strip(),
 ```
 
+The group and both of its rows are now removed, from the wizard and from Bot
+Settings. The operator's ruling on a setting that reaches no trade: "I do not
+want dangling settings fixed that do not or have not affected what is now
+almost 6000 trades or data points. The trading mechanisms are valid and sound."
+Profit reaches accumulation through harvest-fold and the fold tranches, and a
+wire drawn on the Bot Swarm tab carries any cross-bot share, so neither row had
+a destination left to name.
+
+`src/trading/scrumming/wire_routing.py` — the cross-bot destination the engine
+does read, taken from the drawn wires and never from a stored bot id
+
+```python
+_wires = _wire_mgr.get_outgoing_wires(self.bot_id)
+```
+
+A bot saved before the removal still loads. A restart names each field it
+rebuilds one at a time, so a stored route is simply not read, and every other
+field arrives at the figure it was saved with.
+
+`src/trading/container/config.py` — the field a bot is sized by, which is what
+Target Balance writes
+
+```python
+target_balance: float = 200.0  # Balance the bot trades relative to
+```
+
+Two further settings are removed alongside them, and neither ever had a row on
+any screen. Investment amount was saved and restored and read by nothing.
+Spacing style was saved and restored and read by nothing, and the placement the
+engine derives from Opposing Trade Distance and the band extension is the
+method that replaced it.
+
+`src/trading/container/restore.py` — the scrumming fields a restart rebuilds,
+now carrying no line for either name
+
+```python
+"increment_style": cfg.get("increment_style", "linear"),
+"profit_folding_active": cfg.get("profit_folding_active", True),
+"scrumming_interval_pct": cfg.get("scrumming_interval_pct", 1.0),
+"scrum_fold_pct": cfg.get("scrum_fold_pct", 100),
+```
+
 ![The Phantom Bots page.](p23-i0.png)
 
 Lastly we have the selection for the Phantom (Balance) Bots. These are intended to provide trade action overrides from higher timeframe charts and indicator sets which, in turn, may result in an improved trade or prevent a premature one.

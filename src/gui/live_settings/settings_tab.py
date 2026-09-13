@@ -1115,52 +1115,6 @@ class SettingsTabMixin:
 
         layout.addWidget(gates_group)
 
-        routing_group = QGroupBox("Profit Routing (v3.20.85)")
-        pr = QFormLayout(routing_group)
-        self._configure_form(pr)
-
-        self._profit_route = QComboBox()
-        self._profit_route.addItem("Fold back to target balance", "fold_to_target")
-        self._profit_route.addItem("Send to spendable", "spendable")
-        self._profit_route.addItem("Split fold/spendable per %", "split")
-        self._profit_route.addItem("Route to another bot (cross-bot)", "cross_bot")
-        _cur_route = getattr(cfg, "profit_route", "fold_to_target")
-        _r_idx = self._profit_route.findData(_cur_route)
-        if _r_idx >= 0:
-            self._profit_route.setCurrentIndex(_r_idx)
-        self._profit_route.setToolTip(
-            "Where realized profit flows on fold. "
-            "fold_to_target = increase target balance "
-            "(compound); spendable = mark for withdrawal; "
-            "split = use fold % below; cross_bot = route to "
-            "the target bot ID."
-        )
-        self._profit_route.currentIndexChanged.connect(
-            lambda: self._mark_changed("profit_route", self._profit_route.currentData())
-        )
-        pr.addRow("Route:", self._profit_route)
-
-        self._profit_route_bot_id = QLineEdit()
-        self._profit_route_bot_id.setText(
-            str(getattr(cfg, "profit_route_bot_id", "") or "")
-        )
-        self._profit_route_bot_id.setPlaceholderText(
-            "leave blank unless route = cross_bot"
-        )
-        self._profit_route_bot_id.setToolTip(
-            "Target bot ID for cross-bot profit routing. Only "
-            "consulted when route = cross_bot. Leave blank "
-            "otherwise."
-        )
-        self._profit_route_bot_id.editingFinished.connect(
-            lambda: self._mark_changed(
-                "profit_route_bot_id", self._profit_route_bot_id.text().strip()
-            )
-        )
-        pr.addRow("Target bot ID:", self._profit_route_bot_id)
-
-        layout.addWidget(routing_group)
-
         if cfg.mode.value == "extractor":
             ext_group = QGroupBox("Extractor — Pool & Artillery")
             ef = QFormLayout(ext_group)
