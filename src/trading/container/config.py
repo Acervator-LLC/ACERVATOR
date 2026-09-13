@@ -55,11 +55,7 @@ class BotConfig:
     symbol: str = ""  # Derived: "BTC/USDT"
     mode: BotMode = BotMode.SCRUMMING
 
-    investment_amount: float = 200.0  # Total bot capital
     increment_style: str = "linear"  # "linear" or "logarithmic"
-    spacing_style: str = (
-        "expanding"  # "expanding" (wider gaps) or "stacked" (fixed gap)
-    )
 
     profit_folding_active: bool = True
 
@@ -67,12 +63,6 @@ class BotConfig:
     # Caps USD adopted from an existing exchange balance; 0.0 uses target_balance.
     max_adoptable_usd: float = 0.0
     scrumming_interval_pct: float = 1.0  # % market move between actions
-
-    # Scrumming: Profit routing (where excess delta goes after sell)
-    profit_route: str = (
-        "fold_to_target"  # "fold_to_target" | "spendable" | "split" | "cross_bot"
-    )
-    profit_route_bot_id: str = ""  # Target bot ID for cross-bot routing
 
     scrum_fold_pct: int = 100  # 1-100: % of scrum proceeds queued for fold
 
@@ -303,14 +293,10 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
 #: raises ValueError if any of these is passed.
 _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
     {
-        "investment_amount",
         "increment_style",
-        "spacing_style",
         "profit_folding_active",
-        # Scrumming-specific accumulation/routing
+        # Scrumming-specific accumulation
         "scrumming_interval_pct",
-        "profit_route",
-        "profit_route_bot_id",
         "scrum_fold_pct",
         "max_target_growth_pct",
         # tranche_despawn_days sweeps the fold and stack ledgers, both

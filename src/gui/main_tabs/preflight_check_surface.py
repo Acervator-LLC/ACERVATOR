@@ -252,7 +252,6 @@ TARGET_ASSET_KEY = "target_asset"
 BASE_CURRENCY_KEY = "base_currency"
 EXCHANGE_ID_KEY = "exchange_id"
 TARGET_BALANCE_KEY = "target_balance"
-INVESTMENT_AMOUNT_KEY = "investment_amount"
 
 DEFAULT_TARGET_ASSET = "BTC"
 DEFAULT_BASE_CURRENCY = "USDT"
@@ -485,9 +484,7 @@ def gate_symbol(config: dict) -> str:
 
 def gate_target_balance(config: dict) -> Any:
     """The capital the check measures the minimum order cost against."""
-    return config.get(
-        TARGET_BALANCE_KEY, config.get(INVESTMENT_AMOUNT_KEY, DEFAULT_TARGET_BALANCE)
-    )
+    return config.get(TARGET_BALANCE_KEY, DEFAULT_TARGET_BALANCE)
 
 
 class PreflightModel:

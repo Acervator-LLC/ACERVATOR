@@ -64,7 +64,6 @@ BREAKER_GROUP_TITLE = "Circuit Breakers (v3.15.58)"
 DANGER_GROUP_TITLE = "DANGER ZONE — Self-Destruct (v3.15.62)"
 RISK_GROUP_TITLE = "Risk Controls (MEM-244)"
 GATES_GROUP_TITLE = "Strategy Gate Flags (v3.16.15)"
-ROUTING_GROUP_TITLE = "Profit Routing (v3.20.85)"
 EXTRACTOR_GROUP_TITLE = "Extractor — Pool & Artillery"
 ALT_TARGETS_GROUP_TITLE = "Alt Targets (manual override)"
 
@@ -81,13 +80,6 @@ SPACING_ITEMS = (
     ("Exponential (1, 2, 4, 8…)", "exponential"),
 )
 DETONATION_ITEMS = ("1d", "1w")
-ROUTE_ITEMS = (
-    ("Fold back to target balance", "fold_to_target"),
-    ("Send to spendable", "spendable"),
-    ("Split fold/spendable per %", "split"),
-    ("Route to another bot (cross-bot)", "cross_bot"),
-)
-
 FALLBACK_TIMEFRAMES = (
     "1m",
     "5m",
@@ -106,7 +98,6 @@ NO_MATCH_INDEX = -1
 
 SPACING_DEFAULT = "linear"
 DETONATION_TF_DEFAULT = "1d"
-ROUTE_DEFAULT = "fold_to_target"
 
 DENOM_PLACEHOLDER = "—"
 DENOM_NOT_LISTED = "(not listed on exchange)"
@@ -304,8 +295,6 @@ TOOLTIPS = {
     "gate_scrum_htf": "ON (Conservative): refuse scrum when a higher-TF phantom signals BULLISH. OFF (Lean): cartridge captures HTF swings organically; this gate is redundant if Smart Cartridge is ON.",
     "gate_fold_ta": "ON (Conservative): mirror of SCRUM TA gate on the fold side. OFF (Lean): fold fires at BB-lower + tranche-eligible regardless of TA.",
     "gate_fold_htf": "ON (Conservative): mirror of SCRUM HTF gate on the fold side. OFF (Lean): fold fires regardless of higher-TF bearish bias.",
-    "profit_route": "Where realized profit flows on fold. fold_to_target = increase target balance (compound); spendable = mark for withdrawal; split = use fold % below; cross_bot = route to the target bot ID.",
-    "profit_route_bot_id": "Target bot ID for cross-bot profit routing. Only consulted when route = cross_bot. Leave blank otherwise.",
     "ext_chunk_size": "USD-equivalent of base currency this bot owns. Sized at construction; changing live re-anchors the pool's reference USD value (not the held base units — those are exchange-tracked).",
     "ext_artillery_size": "USD-equivalent per artillery round. Smaller = more opportunities; larger = bigger per-round impact.",
     "ext_scan_top_n": "Top-N */<base> pairs by 24h volume to keep on the auto-scan watch list. Range [5, 10] per design doc §6. Ignored when manual alt-targets are set.",
@@ -552,7 +541,6 @@ BREAKER_GROUP = "breaker"
 DANGER_GROUP = "danger"
 RISK_GROUP = "risk"
 GATES_GROUP = "gates"
-ROUTING_GROUP = "routing"
 EXTRACTOR_GROUP = "extractor"
 ALT_TARGETS_GROUP = "alt_targets"
 
@@ -1077,26 +1065,6 @@ CONTROL_SPECS = (
         "field": "fold_defer_to_htf",
         "reading": BOOL_READING,
         "default": True,
-    },
-    {
-        "name": "profit_route",
-        "kind": COMBO_DATA,
-        "group": ROUTING_GROUP,
-        "row_label": "Route:",
-        "field": "profit_route",
-        "reading": BARE_READING,
-        "default": ROUTE_DEFAULT,
-        "items": ROUTE_ITEMS,
-    },
-    {
-        "name": "profit_route_bot_id",
-        "kind": LINE,
-        "group": ROUTING_GROUP,
-        "row_label": "Target bot ID:",
-        "field": "profit_route_bot_id",
-        "reading": TEXT_READING,
-        "default": "",
-        "placeholder": "leave blank unless route = cross_bot",
     },
     {
         "name": "ext_chunk_size",
@@ -1658,12 +1626,6 @@ class LiveSettingsTabModel:
             if spec["group"] == GATES_GROUP:
                 self._add_control(config, spec)
 
-        self._add_group(ROUTING_GROUP, ROUTING_GROUP_TITLE)
-        self._add_form()
-        for spec in CONTROL_SPECS:
-            if spec["group"] == ROUTING_GROUP:
-                self._add_control(config, spec)
-
         if is_extractor:
             self._add_group(EXTRACTOR_GROUP, EXTRACTOR_GROUP_TITLE)
             self._add_form()
@@ -1931,7 +1893,6 @@ def build_view_model(
             "danger": DANGER_GROUP_TITLE,
             "risk": RISK_GROUP_TITLE,
             "gates": GATES_GROUP_TITLE,
-            "routing": ROUTING_GROUP_TITLE,
             "extractor": EXTRACTOR_GROUP_TITLE,
             "alt_targets": ALT_TARGETS_GROUP_TITLE,
         },
@@ -2008,12 +1969,10 @@ def build_view_model(
             "visibility": [list(one) for one in VISIBILITY_ITEMS],
             "spacing": [list(one) for one in SPACING_ITEMS],
             "detonation": list(DETONATION_ITEMS),
-            "route": [list(one) for one in ROUTE_ITEMS],
         },
         "defaults": {
             "spacing": SPACING_DEFAULT,
             "detonation_tf": DETONATION_TF_DEFAULT,
-            "route": ROUTE_DEFAULT,
         },
         "reading_kinds": reading_kinds(),
         "bare_number_fields": list(bare_number_fields()),

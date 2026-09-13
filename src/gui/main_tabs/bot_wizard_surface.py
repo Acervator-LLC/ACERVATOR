@@ -488,12 +488,6 @@ COMBO_FIELDS: dict[str, tuple] = {
         ("1d", "1d"),
     ),
     "detonation_timeframe": (("1d", "1d"), ("1w", "1w")),
-    "profit_route": (
-        ("Fold back to target balance", "fold_to_target"),
-        ("Send to spendable", "spendable"),
-        ("Split fold/spendable per %", "split"),
-        ("Route to another bot (cross-bot)", "cross_bot"),
-    ),
     "ext_direction": (
         ("Normal (base → alt: buy first)", "normal"),
         ("Inverted (standing alt → base: sell first)", "inverted"),
@@ -506,7 +500,6 @@ COMBO_DEFAULT_INDEX: dict[str, int] = {
     "stack_spacing": 0,
     "ta_timeframe": 4,
     "detonation_timeframe": 0,
-    "profit_route": 0,
     "ext_direction": 0,
 }
 POOL_BASES = tuple(label for label, _value in COMBO_FIELDS["pool_base"])
@@ -515,8 +508,8 @@ TA_TIMEFRAMES = tuple(value for _label, value in COMBO_FIELDS["ta_timeframe"])
 TA_TIMEFRAME_DEFAULT = "1h"
 TA_COMBO_NAME = "ta_timeframe"
 
-TEXT_FIELDS: dict[str, str] = {"profit_route_bot_id": EMPTY_TEXT}
-PLACEHOLDERS = {"profit_route_bot_id": "leave blank unless route = cross_bot"}
+TEXT_FIELDS: dict[str, str] = {}
+PLACEHOLDERS: dict[str, str] = {}
 
 PHANTOM_TIMEFRAMES = (
     "1m",
@@ -556,7 +549,6 @@ GROUP_TITLES = {
     "cb_group": "Circuit Breakers (v3.15.58)",
     "risk_group": "Risk Controls (MEM-244)",
     "gates_group": "Strategy Gate Flags (v3.16.15)",
-    "routing_group": "Profit Routing (v3.20.85)",
     "extractor_group": "Extractor — Pool & Artillery",
     "fold_mode_group": "Distribution Mode",
     "fold_target_group": "Profit Folding Target (sell profits -> buy positions)",
@@ -619,7 +611,6 @@ GROUP_ROWS = {
         "gate_fold_ta_chk",
         "gate_fold_htf_chk",
     ),
-    "routing_group": ("profit_route", "profit_route_bot_id"),
     "extractor_group": (
         "ext_chunk_size_usd",
         "ext_artillery_size_usd",
@@ -650,7 +641,6 @@ SCRUM_GROUPS = (
     "cb_group",
     "risk_group",
     "gates_group",
-    "routing_group",
 )
 EXTRACTOR_GROUPS = ("extractor_group",)
 FOLDING_GROUPS = ("fold_mode_group", "fold_target_group", "dist_target_group")
@@ -708,8 +698,6 @@ ROW_LABELS = {
     "position_ceiling_multiple": "Ceiling Multiple:",
     "detonation_timeframe": "Detonation TF:",
     "detonation_confidence_min": "Min Confidence:",
-    "profit_route": "Route:",
-    "profit_route_bot_id": "Target bot ID:",
     "ext_chunk_size_usd": "Chunk size (USD):",
     "ext_artillery_size_usd": "Artillery size (USD):",
     "ext_scan_top_n": "Watch list top-N:",
@@ -1038,17 +1026,6 @@ TOOL_TIPS = {
         "ON (Conservative): mirror of SCRUM HTF gate on "
         "the fold side. OFF (Lean): fold fires regardless "
         "of higher-TF bearish bias."
-    ),
-    "profit_route": (
-        "Where realized profit flows on fold. "
-        "fold_to_target = increase target balance "
-        "(compound); spendable = mark for withdrawal; "
-        "split = use fold % below; cross_bot = route to "
-        "the target bot ID."
-    ),
-    "profit_route_bot_id": (
-        "Target bot ID for cross-bot profit routing. Only "
-        "consulted when route = cross_bot."
     ),
     "ext_chunk_size_usd": (
         "USD-equivalent of base currency THIS bot owns. Converted "
@@ -2298,8 +2275,6 @@ class BotWizardModel:
                 "scrum_defer_to_htf": self.checks["gate_scrum_htf_chk"],
                 "fold_require_ta_bearish": self.checks["gate_fold_ta_chk"],
                 "fold_defer_to_htf": self.checks["gate_fold_htf_chk"],
-                "profit_route": self.combo_data("profit_route"),
-                "profit_route_bot_id": self.texts["profit_route_bot_id"].strip(),
             }
         )
         return config

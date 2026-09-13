@@ -3246,9 +3246,7 @@ if _HAS_QT:
                                 + config.get("base_currency", "USDT")
                             )
                             _pf_exchange = config.get("exchange_id", exchange_id)
-                            _pf_target = config.get(
-                                "target_balance", config.get("investment_amount", 200.0)
-                            )
+                            _pf_target = config.get("target_balance", 200.0)
                             _pf = check_symbol(
                                 exchange_id=_pf_exchange,
                                 symbol=_pf_symbol,

@@ -294,10 +294,8 @@ def _bot_row(bot: Json) -> Json:
             "base_currency": cfg.get("base_currency"),
             "exchange_id": cfg.get("exchange_id"),
             "mode": cfg.get("mode"),
-            "investment_amount": cfg.get("investment_amount"),
             "anchor_target_balance": st.get("anchor_target_balance"),
             "max_target_growth_pct": cfg.get("max_target_growth_pct"),
-            "profit_route": cfg.get("profit_route"),
             "state_when_saved": bot.get("state_when_saved"),
         },
         "position": {
@@ -756,10 +754,8 @@ _BOT_IDENTITY_FIELDS = (
     "base_currency",
     "exchange_id",
     "mode",
-    "investment_amount",
     "anchor_target_balance",
     "max_target_growth_pct",
-    "profit_route",
 )
 
 _BOT_POSITION_FIELDS = (
