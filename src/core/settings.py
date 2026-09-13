@@ -158,6 +158,30 @@ class AppSettings:
 
 _DEFAULT_DIR = Path.home() / ".acervator"
 
+#: Each ``AppSettings`` field paired with the type its own default carries.
+DECLARED_TYPES: dict[str, type] = {
+    name: type(value) for name, value in asdict(AppSettings()).items()
+}
+
+
+def declared_type_holds(key: str, value: Any) -> bool:
+    """Say whether *value* is a type the ``AppSettings`` field *key* declares.
+
+    ``bool`` is refused where a number is declared, a whole number is
+    admitted where ``float`` is, and a key ``AppSettings`` does not declare
+    holds, leaving the refusal to ``SettingsManager.set``.
+    """
+    declared = DECLARED_TYPES.get(key)
+    if declared is None:
+        return True
+    if declared is bool:
+        return isinstance(value, bool)
+    if declared is int:
+        return isinstance(value, int) and not isinstance(value, bool)
+    if declared is float:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, declared)
+
 
 class SettingsManager:
     """Thread-safe reader and writer for one ``AppSettings``.
@@ -185,11 +209,18 @@ class SettingsManager:
     def set(self, key: str, value: Any) -> None:
         """Set the ``AppSettings`` attribute *key* and call ``_save``.
 
-        A *key* that ``AppSettings`` does not declare raises ``KeyError``.
+        A *key* that ``AppSettings`` does not declare raises ``KeyError`` and
+        a *value* ``declared_type_holds`` refuses raises ``TypeError``.
         """
         with self._lock:
             if not hasattr(self._settings, key):
                 raise KeyError(f"Unknown setting: {key}")
+            if not declared_type_holds(key, value):
+                raise TypeError(
+                    f"Setting '{key}' takes "
+                    f"{DECLARED_TYPES[key].__name__}, not "
+                    f"{type(value).__name__}"
+                )
             setattr(self._settings, key, value)
             self._save()
 
@@ -335,9 +366,23 @@ class SettingsManager:
     def _apply_dict(self, data: dict) -> None:
         """Copy every ``AppSettings`` field that *data* carries onto ``_settings``.
 
-        A field absent from *data* keeps its ``AppSettings`` default.
+        A field absent from *data*, or one ``declared_type_holds`` refuses,
+        keeps its ``AppSettings`` default and names *key* in the log.
         """
+        import logging as _logging
+
         defaults = asdict(AppSettings())
         for key, default_val in defaults.items():
-            if key in data:
-                setattr(self._settings, key, data[key])
+            if key not in data:
+                continue
+            if not declared_type_holds(key, data[key]):
+                _logging.getLogger(__name__).warning(
+                    "Settings kept the default for %s: the file holds %s, "
+                    "the field takes %s.",
+                    key,
+                    type(data[key]).__name__,
+                    DECLARED_TYPES[key].__name__,
+                )
+                setattr(self._settings, key, default_val)
+                continue
+            setattr(self._settings, key, data[key])

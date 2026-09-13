@@ -1719,16 +1719,16 @@ class BotWizardModel:
     def _apply_stored_target_balance(self) -> None:
         """Put the stored target balance into the field, as the wizard does.
 
-        The stored value reaches the spin box with no guard, so a value
-        the operator never entered settles on whatever the spin box
-        keeps for it.
+        A value ``number_value`` refuses leaves the field on its own
+        ``NUMBER_FIELDS`` figure, the way an unknown visibility name leaves
+        that drop-down on its first entry.
         """
-        stored = self.defaults.get(
-            DEFAULT_TARGET_BALANCE_KEY, NUMBER_FIELDS["target_balance"]["value"]
-        )
-        self.numbers["target_balance"] = number_value(
-            stored, NUMBER_FIELDS["target_balance"]
-        )
+        spec = NUMBER_FIELDS["target_balance"]
+        stored = self.defaults.get(DEFAULT_TARGET_BALANCE_KEY, spec["value"])
+        try:
+            self.numbers["target_balance"] = number_value(stored, spec)
+        except (TypeError, OverflowError):
+            self.numbers["target_balance"] = spec["value"]
         self.calls.append(
             [NUMBER_SET_VALUE, "target_balance", self.numbers["target_balance"]]
         )
