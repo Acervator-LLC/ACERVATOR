@@ -50,6 +50,7 @@
   var PANEL_CHROME = "panel_chrome";
   var TOGGLES = "toggles";
   var LEGEND = "legend";
+  var LEGEND_STYLES = "legend_styles";
   var TOGGLE_KEY = "key";
   var CHECKED = "checked";
   var COLOR = "color";
@@ -244,6 +245,7 @@
   var TOGGLE_ROW_PART = "panel-toggle-row";
   var TOGGLE_PART = "panel-toggle";
   var CHART_PART = "chart-mount";
+  var CHART_HOST_PART = "chart-host";
   var ERROR_PART = "panel-error";
   var EMPTY_PART = "empty-column";
 
@@ -586,6 +588,16 @@
     return element(SPAN_TAG, sourceProps, text(props.panel[SOURCE]));
   }
 
+  // acervatorHeader owns the Qt style sheet parsing that paints a legend entry.
+  function legendStyle(chrome, at) {
+    var api = global.acervatorHeader;
+    var sheets = listField(chrome, LEGEND_STYLES);
+    if (!api || typeof api.styleOf !== "function" || at >= sheets.length) {
+      return {};
+    }
+    return api.styleOf(sheets[at]);
+  }
+
   // The two position markers the chart pins to the price axis.
   function PanelLegend(props) {
     var chrome = props.chrome;
@@ -602,7 +614,11 @@
       DIV_TAG,
       legendProps,
       listField(chrome, LEGEND).map(function (one, at) {
-        return element(SPAN_TAG, { key: LEGEND_AT + String(at) }, text(one));
+        return element(
+          SPAN_TAG,
+          { key: LEGEND_AT + String(at), style: legendStyle(chrome, at) },
+          text(one)
+        );
       })
     );
   }
@@ -647,7 +663,15 @@
   // The host native_chart.js paints into, carrying the panel values the tab fed it.
   function ChartMount(props) {
     var panel = props.panel;
-    var mountProps = { className: CHART_CLASS, style: { flex: AUTO, overflow: HIDDEN } };
+    var mountProps = {
+      className: CHART_CLASS,
+      style: {
+        flex: AUTO,
+        overflow: HIDDEN,
+        display: FLEX,
+        flexDirection: COLUMN
+      }
+    };
     mountProps[PART_ATTR] = CHART_PART;
     mountProps[SLOT_ATTR] = CHART_SLOT;
     mountProps[BOT_ATTR] = text(props.botId);
@@ -660,14 +684,25 @@
     mountProps[CEILING_ATTR] = text(panel[TB_CEILING]);
     mountProps[ARMED_ATTR] = text(panel[ARMED] === null ? null : Boolean(panel[ARMED]));
 
+    // native_chart.js draws its own root into this element, so React declares
+    // no child of its own inside it and never removes one it does not own.
+    var hostProps = { key: CHART_HOST_PART, style: { flex: AUTO, overflow: HIDDEN } };
+    hostProps[PART_ATTR] = CHART_HOST_PART;
+    hostProps[BOT_ATTR] = text(props.botId);
+
+    var drawn = [];
     var errorText = panel[ERROR_TEXT];
-    if (typeof errorText !== "string" || !errorText.length) {
-      return element(DIV_TAG, mountProps, null);
+    if (typeof errorText === "string" && errorText.length) {
+      var errorProps = {
+        key: ERROR_PART,
+        style: { flex: FLEX_NONE, userSelect: SELECT_NONE }
+      };
+      errorProps[PART_ATTR] = ERROR_PART;
+      errorProps[BOT_ATTR] = text(props.botId);
+      drawn.push(element(DIV_TAG, errorProps, errorText));
     }
-    var errorProps = { style: { userSelect: SELECT_NONE } };
-    errorProps[PART_ATTR] = ERROR_PART;
-    errorProps[BOT_ATTR] = text(props.botId);
-    return element(DIV_TAG, mountProps, element(DIV_TAG, errorProps, errorText));
+    drawn.push(element(DIV_TAG, hostProps, null));
+    return element(DIV_TAG, mountProps, drawn);
   }
 
   // The Live / ATA-SMP toggle, above the arrows and the ticker list.
@@ -832,6 +867,7 @@
     var shownId = text(model[SHOWN_ID]);
     var selectorBag = objectField(model, SELECTOR);
     var contentProps = { style: boxStyle(content, COLUMN) };
+    contentProps.style.flex = AUTO;
     contentProps[PART_ATTR] = CONTENT_PART;
     contentProps[SLOTS_ATTR] = text(content[LAYOUT_SLOTS]);
     contentProps[MOUNTED_ATTR] = String(known.length ? ONE : ZERO);
@@ -1419,7 +1455,7 @@
     var mounts = chartMounts(target);
     var reachable =
       Boolean(global.acervator) && typeof global.acervator.call === "function";
-    if (!api || !host || !reachable) {
+    if (!host) {
       return Promise.resolve([]);
     }
     var panel = objectField(isPlainObject(payload) ? payload : {}, PANEL);
@@ -1428,6 +1464,20 @@
     var chain = Promise.resolve();
     Array.prototype.forEach.call(mounts, function (mount) {
       var symbol = mount.getAttribute(SYMBOL_ATTR);
+      var into = mount.querySelector(
+        SELECT_OPEN + PART_ATTR + SELECT_IS + CHART_HOST_PART + SELECT_CLOSE
+      );
+      if (into === null) {
+        return;
+      }
+
+      // With no chart module and no bridge, the host names the refusal on
+      // the slot rather than leaving an empty box saying nothing.
+      if (!api || !reachable) {
+        mount.setAttribute(CHILD_ATTR, CHART_SLOT);
+        host.mount(CHART_SLOT, into, null);
+        return;
+      }
 
       function ask() {
         return global.acervator.call(api.method, {
@@ -1436,8 +1486,8 @@
           timeframe: mount.getAttribute(CHART_TF_ATTR),
           source: text(panel[SOURCE]),
           candles: candles,
-          width: mount.clientWidth,
-          height: mount.clientHeight
+          width: into.clientWidth,
+          height: into.clientHeight
         });
       }
 
@@ -1447,7 +1497,7 @@
         .then(ask)
         .then(function (model) {
           var wanted = model ? model[NATURAL_HEIGHT] : null;
-          if (typeof wanted !== NUMBER_KIND || wanted <= mount.clientHeight) {
+          if (typeof wanted !== NUMBER_KIND || wanted <= into.clientHeight) {
             return model;
           }
           mount.style.minHeight = height(wanted);
@@ -1455,7 +1505,7 @@
         })
         .then(function (model) {
           mount.setAttribute(CHILD_ATTR, CHART_SLOT);
-          host.mount(CHART_SLOT, mount, model);
+          host.mount(CHART_SLOT, into, model);
           drawn.push(symbol);
         });
     });

@@ -323,4 +323,111 @@ disagreement it was written to catch.
   }
 ```
 
+## 2026-09-13 15:40 - #23 - the Charts tab draws in the desktop window
+
+The tab draws under the window the operator launches. `ChartsTabReact` in
+`src/gui/react_charts_tab.py` builds one web view and loads one page. The page
+carries every script and every rule inside it, so it fetches nothing.
+
+`src/gui/react_charts_tab.py` — the modules the page carries, in load order
+
+```python
+def roster() -> tuple[str, ...]:
+    """Every module the page carries, in load order.
+
+    ``STYLE_SOURCE_ASSETS`` leads: ``trade_charts_tab.js`` reads a payload
+    colour back to its token through ``shared_widgets.variableFor``.
+    """
+    return STYLE_SOURCE_ASSETS + CHILD_MODULES + (PANEL_MODULE,)
+```
+
+`trade_charts_tab.js` draws the tab. `native_chart.js` draws the candles into
+the slot that module keeps. Both register with the shell's own panel host, so
+the page in the window and the page in the shell run the same two modules.
+
+The page reaches the model over one console channel. Each ask leaves the page as
+a line under `ASK_PREFIX`, and `ChartsTabPage` hands that line to `run_ask`. The
+answer returns by the ask's own number. The arrows, the ticker menu and the TF
+picker each move the asset the window holds.
+
+`src/gui/react_charts_tab.py` — the call the dashboard pass makes
+
+```python
+        def update_charts(
+            self,
+            bot_statuses: list,
+            bot_manager=None,
+            exchange_connectors: Optional[dict] = None,
+        ) -> None:
+            """Rebuild the asset list for one pass of bot statuses and redraw."""
+            self._model.update_charts(bot_statuses, bot_manager, exchange_connectors)
+            self.redraw()
+```
+
+`fetch_chart_data` refetches the asset on screen. `set_ata_source` takes the
+callable behind the ATA-SMP list. Both answer the calls the main window and the
+Market Inspector tab already make on the Qt tab.
+
+### The tab's own style sheet
+
+`src/gui/web/trade_charts_tab.css` paints the chrome around the chart. It holds
+no colour of its own. Every rule names a design token, and `design_tokens.js`
+writes each token onto the page as a CSS variable.
+
+`src/gui/web/trade_charts_tab.css` — the arrows and the list toggle
+
+```css
+[data-part="asset-prev"],
+[data-part="asset-next"],
+[data-part="chart-list-toggle"] {
+  background: var(--SURFACE_CONTROL, var(--btn-bg));
+  color: var(--PRIMARY, var(--accent));
+  border: 1px solid var(--GLOW_PRIMARY_EDGE, var(--border));
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+```
+
+An arrow with one asset to walk goes grey. The panel takes a border and a
+rounded ground. The header line, the toolbar and the toggle row each take a rule
+between them. The readout beside the arrows and the empty-list hint take the low
+text colour at ten pixels.
+
+### The chart keeps a host of its own
+
+`native_chart.js` opens a React root of its own. It draws into `chart-host`, a
+child element the tab declares and never fills. One element under two roots lost
+the whole tab the moment the waiting line cleared.
+
+`src/gui/web/trade_charts_tab.js` — the slot the chart draws into
+
+```javascript
+    var hostProps = { key: CHART_HOST_PART, style: { flex: AUTO, overflow: HIDDEN } };
+    hostProps[PART_ATTR] = CHART_HOST_PART;
+    hostProps[BOT_ATTR] = text(props.botId);
+```
+
+A missing chart module says so on the slot. `renderChartMounts` asks the panel
+host to mount the slot with no model, and the host writes the reason it refused
+where the candles belong.
+
+The tab redraws when its width changes. `resizeEvent` re-arms a short timer, and
+the timer pushes the payload again. The chart then takes the width the tab has.
+
+### What the page draws
+
+The page draws the Live toggle, the two arrows, the ticker menu and the readout
+saying which asset of how many. Under them one panel header names the symbol,
+the price and the bot state. The chart draws the candles, the Bollinger cloud,
+the Ichimoku cloud, the last price on the right axis, the volume strip and the
+Vortex, MACD and Stochastic RSI panes. Eight indicator switches close the panel,
+with Sling and BBull off.
+
+The legend beside the feed name carries its own colour. `native_chart_surface`
+holds the two Qt style sheets for it, and the tab surface sends them as
+`legend_styles`.
+
 Back to [the subsystem index](README.md).

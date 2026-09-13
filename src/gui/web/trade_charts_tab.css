@@ -1,0 +1,146 @@
+/* React Charts tab chrome: the Live / ATA-SMP toggle, the asset arrows and
+ * ticker, and the one chart panel `trade_charts_tab.js` draws under them.
+ * `react_charts_tab.PAGE_STYLE` carries the reset and the page ground, so
+ * this file adds colour, border and type only. `native_chart.js` paints every
+ * mark inside the chart from its own payload skin, and the overlay colour on
+ * a toggle arrives on that toggle's own `style` attribute, so no rule here
+ * may set a `color` on a chart mark or on a toggle.
+ */
+
+/* A part carries `display:flex` on its own style attribute, which outranks
+ * the browser's own rule for a hidden element. */
+[hidden] {
+  display: none !important;
+}
+
+/* A flex child keeps its content's size without a floor of its own, so a
+ * long ticker name pushes the arrow beside it off the row. */
+.acervator-charts-tab > *,
+.acervator-charts-panel > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* QPushButton: the two arrows and the list toggle share one skin. */
+[data-part="asset-prev"],
+[data-part="asset-next"],
+[data-part="chart-list-toggle"] {
+  background: var(--SURFACE_CONTROL, var(--btn-bg));
+  color: var(--PRIMARY, var(--accent));
+  border: 1px solid var(--GLOW_PRIMARY_EDGE, var(--border));
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+[data-part="chart-list-toggle"] {
+  font-size: 11px;
+}
+
+[data-part="asset-prev"]:hover,
+[data-part="asset-next"]:hover,
+[data-part="chart-list-toggle"]:hover {
+  background: var(--GLOW_PRIMARY_FAINT, var(--btn-bg));
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+[data-part="asset-prev"]:disabled,
+[data-part="asset-next"]:disabled {
+  background: var(--CARD_METRIC_BORDER, var(--border));
+  color: var(--TEXT_PLACEHOLDER, var(--grid));
+  border-color: var(--CARD_METRIC_BORDER, var(--border));
+  cursor: default;
+}
+
+/* QComboBox: the ticker list, which names the asset on screen. */
+[data-part="asset-ticker"] {
+  background: var(--SURFACE_CONTROL, var(--btn-bg));
+  color: var(--PRIMARY, var(--accent));
+  border: 1px solid var(--GLOW_PRIMARY_EDGE, var(--border));
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+[data-part="asset-ticker"]:hover {
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+/* QLabel: which asset this is, of how many, and the empty-list hint. */
+[data-part="asset-position"],
+[data-part="chart-list-hint"] {
+  color: var(--TEXT_LOW, var(--text));
+  font-size: 10px;
+}
+
+/* QFrame: the one chart panel, and the header line over the candles. */
+.acervator-charts-panel {
+  background: var(--SURFACE_0, var(--bg));
+  border: 1px solid var(--CARD_METRIC_BORDER, var(--border));
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-part="panel-header"] {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--CARD_METRIC_BORDER, var(--border));
+}
+
+[data-part="panel-toolbar"] {
+  gap: 6px;
+  padding: 2px 4px;
+  border-top: 1px solid var(--CARD_METRIC_BORDER, var(--border));
+}
+
+/* QComboBox: the TF picker at the left of the toolbar. */
+[data-part="timeframe"] {
+  max-width: 90px;
+  background: var(--SURFACE_CONTROL, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--CARD_METRIC_BORDER, var(--border));
+  border-radius: 2px;
+  font: inherit;
+}
+
+/* QLabel: the feed the candles came from, at the end of the toolbar. */
+[data-part="panel-source"] {
+  color: var(--TEXT_PLACEHOLDER, var(--grid));
+  font-size: 9px;
+}
+
+[data-part="panel-legend"] {
+  gap: 12px;
+  font-size: 9px;
+}
+
+[data-part="panel-toggle-row"] {
+  padding: 3px 4px;
+  border-top: 1px solid var(--CARD_METRIC_BORDER, var(--border));
+}
+
+[data-part="panel-toggle"] {
+  gap: 3px;
+  font-size: 9px;
+  cursor: default;
+}
+
+/* The chart's own waiting line, drawn in the mount until candles arrive. */
+[data-part="panel-error"] {
+  padding: 8px;
+  color: var(--TEXT_LOW, var(--text));
+}
+
+/* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
+[data-part="content"]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-part="content"]::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
