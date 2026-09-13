@@ -5,7 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
-from .config import STACK_MODE_DEFAULT, BotState, make_bot_config
+from .config import (
+    STACK_MODE_DEFAULT,
+    BotState,
+    bot_config_kwargs,
+    make_bot_config,
+)
 
 logger = logging.getLogger("acervator.bot")
 
@@ -191,133 +196,26 @@ class StateRestoreMixin:
                 )
                 self._ledger_skip(bid, "legacy grid mode (unrestorable)")
                 continue
-            # make_bot_config raises on a mode-foreign field, so a stale
-            # config is skipped rather than constructed.
-            _ta_default = "*" if mode.value == "extractor" else "BTC"
-            _shared_kwargs = {
-                "exchange_id": cfg["exchange_id"],
-                "base_currency": cfg.get("base_currency", "USDT"),
-                "target_asset": cfg.get("target_asset", _ta_default),
-                "symbol": cfg.get("symbol", ""),
-                "target_balance": cfg.get("target_balance", 200.0),
-                "ta_timeframe": cfg.get("ta_timeframe", "1h"),
-                "visibility": cfg.get("visibility", "orderbook"),
-                "aggressive_trading": cfg.get("aggressive_trading", False),
-                # An absent stack_mode resolves to STACK_MODE_DEFAULT; a
-                # stored bulk_trading reaches no kwarg on this path.
-                "stack_mode": cfg.get("stack_mode", STACK_MODE_DEFAULT),
-                "split_distance": cfg.get("split_distance", 1.0),
-                "stack_tranche_count_target": cfg.get("stack_tranche_count_target", 3),
-                "stack_spacing_mode": cfg.get("stack_spacing_mode", "linear"),
-                "max_entry_price": cfg.get("max_entry_price", None),
-                "min_entry_price": cfg.get("min_entry_price", None),
-                "trading_fee_pct": cfg.get("trading_fee_pct", 0.6),
-            }
-            if mode == BotMode.SCRUMMING:
-                # Every kwarg below is named one at a time, so a
-                # _DEPRECATED_KWARGS name in cfg reaches none of them.
-                _mode_kwargs = {
-                    "increment_style": cfg.get("increment_style", "linear"),
-                    "profit_folding_active": cfg.get("profit_folding_active", True),
-                    "scrumming_interval_pct": cfg.get("scrumming_interval_pct", 1.0),
-                    "scrum_fold_pct": cfg.get("scrum_fold_pct", 100),
-                    # Absent from older state files, so those bots restore
-                    # with the despawn timer at 0.
-                    "tranche_despawn_days": cfg.get("tranche_despawn_days", 0),
-                    "max_target_growth_pct": cfg.get("max_target_growth_pct", 1.0),
-                    "bb_tolerance_pct": cfg.get("bb_tolerance_pct", 1.0),
-                    "bb_landing_strip_candles": cfg.get("bb_landing_strip_candles", 3),
-                    "scrum_detect_pct": cfg.get("scrum_detect_pct", 75),
-                    "scrum_fire_pct": cfg.get("scrum_fire_pct", 0.5),
-                    "bb_midline_gate": cfg.get("bb_midline_gate", True),
-                    "scrum_read_rate_min": cfg.get("scrum_read_rate_min", 5),
-                    "band_travel_pct": cfg.get("band_travel_pct", 70),
-                    "bb_bullseye_check": cfg.get("bb_bullseye_check", True),
-                    "hedge_rebalance_active": cfg.get("hedge_rebalance_active", True),
-                    "hedge_balance": cfg.get("hedge_balance", 200.0),
-                    "position_ceiling_enabled": cfg.get(
-                        "position_ceiling_enabled", False
-                    ),
-                    "position_ceiling_multiple": cfg.get(
-                        "position_ceiling_multiple", 5.0
-                    ),
-                    "detonation_enabled": cfg.get("detonation_enabled", False),
-                    "detonation_timeframe": cfg.get("detonation_timeframe", "1d"),
-                    "detonation_confidence_min": cfg.get(
-                        "detonation_confidence_min", 0.75
-                    ),
-                    "personal_hold_qty": cfg.get("personal_hold_qty", 0.0),
-                    "circuit_breaker_soft_pct": cfg.get(
-                        "circuit_breaker_soft_pct", 25.0
-                    ),
-                    "circuit_breaker_hard_pct": cfg.get(
-                        "circuit_breaker_hard_pct", 35.0
-                    ),
-                    "circuit_breaker_cooldown_candles": cfg.get(
-                        "circuit_breaker_cooldown_candles", 3
-                    ),
-                    "max_cartridge_size_pct": cfg.get("max_cartridge_size_pct", 10.0),
-                    "max_cartridge_smart": cfg.get("max_cartridge_smart", False),
-                    "max_cartridge_smart_ceiling_pct": cfg.get(
-                        "max_cartridge_smart_ceiling_pct", 30.0
-                    ),
-                    "wire_inflow_stack_pct": cfg.get("wire_inflow_stack_pct", 1.0),
-                    "scrum_require_ta_bullish": cfg.get(
-                        "scrum_require_ta_bullish", True
-                    ),
-                    "scrum_hold_in_uptrend": cfg.get("scrum_hold_in_uptrend", True),
-                    "scrum_defer_to_htf": cfg.get("scrum_defer_to_htf", True),
-                    "fold_require_ta_bearish": cfg.get("fold_require_ta_bearish", True),
-                    "fold_defer_to_htf": cfg.get("fold_defer_to_htf", True),
-                }
-            else:  # BotMode.EXTRACTOR
-                _mode_kwargs = {
-                    "extractor_chunk_size_usd": cfg.get(
-                        "extractor_chunk_size_usd", 100.0
-                    ),
-                    "extractor_artillery_size_usd": cfg.get(
-                        "extractor_artillery_size_usd", 5.0
-                    ),
-                    "extractor_scan_top_n": cfg.get("extractor_scan_top_n", 8),
-                    "extractor_scan_refresh_candles": cfg.get(
-                        "extractor_scan_refresh_candles", 60
-                    ),
-                    "extractor_pool_reserve_pct": cfg.get(
-                        "extractor_pool_reserve_pct", 50.0
-                    ),
-                    "extractor_exit_pct": cfg.get("extractor_exit_pct", 100.0),
-                    "extractor_drawdown_threshold_pct": cfg.get(
-                        "extractor_drawdown_threshold_pct", 3.0
-                    ),
-                    "extractor_correction_skip_candles": cfg.get(
-                        "extractor_correction_skip_candles", 4
-                    ),
-                    "extractor_max_cost_basis_multiple": cfg.get(
-                        "extractor_max_cost_basis_multiple", 2.0
-                    ),
-                    "extractor_max_compounding_tier": cfg.get(
-                        "extractor_max_compounding_tier", 3
-                    ),
-                    "extractor_hedge_budget_usd": cfg.get(
-                        "extractor_hedge_budget_usd", 0.0
-                    ),
-                    "extractor_trend_strength_threshold": cfg.get(
-                        "extractor_trend_strength_threshold", 0.65
-                    ),
-                    "extractor_alt_targets": list(
-                        cfg.get("extractor_alt_targets", []) or []
-                    ),
-                    "extractor_direction": cfg.get("extractor_direction", "normal"),
-                    "inverted_extractor_standing_alt_units": float(
-                        cfg.get("inverted_extractor_standing_alt_units", 0.0) or 0.0
-                    ),
-                }
+            # bot_config_kwargs derives the carried set from fields(BotConfig)
+            # minus the other mode, so creation and restore read one declaration.
+            # Inside the try: a bad stored value skips this bot, not the fleet.
             try:
-                config = make_bot_config(mode, **_shared_kwargs, **_mode_kwargs)
+                _kwargs = bot_config_kwargs(mode, cfg, exchange_id=cfg["exchange_id"])
+                # A saved record holds no bulk_trading, the key
+                # bot_config_kwargs reads, so an absent stack_mode takes
+                # STACK_MODE_DEFAULT.
+                if "stack_mode" not in cfg:
+                    _kwargs["stack_mode"] = STACK_MODE_DEFAULT
+                if "inverted_extractor_standing_alt_units" in _kwargs:
+                    # A stored null reaches float() as 0.0.
+                    _kwargs["inverted_extractor_standing_alt_units"] = float(
+                        _kwargs["inverted_extractor_standing_alt_units"] or 0.0
+                    )
+                config = make_bot_config(mode, **_kwargs)
             except (ValueError, TypeError) as _restore_err:
                 logger.error(
-                    "Bot %s restoration FAILED — mode-shape "
-                    "violation in persisted config: %s. Skipping "
+                    "Bot %s restoration FAILED — persisted config could "
+                    "not be built: %s. Skipping "
                     "this bot. (Either operator manually edited "
                     "state.json to a bad shape, or a pre-v3.20.32 "
                     "config drifted out of mode invariants. To "
@@ -327,7 +225,7 @@ class StateRestoreMixin:
                     bid,
                     _restore_err,
                 )
-                self._ledger_skip(bid, "mode-shape violation in persisted config")
+                self._ledger_skip(bid, "persisted config could not be built")
                 continue
 
             # Every BotMode needs an explicit branch here; ScrummingBot
