@@ -4165,6 +4165,85 @@ flag on,  before   reservation token 4fd7f1ce796540008fb4ebf0c0c6a70a
 flag on,  after    reservation token 762010f49abf452f8371841243828f31
 ```
 
+### Where the claim holds, and where it gives way
+
+The claim holds. Two bots were restored from a record written for this reading,
+both on one asset, with thirty units at the venue and a price of one hundred
+dollars. The second bot's permitted sale fell to nineteen units, because the
+first bot had eleven of the thirty spoken for.
+
+```
+bot A target $1,000   claimed 11.0 units
+bot B target   $500   claimed  5.5 units
+registry total        16.5 units on the asset
+
+A may sell            24.5 units
+B may sell            19.0 units, where with no claim standing it is 30.0
+```
+
+Driving the real sell on the second bot both ways: a twenty-unit sell was refused
+and named the reservation, and an eighteen-unit sell was not refused by it.
+
+```
+sell 20.0   "sell refused by capital reservation:
+             amount=20.000000 effective=19.000000 asset=BTC"
+sell 18.0   no reservation refusal
+```
+
+One reader of another bot's claim decides a sale. Nothing else in the platform
+reads a claim at all.
+
+`src/trading/scrumming/execution.py` — the sell pre-check
+
+```python
+_crr_effective = _crr_reg.effective_available(
+    asset=self.config.target_asset,
+    bot_id=self.bot_id,
+    total_holdings=float(self._current_holdings or 0),
+)
+if amount > _crr_effective + 1e-12:
+```
+
+No screen reads a claim. The dollar-denominated registry that sits beside the
+asset-unit one is built nowhere in the tree, and the method that would attach it
+to the bot manager has no caller, so every bot is admitted with no dollar claim
+written for it.
+
+```
+effective_available    1 reader that decides a sale
+reservations_for        1 reader, a bot's own headroom
+snapshot               0 callers
+set_capital_registry   0 callers
+CapitalRegistry built  0 times
+```
+
+Five places let a bot through with no claim behind it. Each one is a choice to
+keep trading rather than to stop, and making any of them stop means refusing a
+bot that trades today.
+
+| where | what fails there | what happens |
+|---|---|---|
+| `src/trading/container/registry.py`, the admission branch | no registry is attached | the bot is admitted, nothing is claimed |
+| the same file, the rate branch | no price for the base currency | the bot is admitted, nothing is claimed |
+| the same file, the error branch | the consult raises | the bot is admitted, nothing is claimed |
+| `src/trading/extractor_bot.py`, the chunk-rate claim | the claim raises | the Extractor runs unclaimed |
+| the Scrumming claim in the reservation mixin | the claim raises | the bot ticks on, its token cleared |
+
+Seven further places on the same path behave the same way. The sell pre-check is
+the one that bears on money directly, because it is the only reader.
+
+### The log lines a missing claim writes
+
+Four places used to pass in silence, or to say so only at debug level. Each now
+writes one line naming what was lost, and none of them changes what a bot does.
+
+```
+the sell pre-check      warning, naming the sale that is not bounded
+the admission branch    warning, naming the allocation not held aside
+the Extractor claim     warning, when the base currency is empty
+the dollar grant        warning, when the wallet cannot be priced
+```
+
 ### What a stored record does now
 
 A record written before the removal still loads. Two bots were restored from a

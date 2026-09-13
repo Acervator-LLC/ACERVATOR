@@ -179,8 +179,18 @@ class CapitalRegistry:
 
             wallet_usd = self._wallet_usd(exchange_id, base, rate)
             if wallet_usd is None:
-                # Nothing is logged or recorded here; the grant below is silent.
-                pass
+                # _wallet_usd answers None with no provider, on a provider that
+                # raises, and on a non-USD base with no rate.
+                logger.warning(
+                    "Bot %s is being granted $%.2f on %s/%s WITHOUT an "
+                    "over-allocation check: the wallet could not be priced, "
+                    "and other bots already reserve $%.2f.",
+                    bot_id,
+                    usd_amount,
+                    exchange_id,
+                    base,
+                    other_total_usd,
+                )
             else:
                 if other_total_usd + usd_amount > wallet_usd + 1e-6:
                     return (

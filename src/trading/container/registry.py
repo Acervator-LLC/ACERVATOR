@@ -38,7 +38,17 @@ class BotRegistryMixin:
         already attached, ``_dispatch_bootstrap`` runs the bot's live pull so
         its holdings are not 0 until the first tick.
         """
-        if self._capital_registry is not None:
+        if self._capital_registry is None:
+            # set_capital_registry has no caller, so every admission takes this
+            # branch and request_reservation is never asked.
+            logger.warning(
+                "Bot %s was added WITHOUT a capital reservation: no capital "
+                "registry is attached to the bot manager, so its $%.2f "
+                "allocation is not held aside and another bot may claim it.",
+                bot.bot_id,
+                self._reservation_usd_and_mode(bot)[0],
+            )
+        else:
             try:
                 usd_amount, mode_str = self._reservation_usd_and_mode(bot)
                 if usd_amount > 0:
