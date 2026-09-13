@@ -6583,4 +6583,140 @@ The glossary entry that named the removed module as the fold's entry point is
 answered in place, in
 [the ADR index and glossary](../12-adr-index-and-glossary.md).
 
+## 2026-09-13 - A value pushed after the page is drawn
+
+The dialog keeps its figures in Python and draws them in a web page. Until this
+section, a figure written after the page was up moved the store and left the
+screen alone. The page now takes every push.
+
+```python
+# src/gui/react_settings_dialog.py, the write and the push it starts
+def set_value(self, name: str, value: Any) -> None:
+    self._model.admit(name, value)
+    self.redraw()
+```
+
+### Where a push used to stop
+
+React draws each control with a seeded value, which the browser reads once when
+the node is made. Every ordinary property is redrawn on a later push — whether a
+row is hidden, whether a button is greyed, the choices in a drop-down — but the
+figure inside a box is not one of those. The node kept whatever it was born with.
+
+```mermaid
+flowchart LR
+    A[the operator's own edit] --> B[the store]
+    C[a write from the program] --> B
+    B --> D[the payload]
+    D --> E[the page redraws]
+    E --> F[hidden, greyed, choices]
+    E --> G[the figure in the box]
+```
+
+### What each drawn control takes now
+
+Each draw ends by writing the store's figure into every drawn control whose
+figure differs. A tick box takes a tick, a drop-down takes a row number, and
+every other control takes its text. Nothing is written where the two already
+agree, so a redraw that changes nothing touches nothing.
+
+```javascript
+// src/gui/web/settings_dialog.js
+function draw(target, node) {
+  var root = rootFor(target);
+  global.ReactDOM.flushSync(function () {
+    root.render(node);
+  });
+  syncDrawn(target);
+  return target;
+}
+```
+
+The dialog draws 66 controls across nine tabs. Sixty-five of them take a seeded
+figure and are reached by this. The sixty-sixth is the configured exchange list,
+which is drawn as a list of lines and was always rebuilt.
+
+| Tab | Controls | Tab | Controls |
+| --- | -------- | --- | -------- |
+| User | 1 | Theme | 2 |
+| Exchanges | 6 | Sound | 10 |
+| Trading | 3 | SMS | 22 |
+| TA Indicators | 12 | AI Monitor | 7 |
+| Phantom Bots | 3 | | |
+
+### The credential rows, cleared and read off the page
+
+Adding a venue empties the API Key, API Secret and Passphrase rows. Both figures
+below were read off the drawn nodes, never off the store.
+
+| Driven on the rendered page | Before | Now |
+| --------------------------- | ------ | --- |
+| the key row after the clear | still showed the typed key | empty |
+| the secret row after the clear | still showed the typed secret | empty |
+| the key row after a tab switch | still showed the typed key | empty |
+| Lock duration after a write of 3 | showed 7 | shows 3 |
+| the phantom box after a tick | showed clear | shows ticked |
+| Default Phantom Timeframes after a write of `1d` | showed `4h` | shows the row for 1d |
+
+### A push cannot land on a half-typed value
+
+The one control the page leaves alone is the one under the operator's cursor. A
+figure being typed has not been reported yet, so the store is behind the screen
+for that box and only for that box. Skipping it is what keeps a push from wiping
+out half a typed key.
+
+```javascript
+// src/gui/web/settings_dialog.js, inside syncDrawn
+var typing = owner ? owner.activeElement : null;
+if (node === typing || kind === LIST_KIND) {
+  return;
+}
+```
+
+Driven both ways on the same push: with the key row focused and holding a
+half-typed value, the page kept it; with the same row left, the same push wrote
+the store's empty figure in. The skip is what saves it.
+
+### An emptied number box is no longer reported
+
+A number box with nothing in it is not a figure. The page used to hand the empty
+box back as nothing at all, the store refused it, and a warning line was written
+for a value nobody had entered. The page now puts the held number back in the box
+and reports nothing.
+
+```javascript
+// src/gui/react_settings_dialog.py, the page's own reader
+var value = readValue(node, kind);
+if (typeof value === "number" && !isFinite(value)) {
+  node.value = api.valueOf(name);
+  return false;
+}
+```
+
+### The TA row width the page checked against
+
+The page checks the shape of everything it is handed. Its check on the indicator
+weight rows wanted three fields and every row carries four, the fourth being the
+slider's own name. The check reported twelve faults on every load, one for each
+indicator, and reports none now.
+
+```javascript
+// src/gui/web/settings_dialog.js
+var TA_ROW_WIDTH = THIRD + STEP;
+```
+
+### The six earlier rows this section drove
+
+Every one of these was built on the older behaviour and every one was driven
+again afterwards.
+
+| Earlier work | Driven after the change |
+| ------------ | ----------------------- |
+| the API Key and API Secret masked together | all three credential rows still masked, read off the drawn page |
+| the wizard's stored defaults, filled before the draw | the five stored figures still reach the wizard, against the built-in figures with no store |
+| Enable Phantom Balance Bots for Scrumming | opens on the stored setting |
+| Default Phantom Timeframes | opens on the stored name |
+| Lock duration (candles) | opens on the stored figure |
+| the wizard's Enable Phantom Bots and Active Timeframes | both open on the stored setting, driven either way |
+
 Back to [the subsystem index](README.md).

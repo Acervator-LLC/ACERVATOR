@@ -376,6 +376,12 @@
   var SECOND = STEP + STEP;
   var THIRD = SECOND + STEP;
 
+  // A ta_rows row carries a label, a position, a figure and its slider's name.
+  var TA_ROW_WIDTH = THIRD + STEP;
+
+  // Every drawn control and TA slider carries both, so one selector reaches all.
+  var DRAWN_SELECT = SELECT_OPEN + NAME_ATTR + "]" + SELECT_OPEN + KIND_ATTR + "]";
+
   var held = null;
   var dialogFaults = [];
   var loadFault = null;
@@ -1070,7 +1076,7 @@
 
   function checkPaired(found) {
     listField(found, TA_ROWS_FIELD).forEach(function (row, index) {
-      if (!Array.isArray(row) || row.length !== THIRD) {
+      if (!Array.isArray(row) || row.length !== TA_ROW_WIDTH) {
         note(AT + String(index), TA_ROWS_FIELD, SHORT_LIST_FAULT, kindOf(row));
       }
     });
@@ -1993,12 +1999,53 @@
     return found;
   }
 
+  function writeSeeded(node, kind, seeded) {
+    if (kind === CHECK_KIND || kind === RADIO_KIND) {
+      var ticked = seeded === true;
+      if (node.checked !== ticked) {
+        node.checked = ticked;
+      }
+      return;
+    }
+    if (kind === COMBO_TEXT_KIND || kind === COMBO_DATA_KIND) {
+      var chosen = Number(seeded);
+      if (isFiniteNumber(chosen) && node.selectedIndex !== chosen) {
+        node.selectedIndex = chosen;
+      }
+      return;
+    }
+    var printed = seeded === undefined || seeded === null ? EMPTY : String(seeded);
+    if (node.value !== printed) {
+      node.value = printed;
+    }
+  }
+
+  // A drawn control takes a seeded value once, so each draw writes the model
+  // into every control but the focused one, which holds a half-typed value.
+  function syncDrawn(target) {
+    if (held === null || typeof target.querySelectorAll !== FUNCTION_KIND) {
+      return;
+    }
+    var owner = target.ownerDocument;
+    var typing = owner ? owner.activeElement : null;
+    Array.prototype.slice
+      .call(target.querySelectorAll(DRAWN_SELECT))
+      .forEach(function (node) {
+        var kind = node.getAttribute(KIND_ATTR);
+        if (node === typing || kind === LIST_KIND) {
+          return;
+        }
+        writeSeeded(node, kind, valueOf(node.getAttribute(NAME_ATTR)));
+      });
+  }
+
   // flushSync makes the document current before draw returns.
   function draw(target, node) {
     var root = rootFor(target);
     global.ReactDOM.flushSync(function () {
       root.render(node);
     });
+    syncDrawn(target);
     return target;
   }
 
