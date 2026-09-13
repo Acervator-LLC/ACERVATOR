@@ -5472,4 +5472,139 @@ box waits on a Test Handshake that performs one.
 
 In development.
 
+## 2026-09-13 - The credential pair is masked and Username is not
+
+The API Key row and the API Secret row are both hidden while they are typed. Two
+sections above record the pair as readable and say the change was left to a unit.
+This is that change. One declaration carries it, and the page reads that
+declaration for both rows.
+
+`src/gui/main_tabs/settings_dialog_surface.py` - the two specs
+
+```python
+{
+    "label": "API Key:",
+    "name": "new_api_key",
+    "kind": LINE,
+    "echo": "password",
+},
+{
+    "label": "API Secret:",
+    "name": "new_api_secret",
+    "kind": TEXT_AREA,
+    "echo": "password",
+},
+```
+
+### How a multi-line secret is hidden
+
+A single-line box hides its characters by taking a password type. A text area has
+no type attribute at all, so it cannot. The running build draws the page inside a
+web view, and that engine offers a style property that hides the characters of any
+element. The style sheet applies it to a text area carrying the masking mark.
+
+`src/gui/web/settings_dialog.css` - the one rule a text area needs
+
+```css
+textarea.acervator-settings-dialog[data-part="control"][data-echo="password"] {
+  -webkit-text-security: disc;
+}
+```
+
+### The three options and the reading that refused two
+
+Three things were driven on the loaded page. The engine supports the property. A
+text area reports no type. A single-line box handed a two-line value gives one
+line back, so drawing the secret as a single line would flatten a pasted PEM and
+the venue would refuse the key.
+
+```
+CSS.supports("-webkit-text-security", "disc")   True
+the text area's type attribute                  null
+two lines into a single-line box, read back      "...secretsecond-line"
+two lines into the text area, read back          "...secret\nsecond-line"
+```
+
+### Both halves now end in the same state
+
+Read off the rendered page, with the pair beside the passphrase row that was
+already hidden. All three report the same hiding style.
+
+```
+API Key      INPUT     type password   data-echo password   text-security disc
+API Secret   TEXTAREA  type null       data-echo password   text-security disc
+Passphrase   INPUT     type password   data-echo password   text-security disc
+```
+
+### The hidden characters measured in the page's own layout
+
+A hidden row draws one repeated mark for every character, so two values of the
+same length draw to the same size while two of different lengths still differ.
+The key row was measured across its rendered width and the secret row down its
+rendered height.
+
+```
+                       before     after
+key, 200 wide chars    2254 px    986 px
+key, 200 thin chars     593 px    986 px
+key, 600 thin chars               2937 px
+secret, 400 wide        206 px     98 px
+secret, 400 thin         62 px     98 px
+secret, 8 thin                      58 px
+```
+
+### What a hidden row still saves
+
+Both rows were typed through the page and both getters the add path reads
+returned what was typed. The newline inside the secret survived, so the PEM
+conversion still receives the bytes it converts.
+
+```
+the add path reads the key      "u159-not-a-real-key-0000"
+the add path reads the secret   "u159-not-a-real-secret\nsecond-line"
+a newline survived the row      True
+```
+
+### The hints above the rows stay readable
+
+Hiding the characters of a value does not hide the placeholder, so the Coinbase
+key shape and the PEM note still show on an empty row.
+
+```
+API Key      placeholder text-security none, colour rgb(117, 117, 117)
+API Secret   placeholder text-security none, colour rgb(117, 117, 117)
+Passphrase   placeholder text-security none, colour rgb(117, 117, 117)
+```
+
+### Username is not a credential row and stays readable
+
+The Username row keeps a plain text field. It was typed on the loaded page, read
+back off the object the save path reads, saved, then read again from a second
+dialog built over the same store.
+
+```
+username row as drawn    INPUT  type text  text-security none
+typed on the page        u159-fake-operator
+read off the object      u159-fake-operator
+store after Save         u159-fake-operator
+a second dialog reads    u159-fake-operator
+the reloaded page shows  u159-fake-operator
+```
+
+### What the Qt build still shows
+
+The Qt dialog builds its own widgets and reads neither spec, so both rows there
+are unchanged and both stay readable. A Qt text edit has no echo mode. The only
+precedent for hiding one is the init wizard, which paints the text transparent.
+That also hides the placeholder and leaves the characters selectable, so applying
+it would trade one visible fault for two. The Qt pair is left as it is.
+
+`src/gui/init_wizard.py` - the Qt precedent, and what it costs
+
+```python
+self._api_secret.setStyleSheet(
+    "color: transparent; background-selection-color: transparent;"
+)
+```
+
 Back to [the subsystem index](README.md).
