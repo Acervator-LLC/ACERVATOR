@@ -2934,6 +2934,177 @@ because a restore carries them and the rebase only runs on a first tick. The
 rate itself still becomes real, so every new round is sized correctly; the pool
 total is the part that would stay stale.
 
+#### The throttle between two averaging-down rounds
+
+The figure on the screen says candles, and the throttle counts candles now. One
+method lengths a candle of the bot's own timeframe, and both candle-counted
+settings read it, so the watch-list refresh and this throttle cannot disagree
+about what a candle is.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._candle_seconds`
+
+```python
+return float(
+    TIMEFRAME_SECONDS.get(
+        self._timeframe, TIMEFRAME_SECONDS[self.DEFAULT_TIMEFRAME]
+    )
+)
+```
+
+The throttle reads the stamp the position already carries from its last
+correction, and from its entry before that, so the first correction after an
+entry waits the same span as every correction after it.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the
+throttle
+
+```python
+skip_seconds = self._correction_skip_seconds()
+if skip_seconds > 0 and (time.time() - pos.last_correction_ts) < skip_seconds:
+    return  # skip-candles throttle
+```
+
+Driven at nine candles on an hourly bot, a correction 32,399 seconds old was
+refused and one 32,401 seconds old was admitted, so the boundary sits at nine
+candles exactly. The same nine candles read 2,700 seconds on a five-minute bot,
+8,100 on a fifteen-minute, 129,600 on a four-hour and 777,600 on a daily. A typed
+zero switches the throttle off. A timeframe the engine's table does not carry
+falls back to the hourly length.
+
+Two further things follow from reading the stamp. It is saved with the position
+and restored with it, so a restart no longer forgets how long a pair has been
+waiting. And a record written before that stamp existed restores it as zero, which
+reads as long ago and admits a correction at once — the same answer the tick
+counter gave for a pair it had never seen.
+
+#### What the pool picker does when it is empty, and when it is not
+
+Both settings of the picker run today. Leave every box clear and the bot ranks
+every alt that trades against its base by the last day's volume and keeps the
+busiest, re-ranking on each refresh. Tick boxes and the bot hunts those pairs and
+no others, for as long as they stay listed; a pair the venue has dropped is
+removed with a log line that names it.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._refresh_watch_list`, the branch
+
+```python
+manual_targets = list(getattr(self.config, "extractor_alt_targets", []) or [])
+
+if manual_targets:
+```
+
+Driven on five scannable markets with three pairs ticked, one of the three not
+listed, the watch list read the two that were listed. Cleared, the same five
+markets ranked to five by volume. A pair holding an open position stays on the
+list either way.
+
+#### What the hedge budget does at zero, and above it
+
+At zero the reserve is off and every averaging-down round spends the pool. Above
+zero the bot converts the dollars into base units at the price it reads for its
+own base currency, holds them apart from the pool, and spends them on corrections
+before the pool is touched. The same amount is added to what this bot claims
+against the venue, so a sibling bot on the same asset cannot spend it.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.set_initial_chunk_rate`, the
+conversion
+
+```python
+if self._hedge_budget_usd > 0:
+    self._hedge_free_base = self._hedge_budget_usd / usd_per_base
+```
+
+Driven with a forty dollar budget against a base priced at sixteen dollars, the
+reserve read 2.5 base units, and the claim written against the venue covered the
+pool and the reserve together.
+
+#### The standing alt quantity reaches the pool now
+
+The method that reads it runs. An Extractor reads its base currency's dollar
+price on its first refresh and hands that first reading to the rebase, which is
+where the standing quantity is read. For an Inverted Extractor holding a standing
+position, the quantity becomes the pool and the dollar figure becomes a reading of
+it rather than an input.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.set_initial_chunk_rate`, the
+inverted branch
+
+```python
+if self._is_inverted and _standing > 0:
+    self._chunk_size_base = _standing
+    self._chunk_size_usd = _standing * usd_per_base
+```
+
+Driven on a record holding 31.25 standing units against a base priced at sixteen
+dollars, the restored bot read a pool of 31.25 base units and five hundred
+dollars, where the same bot before the rate held four hundred of each. The
+quantity also sizes the claim the bot writes against the venue.
+
+#### Who may close an Extractor Tranche
+
+The operator's own description of the two sides:
+
+> "...these tranches remain until the acquired Alternate Currency stack is sold
+> by either the Extractor Bot (Sibling) or its corresponding Scrumming Bot
+> (Parent). All Tranches will persist under a bot's Details > Tranches Tab."
+
+One of the two sides runs. The Extractor closes its own tranche on a bullish
+exit, at the share the exit setting names, and that is the Sibling side. The
+Parent side names a force-sell by the base-currency Scrumming Bot at a percentage
+of growth, and nothing in the engine carries that percentage. It is not a field on
+a bot's configuration, it is not one of the fifteen Extractor settings, and every
+mention of a force-sell in the source sits inside a label or a tooltip. What the
+toggle does is store a word.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.set_tranche_arbiter`, the write
+
+```python
+position.arbiter = normalize_arbiter(arbiter)
+```
+
+Driven end to end on a restored Extractor under a restored parent: the tranche
+row read Sibling, a set read Parent, two presses returned Sibling then Parent, the
+parent's own listing reported the same Parent, and an import of the saved record
+read Parent back. No order was placed and no balance moved. The toggle's own
+tooltip already says the Parent side is not acted on, and it is accurate.
+
+A built Parent side would read a growth percentage the engine does not declare.
+The shape it would take, as a proposal rather than a build:
+
+PROPOSED
+
+```python
+# PROPOSED. The growth percentage arrives as an argument because no
+# field carries one.
+def force_sell_extractor_tranche(self, tranche_id: str, growth_pct: float) -> bool:
+    row = self._extractor_tranche_row(tranche_id)
+    if row["arbiter"] != ARBITER_PARENT:
+        return False
+    cost = row["cost_basis_base"]
+    growth = (row["mark_value_base"] - cost) / cost
+    return growth >= growth_pct / 100.0
+```
+
+Where that percentage comes from is the operator's decision: it is a control
+nobody has named, and the toggle waits on it.
+
+#### What the re-measured settings reach today
+
+| setting | engine read | what the read decides |
+|---|---|---|
+| Target alt pairs | `extractor_bot.py:493` | the typed pair list, or the ranked scan when it is empty |
+| Direction | `extractor_bot.py:730` | whether the entry side buys or sells, and which half of a pair the filter keeps |
+| Standing alt units (inverted) | `extractor_bot.py:242` | the pool of an Inverted Extractor, and the size of its claim |
+| Correction skip candles | `extractor_bot.py:1030` | the span between two averaging-down rounds, in candles of the bot's timeframe |
+| Drawdown threshold | `extractor_bot.py:894` | when a position counts as down |
+| Hedge budget (USD) | `extractor_bot.py:260` | the reserve corrections spend before the pool, and part of the claim |
+| Trend Strength Threshold | `extractor_bot.py:211` | the threshold the signal provider is built with, once |
+| Arbiter, on a tranche | `extractor_bot.py:1714` | a word on the tranche; no decision reads it |
+
+Two of the eight can only be set before a bot exists and have no running-bot
+control: the trend strength threshold, because its provider is built one time, and
+the direction, because no screen offers it afterwards.
+
 ### Additional Main Window > Trading Tab Features
 
 #### Trade Logic and Gate Activity
