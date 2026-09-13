@@ -5740,4 +5740,127 @@ The wizard's name box still fills itself with User and still refuses an empty
 name. That collection reaches no caller, and the unlock it would feed is the
 Quintessence Wallet, so it waits on the wallet rather than being removed.
 
+## 2026-09-13 - One venue list, one passphrase set
+
+Four copies of two facts were measured, and the copies are gone. The connector
+decides which venues exist and which of them ask for a passphrase. Every screen
+now reads those two answers instead of keeping its own.
+
+```python
+def exchange_ids() -> tuple:
+    from ...exchange.ccxt_connector import SUPPORTED_EXCHANGES
+
+    return tuple(sorted(SUPPORTED_EXCHANGES.keys()))
+```
+
+The screen offers the same fifteen venues in the same order as before, and the
+same three still ask for a passphrase. Nothing about what is offered changed.
+
+### Where the two lists were declared
+
+Six declarations were found, and three of them were copies of the other three.
+
+| Fact | Declaration | Where |
+| ---- | ----------- | ----- |
+| the venues | `SUPPORTED_EXCHANGES` | the connector, the authority |
+| the venues | a frozen tuple | the install wizard page |
+| the venues | a frozen tuple | the one-window bot runner |
+| the passphrase venues | `PASSPHRASE_EXCHANGES` | the connector, the authority |
+| the passphrase venues | a frozen set | the Settings page |
+| the passphrase venues | a frozen tuple | the install wizard page |
+
+Each copy is now a small function that asks the connector when it is called. The
+import sits inside the function, so loading a screen module still loads no
+exchange library and reads no settings file.
+
+### The falsifier, one entry at a time
+
+One venue was taken out of the connector inside a driving process, and every
+consumer was then asked what it offers. The tree itself still holds fifteen.
+
+| Reading | Consumers asked | Still holding the removed venue |
+| ------- | --------------- | ------------------------------- |
+| Before the change | 9 | 4 |
+| After the change | 9 | 0 |
+
+The same was done with one passphrase venue, against every place that decides
+whether the field is drawn.
+
+| Reading | Consumers asked | That did not follow the connector |
+| ------- | --------------- | --------------------------------- |
+| Before the change | 14 | 9 |
+| After the change | 14 | 0 |
+
+The four that carried the venue were the install wizard's ids, its labels, its
+bridge list and the bot runner's model. The nine that ignored the passphrase
+change included the ticked box and the drawn field on the Settings page, which
+is what the operator sees.
+
+Why that matters, and it is not tidiness. A venue offered on a screen and absent
+from the connector is stored and then refused, before any object exists.
+
+```
+CCXTConnector('gemini') refused: Unsupported exchange 'gemini'. Supported:
+['binance', 'coinbase', 'kraken', 'kucoin', 'bybit', 'okx', 'gateio', 'bitget',
+'huobi', 'mexc', 'bitfinex', 'poloniex', 'bitstamp', 'cryptocom']
+```
+
+### Every reader of the chosen venue, driven
+
+Five readers were named earlier as out of reach without a live window. All five
+were driven in one run, with real tab widgets and a real wizard, against a store
+holding two venues: one with an obvious fake credential and one with none.
+
+| Reader | What it answered |
+| ------ | ---------------- |
+| the startup tab loop | two crypto tabs, Gemini and Kraken, no stock tab |
+| the startup credential report | Gemini stored and unverified, Kraken with none |
+| the bot connect lookup | both refusals, before anything was contacted |
+| the bot wizard's venue picker | Gemini and Kraken, Gemini selected |
+| the API panel's stored lookup | the no-credentials refusal |
+
+One step is still out of reach. The Qt wizard is opened behind a modal call that
+waits for a person, so the handler that opens it cannot be run to the end without
+one. The wizard itself was built with the stored entries and its picker read.
+
+### The diagnostic tool converts for every venue
+
+The operator tool asked for a key at the keyboard and then converted a pasted
+private key's escaped newlines for Coinbase alone. Every other venue received an
+unusable key. The conversion now runs on the way in, for every venue, gated on
+the key's own armour lines.
+
+```python
+secret = input("  API Secret: ").strip()
+if looks_like_pem(secret):
+    secret = unescape_pem_newlines(secret)
+```
+
+The tool also opened its fifteen public endpoints through the plain library call,
+which allows a file scheme, under a suppression marker that sat on the line above
+the real one. It now opens them through the project's own scheme-restricted
+request and opener.
+
+### What the docstrings claimed
+
+Two screen modules said in their own opening text that a value changed on one
+side alone is reported. Nothing reads prose, and the tree holds no test that
+compares them.
+
+```
+git ls-files tests/     conftest.py, 6 Solidity files, 1 data file, 150 reports
+pytest --collect-only   no tests collected
+```
+
+The claim is removed rather than reworded. Each module now says plainly that
+nothing compares its written-out values, and names the values that are not
+written out and therefore cannot drift: the twelve indicator weights, the venue
+list and the passphrase set.
+
+Two things this section does not change. Which venues are offered is still
+decided in one place only, the connector, and no venue was added or removed. The
+install wizard still writes its own shorter passphrase note beside a venue name
+while the Settings page writes the connector's longer one, because changing
+either would change words on a screen.
+
 Back to [the subsystem index](README.md).

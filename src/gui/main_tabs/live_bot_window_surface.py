@@ -56,23 +56,6 @@ CREDENTIAL_FIELDS = ("api_key", "api_signature")
 
 NOT_WIRED_FORMAT = "no {name} is wired to this window"
 
-EXCHANGE_IDS = (
-    "binance",
-    "bitfinex",
-    "bitget",
-    "bitstamp",
-    "bybit",
-    "coinbase",
-    "cryptocom",
-    "gateio",
-    "gemini",
-    "huobi",
-    "kraken",
-    "kucoin",
-    "mexc",
-    "okx",
-    "poloniex",
-)
 DEFAULT_EXCHANGE_ID = "coinbase"
 
 DEFAULT_PAIRS = {
@@ -357,6 +340,17 @@ class PaneModel:
         return self.text.count(BLOCK_SEPARATOR) + ONE_BLOCK
 
 
+def offered_exchange_ids() -> tuple:
+    """``SUPPORTED_EXCHANGES`` in id order, what ``exchange_ids`` is filled from.
+
+    ``SUPPORTED_EXCHANGES`` is imported when first asked, so importing this
+    file loads no exchange library.
+    """
+    from ...exchange.ccxt_connector import SUPPORTED_EXCHANGES
+
+    return tuple(sorted(SUPPORTED_EXCHANGES.keys()))
+
+
 class LiveBotWindowModel:
     """The one-window live bot runner: its controls, its buttons, its panes.
 
@@ -398,7 +392,7 @@ class LiveBotWindowModel:
         self.threads: list = []
         self.subscribed: list = []
         self.configs: list = []
-        self.exchange_ids = list(EXCHANGE_IDS)
+        self.exchange_ids = list(offered_exchange_ids())
         self.exchange_id = DEFAULT_EXCHANGE_ID
         self.bases = list(DEFAULT_PAIRS)
         self.base = DEFAULT_BASE

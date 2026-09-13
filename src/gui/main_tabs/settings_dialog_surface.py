@@ -23,9 +23,10 @@ holds its values in memory and records every write.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``settings_dialog.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.settings_dialog``, so a value changed on one side alone is
-reported. The twelve indicator weights are the exception: both pages read
-``ta_engine.DEFAULT_WEIGHTS``, so they cannot drift apart.
+``src.gui.settings_dialog``, and nothing compares the two copies. Three
+values are not written out and so cannot drift: the twelve indicator weights
+read ``ta_engine.DEFAULT_WEIGHTS``, and ``crypto_exchange_items`` and
+``passphrase_exchange_ids`` read the connector registry.
 Nothing here imports Qt, and nothing runs at import time that
 reads a clock, opens a file or reaches a network.
 """
@@ -108,8 +109,6 @@ EQUITY_EXCHANGE_IDS = frozenset(
         "interactivebrokers",
     }
 )
-
-PASSPHRASE_EXCHANGE_IDS = frozenset({"bitget", "kucoin", "okx"})
 
 EQUITY_ITEM_FORMAT = "{name} (planned, not yet live)"
 
@@ -1473,6 +1472,17 @@ def crypto_exchange_items() -> tuple:
     )
 
 
+def passphrase_exchange_ids() -> frozenset:
+    """``PASSPHRASE_EXCHANGES``, the set ``on_exchange_changed`` ticks the box on.
+
+    ``PASSPHRASE_EXCHANGES`` is imported when first asked, so importing this
+    file loads no exchange library and reads no settings.
+    """
+    from ...exchange.ccxt_connector import PASSPHRASE_EXCHANGES
+
+    return frozenset(PASSPHRASE_EXCHANGES)
+
+
 def exchange_items(wing: str) -> tuple:
     """The Add-exchange dropdown items for one wing, as (text, id) pairs."""
     if wing == STOCK_WING:
@@ -2177,7 +2187,7 @@ class SettingsDialogModel:
         ``show_passphrase`` then draws ``new_passphrase`` for that venue alone.
         """
         eid = self.current_exchange_id()
-        self.values["pp_check"] = eid in PASSPHRASE_EXCHANGE_IDS
+        self.values["pp_check"] = eid in passphrase_exchange_ids()
         self.texts["api_feedback"] = ""
         self._record("on_exchange_changed", eid)
         self.show_passphrase(self.values["pp_check"])
