@@ -38,7 +38,7 @@ from functools import partial
 from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines, vault_phrase
-from ...core.settings import AppSettings
+from ...core.settings import CREDENTIAL_FIELDS, AppSettings
 from ...core.sms_engine import (
     CARRIER_GATEWAYS,
     EMAIL_GATEWAY,
@@ -328,7 +328,7 @@ DETAILS_FEEDBACK_FORMAT = "\n{details}"
 API_FAILED_LOG_FORMAT = "API failed ({eid}): {message}"
 TEST_FAILED_FEEDBACK_FORMAT = "Test failed: {error}"
 
-ADDED_WITH_CREDENTIALS = "with credentials (verified)"
+ADDED_WITH_CREDENTIALS = "with stored credentials"
 ADDED_WITHOUT_CREDENTIALS = "without credentials"
 ADDED_FEEDBACK_FORMAT = "{name} added {how}."
 ADDED_LOG_FORMAT = "Exchange added: {name} ({how})"
@@ -1516,6 +1516,18 @@ def listed_exchange_position(listed: Any, exchange_id: Any) -> int:
     return NO_MATCH_INDEX
 
 
+def stored_credential_phrase(entry: Any) -> str:
+    """The phrase an add reports, read off ``entry`` and not off the typed rows.
+
+    ``test_api_connection`` is the only step that reaches a venue, and it
+    reports that venue's own answer, so no phrase here claims one.
+    """
+    holder = entry if isinstance(entry, dict) else {}
+    if any(holder.get(name) for name in CREDENTIAL_FIELDS):
+        return ADDED_WITH_CREDENTIALS
+    return ADDED_WITHOUT_CREDENTIALS
+
+
 def banner_of(wing: str) -> dict:
     """The stock-wing banner, its words, its pieces and its colours."""
     return {
@@ -1825,11 +1837,38 @@ class SettingsSource:
     def list_exchanges(self) -> list:
         return list(self.exchanges)
 
+    def get_exchange(self, exchange_id: Any) -> Optional[dict]:
+        for one in self.exchanges:
+            if isinstance(one, dict) and one.get(EXCHANGE_ID_KEY) == exchange_id:
+                return dict(one)
+        return None
+
     def add_exchange(self, config: Any) -> None:
-        self.exchanges.append(config)
+        """Store ``config`` under its id, keeping a token it leaves empty.
+
+        ``SettingsManager.add_exchange`` merges the same way, so a blank
+        re-add cannot read differently here.
+        """
+        entry = dict(config)
+        for at, one in enumerate(self.exchanges):
+            if not isinstance(one, dict):
+                continue
+            if one.get(EXCHANGE_ID_KEY) != entry.get(EXCHANGE_ID_KEY):
+                continue
+            for name in CREDENTIAL_FIELDS:
+                if not entry.get(name):
+                    entry[name] = one.get(name, "")
+            self.exchanges[at] = entry
+            return
+        self.exchanges.append(entry)
 
     def remove_exchange(self, exchange_id: Any) -> None:
         self.removed.append(exchange_id)
+        self.exchanges = [
+            one
+            for one in self.exchanges
+            if not isinstance(one, dict) or one.get(EXCHANGE_ID_KEY) != exchange_id
+        ]
 
 
 class StatusLogSink:
@@ -2309,7 +2348,7 @@ class SettingsDialogModel:
             for name in TYPED_CREDENTIAL_CONTROLS:
                 self.values[name] = EMPTY_TEXT
 
-            how = ADDED_WITH_CREDENTIALS if key else ADDED_WITHOUT_CREDENTIALS
+            how = stored_credential_phrase(self.settings.get_exchange(eid))
             self.set_feedback(
                 ADDED_FEEDBACK_FORMAT.format(name=eid.capitalize(), how=how),
                 SUCCESS_LEVEL,

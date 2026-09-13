@@ -20,7 +20,10 @@ from .main_tabs.main_window_surface import (
     HISTORY_TAB,
     ISOLATED_TABS,
 )
-from .main_tabs.trading_tab_surface import exchange_display_name
+from .main_tabs.trading_tab_surface import (
+    PLACEHOLDER_TAB_TITLE,
+    exchange_display_name,
+)
 
 
 from .table_cells import (
@@ -1341,13 +1344,13 @@ if _HAS_QT:
                 return
 
             ph = getattr(self, target_ph_attr, None)
+            # ph stays set, so _drop_unlisted_exchange_tabs can add it back.
+            _ph_dropped = False
             if ph is not None:
                 idx = target_widget.indexOf(ph)
                 if idx >= 0:
                     target_widget.removeTab(idx)
-                setattr(self, target_ph_attr, None)
-                if target_tabs is self._exchange_tabs:
-                    self._empty_placeholder = None
+                    _ph_dropped = True
 
             tab = ExchangeTab(
                 exchange_id,
@@ -1384,7 +1387,7 @@ if _HAS_QT:
                         "stock_tabs": self._stock_tab_widget.count(),
                         "crypto_tabs": self._crypto_tab_widget.count(),
                         "in_layer_store": target_tabs.get(exchange_id) is tab,
-                        "placeholder_dropped": ph is not None,
+                        "placeholder_dropped": _ph_dropped,
                     },
                 )
 
@@ -3019,8 +3022,51 @@ if _HAS_QT:
             dlg.exec()
             self._sync_exchange_tabs()
 
+        def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
+            """Take off every exchange tab whose id is not in ``listed``.
+
+            The layer's Get Started page is added back once its bar empties, and
+            each dropped tab is asked to ``stop_feeds`` before it is deleted.
+            """
+            kept = set(listed)
+            dropped = 0
+            layers = (
+                (
+                    self._crypto_exchange_tabs,
+                    self._crypto_tab_widget,
+                    "_crypto_placeholder",
+                ),
+                (
+                    self._stock_exchange_tabs,
+                    self._stock_tab_widget,
+                    "_stock_placeholder",
+                ),
+            )
+            for store, bar, ph_attr in layers:
+                for eid in [one for one in store if one not in kept]:
+                    tab = store.pop(eid)
+                    self._exchange_tabs.pop(eid, None)
+                    at = bar.indexOf(tab)
+                    if at >= 0:
+                        bar.removeTab(at)
+                    stop = getattr(tab, "stop_feeds", None)
+                    if callable(stop):
+                        stop()
+                    tab.setParent(None)
+                    tab.deleteLater()
+                    dropped += 1
+                    self._status_log.log(f"Exchange tab removed: {eid}", "warning")
+                ph = getattr(self, ph_attr, None)
+                if ph is not None and not store and bar.indexOf(ph) < 0:
+                    bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
+            return dropped
+
         def _sync_exchange_tabs(self) -> None:
-            """Add a tab for each configured exchange missing one, in its own layer."""
+            """Add a tab for each configured exchange missing one, in its own layer.
+
+            A tab the store no longer lists is dropped, so the bar carries what
+            ``list_exchanges`` carries.
+            """
             if not self._settings:
                 return
             _wanted: list[str] = []
@@ -3042,6 +3088,8 @@ if _HAS_QT:
                         f"({'stock' if self._is_equity_exchange(eid) else 'crypto'} layer)",
                         "success",
                     )
+
+            _gone = self._drop_unlisted_exchange_tabs(_wanted)
 
             # `_missing` asks the layer tab bar, not the store the loop above wrote.
             _missing = 0
@@ -3066,6 +3114,7 @@ if _HAS_QT:
                     expected=0,
                     context={
                         "configured": len(_wanted),
+                        "dropped": _gone,
                         "crypto_bar": self._crypto_tab_widget.count(),
                         "stock_bar": self._stock_tab_widget.count(),
                         "crypto_store": len(self._crypto_exchange_tabs),

@@ -393,9 +393,11 @@ if _HAS_QT:
                 self._new_api_secret.clear()
                 self._new_passphrase.clear()
 
-                has_creds = (
-                    "with credentials (verified)" if key else "without credentials"
+                from .main_tabs.settings_dialog_surface import (
+                    stored_credential_phrase,
                 )
+
+                has_creds = stored_credential_phrase(self._sm.get_exchange(eid))
                 self._set_feedback(f"{eid.capitalize()} added {has_creds}.", "success")
                 if self._status_log:
                     self._status_log.log(

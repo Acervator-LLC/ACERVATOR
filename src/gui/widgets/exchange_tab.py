@@ -185,6 +185,19 @@ if _HAS_QT:
                 cmd_bar.addWidget(btn)
             layout.addLayout(cmd_bar)
 
+        def stop_feeds(self) -> None:
+            """Halt ``_news_ticker`` and ``_pull_rate_timer``.
+
+            A tab taken off the bar keeps both running otherwise, because the
+            tab widget stays a child of the layer's stack.
+            """
+            ticker = getattr(self, "_news_ticker", None)
+            if ticker is not None:
+                ticker.stop()
+            timer = getattr(self, "_pull_rate_timer", None)
+            if timer is not None:
+                timer.stop()
+
         def _update_pull_rate_label(self) -> None:
             """Update the data-pull countdown under +New Bot.
 
