@@ -255,9 +255,9 @@ if _HAS_QT:
                             level="error",
                         )
                         return
-                    from ...core.encryption import decrypt
+                    from ...core.encryption import decrypt, vault_phrase
 
-                    master = f"qat_{sm.get('username', 'user')}_vault"
+                    master = vault_phrase(sm.get("username", ""))
                     key = decrypt(exch["api_key_enc"], master)
                     secret = decrypt(exch["api_secret_enc"], master)
                     pp = (
