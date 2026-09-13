@@ -92,9 +92,13 @@ HOST_SCRIPT = """(function (global) {
     if (name === null || kind === null) {
       return false;
     }
-    console.log(
-      "%(edit)s" + JSON.stringify({ name: name, value: readValue(node, kind) })
-    );
+    var value = readValue(node, kind);
+    // An emptied number box parses to NaN, which is no figure to report.
+    if (typeof value === "number" && !isFinite(value)) {
+      node.value = api.valueOf(name);
+      return false;
+    }
+    console.log("%(edit)s" + JSON.stringify({ name: name, value: value }));
     return true;
   }
 
