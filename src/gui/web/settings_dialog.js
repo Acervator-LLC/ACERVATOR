@@ -141,7 +141,6 @@
   var NAME = "name";
   var KIND = "kind";
   var TAB = "tab";
-  var GROUP_KEY = "group";
   var LABEL_KEY = "label";
   var TEXT_KEY = "text";
   var ITEMS = "items";
@@ -221,7 +220,6 @@
   var COMBO_TEXT_KIND = "combo_text";
   var COMBO_DATA_KIND = "combo_data";
   var CHECK_KIND = "check";
-  var RADIO_KIND = "radio";
   var SPIN_KIND = "spin";
   var DOUBLE_SPIN_KIND = "double_spin";
   var SLIDER_KIND = "slider";
@@ -274,7 +272,6 @@
   var PASSWORD_TYPE = "password";
   var NUMBER_TYPE = "number";
   var CHECKBOX_TYPE = "checkbox";
-  var RADIO_TYPE = "radio";
   var RANGE_TYPE = "range";
 
   var DIALOG_PART = "settings-dialog";
@@ -1298,9 +1295,6 @@
     if (kind === CHECK_KIND) {
       return CHECKBOX_TYPE;
     }
-    if (kind === RADIO_KIND) {
-      return RADIO_TYPE;
-    }
     if (kind === SLIDER_KIND) {
       return RANGE_TYPE;
     }
@@ -1422,13 +1416,9 @@
       return element(TEXTAREA_TAG, one);
     }
     one.type = inputType(spec);
-    if (kind === CHECK_KIND || kind === RADIO_KIND) {
+    if (kind === CHECK_KIND) {
       one.defaultChecked = seeded === true;
       one[TICKED_ATTR] = text(seeded);
-      // A shared name is what makes one group box hold one ticked radio.
-      if (kind === RADIO_KIND) {
-        one.name = text(spec[GROUP_KEY]);
-      }
       return element(INPUT_TAG, one);
     }
     one.defaultValue = text(seeded);
@@ -2004,7 +1994,7 @@
   }
 
   function writeSeeded(node, kind, seeded) {
-    if (kind === CHECK_KIND || kind === RADIO_KIND) {
+    if (kind === CHECK_KIND) {
       var ticked = seeded === true;
       if (node.checked !== ticked) {
         node.checked = ticked;

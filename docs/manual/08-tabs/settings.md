@@ -23,6 +23,49 @@ tabs.addTab(self._create_sms_tab(), "SMS")
 tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
 ```
 
+### The count is a declaration, not a number in this manual
+
+That block is a reading, and every removal has moved it. Eleven became ten, ten
+became nine, and the next removal will move it again. The rule replaces the
+figure. The page count and the control count are two declarations, and the
+answer is whatever those two hold on the day you read them.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — the two the count comes from
+
+```python
+TAB_TITLES = (
+    USER_TAB, EXCHANGE_TAB, TRADING_TAB, TA_TAB, PHANTOM_TAB,
+    THEME_TAB, SOUND_TAB, SMS_TAB, AI_TAB,
+)
+
+CONTROL_SPECS: tuple[dict, ...] = (
+    {"tab": USER_TAB, "group": "", "name": "username", "kind": LINE, ...},
+    ...
+)
+```
+
+Both builds read the same two, so a page or a control that leaves a declaration
+leaves the Qt window and the shell together. Count the entries in the first for
+the pages and the entries in the second for the controls. Every dated section
+further down this page records what one removal took; none of them owns the
+count.
+
+Read on 13 September 2026, in one run, off the built Qt window and off the
+payload the shell draws:
+
+| | the declaration | the Qt window | the shell payload |
+| --- | ---: | ---: | ---: |
+| Pages | 9 | 9 tabs | 9 |
+| Controls | 66 | not counted whole | 66 specs |
+| Tick boxes | 23 | 23 drawn | 23 |
+| Drop-downs | 6 | 6 drawn | 6 |
+| Radio buttons | 0 | 0 drawn | 0 |
+
+The Qt window was read by walking its own widget tree, so the tick-box and
+drop-down rows are drawn counts and the whole-dialog figure of 66 is the
+declaration's. The browser page was rendered as well and reported 0 radio
+inputs, against 23 checkbox inputs on the same reading.
+
 ## What each page persists
 
 `_save` writes and `_load_current` reads back. A control neither method touches
@@ -764,6 +807,43 @@ self._fold_all.setChecked(True)
 
 Fold to X# of buy positions - Sets that counted number. Key
 `fold_target_count`, 1 to 100, at 5.
+
+Neither of those two sentences names what bounds a fold, and no build of this
+platform has ever counted positions to bound one. A fold is bounded in dollars.
+The planner takes the tranches the market price reaches and the money left
+under this cycle's growth cap, and it stops when the money runs out.
+
+`src/trading/scrumming/fold_tranches.py` — `_plan_fold_consumption`
+
+```python
+def _plan_fold_consumption(
+    self, eligible: list, cap_remaining: float
+) -> tuple[list, list, int]:
+    for _t in eligible:
+        room = cap_remaining - running_usd
+        if room <= 1e-12:
+            break
+```
+
+Driven on five queued tranches worth $105 in all, with no count offered
+anywhere in the call:
+
+| The cap handed to the planner | Tranches the fold reached | Dollars taken |
+| --- | ---: | ---: |
+| $500 | 5 of 5 | $105.00 |
+| $55 | 2 of 5, one part-consumed | $55.00 |
+| $0 | 0 of 5 | $0.00 |
+
+The two tighter caps show the reading can report a narrowed plan, so the
+unnarrowed plan at $500 is a reading and not an absence.
+
+Nine callables make up the fold path and none of them takes a parameter that
+limits how many tranches a fold reaches. One of the nine takes
+`_tranche_count_before`, and that is a slice index into the list a sale has
+just appended to.
+
+[One dollar cap bounds a fold, and no count does](#one-dollar-cap-bounds-a-fold-and-no-count-does)
+carries the same property measured on a different set of tranches.
 
 Upward Distribution Target - The same three choices on the sell side. Key
 `distribute_target`, at all sell positions.
@@ -6777,5 +6857,147 @@ again afterwards.
 | Default Phantom Timeframes | opens on the stored name |
 | Lock duration (candles) | opens on the stored figure |
 | the wizard's Enable Phantom Bots and Active Timeframes | both open on the stored setting, driven either way |
+
+## 2026-09-13 - The radio drawing code comes off the Settings dialog
+
+The dialog draws no radio button on any tab. The last three went off the page
+with the sell-side target group, and the machinery that drew them stayed behind:
+a kind constant, two lookup tables, a holder class, the grouping that cleared a
+button's siblings, a browser branch and a style rule. None of it had anything
+left to draw, and all of it is gone.
+
+Driven with the home redirected into a scratch directory before the first
+product import, so the settings directory and the log root bound under that
+directory. No stored setting of the running install was read, no credentials
+file was opened, no bot was built and no venue was contacted. One connection to
+a venue host was attempted on purpose and refused.
+
+### What drew a radio, and what asked for one
+
+Four files carried the machinery. Zero control specs asked for it.
+
+| What it was | Where it lived |
+| ----------- | -------------- |
+| the kind constant, and its rows in the signal and painted tables | `src/gui/main_tabs/settings_dialog_surface.py` |
+| the holder class and the sibling grouping | `src/gui/react_settings_dialog.py` |
+| the input-type branch and the shared group name | `src/gui/web/settings_dialog.js` |
+| the style rule the tick box shared with it | `src/gui/web/settings_dialog.css` |
+
+The count either side, over the five files that make the dialog:
+
+| | before | after |
+| --- | ---: | ---: |
+| Lines naming a radio | 26 | 0 |
+| Occurrences, case-insensitive | 31 | 0 |
+| Control specs of that kind | 0 | 0 |
+
+### The dialog either side of the removal
+
+Three surfaces were read in one run, before on a clean copy of the default
+branch and after on the branch:
+
+| | before | after |
+| --- | ---: | ---: |
+| Tabs, in the Qt window and in the shell payload | 9 and 9 | 9 and 9 |
+| Control specs the payload carries | 66 | 66 |
+| Tick boxes the Qt window draws | 23 | 23 |
+| Drop-downs the Qt window draws | 6 | 6 |
+| Radio buttons the Qt window draws | 0 | 0 |
+| Radio inputs the browser page draws | 0 | 0 |
+| Checkbox inputs the browser page draws | 207 | 207 |
+
+The whole payload, the whole Qt reading and the whole rendered-page reading
+compare identical either side. The 207 is the positive control: the counter that
+reported zero radio inputs saw 23 tick boxes on each of the nine tab readings,
+so the zero is a fact about the page rather than about the counter.
+
+### A settings file written while the radio buttons were there
+
+The sell-side group stored one of three words, and the buy-side group stored one
+of another three. A settings file written before the groups came off still
+carries all of them.
+
+```
+buy side     all_buy    x_buy    most_recent_buy
+sell side    all_sell   x_sell   most_recent_sell
+```
+
+Driven on a file carrying four top-level keys, one of them a folding group of
+six:
+
+| | after |
+| --- | --- |
+| Anything raised | no |
+| Username arrived | yes |
+| Default Target Balance arrived | yes, 310.0 |
+| The folding group | not declared, passed over |
+
+### The sentence this removal leaves standing
+
+The Profit Folding description above still says:
+
+> One master checkbox and three groups of radio buttons, eleven controls in all.
+
+That sentence describes the page before the removals, and the section that took
+the page away records the same words. Nothing on the dialog draws a radio button
+today, and after this change nothing in the code can.
+
+## 2026-09-13 - The distribution statistic comes off the bot record
+
+One field on a bot's statistics record counted dollars toward a distribution the
+platform no longer performs. It was declared once and written by nothing, and it
+is gone.
+
+Driven the same way as the section above, with the home redirected before the
+first product import. No stored record of the running install was read, no
+credentials file was opened, no bot was built and no venue was contacted.
+
+### One declaration, no writer, no reader
+
+`src/trading/container/config.py` — the line that went
+
+```python
+accumulated_distribute: float = 0.0  # Tracks toward extended position
+```
+
+The name appeared once in the whole tree, the same count case-sensitive and
+case-insensitive, and that one appearance was its own declaration. No line set
+it, no line read it, and no page of this manual named it.
+
+### A saved bot record carrying the retired figure
+
+A save copies the statistics out with `asdict`, so the retired figure was
+written into every saved record. A restore copies back only the names the
+record still declares, and passes over the rest.
+
+`src/trading/container/restore.py` — the gate a stored figure meets
+
+```python
+saved_stats = bot_data.get("stats", {})
+for key, val in saved_stats.items():
+    if hasattr(bot.stats, key):
+        setattr(bot.stats, key, val)
+```
+
+Driven on a record shaped like a saved bot, carrying every declared field, the
+retired figure at 12.5, and one planted name that has never been declared:
+
+| | before | after |
+| --- | ---: | ---: |
+| Fields the record declares | 36 | 35 |
+| Keys in the stored record | 37 | 37 |
+| Stored figures the gate admitted | 36 | 35 |
+| Stored figures the gate passed over | 1 | 2 |
+| Anything raised | no | no |
+
+The planted name is the positive control. It was passed over on both sides, so
+the gate can report a skip, and the retired figure moving from admitted to
+passed over is the whole of the change.
+
+### The directive this removal breaks
+
+Nothing. The name appears in zero lines under `docs/`, so no sentence anywhere
+describes it. Its own comment named bookkeeping for the distribution mechanics
+the Profit Folding sections above already record as removed.
 
 Back to [the subsystem index](README.md).

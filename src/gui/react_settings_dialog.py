@@ -71,7 +71,7 @@ HOST_SCRIPT = """(function (global) {
   root.setAttribute("data-part", api.spacePart);
 
   function readValue(node, kind) {
-    if (kind === "check" || kind === "radio") {
+    if (kind === "check") {
       return node.checked === true;
     }
     if (kind === "combo_text" || kind === "combo_data") {
@@ -228,7 +228,7 @@ class PageTextArea(_Held):
 
 
 class PageToggle(_Held):
-    """A tick box or a radio button, as ``QCheckBox`` reports it."""
+    """A tick box, as ``QCheckBox`` reports it."""
 
     def isChecked(self) -> bool:  # noqa: N802
         """True while the box is ticked."""
@@ -237,38 +237,6 @@ class PageToggle(_Held):
     def setChecked(self, ticked: Any) -> None:  # noqa: N802
         """Tick or clear the box and redraw."""
         self._put(bool(ticked))
-
-
-def radio_siblings(name: str) -> tuple:
-    """Every other radio sharing one group box with ``name``.
-
-    ``QGroupBox`` clears these when one radio inside it is ticked.
-    """
-    spec = surface.spec_for(name)
-    return tuple(
-        one["name"]
-        for one in surface.CONTROL_SPECS
-        if one["kind"] == surface.RADIO
-        and one["tab"] == spec["tab"]
-        and one["group"] == spec["group"]
-        and one["name"] != name
-    )
-
-
-class PageRadio(PageToggle):
-    """A radio button, exclusive inside its group box."""
-
-    def setChecked(self, ticked: Any) -> None:  # noqa: N802
-        """Tick this radio, clearing the others in its group box."""
-        on = bool(ticked)
-        if on:
-            for other in radio_siblings(self._name):
-                self._owner.store().values[other] = False
-        self._put(on)
-
-    def admit(self, value: Any) -> None:
-        """Take one operator tick, clearing the others in its group box."""
-        self.setChecked(value)
 
 
 class PageNumber(_Held):
@@ -468,7 +436,6 @@ HOLDER_BY_KIND = {
     surface.LINE: PageLine,
     surface.TEXT_AREA: PageTextArea,
     surface.CHECK: PageToggle,
-    surface.RADIO: PageRadio,
     surface.SPIN: PageNumber,
     surface.DOUBLE_SPIN: PageNumber,
     surface.SLIDER: PageNumber,

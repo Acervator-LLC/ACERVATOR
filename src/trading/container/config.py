@@ -638,7 +638,6 @@ class BotStats:
     current_price: float = 0.0
     position_value: float = 0.0
     accumulated_fold: float = 0.0  # Tracks toward extended position
-    accumulated_distribute: float = 0.0  # Tracks toward extended position
     # Fold tranches discarded by ScrummingBot.clear_fold_tranches, never folded.
     tranches_discarded_lifetime: int = 0
     # USD of parked wire credit released by an operator clear; an earmark,
