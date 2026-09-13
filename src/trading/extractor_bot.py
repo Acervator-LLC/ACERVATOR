@@ -202,8 +202,6 @@ class ExtractorBot(BotContainer):
         # Reserved at set_initial_chunk_rate, released at stop(), pulsed each tick.
         self._crr_token: Optional[str] = None
 
-        self._initialised = False
-
     # ── Public chunk-rate setter ────────────────────────────────────
 
     def set_initial_chunk_rate(self, usd_per_base: float) -> None:

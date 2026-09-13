@@ -175,9 +175,8 @@ def declared_type_holds(key: str, value: Any) -> bool:
 class SettingsManager:
     """Thread-safe reader and writer for one ``AppSettings``.
 
-    ``get`` and ``set`` address a top-level field while ``get_nested`` and
-    ``set_nested`` address a key inside ``ai_monitor`` or
-    ``ta_indicator_weights``.
+    ``get`` and ``set`` address a top-level field. A dict field such as
+    ``ai_monitor`` or ``ta_indicator_weights`` is read and written whole.
     """
 
     _lock = threading.RLock()
@@ -211,26 +210,6 @@ class SettingsManager:
                     f"{type(value).__name__}"
                 )
             setattr(self._settings, key, value)
-            self._save()
-
-    def get_nested(self, group: str, key: str, default: Any = None) -> Any:
-        """Return *key* from the ``AppSettings`` dict field *group*, or *default*."""
-        with self._lock:
-            group_dict = getattr(self._settings, group, {})
-            if isinstance(group_dict, dict):
-                return group_dict.get(key, default)
-            return default
-
-    def set_nested(self, group: str, key: str, value: Any) -> None:
-        """Write *value* at *key* inside the ``AppSettings`` dict field *group*.
-
-        A *group* that is not a dict raises ``KeyError``.
-        """
-        with self._lock:
-            group_dict = getattr(self._settings, group, None)
-            if not isinstance(group_dict, dict):
-                raise KeyError(f"Setting '{group}' is not a dict")
-            group_dict[key] = value
             self._save()
 
     def get_all(self) -> dict:
