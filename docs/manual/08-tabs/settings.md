@@ -6144,4 +6144,149 @@ The shell reaches the store only while the trading program serves the bridge.
 Started as the surfaces alone, with no running system behind it, the bridge has
 no settings manager to read and the wizard opens on its built-in figures.
 
+## 2026-09-13 - The store refuses a value of the wrong type
+
+Two rows turned out to be one fault. `AppSettings` names a type for each of its
+seventeen fields, and nothing anywhere held a stored value to that type. Driven
+across all seventeen, the setter took a word where a number was declared and a
+word where a switch was declared, on seventeen of seventeen.
+
+The store now answers for its own declaration. One function reads the type each
+field's own default carries, and both write paths ask it.
+
+```python
+# src/core/settings.py
+DECLARED_TYPES: dict[str, type] = {
+    name: type(value) for name, value in asdict(AppSettings()).items()
+}
+
+
+def declared_type_holds(key: str, value: Any) -> bool:
+    ...
+```
+
+A switch is refused where a number is declared, and a whole number is admitted
+where a dollar figure is declared, because a settings file writes 350 and reads
+350 back.
+
+### What the two write paths do now
+
+`SettingsManager.set` raises and names the field, the type it takes and the type
+it was handed. The load path never raises, because a settings file that stops
+the program starting is worse than one field on its default.
+
+| path | a value of the wrong type | what the operator sees |
+| ---- | ------------------------- | ---------------------- |
+| `set` | `TypeError: Setting 'aggressive_trading' takes bool, not str` | the Settings page's own save loop names the field and keeps going |
+| the load path | the field's declared default, and one warning line | `Settings kept the default for default_target_balance: the file holds str, the field takes float.` |
+
+Neither path changes a value into something else. A word is never turned into a
+number, because a changed value is a second way to be wrong.
+
+### A settings file that stops the bot wizard opening
+
+A hand-edited file holding a word where the target balance belongs stopped the
+wizard being built at all. The Settings page caught the same value and drew one
+dollar; the wizard had no guard beside its two siblings, which already refuse an
+unknown visibility name and admit only a switch.
+
+| surface | before | after |
+| ------- | ------ | ----- |
+| the Qt wizard | `TypeError` at construction, no window | opens, Target Balance $200.00 |
+| the shell wizard | `TypeError` at model build, no pages | opens, Target Balance 200.00 |
+| the Settings page | opened, drew `$1.00` | opens, draws $200.00 |
+
+Both wizards now keep their own figure when the value handed to them is not a
+number, and both still open on a figure the operator did set.
+
+```
+stored 777.00     Qt wizard 777.00      shell wizard 777.00
+stored a word     Qt wizard 200.00      shell wizard 200.00
+stored 350        Qt wizard 350.00      shell wizard 350.00
+```
+
+### A switch that read on whatever the file held
+
+The aggressive trading flag is declared as a switch, and a word in the file read
+as on across every surface at once. Both surfaces agreed with each other, which
+is why nothing reported it.
+
+| surface | before, file holds the word no | after |
+| ------- | ----------------------------- | ----- |
+| the Qt wizard box | on | clear |
+| the shell wizard box | on | clear |
+| the Settings page box | on | clear |
+| the config a new bot is built from | on | clear |
+
+A switch the operator really did set still reaches the wizard on: stored on
+opens the box on, which is the control that proves the reading is the store's
+and not the guard's.
+
+### A store at plausible values loads unchanged
+
+Every one of the seventeen fields was written at a value the operator could hold
+— a venue entry with both tokens, a target balance of 350.00, a chosen theme, an
+accent colour, twelve indicator weights, the sound group and the message
+channels group. It was written through both writers the store uses.
+
+```
+fields compared 17   different 0    written as settings.toml
+fields compared 17   different 0    written as settings.json
+control: the same 17 with two words planted -> different 2
+         default_target_balance and aggressive_trading, both on their defaults
+```
+
+The control is the second half of that block. The comparison reports a
+difference when there is one, so the two zeroes above are a reading and not an
+empty instrument.
+
+### The creation record names figures the wizard carries
+
+Every bot ever created logged `Positions=0`. The record read a name off the
+wizard's dictionary that no branch of the wizard writes — it is a retired name,
+listed among the settings the bot config drops. An Extractor recorded a balance
+of zero for the same reason, because that mode's dictionary carries no target
+balance either.
+
+```python
+# src/gui/main_window.py
+if config.get("mode") == "extractor":
+    _created = (
+        f"Chunk size=${config.get('extractor_chunk_size_usd', 0):.2f}, "
+        f"Scan top={config.get('extractor_scan_top_n', 0)}"
+    )
+else:
+    _created = (
+        f"Balance=${config.get('target_balance', 0):.2f}, "
+        f"Tranche count={config.get('stack_tranche_count_target', 0)}"
+    )
+```
+
+Both names are the wizard's own labels: Tranche Count on the parameters page and
+Chunk size (USD) on the Extractor page.
+
+| mode | before | after |
+| ---- | ------ | ----- |
+| Scrumming | `Balance=$200.00, Positions=0` | Balance=$200.00, Tranche count=3 |
+| Extractor | `Balance=$0.00, Positions=0` | Chunk size=$100.00, Scan top=8 |
+
+Moving the two controls moves the line: a tranche count of 9 and a target
+balance of 512.00 recorded Balance=$512.00, Tranche count=9.
+
+### The increment style sentence
+
+The Trading page description above says a bot takes its own increment style from
+the wizard rather than from this page. That was true of neither half by the time
+it was written, and it is true of nothing now.
+
+| what the sentence says | what is there |
+| ---------------------- | ------------- |
+| a wizard control sets an increment style | no wizard control does, on either build |
+| a bot carries an increment style of its own | the bot config field was removed on 13 September |
+
+Nothing sets an increment style and nothing reads one. The concept the sentence
+reaches for is Tranche Spacing, which the wizard does carry, and the derived
+placement the engine works out from Opposing Trade Distance is what decides
+where a tranche lands.
+
 Back to [the subsystem index](README.md).

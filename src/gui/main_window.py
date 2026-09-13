@@ -3258,11 +3258,24 @@ if _HAS_QT:
                 config = wizard.get_bot_config()
                 logger.info("Bot creation config: %s", config)
 
+                # An extractor config carries no target_balance and a
+                # scrumming one no extractor_chunk_size_usd.
+                if config.get("mode") == "extractor":
+                    _created = (
+                        f"Chunk size=${config.get('extractor_chunk_size_usd', 0):.2f}, "
+                        f"Scan top={config.get('extractor_scan_top_n', 0)}"
+                    )
+                else:
+                    _created = (
+                        f"Balance=${config.get('target_balance', 0):.2f}, "
+                        f"Tranche count={config.get('stack_tranche_count_target', 0)}"
+                    )
+
                 _log.record(
                     exchange=config.get("exchange_id", exchange_id),
                     action="BOT_CREATE",
                     reason=f"Creating {config.get('mode','').upper()} bot for {config.get('target_asset','')}/{config.get('base_currency','')}",
-                    result=f"Balance=${config.get('target_balance',0):.2f}, Positions={config.get('position_count',0)}",
+                    result=_created,
                     level="info",
                     data_usage="Bot will be registered with BotManager in IDLE state. Must be started manually.",
                 )

@@ -816,7 +816,17 @@ if _HAS_QT:
             self._target_balance.setRange(1.0, 1000000.0)
             self._target_balance.setDecimals(2)
             self._target_balance.setPrefix("$ ")
-            self._target_balance.setValue(defaults.get("default_target_balance", 200.0))
+            self._target_balance.setValue(200.0)
+            # setValue refuses a non-number, the way findData refuses an
+            # unknown visibility name above.
+            try:
+                self._target_balance.setValue(
+                    defaults.get("default_target_balance", 200.0)
+                )
+            except TypeError as _tb_exc:
+                logger.warning(
+                    "Wizard kept 200.0 for default_target_balance: %s", _tb_exc
+                )
             self._target_balance.setToolTip(
                 "The balance this bot trades relative to. HARD-CAPPED: "
                 "position can never exceed Target × (1 + Max Target "
