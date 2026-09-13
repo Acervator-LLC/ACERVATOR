@@ -128,9 +128,8 @@ if _HAS_QT:
     PAGE_ASSET = 0
     PAGE_MODE = 1
     PAGE_PARAMS = 2
-    PAGE_FOLDING = 3
-    PAGE_PHANTOM = 4
-    PAGE_EXTRACTOR_POOL = 5
+    PAGE_PHANTOM = 3
+    PAGE_EXTRACTOR_POOL = 4
 
     class AssetSelectionPage(QWizardPage):
         def __init__(self, exchanges: list[dict], parent=None):
@@ -1306,10 +1305,7 @@ if _HAS_QT:
                 )
 
         def get_config(self):
-            """Return one key per widget this page draws, and no other key.
-
-            profit_folding_active comes from ProfitFoldingPage, not this page.
-            """
+            """Return one key per widget this page draws, and no other key."""
             cfg = {
                 "visibility": self._visibility.currentData(),
                 "aggressive_trading": self._aggressive.isChecked(),
@@ -1374,87 +1370,6 @@ if _HAS_QT:
                 }
             )
             return cfg
-
-    class ProfitFoldingPage(QWizardPage):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            self.setTitle("Profit Folding & Upward Distribution")
-            self.setSubTitle(
-                "Configure how realized profits are recycled into new positions."
-            )
-            layout = QVBoxLayout(self)
-
-            self._active = QCheckBox("Enable Profit Folding")
-            self._active.setChecked(True)
-            self._active.setToolTip(
-                "Realized sell profits fold into buy positions. "
-                "Accumulated asset distributes into sell positions. "
-                "Extended Positions created when enough accumulates."
-            )
-            layout.addWidget(self._active)
-
-            mode_group = QGroupBox("Distribution Mode")
-            ml = QVBoxLayout(mode_group)
-            self._fold_equal = QRadioButton("Equal - spread evenly")
-            self._fold_equal.setChecked(True)
-            self._fold_log = QRadioButton("Logarithmic - weight toward nearest")
-            ml.addWidget(self._fold_equal)
-            ml.addWidget(self._fold_log)
-            layout.addWidget(mode_group)
-
-            fold_group = QGroupBox(
-                "Profit Folding Target (sell profits -> buy positions)"
-            )
-            ff = QFormLayout(fold_group)
-            self._fold_all = QRadioButton("All buy positions")
-            self._fold_all.setChecked(True)
-            ff.addRow(self._fold_all)
-            self._fold_x = QRadioButton("Nearest X buys:")
-            ff.addRow(self._fold_x)
-            self._fold_x_count = QSpinBox()
-            self._fold_x_count.setRange(1, 50)
-            self._fold_x_count.setValue(5)
-            ff.addRow("  Count:", self._fold_x_count)
-            self._fold_recent = QRadioButton("Most recent buy only")
-            ff.addRow(self._fold_recent)
-            layout.addWidget(fold_group)
-
-            dist_group = QGroupBox(
-                "Upward Distribution Target (accumulated asset -> sell positions)"
-            )
-            df = QFormLayout(dist_group)
-            self._dist_all = QRadioButton("All sell positions")
-            self._dist_all.setChecked(True)
-            df.addRow(self._dist_all)
-            self._dist_x = QRadioButton("Nearest X sells:")
-            df.addRow(self._dist_x)
-            self._dist_x_count = QSpinBox()
-            self._dist_x_count.setRange(1, 50)
-            self._dist_x_count.setValue(5)
-            df.addRow("  Count:", self._dist_x_count)
-            self._dist_recent = QRadioButton("Most recent sell only")
-            df.addRow(self._dist_recent)
-            layout.addWidget(dist_group)
-
-        def get_config(self):
-            ft = "all_buy"
-            if self._fold_x.isChecked():
-                ft = "x_buy"
-            elif self._fold_recent.isChecked():
-                ft = "most_recent_buy"
-            dt = "all_sell"
-            if self._dist_x.isChecked():
-                dt = "x_sell"
-            elif self._dist_recent.isChecked():
-                dt = "most_recent_sell"
-            return {
-                "profit_folding_active": self._active.isChecked(),
-                "fold_mode": "logarithmic" if self._fold_log.isChecked() else "equal",
-                "fold_target": ft,
-                "fold_target_count": self._fold_x_count.value(),
-                "distribute_target": dt,
-                "distribute_target_count": self._dist_x_count.value(),
-            }
 
     class PhantomConfigPage(QWizardPage):
         def __init__(self, defaults: dict, parent=None):
@@ -1651,13 +1566,11 @@ if _HAS_QT:
             self._mode_page = ModeSelectionPage()
             self._extractor_pool_page = ExtractorPoolPage(exchanges)
             self._params_page = TradingParamsPage(defaults)
-            self._folding_page = ProfitFoldingPage()
             self._phantom_page = PhantomConfigPage(defaults)
             self.setPage(PAGE_ASSET, self._asset_page)
             self.setPage(PAGE_MODE, self._mode_page)
             self.setPage(PAGE_EXTRACTOR_POOL, self._extractor_pool_page)
             self.setPage(PAGE_PARAMS, self._params_page)
-            self.setPage(PAGE_FOLDING, self._folding_page)
             self.setPage(PAGE_PHANTOM, self._phantom_page)
             self.setStartId(PAGE_MODE)
             self.currentIdChanged.connect(self._on_page_changed)
@@ -1702,12 +1615,7 @@ if _HAS_QT:
             if current == PAGE_PARAMS:
                 if self._mode_page.is_extractor():
                     return -1
-                # is_grid() returns False always; this branch is unreachable.
-                if self._mode_page.is_grid():
-                    return PAGE_FOLDING
                 return PAGE_PHANTOM
-            if current == PAGE_FOLDING:
-                return -1
             if current == PAGE_PHANTOM:
                 return -1
             return current + 1
