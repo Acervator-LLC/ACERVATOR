@@ -206,11 +206,6 @@ class StateRestoreMixin:
                 # STACK_MODE_DEFAULT.
                 if "stack_mode" not in cfg:
                     _kwargs["stack_mode"] = STACK_MODE_DEFAULT
-                if "inverted_extractor_standing_alt_units" in _kwargs:
-                    # A stored null reaches float() as 0.0.
-                    _kwargs["inverted_extractor_standing_alt_units"] = float(
-                        _kwargs["inverted_extractor_standing_alt_units"] or 0.0
-                    )
                 config = make_bot_config(mode, **_kwargs)
             except (ValueError, TypeError) as _restore_err:
                 logger.error(
@@ -322,11 +317,10 @@ class StateRestoreMixin:
                         logger.info(
                             "Restored extractor state for %s: "
                             "%d position(s), chunk_free_base=%.6f, "
-                            "hedge_free_base=%.6f, watch_list=%d",
+                            "watch_list=%d",
                             bid,
                             len(getattr(bot, "_positions", {})),
                             getattr(bot, "_chunk_free_base", 0.0),
-                            getattr(bot, "_hedge_free_base", 0.0),
                             len(getattr(bot, "_watch_list", [])),
                         )
                     except Exception as exc:
