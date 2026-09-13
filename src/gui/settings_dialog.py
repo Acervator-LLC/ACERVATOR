@@ -379,9 +379,9 @@ if _HAS_QT:
                 config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
 
                 if key and secret:
-                    from src.core.encryption import encrypt
+                    from src.core.encryption import encrypt, vault_phrase
 
-                    master = f"qat_{self._sm.get('username', 'user')}_vault"
+                    master = vault_phrase(self._sm.get("username", ""))
                     config.api_key_enc = encrypt(key, master)
                     config.api_secret_enc = encrypt(secret, master)
                     if pp:

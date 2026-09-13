@@ -36,7 +36,7 @@ import math
 from functools import partial
 from typing import Any, Optional
 
-from ...core.encryption import looks_like_pem, unescape_pem_newlines
+from ...core.encryption import looks_like_pem, unescape_pem_newlines, vault_phrase
 from ...core.settings import AppSettings
 from ...core.sms_engine import (
     CARRIER_GATEWAYS,
@@ -339,7 +339,6 @@ ADDED_BOX_FORMAT = (
 )
 EXCHANGE_ITEM_FORMAT = "{name} ({eid})"
 CONFIGURED_ITEM_FORMAT = "{name} ({eid})"
-MASTER_FORMAT = "qat_{username}_vault"
 KEY_FIELD = "api_key_enc"
 SIGNING_FIELD = "api_secret_enc"
 PHRASE_FIELD = "passphrase_enc"
@@ -365,7 +364,6 @@ EXCHANGE_CONFIG_DEFAULTS = (
     False,
     EMPTY_TEXT,
 )
-UNNAMED_OPERATOR = "user"
 
 NO_SELECTION_FEEDBACK = "Select an exchange to remove."
 REMOVED_FEEDBACK_FORMAT = "{name} removed."
@@ -2263,9 +2261,7 @@ class SettingsDialogModel:
             self.enabled["add_btn"] = True
 
     def _master_phrase(self) -> str:
-        return MASTER_FORMAT.format(
-            username=self.settings.get("username", UNNAMED_OPERATOR)
-        )
+        return vault_phrase(self.settings.get("username", ""))
 
     def add_exchange(self) -> None:
         """Check the credentials, store the exchange and close the dialog."""

@@ -712,15 +712,11 @@ def main() -> int:
         )
     theme_mgr.apply_theme(theme_name, app, accent)
 
-    username = settings.get("username", "")
     stored_version = settings.get("app_version", "")
     current_version = _acervator_version
 
-    if not username:
-        settings.set("username", "User")
-        settings.set("app_version", current_version)
-        username = "User"
-        log_manager.info("First run — default user created, no wizard")
+    if not settings.get("username", ""):
+        log_manager.info("First run — no stored name, no wizard")
 
     if stored_version != current_version:
         settings.set("app_version", current_version)

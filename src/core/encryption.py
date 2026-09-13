@@ -38,6 +38,17 @@ _KEY_LEN = 32  # bytes; 256-bit key
 _KDF_ITERATIONS = 600_000  # OWASP PBKDF2-HMAC-SHA256 guidance
 _KEYRING_SERVICE = "acervator"
 
+MASTER_FORMAT = "qat_{username}_vault"
+UNNAMED_OPERATOR = "user"
+
+
+def vault_phrase(username: str) -> str:
+    """Return MASTER_FORMAT filled with *username*, or with UNNAMED_OPERATOR if empty.
+
+    Every encrypt and decrypt site for a stored credential builds its passphrase here.
+    """
+    return MASTER_FORMAT.format(username=str(username) or UNNAMED_OPERATOR)
+
 
 def derive_key(passphrase: str, salt: bytes) -> bytes:
     """Derive a 256-bit AES key from *passphrase* + *salt* via PBKDF2."""

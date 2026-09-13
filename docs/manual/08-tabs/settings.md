@@ -5607,4 +5607,137 @@ self._api_secret.setStyleSheet(
 )
 ```
 
+## 2026-09-13 - The first-run path keys no vault to a placeholder
+
+A launch on a machine that has never run Acervator no longer writes a name into
+the store. The startup block reads the stored name, reports a first run in the
+log, and leaves the entry alone, so nothing claims the operator is called User.
+
+`main.py` - the first-run block, after the change
+
+```python
+stored_version = settings.get("app_version", "")
+current_version = _acervator_version
+
+if not settings.get("username", ""):
+    log_manager.info("First run — no stored name, no wizard")
+```
+
+The version write that sat beside the name write is not lost. The next block
+compares the stored version against the running one, and on a fresh store those
+differ, so the version is written there as it always was.
+
+### One declaration builds the phrase
+
+The phrase the credential vault encrypts under is now written once, in the
+module that holds the encryption. Every site that seals or opens a stored
+credential calls it, so the four sites cannot disagree about the text.
+
+`src/core/encryption.py` - the declaration and the fallback
+
+```python
+MASTER_FORMAT = "qat_{username}_vault"
+UNNAMED_OPERATOR = "user"
+
+
+def vault_phrase(username: str) -> str:
+    return MASTER_FORMAT.format(username=str(username) or UNNAMED_OPERATOR)
+```
+
+The four callers are the encrypt site on the Exchanges page, the two decrypt
+sites that open a stored secret, and the drawn page's own phrase builder.
+
+```
+src/gui/settings_dialog.py        _add_exchange                seals
+src/gui/main_window.py            _connect_exchange_for_bot    opens
+src/gui/widgets/api_tester_tab.py _do_connect                  opens
+src/gui/main_tabs/settings_dialog_surface.py  _master_phrase   the drawn page
+```
+
+### The fallback fires on a store with no name
+
+Driven on an empty directory, with the home redirected before the first import.
+The store declares the field, so a read returns the declared empty string and
+the fallback in each literal never had a chance to fire. The one declaration
+reads that empty string and substitutes the unnamed operator.
+
+```
+stored username            ''
+phrase, before the change  'qat__vault'     fallback fired  False
+phrase, after the change   'qat_user_vault' fallback fired  True
+the drawn page and the declaration agree    True
+sealed under the new phrase, opens again    True
+```
+
+### An existing install opens the same secrets
+
+A store that already carries a name is untouched. The phrase built from a name
+is the same text before and after, and a secret sealed under the earlier phrase
+opens under the phrase the changed tree builds.
+
+```
+phrase on a named store, before   'qat_FAKEOPERATOR_vault'
+phrase on a named store, after    'qat_FAKEOPERATOR_vault'
+same phrase                        True
+a secret sealed before opens now    True
+```
+
+Only a store with no name at all reads a different phrase than it did, and no
+such store can hold a credential, because the startup write filled the entry
+before any venue could be added.
+
+### The wizard's secret row starts hidden
+
+The install wizard builds its own widgets and reads neither the page spec nor
+the style sheet the drawn page uses. Its key row masked its value at build while
+its secret row did not, because the hiding lived only inside the Show
+credentials handler, which nothing called until the box was ticked. The handler
+now runs once as the wizard is built, and it carries the sheet as one
+declaration.
+
+`src/gui/init_wizard.py` - the hidden state and the build seed
+
+```python
+SECRET_HIDDEN_STYLE = (
+    "color: transparent; selection-color: transparent; "
+    f"placeholder-text-color: {ds.TEXT_PLACEHOLDER};"
+)
+...
+self._toggle_visibility(self._show_key.isChecked())
+```
+
+Read off the rendered rows, with a monospace font loaded so two values of one
+length differ only in ink. A selection is read by comparing two such values
+rather than by counting the highlight, which moves with the text width.
+
+| Row and state | which characters paint | the hint paints | a selection shows which |
+| --- | --- | --- | --- |
+| Secret, at build, before | 896 | 1122 | 896 |
+| Secret, at build, after | 0 | 1122 | 0 |
+| Secret, Show ticked, after | 896 | 1122 | 896 |
+| Secret, hidden again, after | 0 | 1122 | 0 |
+
+The Show ticked row is the control: it reports on every reading, so each zero
+is a fact about the state and not about the instrument. The hint now survives
+the hide, which the earlier sheet removed along with the characters. The key
+and passphrase rows report a masked display and a refused copy at build, both
+before and after, so the pair ends in the same state.
+
+### What the install path still leaves open
+
+A Qt text area hands its value to the clipboard whatever colour it paints in,
+while a single-line row in password mode refuses the copy. Measured on every
+state of the secret row, the copy returned the typed value; on the key row it
+returned nothing. No style sheet closes that, and the wizard draws on no path
+today.
+
+```
+API Secret     copy hands over the value   True   in all four states
+API Key        copy hands over the value   False  at build and hidden
+```
+
+The wizard's name box still fills itself with User and still refuses an empty
+name. That collection reaches no caller, and the unlock it would feed is the
+Quintessence Wallet, so it waits on the wallet rather than being removed.
+
 Back to [the subsystem index](README.md).

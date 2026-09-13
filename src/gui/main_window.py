@@ -2361,9 +2361,9 @@ if _HAS_QT:
                 return False, msg
 
             try:
-                from ..core.encryption import decrypt
+                from ..core.encryption import decrypt, vault_phrase
 
-                master = f"qat_{self._settings.get('username', 'user')}_vault"
+                master = vault_phrase(self._settings.get("username", ""))
                 api_key = decrypt(exch_config["api_key_enc"], master)
                 api_secret = decrypt(exch_config["api_secret_enc"], master)
                 # None means no stored passphrase; `sync_connect` still receives "".
