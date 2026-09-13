@@ -2444,6 +2444,12 @@ a buy-side twin is declared and unread.
 [06-trading-tab.md](06-trading-tab.md) carries the proposal for that one, at
 the Strategy Gate Flags group.
 
+**Functional.** That config field is now removed. The buy side holds no flag for
+a trend hold and no gate for one, so the asymmetry is a plain absence rather
+than a flag waiting on a gate. The sell-side gate is unchanged. On one tick with
+twenty candles all closing above their open, the sell side reported
+`trend_hold` and the buy side reported nothing.
+
 `src/trading/gate_chain.py` — `IntervalGate`, stating its own case
 
 ```python

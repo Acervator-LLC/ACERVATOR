@@ -273,7 +273,6 @@ class StateRestoreMixin:
                     "scrum_hold_in_uptrend": cfg.get("scrum_hold_in_uptrend", True),
                     "scrum_defer_to_htf": cfg.get("scrum_defer_to_htf", True),
                     "fold_require_ta_bearish": cfg.get("fold_require_ta_bearish", True),
-                    "fold_hold_in_downtrend": cfg.get("fold_hold_in_downtrend", True),
                     "fold_defer_to_htf": cfg.get("fold_defer_to_htf", True),
                 }
             else:  # BotMode.EXTRACTOR
