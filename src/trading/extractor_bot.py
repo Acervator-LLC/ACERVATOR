@@ -34,8 +34,16 @@ from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
 from ..exchange.base import OrderType
-from .bot_container import BotContainer, BotConfig, BotMode
+from .bot_container import (
+    DOLLAR_PEGGED_CURRENCIES,
+    BotContainer,
+    BotConfig,
+    BotMode,
+)
 from .buy_safety import verify_buy_safe_or_refuse
+from .otd_math import minimum_opposing_trade_distance_pct_from_config
+from .phantom_balance import TIMEFRAME_SECONDS
+from .stack_math import placement_floor_price
 from .ta_signal_provider import TASignalProvider, TASnapshot
 
 if TYPE_CHECKING:
@@ -120,6 +128,9 @@ class ExtractorPosition:
     last_price_base_per_alt: float = 0.0
     last_priced_at: float = 0.0
 
+    # The exit fill a rolled tier re-enters from; zero means no roll yet.
+    roll_exit_price_base_per_alt: float = 0.0
+
     # Who may close this tranche: ARBITER_PARENT or ARBITER_SIBLING.
     arbiter: str = ARBITER_SIBLING
 
@@ -181,15 +192,21 @@ class ExtractorBot(BotContainer):
 
         # ── Top-N watch list ──
         self._watch_list: list[str] = []
-        self._watch_list_refreshed_at_tick: int = -1
+        # Zero means never refreshed, so the first tick is always due.
+        self._watch_list_refreshed_at: float = 0.0
+        # Stamped before the price read, so a failing venue cannot retry per tick.
+        self._rate_read_at: float = 0.0
         self._tick_counter: int = 0
 
         # ── TA signal provider (one per bot; reused across pairs) ──
-        # Indicator weights default; per-bot weights can be added later.
+        # _timeframe also lengths a candle for _watch_list_due_for_refresh.
+        self._timeframe: str = (
+            getattr(config, "ta_timeframe", self.DEFAULT_TIMEFRAME)
+            or self.DEFAULT_TIMEFRAME
+        )
         self._ta_provider = TASignalProvider(
             exchange,
-            timeframe=getattr(config, "ta_timeframe", self.DEFAULT_TIMEFRAME)
-            or self.DEFAULT_TIMEFRAME,
+            timeframe=self._timeframe,
             trend_strength_threshold=float(config.extractor_trend_strength_threshold),
         )
 
@@ -588,13 +605,25 @@ class ExtractorBot(BotContainer):
                 new_watch.append(pair)
 
         self._watch_list = new_watch
-        self._watch_list_refreshed_at_tick = self._tick_counter
+        self._watch_list_refreshed_at = time.time()
+
+    def _refresh_interval_seconds(self) -> float:
+        """Seconds in ``extractor_scan_refresh_candles`` candles of ``_timeframe``.
+
+        A candle is a candle of this bot's timeframe, not a tick: the loop
+        ticks every ``tick_interval`` seconds whatever the timeframe is.
+        """
+        candles = int(self.config.extractor_scan_refresh_candles)
+        candle_seconds = TIMEFRAME_SECONDS.get(
+            self._timeframe, TIMEFRAME_SECONDS[self.DEFAULT_TIMEFRAME]
+        )
+        return float(candles * candle_seconds)
 
     def _watch_list_due_for_refresh(self) -> bool:
-        if self._watch_list_refreshed_at_tick < 0:
-            return True
-        ticks_since = self._tick_counter - self._watch_list_refreshed_at_tick
-        return ticks_since >= int(self.config.extractor_scan_refresh_candles)
+        """True once ``_refresh_interval_seconds`` have elapsed since
+        ``_watch_list_refreshed_at``."""
+        elapsed = time.time() - self._watch_list_refreshed_at
+        return elapsed >= self._refresh_interval_seconds()
 
     # ── USD ↔ base conversion ───────────────────────────────────────
 
@@ -607,6 +636,61 @@ class ExtractorBot(BotContainer):
     def _base_to_usd(self, base: float) -> float:
         """Multiply ``base`` by ``_usd_per_base_rate`` to reach USD."""
         return float(base) * float(self._usd_per_base_rate)
+
+    async def _acquire_usd_per_base_rate(self) -> None:
+        """Read the base currency's dollar price and route it into the rate.
+
+        A base in ``DOLLAR_PEGGED_CURRENCIES`` takes 1.0 and reads no
+        ticker. The first rate on a bot with nothing deployed goes to
+        ``set_initial_chunk_rate``, which rebases ``_chunk_size_base``,
+        converts ``_hedge_free_base`` and writes the registry claim; every
+        rate after that goes to ``update_usd_per_base_rate``. A read runs no
+        more often than ``_refresh_interval_seconds``, whether it succeeds
+        or not.
+        """
+        base = (self.config.base_currency or "").upper()
+        if not base:
+            return
+        if (time.time() - self._rate_read_at) < self._refresh_interval_seconds():
+            return
+        self._rate_read_at = time.time()
+        if base in DOLLAR_PEGGED_CURRENCIES:
+            rate = 1.0
+        else:
+            try:
+                ticker = await self.exchange.get_ticker(f"{base}/USD")
+                rate = float(ticker.last)
+            except Exception as exc:  # the tick must not stop on a price read
+                logger.warning(
+                    "Bot %s could not read the %s/USD price (%s: %s). The "
+                    "dollar-to-base rate stays at %s, so a dollar pool and "
+                    "a dollar round are still counted as base units.",
+                    self.bot_id,
+                    base,
+                    type(exc).__name__,
+                    exc,
+                    self._usd_per_base_rate,
+                )
+                return
+        if rate <= 0:
+            logger.warning(
+                "Bot %s read a %s/USD price of %r, which cannot be a "
+                "price. The dollar-to-base rate stays at %s.",
+                self.bot_id,
+                base,
+                rate,
+                self._usd_per_base_rate,
+            )
+            return
+        # set_initial_chunk_rate reserves, so _recent_rates, _tick_counter
+        # and _positions together hold it to one call per process.
+        if not self._recent_rates and self._tick_counter <= 1 and not self._positions:
+            self.set_initial_chunk_rate(rate)
+        accepted, reason = self.update_usd_per_base_rate(rate)
+        if not accepted:
+            logger.info(
+                "Bot %s %s/USD rate %s", self.bot_id, base, reason
+            )
 
     # ── Inverted Extractor ────────────────────────────────────────────
 
@@ -805,6 +889,75 @@ class ExtractorBot(BotContainer):
         )
         return base_back_after_fee > base_in_proportional
 
+    def _reentry_floor_price(
+        self,
+        pos: ExtractorPosition,
+        snapshot: TASnapshot,
+    ) -> Optional[float]:
+        """Highest price a rolled tranche may re-enter at, read off the parent.
+
+        Takes the parent ScrummingBot's Minimum Opposing Trade Distance and
+        Trading Fee through ``minimum_opposing_trade_distance_pct_from_config``
+        and hands them to ``placement_floor_price`` with the snapshot's
+        Bollinger band, so a band edge further out than the distance replaces
+        it. None means no floor: tier 1, no roll yet, no parent, or a
+        ``placement_floor_price`` refusal.
+        """
+        if pos.compounding_tier <= 1 or pos.roll_exit_price_base_per_alt <= 0:
+            return None
+        if self._bot_manager is None:
+            return None
+        try:
+            parent = self._bot_manager.find_parent_bot_for_base_currency(
+                self.config.base_currency, exchange_id=self.config.exchange_id
+            )
+        except Exception as exc:  # no parent means no distance to honour
+            logger.warning(
+                "Bot %s could not look up its parent for %s (%s: %s), so "
+                "the tier-%d re-entry on %s runs with no opposing-distance "
+                "floor.",
+                self.bot_id,
+                self.config.base_currency,
+                type(exc).__name__,
+                exc,
+                pos.compounding_tier,
+                pos.pair,
+            )
+            return None
+        if parent is None:
+            logger.warning(
+                "Bot %s found no parent ScrummingBot holding %s, so the "
+                "tier-%d re-entry on %s runs with no opposing-distance "
+                "floor.",
+                self.bot_id,
+                self.config.base_currency,
+                pos.compounding_tier,
+                pos.pair,
+            )
+            return None
+        band = None
+        low = float(getattr(snapshot, "bb_lower", 0) or 0)
+        high = float(getattr(snapshot, "bb_upper", 0) or 0)
+        if 0 < low < high:
+            band = (low, high)
+        try:
+            otd_pct = minimum_opposing_trade_distance_pct_from_config(parent.config)
+            return placement_floor_price(
+                -1, float(pos.roll_exit_price_base_per_alt), otd_pct, band
+            )
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Bot %s could not price the tier-%d re-entry on %s from "
+                "parent %s (%s: %s), so it runs with no floor.",
+                self.bot_id,
+                pos.compounding_tier,
+                pos.pair,
+                getattr(parent, "bot_id", "?"),
+                type(exc).__name__,
+                exc,
+            )
+            return None
+
     # ── Pair action evaluation ──────────────────────────────────────
 
     async def _evaluate_open_position(
@@ -825,7 +978,7 @@ class ExtractorBot(BotContainer):
         # Drawdown correction (averaging-down) — gated by skip-candles
         # and cost-basis-multiple ceiling.
         if in_drawdown:
-            await self._maybe_fire_correction(pos, alt_price_in_base)
+            await self._maybe_fire_correction(pos, alt_price_in_base, snapshot)
             return
 
         if self._exit_signal_matched(snapshot) and self._exit_is_profitable_in_base(
@@ -839,12 +992,14 @@ class ExtractorBot(BotContainer):
         self,
         pos: ExtractorPosition,
         alt_price_in_base: float,
+        snapshot: TASnapshot,
     ) -> None:
-        """Average down to restore notional, gated three ways: at least
+        """Average down to restore notional, gated four ways: at least
         `extractor_correction_skip_candles` ticks since the last
-        correction on this position; hedge budget used before chunk
-        budget, and a no-op if neither has room; and
-        `cost_basis_base` held below `artillery_size_base ×
+        correction on this position; `alt_price_in_base` at or below the
+        `_reentry_floor_price` the parent sets for a rolled tier; hedge
+        budget used before chunk budget, and a no-op if neither has room;
+        and `cost_basis_base` held below `artillery_size_base ×
         max_cost_basis_multiple`, above which this holds and waits for
         the exit instead.
         """
@@ -853,6 +1008,10 @@ class ExtractorBot(BotContainer):
             self.config.extractor_correction_skip_candles
         ):
             return  # skip-candles throttle
+
+        floor_price = self._reentry_floor_price(pos, snapshot)
+        if floor_price is not None and alt_price_in_base > floor_price:
+            return  # the rolled tier's re-entry has not travelled far enough
 
         max_basis = pos.artillery_size_base * float(
             self.config.extractor_max_cost_basis_multiple
@@ -954,9 +1113,10 @@ class ExtractorBot(BotContainer):
                 f"{filled_units:.6f} units @ {fill_price:.8f} "
                 f"(spent {actual_base_spent:.8f} base). "
                 f"Position now {pos.alt_units:.6f} units, "
-                f"cost_basis {pos.cost_basis_base:.8f} base, "
-                f"corrections={pos.corrections_fired}/"
-                f"{int(self.config.extractor_max_cost_basis_multiple)}x cap."
+                f"cost_basis {pos.cost_basis_base:.8f} of "
+                f"{max_basis:.8f} base allowed at "
+                f"{float(self.config.extractor_max_cost_basis_multiple):.2f}x, "
+                f"corrections={pos.corrections_fired} (no cap)."
             ),
         )
 
@@ -1147,6 +1307,8 @@ class ExtractorBot(BotContainer):
             self._chunk_free_base += base_received
             if pos.alt_units > 1e-12:
                 pos.compounding_tier += 1
+                # _reentry_floor_price measures the next re-entry from this fill.
+                pos.roll_exit_price_base_per_alt = fill_price
             log_kind = "ROLL_TO_NEXT_TIER"
         else:
             # Lock: gain stays in chunk; tier counter dies with position.
@@ -1359,10 +1521,12 @@ class ExtractorBot(BotContainer):
     async def tick(self) -> None:
         """One tick of the Extractor.
 
-        Pulses the CapitalReservationRegistry heartbeat, refreshes the
-        watch list if due, evaluates every open position for
-        drawdown/exit, then scans the watch list for a new artillery
-        opportunity — the first eligible pair wins per tick.
+        Pulses the CapitalReservationRegistry heartbeat, then on a due
+        refresh reads the base currency's dollar price through
+        ``_acquire_usd_per_base_rate`` and re-ranks the watch list,
+        evaluates every open position for drawdown/exit, and scans the
+        watch list for a new artillery opportunity — the first eligible
+        pair wins per tick.
         """
         self._tick_counter += 1
 
@@ -1382,6 +1546,7 @@ class ExtractorBot(BotContainer):
 
         # Step 0: refresh watch list if due
         if self._watch_list_due_for_refresh():
+            await self._acquire_usd_per_base_rate()
             await self._refresh_watch_list()
 
         # Step 1: manage open positions
@@ -1667,6 +1832,9 @@ class ExtractorBot(BotContainer):
                     "opened_at": p.opened_at,
                     "last_price_base_per_alt": p.last_price_base_per_alt,
                     "last_priced_at": p.last_priced_at,
+                    "roll_exit_price_base_per_alt": (
+                        p.roll_exit_price_base_per_alt
+                    ),
                     # An explicit key list: a field not named here is dropped on save.
                     "arbiter": normalize_arbiter(p.arbiter),
                 }
@@ -1728,6 +1896,10 @@ class ExtractorBot(BotContainer):
                         pdict.get("last_price_base_per_alt", 0.0)
                     ),
                     last_priced_at=float(pdict.get("last_priced_at", 0.0)),
+                    # Absent on an older state file; 0.0 means no roll yet.
+                    roll_exit_price_base_per_alt=float(
+                        pdict.get("roll_exit_price_base_per_alt", 0.0)
+                    ),
                     # normalize_arbiter cannot raise, unlike the float() calls above.
                     arbiter=normalize_arbiter(pdict.get("arbiter", ARBITER_SIBLING)),
                 )

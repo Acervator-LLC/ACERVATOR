@@ -1168,14 +1168,16 @@ class SettingsTabMixin:
             ef.addRow("Auto-scan top-N:", self._ext_scan_top_n)
 
             self._ext_scan_refresh = QSpinBox()
-            self._ext_scan_refresh.setRange(10, 600)
-            self._ext_scan_refresh.setSuffix(" ticks")
+            # The wizard row and the manual both offer 10 to 240 candles.
+            self._ext_scan_refresh.setRange(10, 240)
+            self._ext_scan_refresh.setSuffix(" candles")
             self._ext_scan_refresh.setValue(
                 int(getattr(cfg, "extractor_scan_refresh_candles", 60))
             )
             self._ext_scan_refresh.setToolTip(
-                "Ticks between watch-list refreshes. Lower = more "
-                "responsive; higher = less thrashing."
+                "Candles of this bot's timeframe between watch-list "
+                "refreshes. Lower = more responsive; higher = less "
+                "thrashing."
             )
             self._ext_scan_refresh.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_scan_refresh_candles", v)
