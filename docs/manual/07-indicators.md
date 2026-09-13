@@ -2517,51 +2517,24 @@ overrides = ("midline_scrum", "target_fires", "trend_hold", "ta_bullish")
 
 ### Reading the chain after the fact
 
-**Functional.** A trade already on the books can have its reading rebuilt. The
-whole voting engine runs again over the candles that stood before the trade,
-and the direction, the Net, the Conf, the three vote counts and every
-indicator's own vote are recorded beside it. The band position is recomputed
-too. A note goes with the record saying the market half was rebuilt and the
-bot-state fields are empty on purpose.
+**Not available.** A trade already on the books keeps the reading that was
+recorded beside it. Nothing recomputes the direction, the Net, the Conf, the
+vote counts, an indicator's own vote or the band position for a past trade, so
+a gate row that was never written stays missing.
 
-`src/trading/gate_healer.py` — `reconstruct_market_gate`
+**One writer.** A gate row reaches `gate.log` only when
+`LogManager.log_gate_decision` writes it at the moment the gate decides.
 
-```python
-parsed = candles_from_raw(window)
-summary = VotingEngine().compute_all(parsed, timeframe)
-out.ta_direction = _direction_name(summary)
-out.ta_net_score = _safe_float(getattr(summary, "net_score", None))
-out.ta_confidence = _safe_float(getattr(summary, "consensus_confidence", None))
-out.ta_bullish_count = getattr(summary, "bullish_count", None)
-out.ta_bearish_count = getattr(summary, "bearish_count", None)
-out.ta_neutral_count = getattr(summary, "neutral_count", None)
-out.indicator_votes = _indicator_votes(summary)
-```
-
-**Design intention.** The record should be the panel exactly as it stood the
-moment the order left, so a trade can be read back later without the bot that
-placed it. Only the market half can be rebuilt. The bot's own state at that
-moment is gone, and the note says so rather than filling the fields with a
-guess.
-
-`src/trading/gate_healer.py` — the note it writes
+`src/core/logging_engine.py` — the one call that records a decision
 
 ```python
-out.reconstruction_note = (
-    f"market half rebuilt from {len(window)} candles; "
-    "bot-state fields null by design"
-)
+def log_gate_decision(
+    self,
+    exchange: str,
+    bot_id: str,
+    symbol: str,
+    scrum_armed: bool,
+    fold_armed: bool,
+    scrum_blockers: Optional[list] = None,
+    fold_blockers: Optional[list] = None,
 ```
-
-**What the program does now.** No screen and no command starts this rebuild.
-`reconstruct_market_gate` has one caller, `heal_gate_gaps`, in the same module.
-No other module imports `src/trading/gate_healer.py`, so `heal_gate_gaps` has no
-caller of its own and the rebuild never runs. The gate rows you read come from
-the live writer alone.
-
-**Nothing rebuilds a gate row.** The tree no longer holds
-`src/trading/gate_healer.py`, so `reconstruct_market_gate`, `heal_gate_gaps`,
-`split_by_provenance` and `format_heal_lines` no longer exist. The two code
-blocks above record what that file held. A gate row reaches `gate.log` only when
-`LogManager.log_gate_decision`, in `src/core/logging_engine.py`, writes it at the
-moment the gate decides.

@@ -3,7 +3,7 @@
 Reference. `SettingsDialog` in `src/gui/settings_dialog.py`. The two pages
 below are the ones Part 3 names.
 
-## The eleven pages
+## The pages
 
 One method adds them, in one order.
 
@@ -13,11 +13,9 @@ One method adds them, in one order.
 tabs.addTab(self._create_user_tab(), "User")
 tabs.addTab(self._create_exchange_tab(), "Exchanges")
 tabs.addTab(self._create_trading_tab(), "Trading")
-tabs.addTab(self._create_folding_tab(), "Profit Folding")
 tabs.addTab(self._create_ta_tab(), "TA Indicators")
 tabs.addTab(self._create_phantom_tab(), "Phantom Bots")
 tabs.addTab(self._create_theme_tab(), "Theme")
-tabs.addTab(self._create_logging_tab(), "Logging")
 tabs.addTab(self._create_sound_tab(), "Sound")
 tabs.addTab(self._create_sms_tab(), "SMS")
 tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
@@ -134,8 +132,8 @@ new_cfg = SoundConfig(
 That path runs when the slider moves or a test button plays a sample, and at no
 other time.
 
-The parent section, [08-tabs.md](../08-tabs.md), carries the figure for each of
-the eleven pages and names every control on it.
+The parent section, [08-tabs.md](../08-tabs.md), carries the figure for each
+page and names every control on it.
 
 ## Settings, User page
 
@@ -283,7 +281,7 @@ Two methods serve this screen.
 
 | Bridge method | Serves | Renderer module |
 | ------------- | ------ | --------------- |
-| `settings_dialog.state` | The dialog and its eleven pages | `settings_dialog.js` |
+| `settings_dialog.state` | The dialog and every page on it | `settings_dialog.js` |
 | `exchange_tab.state` | One venue's tab | `exchange_tab.js` |
 
 ## 2026-09-06 00:52 - #423 - the Settings dialog draws in React
@@ -332,7 +330,7 @@ self._holders[name].admit(asked.get("value"))
 
 This needs to be built out to accept and contain individual end user credentials. This will also be where a license is entered or a keyfile is imported depending on how we design the authentication piece.
 
-The dialog holds the eleven pages below, added in one order.
+The dialog holds the pages below, added in one order.
 
 `src/gui/settings_dialog.py` — `SettingsDialog._setup_ui`
 
@@ -340,11 +338,9 @@ The dialog holds the eleven pages below, added in one order.
 tabs.addTab(self._create_user_tab(), "User")
 tabs.addTab(self._create_exchange_tab(), "Exchanges")
 tabs.addTab(self._create_trading_tab(), "Trading")
-tabs.addTab(self._create_folding_tab(), "Profit Folding")
 tabs.addTab(self._create_ta_tab(), "TA Indicators")
 tabs.addTab(self._create_phantom_tab(), "Phantom Bots")
 tabs.addTab(self._create_theme_tab(), "Theme")
-tabs.addTab(self._create_logging_tab(), "Logging")
 tabs.addTab(self._create_sound_tab(), "Sound")
 tabs.addTab(self._create_sms_tab(), "SMS")
 tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
@@ -724,183 +720,28 @@ page saves and restores Default Target Balance alone out of the four.
 
 ### Settings > Profit Folding
 
-![Settings, the Profit Folding page.](p37-i0.png)
+The dialog draws no Profit Folding page. `TAB_TITLES` in
+`src/gui/main_tabs/settings_dialog_surface.py` holds no such entry, so neither
+build lays one out.
 
-One master checkbox and three groups of radio buttons, eleven controls in all.
-Every key below sits inside one stored `profit_folding` group.
+The settings record declares no folding group either. `AppSettings` in
+`src/core/settings.py` is the whole schema, and no field on it holds a folding
+value.
 
-All three radio groups are off the page, and the five rows they held went with
-them. The descriptions below, and the code blocks under them, record what the
-page held before the removals. Each removal has its own dated section further
-down this page.
+Folding is switched per bot, on the running bot's own settings row. The field
+is `profit_folding_active`, declared on `BotConfig`.
 
-| the row | the dated section that records its removal |
-| --- | --- |
-| Distribution Mode | 2026-09-12 - Distribution Mode is off the Profit Folding page |
-| Profit Folding Target | 2026-09-12 - Profit Folding Target waits on its count row |
-| Fold to X# of buy positions | 2026-09-12 - Fold to X# of buy positions takes the whole target group off the page |
-| Upward Distribution Target | 2026-09-12 - Upward Distribution Target takes the sell-side group off the page |
-| Distribute to X# of sell positions | carried by the Upward Distribution Target section above |
-
-The stored group holds one field after those removals.
-
-`src/core/settings.py` — the group the page writes now
+`src/trading/container/config.py` — the switch a fold reads
 
 ```python
-@dataclass
-class ProfitFoldingSettings:
-    """Field defaults for the ``AppSettings.profit_folding`` group."""
-
-    active: bool = True
+profit_folding_active: bool = True
 ```
 
-Profit Folding / Upward Distribution Active - Turns the whole page on. Key
-`active`, a checkbox, clear at build and set to on when the stored group
-loads.
-
-This is the one control on the page the load path restores, so it is the only
-one of the six that reopens on what was stored.
-
-`src/gui/settings_dialog.py` — the master switch
-
-```python
-self._folding_active = QCheckBox(
-    "Profit Folding / Upward Distribution Active"
-)
-layout.addWidget(self._folding_active)
-```
-
-Distribution Mode - Chooses whether a fold spreads evenly across the chosen
-positions or on a curve. Key `mode`, equal or logarithmic, at equal.
-
-Two radio buttons in one group. Equal is checked at build, and Save reads the
-logarithmic button to decide which of the two words it stores.
-
-`src/gui/settings_dialog.py` — the Distribution Mode group
-
-```python
-mode_group = QGroupBox("Distribution Mode")
-mode_layout = QVBoxLayout(mode_group)
-self._fold_equal = QRadioButton("Equal distribution")
-self._fold_log = QRadioButton("Logarithmic distribution")
-self._fold_equal.setChecked(True)
-```
-
-Profit Folding Target - Chooses which buy positions a fold reaches: all of
-them, a counted number of them, or the most recent. Key `fold_target`, at all
-buy positions.
-
-Three radio buttons and the count box the middle one gates. The all-buy button
-is checked at build.
-
-`src/gui/settings_dialog.py` — the Profit Folding Target group
-
-```python
-self._fold_all = QRadioButton("Fold to ALL buy positions")
-self._fold_x = QRadioButton("Fold to X# of buy positions:")
-self._fold_recent = QRadioButton("Fold to most recent buy positions")
-self._fold_x_count = QSpinBox()
-self._fold_x_count.setRange(1, 100)
-self._fold_x_count.setValue(5)
-self._fold_all.setChecked(True)
-```
-
-Fold to X# of buy positions - Sets that counted number. Key
-`fold_target_count`, 1 to 100, at 5.
-
-Neither of those two sentences names what bounds a fold, and no build of this
-platform has ever counted positions to bound one. A fold is bounded in dollars.
-The planner takes the tranches the market price reaches and the money left
-under this cycle's growth cap, and it stops when the money runs out.
-
-`src/trading/scrumming/fold_tranches.py` — `_plan_fold_consumption`
-
-```python
-def _plan_fold_consumption(
-    self, eligible: list, cap_remaining: float
-) -> tuple[list, list, int]:
-    for _t in eligible:
-        room = cap_remaining - running_usd
-        if room <= 1e-12:
-            break
-```
-
-Driven on five queued tranches worth $105 in all, with no count offered
-anywhere in the call:
-
-| The cap handed to the planner | Tranches the fold reached | Dollars taken |
-| --- | ---: | ---: |
-| $500 | 5 of 5 | $105.00 |
-| $55 | 2 of 5, one part-consumed | $55.00 |
-| $0 | 0 of 5 | $0.00 |
-
-The two tighter caps show the reading can report a narrowed plan, so the
-unnarrowed plan at $500 is a reading and not an absence.
-
-Nine callables make up the fold path and none of them takes a parameter that
-limits how many tranches a fold reaches. One of the nine takes
-`_tranche_count_before`, and that is a slice index into the list a sale has
-just appended to.
-
+A fold is bounded in dollars and by nothing else. The planner takes the tranches
+the market price reaches and the money left under this cycle's growth cap, and
+it stops when the money runs out.
 [One dollar cap bounds a fold, and no count does](#one-dollar-cap-bounds-a-fold-and-no-count-does)
-carries the same property measured on a different set of tranches.
-
-Upward Distribution Target - The same three choices on the sell side. Key
-`distribute_target`, at all sell positions.
-
-The sell-side group is built the same way as the buy-side group above, with
-its own count box at 5 and its own all-sell button checked at build.
-
-`src/gui/settings_dialog.py` — the Upward Distribution Target group
-
-```python
-self._dist_all = QRadioButton("Distribute to ALL sell positions")
-self._dist_x = QRadioButton("Distribute to X# of sell positions:")
-self._dist_recent = QRadioButton("Distribute to most recent sell positions")
-self._dist_x_count = QSpinBox()
-self._dist_x_count.setRange(1, 100)
-self._dist_x_count.setValue(5)
-self._dist_all.setChecked(True)
-```
-
-Distribute to X# of sell positions - Sets the sell-side count. Key
-`distribute_target_count`, 1 to 100, at 5.
-
-Save collapses the two target groups into one dictionary. Each group reduces
-to a single word, taken from whichever of its three buttons is checked.
-
-`src/gui/settings_dialog.py` — `_save`
-
-```python
-fold_target = "all_buy"
-if self._fold_x.isChecked():
-    fold_target = "x_buy"
-elif self._fold_recent.isChecked():
-    fold_target = "most_recent_buy"
-dist_target = "all_sell"
-if self._dist_x.isChecked():
-    dist_target = "x_sell"
-elif self._dist_recent.isChecked():
-    dist_target = "most_recent_sell"
-```
-
-The load path restores the master switch alone, so the mode and both targets
-open at the checked defaults the figure shows.
-
-`src/gui/settings_dialog.py` — `_load_current`
-
-```python
-pf = self._sm.get("profit_folding", {})
-self._folding_active.setChecked(pf.get("active", True))
-```
-
-Issue #423 carries that half of it. Four of the six keys then fail a second
-time further down: the two target names and their two counts are four of the
-eleven the bot factory strips, listed under Settings > Trading above. A group
-that did round-trip still could not carry those four to a bot.
-
-In development. Which of the six the load path should restore has not been
-settled against the rest of the dialog, so nothing is proposed here.
+carries that measured over five queued tranches.
 
 ### Settings > TA Indicators
 
@@ -6934,13 +6775,9 @@ six:
 
 ### The sentence this removal leaves standing
 
-The Profit Folding description above still says:
-
-> One master checkbox and three groups of radio buttons, eleven controls in all.
-
-That sentence describes the page before the removals, and the section that took
-the page away records the same words. Nothing on the dialog draws a radio button
-today, and after this change nothing in the code can.
+None. The Profit Folding description above names no control and no radio
+button. Nothing on the dialog draws a radio button, and after this change
+nothing in the code can.
 
 ## 2026-09-13 - The distribution statistic comes off the bot record
 

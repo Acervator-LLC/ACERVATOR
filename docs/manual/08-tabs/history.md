@@ -258,23 +258,19 @@ read the same labels and the same blocker prefixes, so a gate added on one
 surface cannot be missing from the other. That shared seam is what makes the
 Simulator's gate comparison meaningful.
 
-Coverage across a window is `classify_trades` in
-`src/trading/gate_coverage.py`. Every trade gets one status and the report
-counts only the trades that found a gate. Two thresholds decide what counts as
-a match and what counts as a hole in the log.
+Each trade is joined to its gate entry by `lookup_gate_entry` in
+`src/exchange/history_helpers.py`. One threshold decides what counts as a
+match, and a trade with no entry inside it reads "no record" in the cell.
 
-`src/trading/gate_coverage.py` — the two thresholds
+`src/exchange/history_helpers.py` — the join threshold
 
 ```python
-DEFAULT_TOLERANCE_S: float = 300.0
-"""One 5m candle either side of a trade, the window ``_nearest`` searches."""
-
-LOG_GAP_THRESHOLD_S: float = 1800.0
-"""Six 5m candles of silence, above which ``_in_log_gap`` returns True."""
+JOIN_TOLERANCE_SECONDS = 60.0
+"""Largest gap ``_best_entry_within_window`` accepts between a trade and a log
+entry, and the backdate the index builders apply to ``since``."""
 ```
 
-`compute_validation_window` turns coverage into the window the run can be
-judged over.
+Nothing measures coverage across a window.
 
 `build_page_voting_index` and `lookup_voting_entry` do the same for the
 indicator voting snapshot behind each trade.
