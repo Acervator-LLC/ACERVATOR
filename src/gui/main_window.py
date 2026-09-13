@@ -1177,6 +1177,7 @@ if _HAS_QT:
                                 }
                                 merged: dict = {tf: parent_tf_data}
                                 composite_net = parent_net
+                                skipped: list = []
                                 try:
                                     if getattr(bot, "_phantoms_enabled", False):
                                         pmulti = (
@@ -1199,6 +1200,7 @@ if _HAS_QT:
                                                 continue
                                             p_rank = _tf_rank(p_tf)
                                             if p_rank <= _tf_rank(tf):
+                                                skipped.append(p_tf)
                                                 continue
                                             p_conf = float(
                                                 p_data.get("confidence", 0) or 0
@@ -1217,6 +1219,9 @@ if _HAS_QT:
                                         "phantom composite Net calc raised: %s", _cp_exc
                                     )
                                 parent_tf_data["composite_net"] = composite_net
+                                # Named on the Comp cell's tool tip: these
+                                # phantoms never reach composite_net.
+                                parent_tf_data["composite_skipped"] = skipped
                                 symbol = bot.config.symbol
                                 self._indicator_panel.update_data(merged, symbol)
                                 self._indicator_panel.remember_ta(

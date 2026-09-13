@@ -1374,11 +1374,17 @@ if _HAS_QT:
     class PhantomConfigPage(QWizardPage):
         def __init__(self, defaults: dict, parent=None):
             super().__init__(parent)
-            self.setTitle("Phantom Bots")
-            self.setSubTitle(
-                "Multi-timeframe shadow bots. Higher TFs override lower TFs."
+            from src.gui.main_tabs.bot_wizard_surface import (
+                LABEL_TEXTS,
+                PAGE_SUBTITLES,
+                PHANTOM,
+                PHANTOM_TIMEFRAMES,
             )
+
+            self.setTitle("Phantom Bots")
+            self.setSubTitle(PAGE_SUBTITLES[PHANTOM])
             self._exchange_id: str | None = None
+            self._parent_timeframe: str = ""
             from src.core.settings import AppSettings
 
             self._stored_timeframe = str(
@@ -1395,24 +1401,15 @@ if _HAS_QT:
                 bool((defaults or {}).get("default_enable_phantoms", False))
             )
             layout.addWidget(self._enable)
-            layout.addWidget(QLabel("Active Timeframes:"))
+            layout.addWidget(QLabel(LABEL_TEXTS["phantom_timeframes_heading"]))
             self._tf_checks: dict[str, QCheckBox] = {}
             tf_row = QHBoxLayout()
-            for tf in [
-                "1m",
-                "5m",
-                "15m",
-                "30m",
-                "1h",
-                "2h",
-                "4h",
-                "6h",
-                "12h",
-                "1d",
-                "1w",
-            ]:
+            for tf in PHANTOM_TIMEFRAMES:
                 cb = QCheckBox(tf)
                 cb.setChecked(False)
+                cb.toggled.connect(
+                    lambda ticked, name=tf: self._on_timeframe_toggled(name, ticked)
+                )
                 self._tf_checks[tf] = cb
                 tf_row.addWidget(cb)
             layout.addLayout(tf_row)
@@ -1425,11 +1422,58 @@ if _HAS_QT:
             layout.addWidget(lock_group)
             layout.addStretch()
 
+        def _timeframe_refusal(self, timeframe: str) -> str:
+            """The line refusing ``timeframe``, empty when a phantom can run it.
+
+            A timeframe at or below ``_parent_timeframe``, or one the venue
+            does not offer, can never reach the Comp field.
+            """
+            from src.gui.main_tabs.bot_wizard_surface import (
+                PHANTOM_NOT_HIGHER_FORMAT,
+                PHANTOM_NOT_OFFERED_FORMAT,
+                PHANTOM_UNKNOWN_EXCHANGE,
+            )
+            from src.trading.phantom_balance import is_higher_tf
+
+            if not is_higher_tf(timeframe, self._parent_timeframe):
+                return PHANTOM_NOT_HIGHER_FORMAT.format(
+                    timeframe=timeframe, parent=self._parent_timeframe
+                )
+            box = self._tf_checks[timeframe]
+            if not box.isEnabled():
+                return PHANTOM_NOT_OFFERED_FORMAT.format(
+                    timeframe=timeframe,
+                    exchange=self._exchange_id or PHANTOM_UNKNOWN_EXCHANGE,
+                )
+            return ""
+
+        def _on_timeframe_toggled(self, timeframe: str, ticked: bool) -> None:
+            """Keep the selection at one box, refusing one that cannot run.
+
+            Ticking clears every other box. A refused box clears itself and
+            carries the reason in its tool tip.
+            """
+            if not ticked:
+                return
+            box = self._tf_checks[timeframe]
+            refused = self._timeframe_refusal(timeframe)
+            if refused:
+                box.setToolTip(refused)
+                box.blockSignals(True)
+                box.setChecked(False)
+                box.blockSignals(False)
+                return
+            for name, other in self._tf_checks.items():
+                if name != timeframe and other.isChecked():
+                    other.blockSignals(True)
+                    other.setChecked(False)
+                    other.blockSignals(False)
+
         def get_config(self):
             checked = [
                 tf
                 for tf, cb in self._tf_checks.items()
-                if cb.isChecked() and cb.isEnabled()
+                if cb.isChecked() and not self._timeframe_refusal(tf)
             ]
             return {
                 "enable_phantoms": self._enable.isChecked(),
@@ -1466,53 +1510,32 @@ if _HAS_QT:
         def set_parent_timeframe(self, ta_timeframe: str | None) -> None:
             """Tick the stored phantom timeframe, refusing one the bot cannot use.
 
-            The Settings dialog writes ``default_phantom_timeframe``. A
-            timeframe at or below ``ta_timeframe``, or one the venue does not
-            offer, stays clear and its box says why. A box the operator has
-            already ticked keeps his choice.
+            Every box takes ``_timeframe_refusal`` as its tool tip, so a
+            timeframe at or below ``ta_timeframe`` says why before it is
+            clicked. A box the operator has already ticked keeps his choice.
             """
-            from src.gui.main_tabs.bot_wizard_surface import (
-                PHANTOM_NOT_HIGHER_FORMAT,
-                PHANTOM_NOT_OFFERED_FORMAT,
-                PHANTOM_UNKNOWN_EXCHANGE,
-            )
-            from src.trading.phantom_balance import is_higher_tf
-
-            parent = str(ta_timeframe or "")
+            self._parent_timeframe = str(ta_timeframe or "")
+            for name, box in self._tf_checks.items():
+                refused = self._timeframe_refusal(name)
+                if refused:
+                    box.setToolTip(refused)
             if any(one.isChecked() for one in self._tf_checks.values()):
                 return
             cb = self._tf_checks.get(self._stored_timeframe)
             if cb is None:
                 return
-            if not is_higher_tf(self._stored_timeframe, parent):
-                cb.setToolTip(
-                    PHANTOM_NOT_HIGHER_FORMAT.format(
-                        timeframe=self._stored_timeframe, parent=parent
-                    )
-                )
-                return
-            if not cb.isEnabled():
-                cb.setToolTip(
-                    PHANTOM_NOT_OFFERED_FORMAT.format(
-                        timeframe=self._stored_timeframe,
-                        exchange=self._exchange_id or PHANTOM_UNKNOWN_EXCHANGE,
-                    )
-                )
-                return
             cb.setChecked(True)
 
         def validatePage(self) -> bool:
-            """v3.23.40 — API-load gate. If phantoms are enabled and
-            the projected calls-per-minute would breach the 75 % safety
-            threshold for the selected exchange, warn the operator and
-            let them either back off or force through."""
+            """Refuse to leave the page when the API load monitor says the
+            phantom set would breach the venue's call-rate threshold.
+
+            Offers Back to adjust or Continue anyway, and counts the same
+            timeframes ``get_config`` hands on.
+            """
             if not self._enable.isChecked():
                 return True
-            checked = [
-                tf
-                for tf, cb in self._tf_checks.items()
-                if cb.isChecked() and cb.isEnabled()
-            ]
+            checked = self.get_config()["phantom_timeframes"]
             if not checked:
                 return True
             ex_id = self._exchange_id or ""

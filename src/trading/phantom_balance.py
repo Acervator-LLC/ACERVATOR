@@ -4,8 +4,10 @@
 Each ``PhantomBot._tick`` computes TA on its own timeframe and stores it
 on ``last_summary``, constructing no order. ``TimeframeCoordinator`` weights
 those summaries by ``tf_rank`` in ``get_higher_tf_bias`` and returns them per
-timeframe in ``get_multi_tf_summary``. ``TIMEFRAME_ORDER`` runs 1m to 1w,
-lowest rank first.
+timeframe in ``get_multi_tf_summary``. ``TIMEFRAME_ORDER`` runs 1m to 1w and
+takes its names from ``src.exchange.timeframes.ALL_TIMEFRAMES``, the one
+declaration every phantom surface ranks by. ``default_phantom_timeframes``
+gives a bot with no stored selection the one timeframe above its own.
 """
 
 from __future__ import annotations
@@ -20,25 +22,14 @@ if TYPE_CHECKING:
     from ..exchange.base import ExchangeInterface
 
 from ..core.event_bus import get_event_bus
+from ..exchange.timeframes import ALL_TIMEFRAMES
 from .bot_container import BotState
 from .ta_engine import VotingEngine, VotingSummary, SignalDirection, candles_from_raw
 
 logger = logging.getLogger("acervator.phantom")
 
 
-TIMEFRAME_ORDER: list[str] = [
-    "1m",
-    "5m",
-    "15m",
-    "30m",
-    "1h",
-    "2h",
-    "4h",
-    "6h",
-    "12h",
-    "1d",
-    "1w",
-]
+TIMEFRAME_ORDER: list[str] = list(ALL_TIMEFRAMES)
 
 TIMEFRAME_SECONDS: dict[str, int] = {
     "1m": 60,
@@ -56,6 +47,10 @@ TIMEFRAME_SECONDS: dict[str, int] = {
 
 MIN_TICK_CANDLES: int = 30
 
+#: Written into ``get_higher_tf_bias`` contributors for a phantom ``tf_rank``
+#: places at or below its parent, which the Comp field never weighs.
+BELOW_PARENT_REASON: str = "at or below the parent timeframe"
+
 
 def tf_rank(timeframe: str) -> int:
     """Return the index of ``timeframe`` in ``TIMEFRAME_ORDER``, or -1."""
@@ -68,6 +63,26 @@ def tf_rank(timeframe: str) -> int:
 def is_higher_tf(a: str, b: str) -> bool:
     """Return True when ``tf_rank(a)`` exceeds ``tf_rank(b)``."""
     return tf_rank(a) > tf_rank(b)
+
+
+def default_phantom_timeframes(
+    parent_timeframe: str,
+    offered: Optional[list[str]] = None,
+) -> list[str]:
+    """Return the one ``TIMEFRAME_ORDER`` name directly above
+    ``parent_timeframe``, restricted to ``offered`` when given.
+
+    Returns an empty list when nothing in ``offered`` outranks
+    ``parent_timeframe``, so no phantom is built that ``is_higher_tf``
+    would refuse.
+    """
+    allowed = TIMEFRAME_ORDER if offered is None else list(offered)
+    above = [
+        one
+        for one in TIMEFRAME_ORDER
+        if one in allowed and is_higher_tf(one, parent_timeframe)
+    ]
+    return above[:1]
 
 
 @dataclass
@@ -111,11 +126,7 @@ class PhantomBot:
         coordinator: "TimeframeCoordinator",
         ta_weights: Optional[dict[str, float]] = None,
         bus=None,
-        sim_mode: bool = False,
     ) -> None:
-        # When True, _run_loop never self-schedules; tick_for_cursor drives ticks.
-        self._sim_mode = bool(sim_mode)
-        self._last_cursor_ts: Optional[float] = None
         self.parent_bot_id = parent_bot_id
         self.phantom_id = phantom_id
         self.timeframe = timeframe
@@ -164,28 +175,6 @@ class PhantomBot:
                 pass
         self.state = BotState.STOPPED
 
-    async def tick_for_cursor(self, cursor_ts: float) -> bool:
-        """Run ``_tick`` when ``cursor_ts`` enters a new ``candle_seconds``
-        bucket, and return whether it ran.
-
-        Repeated calls inside one bucket return False without ticking.
-        ``_last_cursor_ts`` keeps the cursor itself, so both bucket numbers
-        come from one ``candle_seconds`` divisor on every call.
-        """
-        try:
-            _period = max(1, int(self.candle_seconds))
-        except Exception:
-            return False
-        _last_ts = self._last_cursor_ts
-        if _last_ts is not None:
-            _last_bucket = int(float(_last_ts) // _period)
-            _bucket = int(float(cursor_ts) // _period)
-            if _bucket == _last_bucket:
-                return False
-        self._last_cursor_ts = float(cursor_ts)
-        await self._tick()
-        return True
-
     async def _run_loop(self) -> None:
         """Call ``_tick`` until ``_stop_event`` is set, logging any exception."""
         while not self._stop_event.is_set():
@@ -200,9 +189,6 @@ class PhantomBot:
                     phantom=self.phantom_id,
                     error=str(exc),
                 )
-            if getattr(self, "_sim_mode", False):
-                await self._stop_event.wait()
-                break
             # Wall clock: 60s for every phantom once candle_seconds exceeds 60.
             await asyncio.sleep(min(self.candle_seconds, 60))
 
@@ -381,20 +367,34 @@ class TimeframeCoordinator:
         ``min_confidence``.
 
         Returns a ``SignalDirection`` with a detail dict, or None when no
-        higher phantom has a ``last_summary``.
+        higher phantom has a ``last_summary``. Every phantom at or below
+        ``base_timeframe`` is named in ``below_parent`` and in ``contributors``
+        rather than dropped in silence.
         """
         base_rank = tf_rank(base_timeframe)
-        higher = [
-            p
-            for p in self.get_phantoms_for_parent(parent_bot_id)
-            if p.rank > base_rank and p.last_summary is not None
-        ]
+        registered = self.get_phantoms_for_parent(parent_bot_id)
+        higher = [p for p in registered if p.rank > base_rank and p.last_summary]
+        below_parent = [p.timeframe for p in registered if p.rank <= base_rank]
+        if below_parent:
+            logger.info(
+                "Phantom %s: %s at or below the parent %s, so none of them "
+                "reaches the Comp field",
+                parent_bot_id,
+                ", ".join(below_parent),
+                base_timeframe,
+            )
         if not higher:
-            return None, {"reason": "no higher-TF phantoms with summaries"}
+            return None, {
+                "reason": "no higher-TF phantoms with summaries",
+                "below_parent": below_parent,
+            }
 
         bull_weight = 0.0
         bear_weight = 0.0
-        contrib: list[dict] = []
+        contrib: list[dict] = [
+            {"tf": one, "skipped": True, "reason": BELOW_PARENT_REASON}
+            for one in below_parent
+        ]
         for p in higher:
             s = p.last_summary
             if s.consensus_confidence < min_confidence:

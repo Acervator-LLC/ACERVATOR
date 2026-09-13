@@ -38,6 +38,7 @@ from functools import partial
 from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines, vault_phrase
+from ...exchange.timeframes import ALL_TIMEFRAMES
 from ...core.settings import CREDENTIAL_FIELDS, AppSettings
 from ...core.sms_engine import (
     CARRIER_GATEWAYS,
@@ -241,19 +242,7 @@ def ta_value_text(weight: float) -> str:
     """One indicator weight as the figure printed beside its slider."""
     return TA_VALUE_FORMAT.format(weight=weight)
 
-PHANTOM_TIMEFRAMES = (
-    "1m",
-    "5m",
-    "15m",
-    "30m",
-    "1h",
-    "2h",
-    "4h",
-    "6h",
-    "12h",
-    "1d",
-    "1w",
-)
+PHANTOM_TIMEFRAMES = ALL_TIMEFRAMES
 PHANTOM_TIMEFRAME_ITEMS = tuple((one, one) for one in PHANTOM_TIMEFRAMES)
 #: The store declares the opening choice, so the page and the schema agree.
 PHANTOM_TIMEFRAME_DEFAULT = AppSettings().default_phantom_timeframe

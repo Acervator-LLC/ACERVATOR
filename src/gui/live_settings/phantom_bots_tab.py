@@ -176,8 +176,23 @@ class PhantomBotsTabMixin:
         sf.addRow("Phantoms started:", started_lbl)
 
         sf.addRow(
-            "Configured timeframes:",
-            QLabel(", ".join(phantom_tfs) if phantom_tfs else "— (none)"),
+            surface.TIMEFRAMES_ROW_LABEL,
+            QLabel(surface.timeframes_text(phantom_tfs)),
+        )
+        phantom_dropped = list(getattr(bot, "_phantom_tf_dropped", []) or [])
+        sf.addRow(
+            surface.DROPPED_ROW_LABEL,
+            QLabel(surface.timeframes_text(phantom_dropped)),
+        )
+        sf.addRow(
+            surface.BELOW_PARENT_ROW_LABEL,
+            QLabel(
+                surface.timeframes_text(
+                    surface.below_parent_timeframes(
+                        phantom_tfs, self._phantom_tf_parent
+                    )
+                )
+            ),
         )
 
         if phantom_locked:

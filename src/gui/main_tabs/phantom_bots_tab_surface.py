@@ -3,7 +3,7 @@
 Describes the sixth tab of the Live Bot Settings window, which opens on
 Detail for a running bot. The tab holds a note, three setting boxes --
 an enable switch, one timeframe picker and a lock-duration number
--- then a Coordinator Status box with four labelled rows, and, when the
+-- then a Coordinator Status box with six labelled rows, and, when the
 bot has them, a seven-column per-phantom table and a four-column
 cross-bot lock table. With neither table it shows one of three
 explanatory lines instead.
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ...exchange.timeframes import ALL_TIMEFRAMES
 from .. import design_system as ds
 
 METHOD = "phantom_bots_tab.state"
@@ -68,32 +69,8 @@ NOT_HIGHER_FORMAT = "{timeframe} is not above this bot's TA Timeframe {parent}"
 NOT_OFFERED_FORMAT = "{timeframe} is not offered by {exchange}"
 REFUSAL_NONE = ""
 
-TIMEFRAMES = (
-    "1m",
-    "5m",
-    "15m",
-    "30m",
-    "1h",
-    "2h",
-    "4h",
-    "6h",
-    "12h",
-    "1d",
-    "1w",
-)
-FALLBACK_TIMEFRAMES = (
-    "1m",
-    "5m",
-    "15m",
-    "30m",
-    "1h",
-    "2h",
-    "4h",
-    "6h",
-    "12h",
-    "1d",
-    "1w",
-)
+TIMEFRAMES = ALL_TIMEFRAMES
+FALLBACK_TIMEFRAMES = ALL_TIMEFRAMES
 TF_SUPPORTED_TOOLTIP_FORMAT = "{timeframe}: supported"
 TF_UNSUPPORTED_TOOLTIP_FORMAT = "{timeframe}: NOT supported by exchange ({exchange_id})"
 UNKNOWN_EXCHANGE_TEXT = "?"
@@ -114,6 +91,8 @@ FORM_CONFIGURED_BY_HOST = True
 ENABLED_ROW_LABEL = "Phantoms enabled:"
 STARTED_ROW_LABEL = "Phantoms started:"
 TIMEFRAMES_ROW_LABEL = "Configured timeframes:"
+DROPPED_ROW_LABEL = "Dropped by the venue:"
+BELOW_PARENT_ROW_LABEL = "At or below the parent TF:"
 LOCK_STATE_ROW_LABEL = "SCRUM lock state:"
 
 YES_TEXT = "YES"
@@ -205,6 +184,7 @@ NO_EMPTY_TEXT = ""
 ENABLED_ATTRIBUTE = "_phantoms_enabled"
 STARTED_ATTRIBUTE = "_phantoms_started"
 TIMEFRAMES_ATTRIBUTE = "_phantom_timeframes"
+DROPPED_ATTRIBUTE = "_phantom_tf_dropped"
 LOCKED_ATTRIBUTE = "_phantom_locked"
 LOCK_TIMEFRAME_ATTRIBUTE = "_phantom_lock_timeframe"
 COORDINATOR_ATTRIBUTE = "_coordinator"
@@ -437,6 +417,16 @@ def timeframes_text(timeframes: Any) -> str:
     return TIMEFRAME_JOIN.join(timeframes) if timeframes else NO_TIMEFRAMES_TEXT
 
 
+def below_parent_timeframes(timeframes: Any, parent: Any) -> list:
+    """The held timeframes ``is_higher_timeframe`` refuses against ``parent``.
+
+    No phantom on one of these names reaches the Comp field.
+    """
+    return [
+        one for one in list(timeframes or ()) if not is_higher_timeframe(one, parent)
+    ]
+
+
 def pnl_color(pnl: Any) -> str:
     """Green above break-even, red below it, grey exactly at it."""
     if pnl > PNL_GAIN_ABOVE:
@@ -629,6 +619,7 @@ class BotSource:
         enabled: Any = False,
         started: Any = False,
         timeframes: Any = None,
+        dropped: Any = None,
         locked: Any = False,
         lock_timeframe: Any = DEFAULT_LOCK_TIMEFRAME,
         bot_id: Any = DEFAULT_BOT_ID,
@@ -645,6 +636,7 @@ class BotSource:
             [ENABLED_ATTRIBUTE, enabled],
             [STARTED_ATTRIBUTE, started],
             [TIMEFRAMES_ATTRIBUTE, timeframes],
+            [DROPPED_ATTRIBUTE, dropped],
             [LOCKED_ATTRIBUTE, locked],
             [LOCK_TIMEFRAME_ATTRIBUTE, lock_timeframe],
             [BOT_ID_ATTRIBUTE, bot_id],
@@ -660,10 +652,10 @@ class PhantomBotsTabModel:
     """The Phantom Bots tab: its settings, its status rows and its tables.
 
     ``build`` reads the bot and fills the note, the three setting boxes,
-    the four status rows and either the two tables or one explanatory
-    line. ``enable_changed``, ``timeframe_chosen`` and ``lock_changed``
-    are the three settings the operator moves. Every step is appended to
-    ``calls`` in the order the shipped tab makes it.
+    the six status rows and either the two tables or one explanatory
+    line. ``dropped`` and ``below_parent`` name the timeframes no phantom
+    runs on. ``enable_changed``, ``timeframe_chosen`` and ``lock_changed``
+    are the three settings the operator moves.
     """
 
     def __init__(self, bot: Any = None) -> None:
@@ -679,6 +671,8 @@ class PhantomBotsTabModel:
         self.allowed: tuple = ()
         self.lock_requested = LOCK_DEFAULT
         self.lock_value = LOCK_DEFAULT
+        self.dropped: list = []
+        self.below_parent: list = []
         self.summary_rows: list = []
         self.phantom_rows: list = []
         self.phantom_colors: list = []
@@ -710,6 +704,8 @@ class PhantomBotsTabModel:
         self.allowed = ()
         self.lock_requested = LOCK_DEFAULT
         self.lock_value = LOCK_DEFAULT
+        self.dropped = []
+        self.below_parent = []
         self.summary_rows = []
         self.phantom_rows = []
         self.phantom_colors = []
@@ -813,6 +809,18 @@ class PhantomBotsTabModel:
         )
         self.summary_rows.append(
             [TIMEFRAMES_ROW_LABEL, timeframes_text(timeframes), ""]
+        )
+        self.dropped = [
+            str(one) for one in (getattr(bot, DROPPED_ATTRIBUTE, []) or [])
+        ]
+        self.below_parent = below_parent_timeframes(
+            timeframes, self.parent_timeframe
+        )
+        self.summary_rows.append(
+            [DROPPED_ROW_LABEL, timeframes_text(self.dropped), ""]
+        )
+        self.summary_rows.append(
+            [BELOW_PARENT_ROW_LABEL, timeframes_text(self.below_parent), ""]
         )
         if locked:
             self.summary_rows.append(
@@ -1092,6 +1100,8 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
             "enabled_row": ENABLED_ROW_LABEL,
             "started_row": STARTED_ROW_LABEL,
             "timeframes_row": TIMEFRAMES_ROW_LABEL,
+            "dropped_row": DROPPED_ROW_LABEL,
+            "below_parent_row": BELOW_PARENT_ROW_LABEL,
             "lock_state_row": LOCK_STATE_ROW_LABEL,
         },
         "texts": {
@@ -1225,6 +1235,7 @@ def view_model(params: dict) -> dict:
             enabled=bot.get("enabled", False),
             started=bot.get("started", False),
             timeframes=bot.get("timeframes"),
+            dropped=bot.get("dropped"),
             locked=bot.get("locked", False),
             lock_timeframe=bot.get("lock_timeframe", DEFAULT_LOCK_TIMEFRAME),
             bot_id=bot.get("bot_id", DEFAULT_BOT_ID),

@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ...exchange.timeframes import ALL_TIMEFRAMES
+
 METHOD = "indicator_panel.state"
 
 LOGGER_NAME = "acervator.gui"
@@ -138,6 +140,9 @@ CONFIDENCE_FORMAT = "{symbol} {value:.0%}"
 NET_FORMAT = "{value:+.2f}"
 COMP_FORMAT = "{value:+.2f}"
 COMP_ABSENT_TEXT = "—"
+COMP_SKIPPED_FORMAT = (
+    "Left out of Comp, at or below this bot's TA Timeframe: {timeframes}"
+)
 CONF_FORMAT = "{bar} {value:.0%}"
 
 CONF_BAR_FILLED = "█"
@@ -245,7 +250,7 @@ BARS_SIZE_POLICY = ["Expanding", "Expanding"]
 PANEL_SIZE_POLICY = ["Expanding", "Expanding"]
 
 #: Timeframes in the order the table lists them; anything else sorts last.
-TIMEFRAME_ORDER = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]
+TIMEFRAME_ORDER = list(ALL_TIMEFRAMES)
 UNKNOWN_TIMEFRAME_RANK = 99
 
 BOT_SELECTED_TOPIC = "indicator.bot_selected"
@@ -467,18 +472,42 @@ def net_cell(tf_data: dict) -> dict:
     return {"text": NET_FORMAT.format(value=net), "text_color": color}
 
 
+def comp_skipped_tooltip(tf_data: dict) -> str:
+    """The Comp cell's note naming the phantoms left out of the composite.
+
+    Empty while ``composite_skipped`` names none.
+    """
+    skipped = (tf_data or {}).get("composite_skipped") or []
+    if not skipped:
+        return ""
+    return COMP_SKIPPED_FORMAT.format(timeframes=", ".join(str(one) for one in skipped))
+
+
 def comp_cell(tf_data: dict) -> dict:
-    """The Comp column's cell, an em-dash on a row carrying no composite."""
+    """The Comp column's cell, an em-dash on a row carrying no composite.
+
+    Carries ``comp_skipped_tooltip`` so a phantom the composite refused is
+    named on the cell the operator reads.
+    """
+    tooltip = comp_skipped_tooltip(tf_data)
     comp = (tf_data or {}).get("composite_net")
     if comp is None:
-        return {"text": COMP_ABSENT_TEXT, "text_color": ABSENT_TEXT_COLOR}
+        return {
+            "text": COMP_ABSENT_TEXT,
+            "text_color": ABSENT_TEXT_COLOR,
+            "tooltip": tooltip,
+        }
     value = _number(comp)
     color = None
     if value > 0:
         color = BULLISH_TEXT_COLOR
     elif value < 0:
         color = BEARISH_TEXT_COLOR
-    return {"text": COMP_FORMAT.format(value=value), "text_color": color}
+    return {
+        "text": COMP_FORMAT.format(value=value),
+        "text_color": color,
+        "tooltip": tooltip,
+    }
 
 
 def conf_cell(tf_data: dict) -> dict:

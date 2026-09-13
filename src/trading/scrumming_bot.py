@@ -46,6 +46,7 @@ from .phantom_balance import (
     TIMEFRAME_SECONDS,
     PhantomBalanceManager,
     TimeframeCoordinator,
+    default_phantom_timeframes,
 )
 
 from .ata_gate_scan import (
@@ -319,8 +320,6 @@ class ScrummingBot(
 ):
     """Speculative Scrumming auto-trader."""
 
-    DEFAULT_PHANTOM_TIMEFRAMES = ["5m", "15m", "30m", "1h", "4h", "1d"]
-
     def __init__(
         self,
         config: BotConfig,
@@ -382,30 +381,37 @@ class ScrummingBot(
 
         self._coordinator = coordinator or TimeframeCoordinator(bus=self._bus)
         self._phantom_mgr = PhantomBalanceManager(self._coordinator)
-        self._phantom_timeframes = phantom_timeframes or self.DEFAULT_PHANTOM_TIMEFRAMES
 
         try:
             from ..exchange.timeframes import available_timeframes as _avail_tfs
 
-            _allowed = set(_avail_tfs(config.exchange_id))
+            _offered: Optional[list[str]] = list(_avail_tfs(config.exchange_id))
         except Exception:
-            _allowed = None
-        if _allowed is not None:
+            _offered = None
+        # No stored selection: one timeframe straight above the bot's own,
+        # so a phantom the Comp field could never weigh is never built.
+        self._phantom_timeframes = list(
+            phantom_timeframes
+            or default_phantom_timeframes(config.ta_timeframe, _offered)
+        )
+        self._phantom_tf_dropped: list[str] = []
+        self._phantom_tf_dropped_note: Optional[str] = None
+        if _offered is not None:
+            _allowed = set(_offered)
             _original = list(self._phantom_timeframes)
             self._phantom_timeframes = [
                 tf for tf in self._phantom_timeframes if tf in _allowed
             ]
-            _dropped = [tf for tf in _original if tf not in _allowed]
-            if _dropped:
+            self._phantom_tf_dropped = [
+                tf for tf in _original if tf not in _allowed
+            ]
+            if self._phantom_tf_dropped:
                 self._phantom_tf_dropped_note = (
-                    f"v3.15.61 phantom-TF filter: dropped {_dropped} on "
-                    f"exchange '{config.exchange_id}' — not supported by "
-                    f"native API. Remaining: {self._phantom_timeframes}."
+                    f"Phantom timeframes dropped: "
+                    f"{', '.join(self._phantom_tf_dropped)} — "
+                    f"'{config.exchange_id}' does not serve them. "
+                    f"Remaining: {self._phantom_timeframes}."
                 )
-            else:
-                self._phantom_tf_dropped_note = None
-        else:
-            self._phantom_tf_dropped_note = None
 
         self._phantoms_enabled = enable_phantoms
         self._phantoms_started = False
@@ -1828,25 +1834,21 @@ class ScrummingBot(
                 caveats.append("Phantoms will start on next tick.")
 
         if phantom_timeframes is not None:
-            _EXCHANGE_UNSUPPORTED_TFS = {
-                "coinbase": {"4h", "2h", "30m", "1m"},
-            }
-            _unsupported = _EXCHANGE_UNSUPPORTED_TFS.get(
-                self.config.exchange_id.lower(), set()
-            )
-            filtered = [tf for tf in phantom_timeframes if tf not in _unsupported]
+            from ..exchange.timeframes import available_timeframes
+
+            _offered = set(available_timeframes(self.config.exchange_id))
+            filtered = [tf for tf in phantom_timeframes if tf in _offered]
+            dropped = [tf for tf in phantom_timeframes if tf not in _offered]
             if list(filtered) != list(self._phantom_timeframes):
                 self._phantom_timeframes = list(filtered)
+                self._phantom_tf_dropped = list(dropped)
                 applied["phantom_timeframes"] = list(filtered)
                 if self._phantoms_started:
                     caveats.append(
                         "TF set updated; already-started phantoms keep "
                         "their original TFs until bot restart."
                     )
-                if _unsupported and any(
-                    tf in _unsupported for tf in phantom_timeframes
-                ):
-                    dropped = [tf for tf in phantom_timeframes if tf in _unsupported]
+                if dropped:
                     caveats.append(
                         f"Dropped unsupported TFs for "
                         f"{self.config.exchange_id}: {dropped}."

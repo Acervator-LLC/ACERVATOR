@@ -2350,6 +2350,42 @@ proposed for the page.
 
 In development.
 
+**The page keeps one timeframe.** A bot runs one phantom. The page now enforces
+that rule. Ticking a box clears every other box. The heading states the rule:
+"Active Timeframe — pick one, above this bot's TA Timeframe:".
+
+`src/gui/main_tabs/bot_wizard_surface.py` — `BotWizardModel.set_phantom_timeframe`
+
+```python
+for found in PHANTOM_TIMEFRAMES:
+    if found != timeframe and self.phantom_checks[found]:
+        self.phantom_checks[found] = False
+        self.calls.append([CHECK_SET_CHECKED, found, False])
+self.phantom_checks[timeframe] = True
+```
+
+Driven over the bridge, a request ticking 1d and then 4h on a 1h bot hands back
+one name. It handed back two names before.
+
+**The page refuses a timeframe that cannot run.** A phantom must outrank the
+bot's own TA Timeframe. A box at or below it stays clear and its tool tip says
+why. A box the venue does not serve behaves the same way. The Qt page and the
+Electron page share one rule.
+
+| step | module | symbol |
+| ---- | ------ | ------ |
+| state the rule | `src/gui/main_tabs/bot_wizard_surface.py` | `BotWizardModel.phantom_refusal` |
+| apply it on a tick | `src/gui/main_tabs/bot_wizard_surface.py` | `BotWizardModel.set_phantom_timeframe` |
+| apply it on the Qt page | `src/gui/bot_wizard.py` | `PhantomConfigPage._on_timeframe_toggled` |
+| hand on the choice | `src/gui/bot_wizard.py` | `PhantomConfigPage.get_config` |
+
+Driven over the bridge on a 1h bot, ticking 5m hands back no name and records
+the refusal `phantom_not_higher`. It handed back 5m before, with no refusal.
+
+**The eleven names come from one place.** `src/exchange/timeframes.py` declares
+`ALL_TIMEFRAMES`. The wizard page reads that tuple. It held its own copy of the
+same eleven names before.
+
 ### Extractor Bot (Partially Built; Untested)
 
 The second type of bot offered within Acervator is the Extractor. These operate quite differently from Scrumming Bots and actually operate as Siblings of them. In fact, an Extractor Bot cannot even be called unless a corresponding Base Currency Scrumming Bot (i.e. BTC:USD or ETH:USD) is already active. This is due to the core operating principle of the Extractor bot to acquire more of these base currencies by performing trades against available alternate currency pairings. It does this by using and blocking off a portion of the Parent’s position within an Extractor Tranche that represents an active position taken against one of the available alternate pairs. The Extractor Tranche remains open until its opposing accumulating (or Short Position if preferred by the user) or profit taking trade is filled. Extractor Tranches can be of any size but should generally be a relatively small fraction of the Parent’s total position which will allow the Extractor to take multiple positions if available and allowed by the specific user.
