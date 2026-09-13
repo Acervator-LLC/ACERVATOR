@@ -1411,14 +1411,31 @@ class ExecutionEngineMixin:
                 total_holdings=float(self._current_holdings or 0),
             )
             if amount > _crr_effective + 1e-12:
+                try:
+                    _crr_holders = ", ".join(
+                        f"{r.bot_id} holds {r.qty:.6f}"
+                        for r in _crr_reg.reservations_for(
+                            asset=self.config.target_asset,
+                            excluding_bot_id=self.bot_id,
+                        )
+                    )
+                except Exception as _crr_who:  # noqa: BLE001
+                    # Must not raise: the outer except turns a refusal into a sell.
+                    _crr_holders = ""
+                    logger.debug(
+                        "Bot %s could not list claim holders on %s: %s",
+                        self.bot_id,
+                        self.config.target_asset,
+                        _crr_who,
+                    )
                 _crr_msg = (
                     f"SELL REFUSED (capital reservation, v3.20.2): "
                     f"requested {amount:.6f} {self.config.target_asset} but "
                     f"only {_crr_effective:.6f} available to this bot — "
-                    f"other bots hold reservations on this asset. "
                     f"_current_holdings={float(self._current_holdings or 0):.6f}; "
-                    f"check Settings → Capital Reservations or "
-                    f"force_release if a reservation is stale."
+                    f"claimed by "
+                    f"{_crr_holders or 'a bot the registry cannot name'}. "
+                    f"Stopping a named bot releases its claim."
                 )
                 self._bus.emit("bot.log", bot_id=self.bot_id, message=_crr_msg)
                 self._emit_trade_notification(
