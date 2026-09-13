@@ -54,7 +54,6 @@ class TickPhaseMixin:
     _get_ohlcv: Callable[..., Any]
     _get_ticker: Callable[..., Any]
     _hedge_bal: float
-    _hedge_balance_initial: float
     _hedge_trades: int
     _initialised: Any
     _invisible: bool
@@ -99,6 +98,20 @@ class TickPhaseMixin:
     note_scrum_retention_usd: Callable[..., None]
     reset_swos_cycle: Callable[..., None]
     stats: Any
+
+    @property
+    def _hedge_balance_initial(self) -> float:
+        """Return the hedge ceiling off config.hedge_balance, and zero while
+        hedge_rebalance_active is off."""
+        if not self.config.hedge_rebalance_active:
+            return 0.0
+        return float(self.config.hedge_balance)
+
+    @_hedge_balance_initial.setter
+    def _hedge_balance_initial(self, value: float) -> None:
+        """Write the ceiling onto config.hedge_balance, the one place it is
+        stored."""
+        self.config.hedge_balance = float(value)
 
     async def _tick_initialise(self, symbol: str) -> None:
         """Run the boot handshake; the tick ends whatever this decides."""

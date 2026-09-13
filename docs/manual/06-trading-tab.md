@@ -4548,3 +4548,88 @@ restore arguments   built from the fields the dataclass declares
 retired names       dropped at that filter, never passed on
 fields restored     65 before, 64 after, one different and it is the removed one
 ```
+
+## 2026-09-13 - #665 - the Hedge Rebalance switch arms the reserve on a running bot
+
+Three rows on the running bot's Hedge Rebalance group: the switch, the ceiling
+and the reserve. The saved fleet was read first, and read only.
+
+```
+38 bots, all running
+Hedge Rebalance Active ON      6      OFF      32
+Hedge Balance $0.00           36      $200.00   2
+stored reserve $0.00          35      $1.40 and $185.19 and $200.00, one each
+```
+
+### The switch reaches the reserve
+
+The reserve is the figure a hedge buy is checked against. Ticking Hedge Rebalance
+Active now fills it; before this change the tick moved the flag alone and the box
+appeared to work.
+
+```mermaid
+flowchart LR
+  A["Hedge Rebalance Active"] --> B["Apply"]
+  B --> C["set_hedge_rebalance_active_live"]
+  C --> D["the reserve a hedge buy reads"]
+  E["Hedge Balance"] --> B
+  B --> F["set_hedge_balance_live"]
+  F --> G["the ceiling a refill stops at"]
+```
+
+Driven on a bot built with the box off at a Hedge Balance of $200.00.
+
+```
+the flag moved by hand       reserve   $0.00   a $25 hedge buy refused
+the box ticked through Apply reserve $200.00   a $25 hedge buy allowed
+the box unticked             reserve $200.00 kept, every hedge buy refused
+the box ticked a second time reserve $200.00, no second filling
+a word instead of a tick     refused, reserve $0.00, the switch unmoved
+```
+
+Ticking on raises the reserve to the Hedge Balance figure and never lowers a
+larger reserve, so the box cannot destroy a reserve the bot already holds.
+Unticking keeps the reserve and freezes it, because the arm test and the refill
+test both read the switch first.
+
+### The ceiling is stored once
+
+The ceiling is the Hedge Balance figure on the bot's configuration, and the bot
+reads it there rather than keeping a second copy.
+
+`src/trading/scrumming/tick_phases.py` — the one ceiling
+
+```python
+@property
+def _hedge_balance_initial(self) -> float:
+    if not self.config.hedge_rebalance_active:
+        return 0.0
+    return float(self.config.hedge_balance)
+```
+
+The reserve stays on the saved record, because it is a balance and not a setting.
+The configuration is the authority for the ceiling, so a restart cannot leave the
+two disagreeing. Every stored bot reads the same two figures as before.
+
+```
+switch on   Hedge Balance   $0.00   stored reserve   $0.00   ceiling   $0.00   reserve   $0.00
+switch off  Hedge Balance   $0.00   stored reserve $200.00   ceiling   $0.00   reserve $200.00
+switch on   Hedge Balance $200.00   stored reserve $185.19   ceiling $200.00   reserve $185.19
+```
+
+### A Hedge Balance of zero says what it is
+
+Zero is a figure the box accepts, and it is not an off switch. It is an empty
+reserve that never refills, and a reserve the bot already holds stays spendable
+until it drains. Both tooltips say so, on both builds, and the Activity Log says
+so as the figure is typed.
+
+```
+HEDGE BALANCE CAP LIVE UPDATE: $200.00 -> $0.00. A $0.00 Hedge Balance is an
+empty reserve that never refills, not an off switch. Untick Hedge Rebalance
+Active to turn the hedge off. Reserve $200.00 stays spendable until it drains.
+```
+
+Making zero mean off was not taken. Four of the thirty-eight running bots carry
+the switch on with a Hedge Balance of $0.00, so that meaning would change what
+those four do on their next fold.
