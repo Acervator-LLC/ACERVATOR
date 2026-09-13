@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .main_tabs import design_system_surface, main_window_surface
-from .react_history_panel import page_html
+from .react_history_panel import page_html, page_theme
 
 try:
     from PySide6.QtWebEngineCore import QWebEnginePage
@@ -274,7 +274,7 @@ if _HAS_WEBENGINE:
             self._layout.setSpacing(0)
             self._layout.addWidget(self._book, 1)
             self.currentChanged = self._book.currentChanged
-            self._theme = main_window_surface.DEFAULT_THEME
+            self._theme = page_theme()
             self._book.currentChanged.connect(self._on_current_changed)
             self._book.tabBar().tabMoved.connect(self._on_tab_moved)
 
