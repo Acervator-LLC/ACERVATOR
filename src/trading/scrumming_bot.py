@@ -5057,3 +5057,18 @@ class ScrummingBot(
                     rows.append(dict(row))
         rows.sort(key=lambda r: str(r.get("tranche_id", "")))
         return rows
+
+    def set_ta_weights(self, weights: Optional[dict[str, float]] = None) -> None:
+        """Vote on ``weights`` from the next tick, without a rebuild.
+
+        ``_ta_weights`` also seeds a phantom set, so a set created after this
+        call carries the new figures while one already running keeps its own.
+        Nothing calls this on its own: the Settings Save button is the route.
+        """
+        self._ta_weights = dict(weights) if weights else None
+        self._voting_engine.set_weights(self._ta_weights)
+        logger.info(
+            "Bot %s: TA weights taken (%d names) — from the next tick",
+            self.bot_id,
+            0 if not self._ta_weights else len(self._ta_weights),
+        )

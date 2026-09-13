@@ -944,6 +944,65 @@ A zero for one indicator is a different matter and is available today: setting
 a single slider to 0.00 removes that indicator's vote and leaves the other
 eleven voting.
 
+#### Save hands the figures to a bot already running
+
+Save is the only route. Pressing it writes the twelve figures and then hands
+them to every bot the manager holds. Each bot rebuilds its twelve indicators
+and votes on the new figures from its next tick. No timer and no other control
+reaches a bot already running.
+
+`src/gui/main_window.py` — the one caller, inside the handler Save emits to
+
+```python
+if self._bot_manager:
+    self._bot_manager.push_ta_weights(
+        weights_from_settings(
+            self._settings.get("ta_indicator_weights", {})
+        )
+    )
+```
+
+Launch takes a different route and pushes nothing. `set_ta_weights` holds the
+figures for the restore path to build each bot with, and `push_ta_weights` is
+the only one that reaches a bot already built.
+
+```mermaid
+flowchart LR
+  B["Save button"] --> S["settings_changed"]
+  S --> P["push_ta_weights"]
+  P --> E["each bot's VotingEngine"]
+  E --> T["the next tick's vote"]
+  L["launch"] --> H["set_ta_weights, held only"]
+  H --> N["the next bot built"]
+```
+
+Driven on three stand-in bots: every one read its MACD weight at 1.20 before
+the push and 0.30 after it, and a fourth holder that answers no such call was
+skipped, 3 of 4. Holding alone moved nothing, and the same reading stayed at
+1.20.
+
+#### Two voters build their own engine and take no weight
+
+The detonation check and the initial-entry check each build a fresh voting
+engine, so the twelve figures reach neither. Initial entry gates the first buy
+on the direction that engine reports. Detonation cannot fire in any case: its
+confidence bar starts at 0.50, and one 240-candle tape put the highest
+consensus at 0.1242 with the figures declared and 0.1016 with all twelve at
+0.30.
+
+#### A phantom keeps the figures its set was created with
+
+A phantom set is built from the parent's weights at the moment it is created.
+The push reaches the parent's own voter and not a phantom already running, so a
+phantom votes on the older figures until its set is created again.
+
+#### Each drawn row is named by its indicator
+
+On the drawn page every weight row carries the key the engine uses, which is
+the same name its slider answers to, and the printed words sit in the row's own
+label. Read off the rendered page: twelve rows, sixty-six drawn controls, and
+every row named for its indicator rather than for the words beside it.
+
 ### Settings > Phantom Bots
 
 ![Settings, the Phantom Bots page.](p39-i0.png)

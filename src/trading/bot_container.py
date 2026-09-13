@@ -786,6 +786,27 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         """The indicator weights a new bot is built with, or None."""
         return None if self._ta_weights is None else dict(self._ta_weights)
 
+    def push_ta_weights(self, weights) -> int:
+        """Hold ``weights`` and hand them to every bot already built.
+
+        ``set_ta_weights`` holds without pushing, which is what the launch path
+        wants: a restored bot is built with the figures rather than given them
+        afterwards. This one is for a weight the operator saves while bots run,
+        and it returns how many bots took it.
+        """
+        self.set_ta_weights(weights)
+        reached = 0
+        for bot in list(self._bots.values()):
+            taker = getattr(bot, "set_ta_weights", None)
+            if taker is None:
+                continue
+            taker(self._ta_weights)
+            reached += 1
+        logger.info(
+            "TA weights pushed to %d of %d running bots", reached, len(self._bots)
+        )
+        return reached
+
     def force_fire(self, bot_id: str, aggressive: bool = False) -> bool:
         """Call ``force_fire`` on ``bot_id``; returns False for an
         unknown bot or one without ``scrum_target_mode``."""

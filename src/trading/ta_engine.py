@@ -270,6 +270,17 @@ class VotingEngine:
             for name, default in DEFAULT_WEIGHTS.items()
         ]
 
+    def set_weights(self, weights: Optional[dict[str, float]] = None) -> None:
+        """Take a new set of weights and rebuild the indicators on them.
+
+        ``_create_indicators`` reads ``self.weights`` once, so assigning that
+        mapping alone reaches no indicator. Callers that push a weight into a
+        voter already running come through here. ``None`` restores
+        ``DEFAULT_WEIGHTS``.
+        """
+        self.weights = dict(weights) if weights else DEFAULT_WEIGHTS.copy()
+        self._indicators = self._create_indicators()
+
     def compute_all(
         self,
         candles: list[Candle],

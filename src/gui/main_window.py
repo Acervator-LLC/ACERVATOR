@@ -2861,6 +2861,17 @@ if _HAS_QT:
                 sms_config_from_settings(self._settings.get(SETTINGS_GROUP, {}))
             )
 
+            # Save emits settings_changed, and settings_changed is the only
+            # caller of push_ta_weights.
+            from src.trading.ta_engine import weights_from_settings
+
+            if self._bot_manager:
+                self._bot_manager.push_ta_weights(
+                    weights_from_settings(
+                        self._settings.get("ta_indicator_weights", {})
+                    )
+                )
+
             ai_cfg = self._settings.get("ai_monitor", {})
             if self._bot_manager:
                 self._bot_manager.configure_live_monitor(ai_cfg)
