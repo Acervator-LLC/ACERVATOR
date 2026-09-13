@@ -2480,6 +2480,26 @@ self._ext_chunk_size_usd.setDecimals(2)
 self._ext_chunk_size_usd.setValue(100.0)
 ```
 
+The pool is now turned into base-currency units on the bot's first watch-list
+refresh. The Extractor reads its own base currency's dollar price off its
+exchange and hands it to the method that rebases the pool, so the pool stops
+being counted one dollar to one coin. A dollar-pegged base takes a rate of one
+and reads no price at all.
+
+Driven on a $250.00 pool against a base priced at $4,000.00, the bot read a pool
+of 0.0625 base units where it used to read 250.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._acquire_usd_per_base_rate`
+
+```python
+if base in DOLLAR_PEGGED_CURRENCIES:
+    rate = 1.0
+else:
+    try:
+        ticker = await self.exchange.get_ticker(f"{base}/USD")
+        rate = float(ticker.last)
+```
+
 Artillery size (USD) - This determines the individual size of Extractor Tranches.
 
 From $0.50 to $100,000.00, at $5.00 to start. The default is set small enough
@@ -2493,6 +2513,17 @@ self._ext_artillery_size_usd.setRange(0.5, 100_000.0)
 self._ext_artillery_size_usd.setPrefix("$")
 self._ext_artillery_size_usd.setDecimals(2)
 self._ext_artillery_size_usd.setValue(5.0)
+```
+
+One round converts at that same rate, every time it fires. Driven at $7.50
+against a base priced at $4,000.00, a round sized 0.001875 base units where it
+used to size 7.5.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._fire_artillery`, the sizing
+
+```python
+artillery_usd = float(self.config.extractor_artillery_size_usd)
+artillery_base = self._usd_to_base(artillery_usd)
 ```
 
 Watch list top-N - The determines the number of Alternate Currency pairs the bot will scan for potential extraction.
@@ -2520,6 +2551,29 @@ self._ext_scan_refresh = QSpinBox()
 self._ext_scan_refresh.setRange(10, 240)
 self._ext_scan_refresh.setValue(60)
 self._ext_scan_refresh.setSuffix(" candles")
+```
+
+The count is now candles of the bot's own timeframe. It used to be ticks, and
+the loop ticks every five seconds whatever the timeframe says, so 60 came due
+after five minutes. Driven on a one-minute bot, 60 now comes due after 3,600
+seconds and not after 300.
+
+The running-bot window used to offer 10 to 600 and call them ticks. It offers
+the same 10 to 240 candles the wizard does, so both screens and the sentence
+above agree.
+
+One method turns the setting into seconds, and both the refresh check and the
+base-currency price read ask it, so the two share one cadence and one reading of
+the number.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._refresh_interval_seconds`
+
+```python
+candles = int(self.config.extractor_scan_refresh_candles)
+candle_seconds = TIMEFRAME_SECONDS.get(
+    self._timeframe, TIMEFRAME_SECONDS[self.DEFAULT_TIMEFRAME]
+)
+return float(candles * candle_seconds)
 ```
 
 Pool Reserve - To be re-evaluated.
@@ -2582,6 +2636,30 @@ self._ext_max_tier.setRange(1, 10)
 self._ext_max_tier.setValue(3)
 ```
 
+A rolled tranche now prices its re-entry from the parent, which is what the
+sentence above asks for. The Extractor records the exit fill that rolled the
+tier, finds the parent Scrumming Bot holding the base currency, takes that
+parent's Minimum Opposing Trade Distance and Trading Fee as one distance, and
+hands that distance to the same placement the engine uses elsewhere, together
+with the pair's Bollinger band. A band edge further out than the distance
+replaces it, and that is the band extension the sentence names. A correction on
+a rolled tranche waits until the price reaches the floor.
+
+Driven on a parent at a 1.50 % interval and a 0.60 % fee, the distance read
+2.10 %, and a tranche rolled at a fill of 0.10 read a floor of 0.094 — the
+band's lower edge, further out than the 0.0979 the distance alone gives. At a
+price of 0.10 the re-entry was refused, and at 0.09 it went through. Tier one
+reads no floor, and neither does a bot with no parent.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._reentry_floor_price`
+
+```python
+otd_pct = minimum_opposing_trade_distance_pct_from_config(parent.config)
+return placement_floor_price(
+    -1, float(pos.roll_exit_price_base_per_alt), otd_pct, band
+)
+```
+
 Max cost-basis multiple - To be re-evaluated.
 
 From 1.0x to 10.0x, at 2.0x to start. Setting it to 1.0 stops averaging down.
@@ -2604,6 +2682,22 @@ max_basis = pos.artillery_size_base * float(
 headroom = max_basis - pos.cost_basis_base
 if headroom <= 0:
     return  # hard floor reached; wait for bullish exit
+```
+
+The log line now prints the cap the code actually enforces. It names the
+position's cost basis against the base-unit ceiling this multiple sets, and it
+prints the correction counter as a plain count with no denominator, because
+nothing caps that counter. Driven on a position with nine corrections already
+fired and headroom still open, the correction went through — which is what the
+old wording denied.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the line
+
+```python
+f"cost_basis {pos.cost_basis_base:.8f} of "
+f"{max_basis:.8f} base allowed at "
+f"{float(self.config.extractor_max_cost_basis_multiple):.2f}x, "
+f"corrections={pos.corrections_fired} (no cap)."
 ```
 
 Direction - To be re-evaluated.
@@ -2813,6 +2907,32 @@ from it, but never hands that rate to the bot. Driven with a $250.00 pool, a
 $7.50 artillery size and a $40.00 hedge budget, the restored bot read a pool of
 250 base units, a round of 7.5 base units, a hedge reserve of zero, and no
 reservation token.
+
+All three arrive now. The Extractor reads its own base currency's dollar price
+on every watch-list refresh, which is the moment it already goes to the venue.
+The first reading rebases the pool, converts the hedge budget and writes the
+capital claim; every reading after that goes through the spike-protected update,
+so the rate a round is sized at stays current.
+
+Driven again on the same figures against a base priced at $4,000.00, the same
+restored bot read a pool of 0.0625 base units, a round of 0.001875, a hedge
+reserve of 0.01, and a reservation token. The rebase runs once, on a bot's first
+tick with no position open, so it cannot be charged twice and cannot throw away
+base units a running pool has already earned.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.tick`, the refresh step
+
+```python
+if self._watch_list_due_for_refresh():
+    await self._acquire_usd_per_base_rate()
+    await self._refresh_watch_list()
+```
+
+One case is still open, and no record of it exists. A bot restored from a state
+file saved before this change keeps the base-unit figures that file holds,
+because a restore carries them and the rebase only runs on a first tick. The
+rate itself still becomes real, so every new round is sized correctly; the pool
+total is the part that would stay stale.
 
 ### Additional Main Window > Trading Tab Features
 
