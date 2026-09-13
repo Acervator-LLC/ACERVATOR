@@ -155,6 +155,43 @@ and count the rows against the highest number. A missing number means an item wa
 dropped between the report and the body, which is the one failure this section
 exists to catch.
 
+## An add-on unit resolves what it finds. It does not hand back a list.
+
+Operator, 2026-09-13: *"we need to stop adding 6+ Still Absent items to these
+subsequent Units that are already additional units. Start resolving everything
+found in a Unit with the Unit it is found in if the Unit is already an add on.
+Otherwise, this Issue may never get closed."*
+
+The section above governs a unit that works an **original** row. Once a unit is
+working rows that an earlier unit raised, the rule inverts: its findings are its
+own work, not the next unit's.
+
+**The arithmetic that forced this.** Six add-on units in one session returned 6,
+7, 6, 5, 7 and 6 absences. Each closed 4 to 6 rows and opened about the same
+number, so the open count did not fall. An issue whose rows grow as fast as they
+close has no end state.
+
+Every add-on brief carries this paragraph, in these terms:
+
+> This unit is an add-on, so you resolve what you find. Do not hand back a list.
+> Exactly two kinds of thing may come back unresolved, one line each: work that
+> lands in a file another branch holds, named; and a decision that is his — a
+> product capability, a surface he can see, or a sentence of his own prose.
+> Never a code question.
+
+**Two kinds, and no third.** "It is out of scope" is not one of them, and
+neither is "it deserves its own unit". A finding inside the files the unit
+already has open is that unit's work.
+
+**Where the two survivors go.** A blocked file becomes a line inside the row it
+belongs to, so the row stays open carrying its own remainder. A decision becomes
+a one-line question in its row, phrased so he can answer it without reading
+code. Neither becomes a new row.
+
+**The count is the check.** After writing an add-on unit's outcomes, the highest
+row number must not have moved. If it did, the unit handed back work and the
+brief did not bind.
+
 ## Folding one issue into another
 
 When a feature's issues are consolidated: map every concept from the absorbed issue onto a concept in the host, report the mapping, add only what is missing, carry each absorbed blocker into its concept's status cell, then comment on the absorbed issue naming the host and close it. Its comments stay — they are the record.
