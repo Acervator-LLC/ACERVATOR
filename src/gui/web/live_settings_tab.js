@@ -6,7 +6,6 @@
 
   var ACCESSIBLE_NAME = "accessible_name";
   var ACTIONS = "actions";
-  var ALT_TARGETS = "alt_targets";
   var ATTRIBUTES = "attributes";
   var BARE_NUMBER_FIELDS = "bare_number_fields";
   var BOXES = "boxes";
@@ -64,7 +63,6 @@
   var DECLARED_FIELDS = [
     ACCESSIBLE_NAME,
     ACTIONS,
-    ALT_TARGETS,
     ATTRIBUTES,
     BARE_NUMBER_FIELDS,
     BOXES,
@@ -121,7 +119,6 @@
 
   var DECLARED_BAGS = [
     ACTIONS,
-    ALT_TARGETS,
     ATTRIBUTES,
     COLORS,
     COMBO_INDEX,
@@ -210,11 +207,6 @@
   var HINT_WORD_WRAP = "hint_word_wrap";
   var OUTCOME_FIELD = "outcome";
   var RESTORE_DELAY_MS = "restore_delay_ms";
-  var PAIRS_FIELD = "pairs";
-  var ACTIVE_FORMAT = "active_format";
-  var JOIN_FIELD = "join";
-  var EMPTY_TEXT_FIELD = "empty_text";
-  var COUNT_TOKEN = "{count}";
 
   var BOX_ICON = "icon";
   var BOX_TITLE = "title";
@@ -240,10 +232,6 @@
     ["cb_reset_all_btn", RESET_BUTTON],
     ["self_destruct_btn", DANGER_BUTTON]
   ];
-
-  var ALT_INFO_ROW = "alt_info_lbl";
-  var ALT_LIST_ROW = "alt_list_lbl";
-  var ALT_PLAN = [ALT_INFO_ROW, ALT_LIST_ROW];
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -305,7 +293,6 @@
   var DENOM_PART = "denom-value";
   var BUTTON_PART = "row-button";
   var DANGER_HINT_PART = "danger-hint";
-  var ALT_LINE_PART = "alt-targets-line";
   var MESSAGE_BOX_PART = "message-box";
   var BOX_TITLE_PART = "box-title";
   var BOX_TEXT_PART = "box-text";
@@ -576,7 +563,7 @@
     BUTTON_PLAN.forEach(function (pair) {
       found.push(first(pair));
     });
-    return found.concat(ALT_PLAN);
+    return found;
   }
 
   function valueOf(name) {
@@ -635,18 +622,6 @@
   function denomShown(quote) {
     var bag = objectField(model(), DENOM_VISIBLE);
     return owns(bag, quote) ? bag[quote] === true : false;
-  }
-
-  function altLine(name) {
-    var bag = objectField(model(), ALT_TARGETS);
-    var pairs = listField(bag, PAIRS_FIELD);
-    if (name === ALT_LIST_ROW) {
-      return pairs.length ? pairs.join(String(bag[JOIN_FIELD])) : undefined;
-    }
-    if (!pairs.length) {
-      return bag[EMPTY_TEXT_FIELD];
-    }
-    return String(bag[ACTIVE_FORMAT]).split(COUNT_TOKEN).join(String(pairs.length));
   }
 
   function boxes() {
@@ -1107,14 +1082,6 @@
     return element(DIV_TAG, wrapProps, drawn);
   }
 
-  function AltLine(props) {
-    var lineProps = { className: TAB_CLASS, style: { whiteSpace: PRE_WRAP } };
-    lineProps[PART_ATTR] = ALT_LINE_PART;
-    lineProps[NAME_ATTR] = props.name;
-    lineProps[COUNT_ATTR] = text(listField(objectField(model(), ALT_TARGETS), PAIRS_FIELD).length);
-    return element(SPAN_TAG, lineProps, text(altLine(props.name)));
-  }
-
   function rowBody(name, handlers) {
     if (specNamed(name) !== undefined) {
       return element(Control, { name: name, onEdit: handlers.onEdit });
@@ -1130,9 +1097,6 @@
     var button = buttonField(name);
     if (button !== undefined) {
       return element(RowButton, { name: name, field: button, onPress: handlers.onPress });
-    }
-    if (ALT_PLAN.indexOf(name) >= ZERO) {
-      return element(AltLine, { name: name });
     }
     return null;
   }
@@ -1583,7 +1547,6 @@
     denomRow: denomRow,
     denomShown: denomShown,
     buttonField: buttonField,
-    altLine: altLine,
     boxes: boxes,
     prompts: prompts,
     calls: calls,

@@ -8,7 +8,7 @@ runtime counters. ``make_bot_config`` refuses a kwarg foreign to the given
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from enum import Enum
 from typing import Optional
 
@@ -166,11 +166,6 @@ class BotConfig:
     # BotMode.EXTRACTOR anchors to a base-asset pool and sends chunks into ALT
     # pairs; it spawns no child bots.
 
-    # "normal" buys alt first for more base; "inverted" sells alt first for the
-    # quote currency.
-    extractor_direction: str = "normal"
-    # Operator-entered ALT quantity reserved at startup for the inverted direction.
-    inverted_extractor_standing_alt_units: float = 0.0
     extractor_chunk_size_usd: float = 100.0
     # USD-equivalent base currency owned; converted to base units at creation, then
     # tracked in base units.
@@ -179,30 +174,8 @@ class BotConfig:
     extractor_scan_top_n: int = 8
     # Re-ranks the top-N every N ticks.
     extractor_scan_refresh_candles: int = 60
-    # % of the chunk kept free; a new round needs (chunk_free - artillery_size)
-    # >= reserve.
-    extractor_pool_reserve_pct: float = 50.0
     # % of the alt position sold on a bullish trigger; 100 is a full exit.
     extractor_exit_pct: float = 100.0
-    # USD drawdown threshold below which averaging-down may trigger.
-    extractor_drawdown_threshold_pct: float = 3.0
-    # Minimum candles between consecutive averaging-down rounds on the same position.
-    extractor_correction_skip_candles: int = 4
-    # Cost basis of a position cannot exceed this multiple of the original
-    # artillery_size.
-    extractor_max_cost_basis_multiple: float = 2.0
-    # Per-position tier counter capped at extractor_max_compounding_tier; realized
-    # gain always credits chunk_free_base.
-    extractor_max_compounding_tier: int = 3
-    # Separate base-currency reserve for averaging-down; 0 draws from
-    # chunk_free instead.
-    extractor_hedge_budget_usd: float = 0.0
-    # Trend-hold threshold for the per-symbol TASignalProvider.
-    extractor_trend_strength_threshold: float = 0.65
-
-    # Empty list: auto-pick top-N */<base> pairs via extractor_scan_top_n.
-    # Non-empty: trade exactly these symbols, set from the wizard's pool picker.
-    extractor_alt_targets: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.symbol:
@@ -337,17 +310,7 @@ _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(
         "extractor_artillery_size_usd",
         "extractor_scan_top_n",
         "extractor_scan_refresh_candles",
-        "extractor_pool_reserve_pct",
         "extractor_exit_pct",
-        "extractor_drawdown_threshold_pct",
-        "extractor_correction_skip_candles",
-        "extractor_max_cost_basis_multiple",
-        "extractor_max_compounding_tier",
-        "extractor_hedge_budget_usd",
-        "extractor_trend_strength_threshold",
-        "extractor_alt_targets",
-        "extractor_direction",
-        "inverted_extractor_standing_alt_units",
     }
 )
 
@@ -657,8 +620,6 @@ def bot_config_kwargs(mode, collected: dict, *, exchange_id: str = "") -> dict:
     # An absent bulk_trading is the retired Grid checkbox, so False rather
     # than STACK_MODE_DEFAULT.
     kwargs.setdefault("stack_mode", collected.get("bulk_trading", False))
-    if "extractor_alt_targets" in kwargs:
-        kwargs["extractor_alt_targets"] = list(kwargs["extractor_alt_targets"] or [])
     return kwargs
 
 

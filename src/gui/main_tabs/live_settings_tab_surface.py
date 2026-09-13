@@ -65,7 +65,6 @@ DANGER_GROUP_TITLE = "DANGER ZONE — Self-Destruct (v3.15.62)"
 RISK_GROUP_TITLE = "Risk Controls (MEM-244)"
 GATES_GROUP_TITLE = "Strategy Gate Flags (v3.16.15)"
 EXTRACTOR_GROUP_TITLE = "Extractor — Pool & Artillery"
-ALT_TARGETS_GROUP_TITLE = "Alt Targets (manual override)"
 
 SCRUMMING_MODE = "scrumming"
 EXTRACTOR_MODE = "extractor"
@@ -171,21 +170,6 @@ RESET_FAILED_TEXT = "Reset failed"
 RESET_ALL_SCOPE = "all"
 RESET_APPLIED_KEY = "applied"
 RESET_RESTORE_DELAY_MS = 2000
-
-ALT_TARGETS_ACTIVE_FORMAT = "Manual override active — {count} pair(s):"
-ALT_TARGETS_JOIN = ", "
-ALT_TARGETS_ACTIVE_STYLE = f"color: {ds.TEXT_INACTIVE}; font-size: 11px;"
-ALT_TARGETS_LIST_STYLE = (
-    f"color: {ds.PRIMARY}; font-family: monospace; font-size: 11px;"
-)
-ALT_TARGETS_LIST_WORD_WRAP = True
-ALT_TARGETS_EMPTY_TEXT = (
-    "Auto-scan active (empty manual list). Bot "
-    "rotates top-N by 24h volume each refresh."
-)
-ALT_TARGETS_EMPTY_STYLE = (
-    f"color: {ds.TEXT_INACTIVE}; font-size: 11px; font-style: italic;"
-)
 
 SELF_DESTRUCT_PHRASE = "SELF-DESTRUCT"
 SELF_DESTRUCT_METHOD = "self_destruct"
@@ -297,12 +281,9 @@ TOOLTIPS = {
     "gate_fold_htf": "ON (Conservative): mirror of SCRUM HTF gate on the fold side. OFF (Lean): fold fires regardless of higher-TF bearish bias.",
     "ext_chunk_size": "USD-equivalent of base currency this bot owns. Sized at construction; changing live re-anchors the pool's reference USD value (not the held base units — those are exchange-tracked).",
     "ext_artillery_size": "USD-equivalent per artillery round. Smaller = more opportunities; larger = bigger per-round impact.",
-    "ext_scan_top_n": "Top-N */<base> pairs by 24h volume to keep on the auto-scan watch list. Range [5, 10] per design doc §6. Ignored when manual alt-targets are set.",
+    "ext_scan_top_n": "Top-N */<base> pairs by 24h volume to keep on the auto-scan watch list. Range [5, 10] per design doc §6.",
     "ext_scan_refresh": "Candles of this bot's timeframe between watch-list refreshes. Lower = more responsive; higher = less thrashing.",
-    "ext_pool_reserve": "% of chunk reserved as untouchable. New artillery fires only if (chunk_free - artillery_size) >= reserve.",
     "ext_exit_pct": "% of alt position sold on bullish trigger. 100 = full exit; <100 leaves a rider tail.",
-    "ext_max_tier": "Compounding tier counter (currently informational — logs ROLL_TO_NEXT_TIER vs LOCK_TO_POOL). At this version, realized base gain always deposits directly to the pool regardless of tier. The gain-as-next-artillery-size rolling mechanism is a planned enhancement (see extractor_bot.py:1264-1266).",
-    "ext_max_cost_basis": "Safety cap: cost basis of any position cannot exceed multiplier x original artillery_size. Hard floor against runaway averaging-down.",
 }
 
 
@@ -542,7 +523,6 @@ DANGER_GROUP = "danger"
 RISK_GROUP = "risk"
 GATES_GROUP = "gates"
 EXTRACTOR_GROUP = "extractor"
-ALT_TARGETS_GROUP = "alt_targets"
 
 NO_ROW_LABEL: Optional[str] = None
 NO_FIELD: Optional[str] = None
@@ -1112,18 +1092,6 @@ CONTROL_SPECS = (
         "suffix": " candles",
     },
     {
-        "name": "ext_pool_reserve",
-        "kind": DOUBLE_SPIN,
-        "group": EXTRACTOR_GROUP,
-        "row_label": "Pool reserve:",
-        "field": "extractor_pool_reserve_pct",
-        "reading": FLOAT_READING,
-        "default": 50.0,
-        "range": (0.0, 90.0),
-        "decimals": 1,
-        "suffix": " %",
-    },
-    {
         "name": "ext_exit_pct",
         "kind": DOUBLE_SPIN,
         "group": EXTRACTOR_GROUP,
@@ -1135,33 +1103,10 @@ CONTROL_SPECS = (
         "decimals": 1,
         "suffix": " %",
     },
-    {
-        "name": "ext_max_tier",
-        "kind": SPIN,
-        "group": EXTRACTOR_GROUP,
-        "row_label": "Max compounding tier:",
-        "field": "extractor_max_compounding_tier",
-        "reading": INT_READING,
-        "default": 3,
-        "range": (1, 10),
-    },
-    {
-        "name": "ext_max_cost_basis",
-        "kind": DOUBLE_SPIN,
-        "group": EXTRACTOR_GROUP,
-        "row_label": "Max cost-basis multiple:",
-        "field": "extractor_max_cost_basis_multiple",
-        "reading": FLOAT_READING,
-        "default": 2.0,
-        "range": (1.0, 10.0),
-        "decimals": 2,
-        "suffix": "x",
-    },
 )
 
 CONTROL_NAMES = tuple(spec["name"] for spec in CONTROL_SPECS)
-EXTRACTOR_ONLY_GROUPS = (EXTRACTOR_GROUP, ALT_TARGETS_GROUP)
-ALT_TARGETS_FIELD = "extractor_alt_targets"
+EXTRACTOR_ONLY_GROUPS = (EXTRACTOR_GROUP,)
 
 
 def reading_kinds() -> dict:
@@ -1229,7 +1174,6 @@ BUILD_DENOM_ROWS = "build.denom_rows"
 BUILD_TIMER = "build.timer"
 BUILD_RESET_BUTTON = "build.reset_button"
 BUILD_DANGER = "build.danger"
-BUILD_ALT_TARGETS = "build.alt_targets"
 BUILD_STRETCH = "build.stretch"
 BUILD_RETURN = "build.return"
 DENOM_START = "denom.start"
@@ -1270,7 +1214,6 @@ CALL_NAMES = (
     BUILD_TIMER,
     BUILD_RESET_BUTTON,
     BUILD_DANGER,
-    BUILD_ALT_TARGETS,
     BUILD_STRETCH,
     BUILD_RETURN,
     DENOM_START,
@@ -1461,7 +1404,6 @@ class LiveSettingsTabModel:
         self.rows: list = []
         self.values: dict = {}
         self.combo_index: dict = {}
-        self.alt_targets: list = []
         self.tooltips_applied: dict = {}
         self.forms_expected = FORM_COUNT_BASE
         self.timeframe_items: list = []
@@ -1632,7 +1574,6 @@ class LiveSettingsTabModel:
             for spec in CONTROL_SPECS:
                 if spec["group"] == EXTRACTOR_GROUP:
                     self._add_control(config, spec)
-            self._add_alt_targets(config)
             self.forms_expected = FORM_COUNT_EXTRACTOR
 
         self.built = True
@@ -1701,16 +1642,6 @@ class LiveSettingsTabModel:
         self.refresh_denom_rows()
         self.timer_started = True
         self.calls.append([BUILD_TIMER, DENOM_REFRESH_INTERVAL_MS])
-
-    def _add_alt_targets(self, config: Any) -> None:
-        """The manual override list, or the auto-scan line when it is empty."""
-        self._add_group(ALT_TARGETS_GROUP, ALT_TARGETS_GROUP_TITLE)
-        alts = list(getattr(config, ALT_TARGETS_FIELD, []) or [])
-        self.calls.append([BUILD_ALT_TARGETS, len(alts)])
-        self._add_row(ALT_TARGETS_GROUP, NO_ROW_LABEL, "alt_info_lbl")
-        if alts:
-            self._add_row(ALT_TARGETS_GROUP, NO_ROW_LABEL, "alt_list_lbl")
-        self.alt_targets = alts
 
     def refresh_denom_rows(self) -> None:
         """Repaint the Target-BTC and Target-ETH rows. Never raises.
@@ -1894,7 +1825,6 @@ def build_view_model(
             "risk": RISK_GROUP_TITLE,
             "gates": GATES_GROUP_TITLE,
             "extractor": EXTRACTOR_GROUP_TITLE,
-            "alt_targets": ALT_TARGETS_GROUP_TITLE,
         },
         "rows": [list(one) for one in model.rows],
         "row_count": len(model.rows),
@@ -1925,12 +1855,6 @@ def build_view_model(
             "surplus": SURPLUS_ROW_LABEL,
             "budget": BUDGET_ROW_LABEL,
             "over_cap": OVER_CAP_ROW_LABEL,
-        },
-        "alt_targets": {
-            "pairs": list(model.alt_targets),
-            "active_format": ALT_TARGETS_ACTIVE_FORMAT,
-            "join": ALT_TARGETS_JOIN,
-            "empty_text": ALT_TARGETS_EMPTY_TEXT,
         },
         "reset_button": {
             "text": RESET_BUTTON_TEXT,
@@ -2010,7 +1934,6 @@ def build_view_model(
             "confirm_prompt": CONFIRM_PROMPT_FORMAT,
             "dispatched": DISPATCHED_TEXT_FORMAT,
             "thread_name": THREAD_NAME_FORMAT,
-            "alt_targets_active": ALT_TARGETS_ACTIVE_FORMAT,
             "style": STYLE_FORMAT,
         },
         "colors": {
@@ -2039,7 +1962,6 @@ def build_view_model(
             "tranches": TRANCHES_ATTRIBUTE,
             "tranche_usd_key": TRANCHE_USD_KEY,
             "despawn_field": DESPAWN_FIELD,
-            "alt_targets_field": ALT_TARGETS_FIELD,
         },
         "call_names": list(CALL_NAMES),
         "calls": [list(call) for call in model.calls],

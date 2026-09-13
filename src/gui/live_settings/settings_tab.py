@@ -1184,22 +1184,6 @@ class SettingsTabMixin:
             )
             ef.addRow("Scan refresh:", self._ext_scan_refresh)
 
-            self._ext_pool_reserve = QDoubleSpinBox()
-            self._ext_pool_reserve.setRange(0.0, 90.0)
-            self._ext_pool_reserve.setDecimals(1)
-            self._ext_pool_reserve.setSuffix(" %")
-            self._ext_pool_reserve.setValue(
-                float(getattr(cfg, "extractor_pool_reserve_pct", 50.0))
-            )
-            self._ext_pool_reserve.setToolTip(
-                "% of chunk reserved as untouchable. New artillery "
-                "fires only if (chunk_free - artillery_size) >= reserve."
-            )
-            self._ext_pool_reserve.valueChanged.connect(
-                lambda v: self._mark_changed("extractor_pool_reserve_pct", v)
-            )
-            ef.addRow("Pool reserve:", self._ext_pool_reserve)
-
             self._ext_exit_pct = QDoubleSpinBox()
             self._ext_exit_pct.setRange(10.0, 100.0)
             self._ext_exit_pct.setDecimals(1)
@@ -1216,66 +1200,7 @@ class SettingsTabMixin:
             )
             ef.addRow("Exit %:", self._ext_exit_pct)
 
-            self._ext_max_tier = QSpinBox()
-            self._ext_max_tier.setRange(1, 10)
-            self._ext_max_tier.setValue(
-                int(getattr(cfg, "extractor_max_compounding_tier", 3))
-            )
-            self._ext_max_tier.setToolTip(
-                "Compounding tier counter (currently informational — "
-                "logs ROLL_TO_NEXT_TIER vs LOCK_TO_POOL). At this "
-                "version, realized base gain always deposits directly "
-                "to the pool regardless of tier. The gain-as-next-"
-                "artillery-size rolling mechanism is a planned "
-                "enhancement (see extractor_bot.py:1264-1266)."
-            )
-            self._ext_max_tier.valueChanged.connect(
-                lambda v: self._mark_changed("extractor_max_compounding_tier", v)
-            )
-            ef.addRow("Max compounding tier:", self._ext_max_tier)
-
-            self._ext_max_cost_basis = QDoubleSpinBox()
-            self._ext_max_cost_basis.setRange(1.0, 10.0)
-            self._ext_max_cost_basis.setDecimals(2)
-            self._ext_max_cost_basis.setSuffix("x")
-            self._ext_max_cost_basis.setValue(
-                float(getattr(cfg, "extractor_max_cost_basis_multiple", 2.0))
-            )
-            self._ext_max_cost_basis.setToolTip(
-                "Safety cap: cost basis of any position cannot "
-                "exceed multiplier x original artillery_size. "
-                "Hard floor against runaway averaging-down."
-            )
-            self._ext_max_cost_basis.valueChanged.connect(
-                lambda v: self._mark_changed("extractor_max_cost_basis_multiple", v)
-            )
-            ef.addRow("Max cost-basis multiple:", self._ext_max_cost_basis)
-
             layout.addWidget(ext_group)
-
-            alts_group = QGroupBox("Alt Targets (manual override)")
-            af = QVBoxLayout(alts_group)
-            alts = list(getattr(cfg, "extractor_alt_targets", []) or [])
-            if alts:
-                info_lbl = QLabel(f"Manual override active — {len(alts)} pair(s):")
-                info_lbl.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; font-size: 11px;")
-                af.addWidget(info_lbl)
-                alts_lbl = QLabel(", ".join(alts))
-                alts_lbl.setWordWrap(True)
-                alts_lbl.setStyleSheet(
-                    f"color: {ds.PRIMARY}; font-family: monospace; " "font-size: 11px;"
-                )
-                af.addWidget(alts_lbl)
-            else:
-                info_lbl = QLabel(
-                    "Auto-scan active (empty manual list). Bot "
-                    "rotates top-N by 24h volume each refresh."
-                )
-                info_lbl.setStyleSheet(
-                    f"color: {ds.TEXT_INACTIVE}; font-size: 11px; font-style: italic;"
-                )
-                af.addWidget(info_lbl)
-            layout.addWidget(alts_group)
 
         layout.addStretch()
         return w

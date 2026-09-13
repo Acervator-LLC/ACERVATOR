@@ -355,14 +355,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "value": 60,
         "suffix": " candles",
     },
-    "ext_pool_reserve": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 90.0,
-        "decimals": 1,
-        "suffix": "%",
-        "value": 50.0,
-    },
     "ext_exit_pct": {
         "kind": SPIN_DOUBLE,
         "minimum": 10.0,
@@ -370,53 +362,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "decimals": 1,
         "suffix": "%",
         "value": 100.0,
-    },
-    "ext_max_tier": {"kind": SPIN_INT, "minimum": 1, "maximum": 10, "value": 3},
-    "ext_max_cost_basis": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 1.0,
-        "maximum": 10.0,
-        "decimals": 1,
-        "suffix": "×",
-        "value": 2.0,
-    },
-    "ext_standing_alt_units": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 1_000_000_000.0,
-        "decimals": 8,
-        "value": 0.0,
-    },
-    "ext_correction_skip": {
-        "kind": SPIN_INT,
-        "minimum": 0,
-        "maximum": 100,
-        "value": 4,
-        "suffix": " candles",
-    },
-    "ext_drawdown_threshold": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 50.0,
-        "decimals": 2,
-        "suffix": "%",
-        "value": 3.0,
-    },
-    "ext_hedge_budget": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 10_000_000.0,
-        "decimals": 2,
-        "prefix": "$",
-        "value": 0.0,
-    },
-    "ext_trend_strength": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 1.0,
-        "decimals": 3,
-        "step": 0.05,
-        "value": 0.65,
     },
     "fold_x_count": {"kind": SPIN_INT, "minimum": 1, "maximum": 50, "value": 5},
     "dist_x_count": {"kind": SPIN_INT, "minimum": 1, "maximum": 50, "value": 5},
@@ -492,10 +437,6 @@ COMBO_FIELDS: dict[str, tuple] = {
         ("1d", "1d"),
     ),
     "detonation_timeframe": (("1d", "1d"), ("1w", "1w")),
-    "ext_direction": (
-        ("Normal (base → alt: buy first)", "normal"),
-        ("Inverted (standing alt → base: sell first)", "inverted"),
-    ),
 }
 COMBO_DEFAULT_INDEX: dict[str, int] = {
     "base": 0,
@@ -504,7 +445,6 @@ COMBO_DEFAULT_INDEX: dict[str, int] = {
     "stack_spacing": 0,
     "ta_timeframe": 4,
     "detonation_timeframe": 0,
-    "ext_direction": 0,
 }
 POOL_BASES = tuple(label for label, _value in COMBO_FIELDS["pool_base"])
 BASE_CURRENCIES = tuple(label for label, _value in COMBO_FIELDS["base"])
@@ -621,16 +561,7 @@ GROUP_ROWS = {
         "ext_artillery_size_usd",
         "ext_scan_top_n",
         "ext_scan_refresh",
-        "ext_pool_reserve",
         "ext_exit_pct",
-        "ext_max_tier",
-        "ext_max_cost_basis",
-        "ext_direction",
-        "ext_standing_alt_units",
-        "ext_correction_skip",
-        "ext_drawdown_threshold",
-        "ext_hedge_budget",
-        "ext_trend_strength",
     ),
     "fold_mode_group": ("fold_equal", "fold_log"),
     "fold_target_group": ("fold_all", "fold_x", "fold_x_count", "fold_recent"),
@@ -707,16 +638,7 @@ ROW_LABELS = {
     "ext_artillery_size_usd": "Artillery size (USD):",
     "ext_scan_top_n": "Watch list top-N:",
     "ext_scan_refresh": "Watch list refresh:",
-    "ext_pool_reserve": "Pool reserve:",
     "ext_exit_pct": "Exit %:",
-    "ext_max_tier": "Max compounding tier:",
-    "ext_max_cost_basis": "Max cost-basis multiple:",
-    "ext_direction": "Direction:",
-    "ext_standing_alt_units": "Standing alt units (Inverted):",
-    "ext_correction_skip": "Correction skip candles:",
-    "ext_drawdown_threshold": "Drawdown threshold:",
-    "ext_hedge_budget": "Hedge budget (USD):",
-    "ext_trend_strength": "Trend strength threshold:",
     "fold_x_count": "  Count:",
     "dist_x_count": "  Count:",
     "lock_candles": "Candles to lock:",
@@ -755,12 +677,10 @@ RADIO_TEXTS = {
 
 BUTTON_TEXTS = {
     "info": " ℹ ",
-    "select_all": "Select all",
-    "clear_all": "Clear",
 }
 
 LABEL_TEXTS = {
-    "alt_list_heading": "Target alt pairs (multi-select):",
+    "alt_list_heading": "Compatible alt pairs (auto-scanned):",
     "phantom_timeframes_heading": "Active Timeframes:",
     "scrumming_description": (
         "The core trading engine. Uses 12-indicator TA voting to optimize "
@@ -803,11 +723,9 @@ TOOL_TIPS = {
         "alts that trade against it."
     ),
     "alt_list": (
-        "Tick the alt pairs this Extractor may hunt. Leave every "
-        "box clear and it auto-scans the top-N by 24h volume."
+        "The alt pairs that trade against this pool's base. The "
+        "Extractor auto-scans the top-N of them by 24h volume."
     ),
-    "select_all": "Tick every alt pair in the list.",
-    "clear_all": "Clear every tick. No ticks means auto-scan.",
     "visibility": "How orders appear on the exchange.",
     "aggressive": (
         "When ON, every engine-initiated buy/sell executes as "
@@ -1053,71 +971,10 @@ TOOL_TIPS = {
         "hour at 1m cadence. Lower = more responsive to volume "
         "shifts; higher = less API churn."
     ),
-    "ext_pool_reserve": (
-        "Fraction of chunk that stays free as reserve. New "
-        "artillery only fires if (chunk_free − artillery_size) "
-        "≥ reserve. Default 50% — caps concurrent deployment."
-    ),
     "ext_exit_pct": (
         "Fraction of position sold on bullish trigger. 100 = "
         "full exit. Below 100 leaves a 'rider' tail in the "
         "position for continued upside."
-    ),
-    "ext_max_tier": (
-        "Per-position compounding tier max. Tier 1 always locks "
-        "to pool. Higher tiers roll the realized gain back into "
-        "the next round on the same pair. The counter dies with "
-        "the position."
-    ),
-    "ext_max_cost_basis": (
-        "Safety cap: cost basis of any position can't exceed "
-        "this multiplier × original artillery_size. Hard floor "
-        "against runaway averaging-down. Default 2× (one full "
-        "doubling). Set 1.0 to disable averaging-down entirely."
-    ),
-    "ext_direction": (
-        "Normal Extractor (default): allocates from base "
-        "currency (cash) — fires artillery as BUYS on dips, "
-        "exits on bounces. Inverted Extractor: allocates from "
-        "an existing standing alt position — fires artillery "
-        "as SELLS on spikes, exits via buy-backs when prices "
-        "fall. Use Inverted when you have a LINK / SOL / etc. "
-        "you want to harvest volatility from without selling "
-        "into cash. v3.20.74 backend; v3.20.84 wizard wiring."
-    ),
-    "ext_standing_alt_units": (
-        "Inverted Extractor only — units of standing alt this "
-        "bot owns. Used by set_initial_chunk_rate to reflect "
-        "the existing position so artillery rounds size "
-        "correctly against the standing supply. Ignored when "
-        "Direction = Normal (default 0)."
-    ),
-    "ext_correction_skip": (
-        "Averaging-down throttle: after a correction (drawdown) "
-        "fire, wait this many candles before the next "
-        "correction-driven fire on the same pair. Default 4. "
-        "Higher = more selective; lower = more aggressive "
-        "cost-basis averaging."
-    ),
-    "ext_drawdown_threshold": (
-        "USD drawdown threshold below cost basis that triggers "
-        "an averaging-down correction fire. Default 3%. "
-        "Symmetric for Inverted (drawup spike). Higher = react "
-        "less often; lower = react earlier."
-    ),
-    "ext_hedge_budget": (
-        "Optional separate base-currency hedge reserve, in USD. "
-        "Default $0 (disabled). When >0, this amount is held "
-        "out of artillery rotation as a hedge buffer. Operator "
-        "tuning field; safe to leave 0 for v3.20.74 + v3.20.84 "
-        "behavior."
-    ),
-    "ext_trend_strength": (
-        "Trend-hold threshold gating Extractor BB+trend "
-        "signals. Default 0.65. Below this, fires require BB "
-        "trigger; at/above, trend-hold suppresses noise fires. "
-        "Tighter = fewer fires in choppy ranges; looser = more "
-        "fires, more cost-basis churn."
     ),
     "folding_active": (
         "Realized sell profits fold into buy positions. "
@@ -1246,7 +1103,6 @@ REFUSAL_TOO_LARGE = "this number is too large for the field to hold"
 REFUSAL_NOT_A_WHOLE_NUMBER = "a whole-number field cannot hold {kind}"
 REFUSAL_UNKNOWN_FIELD = "no field is named {name}"
 REFUSAL_UNKNOWN_PAGE = "no page is named {name}"
-REFUSAL_UNKNOWN_ALT = "no alt sits at position {position}"
 
 INT32_MIN = -2147483648
 INT32_MAX = 2147483647
@@ -1297,7 +1153,6 @@ COMBO_ADD_ITEM = "combo.addItem"
 TEXT_SET_TEXT = "line.setText"
 LIST_CLEAR = "list.clear"
 LIST_ADD_ITEM = "list.addItem"
-LIST_SET_CHECK_STATE = "list.setCheckState"
 LABEL_SET_TEXT = "label.setText"
 CHECK_SET_ENABLED = "check.setEnabled"
 CHECK_SET_TOOL_TIP = "check.setToolTip"
@@ -1333,7 +1188,6 @@ CALL_NAMES = (
     TEXT_SET_TEXT,
     LIST_CLEAR,
     LIST_ADD_ITEM,
-    LIST_SET_CHECK_STATE,
     LABEL_SET_TEXT,
     CHECK_SET_ENABLED,
     CHECK_SET_TOOL_TIP,
@@ -1352,13 +1206,11 @@ ACTIONS = {
     "info_button.clicked": "show_info",
     "pool_exchange.currentIndexChanged": "on_pool_exchange_changed",
     "pool_base.currentIndexChanged": "refresh_alt_list",
-    "select_all.clicked": "select_all_alts",
-    "clear_all.clicked": "clear_all_alts",
     "visibility.currentIndexChanged": "on_visibility_changed",
     "wizard.currentIdChanged": "on_page_changed",
 }
-RUNTIME_CONNECT_TOTAL = 10
-SOURCE_CONNECT_TOTAL = 10
+RUNTIME_CONNECT_TOTAL = 8
+SOURCE_CONNECT_TOTAL = 8
 
 SIGNAL_NAMES: tuple[str, ...] = ()
 SIGNAL_EMIT_TOTAL = 0
@@ -1380,9 +1232,6 @@ STEP_NAMES = (
     "exchange_index",
     "pool_exchange_index",
     "markets",
-    "alt_checks",
-    "select_all",
-    "clear_all",
     "target_index",
     "show_info",
     "descriptions",
@@ -1657,7 +1506,6 @@ class BotWizardModel:
         self.target_hues: list[int] = []
         self.target_index = -1
         self.alt_items: list[list] = []
-        self.alt_checked: list[bool] = []
         self.asset_status = EMPTY_TEXT
         self.pool_status = EMPTY_TEXT
         self.info_tool_tip = EMPTY_TEXT
@@ -2046,48 +1894,20 @@ class BotWizardModel:
             key=lambda row: bag_number(row, MARKET_VOLUME_KEY) or 0.0, reverse=True
         )
         self.alt_items = []
-        self.alt_checked = []
         for row in kept:
             label = alt_label(row)
             named = bag_text(row, MARKET_SYMBOL_KEY)
             self.alt_items.append([label, named])
-            self.alt_checked.append(False)
-            self.calls.append([LIST_ADD_ITEM, "alt_list", label, named, False])
+            self.calls.append([LIST_ADD_ITEM, "alt_list", label, named])
         self.pool_status = POOL_PAIR_COUNT_FORMAT.format(count=len(kept), base=base)
         self.calls.append([LABEL_SET_TEXT, "pool_status", self.pool_status])
 
-    def set_alt_checked(self, position: int, value: Any) -> None:
-        """Tick or clear one alt in the list."""
-        if not 0 <= position < len(self.alt_checked):
-            raise IndexError(REFUSAL_UNKNOWN_ALT.format(position=position))
-        wanted = check_value(value)
-        self.alt_checked[position] = wanted
-        self.calls.append([LIST_SET_CHECK_STATE, "alt_list", position, wanted])
-
-    def select_all_alts(self) -> None:
-        """Tick every alt in the list."""
-        for position in range(len(self.alt_checked)):
-            self.alt_checked[position] = True
-            self.calls.append([LIST_SET_CHECK_STATE, "alt_list", position, True])
-
-    def clear_all_alts(self) -> None:
-        """Clear every tick in the alt list."""
-        for position in range(len(self.alt_checked)):
-            self.alt_checked[position] = False
-            self.calls.append([LIST_SET_CHECK_STATE, "alt_list", position, False])
-
     def pool_config(self) -> dict:
-        """The venue, pool base and ticked alts the pool page collected."""
-        checked = [
-            self.alt_items[position][1]
-            for position, ticked in enumerate(self.alt_checked)
-            if ticked and self.alt_items[position][1]
-        ]
+        """The venue and pool base the pool page collected."""
         return {
             "exchange_id": self.pool_exchange_id(),
             "base_currency": self.combo_text("pool_base").strip().upper(),
             "target_asset": POOL_SIGIL,
-            "extractor_alt_targets": checked,
         }
 
     # -- the parameter page --------------------------------------------
@@ -2241,26 +2061,7 @@ class BotWizardModel:
                     "extractor_scan_refresh_candles": int(
                         self.numbers["ext_scan_refresh"]
                     ),
-                    "extractor_pool_reserve_pct": self.numbers["ext_pool_reserve"],
                     "extractor_exit_pct": self.numbers["ext_exit_pct"],
-                    "extractor_max_compounding_tier": int(self.numbers["ext_max_tier"]),
-                    "extractor_max_cost_basis_multiple": self.numbers[
-                        "ext_max_cost_basis"
-                    ],
-                    "extractor_direction": self.combo_data("ext_direction"),
-                    "inverted_extractor_standing_alt_units": self.numbers[
-                        "ext_standing_alt_units"
-                    ],
-                    "extractor_correction_skip_candles": int(
-                        self.numbers["ext_correction_skip"]
-                    ),
-                    "extractor_drawdown_threshold_pct": self.numbers[
-                        "ext_drawdown_threshold"
-                    ],
-                    "extractor_hedge_budget_usd": self.numbers["ext_hedge_budget"],
-                    "extractor_trend_strength_threshold": self.numbers[
-                        "ext_trend_strength"
-                    ],
                 }
             )
             return config
@@ -2554,12 +2355,6 @@ def _apply_field_steps(model: BotWizardModel, steps: dict) -> None:
             setter(name, value)
     if steps.get("target_index") is not None:
         model.set_target_index(steps["target_index"])
-    for position, value in readable_bag(steps.get("alt_checks")).items():
-        model.set_alt_checked(int(position), value)
-    if steps.get("select_all"):
-        model.select_all_alts()
-    if steps.get("clear_all"):
-        model.clear_all_alts()
 
 
 def drive_model(model: BotWizardModel, steps: dict) -> BotWizardModel:
@@ -2669,7 +2464,6 @@ def refusal_catalogue() -> dict:
         "not_a_whole_number": REFUSAL_NOT_A_WHOLE_NUMBER,
         "unknown_field": REFUSAL_UNKNOWN_FIELD,
         "unknown_page": REFUSAL_UNKNOWN_PAGE,
-        "unknown_alt": REFUSAL_UNKNOWN_ALT,
         "none": REFUSAL_NONE,
         "api_load": REFUSAL_API_LOAD,
         "not_final": REFUSAL_NOT_FINAL,
@@ -2760,7 +2554,6 @@ def pool_page_state(model: BotWizardModel) -> dict:
         "exchange_index": model.pool_exchange_index,
         "exchange_items": model.exchange_items(),
         "alt_items": [list(one) for one in model.alt_items],
-        "alt_checked": list(model.alt_checked),
         "status": model.pool_status,
         "pool_bases": list(POOL_BASES),
         "alt_list_minimum_height_px": ALT_LIST_MINIMUM_HEIGHT_PX,

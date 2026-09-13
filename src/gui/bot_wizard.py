@@ -458,31 +458,19 @@ if _HAS_QT:
             self._status.setWordWrap(True)
             outer.addWidget(self._status)
 
-            outer.addWidget(QLabel("Target alt pairs (multi-select):"))
+            outer.addWidget(QLabel("Compatible alt pairs (auto-scanned):"))
             from PySide6.QtWidgets import QListWidget
 
             self._alt_list = QListWidget()
             self._alt_list.setSelectionMode(QListWidget.NoSelection)
             # 10-50 alt pairs typical.
             self._alt_list.setMinimumHeight(280)
-            self._alt_list.setAccessibleName("Target alt pairs")
+            self._alt_list.setAccessibleName("Compatible alt pairs")
             self._alt_list.setToolTip(
-                "Tick the alt pairs this Extractor may hunt. Leave every "
-                "box clear and it auto-scans the top-N by 24h volume."
+                "The alt pairs that trade against this pool's base. The "
+                "Extractor auto-scans the top-N of them by 24h volume."
             )
             outer.addWidget(self._alt_list)
-
-            btn_row = QHBoxLayout()
-            self._btn_all = QPushButton("Select all")
-            self._btn_all.clicked.connect(self._select_all)
-            self._btn_all.setToolTip("Tick every alt pair in the list.")
-            self._btn_none = QPushButton("Clear")
-            self._btn_none.clicked.connect(self._clear_all)
-            self._btn_none.setToolTip("Clear every tick. No ticks means auto-scan.")
-            btn_row.addWidget(self._btn_all)
-            btn_row.addWidget(self._btn_none)
-            btn_row.addStretch()
-            outer.addLayout(btn_row)
 
             if exchanges:
                 self._on_exchange_changed()
@@ -556,7 +544,7 @@ if _HAS_QT:
                 return []
 
         def _refresh_alt_list(self) -> None:
-            """Repopulate the multi-select with all alts available
+            """Repopulate the list with all alts available
             against the currently-selected base."""
             from PySide6.QtWidgets import QListWidgetItem
 
@@ -591,22 +579,12 @@ if _HAS_QT:
                 label = f"{named}  ({vol_s})" if vol_s else named
                 item = QListWidgetItem(label)
                 item.setData(Qt.UserRole, _market_text(m.get("symbol")))
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(Qt.Unchecked)
                 self._alt_list.addItem(item)
             self._status.setText(
                 f"{len(filtered)} */{base} pairs available "
-                f"(sorted by 24h volume). Leave all unchecked for "
-                f"auto-scan (top-N by volume)."
+                f"(sorted by 24h volume). The Extractor auto-scans the "
+                f"top-N of them."
             )
-
-        def _select_all(self) -> None:
-            for i in range(self._alt_list.count()):
-                self._alt_list.item(i).setCheckState(Qt.Checked)
-
-        def _clear_all(self) -> None:
-            for i in range(self._alt_list.count()):
-                self._alt_list.item(i).setCheckState(Qt.Unchecked)
 
         def get_config(self) -> dict:
             """Returns the wizard's extractor-pool selection.
@@ -614,27 +592,14 @@ if _HAS_QT:
             Output shape:
               exchange_id (str): selected exchange id
               base_currency (str): the pool's base (which asset is accumulated)
-              target_asset (str): convention placeholder — Extractor uses
-                a pool of alts rather than a single target. Set to the
-                first selected alt for downstream symbol-construction
-                compatibility, or to base itself if no alts selected
-                (the auto-scan will run at runtime).
-              extractor_alt_targets (list[str]): operator-selected alt
-                symbols. Empty = auto-scan top-N at runtime.
+              target_asset (str): pool sigil, since the Extractor holds a
+                pool of alts rather than one target asset.
             """
-            checked: list[str] = []
-            for i in range(self._alt_list.count()):
-                item = self._alt_list.item(i)
-                if item.checkState() == Qt.Checked:
-                    sym = item.data(Qt.UserRole)
-                    if sym:
-                        checked.append(sym)
             base = self._base.currentText().strip().upper()
             return {
                 "exchange_id": self._exchange.currentData(),
                 "base_currency": base,
                 "target_asset": "*",  # pool sigil — multi-pair indicator
-                "extractor_alt_targets": checked,
             }
 
     class TradingParamsPage(QWizardPage):
@@ -1265,18 +1230,6 @@ if _HAS_QT:
             )
             eform.addRow("Watch list refresh:", self._ext_scan_refresh)
 
-            self._ext_pool_reserve = QDoubleSpinBox()
-            self._ext_pool_reserve.setRange(0.0, 90.0)
-            self._ext_pool_reserve.setSuffix("%")
-            self._ext_pool_reserve.setDecimals(1)
-            self._ext_pool_reserve.setValue(50.0)
-            self._ext_pool_reserve.setToolTip(
-                "Fraction of chunk that stays free as reserve. New "
-                "artillery only fires if (chunk_free − artillery_size) "
-                "≥ reserve. Default 50% — caps concurrent deployment."
-            )
-            eform.addRow("Pool reserve:", self._ext_pool_reserve)
-
             self._ext_exit_pct = QDoubleSpinBox()
             self._ext_exit_pct.setRange(10.0, 100.0)
             self._ext_exit_pct.setSuffix("%")
@@ -1288,114 +1241,6 @@ if _HAS_QT:
                 "position for continued upside."
             )
             eform.addRow("Exit %:", self._ext_exit_pct)
-
-            self._ext_max_tier = QSpinBox()
-            self._ext_max_tier.setRange(1, 10)
-            self._ext_max_tier.setValue(3)
-            self._ext_max_tier.setToolTip(
-                "Per-position compounding tier max. Tier 1 always locks "
-                "to pool. Higher tiers roll the realized gain back into "
-                "the next round on the same pair. The counter dies with "
-                "the position."
-            )
-            eform.addRow("Max compounding tier:", self._ext_max_tier)
-
-            self._ext_max_cost_basis = QDoubleSpinBox()
-            self._ext_max_cost_basis.setRange(1.0, 10.0)
-            self._ext_max_cost_basis.setDecimals(1)
-            self._ext_max_cost_basis.setSuffix("×")
-            self._ext_max_cost_basis.setValue(2.0)
-            self._ext_max_cost_basis.setToolTip(
-                "Safety cap: cost basis of any position can't exceed "
-                "this multiplier × original artillery_size. Hard floor "
-                "against runaway averaging-down. Default 2× (one full "
-                "doubling). Set 1.0 to disable averaging-down entirely."
-            )
-            eform.addRow("Max cost-basis multiple:", self._ext_max_cost_basis)
-
-            self._ext_direction = QComboBox()
-            self._ext_direction.addItem("Normal (base → alt: buy first)", "normal")
-            self._ext_direction.addItem(
-                "Inverted (standing alt → base: sell first)", "inverted"
-            )
-            self._ext_direction.setToolTip(
-                "Normal Extractor (default): allocates from base "
-                "currency (cash) — fires artillery as BUYS on dips, "
-                "exits on bounces. Inverted Extractor: allocates from "
-                "an existing standing alt position — fires artillery "
-                "as SELLS on spikes, exits via buy-backs when prices "
-                "fall. Use Inverted when you have a LINK / SOL / etc. "
-                "you want to harvest volatility from without selling "
-                "into cash. v3.20.74 backend; v3.20.84 wizard wiring."
-            )
-            eform.addRow("Direction:", self._ext_direction)
-
-            self._ext_standing_alt_units = QDoubleSpinBox()
-            self._ext_standing_alt_units.setRange(0.0, 1_000_000_000.0)
-            self._ext_standing_alt_units.setDecimals(8)
-            self._ext_standing_alt_units.setValue(0.0)
-            self._ext_standing_alt_units.setToolTip(
-                "Inverted Extractor only — units of standing alt this "
-                "bot owns. Used by set_initial_chunk_rate to reflect "
-                "the existing position so artillery rounds size "
-                "correctly against the standing supply. Ignored when "
-                "Direction = Normal (default 0)."
-            )
-            eform.addRow("Standing alt units (Inverted):", self._ext_standing_alt_units)
-
-            self._ext_correction_skip = QSpinBox()
-            self._ext_correction_skip.setRange(0, 100)
-            self._ext_correction_skip.setValue(4)
-            self._ext_correction_skip.setSuffix(" candles")
-            self._ext_correction_skip.setToolTip(
-                "Averaging-down throttle: after a correction (drawdown) "
-                "fire, wait this many candles before the next "
-                "correction-driven fire on the same pair. Default 4. "
-                "Higher = more selective; lower = more aggressive "
-                "cost-basis averaging."
-            )
-            eform.addRow("Correction skip candles:", self._ext_correction_skip)
-
-            self._ext_drawdown_threshold = QDoubleSpinBox()
-            self._ext_drawdown_threshold.setRange(0.0, 50.0)
-            self._ext_drawdown_threshold.setSuffix("%")
-            self._ext_drawdown_threshold.setDecimals(2)
-            self._ext_drawdown_threshold.setValue(3.0)
-            self._ext_drawdown_threshold.setToolTip(
-                "USD drawdown threshold below cost basis that triggers "
-                "an averaging-down correction fire. Default 3%. "
-                "Symmetric for Inverted (drawup spike). Higher = react "
-                "less often; lower = react earlier."
-            )
-            eform.addRow("Drawdown threshold:", self._ext_drawdown_threshold)
-
-            self._ext_hedge_budget = QDoubleSpinBox()
-            self._ext_hedge_budget.setRange(0.0, 10_000_000.0)
-            self._ext_hedge_budget.setPrefix("$")
-            self._ext_hedge_budget.setDecimals(2)
-            self._ext_hedge_budget.setValue(0.0)
-            self._ext_hedge_budget.setToolTip(
-                "Optional separate base-currency hedge reserve, in USD. "
-                "Default $0 (disabled). When >0, this amount is held "
-                "out of artillery rotation as a hedge buffer. Operator "
-                "tuning field; safe to leave 0 for v3.20.74 + v3.20.84 "
-                "behavior."
-            )
-            eform.addRow("Hedge budget (USD):", self._ext_hedge_budget)
-
-            self._ext_trend_strength = QDoubleSpinBox()
-            self._ext_trend_strength.setRange(0.0, 1.0)
-            self._ext_trend_strength.setDecimals(3)
-            self._ext_trend_strength.setSingleStep(0.05)
-            self._ext_trend_strength.setValue(0.65)
-            self._ext_trend_strength.setToolTip(
-                "Trend-hold threshold gating Extractor BB+trend "
-                "signals. Default 0.65. Below this, fires require BB "
-                "trigger; at/above, trend-hold suppresses noise fires. "
-                "Tighter = fewer fires in choppy ranges; looser = more "
-                "fires, more cost-basis churn."
-            )
-            eform.addRow("Trend strength threshold:", self._ext_trend_strength)
 
             groups.addWidget(self._extractor_group)
 
@@ -1478,20 +1323,7 @@ if _HAS_QT:
                         "extractor_scan_refresh_candles": int(
                             self._ext_scan_refresh.value()
                         ),
-                        "extractor_pool_reserve_pct": self._ext_pool_reserve.value(),
                         "extractor_exit_pct": self._ext_exit_pct.value(),
-                        "extractor_max_compounding_tier": int(
-                            self._ext_max_tier.value()
-                        ),
-                        "extractor_max_cost_basis_multiple": self._ext_max_cost_basis.value(),
-                        "extractor_direction": self._ext_direction.currentData(),
-                        "inverted_extractor_standing_alt_units": self._ext_standing_alt_units.value(),
-                        "extractor_correction_skip_candles": int(
-                            self._ext_correction_skip.value()
-                        ),
-                        "extractor_drawdown_threshold_pct": self._ext_drawdown_threshold.value(),
-                        "extractor_hedge_budget_usd": self._ext_hedge_budget.value(),
-                        "extractor_trend_strength_threshold": self._ext_trend_strength.value(),
                     }
                 )
                 return cfg
