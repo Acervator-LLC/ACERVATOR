@@ -1679,6 +1679,19 @@ self._cb_soft_pct.setSuffix(" %")
 self._cb_soft_pct.setValue(25.0)
 ```
 
+The move the figure is compared against is the candle's own span, high minus low
+over open, as a percentage. The figure decides: on one candle spanning 24.9 %, a
+stored 10.0 % tripped the breaker and a stored 30.0 % did not, and on one
+spanning exactly 25.0 % a stored 25.0 % tripped. A stored 0.0 % left a 50 %
+candle alone, which is the off position the paragraph above describes.
+
+The side follows the close against the open. A candle closing up shut the SCRUM
+side, a candle closing down shut the FOLD side, and a shut side refuses the
+trade at `circuit_breaker_scrum` or `circuit_breaker_fold` in the gate chain
+while the other side's chain is untouched. The breaker is read once per worked
+tick, and only a candle timestamp the bot has not seen can trip it, so one
+candle never trips twice.
+
 Hard CB Threshold - The amount of instantaneous, single-candle price action required for the bot to be hard stopped at which point the user must re-authorize trading.
 
 The same range, at 35.0 % to start. Zero switches it off. Where the soft
@@ -1695,6 +1708,23 @@ self._cb_hard_pct.setSuffix(" %")
 self._cb_hard_pct.setValue(35.0)
 ```
 
+Driven on the same span reading: at a stored 35.0 % a candle spanning 35.0 %
+tripped the hard breaker and paused the bot, one spanning 34.9 % did not, and a
+stored 40.0 % left the 35.0 % candle alone. A stored 0.0 % left a 90 % candle
+alone. Once tripped it holds every later candle, quiet ones included, and only
+the Reset All Breakers button clears it — the reset reports the trip percentage
+it cleared and returns the bot from paused to running. The pause is written into
+the bot's stored record, so a bot restored from a hard trip comes back paused.
+
+The pause reaches the scrum and the fold gate chain. It does not reach the five
+trade paths the tick reads before it: Manual Fire, the Wire Stack fire, Max
+Cartridge, Detonation and the initial entry. Measured on a hard-tripped, paused
+bot with a position $30.00 past a $20.00 Max Cartridge threshold: the bot still
+wrote MAX CARTRIDGE FIRE and still sent the cartridge trade notification, while
+the same bot with Max Cartridge at 0.0 % wrote nothing. Nothing is changed here
+for that, because raising the hard breaker above the cartridge would stop a
+rebalance that fires on live bots today.
+
 Soft CB Cooldown - This is the number of candles that must close before the Soft Circuit Breaker opens again.
 
 From 1 to 100 candles, at 3 to start. It is counted in closed candles, so its
@@ -1707,6 +1737,19 @@ self._cb_cooldown = QSpinBox()
 self._cb_cooldown.setRange(1, 100)
 self._cb_cooldown.setValue(3)
 ```
+
+The figure is the count of fresh candles the shut side waits out, and it is the
+count the code uses: a stored 1 re-opened on the first fresh candle, a stored 3
+on the third, and a stored 10 on the tenth. The count only moves on a candle
+timestamp the bot has not seen, so a repeated candle left the remaining count
+where it was. A record carrying a cooldown of 0 is read as 3, the declared
+default. A record carrying a word stops the breaker check for that tick with a
+warning, which leaves the soft breaker unable to trip.
+
+While a cooldown holds, the shut side is refused at the breaker gate and the bot
+keeps running — the cooldown pauses nothing. It ends on its own when the count
+reaches zero, with a SOFT CIRCUIT BREAKER RESET line naming the side that
+re-opens, and the Reset All Breakers button ends it early.
 
 Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
 
@@ -1724,6 +1767,19 @@ self._max_cartridge_pct.setSuffix(" %")
 self._max_cartridge_pct.setValue(10.0)
 ```
 
+The threshold is Target Balance times the figure over 100, and the fire is on
+absolute Target Delta. Driven on a $200.00 target: at 10.0 % the threshold was
+$20.00, a position $20.00 past target fired and $19.99 past target did not; at
+5.0 % the threshold was $10.00, $11.00 fired and $9.99 did not; at 0.0 % a
+position $100.00 past target fired nothing, which is the off position.
+
+A correction to the sentence above it: the hysteresis check is not bypassed. The
+tick tests the opposing-trade pivot before the fire and writes MAX CARTRIDGE
+BLOCKED instead, naming the price the pivot still needs. What the fire does
+bypass is the band detection, the higher-timeframe bias and the soft breaker —
+and, because the tick reads this figure before it reads either breaker, the hard
+breaker as well.
+
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
 One checkbox labelled Calibrate to BB range, off at the start. While it is on,
@@ -1737,10 +1793,33 @@ self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
 self._cartridge_smart_chk.setChecked(False)
 ```
 
+The band range is upper minus lower over the midline, as a percentage, and the
+box swaps it in for the fixed figure. It is held between two bounds: never below
+the Opposing Trade Interval, never above Smart Ceiling. Driven on a $200.00
+target with the fixed figure at 10.0 %: off, the threshold stayed $20.00; on,
+with a band spanning 20.0 % of its midline, the threshold became $40.00. On the
+same tick the bot read a band spanning 80.0 %, the clamp gave 30.0 % and the
+threshold $60.00, and a position $30.00 past target that fired with the box off
+fired nothing with it on.
+
+The band the box reads is the one the previous worked tick stored, so the first
+worked tick after a start has no band and keeps the fixed figure.
+
 Smart Ceiling - To be re-evaluated.
 
 A percentage from 1.0 to 100.0, at 30.0 % to start. It caps the cartridge
 threshold while Smart Cartridge is on.
+
+It is the upper of the two bounds on the band range, and it binds only when the
+band is wider than it. Driven on a $200.00 target with Smart Cartridge on: a
+band spanning 120.0 % under a 30.0 % ceiling gave 30.0 % and a $60.00 threshold,
+the same band under a 15.0 % ceiling gave 15.0 % and $30.00, and a band spanning
+29.0 % under the 30.0 % ceiling gave 29.0 % and $58.00 — the ceiling did not
+bind. A band spanning 0.5 % gave 1.0 %, the Opposing Trade Interval, because the
+lower bound binds there instead.
+
+The control cannot emit a zero. A record hand-edited to carry one is read as
+30.0 %, the declared default, not as no ceiling.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
 group emits, in the order of the rows above
