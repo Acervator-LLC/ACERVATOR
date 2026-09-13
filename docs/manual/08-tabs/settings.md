@@ -5863,4 +5863,87 @@ install wizard still writes its own shorter passphrase note beside a venue name
 while the Settings page writes the connector's longer one, because changing
 either would change words on a screen.
 
+## 2026-09-13 - The exchange screen follows the store
+
+Three things this page said were not things the program had done. A removed
+venue kept its tab until the next launch. An add reported a venue verified when
+nothing had been contacted. An add named the rows that were typed rather than
+the entry that was stored. Each one now reads off what happened.
+
+### The tab bar takes a venue off
+
+The sync added and never dropped. It now asks each layer for the ids the store
+no longer lists, takes those tabs off the bar, and returns how many went.
+
+`src/gui/main_window.py` — `_drop_unlisted_exchange_tabs`, called by the sync
+
+```python
+_gone = self._drop_unlisted_exchange_tabs(_wanted)
+```
+
+Driven on the running window, crypto layer, reading the tab captions and the
+rendered bar after each press.
+
+| The press | Captions before | Captions after |
+| --------- | --------------- | -------------- |
+| Remove Selected on Kraken | `Kraken`, `Kucoin` | `Kucoin` |
+| Test and Add Exchange for Gemini | `Kucoin` | `Kucoin`, `Gemini` |
+| Remove Selected on the last two | `Kucoin`, `Gemini` | `Get Started` |
+
+Before the change all three presses left the same three captions and the same
+rendered bar, so the picture agreed with the list and both were wrong. The sync
+still adds, which is the second row above.
+
+The Get Started page comes back because each layer now keeps its placeholder
+object instead of dropping the reference on its first add. A tab taken off is
+asked to stop its news ticker and its data-pull countdown first; both keep
+running otherwise, because a tab removed from a bar is still a child of the
+layer's stack.
+
+Nothing here changes what a removal permits. The store drops the entry exactly
+as it did, no bot is consulted and none is stood down.
+
+### The add message reads the stored entry
+
+The phrase came from the API Key row. It now comes from the entry the store
+holds after the write, through one function both builds call.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — `stored_credential_phrase`
+
+```python
+def stored_credential_phrase(entry: Any) -> str:
+    holder = entry if isinstance(entry, dict) else {}
+    if any(holder.get(name) for name in CREDENTIAL_FIELDS):
+        return ADDED_WITH_CREDENTIALS
+    return ADDED_WITHOUT_CREDENTIALS
+```
+
+| The press | The line before | The line after |
+| --------- | --------------- | -------------- |
+| Key typed, secret empty, nothing stored | `Kucoin added with credentials (verified).` | `Kucoin added without credentials.` |
+| Both rows empty over stored credentials | `Kucoin added without credentials.` | `Kucoin added with stored credentials.` |
+| Both rows empty, nothing stored | `Kucoin added without credentials.` | `Kucoin added without credentials.` |
+
+The Activity Log line and the confirmation box take the same phrase, so the
+three surfaces cannot disagree. The third row is the control and it did not
+move.
+
+The first row is the press row 8 measured. A key with no secret never reaches
+the connection check and never reaches the store, so nothing was contacted and
+nothing was stored, and the word verified had no grounds behind it. The word is
+gone rather than reworded: no add can earn it without a connection, and the
+venue's own answer is already reported on that same line by the check that got
+it.
+
+A blank re-add still keeps the stored tokens, which is row 8's repair. The
+second row above is that press, and the entry it names carries the same two
+tokens it carried before.
+
+### What could not be driven
+
+`QMessageBox.information` waits for a person, so the add cannot be driven past
+it on either build. The two lines written before it were read off the running
+dialog, and the box text was read off the Qt-free model, which records the box
+instead of showing it. All three take their phrase from the one function above.
+
 Back to [the subsystem index](README.md).
