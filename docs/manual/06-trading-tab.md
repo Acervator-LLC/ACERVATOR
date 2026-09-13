@@ -2400,6 +2400,21 @@ else:
   Leave every box clear and the bot picks its own pairs by volume at run time.
 - Select all and Clear act on the whole list.
 
+**Target alt pairs is removed.** The ruling of 13 September 2026 reads *"Not
+needed. List of compatible alt pairs is scanned and piped through the Trading
+IVP along with the chart being read. Same as Scrumming except multiple markets
+are being checked by one bot for entries and exit opportunities."* The tick
+boxes, the two buttons and the stored list are gone. The list stays on the page
+as a reading of which pairs trade against the pool base, and the bot picks the
+top-N of them by volume.
+
+```python
+ranked.sort(key=lambda x: x[1], reverse=True)
+top_n = int(self.config.extractor_scan_top_n)
+top_n = max(5, min(10, top_n))  # clamp to 5-10
+new_watch = [sym for sym, _ in ranked[:top_n]]
+```
+
 The page hands on a single asterisk where a Scrumming Bot would hand on one
 target asset. Its own docstring calls that the pool sigil. An Extractor holds a
 pool of alts rather than one target, and the sigil keeps the field's shape for
@@ -2597,6 +2612,17 @@ reserve = self._chunk_size_base * (
 return (self._chunk_free_base - artillery_base) >= reserve
 ```
 
+**Pool Reserve is removed.** The ruling of 13 September 2026 reads *"Not needed.
+Conceptually its another name for Chunk Size."* The row is off the creation
+wizard and off the running-bot window, and the field is off the engine's
+declaration. The capacity check now asks only whether the free pool covers one
+round.
+
+```python
+def _has_chunk_capacity(self, artillery_base: float) -> bool:
+    return self._chunk_free_base >= artillery_base
+```
+
 Exit % - To be re-evaluated.
 
 A percentage from 10.0 to 100.0, at 100.0 % to start. Bot creation passes it
@@ -2660,6 +2686,19 @@ return placement_floor_price(
 )
 ```
 
+**Max compounding tier is removed.** The ruling of 13 September 2026 reads
+*"Not needed."* The row is off both screens, the tier counter is off the
+position record, and the re-entry pricing that read it is gone with it. The two
+pricing helpers it borrowed are shared with the Scrumming side and stay where
+they are, in `otd_math.py` and `stack_math.py`. A realised gain now always locks
+to the pool.
+
+```python
+# The gain locks to chunk_free_base; no roll re-enters the pair.
+self._chunk_free_base += base_received
+log_kind = "LOCK_TO_POOL"
+```
+
 Max cost-basis multiple - To be re-evaluated.
 
 From 1.0x to 10.0x, at 2.0x to start. Setting it to 1.0 stops averaging down.
@@ -2700,6 +2739,14 @@ f"{float(self.config.extractor_max_cost_basis_multiple):.2f}x, "
 f"corrections={pos.corrections_fired} (no cap)."
 ```
 
+**Max cost-basis multiple is removed.** The ruling of 13 September 2026 reads
+*"Not needed. Trade action is not based on assumed price limits. Its based on
+market structure."* It was the ceiling on averaging down, and averaging down
+went with it, so the row, the ceiling and the log line that quoted it are all
+gone.
+
+In development.
+
 Direction - To be re-evaluated.
 
 Two entries: Normal, which runs base to alt and buys first, and Inverted, which
@@ -2725,6 +2772,19 @@ group emits, in the order of the rows above
 ```
 
 ![The Extractor group, remaining five rows.](p26-i0.png)
+
+**Direction is removed.** The ruling of 13 September 2026 puts it among the
+settings that are *"hallucinated nonsense that does not comply with the spec."*
+The Inverted mode went with the row: the pair filter keeps markets quoted in the
+base, entry fires on a bearish reading and buys, and the exit sells.
+
+```python
+def _entry_order_side(self):
+    """OrderSide for artillery entry: BUY."""
+    from ..exchange.base import OrderSide
+
+    return OrderSide.BUY
+```
 
 Standing alt units (inverted) - To be re-evaluated.
 
@@ -2756,6 +2816,16 @@ if self._is_inverted and _standing > 0:
     self._chunk_size_usd = _standing * usd_per_base
 ```
 
+**Standing alt units is removed.** The ruling of 13 September 2026 puts it among
+the settings that are *"hallucinated nonsense that does not comply with the
+spec."* It served the Inverted direction above, which is gone, so the pool now
+rebases from the dollar figure on every Extractor.
+
+```python
+self._chunk_size_base = self._chunk_size_usd / usd_per_base
+self._chunk_free_base = self._chunk_size_base
+```
+
 Correction skip candles - To be re-evaluated.
 
 From 0 to 100 candles, at 4 to start. It throttles averaging down: the Extractor
@@ -2779,6 +2849,18 @@ if self._tick_counter - last_tick < int(
     self.config.extractor_correction_skip_candles
 ):
     return  # skip-candles throttle
+```
+
+**Correction skip candles is removed.** The ruling of 13 September 2026 puts it
+among the settings that are *"hallucinated nonsense that does not comply with
+the spec."* It throttled averaging down, and averaging down went with it, so the
+throttle and the method that lengthened it into seconds are both gone. The
+watch-list refresh still counts candles through the same helper.
+
+```python
+def _refresh_interval_seconds(self) -> float:
+    candles = int(self.config.extractor_scan_refresh_candles)
+    return float(candles) * self._candle_seconds()
 ```
 
 Drawdown threshold - To be re-evaluated.
@@ -2805,6 +2887,19 @@ threshold = pos.artillery_size_usd_at_entry * (
 return current_usd < threshold
 ```
 
+**Drawdown threshold is removed.** The ruling of 13 September 2026 puts it among
+the settings that are *"hallucinated nonsense that does not comply with the
+spec."* The operator no longer sets when a position counts as down; a position
+is down while its dollar value sits below the value snapshotted at firing. The
+pool light still turns red on that reading.
+
+```python
+return (
+    self._position_value_usd(pos, alt_price_in_base)
+    < pos.artillery_size_usd_at_entry
+)
+```
+
 Trend Strength Threshold - To be re-evaluated.
 
 From 0.000 to 1.000, at 0.650 to start.
@@ -2813,6 +2908,18 @@ Creation passes it, and it reaches the bot's technical-analysis signal provider
 once, at construction. Driven with a typed 0.875, the provider read 0.875. The
 provider is built one time per bot, so a later edit to the stored figure does
 not reach it.
+
+**Trend Strength Threshold is removed.** The ruling of 13 September 2026 puts it
+among the settings that are *"hallucinated nonsense that does not comply with
+the spec."* The signal provider carries the same threshold as its own published
+default, so the bot is built without the argument and the reading does not move.
+
+```python
+self._ta_provider = TASignalProvider(
+    exchange,
+    timeframe=self._timeframe,
+)
+```
 
 A sixth control sits in this part of the group and no entry above names it.
 Hedge budget (USD) starts at $0.00, which switches it off. Above zero, the bot
@@ -2823,6 +2930,16 @@ The budget is read at construction, and the line that turns it into base-currenc
 units sits in a method with no caller, so the reserve it names stays at zero.
 Driven with $40.00, the restored bot read a hedge budget of 40.00 and a free
 hedge reserve of 0.00.
+
+**Hedge budget is removed.** The ruling of 13 September 2026 puts it among the
+settings that are *"hallucinated nonsense that does not comply with the spec."*
+It funded averaging down, which went with it, so the budget, the reserve it
+converted into and both of their saved keys are gone. The capital claim now
+reserves the pool alone.
+
+```python
+total_reserved_base = self._chunk_size_base
+```
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the remaining
 Extractor settings
