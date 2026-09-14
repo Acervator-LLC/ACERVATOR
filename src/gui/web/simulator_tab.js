@@ -536,7 +536,9 @@
           {
             key: "col" + index,
             "data-column": String(index),
-            "data-fixed-width": width === undefined ? undefined : String(width)
+            "data-fixed-width": width === undefined ? undefined : String(width),
+            style:
+              width === undefined ? undefined : { width: String(width) + "px" }
           },
           text(label)
         );
@@ -553,7 +555,7 @@
     });
     return element(
       "div",
-      null,
+      { className: "sim-fleet-table-pane" },
       element(
         "div",
         { "aria-label": NAMES.fleetLabel, "data-part": NAMES.fleetLabel },
@@ -654,17 +656,24 @@
       { "aria-label": NAMES.indicatorPane, "data-part": NAMES.indicatorPane },
       element(
         "div",
-        { "aria-label": NAMES.indicatorTitle, "data-part": NAMES.indicatorTitle },
-        text(panel.title_text)
-      ),
-      element(
-        "div",
-        {
-          "aria-label": NAMES.indicatorSummary,
-          "data-part": NAMES.indicatorSummary,
-          hidden: !(panel.no_data || {}).text
-        },
-        text((panel.no_data || {}).text)
+        { className: "sim-pane-head" },
+        element(
+          "div",
+          {
+            "aria-label": NAMES.indicatorTitle,
+            "data-part": NAMES.indicatorTitle
+          },
+          text(panel.title_text)
+        ),
+        element(
+          "div",
+          {
+            "aria-label": NAMES.indicatorSummary,
+            "data-part": NAMES.indicatorSummary,
+            hidden: !(panel.no_data || {}).text
+          },
+          text((panel.no_data || {}).text)
+        )
       ),
       panel.tables.map(function (spec, index) {
         return element(IndicatorTable, {
@@ -762,7 +771,7 @@
   function ReplayLog(props) {
     return element(
       "div",
-      null,
+      { className: "sim-replay-pane" },
       element(
         "div",
         { "aria-label": NAMES.replayTitle, "data-part": NAMES.replayTitle },

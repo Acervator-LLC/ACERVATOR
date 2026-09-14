@@ -267,6 +267,9 @@ SKIN = {
     "--sim-vwap-line": ds.ACCENT_GOLD,
     "--sim-candle-up": ds.SUCCESS,
     "--sim-candle-down": ds.ERROR,
+    "--sim-better-colour": ds.SUCCESS,
+    "--sim-agrees-colour": ds.SUCCESS,
+    "--sim-disagrees-colour": ds.ERROR,
     "--sim-body-size": f"{ds.TYPE_BODY}px",
     "--sim-caption-size": f"{ds.TYPE_CAPTION}px",
 }
@@ -1067,18 +1070,21 @@ def build_view_model(
     mode: str = MODE_VALIDATION,
     back_test_payload_held: Optional[dict] = None,
     battery_payload_held: Optional[dict] = None,
+    portfolio: str = "",
+    span: str = "",
 ) -> dict:
     """The whole Sim tab as one dict, read from ``source``.
 
     ``validation_payload_held``, ``back_test_payload_held`` and
     ``battery_payload_held`` carry the last run of each mode, and the matching
-    ``empty_`` payload stands in before the first press.
+    ``empty_`` payload stands in before the first press. ``portfolio`` and
+    ``span`` carry the two battery selectors before a battery has run.
     """
     chosen_layer = layer if layer in LAYERS else LAYER_INDICATORS
     chosen_mode = mode if mode in MODES else MODE_VALIDATION
     held = validation_payload_held or empty_validation()
     tested = back_test_payload_held or empty_back_test()
-    charged = battery_payload_held or empty_battery()
+    charged = battery_payload_held or empty_battery(portfolio, span)
     shown = {
         MODE_BACK_TEST: tested,
         MODE_PORTFOLIO_BATTERY: charged,

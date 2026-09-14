@@ -260,7 +260,9 @@
           {
             key: "col" + index,
             "data-column": String(index),
-            "data-fixed-width": width === undefined ? undefined : String(width)
+            "data-fixed-width": width === undefined ? undefined : String(width),
+            style:
+              width === undefined ? undefined : { width: String(width) + "px" }
           },
           text(label)
         );
@@ -277,7 +279,7 @@
     });
     return element(
       "div",
-      null,
+      { className: "paper-fleet-table-pane" },
       element(
         "div",
         { "aria-label": NAMES.fleetLabel, "data-part": NAMES.fleetLabel },
@@ -327,17 +329,24 @@
       },
       element(
         "div",
-        { "aria-label": NAMES.indicatorTitle, "data-part": NAMES.indicatorTitle },
-        text(panel.title_text)
-      ),
-      element(
-        "div",
-        {
-          "aria-label": NAMES.indicatorSummary,
-          "data-part": NAMES.indicatorSummary,
-          hidden: !(panel.no_data || {}).text
-        },
-        text((panel.no_data || {}).text)
+        { className: "paper-pane-head" },
+        element(
+          "div",
+          {
+            "aria-label": NAMES.indicatorTitle,
+            "data-part": NAMES.indicatorTitle
+          },
+          text(panel.title_text)
+        ),
+        element(
+          "div",
+          {
+            "aria-label": NAMES.indicatorSummary,
+            "data-part": NAMES.indicatorSummary,
+            hidden: !(panel.no_data || {}).text
+          },
+          text((panel.no_data || {}).text)
+        )
       ),
       (panel.tables || []).map(function (spec, index) {
         return element(CellTable, {
@@ -437,18 +446,22 @@
       { className: "paper-run-pane" },
       element(
         "div",
-        {
-          "aria-label": NAMES.runTitle,
-          "data-part": NAMES.runTitle,
-          "data-state": text(run.state),
-          "data-running": String(run.running)
-        },
-        text(run.title)
-      ),
-      element(
-        "div",
-        { "aria-label": NAMES.runState, "data-part": NAMES.runState },
-        text(run.state_text)
+        { className: "paper-pane-head" },
+        element(
+          "div",
+          {
+            "aria-label": NAMES.runTitle,
+            "data-part": NAMES.runTitle,
+            "data-state": text(run.state),
+            "data-running": String(run.running)
+          },
+          text(run.title)
+        ),
+        element(
+          "div",
+          { "aria-label": NAMES.runState, "data-part": NAMES.runState },
+          text(run.state_text)
+        )
       ),
       element(
         "pre",

@@ -1,0 +1,287 @@
+/* Sim tab chrome, reading the `--sim-` custom properties the `skin` payload
+ * writes on `.acervator-simulator-tab`.
+ * The grid repeats TOP_SPLITTER_SIZES, LAYER_SPLITTER_SIZES and
+ * MAIN_SPLITTER_SIZES; `IndicatorTable` colours its own `td`.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.acervator-simulator-tab {
+  display: grid;
+  grid-template-columns: 600fr 500fr;
+  grid-template-rows: 500fr 350fr;
+  grid-template-areas:
+    "fleet layer"
+    "bottom bottom";
+  gap: 5px;
+  height: 100vh;
+  padding: 2px;
+  background: var(--sim-ground, var(--bg));
+  color: var(--sim-body-colour, var(--text));
+  font-size: var(--sim-body-size, 13px);
+}
+
+.sim-fleet-pane {
+  grid-area: fleet;
+}
+
+.sim-layer-pane {
+  grid-area: layer;
+}
+
+.sim-bottom-pane {
+  grid-area: bottom;
+  display: flex;
+  gap: 5px;
+}
+
+.sim-fleet-pane,
+.sim-layer-pane,
+.sim-bottom-pane > * {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 0;
+  padding: 2px;
+  overflow: auto;
+}
+
+.sim-bottom-pane > * {
+  flex: 1 1 0;
+}
+
+/* `_build_indicator_pane` puts the title left and the summary right. */
+.sim-pane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  flex: none;
+}
+
+.sim-strip-row,
+.sim-mode-row,
+.sim-battery-row,
+.sim-layer-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.acervator-simulator-tab [data-part="sim-news-ticker-row"],
+.acervator-simulator-tab [data-part="sim-data-pool-row"] {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+}
+
+.sim-chart-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.acervator-simulator-tab svg {
+  flex: 1 1 0;
+  width: 100%;
+  min-height: 120px;
+  background: var(--sim-chart-ground, var(--bg));
+  border: 1px solid var(--sim-outline, var(--border));
+}
+
+.acervator-simulator-tab button {
+  padding: 0 10px;
+  background: var(--btn-bg);
+  color: var(--sim-body-colour, var(--text));
+  border: 1px solid var(--sim-outline, var(--border));
+  border-radius: 2px;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.acervator-simulator-tab button:focus {
+  outline: 1px solid var(--accent);
+}
+
+.acervator-simulator-tab select {
+  min-width: 120px;
+  padding: 2px 4px;
+  background: var(--btn-bg);
+  color: var(--sim-body-colour, var(--text));
+  border: 1px solid var(--sim-outline, var(--border));
+  border-radius: 2px;
+  font: inherit;
+}
+
+/* HEADING_STYLE: PRIMARY, bold. */
+.acervator-simulator-tab [data-part="sim-fleet-label"],
+.acervator-simulator-tab [data-part="sim-indicator-title"],
+.acervator-simulator-tab [data-part="sim-replay-title"],
+.acervator-simulator-tab [data-part="sim-validation-title"],
+.acervator-simulator-tab [data-part="sim-back-test-title"],
+.acervator-simulator-tab [data-part="sim-battery-title"] {
+  flex: none;
+  padding: 2px 0;
+  color: var(--sim-heading-colour, var(--accent));
+  font-weight: bold;
+}
+
+/* BODY_STYLE: TEXT_MED at TYPE_CAPTION. */
+.acervator-simulator-tab [data-part="sim-mode-label"],
+.acervator-simulator-tab [data-part="sim-tablet-label"],
+.acervator-simulator-tab [data-part="sim-portfolio-label"],
+.acervator-simulator-tab [data-part="sim-span-label"],
+.acervator-simulator-tab [data-part="sim-indicator-summary"] {
+  color: var(--sim-body-colour, var(--text));
+  font-size: var(--sim-caption-size, 10px);
+  white-space: nowrap;
+}
+
+/* EMPTY_STYLE: TEXT_EMPTY_STATE at TYPE_BODY. */
+.acervator-simulator-tab [data-part="sim-fleet-empty"],
+.acervator-simulator-tab [data-part="sim-validation-prompt"] {
+  flex: none;
+  padding: 4px 0;
+  color: var(--sim-empty-colour, var(--grid));
+  font-size: var(--sim-body-size, 13px);
+}
+
+/* The replay log and the three result panes hold a framed text box in Qt. */
+.acervator-simulator-tab pre {
+  flex: none;
+  min-height: 64px;
+  max-height: 40%;
+  padding: 6px 8px;
+  background: var(--btn-bg);
+  color: var(--sim-body-colour, var(--text));
+  border: 1px solid var(--sim-outline, var(--border));
+  border-radius: 3px;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+/* `_build_replay_pane` is the one text box Qt gives a stretch of 1. */
+.acervator-simulator-tab [data-part="sim-replay-log"] {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+/* A table keeps the pane's width; the pane, not the table, carries the
+ * scroll. */
+.acervator-simulator-tab table {
+  flex: none;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--sim-caption-size, 10px);
+}
+
+.sim-fleet-table-pane,
+.sim-replay-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.acervator-simulator-tab th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 5px 8px;
+  background: var(--btn-bg);
+  color: var(--sim-heading-colour, var(--accent));
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.acervator-simulator-tab td {
+  padding: 3px 8px;
+  color: var(--sim-body-colour, var(--text));
+  white-space: nowrap;
+  border-bottom: 1px solid var(--grid);
+}
+
+/* `_draw_battery` paints a better row SUCCESS and every other row TEXT_MED. */
+.acervator-simulator-tab tr[data-verdict="better"] td {
+  color: var(--sim-better-colour, var(--text));
+}
+
+/* `_draw_lights` paints an agreeing light SUCCESS and a disagreeing one ERROR. */
+.acervator-simulator-tab tr[data-agrees="true"] td {
+  color: var(--sim-agrees-colour, var(--text));
+}
+
+.acervator-simulator-tab tr[data-agrees="false"] td {
+  color: var(--sim-disagrees-colour, var(--text));
+}
+
+.acervator-simulator-tab [data-part="sim-indicator-pane"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sim-result-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sim-result-stack > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sim-validation-pane,
+.sim-back-test-pane,
+.sim-battery-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.acervator-simulator-tab ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.acervator-simulator-tab ::-webkit-scrollbar-thumb {
+  background: var(--sim-outline, var(--border));
+  border-radius: 5px;
+}

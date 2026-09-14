@@ -376,6 +376,7 @@ class PaperTraderTabQt(QWidget):
         self._run = surface.start_run(self._bots)
         self._cursor = 0
         self.advance_once()
+        self.refresh()
         self._tick_timer.start(surface.tick_interval_ms(self._run, self._symbol))
         return self._run.state
 
