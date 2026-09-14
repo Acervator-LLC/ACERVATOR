@@ -242,6 +242,7 @@ def ta_value_text(weight: float) -> str:
     """One indicator weight as the figure printed beside its slider."""
     return TA_VALUE_FORMAT.format(weight=weight)
 
+
 PHANTOM_TIMEFRAMES = ALL_TIMEFRAMES
 PHANTOM_TIMEFRAME_ITEMS = tuple((one, one) for one in PHANTOM_TIMEFRAMES)
 #: The store declares the opening choice, so the page and the schema agree.
@@ -1112,9 +1113,7 @@ SOUND_CONNECTIONS = (
     (SOUND_BOX_SIGNAL_FORMAT.format(name=name), SOUND_BOX_HANDLER)
     for _field, name in SOUND_CONFIG_FIELDS
 )
-SMS_CARRIER_CONNECTIONS = (
-    ("sms_carrier.currentIndexChanged", "fill_gateway_email"),
-)
+SMS_CARRIER_CONNECTIONS = (("sms_carrier.currentIndexChanged", "fill_gateway_email"),)
 AI_CONNECTIONS = (("ai_test_btn.clicked", "test_ai_handshake"),)
 FOOTER_CONNECTIONS = (
     ("cancel_btn.clicked", "reject"),

@@ -249,8 +249,7 @@ class StateRestoreMixin:
                     # Absent leaves phantom_timeframes None, so
                     # default_phantom_timeframes picks the one above the parent.
                     _restored_phantom_tfs = [
-                        str(one)
-                        for one in (bot_data.get("phantom_timeframes") or [])
+                        str(one) for one in (bot_data.get("phantom_timeframes") or [])
                     ]
                     if not _restored_phantom_tfs:
                         # Records saved before the key took the plural spelling.

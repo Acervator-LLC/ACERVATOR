@@ -457,9 +457,7 @@ def received_prayers(ledger: object, vessel: object) -> tuple[ActionScore, ...]:
             f"an AlignmentLedger was expected, got {type(ledger).__name__}",
         )
     return tuple(
-        score
-        for score in ledger.actions_of(vessel)
-        if score.action == PRAYER_RECEIVED
+        score for score in ledger.actions_of(vessel) if score.action == PRAYER_RECEIVED
     )
 
 
@@ -470,9 +468,7 @@ def chosen_actions(ledger: object, vessel: object) -> tuple[ActionScore, ...]:
             f"an AlignmentLedger was expected, got {type(ledger).__name__}",
         )
     return tuple(
-        score
-        for score in ledger.actions_of(vessel)
-        if score.action != PRAYER_RECEIVED
+        score for score in ledger.actions_of(vessel) if score.action != PRAYER_RECEIVED
     )
 
 
@@ -574,16 +570,12 @@ class PrayerRoll:
     def prayers_over(self, vessel: object) -> tuple[Prayer, ...]:
         """Every prayer filed against ``vessel`` as the target."""
         key = vessel_key(vessel)
-        return tuple(
-            prayer for prayer in self._prayers if prayer.target_key == key
-        )
+        return tuple(prayer for prayer in self._prayers if prayer.target_key == key)
 
     def prayers_led_by(self, vessel: object) -> tuple[Prayer, ...]:
         """Every prayer ``vessel`` was one of the priests on."""
         key = vessel_key(vessel)
-        return tuple(
-            prayer for prayer in self._prayers if key in prayer.priest_keys
-        )
+        return tuple(prayer for prayer in self._prayers if key in prayer.priest_keys)
 
     def pray(
         self,

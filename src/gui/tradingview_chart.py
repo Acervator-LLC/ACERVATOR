@@ -337,8 +337,7 @@ _CHART_CHROME: dict[str, dict[str, str]] = {
 # One entry per name THEMES declares, so the two tables cannot hold
 # different theme names.
 CHART_THEMES: dict[str, dict[str, str]] = {
-    name: _CHART_CHROME.get(name, _CHART_CHROME[DEFAULT_THEME_NAME])
-    for name in THEMES
+    name: _CHART_CHROME.get(name, _CHART_CHROME[DEFAULT_THEME_NAME]) for name in THEMES
 }
 
 

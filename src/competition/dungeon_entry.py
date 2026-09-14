@@ -901,9 +901,7 @@ class DungeonRegister:
             exits[left.entry_id] = left
         with self._lock:
             self._entries = entries
-            self._exits = {
-                key: value for key, value in exits.items() if key in entries
-            }
+            self._exits = {key: value for key, value in exits.items() if key in entries}
         logger.info(
             "replayed %d dungeon entries and %d exits from %s",
             len(self._entries),

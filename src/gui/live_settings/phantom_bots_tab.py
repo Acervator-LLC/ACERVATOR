@@ -98,16 +98,12 @@ class PhantomBotsTabMixin:
         )
         self._phantom_tf_exchange = getattr(bot.config, "exchange_id", None)
         self._phantom_timeframe = QComboBox()
-        _named = getattr(
-            bot.config, "exchange_id", surface.UNKNOWN_EXCHANGE_TEXT
-        )
+        _named = getattr(bot.config, "exchange_id", surface.UNKNOWN_EXCHANGE_TEXT)
         for tf in surface.TIMEFRAMES:
             self._phantom_timeframe.addItem(tf, tf)
             self._phantom_timeframe.setItemData(
                 self._phantom_timeframe.count() - 1,
-                surface.timeframe_tooltip(
-                    tf, tf in self._phantom_tf_allowed, _named
-                ),
+                surface.timeframe_tooltip(tf, tf in self._phantom_tf_allowed, _named),
                 Qt.ToolTipRole,
             )
         self._phantom_tf_current = surface.chosen_timeframe(

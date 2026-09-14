@@ -189,9 +189,7 @@ def sms_config_from_settings(stored: Optional[dict]) -> SMSConfig:
             else:
                 _refused(name, value, "is not text")
             continue
-        logger.warning(
-            "%s %r is not a message setting; ignored", SETTINGS_GROUP, name
-        )
+        logger.warning("%s %r is not a message setting; ignored", SETTINGS_GROUP, name)
     return taken
 
 

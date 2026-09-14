@@ -409,14 +409,14 @@ class IncapacitationRegister:
     ) -> tuple[Incapacitation, ...]:
         """Every ``Incapacitation`` ``vessel`` holds, those holding at ``world_turn``."""
         by_kind = self._held.get(vessel_key(vessel), {})
-        held = tuple(
-            by_kind[kind] for kind in INCAPACITATION_KINDS if kind in by_kind
-        )
+        held = tuple(by_kind[kind] for kind in INCAPACITATION_KINDS if kind in by_kind)
         if world_turn is None:
             return held
         return tuple(entry for entry in held if entry.holds_at(world_turn))
 
-    def kinds_of(self, vessel: object, world_turn: int | None = None) -> tuple[str, ...]:
+    def kinds_of(
+        self, vessel: object, world_turn: int | None = None
+    ) -> tuple[str, ...]:
         """Every kind ``vessel`` is incapacitated by, empty while it reads able."""
         return tuple(
             entry.kind for entry in self.incapacitations_of(vessel, world_turn)
@@ -884,9 +884,7 @@ def _driven_pair() -> tuple[Reincarnate, Reincarnate]:
     """A victim of four Vessels and a thief of three, every one at ``DRIVEN_LEVEL``."""
     victim = Reincarnate(
         "0xvictim",
-        tuple(
-            Vessel("0xvictim", name, DRIVEN_LEVEL) for name in CLASS_NAMES[:4]
-        ),
+        tuple(Vessel("0xvictim", name, DRIVEN_LEVEL) for name in CLASS_NAMES[:4]),
     )
     thief = Reincarnate(
         "0xthief",

@@ -125,7 +125,6 @@ class SettingsTabMixin:
             from PySide6.QtWidgets import (
                 QInputDialog,
                 QMessageBox,
-                QLineEdit,
             )
         except Exception:
             return

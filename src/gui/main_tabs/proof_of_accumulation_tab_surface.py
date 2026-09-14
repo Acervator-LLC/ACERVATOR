@@ -2970,9 +2970,7 @@ def identity_control(chain: str, address: str, event_id: str, params: dict) -> t
     if not (isinstance(params, dict) and params.get(CONFIRM_FIELD) is True):
         return (
             False,
-            IDENTITY_ASK_TEXT.format(
-                confirm=IDENTITY_CONFIRM_TITLE, name=path.name
-            ),
+            IDENTITY_ASK_TEXT.format(confirm=IDENTITY_CONFIRM_TITLE, name=path.name),
             identity_rows(None, path),
         )
     path.parent.mkdir(parents=True, exist_ok=True)

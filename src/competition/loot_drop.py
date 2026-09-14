@@ -698,8 +698,7 @@ class LootStore:
     def undelivered(self, holder: str) -> list[LootDrop]:
         """``holder``'s drops no store has taken, in ``held`` order."""
         return [
-            drop for drop in self.held(holder)
-            if drop.item_id not in self._delivered
+            drop for drop in self.held(holder) if drop.item_id not in self._delivered
         ]
 
     def deliver(self, item_id: str, store: VesselStore) -> StoreChange:

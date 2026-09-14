@@ -218,10 +218,14 @@ def weights_from_settings(stored: Optional[dict]) -> dict[str, float]:
         try:
             number = float(figure)
         except (TypeError, ValueError):
-            logger.warning("ta weight %s=%r is not a number; default kept", name, figure)
+            logger.warning(
+                "ta weight %s=%r is not a number; default kept", name, figure
+            )
             continue
         if not math.isfinite(number) or number < 0.0:
-            logger.warning("ta weight %s=%r is out of range; default kept", name, figure)
+            logger.warning(
+                "ta weight %s=%r is out of range; default kept", name, figure
+            )
             continue
         found[name] = number
     return found
