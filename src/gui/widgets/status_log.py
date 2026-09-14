@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from datetime import datetime
+from typing import Callable
 
 from .. import design_system as ds
 
@@ -37,6 +38,7 @@ if _HAS_QT:
             self._paused: bool = False
             self._pause_buffer: list[tuple[str, str, str]] = []
             self._pause_buffer_cap: int = 2000
+            self._relay: Callable[[str, str, str], None] | None = None
 
             # setMaximumBlockCount drops the oldest line once 5000 are held.
             try:
@@ -54,16 +56,38 @@ if _HAS_QT:
             self._last_render_error: str = ""
             self._last_render_error_time: float = 0.0
 
+        def set_relay(self, relay) -> None:
+            """Take the callable every ``log``, ``pause``, ``resume`` and
+            ``notice`` call is reported to."""
+            self._relay = relay
+
+        def _tell(self, action: str, message: str = "", level: str = "") -> None:
+            """Report one call to ``_relay`` without stopping ``_render``."""
+            if self._relay is None:
+                return
+            try:
+                self._relay(action, message, level)
+            except Exception:
+                logger.debug("StatusLog relay raised on %s", action, exc_info=True)
+
+        def notice(self, text: str) -> None:
+            """Append ``text`` with no timestamp, which is what ``_NotifyStub``
+            relays."""
+            self.append(text)
+            self._tell("notice", text)
+
         def is_paused(self) -> bool:
             return self._paused
 
         def pause(self) -> None:
             self._paused = True
+            self._tell("pause")
 
         def resume(self) -> None:
             """Clear ``_pause_buffer`` and replay every held entry through
             ``_render``."""
             self._paused = False
+            self._tell("resume")
             buffered = list(self._pause_buffer)
             self._pause_buffer.clear()
             for ts, message, level in buffered:
@@ -87,6 +111,7 @@ if _HAS_QT:
 
         def log(self, message: str, level: str = "info") -> None:
             ts = datetime.now().strftime("%H:%M:%S")
+            self._tell("log", message, level)
             if self._paused:
                 # A full ``_pause_buffer`` drops the newest entry, not the oldest.
                 if len(self._pause_buffer) < self._pause_buffer_cap:
@@ -97,6 +122,7 @@ if _HAS_QT:
         def force_log(self, message: str, level: str = "warning") -> None:
             """Render *message* now, whatever ``_paused`` holds."""
             ts = datetime.now().strftime("%H:%M:%S")
+            self._tell("force_log", message, level)
             self._render(ts, message, level)
 
         def health_stats(self) -> dict:

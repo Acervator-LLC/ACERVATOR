@@ -48,6 +48,8 @@ class TradingTabMixin:
     _main_tabs: Any
     _on_api_event: Callable[..., Any]
     _settings: Any
+    _status_log: Any
+    _trading_tab: Any
 
     def _react_trading_page(self, qt_page: QWidget) -> QWidget:
         """The React Live tab, holding ``qt_page`` as a hidden child.
@@ -63,6 +65,27 @@ class TradingTabMixin:
         qt_page.setParent(page)
         qt_page.setVisible(False)
         return page
+
+    def _push_live_tab(self, asked: Any) -> bool:
+        """Hand the React Live tab one fresh ``trading.tab`` request.
+
+        The Qt page answers False, so a caller routes a feed with one call
+        whichever variant is drawing.
+        """
+        show = getattr(getattr(self, "_trading_tab", None), "show_tab", None)
+        if not callable(show):
+            return False
+        return bool(show(asked))
+
+    def _wire_live_feeds(self) -> None:
+        """Route every ``StatusLog`` call to the React Live tab as it paints.
+
+        ``set_relay`` reaches ``log``, ``force_log``, ``notice``, ``pause`` and
+        ``resume``, which is every path that writes the Activity Log.
+        """
+        relay = getattr(getattr(self, "_trading_tab", None), "show_log_call", None)
+        if callable(relay):
+            self._status_log.set_relay(relay)
 
     def _build_trading_tab(self) -> None:
         """Build the Trading tab and add it to the main tab widget."""
@@ -294,6 +317,7 @@ class TradingTabMixin:
             else:
                 self._status_log.resume()
                 self._activity_pause_btn.setText("⏸  Pause Console")
+            self._push_live_tab({"activity_paused": checked})
             import contextlib
 
             with contextlib.suppress(Exception):
@@ -430,6 +454,7 @@ class TradingTabMixin:
                         f"--- (resumed; {len(buf)} buffered line(s) above) ---"
                     )
                 self._api_pause_btn.setText("⏸  Pause API Log")
+            self._push_live_tab({"api_paused": checked})
 
         self._api_pause_btn.toggled.connect(_on_api_pause_toggled)
         api_header_row.addWidget(self._api_pause_btn)
@@ -467,4 +492,5 @@ class TradingTabMixin:
         if draws_react(TRADING):
             trading_tab = self._react_trading_page(trading_tab)
         self._trading_tab = trading_tab
+        self._wire_live_feeds()
         self._main_tabs.addTab(trading_tab, LIVE_TAB)

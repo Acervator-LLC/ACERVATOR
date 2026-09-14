@@ -5142,3 +5142,150 @@ style sheets emptied. Each one reported the loss.
 feed cut          bot selector 1 entry, bot shown blank, cells 0 of 0, bars 0
 sheets emptied    style sheets 0, Scrumming table box 0 px
 ```
+
+## 2026-09-13 - #23 - every Live tab feed reaches the React page
+
+### Every Activity Log call reaches the page
+
+Six modules write to the Activity Log, and each one calls the Qt pane directly.
+The React pane was built once from an empty model, so it held its placeholder
+while the fleet traded. The pane now reports every call to one listener.
+
+`src/gui/widgets/status_log.py` — `set_relay`
+
+```python
+        def set_relay(self, relay) -> None:
+            """Take the callable every ``log``, ``pause``, ``resume`` and
+            ``notice`` call is reported to."""
+            self._relay = relay
+```
+
+`TradingTabMixin._wire_live_feeds` hands that listener to the React tab when the
+tab is built. The listener drives `status_log_surface`, which paints the same
+line the Qt pane paints, so a pause, a resume and a watchdog line all arrive.
+
+**Read off the running page, 38 bots restored.** The two panes hold the same
+seven lines in the same order.
+
+```
+                 before   after   qt
+activity lines   0        7       7
+```
+
+### The API Interaction Log takes the same block
+
+`MainWindow._on_api_event` builds one text block per API call. It handed that
+block to the Qt pane only. It now hands the block to the React tab first, so a
+paused pane holds it and a running pane paints it.
+
+`src/gui/main_window.py` — `_on_api_event`
+
+```python
+            block_text = "\n".join(plain_lines)
+            self._push_live_tab({"api_lines": [block_text]})
+```
+
+`trading_tab_surface.view_model` keeps the capped block buffer the Qt view keeps,
+so both panes drop the same oldest block.
+
+```
+                 before   after   qt
+api blocks       0        8       8
+```
+
+### The data-pool line reads the shared cache
+
+The Qt venue page runs a one-second timer that reads the market cache and writes
+the freshness line under the New Bot button. The React venue page ran no such
+timer, so its line stayed on its opening text.
+
+`src/gui/react_exchange_tab.py` — `_update_pull_rate_label`
+
+```python
+        def _update_pull_rate_label(self) -> None:
+            if self._stopped:
+                return
+            self._screen.update_pull_rate_label()
+            self._publish()
+```
+
+The publish carries the fresh payload to the venue's own page and to the Live
+page beside it.
+
+**Read with 38 bots holding pool slots.** Both builds print one string.
+
+```
+before   Next data pull: —
+after    Data pool: 76 slots · awaiting first fetch  ·  cache-hit 0%
+```
+
+### The panel header carries its state and its rates
+
+The voting panel prints two header lines. One says the reading on screen is the
+last one taken and how old it is. The other prints the BTC and ETH spot rates.
+Neither reached the React panel, because the payload the window pushed carried
+the cells alone.
+
+`src/gui/indicator_panel.py` — `panel_reading`
+
+```python
+            if self._showing_stored and self._shown_stored:
+                read.update(self._shown_stored)
+            if self._rates_seen:
+                read["rates"] = self._rate_snapshot
+```
+
+`react_trading_tab.votes_payload` turns that reading into the panel payload. The
+Qt panel formats the age once and hands the result over, so the two banners
+cannot drift apart.
+
+```
+before   BTC —   ETH —   (currency rates pending), no state line
+after    BTC —   ETH —
+after    ⏱ LAST TA READ, NOT CURRENT — taken 22:03:09, 30s ago. bot is idle
+```
+
+### The voting panel takes the pane height
+
+The panel's two graphs divide whatever height is left after the two tables. The
+host the tab kept for the panel was a plain block, so the panel measured itself
+against its own content and each graph fell back to its hundred-pixel floor.
+
+`src/gui/web/trading_tab.js` — the panel host
+
+```javascript
+    var panelProps = {
+      style: {
+        flex: AUTO,
+        overflow: AUTO,
+        display: FLEX,
+        flexDirection: COLUMN,
+        minHeight: ZERO
+      }
+    };
+```
+
+Each table also keeps the height Qt fixes it to, which is its header plus two
+rows of slack, so a table holding one row is the same height as one holding
+three.
+
+**Read off the running page at 1960 pixels.**
+
+```
+                   before   after   qt
+graph height       100 px   147 px  142 px
+table height       52 px    84 px   83 px
+```
+
+### Cutting each feed empties what it fed
+
+Each feed was cut in turn and the same readings were taken again. Every reading
+reported its own loss and no other.
+
+```
+feed cut     reading
+activity     activity lines 0, api blocks 8
+api          api blocks 0, activity lines 7
+panel        bot blank, rates pending, no state line
+data pool    Next data pull: —
+```

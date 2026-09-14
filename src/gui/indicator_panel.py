@@ -101,6 +101,30 @@ def _sign_direction(value) -> str:
     return "NEUTRAL"
 
 
+#: The ``CurrencyRates`` fields ``update_currency_rates`` paints from.
+RATE_FIELDS = (
+    "btc_usd",
+    "eth_usd",
+    "sat_per_dollar",
+    "sat_per_cent",
+    "gwei_per_dollar",
+    "gwei_per_cent",
+)
+
+
+def rate_fields(snapshot: object) -> dict | None:
+    """``RATE_FIELDS`` and ``source`` off ``snapshot`` as plain numbers.
+
+    ``panel_reading`` hands this to a second panel, which paints it through
+    ``indicator_panel_surface.rate_strip_text``.
+    """
+    if snapshot is None:
+        return None
+    read = {name: float(getattr(snapshot, name, 0) or 0) for name in RATE_FIELDS}
+    read["source"] = str(getattr(snapshot, "source", "") or "")
+    return read
+
+
 def _default_ta_state_dir() -> Path:
     """The live application's state directory.
 
@@ -854,6 +878,13 @@ if _HAS_QT:
             self._no_data_message: str = ""
             # True while the table shows a stored reading, not a live one.
             self._showing_stored: bool = False
+            # What _render_stored_reading drew, so panel_reading can hand the
+            # same reading, time and age to a second panel.
+            self._shown_stored: dict | None = None
+            # The last CurrencyRates snapshot as plain fields, None until one
+            # arrives and _rates_seen says which of those two it is.
+            self._rate_snapshot: dict | None = None
+            self._rates_seen: bool = False
             from PySide6.QtWidgets import QSizePolicy
 
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1218,6 +1249,8 @@ if _HAS_QT:
             unsupported exchange), the affected side falls back to
             an em-dash instead of showing 0.
             """
+            self._rates_seen = True
+            self._rate_snapshot = rate_fields(snapshot)
             if snapshot is None:
                 self._rate_strip.setText("BTC —   ETH —   (currency rates unavailable)")
                 return
@@ -1514,6 +1547,12 @@ if _HAS_QT:
             self.update_data(dict(stored.get("timeframes") or {}), stored_symbol)
             self._showing_stored = True
             when = time.strftime("%H:%M:%S", time.localtime(taken_at))
+            self._shown_stored = {
+                "stored": dict(stored),
+                "when": when,
+                "age": age_phrase(age_s),
+                "message": message,
+            }
             self._staleness_label.setText(
                 f"⏱ LAST TA READ, NOT CURRENT — taken {when}, "
                 f"{age_phrase(age_s)}. {message}"
@@ -1526,6 +1565,31 @@ if _HAS_QT:
                 format_age(age_s),
                 self._no_data_cause or "free-text",
             )
+
+        def panel_reading(self) -> dict:
+            """Everything on this panel, for a second panel to draw the same.
+
+            ``react_trading_tab.votes_payload`` turns it into the
+            ``indicator_panel.state`` payload the React page reads.
+            """
+            masked = False
+            try:
+                masked = get_privacy_mask_registry().is_masked("ivp.bot_selector")
+            except Exception as _mask_exc:  # noqa: BLE001
+                logger.debug("privacy mask not read: %s", _mask_exc)
+            read = {
+                "selected_bot_id": self._selected_bot_id,
+                "symbol": self._symbol,
+                "summary": dict(self._data or {}),
+                "message": self._no_data_message,
+                "cause": self._no_data_cause,
+                "masked": masked,
+            }
+            if self._showing_stored and self._shown_stored:
+                read.update(self._shown_stored)
+            if self._rates_seen:
+                read["rates"] = self._rate_snapshot
+            return read
 
         def stored_reading_age_seconds(self) -> float | None:
             """Age of the reading currently on screen, or None if live.
@@ -1736,6 +1800,7 @@ if _HAS_QT:
             self._data = multi_tf_summary
             # Only _render_stored_reading raises the stale band after this.
             self._showing_stored = False
+            self._shown_stored = None
             self._staleness_label.setText("")
             self._staleness_label.hide()
             self._symbol = str(symbol)
