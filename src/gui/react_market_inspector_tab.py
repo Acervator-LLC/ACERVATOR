@@ -14,6 +14,8 @@ import json
 import logging
 from typing import Any, Callable, Optional
 
+from ..trading import ata_spm_signin
+from . import sign_in_view
 from .main_tabs import market_inspector_surface as surface
 from .main_tabs import market_inspector_topologies_surface as topo_surface
 from .market_inspector import _HAS_QT, MarketInspectorTab
@@ -68,6 +70,12 @@ PUSH_KEYS = surface.PUSH_PARTS
 SETTING_FIELD_KEY = surface.SETTING_FIELD_PART
 VENUE_BUTTON_KEY = surface.VENUE_BUTTON_PART
 ASSET_CATEGORY_KEY = surface.ASSET_CATEGORY_PART
+
+#: The key one Level 1A link reports under, answered by ``_open_link``.
+LINK_KEY = surface.CREDENTIAL_LINK_PART
+
+LINK_REFUSED_LOG = "Level 1A refused a link the open page does not publish: %r"
+LINK_FAILED_LOG = "Level 1A link open failed for %r: %s"
 
 #: Every part one push target's credential is typed into, across all seven.
 CREDENTIAL_KEYS = surface.CREDENTIAL_FIELD_KEYS
@@ -313,6 +321,11 @@ if _HAS_QT and _HAS_WEBENGINE:
             # both read the sectors the ATA-SPM zone holds.
             self._ata_board = self._screen.board
             self._push_board = self._screen.push
+            # The screen model builds its own board, so the connector the
+            # inherited tab set is replaced here rather than inherited.
+            self._push_board.settings.set_connector(
+                ata_spm_signin.build_connector(sign_in_view.sign_in_session())
+            )
             # One dict, two names: the inherited Scan Now moves the same
             # zone index the page reads.
             self._zone_at = self._screen.zone_at
@@ -408,8 +421,27 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self.push()
             elif key in CREDENTIAL_KEYS:
                 self._take_credential_text(request.get("value"))
+            elif key == LINK_KEY:
+                self._open_link(request.get("value"))
             elif key == SETTING_FIELD_KEY:
                 self._write_setting(request.get("value"))
+
+        def _open_link(self, address: Any) -> None:
+            """Open one Level 1A address in the system browser.
+
+            ``surface.page_links`` is the whole list a press may name, so a
+            typed value and a venue reply each open nothing.
+            """
+            held = str(address or "")
+            if held not in surface.page_links(self._screen.push):
+                logger.warning(LINK_REFUSED_LOG, held)
+                return
+            try:
+                import webbrowser
+
+                webbrowser.open(held, new=2)
+            except Exception as exc:  # noqa: BLE001 - the browser is host-supplied
+                logger.warning(LINK_FAILED_LOG, held, exc)
 
         def _take_credential_text(self, sent: Any) -> None:
             """Hold what one credential field carries, then redraw.

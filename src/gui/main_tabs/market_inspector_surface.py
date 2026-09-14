@@ -299,6 +299,9 @@ ENDPOINT_LINE_FORMAT = "Posts to {endpoint}"
 SCOPES_LINE_FORMAT = "Scopes {scopes}"
 REGISTRATION_LINE_FORMAT = "Register first: {registration}"
 SIGN_IN_LINE_FORMAT = "Connect opens your browser on {address}"
+#: What a venue answering at its own desktop redirect carries instead. Its
+#: sign-in opens inside the program, and no system browser is involved.
+SIGN_IN_VIEW_LINE_FORMAT = "Connect opens a sign-in window in Acervator on {address}"
 REDIRECT_LINE_FORMAT = "Redirect address to register: {redirect}"
 PREREQUISITE_LINE_FORMAT = "Before it works: {prerequisite}"
 SCOPE_SEPARATOR = " · "
@@ -1710,6 +1713,107 @@ def category_rows(asset_class: Any) -> list:
     return [[one, one == str(asset_class)] for one in ata_spm.ASSET_CLASSES]
 
 
+#: A word of a Level 1A line becomes a link only where it names a host and a
+#: path. ``video.publish`` carries a dot and no path, and ``/api/submit`` a path
+#: and no host, so neither is one.
+LINK_SCHEMES = ("https://", "http://")
+LINK_DEFAULT_SCHEME = "https://"
+LINK_TRAILING = ".,;:)]}"
+LINK_TOP_LABEL_MIN = 2
+LINK_SPACE = " "
+PATH_MARK = "/"
+LABEL_MARK = "."
+NO_LINK = ""
+
+#: The colour both builds draw a Level 1A link in.
+LINK_COLOUR = ds.PRIMARY
+
+#: The part name a Level 1A link reports its press under.
+CREDENTIAL_LINK_PART = "credential-link"
+
+#: The ``credential_page`` values drawn as link segments. Each is a fixed text
+#: on the venue's own ``ata_spm_push.PushTarget`` row; nothing typed and nothing
+#: a venue answered is on this list.
+PAGE_ENDPOINT_LINKS = "endpoint_links"
+PAGE_REGISTRATION_LINKS = "registration_links"
+PAGE_PREREQUISITE_LINKS = "prerequisite_links"
+CREDENTIAL_LINK_KEYS = (
+    PAGE_ENDPOINT_LINKS,
+    PAGE_REGISTRATION_LINKS,
+    PAGE_PREREQUISITE_LINKS,
+)
+
+
+def link_address(word: Any) -> str:
+    """The whole address one word of a Level 1A line carries, or an empty string.
+
+    A word naming a path and no host is not an address, and neither is a word
+    carrying a dot and no path.
+    """
+    held = str(word).rstrip(LINK_TRAILING)
+    if held.startswith(LINK_SCHEMES):
+        return held
+    if PATH_MARK not in held:
+        return NO_LINK
+    labels = held.split(PATH_MARK, 1)[0].split(LABEL_MARK)
+    if len(labels) < 2 or not all(labels):
+        return NO_LINK
+    top = labels[-1]
+    if len(top) < LINK_TOP_LABEL_MIN or not top.isalpha():
+        return NO_LINK
+    return LINK_DEFAULT_SCHEME + held
+
+
+def link_segments(text: Any) -> list:
+    """One Level 1A line as ``[words, address]`` pairs, the address empty where plain.
+
+    Both builds draw a line from this, so a word is a link on the page exactly
+    where it is a link in the window.
+    """
+    held: list = []
+    for at, word in enumerate(str(text).split(LINK_SPACE)):
+        if at:
+            held.append([LINK_SPACE, NO_LINK])
+        address = link_address(word)
+        if not address:
+            held.append([word, NO_LINK])
+            continue
+        bare = word.rstrip(LINK_TRAILING)
+        held.append([bare, address])
+        if len(bare) < len(word):
+            held.append([word[len(bare) :], NO_LINK])
+    if not any(one[1] for one in held):
+        return [[str(text), NO_LINK]]
+    return held
+
+
+def page_links(board: Any) -> list:
+    """Every address the open Level 1A page publishes, and nothing else.
+
+    A host opens an address only where it is on this list, so a page reporting
+    one the venue's own ``PushTarget`` row does not carry opens nothing.
+    """
+    page = credential_page(board)
+    held: list = []
+    for key in CREDENTIAL_LINK_KEYS:
+        for _chunk, address in page.get(key) or []:
+            if address and address not in held:
+                held.append(address)
+    return held
+
+
+def sign_in_line(target: Any) -> str:
+    """The wording one push target's Level 1A page carries for where Connect sends him.
+
+    ``ata_spm_signin.redirects_to_view`` is what says whether the sign-in opens
+    in the system browser or in the view the program draws.
+    """
+    address = ata_spm_signin.authorize_address(target)
+    if ata_spm_signin.redirects_to_view(target):
+        return SIGN_IN_VIEW_LINE_FORMAT.format(address=address)
+    return SIGN_IN_LINE_FORMAT.format(address=address)
+
+
 def credential_page(board: Any) -> dict:
     """Every value one push target's Level 1A page is drawn from.
 
@@ -1728,6 +1832,9 @@ def credential_page(board: Any) -> dict:
             "redirect": NO_SYMBOL,
             "registration": NO_SYMBOL,
             "prerequisite": NO_SYMBOL,
+            PAGE_ENDPOINT_LINKS: [],
+            PAGE_REGISTRATION_LINKS: [],
+            PAGE_PREREQUISITE_LINKS: [],
             "message": NO_MESSAGE_TEXT,
             "ok": False,
         }
@@ -1736,9 +1843,7 @@ def credential_page(board: Any) -> dict:
         "fields": [[one.key, one.label] for one in found.fields],
         "endpoint": ENDPOINT_LINE_FORMAT.format(endpoint=found.endpoint),
         "scopes": SCOPES_LINE_FORMAT.format(scopes=SCOPE_SEPARATOR.join(found.scopes)),
-        "sign_in": SIGN_IN_LINE_FORMAT.format(
-            address=ata_spm_signin.authorize_address(found.name)
-        ),
+        "sign_in": sign_in_line(found.name),
         "redirect": REDIRECT_LINE_FORMAT.format(
             redirect=ata_spm_signin.registered_redirect(found.name)
         ),
@@ -1747,6 +1852,15 @@ def credential_page(board: Any) -> dict:
         ),
         "prerequisite": PREREQUISITE_LINE_FORMAT.format(
             prerequisite=found.prerequisite
+        ),
+        PAGE_ENDPOINT_LINKS: link_segments(
+            ENDPOINT_LINE_FORMAT.format(endpoint=found.endpoint)
+        ),
+        PAGE_REGISTRATION_LINKS: link_segments(
+            REGISTRATION_LINE_FORMAT.format(registration=found.registration)
+        ),
+        PAGE_PREREQUISITE_LINKS: link_segments(
+            PREREQUISITE_LINE_FORMAT.format(prerequisite=found.prerequisite)
         ),
         "message": NO_MESSAGE_TEXT if answered is None else str(answered.detail),
         "ok": bool(answered is not None and answered.ok),
@@ -1777,6 +1891,8 @@ def settings_page(board: Any, asset_class: Any = "") -> dict:
         "redirect_part": REDIRECT_LINE_PART,
         "registration_part": REGISTRATION_LINE_PART,
         "prerequisite_part": PREREQUISITE_LINE_PART,
+        "link_part": CREDENTIAL_LINK_PART,
+        "link_colour": LINK_COLOUR,
         "accounts_title": SM_ACCOUNTS_TITLE,
         "category_title": ASSET_CATEGORY_TITLE,
         "settings_title": ATA_SETTINGS_TITLE,
