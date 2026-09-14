@@ -45,7 +45,6 @@
   var ENTRY_PART = "zone-entry";
   var PUSH_PADDING_PX = "push_padding_px";
   var PUSH_FONT_WEIGHT = "push_font_weight";
-  var AT = "at";
   var STATUS_TEXT = "status_text";
   var TIMER_DELAYS_MS = "timer_delays_ms";
   var TIMER_INTERVAL_MS = "timer_interval_ms";
@@ -181,6 +180,8 @@
   var LIST_GROUP_TITLE = "list_group_title";
   var REFRESH_TEXT = "refresh_text";
   var REFRESH_TOOLTIP = "refresh_tooltip";
+  var REFRESH_WIDTH_PX = "refresh_width_px";
+  var HEADER_WORD_WRAP = "header_word_wrap";
   var SCROLL_FRAME = "scroll_frame";
   var SCROLL_MARGINS = "scroll_margins";
   var SCROLL_SPACING = "scroll_spacing";
@@ -419,8 +420,6 @@
   // Qt reads an eight-digit hex alpha first, CSS reads it last.
   var HEX_ARGB = "AARRGGBB";
 
-  var MARGINS_PROPERTY = "margin";
-
   var PADDING_SIDES = [
     "paddingLeft",
     "paddingTop",
@@ -439,18 +438,20 @@
   var COLUMN_WAY = "column";
   var FULL = "100%";
   var COLLAPSE = "collapse";
-  var MAX_CONTENT = "max-content";
   var MIN_CONTENT = "min-content";
   var FIT_CONTENT = "fit-content";
   // The Qt word a header reads when each column takes its own content width.
   var TO_CONTENTS_MODE = "ResizeToContents";
   var CLIPPED = "hidden";
-  var SCROLLED = "auto";
   var NO_SELECT = "none";
   var PRE = "pre";
   var PRE_WRAP = "pre-wrap";
   var INHERITED = "inherit";
   var LEFT_WAY = "left";
+  var FLEX_START = "flex-start";
+  // Qt's stretch of 1 on two labels: an equal share of the row's free width.
+  var SHARED_LINE = "1 1 0";
+  var BREAK_WORD = "break-word";
 
   var ZERO = Number(EMPTY);
   var ONE = Number(true);
@@ -476,24 +477,10 @@
   var PANE_PART = "pane";
   var TOP_ROW_PART = "top-row";
   var REFRESH_PART = "refresh-button";
-  var TOP_STRETCH_PART = "top-stretch";
   var STATUS_PART = "status-line";
-  var LIST_GROUP_PART = "list-group";
-  var LIST_LEGEND_PART = "list-legend";
-  var SCROLL_PART = "scroll";
   var EMPTY_PART = "empty-label";
-  var CARD_PART = "card";
-  var CARD_BODY_PART = "card-body";
-  var CARD_TOP_PART = "card-top";
-  var CARD_TITLE_PART = "card-title";
-  var CARD_BADGE_PART = "card-badge";
-  var CARD_META_PART = "card-meta";
-  var CARD_METHOD_PART = "card-method";
-  var CARD_BUTTONS_PART = "card-buttons";
-  var CARD_STRETCH_PART = "card-stretch";
   var PREVIEW_BUTTON_PART = "preview-button";
   var DISMISS_BUTTON_PART = "dismiss-button";
-  var SCROLL_STRETCH_PART = "scroll-stretch";
   var FOOTER_PART = "footer";
 
   var MARK_LEAD_PART = "mark-lead";
@@ -677,17 +664,6 @@
     return api === undefined ? {} : api.styleOf(keptSheet(sheet));
   }
 
-  // Qt draws a sheet margin inside the widget rect; CSS draws it outside.
-  function sheetMargin(sheet) {
-    var found = ZERO;
-    declarations(sheet).forEach(function (one) {
-      if (one.property === MARGINS_PROPERTY) {
-        found = parseFloat(one.value) || ZERO;
-      }
-    });
-    return found;
-  }
-
   // variableFor asks acervatorWidgets, which owns the one-carrier token rule.
   function variableFor(value) {
     var api = global.acervatorWidgets;
@@ -817,9 +793,11 @@
 
   function RefreshButton(props) {
     var pane = objectField(props.model, PANE);
+    var style = pushStyle(props.model);
+    style.width = length(pane[REFRESH_WIDTH_PX]);
     var buttonProps = {
       type: BUTTON_TYPE,
-      style: pushStyle(props.model),
+      style: style,
       title: label(pane[REFRESH_TOOLTIP])
     };
     buttonProps[PART_ATTR] = REFRESH_PART;
@@ -830,11 +808,20 @@
     return element(BUTTON_TAG, buttonProps, text(pane[REFRESH_TEXT]));
   }
 
+  // An equal share of what the header row has left, wrapping inside it, which
+  // is the share Qt gives the same label at stretch 1.
+  function headerLine(pane, sheet) {
+    var style = asLabel(styleOf(sheet), pane[HEADER_WORD_WRAP] === true);
+    style.flex = SHARED_LINE;
+    style.minWidth = ZERO;
+    style.overflowWrap = BREAK_WORD;
+    return style;
+  }
+
   function StatusLine(props) {
     var model = props.model;
-    var lineProps = {
-      style: asLabel(styleOf(objectField(model, PANE)[STATUS_STYLE]), false)
-    };
+    var pane = objectField(model, PANE);
+    var lineProps = { style: headerLine(pane, pane[STATUS_STYLE]) };
     lineProps[PART_ATTR] = STATUS_PART;
     return element(DIV_TAG, lineProps, text(model[STATUS_TEXT]));
   }
@@ -842,7 +829,12 @@
   function TopRow(props) {
     var model = props.model;
     var rowProps = {
-      style: { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE }
+      style: {
+        display: FLEX,
+        flexDirection: ROW_WAY,
+        flex: FLEX_NONE,
+        alignItems: FLEX_START
+      }
     };
     rowProps[PART_ATTR] = TOP_ROW_PART;
     rowProps.style.gap = length(objectField(model, PANE)[SPACING]);
@@ -851,14 +843,13 @@
       rowProps,
       element(RefreshButton, { key: REFRESH_PART, model: model }),
       element(Footer, { key: FOOTER_PART, model: model }),
-      element(Spacer, { key: TOP_STRETCH_PART, part: TOP_STRETCH_PART }),
       element(StatusLine, { key: STATUS_PART, model: model })
     );
   }
 
   function Footer(props) {
     var pane = objectField(props.model, PANE);
-    var footerProps = { style: asLabel(styleOf(pane[FOOTER_STYLE]), false) };
+    var footerProps = { style: headerLine(pane, pane[FOOTER_STYLE]) };
     footerProps[PART_ATTR] = FOOTER_PART;
     return element(DIV_TAG, footerProps, text(pane[FOOTER_TEXT]));
   }

@@ -74,10 +74,9 @@ from .main_tabs.market_inspector_surface import (
     VENUE_BUTTON_PART,
     VENUE_BUTTON_WIDTH_PX,
     VENUE_TOOLTIP_FORMAT,
+    BUCKET_BUTTON_WIDTH_PX,
+    BUCKET_ROW_PART,
     FIELD_HEIGHT_PX,
-    FULL_AUTO_WIDTH_PX,
-    POST_ALL_WIDTH_PX,
-    POST_SELECTED_WIDTH_PX,
     PUSH_BUTTON_HEIGHT_PX,
     THUMBNAIL_PART,
     VOTE_PART,
@@ -752,7 +751,7 @@ if _HAS_QT:
                 stepper = self._build_stepper(key)
                 stepper.headline_label.setText(status)
                 if key == READY_TO_SEND_ZONE:
-                    box.addLayout(self._build_bucket_row())
+                    box.addWidget(self._build_bucket_row())
                 box.addWidget(stepper)
                 right_layout.addWidget(group, 1)
                 self._zone_labels[key] = stepper.headline_label
@@ -1223,36 +1222,52 @@ if _HAS_QT:
             self._credential_message.setText(str(held["message"]))
 
         # ── the Ready to Send control row ────────────────────────────
-        def _build_bucket_row(self) -> "QHBoxLayout":
-            """Post Selected, Post All, and Send Bucket Full Auto on its right."""
-            row = QHBoxLayout()
-            row.setSpacing(ATA_ROW_SPACING_PX)
+        def _build_bucket_row(self) -> "QWidget":
+            """Post Selected, Post All and Send Bucket Full Auto, wrapped to fit.
+
+            The three sit on one grid of equal cells, re-laid at the count the
+            zone's own width holds every time the pane's edge moves.
+            """
+            page = PaneWidthPage(self._relay_bucket_row, BUCKET_ROW_PART)
+            column = QVBoxLayout(page)
+            column.setContentsMargins(0, 0, 0, 0)
+            self._bucket_grid = QGridLayout()
+            self._bucket_grid.setSpacing(ATA_ROW_SPACING_PX)
+            column.addLayout(self._bucket_grid)
             self._post_selected_btn = QPushButton(POST_SELECTED_LABEL)
             self._post_selected_btn.setToolTip(POST_SELECTED_TOOLTIP)
-            self._post_selected_btn.setFixedSize(
-                POST_SELECTED_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX
-            )
             self._post_selected_btn.clicked.connect(
                 lambda: self._on_push_action(POST_SELECTED_PART)
             )
-            row.addWidget(self._post_selected_btn)
             self._post_all_btn = QPushButton(POST_ALL_LABEL)
             self._post_all_btn.setToolTip(POST_ALL_TOOLTIP)
-            self._post_all_btn.setFixedSize(POST_ALL_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._post_all_btn.clicked.connect(
                 lambda: self._on_push_action(POST_ALL_PART)
             )
-            row.addWidget(self._post_all_btn)
-            row.addStretch()
             self._full_auto_btn = QPushButton(FULL_AUTO_LABEL)
             self._full_auto_btn.setToolTip(FULL_AUTO_TOOLTIP)
-            self._full_auto_btn.setFixedSize(FULL_AUTO_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._full_auto_btn.setCheckable(True)
             self._full_auto_btn.clicked.connect(
                 lambda: self._on_push_action(FULL_AUTO_PART)
             )
-            row.addWidget(self._full_auto_btn)
-            return row
+            self._bucket_buttons = [
+                self._post_selected_btn,
+                self._post_all_btn,
+                self._full_auto_btn,
+            ]
+            for one in self._bucket_buttons:
+                one.setFixedSize(BUCKET_BUTTON_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._relay_bucket_row(page.width())
+            return page
+
+        def _relay_bucket_row(self, available: int) -> None:
+            """Break the three Ready to Send buttons at what ``available`` holds."""
+            self._relay_grid(
+                self._bucket_grid,
+                list(self._bucket_buttons),
+                BUCKET_BUTTON_WIDTH_PX,
+                available,
+            )
 
         def _bucket_at(self) -> int:
             """The zone index the Ready to Send stepper is showing."""

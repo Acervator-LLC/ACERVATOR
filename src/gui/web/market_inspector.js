@@ -785,9 +785,7 @@
   var STRIP_TEXT = "text";
   var BUTTON_HEIGHT_PX = "button_height_px";
   var FIELD_HEIGHT_PX = "field_height_px";
-  var POST_SELECTED_WIDTH_PX = "post_selected_width_px";
-  var POST_ALL_WIDTH_PX = "post_all_width_px";
-  var FULL_AUTO_WIDTH_PX = "full_auto_width_px";
+  var BUCKET_BUTTON_WIDTH_PX = "bucket_button_width_px";
   var SETTINGS_WIDTH_PX = "settings_width_px";
   var SCAN_WIDTH_PX = "scan_width_px";
 
@@ -1763,16 +1761,21 @@
 
   // BucketRow is Post Selected and Post All, with Send Bucket Full Auto on
   // the right of the Ready to Send zone.
+  // The three buttons are one width, so this wrap breaks at the count
+  // columns_for gives the Qt grid at the same zone width.
   function BucketRow(props) {
     var model = props.model;
     var skin = objectField(model, BUCKET);
     var style = {
       display: FLEX,
       flexDirection: ROW_WAY,
+      flexWrap: WRAP,
       flex: FLEX_NONE,
       alignItems: CENTER
     };
     style.gap = length(skin[BUCKET_SPACING_PX]);
+    style.width =
+      PANE_WIDTH_HEAD + length(skin[BUCKET_SPACING_PX]) + PANE_WIDTH_TAIL;
     var rowProps = { style: style };
     rowProps[PART_ATTR] = BUCKET_ROW_PART;
     return element(
@@ -1784,7 +1787,7 @@
         part: skin[POST_SELECTED_PART],
         label: skin[POST_SELECTED_LABEL],
         tooltip: skin[POST_SELECTED_TOOLTIP],
-        width: skin[POST_SELECTED_WIDTH_PX],
+        width: skin[BUCKET_BUTTON_WIDTH_PX],
         height: skin[BUTTON_HEIGHT_PX]
       }),
       element(PushButton, {
@@ -1793,17 +1796,16 @@
         part: skin[POST_ALL_PART],
         label: skin[POST_ALL_LABEL],
         tooltip: skin[POST_ALL_TOOLTIP],
-        width: skin[POST_ALL_WIDTH_PX],
+        width: skin[BUCKET_BUTTON_WIDTH_PX],
         height: skin[BUTTON_HEIGHT_PX]
       }),
-      element(Spacer, { key: BUCKET_STRETCH_PART, part: BUCKET_STRETCH_PART }),
       element(PushButton, {
         key: FULL_AUTO_PART,
         model: model,
         part: skin[FULL_AUTO_PART],
         label: skin[FULL_AUTO_LABEL],
         tooltip: skin[FULL_AUTO_TOOLTIP],
-        width: skin[FULL_AUTO_WIDTH_PX],
+        width: skin[BUCKET_BUTTON_WIDTH_PX],
         height: skin[BUTTON_HEIGHT_PX],
         on: skin[FULL_AUTO_ON] === true
       })

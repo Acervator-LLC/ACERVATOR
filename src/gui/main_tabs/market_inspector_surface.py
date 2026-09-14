@@ -206,6 +206,7 @@ SETTINGS_LABEL = "Settings"
 
 APPROVE_PART = "approve-button"
 DECLINE_PART = "decline-button"
+BUCKET_ROW_PART = "bucket-row"
 POST_SELECTED_PART = "post-selected"
 POST_ALL_PART = "post-all"
 FULL_AUTO_PART = "full-auto"
@@ -237,9 +238,10 @@ PUSH_BUTTON_HEIGHT_PX = 36
 FIELD_HEIGHT_PX = 37
 APPROVE_WIDTH_PX = 100
 DECLINE_WIDTH_PX = 92
-POST_SELECTED_WIDTH_PX = 128
-POST_ALL_WIDTH_PX = 92
-FULL_AUTO_WIDTH_PX = 184
+#: One width for all three Ready to Send buttons, so the Qt grid and the page's
+#: own wrap break at the same count. It holds the longest label, Send Bucket
+#: Full Auto.
+BUCKET_BUTTON_WIDTH_PX = 184
 SETTINGS_WIDTH_PX = 96
 SCAN_NOW_WIDTH_PX = 108
 
@@ -1822,9 +1824,7 @@ def bucket_skin(board: Any, asset_class: Any = "") -> dict:
         "full_auto_tooltip": FULL_AUTO_TOOLTIP,
         "full_auto_part": FULL_AUTO_PART,
         "button_height_px": PUSH_BUTTON_HEIGHT_PX,
-        "post_selected_width_px": POST_SELECTED_WIDTH_PX,
-        "post_all_width_px": POST_ALL_WIDTH_PX,
-        "full_auto_width_px": FULL_AUTO_WIDTH_PX,
+        "bucket_button_width_px": BUCKET_BUTTON_WIDTH_PX,
         "full_auto_on": bool(bucket.full_auto),
         "full_auto_text": bucket.full_auto_text(),
         "push_parts": list(PUSH_PARTS),

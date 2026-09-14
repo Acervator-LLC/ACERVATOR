@@ -2292,4 +2292,86 @@ is squeezed into a strip and no scroll bar appears." That was not true of the
 running program when it was written: at a 900 px tab the zone carried a
 horizontal scroll bar and six controls sat outside the pane. It is true now.
 
+## 2026-09-15 06:30 - #23 - The right pane's zones fit at every width
+
+The right pane holds three zones. Two of them carry a row of their own above
+the stepper, and both rows were built to one width and never re-laid. At a
+700 px tab the Send Bucket Full Auto button ended 72 px outside its zone, the
+Adopt line asked 272 px of a 109 px box, and the proposal status line asked
+145 px of the same 109. The page put the same status line 178 px past the
+pane's right edge and grew a horizontal scroll bar on the Ready to Send zone.
+
+Both rows now fit the zone they are drawn in, at every width, in both builds.
+
+### Three buttons of one width, broken at the count the zone holds
+
+The three Ready to Send buttons were 128, 92 and 184 px wide. Three unequal
+cells cannot break at one count: the window asks `columns_for` for a number
+and the page packs by each button's own width, so the two builds wrapped in
+different places on the same pane. At a 900 px tab the window fitted all three
+on one line and the page did not.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the one width the three share
+
+```python
+BUCKET_BUTTON_WIDTH_PX = 184
+```
+
+184 px is kept because it is the width that already held `Send Bucket Full
+Auto`. Level 1 sizes its buttons the same way: every venue button is 108 px
+whether it reads `X` or `Instagram`.
+
+The window puts the three on a `PaneWidthPage`, the same class Level 1 uses,
+so `_relay_bucket_row` runs at the zone's new width every time the pane's edge
+moves. The page wraps them at `calc(100% - gap)`, which is the width
+`columns_for` measures against.
+
+| Tab width | Buttons on a line |
+| --------- | ----------------- |
+| 700 | 1 |
+| 900 | 2 |
+| 1400 | 3 |
+| 1960 | 3 |
+
+### The Adopt line and the proposal status take an equal share and wrap
+
+Neither line had a width of its own. Each was drawn at whatever its own text
+needed, on a row that could not wrap, with a gap between them that pushed the
+status line at the pane's right edge.
+
+The Refresh button now keeps a published width and the two lines share what
+the row has left, one stretch each, wrapping at a word inside that share.
+
+`src/gui/main_tabs/market_inspector_topologies_surface.py` - what the row declares
+
+```python
+REFRESH_WIDTH_PX = 96
+HEADER_WORD_WRAP = True
+```
+
+Read off the running program, each line gets 102, 152, 277 and 417 px in the
+window at tab widths of 700, 900, 1400 and 1960, and 103, 153, 278 and 418 px
+on the page. The Adopt line needs 272 px, so it reads on one line at 1400 and
+above and wraps at a word below that. The status line needs 145 px and wraps
+only at 700.
+
+### Every width, both builds, nothing outside the pane
+
+| Tab width | Window zone | Page zone | Controls outside the pane | Scroll bars |
+| --------- | ----------- | --------- | ------------------------- | ----------- |
+| 700 | 346 | 347 | 0 | 0 |
+| 900 | 446 | 447 | 0 | 0 |
+| 1400 | 696 | 697 | 0 | 0 |
+| 1960 | 976 | 977 | 0 | 0 |
+
+Every page row measures `scrollWidth` equal to `clientWidth` at all four
+widths, and every window control's right edge is inside its zone. The two
+builds break at the same count on every row.
+
+Nothing was shortened to make this fit. The three buttons keep their wording,
+and both lines read in full.
+
+**Figures.** This page carries no figure and this entry adds none. Every width
+quoted above was read from the running program and is not stored.
+
 Back to [the subsystem index](README.md).
