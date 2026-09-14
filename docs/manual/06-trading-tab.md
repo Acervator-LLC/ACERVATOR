@@ -5289,3 +5289,79 @@ api          api blocks 0, activity lines 7
 panel        bot blank, rates pending, no state line
 data pool    Next data pull: —
 ```
+
+## 2026-09-14 - #23 - the voting panel matches the Qt panel element by element
+
+The Net, Comp and Conf columns drew as two stacked bars with a black band
+between them. The band was the second table's header row. The page gave every
+header cell a solid ground, so that row painted over the pillar behind it.
+
+`src/gui/web/trading_tab.css` — the header cell lets the pillar through
+
+```css
+[data-part="indicator-head-cell"] {
+  background: transparent;
+  border: none;
+}
+```
+
+The window draws the same header through `QHeaderView::section`, which is
+transparent for the same reason. The pillar now runs from the upper graph to
+the lower one without a break.
+
+### What the page now reads off the payload
+
+Eleven published values reached nothing. The page took a header ground the
+payload never gave it, and it guessed the rest of the list below.
+
+```
+value                what it sets on the page now
+arrow_min_height_px  the bar height an arrow needs
+shine_min_height_px  the bar height a highlight needs
+shine_limit_px       the tallest a highlight may grow
+glow_inset_px        the halo width beside a bar and beside a pillar
+column_min_pad_px    the narrowest pad beside a bar
+label_font           the face a bar name and a pillar name take
+arrow_font           the face and the size a bar arrow takes
+empty_font           the face the empty-graph note takes
+label_height_px      the box a bar name centres in
+label_offset_px      how far that box sits under the baseline
+margin_left_px       where the grid and the baseline start
+```
+
+### How an ornament decides now
+
+`ConfidenceBarsWidget.paintEvent` tests the bar it painted, in pixels. The page
+measured nothing, so it compared the vote against a share taken at the smallest
+graph the panel allows.
+
+A taller graph then dropped arrows the window kept.
+
+`renderPanel` in `src/gui/web/indicator_panel.js` measures the graph after it
+draws, draws again at the height it found, and watches for a resize.
+
+```
+                        window   page before   page after
+bar area height         129 px   126 px        129 px
+arrows drawn, 12 bars   8        6             8
+```
+
+### Two measurements that still differ
+
+The header strip is 23 pixels tall in the window and 18 on the page. Each engine
+sizes that strip from its own font, and no published value names a height, so
+a fixed height would write this machine's font metric into the product. Each table
+is 83 pixels in the window and 78 on the page for the same reason.
+
+The bot selector shows the whole bot name on the page. The window clips the last
+characters of it, because `QComboBox` fixed its width at its first show, before
+any bot had arrived.
+
+```
+                   window   page
+header strip       23 px    18 px
+mini-panel table   83 px    78 px
+graph pane         159 px   159 px
+bar area           129 px   129 px
+pillar             374 px   369 px
+```

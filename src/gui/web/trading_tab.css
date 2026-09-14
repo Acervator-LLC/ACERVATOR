@@ -141,8 +141,11 @@
   text-overflow: ellipsis;
 }
 
+/* QHeaderView::section is transparent, so a Net, Comp or Conf pillar runs
+ * behind indicator-head-cell instead of being cut by a band. */
 [data-part="indicator-head-cell"] {
-  background: var(--SURFACE_2, var(--btn-bg));
+  background: transparent;
+  border: none;
 }
 
 /* Qt wraps a cell rather than eliding it, so the Net, Comp and Conf readings
