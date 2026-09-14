@@ -1821,15 +1821,19 @@ Each venue asks for different values. Every value below comes from that
 platform's own published documentation, read on 2026-09-06 and 2026-09-07 and
 recorded in [the platform rules audit](../../audits/2026-09-06_ata_platform_rules.md).
 
-| Venue | Boxes on its page | Posts to |
-| ----- | ----------------- | -------- |
-| X | Client ID, Client secret, Access token, Refresh token | `https://api.x.com/2/tweets` |
-| Instagram | Instagram user id, Access token | `/<IG_ID>/media` then `/<IG_ID>/media_publish` |
-| LinkedIn | Access token, Linkedin-Version | `https://api.linkedin.com/rest/posts` |
-| TikTok | Access token, Verified URL prefix | `/v2/post/publish/content/init/` |
-| Facebook | Page id, Page access token | `/<page_id>/feed` and `/<page_id>/photos` |
-| Threads | Threads user id, Access token | `/<threads-user-id>/threads` then `/threads_publish` |
-| Reddit | App ID, App secret, Refresh token, Subreddit, User agent | `https://www.reddit.com/api/v1/access_token` then `/api/submit` |
+| Venue | Boxes on its page | The sign-in issues | Posts to |
+| ----- | ----------------- | ------------------ | -------- |
+| X | Client ID, Client secret | Access token, Refresh token | `https://api.x.com/2/tweets` |
+| Instagram | App ID, App secret | Instagram user id, Access token | `/<IG_ID>/media` then `/<IG_ID>/media_publish` |
+| LinkedIn | Client ID, Linkedin-Version | Access token | `https://api.linkedin.com/rest/posts` |
+| TikTok | Client key, Client secret, Verified URL prefix | Open id, Access token, Refresh token | `/v2/post/publish/content/init/` |
+| Facebook | App ID, App secret | Page id, Page access token | `/<page_id>/feed` and `/<page_id>/photos` |
+| Threads | App ID, App secret | Threads user id, Access token | `/<threads-user-id>/threads` then `/threads_publish` |
+| Reddit | App ID, App secret, Subreddit, User agent | Access token, Refresh token | `https://www.reddit.com/api/v1/access_token` then `/api/submit` |
+
+The operator types only what a venue hands him when he registers an application,
+plus values local to him. Every token in the third column is obtained by the
+sign-in and never typed.
 
 Connect signs in to the venue. The page returns to Level 1 by itself only when
 the venue accepts. An empty box, a missing sign-in route and a refusal from the
@@ -1855,8 +1859,10 @@ VAULT_KEY_FORMAT = "{target}:{field}"
 ```
 
 Every platform above issues these values only to an application the operator has
-registered with that platform. The software cannot obtain one. Each page names
-what is needed before any of its boxes can be filled.
+registered with that platform. The software cannot obtain a registration, and
+each page names what is needed before any of its boxes can be filled. The
+sign-in does obtain the access and refresh tokens, once a registration supplies
+the client values the page asks for.
 
 | Venue | What the operator registers |
 | ----- | --------------------------- |
@@ -1868,10 +1874,11 @@ what is needed before any of its boxes can be filled.
 | Threads | A Meta app with the Threads API, on a Threads profile |
 | Reddit | A Reddit app at reddit.com/prefs/apps, and a target subreddit |
 
-No sign-in route is wired into the running program yet. Connect therefore names
-the venue and refuses, rather than reporting a success it did not have. The
-route is one call, and the page works from the moment a registration supplies
-one.
+A sign-in route is wired for every venue, at both construction sites. Connect
+opens the system browser at that venue's own approval address, waits on a
+loopback listener for the reply, and exchanges the code for the tokens the third
+column names. A venue with no registration behind it still refuses, and the page
+stays open and prints what failed.
 
 `src/trading/ata_spm_push.py` - the call that wires a venue
 
