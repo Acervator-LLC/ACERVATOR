@@ -60,6 +60,8 @@
   var SCRUM_SECTION_VISIBLE = "scrum_section_visible";
   var SCRUM_TABLE = "scrum_table";
   var SCRUM_TABLE_EXCHANGE_PARAM = "scrum_table_exchange_param";
+  var SCRUM_TABLE_STRETCH = "scrum_table_stretch";
+  var EXTRACTOR_TABLE_STRETCH = "extractor_table_stretch";
   var EXTRACTOR_TABLE_EXCHANGE_PARAM = "extractor_table_exchange_param";
   var SELECTED_BOT_ID = "selected_bot_id";
   var SELECT_EXTRACTOR_PARAM = "select_extractor_param";
@@ -297,6 +299,8 @@
   var ROW = "row";
   var COLUMN = "column";
   var FLEX = "flex";
+  var GROWN_FLEX = "1 1 0";
+  var HELD_FLEX = "0 1 auto";
   var HIDDEN = "hidden";
   var AUTO = "auto";
   var CENTER = "center";
@@ -754,11 +758,16 @@
     return element(DIV_TAG, labelProps, text(props.words));
   }
 
-  // A named space one bot table draws its own rows into.
+  // A named space one bot table draws its own rows into. A stretch of 1
+  // takes the room left over; a stretch of 0 keeps the rows' own height.
   function TableSpace(props) {
     var table = objectField(props.model, props.slot);
     var spaceProps = {
-      style: { flex: AUTO, overflow: AUTO, minHeight: length(ZERO) },
+      style: {
+        flex: props.stretch ? GROWN_FLEX : HELD_FLEX,
+        overflow: AUTO,
+        minHeight: length(ZERO)
+      },
       hidden: props.visible !== true
     };
     spaceProps[PART_ATTR] = props.part;
@@ -861,6 +870,7 @@
         part: SCRUM_TABLE_PART,
         slot: SCRUM_TABLE,
         model: model,
+        stretch: model[SCRUM_TABLE_STRETCH],
         visible: model[SCRUM_SECTION_VISIBLE]
       }),
       element(SectionLabel, {
@@ -875,6 +885,7 @@
         part: EXTRACTOR_TABLE_PART,
         slot: EXTRACTOR_TABLE,
         model: model,
+        stretch: model[EXTRACTOR_TABLE_STRETCH],
         visible: model[EXTRACTOR_SECTION_VISIBLE]
       }),
       element(CommandBar, { key: COMMAND_BAR_PART, model: model }),

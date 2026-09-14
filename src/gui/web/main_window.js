@@ -3,9 +3,8 @@
 // `label` derives a tab's text from its screen name -- a trailing `_tab` is
 // dropped and each word capitalised. A caller that knows the application's own
 // label for a name passes it in `labels`, and that text is drawn instead.
-// `colours` carries a ground and a text colour per name, and a button draws on
-// those. `renderTabBar` draws one button per name into a host element and marks
-// the selected one with `data-selected`.
+// `renderTabBar` draws one button per name into a host element and marks the
+// selected one with `data-selected`.
 //
 // Both hosts of the bar draw through this module: the Electron shell reaches
 // it from `desktop/renderer/tab_bar.js`, and the Qt window reaches it from
@@ -57,9 +56,6 @@
         props.onSelect(props.name);
       }
     };
-    if (props.ground && props.groundText) {
-      made.style = { background: props.ground, color: props.groundText };
-    }
     made[TAB_ATTRIBUTE] = props.name;
     made[SELECTED_ARIA] = chosen ? "true" : "false";
     made[SELECTED_ATTRIBUTE] = chosen ? "true" : undefined;
@@ -87,25 +83,15 @@
     return given && typeof given[name] === "string" ? given[name] : label(name);
   }
 
-  // The application names a ground and a text colour per tab. A tab it does
-  // not name draws in the stylesheet's own tab colours.
-  function paintFor(name, given) {
-    var found = given && given[name] ? given[name] : {};
-    return { ground: found.ground, groundText: found.text };
-  }
-
   function TabBar(props) {
     var made = [];
     for (var index = 0; index < props.names.length; index++) {
-      var painted = paintFor(props.names[index], props.colours);
       made.push(
         element(TabButton, {
           key: props.names[index],
           at: index,
           name: props.names[index],
           text: textFor(props.names[index], props.labels),
-          ground: painted.ground,
-          groundText: painted.groundText,
           selected: props.selected,
           onSelect: props.onSelect,
           onMove: props.onMove
@@ -144,7 +130,6 @@
         element(TabBar, {
           names: Array.isArray(model.names) ? model.names : [],
           labels: model.labels,
-          colours: model.colours,
           selected: model.selected,
           onSelect:
             typeof model.onSelect === FUNCTION_KIND ? model.onSelect : ignore,

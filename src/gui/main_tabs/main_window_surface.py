@@ -49,7 +49,6 @@ from . import paper_trader_tab_surface
 from . import proof_of_accumulation_tab_surface
 from . import simulator_tab_surface
 from . import system_status_tab_surface
-from . import theme_engine_surface
 from . import trade_charts_tab_surface
 from . import trading_tab_surface
 
@@ -156,31 +155,13 @@ CANONICAL_TAB_ORDER = (
     CONSOLE_TAB,
 )
 
-# The ground each tab is painted on. `TAB_GROUND_COLOURS` resolves a ground
-# against one theme's tokens.
-BLACK_GROUND = "black"
-WHITE_GROUND = "white"
-GOLD_GROUND = "gold"
+# The tabs `_setup_ui` skips. Dropping ACCUMULATION_TAB from this tuple is
+# the one edit that builds the Accumulation tab and puts it back on the bar.
+UNBUILT_TABS = (ACCUMULATION_TAB,)
 
-TAB_GROUNDS = {
-    SIM_TAB: BLACK_GROUND,
-    PAPER_TAB: WHITE_GROUND,
-    LIVE_TAB: GOLD_GROUND,
-    CHARTS_TAB: GOLD_GROUND,
-    INSPECTOR_TAB: GOLD_GROUND,
-    SWARM_TAB: GOLD_GROUND,
-    ACCUMULATION_TAB: GOLD_GROUND,
-    HISTORY_TAB: GOLD_GROUND,
-    STATUS_TAB: GOLD_GROUND,
-    CONSOLE_TAB: GOLD_GROUND,
-}
-
-# The two theme-token names each ground paints from.
-TAB_GROUND_TOKENS = {
-    BLACK_GROUND: ("tab_black_bg", "tab_black_text"),
-    WHITE_GROUND: ("tab_white_bg", "tab_white_text"),
-    GOLD_GROUND: ("tab_gold_bg", "tab_gold_text"),
-}
+# CANONICAL_TAB_ORDER without the tabs nothing builds, which is the order
+# `_reorder_main_tabs` and `reordered_tabs` move the bar into.
+BAR_TAB_ORDER = tuple(name for name in CANONICAL_TAB_ORDER if name not in UNBUILT_TABS)
 
 # The bridge method that serves each tab. A frontend with no tab book of its
 # own joins its panels to this window's tabs on the method each one calls.
@@ -675,12 +656,12 @@ def wing_title(mode: Any) -> str:
 
 
 def constructed_tabs(failed: Any = None) -> list:
-    """The tab bar the builders leave, with every name in `failed` skipped.
+    """The tab bar the builders leave, with `failed` and `UNBUILT_TABS` skipped.
 
     Each builder in `BUILT_TAB_ORDER` appends; `SIM_TAB` inserts at
     `SIMULATOR_BUILD_INDEX` and `PAPER_TAB` at `PAPER_BUILD_INDEX`.
     """
-    skipped = set(failed or ())
+    skipped = set(failed or ()) | set(UNBUILT_TABS)
     inserted = {SIM_TAB: SIMULATOR_BUILD_INDEX, PAPER_TAB: PAPER_BUILD_INDEX}
     order: list = []
     for name in BUILT_TAB_ORDER:
@@ -693,41 +674,22 @@ def constructed_tabs(failed: Any = None) -> list:
     return order
 
 
-def tab_colours(theme: Any = None) -> dict:
-    """Each tab's ground and text colour, resolved against one theme's tokens.
-
-    A theme the table does not hold resolves against `DEFAULT_THEME`.
-    """
-    themes = theme_engine_surface.THEMES
-    tokens = themes.get(theme) or themes[DEFAULT_THEME]
-    painted = {}
-    for tab, ground in TAB_GROUNDS.items():
-        ground_token, text_token = TAB_GROUND_TOKENS[ground]
-        painted[tab] = {
-            "ground": tokens[ground_token],
-            "text": tokens[text_token],
-        }
-    return painted
-
-
 def reordered_tabs(labels: Any, desired: Any) -> list:
-    """`labels` after the reorder pass moves each named tab into its slot.
+    """`labels` after each name in `desired` moves to the next slot.
 
-    Tabs whose labels are not in `desired` keep their relative position
-    at the end. The first tab carrying a name is the one that moves. A
-    slot past the last tab is not a slot: with a tab missing, every name
-    after it asks for an index the bar does not have and the bar moves
-    nothing, so the last named tabs keep the order they were built in.
+    A name `labels` does not carry takes no slot, and tabs `desired` does not
+    name keep their relative position at the end.
     """
     order = list(labels)
-    for target_index, name in enumerate(desired):
+    target_index = 0
+    for name in desired:
         if target_index >= len(order):
             break
-        for current_index in range(len(order)):
+        for current_index in range(target_index, len(order)):
             if order[current_index] == name:
                 if current_index != target_index:
-                    moved = order.pop(current_index)
-                    order.insert(target_index, moved)
+                    order.insert(target_index, order.pop(current_index))
+                target_index += 1
                 break
     return order
 
@@ -1342,7 +1304,6 @@ class MainWindowModel:
         self.theme = DEFAULT_THEME
         self.tab_labels: list = []
         self.tab_methods = dict(TAB_METHODS)
-        self.tab_colours = tab_colours(self.theme)
         self.tabs_movable = TABS_MOVABLE
         self.current_tab = ""
         self.header_strip_shown = True
@@ -1390,11 +1351,10 @@ class MainWindowModel:
         self.subscriptions = list(BUS_SUBSCRIPTIONS)
         self._record("subscribe", self.subscriptions)
         built = constructed_tabs(self.failed_tabs)
-        self.tab_labels = reordered_tabs(built, CANONICAL_TAB_ORDER)
+        self.tab_labels = reordered_tabs(built, BAR_TAB_ORDER)
         self._record("tabs", list(self.tab_labels))
         if self.settings is not None:
             self.theme = self.stored_theme()
-        self.tab_colours = tab_colours(self.theme)
         self.timers = [
             {"name": "dashboard", "interval_ms": DASHBOARD_TICK_MS, "started": True},
             {"name": "pulse", "interval_ms": PULSE_TICK_MS, "started": True},
@@ -1560,7 +1520,6 @@ class MainWindowModel:
         if name not in self.themes.names():
             raise ValueError(f"Unknown theme: {name}. Available: {self.themes.names()}")
         self.theme = name
-        self.tab_colours = tab_colours(name)
         self.log(THEME_SWITCHED_LOG_FORMAT.format(name=name), "info")
         self._record("theme", name)
         return self
@@ -1791,7 +1750,6 @@ class MainWindowModel:
             "menus": self.menus,
             "tab_labels": list(self.tab_labels),
             "tab_methods": dict(self.tab_methods),
-            "tab_colours": {tab: dict(pair) for tab, pair in self.tab_colours.items()},
             "theme": self.theme,
             "tabs_movable": self.tabs_movable,
             "current_tab": self.current_tab,

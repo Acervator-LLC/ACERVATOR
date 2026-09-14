@@ -22,6 +22,12 @@ from .. import design_system as ds
 from ..color_alpha import rgba
 from ..widgets.status_log import StatusLog
 from .main_window_surface import LIVE_TAB
+from .trading_tab_surface import (
+    BOTTOM_SPLITTER_SIZES_PX,
+    LOG_SPLITTER_SIZES_PX,
+    MAIN_SPLITTER_SIZES_PX,
+    TOP_SPLITTER_SIZES_PX,
+)
 from .notify_stub import _NotifyStub
 
 logger = logging.getLogger("acervator.gui")
@@ -182,7 +188,7 @@ class TradingTabMixin:
         self._chart = None  # No chart in trading tab
         top_splitter.addWidget(self._indicator_panel)
 
-        top_splitter.setSizes([600, 500])
+        top_splitter.setSizes(list(TOP_SPLITTER_SIZES_PX))
 
         _crypto_host = (
             self._crypto_tab_widget.parentWidget() if self._crypto_tab_widget else None
@@ -442,13 +448,13 @@ class TradingTabMixin:
         log_splitter.addWidget(api_widget)
 
         # Equal sizes for symmetry
-        log_splitter.setSizes([500, 500])
+        log_splitter.setSizes(list(LOG_SPLITTER_SIZES_PX))
         bottom_splitter.addWidget(log_splitter)
 
-        bottom_splitter.setSizes([120, 300])
+        bottom_splitter.setSizes(list(BOTTOM_SPLITTER_SIZES_PX))
         main_splitter.addWidget(bottom_splitter)
 
-        main_splitter.setSizes([500, 350])
+        main_splitter.setSizes(list(MAIN_SPLITTER_SIZES_PX))
         trading_layout.addWidget(main_splitter)
 
         from ...exchange.api_logger import get_api_log

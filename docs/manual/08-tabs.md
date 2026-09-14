@@ -3096,3 +3096,96 @@ the operator sees, and he sees the React panel in the window.
 | `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | - | yes |
 | `src/gui/native_chart.py` | `native_chart.js` | shell | yes |
 | `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | shell | yes |
+
+### 2026-09-13 - #23 - the tab bar paints from the theme again
+
+**The ten grounds are gone.** The bar paints no ground of its own. Every tab now
+takes the colours the running theme's own style sheet sets, which is what the bar
+did before the grounds were added.
+
+`src/gui/variant_surface.py` — `_qt_main_tab_book`
+
+```python
+def _qt_main_tab_book() -> type:
+    """Import and return the Qt main tab book."""
+    from PySide6.QtWidgets import QTabWidget
+
+    return QTabWidget
+```
+
+**Six theme tokens go with them.** Each of the five themes carried a ground
+colour and a text colour for black, white and gold. None of the thirty values is
+declared now, and no style sheet names one.
+
+**CITED AS ABSENT.** The file `src/gui/main_tabs/main_tab_bar.py` is deleted, so
+the paint block earlier on this page records what the bar did between the seventh
+and the thirteenth of September 2026.
+
+**Read off the rendered bar, five themes, both builds.** A bright pixel here is
+one reading at least 200 red, at least 150 green and at most 120 blue. The gold
+ground filled most of the bar before and none of it now.
+
+```
+theme             qt before  qt after   react before  react after
+cyberpunk_dark    20,880     0          14,262        0
+neon_light        20,771     0          14,178        0
+classic_terminal  22,027     0          14,262        0
+minimal_modern    20,643     0          14,091        0
+glass_metal       20,604     0          14,078        0
+```
+
+### 2026-09-13 - #23 - Accumulation leaves the bar in one place
+
+**One tuple names every tab the window does not build.** The window skips the
+builder for a name in it, and the tab list the frontend reads leaves that name
+out. The bar now reads Sim, Paper, Live, Charts, Inspector, Swarm, History,
+Status, Console.
+
+`src/gui/main_tabs/main_window_surface.py` — `UNBUILT_TABS`
+
+```python
+UNBUILT_TABS = (ACCUMULATION_TAB,)
+
+BAR_TAB_ORDER = tuple(name for name in CANONICAL_TAB_ORDER if name not in UNBUILT_TABS)
+```
+
+**Removing the name from that tuple puts the tab back.** The Accumulation screen
+is unfinished, not unwanted. Its builder, its panel, its bridge method and its
+manual page are all unchanged.
+
+### 2026-09-13 - #23 - a tab that fails to build no longer moves the tabs after it
+
+**The reorder advances its slot only over a tab the bar carries.** A name the bar
+does not carry took a slot before, so every tab after a missing one stayed where
+the builders left it. The Qt build fails to build Sim and Paper, and its bar now
+reads the canonical order of the seven tabs it does have.
+
+`src/gui/main_tabs/main_window_surface.py` — `reordered_tabs`
+
+```python
+    order = list(labels)
+    target_index = 0
+    for name in desired:
+        if target_index >= len(order):
+            break
+        for current_index in range(target_index, len(order)):
+            if order[current_index] == name:
+                if current_index != target_index:
+                    order.insert(target_index, order.pop(current_index))
+                target_index += 1
+                break
+```
+
+**Read off the two running bars.** The React build carries all nine tabs it
+builds. The Qt build carries seven, in the same order.
+
+```
+react   Sim, Paper, Live, Charts, Inspector, Swarm, History, Status, Console
+qt      Live, Charts, Inspector, Swarm, History, Status, Console
+qt was  Live, Charts, Inspector, Console, Swarm, Accumulation, Status, History
+```
+
+**The two missing tabs have one cause.** The Qt Sim page and the Qt Paper page
+each read a panel key their own surface no longer publishes, so each builder
+raises and the window logs the tab as unavailable. That belongs to the Simulator
+rebuild and to the Paper screen, not to the bar.

@@ -7,6 +7,10 @@ import logging
 from ...core.privacy_mask_registry import get_privacy_mask_registry
 
 from .. import design_system as ds
+from ..main_tabs.exchange_tab_surface import (
+    EXTRACTOR_TABLE_STRETCH,
+    SCRUM_TABLE_STRETCH,
+)
 
 logger = logging.getLogger("acervator.gui")
 
@@ -131,7 +135,7 @@ if _HAS_QT:
             self._bot_table = BotStatusTable(
                 on_bot_clicked=_scrum_clicked, on_fire_clicked=on_bot_fire
             )
-            layout.addWidget(self._bot_table)
+            layout.addWidget(self._bot_table, SCRUM_TABLE_STRETCH)
 
             self._extractor_label = QLabel("Extractor Bots")
             self._extractor_label.setStyleSheet(
@@ -140,7 +144,7 @@ if _HAS_QT:
             )
             layout.addWidget(self._extractor_label)
             self._extractor_table = ExtractorBotTable(on_bot_clicked=_extractor_clicked)
-            layout.addWidget(self._extractor_table)
+            layout.addWidget(self._extractor_table, EXTRACTOR_TABLE_STRETCH)
 
             # blockSignals stops the sibling's clear from re-entering here.
             def _on_scrum_selection_changed():
