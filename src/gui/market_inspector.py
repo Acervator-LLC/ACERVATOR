@@ -52,6 +52,7 @@ from .main_tabs.market_inspector_surface import (
     POST_SELECTED_PART,
     POST_SELECTED_TOOLTIP,
     PREREQUISITE_LINE_PART,
+    REDIRECT_LINE_PART,
     REGISTRATION_LINE_PART,
     SCOPES_LINE_PART,
     SIGN_IN_LINE_PART,
@@ -942,6 +943,7 @@ if _HAS_QT:
             column.addWidget(self._credential_title)
             self._endpoint_label = QLabel("")
             self._endpoint_label.setAccessibleName(ENDPOINT_LINE_PART)
+            self._endpoint_label.setWordWrap(True)
             column.addWidget(self._endpoint_label)
             self._scopes_label = QLabel("")
             self._scopes_label.setAccessibleName(SCOPES_LINE_PART)
@@ -951,6 +953,10 @@ if _HAS_QT:
             self._sign_in_label.setAccessibleName(SIGN_IN_LINE_PART)
             self._sign_in_label.setWordWrap(True)
             column.addWidget(self._sign_in_label)
+            self._redirect_label = QLabel("")
+            self._redirect_label.setAccessibleName(REDIRECT_LINE_PART)
+            self._redirect_label.setWordWrap(True)
+            column.addWidget(self._redirect_label)
 
             self._credential_edits: dict = {}
             self._credential_rows: dict = {}
@@ -1104,6 +1110,7 @@ if _HAS_QT:
             self._endpoint_label.setText(str(held["endpoint"]))
             self._scopes_label.setText(str(held["scopes"]))
             self._sign_in_label.setText(str(held["sign_in"]))
+            self._redirect_label.setText(str(held["redirect"]))
             self._registration_label.setText(str(held["registration"]))
             self._prerequisite_label.setText(str(held["prerequisite"]))
             self._credential_message.setText(str(held["message"]))
