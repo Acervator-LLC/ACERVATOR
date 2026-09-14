@@ -2032,4 +2032,117 @@ venue draws the same six lines and the same boxes under Qt and under React.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+
+
+## 2026-09-14 23:30 - #23 - The redirect address each venue accepts
+
+Every route sent the same address, `http://127.0.0.1:<port>`, at a port the
+operating system picked. Each venue's own documentation was then read for what
+that venue accepts. Three answers came back, and only one of them is the
+address the routes were sending.
+
+### What each venue accepts, in its own words
+
+| Venue | What it accepts | The sentence, from that venue's page |
+| ----- | --------------- | ------------------------------------ |
+| X | a loopback address at a fixed port | "For local development, use `http://127.0.0.1` (not `localhost`)" and "URLs must match exactly (including trailing slashes)" |
+| Instagram | a loopback address at a fixed port | "Make sure this exactly matches one of the base URIs in your list of valid OAuth URIs you set during API setup in the App Dashboard." |
+| LinkedIn | a loopback address at any port | "The lookback IP representation supported for IPv4 is `http://127.0.0.1:{port}` while for IPv6 is `http://[::1]:{port}`. We will be supporting both HTTP and HTTPS loopback IPs." |
+| TikTok | a loopback address at any port | "URIs must have a port number, and wildcard port number (`*`) is supported. Wildcard config is recommended if your redirect URI uses a random port number." |
+| Facebook | its own published desktop address | "If you are using this in a webview within a desktop app, this must be set to `https://www.facebook.com/connect/login_success.html`" |
+| Threads | a loopback address at a fixed port | "Make sure this exactly matches one of the base URIs in your list of valid OAuth URIs." |
+| Reddit | a loopback address at a fixed port | "Yes, you need it here again, and yes, it must match exactly." |
+
+Sources, each read from the venue that published it:
+
+- X - https://docs.x.com/resources/fundamentals/developer-apps
+- Instagram - https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login
+- LinkedIn - https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow-native
+- TikTok - https://developers.tiktok.com/doc/login-kit-desktop
+- Facebook - https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow/
+- Facebook HTTPS - https://developers.facebook.com/docs/facebook-login/security/
+- Threads - https://developers.facebook.com/docs/threads/get-started/get-access-tokens-and-permissions
+- Reddit - https://github.com/reddit-archive/reddit/wiki/OAuth2
+
+### The port is the part that was wrong
+
+A port the operating system picks is different on every press. Four venues
+check the redirect against a registered address character for character and
+publish no wildcard, so no registered address can ever match. Those four bind
+one declared port instead, and Level 1A prints it.
+
+`src/trading/ata_spm_signin.py` - the two ports a venue can take
+
+```python
+EPHEMERAL_PORT = 0
+FIXED_CALLBACK_PORT = 8723
+```
+
+LinkedIn asks a native client for a random port, and TikTok publishes a
+wildcard port for that case. Those two keep the operating system's port.
+
+### Facebook opens no listener
+
+Meta requires HTTPS for an OAuth redirect and publishes one desktop address.
+A loopback address is neither published nor excepted, so Facebook's route opens
+no listener at all.
+
+```mermaid
+sequenceDiagram
+    participant He as Operator
+    participant App as Acervator
+    participant V as Facebook
+    He->>App: Connect
+    App->>V: open the approval page in a sign-in view
+    V->>App: land the view on login_success.html
+    App->>App: read the fragment of the address it landed on
+    App->>V: trade the short-lived token for a long-lived one
+    V->>App: Page id and Page token
+```
+
+Meta answers a desktop app in the fragment of that address, and the fragment
+carries a token rather than a code. Facebook's route therefore asks for a
+different `response_type` and trades the token up.
+
+`src/trading/ata_spm_signin.py` - what Facebook asks for
+
+```python
+DESKTOP_RESPONSE_TYPE = "token"
+FACEBOOK_DESKTOP_REDIRECT = "https://www.facebook.com/connect/login_success.html"
+```
+
+A fragment never leaves the browser, so only a view the program draws can read
+one. No such view is wired, and Facebook's Connect says so on the page rather
+than waiting three minutes for a reply that cannot come.
+
+### What Level 1A prints
+
+Each page carries one more line, under the line naming where Connect sends him.
+
+| Venue | Redirect address to register |
+| ----- | ---------------------------- |
+| X | `http://127.0.0.1:8723/callback` |
+| Instagram | `http://127.0.0.1:8723/callback` |
+| LinkedIn | nothing; its native page asks for no registered address |
+| TikTok | `http://127.0.0.1:*/callback` |
+| Facebook | `https://www.facebook.com/connect/login_success.html` |
+| Threads | `http://127.0.0.1:8723/callback` |
+| Reddit | `http://127.0.0.1:8723/callback` |
+
+Read off the running screens, all seven venues draw that line with the same
+value under Qt and under React.
+
+### Two questions the venues do not answer
+
+Meta states no scheme rule on the Instagram page or on the Threads page, and
+publishes no localhost exception on either. Both pages state only the
+exact-match rule, which the fixed port now satisfies. Whether Meta accepts a
+plain-HTTP loopback address for those two is settled by neither page.
+
+Meta's device flow takes no redirect at all, and its own page ties its scope to
+Login Review without naming which permissions it accepts. Whether it carries
+`pages_manage_posts` is settled by no Meta page, so no route uses it.
+
+**Figures.** This page carries no figure and this entry adds none.
+
 Back to [the subsystem index](README.md).

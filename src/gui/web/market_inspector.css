@@ -121,6 +121,7 @@ body {
 [data-part="endpoint-line"],
 [data-part="scopes-line"],
 [data-part="sign-in-line"],
+[data-part="redirect-line"],
 [data-part="registration-line"],
 [data-part="prerequisite-line"],
 [data-part="credential-message"] {

@@ -818,6 +818,7 @@
   var ENDPOINT_PART = "endpoint_part";
   var SCOPES_PART = "scopes_part";
   var SIGN_IN_PART = "sign_in_part";
+  var REDIRECT_PART = "redirect_part";
   var REGISTRATION_PART = "registration_part";
   var PREREQUISITE_PART = "prerequisite_part";
   var ACCOUNTS_TITLE = "accounts_title";
@@ -838,6 +839,7 @@
   var PAGE_ENDPOINT = "endpoint";
   var PAGE_SCOPES = "scopes";
   var PAGE_SIGN_IN = "sign_in";
+  var PAGE_REDIRECT = "redirect";
   var PAGE_REGISTRATION = "registration";
   var PAGE_PREREQUISITE = "prerequisite";
   var PAGE_MESSAGE = "message";
@@ -2006,6 +2008,7 @@
       pageLine(page, page[ENDPOINT_PART], held[PAGE_ENDPOINT]),
       pageLine(page, page[SCOPES_PART], held[PAGE_SCOPES]),
       pageLine(page, page[SIGN_IN_PART], held[PAGE_SIGN_IN]),
+      pageLine(page, page[REDIRECT_PART], held[PAGE_REDIRECT]),
       wrapAt(
         page,
         SETTINGS_GROUP_PART,

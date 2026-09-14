@@ -1,10 +1,11 @@
 """ata_spm_signin.py -- one sign-in route per ATA-SPM push target.
 
 ``SIGN_IN_ROUTES`` maps one push target name to the route that signs it in.
-Every route runs RFC 8252: the system browser, a ``LoopbackReceiver`` on
-``127.0.0.1``, and PKCE where the venue asks for it. ``build_connector`` wraps
-the map into the one callable ``AtaSpmSettings.set_connector`` takes, and no
-route reaches a venue itself -- each sends through ``SignInSession.transport``.
+``REDIRECT_POLICIES`` carries the redirect address each venue's own
+documentation accepts, and ``LoopbackReceiver`` opens only for a venue that
+takes an RFC 8252 address. ``build_connector`` wraps the map into the one
+callable ``AtaSpmSettings.set_connector`` takes, and no route reaches a venue
+itself -- each sends through ``SignInSession.transport``.
 """
 
 from __future__ import annotations
@@ -28,7 +29,30 @@ logger = logging.getLogger("acervator.ata_spm_signin")
 LOOPBACK_HOST = "127.0.0.1"
 
 #: The operating system chooses the port, which RFC 8252 section 7.3 asks for.
+#: Only LinkedIn and TikTok publish a redirect rule that accepts a port that
+#: changes on every press.
 EPHEMERAL_PORT = 0
+
+#: The one loopback port every exact-match venue binds. X, Instagram, Threads
+#: and Reddit each check the redirect against a registered address character for
+#: character and publish no wildcard, so the program declares one port, prints
+#: it on Level 1A, and binds the same one every press. No venue publishes a
+#: number, so this is a local choice with nothing to read it against.
+FIXED_CALLBACK_PORT = 8723
+
+#: The path every loopback redirect carries, which each venue's own example
+#: also carries.
+CALLBACK_PATH = "/callback"
+
+#: The three wordings ``RedirectPolicy.register_as`` takes for a loopback venue.
+#: TikTok publishes the wildcard port; LinkedIn's native page asks for no
+#: registration at all.
+LOOPBACK_ADDRESS_FORMAT = "http://127.0.0.1:{port}{path}"
+WILDCARD_PORT_FORMAT = "http://127.0.0.1:*{path}"
+ANY_LOOPBACK_PORT_TEXT = (
+    "nothing; LinkedIn's native page asks for no registered address and takes "
+    "any loopback port"
+)
 
 CALLBACK_TIMEOUT_SECONDS = 180.0
 TRANSPORT_TIMEOUT_SECONDS = 30.0
@@ -45,6 +69,10 @@ REDIRECT_PARAM = "redirect_uri"
 
 CHALLENGE_METHOD_S256 = "S256"
 RESPONSE_TYPE_CODE = "code"
+#: Meta's manual-flow page states a desktop app asks for this ``response_type``
+#: instead of a code, because its desktop redirect answers in the fragment of
+#: the address the view lands on.
+DESKTOP_RESPONSE_TYPE = "token"
 GRANT_AUTHORIZATION_CODE = "authorization_code"
 
 METHOD_GET = "GET"
@@ -83,6 +111,17 @@ NO_CODE_TEXT = "the browser came back with no authorization code"
 NO_FIELD_FORMAT = "the venue answered with no {field}"
 NO_PAGE_TEXT = "the account administers no Page"
 NO_ROUTE_FORMAT = "No sign-in route for {target}."
+PORT_BUSY_FORMAT = (
+    "port {port} on 127.0.0.1 is already taken, and this venue matches the one "
+    "address registered with it"
+)
+NOT_LOOPBACK_FORMAT = "this venue redirects to {address}, so no listener opens"
+NO_VIEW_TEXT = (
+    "this venue answers only inside a sign-in view the program draws, and none "
+    "is wired"
+)
+IS_LOOPBACK_TEXT = "this venue redirects to a loopback address, which needs no view"
+NO_POLICY_FORMAT = "No redirect address for {target}."
 
 CALLBACK_LOG = "ATA-SPM sign-in callback refused: %s"
 
@@ -105,6 +144,28 @@ class SignInRequest:
     data: dict = field(default_factory=dict)
     headers: dict = field(default_factory=dict)
     basic_auth: tuple = ()
+
+
+@dataclass(frozen=True)
+class RedirectPolicy:
+    """The redirect address one venue's own documentation accepts.
+
+    ``loopback`` true means the venue takes an RFC 8252 address, and
+    ``LoopbackReceiver`` binds ``port`` and serves ``path``. False means the
+    venue publishes its own desktop ``address`` and no listener opens at all.
+    ``register_as`` is what Level 1A prints for what he registers at the venue.
+    """
+
+    loopback: bool
+    port: int = FIXED_CALLBACK_PORT
+    path: str = CALLBACK_PATH
+    address: str = ""
+    register_as: str = ""
+
+
+#: What ``registered_redirect`` answers for a name ``REDIRECT_POLICIES`` has no
+#: row for, so the page prints an empty wording and never an address.
+NO_POLICY_ROW = RedirectPolicy(loopback=False)
 
 
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
@@ -131,20 +192,30 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
 class LoopbackReceiver:
     """The one-shot ``127.0.0.1`` listener RFC 8252 names for a native app.
 
-    ``open`` binds ``LOOPBACK_HOST`` at ``EPHEMERAL_PORT``, and ``wait`` serves
-    exactly one request, checks the ``state`` it was built with, and closes.
+    ``open`` binds ``LOOPBACK_HOST`` at the port it was built with, and ``wait``
+    serves exactly one request, checks the ``state`` it was built with, and
+    closes. ``EPHEMERAL_PORT`` lets the operating system choose; a venue that
+    matches its registered address exactly names a fixed port instead.
     """
 
-    def __init__(self, state: str, path: str = "") -> None:
+    def __init__(self, state: str, path: str = "", port: int = EPHEMERAL_PORT) -> None:
         self.state = str(state)
         self.path = str(path)
+        self.port = int(port)
         self._server: Any = None
 
     def open(self) -> str:
-        """Bind the listener and answer the ``redirect_uri`` it now serves."""
-        self._server = http.server.HTTPServer(
-            (LOOPBACK_HOST, EPHEMERAL_PORT), _CallbackHandler
-        )
+        """Bind the listener and answer the ``redirect_uri`` it now serves.
+
+        A fixed port already in use raises ``SignInError``, because the venue
+        accepts no other address.
+        """
+        try:
+            self._server = http.server.HTTPServer(
+                (LOOPBACK_HOST, self.port), _CallbackHandler
+            )
+        except OSError as exc:
+            raise SignInError(PORT_BUSY_FORMAT.format(port=self.port)) from exc
         self._server.expected_state = self.state
         self._server.callback_query = {}
         self._server.callback_state_ok = False
@@ -264,18 +335,24 @@ class SignInSession:
     transport: Callable
     browser: Callable = open_in_browser
     receiver: Callable = LoopbackReceiver
+    view: Optional[Callable] = None
     state_source: Callable = new_state
     verifier_source: Callable = new_verifier
     timeout: float = CALLBACK_TIMEOUT_SECONDS
 
-    def approve(self, authorize_url: str, params: dict, path: str = "") -> tuple:
+    def approve(
+        self, authorize_url: str, params: dict, policy: RedirectPolicy
+    ) -> tuple:
         """Run the RFC 8252 approval leg and answer the code and redirect address.
 
-        ``LoopbackReceiver.open`` runs first and fixes the ``REDIRECT_PARAM``
-        value the ``browser`` call carries.
+        ``LoopbackReceiver.open`` runs first, at the port and path ``policy``
+        names, and fixes the ``REDIRECT_PARAM`` value the ``browser`` call
+        carries. A policy that is not loopback opens no listener and raises.
         """
+        if not policy.loopback:
+            raise SignInError(NOT_LOOPBACK_FORMAT.format(address=policy.address))
         state = str(self.state_source())
-        held = self.receiver(state, path)
+        held = self.receiver(state, policy.path, policy.port)
         redirect_uri = held.open()
         sent = dict(params)
         sent[STATE_PARAM] = state
@@ -286,6 +363,47 @@ class SignInSession:
         finally:
             held.close()
         return str(answered[CODE_PARAM]), redirect_uri
+
+    def approve_at_view(
+        self, authorize_url: str, params: dict, policy: RedirectPolicy
+    ) -> dict:
+        """Approve at a venue-published desktop address, and answer its fragment.
+
+        No listener opens and no browser opens. ``view`` drives the venue's own
+        page to ``policy.address`` and answers the address it landed on, whose
+        fragment carries what the venue issued.
+        """
+        if policy.loopback:
+            raise SignInError(IS_LOOPBACK_TEXT)
+        if self.view is None:
+            raise SignInError(NO_VIEW_TEXT)
+        state = str(self.state_source())
+        sent = dict(params)
+        sent[STATE_PARAM] = state
+        sent[REDIRECT_PARAM] = policy.address
+        landed = self.view(
+            authorize_url + QUERY_MARK + urllib.parse.urlencode(sent), policy.address
+        )
+        held = read_fragment(landed)
+        if held.get(ERROR_PARAM):
+            raise SignInError(
+                str(held.get(ERROR_DESCRIPTION_PARAM) or held[ERROR_PARAM])
+            )
+        if not held:
+            raise SignInError(NO_CALLBACK_TEXT)
+        if not secrets.compare_digest(str(held.get(STATE_PARAM, "")), state):
+            logger.debug(CALLBACK_LOG, WRONG_STATE_TEXT)
+            raise SignInError(WRONG_STATE_TEXT)
+        return held
+
+
+def read_fragment(landed: Any) -> dict:
+    """The fragment values of one landed address, which is where Meta answers.
+
+    A fragment never leaves the browser, so only a view the program draws can
+    read one.
+    """
+    return dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(str(landed)).fragment))
 
 
 def read_field(answered: Any, key: str, label: str = "") -> str:
@@ -320,6 +438,7 @@ def sign_in_x(typed: dict, session: SignInSession) -> dict:
             "code_challenge": code_challenge(verifier),
             "code_challenge_method": CHALLENGE_METHOD_S256,
         },
+        redirect_policy(ata_spm_push.TARGET_X),
     )
     answered = session.transport(
         SignInRequest(
@@ -366,6 +485,7 @@ def sign_in_instagram(typed: dict, session: SignInSession) -> dict:
                 ata_spm_push.target_scopes(ata_spm_push.TARGET_INSTAGRAM)
             ),
         },
+        redirect_policy(ata_spm_push.TARGET_INSTAGRAM),
     )
     answered = session.transport(
         SignInRequest(
@@ -423,6 +543,7 @@ def sign_in_linkedin(typed: dict, session: SignInSession) -> dict:
             "code_challenge": code_challenge(verifier),
             "code_challenge_method": CHALLENGE_METHOD_S256,
         },
+        redirect_policy(ata_spm_push.TARGET_LINKEDIN),
     )
     answered = session.transport(
         SignInRequest(
@@ -464,6 +585,7 @@ def sign_in_tiktok(typed: dict, session: SignInSession) -> dict:
             "code_challenge": code_challenge(verifier),
             "code_challenge_method": CHALLENGE_METHOD_S256,
         },
+        redirect_policy(ata_spm_push.TARGET_TIKTOK),
     )
     answered = session.transport(
         SignInRequest(
@@ -494,37 +616,31 @@ FACEBOOK_EXCHANGE_URL = "https://graph.facebook.com/{version}/oauth/access_token
 FACEBOOK_ACCOUNTS_URL = "https://graph.facebook.com/{version}/me/accounts"
 FACEBOOK_EXCHANGE_GRANT = "fb_exchange_token"
 
+#: Meta's manual-flow page names this address for a desktop app, and Meta's
+#: Login Security page requires HTTPS for every OAuth redirect. A loopback
+#: address is neither published nor excepted, so no listener opens here.
+FACEBOOK_DESKTOP_REDIRECT = "https://www.facebook.com/connect/login_success.html"
+
 
 def sign_in_facebook(typed: dict, session: SignInSession) -> dict:
-    """Facebook Login, ``FACEBOOK_EXCHANGE_GRANT``, then ``FACEBOOK_ACCOUNTS_URL``.
+    """Facebook's desktop login, ``FACEBOOK_EXCHANGE_GRANT``, then the Page token.
 
-    ``read_field`` takes the Page id and the Page token from the first row
-    ``FACEBOOK_ACCOUNTS_URL`` lists.
+    ``approve_at_view`` answers the fragment of ``FACEBOOK_DESKTOP_REDIRECT``,
+    which carries a short-lived user token that ``FACEBOOK_EXCHANGE_GRANT``
+    trades up before ``FACEBOOK_ACCOUNTS_URL`` lists the Page.
     """
     app_id = str(typed.get("facebook-app-id", ""))
     secret = str(typed.get("facebook-app-secret", ""))
-    code, redirect_uri = session.approve(
+    landed = session.approve_at_view(
         FACEBOOK_AUTHORIZE_URL.format(version=FACEBOOK_GRAPH_VERSION),
         {
             "client_id": app_id,
-            "response_type": RESPONSE_TYPE_CODE,
+            "response_type": DESKTOP_RESPONSE_TYPE,
             "scope": COMMA_SEPARATOR.join(
                 ata_spm_push.target_scopes(ata_spm_push.TARGET_FACEBOOK)
             ),
         },
-    )
-    short_lived = session.transport(
-        SignInRequest(
-            method=METHOD_GET,
-            url=FACEBOOK_EXCHANGE_URL.format(version=FACEBOOK_GRAPH_VERSION),
-            params={
-                "client_id": app_id,
-                REDIRECT_PARAM: redirect_uri,
-                "client_secret": secret,
-                "code": code,
-            },
-            headers={ACCEPT_HEADER: JSON_ACCEPT},
-        )
+        redirect_policy(ata_spm_push.TARGET_FACEBOOK),
     )
     long_lived = session.transport(
         SignInRequest(
@@ -534,7 +650,7 @@ def sign_in_facebook(typed: dict, session: SignInSession) -> dict:
                 "grant_type": FACEBOOK_EXCHANGE_GRANT,
                 "client_id": app_id,
                 "client_secret": secret,
-                FACEBOOK_EXCHANGE_GRANT: read_field(short_lived, "access_token"),
+                FACEBOOK_EXCHANGE_GRANT: read_field(landed, "access_token"),
             },
             headers={ACCEPT_HEADER: JSON_ACCEPT},
         )
@@ -580,6 +696,7 @@ def sign_in_threads(typed: dict, session: SignInSession) -> dict:
                 ata_spm_push.target_scopes(ata_spm_push.TARGET_THREADS)
             ),
         },
+        redirect_policy(ata_spm_push.TARGET_THREADS),
     )
     answered = session.transport(
         SignInRequest(
@@ -638,6 +755,7 @@ def sign_in_reddit(typed: dict, session: SignInSession) -> dict:
                 ata_spm_push.target_scopes(ata_spm_push.TARGET_REDDIT)
             ),
         },
+        redirect_policy(ata_spm_push.TARGET_REDDIT),
     )
     answered = session.transport(
         SignInRequest(
@@ -687,6 +805,78 @@ AUTHORIZE_ADDRESSES = {
     ata_spm_push.TARGET_THREADS: THREADS_AUTHORIZE_URL,
     ata_spm_push.TARGET_REDDIT: REDDIT_AUTHORIZE_URL,
 }
+
+
+#: What each venue's own documentation accepts as a redirect address, and the
+#: exact wording Level 1A prints for what he registers at that venue.
+#:
+#: X, Instagram, Threads and Reddit each match the registered address exactly
+#: and publish no wildcard port, so each binds ``FIXED_CALLBACK_PORT``. LinkedIn
+#: asks a native client for a random loopback port, and TikTok publishes a
+#: wildcard port for that case, so both take ``EPHEMERAL_PORT``. Facebook
+#: requires HTTPS and publishes ``FACEBOOK_DESKTOP_REDIRECT`` instead.
+REDIRECT_POLICIES = {
+    ata_spm_push.TARGET_X: RedirectPolicy(
+        loopback=True,
+        port=FIXED_CALLBACK_PORT,
+        register_as=LOOPBACK_ADDRESS_FORMAT.format(
+            port=FIXED_CALLBACK_PORT, path=CALLBACK_PATH
+        ),
+    ),
+    ata_spm_push.TARGET_INSTAGRAM: RedirectPolicy(
+        loopback=True,
+        port=FIXED_CALLBACK_PORT,
+        register_as=LOOPBACK_ADDRESS_FORMAT.format(
+            port=FIXED_CALLBACK_PORT, path=CALLBACK_PATH
+        ),
+    ),
+    ata_spm_push.TARGET_LINKEDIN: RedirectPolicy(
+        loopback=True,
+        port=EPHEMERAL_PORT,
+        register_as=ANY_LOOPBACK_PORT_TEXT,
+    ),
+    ata_spm_push.TARGET_TIKTOK: RedirectPolicy(
+        loopback=True,
+        port=EPHEMERAL_PORT,
+        register_as=WILDCARD_PORT_FORMAT.format(path=CALLBACK_PATH),
+    ),
+    ata_spm_push.TARGET_FACEBOOK: RedirectPolicy(
+        loopback=False,
+        address=FACEBOOK_DESKTOP_REDIRECT,
+        register_as=FACEBOOK_DESKTOP_REDIRECT,
+    ),
+    ata_spm_push.TARGET_THREADS: RedirectPolicy(
+        loopback=True,
+        port=FIXED_CALLBACK_PORT,
+        register_as=LOOPBACK_ADDRESS_FORMAT.format(
+            port=FIXED_CALLBACK_PORT, path=CALLBACK_PATH
+        ),
+    ),
+    ata_spm_push.TARGET_REDDIT: RedirectPolicy(
+        loopback=True,
+        port=FIXED_CALLBACK_PORT,
+        register_as=LOOPBACK_ADDRESS_FORMAT.format(
+            port=FIXED_CALLBACK_PORT, path=CALLBACK_PATH
+        ),
+    ),
+}
+
+
+def redirect_policy(target: Any) -> RedirectPolicy:
+    """The ``REDIRECT_POLICIES`` row one push target redirects by.
+
+    A name with no row raises ``SignInError``, and no route falls back to an
+    address its venue never published.
+    """
+    held = REDIRECT_POLICIES.get(str(target))
+    if held is None:
+        raise SignInError(NO_POLICY_FORMAT.format(target=target))
+    return held
+
+
+def registered_redirect(target: Any) -> str:
+    """The ``RedirectPolicy.register_as`` wording one push target's page prints."""
+    return str(REDIRECT_POLICIES.get(str(target), NO_POLICY_ROW).register_as)
 
 
 def sign_in_route(target: Any) -> Optional[Callable]:

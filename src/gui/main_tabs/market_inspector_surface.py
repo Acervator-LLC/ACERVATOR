@@ -259,6 +259,7 @@ ENDPOINT_LINE_PART = "endpoint-line"
 SCOPES_LINE_PART = "scopes-line"
 REGISTRATION_LINE_PART = "registration-line"
 SIGN_IN_LINE_PART = "sign-in-line"
+REDIRECT_LINE_PART = "redirect-line"
 PREREQUISITE_LINE_PART = "prerequisite-line"
 
 VENUE_BUTTON_WIDTH_PX = 108
@@ -283,6 +284,7 @@ ENDPOINT_LINE_FORMAT = "Posts to {endpoint}"
 SCOPES_LINE_FORMAT = "Scopes {scopes}"
 REGISTRATION_LINE_FORMAT = "Register first: {registration}"
 SIGN_IN_LINE_FORMAT = "Connect opens your browser on {address}"
+REDIRECT_LINE_FORMAT = "Redirect address to register: {redirect}"
 PREREQUISITE_LINE_FORMAT = "Before it works: {prerequisite}"
 SCOPE_SEPARATOR = " · "
 NO_MESSAGE_TEXT = ""
@@ -1701,6 +1703,7 @@ def credential_page(board: Any) -> dict:
             "endpoint": NO_SYMBOL,
             "scopes": NO_SYMBOL,
             "sign_in": NO_SYMBOL,
+            "redirect": NO_SYMBOL,
             "registration": NO_SYMBOL,
             "prerequisite": NO_SYMBOL,
             "message": NO_MESSAGE_TEXT,
@@ -1713,6 +1716,9 @@ def credential_page(board: Any) -> dict:
         "scopes": SCOPES_LINE_FORMAT.format(scopes=SCOPE_SEPARATOR.join(found.scopes)),
         "sign_in": SIGN_IN_LINE_FORMAT.format(
             address=ata_spm_signin.authorize_address(found.name)
+        ),
+        "redirect": REDIRECT_LINE_FORMAT.format(
+            redirect=ata_spm_signin.registered_redirect(found.name)
         ),
         "registration": REGISTRATION_LINE_FORMAT.format(
             registration=found.registration
@@ -1746,6 +1752,7 @@ def settings_page(board: Any, asset_class: Any = "") -> dict:
         "endpoint_part": ENDPOINT_LINE_PART,
         "scopes_part": SCOPES_LINE_PART,
         "sign_in_part": SIGN_IN_LINE_PART,
+        "redirect_part": REDIRECT_LINE_PART,
         "registration_part": REGISTRATION_LINE_PART,
         "prerequisite_part": PREREQUISITE_LINE_PART,
         "accounts_title": SM_ACCOUNTS_TITLE,
