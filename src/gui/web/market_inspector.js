@@ -654,6 +654,10 @@
 
   var SELECT_TAG = "select";
   var OPTION_TAG = "option";
+  // The width a Level 1 or Level 1A group takes: the pane, less one gap at
+  // the right edge, which is the clearance columns_for leaves the Qt grid.
+  var PANE_WIDTH_HEAD = "calc(100% - ";
+  var PANE_WIDTH_TAIL = ")";
   var BORDER_BOX = "border-box";
   var SHRINK_ONLY = "0 1 auto";
 
@@ -848,10 +852,6 @@
   var SETTING_WIDTH_PX = "setting_width_px";
   var VENUE_WIDTH_PX = "venue_width_px";
   var CATEGORY_WIDTH_PX = "category_width_px";
-  var VENUE_GRID_WIDTH_PX = "venue_grid_width_px";
-  var CATEGORY_GRID_WIDTH_PX = "category_grid_width_px";
-  var CREDENTIAL_GRID_WIDTH_PX = "credential_grid_width_px";
-  var SETTING_GRID_WIDTH_PX = "setting_grid_width_px";
   var CREDENTIAL_ROW_WIDTH_PX = "credential_row_width_px";
   var SETTING_ROW_WIDTH_PX = "setting_row_width_px";
   var CONNECT_WIDTH_PX = "connect_width_px";
@@ -1906,11 +1906,31 @@
     return element(DIV_TAG, rowProps, asList(children));
   }
 
+  // wrapInPane is a row of cells that breaks at whatever width the pane gives
+  // it, holding one gap clear past the last cell so the count is the one
+  // columns_for gives the Qt grid at the same pane width.
+  function wrapInPane(page, part, name, children) {
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flexWrap: WRAP,
+      flex: FLEX_NONE,
+      alignItems: CENTER
+    };
+    style.gap = length(page[SETTINGS_SPACING_PX]);
+    style.width =
+      PANE_WIDTH_HEAD + length(page[SETTINGS_SPACING_PX]) + PANE_WIDTH_TAIL;
+    var rowProps = { style: style };
+    rowProps[PART_ATTR] = part;
+    rowProps[NAME_ATTR] = label(name);
+    return element(DIV_TAG, rowProps, asList(children));
+  }
+
   // buttonGroup is one Level 1 section: its heading and the buttons under it.
-  function buttonGroup(page, title, width, children) {
+  function buttonGroup(page, title, children) {
     return [
       sectionTitle(page, title),
-      wrapAt(page, SETTINGS_GROUP_PART, title, width, children)
+      wrapInPane(page, SETTINGS_GROUP_PART, title, children)
     ];
   }
 
@@ -1981,11 +2001,10 @@
       pageLine(page, page[SCOPES_PART], held[PAGE_SCOPES]),
       pageLine(page, page[SIGN_IN_PART], held[PAGE_SIGN_IN]),
       pageLine(page, page[REDIRECT_PART], held[PAGE_REDIRECT]),
-      wrapAt(
+      wrapInPane(
         page,
         SETTINGS_GROUP_PART,
         target,
-        CREDENTIAL_GRID_WIDTH_PX,
         listField(held, PAGE_FIELDS).map(function (field, at) {
           return element(CredentialField, {
             key: PAGE_FIELDS + PATH_SPLIT + String(at),
@@ -2073,7 +2092,6 @@
       buttonGroup(
         page,
         page[ACCOUNTS_TITLE],
-        VENUE_GRID_WIDTH_PX,
         listField(page, CREDENTIAL_ROWS).map(function (row) {
           return element(VenueButton, {
             key: text(asList(row)[ZERO]),
@@ -2086,7 +2104,6 @@
       buttonGroup(
         page,
         page[CATEGORY_TITLE],
-        CATEGORY_GRID_WIDTH_PX,
         listField(page, CATEGORY_ROWS).map(function (row) {
           return element(CategoryButton, {
             key: text(asList(row)[ZERO]),
@@ -2097,11 +2114,10 @@
         })
       ),
       sectionTitle(page, page[SETTINGS_TITLE]),
-      wrapAt(
+      wrapInPane(
         page,
         SETTINGS_GROUP_PART,
         page[SETTINGS_TITLE],
-        SETTING_GRID_WIDTH_PX,
         listField(page, SETTING_ROWS).map(function (row, at) {
           return element(SettingRow, {
             key: SETTING_ROWS + PATH_SPLIT + String(at),

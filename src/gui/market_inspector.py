@@ -31,7 +31,6 @@ from .main_tabs.market_inspector_surface import (
     BACK_WIDTH_PX,
     BUTTON_COLUMNS,
     CATEGORY_TOOLTIP_FORMAT,
-    FIELD_COLUMNS,
     CONNECT_LABEL,
     CONNECT_PART,
     CONNECT_TOOLTIP,
@@ -39,6 +38,7 @@ from .main_tabs.market_inspector_surface import (
     COUNT_SETTINGS,
     CREDENTIAL_FIELD_WIDTH_PX,
     CREDENTIAL_MESSAGE_PART,
+    CREDENTIAL_ROW_WIDTH_PX,
     CREDENTIAL_PAGE_PART,
     DECLINE_PART,
     ENDPOINT_LINE_PART,
@@ -59,12 +59,15 @@ from .main_tabs.market_inspector_surface import (
     SECTION_TITLE_PART,
     SETTING_FIELD_WIDTH_PX,
     SETTING_ROWS,
+    SETTING_ROW_WIDTH_PX,
     SETTINGS_LABEL,
     SETTINGS_LABEL_WIDTH_PX,
     SETTINGS_ROW_SPACING_PX,
     SETTINGS_TOOLTIP,
     SETTINGS_WIDTH_PX,
+    columns_for,
     SM_ACCOUNTS_TITLE,
+    SPLITTER_HANDLE_PX,
     ASSET_CATEGORY_TITLE,
     ZONES_PART,
     ZONES_TOOLTIP,
@@ -581,6 +584,23 @@ if _HAS_QT:
                 self.action_row.insertWidget(len(self.action_buttons), button)
                 self.action_buttons.append(button)
 
+    class PaneWidthPage(QWidget):
+        """A Level 1 or Level 1A page that re-lays its grids at the width it gets.
+
+        Qt gives a grid a fixed column count, so ``relay`` is called with the
+        page's own new width every time the window moves the pane's edge.
+        """
+
+        def __init__(self, relay, name, parent=None):
+            super().__init__(parent)
+            self._relay = relay
+            self.setAccessibleName(str(name))
+
+        def resizeEvent(self, event):  # noqa: N802 - Qt event name
+            """Re-lay every grid on the page at the width the pane now gives."""
+            super().resizeEvent(event)
+            self._relay(self.width())
+
     class MarketInspectorTab(QWidget):
         """Full-application Market Inspector tab.
 
@@ -625,6 +645,10 @@ if _HAS_QT:
             outer.setContentsMargins(0, 0, 0, 0)
             outer.setSpacing(0)
             self._outer_splitter = QSplitter(Qt.Horizontal)
+            # The theme's own handle is 5 px, so without this the two panes are
+            # each 1 px wider here than on the page and a group wraps at a
+            # different count at the same tab width.
+            self._outer_splitter.setHandleWidth(SPLITTER_HANDLE_PX)
             outer.addWidget(self._outer_splitter)
 
             left_pane = QWidget()
@@ -880,16 +904,16 @@ if _HAS_QT:
             A venue button opens that venue's Level 1A page and a category
             button sets the class ``SectorBoard`` scans.
             """
-            page = QWidget()
+            page = PaneWidthPage(self._relay_accounts_page, SM_ACCOUNTS_TITLE)
             column = QVBoxLayout(page)
             column.setContentsMargins(0, 0, 0, 0)
             column.setSpacing(SETTINGS_ROW_SPACING_PX)
 
             column.addWidget(self._section_title(SM_ACCOUNTS_TITLE))
             self._venue_buttons: dict = {}
-            venues = QGridLayout()
-            venues.setSpacing(SETTINGS_ROW_SPACING_PX)
-            for at, name in enumerate(ata_spm_push.TARGET_NAMES):
+            self._venue_grid = QGridLayout()
+            self._venue_grid.setSpacing(SETTINGS_ROW_SPACING_PX)
+            for name in ata_spm_push.TARGET_NAMES:
                 button = QPushButton(name)
                 button.setCheckable(True)
                 button.setStyleSheet(CHECKED_BUTTON_STYLE)
@@ -898,16 +922,14 @@ if _HAS_QT:
                 button.clicked.connect(
                     lambda _checked, target=name: self._on_venue_pressed(target)
                 )
-                venues.addWidget(button, at // BUTTON_COLUMNS, at % BUTTON_COLUMNS)
                 self._venue_buttons[name] = button
-            venues.setColumnStretch(BUTTON_COLUMNS, 1)
-            column.addLayout(venues)
+            column.addLayout(self._venue_grid)
 
             column.addWidget(self._section_title(ASSET_CATEGORY_TITLE))
             self._category_buttons: dict = {}
-            categories = QGridLayout()
-            categories.setSpacing(SETTINGS_ROW_SPACING_PX)
-            for at, name in enumerate(ata_spm.ASSET_CLASSES):
+            self._category_grid = QGridLayout()
+            self._category_grid.setSpacing(SETTINGS_ROW_SPACING_PX)
+            for name in ata_spm.ASSET_CLASSES:
                 button = QPushButton(name)
                 button.setCheckable(True)
                 button.setToolTip(CATEGORY_TOOLTIP_FORMAT.format(name=name))
@@ -917,30 +939,25 @@ if _HAS_QT:
                 button.clicked.connect(
                     lambda _checked, chosen=name: self._on_category_pressed(chosen)
                 )
-                categories.addWidget(button, at // BUTTON_COLUMNS, at % BUTTON_COLUMNS)
                 self._category_buttons[name] = button
-            categories.setColumnStretch(BUTTON_COLUMNS, 1)
-            column.addLayout(categories)
+            column.addLayout(self._category_grid)
 
             column.addWidget(self._section_title(ATA_SETTINGS_TITLE))
             self._setting_edits: dict = {}
-            settings_grid = QGridLayout()
-            settings_grid.setSpacing(SETTINGS_ROW_SPACING_PX)
-            for at, (key, label) in enumerate(SETTING_ROWS):
+            self._setting_rows: list = []
+            self._setting_grid = QGridLayout()
+            self._setting_grid.setSpacing(SETTINGS_ROW_SPACING_PX)
+            for key, label in SETTING_ROWS:
                 field = QLineEdit()
                 field.setFixedSize(SETTING_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
                 field.setAccessibleName(key)
                 field.textChanged.connect(
                     lambda text, name=key: self._on_setting_changed(name, text)
                 )
-                settings_grid.addWidget(
-                    self._field_row(label, field),
-                    at // FIELD_COLUMNS,
-                    at % FIELD_COLUMNS,
-                )
+                self._setting_rows.append(self._field_row(label, field))
                 self._setting_edits[key] = field
-            settings_grid.setColumnStretch(FIELD_COLUMNS, 1)
-            column.addLayout(settings_grid)
+            column.addLayout(self._setting_grid)
+            self._relay_accounts_page(page.width())
             self._zones_btn = QPushButton(BACK_LABEL)
             self._zones_btn.setToolTip(ZONES_TOOLTIP)
             self._zones_btn.setFixedSize(BACK_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
@@ -949,6 +966,64 @@ if _HAS_QT:
             column.addWidget(self._zones_btn)
             column.addStretch()
             return page
+
+        def _relay_grid(
+            self, grid: "QGridLayout", cells: list, cell: int, available: int
+        ) -> None:
+            """Put ``cells`` into ``grid`` at the column count ``available`` holds."""
+            columns = columns_for(available, cell)
+            for one in cells:
+                grid.removeWidget(one)
+            for at, one in enumerate(cells):
+                grid.addWidget(one, at // columns, at % columns)
+            # The one column past the last cell takes the slack. Without it
+            # every column takes an equal share and the cells spread out.
+            for column in range(max(len(cells), columns) + 1):
+                grid.setColumnStretch(column, 1 if column == columns else 0)
+
+        def _relay_accounts_page(self, available: int) -> None:
+            """Break Level 1's three groups at what the pane's width holds."""
+            self._relay_grid(
+                self._venue_grid,
+                list(self._venue_buttons.values()),
+                VENUE_BUTTON_WIDTH_PX,
+                available,
+            )
+            self._relay_grid(
+                self._category_grid,
+                list(self._category_buttons.values()),
+                ASSET_CATEGORY_WIDTH_PX,
+                available,
+            )
+            self._relay_grid(
+                self._setting_grid,
+                self._setting_rows,
+                SETTING_ROW_WIDTH_PX,
+                available,
+            )
+
+        def _relay_credential_page(self, available: int) -> None:
+            """Break every Level 1A page's boxes at what the pane's width holds.
+
+            Each push target starts on its own grid line, so the open target's
+            boxes never share a line with a hidden target's.
+            """
+            columns = columns_for(available, CREDENTIAL_ROW_WIDTH_PX)
+            line = 0
+            for name in ata_spm_push.TARGET_NAMES:
+                rows = self._credential_rows.get(name, [])
+                for one in rows:
+                    self._credential_grid.removeWidget(one)
+                for place, one in enumerate(rows):
+                    self._credential_grid.addWidget(
+                        one, line + place // columns, place % columns
+                    )
+                line += 1 + (len(rows) - 1) // columns
+            widest = max(len(one) for one in self._credential_rows.values())
+            for column in range(max(widest, columns) + 1):
+                self._credential_grid.setColumnStretch(
+                    column, 1 if column == columns else 0
+                )
 
         def _field_row(self, label: str, field: "QWidget") -> "QWidget":
             """One label and one box side by side, as a single grid cell."""
@@ -969,7 +1044,7 @@ if _HAS_QT:
             Only the open target's boxes are visible, so the page shows the
             fields that venue's own documentation names and no others.
             """
-            page = QWidget()
+            page = PaneWidthPage(self._relay_credential_page, CREDENTIAL_PAGE_PART)
             column = QVBoxLayout(page)
             column.setContentsMargins(0, 0, 0, 0)
             column.setSpacing(SETTINGS_ROW_SPACING_PX)
@@ -994,11 +1069,10 @@ if _HAS_QT:
 
             self._credential_edits: dict = {}
             self._credential_rows: dict = {}
-            grid = QGridLayout()
-            grid.setSpacing(SETTINGS_ROW_SPACING_PX)
-            at = 0
+            self._credential_grid = QGridLayout()
+            self._credential_grid.setSpacing(SETTINGS_ROW_SPACING_PX)
             for name in ata_spm_push.TARGET_NAMES:
-                for place, one in enumerate(ata_spm_push.credential_fields(name)):
+                for one in ata_spm_push.credential_fields(name):
                     field = QLineEdit()
                     field.setEchoMode(QLineEdit.Password)
                     field.setPlaceholderText(one.label)
@@ -1011,17 +1085,12 @@ if _HAS_QT:
                             )
                         )
                     )
-                    row = self._field_row(one.label, field)
-                    grid.addWidget(
-                        row, at + place // FIELD_COLUMNS, place % FIELD_COLUMNS
-                    )
                     self._credential_edits.setdefault(name, []).append(field)
-                    self._credential_rows.setdefault(name, []).append(row)
-                at += 1 + (len(ata_spm_push.credential_fields(name)) - 1) // (
-                    FIELD_COLUMNS
-                )
-            grid.setColumnStretch(FIELD_COLUMNS, 1)
-            column.addLayout(grid)
+                    self._credential_rows.setdefault(name, []).append(
+                        self._field_row(one.label, field)
+                    )
+            column.addLayout(self._credential_grid)
+            self._relay_credential_page(page.width())
 
             buttons = QHBoxLayout()
             buttons.setSpacing(SETTINGS_ROW_SPACING_PX)
@@ -1125,6 +1194,10 @@ if _HAS_QT:
                 if field.text() != written:
                     field.blockSignals(True)
                     field.setText(written)
+                    # setText leaves the cursor past the end, which scrolls a
+                    # value wider than the box. The page shows its first
+                    # character, so this box shows the same one.
+                    field.setCursorPosition(0)
                     field.blockSignals(False)
 
         def _render_credential_page(self) -> None:

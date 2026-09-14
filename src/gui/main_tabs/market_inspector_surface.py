@@ -273,10 +273,10 @@ ASSET_CATEGORY_WIDTH_PX = 108
 CONNECT_WIDTH_PX = 96
 BACK_WIDTH_PX = 76
 
-#: How many buttons one Level 1 group puts on a line, and how many label-and-box
-#: rows Level 1 and Level 1A put on one. Both pages fit the zone at these counts.
+#: How many timeframe buttons the scan page puts on a line. The four fit the
+#: zone at every width the window opens at, so this one count is a constant.
+#: Level 1 and Level 1A take theirs from ``columns_for`` instead.
 BUTTON_COLUMNS = 4
-FIELD_COLUMNS = 2
 
 
 #: The pressed look every checkable button on this screen draws: a venue whose
@@ -321,12 +321,22 @@ def grid_width(count: int, cell: int, spacing: int = SETTINGS_ROW_SPACING_PX) ->
     return count * cell + (count - 1) * spacing
 
 
-#: The widths that break each Level 1 and Level 1A group after its own column
-#: count, so the Qt grid and the page wrap at the same place.
-VENUE_GRID_WIDTH_PX = grid_width(BUTTON_COLUMNS, VENUE_BUTTON_WIDTH_PX)
-CATEGORY_GRID_WIDTH_PX = grid_width(BUTTON_COLUMNS, ASSET_CATEGORY_WIDTH_PX)
+def columns_for(
+    available: int, cell: int, spacing: int = SETTINGS_ROW_SPACING_PX
+) -> int:
+    """How many ``cell`` wide cells a pane of ``available`` holds on one line.
 
-#: The scan page's timeframe buttons wrap after the same count, at the ATA
+    Every Level 1 and Level 1A group breaks at this count in both builds, and
+    one ``spacing`` is left clear past the last cell so the Qt grid and the
+    page's own ``calc(100% - gap)`` wrap at the same pane width.
+    """
+    step = cell + spacing
+    if available < step:
+        return 1
+    return available // step
+
+
+#: The scan page's timeframe buttons wrap after ``BUTTON_COLUMNS``, at the ATA
 #: column's own spacing.
 TIMEFRAME_GRID_WIDTH_PX = grid_width(
     BUTTON_COLUMNS, TIMEFRAME_BOX_WIDTH_PX, ATA_ROW_SPACING_PX
@@ -337,8 +347,6 @@ CREDENTIAL_ROW_WIDTH_PX = (
 SETTING_ROW_WIDTH_PX = (
     SETTINGS_LABEL_WIDTH_PX + SETTINGS_ROW_SPACING_PX + SETTING_FIELD_WIDTH_PX
 )
-CREDENTIAL_GRID_WIDTH_PX = grid_width(FIELD_COLUMNS, CREDENTIAL_ROW_WIDTH_PX)
-SETTING_GRID_WIDTH_PX = grid_width(FIELD_COLUMNS, SETTING_ROW_WIDTH_PX)
 
 #: Every ATA-SPM setting a phase reads, with the wording its row carries.
 SETTING_MAX_POSTS = "max_posts_per_hour"
@@ -498,9 +506,9 @@ SPLITTER_STRETCH = (1, 1)
 SPLITTER_SIZES_PX = (800, 800)
 SPLITTER_PANES = 2
 
-#: The drag handle a ``QSplitter`` keeps between the two panes. Measured 7 px
-#: under the shipped theme, which is the width the splitter reports, so the
-#: panes share what is left rather than the whole tab.
+#: The drag handle between the two panes. Both builds set it: the window calls
+#: ``setHandleWidth`` and the page draws it as the split row's gap, so the two
+#: panes are the same width in either build and a group wraps at the same count.
 SPLITTER_HANDLE_PX = 7
 
 OUTER_MARGINS_PX = (0, 0, 0, 0)
@@ -1788,10 +1796,6 @@ def settings_page(board: Any, asset_class: Any = "") -> dict:
         "category_width_px": ASSET_CATEGORY_WIDTH_PX,
         "connect_width_px": CONNECT_WIDTH_PX,
         "back_width_px": BACK_WIDTH_PX,
-        "venue_grid_width_px": VENUE_GRID_WIDTH_PX,
-        "category_grid_width_px": CATEGORY_GRID_WIDTH_PX,
-        "credential_grid_width_px": CREDENTIAL_GRID_WIDTH_PX,
-        "setting_grid_width_px": SETTING_GRID_WIDTH_PX,
         "credential_row_width_px": CREDENTIAL_ROW_WIDTH_PX,
         "setting_row_width_px": SETTING_ROW_WIDTH_PX,
         "field_padding_px": list(FIELD_PADDING_PX),
