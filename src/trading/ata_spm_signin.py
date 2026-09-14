@@ -121,6 +121,9 @@ NO_VIEW_TEXT = (
     "is wired"
 )
 IS_LOOPBACK_TEXT = "this venue redirects to a loopback address, which needs no view"
+#: Carries the host and never the address. A venue answering at its own desktop
+#: redirect puts its token in the fragment of that address.
+WRONG_HOST_FORMAT = "the sign-in view reached {host}, which is not the venue"
 NO_POLICY_FORMAT = "No redirect address for {target}."
 
 CALLBACK_LOG = "ATA-SPM sign-in callback refused: %s"
@@ -384,6 +387,12 @@ class SignInSession:
         landed = self.view(
             authorize_url + QUERY_MARK + urllib.parse.urlencode(sent), policy.address
         )
+        host = landed_host(landed)
+        if not host:
+            raise SignInError(NO_CALLBACK_TEXT)
+        if host not in sign_in_hosts(authorize_url, policy.address):
+            logger.debug(CALLBACK_LOG, WRONG_HOST_FORMAT.format(host=host))
+            raise SignInError(WRONG_HOST_FORMAT.format(host=host))
         held = read_fragment(landed)
         if held.get(ERROR_PARAM):
             raise SignInError(
@@ -404,6 +413,43 @@ def read_fragment(landed: Any) -> dict:
     read one.
     """
     return dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(str(landed)).fragment))
+
+
+def landed_host(landed: Any) -> str:
+    """The host of one landed address, lowercased.
+
+    ``WRONG_HOST_FORMAT`` carries this and never the address itself.
+    """
+    return str(urllib.parse.urlsplit(str(landed)).netloc).lower()
+
+
+def sign_in_hosts(authorize_url: Any, redirect_address: Any) -> tuple:
+    """The hosts one ``approve_at_view`` sign-in may reach, in the order given.
+
+    They are the hosts of the two addresses that sign-in was built from, and
+    ``approve_at_view`` refuses a landing on any other.
+    """
+    held: list = []
+    for one in (authorize_url, redirect_address):
+        host = landed_host(one)
+        if host and host not in held:
+            held.append(host)
+    return tuple(held)
+
+
+def is_redirect_landing(landed: Any, redirect_address: Any) -> bool:
+    """True where one landed address is the published redirect, fragment aside.
+
+    A venue answering at its own desktop redirect adds the fragment, so the
+    scheme, the host and the path are what identify the landing.
+    """
+    held = urllib.parse.urlsplit(str(landed))
+    sent = urllib.parse.urlsplit(str(redirect_address))
+    return (held.scheme, held.netloc.lower(), held.path) == (
+        sent.scheme,
+        sent.netloc.lower(),
+        sent.path,
+    )
 
 
 def read_field(answered: Any, key: str, label: str = "") -> str:
@@ -879,6 +925,16 @@ def registered_redirect(target: Any) -> str:
     return str(REDIRECT_POLICIES.get(str(target), NO_POLICY_ROW).register_as)
 
 
+def redirects_to_view(target: Any) -> bool:
+    """Whether one push target answers inside a sign-in view the program draws.
+
+    A name with no ``REDIRECT_POLICIES`` row answers False, and its Level 1A
+    page then carries the wording every loopback venue carries.
+    """
+    held = REDIRECT_POLICIES.get(str(target))
+    return held is not None and not held.loopback
+
+
 def sign_in_route(target: Any) -> Optional[Callable]:
     """The ``SIGN_IN_ROUTES`` row one push target name signs in through, or None."""
     return SIGN_IN_ROUTES.get(str(target))
@@ -906,6 +962,10 @@ def build_connector(session: SignInSession) -> Callable:
     return connect_one
 
 
-def default_session() -> SignInSession:
-    """A ``SignInSession`` on ``open_in_browser`` and ``urlopen_transport``."""
-    return SignInSession(transport=urlopen_transport)
+def default_session(view: Optional[Callable] = None) -> SignInSession:
+    """A ``SignInSession`` on ``open_in_browser`` and ``urlopen_transport``.
+
+    ``view`` is what ``approve_at_view`` draws a venue's own desktop sign-in
+    in, and stays None where the caller draws none.
+    """
+    return SignInSession(transport=urlopen_transport, view=view)

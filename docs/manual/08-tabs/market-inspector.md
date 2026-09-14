@@ -2292,4 +2292,177 @@ is squeezed into a strip and no scroll bar appears." That was not true of the
 running program when it was written: at a 900 px tab the zone carried a
 horizontal scroll bar and six controls sat outside the pane. It is true now.
 
+## 2026-09-15 04:20 - #23 - Facebook signs in inside the program
+
+Facebook was the one venue whose Connect could not finish. Meta answers a
+desktop program in the fragment of its own published redirect, and a fragment
+never leaves the browser. The program now draws that browser itself, for one
+sign-in at a time. All seven venues have a working sign-in path.
+
+### The window Connect opens
+
+`src/gui/sign_in_view.py` - what one sign-in is approved in
+
+```python
+class SignInView(QDialog):
+```
+
+It is a modal window holding one `QWebEngineView`. It has no address bar, no
+context menu, and no second window: `SignInPage.createWindow` answers None. The
+product already draws React inside a `QWebEngineView`, and this follows that.
+
+Three things end it, and nothing else.
+
+| What ends the sign-in | What Connect reads next |
+| --------------------- | ----------------------- |
+| the view reaches `https://www.facebook.com/connect/login_success.html` | the fragment of that address |
+| the operator closes the window | "no reply came back from the browser" |
+| 180 seconds pass | "no reply came back from the browser" |
+
+The window reaches two addresses and no more: Meta's approval address and
+Meta's published redirect. `SignInView.reach` answers False for every other
+host and ends the sign-in on the spot.
+
+`src/trading/ata_spm_signin.py` - the hosts one sign-in may reach
+
+```python
+def sign_in_hosts(authorize_url: Any, redirect_address: Any) -> tuple:
+```
+
+Read off the running window with a prepared address in each case:
+`https://www.facebook.com/login.php` loads, `about:blank` is refused without
+ending the sign-in, `https://evil.example.com/...` ends it, and Meta's
+published redirect ends it with the address held.
+
+### Where it is wired
+
+```python
+def sign_in_session() -> Any:
+```
+
+`src/gui/market_inspector.py` hands it to `AtaSpmSettings.set_connector` for
+the Qt build. `src/gui/react_market_inspector_tab.py` hands it to the same
+call, because the React screen model builds its own `PushBoard` and replaces
+the one the tab inherits. Both builds sign Facebook in through the same window.
+
+### The three hops
+
+```mermaid
+sequenceDiagram
+    participant He as Operator
+    participant App as Acervator
+    participant W as The sign-in window
+    participant V as Meta
+    He->>App: Connect
+    App->>W: open on the approval address
+    W->>V: the operator approves
+    V->>W: land on login_success.html with a token in the fragment
+    W->>App: the address it landed on
+    App->>App: check the state it generated, then close the window
+    App->>V: trade the short-lived token for a long-lived one
+    App->>V: list the Pages the account administers
+    V->>App: Page id and Page token
+    App->>App: encrypt into the vault, return to Level 1
+```
+
+| Hop | Address | Method | Parameter names |
+| --- | ------- | ------ | --------------- |
+| the approval | `https://www.facebook.com/v25.0/dialog/oauth` | opened in the window | `client_id`, `redirect_uri`, `response_type`, `scope`, `state` |
+| the long-lived token | `https://graph.facebook.com/v25.0/oauth/access_token` | GET | `grant_type`, `client_id`, `client_secret`, `fb_exchange_token` |
+| the Page token | `https://graph.facebook.com/v25.0/me/accounts` | GET | `access_token` |
+
+`response_type` is `token`, which Meta's manual-flow page names for a desktop
+app. The scope is `pages_manage_posts`, `pages_manage_metadata`,
+`pages_read_engagement` and `pages_show_list`.
+
+### What Level 1A prints for Facebook
+
+Every other venue keeps the line it already carried. Facebook's line now names
+the window rather than the system browser.
+
+| Venue | Where Connect sends him |
+| ----- | ----------------------- |
+| X | your browser on `https://x.com/i/oauth2/authorize` |
+| Instagram | your browser on `https://www.instagram.com/oauth/authorize` |
+| LinkedIn | your browser on `https://www.linkedin.com/oauth/native-pkce/authorization` |
+| TikTok | your browser on `https://www.tiktok.com/v2/auth/authorize/` |
+| Facebook | a sign-in window in Acervator on `https://www.facebook.com/v25.0/dialog/oauth` |
+| Threads | your browser on `https://threads.com/oauth/authorize` |
+| Reddit | your browser on `https://www.reddit.com/api/v1/authorize` |
+
+Read off the two running screens, Facebook's Level 1A page draws 11 members
+under Qt and 11 under React. All 11 read the same.
+
+### What never leaves the sign-in
+
+- No address the window lands on reaches a log line, a render or a file. The
+  log line names the host and nothing else.
+- `SignInView._release` empties the cookie jar of the off-the-record profile
+  the sign-in held. Nothing outlives the window.
+- `SignInView._refuse_download` cancels every download the venue's page asks
+  for, so nothing it sends reaches a file.
+- A fragment with no `access_token` in it stores nothing. Level 1 keeps reading
+  `not held` for Facebook and the page prints "the venue answered with no
+  access_token".
+
+### Every address on a Level 1A page is a link
+
+An address on a Level 1A page opens in the system browser. The window and the
+page draw the same links, in the same colour, from the same list.
+
+`src/gui/main_tabs/market_inspector_surface.py` - what makes one word a link
+
+```python
+def link_address(word: Any) -> str:
+```
+
+A word is an address only where it names a host and a path. `video.publish`
+carries a dot and no path. `/api/submit` and `/<IG_ID>/media` carry a path and
+no host. None of the three becomes a link.
+
+Three lines carry links: the "Posts to" line, the "Register first" line and the
+"Before it works" line. Each is a fixed text on that venue's own `PushTarget`
+row in `src/trading/ata_spm_push.py`. Nothing the operator typed and nothing a
+venue answered is ever a link.
+
+| Venue | Clickable | Plain text, and what it is |
+| ----- | --------- | -------------------------- |
+| X | `https://api.x.com/2/tweets` | the row names no other address |
+| Instagram | nothing | `/<IG_ID>/media` and `/<IG_ID>/media_publish` are paths with no host |
+| LinkedIn | `https://api.linkedin.com/rest/posts` | the row names no other address |
+| TikTok | nothing | `/v2/post/publish/content/init/` is a path with no host; `video.publish` and `video.upload` are scope names |
+| Facebook | nothing | `/<page_id>/feed` and `/<page_id>/photos` are paths with no host |
+| Threads | nothing | `/<threads-user-id>/threads` is a path with no host |
+| Reddit | `https://www.reddit.com/api/v1/access_token` and `reddit.com/prefs/apps` | `/api/submit` is a path with no host; `<platform>:<app ID>:<version>` and `/u/<username>` are a User-Agent format |
+
+A press reaches `webbrowser.open`, the same call the news ticker and the bot
+table already use. `page_links` is the whole list a press may name, so a press
+naming any other address opens nothing and the window records the refusal.
+
+The React page draws an anchor whose click opens the browser through the host.
+It does not navigate the view the page is drawn in. Read off the running page,
+a real click on Reddit's endpoint link opened the browser and left the view's
+own address unchanged.
+
+Read off the two running screens, all seven Level 1A pages draw 10 members
+under Qt and 10 under React. All 70 read the same, and the link of every venue
+matches in both.
+
+
+### Two sentences this entry contradicts
+
+Neither was reworded. Each is quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:2115` - "No such view is wired, and
+Facebook's Connect says so on the page rather than waiting three minutes for a
+reply that cannot come." One is wired now.
+
+`docs/manual/08-tabs/market-inspector.md:1877` - "Connect opens the system
+browser at that venue's own approval address, waits on a loopback listener for
+the reply". True for six venues. Facebook opens the window above and waits on
+no listener.
+
+**Figures.** This page carries no figure and this entry adds none.
+
+
 Back to [the subsystem index](README.md).
