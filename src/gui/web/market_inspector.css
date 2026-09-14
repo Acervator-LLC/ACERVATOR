@@ -34,6 +34,7 @@ body {
 [data-part="settings-button"],
 [data-part="venue-button"],
 [data-part="asset-category"],
+[data-part="timeframe-box"],
 [data-part="connect-button"],
 [data-part="back-button"],
 [data-part="zones-button"],
@@ -61,6 +62,15 @@ body {
   border-color: var(--grid);
 }
 
+/* The pressed button: a venue whose credential is held, the asset class a
+ * scan uses, a ticked timeframe, and Settings while a page is open. Qt paints
+ * the same two tokens through CHECKED_BUTTON_STYLE. */
+[data-scan-state] {
+  background: var(--PRIMARY, var(--accent));
+  color: var(--ON_PRIMARY, var(--bg));
+  border-color: var(--PRIMARY, var(--accent));
+}
+
 [data-part="active-switch"] {
   gap: 5px;
   white-space: nowrap;
@@ -68,8 +78,7 @@ body {
 
 /* QCheckBox::indicator: an 18px box, a 2px OUTLINE edge, a SURFACE_INPUT
  * ground, and PRIMARY when it is checked. */
-[data-part="switch-box"],
-[data-part="timeframe-box"] {
+[data-part="switch-box"] {
   appearance: none;
   flex: none;
   width: 18px;
@@ -80,8 +89,7 @@ body {
   accent-color: var(--accent);
 }
 
-[data-part="switch-box"]:checked,
-[data-part="timeframe-box"]:checked {
+[data-part="switch-box"]:checked {
   background: var(--PRIMARY, var(--accent));
   border-color: var(--PRIMARY, var(--accent));
 }

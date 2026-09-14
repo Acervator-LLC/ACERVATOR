@@ -1021,6 +1021,7 @@ class SectorBoard:
         self.sectors: list = []
         self.text = ""
         self.asset_class = CLASS_CRYPTO
+        self.timeframes: tuple = timeframes_for(CLASS_CRYPTO)
         self.run: Optional[AtaSpmRun] = None
 
     def sector_at(self, at: Any) -> Optional[Sector]:
@@ -1044,6 +1045,7 @@ class SectorBoard:
         if asked not in ASSET_CLASSES:
             return False
         self.asset_class = asked
+        self.timeframes = timeframes_for(asked)
         sector = self.sector_at(at)
         if sector is not None:
             sector.asset_class = asked
@@ -1051,28 +1053,35 @@ class SectorBoard:
         return True
 
     def toggle_timeframe(self, at: Any, key: Any) -> bool:
-        """Tick or untick one box on the sector shown, and answer its state."""
+        """Tick or untick one timeframe, and answer its state.
+
+        The sector shown carries the tick, and while the board holds none
+        ``timeframes`` carries it until ``compute`` gives it to the sector
+        the next scan adds.
+        """
         sector = self.sector_at(at)
-        if sector is None:
-            return False
         asked = str(key)
-        held = set(sector.timeframes)
+        asset_class = self.asset_class if sector is None else sector.asset_class
+        held = set(self.timeframes if sector is None else sector.timeframes)
         if asked in held:
             held.discard(asked)
         else:
             held.add(asked)
-        sector.timeframes = tuple(
-            one for one in timeframes_for(sector.asset_class) if one in held
-        )
+        ticked = tuple(one for one in timeframes_for(asset_class) if one in held)
+        if sector is None:
+            self.timeframes = ticked
+        else:
+            sector.timeframes = ticked
         return asked in held
 
     def boxes(self, at: Any) -> list:
-        """The four check-box rows of the sector shown, or the class's own four."""
+        """The four check rows of the sector shown, or of the next scan's sector."""
         sector = self.sector_at(at)
         if sector is not None:
             return sector.boxes()
+        held = {str(one) for one in self.timeframes}
         return [
-            [one, timeframe_label(one), False]
+            [one, timeframe_label(one), one in held]
             for one in timeframes_for(self.asset_class)
         ]
 
@@ -1096,7 +1105,7 @@ class SectorBoard:
                 Sector(
                     name=named,
                     asset_class=self.asset_class,
-                    timeframes=timeframes_for(self.asset_class),
+                    timeframes=self.timeframes,
                 )
             )
             added = len(sectors) - 1
