@@ -402,9 +402,7 @@ class ScrummingBot(
             self._phantom_timeframes = [
                 tf for tf in self._phantom_timeframes if tf in _allowed
             ]
-            self._phantom_tf_dropped = [
-                tf for tf in _original if tf not in _allowed
-            ]
+            self._phantom_tf_dropped = [tf for tf in _original if tf not in _allowed]
             if self._phantom_tf_dropped:
                 self._phantom_tf_dropped_note = (
                     f"Phantom timeframes dropped: "
@@ -1058,8 +1056,7 @@ class ScrummingBot(
             return {
                 "applied": False,
                 "reason": (
-                    f"hedge_rebalance_active must be true or false; "
-                    f"got {active!r}"
+                    f"hedge_rebalance_active must be true or false; " f"got {active!r}"
                 ),
             }
         old = bool(self.config.hedge_rebalance_active)
@@ -1081,8 +1078,7 @@ class ScrummingBot(
             )
         else:
             note = (
-                f"Reserve armed at ${new_reserve:.2f} against a "
-                f"${cap:.2f} ceiling."
+                f"Reserve armed at ${new_reserve:.2f} against a " f"${cap:.2f} ceiling."
             )
         self._bus.emit(
             "bot.log",

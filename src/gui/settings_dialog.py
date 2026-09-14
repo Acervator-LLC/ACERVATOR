@@ -500,9 +500,7 @@ if _HAS_QT:
         def _create_phantom_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
-            self._phantoms_enabled = QCheckBox(
-                "Enable Phantom Bots for Scrumming"
-            )
+            self._phantoms_enabled = QCheckBox("Enable Phantom Bots for Scrumming")
             self._phantoms_enabled.setChecked(True)
             layout.addWidget(self._phantoms_enabled)
             from src.gui.main_tabs.settings_dialog_surface import (
@@ -693,9 +691,7 @@ if _HAS_QT:
                 se._available = False
                 se._cache = {}
             except Exception as _sf_exc:  # noqa: BLE001
-                logger.warning(
-                    "sound settings did not reach the engine: %s", _sf_exc
-                )
+                logger.warning("sound settings did not reach the engine: %s", _sf_exc)
 
         def _push_sound_config(self) -> None:
             """Hand the engine every switch at the volume the slider is showing.
@@ -1019,42 +1015,60 @@ if _HAS_QT:
             )
 
             return (
-                ("username",
-                 lambda: self._username.text().strip(),
-                 self._username.setText,
-                 ""),
-                ("default_target_balance",
-                 self._default_balance.value,
-                 self._default_balance.setValue,
-                 200.0),
-                ("bot_visibility",
-                 self._visibility.currentText,
-                 lambda value: self._show_text(self._visibility, value),
-                 "orderbook"),
-                ("aggressive_trading",
-                 self._aggressive.isChecked,
-                 lambda value: self._aggressive.setChecked(bool(value)),
-                 False),
-                ("default_enable_phantoms",
-                 self._phantoms_enabled.isChecked,
-                 lambda value: self._phantoms_enabled.setChecked(bool(value)),
-                 True),
-                ("default_phantom_timeframe",
-                 self._phantom_timeframe.currentData,
-                 lambda value: self._show_data(self._phantom_timeframe, value),
-                 PHANTOM_TIMEFRAME_DEFAULT),
-                ("default_lock_candle_count",
-                 self._lock_candles.value,
-                 lambda value: self._lock_candles.setValue(int(value)),
-                 LOCK_CANDLE_DEFAULT),
-                ("theme",
-                 self._theme_combo.currentData,
-                 lambda value: self._show_data(self._theme_combo, value),
-                 "cyberpunk_dark"),
-                ("accent_color",
-                 lambda: self._accent_color.text().strip(),
-                 self._accent_color.setText,
-                 ACCENT_DEFAULT),
+                (
+                    "username",
+                    lambda: self._username.text().strip(),
+                    self._username.setText,
+                    "",
+                ),
+                (
+                    "default_target_balance",
+                    self._default_balance.value,
+                    self._default_balance.setValue,
+                    200.0,
+                ),
+                (
+                    "bot_visibility",
+                    self._visibility.currentText,
+                    lambda value: self._show_text(self._visibility, value),
+                    "orderbook",
+                ),
+                (
+                    "aggressive_trading",
+                    self._aggressive.isChecked,
+                    lambda value: self._aggressive.setChecked(bool(value)),
+                    False,
+                ),
+                (
+                    "default_enable_phantoms",
+                    self._phantoms_enabled.isChecked,
+                    lambda value: self._phantoms_enabled.setChecked(bool(value)),
+                    True,
+                ),
+                (
+                    "default_phantom_timeframe",
+                    self._phantom_timeframe.currentData,
+                    lambda value: self._show_data(self._phantom_timeframe, value),
+                    PHANTOM_TIMEFRAME_DEFAULT,
+                ),
+                (
+                    "default_lock_candle_count",
+                    self._lock_candles.value,
+                    lambda value: self._lock_candles.setValue(int(value)),
+                    LOCK_CANDLE_DEFAULT,
+                ),
+                (
+                    "theme",
+                    self._theme_combo.currentData,
+                    lambda value: self._show_data(self._theme_combo, value),
+                    "cyberpunk_dark",
+                ),
+                (
+                    "accent_color",
+                    lambda: self._accent_color.text().strip(),
+                    self._accent_color.setText,
+                    ACCENT_DEFAULT,
+                ),
             )
 
         def _stored_groups(self) -> tuple:
@@ -1065,36 +1079,55 @@ if _HAS_QT:
             from src.core.sms_engine import SETTINGS_GROUP as MESSAGE_CHANNELS_GROUP_KEY
 
             return (
-                ("ai_monitor", (
-                    ("api_key",
-                     lambda: self._ai_api_key.text().strip(),
-                     self._ai_api_key.setText,
-                     ""),
-                    ("interval_hours",
-                     self._ai_interval.value,
-                     self._ai_interval.setValue,
-                     4.0),
-                    ("connect_phrase",
-                     lambda: self._ai_connect_phrase.text().strip(),
-                     self._ai_connect_phrase.setText,
-                     ""),
-                    ("confirm_phrase",
-                     lambda: self._ai_confirm_phrase.text().strip(),
-                     self._ai_confirm_phrase.setText,
-                     ""),
-                    ("enabled",
-                     self._ai_enabled.isChecked,
-                     lambda value: self._ai_enabled.setChecked(bool(value)),
-                     False),
-                    ("auto_handshake",
-                     self._ai_auto_handshake.isChecked,
-                     lambda value: self._ai_auto_handshake.setChecked(bool(value)),
-                     True),
-                    ("log_feedback",
-                     self._ai_log_feedback.isChecked,
-                     lambda value: self._ai_log_feedback.setChecked(bool(value)),
-                     True),
-                )),
+                (
+                    "ai_monitor",
+                    (
+                        (
+                            "api_key",
+                            lambda: self._ai_api_key.text().strip(),
+                            self._ai_api_key.setText,
+                            "",
+                        ),
+                        (
+                            "interval_hours",
+                            self._ai_interval.value,
+                            self._ai_interval.setValue,
+                            4.0,
+                        ),
+                        (
+                            "connect_phrase",
+                            lambda: self._ai_connect_phrase.text().strip(),
+                            self._ai_connect_phrase.setText,
+                            "",
+                        ),
+                        (
+                            "confirm_phrase",
+                            lambda: self._ai_confirm_phrase.text().strip(),
+                            self._ai_confirm_phrase.setText,
+                            "",
+                        ),
+                        (
+                            "enabled",
+                            self._ai_enabled.isChecked,
+                            lambda value: self._ai_enabled.setChecked(bool(value)),
+                            False,
+                        ),
+                        (
+                            "auto_handshake",
+                            self._ai_auto_handshake.isChecked,
+                            lambda value: self._ai_auto_handshake.setChecked(
+                                bool(value)
+                            ),
+                            True,
+                        ),
+                        (
+                            "log_feedback",
+                            self._ai_log_feedback.isChecked,
+                            lambda value: self._ai_log_feedback.setChecked(bool(value)),
+                            True,
+                        ),
+                    ),
+                ),
                 ("ta_indicator_weights", self._ta_weight_rows()),
                 ("sound", self._sound_rows()),
                 (MESSAGE_CHANNELS_GROUP_KEY, self._sms_rows()),
@@ -1148,20 +1181,36 @@ if _HAS_QT:
                 fallback = getattr(built, key)
                 kind = spec_for(name)["kind"]
                 if kind == CHECK:
-                    return (key, box.isChecked,
-                            lambda value: box.setChecked(bool(value)), fallback)
+                    return (
+                        key,
+                        box.isChecked,
+                        lambda value: box.setChecked(bool(value)),
+                        fallback,
+                    )
                 if kind == LINE:
                     return (key, lambda: box.text().strip(), box.setText, fallback)
                 if kind == COMBO_DATA:
-                    return (key, box.currentData,
-                            lambda value: self._show_data(box, value), fallback)
+                    return (
+                        key,
+                        box.currentData,
+                        lambda value: self._show_data(box, value),
+                        fallback,
+                    )
                 if kind == COMBO_TEXT:
                     return (key, box.currentText, pick_text(box), fallback)
                 if kind == DOUBLE_SPIN:
-                    return (key, box.value,
-                            lambda value: box.setValue(float(value)), fallback)
-                return (key, box.value,
-                        lambda value: box.setValue(int(value)), fallback)
+                    return (
+                        key,
+                        box.value,
+                        lambda value: box.setValue(float(value)),
+                        fallback,
+                    )
+                return (
+                    key,
+                    box.value,
+                    lambda value: box.setValue(int(value)),
+                    fallback,
+                )
 
             return tuple(row(key, name) for key, name in SMS_CONFIG_FIELDS)
 
@@ -1192,12 +1241,14 @@ if _HAS_QT:
                 for key, name in SOUND_CONFIG_FIELDS
             )
             return switches + (
-                ("volume",
-                 lambda: self._sound_volume.value() / VOLUME_SCALE,
-                 lambda value: self._sound_volume.setValue(
-                     int(round(float(value) * VOLUME_SCALE))
-                 ),
-                 built.volume),
+                (
+                    "volume",
+                    lambda: self._sound_volume.value() / VOLUME_SCALE,
+                    lambda value: self._sound_volume.setValue(
+                        int(round(float(value) * VOLUME_SCALE))
+                    ),
+                    built.volume,
+                ),
             )
 
         def _ta_weight_rows(self) -> tuple:
@@ -1210,9 +1261,7 @@ if _HAS_QT:
             from src.trading.ta_engine import DEFAULT_WEIGHTS
 
             def read(name: str) -> Callable[[], float]:
-                return lambda: (
-                    self._ta_weight_sliders[name].value() / TA_SLIDER_SCALE
-                )
+                return lambda: (self._ta_weight_sliders[name].value() / TA_SLIDER_SCALE)
 
             def show(name: str) -> Callable[[object], None]:
                 return lambda value: self._ta_weight_sliders[name].setValue(
@@ -1246,9 +1295,7 @@ if _HAS_QT:
             for group, rows in self._stored_groups():
                 stored = self._sm.get(group, {})
                 for key, _read, show, fallback in rows:
-                    self._show_stored(
-                        f"{group}.{key}", show, stored.get(key, fallback)
-                    )
+                    self._show_stored(f"{group}.{key}", show, stored.get(key, fallback))
             for exch in self._sm.list_exchanges():
                 _eid = (exch.get("exchange_id", "") or "").lower()
                 _is_equity = _eid in EQUITY_EXCHANGE_IDS
@@ -1277,9 +1324,7 @@ if _HAS_QT:
                 return
 
             # A setting that fails to save never blocks the close.
-            pairs = {
-                key: read for key, read, _show, _fallback in self._stored_rows()
-            }
+            pairs = {key: read for key, read, _show, _fallback in self._stored_rows()}
             saved = 0
             failed: list[str] = []
             for key, getter in pairs.items():
@@ -1299,9 +1344,7 @@ if _HAS_QT:
                     saved += 1
                 except Exception as e:
                     failed.append(f"{group} ({e})")
-                    print(
-                        f"[SETTINGS ERROR] {group}: {e}", file=sys.stderr, flush=True
-                    )
+                    print(f"[SETTINGS ERROR] {group}: {e}", file=sys.stderr, flush=True)
 
             try:
                 self.settings_changed.emit()

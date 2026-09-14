@@ -259,9 +259,7 @@ def divide_pot(event_id: str, pot: object, scores: list) -> PotDivision:
             continue
         own = score_ratios[score.address]
         amount_units = int(return_pool_units * own / total_score_ratio)
-        normalised_units = int(
-            QUINTESSENCE_UNITS_PER_WHOLE * own / total_score_ratio
-        )
+        normalised_units = int(QUINTESSENCE_UNITS_PER_WHOLE * own / total_score_ratio)
         shares.append(
             PayoutShare(
                 address=score.address,

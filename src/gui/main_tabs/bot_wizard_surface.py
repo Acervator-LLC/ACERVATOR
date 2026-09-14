@@ -1962,9 +1962,7 @@ class BotWizardModel:
         """
         parent = str(self.combo_data(TA_COMBO_NAME) or EMPTY_TEXT)
         if not is_higher_timeframe(timeframe, parent):
-            return PHANTOM_NOT_HIGHER_FORMAT.format(
-                timeframe=timeframe, parent=parent
-            )
+            return PHANTOM_NOT_HIGHER_FORMAT.format(timeframe=timeframe, parent=parent)
         if not self.phantom_enabled_timeframes[timeframe]:
             return PHANTOM_NOT_OFFERED_FORMAT.format(
                 timeframe=timeframe,

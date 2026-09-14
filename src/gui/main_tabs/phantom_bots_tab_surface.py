@@ -810,15 +810,9 @@ class PhantomBotsTabModel:
         self.summary_rows.append(
             [TIMEFRAMES_ROW_LABEL, timeframes_text(timeframes), ""]
         )
-        self.dropped = [
-            str(one) for one in (getattr(bot, DROPPED_ATTRIBUTE, []) or [])
-        ]
-        self.below_parent = below_parent_timeframes(
-            timeframes, self.parent_timeframe
-        )
-        self.summary_rows.append(
-            [DROPPED_ROW_LABEL, timeframes_text(self.dropped), ""]
-        )
+        self.dropped = [str(one) for one in (getattr(bot, DROPPED_ATTRIBUTE, []) or [])]
+        self.below_parent = below_parent_timeframes(timeframes, self.parent_timeframe)
+        self.summary_rows.append([DROPPED_ROW_LABEL, timeframes_text(self.dropped), ""])
         self.summary_rows.append(
             [BELOW_PARENT_ROW_LABEL, timeframes_text(self.below_parent), ""]
         )

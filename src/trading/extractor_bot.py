@@ -622,9 +622,7 @@ class ExtractorBot(BotContainer):
             )
         accepted, reason = self.update_usd_per_base_rate(rate)
         if not accepted:
-            logger.info(
-                "Bot %s %s/USD rate %s", self.bot_id, base, reason
-            )
+            logger.info("Bot %s %s/USD rate %s", self.bot_id, base, reason)
 
     async def _read_base_holdings(self, base: str) -> Optional[float]:
         """Return the free balance of ``base`` on the venue, or None unread.

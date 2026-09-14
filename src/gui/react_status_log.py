@@ -230,8 +230,7 @@ def page_body() -> str:
     which sheet the page holds and how many rules that sheet gave it.
     """
     parts = [
-        _STYLE_TAG % {"name": name, "source": read_asset(name)}
-        for name in STYLE_ASSETS
+        _STYLE_TAG % {"name": name, "source": read_asset(name)} for name in STYLE_ASSETS
     ]
     parts.append(f'<div id="{PANEL_ROOT_ID}"></div>')
     for name in BASE_SCRIPT_ASSETS:

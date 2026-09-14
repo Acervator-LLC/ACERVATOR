@@ -178,7 +178,9 @@ def dialog_html(theme: object = None) -> str:
 
 def open_script(model: dict) -> str:
     """The one JS statement that hands ``model`` to the page."""
-    return "window.acervatorBotWizardOpen(" + json.dumps(model, ensure_ascii=True) + ");"
+    return (
+        "window.acervatorBotWizardOpen(" + json.dumps(model, ensure_ascii=True) + ");"
+    )
 
 
 def answer_script(call_id: int, model: dict) -> str:

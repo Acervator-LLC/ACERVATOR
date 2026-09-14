@@ -584,9 +584,7 @@ def named_design_frames() -> int:
 def drawing_jobs() -> int:
     """Add the ``entities`` of every tier that declares one."""
     return sum(
-        tier.entities
-        for tier in MONSTER_TIER_TABLE
-        if tier.entities is not None
+        tier.entities for tier in MONSTER_TIER_TABLE if tier.entities is not None
     )
 
 
