@@ -65,11 +65,12 @@ SCAN_NOW_KEY = "scan-now"
 #: ``MarketInspectorScreenModel.push_action``.
 PUSH_KEYS = surface.PUSH_PARTS
 
-SAVE_CREDENTIALS_KEY = surface.SAVE_CREDENTIALS_PART
 SETTING_FIELD_KEY = surface.SETTING_FIELD_PART
+VENUE_BUTTON_KEY = surface.VENUE_BUTTON_PART
+ASSET_CATEGORY_KEY = surface.ASSET_CATEGORY_PART
 
-#: The parts one push target's credential is typed into.
-CREDENTIAL_KEYS = tuple(one for one, _placeholder in surface.CREDENTIAL_FIELDS)
+#: Every part one push target's credential is typed into, across all seven.
+CREDENTIAL_KEYS = surface.CREDENTIAL_FIELD_KEYS
 
 #: The three positions one credential field press carries.
 CREDENTIAL_TARGET_AT = 0
@@ -399,8 +400,11 @@ if _HAS_QT and _HAS_WEBENGINE:
             elif key in PUSH_KEYS:
                 self._screen.push_action(key)
                 self.push()
-            elif key == SAVE_CREDENTIALS_KEY:
-                self._screen.save_credentials()
+            elif key == VENUE_BUTTON_KEY:
+                self._screen.open_credentials(request.get("value"))
+                self.push()
+            elif key == ASSET_CATEGORY_KEY:
+                self._screen.set_sector_class(request.get("value"))
                 self.push()
             elif key in CREDENTIAL_KEYS:
                 self._take_credential_text(request.get("value"))

@@ -627,6 +627,8 @@
   var NO_SELECT = "none";
   var PRE = "pre";
   var PRE_WRAP = "pre-wrap";
+  var WRAP = "wrap";
+  var NORMAL_WRAP = "normal";
   var RELATIVE = "relative";
   var ABSOLUTE = "absolute";
   var SOLID = "solid";
@@ -749,7 +751,7 @@
   var SETTINGS_PAGE_PART = "settings-page";
   var SETTINGS_ROW_PART = "settings-row";
   var SETTINGS_LABEL_PART = "settings-label";
-  var CREDENTIAL_STATE_PART = "credential-state";
+  var SETTINGS_GROUP_PART = "settings-group";
   var STRIP_TEXT_PART = "strip-text";
 
   var ZONE_THUMBNAIL = "thumbnail";
@@ -798,21 +800,61 @@
   var BUCKET_SETTINGS = "settings";
 
   var SETTINGS_OPEN = "open";
+  var SETTINGS_LEVEL = "level";
+  var LEVEL_ONE_A = "level-1a";
   var SETTINGS_LABEL = "settings_label";
   var SETTINGS_TOOLTIP = "settings_tooltip";
   var SETTINGS_PART = "settings_part";
-  var SAVE_LABEL = "save_label";
-  var SAVE_TOOLTIP = "save_tooltip";
-  var SAVE_PART = "save_part";
   var SETTING_PART = "setting_part";
-  var CREDENTIAL_FIELDS = "credential_fields";
+  var VENUE_PART = "venue_part";
+  var CATEGORY_PART = "category_part";
+  var CONNECT_PART = "connect_part";
+  var BACK_PART = "back_part";
+  var ZONES_PART = "zones_part";
+  var ZONES_TOOLTIP = "zones_tooltip";
+  var PAGE_PART = "page_part";
+  var MESSAGE_PART = "message_part";
+  var TITLE_PART = "title_part";
+  var ENDPOINT_PART = "endpoint_part";
+  var SCOPES_PART = "scopes_part";
+  var REGISTRATION_PART = "registration_part";
+  var ACCOUNTS_TITLE = "accounts_title";
+  var CATEGORY_TITLE = "category_title";
+  var SETTINGS_TITLE = "settings_title";
+  var CONNECT_LABEL = "connect_label";
+  var CONNECT_TOOLTIP = "connect_tooltip";
+  var PAGE_BACK_LABEL = "back_label";
+  var PAGE_BACK_TOOLTIP = "back_tooltip";
+  var VENUE_TOOLTIP_FORMAT = "venue_tooltip_format";
+  var CATEGORY_TOOLTIP_FORMAT = "category_tooltip_format";
   var CREDENTIAL_ROWS = "credential_rows";
+  var CATEGORY_ROWS = "category_rows";
   var SETTING_ROWS = "setting_rows";
+  var CREDENTIAL_PAGE = "credential";
+  var PAGE_TARGET = "target";
+  var PAGE_FIELDS = "fields";
+  var PAGE_ENDPOINT = "endpoint";
+  var PAGE_SCOPES = "scopes";
+  var PAGE_REGISTRATION = "registration";
+  var PAGE_MESSAGE = "message";
   var CREDENTIAL_WIDTH_PX = "credential_width_px";
   var SETTING_WIDTH_PX = "setting_width_px";
+  var VENUE_WIDTH_PX = "venue_width_px";
+  var CATEGORY_WIDTH_PX = "category_width_px";
+  var VENUE_GRID_WIDTH_PX = "venue_grid_width_px";
+  var CATEGORY_GRID_WIDTH_PX = "category_grid_width_px";
+  var CREDENTIAL_GRID_WIDTH_PX = "credential_grid_width_px";
+  var SETTING_GRID_WIDTH_PX = "setting_grid_width_px";
+  var CREDENTIAL_ROW_WIDTH_PX = "credential_row_width_px";
+  var SETTING_ROW_WIDTH_PX = "setting_row_width_px";
+  var CONNECT_WIDTH_PX = "connect_width_px";
+  var BACK_WIDTH_PX = "back_width_px";
   var SETTINGS_LABEL_WIDTH_PX = "label_width_px";
   var SETTINGS_SPACING_PX = "row_spacing_px";
   var PASSWORD_TYPE = "password";
+  var TARGET_TOKEN = "{target}";
+  var STATE_TOKEN = "{state}";
+  var NAME_TOKEN = "{name}";
 
   var SECTOR_TEXT_FIELD = "sector_text";
   var SECTOR_CLASS_FIELD = "sector_class";
@@ -823,7 +865,7 @@
   var STEP_FIELD = "step";
   var TOGGLE_ZONE_FIELD = "toggle_zone";
   var PUSH_ACTION_FIELD = "push_action";
-  var SAVE_CREDENTIALS_FIELD = "save_credentials";
+  var OPEN_CREDENTIALS_FIELD = "open_credentials";
   var CREDENTIAL_TEXT_FIELD = "credential_text";
   var SET_SETTING_FIELD = "set_setting";
   var PUSH_PARTS = "push_parts";
@@ -1728,11 +1770,12 @@
       style: style,
       title: label(props.tooltip),
       onClick: function () {
-        act(text(props.part), true);
+        act(text(props.part), props.value === undefined ? true : props.value);
       }
     };
     buttonProps[PART_ATTR] = text(props.part);
-    buttonProps[NAME_ATTR] = text(props.part);
+    buttonProps[NAME_ATTR] =
+      props.name === undefined ? text(props.part) : text(props.name);
     buttonProps[ARIA_LABEL] = label(props.label);
     if (props.on === true) {
       buttonProps[STATE_ATTR] = text(props.part);
@@ -1791,7 +1834,7 @@
 
   // settingsRowStyle is one line of the settings page: a label of fixed
   // width, then the fields that line carries.
-  function settingsRowStyle(page) {
+  function settingsRowStyle(page, width) {
     var style = {
       display: FLEX,
       flexDirection: ROW_WAY,
@@ -1799,6 +1842,9 @@
       alignItems: CENTER
     };
     style.gap = length(page[SETTINGS_SPACING_PX]);
+    if (width !== undefined) {
+      style.width = length(page[width]);
+    }
     return style;
   }
 
@@ -1812,42 +1858,189 @@
     return element(DIV_TAG, labelProps, text(name));
   }
 
-  // CredentialRow is one push target's two write-only fields and whether the
-  // vault holds a credential for it. No token is ever drawn back.
-  function CredentialRow(props) {
+  // VenueButton is one push target's Level 1 button. Pressing it opens that
+  // target's Level 1A page, and the button draws on while the vault holds it.
+  function VenueButton(props) {
     var page = props.page;
     var row = asList(props.row);
-    var style = fieldStyle(page, CREDENTIAL_WIDTH_PX);
-    var stateProps = { style: asLabel({}, false) };
-    stateProps[PART_ATTR] = CREDENTIAL_STATE_PART;
-    stateProps[NAME_ATTR] = text(row[ZERO]);
-    var rowProps = { style: settingsRowStyle(page) };
+    var name = text(row[ZERO]);
+    var tooltip = text(page[VENUE_TOOLTIP_FORMAT])
+      .split(TARGET_TOKEN)
+      .join(name)
+      .split(STATE_TOKEN)
+      .join(text(row[TWO]));
+    return element(PushButton, {
+      key: name,
+      model: props.model,
+      part: text(page[VENUE_PART]),
+      name: name,
+      label: name,
+      tooltip: tooltip,
+      width: page[VENUE_WIDTH_PX],
+      height: page[BUTTON_HEIGHT_PX],
+      value: name,
+      on: row[ONE] === true
+    });
+  }
+
+  // CategoryButton is one asset class's Level 1 button, on while a scan uses it.
+  function CategoryButton(props) {
+    var page = props.page;
+    var row = asList(props.row);
+    var name = text(row[ZERO]);
+    return element(PushButton, {
+      key: name,
+      model: props.model,
+      part: text(page[CATEGORY_PART]),
+      name: name,
+      label: name,
+      tooltip: text(page[CATEGORY_TOOLTIP_FORMAT]).split(NAME_TOKEN).join(name),
+      width: page[CATEGORY_WIDTH_PX],
+      height: page[BUTTON_HEIGHT_PX],
+      value: name,
+      on: row[ONE] === true
+    });
+  }
+
+  // sectionTitle heads one Level 1 group, so a reader can tell the three apart.
+  function sectionTitle(page, title) {
+    var titleProps = { style: asLabel({}, false) };
+    titleProps[PART_ATTR] = text(page[TITLE_PART]);
+    titleProps[NAME_ATTR] = label(title);
+    return element(DIV_TAG, titleProps, label(title));
+  }
+
+  // wrapAt is a row of cells that breaks at a published width, so the page
+  // and the Qt grid put the same count on one line.
+  function wrapAt(page, part, name, width, children) {
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flexWrap: WRAP,
+      flex: FLEX_NONE,
+      alignItems: CENTER
+    };
+    style.gap = length(page[SETTINGS_SPACING_PX]);
+    style.width = length(page[width]);
+    var rowProps = { style: style };
+    rowProps[PART_ATTR] = part;
+    rowProps[NAME_ATTR] = label(name);
+    return element(DIV_TAG, rowProps, asList(children));
+  }
+
+  // buttonGroup is one Level 1 section: its heading and the buttons under it.
+  function buttonGroup(page, title, width, children) {
+    return [
+      sectionTitle(page, title),
+      wrapAt(page, SETTINGS_GROUP_PART, title, width, children)
+    ];
+  }
+
+  // CredentialField is one box of the open venue's Level 1A page. Nothing
+  // typed here is ever drawn back, so no render carries a token.
+  function CredentialField(props) {
+    var page = props.page;
+    var pair = asList(props.field);
+    var fieldProps = {
+      type: PASSWORD_TYPE,
+      style: fieldStyle(page, CREDENTIAL_WIDTH_PX),
+      placeholder: label(pair[ONE]),
+      onInput: function (event) {
+        act(text(pair[ZERO]), [
+          text(props.target),
+          text(pair[ZERO]),
+          event.target.value
+        ]);
+      }
+    };
+    fieldProps[PART_ATTR] = text(pair[ZERO]);
+    fieldProps[NAME_ATTR] = text(pair[ZERO]) + GAP + text(props.target);
+    fieldProps[ARIA_LABEL] = label(pair[ONE]);
+    var rowProps = { style: settingsRowStyle(page, CREDENTIAL_ROW_WIDTH_PX) };
     rowProps[PART_ATTR] = SETTINGS_ROW_PART;
-    rowProps[NAME_ATTR] = text(row[ZERO]);
+    rowProps[NAME_ATTR] = text(pair[ZERO]);
     return element(
       DIV_TAG,
       rowProps,
-      settingsLabel(page, row[ZERO]),
-      listField(page, CREDENTIAL_FIELDS).map(function (field) {
-        var pair = asList(field);
-        var fieldProps = {
-          type: PASSWORD_TYPE,
-          style: style,
-          placeholder: label(pair[ONE]),
-          onInput: function (event) {
-            act(text(pair[ZERO]), [
-              text(row[ZERO]),
-              text(pair[ZERO]),
-              event.target.value
-            ]);
-          }
-        };
-        fieldProps[PART_ATTR] = text(pair[ZERO]);
-        fieldProps[NAME_ATTR] = text(pair[ZERO]) + GAP + text(row[ZERO]);
-        fieldProps[ARIA_LABEL] = label(pair[ONE]);
-        return element(INPUT_TAG, fieldProps);
-      }),
-      element(DIV_TAG, stateProps, text(row[TWO]))
+      settingsLabel(page, pair[ONE]),
+      element(INPUT_TAG, fieldProps)
+    );
+  }
+
+  // pageLine is one read-only line of Level 1A: its address, scopes, message
+  // or what the operator must register before any of it works.
+  function pageLine(page, part, written) {
+    var style = asLabel({}, false);
+    style.whiteSpace = NORMAL_WRAP;
+    var lineProps = { style: style };
+    lineProps[PART_ATTR] = text(part);
+    lineProps[NAME_ATTR] = text(part);
+    return element(DIV_TAG, lineProps, text(written));
+  }
+
+  // CredentialPage is Level 1A: one venue, the boxes its own documentation
+  // names, Connect, Back, and what the last press answered.
+  function CredentialPage(props) {
+    var model = props.model;
+    var page = props.page;
+    var held = objectField(page, CREDENTIAL_PAGE);
+    var target = text(held[PAGE_TARGET]);
+    var style = {
+      display: FLEX,
+      flexDirection: COLUMN_WAY,
+      flex: ONE,
+      minHeight: ZERO
+    };
+    style.gap = length(page[SETTINGS_SPACING_PX]);
+    var pageProps = { style: style };
+    pageProps[PART_ATTR] = text(page[PAGE_PART]);
+    pageProps[NAME_ATTR] = target;
+    return element(
+      DIV_TAG,
+      pageProps,
+      sectionTitle(page, target),
+      pageLine(page, page[ENDPOINT_PART], held[PAGE_ENDPOINT]),
+      pageLine(page, page[SCOPES_PART], held[PAGE_SCOPES]),
+      wrapAt(
+        page,
+        SETTINGS_GROUP_PART,
+        target,
+        CREDENTIAL_GRID_WIDTH_PX,
+        listField(held, PAGE_FIELDS).map(function (field, at) {
+          return element(CredentialField, {
+            key: PAGE_FIELDS + PATH_SPLIT + String(at),
+            page: page,
+            target: target,
+            field: field
+          });
+        })
+      ),
+      element(
+        DIV_TAG,
+        { style: settingsRowStyle(page) },
+        element(PushButton, {
+          key: CONNECT_PART,
+          model: model,
+          part: text(page[CONNECT_PART]),
+          label: text(page[CONNECT_LABEL]),
+          tooltip: text(page[CONNECT_TOOLTIP]),
+          width: page[CONNECT_WIDTH_PX],
+          height: page[BUTTON_HEIGHT_PX],
+          on: false
+        }),
+        element(PushButton, {
+          key: BACK_PART,
+          model: model,
+          part: text(page[BACK_PART]),
+          label: text(page[PAGE_BACK_LABEL]),
+          tooltip: text(page[PAGE_BACK_TOOLTIP]),
+          width: page[BACK_WIDTH_PX],
+          height: page[BUTTON_HEIGHT_PX],
+          on: false
+        })
+      ),
+      pageLine(page, page[MESSAGE_PART], held[PAGE_MESSAGE]),
+      pageLine(page, page[REGISTRATION_PART], held[PAGE_REGISTRATION])
     );
   }
 
@@ -1867,7 +2060,7 @@
     fieldProps[PART_ATTR] = text(page[SETTING_PART]);
     fieldProps[NAME_ATTR] = text(row[ZERO]);
     fieldProps[ARIA_LABEL] = label(row[ONE]);
-    var rowProps = { style: settingsRowStyle(page) };
+    var rowProps = { style: settingsRowStyle(page, SETTING_ROW_WIDTH_PX) };
     rowProps[PART_ATTR] = SETTINGS_ROW_PART;
     rowProps[NAME_ATTR] = text(row[ZERO]);
     return element(
@@ -1878,41 +2071,79 @@
     );
   }
 
-  // clearCredentialFields empties every credential field once Save has run.
-  function clearCredentialFields(page) {
-    listField(page, CREDENTIAL_FIELDS).forEach(function (field) {
-      var part = text(asList(field)[ZERO]);
-      var found = document.querySelectorAll("[" + PART_ATTR + "=\"" + part + "\"]");
-      Array.prototype.forEach.call(found, function (node) {
-        node.value = EMPTY;
-      });
-    });
-  }
-
-  // SaveCredentialsButton asks Python to encrypt what the fields reported.
-  function SaveCredentialsButton(props) {
+  // AccountsPage is Level 1: one button per push target, one per asset class,
+  // and the four settings a phase reads.
+  function AccountsPage(props) {
+    var model = props.model;
     var page = props.page;
-    var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
-    style.flex = FLEX_NONE;
-    style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
-    style.boxSizing = BORDER_BOX;
-    style.height = length(page[BUTTON_HEIGHT_PX]);
-    var buttonProps = {
-      type: BUTTON_TYPE,
-      style: style,
-      title: label(page[SAVE_TOOLTIP]),
-      onClick: function () {
-        act(text(page[SAVE_PART]), true);
-        clearCredentialFields(page);
-      }
+    var style = {
+      display: FLEX,
+      flexDirection: COLUMN_WAY,
+      flex: ONE,
+      minHeight: ZERO
     };
-    buttonProps[PART_ATTR] = text(page[SAVE_PART]);
-    buttonProps[NAME_ATTR] = text(page[SAVE_PART]);
-    buttonProps[ARIA_LABEL] = label(page[SAVE_LABEL]);
-    return element(BUTTON_TAG, buttonProps, text(page[SAVE_LABEL]));
+    style.gap = length(page[SETTINGS_SPACING_PX]);
+    var pageProps = { style: style };
+    pageProps[PART_ATTR] = SETTINGS_GROUP_PART;
+    pageProps[NAME_ATTR] = text(page[ACCOUNTS_TITLE]);
+    return element(
+      DIV_TAG,
+      pageProps,
+      buttonGroup(
+        page,
+        page[ACCOUNTS_TITLE],
+        VENUE_GRID_WIDTH_PX,
+        listField(page, CREDENTIAL_ROWS).map(function (row) {
+          return element(VenueButton, {
+            key: text(asList(row)[ZERO]),
+            model: model,
+            page: page,
+            row: row
+          });
+        })
+      ),
+      buttonGroup(
+        page,
+        page[CATEGORY_TITLE],
+        CATEGORY_GRID_WIDTH_PX,
+        listField(page, CATEGORY_ROWS).map(function (row) {
+          return element(CategoryButton, {
+            key: text(asList(row)[ZERO]),
+            model: model,
+            page: page,
+            row: row
+          });
+        })
+      ),
+      sectionTitle(page, page[SETTINGS_TITLE]),
+      wrapAt(
+        page,
+        SETTINGS_GROUP_PART,
+        page[SETTINGS_TITLE],
+        SETTING_GRID_WIDTH_PX,
+        listField(page, SETTING_ROWS).map(function (row, at) {
+          return element(SettingRow, {
+            key: SETTING_ROWS + PATH_SPLIT + String(at),
+            page: page,
+            row: row
+          });
+        })
+      ),
+      element(PushButton, {
+        key: ZONES_PART,
+        model: model,
+        part: text(page[ZONES_PART]),
+        label: text(page[PAGE_BACK_LABEL]),
+        tooltip: text(page[ZONES_TOOLTIP]),
+        width: page[BACK_WIDTH_PX],
+        height: page[BUTTON_HEIGHT_PX],
+        on: false
+      })
+    );
   }
 
-  // SettingsPage is what the ATA-SPM zone shows in place of its stepper.
+  // SettingsPage is what the ATA-SPM zone shows in place of its stepper:
+  // Level 1, or the Level 1A page of whichever venue button was pressed.
   function SettingsPage(props) {
     var model = props.model;
     var page = objectField(objectField(model, BUCKET), BUCKET_SETTINGS);
@@ -1920,34 +2151,18 @@
       display: FLEX,
       flexDirection: COLUMN_WAY,
       flex: ONE,
-      minHeight: ZERO,
-      overflow: AUTO
+      minHeight: ZERO
     };
     style.gap = length(page[SETTINGS_SPACING_PX]);
     var pageProps = { style: style };
     pageProps[PART_ATTR] = SETTINGS_PAGE_PART;
+    pageProps[NAME_ATTR] = text(page[SETTINGS_LEVEL]);
     return element(
       DIV_TAG,
       pageProps,
-      listField(page, CREDENTIAL_ROWS).map(function (row, at) {
-        return element(CredentialRow, {
-          key: CREDENTIAL_ROWS + PATH_SPLIT + String(at),
-          page: page,
-          row: row
-        });
-      }),
-      element(SaveCredentialsButton, {
-        key: SAVE_PART,
-        model: model,
-        page: page
-      }),
-      listField(page, SETTING_ROWS).map(function (row, at) {
-        return element(SettingRow, {
-          key: SETTING_ROWS + PATH_SPLIT + String(at),
-          page: page,
-          row: row
-        });
-      })
+      text(page[SETTINGS_LEVEL]) === LEVEL_ONE_A
+        ? element(CredentialPage, { key: LEVEL_ONE_A, model: model, page: page })
+        : element(AccountsPage, { key: SETTINGS_PAGE_PART, model: model, page: page })
     );
   }
 
@@ -2029,28 +2244,22 @@
   // ATA-SPM zone carries the sector row and Opposing Trades the scan row.
   function moduleGroups(model) {
     var keys = listField(model, LEFT_MODULE_KEYS);
-    var open = settingsOf(model)[SETTINGS_OPEN] === true;
     return listField(model, LEFT_MODULES).map(function (entry, at) {
       return element(ModuleGroup, {
         key: MODULE_GROUP_PART + PATH_SPLIT + String(at),
         model: model,
         entry: entry,
         shares: true,
-        hidesStepper: entry[ZERO] === keys[ZERO] && open,
+        hidesStepper: false,
         children: zoneContent(model, entry[ZERO], keys)
       });
     });
   }
 
-  // The row one left zone carries above its stepper, or none. The ATA-SPM
-  // zone shows its settings page in place of the stepper while it is open.
+  // The row one left zone carries above its stepper, or none.
   function zoneContent(model, key, keys) {
     if (key === keys[ZERO]) {
-      var rows = [element(AtaRow, { key: ATA_ROW_PART, model: model })];
-      if (settingsOf(model)[SETTINGS_OPEN] === true) {
-        rows.push(element(SettingsPage, { key: SETTINGS_PAGE_PART, model: model }));
-      }
-      return rows;
+      return [element(AtaRow, { key: ATA_ROW_PART, model: model })];
     }
     if (key === keys[ONE]) {
       return scanContent(model);
@@ -2079,7 +2288,9 @@
     return element(
       DIV_TAG,
       paneProps,
-      moduleGroups(model)
+      settingsOf(model)[SETTINGS_OPEN] === true
+        ? element(SettingsPage, { key: SETTINGS_PAGE_PART, model: model })
+        : moduleGroups(model)
     );
   }
 
@@ -2954,7 +3165,10 @@
   }
 
   function credentialParts() {
-    return listField(settingsHeld(), CREDENTIAL_FIELDS).map(function (field) {
+    return listField(
+      objectField(settingsHeld(), CREDENTIAL_PAGE),
+      PAGE_FIELDS
+    ).map(function (field) {
       return text(asList(field)[ZERO]);
     });
   }
@@ -2979,8 +3193,10 @@
       asked[SCAN_NOW_FIELD] = true;
     } else if (pushParts().indexOf(key) >= ZERO) {
       asked[PUSH_ACTION_FIELD] = key;
-    } else if (key === settingsHeld()[SAVE_PART]) {
-      asked[SAVE_CREDENTIALS_FIELD] = true;
+    } else if (key === settingsHeld()[VENUE_PART]) {
+      asked[OPEN_CREDENTIALS_FIELD] = value;
+    } else if (key === settingsHeld()[CATEGORY_PART]) {
+      asked[SECTOR_CLASS_FIELD] = value;
     } else if (credentialParts().indexOf(key) >= ZERO) {
       asked[CREDENTIAL_TEXT_FIELD] = value;
     } else if (key === settingsHeld()[SETTING_PART]) {

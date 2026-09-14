@@ -32,7 +32,11 @@ body {
 [data-part="refresh-button"],
 [data-part="scan-now"],
 [data-part="settings-button"],
-[data-part="save-credentials"],
+[data-part="venue-button"],
+[data-part="asset-category"],
+[data-part="connect-button"],
+[data-part="back-button"],
+[data-part="zones-button"],
 [data-part="post-selected"],
 [data-part="post-all"],
 [data-part="full-auto"],
@@ -86,8 +90,7 @@ body {
  * and the widths come from the payload; this is colour and type only. */
 [data-part="sector-field"],
 [data-part="class-box"],
-[data-part="credential-key"],
-[data-part="credential-signature"],
+[data-part="settings-row"] input[type="password"],
 [data-part="setting-field"] {
   background: var(--bg);
   color: var(--text);
@@ -97,8 +100,7 @@ body {
 }
 
 [data-part="sector-field"]::placeholder,
-[data-part="credential-key"]::placeholder,
-[data-part="credential-signature"]::placeholder {
+[data-part="settings-row"] input[type="password"]::placeholder {
   color: var(--grid);
 }
 
@@ -109,9 +111,22 @@ body {
   border-radius: 2px;
 }
 
-[data-part="credential-state"],
+/* The Qt rows use a plain QLabel, so the label takes the body colour. */
 [data-part="settings-label"] {
-  color: var(--grid);
+  white-space: nowrap;
+}
+
+/* The Level 1A lines the venue's own documentation supplies, and the wording
+ * the last Connect press answered. Qt draws each as a plain QLabel. */
+[data-part="endpoint-line"],
+[data-part="scopes-line"],
+[data-part="registration-line"],
+[data-part="credential-message"] {
+  white-space: normal;
+}
+
+/* The Qt heading is a plain QLabel, so this takes the body colour too. */
+[data-part="section-title"] {
   white-space: nowrap;
 }
 
@@ -144,14 +159,12 @@ body {
 }
 
 /* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
-[data-part="settings-page"]::-webkit-scrollbar,
 [data-part="zone-entry"]::-webkit-scrollbar,
 [data-part="topology-slot"]::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-[data-part="settings-page"]::-webkit-scrollbar-thumb,
 [data-part="zone-entry"]::-webkit-scrollbar-thumb,
 [data-part="topology-slot"]::-webkit-scrollbar-thumb {
   background: var(--border);

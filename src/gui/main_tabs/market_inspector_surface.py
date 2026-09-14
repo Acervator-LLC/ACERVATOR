@@ -197,7 +197,6 @@ POST_SELECTED_LABEL = "Post Selected"
 POST_ALL_LABEL = "Post All"
 FULL_AUTO_LABEL = "Send Bucket Full Auto"
 SETTINGS_LABEL = "Settings"
-SAVE_CREDENTIALS_LABEL = "Save credentials"
 
 APPROVE_PART = "approve-button"
 DECLINE_PART = "decline-button"
@@ -205,9 +204,11 @@ POST_SELECTED_PART = "post-selected"
 POST_ALL_PART = "post-all"
 FULL_AUTO_PART = "full-auto"
 SETTINGS_PART = "settings-button"
-SAVE_CREDENTIALS_PART = "save-credentials"
 SETTING_FIELD_PART = "setting-field"
 THUMBNAIL_PART = "post-thumbnail"
+CONNECT_PART = "connect-button"
+BACK_PART = "back-button"
+ZONES_PART = "zones-button"
 
 #: Every press ``MarketInspectorScreenModel.push_action`` answers, which is
 #: how the Electron host knows which key to send as one.
@@ -219,6 +220,9 @@ PUSH_PARTS = (
     FULL_AUTO_PART,
     SETTINGS_PART,
     THUMBNAIL_PART,
+    CONNECT_PART,
+    BACK_PART,
+    ZONES_PART,
 )
 
 #: Sized here rather than by their own text, so the Qt widget and the page
@@ -233,27 +237,81 @@ FULL_AUTO_WIDTH_PX = 184
 SETTINGS_WIDTH_PX = 96
 SCAN_NOW_WIDTH_PX = 108
 
-#: The wording each empty credential field shows, in the order
-#: ``ata_spm_push.CREDENTIAL_FIELD_KEYS`` names them.
-CREDENTIAL_PLACEHOLDERS = ("API key", "API signature")
+#: Every credential box's part name, which is what a page reports back when
+#: the operator types into one.
+CREDENTIAL_FIELD_KEYS = ata_spm_push.CREDENTIAL_FIELD_KEYS
 
-#: The two fields one push target's credential is typed into, each as its
-#: part name and the wording the empty field shows.
-CREDENTIAL_FIELDS = tuple(
-    zip(ata_spm_push.CREDENTIAL_FIELD_KEYS, CREDENTIAL_PLACEHOLDERS)
-)
+#: The two pages the ATA-SPM zone shows in place of its stepper. Level 1 is
+#: the accounts, categories and settings; Level 1A is one venue's sign-in.
+LEVEL_ONE = "level-1"
+LEVEL_ONE_A = "level-1a"
+
+SM_ACCOUNTS_TITLE = "SM Accounts"
+ASSET_CATEGORY_TITLE = "Asset Category"
+ATA_SETTINGS_TITLE = "Settings"
+
+VENUE_BUTTON_PART = "venue-button"
+ASSET_CATEGORY_PART = "asset-category"
+CREDENTIAL_PAGE_PART = "credential-page"
+CREDENTIAL_MESSAGE_PART = "credential-message"
+SECTION_TITLE_PART = "section-title"
+ENDPOINT_LINE_PART = "endpoint-line"
+SCOPES_LINE_PART = "scopes-line"
+REGISTRATION_LINE_PART = "registration-line"
+
+VENUE_BUTTON_WIDTH_PX = 108
+ASSET_CATEGORY_WIDTH_PX = 108
+CONNECT_WIDTH_PX = 96
+BACK_WIDTH_PX = 76
+
+#: How many buttons one Level 1 group puts on a line, and how many label-and-box
+#: rows Level 1 and Level 1A put on one. Both pages fit the zone at these counts.
+BUTTON_COLUMNS = 4
+FIELD_COLUMNS = 2
+
+
+CONNECT_LABEL = "Connect"
+BACK_LABEL = "Back"
+VENUE_TOOLTIP_FORMAT = "{target} credentials · {state}"
+CATEGORY_TOOLTIP_FORMAT = "Scan {name} sectors."
+CONNECT_TOOLTIP = "Sign in to this venue and hold the credential in the vault."
+BACK_TOOLTIP = "Leave this venue's page without signing in."
+ZONES_TOOLTIP = "Leave the accounts page for the three scan zones."
+ENDPOINT_LINE_FORMAT = "Posts to {endpoint}"
+SCOPES_LINE_FORMAT = "Scopes {scopes}"
+REGISTRATION_LINE_FORMAT = "Register first: {registration}"
+SCOPE_SEPARATOR = " · "
+NO_MESSAGE_TEXT = ""
 
 APPROVE_TOOLTIP = "Approve this post so Post All and Full Auto release it."
 DECLINE_TOOLTIP = "Decline this post. No button sends a declined post."
 POST_SELECTED_TOOLTIP = "Send the post on screen, at no more than the configured rate."
 POST_ALL_TOOLTIP = "Send every approved post, at no more than the configured rate."
 FULL_AUTO_TOOLTIP = "Release approved posts without a click, at the configured rate."
-SETTINGS_TOOLTIP = "Show the ATA-SPM settings page, or the scan page."
-SAVE_CREDENTIALS_TOOLTIP = "Encrypt every credential typed above into the vault."
-CREDENTIAL_FIELD_WIDTH_PX = 96
-SETTING_FIELD_WIDTH_PX = 180
+SETTINGS_TOOLTIP = "Show the ATA-SPM accounts page, or the scan page."
+CREDENTIAL_FIELD_WIDTH_PX = 160
+SETTING_FIELD_WIDTH_PX = 160
 SETTINGS_ROW_SPACING_PX = 6
 SETTINGS_LABEL_WIDTH_PX = 150
+
+
+def grid_width(count: int, cell: int) -> int:
+    """How wide ``count`` cells of ``cell`` sit with ``SETTINGS_ROW_SPACING_PX`` between."""
+    return count * cell + (count - 1) * SETTINGS_ROW_SPACING_PX
+
+
+#: The widths that break each Level 1 and Level 1A group after its own column
+#: count, so the Qt grid and the page wrap at the same place.
+VENUE_GRID_WIDTH_PX = grid_width(BUTTON_COLUMNS, VENUE_BUTTON_WIDTH_PX)
+CATEGORY_GRID_WIDTH_PX = grid_width(BUTTON_COLUMNS, ASSET_CATEGORY_WIDTH_PX)
+CREDENTIAL_ROW_WIDTH_PX = (
+    SETTINGS_LABEL_WIDTH_PX + SETTINGS_ROW_SPACING_PX + CREDENTIAL_FIELD_WIDTH_PX
+)
+SETTING_ROW_WIDTH_PX = (
+    SETTINGS_LABEL_WIDTH_PX + SETTINGS_ROW_SPACING_PX + SETTING_FIELD_WIDTH_PX
+)
+CREDENTIAL_GRID_WIDTH_PX = grid_width(FIELD_COLUMNS, CREDENTIAL_ROW_WIDTH_PX)
+SETTING_GRID_WIDTH_PX = grid_width(FIELD_COLUMNS, SETTING_ROW_WIDTH_PX)
 
 #: Every ATA-SPM setting a phase reads, with the wording its row carries.
 SETTING_MAX_POSTS = "max_posts_per_hour"
@@ -354,6 +412,9 @@ BUCKET_METHOD_FORMAT = (
 PUSH_ACTION_SET = "push.action"
 CREDENTIAL_STORED = "credential.stored"
 CREDENTIAL_REFUSED = "credential.refused"
+CREDENTIAL_PAGE_OPENED = "credential.opened"
+CREDENTIAL_PAGE_CLOSED = "credential.closed"
+CREDENTIAL_PAGE_REFUSED = "credential.unknown_target"
 SETTING_WRITTEN = "setting.written"
 SETTINGS_PAGE_TOGGLED = "settings.toggled"
 
@@ -632,7 +693,8 @@ ACTIONS = {
     "zone_stepped": "step_zone",
     "zone_toggled": "toggle_zone",
     "push_pressed": "push_action",
-    "credential_saved": "store_credential",
+    "venue_pressed": "open_credentials",
+    "credential_typed": "set_credential_text",
     "setting_written": "set_setting",
 }
 
@@ -719,6 +781,9 @@ CALL_NAMES = (
     PUSH_ACTION_SET,
     CREDENTIAL_STORED,
     CREDENTIAL_REFUSED,
+    CREDENTIAL_PAGE_OPENED,
+    CREDENTIAL_PAGE_CLOSED,
+    CREDENTIAL_PAGE_REFUSED,
     SETTING_WRITTEN,
     SETTINGS_PAGE_TOGGLED,
 )
@@ -1612,22 +1677,88 @@ def setting_rows(settings: Any) -> list:
     ]
 
 
-def settings_page(board: Any) -> dict:
-    """Every value the ATA-SPM settings page is drawn from, and its state."""
+def category_rows(asset_class: Any) -> list:
+    """One row per ``ata_spm.ASSET_CLASSES`` name, and whether a scan uses it now."""
+    return [[one, one == str(asset_class)] for one in ata_spm.ASSET_CLASSES]
+
+
+def credential_page(board: Any) -> dict:
+    """Every value one push target's Level 1A page is drawn from.
+
+    ``target`` is empty while Level 1 is the page, and ``message`` carries
+    what the last ``PushBoard.connect_credentials`` answered.
+    """
+    found = ata_spm_push.push_target(board.credential_target)
+    answered = board.connect_result
+    if found is None:
+        return {
+            "target": NO_SYMBOL,
+            "fields": [],
+            "endpoint": NO_SYMBOL,
+            "scopes": NO_SYMBOL,
+            "registration": NO_SYMBOL,
+            "message": NO_MESSAGE_TEXT,
+            "ok": False,
+        }
+    return {
+        "target": found.name,
+        "fields": [[one.key, one.label] for one in found.fields],
+        "endpoint": ENDPOINT_LINE_FORMAT.format(endpoint=found.endpoint),
+        "scopes": SCOPES_LINE_FORMAT.format(scopes=SCOPE_SEPARATOR.join(found.scopes)),
+        "registration": REGISTRATION_LINE_FORMAT.format(
+            registration=found.registration
+        ),
+        "message": NO_MESSAGE_TEXT if answered is None else str(answered.detail),
+        "ok": bool(answered is not None and answered.ok),
+    }
+
+
+def settings_page(board: Any, asset_class: Any = "") -> dict:
+    """Every value Level 1 and Level 1A are drawn from, and which one shows."""
     return {
         "open": bool(board.settings_open),
+        "level": LEVEL_ONE_A if board.credential_target else LEVEL_ONE,
         "settings_label": SETTINGS_LABEL,
         "settings_tooltip": SETTINGS_TOOLTIP,
         "settings_part": SETTINGS_PART,
-        "save_label": SAVE_CREDENTIALS_LABEL,
-        "save_tooltip": SAVE_CREDENTIALS_TOOLTIP,
-        "save_part": SAVE_CREDENTIALS_PART,
         "setting_part": SETTING_FIELD_PART,
-        "credential_fields": [list(one) for one in CREDENTIAL_FIELDS],
+        "venue_part": VENUE_BUTTON_PART,
+        "category_part": ASSET_CATEGORY_PART,
+        "connect_part": CONNECT_PART,
+        "back_part": BACK_PART,
+        "zones_part": ZONES_PART,
+        "zones_tooltip": ZONES_TOOLTIP,
+        "page_part": CREDENTIAL_PAGE_PART,
+        "message_part": CREDENTIAL_MESSAGE_PART,
+        "title_part": SECTION_TITLE_PART,
+        "endpoint_part": ENDPOINT_LINE_PART,
+        "scopes_part": SCOPES_LINE_PART,
+        "registration_part": REGISTRATION_LINE_PART,
+        "accounts_title": SM_ACCOUNTS_TITLE,
+        "category_title": ASSET_CATEGORY_TITLE,
+        "settings_title": ATA_SETTINGS_TITLE,
+        "connect_label": CONNECT_LABEL,
+        "connect_tooltip": CONNECT_TOOLTIP,
+        "back_label": BACK_LABEL,
+        "back_tooltip": BACK_TOOLTIP,
+        "venue_tooltip_format": VENUE_TOOLTIP_FORMAT,
+        "category_tooltip_format": CATEGORY_TOOLTIP_FORMAT,
         "credential_rows": credential_rows(board.settings),
+        "category_rows": category_rows(asset_class),
         "setting_rows": setting_rows(board.settings),
+        "credential": credential_page(board),
         "credential_width_px": CREDENTIAL_FIELD_WIDTH_PX,
         "setting_width_px": SETTING_FIELD_WIDTH_PX,
+        "venue_width_px": VENUE_BUTTON_WIDTH_PX,
+        "category_width_px": ASSET_CATEGORY_WIDTH_PX,
+        "connect_width_px": CONNECT_WIDTH_PX,
+        "back_width_px": BACK_WIDTH_PX,
+        "venue_grid_width_px": VENUE_GRID_WIDTH_PX,
+        "category_grid_width_px": CATEGORY_GRID_WIDTH_PX,
+        "credential_grid_width_px": CREDENTIAL_GRID_WIDTH_PX,
+        "setting_grid_width_px": SETTING_GRID_WIDTH_PX,
+        "credential_row_width_px": CREDENTIAL_ROW_WIDTH_PX,
+        "setting_row_width_px": SETTING_ROW_WIDTH_PX,
         "field_padding_px": list(FIELD_PADDING_PX),
         "field_border_px": FIELD_BORDER_PX,
         "field_height_px": FIELD_HEIGHT_PX,
@@ -1638,8 +1769,8 @@ def settings_page(board: Any) -> dict:
     }
 
 
-def bucket_skin(board: Any) -> dict:
-    """Every value the Ready to Send buttons and the settings page are drawn from."""
+def bucket_skin(board: Any, asset_class: Any = "") -> dict:
+    """Every value the Ready to Send buttons and the two account pages draw from."""
     bucket = board.bucket
     return {
         "post_selected_label": POST_SELECTED_LABEL,
@@ -1666,7 +1797,7 @@ def bucket_skin(board: Any) -> dict:
         "watching": len(board.follow_up.calls),
         "targets": list(ata_spm_push.TARGET_NAMES),
         "states": list(ata_spm_push.STATE_WORDS),
-        "settings": settings_page(board),
+        "settings": settings_page(board, asset_class),
     }
 
 
@@ -2392,6 +2523,9 @@ class MarketInspectorScreenModel:
             FULL_AUTO_PART: self._press_full_auto,
             SETTINGS_PART: self._press_settings,
             THUMBNAIL_PART: self._press_thumbnail,
+            CONNECT_PART: self._press_connect,
+            BACK_PART: self._press_back,
+            ZONES_PART: self._press_settings,
         }.get(str(key))
         if handled is None:
             return None
@@ -2411,26 +2545,43 @@ class MarketInspectorScreenModel:
         return self.push.release()
 
     def _press_settings(self) -> bool:
-        """Show the ATA-SPM settings page, or the scan page, and answer which."""
+        """Show Level 1, or the scan page, and answer which."""
         open_now = self.push.toggle_settings()
         self.calls.append([SETTINGS_PAGE_TOGGLED, open_now])
         return open_now
 
-    def set_credential_text(self, target: Any, field: Any, typed: Any) -> None:
-        """Hold what one credential field carries until Save reads it."""
-        self.push.settings.set_credential_text(target, field, typed)
+    def _press_connect(self) -> Any:
+        """Sign the open Level 1A target in, and answer what the venue said."""
+        answered = self.push.connect_credentials()
+        if answered is None:
+            return None
+        self.calls.append(
+            [
+                CREDENTIAL_STORED if answered.ok else CREDENTIAL_REFUSED,
+                str(answered.target),
+                str(answered.detail),
+            ]
+        )
+        return answered
 
-    def save_credentials(self) -> list:
-        """Encrypt every typed credential into the vault and answer what landed."""
-        stored = self.push.settings.save_credentials()
-        for name in ata_spm_push.TARGET_NAMES:
-            self.calls.append(
-                [
-                    CREDENTIAL_STORED if name in stored else CREDENTIAL_REFUSED,
-                    str(name),
-                ]
-            )
-        return stored
+    def _press_back(self) -> bool:
+        """Leave Level 1A for Level 1 without signing in."""
+        self.push.close_credentials()
+        self.calls.append([CREDENTIAL_PAGE_CLOSED, LEVEL_ONE])
+        return True
+
+    def open_credentials(self, target: Any) -> Any:
+        """Open one push target's Level 1A page and answer which target draws."""
+        name = self.push.open_credentials(target)
+        if name is None:
+            self.calls.append([CREDENTIAL_PAGE_REFUSED, str(target or "")])
+            return None
+        self.calls.append([CREDENTIAL_PAGE_OPENED, name])
+        return name
+
+    def set_credential_text(self, target: Any, field: Any, typed: Any) -> None:
+        """Hold what one credential field carries until Connect reads it."""
+        self.push.settings.set_credential_text(target, field, typed)
 
     def set_setting(self, key: Any, value: Any) -> Any:
         """Write one ATA-SPM setting and answer what the settings page now holds.
@@ -3045,7 +3196,7 @@ def build_view_model(
         "zones": [dict(one) for one in model.zone_views()],
         "stepper": stepper_skin(),
         "ata_spm": ata_spm_skin(model),
-        "bucket": bucket_skin(model.push),
+        "bucket": bucket_skin(model.push, model.board.asset_class),
         "right_zone_keys": list(RIGHT_ZONE_KEYS),
         "right_zone_titles": list(RIGHT_ZONE_TITLES),
         "left_module_keys": list(LEFT_MODULE_KEYS),
@@ -3262,7 +3413,8 @@ def view_model(params: dict) -> dict:
 
     Reads ``reset``, ``proposals``, ``meta``, ``show_active``,
     ``bot_statuses``, ``sector_text``, ``sector_class``,
-    ``toggle_timeframe``, ``scan_now``, ``step_zone``, ``toggle_zone``,
+    ``toggle_timeframe``, ``scan_now``, ``open_credentials``,
+    ``step_zone``, ``toggle_zone``,
     ``render``, ``refresh``, ``force`` and
     ``bot_symbol`` from the request parameters. The screen keeps its rows
     between calls because the shipped screen does; ``reset`` is what a
@@ -3294,8 +3446,8 @@ def view_model(params: dict) -> dict:
     if params.get("credential_text"):
         typed = list(params["credential_text"])
         model.set_credential_text(typed[0], typed[1], typed[2])
-    if params.get("save_credentials", False):
-        model.save_credentials()
+    if params.get("open_credentials"):
+        model.open_credentials(params["open_credentials"])
     if params.get("set_setting"):
         asked = list(params["set_setting"])
         model.set_setting(asked[0], asked[1])
