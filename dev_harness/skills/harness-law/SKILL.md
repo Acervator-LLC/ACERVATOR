@@ -5,6 +5,29 @@ description: Load at the START of any turn that will write, edit, or review code
 
 # Harness law
 
+**Load these with it, now, before anything else. This skill is the door, not
+the room.** Operator, 2026-09-13, watching it load alone: *"It should be making
+you load all the other skills."*
+
+| load | it governs |
+|---|---|
+| `acervator` | the address book: which manual page, issue or skill holds a fact |
+| `ground-to-issue-and-manual` | the only three sources allowed |
+| `ocir` | a zero is a claim about the instrument; calibrate before trusting |
+| `w5h` | the six questions, answered before the work |
+| `hyper-refocus` | every line checked against the item before it is reported |
+| `canonized-code-testing` | you run a named tool; you author no test |
+| `no-detours` | the work is the item, and nothing beside it |
+| `file-passes-only` | what a report may contain |
+
+Four more when the work reaches them: `archetype-peer-review` for a second
+verdict, `branch-discipline` before a branch, `unit-decomposition` before a
+split, `two-sided-control` before trusting any check.
+
+Loading one and working from memory of the rest is how a rule gets obeyed in
+spirit and broken in fact.
+
+
 The harness is the authority. Not your judgement, not a delta, not a
 green gate.
 
