@@ -91,6 +91,12 @@ VENUE_SETTERS: dict[str, str] = {
 #: The setter ``design_tokens.js`` publishes for the design-system payload.
 DESIGN_SETTER = "acervatorSetTokens"
 
+#: The global whose ``forget`` drops the one ask a module caches, by method.
+MODULE_FORGETS: dict[str, str] = {
+    indicator_panel_surface.METHOD: "acervatorIndicatorPanel",
+    venue_surface.METHOD: "acervatorExchangeTab",
+}
+
 #: The request fields a venue module names its exchange under.
 VENUE_KEYS: tuple[str, ...] = (
     venue_surface.EXCHANGE_ID_PARAM,
@@ -163,6 +169,9 @@ _HOST_SOURCE = """(function (global, doc) {
 
   var MODELS = %(models)s;
   var IVP = %(ivp)s;
+  var LOG = %(log)s;
+  var TAB = %(tab)s;
+  var FORGETS = %(forgets)s;
   var VENUES = %(venues)s;
   var SETTERS = %(setters)s;
   var DESIGN = %(design)s;
@@ -267,16 +276,39 @@ _HOST_SOURCE = """(function (global, doc) {
     }
   };
 
-  // A fresh voting-panel payload. forget() drops the one ask
-  // indicator_panel.js caches, so redraw() reads MODELS[IVP] again.
-  function votes(model) {
-    MODELS[IVP] = model;
-    var panel = global.acervatorIndicatorPanel;
-    if (panel && typeof panel.forget === "function") {
-      panel.forget();
-    }
+  // One fresh payload per bridge method. LOG appends its batch, TAB
+  // replaces the tab's own model, and every other method drops the ask
+  // its module caches so redraw() reads MODELS again.
+  function holdModels(fresh) {
+    Object.keys(fresh).forEach(function (method) {
+      if (method === LOG) {
+        var spool = global.acervatorLog;
+        if (spool && typeof spool.take === "function") {
+          spool.take(fresh[method]);
+        }
+        return;
+      }
+      MODELS[method] = fresh[method];
+      if (method === TAB) {
+        var setter = global.acervatorSetTrading;
+        if (typeof setter === "function") {
+          setter(fresh[method]);
+        }
+        return;
+      }
+      var owner = owns(FORGETS, method) ? global[FORGETS[method]] : null;
+      if (owner && typeof owner.forget === "function") {
+        owner.forget();
+      }
+    });
     var tab = global.acervatorTrading;
     return tab && typeof tab.redraw === "function" ? tab.redraw() : 0;
+  }
+
+  function votes(model) {
+    var fresh = {};
+    fresh[IVP] = model;
+    return holdModels(fresh);
   }
 
   global.acervatorTradingPage = {
@@ -284,7 +316,8 @@ _HOST_SOURCE = """(function (global, doc) {
     styles: styles,
     rows: rows,
     hold: hold,
-    votes: votes
+    votes: votes,
+    holdModels: holdModels
   };
 
   seat();
@@ -309,11 +342,12 @@ def roster() -> tuple[str, ...]:
     return STYLE_SOURCE_ASSETS + CHILD_MODULES + (PANEL_MODULE,)
 
 
-def models(live: Any = None) -> dict:
+def models(live: Any = None, asked: Any = None) -> dict:
     """The view model of every bridge method the page's modules ask for.
 
-    ``live`` is a ``desktop_bridge.LiveSystem``, and ``bind_live`` builds the
-    tab from the exchanges the running program is configured for.
+    ``live`` is a ``desktop_bridge.LiveSystem``, ``bind_live`` builds the tab
+    from the exchanges the running program is configured for, and ``asked``
+    carries the layer and the two pause states a built tab already held.
     """
     tab = (
         trading_tab_surface.bind_live(live)
@@ -322,8 +356,8 @@ def models(live: Any = None) -> dict:
     )
     return {
         token_surface.METHOD: token_surface.view_model({}),
-        trading_tab_surface.METHOD: tab({}),
-        status_log_surface.METHOD: status_log_surface.view_model({}),
+        trading_tab_surface.METHOD: tab(dict(asked or {})),
+        status_log_surface.METHOD: status_log_surface.view_model({"whole": True}),
         indicator_panel_surface.METHOD: indicator_panel_surface.view_model({}),
     }
 
@@ -382,6 +416,9 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
     return _HOST_SOURCE % {
         "models": json.dumps(built, ensure_ascii=True),
         "ivp": json.dumps(indicator_panel_surface.METHOD, ensure_ascii=True),
+        "log": json.dumps(status_log_surface.METHOD, ensure_ascii=True),
+        "tab": json.dumps(trading_tab_surface.METHOD, ensure_ascii=True),
+        "forgets": json.dumps(MODULE_FORGETS, ensure_ascii=True),
         "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
         "setters": json.dumps(venue_setters(), ensure_ascii=True),
         "design": json.dumps([token_surface.METHOD, DESIGN_SETTER], ensure_ascii=True),
@@ -407,35 +444,67 @@ def settled_frames() -> int:
     )
 
 
-def votes_payload(
-    bots: Any,
-    selected_bot_id: Any,
-    summary: Any = None,
-    symbol: str = "",
-    message: str = "",
-    cause: str = "",
-) -> dict:
-    """The voting panel payload after the fleet, the selection and the reading.
+def votes_payload(bots: Any, reading: Any = None) -> dict:
+    """The voting panel payload after the fleet and the panel's own reading.
 
-    ``indicator_panel_surface.view_model`` is the same handler the Electron
-    renderer asks, so the window and the shell draw one panel.
+    ``IndicatorVotingPanel.panel_reading`` names the selection, the cells, the
+    stored banner, the mask and the rate line, and
+    ``indicator_panel_surface.view_model`` is the handler the Electron renderer
+    asks, so the window and the shell draw one panel.
     """
     surface = indicator_panel_surface
+    read = dict(reading or {})
     surface.view_model({"action": "set_bots", "bots": list(bots or [])})
-    if selected_bot_id:
-        surface.view_model({"action": "select_bot", "bot_id": str(selected_bot_id)})
+    selected = str(read.get("selected_bot_id") or "")
+    if selected:
+        surface.view_model({"action": "select_bot", "bot_id": selected})
+    surface.view_model({"action": "set_masked", "masked": bool(read.get("masked"))})
+    if "rates" in read:
+        surface.view_model({"action": "set_rates", "snapshot": read.get("rates")})
+    stored = read.get("stored")
+    if stored:
+        surface.view_model(
+            {
+                "action": "show_stored",
+                "stored": stored,
+                "when": read.get("when", ""),
+                "age": read.get("age", ""),
+                "message": read.get("message", ""),
+            }
+        )
+        return surface.view_model({"action": "step_bars", "frames": settled_frames()})
+    summary = read.get("summary")
     if summary:
         surface.view_model(
             {
                 "action": "set_summary",
                 "summary": summary,
-                "symbol": symbol,
+                "symbol": read.get("symbol", ""),
             }
         )
         return surface.view_model({"action": "step_bars", "frames": settled_frames()})
     return surface.view_model(
-        {"action": "show_no_data", "message": message, "cause": cause}
+        {
+            "action": "show_no_data",
+            "message": read.get("message", ""),
+            "cause": read.get("cause", ""),
+        }
     )
+
+
+def log_request(action: str, message: str = "", level: Any = None) -> Optional[dict]:
+    """The ``status_log.lines`` request one ``StatusLog`` call makes."""
+    if action == "log":
+        return {"messages": [{"message": message, "level": level}]}
+    if action == "force_log":
+        return {"messages": [{"message": message, "level": level, "force": True}]}
+    if action == "notice":
+        return {"notices": [message]}
+    if action == "pause":
+        return {"paused": True}
+    if action == "resume":
+        return {"paused": False}
+    return None
 
 
 def votes_script(payload: dict) -> str:
@@ -443,6 +512,15 @@ def votes_script(payload: dict) -> str:
     return (
         "window.acervatorTradingPage.votes("
         + json.dumps(dict(payload or {}), ensure_ascii=True)
+        + ");"
+    )
+
+
+def models_script(fresh: dict) -> str:
+    """The one JS statement handing the page a fresh payload per method."""
+    return (
+        "window.acervatorTradingPage.holdModels("
+        + json.dumps(dict(fresh or {}), ensure_ascii=True)
         + ");"
     )
 
@@ -521,6 +599,8 @@ if _HAS_WEBENGINE:
             self._votes: dict = {}
             self._venues: dict = {}
             self._venue_models: dict = {}
+            self._tab_request: dict = {}
+            self._waiting: dict = {}
             self._page_ready = False
             self._web: Any = None
             self._layout = QVBoxLayout(self)
@@ -544,20 +624,64 @@ if _HAS_WEBENGINE:
             """A copy of the payload each venue page last published."""
             return dict(self._venue_models)
 
+        def show_models(self, fresh: Any) -> bool:
+            """Hold one payload per bridge method and draw them on the page.
+
+            Every feed the window pushes into the Live tab arrives here, so a
+            page built later still opens on what the window last held.
+            """
+            held = {str(name): body for name, body in dict(fresh or {}).items() if body}
+            if not held:
+                return False
+            self._models.update(held)
+            if not (self._page_ready and self._web is not None):
+                self._waiting.update(held)
+                return True
+            self._web.page().runJavaScript(models_script(held))
+            return True
+
         def show_votes(self, payload: Any) -> bool:
             """Hold one voting-panel payload and draw it on the page.
 
-            ``MainWindow._refresh_dashboard`` calls this with the payload
-            ``votes_payload`` builds from the fleet the Qt panel reads.
+            ``MainWindow._publish_votes`` calls this with the payload
+            ``votes_payload`` builds from the reading the Qt panel holds.
             """
             held = dict(payload or {})
             if not held:
                 return False
             self._votes = held
-            self._models[indicator_panel_surface.METHOD] = held
-            if self._page_ready and self._web is not None:
-                self._web.page().runJavaScript(votes_script(held))
-            return True
+            return self.show_models({indicator_panel_surface.METHOD: held})
+
+        def show_log_call(self, action: str, message: str = "", level: Any = None):
+            """Apply one ``StatusLog`` call to the surface and draw its lines.
+
+            ``StatusLog.set_relay`` reports ``log``, ``force_log``, ``notice``,
+            ``pause`` and ``resume`` here as the Qt pane paints them.
+            """
+            asked = log_request(action, message, level)
+            if asked is None:
+                return False
+            payload = status_log_surface.view_model(asked)
+            return self.show_models({status_log_surface.METHOD: payload})
+
+        def show_tab(self, asked: Any = None) -> bool:
+            """Rebuild the tab payload from ``asked`` and draw it on the page.
+
+            ``layer``, ``activity_paused`` and ``api_paused`` persist in
+            ``_tab_request``; ``api_lines`` is spent on the call that carries it.
+            """
+            request = dict(asked or {})
+            lines = request.pop("api_lines", None)
+            self._tab_request.update(request)
+            built = dict(self._tab_request)
+            if lines:
+                built["api_lines"] = list(lines)
+            handler = (
+                trading_tab_surface.bind_live(self._live)
+                if self._live is not None
+                else trading_tab_surface.view_model
+            )
+            return self.show_models({trading_tab_surface.METHOD: handler(built)})
 
         def hold_venue(self, venue: Any) -> bool:
             """Draw ``venue`` in this tab and follow every payload it publishes.
@@ -583,9 +707,10 @@ if _HAS_WEBENGINE:
             """Create the tab's web view and load its page, once."""
             if self._web is not None:
                 return
-            self._models = models(self._live)
+            self._models = models(self._live, self._tab_request)
             if self._votes:
                 self._models[indicator_panel_surface.METHOD] = self._votes
+            self._waiting = {}
             self._venue_models = venue_models(self._venues)
             self._web = QWebEngineView(self)
             self._web.setAccessibleName(ACCESSIBLE_NAME)
@@ -605,5 +730,9 @@ if _HAS_WEBENGINE:
                 logger.warning("The React Live tab page failed to load")
                 return
             self._venue_published()
-            if self._votes:
+            waited = dict(self._waiting)
+            self._waiting = {}
+            if waited:
+                self._web.page().runJavaScript(models_script(waited))
+            elif self._votes:
                 self._web.page().runJavaScript(votes_script(self._votes))

@@ -26,7 +26,7 @@ from .main_tabs import extractor_bot_table_surface as extractor_surface
 from .react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 
 try:
-    from PySide6.QtCore import Signal
+    from PySide6.QtCore import QTimer, Signal
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout, QWidget
@@ -402,8 +402,23 @@ if _HAS_WEBENGINE:
             self._layout = QVBoxLayout(self)
             self._layout.setContentsMargins(0, 0, 0, 0)
             self._layout.setSpacing(0)
+            self._pull_rate_timer = QTimer(self)
+            self._pull_rate_timer.setInterval(surface.PULL_RATE_INTERVAL_MS)
+            self._pull_rate_timer.timeout.connect(self._update_pull_rate_label)
+            self._pull_rate_timer.start()
 
         # -- what the window already calls --------------------------------
+
+        def _update_pull_rate_label(self) -> None:
+            """Rewrite the data-pool line from ``data_pool_summary`` and publish it.
+
+            The Qt venue page runs the same read on its own
+            ``PULL_RATE_INTERVAL_MS`` timer.
+            """
+            if self._stopped:
+                return
+            self._screen.update_pull_rate_label()
+            self._publish()
 
         def update_bots(self, statuses: list) -> None:
             """Route one fleet list to the screen and to both bot tables."""
@@ -430,6 +445,7 @@ if _HAS_WEBENGINE:
         def stop_feeds(self) -> None:
             """Take the bridge off the page, which stops every timer it runs."""
             self._stopped = True
+            self._pull_rate_timer.stop()
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(STOP_FEEDS_JS)
 

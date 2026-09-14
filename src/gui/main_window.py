@@ -635,6 +635,7 @@ if _HAS_QT:
                     self._schedule_async(mon.refresh_from_connectors(connectors))
                 if hasattr(self, "_indicator_panel"):
                     self._indicator_panel.update_currency_rates(mon.snapshot())
+                    self._publish_votes()
                 self._currency_pump_fault.note_success()
             except Exception as exc:  # noqa: BLE001
                 self._currency_pump_fault.note_failure(exc)
@@ -820,6 +821,7 @@ if _HAS_QT:
                     and hasattr(self._indicator_panel, "refresh_privacy_dot")
                 ):
                     self._indicator_panel.refresh_privacy_dot()
+                    self._publish_votes()
             except Exception:  # noqa: S110
                 pass
 
@@ -964,6 +966,7 @@ if _HAS_QT:
                 plain_lines.append(f"  Data usage: {entry['data_usage']}")
 
             block_text = "\n".join(plain_lines)
+            self._push_live_tab({"api_lines": [block_text]})
             if getattr(self, "_api_log_paused", False):
                 buf = self._api_log_pause_buffer
                 buf.append(block_text)
@@ -1156,7 +1159,6 @@ if _HAS_QT:
                         self._indicator_panel.update_bot_list(all_bot_statuses)
                         self._wire_ivp_snapshot_dir()
                         sel_bid = self._indicator_panel.selected_bot_id
-                        votes_read: dict = {}
                         if sel_bid:
                             bot = self._bot_manager.get_bot(sel_bid)
                             if bot and getattr(bot, "_last_summary", None):
@@ -1233,10 +1235,6 @@ if _HAS_QT:
                                 # phantoms never reach composite_net.
                                 parent_tf_data["composite_skipped"] = skipped
                                 symbol = bot.config.symbol
-                                votes_read = {
-                                    "summary": merged,
-                                    "symbol": symbol,
-                                }
                                 self._indicator_panel.update_data(merged, symbol)
                                 self._indicator_panel.remember_ta(
                                     sel_bid, symbol, merged
@@ -1256,10 +1254,6 @@ if _HAS_QT:
                                 _cause, _detail = self._ivp_empty_state_cause(
                                     bot, sel_bid
                                 )
-                                votes_read = {
-                                    "message": _detail,
-                                    "cause": _cause,
-                                }
                                 self._indicator_panel.show_no_data(
                                     bot_id=sel_bid,
                                     symbol=_sym,
@@ -1267,9 +1261,8 @@ if _HAS_QT:
                                     detail=_detail,
                                 )
                         else:
-                            votes_read = {"cause": "no_selection"}
                             self._indicator_panel.show_no_data(cause="no_selection")
-                        self._publish_votes(all_bot_statuses, sel_bid, votes_read)
+                        self._publish_votes(all_bot_statuses)
                     except Exception as exc:
                         logger.error("DASHBOARD: Indicator panel CRASHED: %s", exc)
 
@@ -1348,30 +1341,23 @@ if _HAS_QT:
 
                 traceback.print_exc()
 
-        def _publish_votes(self, bot_statuses, selected_bot_id, read) -> bool:
+        def _publish_votes(self, bot_statuses=None) -> bool:
             """Draw the same voting reading on the React Live tab.
 
-            ``react_trading_tab.votes_payload`` renders the fleet, the
-            selection and the reading ``_refresh_dashboard`` just gave the Qt
-            panel, so both panels show one bot and one set of cells.
+            ``IndicatorVotingPanel.panel_reading`` names what the Qt panel
+            holds, so both panels show one bot, one set of cells, one staleness
+            banner and one rate line.
             """
             show = getattr(getattr(self, "_trading_tab", None), "show_votes", None)
-            if not callable(show):
+            panel = getattr(self, "_indicator_panel", None)
+            if not callable(show) or panel is None:
                 return False
+            statuses = bot_statuses
+            if statuses is None:
+                statuses = self._bot_manager.list_bots() if self._bot_manager else []
             from .react_trading_tab import votes_payload
 
-            return bool(
-                show(
-                    votes_payload(
-                        bot_statuses,
-                        selected_bot_id,
-                        summary=read.get("summary"),
-                        symbol=read.get("symbol", ""),
-                        message=read.get("message", ""),
-                        cause=read.get("cause", ""),
-                    )
-                )
-            )
+            return bool(show(votes_payload(statuses, panel.panel_reading())))
 
         def _is_equity_exchange(self, exchange_id: str) -> bool:
             """Return True if this exchange ID belongs to the stock/equity layer."""
@@ -1430,6 +1416,7 @@ if _HAS_QT:
             )
             if callable(hold_venue):
                 hold_venue(tab)
+            self._push_live_tab({})
 
             # `_landed` asks both layer widgets, never `target_widget`, the argument.
             _landed = "none"
@@ -3010,6 +2997,7 @@ if _HAS_QT:
                     "→ CRYPTO WING: crypto exchanges. (Stock wing paused.)",
                     "info",
                 )
+            self._push_live_tab({"layer": self._trading_mode})
             self._update_mode_btn_style()
 
             # `_alias_page` comes from `_tab_widget`'s parent, not from either branch.
@@ -3134,6 +3122,8 @@ if _HAS_QT:
                 ph = getattr(self, ph_attr, None)
                 if ph is not None and not store and bar.indexOf(ph) < 0:
                     bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
+            if dropped:
+                self._push_live_tab({})
             return dropped
 
         def _sync_exchange_tabs(self) -> None:
@@ -3544,6 +3534,7 @@ if _HAS_QT:
                                 symbol=bot_config.symbol,
                                 ta_timeframe=bot_config.ta_timeframe,
                             )
+                            self._publish_votes()
                         except Exception:  # noqa: S110
                             pass
 

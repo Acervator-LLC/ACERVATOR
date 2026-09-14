@@ -41,6 +41,8 @@ PAUSE_BUFFER_CAP = 2000
 
 TIMESTAMP_FORMAT = "%H:%M:%S"
 RESUME_STAMP = "—"
+NOTICE_STAMP = ""
+STAMP_FORMAT = "[{stamp}]"
 
 DEFAULT_LOG_LEVEL = "info"
 DEFAULT_FORCE_LEVEL = "warning"
@@ -176,9 +178,14 @@ def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
     }
 
 
+def stamp_text(stamp: str) -> str:
+    """The leading ``[hh:mm:ss]`` a line paints, empty for an unstamped one."""
+    return STAMP_FORMAT.format(stamp=stamp) if stamp else NOTICE_STAMP
+
+
 def stamp_html(stamp: str) -> str:
     """The leading ``[hh:mm:ss]`` span every line carries."""
-    return f'<span style="color:{TIMESTAMP_COLOR}">[{stamp}]</span> '
+    return f'<span style="color:{TIMESTAMP_COLOR}">{stamp_text(stamp)}</span> '
 
 
 def body_html(message: str, style: dict) -> str:
@@ -202,6 +209,7 @@ def build_line(stamp: str, message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict
     red, green, blue = rgb(style["color"])
     return {
         "stamp": stamp,
+        "stamp_text": stamp_text(stamp),
         "message": message,
         "level": level,
         "html": line_html(stamp, message, style),
@@ -226,9 +234,35 @@ def resume_line(buffered_count: int) -> dict:
     red, green, blue = rgb(style["color"])
     return {
         "stamp": RESUME_STAMP,
+        "stamp_text": stamp_text(RESUME_STAMP),
         "message": message,
         "level": None,
         "html": line_html(RESUME_STAMP, message, style),
+        "r": red,
+        "g": green,
+        "b": blue,
+        **style,
+    }
+
+
+def notice_line(text: str) -> dict:
+    """One unstamped line, which is what ``StatusLog.notice`` appends."""
+    style = {
+        "kind": KIND_PLAIN,
+        "color": DEFAULT_LEVEL_COLOR,
+        "font_size_px": None,
+        "bold": False,
+        "italic": False,
+        "bullet": "",
+    }
+    message = str(text)
+    red, green, blue = rgb(style["color"])
+    return {
+        "stamp": NOTICE_STAMP,
+        "stamp_text": stamp_text(NOTICE_STAMP),
+        "message": message,
+        "level": None,
+        "html": line_html(NOTICE_STAMP, message, style),
         "r": red,
         "g": green,
         "b": blue,
@@ -325,6 +359,14 @@ class StatusLogModel:
         """
         self.render(timestamp(now), message, level)
 
+    def append_text(self, text: str) -> None:
+        """Paint one unstamped line through ``notice_line``, whatever ``paused``
+        holds."""
+        self.append(notice_line(text))
+        self.scroll_to_end()
+        self.last_render_time = self.clock()
+        self.total_renders += 1
+
     def health_stats(self) -> dict:
         """The counters the Activity-Log watchdog polls every 60 s."""
         return {
@@ -411,6 +453,8 @@ def build_view_model(
     messages: Optional[list] = None,
     paused: Optional[bool] = None,
     toggle: bool = False,
+    notices: Optional[list] = None,
+    whole: bool = False,
 ) -> dict:
     """Return the whole surface state as one serialisable dict.
 
@@ -418,7 +462,9 @@ def build_view_model(
     drains the held lines ahead of this batch. A message is a mapping with
     ``message``, ``level`` and an optional ``force`` that paints it
     through a pause. A message that cannot be read is skipped rather than
-    raised, which is the guarantee the pane gives its callers.
+    raised, which is the guarantee the pane gives its callers. ``whole``
+    returns every line the document holds rather than this call's batch,
+    which is what a pane opening for the first time draws.
     """
     model.take_painted()
     if toggle:
@@ -440,9 +486,12 @@ def build_view_model(
             model.force_log(text, level)
         else:
             model.log(text, level)
+    for relayed in notices or []:
+        model.append_text(str(relayed))
+    batch = model.take_painted()
     return {
         "widget": dict(WIDGET),
-        "document": {"lines": model.take_painted()},
+        "document": {"lines": [dict(one) for one in model.lines] if whole else batch},
         "paused": model.paused,
         "buffered": len(model.pause_buffer),
         "buffer_cap": model.pause_buffer_cap,
@@ -464,9 +513,9 @@ def build_view_model(
 def view_model(params: dict) -> dict:
     """Bridge handler for ``status_log.lines``.
 
-    Reads ``messages``, ``paused`` and ``toggle`` from the request
-    parameters. The pause state persists between calls because the pane's
-    own does.
+    Reads ``messages``, ``notices``, ``paused``, ``toggle`` and ``whole``
+    from the request parameters. The pause state persists between calls
+    because the pane's own does.
     """
     paused = params.get("paused")
     return build_view_model(
@@ -474,4 +523,6 @@ def view_model(params: dict) -> dict:
         params.get("messages") or [],
         paused=None if paused is None else bool(paused),
         toggle=bool(params.get("toggle", False)),
+        notices=params.get("notices") or [],
+        whole=bool(params.get("whole", False)),
     )

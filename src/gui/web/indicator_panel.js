@@ -61,6 +61,7 @@
   var TABLES = "tables";
   var TARGETS = "targets";
   var TEXT = "text";
+  var STYLE_SHEET = "style_sheet";
   var TEXT_COLOR = "text_color";
   var TIMEFRAME = "timeframe";
   var TITLES = "titles";
@@ -435,15 +436,27 @@
     ]);
   }
 
+  // The font, size, padding and radius Qt declares. The colour and the
+  // background come from the payload's own channels, which carry Qt's alpha.
+  function sheetStyle(sheet) {
+    var api = global.acervatorHeader;
+    if (!api || typeof api.styleOf !== "function") {
+      return {};
+    }
+    return api.styleOf(sheet);
+  }
+
   function StalenessBanner(props) {
     var model = props.model;
     var band = objectField(model, STALENESS);
-    var bandProps = {
-      style: {
-        color: text(band[TEXT_COLOR]),
-        backgroundColor: rgba(model, band[BACKGROUND_RGB], band[BACKGROUND_ALPHA])
-      }
-    };
+    var bandStyle = sheetStyle(band[STYLE_SHEET]);
+    bandStyle.color = text(band[TEXT_COLOR]);
+    bandStyle.backgroundColor = rgba(
+      model,
+      band[BACKGROUND_RGB],
+      band[BACKGROUND_ALPHA]
+    );
+    var bandProps = { style: bandStyle };
     bandProps[PART_ATTR] = STALENESS_PART;
     bandProps[SLOT_ATTR] = STALENESS_PART;
     bandProps.hidden = band[VISIBLE] !== true;
@@ -455,12 +468,14 @@
   function RateStrip(props) {
     var model = props.model;
     var strip = objectField(model, RATE_STRIP);
-    var stripProps = {
-      style: {
-        color: text(strip[TEXT_COLOR]),
-        backgroundColor: rgba(model, strip[BACKGROUND_RGB], strip[BACKGROUND_ALPHA])
-      }
-    };
+    var stripStyle = sheetStyle(strip[STYLE_SHEET]);
+    stripStyle.color = text(strip[TEXT_COLOR]);
+    stripStyle.backgroundColor = rgba(
+      model,
+      strip[BACKGROUND_RGB],
+      strip[BACKGROUND_ALPHA]
+    );
+    var stripProps = { style: stripStyle };
     stripProps[PART_ATTR] = RATE_PART;
     stripProps[SLOT_ATTR] = RATE_PART;
     stripProps[ARIA_LABEL] = label(strip.accessible_name);
@@ -549,9 +564,11 @@
         })
       )
     );
+    // Qt fixes the table to its header plus slack_rows, so the body keeps
+    // that height whether it holds one row or more.
     var bodyStyle = {
       display: BLOCK,
-      maxHeight: length(slackHeight(table)),
+      height: length(slackHeight(table)),
       overflow: HIDDEN
     };
     var rowStyle = rowBox(model);

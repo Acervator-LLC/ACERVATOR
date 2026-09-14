@@ -16,7 +16,8 @@ class _NotifyStub:
             if msg and self._log is not None:
                 _doc = self._log.document()
                 _rev = _doc.revision()
-                self._log.append(f"[notification] {msg}")
+                write = getattr(self._log, "notice", self._log.append)
+                write(f"[notification] {msg}")
                 import contextlib
 
                 with contextlib.suppress(Exception):
