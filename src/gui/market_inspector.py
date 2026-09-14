@@ -11,10 +11,12 @@ covered.
 
 from __future__ import annotations
 
+import html
 import logging
 import threading
 
 from ..trading import ata_spm, ata_spm_push, ata_spm_signin
+from . import sign_in_view
 from .main_tabs.market_inspector_surface import (
     READY_TO_SEND_ZONE,
     TOPOLOGIES_ZONE,
@@ -83,6 +85,13 @@ from .main_tabs.market_inspector_surface import (
     STRIP_TEXT_PART,
     bucket_entries as _bucket_entries,
 )
+from .main_tabs.market_inspector_surface import (
+    LINK_COLOUR,
+    PAGE_ENDPOINT_LINKS,
+    PAGE_PREREQUISITE_LINKS,
+    PAGE_REGISTRATION_LINKS,
+)
+from .main_tabs.market_inspector_surface import page_links as _page_links
 from .main_tabs.market_inspector_surface import settings_page as _settings_page_view
 from .main_tabs.market_inspector_surface import right_zone_rows as _right_zone_rows
 from .main_tabs.market_inspector_surface import left_module_rows as _left_module_rows
@@ -174,6 +183,12 @@ def _fmt_age(seconds: float) -> str:
         return f"{h}h {m}m" if m else f"{h}h"
     return f"{int(s / 86400)} days"
 
+
+#: One Level 1A address as rich text. Both halves are escaped before they reach
+#: it, so a venue's own wording cannot open a tag.
+LINK_HTML_FORMAT = '<a href="{address}" style="color:{colour}">{written}</a>'
+LINK_REFUSED_LOG = "Level 1A refused a link the open page does not publish: %r"
+LINK_FAILED_LOG = "Level 1A link open failed for %r: %s"
 
 SCAN_NOT_ASKED = "not_asked"
 SCAN_RUNNING = "running"
@@ -627,7 +642,7 @@ if _HAS_QT:
             self._ata_board = ata_spm.SectorBoard()
             self._push_board = ata_spm_push.PushBoard()
             self._push_board.settings.set_connector(
-                ata_spm_signin.build_connector(ata_spm_signin.default_session())
+                ata_spm_signin.build_connector(sign_in_view.sign_in_session())
             )
             self._build_ui()
 
@@ -1049,9 +1064,7 @@ if _HAS_QT:
             column.setSpacing(SETTINGS_ROW_SPACING_PX)
             self._credential_title = self._section_title("")
             column.addWidget(self._credential_title)
-            self._endpoint_label = QLabel("")
-            self._endpoint_label.setAccessibleName(ENDPOINT_LINE_PART)
-            self._endpoint_label.setWordWrap(True)
+            self._endpoint_label = self._page_line(ENDPOINT_LINE_PART)
             column.addWidget(self._endpoint_label)
             self._scopes_label = QLabel("")
             self._scopes_label.setAccessibleName(SCOPES_LINE_PART)
@@ -1112,17 +1125,65 @@ if _HAS_QT:
             self._credential_message.setAccessibleName(CREDENTIAL_MESSAGE_PART)
             self._credential_message.setWordWrap(True)
             column.addWidget(self._credential_message)
-            self._registration_label = QLabel("")
-            self._registration_label.setAccessibleName(REGISTRATION_LINE_PART)
-            self._registration_label.setWordWrap(True)
+            self._registration_label = self._page_line(REGISTRATION_LINE_PART)
             column.addWidget(self._registration_label)
-            self._prerequisite_label = QLabel("")
-            self._prerequisite_label.setAccessibleName(PREREQUISITE_LINE_PART)
-            self._prerequisite_label.setWordWrap(True)
+            self._prerequisite_label = self._page_line(PREREQUISITE_LINE_PART)
             column.addWidget(self._prerequisite_label)
             column.addStretch()
             page.setAccessibleName(CREDENTIAL_PAGE_PART)
             return page
+
+        def _page_line(self, part: str) -> "QLabel":
+            """One Level 1A line whose addresses are links, not plain words.
+
+            ``_on_link_pressed`` takes the press, so a link never navigates a
+            view inside the program.
+            """
+            held = QLabel("")
+            held.setAccessibleName(part)
+            held.setWordWrap(True)
+            held.setTextFormat(Qt.RichText)
+            held.setOpenExternalLinks(False)
+            held.linkActivated.connect(self._on_link_pressed)
+            return held
+
+        def _link_html(self, segments: list) -> str:
+            """One Level 1A line as rich text, each address an anchor in ``LINK_COLOUR``.
+
+            Every word is escaped, so an endpoint naming ``<page_id>`` draws as
+            it reads.
+            """
+            held = []
+            for chunk, address in segments or []:
+                written = html.escape(str(chunk))
+                if not address:
+                    held.append(written)
+                    continue
+                held.append(
+                    LINK_HTML_FORMAT.format(
+                        address=html.escape(str(address), quote=True),
+                        colour=LINK_COLOUR,
+                        written=written,
+                    )
+                )
+            return "".join(held)
+
+        def _on_link_pressed(self, address: str) -> None:
+            """Open one Level 1A address in the system browser.
+
+            An address the open page does not publish opens nothing, so no
+            typed value and no venue reply can reach a browser.
+            """
+            held = str(address or "")
+            if held not in _page_links(self._push_board):
+                logger.warning(LINK_REFUSED_LOG, held)
+                return
+            try:
+                import webbrowser
+
+                webbrowser.open(held, new=2)
+            except Exception as exc:  # noqa: BLE001 - the browser is host-supplied
+                logger.warning(LINK_FAILED_LOG, held, exc)
 
         def _on_settings_pressed(self) -> None:
             """Show Level 1, or the scan page, and redraw."""
@@ -1213,12 +1274,16 @@ if _HAS_QT:
                 for row in rows:
                     row.setVisible(name == target)
             self._credential_title.setText(target)
-            self._endpoint_label.setText(str(held["endpoint"]))
+            self._endpoint_label.setText(self._link_html(held[PAGE_ENDPOINT_LINKS]))
             self._scopes_label.setText(str(held["scopes"]))
             self._sign_in_label.setText(str(held["sign_in"]))
             self._redirect_label.setText(str(held["redirect"]))
-            self._registration_label.setText(str(held["registration"]))
-            self._prerequisite_label.setText(str(held["prerequisite"]))
+            self._registration_label.setText(
+                self._link_html(held[PAGE_REGISTRATION_LINKS])
+            )
+            self._prerequisite_label.setText(
+                self._link_html(held[PAGE_PREREQUISITE_LINKS])
+            )
             self._credential_message.setText(str(held["message"]))
 
         # ── the Ready to Send control row ────────────────────────────

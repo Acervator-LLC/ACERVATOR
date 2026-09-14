@@ -645,6 +645,7 @@
 
   var DIV_TAG = "div";
   var SPAN_TAG = "span";
+  var A_TAG = "a";
   var STRONG_TAG = "strong";
   var BUTTON_TAG = "button";
   var LABEL_TAG = "label";
@@ -839,13 +840,18 @@
   var CREDENTIAL_PAGE = "credential";
   var PAGE_TARGET = "target";
   var PAGE_FIELDS = "fields";
-  var PAGE_ENDPOINT = "endpoint";
   var PAGE_SCOPES = "scopes";
   var PAGE_SIGN_IN = "sign_in";
   var PAGE_REDIRECT = "redirect";
-  var PAGE_REGISTRATION = "registration";
-  var PAGE_PREREQUISITE = "prerequisite";
   var PAGE_MESSAGE = "message";
+  // Each is the same line as the plain value above it, split into
+  // [words, address] pairs. Only a whole address the venue's own row carries
+  // holds an address; every other pair holds an empty one.
+  var PAGE_ENDPOINT_LINKS = "endpoint_links";
+  var PAGE_REGISTRATION_LINKS = "registration_links";
+  var PAGE_PREREQUISITE_LINKS = "prerequisite_links";
+  var LINK_PART = "link_part";
+  var LINK_COLOUR = "link_colour";
   var CREDENTIAL_WIDTH_PX = "credential_width_px";
   var SETTING_WIDTH_PX = "setting_width_px";
   var VENUE_WIDTH_PX = "venue_width_px";
@@ -1978,6 +1984,43 @@
     return element(DIV_TAG, lineProps, text(written));
   }
 
+  // pageLinkLine is one Level 1A line whose addresses are links. A click opens
+  // the system browser through the host and never navigates this view.
+  function pageLinkLine(page, part, segments) {
+    var style = asLabel({}, false);
+    style.whiteSpace = NORMAL_WRAP;
+    var lineProps = { style: style };
+    lineProps[PART_ATTR] = text(part);
+    lineProps[NAME_ATTR] = text(part);
+    var linkPart = text(page[LINK_PART]);
+    var colour = text(page[LINK_COLOUR]);
+    return element(
+      DIV_TAG,
+      lineProps,
+      asList(segments).map(function (segment, at) {
+        var pair = asList(segment);
+        var written = text(pair[ZERO]);
+        var address = text(pair[ONE]);
+        if (address === EMPTY) {
+          return element(SPAN_TAG, { key: part + PATH_SPLIT + String(at) }, written);
+        }
+        var linkProps = {
+          key: part + PATH_SPLIT + String(at),
+          href: address,
+          style: { color: colour },
+          title: address,
+          onClick: function (press) {
+            press.preventDefault();
+            act(linkPart, address);
+          }
+        };
+        linkProps[PART_ATTR] = linkPart;
+        linkProps[NAME_ATTR] = address;
+        return element(A_TAG, linkProps, written);
+      })
+    );
+  }
+
   // CredentialPage is Level 1A: one venue, the boxes its own documentation
   // names, Connect, Back, and what the last press answered.
   function CredentialPage(props) {
@@ -1999,7 +2042,7 @@
       DIV_TAG,
       pageProps,
       sectionTitle(page, target),
-      pageLine(page, page[ENDPOINT_PART], held[PAGE_ENDPOINT]),
+      pageLinkLine(page, page[ENDPOINT_PART], held[PAGE_ENDPOINT_LINKS]),
       pageLine(page, page[SCOPES_PART], held[PAGE_SCOPES]),
       pageLine(page, page[SIGN_IN_PART], held[PAGE_SIGN_IN]),
       pageLine(page, page[REDIRECT_PART], held[PAGE_REDIRECT]),
@@ -2041,8 +2084,8 @@
         })
       ),
       pageLine(page, page[MESSAGE_PART], held[PAGE_MESSAGE]),
-      pageLine(page, page[REGISTRATION_PART], held[PAGE_REGISTRATION]),
-      pageLine(page, page[PREREQUISITE_PART], held[PAGE_PREREQUISITE])
+      pageLinkLine(page, page[REGISTRATION_PART], held[PAGE_REGISTRATION_LINKS]),
+      pageLinkLine(page, page[PREREQUISITE_PART], held[PAGE_PREREQUISITE_LINKS])
     );
   }
 
