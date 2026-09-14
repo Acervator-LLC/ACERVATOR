@@ -142,10 +142,13 @@
 }
 
 /* QHeaderView::section is transparent, so a Net, Comp or Conf pillar runs
- * behind indicator-head-cell instead of being cut by a band. */
+ * behind indicator-head-cell instead of being cut by a band. The theme
+ * paints that section in text_accent, which --accent carries. */
 [data-part="indicator-head-cell"] {
   background: transparent;
   border: none;
+  color: var(--accent);
+  padding: 8px;
 }
 
 /* Qt wraps a cell rather than eliding it, so the Net, Comp and Conf readings

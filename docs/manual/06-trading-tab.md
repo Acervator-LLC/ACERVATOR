@@ -5365,3 +5365,80 @@ graph pane         159 px   159 px
 bar area           129 px   129 px
 pillar             374 px   369 px
 ```
+
+## 2026-09-14 - #23 - the window draws the panel without a band
+
+The window painted a band across the Net, Comp and Conf pillars. The band was
+the second table's header row. The theme gives every header section a ground
+and an underline, and the mini-panel container gives itself a ground as well.
+Both painted over the pillar behind them.
+
+`src/gui/indicator_panel.py` — the container and the table draw no ground
+
+```python
+container.setStyleSheet("QWidget { background: transparent; }")
+table.setStyleSheet(
+    "QTableWidget { background: transparent; border: none; } "
+    "QTableView { background: transparent; border: none; } "
+    "QHeaderView { background: transparent; border: none; } "
+    "QHeaderView::section { background: transparent; border: none; }"
+)
+```
+
+The three pillars now run from the upper graph to the lower one without a
+break. Read off the rendered panel at the centre of the Net pillar, one colour
+runs from row 160 to row 599 with no other colour inside it.
+
+### The pillars are named at their tops
+
+Net, Comp and Conf carried a name only at the foot. `column_titles` in
+`src/gui/main_tabs/indicator_panel_surface.py` now heads those three columns on
+the table that holds the aggregate cells, and pads the other table as before.
+
+```python
+def column_titles(subset: list, *, include_aggregates: bool = False) -> list:
+    titles = [TF_COLUMN_TITLE] + [short for _, short, _ in subset]
+    pad = AGGREGATE_TITLES if include_aggregates else []
+    titles = titles + list(pad)
+    return titles + [EMPTY_TITLE] * (PANEL_COLUMN_COUNT - len(titles))
+```
+
+The window and the page both call that function, so neither can head a column
+the other leaves blank. Both now draw 17 column headings where each drew 14.
+
+### The page takes the heading colour the window paints
+
+The theme paints a header section in its own accent colour. The page inherited
+the page text colour instead, so the two drew the same headings in different
+colours. The page variable `--accent` carries that accent for all five themes.
+
+```css
+[data-part="indicator-head-cell"] {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  padding: 8px;
+}
+```
+
+Read off the two rendered panels, a column heading is rgb(0, 255, 204) on both.
+
+### What the two panels measure
+
+```
+                     window     page
+column headings      17         17
+bars                 12         12
+pillars              3          3
+heading row height   33 px      34 px
+bar area             156 px     159 px
+panel ground         10,10,15   10,10,15
+graph ground         10,10,18   10,10,18
+heading colour       0,255,204  0,255,204
+```
+
+### One measurement that still differs
+
+The bot selector is 34 pixels tall in the window. The whole header row is 23
+pixels on the page. The panel publishes ten heights and none of them names the
+header row, so each engine sizes that control from its own font.
