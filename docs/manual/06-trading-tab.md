@@ -5350,7 +5350,7 @@ arrows drawn, 12 bars   8        6             8
 
 The header strip is 23 pixels tall in the window and 18 on the page. Each engine
 sizes that strip from its own font, and no published value names a height, so
-pinning one would write this machine's font metric into the product. Each table
+a fixed height would write this machine's font metric into the product. Each table
 is 83 pixels in the window and 78 on the page for the same reason.
 
 The bot selector shows the whole bot name on the page. The window clips the last
