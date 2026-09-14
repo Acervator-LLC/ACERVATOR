@@ -29,6 +29,7 @@ import logging
 from typing import Any, Optional
 
 from ...trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
+from .. import design_system as ds
 from . import indicator_panel_surface as ivp
 
 logger = logging.getLogger("acervator.market_inspector_gui")
@@ -142,13 +143,18 @@ SCAN_NOW_TOOLTIP = (
 )
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
 CLASS_BOX_WIDTH_PX = 92
+TIMEFRAME_TITLE = "Timeframe"
 TIMEFRAME_BOX_TOOLTIP_FORMAT = "Scan this sector on {label}."
 TIMEFRAME_BOX_WIDTH_PX = 64
-TIMEFRAME_BOX_HEIGHT_PX = 22
 
-#: The indicator and its label together, which is one Qt ``QCheckBox`` and
-#: one page label element.
+#: The four timeframe buttons together, which is one Qt ``QGridLayout`` and
+#: one page row.
 TIMEFRAME_ROW_PART = "timeframe-row"
+
+#: The sector line and the two page buttons under the timeframes, named so a
+#: reader can find either line on its own.
+SECTOR_ROW_PART = "sector-row"
+SCAN_ROW_PART = "scan-row"
 ATA_ROW_SPACING_PX = 6
 
 #: The expanded ATA-SPM entry's line names, one per phase readback.
@@ -273,6 +279,15 @@ BUTTON_COLUMNS = 4
 FIELD_COLUMNS = 2
 
 
+#: The pressed look every checkable button on this screen draws: a venue whose
+#: credential is held, the asset class a scan uses, and a ticked timeframe.
+#: The page paints the same two tokens through its ``data-scan-state`` rule,
+#: so neither side leaves the state to the platform's own default.
+CHECKED_BUTTON_STYLE = (
+    f"QPushButton:checked{{background:{ds.PRIMARY};color:{ds.ON_PRIMARY};"
+    f"border:1px solid {ds.PRIMARY};}}"
+)
+
 CONNECT_LABEL = "Connect"
 BACK_LABEL = "Back"
 VENUE_TOOLTIP_FORMAT = "{target} credentials · {state}"
@@ -301,15 +316,21 @@ SETTINGS_ROW_SPACING_PX = 6
 SETTINGS_LABEL_WIDTH_PX = 150
 
 
-def grid_width(count: int, cell: int) -> int:
-    """How wide ``count`` cells of ``cell`` sit with ``SETTINGS_ROW_SPACING_PX`` between."""
-    return count * cell + (count - 1) * SETTINGS_ROW_SPACING_PX
+def grid_width(count: int, cell: int, spacing: int = SETTINGS_ROW_SPACING_PX) -> int:
+    """How wide ``count`` cells of ``cell`` sit with ``spacing`` between them."""
+    return count * cell + (count - 1) * spacing
 
 
 #: The widths that break each Level 1 and Level 1A group after its own column
 #: count, so the Qt grid and the page wrap at the same place.
 VENUE_GRID_WIDTH_PX = grid_width(BUTTON_COLUMNS, VENUE_BUTTON_WIDTH_PX)
 CATEGORY_GRID_WIDTH_PX = grid_width(BUTTON_COLUMNS, ASSET_CATEGORY_WIDTH_PX)
+
+#: The scan page's timeframe buttons wrap after the same count, at the ATA
+#: column's own spacing.
+TIMEFRAME_GRID_WIDTH_PX = grid_width(
+    BUTTON_COLUMNS, TIMEFRAME_BOX_WIDTH_PX, ATA_ROW_SPACING_PX
+)
 CREDENTIAL_ROW_WIDTH_PX = (
     SETTINGS_LABEL_WIDTH_PX + SETTINGS_ROW_SPACING_PX + CREDENTIAL_FIELD_WIDTH_PX
 )
@@ -464,11 +485,6 @@ BUTTON_FONT_WEIGHT = "bold"
 #: as left, top, right and bottom.
 FIELD_PADDING_PX = (12, 8, 12, 8)
 FIELD_BORDER_PX = 1
-
-#: The indicator box and the gap to its text, read off a themed ``QCheckBox``
-#: as ``PM_IndicatorWidth`` 22 and ``PM_CheckBoxLabelSpacing`` 8.
-CHECK_INDICATOR_PX = 22
-CHECK_LABEL_SPACING_PX = 8
 
 LEFT_MODULE_KEYS = (ATA_SPM_MODULE, OPPOSING_TRADES_MODULE, ARBITRAGE_MODULE)
 LEFT_MODULE_TITLES = (
@@ -738,7 +754,6 @@ SECTOR_TEXT_SET = "sector.text"
 SECTOR_CLASS_SET = "sector.class"
 SECTOR_CLASS_REFUSED = "sector.class_refused"
 TIMEFRAME_TOGGLED = "sector.timeframe"
-TIMEFRAME_UNREACHABLE = "sector.timeframe_unreachable"
 SCAN_NOW_RUN = "scan_now.run"
 SCAN_NOW_UNNAMED = "scan_now.unnamed"
 ZONE_STEPPED = "zone.stepped"
@@ -779,7 +794,6 @@ CALL_NAMES = (
     SECTOR_CLASS_SET,
     SECTOR_CLASS_REFUSED,
     TIMEFRAME_TOGGLED,
-    TIMEFRAME_UNREACHABLE,
     SCAN_NOW_RUN,
     SCAN_NOW_UNNAMED,
     ZONE_STEPPED,
@@ -2130,15 +2144,17 @@ def ata_spm_skin(model: Any) -> dict:
         "field_height_px": FIELD_HEIGHT_PX,
         "class_tooltip": CLASS_BOX_TOOLTIP,
         "class_width_px": CLASS_BOX_WIDTH_PX,
+        "timeframe_title": TIMEFRAME_TITLE,
         "box_tooltip_format": TIMEFRAME_BOX_TOOLTIP_FORMAT,
         "box_width_px": TIMEFRAME_BOX_WIDTH_PX,
-        "box_height_px": TIMEFRAME_BOX_HEIGHT_PX,
         "box_row_part": TIMEFRAME_ROW_PART,
+        "box_grid_width_px": TIMEFRAME_GRID_WIDTH_PX,
+        "sector_row_part": SECTOR_ROW_PART,
+        "scan_row_part": SCAN_ROW_PART,
+        "title_part": SECTION_TITLE_PART,
         "row_spacing_px": ATA_ROW_SPACING_PX,
         "field_padding_px": list(FIELD_PADDING_PX),
         "field_border_px": FIELD_BORDER_PX,
-        "check_indicator_px": CHECK_INDICATOR_PX,
-        "check_label_spacing_px": CHECK_LABEL_SPACING_PX,
         "sector_text": row["sector_text"],
         "sector_class": row["sector_class"],
         "asset_classes": row["asset_classes"],
@@ -2494,11 +2510,8 @@ class MarketInspectorScreenModel:
         self.calls.append([SECTOR_CLASS_SET, self.board.asset_class])
 
     def toggle_timeframe(self, key: Any) -> None:
-        """Tick or untick one timeframe box on the sector shown."""
+        """Tick or untick one timeframe, on the sector shown or on the next one."""
         at = self.zone_at.get(ATA_SPM_MODULE, 0)
-        if self.board.sector_at(at) is None:
-            self.calls.append([TIMEFRAME_UNREACHABLE, str(key)])
-            return
         ticked = self.board.toggle_timeframe(at, key)
         self.calls.append([TIMEFRAME_TOGGLED, str(key), ticked])
 

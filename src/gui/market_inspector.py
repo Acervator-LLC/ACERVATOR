@@ -87,6 +87,7 @@ from .main_tabs.market_inspector_surface import left_module_rows as _left_module
 from .main_tabs.market_inspector_surface import sector_entry as _sector_entry
 from .main_tabs.market_inspector_surface import (
     ATA_ROW_SPACING_PX,
+    CHECKED_BUTTON_STYLE,
     CLASS_BOX_TOOLTIP,
     CLASS_BOX_WIDTH_PX,
     SCAN_NOW_LABEL,
@@ -95,10 +96,13 @@ from .main_tabs.market_inspector_surface import (
     SECTOR_FIELD_PLACEHOLDER,
     SECTOR_FIELD_TOOLTIP,
     SECTOR_FIELD_MIN_WIDTH_PX,
-    TIMEFRAME_BOX_HEIGHT_PX,
+    SECTOR_ROW_PART,
+    SCAN_ROW_PART,
+    SETTINGS_PART,
     TIMEFRAME_BOX_TOOLTIP_FORMAT,
     TIMEFRAME_BOX_WIDTH_PX,
     TIMEFRAME_ROW_PART,
+    TIMEFRAME_TITLE,
     sector_assets,
     sector_candles,
 )
@@ -775,54 +779,82 @@ if _HAS_QT:
                     group.setFixedHeight(share)
 
         # ── the ATA-SPM control row ──────────────────────────────────
-        def _build_ata_row(self) -> "QHBoxLayout":
-            """The sector field, its class, its four boxes and Scan Now.
+        def _build_ata_row(self) -> "QVBoxLayout":
+            """The sector line, the timeframe buttons, then Scan Now and Settings.
 
-            The four boxes belong to the sector on screen, which is what
-            ``_ata_board.boxes`` answers.
+            Three lines rather than one, so every control stays inside the
+            zone's width. The four buttons belong to the sector on screen,
+            which is what ``_ata_board.boxes`` answers.
             """
-            row = QHBoxLayout()
-            row.setSpacing(ATA_ROW_SPACING_PX)
+            column = QVBoxLayout()
+            column.setSpacing(ATA_ROW_SPACING_PX)
+            column.addLayout(self._build_sector_line())
+            column.addWidget(self._section_title(TIMEFRAME_TITLE))
+            column.addLayout(self._build_timeframe_grid())
+            column.addLayout(self._build_scan_line())
+            return column
+
+        def _build_sector_line(self) -> "QHBoxLayout":
+            """The sector field, which takes the slack, and its asset class."""
+            line = QHBoxLayout()
+            line.setSpacing(ATA_ROW_SPACING_PX)
             self._sector_edit = QLineEdit()
             self._sector_edit.setPlaceholderText(SECTOR_FIELD_PLACEHOLDER)
             self._sector_edit.setToolTip(SECTOR_FIELD_TOOLTIP)
             self._sector_edit.setMinimumWidth(SECTOR_FIELD_MIN_WIDTH_PX)
             self._sector_edit.setFixedHeight(FIELD_HEIGHT_PX)
+            self._sector_edit.setAccessibleName(SECTOR_ROW_PART)
             self._sector_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             self._sector_edit.textChanged.connect(self._ata_board.set_text)
-            row.addWidget(self._sector_edit)
+            line.addWidget(self._sector_edit)
 
             self._class_box = QComboBox()
             self._class_box.setToolTip(CLASS_BOX_TOOLTIP)
             self._class_box.setFixedSize(CLASS_BOX_WIDTH_PX, FIELD_HEIGHT_PX)
             self._class_box.addItems(list(ata_spm.ASSET_CLASSES))
             self._class_box.currentTextChanged.connect(self._on_class_changed)
-            row.addWidget(self._class_box)
+            line.addWidget(self._class_box)
+            return line
 
+        def _build_timeframe_grid(self) -> "QGridLayout":
+            """One button per timeframe, wrapping after ``BUTTON_COLUMNS``."""
             self._tf_boxes: list = []
-            for key, label, ticked in self._ata_board.boxes(0):
-                check = QCheckBox(label)
-                check.setChecked(ticked)
-                check.setFixedSize(TIMEFRAME_BOX_WIDTH_PX, TIMEFRAME_BOX_HEIGHT_PX)
-                check.setAccessibleName(TIMEFRAME_ROW_PART)
-                check.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
-                check.clicked.connect(
+            grid = QGridLayout()
+            grid.setSpacing(ATA_ROW_SPACING_PX)
+            for at, (key, label, ticked) in enumerate(self._ata_board.boxes(0)):
+                button = QPushButton(label)
+                button.setCheckable(True)
+                button.setChecked(ticked)
+                button.setStyleSheet(CHECKED_BUTTON_STYLE)
+                button.setFixedSize(TIMEFRAME_BOX_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+                button.setAccessibleName(f"{TIMEFRAME_ROW_PART} {key}")
+                button.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
+                button.clicked.connect(
                     lambda _checked, name=key: self._on_timeframe_toggled(name)
                 )
-                row.addWidget(check)
-                self._tf_boxes.append(check)
+                grid.addWidget(button, at // BUTTON_COLUMNS, at % BUTTON_COLUMNS)
+                self._tf_boxes.append(button)
+            grid.setColumnStretch(BUTTON_COLUMNS, 1)
+            return grid
 
+        def _build_scan_line(self) -> "QHBoxLayout":
+            """Scan Now beside Settings, which is the way in to Level 1."""
+            line = QHBoxLayout()
+            line.setSpacing(ATA_ROW_SPACING_PX)
             self._scan_now_btn = QPushButton(SCAN_NOW_LABEL)
             self._scan_now_btn.setToolTip(SCAN_NOW_TOOLTIP)
             self._scan_now_btn.setFixedSize(SCAN_NOW_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._scan_now_btn.setAccessibleName(SCAN_ROW_PART)
             self._scan_now_btn.clicked.connect(self._on_scan_now)
-            row.addWidget(self._scan_now_btn)
+            line.addWidget(self._scan_now_btn)
             self._settings_btn = QPushButton(SETTINGS_LABEL)
             self._settings_btn.setToolTip(SETTINGS_TOOLTIP)
             self._settings_btn.setFixedSize(SETTINGS_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._settings_btn.setAccessibleName(SETTINGS_PART)
             self._settings_btn.clicked.connect(self._on_settings_pressed)
-            row.addWidget(self._settings_btn)
-            return row
+            line.addWidget(self._settings_btn)
+            line.addStretch()
+            return line
 
         # ── Level 1 and Level 1A ─────────────────────────────────────
         def _build_settings_page(self) -> "QWidget":
@@ -860,6 +892,7 @@ if _HAS_QT:
             for at, name in enumerate(ata_spm_push.TARGET_NAMES):
                 button = QPushButton(name)
                 button.setCheckable(True)
+                button.setStyleSheet(CHECKED_BUTTON_STYLE)
                 button.setFixedSize(VENUE_BUTTON_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
                 button.setAccessibleName(f"{VENUE_BUTTON_PART} {name}")
                 button.clicked.connect(
@@ -878,6 +911,7 @@ if _HAS_QT:
                 button = QPushButton(name)
                 button.setCheckable(True)
                 button.setToolTip(CATEGORY_TOOLTIP_FORMAT.format(name=name))
+                button.setStyleSheet(CHECKED_BUTTON_STYLE)
                 button.setFixedSize(ASSET_CATEGORY_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
                 button.setAccessibleName(f"{ASSET_CATEGORY_PART} {name}")
                 button.clicked.connect(

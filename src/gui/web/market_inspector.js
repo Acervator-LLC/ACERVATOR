@@ -452,7 +452,10 @@
   var BOX_TOOLTIP_FORMAT = "box_tooltip_format";
   var BOX_ROW_PART = "box_row_part";
   var BOX_WIDTH_PX = "box_width_px";
-  var BOX_HEIGHT_PX = "box_height_px";
+  var BOX_GRID_WIDTH_PX = "box_grid_width_px";
+  var TIMEFRAME_TITLE = "timeframe_title";
+  var SECTOR_ROW_PART = "sector_row_part";
+  var SCAN_ROW_PART = "scan_row_part";
   var ROW_SPACING_PX = "row_spacing_px";
   var SECTOR_TEXT = "sector_text";
   var SECTOR_CLASS = "sector_class";
@@ -460,30 +463,29 @@
   var BOXES = "boxes";
   var FIELD_PADDING_PX = "field_padding_px";
   var FIELD_BORDER_PX = "field_border_px";
-  var CHECK_INDICATOR_PX = "check_indicator_px";
-  var CHECK_LABEL_SPACING_PX = "check_label_spacing_px";
 
   var ATA_SPM_FIELDS = [
     ASSET_CLASSES,
     BOXES,
-    BOX_HEIGHT_PX,
+    BOX_GRID_WIDTH_PX,
     BOX_ROW_PART,
     BOX_TOOLTIP_FORMAT,
     BOX_WIDTH_PX,
-    CHECK_INDICATOR_PX,
-    CHECK_LABEL_SPACING_PX,
     CLASS_TOOLTIP,
     CLASS_WIDTH_PX,
     FIELD_BORDER_PX,
     FIELD_PADDING_PX,
     ROW_SPACING_PX,
     SCAN_LABEL,
+    SCAN_ROW_PART,
     SCAN_TOOLTIP,
     SECTOR_CLASS,
     SECTOR_MIN_WIDTH_PX,
     SECTOR_PLACEHOLDER,
+    SECTOR_ROW_PART,
     SECTOR_TEXT,
-    SECTOR_TOOLTIP
+    SECTOR_TOOLTIP,
+    TIMEFRAME_TITLE
   ];
 
   var BAG_FIELDS = {};
@@ -654,7 +656,6 @@
   var OPTION_TAG = "option";
   var BORDER_BOX = "border-box";
   var SHRINK_ONLY = "0 1 auto";
-  var NO_MARGIN = "0";
 
   var BUTTON_TYPE = "button";
   var CHECKBOX_TYPE = "checkbox";
@@ -1692,52 +1693,23 @@
     );
   }
 
-  // TimeframeBox is one of the four boxes the sector on screen scans on.
-  function TimeframeBox(props) {
+  // TimeframeButton is one of the four timeframes the next scan runs on. It
+  // draws on while that timeframe is ticked, the way a Level 1 button does.
+  function TimeframeButton(props) {
     var skin = props.skin;
     var row = asList(props.row);
-    var wrapStyle = { display: FLEX, alignItems: CENTER, flex: FLEX_NONE };
-    wrapStyle.gap = length(skin[CHECK_LABEL_SPACING_PX]);
-    wrapStyle.boxSizing = BORDER_BOX;
-    wrapStyle.width = length(skin[BOX_WIDTH_PX]);
-    wrapStyle.height = length(skin[BOX_HEIGHT_PX]);
-    wrapStyle.overflow = CLIPPED;
-    var wrapProps = {
-      style: wrapStyle,
-      title: label(skin[BOX_TOOLTIP_FORMAT]).replace(
-        LABEL_TOKEN,
-        text(row[ONE])
-      )
-    };
-    wrapProps[PART_ATTR] = text(skin[BOX_ROW_PART]);
-    wrapProps[NAME_ATTR] = text(row[ZERO]);
-    // PM_IndicatorWidth on the themed QCheckBox, drawn as one box.
-    var indicator = {
-      boxSizing: BORDER_BOX,
-      width: length(skin[CHECK_INDICATOR_PX]),
-      height: length(skin[CHECK_INDICATOR_PX]),
-      flex: FLEX_NONE,
-      margin: NO_MARGIN
-    };
-    var boxProps = {
-      type: CHECKBOX_TYPE,
-      style: indicator,
-      checked: row[TWO] === true,
-      onChange: function () {
-        act(TIMEFRAME_BOX_PART, row[ZERO]);
-      }
-    };
-    boxProps[PART_ATTR] = TIMEFRAME_BOX_PART;
-    boxProps[NAME_ATTR] = text(row[ZERO]);
-    boxProps[ARIA_LABEL] = text(row[ONE]);
-    var wordProps = { style: asLabel({}, false) };
-    wordProps[PART_ATTR] = TIMEFRAME_BOX_PART + PATH_SPLIT + text(row[ZERO]);
-    return element(
-      LABEL_TAG,
-      wrapProps,
-      element(INPUT_TAG, boxProps),
-      element(SPAN_TAG, wordProps, text(row[ONE]))
-    );
+    return element(PushButton, {
+      key: text(row[ZERO]),
+      model: props.model,
+      part: TIMEFRAME_BOX_PART,
+      name: text(row[ZERO]),
+      label: text(row[ONE]),
+      tooltip: label(skin[BOX_TOOLTIP_FORMAT]).replace(LABEL_TOKEN, text(row[ONE])),
+      width: skin[BOX_WIDTH_PX],
+      height: skin[BUTTON_HEIGHT_PX],
+      value: text(row[ZERO]),
+      on: row[TWO] === true
+    });
   }
 
   // ScanNowButton runs phases one to three on the sector named beside it.
@@ -2175,10 +2147,9 @@
     );
   }
 
-  // AtaRow is the one line the ATA-SPM zone carries above its stepper.
-  function AtaRow(props) {
-    var model = props.model;
-    var skin = objectField(model, ATA_SPM);
+  // ataLine is one line of the ATA-SPM scan page, named so a reader can find
+  // it, and holding its controls at the column's own spacing.
+  function ataLine(skin, part, children) {
     var style = {
       display: FLEX,
       flexDirection: ROW_WAY,
@@ -2186,35 +2157,63 @@
       alignItems: CENTER
     };
     style.gap = length(skin[ROW_SPACING_PX]);
+    var lineProps = { style: style };
+    lineProps[PART_ATTR] = text(part);
+    return element(DIV_TAG, lineProps, asList(children));
+  }
+
+  // AtaRow is the ATA-SPM scan page: the sector line, the timeframe buttons
+  // under their heading, then Scan Now and the way in to Level 1.
+  function AtaRow(props) {
+    var model = props.model;
+    var skin = objectField(model, ATA_SPM);
+    var style = {
+      display: FLEX,
+      flexDirection: COLUMN_WAY,
+      flex: FLEX_NONE
+    };
+    style.gap = length(skin[ROW_SPACING_PX]);
     var rowProps = { style: style };
     rowProps[PART_ATTR] = ATA_ROW_PART;
     return element(
       DIV_TAG,
       rowProps,
-      element(SectorField, { key: SECTOR_FIELD_PART, skin: skin }),
-      element(ClassBox, { key: CLASS_BOX_PART, skin: skin }),
-      asList(skin[BOXES]).map(function (row, at) {
-        return element(TimeframeBox, {
-          key: TIMEFRAME_BOX_PART + PATH_SPLIT + String(at),
-          skin: skin,
-          row: row
-        });
-      }),
-      element(ScanNowButton, {
-        key: SCAN_NOW_PART,
-        model: model,
-        skin: skin
-      }),
-      element(PushButton, {
-        key: SETTINGS_PART,
-        model: model,
-        part: settingsOf(model)[SETTINGS_PART],
-        label: settingsOf(model)[SETTINGS_LABEL],
-        tooltip: settingsOf(model)[SETTINGS_TOOLTIP],
-        width: settingsOf(model)[SETTINGS_WIDTH_PX],
-        height: settingsOf(model)[BUTTON_HEIGHT_PX],
-        on: settingsOf(model)[SETTINGS_OPEN] === true
-      })
+      ataLine(skin, skin[SECTOR_ROW_PART], [
+        element(SectorField, { key: SECTOR_FIELD_PART, skin: skin }),
+        element(ClassBox, { key: CLASS_BOX_PART, skin: skin })
+      ]),
+      sectionTitle(skin, skin[TIMEFRAME_TITLE]),
+      wrapAt(
+        skin,
+        text(skin[BOX_ROW_PART]),
+        skin[TIMEFRAME_TITLE],
+        BOX_GRID_WIDTH_PX,
+        asList(skin[BOXES]).map(function (row) {
+          return element(TimeframeButton, {
+            key: TIMEFRAME_BOX_PART + PATH_SPLIT + text(asList(row)[ZERO]),
+            model: model,
+            skin: skin,
+            row: row
+          });
+        })
+      ),
+      ataLine(skin, skin[SCAN_ROW_PART], [
+        element(ScanNowButton, {
+          key: SCAN_NOW_PART,
+          model: model,
+          skin: skin
+        }),
+        element(PushButton, {
+          key: SETTINGS_PART,
+          model: model,
+          part: settingsOf(model)[SETTINGS_PART],
+          label: settingsOf(model)[SETTINGS_LABEL],
+          tooltip: settingsOf(model)[SETTINGS_TOOLTIP],
+          width: settingsOf(model)[SETTINGS_WIDTH_PX],
+          height: settingsOf(model)[BUTTON_HEIGHT_PX],
+          on: settingsOf(model)[SETTINGS_OPEN] === true
+        })
+      ])
     );
   }
 
@@ -3246,7 +3245,7 @@
     AtaRow: AtaRow,
     SectorField: SectorField,
     ClassBox: ClassBox,
-    TimeframeBox: TimeframeBox,
+    TimeframeButton: TimeframeButton,
     ScanNowButton: ScanNowButton,
     ZoneStepper: ZoneStepper,
     StepButton: StepButton,

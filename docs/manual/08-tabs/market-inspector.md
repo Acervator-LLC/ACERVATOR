@@ -2145,4 +2145,81 @@ Login Review without naming which permissions it accepts. Whether it carries
 
 **Figures.** This page carries no figure and this entry adds none.
 
+
+## 2026-09-14 23:55 - #23 - The scan page, three lines of buttons
+
+The ATA-SPM zone drew every control on one line: the sector field, its class,
+four check boxes, Scan Now and Settings. That line asked for 666 px where the
+zone gives 415 px at a 900 px tab, so the page pushed Scan Now and Settings
+past the pane's right edge and grew a horizontal scroll bar. Settings is the
+only way in to Level 1, so neither page could be reached.
+
+The zone now draws three lines. The sector field takes the slack on the first,
+beside its class. The four timeframes follow, under their own heading, as a
+grid that wraps after `BUTTON_COLUMNS` the way the Level 1 groups do. Scan Now
+and Settings sit on the third.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the three lines a reader can
+name
+
+```python
+TIMEFRAME_TITLE = "Timeframe"
+SECTOR_ROW_PART = "sector-row"
+SCAN_ROW_PART = "scan-row"
+```
+
+Read off the running page, the widest line is now the timeframe grid at 274 px,
+so every control sits inside the pane from 700 px of tab width upward and no
+scroll bar appears.
+
+### The timeframes are buttons, and a press sticks before a scan
+
+Each timeframe is a button that draws on while that timeframe is ticked, which
+is what the Asset Category buttons on Level 1 already do. A press before any
+sector exists is held on the board and given to the sector the next Scan Now
+adds, so the four buttons report what the scan will use rather than a row of
+empty boxes.
+
+`src/trading/ata_spm.py` - what a press writes while the board holds no sector
+
+```python
+        ticked = tuple(one for one in timeframes_for(asset_class) if one in held)
+        if sector is None:
+            self.timeframes = ticked
+        else:
+            sector.timeframes = ticked
+```
+
+A fresh board carries the whole set its class lists, so all four draw on until
+one is pressed off. Choosing an asset class puts that class's own four back.
+
+### One pressed look, in both builds
+
+A venue whose credential is held, the asset class a scan uses and a ticked
+timeframe are the same state, and each now paints `PRIMARY` under `ON_PRIMARY`
+text in both builds. The window sets it as a style sheet and the page selects
+the attribute its buttons carry.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the pressed look
+
+```python
+CHECKED_BUTTON_STYLE = (
+    f"QPushButton:checked{{background:{ds.PRIMARY};color:{ds.ON_PRIMARY};"
+    f"border:1px solid {ds.PRIMARY};}}"
+)
+```
+
+`src/gui/web/market_inspector.css` - the same two tokens on the page
+
+```css
+[data-scan-state] {
+  background: var(--PRIMARY, var(--accent));
+  color: var(--ON_PRIMARY, var(--bg));
+  border-color: var(--PRIMARY, var(--accent));
+}
+```
+
+**Figures.** This page carries no figure and this entry adds none. The two
+widths quoted above were read from the running page and are not stored.
+
 Back to [the subsystem index](README.md).
