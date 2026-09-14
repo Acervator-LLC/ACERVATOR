@@ -33,11 +33,13 @@ from .main_tabs.market_inspector_topologies_surface import (
     DISMISS_PART,
     FOOTER_STYLE,
     FOOTER_TEXT,
+    HEADER_WORD_WRAP,
     PANE_MARGINS,
     PANE_SPACING,
     PREVIEW_PART,
     REFRESH_TEXT,
     REFRESH_TOOLTIP,
+    REFRESH_WIDTH_PX,
     STATUS_STYLE,
     STATUS_UNWIRED,
     pane_view,
@@ -58,6 +60,7 @@ try:
         QTreeWidgetItem,
         QHeaderView,
         QMessageBox,
+        QSizePolicy,
     )
     from PySide6.QtCore import Qt, QTimer, Signal
 
@@ -280,18 +283,26 @@ if _HAS_QT:
             layout.setContentsMargins(*PANE_MARGINS)
             layout.setSpacing(PANE_SPACING)
 
+            # The button keeps its published width and the two lines share
+            # what is left, so neither is sized by its own text and neither
+            # can reach past the zone's edge.
             top_row = QHBoxLayout()
+            top_row.setSpacing(PANE_SPACING)
             self._refresh_btn = QPushButton(REFRESH_TEXT)
             self._refresh_btn.setToolTip(REFRESH_TOOLTIP)
+            self._refresh_btn.setFixedWidth(REFRESH_WIDTH_PX)
             self._refresh_btn.clicked.connect(self.refresh)
             top_row.addWidget(self._refresh_btn)
             self._footer_lbl = QLabel(FOOTER_TEXT)
             self._footer_lbl.setStyleSheet(FOOTER_STYLE)
-            top_row.addWidget(self._footer_lbl)
-            top_row.addStretch()
             self._status_lbl = QLabel(STATUS_UNWIRED)
             self._status_lbl.setStyleSheet(STATUS_STYLE)
-            top_row.addWidget(self._status_lbl)
+            for one in (self._footer_lbl, self._status_lbl):
+                one.setWordWrap(HEADER_WORD_WRAP)
+                one.setMinimumWidth(0)
+                one.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+                one.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Minimum)
+                top_row.addWidget(one, 1)
             layout.addLayout(top_row)
 
             from .market_inspector import ProposalStepper
