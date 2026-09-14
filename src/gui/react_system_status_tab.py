@@ -77,6 +77,12 @@ SKIN = {
 #: The JS expression that reads back the whole text the page drew.
 DRAWN_TEXT_JS = 'document.getElementById("' + PANEL_ROOT_ID + '").textContent'
 
+#: The JS expression naming each style sheet the page holds and its rule count.
+LOADED_STYLES_JS = "JSON.stringify(window.acervatorSystemStatusPage.styles())"
+
+#: The JS expression naming every module that registered a panel.
+DRAWN_MODULES_JS = "window.acervatorPanelHost.registered().join(',')"
+
 _NAMER_SOURCE = """(function (global) {
   "use strict";
 
@@ -100,6 +106,21 @@ _HOST_SOURCE = """(function (global) {
   global.acervator = {
     call: function () {
       return Promise.resolve(MODEL);
+    }
+  };
+
+  global.acervatorSystemStatusPage = {
+    styles: function () {
+      var found = [];
+      var tags = document.querySelectorAll("style[data-asset]");
+      for (var at = 0; at < tags.length; at++) {
+        var sheet = tags[at].sheet;
+        found.push([
+          tags[at].getAttribute("data-asset"),
+          sheet === null ? 0 : sheet.cssRules.length
+        ]);
+      }
+      return found;
     }
   };
 

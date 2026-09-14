@@ -13,6 +13,7 @@ import logging
 from typing import Optional
 
 from . import design_system as ds
+from .color_alpha import coin_disc_color
 
 logger = logging.getLogger("acervator.gui")
 
@@ -110,8 +111,7 @@ def _get_coin_icon(
     px.fill(QColor(0, 0, 0, 0))
     p = QPainter(px)
     p.setRenderHint(QPainter.Antialiasing)
-    h = sum(ord(c) for c in symbol) % 360
-    p.setBrush(QColor.fromHsv(h, 120, 180))
+    p.setBrush(QColor(coin_disc_color(symbol)))
     p.setPen(Qt.NoPen)
     p.drawEllipse(1, 1, size - 2, size - 2)
     p.setPen(QColor(255, 255, 255))

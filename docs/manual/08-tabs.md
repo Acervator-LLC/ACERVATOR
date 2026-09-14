@@ -1326,13 +1326,13 @@ rather than typed.
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | shell | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | shell | in scope |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | - | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | shell | in scope |
+| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
@@ -1362,11 +1362,11 @@ rather than typed.
 | `src/gui/widgets/__init__.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no | not a screen |
-| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | - | in scope |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no | shelved |
 | `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | - | in scope |
-| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | - | in scope |
+| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
@@ -1390,8 +1390,8 @@ Bridge                   72
 Manifest                 62
 Registers in Electron    25
 Ships in the build       58
-RENDERS                  42
-RENDERS, in scope        31 of 43
+RENDERS                  44
+RENDERS, in scope        35 of 43
 out of scope             41
 ```
 
@@ -2971,3 +2971,128 @@ label                [1/4] The Defiant - SEC crypto custody rewrite enters White
 **Both table rows above still read `shell`.** `variant_surface.py` records no
 loader pair for either strip, so the running window builds the Qt pane and the
 Qt strip. Each row changes when its pair is recorded.
+
+### 2026-09-13 - #23 - four modules already had a host, and the tables get their skin
+
+Four rows read `-` or `shell`. All four already draw in the window the operator
+launches. No new host was written. The measurement is below, and four cells move.
+
+The venue page host mounts both bot tables inside itself. The Charts host mounts
+the chart module inside itself. The Status panel is its own host.
+
+```
+react_exchange_tab.CHILD_MODULES   table_cells, bot_status_table,
+                                   extractor_bot_table, crypto_news_ticker
+react_charts_tab.CHILD_MODULES     native_chart
+react_system_status_tab            PANEL_MODULE system_status_tab.js
+```
+
+The window reaches all three. `main_window.py` asks the seam for the venue page
+class, and `charts_tab.py` asks it for the Charts class. `SystemStatusTabMixin`
+builds the Status panel with no seam, because no Qt widget ever drew that tab.
+
+```
+main_window.py:1361            page_class = surface_class(EXCHANGE)
+main_tabs/charts_tab.py:29     built = surface_class(CHARTS)()
+main_tabs/system_status_tab.py SystemStatusReactPanel()
+```
+
+**Each page names itself off the live object.** A run built each screen, drove
+content into it and read the class and the accessible name back.
+
+```
+ExchangeTabReact           React Exchange Tab   widget and web view
+ChartsTabReact             React Charts Tab     widget and web view
+SystemStatusReactPanel     Status               widget and web view
+```
+
+**Each page reports what it loaded.** The venue page already answered this. The
+Charts page and the Status page now answer it too, because `page_html` gives
+every style sheet a `data-asset` name of its own.
+
+```
+venue page   9 modules, exchange_tab.css 31 rules
+Charts tab   3 modules, trade_charts_tab.css 20 rules, 0 panel faults
+Status tab   1 module, system_status_tab.css 25 rules
+```
+
+**Each page drew the content driven into it.** Six bots went into the venue page,
+forty candles into the chart, and the emitter read-out into Status.
+
+```
+venue page   4 Scrumming rows, 2 Extractor rows, 56 cells, 6 coin badges
+Charts tab   40 candles, 40 wicks, 40 volume bars, 3 indicator panels
+Status tab   17 subsystems, 11 tab groups, 78 emitter rows
+```
+
+**The readings can fail.** Each page was built again with its style sheet emptied
+and again with its module absent. Every reading reported the loss.
+
+```
+sheet emptied    rule count 0, page paints white
+venue module out modules drop both tables, rows 0 and 0, no cells
+chart module out modules drop native_chart, fault "registered no panel to draw"
+status module out modules empty, emitter rows 0
+```
+
+**Both variants drew the same content, and five colours did not match.** Each
+screen was built under the qt variant and the React variant with the same bots
+and the same candles. Every table cell agreed, header for header and row for
+row. Five colours read off the saved pictures did not.
+
+| element | qt variant | React before | React now |
+| ------- | ---------- | ------------ | --------- |
+| column header text | `#00ffcc` | `#e0e0f0` | `#00ffcc` |
+| header underline | 2px accent | 1px grey | 2px accent |
+| Detail button face | `#1a1a28` | `#efefef` | `#1a1a28` |
+| Fire button face | `#1a1a28` | `#efefef` | `#1a1a28` |
+| coin badge | a coloured disc | nothing drawn | a coloured disc |
+
+The badge is the disc `_get_coin_icon` paints when no logo file is cached. Its
+colour comes from the characters of the name. One function now answers for both
+sides, so the two cannot drift.
+
+```python
+def coin_disc_color(symbol: str) -> str:
+    hue = sum(ord(char) for char in str(symbol)) % HUE_WHEEL
+    red, green, blue = colorsys.hsv_to_rgb(
+        hue / HUE_WHEEL, DISC_SATURATION / ALPHA_HIGHEST, DISC_VALUE / ALPHA_HIGHEST
+    )
+```
+
+Four discs were read off the qt picture and the same four off the React picture.
+They agree to the digit.
+
+```
+BTC-USD   #5fb479      SOL-USD   #5fb496
+ETH-USD   #5fb484      LINK      #b45fb1
+```
+
+**Two differences stay, and each has a reason.** The header ground reads
+`#16162a` under Qt and `#1a1a28` under React. No design token holds the first
+value, and the sheet may name no colour the design system does not hold. The
+column rule reads a lighter grey under Qt for the same reason.
+
+**The Charts tab chrome differs above the chart, and that belongs to another
+row.** The qt arrows draw no glyph, the qt timeframe box carries a `TF:` label,
+and the qt indicator toggles paint filled squares where React draws check boxes.
+Every one of those sits in `trade_charts_tab.js`, whose row already reads `yes`.
+
+**Status draws the same under both variants.** It has no Qt original, so the
+window builds the React panel either way. The two pictures hold the same colours
+in the same counts at all three widths.
+
+```
+status qt      #141420 60397   #0a0a0f 28812   #ffffff 4080
+status react   #141420 60397   #0a0a0f 28812   #ffffff 4080
+```
+
+Four cells move to `yes`. The Status cell moves because the column reports what
+the operator sees, and he sees the React panel in the window.
+
+| Qt file | React module | before | after |
+| ------- | ------------ | ------ | ----- |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | - | yes |
+| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | - | yes |
+| `src/gui/native_chart.py` | `native_chart.js` | shell | yes |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | shell | yes |

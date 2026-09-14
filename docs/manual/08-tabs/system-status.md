@@ -398,3 +398,17 @@ Watchdog is not on this screen yet. Both are named in issue #34 and neither is
 built.
 
 Back to [the subsystem index](README.md).
+
+### Where the Status tab draws
+
+The window builds this panel under both builds. `SystemStatusTabMixin` appends
+it with no variant seam, because no Qt widget ever drew this tab. The two builds
+draw the same picture at every width.
+
+```
+class            SystemStatusReactPanel
+accessible name  Status
+module loaded    system_status_tab
+style sheet      system_status_tab.css, 25 rules
+drawn            17 subsystems, 11 tab groups, 78 emitter rows
+```

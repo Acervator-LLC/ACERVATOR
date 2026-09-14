@@ -4877,3 +4877,27 @@ running one vote over the column beside it.
 Each mini-table holds its header plus two timeframe rows. The confidence bars
 below it take the rest of the height. A summary carrying more timeframes is cut at
 two rows. `indicator_panel.py` fixes the same height with `setFixedHeight`.
+
+### The coin badge and the header skin
+
+Each Symbol cell carries a coloured disc with the first letter of the name. The
+colour is derived from the characters of the name, so one asset always draws the
+same disc. `coin_disc_color` answers for the Qt widget and for the renderer
+module, and both bot tables read it.
+
+```python
+ICON_ASSET_SIZE_PX = ds.COIN_ICON_SIZE_PX   # 18 pixels, one figure, four readers
+```
+
+The venue stylesheet paints the column headers in the accent colour, bold, over
+a two-pixel accent underline. It paints a rule on each cell edge, and it gives
+the Fire and Detail buttons the card ground and a border, so the browser draws
+no button face of its own.
+
+```
+header text        the accent colour
+header underline   2px, the accent colour
+cell edges         one rule right and one rule below
+Fire and Detail    card ground, outline border, payload text colour
+coin badge         18px disc, first letter, maximum-contrast text
+```

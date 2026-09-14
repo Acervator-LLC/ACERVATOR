@@ -83,6 +83,9 @@ DRAWN_MODULES_JS = "window.acervatorPanelHost.registered().join(',')"
 #: The JS expression naming every panel the page refused to draw.
 PANEL_FAULTS_JS = "JSON.stringify(window.acervatorPanelHost.faults())"
 
+#: The JS expression naming each style sheet the page holds and its rule count.
+LOADED_STYLES_JS = "JSON.stringify(window.acervatorChartsPage.styles())"
+
 _NAMER_SOURCE = """(function (global) {
   "use strict";
 
@@ -152,6 +155,21 @@ _HOST_SOURCE = """(function (global) {
     global.acervatorSetCharts(model);
     global.acervatorCharts.renderTab(root(), model);
     return true;
+  };
+
+  global.acervatorChartsPage = {
+    styles: function () {
+      var found = [];
+      var tags = document.querySelectorAll("style[data-asset]");
+      for (var at = 0; at < tags.length; at++) {
+        var sheet = tags[at].sheet;
+        found.push([
+          tags[at].getAttribute("data-asset"),
+          sheet === null ? 0 : sheet.cssRules.length
+        ]);
+      }
+      return found;
+    }
   };
 })(window);"""
 
