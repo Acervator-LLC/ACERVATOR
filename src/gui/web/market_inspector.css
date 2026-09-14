@@ -120,7 +120,9 @@ body {
  * the last Connect press answered. Qt draws each as a plain QLabel. */
 [data-part="endpoint-line"],
 [data-part="scopes-line"],
+[data-part="sign-in-line"],
 [data-part="registration-line"],
+[data-part="prerequisite-line"],
 [data-part="credential-message"] {
   white-space: normal;
 }

@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from ...trading import ata_asset_maps, ata_spm, ata_spm_push
+from ...trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
 from . import indicator_panel_surface as ivp
 
 logger = logging.getLogger("acervator.market_inspector_gui")
@@ -258,6 +258,8 @@ SECTION_TITLE_PART = "section-title"
 ENDPOINT_LINE_PART = "endpoint-line"
 SCOPES_LINE_PART = "scopes-line"
 REGISTRATION_LINE_PART = "registration-line"
+SIGN_IN_LINE_PART = "sign-in-line"
+PREREQUISITE_LINE_PART = "prerequisite-line"
 
 VENUE_BUTTON_WIDTH_PX = 108
 ASSET_CATEGORY_WIDTH_PX = 108
@@ -280,6 +282,8 @@ ZONES_TOOLTIP = "Leave the accounts page for the three scan zones."
 ENDPOINT_LINE_FORMAT = "Posts to {endpoint}"
 SCOPES_LINE_FORMAT = "Scopes {scopes}"
 REGISTRATION_LINE_FORMAT = "Register first: {registration}"
+SIGN_IN_LINE_FORMAT = "Connect opens your browser on {address}"
+PREREQUISITE_LINE_FORMAT = "Before it works: {prerequisite}"
 SCOPE_SEPARATOR = " · "
 NO_MESSAGE_TEXT = ""
 
@@ -1696,7 +1700,9 @@ def credential_page(board: Any) -> dict:
             "fields": [],
             "endpoint": NO_SYMBOL,
             "scopes": NO_SYMBOL,
+            "sign_in": NO_SYMBOL,
             "registration": NO_SYMBOL,
+            "prerequisite": NO_SYMBOL,
             "message": NO_MESSAGE_TEXT,
             "ok": False,
         }
@@ -1705,8 +1711,14 @@ def credential_page(board: Any) -> dict:
         "fields": [[one.key, one.label] for one in found.fields],
         "endpoint": ENDPOINT_LINE_FORMAT.format(endpoint=found.endpoint),
         "scopes": SCOPES_LINE_FORMAT.format(scopes=SCOPE_SEPARATOR.join(found.scopes)),
+        "sign_in": SIGN_IN_LINE_FORMAT.format(
+            address=ata_spm_signin.authorize_address(found.name)
+        ),
         "registration": REGISTRATION_LINE_FORMAT.format(
             registration=found.registration
+        ),
+        "prerequisite": PREREQUISITE_LINE_FORMAT.format(
+            prerequisite=found.prerequisite
         ),
         "message": NO_MESSAGE_TEXT if answered is None else str(answered.detail),
         "ok": bool(answered is not None and answered.ok),
@@ -1733,7 +1745,9 @@ def settings_page(board: Any, asset_class: Any = "") -> dict:
         "title_part": SECTION_TITLE_PART,
         "endpoint_part": ENDPOINT_LINE_PART,
         "scopes_part": SCOPES_LINE_PART,
+        "sign_in_part": SIGN_IN_LINE_PART,
         "registration_part": REGISTRATION_LINE_PART,
+        "prerequisite_part": PREREQUISITE_LINE_PART,
         "accounts_title": SM_ACCOUNTS_TITLE,
         "category_title": ASSET_CATEGORY_TITLE,
         "settings_title": ATA_SETTINGS_TITLE,
@@ -2333,6 +2347,9 @@ class MarketInspectorScreenModel:
         self.ata_candle_source: Any = None
         self.board = ata_spm.SectorBoard()
         self.push = ata_spm_push.PushBoard()
+        self.push.settings.set_connector(
+            ata_spm_signin.build_connector(ata_spm_signin.default_session())
+        )
         self.refresh_enabled = True
         self.status_label_text = STATUS_INITIAL_TEXT
         self.signal_rows: list = []
