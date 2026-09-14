@@ -110,20 +110,67 @@ button.acervator-exchange-tab:focus-visible {
   border-collapse: collapse;
 }
 
+/* QHeaderView::section paints text_accent, bold, over a 2px accent_primary
+ * underline, and centres each label. */
 [data-part="scrum-table"] th,
 [data-part="extractor-table"] th {
   background: var(--SURFACE_2, var(--btn-bg));
-  border-bottom: 1px solid var(--OUTLINE, var(--border));
+  color: var(--PRIMARY, var(--accent));
+  font-weight: bold;
+  border-bottom: 2px solid var(--PRIMARY, var(--accent));
+  border-right: 1px solid var(--SURFACE_3, var(--grid));
   padding: 4px 6px;
-  text-align: left;
+  text-align: center;
   white-space: nowrap;
 }
 
+/* QTableWidget draws a gridline-color rule on both cell edges. */
 [data-part="scrum-table"] td,
 [data-part="extractor-table"] td {
   border-bottom: 1px solid var(--SURFACE_3, var(--grid));
+  border-right: 1px solid var(--SURFACE_3, var(--grid));
   padding: 3px 6px;
   white-space: nowrap;
+}
+
+[data-part="scrum-table"] th:last-child,
+[data-part="extractor-table"] th:last-child,
+[data-part="scrum-table"] td:last-child,
+[data-part="extractor-table"] td:last-child {
+  border-right: none;
+}
+
+/* The coin badge _get_coin_icon paints in the Symbol cell. The payload fills
+ * the disc and sizes it, so no rule here may set its background. */
+[data-part="coin-icon"] {
+  display: inline-block;
+  border-radius: 50%;
+  margin-right: 4px;
+  color: var(--TEXT_MAX);
+  font-weight: bold;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* QPushButton in the Fire and Detail cells; each cell payload may set its own
+ * color over this one. */
+[data-part="fire-button"],
+[data-part="detail-button"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  color: var(--TEXT_HIGH, var(--text));
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 3px;
+  padding: 2px 8px;
+}
+
+[data-part="fire-button"]:disabled,
+[data-part="detail-button"]:disabled {
+  color: var(--TEXT_DISABLED, var(--grid));
+}
+
+[data-part="fire-button"]:hover:enabled,
+[data-part="detail-button"]:hover:enabled {
+  border-color: var(--PRIMARY, var(--accent));
 }
 
 [data-part="command-bar"] {

@@ -281,7 +281,9 @@ if _HAS_QT:
                             base = text.split("/")[0] if "/" in text else text
                             from ..bot_wizard import _get_coin_icon
 
-                            icon = _get_coin_icon(base, 18, download=False)
+                            icon = _get_coin_icon(
+                                base, ds.COIN_ICON_SIZE_PX, download=False
+                            )
                             if icon:
                                 item.setIcon(icon)
                         except Exception:  # noqa: S110

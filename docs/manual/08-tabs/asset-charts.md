@@ -431,3 +431,23 @@ holds the two Qt style sheets for it, and the tab surface sends them as
 `legend_styles`.
 
 Back to [the subsystem index](README.md).
+
+### Where the chart draws
+
+The Charts tab host mounts the chart module inside itself. The tab draws in the
+window the operator launches, not only in the shell. `CHILD_MODULES` in
+`react_charts_tab.py` names the one module the tab slot takes.
+
+```
+modules the page registered   header_strip, native_chart, trade_charts_tab
+panel faults                  none
+drawn from forty candles      40 candles, 40 wicks, 40 volume bars
+indicator panes               Vortex, MACD, Stochastic RSI
+```
+
+With the chart module absent the page still draws its own chrome, and the panel
+host records the loss rather than drawing an empty slot.
+
+```
+native_chart.js registered no panel to draw
+```

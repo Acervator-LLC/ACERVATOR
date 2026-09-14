@@ -153,23 +153,25 @@ def page_html(
 ) -> str:
     """One page as a string: styles, ``body``, the assets, then ``inline_scripts``.
 
-    ``parts`` is joined, never ``%``-formatted: the minified bundles named in
-    ``ASSET_NAMES`` carry both ``%`` and braces.
+    Each name in ``style_assets`` gets a ``<style data-asset>`` tag of its own,
+    so a page can report which sheet it holds. ``parts`` is joined, never
+    ``%``-formatted: the minified bundles named in ``ASSET_NAMES`` carry both
+    ``%`` and braces.
     """
     overrides = "".join(f"{k}:{v};" for k, v in _palette(theme).items())
     parts = [
         "<!DOCTYPE html>",
         '<html><head><meta charset="utf-8">',
-        "<style>",
     ]
     for name in style_assets:
+        parts.append(f'<style data-asset="{name}">')
         parts.append(read_asset(name))
+        parts.append("</style>")
     parts.extend(
         [
-            ":root{",
+            "<style>:root{",
             overrides,
-            "}",
-            "</style></head><body>",
+            "}</style></head><body>",
             body,
         ]
     )

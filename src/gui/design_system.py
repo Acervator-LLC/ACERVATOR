@@ -248,6 +248,8 @@ MOTION_EXTRA = 1000  # Splash / first-run only
 # ---- Pointer target minimums in pixels -------------------------------------
 
 TARGET_MIN = 24  # WCAG SC 2.5.8 floor, dense tables only
+
+COIN_ICON_SIZE_PX = 18  # Coin badge in the Scrumming and Extractor Symbol cell
 TARGET_COMFORTABLE = 32  # Default for most interactive controls
 TARGET_LARGE = 44  # Primary CTAs, important toggles
 
@@ -472,6 +474,7 @@ __all__ = [
     "MOTION_EXTRA",
     # Target sizes
     "TARGET_MIN",
+    "COIN_ICON_SIZE_PX",
     "TARGET_COMFORTABLE",
     "TARGET_LARGE",
     "TABLE_COL_FIRE_W",

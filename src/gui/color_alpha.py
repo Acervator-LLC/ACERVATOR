@@ -8,10 +8,15 @@ the engine painting it opaque.
 
 from __future__ import annotations
 
+import colorsys
 import re
 from typing import Any
 
-__all__ = ["css_alpha", "css_colours", "css_rgba", "rgba"]
+__all__ = ["coin_disc_color", "css_alpha", "css_colours", "css_rgba", "rgba"]
+
+HUE_WHEEL = 360
+DISC_SATURATION = 120
+DISC_VALUE = 180
 
 RGBA_FORMAT = "rgba({red},{green},{blue},{alpha})"
 
@@ -54,6 +59,23 @@ def rgba(color: str, alpha: int) -> str:
         green=channels[1],
         blue=channels[2],
         alpha=alpha,
+    )
+
+
+def coin_disc_color(symbol: str) -> str:
+    """The ``#rrggbb`` disc a coin badge paints for ``symbol`` when no logo is cached.
+
+    ``_get_coin_icon`` and both bot tables read this one function, so the disc
+    the Qt widget paints and the disc the renderer module draws cannot drift.
+    """
+    hue = sum(ord(char) for char in str(symbol)) % HUE_WHEEL
+    red, green, blue = colorsys.hsv_to_rgb(
+        hue / HUE_WHEEL, DISC_SATURATION / ALPHA_HIGHEST, DISC_VALUE / ALPHA_HIGHEST
+    )
+    return "#{:02x}{:02x}{:02x}".format(
+        round(red * ALPHA_HIGHEST),
+        round(green * ALPHA_HIGHEST),
+        round(blue * ALPHA_HIGHEST),
     )
 
 
