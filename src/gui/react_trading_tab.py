@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any, Optional
 
 from .main_tabs import bot_status_table_surface as scrum_surface
@@ -112,6 +113,9 @@ LOADED_STYLES_JS = "JSON.stringify(window.acervatorTradingPage.styles())"
 #: The JS expression counting the bot rows each table space really drew.
 DRAWN_ROWS_JS = "JSON.stringify(window.acervatorTradingPage.rows())"
 
+#: The JS expression naming the bot the voting panel is showing.
+SHOWN_BOT_JS = 'window.acervatorIndicatorPanel.field("selected_bot_id")'
+
 #: The scripts every page carries before the modules. Order is load order.
 BASE_SCRIPT_ASSETS: tuple[str, ...] = (
     "vendor/react.production.min.js",
@@ -158,6 +162,7 @@ _HOST_SOURCE = """(function (global, doc) {
   "use strict";
 
   var MODELS = %(models)s;
+  var IVP = %(ivp)s;
   var VENUES = %(venues)s;
   var SETTERS = %(setters)s;
   var DESIGN = %(design)s;
@@ -262,11 +267,24 @@ _HOST_SOURCE = """(function (global, doc) {
     }
   };
 
+  // A fresh voting-panel payload. forget() drops the one ask
+  // indicator_panel.js caches, so redraw() reads MODELS[IVP] again.
+  function votes(model) {
+    MODELS[IVP] = model;
+    var panel = global.acervatorIndicatorPanel;
+    if (panel && typeof panel.forget === "function") {
+      panel.forget();
+    }
+    var tab = global.acervatorTrading;
+    return tab && typeof tab.redraw === "function" ? tab.redraw() : 0;
+  }
+
   global.acervatorTradingPage = {
     modules: modules,
     styles: styles,
     rows: rows,
-    hold: hold
+    hold: hold,
+    votes: votes
   };
 
   seat();
@@ -363,6 +381,7 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
     """The page's own glue: the models, the venues, and the panel to open."""
     return _HOST_SOURCE % {
         "models": json.dumps(built, ensure_ascii=True),
+        "ivp": json.dumps(indicator_panel_surface.METHOD, ensure_ascii=True),
         "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
         "setters": json.dumps(venue_setters(), ensure_ascii=True),
         "design": json.dumps([token_surface.METHOD, DESIGN_SETTER], ensure_ascii=True),
@@ -375,6 +394,57 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
         "row": json.dumps('[data-part="row"]', ensure_ascii=True),
         "spaces": json.dumps(list(TABLE_SPACES), ensure_ascii=True),
     }
+
+
+def settled_frames() -> int:
+    """The `step_bars` frames `ConfidenceBarsModel` takes to reach a target from zero.
+
+    Read off `BARS_LERP_FACTOR` and `BARS_SETTLE_DELTA`.
+    """
+    surface = indicator_panel_surface
+    return math.ceil(
+        math.log(surface.BARS_SETTLE_DELTA) / math.log(1.0 - surface.BARS_LERP_FACTOR)
+    )
+
+
+def votes_payload(
+    bots: Any,
+    selected_bot_id: Any,
+    summary: Any = None,
+    symbol: str = "",
+    message: str = "",
+    cause: str = "",
+) -> dict:
+    """The voting panel payload after the fleet, the selection and the reading.
+
+    ``indicator_panel_surface.view_model`` is the same handler the Electron
+    renderer asks, so the window and the shell draw one panel.
+    """
+    surface = indicator_panel_surface
+    surface.view_model({"action": "set_bots", "bots": list(bots or [])})
+    if selected_bot_id:
+        surface.view_model({"action": "select_bot", "bot_id": str(selected_bot_id)})
+    if summary:
+        surface.view_model(
+            {
+                "action": "set_summary",
+                "summary": summary,
+                "symbol": symbol,
+            }
+        )
+        return surface.view_model({"action": "step_bars", "frames": settled_frames()})
+    return surface.view_model(
+        {"action": "show_no_data", "message": message, "cause": cause}
+    )
+
+
+def votes_script(payload: dict) -> str:
+    """The one JS statement handing the page a fresh voting-panel payload."""
+    return (
+        "window.acervatorTradingPage.votes("
+        + json.dumps(dict(payload or {}), ensure_ascii=True)
+        + ");"
+    )
 
 
 def push_script(venues: dict) -> str:
@@ -448,6 +518,7 @@ if _HAS_WEBENGINE:
             self._live = live
             self._theme = theme
             self._models: dict = {}
+            self._votes: dict = {}
             self._venues: dict = {}
             self._venue_models: dict = {}
             self._page_ready = False
@@ -472,6 +543,21 @@ if _HAS_WEBENGINE:
         def venue_payloads(self) -> dict:
             """A copy of the payload each venue page last published."""
             return dict(self._venue_models)
+
+        def show_votes(self, payload: Any) -> bool:
+            """Hold one voting-panel payload and draw it on the page.
+
+            ``MainWindow._refresh_dashboard`` calls this with the payload
+            ``votes_payload`` builds from the fleet the Qt panel reads.
+            """
+            held = dict(payload or {})
+            if not held:
+                return False
+            self._votes = held
+            self._models[indicator_panel_surface.METHOD] = held
+            if self._page_ready and self._web is not None:
+                self._web.page().runJavaScript(votes_script(held))
+            return True
 
         def hold_venue(self, venue: Any) -> bool:
             """Draw ``venue`` in this tab and follow every payload it publishes.
@@ -498,6 +584,8 @@ if _HAS_WEBENGINE:
             if self._web is not None:
                 return
             self._models = models(self._live)
+            if self._votes:
+                self._models[indicator_panel_surface.METHOD] = self._votes
             self._venue_models = venue_models(self._venues)
             self._web = QWebEngineView(self)
             self._web.setAccessibleName(ACCESSIBLE_NAME)
@@ -517,3 +605,5 @@ if _HAS_WEBENGINE:
                 logger.warning("The React Live tab page failed to load")
                 return
             self._venue_published()
+            if self._votes:
+                self._web.page().runJavaScript(votes_script(self._votes))

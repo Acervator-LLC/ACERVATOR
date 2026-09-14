@@ -53,12 +53,19 @@ CONTAINER = {
 
 HANDLE_WIDTH_PX = 5
 
+# The pixel share each splitter opens on. The Live page is one column of
+# four splitters, and both builds read these four lists.
+MAIN_SPLITTER_SIZES_PX = [660, 190]
+TOP_SPLITTER_SIZES_PX = [600, 500]
+BOTTOM_SPLITTER_SIZES_PX = [120, 300]
+LOG_SPLITTER_SIZES_PX = [500, 500]
+
 MAIN_SPLITTER = {
     "orientation": "vertical",
     "handle_width_px": HANDLE_WIDTH_PX,
     "children_collapsible": False,
     "children": ["top_splitter", "bottom_splitter"],
-    "sizes_px": [500, 350],
+    "sizes_px": MAIN_SPLITTER_SIZES_PX,
 }
 
 TOP_SPLITTER = {
@@ -66,7 +73,7 @@ TOP_SPLITTER = {
     "handle_width_px": HANDLE_WIDTH_PX,
     "children_collapsible": False,
     "children": ["trading_stack", "indicator_panel"],
-    "sizes_px": [600, 500],
+    "sizes_px": TOP_SPLITTER_SIZES_PX,
 }
 
 BOTTOM_SPLITTER = {
@@ -74,7 +81,7 @@ BOTTOM_SPLITTER = {
     "handle_width_px": HANDLE_WIDTH_PX,
     "children_collapsible": False,
     "children": ["log_splitter"],
-    "sizes_px": [120, 300],
+    "sizes_px": BOTTOM_SPLITTER_SIZES_PX,
 }
 
 LOG_SPLITTER = {
@@ -82,7 +89,7 @@ LOG_SPLITTER = {
     "handle_width_px": HANDLE_WIDTH_PX,
     "children_collapsible": False,
     "children": ["activity_pane", "api_pane"],
-    "sizes_px": [500, 500],
+    "sizes_px": LOG_SPLITTER_SIZES_PX,
 }
 
 LAYER_ORDER = ("crypto", "stock")

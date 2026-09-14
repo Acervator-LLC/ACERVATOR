@@ -16,9 +16,11 @@ from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
 from .main_tabs.main_window_surface import (
-    CANONICAL_TAB_ORDER,
+    ACCUMULATION_TAB,
+    BAR_TAB_ORDER,
     HISTORY_TAB,
     ISOLATED_TABS,
+    UNBUILT_TABS,
 )
 from .main_tabs.trading_tab_surface import (
     PLACEHOLDER_TAB_TITLE,
@@ -298,22 +300,31 @@ if _HAS_QT:
             self._build_console_tab()
             self._build_paper_trader_tab()
             self._build_system_status_tab()
-            self._build_proof_of_accumulation_tab()
+            if ACCUMULATION_TAB not in UNBUILT_TABS:
+                self._build_proof_of_accumulation_tab()
 
-            self._reorder_main_tabs(list(CANONICAL_TAB_ORDER))
+            self._reorder_main_tabs(list(BAR_TAB_ORDER))
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
 
             main_layout.addWidget(self._main_tabs, 1)
 
         def _reorder_main_tabs(self, desired: list[str]) -> None:
-            """Move each label in ``desired`` to its index; unlisted tabs stay put."""
+            """Move each label in ``desired`` to the next slot; unlisted tabs stay put.
+
+            A label no tab carries takes no slot, so a tab that failed to build
+            leaves the labels after it in ``desired`` order.
+            """
             tab_bar = self._main_tabs.tabBar()
-            for target_idx, name in enumerate(desired):
-                for cur_idx in range(self._main_tabs.count()):
+            target_idx = 0
+            for name in desired:
+                if target_idx >= self._main_tabs.count():
+                    break
+                for cur_idx in range(target_idx, self._main_tabs.count()):
                     if self._main_tabs.tabText(cur_idx) == name:
                         if cur_idx != target_idx:
                             tab_bar.moveTab(cur_idx, target_idx)
+                        target_idx += 1
                         break
 
         def _on_main_tab_changed(self, index: int) -> None:
@@ -1145,6 +1156,7 @@ if _HAS_QT:
                         self._indicator_panel.update_bot_list(all_bot_statuses)
                         self._wire_ivp_snapshot_dir()
                         sel_bid = self._indicator_panel.selected_bot_id
+                        votes_read: dict = {}
                         if sel_bid:
                             bot = self._bot_manager.get_bot(sel_bid)
                             if bot and getattr(bot, "_last_summary", None):
@@ -1221,6 +1233,10 @@ if _HAS_QT:
                                 # phantoms never reach composite_net.
                                 parent_tf_data["composite_skipped"] = skipped
                                 symbol = bot.config.symbol
+                                votes_read = {
+                                    "summary": merged,
+                                    "symbol": symbol,
+                                }
                                 self._indicator_panel.update_data(merged, symbol)
                                 self._indicator_panel.remember_ta(
                                     sel_bid, symbol, merged
@@ -1240,6 +1256,10 @@ if _HAS_QT:
                                 _cause, _detail = self._ivp_empty_state_cause(
                                     bot, sel_bid
                                 )
+                                votes_read = {
+                                    "message": _detail,
+                                    "cause": _cause,
+                                }
                                 self._indicator_panel.show_no_data(
                                     bot_id=sel_bid,
                                     symbol=_sym,
@@ -1247,7 +1267,9 @@ if _HAS_QT:
                                     detail=_detail,
                                 )
                         else:
+                            votes_read = {"cause": "no_selection"}
                             self._indicator_panel.show_no_data(cause="no_selection")
+                        self._publish_votes(all_bot_statuses, sel_bid, votes_read)
                     except Exception as exc:
                         logger.error("DASHBOARD: Indicator panel CRASHED: %s", exc)
 
@@ -1325,6 +1347,31 @@ if _HAS_QT:
                 import traceback
 
                 traceback.print_exc()
+
+        def _publish_votes(self, bot_statuses, selected_bot_id, read) -> bool:
+            """Draw the same voting reading on the React Live tab.
+
+            ``react_trading_tab.votes_payload`` renders the fleet, the
+            selection and the reading ``_refresh_dashboard`` just gave the Qt
+            panel, so both panels show one bot and one set of cells.
+            """
+            show = getattr(getattr(self, "_trading_tab", None), "show_votes", None)
+            if not callable(show):
+                return False
+            from .react_trading_tab import votes_payload
+
+            return bool(
+                show(
+                    votes_payload(
+                        bot_statuses,
+                        selected_bot_id,
+                        summary=read.get("summary"),
+                        symbol=read.get("symbol", ""),
+                        message=read.get("message", ""),
+                        cause=read.get("cause", ""),
+                    )
+                )
+            )
 
         def _is_equity_exchange(self, exchange_id: str) -> bool:
             """Return True if this exchange ID belongs to the stock/equity layer."""
@@ -3573,9 +3620,6 @@ if _HAS_QT:
                 app = QApplication.instance()
             if app:
                 tm.apply_theme(name, app, taken)
-                book = getattr(self, "_main_tabs", None)
-                if hasattr(book, "set_theme"):
-                    book.set_theme(name)
                 swarm = getattr(self, "_bot_viz", None)
                 if hasattr(swarm, "set_app_theme"):
                     swarm.set_app_theme(name)

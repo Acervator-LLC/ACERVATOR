@@ -78,6 +78,11 @@ ADD_BOT_ACCENT = True
 BOT_WIZARD_MODULE = "bot_wizard"
 BOT_WIZARD_STRETCH = 1
 
+# The share of the page each bot table takes. The Scrumming table holds the
+# whole fleet and grows; the Extractor table keeps its own rows' height.
+SCRUM_TABLE_STRETCH = 1
+EXTRACTOR_TABLE_STRETCH = 0
+
 PULL_RATE_INITIAL_TEXT = "Next data pull: — "
 PULL_RATE_STYLE = f"color:{ds.MAIN_BADGE_TEXT}; font-size:11px; padding:2px 6px;"
 PULL_RATE_TOOLTIP = (
@@ -931,6 +936,8 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "percent_scale": PERCENT_SCALE,
         "no_slots": NO_SLOTS,
         "no_hits": NO_HITS,
+        "scrum_table_stretch": SCRUM_TABLE_STRETCH,
+        "extractor_table_stretch": EXTRACTOR_TABLE_STRETCH,
         "scrum_section_label": SCRUM_SECTION_LABEL,
         "scrum_section_style": SCRUM_SECTION_STYLE,
         "scrum_section_visible": model.scrum_section_visible,

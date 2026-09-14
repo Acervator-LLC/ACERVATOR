@@ -5020,3 +5020,125 @@ PAGE_STYLE = (
     '[data-part="card"]{height:100%;background:var(--btn-bg)}'
 )
 ```
+
+## 2026-09-13 - #23 - the voting panel and the two bot tables on the React Live tab
+
+### The window feeds the voting panel
+
+The dashboard tick wrote to the Qt panel only. The React panel was built once
+from an empty model and nothing replaced it, so it read the placeholder text for
+ever however many bots were running.
+
+`src/gui/main_window.py` — `_publish_votes`
+
+```python
+            show = getattr(getattr(self, "_trading_tab", None), "show_votes", None)
+            if not callable(show):
+                return False
+            from .react_trading_tab import votes_payload
+```
+
+The tick now calls that method with the fleet, the selected bot and the reading
+it has just given the Qt panel. Both panels show one bot and one set of cells.
+
+`src/gui/react_trading_tab.py` — `votes_payload`
+
+```python
+    surface.view_model({"action": "set_bots", "bots": list(bots or [])})
+    if selected_bot_id:
+        surface.view_model({"action": "select_bot", "bot_id": str(selected_bot_id)})
+```
+
+`indicator_panel_surface.view_model` is the same handler the Electron renderer
+asks, so the window and the shell draw one panel.
+
+**Read off the running page, 38 bots.** The selector held one entry and no cell
+carried a value before. It holds thirty-eight entries now.
+
+```
+                 before              after
+bot selector     1 entry             38 entries
+bot shown        (select a bot)      CHIP/USD [c8e5c5db] (running)
+cells with text  0 of 0              17 of 20
+confidence bars  0                   12
+```
+
+### The bars arrive settled
+
+The bar model starts every bar at zero and steps it toward its target. The Qt
+widget runs its own frame timer. The page draws the frame it is handed and runs
+no timer, so the window hands it a settled one.
+
+`src/gui/react_trading_tab.py` — `settled_frames`
+
+```python
+    return math.ceil(
+        math.log(surface.BARS_SETTLE_DELTA) / math.log(1.0 - surface.BARS_LERP_FACTOR)
+    )
+```
+
+The two published factors answer forty-nine frames. The panel pushes that many
+steps before it publishes.
+
+### The log panes give the tables their room
+
+The main splitter gave the two empty log panes the bottom third of the page. It
+now gives them under a quarter, and the tables take the rest.
+
+`src/gui/main_tabs/trading_tab_surface.py` — `MAIN_SPLITTER`
+
+```python
+MAIN_SPLITTER = {
+    "orientation": "vertical",
+    "handle_width_px": HANDLE_WIDTH_PX,
+    "children_collapsible": False,
+    "children": ["top_splitter", "bottom_splitter"],
+    "sizes_px": [660, 190],
+}
+```
+
+The Qt page took the same four sizes from four literals of its own. It reads them
+from the surface now, so one declaration sets both builds.
+
+### One stretch per bot table
+
+The Scrumming table holds the whole accumulation fleet and grows into whatever
+room is left. The Extractor table keeps the height of its own rows, so its rows
+are never cut.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — the two stretches
+
+```python
+SCRUM_TABLE_STRETCH = 1
+EXTRACTOR_TABLE_STRETCH = 0
+```
+
+The React page reads them onto the flex of each table space. The Qt page passes
+them to the layout, and the Extractor table answers the header plus every row
+when the layout asks how tall it wants to be.
+
+**Read off the running page at 1960 pixels, 38 Scrumming bots and 3 Extractor
+bots.** A whole row is one whose top and bottom both sit inside the table's
+visible box.
+
+```
+                      react before  react after  qt before  qt after
+Scrumming whole rows  5             7            2          3
+Extractor whole rows  0             3            2          3
+Extractor box height  21 px         116 px       62 px      90 px
+```
+
+The Scrumming table is a scrolling list of thirty-eight rows, so its bottom edge
+still ends inside the next row: one pixel of twenty-nine under React and four of
+thirty under Qt. Every other scrolling table in the application ends the same
+way.
+
+### The readings can fail
+
+The same readings were taken again with the feed cut and again with the page's
+style sheets emptied. Each one reported the loss.
+
+```
+feed cut          bot selector 1 entry, bot shown blank, cells 0 of 0, bars 0
+sheets emptied    style sheets 0, Scrumming table box 0 px
+```
