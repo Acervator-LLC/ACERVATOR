@@ -718,13 +718,16 @@ HEADER_TOOLTIPS = {
 }
 
 
-def column_titles(subset: list) -> list:
+def column_titles(subset: list, *, include_aggregates: bool = False) -> list:
     """TF and ``subset``, padded to PANEL_COLUMN_COUNT.
 
-    AGGREGATE_TITLES name the pillars at their bases and nowhere else, so a
-    header cell over a collated column carries EMPTY_TITLE.
+    ``include_aggregates`` heads the collated columns with AGGREGATE_TITLES,
+    which the table carrying the aggregate cells asks for; the other table
+    pads with EMPTY_TITLE so a title is printed once over each pillar.
     """
     titles = [TF_COLUMN_TITLE] + [short for _, short, _ in subset]
+    pad = AGGREGATE_TITLES if include_aggregates else []
+    titles = titles + list(pad)
     return titles + [EMPTY_TITLE] * (PANEL_COLUMN_COUNT - len(titles))
 
 
@@ -739,7 +742,9 @@ class IndicatorTableModel:
     def __init__(self, subset: list, *, include_aggregates: bool) -> None:
         self.subset = list(subset)
         self.include_aggregates = bool(include_aggregates)
-        self.titles = column_titles(self.subset)
+        self.titles = column_titles(
+            self.subset, include_aggregates=self.include_aggregates
+        )
         self.rows: list = []
 
     def column_count(self) -> int:

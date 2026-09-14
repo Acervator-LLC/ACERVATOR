@@ -1077,10 +1077,12 @@ if _HAS_QT:
                 ),
             }
             row_a_container, self._table_a, self._conf_bars_a = (
-                self._make_indicator_row(_ROW_A_INDICATOR_COLS)
+                self._make_indicator_row(_ROW_A_INDICATOR_COLS, include_aggregates=True)
             )
             row_b_container, self._table_b, self._conf_bars_b = (
-                self._make_indicator_row(_ROW_B_INDICATOR_COLS)
+                self._make_indicator_row(
+                    _ROW_B_INDICATOR_COLS, include_aggregates=False
+                )
             )
             self._body = CollatedPillarsWidget()
             body_layout = QVBoxLayout(self._body)
@@ -1099,12 +1101,21 @@ if _HAS_QT:
             self._locks_label.setMaximumHeight(20)
             layout.addWidget(self._locks_label)
 
-        def _make_indicator_row(self, indicator_subset: list) -> tuple:
+        def _make_indicator_row(
+            self, indicator_subset: list, *, include_aggregates: bool = False
+        ) -> tuple:
             """One mini-panel: a QTableWidget of _PANEL_COLUMN_COUNT columns
-            over its own ConfidenceBarsWidget, returned with both."""
+            over its own ConfidenceBarsWidget, returned with both.
+
+            ``include_aggregates`` heads this table's collated columns with
+            _AGGREGATE_TITLES, so the pillars are named at their tops.
+            """
             from PySide6.QtWidgets import QSizePolicy
 
             container = QWidget()
+            # CollatedPillarsWidget paints the pillars behind this container,
+            # so the container and its children draw no ground of their own.
+            container.setStyleSheet("QWidget { background: transparent; }")
             cl = QVBoxLayout(container)
             cl.setContentsMargins(0, 0, 0, 0)
             cl.setSpacing(2)
@@ -1126,16 +1137,23 @@ if _HAS_QT:
             table.setShowGrid(False)
             table.setItemDelegate(RuledCellDelegate(table))
             table.viewport().setAutoFillBackground(False)
+            hdr_view = table.horizontalHeader()
+            hdr_view.setAutoFillBackground(False)
+            hdr_view.viewport().setAutoFillBackground(False)
+            # QTableWidget border and QHeaderView ground both cut a band
+            # across a pillar, so the table draws neither.
             table.setStyleSheet(
-                "QTableWidget { background: transparent; } "
-                "QTableView { background: transparent; } "
+                "QTableWidget { background: transparent; border: none; } "
+                "QTableView { background: transparent; border: none; } "
+                "QHeaderView { background: transparent; border: none; } "
                 "QHeaderView::section { background: transparent; border: none; }"
             )
 
-            col_names = ["TF"] + [short for _, short, _ in indicator_subset]
             # Both rows carry one grid, so column i of one sits under column
-            # i of the other; the aggregate slots stay empty on the second.
-            col_names += [""] * (_PANEL_COLUMN_COUNT - len(col_names))
+            # i of the other; only the aggregate table heads those columns.
+            col_names = ivp.column_titles(
+                indicator_subset, include_aggregates=include_aggregates
+            )
             table.setColumnCount(len(col_names))
             table.setHorizontalHeaderLabels(col_names)
             for _idx, _name in enumerate(col_names):
