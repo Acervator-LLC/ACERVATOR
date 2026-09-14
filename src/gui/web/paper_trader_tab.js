@@ -334,9 +334,10 @@
         "div",
         {
           "aria-label": NAMES.indicatorSummary,
-          "data-part": NAMES.indicatorSummary
+          "data-part": NAMES.indicatorSummary,
+          hidden: !(panel.no_data || {}).text
         },
-        text(panel.summary_text)
+        text((panel.no_data || {}).text)
       ),
       (panel.tables || []).map(function (spec, index) {
         return element(CellTable, {

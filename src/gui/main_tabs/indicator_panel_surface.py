@@ -1010,6 +1010,18 @@ def rate_strip_text(snapshot: Optional[dict]) -> str:
     return RATE_STRIP_JOIN.join(parts) + tail
 
 
+def no_data_text(multi_tf_summary: dict, message: str) -> str:
+    """``message`` through ``NO_DATA_FORMAT``, or empty while a summary exists.
+
+    A panel drawing a reading says nothing, so ``show_stored`` keeps its
+    ``no_data_message`` for ``staleness_line`` without raising this line.
+    """
+    summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
+    if summary or not message:
+        return EMPTY_TEXT
+    return NO_DATA_FORMAT.format(message=message)
+
+
 def collected_locks(multi_tf_summary: dict) -> list:
     """Every active lock the summary carries, in timeframe order."""
     summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
@@ -1301,6 +1313,7 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "cause": model.no_data_cause,
             "message": model.no_data_message,
             "format": NO_DATA_FORMAT,
+            "text": no_data_text(model.summary, model.no_data_message),
         },
         "showing_stored": model.showing_stored,
     }

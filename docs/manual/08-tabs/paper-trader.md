@@ -490,5 +490,63 @@ one.
 PAPER_ROOT: Path = Path.home() / ".acervator_paper"
 ```
 
+## How the Paper tab reaches the bar
+
+`PaperTraderTabMixin` builds the tab and inserts it into the window's tab book.
+The builder catches every error, writes one warning line, and leaves the tab off
+the bar. A tab that asks the panel for a value the panel does not publish is
+therefore a missing tab, not a crash the operator can see.
+
+`src/gui/main_tabs/paper_trader_tab.py` — the builder
+
+```python
+def _build_paper_trader_tab(self) -> None:
+    """Insert the Paper tab at ``PAPER_BUILD_INDEX``."""
+    try:
+        from ..variant_surface import PAPER_TRADER, surface_class
+
+        self._paper_trader_tab = surface_class(PAPER_TRADER)()
+        self._main_tabs.insertTab(
+            PAPER_BUILD_INDEX, self._paper_trader_tab, HEADING
+        )
+    except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
+        logger.warning("Paper tab unavailable: %s", exc)
+        self._paper_trader_tab = None
+```
+
+The window builds nine tabs. Paper takes the second slot, after Sim.
+
+```
+Sim  Paper  Live  Charts  Inspector  Swarm  History  Status  Console
+```
+
+### The line beside the voting panel title
+
+One label sits beside the Indicator Voting Panel title. It holds the panel's
+empty state and nothing else. The shared function `no_data_text` builds that
+line, and the [Simulator page](simulator.md) shows it. The label is hidden
+whenever the panel has values to draw.
+
+`src/gui/paper_trader_tab.py` — the Qt clone draws the line
+
+```python
+def _draw_indicators(self, panel: dict) -> None:
+    self._indicator_title.setText(panel["title_text"])
+    # no_data text is empty while the panel holds a reading, so the
+    # summary label shows only the one reason there is nothing to draw.
+    reason = panel["no_data"]["text"]
+    self._indicator_summary.setText(reason)
+    self._indicator_summary.setVisible(bool(reason))
+    for table, spec in zip(self._indicator_tables, panel["tables"], strict=True):
+        self._fill_indicator_table(table, spec)
+```
+
+With no paper fleet the label names the press that builds one, under both
+builds.
+
+```
+No TA data — No paper fleet yet. Press Import Live Fleet.
+```
+
 
 Back to [the subsystem index](README.md).
