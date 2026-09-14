@@ -1751,5 +1751,70 @@ under both builds.
 No TA data — No Stone Tablet on disk.
 ```
 
+## The style sheet the Sim page loads
+
+The page carries one style sheet. `TAB_STYLE_ASSETS` names it, and
+`page_html` reads the file and writes it into the page's head.
+
+`src/gui/react_simulator_tab.py` — the sheet the page carries
+
+```python
+TAB_STYLE_ASSETS: tuple[str, ...] = ("simulator_tab.css",)
+```
+
+The sheet sets the page ground, the type, the pane grid and the table rules.
+The grid repeats the three pane sizes the Qt clone gives its splitters, so the
+bot list, the layer pane and the bottom pane take the same share of the window
+in both builds.
+
+`src/gui/web/simulator_tab.css` — the pane grid
+
+```css
+.acervator-simulator-tab {
+  display: grid;
+  grid-template-columns: 600fr 500fr;
+  grid-template-rows: 500fr 350fr;
+  grid-template-areas:
+    "fleet layer"
+    "bottom bottom";
+}
+```
+
+Without the sheet the page draws on the browser's own defaults: a white ground,
+serif type, one column and no grid.
+
+### The skin tokens the sheet reads
+
+The sheet names no colour of its own. Every colour arrives as a custom property
+on the tab element, written from the `SKIN` dictionary the surface builds.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — three of the skin entries
+
+```python
+SKIN = {
+    "--sim-ground": ds.SURFACE_0,
+    "--sim-better-colour": ds.SUCCESS,
+    "--sim-agrees-colour": ds.SUCCESS,
+}
+```
+
+A better portfolio row and an agreeing light take the same colours the Qt clone
+paints them, because both builds read one dictionary.
+
+### The two battery selectors reach the page
+
+The portfolio and the span the operator chooses now reach the page before a
+battery has run. `build_view_model` takes both and hands them to
+`empty_battery`, which carries them into the payload the selectors draw from.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the idle battery payload
+
+```python
+charged = battery_payload_held or empty_battery(portfolio, span)
+```
+
+Both builds pass the two values. Before this the idle payload named the
+defaults, so a chosen portfolio was lost until a run wrote it back.
+
 
 Back to [the subsystem index](README.md).

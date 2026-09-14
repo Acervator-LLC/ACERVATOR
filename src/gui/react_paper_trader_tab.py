@@ -40,7 +40,7 @@ TAB_ROOT_ID = "tab-root"
 
 ACCESSIBLE_NAME = "Paper"
 
-TAB_STYLE_ASSETS: tuple[str, ...] = ()
+TAB_STYLE_ASSETS: tuple[str, ...] = ("paper_trader_tab.css",)
 
 #: The scripts the page carries. Order is load order.
 TAB_SCRIPT_ASSETS: tuple[str, ...] = (
@@ -209,6 +209,7 @@ if _HAS_WEBENGINE:
             self._run = surface.start_run(self._bots)
             self._cursor = 0
             self.advance_once()
+            self.refresh()
             self._tick_timer.start(surface.tick_interval_ms(self._run, self._symbol))
             return self._run.state
 

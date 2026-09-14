@@ -743,6 +743,8 @@ class SimulatorTabQt(QWidget):
             self._mode,
             self._back_test,
             self._battery,
+            self._portfolio,
+            self._span,
         )
         self._draw(self._model)
         return self._model

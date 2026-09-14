@@ -548,5 +548,76 @@ builds.
 No TA data — No paper fleet yet. Press Import Live Fleet.
 ```
 
+## The style sheet the Paper page loads
+
+The page carries one style sheet. `TAB_STYLE_ASSETS` names it, and
+`page_html` reads the file and writes it into the page's head.
+
+`src/gui/react_paper_trader_tab.py` — the sheet the page carries
+
+```python
+TAB_STYLE_ASSETS: tuple[str, ...] = ("paper_trader_tab.css",)
+```
+
+The sheet sets the page ground, the type, the pane grid and the table rules.
+The grid repeats the two pane sizes the Qt clone gives its splitters, so the
+bot list, the voting panel, the feed pane and the run pane take the same share
+of the window in both builds.
+
+`src/gui/web/paper_trader_tab.css` — the pane grid
+
+```css
+.paper-top,
+.paper-bottom {
+  display: grid;
+  grid-template-columns: 600fr 500fr;
+}
+```
+
+Without the sheet the page draws on the browser's own defaults: a white ground,
+serif type, one column and no grid.
+
+### The skin tokens the Paper sheet reads
+
+The sheet names no colour of its own. Every colour arrives as a custom property
+on the tab element, written from the `SKIN` dictionary the surface builds. A
+scrum row and a fold row in the Paper Run table take the two colours
+`SIDE_COLOURS` gives them in the Qt clone.
+
+`src/gui/web/paper_trader_tab.css` — the two trade rows
+
+```css
+.paper-tab tr[data-side="scrum"] td {
+  color: var(--paper-scrum-colour, var(--text));
+}
+
+.paper-tab tr[data-side="fold"] td {
+  color: var(--paper-fold-colour, var(--text));
+}
+```
+
+### Start Paper Run redraws the pane
+
+`start_run` draws the pane after it opens the run. With no paper fleet the
+first tick returns nothing, so without that draw the Paper Run pane kept the
+word it held before the press while the run was open.
+
+`src/gui/paper_trader_tab.py` — the press that opens a run
+
+```python
+    def start_run(self) -> str:
+        """Open the run and tick one bot per timer fire from now."""
+        if not self._bots:
+            self._bots = surface.live_fleet()
+        self._run = surface.start_run(self._bots)
+        self._cursor = 0
+        self.advance_once()
+        self.refresh()
+        self._tick_timer.start(surface.tick_interval_ms(self._run, self._symbol))
+        return self._run.state
+```
+
+Both builds carry the same draw.
+
 
 Back to [the subsystem index](README.md).
