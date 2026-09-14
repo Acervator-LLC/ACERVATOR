@@ -926,7 +926,11 @@ class SimulatorTabQt(QWidget):
 
     def _draw_indicators(self, panel: dict) -> None:
         self._indicator_title.setText(panel["title_text"])
-        self._indicator_summary.setText(panel["summary_text"])
+        # no_data text is empty while the panel holds a reading, so the
+        # summary label shows only the one reason there is nothing to draw.
+        reason = panel["no_data"]["text"]
+        self._indicator_summary.setText(reason)
+        self._indicator_summary.setVisible(bool(reason))
         for table, spec in zip(self._indicator_tables, panel["tables"], strict=True):
             self._fill_indicator_table(table, spec)
 

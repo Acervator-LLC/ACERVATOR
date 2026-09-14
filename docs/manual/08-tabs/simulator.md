@@ -1677,5 +1677,79 @@ sides of it.
 uncovered span 2026-08-01T18:52:58Z to 2026-09-07T21:46:48Z
 ```
 
+## How the Sim tab reaches the bar
+
+`SimulatorTabMixin` builds the tab and inserts it into the window's tab book.
+The builder catches every error, writes one warning line, and leaves the tab
+off the bar. A tab that asks the panel for a value the panel does not publish
+is therefore a missing tab, not a crash the operator can see.
+
+`src/gui/main_tabs/simulator_tab.py` — the builder
+
+```python
+def _build_simulator_tab(self) -> None:
+    """Insert the Sim tab at ``SIMULATOR_BUILD_INDEX``."""
+    try:
+        from ..variant_surface import SIMULATOR, surface_class
+
+        self._simulator_tab = surface_class(SIMULATOR)()
+        self._main_tabs.insertTab(
+            SIMULATOR_BUILD_INDEX, self._simulator_tab, HEADING
+        )
+    except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
+        logger.warning("Sim tab unavailable: %s", exc)
+        self._simulator_tab = None
+```
+
+The window builds nine tabs. Sim takes the first slot and Paper the second.
+The Accumulation tab stays off the bar until the operator asks for it.
+
+```
+Sim  Paper  Live  Charts  Inspector  Swarm  History  Status  Console
+```
+
+### The line beside the voting panel title
+
+One label sits beside the Indicator Voting Panel title. It holds the panel's
+empty state and nothing else. `no_data_text` builds that line from the panel
+model and answers an empty string while the model holds a reading, so the label
+is hidden whenever the panel has values to draw.
+
+`src/gui/main_tabs/indicator_panel_surface.py` — the line the label draws
+
+```python
+def no_data_text(multi_tf_summary: dict, message: str) -> str:
+    """``message`` through ``NO_DATA_FORMAT``, or empty while a summary exists."""
+    summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
+    if summary or not message:
+        return EMPTY_TEXT
+    return NO_DATA_FORMAT.format(message=message)
+```
+
+Both builds draw the same line. The Qt clone sets the label and hides it when
+the line is empty. The page module writes the same value into the element that
+carries the same name.
+
+`src/gui/simulator_tab.py` — the Qt clone draws the line
+
+```python
+def _draw_indicators(self, panel: dict) -> None:
+    self._indicator_title.setText(panel["title_text"])
+    # no_data text is empty while the panel holds a reading, so the
+    # summary label shows only the one reason there is nothing to draw.
+    reason = panel["no_data"]["text"]
+    self._indicator_summary.setText(reason)
+    self._indicator_summary.setVisible(bool(reason))
+    for table, spec in zip(self._indicator_tables, panel["tables"], strict=True):
+        self._fill_indicator_table(table, spec)
+```
+
+With no tablet on disk the label reads the sentence this page already names,
+under both builds.
+
+```
+No TA data — No Stone Tablet on disk.
+```
+
 
 Back to [the subsystem index](README.md).
