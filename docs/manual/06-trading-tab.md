@@ -4901,3 +4901,122 @@ cell edges         one rule right and one rule below
 Fire and Detail    card ground, outline border, payload text colour
 coin badge         18px disc, first letter, maximum-contrast text
 ```
+
+## 2026-09-13 - #23 - the venue page under the React build
+
+### Which build draws the venue page
+
+The React build draws the venue page inside the Live page. It does not draw it
+in a window of its own. `TradingTabReact` loads eleven renderer modules into one
+page. The last of them is `exchange_tab.js`, and that module draws the venue.
+
+The Qt build is different. It builds one `ExchangeTab` widget per venue and puts
+that widget in a tab strip. That path is unchanged.
+
+`src/gui/react_trading_tab.py` - the modules the React Live page carries
+
+```python
+CHILD_MODULES: tuple[str, ...] = (
+    "status_log.js",
+    "indicator_panel.js",
+    "table_cells.js",
+    "bot_status_table.js",
+    "extractor_bot_table.js",
+    "crypto_news_ticker.js",
+    "exchange_tab.js",
+)
+```
+
+### The pane that holds the venue
+
+`trading_tab.js` draws one empty box per layer and marks it
+`data-part="exchange-pane"`. `mountExchanges` finds that box and calls
+`renderExchangePane`. The venue module then draws the whole venue into it.
+
+The pane takes the height of the tab body. The two bot tables scroll inside it.
+The command bar keeps its own height and stays in view. This is what the Qt
+build does.
+
+`src/gui/web/trading_tab.css` - the boxes that take the pane's height
+
+```css
+[data-part="stack"],
+[data-part="page"],
+[data-part="tab-widget"],
+[data-part="tab-body"],
+[data-part="exchange-pane"] {
+  min-height: 0;
+}
+```
+
+### How one fleet load reaches the page
+
+The window builds one `ExchangeTabReact` per venue. It hands every fleet load to
+that object. The object rebuilds five payloads and emits `published`.
+
+`TradingTabReact.hold_venue` takes that object and connects the signal. Each
+emission rebuilds the venue payload and pushes it into the page. The page then
+seats each payload and redraws. One fleet load, one source, one draw.
+
+`src/gui/react_trading_tab.py` - the Live page follows one venue
+
+```python
+def hold_venue(self, venue: Any) -> bool:
+    """Draw ``venue`` in this tab and follow every payload it publishes."""
+    exchange_id = str(getattr(venue, "exchange_id", "") or "")
+    published = getattr(venue, "published", None)
+    if not exchange_id or published is None:
+        return False
+    self._venues[exchange_id] = venue
+    published.connect(self._venue_published)
+    self._venue_published()
+    return True
+```
+
+A venue module names its exchange in its request. The page answers from the bag
+it holds for that exchange. Two venues on two layers therefore read two
+different fleets from one page.
+
+### The three collated columns
+
+The Net, Comp and Conf cells hold more characters than the other cells. The Conf
+cell holds a ten-block bar and a percentage. The page wraps these three cells
+instead of cutting them. The bar takes the first line and the percentage takes
+the second. Nothing runs past the right edge of the panel.
+
+The other cells keep the clip rule above. Only the three collated cells wrap.
+
+`src/gui/web/trading_tab.css` - the cells that wrap
+
+```css
+[data-part="indicator-body-cell"][data-state="net"],
+[data-part="indicator-body-cell"][data-state="comp"],
+[data-part="indicator-body-cell"][data-state="conf"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.1;
+}
+```
+
+### The header strip ground
+
+Three pages in the header strip carry no style sheet: the five stat cards, the
+spendable strip, and the tab bar. `page_html` writes six chrome colours on the
+root element and paints nothing. Each of the three pages now paints its own
+ground from those colours.
+
+A stat card paints its face from `--btn-bg`. Every page paints its body from the
+theme ground. No page scrolls, so no scroll bar draws.
+
+`src/gui/react_dashboard_stat_card.py` - one card's ground
+
+```python
+PAGE_STYLE = (
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "html,body{height:100%;overflow:hidden}"
+    "body{background:var(--bg);color:var(--text)}"
+    f"#{CARD_ROOT_ID}{{height:100%}}"
+    '[data-part="card"]{height:100%;background:var(--btn-bg)}'
+)
+```

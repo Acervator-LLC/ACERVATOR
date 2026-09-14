@@ -1377,6 +1377,13 @@ if _HAS_QT:
             if target_tabs is self._exchange_tabs:
                 self._exchange_tabs[exchange_id] = tab
 
+            # Only TradingTabReact holds a venue; the Qt page draws its own.
+            hold_venue = getattr(
+                getattr(self, "_trading_tab", None), "hold_venue", None
+            )
+            if callable(hold_venue):
+                hold_venue(tab)
+
             # `_landed` asks both layer widgets, never `target_widget`, the argument.
             _landed = "none"
             if self._stock_tab_widget.indexOf(tab) >= 0:

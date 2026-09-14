@@ -4,10 +4,13 @@
 ``TradingTabReact`` asks ``trading_tab_surface`` for the tab and draws
 ``src/gui/web/trading_tab.js`` through the Electron shell's ``panel_host.js``,
 so the page in the desktop window and the page in the shell run the same
-module. ``trading_tab.js`` mounts ``indicator_panel.js`` and ``status_log.js``
-into slots it keeps for them, so the voting panel and the Activity Log need no
-registration of their own. ``page_html`` inlines ``trading_tab.css`` and every
-script, so the page fetches nothing.
+module. ``trading_tab.js`` mounts ``indicator_panel.js``, ``status_log.js`` and
+``exchange_tab.js`` into slots it keeps for them, so the voting panel, the
+Activity Log and the venue page need no registration of their own.
+``hold_venue`` takes one ``ExchangeTabReact``, whose ``published`` signal
+carries each fresh fleet payload to the page. ``page_html`` inlines
+``trading_tab.css``, ``exchange_tab.css`` and every script, so the page
+fetches nothing.
 """
 
 from __future__ import annotations
@@ -16,6 +19,11 @@ import json
 import logging
 from typing import Any, Optional
 
+from .main_tabs import bot_status_table_surface as scrum_surface
+from .main_tabs import crypto_news_ticker_surface as ticker_surface
+from .main_tabs import design_system_surface as token_surface
+from .main_tabs import exchange_tab_surface as venue_surface
+from .main_tabs import extractor_bot_table_surface as extractor_surface
 from .main_tabs import indicator_panel_surface, status_log_surface, trading_tab_surface
 from .react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from .react_main_window import read_renderer_asset
@@ -41,11 +49,68 @@ PANEL_ROOT_ID = "panel-root"
 PANEL_MODULE = "trading_tab.js"
 
 #: The modules ``trading_tab.js`` mounts into its own slots. Order is load
-#: order, and each one registers with ``panel_host.js`` under its own name.
-CHILD_MODULES: tuple[str, ...] = ("status_log.js", "indicator_panel.js")
+#: order. ``exchange_tab.js`` mounts the four modules ahead of it.
+CHILD_MODULES: tuple[str, ...] = (
+    "status_log.js",
+    "indicator_panel.js",
+    "table_cells.js",
+    "bot_status_table.js",
+    "extractor_bot_table.js",
+    "crypto_news_ticker.js",
+    "exchange_tab.js",
+)
 
-#: The style sheet the page carries.
-STYLE_ASSETS: tuple[str, ...] = ("trading_tab.css",)
+#: The style sheets the page carries.
+STYLE_ASSETS: tuple[str, ...] = ("trading_tab.css", "exchange_tab.css")
+
+#: The global each module defines once it has run to its end.
+MODULE_GLOBALS: dict[str, str] = {
+    "design_tokens.js": "acervatorTokens",
+    "theme_engine.js": "acervatorThemes",
+    "shared_widgets.js": "acervatorWidgets",
+    "header_strip.js": "acervatorHeader",
+    "status_log.js": "acervatorLog",
+    "indicator_panel.js": "acervatorIndicatorPanel",
+    "table_cells.js": "acervatorCells",
+    "bot_status_table.js": "acervatorBotTable",
+    "extractor_bot_table.js": "acervatorExtractorTable",
+    "crypto_news_ticker.js": "acervatorTicker",
+    "exchange_tab.js": "acervatorExchangeTab",
+    PANEL_MODULE: "acervatorTrading",
+}
+
+#: The setter each venue module publishes for the payload of its own method.
+VENUE_SETTERS: dict[str, str] = {
+    scrum_surface.METHOD: "acervatorSetBotTable",
+    extractor_surface.METHOD: "acervatorSetExtractorTable",
+    ticker_surface.METHOD: "acervatorSetTicker",
+    venue_surface.METHOD: "acervatorSetExchangeTab",
+}
+
+#: The setter ``design_tokens.js`` publishes for the design-system payload.
+DESIGN_SETTER = "acervatorSetTokens"
+
+#: The request fields a venue module names its exchange under.
+VENUE_KEYS: tuple[str, ...] = (
+    venue_surface.EXCHANGE_ID_PARAM,
+    scrum_surface.EXCHANGE_ID_PARAM,
+    extractor_surface.EXCHANGE_ID_PARAM,
+)
+
+#: The selector of each space a bot table draws its own rows into.
+TABLE_SPACES: tuple[str, ...] = (
+    '[data-part="scrum-table"]',
+    '[data-part="extractor-table"]',
+)
+
+#: The JS expression naming every module whose global reached the page.
+LOADED_MODULES_JS = "window.acervatorTradingPage.modules().join(',')"
+
+#: The JS expression naming each style sheet the page holds and its rule count.
+LOADED_STYLES_JS = "JSON.stringify(window.acervatorTradingPage.styles())"
+
+#: The JS expression counting the bot rows each table space really drew.
+DRAWN_ROWS_JS = "JSON.stringify(window.acervatorTradingPage.rows())"
 
 #: The scripts every page carries before the modules. Order is load order.
 BASE_SCRIPT_ASSETS: tuple[str, ...] = (
@@ -89,25 +154,127 @@ _NAMER_SOURCE = """(function (global) {
 
 _MARKER_SOURCE = "window.%(name_global)s = %(module)s;"
 
-_HOST_SOURCE = """(function (global) {
+_HOST_SOURCE = """(function (global, doc) {
   "use strict";
 
   var MODELS = %(models)s;
+  var VENUES = %(venues)s;
+  var SETTERS = %(setters)s;
+  var DESIGN = %(design)s;
+  var KEYS = %(keys)s;
+  var GLOBALS = %(globals)s;
   var NAME = %(name)s;
+  var ROOT = %(root)s;
+  var ASSET = %(asset)s;
+  var ROW = %(row)s;
+  var SPACES = %(spaces)s;
 
   global.ACERVATOR_MODULES = %(roster)s;
+
+  function owns(bag, name) {
+    return Object.prototype.hasOwnProperty.call(bag, name);
+  }
+
+  // A venue module names its exchange under one of KEYS, so one page can
+  // answer two layers without either reading the other's rows.
+  function venueOf(params) {
+    for (var at = 0; at < KEYS.length; at++) {
+      if (params && owns(params, KEYS[at])) {
+        return String(params[KEYS[at]]);
+      }
+    }
+    return null;
+  }
+
+  function answer(method, params) {
+    var id = venueOf(params);
+    if (id !== null && owns(VENUES, id) && owns(VENUES[id], method)) {
+      return VENUES[id][method];
+    }
+    return owns(MODELS, method) ? MODELS[method] : null;
+  }
+
+  // Hands each venue module the payload of its own method, then writes the
+  // design tokens onto the document so a var(--TOKEN) rule resolves.
+  function seat() {
+    Object.keys(VENUES).forEach(function (id) {
+      SETTERS.forEach(function (pair) {
+        var setter = global[pair[1]];
+        if (typeof setter === "function" && owns(VENUES[id], pair[0])) {
+          setter(VENUES[id][pair[0]]);
+        }
+      });
+    });
+    var design = global[DESIGN[1]];
+    if (typeof design === "function" && owns(MODELS, DESIGN[0])) {
+      design(MODELS[DESIGN[0]]);
+    }
+    if (global.acervatorTokens && typeof global.acervatorTokens.apply === "function") {
+      global.acervatorTokens.apply(doc.documentElement);
+    }
+  }
+
+  function modules() {
+    return GLOBALS.filter(function (pair) {
+      return global[pair[1]] !== undefined;
+    }).map(function (pair) {
+      return pair[0];
+    });
+  }
+
+  function styles() {
+    var found = [];
+    var tags = doc.querySelectorAll("style[" + ASSET + "]");
+    for (var at = 0; at < tags.length; at++) {
+      var sheet = tags[at].sheet;
+      found.push([
+        tags[at].getAttribute(ASSET),
+        sheet === null ? 0 : sheet.cssRules.length
+      ]);
+    }
+    return found;
+  }
+
+  function rows() {
+    var found = {};
+    SPACES.forEach(function (part) {
+      found[part] = doc.querySelectorAll(part + " " + ROW).length;
+    });
+    return found;
+  }
+
+  // exchange_tab.js answers a second ask from the first ask's payload, so
+  // forget() runs before a fresh fleet is seated and drawn.
+  function hold(venues) {
+    VENUES = venues;
+    var venue = global.acervatorExchangeTab;
+    if (venue && typeof venue.forget === "function") {
+      venue.forget();
+    }
+    seat();
+    var tab = global.acervatorTrading;
+    return tab && typeof tab.redraw === "function" ? tab.redraw() : 0;
+  }
+
   global.acervator = {
-    call: function (method) {
-      var owns = Object.prototype.hasOwnProperty.call(MODELS, method);
-      return Promise.resolve(owns ? MODELS[method] : null);
+    call: function (method, params) {
+      return Promise.resolve(answer(method, params));
     }
   };
 
+  global.acervatorTradingPage = {
+    modules: modules,
+    styles: styles,
+    rows: rows,
+    hold: hold
+  };
+
+  seat();
   global.acervatorTradingTabDrawn = global.acervatorPanelHost.open(
     NAME,
-    document.getElementById("%(root)s")
+    doc.getElementById(ROOT)
   );
-})(window);"""
+})(window, document);"""
 
 
 def module_name(asset: str = PANEL_MODULE) -> str:
@@ -136,10 +303,47 @@ def models(live: Any = None) -> dict:
         else trading_tab_surface.view_model
     )
     return {
+        token_surface.METHOD: token_surface.view_model({}),
         trading_tab_surface.METHOD: tab({}),
         status_log_surface.METHOD: status_log_surface.view_model({}),
         indicator_panel_surface.METHOD: indicator_panel_surface.view_model({}),
     }
+
+
+def venue_models(venues: Any) -> dict:
+    """Each venue page's own payloads, keyed by the exchange it draws.
+
+    ``ExchangeTabReact.models`` already carries what ``update_bots`` last
+    wrote, so the rows the Live page draws are the rows the window handed
+    that venue.
+    """
+    found: dict = {}
+    for exchange_id, venue in dict(venues or {}).items():
+        read = getattr(venue, "models", None)
+        if not callable(read):
+            continue
+        held = read()
+        if held:
+            found[str(exchange_id)] = held
+    return found
+
+
+def venue_setters() -> list:
+    """Each venue bridge method beside the setter its own module publishes."""
+    return [
+        [method, VENUE_SETTERS[method]]
+        for method in (
+            scrum_surface.METHOD,
+            extractor_surface.METHOD,
+            ticker_surface.METHOD,
+            venue_surface.METHOD,
+        )
+    ]
+
+
+def module_globals() -> list:
+    """Each module the page carries beside the global it defines when it runs."""
+    return [[name, MODULE_GLOBALS[name]] for name in roster()]
 
 
 def namer_script() -> str:
@@ -155,14 +359,35 @@ def marker_script(asset: str) -> str:
     }
 
 
-def host_script(built: dict) -> str:
-    """The page's own glue: the models, the roster and the one panel to open."""
+def host_script(built: dict, venues: Optional[dict] = None) -> str:
+    """The page's own glue: the models, the venues, and the panel to open."""
     return _HOST_SOURCE % {
         "models": json.dumps(built, ensure_ascii=True),
+        "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
+        "setters": json.dumps(venue_setters(), ensure_ascii=True),
+        "design": json.dumps([token_surface.METHOD, DESIGN_SETTER], ensure_ascii=True),
+        "keys": json.dumps(list(VENUE_KEYS), ensure_ascii=True),
+        "globals": json.dumps(module_globals(), ensure_ascii=True),
         "name": json.dumps(module_name(), ensure_ascii=True),
         "roster": json.dumps(list(roster()), ensure_ascii=True),
-        "root": PANEL_ROOT_ID,
+        "root": json.dumps(PANEL_ROOT_ID, ensure_ascii=True),
+        "asset": json.dumps("data-asset", ensure_ascii=True),
+        "row": json.dumps('[data-part="row"]', ensure_ascii=True),
+        "spaces": json.dumps(list(TABLE_SPACES), ensure_ascii=True),
     }
+
+
+def push_script(venues: dict) -> str:
+    """The one JS statement handing the page a fresh payload for each venue.
+
+    ``ensure_ascii=True`` escapes U+2028 and U+2029, which are legal inside a
+    JSON string and are JavaScript line terminators.
+    """
+    return (
+        "window.acervatorTradingPage.hold("
+        + json.dumps(dict(venues or {}), ensure_ascii=True)
+        + ");"
+    )
 
 
 def _tag(source: str) -> str:
@@ -190,22 +415,25 @@ def page_body() -> str:
     return "".join(parts)
 
 
-def panel_html(built: dict, theme: object = None) -> str:
+def panel_html(built: dict, venues: Optional[dict] = None, theme: object = None) -> str:
     """The whole Live page as one string, with no network fetch.
 
     ``STYLE_ASSETS`` is inlined into the page head, so the tab's chrome
     reaches the browser without a stylesheet request.
     """
-    return page_html(STYLE_ASSETS, (), page_body(), theme, (host_script(built),))
+    return page_html(
+        STYLE_ASSETS, (), page_body(), theme, (host_script(built, venues),)
+    )
 
 
 if _HAS_WEBENGINE:
 
     class TradingTabReact(QWidget):
-        """The Live tab, drawn by ``trading_tab.js`` and its two child modules.
+        """The Live tab, drawn by ``trading_tab.js`` and its child modules.
 
         ``build_panel`` loads the page once, on the first show, so a window
-        that never opens the tab pays for no web view.
+        that never opens the tab pays for no web view. ``hold_venue`` takes
+        one venue page, whose ``published`` signal pushes each fresh fleet.
         """
 
         def __init__(
@@ -220,6 +448,8 @@ if _HAS_WEBENGINE:
             self._live = live
             self._theme = theme
             self._models: dict = {}
+            self._venues: dict = {}
+            self._venue_models: dict = {}
             self._page_ready = False
             self._web: Any = None
             self._layout = QVBoxLayout(self)
@@ -239,6 +469,25 @@ if _HAS_WEBENGINE:
             """A copy of the models the page was built from, empty before that."""
             return dict(self._models)
 
+        def venue_payloads(self) -> dict:
+            """A copy of the payload each venue page last published."""
+            return dict(self._venue_models)
+
+        def hold_venue(self, venue: Any) -> bool:
+            """Draw ``venue`` in this tab and follow every payload it publishes.
+
+            ``MainWindow.add_exchange_tab`` offers each venue page it builds;
+            a page carrying no ``published`` signal is refused and not held.
+            """
+            exchange_id = str(getattr(venue, "exchange_id", "") or "")
+            published = getattr(venue, "published", None)
+            if not exchange_id or published is None:
+                return False
+            self._venues[exchange_id] = venue
+            published.connect(self._venue_published)
+            self._venue_published()
+            return True
+
         def showEvent(self, event) -> None:  # noqa: N802
             """Build the web view the first time the tab is shown."""
             super().showEvent(event)
@@ -249,13 +498,22 @@ if _HAS_WEBENGINE:
             if self._web is not None:
                 return
             self._models = models(self._live)
+            self._venue_models = venue_models(self._venues)
             self._web = QWebEngineView(self)
             self._web.setAccessibleName(ACCESSIBLE_NAME)
             self._web.loadFinished.connect(self._on_load_finished)
-            self._web.setHtml(panel_html(self._models, self._theme))
+            self._web.setHtml(panel_html(self._models, self._venue_models, self._theme))
             self._layout.addWidget(self._web, 1)
+
+        def _venue_published(self) -> None:
+            """Re-read every held venue and push the fleet to the page."""
+            self._venue_models = venue_models(self._venues)
+            if self._page_ready and self._web is not None:
+                self._web.page().runJavaScript(push_script(self._venue_models))
 
         def _on_load_finished(self, ok: bool) -> None:
             self._page_ready = bool(ok)
             if not ok:
                 logger.warning("The React Live tab page failed to load")
+                return
+            self._venue_published()

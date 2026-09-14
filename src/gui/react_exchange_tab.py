@@ -26,6 +26,7 @@ from .main_tabs import extractor_bot_table_surface as extractor_surface
 from .react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 
 try:
+    from PySide6.QtCore import Signal
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout, QWidget
@@ -348,7 +349,11 @@ if _HAS_WEBENGINE:
         ``build_panel`` loads the page once on the first show, and
         ``update_bots``, ``stop_feeds`` and ``_refresh_privacy_mode_btn_style``
         answer the calls ``MainWindow`` already makes on ``ExchangeTab``.
+        ``published`` carries each rebuilt payload to whatever else draws
+        this venue, which under the React build is ``TradingTabReact``.
         """
+
+        published = Signal()
 
         def __init__(
             self,
@@ -518,6 +523,7 @@ if _HAS_WEBENGINE:
             self._models = self._build_models()
             if self._page_ready and not self._stopped and self._web is not None:
                 self._web.page().runJavaScript(push_script(self._models))
+            self.published.emit()
 
         def _row_of(self, table, bot_id: str) -> int:
             ids = list(table.bot_ids)

@@ -50,7 +50,16 @@ STRIP_SCRIPT_ASSETS: tuple[str, ...] = (
     + ("privacy_dot.js", "spendable_profits.js")
 )
 
-STRIP_BODY = f'<div id="{STRIP_ROOT_ID}"></div>'
+#: The page ground. ``page_html`` declares these six chrome colours on the
+#: root from the theme, so the strip carries no colour of its own.
+PAGE_STYLE = (
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "html,body{height:100%;overflow:hidden}"
+    "body{background:var(--bg);color:var(--text)}"
+    f"#{STRIP_ROOT_ID}{{height:100%}}"
+)
+
+STRIP_BODY = "<style>" + PAGE_STYLE + "</style>" + f'<div id="{STRIP_ROOT_ID}"></div>'
 
 #: The JS expression reading the five amounts the browser drew.
 VALUE_TEXTS_JS = (
