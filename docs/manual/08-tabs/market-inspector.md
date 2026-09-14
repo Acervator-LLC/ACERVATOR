@@ -2222,4 +2222,74 @@ CHECKED_BUTTON_STYLE = (
 **Figures.** This page carries no figure and this entry adds none. The two
 widths quoted above were read from the running page and are not stored.
 
+
+
+## 2026-09-15 02:10 - #23 - Level 1 and Level 1A fit the pane at every width
+
+Level 1 broke its buttons after four and its settings rows after two, whatever
+the pane's width. The page asked for 638 px where the zone gives 435 px at a
+900 px tab, so the TikTok button, the derivatives button and two of the four
+settings rows sat past the pane's right edge and the zone grew a horizontal
+scroll bar. Level 1A broke the same way on `Client secret`.
+
+Both pages now break each group at the count the pane's own width holds.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the one call both builds ask
+
+```python
+def columns_for(
+    available: int, cell: int, spacing: int = SETTINGS_ROW_SPACING_PX
+) -> int:
+```
+
+The window calls it every time the pane's edge moves, and the page reaches the
+same count by taking the pane's width less one gap. Read off the running
+program, the pane holds 335, 435, 685 and 965 px at tab widths of 700, 900,
+1400 and 1960, and every group measures `scrollWidth` equal to `clientWidth` at
+all four. No control sits outside the pane and no scroll bar appears.
+
+| Tab width | Venue and category buttons on a line | Settings rows on a line |
+| --------- | ------------------------------------ | ----------------------- |
+| 700 | 2 | 1 |
+| 900 | 3 | 1 |
+| 1400 | 6 | 2 |
+| 1960 | 8 | 2 |
+
+Every button, label and value the two pages carried is still there. The seven
+venues, the five asset classes and the four settings each keep their own
+control, and the labels read in full.
+
+### The window now sets the handle the page already drew
+
+`SPLITTER_HANDLE_PX` is the gap between the two panes. The page drew it; the
+window left the theme's own 5 px in place, so each Qt pane came out 1 px wider
+than the same pane on the page. At a 1960 px tab that one pixel is a whole
+column, because 966 px holds three settings rows and 965 px holds two.
+
+`src/gui/market_inspector.py` - the call that makes the two panes one width
+
+```python
+            self._outer_splitter.setHandleWidth(SPLITTER_HANDLE_PX)
+```
+
+Both panes now read 335, 435, 685 and 965 px at the same four tab widths, so a
+group cannot wrap at a different count in one build than the other.
+
+### A value wider than its box starts at its first character
+
+A settings box holding a value wider than itself showed the end of that value
+in the window and the start of it on the page. `QLineEdit.setText` leaves the
+cursor past the last character, which scrolls the box. The window now puts the
+cursor back at the start, so both builds show the same characters.
+
+**Figures.** This page carries no figure and this entry adds none. Every width
+quoted above was read from the running program and is not stored.
+
+### One sentence this entry contradicts
+
+The Level 1 entry above says the page "takes the whole left column, so nothing
+is squeezed into a strip and no scroll bar appears." That was not true of the
+running program when it was written: at a 900 px tab the zone carried a
+horizontal scroll bar and six controls sat outside the pane. It is true now.
+
 Back to [the subsystem index](README.md).
