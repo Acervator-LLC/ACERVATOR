@@ -817,7 +817,9 @@
   var TITLE_PART = "title_part";
   var ENDPOINT_PART = "endpoint_part";
   var SCOPES_PART = "scopes_part";
+  var SIGN_IN_PART = "sign_in_part";
   var REGISTRATION_PART = "registration_part";
+  var PREREQUISITE_PART = "prerequisite_part";
   var ACCOUNTS_TITLE = "accounts_title";
   var CATEGORY_TITLE = "category_title";
   var SETTINGS_TITLE = "settings_title";
@@ -835,7 +837,9 @@
   var PAGE_FIELDS = "fields";
   var PAGE_ENDPOINT = "endpoint";
   var PAGE_SCOPES = "scopes";
+  var PAGE_SIGN_IN = "sign_in";
   var PAGE_REGISTRATION = "registration";
+  var PAGE_PREREQUISITE = "prerequisite";
   var PAGE_MESSAGE = "message";
   var CREDENTIAL_WIDTH_PX = "credential_width_px";
   var SETTING_WIDTH_PX = "setting_width_px";
@@ -2001,6 +2005,7 @@
       sectionTitle(page, target),
       pageLine(page, page[ENDPOINT_PART], held[PAGE_ENDPOINT]),
       pageLine(page, page[SCOPES_PART], held[PAGE_SCOPES]),
+      pageLine(page, page[SIGN_IN_PART], held[PAGE_SIGN_IN]),
       wrapAt(
         page,
         SETTINGS_GROUP_PART,
@@ -2040,7 +2045,8 @@
         })
       ),
       pageLine(page, page[MESSAGE_PART], held[PAGE_MESSAGE]),
-      pageLine(page, page[REGISTRATION_PART], held[PAGE_REGISTRATION])
+      pageLine(page, page[REGISTRATION_PART], held[PAGE_REGISTRATION]),
+      pageLine(page, page[PREREQUISITE_PART], held[PAGE_PREREQUISITE])
     );
   }
 

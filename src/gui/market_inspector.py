@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import threading
 
-from ..trading import ata_spm, ata_spm_push
+from ..trading import ata_spm, ata_spm_push, ata_spm_signin
 from .main_tabs.market_inspector_surface import (
     READY_TO_SEND_ZONE,
     TOPOLOGIES_ZONE,
@@ -51,8 +51,10 @@ from .main_tabs.market_inspector_surface import (
     POST_SELECTED_LABEL,
     POST_SELECTED_PART,
     POST_SELECTED_TOOLTIP,
+    PREREQUISITE_LINE_PART,
     REGISTRATION_LINE_PART,
     SCOPES_LINE_PART,
+    SIGN_IN_LINE_PART,
     SECTION_TITLE_PART,
     SETTING_FIELD_WIDTH_PX,
     SETTING_ROWS,
@@ -600,6 +602,9 @@ if _HAS_QT:
             self._ata_run_source = None
             self._ata_board = ata_spm.SectorBoard()
             self._push_board = ata_spm_push.PushBoard()
+            self._push_board.settings.set_connector(
+                ata_spm_signin.build_connector(ata_spm_signin.default_session())
+            )
             self._build_ui()
 
         def _build_ui(self) -> None:
@@ -942,6 +947,10 @@ if _HAS_QT:
             self._scopes_label.setAccessibleName(SCOPES_LINE_PART)
             self._scopes_label.setWordWrap(True)
             column.addWidget(self._scopes_label)
+            self._sign_in_label = QLabel("")
+            self._sign_in_label.setAccessibleName(SIGN_IN_LINE_PART)
+            self._sign_in_label.setWordWrap(True)
+            column.addWidget(self._sign_in_label)
 
             self._credential_edits: dict = {}
             self._credential_rows: dict = {}
@@ -999,6 +1008,10 @@ if _HAS_QT:
             self._registration_label.setAccessibleName(REGISTRATION_LINE_PART)
             self._registration_label.setWordWrap(True)
             column.addWidget(self._registration_label)
+            self._prerequisite_label = QLabel("")
+            self._prerequisite_label.setAccessibleName(PREREQUISITE_LINE_PART)
+            self._prerequisite_label.setWordWrap(True)
+            column.addWidget(self._prerequisite_label)
             column.addStretch()
             page.setAccessibleName(CREDENTIAL_PAGE_PART)
             return page
@@ -1090,7 +1103,9 @@ if _HAS_QT:
             self._credential_title.setText(target)
             self._endpoint_label.setText(str(held["endpoint"]))
             self._scopes_label.setText(str(held["scopes"]))
+            self._sign_in_label.setText(str(held["sign_in"]))
             self._registration_label.setText(str(held["registration"]))
+            self._prerequisite_label.setText(str(held["prerequisite"]))
             self._credential_message.setText(str(held["message"]))
 
         # ── the Ready to Send control row ────────────────────────────

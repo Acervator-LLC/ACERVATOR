@@ -174,9 +174,9 @@ class CredentialField:
 class PushTarget:
     """One push target, its sections, its text ceilings and its sign-in.
 
-    ``fields``, ``endpoint``, ``scopes`` and ``registration`` are what the
-    platform's own documentation requires, and the Level 1A page draws one
-    box per ``CredentialField``.
+    ``fields`` is what the operator types and the Level 1A page draws a box
+    for; ``issued`` is what the venue's own flow hands back, and no page draws
+    one of those.
     """
 
     name: str
@@ -185,9 +185,11 @@ class PushTarget:
     title_limit: int = NO_TITLE_FIELD
     count_unit: str = COUNT_CHARACTERS
     fields: tuple = ()
+    issued: tuple = ()
     endpoint: str = ""
     scopes: tuple = ()
     registration: str = ""
+    prerequisite: str = ""
 
 
 #: A target is added by naming a row here; ``format_post``, ``distribute``
@@ -201,6 +203,8 @@ PUSH_TARGETS = (
         fields=(
             CredentialField("x-client-id", "Client ID"),
             CredentialField("x-client-secret", "Client secret"),
+        ),
+        issued=(
             CredentialField("x-access-token", "Access token"),
             CredentialField("x-refresh-token", "Refresh token"),
         ),
@@ -213,32 +217,51 @@ PUSH_TARGETS = (
             "offline.access",
         ),
         registration="An X developer app with OAuth 2.0 user authentication "
-        "and a callback address.",
+        "and a loopback callback address.",
+        prerequisite="X ended its free tier on 6 February 2026 and now bills "
+        "per post, about $0.015 for a post and about $0.20 where the post "
+        "carries a link. The app needs a paid usage plan before it can post.",
     ),
     PushTarget(
         TARGET_INSTAGRAM,
         (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=2200,
         fields=(
+            CredentialField("instagram-client-id", "App ID"),
+            CredentialField("instagram-client-secret", "App secret"),
+        ),
+        issued=(
             CredentialField("instagram-user-id", "Instagram user id"),
             CredentialField("instagram-access-token", "Access token"),
         ),
         endpoint="POST /<IG_ID>/media then /<IG_ID>/media_publish",
-        scopes=("instagram_business_content_publish", "instagram_business_basic"),
-        registration="A Meta app with Instagram Login, on a professional account.",
+        scopes=("instagram_business_basic", "instagram_business_content_publish"),
+        registration="A Meta app with Instagram Login, and an Instagram "
+        "professional account connected to a Page.",
+        prerequisite="No App Review. Meta grants Standard Access to every "
+        "permission automatically, and it covers any account holding a role "
+        "on the app, so give the account a role on it. Page Publishing "
+        "Authorization must be complete, and publishing is capped at 100 "
+        "posts in a rolling 24 hours, 50 where the post is a carousel.",
     ),
     PushTarget(
         TARGET_LINKEDIN,
         (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS),
         body_limit=3000,
         fields=(
-            CredentialField("linkedin-access-token", "Access token"),
+            CredentialField("linkedin-client-id", "Client ID"),
             CredentialField("linkedin-version", "Linkedin-Version (YYYYMM)"),
         ),
+        issued=(CredentialField("linkedin-access-token", "Access token"),),
         endpoint="https://api.linkedin.com/rest/posts",
         scopes=("w_member_social",),
         registration="A LinkedIn developer app carrying the Community "
-        "Management API.",
+        "Management API, with a loopback redirect address.",
+        prerequisite="LinkedIn is the one venue that may refuse outright. The "
+        "Community Management API needs a registered company, a verified Page "
+        "and a two-tier review carrying a screencast. LinkedIn must also "
+        "switch its native PKCE flow on for the app by hand. Until both are "
+        "granted, Connect reaches LinkedIn and LinkedIn turns it away.",
     ),
     PushTarget(
         TARGET_TIKTOK,
@@ -247,24 +270,49 @@ PUSH_TARGETS = (
         title_limit=90,
         count_unit=COUNT_UTF16_RUNES,
         fields=(
-            CredentialField("tiktok-access-token", "Access token"),
+            CredentialField("tiktok-client-key", "Client key"),
+            CredentialField("tiktok-client-secret", "Client secret"),
             CredentialField("tiktok-url-prefix", "Verified URL prefix"),
         ),
+        issued=(
+            CredentialField("tiktok-open-id", "Open id"),
+            CredentialField("tiktok-access-token", "Access token"),
+            CredentialField("tiktok-refresh-token", "Refresh token"),
+        ),
         endpoint="POST /v2/post/publish/content/init/",
-        scopes=("video.publish",),
-        registration="A TikTok developer app with Content Posting, and a "
-        "verified address prefix.",
+        scopes=("user.info.basic", "video.publish"),
+        registration="A TikTok developer app with Content Posting and Direct "
+        "Post switched on, and a verified address prefix.",
+        prerequisite="The app will be unaudited, and TikTok restricts every "
+        "post an unaudited client makes to private viewing, which means only "
+        "he sees it. TikTok also caps an unaudited client at 5 posting "
+        "accounts in 24 hours and requires the account to be private at the "
+        "time of posting. TikTok's audit of the API client is what lifts "
+        "that; video.publish posts to the profile and video.upload would "
+        "instead leave the post in his drafts.",
     ),
     PushTarget(
         TARGET_FACEBOOK,
         (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
         fields=(
+            CredentialField("facebook-app-id", "App ID"),
+            CredentialField("facebook-app-secret", "App secret"),
+        ),
+        issued=(
             CredentialField("facebook-page-id", "Page id"),
             CredentialField("facebook-page-token", "Page access token"),
         ),
         endpoint="POST /<page_id>/feed and /<page_id>/photos",
-        scopes=("pages_manage_posts", "pages_read_engagement", "pages_show_list"),
-        registration="A Meta app with the Pages API, and a Page it may post to.",
+        scopes=(
+            "pages_manage_posts",
+            "pages_manage_metadata",
+            "pages_read_engagement",
+            "pages_show_list",
+        ),
+        registration="A Meta app with the Pages API, and a Page he " "administers.",
+        prerequisite="No App Review. Meta grants Standard Access to every "
+        "permission automatically, and it covers any account holding a role "
+        "on the app, so give the account a role on it.",
     ),
     PushTarget(
         TARGET_THREADS,
@@ -272,12 +320,19 @@ PUSH_TARGETS = (
         body_limit=500,
         count_unit=COUNT_UTF8_EMOJI,
         fields=(
+            CredentialField("threads-client-id", "App ID"),
+            CredentialField("threads-client-secret", "App secret"),
+        ),
+        issued=(
             CredentialField("threads-user-id", "Threads user id"),
             CredentialField("threads-access-token", "Access token"),
         ),
         endpoint="POST /<threads-user-id>/threads then /threads_publish",
         scopes=("threads_basic", "threads_content_publish"),
         registration="A Meta app with the Threads API, on a Threads profile.",
+        prerequisite="No App Review. Meta grants Standard Access to every "
+        "permission automatically, and it covers any account holding a role "
+        "on the app, so give the account a role on it.",
     ),
     PushTarget(
         TARGET_REDDIT,
@@ -287,14 +342,20 @@ PUSH_TARGETS = (
         fields=(
             CredentialField("reddit-app-id", "App ID"),
             CredentialField("reddit-app-secret", "App secret"),
-            CredentialField("reddit-refresh-token", "Refresh token"),
             CredentialField("reddit-subreddit", "Subreddit"),
             CredentialField("reddit-user-agent", "User agent"),
         ),
+        issued=(
+            CredentialField("reddit-access-token", "Access token"),
+            CredentialField("reddit-refresh-token", "Refresh token"),
+        ),
         endpoint="https://www.reddit.com/api/v1/access_token then /api/submit",
-        scopes=("submit",),
-        registration="A Reddit app at reddit.com/prefs/apps, and a target "
-        "subreddit.",
+        scopes=("identity", "submit"),
+        registration="A Reddit app at reddit.com/prefs/apps carrying a "
+        "loopback redirect address, and a target subreddit.",
+        prerequisite="No review and no fee. Reddit requires the User-Agent to "
+        "read <platform>:<app ID>:<version> (by /u/<username>), and rate "
+        "limits a generic one hard.",
     ),
 )
 
@@ -361,6 +422,10 @@ CONNECT_FAILED_FORMAT = "{target} refused the sign-in: {error}"
 MISSING_FIELD_FORMAT = "{label} is empty."
 NO_CONNECTOR_FORMAT = "No sign-in route wired for {target}."
 
+#: Reads inside ``CONNECT_FAILED_FORMAT`` where a venue completed its flow and
+#: still handed back nothing for one of its ``PushTarget.issued`` fields.
+NO_ISSUED_FORMAT = "it issued no {label}"
+
 SEND_FAILED_LOG = "ATA-SPM send failed on %s %s: %s"
 VAULT_READ_FAILED_LOG = "ATA-SPM credential read failed on %s: %s"
 VAULT_STORE_FAILED_LOG = "ATA-SPM credential store failed on %s: %s"
@@ -385,9 +450,35 @@ def push_target(target: Any) -> Optional[PushTarget]:
 
 
 def credential_fields(target: Any) -> tuple:
-    """Every ``CredentialField`` one push target's sign-in needs, in page order."""
+    """Every ``CredentialField`` the operator types for one push target, in page order."""
     found = push_target(target)
     return () if found is None else tuple(found.fields)
+
+
+def issued_fields(target: Any) -> tuple:
+    """Every ``CredentialField`` one push target's own sign-in flow hands back."""
+    found = push_target(target)
+    return () if found is None else tuple(found.issued)
+
+
+def stored_fields(target: Any) -> tuple:
+    """``credential_fields`` and ``issued_fields`` together, as the vault holds them."""
+    return credential_fields(target) + issued_fields(target)
+
+
+def target_scopes(target: Any) -> tuple:
+    """The permissions one push target's own documentation names, in page order."""
+    found = push_target(target)
+    return () if found is None else tuple(found.scopes)
+
+
+def missing_value(target: Any, held: Any) -> Optional[CredentialField]:
+    """The first ``stored_fields`` entry of one push target carrying no text."""
+    values = dict(held or {})
+    for one in stored_fields(target):
+        if not str(values.get(one.key, "")).strip():
+            return one
+    return None
 
 
 def vault_key(target: Any, field_key: Any) -> str:
@@ -1186,12 +1277,20 @@ class AtaSpmSettings:
             return answer
         typed = self.typed_credential(name)
         try:
-            self.connector(name, dict(typed))
+            issued = self.connector(name, dict(typed))
         except Exception as exc:  # noqa: BLE001 - the connector is host-supplied
             logger.debug(CONNECT_FAILED_LOG, name, exc)
             answer.detail = CONNECT_FAILED_FORMAT.format(target=name, error=exc)
             return answer
-        if not self.store_credential(name, typed):
+        held = dict(typed)
+        held.update({str(key): str(one) for key, one in dict(issued or {}).items()})
+        absent = missing_value(name, held)
+        if absent is not None:
+            answer.detail = CONNECT_FAILED_FORMAT.format(
+                target=name, error=NO_ISSUED_FORMAT.format(label=absent.label)
+            )
+            return answer
+        if not self.store_credential(name, held):
             answer.detail = NO_VAULT_TEXT
             return answer
         self.typed.pop(name, None)
@@ -1200,7 +1299,7 @@ class AtaSpmSettings:
         return answer
 
     def store_credential(self, target: Any, typed: Any) -> bool:
-        """Encrypt one push target's typed fields into ``vault``, one entry each.
+        """Encrypt one push target's ``stored_fields`` into ``vault``, one entry each.
 
         A missing or refusing ``vault`` answers False, and the target then
         reads unreachable.
@@ -1219,8 +1318,12 @@ class AtaSpmSettings:
         return True
 
     def holds(self, target: Any) -> bool:
-        """Whether ``vault`` holds every ``CredentialField`` one push target needs."""
-        fields = credential_fields(target)
+        """Whether ``vault`` holds every ``stored_fields`` entry one push target needs.
+
+        A target reads held only once its own sign-in has run, since the
+        ``PushTarget.issued`` entries reach the vault nowhere else.
+        """
+        fields = stored_fields(target)
         if self.vault is None or not fields:
             return False
         try:

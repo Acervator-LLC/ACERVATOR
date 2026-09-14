@@ -1821,15 +1821,19 @@ Each venue asks for different values. Every value below comes from that
 platform's own published documentation, read on 2026-09-06 and 2026-09-07 and
 recorded in [the platform rules audit](../../audits/2026-09-06_ata_platform_rules.md).
 
-| Venue | Boxes on its page | Posts to |
-| ----- | ----------------- | -------- |
-| X | Client ID, Client secret, Access token, Refresh token | `https://api.x.com/2/tweets` |
-| Instagram | Instagram user id, Access token | `/<IG_ID>/media` then `/<IG_ID>/media_publish` |
-| LinkedIn | Access token, Linkedin-Version | `https://api.linkedin.com/rest/posts` |
-| TikTok | Access token, Verified URL prefix | `/v2/post/publish/content/init/` |
-| Facebook | Page id, Page access token | `/<page_id>/feed` and `/<page_id>/photos` |
-| Threads | Threads user id, Access token | `/<threads-user-id>/threads` then `/threads_publish` |
-| Reddit | App ID, App secret, Refresh token, Subreddit, User agent | `https://www.reddit.com/api/v1/access_token` then `/api/submit` |
+| Venue | Boxes on its page | The sign-in issues | Posts to |
+| ----- | ----------------- | ------------------ | -------- |
+| X | Client ID, Client secret | Access token, Refresh token | `https://api.x.com/2/tweets` |
+| Instagram | App ID, App secret | Instagram user id, Access token | `/<IG_ID>/media` then `/<IG_ID>/media_publish` |
+| LinkedIn | Client ID, Linkedin-Version | Access token | `https://api.linkedin.com/rest/posts` |
+| TikTok | Client key, Client secret, Verified URL prefix | Open id, Access token, Refresh token | `/v2/post/publish/content/init/` |
+| Facebook | App ID, App secret | Page id, Page access token | `/<page_id>/feed` and `/<page_id>/photos` |
+| Threads | App ID, App secret | Threads user id, Access token | `/<threads-user-id>/threads` then `/threads_publish` |
+| Reddit | App ID, App secret, Subreddit, User agent | Access token, Refresh token | `https://www.reddit.com/api/v1/access_token` then `/api/submit` |
+
+The operator types only what a venue hands him when he registers an application,
+plus values local to him. Every token in the third column is obtained by the
+sign-in and never typed.
 
 Connect signs in to the venue. The page returns to Level 1 by itself only when
 the venue accepts. An empty box, a missing sign-in route and a refusal from the
@@ -1855,8 +1859,10 @@ VAULT_KEY_FORMAT = "{target}:{field}"
 ```
 
 Every platform above issues these values only to an application the operator has
-registered with that platform. The software cannot obtain one. Each page names
-what is needed before any of its boxes can be filled.
+registered with that platform. The software cannot obtain a registration, and
+each page names what is needed before any of its boxes can be filled. The
+sign-in does obtain the access and refresh tokens, once a registration supplies
+the client values the page asks for.
 
 | Venue | What the operator registers |
 | ----- | --------------------------- |
@@ -1868,10 +1874,11 @@ what is needed before any of its boxes can be filled.
 | Threads | A Meta app with the Threads API, on a Threads profile |
 | Reddit | A Reddit app at reddit.com/prefs/apps, and a target subreddit |
 
-No sign-in route is wired into the running program yet. Connect therefore names
-the venue and refuses, rather than reporting a success it did not have. The
-route is one call, and the page works from the moment a registration supplies
-one.
+A sign-in route is wired for every venue, at both construction sites. Connect
+opens the system browser at that venue's own approval address, waits on a
+loopback listener for the reply, and exchanges the code for the tokens the third
+column names. A venue with no registration behind it still refuses, and the page
+stays open and prints what failed.
 
 `src/trading/ata_spm_push.py` - the call that wires a venue
 
@@ -1883,5 +1890,146 @@ one.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+
+
+## 2026-09-14 21:00 - #23 - Each venue's own sign-in, behind Connect
+
+All seven venues use three-legged OAuth. Not one of them issues a working token
+from an app id and a secret alone. The operator sends himself to the venue in a
+browser, approves there, and the venue sends a code back to the program.
+
+The boxes on each Level 1A page therefore hold only what a venue hands him when
+he registers an app, plus values that are local to him. The program obtains the
+rest and he never types it.
+
+`src/trading/ata_spm_push.py` - the two sets each venue row now declares
+
+```python
+    fields: tuple = ()
+    issued: tuple = ()
+```
+
+| Venue | Boxes he types | What the program obtains |
+| ----- | -------------- | ------------------------ |
+| X | Client ID, Client secret | Access token, Refresh token |
+| Instagram | App ID, App secret | Instagram user id, Access token |
+| LinkedIn | Client ID, Linkedin-Version | Access token |
+| TikTok | Client key, Client secret, Verified URL prefix | Open id, Access token, Refresh token |
+| Facebook | App ID, App secret | Page id, Page access token |
+| Threads | App ID, App secret | Threads user id, Access token |
+| Reddit | App ID, App secret, Subreddit, User agent | Access token, Refresh token |
+
+A venue reads as held on Level 1 only once both sets are in the vault, so the
+button turns on when the sign-in has actually run.
+
+### The connection method
+
+Every route is RFC 8252, the published method for a program on a desktop. The
+program opens a listener on the loopback address, opens the venue's own approval
+page in the operating system's browser, and waits for one reply.
+
+```mermaid
+sequenceDiagram
+    participant He as Operator
+    participant App as Acervator
+    participant Br as System browser
+    participant V as Venue
+    He->>App: Connect
+    App->>App: bind 127.0.0.1 at a port the system chooses
+    App->>Br: open the venue's approval page
+    Br->>V: approve
+    V->>App: redirect to 127.0.0.1 with a code
+    App->>App: check the state it generated, then close the listener
+    App->>V: exchange the code for a token
+    V->>App: access token
+    App->>App: encrypt into the vault, return to Level 1
+```
+
+The listener binds `127.0.0.1` and nothing else. It takes a port the operating
+system picks, serves exactly one request, refuses a reply carrying a state it did
+not generate, and closes. It never outlives one sign-in.
+
+`src/trading/ata_spm_signin.py` - what the listener binds
+
+```python
+LOOPBACK_HOST = "127.0.0.1"
+EPHEMERAL_PORT = 0
+```
+
+X, LinkedIn and TikTok require PKCE for a desktop program, so those three send a
+`code_challenge` on the approval call and a `code_verifier` on the token call.
+
+### Where each venue sends him
+
+| Venue | Approval page | Token exchange |
+| ----- | ------------- | -------------- |
+| X | `https://x.com/i/oauth2/authorize` | `https://api.x.com/2/oauth2/token` |
+| Instagram | `https://www.instagram.com/oauth/authorize` | `https://api.instagram.com/oauth/access_token` |
+| LinkedIn | `https://www.linkedin.com/oauth/native-pkce/authorization` | `https://www.linkedin.com/oauth/v2/accessToken` |
+| TikTok | `https://www.tiktok.com/v2/auth/authorize/` | `https://open.tiktokapis.com/v2/oauth/token/` |
+| Facebook | `https://www.facebook.com/v25.0/dialog/oauth` | `https://graph.facebook.com/v25.0/oauth/access_token` |
+| Threads | `https://threads.com/oauth/authorize` | `https://graph.threads.com/oauth/access_token` |
+| Reddit | `https://www.reddit.com/api/v1/authorize` | `https://www.reddit.com/api/v1/access_token` |
+
+Three venues take a second call after the exchange. Instagram and Threads trade
+the first token for one that lasts sixty days. Facebook trades for a long-lived
+user token, then reads the Page token off the account.
+
+Four things differ enough that one shared call would be wrong on all four.
+Reddit authenticates with HTTP Basic and refuses a generic `User-Agent`. TikTok
+names its client field `client_key`, not `client_id`. Reddit asks for
+`duration=permanent`, or it issues no refresh token. LinkedIn's native address
+takes no client secret at all.
+
+### What renews a token without him
+
+| Venue | Renews by itself | How |
+| ----- | ---------------- | --- |
+| X | yes | refresh token grant, which needs `offline.access` |
+| Reddit | yes | refresh token grant |
+| TikTok | yes | refresh token grant, valid 365 days |
+| Instagram | yes | `ig_refresh_token`, token at least 24 hours old |
+| Threads | yes | `th_refresh_token`, token at least 24 hours old |
+| Facebook | not needed | a long-lived Page token carries no expiry date |
+| LinkedIn | no | partner-only; he approves again every 60 days |
+
+### What each venue demands before Connect can work
+
+Each Level 1A page now carries this line under its registration line.
+
+| Venue | Review | Cost | What he must do first |
+| ----- | ------ | ---- | --------------------- |
+| Instagram | none | free | a professional account on a Page, Page Publishing Authorization, and a role on his own app |
+| Facebook | none | free | a Page he administers, and a role on his own app |
+| Threads | none | free | a Threads profile, and a role on his own app |
+| Reddit | none | free | register an app, pick a subreddit |
+| TikTok | audit for a public post | free | until the audit, only he can see what it posts |
+| X | none | per post | a paid usage plan; about $0.015 a post, about $0.20 with a link |
+| LinkedIn | two tiers | free if granted | a registered company, a verified Page, a screencast, and LinkedIn must switch on its native flow by hand |
+
+Meta grants Standard Access to every permission automatically, and it reaches
+any account holding a role on the app. Instagram, Facebook and Threads therefore
+need no App Review, because he posts to accounts he owns.
+
+TikTok restricts every post an unaudited client makes to private viewing. The
+post lands, and nobody but him sees it. Its page says so.
+
+LinkedIn is the one venue that may refuse him outright. Its page states both
+gates rather than offering a Connect that looks like it will work.
+
+### Nothing typed and nothing obtained reaches a page
+
+`credential_page` publishes each box as a name and a wording, and no value.
+
+`src/gui/main_tabs/market_inspector_surface.py` - what one box publishes
+
+```python
+        "fields": [[one.key, one.label] for one in found.fields],
+```
+
+Both variants draw the same seven pages. Read off the running screens, each
+venue draws the same six lines and the same boxes under Qt and under React.
+
+**Figures.** This page carries no figure and this entry adds none.
 
 Back to [the subsystem index](README.md).
