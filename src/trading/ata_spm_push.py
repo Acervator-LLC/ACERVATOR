@@ -163,11 +163,20 @@ CALL_SECTION_FORMAT = "{symbol} on {label}: {direction} reversal called."
 
 
 @dataclass(frozen=True)
-class PushTarget:
-    """One push target, its evidence sections in order, and its text ceilings.
+class CredentialField:
+    """One value a push target's sign-in needs, its part name and its empty wording."""
 
-    ``body_limit``, ``title_limit`` and ``count_unit`` are the numbers the
-    platform publishes, and ``NO_LIMIT_PUBLISHED`` marks one that publishes none.
+    key: str
+    label: str
+
+
+@dataclass(frozen=True)
+class PushTarget:
+    """One push target, its sections, its text ceilings and its sign-in.
+
+    ``fields``, ``endpoint``, ``scopes`` and ``registration`` are what the
+    platform's own documentation requires, and the Level 1A page draws one
+    box per ``CredentialField``.
     """
 
     name: str
@@ -175,6 +184,10 @@ class PushTarget:
     body_limit: int = NO_LIMIT_PUBLISHED
     title_limit: int = NO_TITLE_FIELD
     count_unit: str = COUNT_CHARACTERS
+    fields: tuple = ()
+    endpoint: str = ""
+    scopes: tuple = ()
+    registration: str = ""
 
 
 #: A target is added by naming a row here; ``format_post``, ``distribute``
@@ -185,16 +198,47 @@ PUSH_TARGETS = (
         (SECTION_CALL, SECTION_INDICATORS),
         body_limit=280,
         count_unit=COUNT_WEIGHTED,
+        fields=(
+            CredentialField("x-client-id", "Client ID"),
+            CredentialField("x-client-secret", "Client secret"),
+            CredentialField("x-access-token", "Access token"),
+            CredentialField("x-refresh-token", "Refresh token"),
+        ),
+        endpoint="https://api.x.com/2/tweets",
+        scopes=(
+            "tweet.write",
+            "tweet.read",
+            "users.read",
+            "media.write",
+            "offline.access",
+        ),
+        registration="An X developer app with OAuth 2.0 user authentication "
+        "and a callback address.",
     ),
     PushTarget(
         TARGET_INSTAGRAM,
         (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=2200,
+        fields=(
+            CredentialField("instagram-user-id", "Instagram user id"),
+            CredentialField("instagram-access-token", "Access token"),
+        ),
+        endpoint="POST /<IG_ID>/media then /<IG_ID>/media_publish",
+        scopes=("instagram_business_content_publish", "instagram_business_basic"),
+        registration="A Meta app with Instagram Login, on a professional account.",
     ),
     PushTarget(
         TARGET_LINKEDIN,
         (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS),
         body_limit=3000,
+        fields=(
+            CredentialField("linkedin-access-token", "Access token"),
+            CredentialField("linkedin-version", "Linkedin-Version (YYYYMM)"),
+        ),
+        endpoint="https://api.linkedin.com/rest/posts",
+        scopes=("w_member_social",),
+        registration="A LinkedIn developer app carrying the Community "
+        "Management API.",
     ),
     PushTarget(
         TARGET_TIKTOK,
@@ -202,22 +246,55 @@ PUSH_TARGETS = (
         body_limit=4000,
         title_limit=90,
         count_unit=COUNT_UTF16_RUNES,
+        fields=(
+            CredentialField("tiktok-access-token", "Access token"),
+            CredentialField("tiktok-url-prefix", "Verified URL prefix"),
+        ),
+        endpoint="POST /v2/post/publish/content/init/",
+        scopes=("video.publish",),
+        registration="A TikTok developer app with Content Posting, and a "
+        "verified address prefix.",
     ),
     PushTarget(
         TARGET_FACEBOOK,
         (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        fields=(
+            CredentialField("facebook-page-id", "Page id"),
+            CredentialField("facebook-page-token", "Page access token"),
+        ),
+        endpoint="POST /<page_id>/feed and /<page_id>/photos",
+        scopes=("pages_manage_posts", "pages_read_engagement", "pages_show_list"),
+        registration="A Meta app with the Pages API, and a Page it may post to.",
     ),
     PushTarget(
         TARGET_THREADS,
         (SECTION_CALL, SECTION_INDICATORS),
         body_limit=500,
         count_unit=COUNT_UTF8_EMOJI,
+        fields=(
+            CredentialField("threads-user-id", "Threads user id"),
+            CredentialField("threads-access-token", "Access token"),
+        ),
+        endpoint="POST /<threads-user-id>/threads then /threads_publish",
+        scopes=("threads_basic", "threads_content_publish"),
+        registration="A Meta app with the Threads API, on a Threads profile.",
     ),
     PushTarget(
         TARGET_REDDIT,
         (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=40000,
         title_limit=300,
+        fields=(
+            CredentialField("reddit-app-id", "App ID"),
+            CredentialField("reddit-app-secret", "App secret"),
+            CredentialField("reddit-refresh-token", "Refresh token"),
+            CredentialField("reddit-subreddit", "Subreddit"),
+            CredentialField("reddit-user-agent", "User agent"),
+        ),
+        endpoint="https://www.reddit.com/api/v1/access_token then /api/submit",
+        scopes=("submit",),
+        registration="A Reddit app at reddit.com/prefs/apps, and a target "
+        "subreddit.",
     ),
 )
 
@@ -265,17 +342,57 @@ BUCKET_META_FORMAT = "{target} · {state}"
 FULL_AUTO_ON_TEXT = "Full Auto on"
 FULL_AUTO_OFF_TEXT = "Full Auto off"
 
-#: The two values ``CredentialVault.store`` takes for one push target, in the
-#: order ``save_credentials`` reads them.
-CREDENTIAL_FIELD_KEYS = ("credential-key", "credential-signature")
+#: Every ``CredentialField`` key across ``PUSH_TARGETS``, which is what a page
+#: reports back as the part one credential box was typed into.
+CREDENTIAL_FIELD_KEYS = tuple(
+    one.key for target in PUSH_TARGETS for one in target.fields
+)
+
+#: ``CredentialVault.store`` keys one entry per push target and field, so a
+#: target holding five values holds five entries.
+VAULT_KEY_FORMAT = "{target}:{field}"
 
 CREDENTIAL_HELD_TEXT = "held"
 CREDENTIAL_MISSING_TEXT = "not held"
 NO_VAULT_TEXT = "Credential vault not wired."
 
+CONNECT_OK_FORMAT = "{target} accepted the credential."
+CONNECT_FAILED_FORMAT = "{target} refused the sign-in: {error}"
+MISSING_FIELD_FORMAT = "{label} is empty."
+NO_CONNECTOR_FORMAT = "No sign-in route wired for {target}."
+
 SEND_FAILED_LOG = "ATA-SPM send failed on %s %s: %s"
 VAULT_READ_FAILED_LOG = "ATA-SPM credential read failed on %s: %s"
 VAULT_STORE_FAILED_LOG = "ATA-SPM credential store failed on %s: %s"
+CONNECT_FAILED_LOG = "ATA-SPM sign-in failed on %s: %s"
+
+
+@dataclass
+class ConnectResult:
+    """One Level 1A press: the push target, whether it accepted, and its wording."""
+
+    target: str = ""
+    ok: bool = False
+    detail: str = ""
+
+
+def push_target(target: Any) -> Optional[PushTarget]:
+    """The ``PushTarget`` row one name carries, or None for a name outside it."""
+    for one in PUSH_TARGETS:
+        if one.name == str(target):
+            return one
+    return None
+
+
+def credential_fields(target: Any) -> tuple:
+    """Every ``CredentialField`` one push target's sign-in needs, in page order."""
+    found = push_target(target)
+    return () if found is None else tuple(found.fields)
+
+
+def vault_key(target: Any, field_key: Any) -> str:
+    """The ``CredentialVault`` entry name one push target's field is held under."""
+    return VAULT_KEY_FORMAT.format(target=str(target), field=str(field_key))
 
 
 def vote_word(direction_text: Any) -> str:
@@ -1018,59 +1135,99 @@ class AtaSpmSettings:
         self.confirmation_share_pct = NO_SHARE_SET
         self.message_format = ata_spm.MESSAGE_FORMAT
         self.vault: Any = None
+        self.connector: Optional[Callable] = None
         self.typed: dict = {}
 
     def set_vault(self, vault: Any) -> None:
         """Take the credential vault every push target's token is held in."""
         self.vault = vault
 
+    def set_connector(self, connector: Optional[Callable]) -> None:
+        """Take what signs one push target in, or None while no route is wired."""
+        self.connector = connector
+
     def set_credential_text(self, target: Any, field: Any, typed: Any) -> None:
-        """Hold what one credential field carries until Save reads it.
+        """Hold what one credential field carries until ``connect`` reads it.
 
         Nothing here reaches ``credential_rows``, so no view model or render
         carries a typed value.
         """
         self.typed.setdefault(str(target), {})[str(field)] = str(typed or "")
 
-    def typed_credential(self, target: Any) -> list:
-        """The two values one target's fields hold, in ``CREDENTIAL_FIELD_KEYS``."""
+    def typed_credential(self, target: Any) -> dict:
+        """Each ``CredentialField`` key of one push target, and the value typed in."""
         held = self.typed.get(str(target), {})
-        return [str(held.get(one, "")) for one in CREDENTIAL_FIELD_KEYS]
+        return {
+            one.key: str(held.get(one.key, "")) for one in credential_fields(target)
+        }
 
-    def save_credentials(self) -> list:
-        """Encrypt every typed credential into the vault and clear what was typed.
+    def missing_field(self, target: Any) -> Optional[CredentialField]:
+        """The first ``CredentialField`` of one push target carrying no text."""
+        held = self.typed.get(str(target), {})
+        for one in credential_fields(target):
+            if not str(held.get(one.key, "")).strip():
+                return one
+        return None
 
-        Answers the targets whose credential landed.
+    def connect(self, target: Any) -> "ConnectResult":
+        """Sign one push target in, and store the credential only once it accepts.
+
+        An empty box, an unwired ``connector`` and a refusing venue each
+        answer ``ok`` False with the wording Level 1A prints.
         """
-        stored = []
-        for name in TARGET_NAMES:
-            api_key, api_secret = self.typed_credential(name)
-            if self.store_credential(name, api_key, api_secret):
-                stored.append(name)
-        self.typed = {}
-        return stored
+        name = str(target)
+        answer = ConnectResult(target=name)
+        empty = self.missing_field(name)
+        if empty is not None:
+            answer.detail = MISSING_FIELD_FORMAT.format(label=empty.label)
+            return answer
+        if self.connector is None:
+            answer.detail = NO_CONNECTOR_FORMAT.format(target=name)
+            return answer
+        typed = self.typed_credential(name)
+        try:
+            self.connector(name, dict(typed))
+        except Exception as exc:  # noqa: BLE001 - the connector is host-supplied
+            logger.debug(CONNECT_FAILED_LOG, name, exc)
+            answer.detail = CONNECT_FAILED_FORMAT.format(target=name, error=exc)
+            return answer
+        if not self.store_credential(name, typed):
+            answer.detail = NO_VAULT_TEXT
+            return answer
+        self.typed.pop(name, None)
+        answer.ok = True
+        answer.detail = CONNECT_OK_FORMAT.format(target=name)
+        return answer
 
-    def store_credential(self, target: Any, api_key: Any, api_secret: Any) -> bool:
-        """Encrypt one target's credential into ``vault``, and answer whether it landed.
+    def store_credential(self, target: Any, typed: Any) -> bool:
+        """Encrypt one push target's typed fields into ``vault``, one entry each.
 
         A missing or refusing ``vault`` answers False, and the target then
         reads unreachable.
         """
-        if self.vault is None or not str(api_key or ""):
+        if self.vault is None:
+            return False
+        held = dict(typed or {})
+        if not held:
             return False
         try:
-            self.vault.store(str(target), str(api_key), str(api_secret or ""))
+            for field_key, value in held.items():
+                self.vault.store(vault_key(target, field_key), str(value), "")
         except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
             logger.debug(VAULT_STORE_FAILED_LOG, target, exc)
             return False
         return True
 
     def holds(self, target: Any) -> bool:
-        """Whether ``vault`` holds a credential for one push target."""
-        if self.vault is None:
+        """Whether ``vault`` holds every ``CredentialField`` one push target needs."""
+        fields = credential_fields(target)
+        if self.vault is None or not fields:
             return False
         try:
-            return bool(self.vault.has_exchange(str(target)))
+            return all(
+                bool(self.vault.has_exchange(vault_key(target, one.key)))
+                for one in fields
+            )
         except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
             logger.debug(VAULT_READ_FAILED_LOG, target, exc)
             return False
@@ -1369,6 +1526,8 @@ class PushBoard:
         self.bucket = ReadyToSend()
         self.follow_up = FollowUpWatch()
         self.settings_open = False
+        self.credential_target: Optional[str] = None
+        self.connect_result: Optional[ConnectResult] = None
         self.sender: Optional[Callable] = None
         self.clock: Optional[Callable] = None
 
@@ -1377,9 +1536,41 @@ class PushBoard:
         self.sender = sender
 
     def toggle_settings(self) -> bool:
-        """Show the ATA-SPM settings page, or the scan page, and answer which."""
+        """Show Level 1, or the scan page, and answer which.
+
+        Closing drops ``credential_target`` and ``connect_result``, so Level 1A
+        never reopens on a target the operator left.
+        """
         self.settings_open = not self.settings_open
+        if not self.settings_open:
+            self.credential_target = None
+            self.connect_result = None
         return self.settings_open
+
+    def open_credentials(self, target: Any) -> Optional[str]:
+        """Show one push target's Level 1A page, and answer which target it draws."""
+        found = push_target(target)
+        if found is None:
+            return None
+        self.settings_open = True
+        self.credential_target = found.name
+        self.connect_result = None
+        return self.credential_target
+
+    def close_credentials(self) -> None:
+        """Leave Level 1A for Level 1, dropping what the last ``connect`` said."""
+        self.credential_target = None
+        self.connect_result = None
+
+    def connect_credentials(self) -> Optional[ConnectResult]:
+        """Sign the open Level 1A target in, and leave the page only once it accepts."""
+        if self.credential_target is None:
+            return None
+        answer = self.settings.connect(self.credential_target)
+        self.connect_result = answer
+        if answer.ok:
+            self.credential_target = None
+        return answer
 
     def load_run(self, run: Any) -> int:
         """Fill the bucket from one run and answer how many posts it holds."""

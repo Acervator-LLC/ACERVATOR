@@ -21,11 +21,27 @@ from .main_tabs.market_inspector_surface import (
 )
 from .main_tabs.market_inspector_surface import (
     APPROVE_PART,
+    ASSET_CATEGORY_PART,
+    ASSET_CATEGORY_WIDTH_PX,
+    ATA_SETTINGS_TITLE,
     ATA_SPM_READY_KEY,
+    BACK_LABEL,
+    BACK_PART,
+    BACK_TOOLTIP,
+    BACK_WIDTH_PX,
+    BUTTON_COLUMNS,
+    CATEGORY_TOOLTIP_FORMAT,
+    FIELD_COLUMNS,
+    CONNECT_LABEL,
+    CONNECT_PART,
+    CONNECT_TOOLTIP,
+    CONNECT_WIDTH_PX,
     COUNT_SETTINGS,
-    CREDENTIAL_FIELDS,
     CREDENTIAL_FIELD_WIDTH_PX,
+    CREDENTIAL_MESSAGE_PART,
+    CREDENTIAL_PAGE_PART,
     DECLINE_PART,
+    ENDPOINT_LINE_PART,
     FULL_AUTO_LABEL,
     FULL_AUTO_PART,
     FULL_AUTO_TOOLTIP,
@@ -35,8 +51,9 @@ from .main_tabs.market_inspector_surface import (
     POST_SELECTED_LABEL,
     POST_SELECTED_PART,
     POST_SELECTED_TOOLTIP,
-    SAVE_CREDENTIALS_LABEL,
-    SAVE_CREDENTIALS_TOOLTIP,
+    REGISTRATION_LINE_PART,
+    SCOPES_LINE_PART,
+    SECTION_TITLE_PART,
     SETTING_FIELD_WIDTH_PX,
     SETTING_ROWS,
     SETTINGS_LABEL,
@@ -44,6 +61,13 @@ from .main_tabs.market_inspector_surface import (
     SETTINGS_ROW_SPACING_PX,
     SETTINGS_TOOLTIP,
     SETTINGS_WIDTH_PX,
+    SM_ACCOUNTS_TITLE,
+    ASSET_CATEGORY_TITLE,
+    ZONES_PART,
+    ZONES_TOOLTIP,
+    VENUE_BUTTON_PART,
+    VENUE_BUTTON_WIDTH_PX,
+    VENUE_TOOLTIP_FORMAT,
     FIELD_HEIGHT_PX,
     FULL_AUTO_WIDTH_PX,
     POST_ALL_WIDTH_PX,
@@ -54,6 +78,7 @@ from .main_tabs.market_inspector_surface import (
     STRIP_TEXT_PART,
     bucket_entries as _bucket_entries,
 )
+from .main_tabs.market_inspector_surface import settings_page as _settings_page_view
 from .main_tabs.market_inspector_surface import right_zone_rows as _right_zone_rows
 from .main_tabs.market_inspector_surface import left_module_rows as _left_module_rows
 from .main_tabs.market_inspector_surface import sector_entry as _sector_entry
@@ -117,6 +142,8 @@ try:
         QLayout,
         QFrame,
         QScrollArea,
+        QStackedWidget,
+        QGridLayout,
     )
     from PySide6.QtCore import Qt, Signal
     from PySide6.QtGui import QColor, QPainter
@@ -591,8 +618,12 @@ if _HAS_QT:
             outer.addWidget(self._outer_splitter)
 
             left_pane = QWidget()
-            layout = QVBoxLayout(left_pane)
-            layout.setContentsMargins(6, 6, 6, 6)
+            pane_column = QVBoxLayout(left_pane)
+            pane_column.setContentsMargins(6, 6, 6, 6)
+            pane_column.setSpacing(6)
+            zones = QWidget()
+            layout = QVBoxLayout(zones)
+            layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(6)
 
             # --- The three left-side zones ---
@@ -613,16 +644,21 @@ if _HAS_QT:
                 stepper.headline_label.setText(status)
                 if key == ATA_SPM_MODULE:
                     box.addLayout(self._build_ata_row())
-                    box.addWidget(self._build_settings_page())
                 box.addWidget(stepper)
                 # Ignored height lets the three zones share the pane equally
                 # whatever their content asks for.
                 group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
                 box.setSizeConstraint(QLayout.SetNoConstraint)
                 layout.addWidget(group, 1)
+                if key == ATA_SPM_MODULE:
+                    self._ata_group = group
                 self._left_zone_groups.append(group)
                 self._module_labels[key] = stepper.headline_label
                 self._module_boxes[key] = box
+            self._left_stack = QStackedWidget()
+            self._left_stack.addWidget(zones)
+            self._left_stack.addWidget(self._build_settings_page())
+            pane_column.addWidget(self._left_stack)
             zone = self._module_boxes[OPPOSING_TRADES_MODULE]
 
             # --- Filter row ---
@@ -782,96 +818,222 @@ if _HAS_QT:
             row.addWidget(self._settings_btn)
             return row
 
-        # ── the ATA-SPM settings page ────────────────────────────────
+        # ── Level 1 and Level 1A ─────────────────────────────────────
         def _build_settings_page(self) -> "QWidget":
-            """The credential rows, the three settings and Save credentials.
+            """Level 1 and Level 1A in one stack, with Level 1 on top.
 
-            No field's text reaches ``_push_board``; Save credentials reads
-            them and hands each one to the vault.
+            ``PushBoard.credential_target`` names which of the two the zone
+            shows, and ``_render_settings_page`` swaps them.
+            """
+            self._settings_page = QStackedWidget()
+            self._settings_page.addWidget(self._build_accounts_page())
+            self._settings_page.addWidget(self._build_credential_page())
+            return self._settings_page
+
+        def _section_title(self, text: str) -> "QLabel":
+            """One Level 1 section heading, named so a reader can find its group."""
+            title = QLabel(text)
+            title.setAccessibleName(SECTION_TITLE_PART)
+            return title
+
+        def _build_accounts_page(self) -> "QWidget":
+            """Level 1: one button per push target, one per asset class, the settings.
+
+            A venue button opens that venue's Level 1A page and a category
+            button sets the class ``SectorBoard`` scans.
             """
             page = QWidget()
             column = QVBoxLayout(page)
             column.setContentsMargins(0, 0, 0, 0)
             column.setSpacing(SETTINGS_ROW_SPACING_PX)
-            self._credential_edits: dict = {}
-            self._credential_labels: dict = {}
-            for name in ata_spm_push.TARGET_NAMES:
-                row = QHBoxLayout()
-                row.setSpacing(SETTINGS_ROW_SPACING_PX)
-                title = QLabel(name)
-                title.setFixedWidth(SETTINGS_LABEL_WIDTH_PX)
-                row.addWidget(title)
-                fields = []
-                for part, placeholder in CREDENTIAL_FIELDS:
-                    field = QLineEdit()
-                    field.setEchoMode(QLineEdit.Password)
-                    field.setPlaceholderText(placeholder)
-                    field.setFixedSize(CREDENTIAL_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
-                    field.setAccessibleName(f"{part} {name}")
-                    field.textChanged.connect(
-                        lambda typed, target=name, key=part: (
-                            self._push_board.settings.set_credential_text(
-                                target, key, typed
-                            )
-                        )
-                    )
-                    row.addWidget(field)
-                    fields.append(field)
-                held = QLabel("")
-                row.addWidget(held)
-                row.addStretch()
-                column.addLayout(row)
-                self._credential_edits[name] = fields
-                self._credential_labels[name] = held
-            self._save_credentials_btn = QPushButton(SAVE_CREDENTIALS_LABEL)
-            self._save_credentials_btn.setToolTip(SAVE_CREDENTIALS_TOOLTIP)
-            self._save_credentials_btn.setFixedHeight(PUSH_BUTTON_HEIGHT_PX)
-            self._save_credentials_btn.clicked.connect(self._on_save_credentials)
-            column.addWidget(self._save_credentials_btn)
 
+            column.addWidget(self._section_title(SM_ACCOUNTS_TITLE))
+            self._venue_buttons: dict = {}
+            venues = QGridLayout()
+            venues.setSpacing(SETTINGS_ROW_SPACING_PX)
+            for at, name in enumerate(ata_spm_push.TARGET_NAMES):
+                button = QPushButton(name)
+                button.setCheckable(True)
+                button.setFixedSize(VENUE_BUTTON_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+                button.setAccessibleName(f"{VENUE_BUTTON_PART} {name}")
+                button.clicked.connect(
+                    lambda _checked, target=name: self._on_venue_pressed(target)
+                )
+                venues.addWidget(button, at // BUTTON_COLUMNS, at % BUTTON_COLUMNS)
+                self._venue_buttons[name] = button
+            venues.setColumnStretch(BUTTON_COLUMNS, 1)
+            column.addLayout(venues)
+
+            column.addWidget(self._section_title(ASSET_CATEGORY_TITLE))
+            self._category_buttons: dict = {}
+            categories = QGridLayout()
+            categories.setSpacing(SETTINGS_ROW_SPACING_PX)
+            for at, name in enumerate(ata_spm.ASSET_CLASSES):
+                button = QPushButton(name)
+                button.setCheckable(True)
+                button.setToolTip(CATEGORY_TOOLTIP_FORMAT.format(name=name))
+                button.setFixedSize(ASSET_CATEGORY_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+                button.setAccessibleName(f"{ASSET_CATEGORY_PART} {name}")
+                button.clicked.connect(
+                    lambda _checked, chosen=name: self._on_category_pressed(chosen)
+                )
+                categories.addWidget(button, at // BUTTON_COLUMNS, at % BUTTON_COLUMNS)
+                self._category_buttons[name] = button
+            categories.setColumnStretch(BUTTON_COLUMNS, 1)
+            column.addLayout(categories)
+
+            column.addWidget(self._section_title(ATA_SETTINGS_TITLE))
             self._setting_edits: dict = {}
-            for key, label in SETTING_ROWS:
-                row = QHBoxLayout()
-                row.setSpacing(SETTINGS_ROW_SPACING_PX)
-                title = QLabel(label)
-                title.setFixedWidth(SETTINGS_LABEL_WIDTH_PX)
-                row.addWidget(title)
+            settings_grid = QGridLayout()
+            settings_grid.setSpacing(SETTINGS_ROW_SPACING_PX)
+            for at, (key, label) in enumerate(SETTING_ROWS):
                 field = QLineEdit()
                 field.setFixedSize(SETTING_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
                 field.setAccessibleName(key)
                 field.textChanged.connect(
                     lambda text, name=key: self._on_setting_changed(name, text)
                 )
-                row.addWidget(field)
-                row.addStretch()
-                column.addLayout(row)
+                settings_grid.addWidget(
+                    self._field_row(label, field),
+                    at // FIELD_COLUMNS,
+                    at % FIELD_COLUMNS,
+                )
                 self._setting_edits[key] = field
+            settings_grid.setColumnStretch(FIELD_COLUMNS, 1)
+            column.addLayout(settings_grid)
+            self._zones_btn = QPushButton(BACK_LABEL)
+            self._zones_btn.setToolTip(ZONES_TOOLTIP)
+            self._zones_btn.setFixedSize(BACK_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._zones_btn.setAccessibleName(ZONES_PART)
+            self._zones_btn.clicked.connect(self._on_settings_pressed)
+            column.addWidget(self._zones_btn)
             column.addStretch()
-            self._settings_page = QScrollArea()
-            self._settings_page.setWidgetResizable(True)
-            self._settings_page.setFrameShape(QFrame.NoFrame)
-            self._settings_page.setWidget(page)
-            # The page asks for the height its rows need; an Ignored policy
-            # keeps that off the zone, whose control row would be squeezed.
-            self._settings_page.setSizePolicy(
-                QSizePolicy.Preferred, QSizePolicy.Ignored
-            )
-            self._settings_page.setVisible(False)
-            return self._settings_page
+            return page
+
+        def _field_row(self, label: str, field: "QWidget") -> "QWidget":
+            """One label and one box side by side, as a single grid cell."""
+            row = QWidget()
+            line = QHBoxLayout(row)
+            line.setContentsMargins(0, 0, 0, 0)
+            line.setSpacing(SETTINGS_ROW_SPACING_PX)
+            title = QLabel(label)
+            title.setFixedWidth(SETTINGS_LABEL_WIDTH_PX)
+            line.addWidget(title)
+            line.addWidget(field)
+            line.addStretch()
+            return row
+
+        def _build_credential_page(self) -> "QWidget":
+            """Level 1A: one box per ``CredentialField`` of every push target.
+
+            Only the open target's boxes are visible, so the page shows the
+            fields that venue's own documentation names and no others.
+            """
+            page = QWidget()
+            column = QVBoxLayout(page)
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(SETTINGS_ROW_SPACING_PX)
+            self._credential_title = self._section_title("")
+            column.addWidget(self._credential_title)
+            self._endpoint_label = QLabel("")
+            self._endpoint_label.setAccessibleName(ENDPOINT_LINE_PART)
+            column.addWidget(self._endpoint_label)
+            self._scopes_label = QLabel("")
+            self._scopes_label.setAccessibleName(SCOPES_LINE_PART)
+            self._scopes_label.setWordWrap(True)
+            column.addWidget(self._scopes_label)
+
+            self._credential_edits: dict = {}
+            self._credential_rows: dict = {}
+            grid = QGridLayout()
+            grid.setSpacing(SETTINGS_ROW_SPACING_PX)
+            at = 0
+            for name in ata_spm_push.TARGET_NAMES:
+                for place, one in enumerate(ata_spm_push.credential_fields(name)):
+                    field = QLineEdit()
+                    field.setEchoMode(QLineEdit.Password)
+                    field.setPlaceholderText(one.label)
+                    field.setFixedSize(CREDENTIAL_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
+                    field.setAccessibleName(f"{one.key} {name}")
+                    field.textChanged.connect(
+                        lambda typed, target=name, key=one.key: (
+                            self._push_board.settings.set_credential_text(
+                                target, key, typed
+                            )
+                        )
+                    )
+                    row = self._field_row(one.label, field)
+                    grid.addWidget(
+                        row, at + place // FIELD_COLUMNS, place % FIELD_COLUMNS
+                    )
+                    self._credential_edits.setdefault(name, []).append(field)
+                    self._credential_rows.setdefault(name, []).append(row)
+                at += 1 + (len(ata_spm_push.credential_fields(name)) - 1) // (
+                    FIELD_COLUMNS
+                )
+            grid.setColumnStretch(FIELD_COLUMNS, 1)
+            column.addLayout(grid)
+
+            buttons = QHBoxLayout()
+            buttons.setSpacing(SETTINGS_ROW_SPACING_PX)
+            self._connect_btn = QPushButton(CONNECT_LABEL)
+            self._connect_btn.setToolTip(CONNECT_TOOLTIP)
+            self._connect_btn.setFixedSize(CONNECT_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._connect_btn.setAccessibleName(CONNECT_PART)
+            self._connect_btn.clicked.connect(self._on_connect_pressed)
+            buttons.addWidget(self._connect_btn)
+            self._back_btn = QPushButton(BACK_LABEL)
+            self._back_btn.setToolTip(BACK_TOOLTIP)
+            self._back_btn.setFixedSize(BACK_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._back_btn.setAccessibleName(BACK_PART)
+            self._back_btn.clicked.connect(self._on_back_pressed)
+            buttons.addWidget(self._back_btn)
+            buttons.addStretch()
+            column.addLayout(buttons)
+
+            self._credential_message = QLabel("")
+            self._credential_message.setAccessibleName(CREDENTIAL_MESSAGE_PART)
+            self._credential_message.setWordWrap(True)
+            column.addWidget(self._credential_message)
+            self._registration_label = QLabel("")
+            self._registration_label.setAccessibleName(REGISTRATION_LINE_PART)
+            self._registration_label.setWordWrap(True)
+            column.addWidget(self._registration_label)
+            column.addStretch()
+            page.setAccessibleName(CREDENTIAL_PAGE_PART)
+            return page
 
         def _on_settings_pressed(self) -> None:
-            """Show the ATA-SPM settings page, or the scan page, and redraw."""
+            """Show Level 1, or the scan page, and redraw."""
             self._push_board.toggle_settings()
             self._render_ata_row()
             self._render_left_modules()
 
-        def _on_save_credentials(self) -> None:
-            """Hand every credential typed on the page to the vault and clear it."""
-            stored = self._push_board.settings.save_credentials()
-            for name in stored:
-                for one in self._credential_edits.get(name, []):
+        def _on_venue_pressed(self, target: str) -> None:
+            """Open one push target's Level 1A page and redraw."""
+            self._push_board.open_credentials(target)
+            self._render_ata_row()
+
+        def _on_category_pressed(self, name: str) -> None:
+            """Set the asset class ``SectorBoard`` scans and redraw."""
+            self._ata_board.set_class(self._ata_at(), name)
+            self._render_ata_row()
+            self._render_left_modules()
+
+        def _on_back_pressed(self) -> None:
+            """Leave Level 1A for Level 1 without signing in."""
+            self._push_board.close_credentials()
+            self._render_ata_row()
+
+        def _on_connect_pressed(self) -> None:
+            """Sign the open venue in, and clear its boxes only once it accepts."""
+            answered = self._push_board.connect_credentials()
+            if answered is not None and answered.ok:
+                for one in self._credential_edits.get(answered.target, []):
+                    one.blockSignals(True)
                     one.clear()
-            self._render_settings_page()
+                    one.blockSignals(False)
+            self._render_ata_row()
 
         def _on_setting_changed(self, key: str, text: str) -> None:
             """Write one ATA-SPM setting from the field the operator typed in."""
@@ -886,13 +1048,22 @@ if _HAS_QT:
             self._render_left_modules()
 
         def _render_settings_page(self) -> None:
-            """Write each target's held state and each setting's value from the board."""
+            """Write Level 1's buttons and Level 1A's page from the board.
+
+            ``PushBoard.credential_target`` decides which of the two the
+            stack shows, and only the open target's boxes stay visible.
+            """
             settings = self._push_board.settings
             for name, held, state in settings.credential_rows():
-                label = self._credential_labels.get(name)
-                if label is not None:
-                    label.setText(state)
-                    del held
+                button = self._venue_buttons.get(name)
+                if button is not None:
+                    button.setChecked(bool(held))
+                    button.setToolTip(
+                        VENUE_TOOLTIP_FORMAT.format(target=name, state=state)
+                    )
+            for name, button in self._category_buttons.items():
+                button.setChecked(name == self._ata_board.asset_class)
+            self._render_credential_page()
             for key, _label in SETTING_ROWS:
                 field = self._setting_edits.get(key)
                 if field is None:
@@ -902,6 +1073,25 @@ if _HAS_QT:
                     field.blockSignals(True)
                     field.setText(written)
                     field.blockSignals(False)
+
+        def _render_credential_page(self) -> None:
+            """Draw the open push target's Level 1A page, or show Level 1.
+
+            Only the open target's rows stay visible, so the page carries the
+            fields that venue's own documentation names and no others.
+            """
+            page = _settings_page_view(self._push_board, self._ata_board.asset_class)
+            held = page["credential"]
+            target = str(held["target"])
+            self._settings_page.setCurrentIndex(1 if target else 0)
+            for name, rows in self._credential_rows.items():
+                for row in rows:
+                    row.setVisible(name == target)
+            self._credential_title.setText(target)
+            self._endpoint_label.setText(str(held["endpoint"]))
+            self._scopes_label.setText(str(held["scopes"]))
+            self._registration_label.setText(str(held["registration"]))
+            self._credential_message.setText(str(held["message"]))
 
         # ── the Ready to Send control row ────────────────────────────
         def _build_bucket_row(self) -> "QHBoxLayout":
@@ -1055,11 +1245,9 @@ if _HAS_QT:
                 check.blockSignals(True)
                 check.setChecked(ticked)
                 check.blockSignals(False)
-            open_now = self._push_board.settings_open
-            self._settings_page.setVisible(open_now)
-            stepper = self._zone_steppers.get(ATA_SPM_MODULE)
-            if stepper is not None:
-                stepper.setVisible(not open_now)
+            # Level 1 and Level 1A take the whole left column, so both draw
+            # at full height with no scroll bar.
+            self._left_stack.setCurrentIndex(1 if self._push_board.settings_open else 0)
             self._render_settings_page()
 
         # ── the three left-side modules ──────────────────────────────

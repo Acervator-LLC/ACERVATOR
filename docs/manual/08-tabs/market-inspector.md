@@ -1772,5 +1772,116 @@ one that fired, the gates that blocked the 127 that did not, and the picture
 count before and after the run are in
 [the debug report](../../../tests/debug_reports/2026-09-09_bucket_gate_verdict.md).
 
+## 2026-09-14 17:40 - #23 - SM Accounts, and one sign-in page per venue
+
+The Settings button on the ATA-SPM control row opens a page of buttons. The page
+takes the whole left column, so nothing is squeezed into a strip and no scroll
+bar appears. This page is Level 1.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the two pages the zone shows
+
+```python
+LEVEL_ONE = "level-1"
+LEVEL_ONE_A = "level-1a"
+```
+
+Level 1 carries three groups. SM Accounts holds one button per push target.
+Asset Category holds one button per asset class, and the pressed one is the
+class a scan uses. Settings holds the four values a phase reads. A Back button
+returns to the three scan zones.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the three group names
+
+```python
+SM_ACCOUNTS_TITLE = "SM Accounts"
+ASSET_CATEGORY_TITLE = "Asset Category"
+ATA_SETTINGS_TITLE = "Settings"
+```
+
+A press on a venue button opens that venue's own sign-in page. That page is
+Level 1A. It shows the venue name, the address it posts to, the permissions it
+asks for, and one box per value that venue needs. It shows no other venue's
+boxes.
+
+`src/trading/ata_spm_push.py` - what one press opens
+
+```python
+    def open_credentials(self, target: Any) -> Optional[str]:
+        """Show one push target's Level 1A page, and answer which target it draws."""
+        found = push_target(target)
+        if found is None:
+            return None
+        self.settings_open = True
+        self.credential_target = found.name
+        self.connect_result = None
+        return self.credential_target
+```
+
+Each venue asks for different values. Every value below comes from that
+platform's own published documentation, read on 2026-09-06 and 2026-09-07 and
+recorded in [the platform rules audit](../../audits/2026-09-06_ata_platform_rules.md).
+
+| Venue | Boxes on its page | Posts to |
+| ----- | ----------------- | -------- |
+| X | Client ID, Client secret, Access token, Refresh token | `https://api.x.com/2/tweets` |
+| Instagram | Instagram user id, Access token | `/<IG_ID>/media` then `/<IG_ID>/media_publish` |
+| LinkedIn | Access token, Linkedin-Version | `https://api.linkedin.com/rest/posts` |
+| TikTok | Access token, Verified URL prefix | `/v2/post/publish/content/init/` |
+| Facebook | Page id, Page access token | `/<page_id>/feed` and `/<page_id>/photos` |
+| Threads | Threads user id, Access token | `/<threads-user-id>/threads` then `/threads_publish` |
+| Reddit | App ID, App secret, Refresh token, Subreddit, User agent | `https://www.reddit.com/api/v1/access_token` then `/api/submit` |
+
+Connect signs in to the venue. The page returns to Level 1 by itself only when
+the venue accepts. An empty box, a missing sign-in route and a refusal from the
+venue each keep the page open and print what failed.
+
+`src/trading/ata_spm_push.py` - the four wordings Connect can print
+
+```python
+CONNECT_OK_FORMAT = "{target} accepted the credential."
+CONNECT_FAILED_FORMAT = "{target} refused the sign-in: {error}"
+MISSING_FIELD_FORMAT = "{label} is empty."
+NO_CONNECTOR_FORMAT = "No sign-in route wired for {target}."
+```
+
+The credential reaches the vault only after the venue accepts it, and each value
+is held under its own entry. A venue reads as held when every one of its entries
+is present. Nothing typed on the page reaches a view model, a render or a log.
+
+`src/trading/ata_spm_push.py` - how one venue's values are keyed
+
+```python
+VAULT_KEY_FORMAT = "{target}:{field}"
+```
+
+Every platform above issues these values only to an application the operator has
+registered with that platform. The software cannot obtain one. Each page names
+what is needed before any of its boxes can be filled.
+
+| Venue | What the operator registers |
+| ----- | --------------------------- |
+| X | An X developer app with OAuth 2.0 user authentication and a callback address |
+| Instagram | A Meta app with Instagram Login, on a professional account |
+| LinkedIn | A LinkedIn developer app carrying the Community Management API |
+| TikTok | A TikTok developer app with Content Posting, and a verified address prefix |
+| Facebook | A Meta app with the Pages API, and a Page it may post to |
+| Threads | A Meta app with the Threads API, on a Threads profile |
+| Reddit | A Reddit app at reddit.com/prefs/apps, and a target subreddit |
+
+No sign-in route is wired into the running program yet. Connect therefore names
+the venue and refuses, rather than reporting a success it did not have. The
+route is one call, and the page works from the moment a registration supplies
+one.
+
+`src/trading/ata_spm_push.py` - the call that wires a venue
+
+```python
+    def set_connector(self, connector: Optional[Callable]) -> None:
+        """Take what signs one push target in, or None while no route is wired."""
+        self.connector = connector
+```
+
+**Figures.** This page carries no figure and this entry adds none.
+
 
 Back to [the subsystem index](README.md).
