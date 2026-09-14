@@ -71,8 +71,23 @@
   border-color: var(--PRIMARY, var(--accent));
 }
 
+/* `exchange_tab.js` sizes its own page against its host, so the body it draws
+ * into is a column its pane gives one height. */
 [data-part="tab-body"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--SURFACE_0, var(--bg));
+}
+
+/* Qt keeps the command bar in view and scrolls a bot table inside itself, so
+ * every box between the stack and `exchange_tab.js` takes the pane's height
+ * rather than its content's. */
+[data-part="stack"],
+[data-part="page"],
+[data-part="tab-widget"],
+[data-part="exchange-pane"] {
+  min-height: 0;
 }
 
 /* QFrame: the card's radius arrives from the payload; its ground and its
@@ -128,6 +143,24 @@
 
 [data-part="indicator-head-cell"] {
   background: var(--SURFACE_2, var(--btn-bg));
+}
+
+/* Qt wraps a cell rather than eliding it, so the Net, Comp and Conf readings
+ * land inside their own column instead of past the panel's right edge. */
+[data-part="indicator-body-cell"][data-state="net"],
+[data-part="indicator-body-cell"][data-state="comp"],
+[data-part="indicator-body-cell"][data-state="conf"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.1;
+}
+
+/* CONF_BAR_CELLS is ten block characters, which a proportional face draws at
+ * a full-width advance; a monospace one keeps the bar inside the column. */
+[data-part="indicator-body-cell"][data-state="conf"] {
+  font-family: Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 0.9em;
 }
 
 [data-part="indicator-bot-selector"] {

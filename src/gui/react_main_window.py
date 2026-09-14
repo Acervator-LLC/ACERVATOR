@@ -197,11 +197,21 @@ _HOST_SOURCE = """(function (global) {
 })(window);"""
 
 
+#: The page ground behind ``#tabs``, which is narrower and shorter than the
+#: bar. ``design_tokens.js`` writes SURFACE_0; ``page_html`` writes ``--bg``.
+PAGE_STYLE = (
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "html,body{height:100%;overflow:hidden}"
+    "body{background:var(--SURFACE_0, var(--bg));color:var(--text)}"
+)
+
+
 def chrome_html(theme: object = None) -> str:
     """The whole bar page as one string, with no network fetch."""
     body = (
         "<style>"
         + read_renderer_asset(SHELL_STYLE)
+        + PAGE_STYLE
         + "</style>"
         + f'<nav id="{TABS_ID}"></nav><div id="{PANELS_ID}" hidden></div>'
     )
