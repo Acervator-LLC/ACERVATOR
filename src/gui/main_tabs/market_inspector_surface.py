@@ -163,8 +163,9 @@ TICKER_NOTE_SIZE_PX = 11
 TICKER_NOTE_STYLE = f"color: {TICKER_NOTE_COLOUR}; font-size: {TICKER_NOTE_SIZE_PX}px;"
 SCAN_NOW_LABEL = "Scan Now"
 SCAN_NOW_TOOLTIP = (
-    "Scan this sector now on the timeframes ticked beside it, without "
-    "waiting for a rotation."
+    "Scan now on the timeframes ticked beside it, without waiting for a "
+    "rotation. A ticker in the field reads that one market; an empty field "
+    "scans the sectors already added."
 )
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
 CLASS_BOX_WIDTH_PX = 92
@@ -820,6 +821,7 @@ SECTOR_CLASS_REFUSED = "sector.class_refused"
 TIMEFRAME_TOGGLED = "sector.timeframe"
 SCAN_NOW_RUN = "scan_now.run"
 SCAN_NOW_UNNAMED = "scan_now.unnamed"
+SCAN_NOW_REFUSED = "scan_now.refused"
 ZONE_STEPPED = "zone.stepped"
 ZONE_TOGGLED = "zone.toggled"
 
@@ -1053,12 +1055,14 @@ def ata_spm_text(run: Any) -> str:
     )
 
 
-def ata_spm_zone_text(run: Any, sector_count: Any) -> str:
-    """The ATA-SPM zone's line for the run it holds and the sectors added.
+def ata_spm_zone_text(run: Any, sector_count: Any, note: Any = "") -> str:
+    """The ATA-SPM zone's line for the run it holds and the scans added.
 
-    A zone holding no sector names what it waits for rather than reporting
-    a run nobody asked for.
+    A ``note`` the last press left is what the zone says, and a zone holding
+    no scan reads ``ATA_SPM_NO_SECTOR_TEXT``.
     """
+    if note:
+        return str(note)
     if not int(sector_count or 0):
         return ATA_SPM_NO_SECTOR_TEXT
     return ata_spm_text(run)
@@ -1285,24 +1289,41 @@ def no_call_text(scan: Any) -> str:
     return METHOD_SENTENCE_JOIN.join((NO_CALL_TEXT, missing))
 
 
-def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
-    """One scanned sector as the entry the ATA-SPM zone steps through.
+def entry_headline(scan: Any) -> str:
+    """The line one scan's zone entry is named by, market or sector."""
+    if scan.ticker:
+        return ata_spm.MARKET_LINE_FORMAT.format(
+            ticker=scan.ticker, asset_class=scan.asset_class
+        )
+    return ata_spm.SECTOR_LINE_FORMAT.format(
+        sector=scan.sector, asset_class=scan.asset_class
+    )
 
-    The expansion carries every phase readback in order, and ``held`` narrows
-    ``pulls`` to this sector's assets; ``run`` already dropped every market the
-    gate chains refused.
+
+def entry_meta(scan: Any, calls: Any) -> str:
+    """The counts one scan's zone entry carries, market or sector."""
+    if scan.ticker:
+        return ata_spm.MARKET_META_FORMAT.format(
+            votes=len(scan.votes), calls=len(calls)
+        )
+    return ata_spm.SECTOR_META_FORMAT.format(
+        assets=len(scan.assets), votes=len(scan.votes), calls=len(calls)
+    )
+
+
+def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
+    """One scan as the entry the ATA-SPM zone steps through.
+
+    ``entry_headline`` and ``entry_meta`` say whether the scan read one market
+    or a whole sector, and ``held`` narrows ``pulls`` to this scan's assets.
     """
     calls = scan.calls
     assets = set(scan.assets)
     held = [one for one in pulls if one.symbol in assets]
     strongest = calls[0] if calls else None
     return zone_entry(
-        ata_spm.SECTOR_LINE_FORMAT.format(
-            sector=scan.sector, asset_class=scan.asset_class
-        ),
-        ata_spm.SECTOR_META_FORMAT.format(
-            assets=len(scan.assets), votes=len(scan.votes), calls=len(calls)
-        ),
+        entry_headline(scan),
+        entry_meta(scan, calls),
         detail=(
             phase_one_rows(scan)
             + phase_two_rows(calls)
@@ -2140,10 +2161,15 @@ def left_module_rows(
     pair_count: Any,
     connectors: Any,
     sector_count: Any = 0,
+    ata_note: Any = "",
 ) -> list:
     """The three left-side regions as key, title and status, in screen order."""
     return [
-        [ATA_SPM_MODULE, ATA_SPM_GROUP_TITLE, ata_spm_zone_text(run, sector_count)],
+        [
+            ATA_SPM_MODULE,
+            ATA_SPM_GROUP_TITLE,
+            ata_spm_zone_text(run, sector_count, ata_note),
+        ],
         [
             OPPOSING_TRADES_MODULE,
             OPPOSING_TRADES_GROUP_TITLE,
@@ -2391,11 +2417,40 @@ def ticker_matches(typed: Any, asset_class: Any) -> list:
     return (starts + holds)[:TICKER_MATCH_LIMIT]
 
 
-def ticker_note(asset_class: Any) -> str:
-    """The sentence a sector with no ticker list carries, empty where one exists."""
+def ticker_note(asset_class: Any, note: Any = "") -> str:
+    """The line under the ticker field, from the last press or from the sector.
+
+    A ``note`` the last press left is what the field carries, and a sector
+    ``class_tickers`` lists nothing for carries ``TICKER_NO_LIST_FORMAT``.
+    """
+    if note:
+        return str(note)
     if class_tickers(asset_class):
         return ""
     return TICKER_NO_LIST_FORMAT.format(sector=asset_class)
+
+
+def market_listing(ticker: Any, asset_class: Any) -> Any:
+    """The one ``ata_asset_maps.AssetListing`` a typed ticker names in one sector.
+
+    ``class_tickers`` decides whether the sector lists the name, and a sector
+    listing none takes any name, which is what ``TICKER_NO_LIST_FORMAT`` says
+    under the field; a name a listing sector does not hold answers None.
+    """
+    asked = str(ticker or "").strip().upper()
+    if not asked:
+        return None
+    listed = class_tickers(asset_class)
+    named = next((one for one in listed if str(one).upper() == asked), None)
+    if listed and named is None:
+        return None
+    symbol = str(named) if named is not None else asked
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        return ata_asset_maps.exchange_listing(symbol)
+    found = ata_asset_maps.listing_of(symbol)
+    if found is not None:
+        return found
+    return ata_asset_maps.AssetListing(symbol=symbol)
 
 
 def open_chart_folder() -> str:
@@ -2499,7 +2554,7 @@ def ata_spm_skin(model: Any) -> dict:
         "sector_text": row["sector_text"],
         "sector_class": row["sector_class"],
         "ticker_matches": ticker_matches(row["sector_text"], row["sector_class"]),
-        "ticker_note": ticker_note(row["sector_class"]),
+        "ticker_note": ticker_note(row["sector_class"], model.board.note),
         "ticker_note_part": TICKER_NOTE_PART,
         "ticker_note_colour": TICKER_NOTE_COLOUR,
         "ticker_note_size_px": TICKER_NOTE_SIZE_PX,
@@ -2867,19 +2922,24 @@ class MarketInspectorScreenModel:
         self.calls.append([TIMEFRAME_TOGGLED, str(key), ticked])
 
     def scan_now(self) -> Any:
-        """Press Scan Now: add the typed sector if it is new, then run.
+        """Press Scan Now: read the typed ticker's market, or the scans held.
 
-        Answers the ``ata_spm.AtaSpmRun`` the three phases produced, or
-        None while the board names no sector.
+        Answers the ``ata_spm.AtaSpmRun`` the three phases produced, or None
+        when ``market_listing`` cannot place the ticker and the board is left
+        carrying ``ata_spm.TICKER_UNHELD_FORMAT``.
         """
         added = self.board.scan_now(
             self.ata_asset_source or sector_assets,
             self.ata_candle_source or self.scanned_candles,
             self.push.settings.message_format,
             self.push.settings.max_supporting_indicators,
+            market_listing,
         )
         if added != ata_spm.NO_NEW_SECTOR:
             self.zone_at[ATA_SPM_MODULE] = added
+        if self.board.note:
+            self.calls.append([SCAN_NOW_REFUSED, self.board.note])
+            return None
         if self.board.run is None:
             self.calls.append([SCAN_NOW_UNNAMED])
             return None
@@ -3045,6 +3105,7 @@ class MarketInspectorScreenModel:
             len(self.pair_rows),
             self.connectors_now(),
             len(self.board.sectors),
+            self.board.note,
         )
 
     def right_zones(self) -> list:

@@ -160,11 +160,16 @@ PHASE_UNRUN = "No run yet"
 
 SECTOR_LINE_FORMAT = "{sector} ({asset_class})"
 SECTOR_META_FORMAT = "{assets} asset(s) · {votes} vote(s) · {calls} reversal call(s)"
+MARKET_LINE_FORMAT = "{ticker} in {asset_class}"
+MARKET_META_FORMAT = "1 market · {votes} vote(s) · {calls} reversal call(s)"
 TIMEFRAME_VOTE_FORMAT = (
     "{votes} vote(s), {unread} without candles, {short} under {floor} candles"
 )
 NO_TIMEFRAME_TEXT = "No timeframe ticked."
 NO_ASSET_TEXT = "No asset source wired for {asset_class}."
+TICKER_UNHELD_FORMAT = (
+    "{asset_class} holds no ticker {ticker}. Pick one the field offers."
+)
 UNLISTED_TEXT = "No configured venue lists {symbols}."
 UNSERVED_TEXT = "No venue serves {labels}."
 SYMBOL_SEPARATOR = ", "
@@ -179,6 +184,14 @@ BAND_LINE_FORMAT = "lower {lower:g} · middle {middle:g} · upper {upper:g}"
 PHASE_RUN_FORMAT = (
     "{phase}: {sectors} sector(s), {calls} call(s), {pulls} chart(s), "
     "{refused} refused by the gates"
+)
+PHASE_MARKET_FORMAT = (
+    "{phase}: {markets} market(s), {calls} call(s), {pulls} chart(s), "
+    "{refused} refused by the gates"
+)
+PHASE_BOTH_FORMAT = (
+    "{phase}: {sectors} sector(s), {markets} market(s), {calls} call(s), "
+    "{pulls} chart(s), {refused} refused by the gates"
 )
 
 AGREEMENT_ROW_FORMAT = "{label} {direction}"
@@ -201,6 +214,7 @@ OPPOSITE_DIRECTION = {
 }
 
 CANDLE_READ_FAILED_LOG = "ATA-SPM candle read failed on %s %s: %s"
+MARKET_READ_FAILED_LOG = "ATA-SPM market read failed on %s: %s"
 CANDLE_SHAPE_LOG = "ATA-SPM candle row is not OHLCV: %s"
 ASSET_READ_FAILED_LOG = "ATA-SPM asset read failed on %s: %s"
 VOTE_FAILED_LOG = "ATA-SPM vote failed on %s %s: %s"
@@ -256,11 +270,18 @@ def confidence_pct(confidence: Any) -> int:
 
 @dataclass
 class Sector:
-    """One market sector to scan, and the timeframes ticked on it."""
+    """One scan the ATA-SPM zone holds, and the timeframes ticked on it.
+
+    ``ticker`` names one market inside the sector and ``listings`` holds that
+    market's own row, so ``_listings_for`` reads one market and asks no asset
+    source; a ``Sector`` carrying neither reads the whole sector.
+    """
 
     name: str
     asset_class: str = CLASS_CRYPTO
     timeframes: tuple = ()
+    ticker: str = ""
+    listings: tuple = ()
 
     def ticked(self) -> tuple:
         """The ticked timeframes, in the order this sector's class lists them."""
@@ -412,10 +433,15 @@ class TimeframeAgreement:
 
 @dataclass
 class SectorScan:
-    """What one sector returned across every timeframe ticked on it."""
+    """What one scan returned across every timeframe ticked on it.
+
+    A ``ticker`` says the scan read one market, which is what
+    ``MARKET_LINE_FORMAT`` and ``MARKET_META_FORMAT`` are written for.
+    """
 
     sector: str
     asset_class: str = CLASS_CRYPTO
+    ticker: str = ""
     assets: list = field(default_factory=list)
     timeframes: list = field(default_factory=list)
     note: str = ""
@@ -497,7 +523,11 @@ class AtaSpmRun:
 
     @property
     def phase(self) -> str:
-        """The last phase this run reached, and what it produced."""
+        """The last phase this run reached, and what it produced.
+
+        A scan carrying a ``SectorScan.ticker`` counts as a market and every
+        other scan as a sector, so the line says which kind this run read.
+        """
         if not self.scans:
             return PHASE_UNRUN
         reached = PHASE_EVALUATE
@@ -505,13 +535,20 @@ class AtaSpmRun:
             reached = PHASE_IDENTIFY
         if self.pulls:
             reached = PHASE_PULL
-        return PHASE_RUN_FORMAT.format(
-            phase=reached,
-            sectors=len(self.scans),
-            calls=len(self.calls),
-            pulls=len(self.pulls),
-            refused=len(self.refused),
-        )
+        markets = sum(1 for one in self.scans if one.ticker)
+        counts = {
+            "phase": reached,
+            "sectors": len(self.scans) - markets,
+            "markets": markets,
+            "calls": len(self.calls),
+            "pulls": len(self.pulls),
+            "refused": len(self.refused),
+        }
+        if not markets:
+            return PHASE_RUN_FORMAT.format(**counts)
+        if not counts["sectors"]:
+            return PHASE_MARKET_FORMAT.format(**counts)
+        return PHASE_BOTH_FORMAT.format(**counts)
 
     def report(self) -> dict:
         """The run as the ATA-SPM zone's status line reads it.
@@ -579,8 +616,11 @@ def candles_for(candle_source: Any, symbol: str, timeframe: str) -> list:
 def _listings_for(asset_source: Any, sector: Sector) -> list:
     """The asset rows one source holds for one sector.
 
-    A source that raises answers none, so the sector reads its unwired note.
+    A ``Sector.listings`` naming one market is answered outright, and a source
+    that raises answers none, so the sector reads its unwired note.
     """
+    if sector.listings:
+        return list(sector.listings)
     if asset_source is None:
         return []
     try:
@@ -593,6 +633,21 @@ def _listings_for(asset_source: Any, sector: Sector) -> list:
 def symbol_of(listing: Any) -> str:
     """The symbol one asset row names, whether it is a row or a bare name."""
     return str(getattr(listing, "symbol", listing))
+
+
+def market_of(market_source: Any, ticker: Any, asset_class: Any) -> Any:
+    """The one asset row a typed ticker names inside one sector.
+
+    A source that is None, and a source that raises, both answer None, which
+    ``SectorBoard.compute`` reads as a ticker the sector does not hold.
+    """
+    if market_source is None:
+        return None
+    try:
+        return market_source(ticker, asset_class)
+    except Exception as exc:  # noqa: BLE001 - the source is host-supplied
+        logger.debug(MARKET_READ_FAILED_LOG, ticker, exc)
+        return None
 
 
 def is_listed(listing: Any) -> bool:
@@ -633,6 +688,7 @@ def evaluate(
         scan = SectorScan(
             sector=sector.name,
             asset_class=sector.asset_class,
+            ticker=sector.ticker,
             assets=assets,
             unlisted=tuple(symbol_of(one) for one in rows if not is_listed(one)),
             unserved=(
@@ -1041,6 +1097,7 @@ class SectorBoard:
         self.asset_class = CLASS_CRYPTO
         self.timeframes: tuple = timeframes_for(CLASS_CRYPTO)
         self.run: Optional[AtaSpmRun] = None
+        self.note = ""
 
     def sector_at(self, at: Any) -> Optional[Sector]:
         """The sector one zone index shows, or None while the board is empty."""
@@ -1050,8 +1107,9 @@ class SectorBoard:
         return self.sectors[held]
 
     def set_text(self, text: Any) -> None:
-        """Take what the operator typed into the sector field."""
+        """Take what the operator typed into the ticker field, clearing ``note``."""
         self.text = str(text or "").strip()
+        self.note = ""
 
     def set_class(self, at: Any, name: Any) -> bool:
         """Take the asset class named, and answer whether it was accepted.
@@ -1059,6 +1117,7 @@ class SectorBoard:
         A class outside ``ASSET_CLASSES`` is refused, so no sector carries
         one with no timeframes behind it.
         """
+        self.note = ""
         asked = str(name or "")
         if asked not in ASSET_CLASSES:
             return False
@@ -1109,24 +1168,29 @@ class SectorBoard:
         candle_source: Optional[Callable] = None,
         message_format: Optional[str] = None,
         max_supporting_indicators: Any = NO_INDICATOR_CAP,
+        market_source: Optional[Callable] = None,
     ) -> tuple:
-        """The sectors this press holds, the index it added and the ``run``.
+        """The scans this press holds, the index to show, the ``run`` and a note.
 
-        Nothing on the board is written; a worker thread calls this and
-        the drawing thread hands the answer to ``take``.
+        A ``self.text`` that ``market_of`` places scans that one market, a
+        ``self.text`` the ``asset_source`` answers rows for scans that whole
+        sector, and anything else answers ``TICKER_UNHELD_FORMAT`` and runs
+        nothing; nothing on the board is written until ``take``.
         """
         sectors = list(self.sectors)
         added = NO_NEW_SECTOR
         named = self.text
-        if named and not any(one.name == named for one in sectors):
-            sectors.append(
-                Sector(
-                    name=named,
-                    asset_class=self.asset_class,
-                    timeframes=self.timeframes,
+        if named:
+            placed = market_of(market_source, named, self.asset_class)
+            if placed is not None:
+                added = self._market_at(sectors, symbol_of(placed), placed)
+            elif self._sector_holds(asset_source, named):
+                added = self._sector_at(sectors, named)
+            else:
+                note = TICKER_UNHELD_FORMAT.format(
+                    asset_class=self.asset_class, ticker=named
                 )
-            )
-            added = len(sectors) - 1
+                return (sectors, added, None, note)
         found = (
             run(
                 sectors,
@@ -1138,11 +1202,46 @@ class SectorBoard:
             if sectors
             else None
         )
-        return (sectors, added, found)
+        return (sectors, added, found, "")
 
-    def take(self, sectors: Any, added: Any, found: Any) -> int:
+    def _sector_holds(self, asset_source: Any, named: str) -> bool:
+        """True while ``asset_source`` answers any row for ``named`` as a sector."""
+        asked = Sector(name=named, asset_class=self.asset_class)
+        return bool(_listings_for(asset_source, asked))
+
+    def _sector_at(self, sectors: list, named: str) -> int:
+        """The index one new sector took in ``sectors``, ``NO_NEW_SECTOR`` when held."""
+        if any(one.name == named for one in sectors):
+            return NO_NEW_SECTOR
+        sectors.append(
+            Sector(
+                name=named,
+                asset_class=self.asset_class,
+                timeframes=self.timeframes,
+            )
+        )
+        return len(sectors) - 1
+
+    def _market_at(self, sectors: list, ticker: str, listing: Any) -> int:
+        """The index of one market's scan in ``sectors``, appending it when new."""
+        for at, one in enumerate(sectors):
+            if one.ticker == ticker and one.asset_class == self.asset_class:
+                return at
+        sectors.append(
+            Sector(
+                name=ticker,
+                asset_class=self.asset_class,
+                timeframes=self.timeframes,
+                ticker=ticker,
+                listings=(listing,),
+            )
+        )
+        return len(sectors) - 1
+
+    def take(self, sectors: Any, added: Any, found: Any, note: Any = "") -> int:
         """Write what ``compute`` answered onto the board, and answer ``added``."""
         self.sectors = list(sectors)
+        self.note = str(note or "")
         if found is not None:
             self.run = found
         return int(added)
@@ -1153,15 +1252,20 @@ class SectorBoard:
         candle_source: Optional[Callable] = None,
         message_format: Optional[str] = None,
         max_supporting_indicators: Any = NO_INDICATOR_CAP,
+        market_source: Optional[Callable] = None,
     ) -> int:
-        """``compute`` and ``take`` on one thread, answering the sector index.
+        """``compute`` and ``take`` on one thread, answering the index to show.
 
-        ``NO_NEW_SECTOR`` answers that the field named nothing new.
+        ``NO_NEW_SECTOR`` answers that the field named nothing to scan.
         """
-        sectors, added, found = self.compute(
-            asset_source, candle_source, message_format, max_supporting_indicators
+        sectors, added, found, note = self.compute(
+            asset_source,
+            candle_source,
+            message_format,
+            max_supporting_indicators,
+            market_source,
         )
-        return self.take(sectors, added, found)
+        return self.take(sectors, added, found, note)
 
     def report(self) -> dict:
         """The run report the ATA-SPM zone's line reads, empty before a scan."""
