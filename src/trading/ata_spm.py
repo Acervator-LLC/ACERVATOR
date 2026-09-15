@@ -926,11 +926,11 @@ def chart_candles(candles: Any) -> list:
 
 
 def post_caption(vote: AssetVote) -> str:
-    """The standardised message one call's chart image carries.
+    """The standardised message one call's root chart image carries.
 
-    ``ata_spm_push.compose`` writes the same header, headline and address a
-    post's own caption carries, and it is imported here because that module
-    reads this one.
+    ``ata_spm_push.compose`` writes ``FIXED_HEADER``, the headline and the
+    address; the root image serves every push target, so no row's own header
+    reaches it. It is imported here because that module reads this one.
     """
     from . import ata_spm_push
 

@@ -1772,7 +1772,7 @@ one that fired, the gates that blocked the 127 that did not, and the picture
 count before and after the run are in
 [the debug report](../../../tests/debug_reports/2026-09-09_bucket_gate_verdict.md).
 
-## 2026-09-14 17:40 - #23 - SM Accounts, and one sign-in page per venue
+## 2026-09-14 17:34 - #23 - SM Accounts, and one sign-in page per venue
 
 The Settings button on the ATA-SPM control row opens a page of buttons. The page
 takes the whole left column, so nothing is squeezed into a strip and no scroll
@@ -1892,7 +1892,7 @@ stays open and prints what failed.
 
 
 
-## 2026-09-14 21:00 - #23 - Each venue's own sign-in, behind Connect
+## 2026-09-14 18:55 - #23 - Each venue's own sign-in, behind Connect
 
 All seven venues use three-legged OAuth. Not one of them issues a working token
 from an app id and a secret alone. The operator sends himself to the venue in a
@@ -2034,7 +2034,7 @@ venue draws the same six lines and the same boxes under Qt and under React.
 
 
 
-## 2026-09-14 23:30 - #23 - The redirect address each venue accepts
+## 2026-09-14 20:21 - #23 - The redirect address each venue accepts
 
 Every route sent the same address, `http://127.0.0.1:<port>`, at a port the
 operating system picked. Each venue's own documentation was then read for what
@@ -2146,7 +2146,7 @@ Login Review without naming which permissions it accepts. Whether it carries
 **Figures.** This page carries no figure and this entry adds none.
 
 
-## 2026-09-14 23:55 - #23 - The scan page, three lines of buttons
+## 2026-09-14 21:35 - #23 - The scan page, three lines of buttons
 
 The ATA-SPM zone drew every control on one line: the sector field, its class,
 four check boxes, Scan Now and Settings. That line asked for 666 px where the
@@ -2224,7 +2224,7 @@ widths quoted above were read from the running page and are not stored.
 
 
 
-## 2026-09-15 02:10 - #23 - Level 1 and Level 1A fit the pane at every width
+## 2026-09-14 22:18 - #23 - Level 1 and Level 1A fit the pane at every width
 
 Level 1 broke its buttons after four and its settings rows after two, whatever
 the pane's width. The page asked for 638 px where the zone gives 435 px at a
@@ -2292,7 +2292,7 @@ is squeezed into a strip and no scroll bar appears." That was not true of the
 running program when it was written: at a 900 px tab the zone carried a
 horizontal scroll bar and six controls sat outside the pane. It is true now.
 
-## 2026-09-15 04:20 - #23 - Facebook signs in inside the program
+## 2026-09-14 23:18 - #23 - Facebook signs in inside the program
 
 Facebook was the one venue whose Connect could not finish. Meta answers a
 desktop program in the fragment of its own published redirect, and a fragment
@@ -2464,7 +2464,7 @@ no listener.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 06:30 - #23 - The right pane's zones fit at every width
+## 2026-09-14 23:24 - #23 - The right pane's zones fit at every width
 
 The right pane holds three zones. Two of them carry a row of their own above
 the stepper, and both rows were built to one width and never re-laid. At a
@@ -2546,7 +2546,7 @@ and both lines read in full.
 **Figures.** This page carries no figure and this entry adds none. Every width
 quoted above was read from the running program and is not stored.
 
-## 2026-09-15 09:40 - #23 - Every Level 1A page carries its register address
+## 2026-09-14 23:57 - #23 - Every Level 1A page carries its register address
 
 Each venue issues credentials only to an application registered with it. Six
 of the seven pages named no place to do that. Every page now carries the
@@ -2650,7 +2650,7 @@ None was reworded. Each is quoted here.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 11:20 - #23 - A refused sign-in names the venue's own reason
+## 2026-09-15 01:02 - #23 - A refused sign-in names the venue's own reason
 
 Level 1A returns to Level 1 by itself when a venue accepts, and holds the page
 when a venue refuses. Both builds do this. A refusal now prints the reason the
@@ -2716,7 +2716,7 @@ venue as `abc`, and a box holding only spaces is still reported empty.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 12:10 - #23 - A sign-in says what it did, on the page and in the log
+## 2026-09-15 02:49 - #23 - A sign-in says what it did, on the page and in the log
 
 Level 1A held the page on a refusal and printed the reason in the page's own
 body text. Two X sign-ins ended the same way for the operator: the page did not
@@ -2780,7 +2780,7 @@ instead of reading as nothing.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 14:30 - #23 - The credential vault, and Level 1A leaving by itself
+## 2026-09-15 03:19 - #23 - The credential vault, and Level 1A leaving by itself
 
 A sign-in the venue accepted had nowhere to put its tokens, so Level 1A held the
 page on a sign-in that worked. Both builds now hand the board a vault when they
@@ -2853,7 +2853,7 @@ in `ata_spm_credentials.json`, so they are two files under one passphrase.
 **Figures.** This page carries no figure and this entry adds none.
 
 
-## 2026-09-15 16:20 - #23 - What he types is held too, and every register address
+## 2026-09-15 05:16 - #23 - What he types is held too, and every register address
 
 Level 1A held what he typed in memory only. A restart lost it, and X prints a
 client secret once, so losing it means generating a new one in X's console. What
@@ -3009,7 +3009,7 @@ Create app button.
 **Figures.** This page carries no figure and this entry adds none.
 
 
-## 2026-09-15 18:40 - #23 - Scan Now reads the market, and says so when it cannot
+## 2026-09-15 06:31 - #23 - Scan Now reads the market, and says so when it cannot
 
 Scan Now read no market of its own for crypto. It served whatever the Refresh
 press had left behind, and with no Refresh behind it, it served nothing and drew
@@ -3120,7 +3120,7 @@ unserved only when the exchange itself serves no such timeframe.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 20:15 - #23 - The ticker field, and the way to the chart images
+## 2026-09-15 07:30 - #23 - The ticker field, and the way to the chart images
 
 The text field on the ATA-SPM scan page is named for what it does. It names one
 market, read on demand. The menu beside it is the sector menu, and it holds
@@ -3225,7 +3225,7 @@ it is recorded here rather than taken.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 23:40 - #23 - A typed ticker scans that one market
+## 2026-09-15 08:22 - #23 - A typed ticker scans that one market
 
 The ticker field now names a market to the press behind it. Typing a ticker and
 pressing Scan Now reads that one market on the ticked timeframes. The sector
@@ -3354,7 +3354,7 @@ tooltip naming both cases.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
-## 2026-09-16 05:10 - #23 - The built application opens again
+## 2026-09-15 13:56 - #23 - The built application opens again
 
 Build `1371.ge6b50511-qt` stopped before its window opened. The Market
 Inspector tab is built while the window is, and the line under the ticker field
@@ -3492,7 +3492,7 @@ This entry makes no earlier sentence wrong.
 **Figures.** This entry adds no figure to the page. A count of the markdown
 image tags on the page answers 0 before this entry and 0 after it.
 
-## 2026-09-16 08:30 - #23 - One chart folder per venue, filled for posting by hand
+## 2026-09-15 15:30 - #23 - One chart folder per venue, filled for posting by hand
 
 His words, 2026-09-15: *"Should have a catered folder for each venue."* And
 earlier: *"Seems most of this stuff is price gated so will also need a folder
@@ -3644,6 +3644,155 @@ operating system's own file browser."* Still true. The button opens the same
 root, which now holds the seven folders.
 
 This entry makes no earlier sentence wrong.
+
+**Figures.** This entry adds no figure to the page. A count of the markdown
+image tags on the page answers 0 before this entry and 0 after it.
+
+## 2026-09-15 16:22 - #23 - X carries a shorter header, so its post carries a reading
+
+His words, 2026-09-15: *"Should shorten specifically for X and maintain a
+consistent level of valuable data..."*
+
+The fixed header measures 144 in every unit, because it is plain ASCII. On X,
+with the call line, the address at 23 and two separators, the floor is 209 of
+280, leaving 71. A reading also costs its separator, so a line has to measure
+70 or less to fit, and the shortest standard reading on the previous entry's
+calls measures 59, the Bollinger one 71. Read off the running program on those
+three calls: not one reading reached X. With twelve voters X carried none of
+twelve; with three, none of three; with one voter, none of one. Every X body was
+four lines: the header, the call line, the abbreviation note, the address.
+
+### One header per venue row
+
+The header is a field on the venue's row. Every row takes the fixed header
+unless it names its own, so six rows are unchanged and X's row names a short
+one. A venue is changed by editing its row; nothing branches on a venue's name.
+
+`src/trading/ata_spm_push.py` — the two headers, and the row that names its own
+
+```python
+#: The header a ``PushTarget`` row carries unless the row names its own.
+FIXED_HEADER = (
+    "This is not investment advice. It is a demonstration of Ekthelius's "
+    "proprietary TA engine housed in the Acervator governance execution "
+    "platform."
+)
+
+#: The header ``TARGET_X``'s row carries in place of ``FIXED_HEADER``.
+X_HEADER = "Not investment advice. Acervator TA engine demonstration."
+```
+
+```python
+    PushTarget(
+        TARGET_X,
+        (SECTION_CALL, SECTION_INDICATORS),
+        body_limit=280,
+        count_unit=COUNT_WEIGHTED,
+        header=X_HEADER,
+```
+
+X's header measures 57 weighted units. It keeps the three facts: it is not
+investment advice, it is Acervator, and it is a TA engine demonstration. The
+rest of the long form was connective wording. The words are his to change; the
+three facts are not.
+
+The composer takes the header it joins, and every artefact of a post composes
+the post's own. The body, the caption, the thread root and the title all carry
+the header the row named, and the fitter counts that header while it drops
+lines, so the ceiling is measured against the header the post will carry.
+
+`src/trading/ata_spm_push.py` — the composer, and where a post's header comes from
+
+```python
+def compose(lines: Any, header: Any = FIXED_HEADER) -> str:
+    """``header`` over ``lines`` over ``ORGANIZATION_URL``.
+
+    ``fit_to_target`` drops ``lines`` to reach a ceiling and reaches neither
+    ``header`` nor ``ORGANIZATION_URL``.
+    """
+```
+
+```python
+def target_header(target: Any) -> str:
+    """The header one push target's row carries, ``FIXED_HEADER`` where the row names none."""
+```
+
+### What X carries now, on the previous entry's three calls
+
+The same three calls, driven again with the home and the post root redirected
+and every socket but loopback refused. The floor on X falls from 209 to 122,
+leaving 158.
+
+| Call | Readings written | Carried on X before | Carried on X after | Dropped after | X body after |
+| ---- | ---------------- | ------------------- | ------------------ | ------------- | ------------ |
+| twelve voters, long readings | 12 | 0 | 0 | 12 | 164 of 280 |
+| three voters, standard wording | 3 | 0 | 1 | 2 | 223 of 280 |
+| one voter, standard wording | 1 | 0 | 1 | 0 | 194 of 280 |
+
+The long call stays at zero because each of its readings measures over 500 on
+its own, and the note still reports the drop. The one-voter call now carries
+its reading whole with no note. The X body on the three-voter call:
+
+```
+Not investment advice. Acervator TA engine demonstration.
+BTC/USD on 1hr: bullish reversal called.
+RSI: no reading published. Votes bullish at 80% confidence.
+Abbreviated: 2 evidence line(s) omitted.
+https://github.com/Acervator-LLC
+```
+
+The six other venues' bodies were written to disk before and after on all
+three calls and compared byte for byte: 18 of 18 identical. The three X bodies
+differed, which is what proves the comparison could see a change. Reddit's
+title still opens with the fixed header.
+
+### The X picture's foot and the X text agree
+
+The venue picture already draws the venue's own body at its foot, so the
+short header reaches X's picture through the same post that writes X's text.
+Read off the run: on all three calls the caption the renderer received equals
+the X body, and the X text file equals the X body. Both builds produce the
+same X body on the same call, byte for byte. The root picture, one image for
+every venue, keeps the fixed header over the headline.
+
+`src/trading/ata_venue_folders.py` — the foot is the body
+
+```python
+        caption=post.body,
+```
+
+### Five sentences this entry overtakes
+
+`docs/manual/08-tabs/market-inspector.md:679` — *"The fixed header ships on
+every artefact the run composes. No caller supplies it and no caller can remove
+it. It is 144 characters, and on X it takes over half the budget."* X's
+artefacts now carry the 57-unit header; the six other venues' still carry the
+fixed one, and no caller can remove either.
+
+`docs/manual/08-tabs/market-inspector.md:1175` — *"It puts the fixed header on
+top, the evidence under it, and the link at the bottom."* On X the row's own
+header is on top; the evidence and the link are as written.
+
+`docs/manual/08-tabs/market-inspector.md:1183` — the quoted docstring of the
+composer read `FIXED_HEADER` over the lines. The composer now takes the header
+it joins.
+
+`docs/manual/08-tabs/market-inspector.md:3573` — *"the header, the call line
+and the address take 209 of X's 280 weighted units, leaving 71 for evidence, so
+one 43-unit reading fits whole and a longer one is dropped for the abbreviation
+note."* That was the fixed header. With X's own, the three take 122, leaving
+158.
+
+`docs/manual/08-tabs/market-inspector.md:3571` — *"the fixed header and the
+address are never dropped."* Still true of the header a row carries: the fitter
+drops evidence lines and reaches neither the header nor the address.
+
+### Seventeen entry stamps read off their commits now
+
+The entry headings at lines 1775, 1895, 2037, 2149, 2227, 2295, 2467, 2549,
+2653, 2719, 2783, 2856, 3012, 3123, 3228, 3357 and 3495 were stamped in local
+time, 6 minutes to 17 hours ahead of the commits that wrote them, and now read
+the UTC minute of those commits, the stamp alone changed on each line.
 
 **Figures.** This entry adds no figure to the page. A count of the markdown
 image tags on the page answers 0 before this entry and 0 after it.
