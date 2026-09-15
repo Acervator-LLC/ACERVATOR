@@ -217,7 +217,8 @@ PUSH_TARGETS = (
             "offline.access",
         ),
         registration="An X developer app with OAuth 2.0 user authentication "
-        "and a loopback callback address.",
+        "and a loopback callback address. Register the app at "
+        "https://console.x.com.",
         prerequisite="X ended its free tier on 6 February 2026 and now bills "
         "per post, about $0.015 for a post and about $0.20 where the post "
         "carries a link. The app needs a paid usage plan before it can post.",
@@ -237,10 +238,11 @@ PUSH_TARGETS = (
         endpoint="POST /<IG_ID>/media then /<IG_ID>/media_publish",
         scopes=("instagram_business_basic", "instagram_business_content_publish"),
         registration="A Meta app with Instagram Login, and an Instagram "
-        "professional account connected to a Page.",
+        "professional account connected to a Page. Register the app at "
+        "developers.facebook.com/apps.",
         prerequisite="No App Review. Meta grants Standard Access to every "
         "permission automatically, and it covers any account holding a role "
-        "on the app, so give the account a role on it. Page Publishing "
+        "on the app, so give your account a role on it. Page Publishing "
         "Authorization must be complete, and publishing is capped at 100 "
         "posts in a rolling 24 hours, 50 where the post is a carousel.",
     ),
@@ -256,7 +258,8 @@ PUSH_TARGETS = (
         endpoint="https://api.linkedin.com/rest/posts",
         scopes=("w_member_social",),
         registration="A LinkedIn developer app carrying the Community "
-        "Management API, with a loopback redirect address.",
+        "Management API, with a loopback redirect address. Register the app "
+        "at www.linkedin.com/developers/apps/new.",
         prerequisite="LinkedIn is the one venue that may refuse outright. The "
         "Community Management API needs a registered company, a verified Page "
         "and a two-tier review carrying a screencast. LinkedIn must also "
@@ -282,14 +285,15 @@ PUSH_TARGETS = (
         endpoint="POST /v2/post/publish/content/init/",
         scopes=("user.info.basic", "video.publish"),
         registration="A TikTok developer app with Content Posting and Direct "
-        "Post switched on, and a verified address prefix.",
+        "Post switched on, and a verified address prefix. Register the app at "
+        "developers.tiktok.com/apps.",
         prerequisite="The app will be unaudited, and TikTok restricts every "
         "post an unaudited client makes to private viewing, which means only "
-        "he sees it. TikTok also caps an unaudited client at 5 posting "
+        "you see it. TikTok also caps an unaudited client at 5 posting "
         "accounts in 24 hours and requires the account to be private at the "
         "time of posting. TikTok's audit of the API client is what lifts "
         "that; video.publish posts to the profile and video.upload would "
-        "instead leave the post in his drafts.",
+        "instead leave the post in your drafts.",
     ),
     PushTarget(
         TARGET_FACEBOOK,
@@ -309,10 +313,11 @@ PUSH_TARGETS = (
             "pages_read_engagement",
             "pages_show_list",
         ),
-        registration="A Meta app with the Pages API, and a Page he " "administers.",
+        registration="A Meta app with the Pages API, and a Page you "
+        "administer. Register the app at developers.facebook.com/apps.",
         prerequisite="No App Review. Meta grants Standard Access to every "
         "permission automatically, and it covers any account holding a role "
-        "on the app, so give the account a role on it.",
+        "on the app, so give your account a role on it.",
     ),
     PushTarget(
         TARGET_THREADS,
@@ -329,10 +334,11 @@ PUSH_TARGETS = (
         ),
         endpoint="POST /<threads-user-id>/threads then /threads_publish",
         scopes=("threads_basic", "threads_content_publish"),
-        registration="A Meta app with the Threads API, on a Threads profile.",
+        registration="A Meta app with the Threads API, on a Threads profile. "
+        "Register the app at developers.facebook.com/apps.",
         prerequisite="No App Review. Meta grants Standard Access to every "
         "permission automatically, and it covers any account holding a role "
-        "on the app, so give the account a role on it.",
+        "on the app, so give your account a role on it.",
     ),
     PushTarget(
         TARGET_REDDIT,

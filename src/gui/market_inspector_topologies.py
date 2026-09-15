@@ -320,6 +320,11 @@ if _HAS_QT:
             self._timer.timeout.connect(self.refresh)
             self._timer.start()
 
+            # The first refresh is one interval away. Without this the zone's
+            # first paint carries the stepper's own blank headline and its
+            # entry hint instead of the empty sentence the page draws.
+            self._render()
+
         # ── external API ─────────────────────────────────────────────
         def set_proposal_source(
             self,

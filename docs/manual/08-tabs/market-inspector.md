@@ -2546,4 +2546,108 @@ and both lines read in full.
 **Figures.** This page carries no figure and this entry adds none. Every width
 quoted above was read from the running program and is not stored.
 
+## 2026-09-15 09:40 - #23 - Every Level 1A page carries its register address
+
+Each venue issues credentials only to an application registered with it. Six
+of the seven pages named no place to do that. Every page now carries the
+address of the venue's own app-registration page, as a link.
+
+### The address each venue's row names
+
+Each address is the one that venue's own developer documentation publishes.
+
+| Venue | Register address | Read from |
+| ----- | ---------------- | --------- |
+| X | `https://console.x.com` | X, Developer Console and Getting Access |
+| Instagram | `developers.facebook.com/apps` | Meta, App Dashboard |
+| LinkedIn | `www.linkedin.com/developers/apps/new` | LinkedIn, Marketing Quick Start, step 1 |
+| TikTok | `developers.tiktok.com/apps` | TikTok, Register Your App |
+| Facebook | `developers.facebook.com/apps` | Meta, App Dashboard |
+| Threads | `developers.facebook.com/apps` | Meta, Threads Get Started |
+| Reddit | `reddit.com/prefs/apps` | already on the row, unchanged |
+
+`src/trading/ata_spm_push.py` - where one venue's address is held
+
+```python
+        registration="A TikTok developer app with Content Posting and Direct "
+        "Post switched on, and a verified address prefix. Register the app at "
+        "developers.tiktok.com/apps.",
+```
+
+X publishes an address with no path, so its row carries the scheme. The other
+six name a host and a path, which is what `link_address` reads as an address.
+
+No new mechanism carries these. `link_segments` makes the word a link and
+`page_links` keeps it on the open page's allowlist, exactly as the endpoint
+line and Reddit's address already worked.
+
+### What a press does, read off both running builds
+
+Every address the open page publishes reaches the browser. Every address it
+does not publish opens nothing and is recorded as refused. A venue's own real
+address is still refused on another venue's page.
+
+| Page open | Address pressed | What opened |
+| --------- | --------------- | ----------- |
+| X | `https://console.x.com` | the browser, at that address |
+| Instagram | `https://developers.facebook.com/apps` | the browser, at that address |
+| Instagram | `https://console.x.com` | nothing. Not on this page |
+| LinkedIn | `https://example.invalid/steal` | nothing. Not on this page |
+
+Read off the two running builds, 20 addresses reached the browser and every
+off-page address opened nothing, the same 20 and the same refusals under both.
+
+The authorize address and the redirect address stay plain text. A press on
+either outside a sign-in reaches an error page.
+
+### The pages address the operator directly
+
+Four lines spoke about the reader as a third party. Each now addresses him, or
+names the account he acts on. No fact changed.
+
+| Venue and line | Now reads |
+| -------------- | --------- |
+| Facebook, register | a Page you administer |
+| TikTok, prerequisite | which means only you see it |
+| TikTok, prerequisite | leave the post in your drafts |
+| Instagram, Facebook and Threads, prerequisite | so give your account a role on it |
+
+TikTok's "requires the account to be private at the time of posting" is
+unchanged. It states TikTok's rule for any posting account, not the reader's.
+
+### An empty Topologies zone reads the same in both builds
+
+The zone's empty sentence comes from `pane_view`, which also turns the entry
+hint off while the zone holds nothing. The page drew that from its first
+paint. The window built its stepper and waited for the first auto-refresh, so
+until then it drew a blank headline and the entry hint under it.
+
+`src/gui/market_inspector_topologies.py` - the pane draws its view when built
+
+```python
+            self._render()
+```
+
+Read off both running builds, an empty zone now reads "No proposals right
+now.  Try Refresh, or wait for market state to shift." and carries no hint.
+The hint still draws on a zone that holds an entry and is closed.
+
+### Six rows this entry contradicts
+
+None was reworded. Each is quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:2430` - "| X | `https://api.x.com/2/tweets` | the row names no other address |" The row names `https://console.x.com` too.
+
+`docs/manual/08-tabs/market-inspector.md:2431` - "| Instagram | nothing |" Instagram links `developers.facebook.com/apps`.
+
+`docs/manual/08-tabs/market-inspector.md:2432` - "| LinkedIn | `https://api.linkedin.com/rest/posts` | the row names no other address |" The row names `www.linkedin.com/developers/apps/new` too.
+
+`docs/manual/08-tabs/market-inspector.md:2433` - "| TikTok | nothing |" TikTok links `developers.tiktok.com/apps`.
+
+`docs/manual/08-tabs/market-inspector.md:2434` - "| Facebook | nothing |" Facebook links `developers.facebook.com/apps`.
+
+`docs/manual/08-tabs/market-inspector.md:2435` - "| Threads | nothing |" Threads links `developers.facebook.com/apps`.
+
+**Figures.** This page carries no figure and this entry adds none.
+
 Back to [the subsystem index](README.md).
