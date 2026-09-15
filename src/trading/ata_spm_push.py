@@ -19,13 +19,15 @@ from . import ata_spm
 
 logger = logging.getLogger("acervator.ata_spm_push")
 
-#: Ships on every artefact ``FormattedPost`` composes. No caller supplies it
-#: and no caller can remove it.
+#: The header a ``PushTarget`` row carries unless the row names its own.
 FIXED_HEADER = (
     "This is not investment advice. It is a demonstration of Ekthelius's "
     "proprietary TA engine housed in the Acervator governance execution "
     "platform."
 )
+
+#: The header ``TARGET_X``'s row carries in place of ``FIXED_HEADER``.
+X_HEADER = "Not investment advice. Acervator TA engine demonstration."
 
 #: Ships under the lines on every artefact ``compose`` writes. ``fit_to_target``
 #: drops evidence lines to reach a ceiling and never this.
@@ -52,7 +54,7 @@ ARTEFACT_TITLE = "title"
 #: The PNG ``ata_spm.render_pull_image`` drew, which ``caption`` captions.
 ARTEFACT_IMAGE = "image"
 
-#: The three artefacts every post carries, each composed with ``FIXED_HEADER``.
+#: The three artefacts every post carries, each composed with the row's header.
 ARTEFACT_KEYS = (ARTEFACT_BODY, ARTEFACT_CAPTION, ARTEFACT_THREAD_ROOT)
 
 #: The unit each push target counts its text in, from the audit page.
@@ -172,7 +174,7 @@ class CredentialField:
 
 @dataclass(frozen=True)
 class PushTarget:
-    """One push target, its sections, its text ceilings and its sign-in.
+    """One push target, its header, its sections, its text ceilings and its sign-in.
 
     ``fields`` is what the operator types and the Level 1A page draws a box
     for; ``issued`` is what the venue's own flow hands back, and no page draws
@@ -184,6 +186,7 @@ class PushTarget:
     body_limit: int = NO_LIMIT_PUBLISHED
     title_limit: int = NO_TITLE_FIELD
     count_unit: str = COUNT_CHARACTERS
+    header: str = FIXED_HEADER
     fields: tuple = ()
     issued: tuple = ()
     endpoint: str = ""
@@ -200,6 +203,7 @@ PUSH_TARGETS = (
         (SECTION_CALL, SECTION_INDICATORS),
         body_limit=280,
         count_unit=COUNT_WEIGHTED,
+        header=X_HEADER,
         fields=(
             CredentialField("x-client-id", "Client ID"),
             CredentialField("x-client-secret", "Client secret"),
@@ -551,15 +555,18 @@ def measure_text(text: Any, count_unit: Any = COUNT_CHARACTERS) -> int:
     return len(written)
 
 
-def compose(lines: Any) -> str:
-    """``FIXED_HEADER`` over ``lines`` over ``ORGANIZATION_URL``.
+def compose(lines: Any, header: Any = FIXED_HEADER) -> str:
+    """``header`` over ``lines`` over ``ORGANIZATION_URL``.
 
     ``fit_to_target`` drops ``lines`` to reach a ceiling and reaches neither
-    ``FIXED_HEADER`` nor ``ORGANIZATION_URL``.
+    ``header`` nor ``ORGANIZATION_URL``.
     """
-    return POST_LINE_SEPARATOR.join(
-        (FIXED_HEADER,) + tuple(lines) + (ORGANIZATION_URL,)
-    )
+    return POST_LINE_SEPARATOR.join((str(header),) + tuple(lines) + (ORGANIZATION_URL,))
+
+
+def target_header(target: Any) -> str:
+    """The header one push target's row carries, ``FIXED_HEADER`` where the row names none."""
+    return str(getattr(target, "header", FIXED_HEADER) or FIXED_HEADER)
 
 
 def fit_to_target(ranked: Any, target: Any) -> tuple:
@@ -572,9 +579,10 @@ def fit_to_target(ranked: Any, target: Any) -> tuple:
     lines = [line for _rank, line in rows]
     limit = int(getattr(target, "body_limit", NO_LIMIT_PUBLISHED) or NO_LIMIT_PUBLISHED)
     unit = getattr(target, "count_unit", COUNT_CHARACTERS)
+    header = target_header(target)
     if limit <= NO_LIMIT_PUBLISHED:
         return tuple(lines), NO_DROPPED
-    if measure_text(compose(lines), unit) <= limit:
+    if measure_text(compose(lines, header), unit) <= limit:
         return tuple(lines), NO_DROPPED
     order = sorted(
         (at for at, (rank, _line) in enumerate(rows) if rank is not None),
@@ -586,7 +594,7 @@ def fit_to_target(ranked: Any, target: Any) -> tuple:
         gone.add(at)
         kept = [line for pos, line in enumerate(lines) if pos not in gone]
         kept.append(ABBREVIATED_FORMAT.format(dropped=len(gone)))
-        if measure_text(compose(kept), unit) <= limit:
+        if measure_text(compose(kept, header), unit) <= limit:
             break
     return tuple(kept), len(gone)
 
@@ -594,14 +602,14 @@ def fit_to_target(ranked: Any, target: Any) -> tuple:
 def title_notes(target: Any, headline: str) -> tuple:
     """What one target's title field could not carry, as the note phase five records.
 
-    A ``title_limit`` too small for ``FIXED_HEADER`` with ``headline`` answers
+    A ``title_limit`` too small for the row's header with ``headline`` answers
     one ``TITLE_TOO_SMALL_FORMAT`` note.
     """
     limit = int(getattr(target, "title_limit", NO_TITLE_FIELD) or NO_TITLE_FIELD)
     if limit <= NO_TITLE_FIELD:
         return ()
     unit = getattr(target, "count_unit", COUNT_CHARACTERS)
-    measured = measure_text(compose((headline,)), unit)
+    measured = measure_text(compose((headline,), target_header(target)), unit)
     if measured <= limit:
         return ()
     return (
@@ -703,7 +711,7 @@ SECTION_WRITERS = {
 class FormattedPost:
     """One reversal call formatted for one push target.
 
-    ``body``, ``caption`` and ``thread_root`` each compose ``FIXED_HEADER``
+    ``body``, ``caption`` and ``thread_root`` each compose ``header``
     with the lines, so no artefact of this post can omit the header.
     """
 
@@ -711,6 +719,7 @@ class FormattedPost:
     symbol: str
     timeframe: str
     vote: str
+    header: str = FIXED_HEADER
     band_position: float = ata_spm.MIDLINE_POSITION
     band_lower: float = ata_spm.NO_BAND_VALUE
     band_middle: float = ata_spm.NO_BAND_VALUE
@@ -738,25 +747,25 @@ class FormattedPost:
 
     @property
     def body(self) -> str:
-        """The post body: ``FIXED_HEADER`` over this target's own sections."""
-        return compose(self.lines)
+        """The post body: ``header`` over this target's own sections."""
+        return compose(self.lines, self.header)
 
     @property
     def caption(self) -> str:
-        """The caption for ``image_path``: ``FIXED_HEADER`` over the headline."""
-        return compose((self.headline,))
+        """The caption for ``image_path``: ``header`` over the headline."""
+        return compose((self.headline,), self.header)
 
     @property
     def thread_root(self) -> str:
-        """The thread root: ``FIXED_HEADER`` over the headline."""
-        return compose((self.headline,))
+        """The thread root: ``header`` over the headline."""
+        return compose((self.headline,), self.header)
 
     @property
     def title(self) -> str:
         """This target's own title field, empty where ``title_limit`` cannot hold it."""
         if self.title_limit <= NO_TITLE_FIELD:
             return ""
-        written = compose((self.headline,))
+        written = compose((self.headline,), self.header)
         if measure_text(written, self.count_unit) > self.title_limit:
             return ""
         return written
@@ -777,7 +786,7 @@ class FormattedPost:
         """Every artefact of this post, keyed by ``ARTEFACT_KEYS`` and ``ARTEFACT_TITLE``.
 
         A post whose phase-three render wrote no file carries no
-        ``ARTEFACT_IMAGE`` key, and every text key composes ``FIXED_HEADER``.
+        ``ARTEFACT_IMAGE`` key, and every text key composes ``header``.
         """
         written = dict(zip(ARTEFACT_KEYS, (self.body, self.caption, self.thread_root)))
         title = self.title
@@ -814,6 +823,7 @@ def format_post(
         symbol=vote.symbol,
         timeframe=vote.timeframe,
         vote=vote_word(vote.direction_text),
+        header=target_header(target),
         band_position=float(vote.band_position),
         band_lower=pull.band_lower,
         band_middle=pull.band_middle,
@@ -887,6 +897,7 @@ def format_follow_up(outcome: FollowUpOutcome, target: PushTarget) -> FormattedP
         symbol=call.symbol,
         timeframe=call.timeframe,
         vote=call.vote,
+        header=target_header(target),
         band_position=call.band_position,
         band_lower=call.band_lower,
         band_middle=call.band_middle,

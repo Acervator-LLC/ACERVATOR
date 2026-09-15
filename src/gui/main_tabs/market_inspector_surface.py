@@ -1736,8 +1736,8 @@ def bucket_actions() -> list:
 def bucket_detail_rows(held: Any) -> list:
     """The expanded lines one bucket post leaves: the body that would be sent.
 
-    Line zero is ``ata_spm_push.FIXED_HEADER``, which every artefact of the
-    post composes.
+    Line zero is the header the post's ``PushTarget`` row carries, which every
+    artefact of the post composes.
     """
     post = held.post
     return [

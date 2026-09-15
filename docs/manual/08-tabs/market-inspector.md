@@ -3648,4 +3648,146 @@ This entry makes no earlier sentence wrong.
 **Figures.** This entry adds no figure to the page. A count of the markdown
 image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-15 16:22 - #23 - X carries a shorter header, so its post carries a reading
+
+His words, 2026-09-15: *"Should shorten specifically for X and maintain a
+consistent level of valuable data..."*
+
+The fixed header measures 144 in every unit, because it is plain ASCII. On X,
+with the call line, the address at 23 and two separators, the floor is 209 of
+280, leaving 71. A reading also costs its separator, so a line has to measure
+70 or less to fit, and the shortest standard reading on the previous entry's
+calls measures 59, the Bollinger one 71. Read off the running program on those
+three calls: not one reading reached X. With twelve voters X carried none of
+twelve; with three, none of three; with one voter, none of one. Every X body was
+four lines: the header, the call line, the abbreviation note, the address.
+
+### One header per venue row
+
+The header is a field on the venue's row. Every row takes the fixed header
+unless it names its own, so six rows are unchanged and X's row names a short
+one. A venue is changed by editing its row; nothing branches on a venue's name.
+
+`src/trading/ata_spm_push.py` — the two headers, and the row that names its own
+
+```python
+#: The header a ``PushTarget`` row carries unless the row names its own.
+FIXED_HEADER = (
+    "This is not investment advice. It is a demonstration of Ekthelius's "
+    "proprietary TA engine housed in the Acervator governance execution "
+    "platform."
+)
+
+#: The header ``TARGET_X``'s row carries in place of ``FIXED_HEADER``.
+X_HEADER = "Not investment advice. Acervator TA engine demonstration."
+```
+
+```python
+    PushTarget(
+        TARGET_X,
+        (SECTION_CALL, SECTION_INDICATORS),
+        body_limit=280,
+        count_unit=COUNT_WEIGHTED,
+        header=X_HEADER,
+```
+
+X's header measures 57 weighted units. It keeps the three facts: it is not
+investment advice, it is Acervator, and it is a TA engine demonstration. The
+rest of the long form was connective wording. The words are his to change; the
+three facts are not.
+
+The composer takes the header it joins, and every artefact of a post composes
+the post's own. The body, the caption, the thread root and the title all carry
+the header the row named, and the fitter counts that header while it drops
+lines, so the ceiling is measured against the header the post will carry.
+
+`src/trading/ata_spm_push.py` — the composer, and where a post's header comes from
+
+```python
+def compose(lines: Any, header: Any = FIXED_HEADER) -> str:
+    """``header`` over ``lines`` over ``ORGANIZATION_URL``.
+
+    ``fit_to_target`` drops ``lines`` to reach a ceiling and reaches neither
+    ``header`` nor ``ORGANIZATION_URL``.
+    """
+```
+
+```python
+def target_header(target: Any) -> str:
+    """The header one push target's row carries, ``FIXED_HEADER`` where the row names none."""
+```
+
+### What X carries now, on the previous entry's three calls
+
+The same three calls, driven again with the home and the post root redirected
+and every socket but loopback refused. The floor on X falls from 209 to 122,
+leaving 158.
+
+| Call | Readings written | Carried on X before | Carried on X after | Dropped after | X body after |
+| ---- | ---------------- | ------------------- | ------------------ | ------------- | ------------ |
+| twelve voters, long readings | 12 | 0 | 0 | 12 | 164 of 280 |
+| three voters, standard wording | 3 | 0 | 1 | 2 | 223 of 280 |
+| one voter, standard wording | 1 | 0 | 1 | 0 | 194 of 280 |
+
+The long call stays at zero because each of its readings measures over 500 on
+its own, and the note still reports the drop. The one-voter call now carries
+its reading whole with no note. The X body on the three-voter call:
+
+```
+Not investment advice. Acervator TA engine demonstration.
+BTC/USD on 1hr: bullish reversal called.
+RSI: no reading published. Votes bullish at 80% confidence.
+Abbreviated: 2 evidence line(s) omitted.
+https://github.com/Acervator-LLC
+```
+
+The six other venues' bodies were written to disk before and after on all
+three calls and compared byte for byte: 18 of 18 identical. The three X bodies
+differed, which is what proves the comparison could see a change. Reddit's
+title still opens with the fixed header.
+
+### The X picture's foot and the X text agree
+
+The venue picture already draws the venue's own body at its foot, so the
+short header reaches X's picture through the same post that writes X's text.
+Read off the run: on all three calls the caption the renderer received equals
+the X body, and the X text file equals the X body. Both builds produce the
+same X body on the same call, byte for byte. The root picture, one image for
+every venue, keeps the fixed header over the headline.
+
+`src/trading/ata_venue_folders.py` — the foot is the body
+
+```python
+        caption=post.body,
+```
+
+### Five sentences this entry overtakes
+
+`docs/manual/08-tabs/market-inspector.md:679` — *"The fixed header ships on
+every artefact the run composes. No caller supplies it and no caller can remove
+it. It is 144 characters, and on X it takes over half the budget."* X's
+artefacts now carry the 57-unit header; the six other venues' still carry the
+fixed one, and no caller can remove either.
+
+`docs/manual/08-tabs/market-inspector.md:1175` — *"It puts the fixed header on
+top, the evidence under it, and the link at the bottom."* On X the row's own
+header is on top; the evidence and the link are as written.
+
+`docs/manual/08-tabs/market-inspector.md:1183` — the quoted docstring of the
+composer read `FIXED_HEADER` over the lines. The composer now takes the header
+it joins.
+
+`docs/manual/08-tabs/market-inspector.md:3573` — *"the header, the call line
+and the address take 209 of X's 280 weighted units, leaving 71 for evidence, so
+one 43-unit reading fits whole and a longer one is dropped for the abbreviation
+note."* That was the fixed header. With X's own, the three take 122, leaving
+158.
+
+`docs/manual/08-tabs/market-inspector.md:3571` — *"the fixed header and the
+address are never dropped."* Still true of the header a row carries: the fitter
+drops evidence lines and reaches neither the header nor the address.
+
+**Figures.** This entry adds no figure to the page. A count of the markdown
+image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
