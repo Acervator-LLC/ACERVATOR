@@ -2716,4 +2716,68 @@ venue as `abc`, and a box holding only spaces is still reported empty.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+## 2026-09-15 12:10 - #23 - A sign-in says what it did, on the page and in the log
+
+Level 1A held the page on a refusal and printed the reason in the page's own
+body text. Two X sign-ins ended the same way for the operator: the page did not
+move, and nothing on it read as an answer to the press. The message now carries
+the outcome's own colour, and every outcome writes one log line.
+
+### What a press writes now
+
+`AtaSpmSettings.connect` had one log call and it sat inside the `except`. Four
+other branches answer `ok` False without raising, and the accepted branch raises
+nothing either, so a press could end with no line at all.
+
+`src/trading/ata_spm_push.py` - the one line every outcome reaches
+
+```python
+    def connect(self, target: Any) -> "ConnectResult":
+        answer = self.sign_in_answer(target)
+        logger.info(CONNECT_RESULT_LOG, answer.target, answer.ok, answer.detail)
+        return answer
+```
+
+| What the venue answers | Lines before | Lines now |
+| ---------------------- | ------------ | --------- |
+| refuses with HTTP 401 | 1 | 2 |
+| accepts, and no vault holds it | 0 | 1 |
+| accepts, and a vault holds it | 0 | 1 |
+
+Read off both running builds, driven through a real press with the program's own
+loopback listener and a stand-in for the venue's socket.
+
+### What the message line is drawn in
+
+`message_colour` picks one colour per outcome. Both builds read that one value,
+so the window and the page cannot disagree about it.
+
+`src/gui/main_tabs/market_inspector_surface.py` - where the colour is chosen
+
+```python
+def message_colour(answered: Any) -> str:
+    if answered is None:
+        return NO_COLOR
+    return MESSAGE_ACCEPTED_COLOUR if answered.ok else MESSAGE_REFUSED_COLOUR
+```
+
+| Outcome | What the line is drawn in |
+| ------- | ------------------------- |
+| no press yet | nothing. The line holds no text |
+| refused | `ds.ERROR` |
+| accepted | `ds.SUCCESS`, until Level 1 replaces the page |
+
+### A sign-in a venue accepts is not held anywhere
+
+`AtaSpmSettings.set_vault` has no caller in the tree, and `CredentialVault` is
+constructed nowhere. `store_credential` answers False whenever `vault` is None,
+so every sign-in a venue accepts ends at `Credential vault not wired.` with `ok`
+False, and Level 1A holds the page.
+
+Where the vault holds the tokens, and which passphrase holds them, is not
+decided yet. Until it is, that outcome now reads on the page and in the log
+instead of reading as nothing.
+
+**Figures.** This page carries no figure and this entry adds none.
+
 Back to [the subsystem index](README.md).

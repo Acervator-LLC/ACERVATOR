@@ -187,6 +187,11 @@ def _fmt_age(seconds: float) -> str:
 #: One Level 1A address as rich text. Both halves are escaped before they reach
 #: it, so a venue's own wording cannot open a tag.
 LINK_HTML_FORMAT = '<a href="{address}" style="color:{colour}">{written}</a>'
+#: What Level 1A's message line is drawn in. The colour comes from
+#: ``message_colour``, so the window and the page carry the same one.
+MESSAGE_STYLE_FORMAT = "color: {colour};"
+NO_STYLE = ""
+
 LINK_REFUSED_LOG = "Level 1A refused a link the open page does not publish: %r"
 LINK_FAILED_LOG = "Level 1A link open failed for %r: %s"
 
@@ -1285,6 +1290,10 @@ if _HAS_QT:
                 self._link_html(held[PAGE_PREREQUISITE_LINKS])
             )
             self._credential_message.setText(str(held["message"]))
+            colour = str(held["message_colour"])
+            self._credential_message.setStyleSheet(
+                MESSAGE_STYLE_FORMAT.format(colour=colour) if colour else NO_STYLE
+            )
 
         # ── the Ready to Send control row ────────────────────────────
         def _build_bucket_row(self) -> "QWidget":

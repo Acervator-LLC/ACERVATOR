@@ -437,6 +437,10 @@ VAULT_READ_FAILED_LOG = "ATA-SPM credential read failed on %s: %s"
 VAULT_STORE_FAILED_LOG = "ATA-SPM credential store failed on %s: %s"
 CONNECT_FAILED_LOG = "ATA-SPM sign-in failed on %s: %s"
 
+#: Every ``connect`` outcome, accepted or not. ``CONNECT_FAILED_LOG`` covers only
+#: the branch a connector raises on, and four other branches raise nothing.
+CONNECT_RESULT_LOG = "ATA-SPM sign-in on %s: accepted=%s, %s"
+
 
 @dataclass
 class ConnectResult:
@@ -1270,6 +1274,16 @@ class AtaSpmSettings:
         return None
 
     def connect(self, target: Any) -> "ConnectResult":
+        """Sign one push target in, and record what it answered.
+
+        Every branch of ``sign_in_answer`` reaches this one ``CONNECT_RESULT_LOG``
+        line, so a sign-in that raises nothing is still written down.
+        """
+        answer = self.sign_in_answer(target)
+        logger.info(CONNECT_RESULT_LOG, answer.target, answer.ok, answer.detail)
+        return answer
+
+    def sign_in_answer(self, target: Any) -> "ConnectResult":
         """Sign one push target in, and store the credential only once it accepts.
 
         An empty box, an unwired ``connector`` and a refusing venue each

@@ -844,6 +844,9 @@
   var PAGE_SIGN_IN = "sign_in";
   var PAGE_REDIRECT = "redirect";
   var PAGE_MESSAGE = "message";
+  // What the message line is drawn in. messageColour picks it, so the page and
+  // the window carry the same one.
+  var PAGE_MESSAGE_COLOUR = "message_colour";
   // Each is the same line as the plain value above it, split into
   // [words, address] pairs. Only a whole address the venue's own row carries
   // holds an address; every other pair holds an empty one.
@@ -1975,9 +1978,12 @@
 
   // pageLine is one read-only line of Level 1A: its address, scopes, message
   // or what the operator must register before any of it works.
-  function pageLine(page, part, written) {
+  function pageLine(page, part, written, colour) {
     var style = asLabel({}, false);
     style.whiteSpace = NORMAL_WRAP;
+    if (colour) {
+      style.color = text(colour);
+    }
     var lineProps = { style: style };
     lineProps[PART_ATTR] = text(part);
     lineProps[NAME_ATTR] = text(part);
@@ -2083,7 +2089,12 @@
           on: false
         })
       ),
-      pageLine(page, page[MESSAGE_PART], held[PAGE_MESSAGE]),
+      pageLine(
+        page,
+        page[MESSAGE_PART],
+        held[PAGE_MESSAGE],
+        held[PAGE_MESSAGE_COLOUR]
+      ),
       pageLinkLine(page, page[REGISTRATION_PART], held[PAGE_REGISTRATION_LINKS]),
       pageLinkLine(page, page[PREREQUISITE_PART], held[PAGE_PREREQUISITE_LINKS])
     );
