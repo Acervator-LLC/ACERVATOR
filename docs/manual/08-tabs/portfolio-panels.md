@@ -92,10 +92,37 @@ if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
 
 ### What the venue answers, and what the platform derives
 
-The venue's spot API answers a position's cost basis, its average entry price
-and its unrealised profit. It carries no realised figure, so Realised is the
-platform's own derivation: every fill the venue holds for the bot's symbol,
-matched first in, first out, one figure per bot, summed across the fleet.
+The venue's portfolio breakdown answers three figures per open spot position:
+the cost basis, the average entry price and the unrealised profit. Each bot
+reads those three from the venue on every refresh and holds them as its own.
+The breakdown carries no lifetime realised figure for a spot position, so
+Realised is derived: every fill the venue holds for the bot's symbol, matched
+first in, first out, one figure per bot, summed across the fleet.
+
+`src/exchange/ccxt_connector.py` — `get_spot_positions`
+
+```python
+portfolios = await self._call_sync(self._ex.fetch_portfolios)
+rows = await self._call_sync(self._ex.fetch_portfolio_details, uuid)
+basis = float(row.get("cost_basis", 0) or 0)
+```
+
+The venue's cost basis is the check on the derivation. After the fills are
+matched, the bot logs the venue's cost basis beside the cost of the buys FIFO
+left open and beside the average-cost basis, with each gap in per cent, and
+names the closer of the two. A venue whose account uses another matching method
+shows up there as a gap on both.
+
+`src/trading/scrumming/reconciliation.py` — `_log_basis_check`
+
+```python
+_fifo_gap = abs(_fifo - float(venue_basis)) / _scale
+_avg_gap = abs(_avg - float(venue_basis)) / _scale
+_closer = "fifo" if _fifo_gap <= _avg_gap else "average"
+```
+
+A venue without a portfolio breakdown leaves the three figures to the same
+derivation, and the check does not run.
 
 `src/exchange/position_health.py` — `compute_position_health`
 

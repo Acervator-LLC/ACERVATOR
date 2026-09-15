@@ -365,10 +365,13 @@ if answered <= 0:
     return None
 ```
 
-The venue answers no realised figure for a spot position. REALISED is the
-platform's first-in, first-out match over every fill the venue holds for each
-bot's symbol, one figure per bot, summed across the fleet; a bot pages the
-whole history once and then one page per refresh.
+The venue's portfolio breakdown answers each position's cost basis, average
+entry price and unrealised profit, and each bot reads those three from it. The
+breakdown carries no lifetime realised figure for a spot position, so REALISED
+is the platform's first-in, first-out match over every fill the venue holds for
+each bot's symbol, one figure per bot, summed across the fleet; a bot pages the
+whole history once and then one page per refresh, and logs the venue's cost
+basis against the cost of the buys left open.
 
 `src/trading/scrumming/reconciliation.py` — `fetch_fill_history`
 

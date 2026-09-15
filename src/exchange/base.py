@@ -128,11 +128,29 @@ class AssetInfo:
     logo_url: str = ""
 
 
+@dataclass
+class SpotPosition:
+    """One open spot position as the venue reports it.
+
+    ``ExchangeInterface.get_spot_positions`` returns these keyed by ``asset``;
+    ``cost_basis_usd``, ``avg_entry_price`` and ``unrealized_pnl_usd`` are the
+    venue's own figures, never derived here.
+    """
+
+    asset: str
+    cost_basis_usd: float
+    avg_entry_price: float
+    unrealized_pnl_usd: float
+    balance: float = 0.0
+    raw: dict = field(default_factory=dict)
+
+
 class ExchangeInterface(ABC):
     """The contract a connector class implements.
 
     Every method is abstract except ``get_my_trades``, which raises
-    ``NotImplementedError`` unless a subclass overrides it.
+    ``NotImplementedError`` unless a subclass overrides it, and
+    ``get_spot_positions``, which returns None until a subclass overrides it.
     """
 
     @property
@@ -150,6 +168,7 @@ class ExchangeInterface(ABC):
         self, api_key: str, api_secret: str, passphrase: str = ""
     ) -> None:
         """Open the exchange session and make ``is_connected`` True."""
+        del api_key, api_secret, passphrase
 
     @abstractmethod
     async def disconnect(self) -> None:
@@ -163,10 +182,14 @@ class ExchangeInterface(ABC):
     @abstractmethod
     async def get_ticker(self, symbol: str) -> Ticker:
         """Return the current ``Ticker`` for ``symbol``."""
+        del symbol
+        raise NotImplementedError
 
     @abstractmethod
     async def get_orderbook(self, symbol: str, limit: int = 20) -> OrderBook:
         """Return an ``OrderBook`` for ``symbol`` with ``limit`` levels a side."""
+        del symbol, limit
+        raise NotImplementedError
 
     @abstractmethod
     async def get_ohlcv(
@@ -176,6 +199,8 @@ class ExchangeInterface(ABC):
 
         ``timeframe`` names the candle interval and ``limit`` the row count.
         """
+        del symbol, timeframe, limit
+        raise NotImplementedError
 
     @abstractmethod
     async def get_balances(self) -> dict[str, Balance]:
@@ -188,6 +213,8 @@ class ExchangeInterface(ABC):
         A currency the exchange does not report gives a zeroed ``Balance``
         with ``absent`` True.
         """
+        del currency
+        raise NotImplementedError
 
     @abstractmethod
     async def place_order(
@@ -204,18 +231,26 @@ class ExchangeInterface(ABC):
         ``price`` is required for ``OrderType.LIMIT`` and ``OrderType.IOC_LIMIT``;
         an implementation may ignore ``client_order_id`` but must accept it.
         """
+        del symbol, side, order_type, amount, price, client_order_id
+        raise NotImplementedError
 
     @abstractmethod
     async def cancel_order(self, order_id: str, symbol: str) -> Order:
         """Cancel the order ``order_id`` and return it."""
+        del order_id, symbol
+        raise NotImplementedError
 
     @abstractmethod
     async def get_order(self, order_id: str, symbol: str) -> Order:
         """Return the ``Order`` for ``order_id``."""
+        del order_id, symbol
+        raise NotImplementedError
 
     @abstractmethod
     async def get_open_orders(self, symbol: Optional[str] = None) -> list[Order]:
         """Return the ``OrderStatus.OPEN`` orders, narrowed by ``symbol``."""
+        del symbol
+        raise NotImplementedError
 
     async def get_my_trades(
         self, symbol: str, since: Optional[float] = None, limit: Optional[int] = None
@@ -225,9 +260,18 @@ class ExchangeInterface(ABC):
         ``since`` is a unix-seconds floor and ``limit`` caps the count; this
         body raises ``NotImplementedError`` until a subclass overrides it.
         """
+        del symbol, since, limit
         raise NotImplementedError(
             f"{type(self).__name__} does not implement get_my_trades"
         )
+
+    async def get_spot_positions(self) -> Optional[dict[str, "SpotPosition"]]:
+        """Return the venue's open spot positions keyed by asset, or None.
+
+        None means the venue reports no position figures; this body returns
+        None until a subclass overrides it.
+        """
+        return None
 
     @abstractmethod
     async def get_markets(self) -> list[AssetInfo]:
@@ -236,3 +280,5 @@ class ExchangeInterface(ABC):
     @abstractmethod
     async def get_asset_logo_url(self, currency: str) -> str:
         """Return a logo URL for ``currency``, or an empty string."""
+        del currency
+        raise NotImplementedError

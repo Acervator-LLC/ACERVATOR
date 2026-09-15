@@ -159,17 +159,20 @@ The aggregate counts the bots the venue has answered for, and at zero the two
 columns are handed nothing rather than a computed zero, so an empty column is
 never a figure the platform made up.
 
-The venue's spot API answers a cost basis, an average entry price and an
-unrealised profit per position, and no realised figure. Realised is therefore
-the platform's own first-in, first-out match over the complete fill history of
-each bot's symbol, and the fleet figure is the sum of one figure per bot.
+The venue's portfolio breakdown answers a cost basis, an average entry price
+and an unrealised profit per open position, and each bot reads those three from
+it. The breakdown carries no lifetime realised figure for a spot position, so
+Realised is the platform's first-in, first-out match over the complete fill
+history of each bot's symbol, checked against the venue's cost basis on every
+refresh, and the fleet figure is the sum of one figure per bot.
 
-`src/exchange/fill_history.py` — `FillHistory`
+`src/exchange/base.py` — `SpotPosition`
 
 ```python
-FILL_PAGE_LIMIT = 500
-FILL_PAGE_OVERLAP_S = 60.0
-FILL_PAGE_MAX = 200
+asset: str
+cost_basis_usd: float
+avg_entry_price: float
+unrealized_pnl_usd: float
 ```
 
 `src/gui/main_tabs/header_strip_surface.py` — `exchange_amount`
