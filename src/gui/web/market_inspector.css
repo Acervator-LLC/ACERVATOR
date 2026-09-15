@@ -41,6 +41,7 @@ body {
 [data-part="post-selected"],
 [data-part="post-all"],
 [data-part="full-auto"],
+[data-part="chart-folder"],
 [data-part="approve-button"],
 [data-part="decline-button"],
 [data-part="preview-button"],
@@ -96,7 +97,7 @@ body {
 
 /* The ATA-SPM sector field and its class box. The padding, the border width
  * and the widths come from the payload; this is colour and type only. */
-[data-part="sector-field"],
+[data-part="ticker-field"],
 [data-part="class-box"],
 [data-part="settings-row"] input[type="password"],
 [data-part="setting-field"] {
@@ -107,7 +108,7 @@ body {
   font: inherit;
 }
 
-[data-part="sector-field"]::placeholder,
+[data-part="ticker-field"]::placeholder,
 [data-part="settings-row"] input[type="password"]::placeholder {
   color: var(--grid);
 }

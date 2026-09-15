@@ -3120,4 +3120,109 @@ unserved only when the exchange itself serves no such timeframe.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+## 2026-09-15 20:15 - #23 - The ticker field, and the way to the chart images
+
+The text field on the ATA-SPM scan page is named for what it does. It names one
+market, read on demand. The menu beside it is the sector menu, and it holds
+crypto, stocks, metals, derivatives and forex.
+
+`src/gui/main_tabs/market_inspector_surface.py` — what the field says
+
+```python
+TICKER_FIELD_PLACEHOLDER = "Ticker"
+TICKER_FIELD_TOOLTIP = (
+    "Name one market to read on demand. Typing offers the tickers the "
+    "sector menu beside it holds."
+)
+```
+
+### Typing offers the tickers the sector holds
+
+Each letter narrows a list the program already holds. Nothing is fetched and no
+venue is asked. Crypto reads the shipped sector map. Every other sector reads
+the asset maps.
+
+`src/gui/main_tabs/market_inspector_surface.py` — where the offered names come from
+
+```python
+def class_tickers(asset_class: Any) -> list:
+    """Every ticker one sector names, read from the lists already in this tree.
+
+    ``ata_spm.CLASS_CRYPTO`` reads the shipped sector map and every other class
+    reads ``ata_asset_maps.MAPS``, so no venue is asked for a symbol.
+    """
+```
+
+Matches beginning with what he typed come first, then matches holding it later
+in the name. Eight is the most the field offers at once.
+
+Three sectors carry a list and two do not. Crypto holds 120 names, forex 28 and
+metals 8. Stocks and derivatives hold none, because no list of their membership
+sits in this tree. The field says so under itself and still takes a typed name.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the line an empty sector carries
+
+```python
+TICKER_NO_LIST_FORMAT = "No ticker list for {sector}. A typed name still scans."
+```
+
+### The Chart Folder button, and where the pictures are
+
+The Ready to Send zone carries a fourth button. It opens the folder holding the
+chart images, in the operating system's own file browser. The folder is a
+sibling of the state directory and of the log directory, never inside either,
+and it is created before the first chart is drawn.
+
+`src/trading/ata_post_paths.py` — the one root every chart image is written under
+
+```python
+ATA_POST_ROOT: Path = Path.home() / ".acervator_ata_posts"
+```
+
+This is the route that needs no account. Most venues price a post, or hold it
+for approval. A chart in a folder can be posted by hand, with no API, no fee and
+no review.
+
+### Each chart image carries the standardised message
+
+The picture is written with its wording on it. The message is the one a post
+composes: the fixed header, the call's own headline, then the address. A chart
+opened from the folder therefore reads as something that can be posted as it is.
+
+`src/trading/ata_spm.py` — what the picture carries
+
+```python
+def post_caption(vote: AssetVote) -> str:
+    """The standardised message one call's chart image carries.
+
+    ``ata_spm_push.compose`` writes the same header, headline and address a
+    post's own caption carries, and it is imported here because that module
+    reads this one.
+    """
+```
+
+Measured on a rendered picture, the message takes 55 pixels at the foot of the
+image: eight of padding above, eight below, and 13 for each of its three lines.
+A chart given no message is 55 pixels shorter and carries none.
+
+### The sentence this entry leaves standing
+
+It was not reworded. It is quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:443` - "It carries a sector field, an
+asset-class box, four timeframe check boxes and a Scan Now button." That named
+the field while it was called Sector. The field is now the ticker field and the
+box beside it is the sector menu, so the two names in that sentence have
+swapped. The row still carries the same four controls, and now a fifth line
+under them for the sector with no list.
+
+### What Scan Now still does with the typed value
+
+Naming the field did not change the press. Scan Now adds what he typed as a
+sector, so a ticker typed into the field names a sector holding no assets and
+the scan reads nothing. Changing what the press scans is a product decision and
+it is recorded here rather than taken.
+
+**Figures.** This page carries no figure and this entry adds none.
+
 Back to [the subsystem index](README.md).

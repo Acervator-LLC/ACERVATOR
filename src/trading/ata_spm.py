@@ -867,6 +867,23 @@ def chart_candles(candles: Any) -> list:
         return []
 
 
+def post_caption(vote: AssetVote) -> str:
+    """The standardised message one call's chart image carries.
+
+    ``ata_spm_push.compose`` writes the same header, headline and address a
+    post's own caption carries, and it is imported here because that module
+    reads this one.
+    """
+    from . import ata_spm_push
+
+    headline = ata_spm_push.POST_HEADLINE_FORMAT.format(
+        symbol=vote.symbol,
+        label=timeframe_label(vote.timeframe),
+        vote=ata_spm_push.vote_word(vote.direction_text),
+    )
+    return ata_spm_push.compose((headline,))
+
+
 def render_pull_image(
     vote: AssetVote,
     candles: Any,
@@ -891,6 +908,7 @@ def render_pull_image(
         max_overlays=int(max_supporting_indicators or NO_INDICATOR_CAP),
         direction=vote.direction_text,
         readings=[(one.indicator, one.message) for one in messages or ()],
+        caption=post_caption(vote),
     )
     ata_post_paths.prune_post_images(path)
     return image

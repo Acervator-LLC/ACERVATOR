@@ -48,6 +48,9 @@ from .main_tabs.market_inspector_surface import (
     FULL_AUTO_LABEL,
     FULL_AUTO_PART,
     FULL_AUTO_TOOLTIP,
+    CHART_FOLDER_LABEL,
+    CHART_FOLDER_PART,
+    CHART_FOLDER_TOOLTIP,
     POST_ALL_LABEL,
     POST_ALL_PART,
     POST_ALL_TOOLTIP,
@@ -106,18 +109,23 @@ from .main_tabs.market_inspector_surface import (
     SCAN_NOW_LABEL,
     SCAN_NOW_TOOLTIP,
     SCAN_NOW_WIDTH_PX,
-    SECTOR_FIELD_PLACEHOLDER,
-    SECTOR_FIELD_TOOLTIP,
-    SECTOR_FIELD_MIN_WIDTH_PX,
-    SECTOR_ROW_PART,
+    TICKER_FIELD_PLACEHOLDER,
+    TICKER_FIELD_TOOLTIP,
+    TICKER_FIELD_MIN_WIDTH_PX,
+    TICKER_FIELD_PART,
+    TICKER_NOTE_PART,
+    TICKER_NOTE_STYLE,
     SCAN_ROW_PART,
     SETTINGS_PART,
     TIMEFRAME_BOX_TOOLTIP_FORMAT,
     TIMEFRAME_BOX_WIDTH_PX,
     TIMEFRAME_ROW_PART,
     TIMEFRAME_TITLE,
+    open_chart_folder,
     sector_assets,
     sector_candles,
+    ticker_matches,
+    ticker_note,
 )
 from .main_tabs.market_inspector_surface import (
     DETAIL_STYLE,
@@ -164,8 +172,9 @@ try:
         QScrollArea,
         QStackedWidget,
         QGridLayout,
+        QCompleter,
     )
-    from PySide6.QtCore import Qt, Signal
+    from PySide6.QtCore import Qt, Signal, QStringListModel
     from PySide6.QtGui import QColor, QPainter
 
     _HAS_QT = True
@@ -837,25 +846,31 @@ if _HAS_QT:
             """
             column = QVBoxLayout()
             column.setSpacing(ATA_ROW_SPACING_PX)
-            column.addLayout(self._build_sector_line())
+            column.addLayout(self._build_ticker_line())
+            column.addWidget(self._build_ticker_note())
             column.addWidget(self._section_title(TIMEFRAME_TITLE))
             column.addLayout(self._build_timeframe_grid())
             column.addLayout(self._build_scan_line())
             return column
 
-        def _build_sector_line(self) -> "QHBoxLayout":
-            """The sector field, which takes the slack, and its asset class."""
+        def _build_ticker_line(self) -> "QHBoxLayout":
+            """The ticker field, which takes the slack, and its sector menu."""
             line = QHBoxLayout()
             line.setSpacing(ATA_ROW_SPACING_PX)
-            self._sector_edit = QLineEdit()
-            self._sector_edit.setPlaceholderText(SECTOR_FIELD_PLACEHOLDER)
-            self._sector_edit.setToolTip(SECTOR_FIELD_TOOLTIP)
-            self._sector_edit.setMinimumWidth(SECTOR_FIELD_MIN_WIDTH_PX)
-            self._sector_edit.setFixedHeight(FIELD_HEIGHT_PX)
-            self._sector_edit.setAccessibleName(SECTOR_ROW_PART)
-            self._sector_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            self._sector_edit.textChanged.connect(self._ata_board.set_text)
-            line.addWidget(self._sector_edit)
+            self._ticker_edit = QLineEdit()
+            self._ticker_edit.setPlaceholderText(TICKER_FIELD_PLACEHOLDER)
+            self._ticker_edit.setToolTip(TICKER_FIELD_TOOLTIP)
+            self._ticker_edit.setMinimumWidth(TICKER_FIELD_MIN_WIDTH_PX)
+            self._ticker_edit.setFixedHeight(FIELD_HEIGHT_PX)
+            self._ticker_edit.setAccessibleName(TICKER_FIELD_PART)
+            self._ticker_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self._ticker_model = QStringListModel()
+            matches = QCompleter(self._ticker_model, self._ticker_edit)
+            matches.setCaseSensitivity(Qt.CaseInsensitive)
+            matches.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
+            self._ticker_edit.setCompleter(matches)
+            self._ticker_edit.textChanged.connect(self._on_ticker_typed)
+            line.addWidget(self._ticker_edit)
 
             self._class_box = QComboBox()
             self._class_box.setToolTip(CLASS_BOX_TOOLTIP)
@@ -864,6 +879,34 @@ if _HAS_QT:
             self._class_box.currentTextChanged.connect(self._on_class_changed)
             line.addWidget(self._class_box)
             return line
+
+        def _build_ticker_note(self) -> "QLabel":
+            """The line a sector with no ticker list carries under the field."""
+            self._ticker_note = QLabel()
+            self._ticker_note.setAccessibleName(TICKER_NOTE_PART)
+            self._ticker_note.setStyleSheet(TICKER_NOTE_STYLE)
+            self._ticker_note.setWordWrap(True)
+            self._refresh_ticker_matches()
+            return self._ticker_note
+
+        def _on_ticker_typed(self, typed: str) -> None:
+            """Hold what he typed, then offer the tickers his sector matches."""
+            self._ata_board.set_text(typed)
+            self._refresh_ticker_matches()
+
+        def _refresh_ticker_matches(self) -> None:
+            """Write the offered tickers into the completer, and the sector's note.
+
+            ``ticker_matches`` and ``ticker_note`` read the lists already in the
+            tree, so no venue is asked for a symbol.
+            """
+            asset_class = self._ata_board.asset_class
+            self._ticker_model.setStringList(
+                ticker_matches(self._ticker_edit.text(), asset_class)
+            )
+            note = ticker_note(asset_class)
+            self._ticker_note.setText(note)
+            self._ticker_note.setVisible(bool(note))
 
         def _build_timeframe_grid(self) -> "QGridLayout":
             """One button per timeframe, wrapping after ``BUTTON_COLUMNS``."""
@@ -1383,10 +1426,17 @@ if _HAS_QT:
             self._full_auto_btn.clicked.connect(
                 lambda: self._on_push_action(FULL_AUTO_PART)
             )
+            self._chart_folder_btn = QPushButton(CHART_FOLDER_LABEL)
+            self._chart_folder_btn.setToolTip(CHART_FOLDER_TOOLTIP)
+            self._chart_folder_btn.setAccessibleName(CHART_FOLDER_PART)
+            self._chart_folder_btn.clicked.connect(
+                lambda: self._on_push_action(CHART_FOLDER_PART)
+            )
             self._bucket_buttons = [
                 self._post_selected_btn,
                 self._post_all_btn,
                 self._full_auto_btn,
+                self._chart_folder_btn,
             ]
             for one in self._bucket_buttons:
                 one.setFixedSize(BUCKET_BUTTON_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
@@ -1421,6 +1471,8 @@ if _HAS_QT:
             elif key == FULL_AUTO_PART:
                 board.bucket.toggle_full_auto()
                 board.release()
+            elif key == CHART_FOLDER_PART:
+                open_chart_folder()
             elif key == THUMBNAIL_PART:
                 self._zone_open[READY_TO_SEND_ZONE] = True
             self._full_auto_btn.setChecked(board.bucket.full_auto)
@@ -1431,8 +1483,9 @@ if _HAS_QT:
             return self._zone_at.get(ATA_SPM_MODULE, 0)
 
         def _on_class_changed(self, name: str) -> None:
-            """Take the asset class chosen and redraw the four boxes."""
+            """Take the sector chosen, redraw the four boxes and re-offer tickers."""
             self._ata_board.set_class(self._ata_at(), name)
+            self._refresh_ticker_matches()
             self._render_ata_row()
 
         def _on_timeframe_toggled(self, key: str) -> None:
