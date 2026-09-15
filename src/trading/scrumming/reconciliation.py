@@ -26,6 +26,7 @@ class ReconciliationEngineMixin:
     # is created.
     _bus: Any
     _current_holdings: float
+    _fill_history: Any
     _get_balance: Callable[..., Any]
     _get_ticker: Callable[..., Any]
     _main_lots: list[dict]
@@ -37,6 +38,50 @@ class ReconciliationEngineMixin:
     stats: Any
 
     EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
+
+    async def fetch_fill_history(self) -> Optional[list]:
+        """Every fill for ``config.symbol`` from ``_fill_history``, refreshed; None when the exchange answers None."""
+        if self._fill_history is None:
+            from ...exchange.fill_history import FillHistory
+
+            self._fill_history = FillHistory(self.config.symbol)
+        return await self._fill_history.refresh(self.exchange)
+
+    async def fetch_spot_position(self, asset: str) -> Any:
+        """The venue's ``SpotPosition`` for ``asset`` from ``exchange.get_spot_positions``, or None."""
+        _get = getattr(self.exchange, "get_spot_positions", None)
+        if _get is None:
+            return None
+        try:
+            _positions = await _get()
+        except Exception as _exc:
+            logger.debug("Bot %s get_spot_positions raised: %s", self.bot_id, _exc)
+            return None
+        if not _positions:
+            return None
+        return _positions.get(asset)
+
+    def _log_basis_check(self, venue_basis: float, health: Any) -> str:
+        """Log ``venue_basis`` against ``health.open_lot_basis_usd`` and ``health.cost_basis_total_usd``; returns the closer method's name."""
+        _fifo = float(health.open_lot_basis_usd)
+        _avg = float(health.cost_basis_total_usd)
+        _scale = max(abs(float(venue_basis)), 1e-9)
+        _fifo_gap = abs(_fifo - float(venue_basis)) / _scale
+        _avg_gap = abs(_avg - float(venue_basis)) / _scale
+        _closer = "fifo" if _fifo_gap <= _avg_gap else "average"
+        logger.info(
+            "Bot %s basis check %s: venue=%.4f fifo_open_lots=%.4f (%.2f%% off) "
+            "average=%.4f (%.2f%% off) closer=%s",
+            self.bot_id,
+            self.config.symbol,
+            float(venue_basis),
+            _fifo,
+            _fifo_gap * 100.0,
+            _avg,
+            _avg_gap * 100.0,
+            _closer,
+        )
+        return _closer
 
     async def refresh_exchange_position_health(self, force: bool = False) -> bool:
         """Refresh the exchange-pulled fields on ``stats``.
@@ -60,16 +105,23 @@ class ReconciliationEngineMixin:
         try:
             from ...exchange.position_health import compute_position_health
 
-            _trades = await self.exchange.get_my_trades(self.config.symbol, limit=500)
+            _trades = await self.fetch_fill_history()
             if _trades is None:
                 return False
             _asset_base = self.config.symbol.split("/")[0]
             _ph = compute_position_health(_trades, _asset_base)
 
             self.stats.realized_pnl_exchange = float(_ph.realized_pnl_usd)
-            self.stats.avg_entry_exchange = float(_ph.avg_entry)
-            self.stats.cost_basis_total_exchange = float(_ph.cost_basis_total_usd)
             self.stats.fees_paid_exchange = float(_ph.fees_paid_total)
+            _venue = await self.fetch_spot_position(_asset_base)
+            if _venue is None:
+                self.stats.avg_entry_exchange = float(_ph.avg_entry)
+                self.stats.cost_basis_total_exchange = float(_ph.cost_basis_total_usd)
+            else:
+                self.stats.avg_entry_exchange = float(_venue.avg_entry_price)
+                self.stats.cost_basis_total_exchange = float(_venue.cost_basis_usd)
+                self.stats.unrealised_pnl = float(_venue.unrealized_pnl_usd)
+                self._log_basis_check(_venue.cost_basis_usd, _ph)
             try:
                 await self.sync_ytd_trade_count()
             except Exception as _ytd_exc:

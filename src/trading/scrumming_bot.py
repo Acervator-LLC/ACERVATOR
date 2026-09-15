@@ -425,6 +425,7 @@ class ScrummingBot(
 
         self._reconcile_tick_counter: int = 0
         self._reconcile_interval: int = 20
+        self._fill_history = None
 
         self._fold_tranches: list[dict] = []
         self._main_lots: list[dict] = []

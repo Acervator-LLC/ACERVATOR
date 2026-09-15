@@ -365,6 +365,22 @@ if answered <= 0:
     return None
 ```
 
+The venue's portfolio breakdown answers each position's cost basis, average
+entry price and unrealised profit, and each bot reads those three from it. The
+breakdown carries no lifetime realised figure for a spot position, so REALISED
+is the platform's first-in, first-out match over every fill the venue holds for
+each bot's symbol, one figure per bot, summed across the fleet; a bot pages the
+whole history once and then one page per refresh, and logs the venue's cost
+basis against the cost of the buys left open.
+
+`src/trading/scrumming/reconciliation.py` — `fetch_fill_history`
+
+```python
+if self._fill_history is None:
+    self._fill_history = FillHistory(self.config.symbol)
+return await self._fill_history.refresh(self.exchange)
+```
+
 Detail: [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md).
 
 ### 2026-09-09 07:23 - #128 - the header strip's spendable panel is a panel, its dot is not

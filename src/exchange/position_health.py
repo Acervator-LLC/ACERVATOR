@@ -49,6 +49,7 @@ class PositionHealth:
     trade_count: int  # total trades counted (BUY + SELL)
     first_trade_ts: Optional[float] = None
     last_trade_ts: Optional[float] = None
+    open_lot_basis_usd: float = 0.0  # sum of qty × price over the buys FIFO left open
 
 
 def compute_position_health(
@@ -128,6 +129,7 @@ def compute_position_health(
         trade_count=count,
         first_trade_ts=first_ts,
         last_trade_ts=last_ts,
+        open_lot_basis_usd=sum(lot_qty * lot_price for lot_qty, lot_price in buy_queue),
     )
 
 
