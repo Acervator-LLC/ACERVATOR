@@ -29,6 +29,7 @@ import logging
 from typing import Any, Optional
 
 from ...core import encryption
+from ...exchange.market_inspector_fetcher import DEFAULT_MIN_REFRESH_S
 from ...trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
 from .. import design_system as ds
 from . import indicator_panel_surface as ivp
@@ -174,6 +175,17 @@ CALL_TAG_FORMAT = "{symbol} {label}"
 BAND_TAG_FORMAT = "{symbol} bands"
 MESSAGE_ROW_NAME_FORMAT = "{symbol} {label}"
 NO_CALL_TEXT = "No chart carried a reversal vote."
+NO_CANDLE_TEXT = "No candles came back for {symbols}."
+UNREAD_SYMBOL_CAP = 6
+UNREAD_MORE_FORMAT = "{symbols} and {count} more"
+METHOD_SENTENCE_JOIN = " "
+
+#: The age past which a scan refetches rather than reading the universe scan's
+#: candles; ``fetch_htf_universe`` serves its own cache over the same window.
+CANDLES_FRESH_SECONDS = DEFAULT_MIN_REFRESH_S
+
+#: The age ``inspector_scan_age`` answers when no universe scan has ever run.
+NO_SCAN_AGE = float("inf")
 
 #: The share a bullish bot feeds to the bot on the opposite market condition.
 OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
@@ -1206,6 +1218,41 @@ def phase_eight_rows(scan: Any, pulls: Any) -> list:
     return rows
 
 
+def unread_symbols(scan: Any) -> tuple:
+    """Every symbol one scan read no candles for, on every timeframe it ran.
+
+    A symbol that voted on one timeframe is not named, so the sentence only
+    carries the assets nothing at all came back for.
+    """
+    frames = list(getattr(scan, "timeframes", ()) or ())
+    if not frames:
+        return ()
+    unread = set(frames[0].unread)
+    for one in frames[1:]:
+        unread &= set(one.unread)
+    return tuple(sorted(unread))
+
+
+def no_call_text(scan: Any) -> str:
+    """The method line one sector with no reversal call carries.
+
+    A scan that read no candles names the symbols outright rather than
+    reporting a vote that never happened.
+    """
+    names = unread_symbols(scan)
+    if not names:
+        return NO_CALL_TEXT
+    listed = ata_spm.SYMBOL_SEPARATOR.join(names[:UNREAD_SYMBOL_CAP])
+    if len(names) > UNREAD_SYMBOL_CAP:
+        listed = UNREAD_MORE_FORMAT.format(
+            symbols=listed, count=len(names) - UNREAD_SYMBOL_CAP
+        )
+    missing = NO_CANDLE_TEXT.format(symbols=listed)
+    if not scan.votes:
+        return missing
+    return METHOD_SENTENCE_JOIN.join((NO_CALL_TEXT, missing))
+
+
 def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
     """One scanned sector as the entry the ATA-SPM zone steps through.
 
@@ -1241,7 +1288,7 @@ def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
                 direction=strongest.direction_text,
             )
             if strongest is not None
-            else scan.note or NO_CALL_TEXT
+            else scan.note or no_call_text(scan)
         ),
     )
 
@@ -2273,15 +2320,54 @@ def inspector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
     return list((held.get(str(symbol)) or {}).get(str(timeframe)) or [])
 
 
-def sector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
+def inspector_scan_age(inspector: Any) -> float:
+    """The seconds since the Market Inspector's last universe scan.
+
+    An analyzer that has never scanned answers ``NO_SCAN_AGE``, which no
+    freshness window accepts.
+    """
+    import time
+
+    at = float(getattr(inspector, "last_scan_ts", 0.0) or 0.0)
+    if at <= 0.0:
+        return NO_SCAN_AGE
+    return max(0.0, time.time() - at)
+
+
+def connector_candles(connectors: Any, symbol: Any, timeframe: Any) -> list:
+    """The candles ``fetch_symbol_timeframe`` reads for one symbol now.
+
+    It runs on the connectors already in reach, and no connector answers
+    none, so the timeframe reads unread.
+    """
+    if not connectors:
+        return []
+    import asyncio
+
+    from ...exchange.market_inspector_fetcher import fetch_symbol_timeframe
+
+    return list(
+        asyncio.run(fetch_symbol_timeframe(connectors, symbol, timeframe)) or []
+    )
+
+
+def sector_candles(
+    inspector: Any, symbol: Any, timeframe: Any, connectors: Any = None
+) -> list:
     """The candles for one scanned symbol, from the source its map names.
 
-    A symbol ``ata_asset_maps.listing_of`` names is read through that
-    listing's venue; every other symbol comes off the universe scan.
+    A symbol ``ata_asset_maps.listing_of`` names reads through that listing's
+    venue; every other symbol takes ``inspector_candles`` while the universe
+    scan is younger than ``CANDLES_FRESH_SECONDS`` and ``connector_candles``
+    once it is older.
     """
     if ata_asset_maps.listing_of(symbol) is not None:
         return ata_asset_maps.venue_candles(symbol, timeframe)
-    return inspector_candles(inspector, symbol, timeframe)
+    if inspector_scan_age(inspector) < CANDLES_FRESH_SECONDS:
+        held = inspector_candles(inspector, symbol, timeframe)
+        if held:
+            return held
+    return connector_candles(connectors, symbol, timeframe)
 
 
 def ata_spm_skin(model: Any) -> dict:
@@ -2538,6 +2624,7 @@ class MarketInspectorScreenModel:
         self.scheduled: list = []
         self.emitted: list = []
         self.calls: list = []
+        self.set_ata_sources(sector_assets, self.scanned_candles)
         self.build_ui()
 
     def build_ui(self) -> None:
@@ -2631,7 +2718,9 @@ class MarketInspectorScreenModel:
         reads unread and Scan Now takes no exception.
         """
         try:
-            return sector_candles(self.inspector(), symbol, timeframe)
+            return sector_candles(
+                self.inspector(), symbol, timeframe, self.connectors_now()
+            )
         except Exception as exc:  # noqa: BLE001 - the source is off-process
             logger.debug(CANDLE_READ_FAILED_LOG, symbol, timeframe, exc)
             return []

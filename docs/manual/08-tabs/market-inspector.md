@@ -3008,4 +3008,116 @@ Create app button.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+
+## 2026-09-15 18:40 - #23 - Scan Now reads the market, and says so when it cannot
+
+Scan Now read no market of its own for crypto. It served whatever the Refresh
+press had left behind, and with no Refresh behind it, it served nothing and drew
+nothing. The press now reads candles for the assets it is scanning, and a scan
+that comes back empty names the assets it came back empty for.
+
+### Where the two sources are wired
+
+`MarketInspectorScreenModel` published `set_ata_sources` and nothing called it,
+so both sources read `None` for the life of the screen. `set_connector` and
+`set_vault` were the same shape on the same screen. Both hosts now call it at the
+point they are built.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the React screen model
+
+```python
+        self.set_ata_sources(sector_assets, self.scanned_candles)
+```
+
+`src/gui/market_inspector.py` - the window
+
+```python
+            self.set_ata_sources(sector_assets, self._scanned_candles)
+```
+
+Driven with the network refused, the model answered `ata_candle_source is None:
+True` before and `False` after.
+
+### Where a scan's candles come from now
+
+`sector_candles` asks three questions in order, and stops at the first that
+answers.
+
+```python
+    if ata_asset_maps.listing_of(symbol) is not None:
+        return ata_asset_maps.venue_candles(symbol, timeframe)
+    if inspector_scan_age(inspector) < CANDLES_FRESH_SECONDS:
+        held = inspector_candles(inspector, symbol, timeframe)
+        if held:
+            return held
+    return connector_candles(connectors, symbol, timeframe)
+```
+
+| The symbol | Where its candles come from |
+| ---------- | --------------------------- |
+| a forex or metals name | the venue its listing names, read now |
+| a crypto name, Refresh under 15 minutes old | the candles that Refresh read |
+| a crypto name, Refresh older or absent | the exchange, read now, one call per timeframe |
+| a crypto name, no exchange connected | nothing, and the zone says so |
+
+The third row is the new one, and it is the reason a first press now draws
+something. `connector_candles` runs `fetch_symbol_timeframe`, which sits in
+`src/exchange/market_inspector_fetcher.py` beside the Refresh press's own fetch
+and uses the connectors already attached. ATA-SPM opens no connection of its own.
+
+### The freshness window, and what happens past it
+
+`CANDLES_FRESH_SECONDS` is `DEFAULT_MIN_REFRESH_S`, the same 900 seconds
+`fetch_htf_universe` serves its own cache over. Inside that window a scan costs
+no venue traffic, because the answer is the one the fetcher would have given.
+Past it, the scan reads again.
+
+Driven with an exchange stand-in counting every call, network refused:
+
+```
+scan age 0.0 s, window 900 s   ->  0 calls, 36 votes
+scan age 960.0 s, window 900 s ->  72 calls, 36 votes
+```
+
+Both arms voted, so the call count is what separates them, and it reports a zero
+and a non-zero on the same instrument.
+
+### A scan that read nothing names the assets
+
+The method line under a sector used to read "No chart carried a reversal vote."
+whether a chart had been read and refused, or never read at all. Those are
+different things to a person holding the button.
+
+```python
+NO_CANDLE_TEXT = "No candles came back for {symbols}."
+```
+
+A symbol is named only when every ticked timeframe came back empty for it. When
+some assets voted and none carried a call, both sentences print, in that order.
+
+### Read off both running builds after a scan
+
+Both builds were driven with the same stand-in and the zone read off each
+rendered surface - the window's own labels, and the page's own text.
+
+| | window | page |
+| --- | --- | --- |
+| scan that found candles | `18 asset(s) · 36 vote(s) · 0 reversal call(s)` / "No chart carried a reversal vote." | identical |
+| scan that found none | `18 asset(s) · 0 vote(s) · 0 reversal call(s)` / "No candles came back for ADA, ALGO, APT, ATOM, AVAX, BTC and 12 more." | identical |
+
+Both builds made the same number of calls in each arm, 72 and 108. Network calls
+attempted across every run: 0.
+
+### The sentence this entry overtakes
+
+It was not reworded. It is quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:1332` - "The crypto universe scan keeps
+daily and weekly candles, so its two fast boxes report the same way." That held
+while the universe scan was the only crypto source. The five-minute and hourly
+boxes now read through the exchange like the other two, so they report as
+unserved only when the exchange itself serves no such timeframe.
+
+**Figures.** This page carries no figure and this entry adds none.
+
 Back to [the subsystem index](README.md).
