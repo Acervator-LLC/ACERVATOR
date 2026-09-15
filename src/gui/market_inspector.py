@@ -121,6 +121,7 @@ from .main_tabs.market_inspector_surface import (
     TIMEFRAME_BOX_WIDTH_PX,
     TIMEFRAME_ROW_PART,
     TIMEFRAME_TITLE,
+    class_markets,
     market_listing,
     open_chart_folder,
     sector_assets,
@@ -658,13 +659,16 @@ if _HAS_QT:
             self._ata_run_source = None
             self._ata_asset_source = None
             self._ata_candle_source = None
+            self._ata_class_source = None
             self._ata_board = ata_spm.SectorBoard()
             self._push_board = ata_spm_push.PushBoard()
             self._push_board.settings.set_vault(encryption.default_vault())
             self._push_board.settings.set_connector(
                 ata_spm_signin.build_connector(sign_in_view.sign_in_session())
             )
-            self.set_ata_sources(sector_assets, self._scanned_candles)
+            self.set_ata_sources(
+                sector_assets, self._scanned_candles, self._class_markets
+            )
             self._build_ui()
 
         def _build_ui(self) -> None:
@@ -1505,13 +1509,20 @@ if _HAS_QT:
             settings = self._push_board.settings
             self._scan_thread = threading.Thread(
                 target=self._compute_scan,
-                args=(settings.message_format, settings.max_supporting_indicators),
+                args=(
+                    settings.message_format,
+                    settings.max_supporting_indicators,
+                    settings.hits_per_scan,
+                    self._ata_at(),
+                ),
                 name=ATA_SCAN_THREAD_NAME,
                 daemon=True,
             )
             self._scan_thread.start()
 
-        def _compute_scan(self, message_format, max_supporting_indicators) -> None:
+        def _compute_scan(
+            self, message_format, max_supporting_indicators, hits_per_scan, at
+        ) -> None:
             """Run the ATA-SMP phases and report the answer to the GUI thread.
 
             ``SectorBoard.compute`` writes nothing, and ``scanFinished``
@@ -1525,6 +1536,9 @@ if _HAS_QT:
                     message_format,
                     max_supporting_indicators,
                     market_listing,
+                    self._ata_class_source or self._class_markets,
+                    hits_per_scan,
+                    at,
                 )
             except Exception as exc:  # noqa: BLE001 - the scan runs off-thread
                 logger.exception("ATA-SPM scan failed: %s", exc)
@@ -1552,10 +1566,22 @@ if _HAS_QT:
             self._render_ata_row()
             self._render_left_modules()
 
-        def set_ata_sources(self, asset_source, candle_source) -> None:
-            """Wire the assets a sector holds and the candles each one charts on."""
+        def set_ata_sources(
+            self, asset_source, candle_source, class_source=None
+        ) -> None:
+            """Wire the assets a sector holds, the candles each one charts on,
+            and the markets a class lists by volume."""
             self._ata_asset_source = asset_source
             self._ata_candle_source = candle_source
+            self._ata_class_source = class_source
+
+        def _class_markets(self, asset_class) -> list:
+            """Every market one class holds, largest volume first, on the connectors in reach."""
+            try:
+                return class_markets(asset_class, self._connectors_now())
+            except Exception as exc:  # noqa: BLE001 - the source is off-process
+                logger.debug("class market read failed on %s: %s", asset_class, exc)
+                return []
 
         def _scanned_candles(self, symbol, timeframe) -> list:
             """The candles for one scanned symbol, from the source its map names."""

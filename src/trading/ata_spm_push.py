@@ -1256,7 +1256,8 @@ class AtaSpmSettings:
     ``max_posts_per_hour`` is the ceiling ``SendRate`` obeys and
     ``max_supporting_indicators`` the cap phase four draws under.
     ``confirmation_share_pct`` is the share of the run to the Bollinger
-    midline ``confirmation_target`` reads.
+    midline ``confirmation_target`` reads, and ``hits_per_scan`` the reversal
+    calls an empty-field Scan Now stops at.
     """
 
     def __init__(self) -> None:
@@ -1264,9 +1265,20 @@ class AtaSpmSettings:
         self.max_supporting_indicators = NO_INDICATOR_CAP
         self.confirmation_share_pct = NO_SHARE_SET
         self.message_format = ata_spm.MESSAGE_FORMAT
+        self._hits_per_scan = ata_spm.DEFAULT_HITS_PER_SCAN
         self.vault: Any = None
         self.connector: Optional[Callable] = None
         self.typed: dict = {}
+
+    @property
+    def hits_per_scan(self) -> int:
+        """The reversal calls an empty-field scan stops at, never under 1."""
+        return self._hits_per_scan
+
+    @hits_per_scan.setter
+    def hits_per_scan(self, asked: Any) -> None:
+        """Take a count; ``ata_spm.hits_target`` reads 0 and text as the default."""
+        self._hits_per_scan = ata_spm.hits_target(asked)
 
     def set_vault(self, vault: Any) -> None:
         """Take the credential vault every push target's token is held in."""

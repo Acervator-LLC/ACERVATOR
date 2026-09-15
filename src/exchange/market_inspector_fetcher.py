@@ -4,7 +4,8 @@ _pick_universe ranks each connector's bulk tickers by 24 h quote volume.
 _fetch_one_symbol then pulls per-symbol OHLCV from connector.get_ohlcv on
 the connector's single-worker executor. _resample_daily_to_weekly derives
 the weekly series on the client when the venue does not list the 1w
-timeframe.
+timeframe. fetch_quote_volumes serves the 24 h quote volume per base symbol
+those same ticker rows carry, over the same cache window.
 """
 
 from __future__ import annotations
@@ -26,6 +27,11 @@ DEFAULT_MIN_REFRESH_S = 15 * 60
 _LAST_RESULT: Optional["FetchResult"] = None
 _LAST_FETCH_MONO: float = 0.0
 """The last network FetchResult and the time.monotonic() reading it landed at."""
+
+_LAST_VOLUMES: dict = {}
+_LAST_VOLUMES_MONO: float = 0.0
+"""The last 24 h quote volumes by base symbol and the time.monotonic() they landed at."""
+NO_VOLUME_AGE = float("inf")
 DAILY_BARS = 365
 WEEKLY_BARS = 200
 
@@ -101,6 +107,69 @@ def _pick_universe(
             top.append(sym)
             seen_bases.add(base_u)
     return top
+
+
+def _quote_volumes(
+    tickers: dict, accepted_quotes: Iterable[str] = DEFAULT_QUOTES
+) -> dict[str, float]:
+    """Each base symbol's largest 24 h quote volume across accepted_quotes.
+
+    Reads the same rows and the same row_quote_volume_24h as _pick_universe,
+    and drops a base in STABLECOIN_DENYLIST the same way.
+    """
+    quotes = tuple(accepted_quotes)
+    found: dict[str, float] = {}
+    for sym, tk in (tickers or {}).items():
+        if not isinstance(sym, str) or "/" not in sym:
+            continue
+        base, quote = sym.split("/", 1)
+        base_u = base.upper()
+        if quote.upper() not in quotes or base_u in STABLECOIN_DENYLIST:
+            continue
+        volume = row_quote_volume_24h(tk)
+        if volume > found.get(base_u, 0.0):
+            found[base_u] = volume
+    return found
+
+
+def _record_quote_volumes(volumes: dict) -> None:
+    """Keep volumes as _LAST_VOLUMES and stamp _LAST_VOLUMES_MONO now."""
+    global _LAST_VOLUMES, _LAST_VOLUMES_MONO
+    _LAST_VOLUMES = dict(volumes)
+    _LAST_VOLUMES_MONO = time.monotonic()
+
+
+def quote_volume_age_s() -> float:
+    """Seconds since _LAST_VOLUMES landed, NO_VOLUME_AGE before any did."""
+    if not _LAST_VOLUMES:
+        return NO_VOLUME_AGE
+    return max(0.0, time.monotonic() - _LAST_VOLUMES_MONO)
+
+
+async def fetch_quote_volumes(
+    exchange_connectors: dict,
+    min_refresh_s: float = DEFAULT_MIN_REFRESH_S,
+) -> dict[str, float]:
+    """The 24 h quote volume per base symbol across every connector, now.
+
+    Serves _LAST_VOLUMES while it is younger than min_refresh_s, which the
+    Refresh press also fills, and asks connector.get_all_tickers otherwise.
+    """
+    if quote_volume_age_s() < float(min_refresh_s):
+        return dict(_LAST_VOLUMES)
+    volumes: dict[str, float] = {}
+    for eid, connector in (exchange_connectors or {}).items():
+        try:
+            tickers = await connector.get_all_tickers()
+        except Exception as _tex:  # noqa: BLE001 - per-connector best-effort
+            logger.warning("tickers fetch failed on %s: %s", eid, _tex)
+            continue
+        for base_u, volume in _quote_volumes(tickers).items():
+            if volume > volumes.get(base_u, 0.0):
+                volumes[base_u] = volume
+    if volumes:
+        _record_quote_volumes(volumes)
+    return volumes
 
 
 def _ohlcv_to_candles(rows: list) -> list[_Candle]:
@@ -292,6 +361,7 @@ async def fetch_htf_universe(
     candles_by_symbol_by_tf: dict = {}
     closes_by_symbol: dict = {}
     universe: list = []
+    volumes: dict[str, float] = {}
     fetch_start = time.time()
     combined_error: Optional[str] = None
 
@@ -302,6 +372,9 @@ async def fetch_htf_universe(
             logger.warning("tickers fetch failed on %s: %s", eid, _tex)
             combined_error = f"{eid}: {_tex}"
             continue
+        for base_u, volume in _quote_volumes(tickers).items():
+            if volume > volumes.get(base_u, 0.0):
+                volumes[base_u] = volume
         sub_universe = _pick_universe(tickers, top_n, active)
         if not sub_universe:
             continue
@@ -327,6 +400,8 @@ async def fetch_htf_universe(
                     )
 
     elapsed = time.time() - fetch_start
+    if volumes:
+        _record_quote_volumes(volumes)
     # An empty scan returns here, so _LAST_RESULT only ever holds data.
     if not candles_by_symbol_by_tf:
         return FetchResult(
