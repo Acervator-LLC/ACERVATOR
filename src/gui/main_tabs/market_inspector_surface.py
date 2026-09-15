@@ -30,7 +30,13 @@ from typing import Any, Optional
 
 from ...core import encryption
 from ...exchange.market_inspector_fetcher import DEFAULT_MIN_REFRESH_S
-from ...trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
+from ...trading import (
+    ata_asset_maps,
+    ata_post_paths,
+    ata_spm,
+    ata_spm_push,
+    ata_spm_signin,
+)
 from .. import design_system as ds
 from . import indicator_panel_surface as ivp
 
@@ -130,14 +136,31 @@ ATA_SPM_PHASE_KEY = "phase"
 ATA_SPM_READY_KEY = "ready_to_send"
 
 ATA_SPM_NO_SECTOR_TEXT = "No sector added. Name one and press Scan Now."
-SECTOR_FIELD_PLACEHOLDER = "Sector"
-SECTOR_FIELD_TOOLTIP = (
-    "Name a market sector to scan. Every asset the sector holds is "
-    "charted and run through the twelve voters."
+TICKER_FIELD_PLACEHOLDER = "Ticker"
+TICKER_FIELD_TOOLTIP = (
+    "Name one market to read on demand. Typing offers the tickers the "
+    "sector menu beside it holds."
 )
-#: The sector field takes the row's slack, so no other control's position
+#: The ticker field takes the row's slack, so no other control's position
 #: follows from the width its own text happens to take.
-SECTOR_FIELD_MIN_WIDTH_PX = 72
+TICKER_FIELD_MIN_WIDTH_PX = 72
+
+#: The most matches one typed value offers, so a one-letter entry cannot fill
+#: the row with names.
+TICKER_MATCH_LIMIT = 8
+
+#: What the field carries for a sector the tree lists no tickers for. The
+#: field still takes a typed name.
+TICKER_NO_LIST_FORMAT = "No ticker list for {sector}. A typed name still scans."
+TICKER_FIELD_PART = "ticker-field"
+TICKER_NOTE_PART = "ticker-note"
+TICKER_MATCH_PART = "ticker-match"
+
+#: The note's own colour and size, published so the window's style sheet and
+#: the page's style read one source.
+TICKER_NOTE_COLOUR = "#ccc"
+TICKER_NOTE_SIZE_PX = 11
+TICKER_NOTE_STYLE = f"color: {TICKER_NOTE_COLOUR}; font-size: {TICKER_NOTE_SIZE_PX}px;"
 SCAN_NOW_LABEL = "Scan Now"
 SCAN_NOW_TOOLTIP = (
     "Scan this sector now on the timeframes ticked beside it, without "
@@ -215,6 +238,7 @@ DECLINE_LABEL = "Decline"
 POST_SELECTED_LABEL = "Post Selected"
 POST_ALL_LABEL = "Post All"
 FULL_AUTO_LABEL = "Send Bucket Full Auto"
+CHART_FOLDER_LABEL = "Chart Folder"
 SETTINGS_LABEL = "Settings"
 
 APPROVE_PART = "approve-button"
@@ -223,6 +247,7 @@ BUCKET_ROW_PART = "bucket-row"
 POST_SELECTED_PART = "post-selected"
 POST_ALL_PART = "post-all"
 FULL_AUTO_PART = "full-auto"
+CHART_FOLDER_PART = "chart-folder"
 SETTINGS_PART = "settings-button"
 SETTING_FIELD_PART = "setting-field"
 THUMBNAIL_PART = "post-thumbnail"
@@ -238,6 +263,7 @@ PUSH_PARTS = (
     POST_SELECTED_PART,
     POST_ALL_PART,
     FULL_AUTO_PART,
+    CHART_FOLDER_PART,
     SETTINGS_PART,
     THUMBNAIL_PART,
     CONNECT_PART,
@@ -251,9 +277,9 @@ PUSH_BUTTON_HEIGHT_PX = 36
 FIELD_HEIGHT_PX = 37
 APPROVE_WIDTH_PX = 100
 DECLINE_WIDTH_PX = 92
-#: One width for all three Ready to Send buttons, so the Qt grid and the page's
-#: own wrap break at the same count. It holds the longest label, Send Bucket
-#: Full Auto.
+#: One width for every Ready to Send button, so the Qt grid and the page's own
+#: wrap break at the same count. It holds the longest label, Send Bucket Full
+#: Auto.
 BUCKET_BUTTON_WIDTH_PX = 184
 SETTINGS_WIDTH_PX = 96
 SCAN_NOW_WIDTH_PX = 108
@@ -327,6 +353,10 @@ DECLINE_TOOLTIP = "Decline this post. No button sends a declined post."
 POST_SELECTED_TOOLTIP = "Send the post on screen, at no more than the configured rate."
 POST_ALL_TOOLTIP = "Send every approved post, at no more than the configured rate."
 FULL_AUTO_TOOLTIP = "Release approved posts without a click, at the configured rate."
+CHART_FOLDER_TOOLTIP = (
+    "Open the folder holding the chart images, in the system file browser. "
+    "Each image carries the standardised message, so it can be posted by hand."
+)
 SETTINGS_TOOLTIP = "Show the ATA-SPM accounts page, or the scan page."
 CREDENTIAL_FIELD_WIDTH_PX = 160
 SETTING_FIELD_WIDTH_PX = 160
@@ -630,6 +660,8 @@ PROPOSALS_FAILED_LOG = "topology proposal read failed: %s"
 TOPOLOGIES_MISSING_LOG = "topologies pane unavailable: %s"
 ATA_RUN_FAILED_LOG = "ATA-SPM run read failed: %s"
 SECTOR_MAP_FAILED_LOG = "sector map read failed: %s"
+CHART_FOLDER_OPENED_LOG = "ATA chart folder opened: %s"
+CHART_FOLDER_FAILED_LOG = "ATA chart folder %s not opened: %s"
 CANDLE_READ_FAILED_LOG = "scanned candle read failed on %s %s: %s"
 CONNECTORS_READ_FAILED_LOG = "exchange connector read failed: %s"
 
@@ -2020,6 +2052,9 @@ def bucket_skin(board: Any, asset_class: Any = "") -> dict:
         "full_auto_label": FULL_AUTO_LABEL,
         "full_auto_tooltip": FULL_AUTO_TOOLTIP,
         "full_auto_part": FULL_AUTO_PART,
+        "chart_folder_label": CHART_FOLDER_LABEL,
+        "chart_folder_tooltip": CHART_FOLDER_TOOLTIP,
+        "chart_folder_part": CHART_FOLDER_PART,
         "button_height_px": PUSH_BUTTON_HEIGHT_PX,
         "bucket_button_width_px": BUCKET_BUTTON_WIDTH_PX,
         "full_auto_on": bool(bucket.full_auto),
@@ -2314,6 +2349,72 @@ def sector_assets(sector: Any, asset_class: Any) -> list:
     ]
 
 
+def class_tickers(asset_class: Any) -> list:
+    """Every ticker one sector names, read from the lists already in this tree.
+
+    ``ata_spm.CLASS_CRYPTO`` reads the shipped sector map and every other class
+    reads ``ata_asset_maps.MAPS``, so no venue is asked for a symbol.
+    """
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        from ...trading.topology_proposals import load_sector_map
+
+        try:
+            held = load_sector_map()
+        except Exception as exc:  # noqa: BLE001 - the map is operator-editable
+            logger.debug(SECTOR_MAP_FAILED_LOG, exc)
+            return []
+        return sorted(str(one) for one in held)
+    found = {
+        str(one.symbol)
+        for sector in ata_asset_maps.sectors_for(asset_class)
+        for one in ata_asset_maps.listings_for(sector, asset_class)
+    }
+    return sorted(found)
+
+
+def ticker_matches(typed: Any, asset_class: Any) -> list:
+    """The tickers of ``asset_class`` that ``typed`` names, prefix matches first.
+
+    An empty entry offers nothing and ``TICKER_MATCH_LIMIT`` caps the rest.
+    """
+    asked = str(typed or "").strip().upper()
+    if not asked:
+        return []
+    starts: list = []
+    holds: list = []
+    for one in class_tickers(asset_class):
+        folded = one.upper()
+        if folded.startswith(asked):
+            starts.append(one)
+        elif asked in folded:
+            holds.append(one)
+    return (starts + holds)[:TICKER_MATCH_LIMIT]
+
+
+def ticker_note(asset_class: Any) -> str:
+    """The sentence a sector with no ticker list carries, empty where one exists."""
+    if class_tickers(asset_class):
+        return ""
+    return TICKER_NO_LIST_FORMAT.format(sector=asset_class)
+
+
+def open_chart_folder() -> str:
+    """Ask the host to show the chart image directory, and answer its path.
+
+    ``ata_post_paths.get_ata_post_root`` creates the directory first, so the
+    press opens a folder that exists before any chart is drawn.
+    """
+    root = ata_post_paths.get_ata_post_root()
+    try:
+        import webbrowser
+
+        webbrowser.open(root.as_uri(), new=2)
+        logger.info(CHART_FOLDER_OPENED_LOG, root)
+    except Exception as exc:  # noqa: BLE001 - the browser is host-supplied
+        logger.warning(CHART_FOLDER_FAILED_LOG, root, exc)
+    return str(root)
+
+
 def inspector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
     """The candles the last universe scan kept for one symbol on one timeframe."""
     held = getattr(inspector, "last_candles", None) or {}
@@ -2374,9 +2475,9 @@ def ata_spm_skin(model: Any) -> dict:
     """Every value the ATA-SPM control row is drawn from, and its state."""
     row = model.ata_row()
     return {
-        "sector_placeholder": SECTOR_FIELD_PLACEHOLDER,
-        "sector_tooltip": SECTOR_FIELD_TOOLTIP,
-        "sector_min_width_px": SECTOR_FIELD_MIN_WIDTH_PX,
+        "ticker_placeholder": TICKER_FIELD_PLACEHOLDER,
+        "ticker_tooltip": TICKER_FIELD_TOOLTIP,
+        "ticker_min_width_px": TICKER_FIELD_MIN_WIDTH_PX,
         "scan_label": SCAN_NOW_LABEL,
         "scan_tooltip": SCAN_NOW_TOOLTIP,
         "scan_width_px": SCAN_NOW_WIDTH_PX,
@@ -2397,6 +2498,12 @@ def ata_spm_skin(model: Any) -> dict:
         "field_border_px": FIELD_BORDER_PX,
         "sector_text": row["sector_text"],
         "sector_class": row["sector_class"],
+        "ticker_matches": ticker_matches(row["sector_text"], row["sector_class"]),
+        "ticker_note": ticker_note(row["sector_class"]),
+        "ticker_note_part": TICKER_NOTE_PART,
+        "ticker_note_colour": TICKER_NOTE_COLOUR,
+        "ticker_note_size_px": TICKER_NOTE_SIZE_PX,
+        "ticker_match_part": TICKER_MATCH_PART,
         "asset_classes": row["asset_classes"],
         "boxes": [list(one) for one in row["boxes"]],
         "sectors": [sector_row(one) for one in model.board.sectors],
@@ -2802,6 +2909,7 @@ class MarketInspectorScreenModel:
             POST_SELECTED_PART: lambda: self.push.post_selected(self.bucket_at()),
             POST_ALL_PART: self.push.post_all,
             FULL_AUTO_PART: self._press_full_auto,
+            CHART_FOLDER_PART: open_chart_folder,
             SETTINGS_PART: self._press_settings,
             THUMBNAIL_PART: self._press_thumbnail,
             CONNECT_PART: self._press_connect,

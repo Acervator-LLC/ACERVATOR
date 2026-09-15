@@ -58,7 +58,7 @@ ADOPT_KEY = "adopt-button"
 STEP_BACK_KEY = "step-back"
 STEP_NEXT_KEY = "step-next"
 ENTRY_KEY = "zone-entry"
-SECTOR_FIELD_KEY = "sector-field"
+TICKER_FIELD_KEY = surface.TICKER_FIELD_PART
 CLASS_BOX_KEY = "class-box"
 TIMEFRAME_BOX_KEY = "timeframe-box"
 SCAN_NOW_KEY = "scan-now"
@@ -400,7 +400,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             elif key == ENTRY_KEY:
                 self._screen.toggle_zone(request.get("value"))
                 self.push()
-            elif key == SECTOR_FIELD_KEY:
+            elif key == TICKER_FIELD_KEY:
                 self._screen.set_sector_text(request.get("value"))
                 self.push()
             elif key == CLASS_BOX_KEY:

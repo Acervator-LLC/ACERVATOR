@@ -440,11 +440,17 @@
 
   var ACTION_FIELDS = [ADOPT_REQUESTED, REFRESH_CLICKED, SHOW_ACTIVE_TOGGLED];
 
-  // The ATA-SPM control row: the sector field, its class, its four
+  // The ATA-SPM control row: the ticker field, its sector, its four
   // timeframe boxes and Scan Now, published under one bag.
-  var SECTOR_PLACEHOLDER = "sector_placeholder";
-  var SECTOR_TOOLTIP = "sector_tooltip";
-  var SECTOR_MIN_WIDTH_PX = "sector_min_width_px";
+  var TICKER_PLACEHOLDER = "ticker_placeholder";
+  var TICKER_TOOLTIP = "ticker_tooltip";
+  var TICKER_MIN_WIDTH_PX = "ticker_min_width_px";
+  var TICKER_MATCHES = "ticker_matches";
+  var TICKER_NOTE = "ticker_note";
+  var TICKER_NOTE_PART = "ticker_note_part";
+  var TICKER_NOTE_COLOUR = "ticker_note_colour";
+  var TICKER_NOTE_SIZE_PX = "ticker_note_size_px";
+  var TICKER_MATCH_PART = "ticker_match_part";
   var SCAN_LABEL = "scan_label";
   var SCAN_TOOLTIP = "scan_tooltip";
   var CLASS_TOOLTIP = "class_tooltip";
@@ -480,11 +486,17 @@
     SCAN_ROW_PART,
     SCAN_TOOLTIP,
     SECTOR_CLASS,
-    SECTOR_MIN_WIDTH_PX,
-    SECTOR_PLACEHOLDER,
     SECTOR_ROW_PART,
     SECTOR_TEXT,
-    SECTOR_TOOLTIP,
+    TICKER_MATCHES,
+    TICKER_MATCH_PART,
+    TICKER_MIN_WIDTH_PX,
+    TICKER_NOTE,
+    TICKER_NOTE_COLOUR,
+    TICKER_NOTE_PART,
+    TICKER_NOTE_SIZE_PX,
+    TICKER_PLACEHOLDER,
+    TICKER_TOOLTIP,
     TIMEFRAME_TITLE
   ];
 
@@ -655,6 +667,11 @@
 
   var SELECT_TAG = "select";
   var OPTION_TAG = "option";
+  var DATALIST_TAG = "datalist";
+
+  // The id the ticker field's list attribute names, which is what binds the
+  // field to the offered tickers.
+  var TICKER_MATCH_LIST_ID = "ticker-matches";
   // The width a Level 1 or Level 1A group takes: the pane, less one gap at
   // the right edge, which is the clearance columns_for leaves the Qt grid.
   var PANE_WIDTH_HEAD = "calc(100% - ";
@@ -744,7 +761,7 @@
   var PUSH_BUTTON_HEIGHT_PX = "push_button_height_px";
 
   var ATA_ROW_PART = "ata-row";
-  var SECTOR_FIELD_PART = "sector-field";
+  var TICKER_FIELD_PART = "ticker-field";
   var CLASS_BOX_PART = "class-box";
   var TIMEFRAME_BOX_PART = "timeframe-box";
   var SCAN_NOW_PART = "scan-now";
@@ -800,6 +817,9 @@
   var FULL_AUTO_TOOLTIP = "full_auto_tooltip";
   var FULL_AUTO_PART = "full_auto_part";
   var FULL_AUTO_ON = "full_auto_on";
+  var CHART_FOLDER_LABEL = "chart_folder_label";
+  var CHART_FOLDER_TOOLTIP = "chart_folder_tooltip";
+  var CHART_FOLDER_PART = "chart_folder_part";
   var BUCKET_SPACING_PX = "row_spacing_px";
   var BUCKET_SETTINGS = "settings";
 
@@ -1655,28 +1675,63 @@
     return style;
   }
 
-  // SectorField is where the operator names a sector to scan.
-  function SectorField(props) {
+  // TickerField is where the operator names one market to read on demand.
+  // The datalist carries what ticker_matches offered for the sector on the
+  // menu, which is the same list the Qt completer holds.
+  function TickerField(props) {
     var skin = props.skin;
-    var style = fieldStyle(skin, SECTOR_MIN_WIDTH_PX);
+    var style = fieldStyle(skin, TICKER_MIN_WIDTH_PX);
     // The field takes the row's slack, so every control right of it sits
     // where the pane edge puts it rather than where the labels end.
     style.flex = ONE;
     style.width = undefined;
-    style.minWidth = length(skin[SECTOR_MIN_WIDTH_PX]);
+    style.minWidth = length(skin[TICKER_MIN_WIDTH_PX]);
     var fieldProps = {
       type: TEXT_TYPE,
       style: style,
       value: text(skin[SECTOR_TEXT]),
-      placeholder: label(skin[SECTOR_PLACEHOLDER]),
-      title: label(skin[SECTOR_TOOLTIP]),
+      placeholder: label(skin[TICKER_PLACEHOLDER]),
+      title: label(skin[TICKER_TOOLTIP]),
+      list: TICKER_MATCH_LIST_ID,
       onChange: function (event) {
-        act(SECTOR_FIELD_PART, event.target.value);
+        act(TICKER_FIELD_PART, event.target.value);
       }
     };
-    fieldProps[PART_ATTR] = SECTOR_FIELD_PART;
-    fieldProps[ARIA_LABEL] = label(skin[SECTOR_PLACEHOLDER]);
+    fieldProps[PART_ATTR] = TICKER_FIELD_PART;
+    fieldProps[ARIA_LABEL] = label(skin[TICKER_PLACEHOLDER]);
     return element(INPUT_TAG, fieldProps);
+  }
+
+  // TickerMatches is the datalist the field's list attribute names. It draws
+  // nothing itself, so it sits beside the field rather than around it.
+  function TickerMatches(props) {
+    var skin = props.skin;
+    var listProps = { id: TICKER_MATCH_LIST_ID };
+    listProps[PART_ATTR] = text(skin[TICKER_MATCH_PART]);
+    return element(
+      DATALIST_TAG,
+      listProps,
+      asList(skin[TICKER_MATCHES]).map(function (one) {
+        return element(OPTION_TAG, { key: text(one), value: text(one) });
+      })
+    );
+  }
+
+  // TickerNote is the line a sector with no ticker list carries. A sector
+  // that holds one publishes an empty note and draws nothing.
+  function TickerNote(props) {
+    var skin = props.skin;
+    var note = text(skin[TICKER_NOTE]);
+    if (!note) {
+      return null;
+    }
+    var noteStyle = {
+      color: text(skin[TICKER_NOTE_COLOUR]),
+      fontSize: length(skin[TICKER_NOTE_SIZE_PX])
+    };
+    var noteProps = { style: noteStyle };
+    noteProps[PART_ATTR] = text(skin[TICKER_NOTE_PART]);
+    return element(DIV_TAG, noteProps, note);
   }
 
   // ClassBox picks the asset class, which is what sets the four timeframes.
@@ -1823,6 +1878,15 @@
         width: skin[BUCKET_BUTTON_WIDTH_PX],
         height: skin[BUTTON_HEIGHT_PX],
         on: skin[FULL_AUTO_ON] === true
+      }),
+      element(PushButton, {
+        key: CHART_FOLDER_PART,
+        model: model,
+        part: skin[CHART_FOLDER_PART],
+        label: skin[CHART_FOLDER_LABEL],
+        tooltip: skin[CHART_FOLDER_TOOLTIP],
+        width: skin[BUCKET_BUTTON_WIDTH_PX],
+        height: skin[BUTTON_HEIGHT_PX]
       })
     );
   }
@@ -2268,9 +2332,11 @@
       DIV_TAG,
       rowProps,
       ataLine(skin, skin[SECTOR_ROW_PART], [
-        element(SectorField, { key: SECTOR_FIELD_PART, skin: skin }),
+        element(TickerField, { key: TICKER_FIELD_PART, skin: skin }),
         element(ClassBox, { key: CLASS_BOX_PART, skin: skin })
       ]),
+      element(TickerMatches, { key: TICKER_MATCH_LIST_ID, skin: skin }),
+      element(TickerNote, { key: TICKER_NOTE, skin: skin }),
       sectionTitle(skin, skin[TIMEFRAME_TITLE]),
       wrapAt(
         skin,
@@ -3280,7 +3346,7 @@
       asked[STEP_FIELD] = key === STEP_BACK_PART ? -ONE : ONE;
     } else if (key === ENTRY_PART) {
       asked[TOGGLE_ZONE_FIELD] = value;
-    } else if (key === SECTOR_FIELD_PART) {
+    } else if (key === TICKER_FIELD_PART) {
       asked[SECTOR_TEXT_FIELD] = value;
     } else if (key === CLASS_BOX_PART) {
       asked[SECTOR_CLASS_FIELD] = value;
@@ -3334,7 +3400,9 @@
     StatusLine: StatusLine,
     ModuleGroup: ModuleGroup,
     AtaRow: AtaRow,
-    SectorField: SectorField,
+    TickerField: TickerField,
+    TickerMatches: TickerMatches,
+    TickerNote: TickerNote,
     ClassBox: ClassBox,
     TimeframeButton: TimeframeButton,
     ScanNowButton: ScanNowButton,

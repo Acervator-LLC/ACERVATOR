@@ -257,6 +257,23 @@ CALL_MARK_PX = 6
 #: No ``set_call`` reading, so ``_call_strip_h`` takes no height.
 NO_CALL_STRIP = 0
 
+#: The pixel height one wrapped ``set_caption`` line takes under the voter
+#: strip, the padding over and under the block, and its side margin.
+CAPTION_ROW_H = 13
+CAPTION_STRIP_PAD = 8
+CAPTION_SIDE_PAD = 8
+
+#: The caption's own font, which ``_wrap_caption`` measures the break in.
+CAPTION_FONT_FAMILY = "Consolas"
+CAPTION_FONT_PT = 8
+
+#: No ``set_caption`` text, so ``_caption_strip_h`` takes no height.
+NO_CAPTION_STRIP = 0
+
+#: A width ``_natural_height_for_panes`` was not given, which cannot be
+#: wrapped in, so the caption takes no height at it.
+NO_CAPTION_WIDTH = 0
+
 
 @dataclass
 class ChartImage:
@@ -524,6 +541,7 @@ if _HAS_QT:
             self._error_text = ""
             self._call_direction = ""
             self._call_readings: tuple = ()
+            self._caption_lines: tuple = ()
             self._overlay_shown: dict[str, bool] = {
                 one.key: one.starts_on for one in CHART_OVERLAYS
             }
@@ -597,6 +615,47 @@ if _HAS_QT:
             if not self._call_readings:
                 return NO_CALL_STRIP
             return CALL_STRIP_PAD * 2 + CALL_ROW_H * len(self._call_readings)
+
+        def set_caption(self, text: str) -> None:
+            """Take the standardised message this chart image carries.
+
+            ``_draw_caption_strip`` paints it under the voter strip, so a chart
+            opened from the post folder reads with its own wording.
+            """
+            self._caption_lines = tuple(
+                one.strip() for one in str(text or "").split("\n") if one.strip()
+            )
+            self._repaint()
+
+        def _wrap_caption(self, width: int) -> tuple:
+            """``_caption_lines`` broken at ``width``, measured in the caption font.
+
+            A word wider than the room left stands on its own line rather than
+            being cut.
+            """
+            metrics = QFontMetrics(QFont(CAPTION_FONT_FAMILY, CAPTION_FONT_PT))
+            room = int(width) - CAPTION_SIDE_PAD * 2
+            wrapped: list = []
+            for line in self._caption_lines:
+                held = ""
+                for word in line.split():
+                    trial = f"{held} {word}".strip()
+                    if held and metrics.horizontalAdvance(trial) > room:
+                        wrapped.append(held)
+                        held = word
+                    else:
+                        held = trial
+                if held:
+                    wrapped.append(held)
+            return tuple(wrapped)
+
+        def _caption_strip_h(self, width: int) -> int:
+            """The pixel height the wrapped caption takes under the voter strip."""
+            if not self._caption_lines or int(width) <= NO_CAPTION_WIDTH:
+                return NO_CAPTION_STRIP
+            return CAPTION_STRIP_PAD * 2 + CAPTION_ROW_H * len(
+                self._wrap_caption(width)
+            )
 
         def _voter_colour(self, voter: str) -> QColor:
             """The colour of the switched-on overlay drawing ``voter``.
@@ -719,18 +778,19 @@ if _HAS_QT:
         def set_timeframe(self, tf: str) -> None:
             self._current_tf = tf
 
-        def _natural_height_for_panes(self) -> int:
+        def _natural_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
             """Return the pixel height the toggled-on panes need.
 
             The price pane takes 220, the volume strip adds 28, each entry of
-            ``_sub_overlays_with_data`` adds 60 and ``_call_strip_h`` adds the
-            voter rows, over a 64px header.
+            ``_sub_overlays_with_data`` adds 60, ``_call_strip_h`` adds the
+            voter rows and ``_caption_strip_h`` adds the caption wrapped at
+            ``width``, over a 64px header.
             """
             base = 28 + 18 + 220 + 18  # header + OHLC + price + time
             if self._overlay_shown["volume"]:
                 base += 28
             base += len(self._sub_overlays_with_data()) * 60
-            return base + self._call_strip_h()
+            return base + self._call_strip_h() + self._caption_strip_h(width)
 
         def _sub_overlays_with_data(self) -> tuple:
             """Every sub-pane overlay that is switched on and holds values.
@@ -802,7 +862,8 @@ if _HAS_QT:
             MR = 78  # right margin (price axis + badges)
             MT = 28  # header
             OHLC_H = 18  # OHLC info row at top of price pane
-            MB = 18 + self._call_strip_h()  # time axis, then the voter strip
+            # time axis, then the voter strip, then the caption
+            MB = 18 + self._call_strip_h() + self._caption_strip_h(w)
 
             sub_overlays = self._sub_overlays_with_data()
             show_volume = self._overlay_shown["volume"]
@@ -1195,6 +1256,8 @@ if _HAS_QT:
                         p.drawText(QPointF(ML + 4, yf - 2), f"FLOOR {label}")
 
                 self._draw_call(ctx, h)
+
+            self._draw_caption_strip(p, w, h, font_sm)
 
             type_colors = {
                 "SCRUM": self.MARKER_SCRUM,
@@ -1918,7 +1981,7 @@ if _HAS_QT:
             colour = getattr(self, role)
             self._draw_call_badge(p, ctx.w, ctx.font_sm, colour)
             self._draw_call_bar(ctx, colour)
-            self._draw_call_strip(p, h, ctx.ML, ctx.font_sm)
+            self._draw_call_strip(p, ctx.w, h, ctx.ML, ctx.font_sm)
 
         def _draw_call_badge(self, p: QPainter, w: int, font_sm: QFont, colour) -> None:
             """Draw the direction word in the header band, against the right edge."""
@@ -1970,13 +2033,34 @@ if _HAS_QT:
                 )
             )
 
-        def _draw_call_strip(self, p: QPainter, h: int, left: int, font_sm: QFont):
+        def _draw_caption_strip(self, p: QPainter, w: int, h: int, font_sm: QFont):
+            """Draw the standardised message across the foot of the image.
+
+            A chart with no ``set_caption`` text draws nothing here and
+            ``_caption_strip_h`` gave it no room.
+            """
+            lines = self._wrap_caption(w) if self._caption_lines else ()
+            if not lines:
+                return
+            top = h - self._caption_strip_h(w) + CAPTION_STRIP_PAD
+            p.setFont(font_sm)
+            p.setPen(QPen(self.TEXT_DIM))
+            for index, line in enumerate(lines):
+                p.drawText(
+                    CAPTION_SIDE_PAD,
+                    int(top + index * CAPTION_ROW_H + CAPTION_ROW_H - 3),
+                    line,
+                )
+
+        def _draw_call_strip(
+            self, p: QPainter, w: int, h: int, left: int, font_sm: QFont
+        ):
             """Draw one row per ``_call_readings`` entry under the time axis.
 
-            Each row's square carries the colour of the overlay drawing that
-            voter, which ``_voter_colour`` resolves.
+            The strip sits above the caption, so ``_caption_strip_h`` at ``w``
+            is taken off the foot first.
             """
-            top = h - self._call_strip_h() + CALL_STRIP_PAD
+            top = h - self._caption_strip_h(w) - self._call_strip_h() + CALL_STRIP_PAD
             p.setFont(font_sm)
             for index, (voter, text) in enumerate(self._call_readings):
                 y = top + index * CALL_ROW_H
@@ -2330,14 +2414,15 @@ if _HAS_QT:
         width_px: int = POST_IMAGE_WIDTH_PX,
         direction: str = "",
         readings=(),
+        caption: str = "",
     ) -> ChartImage:
         """Draw ``candles`` through ``ChartPainter`` and write a PNG at ``path``.
 
         No window is shown: ``paint_to`` draws onto a ``QImage``, which Qt
         allows off the GUI thread. ``voters`` are the confirming indicators,
-        ``max_overlays`` is the cap the ATA-SPM settings page sets, and
-        ``set_call`` takes ``direction`` with the ``readings`` those voters
-        published.
+        ``max_overlays`` is the cap the ATA-SPM settings page sets, ``set_call``
+        takes ``direction`` with the ``readings`` those voters published, and
+        ``set_caption`` takes the standardised message the image carries.
         """
         if QGuiApplication.instance() is None:
             return ChartImage(note=NO_APPLICATION_NOTE)
@@ -2349,13 +2434,14 @@ if _HAS_QT:
         painter.show_only(drawn)
         painter.set_candles(held)
         painter.set_call(direction, readings)
+        painter.set_caption(caption)
         if not held:
             painter.set_error(
                 NO_CANDLES_NOTE.format(symbol=symbol, timeframe=timeframe)
             )
         if undrawn:
             painter.set_source_label(NOT_DRAWN_NOTE.format(voters=", ".join(undrawn)))
-        height_px = painter._natural_height_for_panes()
+        height_px = painter._natural_height_for_panes(int(width_px))
         image = QImage(int(width_px), int(height_px), QImage.Format_ARGB32)
         image.fill(painter.BG_TOP)
         image_painter = QPainter(image)
@@ -2387,8 +2473,9 @@ else:
         width_px: int = POST_IMAGE_WIDTH_PX,
         direction: str = "",
         readings=(),
+        caption: str = "",
     ) -> ChartImage:
         """Answer that no image was drawn, because PySide6 is not installed."""
         del candles, symbol, timeframe, path, voters, max_overlays, tokens, width_px
-        del direction, readings
+        del direction, readings, caption
         return ChartImage(note=NO_QT_NOTE)
