@@ -162,6 +162,16 @@ SECTOR_LINE_FORMAT = "{sector} ({asset_class})"
 SECTOR_META_FORMAT = "{assets} asset(s) · {votes} vote(s) · {calls} reversal call(s)"
 MARKET_LINE_FORMAT = "{ticker} in {asset_class}"
 MARKET_META_FORMAT = "1 market · {votes} vote(s) · {calls} reversal call(s)"
+VOLUME_LINE_FORMAT = "{asset_class} by volume"
+VOLUME_META_FORMAT = "{read} market(s) read · {hits} hit(s) · {stop}"
+STOPPED_AT_TARGET_TEXT = "stopped at target"
+SECTOR_EXHAUSTED_TEXT = "sector exhausted"
+
+#: The reversal calls an empty-field scan stops at until the operator sets a count.
+DEFAULT_HITS_PER_SCAN = 3
+#: A ``Sector`` carrying this reads its whole list and stops at no count.
+NO_HIT_TARGET = 0
+NO_MARKETS_READ = 0
 TIMEFRAME_VOTE_FORMAT = (
     "{votes} vote(s), {unread} without candles, {short} under {floor} candles"
 )
@@ -215,6 +225,7 @@ OPPOSITE_DIRECTION = {
 
 CANDLE_READ_FAILED_LOG = "ATA-SPM candle read failed on %s %s: %s"
 MARKET_READ_FAILED_LOG = "ATA-SPM market read failed on %s: %s"
+CLASS_READ_FAILED_LOG = "ATA-SPM market list read failed on %s: %s"
 CANDLE_SHAPE_LOG = "ATA-SPM candle row is not OHLCV: %s"
 ASSET_READ_FAILED_LOG = "ATA-SPM asset read failed on %s: %s"
 VOTE_FAILED_LOG = "ATA-SPM vote failed on %s %s: %s"
@@ -268,13 +279,29 @@ def confidence_pct(confidence: Any) -> int:
     return round(float(confidence) * PERCENT_PER_RATIO_UNIT)
 
 
+def hits_target(asked: Any) -> int:
+    """The reversal calls one empty-field scan stops at.
+
+    Text that is not a whole number, and any count under 1, read as
+    ``DEFAULT_HITS_PER_SCAN``.
+    """
+    try:
+        held = int(str(asked).strip())
+    except (TypeError, ValueError):
+        return DEFAULT_HITS_PER_SCAN
+    if held < 1:
+        return DEFAULT_HITS_PER_SCAN
+    return held
+
+
 @dataclass
 class Sector:
     """One scan the ATA-SPM zone holds, and the timeframes ticked on it.
 
     ``ticker`` names one market inside the sector and ``listings`` holds that
     market's own row, so ``_listings_for`` reads one market and asks no asset
-    source; a ``Sector`` carrying neither reads the whole sector.
+    source; a ``hit_target`` above ``NO_HIT_TARGET`` reads ``listings`` market
+    by market and stops at that many ``AssetVote.is_reversal`` votes.
     """
 
     name: str
@@ -282,6 +309,7 @@ class Sector:
     timeframes: tuple = ()
     ticker: str = ""
     listings: tuple = ()
+    hit_target: int = NO_HIT_TARGET
 
     def ticked(self) -> tuple:
         """The ticked timeframes, in the order this sector's class lists them."""
@@ -436,7 +464,9 @@ class SectorScan:
     """What one scan returned across every timeframe ticked on it.
 
     A ``ticker`` says the scan read one market, which is what
-    ``MARKET_LINE_FORMAT`` and ``MARKET_META_FORMAT`` are written for.
+    ``MARKET_LINE_FORMAT`` and ``MARKET_META_FORMAT`` are written for; a
+    ``hit_target`` says it read ``markets_read`` markets by volume, which is
+    what ``VOLUME_META_FORMAT`` and ``stopped_at_target`` are written for.
     """
 
     sector: str
@@ -449,6 +479,9 @@ class SectorScan:
     deferred: tuple = ()
     unlisted: tuple = ()
     unserved: tuple = ()
+    hit_target: int = NO_HIT_TARGET
+    markets_read: int = NO_MARKETS_READ
+    stopped_at_target: bool = False
 
     @property
     def supported(self) -> int:
@@ -618,10 +651,11 @@ def candles_for(candle_source: Any, symbol: str, timeframe: str) -> list:
 def _listings_for(asset_source: Any, sector: Sector) -> list:
     """The asset rows one source holds for one sector.
 
-    A ``Sector.listings`` naming one market is answered outright, and a source
-    that raises answers none, so the sector reads its unwired note.
+    A ``Sector.listings`` naming one market, and a ``Sector.hit_target``, are
+    answered from ``listings`` outright; a source that raises answers none, so
+    the sector reads its unwired note.
     """
-    if sector.listings:
+    if sector.listings or sector.hit_target > NO_HIT_TARGET:
         return list(sector.listings)
     if asset_source is None:
         return []
@@ -650,6 +684,21 @@ def market_of(market_source: Any, ticker: Any, asset_class: Any) -> Any:
     except Exception as exc:  # noqa: BLE001 - the source is host-supplied
         logger.debug(MARKET_READ_FAILED_LOG, ticker, exc)
         return None
+
+
+def markets_of(class_source: Any, asset_class: Any) -> list:
+    """Every asset row one class holds, largest volume first.
+
+    A source that is None, and a source that raises, both answer no rows, so
+    the scan reads ``NO_ASSET_TEXT``.
+    """
+    if class_source is None:
+        return []
+    try:
+        return list(class_source(asset_class) or [])
+    except Exception as exc:  # noqa: BLE001 - the source is host-supplied
+        logger.debug(CLASS_READ_FAILED_LOG, asset_class, exc)
+        return []
 
 
 def is_listed(listing: Any) -> bool:
@@ -705,6 +754,17 @@ def evaluate(
             )
         elif not ticked:
             scan.note = NO_TIMEFRAME_TEXT
+        if sector.hit_target > NO_HIT_TARGET:
+            scan.hit_target = int(sector.hit_target)
+            scan.timeframes, scan.markets_read, scan.stopped_at_target = (
+                _scan_until_hits(
+                    voter, assets, served, candle_source, cost, ticker, scan.hit_target
+                )
+            )
+            scan.assets = assets[: scan.markets_read]
+            scan.round_seconds = cost.per_round_s
+            scans.append(scan)
+            continue
         for at, timeframe in enumerate(served):
             if len(scan.timeframes) >= timeframes_supported(
                 cost.per_round_s, sector.asset_class
@@ -729,31 +789,82 @@ def _scan_timeframe(
 ) -> TimeframeScan:
     """One timeframe of one sector: a vote per asset the source can read.
 
-    A history under ``MIN_CANDLES_TO_VOTE`` joins ``short`` instead of voting,
-    and every asset read is one round ``cost`` takes the seconds of.
+    ``_vote_one`` reads each asset, so a history under ``MIN_CANDLES_TO_VOTE``
+    joins ``short`` and every asset read is one round ``cost`` takes.
     """
     found = TimeframeScan(timeframe=timeframe)
     for symbol in assets:
-        started = clock()
-        candles = candles_for(candle_source, symbol, timeframe)
-        if not candles:
-            found.unread.append(symbol)
-            cost.take(clock() - started)
-            continue
-        if len(candles) < MIN_CANDLES_TO_VOTE:
-            found.short.append(symbol)
-            cost.take(clock() - started)
-            continue
-        try:
-            summary = voter.compute_all(candles, timeframe)
-        except Exception as exc:  # noqa: BLE001 - one asset never stops a scan
-            logger.debug(VOTE_FAILED_LOG, symbol, timeframe, exc)
-            found.unread.append(symbol)
-            cost.take(clock() - started)
-            continue
-        found.votes.append(build_vote(symbol, timeframe, summary))
-        cost.take(clock() - started)
+        _vote_one(voter, symbol, timeframe, candle_source, cost, clock, found)
     return found
+
+
+def _vote_one(
+    voter: VotingEngine,
+    symbol: str,
+    timeframe: str,
+    candle_source: Any,
+    cost: RoundCost,
+    clock: Callable,
+    found: TimeframeScan,
+) -> Optional[AssetVote]:
+    """One asset on one timeframe: read, vote, and record the round on ``found``.
+
+    Answers the ``AssetVote`` cast, or None when the asset joined ``unread``
+    or ``short``.
+    """
+    started = clock()
+    candles = candles_for(candle_source, symbol, timeframe)
+    if not candles:
+        found.unread.append(symbol)
+        cost.take(clock() - started)
+        return None
+    if len(candles) < MIN_CANDLES_TO_VOTE:
+        found.short.append(symbol)
+        cost.take(clock() - started)
+        return None
+    try:
+        summary = voter.compute_all(candles, timeframe)
+    except Exception as exc:  # noqa: BLE001 - one asset never stops a scan
+        logger.debug(VOTE_FAILED_LOG, symbol, timeframe, exc)
+        found.unread.append(symbol)
+        cost.take(clock() - started)
+        return None
+    vote = build_vote(symbol, timeframe, summary)
+    found.votes.append(vote)
+    cost.take(clock() - started)
+    return vote
+
+
+def _scan_until_hits(
+    voter: VotingEngine,
+    assets: list,
+    timeframes: list,
+    candle_source: Any,
+    cost: RoundCost,
+    clock: Callable,
+    target: int,
+) -> tuple:
+    """Market by market, every timeframe each, until ``target`` reversal calls land.
+
+    Answers one ``TimeframeScan`` per timeframe, the count of markets read,
+    and whether the ``target`` stopped the scan before ``assets`` ran out.
+    """
+    frames = [TimeframeScan(timeframe=one) for one in timeframes]
+    if not frames:
+        return frames, NO_MARKETS_READ, False
+    hits = 0
+    read = NO_MARKETS_READ
+    for symbol in assets:
+        read += 1
+        for found in frames:
+            vote = _vote_one(
+                voter, symbol, found.timeframe, candle_source, cost, clock, found
+            )
+            if vote is not None and vote.is_reversal:
+                hits += 1
+                if hits >= target:
+                    return frames, read, True
+    return frames, read, False
 
 
 def agreement_for(scans: Any, vote: AssetVote) -> TimeframeAgreement:
@@ -1170,6 +1281,16 @@ class SectorBoard:
             for one in timeframes_for(self.asset_class)
         ]
 
+    def ticked_at(self, at: Any) -> tuple:
+        """The timeframes ticked on the sector one zone index shows.
+
+        While the board holds none, ``timeframes`` carries them.
+        """
+        sector = self.sector_at(at)
+        if sector is None:
+            return tuple(self.timeframes)
+        return tuple(sector.timeframes)
+
     def compute(
         self,
         asset_source: Optional[Callable] = None,
@@ -1177,28 +1298,37 @@ class SectorBoard:
         message_format: Optional[str] = None,
         max_supporting_indicators: Any = NO_INDICATOR_CAP,
         market_source: Optional[Callable] = None,
+        class_source: Optional[Callable] = None,
+        hit_target: Any = DEFAULT_HITS_PER_SCAN,
+        at: Any = 0,
     ) -> tuple:
         """The scans this press holds, the index to show, the ``run`` and a note.
 
         A ``self.text`` that ``market_of`` places scans that one market, a
         ``self.text`` the ``asset_source`` answers rows for scans that whole
-        sector, and anything else answers ``TICKER_UNHELD_FORMAT`` and runs
-        nothing; nothing on the board is written until ``take``.
+        sector, anything else answers ``TICKER_UNHELD_FORMAT`` and runs
+        nothing, and an empty ``self.text`` scans what ``class_source`` lists
+        for ``asset_class`` until ``hit_target`` reversal calls; nothing on the
+        board is written until ``take``.
         """
         sectors = list(self.sectors)
         added = NO_NEW_SECTOR
         named = self.text
+        ticked = self.ticked_at(at)
         if named:
             placed = market_of(market_source, named, self.asset_class)
             if placed is not None:
-                added = self._market_at(sectors, symbol_of(placed), placed)
+                added = self._market_at(sectors, symbol_of(placed), placed, ticked)
             elif self._sector_holds(asset_source, named):
-                added = self._sector_at(sectors, named)
+                added = self._sector_at(sectors, named, ticked)
             else:
                 note = TICKER_UNHELD_FORMAT.format(
                     asset_class=self.asset_class, ticker=named
                 )
                 return (sectors, added, None, note)
+        elif class_source is not None:
+            rows = markets_of(class_source, self.asset_class)
+            added = self._volume_at(sectors, rows, hits_target(hit_target), ticked)
         found = (
             run(
                 sectors,
@@ -1217,20 +1347,22 @@ class SectorBoard:
         asked = Sector(name=named, asset_class=self.asset_class)
         return bool(_listings_for(asset_source, asked))
 
-    def _sector_at(self, sectors: list, named: str) -> int:
+    def _sector_at(self, sectors: list, named: str, ticked: tuple) -> int:
         """The index one new sector took in ``sectors``, ``NO_NEW_SECTOR`` when held."""
-        if any(one.name == named for one in sectors):
+        if any(one.name == named and not one.hit_target for one in sectors):
             return NO_NEW_SECTOR
         sectors.append(
             Sector(
                 name=named,
                 asset_class=self.asset_class,
-                timeframes=self.timeframes,
+                timeframes=ticked,
             )
         )
         return len(sectors) - 1
 
-    def _market_at(self, sectors: list, ticker: str, listing: Any) -> int:
+    def _market_at(
+        self, sectors: list, ticker: str, listing: Any, ticked: tuple
+    ) -> int:
         """The index of one market's scan in ``sectors``, appending it when new."""
         for at, one in enumerate(sectors):
             if one.ticker == ticker and one.asset_class == self.asset_class:
@@ -1239,9 +1371,32 @@ class SectorBoard:
             Sector(
                 name=ticker,
                 asset_class=self.asset_class,
-                timeframes=self.timeframes,
+                timeframes=ticked,
                 ticker=ticker,
                 listings=(listing,),
+            )
+        )
+        return len(sectors) - 1
+
+    def _volume_at(self, sectors: list, rows: list, target: int, ticked: tuple) -> int:
+        """The index of ``asset_class``'s by-volume scan in ``sectors``.
+
+        A held one takes ``rows`` and ``target`` again, so a re-press reads
+        the class's markets as they rank now; a new one is appended.
+        """
+        for at, one in enumerate(sectors):
+            if one.hit_target > NO_HIT_TARGET and one.asset_class == self.asset_class:
+                one.name = self.asset_class
+                one.listings = tuple(rows)
+                one.hit_target = target
+                return at
+        sectors.append(
+            Sector(
+                name=self.asset_class,
+                asset_class=self.asset_class,
+                timeframes=ticked,
+                listings=tuple(rows),
+                hit_target=target,
             )
         )
         return len(sectors) - 1
@@ -1261,6 +1416,9 @@ class SectorBoard:
         message_format: Optional[str] = None,
         max_supporting_indicators: Any = NO_INDICATOR_CAP,
         market_source: Optional[Callable] = None,
+        class_source: Optional[Callable] = None,
+        hit_target: Any = DEFAULT_HITS_PER_SCAN,
+        at: Any = 0,
     ) -> int:
         """``compute`` and ``take`` on one thread, answering the index to show.
 
@@ -1272,6 +1430,9 @@ class SectorBoard:
             message_format,
             max_supporting_indicators,
             market_source,
+            class_source,
+            hit_target,
+            at,
         )
         return self.take(sectors, added, found, note)
 

@@ -3797,4 +3797,190 @@ the UTC minute of those commits, the stamp alone changed on each line.
 **Figures.** This entry adds no figure to the page. A count of the markdown
 image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-15 18:10 - #23 - An empty ticker field scans the sector by volume until the hits land
+
+Scan Now with nothing in the ticker field re-ran whatever scans the zone
+already held, and on a fresh zone it ran nothing. The press now reads the
+sector the menu shows, market by market from the largest volume down, on every
+ticked timeframe, and stops the moment the target number of hits has landed. A
+new setting on Level 1, Hits per scan, holds that target and starts at 3.
+
+### What one press does with each of the three things the field can hold
+
+| the field holds | the press |
+| --------------- | --------- |
+| a ticker the sector lists | reads that one market, on every ticked timeframe, unchanged |
+| a sector name the map lists | reads that sector's assets, unchanged |
+| nothing | reads the sector menu's markets, largest volume first, until Hits per scan reversal calls land |
+
+### What a hit is
+
+A hit is one market on one timeframe whose twelve-voter consensus and Bollinger
+voter name the same non-neutral direction. It is the vote the zone already
+counts as a reversal call, so the target and the zone count one thing.
+
+`src/trading/ata_spm.py` — the vote a hit is
+
+```python
+    def is_reversal(self) -> bool:
+        """True while the band voter and the consensus name one direction.
+
+        A ``SignalDirection.NEUTRAL`` on either side is not a reversal.
+        """
+        if self.direction == SignalDirection.NEUTRAL:
+            return False
+        return self.band_direction == self.direction
+```
+
+### Where the markets and their volume come from
+
+The sector menu names the asset class, and every market of that class is read
+from the lists already in this tree. For crypto the order is the venue's own
+24-hour quote volume, the same figure the Refresh press ranks its universe by,
+read on the connectors already attached and served from a cache for 900
+seconds. A Refresh fills the same cache, so a scan inside that window costs no
+ticker call.
+
+`src/exchange/market_inspector_fetcher.py` — the figures and their window
+
+```python
+async def fetch_quote_volumes(
+    exchange_connectors: dict,
+    min_refresh_s: float = DEFAULT_MIN_REFRESH_S,
+) -> dict[str, float]:
+    """The 24 h quote volume per base symbol across every connector, now.
+
+    Serves _LAST_VOLUMES while it is younger than min_refresh_s, which the
+    Refresh press also fills, and asks connector.get_all_tickers otherwise.
+    """
+```
+
+`src/gui/main_tabs/market_inspector_surface.py` — the order the scan walks
+
+```python
+def class_markets(asset_class: Any, connectors: Any = None) -> list:
+    """Every market one class holds, largest 24 h quote volume first.
+
+    Crypto ranks ``class_tickers`` by ``class_volumes``, a name with no figure
+    last by name; forex and metals keep ``ata_asset_maps.MAPS`` order, which
+    lists each sector from its highest liquidity tier down.
+    """
+```
+
+| The sector menu shows | The order the markets are read in |
+| --------------------- | --------------------------------- |
+| crypto, with an exchange connected | the venue's 24-hour quote volume, largest first; a name the venue lists no figure for comes last, by name |
+| crypto, with no exchange connected | by name |
+| forex | the asset map's order: the seven USD majors, then the minors, then the exotics; every forex bar carries volume 0, so no volume figure exists |
+| metals | the asset map's order: the four spot pairs, then the four funds |
+| stocks, derivatives | no list exists, and the zone says so |
+
+### The scan walks market by market and stops at the target
+
+Every earlier scan read a whole list on one timeframe before the next. The
+by-volume scan reads one market on every ticked timeframe, counts its hits,
+and moves to the next. The moment the target lands the scan ends, and the
+markets after it are not read.
+
+`src/trading/ata_spm.py` — the loop and its two exits
+
+```python
+    for symbol in assets:
+        read += 1
+        for found in frames:
+            vote = _vote_one(
+                voter, symbol, found.timeframe, candle_source, cost, clock, found
+            )
+            if vote is not None and vote.is_reversal:
+                hits += 1
+                if hits >= target:
+                    return frames, read, True
+    return frames, read, False
+```
+
+### The setting, and what zero does
+
+Hits per scan sits under the four settings on Level 1, in both builds, and
+starts at 3. A box left empty, a zero and a negative number all read as 3, so
+no scan can stop before it has read anything.
+
+`src/trading/ata_spm.py` — the count every press reads
+
+```python
+def hits_target(asked: Any) -> int:
+    """The reversal calls one empty-field scan stops at.
+
+    Text that is not a whole number, and any count under 1, read as
+    ``DEFAULT_HITS_PER_SCAN``.
+    """
+```
+
+The five settings live for the life of the process. A restart reads the
+ceiling as unset and Hits per scan as 3.
+
+### The zone says what the scan did
+
+`src/trading/ata_spm.py` — the two lines a by-volume entry is drawn from
+
+```python
+VOLUME_LINE_FORMAT = "{asset_class} by volume"
+VOLUME_META_FORMAT = "{read} market(s) read · {hits} hit(s) · {stop}"
+STOPPED_AT_TARGET_TEXT = "stopped at target"
+SECTOR_EXHAUSTED_TEXT = "sector exhausted"
+```
+
+### Read off both running builds
+
+Both builds were driven with one stand-in listing of 20 markets carrying
+volumes 2000 down to 100 and one stand-in candle source, the network refused.
+The candle source answers a tape the real voting engine reads as a bearish
+reversal call on the daily timeframe for the markets ranked 3, 7 and 15, and a
+tape it reads as a vote with no call for every other market and timeframe.
+
+| Hits per scan | window | page | markets read |
+| ------------- | ------ | ---- | ------------ |
+| 3 | `crypto by volume` / `15 market(s) read · 3 hit(s) · stopped at target` | identical | 1 to 15; 16 to 20 not read |
+| 1 | `crypto by volume` / `3 market(s) read · 1 hit(s) · stopped at target` | identical | 1 to 3 |
+| 10 | `crypto by volume` / `20 market(s) read · 3 hit(s) · sector exhausted` | identical | all 20 |
+| 3, `BTC` typed | `BTC in crypto` / `1 market · 2 vote(s) · 0 reversal call(s)` | identical | `BTC` only |
+
+The ticker press reads byte for byte what it read before this entry, 197
+bytes of zone line, entry and symbol, and the same comparison run against the
+empty-field entry reports a difference at its first byte.
+
+The ordering was driven on a stand-in connector serving six ticker rows: SOL
+at 900, BTC at 500, ETH at 300 and 100 under two quotes, DOGE with a base
+volume and a last price, and USDT at 9999. The crypto list read SOL, BTC, ETH,
+DOGE and then the names with no figure by name; USDT was dropped as a
+stablecoin; the second read inside the window made no connector call. Network
+calls attempted across every run: 0.
+
+Level 1 and the zone were rendered in both builds inside a 1200 by 900 host and
+inside the 1400 by 760 pane the smallest window leaves. Hits per scan reads 3
+in both at both sizes. Inside the 760 pane the ATA-SPM zone's entry shows one
+line in the window and none on the page, in both builds, before and after this
+entry.
+
+### Four sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:3231` - "The sector menu still picks
+the sector, and an empty field still scans the sectors the board holds." An
+empty field now scans the sector menu's markets by volume.
+
+`docs/manual/08-tabs/market-inspector.md:3240` - "| nothing | runs every scan
+the board already holds, unchanged |". The row above replaces it.
+
+`docs/manual/08-tabs/market-inspector.md:567` - "Four settings sit there, each
+one read by a phase, and under them one credential row per push target." Five
+sit there now; the fifth is read by Scan Now.
+
+`docs/manual/08-tabs/market-inspector.md:2259` - "the five asset classes and
+the four settings each keep their own control". Five settings keep their own
+control.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
