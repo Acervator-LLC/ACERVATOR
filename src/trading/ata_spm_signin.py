@@ -16,6 +16,7 @@ import http.server
 import logging
 import secrets
 import threading
+import urllib.error
 import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -126,7 +127,18 @@ IS_LOOPBACK_TEXT = "this venue redirects to a loopback address, which needs no v
 WRONG_HOST_FORMAT = "the sign-in view reached {host}, which is not the venue"
 NO_POLICY_FORMAT = "No redirect address for {target}."
 
+#: How much of a refusal body ``refusal_text`` reads. RFC 6749 section 5.2 puts
+#: the whole reason in two short fields, so anything past this is not one.
+REFUSAL_BODY_LIMIT = 4096
+
+#: What Level 1A prints when a venue refuses. ``VENUE_SAID_FORMAT`` carries the
+#: venue's own reason, without which the page names only the status.
+HTTP_REFUSAL_FORMAT = "HTTP {status} {reason}"
+VENUE_SAID_FORMAT = "{http}, and the venue said {said}"
+VENUE_REASON_FORMAT = "{error}: {description}"
+
 CALLBACK_LOG = "ATA-SPM sign-in callback refused: %s"
+REFUSAL_BODY_LOG = "ATA-SPM sign-in refusal body unread: %s"
 
 
 class SignInError(Exception):
@@ -296,11 +308,46 @@ def open_in_browser(url: str) -> None:
     webbrowser.open(str(url), new=2)
 
 
+def venue_reason(answered: Any) -> str:
+    """``ERROR_PARAM`` and ``ERROR_DESCRIPTION_PARAM`` out of one refusal body.
+
+    ``VENUE_REASON_FORMAT`` joins the two, and no other value the venue
+    answered is read out.
+    """
+    held = dict(answered or {})
+    code = str(held.get(ERROR_PARAM, "") or "").strip()
+    said = str(held.get(ERROR_DESCRIPTION_PARAM, "") or "").strip()
+    if code and said:
+        return VENUE_REASON_FORMAT.format(error=code, description=said)
+    return said or code
+
+
+def refusal_text(error: Any) -> str:
+    """``HTTP_REFUSAL_FORMAT`` for one refusal, with ``venue_reason`` inside it.
+
+    A body no longer than ``REFUSAL_BODY_LIMIT`` is read, and one that is not
+    JSON leaves ``HTTP_REFUSAL_FORMAT`` alone.
+    """
+    import json
+
+    held = HTTP_REFUSAL_FORMAT.format(
+        status=getattr(error, "code", ""), reason=getattr(error, "reason", "")
+    )
+    try:
+        answered = json.loads(bytes(error.read(REFUSAL_BODY_LIMIT)).decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 - the body is venue-supplied
+        logger.debug(REFUSAL_BODY_LOG, exc)
+        return held
+    said = venue_reason(answered)
+    return VENUE_SAID_FORMAT.format(http=held, said=said) if said else held
+
+
 def urlopen_transport(request: SignInRequest) -> dict:
     """Send one ``SignInRequest`` through ``safe_urlopen`` and answer its JSON.
 
     ``HTTPS_SCHEME`` is the whole allowlist handed to ``SafeRequest``, which
-    narrows the default and refuses every other scheme at construction.
+    narrows the default and refuses every other scheme at construction, and a
+    venue refusing raises ``SignInError`` carrying ``refusal_text``.
     """
     import json
 
@@ -321,10 +368,16 @@ def urlopen_transport(request: SignInRequest) -> dict:
             AUTHORIZATION_HEADER, "Basic " + base64.b64encode(pair.encode()).decode()
         )
     sent.method = str(request.method)
-    with safe_urlopen(
-        sent, body, timeout=TRANSPORT_TIMEOUT_SECONDS, allowed_schemes=(HTTPS_SCHEME,)
-    ) as answered:
-        return dict(json.loads(answered.read().decode()))
+    try:
+        with safe_urlopen(
+            sent,
+            body,
+            timeout=TRANSPORT_TIMEOUT_SECONDS,
+            allowed_schemes=(HTTPS_SCHEME,),
+        ) as answered:
+            return dict(json.loads(answered.read().decode()))
+    except urllib.error.HTTPError as exc:
+        raise SignInError(refusal_text(exc)) from exc
 
 
 @dataclass
