@@ -26,6 +26,7 @@ class ReconciliationEngineMixin:
     # is created.
     _bus: Any
     _current_holdings: float
+    _fill_history: Any
     _get_balance: Callable[..., Any]
     _get_ticker: Callable[..., Any]
     _main_lots: list[dict]
@@ -37,6 +38,14 @@ class ReconciliationEngineMixin:
     stats: Any
 
     EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
+
+    async def fetch_fill_history(self) -> Optional[list]:
+        """Every fill for ``config.symbol`` from ``_fill_history``, refreshed; None when the exchange answers None."""
+        if self._fill_history is None:
+            from ...exchange.fill_history import FillHistory
+
+            self._fill_history = FillHistory(self.config.symbol)
+        return await self._fill_history.refresh(self.exchange)
 
     async def refresh_exchange_position_health(self, force: bool = False) -> bool:
         """Refresh the exchange-pulled fields on ``stats``.
@@ -60,7 +69,7 @@ class ReconciliationEngineMixin:
         try:
             from ...exchange.position_health import compute_position_health
 
-            _trades = await self.exchange.get_my_trades(self.config.symbol, limit=500)
+            _trades = await self.fetch_fill_history()
             if _trades is None:
                 return False
             _asset_base = self.config.symbol.split("/")[0]

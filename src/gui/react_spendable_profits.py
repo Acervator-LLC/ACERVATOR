@@ -103,6 +103,23 @@ def strip_html(theme: object = None) -> str:
     return page_html((), STRIP_SCRIPT_ASSETS, STRIP_BODY, theme, (HOST_SCRIPT,))
 
 
+def _as_json(expression: str) -> str:
+    """``expression`` inside ``JSON.stringify``; ``runJavaScript`` hands a JS array to Python as ``''``."""
+    return "JSON.stringify(" + expression + ")"
+
+
+def _parsed(callback: Callable[[Any], None]) -> Callable[[Any], None]:
+    """A receiver handing ``callback`` the ``json.loads`` of a page result, or the result itself when it is not JSON."""
+
+    def receive(result: Any) -> None:
+        try:
+            callback(json.loads(result))
+        except (TypeError, ValueError):
+            callback(result)
+
+    return receive
+
+
 def draw_script(model: dict) -> str:
     """The one JS statement that hands ``model`` to the page."""
     return "window.acervatorProfitsDraw(" + json.dumps(model, ensure_ascii=True) + ");"
@@ -211,7 +228,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             """
             if not self._page_ready:
                 return False
-            self._web.page().runJavaScript(VALUE_TEXTS_JS, callback)
+            self._web.page().runJavaScript(_as_json(VALUE_TEXTS_JS), _parsed(callback))
             return True
 
         def glyphs(self, callback: Callable[[Any], None]) -> bool:
@@ -221,7 +238,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             """
             if not self._page_ready:
                 return False
-            self._web.page().runJavaScript(DOT_GLYPHS_JS, callback)
+            self._web.page().runJavaScript(_as_json(DOT_GLYPHS_JS), _parsed(callback))
             return True
 
         def _push(self) -> None:

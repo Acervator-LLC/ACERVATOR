@@ -90,6 +90,68 @@ if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
     return text
 ```
 
+### What the venue answers, and what the platform derives
+
+The venue's spot API answers a position's cost basis, its average entry price
+and its unrealised profit. It carries no realised figure, so Realised is the
+platform's own derivation: every fill the venue holds for the bot's symbol,
+matched first in, first out, one figure per bot, summed across the fleet.
+
+`src/exchange/position_health.py` — `compute_position_health`
+
+```python
+while sell_remaining > 1e-12 and buy_queue:
+    buy_lot = buy_queue[0]
+    take = min(buy_lot[0], sell_remaining)
+    realized += (t.price - buy_lot[1]) * take
+```
+
+A sell is matched against the oldest open buy, so a sell placed above the latest
+fold and below the first buy of a market that has fallen since lowers the
+figure. Over the 2026 fill export, 1,302 of 2,653 sells lowered it and 66 were
+priced under the most recent buy.
+
+Each bot holds the complete fill history for its symbol. The first refresh pages
+the venue newest to oldest until a page comes back short; every later refresh
+fetches one page and stops at the first fill it already holds.
+
+`src/exchange/fill_history.py` — `FillHistory.refresh`
+
+```python
+if len(fills) < FILL_PAGE_LIMIT:
+    ended_short = True
+    break
+if joined:
+    break
+```
+
+Before this, one call fetched the newest 500 fills and the figure was FIFO over
+that window alone. On the two symbols past 500 fills the window read $-137.38
+and $119.91 where the complete history reads $-390.53 and $60.27.
+
+`src/trading/scrumming/reconciliation.py` — `refresh_exchange_position_health`
+
+```python
+_trades = await self.fetch_fill_history()
+if _trades is None:
+    return False
+_asset_base = self.config.symbol.split("/")[0]
+_ph = compute_position_health(_trades, _asset_base)
+```
+
+Mature applies one constant. A position counts once its value reaches its cost
+plus two hundred per cent of its cost, and the column sums the profit on the
+positions that qualify.
+
+`src/trading/smart_wire.py` — `mature_profit_usd`
+
+```python
+MATURE_GROWTH_PCT: float = 200.0
+if value < basis * (1.0 + MATURE_GROWTH_PCT / 100.0):
+    return 0.0
+return value - basis
+```
+
 ## Right: the five counter cards
 
 Five cards close the row, and each one counts a single thing.
