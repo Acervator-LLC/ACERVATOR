@@ -3354,4 +3354,142 @@ tooltip naming both cases.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-16 05:10 - #23 - The built application opens again
+
+Build `1371.ge6b50511-qt` stopped before its window opened. The Market
+Inspector tab is built while the window is, and the line under the ticker field
+asks for the crypto ticker list as the tab is built. That list is read through
+the topology detectors' module, which imported the pair tests' module, which
+imported scipy at the top of the file. The bundle is built without scipy, so
+the import raised and the window never opened.
+
+```text
+File "src\gui\main_tabs\market_inspector_surface.py", line 2428, in ticker_note
+    if class_tickers(asset_class):
+File "src\gui\main_tabs\market_inspector_surface.py", line 2385, in class_tickers
+    from ...trading.topology_proposals import load_sector_map
+File "src\trading\topology_proposals.py", line 20, in <module>
+    from .pair_selection import (
+File "src\trading\pair_selection.py", line 18, in <module>
+    from scipy.stats import pearsonr  # type: ignore[import-untyped]
+ModuleNotFoundError: No module named 'scipy'
+```
+
+### Where the two packages are imported now
+
+`src/trading/pair_selection.py` imports statsmodels and scipy inside the three
+functions that call them, and nowhere else. The module loads where scipy is
+absent, and a test that needs the package raises when it runs and not before.
+
+`src/trading/pair_selection.py` — each package imported where it is used
+
+```python
+def engle_granger_p_value(left: Sequence[float], right: Sequence[float]) -> float:
+    """The Engle-Granger two-step p-value from ``statsmodels.tsa.stattools.coint``."""
+    from statsmodels.tsa.stattools import coint  # type: ignore[import-untyped]
+```
+
+```python
+def johansen_trace(left: Sequence[float], right: Sequence[float]) -> tuple:
+    """The Johansen trace statistic for rank zero and its 95% critical value."""
+    from statsmodels.tsa.vector_ar.vecm import (  # type: ignore[import-untyped]
+        coint_johansen,
+    )
+```
+
+```python
+    if is_flat(returns_left) or is_flat(returns_right):
+        return _refused(METHOD_CORRELATION, len(left), FLAT_SERIES_DETAIL)
+    from scipy.stats import pearsonr  # type: ignore[import-untyped]
+```
+
+A missing package is not a refused pair. The cointegration test lets an import
+error out of the handler that turns degenerate input into a refusal.
+
+`src/trading/pair_selection.py` — a missing package leaves as an error
+
+```python
+    try:
+        p_value = engle_granger_p_value(left, right)
+        trace, critical = johansen_trace(left, right)
+    except ImportError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - statsmodels refuses degenerate input
+```
+
+### What the bundle is built without, and what still needs it
+
+The Windows and macOS builds share one exclusion list. scipy is on it, and the
+list is not changed here.
+
+`tools/spec_common.py` — the names the bundle is built without
+
+```python
+EXCLUDES: tuple[str, ...] = (
+    "tkinter",
+    "matplotlib",
+    "scipy",
+    "PIL",
+```
+
+The two tests this page names under "what a pair has to clear" still need the
+excluded package: Pearson from scipy directly, and Engle-Granger and Johansen
+through statsmodels, which imports scipy at its own top level and is declared
+in no dependency list of this tree. In the built bundle, a Bot Swarm
+Topologies refresh with market data reports the missing package in the zone's
+status line, and an Opposing Trades scan that reaches the cointegration test
+reports it as the scan error. The source tree, where scipy 1.18.1 and
+statsmodels 0.15.0 are installed, runs both tests.
+
+Of the ten excluded names, scipy is the only one the startup path reaches.
+matplotlib is imported by one module nothing imports, and PIL inside four
+functions of one module nothing imports.
+
+### Read off the built bundles
+
+Both bundles were built from a worktree with the same spec the operator's build
+script runs, and launched inside a Windows AppContainer holding no network
+capability, with HOME and USERPROFILE pointed at an empty scratch directory. A
+loopback listener used to calibrate the container answered one request from
+outside it and none from inside; the bundle's own log carries no connection.
+The real runtime directories were not written: their modification times match
+before and after every launch.
+
+| build | reading |
+| ----- | ------- |
+| `Acervator-0.2.0-dev.1371.ge6b50511-qt`, before the fix | `ModuleNotFoundError: No module named 'scipy'` from `pair_selection.py:18`, exit 1 after 42.9 s |
+| `Acervator-0.2.0-dev.1371.ge6b50511.dirty-qt`, after the fix | `Application ready — main window displayed`; the Inspector tab drawn, `artifacts/u30/qt_market_inspector_1371.ge6b50511.dirty.png` |
+| `Acervator-0.2.0-dev.1371.ge6b50511.dirty-react`, after the fix | built; not launched, see below |
+
+The React bundle builds its first web view while the window is built, and
+QtWebEngine refuses to start inside an AppContainer: a bare web view driven
+from the installed interpreter inside the same container ends with exception
+`0x80000003` at construction, and outside it constructs. No admin-free way to
+refuse the network for that bundle exists on this account, so its window was
+not observed. PyInstaller's own archive reader shows the two bundles carry
+byte-identical code for the four modules on the failing chain, and the same
+reader shows the unfixed bundle's pair tests' module differs.
+
+Driven on the source tree with scipy and statsmodels removed from the import
+table: the three modules import, the crypto list answers 120 names, a 50-bar
+series is refused as too short without reaching either package, and a 400-bar
+series raises the missing-package error from each test. With the packages
+present the same 400-bar calls answer p-values 0.7626 and 0.9864.
+
+### Two sentences this entry leaves standing
+
+`docs/manual/08-tabs/market-inspector.md:105` - "The test is cointegration in
+both of its standard forms, taken from statsmodels". True of the source tree.
+In the built bundle the test cannot run, before this entry and after it,
+because the package's own scipy import is excluded.
+
+`docs/manual/08-tabs/market-inspector.md:3142` - "Nothing is fetched and no
+venue is asked. Crypto reads the shipped sector map." Still true. The map is
+read through a function that needs nothing from either package.
+
+This entry makes no earlier sentence wrong.
+
+**Figures.** This entry adds no figure to the page. A count of the markdown
+image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
