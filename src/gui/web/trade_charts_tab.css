@@ -1,9 +1,9 @@
 /* React Charts tab chrome: the Live / ATA-SMP toggle, the asset arrows and
  * ticker, and the one chart panel `trade_charts_tab.js` draws under them.
  * `react_charts_tab.PAGE_STYLE` carries the reset and the page ground, so
- * this file adds colour, border and type only. `native_chart.js` paints every
- * mark inside the chart from its own payload skin, and the overlay colour on
- * a toggle arrives on that toggle's own `style` attribute, so no rule here
+ * this file adds colour, border and type only. `native_chart.py` paints every
+ * mark inside the chart into the image the slot shows, and the overlay colour
+ * on a toggle arrives on that toggle's own `style` attribute, so no rule here
  * may set a `color` on a chart mark or on a toggle.
  */
 

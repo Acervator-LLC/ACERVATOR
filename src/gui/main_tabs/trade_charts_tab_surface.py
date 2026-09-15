@@ -367,7 +367,7 @@ def target_balance_lines(readings: dict) -> list:
 
 
 def candle_row(candle: Any) -> list:
-    """One Nuclear Mode candle as six numbers, from an object or from a dict."""
+    """One candle as six numbers, from an ``OHLCVCandle``, a dict or a six-number row."""
     if hasattr(candle, CANDLE_OPEN_KEY):
         return [
             int(getattr(candle, CANDLE_TIME_KEY, DEFAULT_CANDLE_TIME)),
@@ -377,6 +377,8 @@ def candle_row(candle: Any) -> list:
             float(candle.close),
             float(getattr(candle, CANDLE_VOLUME_KEY, DEFAULT_CANDLE_VOLUME)),
         ]
+    if not isinstance(candle, dict):
+        return list(candle)
     return [
         int(candle.get(CANDLE_TIME_KEY, DEFAULT_CANDLE_TIME)),
         float(candle[CANDLE_OPEN_KEY]),
@@ -1263,7 +1265,7 @@ class TradeChartsTabModel:
             returned = len(rows or [])
             source = str(answered)
             if rows:
-                self.panel.set_candles([list(one) for one in rows])
+                self.panel.set_candles([candle_row(one) for one in rows])
                 self.panel.set_source(answered)
                 outcome = OUTCOME_CANDLES
                 self.calls.append([FETCH_CANDLES, bot_id, returned, source])

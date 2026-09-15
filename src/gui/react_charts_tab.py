@@ -2,8 +2,10 @@
 """The Charts tab drawn by React inside ``QWebEngineView``.
 
 ``ChartsTabReact`` holds one ``trade_charts_tab_surface.TradeChartsTabModel``
-and draws ``src/gui/web/trade_charts_tab.js`` through ``panel_host.js``, which
-mounts ``native_chart.js`` into the chart slot that module keeps. The tab
+and draws ``src/gui/web/trade_charts_tab.js`` through ``panel_host.js``, whose
+chart slot asks ``IMAGE_METHOD`` for the image one ``ChartPainter`` paints at
+the slot's width and the display's device pixel ratio, ``ChartPainter`` being
+the painter ``render_chart_png`` draws the ATA-SPM post images with. The tab
 answers ``update_charts``, ``fetch_chart_data`` and ``set_ata_source``, and
 ``ChartsTabPage`` carries the page's own bridge asks back to ``run_ask``.
 ``page_html`` inlines ``trade_charts_tab.css`` and every script, so the page
@@ -12,8 +14,11 @@ fetches nothing.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
+import time
 from typing import Any, Optional
 
 from .main_tabs import design_system_surface, native_chart_surface
@@ -25,10 +30,13 @@ from .react_main_window import read_renderer_asset
 RESIZE_SETTLE_MS = 120
 
 try:
-    from PySide6.QtCore import QTimer
+    from PySide6.QtCore import QBuffer, QIODevice, QTimer
+    from PySide6.QtGui import QImageWriter
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from .native_chart import POST_IMAGE_WIDTH_PX, Candle, ChartPainter, paint_image
 
     _HAS_WEBENGINE = True
 except ImportError:
@@ -49,8 +57,29 @@ PANEL_ROOT_ID = "panel-root"
 #: The renderer module the page draws.
 PANEL_MODULE = "trade_charts_tab.js"
 
-#: The module ``trade_charts_tab.js`` mounts into its own chart slot.
-CHILD_MODULES: tuple[str, ...] = ("native_chart.js",)
+#: Modules ``trade_charts_tab.js`` mounts into its own chart slot. None: the
+#: slot shows the image ``ChartPainter`` paints, so ``native_chart.js`` is
+#: not carried.
+CHILD_MODULES: tuple[str, ...] = ()
+
+#: The bridge method the page's chart slot asks for the painted image.
+IMAGE_METHOD = "trade_charts_tab.image"
+
+#: The ``IMAGE_METHOD`` request fields: the slot's width and height in CSS
+#: pixels and the page's device pixel ratio. The tab ask takes one overlay
+#: toggle to apply before it answers.
+IMAGE_WIDTH_PARAM = "width"
+IMAGE_HEIGHT_PARAM = "height"
+IMAGE_RATIO_PARAM = "dpr"
+TOGGLE_KEY_PARAM = "toggle_overlay"
+TOGGLE_ON_PARAM = "toggle_on"
+
+#: The width the painter draws at when the page has not measured its slot.
+FALLBACK_IMAGE_WIDTH_PX = POST_IMAGE_WIDTH_PX if _HAS_WEBENGINE else 1200
+
+PNG_FORMAT = b"PNG"
+DATA_URI_PREFIX = "data:image/png;base64,"
+SHA_PREFIX_LENGTH = 16
 
 #: The style sheet the page carries.
 STYLE_ASSETS: tuple[str, ...] = ("trade_charts_tab.css",)
@@ -312,6 +341,10 @@ if _HAS_WEBENGINE:
             self.setAccessibleName(ACCESSIBLE_NAME)
             self._theme = theme
             self._model = surface.TradeChartsTabModel()
+            self._painter = ChartPainter("")
+            self._painter.set_timeframe(surface.PANEL_TIMEFRAME)
+            self._image: dict = {}
+            self._image_key_held = ""
             self._payload: dict = {}
             self._page_ready = False
             self._drawn = False
@@ -369,7 +402,7 @@ if _HAS_WEBENGINE:
 
         def redraw(self) -> None:
             """Build the payload from the model and draw it in the page."""
-            self._payload = surface.build_view_model(self._model)
+            self._payload = self._dressed(surface.build_view_model(self._model))
             if not self._page_ready:
                 return
             if self._drawn:
@@ -377,6 +410,131 @@ if _HAS_WEBENGINE:
                 return
             self._run(mount_script(self._payload))
             self._drawn = True
+
+        # -- the painted chart -------------------------------------------
+
+        @property
+        def painter(self) -> Any:
+            """The ``ChartPainter`` the chart slot's image comes from."""
+            return self._painter
+
+        def overlays_shown(self) -> dict:
+            """Every overlay key and whether ``painter`` draws it."""
+            return self._painter.overlays_shown()
+
+        def set_overlay(self, key: str, on: bool) -> bool:
+            """Switch one painter overlay, as a Qt ``ChartPanel`` check box does."""
+            return self._painter.set_overlay(str(key), bool(on))
+
+        def _dressed(self, payload: dict) -> dict:
+            """``payload`` with each ``panel_chrome`` toggle checked as ``painter`` draws it."""
+            shown = self._painter.overlays_shown()
+            for toggle in payload.get("panel_chrome", {}).get("toggles", []):
+                if toggle.get("key") in shown:
+                    toggle["checked"] = shown[toggle["key"]]
+            return payload
+
+        def _feed_painter(self) -> None:
+            """Give ``painter`` what ``PanelSink`` holds, as the Qt tab gives its chart."""
+            panel = self._model.panel
+            painter = self._painter
+            painter.symbol = str(panel.label)
+            painter.set_timeframe(str(panel.chart_timeframe or panel.timeframe))
+            painter.set_candles(
+                [
+                    Candle(
+                        int(row[0]),
+                        float(row[1]),
+                        float(row[2]),
+                        float(row[3]),
+                        float(row[4]),
+                        float(row[5]) if len(row) > 5 else 0.0,
+                    )
+                    for row in panel.candles
+                ]
+            )
+            if panel.error_text:
+                painter.set_error(str(panel.error_text))
+            painter.set_source_label(str(panel.source))
+            painter.set_trade_history_markers(list(panel.markers))
+            painter.set_tranche_floors([tuple(one) for one in panel.floors])
+            painter.set_target_balance_lines(panel.tb_anchor, panel.tb_ceiling)
+            if panel.armed is not None:
+                painter.set_fire_armed_state(
+                    panel.armed.get(surface.SCRUM_ARMED_KEY, False),
+                    panel.armed.get(surface.FOLD_ARMED_KEY, False),
+                    panel.armed.get(surface.SCRUM_BLOCKERS_KEY, []),
+                    panel.armed.get(surface.FOLD_BLOCKERS_KEY, []),
+                )
+
+        def _image_key(self, width_px: int, height_px: int, ratio: float) -> str:
+            """A digest of everything the next ``chart_image`` would read."""
+            panel = self._model.panel
+            held = {
+                "label": panel.label,
+                "timeframe": panel.chart_timeframe or panel.timeframe,
+                "candles": panel.candles,
+                "error": panel.error_text,
+                "source": panel.source,
+                "markers": panel.markers,
+                "floors": panel.floors,
+                "tb": [panel.tb_anchor, panel.tb_ceiling],
+                "armed": panel.armed,
+                "overlays": self._painter.overlays_shown(),
+                "width": int(width_px),
+                "height": int(height_px),
+                "ratio": float(ratio),
+            }
+            digest = hashlib.sha256(
+                json.dumps(held, sort_keys=True, default=str).encode("utf-8")
+            )
+            return digest.hexdigest()
+
+        def chart_image(
+            self, width_px: Any = None, ratio: Any = None, height_px: Any = None
+        ) -> dict:
+            """The chart ``painter`` paints at ``width_px`` by ``height_px`` CSS pixels and ``ratio``, as a PNG data URI.
+
+            The height is never under the painter's natural height for the
+            overlays on, and the same inputs answer the last image without a repaint.
+            """
+            width = int(width_px or 0) or FALLBACK_IMAGE_WIDTH_PX
+            scale = float(ratio or 0.0) or 1.0
+            asked_height = int(height_px or 0)
+            key = self._image_key(width, asked_height, scale)
+            if key == self._image_key_held and self._image:
+                return dict(self._image, repainted=False)
+            started = time.perf_counter()
+            self._feed_painter()
+            natural = int(self._painter._natural_height_for_panes(width))
+            height = max(natural, asked_height)
+            image = paint_image(self._painter, width, height, scale)
+            painted_ms = (time.perf_counter() - started) * 1000.0
+            buffer = QBuffer()
+            buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+            QImageWriter(buffer, PNG_FORMAT).write(image)
+            png = bytes(buffer.data().data())
+            buffer.close()
+            self._image = {
+                "data_uri": DATA_URI_PREFIX + base64.b64encode(png).decode("ascii"),
+                "width_px": width,
+                "height_px": height,
+                "natural_height_px": natural,
+                "device_pixel_ratio": scale,
+                "image_width_px": image.width(),
+                "image_height_px": image.height(),
+                "png_bytes": len(png),
+                "sha256": hashlib.sha256(png).hexdigest()[:SHA_PREFIX_LENGTH],
+                "candle_count": len(self._model.panel.candles),
+                "overlays": self._painter.overlays_shown(),
+                "paint_ms": round(painted_ms, 2),
+                "encode_ms": round(
+                    (time.perf_counter() - started) * 1000.0 - painted_ms, 2
+                ),
+                "repainted": True,
+            }
+            self._image_key_held = key
+            return dict(self._image)
 
         # -- the calls the main window makes on the tab ------------------
 
@@ -489,19 +647,31 @@ if _HAS_WEBENGINE:
         def _answer(self, method: str, params: Any) -> Any:
             asked = params if isinstance(params, dict) else {}
             if method == surface.METHOD:
-                self._payload = surface.build_view_model(
-                    self._model,
-                    asked.get("statuses"),
-                    asked.get("connectors"),
-                    asked.get("timeframe_change"),
-                    False,
-                    asked.get("trades"),
-                    asked.get("synthetic"),
-                    asked.get("step_by"),
-                    asked.get("pick_at"),
-                    asked.get("toggle_list", False),
+                if asked.get(TOGGLE_KEY_PARAM) is not None:
+                    self.set_overlay(
+                        asked[TOGGLE_KEY_PARAM], asked.get(TOGGLE_ON_PARAM, False)
+                    )
+                self._payload = self._dressed(
+                    surface.build_view_model(
+                        self._model,
+                        asked.get("statuses"),
+                        asked.get("connectors"),
+                        asked.get("timeframe_change"),
+                        False,
+                        asked.get("trades"),
+                        asked.get("synthetic"),
+                        asked.get("step_by"),
+                        asked.get("pick_at"),
+                        asked.get("toggle_list", False),
+                    )
                 )
                 return self._payload
+            if method == IMAGE_METHOD:
+                return self.chart_image(
+                    asked.get(IMAGE_WIDTH_PARAM),
+                    asked.get(IMAGE_RATIO_PARAM),
+                    asked.get(IMAGE_HEIGHT_PARAM),
+                )
             if method == native_chart_surface.METHOD:
                 return native_chart_surface.view_model(asked)
             if method == design_system_surface.METHOD:
