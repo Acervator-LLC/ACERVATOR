@@ -165,7 +165,8 @@ SCAN_NOW_LABEL = "Scan Now"
 SCAN_NOW_TOOLTIP = (
     "Scan now on the timeframes ticked beside it, without waiting for a "
     "rotation. A ticker in the field reads that one market; an empty field "
-    "scans the sectors already added."
+    "reads the sector menu's markets, largest volume first, until Hits per "
+    "scan reversal calls land."
 )
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
 CLASS_BOX_WIDTH_PX = 92
@@ -403,16 +404,19 @@ SETTING_MAX_POSTS = "max_posts_per_hour"
 SETTING_MAX_INDICATORS = "max_supporting_indicators"
 SETTING_CONFIRMATION_SHARE = "confirmation_share_pct"
 SETTING_MESSAGE_FORMAT = "message_format"
+SETTING_HITS_PER_SCAN = "hits_per_scan"
 SETTING_ROWS = (
     (SETTING_MAX_POSTS, "Max posts per hour"),
     (SETTING_MAX_INDICATORS, "Max supporting indicators"),
     (SETTING_CONFIRMATION_SHARE, "Confirmation share %"),
     (SETTING_MESSAGE_FORMAT, "Standardised message text"),
+    (SETTING_HITS_PER_SCAN, "Hits per scan"),
 )
 COUNT_SETTINGS = (
     SETTING_MAX_POSTS,
     SETTING_MAX_INDICATORS,
     SETTING_CONFIRMATION_SHARE,
+    SETTING_HITS_PER_SCAN,
 )
 
 #: The chart one bucket post carries, at its thumbnail and its larger size.
@@ -665,6 +669,7 @@ SECTOR_MAP_FAILED_LOG = "sector map read failed: %s"
 CHART_FOLDER_OPENED_LOG = "ATA chart folder opened: %s"
 CHART_FOLDER_FAILED_LOG = "ATA chart folder %s not opened: %s"
 CANDLE_READ_FAILED_LOG = "scanned candle read failed on %s %s: %s"
+VOLUME_READ_FAILED_LOG = "quote volume read failed for %s: %s"
 CONNECTORS_READ_FAILED_LOG = "exchange connector read failed: %s"
 
 SCAN_NOT_ASKED = "not_asked"
@@ -1291,21 +1296,37 @@ def no_call_text(scan: Any) -> str:
 
 
 def entry_headline(scan: Any) -> str:
-    """The line one scan's zone entry is named by, market or sector."""
+    """The line one scan's zone entry is named by: market, by-volume or sector."""
     if scan.ticker:
         return ata_spm.MARKET_LINE_FORMAT.format(
             ticker=scan.ticker, asset_class=scan.asset_class
         )
+    if getattr(scan, "hit_target", ata_spm.NO_HIT_TARGET) > ata_spm.NO_HIT_TARGET:
+        return ata_spm.VOLUME_LINE_FORMAT.format(asset_class=scan.asset_class)
     return ata_spm.SECTOR_LINE_FORMAT.format(
         sector=scan.sector, asset_class=scan.asset_class
     )
 
 
 def entry_meta(scan: Any, calls: Any) -> str:
-    """The counts one scan's zone entry carries, market or sector."""
+    """The counts one scan's zone entry carries: market, by-volume or sector.
+
+    A by-volume scan counts the markets it read and says what stopped it,
+    ``ata_spm.STOPPED_AT_TARGET_TEXT`` or ``ata_spm.SECTOR_EXHAUSTED_TEXT``.
+    """
     if scan.ticker:
         return ata_spm.MARKET_META_FORMAT.format(
             votes=len(scan.votes), calls=len(calls)
+        )
+    if getattr(scan, "hit_target", ata_spm.NO_HIT_TARGET) > ata_spm.NO_HIT_TARGET:
+        return ata_spm.VOLUME_META_FORMAT.format(
+            read=scan.markets_read,
+            hits=len(calls),
+            stop=(
+                ata_spm.STOPPED_AT_TARGET_TEXT
+                if scan.stopped_at_target
+                else ata_spm.SECTOR_EXHAUSTED_TEXT
+            ),
         )
     return ata_spm.SECTOR_META_FORMAT.format(
         assets=len(scan.assets), votes=len(scan.votes), calls=len(calls)
@@ -2399,6 +2420,46 @@ def class_tickers(asset_class: Any) -> list:
     return sorted(found)
 
 
+def class_volumes(asset_class: Any, connectors: Any) -> dict:
+    """The 24 h quote volume per crypto symbol, read through the fetcher.
+
+    ``fetch_quote_volumes`` serves the figures the Refresh press already read
+    inside its cache window; every other class, and no connector, answer none.
+    """
+    if str(asset_class) != ata_spm.CLASS_CRYPTO or not connectors:
+        return {}
+    import asyncio
+
+    from ...exchange.market_inspector_fetcher import fetch_quote_volumes
+
+    try:
+        return dict(asyncio.run(fetch_quote_volumes(connectors)) or {})
+    except Exception as exc:  # noqa: BLE001 - the source is off-process
+        logger.debug(VOLUME_READ_FAILED_LOG, asset_class, exc)
+        return {}
+
+
+def class_markets(asset_class: Any, connectors: Any = None) -> list:
+    """Every market one class holds, largest 24 h quote volume first.
+
+    Crypto ranks ``class_tickers`` by ``class_volumes``, a name with no figure
+    last by name; forex and metals keep ``ata_asset_maps.MAPS`` order, which
+    lists each sector from its highest liquidity tier down.
+    """
+    if str(asset_class) != ata_spm.CLASS_CRYPTO:
+        return [
+            one
+            for sector in ata_asset_maps.sectors_for(asset_class)
+            for one in ata_asset_maps.listings_for(sector, asset_class)
+        ]
+    volumes = class_volumes(asset_class, connectors)
+    ranked = sorted(
+        class_tickers(asset_class),
+        key=lambda one: (-float(volumes.get(str(one).upper(), 0.0)), str(one)),
+    )
+    return [ata_asset_maps.exchange_listing(one) for one in ranked]
+
+
 def ticker_matches(typed: Any, asset_class: Any) -> list:
     """The tickers of ``asset_class`` that ``typed`` names, prefix matches first.
 
@@ -2773,6 +2834,7 @@ class MarketInspectorScreenModel:
         self.ata_run_source: Any = None
         self.ata_asset_source: Any = None
         self.ata_candle_source: Any = None
+        self.ata_class_source: Any = None
         self.board = ata_spm.SectorBoard()
         self.push = ata_spm_push.PushBoard()
         self.push.settings.set_vault(encryption.default_vault())
@@ -2789,7 +2851,7 @@ class MarketInspectorScreenModel:
         self.scheduled: list = []
         self.emitted: list = []
         self.calls: list = []
-        self.set_ata_sources(sector_assets, self.scanned_candles)
+        self.set_ata_sources(sector_assets, self.scanned_candles, self.class_markets)
         self.build_ui()
 
     def build_ui(self) -> None:
@@ -2870,11 +2932,19 @@ class MarketInspectorScreenModel:
             logger.debug(ATA_RUN_FAILED_LOG, exc)
             return None
 
-    def set_ata_sources(self, asset_source: Any, candle_source: Any) -> None:
-        """Wire the assets a sector holds and the candles each one charts on."""
+    def set_ata_sources(
+        self, asset_source: Any, candle_source: Any, class_source: Any = None
+    ) -> None:
+        """Wire the assets a sector holds, the candles each one charts on, and
+        the markets a class lists by volume."""
         self.ata_asset_source = asset_source
         self.ata_candle_source = candle_source
+        self.ata_class_source = class_source
         self.calls.append([ATA_SOURCES_SET])
+
+    def class_markets(self, asset_class: Any) -> list:
+        """Every market one class holds, largest volume first, on the connectors in reach."""
+        return class_markets(asset_class, self.connectors_now())
 
     def scanned_candles(self, symbol: Any, timeframe: Any) -> list:
         """The candles for one scanned symbol, from the source its map names.
@@ -2925,7 +2995,8 @@ class MarketInspectorScreenModel:
         self.calls.append([TIMEFRAME_TOGGLED, str(key), ticked])
 
     def scan_now(self) -> Any:
-        """Press Scan Now: read the typed ticker's market, or the scans held.
+        """Press Scan Now: read the typed ticker's market, or the sector menu's
+        markets by volume until ``hits_per_scan`` reversal calls.
 
         Answers the ``ata_spm.AtaSpmRun`` the three phases produced, or None
         when ``market_listing`` cannot place the ticker and the board is left
@@ -2937,6 +3008,9 @@ class MarketInspectorScreenModel:
             self.push.settings.message_format,
             self.push.settings.max_supporting_indicators,
             market_listing,
+            self.ata_class_source or self.class_markets,
+            self.push.settings.hits_per_scan,
+            self.zone_at.get(ATA_SPM_MODULE, 0),
         )
         if added != ata_spm.NO_NEW_SECTOR:
             self.zone_at[ATA_SPM_MODULE] = added
