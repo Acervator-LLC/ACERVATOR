@@ -15,6 +15,7 @@ import html
 import logging
 import threading
 
+from ..core import encryption
 from ..trading import ata_spm, ata_spm_push, ata_spm_signin
 from . import sign_in_view
 from .main_tabs.market_inspector_surface import (
@@ -646,6 +647,7 @@ if _HAS_QT:
             self._ata_run_source = None
             self._ata_board = ata_spm.SectorBoard()
             self._push_board = ata_spm_push.PushBoard()
+            self._push_board.settings.set_vault(encryption.default_vault())
             self._push_board.settings.set_connector(
                 ata_spm_signin.build_connector(sign_in_view.sign_in_session())
             )
