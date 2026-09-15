@@ -238,8 +238,16 @@ PUSH_TARGETS = (
         endpoint="POST /<IG_ID>/media then /<IG_ID>/media_publish",
         scopes=("instagram_business_basic", "instagram_business_content_publish"),
         registration="A Meta app with Instagram Login, and an Instagram "
-        "professional account connected to a Page. Register the app at "
-        "developers.facebook.com/apps.",
+        "professional account. Register the app at "
+        "developers.facebook.com/apps/creation/. Meta publishes no Business "
+        "use case, so pick the Other use case, then the Business app type. "
+        "Add the Instagram product. Open API setup with Instagram Login in "
+        "the left menu: the App ID and App secret boxes above take the "
+        "Instagram app ID and Instagram app secret printed on that panel, "
+        "which are not the App ID and App secret on App settings then Basic. "
+        "Add your account under Generate access tokens, then enter the "
+        "redirect address under Business login settings, which is not in the "
+        "main OAuth settings. This route needs no Facebook Page.",
         prerequisite="No App Review. Meta grants Standard Access to every "
         "permission automatically, and it covers any account holding a role "
         "on the app, so give your account a role on it. Page Publishing "
@@ -259,7 +267,7 @@ PUSH_TARGETS = (
         scopes=("w_member_social",),
         registration="A LinkedIn developer app carrying the Community "
         "Management API, with a loopback redirect address. Register the app "
-        "at www.linkedin.com/developers/apps/new.",
+        "at www.linkedin.com/developers/apps, then press Create app.",
         prerequisite="LinkedIn is the one venue that may refuse outright. The "
         "Community Management API needs a registered company, a verified Page "
         "and a two-tier review carrying a screencast. LinkedIn must also "
@@ -314,7 +322,9 @@ PUSH_TARGETS = (
             "pages_show_list",
         ),
         registration="A Meta app with the Pages API, and a Page you "
-        "administer. Register the app at developers.facebook.com/apps.",
+        "administer. Register the app at "
+        "developers.facebook.com/apps/creation/, and pick the use case "
+        "Manage everything on your Page.",
         prerequisite="No App Review. Meta grants Standard Access to every "
         "permission automatically, and it covers any account holding a role "
         "on the app, so give your account a role on it.",
@@ -335,7 +345,8 @@ PUSH_TARGETS = (
         endpoint="POST /<threads-user-id>/threads then /threads_publish",
         scopes=("threads_basic", "threads_content_publish"),
         registration="A Meta app with the Threads API, on a Threads profile. "
-        "Register the app at developers.facebook.com/apps.",
+        "Register the app at developers.facebook.com/apps/creation/, and pick "
+        "the use case Access the Threads API.",
         prerequisite="No App Review. Meta grants Standard Access to every "
         "permission automatically, and it covers any account holding a role "
         "on the app, so give your account a role on it.",
@@ -357,7 +368,7 @@ PUSH_TARGETS = (
         ),
         endpoint="https://www.reddit.com/api/v1/access_token then /api/submit",
         scopes=("identity", "submit"),
-        registration="A Reddit app at reddit.com/prefs/apps carrying a "
+        registration="A Reddit app at www.reddit.com/prefs/apps carrying a "
         "loopback redirect address, and a target subreddit.",
         prerequisite="No review and no fee. Reddit requires the User-Agent to "
         "read <platform>:<app ID>:<version> (by /u/<username>), and rate "
@@ -422,6 +433,13 @@ VAULT_KEY_FORMAT = "{target}:{field}"
 CREDENTIAL_HELD_TEXT = "held"
 CREDENTIAL_MISSING_TEXT = "not held"
 NO_VAULT_TEXT = "Credential vault not wired."
+
+#: What ``held_value`` answers for a field the vault holds nothing for.
+NO_CREDENTIAL_VALUE = ""
+
+#: ``CredentialVault.retrieve`` answers a key, a secret and a phrase.
+#: ``hold_credential`` writes one field into the first of the three.
+VAULT_VALUE_AT = 0
 
 CONNECT_OK_FORMAT = "{target} accepted the credential."
 CONNECT_FAILED_FORMAT = "{target} refused the sign-in: {error}"
@@ -1258,18 +1276,88 @@ class AtaSpmSettings:
         held = str(typed or "").strip()
         self.typed.setdefault(str(target), {})[str(field)] = held
 
-    def typed_credential(self, target: Any) -> dict:
-        """Each ``CredentialField`` key of one push target, and the value typed in."""
+    def hold_credential(self, target: Any, field: Any) -> bool:
+        """Encrypt what one finished credential box carries into ``vault``.
+
+        Level 1A calls this when he leaves a box, not on every keystroke, and
+        answers whether the vault now holds a value for it. A box he emptied
+        drops its entry instead, so ``held_fields`` reads what is held without
+        decrypting anything.
+        """
+        name = str(target)
+        key = str(field)
+        typed = self.typed.get(name, {})
+        if key not in typed or self.vault is None:
+            return False
+        held = str(typed[key]).strip()
+        try:
+            if held:
+                self.vault.store(vault_key(name, key), held, "")
+            else:
+                self.vault.delete(vault_key(name, key))
+        except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
+            logger.debug(VAULT_STORE_FAILED_LOG, name, exc)
+            return False
+        return bool(held)
+
+    def held_value(self, target: Any, field_key: Any) -> str:
+        """The value ``vault`` holds for one field of one push target, or no text."""
+        if self.vault is None:
+            return NO_CREDENTIAL_VALUE
+        entry = vault_key(target, field_key)
+        try:
+            if not self.vault.has_exchange(entry):
+                return NO_CREDENTIAL_VALUE
+            return str(self.vault.retrieve(entry)[VAULT_VALUE_AT])
+        except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
+            logger.debug(VAULT_READ_FAILED_LOG, target, exc)
+            return NO_CREDENTIAL_VALUE
+
+    def credential_value(self, target: Any, field_key: Any) -> str:
+        """What one credential box carries: what he typed, or what ``vault`` holds.
+
+        A key he has typed into this run wins, so emptying a held box reads
+        empty rather than falling back to the value it replaced.
+        """
         held = self.typed.get(str(target), {})
+        key = str(field_key)
+        if key in held:
+            return str(held[key])
+        return self.held_value(target, key)
+
+    def held_fields(self, target: Any) -> tuple:
+        """Every ``CredentialField`` key of one push target ``vault`` holds a value for.
+
+        ``has_exchange`` answers this without decrypting, so Level 1A can draw
+        a box as held on every paint and no value leaves the vault.
+        """
+        if self.vault is None:
+            return ()
+        try:
+            return tuple(
+                one.key
+                for one in credential_fields(target)
+                if self.vault.has_exchange(vault_key(target, one.key))
+            )
+        except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
+            logger.debug(VAULT_READ_FAILED_LOG, target, exc)
+            return ()
+
+    def typed_credential(self, target: Any) -> dict:
+        """Each ``CredentialField`` key of one push target, and the value it carries."""
         return {
-            one.key: str(held.get(one.key, "")) for one in credential_fields(target)
+            one.key: self.credential_value(target, one.key)
+            for one in credential_fields(target)
         }
 
     def missing_field(self, target: Any) -> Optional[CredentialField]:
-        """The first ``CredentialField`` of one push target carrying no text."""
-        held = self.typed.get(str(target), {})
+        """The first ``CredentialField`` of one push target carrying no text.
+
+        A value the vault holds counts as present, so a page he filled before
+        a restart takes Connect without being typed again.
+        """
         for one in credential_fields(target):
-            if not str(held.get(one.key, "")).strip():
+            if not self.credential_value(target, one.key).strip():
                 return one
         return None
 

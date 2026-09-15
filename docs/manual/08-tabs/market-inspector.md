@@ -2852,4 +2852,160 @@ in `ata_spm_credentials.json`, so they are two files under one passphrase.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+
+## 2026-09-15 16:20 - #23 - What he types is held too, and every register address
+
+Level 1A held what he typed in memory only. A restart lost it, and X prints a
+client secret once, so losing it means generating a new one in X's console. What
+he types now reaches the same encrypted vault the venue tokens reach.
+
+### When a box reaches the vault
+
+A keystroke writes memory, as before. A finished box writes the vault. A box is
+finished when he leaves it: the window calls that `editingFinished` and the page
+calls it a blur.
+
+`src/trading/ata_spm_push.py` - what one finished box does
+
+```python
+            if held:
+                self.vault.store(vault_key(name, key), held, "")
+            else:
+                self.vault.delete(vault_key(name, key))
+```
+
+A vault write runs PBKDF2 twice at 600,000 iterations. Measured on this machine,
+one write takes 0.149 s and one read 0.149 s, so a write on every keystroke would
+add about four seconds to a 26-character secret. A write when he leaves the box
+costs that 0.149 s once.
+
+`CredentialVault.delete` is new in `src/core/encryption.py`. It is what lets a
+box he emptied drop its entry, so `has_exchange` answers whether a value is held
+without decrypting one. That read takes 0.000002 s, which is why Level 1A can ask
+it on every paint.
+
+### What Connect reads now
+
+| What the box holds | What `missing_field` says | What `typed_credential` hands the venue |
+| ------------------ | ------------------------- | --------------------------------------- |
+| text typed this run | present | what he typed |
+| nothing typed, vault holds a value | present | what the vault holds |
+| nothing typed, vault holds nothing | the first such field, by name | nothing |
+| emptied this run | the first such field, by name | nothing |
+
+A value the vault holds therefore counts as filled in, and a page he filled
+before a restart takes Connect without being typed again.
+
+### A held box says it is held and never says what
+
+`credential_page` still publishes each box as a name and a wording and no value.
+It carries one more list, `held_fields`, which names only the keys the vault
+holds something for. The wording a held box draws is one fixed string both builds
+read from the same place.
+
+```python
+CREDENTIAL_HELD_PLACEHOLDER = "Held · type to replace"
+```
+
+Typing into a held box replaces what is held when he leaves it.
+
+### The window now empties its boxes when the page opens
+
+The page builds its boxes when Level 1A opens, so they start empty every time.
+The window built its boxes once and only hid them, so they kept the characters he
+typed for the life of the run. Read off the two running builds before this entry,
+X reopened with the typed characters still in the window's box and with the
+page's box empty. The window now empties a venue's boxes as it opens that venue,
+which is what the page does, and a value the vault holds is drawn back into
+neither.
+
+### Read off the two running builds
+
+`HOME` was redirected to a scratch directory and every non-loopback socket was
+refused, so nothing reached a venue.
+
+| Reading | Before | After |
+| ------- | ------ | ----- |
+| vault entries after both X boxes are typed | none | `X:x-client-id`, `X:x-client-secret` |
+| vault entries after the venue refuses | none | the same two |
+| X reopened, window box | the typed characters | empty, wording `Held · type to replace` |
+| X reopened, page box | empty | empty, wording `Held · type to replace` |
+| second process, `missing_field` on X | `x-client-id` | none |
+| second process, boxes | empty, own labels | empty, wording `Held · type to replace` |
+
+The second process holds nothing in memory and reads the vault file, which is
+what makes it a restart.
+
+A venue never typed into reads the other way in the same run. Reddit answers
+`held_fields` empty, draws each box under its own label, and Connect refuses with
+`App ID is empty.`
+
+### Nothing carries a typed value in clear text
+
+Read off one run that typed both X boxes and pressed Connect on both builds: 575
+files under the runtime directory and under `src/` were searched and none carried
+the value. The same run wrote 4 log lines from the program's own sign-in logging,
+so the log existed while the value passed through it.
+
+The same search was then run with the value planted in a file and in a log line.
+It found both. The zero above is a reading, not a silence.
+
+### Every venue's register address
+
+Each address is the one that venue's own developer documentation publishes for
+creating an application. Read off both running builds, all seven draw one
+register link, the same one under each build, and each is on its own page's
+allowlist.
+
+| Venue | Register address | Read from |
+| ----- | ---------------- | --------- |
+| X | `https://console.x.com` | X, Developer Console. `developer.x.com` redirects here |
+| Instagram | `developers.facebook.com/apps/creation/` | Meta, Create an App with Meta |
+| LinkedIn | `www.linkedin.com/developers/apps` | LinkedIn, Getting Access, then Create app |
+| TikTok | `developers.tiktok.com/apps` | TikTok, Create an app |
+| Facebook | `developers.facebook.com/apps/creation/` | Meta, Create an App with Meta |
+| Threads | `developers.facebook.com/apps/creation/` | Meta, Threads use case |
+| Reddit | `www.reddit.com/prefs/apps` | Reddit, OAuth2 |
+
+Four rows moved. The three Meta rows named `developers.facebook.com/apps`, which
+is the list of apps already made, and Meta publishes `/apps/creation/` for making
+one. LinkedIn's row named `/developers/apps/new`, which LinkedIn publishes
+nowhere; it resolves to the developers sign-in page rather than to a form.
+
+### Instagram, where the values are not where a developer expects
+
+Instagram's page now names the path, because three steps sit away from where an
+app's settings normally are.
+
+| What he needs | Where Meta puts it |
+| ------------- | ------------------ |
+| the app type | pick the Other use case, then the Business app type |
+| Instagram app ID and Instagram app secret | the left menu panel API setup with Instagram Login |
+| the redirect address | Business login settings, inside that same panel |
+
+Meta publishes no Business use case. Its use-case list holds Other, and the
+Business app type is offered after Other is picked. The App ID and App secret on
+App settings then Basic are different values and are not the ones this page
+takes.
+
+This route needs no Facebook Page. Meta states that a Page is required only for
+the other route, Facebook Login for Business.
+
+### Two rows this entry contradicts
+
+Neither was reworded. Each is quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:2562` - "| Instagram |
+`developers.facebook.com/apps` | Meta, App Dashboard |" That address opens the
+list of apps already made. Meta publishes `developers.facebook.com/apps/creation/`
+for making one, and the row now names it. The Facebook and Threads rows beneath
+it moved for the same reason.
+
+`docs/manual/08-tabs/market-inspector.md:2563` - "| LinkedIn |
+`www.linkedin.com/developers/apps/new` | LinkedIn, Marketing Quick Start, step 1 |"
+LinkedIn publishes no such address. Its own pages name `/developers/apps` and a
+Create app button.
+
+**Figures.** This page carries no figure and this entry adds none.
+
 Back to [the subsystem index](README.md).

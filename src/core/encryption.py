@@ -348,6 +348,14 @@ class CredentialVault:
             pp,
         )
 
+    def delete(self, exchange: str) -> None:
+        """Drop the entry held for *exchange*, or do nothing where none is held.
+
+        ``has_exchange`` then answers False for it, which is what lets a caller
+        read whether a value is held without decrypting one.
+        """
+        self._credentials.pop(exchange, None)
+
     def has_exchange(self, exchange: str) -> bool:
         return exchange in self._credentials
 
@@ -408,6 +416,11 @@ class FileVault(CredentialVault):
     ) -> None:
         """Encrypt one entry as ``CredentialVault`` does, then write the file."""
         super().store(exchange, api_key, api_secret, passphrase)
+        self.save()
+
+    def delete(self, exchange: str) -> None:
+        """Drop one entry as ``CredentialVault`` does, then write the file."""
+        super().delete(exchange)
         self.save()
 
 

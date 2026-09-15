@@ -79,6 +79,7 @@ LINK_FAILED_LOG = "Level 1A link open failed for %r: %s"
 
 #: Every part one push target's credential is typed into, across all seven.
 CREDENTIAL_KEYS = surface.CREDENTIAL_FIELD_KEYS
+CREDENTIAL_HELD_KEY = surface.CREDENTIAL_HELD_PART
 
 #: The three positions one credential field press carries.
 CREDENTIAL_TARGET_AT = 0
@@ -421,6 +422,8 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self.push()
             elif key in CREDENTIAL_KEYS:
                 self._take_credential_text(request.get("value"))
+            elif key == CREDENTIAL_HELD_KEY:
+                self._hold_credential(request.get("value"))
             elif key == LINK_KEY:
                 self._open_link(request.get("value"))
             elif key == SETTING_FIELD_KEY:
@@ -456,6 +459,20 @@ if _HAS_QT and _HAS_WEBENGINE:
                 held[CREDENTIAL_TARGET_AT],
                 held[CREDENTIAL_FIELD_AT],
                 held[CREDENTIAL_TYPED_AT],
+            )
+            self.push()
+
+        def _hold_credential(self, sent: Any) -> None:
+            """Encrypt one finished credential box into the vault, then redraw.
+
+            ``sent`` is the target and the field, and carries no value. The
+            redraw is what turns the box's wording to the held one.
+            """
+            held = list(sent or [])
+            if len(held) <= CREDENTIAL_FIELD_AT:
+                return
+            self._screen.hold_credential(
+                held[CREDENTIAL_TARGET_AT], held[CREDENTIAL_FIELD_AT]
             )
             self.push()
 
