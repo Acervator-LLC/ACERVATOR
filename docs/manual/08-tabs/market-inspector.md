@@ -3492,4 +3492,160 @@ This entry makes no earlier sentence wrong.
 **Figures.** This entry adds no figure to the page. A count of the markdown
 image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-16 08:30 - #23 - One chart folder per venue, filled for posting by hand
+
+His words, 2026-09-15: *"Should have a catered folder for each venue."* And
+earlier: *"Seems most of this stuff is price gated so will also need a folder
+where charts customed for each venue can be viewed and manually posted."*
+
+The chart folder now holds seven folders, one per venue, named for it. Each
+holds that venue's own version of every call: the chart with the venue's
+message at its foot, the same message as plain text beside it, and for X the
+address that opens the compose window with the message already typed. Nothing
+is sent. Writing to disk is the whole action.
+
+`src/trading/ata_post_paths.py` — one folder per venue under the root
+
+```python
+def venue_post_root(venue: object, root: Optional[Path] = None) -> Path:
+    """The folder one push target's files land in, under ``get_ata_post_root(root)``, created."""
+    held = get_ata_post_root(root) / name_part(venue)
+    held.mkdir(parents=True, exist_ok=True)
+    return held
+```
+
+### The Chart Folder press shows all seven
+
+The button is the same one, and it opens the root. The seven folders are
+created on the press, so they are in view before the first scan. Read off the
+running program with the folder press driven and the host asked for one
+address:
+
+```
+folders now under the root:  ['Facebook', 'Instagram', 'LinkedIn', 'Reddit', 'Threads', 'TikTok', 'X']
+one per venue, named for it: True
+```
+
+The zone keeps its four buttons. At a 700 px tab the zone holds one button per
+line, so seven more would crowd it; the root opens with all seven in view.
+
+### What each folder holds, and the limit that shaped it
+
+Every venue's row already declares what it takes: which sections, how long a
+body, counted in which unit, and whether a title stands beside it. The folder's
+files come from that row and from nothing else.
+
+`src/trading/ata_venue_folders.py` — the files one folder takes for one call
+
+```python
+    image = render_chart_png(
+        candles,
+        vote.symbol,
+        ata_spm.timeframe_label(vote.timeframe),
+        image_path,
+        voters=[one.indicator for one in ata_spm.confirming_signals(vote)],
+        max_overlays=int(max_supporting_indicators or ata_spm.NO_INDICATOR_CAP),
+        direction=vote.direction_text,
+        readings=[(one.indicator, one.message) for one in pull.messages or ()],
+        caption=post.body,
+    )
+    text_path = write_text(
+        image_path.with_suffix(ata_post_paths.POST_TEXT_SUFFIX), post_text(post)
+    )
+```
+
+Driven on one call with twelve confirming voters and long readings, so that
+every section uncut measured 6474 characters:
+
+| Venue | Counted in | Body limit | Measured | Lines dropped | Title line |
+| ----- | ---------- | ---------- | -------- | ------------- | ---------- |
+| X | weighted | 280 | 251 | 12 | none |
+| Instagram | characters | 2200 | 1834 | 9 | none |
+| LinkedIn | characters | 3000 | 2850 | 7 | none |
+| TikTok | UTF-16 runes | 4000 | 3918 | 5 | none, the header alone is over 90 |
+| Facebook | characters | none published | 6474 | 0 | none |
+| Threads | UTF-8 with emoji | 500 | 260 | 12 | none |
+| Reddit | characters | 40000 | 6474 | 0 | yes |
+
+A line drops whole and the longest evidence drops first, so no price or band
+value is cut mid-digit, and the fixed header and the address are never dropped.
+The same call with three voters and the standard wording left every body under
+its limit except X's: the header, the call line and the address take 209 of X's
+280 weighted units, leaving 71 for evidence, so one 43-unit reading fits whole
+and a longer one is dropped for the abbreviation note.
+
+### The text beside the picture, and the X compose address
+
+The text file holds the message exactly as the picture carries it, so it can be
+pasted into a compose window. Where the venue holds a title, the title stands
+on the first line, a blank line, then the body. Reddit's title holds the header
+with the headline. TikTok's title field holds 90 and the header alone measures
+more, so its title is empty and the file carries no title line.
+
+For X only, a third file holds the Web Intent address, in the shortcut form
+the operating system opens on one click. The compose window opens with the
+message typed; the picture is attached by hand, because the intent carries text
+alone.
+
+`src/trading/ata_venue_folders.py` — the address, and the file that opens it
+
+```python
+X_INTENT_FORMAT = "https://x.com/intent/post?text={text}"
+
+INTENT_SHORTCUT_FORMAT = "[InternetShortcut]\nURL={url}\n"
+```
+
+Read back off the disk, the text the address carries decodes to the X body, to
+the character.
+
+### One call fills every folder, and each folder keeps one set per market
+
+The files are written inside phase three, from the candles it already holds,
+in the same call that draws the root picture. No second read of the market
+happens, so no venue is asked for a candle twice. A market the live gate chains
+refuse writes nothing anywhere.
+
+`src/trading/ata_spm.py` — where the folders are filled
+
+```python
+    if gates.would_fire:
+        from .ata_venue_folders import write_venue_posts
+
+        held.image = render_pull_image(
+            vote, candles, max_supporting_indicators, messages
+        )
+        held.venue_posts = write_venue_posts(
+            vote, held, candles, max_supporting_indicators
+        )
+```
+
+Each venue folder is trimmed the way the root is: one picture, one text and,
+for X, one shortcut per market, the newest kept. Counted off the disk:
+
+```
+before any scan                            0 files
+after a market the gate chains refused     0 files
+after one firing call                     16 files   the root picture, 7 pictures, 7 texts, 1 shortcut
+after a second call on the same market    16 files
+after a second market                     32 files
+```
+
+### The sentences this entry leaves standing
+
+`docs/manual/08-tabs/market-inspector.md:1138` — *"It reads one folder, the
+one its own file names, and it goes no deeper."* That is still what the root's
+trim does. It reads the root and skips the seven folders under it; each venue
+folder's trim reads that one folder. A text file placed at the root under a
+post's own name sat through a driven run and was still there at the end.
+
+`docs/manual/08-tabs/market-inspector.md:3171` — *"The Ready to Send zone
+carries a fourth button. It opens the folder holding the chart images, in the
+operating system's own file browser."* Still true. The button opens the same
+root, which now holds the seven folders.
+
+This entry makes no earlier sentence wrong.
+
+**Figures.** This entry adds no figure to the page. A count of the markdown
+image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).

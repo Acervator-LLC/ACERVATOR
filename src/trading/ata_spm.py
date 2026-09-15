@@ -483,7 +483,8 @@ class ChartPull:
     """The chart one reversal call was made on, and its confirming messages.
 
     ``image`` is that chart rendered to a PNG, which the post's caption
-    captions. A call ``gates`` refused carries the default empty ``ChartImage``.
+    captions, and ``venue_posts`` holds what each push target's folder took.
+    A call ``gates`` refused carries the default empty ``ChartImage``.
     """
 
     symbol: str
@@ -505,6 +506,7 @@ class ChartPull:
     gates: ata_gate_scan.GateScan = field(default_factory=ata_gate_scan.GateScan)
     panel: dict = field(default_factory=dict)
     image: ChartImage = field(default_factory=ChartImage)
+    venue_posts: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -981,9 +983,11 @@ def pull(
     """Phase three: the chart the call was made on, with its messages.
 
     ``ata_gate_scan.scan_gates`` reads the live trade gates over the chart
-    first, and ``render_pull_image`` draws the PNG the post carries only while
-    that scan answers ``would_fire``. A refused market leaves ``image`` empty
-    and writes no file.
+    first, and only while that scan answers ``would_fire`` does
+    ``render_pull_image`` draw the PNG the post carries and
+    ``ata_venue_folders.write_venue_posts`` fill each push target's folder
+    from the same candles. A refused market leaves ``image`` and
+    ``venue_posts`` empty and writes no file.
     """
     candles = candles_for(candle_source, vote.symbol, vote.timeframe)
     band = band_signal(vote)
@@ -1002,12 +1006,7 @@ def pull(
     messages = [
         indicator_message(one, message_format) for one in confirming_signals(vote)
     ]
-    image = (
-        render_pull_image(vote, candles, max_supporting_indicators, messages)
-        if gates.would_fire
-        else ChartImage()
-    )
-    return ChartPull(
+    held = ChartPull(
         symbol=vote.symbol,
         timeframe=vote.timeframe,
         direction=vote.direction,
@@ -1042,8 +1041,17 @@ def pull(
         ),
         gates=gates,
         panel=dict(rows or {}),
-        image=image,
     )
+    if gates.would_fire:
+        from .ata_venue_folders import write_venue_posts
+
+        held.image = render_pull_image(
+            vote, candles, max_supporting_indicators, messages
+        )
+        held.venue_posts = write_venue_posts(
+            vote, held, candles, max_supporting_indicators
+        )
+    return held
 
 
 def run(

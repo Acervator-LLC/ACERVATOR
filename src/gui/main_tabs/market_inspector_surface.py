@@ -356,7 +356,8 @@ POST_ALL_TOOLTIP = "Send every approved post, at no more than the configured rat
 FULL_AUTO_TOOLTIP = "Release approved posts without a click, at the configured rate."
 CHART_FOLDER_TOOLTIP = (
     "Open the folder holding the chart images, in the system file browser. "
-    "Each image carries the standardised message, so it can be posted by hand."
+    "Each image carries the standardised message, so it can be posted by hand. "
+    "One folder per venue holds that venue's own image and message text."
 )
 SETTINGS_TOOLTIP = "Show the ATA-SPM accounts page, or the scan page."
 CREDENTIAL_FIELD_WIDTH_PX = 160
@@ -2456,10 +2457,12 @@ def market_listing(ticker: Any, asset_class: Any) -> Any:
 def open_chart_folder() -> str:
     """Ask the host to show the chart image directory, and answer its path.
 
-    ``ata_post_paths.get_ata_post_root`` creates the directory first, so the
-    press opens a folder that exists before any chart is drawn.
+    ``ata_post_paths.venue_post_roots`` creates the root and one folder per
+    name in ``ata_spm_push.TARGET_NAMES`` first, so the press opens a root
+    holding every venue folder before any chart is drawn.
     """
     root = ata_post_paths.get_ata_post_root()
+    ata_post_paths.venue_post_roots(ata_spm_push.TARGET_NAMES)
     try:
         import webbrowser
 
