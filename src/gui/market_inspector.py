@@ -121,6 +121,7 @@ from .main_tabs.market_inspector_surface import (
     TIMEFRAME_BOX_WIDTH_PX,
     TIMEFRAME_ROW_PART,
     TIMEFRAME_TITLE,
+    market_listing,
     open_chart_folder,
     sector_assets,
     sector_candles,
@@ -895,7 +896,7 @@ if _HAS_QT:
             self._refresh_ticker_matches()
 
         def _refresh_ticker_matches(self) -> None:
-            """Write the offered tickers into the completer, and the sector's note.
+            """Write the offered tickers into the completer, and the field's note.
 
             ``ticker_matches`` and ``ticker_note`` read the lists already in the
             tree, so no venue is asked for a symbol.
@@ -904,7 +905,7 @@ if _HAS_QT:
             self._ticker_model.setStringList(
                 ticker_matches(self._ticker_edit.text(), asset_class)
             )
-            note = ticker_note(asset_class)
+            note = ticker_note(asset_class, self._ata_board.note)
             self._ticker_note.setText(note)
             self._ticker_note.setVisible(bool(note))
 
@@ -1485,7 +1486,6 @@ if _HAS_QT:
         def _on_class_changed(self, name: str) -> None:
             """Take the sector chosen, redraw the four boxes and re-offer tickers."""
             self._ata_board.set_class(self._ata_at(), name)
-            self._refresh_ticker_matches()
             self._render_ata_row()
 
         def _on_timeframe_toggled(self, key: str) -> None:
@@ -1524,6 +1524,7 @@ if _HAS_QT:
                     self._ata_candle_source or self._scanned_candles,
                     message_format,
                     max_supporting_indicators,
+                    market_listing,
                 )
             except Exception as exc:  # noqa: BLE001 - the scan runs off-thread
                 logger.exception("ATA-SPM scan failed: %s", exc)
@@ -1533,15 +1534,15 @@ if _HAS_QT:
         def _take_scan(self, answered) -> None:
             """Write the worker's answer onto the board and redraw the zones.
 
-            Phase four fills ``_push_board``'s bucket from the run, and the
-            Ready to Send zone steps what it holds.
+            Phase four fills ``_push_board``'s bucket from the run, and a press
+            leaving a note on ``_ata_board`` reached no run to fill it from.
             """
             logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "draw")
-            sectors, added, found = answered
-            self._ata_board.take(sectors, added, found)
+            sectors, added, found, note = answered
+            self._ata_board.take(sectors, added, found, note)
             if added != ata_spm.NO_NEW_SECTOR:
                 self._zone_at[ATA_SPM_MODULE] = added
-            if self._ata_board.run is not None:
+            if not note and self._ata_board.run is not None:
                 self._push_board.load_run(self._ata_board.run)
                 self._push_board.after_scan(
                     self._ata_board.run,
@@ -1580,6 +1581,7 @@ if _HAS_QT:
             ``PushBoard.settings_open`` says.
             """
             rows = self._ata_board.boxes(self._ata_at())
+            self._refresh_ticker_matches()
             self._class_box.blockSignals(True)
             self._class_box.setCurrentText(self._ata_board.asset_class)
             self._class_box.blockSignals(False)
@@ -1673,6 +1675,7 @@ if _HAS_QT:
                 len(self._pairs),
                 self._connectors_now(),
                 len(self._ata_board.sectors),
+                self._ata_board.note,
             ) + _right_zone_rows(self._ata_run(), self._push_board.bucket)
             return [
                 zone_view(

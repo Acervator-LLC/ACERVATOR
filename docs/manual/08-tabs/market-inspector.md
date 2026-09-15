@@ -3225,4 +3225,133 @@ it is recorded here rather than taken.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+## 2026-09-15 23:40 - #23 - A typed ticker scans that one market
+
+The ticker field now names a market to the press behind it. Typing a ticker and
+pressing Scan Now reads that one market on the ticked timeframes. The sector
+menu still picks the sector, and an empty field still scans the sectors the
+board holds.
+
+### What one press does, for each of the three things the field can hold
+
+| the field holds | the press |
+| --------------- | --------- |
+| a ticker the sector lists | reads that one market, on every ticked timeframe |
+| nothing | runs every scan the board already holds, unchanged |
+| a name the sector lists as neither ticker nor sector | reads nothing, and the line under the field says so |
+
+### Where the typed value is turned into one market
+
+`src/gui/main_tabs/market_inspector_surface.py` — the ticker to one asset row
+
+```python
+def market_listing(ticker: Any, asset_class: Any) -> Any:
+    """The one ``ata_asset_maps.AssetListing`` a typed ticker names in one sector.
+
+    ``class_tickers`` decides whether the sector lists the name, and a sector
+    listing none takes any name, which is what ``TICKER_NO_LIST_FORMAT`` says
+    under the field; a name a listing sector does not hold answers None.
+    """
+```
+
+The row it answers goes onto the scan itself, so no asset source is asked for a
+market the field already named.
+
+`src/trading/ata_spm.py` — the scan that carries its own row
+
+```python
+    name: str
+    asset_class: str = CLASS_CRYPTO
+    timeframes: tuple = ()
+    ticker: str = ""
+    listings: tuple = ()
+```
+
+Candles then come from the wiring `sector_candles` already holds: a forex or
+metals name through the venue its listing names, a crypto name through the
+Refresh cache while that cache is under 15 minutes old, and through
+`fetch_symbol_timeframe` once it is older.
+
+### The zone says which kind of scan it ran
+
+`src/trading/ata_spm.py` — the two wordings one entry is drawn from
+
+```python
+SECTOR_LINE_FORMAT = "{sector} ({asset_class})"
+SECTOR_META_FORMAT = "{assets} asset(s) · {votes} vote(s) · {calls} reversal call(s)"
+MARKET_LINE_FORMAT = "{ticker} in {asset_class}"
+MARKET_META_FORMAT = "1 market · {votes} vote(s) · {calls} reversal call(s)"
+```
+
+The zone's own status line counts the two kinds apart. A run holding only
+sectors keeps the line it always had, a run holding only markets counts
+markets, and a run holding both counts both.
+
+### A name the sector does not list
+
+`src/trading/ata_spm.py` — what that press leaves behind
+
+```python
+TICKER_UNHELD_FORMAT = (
+    "{asset_class} holds no ticker {ticker}. Pick one the field offers."
+)
+```
+
+That sentence draws on the line under the field, where the sector's own
+`TICKER_NO_LIST_FORMAT` note draws. Typing again clears it, and so does picking
+another sector. The board gains nothing, so the press invents no sector.
+
+### Read off both running builds after each press
+
+Both builds were driven with one stand-in candle source, the network refused,
+and the zone read off each rendered surface — the window's own labels, and the
+page's own text.
+
+| the press | window | page |
+| --------- | ------ | ---- |
+| `BTC`, crypto | `BTC in crypto` / `1 market · 2 vote(s) · 0 reversal call(s)` | identical |
+| `defi`, crypto | `defi (crypto)` / `10 asset(s) · 20 vote(s) · 0 reversal call(s)` | identical |
+| the field empty | `defi (crypto)` / `10 asset(s) · 20 vote(s) · 0 reversal call(s)` | identical |
+| `ZZZZ`, crypto | zone keeps `defi (crypto)`; the line under the field reads `crypto holds no ticker ZZZZ. Pick one the field offers.` | identical |
+
+The symbols each press read, counted at the candle source: 1 for `BTC`, 11 for
+`defi` on a board already holding `BTC`, 11 again for the empty field, and 0
+for `ZZZZ`. The same counter reported 0, 1, 4, 10 and 11 across one run, so its
+zero is a reading and not a blind instrument. Network calls attempted across
+every run: 0.
+
+Before this entry the same four presses read 0 symbols for `BTC`, then 10, 10
+and 10, the last of those being the board re-running `defi` behind an invented
+`ZZZZ (crypto)` entry.
+
+Two sectors carry no ticker of their own kind. `XAU/USD` in metals reads
+`XAU/USD in metals` / `No configured venue lists XAU/USD.`, which is what the
+metals map already records for all four spot pairs. `GOOG` in stocks, a sector
+listing no tickers at all, reads `GOOG in stocks` /
+`No configured venue lists GOOG.`, so a typed name still scans and the zone
+names what stopped it.
+
+### The sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:483` - "Scan Now adds the typed sector
+when it is new, then runs the phases that read price data." The press adds the
+typed value as a market when the sector lists it as a ticker, and as a sector
+only when the sector map holds it under that name.
+
+`docs/manual/08-tabs/market-inspector.md:3221` - "Naming the field did not
+change the press. Scan Now adds what he typed as a sector, so a ticker typed
+into the field names a sector holding no assets and the scan reads nothing."
+That was the state this entry ends. The product decision it left open is the
+one taken here.
+
+`docs/manual/08-tabs/market-inspector.md:452` - "Scan this sector now on the
+timeframes ticked beside it, without waiting for a rotation." That is the Scan
+Now tooltip as it read while the field named a sector. The button now carries a
+tooltip naming both cases.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
