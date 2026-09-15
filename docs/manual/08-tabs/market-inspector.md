@@ -1772,7 +1772,7 @@ one that fired, the gates that blocked the 127 that did not, and the picture
 count before and after the run are in
 [the debug report](../../../tests/debug_reports/2026-09-09_bucket_gate_verdict.md).
 
-## 2026-09-14 17:40 - #23 - SM Accounts, and one sign-in page per venue
+## 2026-09-14 17:34 - #23 - SM Accounts, and one sign-in page per venue
 
 The Settings button on the ATA-SPM control row opens a page of buttons. The page
 takes the whole left column, so nothing is squeezed into a strip and no scroll
@@ -1892,7 +1892,7 @@ stays open and prints what failed.
 
 
 
-## 2026-09-14 21:00 - #23 - Each venue's own sign-in, behind Connect
+## 2026-09-14 18:55 - #23 - Each venue's own sign-in, behind Connect
 
 All seven venues use three-legged OAuth. Not one of them issues a working token
 from an app id and a secret alone. The operator sends himself to the venue in a
@@ -2034,7 +2034,7 @@ venue draws the same six lines and the same boxes under Qt and under React.
 
 
 
-## 2026-09-14 23:30 - #23 - The redirect address each venue accepts
+## 2026-09-14 20:21 - #23 - The redirect address each venue accepts
 
 Every route sent the same address, `http://127.0.0.1:<port>`, at a port the
 operating system picked. Each venue's own documentation was then read for what
@@ -2146,7 +2146,7 @@ Login Review without naming which permissions it accepts. Whether it carries
 **Figures.** This page carries no figure and this entry adds none.
 
 
-## 2026-09-14 23:55 - #23 - The scan page, three lines of buttons
+## 2026-09-14 21:35 - #23 - The scan page, three lines of buttons
 
 The ATA-SPM zone drew every control on one line: the sector field, its class,
 four check boxes, Scan Now and Settings. That line asked for 666 px where the
@@ -2224,7 +2224,7 @@ widths quoted above were read from the running page and are not stored.
 
 
 
-## 2026-09-15 02:10 - #23 - Level 1 and Level 1A fit the pane at every width
+## 2026-09-14 22:18 - #23 - Level 1 and Level 1A fit the pane at every width
 
 Level 1 broke its buttons after four and its settings rows after two, whatever
 the pane's width. The page asked for 638 px where the zone gives 435 px at a
@@ -2292,7 +2292,7 @@ is squeezed into a strip and no scroll bar appears." That was not true of the
 running program when it was written: at a 900 px tab the zone carried a
 horizontal scroll bar and six controls sat outside the pane. It is true now.
 
-## 2026-09-15 04:20 - #23 - Facebook signs in inside the program
+## 2026-09-14 23:18 - #23 - Facebook signs in inside the program
 
 Facebook was the one venue whose Connect could not finish. Meta answers a
 desktop program in the fragment of its own published redirect, and a fragment
@@ -2464,7 +2464,7 @@ no listener.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 06:30 - #23 - The right pane's zones fit at every width
+## 2026-09-14 23:24 - #23 - The right pane's zones fit at every width
 
 The right pane holds three zones. Two of them carry a row of their own above
 the stepper, and both rows were built to one width and never re-laid. At a
@@ -2546,7 +2546,7 @@ and both lines read in full.
 **Figures.** This page carries no figure and this entry adds none. Every width
 quoted above was read from the running program and is not stored.
 
-## 2026-09-15 09:40 - #23 - Every Level 1A page carries its register address
+## 2026-09-14 23:57 - #23 - Every Level 1A page carries its register address
 
 Each venue issues credentials only to an application registered with it. Six
 of the seven pages named no place to do that. Every page now carries the
@@ -2650,7 +2650,7 @@ None was reworded. Each is quoted here.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 11:20 - #23 - A refused sign-in names the venue's own reason
+## 2026-09-15 01:02 - #23 - A refused sign-in names the venue's own reason
 
 Level 1A returns to Level 1 by itself when a venue accepts, and holds the page
 when a venue refuses. Both builds do this. A refusal now prints the reason the
@@ -2716,7 +2716,7 @@ venue as `abc`, and a box holding only spaces is still reported empty.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 12:10 - #23 - A sign-in says what it did, on the page and in the log
+## 2026-09-15 02:49 - #23 - A sign-in says what it did, on the page and in the log
 
 Level 1A held the page on a refusal and printed the reason in the page's own
 body text. Two X sign-ins ended the same way for the operator: the page did not
@@ -2780,7 +2780,7 @@ instead of reading as nothing.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 14:30 - #23 - The credential vault, and Level 1A leaving by itself
+## 2026-09-15 03:19 - #23 - The credential vault, and Level 1A leaving by itself
 
 A sign-in the venue accepted had nowhere to put its tokens, so Level 1A held the
 page on a sign-in that worked. Both builds now hand the board a vault when they
@@ -2853,7 +2853,7 @@ in `ata_spm_credentials.json`, so they are two files under one passphrase.
 **Figures.** This page carries no figure and this entry adds none.
 
 
-## 2026-09-15 16:20 - #23 - What he types is held too, and every register address
+## 2026-09-15 05:16 - #23 - What he types is held too, and every register address
 
 Level 1A held what he typed in memory only. A restart lost it, and X prints a
 client secret once, so losing it means generating a new one in X's console. What
@@ -3009,7 +3009,7 @@ Create app button.
 **Figures.** This page carries no figure and this entry adds none.
 
 
-## 2026-09-15 18:40 - #23 - Scan Now reads the market, and says so when it cannot
+## 2026-09-15 06:31 - #23 - Scan Now reads the market, and says so when it cannot
 
 Scan Now read no market of its own for crypto. It served whatever the Refresh
 press had left behind, and with no Refresh behind it, it served nothing and drew
@@ -3120,7 +3120,7 @@ unserved only when the exchange itself serves no such timeframe.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 20:15 - #23 - The ticker field, and the way to the chart images
+## 2026-09-15 07:30 - #23 - The ticker field, and the way to the chart images
 
 The text field on the ATA-SPM scan page is named for what it does. It names one
 market, read on demand. The menu beside it is the sector menu, and it holds
@@ -3225,7 +3225,7 @@ it is recorded here rather than taken.
 
 **Figures.** This page carries no figure and this entry adds none.
 
-## 2026-09-15 23:40 - #23 - A typed ticker scans that one market
+## 2026-09-15 08:22 - #23 - A typed ticker scans that one market
 
 The ticker field now names a market to the press behind it. Typing a ticker and
 pressing Scan Now reads that one market on the ticked timeframes. The sector
@@ -3354,7 +3354,7 @@ tooltip naming both cases.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
-## 2026-09-16 05:10 - #23 - The built application opens again
+## 2026-09-15 13:56 - #23 - The built application opens again
 
 Build `1371.ge6b50511-qt` stopped before its window opened. The Market
 Inspector tab is built while the window is, and the line under the ticker field
@@ -3492,7 +3492,7 @@ This entry makes no earlier sentence wrong.
 **Figures.** This entry adds no figure to the page. A count of the markdown
 image tags on the page answers 0 before this entry and 0 after it.
 
-## 2026-09-16 08:30 - #23 - One chart folder per venue, filled for posting by hand
+## 2026-09-15 15:30 - #23 - One chart folder per venue, filled for posting by hand
 
 His words, 2026-09-15: *"Should have a catered folder for each venue."* And
 earlier: *"Seems most of this stuff is price gated so will also need a folder
@@ -3786,6 +3786,13 @@ note."* That was the fixed header. With X's own, the three take 122, leaving
 `docs/manual/08-tabs/market-inspector.md:3571` — *"the fixed header and the
 address are never dropped."* Still true of the header a row carries: the fitter
 drops evidence lines and reaches neither the header nor the address.
+
+### Seventeen entry stamps read off their commits now
+
+The entry headings at lines 1775, 1895, 2037, 2149, 2227, 2295, 2467, 2549,
+2653, 2719, 2783, 2856, 3012, 3123, 3228, 3357 and 3495 were stamped in local
+time, 6 minutes to 17 hours ahead of the commits that wrote them, and now read
+the UTC minute of those commits, the stamp alone changed on each line.
 
 **Figures.** This entry adds no figure to the page. A count of the markdown
 image tags on the page answers 0 before this entry and 0 after it.
