@@ -89,6 +89,7 @@ from .main_tabs.market_inspector_surface import (
 from .main_tabs.market_inspector_surface import (
     LINK_COLOUR,
     PAGE_ENDPOINT_LINKS,
+    PAGE_HELD_FIELDS,
     PAGE_PREREQUISITE_LINKS,
     PAGE_REGISTRATION_LINKS,
 )
@@ -1104,6 +1105,13 @@ if _HAS_QT:
                             )
                         )
                     )
+                    # A vault write costs about 150 ms, so a box reaches the
+                    # vault when he leaves it and not on every keystroke.
+                    field.editingFinished.connect(
+                        lambda target=name, key=one.key: self._on_credential_held(
+                            target, key
+                        )
+                    )
                     self._credential_edits.setdefault(name, []).append(field)
                     self._credential_rows.setdefault(name, []).append(
                         self._field_row(one.label, field)
@@ -1199,8 +1207,14 @@ if _HAS_QT:
             self._render_left_modules()
 
         def _on_venue_pressed(self, target: str) -> None:
-            """Open one push target's Level 1A page and redraw."""
+            """Open one push target's Level 1A page and redraw.
+
+            The boxes are emptied as the page opens, which is what the page
+            does when it builds them, so a value the vault holds is drawn back
+            into neither build.
+            """
             self._push_board.open_credentials(target)
+            self._clear_credential_boxes(target)
             self._render_ata_row()
 
         def _on_category_pressed(self, name: str) -> None:
@@ -1208,6 +1222,43 @@ if _HAS_QT:
             self._ata_board.set_class(self._ata_at(), name)
             self._render_ata_row()
             self._render_left_modules()
+
+        def _clear_credential_boxes(self, target: str) -> None:
+            """Empty one push target's boxes without reporting the change.
+
+            Level 1A draws empty boxes every time it opens, which is what the
+            page does, and a value the vault holds is never drawn back into
+            one. Signals stay blocked so the emptying reaches neither
+            ``set_credential_text`` nor the vault.
+            """
+            for field in self._credential_edits.get(target, []):
+                field.blockSignals(True)
+                field.clear()
+                field.blockSignals(False)
+
+        def _write_credential_placeholders(
+            self, target: str, placeholder: str, held_keys: list
+        ) -> None:
+            """Draw each box of one push target as held, or under its own label.
+
+            ``held_keys`` names only which boxes the vault holds a value for,
+            so no value reaches the window.
+            """
+            fields = ata_spm_push.credential_fields(target)
+            boxes = self._credential_edits.get(target, [])
+            for one, field in zip(fields, boxes):
+                field.setPlaceholderText(
+                    placeholder if one.key in held_keys else one.label
+                )
+
+        def _on_credential_held(self, target: str, key: str) -> None:
+            """Encrypt one finished credential box into the vault, then redraw it.
+
+            The redraw is what turns the box's wording to the held one, so a
+            value he typed reads as held without ever being drawn back.
+            """
+            self._push_board.settings.hold_credential(target, key)
+            self._render_credential_page()
 
         def _on_back_pressed(self) -> None:
             """Leave Level 1A for Level 1 without signing in."""
@@ -1280,6 +1331,9 @@ if _HAS_QT:
             for name, rows in self._credential_rows.items():
                 for row in rows:
                     row.setVisible(name == target)
+            self._write_credential_placeholders(
+                target, str(page["held_placeholder"]), held[PAGE_HELD_FIELDS]
+            )
             self._credential_title.setText(target)
             self._endpoint_label.setText(self._link_html(held[PAGE_ENDPOINT_LINKS]))
             self._scopes_label.setText(str(held["scopes"]))

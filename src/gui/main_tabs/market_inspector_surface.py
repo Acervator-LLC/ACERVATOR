@@ -736,6 +736,7 @@ ACTIONS = {
     "push_pressed": "push_action",
     "venue_pressed": "open_credentials",
     "credential_typed": "set_credential_text",
+    "credential_held": "hold_credential",
     "setting_written": "set_setting",
 }
 
@@ -1742,6 +1743,16 @@ CREDENTIAL_LINK_PART = "credential-link"
 #: The ``credential_page`` values drawn as link segments. Each is a fixed text
 #: on the venue's own ``ata_spm_push.PushTarget`` row; nothing typed and nothing
 #: a venue answered is on this list.
+#: The ``credential_page`` list naming which boxes the vault already holds a
+#: value for. It carries ``CredentialField`` keys and never a value.
+PAGE_HELD_FIELDS = "held_fields"
+
+#: The wording a box whose value the vault holds draws instead of its label.
+CREDENTIAL_HELD_PLACEHOLDER = "Held · type to replace"
+
+#: The part name a finished credential box reports itself under.
+CREDENTIAL_HELD_PART = "credential-held"
+
 PAGE_ENDPOINT_LINKS = "endpoint_links"
 PAGE_REGISTRATION_LINKS = "registration_links"
 PAGE_PREREQUISITE_LINKS = "prerequisite_links"
@@ -1851,6 +1862,7 @@ def credential_page(board: Any) -> dict:
             "redirect": NO_SYMBOL,
             "registration": NO_SYMBOL,
             "prerequisite": NO_SYMBOL,
+            PAGE_HELD_FIELDS: [],
             PAGE_ENDPOINT_LINKS: [],
             PAGE_REGISTRATION_LINKS: [],
             PAGE_PREREQUISITE_LINKS: [],
@@ -1861,6 +1873,7 @@ def credential_page(board: Any) -> dict:
     return {
         "target": found.name,
         "fields": [[one.key, one.label] for one in found.fields],
+        PAGE_HELD_FIELDS: list(board.settings.held_fields(found.name)),
         "endpoint": ENDPOINT_LINE_FORMAT.format(endpoint=found.endpoint),
         "scopes": SCOPES_LINE_FORMAT.format(scopes=SCOPE_SEPARATOR.join(found.scopes)),
         "sign_in": sign_in_line(found.name),
@@ -1914,6 +1927,8 @@ def settings_page(board: Any, asset_class: Any = "") -> dict:
         "prerequisite_part": PREREQUISITE_LINE_PART,
         "link_part": CREDENTIAL_LINK_PART,
         "link_colour": LINK_COLOUR,
+        "held_part": CREDENTIAL_HELD_PART,
+        "held_placeholder": CREDENTIAL_HELD_PLACEHOLDER,
         "accounts_title": SM_ACCOUNTS_TITLE,
         "category_title": ASSET_CATEGORY_TITLE,
         "settings_title": ATA_SETTINGS_TITLE,
@@ -2759,6 +2774,14 @@ class MarketInspectorScreenModel:
     def set_credential_text(self, target: Any, field: Any, typed: Any) -> None:
         """Hold what one credential field carries until Connect reads it."""
         self.push.settings.set_credential_text(target, field, typed)
+
+    def hold_credential(self, target: Any, field: Any) -> bool:
+        """Encrypt one finished credential box into the vault, and answer whether it holds it.
+
+        Nothing here carries the value, so the answer says only that a box is
+        held and no render or call log can carry a token.
+        """
+        return self.push.settings.hold_credential(target, field)
 
     def set_setting(self, key: Any, value: Any) -> Any:
         """Write one ATA-SPM setting and answer what the settings page now holds.
@@ -3623,6 +3646,9 @@ def view_model(params: dict) -> dict:
     if params.get("credential_text"):
         typed = list(params["credential_text"])
         model.set_credential_text(typed[0], typed[1], typed[2])
+    if params.get("credential_held"):
+        finished = list(params["credential_held"])
+        model.hold_credential(finished[0], finished[1])
     if params.get("open_credentials"):
         model.open_credentials(params["open_credentials"])
     if params.get("set_setting"):

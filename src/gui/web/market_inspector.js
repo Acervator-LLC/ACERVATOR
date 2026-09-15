@@ -840,6 +840,9 @@
   var CREDENTIAL_PAGE = "credential";
   var PAGE_TARGET = "target";
   var PAGE_FIELDS = "fields";
+  // Which boxes the vault already holds a value for. It names field keys and
+  // never a value, so the held wording draws and the characters stay away.
+  var PAGE_HELD_FIELDS = "held_fields";
   var PAGE_SCOPES = "scopes";
   var PAGE_SIGN_IN = "sign_in";
   var PAGE_REDIRECT = "redirect";
@@ -855,6 +858,8 @@
   var PAGE_PREREQUISITE_LINKS = "prerequisite_links";
   var LINK_PART = "link_part";
   var LINK_COLOUR = "link_colour";
+  var HELD_PART = "held_part";
+  var HELD_PLACEHOLDER = "held_placeholder";
   var CREDENTIAL_WIDTH_PX = "credential_width_px";
   var SETTING_WIDTH_PX = "setting_width_px";
   var VENUE_WIDTH_PX = "venue_width_px";
@@ -881,6 +886,7 @@
   var PUSH_ACTION_FIELD = "push_action";
   var OPEN_CREDENTIALS_FIELD = "open_credentials";
   var CREDENTIAL_TEXT_FIELD = "credential_text";
+  var CREDENTIAL_HELD_FIELD = "credential_held";
   var SET_SETTING_FIELD = "set_setting";
   var PUSH_PARTS = "push_parts";
   var POINTER = "pointer";
@@ -1946,20 +1952,29 @@
   }
 
   // CredentialField is one box of the open venue's Level 1A page. Nothing
-  // typed here is ever drawn back, so no render carries a token.
+  // typed here is ever drawn back, so no render carries a token. A box the
+  // vault holds a value for draws the held wording and stays empty.
   function CredentialField(props) {
     var page = props.page;
     var pair = asList(props.field);
+    var wording = props.held
+      ? text(page[HELD_PLACEHOLDER])
+      : label(pair[ONE]);
     var fieldProps = {
       type: PASSWORD_TYPE,
       style: fieldStyle(page, CREDENTIAL_WIDTH_PX),
-      placeholder: label(pair[ONE]),
+      placeholder: wording,
       onInput: function (event) {
         act(text(pair[ZERO]), [
           text(props.target),
           text(pair[ZERO]),
           event.target.value
         ]);
+      },
+      // A vault write costs about 150 ms, so a box reaches the vault when he
+      // leaves it and not on every keystroke.
+      onBlur: function () {
+        act(text(page[HELD_PART]), [text(props.target), text(pair[ZERO])]);
       }
     };
     fieldProps[PART_ATTR] = text(pair[ZERO]);
@@ -2034,6 +2049,7 @@
     var page = props.page;
     var held = objectField(page, CREDENTIAL_PAGE);
     var target = text(held[PAGE_TARGET]);
+    var heldFields = listField(held, PAGE_HELD_FIELDS).map(text);
     var style = {
       display: FLEX,
       flexDirection: COLUMN_WAY,
@@ -2061,7 +2077,8 @@
             key: PAGE_FIELDS + PATH_SPLIT + String(at),
             page: page,
             target: target,
-            field: field
+            field: field,
+            held: heldFields.indexOf(text(asList(field)[ZERO])) >= ZERO
           });
         })
       ),
@@ -3279,6 +3296,8 @@
       asked[SECTOR_CLASS_FIELD] = value;
     } else if (credentialParts().indexOf(key) >= ZERO) {
       asked[CREDENTIAL_TEXT_FIELD] = value;
+    } else if (key === settingsHeld()[HELD_PART]) {
+      asked[CREDENTIAL_HELD_FIELD] = value;
     } else if (key === settingsHeld()[SETTING_PART]) {
       asked[SET_SETTING_FIELD] = value;
     } else {
