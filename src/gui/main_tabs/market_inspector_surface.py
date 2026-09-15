@@ -546,6 +546,11 @@ COLOR_METHOD = "#00cccc"
 NO_COLOR = ""
 NO_CELL = None
 
+#: What Level 1A draws its message in. Every other line on that page is plain
+#: body text, so a message in body text reads as more of the page's own prose.
+MESSAGE_REFUSED_COLOUR = ds.ERROR
+MESSAGE_ACCEPTED_COLOUR = ds.SUCCESS
+
 #: The strip marker colour each bucket vote draws in, and the fill behind it.
 VOTE_COLORS = {
     ata_spm_push.VOTE_BULL: COLOR_ENTRY_LONG_HIGH,
@@ -1816,6 +1821,17 @@ def sign_in_line(target: Any) -> str:
     return SIGN_IN_LINE_FORMAT.format(address=address)
 
 
+def message_colour(answered: Any) -> str:
+    """The colour Level 1A draws one ``ConnectResult`` in.
+
+    Both builds read this one value, so ``MESSAGE_REFUSED_COLOUR`` cannot reach
+    one page and body text the other.
+    """
+    if answered is None:
+        return NO_COLOR
+    return MESSAGE_ACCEPTED_COLOUR if answered.ok else MESSAGE_REFUSED_COLOUR
+
+
 def credential_page(board: Any) -> dict:
     """Every value one push target's Level 1A page is drawn from.
 
@@ -1838,6 +1854,7 @@ def credential_page(board: Any) -> dict:
             PAGE_REGISTRATION_LINKS: [],
             PAGE_PREREQUISITE_LINKS: [],
             "message": NO_MESSAGE_TEXT,
+            "message_colour": NO_COLOR,
             "ok": False,
         }
     return {
@@ -1865,6 +1882,7 @@ def credential_page(board: Any) -> dict:
             PREREQUISITE_LINE_FORMAT.format(prerequisite=found.prerequisite)
         ),
         "message": NO_MESSAGE_TEXT if answered is None else str(answered.detail),
+        "message_colour": message_colour(answered),
         "ok": bool(answered is not None and answered.ok),
     }
 
