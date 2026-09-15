@@ -775,6 +775,18 @@ if _HAS_QT:
             self._overlay_shown = {one.key: one.key in wanted for one in CHART_OVERLAYS}
             self._repaint()
 
+        def set_overlay(self, key: str, on: bool) -> bool:
+            """Switch one ``CHART_OVERLAYS`` key on or off; False for a key not in the registry."""
+            if key not in self._overlay_shown:
+                return False
+            self._overlay_shown[key] = bool(on)
+            self._repaint()
+            return True
+
+        def overlays_shown(self) -> dict:
+            """A copy of ``_overlay_shown``: every overlay key and whether it draws."""
+            return dict(self._overlay_shown)
+
         def set_timeframe(self, tf: str) -> None:
             self._current_tf = tf
 
@@ -2403,6 +2415,30 @@ if _HAS_QT:
 
     resolve_palette()
 
+    def paint_image(
+        painter: ChartPainter,
+        width_px: int,
+        height_px: int,
+        device_pixel_ratio: float = 1.0,
+    ) -> QImage:
+        """``painter.paint_to`` onto a ``QImage`` of ``width_px`` by ``height_px`` at ``device_pixel_ratio``.
+
+        The image holds ``width_px * device_pixel_ratio`` device pixels across,
+        so a 2x display gets twice the pixels for the same chart geometry.
+        """
+        ratio = float(device_pixel_ratio) if float(device_pixel_ratio) > 0 else 1.0
+        image = QImage(
+            int(round(int(width_px) * ratio)),
+            int(round(int(height_px) * ratio)),
+            QImage.Format_ARGB32,
+        )
+        image.setDevicePixelRatio(ratio)
+        image.fill(painter.BG_TOP)
+        image_painter = QPainter(image)
+        painter.paint_to(image_painter, int(width_px), int(height_px))
+        image_painter.end()
+        return image
+
     def render_chart_png(
         candles,
         symbol: str,
@@ -2442,11 +2478,7 @@ if _HAS_QT:
         if undrawn:
             painter.set_source_label(NOT_DRAWN_NOTE.format(voters=", ".join(undrawn)))
         height_px = painter._natural_height_for_panes(int(width_px))
-        image = QImage(int(width_px), int(height_px), QImage.Format_ARGB32)
-        image.fill(painter.BG_TOP)
-        image_painter = QPainter(image)
-        painter.paint_to(image_painter, int(width_px), int(height_px))
-        image_painter.end()
+        image = paint_image(painter, int(width_px), height_px)
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         if not image.save(str(target)):

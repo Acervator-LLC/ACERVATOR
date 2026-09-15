@@ -144,7 +144,6 @@
   var TB_CEILING = "tb_ceiling";
   var ARMED = "armed";
   var MINIMUM_HEIGHT = "minimum_height_px";
-  var NATURAL_HEIGHT = "natural_height_px";
   var MAXIMUM_HEIGHT = "maximum_height_px";
   var CHART_REPAINTS = "chart_repaints";
   var PANEL_REPAINTS = "panel_repaints";
@@ -157,6 +156,23 @@
 
   var TIMEFRAME_ACTION = "panel.chart.timeframe_changed";
   var TIMEFRAME_CHANGE_PARAM = "timeframe_change";
+
+  // The chart slot asks the tab for the image `native_chart.py` paints, at
+  // the slot's own width and the page's device pixel ratio.
+  var IMAGE_METHOD = "trade_charts_tab.image";
+  var IMAGE_WIDTH_PARAM = "width";
+  var IMAGE_HEIGHT_PARAM = "height";
+  var IMAGE_RATIO_PARAM = "dpr";
+  var TOGGLE_KEY_PARAM = "toggle_overlay";
+  var TOGGLE_ON_PARAM = "toggle_on";
+  var IMAGE_DATA_URI = "data_uri";
+  var IMAGE_WIDTH = "width_px";
+  var IMAGE_HEIGHT = "height_px";
+  var IMAGE_NATURAL_HEIGHT = "natural_height_px";
+  var IMAGE_RATIO = "device_pixel_ratio";
+  var IMAGE_SHA = "sha256";
+  var IMAGE_CANDLES = "candle_count";
+  var PAINTER = "native_chart.py";
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -171,8 +187,6 @@
   var NOT_FINITE_FAULT = "not-finite";
 
   var NO_BRIDGE = "the preload bridge is not present";
-
-  var NUMBER_KIND = "number";
 
   var PANEL_AT = "asset:";
   var LEGEND_AT = "legend:";
@@ -220,7 +234,9 @@
   var OPTION_TAG = "option";
   var LABEL_TAG = "label";
   var INPUT_TAG = "input";
+  var IMG_TAG = "img";
   var CHECKBOX_TYPE = "checkbox";
+  var BLOCK = "block";
 
   var TAB_CLASS = "acervator-charts-tab";
   var PANEL_CLASS = "acervator-charts-panel";
@@ -246,10 +262,11 @@
   var TOGGLE_PART = "panel-toggle";
   var CHART_PART = "chart-mount";
   var CHART_HOST_PART = "chart-host";
+  var CHART_IMAGE_PART = "chart-image";
   var ERROR_PART = "panel-error";
   var EMPTY_PART = "empty-column";
 
-  // `native_chart.js` draws the candles into the host this tab keeps.
+  // The slot `native_chart.py` paints into, through the tab's image ask.
   var CHART_SLOT = "native_chart";
 
   var PART_ATTR = "data-part";
@@ -257,7 +274,12 @@
   var BOT_ATTR = "data-bot";
   var SYMBOL_ATTR = "data-symbol";
   var TOGGLE_ATTR = "data-toggle";
-  var CHILD_ATTR = "data-child-module";
+  var PAINTER_ATTR = "data-painter";
+  var IMAGE_WIDTH_ATTR = "data-width-px";
+  var IMAGE_HEIGHT_ATTR = "data-height-px";
+  var IMAGE_RATIO_ATTR = "data-dpr";
+  var IMAGE_SHA_ATTR = "data-sha256";
+  var FAULT_ATTR = "data-fault";
 
   var SELECT_OPEN = "[";
   var SELECT_IS = "=\"";
@@ -540,6 +562,30 @@
       });
   }
 
+  // A toggled overlay reaches the painter through the surface, and the box
+  // reads the painter's own state back off the answer.
+  function overlayChosen(key, on) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[TOGGLE_KEY_PARAM] = key;
+    params[TOGGLE_ON_PARAM] = Boolean(on);
+    return global.acervator
+      .call(METHOD, params)
+      .then(function (model) {
+        loadFault = null;
+        setCharts(model);
+        redraw();
+        return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
+  }
+
   function TimeframeControl(props) {
     var style = { flex: FLEX_NONE };
     var selectProps = {
@@ -639,7 +685,9 @@
         type: CHECKBOX_TYPE,
         "aria-label": text(one[LABEL]),
         checked: Boolean(one[CHECKED]),
-        readOnly: true
+        onChange: function (event) {
+          overlayChosen(one[TOGGLE_KEY], event.target.checked);
+        }
       }),
       text(one[LABEL])
     );
@@ -660,7 +708,7 @@
     return element(DIV_TAG, rowProps, listField(chrome, TOGGLES).map(PanelToggle));
   }
 
-  // The host native_chart.js paints into, carrying the panel values the tab fed it.
+  // The host the painted image lands in, carrying the panel values the tab fed it.
   function ChartMount(props) {
     var panel = props.panel;
     var mountProps = {
@@ -684,8 +732,8 @@
     mountProps[CEILING_ATTR] = text(panel[TB_CEILING]);
     mountProps[ARMED_ATTR] = text(panel[ARMED] === null ? null : Boolean(panel[ARMED]));
 
-    // native_chart.js draws its own root into this element, so React declares
-    // no child of its own inside it and never removes one it does not own.
+    // renderChartMounts places the image element inside this host itself, so
+    // React declares no child of its own inside it and never removes one.
     var hostProps = { key: CHART_HOST_PART, style: { flex: AUTO, overflow: HIDDEN } };
     hostProps[PART_ATTR] = CHART_HOST_PART;
     hostProps[BOT_ATTR] = text(props.botId);
@@ -1445,21 +1493,46 @@
     );
   }
 
-  // Qt builds one ChartPanel inside each panel, so every chart slot asks
-  // native_chart.js for the chart of the symbol its panel follows, with the
-  // candles that panel holds. The panel host draws it, so a chart that does
-  // not register is named on the slot rather than drawn.
-  function renderChartMounts(target, payload) {
-    var host = global.acervatorPanelHost;
-    var api = global.acervatorChart;
+  // The one image element inside a chart host, made on the first answer.
+  function imageIn(into) {
+    var found = into.querySelector(
+      SELECT_OPEN + PART_ATTR + SELECT_IS + CHART_IMAGE_PART + SELECT_CLOSE
+    );
+    if (found !== null) {
+      return found;
+    }
+    found = document.createElement(IMG_TAG);
+    found.setAttribute(PART_ATTR, CHART_IMAGE_PART);
+    found.setAttribute(PAINTER_ATTR, PAINTER);
+    found.style.display = BLOCK;
+    into.appendChild(found);
+    return found;
+  }
+
+  // The answer's image goes into the host at its CSS size. The mount takes
+  // the painter's natural height as its floor, so the toggles under it never
+  // cover a sub-pane, while the image itself fills whatever height the host has.
+  function placeImage(mount, into, answer) {
+    var image = imageIn(into);
+    image.setAttribute(IMAGE_WIDTH_ATTR, text(answer[IMAGE_WIDTH]));
+    image.setAttribute(IMAGE_HEIGHT_ATTR, text(answer[IMAGE_HEIGHT]));
+    image.setAttribute(IMAGE_RATIO_ATTR, text(answer[IMAGE_RATIO]));
+    image.setAttribute(IMAGE_SHA_ATTR, text(answer[IMAGE_SHA]));
+    image.setAttribute(CANDLES_ATTR, text(answer[IMAGE_CANDLES]));
+    image.style.width = height(answer[IMAGE_WIDTH]);
+    image.style.height = height(answer[IMAGE_HEIGHT]);
+    image.src = String(answer[IMAGE_DATA_URI]);
+    mount.style.minHeight = height(answer[IMAGE_NATURAL_HEIGHT]);
+    into.removeAttribute(FAULT_ATTR);
+  }
+
+  // Every chart slot asks the tab for the image `native_chart.py` paints of
+  // the asset its panel follows, at the slot's width and the page's device
+  // pixel ratio. A refused ask is named on the slot rather than drawn over.
+  function renderChartMounts(target) {
     var mounts = chartMounts(target);
     var reachable =
       Boolean(global.acervator) && typeof global.acervator.call === "function";
-    if (!host) {
-      return Promise.resolve([]);
-    }
-    var panel = objectField(isPlainObject(payload) ? payload : {}, PANEL);
-    var candles = listField(panel, CANDLES);
     var drawn = [];
     var chain = Promise.resolve();
     Array.prototype.forEach.call(mounts, function (mount) {
@@ -1470,44 +1543,33 @@
       if (into === null) {
         return;
       }
-
-      // With no chart module and no bridge, the host names the refusal on
-      // the slot rather than leaving an empty box saying nothing.
-      if (!api || !reachable) {
-        mount.setAttribute(CHILD_ATTR, CHART_SLOT);
-        host.mount(CHART_SLOT, into, null);
+      mount.setAttribute(SLOT_ATTR, CHART_SLOT);
+      if (!reachable) {
+        into.setAttribute(FAULT_ATTR, NO_BRIDGE);
+        into.textContent = NO_BRIDGE;
         return;
       }
-
-      function ask() {
-        return global.acervator.call(api.method, {
-          reset: true,
-          symbol: symbol,
-          timeframe: mount.getAttribute(CHART_TF_ATTR),
-          source: text(panel[SOURCE]),
-          candles: candles,
-          width: into.clientWidth,
-          height: into.clientHeight
-        });
-      }
-
-      // The sub-panes the candles fill decide the height the chart needs,
-      // so the first answer sizes the slot and the second draws into it.
+      var params = {};
+      params[IMAGE_WIDTH_PARAM] = into.clientWidth;
+      params[IMAGE_HEIGHT_PARAM] = into.clientHeight;
+      params[IMAGE_RATIO_PARAM] = global.devicePixelRatio || 1;
       chain = chain
-        .then(ask)
-        .then(function (model) {
-          var wanted = model ? model[NATURAL_HEIGHT] : null;
-          if (typeof wanted !== NUMBER_KIND || wanted <= into.clientHeight) {
-            return model;
-          }
-          mount.style.minHeight = height(wanted);
-          return ask();
+        .then(function () {
+          return global.acervator.call(IMAGE_METHOD, params);
         })
-        .then(function (model) {
-          mount.setAttribute(CHILD_ATTR, CHART_SLOT);
-          host.mount(CHART_SLOT, into, model);
-          drawn.push(symbol);
-        });
+        .then(
+          function (answer) {
+            if (!isPlainObject(answer)) {
+              into.setAttribute(FAULT_ATTR, String(answer));
+              return;
+            }
+            placeImage(mount, into, answer);
+            drawn.push(symbol);
+          },
+          function (err) {
+            into.setAttribute(FAULT_ATTR, err && err.message ? err.message : String(err));
+          }
+        );
     });
     return chain.then(function () {
       return drawn;
@@ -1521,7 +1583,7 @@
     }
     lastTarget = target;
     var shown = draw(target, element(Tab, { model: payload }));
-    renderChartMounts(target, payload);
+    renderChartMounts(target);
     return shown;
   }
 

@@ -451,3 +451,141 @@ host records the loss rather than drawing an empty slot.
 ```
 native_chart.js registered no panel to draw
 ```
+
+## 2026-09-15 10:38 - #55 - one painter draws the chart in both builds
+
+The chart area of the Charts tab is the image one painter paints, in both
+builds. The Qt build's chart widget already painted through that routine; the
+React build now shows the same image where its own drawing used to be. The
+ATA-SPM post images come from the same routine, so one chart looks one way in
+the Qt tab, in the React tab and in a post.
+
+`src/gui/native_chart.py` — the routine both builds and ATA-SPM paint through
+
+```python
+    def paint_image(
+        painter: ChartPainter,
+        width_px: int,
+        height_px: int,
+        device_pixel_ratio: float = 1.0,
+    ) -> QImage:
+        ratio = float(device_pixel_ratio) if float(device_pixel_ratio) > 0 else 1.0
+        image = QImage(
+            int(round(int(width_px) * ratio)),
+            int(round(int(height_px) * ratio)),
+            QImage.Format_ARGB32,
+        )
+        image.setDevicePixelRatio(ratio)
+        image.fill(painter.BG_TOP)
+        image_painter = QPainter(image)
+        painter.paint_to(image_painter, int(width_px), int(height_px))
+        image_painter.end()
+        return image
+```
+
+Fed the same hundred candles, the same label and the same six overlays, the
+three agree byte for byte at 1200 pixels wide: the Qt widget, the React image
+and the ATA-SPM image all read `d8932829dcf760c1`. A planted change to one
+candle's close moves the Qt widget and the React image to the same new digest,
+`4dbcb29e360c363e`, so the agreement is a reading and not an artefact. The
+ATA-SPM image for its own inputs is unchanged by this work.
+
+### How the React page gets the image
+
+The tab holds one painter beside its model. Each time the page draws, the chart
+slot asks the tab for the image at the slot's own width and height and at the
+page's device pixel ratio. The tab feeds the painter what the panel holds and
+answers a PNG as a data URI, which the slot shows as one image element.
+
+`src/gui/react_charts_tab.py` — what the painter is fed, as the Qt tab feeds its chart
+
+```python
+        def _feed_painter(self) -> None:
+            """Give ``painter`` what ``PanelSink`` holds, as the Qt tab gives its chart."""
+            panel = self._model.panel
+            painter = self._painter
+            painter.symbol = str(panel.label)
+            painter.set_timeframe(str(panel.chart_timeframe or panel.timeframe))
+            painter.set_candles(
+```
+
+The image carries the display's pixels. At a device pixel ratio of 1.25 the
+page asked for 1201 by 731 CSS pixels and received a 1501 by 914 pixel image;
+at 2x, 600 by 492 CSS pixels received 1200 by 984. In the header band the 2x
+image holds 395 distinct colours where the 1x image scaled up holds 305, and
+the thinnest vertical run in the price pane is one device pixel where the
+scaled 1x image needs two.
+
+The page no longer carries `native_chart.js`. The tab's list of child modules
+is empty, the page registers two modules, and the file stays in the tree
+unmounted.
+
+`src/gui/react_charts_tab.py` — the modules the chart slot mounts
+
+```python
+CHILD_MODULES: tuple[str, ...] = ()
+```
+
+### The eight toggles reach the painter
+
+Each check box under the chart now asks the tab to switch that overlay on the
+painter, and reads the painter's own state back off the answer. The Qt build's
+boxes drive the same switch on the same painter.
+
+`src/gui/web/trade_charts_tab.js` — a click on one box
+
+```javascript
+  function overlayChosen(key, on) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[TOGGLE_KEY_PARAM] = key;
+    params[TOGGLE_ON_PARAM] = Boolean(on);
+    return global.acervator
+      .call(METHOD, params)
+```
+
+Each of the eight, flipped from its starting state, moves the image to a new
+digest in both builds, and the two builds' digests agree on every flip; flipped
+back, each returns to the starting digest. A toggle left alone answers the last
+image with no repaint. The starting states are six on and two off: BB, Vortex,
+MACD, SRsi, Ichi and Vol on; Sling and BBull off.
+
+### What a repaint costs
+
+The tab answers the last image again when nothing it reads has changed. When
+something has, the painter repaints and the PNG is encoded on the window's own
+thread. Measured ten runs each, six overlays on, one hundred candles:
+
+| width x height | ratio | image | paint | PNG + base64 |
+| --- | --- | --- | --- | --- |
+| 1200 x 492 | 1x | 1200x492 | 7.6 ms | 21.6 ms |
+| 1920 x 492 | 1x | 1920x492 | 9.0 ms | 31.5 ms |
+| 1200 x 492 | 2x | 2400x984 | 18.0 ms | 76.9 ms |
+| 1920 x 492 | 2x | 3840x984 | 22.1 ms | 112.9 ms |
+
+The dashboard pass calls `update_charts` every two seconds, and the header
+label carries the price, so a moving price repaints on most passes. Candles
+refetch at most every 30 seconds.
+
+### Live candles reach the React chart
+
+The React tab's fetch handed the fetcher's rows to `list`, and the fetcher's
+row type is not iterable, so every live fetch ended in an error line and no
+candles. The rows now pass through `candle_row`, which reads an object, a dict
+or a six-number row.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` — the fetch, repaired
+
+```python
+            if rows:
+                self.panel.set_candles([candle_row(one) for one in rows])
+                self.panel.set_source(answered)
+```
+
+**Figures.** `artifacts/issue-55/` holds the Qt tab, the React tab and the
+ATA-SPM image before and after, for the same hundred candles. The React page
+draws the tab header line and the painter draws its own header line under it,
+so the label reads twice on that build.
