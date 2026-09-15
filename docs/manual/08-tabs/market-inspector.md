@@ -2650,4 +2650,70 @@ None was reworded. Each is quoted here.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+## 2026-09-15 11:20 - #23 - A refused sign-in names the venue's own reason
+
+Level 1A returns to Level 1 by itself when a venue accepts, and holds the page
+when a venue refuses. Both builds do this. A refusal now prints the reason the
+venue itself gave, and not the status line alone.
+
+### What each half does, read off both running builds
+
+The page is chosen from `PushBoard.credential_target`, which
+`connect_credentials` clears only on a sign-in the venue accepted.
+
+| What the venue answers | Page after Connect | Message on the page |
+| ---------------------- | ------------------ | ------------------- |
+| accepts | Level 1 | none. Level 1 carries no message line |
+| refuses | Level 1A, held | the status and the venue's own reason |
+
+Read off both running builds, driven through the real loopback listener, the Qt
+window and the React page show the same level and the same message on both
+halves.
+
+### What a refusal carries
+
+`urlopen_transport` reads the body a venue answers a refusal with, and raises
+`SignInError` carrying `refusal_text`. RFC 6749 section 5.2 puts the reason in
+`error` and `error_description`, and only those two fields are read out. No
+other value in the body reaches Level 1A.
+
+`src/trading/ata_spm_signin.py` - the wordings a refusal is built from
+
+```python
+HTTP_REFUSAL_FORMAT = "HTTP {status} {reason}"
+VENUE_SAID_FORMAT = "{http}, and the venue said {said}"
+VENUE_REASON_FORMAT = "{error}: {description}"
+```
+
+| Body the venue answers | What Level 1A prints |
+| ---------------------- | -------------------- |
+| both fields | HTTP 401 Unauthorized, and the venue said invalid_client: Client auth failed. |
+| `error` alone | HTTP 401 Unauthorized, and the venue said invalid_grant |
+| `error_description` alone | HTTP 401 Unauthorized, and the venue said The code has expired. |
+| neither field | HTTP 401 Unauthorized |
+| not JSON | HTTP 401 Unauthorized |
+| empty | HTTP 401 Unauthorized |
+
+A body is read up to `REFUSAL_BODY_LIMIT` bytes and no further.
+
+### A pasted credential is trimmed where it is held
+
+`missing_field` reads a box holding only spaces as empty. `typed_credential`
+handed the raw text to the venue, so a value pasted with a trailing space or
+newline went into the HTTP Basic header exactly as pasted.
+`set_credential_text` now holds the trimmed value, which is the value
+`missing_field` already judged.
+
+`src/trading/ata_spm_push.py` - where one typed value is held
+
+```python
+        held = str(typed or "").strip()
+        self.typed.setdefault(str(target), {})[str(field)] = held
+```
+
+Read off the running program, a Client ID pasted as `  abc \n` reaches the
+venue as `abc`, and a box holding only spaces is still reported empty.
+
+**Figures.** This page carries no figure and this entry adds none.
+
 Back to [the subsystem index](README.md).

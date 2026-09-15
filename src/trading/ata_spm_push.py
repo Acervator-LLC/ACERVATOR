@@ -1249,7 +1249,10 @@ class AtaSpmSettings:
         Nothing here reaches ``credential_rows``, so no view model or render
         carries a typed value.
         """
-        self.typed.setdefault(str(target), {})[str(field)] = str(typed or "")
+        # A pasted value carries edge whitespace and the venue reads it
+        # literally, so it is stripped here, where ``missing_field`` strips.
+        held = str(typed or "").strip()
+        self.typed.setdefault(str(target), {})[str(field)] = held
 
     def typed_credential(self, target: Any) -> dict:
         """Each ``CredentialField`` key of one push target, and the value typed in."""
