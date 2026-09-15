@@ -16,8 +16,10 @@ import logging
 
 import base64
 import hashlib
+import json
 import secrets
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("acervator.encryption")
@@ -359,3 +361,62 @@ class CredentialVault:
         for d in data:
             cred = EncryptedCredential.from_dict(d)
             self._credentials[cred.exchange] = cred
+
+
+#: Where a ``FileVault`` keeps its entries, beside the rest of the runtime state.
+DEFAULT_VAULT_PATH = Path.home() / ".acervator" / "ata_spm_credentials.json"
+
+VAULT_READ_FAILED_LOG = "Credential vault at %s could not be read: %s"
+
+
+class FileVault(CredentialVault):
+    """A ``CredentialVault`` whose entries are kept in a file between runs.
+
+    The ATA-SPM Level 1A pages hand each accepted sign-in to ``store``, which
+    writes every held entry to ``path``. The constructor reads that file back,
+    so a venue held before a restart still reads held after one. Only the
+    Base64 tokens ``encrypt`` produced reach the file.
+    """
+
+    def __init__(self, passphrase: str) -> None:
+        super().__init__(passphrase)
+        self.path = DEFAULT_VAULT_PATH
+        self.load()
+
+    def load(self) -> None:
+        """Read ``path`` into the held entries, or hold none where it cannot be read."""
+        if not self.path.exists():
+            return
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                self.load_from_dict(json.load(f))
+        except Exception as exc:  # noqa: BLE001 - a bad file must not stop a launch
+            logger.warning(VAULT_READ_FAILED_LOG, self.path, exc)
+
+    def save(self) -> None:
+        """Write every held entry to ``path`` as JSON."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.path, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    def store(
+        self,
+        exchange: str,
+        api_key: str,
+        api_secret: str,
+        passphrase: Optional[str] = None,
+    ) -> None:
+        """Encrypt one entry as ``CredentialVault`` does, then write the file."""
+        super().store(exchange, api_key, api_secret, passphrase)
+        self.save()
+
+
+def default_vault() -> FileVault:
+    """The credential vault the ATA-SPM Level 1A pages hold their tokens in.
+
+    ``vault_phrase`` over the stored username keys it, which is the phrase
+    every other stored credential in the product is encrypted under.
+    """
+    from .settings import SettingsManager
+
+    return FileVault(vault_phrase(str(SettingsManager().get("username", "") or "")))

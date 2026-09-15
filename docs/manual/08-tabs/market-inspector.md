@@ -2780,4 +2780,76 @@ instead of reading as nothing.
 
 **Figures.** This page carries no figure and this entry adds none.
 
+## 2026-09-15 14:30 - #23 - The credential vault, and Level 1A leaving by itself
+
+A sign-in the venue accepted had nowhere to put its tokens, so Level 1A held the
+page on a sign-in that worked. Both builds now hand the board a vault when they
+build it, and a venue that accepts returns to Level 1 by itself.
+
+### Where the vault is built
+
+`src/core/encryption.py` - the file the tokens are kept in
+
+```python
+DEFAULT_VAULT_PATH = Path.home() / ".acervator" / "ata_spm_credentials.json"
+```
+
+`FileVault` is a `CredentialVault` that reads that file when it is built and
+writes it on every `store`. `default_vault` keys it with `vault_phrase` over the
+stored username, which is the phrase every other stored credential in the
+product is encrypted under.
+
+### Where it is handed over
+
+Two files build a board, and each now hands it a vault beside the sign-in route.
+
+| File | The board it builds |
+| ---- | ------------------- |
+| `src/gui/market_inspector.py` | the window's own |
+| `src/gui/main_tabs/market_inspector_surface.py` | the screen model's, which the React tab reads |
+
+```python
+            self._push_board.settings.set_vault(encryption.default_vault())
+```
+
+### What Connect does now
+
+| What the venue answers | Page after Connect | Level 1 for that venue |
+| ---------------------- | ------------------ | ---------------------- |
+| accepts | Level 1 | held, and the button draws on |
+| refuses | Level 1A, held | not held |
+
+Read off both running builds, driven by a real press on each page, the window
+and the page both leave Level 1A for Level 1 on an accepted sign-in. X reads
+`held` on Level 1 and Reddit, which was never signed in, reads `not held`.
+
+### The tokens outlive a run
+
+One run signs in and the next reads it back.
+
+```
+run one    Qt    connect ok = True    X row = ['X', True, 'held']
+run two    Qt    X row = ['X', True, 'held']
+run two    Qt    Reddit row = ['Reddit', False, 'not held']
+```
+
+### Nothing on disk and nothing in a log carries a value
+
+The file holds only the Base64 tokens `encrypt` produced. Read off the run, a
+search of the whole runtime directory for the value that was signed in with
+found one file, and that file was a planted control written for the search to
+find. Neither the vault file nor a log line carried it.
+
+### A sentence this entry contradicts
+
+It was not reworded. It is quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:578` - "Save credentials encrypts every
+typed credential into the same vault the venue keys use, then clears what was
+typed." No control named Save credentials is in the program, and Connect is what
+stores. The exchange keys are held in `settings.toml` and the push-target tokens
+in `ata_spm_credentials.json`, so they are two files under one passphrase.
+
+**Figures.** This page carries no figure and this entry adds none.
+
 Back to [the subsystem index](README.md).

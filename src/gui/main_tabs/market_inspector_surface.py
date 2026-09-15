@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from ...core import encryption
 from ...trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
 from .. import design_system as ds
 from . import indicator_panel_surface as ivp
@@ -2508,6 +2509,7 @@ class MarketInspectorScreenModel:
         self.ata_candle_source: Any = None
         self.board = ata_spm.SectorBoard()
         self.push = ata_spm_push.PushBoard()
+        self.push.settings.set_vault(encryption.default_vault())
         self.push.settings.set_connector(
             ata_spm_signin.build_connector(ata_spm_signin.default_session())
         )
