@@ -54,6 +54,42 @@ Skill: ocir
 A skill named in backticks is invisible to the loader, and a rule that is not
 loaded is not followed.
 
+### 5. The Truth Archetype — what reads the report before he does
+
+A report is a claim, and this project has an archetype that owns claims. Write
+the report to a Markdown file and run it:
+
+```bash
+python -m dev_harness.harness.truth_archetype <report.md> --item <issue number>
+```
+
+**`--item` is not optional.** Without it the `scope` analyzer reports
+`unavailable: no item was given and the text cites no issue number`, the run is
+not evidence, and the archetype says so rather than passing.
+
+Calibrate first: `harness_fixtures/truth_archetype/known_good.md` exits 0 and
+`known_bad.md` exits 1. Then fix every claim it flags until `passed` reads true,
+and quote that verdict inside the report.
+
+`T001` to `T007` resolve a citation, a count, a runtime claim, a proxy claim and
+a subject outside the item against the tree. `T000` records a claim it could not
+decide, so an undecided claim is never silent.
+
+**Measured 2026-09-14: this archetype sat in the tree, named in the project
+skill's own table, and no workflow step required it.** Reports reached the
+operator for a full session carrying claims the tree did not support — a screen
+reported working that he could not navigate to, counts quoted from an agent
+rather than read, a green called on a run where a required analyzer was missing.
+Every one of those is a class `truth_archetype` exists to catch.
+
+A claim the tree contradicts does not reach him.
+
+### Reachability is part of every claim about a screen
+
+A page that exists, renders and reports green, but cannot be reached from the
+panel in a real build, is **not** done. Say how the operator navigates to it,
+from his first click, or the claim is not made.
+
 ## The enforcement
 
 `~/.claude/hooks/block_uncanonized_workflow.py` refuses an `Agent` dispatch
