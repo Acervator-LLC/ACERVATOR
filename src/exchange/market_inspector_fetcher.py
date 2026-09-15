@@ -199,6 +199,36 @@ async def _fetch_one_symbol(
     return tf_map
 
 
+async def fetch_symbol_timeframe(
+    exchange_connectors: dict,
+    symbol: str,
+    timeframe: str,
+    bars: int = DAILY_BARS,
+) -> list:
+    """Fetch bars candles for one base symbol on one timeframe, now.
+
+    Asks each connector in exchange_connectors for symbol against every quote
+    in DEFAULT_QUOTES and answers the first pair that returns rows, so a
+    caller reaches the market through the connectors the Market Inspector
+    already holds rather than opening a second route to a venue.
+    """
+    base = str(symbol).strip().upper()
+    if not base or not exchange_connectors:
+        return []
+    for eid, connector in exchange_connectors.items():
+        for quote in DEFAULT_QUOTES:
+            pair = f"{base}/{quote}"
+            try:
+                rows = await connector.get_ohlcv(pair, str(timeframe), int(bars))
+            except Exception as _exc:  # noqa: BLE001 - per-pair best-effort
+                logger.debug("OHLCV fetch failed on %s %s: %s", eid, pair, _exc)
+                continue
+            candles = _ohlcv_to_candles(rows)
+            if candles:
+                return candles
+    return []
+
+
 @dataclass
 class FetchResult:
     candles_by_symbol_by_tf: dict  # {base_sym: {"1d": [_Candle], "1w": [_Candle]}}

@@ -646,12 +646,15 @@ if _HAS_QT:
             self._connectors_getter = None
             self._scheduler = None
             self._ata_run_source = None
+            self._ata_asset_source = None
+            self._ata_candle_source = None
             self._ata_board = ata_spm.SectorBoard()
             self._push_board = ata_spm_push.PushBoard()
             self._push_board.settings.set_vault(encryption.default_vault())
             self._push_board.settings.set_connector(
                 ata_spm_signin.build_connector(sign_in_view.sign_in_session())
             )
+            self.set_ata_sources(sector_assets, self._scanned_candles)
             self._build_ui()
 
         def _build_ui(self) -> None:
@@ -1464,8 +1467,8 @@ if _HAS_QT:
             logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "compute")
             try:
                 answered = self._ata_board.compute(
-                    sector_assets,
-                    self._scanned_candles,
+                    self._ata_asset_source or sector_assets,
+                    self._ata_candle_source or self._scanned_candles,
                     message_format,
                     max_supporting_indicators,
                 )
@@ -1487,17 +1490,30 @@ if _HAS_QT:
                 self._zone_at[ATA_SPM_MODULE] = added
             if self._ata_board.run is not None:
                 self._push_board.load_run(self._ata_board.run)
-                self._push_board.after_scan(self._ata_board.run, self._scanned_candles)
+                self._push_board.after_scan(
+                    self._ata_board.run,
+                    self._ata_candle_source or self._scanned_candles,
+                )
                 self._zone_at[READY_TO_SEND_ZONE] = 0
             self._render_ata_row()
             self._render_left_modules()
+
+        def set_ata_sources(self, asset_source, candle_source) -> None:
+            """Wire the assets a sector holds and the candles each one charts on."""
+            self._ata_asset_source = asset_source
+            self._ata_candle_source = candle_source
 
         def _scanned_candles(self, symbol, timeframe) -> list:
             """The candles for one scanned symbol, from the source its map names."""
             try:
                 from ..trading.market_inspector import get_shared_inspector
 
-                return sector_candles(get_shared_inspector(), symbol, timeframe)
+                return sector_candles(
+                    get_shared_inspector(),
+                    symbol,
+                    timeframe,
+                    self._connectors_now(),
+                )
             except Exception as exc:  # noqa: BLE001 - the source is off-process
                 logger.debug(
                     "scanned candle read failed on %s %s: %s", symbol, timeframe, exc

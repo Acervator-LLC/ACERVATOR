@@ -142,8 +142,9 @@ class MarketInspector:
     def last_candles(self) -> dict:
         """The candles the last scan read, keyed by base symbol then timeframe.
 
-        ``ata_spm.evaluate`` charts each sector asset off these, so a Scan
-        Now costs no second fetch.
+        ``sector_candles`` charts a sector asset off these while
+        ``last_scan_ts`` is inside its freshness window, and refetches once
+        it is older.
         """
         return {symbol: dict(held) for symbol, held in self._last_candles.items()}
 
