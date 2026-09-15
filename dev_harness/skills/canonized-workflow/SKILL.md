@@ -84,6 +84,26 @@ Every one of those is a class `truth_archetype` exists to catch.
 
 A claim the tree contradicts does not reach him.
 
+### The built bundle is the thing he runs, and it is not the source tree
+
+A change that touches what the program imports at startup is proved on the
+**built executable**, launched, with its main window observed to construct.
+The source tree and the bundle are different programs: the bundle excludes
+packages the source tree has installed, and a startup import that reaches an
+excluded package kills the window before it opens.
+
+**Measured 2026-09-15: build 1371 would not launch.** A change added a startup
+import chain that reached `scipy`, which `tools/spec_common.py` excludes from
+the bundle on purpose. Sixteen archetype verdicts, the Truth Archetype and the
+gate all read green, because every one of them ran against the source tree
+where `scipy` is installed. The operator found it by double-clicking the exe.
+
+For any change to a module reached during startup: build the variant the
+way he builds it, launch the executable with `HOME` and `USERPROFILE` on a
+scratch directory and every socket but loopback refused, and read the window
+constructing. Close the instance when the reading is taken. Reproduce the
+failure on a fresh build first where one is reported — that red is free.
+
 ### Reachability is part of every claim about a screen
 
 A page that exists, renders and reports green, but cannot be reached from the
