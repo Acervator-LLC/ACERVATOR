@@ -3983,4 +3983,151 @@ control.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-16 17:53 - #23 - Energy joins the sector set
+
+> ATA-SMP - New Market Sector - Energy - Not sure how I forgot to add this...
+
+The Asset Category row on Level 1 and the sector menu on the scan page carry
+six names. Energy is the sixth, after forex. One tuple declares the set, and
+every button, menu entry, ticker list and scan reads that tuple.
+
+`src/trading/ata_spm.py` — the six names
+
+```python
+CLASS_CRYPTO = "crypto"
+CLASS_STOCKS = "stocks"
+CLASS_METALS = "metals"
+CLASS_DERIVATIVES = "derivatives"
+CLASS_FOREX = "forex"
+CLASS_ENERGY = "energy"
+
+#: Every major asset class that charts and takes TA.
+ASSET_CLASSES = (
+    CLASS_CRYPTO,
+    CLASS_STOCKS,
+    CLASS_METALS,
+    CLASS_DERIVATIVES,
+    CLASS_FOREX,
+    CLASS_ENERGY,
+)
+```
+
+### What energy lists
+
+Energy carries two sectors, petroleum and gas, the two groups S&P GSCI names.
+Each holds funds priced in dollars on the yahoo chart venue, the venue and the
+row shape metals already uses. Four names are listed: USO for WTI crude, BNO
+for Brent crude, UGA for gasoline and UNG for natural gas.
+
+`src/trading/ata_asset_maps.py` — the energy row of the map
+
+```python
+ENERGY_PETROLEUM: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in ("USO", "BNO", "UGA")
+)
+
+ENERGY_GAS: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in ("UNG",)
+)
+
+MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
+    CLASS_FOREX: {
+        SECTOR_MAJOR: FOREX_MAJOR,
+        SECTOR_MINOR: FOREX_MINOR,
+        SECTOR_EXOTIC: FOREX_EXOTIC,
+    },
+    CLASS_METALS: {SECTOR_SPOT: METALS_SPOT + METALS_PHYSICAL},
+    CLASS_ENERGY: {
+        SECTOR_PETROLEUM: ENERGY_PETROLEUM,
+        SECTOR_GAS: ENERGY_GAS,
+    },
+}
+```
+
+The futures the venue also lists are not carried, on the ground the metals
+entry gives: a chart of them joins contracts at a price nobody traded. Heating
+oil has no listed instrument, because the venue answered no rows for its fund.
+
+`src/trading/ata_asset_maps.py` — where the four names came from
+
+```python
+    CLASS_ENERGY: (
+        "S&P GSCI groups energy as petroleum and natural gas. The listed "
+        "instrument for each product is the fund holding it, measured on the "
+        "yahoo chart endpoint 2026-09-15: USO for WTI crude, BNO for Brent "
+        "crude, UGA for gasoline, UNG for natural gas, 252 daily rows each, "
+        "every bar carrying volume. The futures CL=F BZ=F NG=F answer the same "
+        "window and are not carried: a chart of them joins contracts at a "
+        "price nobody traded. UHN, the heating oil fund, answered 0 rows, so "
+        "no listed instrument carries heating oil."
+    ),
+```
+
+### What each surface does with the sixth name
+
+| surface | energy |
+| ------- | ------ |
+| Asset Category, Level 1 | a sixth button after forex; pressing it sets the class the next scan uses |
+| the sector menu | a sixth entry after forex |
+| the ticker field | typing offers USO, BNO, UGA and UNG; no note draws under the field |
+| Scan Now with an empty field | reads USO, BNO, UGA and UNG in that order, the map's order |
+| the four timeframes | the slower set: 1h, 1d, 1w, 1M |
+| Chart Folder | unchanged; one folder per push venue, and none per asset class |
+
+No new file is imported. The class name joins an import the asset map already
+takes from the sector module, so the built application's start-up path is the
+one it had.
+
+### Six names, read off both running builds
+
+Level 1 was driven in both builds inside the 1400 by 760 pane and inside a 900
+by 760 pane, the network refused. Six buttons drew in both builds, on one row
+at 1400 and on two rows of three at 900, and no scroll bar drew in either
+build at either width. The menu opened with six entries in both builds.
+
+Pressing energy set the board's class to energy and its timeframes to 1h, 1d,
+1w and 1M, in both builds. Typing U offered UGA, UNG and USO, in both. Scan
+Now with an empty field read USO, BNO, UGA and UNG in that order, on a stand-in
+tape carrying no reversal vote, and the zone drew the same two lines in both
+builds.
+
+```
+energy by volume
+4 market(s) read · 0 hit(s) · sector exhausted
+```
+
+The same driver on the commit before this change read five names on every
+surface in both builds, and the energy press left the board on crypto. The
+five existing sectors' lists compared byte for byte before and after: crypto
+2103 bytes, stocks 355, metals 981, derivatives 234, forex 2264, each
+identical. The same comparison reported the energy block as new, so it can see
+a change. Network calls attempted across every run: 0.
+
+### Sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:459` - "Stocks, metals, derivatives
+and forex share the slower one." Energy shares it too.
+
+`docs/manual/08-tabs/market-inspector.md:3126` - "The menu beside it is the
+sector menu, and it holds crypto, stocks, metals, derivatives and forex." It
+holds energy too.
+
+`docs/manual/08-tabs/market-inspector.md:3159` - "Three sectors carry a list
+and two do not." Four carry a list. Energy holds 4 names.
+
+`docs/manual/08-tabs/market-inspector.md:2259` - "the five asset classes and
+the four settings each keep their own control". Six asset classes keep their
+own control.
+
+`docs/manual/08-tabs/market-inspector.md:3876` - "| stocks, derivatives | no
+list exists, and the zone says so |". The table it sits in has no energy row.
+Energy reads the asset map's order: USO, BNO, UGA, UNG.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).

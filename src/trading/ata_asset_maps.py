@@ -18,6 +18,7 @@ from ..exchange.market_inspector_fetcher import DAILY_BARS, WEEKLY_BARS
 from .ata_spm import (
     CLASS_CRYPTO,
     CLASS_DERIVATIVES,
+    CLASS_ENERGY,
     CLASS_FOREX,
     CLASS_METALS,
     CLASS_STOCKS,
@@ -79,6 +80,8 @@ SECTOR_MAJOR = "major"
 SECTOR_MINOR = "minor"
 SECTOR_EXOTIC = "exotic"
 SECTOR_SPOT = "spot"
+SECTOR_PETROLEUM = "petroleum"
+SECTOR_GAS = "gas"
 
 USD = "USD"
 
@@ -158,6 +161,19 @@ METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
     for one in ("GLD", "SLV", "PPLT", "PALL")
 )
 
+#: The listed instrument for each petroleum product: a fund priced in
+#: dollars whose shares carry no expiry, so its chart is one series.
+ENERGY_PETROLEUM: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in ("USO", "BNO", "UGA")
+)
+
+#: The listed instrument for natural gas, a fund of the same kind.
+ENERGY_GAS: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in ("UNG",)
+)
+
 MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
     CLASS_FOREX: {
         SECTOR_MAJOR: FOREX_MAJOR,
@@ -165,6 +181,10 @@ MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
         SECTOR_EXOTIC: FOREX_EXOTIC,
     },
     CLASS_METALS: {SECTOR_SPOT: METALS_SPOT + METALS_PHYSICAL},
+    CLASS_ENERGY: {
+        SECTOR_PETROLEUM: ENERGY_PETROLEUM,
+        SECTOR_GAS: ENERGY_GAS,
+    },
 }
 
 #: What each class's map was built from, and when its tickers were measured.
@@ -195,6 +215,16 @@ MAP_SOURCES: dict[str, str] = {
         "and no list of it sits in this tree."
     ),
     CLASS_DERIVATIVES: "No classification is named for this class yet.",
+    CLASS_ENERGY: (
+        "S&P GSCI groups energy as petroleum and natural gas. The listed "
+        "instrument for each product is the fund holding it, measured on the "
+        "yahoo chart endpoint 2026-09-15: USO for WTI crude, BNO for Brent "
+        "crude, UGA for gasoline, UNG for natural gas, 252 daily rows each, "
+        "every bar carrying volume. The futures CL=F BZ=F NG=F answer the same "
+        "window and are not carried: a chart of them joins contracts at a "
+        "price nobody traded. UHN, the heating oil fund, answered 0 rows, so "
+        "no listed instrument carries heating oil."
+    ),
 }
 
 
