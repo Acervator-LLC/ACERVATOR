@@ -71,4 +71,11 @@ window.ACERVATOR_MODULES = [
   "proof_of_accumulation_tab.js",
   "simulator_tab.js",
   "system_status_tab.js",
+  "sim_bot_status_table.js",
+  "sim_exchange_tab.js",
+  "sim_extractor_bot_table.js",
+  "sim_indicator_panel.js",
+  "sim_status_log.js",
+  "sim_table_cells.js",
+  "sim_trading_tab.js",
 ];

@@ -1,0 +1,37 @@
+/* The parts the Simulator's page adds to Live's trading_tab.css and
+ * exchange_tab.css, in the chrome Live gives its corner add button. Every
+ * colour is Live's token; the Simulator colour distinction is not here. */
+
+/* The corner widget of one layer: the three way-in buttons where Live draws
+ * its add button, placed as that button is placed. */
+[data-part="corner"] {
+  align-self: center;
+  margin: 0 2px 3px 8px;
+}
+
+[data-part="way-in-button"],
+[data-part="sim-flip-button"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 10px;
+  font: inherit;
+}
+
+[data-part="way-in-button"]:hover,
+[data-part="sim-flip-button"]:hover {
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+/* The replay layer behind the panel: its header row keeps the panel
+ * header's height, and each window fills its pane. */
+[data-part="replay-header"] {
+  flex: none;
+}
+
+[data-part="sim-vwap-view"],
+[data-part="sim-playback-view"] {
+  display: block;
+  height: 100%;
+}
