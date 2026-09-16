@@ -657,6 +657,10 @@ if _HAS_WEBENGINE:
             """The fleet reader the tables are fed from."""
             return self._fleet_source
 
+        def exchange_count(self) -> int:
+            """How many venues ``add_exchange_tab`` has seated; EXCH reads it."""
+            return len(self._venues)
+
         def layer(self) -> str:
             """The layer the page shows behind the panel slot."""
             return self._state.replay_layer

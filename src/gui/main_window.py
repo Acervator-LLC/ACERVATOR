@@ -21,6 +21,7 @@ from .main_tabs.main_window_surface import (
     HISTORY_TAB,
     ISOLATED_TABS,
     UNBUILT_TABS,
+    header_strip_reads_sim,
 )
 from .main_tabs.trading_tab_surface import (
     PLACEHOLDER_TAB_TITLE,
@@ -337,6 +338,10 @@ if _HAS_QT:
             container = getattr(self, "_header_strip_container", None)
             if container is not None:
                 container.setVisible(tab_name not in isolated_tabs)
+            try:
+                self._refresh_header_strip()
+            except Exception as _strip_exc:
+                logger.debug("header strip refresh on tab change: %s", _strip_exc)
 
             if tab_name == HISTORY_TAB:
                 hist = getattr(self, "_history_tab", None)
@@ -1063,27 +1068,51 @@ if _HAS_QT:
                         data_usage="User must add API key and secret in Settings before trading on this exchange.",
                     )
 
+        def _header_strip_reads_sim(self) -> bool:
+            """True while the tab in front is one ``SIM_FED_TABS`` names."""
+            tabs = getattr(self, "_main_tabs", None)
+            if tabs is None or getattr(self, "_simulator_tab", None) is None:
+                return False
+            return header_strip_reads_sim(tabs.tabText(tabs.currentIndex()))
+
+        def _write_header_strip(self, agg: dict, exchanges: int) -> None:
+            """Write the five cards and the five columns from one aggregate."""
+            _scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
+            _fld = float(agg.get("total_folded_usd", 0.0) or 0.0)
+            self._stat_scrummed.set_value(f"${_scr:,.2f}")
+            self._stat_folded.set_value(f"${_fld:,.2f}")
+            self._stat_pnl.set_value(f"${agg['total_realised_pnl']:+,.4f}")
+            self._stat_trades.set_value(str(agg["total_trades"]))
+            self._stat_bots.set_value(str(agg["running"]))
+            self._stat_errors.set_value(str(agg.get("total_errors_lifetime", 0)))
+            # One builder for both hosts: the React strip reads the same
+            # `profits_payload` over the bridge.
+            self._spendable_widget.update_profits(
+                header_strip_surface.profits_payload(agg, exchanges)
+            )
+
+        def _refresh_header_strip(self, live_stats: Optional[dict] = None) -> None:
+            """Repaint the strip from the Simulator's fleet with Sim in front, else from the live fleet."""
+            if self._header_strip_reads_sim():
+                sim_tab = self._simulator_tab
+                self._write_header_strip(
+                    sim_tab.fleet_source().aggregate(), sim_tab.exchange_count()
+                )
+                return
+            if live_stats is None:
+                if not self._bot_manager:
+                    return
+                live_stats = self._bot_manager.get_aggregate_stats()
+            self._write_header_strip(live_stats, len(self._exchange_tabs))
+
         @Slot()
         def _refresh_dashboard(self) -> None:
             if not self._bot_manager:
+                self._refresh_header_strip()
                 return
             try:
                 agg = self._bot_manager.get_aggregate_stats()
-                _scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
-                _fld = float(agg.get("total_folded_usd", 0.0) or 0.0)
-                self._stat_scrummed.set_value(f"${_scr:,.2f}")
-                self._stat_folded.set_value(f"${_fld:,.2f}")
-                self._stat_pnl.set_value(f"${agg['total_realised_pnl']:+,.4f}")
-                self._stat_trades.set_value(str(agg["total_trades"]))
-                self._stat_bots.set_value(str(agg["running"]))
-                self._stat_errors.set_value(str(agg.get("total_errors_lifetime", 0)))
-
-                exchanges = len(self._exchange_tabs)
-                # One builder for both hosts: the React strip reads the same
-                # `profits_payload` over the bridge.
-                self._spendable_widget.update_profits(
-                    header_strip_surface.profits_payload(agg, exchanges)
-                )
+                self._refresh_header_strip(agg)
 
                 all_statuses = []
                 for eid, tab in self._exchange_tabs.items():
