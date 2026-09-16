@@ -42,6 +42,7 @@ CLASS_STOCKS = "stocks"
 CLASS_METALS = "metals"
 CLASS_DERIVATIVES = "derivatives"
 CLASS_FOREX = "forex"
+CLASS_ENERGY = "energy"
 
 #: Every major asset class that charts and takes TA.
 ASSET_CLASSES = (
@@ -50,6 +51,7 @@ ASSET_CLASSES = (
     CLASS_METALS,
     CLASS_DERIVATIVES,
     CLASS_FOREX,
+    CLASS_ENERGY,
 )
 
 CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
