@@ -293,6 +293,36 @@ The Simulator draws its own strip in place of this one. `SimStatStrip` in
 balances.
 The Simulator rebuild removed this file; it is not in the tree.
 
+### The strip stays on Sim and reads the sim fleet
+
+The Simulator rebuild took the Sim tab out of the isolated pair, so the strip
+hides on Paper alone. On Sim the same ten fields carry the Simulator's
+figures, read from the Sim tab's fleet source, and the live fleet's numbers do
+not reach the strip while Sim is in front. The window picks the fleet on every
+tick and on every tab change.
+
+`src/gui/main_tabs/main_window_surface.py` — the two tuples
+
+```python
+ISOLATED_TABS = (PAPER_TAB,)
+
+#: The tabs the header strip reads the Simulator's fleet on, not the live one.
+SIM_FED_TABS = (SIM_TAB,)
+```
+
+`src/gui/main_window.py` — `_refresh_header_strip`
+
+```python
+if self._header_strip_reads_sim():
+    sim_tab = self._simulator_tab
+    self._write_header_strip(
+        sim_tab.fleet_source().aggregate(), sim_tab.exchange_count()
+    )
+    return
+```
+
+[simulator.md](simulator.md) covers what each field reads on Sim.
+
 ## Bridge
 
 The strip answers one bridge method, and one renderer module draws it.

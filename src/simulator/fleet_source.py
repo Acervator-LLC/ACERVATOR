@@ -1,11 +1,11 @@
 """The Simulator's fleet path: the live bot_state record, read only.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
-``exchanges`` and ``symbols`` from ``bot_state.json``. It holds no venue and
-defines no write, and ``__getattr__`` raises ``SendRefused`` for every other
-name. ``SimBot`` is a read-only record forked from the live bot's config, never
-a ``ScrummingBot``; ``live_fleet`` builds one per stored bot and ``ytd_fleet``
-builds one per YTD trade file.
+``exchanges``, ``symbols`` and ``aggregate`` from ``bot_state.json``. It holds
+no venue and defines no write, and ``__getattr__`` raises ``SendRefused`` for
+every other name. ``SimBot`` is a read-only record forked from the live bot's
+config, never a ``ScrummingBot``; ``live_fleet`` builds one per stored bot and
+``ytd_fleet`` builds one per YTD trade file.
 """
 
 from __future__ import annotations
@@ -31,10 +31,28 @@ READ_NAMES = (
     "bot_for",
     "exchanges",
     "symbols",
+    "aggregate",
 )
 
 LIVE_ORIGIN = "live"
 YTD_ORIGIN = "ytd"
+
+#: The header strip's figures for a fleet holding no bot, keyed as
+#: ``get_aggregate_stats`` keys the live fleet's. Every total is a sum over
+#: no bot, and no bot counts as answered by a venue.
+EMPTY_AGGREGATE = {
+    "running": 0,
+    "total_trades": 0,
+    "total_errors_lifetime": 0,
+    "total_scrummed_usd": 0.0,
+    "total_folded_usd": 0.0,
+    "total_realised_pnl": 0.0,
+    "wallet_cash_usd": 0.0,
+    "crypto_position_value_usd": 0.0,
+    "total_realized_exchange": 0.0,
+    "total_mature_exchange": 0.0,
+    "bots_with_fresh_exchange_data": 0,
+}
 
 
 @dataclass(frozen=True)
@@ -174,6 +192,14 @@ class FleetSource:
             }
         )
 
+    def aggregate(self) -> dict:
+        """The header strip's figures for the fleet the Simulator holds.
+
+        No bot is loaded into the Simulator, so the answer is
+        ``EMPTY_AGGREGATE``.
+        """
+        return dict(EMPTY_AGGREGATE)
+
     def __getattr__(self, name: str):
         """Refuse every name outside ``READ_NAMES``."""
         raise SendRefused(
@@ -238,6 +264,7 @@ def ytd_fleet(source, exchange_id: str = "") -> list[SimBot]:
 
 __all__ = [
     "BOT_STATE_NAME",
+    "EMPTY_AGGREGATE",
     "LIVE_ORIGIN",
     "READ_NAMES",
     "YTD_ORIGIN",

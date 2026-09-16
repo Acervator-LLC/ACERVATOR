@@ -98,6 +98,10 @@ class SimTradingTab(QWidget):
         """The fleet reader the tables are fed from."""
         return self._fleet_source
 
+    def exchange_count(self) -> int:
+        """How many venue sub-tabs ``add_exchange_tab`` has seated; EXCH reads it."""
+        return len(self._exchange_tabs)
+
     def layer(self) -> str:
         """The layer the stack is showing, ``indicators`` or ``playback``."""
         return self._layer

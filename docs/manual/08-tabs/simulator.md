@@ -267,6 +267,79 @@ and written to the console for the host to read; the host answers the flip and
 holds every other press, so the way-in buttons, the mode buttons, `+ New Bot`,
 the Fire buttons and the command bar change nothing.
 
+## The header strip shows on Sim
+
+The window's header strip, the five columns and the five counter cards above
+the tab row, stays on screen while the Sim tab is in front. `ISOLATED_TABS`
+names the Paper tab alone, so the strip hides on Paper and on nothing else.
+
+`src/gui/main_tabs/main_window_surface.py` — the two tuples
+
+```python
+ISOLATED_TABS = (PAPER_TAB,)
+
+#: The tabs the header strip reads the Simulator's fleet on, not the live one.
+SIM_FED_TABS = (SIM_TAB,)
+```
+
+While Sim is in front the ten fields carry the Simulator's figures, read from
+the Sim tab's fleet source; on every other tab they carry the live fleet's,
+as before. The window decides on every dashboard tick and again the moment
+the operator changes tab, so a switch never leaves the other fleet's figures
+on the strip. The live fleet's numbers do not appear while Sim is in front.
+
+`src/gui/main_window.py` — `_refresh_header_strip`
+
+```python
+if self._header_strip_reads_sim():
+    sim_tab = self._simulator_tab
+    self._write_header_strip(
+        sim_tab.fleet_source().aggregate(), sim_tab.exchange_count()
+    )
+    return
+if live_stats is None:
+    if not self._bot_manager:
+        return
+    live_stats = self._bot_manager.get_aggregate_stats()
+self._write_header_strip(live_stats, len(self._exchange_tabs))
+```
+
+Each field keeps the definition the Trading tab page gives it, applied to the
+sim fleet. SPENDABLE is the sim fleet's wallet cash and LOCKED the value its
+positions hold. REALISED is the sim fleet's fills matched first-in first-out,
+one figure per bot, summed. MATURE is the profit on sim positions past two
+hundred per cent of their cost. EXCH counts the Sim tab's own venue sub-tabs.
+The five cards are the sim fleet's sold and bought dollars, its trades, its
+running bots and its errors. The fleet source answers them through one call,
+in the keys the live aggregate uses.
+
+`src/simulator/fleet_source.py` — `FleetSource.aggregate`
+
+```python
+def aggregate(self) -> dict:
+    """The header strip's figures for the fleet the Simulator holds.
+
+    No bot is loaded into the Simulator, so the answer is
+    ``EMPTY_AGGREGATE``.
+    """
+    return dict(EMPTY_AGGREGATE)
+```
+
+No bot is loaded into the Simulator, so the strip reads on Sim as it reads on
+Live with no bots: the four money columns an em dash, EXCH the count of seated
+venues, the five cards zero. The figures arrive with the way-ins that load a
+fleet and the runs that trade it.
+
+```mermaid
+flowchart LR
+    tick[dashboard tick, 2000 ms] --> pick{tab in front}
+    change[tab change] --> pick
+    pick -- Sim --> sim[SimTradingTab.fleet_source().aggregate()]
+    pick -- any other --> live[BotManager.get_aggregate_stats()]
+    sim --> strip[the ten cells]
+    live --> strip
+```
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
