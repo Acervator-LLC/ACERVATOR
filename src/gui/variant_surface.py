@@ -257,10 +257,10 @@ def _qt_simulator() -> type:
 
 
 def _react_simulator() -> type:
-    """Import and return the React Sim tab."""
-    from .react_simulator_tab import SimulatorTabReact
+    """Import and return the React Sim tab, ``SimTradingTabReact``."""
+    from .simulator.sim_react_trading_tab import SimTradingTabReact
 
-    return SimulatorTabReact
+    return SimTradingTabReact
 
 
 def _qt_paper_trader() -> type:

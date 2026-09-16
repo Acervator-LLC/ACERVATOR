@@ -124,6 +124,149 @@ Asked for a send by name, each raises `SendRefused`.
 The window's header strip hides while Sim is in front, as `ISOLATED_TABS`
 names it, so the three strip rows above the tab are absent on Sim today.
 
+## The React page is Live's page modules, forked
+
+The React build of the Sim tab is `SimTradingTabReact`, a fork of the Live
+tab's React host under the Simulator's name, and it loads seven page modules
+that are Live's seven copied under Simulator names. The seam's React loader
+answers it; the page written from scratch, `SimulatorTabReact` in
+`src/gui/react_simulator_tab.py` with `simulator_tab.js`, stays in the tree and
+nothing loads it.
+
+`src/gui/variant_surface.py` — the React loader
+
+```python
+def _react_simulator() -> type:
+    """Import and return the React Sim tab, ``SimTradingTabReact``."""
+    from .simulator.sim_react_trading_tab import SimTradingTabReact
+
+    return SimTradingTabReact
+```
+
+Each forked module sits beside its source under `src/gui/web/`. The copy keeps
+Live's layout, part names, sizes and design tokens; it changes the bridge
+method it asks, the globals it defines, the feed and the send side, and
+nothing else.
+
+| Simulator module | forked from |
+|---|---|
+| `sim_trading_tab.js` | `trading_tab.js` |
+| `sim_exchange_tab.js` | `exchange_tab.js` |
+| `sim_indicator_panel.js` | `indicator_panel.js` |
+| `sim_status_log.js` | `status_log.js` |
+| `sim_bot_status_table.js` | `bot_status_table.js` |
+| `sim_extractor_bot_table.js` | `extractor_bot_table.js` |
+| `sim_table_cells.js` | `table_cells.js` |
+| `src/gui/simulator/sim_react_trading_tab.py` `SimTradingTabReact` | `src/gui/react_trading_tab.py` `TradingTabReact` |
+| `src/gui/simulator/sim_trading_tab_surface.py` | `src/gui/main_tabs/trading_tab_surface.py`, the payload builder |
+| `src/gui/simulator/sim_exchange_tab_surface.py` | `src/gui/main_tabs/exchange_tab_surface.py`, the payload builder |
+
+```mermaid
+flowchart LR
+    seam[variant_surface SIMULATOR] --> host[SimTradingTabReact]
+    host --> page[sim_trading_tab.js]
+    page --> venue[sim_exchange_tab.js]
+    venue --> scrum[sim_bot_status_table.js]
+    venue --> extractor[sim_extractor_bot_table.js]
+    scrum --> cells[sim_table_cells.js]
+    extractor --> cells
+    page --> panel[sim_indicator_panel.js]
+    page --> replay[replay layer: VWAP over playback]
+    page --> activity[sim_status_log.js]
+    page --> api[API Interaction Log pane]
+```
+
+### What the page draws
+
+The page is Live's four splitters at Live's sizes, read off Live's own
+`trading_tab_surface`: the exchange layer stack beside the panel on top, the
+Activity Log and the API Interaction Log side by side below. Every module
+carries Live's title and Live's part name, so the page and the Qt fork
+enumerate the same modules in the same order. The venue page holds the
+Scrumming Bots table and the Extractor Bots table, both hidden until a row
+arrives, and the command bar. The panel holds its title, the Bot selector and
+its privacy dot, the currency rate strip, both indicator tables, both
+confidence bar graphs, the timeframe-lock line and the staleness banner.
+
+The three ruled positions are the Qt fork's. The corner Live gives
+`＋ Add Crypto Exchange` holds Import Live Fleet, Generate From YTD and Create
+New Bots, at Live's corner-button width and height, in Live's corner-button
+chrome. The venue header holds Validation, Back Test and Portfolio Battery in
+Live's Privacy-Mode sheet, then `+ New Bot` where Live draws it. The data-pool
+row keeps Live's style and height and holds a blank line.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the corner buttons
+
+```python
+WAY_IN_BUTTONS = (
+    (sim.IMPORT_LIVE_FLEET_ACTION, sim.IMPORT_LIVE_FLEET_TEXT),
+    (sim.GENERATE_FROM_YTD_ACTION, sim.GENERATE_FROM_YTD_TEXT),
+    (sim.CREATE_NEW_BOTS_ACTION, sim.CREATE_NEW_BOTS_TEXT),
+)
+```
+
+The replay layer sits behind the panel in one stack the page draws: the panel
+slot over a layer holding the VWAP window above the Stone Tablet playback
+window in one vertical splitter. The flip button sits after the panel title,
+seated by `sim_indicator_panel.js`, and at the head of the replay layer,
+seated by `sim_trading_tab.js`, so the way back is never hidden with the
+panel. A press writes the page's ask on the console line the host reads, and
+the host redraws the tab with the other layer showing.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the flip
+
+```python
+        def flip_layer(self) -> str:
+            """Swap the page between the panel layer and the replay layer."""
+            other = (
+                sim.LAYER_PLAYBACK
+                if self._state.replay_layer == sim.LAYER_INDICATORS
+                else sim.LAYER_INDICATORS
+            )
+            return self.show_layer(other)
+```
+
+### What feeds the page
+
+The host builds one payload per bridge method from state it owns: the tab
+payload from its own `SimTradingTabState`, the Activity Log from its own
+`StatusLogModel`, the panel from its own `IndicatorPanelModel`, and each
+seated venue's three payloads from that venue's own `ExchangeTabModel`,
+`BotStatusTableModel` and `ExtractorBotTableModel`. Live's module-level
+models are never read. The page asks each method once on mount and the host
+answers from those payloads; every push, `show_tab`, `show_votes`,
+`show_log_call` and `add_exchange_tab`, hands the page a fresh payload and
+redraws it.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the payloads
+
+```python
+def models(
+    state: tab_surface.SimTradingTabState,
+    log: status_log_surface.StatusLogModel,
+    panel: indicator_panel_surface.IndicatorPanelModel,
+) -> dict:
+    """The view model of every bridge method the page's modules ask for."""
+    return {
+        token_surface.METHOD: token_surface.view_model({}),
+        tab_surface.METHOD: state.view_model({}),
+        LOG_METHOD: log_payload(log, {"whole": True}),
+        PANEL_METHOD: panel_payload(panel),
+    }
+```
+
+### What the page does not carry
+
+The host holds the same two sources the Qt fork holds, `TabletSource` and
+`FleetSource`, and no bot manager, no connector and no bus. The news ticker
+module, which reaches its feeds over the network, is not in the page's roster.
+The Activity-Log watchdog that read the live bot manager, the API-log listener,
+the data-pool line's text and its one-second timer, and Privacy Mode are not
+forked. Every ask the page makes is answered from the payloads the host holds
+and written to the console for the host to read; the host answers the flip and
+holds every other press, so the way-in buttons, the mode buttons, `+ New Bot`,
+the Fire buttons and the command bar change nothing.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
