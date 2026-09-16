@@ -250,10 +250,10 @@ def _react_start_all_progress() -> type:
 
 
 def _qt_simulator() -> type:
-    """Import and return the Qt Sim tab."""
-    from .simulator_tab import SimulatorTabQt
+    """Import and return the Qt Sim tab, ``SimTradingTab``."""
+    from .simulator.sim_trading_tab import SimTradingTab
 
-    return SimulatorTabQt
+    return SimTradingTab
 
 
 def _react_simulator() -> type:

@@ -4,6 +4,126 @@ Reference. The second step of [the promotion pipeline](promotion-pipeline.md):
 the live fleet, replayed against stored history. Issue #117 rebuilt the screen,
 and it carries three modes: Validation, Back Test and Portfolio Battery.
 
+## The Qt tab is Live's tab code, forked
+
+The Qt build of the Sim tab is `SimTradingTab`, a fork of the Live tab's own
+code under the Simulator's names. The seam's Qt loader answers it; the widget
+written from scratch, `SimulatorTabQt`, stays in `src/gui/simulator_tab.py`
+and nothing loads it.
+
+`src/gui/variant_surface.py` — the Qt loader
+
+```python
+def _qt_simulator() -> type:
+    """Import and return the Qt Sim tab, ``SimTradingTab``."""
+    from .simulator.sim_trading_tab import SimTradingTab
+
+    return SimTradingTab
+```
+
+Each module under `src/gui/simulator/` is one Live module copied and renamed.
+The copy keeps Live's layout, titles, sizes and design tokens; it changes the
+name, the feed and the send side, and nothing else.
+
+| Simulator module | forked from |
+|---|---|
+| `sim_trading_tab.py` `SimTradingTab` | `src/gui/main_tabs/trading_tab.py` `_build_trading_tab`, and the window's `add_exchange_tab` |
+| `sim_exchange_tab.py` `SimExchangeTab` | `src/gui/widgets/exchange_tab.py` `ExchangeTab` |
+| `sim_bot_status_table.py` `SimBotStatusTable` | `src/gui/widgets/bot_status_table.py` `BotStatusTable` |
+| `sim_extractor_bot_table.py` `SimExtractorBotTable` | `src/gui/widgets/extractor_bot_table.py` `ExtractorBotTable` |
+| `sim_indicator_panel.py` `SimIndicatorVotingPanel` | `src/gui/indicator_panel.py` `IndicatorVotingPanel` |
+| `sim_status_log.py` `SimStatusLog` | `src/gui/widgets/status_log.py` `StatusLog` |
+
+```mermaid
+flowchart LR
+    seam[variant_surface SIMULATOR] --> tab[SimTradingTab]
+    tab --> stack[exchange layer stack]
+    stack --> venue[SimExchangeTab]
+    venue --> scrum[SimBotStatusTable]
+    venue --> extractor[SimExtractorBotTable]
+    tab --> layer[QStackedWidget]
+    layer --> panel[SimIndicatorVotingPanel]
+    layer --> replay[LineView over PlaybackView]
+    tab --> activity[SimStatusLog]
+    tab --> api[API Interaction Log]
+```
+
+### What the fork draws
+
+The tab is Live's four splitters at Live's sizes: the exchange layer stack
+beside the panel on top, the Activity Log and the API Interaction Log side by
+side below. Every module carries Live's title. The venue page holds the
+Scrumming Bots table and the Extractor Bots table, both hidden until a row
+arrives, and the command bar of Start, Pause, Stop, Restart and Delete. The
+panel holds its title, the Bot selector and its privacy dot, the currency rate
+strip, both indicator tables, both confidence bar graphs, the timeframe-lock
+line and the staleness banner, hidden until raised.
+
+Three positions differ from Live by ruling. The corner Live gives
+`＋ Add Crypto Exchange` holds Import Live Fleet, Generate From YTD and Create
+New Bots, each at Live's corner-button width and height. The row above the bot
+list, where Live draws Privacy Mode and the news line, holds Validation, Back
+Test and Portfolio Battery, then `+ New Bot` where Live draws it. The data-pool
+row keeps Live's height and holds nothing. Privacy Mode, the news line and the
+data-pool line are not forked.
+
+`src/gui/simulator/sim_trading_tab.py` — the corner buttons
+
+```python
+WAY_IN_BUTTONS = (
+    (surface.IMPORT_LIVE_FLEET_ACTION, surface.IMPORT_LIVE_FLEET_TEXT),
+    (surface.GENERATE_FROM_YTD_ACTION, surface.GENERATE_FROM_YTD_TEXT),
+    (surface.CREATE_NEW_BOTS_ACTION, surface.CREATE_NEW_BOTS_TEXT),
+)
+```
+
+The replay layer sits behind the panel in one stack. The flip button seats
+itself on whichever layer is showing: after the panel title, or at the head of
+the replay layer, so the way back is never hidden with the panel.
+
+`src/gui/simulator/sim_trading_tab.py` — the flip
+
+```python
+        if self._layer == surface.LAYER_PLAYBACK:
+            self._indicator_panel.header_row().removeWidget(self._flip_button)
+            self._chart_header.insertWidget(0, self._flip_button)
+        else:
+            self._chart_header.removeWidget(self._flip_button)
+            self._indicator_panel.header_row().insertWidget(1, self._flip_button)
+```
+
+### What the fork does not carry
+
+The copies hold no bot manager, no connector and no event bus. Every send the
+Live code makes is cut, not stubbed: the signal-contract emits that write under
+`~/.acervator_logs/signals/`, the event-bus emit behind the bot selector, the
+API-log listener, the activity-log watchdog that read the live bot manager,
+the TA snapshot store that read and wrote `~/.acervator/ta_snapshots/`, the
+data-pool read behind the display price, and the demo readings the Live panel
+invents from a random walk when no bot is loaded. Zero occurrences of
+`ScrummingBot`, `BotContainer`, `ExchangeInterface`, `EventBus` and
+`PhantomBalance` under `src/gui/simulator/`.
+
+The way-in buttons, the mode buttons, `+ New Bot`, the Fire buttons and the
+command bar's handler are wired to nothing. The tab holds two sources and
+nothing reads them yet, so every module draws as Live's does with no data.
+
+`src/gui/simulator/sim_trading_tab.py` — the two sources
+
+```python
+        self._tablet_source = (
+            tablet_source
+            if tablet_source is not None
+            else TabletSource(surface.TABLET_ROOT)
+        )
+        self._fleet_source = fleet_source if fleet_source is not None else FleetSource()
+```
+
+Asked for a send by name, each raises `SendRefused`.
+
+The window's header strip hides while Sim is in front, as `ISOLATED_TABS`
+names it, so the three strip rows above the tab are absent on Sim today.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
