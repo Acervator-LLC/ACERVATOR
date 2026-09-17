@@ -17,7 +17,7 @@ import logging
 from typing import Optional
 
 from ..trading.container.config import BotState
-from .fleet_source import FleetSource, SimBot
+from .fleet_source import NEW_ORIGIN, FleetSource, SimBot
 
 logger = logging.getLogger("acervator.simulator.fleet")
 
@@ -37,6 +37,11 @@ class SimBotManager:
         ``bot_state.json`` is not held and answers None, as
         ``BotManager.get_bot`` answers None for an unregistered id."""
         return self._fleet.sim_bot_for(bot_id)
+
+    def bots(self) -> list[SimBot]:
+        """Every held ``SimBot``, the registry ``BotManager._bots`` holds on
+        Live; a row read from ``bot_state.json`` is not held."""
+        return [bot for bot in self._fleet.bots() if bot.origin == NEW_ORIGIN]
 
     def _require(self, bot_id: str) -> SimBot:
         bot = self.get_bot(bot_id)

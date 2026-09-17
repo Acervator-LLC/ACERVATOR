@@ -1307,6 +1307,95 @@ after Start on the command bar, the BTC reading. The scratch fleet file and
 every tablet hashed identical after every reading, and a byte planted into two
 of them moved the hash. No socket left loopback.
 
+## The Activity Log spool holds and resumes
+
+The Activity Log at the foot left of the Sim tab is `SimStatusLog`, Live's
+`StatusLog` under the Simulator's name, seated under Live's title with Live's
+`⏸  Pause Console` toggle in both builds. Every member of Live's pane is on the
+fork with Live's value: read-only, the placeholder `Activity log...`, 5,000
+lines with the oldest dropped past that, a pause buffer of 2,000 that drops the
+newest when full, a resume that replays the held lines with their original
+stamps under one line counting them, and `notice` and `force_log`, which draw
+through a pause. Each line is `[hh:mm:ss] message`, the stamp in the muted
+colour and the message in its level's colour, with the trade, wire-flow and
+wire-stack shapes Live raises. The React page draws the same lines from the
+host's own `StatusLogModel` through `sim_status_log.js`, the fork of
+`status_log.js`.
+
+`src/gui/simulator/sim_trading_tab.py` — the toggle's handler
+
+```python
+        def _on_activity_pause_toggled(checked: bool):
+            if checked:
+                self._status_log.pause()
+                self._activity_pause_btn.setText("▶  Resume Console")
+            else:
+                self._status_log.resume()
+                self._activity_pause_btn.setText("⏸  Pause Console")
+```
+
+### The page's own press
+
+On the React page the Pause Console press makes two asks, `paused` on the log
+method and `activity_paused` on the tab method, and the host answers both
+through one call. It pauses or resumes its log, pushes the batch, and sets
+the caption, the way the Qt toggle's handler does; a second ask for the state
+already held changes nothing. The page's own bridge answers a log ask from the
+document the page holds, so the press keeps every line drawn since the page
+was built.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the press
+
+```python
+        def set_activity_paused(self, paused: bool) -> bool:
+            wanted = bool(paused)
+            if wanted != self._log.paused:
+                self.show_log_call("pause" if wanted else "resume")
+            if wanted != self._state.activity_paused:
+                self.show_tab({tab_surface.ACTIVITY_PAUSED_PARAM: wanted})
+            return self._log.paused
+```
+
+### The watchdog, forked over the sim fleet
+
+Both hosts run Live's Activity-Log watchdog every sixty seconds over the
+spool's own health and the sim bots the sim bot manager holds. It writes
+Live's line when the render-error count rises, and Live's silence line when
+nothing has rendered for ten minutes while a sim bot is running, once per ten
+minutes, with the critical line at thirty. Each line is force-logged, so a
+pause cannot hide it. The tick is Live's `watchdog_tick`, one definition, over
+`SimBotManager.bots`; a row read from `bot_state.json` is not held and is not
+counted.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the tick
+
+```python
+def watchdog_lines(
+    state: live.WatchdogState, stats: Any, bots: Any, now: float
+) -> list:
+    running = live.running_bots(bot.state for bot in bots)
+    return live.watchdog_tick(state, stats, now, running, running > 0)
+```
+
+### What the spool reading measured
+
+The real window, both builds, a scratch sim fleet of one idle bot. The label,
+the toggle and the pane read the same three rectangles as Live's at 1400 and
+at the window's floor. Start on the bar drew `✓ Bot <id> RUNNING.` and its
+notification; Pause Console then held the four lines Pause and Stop write and
+drew their two notifications, and Resume Console flushed the four in order
+under `(resumed — 4 buffered message(s) above)`, in both builds. Ten lines
+held under a pause flushed in order; 2,011 lines under a pause held 2,000 and
+dropped the eleven newest; 5,001 lines left 5,000 with the second first. The
+nine sample lines read the same colour, weight and size on the Sim's pane as
+on Live's in the same process, both builds. The watchdog's quiet tick wrote
+nothing; aged past ten minutes with one sim bot running it wrote Live's silence
+line through a pause. On the base commit the React page's press left the log
+running and dropped the page to the lines it was built with; on the branch it
+holds, flips the caption and keeps every line. `bot_state.json` hashed
+identical after every press, and a byte planted into it moved the hash. No
+socket left loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
