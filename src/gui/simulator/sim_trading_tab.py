@@ -6,13 +6,17 @@ stack, the forked ``SimIndicatorVotingPanel``, and the Activity Log and API
 Interaction Log spools, in Live's four splitters at Live's sizes.
 ``add_exchange_tab`` is the window's method of that name, forked, and seats a
 ``SimExchangeTab``; ``_sync_exchange_tabs`` seats one per exchange
-``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, and
-drops the rest as the window's ``_drop_unlisted_exchange_tabs`` does. The
+``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, drops
+the rest as the window's ``_drop_unlisted_exchange_tabs`` does, and then
+``refresh_bots`` hands each venue its rows from ``FleetSource.statuses``. The
 corner Live gives ``＋ Add Crypto Exchange`` holds the three way-in buttons, and
 the Get Started card holds the same three where Live's card holds its add
 button. The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
-panel in ``_layer_stack``, reached by ``flip_layer``. ``TabletSource`` and
-``FleetSource`` are the tab's only sources, and neither answers a send.
+panel in ``_layer_stack``, reached by ``flip_layer``. A row's Fire reaches
+``_on_bot_fire``, which asks ``FleetSource`` and logs its refusal; a row's
+Detail reaches ``_on_bot_detail``, which opens ``SimBotDetailDialog``.
+``TabletSource`` and ``FleetSource`` are the tab's only sources, and neither
+answers a send.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...simulator.fleet_source import FleetSource
+from ...simulator.fleet_source import FleetSource, SendRefused, row_status
 from ...simulator.tablet_source import TabletSource
 from .. import design_system as ds
 from ..color_alpha import rgba
@@ -48,6 +52,7 @@ from ..main_tabs.trading_tab_surface import (
     exchange_display_name,
 )
 from ..simulator_tab import LineView, PlaybackView
+from .sim_bot_detail import SimBotDetailDialog
 from .sim_exchange_tab import SimExchangeTab
 from .sim_indicator_panel import SimIndicatorVotingPanel
 from .sim_status_log import SimStatusLog
@@ -456,6 +461,8 @@ class SimTradingTab(QWidget):
         tab = SimExchangeTab(
             exchange_id,
             display_name,
+            on_bot_clicked=self._on_bot_detail,
+            on_bot_fire=self._on_bot_fire,
             status_log=self._status_log,
         )
         target_widget.addTab(tab, display_name)
@@ -508,6 +515,56 @@ class SimTradingTab(QWidget):
         for eid in wanted:
             self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
         self._drop_unlisted_exchange_tabs(wanted)
+        self.refresh_bots()
+
+    # -- the rows -------------------------------------------------------
+
+    def refresh_bots(self) -> int:
+        """Hand every seated venue its rows from ``FleetSource.statuses``.
+
+        Answers how many rows were handed out. A venue whose list is empty
+        hides its tables, as Live's does.
+        """
+        handed = 0
+        for store in (self._crypto_exchange_tabs, self._stock_exchange_tabs):
+            for eid, tab in list(store.items()):
+                statuses = self._fleet_source.statuses(eid)
+                tab.update_bots(statuses)
+                handed += len(statuses)
+        return handed
+
+    def _on_bot_fire(self, bot_id: str) -> None:
+        """Manual Fire on a sim bot: ask ``FleetSource`` to ``fire`` and log the
+        refusal to the Activity Log, as the window logs a failed Fire."""
+        try:
+            self._fleet_source.fire(bot_id)
+        except SendRefused as exc:
+            self._status_log.log(f"Fire on {bot_id[:8]} failed: {exc}", "error")
+
+    def _on_bot_detail(self, bot_id: str) -> None:
+        """Open ``SimBotDetailDialog`` for ``bot_id`` and follow its Prev and Next
+        over the venue's sim fleet, keeping the geometry and the tab."""
+        bot = self._fleet_source.bot_for(bot_id)
+        if bot is None:
+            return
+        saved_geometry = None
+        saved_tab_index = None
+        while bot is not None:
+            siblings = [
+                one.bot_id
+                for one in self._fleet_source.bots()
+                if one.exchange_id == bot.exchange_id
+            ]
+            dlg = SimBotDetailDialog(bot, row_status(bot), siblings, self)
+            if saved_geometry is not None:
+                dlg.setGeometry(saved_geometry)
+            if saved_tab_index is not None:
+                dlg._tabs.setCurrentIndex(int(saved_tab_index))
+            dlg.exec()
+            saved_geometry = dlg.geometry()
+            saved_tab_index = dlg.active_tab_index()
+            target_id = dlg._pending_navigate_to
+            bot = self._fleet_source.bot_for(target_id) if target_id else None
 
     # -- what the operator presses --------------------------------------
 

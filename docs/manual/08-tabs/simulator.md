@@ -417,6 +417,139 @@ tab to read one of its two sources; the tables, the panel and the two spools
 still draw empty.
 
 
+## The Scrumming Bots table draws the sim fleet
+
+The Scrumming Bots table on each seated venue draws one row per sim bot on
+that exchange, in both builds. The rows come from the tab's fleet source: each
+stored bot record becomes one read-only record, and the record answers the
+same status keys a live bot answers, so the forked table draws it with Live's
+own cell code. The table stays hidden until a row arrives and hides again when
+the last row leaves, as Live's does.
+
+`src/gui/simulator/sim_trading_tab.py` — the feed
+
+```python
+    def refresh_bots(self) -> int:
+        """Hand every seated venue its rows from ``FleetSource.statuses``.
+
+        Answers how many rows were handed out. A venue whose list is empty
+        hides its tables, as Live's does.
+        """
+        handed = 0
+        for store in (self._crypto_exchange_tabs, self._stock_exchange_tabs):
+            for eid, tab in list(store.items()):
+                statuses = self._fleet_source.statuses(eid)
+                tab.update_bots(statuses)
+                handed += len(statuses)
+        return handed
+```
+
+Both hosts call it after the venues are seated, at build and on every
+`fleet_changed`. The Simulator runs no refresh timer: a sim figure moves only
+when a load or a run moves it, and the signal that fires then is what redraws
+the rows. Live's rows follow the bot manager every two seconds; the
+Simulator's follow the fleet it holds.
+
+```mermaid
+flowchart LR
+    file[bot_state.json record] --> rec[SimBot]
+    rec --> status[row_status]
+    status --> src[FleetSource.statuses]
+    src --> refresh[refresh_bots]
+    refresh --> qt[SimBotStatusTable.update_bots]
+    refresh --> react[SimVenue.update_bots]
+    react --> page[sim_bot_status_table.js]
+```
+
+### What one record carries
+
+The stored record is read in four parts. The config gives the ids, the
+symbol, the mode and the gate fields. The stats give the price, the position
+value, the trade count, the scrummed and folded dollars, the realised profit
+and the error count. The saved scrumming state gives the grown target the
+engine re-zeroes to, the quote rate, the phase and the lots. The saved state
+gives the state the Bot ID cell is coloured by. Holdings are the units summed
+across the lots, which is how the live bot sets its own holdings.
+
+| the cell | reads |
+|---|---|
+| Bot ID, its colour | the record's id and its saved state |
+| Symbol | the config symbol and exchange |
+| Current Position Value | holdings, the record's price, the quote rate |
+| Trades | the stats trade count |
+| Target | the grown target, or the config target |
+| Target BTC, Target ETH | the target over the fleet's own BTC and ETH rows |
+| Ammo | the position value and the target |
+| Fire | the saved phase; the armed action and the gate state read as a live bot's do before its first tick |
+
+The runtime values a record does not hold, the armed action, the ceiling ratio
+and the gate state, read as they do on a live bot before its first tick.
+
+### The row's own price, and the fleet's own rates
+
+A sim row is priced from its own record and never from the live data pool.
+The price age is zero, the sim's own reading for this tick, so the Position
+Value cell and the Ammo cell price from the same figure, as the Trading tab
+page requires of them. The Target BTC and Target ETH cells denominate through
+the fleet's own BTC and ETH rows on that exchange, not through the live
+currency monitor, and carry no drift suffix because the Simulator has no
+24-hour figure to draw one from; with no such row the cell reads `pending`.
+
+`src/gui/simulator/sim_bot_status_table_surface.py` — the price
+
+```python
+    def _price_reading(self, status, stats) -> tuple:
+        """The row's own ``current_price`` at ``SIM_PRICE_AGE_S``, and its ``quote_to_usd``."""
+        price = float(stats.get("current_price", live.NO_PRICE))
+        quote_rate = float(
+            status.get("quote_to_usd", live.DEFAULT_QUOTE_TO_USD)
+            or live.DEFAULT_QUOTE_TO_USD
+        )
+        return price, SIM_PRICE_AGE_S, quote_rate
+```
+
+The Qt fork reads the same constant and the same denomination helper, so the
+two builds price a row identically.
+
+### Fire and Detail
+
+Fire is present on every row with Live's styling and tooltips. A press asks
+the fleet source to fire, and the fleet source refuses every send by name, so
+the Activity Log carries Live's own failure line, `Fire on <id> failed`, with
+the refusal's words. No venue and no live bot is reached. The sim's own scrum
+and fold arithmetic is a later unit; until it lands every Fire on the
+Simulator is refused this way.
+
+Detail is present on every row. A press opens the Simulator's bot detail
+window: the frame of Live's Bot Settings window, with the title, the pair and
+mode header, the state badge, Prev and Next over the venue's sim fleet, the
+Status tab over the row's figures, and Close. It edits nothing. The six tabs
+that read a live bot's runtime state, and the React-drawn window, are not
+forked yet.
+
+`src/gui/simulator/sim_trading_tab.py` — the two presses
+
+```python
+    def _on_bot_fire(self, bot_id: str) -> None:
+        """Manual Fire on a sim bot: ask ``FleetSource`` to ``fire`` and log the
+        refusal to the Activity Log, as the window logs a failed Fire."""
+        try:
+            self._fleet_source.fire(bot_id)
+        except SendRefused as exc:
+            self._status_log.log(f"Fire on {bot_id[:8]} failed: {exc}", "error")
+```
+
+Under React the page's Fire and Detail asks reach the host through the
+console line, the host applies the ask to that venue's own table model, and
+the same two handlers run.
+
+### Until the way-ins land
+
+The fleet source reads the saved bot record as it lies on disk, so a build
+with a saved fleet draws that fleet's rows at start. Import Live Fleet gates
+both the venues and the rows behind a press when it lands.
+
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

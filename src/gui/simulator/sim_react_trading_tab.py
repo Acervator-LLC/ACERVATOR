@@ -8,10 +8,13 @@ draws ``src/gui/web/sim_trading_tab.js`` through the Electron shell's
 ``sim_status_log.js`` and ``sim_exchange_tab.js`` into slots it keeps. The host
 holds ``TabletSource`` and ``FleetSource`` as ``SimTradingTab`` does, and no
 bot manager; ``add_exchange_tab`` seats one venue's own models, the fork of
-``hold_venue``, and ``_sync_exchange_tabs`` seats one per exchange
-``FleetSource.exchanges`` names, at build and on every ``fleet_changed``.
+``hold_venue``, ``_sync_exchange_tabs`` seats one per exchange
+``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, and
+``refresh_bots`` hands each ``SimVenue`` its rows from ``FleetSource.statuses``.
 ``SimTradingPage`` reads the page's asks off the console line the host script
-writes, and ``run_action`` answers the flip.
+writes; ``run_action`` answers the flip and the bot table's own asks, so a
+row's Fire reaches ``_on_bot_fire`` and a row's Detail reaches
+``_on_bot_detail``.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ import json
 import logging
 from typing import Any, Optional
 
-from ...simulator.fleet_source import FleetSource
+from ...simulator.fleet_source import FleetSource, SendRefused, row_status
 from ...simulator.tablet_source import TabletSource
 from ..main_tabs import bot_status_table_surface as scrum_surface
 from ..main_tabs import design_system_surface as token_surface
@@ -34,6 +37,7 @@ from ..main_tabs.trading_tab_surface import (
 )
 from ..react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from ..react_main_window import read_renderer_asset
+from . import sim_bot_status_table_surface as sim_scrum_surface
 from . import sim_exchange_tab_surface as venue_surface
 from . import sim_trading_tab_surface as tab_surface
 
@@ -42,6 +46,8 @@ try:
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    from .sim_bot_detail import SimBotDetailDialog
 
     _HAS_WEBENGINE = True
 except ImportError:
@@ -114,6 +120,14 @@ MODULE_FORGETS: dict[str, str] = {
     PANEL_METHOD: "acervatorSimIndicatorPanel",
     venue_surface.METHOD: "acervatorSimExchangeTab",
 }
+
+#: The request fields that carry a press on the bot table.
+TABLE_PRESS_PARAMS: tuple[str, ...] = (
+    scrum_surface.FIRE_PARAM,
+    scrum_surface.DETAIL_PARAM,
+    scrum_surface.HEADER_CLICK_PARAM,
+    scrum_surface.CELL_CLICK_PARAM,
+)
 
 #: The request fields a venue module names its exchange under.
 VENUE_KEYS: tuple[str, ...] = (
@@ -411,30 +425,79 @@ def models(
 
 
 class SimVenue:
-    """One seated venue's three models, which the page draws from."""
+    """One seated venue's three models, which the page draws from; ``update_bots``
+    is ``ExchangeTabReact.update_bots`` forked, and ``answer`` applies one
+    bot-table ask so a Fire or a Detail on the page reaches its handler."""
 
     def __init__(
-        self, exchange_id: str, exchange_name: str, status_log: Any = None
+        self,
+        exchange_id: str,
+        exchange_name: str,
+        status_log: Any = None,
+        on_bot_clicked: Any = None,
+        on_bot_fire: Any = None,
     ) -> None:
         self.exchange_id = exchange_id
         self.exchange_name = exchange_name
-        self.screen = venue_surface.screen(exchange_id, exchange_name, status_log)
-        self.scrum = scrum_surface.BotStatusTableModel()
+        self.screen = venue_surface.screen(
+            exchange_id,
+            exchange_name,
+            status_log,
+            on_bot_clicked=on_bot_clicked,
+            on_bot_fire=on_bot_fire,
+        )
+        self.scrum = sim_scrum_surface.SimBotStatusTableModel(
+            on_bot_clicked=self._scrum_detail,
+            on_fire_clicked=on_bot_fire,
+        )
         self.scrum.exchange_id = exchange_id
         self.extractor = extractor_surface.ExtractorBotTableModel()
         self.extractor.exchange_id = exchange_id
 
     def models(self) -> dict:
         """The payload of each venue method, under the Simulator's names."""
-        scrum = dict(scrum_surface.build_view_model(self.scrum))
-        scrum["method"] = SCRUM_METHOD
         extractor = dict(extractor_surface.build_payload(self.extractor))
         extractor["method"] = EXTRACTOR_METHOD
         return {
             venue_surface.METHOD: venue_surface.build_view_model(self.screen),
-            SCRUM_METHOD: scrum,
+            SCRUM_METHOD: sim_scrum_surface.build_view_model(self.scrum),
             EXTRACTOR_METHOD: extractor,
         }
+
+    def update_bots(self, statuses: list) -> None:
+        """Route one fleet list to the screen and to both bot tables."""
+        venue_surface.drive(self.screen, {venue_surface.live.STATUSES_PARAM: statuses})
+        sim_scrum_surface.drive(
+            self.scrum,
+            {scrum_surface.STATUSES_PARAM: scrum_surface.scrumming_statuses(statuses)},
+        )
+        extractor_surface.drive(
+            self.extractor,
+            {
+                extractor_surface.ACTION_PARAM: extractor_surface.UPDATE_ACTION,
+                extractor_surface.BOT_STATUSES_PARAM: (
+                    extractor_surface.extractor_statuses(statuses)
+                ),
+            },
+        )
+
+    def answer(self, method: str, params: dict) -> bool:
+        """Apply one press the page made on this venue's bot table; a read ask
+        carrying none of ``TABLE_PRESS_PARAMS`` changes nothing."""
+        if method != SCRUM_METHOD:
+            return False
+        if not any(params.get(name) is not None for name in TABLE_PRESS_PARAMS):
+            return False
+        sim_scrum_surface.drive(self.scrum, params)
+        return True
+
+    def _scrum_detail(self, bot_id: str) -> None:
+        ids = list(self.scrum.bot_ids)
+        row = (
+            ids.index(bot_id) if bot_id in ids else venue_surface.live.NO_SELECTION_ROW
+        )
+        self.screen.select_scrum_row(row)
+        self.screen.scrum_clicked(bot_id)
 
 
 def venue_models(venues: Any) -> dict:
@@ -736,10 +799,62 @@ if _HAS_WEBENGINE:
             """Seat one venue's models and draw its page in the layer stack."""
             if exchange_id in self._venues:
                 return
-            self._venues[exchange_id] = SimVenue(exchange_id, display_name, self._log)
+            self._venues[exchange_id] = SimVenue(
+                exchange_id,
+                display_name,
+                self._log,
+                on_bot_clicked=self._on_bot_detail,
+                on_bot_fire=self._on_bot_fire,
+            )
             self._state.seat(exchange_id, display_name)
             self._venue_published()
             self.show_tab({})
+
+        def refresh_bots(self) -> int:
+            """Hand every seated venue its rows from ``FleetSource.statuses`` and
+            push the fleet to the page; answers how many rows were handed out."""
+            handed = 0
+            for eid, venue in list(self._venues.items()):
+                statuses = self._fleet_source.statuses(eid)
+                venue.update_bots(statuses)
+                handed += len(statuses)
+            self._venue_published()
+            return handed
+
+        def _on_bot_fire(self, bot_id: str) -> None:
+            """Manual Fire on a sim bot: ask ``FleetSource`` to ``fire`` and log the
+            refusal to the Activity Log, as the window logs a failed Fire."""
+            try:
+                self._fleet_source.fire(bot_id)
+            except SendRefused as exc:
+                self.show_log_call(
+                    "log", f"Fire on {bot_id[:8]} failed: {exc}", "error"
+                )
+
+        def _on_bot_detail(self, bot_id: str) -> None:
+            """Open ``SimBotDetailDialog`` for ``bot_id`` and follow its Prev and
+            Next over the venue's sim fleet, keeping the geometry and the tab."""
+            bot = self._fleet_source.bot_for(bot_id)
+            if bot is None:
+                return
+            saved_geometry = None
+            saved_tab_index = None
+            while bot is not None:
+                siblings = [
+                    one.bot_id
+                    for one in self._fleet_source.bots()
+                    if one.exchange_id == bot.exchange_id
+                ]
+                dlg = SimBotDetailDialog(bot, row_status(bot), siblings, self)
+                if saved_geometry is not None:
+                    dlg.setGeometry(saved_geometry)
+                if saved_tab_index is not None:
+                    dlg._tabs.setCurrentIndex(int(saved_tab_index))
+                dlg.exec()
+                saved_geometry = dlg.geometry()
+                saved_tab_index = dlg.active_tab_index()
+                target_id = dlg._pending_navigate_to
+                bot = self._fleet_source.bot_for(target_id) if target_id else None
 
         def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
             """Take off every venue whose id is not in ``listed``.
@@ -766,6 +881,7 @@ if _HAS_WEBENGINE:
             for eid in wanted:
                 self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
             self._drop_unlisted_exchange_tabs(wanted)
+            self.refresh_bots()
 
         # -- what the operator presses ------------------------------------
 
@@ -785,7 +901,7 @@ if _HAS_WEBENGINE:
             return self.show_layer(other)
 
         def run_action(self, payload: str) -> None:
-            """Answer the flip the page asked for; every other ask is held."""
+            """Answer the flip and the bot table's asks; every other ask is held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -800,6 +916,10 @@ if _HAS_WEBENGINE:
                     self.show_layer(str(layer))
             elif method == PANEL_METHOD and params.get("action") == "flip_layer":
                 self.flip_layer()
+            elif method == SCRUM_METHOD:
+                venue = self._venues.get(sim_scrum_surface.venue_of(params))
+                if venue is not None and venue.answer(method, params):
+                    self._venue_published()
 
         # -- construction -------------------------------------------------
 
