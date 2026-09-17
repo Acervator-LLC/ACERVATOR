@@ -875,8 +875,8 @@ if _HAS_WEBENGINE:
             the stored defaults and the tablet market table; on Finish hand its
             config to ``FleetSource.create`` and fire ``fleet_changed``.
 
-            The window's ``_create_bot``, forked: no pre-flight, no
-            ``ScrummingBot``, no bot manager. ``defaults_override`` merges over
+            The window's ``_create_bot``, forked, with no pre-flight, no
+            ``ScrummingBot`` and no bot manager; ``defaults_override`` merges over
             the stored defaults.
             """
             self.show_log_call(
