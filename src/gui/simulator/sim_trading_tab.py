@@ -292,7 +292,9 @@ class SimTradingTab(QWidget):
         # Right panel: the forked voting panel, with the replay layer behind it
         self._indicator_panel = SimIndicatorVotingPanel()
         self._chart = None  # No chart in trading tab
-        self._flip_button = FlipButton(surface.FLIP_BUTTON_TEXT[surface.LAYER_INDICATORS])
+        self._flip_button = FlipButton(
+            surface.FLIP_BUTTON_TEXT[surface.LAYER_INDICATORS]
+        )
         self._flip_button.clicked.connect(self.flip_layer)
         # After the title and before the stretch, so the bot selector and the
         # privacy dot keep Live's right-aligned geometry.
