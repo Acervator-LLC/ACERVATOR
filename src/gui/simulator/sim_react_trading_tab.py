@@ -8,8 +8,10 @@ draws ``src/gui/web/sim_trading_tab.js`` through the Electron shell's
 ``sim_status_log.js`` and ``sim_exchange_tab.js`` into slots it keeps. The host
 holds ``TabletSource`` and ``FleetSource`` as ``SimTradingTab`` does, and no
 bot manager; ``add_exchange_tab`` seats one venue's own models, the fork of
-``hold_venue``. ``SimTradingPage`` reads the page's asks off the console line
-the host script writes, and ``run_action`` answers the flip.
+``hold_venue``, and ``_sync_exchange_tabs`` seats one per exchange
+``FleetSource.exchanges`` names, at build and on every ``fleet_changed``.
+``SimTradingPage`` reads the page's asks off the console line the host script
+writes, and ``run_action`` answers the flip.
 """
 
 from __future__ import annotations
@@ -25,12 +27,18 @@ from ..main_tabs import design_system_surface as token_surface
 from ..main_tabs import extractor_bot_table_surface as extractor_surface
 from ..main_tabs import indicator_panel_surface, status_log_surface
 from ..main_tabs import simulator_tab_surface as sim
+from ..main_tabs.trading_tab_surface import (
+    ALIAS_LAYER,
+    exchange_display_name,
+    layer_exchanges,
+)
 from ..react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from ..react_main_window import read_renderer_asset
 from . import sim_exchange_tab_surface as venue_surface
 from . import sim_trading_tab_surface as tab_surface
 
 try:
+    from PySide6.QtCore import Signal
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout, QWidget
@@ -596,6 +604,9 @@ if _HAS_WEBENGINE:
         ``add_exchange_tab`` seats one venue whose payloads the page draws.
         """
 
+        #: Fired by whatever loads a fleet; the venue sub-tabs re-seat on it.
+        fleet_changed = Signal()
+
         def __init__(
             self,
             tablet_source: Optional[TabletSource] = None,
@@ -629,6 +640,8 @@ if _HAS_WEBENGINE:
             self._layout = QVBoxLayout(self)
             self._layout.setContentsMargins(0, 0, 0, 0)
             self._layout.setSpacing(0)
+            self.fleet_changed.connect(self._sync_exchange_tabs)
+            self._sync_exchange_tabs()
 
         # -- what the window reads ----------------------------------------
 
@@ -658,8 +671,12 @@ if _HAS_WEBENGINE:
             return self._fleet_source
 
         def exchange_count(self) -> int:
-            """How many venues ``add_exchange_tab`` has seated; EXCH reads it."""
-            return len(self._venues)
+            """How many venue sub-tabs the alias layer holds; EXCH reads it.
+
+            The alias layer is the one ``len(self._exchange_tabs)`` counts on
+            Live and on the Qt fork.
+            """
+            return len(layer_exchanges(self._state.exchanges)[ALIAS_LAYER])
 
         def layer(self) -> str:
             """The layer the page shows behind the panel slot."""
@@ -723,6 +740,32 @@ if _HAS_WEBENGINE:
             self._state.seat(exchange_id, display_name)
             self._venue_published()
             self.show_tab({})
+
+        def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
+            """Take off every venue whose id is not in ``listed``.
+
+            The page draws the Get Started card again once a layer holds none.
+            """
+            kept = set(listed)
+            gone = [eid for eid in self._venues if eid not in kept]
+            for eid in gone:
+                del self._venues[eid]
+                self._state.unseat(eid)
+            if gone:
+                self._venue_published()
+                self.show_tab({})
+            return len(gone)
+
+        def _sync_exchange_tabs(self) -> None:
+            """Seat a venue for each exchange the fleet names and drop the rest.
+
+            The caption is ``exchange_display_name`` over the id, as Live
+            captions an exchange saved with no name.
+            """
+            wanted = [str(eid) for eid in self._fleet_source.exchanges() if eid]
+            for eid in wanted:
+                self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
+            self._drop_unlisted_exchange_tabs(wanted)
 
         # -- what the operator presses ------------------------------------
 

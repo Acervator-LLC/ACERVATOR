@@ -24,6 +24,17 @@
   border-color: var(--PRIMARY, var(--accent));
 }
 
+/* The Get Started card's button position: the three way-ins one under the
+ * other, each in the chrome Live gives the card's own button. */
+[data-part="placeholder-way-ins"] {
+  flex: none;
+}
+
+[data-part="placeholder-way-in-button"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  font: inherit;
+}
+
 /* The replay layer behind the panel: its header row keeps the panel
  * header's height, and each window fills its pane. */
 [data-part="replay-header"] {

@@ -1,6 +1,6 @@
 // The Simulator tab, as the Python surface serves it. Forked from
-// trading_tab.js: the corner holds the three way-in buttons and the replay
-// layer sits behind the indicator panel.
+// trading_tab.js: the corner and the Get Started card hold the three way-in
+// buttons and the replay layer sits behind the indicator panel.
 (function (global) {
   "use strict";
 
@@ -123,7 +123,6 @@
   var NOTIFY_RELAY = "notify_relay";
 
   var WAY_IN_ACTION = "layer.way_in_button.clicked";
-  var PLACEHOLDER_ADD_ACTION = "layer.placeholder_add_button.clicked";
   var ACTIVITY_TOGGLE_ACTION = "activity_pause_button.toggled";
   var API_TOGGLE_ACTION = "api_pause_button.toggled";
   var FLIP_ACTION = "flip_button.clicked";
@@ -220,7 +219,8 @@
   var PLACEHOLDER_PART = "placeholder";
   var CARD_PART = "placeholder-card";
   var TITLE_PART = "placeholder-title";
-  var PLACEHOLDER_ADD_PART = "placeholder-add";
+  var PLACEHOLDER_WAY_INS_PART = "placeholder-way-ins";
+  var PLACEHOLDER_WAY_IN_PART = "placeholder-way-in-button";
   var HINT_PART = "placeholder-hint";
   var EXCHANGE_PANE_PART = "exchange-pane";
   var EXCHANGE_TAB_BUTTON_PART = "exchange-tab-button";
@@ -701,14 +701,8 @@
       });
   }
 
-  // The Get Started card's own add button, copied as Live draws it; the
-  // answer is the held model.
-  function addExchangeAsked() {
-    return askTrading({});
-  }
-
-  // One way-in button pressed; the answer names the run it starts, which
-  // no unit has wired yet.
+  // One way-in button pressed, at the corner or on the Get Started card; the
+  // answer names the run it starts, which no unit has wired yet.
   function wayInAsked(action) {
     var params = {};
     params[WAY_IN_PARAM] = action;
@@ -786,8 +780,9 @@
     return element(DIV_TAG, titleProps, text(model[TEXT]));
   }
 
-  function PlaceholderAdd(props) {
-    var model = objectField(props.placeholder, ADD_BUTTON);
+  // One way-in on the Get Started card, at the card button's size and sheet.
+  function PlaceholderWayIn(props) {
+    var model = isPlainObject(props.button) ? props.button : {};
     var style = styleOf(model[STYLE_SHEET]);
     var least = sizeStyle(model, MINIMUM_SIZE);
     Object.keys(least).forEach(function (name) {
@@ -798,12 +793,40 @@
       className: LAYER_CLASS,
       style: style,
       type: BUTTON_TYPE,
-      onClick: addExchangeAsked
+      onClick: function () {
+        wayInAsked(model[ACTION]);
+      }
     };
-    buttonProps[PART_ATTR] = PLACEHOLDER_ADD_PART;
+    buttonProps[PART_ATTR] = PLACEHOLDER_WAY_IN_PART;
     buttonProps[KEY_ATTR] = text(props.layerKey);
-    buttonProps[ACTION_ATTR] = text(props.actions[PLACEHOLDER_ADD_ACTION]);
+    buttonProps[INDEX_ATTR] = String(props.at);
+    buttonProps[ACTION_ATTR] = text(props.actions[WAY_IN_ACTION]);
+    buttonProps[SLOT_ATTR] = text(model[ACTION]);
+    buttonProps[ARIA_LABEL] = label(model[ACCESSIBLE_NAME]);
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
+  }
+
+  // The card's button position: the three way-ins one under the other, at
+  // the card's own spacing.
+  function PlaceholderWayIns(props) {
+    var column = { display: FLEX, flexDirection: COLUMN };
+    if (owns(props.placeholder, SPACING)) {
+      column.gap = length(props.placeholder[SPACING]);
+    }
+    centred(column, props.placeholder[ALIGN]);
+    var columnProps = { className: LAYER_CLASS, style: column };
+    columnProps[PART_ATTR] = PLACEHOLDER_WAY_INS_PART;
+    columnProps[KEY_ATTR] = text(props.layerKey);
+    var drawn = listField(props.placeholder, WAY_IN_BUTTONS).map(function (button, at) {
+      return element(PlaceholderWayIn, {
+        key: PLACEHOLDER_WAY_IN_PART + String(at),
+        at: at,
+        button: button,
+        layerKey: props.layerKey,
+        actions: props.actions
+      });
+    });
+    return element(DIV_TAG, columnProps, drawn);
   }
 
   function PlaceholderHint(props) {
@@ -823,8 +846,8 @@
         layerKey: layerKey
       });
     }
-    if (name === ADD_BUTTON) {
-      return element(PlaceholderAdd, {
+    if (name === WAY_IN_BUTTONS) {
+      return element(PlaceholderWayIns, {
         key: name,
         placeholder: model,
         layerKey: layerKey,
@@ -1548,7 +1571,10 @@
     var placeholder = objectField(layer, PLACEHOLDER);
     checkSheet(where, CARD, objectField(placeholder, CARD)[STYLE_SHEET]);
     checkSheet(where, TITLE, objectField(placeholder, TITLE)[STYLE_SHEET]);
-    checkSheet(where, ADD_BUTTON, objectField(placeholder, ADD_BUTTON)[STYLE_SHEET]);
+    listField(placeholder, WAY_IN_BUTTONS).forEach(function (button, at) {
+      var model = isPlainObject(button) ? button : {};
+      checkSheet(where, WAY_IN_BUTTONS + String(at), model[STYLE_SHEET]);
+    });
     checkSheet(where, HINT, objectField(placeholder, HINT)[STYLE_SHEET]);
   }
 
@@ -2019,6 +2045,8 @@
     TradingStack: TradingStack,
     LayerPage: LayerPage,
     Placeholder: Placeholder,
+    PlaceholderWayIn: PlaceholderWayIn,
+    PlaceholderWayIns: PlaceholderWayIns,
     WayInButton: WayInButton,
     WayInButtons: WayInButtons,
     ActivityPane: ActivityPane,
@@ -2073,7 +2101,6 @@
     exchangeChosen: exchangeChosen,
     exchangeParam: EXCHANGE_PARAM,
     askTrading: askTrading,
-    addExchangeAsked: addExchangeAsked,
     wayInAsked: wayInAsked,
     flipAsked: flipAsked,
     pauseToggled: pauseToggled,

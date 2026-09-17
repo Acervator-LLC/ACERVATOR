@@ -340,6 +340,83 @@ flowchart LR
     live --> strip
 ```
 
+## The venue stack seats the fleet's exchanges
+
+The Sim tab seats one venue sub-tab per exchange the sim fleet names, in both
+builds. The fleet is the saved bot record the tab's fleet source reads, and
+the exchange set is the distinct exchange ids of the stored bots. Each host
+seats its venues when it is built and again whenever its `fleet_changed`
+signal fires. Nothing fires it yet; the way-ins that load a fleet fire it when
+they land. A sub-tab is captioned as Live captions an exchange saved with no
+name, the capitalised id. Live's venue set is the live configuration; the
+Simulator never reads it.
+
+`src/gui/simulator/sim_trading_tab.py` — the seating
+
+```python
+    def _sync_exchange_tabs(self) -> None:
+        """Seat a sub-tab for each exchange the fleet names and drop the rest.
+
+        The caption is ``exchange_display_name`` over the id, as Live captions
+        an exchange saved with no name.
+        """
+        wanted = [str(eid) for eid in self._fleet_source.exchanges() if eid]
+        for eid in wanted:
+            self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
+        self._drop_unlisted_exchange_tabs(wanted)
+```
+
+When the fleet names an exchange the bar does not hold, that venue page is
+seated beside the others. When the bar holds an exchange the fleet no longer
+names, its sub-tab is taken off, and the Get Started card comes back once a
+layer's bar is empty. EXCH on the header strip counts the sub-tabs on the
+crypto layer, as it counts Live's. A seated venue with no bots draws the
+forked venue page: the mode buttons, `+ New Bot`, the empty data-pool row, the
+command bar, and both tables hidden until a row arrives.
+
+```mermaid
+flowchart LR
+    file[bot_state.json] --> src[FleetSource.exchanges]
+    build[tab build] --> sync[_sync_exchange_tabs]
+    fire[fleet_changed] --> sync
+    src --> sync
+    sync -- not on the bar --> seat[add_exchange_tab]
+    sync -- no longer named --> drop[_drop_unlisted_exchange_tabs]
+    seat --> bar[the venue sub-tab bar]
+    drop --> bar
+    bar --> exch[EXCH]
+```
+
+### The Get Started card asks for a first fleet
+
+With no exchange seated the layer shows the Get Started card. Its frame, its
+geometry and the order of its parts are Live's; its contents are the
+Simulator's. The heading reads `No Crypto Fleet Loaded`, the hint reads
+`Load a Crypto fleet to begin a run`, and the button position holds Import
+Live Fleet, Generate From YTD and Create New Bots, one under the other, each
+at Live's card-button size and in the layer's accent. They are wired to
+nothing until the way-ins land, and each way-in then wires the corner button
+and the card button of one action together.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the card's texts
+
+```python
+def placeholder_title_text(label: Any) -> str:
+    """The Get Started card's heading for one layer: the first step is a fleet."""
+    return f"No {label} Fleet Loaded"
+
+
+def placeholder_hint_text(label: Any) -> str:
+    """The line under the Get Started card's buttons for one layer."""
+    return f"Load a {label} fleet to begin a run"
+```
+
+The Qt card and the React card read those two functions, so the two builds
+cannot title the card differently. The venue stack is the first module of the
+tab to read one of its two sources; the tables, the panel and the two spools
+still draw empty.
+
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
