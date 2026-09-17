@@ -1,8 +1,10 @@
 """The Simulator's Scrumming-bot table and its column specification.
 
 A fork of ``src/gui/widgets/bot_status_table.py`` ``BotStatusTable`` under the
-Simulator's name. The display price is the row's own ``stats.current_price``;
-the live MarketDataPool is not read.
+Simulator's name. The display price is the row's own ``stats.current_price``
+at ``SIM_PRICE_AGE_S``, and the Target BTC and Target ETH cells denominate
+through ``sim_target_denom_cell`` over ``usd_rates``; the live MarketDataPool,
+the currency rate monitor and the market pairs scout are not read.
 """
 
 from __future__ import annotations
@@ -18,7 +20,11 @@ from .. import design_system as ds
 from ..table_cells import (
     _compose_ammo_cell,
     _compose_position_value_cell,
-    _compose_table_target_denom_cell,
+)
+from .sim_bot_status_table_surface import (
+    SIM_PRICE_AGE_S,
+    sim_target_denom_cell,
+    usd_rates,
 )
 
 logger = logging.getLogger("acervator.gui")
@@ -192,6 +198,8 @@ if _HAS_QT:
             self._last_statuses = list(bot_statuses)
             # Read before setRowCount: a row index cannot name its bot afterwards.
             _selected_before = self.get_selected_bot_id()
+            # The fleet's own BTC and ETH rates, off this list.
+            rates = usd_rates(list(bot_statuses))
             self.setRowCount(len(bot_statuses))
             self._bot_ids = []
             for row, status in enumerate(bot_statuses):
@@ -220,9 +228,9 @@ if _HAS_QT:
                 )
                 stats_pv = float(stats.get("position_value", 0.0))
                 holdings = float(status.get("current_holdings", 0.0))
-                # The row's own price; the Simulator reads no live pool.
+                # The row's own price at the sim's own age; no live pool.
                 cur_price = float(stats.get("current_price", 0.0))
-                _price_age = None
+                _price_age = SIM_PRICE_AGE_S
                 # quote_to_usd is 1.0 for USD-quoted pairs.
                 qrate = float(status.get("quote_to_usd", 1.0) or 1.0)
                 _position = _compose_position_value_cell(
@@ -252,11 +260,11 @@ if _HAS_QT:
                 symbol = status.get("symbol", "") or ""
                 base_asset = symbol.split("/")[0].upper() if "/" in symbol else ""
                 exchange_id = status.get("exchange", "") or ""
-                target_btc_text, target_btc_color = _compose_table_target_denom_cell(
-                    "BTC", base_asset, exchange_id, target_val
+                target_btc_text, target_btc_color = sim_target_denom_cell(
+                    "BTC", base_asset, target_val, rates
                 )
-                target_eth_text, target_eth_color = _compose_table_target_denom_cell(
-                    "ETH", base_asset, exchange_id, target_val
+                target_eth_text, target_eth_color = sim_target_denom_cell(
+                    "ETH", base_asset, target_val, rates
                 )
                 items = [
                     mask_or(bid, "bot_table.bot_id"),

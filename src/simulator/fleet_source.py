@@ -1,11 +1,13 @@
 """The Simulator's fleet path: the live bot_state record, read only.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
-``exchanges``, ``symbols`` and ``aggregate`` from ``bot_state.json``. It holds
-no venue and defines no write, and ``__getattr__`` raises ``SendRefused`` for
-every other name. ``SimBot`` is a read-only record forked from the live bot's
-config, never a ``ScrummingBot``; ``live_fleet`` builds one per stored bot and
-``ytd_fleet`` builds one per YTD trade file.
+``exchanges``, ``symbols``, ``statuses`` and ``aggregate`` from
+``bot_state.json``. It holds no venue and defines no write, and ``__getattr__``
+raises ``SendRefused`` for every other name. ``SimBot`` is a read-only record
+forked from the live bot's config, its stats and its saved state, never a
+``ScrummingBot``; ``row_status`` answers one as the status dict the Scrumming
+Bots table reads; ``live_fleet`` builds one per stored bot and ``ytd_fleet``
+builds one per YTD trade file.
 """
 
 from __future__ import annotations
@@ -31,11 +33,24 @@ READ_NAMES = (
     "bot_for",
     "exchanges",
     "symbols",
+    "statuses",
     "aggregate",
 )
 
 LIVE_ORIGIN = "live"
 YTD_ORIGIN = "ytd"
+
+SCRUMMING_MODE = "scrumming"
+
+#: What a live bot's ``get_status`` answers for ``auto_fire`` before its first
+#: tick; a stored record holds no gate state, so every sim row reads this.
+PRE_TICK_AUTO_FIRE = {
+    "scrum_armed": False,
+    "fold_armed": False,
+    "scrum_blockers": ["pre-tick"],
+    "fold_blockers": ["pre-tick"],
+    "evaluated_at_tick": 0,
+}
 
 #: The header strip's figures for a fleet holding no bot, keyed as
 #: ``get_aggregate_stats`` keys the live fleet's. Every total is a sum over
@@ -57,7 +72,8 @@ EMPTY_AGGREGATE = {
 
 @dataclass(frozen=True)
 class SimBot:
-    """One simulated bot: its ids, its symbol and the config the gates read."""
+    """One simulated bot: its ids, its symbol, the config the gates read, and
+    the figures the Scrumming Bots table and the Status tab draw."""
 
     bot_id: str
     symbol: str
@@ -77,6 +93,34 @@ class SimBot:
     scrum_defer_to_htf: bool = True
     fold_require_ta_bearish: bool = True
     fold_defer_to_htf: bool = True
+    mode: str = SCRUMMING_MODE
+    state: str = ""
+    current_price: float = 0.0
+    holdings: float = 0.0
+    position_value_usd: float = 0.0
+    quote_to_usd: float = 1.0
+    live_target_usd: float = 0.0
+    total_trades: int = 0
+    active_buys: int = 0
+    active_sells: int = 0
+    total_scrummed_usd: float = 0.0
+    total_folded_usd: float = 0.0
+    realised_pnl_usd: float = 0.0
+    unrealised_pnl_usd: float = 0.0
+    total_errors: int = 0
+    last_error: str = ""
+    uptime_s: float = 0.0
+    realized_pnl_exchange_usd: float = 0.0
+    avg_entry_exchange: float = 0.0
+    cost_basis_exchange_usd: float = 0.0
+    fees_paid_exchange_usd: float = 0.0
+    exchange_trade_count: int = 0
+    exchange_data_fresh_ts: float = 0.0
+    scrum_target_mode: Optional[str] = None
+    position_ceiling_enabled: bool = False
+    position_ceiling_multiple: float = 5.0
+    detonation_enabled: bool = False
+    detonation_timeframe: str = "1d"
 
     @property
     def asset(self) -> str:
@@ -92,22 +136,40 @@ def _number(value: Any, fallback: float) -> float:
         return fallback
 
 
+def _lots_units(lots: Any) -> float:
+    """The units held across ``lots``, which is how the live bot sets
+    ``_current_holdings`` from ``_main_lots``."""
+    if not isinstance(lots, list):
+        return 0.0
+    return sum(_number(lot.get("units"), 0.0) for lot in lots if isinstance(lot, dict))
+
+
 def _sim_bot_from_record(bot_id: str, record: dict) -> Optional[SimBot]:
     """One ``SimBot`` from a stored bot record, or None when it names no
-    symbol."""
+    symbol.
+
+    ``config`` gives the ids and the gate fields, ``stats`` the figures,
+    ``scrumming_state`` the grown target, the quote rate, the phase and the
+    lots, and ``state_when_saved`` the state.
+    """
     config = record.get("config")
     if not isinstance(config, dict):
         return None
     symbol = str(config.get("symbol") or "")
     if not symbol:
         return None
+    stats = record.get("stats")
+    stats = stats if isinstance(stats, dict) else {}
+    saved = record.get("scrumming_state")
+    saved = saved if isinstance(saved, dict) else {}
+    config_target = _number(config.get("target_balance"), 0.0)
     return SimBot(
         bot_id=str(bot_id),
         symbol=symbol,
         exchange_id=str(config.get("exchange_id") or ""),
         base_currency=str(config.get("base_currency") or ""),
         origin=LIVE_ORIGIN,
-        target_usd=_number(config.get("target_balance"), 0.0),
+        target_usd=config_target,
         ta_timeframe=str(config.get("ta_timeframe") or ""),
         scrumming_interval_pct=_number(config.get("scrumming_interval_pct"), 0.0),
         trading_fee_pct=_number(config.get("trading_fee_pct"), 0.0),
@@ -122,7 +184,91 @@ def _sim_bot_from_record(bot_id: str, record: dict) -> Optional[SimBot]:
         scrum_defer_to_htf=bool(config.get("scrum_defer_to_htf", True)),
         fold_require_ta_bearish=bool(config.get("fold_require_ta_bearish", True)),
         fold_defer_to_htf=bool(config.get("fold_defer_to_htf", True)),
+        mode=str(config.get("mode") or SCRUMMING_MODE),
+        state=str(record.get("state_when_saved") or ""),
+        current_price=_number(stats.get("current_price"), 0.0),
+        holdings=_lots_units(saved.get("main_lots")),
+        position_value_usd=_number(stats.get("position_value"), 0.0),
+        quote_to_usd=_number(saved.get("quote_to_usd"), 1.0) or 1.0,
+        live_target_usd=_number(saved.get("target_balance"), config_target),
+        total_trades=int(_number(stats.get("total_trades"), 0)),
+        active_buys=int(_number(stats.get("active_buy_orders"), 0)),
+        active_sells=int(_number(stats.get("active_sell_orders"), 0)),
+        total_scrummed_usd=_number(stats.get("total_scrummed_usd"), 0.0),
+        total_folded_usd=_number(stats.get("total_folded_usd"), 0.0),
+        realised_pnl_usd=_number(stats.get("realised_pnl"), 0.0),
+        unrealised_pnl_usd=_number(stats.get("unrealised_pnl"), 0.0),
+        total_errors=int(_number(stats.get("total_errors"), 0)),
+        last_error=str(stats.get("last_error") or ""),
+        uptime_s=_number(stats.get("uptime_seconds"), 0.0),
+        realized_pnl_exchange_usd=_number(stats.get("realized_pnl_exchange"), 0.0),
+        avg_entry_exchange=_number(stats.get("avg_entry_exchange"), 0.0),
+        cost_basis_exchange_usd=_number(stats.get("cost_basis_total_exchange"), 0.0),
+        fees_paid_exchange_usd=_number(stats.get("fees_paid_exchange"), 0.0),
+        exchange_trade_count=int(_number(stats.get("exchange_trade_count"), 0)),
+        exchange_data_fresh_ts=_number(stats.get("exchange_data_fresh_ts"), 0.0),
+        scrum_target_mode=(
+            str(saved["scrum_target_mode"])
+            if saved.get("scrum_target_mode") is not None
+            else None
+        ),
+        position_ceiling_enabled=bool(config.get("position_ceiling_enabled", False)),
+        position_ceiling_multiple=_number(config.get("position_ceiling_multiple"), 5.0),
+        detonation_enabled=bool(config.get("detonation_enabled", False)),
+        detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
     )
+
+
+def row_status(bot: SimBot) -> dict:
+    """``bot`` as the status dict a live bot's ``get_status`` answers, in the
+    keys the Scrumming Bots table and the Status tab read.
+
+    ``armed_action``, ``position_ceiling_usd``, ``ceiling_ratio`` and
+    ``fold_rate_taper`` are runtime values a stored record does not hold; they
+    read as they do on a live bot before its first tick.
+    """
+    return {
+        "bot_id": bot.bot_id,
+        "state": bot.state,
+        "exchange": bot.exchange_id,
+        "symbol": bot.symbol,
+        "mode": bot.mode,
+        "scrum_target_mode": bot.scrum_target_mode,
+        "armed_action": None,
+        "position_ceiling_enabled": bot.position_ceiling_enabled,
+        "position_ceiling_multiple": bot.position_ceiling_multiple,
+        "position_ceiling_usd": None,
+        "ceiling_ratio": None,
+        "fold_rate_taper": 1.0,
+        "detonation_enabled": bot.detonation_enabled,
+        "detonation_timeframe": bot.detonation_timeframe,
+        "target_balance": bot.target_usd or 0.0,
+        "live_target_balance": bot.live_target_usd,
+        "ta_timeframe": bot.ta_timeframe or "1h",
+        "current_holdings": bot.holdings,
+        "quote_to_usd": bot.quote_to_usd,
+        "stats": {
+            "total_trades": bot.total_trades,
+            "realised_pnl": bot.realised_pnl_usd,
+            "unrealised_pnl": bot.unrealised_pnl_usd,
+            "active_buys": bot.active_buys,
+            "active_sells": bot.active_sells,
+            "current_price": bot.current_price,
+            "position_value": bot.position_value_usd,
+            "uptime": bot.uptime_s,
+            "last_error": bot.last_error,
+            "total_scrummed_usd": bot.total_scrummed_usd,
+            "total_folded_usd": bot.total_folded_usd,
+            "total_errors": bot.total_errors,
+            "realized_pnl_exchange": bot.realized_pnl_exchange_usd,
+            "avg_entry_exchange": bot.avg_entry_exchange,
+            "cost_basis_total_exchange": bot.cost_basis_exchange_usd,
+            "fees_paid_exchange": bot.fees_paid_exchange_usd,
+            "exchange_trade_count": bot.exchange_trade_count,
+            "exchange_data_fresh_ts": bot.exchange_data_fresh_ts,
+        },
+        "auto_fire": dict(PRE_TICK_AUTO_FIRE),
+    }
 
 
 class FleetSource:
@@ -191,6 +337,11 @@ class FleetSource:
                 if exchange_id is None or bot.exchange_id == exchange_id
             }
         )
+
+    def statuses(self, exchange_id: str = "") -> list[dict]:
+        """One ``row_status`` per stored bot, narrowed to ``exchange_id`` when
+        given; the list a venue page's ``update_bots`` takes."""
+        return [row_status(bot) for bot in live_fleet(self, exchange_id)]
 
     def aggregate(self) -> dict:
         """The header strip's figures for the fleet the Simulator holds.
@@ -266,12 +417,15 @@ __all__ = [
     "BOT_STATE_NAME",
     "EMPTY_AGGREGATE",
     "LIVE_ORIGIN",
+    "PRE_TICK_AUTO_FIRE",
     "READ_NAMES",
+    "SCRUMMING_MODE",
     "YTD_ORIGIN",
     "FleetSource",
     "SendRefused",
     "SimBot",
     "exchange_choice",
     "live_fleet",
+    "row_status",
     "ytd_fleet",
 ]

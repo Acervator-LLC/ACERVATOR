@@ -52,12 +52,19 @@ def mode_buttons() -> list:
 
 
 def screen(
-    exchange_id: str, exchange_name: str, status_log: Any = None
+    exchange_id: str,
+    exchange_name: str,
+    status_log: Any = None,
+    on_bot_clicked: Any = None,
+    on_bot_fire: Any = None,
 ) -> live.ExchangeTabModel:
-    """One venue's ``ExchangeTabModel`` with no news strip and no pool reader."""
+    """One venue's ``ExchangeTabModel`` with no news strip and no pool reader,
+    its Detail and Fire reaching ``on_bot_clicked`` and ``on_bot_fire``."""
     return live.ExchangeTabModel(
         exchange_id,
         exchange_name,
+        on_bot_clicked=on_bot_clicked,
+        on_bot_fire=on_bot_fire,
         status_log=status_log,
     )
 
