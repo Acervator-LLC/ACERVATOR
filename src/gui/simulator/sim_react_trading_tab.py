@@ -35,8 +35,14 @@ API Log press through ``set_api_paused``. The run mode is held once, on
 which redraws the tab so the corner and the card offer that mode's two ways
 in and re-publishes every venue so its header carries the active sheet; a
 corner or card press reaches ``_way_in``, which opens the wizard for Create
-New Bots and logs the ``SendRefused`` ``FleetSource`` raises for every other
-action.
+New Bots, runs ``_import_live_fleet`` for Import Live Fleet, and logs the
+``SendRefused`` ``FleetSource`` raises for every other action.
+``_import_live_fleet`` puts ``exchange_choice`` over
+``FleetSource.stored_exchanges``, opens ``SimExchangeChoiceDialog`` when it
+prompts, copies the chosen exchange's records through
+``FleetSource.import_live_fleet`` and fires ``fleet_changed``, so the venue
+seats and its rows draw; a venue sub-tab press reaches ``run_action`` as the
+``exchange`` ask and ``show_tab`` makes that venue current.
 """
 
 from __future__ import annotations
@@ -53,6 +59,7 @@ from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
     SendRefused,
+    exchange_choice,
 )
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
@@ -64,6 +71,7 @@ from ..main_tabs import indicator_panel_surface, status_log_surface
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs.trading_tab_surface import (
     ALIAS_LAYER,
+    EXCHANGE_PARAM,
     WATCHDOG_INTERVAL_MS,
     WATCHDOG_STAT_FAILURE_FORMAT,
     WatchdogState,
@@ -84,7 +92,9 @@ try:
     from PySide6.QtCore import QTimer, Signal
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
-    from PySide6.QtWidgets import QMessageBox, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QDialog, QMessageBox, QVBoxLayout, QWidget
+
+    from .sim_exchange_choice import SimExchangeChoiceDialog
 
     _HAS_WEBENGINE = True
 except ImportError:
@@ -881,16 +891,43 @@ if _HAS_WEBENGINE:
 
         def _way_in(self, action: str) -> None:
             """One way-in pressed at the corner or on the card: Create New Bots
-            opens the wizard through ``_create_bot``; every other action asks
-            ``FleetSource`` for it by name, which raises ``SendRefused`` until
-            that run lands, and the refusal is logged to the Activity Log."""
+            opens the wizard through ``_create_bot``, Import Live Fleet runs
+            ``_import_live_fleet``; every other action asks ``FleetSource`` for
+            it by name, which raises ``SendRefused`` until that run lands, and
+            the refusal is logged to the Activity Log."""
             if action == sim.CREATE_NEW_BOTS_ACTION:
                 self._create_bot(self._current_venue_id())
+                return
+            if action == sim.IMPORT_LIVE_FLEET_ACTION:
+                self._import_live_fleet()
                 return
             try:
                 getattr(self._fleet_source, action)
             except SendRefused as exc:
                 self.log(tab_surface.way_in_refused_line(action, exc), "error")
+
+        def _import_live_fleet(self) -> None:
+            """Import Live Fleet: ``exchange_choice`` over the exchanges
+            ``FleetSource.stored_exchanges`` names, ``SimExchangeChoiceDialog``
+            when it prompts, then ``FleetSource.import_live_fleet`` on the
+            exchange chosen, one Activity Log line and ``fleet_changed``; a file
+            naming no bot and a cancelled chooser each write one line and move
+            nothing."""
+            options = self._fleet_source.stored_exchanges()
+            if not options:
+                self.log(tab_surface.no_stored_bot_line(), "warning")
+                return
+            choice = exchange_choice(options)
+            chosen = choice["chosen"]
+            if choice["prompt"]:
+                dialog = SimExchangeChoiceDialog(options, self)
+                if dialog.exec() != QDialog.Accepted:
+                    self.log(tab_surface.IMPORT_CANCELLED_TEXT, "warning")
+                    return
+                chosen = dialog.chosen()
+            imported = self._fleet_source.import_live_fleet(chosen)
+            self.log(tab_surface.imported_line(len(imported), chosen), "success")
+            self.fleet_changed.emit()
 
         def layer(self) -> str:
             """The layer the page shows behind the panel slot."""
@@ -1328,9 +1365,9 @@ if _HAS_WEBENGINE:
 
         def run_action(self, payload: str) -> None:
             """Answer the flip, the Pause Console and Pause API Log presses,
-            a corner or card way-in, the panel's ``select_bot``, both bot
-            tables' asks and the venue page's mode buttons, ``+ New Bot`` and
-            command bar; every other ask is held."""
+            a corner or card way-in, a venue sub-tab press, the panel's
+            ``select_bot``, both bot tables' asks and the venue page's mode
+            buttons, ``+ New Bot`` and command bar; every other ask is held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -1352,6 +1389,9 @@ if _HAS_WEBENGINE:
                 way_in = params.get(tab_surface.WAY_IN_PARAM)
                 if way_in is not None:
                     self._way_in(str(way_in))
+                shown = params.get(EXCHANGE_PARAM)
+                if shown is not None:
+                    self.show_tab({EXCHANGE_PARAM: str(shown)})
             elif (
                 method == venue_surface.METHOD
                 and params.get(venue_surface.MODE_PARAM) is not None

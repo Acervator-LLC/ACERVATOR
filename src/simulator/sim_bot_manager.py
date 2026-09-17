@@ -1,6 +1,6 @@
 """The Simulator's bot manager: the parts of ``BotManager`` that hold and move
 bots, forked over the ``SimBot`` records ``FleetSource`` holds from the sim
-fleet file.
+fleet file, imported and wizard-created alike.
 
 ``SimBotManager`` answers ``get_bot``, ``start``, ``pause``, ``stop``,
 ``restart`` and ``unregister``, the verbs the command bar's handler asks of the
@@ -17,7 +17,7 @@ import logging
 from typing import Optional
 
 from ..trading.container.config import BotState
-from .fleet_source import NEW_ORIGIN, FleetSource, SimBot
+from .fleet_source import FleetSource, SimBot
 
 logger = logging.getLogger("acervator.simulator.fleet")
 
@@ -33,15 +33,14 @@ class SimBotManager:
         self._fleet = fleet_source
 
     def get_bot(self, bot_id: str) -> Optional[SimBot]:
-        """The held ``SimBot`` under ``bot_id``, or None; a row read from
-        ``bot_state.json`` is not held and answers None, as
-        ``BotManager.get_bot`` answers None for an unregistered id."""
+        """The held ``SimBot`` under ``bot_id``, imported or wizard-created, or
+        None, as ``BotManager.get_bot`` answers None for an unregistered id."""
         return self._fleet.sim_bot_for(bot_id)
 
     def bots(self) -> list[SimBot]:
         """Every held ``SimBot``, the registry ``BotManager._bots`` holds on
-        Live; a row read from ``bot_state.json`` is not held."""
-        return [bot for bot in self._fleet.bots() if bot.origin == NEW_ORIGIN]
+        Live: what ``FleetSource.bots`` answers, whatever each record's origin."""
+        return list(self._fleet.bots())
 
     def _require(self, bot_id: str) -> SimBot:
         bot = self.get_bot(bot_id)
