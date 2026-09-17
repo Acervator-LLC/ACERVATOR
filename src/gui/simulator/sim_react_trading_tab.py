@@ -10,11 +10,13 @@ holds ``TabletSource`` and ``FleetSource`` as ``SimTradingTab`` does, and no
 bot manager; ``add_exchange_tab`` seats one venue's own models, the fork of
 ``hold_venue``, ``_sync_exchange_tabs`` seats one per exchange
 ``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, and
-``refresh_bots`` hands each ``SimVenue`` its rows from ``FleetSource.statuses``;
+``refresh_bots`` hands each ``SimVenue`` its rows from ``FleetSource.statuses``
+and ``refresh_votes`` hands the panel model the fleet, its own rates and the
+selected bot's ``ivp_feed`` over ``TabletSource``, drawn through ``show_votes``;
 every ``fleet_changed`` first writes the sim fleet file through
 ``FleetSource.save``. ``SimTradingPage`` reads the page's asks off the console line the host script
-writes; ``run_action`` answers the flip, both bot tables' own asks and the
-venue page's ``+ New Bot`` and command bar, so a row's Fire reaches
+writes; ``run_action`` answers the flip, the panel's ``select_bot``, both bot
+tables' own asks and the venue page's ``+ New Bot`` and command bar, so a row's Fire reaches
 ``_on_bot_fire``, a row's Detail on either table reaches ``_on_bot_detail``,
 which opens the Simulator's Bot Settings window through
 ``surface_class(SIM_BOT_DETAIL)`` over a ``SimBotView``, ``+ New Bot`` reaches
@@ -51,11 +53,13 @@ from ..main_tabs.trading_tab_surface import (
 )
 from ..react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from ..react_main_window import read_renderer_asset
+from ..react_trading_tab import settled_frames
 from ..variant_surface import SIM_BOT_DETAIL, SIM_BOT_WIZARD, surface_class
 from . import sim_bot_status_table_surface as sim_scrum_surface
 from . import sim_bot_wizard_surface as wizard_surface
 from . import sim_exchange_tab_surface as venue_surface
 from . import sim_trading_tab_surface as tab_surface
+from .sim_indicator_panel import describe_no_data_cause, rate_fields
 
 try:
     from PySide6.QtCore import QTimer, Signal
@@ -891,6 +895,44 @@ if _HAS_WEBENGINE:
             self._venue_published()
             return handed
 
+        def refresh_votes(self) -> dict:
+            """Hand the panel model the fleet's statuses, the fleet's own rate
+            snapshot and the selected bot's reading, then draw it on the page."""
+            statuses = self._fleet_source.statuses()
+            self._panel.set_bots(statuses)
+            self._panel.set_rates(rate_fields(tab_surface.rate_snapshot(statuses)))
+            return self._feed_votes(self._panel.selected_bot_id)
+
+        def _feed_votes(self, bot_id: str = "") -> dict:
+            """Apply ``ivp_feed`` for ``bot_id``, or the selected bot, to the panel
+            model, step the bars ``settled_frames`` times as Live's push does,
+            and push the payload through ``show_votes``."""
+            chosen = str(bot_id or self._panel.selected_bot_id or "")
+            if not chosen:
+                feed = {"cause": "no_selection", "detail": {}, "reason": ""}
+            else:
+                feed = tab_surface.ivp_feed(
+                    self._tablet_source, self._fleet_source.bot_for(chosen)
+                )
+            if feed.get("summary"):
+                self._panel.no_data_cause = ""
+                self._panel.show_stored(
+                    feed["stored"], feed["when"], feed["age"], feed["message"]
+                )
+            else:
+                cause = str(feed.get("cause") or "")
+                message = (
+                    describe_no_data_cause(cause, feed.get("detail"))
+                    if cause
+                    else str(feed.get("reason") or "")
+                )
+                self._panel.show_no_data(message, cause)
+            for _frame in range(settled_frames()):
+                self._panel.bars_a.step()
+                self._panel.bars_b.step()
+            self.show_votes(panel_payload(self._panel))
+            return feed
+
         def _create_bot(
             self,
             exchange_id: str = "",
@@ -1132,6 +1174,7 @@ if _HAS_WEBENGINE:
                 self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
             self._drop_unlisted_exchange_tabs(wanted)
             self.refresh_bots()
+            self.refresh_votes()
 
         # -- what the operator presses ------------------------------------
 
@@ -1151,8 +1194,8 @@ if _HAS_WEBENGINE:
             return self.show_layer(other)
 
         def run_action(self, payload: str) -> None:
-            """Answer the flip, both bot tables' asks and the venue page's
-            ``+ New Bot``; every other ask is held."""
+            """Answer the flip, the panel's ``select_bot``, both bot tables' asks
+            and the venue page's ``+ New Bot``; every other ask is held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -1167,6 +1210,14 @@ if _HAS_WEBENGINE:
                     self.show_layer(str(layer))
             elif method == PANEL_METHOD and params.get("action") == "flip_layer":
                 self.flip_layer()
+            elif (
+                method == PANEL_METHOD
+                and params.get("action") == tab_surface.SELECT_BOT_ACTION
+            ):
+                chosen = self._panel.select_bot(
+                    str(params.get(tab_surface.BOT_ID_PARAM) or "")
+                )
+                self._feed_votes(chosen)
             elif method in (SCRUM_METHOD, EXTRACTOR_METHOD, venue_surface.METHOD):
                 venue = self._venues.get(venue_of_ask(method, params))
                 if venue is not None and venue.answer(method, params):

@@ -3,8 +3,10 @@
 sim_indicator_panel.py — the Simulator's Indicator Voting Window
 ===================================================
 A fork of ``src/gui/indicator_panel.py`` under the Simulator's name.
-``SimIndicatorVotingPanel`` draws what ``update_data`` hands it and nothing
-else: no event bus, no signal pins, no snapshot store, no demo readings.
+``SimIndicatorVotingPanel`` draws what ``update_data`` and ``show_stored`` hand
+it and nothing else: no event bus, no signal pins, no snapshot store, no demo
+readings. ``bot_selected`` carries the selector's change to the tab that holds
+the panel, where Live emits on the bus.
 
 Layout:
   ┌─────────────────────────────────────────────────────────────┐
@@ -175,7 +177,7 @@ try:
         QGroupBox,
         QPushButton,
     )
-    from PySide6.QtCore import Qt, QTimer, QRectF
+    from PySide6.QtCore import Qt, QTimer, QRectF, Signal
     from PySide6.QtGui import (
         QColor,
         QFont,
@@ -573,6 +575,9 @@ if _HAS_QT:
         ``TimeframeCoordinator.get_multi_tf_summary()``.
         """
 
+        #: The selector's change, carrying the chosen ``bot_id``.
+        bot_selected = Signal(str)
+
         def __init__(self, parent=None):
             super().__init__(parent)
             self._setup_ui()
@@ -587,6 +592,11 @@ if _HAS_QT:
             self._bot_timeframes: dict[str, str] = {}  # bot_id → ta_timeframe
             self._no_data_cause: str = ""
             self._no_data_message: str = ""
+            # True while the table shows a stored reading, not a live one.
+            self._showing_stored: bool = False
+            # What show_stored drew, so panel_reading can hand the same
+            # reading, time and age to a second panel.
+            self._shown_stored: dict | None = None
             # The last CurrencyRates snapshot as plain fields, None until one
             # arrives and _rates_seen says which of those two it is.
             self._rate_snapshot: dict | None = None
@@ -978,6 +988,7 @@ if _HAS_QT:
 
         def _on_bot_selected(self):
             self._selected_bot_id = self._bot_selector.currentData() or ""
+            self.bot_selected.emit(self._selected_bot_id)
             logger.info(
                 "SIM INDICATOR PANEL: bot selected = '%s', has data = %s",
                 self._selected_bot_id[:12] if self._selected_bot_id else "(none)",
@@ -1027,6 +1038,8 @@ if _HAS_QT:
             self._no_data_cause = str(cause or "")
             self._no_data_message = message
             try:
+                self._showing_stored = False
+                self._shown_stored = None
                 self.update_data({}, symbol_text)
                 self._staleness_label.setText("")
                 self._staleness_label.hide()
@@ -1043,6 +1056,33 @@ if _HAS_QT:
                     "(%s); the panel may still be showing older values",
                     exc,
                 )
+
+        def show_stored(self, stored: dict, when: str, age: str, message: str) -> None:
+            """Draw ``stored["timeframes"]`` and raise the age banner over it,
+            as ``_render_stored_reading`` draws a persisted reading; ``when``
+            and ``age`` arrive formatted so a second panel prints the same."""
+            reading = stored if isinstance(stored, dict) else {}
+            stored_symbol = str(reading.get("symbol") or self._symbol or "")
+            self._no_data_cause = ""
+            self._no_data_message = str(message or "")
+            self.update_data(dict(reading.get("timeframes") or {}), stored_symbol)
+            self._showing_stored = True
+            self._shown_stored = {
+                "stored": dict(reading),
+                "when": str(when),
+                "age": str(age),
+                "message": self._no_data_message,
+            }
+            self._staleness_label.setText(
+                f"⏱ LAST TA READ, NOT CURRENT — taken {when}, {age}. {message}"
+            )
+            self._staleness_label.show()
+            logger.info(
+                "INDICATOR PANEL: showing STORED TA for %s (%s), %s",
+                str(reading.get("bot_id", ""))[:8],
+                stored_symbol or "(no symbol)",
+                age,
+            )
 
         def panel_reading(self) -> dict:
             """Everything on this panel, for a second panel to draw the same.
@@ -1063,6 +1103,8 @@ if _HAS_QT:
                 "cause": self._no_data_cause,
                 "masked": masked,
             }
+            if self._showing_stored and self._shown_stored:
+                read.update(self._shown_stored)
             if self._rates_seen:
                 read["rates"] = self._rate_snapshot
             return read
@@ -1154,6 +1196,9 @@ if _HAS_QT:
                   - locks: list of active lock dicts
             """
             self._data = multi_tf_summary
+            # Only show_stored raises the stale band after this.
+            self._showing_stored = False
+            self._shown_stored = None
             self._staleness_label.setText("")
             self._staleness_label.hide()
             self._symbol = str(symbol)

@@ -7,15 +7,21 @@ position under ``placeholder_title_text`` and ``placeholder_hint_text``, the
 watchdog and the API-log listener not carried, and ``replay_layer``,
 ``flip_button``, ``layer_splitter`` and ``replay_header`` added.
 ``SimTradingTabState`` owns the ``ApiPauseBuffer`` and ``ApiLogPane`` one host
-reads and the venues it has seated.
+reads and the venues it has seated. ``ivp_feed`` and ``rate_snapshot`` are the
+voting panel's feed, read by both hosts.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
+from ...trading.container.config import BotState
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
+from .sim_bot_status_table_surface import base_of, usd_rates
+
+logger = logging.getLogger("acervator.gui")
 
 METHOD = "sim_trading.tab"
 
@@ -274,3 +280,146 @@ class SimTradingTabState:
             current_exchange=self.current_exchange,
             replay_layer=self.replay_layer,
         )
+
+
+# -- the voting panel's feed, one definition for both hosts ------------------
+
+#: The page's ask when the bot selector changes, the mirror of ``flip_layer``.
+SELECT_BOT_ACTION = "select_bot"
+BOT_ID_PARAM = "bot_id"
+
+#: The states the window's ``_ivp_empty_state_cause`` names ``not_running``.
+NOT_RUNNING_STATES = (BotState.IDLE.value, BotState.STOPPED.value)
+ERROR_STATE = BotState.ERROR.value
+
+#: ``when`` on the staleness banner, as ``_render_stored_reading`` prints it.
+STALENESS_WHEN_FORMAT = "%H:%M:%S"
+
+#: The logger line for a phantom timeframe the tablet root does not hold.
+PHANTOM_SKIPPED_FORMAT = (
+    "Simulator: no Stone Tablet for %s %s on %s; phantom timeframe skipped"
+)
+
+
+def rate_snapshot(statuses: list) -> Any:
+    """A ``CurrencyRates`` over ``usd_rates`` of the fleet's own BTC and ETH
+    rows, derived by a private ``CurrencyRateMonitor``; ``source`` is the
+    exchange of the row that priced BTC, else ETH."""
+    from ...exchange.currency_rate_monitor import CurrencyRateMonitor, CurrencyRates
+
+    rates = usd_rates(list(statuses))
+    btc = float(rates.get("BTC", 0.0) or 0.0)
+    eth = float(rates.get("ETH", 0.0) or 0.0)
+    if btc <= 0 and eth <= 0:
+        return CurrencyRates()
+    source = ""
+    for quote in ("BTC", "ETH"):
+        for status in statuses:
+            if base_of(status.get("symbol", "")) == quote and rates.get(quote):
+                source = str(status.get("exchange", "") or "")
+                break
+        if source:
+            break
+    return CurrencyRateMonitor().update_from_prices(btc, eth, source=source)
+
+
+def _tablet_reading(source: Any, entry: Any, timeframe: str) -> tuple:
+    """``multi_tf_summary`` over ``window_of`` the tablet, and the window rows."""
+    rows = sim.window_of(source.candles(entry))
+    return sim.multi_tf_summary(rows, timeframe), rows
+
+
+def _empty_feed(bot: Any, cause: str, detail: dict, reason: str = "") -> dict:
+    """The empty-state answer of ``ivp_feed``: ``cause`` with ``detail``, or ``reason``."""
+    return {
+        "bot_id": "" if bot is None else bot.bot_id,
+        "symbol": "" if bot is None else str(bot.symbol or ""),
+        "cause": cause,
+        "detail": detail,
+        "reason": reason,
+    }
+
+
+def ivp_feed(source: Any, bot: Any, now: Optional[float] = None) -> dict:
+    """The voting panel's reading for ``bot`` over the tablet ``tablet_for``
+    finds, with each phantom timeframe merged and ``composite_net`` over the
+    phantom rows, or the one empty-state cause; a reading carries ``summary``,
+    ``stored``, ``when``, ``age`` and ``message`` for ``show_stored``."""
+    import time
+
+    from ...trading.ata_gate_scan import composite_net
+    from ...trading.phantom_balance import default_phantom_timeframes, tf_rank
+    from ..indicator_panel import age_phrase
+
+    if bot is None:
+        return _empty_feed(bot, "bot_missing", {})
+    detail = {"bot_id": str(bot.bot_id)}
+    state = str(bot.state or "").lower()
+    if state in NOT_RUNNING_STATES:
+        detail["state"] = state
+        return _empty_feed(bot, "not_running", detail)
+    if state == ERROR_STATE:
+        detail["error"] = str(bot.last_error or "")
+        return _empty_feed(bot, "bot_error", detail)
+    timeframe = str(bot.ta_timeframe or "")
+    entry = sim.tablet_for(source, bot.exchange_id, bot.asset, timeframe)
+    if entry is None:
+        return _empty_feed(bot, "", detail, sim.NO_TABLET_TEXT)
+    summary, rows = _tablet_reading(source, entry, timeframe)
+    if len(rows) < sim.MIN_CANDLES:
+        reason = sim.SHORT_TABLET_FORMAT.format(
+            asset=entry.asset, year=entry.year, count=len(rows), need=sim.MIN_CANDLES
+        )
+        return _empty_feed(bot, "", detail, reason)
+    if not summary:
+        return _empty_feed(bot, "", detail, sim.NO_TABLET_TEXT)
+    parent = summary[timeframe]
+    merged: dict = {timeframe: parent}
+    phantom_rows: dict = {}
+    skipped: list = []
+    if bot.phantoms_enabled:
+        phantom_tfs = list(bot.phantom_timeframes) or default_phantom_timeframes(
+            timeframe
+        )
+        for phantom_tf in phantom_tfs:
+            if phantom_tf == timeframe:
+                continue
+            phantom_entry = sim.tablet_for(
+                source, bot.exchange_id, bot.asset, phantom_tf
+            )
+            if phantom_entry is None:
+                logger.info(
+                    PHANTOM_SKIPPED_FORMAT, bot.asset, phantom_tf, bot.exchange_id
+                )
+                continue
+            phantom_summary, _rows = _tablet_reading(source, phantom_entry, phantom_tf)
+            if not phantom_summary:
+                continue
+            merged[phantom_tf] = phantom_summary[phantom_tf]
+            if tf_rank(phantom_tf) <= tf_rank(timeframe):
+                skipped.append(phantom_tf)
+            else:
+                phantom_rows[phantom_tf] = phantom_summary[phantom_tf]
+    parent["composite_net"] = composite_net(
+        phantom_rows, timeframe, parent["net_score"]
+    )
+    parent["composite_skipped"] = skipped
+    taken_at = float(rows[-1][0]) / 1000.0
+    moment = time.time() if now is None else float(now)
+    symbol = str(bot.symbol or "")
+    return {
+        "bot_id": bot.bot_id,
+        "symbol": symbol,
+        "summary": merged,
+        "stored": {
+            "bot_id": bot.bot_id,
+            "symbol": symbol,
+            "timeframes": merged,
+            "taken_at": taken_at,
+        },
+        "when": time.strftime(STALENESS_WHEN_FORMAT, time.localtime(taken_at)),
+        "age": age_phrase(max(0.0, moment - taken_at)),
+        "message": sim.TABLET_ENDS_FORMAT.format(day=sim.iso_day(rows[-1][0])),
+        "tablet": entry.file,
+        "skipped_phantoms": skipped,
+    }

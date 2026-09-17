@@ -234,6 +234,9 @@ FLEET_EMPTY_TEXT = "No simulated fleet. Import Live Fleet builds one."
 TABLET_LABEL_TEXT = "Tablet:"
 NO_TABLET_TEXT = "No Stone Tablet on disk."
 SHORT_TABLET_FORMAT = "{asset} {year} holds {count} candles; {need} are needed."
+#: Under the staleness banner over a tablet reading: the day of the newest
+#: candle the reading was computed on.
+TABLET_ENDS_FORMAT = "Stone Tablet ends {day}."
 
 LAYER_INDICATORS = "indicators"
 LAYER_PLAYBACK = "playback"
@@ -496,8 +499,24 @@ def tablet_row(entry) -> dict:
     }
 
 
+def tablet_for(source: TabletSource, exchange_id: str, asset: str, timeframe: str):
+    """The newest MANIFEST entry filed under ``asset`` on ``exchange_id`` at
+    ``timeframe``, or None; a tie on ``last_ts_ms`` breaks on the key."""
+    wanted = (str(asset).upper(), str(exchange_id), str(timeframe))
+    found = [
+        entry
+        for entry in source.entries()
+        if (str(entry.asset).upper(), str(entry.exchange_id), str(entry.timeframe))
+        == wanted
+    ]
+    if not found:
+        return None
+    return max(found, key=lambda entry: (entry.last_ts_ms, tablet_key(entry)))
+
+
 def multi_tf_summary(candles: Sequence[Sequence[float]], timeframe: str) -> dict:
-    """The voting engine's reading of ``candles``, keyed by ``timeframe``.
+    """The voting engine's reading of ``candles``, keyed by ``timeframe``, each
+    signal carrying the ``details`` its indicator published.
 
     An empty dict comes back when ``candles_from_raw`` or ``compute_all`` raises.
     """
@@ -523,7 +542,7 @@ def multi_tf_summary(candles: Sequence[Sequence[float]], timeframe: str) -> dict
                     "indicator": one.indicator,
                     "direction": one.direction.name,
                     "confidence": one.confidence,
-                    "details": {},
+                    "details": dict(getattr(one, "details", None) or {}),
                 }
                 for one in summary.signals
             ],

@@ -1,6 +1,7 @@
 // Draws the Simulator's Indicator Voting Panel from the sim_indicator_panel.state
 // payload. Forked from indicator_panel.js; the header also seats the flip button
-// to the replay layer behind the panel.
+// to the replay layer behind the panel, and the bot selector asks the host for
+// the chosen bot's reading.
 (function (global) {
   "use strict";
 
@@ -155,7 +156,9 @@
   var TITLE_PART = "indicator-title";
   var FLIP_PART = "sim-flip-button";
   var FLIP_ACTION = "flip_layer";
+  var SELECT_ACTION = "select_bot";
   var ACTION_PARAM = "action";
+  var BOT_ID_PARAM = "bot_id";
   var SELECTOR_PART = "indicator-bot-selector";
   var DOT_PART = "indicator-privacy-dot";
   var STALENESS_PART = "indicator-staleness";
@@ -430,6 +433,19 @@
     }
     var params = {};
     params[ACTION_PARAM] = FLIP_ACTION;
+    return global.acervator.call(METHOD, params);
+  }
+
+  // The ask that selects a bot on the panel; the tab's host answers it with a
+  // fresh reading, where the Qt fork's bot_selected signal carries the change.
+  function askSelect(event) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[ACTION_PARAM] = SELECT_ACTION;
+    params[BOT_ID_PARAM] = text(event && event.target ? event.target.value : EMPTY);
     return global.acervator.call(METHOD, params);
   }
 
@@ -1451,11 +1467,11 @@
     if (!isPlainObject(drawn)) {
       drawn = held === null ? null : held.model;
     }
-    draw(target, element(Panel, { model: drawn }));
+    draw(target, element(Panel, { model: drawn, onSelect: askSelect }));
     var found = measuredArea(target);
     if (found > ALPHA_FLOOR && found !== areaHeight) {
       areaHeight = found;
-      draw(target, element(Panel, { model: drawn }));
+      draw(target, element(Panel, { model: drawn, onSelect: askSelect }));
     }
     watchSize(target);
     return target;
@@ -1486,6 +1502,7 @@
     HeaderRow: HeaderRow,
     FlipButton: FlipButton,
     askFlip: askFlip,
+    askSelect: askSelect,
     BotSelector: BotSelector,
     PrivacyDot: PrivacyDot,
     StalenessBanner: StalenessBanner,
