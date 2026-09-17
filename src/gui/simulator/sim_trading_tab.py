@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QTabWidget,
@@ -91,6 +92,20 @@ FLIP_BUTTON_NAME = "sim-flip-button"
 #: Live's corner button is 24 px tall: its ＋ glyph sets that height, and the
 #: way-in buttons carry no such glyph.
 WAY_IN_BUTTON_HEIGHT_PX = 24
+
+
+class FlipButton(QPushButton):
+    """A ``QPushButton`` named ``FLIP_BUTTON_NAME`` whose layout may shrink it to width 0."""
+
+    def __init__(self, text: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(text, parent)
+        self.setObjectName(FLIP_BUTTON_NAME)
+        self.setAccessibleName(FLIP_BUTTON_NAME)
+        self.setSizePolicy(QSizePolicy.Preferred, self.sizePolicy().verticalPolicy())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """The base hint's height over a width of 0."""
+        return QSize(0, super().minimumSizeHint().height())
 
 
 class SimTradingTab(QWidget):
@@ -277,11 +292,7 @@ class SimTradingTab(QWidget):
         # Right panel: the forked voting panel, with the replay layer behind it
         self._indicator_panel = SimIndicatorVotingPanel()
         self._chart = None  # No chart in trading tab
-        self._flip_button = QPushButton(
-            surface.FLIP_BUTTON_TEXT[surface.LAYER_INDICATORS]
-        )
-        self._flip_button.setObjectName(FLIP_BUTTON_NAME)
-        self._flip_button.setAccessibleName(FLIP_BUTTON_NAME)
+        self._flip_button = FlipButton(surface.FLIP_BUTTON_TEXT[surface.LAYER_INDICATORS])
         self._flip_button.clicked.connect(self.flip_layer)
         # After the title and before the stretch, so the bot selector and the
         # privacy dot keep Live's right-aligned geometry.

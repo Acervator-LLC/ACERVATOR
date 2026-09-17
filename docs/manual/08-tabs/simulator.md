@@ -1028,6 +1028,63 @@ press above reached the refusal, and `bot_state.json` hashed the same after
 each one.
 
 
+## The Sim venue pane is Live's width
+
+The Sim tab's top splitter now settles at the same pair as Live's at every
+width the window can take. Before, the Qt Sim's venue pane was 48 px narrower
+than Live's at the window's floor and 66 px narrower at 1920 px, in the built
+program with its theme. The cause was the flip button seated after the panel
+title: under the theme it asks 134 px, so the forked panel asked 575 px where
+Live's panel asks 439, and a splitter given a size below a pane's minimum
+raises that size and keeps the raised figure as the pane's share on every later
+resize. The Sim divided 600:575 where Live divides 600:500. The replay layer
+behind the panel asks 8 px and never decided the pair.
+
+The flip button now reports a minimum width of 0 to the header row, and its
+size policy lets the row shrink it. The panel asks 441 px, under the 500 the
+splitter is given, so the Sim keeps 600:500 as Live does. At the floor the
+header has 185 px of room and the button draws at its full width; dragged
+narrower than its content, the button gives up width before the pane does, as
+the React page's flex header already does.
+
+`src/gui/simulator/sim_trading_tab.py` — the flip button
+
+```python
+class FlipButton(QPushButton):
+    """A ``QPushButton`` named ``FLIP_BUTTON_NAME`` whose layout may shrink it to width 0."""
+
+    def __init__(self, text: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(text, parent)
+        self.setObjectName(FLIP_BUTTON_NAME)
+        self.setAccessibleName(FLIP_BUTTON_NAME)
+        self.setSizePolicy(QSizePolicy.Preferred, self.sizePolicy().verticalPolicy())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """The base hint's height over a width of 0."""
+        return QSize(0, super().minimumSizeHint().height())
+```
+
+Read off one window holding both tabs, with the Windows fonts loaded and the
+theme applied, before and after:
+
+```
+window        Live          Sim before    Sim after
+1400 x 900    [751, 626]    [703, 674]    [751, 626]
+1550 x 974    [833, 694]    [780, 747]    [833, 694]
+1856 x 1076   [1000, 833]   [936, 897]    [1000, 833]
+1920 x 1080   [1035, 862]   [969, 928]    [1035, 862]
+```
+
+The window's floor is its own minimum size, 1400 by 900; a smaller size asked
+of it settles there. The React page divides its top splitter by the same two
+figures as flex weights with no floor of its own, so its pair read equal to
+Live's before this change and after: `[750, 625]` at 1400 and `[999, 832]` at
+1856. After the flip, at the settled width, the VWAP window and the Stone
+Tablet playback window each draw 626 px wide and 248 px high in the Qt build
+and 625 by 264 in the React build, both inside the pane; a 900 px minimum
+planted on the replay layer at runtime moves the pair in both builds, and
+removing it restores the pair.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
