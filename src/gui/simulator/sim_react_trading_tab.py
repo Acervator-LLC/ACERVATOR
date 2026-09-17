@@ -24,17 +24,25 @@ which opens the Simulator's Bot Settings window through
 ``_create_bot``, which opens ``SimBotWizardReactDialog`` and hands its config
 to ``FleetSource.create``, and Start, Pause, Stop, Restart and Delete reach
 ``_on_bot_command``, the window's handler forked over ``SimBotManager`` with
-no venue connect, which fires ``fleet_changed`` on every state move.
+no venue connect, which fires ``fleet_changed`` on every state move. The API
+Interaction Log is written by ``_on_api_event``, the window's writer forked
+over the host's own ``APIInteractionLog``, never the process-wide
+``get_api_log``: each entry recorded on ``api_log()`` is pushed as one of
+``api_lines`` through ``show_tab``, and ``SimTradingTabState`` draws it or
+holds it while Pause API Log is down; ``run_action`` answers the page's Pause
+API Log press through ``set_api_paused``.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from typing import Any, Optional
 
 from ...core.sound_engine import get_sound_engine
+from ...exchange.api_logger import APIInteractionLog
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
@@ -764,8 +772,10 @@ if _HAS_WEBENGINE:
             fleet_source: Optional[FleetSource] = None,
             parent: Optional[QWidget] = None,
             theme: object = None,
+            api_log: Optional[APIInteractionLog] = None,
         ) -> None:
-            """Hold the two sources the tab's view models are built from."""
+            """Hold the two sources the tab's view models are built from and
+            the API log ``_on_api_event`` listens to."""
             super().__init__(parent)
             self.setObjectName(ACCESSIBLE_NAME)
             self.setAccessibleName(ACCESSIBLE_NAME)
@@ -777,6 +787,7 @@ if _HAS_WEBENGINE:
             self._fleet_source = (
                 fleet_source if fleet_source is not None else FleetSource()
             )
+            self._api_log = api_log if api_log is not None else APIInteractionLog()
             self._bot_manager = SimBotManager(self._fleet_source)
             self._theme = theme
             self._state = tab_surface.SimTradingTabState()
@@ -795,6 +806,7 @@ if _HAS_WEBENGINE:
             self.fleet_changed.connect(self._fleet_source.save)
             self.fleet_changed.connect(self._sync_exchange_tabs)
             self._sync_exchange_tabs()
+            self._api_log.add_listener(self._on_api_event)
             # Polls StatusLogModel.health_stats() every 60s on the GUI thread.
             self._activity_log_watchdog_state = WatchdogState()
             self._activity_log_watchdog_timer = QTimer(self)
@@ -829,6 +841,10 @@ if _HAS_WEBENGINE:
         def fleet_source(self) -> FleetSource:
             """The fleet reader the tables are fed from."""
             return self._fleet_source
+
+        def api_log(self) -> APIInteractionLog:
+            """The tab's own API log; every entry recorded on it reaches the pane."""
+            return self._api_log
 
         def exchange_count(self) -> int:
             """How many venue sub-tabs the alias layer holds; EXCH reads it.
@@ -1066,6 +1082,28 @@ if _HAS_WEBENGINE:
                 self.show_tab({tab_surface.ACTIVITY_PAUSED_PARAM: wanted})
             return self._log.paused
 
+        def set_api_paused(self, paused: bool) -> bool:
+            """Pause or resume the state's ``ApiPauseBuffer`` and set the
+            toggle's caption, as the Qt toggle's ``_on_api_pause_toggled``
+            does: a resume flushes the held blocks in order under the marker.
+            A second ask for the state already held changes nothing. Answers
+            the buffer's ``paused``."""
+            wanted = bool(paused)
+            if wanted != self._state.api_buffer.paused:
+                self.show_tab({tab_surface.API_PAUSED_PARAM: wanted})
+            return self._state.api_buffer.paused
+
+        def _on_api_event(self, entry: dict) -> None:
+            """Push one ``api_log()`` entry to the page as Live's block, refusing
+            a call off the GUI thread; ``SimTradingTabState`` appends it to the
+            pane or holds it while paused."""
+            current = threading.current_thread().name
+            if tab_surface.api_event_off_thread(
+                entry, "SimTradingTabReact._on_api_event", current
+            ):
+                return
+            self.show_tab({tab_surface.API_LINES_PARAM: [tab_surface.api_block(entry)]})
+
         def _activity_log_watchdog(self) -> None:
             """One tick of Live's Activity-Log watchdog over the tab's
             ``StatusLogModel`` and ``SimBotManager.bots``: each line
@@ -1251,9 +1289,9 @@ if _HAS_WEBENGINE:
             return self.show_layer(other)
 
         def run_action(self, payload: str) -> None:
-            """Answer the flip, the Pause Console press, the panel's
-            ``select_bot``, both bot tables' asks and the venue page's
-            ``+ New Bot``; every other ask is held."""
+            """Answer the flip, the Pause Console and Pause API Log presses,
+            the panel's ``select_bot``, both bot tables' asks and the venue
+            page's ``+ New Bot``; every other ask is held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -1269,6 +1307,9 @@ if _HAS_WEBENGINE:
                 wanted = params.get(tab_surface.ACTIVITY_PAUSED_PARAM)
                 if wanted is not None:
                     self.set_activity_paused(bool(wanted))
+                wanted = params.get(tab_surface.API_PAUSED_PARAM)
+                if wanted is not None:
+                    self.set_api_paused(bool(wanted))
             elif method == LOG_METHOD:
                 wanted = params.get(tab_surface.LOG_PAUSED_PARAM)
                 if wanted is not None:
