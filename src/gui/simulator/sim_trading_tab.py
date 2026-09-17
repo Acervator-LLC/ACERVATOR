@@ -5,11 +5,14 @@
 stack, the forked ``SimIndicatorVotingPanel``, and the Activity Log and API
 Interaction Log spools, in Live's four splitters at Live's sizes.
 ``add_exchange_tab`` is the window's method of that name, forked, and seats a
-``SimExchangeTab``. The corner Live gives ``＋ Add Crypto Exchange`` holds the
-three way-in buttons. The replay layer, ``LineView`` over ``PlaybackView``,
-sits behind the panel in ``_layer_stack``, reached by ``flip_layer``.
-``TabletSource`` and ``FleetSource`` are the tab's only sources; nothing here
-reads them yet, and neither answers a send.
+``SimExchangeTab``; ``_sync_exchange_tabs`` seats one per exchange
+``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, and
+drops the rest as the window's ``_drop_unlisted_exchange_tabs`` does. The
+corner Live gives ``＋ Add Crypto Exchange`` holds the three way-in buttons, and
+the Get Started card holds the same three where Live's card holds its add
+button. The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
+panel in ``_layer_stack``, reached by ``flip_layer``. ``TabletSource`` and
+``FleetSource`` are the tab's only sources, and neither answers a send.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -40,12 +43,19 @@ from ..main_tabs.trading_tab_surface import (
     BOTTOM_SPLITTER_SIZES_PX,
     LOG_SPLITTER_SIZES_PX,
     MAIN_SPLITTER_SIZES_PX,
+    PLACEHOLDER_TAB_TITLE,
     TOP_SPLITTER_SIZES_PX,
+    exchange_display_name,
 )
 from ..simulator_tab import LineView, PlaybackView
 from .sim_exchange_tab import SimExchangeTab
 from .sim_indicator_panel import SimIndicatorVotingPanel
 from .sim_status_log import SimStatusLog
+from .sim_trading_tab_surface import (
+    card_button_name,
+    placeholder_hint_text,
+    placeholder_title_text,
+)
 
 logger = logging.getLogger("acervator.gui")
 
@@ -70,6 +80,9 @@ WAY_IN_BUTTON_HEIGHT_PX = 24
 class SimTradingTab(QWidget):
     """The Sim tab: Live's tab body over the Simulator's two sources."""
 
+    #: Fired by whatever loads a fleet; the venue sub-tabs re-seat on it.
+    fleet_changed = Signal()
+
     def __init__(
         self,
         tablet_source: Optional[TabletSource] = None,
@@ -87,6 +100,8 @@ class SimTradingTab(QWidget):
         self._fleet_source = fleet_source if fleet_source is not None else FleetSource()
         self._layer = surface.LAYER_INDICATORS
         self._build()
+        self.fleet_changed.connect(self._sync_exchange_tabs)
+        self._sync_exchange_tabs()
 
     # -- what the window reads ------------------------------------------
 
@@ -109,6 +124,10 @@ class SimTradingTab(QWidget):
     def way_in_buttons(self) -> dict[str, QPushButton]:
         """The corner buttons, keyed by action."""
         return dict(self._way_in_buttons)
+
+    def card_way_in_buttons(self) -> dict[str, QPushButton]:
+        """The Get Started card's buttons, keyed by action."""
+        return dict(self._card_way_in_buttons)
 
     # -- construction ---------------------------------------------------
 
@@ -143,6 +162,7 @@ class SimTradingTab(QWidget):
         # ── QStackedWidget: page 0 = Crypto, page 1 = Stock ────────
         self._trading_stack = QStackedWidget()
         self._way_in_buttons: dict[str, QPushButton] = {}
+        self._card_way_in_buttons: dict[str, QPushButton] = {}
 
         def _make_layer(label_text: str, accent: str) -> tuple:
             """Build one trading layer — returns (page_widget, tab_widget,
@@ -181,18 +201,23 @@ class SimTradingTab(QWidget):
             ph_layout = QVBoxLayout(ph_card)
             ph_layout.setAlignment(Qt.AlignCenter)
             ph_layout.setSpacing(12)
-            ph_title = QLabel(f"No {label_text} Exchanges Configured")
+            ph_title = QLabel(placeholder_title_text(label_text))
             ph_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
             ph_title.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_title)
-            ph_add = QPushButton(f"＋ Add {label_text} Exchange")
-            ph_add.setMinimumSize(180, 36)
-            ph_add.setStyleSheet(
-                f"QPushButton {{ border: 1px solid {accent}; "
-                f"color: {accent}; border-radius: 4px; }}"
-            )
-            ph_layout.addWidget(ph_add, alignment=Qt.AlignCenter)
-            ph_hint = QLabel(f"Add a {label_text} exchange to begin trading")
+            # The card's button position holds the three way-ins, one under
+            # the other, each at Live's card-button size and sheet.
+            for action, text in WAY_IN_BUTTONS:
+                ph_way_in = QPushButton(text)
+                ph_way_in.setMinimumSize(180, 36)
+                ph_way_in.setStyleSheet(
+                    f"QPushButton {{ border: 1px solid {accent}; "
+                    f"color: {accent}; border-radius: 4px; }}"
+                )
+                ph_way_in.setAccessibleName(card_button_name(action))
+                ph_layout.addWidget(ph_way_in, alignment=Qt.AlignCenter)
+                self._card_way_in_buttons.setdefault(action, ph_way_in)
+            ph_hint = QLabel(placeholder_hint_text(label_text))
             ph_hint.setStyleSheet(
                 f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
             )
@@ -438,6 +463,51 @@ class SimTradingTab(QWidget):
 
         if target_tabs is self._exchange_tabs:
             self._exchange_tabs[exchange_id] = tab
+
+    def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
+        """Take off every venue sub-tab whose id is not in ``listed``.
+
+        The layer's Get Started page is added back once its bar empties.
+        """
+        kept = set(listed)
+        dropped = 0
+        layers = (
+            (
+                self._crypto_exchange_tabs,
+                self._crypto_tab_widget,
+                "_crypto_placeholder",
+            ),
+            (
+                self._stock_exchange_tabs,
+                self._stock_tab_widget,
+                "_stock_placeholder",
+            ),
+        )
+        for store, bar, ph_attr in layers:
+            for eid in [one for one in store if one not in kept]:
+                tab = store.pop(eid)
+                self._exchange_tabs.pop(eid, None)
+                at = bar.indexOf(tab)
+                if at >= 0:
+                    bar.removeTab(at)
+                tab.setParent(None)
+                tab.deleteLater()
+                dropped += 1
+            ph = getattr(self, ph_attr, None)
+            if ph is not None and not store and bar.indexOf(ph) < 0:
+                bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
+        return dropped
+
+    def _sync_exchange_tabs(self) -> None:
+        """Seat a sub-tab for each exchange the fleet names and drop the rest.
+
+        The caption is ``exchange_display_name`` over the id, as Live captions
+        an exchange saved with no name.
+        """
+        wanted = [str(eid) for eid in self._fleet_source.exchanges() if eid]
+        for eid in wanted:
+            self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
+        self._drop_unlisted_exchange_tabs(wanted)
 
     # -- what the operator presses --------------------------------------
 

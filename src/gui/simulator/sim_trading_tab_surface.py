@@ -2,10 +2,12 @@
 
 ``build_view_model`` is Live's ``trading_tab_surface.build_view_model`` under
 ``METHOD``, with each layer's corner holding ``WAY_IN_BUTTONS`` in place of the
-add button, the watchdog and the API-log listener not carried, and
-``replay_layer``, ``flip_button``, ``layer_splitter`` and ``replay_header``
-added. ``SimTradingTabState`` owns the ``ApiPauseBuffer`` and ``ApiLogPane``
-one host reads.
+add button, the Get Started card carrying the same three buttons in its button
+position under ``placeholder_title_text`` and ``placeholder_hint_text``, the
+watchdog and the API-log listener not carried, and ``replay_layer``,
+``flip_button``, ``layer_splitter`` and ``replay_header`` added.
+``SimTradingTabState`` owns the ``ApiPauseBuffer`` and ``ApiLogPane`` one host
+reads and the venues it has seated.
 """
 
 from __future__ import annotations
@@ -32,6 +34,10 @@ WAY_IN_BUTTON_HEIGHT_PX = 24
 
 CORNER_LAYOUT = {"margins_px": [0, 0, 0, 0], "spacing_px": 2}
 
+#: The Get Started card's children, with the three way-ins where Live's card
+#: holds its add button.
+PLACEHOLDER_ORDER = ["title", "way_in_buttons", "hint"]
+
 FLIP_BUTTON_NAME = "sim-flip-button"
 
 #: The replay layer's header row, at the panel header's own margins.
@@ -50,7 +56,6 @@ REPLAY_LAYER_PARAM = "replay_layer"
 
 ACTIONS = {
     "layer.way_in_button.clicked": "way_in",
-    "layer.placeholder_add_button.clicked": "add_exchange",
     "activity_pause_button.toggled": "toggle_activity_pause",
     "api_pause_button.toggled": "toggle_api_pause",
     "flip_button.clicked": "flip_layer",
@@ -77,14 +82,53 @@ def flip_button(layer: Any) -> dict:
     return {"text": sim.FLIP_BUTTON_TEXT[shown], "name": FLIP_BUTTON_NAME}
 
 
-def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
-    """Live's ``layer_card`` with ``way_in_buttons`` and ``corner_layout`` added.
+def placeholder_title_text(label: Any) -> str:
+    """The Get Started card's heading for one layer: the first step is a fleet."""
+    return f"No {label} Fleet Loaded"
 
-    The card keeps ``add_button`` for the Get Started card's own button.
+
+def placeholder_hint_text(label: Any) -> str:
+    """The line under the Get Started card's buttons for one layer."""
+    return f"Load a {label} fleet to begin a run"
+
+
+def card_button_name(action: str) -> str:
+    """The accessible name of the Get Started card's button that sends ``action``."""
+    return sim.button_name(action) + "-card"
+
+
+def placeholder_way_in_buttons(accent: Any) -> list:
+    """The three way-ins in the card's button position, at Live's card-button
+    size and sheet."""
+    return [
+        {
+            "action": action,
+            "text": text,
+            "accessible_name": card_button_name(action),
+            "minimum_size_px": list(live.PLACEHOLDER_ADD_MIN_SIZE_PX),
+            "style_sheet": live.placeholder_add_style(accent),
+            "align": "center",
+        }
+        for action, text in WAY_IN_BUTTONS
+    ]
+
+
+def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
+    """Live's ``layer_card`` with ``way_in_buttons`` and ``corner_layout`` added,
+    and the Get Started card asking for a fleet.
+
+    The card's ``placeholder`` keeps Live's frame and geometry; its title, its
+    hint and its button position carry the Simulator's contents.
     """
     card = live.layer_card(key, exchanges, current)
     card["way_in_buttons"] = way_in_buttons()
     card["corner_layout"] = dict(CORNER_LAYOUT)
+    placeholder = card["placeholder"]
+    placeholder["order"] = list(PLACEHOLDER_ORDER)
+    placeholder["title"]["text"] = placeholder_title_text(card["label"])
+    placeholder["hint"]["text"] = placeholder_hint_text(card["label"])
+    placeholder["way_in_buttons"] = placeholder_way_in_buttons(card["accent"])
+    del placeholder["add_button"]
     return card
 
 
@@ -180,6 +224,14 @@ class SimTradingTabState:
         self.exchanges.append(
             {"exchange_id": exchange_id, "display_name": display_name}
         )
+
+    def unseat(self, exchange_id: str) -> None:
+        """Forget one venue so the layer stack stops drawing it."""
+        self.exchanges = [
+            entry for entry in self.exchanges if entry.get("exchange_id") != exchange_id
+        ]
+        if self.current_exchange == exchange_id:
+            self.current_exchange = ""
 
     def view_model(self, params: Optional[dict] = None) -> dict:
         """Apply one request and return the tab payload."""
