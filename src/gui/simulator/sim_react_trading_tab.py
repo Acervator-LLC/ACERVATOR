@@ -12,11 +12,11 @@ bot manager; ``add_exchange_tab`` seats one venue's own models, the fork of
 ``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, and
 ``refresh_bots`` hands each ``SimVenue`` its rows from ``FleetSource.statuses``.
 ``SimTradingPage`` reads the page's asks off the console line the host script
-writes; ``run_action`` answers the flip, the bot table's own asks and the
+writes; ``run_action`` answers the flip, both bot tables' own asks and the
 venue page's ``+ New Bot``, so a row's Fire reaches ``_on_bot_fire``, a row's
-Detail reaches ``_on_bot_detail``, and ``+ New Bot`` reaches ``_create_bot``,
-which opens ``SimBotWizardReactDialog`` and hands its config to
-``FleetSource.create``.
+Detail on either table reaches ``_on_bot_detail``, and ``+ New Bot`` reaches
+``_create_bot``, which opens ``SimBotWizardReactDialog`` and hands its config
+to ``FleetSource.create``.
 """
 
 from __future__ import annotations
@@ -140,6 +140,12 @@ TABLE_PRESS_PARAMS: tuple[str, ...] = (
 
 #: The request field that carries the venue page's ``+ New Bot`` press.
 VENUE_PRESS_PARAMS: tuple[str, ...] = (venue_surface.live.NEW_BOT_PARAM,)
+
+#: The ``action`` values that carry a press on the Extractor table.
+EXTRACTOR_PRESS_ACTIONS: tuple[str, ...] = (
+    extractor_surface.DETAIL_ACTION,
+    extractor_surface.SELECT_ACTION,
+)
 
 #: The request fields a venue module names its exchange under.
 VENUE_KEYS: tuple[str, ...] = (
@@ -438,8 +444,8 @@ def models(
 
 class SimVenue:
     """One seated venue's three models, which the page draws from; ``update_bots``
-    is ``ExchangeTabReact.update_bots`` forked, and ``answer`` applies one
-    bot-table ask so a Fire or a Detail on the page reaches its handler."""
+    is ``ExchangeTabReact.update_bots`` forked, and ``answer`` applies one ask
+    from either bot table so a Fire or a Detail on the page reaches its handler."""
 
     def __init__(
         self,
@@ -465,7 +471,9 @@ class SimVenue:
             on_fire_clicked=on_bot_fire,
         )
         self.scrum.exchange_id = exchange_id
-        self.extractor = extractor_surface.ExtractorBotTableModel()
+        self.extractor = extractor_surface.ExtractorBotTableModel(
+            on_bot_clicked=self._extractor_detail,
+        )
         self.extractor.exchange_id = exchange_id
 
     def models(self) -> dict:
@@ -496,13 +504,21 @@ class SimVenue:
         )
 
     def answer(self, method: str, params: dict) -> bool:
-        """Apply one press the page made on this venue's bot table or its
-        ``+ New Bot``; a read ask carrying none of ``TABLE_PRESS_PARAMS`` or
-        ``VENUE_PRESS_PARAMS`` changes nothing."""
+        """Apply one press the page made on this venue's bot tables or its
+        ``+ New Bot``; a read ask carrying none of ``TABLE_PRESS_PARAMS``,
+        ``EXTRACTOR_PRESS_ACTIONS`` or ``VENUE_PRESS_PARAMS`` changes nothing."""
         if method == venue_surface.METHOD:
             if not any(params.get(name) for name in VENUE_PRESS_PARAMS):
                 return False
             venue_surface.drive(self.screen, params)
+            return True
+        if method == EXTRACTOR_METHOD:
+            if (
+                params.get(extractor_surface.ACTION_PARAM)
+                not in EXTRACTOR_PRESS_ACTIONS
+            ):
+                return False
+            extractor_surface.drive(self.extractor, params)
             return True
         if method != SCRUM_METHOD:
             return False
@@ -511,21 +527,30 @@ class SimVenue:
         sim_scrum_surface.drive(self.scrum, params)
         return True
 
-    def _scrum_detail(self, bot_id: str) -> None:
-        ids = list(self.scrum.bot_ids)
-        row = (
+    def _row_of(self, table: Any, bot_id: str) -> int:
+        ids = list(table.bot_ids)
+        return (
             ids.index(bot_id) if bot_id in ids else venue_surface.live.NO_SELECTION_ROW
         )
-        self.screen.select_scrum_row(row)
+
+    def _scrum_detail(self, bot_id: str) -> None:
+        self.screen.select_scrum_row(self._row_of(self.scrum, bot_id))
         self.screen.scrum_clicked(bot_id)
+
+    def _extractor_detail(self, bot_id: str) -> None:
+        self.screen.select_extractor_row(self._row_of(self.extractor, bot_id))
+        self.screen.extractor_clicked(bot_id)
 
 
 def venue_of_ask(method: str, params: dict) -> str:
     """The exchange one ask names: the venue page keys it ``exchange_id``
-    (``venue_surface.live.EXCHANGE_ID_PARAM``), the bot table ``for_exchange``
-    (``sim_scrum_surface.venue_of``)."""
+    (``venue_surface.live.EXCHANGE_ID_PARAM``), the Extractor table
+    ``extractor_surface.EXCHANGE_ID_PARAM``, the Scrumming table
+    ``for_exchange`` (``sim_scrum_surface.venue_of``)."""
     if method == venue_surface.METHOD:
         return str(params.get(venue_surface.live.EXCHANGE_ID_PARAM) or "")
+    if method == EXTRACTOR_METHOD:
+        return str(params.get(extractor_surface.EXCHANGE_ID_PARAM) or "")
     return sim_scrum_surface.venue_of(params)
 
 
@@ -1007,7 +1032,8 @@ if _HAS_WEBENGINE:
             return self.show_layer(other)
 
         def run_action(self, payload: str) -> None:
-            """Answer the flip and the bot table's asks; every other ask is held."""
+            """Answer the flip, both bot tables' asks and the venue page's
+            ``+ New Bot``; every other ask is held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -1022,7 +1048,7 @@ if _HAS_WEBENGINE:
                     self.show_layer(str(layer))
             elif method == PANEL_METHOD and params.get("action") == "flip_layer":
                 self.flip_layer()
-            elif method in (SCRUM_METHOD, venue_surface.METHOD):
+            elif method in (SCRUM_METHOD, EXTRACTOR_METHOD, venue_surface.METHOD):
                 venue = self._venues.get(venue_of_ask(method, params))
                 if venue is not None and venue.answer(method, params):
                     self._venue_published()
