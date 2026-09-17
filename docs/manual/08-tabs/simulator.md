@@ -1825,6 +1825,163 @@ every draw of the corner and the card, in both builds, and `bot_state.json`
 hashed identical after every press while a byte planted into it moved the
 hash.
 
+## Import Live Fleet fills the tables and the strip
+
+Import Live Fleet copies the stored bots of one exchange out of the live
+fleet file into the Simulator's own fleet file, in both builds. A press at
+the corner or on the Get Started card reads which exchanges the live file
+names. With more than one it opens the chooser; with exactly one it takes
+that one and opens nothing; with none it writes one Activity Log line naming
+the file and moves nothing. Each stored bot on the chosen exchange is copied
+into the sim fleet under its own bot id, marked as imported, and the fleet
+signal fires: the sim fleet file is written, the venue seats, and the
+Scrumming Bots table and the Extractor Bots table draw one row per imported
+bot, matched by bot id. The Activity Log reads `Imported 3 bot(s) from
+bot_state.json on coinbase.` The live fleet file is only read, never written.
+
+`src/simulator/fleet_source.py` — the copy
+
+```python
+    def import_live_fleet(self, exchange_id: str) -> list[SimBot]:
+        wanted = str(exchange_id or "")
+        if not wanted:
+            return []
+        imported: list[SimBot] = []
+        for bot_id, record in self.stored_records().items():
+            bot = _sim_bot_from_record(bot_id, record, origin=LIVE_ORIGIN)
+            if bot is None or bot.exchange_id != wanted:
+                continue
+            record["bot_id"] = bot_id
+            record["origin"] = LIVE_ORIGIN
+            self._records[bot_id] = record
+            imported.append(bot)
+        return sorted(imported, key=lambda one: (one.symbol, one.bot_id))
+```
+
+A second import of the same exchange replaces each held copy with the file's
+current record, under the same bot id; a held record the file no longer names
+stays until Delete removes it. A bot created through the wizard is kept
+beside the imported ones, so one sim fleet can hold both kinds. The command
+bar acts on an imported row as it acts on a wizard's: Start on an imported
+idle bot writes Live's `✓ Bot <id> RUNNING.` line and colours its Bot ID cell.
+
+```mermaid
+flowchart LR
+    press[Import Live Fleet, corner or card] --> ways[_way_in]
+    ways --> options[FleetSource.stored_exchanges]
+    options -- more than one --> chooser[SimExchangeChoiceDialog]
+    options -- exactly one --> chosen[the exchange]
+    chooser -- Ok --> chosen
+    chooser -- Cancel --> line[one Activity Log line]
+    chosen --> copy[FleetSource.import_live_fleet]
+    copy --> changed[fleet_changed]
+    changed --> save[sim_fleet.json]
+    changed --> seat[the venue seats]
+    seat --> rows[one row per imported bot]
+```
+
+### The Simulator starts empty
+
+The tab opens on the Get Started card with no venue seated, in both builds,
+whatever the live fleet file holds. The fleet source answers the records the
+sim fleet file holds and nothing else: its bots, its exchanges, its row
+statuses and its strip figures all come from those records, so with an empty
+sim fleet there is no venue, no row and no figure until a way in loads one.
+The live fleet file is opened only when Import Live Fleet is pressed, and
+then only to read it.
+
+`src/simulator/fleet_source.py` — the held records alone
+
+```python
+    def exchanges(self) -> list[str]:
+        """Every distinct ``exchange_id`` the held bots name, sorted; empty
+        until a way in has loaded a fleet."""
+        return sorted({bot.exchange_id for bot in self.bots() if bot.exchange_id})
+```
+
+On the next launch the tab reads the sim fleet file once and draws the
+imported rows from it; the live fleet file is not opened. The Bot Swarm tab
+keeps its own read of the live file, which is Live's and unchanged.
+
+### The exchange chooser
+
+The chooser is Live's one-question dialog, the Bot Swarm tab's Configure
+Profit Wire, holding the bot wizard's `Exchange:` row: the title reads Import
+Live Fleet, one line names the exchanges, the combo lists each exchange under
+the caption its venue sub-tab carries, and Ok and Cancel close it. Both builds
+open the same dialog, as both open Live's Delete box. Cancel writes `Import
+Live Fleet cancelled.` to the Activity Log and moves nothing.
+
+`src/gui/simulator/sim_exchange_choice.py` — the row
+
+```python
+            row = QFormLayout()
+            self._exchange = QComboBox()
+            self._exchange.setAccessibleName(EXCHANGE_CHOICE_ROW_LABEL)
+            for entry in exchange_choice_options(ids):
+                self._exchange.addItem(entry["display_name"], entry["exchange_id"])
+            row.addRow(EXCHANGE_CHOICE_ROW_LABEL, self._exchange)
+```
+
+### The ten fields on Sim
+
+While Sim is in front the header strip reads Live's ten fields over every
+record the Simulator holds, imported or wizard-created, with Live's own
+arithmetic: the wallet is the largest cash balance any held bot carries, a
+position is holdings times price times the quote rate when both are known,
+maturity is read only where the venue has answered for that bot, and each
+year-to-date sum falls back to the lifetime sum at zero. A record that carries
+no figure for a field reads zero there, as a live bot's fresh statistics do,
+so a wizard-created bot adds nothing to the money columns until a run trades
+it, and SPENDABLE and LOCKED keep the em dash until a held record carries cash
+or a position.
+
+`src/simulator/fleet_source.py` — the strip over the held records
+
+```python
+    def aggregate(self) -> dict:
+        """The header strip's figures over every held record,
+        ``aggregate_stats`` of ``bots``."""
+        return aggregate_stats(self.bots())
+```
+
+The arithmetic is a fork of the live fleet's, not a shared call, because the
+live version is a method of the bot manager reading live bot objects and the
+trading package does not change for the Simulator; the maturity threshold is
+imported from the live module, so the two cannot disagree on it. The strip
+re-reads on the window's dashboard tick and on the next tab change, as it
+does on Live after a bot is created.
+
+### What the import reading measured
+
+Read off the real window in both builds over a scratch home holding a live
+fleet file with three scrumming bots and one extractor across `coinbase` and
+`kraken`, and no sim fleet file:
+
+```
+reading                                     Qt                       React
+at open: venues seated                      none                     none
+at open: Get Started card                   listed, visible          drawn, visible
+Import Live Fleet: chooser                  Import Live Fleet, coinbase and kraken listed, both builds
+coinbase chosen: venue seated               coinbase                 coinbase
+rows by bot id, Scrumming Bots              u21scr01, u21scr02       u21scr01, u21scr02
+rows by bot id, Extractor Bots              u21ext01                 u21ext01
+strip after one tick                        $165.50 $155.25 11 1 2 | $1,500.75 $4.20 $367.49 $92.47 1
+kraken chosen: venues seated                coinbase, kraken         coinbase, kraken
+strip after one tick                        $235.50 $185.25 16 1 3 | $1,500.75 $5.30 $658.49 $92.47 2
+aggregate against Live's over the four      21 of 21 keys equal      21 of 21 keys equal
+Start on u21scr02                           RUNNING, Bots 2          RUNNING, Bots 2
+second process, rows from the sim file      four rows, live file not opened by the Simulator
+one exchange in the live file               no chooser, three imported, both builds
+no bot in the live file                     one line, nothing moves, both builds
+Cancel on the chooser                       one line, nothing moves, both builds
+```
+
+The scratch live fleet file hashed the same after every step in every run,
+and a byte planted into it from outside the program moved the hash. No live
+bot, bot manager or bot container was constructed, and no socket left
+loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

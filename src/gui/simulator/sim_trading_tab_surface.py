@@ -10,7 +10,9 @@ and ``replay_layer``, ``flip_button``, ``layer_splitter`` and ``replay_header``
 added. ``SimTradingTabState`` owns the run mode, the ``ApiPauseBuffer`` and
 ``ApiLogPane`` one host reads and the venues it has seated; ``way_in_refused_line``
 is the Activity Log line both hosts write for a way-in whose run has not
-landed. ``ivp_feed`` and ``rate_snapshot`` are the
+landed, ``imported_line`` and ``no_stored_bot_line`` the lines Import Live
+Fleet writes, and ``exchange_choice_options`` and ``exchange_prompt_text``
+what ``SimExchangeChoiceDialog`` lists. ``ivp_feed`` and ``rate_snapshot`` are the
 voting panel's feed, read by both hosts; ``watchdog_lines`` is the Activity-Log
 watchdog's tick over the sim bots, run by both hosts every
 ``WATCHDOG_INTERVAL_MS``. ``api_block`` and ``api_event_off_thread`` are the
@@ -27,6 +29,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from ...core.log_paths import get_log_root
+from ...simulator.fleet_source import BOT_STATE_NAME
 from ...trading.container.config import BotState
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
@@ -120,6 +123,53 @@ def way_in_refused_line(action: str, error: Any) -> str:
     return WAY_IN_REFUSED_FORMAT.format(
         text=WAY_IN_TEXT.get(action, action), error=error
     )
+
+
+#: The Activity Log lines Import Live Fleet writes on both hosts.
+IMPORTED_FORMAT = "Imported {count} bot(s) from {file} on {exchange}."
+NO_STORED_BOT_FORMAT = "{file} holds no bot to import."
+IMPORT_CANCELLED_TEXT = "Import Live Fleet cancelled."
+
+#: The exchange chooser: Live's one-question dialog holding the bot wizard's
+#: ``Exchange:`` row, at the dialog width Live gives Configure Profit Wire.
+EXCHANGE_CHOICE_TITLE = sim.IMPORT_LIVE_FLEET_TEXT
+EXCHANGE_CHOICE_ROW_LABEL = "Exchange:"
+EXCHANGE_CHOICE_MIN_WIDTH_PX = 350
+
+
+def exchange_choice_options(exchanges: Any) -> list:
+    """One ``{exchange_id, display_name}`` entry per id in ``exchanges``, the
+    shape the bot wizard's ``Exchange:`` combo lists, captioned as the venue
+    sub-tab is through ``exchange_display_name``."""
+    return [
+        {
+            "exchange_id": str(eid),
+            "display_name": live.exchange_display_name({"exchange_id": str(eid)}),
+        }
+        for eid in exchanges
+        if eid
+    ]
+
+
+def exchange_prompt_text(options: Any) -> str:
+    """The chooser's line, ``sim.EXCHANGE_PROMPT_FORMAT`` over the ids in
+    ``options``."""
+    return sim.EXCHANGE_PROMPT_FORMAT.format(
+        options=", ".join(str(one) for one in options)
+    )
+
+
+def imported_line(count: int, exchange_id: Any) -> str:
+    """The Activity Log line for ``count`` records copied from
+    ``BOT_STATE_NAME`` on ``exchange_id``."""
+    return IMPORTED_FORMAT.format(
+        count=int(count), file=BOT_STATE_NAME, exchange=exchange_id
+    )
+
+
+def no_stored_bot_line() -> str:
+    """The Activity Log line for a ``BOT_STATE_NAME`` naming no bot."""
+    return NO_STORED_BOT_FORMAT.format(file=BOT_STATE_NAME)
 
 
 def flip_button(layer: Any) -> dict:

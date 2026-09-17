@@ -18,8 +18,15 @@ seated page through ``SimExchangeTab.show_mode`` and redraws the way-ins
 through ``_draw_way_ins``. The corner Live gives ``＋ Add Crypto Exchange``
 holds the two way-in buttons the run mode offers, from ``reserved_rows``, and
 the Get Started card holds the same two where Live's card holds its add
-button; each reaches ``_way_in``, which opens the wizard for Create New Bots
-and logs the ``SendRefused`` ``FleetSource`` raises for every other action.
+button; each reaches ``_way_in``, which opens the wizard for Create New Bots,
+runs ``_import_live_fleet`` for Import Live Fleet, and logs the
+``SendRefused`` ``FleetSource`` raises for every other action.
+``_import_live_fleet`` puts ``exchange_choice`` over
+``FleetSource.stored_exchanges``, opens ``SimExchangeChoiceDialog`` when it
+prompts, copies the chosen exchange's records through
+``FleetSource.import_live_fleet`` and fires ``fleet_changed``, so the venue
+seats and its rows draw; the tab starts empty because ``FleetSource.bots``
+answers the held records alone.
 The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
 panel in ``_layer_stack``, reached by ``flip_layer``. A venue's ``+ New Bot``
 reaches ``_create_bot``, which opens ``SimBotCreationWizard`` and hands its
@@ -47,6 +54,7 @@ from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -67,6 +75,7 @@ from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
     SendRefused,
+    exchange_choice,
 )
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
@@ -89,6 +98,7 @@ from ..simulator_tab import LineView, PlaybackView
 from ..variant_surface import SIM_BOT_DETAIL, SIM_BOT_WIZARD, surface_class
 from . import sim_bot_wizard_surface as wizard_surface
 from .sim_bot_status_table_surface import usd_rates
+from .sim_exchange_choice import SimExchangeChoiceDialog
 from .sim_exchange_tab import SimExchangeTab
 from .sim_indicator_panel import SimIndicatorVotingPanel
 from .sim_status_log import SimStatusLog
@@ -273,16 +283,44 @@ class SimTradingTab(QWidget):
 
     def _way_in(self, action: str) -> None:
         """One way-in pressed at the corner or on the card: Create New Bots
-        opens the wizard through ``_create_bot``; every other action asks
-        ``FleetSource`` for it by name, which raises ``SendRefused`` until that
-        run lands, and the refusal is logged to the Activity Log."""
+        opens the wizard through ``_create_bot``, Import Live Fleet runs
+        ``_import_live_fleet``; every other action asks ``FleetSource`` for it
+        by name, which raises ``SendRefused`` until that run lands, and the
+        refusal is logged to the Activity Log."""
         if action == surface.CREATE_NEW_BOTS_ACTION:
             self._create_bot(self._current_venue_id())
+            return
+        if action == surface.IMPORT_LIVE_FLEET_ACTION:
+            self._import_live_fleet()
             return
         try:
             getattr(self._fleet_source, action)
         except SendRefused as exc:
             self._status_log.log(tab_surface.way_in_refused_line(action, exc), "error")
+
+    def _import_live_fleet(self) -> None:
+        """Import Live Fleet: ``exchange_choice`` over the exchanges
+        ``FleetSource.stored_exchanges`` names, ``SimExchangeChoiceDialog`` when
+        it prompts, then ``FleetSource.import_live_fleet`` on the exchange chosen,
+        one Activity Log line and ``fleet_changed``; a file naming no bot and a
+        cancelled chooser each write one line and move nothing."""
+        options = self._fleet_source.stored_exchanges()
+        if not options:
+            self._status_log.log(tab_surface.no_stored_bot_line(), "warning")
+            return
+        choice = exchange_choice(options)
+        chosen = choice["chosen"]
+        if choice["prompt"]:
+            dialog = SimExchangeChoiceDialog(options, self)
+            if dialog.exec() != QDialog.Accepted:
+                self._status_log.log(tab_surface.IMPORT_CANCELLED_TEXT, "warning")
+                return
+            chosen = dialog.chosen()
+        imported = self._fleet_source.import_live_fleet(chosen)
+        self._status_log.log(
+            tab_surface.imported_line(len(imported), chosen), "success"
+        )
+        self.fleet_changed.emit()
 
     # -- construction ---------------------------------------------------
 

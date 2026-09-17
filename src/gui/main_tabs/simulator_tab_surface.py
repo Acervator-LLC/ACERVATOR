@@ -960,7 +960,7 @@ def back_test_fleet(origin: str, exchange_id: str, specs: Sequence[dict]) -> tup
         )
         return made, choice
     fleet = FleetSource()
-    choice = exchange_choice(fleet.exchanges(), exchange_id)
+    choice = exchange_choice(fleet.stored_exchanges(), exchange_id)
     return live_fleet(fleet, choice["chosen"]), choice
 
 
@@ -1012,8 +1012,9 @@ def run_back_test(
 def build_fleet(origin: str, exchange_id: str = "") -> tuple:
     """The fleet one button asks for, and the exchange choice it resolved.
 
-    ``IMPORT_LIVE_FLEET_ACTION`` reads ``bot_state.json``;
-    ``GENERATE_FROM_YTD_ACTION`` reads the YTD trade files.
+    ``IMPORT_LIVE_FLEET_ACTION`` reads ``bot_state.json`` through
+    ``stored_exchanges`` and ``live_fleet``; ``GENERATE_FROM_YTD_ACTION`` reads
+    the YTD trade files.
     """
     from ...simulator.fleet_source import (
         FleetSource,
@@ -1030,7 +1031,7 @@ def build_fleet(origin: str, exchange_id: str = "") -> tuple:
         )
         return ytd_fleet(ytd, choice["chosen"]), choice
     fleet = FleetSource()
-    choice = exchange_choice(fleet.exchanges(), exchange_id)
+    choice = exchange_choice(fleet.stored_exchanges(), exchange_id)
     return live_fleet(fleet, choice["chosen"]), choice
 
 

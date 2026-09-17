@@ -1,19 +1,26 @@
-"""The Simulator's fleet path: the live bot_state record, read only, and the
-bots the wizard creates, held in the sim fleet file under ``get_sim_dir``.
+"""The Simulator's fleet path: the records the sim fleet file holds under
+``get_sim_dir``, the bots the wizard creates and the bots Import Live Fleet
+copies out of the live bot_state record, which is read only.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
 ``record_for``, ``exchanges``, ``symbols``, ``statuses``, ``aggregate``,
-``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``sim_dir``,
-``sim_path`` and ``save`` from ``bot_state.json`` and the records the sim
-fleet file holds; it holds no venue, writes ``sim_path`` alone and sends
-nothing, and ``__getattr__`` raises ``SendRefused`` for every other name.
-``sim_bot_for``, ``set_state`` and ``remove`` read and move the held records
-alone, which is what ``SimBotManager`` acts on. ``SimBot`` is a
-read-only record forked from the live bot's config, its stats and its saved
-state, never a ``ScrummingBot``; ``row_status`` answers one as the status dict
-the Scrumming Bots table and the Extractor Bots table read; ``live_fleet``
-builds one per stored bot, ``ytd_fleet`` one per YTD trade file, and
-``wizard_record`` the stored-record shape from the bot wizard's config.
+``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``stored_records``,
+``stored_exchanges``, ``import_live_fleet``, ``sim_dir``, ``sim_path`` and
+``save``; it holds no venue, writes ``sim_path`` alone and sends nothing, and
+``__getattr__`` raises ``SendRefused`` for every other name. ``bots``,
+``exchanges``, ``statuses`` and ``aggregate`` read the held records alone, so
+the tab starts empty; ``stored_records`` and ``stored_exchanges`` read
+``bot_state.json``, and ``import_live_fleet`` copies its records on one
+exchange into the held map under their own ids with ``LIVE_ORIGIN``.
+``sim_bot_for``, ``set_state`` and ``remove`` read and move the held records,
+which is what ``SimBotManager`` acts on. ``SimBot`` is a read-only record
+forked from the live bot's config, its stats and its saved state, never a
+``ScrummingBot``; ``row_status`` answers one as the status dict the Scrumming
+Bots table and the Extractor Bots table read; ``aggregate_stats`` answers the
+header strip's figures over a list of them with ``get_aggregate_stats``'s
+arithmetic; ``live_fleet`` builds one per stored bot, ``ytd_fleet`` one per YTD
+trade file, and ``wizard_record`` the stored-record shape from the bot
+wizard's config.
 """
 
 from __future__ import annotations
@@ -26,7 +33,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from ..core.io_utils import atomic_write_json
 from ..core.log_paths import get_sim_dir
@@ -36,6 +43,7 @@ from ..trading.container.config import (
     bot_config_kwargs,
     make_bot_config,
 )
+from ..trading.smart_wire import mature_profit_usd
 from .tablet_source import SendRefused
 
 logger = logging.getLogger("acervator.simulator.fleet")
@@ -64,6 +72,9 @@ READ_NAMES = (
     "sim_bot_for",
     "set_state",
     "remove",
+    "stored_records",
+    "stored_exchanges",
+    "import_live_fleet",
     "sim_dir",
     "sim_path",
     "save",
@@ -96,23 +107,6 @@ PRE_TICK_AUTO_FIRE = {
     "scrum_blockers": ["pre-tick"],
     "fold_blockers": ["pre-tick"],
     "evaluated_at_tick": 0,
-}
-
-#: The header strip's figures for a fleet holding no bot, keyed as
-#: ``get_aggregate_stats`` keys the live fleet's. Every total is a sum over
-#: no bot, and no bot counts as answered by a venue.
-EMPTY_AGGREGATE = {
-    "running": 0,
-    "total_trades": 0,
-    "total_errors_lifetime": 0,
-    "total_scrummed_usd": 0.0,
-    "total_folded_usd": 0.0,
-    "total_realised_pnl": 0.0,
-    "wallet_cash_usd": 0.0,
-    "crypto_position_value_usd": 0.0,
-    "total_realized_exchange": 0.0,
-    "total_mature_exchange": 0.0,
-    "bots_with_fresh_exchange_data": 0,
 }
 
 #: ``phantoms_enabled`` for a record without the key, as the restore reads it.
@@ -183,6 +177,9 @@ class SimBot:
     n_positions_drawdown: int = 0
     phantoms_enabled: bool = PHANTOMS_ENABLED_DEFAULT
     phantom_timeframes: tuple = ()
+    cash_balance_usd: float = 0.0
+    ytd_scrummed_usd: float = 0.0
+    ytd_folded_usd: float = 0.0
 
     @property
     def asset(self) -> str:
@@ -344,6 +341,17 @@ def _sim_bot_from_record(
         n_positions_drawdown=pool["n_positions_drawdown"],
         phantoms_enabled=bool(record.get("phantoms_enabled", PHANTOMS_ENABLED_DEFAULT)),
         phantom_timeframes=phantom_tfs,
+        cash_balance_usd=_number(stats.get("cash_balance_usd"), 0.0),
+        ytd_scrummed_usd=_number(stats.get("ytd_scrummed_usd"), 0.0),
+        ytd_folded_usd=_number(stats.get("ytd_folded_usd"), 0.0),
+    )
+
+
+def _held_bot(bot_id: str, record: dict) -> Optional[SimBot]:
+    """One ``SimBot`` from a held record, its ``origin`` the record's own
+    ``origin`` key, ``NEW_ORIGIN`` when the record carries none."""
+    return _sim_bot_from_record(
+        bot_id, record, origin=str(record.get("origin") or NEW_ORIGIN)
     )
 
 
@@ -448,6 +456,98 @@ def row_status(bot: SimBot) -> dict:
     return status
 
 
+def aggregate_stats(bots: Sequence[SimBot]) -> dict:
+    """The header strip's figures over ``bots``, keyed as
+    ``FleetAggregationMixin.get_aggregate_stats`` keys the live fleet's and
+    summed by its arithmetic: the wallet is the largest ``cash_balance_usd``, a
+    position is ``holdings`` times ``current_price`` times ``quote_to_usd`` when
+    both are positive and ``position_value_usd`` otherwise, maturity is read only
+    where ``exchange_data_fresh_ts`` is positive, and each YTD sum falls back to
+    the lifetime sum at zero."""
+    total_pnl = 0.0
+    total_trades = 0
+    running = 0
+    errored = 0
+    total_scrummed = 0.0
+    total_folded = 0.0
+    total_scrummed_ytd = 0.0
+    total_folded_ytd = 0.0
+    total_errors_lifetime = 0
+    total_realized_exchange = 0.0
+    total_unrealized_exchange = 0.0
+    total_fees_exchange = 0.0
+    bots_with_fresh_exchange_data = 0
+    wallet_cash_usd = 0.0
+    crypto_position_value_usd = 0.0
+    total_mature_exchange = 0.0
+    mature_positions = 0
+
+    for bot in bots:
+        total_pnl += bot.realised_pnl_usd
+        total_trades += bot.total_trades
+        total_scrummed += bot.total_scrummed_usd
+        total_folded += bot.total_folded_usd
+        total_scrummed_ytd += bot.ytd_scrummed_usd
+        total_folded_ytd += bot.ytd_folded_usd
+        total_errors_lifetime += bot.total_errors
+        total_realized_exchange += bot.realized_pnl_exchange_usd
+        total_unrealized_exchange += bot.unrealised_pnl_usd
+        total_fees_exchange += bot.fees_paid_exchange_usd
+        fresh = bot.exchange_data_fresh_ts > 0
+        if fresh:
+            bots_with_fresh_exchange_data += 1
+        if bot.cash_balance_usd > wallet_cash_usd:
+            wallet_cash_usd = bot.cash_balance_usd
+        position_value = bot.position_value_usd
+        if bot.holdings > 0 and bot.current_price > 0:
+            position_value = bot.holdings * bot.current_price * bot.quote_to_usd
+        crypto_position_value_usd += position_value
+        if fresh:
+            mature = mature_profit_usd(bot.cost_basis_exchange_usd, position_value)
+            if mature > 0:
+                total_mature_exchange += mature
+                mature_positions += 1
+        if bot.state == BotState.RUNNING.value:
+            running += 1
+        if bot.state == BotState.ERROR.value:
+            errored += 1
+
+    return {
+        "total_bots": len(bots),
+        "running": running,
+        "errored": errored,
+        "total_errors_lifetime": total_errors_lifetime,
+        "total_realized_exchange": round(total_realized_exchange, 4),
+        "total_unrealized_exchange": round(total_unrealized_exchange, 4),
+        "total_fees_exchange": round(total_fees_exchange, 4),
+        "total_mature_exchange": round(total_mature_exchange, 4),
+        "mature_positions": mature_positions,
+        "bots_with_fresh_exchange_data": bots_with_fresh_exchange_data,
+        "wallet_cash_usd": round(wallet_cash_usd, 4),
+        "crypto_position_value_usd": round(crypto_position_value_usd, 4),
+        "total_account_value_usd": round(
+            wallet_cash_usd + crypto_position_value_usd, 4
+        ),
+        "total_realised_pnl": round(total_pnl, 4),
+        "total_trades": total_trades,
+        "total_scrummed_usd": round(
+            total_scrummed_ytd if total_scrummed_ytd > 0 else total_scrummed, 4
+        ),
+        "total_folded_usd": round(
+            total_folded_ytd if total_folded_ytd > 0 else total_folded, 4
+        ),
+        "total_scrummed_usd_ytd": round(total_scrummed_ytd, 4),
+        "total_folded_usd_ytd": round(total_folded_ytd, 4),
+        "total_scrummed_usd_lifetime": round(total_scrummed, 4),
+        "total_folded_usd_lifetime": round(total_folded, 4),
+    }
+
+
+#: The header strip's figures for a fleet holding no bot, ``aggregate_stats``
+#: over none.
+EMPTY_AGGREGATE = aggregate_stats(())
+
+
 def _read_sim_records(path: Path) -> dict[str, dict]:
     """The ``bots`` map of the sim fleet file at ``path``, by ``bot_id``.
 
@@ -481,7 +581,7 @@ def _read_sim_records(path: Path) -> dict[str, dict]:
     unread = [
         bot_id
         for bot_id, record in records.items()
-        if _sim_bot_from_record(bot_id, record, origin=NEW_ORIGIN) is None
+        if _held_bot(bot_id, record) is None
     ]
     if unread:
         logger.warning(
@@ -494,15 +594,15 @@ def _read_sim_records(path: Path) -> dict[str, dict]:
 
 
 class FleetSource:
-    """The live fleet on disk, as ``SimBot`` records read from
-    ``bot_state.json``, beside the records the sim fleet file holds."""
+    """The records the sim fleet file holds, as ``SimBot`` records, and the
+    read of ``bot_state.json`` that ``import_live_fleet`` copies them from."""
 
     def __init__(
         self, root: Optional[Path] = None, sim_dir: Optional[Path] = None
     ) -> None:
-        """Read ``bot_state.json`` from ``root``, or from ``~/.acervator`` when
-        it is None, and the sim fleet file from ``sim_dir``, or from
-        ``get_sim_dir`` when it is None."""
+        """Read the sim fleet file from ``sim_dir``, or from ``get_sim_dir``
+        when it is None; ``bot_state.json`` under ``root``, or under
+        ``~/.acervator`` when it is None, is read on ``stored_records`` alone."""
         self._root = Path(root) if root is not None else Path.home() / ".acervator"
         self._sim_dir = Path(sim_dir) if sim_dir is not None else get_sim_dir()
         self._records: dict[str, dict] = _read_sim_records(self.sim_path())
@@ -539,22 +639,53 @@ class FleetSource:
         return str(self._state().get("saved_at_human") or "")
 
     def bots(self) -> list[SimBot]:
-        """Every bot the sim fleet file holds and every stored bot as a
-        ``SimBot``, by exchange_id then symbol."""
+        """Every held record as a ``SimBot``, by exchange_id then symbol then
+        bot_id; a record read from ``bot_state.json`` is not held until
+        ``import_live_fleet`` copies it."""
         out: list[SimBot] = []
         for bot_id, record in self._records.items():
-            bot = _sim_bot_from_record(bot_id, record, origin=NEW_ORIGIN)
+            bot = _held_bot(bot_id, record)
             if bot is not None:
                 out.append(bot)
-        stored = self._state().get("bots")
-        if isinstance(stored, dict):
-            for bot_id, record in stored.items():
-                if not isinstance(record, dict):
-                    continue
-                bot = _sim_bot_from_record(bot_id, record)
-                if bot is not None:
-                    out.append(bot)
         return sorted(out, key=lambda one: (one.exchange_id, one.symbol, one.bot_id))
+
+    def stored_records(self) -> dict[str, dict]:
+        """The ``bots`` map of ``bot_state.json`` as it lies on disk, by
+        ``bot_id``, each a copy; the one read of that file with a caller."""
+        stored = self._state().get("bots")
+        if not isinstance(stored, dict):
+            return {}
+        return {
+            str(bot_id): copy.deepcopy(record)
+            for bot_id, record in stored.items()
+            if bot_id and isinstance(record, dict)
+        }
+
+    def stored_exchanges(self) -> list[str]:
+        """Every distinct ``exchange_id`` the bots in ``bot_state.json`` name,
+        sorted; the options ``exchange_choice`` takes for Import Live Fleet."""
+        return sorted({bot.exchange_id for bot in live_fleet(self) if bot.exchange_id})
+
+    def import_live_fleet(self, exchange_id: str) -> list[SimBot]:
+        """Copy every stored bot on ``exchange_id`` from ``bot_state.json`` into
+        the held records under its own ``bot_id`` with ``origin`` ``LIVE_ORIGIN``,
+        replacing a held record of the same id and keeping every other; answers
+        the ``SimBot`` of each record copied, by symbol then bot_id, and none
+        for an empty ``exchange_id``. The sim fleet file takes them on the next
+        ``save``."""
+        wanted = str(exchange_id or "")
+        if not wanted:
+            return []
+        imported: list[SimBot] = []
+        for bot_id, record in self.stored_records().items():
+            bot = _sim_bot_from_record(bot_id, record, origin=LIVE_ORIGIN)
+            if bot is None or bot.exchange_id != wanted:
+                continue
+            record["bot_id"] = bot_id
+            record["origin"] = LIVE_ORIGIN
+            self._records[bot_id] = record
+            imported.append(bot)
+        return sorted(imported, key=lambda one: (one.symbol, one.bot_id))
 
     def create(self, config: dict) -> SimBot:
         """Hold one record built from the bot wizard's config through
@@ -564,7 +695,8 @@ class FleetSource:
         record = wizard_record(config)
         bot_id = str(uuid.uuid4())[:BOT_ID_LENGTH]
         record["bot_id"] = bot_id
-        bot = _sim_bot_from_record(bot_id, record, origin=NEW_ORIGIN)
+        record["origin"] = NEW_ORIGIN
+        bot = _held_bot(bot_id, record)
         if bot is None:
             raise ValueError("the wizard config names no symbol")
         self._records[bot_id] = record
@@ -572,11 +704,12 @@ class FleetSource:
 
     def sim_bot_for(self, bot_id: str) -> Optional[SimBot]:
         """The ``SimBot`` of the held record under ``bot_id``, or None; a
-        record read from ``bot_state.json`` is not held and answers None."""
+        record in ``bot_state.json`` that ``import_live_fleet`` has not copied
+        is not held and answers None."""
         record = self._records.get(str(bot_id))
         if not isinstance(record, dict):
             return None
-        return _sim_bot_from_record(str(bot_id), record, origin=NEW_ORIGIN)
+        return _held_bot(str(bot_id), record)
 
     def set_state(self, bot_id: str, state: str, clear_error: bool = False) -> str:
         """Write ``state`` into the held record's ``state_when_saved`` and answer
@@ -631,23 +764,19 @@ class FleetSource:
         return None
 
     def record_for(self, bot_id: str) -> Optional[dict]:
-        """A copy of the stored record whose ``bot_id`` is ``bot_id``, from the
-        sim fleet file first and ``bot_state.json`` second, or None."""
-        wanted = str(bot_id)
-        held = self._records.get(wanted)
+        """A copy of the held record whose ``bot_id`` is ``bot_id``, or None."""
+        held = self._records.get(str(bot_id))
         if isinstance(held, dict):
             return copy.deepcopy(held)
-        stored = self._state().get("bots")
-        if isinstance(stored, dict) and isinstance(stored.get(wanted), dict):
-            return copy.deepcopy(stored[wanted])
         return None
 
     def exchanges(self) -> list[str]:
-        """Every distinct ``exchange_id`` the stored bots name, sorted."""
+        """Every distinct ``exchange_id`` the held bots name, sorted; empty
+        until a way in has loaded a fleet."""
         return sorted({bot.exchange_id for bot in self.bots() if bot.exchange_id})
 
     def symbols(self, exchange_id: Optional[str] = None) -> list[str]:
-        """The symbols the stored bots trade, narrowed to ``exchange_id`` when
+        """The symbols the held bots trade, narrowed to ``exchange_id`` when
         given."""
         return sorted(
             {
@@ -658,17 +787,18 @@ class FleetSource:
         )
 
     def statuses(self, exchange_id: str = "") -> list[dict]:
-        """One ``row_status`` per stored bot, narrowed to ``exchange_id`` when
+        """One ``row_status`` per held bot, narrowed to ``exchange_id`` when
         given; the list a venue page's ``update_bots`` takes."""
-        return [row_status(bot) for bot in live_fleet(self, exchange_id)]
+        return [
+            row_status(bot)
+            for bot in self.bots()
+            if not exchange_id or bot.exchange_id == exchange_id
+        ]
 
     def aggregate(self) -> dict:
-        """The header strip's figures for the fleet the Simulator holds.
-
-        No bot is loaded into the Simulator, so the answer is
-        ``EMPTY_AGGREGATE``.
-        """
-        return dict(EMPTY_AGGREGATE)
+        """The header strip's figures over every held record,
+        ``aggregate_stats`` of ``bots``."""
+        return aggregate_stats(self.bots())
 
     def __getattr__(self, name: str):
         """Refuse every name outside ``READ_NAMES``."""
@@ -697,11 +827,16 @@ def exchange_choice(exchanges: list[str], chosen: str = "") -> dict:
 
 
 def live_fleet(source: FleetSource, exchange_id: str = "") -> list[SimBot]:
-    """The live fleet from ``source``, narrowed to ``exchange_id`` when given."""
-    bots = source.bots()
-    if not exchange_id:
-        return bots
-    return [bot for bot in bots if bot.exchange_id == exchange_id]
+    """One ``SimBot`` per stored bot in ``source.stored_records()``, with
+    ``LIVE_ORIGIN``, narrowed to ``exchange_id`` when given, by exchange_id
+    then symbol then bot_id."""
+    out: list[SimBot] = []
+    for bot_id, record in source.stored_records().items():
+        bot = _sim_bot_from_record(bot_id, record, origin=LIVE_ORIGIN)
+        if bot is None or (exchange_id and bot.exchange_id != exchange_id):
+            continue
+        out.append(bot)
+    return sorted(out, key=lambda one: (one.exchange_id, one.symbol, one.bot_id))
 
 
 def ytd_fleet(source, exchange_id: str = "") -> list[SimBot]:
@@ -753,6 +888,7 @@ __all__ = [
     "FleetSource",
     "SendRefused",
     "SimBot",
+    "aggregate_stats",
     "exchange_choice",
     "extractor_pool_color",
     "live_fleet",
