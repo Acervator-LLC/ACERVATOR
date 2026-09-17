@@ -30,7 +30,13 @@ over the host's own ``APIInteractionLog``, never the process-wide
 ``get_api_log``: each entry recorded on ``api_log()`` is pushed as one of
 ``api_lines`` through ``show_tab``, and ``SimTradingTabState`` draws it or
 holds it while Pause API Log is down; ``run_action`` answers the page's Pause
-API Log press through ``set_api_paused``.
+API Log press through ``set_api_paused``. The run mode is held once, on
+``SimTradingTabState.mode``; a venue page's mode press reaches ``set_mode``,
+which redraws the tab so the corner and the card offer that mode's two ways
+in and re-publishes every venue so its header carries the active sheet; a
+corner or card press reaches ``_way_in``, which opens the wizard for Create
+New Bots and logs the ``SendRefused`` ``FleetSource`` raises for every other
+action.
 """
 
 from __future__ import annotations
@@ -515,12 +521,13 @@ class SimVenue:
         )
         self.extractor.exchange_id = exchange_id
 
-    def models(self) -> dict:
-        """The payload of each venue method, under the Simulator's names."""
+    def models(self, mode: str = sim.MODES[0]) -> dict:
+        """The payload of each venue method, under the Simulator's names, the
+        venue page's mode buttons drawn for the run mode ``mode``."""
         extractor = dict(extractor_surface.build_payload(self.extractor))
         extractor["method"] = EXTRACTOR_METHOD
         return {
-            venue_surface.METHOD: venue_surface.build_view_model(self.screen),
+            venue_surface.METHOD: venue_surface.build_view_model(self.screen, mode),
             SCRUM_METHOD: sim_scrum_surface.build_view_model(self.scrum),
             EXTRACTOR_METHOD: extractor,
         }
@@ -594,14 +601,15 @@ def venue_of_ask(method: str, params: dict) -> str:
     return sim_scrum_surface.venue_of(params)
 
 
-def venue_models(venues: Any) -> dict:
-    """Each venue page's own payloads, keyed by the exchange it draws."""
+def venue_models(venues: Any, mode: str = sim.MODES[0]) -> dict:
+    """Each venue page's own payloads, keyed by the exchange it draws, each
+    header drawn for the run mode ``mode``."""
     found: dict = {}
     for exchange_id, venue in dict(venues or {}).items():
         read = getattr(venue, "models", None)
         if not callable(read):
             continue
-        held = read()
+        held = read(mode)
         if held:
             found[str(exchange_id)] = held
     return found
@@ -853,6 +861,36 @@ if _HAS_WEBENGINE:
             Live and on the Qt fork.
             """
             return len(layer_exchanges(self._state.exchanges)[ALIAS_LAYER])
+
+        def mode(self) -> str:
+            """The run mode in force, one of ``MODES``, off the tab state."""
+            return self._state.mode
+
+        def set_mode(self, mode: str) -> str:
+            """Make ``mode`` the run mode: redraw the tab so each corner and
+            card offers that mode's two ways in, and re-publish every venue so
+            its header carries the active sheet; answers the mode in force."""
+            if self._state.set_mode(mode) == mode:
+                self.show_tab({})
+                self._venue_published()
+            return self._state.mode
+
+        def _current_venue_id(self) -> str:
+            """The exchange of the venue on show, or ``""`` with none seated."""
+            return str(self._state.current_exchange or next(iter(self._venues), ""))
+
+        def _way_in(self, action: str) -> None:
+            """One way-in pressed at the corner or on the card: Create New Bots
+            opens the wizard through ``_create_bot``; every other action asks
+            ``FleetSource`` for it by name, which raises ``SendRefused`` until
+            that run lands, and the refusal is logged to the Activity Log."""
+            if action == sim.CREATE_NEW_BOTS_ACTION:
+                self._create_bot(self._current_venue_id())
+                return
+            try:
+                getattr(self._fleet_source, action)
+            except SendRefused as exc:
+                self.log(tab_surface.way_in_refused_line(action, exc), "error")
 
         def layer(self) -> str:
             """The layer the page shows behind the panel slot."""
@@ -1290,8 +1328,9 @@ if _HAS_WEBENGINE:
 
         def run_action(self, payload: str) -> None:
             """Answer the flip, the Pause Console and Pause API Log presses,
-            the panel's ``select_bot``, both bot tables' asks and the venue
-            page's ``+ New Bot``; every other ask is held."""
+            a corner or card way-in, the panel's ``select_bot``, both bot
+            tables' asks and the venue page's mode buttons, ``+ New Bot`` and
+            command bar; every other ask is held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -1310,6 +1349,14 @@ if _HAS_WEBENGINE:
                 wanted = params.get(tab_surface.API_PAUSED_PARAM)
                 if wanted is not None:
                     self.set_api_paused(bool(wanted))
+                way_in = params.get(tab_surface.WAY_IN_PARAM)
+                if way_in is not None:
+                    self._way_in(str(way_in))
+            elif (
+                method == venue_surface.METHOD
+                and params.get(venue_surface.MODE_PARAM) is not None
+            ):
+                self.set_mode(str(params.get(venue_surface.MODE_PARAM)))
             elif method == LOG_METHOD:
                 wanted = params.get(tab_surface.LOG_PAUSED_PARAM)
                 if wanted is not None:
@@ -1344,7 +1391,7 @@ if _HAS_WEBENGINE:
             if self._votes:
                 self._models[PANEL_METHOD] = self._votes
             self._waiting = {}
-            self._venue_models = venue_models(self._venues)
+            self._venue_models = venue_models(self._venues, self._state.mode)
             self._web = QWebEngineView(self)
             self._web.setAccessibleName(ACCESSIBLE_NAME)
             self._web.setPage(SimTradingPage(self))
@@ -1353,8 +1400,9 @@ if _HAS_WEBENGINE:
             self._layout.addWidget(self._web, 1)
 
         def _venue_published(self) -> None:
-            """Re-read every seated venue and push the fleet to the page."""
-            self._venue_models = venue_models(self._venues)
+            """Re-read every seated venue, its header drawn for the run mode in
+            force, and push the fleet to the page."""
+            self._venue_models = venue_models(self._venues, self._state.mode)
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(push_script(self._venue_models))
 

@@ -1,13 +1,16 @@
 """The Simulator tab's page view model, forked from ``trading_tab_surface``.
 
 ``build_view_model`` is Live's ``trading_tab_surface.build_view_model`` under
-``METHOD``, with each layer's corner holding ``WAY_IN_BUTTONS`` in place of the
-add button, the Get Started card carrying the same three buttons in its button
-position under ``placeholder_title_text`` and ``placeholder_hint_text``, the
-watchdog and the API-log listener not carried, and ``replay_layer``,
-``flip_button``, ``layer_splitter`` and ``replay_header`` added.
-``SimTradingTabState`` owns the ``ApiPauseBuffer`` and ``ApiLogPane`` one host
-reads and the venues it has seated. ``ivp_feed`` and ``rate_snapshot`` are the
+``METHOD``, with each layer's corner holding ``way_in_buttons`` in place of the
+add button, the two ways in the active run mode offers from
+``sim.reserved_rows``, the Get Started card carrying the same two buttons in
+its button position under ``placeholder_title_text`` and
+``placeholder_hint_text``, the watchdog and the API-log listener not carried,
+and ``replay_layer``, ``flip_button``, ``layer_splitter`` and ``replay_header``
+added. ``SimTradingTabState`` owns the run mode, the ``ApiPauseBuffer`` and
+``ApiLogPane`` one host reads and the venues it has seated; ``way_in_refused_line``
+is the Activity Log line both hosts write for a way-in whose run has not
+landed. ``ivp_feed`` and ``rate_snapshot`` are the
 voting panel's feed, read by both hosts; ``watchdog_lines`` is the Activity-Log
 watchdog's tick over the sim bots, run by both hosts every
 ``WATCHDOG_INTERVAL_MS``. ``api_block`` and ``api_event_off_thread`` are the
@@ -36,21 +39,22 @@ METHOD = "sim_trading.tab"
 
 TAB_TITLE = sim.HEADING
 
-#: The three way-in buttons at the corner position, in the order they sit.
-WAY_IN_BUTTONS = (
-    (sim.IMPORT_LIVE_FLEET_ACTION, sim.IMPORT_LIVE_FLEET_TEXT),
-    (sim.GENERATE_FROM_YTD_ACTION, sim.GENERATE_FROM_YTD_TEXT),
-    (sim.CREATE_NEW_BOTS_ACTION, sim.CREATE_NEW_BOTS_TEXT),
-)
-
 #: Live's corner button is 24 px tall; the way-in buttons carry no glyph
 #: that would set it, so the Qt fork names the height and the page reads it.
 WAY_IN_BUTTON_HEIGHT_PX = 24
 
+#: The text each way-in action draws, over every mode's two rows.
+WAY_IN_TEXT = {
+    row["action"]: row["text"] for rows in sim.ROWS_FOR_MODE.values() for row in rows
+}
+
+#: The Activity Log line for a way-in whose run has not landed.
+WAY_IN_REFUSED_FORMAT = "{text} refused: {error}"
+
 CORNER_LAYOUT = {"margins_px": [0, 0, 0, 0], "spacing_px": 2}
 
-#: The Get Started card's children, with the three way-ins where Live's card
-#: holds its add button.
+#: The Get Started card's children, with the run mode's two way-ins where
+#: Live's card holds its add button.
 PLACEHOLDER_ORDER = ["title", "way_in_buttons", "hint"]
 
 FLIP_BUTTON_NAME = "sim-flip-button"
@@ -95,18 +99,27 @@ ACTIONS = {
 }
 
 
-def way_in_buttons() -> list:
-    """The three corner buttons as the page draws them."""
+def way_in_buttons(mode: str = sim.MODES[0]) -> list:
+    """The two corner buttons ``mode`` offers, from ``sim.reserved_rows``, as
+    the page draws them."""
     return [
         {
-            "action": action,
-            "text": text,
-            "accessible_name": sim.button_name(action),
+            "action": row["action"],
+            "text": row["text"],
+            "accessible_name": row["button_name"],
             "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
             "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
         }
-        for action, text in WAY_IN_BUTTONS
+        for row in sim.reserved_rows(mode)
     ]
+
+
+def way_in_refused_line(action: str, error: Any) -> str:
+    """The Activity Log line for ``action`` refused with ``error``: the button's
+    text over the ``SendRefused`` ``FleetSource`` raised."""
+    return WAY_IN_REFUSED_FORMAT.format(
+        text=WAY_IN_TEXT.get(action, action), error=error
+    )
 
 
 def flip_button(layer: Any) -> dict:
@@ -192,37 +205,40 @@ def card_button_name(action: str) -> str:
     return sim.button_name(action) + "-card"
 
 
-def placeholder_way_in_buttons(accent: Any) -> list:
-    """The three way-ins in the card's button position, at Live's card-button
-    size and sheet."""
+def placeholder_way_in_buttons(accent: Any, mode: str = sim.MODES[0]) -> list:
+    """The two way-ins ``mode`` offers in the card's button position, at Live's
+    card-button size and sheet."""
     return [
         {
-            "action": action,
-            "text": text,
-            "accessible_name": card_button_name(action),
+            "action": row["action"],
+            "text": row["text"],
+            "accessible_name": card_button_name(row["action"]),
             "minimum_size_px": list(live.PLACEHOLDER_ADD_MIN_SIZE_PX),
             "style_sheet": live.placeholder_add_style(accent),
             "align": "center",
         }
-        for action, text in WAY_IN_BUTTONS
+        for row in sim.reserved_rows(mode)
     ]
 
 
-def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
+def layer_card(
+    key: Any, exchanges: Any = None, current: Any = None, mode: str = sim.MODES[0]
+) -> dict:
     """Live's ``layer_card`` with ``way_in_buttons`` and ``corner_layout`` added,
     and the Get Started card asking for a fleet.
 
     The card's ``placeholder`` keeps Live's frame and geometry; its title, its
-    hint and its button position carry the Simulator's contents.
+    hint and its button position carry the Simulator's contents, the button
+    position the two ways in ``mode`` offers.
     """
     card = live.layer_card(key, exchanges, current)
-    card["way_in_buttons"] = way_in_buttons()
+    card["way_in_buttons"] = way_in_buttons(mode)
     card["corner_layout"] = dict(CORNER_LAYOUT)
     placeholder = card["placeholder"]
     placeholder["order"] = list(PLACEHOLDER_ORDER)
     placeholder["title"]["text"] = placeholder_title_text(card["label"])
     placeholder["hint"]["text"] = placeholder_hint_text(card["label"])
-    placeholder["way_in_buttons"] = placeholder_way_in_buttons(card["accent"])
+    placeholder["way_in_buttons"] = placeholder_way_in_buttons(card["accent"], mode)
     del placeholder["add_button"]
     return card
 
@@ -235,17 +251,20 @@ def build_view_model(
     exchanges: Any = None,
     current_exchange: Any = None,
     replay_layer: Any = sim.LAYER_INDICATORS,
+    mode: str = sim.MODES[0],
 ) -> dict:
     """Return the whole Simulator tab state as one serialisable dict.
 
     ``layer`` names the stack page on show, ``exchanges`` the venues seated,
-    and ``replay_layer`` which of the panel and the replay layer shows.
+    ``replay_layer`` which of the panel and the replay layer shows, and
+    ``mode`` the run mode whose two ways in the corner and the card draw.
     """
     key = "stock" if str(layer) == "stock" else "crypto"
     buffer = live.ApiPauseBuffer() if api_buffer is None else api_buffer
     pane = live.ApiLogPane() if api_pane is None else api_pane
     routed = live.layer_exchanges(exchanges)
     shown = replay_layer if replay_layer in sim.LAYERS else sim.LAYER_INDICATORS
+    active = mode if mode in sim.MODES else sim.MODES[0]
     return {
         "tab_title": TAB_TITLE,
         "container": dict(live.CONTAINER),
@@ -259,8 +278,9 @@ def build_view_model(
             "pages": list(live.LAYER_ORDER),
             "current_index": live.LAYER_ORDER.index(key),
         },
+        "mode": active,
         "layers": [
-            layer_card(name, routed[name], current_exchange)
+            layer_card(name, routed[name], current_exchange, active)
             for name in live.LAYER_ORDER
         ],
         "alias_layer": live.ALIAS_LAYER,
@@ -299,7 +319,9 @@ class SimTradingTabState:
     """The page state one Simulator tab host owns between asks.
 
     ``api_buffer`` and ``api_pane`` persist across ``view_model`` calls, which
-    reads ``replay_layer`` beside the fields Live's handler reads.
+    reads ``replay_layer`` beside the fields Live's handler reads. ``mode`` is
+    the run mode, the first of ``sim.MODES`` at open, the one place the React
+    host holds it; ``set_mode`` moves it and answers what it became.
     """
 
     def __init__(self) -> None:
@@ -310,6 +332,14 @@ class SimTradingTabState:
         self.replay_layer = sim.LAYER_INDICATORS
         self.exchanges: list = []
         self.current_exchange = ""
+        self.mode = sim.MODES[0]
+
+    def set_mode(self, mode: Any) -> str:
+        """Make ``mode`` the run mode when it is one of ``sim.MODES``; answer
+        the run mode in force afterwards."""
+        if mode in sim.MODES:
+            self.mode = str(mode)
+        return self.mode
 
     def seat(self, exchange_id: str, display_name: str) -> None:
         """Record one venue for the layer stack to draw."""
@@ -355,6 +385,7 @@ class SimTradingTabState:
             exchanges=self.exchanges,
             current_exchange=self.current_exchange,
             replay_layer=self.replay_layer,
+            mode=self.mode,
         )
 
 

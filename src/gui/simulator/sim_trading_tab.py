@@ -12,9 +12,15 @@ the rest as the window's ``_drop_unlisted_exchange_tabs`` does, and then
 ``refresh_votes`` hands the panel the fleet, its own rates and the selected
 bot's ``ivp_feed`` over ``TabletSource``, run again by ``bot_selected``; every
 ``fleet_changed`` first writes the sim fleet file through ``FleetSource.save``. The
-corner Live gives ``＋ Add Crypto Exchange`` holds the three way-in buttons, and
-the Get Started card holds the same three where Live's card holds its add
-button. The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
+tab holds the run mode, ``mode``, the first of ``MODES`` at open; a venue
+page's mode button reaches ``set_mode``, which draws the active sheet on every
+seated page through ``SimExchangeTab.show_mode`` and redraws the way-ins
+through ``_draw_way_ins``. The corner Live gives ``＋ Add Crypto Exchange``
+holds the two way-in buttons the run mode offers, from ``reserved_rows``, and
+the Get Started card holds the same two where Live's card holds its add
+button; each reaches ``_way_in``, which opens the wizard for Create New Bots
+and logs the ``SendRefused`` ``FleetSource`` raises for every other action.
+The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
 panel in ``_layer_stack``, reached by ``flip_layer``. A venue's ``+ New Bot``
 reaches ``_create_bot``, which opens ``SimBotCreationWizard`` and hands its
 config to ``FleetSource.create``. A row's Fire reaches ``_on_bot_fire``, which
@@ -100,18 +106,23 @@ PLACEHOLDER_CARD_BORDER_ALPHA = 68
 
 ACCESSIBLE_NAME = "Sim"
 
-#: The three way-in buttons at the corner position, in the order they sit.
-WAY_IN_BUTTONS = (
-    (surface.IMPORT_LIVE_FLEET_ACTION, surface.IMPORT_LIVE_FLEET_TEXT),
-    (surface.GENERATE_FROM_YTD_ACTION, surface.GENERATE_FROM_YTD_TEXT),
-    (surface.CREATE_NEW_BOTS_ACTION, surface.CREATE_NEW_BOTS_TEXT),
-)
-
 FLIP_BUTTON_NAME = "sim-flip-button"
 
 #: Live's corner button is 24 px tall: its ＋ glyph sets that height, and the
 #: way-in buttons carry no such glyph.
 WAY_IN_BUTTON_HEIGHT_PX = 24
+
+
+class WayInSlot:
+    """One layer's two way-in positions: ``corner``, the corner row, and
+    ``card``, the Get Started card's column, with the buttons drawn in each."""
+
+    def __init__(self, corner: QHBoxLayout, card: QVBoxLayout, accent: str) -> None:
+        self.corner = corner
+        self.card = card
+        self.accent = accent
+        self.corner_buttons: list[QPushButton] = []
+        self.card_buttons: list[QPushButton] = []
 
 
 class FlipButton(QPushButton):
@@ -153,7 +164,9 @@ class SimTradingTab(QWidget):
         self._api_log = api_log if api_log is not None else APIInteractionLog()
         self._bot_manager = SimBotManager(self._fleet_source)
         self._layer = surface.LAYER_INDICATORS
+        self._mode = surface.MODES[0]
         self._build()
+        self._draw_way_ins()
         self._api_log.add_listener(self._on_api_event)
         self._indicator_panel.bot_selected.connect(self._feed_votes)
         self.fleet_changed.connect(self._fleet_source.save)
@@ -190,6 +203,87 @@ class SimTradingTab(QWidget):
         """The Get Started card's buttons, keyed by action."""
         return dict(self._card_way_in_buttons)
 
+    def mode(self) -> str:
+        """The run mode in force, one of ``MODES``."""
+        return self._mode
+
+    # -- the run mode -----------------------------------------------------
+
+    def set_mode(self, mode: str) -> str:
+        """Make ``mode`` the run mode: the active sheet on every seated venue
+        page's header and the mode's two ways in at each corner and card.
+        A name outside ``MODES`` changes nothing; answers the mode in force."""
+        if mode not in surface.MODES:
+            return self._mode
+        self._mode = mode
+        for venue in list(self._crypto_exchange_tabs.values()) + list(
+            self._stock_exchange_tabs.values()
+        ):
+            venue.show_mode(mode)
+        self._draw_way_ins()
+        return self._mode
+
+    def _draw_way_ins(self) -> None:
+        """Draw the run mode's two way-in buttons at each layer's corner, at
+        Live's corner-button size, and on each layer's Get Started card between
+        its title and its hint, replacing the buttons drawn before."""
+        rows = surface.reserved_rows(self._mode)
+        self._way_in_buttons.clear()
+        self._card_way_in_buttons.clear()
+        for slot in self._way_in_slots:
+            for layout, drawn in (
+                (slot.corner, slot.corner_buttons),
+                (slot.card, slot.card_buttons),
+            ):
+                for old in drawn:
+                    layout.removeWidget(old)
+                    old.setParent(None)
+                    old.deleteLater()
+                drawn.clear()
+            for row in rows:
+                way_in = QPushButton(row["text"])
+                way_in.setMinimumWidth(140)
+                way_in.setMinimumHeight(WAY_IN_BUTTON_HEIGHT_PX)
+                way_in.setAccessibleName(surface.button_name(row["action"]))
+                way_in.clicked.connect(
+                    lambda _checked=False, action=row["action"]: self._way_in(action)
+                )
+                slot.corner.addWidget(way_in)
+                slot.corner_buttons.append(way_in)
+                self._way_in_buttons.setdefault(row["action"], way_in)
+            for at, row in enumerate(rows):
+                card_way_in = QPushButton(row["text"])
+                card_way_in.setMinimumSize(180, 36)
+                card_way_in.setStyleSheet(
+                    f"QPushButton {{ border: 1px solid {slot.accent}; "
+                    f"color: {slot.accent}; border-radius: 4px; }}"
+                )
+                card_way_in.setAccessibleName(card_button_name(row["action"]))
+                card_way_in.clicked.connect(
+                    lambda _checked=False, action=row["action"]: self._way_in(action)
+                )
+                slot.card.insertWidget(1 + at, card_way_in, alignment=Qt.AlignCenter)
+                slot.card_buttons.append(card_way_in)
+                self._card_way_in_buttons.setdefault(row["action"], card_way_in)
+
+    def _current_venue_id(self) -> str:
+        """The exchange of the venue sub-tab on show, or ``""`` with none seated."""
+        shown = self._tab_widget.currentWidget()
+        return str(getattr(shown, "exchange_id", "") or "")
+
+    def _way_in(self, action: str) -> None:
+        """One way-in pressed at the corner or on the card: Create New Bots
+        opens the wizard through ``_create_bot``; every other action asks
+        ``FleetSource`` for it by name, which raises ``SendRefused`` until that
+        run lands, and the refusal is logged to the Activity Log."""
+        if action == surface.CREATE_NEW_BOTS_ACTION:
+            self._create_bot(self._current_venue_id())
+            return
+        try:
+            getattr(self._fleet_source, action)
+        except SendRefused as exc:
+            self._status_log.log(tab_surface.way_in_refused_line(action, exc), "error")
+
     # -- construction ---------------------------------------------------
 
     def _build(self) -> None:
@@ -224,6 +318,7 @@ class SimTradingTab(QWidget):
         self._trading_stack = QStackedWidget()
         self._way_in_buttons: dict[str, QPushButton] = {}
         self._card_way_in_buttons: dict[str, QPushButton] = {}
+        self._way_in_slots: list[WayInSlot] = []
 
         def _make_layer(label_text: str, accent: str) -> tuple:
             """Build one trading layer — returns (page_widget, tab_widget,
@@ -233,19 +328,12 @@ class SimTradingTab(QWidget):
             page_layout.setContentsMargins(0, 0, 0, 0)
 
             tab_w = QTabWidget()
-            # The corner Live gives ＋ Add Crypto Exchange holds the three
-            # way-in buttons; their handlers arrive in later units.
+            # The corner Live gives ＋ Add Crypto Exchange holds the run
+            # mode's two way-in buttons, drawn by _draw_way_ins.
             corner = QWidget()
             corner_row = QHBoxLayout(corner)
             corner_row.setContentsMargins(0, 0, 0, 0)
             corner_row.setSpacing(2)
-            for action, text in WAY_IN_BUTTONS:
-                way_in = QPushButton(text)
-                way_in.setMinimumWidth(140)
-                way_in.setMinimumHeight(WAY_IN_BUTTON_HEIGHT_PX)
-                way_in.setAccessibleName(surface.button_name(action))
-                corner_row.addWidget(way_in)
-                self._way_in_buttons.setdefault(action, way_in)
             tab_w.setCornerWidget(corner)
 
             # Empty state placeholder
@@ -266,18 +354,9 @@ class SimTradingTab(QWidget):
             ph_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
             ph_title.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_title)
-            # The card's button position holds the three way-ins, one under
-            # the other, each at Live's card-button size and sheet.
-            for action, text in WAY_IN_BUTTONS:
-                ph_way_in = QPushButton(text)
-                ph_way_in.setMinimumSize(180, 36)
-                ph_way_in.setStyleSheet(
-                    f"QPushButton {{ border: 1px solid {accent}; "
-                    f"color: {accent}; border-radius: 4px; }}"
-                )
-                ph_way_in.setAccessibleName(card_button_name(action))
-                ph_layout.addWidget(ph_way_in, alignment=Qt.AlignCenter)
-                self._card_way_in_buttons.setdefault(action, ph_way_in)
+            # The card's button position, between the title and the hint,
+            # holds the run mode's two way-ins, drawn by _draw_way_ins.
+            self._way_in_slots.append(WayInSlot(corner_row, ph_layout, accent))
             ph_hint = QLabel(placeholder_hint_text(label_text))
             ph_hint.setStyleSheet(
                 f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
@@ -526,6 +605,8 @@ class SimTradingTab(QWidget):
             on_bot_cmd=self._on_bot_command,
             on_bot_fire=self._on_bot_fire,
             status_log=self._status_log,
+            on_mode=self.set_mode,
+            mode=self._mode,
         )
         target_widget.addTab(tab, display_name)
         target_tabs[exchange_id] = tab
