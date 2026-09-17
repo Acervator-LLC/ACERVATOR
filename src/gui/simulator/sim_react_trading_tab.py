@@ -35,13 +35,20 @@ API Log press through ``set_api_paused``. The run mode is held once, on
 which redraws the tab so the corner and the card offer that mode's two ways
 in and re-publishes every venue so its header carries the active sheet; a
 corner or card press reaches ``_way_in``, which opens the wizard for Create
-New Bots, runs ``_import_live_fleet`` for Import Live Fleet, and logs the
-``SendRefused`` ``FleetSource`` raises for every other action.
-``_import_live_fleet`` puts ``exchange_choice`` over
-``FleetSource.stored_exchanges``, opens ``SimExchangeChoiceDialog`` when it
-prompts, copies the chosen exchange's records through
-``FleetSource.import_live_fleet`` and fires ``fleet_changed``, so the venue
-seats and its rows draw; a venue sub-tab press reaches ``run_action`` as the
+New Bots, runs ``_import_live_fleet`` for Import Live Fleet, runs
+``_generate_from_ytd`` for Generate From YTD, and logs the ``SendRefused``
+``FleetSource`` raises for every other action. ``_import_live_fleet`` puts
+``exchange_choice`` over ``FleetSource.stored_exchanges``, opens
+``SimExchangeChoiceDialog`` when it prompts, copies the chosen exchange's
+records through ``FleetSource.import_live_fleet`` and fires ``fleet_changed``,
+so the venue seats and its rows draw; ``_generate_from_ytd`` reads
+``YtdTradeSource.root_state`` and writes one line for a directory that is
+missing, empty or without a manifest, puts ``exchange_choice`` over the
+exchanges the manifest names, opens the same chooser under Generate From
+YTD's title, holds one record per traded pair through
+``FleetSource.generate_from_ytd``, writes one line per manifest row whose
+file is missing, the generation line and the no-target line, and fires
+``fleet_changed``; a venue sub-tab press reaches ``run_action`` as the
 ``exchange`` ask and ``show_tab`` makes that venue current.
 """
 
@@ -64,6 +71,7 @@ from ...simulator.fleet_source import (
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource
+from ...simulator.ytd_trade_source import ROOT_READY, YtdTradeSource
 from ..main_tabs import bot_status_table_surface as scrum_surface
 from ..main_tabs import design_system_surface as token_surface
 from ..main_tabs import extractor_bot_table_surface as extractor_surface
@@ -892,7 +900,8 @@ if _HAS_WEBENGINE:
         def _way_in(self, action: str) -> None:
             """One way-in pressed at the corner or on the card: Create New Bots
             opens the wizard through ``_create_bot``, Import Live Fleet runs
-            ``_import_live_fleet``; every other action asks ``FleetSource`` for
+            ``_import_live_fleet``, Generate From YTD runs
+            ``_generate_from_ytd``; every other action asks ``FleetSource`` for
             it by name, which raises ``SendRefused`` until that run lands, and
             the refusal is logged to the Activity Log."""
             if action == sim.CREATE_NEW_BOTS_ACTION:
@@ -901,10 +910,55 @@ if _HAS_WEBENGINE:
             if action == sim.IMPORT_LIVE_FLEET_ACTION:
                 self._import_live_fleet()
                 return
+            if action == sim.GENERATE_FROM_YTD_ACTION:
+                self._generate_from_ytd()
+                return
             try:
                 getattr(self._fleet_source, action)
             except SendRefused as exc:
                 self.log(tab_surface.way_in_refused_line(action, exc), "error")
+
+        def _generate_from_ytd(self) -> None:
+            """Generate From YTD: one line and nothing held unless
+            ``YtdTradeSource.root_state`` is ``ROOT_READY`` and the manifest
+            names a pair; ``exchange_choice`` over the exchanges it names,
+            ``SimExchangeChoiceDialog`` under ``GENERATE_FROM_YTD_TEXT`` when it
+            prompts, then ``FleetSource.generate_from_ytd`` on the exchange
+            chosen, one line per manifest row whose file is missing, the
+            generation line, the no-target line and ``fleet_changed``; a
+            cancelled chooser writes one line and moves nothing."""
+            source = YtdTradeSource()
+            state = source.root_state()
+            if state != ROOT_READY:
+                self.log(tab_surface.ytd_root_line(state, source.root()), "warning")
+                return
+            options = sorted({entry.exchange_id for entry in source.entries()})
+            if not options:
+                self.log(tab_surface.ytd_no_pair_line(source.root()), "warning")
+                return
+            choice = exchange_choice(options)
+            chosen = choice["chosen"]
+            if choice["prompt"]:
+                dialog = SimExchangeChoiceDialog(
+                    options, self, title=sim.GENERATE_FROM_YTD_TEXT
+                )
+                if dialog.exec() != QDialog.Accepted:
+                    self.log(tab_surface.GENERATE_CANCELLED_TEXT, "warning")
+                    return
+                chosen = dialog.chosen()
+            made = self._fleet_source.generate_from_ytd(source, chosen)
+            for entry in made.missing:
+                self.log(tab_surface.ytd_file_missing_line(entry), "warning")
+            if not made.bots:
+                return
+            self.log(
+                tab_surface.generated_line(len(made.bots), made.files_read, chosen),
+                "success",
+            )
+            without_target = sum(1 for bot in made.bots if bot.target_usd is None)
+            if without_target:
+                self.log(tab_surface.no_target_line(without_target), "warning")
+            self.fleet_changed.emit()
 
         def _import_live_fleet(self) -> None:
             """Import Live Fleet: ``exchange_choice`` over the exchanges

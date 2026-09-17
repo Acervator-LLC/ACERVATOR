@@ -1,21 +1,25 @@
 """The Simulator's fleet path: the records the sim fleet file holds under
-``get_sim_dir``, the bots the wizard creates and the bots Import Live Fleet
-copies out of the live bot_state record, which is read only.
+``get_sim_dir``, the bots the wizard creates, the bots Import Live Fleet
+copies out of the live bot_state record and the bots Generate From YTD builds
+from the YTD trade files, both read only.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
 ``record_for``, ``exchanges``, ``symbols``, ``statuses``, ``aggregate``,
 ``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``stored_records``,
-``stored_exchanges``, ``import_live_fleet``, ``sim_dir``, ``sim_path`` and
-``save``; it holds no venue, writes ``sim_path`` alone and sends nothing, and
-``__getattr__`` raises ``SendRefused`` for every other name. ``bots``,
-``exchanges``, ``statuses`` and ``aggregate`` read the held records alone, so
-the tab starts empty; ``stored_records`` and ``stored_exchanges`` read
-``bot_state.json``, and ``import_live_fleet`` copies its records on one
-exchange into the held map under their own ids with ``LIVE_ORIGIN``.
-``sim_bot_for``, ``set_state`` and ``remove`` read and move the held records,
-which is what ``SimBotManager`` acts on. ``SimBot`` is a read-only record
-forked from the live bot's config, its stats and its saved state, never a
-``ScrummingBot``; ``row_status`` answers one as the status dict the Scrumming
+``stored_exchanges``, ``import_live_fleet``, ``generate_from_ytd``,
+``sim_dir``, ``sim_path`` and ``save``; it holds no venue, writes ``sim_path``
+alone and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
+other name. ``bots``, ``exchanges``, ``statuses`` and ``aggregate`` read the
+held records alone, so the tab starts empty; ``stored_records`` and
+``stored_exchanges`` read ``bot_state.json``, ``import_live_fleet`` copies its
+records on one exchange into the held map under their own ids with
+``LIVE_ORIGIN``, ``generate_from_ytd`` holds one ``ytd_record`` per traded
+pair a ``YtdTradeSource`` names on one exchange under the pair's own id with
+``YTD_ORIGIN`` and the Target Balance ``ytd_target_usd`` reads off its fills,
+and ``sim_bot_for``, ``set_state`` and ``remove`` read and move the held
+records, which is what ``SimBotManager`` acts on. ``SimBot`` is a read-only
+record forked from the live bot's config, its stats and its saved state, never
+a ``ScrummingBot``; ``row_status`` answers one as the status dict the Scrumming
 Bots table and the Extractor Bots table read; ``aggregate_stats`` answers the
 header strip's figures over a list of them with ``get_aggregate_stats``'s
 arithmetic; ``live_fleet`` builds one per stored bot, ``ytd_fleet`` one per YTD
@@ -37,6 +41,7 @@ from typing import Any, Optional, Sequence
 
 from ..core.io_utils import atomic_write_json
 from ..core.log_paths import get_sim_dir
+from ..exchange.ytd_trade_store import SIDE_BUY, SIDE_SELL, YtdFileEntry, YtdTrade
 from ..trading.container.config import (
     BotMode,
     BotState,
@@ -75,6 +80,7 @@ READ_NAMES = (
     "stored_records",
     "stored_exchanges",
     "import_live_fleet",
+    "generate_from_ytd",
     "sim_dir",
     "sim_path",
     "save",
@@ -266,7 +272,9 @@ def _sim_bot_from_record(
     ``scrumming_state`` the grown target, the quote rate, the phase and the
     lots, ``extractor_state`` the pool figures, ``state_when_saved`` the
     state, and ``phantoms_enabled`` and ``phantom_timeframes`` the phantom
-    set, read as the restore path reads them.
+    set, read as the restore path reads them. A ``target_balance`` of None,
+    which ``ytd_record`` writes for a pair whose fills give no basis, reads as
+    ``target_usd`` None.
     """
     config = record.get("config")
     if not isinstance(config, dict):
@@ -278,7 +286,8 @@ def _sim_bot_from_record(
     stats = stats if isinstance(stats, dict) else {}
     saved = record.get("scrumming_state")
     saved = saved if isinstance(saved, dict) else {}
-    config_target = _number(config.get("target_balance"), 0.0)
+    raw_target = config.get("target_balance")
+    config_target = None if raw_target is None else _number(raw_target, 0.0)
     pool = _extractor_figures(config, record)
     phantom_tfs = tuple(str(one) for one in (record.get("phantom_timeframes") or []))
     return SimBot(
@@ -308,7 +317,7 @@ def _sim_bot_from_record(
         holdings=_lots_units(saved.get("main_lots")),
         position_value_usd=_number(stats.get("position_value"), 0.0),
         quote_to_usd=_number(saved.get("quote_to_usd"), 1.0) or 1.0,
-        live_target_usd=_number(saved.get("target_balance"), config_target),
+        live_target_usd=_number(saved.get("target_balance"), config_target or 0.0),
         total_trades=int(_number(stats.get("total_trades"), 0)),
         active_buys=int(_number(stats.get("active_buy_orders"), 0)),
         active_sells=int(_number(stats.get("active_sell_orders"), 0)),
@@ -381,6 +390,55 @@ def wizard_record(config: dict) -> dict:
         "scrumming_state": {},
         "state_when_saved": BotState.IDLE.value,
     }
+
+
+def ytd_target_usd(trades: Sequence[YtdTrade]) -> Optional[float]:
+    """The Target Balance a pair's fills establish: the ``amount`` the
+    ``SIDE_BUY`` fills bought less the ``amount`` the ``SIDE_SELL`` fills sold,
+    at the last fill's ``price``, rounded to the cent; None when no unit is
+    held, which is a position opened before the first fill.
+    """
+    ordered = sorted(trades, key=lambda one: one.sort_key())
+    if not ordered:
+        return None
+    bought = sum(float(one.amount) for one in ordered if one.side == SIDE_BUY)
+    sold = sum(float(one.amount) for one in ordered if one.side == SIDE_SELL)
+    held = bought - sold
+    if held <= 0:
+        return None
+    return round(held * float(ordered[-1].price), 2)
+
+
+def ytd_record(bot: SimBot, target_usd: Optional[float]) -> dict:
+    """The stored-record shape for one ``ytd_fleet`` bot: ``wizard_record``
+    over its exchange, quote, base and symbol, ``config.target_balance`` then
+    set to ``target_usd`` or None, ``bot_id`` its own and ``origin``
+    ``YTD_ORIGIN``.
+    """
+    record = wizard_record(
+        {
+            "exchange_id": bot.exchange_id,
+            "base_currency": bot.base_currency,
+            "target_asset": bot.asset,
+            "symbol": bot.symbol,
+            "target_balance": 0.0 if target_usd is None else float(target_usd),
+        }
+    )
+    record["config"]["target_balance"] = target_usd
+    record["bot_id"] = bot.bot_id
+    record["origin"] = YTD_ORIGIN
+    return record
+
+
+@dataclass(frozen=True)
+class YtdGeneration:
+    """What one ``generate_from_ytd`` held: ``bots``, the ``SimBot`` of each
+    record held, ``files_read``, how many trade files they were read from, and
+    ``missing``, the manifest rows whose file is absent."""
+
+    bots: tuple[SimBot, ...] = ()
+    files_read: int = 0
+    missing: tuple[YtdFileEntry, ...] = ()
 
 
 def _extractor_status(bot: SimBot) -> dict:
@@ -687,6 +745,43 @@ class FleetSource:
             imported.append(bot)
         return sorted(imported, key=lambda one: (one.symbol, one.bot_id))
 
+    def generate_from_ytd(self, source: Any, exchange_id: str) -> YtdGeneration:
+        """Hold one ``ytd_record`` per pair ``ytd_fleet`` names in ``source``
+        on ``exchange_id``, under the pair's own ``bot_id`` with ``YTD_ORIGIN``
+        and the ``ytd_target_usd`` of its fills across every year file,
+        replacing a held record of the same id; a pair with a manifest row
+        whose file ``source.trade_path`` cannot find is not held and its rows
+        are answered in ``missing``. The sim fleet file takes them on the next
+        ``save``."""
+        wanted = str(exchange_id or "")
+        if not wanted:
+            return YtdGeneration()
+        entries = [one for one in source.entries() if one.exchange_id == wanted]
+        held: list[SimBot] = []
+        missing: list[YtdFileEntry] = []
+        files_read = 0
+        for bot in ytd_fleet(source, wanted):
+            own = [one for one in entries if one.symbol == bot.symbol]
+            absent = [one for one in own if source.trade_path(one) is None]
+            if absent:
+                missing.extend(absent)
+                continue
+            trades: list[YtdTrade] = []
+            for entry in own:
+                trades.extend(source.trades(entry))
+            files_read += len(own)
+            target_usd = ytd_target_usd(trades)
+            record = ytd_record(bot, target_usd)
+            self._records[bot.bot_id] = record
+            made = _held_bot(bot.bot_id, record)
+            if made is not None:
+                held.append(made)
+        return YtdGeneration(
+            bots=tuple(held),
+            files_read=files_read,
+            missing=tuple(sorted(missing, key=lambda one: (one.symbol, one.year))),
+        )
+
     def create(self, config: dict) -> SimBot:
         """Hold one record built from the bot wizard's config through
         ``wizard_record`` and answer its ``SimBot``; its ``bot_id`` is the first
@@ -888,6 +983,7 @@ __all__ = [
     "FleetSource",
     "SendRefused",
     "SimBot",
+    "YtdGeneration",
     "aggregate_stats",
     "exchange_choice",
     "extractor_pool_color",
@@ -895,4 +991,6 @@ __all__ = [
     "row_status",
     "wizard_record",
     "ytd_fleet",
+    "ytd_record",
+    "ytd_target_usd",
 ]
