@@ -1567,6 +1567,81 @@ and the React page's press left the buffer running; on the branch it holds,
 flips the caption and flushes. `bot_state.json` hashed identical after every
 reading, and a byte planted into it moved the hash. No socket left loopback.
 
+## The two strip rows keep Live's heights
+
+The two rows above the bot list on a Sim venue page are Live's rows at Live's
+heights in both builds. The first is the row Live gives Privacy Mode and the
+news line: on the Sim it holds Validation, Back Test and Portfolio Battery in
+Live's Privacy-Mode sheet, then a stretch, then `+ New Bot` where Live draws
+it, and nothing else. The second is the row Live gives the data-pool line: on
+the Sim it is Live's label at Live's style holding no text in the Qt build and
+one no-break space in the React build, so the line keeps its height. No timer
+runs on a Sim venue page, so nothing rewrites either row after it is built;
+Live's venue page runs three, the ticker's 15 s step, its hourly refresh and
+the data-pool line's one-second rewrite. A press on a mode button sends
+`mode_clicked` with the mode's key and reaches no handler yet.
+
+Neither row takes its height from a constant. Under the theme the header row
+is as tall as `+ New Bot`, which carries the theme's accent button padding, and
+the data-pool row is as tall as one line of its 11 px text plus its 2 px
+padding. The `height_px` figures in `RESERVED_ROWS`, 24 and 18, were read with
+no fonts and no theme; nothing that runs reads them.
+
+`src/gui/simulator/sim_exchange_tab.py` — the two rows
+
+```python
+            header = QHBoxLayout()
+            self._mode_buttons: dict[str, QPushButton] = {}
+            for mode in MODES:
+                mode_btn = QPushButton(MODE_TEXT[mode])
+                mode_btn.setAccessibleName(MODE_TEXT[mode])
+                mode_btn.setFocusPolicy(Qt.NoFocus)
+                mode_btn.setStyleSheet(MODE_BUTTON_STYLE)
+                header.addWidget(mode_btn)
+                self._mode_buttons[mode] = mode_btn
+            header.addStretch()
+            self._add_bot_btn = QPushButton("+ New Bot")
+            self._add_bot_btn.setProperty("accent", True)
+            if on_new_bot:
+                self._add_bot_btn.clicked.connect(lambda: on_new_bot(exchange_id))
+            header.addWidget(self._add_bot_btn)
+            layout.addLayout(header)
+
+            self._data_pool_row = QLabel("")
+            self._data_pool_row.setAccessibleName(DATA_POOL_ROW_NAME)
+            self._data_pool_row.setStyleSheet(
+                f"color:{ds.MAIN_BADGE_TEXT}; font-size:11px; padding:2px 6px;"
+            )
+            layout.addWidget(self._data_pool_row)
+```
+
+Read off one window holding both tabs, with the Windows fonts loaded and the
+theme applied, one venue on Live and the same venue on the Sim, both venue
+pages handed the same one-bot status list through `update_bots`:
+
+```
+row                          Qt Live   Qt Sim   React Live   React Sim
+header row                   33        33       33.2         33.2
+data-pool row, one bot row   19        19       20.2         20.2
+data-pool row, no bot row    407       407      20.2         20.2
+```
+
+The Qt data-pool label takes the leftover height on both pages when the bot
+tables hide, because both `QVBoxLayout`s are Live's; the React line is
+`flex: none` and keeps its height. The window's floor is 1400 by 900, its own
+minimum size, so the floor reading is the 1400 reading. The React figures are
+taken with both web views at device-pixel ratio 1.25; opened Live-first the
+two views hold 1.25 and 1.0 and each 1 px border snaps to 0.8 px on one side
+only, which reads as 33.2 against 33.8 and is a fact about the reading, not
+the page. The header's child list on the Sim reads Validation, Back Test,
+Portfolio Battery, a stretch and `+ New Bot` in both builds; Live's reads
+Privacy Mode, the news line and `+ New Bot`. A fourth button planted into the
+Sim header at runtime reads as a sixth child in both builds and the list
+returns to five when it is removed. `reserved_rows` is called by nothing
+in either build, no button carrying a way-in text sits inside a venue page,
+and `bot_state.json` hashed identical after every reading, while a byte
+planted into it moved the hash.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
