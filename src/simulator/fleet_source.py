@@ -3,10 +3,12 @@ bots the wizard creates, held in the sim fleet file under ``get_sim_dir``.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
 ``record_for``, ``exchanges``, ``symbols``, ``statuses``, ``aggregate``,
-``create``, ``sim_dir``, ``sim_path`` and ``save`` from ``bot_state.json`` and
-the records the sim fleet file holds; it holds no venue, writes ``sim_path``
-alone and sends nothing, and
-``__getattr__`` raises ``SendRefused`` for every other name. ``SimBot`` is a
+``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``sim_dir``,
+``sim_path`` and ``save`` from ``bot_state.json`` and the records the sim
+fleet file holds; it holds no venue, writes ``sim_path`` alone and sends
+nothing, and ``__getattr__`` raises ``SendRefused`` for every other name.
+``sim_bot_for``, ``set_state`` and ``remove`` read and move the held records
+alone, which is what ``SimBotManager`` acts on. ``SimBot`` is a
 read-only record forked from the live bot's config, its stats and its saved
 state, never a ``ScrummingBot``; ``row_status`` answers one as the status dict
 the Scrumming Bots table and the Extractor Bots table read; ``live_fleet``
@@ -59,6 +61,9 @@ READ_NAMES = (
     "statuses",
     "aggregate",
     "create",
+    "sim_bot_for",
+    "set_state",
+    "remove",
     "sim_dir",
     "sim_path",
     "save",
@@ -555,6 +560,39 @@ class FleetSource:
             raise ValueError("the wizard config names no symbol")
         self._records[bot_id] = record
         return bot
+
+    def sim_bot_for(self, bot_id: str) -> Optional[SimBot]:
+        """The ``SimBot`` of the held record under ``bot_id``, or None; a
+        record read from ``bot_state.json`` is not held and answers None."""
+        record = self._records.get(str(bot_id))
+        if not isinstance(record, dict):
+            return None
+        return _sim_bot_from_record(str(bot_id), record, origin=NEW_ORIGIN)
+
+    def set_state(self, bot_id: str, state: str, clear_error: bool = False) -> str:
+        """Write ``state`` into the held record's ``state_when_saved`` and answer
+        it; ``clear_error`` empties ``stats.last_error`` and zeroes
+        ``stats.consecutive_errors``, as ``BotContainer.start`` does before it
+        moves the state. Raises ``KeyError`` when no record is held under
+        ``bot_id``."""
+        wanted = str(bot_id)
+        record = self._records.get(wanted)
+        if not isinstance(record, dict):
+            raise KeyError(f"no sim record is held under {wanted!r}")
+        record["state_when_saved"] = str(state)
+        if clear_error:
+            stats = record.get("stats")
+            if not isinstance(stats, dict):
+                stats = {}
+                record["stats"] = stats
+            stats["last_error"] = ""
+            stats["consecutive_errors"] = 0
+        return str(state)
+
+    def remove(self, bot_id: str) -> bool:
+        """Drop the held record under ``bot_id``; answers whether one was held.
+        The sim fleet file loses it on the next ``save``."""
+        return self._records.pop(str(bot_id), None) is not None
 
     def save(self) -> Optional[Path]:
         """Write the held records to ``sim_path`` through ``atomic_write_json``

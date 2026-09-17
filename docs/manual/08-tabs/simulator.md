@@ -1085,6 +1085,120 @@ and 625 by 264 in the React build, both inside the pane; a 900 px minimum
 planted on the replay layer at runtime moves the pair in both builds, and
 removing it restores the pair.
 
+## The command bar acts on the sim fleet
+
+Start, Pause, Stop, Restart and Delete on the Simulator's venue page each
+change one sim bot's state, and the table reads it back. The bar itself is
+Live's: it takes its bot from the table you clicked last, tries the other
+table with no selection there, and with none anywhere says `Select a bot
+first.` and does nothing, in both builds. The press then reaches the Sim
+host's `_on_bot_command`, the window's handler forked, which asks the
+Simulator's bot manager instead of the live one.
+
+`SimBotManager` in `src/simulator/sim_bot_manager.py` is the fork of the parts
+of `BotManager` that hold and move bots. It holds one `FleetSource` and no
+venue, no connector, no event bus and no coroutine. Its registry is the sim
+fleet file's records: `get_bot` answers a held record's `SimBot` and None for
+a row read from `bot_state.json`, so a command on such a row logs Live's `Bot
+<id> not found.` line and moves nothing. Each verb moves the record's
+`state_when_saved` under the live bot's own rule for that verb.
+
+`src/simulator/sim_bot_manager.py` — the verbs
+
+```python
+def start(self, bot_id: str) -> str:
+    bot = self._require(bot_id)
+    if bot.state in ALREADY_RUNNING_STATES:
+        logger.warning("Bot %s already running", bot_id)
+        return bot.state
+    return self._fleet.set_state(bot_id, BotState.RUNNING.value, clear_error=True)
+
+def pause(self, bot_id: str) -> str:
+    self._require(bot_id)
+    return self._fleet.set_state(bot_id, BotState.PAUSED.value)
+
+def stop(self, bot_id: str) -> str:
+    self._require(bot_id)
+    return self._fleet.set_state(bot_id, BotState.STOPPED.value)
+
+def restart(self, bot_id: str) -> str:
+    self.stop(bot_id)
+    return self.start(bot_id)
+
+def unregister(self, bot_id: str) -> bool:
+    return self._fleet.remove(bot_id)
+```
+
+The rule per command, read off `BotContainer`, and the Activity Log lines,
+which are Live's with the venue step absent:
+
+```
+Start     running or starting: unchanged, one logger warning; any other
+          state: last_error cleared, running          ✓ Bot <id> RUNNING.
+Pause     any state: paused                            Pausing bot <id>... / Bot <id> paused.
+Stop      any state: stopped                           Stopping bot <id>... / Bot <id> stopped.
+Restart   stopped, then running                        ✓ Bot <id> restarted.
+Delete    Live's box, "Delete bot <id>? This cannot be undone."; Yes removes the
+          record; No changes nothing                   Bot <id> deleted.
+```
+
+Start lands on `running` and not `starting`: Live's `starting` lasts until
+the bot's loop task takes its first step, and the Simulator has no task.
+Pause has no state guard, as the live bot's `pause` has none. Each success
+writes the window notification's line, `[notification] Bot <id> RUNNING |
+success`, through `notification_line` in `sim_trading_tab_surface.py`, and
+plays Live's state-change sound; a failed verb logs Live's `Failed to <verb>
+bot <id>` line and plays Live's error sound. The lines Live prints for
+connecting to the venue, the REAL MONEY warning among them, are absent, because
+they read a connect result and the Simulator makes no connect.
+
+`FleetSource` gains three names for the held records: `sim_bot_for`,
+`set_state` and `remove`. They read and move the records the sim fleet file
+holds and nothing else; `save` stays the one writer, and every other name
+still raises `SendRefused`.
+
+After every state move, and after a confirmed Delete, the host fires
+`fleet_changed`: `FleetSource.save` writes the sim fleet file with the moved
+state, or without the deleted record, and `refresh_bots` hands each venue its
+rows again, so the Bot ID cell's colour and tooltip in the Scrumming Bots
+table, and the Mode cell's in the Extractor Bots table, read the new state.
+`bot_state.json` is not written.
+
+In the React build the venue page's command press is the `command` ask, which
+the host now answers beside `+ New Bot`; the ask reaches Live's own
+`ExchangeTabModel.cmd`, whose `Select a bot first.` line reaches the page
+through the host. The row highlight on the React page comes from the Detail
+press, as on Live's React page, which has no row click.
+
+Read off the real window in both builds over a scratch sim fleet file holding
+one scrumming record and one extractor record, both `idle`, Start, Pause,
+Start, Stop, Restart, Delete on each row:
+
+```
+press      Bot ID cell tooltip      colour      sim fleet file
+Start      State: RUNNING           #00ff88     running
+Pause      State: PAUSED            #ffaa00     paused
+Start      State: RUNNING           #00ff88     running
+Stop       State: STOPPED           #666666     stopped
+Restart    State: RUNNING           #00ff88     running
+Delete No  State: RUNNING           #00ff88     running
+Delete Yes row gone                             record gone, bot_count one lower
+```
+
+A record planted with `state_when_saved` `error` and a `last_error` reads
+`State: ERROR` in `#ff3366`; Start moves it to `running` and empties
+`last_error`. Start on a record already `running` leaves the file's bytes
+unchanged. The live-origin row logs `Bot <id> not found.`. The scratch
+`bot_state.json` hashes identical after every press, and a write planted into
+it from outside the program moves the hash. `ScrummingBot`, `ExtractorBot`,
+`BotManager.register`, `BotManager.unregister`, `BotContainer.start`,
+`BotContainer.stop`, `BotContainer.pause` and `MainWindow._on_bot_command`
+were watched for the whole run and saw zero calls; no socket left loopback.
+`SimBotManager` read for every attribute naming an exchange, a connector, a
+session, a socket, a client or a network holds zero, beside `BotManager`'s
+four.
+
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

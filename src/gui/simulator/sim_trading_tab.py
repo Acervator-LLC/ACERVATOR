@@ -18,8 +18,12 @@ reaches ``_create_bot``, which opens ``SimBotCreationWizard`` and hands its
 config to ``FleetSource.create``. A row's Fire reaches ``_on_bot_fire``, which
 asks ``FleetSource`` and logs its refusal; a row's Detail reaches
 ``_on_bot_detail``, which opens the Simulator's Bot Settings window through
-``surface_class(SIM_BOT_DETAIL)`` over a ``SimBotView``. ``TabletSource`` and
-``FleetSource`` are the tab's only sources, and neither answers a send.
+``surface_class(SIM_BOT_DETAIL)`` over a ``SimBotView``. The command bar's
+Start, Pause, Stop, Restart and Delete reach ``_on_bot_command``, the window's
+handler forked over ``SimBotManager`` with no venue connect, which logs Live's
+lines, opens Live's Delete box, and fires ``fleet_changed`` on every state
+move. ``TabletSource`` and ``FleetSource`` are the tab's only sources, and
+neither answers a send.
 """
 
 from __future__ import annotations
@@ -43,11 +47,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core.sound_engine import get_sound_engine
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
     SendRefused,
 )
+from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource
 from .. import design_system as ds
@@ -70,6 +76,7 @@ from .sim_indicator_panel import SimIndicatorVotingPanel
 from .sim_status_log import SimStatusLog
 from .sim_trading_tab_surface import (
     card_button_name,
+    notification_line,
     placeholder_hint_text,
     placeholder_title_text,
 )
@@ -129,6 +136,7 @@ class SimTradingTab(QWidget):
             else TabletSource(surface.TABLET_ROOT)
         )
         self._fleet_source = fleet_source if fleet_source is not None else FleetSource()
+        self._bot_manager = SimBotManager(self._fleet_source)
         self._layer = surface.LAYER_INDICATORS
         self._build()
         self.fleet_changed.connect(self._fleet_source.save)
@@ -488,6 +496,7 @@ class SimTradingTab(QWidget):
             display_name,
             on_new_bot=self._create_bot,
             on_bot_clicked=self._on_bot_detail,
+            on_bot_cmd=self._on_bot_command,
             on_bot_fire=self._on_bot_fire,
             status_log=self._status_log,
         )
@@ -620,6 +629,88 @@ class SimTradingTab(QWidget):
             self._fleet_source.fire(bot_id)
         except SendRefused as exc:
             self._status_log.log(f"Fire on {bot_id[:8]} failed: {exc}", "error")
+
+    def _notify(self, message: str, level: str) -> None:
+        """Write the window notification's line, ``notification_line``, into
+        the Activity Log through ``SimStatusLog.notice``."""
+        self._status_log.notice(notification_line(message, level))
+
+    def _on_bot_command(self, bot_id: str, command: str) -> None:
+        """One command-bar press on ``bot_id``: the window's ``_on_bot_command``
+        forked over ``SimBotManager``, with no venue connect, Live's Activity
+        Log lines, Live's sounds and Live's Delete box, and ``fleet_changed``
+        fired when the state moved or the record left."""
+        bot = self._bot_manager.get_bot(bot_id)
+        if not bot:
+            self._status_log.log(f"Bot {bot_id} not found.", "error")
+            return
+
+        sound = get_sound_engine()
+        moved = False
+
+        if command == "start":
+            try:
+                moved = self._bot_manager.start(bot_id) != bot.state
+                self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
+                self._notify(f"Bot {bot_id} RUNNING", "success")
+                sound.play_state_change()
+            except Exception as exc:
+                self._status_log.log(f"Failed to start bot {bot_id}: {exc}", "error")
+                sound.play_error()
+
+        elif command == "pause":
+            self._status_log.log(f"Pausing bot {bot_id}...", "info")
+            try:
+                moved = self._bot_manager.pause(bot_id) != bot.state
+                self._status_log.log(f"Bot {bot_id} paused.", "warning")
+                self._notify(f"Bot {bot_id} PAUSED", "warning")
+                sound.play_state_change()
+            except Exception as exc:
+                self._status_log.log(f"Failed to pause bot {bot_id}: {exc}", "error")
+
+        elif command == "stop":
+            self._status_log.log(f"Stopping bot {bot_id}...", "info")
+            try:
+                moved = self._bot_manager.stop(bot_id) != bot.state
+                self._status_log.log(f"Bot {bot_id} stopped.", "info")
+                self._notify(f"Bot {bot_id} STOPPED", "info")
+                sound.play_state_change()
+            except Exception as exc:
+                self._status_log.log(f"Failed to stop bot {bot_id}: {exc}", "error")
+
+        elif command == "restart":
+            try:
+                self._bot_manager.restart(bot_id)
+                moved = True
+                self._status_log.log(f"✓ Bot {bot_id} restarted.", "success")
+                self._notify(f"Bot {bot_id} RESTARTED", "success")
+                sound.play_state_change()
+            except Exception as exc:
+                self._status_log.log(f"Failed to restart bot {bot_id}: {exc}", "error")
+                sound.play_error()
+
+        elif command == "delete":
+            confirm = QMessageBox.question(
+                self,
+                "Delete Bot",
+                f"Delete bot {bot_id}? This cannot be undone.",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if confirm == QMessageBox.Yes:
+                try:
+                    self._bot_manager.stop(bot_id)
+                except Exception as exc:
+                    self._status_log.log(
+                        f"Failed to stop bot {bot_id} before delete: {exc}.",
+                        "error",
+                    )
+                moved = self._bot_manager.unregister(bot_id)
+                self._status_log.log(f"Bot {bot_id} deleted.", "warning")
+                self._notify(f"Bot {bot_id} DELETED", "warning")
+                sound.play_state_change()
+
+        if moved:
+            self.fleet_changed.emit()
 
     def _on_bot_detail(self, bot_id: str) -> None:
         """Open the Simulator's Bot Settings window, ``surface_class(SIM_BOT_DETAIL)``,
