@@ -125,6 +125,17 @@ _NO_DATA_CAUSE_TEXT: dict[str, str] = {
 _UNKNOWN_CAUSE_TEXT = "no TA read available (unrecognised cause {cause!r})."
 
 
+def _selector_entry_text(status: dict) -> str:
+    """One bot's selector entry from its status, in ``SELECTOR_ITEM_FORMAT``,
+    the format ``selector_items`` writes for the React page."""
+    bot_id = str(status.get("bot_id", ""))
+    return ivp.SELECTOR_ITEM_FORMAT.format(
+        symbol=status.get("symbol", ivp.DEFAULT_SYMBOL_TEXT),
+        short_id=bot_id[: ivp.SELECTOR_ID_PREFIX_LEN],
+        state=status.get("state", ivp.DEFAULT_STATE_TEXT),
+    )
+
+
 def _money(value: object) -> str:
     """Format a USD figure for an operator-facing sentence."""
     try:
@@ -588,7 +599,7 @@ if _HAS_QT:
             self._symbol: str = ""
             self._vote_totals: tuple = (0, 0, 0)
             self._pillar_directions: list = ["NEUTRAL"] * len(_AGGREGATE_TITLES)
-            self._last_bot_ids: list[str] = []
+            self._last_bot_entries: list[tuple[str, str]] = []
             self._bot_timeframes: dict[str, str] = {}  # bot_id → ta_timeframe
             self._no_data_cause: str = ""
             self._no_data_message: str = ""
@@ -1137,8 +1148,8 @@ if _HAS_QT:
             )
 
         def update_bot_list(self, bot_statuses: list[dict]):
-            """Refresh the bot selector — accumulation bots only, rebuild
-            only on change.
+            """Refresh the bot selector — accumulation bots only, rebuilt when
+            any entry's id or text changed.
 
             "accumulation" (user-facing term) and "scrumming" (the
             BotMode enum value) name the same bot class and are
@@ -1148,25 +1159,24 @@ if _HAS_QT:
             accumulation_bots = [
                 s for s in bot_statuses if s.get("mode", "").lower() in _accum_names
             ]
-            new_ids = [s.get("bot_id", "") for s in accumulation_bots]
+            new_entries = [
+                (s.get("bot_id", ""), _selector_entry_text(s))
+                for s in accumulation_bots
+            ]
 
-            # Only rebuild dropdown if the bot list actually changed
-            if new_ids == self._last_bot_ids:
+            # Only rebuild dropdown if an entry's id or text actually changed
+            if new_entries == self._last_bot_entries:
                 return
-            self._last_bot_ids = new_ids
+            self._last_bot_entries = new_entries
 
             current = self._bot_selector.currentData()
             self._bot_selector.blockSignals(True)
             self._bot_selector.clear()
             if not accumulation_bots:
                 self._bot_selector.addItem("(no accumulation bots)", "")
-            for s in accumulation_bots:
-                bid = s.get("bot_id", "")
-                sym = s.get("symbol", "???")
-                state = s.get("state", "idle")
-                ta_tf = s.get("ta_timeframe", "1h")
-                self._bot_timeframes[bid] = ta_tf
-                self._bot_selector.addItem(f"{sym} [{bid[:8]}] ({state})", bid)
+            for s, (bid, entry_text) in zip(accumulation_bots, new_entries):
+                self._bot_timeframes[bid] = s.get("ta_timeframe", "1h")
+                self._bot_selector.addItem(entry_text, bid)
             # Restore previous selection or auto-select first
             idx = self._bot_selector.findData(current)
             if idx >= 0:

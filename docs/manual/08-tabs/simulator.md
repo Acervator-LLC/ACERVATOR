@@ -1307,6 +1307,44 @@ after Start on the command bar, the BTC reading. The scratch fleet file and
 every tablet hashed identical after every reading, and a byte planted into two
 of them moved the hash. No socket left loopback.
 
+### The selector's entry follows the state
+
+Every command on the bar that moves a bot fires `fleet_changed`, and the panel
+re-reads the fleet on it. On the Qt build the selector is rebuilt whenever any
+entry's id or text changed, so the entry names the state the bot is in now, in
+Live's own form; the React page rebuilds its entries on the same signal. After
+Start, Pause, Stop and Restart the two builds read the same entry, and a bot
+whose record carries `cooldown` reads `(cooldown)` in both.
+
+`src/gui/simulator/sim_indicator_panel.py` — the entry, one function
+
+```python
+def _selector_entry_text(status: dict) -> str:
+    bot_id = str(status.get("bot_id", ""))
+    return ivp.SELECTOR_ITEM_FORMAT.format(
+        symbol=status.get("symbol", ivp.DEFAULT_SYMBOL_TEXT),
+        short_id=bot_id[: ivp.SELECTOR_ID_PREFIX_LEN],
+        state=status.get("state", ivp.DEFAULT_STATE_TEXT),
+    )
+```
+
+### What a fed panel with nothing to draw looks like
+
+A panel fed a bot with no reading draws two empty tables and the words
+`Awaiting TA signals...` in both bar graphs, on Live and on the Sim tab, in
+both builds. That picture is the same whether the panel has been fed or not;
+the cause is held in the panel's own reading and the page's payload, not on
+the screen. An idle bot at open, or a running bot with no tablet on disk,
+draws the same pixels as a panel nobody has fed, with the cause under them.
+
+```
+No TA data — bot is idle — a bot that is not running evaluates no TA.
+No TA data — No Stone Tablet on disk.
+```
+
+With a tablet on disk and a bot that is paused, running or in cooldown, the
+tablet reading draws at open with no press on the selector, in both builds.
+
 ## The Activity Log spool holds and resumes
 
 The Activity Log at the foot left of the Sim tab is `SimStatusLog`, Live's
