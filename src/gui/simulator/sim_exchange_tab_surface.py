@@ -2,10 +2,13 @@
 
 ``build_view_model`` is Live's ``exchange_tab_surface.build_view_model`` under
 ``METHOD``, with the Privacy Mode fields, the news-ticker fields and the
-data-pool text and timer not carried, and ``MODE_BUTTONS`` added where Live
-draws Privacy Mode and the news line. ``screen`` builds the venue's
-``ExchangeTabModel`` with no news factory and no pool reader, and ``drive``
-answers the request fields a Simulator venue takes.
+data-pool text and timer not carried, and ``mode_buttons`` added where Live
+draws Privacy Mode and the news line. The active run mode is the tab's, held
+once by its host; ``mode_style`` answers each mode button's sheet from it, and
+both hosts draw the header from that one function. ``screen`` builds the
+venue's ``ExchangeTabModel`` with no news factory and no pool reader, and
+``drive`` answers the request fields a Simulator venue takes; ``MODE_PARAM``
+is answered by the host, which holds the mode.
 """
 
 from __future__ import annotations
@@ -19,9 +22,17 @@ METHOD = "sim_exchange_tab.state"
 
 MODE_PARAM = "mode"
 
-#: The mode buttons carry Live's Privacy-Mode sheet and focus policy, so the
-#: row keeps Live's height.
+#: The mode buttons carry Live's Privacy-Mode sheets and focus policy, so the
+#: row keeps Live's height: the active mode Live's ON sheet, the rest OFF.
 MODE_BUTTON_STYLE = live.PRIVACY_STYLE_OFF
+MODE_BUTTON_STYLE_ACTIVE = live.PRIVACY_STYLE_ON
+
+
+def mode_style(mode: str, active: str) -> str:
+    """The sheet the button for ``mode`` carries while ``active`` is the run
+    mode: Live's Privacy-Mode ON sheet on the active mode, OFF on the rest."""
+    return MODE_BUTTON_STYLE_ACTIVE if mode == active else MODE_BUTTON_STYLE
+
 
 #: The data-pool row keeps Live's style and holds nothing.
 DATA_POOL_ROW_TEXT = ""
@@ -36,14 +47,16 @@ ACTIONS = {
 }
 
 
-def mode_buttons() -> list:
-    """The three mode buttons as the page draws them, in ``sim.MODES`` order."""
+def mode_buttons(active: str = sim.MODES[0]) -> list:
+    """The three mode buttons as the page draws them, in ``sim.MODES`` order,
+    the one for ``active`` carrying the ON sheet and ``active`` True."""
     return [
         {
             "key": mode,
             "text": sim.MODE_TEXT[mode],
             "accessible_name": sim.MODE_TEXT[mode],
-            "style_sheet": MODE_BUTTON_STYLE,
+            "style_sheet": mode_style(mode, active),
+            "active": mode == active,
             "focus_policy": live.PRIVACY_FOCUS_POLICY,
             "focusable": live.PRIVACY_FOCUSABLE,
         }
@@ -74,14 +87,18 @@ def screen(
     )
 
 
-def build_view_model(model: live.ExchangeTabModel) -> dict:
-    """Return the whole venue page state as one serialisable dict."""
+def build_view_model(
+    model: live.ExchangeTabModel, active_mode: str = sim.MODES[0]
+) -> dict:
+    """Return the whole venue page state as one serialisable dict, its mode
+    buttons drawn for ``active_mode``, the run mode the host holds."""
     return {
         "method": METHOD,
         "accessible_name": live.ACCESSIBLE_NAME,
         "exchange_id": model.exchange_id,
         "exchange_name": model.exchange_name,
-        "mode_buttons": mode_buttons(),
+        "active_mode": active_mode,
+        "mode_buttons": mode_buttons(active_mode),
         "header_stretch": model.header_stretch,
         "add_bot_label": live.ADD_BOT_LABEL,
         "add_bot_accent": live.ADD_BOT_ACCENT,

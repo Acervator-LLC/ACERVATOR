@@ -702,7 +702,7 @@
   }
 
   // One way-in button pressed, at the corner or on the Get Started card; the
-  // answer names the run it starts, which no unit has wired yet.
+  // host's _way_in opens the wizard or logs the refusal of a run not landed.
   function wayInAsked(action) {
     var params = {};
     params[WAY_IN_PARAM] = action;
@@ -728,7 +728,8 @@
     return askTrading(params);
   }
 
-  // One of the three way-in buttons at the corner Live gives its add button.
+  // One of the run mode's two way-in buttons at the corner Live gives its
+  // add button.
   function WayInButton(props) {
     var model = isPlainObject(props.button) ? props.button : {};
     var style = {
@@ -752,8 +753,8 @@
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
   }
 
-  // The corner widget: the three way-in buttons in one row, at the margins
-  // and spacing the payload names.
+  // The corner widget: the way-in buttons the payload lists, the run mode's
+  // two, in one row at the margins and spacing the payload names.
   function WayInButtons(props) {
     var cornerProps = { style: boxStyle(objectField(props.layer, CORNER_LAYOUT), ROW) };
     cornerProps[PART_ATTR] = CORNER_PART;
@@ -806,8 +807,8 @@
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
   }
 
-  // The card's button position: the three way-ins one under the other, at
-  // the card's own spacing.
+  // The card's button position: the run mode's two way-ins one under the
+  // other, at the card's own spacing.
   function PlaceholderWayIns(props) {
     var column = { display: FLEX, flexDirection: COLUMN };
     if (owns(props.placeholder, SPACING)) {

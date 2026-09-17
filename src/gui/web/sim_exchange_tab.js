@@ -1,6 +1,7 @@
 // One per-exchange screen of the Simulator tab, drawn from the payload METHOD
 // names. Forked from exchange_tab.js: the header holds the three mode buttons
-// where Live draws Privacy Mode and the news line.
+// where Live draws Privacy Mode and the news line, the active run mode's
+// button carrying Live's ON sheet and aria-pressed as the Privacy button does.
 (function (global) {
   "use strict";
   var METHOD = "sim_exchange_tab.state";
@@ -310,6 +311,7 @@
   var FOCUS_ATTR = "data-focus-policy";
   var EXCHANGE_ATTR = "data-exchange";
   var ARIA_LABEL = "aria-label";
+  var ARIA_PRESSED = "aria-pressed";
 
   var SELECT_OPEN = "[";
   var SELECT_IS = "=\"";
@@ -324,6 +326,7 @@
   var MODE_FOCUS_POLICY = "focus_policy";
   var MODE_FOCUSABLE = "focusable";
   var MODE_ACCESSIBLE_NAME = "accessible_name";
+  var MODE_ACTIVE = "active";
 
   var ZERO = Number(EMPTY);
   var STEP = Number(true);
@@ -603,7 +606,8 @@
   }
 
   // One of the three mode buttons, where Live draws Privacy Mode and the
-  // news line; it carries Live's Privacy-Mode sheet and focus policy.
+  // news line; it carries the sheet the payload gives it, Live's ON sheet on
+  // the active run mode and OFF on the rest, and Live's focus policy.
   function ModeButton(props) {
     var model = props.model;
     var button = isPlainObject(props.button) ? props.button : {};
@@ -624,6 +628,7 @@
     buttonProps[ACTION_ATTR] = text(actionNamed(model, MODE_CLICKED));
     buttonProps[FOCUS_ATTR] = text(button[MODE_FOCUS_POLICY]);
     buttonProps[ARIA_LABEL] = label(button[MODE_ACCESSIBLE_NAME]);
+    buttonProps[ARIA_PRESSED] = text(button[MODE_ACTIVE] === true);
     return element(BUTTON_TAG, buttonProps, text(button[MODE_TEXT]));
   }
 

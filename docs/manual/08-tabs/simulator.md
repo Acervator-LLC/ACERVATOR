@@ -1642,6 +1642,189 @@ in either build, no button carrying a way-in text sits inside a venue page,
 and `bot_state.json` hashed identical after every reading, while a byte
 planted into it moved the hash.
 
+## The mode choice is wired and the way-ins follow it
+
+The tab holds one run mode, in both builds. Validation is the run mode when
+the tab opens, the first of `MODES`. A press on Validation, Back Test or
+Portfolio Battery in a venue page's header makes that mode the run mode; its
+button carries Live's Privacy-Mode ON sheet and the two others carry the OFF
+sheet, on every seated venue page at once. The corner Live gives
+`＋ Add Crypto Exchange` and the Get Started card's button position each hold
+the two ways in the run mode offers, and the third is not drawn:
+
+```
+run mode            corner and card offer
+Validation          Import Live Fleet, Generate From YTD
+Back Test           Import Live Fleet, Create New Bots
+Portfolio Battery   Run Portfolio, Run Every Portfolio
+```
+
+The pairs are `ROWS_FOR_MODE`, read through `reserved_rows`, and both builds
+draw the corner and the card from the same function. Each corner button keeps
+Live's corner-button minimum width and the 24 px height the fork names, and
+each card button Live's 180 by 36; the accessible names stay `sim-<action>`
+at the corner and `sim-<action>-card` on the card.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the corner buttons per mode
+
+```python
+def way_in_buttons(mode: str = sim.MODES[0]) -> list:
+    """The two corner buttons ``mode`` offers, from ``sim.reserved_rows``, as
+    the page draws them."""
+    return [
+        {
+            "action": row["action"],
+            "text": row["text"],
+            "accessible_name": row["button_name"],
+            "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+            "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+        }
+        for row in sim.reserved_rows(mode)
+    ]
+```
+
+The sheet each mode button carries comes from one function too, so the Qt
+header and the React header cannot disagree: `mode_style` answers Live's
+`PRIVACY_STYLE_ON` for the run mode and `PRIVACY_STYLE_OFF` for the rest. The
+React mode button also carries `aria-pressed`, as Live's Privacy Mode button
+does.
+
+`src/gui/simulator/sim_exchange_tab_surface.py` — the sheet per button
+
+```python
+def mode_style(mode: str, active: str) -> str:
+    """The sheet the button for ``mode`` carries while ``active`` is the run
+    mode: Live's Privacy-Mode ON sheet on the active mode, OFF on the rest."""
+    return MODE_BUTTON_STYLE_ACTIVE if mode == active else MODE_BUTTON_STYLE
+```
+
+### Held by the tab, not by a venue page
+
+Live's Privacy Mode is a per-page button because each page's button mirrors
+the process-wide mask registry. The run mode is the tab's: the corner and the
+card belong to the tab's layer, not to a venue page, the card draws when no
+venue page exists, and one run runs over the whole sim fleet. Two seated
+venues show the same active button. In the Qt build the tab holds it as
+`SimTradingTab.mode` and a venue page's press reaches `set_mode`; in the React
+build the tab state holds it as `SimTradingTabState.mode`, a press sends
+`mode_clicked` with the mode's key on the venue page's method, and the host's
+`run_action` hands it to `set_mode`.
+
+`src/gui/simulator/sim_trading_tab.py` — the Qt press
+
+```python
+    def set_mode(self, mode: str) -> str:
+        """Make ``mode`` the run mode: the active sheet on every seated venue
+        page's header and the mode's two ways in at each corner and card.
+        A name outside ``MODES`` changes nothing; answers the mode in force."""
+        if mode not in surface.MODES:
+            return self._mode
+        self._mode = mode
+        for venue in list(self._crypto_exchange_tabs.values()) + list(
+            self._stock_exchange_tabs.values()
+        ):
+            venue.show_mode(mode)
+        self._draw_way_ins()
+        return self._mode
+```
+
+`src/gui/simulator/sim_react_trading_tab.py` — the React press
+
+```python
+        def set_mode(self, mode: str) -> str:
+            """Make ``mode`` the run mode: redraw the tab so each corner and
+            card offers that mode's two ways in, and re-publish every venue so
+            its header carries the active sheet; answers the mode in force."""
+            if self._state.set_mode(mode) == mode:
+                self.show_tab({})
+                self._venue_published()
+            return self._state.mode
+```
+
+With no venue seated there is no header row, so nothing on the screen changes
+the run mode; the Get Started card offers the open mode's two ways in, Import
+Live Fleet and Generate From YTD, until a fleet is loaded and a venue page
+draws.
+
+```mermaid
+flowchart LR
+    press[mode button press] --> set[set_mode]
+    set --> sheets[show_mode on every venue page]
+    set --> ways[way_in_buttons of the run mode]
+    ways --> corner[the corner]
+    ways --> card[the Get Started card]
+    corner --> way_in[_way_in]
+    card --> way_in
+    way_in -- Create New Bots --> wizard[the Simulator's wizard]
+    way_in -- any other --> refused[SendRefused on the Activity Log]
+```
+
+### Where a way-in press lands
+
+Create New Bots, at the corner or on the card, opens the Simulator's Create
+Auto Trader wizard through `_create_bot`, the same path `+ New Bot` takes, in
+both builds. Import Live Fleet, Generate From YTD, Run Portfolio and Run Every
+Portfolio ask the fleet source for the run by name; the fleet source answers
+its read set and nothing else, so the ask raises `SendRefused`, and the tab
+writes one line to the Activity Log naming the button. The run that each of
+those four starts is not built.
+
+`src/gui/simulator/sim_trading_tab.py` — the way-in handler
+
+```python
+    def _way_in(self, action: str) -> None:
+        """One way-in pressed at the corner or on the card: Create New Bots
+        opens the wizard through ``_create_bot``; every other action asks
+        ``FleetSource`` for it by name, which raises ``SendRefused`` until that
+        run lands, and the refusal is logged to the Activity Log."""
+        if action == surface.CREATE_NEW_BOTS_ACTION:
+            self._create_bot(self._current_venue_id())
+            return
+        try:
+            getattr(self._fleet_source, action)
+        except SendRefused as exc:
+            self._status_log.log(tab_surface.way_in_refused_line(action, exc), "error")
+```
+
+The line reads `Import Live Fleet refused: FleetSource answers (...) and
+cannot 'import_live_fleet'. The Simulator receives and asks; it sends
+nothing.`, at the error level, with the button's own text in front.
+
+### What the mode reading measured
+
+Read off the real window over a scratch home with every socket but loopback
+refused, the theme applied and the Windows fonts loaded, once with an empty
+sim fleet and once with one idle scrumming bot, in both builds:
+
+```
+reading                                       Qt          React
+run mode at open                              validation  validation
+sheets at open                                ON OFF OFF  ON OFF OFF
+after Back Test                               OFF ON OFF  OFF ON OFF
+after Portfolio Battery                       OFF OFF ON  OFF OFF ON
+after Validation                              ON OFF OFF  ON OFF OFF
+corner in Validation                          Import Live Fleet, Generate From YTD
+corner in Back Test                           Import Live Fleet, Create New Bots
+corner in Portfolio Battery                   Run Portfolio, Run Every Portfolio
+widgets or nodes carrying a mode or way-in
+  text, one bot seated                        11          9
+  the same, empty fleet                       8           8
+```
+
+The Qt count with one bot is the header's three, the two layers' corners at
+two each, and the two layers' cards at two each; the crypto card is held but
+not listed once a venue is seated. The React count is the header's three, the
+two corners at two each and the hidden stock layer's card at two; the React
+page draws no card on a layer that holds a venue. With an empty fleet neither
+build has a header, and the count is the two corners and the two cards. A
+button planted under the tab with a mode text moved each count by one and
+the count returned when it was removed. Every corner and card press landed
+where this section says: four refusal lines on the Activity Log, each naming
+its button, and the wizard for Create New Bots. `reserved_rows` is called on
+every draw of the corner and the card, in both builds, and `bot_state.json`
+hashed identical after every press while a byte planted into it moved the
+hash.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

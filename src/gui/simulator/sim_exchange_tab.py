@@ -3,7 +3,11 @@
 A fork of ``src/gui/widgets/exchange_tab.py`` ``ExchangeTab`` under the
 Simulator's name. The header row holds the three mode buttons where Live draws
 Privacy Mode and the news line, then ``+ New Bot`` where Live draws it; the
-data-pool row keeps Live's height and holds nothing.
+data-pool row keeps Live's height and holds nothing. A mode button's press
+reaches ``on_mode``, the tab's ``set_mode``; the tab holds the run mode and
+calls ``show_mode`` on every seated page, which writes
+``sim_exchange_tab_surface.mode_style`` on each button, Live's Privacy-Mode
+ON sheet on the active mode and OFF on the rest.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from ..main_tabs.exchange_tab_surface import (
     SCRUM_TABLE_STRETCH,
 )
 from ..main_tabs.simulator_tab_surface import MODE_TEXT, MODES
+from .sim_exchange_tab_surface import MODE_BUTTON_STYLE, mode_style
 
 logger = logging.getLogger("acervator.gui")
 
@@ -37,14 +42,6 @@ except ImportError:
     _HAS_QT = False
 
 
-MODE_BUTTON_STYLE = (
-    "QPushButton { "
-    f"  background-color: transparent; color: {ds.TEXT_MED}; "
-    "  font-weight: bold; padding: 4px 12px; "
-    f"  border: 1px solid {ds.TEXT_PLACEHOLDER}; border-radius: 4px; "
-    "}"
-)
-
 DATA_POOL_ROW_NAME = "Data pool row"
 
 
@@ -61,6 +58,8 @@ if _HAS_QT:
             on_bot_fire=None,
             status_log=None,
             parent=None,
+            on_mode=None,
+            mode: str = MODES[0],
         ):
             super().__init__(parent)
             self.exchange_id = exchange_id
@@ -73,15 +72,20 @@ if _HAS_QT:
             self._exchange_name = exchange_name
             header = QHBoxLayout()
             # The mode buttons sit where Live draws Privacy Mode and the news
-            # line; they are wired to nothing here.
+            # line; a press reaches on_mode, and show_mode draws the sheets.
             self._mode_buttons: dict[str, QPushButton] = {}
-            for mode in MODES:
-                mode_btn = QPushButton(MODE_TEXT[mode])
-                mode_btn.setAccessibleName(MODE_TEXT[mode])
+            for mode_key in MODES:
+                mode_btn = QPushButton(MODE_TEXT[mode_key])
+                mode_btn.setAccessibleName(MODE_TEXT[mode_key])
                 mode_btn.setFocusPolicy(Qt.NoFocus)
                 mode_btn.setStyleSheet(MODE_BUTTON_STYLE)
+                if on_mode:
+                    mode_btn.clicked.connect(
+                        lambda _checked=False, key=mode_key: on_mode(key)
+                    )
                 header.addWidget(mode_btn)
-                self._mode_buttons[mode] = mode_btn
+                self._mode_buttons[mode_key] = mode_btn
+            self.show_mode(mode)
             header.addStretch()
             self._add_bot_btn = QPushButton("+ New Bot")
             self._add_bot_btn.setProperty("accent", True)
@@ -184,6 +188,12 @@ if _HAS_QT:
         def mode_buttons(self) -> dict[str, QPushButton]:
             """The three mode buttons, keyed by ``MODES`` entry."""
             return dict(self._mode_buttons)
+
+        def show_mode(self, active: str) -> None:
+            """Draw ``active`` as the run mode: Live's Privacy-Mode ON sheet on
+            its button, OFF on the two others, through ``mode_style``."""
+            for mode_key, mode_btn in self._mode_buttons.items():
+                mode_btn.setStyleSheet(mode_style(mode_key, active))
 
         def _cmd(self, command: str) -> None:
             if self._last_clicked_table == "extractor":
