@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
 from ..trading.gate_chain import GateContext
-from .fleet_source import SimBot
+from .fleet_source import NEW_ORIGIN, SimBot
 from .validation import (
     BB_MIDLINE,
     MIN_RERUN_CANDLES,
@@ -28,8 +28,6 @@ from .validation import (
 )
 
 logger = logging.getLogger("acervator.simulator.back_test")
-
-NEW_ORIGIN = "new"
 
 SCRUM = "scrum"
 FOLD = "fold"

@@ -550,6 +550,123 @@ with a saved fleet draws that fleet's rows at start. Import Live Fleet gates
 both the venues and the rows behind a press when it lands.
 
 
+## New Bot opens the Simulator's wizard
+
+`+ New Bot` on a seated Sim venue opens the Simulator's Create Auto Trader
+wizard, a fork of Live's under the Simulator's names, in both builds. It
+carries Live's five pages in Live's order, Trading Mode, then Select Asset
+Pair or Extractor Pool, then Trading Parameters, then Phantom Bots, with the
+same fields, the same ranges, the same walk buttons and the same look, and it
+opens on the operator's stored defaults as Live's does. Finish creates one sim
+bot and its row appears in the Scrumming Bots table. Cancel creates nothing.
+
+`src/gui/simulator/sim_trading_tab.py` — the press reaches the fork
+
+```python
+        tab = SimExchangeTab(
+            exchange_id,
+            display_name,
+            on_new_bot=self._create_bot,
+            on_bot_clicked=self._on_bot_detail,
+            on_bot_fire=self._on_bot_fire,
+            status_log=self._status_log,
+        )
+```
+
+```mermaid
+flowchart LR
+    press[+ New Bot] --> create[_create_bot]
+    create --> wizard[SimBotCreationWizard or SimBotWizardReactDialog]
+    wizard -->|Finish| config[get_bot_config]
+    config --> add[FleetSource.create]
+    add --> changed[fleet_changed]
+    changed --> rows[refresh_bots]
+    wizard -->|Cancel| none[nothing changes]
+```
+
+### What the Simulator's wizard reads
+
+The venue list is the seated sub-tabs. The stored defaults come through the
+same settings reader Live's window holds, so the target balance, the
+visibility, the aggressive box, the phantom enable and the lock candles open
+on the operator's own figures; nothing is written. The Target Asset list is
+the assets the Simulator holds a tablet for on the picked exchange. A tablet
+is filed by asset and exchange and names no quote, so its asset is offered
+under every base currency, with no volume figure and no volume sort. Live's
+wizard asks the venue for its markets; the Simulator's asks the tablets.
+
+`src/gui/simulator/sim_bot_wizard_surface.py` — the market table
+
+```python
+    for entry in tablet_source.entries():
+        exchange_id = str(entry.exchange_id)
+        asset = str(entry.asset).upper()
+        key = (exchange_id, asset)
+        if key in seen or not asset:
+            continue
+        seen.add(key)
+        rows = out.setdefault(exchange_id, [])
+        for base in live.BASE_CURRENCIES:
+```
+
+### What Finish creates
+
+The wizard's config is shaped by the same call Live shapes it with, so a
+mode-foreign key or a bad shape is refused with Live's own Activity Log line.
+The shaped config takes the stored-record shape the live process writes and is
+read through the same record reader the imported fleet uses, so a created bot
+holds exactly the fields a stored bot's record gives: the ids, the symbol, the
+target, the timeframe, the interval, the fee and the gate fields. Its id is
+eight characters, drawn as a live bot draws its own. Its state is idle, so its
+Bot ID cell is grey. Its price, holdings and trades are zero, as on a live bot
+before its first tick. An Extractor is refused when no single Scrumming Bot on
+the venue holds its pool base, with Live's own message.
+
+`src/simulator/fleet_source.py` — the add path
+
+```python
+    def create(self, config: dict) -> SimBot:
+        record = wizard_record(config)
+        bot_id = str(uuid.uuid4())[:BOT_ID_LENGTH]
+        bot = _sim_bot_from_record(bot_id, record, origin=NEW_ORIGIN)
+        if bot is None:
+            raise ValueError("the wizard config names no symbol")
+        self._created.append(bot)
+        return bot
+```
+
+The fleet source then fires `fleet_changed`, the venues re-seat, the tables
+redraw, and the Activity Log carries `Bot <id> created: <symbol> (scrumming) -
+IDLE`.
+
+### What is not forked
+
+Live's pre-flight symbol check contacts the venue; the Simulator offers only
+the assets it holds a tablet for. The phantom page's API-load warning reads
+Live's venue call rate; the Simulator makes no venue call, so the page answers
+True, as Live's React wizard does with no load reading.
+
+### A created bot is not persisted
+
+The Simulator keeps no fleet file of its own. A created bot lives in the fleet
+source until the tab closes. Nothing writes `bot_state.json`.
+
+### The React host opens the wizard one turn later
+
+Under React the venue page's press reaches the host through the console line.
+A web page opened inside another page's console callback never finishes
+loading, so the host opens the wizard on the next event-loop turn, and its page
+loads.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the deferred open
+
+```python
+            QTimer.singleShot(
+                0, lambda: self._open_bot_wizard(exchange_id, defaults_override)
+            )
+```
+
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

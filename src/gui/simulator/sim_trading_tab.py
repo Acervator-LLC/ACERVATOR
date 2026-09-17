@@ -12,11 +12,12 @@ the rest as the window's ``_drop_unlisted_exchange_tabs`` does, and then
 corner Live gives ``＋ Add Crypto Exchange`` holds the three way-in buttons, and
 the Get Started card holds the same three where Live's card holds its add
 button. The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
-panel in ``_layer_stack``, reached by ``flip_layer``. A row's Fire reaches
-``_on_bot_fire``, which asks ``FleetSource`` and logs its refusal; a row's
-Detail reaches ``_on_bot_detail``, which opens ``SimBotDetailDialog``.
-``TabletSource`` and ``FleetSource`` are the tab's only sources, and neither
-answers a send.
+panel in ``_layer_stack``, reached by ``flip_layer``. A venue's ``+ New Bot``
+reaches ``_create_bot``, which opens ``SimBotCreationWizard`` and hands its
+config to ``FleetSource.create``. A row's Fire reaches ``_on_bot_fire``, which
+asks ``FleetSource`` and logs its refusal; a row's Detail reaches
+``_on_bot_detail``, which opens ``SimBotDetailDialog``. ``TabletSource`` and
+``FleetSource`` are the tab's only sources, and neither answers a send.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSplitter,
@@ -38,7 +40,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...simulator.fleet_source import FleetSource, SendRefused, row_status
+from ...simulator.fleet_source import (
+    EXTRACTOR_MODE,
+    FleetSource,
+    SendRefused,
+    row_status,
+)
 from ...simulator.tablet_source import TabletSource
 from .. import design_system as ds
 from ..color_alpha import rgba
@@ -52,6 +59,8 @@ from ..main_tabs.trading_tab_surface import (
     exchange_display_name,
 )
 from ..simulator_tab import LineView, PlaybackView
+from ..variant_surface import SIM_BOT_WIZARD, surface_class
+from . import sim_bot_wizard_surface as wizard_surface
 from .sim_bot_detail import SimBotDetailDialog
 from .sim_exchange_tab import SimExchangeTab
 from .sim_indicator_panel import SimIndicatorVotingPanel
@@ -461,6 +470,7 @@ class SimTradingTab(QWidget):
         tab = SimExchangeTab(
             exchange_id,
             display_name,
+            on_new_bot=self._create_bot,
             on_bot_clicked=self._on_bot_detail,
             on_bot_fire=self._on_bot_fire,
             status_log=self._status_log,
@@ -532,6 +542,60 @@ class SimTradingTab(QWidget):
                 tab.update_bots(statuses)
                 handed += len(statuses)
         return handed
+
+    def _create_bot(
+        self,
+        exchange_id: str = "",
+        defaults_override: Optional[dict] = None,
+    ) -> None:
+        """Open the Simulator's Bot Creation Wizard over the seated venues, the
+        stored defaults and the tablet market table; on Finish hand its config
+        to ``FleetSource.create`` and fire ``fleet_changed``.
+
+        The window's ``_create_bot``, forked, with no pre-flight, no ``ScrummingBot``
+        and no bot manager; ``defaults_override`` merges over the stored defaults.
+        """
+        self._status_log.log(
+            wizard_surface.OPENING_FORMAT.format(exchange_id=exchange_id)
+        )
+        wizard_class = surface_class(SIM_BOT_WIZARD)
+        exchanges = wizard_surface.seated_exchanges(self._exchange_tabs)
+        defaults = wizard_surface.stored_defaults()
+        if defaults_override:
+            defaults = {**defaults, **defaults_override}
+        markets = wizard_surface.tablet_markets(self._tablet_source)
+        wizard = wizard_class(exchanges, defaults, self, markets=markets)
+        if wizard.exec() != wizard.DialogCode.Accepted:
+            self._status_log.log(wizard_surface.CANCELLED_TEXT, "warning")
+            return
+        config = wizard.get_bot_config()
+        logger.info("Sim bot creation config: %s", config)
+        if config.get("mode") == EXTRACTOR_MODE:
+            reason = wizard_surface.extractor_parent_refusal(
+                self._fleet_source.bots(),
+                str(config.get("base_currency") or ""),
+                str(config.get("exchange_id") or exchange_id),
+            )
+            if reason is not None:
+                QMessageBox.critical(
+                    self,
+                    wizard_surface.REFUSAL_TITLE,
+                    wizard_surface.REFUSAL_BOX_FORMAT.format(reason=reason),
+                )
+                self._status_log.log(
+                    wizard_surface.REFUSED_FORMAT.format(reason=reason), "error"
+                )
+                return
+        try:
+            bot = self._fleet_source.create(config)
+        except (ValueError, TypeError) as exc:
+            self._status_log.log(
+                wizard_surface.REJECTED_FORMAT.format(error=exc), "error"
+            )
+            logger.error("Sim bot creation rejected: %s", exc)
+            return
+        self._status_log.log(wizard_surface.created_line(bot), "success")
+        self.fleet_changed.emit()
 
     def _on_bot_fire(self, bot_id: str) -> None:
         """Manual Fire on a sim bot: ask ``FleetSource`` to ``fire`` and log the

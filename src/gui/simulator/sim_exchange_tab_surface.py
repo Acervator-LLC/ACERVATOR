@@ -57,12 +57,15 @@ def screen(
     status_log: Any = None,
     on_bot_clicked: Any = None,
     on_bot_fire: Any = None,
+    on_new_bot: Any = None,
 ) -> live.ExchangeTabModel:
     """One venue's ``ExchangeTabModel`` with no news strip and no pool reader,
-    its Detail and Fire reaching ``on_bot_clicked`` and ``on_bot_fire``."""
+    its Detail, Fire and ``+ New Bot`` reaching ``on_bot_clicked``,
+    ``on_bot_fire`` and ``on_new_bot``."""
     return live.ExchangeTabModel(
         exchange_id,
         exchange_name,
+        on_new_bot=on_new_bot,
         on_bot_clicked=on_bot_clicked,
         on_bot_fire=on_bot_fire,
         status_log=status_log,
