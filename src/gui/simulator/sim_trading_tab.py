@@ -31,9 +31,10 @@ neither answers a send.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -67,6 +68,9 @@ from ..main_tabs.trading_tab_surface import (
     MAIN_SPLITTER_SIZES_PX,
     PLACEHOLDER_TAB_TITLE,
     TOP_SPLITTER_SIZES_PX,
+    WATCHDOG_INTERVAL_MS,
+    WATCHDOG_STAT_FAILURE_FORMAT,
+    WatchdogState,
     exchange_display_name,
 )
 from ..simulator_tab import LineView, PlaybackView
@@ -372,6 +376,12 @@ class SimTradingTab(QWidget):
         self._status_log.setMaximumHeight(16777215)  # Remove height limit
         activity_layout.addWidget(self._status_log)
         log_splitter.addWidget(activity_widget)
+
+        # Polls SimStatusLog.health_stats() every 60s on the GUI thread.
+        self._activity_log_watchdog_state = WatchdogState()
+        self._activity_log_watchdog_timer = QTimer(self)
+        self._activity_log_watchdog_timer.timeout.connect(self._activity_log_watchdog)
+        self._activity_log_watchdog_timer.start(WATCHDOG_INTERVAL_MS)
 
         api_widget = QWidget()
         api_layout = QVBoxLayout(api_widget)
@@ -679,6 +689,25 @@ class SimTradingTab(QWidget):
         """Write the window notification's line, ``notification_line``, into
         the Activity Log through ``SimStatusLog.notice``."""
         self._status_log.notice(notification_line(message, level))
+
+    def _activity_log_watchdog(self) -> None:
+        """One tick of Live's Activity-Log watchdog over ``SimStatusLog`` and
+        ``SimBotManager.bots``: each line ``watchdog_lines`` answers is written
+        through ``force_log`` and to the file logger."""
+        try:
+            stats = self._status_log.health_stats()
+        except Exception as exc:
+            logger.warning(WATCHDOG_STAT_FAILURE_FORMAT, exc)
+            return
+        lines = tab_surface.watchdog_lines(
+            self._activity_log_watchdog_state,
+            stats,
+            self._bot_manager.bots(),
+            time.time(),
+        )
+        for text, level in lines:
+            self._status_log.force_log(text, level)
+            logger.log(logging.ERROR if level == "error" else logging.WARNING, text)
 
     def _on_bot_command(self, bot_id: str, command: str) -> None:
         """One command-bar press on ``bot_id``: the window's ``_on_bot_command``

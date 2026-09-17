@@ -8,7 +8,9 @@ watchdog and the API-log listener not carried, and ``replay_layer``,
 ``flip_button``, ``layer_splitter`` and ``replay_header`` added.
 ``SimTradingTabState`` owns the ``ApiPauseBuffer`` and ``ApiLogPane`` one host
 reads and the venues it has seated. ``ivp_feed`` and ``rate_snapshot`` are the
-voting panel's feed, read by both hosts.
+voting panel's feed, read by both hosts; ``watchdog_lines`` is the Activity-Log
+watchdog's tick over the sim bots, run by both hosts every
+``WATCHDOG_INTERVAL_MS``.
 """
 
 from __future__ import annotations
@@ -60,6 +62,11 @@ LAYER_SPLITTER = {
 WAY_IN_PARAM = "way_in"
 REPLAY_LAYER_PARAM = "replay_layer"
 
+#: The Pause Console press on the page makes two asks: ``paused`` on the log
+#: method through ``setPaused``, and ``activity_paused`` on this method.
+LOG_PAUSED_PARAM = "paused"
+ACTIVITY_PAUSED_PARAM = "activity_paused"
+
 ACTIONS = {
     "layer.way_in_button.clicked": "way_in",
     "activity_pause_button.toggled": "toggle_activity_pause",
@@ -109,6 +116,15 @@ def notification_line(*parts: Any) -> str:
     return NOTIFICATION_PREFIX + " | ".join(
         str(one) for one in parts if one is not None
     )
+
+
+def watchdog_lines(
+    state: live.WatchdogState, stats: Any, bots: Any, now: float
+) -> list:
+    """Live's ``watchdog_tick`` over the sim bots ``bots``: the ``(text, level)``
+    lines one tick force-logs, the silence lines needing a running sim bot."""
+    running = live.running_bots(bot.state for bot in bots)
+    return live.watchdog_tick(state, stats, now, running, running > 0)
 
 
 def card_button_name(action: str) -> str:

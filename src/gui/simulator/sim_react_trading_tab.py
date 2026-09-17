@@ -15,7 +15,8 @@ and ``refresh_votes`` hands the panel model the fleet, its own rates and the
 selected bot's ``ivp_feed`` over ``TabletSource``, drawn through ``show_votes``;
 every ``fleet_changed`` first writes the sim fleet file through
 ``FleetSource.save``. ``SimTradingPage`` reads the page's asks off the console line the host script
-writes; ``run_action`` answers the flip, the panel's ``select_bot``, both bot
+writes; ``run_action`` answers the flip, the Pause Console press through
+``set_activity_paused``, the panel's ``select_bot``, both bot
 tables' own asks and the venue page's ``+ New Bot`` and command bar, so a row's Fire reaches
 ``_on_bot_fire``, a row's Detail on either table reaches ``_on_bot_detail``,
 which opens the Simulator's Bot Settings window through
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Optional
 
 from ...core.sound_engine import get_sound_engine
@@ -48,6 +50,9 @@ from ..main_tabs import indicator_panel_surface, status_log_surface
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs.trading_tab_surface import (
     ALIAS_LAYER,
+    WATCHDOG_INTERVAL_MS,
+    WATCHDOG_STAT_FAILURE_FORMAT,
+    WatchdogState,
     exchange_display_name,
     layer_exchanges,
 )
@@ -107,6 +112,11 @@ SCRUM_METHOD = "sim_bot_status_table.state"
 EXTRACTOR_METHOD = "sim_extractor_bot_table.state"
 PANEL_METHOD = "sim_indicator_panel.state"
 LOG_METHOD = "sim_status_log.lines"
+
+#: The log payload's document field and the list of lines under it, which the
+#: page's own answer to a log ask carries as the document the page holds.
+LOG_DOCUMENT_FIELD = "document"
+LOG_LINES_FIELD = "lines"
 
 #: The global each module defines once it has run to its end.
 MODULE_GLOBALS: dict[str, str] = {
@@ -239,6 +249,8 @@ _HOST_SOURCE = """(function (global, doc) {
   var MODELS = %(models)s;
   var IVP = %(ivp)s;
   var LOG = %(log)s;
+  var LOG_DOCUMENT = %(log_document)s;
+  var LOG_LINES = %(log_lines)s;
   var TAB = %(tab)s;
   var FORGETS = %(forgets)s;
   var VENUES = %(venues)s;
@@ -351,15 +363,19 @@ _HOST_SOURCE = """(function (global, doc) {
     }
   };
 
-  // One fresh payload per bridge method. LOG appends its batch, TAB
-  // replaces the tab's own model, and every other method drops the ask
-  // its module caches so redraw() reads MODELS again.
+  // LOG appends its batch and keeps the whole held document in MODELS for
+  // the page's own ask; TAB replaces the tab's model; the rest drop their cache.
   function holdModels(fresh) {
     Object.keys(fresh).forEach(function (method) {
       if (method === LOG) {
         var spool = global.acervatorSimLog;
         if (spool && typeof spool.take === "function") {
           spool.take(fresh[method]);
+          var whole = JSON.parse(JSON.stringify(fresh[method]));
+          var carried = {};
+          carried[LOG_LINES] = spool.lines();
+          whole[LOG_DOCUMENT] = carried;
+          MODELS[method] = whole;
         }
         return;
       }
@@ -615,6 +631,8 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
         "models": json.dumps(built, ensure_ascii=True),
         "ivp": json.dumps(PANEL_METHOD, ensure_ascii=True),
         "log": json.dumps(LOG_METHOD, ensure_ascii=True),
+        "log_document": json.dumps(LOG_DOCUMENT_FIELD, ensure_ascii=True),
+        "log_lines": json.dumps(LOG_LINES_FIELD, ensure_ascii=True),
         "tab": json.dumps(tab_surface.METHOD, ensure_ascii=True),
         "forgets": json.dumps(MODULE_FORGETS, ensure_ascii=True),
         "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
@@ -777,6 +795,13 @@ if _HAS_WEBENGINE:
             self.fleet_changed.connect(self._fleet_source.save)
             self.fleet_changed.connect(self._sync_exchange_tabs)
             self._sync_exchange_tabs()
+            # Polls StatusLogModel.health_stats() every 60s on the GUI thread.
+            self._activity_log_watchdog_state = WatchdogState()
+            self._activity_log_watchdog_timer = QTimer(self)
+            self._activity_log_watchdog_timer.timeout.connect(
+                self._activity_log_watchdog
+            )
+            self._activity_log_watchdog_timer.start(WATCHDOG_INTERVAL_MS)
 
         # -- what the window reads ----------------------------------------
 
@@ -1029,6 +1054,38 @@ if _HAS_WEBENGINE:
             the Activity Log as a notice through ``show_log_call``."""
             self.show_log_call("notice", tab_surface.notification_line(message, level))
 
+        def set_activity_paused(self, paused: bool) -> bool:
+            """Pause or resume the tab's log and set the toggle's caption, as
+            the Qt toggle's ``_on_activity_pause_toggled`` does; a second ask
+            for the state already held changes nothing. Answers ``_log.paused``.
+            """
+            wanted = bool(paused)
+            if wanted != self._log.paused:
+                self.show_log_call("pause" if wanted else "resume")
+            if wanted != self._state.activity_paused:
+                self.show_tab({tab_surface.ACTIVITY_PAUSED_PARAM: wanted})
+            return self._log.paused
+
+        def _activity_log_watchdog(self) -> None:
+            """One tick of Live's Activity-Log watchdog over the tab's
+            ``StatusLogModel`` and ``SimBotManager.bots``: each line
+            ``watchdog_lines`` answers is pushed as a ``force_log`` and written
+            to the file logger."""
+            try:
+                stats = self._log.health_stats()
+            except Exception as exc:
+                logger.warning(WATCHDOG_STAT_FAILURE_FORMAT, exc)
+                return
+            lines = tab_surface.watchdog_lines(
+                self._activity_log_watchdog_state,
+                stats,
+                self._bot_manager.bots(),
+                time.time(),
+            )
+            for text, level in lines:
+                self.show_log_call("force_log", text, level)
+                logger.log(logging.ERROR if level == "error" else logging.WARNING, text)
+
         def _on_bot_command(self, bot_id: str, command: str) -> None:
             """One command-bar press on ``bot_id``: the window's
             ``_on_bot_command`` forked over ``SimBotManager``, with no venue
@@ -1194,8 +1251,9 @@ if _HAS_WEBENGINE:
             return self.show_layer(other)
 
         def run_action(self, payload: str) -> None:
-            """Answer the flip, the panel's ``select_bot``, both bot tables' asks
-            and the venue page's ``+ New Bot``; every other ask is held."""
+            """Answer the flip, the Pause Console press, the panel's
+            ``select_bot``, both bot tables' asks and the venue page's
+            ``+ New Bot``; every other ask is held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -1208,6 +1266,13 @@ if _HAS_WEBENGINE:
                 layer = params.get(tab_surface.REPLAY_LAYER_PARAM)
                 if layer in sim.LAYERS:
                     self.show_layer(str(layer))
+                wanted = params.get(tab_surface.ACTIVITY_PAUSED_PARAM)
+                if wanted is not None:
+                    self.set_activity_paused(bool(wanted))
+            elif method == LOG_METHOD:
+                wanted = params.get(tab_surface.LOG_PAUSED_PARAM)
+                if wanted is not None:
+                    self.set_activity_paused(bool(wanted))
             elif method == PANEL_METHOD and params.get("action") == "flip_layer":
                 self.flip_layer()
             elif (
