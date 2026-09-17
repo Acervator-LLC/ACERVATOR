@@ -363,11 +363,8 @@ _HOST_SOURCE = """(function (global, doc) {
     }
   };
 
-  // One fresh payload per bridge method. LOG appends its batch and MODELS
-  // keeps the whole document the page then holds, so the page's own ask
-  // (setPaused) answers that document; TAB replaces the tab's own model,
-  // and every other method drops the ask its module caches so redraw()
-  // reads MODELS again.
+  // LOG appends its batch and keeps the whole held document in MODELS for
+  // the page's own ask; TAB replaces the tab's model; the rest drop their cache.
   function holdModels(fresh) {
     Object.keys(fresh).forEach(function (method) {
       if (method === LOG) {
