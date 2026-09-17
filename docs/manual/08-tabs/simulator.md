@@ -1982,6 +1982,232 @@ and a byte planted into it from outside the program moved the hash. No live
 bot, bot manager or bot container was constructed, and no socket left
 loopback.
 
+## Generate From YTD fills the tables from the YTD trade files
+
+Generate From YTD builds one simulated bot per pair the operator's own trade
+record names on one exchange, in both builds. A press at the corner or on the
+Get Started card first reads the exchange history directory itself: a
+directory that is missing, empty or without its manifest writes one Activity
+Log line naming the path and holds nothing. With a manifest, the press reads
+which exchanges it names; with more than one it opens the chooser under the
+title Generate From YTD, with exactly one it takes that one, and with none it
+writes one line naming the manifest. Each traded pair on the chosen exchange
+becomes one record in the sim fleet under the pair's own id, the symbol at
+the exchange, marked as generated, and the fleet signal fires: the sim fleet
+file is written, the venue seats, and the Scrumming Bots table draws one row
+per pair. The Activity Log reads `Generated 3 bot(s) from 4 YTD trade file(s)
+on coinbase.` The trade files are only read, never written.
+
+`src/simulator/fleet_source.py` — the generation
+
+```python
+    def generate_from_ytd(self, source: Any, exchange_id: str) -> YtdGeneration:
+        wanted = str(exchange_id or "")
+        if not wanted:
+            return YtdGeneration()
+        entries = [one for one in source.entries() if one.exchange_id == wanted]
+        held: list[SimBot] = []
+        missing: list[YtdFileEntry] = []
+        files_read = 0
+        for bot in ytd_fleet(source, wanted):
+            own = [one for one in entries if one.symbol == bot.symbol]
+            absent = [one for one in own if source.trade_path(one) is None]
+            if absent:
+                missing.extend(absent)
+                continue
+            trades: list[YtdTrade] = []
+            for entry in own:
+                trades.extend(source.trades(entry))
+            files_read += len(own)
+            target_usd = ytd_target_usd(trades)
+            record = ytd_record(bot, target_usd)
+            self._records[bot.bot_id] = record
+```
+
+```mermaid
+flowchart LR
+    press[Generate From YTD, corner or card] --> state[YtdTradeSource.root_state]
+    state -- missing, empty, no manifest --> line[one Activity Log line naming the path]
+    state -- ready --> options[the exchanges the manifest names]
+    options -- none --> line2[one line naming the manifest]
+    options -- more than one --> chooser[SimExchangeChoiceDialog]
+    options -- exactly one --> chosen[the exchange]
+    chooser -- Ok --> chosen
+    chooser -- Cancel --> line3[one line, nothing moves]
+    chosen --> build[FleetSource.generate_from_ytd]
+    build --> changed[fleet_changed]
+    changed --> save[sim_fleet.json]
+    changed --> seat[the venue seats]
+    seat --> rows[one row per traded pair]
+```
+
+### The Target Balance a pair's fills establish
+
+A YTD file names no bot and no target. On Live the target is the dollar value
+the bot keeps its position at, and the bot reads its position as holdings times
+price. The pair's own fills establish the position they built, so the
+generated record's Target Balance is read off them: over every fill of the
+pair across its year files, oldest first, the units the buys bought less the
+units the sells sold, valued at the last fill's price, rounded to the cent.
+
+```
+units_bought = the amount of every BUY fill, summed
+units_sold   = the amount of every SELL fill, summed
+units_held   = units_bought - units_sold
+last_price   = the price of the last fill
+Target       = units_held x last_price, to the cent      when units_held is positive
+Target       = none                                      when it is not
+```
+
+The fill's cost is its quote leg, the amount times the price before the fee;
+its net over the fills is the quote spent, not the position's value, so the
+derivation reads the amount and the price and does not read the cost. When the
+fills sold more than they bought, the position was opened before the file's
+first row and the file gives no basis: the record holds no target, the Target
+cell draws `---`, and the Activity Log says how many records read so. On the
+scratch files the reading was taken over, BTC/USD bought 0.007 and sold 0.002
+across two year files, holding 0.005 at a last price of 61,000, so its Target
+is $305.00; SOL/USD bought 1.0 and sold 3.0, so it holds no target.
+
+`src/simulator/fleet_source.py` — the derivation
+
+```python
+def ytd_target_usd(trades: Sequence[YtdTrade]) -> Optional[float]:
+    ordered = sorted(trades, key=lambda one: one.sort_key())
+    if not ordered:
+        return None
+    bought = sum(float(one.amount) for one in ordered if one.side == SIDE_BUY)
+    sold = sum(float(one.amount) for one in ordered if one.side == SIDE_SELL)
+    held = bought - sold
+    if held <= 0:
+        return None
+    return round(held * float(ordered[-1].price), 2)
+```
+
+Under the funding directive, the spendable budget of a Validation or Portfolio
+Battery run is unbounded and always equals the total of the Target Balances of
+every simulated bot in the run. A generated bot with no target therefore adds
+nothing to that budget; the run funds the pairs whose fills established a
+position and the others stand in the fleet with no target until one is set.
+
+### What a generated record carries
+
+The record is the wizard's record shape with the pair's ids and the derived
+target: the exchange, the quote currency as the base currency, the base asset
+as the target asset, the symbol, and the Target Balance, or `null` where the
+fills gave no basis. Every other config field is the bot config's own default,
+the same a wizard-created bot carries when nothing on the wizard is changed,
+so a generated bot reads the one-hour timeframe and the default gates. The
+record carries no statistics, no lots and no phantom set, because the fills
+are the pair's year of history and not the bot's own figures: the strip's
+money fields read zero over generated records, Bots counts one when it is
+started, and a run is what trades it.
+
+`src/simulator/fleet_source.py` — the record
+
+```python
+def ytd_record(bot: SimBot, target_usd: Optional[float]) -> dict:
+    record = wizard_record(
+        {
+            "exchange_id": bot.exchange_id,
+            "base_currency": bot.base_currency,
+            "target_asset": bot.asset,
+            "symbol": bot.symbol,
+            "target_balance": 0.0 if target_usd is None else float(target_usd),
+        }
+    )
+    record["config"]["target_balance"] = target_usd
+    record["bot_id"] = bot.bot_id
+    record["origin"] = YTD_ORIGIN
+    return record
+```
+
+A second generation of the same exchange replaces each held copy under the
+same id with a record re-derived from the files as they lie, so a pair whose
+files grew reads its new target and a started bot returns to idle; a bot
+created through the wizard or imported from the live fleet is kept beside the
+generated ones. The command bar acts on a generated row as it acts on any
+other: Start on a generated idle bot writes Live's `✓ Bot <id> RUNNING.` line
+and colours its Bot ID cell.
+
+### The empty cases say which
+
+Each case writes one Activity Log line naming the path or the file, in the
+shape the import's lines take, and holds nothing. The directory is read before
+any trade file, so a missing directory is named and is not created by the
+press. A manifest row whose file is gone names that file and leaves that pair
+out; the other pairs on the exchange are generated.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the lines
+
+```python
+GENERATED_FORMAT = (
+    "Generated {count} bot(s) from {files} YTD trade file(s) on {exchange}."
+)
+NO_TARGET_FORMAT = (
+    "{count} of them hold no Target Balance: the fills sold more than they bought."
+)
+GENERATE_CANCELLED_TEXT = "Generate From YTD cancelled."
+YTD_ROOT_MISSING_FORMAT = "No YTD trade directory at {path}."
+YTD_ROOT_EMPTY_FORMAT = "{path} holds no YTD trade file."
+YTD_ROOT_NO_MANIFEST_FORMAT = "{path} holds no {manifest}."
+YTD_NO_PAIR_FORMAT = "{manifest} under {path} names no traded pair."
+YTD_FILE_MISSING_FORMAT = (
+    "{file} named by {manifest} is missing; {symbol} on {exchange} not generated."
+)
+```
+
+The reader answers eight names now: the state of its directory and the
+presence of one entry's file joined the six, and the directory it reads is
+resolved without being created.
+
+`src/simulator/ytd_trade_source.py` — the directory's state
+
+```python
+    def root_state(self) -> str:
+        if not self._root.is_dir():
+            return ROOT_MISSING
+        if not any(self._root.iterdir()):
+            return ROOT_EMPTY
+        if not (self._root / MANIFEST_NAME).is_file():
+            return ROOT_NO_MANIFEST
+        return ROOT_READY
+```
+
+### What the generation reading measured
+
+Read off the real window in both builds over a scratch home holding three
+pairs on `coinbase` (BTC/USD over two year files, ETH/USD, SOL/USD) and one on
+`kraken` (XRP/USD), 15 fills in all, a scratch live fleet file that is only
+hashed, and no sim fleet file:
+
+```
+reading                                     Qt                       React
+at open: venues seated                      none                     none
+Generate From YTD: chooser                  Generate From YTD, coinbase and kraken listed, both builds
+coinbase chosen: venue seated               coinbase                 coinbase
+rows by id, Scrumming Bots                  BTC/USD@coinbase, ETH/USD@coinbase, SOL/USD@coinbase, both builds
+Target cells                                $305.0000, $345.0000, ---, both builds
+Activity Log                                Generated 3 bot(s) from 4 YTD trade file(s) on coinbase., both builds
+                                            1 of them hold no Target Balance: the fills sold more than they bought.
+strip after one tick                        $0.00 $0.00 0 0 0 | — — — — 1, both builds
+kraken chosen at the corner                 one row, XRP/USD@kraken, $36.0000; two venues, both builds
+Start on BTC/USD@coinbase                   ✓ Bot BTC/USD@coinbase RUNNING., Bots 1, both builds
+a fourth pair planted, coinbase again       four rows, DOGE/USD@coinbase at $200.0000, both builds
+second process, rows from the sim file      five rows; no trade file opened, both builds
+no exchange_history directory               No YTD trade directory at <path>., not created, both builds
+an empty directory                          <path> holds no YTD trade file., both builds
+files without MANIFEST.json                 <path> holds no MANIFEST.json., both builds
+a manifest naming no pair                   MANIFEST.json under <path> names no traded pair., both builds
+one named file removed                      <file> named by MANIFEST.json is missing; ETH/USD on coinbase not generated.; two rows, both builds
+Cancel on the chooser                       Generate From YTD cancelled.; nothing moves, both builds
+```
+
+Every trade file, the manifest and the scratch live fleet file hashed the same
+after every step in every run, and a byte planted into the live fleet file and
+into the manifest from outside the program moved the hash. No live bot, bot
+manager or bot container was constructed, and no socket left loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

@@ -1,11 +1,11 @@
-"""The exchange chooser Import Live Fleet opens when ``bot_state.json`` names
-more than one exchange, on both Sim hosts.
+"""The exchange chooser Import Live Fleet and Generate From YTD open when their
+source names more than one exchange, on both Sim hosts.
 
 ``SimExchangeChoiceDialog`` is Live's one-question ``QDialog``, the Bot Swarm
 tab's Configure Profit Wire, holding the bot wizard's ``Exchange:`` combo row:
-``exchange_prompt_text`` above ``exchange_choice_options`` under
-``EXCHANGE_CHOICE_TITLE``, then Ok and Cancel. ``chosen`` answers the id
-picked once ``exec`` has accepted, and ``""`` after Cancel.
+``exchange_prompt_text`` above ``exchange_choice_options`` under ``title``,
+``EXCHANGE_CHOICE_TITLE`` when none is given, then Ok and Cancel. ``chosen``
+answers the id picked once ``exec`` has accepted, and ``""`` after Cancel.
 """
 
 from __future__ import annotations
@@ -45,9 +45,14 @@ if _HAS_QT:
     class SimExchangeChoiceDialog(QDialog):
         """One exchange of ``options`` picked from a combo, Ok or Cancel."""
 
-        def __init__(self, options: Any, parent: Optional[Any] = None) -> None:
+        def __init__(
+            self,
+            options: Any,
+            parent: Optional[Any] = None,
+            title: str = EXCHANGE_CHOICE_TITLE,
+        ) -> None:
             super().__init__(parent)
-            self.setWindowTitle(EXCHANGE_CHOICE_TITLE)
+            self.setWindowTitle(str(title or EXCHANGE_CHOICE_TITLE))
             self.setAccessibleName(ACCESSIBLE_NAME)
             self.setMinimumWidth(EXCHANGE_CHOICE_MIN_WIDTH_PX)
             column = QVBoxLayout(self)

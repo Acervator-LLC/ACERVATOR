@@ -11,7 +11,9 @@ added. ``SimTradingTabState`` owns the run mode, the ``ApiPauseBuffer`` and
 ``ApiLogPane`` one host reads and the venues it has seated; ``way_in_refused_line``
 is the Activity Log line both hosts write for a way-in whose run has not
 landed, ``imported_line`` and ``no_stored_bot_line`` the lines Import Live
-Fleet writes, and ``exchange_choice_options`` and ``exchange_prompt_text``
+Fleet writes, ``generated_line``, ``no_target_line``, ``ytd_root_line``,
+``ytd_no_pair_line`` and ``ytd_file_missing_line`` the lines Generate From YTD
+writes, and ``exchange_choice_options`` and ``exchange_prompt_text``
 what ``SimExchangeChoiceDialog`` lists. ``ivp_feed`` and ``rate_snapshot`` are the
 voting panel's feed, read by both hosts; ``watchdog_lines`` is the Activity-Log
 watchdog's tick over the sim bots, run by both hosts every
@@ -29,7 +31,9 @@ from datetime import datetime
 from typing import Any, Optional
 
 from ...core.log_paths import get_log_root
+from ...exchange.ytd_trade_store import MANIFEST_NAME
 from ...simulator.fleet_source import BOT_STATE_NAME
+from ...simulator.ytd_trade_source import ROOT_EMPTY, ROOT_MISSING, ROOT_NO_MANIFEST
 from ...trading.container.config import BotState
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
@@ -170,6 +174,69 @@ def imported_line(count: int, exchange_id: Any) -> str:
 def no_stored_bot_line() -> str:
     """The Activity Log line for a ``BOT_STATE_NAME`` naming no bot."""
     return NO_STORED_BOT_FORMAT.format(file=BOT_STATE_NAME)
+
+
+#: The Activity Log lines Generate From YTD writes on both hosts.
+GENERATED_FORMAT = (
+    "Generated {count} bot(s) from {files} YTD trade file(s) on {exchange}."
+)
+NO_TARGET_FORMAT = (
+    "{count} of them hold no Target Balance: the fills sold more than they bought."
+)
+GENERATE_CANCELLED_TEXT = "Generate From YTD cancelled."
+YTD_ROOT_MISSING_FORMAT = "No YTD trade directory at {path}."
+YTD_ROOT_EMPTY_FORMAT = "{path} holds no YTD trade file."
+YTD_ROOT_NO_MANIFEST_FORMAT = "{path} holds no {manifest}."
+YTD_NO_PAIR_FORMAT = "{manifest} under {path} names no traded pair."
+YTD_FILE_MISSING_FORMAT = (
+    "{file} named by {manifest} is missing; {symbol} on {exchange} not generated."
+)
+
+#: ``YtdTradeSource.root_state`` answers keyed to the line each one writes.
+YTD_ROOT_LINE_FORMATS = {
+    ROOT_MISSING: YTD_ROOT_MISSING_FORMAT,
+    ROOT_EMPTY: YTD_ROOT_EMPTY_FORMAT,
+    ROOT_NO_MANIFEST: YTD_ROOT_NO_MANIFEST_FORMAT,
+}
+
+
+def ytd_root_line(state: str, path: Any) -> str:
+    """The Activity Log line for a ``root_state`` that is not ``ROOT_READY``,
+    naming ``path``; empty for ``ROOT_READY``."""
+    line_format = YTD_ROOT_LINE_FORMATS.get(str(state))
+    if line_format is None:
+        return ""
+    return line_format.format(path=path, manifest=MANIFEST_NAME)
+
+
+def ytd_no_pair_line(path: Any) -> str:
+    """The Activity Log line for a ``MANIFEST_NAME`` under ``path`` naming no
+    traded pair."""
+    return YTD_NO_PAIR_FORMAT.format(manifest=MANIFEST_NAME, path=path)
+
+
+def ytd_file_missing_line(entry: Any) -> str:
+    """The Activity Log line for a manifest row ``entry`` whose file is absent."""
+    return YTD_FILE_MISSING_FORMAT.format(
+        file=entry.file,
+        manifest=MANIFEST_NAME,
+        symbol=entry.symbol,
+        exchange=entry.exchange_id,
+    )
+
+
+def generated_line(count: int, files: int, exchange_id: Any) -> str:
+    """The Activity Log line for ``count`` records held from ``files`` YTD trade
+    files on ``exchange_id``."""
+    return GENERATED_FORMAT.format(
+        count=int(count), files=int(files), exchange=exchange_id
+    )
+
+
+def no_target_line(count: int) -> str:
+    """The Activity Log line for ``count`` generated records holding no Target
+    Balance."""
+    return NO_TARGET_FORMAT.format(count=int(count))
 
 
 def flip_button(layer: Any) -> dict:
