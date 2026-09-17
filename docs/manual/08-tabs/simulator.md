@@ -1434,6 +1434,139 @@ holds, flips the caption and keeps every line. `bot_state.json` hashed
 identical after every press, and a byte planted into it moved the hash. No
 socket left loopback.
 
+## The API Interaction Log spool holds and resumes
+
+The API Interaction Log at the foot right of the Sim tab is Live's pane under
+Live's title with Live's `⏸  Pause API Log` toggle in both builds: read-only,
+the placeholder `API calls, responses, timing, data usage...`, no wrap, 2,000
+lines with the oldest dropped past that, and a pause buffer of 2,000. Each
+host holds an API log of its own, an `APIInteractionLog` built beside the two
+sources and read back through `api_log()`, and never the process-wide log the
+venue connectors write. The writer is Live's `_on_api_event`, forked over that
+log: one entry becomes Live's block, a stamped head line naming the exchange
+and the action, a Reason line, then Endpoint, Result, Response and Data usage
+where the entry holds them. A block arriving while Pause API Log is down is
+held, and Resume API Log draws the held blocks in the order they arrived under
+one line counting them. An entry recorded on any thread but the GUI thread is
+refused and written to the day's thread-violation file under the runtime log
+directory, as Live's writer does.
+
+`src/gui/simulator/sim_trading_tab.py` — the writer
+
+```python
+    def _on_api_event(self, entry: dict) -> None:
+        current = threading.current_thread().name
+        if tab_surface.api_event_off_thread(
+            entry, "SimTradingTab._on_api_event", current
+        ):
+            return
+        block_text = tab_surface.api_block(entry)
+        if self._api_log_paused:
+            buf = self._api_log_pause_buffer
+            buf.append(block_text)
+            cap = self._api_log_pause_buffer_cap
+            if len(buf) > cap:
+                del buf[: len(buf) - cap]
+            return
+        self._api_log_view.appendPlainText(block_text)
+```
+
+### The two logs
+
+The Sim's log and the venue log are two objects. A venue call the Live bots
+make is recorded on the process-wide log, whose one listener is the Live
+tab's writer, so it draws on Live's pane and cannot reach the Sim's. An entry
+recorded on `api_log()` reaches the Sim's writer alone. Nothing records into
+the Sim's log yet: a Stone Tablet retrieval or update and the YTD trade-file
+read are the two recorders the directive names, and each lands with its own
+unit.
+
+`src/gui/simulator/sim_trading_tab.py` — the log
+
+```python
+        self._api_log = api_log if api_log is not None else APIInteractionLog()
+        self._bot_manager = SimBotManager(self._fleet_source)
+        self._layer = surface.LAYER_INDICATORS
+        self._build()
+        self._api_log.add_listener(self._on_api_event)
+```
+
+### The block on the React page
+
+The React host's writer pushes each block to the page as one of `api_lines`
+on the tab method, and the host's own state appends it to its capped pane or
+holds it in its pause buffer, the way Live's page model does. The page draws
+the pane's blocks one line each and follows the newest while scrolled to the
+bottom. A block recorded before the page is built is drawn when the page
+opens, because the page's tab payload is built from the same state.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the writer
+
+```python
+        def _on_api_event(self, entry: dict) -> None:
+            current = threading.current_thread().name
+            if tab_surface.api_event_off_thread(
+                entry, "SimTradingTabReact._on_api_event", current
+            ):
+                return
+            self.show_tab({tab_surface.API_LINES_PARAM: [tab_surface.api_block(entry)]})
+```
+
+### The page's own Pause API Log press
+
+On the React page the Pause API Log press asks `api_paused` on the tab method,
+and the host answers through one call that pauses or resumes its buffer and
+sets the caption, the way the Qt toggle's handler does; a resume flushes the
+held blocks in order under the marker in the same push, and a second ask for
+the state already held changes nothing.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the press
+
+```python
+        def set_api_paused(self, paused: bool) -> bool:
+            wanted = bool(paused)
+            if wanted != self._state.api_buffer.paused:
+                self.show_tab({tab_surface.API_PAUSED_PARAM: wanted})
+            return self._state.api_buffer.paused
+```
+
+### Past the pause buffer's cap
+
+Past 2,000 held blocks the two builds part, and each follows its own side of
+Live. The Qt pane drops the oldest held block, so the flush ends on the newest
+entry; the React page keeps the first 2,000 and drops the newest, because the
+page model's buffer is Live's own `ApiPauseBuffer`, imported. The two rules
+are Live's two rules, and the Sim inherits whichever Live settles on.
+
+`src/gui/main_tabs/trading_tab_surface.py` — the page model's hold
+
+```python
+    def hold(self, line: Any) -> None:
+        """Keep one line for the flush, up to the cap."""
+        if len(self.lines) < self.cap:
+            self.lines.append("" if line is None else str(line))
+```
+
+### What the API spool reading measured
+
+The real window, both builds, a scratch sim fleet of one idle bot. The label,
+the toggle and the pane read the same three rectangles as Live's at 1400 and
+at the window's floor. One tablet-retrieval entry recorded on the Sim's log
+drew Live's six-line block on the Sim pane and nothing on Live's; Pause API
+Log then held two entries and drew nothing, and Resume API Log drew both in
+order under `--- (resumed; 2 buffered line(s) above) ---`, in both builds. One
+entry recorded on the process-wide log drew five lines on Live's pane and
+nothing on the Sim's; the same entry on the Sim's log drew on the Sim's. An
+entry recorded from a worker thread drew nothing and wrote one line naming the
+Sim's writer to the thread-violation file under the scratch home. Ten entries
+held under a pause flushed in order; 2,001 held under a pause kept 2,000, the
+Qt pane dropping the first and the React page dropping the last; 1,001 more
+two-line entries left the view at 2,000 blocks with the newest last. On the
+base commit no log existed for the Sim, nothing drew on its pane from any log,
+and the React page's press left the buffer running; on the branch it holds,
+flips the caption and flushes. `bot_state.json` hashed identical after every
+reading, and a byte planted into it moved the hash. No socket left loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

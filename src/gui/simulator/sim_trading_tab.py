@@ -25,12 +25,17 @@ Start, Pause, Stop, Restart and Delete reach ``_on_bot_command``, the window's
 handler forked over ``SimBotManager`` with no venue connect, which logs Live's
 lines, opens Live's Delete box, and fires ``fleet_changed`` on every state
 move. ``TabletSource`` and ``FleetSource`` are the tab's only sources, and
-neither answers a send.
+neither answers a send. The API Interaction Log is written by
+``_on_api_event``, the window's writer forked over the tab's own
+``APIInteractionLog``, never the process-wide ``get_api_log``: each entry
+recorded on ``api_log()`` draws Live's block, or is held while Pause API Log is
+down and flushed in order on Resume.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Optional
 
@@ -51,6 +56,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.sound_engine import get_sound_engine
+from ...exchange.api_logger import APIInteractionLog
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
@@ -133,6 +139,7 @@ class SimTradingTab(QWidget):
         tablet_source: Optional[TabletSource] = None,
         fleet_source: Optional[FleetSource] = None,
         parent: Optional[QWidget] = None,
+        api_log: Optional[APIInteractionLog] = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(ACCESSIBLE_NAME)
@@ -143,9 +150,11 @@ class SimTradingTab(QWidget):
             else TabletSource(surface.TABLET_ROOT)
         )
         self._fleet_source = fleet_source if fleet_source is not None else FleetSource()
+        self._api_log = api_log if api_log is not None else APIInteractionLog()
         self._bot_manager = SimBotManager(self._fleet_source)
         self._layer = surface.LAYER_INDICATORS
         self._build()
+        self._api_log.add_listener(self._on_api_event)
         self._indicator_panel.bot_selected.connect(self._feed_votes)
         self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
@@ -160,6 +169,10 @@ class SimTradingTab(QWidget):
     def fleet_source(self) -> FleetSource:
         """The fleet reader the tables are fed from."""
         return self._fleet_source
+
+    def api_log(self) -> APIInteractionLog:
+        """The tab's own API log; every entry recorded on it reaches the pane."""
+        return self._api_log
 
     def exchange_count(self) -> int:
         """How many venue sub-tabs ``add_exchange_tab`` has seated; EXCH reads it."""
@@ -406,7 +419,7 @@ class SimTradingTab(QWidget):
             "happening; the buffer just stops appending to the view. "
             "v3.15.67."
         )
-        # The pane's writer reads this flag; QPlainTextEdit has no SimStatusLog subclass.
+        # _on_api_event reads this flag; QPlainTextEdit has no SimStatusLog subclass.
         self._api_log_paused: bool = False
         self._api_log_pause_buffer: list[str] = []
         self._api_log_pause_buffer_cap: int = 2000
@@ -708,6 +721,30 @@ class SimTradingTab(QWidget):
         for text, level in lines:
             self._status_log.force_log(text, level)
             logger.log(logging.ERROR if level == "error" else logging.WARNING, text)
+
+    def _on_api_event(self, entry: dict) -> None:
+        """Append one ``api_log()`` entry to ``_api_log_view`` as Live's block,
+        refusing a call off the GUI thread; while ``_api_log_paused`` the
+        block goes to ``_api_log_pause_buffer``, the oldest dropped past its
+        cap, and the view follows its newest block when already at the bottom.
+        """
+        current = threading.current_thread().name
+        if tab_surface.api_event_off_thread(
+            entry, "SimTradingTab._on_api_event", current
+        ):
+            return
+        block_text = tab_surface.api_block(entry)
+        if self._api_log_paused:
+            buf = self._api_log_pause_buffer
+            buf.append(block_text)
+            cap = self._api_log_pause_buffer_cap
+            if len(buf) > cap:
+                del buf[: len(buf) - cap]
+            return
+        self._api_log_view.appendPlainText(block_text)
+        sb = self._api_log_view.verticalScrollBar()
+        if sb.value() >= sb.maximum() - 20:
+            sb.setValue(sb.maximum())
 
     def _on_bot_command(self, bot_id: str, command: str) -> None:
         """One command-bar press on ``bot_id``: the window's ``_on_bot_command``

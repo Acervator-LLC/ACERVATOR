@@ -10,17 +10,24 @@ watchdog and the API-log listener not carried, and ``replay_layer``,
 reads and the venues it has seated. ``ivp_feed`` and ``rate_snapshot`` are the
 voting panel's feed, read by both hosts; ``watchdog_lines`` is the Activity-Log
 watchdog's tick over the sim bots, run by both hosts every
-``WATCHDOG_INTERVAL_MS``.
+``WATCHDOG_INTERVAL_MS``. ``api_block`` and ``api_event_off_thread`` are the
+two halves of Live's ``_on_api_event`` both hosts run over their own
+``APIInteractionLog``: the block one entry draws on the API Interaction Log,
+and the refusal of an entry recorded off the GUI thread.
 """
 
 from __future__ import annotations
 
 import logging
+import time
+from datetime import datetime
 from typing import Any, Optional
 
+from ...core.log_paths import get_log_root
 from ...trading.container.config import BotState
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
+from ..main_tabs.main_window_surface import MAIN_THREAD_NAME, api_event_block
 from .sim_bot_status_table_surface import base_of, usd_rates
 
 logger = logging.getLogger("acervator.gui")
@@ -66,6 +73,19 @@ REPLAY_LAYER_PARAM = "replay_layer"
 #: method through ``setPaused``, and ``activity_paused`` on this method.
 LOG_PAUSED_PARAM = "paused"
 ACTIVITY_PAUSED_PARAM = "activity_paused"
+
+#: The Pause API Log press on the page asks ``api_paused`` on this method;
+#: each block the API log writer pushes arrives as one of ``api_lines``.
+API_PAUSED_PARAM = "api_paused"
+API_LINES_PARAM = "api_lines"
+
+#: The file under the runtime log directory an off-thread API entry is written
+#: to instead of the pane, one file per day, as Live's writer names it.
+THREAD_VIOLATION_FILE_FORMAT = "thread_violation_{day}.log"
+THREAD_VIOLATION_LINE_FORMAT = (
+    "[{now}] {handler} called on thread={current} (origin={origin}) "
+    "— REFUSED to avoid Qt qFatal. Entry action={action}.\n"
+)
 
 ACTIONS = {
     "layer.way_in_button.clicked": "way_in",
@@ -125,6 +145,46 @@ def watchdog_lines(
     lines one tick force-logs, the silence lines needing a running sim bot."""
     running = live.running_bots(bot.state for bot in bots)
     return live.watchdog_tick(state, stats, now, running, running > 0)
+
+
+def api_block(entry: dict) -> str:
+    """Live's ``api_event_block`` over ``entry``, stamped ``hh:mm:ss`` from
+    ``entry["timestamp"]`` in local time."""
+    stamp = time.strftime("%H:%M:%S", time.localtime(entry["timestamp"]))
+    return api_event_block(entry, stamp)
+
+
+def api_event_off_thread(entry: dict, handler: str, current: str) -> bool:
+    """Whether ``current`` is not ``MAIN_THREAD_NAME``; when it is not, one
+    ``THREAD_VIOLATION_LINE_FORMAT`` line naming ``handler`` is appended to
+    the day's ``THREAD_VIOLATION_FILE_FORMAT`` file under the runtime log
+    directory, or logged when that write fails."""
+    if current == MAIN_THREAD_NAME:
+        return False
+    origin = entry.get("_thread_name", "unknown")
+    now = datetime.now()
+    line = THREAD_VIOLATION_LINE_FORMAT.format(
+        now=now.isoformat(),
+        handler=handler,
+        current=current,
+        origin=origin,
+        action=entry.get("action"),
+    )
+    try:
+        log_path = get_log_root() / THREAD_VIOLATION_FILE_FORMAT.format(
+            day=now.strftime("%Y%m%d")
+        )
+        with open(log_path, "a", encoding="utf-8") as handle:
+            handle.write(line)
+    except OSError:
+        logger.exception(
+            "%s called on thread=%s (origin=%s) - REFUSED to avoid Qt qFatal; "
+            "the thread_violation log file could not be written",
+            handler,
+            current,
+            origin,
+        )
+    return True
 
 
 def card_button_name(action: str) -> str:
@@ -271,12 +331,12 @@ class SimTradingTabState:
     def view_model(self, params: Optional[dict] = None) -> dict:
         """Apply one request and return the tab payload."""
         asked = dict(params or {})
-        for line in asked.get("api_lines") or []:
+        for line in asked.get(API_LINES_PARAM) or []:
             if self.api_buffer.paused:
                 self.api_buffer.hold(line)
             else:
                 self.api_pane.append(line)
-        requested = asked.get("api_paused")
+        requested = asked.get(API_PAUSED_PARAM)
         if requested is not None:
             self.api_buffer.toggle(bool(requested), self.api_pane)
         if asked.get("activity_paused") is not None:
