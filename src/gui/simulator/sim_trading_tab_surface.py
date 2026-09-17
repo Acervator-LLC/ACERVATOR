@@ -92,6 +92,19 @@ def placeholder_hint_text(label: Any) -> str:
     return f"Load a {label} fleet to begin a run"
 
 
+#: The prefix ``_NotifyStub.notify`` puts on the line it writes.
+NOTIFICATION_PREFIX = "[notification] "
+
+
+def notification_line(*parts: Any) -> str:
+    """The Activity Log line ``_NotifyStub.notify`` writes for a window
+    notification, ``NOTIFICATION_PREFIX`` over ``parts`` joined by ``" | "``;
+    both Sim hosts hand it to their log's ``notice``."""
+    return NOTIFICATION_PREFIX + " | ".join(
+        str(one) for one in parts if one is not None
+    )
+
+
 def card_button_name(action: str) -> str:
     """The accessible name of the Get Started card's button that sends ``action``."""
     return sim.button_name(action) + "-card"

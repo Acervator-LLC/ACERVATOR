@@ -14,11 +14,14 @@ bot manager; ``add_exchange_tab`` seats one venue's own models, the fork of
 every ``fleet_changed`` first writes the sim fleet file through
 ``FleetSource.save``. ``SimTradingPage`` reads the page's asks off the console line the host script
 writes; ``run_action`` answers the flip, both bot tables' own asks and the
-venue page's ``+ New Bot``, so a row's Fire reaches ``_on_bot_fire``, a row's
-Detail on either table reaches ``_on_bot_detail``, which opens the Simulator's
-Bot Settings window through ``surface_class(SIM_BOT_DETAIL)`` over a
-``SimBotView``, and ``+ New Bot`` reaches ``_create_bot``, which opens
-``SimBotWizardReactDialog`` and hands its config to ``FleetSource.create``.
+venue page's ``+ New Bot`` and command bar, so a row's Fire reaches
+``_on_bot_fire``, a row's Detail on either table reaches ``_on_bot_detail``,
+which opens the Simulator's Bot Settings window through
+``surface_class(SIM_BOT_DETAIL)`` over a ``SimBotView``, ``+ New Bot`` reaches
+``_create_bot``, which opens ``SimBotWizardReactDialog`` and hands its config
+to ``FleetSource.create``, and Start, Pause, Stop, Restart and Delete reach
+``_on_bot_command``, the window's handler forked over ``SimBotManager`` with
+no venue connect, which fires ``fleet_changed`` on every state move.
 """
 
 from __future__ import annotations
@@ -27,11 +30,13 @@ import json
 import logging
 from typing import Any, Optional
 
+from ...core.sound_engine import get_sound_engine
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
     SendRefused,
 )
+from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource
 from ..main_tabs import bot_status_table_surface as scrum_surface
@@ -138,8 +143,12 @@ TABLE_PRESS_PARAMS: tuple[str, ...] = (
     scrum_surface.CELL_CLICK_PARAM,
 )
 
-#: The request field that carries the venue page's ``+ New Bot`` press.
-VENUE_PRESS_PARAMS: tuple[str, ...] = (venue_surface.live.NEW_BOT_PARAM,)
+#: The request fields that carry the venue page's ``+ New Bot`` press and its
+#: command-bar press.
+VENUE_PRESS_PARAMS: tuple[str, ...] = (
+    venue_surface.live.NEW_BOT_PARAM,
+    venue_surface.live.COMMAND_PARAM,
+)
 
 #: The ``action`` values that carry a press on the Extractor table.
 EXTRACTOR_PRESS_ACTIONS: tuple[str, ...] = (
@@ -455,6 +464,7 @@ class SimVenue:
         on_bot_clicked: Any = None,
         on_bot_fire: Any = None,
         on_new_bot: Any = None,
+        on_bot_cmd: Any = None,
     ) -> None:
         self.exchange_id = exchange_id
         self.exchange_name = exchange_name
@@ -465,6 +475,7 @@ class SimVenue:
             on_bot_clicked=on_bot_clicked,
             on_bot_fire=on_bot_fire,
             on_new_bot=on_new_bot,
+            on_bot_cmd=on_bot_cmd,
         )
         self.scrum = sim_scrum_surface.SimBotStatusTableModel(
             on_bot_clicked=self._scrum_detail,
@@ -504,11 +515,12 @@ class SimVenue:
         )
 
     def answer(self, method: str, params: dict) -> bool:
-        """Apply one press the page made on this venue's bot tables or its
-        ``+ New Bot``; a read ask carrying none of ``TABLE_PRESS_PARAMS``,
-        ``EXTRACTOR_PRESS_ACTIONS`` or ``VENUE_PRESS_PARAMS`` changes nothing."""
+        """Apply one press the page made on this venue's bot tables, its
+        ``+ New Bot`` or its command bar; a read ask carrying none of
+        ``TABLE_PRESS_PARAMS``, ``EXTRACTOR_PRESS_ACTIONS`` or
+        ``VENUE_PRESS_PARAMS`` changes nothing."""
         if method == venue_surface.METHOD:
-            if not any(params.get(name) for name in VENUE_PRESS_PARAMS):
+            if not any(params.get(name) is not None for name in VENUE_PRESS_PARAMS):
                 return False
             venue_surface.drive(self.screen, params)
             return True
@@ -743,6 +755,7 @@ if _HAS_WEBENGINE:
             self._fleet_source = (
                 fleet_source if fleet_source is not None else FleetSource()
             )
+            self._bot_manager = SimBotManager(self._fleet_source)
             self._theme = theme
             self._state = tab_surface.SimTradingTabState()
             self._log = status_log_surface.StatusLogModel()
@@ -857,10 +870,11 @@ if _HAS_WEBENGINE:
             self._venues[exchange_id] = SimVenue(
                 exchange_id,
                 display_name,
-                self._log,
+                self,
                 on_bot_clicked=self._on_bot_detail,
                 on_bot_fire=self._on_bot_fire,
                 on_new_bot=self._create_bot,
+                on_bot_cmd=self._on_bot_command,
             )
             self._state.seat(exchange_id, display_name)
             self._venue_published()
@@ -962,6 +976,94 @@ if _HAS_WEBENGINE:
                 self.show_log_call(
                     "log", f"Fire on {bot_id[:8]} failed: {exc}", "error"
                 )
+
+        def log(self, message: str, level: str = "info") -> None:
+            """One Activity Log line through ``show_log_call``, the ``log`` a
+            venue's ``ExchangeTabModel`` calls on its ``status_log``."""
+            self.show_log_call("log", message, level)
+
+        def _notify(self, message: str, level: str) -> None:
+            """Write the window notification's line, ``notification_line``, into
+            the Activity Log as a notice through ``show_log_call``."""
+            self.show_log_call("notice", tab_surface.notification_line(message, level))
+
+        def _on_bot_command(self, bot_id: str, command: str) -> None:
+            """One command-bar press on ``bot_id``: the window's
+            ``_on_bot_command`` forked over ``SimBotManager``, with no venue
+            connect, Live's Activity Log lines, Live's sounds and Live's Delete
+            box, and ``fleet_changed`` fired when the state moved or the record
+            left."""
+            bot = self._bot_manager.get_bot(bot_id)
+            if not bot:
+                self.log(f"Bot {bot_id} not found.", "error")
+                return
+
+            sound = get_sound_engine()
+            moved = False
+
+            if command == "start":
+                try:
+                    moved = self._bot_manager.start(bot_id) != bot.state
+                    self.log(f"✓ Bot {bot_id} RUNNING.", "success")
+                    self._notify(f"Bot {bot_id} RUNNING", "success")
+                    sound.play_state_change()
+                except Exception as exc:
+                    self.log(f"Failed to start bot {bot_id}: {exc}", "error")
+                    sound.play_error()
+
+            elif command == "pause":
+                self.log(f"Pausing bot {bot_id}...", "info")
+                try:
+                    moved = self._bot_manager.pause(bot_id) != bot.state
+                    self.log(f"Bot {bot_id} paused.", "warning")
+                    self._notify(f"Bot {bot_id} PAUSED", "warning")
+                    sound.play_state_change()
+                except Exception as exc:
+                    self.log(f"Failed to pause bot {bot_id}: {exc}", "error")
+
+            elif command == "stop":
+                self.log(f"Stopping bot {bot_id}...", "info")
+                try:
+                    moved = self._bot_manager.stop(bot_id) != bot.state
+                    self.log(f"Bot {bot_id} stopped.", "info")
+                    self._notify(f"Bot {bot_id} STOPPED", "info")
+                    sound.play_state_change()
+                except Exception as exc:
+                    self.log(f"Failed to stop bot {bot_id}: {exc}", "error")
+
+            elif command == "restart":
+                try:
+                    self._bot_manager.restart(bot_id)
+                    moved = True
+                    self.log(f"✓ Bot {bot_id} restarted.", "success")
+                    self._notify(f"Bot {bot_id} RESTARTED", "success")
+                    sound.play_state_change()
+                except Exception as exc:
+                    self.log(f"Failed to restart bot {bot_id}: {exc}", "error")
+                    sound.play_error()
+
+            elif command == "delete":
+                confirm = QMessageBox.question(
+                    self,
+                    "Delete Bot",
+                    f"Delete bot {bot_id}? This cannot be undone.",
+                    QMessageBox.Yes | QMessageBox.No,
+                )
+                if confirm == QMessageBox.Yes:
+                    try:
+                        self._bot_manager.stop(bot_id)
+                    except Exception as exc:
+                        self.log(
+                            f"Failed to stop bot {bot_id} before delete: {exc}.",
+                            "error",
+                        )
+                    moved = self._bot_manager.unregister(bot_id)
+                    self.log(f"Bot {bot_id} deleted.", "warning")
+                    self._notify(f"Bot {bot_id} DELETED", "warning")
+                    sound.play_state_change()
+
+            if moved:
+                self.fleet_changed.emit()
 
         def _on_bot_detail(self, bot_id: str) -> None:
             """Open ``_open_bot_detail`` on the next event-loop turn, after the
