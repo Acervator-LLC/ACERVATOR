@@ -1,26 +1,31 @@
 """The Simulator's fleet path: the live bot_state record, read only, and the
-bots the wizard creates, held in memory.
+bots the wizard creates, held in the sim fleet file under ``get_sim_dir``.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
-``exchanges``, ``symbols``, ``statuses``, ``aggregate`` and ``create`` from
-``bot_state.json`` and the records ``create`` holds. It holds no venue, writes
-no file and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
-other name. ``SimBot`` is a read-only record forked from the live bot's config,
-its stats and its saved state, never a ``ScrummingBot``; ``row_status`` answers
-one as the status dict the Scrumming Bots table and the Extractor Bots table
-read; ``live_fleet`` builds one per stored bot, ``ytd_fleet`` one per YTD trade
-file, and ``wizard_record`` the stored-record shape from the bot wizard's config.
+``exchanges``, ``symbols``, ``statuses``, ``aggregate``, ``create``, ``sim_dir``,
+``sim_path`` and ``save`` from ``bot_state.json`` and the records the sim fleet
+file holds; it holds no venue, writes ``sim_path`` alone and sends nothing, and
+``__getattr__`` raises ``SendRefused`` for every other name. ``SimBot`` is a
+read-only record forked from the live bot's config, its stats and its saved
+state, never a ``ScrummingBot``; ``row_status`` answers one as the status dict
+the Scrumming Bots table and the Extractor Bots table read; ``live_fleet``
+builds one per stored bot, ``ytd_fleet`` one per YTD trade file, and
+``wizard_record`` the stored-record shape from the bot wizard's config.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from ..core.io_utils import atomic_write_json
+from ..core.log_paths import get_sim_dir
 from ..trading.container.config import (
     BotMode,
     BotState,
@@ -32,6 +37,12 @@ from .tablet_source import SendRefused
 logger = logging.getLogger("acervator.simulator.fleet")
 
 BOT_STATE_NAME = "bot_state.json"
+
+#: The sim fleet file under ``get_sim_dir``, in ``bot_state.json``'s shape.
+SIM_FLEET_NAME = "sim_fleet.json"
+
+#: The ``saved_at_human`` format ``StateManager.save_state`` writes.
+SAVED_AT_HUMAN_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 #: Every name ``FleetSource`` answers. ``__getattr__`` refuses the rest.
 READ_NAMES = (
@@ -45,6 +56,9 @@ READ_NAMES = (
     "statuses",
     "aggregate",
     "create",
+    "sim_dir",
+    "sim_path",
+    "save",
 )
 
 LIVE_ORIGIN = "live"
@@ -417,14 +431,64 @@ def row_status(bot: SimBot) -> dict:
     return status
 
 
+def _read_sim_records(path: Path) -> dict[str, dict]:
+    """The ``bots`` map of the sim fleet file at ``path``, by ``bot_id``.
+
+    An absent or empty file answers no records and logs nothing; a file that
+    is not a JSON object holding a ``bots`` object logs one warning naming
+    ``path`` and answers no records.
+    """
+    if not path.exists():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("sim fleet file %s unreadable: %s", path, exc)
+        return {}
+    if not text.strip():
+        return {}
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError as exc:
+        logger.warning("sim fleet file %s malformed: %s", path, exc)
+        return {}
+    stored = loaded.get("bots") if isinstance(loaded, dict) else None
+    if not isinstance(stored, dict):
+        logger.warning("sim fleet file %s malformed: no bots object", path)
+        return {}
+    records = {
+        str(bot_id): record
+        for bot_id, record in stored.items()
+        if bot_id and isinstance(record, dict)
+    }
+    unread = [
+        bot_id
+        for bot_id, record in records.items()
+        if _sim_bot_from_record(bot_id, record, origin=NEW_ORIGIN) is None
+    ]
+    if unread:
+        logger.warning(
+            "sim fleet file %s: %d record(s) name no symbol and are not drawn: %s",
+            path,
+            len(unread),
+            ", ".join(unread),
+        )
+    return records
+
+
 class FleetSource:
     """The live fleet on disk, as ``SimBot`` records read from
-    ``bot_state.json``, beside the records ``create`` holds."""
+    ``bot_state.json``, beside the records the sim fleet file holds."""
 
-    def __init__(self, root: Optional[Path] = None) -> None:
-        """Read from ``root``, or from ``~/.acervator`` when it is None."""
+    def __init__(
+        self, root: Optional[Path] = None, sim_dir: Optional[Path] = None
+    ) -> None:
+        """Read ``bot_state.json`` from ``root``, or from ``~/.acervator`` when
+        it is None, and the sim fleet file from ``sim_dir``, or from
+        ``get_sim_dir`` when it is None."""
         self._root = Path(root) if root is not None else Path.home() / ".acervator"
-        self._created: list[SimBot] = []
+        self._sim_dir = Path(sim_dir) if sim_dir is not None else get_sim_dir()
+        self._records: dict[str, dict] = _read_sim_records(self.sim_path())
 
     def root(self) -> Path:
         """The directory holding the ``bot_state.json`` this source reads."""
@@ -433,6 +497,14 @@ class FleetSource:
     def path(self) -> Path:
         """The ``bot_state.json`` file itself."""
         return self._root / BOT_STATE_NAME
+
+    def sim_dir(self) -> Path:
+        """The directory holding the sim fleet file, ``get_sim_dir`` by default."""
+        return self._sim_dir
+
+    def sim_path(self) -> Path:
+        """The sim fleet file, ``SIM_FLEET_NAME`` under ``sim_dir``."""
+        return self._sim_dir / SIM_FLEET_NAME
 
     def _state(self) -> dict:
         path = self.path()
@@ -450,10 +522,14 @@ class FleetSource:
         return str(self._state().get("saved_at_human") or "")
 
     def bots(self) -> list[SimBot]:
-        """Every stored bot and every created bot as a ``SimBot``, by
-        exchange_id then symbol."""
+        """Every bot the sim fleet file holds and every stored bot as a
+        ``SimBot``, by exchange_id then symbol."""
+        out: list[SimBot] = []
+        for bot_id, record in self._records.items():
+            bot = _sim_bot_from_record(bot_id, record, origin=NEW_ORIGIN)
+            if bot is not None:
+                out.append(bot)
         stored = self._state().get("bots")
-        out: list[SimBot] = list(self._created)
         if isinstance(stored, dict):
             for bot_id, record in stored.items():
                 if not isinstance(record, dict):
@@ -464,17 +540,38 @@ class FleetSource:
         return sorted(out, key=lambda one: (one.exchange_id, one.symbol, one.bot_id))
 
     def create(self, config: dict) -> SimBot:
-        """Hold one ``SimBot`` built from the bot wizard's config through
-        ``wizard_record`` and answer it; its ``bot_id`` is the first
+        """Hold one record built from the bot wizard's config through
+        ``wizard_record`` and answer its ``SimBot``; its ``bot_id`` is the first
         ``BOT_ID_LENGTH`` characters of a ``uuid4``, as a live bot draws its own.
         """
         record = wizard_record(config)
         bot_id = str(uuid.uuid4())[:BOT_ID_LENGTH]
+        record["bot_id"] = bot_id
         bot = _sim_bot_from_record(bot_id, record, origin=NEW_ORIGIN)
         if bot is None:
             raise ValueError("the wizard config names no symbol")
-        self._created.append(bot)
+        self._records[bot_id] = record
         return bot
+
+    def save(self) -> Optional[Path]:
+        """Write the held records to ``sim_path`` through ``atomic_write_json``
+        under ``saved_at``, ``saved_at_human``, ``bot_count`` and ``bots``, the
+        keys ``StateManager.save_state`` writes; answers the path, or None when
+        the write fails."""
+        payload = {
+            "saved_at": time.time(),
+            "saved_at_human": datetime.now().strftime(SAVED_AT_HUMAN_FORMAT),
+            "bot_count": len(self._records),
+            "bots": dict(self._records),
+        }
+        path = self.sim_path()
+        try:
+            atomic_write_json(path, payload, indent=2, default=str)
+        except (OSError, TypeError, ValueError) as exc:
+            logger.error("sim fleet save failed: %s: %s", path, exc)
+            return None
+        logger.info("sim fleet saved: %d bots to %s", len(self._records), path)
+        return path
 
     def bot_for(self, bot_id: str) -> Optional[SimBot]:
         """The ``SimBot`` whose ``bot_id`` is ``bot_id``, or None."""
@@ -586,7 +683,9 @@ __all__ = [
     "POOL_YELLOW",
     "PRE_TICK_AUTO_FIRE",
     "READ_NAMES",
+    "SAVED_AT_HUMAN_FORMAT",
     "SCRUMMING_MODE",
+    "SIM_FLEET_NAME",
     "YTD_ORIGIN",
     "FleetSource",
     "SendRefused",

@@ -786,6 +786,118 @@ nothing: no name is asked of the fleet source and no line is written.
 ```
 
 
+## The Simulator keeps its own fleet file
+
+A bot created through the Simulator's wizard survives a restart, in both
+builds. The tab's fleet source writes one file of its own, `sim_fleet.json`,
+under the `sim` bucket of the log root, the directory every Simulator write
+lands in. Every `fleet_changed` writes it first, before the venues re-seat
+and the tables redraw, and the tab build reads it once. The write goes
+through the same helper the live process writes `bot_state.json` with, so a
+crash mid-write leaves the previous file whole. The section "A created bot
+is not persisted" above describes the tab before this file existed; its last
+sentence, that nothing writes `bot_state.json`, stays true.
+
+`src/core/log_paths.py` — the bucket
+
+```python
+def get_sim_dir() -> Path:
+    """``sim/`` bucket — every file the Simulator writes.
+
+    ``src.simulator.fleet_source.FleetSource`` keeps the sim fleet file
+    here; ``~/.acervator/bot_state.json`` is never written from the
+    Simulator.
+    """
+    p = _LOG_ROOT / "sim"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+```
+
+`src/gui/simulator/sim_trading_tab.py` — the write hangs on the signal
+
+```python
+        self.fleet_changed.connect(self._fleet_source.save)
+        self.fleet_changed.connect(self._sync_exchange_tabs)
+        self._sync_exchange_tabs()
+```
+
+```mermaid
+flowchart LR
+    finish[Finish in the wizard] --> create[FleetSource.create]
+    create --> changed[fleet_changed]
+    changed --> save[FleetSource.save]
+    save --> file[sim_fleet.json under the sim bucket]
+    changed --> rows[refresh_bots]
+    launch[the next launch] --> build[tab build]
+    build --> read[FleetSource reads sim_fleet.json]
+    read --> bots[FleetSource.bots]
+    bots --> rows
+```
+
+### What the file holds
+
+The file carries `saved_at`, `saved_at_human`, `bot_count` and `bots`, the
+keys the live state file carries less the smart-wire lists the Simulator has
+none of. Each entry under `bots` is the per-bot record the live process
+writes, `config`, `stats`, `scrumming_state`, `state_when_saved` and
+`bot_id`, so the one record reader that maps a stored live bot to a row maps
+a stored sim bot the same way. The file holds the wizard's bots and nothing
+of the live fleet; the live read stays beside it until Import Live Fleet
+gates it.
+
+`src/simulator/fleet_source.py` — the write
+
+```python
+    def save(self) -> Optional[Path]:
+        payload = {
+            "saved_at": time.time(),
+            "saved_at_human": datetime.now().strftime(SAVED_AT_HUMAN_FORMAT),
+            "bot_count": len(self._records),
+            "bots": dict(self._records),
+        }
+        path = self.sim_path()
+        try:
+            atomic_write_json(path, payload, indent=2, default=str)
+        except (OSError, TypeError, ValueError) as exc:
+            logger.error("sim fleet save failed: %s: %s", path, exc)
+            return None
+```
+
+### Absent, empty, malformed
+
+An absent file, or one holding no bytes, gives no sim bots and no log line.
+A file that is not a JSON object holding a `bots` object gives no sim bots
+and one warning line naming the file, and the tab builds. A record that
+names no symbol is kept in the file, is not drawn, and is named in one
+warning line at build, as the live state file carries forward a record it
+did not load.
+
+`src/simulator/fleet_source.py` — the read
+
+```python
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError as exc:
+        logger.warning("sim fleet file %s malformed: %s", path, exc)
+        return {}
+    stored = loaded.get("bots") if isinstance(loaded, dict) else None
+    if not isinstance(stored, dict):
+        logger.warning("sim fleet file %s malformed: no bots object", path)
+        return {}
+```
+
+Driven in the real window in both builds with a scratch home: a bot created
+through the wizard was read off the file with the typed symbol, target,
+timeframe and interval, and the second process drew its row with those
+values; `bot_state.json` hashed the same before and after every step, and a
+write planted into its path from the sim side moved the hash, so the
+comparison can report. The file removed drew the live row alone with no
+warning; the file overwritten with text that is not JSON drew the live row
+alone with one warning naming it; a file holding one readable record and one
+that names no symbol drew the readable one and named the other.
+
+
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
