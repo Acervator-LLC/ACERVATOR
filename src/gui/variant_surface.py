@@ -28,6 +28,7 @@ MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
 PAPER_TRADER = "Paper"
 SETTINGS_DIALOG = "Settings dialog"
+SIM_BOT_WIZARD = "Simulator bot creation wizard"
 SIMULATOR = "Sim"
 SPENDABLE_PROFITS = "Spendable profits"
 START_ALL_PROGRESS = "Start All progress dialog"
@@ -333,6 +334,20 @@ def _react_bot_wizard() -> type:
     return BotWizardReactDialog
 
 
+def _qt_sim_bot_wizard() -> type:
+    """Import and return the Qt Simulator bot creation wizard."""
+    from .simulator.sim_bot_wizard import SimBotCreationWizard
+
+    return SimBotCreationWizard
+
+
+def _react_sim_bot_wizard() -> type:
+    """Import and return the React Simulator bot creation wizard."""
+    from .simulator.sim_react_bot_wizard import SimBotWizardReactDialog
+
+    return SimBotWizardReactDialog
+
+
 def _qt_buy_confirmation() -> type:
     """Import and return the Qt buy confirmation dialog."""
     from .buy_confirmation_dialog import BuyConfirmationDialog
@@ -367,3 +382,4 @@ register(TRADING, _qt_trading, _react_trading)
 register(CHARTS, _qt_charts, _react_charts)
 register(EXCHANGE, _qt_exchange, _react_exchange)
 register(BOT_WIZARD, _qt_bot_wizard, _react_bot_wizard)
+register(SIM_BOT_WIZARD, _qt_sim_bot_wizard, _react_sim_bot_wizard)

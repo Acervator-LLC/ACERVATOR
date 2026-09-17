@@ -12,9 +12,11 @@ bot manager; ``add_exchange_tab`` seats one venue's own models, the fork of
 ``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, and
 ``refresh_bots`` hands each ``SimVenue`` its rows from ``FleetSource.statuses``.
 ``SimTradingPage`` reads the page's asks off the console line the host script
-writes; ``run_action`` answers the flip and the bot table's own asks, so a
-row's Fire reaches ``_on_bot_fire`` and a row's Detail reaches
-``_on_bot_detail``.
+writes; ``run_action`` answers the flip, the bot table's own asks and the
+venue page's ``+ New Bot``, so a row's Fire reaches ``_on_bot_fire``, a row's
+Detail reaches ``_on_bot_detail``, and ``+ New Bot`` reaches ``_create_bot``,
+which opens ``SimBotWizardReactDialog`` and hands its config to
+``FleetSource.create``.
 """
 
 from __future__ import annotations
@@ -23,7 +25,12 @@ import json
 import logging
 from typing import Any, Optional
 
-from ...simulator.fleet_source import FleetSource, SendRefused, row_status
+from ...simulator.fleet_source import (
+    EXTRACTOR_MODE,
+    FleetSource,
+    SendRefused,
+    row_status,
+)
 from ...simulator.tablet_source import TabletSource
 from ..main_tabs import bot_status_table_surface as scrum_surface
 from ..main_tabs import design_system_surface as token_surface
@@ -37,15 +44,17 @@ from ..main_tabs.trading_tab_surface import (
 )
 from ..react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from ..react_main_window import read_renderer_asset
+from ..variant_surface import SIM_BOT_WIZARD, surface_class
 from . import sim_bot_status_table_surface as sim_scrum_surface
+from . import sim_bot_wizard_surface as wizard_surface
 from . import sim_exchange_tab_surface as venue_surface
 from . import sim_trading_tab_surface as tab_surface
 
 try:
-    from PySide6.QtCore import Signal
+    from PySide6.QtCore import QTimer, Signal
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
-    from PySide6.QtWidgets import QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QMessageBox, QVBoxLayout, QWidget
 
     from .sim_bot_detail import SimBotDetailDialog
 
@@ -128,6 +137,9 @@ TABLE_PRESS_PARAMS: tuple[str, ...] = (
     scrum_surface.HEADER_CLICK_PARAM,
     scrum_surface.CELL_CLICK_PARAM,
 )
+
+#: The request field that carries the venue page's ``+ New Bot`` press.
+VENUE_PRESS_PARAMS: tuple[str, ...] = (venue_surface.live.NEW_BOT_PARAM,)
 
 #: The request fields a venue module names its exchange under.
 VENUE_KEYS: tuple[str, ...] = (
@@ -436,6 +448,7 @@ class SimVenue:
         status_log: Any = None,
         on_bot_clicked: Any = None,
         on_bot_fire: Any = None,
+        on_new_bot: Any = None,
     ) -> None:
         self.exchange_id = exchange_id
         self.exchange_name = exchange_name
@@ -445,6 +458,7 @@ class SimVenue:
             status_log,
             on_bot_clicked=on_bot_clicked,
             on_bot_fire=on_bot_fire,
+            on_new_bot=on_new_bot,
         )
         self.scrum = sim_scrum_surface.SimBotStatusTableModel(
             on_bot_clicked=self._scrum_detail,
@@ -482,8 +496,14 @@ class SimVenue:
         )
 
     def answer(self, method: str, params: dict) -> bool:
-        """Apply one press the page made on this venue's bot table; a read ask
-        carrying none of ``TABLE_PRESS_PARAMS`` changes nothing."""
+        """Apply one press the page made on this venue's bot table or its
+        ``+ New Bot``; a read ask carrying none of ``TABLE_PRESS_PARAMS`` or
+        ``VENUE_PRESS_PARAMS`` changes nothing."""
+        if method == venue_surface.METHOD:
+            if not any(params.get(name) for name in VENUE_PRESS_PARAMS):
+                return False
+            venue_surface.drive(self.screen, params)
+            return True
         if method != SCRUM_METHOD:
             return False
         if not any(params.get(name) is not None for name in TABLE_PRESS_PARAMS):
@@ -498,6 +518,15 @@ class SimVenue:
         )
         self.screen.select_scrum_row(row)
         self.screen.scrum_clicked(bot_id)
+
+
+def venue_of_ask(method: str, params: dict) -> str:
+    """The exchange one ask names: the venue page keys it ``exchange_id``
+    (``venue_surface.live.EXCHANGE_ID_PARAM``), the bot table ``for_exchange``
+    (``sim_scrum_surface.venue_of``)."""
+    if method == venue_surface.METHOD:
+        return str(params.get(venue_surface.live.EXCHANGE_ID_PARAM) or "")
+    return sim_scrum_surface.venue_of(params)
 
 
 def venue_models(venues: Any) -> dict:
@@ -805,6 +834,7 @@ if _HAS_WEBENGINE:
                 self._log,
                 on_bot_clicked=self._on_bot_detail,
                 on_bot_fire=self._on_bot_fire,
+                on_new_bot=self._create_bot,
             )
             self._state.seat(exchange_id, display_name)
             self._venue_published()
@@ -820,6 +850,82 @@ if _HAS_WEBENGINE:
                 handed += len(statuses)
             self._venue_published()
             return handed
+
+        def _create_bot(
+            self,
+            exchange_id: str = "",
+            defaults_override: Optional[dict] = None,
+        ) -> None:
+            """Open ``_open_bot_wizard`` on the next event-loop turn, after the
+            page's console callback that carried the press has returned.
+
+            A ``QWebEngineView`` opened inside another page's console callback
+            never finishes loading; one turn later it loads.
+            """
+            QTimer.singleShot(
+                0, lambda: self._open_bot_wizard(exchange_id, defaults_override)
+            )
+
+        def _open_bot_wizard(
+            self,
+            exchange_id: str = "",
+            defaults_override: Optional[dict] = None,
+        ) -> None:
+            """Open the Simulator's Bot Creation Wizard over the seated venues,
+            the stored defaults and the tablet market table; on Finish hand its
+            config to ``FleetSource.create`` and fire ``fleet_changed``.
+
+            The window's ``_create_bot``, forked: no pre-flight, no
+            ``ScrummingBot``, no bot manager. ``defaults_override`` merges over
+            the stored defaults.
+            """
+            self.show_log_call(
+                "log", wizard_surface.OPENING_FORMAT.format(exchange_id=exchange_id)
+            )
+            wizard_class = surface_class(SIM_BOT_WIZARD)
+            exchanges = wizard_surface.seated_exchanges(
+                layer_exchanges(self._state.exchanges)[ALIAS_LAYER]
+            )
+            defaults = wizard_surface.stored_defaults()
+            if defaults_override:
+                defaults = {**defaults, **defaults_override}
+            markets = wizard_surface.tablet_markets(self._tablet_source)
+            wizard = wizard_class(
+                exchanges, defaults, self, theme=self._theme, markets=markets
+            )
+            if wizard.exec() != wizard.DialogCode.Accepted:
+                self.show_log_call("log", wizard_surface.CANCELLED_TEXT, "warning")
+                return
+            config = wizard.get_bot_config()
+            logger.info("Sim bot creation config: %s", config)
+            if config.get("mode") == EXTRACTOR_MODE:
+                reason = wizard_surface.extractor_parent_refusal(
+                    self._fleet_source.bots(),
+                    str(config.get("base_currency") or ""),
+                    str(config.get("exchange_id") or exchange_id),
+                )
+                if reason is not None:
+                    QMessageBox.critical(
+                        self,
+                        wizard_surface.REFUSAL_TITLE,
+                        wizard_surface.REFUSAL_BOX_FORMAT.format(reason=reason),
+                    )
+                    self.show_log_call(
+                        "log",
+                        wizard_surface.REFUSED_FORMAT.format(reason=reason),
+                        "error",
+                    )
+                    return
+            try:
+                bot = self._fleet_source.create(config)
+            except (ValueError, TypeError) as exc:
+                self.show_log_call(
+                    "log", wizard_surface.REJECTED_FORMAT.format(error=exc), "error"
+                )
+                logger.error("Sim bot creation rejected: %s", exc)
+                return
+            self.show_log_call("log", wizard_surface.created_line(bot), "success")
+            self.fleet_changed.emit()
 
         def _on_bot_fire(self, bot_id: str) -> None:
             """Manual Fire on a sim bot: ask ``FleetSource`` to ``fire`` and log the
@@ -916,8 +1022,8 @@ if _HAS_WEBENGINE:
                     self.show_layer(str(layer))
             elif method == PANEL_METHOD and params.get("action") == "flip_layer":
                 self.flip_layer()
-            elif method == SCRUM_METHOD:
-                venue = self._venues.get(sim_scrum_surface.venue_of(params))
+            elif method in (SCRUM_METHOD, venue_surface.METHOD):
+                venue = self._venues.get(venue_of_ask(method, params))
                 if venue is not None and venue.answer(method, params):
                     self._venue_published()
 

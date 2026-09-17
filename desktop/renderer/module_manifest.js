@@ -78,4 +78,5 @@ window.ACERVATOR_MODULES = [
   "sim_status_log.js",
   "sim_table_cells.js",
   "sim_trading_tab.js",
+  "sim_bot_wizard.js",
 ];

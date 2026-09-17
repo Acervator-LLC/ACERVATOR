@@ -1,23 +1,32 @@
-"""The Simulator's fleet path: the live bot_state record, read only.
+"""The Simulator's fleet path: the live bot_state record, read only, and the
+bots the wizard creates, held in memory.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
-``exchanges``, ``symbols``, ``statuses`` and ``aggregate`` from
-``bot_state.json``. It holds no venue and defines no write, and ``__getattr__``
-raises ``SendRefused`` for every other name. ``SimBot`` is a read-only record
-forked from the live bot's config, its stats and its saved state, never a
-``ScrummingBot``; ``row_status`` answers one as the status dict the Scrumming
-Bots table reads; ``live_fleet`` builds one per stored bot and ``ytd_fleet``
-builds one per YTD trade file.
+``exchanges``, ``symbols``, ``statuses``, ``aggregate`` and ``create`` from
+``bot_state.json`` and the records ``create`` holds. It holds no venue, writes
+no file and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
+other name. ``SimBot`` is a read-only record forked from the live bot's config,
+its stats and its saved state, never a ``ScrummingBot``; ``row_status`` answers
+one as the status dict the Scrumming Bots table reads; ``live_fleet`` builds
+one per stored bot, ``ytd_fleet`` one per YTD trade file, and ``wizard_record``
+the stored-record shape from the bot wizard's config.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+import uuid
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from ..trading.container.config import (
+    BotMode,
+    BotState,
+    bot_config_kwargs,
+    make_bot_config,
+)
 from .tablet_source import SendRefused
 
 logger = logging.getLogger("acervator.simulator.fleet")
@@ -35,12 +44,18 @@ READ_NAMES = (
     "symbols",
     "statuses",
     "aggregate",
+    "create",
 )
 
 LIVE_ORIGIN = "live"
 YTD_ORIGIN = "ytd"
+NEW_ORIGIN = "new"
 
 SCRUMMING_MODE = "scrumming"
+EXTRACTOR_MODE = "extractor"
+
+#: The characters of ``uuid4`` a live bot keeps as its ``bot_id``.
+BOT_ID_LENGTH = 8
 
 #: What a live bot's ``get_status`` answers for ``auto_fire`` before its first
 #: tick; a stored record holds no gate state, so every sim row reads this.
@@ -144,7 +159,9 @@ def _lots_units(lots: Any) -> float:
     return sum(_number(lot.get("units"), 0.0) for lot in lots if isinstance(lot, dict))
 
 
-def _sim_bot_from_record(bot_id: str, record: dict) -> Optional[SimBot]:
+def _sim_bot_from_record(
+    bot_id: str, record: dict, origin: str = LIVE_ORIGIN
+) -> Optional[SimBot]:
     """One ``SimBot`` from a stored bot record, or None when it names no
     symbol.
 
@@ -168,7 +185,7 @@ def _sim_bot_from_record(bot_id: str, record: dict) -> Optional[SimBot]:
         symbol=symbol,
         exchange_id=str(config.get("exchange_id") or ""),
         base_currency=str(config.get("base_currency") or ""),
-        origin=LIVE_ORIGIN,
+        origin=origin,
         target_usd=config_target,
         ta_timeframe=str(config.get("ta_timeframe") or ""),
         scrumming_interval_pct=_number(config.get("scrumming_interval_pct"), 0.0),
@@ -217,6 +234,34 @@ def _sim_bot_from_record(bot_id: str, record: dict) -> Optional[SimBot]:
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
     )
+
+
+def wizard_record(config: dict) -> dict:
+    """The stored-record shape ``get_full_state`` writes, built from the bot
+    wizard's ``get_bot_config`` dict through ``bot_config_kwargs`` and
+    ``make_bot_config``, with ``state_when_saved`` idle and no stats.
+
+    ``make_bot_config`` raises ``ValueError`` on a mode-foreign key or a bad
+    shape and ``TypeError`` on a value a ``BotConfig`` field cannot hold.
+    """
+    collected = dict(config or {})
+    mode = (
+        BotMode.EXTRACTOR
+        if collected.get("mode") == EXTRACTOR_MODE
+        else BotMode.SCRUMMING
+    )
+    kwargs = bot_config_kwargs(
+        mode, collected, exchange_id=str(collected.get("exchange_id") or "")
+    )
+    built = make_bot_config(mode, **kwargs)
+    stored = asdict(built)
+    stored["mode"] = built.mode.value
+    return {
+        "config": stored,
+        "stats": {},
+        "scrumming_state": {},
+        "state_when_saved": BotState.IDLE.value,
+    }
 
 
 def row_status(bot: SimBot) -> dict:
@@ -273,11 +318,12 @@ def row_status(bot: SimBot) -> dict:
 
 class FleetSource:
     """The live fleet on disk, as ``SimBot`` records read from
-    ``bot_state.json``."""
+    ``bot_state.json``, beside the records ``create`` holds."""
 
     def __init__(self, root: Optional[Path] = None) -> None:
         """Read from ``root``, or from ``~/.acervator`` when it is None."""
         self._root = Path(root) if root is not None else Path.home() / ".acervator"
+        self._created: list[SimBot] = []
 
     def root(self) -> Path:
         """The directory holding the ``bot_state.json`` this source reads."""
@@ -303,18 +349,31 @@ class FleetSource:
         return str(self._state().get("saved_at_human") or "")
 
     def bots(self) -> list[SimBot]:
-        """Every stored bot as a ``SimBot``, by exchange_id then symbol."""
+        """Every stored bot and every created bot as a ``SimBot``, by
+        exchange_id then symbol."""
         stored = self._state().get("bots")
-        if not isinstance(stored, dict):
-            return []
-        out: list[SimBot] = []
-        for bot_id, record in stored.items():
-            if not isinstance(record, dict):
-                continue
-            bot = _sim_bot_from_record(bot_id, record)
-            if bot is not None:
-                out.append(bot)
+        out: list[SimBot] = list(self._created)
+        if isinstance(stored, dict):
+            for bot_id, record in stored.items():
+                if not isinstance(record, dict):
+                    continue
+                bot = _sim_bot_from_record(bot_id, record)
+                if bot is not None:
+                    out.append(bot)
         return sorted(out, key=lambda one: (one.exchange_id, one.symbol, one.bot_id))
+
+    def create(self, config: dict) -> SimBot:
+        """Hold one ``SimBot`` built from the bot wizard's config through
+        ``wizard_record`` and answer it; its ``bot_id`` is the first
+        ``BOT_ID_LENGTH`` characters of a ``uuid4``, as a live bot draws its own.
+        """
+        record = wizard_record(config)
+        bot_id = str(uuid.uuid4())[:BOT_ID_LENGTH]
+        bot = _sim_bot_from_record(bot_id, record, origin=NEW_ORIGIN)
+        if bot is None:
+            raise ValueError("the wizard config names no symbol")
+        self._created.append(bot)
+        return bot
 
     def bot_for(self, bot_id: str) -> Optional[SimBot]:
         """The ``SimBot`` whose ``bot_id`` is ``bot_id``, or None."""
@@ -414,9 +473,12 @@ def ytd_fleet(source, exchange_id: str = "") -> list[SimBot]:
 
 
 __all__ = [
+    "BOT_ID_LENGTH",
     "BOT_STATE_NAME",
     "EMPTY_AGGREGATE",
+    "EXTRACTOR_MODE",
     "LIVE_ORIGIN",
+    "NEW_ORIGIN",
     "PRE_TICK_AUTO_FIRE",
     "READ_NAMES",
     "SCRUMMING_MODE",
@@ -427,5 +489,6 @@ __all__ = [
     "exchange_choice",
     "live_fleet",
     "row_status",
+    "wizard_record",
     "ytd_fleet",
 ]
