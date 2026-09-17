@@ -1,15 +1,18 @@
-"""The Simulator's bot detail window, forked from ``bot_live_settings``.
+"""The Simulator's Bot Settings window, forked from ``bot_live_settings``.
 
-``SimBotDetailDialog`` is the frame of ``BotLiveSettingsDialog`` under the
-Simulator's name over one ``SimBot`` and the ``row_status`` its row was drawn
-from: the title, the header with the pair, the mode and the state badge, Prev
-and Next over ``sibling_ids``, the Status tab of ``StatusTabMixin`` over that
-status, and Close. It edits nothing and holds no bot manager; the six tabs
-that read a live bot's runtime state are not forked.
+``SimBotDetailDialog`` is ``BotLiveSettingsDialog`` under the Simulator's name
+over one ``SimBotView``: the title, the header with the pair, the mode and the
+state badge, Prev and Next over ``sibling_ids``, the tabs Live gives the
+bot's mode from the seven forked mixins, Apply Changes, Close and the
+pending-change line. ``_mark_changed`` records an edit as Live records it;
+``_apply_changes`` asks the view for every pending field, and the view raises
+``SendRefused`` for each, so the pending line reads ``refused_text`` and
+nothing is written.
 """
 
 from __future__ import annotations
 
+import logging
 import time
 
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
@@ -28,7 +31,8 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.fmt import fmt_price
-from ...simulator.fleet_source import SimBot
+from ...simulator.sim_bot_view import SimBotView
+from ...simulator.tablet_source import SendRefused
 from .. import design_system as ds
 from ..main_tabs import bot_live_settings_surface as surface
 from ..main_tabs.live_status_tab_surface import (
@@ -36,8 +40,21 @@ from ..main_tabs.live_status_tab_surface import (
     money_color,
     realised_tooltip,
 )
+from . import sim_bot_live_settings_surface as sim_surface
+from .sim_bot_swarm_tab import SimBotSwarmTabMixin
+from .sim_fold_tranches_tab import SimFoldTranchesTabMixin
+from .sim_market_inspector_tab import SimMarketInspectorTabMixin
+from .sim_phantom_bots_tab import SimPhantomBotsTabMixin
+from .sim_positions_held_tab import SimPositionsHeldTabMixin
+from .sim_settings_tab import SimSettingsTabMixin
+from .sim_stack_tranches_tab import SimStackTranchesTabMixin
+
+logger = logging.getLogger(surface.LOGGER_NAME)
 
 ACCESSIBLE_NAME = "Sim Bot Detail"
+
+#: Written when the window opens: the bot, the tab count and the tab names.
+OPENED_LOG = "Sim Bot Settings opened for %s: %d tab(s): %s"
 
 PENDING_TEXT = "— (refresh pending)"
 PENDING_TIP = "No exchange figures are stored for this bot."
@@ -45,35 +62,51 @@ NO_PRICE_TEXT = "—"
 LAST_ERROR_MAX_CHARS = 80
 
 
-class SimBotDetailDialog(QDialog):
-    """Live's Bot Settings frame over one ``SimBot``, read only."""
+class SimBotDetailDialog(
+    SimBotSwarmTabMixin,
+    SimFoldTranchesTabMixin,
+    SimMarketInspectorTabMixin,
+    SimPhantomBotsTabMixin,
+    SimPositionsHeldTabMixin,
+    SimSettingsTabMixin,
+    SimStackTranchesTabMixin,
+    QDialog,
+):
+    """Live's Bot Settings window over one ``SimBotView``; every write refused."""
+
+    _fold_sort_key: str = surface.FOLD_SORT_QUEUE_ORDER
 
     def __init__(
         self,
-        bot: SimBot,
-        status: dict,
+        bot: SimBotView,
         sibling_ids: list,
         parent: QWidget | None = None,
+        rates: dict | None = None,
     ) -> None:
         super().__init__(parent)
         self._bot = bot
-        self._status = dict(status)
+        self._bm = None
+        self._status = dict(bot.get_status())
         self._sibling_ids = [str(one) for one in sibling_ids]
+        self._denom_rates = dict(rates or {})
+        self._changes: dict = {}
         # The host reads this after exec() returns, as the window does.
         self._pending_navigate_to: str | None = None
         self.setAccessibleName(ACCESSIBLE_NAME)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        """Build the header, the Status tab and the footer."""
+        """Build the header, the tabs the bot's mode is given and the footer."""
         bot = self._bot
-        self.setWindowTitle(surface.window_title(bot.symbol, bot.bot_id))
+        cfg = bot.config
+        mode = cfg.mode.value
+        self.setWindowTitle(surface.window_title(cfg.symbol, bot.bot_id))
         self.setMinimumSize(surface.MINIMUM_W_PX, surface.MINIMUM_H_PX)
 
         layout = QVBoxLayout(self)
 
         hdr_row = QHBoxLayout()
-        hdr = QLabel(surface.header_text(bot.symbol, bot.mode))
+        hdr = QLabel(surface.header_text(cfg.symbol, mode))
         hdr.setStyleSheet(
             surface.HEADER_STYLE_FORMAT.format(color_hex=surface.HEADER_COLOR)
         )
@@ -110,15 +143,48 @@ class SimBotDetailDialog(QDialog):
         tabs.addTab(
             self._wrap_scrollable(self._create_status_tab()), surface.TAB_STATUS
         )
+        tabs.addTab(
+            self._wrap_scrollable(self._create_settings_tab()), surface.TAB_SETTINGS
+        )
+        if mode == surface.MODE_SCRUMMING:
+            self._install_fold_tranches_tab(tabs)
+            self._install_stack_tranches_tab(tabs)
+            tabs.addTab(
+                self._wrap_scrollable(self._create_bot_swarm_tab()),
+                surface.TAB_BOT_SWARM,
+            )
+            tabs.addTab(
+                self._wrap_scrollable(self._create_market_inspector_tab()),
+                surface.TAB_MARKET_INSPECTOR,
+            )
+            tabs.addTab(
+                self._wrap_scrollable(self._create_phantom_bots_tab()),
+                surface.TAB_PHANTOM_BOTS,
+            )
+        if mode == surface.MODE_EXTRACTOR:
+            tabs.addTab(
+                self._wrap_scrollable(self._create_positions_held_tab()),
+                surface.TAB_POSITIONS_HELD,
+            )
         layout.addWidget(tabs)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
+        self._apply_btn = QPushButton(surface.APPLY_LABEL)
+        self._apply_btn.setStyleSheet(surface.APPLY_STYLE)
+        self._apply_btn.setEnabled(surface.APPLY_ENABLED_AT_START)
+        self._apply_btn.clicked.connect(self._apply_changes)
+        btn_row.addWidget(self._apply_btn)
+
         close_btn = QPushButton(surface.CLOSE_LABEL)
         close_btn.setStyleSheet(surface.CLOSE_STYLE)
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(close_btn)
         layout.addLayout(btn_row)
+
+        self._change_lbl = QLabel(surface.CHANGE_EMPTY_TEXT)
+        self._change_lbl.setStyleSheet(surface.CHANGE_PENDING_STYLE)
+        layout.addWidget(self._change_lbl)
 
         if can_nav:
             for keys, step in surface.SHORTCUTS:
@@ -128,6 +194,11 @@ class SimBotDetailDialog(QDialog):
                 )
 
         self.open_at_content_size()
+        self._log_opened([tabs.tabText(i) for i in range(tabs.count())])
+
+    def _log_opened(self, names: list) -> None:
+        """One line naming the bot and the tabs, ``OPENED_LOG``."""
+        logger.info(OPENED_LOG, self._bot.bot_id[:8], len(names), ", ".join(names))
 
     def _create_status_tab(self) -> QWidget:
         """The read-only Statistics form over the row's ``stats``."""
@@ -206,6 +277,89 @@ class SimBotDetailDialog(QDialog):
         form.setHorizontalSpacing(surface.FORM_HORIZONTAL_SPACING_PX)
         form.setVerticalSpacing(surface.FORM_VERTICAL_SPACING_PX)
         form.setContentsMargins(*surface.FORM_MARGINS_PX)
+
+    def _mark_changed(self, field: str, value) -> None:
+        """Record one edited field and enable Apply, as Live records it."""
+        if field == surface.PHANTOM_ENABLE_FIELD:
+            original = getattr(self._bot, surface.PHANTOM_ENABLE_ATTRIBUTE, None)
+        elif field == surface.PHANTOM_TIMEFRAMES_FIELD:
+            original = list(
+                getattr(self._bot, surface.PHANTOM_TIMEFRAMES_ATTRIBUTE, [])
+            )
+            value = list(value)
+        elif field == surface.PHANTOM_LOCK_FIELD:
+            coord = getattr(self._bot, surface.COORDINATOR_ATTRIBUTE, None)
+            original = (
+                getattr(coord, surface.COORDINATOR_LOCK_ATTRIBUTE, None)
+                if coord
+                else None
+            )
+        else:
+            original = getattr(self._bot.config, field, None)
+
+        if value == original:
+            self._changes.pop(field, None)
+        else:
+            self._changes[field] = value
+
+        if self._changes:
+            self._apply_btn.setEnabled(True)
+            self._change_lbl.setText(surface.pending_text(self._changes.keys()))
+        else:
+            self._apply_btn.setEnabled(False)
+            self._change_lbl.setText(surface.CHANGE_EMPTY_TEXT)
+
+    def _apply_changes(self) -> None:
+        """Ask the view for every pending field; each is refused and logged."""
+        if not self._changes:
+            return
+        refused = []
+        for field, value in list(self._changes.items()):
+            try:
+                self._route_change(field, value)
+            except SendRefused as exc:
+                logger.warning(
+                    surface.ROUTE_REFUSED_LOG, self._bot.bot_id[:8], field, exc
+                )
+                refused.append(
+                    surface.APPLIED_REFUSED_FORMAT.format(
+                        field=field, value=value, reason=exc
+                    )
+                )
+        logger.info(
+            surface.APPLIED_LOG,
+            self._bot.bot_id[:8],
+            surface.APPLIED_JOIN.join(refused),
+        )
+        self._changes.clear()
+        self._apply_btn.setEnabled(False)
+        self._change_lbl.setText(sim_surface.refused_text(len(refused)))
+        self._change_lbl.setStyleSheet(sim_surface.CHANGE_REFUSED_STYLE)
+
+    def _route_change(self, field: str, value) -> None:
+        """Send one field the way Live routes it; every route raises."""
+        if field in surface.PHANTOM_FIELDS:
+            self._bot.update_phantom_config(**{field: value})
+            return
+        route = surface.RUNTIME_ROUTED.get(field)
+        if route:
+            getattr(self._bot, route)(value)
+            return
+        self._bot.set_config_field(field, value)
+
+    def _bot_manager_for_save(self) -> object | None:
+        """No bot manager is attached to the Simulator's window."""
+        return None
+
+    def _save_fleet_state_now(self, what: str) -> tuple[bool, str]:
+        """No fleet is saved from the Simulator's window: ``NO_MANAGER_REASON``."""
+        del what
+        return (False, surface.NO_MANAGER_REASON)
+
+    @staticmethod
+    def _format_age(seconds: float) -> str:
+        """``surface.format_age`` for the tranche tabs' age rows."""
+        return surface.format_age(seconds)
 
     def _tab_pages(self) -> list:
         """One ``(content size, page size)`` pair per tab, each polished first."""

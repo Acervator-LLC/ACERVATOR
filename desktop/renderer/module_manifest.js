@@ -79,4 +79,13 @@ window.ACERVATOR_MODULES = [
   "sim_table_cells.js",
   "sim_trading_tab.js",
   "sim_bot_wizard.js",
+  "sim_live_status_tab.js",
+  "sim_live_settings_tab.js",
+  "sim_fold_tranches_tab.js",
+  "sim_stack_tranches_tab.js",
+  "sim_bot_swarm_settings_tab.js",
+  "sim_market_inspector_tab.js",
+  "sim_phantom_bots_tab.js",
+  "sim_positions_held.js",
+  "sim_bot_live_settings.js",
 ];

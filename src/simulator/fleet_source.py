@@ -2,9 +2,10 @@
 bots the wizard creates, held in the sim fleet file under ``get_sim_dir``.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
-``exchanges``, ``symbols``, ``statuses``, ``aggregate``, ``create``, ``sim_dir``,
-``sim_path`` and ``save`` from ``bot_state.json`` and the records the sim fleet
-file holds; it holds no venue, writes ``sim_path`` alone and sends nothing, and
+``record_for``, ``exchanges``, ``symbols``, ``statuses``, ``aggregate``,
+``create``, ``sim_dir``, ``sim_path`` and ``save`` from ``bot_state.json`` and
+the records the sim fleet file holds; it holds no venue, writes ``sim_path``
+alone and sends nothing, and
 ``__getattr__`` raises ``SendRefused`` for every other name. ``SimBot`` is a
 read-only record forked from the live bot's config, its stats and its saved
 state, never a ``ScrummingBot``; ``row_status`` answers one as the status dict
@@ -15,6 +16,7 @@ builds one per stored bot, ``ytd_fleet`` one per YTD trade file, and
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import time
@@ -51,6 +53,7 @@ READ_NAMES = (
     "saved_at",
     "bots",
     "bot_for",
+    "record_for",
     "exchanges",
     "symbols",
     "statuses",
@@ -578,6 +581,18 @@ class FleetSource:
         for bot in self.bots():
             if bot.bot_id == str(bot_id):
                 return bot
+        return None
+
+    def record_for(self, bot_id: str) -> Optional[dict]:
+        """A copy of the stored record whose ``bot_id`` is ``bot_id``, from the
+        sim fleet file first and ``bot_state.json`` second, or None."""
+        wanted = str(bot_id)
+        held = self._records.get(wanted)
+        if isinstance(held, dict):
+            return copy.deepcopy(held)
+        stored = self._state().get("bots")
+        if isinstance(stored, dict) and isinstance(stored.get(wanted), dict):
+            return copy.deepcopy(stored[wanted])
         return None
 
     def exchanges(self) -> list[str]:

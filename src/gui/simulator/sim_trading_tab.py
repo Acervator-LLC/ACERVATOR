@@ -17,7 +17,8 @@ panel in ``_layer_stack``, reached by ``flip_layer``. A venue's ``+ New Bot``
 reaches ``_create_bot``, which opens ``SimBotCreationWizard`` and hands its
 config to ``FleetSource.create``. A row's Fire reaches ``_on_bot_fire``, which
 asks ``FleetSource`` and logs its refusal; a row's Detail reaches
-``_on_bot_detail``, which opens ``SimBotDetailDialog``. ``TabletSource`` and
+``_on_bot_detail``, which opens the Simulator's Bot Settings window through
+``surface_class(SIM_BOT_DETAIL)`` over a ``SimBotView``. ``TabletSource`` and
 ``FleetSource`` are the tab's only sources, and neither answers a send.
 """
 
@@ -45,8 +46,8 @@ from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
     SendRefused,
-    row_status,
 )
+from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource
 from .. import design_system as ds
 from ..color_alpha import rgba
@@ -60,9 +61,9 @@ from ..main_tabs.trading_tab_surface import (
     exchange_display_name,
 )
 from ..simulator_tab import LineView, PlaybackView
-from ..variant_surface import SIM_BOT_WIZARD, surface_class
+from ..variant_surface import SIM_BOT_DETAIL, SIM_BOT_WIZARD, surface_class
 from . import sim_bot_wizard_surface as wizard_surface
-from .sim_bot_detail import SimBotDetailDialog
+from .sim_bot_status_table_surface import usd_rates
 from .sim_exchange_tab import SimExchangeTab
 from .sim_indicator_panel import SimIndicatorVotingPanel
 from .sim_status_log import SimStatusLog
@@ -608,11 +609,13 @@ class SimTradingTab(QWidget):
             self._status_log.log(f"Fire on {bot_id[:8]} failed: {exc}", "error")
 
     def _on_bot_detail(self, bot_id: str) -> None:
-        """Open ``SimBotDetailDialog`` for ``bot_id`` and follow its Prev and Next
-        over the venue's sim fleet, keeping the geometry and the tab."""
+        """Open the Simulator's Bot Settings window, ``surface_class(SIM_BOT_DETAIL)``,
+        for ``bot_id`` over its ``SimBotView`` and follow Prev and Next over the
+        venue's sim fleet, keeping the geometry and the tab."""
         bot = self._fleet_source.bot_for(bot_id)
         if bot is None:
             return
+        window_class = surface_class(SIM_BOT_DETAIL)
         saved_geometry = None
         saved_tab_index = None
         while bot is not None:
@@ -621,7 +624,9 @@ class SimTradingTab(QWidget):
                 for one in self._fleet_source.bots()
                 if one.exchange_id == bot.exchange_id
             ]
-            dlg = SimBotDetailDialog(bot, row_status(bot), siblings, self)
+            rates = usd_rates(self._fleet_source.statuses(bot.exchange_id))
+            view = SimBotView(bot, self._fleet_source.record_for(bot.bot_id))
+            dlg = window_class(view, siblings, self, rates)
             if saved_geometry is not None:
                 dlg.setGeometry(saved_geometry)
             if saved_tab_index is not None:

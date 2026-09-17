@@ -898,6 +898,136 @@ that names no symbol drew the readable one and named the other.
 
 
 
+## Detail opens the Simulator's Bot Settings window with all seven tabs
+
+Detail on a Simulator row now opens Live's Bot Settings window, forked, with
+every tab Live gives the bot's mode, in both builds. A scrumming bot gets
+Status, Settings, Fold Tranches, Stack Tranches, Bot Swarm, Market Inspector
+and Phantom Bots; an extractor gets Status, Settings and Positions Held. The
+window carries Live's title, Live's header, Prev and Next over the venue's
+sim fleet, Apply Changes and Close. The section "Fire and Detail" above
+describes the window before the six tabs were forked; the sentence that they
+were not forked yet no longer holds, and the sentence that the window edits
+nothing stays true.
+
+Each tab is fed from the stored record, read as the bot the window reads.
+`SimBotView` holds one `SimBot` and its raw record and answers the attribute
+names Live's tabs read off a live bot: the config rebuilt as a restart
+rebuilds it, the stats, the tranches, the counters and the parked credits from
+`scrumming_state`, the phantom flag, the phantom timeframes and the lock count
+from the record's own keys, and the positions and the pool figures from
+`extractor_state`. Every name Live writes a bot through is refused.
+
+`src/simulator/sim_bot_view.py` — the refusal
+
+```python
+    def __getattr__(self, name: str) -> Any:
+        """Refuse every send in ``SEND_NAMES`` and every runtime name not held."""
+        if name.startswith("__"):
+            raise AttributeError(name)
+        if name in SEND_NAMES:
+            return _refusal(name)
+        reason = (
+            f"SimBotView holds no {name!r}: the stored record carries no such "
+            "reading. The Simulator receives and asks; it sends nothing."
+        )
+        raise SendRefused(reason)
+```
+
+```mermaid
+flowchart LR
+    detail[Detail on a sim row] --> host[_on_bot_detail]
+    host --> view[SimBotView over the SimBot and its record]
+    host --> which[surface_class SIM_BOT_DETAIL]
+    which --> qt[SimBotDetailDialog, seven forked mixins]
+    which --> react[SimBotDetailReactDialog, sim_bot_live_settings.js and eight forked tab modules]
+    qt --> refuse[every press asks the view and is refused]
+    react --> refuse
+```
+
+### What each tab reads
+
+| tab | read from the record | drawn when the record holds nothing |
+|---|---|---|
+| Status | `stats` | the row's figures, as the table draws them |
+| Settings | `config`, the live target, the anchor, the surplus, the consumed budget | Target BTC and Target ETH from the fleet's own BTC and ETH rows; the budget row reads an unreadable dash |
+| Fold Tranches | `fold_tranches`, the parked credits, the ledger, the four counters | no Extractor Tranche row, Live's own answer with no bot manager |
+| Stack Tranches | `stack_tranches`, the two counters | — |
+| Bot Swarm | nothing named a wire manager | Live's own line, Bot Swarm not active for this bot |
+| Market Inspector | nothing; a scan is not a record | Live's own no-scan screen; the shared analyzer is never asked |
+| Phantom Bots | `phantoms_enabled`, `phantom_timeframes`, `lock_candle_count` | the runtime rows as a bot before its first tick |
+| Positions Held | `extractor_state.positions`, the four chunk figures | — |
+
+The budget row is the one figure the window does not draw. Its arithmetic is
+a live bot's own, and the unit that shares the trading arithmetic as pure
+code carries it; until then both builds read `— (unreadable)`, the reading
+Live gives a cap it cannot read.
+
+### Every press is refused
+
+Apply Changes, Reset All Breakers, SELF-DESTRUCT, the three Clear buttons on
+Fold Tranches, Fire on a fold row, the two Clear buttons on Stack Tranches and
+Fire on a position are all present, drawn as Live draws them. In the Qt build
+a press runs Live's own confirmation, then asks the view, and the view's
+refusal lands in Live's own failure box: `Nothing was cleared — the call
+failed`, `Manual Fire refused`, `Schedule failed`. In the React build the
+press reaches the window through the page's console line and the refusal is
+drawn on the pending-change line. Apply Changes records each edited field as
+Live does, asks the view for every one on the press, and the line reads
+`Refused N change(s) — the Simulator sends nothing`. No file is written:
+`bot_state.json` and the sim fleet file hash the same before and after every
+press.
+
+`src/gui/simulator/sim_bot_detail.py` — Apply Changes
+
+```python
+    def _apply_changes(self) -> None:
+        """Ask the view for every pending field; each is refused and logged."""
+        if not self._changes:
+            return
+        refused = []
+        for field, value in list(self._changes.items()):
+            try:
+                self._route_change(field, value)
+            except SendRefused as exc:
+                logger.warning(
+                    surface.ROUTE_REFUSED_LOG, self._bot.bot_id[:8], field, exc
+                )
+                refused.append(
+                    surface.APPLIED_REFUSED_FORMAT.format(
+                        field=field, value=value, reason=exc
+                    )
+                )
+```
+
+### Both builds, resolved as Live resolves
+
+The hosts open the window through the variant seam, beside Live's own pair,
+so the Qt host opens the Qt fork and the React host opens the React fork. The
+React fork is Live's React window forked under the Simulator's names: its own
+page module, `sim_bot_live_settings.js`, eight forked tab modules and one sim
+surface per tab, each answering its own method name. The React host opens the
+window one event-loop turn after the page's console line that carried the
+press, as the wizard is opened, because a web view opened inside another
+page's console callback never finishes loading.
+
+`src/gui/variant_surface.py` — the pair
+
+```python
+register(BOT_LIVE_SETTINGS, _qt_bot_live_settings, _react_bot_live_settings)
+register(SIM_BOT_DETAIL, _qt_sim_bot_detail, _react_sim_bot_detail)
+```
+
+Driven in the real window in both builds with a scratch home and every socket
+but loopback refused: Detail on the scrumming row read seven tabs off the
+widget tree and off the page, titled and ordered as Live's window over the
+same record shape; Detail on the extractor row read three. The Fold Tranches
+tab drew three rows from a record holding three tranches and two from a
+record holding two. Next opened the next bot's window on the same tab. Every
+press above reached the refusal, and `bot_state.json` hashed the same after
+each one.
+
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
