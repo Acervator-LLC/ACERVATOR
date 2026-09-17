@@ -667,6 +667,125 @@ loads.
 ```
 
 
+## The Extractor Bots table draws the sim extractors
+
+The Extractor Bots table on a seated Sim venue is the forked
+`SimExtractorBotTable` under Qt and `sim_extractor_bot_table.js` under
+React, fed from the same `FleetSource.statuses` list the Scrumming Bots
+table reads, kept to the records whose mode is extractor. It carries Live's
+eight columns, Bot ID, Symbol, Mode, Trades, Pool, Liquid, Fire and the
+blank Detail column, with Live's tooltips and Live's two buttons. It is
+hidden with its label until the venue's fleet holds an extractor, shown when
+one arrives, and hidden again when the last leaves, while the Scrumming Bots
+table keeps its own rows.
+
+`src/simulator/fleet_source.py` — the keys an extractor row reads
+
+```python
+def _extractor_status(bot: SimBot) -> dict:
+    """The keys ``ExtractorBot.get_status`` adds over the base status, which
+    the Extractor Bots table reads: the base currency, the three pool figures,
+    the two position counts and ``extractor_pool_color`` over them."""
+    return {
+        "base_currency": bot.base_currency,
+        "chunk_size_usd": bot.chunk_size_usd,
+        "chunk_size_base": bot.chunk_size_base,
+        "chunk_free_base": bot.chunk_free_base,
+        "n_positions_open": bot.n_positions_open,
+        "n_positions_drawdown": bot.n_positions_drawdown,
+        "pool_color": extractor_pool_color(
+            bot.n_positions_open, bot.n_positions_drawdown
+        ),
+    }
+```
+
+```mermaid
+flowchart LR
+    file[bot_state.json record] --> rec[SimBot with the pool figures]
+    rec --> status[row_status, the extractor keys added]
+    status --> src[FleetSource.statuses]
+    src --> refresh[refresh_bots]
+    refresh --> qt[SimExtractorBotTable.update_bots]
+    refresh --> react[ExtractorBotTableModel through SimVenue]
+    react --> page[sim_extractor_bot_table.js]
+```
+
+### What an extractor record carries
+
+A stored extractor record is read in the same four parts as a scrumming one,
+plus the extractor block the live bot saves: the dollar size of its pool, the
+pool in base units, the base units not deployed to any position, and the
+list of open positions with each one's state. A record the wizard just
+created holds no such block, so it reads as a live extractor reads before its
+first rate arrives: the base size and the free base both equal to the dollar
+size, and no position.
+
+| the cell | reads |
+|---|---|
+| Bot ID | the record's id |
+| Symbol, its coin icon | the base currency the extractor accumulates |
+| Mode, its colour and tooltip | the saved state |
+| Trades | the stats trade count |
+| Pool | the pool's dollar size |
+| Liquid, its tooltip | the free base priced at the pool's own dollars per base unit, with the position counts and the base name |
+| Liquid's colour | green with no position open, red with one in drawdown, yellow otherwise |
+| Fire | present and disabled, as on Live |
+| Detail | present |
+
+The Pool and Liquid figures are composed by Live's own row code in both
+builds; the Simulator adds no arithmetic of its own. The pool colour is the
+live extractor's rule, written once as pure code over the two position
+counts.
+
+`src/simulator/fleet_source.py` — the pool colour
+
+```python
+def extractor_pool_color(n_positions_open: int, n_positions_drawdown: int) -> str:
+    """The Liquid cell's colour name for one extractor, the rule of
+    ``ExtractorBot.pool_color``: ``POOL_GREEN`` with no position open,
+    ``POOL_RED`` with one in drawdown, ``POOL_YELLOW`` otherwise."""
+    if n_positions_open <= 0:
+        return POOL_GREEN
+    if n_positions_drawdown > 0:
+        return POOL_RED
+    return POOL_YELLOW
+```
+
+### The parent
+
+An Extractor works against a parent base-currency Scrumming Bot. Live's row
+draws no parent id; what it shows of the parent is the base currency the
+extractor accumulates, in the Symbol cell and in the Liquid tooltip. The sim
+row shows the same, from the record's base currency, which is the base the
+parent scrumming bot on that venue holds.
+
+### Detail and Fire on an extractor row
+
+Detail is present on every extractor row in both builds. A press opens the
+Simulator's bot detail window over that extractor, with its symbol, its
+mode, its state and its trade count, and selects the row, as a press on the
+Scrumming Bots table does. Under React the page's ask reaches the host
+through the console line, the host applies it to that venue's own extractor
+table model, and the same handler runs.
+
+Fire is present and disabled on every extractor row, as it is on Live's,
+because Manual Fire is per position for an Extractor. A press reaches
+nothing: no name is asked of the fleet source and no line is written.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the extractor table's asks
+
+```python
+        if method == EXTRACTOR_METHOD:
+            if (
+                params.get(extractor_surface.ACTION_PARAM)
+                not in EXTRACTOR_PRESS_ACTIONS
+            ):
+                return False
+            extractor_surface.drive(self.extractor, params)
+            return True
+```
+
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

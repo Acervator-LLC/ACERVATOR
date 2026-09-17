@@ -7,9 +7,9 @@ bots the wizard creates, held in memory.
 no file and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
 other name. ``SimBot`` is a read-only record forked from the live bot's config,
 its stats and its saved state, never a ``ScrummingBot``; ``row_status`` answers
-one as the status dict the Scrumming Bots table reads; ``live_fleet`` builds
-one per stored bot, ``ytd_fleet`` one per YTD trade file, and ``wizard_record``
-the stored-record shape from the bot wizard's config.
+one as the status dict the Scrumming Bots table and the Extractor Bots table
+read; ``live_fleet`` builds one per stored bot, ``ytd_fleet`` one per YTD trade
+file, and ``wizard_record`` the stored-record shape from the bot wizard's config.
 """
 
 from __future__ import annotations
@@ -57,6 +57,15 @@ EXTRACTOR_MODE = "extractor"
 #: The characters of ``uuid4`` a live bot keeps as its ``bot_id``.
 BOT_ID_LENGTH = 8
 
+#: The ``state`` an ``ExtractorBot`` writes on a position below its entry value,
+#: ``POSITION_STATE_DRAWDOWN`` in ``src/trading/extractor_bot.py``.
+EXTRACTOR_DRAWDOWN_STATE = "drawdown"
+
+#: The three names ``ExtractorBot.pool_color`` answers.
+POOL_GREEN = "green"
+POOL_YELLOW = "yellow"
+POOL_RED = "red"
+
 #: What a live bot's ``get_status`` answers for ``auto_fire`` before its first
 #: tick; a stored record holds no gate state, so every sim row reads this.
 PRE_TICK_AUTO_FIRE = {
@@ -88,7 +97,13 @@ EMPTY_AGGREGATE = {
 @dataclass(frozen=True)
 class SimBot:
     """One simulated bot: its ids, its symbol, the config the gates read, and
-    the figures the Scrumming Bots table and the Status tab draw."""
+    the figures the Scrumming Bots table, the Extractor Bots table and the
+    Status tab draw.
+
+    ``chunk_size_usd``, ``chunk_size_base``, ``chunk_free_base``,
+    ``n_positions_open`` and ``n_positions_drawdown`` are the Extractor's pool
+    figures and stay zero on a scrumming bot.
+    """
 
     bot_id: str
     symbol: str
@@ -136,6 +151,11 @@ class SimBot:
     position_ceiling_multiple: float = 5.0
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"
+    chunk_size_usd: float = 0.0
+    chunk_size_base: float = 0.0
+    chunk_free_base: float = 0.0
+    n_positions_open: int = 0
+    n_positions_drawdown: int = 0
 
     @property
     def asset(self) -> str:
@@ -159,6 +179,59 @@ def _lots_units(lots: Any) -> float:
     return sum(_number(lot.get("units"), 0.0) for lot in lots if isinstance(lot, dict))
 
 
+def _extractor_figures(config: dict, record: dict) -> dict:
+    """The five pool figures of an extractor record, keyed as ``SimBot`` names
+    them; every figure is zero when ``config`` is not in extractor mode.
+
+    ``extractor_state`` is what ``ExtractorBot.export_state`` wrote; a record
+    holding none reads as ``ExtractorBot.__init__`` sets the chunk before a
+    rate arrives, the base size and the free base both equal to the dollar
+    size, with no position.
+    """
+    if str(config.get("mode") or SCRUMMING_MODE) != EXTRACTOR_MODE:
+        return {
+            "chunk_size_usd": 0.0,
+            "chunk_size_base": 0.0,
+            "chunk_free_base": 0.0,
+            "n_positions_open": 0,
+            "n_positions_drawdown": 0,
+        }
+    state = record.get("extractor_state")
+    state = state if isinstance(state, dict) else {}
+    chunk_size_usd = _number(
+        state.get("chunk_size_usd"),
+        _number(config.get("extractor_chunk_size_usd"), 0.0),
+    )
+    chunk_size_base = _number(state.get("chunk_size_base"), chunk_size_usd)
+    chunk_free_base = _number(state.get("chunk_free_base"), chunk_size_base)
+    positions = state.get("positions")
+    positions = (
+        [one for one in positions if isinstance(one, dict)]
+        if isinstance(positions, list)
+        else []
+    )
+    return {
+        "chunk_size_usd": chunk_size_usd,
+        "chunk_size_base": chunk_size_base,
+        "chunk_free_base": chunk_free_base,
+        "n_positions_open": len(positions),
+        "n_positions_drawdown": sum(
+            1 for one in positions if one.get("state") == EXTRACTOR_DRAWDOWN_STATE
+        ),
+    }
+
+
+def extractor_pool_color(n_positions_open: int, n_positions_drawdown: int) -> str:
+    """The Liquid cell's colour name for one extractor, the rule of
+    ``ExtractorBot.pool_color``: ``POOL_GREEN`` with no position open,
+    ``POOL_RED`` with one in drawdown, ``POOL_YELLOW`` otherwise."""
+    if n_positions_open <= 0:
+        return POOL_GREEN
+    if n_positions_drawdown > 0:
+        return POOL_RED
+    return POOL_YELLOW
+
+
 def _sim_bot_from_record(
     bot_id: str, record: dict, origin: str = LIVE_ORIGIN
 ) -> Optional[SimBot]:
@@ -167,7 +240,8 @@ def _sim_bot_from_record(
 
     ``config`` gives the ids and the gate fields, ``stats`` the figures,
     ``scrumming_state`` the grown target, the quote rate, the phase and the
-    lots, and ``state_when_saved`` the state.
+    lots, ``extractor_state`` the pool figures, and ``state_when_saved`` the
+    state.
     """
     config = record.get("config")
     if not isinstance(config, dict):
@@ -180,6 +254,7 @@ def _sim_bot_from_record(
     saved = record.get("scrumming_state")
     saved = saved if isinstance(saved, dict) else {}
     config_target = _number(config.get("target_balance"), 0.0)
+    pool = _extractor_figures(config, record)
     return SimBot(
         bot_id=str(bot_id),
         symbol=symbol,
@@ -233,6 +308,11 @@ def _sim_bot_from_record(
         position_ceiling_multiple=_number(config.get("position_ceiling_multiple"), 5.0),
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
+        chunk_size_usd=pool["chunk_size_usd"],
+        chunk_size_base=pool["chunk_size_base"],
+        chunk_free_base=pool["chunk_free_base"],
+        n_positions_open=pool["n_positions_open"],
+        n_positions_drawdown=pool["n_positions_drawdown"],
     )
 
 
@@ -264,15 +344,33 @@ def wizard_record(config: dict) -> dict:
     }
 
 
+def _extractor_status(bot: SimBot) -> dict:
+    """The keys ``ExtractorBot.get_status`` adds over the base status, which
+    the Extractor Bots table reads: the base currency, the three pool figures,
+    the two position counts and ``extractor_pool_color`` over them."""
+    return {
+        "base_currency": bot.base_currency,
+        "chunk_size_usd": bot.chunk_size_usd,
+        "chunk_size_base": bot.chunk_size_base,
+        "chunk_free_base": bot.chunk_free_base,
+        "n_positions_open": bot.n_positions_open,
+        "n_positions_drawdown": bot.n_positions_drawdown,
+        "pool_color": extractor_pool_color(
+            bot.n_positions_open, bot.n_positions_drawdown
+        ),
+    }
+
+
 def row_status(bot: SimBot) -> dict:
     """``bot`` as the status dict a live bot's ``get_status`` answers, in the
-    keys the Scrumming Bots table and the Status tab read.
+    keys the Scrumming Bots table, the Extractor Bots table and the Status tab
+    read; an extractor's carries ``_extractor_status`` over the base keys.
 
     ``armed_action``, ``position_ceiling_usd``, ``ceiling_ratio`` and
     ``fold_rate_taper`` are runtime values a stored record does not hold; they
     read as they do on a live bot before its first tick.
     """
-    return {
+    status = {
         "bot_id": bot.bot_id,
         "state": bot.state,
         "exchange": bot.exchange_id,
@@ -314,6 +412,9 @@ def row_status(bot: SimBot) -> dict:
         },
         "auto_fire": dict(PRE_TICK_AUTO_FIRE),
     }
+    if bot.mode == EXTRACTOR_MODE:
+        status.update(_extractor_status(bot))
+    return status
 
 
 class FleetSource:
@@ -476,9 +577,13 @@ __all__ = [
     "BOT_ID_LENGTH",
     "BOT_STATE_NAME",
     "EMPTY_AGGREGATE",
+    "EXTRACTOR_DRAWDOWN_STATE",
     "EXTRACTOR_MODE",
     "LIVE_ORIGIN",
     "NEW_ORIGIN",
+    "POOL_GREEN",
+    "POOL_RED",
+    "POOL_YELLOW",
     "PRE_TICK_AUTO_FIRE",
     "READ_NAMES",
     "SCRUMMING_MODE",
@@ -487,6 +592,7 @@ __all__ = [
     "SendRefused",
     "SimBot",
     "exchange_choice",
+    "extractor_pool_color",
     "live_fleet",
     "row_status",
     "wizard_record",
