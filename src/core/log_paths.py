@@ -160,6 +160,18 @@ def get_reports_dir() -> Path:
     return p
 
 
+def get_sim_dir() -> Path:
+    """``sim/`` bucket — every file the Simulator writes.
+
+    ``src.simulator.fleet_source.FleetSource`` keeps the sim fleet file
+    here; ``~/.acervator/bot_state.json`` is never written from the
+    Simulator.
+    """
+    p = _LOG_ROOT / "sim"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def layout_map() -> dict[str, Path]:
     """Return a ``{bucket_name -> Path}`` dict for diagnostics + audit tools.
 
@@ -176,5 +188,6 @@ def layout_map() -> dict[str, Path]:
         "pnl": get_pnl_dir(),
         "exchange_history": get_exchange_history_dir(),
         "reports": get_reports_dir(),
+        "sim": get_sim_dir(),
         "_meta": get_meta_dir(),
     }

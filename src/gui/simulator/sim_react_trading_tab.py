@@ -10,8 +10,9 @@ holds ``TabletSource`` and ``FleetSource`` as ``SimTradingTab`` does, and no
 bot manager; ``add_exchange_tab`` seats one venue's own models, the fork of
 ``hold_venue``, ``_sync_exchange_tabs`` seats one per exchange
 ``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, and
-``refresh_bots`` hands each ``SimVenue`` its rows from ``FleetSource.statuses``.
-``SimTradingPage`` reads the page's asks off the console line the host script
+``refresh_bots`` hands each ``SimVenue`` its rows from ``FleetSource.statuses``;
+every ``fleet_changed`` first writes the sim fleet file through
+``FleetSource.save``. ``SimTradingPage`` reads the page's asks off the console line the host script
 writes; ``run_action`` answers the flip, both bot tables' own asks and the
 venue page's ``+ New Bot``, so a row's Fire reaches ``_on_bot_fire``, a row's
 Detail on either table reaches ``_on_bot_detail``, and ``+ New Bot`` reaches
@@ -757,6 +758,7 @@ if _HAS_WEBENGINE:
             self._layout = QVBoxLayout(self)
             self._layout.setContentsMargins(0, 0, 0, 0)
             self._layout.setSpacing(0)
+            self.fleet_changed.connect(self._fleet_source.save)
             self.fleet_changed.connect(self._sync_exchange_tabs)
             self._sync_exchange_tabs()
 

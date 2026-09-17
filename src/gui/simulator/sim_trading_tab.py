@@ -8,7 +8,8 @@ Interaction Log spools, in Live's four splitters at Live's sizes.
 ``SimExchangeTab``; ``_sync_exchange_tabs`` seats one per exchange
 ``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, drops
 the rest as the window's ``_drop_unlisted_exchange_tabs`` does, and then
-``refresh_bots`` hands each venue its rows from ``FleetSource.statuses``. The
+``refresh_bots`` hands each venue its rows from ``FleetSource.statuses``; every
+``fleet_changed`` first writes the sim fleet file through ``FleetSource.save``. The
 corner Live gives ``＋ Add Crypto Exchange`` holds the three way-in buttons, and
 the Get Started card holds the same three where Live's card holds its add
 button. The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
@@ -114,6 +115,7 @@ class SimTradingTab(QWidget):
         self._fleet_source = fleet_source if fleet_source is not None else FleetSource()
         self._layer = surface.LAYER_INDICATORS
         self._build()
+        self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
         self._sync_exchange_tabs()
 
