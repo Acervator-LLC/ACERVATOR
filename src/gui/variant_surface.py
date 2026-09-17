@@ -28,6 +28,7 @@ MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
 PAPER_TRADER = "Paper"
 SETTINGS_DIALOG = "Settings dialog"
+SIM_BOT_DETAIL = "Simulator bot settings"
 SIM_BOT_WIZARD = "Simulator bot creation wizard"
 SIMULATOR = "Sim"
 SPENDABLE_PROFITS = "Spendable profits"
@@ -334,6 +335,20 @@ def _react_bot_wizard() -> type:
     return BotWizardReactDialog
 
 
+def _qt_sim_bot_detail() -> type:
+    """Import and return the Qt Simulator Bot Settings window."""
+    from .simulator.sim_bot_detail import SimBotDetailDialog
+
+    return SimBotDetailDialog
+
+
+def _react_sim_bot_detail() -> type:
+    """Import and return the React Simulator Bot Settings window."""
+    from .simulator.sim_react_bot_detail import dialog_class
+
+    return dialog_class()
+
+
 def _qt_sim_bot_wizard() -> type:
     """Import and return the Qt Simulator bot creation wizard."""
     from .simulator.sim_bot_wizard import SimBotCreationWizard
@@ -372,6 +387,7 @@ register(CONSOLE, _qt_console, _react_console)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
 register(SETTINGS_DIALOG, _qt_settings_dialog, _react_settings_dialog)
 register(BOT_LIVE_SETTINGS, _qt_bot_live_settings, _react_bot_live_settings)
+register(SIM_BOT_DETAIL, _qt_sim_bot_detail, _react_sim_bot_detail)
 register(SPENDABLE_PROFITS, _qt_spendable_profits, _react_spendable_profits)
 register(DASHBOARD_STAT_CARD, _qt_dashboard_stat_card, _react_dashboard_stat_card)
 register(START_ALL_PROGRESS, _qt_start_all_progress, _react_start_all_progress)

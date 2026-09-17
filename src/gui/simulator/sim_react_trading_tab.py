@@ -15,9 +15,10 @@ every ``fleet_changed`` first writes the sim fleet file through
 ``FleetSource.save``. ``SimTradingPage`` reads the page's asks off the console line the host script
 writes; ``run_action`` answers the flip, both bot tables' own asks and the
 venue page's ``+ New Bot``, so a row's Fire reaches ``_on_bot_fire``, a row's
-Detail on either table reaches ``_on_bot_detail``, and ``+ New Bot`` reaches
-``_create_bot``, which opens ``SimBotWizardReactDialog`` and hands its config
-to ``FleetSource.create``.
+Detail on either table reaches ``_on_bot_detail``, which opens the Simulator's
+Bot Settings window through ``surface_class(SIM_BOT_DETAIL)`` over a
+``SimBotView``, and ``+ New Bot`` reaches ``_create_bot``, which opens
+``SimBotWizardReactDialog`` and hands its config to ``FleetSource.create``.
 """
 
 from __future__ import annotations
@@ -30,8 +31,8 @@ from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
     SendRefused,
-    row_status,
 )
+from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource
 from ..main_tabs import bot_status_table_surface as scrum_surface
 from ..main_tabs import design_system_surface as token_surface
@@ -45,7 +46,7 @@ from ..main_tabs.trading_tab_surface import (
 )
 from ..react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from ..react_main_window import read_renderer_asset
-from ..variant_surface import SIM_BOT_WIZARD, surface_class
+from ..variant_surface import SIM_BOT_DETAIL, SIM_BOT_WIZARD, surface_class
 from . import sim_bot_status_table_surface as sim_scrum_surface
 from . import sim_bot_wizard_surface as wizard_surface
 from . import sim_exchange_tab_surface as venue_surface
@@ -56,8 +57,6 @@ try:
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QMessageBox, QVBoxLayout, QWidget
-
-    from .sim_bot_detail import SimBotDetailDialog
 
     _HAS_WEBENGINE = True
 except ImportError:
@@ -965,11 +964,23 @@ if _HAS_WEBENGINE:
                 )
 
         def _on_bot_detail(self, bot_id: str) -> None:
-            """Open ``SimBotDetailDialog`` for ``bot_id`` and follow its Prev and
-            Next over the venue's sim fleet, keeping the geometry and the tab."""
+            """Open ``_open_bot_detail`` on the next event-loop turn, after the
+            page's console callback that carried the press has returned.
+
+            A ``QWebEngineView`` opened inside another page's console callback
+            never finishes loading; one turn later it loads.
+            """
+            QTimer.singleShot(0, lambda: self._open_bot_detail(bot_id))
+
+        def _open_bot_detail(self, bot_id: str) -> None:
+            """Open the Simulator's Bot Settings window,
+            ``surface_class(SIM_BOT_DETAIL)``, for ``bot_id`` over its
+            ``SimBotView`` and follow Prev and Next over the venue's sim fleet,
+            keeping the geometry and the tab."""
             bot = self._fleet_source.bot_for(bot_id)
             if bot is None:
                 return
+            window_class = surface_class(SIM_BOT_DETAIL)
             saved_geometry = None
             saved_tab_index = None
             while bot is not None:
@@ -978,7 +989,11 @@ if _HAS_WEBENGINE:
                     for one in self._fleet_source.bots()
                     if one.exchange_id == bot.exchange_id
                 ]
-                dlg = SimBotDetailDialog(bot, row_status(bot), siblings, self)
+                rates = sim_scrum_surface.usd_rates(
+                    self._fleet_source.statuses(bot.exchange_id)
+                )
+                view = SimBotView(bot, self._fleet_source.record_for(bot.bot_id))
+                dlg = window_class(view, siblings, self, rates)
                 if saved_geometry is not None:
                     dlg.setGeometry(saved_geometry)
                 if saved_tab_index is not None:
