@@ -24,6 +24,7 @@ from ..trading.container.config import (
 )
 from .fleet_source import (
     EXTRACTOR_MODE,
+    PHANTOMS_ENABLED_DEFAULT,
     SimBot,
     extractor_pool_color,
     row_status,
@@ -52,9 +53,6 @@ SEND_NAMES = (
     "set_hedge_rebalance_active_live",
     "set_chunk_size_usd",
 )
-
-#: ``phantoms_enabled`` for a record without the key, as the restore reads it.
-PHANTOMS_ENABLED_DEFAULT = True
 
 #: ``scrumming_state`` keys read as the attribute of the same name with ``_``.
 SCRUMMING_FLOATS = (

@@ -115,6 +115,9 @@ EMPTY_AGGREGATE = {
     "bots_with_fresh_exchange_data": 0,
 }
 
+#: ``phantoms_enabled`` for a record without the key, as the restore reads it.
+PHANTOMS_ENABLED_DEFAULT = True
+
 
 @dataclass(frozen=True)
 class SimBot:
@@ -178,6 +181,8 @@ class SimBot:
     chunk_free_base: float = 0.0
     n_positions_open: int = 0
     n_positions_drawdown: int = 0
+    phantoms_enabled: bool = PHANTOMS_ENABLED_DEFAULT
+    phantom_timeframes: tuple = ()
 
     @property
     def asset(self) -> str:
@@ -262,8 +267,9 @@ def _sim_bot_from_record(
 
     ``config`` gives the ids and the gate fields, ``stats`` the figures,
     ``scrumming_state`` the grown target, the quote rate, the phase and the
-    lots, ``extractor_state`` the pool figures, and ``state_when_saved`` the
-    state.
+    lots, ``extractor_state`` the pool figures, ``state_when_saved`` the
+    state, and ``phantoms_enabled`` and ``phantom_timeframes`` the phantom
+    set, read as the restore path reads them.
     """
     config = record.get("config")
     if not isinstance(config, dict):
@@ -277,6 +283,7 @@ def _sim_bot_from_record(
     saved = saved if isinstance(saved, dict) else {}
     config_target = _number(config.get("target_balance"), 0.0)
     pool = _extractor_figures(config, record)
+    phantom_tfs = tuple(str(one) for one in (record.get("phantom_timeframes") or []))
     return SimBot(
         bot_id=str(bot_id),
         symbol=symbol,
@@ -335,6 +342,8 @@ def _sim_bot_from_record(
         chunk_free_base=pool["chunk_free_base"],
         n_positions_open=pool["n_positions_open"],
         n_positions_drawdown=pool["n_positions_drawdown"],
+        phantoms_enabled=bool(record.get("phantoms_enabled", PHANTOMS_ENABLED_DEFAULT)),
+        phantom_timeframes=phantom_tfs,
     )
 
 
@@ -731,6 +740,7 @@ __all__ = [
     "EXTRACTOR_MODE",
     "LIVE_ORIGIN",
     "NEW_ORIGIN",
+    "PHANTOMS_ENABLED_DEFAULT",
     "POOL_GREEN",
     "POOL_RED",
     "POOL_YELLOW",

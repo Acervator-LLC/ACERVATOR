@@ -8,7 +8,9 @@ Interaction Log spools, in Live's four splitters at Live's sizes.
 ``SimExchangeTab``; ``_sync_exchange_tabs`` seats one per exchange
 ``FleetSource.exchanges`` names, at build and on every ``fleet_changed``, drops
 the rest as the window's ``_drop_unlisted_exchange_tabs`` does, and then
-``refresh_bots`` hands each venue its rows from ``FleetSource.statuses``; every
+``refresh_bots`` hands each venue its rows from ``FleetSource.statuses`` and
+``refresh_votes`` hands the panel the fleet, its own rates and the selected
+bot's ``ivp_feed`` over ``TabletSource``, run again by ``bot_selected``; every
 ``fleet_changed`` first writes the sim fleet file through ``FleetSource.save``. The
 corner Live gives ``＋ Add Crypto Exchange`` holds the three way-in buttons, and
 the Get Started card holds the same three where Live's card holds its add
@@ -74,6 +76,7 @@ from .sim_bot_status_table_surface import usd_rates
 from .sim_exchange_tab import SimExchangeTab
 from .sim_indicator_panel import SimIndicatorVotingPanel
 from .sim_status_log import SimStatusLog
+from . import sim_trading_tab_surface as tab_surface
 from .sim_trading_tab_surface import (
     card_button_name,
     notification_line,
@@ -139,6 +142,7 @@ class SimTradingTab(QWidget):
         self._bot_manager = SimBotManager(self._fleet_source)
         self._layer = surface.LAYER_INDICATORS
         self._build()
+        self._indicator_panel.bot_selected.connect(self._feed_votes)
         self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
         self._sync_exchange_tabs()
@@ -551,6 +555,7 @@ class SimTradingTab(QWidget):
             self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
         self._drop_unlisted_exchange_tabs(wanted)
         self.refresh_bots()
+        self.refresh_votes()
 
     # -- the rows -------------------------------------------------------
 
@@ -567,6 +572,46 @@ class SimTradingTab(QWidget):
                 tab.update_bots(statuses)
                 handed += len(statuses)
         return handed
+
+    # -- the voting panel -----------------------------------------------
+
+    def refresh_votes(self) -> dict:
+        """Hand the panel the fleet's statuses, the fleet's own rate snapshot
+        and the selected bot's reading, as the window's tick feeds Live's."""
+        statuses = self._fleet_source.statuses()
+        panel = self._indicator_panel
+        held = panel.blockSignals(True)
+        try:
+            panel.update_bot_list(statuses)
+        finally:
+            panel.blockSignals(held)
+        panel.update_currency_rates(tab_surface.rate_snapshot(statuses))
+        return self._feed_votes(panel.selected_bot_id)
+
+    def _feed_votes(self, bot_id: str = "") -> dict:
+        """Draw ``ivp_feed`` for ``bot_id``, or the selected bot, on the panel:
+        ``show_stored`` over a reading, ``show_no_data`` with its cause."""
+        panel = self._indicator_panel
+        chosen = str(bot_id or panel.selected_bot_id or "")
+        if not chosen:
+            panel.show_no_data(cause="no_selection")
+            return {"cause": "no_selection"}
+        feed = tab_surface.ivp_feed(
+            self._tablet_source, self._fleet_source.bot_for(chosen)
+        )
+        if feed.get("summary"):
+            panel.show_stored(
+                feed["stored"], feed["when"], feed["age"], feed["message"]
+            )
+        else:
+            panel.show_no_data(
+                bot_id=chosen,
+                symbol=feed["symbol"],
+                reason=feed["reason"],
+                cause=feed["cause"],
+                detail=feed["detail"],
+            )
+        return feed
 
     def _create_bot(
         self,

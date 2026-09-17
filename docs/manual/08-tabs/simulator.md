@@ -1198,6 +1198,114 @@ were watched for the whole run and saw zero calls; no socket left loopback.
 session, a socket, a client or a network holds zero, beside `BotManager`'s
 four.
 
+## The voting panel reads the Stone Tablet
+
+The Indicator Voting Panel on the Sim tab is fed, in both builds, from the
+tablets on disk. The Bot selector lists the sim fleet, one entry per
+accumulation bot in Live's own `symbol [id] (state)` form, and opens on the
+first. Choosing a bot draws the twelve voters, the Net, Comp and Conf columns,
+both bar graphs and the lock line for that bot's market on that bot's
+timeframe, computed by the real voting engine over the last hundred rows of
+the tablet filed under the bot's asset, exchange and timeframe. The rate strip
+prices BTC and ETH from the fleet's own rows. Nothing is invented; a bot with
+no tablet says so.
+
+The reading is one function both hosts call, the window's dashboard feed
+forked over the tablet reader. It finds the tablet, reads the window, runs the
+engine, merges each phantom timeframe that has a tablet of its own, and weighs
+the Comp column over those rows with the same function the live feed weighs
+by.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the feed
+
+```python
+def ivp_feed(source: Any, bot: Any, now: Optional[float] = None) -> dict:
+    """The voting panel's reading for ``bot`` over the tablet ``tablet_for``
+    finds, with each phantom timeframe merged and ``composite_net`` over the
+    phantom rows, or the one empty-state cause; a reading carries ``summary``,
+    ``stored``, ``when``, ``age`` and ``message`` for ``show_stored``."""
+```
+
+### What feeds each part
+
+The Simulator has no venue tick. The panel is fed at tab build, on every
+`fleet_changed`, and on every change of the Bot selector. A fleet change
+re-lists the selector, re-prices the rate strip and redraws the chosen bot; a
+selector change redraws the chosen bot alone. On the Qt build the selector's
+change is a signal the tab connects; on the React build the page asks the
+host for the chosen bot, the way the flip button asks for the replay layer.
+
+| part | fed from |
+| ---- | -------- |
+| Bot selector | the fleet's statuses, accumulation bots only |
+| rate strip | the fleet's BTC and ETH rows, priced by the currency monitor's own derivation |
+| both indicator tables | the engine over the tablet window, one row per timeframe |
+| both bar graphs | the same reading; the Qt bars move on their frame timer, the React bars arrive settled as Live's do |
+| Net, Comp and Conf | the engine's net score, the composite over the phantom rows, the consensus confidence |
+| lock line | `No active timeframe locks`; a sim bot holds no coordinator and no lock |
+| staleness banner | the newest candle's time and age, and the day the tablet ends |
+
+`src/gui/simulator/sim_trading_tab.py` — the Qt host's feed
+
+```python
+    def refresh_votes(self) -> dict:
+        statuses = self._fleet_source.statuses()
+        panel = self._indicator_panel
+        held = panel.blockSignals(True)
+        try:
+            panel.update_bot_list(statuses)
+        finally:
+            panel.blockSignals(held)
+        panel.update_currency_rates(tab_surface.rate_snapshot(statuses))
+        return self._feed_votes(panel.selected_bot_id)
+```
+
+### The banner over a tablet reading
+
+A tablet ends where it ends, and a reading computed on candles that closed
+weeks ago is not a current one. The panel says so in Live's own words: the
+amber banner Live raises over a stored reading is raised over every tablet
+reading, naming the newest candle's time, how long ago that was, and the day
+the tablet ends. The banner is hidden on every empty state.
+
+```
+⏱ LAST TA READ, NOT CURRENT — taken 11:35:00, 46d 20h ago. Stone Tablet ends 2026-08-01.
+```
+
+### A bot with nothing to read
+
+An idle or stopped sim bot draws Live's empty state for a bot that is not
+running, and the reading appears the moment Start moves it, because Start
+fires `fleet_changed`. A bot in error draws Live's error line. A bot whose
+asset, exchange and timeframe name no tablet on disk draws the sentence this
+page already names, and a bot whose tablet holds fewer rows than the engine
+needs is named with its count.
+
+```
+No TA data — bot is idle — a bot that is not running evaluates no TA.
+No TA data — No Stone Tablet on disk.
+```
+
+A phantom timeframe with no tablet of its own is skipped, and one line names
+it in the program's log. On the operator's machine every tablet is 5m, so
+every phantom is skipped today and the Comp column reads the Net column.
+
+### What the reading measured
+
+The real window, both builds, a scratch tablet root holding copies of the BTC
+and ETH 5m tablets, and a scratch sim fleet of five bots. Selecting the BTC bot
+drew every cell of both tables and every bar equal to the engine's own answer
+over the same hundred rows, in both builds, and Live's own panel handed the
+same summary drew the same cells, banner, rate line and lock line. A copy of
+the BTC tablet with its last twenty closes raised five per cent, filed under
+another asset, moved the reading: BB from 99 to 69 per cent, Net from −0.79 to
++2.11, the consensus from bearish to bullish. The Qt bars read at two frames
+sixty milliseconds apart differed and settled on their targets; the React bars
+read equal at two moments, as Live's React bars do. The SOL bot, with no
+tablet, read the no-tablet sentence; the idle bot read the idle sentence and,
+after Start on the command bar, the BTC reading. The scratch fleet file and
+every tablet hashed identical after every reading, and a byte planted into two
+of them moved the hash. No socket left loopback.
 
 ## The clone the tab draws now
 
