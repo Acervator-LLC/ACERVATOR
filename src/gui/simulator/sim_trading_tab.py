@@ -62,9 +62,12 @@ lines, opens Live's Delete box, and fires ``fleet_changed`` on every state
 move. ``TabletSource`` and ``FleetSource`` are the tab's only sources, and
 neither answers a send. The API Interaction Log is written by
 ``_on_api_event``, the window's writer forked over the tab's own
-``APIInteractionLog``, never the process-wide ``get_api_log``: each entry
+``SimApiLog``, never the process-wide ``get_api_log``: each entry
 recorded on ``api_log()`` draws Live's block, or is held while Pause API Log is
-down and flushed in order on Resume.
+down and flushed in order on Resume. That log accepts ``ALLOWED_ACTIONS``
+only, the ``FETCH_TABLET`` entries ``_record_venue_call`` records and the
+``FETCH_YTD`` entry ``_generate_from_ytd`` records, and raises ``SendRefused``
+for any other action before anything is drawn.
 """
 
 from __future__ import annotations
@@ -95,7 +98,6 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.sound_engine import get_sound_engine
-from ...exchange.api_logger import APIInteractionLog
 from ...simulator import portfolio_battery
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
@@ -107,6 +109,7 @@ from ...simulator import tablet_retrieval
 from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.read_only_connector import ReadOnlyConnector, VenueCall
+from ...simulator.sim_api_log import SimApiLog
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource, tablet_key
@@ -217,7 +220,7 @@ class SimTradingTab(QWidget):
         tablet_source: Optional[TabletSource] = None,
         fleet_source: Optional[FleetSource] = None,
         parent: Optional[QWidget] = None,
-        api_log: Optional[APIInteractionLog] = None,
+        api_log: Optional[SimApiLog] = None,
         battery_tablet_source: Optional[TabletSource] = None,
         connector: Optional[ReadOnlyConnector] = None,
     ) -> None:
@@ -239,7 +242,7 @@ class SimTradingTab(QWidget):
             else TabletSource(surface.BATTERY_TABLET_ROOT)
         )
         self._fleet_source = fleet_source if fleet_source is not None else FleetSource()
-        self._api_log = api_log if api_log is not None else APIInteractionLog()
+        self._api_log = api_log if api_log is not None else SimApiLog()
         self._bot_manager = SimBotManager(self._fleet_source)
         self._connector = (
             connector
@@ -308,8 +311,9 @@ class SimTradingTab(QWidget):
         the tab's ``mode``."""
         return surface.fleet_aggregate(self._fleet_source, self._mode)
 
-    def api_log(self) -> APIInteractionLog:
-        """The tab's own API log; every entry recorded on it reaches the pane."""
+    def api_log(self) -> SimApiLog:
+        """The tab's own API log; every entry it accepts reaches the pane, and
+        it accepts ``ALLOWED_ACTIONS`` only."""
         return self._api_log
 
     def exchange_count(self) -> int:
@@ -494,8 +498,9 @@ class SimTradingTab(QWidget):
         a pair; ``exchange_choice`` over the exchanges it names,
         ``SimExchangeChoiceDialog`` under ``GENERATE_FROM_YTD_TEXT`` when it
         prompts, then ``FleetSource.generate_from_ytd`` on the exchange chosen,
-        one line per manifest row whose file is missing, the generation line,
-        the no-target line and ``fleet_changed``; a cancelled chooser writes one
+        one ``ytd_api_entry`` recorded on ``api_log`` for that read, one line
+        per manifest row whose file is missing, the generation line, the
+        no-target line and ``fleet_changed``; a cancelled chooser writes one
         line and moves nothing."""
         source = YtdTradeSource()
         state = source.root_state()
@@ -518,7 +523,12 @@ class SimTradingTab(QWidget):
                 self._status_log.log(tab_surface.GENERATE_CANCELLED_TEXT, "warning")
                 return
             chosen = dialog.chosen()
+        started = time.perf_counter()
         made = self._fleet_source.generate_from_ytd(source, chosen)
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        self._api_log.record(
+            **tab_surface.ytd_api_entry(made, chosen, source.root(), elapsed_ms)
+        )
         for entry in made.missing:
             self._status_log.log(tab_surface.ytd_file_missing_line(entry), "warning")
         if not made.bots:

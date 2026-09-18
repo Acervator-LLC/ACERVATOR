@@ -26,11 +26,14 @@ to ``FleetSource.create``, and Start, Pause, Stop, Restart and Delete reach
 ``_on_bot_command``, the window's handler forked over ``SimBotManager`` with
 no venue connect, which fires ``fleet_changed`` on every state move. The API
 Interaction Log is written by ``_on_api_event``, the window's writer forked
-over the host's own ``APIInteractionLog``, never the process-wide
+over the host's own ``SimApiLog``, never the process-wide
 ``get_api_log``: each entry recorded on ``api_log()`` is pushed as one of
 ``api_lines`` through ``show_tab``, and ``SimTradingTabState`` draws it or
-holds it while Pause API Log is down; ``run_action`` answers the page's Pause
-API Log press through ``set_api_paused``. The run mode is held once, on
+holds it while Pause API Log is down; that log accepts ``ALLOWED_ACTIONS``
+only, the ``FETCH_TABLET`` entries ``_record_venue_call`` records and the
+``FETCH_YTD`` entry ``_generate_from_ytd`` records, and raises ``SendRefused``
+for any other action before anything is pushed; ``run_action`` answers the
+page's Pause API Log press through ``set_api_paused``. The run mode is held once, on
 ``SimTradingTabState.mode``; a venue page's mode press reaches ``set_mode``,
 which redraws the tab so the corner and the card offer that mode's two ways
 in and re-publishes every venue so its header carries the active sheet; a
@@ -77,7 +80,6 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ...core.sound_engine import get_sound_engine
-from ...exchange.api_logger import APIInteractionLog
 from ...simulator import portfolio_battery, tablet_retrieval
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
@@ -88,6 +90,7 @@ from ...simulator.fleet_source import (
 from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.read_only_connector import ReadOnlyConnector, VenueCall
+from ...simulator.sim_api_log import SimApiLog
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource, tablet_key
@@ -860,7 +863,7 @@ if _HAS_WEBENGINE:
             fleet_source: Optional[FleetSource] = None,
             parent: Optional[QWidget] = None,
             theme: object = None,
-            api_log: Optional[APIInteractionLog] = None,
+            api_log: Optional[SimApiLog] = None,
             battery_tablet_source: Optional[TabletSource] = None,
             connector: Optional[ReadOnlyConnector] = None,
         ) -> None:
@@ -888,7 +891,7 @@ if _HAS_WEBENGINE:
             self._fleet_source = (
                 fleet_source if fleet_source is not None else FleetSource()
             )
-            self._api_log = api_log if api_log is not None else APIInteractionLog()
+            self._api_log = api_log if api_log is not None else SimApiLog()
             self._connector = (
                 connector
                 if connector is not None
@@ -989,8 +992,9 @@ if _HAS_WEBENGINE:
             fleet in the tab's ``mode``."""
             return sim.fleet_aggregate(self._fleet_source, self._state.mode)
 
-        def api_log(self) -> APIInteractionLog:
-            """The tab's own API log; every entry recorded on it reaches the pane."""
+        def api_log(self) -> SimApiLog:
+            """The tab's own API log; every entry it accepts reaches the pane,
+            and it accepts ``ALLOWED_ACTIONS`` only."""
             return self._api_log
 
         def exchange_count(self) -> int:
@@ -1119,7 +1123,8 @@ if _HAS_WEBENGINE:
             names a pair; ``exchange_choice`` over the exchanges it names,
             ``SimExchangeChoiceDialog`` under ``GENERATE_FROM_YTD_TEXT`` when it
             prompts, then ``FleetSource.generate_from_ytd`` on the exchange
-            chosen, one line per manifest row whose file is missing, the
+            chosen, one ``ytd_api_entry`` recorded on ``api_log`` for that
+            read, one line per manifest row whose file is missing, the
             generation line, the no-target line and ``fleet_changed``; a
             cancelled chooser writes one line and moves nothing."""
             source = YtdTradeSource()
@@ -1141,7 +1146,12 @@ if _HAS_WEBENGINE:
                     self.log(tab_surface.GENERATE_CANCELLED_TEXT, "warning")
                     return
                 chosen = dialog.chosen()
+            started = time.perf_counter()
             made = self._fleet_source.generate_from_ytd(source, chosen)
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            self._api_log.record(
+                **tab_surface.ytd_api_entry(made, chosen, source.root(), elapsed_ms)
+            )
             for entry in made.missing:
                 self.log(tab_surface.ytd_file_missing_line(entry), "warning")
             if not made.bots:

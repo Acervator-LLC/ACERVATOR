@@ -490,12 +490,15 @@ def battery_record(bot: SimBot) -> dict:
 @dataclass(frozen=True)
 class YtdGeneration:
     """What one ``generate_from_ytd`` held: ``bots``, the ``SimBot`` of each
-    record held, ``files_read``, how many trade files they were read from, and
-    ``missing``, the manifest rows whose file is absent."""
+    record held, ``files_read``, how many trade files they were read from,
+    ``files``, those files' names, ``trades_read``, the fills read from them,
+    and ``missing``, the manifest rows whose file is absent."""
 
     bots: tuple[SimBot, ...] = ()
     files_read: int = 0
     missing: tuple[YtdFileEntry, ...] = ()
+    files: tuple[str, ...] = ()
+    trades_read: int = 0
 
 
 def _extractor_status(bot: SimBot) -> dict:
@@ -822,6 +825,8 @@ class FleetSource:
         held: list[SimBot] = []
         missing: list[YtdFileEntry] = []
         files_read = 0
+        files: list[str] = []
+        trades_read = 0
         for bot in ytd_fleet(source, wanted):
             own = [one for one in entries if one.symbol == bot.symbol]
             absent = [one for one in own if source.trade_path(one) is None]
@@ -831,7 +836,9 @@ class FleetSource:
             trades: list[YtdTrade] = []
             for entry in own:
                 trades.extend(source.trades(entry))
+                files.append(entry.file)
             files_read += len(own)
+            trades_read += len(trades)
             target_usd = ytd_target_usd(trades)
             record = ytd_record(bot, target_usd)
             self._records[bot.bot_id] = record
@@ -842,6 +849,8 @@ class FleetSource:
             bots=tuple(held),
             files_read=files_read,
             missing=tuple(sorted(missing, key=lambda one: (one.symbol, one.year))),
+            files=tuple(sorted(files)),
+            trades_read=trades_read,
         )
 
     def hold_battery_fleet(self, bots: Sequence[SimBot]) -> list[SimBot]:

@@ -3198,6 +3198,174 @@ socket refused, the press wrote the refusal line and the root's files hashed
 identical. `bot_state.json` and the two copied tablets read byte-identical
 after every step. No bot was constructed and no socket left loopback.
 
+## The API spool shows Stone Tablet and YTD retrieval activity only
+
+The Sim tab's API Interaction Log carries two kinds of block and refuses every
+other, in both builds. The log each host builds beside its two sources is the
+Simulator's own kind, `SimApiLog`, Live's log with one rule added: an entry is
+accepted when its action opens with one of two words, and any other action is
+refused before the entry exists, before the file line is written and before
+the pane is told. The two words are the two recorders the directive names. A
+Stone Tablet retrieval or update records one block per venue call, and
+Generate From YTD records one block per read of the trade files. Nothing else
+records on the Sim's log, and a venue order cannot reach the pane.
+
+`src/simulator/sim_api_log.py` — the allowed set
+
+```python
+#: The word a Stone Tablet retrieval's action opens with; the tablet key follows.
+TABLET_ACTION = "FETCH_TABLET"
+
+#: The word the Generate From YTD read's action opens with.
+YTD_ACTION = "FETCH_YTD"
+
+#: Every action word ``SimApiLog.record`` accepts. Any other raises ``SendRefused``.
+ALLOWED_ACTIONS = (TABLET_ACTION, YTD_ACTION)
+```
+
+`src/simulator/sim_api_log.py` — the refusal
+
+```python
+class SimApiLog(APIInteractionLog):
+    """``APIInteractionLog`` whose ``record`` accepts ``ALLOWED_ACTIONS`` only."""
+
+    def record(
+        self,
+        exchange: str,
+        action: str,
+        reason: str,
+        endpoint: str = "",
+        params: dict = None,
+        result: str = "",
+        elapsed_ms: float = 0.0,
+        level: str = "info",
+        data_usage: str = "",
+    ) -> dict:
+        if not action_allowed(action):
+            message = REFUSED_FORMAT.format(action=action, allowed=ALLOWED_ACTIONS)
+            logger.warning(message)
+            raise SendRefused(message)
+        return super().record(
+```
+
+### Three ways a venue order cannot reach the pane
+
+The object refuses. A record whose action is not a tablet retrieval or a YTD
+read raises the same refusal the tab's sources raise, appends nothing, writes
+no file line and calls no listener, so nothing is drawn on either build; one
+warning line names the action refused. The process-wide log is a different
+object. The venue connectors record on the log the Live tab listens to, and
+the Sim's writer listens to the Sim's log alone, so an entry recorded on the
+venue log draws on Live's pane and not the Sim's. The callers are the allowed
+set. Four places under the Simulator's tab code record on the Sim's log, two
+per build, and they carry the two allowed words and nothing else.
+
+```mermaid
+flowchart LR
+    tablet[Update Tablet or Retrieve Tablet, one venue call] --> tab[FETCH_TABLET key]
+    ytd[Generate From YTD, one read] --> read[FETCH_YTD]
+    tab --> log[SimApiLog.record]
+    read --> log
+    other[any other action] --> log
+    log -- allowed --> pane[the Sim API Interaction Log pane]
+    log -- refused --> raise[SendRefused, nothing drawn]
+```
+
+### The Generate From YTD block
+
+A Generate From YTD press that reads the trade files records one block on the
+Sim's API Interaction Log, in Live's block, after the read and before the
+Activity Log's generation line. The head line carries the exchange chosen and
+the action. The Reason line names the read. The Endpoint line is the exchange
+history directory the files were read from. The Result line counts the fills
+and the files and names every file read. The Response line is the time the
+read took. The Data usage line counts the bots the read generated, and adds
+the manifest rows skipped when a row's file is missing. A press that stops
+before a read, because the directory is missing, empty or without its
+manifest, because the manifest names no pair, or because the chooser was
+cancelled, records no block and writes its Activity Log line alone.
+
+```
+[05:51:06] COINBASE FETCH_YTD
+  Reason: Read the YTD trade files for coinbase - Generate From YTD
+  Endpoint: <the exchange history directory>
+  Result: 10 fills read from 4 file(s): BTC-USD_2025_coinbase.json, BTC-USD_2026_coinbase.json, ETH-USD_2026_coinbase.json, SOL-USD_2026_coinbase.json
+  Response: 2.8ms
+  Data usage: Generated 3 bot(s) on the Scrumming Bots table
+```
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the block's fields
+
+```python
+YTD_REASON_FORMAT = "Read the YTD trade files for {exchange} - Generate From YTD"
+YTD_RESULT_FORMAT = "{fills} fills read from {files} file(s): {names}"
+YTD_DATA_USAGE_FORMAT = "Generated {bots} bot(s) on the Scrumming Bots table"
+YTD_NOTHING_GENERATED_TEXT = "Nothing generated"
+YTD_MISSING_USAGE_FORMAT = "; {missing} manifest row(s) skipped, file missing"
+```
+
+`src/gui/simulator/sim_trading_tab.py` — the record
+
+```python
+        started = time.perf_counter()
+        made = self._fleet_source.generate_from_ytd(source, chosen)
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        self._api_log.record(
+            **tab_surface.ytd_api_entry(made, chosen, source.root(), elapsed_ms)
+        )
+```
+
+The file names and the fill count come off the generation itself, which now
+answers the names of the files it read and the fills it read beside the bots
+it held and the rows it skipped.
+
+`src/simulator/fleet_source.py` — what one generation answers
+
+```python
+@dataclass(frozen=True)
+class YtdGeneration:
+    bots: tuple[SimBot, ...] = ()
+    files_read: int = 0
+    missing: tuple[YtdFileEntry, ...] = ()
+    files: tuple[str, ...] = ()
+    trades_read: int = 0
+```
+
+### The Stone Tablet block keeps its text
+
+A retrieval's block is the block the replay layer's section above describes,
+unchanged in every field; its action now opens with the shared word rather
+than a copy of it, so the word has one definition.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the action
+
+```python
+RETRIEVAL_ACTION_FORMAT = TABLET_ACTION + " {key}"
+```
+
+### What the API spool refusal reading measured
+
+Both builds, the real window with a scratch home, every socket but loopback
+refused, scratch YTD trade files in the shape the generation reading above
+drove, copies of the BTC, ETH and DOGE tablets, copies of the SPY and GLD RA
+tablets, and a copy of
+`bot_state.json`. One session: Generate From YTD with coinbase chosen drew one
+block whose Result line named the four files and the ten fills, whose Response
+line carried the read's time, and whose lines read the same on both pages
+apart from the stamp and the path; Update Tablet on DOGE against a loopback
+candle server drew forty tablet blocks; Import Live Fleet drew none; Portfolio
+Battery over EQUITY_MACRO drew none. After the session the pane held 41
+blocks, and 41 of them opened with an allowed word. A venue order recorded on
+the Sim's log raised the refusal and drew nothing, on either build; the same
+entry on the process-wide log drew on Live's pane and not the Sim's. Live's 37
+action names recorded on the Sim's log were refused 37 of 37; with the order
+word planted into the allowed set the count read 36, and with the plant
+removed it read 37 again. One tablet entry recorded directly drew. On the base
+commit the same session drew no block for Generate From YTD, the order record
+drew, and the 37 names drew 37 of 37. Every copied file and every trade file
+read byte-identical after every step, and a byte planted into a copy of
+`bot_state.json` moved its hash. No socket left loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
