@@ -42,6 +42,7 @@ from .portfolio_battery import (
     TimeframeResult,
 )
 from .portfolios import PORTFOLIOS
+from .sim_bus import sim_log_paths
 from .tablet_source import TabletSource, tablet_key
 from .validation import (
     CAUSES,
@@ -54,6 +55,7 @@ from .validation import (
     VALIDATED,
     RowComparison,
     ValidationRun,
+    bot_outcome_line,
     iso_stamp,
     summarise,
 )
@@ -162,6 +164,9 @@ class ParityReport:
     error: str = ""
     #: True when the run was ended by Stop; ``partial`` reads True as well.
     stopped: bool = False
+    #: The id every sim log row of the run carries; empty when the run was
+    #: handed no bus.
+    run_id: str = ""
 
 
 def reports_dir() -> Path:
@@ -175,6 +180,26 @@ def utc_stamp(moment: Optional[datetime] = None) -> str:
     """``moment`` in UTC as ``STAMP_FORMAT``; now when None."""
     when = moment if moment is not None else datetime.now(timezone.utc)
     return when.astimezone(timezone.utc).strftime(STAMP_FORMAT)
+
+
+def new_run_id(mode: str) -> str:
+    """``<mode>-<utc_stamp()>``, taken when a run starts, before its first row."""
+    return f"{safe_name(mode)}-{utc_stamp()}"
+
+
+def rows_section(run_id: str, emitted: dict) -> dict:
+    """The report's ``rows`` figures: ``run_id``, the ``sim_log_paths`` files,
+    what the run emitted per topic, and the ``EmitObserver`` reading."""
+    observer = dict(emitted.get("observer") or {})
+    return {
+        "run_id": run_id,
+        "files": sim_log_paths(),
+        "emitted": dict(emitted.get("emitted") or {}),
+        "topics_declared": int(observer.get("topics_declared", 0) or 0),
+        "topics_seen": int(observer.get("topics_seen", 0) or 0),
+        "observed": dict(observer.get("emissions") or {}),
+        "violations": list(observer.get("violations") or []),
+    }
 
 
 def safe_name(text: object) -> str:
@@ -313,8 +338,11 @@ def header(
     span: str,
     funding: str,
     subject: str,
+    run_id: str = "",
+    emitted: Optional[dict] = None,
 ) -> dict:
-    """The header every mode carries."""
+    """The header every mode carries, with ``rows_section`` over ``run_id``
+    and ``emitted``."""
     return {
         "mode": mode,
         "title": MODE_TITLE.get(mode, mode),
@@ -330,6 +358,8 @@ def header(
         },
         "bots": len(bots),
         "budget": budget_section(funding, bots),
+        "run_id": run_id,
+        "rows": rows_section(run_id, emitted or {}),
     }
 
 
@@ -419,19 +449,13 @@ def validation_not_verified(run: ValidationRun, bots: Sequence[dict]) -> list[st
     if run.stopped:
         out.append(run.stopped_line)
     for row in bots:
-        if row["outcome"] == NO_YTD_FILE:
+        if row["outcome"] in (NO_YTD_FILE, NO_BOT_TABLET) or (
+            row["outcome"] == VALIDATED and not row["gate_rows"]
+        ):
             out.append(
-                f"{row['bot_id']} ({row['symbol']}): no YTD trade file; "
-                "nothing snapped."
-            )
-        elif row["outcome"] == NO_BOT_TABLET:
-            out.append(
-                f"{row['bot_id']} ({row['symbol']}): no Stone Tablet; nothing snapped."
-            )
-        elif row["outcome"] == VALIDATED and not row["gate_rows"]:
-            out.append(
-                f"{row['bot_id']} ({row['symbol']}): no gate row recorded for this "
-                f"bot; {row['snapped']} snapped trades matched nothing."
+                bot_outcome_line(
+                    row["bot_id"], row["symbol"], row["outcome"], row["snapped"]
+                )
             )
     cover = run.coverage
     for reason, count in sorted(cover.by_reason.items()):
@@ -501,6 +525,8 @@ def validation_figures(
         span_label(first_ms, last_ms),
         FUNDED_BY_TARGETS,
         subject,
+        run.run_id,
+        run.emitted,
     )
     head["budget"][
         "note"
@@ -606,6 +632,8 @@ def back_test_figures(
         span_label(first_ms, last_ms),
         run.funding,
         subject,
+        run.run_id,
+        run.emitted,
     )
     head["budget"]["budget_usd"] = run.budget_usd
     head["interval_ms"] = int(run.interval_ms)
@@ -810,6 +838,8 @@ def battery_figures(
         "tablet_root": run.tablet_root,
         "timeframes": list(run.timeframes),
         "symbol_runs": int(run.symbol_runs),
+        "run_id": run.run_id,
+        "rows": rows_section(run.run_id, run.emitted),
     }
     portfolios = [
         {
@@ -947,7 +977,43 @@ def render_header(figures: dict) -> list[str]:
             f"- partial: yes; the run raised {error.get('type')}: "
             f"{error.get('message')}"
         )
+    out += render_rows(head.get("rows") or {})
     out.append("")
+    return out
+
+
+def render_rows(rows: dict) -> list[str]:
+    """The ``Run`` lines naming the run's sim log rows: the run id, the four
+    files, the rows emitted per topic and the ``EmitObserver`` reading."""
+    run_id = rows.get("run_id") or ""
+    if not run_id:
+        return [
+            "- run id: none; no bus was handed to the run, so no sim log row was written"
+        ]
+    emitted = rows.get("emitted") or {}
+    observed = rows.get("observed") or {}
+    violations = rows.get("violations") or []
+    out = [
+        f"- run id: {run_id}",
+        "- row files: "
+        + ", ".join(
+            f"{name} {path}" for name, path in (rows.get("files") or {}).items()
+        ),
+        "- rows emitted: "
+        + (", ".join(f"{topic} {count}" for topic, count in emitted.items()) or "none"),
+        f"- observer: {rows.get('topics_seen', 0)} of {rows.get('topics_declared', 0)} "
+        "declared topic(s) seen; "
+        + (
+            ", ".join(f"{topic} {count}" for topic, count in observed.items())
+            or "nothing observed"
+        )
+        + f"; {len(violations)} violation(s)",
+    ]
+    for one in violations:
+        out.append(
+            f"- observer violation: [{one.get('kind')}] {one.get('topic')}: "
+            f"{one.get('detail')} (x{one.get('count', 1)})"
+        )
     return out
 
 
@@ -1247,6 +1313,7 @@ def write_figures(figures: dict, stamp: str) -> ParityReport:
         partial=bool(figures.get("partial")),
         error=f"{error.get('type')}: {error.get('message')}" if error else "",
         stopped=bool(figures.get("stopped")),
+        run_id=str(figures.get("header", {}).get("run_id") or ""),
     )
 
 
@@ -1269,6 +1336,7 @@ def partial_figures(
     funding: str = "",
     names: Sequence[str] = (),
     span: str = "",
+    run_id: str = "",
 ) -> dict:
     """The figures a run in ``mode`` had when ``error`` was raised."""
     if mode == PORTFOLIO_BATTERY:
@@ -1280,7 +1348,16 @@ def partial_figures(
             FUNDED_BY_PROCEEDS if mode == BACK_TEST else FUNDED_BY_TARGETS
         )
     head = header(
-        mode, stamp, bots, exchange_id, 0, 0, span or "no-span", funding, subject
+        mode,
+        stamp,
+        bots,
+        exchange_id,
+        0,
+        0,
+        span or "no-span",
+        funding,
+        subject,
+        run_id,
     )
     bot_rows = []
     for bot in bots:
@@ -1358,9 +1435,12 @@ __all__ = [
     "comparison_row",
     "create_pair",
     "partial_figures",
+    "new_run_id",
     "render_markdown",
+    "render_rows",
     "report_line",
     "report_name",
+    "rows_section",
     "reports_dir",
     "safe_name",
     "span_label",

@@ -104,6 +104,7 @@ from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.read_only_connector import ReadOnlyConnector, VenueCall
 from ...simulator.sim_api_log import SimApiLog
+from ...simulator.sim_bus import new_sim_bus, sim_log_manager
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource, tablet_key
@@ -937,6 +938,9 @@ if _HAS_WEBENGINE:
                 if connector is not None
                 else ReadOnlyConnector(on_call=self._on_venue_call)
             )
+            # The Simulator's own bus, not the process-wide one; every run emits on it.
+            self._bus = new_sim_bus()
+            self._log_manager = sim_log_manager(self._bus, self._symbol_of)
             self._retrieval_thread: Optional[threading.Thread] = None
             self._retrieval: dict = {}
             self._tablet_key: str = ""
@@ -1017,6 +1021,21 @@ if _HAS_WEBENGINE:
         def venue_payloads(self) -> dict:
             """A copy of the payload each venue last published."""
             return dict(self._venue_models)
+
+        def bus(self) -> Any:
+            """The tab's private bus from ``new_sim_bus``; every run's rows
+            are emitted on it."""
+            return self._bus
+
+        def log_manager(self) -> Any:
+            """Live's ``LogManager`` over the sim bucket from
+            ``sim_log_manager``, attached to ``bus``."""
+            return self._log_manager
+
+        def _symbol_of(self, bot_id: str) -> str:
+            """The symbol ``FleetSource.bot_for`` holds for ``bot_id``, or empty."""
+            bot = self._fleet_source.bot_for(bot_id)
+            return bot.symbol if bot is not None else ""
 
         def tablet_source(self) -> TabletSource:
             """The tablet reader the panel is fed from."""
@@ -1162,6 +1181,7 @@ if _HAS_WEBENGINE:
                     plan=plan,
                     progress=lambda line: self.battery_line.emit(line, "info"),
                     on_trade=self.battery_trade.emit,
+                    bus=self._bus,
                 )
             except Exception as exc:  # noqa: BLE001 - the run runs off-thread
                 logger.exception("Portfolio Battery failed: %s", exc)
@@ -1320,6 +1340,7 @@ if _HAS_WEBENGINE:
                         limit=sim.VALIDATION_RERUN_LIMIT,
                         on_trade=self.run_trade.emit,
                         stop=self._run_stop.is_set,
+                        bus=self._bus,
                     )
                 else:
                     outcome = back_test.run(
@@ -1330,6 +1351,7 @@ if _HAS_WEBENGINE:
                         funding=sim.funding_for(mode),
                         on_trade=self.run_trade.emit,
                         stop=self._run_stop.is_set,
+                        bus=self._bus,
                     )
             except Exception as exc:
                 logger.exception("%s run failed: %s", mode, exc)

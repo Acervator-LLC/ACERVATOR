@@ -88,7 +88,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -125,6 +125,7 @@ from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.read_only_connector import ReadOnlyConnector, VenueCall
 from ...simulator.sim_api_log import SimApiLog
+from ...simulator.sim_bus import new_sim_bus, sim_log_manager
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource, tablet_key
@@ -275,6 +276,9 @@ class SimTradingTab(QWidget):
             if connector is not None
             else ReadOnlyConnector(on_call=self._on_venue_call)
         )
+        # The Simulator's own bus, not the process-wide one; every run emits on it.
+        self._bus = new_sim_bus()
+        self._log_manager = sim_log_manager(self._bus, self._symbol_of)
         self._layer = surface.LAYER_INDICATORS
         self._mode = surface.MODES[0]
         self._battery_thread: Optional[threading.Thread] = None
@@ -304,6 +308,21 @@ class SimTradingTab(QWidget):
         self._sync_exchange_tabs()
 
     # -- what the window reads ------------------------------------------
+
+    def bus(self) -> Any:
+        """The tab's private bus from ``new_sim_bus``; every run's rows are
+        emitted on it."""
+        return self._bus
+
+    def log_manager(self) -> Any:
+        """Live's ``LogManager`` over the sim bucket from ``sim_log_manager``,
+        attached to ``bus``."""
+        return self._log_manager
+
+    def _symbol_of(self, bot_id: str) -> str:
+        """The symbol ``FleetSource.bot_for`` holds for ``bot_id``, or empty."""
+        bot = self._fleet_source.bot_for(bot_id)
+        return bot.symbol if bot is not None else ""
 
     def tablet_source(self) -> TabletSource:
         """The tablet reader the panel is fed from."""
@@ -522,6 +541,7 @@ class SimTradingTab(QWidget):
                 plan=plan,
                 progress=lambda line: self.battery_line.emit(line, "info"),
                 on_trade=self.battery_trade.emit,
+                bus=self._bus,
             )
         except Exception as exc:  # noqa: BLE001 - the run runs off-thread
             logger.exception("Portfolio Battery failed: %s", exc)
@@ -685,6 +705,7 @@ class SimTradingTab(QWidget):
                     limit=surface.VALIDATION_RERUN_LIMIT,
                     on_trade=self.run_trade.emit,
                     stop=self._run_stop.is_set,
+                    bus=self._bus,
                 )
             else:
                 outcome = back_test.run(
@@ -695,6 +716,7 @@ class SimTradingTab(QWidget):
                     funding=surface.funding_for(mode),
                     on_trade=self.run_trade.emit,
                     stop=self._run_stop.is_set,
+                    bus=self._bus,
                 )
         except Exception as exc:
             logger.exception("%s run failed: %s", mode, exc)

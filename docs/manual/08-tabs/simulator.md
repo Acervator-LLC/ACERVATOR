@@ -3847,6 +3847,320 @@ byte-identical after every press, a byte planted into a copy of
 `bot_state.json` moved its hash, no bot was constructed and no socket left
 loopback.
 
+## The Simulator writes Live's log rows under the sim bucket
+
+Every run writes the rows a live bot writes, into the Simulator's own files,
+so a run can be troubleshot and tuned from its files as a live bot can from
+its logs. The operator, 2026-09-18: *"Simulator Logs and Emitter Network must
+be able to provide sufficient data for troubleshooting and optimization."*
+Each Sim host builds one private bus at tab build and one second copy of
+Live's log writer over the sim bucket, attached to that bus. The bus is never
+the process-wide one, and nothing under the Simulator subscribes to the live
+bus. The runners emit Live's topics on the private bus, the writer's own
+listeners write them, and the four files land beside the sim fleet file.
+
+`src/simulator/sim_bus.py` — the bus and the writer one host builds
+
+```python
+def new_sim_bus() -> EventBus:
+    """A private ``EventBus`` for one Sim host, never ``get_event_bus``."""
+    return EventBus()
+
+
+def sim_log_manager(
+    bus: Any, symbol_of: Optional[Callable[[str], str]] = None
+) -> LogManager:
+    """A ``LogManager`` over ``get_sim_dir`` attached to ``bus``, with
+    ``symbol_of`` as its symbol resolver when given."""
+    manager = LogManager(log_dir=get_sim_dir())
+    if symbol_of is not None:
+        manager.set_symbol_resolver(symbol_of)
+    manager.attach_to_bus(bus)
+    return manager
+```
+
+`src/gui/simulator/sim_trading_tab.py` — built once, in the tab's `__init__`
+
+```python
+        self._bus = new_sim_bus()
+        self._log_manager = sim_log_manager(self._bus, self._symbol_of)
+```
+
+The writer's own attach subscribes the five topics it subscribes on Live, so
+the sim files carry Live's names and Live's row shapes. One writer, one
+definition, two buckets.
+
+| topic on the private bus | file under the sim bucket | who emits it |
+| --- | --- | --- |
+| `trade.filled` | `sim/trade.log` | the walk on every fill, the rerun on every rerun fill |
+| `bot.gate_decision` | `sim/gate.log` | the walk on every evaluated candle, the rerun on every rerun row |
+| `bot.voting_panel_snapshot` | `sim/voting.log` | the walk on every evaluated candle |
+| `bot.log` | `sim/diagnostics.log` | the walk on every fill and for every bot it refuses, the rerun for every bot it cannot rerun |
+| `pnl.event` | `sim/pnl/daily/` | nothing; the directory is made at build and stays empty |
+
+The writer's console handler is not attached a second time: `main.py` builds
+Live's writer before the window, so the application logger already holds
+Live's handler when the tab builds, and the sim writer attaches none. No
+`sim/system.log` exists, and the live `system.log` is not doubled.
+
+```mermaid
+flowchart LR
+    start[Start on the command bar] --> thread[_compute_run on a daemon thread]
+    thread --> run[back_test.run or validation.run with bus=self._bus]
+    run --> emitter[RunEmitter: the bus and one run id]
+    emitter --> walk[walk: one candle evaluated]
+    walk --> emit[bus.emit on the private bus]
+    emit --> listener[LogManager listener]
+    listener --> row[one row appended to sim/gate.log]
+```
+
+### Every row carries its run id and its candle
+
+Each run takes one id before its first row, `<mode>-<stamp>`, and every gate
+row, voting row and diagnostics row of the run carries it. The candle's time is
+on every row as well. A row's top-level `timestamp` is the wall clock at the
+write, as it is on Live, because the writer sets it and no call takes one; the
+candle's time sits under `data` as `candle_at` and `candle_ts_ms`, the stamp
+the Activity Log's trade line carries. A reader finds a candle by
+`data.candle_at`, never by the top-level stamp.
+
+`src/simulator/sim_bus.py` — the four keys every gate and voting row adds
+
+```python
+    def stamp(self, candle_ts_ms: int) -> dict:
+        """The four keys every row adds: ``run_id``, ``mode``,
+        ``candle_ts_ms`` and ``candle_at``."""
+        return {
+            "run_id": self.run_id,
+            "mode": self.mode,
+            "candle_ts_ms": int(candle_ts_ms),
+            "candle_at": iso_stamp(candle_ts_ms),
+        }
+```
+
+A trade row carries no run id and no candle: Live's trade listener writes a
+closed set of fields and drops every other key, and that listener is not
+changed. A trade row is found through the gate row written in the same moment
+for the same bot with the same action, the pairing the sizing replay already
+makes. A diagnostics row carries the run id and the candle inside its message,
+because Live's diagnostics listener writes `symbol` and `message` only.
+
+`src/simulator/sim_bus.py` — the diagnostics message
+
+```python
+BOT_LINE_FORMAT = "{message} (run {run_id}, candle {candle_at})"
+```
+
+### What a walk's gate row holds
+
+A walk's gate row is Live's gate row: the two armed flags and the two blocker
+lists the chain latched, the scrum and fold fixtures with the keys the live
+bot writes at fire time, the tranche snapshot and the compounding snapshot in
+the live shapes, `evaluated_at_tick` as the walk's tick count, and the trade
+action and side on a row where a fill happened. Live's fixture shape has no
+function of its own, two dict literals inside the live bot's tick; the
+Simulator spells the same keys from the walk's gate context.
+
+`src/simulator/sim_bus.py` — the scrum fixture's first keys
+
+```python
+def scrum_fixture(context: GateContext, reading: Any = None) -> dict:
+    """The ``scrum_fixture`` keys ``ScrummingBot.tick`` writes, read off
+    ``context`` and ``reading``."""
+    return {
+        "delta": float(context.delta),
+        "below_interval": bool(context.below_interval),
+        "ticker_last": float(context.ticker_last),
+        "bb_pos": float(context.bb_pos),
+        **_landing(reading),
+```
+
+One row per evaluated candle, not one per fill as Live writes, because a
+blocked candle is the one a person troubleshoots: the blocker list on that
+row names the light that held, and the fixture names the reading behind it.
+The voting row beside it carries the whole vote of that candle, every
+indicator's direction, confidence and details, so a pillar that voted wrong is
+found by candle.
+
+`src/simulator/back_test.py` — the walk's emit order, Live's fire order
+
+```python
+        if emitter is not None:
+            action = fill_action(filled)
+            if filled is not None:
+                emitter.trade_filled(filled, bot.exchange_id)
+                emitter.bot_line(bot.bot_id, fill_line(filled), stamp)
+            emitter.voting_snapshot(bot, summary, stamp, action, fill_side(filled))
+            emitter.gate_decision(
+                bot,
+                context,
+                armed,
+                stamp,
+                reading=reading,
+                position=position,
+                tick=ticks,
+                trade_action=action,
+                side=fill_side(filled),
+            )
+```
+
+A scrum row's `usd` is the settled proceeds net of the estimated fee, as
+Live's scrum row carries it; a fold row's `usd` is the spend. The Activity
+Log's trade line keeps printing the gross beside the fee. The fill words that
+line uses moved into the bus module, so the surface's format now holds the
+prefix and the line the diagnostics row carries.
+
+`src/simulator/sim_bus.py` — Live's fill line, without the window's prefix
+
+```python
+FILL_LINE_FORMAT = (
+    "{word}: {units:.6f} {asset} @ ${price:.8f} ({usd_word} ${usd:.5f}, fee ${fee:.5f})"
+)
+SCRUM_FILL_WORD = "SELL FILLED"
+FOLD_FILL_WORD = "BUY FILLED"
+SCRUM_USD_WORD = "gross"
+FOLD_USD_WORD = "spent"
+```
+
+### A Validation rerun row carries the recorded row and every light
+
+A Validation run emits one gate row per rerun, with the rerun's armed flags,
+blockers and fixtures where Live's fields sit, and two more fields under
+`data`: the recorded row as the gate-log reader read it, and the comparison
+with all nineteen lights. Each light names its bank and label, the recorded
+state, the rerun state, whether they agree, which side drives it and, where
+they differ, the cause. A differing light is found from the file alone, by
+candle, with no report open: read the rows whose comparison holds a light that
+does not agree, and each such row names its candle.
+
+`src/simulator/validation.py` — the fields a rerun row adds
+
+```python
+def rerun_row_fields(row: Any, seen: RowComparison) -> dict:
+    """The fields a rerun's gate row adds beside Live's: ``recorded`` from
+    ``recorded_row_fields`` and ``comparison`` from ``comparison_row`` with
+    all nineteen ``lights`` and their ``agrees``."""
+    from .parity_report import comparison_row
+
+    comparison = comparison_row(seen)
+    comparison["lights"] = [
+        {
+            "bank": one.bank,
+            "label": one.label,
+            "recorded": one.recorded,
+            "rerun": one.rerun,
+            "agrees": bool(one.agrees),
+            "driven_by": one.driven_by,
+            "cause": one.cause,
+        }
+        for one in seen.labels
+    ]
+    return {"recorded": recorded_row_fields(row), "comparison": comparison}
+```
+
+Validation computes no voting summary, because the rerun reads the vote the
+bot recorded, so a Validation run writes no voting row. A bot with no YTD file
+or no tablet, and a bot whose snapped trades matched no recorded gate row, is
+named in the diagnostics file with the same line the report's Not verified
+section carries.
+
+### The observer reads every run and the report names its rows
+
+For the length of one run, Live's emit observer is subscribed to the private
+bus over the two Live contracts the Simulator emits, the fill and the gate
+decision. The run's emitter counts what it emits per topic; the observer
+counts what arrived and reports a required field that is absent, a value
+outside its vocabulary, and a declared topic that never fired. At the run's
+end the observer is finished, its subscriptions are removed, and its reading
+goes into the run object and the report beside the run id and the four file
+paths. A run that emits no fill reports the fill topic as never emitted, so an
+empty run reads as empty rather than as clean.
+
+`src/simulator/sim_bus.py` — the observer's reading at the run's end
+
+```python
+    def close(self) -> dict:
+        """Finish the ``EmitObserver``, remove its subscriptions and answer
+        ``to_dict`` with ``emitted`` beside it; a second call answers the same."""
+        if self._read is not None:
+            return self._read
+        for remove in self._unsubscribe:
+            remove()
+        self._unsubscribe = []
+        self._observer.finish()
+        self._read = {"emitted": dict(self.emitted), "observer": self._observer.to_dict()}
+        return self._read
+```
+
+The report's Run section gains the run id, the four file paths, the rows
+emitted per topic and the observer's line; the sidecar carries the same under
+`header.rows`, with each violation listed.
+
+```
+- run id: back_test-20260918T183818245464Z
+- row files: trade.log <sim bucket>/trade.log, gate.log <sim bucket>/gate.log, voting.log <sim bucket>/voting.log, diagnostics.log <sim bucket>/diagnostics.log
+- rows emitted: bot.voting_panel_snapshot 4752, bot.gate_decision 4752, trade.filled 17, bot.log 17
+- observer: 2 of 2 declared topic(s) seen; bot.gate_decision 4752, trade.filled 17; 0 violation(s)
+```
+
+Live's contract module declares a voting topic nothing emits and no contract
+for the voting snapshot topic the live bot does emit, so the voting row is
+written under no contract and the observer does not read it. Live's trade
+rows carry an empty exchange, because the live fire sites pass none; the
+Simulator's carry the bot's exchange in that field.
+
+### What the bucket holds and how large it grows
+
+After a run the sim bucket holds the four files beside the sim fleet file and
+the empty daily directory. Each file rotates at 50 MiB with five backups, the
+writer's own bound. Measured over the scratch fleet of 24 bots at 200 ticks
+each, a Back Test wrote 4,752 gate rows in 11.9 MB, about 2.5 KB a row, and
+4,752 voting rows in 27.1 MB, about 5.7 KB a row, the vote's twelve signals
+and their details making the difference. A whole-root Portfolio Battery of
+189 walks at 120 ticks each writes about 22,700 rows a file, so its voting
+rows cross the rotation bound within one run and the older ones survive in
+the numbered backups.
+
+### What the emitter reading measured
+
+Before, in both builds over a scratch home holding 24 scrumming bots, one
+2,000-candle 5m tablet per pair, four fills per pair, one fired gate row per
+fill, the live bucket's five files each holding one line, and a copy of the
+411 RA-StoneTablets: after a Validation run, a Back Test run and a Run
+Portfolio, the sim bucket held the sim fleet file and nothing else, no host
+held a bus, and no report named a run id.
+
+After, in both builds over the same home: the Validation run wrote 96 gate
+rows and 96 trade rows under its run id, the Back Test 4,752 gate rows, 4,752
+voting rows, 17 trade rows and 17 diagnostics rows, and the Battery 1,017 gate
+rows, 1,017 voting rows, 204 trade rows and 204 diagnostics rows; every gate
+and voting row carried the run id and the candle, every row of each file
+carried its contract's required fields, and the observer read 2 of 2 declared
+topics seen and 0 violations on each run, its counts equal to the rows on
+disk. The host's bus was not the process-wide bus, read by identity; the
+process-wide bus's subscriptions read the same after every run as after the
+window was built; the live trade bucket's four files, the 24 tablets, the YTD
+files and the 411 RA tablets hashed identical after every run, and a byte
+appended to a copy of the fleet file moved its hash. The live `system.log`
+changes during a run on the base tree already, from the window's own panel
+timer and the Simulator's own loggers, and is the process log rather than a
+trade-bucket file.
+
+Off the tab, one Back Test walk over the same fleet with the bus and the
+writer, under the debugger with `amount` removed from one fill payload at the
+emit line, read one observer violation naming the absent field, carried into
+the report; the same walk untouched read zero. The sizing replay of the one
+trading logic, run over that walk's `sim/trade.log` and `sim/gate.log`, paired
+17 of 17 fills with their gate rows and reproduced 4 of 4 scrum unit counts,
+13 of 13 fold unit counts, 4 of 4 interval readings and 4 of 4 scrum proceeds;
+its own planted row read one disagreement. Over the scratch home whose
+recorded rows carry one flipped S/TA light, one removed `target_fires` and one
+reading moved to the opposite band, `sim/gate.log` alone, with no report
+open, named three rows with a differing light by candle: the removed field's
+candle with S/FIRE `fixture`, the flipped candle with S/TA `chain` and its
+eight armed-flag lights, and the moved candle with S/BB `tape` and its ten
+dependents, in both builds.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

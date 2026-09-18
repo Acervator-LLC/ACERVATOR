@@ -30,6 +30,7 @@ from .fleet_source import LIVE_ORIGIN, SimBot
 
 if TYPE_CHECKING:
     from .back_test import SimTrade
+    from .sim_bus import RunEmitter
 
 logger = logging.getLogger("acervator.simulator.validation")
 
@@ -660,11 +661,55 @@ def classify_lights(
     return tuple(out)
 
 
+def recorded_row_fields(row: Any) -> dict:
+    """The recorded ``GateRow`` as one dict: its stamp, the two armed flags,
+    the two blocker lists and the two fixtures."""
+    return {
+        "gate_ts_ms": int(row.ts_ms),
+        "gate_row_at": iso_stamp(row.ts_ms),
+        "scrum_armed": bool(row.scrum_armed),
+        "fold_armed": bool(row.fold_armed),
+        "scrum_blockers": list(row.scrum_blockers),
+        "fold_blockers": list(row.fold_blockers),
+        "scrum_fixture": dict(row.scrum_fixture),
+        "fold_fixture": dict(row.fold_fixture),
+    }
+
+
+def rerun_row_fields(row: Any, seen: RowComparison) -> dict:
+    """The fields a rerun's gate row adds beside Live's: ``recorded`` from
+    ``recorded_row_fields`` and ``comparison`` from ``comparison_row`` with
+    all nineteen ``lights`` and their ``agrees``."""
+    from .parity_report import comparison_row
+
+    comparison = comparison_row(seen)
+    comparison["lights"] = [
+        {
+            "bank": one.bank,
+            "label": one.label,
+            "recorded": one.recorded,
+            "rerun": one.rerun,
+            "agrees": bool(one.agrees),
+            "driven_by": one.driven_by,
+            "cause": one.cause,
+        }
+        for one in seen.labels
+    ]
+    return {"recorded": recorded_row_fields(row), "comparison": comparison}
+
+
 def compare_row(
-    bot: SimBot, row: Any, snap: SnappedTrade, candles: Sequence[Any]
+    bot: SimBot,
+    row: Any,
+    snap: SnappedTrade,
+    candles: Sequence[Any],
+    emitter: Optional["RunEmitter"] = None,
+    trade: Optional["SimTrade"] = None,
 ) -> RowComparison:
     """One snapped trade's rerun beside its recorded row, light by light, each
-    disagreeing light carrying its ``cause`` from ``classify_lights``."""
+    disagreeing light carrying its ``cause`` from ``classify_lights``;
+    ``emitter`` is handed ``trade`` through ``trade_filled`` and the rerun
+    through ``gate_decision`` with ``rerun_row_fields`` beside it."""
     context, bb_pos, locked_known = rerun_context(bot, row, candles)
     rerun = latch(context)
     recorded_lights = light_states(
@@ -693,7 +738,7 @@ def compare_row(
         context,
         locked_known,
     )
-    return RowComparison(
+    seen = RowComparison(
         trade_id=snap.trade_id,
         bot_id=row.bot_id,
         symbol=row.symbol,
@@ -716,6 +761,21 @@ def compare_row(
         rerun_bb_pos=float(bb_pos),
         missing_fixture_fields=missing_fixture_fields(row),
     )
+    if emitter is not None:
+        from .back_test import fill_action, fill_side
+
+        if trade is not None:
+            emitter.trade_filled(trade, bot.exchange_id)
+        emitter.gate_decision(
+            bot,
+            context,
+            rerun,
+            snap.candle_ts_ms,
+            trade_action=fill_action(trade),
+            side=fill_side(trade),
+            extra=rerun_row_fields(row, seen),
+        )
+    return seen
 
 
 def tape_lag(
@@ -848,6 +908,12 @@ class ValidationRun:
     report: Any = None
     #: True when ``stop`` ended the pass before every bot and row was reached.
     stopped: bool = False
+    #: The id every row of this pass carries in ``data.run_id``; empty when
+    #: ``run`` was handed no bus.
+    run_id: str = ""
+    #: What ``RunEmitter.close`` answered: the rows emitted per topic and the
+    #: ``EmitObserver`` reading; empty when ``run`` was handed no bus.
+    emitted: dict = field(default_factory=dict)
 
     @property
     def summary(self) -> dict:
@@ -918,6 +984,22 @@ def bot_counts(bot: SimBot, outcome: str, rows: Sequence[SnappedTrade]) -> dict:
     }
 
 
+def bot_outcome_line(bot_id: str, symbol: str, outcome: str, snapped: int = 0) -> str:
+    """The line naming one bot the pass could not rerun: ``NO_YTD_FILE``,
+    ``NO_BOT_TABLET``, or ``VALIDATED`` with no recorded gate row for its
+    ``snapped`` trades; empty for any other outcome."""
+    if outcome == NO_YTD_FILE:
+        return f"{bot_id} ({symbol}): no YTD trade file; nothing snapped."
+    if outcome == NO_BOT_TABLET:
+        return f"{bot_id} ({symbol}): no Stone Tablet; nothing snapped."
+    if outcome == VALIDATED:
+        return (
+            f"{bot_id} ({symbol}): no gate row recorded for this bot; "
+            f"{snapped} snapped trades matched nothing."
+        )
+    return ""
+
+
 def rerun_trade(bot: SimBot, fill: Any) -> "SimTrade":
     """The ``SimTrade`` one rerun YTD fill reads as: ``SCRUM`` for ``SIDE_SELL``
     and ``FOLD`` otherwise, ``amount`` as the units, ``cost`` as the USD."""
@@ -945,6 +1027,7 @@ def run(
     lag_sample: int = LAG_SAMPLE_ROWS,
     on_trade: Optional[Callable[["SimTrade"], None]] = None,
     stop: Optional[Callable[[], bool]] = None,
+    bus: Any = None,
 ) -> ValidationRun:
     """Snap every bot's YTD trades, rerun each against its recorded gate row,
     and write the pass through ``write_report`` onto ``ValidationRun.report``.
@@ -952,20 +1035,40 @@ def run(
     ``limit`` caps how many matched trades are rerun, ``lag_sample`` how many
     have ``tape_lag`` measured, ``on_trade`` is handed ``rerun_trade`` of each
     fill as it is rerun, ``stop`` is read before each bot and each row and ends
-    the pass where it is when it answers True; a ``_validate`` that raises
-    reaches ``write_partial`` with the exception and re-raises.
+    the pass where it is when it answers True, ``bus`` becomes the
+    ``RunEmitter`` every row of the pass goes through under ``new_run_id``; a
+    ``_validate`` that raises reaches ``write_partial`` with the exception and
+    re-raises.
     """
-    from .parity_report import VALIDATION, write_partial, write_report
+    from .parity_report import VALIDATION, new_run_id, write_partial, write_report
+    from .sim_bus import RunEmitter
 
+    emitter = RunEmitter(bus, new_run_id(VALIDATION), VALIDATION)
     try:
         outcome = _validate(
-            bots, tablets, ytd, gates, exchange_id, limit, lag_sample, on_trade, stop
+            bots,
+            tablets,
+            ytd,
+            gates,
+            exchange_id,
+            limit,
+            lag_sample,
+            on_trade,
+            stop,
+            emitter,
         )
     except Exception as exc:
+        emitter.close()
         write_partial(
-            VALIDATION, exc, bots=bots, exchange_id=exchange_id, tablets=tablets
+            VALIDATION,
+            exc,
+            bots=bots,
+            exchange_id=exchange_id,
+            tablets=tablets,
+            run_id=emitter.run_id,
         )
         raise
+    outcome = replace(outcome, run_id=emitter.run_id, emitted=emitter.close())
     return replace(outcome, report=write_report(VALIDATION, outcome, tablets))
 
 
@@ -979,11 +1082,15 @@ def _validate(
     lag_sample: int,
     on_trade: Optional[Callable[["SimTrade"], None]] = None,
     stop: Optional[Callable[[], bool]] = None,
+    emitter: Optional["RunEmitter"] = None,
 ) -> ValidationRun:
     """The pass ``run`` wraps: ``snap_trades``, ``compare_row`` and ``tape_lag``
     over ``bots``, with no report written; ``on_trade`` is handed
-    ``rerun_trade`` of each fill at its ``compare_row``, and ``stop`` answering
-    True before a bot or a row ends the pass there with ``stopped`` set."""
+    ``rerun_trade`` of each fill at its ``compare_row``, ``emitter`` emits the
+    rerun row through ``rerun_row`` and the fill through ``trade_filled``
+    there and ``bot_outcome_line`` through ``bot_line`` for each bot not
+    rerun, and ``stop`` answering True before a bot or a row ends the pass
+    there with ``stopped`` set."""
     from ..trading.indicators.types import candles_from_raw
 
     tablet_entries = tablets.entries()
@@ -1005,10 +1112,19 @@ def _validate(
         if entry is None:
             outcomes[NO_YTD_FILE] += 1
             by_bot[bot.bot_id] = bot_counts(bot, NO_YTD_FILE, [])
+            if emitter is not None:
+                emitter.bot_line(
+                    bot.bot_id, bot_outcome_line(bot.bot_id, bot.symbol, NO_YTD_FILE)
+                )
             continue
         if tablet is None:
             outcomes[NO_BOT_TABLET] += 1
             by_bot[bot.bot_id] = bot_counts(bot, NO_BOT_TABLET, [])
+            if emitter is not None:
+                emitter.bot_line(
+                    bot.bot_id,
+                    bot_outcome_line(bot.bot_id, bot.symbol, NO_BOT_TABLET),
+                )
             continue
         raw = tablets.candles(tablet)
         raw_by_symbol[bot.symbol] = raw
@@ -1055,6 +1171,11 @@ def _validate(
             else rows_by_pair.get((bot.exchange_id, bot.symbol))
         )
         counts["gate_rows"] = len(held or [])
+        if emitter is not None and counts["outcome"] == VALIDATED and not held:
+            emitter.bot_line(
+                bot.bot_id,
+                bot_outcome_line(bot.bot_id, bot.symbol, VALIDATED, counts["snapped"]),
+            )
 
     comparisons: list[RowComparison] = []
     without_fixture = 0
@@ -1090,10 +1211,11 @@ def _validate(
         window = rerun_window(parsed_cache[bot.symbol], snap.candle_index)
         if len(window) < MIN_RERUN_CANDLES:
             continue
-        seen = compare_row(bot, row, snap, window)
+        trade = rerun_trade(bot, fills[(bot.bot_id, snap.trade_id)])
+        seen = compare_row(bot, row, snap, window, emitter, trade)
         comparisons.append(seen)
         if on_trade is not None:
-            on_trade(rerun_trade(bot, fills[(bot.bot_id, snap.trade_id)]))
+            on_trade(trade)
         counts = by_bot.get(bot.bot_id)
         if counts is not None:
             counts["compared"] += 1
@@ -1169,6 +1291,7 @@ __all__ = [
     "bank_cause",
     "bb_reading",
     "bot_counts",
+    "bot_outcome_line",
     "candle_interval_ms",
     "classify_lights",
     "compare_row",
@@ -1184,7 +1307,9 @@ __all__ = [
     "nearest_gate_row",
     "phantom_locked",
     "recorded_bb_pos",
+    "recorded_row_fields",
     "rerun_context",
+    "rerun_row_fields",
     "rerun_trade",
     "rerun_window",
     "run",
