@@ -17,7 +17,7 @@ through ``gaps_in_span`` and a symbol with no ``cited_rule_for`` rule as
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional, Sequence
 
@@ -35,6 +35,7 @@ from .back_test import (
 )
 from .fleet_source import BATTERY_ORIGIN, SCRUMMING_MODE, SimBot
 from .portfolios import PERIODS, PORTFOLIOS, Portfolio, is_crypto
+from .sim_bus import RunEmitter
 from .validation import iso_stamp
 
 logger = logging.getLogger("acervator.simulator.portfolio_battery")
@@ -483,15 +484,18 @@ def run_symbol(
     timeframe: str,
     ticks: int = TICKS_PER_SYMBOL,
     on_trade: Optional[TradeSink] = None,
+    emitter: Optional[RunEmitter] = None,
 ) -> SymbolRun:
     """Walk ``bot`` over ``rows`` folded to ``timeframe`` at its own
-    ``target_usd``, handing ``on_trade`` to ``walk``, and read the result.
+    ``target_usd``, handing ``on_trade`` and ``emitter`` to ``walk``, and read
+    the result.
 
     ``rows`` are one span's daily tablet candles; no bar answers ``NO_TABLET``,
     a class with no rule in ``cited_rule_for`` answers ``UNCITED_RULE``, and
-    too few bars answers ``SHORT_TAPE``.
+    too few bars answers ``SHORT_TAPE``; ``emitter.bot_line`` names each.
     """
     from ..trading.indicators.types import candles_from_raw
+    from .back_test import no_tablet_line, short_tablet_line, uncited_rule_line
 
     asset = bot.asset
     exchange_id = bot.exchange_id
@@ -499,6 +503,8 @@ def run_symbol(
     bars = resample(rows, timeframe)
     symbol = bot.symbol or f"{asset}/USD"
     if not bars:
+        if emitter is not None:
+            emitter.bot_line(bot.bot_id, no_tablet_line(bot))
         return SymbolRun(
             asset=asset,
             symbol=symbol,
@@ -511,7 +517,7 @@ def run_symbol(
         )
     class_name, venue, rule = cited_rule_for(asset, exchange_id)
     if rule is None:
-        return SymbolRun(
+        refused = SymbolRun(
             asset=asset,
             symbol=symbol,
             exchange_id=exchange_id,
@@ -526,7 +532,12 @@ def run_symbol(
             bot_id=bot.bot_id,
             origin=bot.origin,
         )
+        if emitter is not None:
+            emitter.bot_line(bot.bot_id, uncited_rule_line(refused))
+        return refused
     if len(bars) < MIN_CANDLES:
+        if emitter is not None:
+            emitter.bot_line(bot.bot_id, short_tablet_line(bot, len(bars)))
         return SymbolRun(
             asset=asset,
             symbol=symbol,
@@ -551,6 +562,7 @@ def run_symbol(
         FUNDED_BY_TARGETS,
         rule=rule,
         on_trade=on_trade,
+        emitter=emitter,
     )
     return SymbolRun(
         asset=asset,
@@ -813,6 +825,12 @@ class BatteryRun:
     bots: tuple[SimBot, ...] = ()
     budget_usd: float = 0.0
     fleet_origins: tuple[str, ...] = ()
+    #: The id every row of this press carries in ``data.run_id``; empty when
+    #: ``run_battery`` was handed no bus.
+    run_id: str = ""
+    #: What ``RunEmitter.close`` answered: the rows emitted per topic and the
+    #: ``EmitObserver`` reading; empty when ``run_battery`` was handed no bus.
+    emitted: dict = field(default_factory=dict)
 
     def reading_counts(self, timeframe: str) -> dict[str, int]:
         """How many portfolios read each of ``READINGS`` at ``timeframe``."""
@@ -951,6 +969,7 @@ def run_portfolio(
     bots: Optional[dict[str, SimBot]] = None,
     fleet_origin: str = BATTERY_ORIGIN,
     on_trade: Optional[TradeSink] = None,
+    emitter: Optional[RunEmitter] = None,
 ) -> PortfolioResult:
     """Walk every symbol of ``name`` over ``span`` at each of ``timeframes``,
     each on the bot ``bots`` names for it, ``plan_run`` with no held fleet when
@@ -958,7 +977,7 @@ def run_portfolio(
 
     ``held`` keeps one ``(bot_id, timeframe, target)`` run across portfolios,
     so a symbol two portfolios share on one bot is walked once and its trades
-    reach ``on_trade`` once.
+    reach ``on_trade`` and ``emitter`` once.
     """
     entry = PORTFOLIOS.get(str(name))
     symbols = entry.symbols if entry is not None else ()
@@ -979,7 +998,7 @@ def run_portfolio(
             key = (bot.bot_id, timeframe, round(float(bot.target_usd or 0.0), 2))
             if key not in walked_by_key:
                 walked_by_key[key] = run_symbol(
-                    bot, tape.rows(asset), timeframe, ticks, on_trade
+                    bot, tape.rows(asset), timeframe, ticks, on_trade, emitter
                 )
             walked.append(walked_by_key[key])
         by_timeframe.append(TimeframeResult(timeframe=timeframe, runs=tuple(walked)))
@@ -1004,26 +1023,41 @@ def run_battery(
     plan: Optional[RunPlan] = None,
     progress: Optional[Callable[[str], None]] = None,
     on_trade: Optional[TradeSink] = None,
+    bus: Any = None,
 ) -> BatteryRun:
     """Run each portfolio in ``names`` over ``span`` through
     ``_walk_portfolios`` on ``plan``'s bots and write the pass through
     ``write_report`` onto ``BatteryRun.report``.
 
     ``progress`` is handed each portfolio's line and ``on_trade`` each
-    ``SimTrade`` as it fills; a ``_walk_portfolios`` that raises reaches
-    ``write_partial`` with the exception and re-raises.
+    ``SimTrade`` as it fills; ``bus`` becomes the ``RunEmitter`` every row of
+    the pass goes through, under ``new_run_id``; a ``_walk_portfolios`` that
+    raises reaches ``write_partial`` with the exception and re-raises.
     """
-    from .parity_report import PORTFOLIO_BATTERY, write_partial, write_report
+    from .parity_report import (
+        PORTFOLIO_BATTERY,
+        new_run_id,
+        write_partial,
+        write_report,
+    )
 
+    emitter = RunEmitter(bus, new_run_id(PORTFOLIO_BATTERY), PORTFOLIO_BATTERY)
     try:
         outcome = _walk_portfolios(
-            tablets, names, span, timeframes, ticks, plan, progress, on_trade
+            tablets, names, span, timeframes, ticks, plan, progress, on_trade, emitter
         )
     except Exception as exc:
+        emitter.close()
         write_partial(
-            PORTFOLIO_BATTERY, exc, tablets=tablets, names=tuple(names), span=str(span)
+            PORTFOLIO_BATTERY,
+            exc,
+            tablets=tablets,
+            names=tuple(names),
+            span=str(span),
+            run_id=emitter.run_id,
         )
         raise
+    outcome = replace(outcome, run_id=emitter.run_id, emitted=emitter.close())
     return replace(outcome, report=write_report(PORTFOLIO_BATTERY, outcome, tablets))
 
 
@@ -1036,10 +1070,11 @@ def _walk_portfolios(
     plan: Optional[RunPlan],
     progress: Optional[Callable[[str], None]],
     on_trade: Optional[TradeSink] = None,
+    emitter: Optional[RunEmitter] = None,
 ) -> BatteryRun:
     """Run each portfolio ``plan`` names, ``plan_run`` over ``names`` when it
-    is None, handing ``progress`` each ``PortfolioResult.line`` as it lands and
-    ``on_trade`` each ``SimTrade`` as it fills."""
+    is None, handing ``progress`` each ``PortfolioResult.line`` as it lands
+    and ``on_trade`` and ``emitter`` each ``SimTrade`` as it fills."""
     chosen = plan if plan is not None else plan_run(names, tablets)
     start_ms, end_ms = span_bounds(span, tablets.entries())
     tape = TapeCache(tablets, start_ms, end_ms)
@@ -1057,6 +1092,7 @@ def _walk_portfolios(
             chosen.by_portfolio.get(name, {}),
             chosen.origins.get(name, BATTERY_ORIGIN),
             on_trade,
+            emitter,
         )
         results.append(result)
         if progress is not None:

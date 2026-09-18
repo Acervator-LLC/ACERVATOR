@@ -36,10 +36,10 @@ from ...core.fmt import fmt_price_coerced
 from ...core.log_paths import get_log_root
 from ...exchange.ytd_trade_store import MANIFEST_NAME
 from ...simulator import portfolio_battery
-from ...simulator.back_test import SCRUM
 from ...simulator.fleet_source import BATTERY_ORIGIN, BOT_STATE_NAME
 from ...simulator.read_only_connector import EXCHANGE_ID
 from ...simulator.sim_api_log import TABLET_ACTION, YTD_ACTION
+from ...simulator.sim_bus import fill_line
 from ...simulator.validation import iso_stamp
 from ...simulator.ytd_trade_source import ROOT_EMPTY, ROOT_MISSING, ROOT_NO_MANIFEST
 from ...trading.container.config import BotState
@@ -456,14 +456,7 @@ def run_failed_line(mode: str, error: Any) -> str:
 TRADE_LINE_LEVEL = "info"
 BOT_PREFIX_FORMAT = "[{asset}/{tail}] "
 BOT_ID_TAIL_CHARS = 4
-TRADE_LINE_FORMAT = (
-    "{prefix}{word}: {units:.6f} {asset} @ ${price:.8f} "
-    "({usd_word} ${usd:.5f}, fee ${fee:.5f})"
-)
-SCRUM_FILL_WORD = "SELL FILLED"
-FOLD_FILL_WORD = "BUY FILLED"
-SCRUM_USD_WORD = "gross"
-FOLD_USD_WORD = "spent"
+TRADE_LINE_FORMAT = "{prefix}{line}"
 
 
 def bot_prefix(asset: str, bot_id: str) -> str:
@@ -480,19 +473,11 @@ def trade_stamp(trade: Any) -> str:
 
 
 def trade_line(trade: Any) -> str:
-    """``TRADE_LINE_FORMAT`` over one ``SimTrade``: ``SCRUM_FILL_WORD`` and
-    ``SCRUM_USD_WORD`` for a ``SCRUM``, the fold words otherwise."""
+    """``TRADE_LINE_FORMAT`` over one ``SimTrade``: ``bot_prefix`` before
+    ``fill_line``, the message the same trade's ``bot.log`` row carries."""
     asset = str(trade.symbol).split("/")[0]
-    is_scrum = trade.side == SCRUM
     return TRADE_LINE_FORMAT.format(
-        prefix=bot_prefix(asset, str(trade.bot_id)),
-        word=SCRUM_FILL_WORD if is_scrum else FOLD_FILL_WORD,
-        units=float(trade.units),
-        asset=asset,
-        price=float(trade.price),
-        usd_word=SCRUM_USD_WORD if is_scrum else FOLD_USD_WORD,
-        usd=float(trade.usd),
-        fee=float(trade.fee_usd),
+        prefix=bot_prefix(asset, str(trade.bot_id)), line=fill_line(trade)
     )
 
 

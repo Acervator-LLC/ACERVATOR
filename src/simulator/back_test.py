@@ -50,6 +50,14 @@ from ..trading.scrumming.sizing import (
 from ..trading.scrumming.sizing import estimated_fee_usd as fee_usd
 from .fleet_source import NEW_ORIGIN, SimBot
 from .portfolios import asset_class, trading_venue
+from .sim_bus import (
+    FOLD_ACTION,
+    FOLD_SIDE,
+    SCRUM_ACTION,
+    SCRUM_SIDE,
+    RunEmitter,
+    fill_line,
+)
 from .validation import (
     BB_MIDLINE,
     MIN_RERUN_CANDLES,
@@ -227,6 +235,37 @@ def uncited_rule_line(result: Any) -> str:
         f"on venue {result.venue or 'none'}, which has no cited unit rule; "
         "not simulated."
     )
+
+
+def no_tablet_line(bot: SimBot) -> str:
+    """The diagnostics line for one ``NO_TABLET`` bot."""
+    return (
+        f"{bot.bot_id}: no Stone Tablet for {bot.asset} on {bot.exchange_id}; "
+        "nothing walked."
+    )
+
+
+def short_tablet_line(bot: SimBot, candles: int) -> str:
+    """The diagnostics line for one ``SHORT_TABLET`` bot over ``candles``
+    bars, under ``MIN_CANDLES``."""
+    return (
+        f"{bot.bot_id}: the Stone Tablet holds {candles} candles, under "
+        f"{MIN_CANDLES}; nothing walked."
+    )
+
+
+def fill_action(filled: Optional[SimTrade]) -> str:
+    """``SCRUM_ACTION`` or ``FOLD_ACTION`` for ``filled``, empty for None."""
+    if filled is None:
+        return ""
+    return SCRUM_ACTION if filled.side == SCRUM else FOLD_ACTION
+
+
+def fill_side(filled: Optional[SimTrade]) -> str:
+    """``SCRUM_SIDE`` or ``FOLD_SIDE`` for ``filled``, empty for None."""
+    if filled is None:
+        return ""
+    return SCRUM_SIDE if filled.side == SCRUM else FOLD_SIDE
 
 
 def new_bot(
@@ -603,15 +642,20 @@ def walk(
     rule: str,
     on_trade: Optional[TradeSink] = None,
     stop: Optional[Callable[[], bool]] = None,
+    emitter: Optional[RunEmitter] = None,
 ) -> BotResult:
     """Run ``bot`` over ``candles``, one gate-chain evaluation every ``step``
     bars, each fold funded as ``funding`` says and every fill sized under
-    ``rule``; ``on_trade`` is handed each ``SimTrade`` the moment it fills, and
-    ``stop`` answering True before a tick ends the walk at the last bar ticked
-    with ``stopped`` set."""
+    ``rule``; ``on_trade`` is handed each ``SimTrade`` the moment it fills,
+    ``emitter`` emits ``trade_filled``, ``bot_line``, ``voting_snapshot`` and
+    ``gate_decision`` on every tick in Live's fire order, and ``stop``
+    answering True before a tick ends the walk at the last bar ticked with
+    ``stopped`` set."""
     from ..trading.ta_engine import VotingEngine
 
     if len(candles) < MIN_CANDLES:
+        if emitter is not None:
+            emitter.bot_line(bot.bot_id, short_tablet_line(bot, len(candles)))
         return BotResult(
             bot_id=bot.bot_id,
             symbol=bot.symbol,
@@ -658,6 +702,23 @@ def walk(
             fees += filled.fee_usd
             if on_trade is not None:
                 on_trade(filled)
+        if emitter is not None:
+            action = fill_action(filled)
+            if filled is not None:
+                emitter.trade_filled(filled, bot.exchange_id)
+                emitter.bot_line(bot.bot_id, fill_line(filled), stamp)
+            emitter.voting_snapshot(bot, summary, stamp, action, fill_side(filled))
+            emitter.gate_decision(
+                bot,
+                context,
+                armed,
+                stamp,
+                reading=reading,
+                position=position,
+                tick=ticks,
+                trade_action=action,
+                side=fill_side(filled),
+            )
     end_index = last_index if halted else len(candles) - 1
     return BotResult(
         bot_id=bot.bot_id,
@@ -700,6 +761,12 @@ class BackTestRun:
     report: Any = None
     #: True when ``stop`` ended the pass before every bot was walked to its end.
     stopped: bool = False
+    #: The id every row of this pass carries in ``data.run_id``; empty when
+    #: ``run`` was handed no bus.
+    run_id: str = ""
+    #: What ``RunEmitter.close`` answered: the rows emitted per topic and the
+    #: ``EmitObserver`` reading; empty when ``run`` was handed no bus.
+    emitted: dict = field(default_factory=dict)
 
     @property
     def ran(self) -> list[BotResult]:
@@ -835,16 +902,20 @@ def run(
     funding: str = FUNDED_BY_PROCEEDS,
     on_trade: Optional[TradeSink] = None,
     stop: Optional[Callable[[], bool]] = None,
+    bus: Any = None,
 ) -> BackTestRun:
     """Walk every bot over its own tablet through ``_walk_fleet`` and write the
     pass through ``write_report`` onto ``BackTestRun.report``.
 
     ``max_candles``, ``step``, ``ticks_per_bot``, ``funding``, ``on_trade`` and
-    ``stop`` reach ``_walk_fleet`` unchanged; a ``_walk_fleet`` that raises
-    reaches ``write_partial`` with the exception and re-raises.
+    ``stop`` reach ``_walk_fleet`` unchanged; ``bus`` becomes the
+    ``RunEmitter`` every row of the pass goes through, under ``new_run_id``;
+    a ``_walk_fleet`` that raises reaches ``write_partial`` with the exception
+    and re-raises.
     """
-    from .parity_report import BACK_TEST, write_partial, write_report
+    from .parity_report import BACK_TEST, new_run_id, write_partial, write_report
 
+    emitter = RunEmitter(bus, new_run_id(BACK_TEST), BACK_TEST)
     try:
         outcome = _walk_fleet(
             bots,
@@ -856,8 +927,10 @@ def run(
             funding,
             on_trade,
             stop,
+            emitter,
         )
     except Exception as exc:
+        emitter.close()
         write_partial(
             BACK_TEST,
             exc,
@@ -865,8 +938,10 @@ def run(
             exchange_id=exchange_id,
             tablets=tablets,
             funding=funding,
+            run_id=emitter.run_id,
         )
         raise
+    outcome = replace(outcome, run_id=emitter.run_id, emitted=emitter.close())
     return replace(outcome, report=write_report(BACK_TEST, outcome, tablets))
 
 
@@ -880,15 +955,17 @@ def _walk_fleet(
     funding: str,
     on_trade: Optional[TradeSink] = None,
     stop: Optional[Callable[[], bool]] = None,
+    emitter: Optional[RunEmitter] = None,
 ) -> BackTestRun:
     """Walk every bot over its own tablet and report what the gates latched.
 
     ``max_candles`` caps how much of each tape is read, ``ticks_per_bot``
     replaces ``step`` with one ``shared_step`` every bot ticks on, ``funding``
     of ``FUNDED_BY_TARGETS`` reads ``run_budget_usd`` once here and caps no
-    fold, ``on_trade`` and ``stop`` reach every ``walk`` and ``stop`` is read
-    before each bot as well, and a bot whose ``cited_rule_for`` answers no rule
-    is ``UNCITED_RULE`` and walks nothing.
+    fold, ``on_trade``, ``stop`` and ``emitter`` reach every ``walk`` and ``stop``
+    is read before each bot as well, and a bot whose ``cited_rule_for`` answers
+    no rule is ``UNCITED_RULE`` and walks nothing; ``emitter.bot_line`` names each
+    bot that walks nothing.
     """
     from ..trading.indicators.types import candles_from_raw
 
@@ -923,6 +1000,8 @@ def _walk_fleet(
                     venue=venue,
                 )
             )
+            if emitter is not None:
+                emitter.bot_line(bot.bot_id, uncited_rule_line(results[-1]))
             continue
         entry = tablet_for(entries, bot.asset, bot.exchange_id)
         if entry is None:
@@ -938,6 +1017,8 @@ def _walk_fleet(
                     unit_rule=rule,
                 )
             )
+            if emitter is not None:
+                emitter.bot_line(bot.bot_id, no_tablet_line(bot))
             continue
         raw = tablets.candles(entry)
         if max_candles:
@@ -952,6 +1033,7 @@ def _walk_fleet(
             rule=rule,
             on_trade=on_trade,
             stop=stop,
+            emitter=emitter,
         )
         halted = halted or walked.stopped
         key = entry.file
@@ -1044,14 +1126,18 @@ __all__ = [
     "cited_rule_for",
     "download_missing",
     "fee_usd",
+    "fill_action",
+    "fill_side",
     "fold_taper",
     "missing_pairs",
     "new_bot",
     "new_bots",
+    "no_tablet_line",
     "opening_position",
     "run",
     "run_budget_usd",
     "shared_step",
+    "short_tablet_line",
     "signal_detail",
     "ta_direction",
     "tape_context",
