@@ -1,10 +1,13 @@
-"""Import a Coinbase transactions CSV into the YTD trade files.
+"""Import an exchange's transactions CSV into the YTD trade files.
 
-``import_ytd_csv`` reads ``REQUIRED_COLUMNS`` off the header ``find_header``
-locates, keeps the ``BUY_TYPES`` and ``SELL_TYPES`` rows as ``YtdTrade``, and
+``import_ytd_csv`` chooses the ``ExportColumnMap`` registered for its
+``exchange_id`` in ``EXPORT_MAPS``, reads that map's columns off the header
+``find_header`` locates, keeps the map's buy and sell rows as ``YtdTrade``, and
 writes one file per symbol and year through ``write_trade_file``.
-``YtdImportRefused`` names a missing column or an unreadable row, and
-``ImportResult`` carries the kept and dropped counts and every ``TradeGap``.
+``COINBASE_MAP`` is the one map registered; ``export_map_for`` refuses every
+other ``exchange_id`` by name. ``YtdImportRefused`` names a missing column or an
+unreadable row, and ``ImportResult`` carries the kept and dropped counts and
+every ``TradeGap``.
 """
 
 from __future__ import annotations
@@ -75,6 +78,10 @@ HEADER_SCAN_LINES: int = 20
 
 TIMESTAMP_SUFFIX_UTC = " UTC"
 
+TIMESTAMP_FORMAT_UTC: str = "%Y-%m-%d %H:%M:%S"
+"""The ``strptime`` form ``parse_timestamp_ms`` reads under
+``TIMESTAMP_SUFFIX_UTC``."""
+
 MONEY_PREFIXES: str = "$€£¥"
 """Currency marks stripped by ``parse_money``; the export writes amounts as
 ``$1.23``."""
@@ -86,6 +93,89 @@ CellReader = Callable[[str], str]
 class YtdImportRefused(ValueError):
     """Raised when a column is missing or a kept row carries an unreadable
     field."""
+
+
+@dataclass(frozen=True)
+class ExportColumnMap:
+    """The columns, type strings and text forms of one exchange's CSV export,
+    each column named for the ``YtdTrade`` field it fills."""
+
+    exchange_id: str
+    export_name: str
+    id_column: str
+    timestamp_column: str
+    type_column: str
+    asset_column: str
+    quote_column: str
+    quantity_column: str
+    price_column: str
+    cost_column: str
+    fee_column: str
+    buy_types: frozenset[str]
+    sell_types: frozenset[str]
+    header_scan_lines: int
+    timestamp_suffix_utc: str
+    timestamp_format: str
+    money_prefixes: str
+    dropped_columns: tuple[str, ...] = ()
+
+    @property
+    def required_columns(self) -> tuple[str, ...]:
+        """Return the nine column names ``find_header`` requires, in
+        ``REQUIRED_COLUMNS`` order."""
+        return (
+            self.id_column,
+            self.timestamp_column,
+            self.type_column,
+            self.asset_column,
+            self.quantity_column,
+            self.quote_column,
+            self.price_column,
+            self.cost_column,
+            self.fee_column,
+        )
+
+
+COINBASE_MAP = ExportColumnMap(
+    exchange_id="coinbase",
+    export_name="Coinbase transactions export",
+    id_column=COL_ID,
+    timestamp_column=COL_TIMESTAMP,
+    type_column=COL_TYPE,
+    asset_column=COL_ASSET,
+    quote_column=COL_PRICE_CURRENCY,
+    quantity_column=COL_QUANTITY,
+    price_column=COL_PRICE,
+    cost_column=COL_SUBTOTAL,
+    fee_column=COL_FEES,
+    buy_types=BUY_TYPES,
+    sell_types=SELL_TYPES,
+    header_scan_lines=HEADER_SCAN_LINES,
+    timestamp_suffix_utc=TIMESTAMP_SUFFIX_UTC,
+    timestamp_format=TIMESTAMP_FORMAT_UTC,
+    money_prefixes=MONEY_PREFIXES,
+    dropped_columns=DROPPED_COLUMNS,
+)
+"""The Coinbase transactions export: ``REQUIRED_COLUMNS``, ``BUY_TYPES``,
+``SELL_TYPES`` and the text forms above."""
+
+EXPORT_MAPS: dict[str, ExportColumnMap] = {COINBASE_MAP.exchange_id: COINBASE_MAP}
+"""Every ``ExportColumnMap`` by ``exchange_id``; a map is written from a sample
+export on disk."""
+
+
+def export_map_for(exchange_id: str) -> ExportColumnMap:
+    """Return ``EXPORT_MAPS[exchange_id]``, refusing an ``exchange_id`` with no
+    map by name."""
+    column_map = EXPORT_MAPS.get(exchange_id)
+    if column_map is None:
+        message = (
+            f"no column map for exchange {exchange_id!r}: a sample {exchange_id} "
+            f"export is needed before its map is written. Maps exist for: "
+            f"{sorted(EXPORT_MAPS)}."
+        )
+        raise YtdImportRefused(message)
+    return column_map
 
 
 @dataclass
@@ -117,23 +207,24 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def find_header(rows: list[list[str]]) -> int:
-    """Return the index of the first row holding every ``REQUIRED_COLUMNS``
-    name."""
+def find_header(rows: list[list[str]], column_map: ExportColumnMap) -> int:
+    """Return the index of the first row holding every ``column_map``
+    ``required_columns`` name."""
+    required = column_map.required_columns
     best_index = -1
-    best_missing: list[str] = list(REQUIRED_COLUMNS)
-    for index, row in enumerate(rows[:HEADER_SCAN_LINES]):
+    best_missing: list[str] = list(required)
+    for index, row in enumerate(rows[: column_map.header_scan_lines]):
         cells = {cell.strip() for cell in row}
-        missing = [name for name in REQUIRED_COLUMNS if name not in cells]
+        missing = [name for name in required if name not in cells]
         if not missing:
             return index
         if len(missing) < len(best_missing):
             best_index = index
             best_missing = missing
     message = (
-        f"no header in the first {HEADER_SCAN_LINES} rows carries every required "
-        f"column. Closest is row {best_index + 1}, missing {best_missing}. "
-        f"Required: {list(REQUIRED_COLUMNS)}."
+        f"no header in the first {column_map.header_scan_lines} rows carries every "
+        f"required column. Closest is row {best_index + 1}, missing "
+        f"{best_missing}. Required: {list(required)}."
     )
     raise YtdImportRefused(message)
 
@@ -143,12 +234,12 @@ def blank_column(column: str, row_number: int) -> str:
     return f"row {row_number}: column {column!r} is empty"
 
 
-def parse_money(text: str, column: str, row_number: int) -> float:
+def parse_money(text: str, column: str, row_number: int, money_prefixes: str) -> float:
     """Return ``text`` as a float, reading a sign on either side of its
-    ``MONEY_PREFIXES`` mark."""
+    ``money_prefixes`` mark."""
     cleaned = text.strip().replace(",", "")
     negative = False
-    while cleaned and (cleaned[0] in MONEY_PREFIXES or cleaned[0] in "+-"):
+    while cleaned and (cleaned[0] in money_prefixes or cleaned[0] in "+-"):
         if cleaned[0] == "-":
             negative = not negative
         cleaned = cleaned[1:].strip()
@@ -162,29 +253,33 @@ def parse_money(text: str, column: str, row_number: int) -> float:
     return -value if negative else value
 
 
-def parse_optional_money(text: str, column: str, row_number: int) -> float:
+def parse_optional_money(
+    text: str, column: str, row_number: int, money_prefixes: str
+) -> float:
     """Return ``parse_money`` of ``text``, or 0.0 when it is blank."""
     if not text.strip():
         return 0.0
-    return parse_money(text, column, row_number)
+    return parse_money(text, column, row_number, money_prefixes)
 
 
-def parse_timestamp_ms(text: str, row_number: int) -> int:
-    """Return ``text`` as epoch milliseconds, reading ``TIMESTAMP_SUFFIX_UTC``
-    and ISO 8601."""
+def parse_timestamp_ms(text: str, row_number: int, column_map: ExportColumnMap) -> int:
+    """Return ``text`` as epoch milliseconds, reading ``column_map``'s
+    ``timestamp_suffix_utc`` and ``timestamp_format``, else ISO 8601."""
+    column = column_map.timestamp_column
+    suffix = column_map.timestamp_suffix_utc
     raw = text.strip()
     if not raw:
-        raise YtdImportRefused(blank_column(COL_TIMESTAMP, row_number))
-    if raw.endswith(TIMESTAMP_SUFFIX_UTC):
-        raw = raw[: -len(TIMESTAMP_SUFFIX_UTC)].strip()
+        raise YtdImportRefused(blank_column(column, row_number))
+    if raw.endswith(suffix):
+        raw = raw[: len(raw) - len(suffix)].strip()
         try:
-            moment = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").replace(
+            moment = datetime.strptime(raw, column_map.timestamp_format).replace(
                 tzinfo=timezone.utc
             )
         except ValueError as exc:
             message = (
-                f"row {row_number}: column {COL_TIMESTAMP!r} is not "
-                f"'YYYY-MM-DD HH:MM:SS UTC'"
+                f"row {row_number}: column {column!r} is not "
+                f"'{column_map.timestamp_format}{suffix}'"
             )
             raise YtdImportRefused(message) from exc
     else:
@@ -192,8 +287,7 @@ def parse_timestamp_ms(text: str, row_number: int) -> int:
             moment = datetime.fromisoformat(raw)
         except ValueError as exc:
             message = (
-                f"row {row_number}: column {COL_TIMESTAMP!r} is not an ISO 8601 "
-                f"timestamp"
+                f"row {row_number}: column {column!r} is not an ISO 8601 timestamp"
             )
             raise YtdImportRefused(message) from exc
         if moment.tzinfo is None:
@@ -209,27 +303,28 @@ def sign_matches_side(quantity: float, side: str) -> bool:
     return quantity >= 0.0
 
 
-def side_for(transaction_type: str) -> str:
+def side_for(transaction_type: str, column_map: ExportColumnMap) -> str:
     """Return ``SIDE_BUY``, ``SIDE_SELL`` or '' for a ``transaction_type``
-    outside ``BUY_TYPES`` and ``SELL_TYPES``."""
+    outside ``column_map``'s ``buy_types`` and ``sell_types``."""
     normalized = transaction_type.strip().lower()
-    if normalized in BUY_TYPES:
+    if normalized in column_map.buy_types:
         return SIDE_BUY
-    if normalized in SELL_TYPES:
+    if normalized in column_map.sell_types:
         return SIDE_SELL
     return ""
 
 
 def read_trade_rows(
     csv_path: Path,
+    column_map: ExportColumnMap,
 ) -> tuple[list[tuple[str, YtdTrade]], int, dict[str, int]]:
-    """Return the ``(symbol, YtdTrade)`` pairs in ``csv_path`` with the row count
-    and the dropped counts by transaction type."""
+    """Return the ``(symbol, YtdTrade)`` pairs ``column_map`` reads out of
+    ``csv_path`` with the row count and the dropped counts by transaction type."""
     with open(csv_path, "r", encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.reader(handle))
-    header_index = find_header(rows)
+    header_index = find_header(rows, column_map)
     header = [cell.strip() for cell in rows[header_index]]
-    column_of = {name: header.index(name) for name in REQUIRED_COLUMNS}
+    column_of = {name: header.index(name) for name in column_map.required_columns}
 
     pairs: list[tuple[str, YtdTrade]] = []
     dropped: dict[str, int] = defaultdict(int)
@@ -240,11 +335,17 @@ def read_trade_rows(
         rows_read += 1
         row_number = header_index + 2 + offset
         cell = _cell_reader(row, column_of, row_number)
-        side = side_for(cell(COL_TYPE))
+        transaction_type = cell(column_map.type_column)
+        side = side_for(transaction_type, column_map)
         if not side:
-            dropped[cell(COL_TYPE).strip() or "(blank)"] += 1
+            dropped[transaction_type.strip() or "(blank)"] += 1
             continue
-        pairs.append((_symbol_of(cell, row_number), _trade_of(cell, side, row_number)))
+        pairs.append(
+            (
+                _symbol_of(cell, row_number, column_map),
+                _trade_of(cell, side, row_number, column_map),
+            )
+        )
     return pairs, rows_read, dict(dropped)
 
 
@@ -263,46 +364,59 @@ def _cell_reader(
     return read
 
 
-def _symbol_of(cell: CellReader, row_number: int) -> str:
-    """Return ``ASSET/CURRENCY`` from the row's asset and price currency."""
-    asset = cell(COL_ASSET).strip().upper()
-    quote = cell(COL_PRICE_CURRENCY).strip().upper()
+def _symbol_of(cell: CellReader, row_number: int, column_map: ExportColumnMap) -> str:
+    """Return ``ASSET/QUOTE`` from the row's ``asset_column`` and
+    ``quote_column``."""
+    asset = cell(column_map.asset_column).strip().upper()
+    quote = cell(column_map.quote_column).strip().upper()
     if not asset:
-        raise YtdImportRefused(blank_column(COL_ASSET, row_number))
+        raise YtdImportRefused(blank_column(column_map.asset_column, row_number))
     if not quote:
-        raise YtdImportRefused(blank_column(COL_PRICE_CURRENCY, row_number))
+        raise YtdImportRefused(blank_column(column_map.quote_column, row_number))
     return f"{asset}/{quote}"
 
 
-def _trade_of(cell: CellReader, side: str, row_number: int) -> YtdTrade:
-    """Return the ``YtdTrade`` the row holds, refusing an unreadable field."""
-    trade_id = cell(COL_ID).strip()
+def _trade_of(
+    cell: CellReader, side: str, row_number: int, column_map: ExportColumnMap
+) -> YtdTrade:
+    """Return the ``YtdTrade`` the row holds under ``column_map``, refusing an
+    unreadable field."""
+    prefixes = column_map.money_prefixes
+    quantity_column = column_map.quantity_column
+    price_column = column_map.price_column
+    trade_id = cell(column_map.id_column).strip()
     if not trade_id:
-        raise YtdImportRefused(blank_column(COL_ID, row_number))
-    quantity = parse_money(cell(COL_QUANTITY), COL_QUANTITY, row_number)
-    price = parse_money(cell(COL_PRICE), COL_PRICE, row_number)
+        raise YtdImportRefused(blank_column(column_map.id_column, row_number))
+    quantity = parse_money(cell(quantity_column), quantity_column, row_number, prefixes)
+    price = parse_money(cell(price_column), price_column, row_number, prefixes)
     if not sign_matches_side(quantity, side):
         message = (
-            f"row {row_number}: column {COL_QUANTITY!r} sign disagrees with "
-            f"column {COL_TYPE!r} side {side}"
+            f"row {row_number}: column {quantity_column!r} sign disagrees with "
+            f"column {column_map.type_column!r} side {side}"
         )
         raise YtdImportRefused(message)
     amount = abs(quantity)
     if amount <= 0:
-        message = f"row {row_number}: column {COL_QUANTITY!r} is zero"
+        message = f"row {row_number}: column {quantity_column!r} is zero"
         raise YtdImportRefused(message)
     if price <= 0:
-        message = f"row {row_number}: column {COL_PRICE!r} is not above zero"
+        message = f"row {row_number}: column {price_column!r} is not above zero"
         raise YtdImportRefused(message)
+    cost_column = column_map.cost_column
+    fee_column = column_map.fee_column
     return YtdTrade(
         id=trade_id,
-        ts_ms=parse_timestamp_ms(cell(COL_TIMESTAMP), row_number),
+        ts_ms=parse_timestamp_ms(
+            cell(column_map.timestamp_column), row_number, column_map
+        ),
         side=side,
         amount=amount,
         price=price,
-        cost=abs(parse_optional_money(cell(COL_SUBTOTAL), COL_SUBTOTAL, row_number)),
-        fee=parse_optional_money(cell(COL_FEES), COL_FEES, row_number),
-        fee_currency=cell(COL_PRICE_CURRENCY).strip().upper(),
+        cost=abs(
+            parse_optional_money(cell(cost_column), cost_column, row_number, prefixes)
+        ),
+        fee=parse_optional_money(cell(fee_column), fee_column, row_number, prefixes),
+        fee_currency=cell(column_map.quote_column).strip().upper(),
     )
 
 
@@ -330,6 +444,7 @@ def import_ytd_csv(
 ) -> ImportResult:
     """Read ``csv_path`` and write ``exchange_id``'s trade files under
     ``get_ytd_root(root)``."""
+    column_map = export_map_for(exchange_id)
     csv_path = Path(csv_path)
     if not csv_path.exists():
         message = f"no file at {csv_path.name}"
@@ -341,7 +456,9 @@ def import_ytd_csv(
         source_file=csv_path.name, source_sha256=digest, exchange_id=exchange_id
     )
 
-    pairs, result.rows_read, result.dropped_by_type = read_trade_rows(csv_path)
+    pairs, result.rows_read, result.dropped_by_type = read_trade_rows(
+        csv_path, column_map
+    )
     result.rows_kept = len(pairs)
     if not pairs:
         logger.warning("ytd_csv_import: %s carried no trade rows", csv_path.name)
@@ -526,6 +643,7 @@ def _gaps_kept(base: Path, exchange_id: str, result: ImportResult) -> list[Trade
 
 __all__ = [
     "BUY_TYPES",
+    "COINBASE_MAP",
     "COL_ASSET",
     "COL_FEES",
     "COL_ID",
@@ -536,11 +654,17 @@ __all__ = [
     "COL_TIMESTAMP",
     "COL_TYPE",
     "DROPPED_COLUMNS",
+    "EXPORT_MAPS",
     "HEADER_SCAN_LINES",
+    "MONEY_PREFIXES",
     "REQUIRED_COLUMNS",
     "SELL_TYPES",
+    "TIMESTAMP_FORMAT_UTC",
+    "TIMESTAMP_SUFFIX_UTC",
+    "ExportColumnMap",
     "ImportResult",
     "YtdImportRefused",
+    "export_map_for",
     "file_sha256",
     "find_header",
     "import_ytd_csv",

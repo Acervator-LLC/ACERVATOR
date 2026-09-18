@@ -75,6 +75,25 @@ Where the export covers a period and carries no trade for a symbol in it, that
 period is written to a gap record rather than filled. See
 [the Simulator tab](simulator.md) for the file format and the reader.
 
+The import reads the export through a column map chosen by the exchange id it
+is given. One map exists, for Coinbase, and a Coinbase export writes the same
+files it always did. An exchange with no map is refused by name, with a line
+saying a sample export is needed, and nothing is written. The maps and the
+table of exchanges are in [the Simulator tab](simulator.md).
+
+`src/exchange/ytd_csv_import.py` — the map chosen at import
+
+```python
+def import_ytd_csv(
+    csv_path: Path,
+    exchange_id: str,
+    root: Optional[Path] = None,
+) -> ImportResult:
+    """Read ``csv_path`` and write ``exchange_id``'s trade files under
+    ``get_ytd_root(root)``."""
+    column_map = export_map_for(exchange_id)
+```
+
 ## Filtering, paging, export
 
 Eight methods carry the controls under the table.
