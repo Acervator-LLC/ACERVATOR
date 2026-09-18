@@ -201,6 +201,11 @@ class SimTradingTab(QWidget):
         """The fleet reader the tables are fed from."""
         return self._fleet_source
 
+    def aggregate(self) -> dict:
+        """The header strip's figures, ``fleet_aggregate`` over the held fleet in
+        the tab's ``mode``."""
+        return surface.fleet_aggregate(self._fleet_source, self._mode)
+
     def api_log(self) -> APIInteractionLog:
         """The tab's own API log; every entry recorded on it reaches the pane."""
         return self._api_log

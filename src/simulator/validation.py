@@ -24,6 +24,7 @@ from ..trading.gate_chain import (
     build_scrumming_scrum_chain,
 )
 from ..trading.gate_vocabulary import gate_light_row, unknown_blockers
+from ..trading.scrumming.sizing import target_delta_pct
 from .fleet_source import LIVE_ORIGIN, SimBot
 
 logger = logging.getLogger("acervator.simulator.validation")
@@ -357,11 +358,11 @@ def bb_reading(candles: Sequence[Any], bot: SimBot):
 
 
 def _delta_pct(delta: float, target_usd: Optional[float]) -> float:
-    """``|delta|`` as a percentage of ``target_usd``, zero when no target is
-    known."""
+    """``target_delta_pct`` of ``delta`` over ``target_usd``, zero when no
+    target is known."""
     if not target_usd:
         return 0.0
-    return abs(delta) / float(target_usd) * 100.0
+    return target_delta_pct(delta, float(target_usd))
 
 
 def rerun_context(

@@ -48,6 +48,7 @@ from ..trading.container.config import (
     bot_config_kwargs,
     make_bot_config,
 )
+from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.smart_wire import mature_profit_usd
 from .tablet_source import SendRefused
 
@@ -97,8 +98,8 @@ EXTRACTOR_MODE = "extractor"
 BOT_ID_LENGTH = 8
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value,
-#: ``POSITION_STATE_DRAWDOWN`` in ``src/trading/extractor_bot.py``.
-EXTRACTOR_DRAWDOWN_STATE = "drawdown"
+#: the one ``DRAWDOWN_STATE`` that ``POSITION_STATE_DRAWDOWN`` also reads.
+EXTRACTOR_DRAWDOWN_STATE = DRAWDOWN_STATE
 
 #: The three names ``ExtractorBot.pool_color`` answers.
 POOL_GREEN = "green"
@@ -174,6 +175,7 @@ class SimBot:
     scrum_target_mode: Optional[str] = None
     position_ceiling_enabled: bool = False
     position_ceiling_multiple: float = 5.0
+    max_target_growth_pct: float = 1.0
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"
     chunk_size_usd: float = 0.0
@@ -341,6 +343,7 @@ def _sim_bot_from_record(
         ),
         position_ceiling_enabled=bool(config.get("position_ceiling_enabled", False)),
         position_ceiling_multiple=_number(config.get("position_ceiling_multiple"), 5.0),
+        max_target_growth_pct=_number(config.get("max_target_growth_pct"), 1.0),
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
         chunk_size_usd=pool["chunk_size_usd"],
@@ -437,7 +440,7 @@ def ytd_target_usd(trades: Sequence[YtdTrade]) -> Optional[float]:
     held = bought - sold
     if held <= 0:
         return None
-    return round(held * float(ordered[-1].price), 2)
+    return round(priced_usd(held, float(ordered[-1].price)), 2)
 
 
 def ytd_record(bot: SimBot, target_usd: Optional[float]) -> dict:
@@ -545,14 +548,15 @@ def row_status(bot: SimBot) -> dict:
     return status
 
 
-def aggregate_stats(bots: Sequence[SimBot]) -> dict:
+def aggregate_stats(bots: Sequence[SimBot], budget_usd: Optional[float] = None) -> dict:
     """The header strip's figures over ``bots``, keyed as
     ``FleetAggregationMixin.get_aggregate_stats`` keys the live fleet's and
-    summed by its arithmetic: the wallet is the largest ``cash_balance_usd``, a
-    position is ``holdings`` times ``current_price`` times ``quote_to_usd`` when
-    both are positive and ``position_value_usd`` otherwise, maturity is read only
-    where ``exchange_data_fresh_ts`` is positive, and each YTD sum falls back to
-    the lifetime sum at zero."""
+    summed by its arithmetic: the wallet is ``budget_usd`` when a run names one
+    and the largest ``cash_balance_usd`` otherwise, a position is ``priced_usd``
+    of ``holdings``, ``current_price`` and ``quote_to_usd`` when both are
+    positive and ``position_value_usd`` otherwise, maturity is read only where
+    ``exchange_data_fresh_ts`` is positive, and each YTD sum falls back to the
+    lifetime sum at zero."""
     total_pnl = 0.0
     total_trades = 0
     running = 0
@@ -589,7 +593,9 @@ def aggregate_stats(bots: Sequence[SimBot]) -> dict:
             wallet_cash_usd = bot.cash_balance_usd
         position_value = bot.position_value_usd
         if bot.holdings > 0 and bot.current_price > 0:
-            position_value = bot.holdings * bot.current_price * bot.quote_to_usd
+            position_value = priced_usd(
+                bot.holdings, bot.current_price, bot.quote_to_usd
+            )
         crypto_position_value_usd += position_value
         if fresh:
             mature = mature_profit_usd(bot.cost_basis_exchange_usd, position_value)
@@ -600,6 +606,8 @@ def aggregate_stats(bots: Sequence[SimBot]) -> dict:
             running += 1
         if bot.state == BotState.ERROR.value:
             errored += 1
+    if budget_usd is not None:
+        wallet_cash_usd = float(budget_usd)
 
     return {
         "total_bots": len(bots),

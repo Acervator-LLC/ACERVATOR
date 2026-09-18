@@ -40,6 +40,7 @@ from .bot_container import (
 )
 from .buy_safety import verify_buy_safe_or_refuse
 from .phantom_balance import TIMEFRAME_SECONDS
+from .scrumming.sizing import DRAWDOWN_STATE
 from .ta_signal_provider import TASignalProvider, TASnapshot
 
 if TYPE_CHECKING:
@@ -53,7 +54,7 @@ PERCENT_PER_RATIO_UNIT = 100.0
 
 POSITION_STATE_PENDING = "pending"  # (transitional — never persisted on a Position)
 POSITION_STATE_IN_FLIGHT = "in_flight"
-POSITION_STATE_DRAWDOWN = "drawdown"
+POSITION_STATE_DRAWDOWN = DRAWDOWN_STATE
 POSITION_STATE_BULLISH_EXIT = "bullish_exit"
 
 

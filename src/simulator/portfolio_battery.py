@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from ..trading.stone_tablets.ra_fetcher import read_gaps
-from .back_test import MIN_CANDLES, SimTrade, new_bot, walk
+from .back_test import FUNDED_BY_TARGETS, MIN_CANDLES, SimTrade, new_bot, walk
 from .portfolios import PERIODS, PORTFOLIOS, is_crypto
 from .validation import iso_stamp
 
@@ -283,7 +283,9 @@ def run_symbol(
             last_ts_ms=int(bars[-1][0]),
         )
     bot = battery_bot(asset, exchange_id, timeframe, capital_usd)
-    result = walk(bot, candles_from_raw(bars), walk_step(len(bars), ticks))
+    result = walk(
+        bot, candles_from_raw(bars), walk_step(len(bars), ticks), FUNDED_BY_TARGETS
+    )
     return SymbolRun(
         asset=asset,
         symbol=symbol,

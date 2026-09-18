@@ -1948,6 +1948,18 @@ _smart_ceiling_usd = _anchor * _smart_mult
 if _projected > _smart_ceiling_usd:
 ```
 
+The clamp and the multiplication above now sit in one function that the
+pre-buy check, the ceiling property and the tick's fold evaluation all call,
+so the three ceilings the bot reads are one number.
+
+`src/trading/scrumming/sizing.py` — `position_ceiling`
+
+```python
+def position_ceiling(anchor_target_balance: float, multiple: float) -> float:
+    mult = max(CEILING_MULTIPLE_MIN, min(CEILING_MULTIPLE_MAX, multiple))
+    return anchor_target_balance * mult
+```
+
 **Functional.** While the ceiling binds, the bot still sells and stops buying.
 The fold side shrinks first and then stops: the fold's dollar size is multiplied
 by a taper that is full below half the ceiling, falls in a straight line to a
@@ -1963,6 +1975,22 @@ ceiling, a detonation resetting the target to the anchor, and unticking the box.
 _taper = self.fold_rate_taper
 ...
 buy_cost = _fusd * _taper
+```
+
+The multiplication is now `fold_spend_usd`, and the taper schedule is
+`fold_rate_taper`, both in the shared sizing module; the executor's line reads
+`buy_cost = fold_spend_usd(_fusd, _taper)` and the Simulator's fold reads the
+same two functions over its own tranches.
+
+`src/trading/scrumming/sizing.py` — the taper schedule
+
+```python
+def fold_rate_taper(ratio: float) -> float:
+    if ratio >= 1.0:
+        return 0.0
+    if ratio < TAPER_START_RATIO:
+        return 1.0
+    return 1.0 - (ratio - TAPER_START_RATIO) / TAPER_START_RATIO * TAPER_DROP
 ```
 
 **Where the code departs.** The sentence above says the bot pauses all further
@@ -2036,6 +2064,20 @@ any value above its starting target, well below any multiple.
 ```python
 current_value = (
     self._current_holdings * price * float(self._quote_to_usd or 1.0)
+)
+if current_value <= self._anchor_target_balance:
+    return False
+```
+
+The multiplication is now `priced_usd`, the one position-value function every
+site in the bot calls: the tick, the ceiling ratio, the detonation bar above,
+the manual rebalance, the reconciler and the Simulator's position.
+
+`src/trading/scrumming_bot.py` — the bar as it reads now
+
+```python
+current_value = priced_usd(
+    self._current_holdings, price, float(self._quote_to_usd or 1.0)
 )
 if current_value <= self._anchor_target_balance:
     return False

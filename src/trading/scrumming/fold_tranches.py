@@ -12,6 +12,7 @@ import time
 from typing import Any, Optional
 
 from ..bot_container import as_finite_float, despawn_threshold_days
+from .sizing import eligible_fold_tranches, plan_fold_consumption, settle_fold_plan
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -56,11 +57,7 @@ class FoldTrancheAccountingMixin:
         ``tick_phases`` both call this, so the two cannot report
         different sets.
         """
-        return [
-            t
-            for t in self._fold_tranches
-            if ticker_last <= float(t.get("ref", 0)) * otd_factor
-        ]
+        return eligible_fold_tranches(self._fold_tranches, ticker_last, otd_factor)
 
     def _apply_scrum_fold_pct(
         self, _tranche_count_before: int, scrum_usd: float, scrum_asset: float
@@ -134,37 +131,7 @@ class FoldTrancheAccountingMixin:
           (plan, slices, part-consumed count). ``plan`` is a list of
           ``(source tranche, usd taken, units taken)``.
         """
-        plan: list[tuple[dict, float, float]] = []
-        slices: list[dict] = []
-        running_usd = 0.0
-        partial_count = 0
-        for _t in eligible:
-            room = cap_remaining - running_usd
-            if room <= 1e-12:
-                break
-            tranche_usd = float(_t.get("usd", 0) or 0)
-            tranche_units = float(_t.get("units", 0) or 0)
-            if tranche_usd <= 0.0 or tranche_units <= 0.0:
-                continue
-            if tranche_usd <= room + 1e-9:
-                take_usd = tranche_usd
-                take_units = tranche_units
-            else:
-                take_usd = room
-                take_units = tranche_units * (take_usd / tranche_usd)
-                partial_count += 1
-            slices.append(
-                {
-                    "usd": take_usd,
-                    "units": take_units,
-                    "ref": float(_t.get("ref", 0) or 0),
-                    "initial_buy_price": _t["initial_buy_price"],
-                    "created_ts": _t.get("created_ts", 0.0),
-                }
-            )
-            plan.append((_t, take_usd, take_units))
-            running_usd += take_usd
-        return plan, slices, partial_count
+        return plan_fold_consumption(eligible, cap_remaining)
 
     def _drop_malformed_fold_tranches(self) -> int:
         """Remove every queued tranche whose ``ref`` is not above zero.
@@ -236,17 +203,10 @@ class FoldTrancheAccountingMixin:
         Returns:
           (records removed from the queue, records drained to nothing).
         """
-        pre_remove = len(self._fold_tranches)
-        spent: set[int] = set()
-        for src, took_usd, took_units in plan:
-            src["usd"] = max(0.0, float(src.get("usd", 0) or 0) - took_usd)
-            src["units"] = max(0.0, float(src.get("units", 0) or 0) - took_units)
-            if src["usd"] <= 1e-9 or src["units"] <= 1e-12:
-                spent.add(id(src))
-            else:
-                src["fold_partial_spent"] = True
-        self._fold_tranches = [t for t in self._fold_tranches if id(t) not in spent]
-        return pre_remove - len(self._fold_tranches), len(spent)
+        self._fold_tranches, removed, spent = settle_fold_plan(
+            self._fold_tranches, plan
+        )
+        return removed, spent
 
     def _top_up_remnant_fold_tranches(
         self, first_new_index: int, bb_lower: float, bb_upper: float

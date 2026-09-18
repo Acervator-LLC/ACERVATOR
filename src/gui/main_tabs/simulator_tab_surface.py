@@ -17,7 +17,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
-from ...simulator import portfolio_battery, validation
+from ...simulator import back_test, portfolio_battery, validation
+from ...simulator.fleet_source import aggregate_stats
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.tablet_source import TabletSource, tablet_key
 from ...trading.stone_tablets.ra_paths import RA_STONE_TABLETS_DIR
@@ -79,6 +80,30 @@ MODE_TEXT = {
     MODE_BACK_TEST: "Back Test",
     MODE_PORTFOLIO_BATTERY: "Portfolio Battery",
 }
+
+#: How each mode's run funds its folds, in ``back_test``'s two fundings.
+MODE_FUNDING = {
+    MODE_VALIDATION: back_test.FUNDED_BY_TARGETS,
+    MODE_BACK_TEST: back_test.FUNDED_BY_PROCEEDS,
+    MODE_PORTFOLIO_BATTERY: back_test.FUNDED_BY_TARGETS,
+}
+
+
+def funding_for(mode: Any) -> str:
+    """The ``back_test`` funding of ``mode``, Back Test's for a name outside
+    ``MODES``."""
+    return MODE_FUNDING.get(mode, back_test.FUNDED_BY_PROCEEDS)
+
+
+def fleet_aggregate(fleet_source: Any, mode: Any) -> dict:
+    """The header strip's figures for the Sim tab in ``mode``: ``aggregate_stats``
+    over the held bots, with the wallet reading ``run_budget_usd`` while the
+    mode's funding is ``FUNDED_BY_TARGETS``."""
+    bots = fleet_source.bots()
+    budget = None
+    if funding_for(mode) == back_test.FUNDED_BY_TARGETS:
+        budget = back_test.run_budget_usd(bots)
+    return aggregate_stats(bots, budget_usd=budget)
 
 
 def button_name(action: str) -> str:
