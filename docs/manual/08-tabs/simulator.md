@@ -5113,15 +5113,28 @@ minimal_modern  #fafafa   glass_metal #1c1c24
 ```
 
 The windows the Sim opens read the tone at their own corner, both builds, every
-theme; the React Bot Settings window's page read the same value as its frame:
+theme; the React Bot Settings window's page and the React wizard's page each
+read the same value as their frame:
 
 ```
-theme             chooser   Bot Settings
-cyberpunk_dark    #08080b   #08080b
-neon_light        #b8b8bc   #b8b8bc
-classic_terminal  #080808   #080808
-minimal_modern    #bcbcbc   #bcbcbc
-glass_metal       #15151b   #15151b
+theme             chooser   Bot Settings   wizard
+cyberpunk_dark    #08080b   #08080b        #08080b
+neon_light        #b8b8bc   #b8b8bc        #b8b8bc
+classic_terminal  #080808   #080808        #080808
+minimal_modern    #bcbcbc   #bcbcbc        #bcbcbc
+glass_metal       #15151b   #15151b        #15151b
+```
+
+The built bundles read the same way. Each variant was built, launched over an
+empty scratch home with every HTTP route pointed at a refused loopback port
+and Chromium's resolver mapped away, its window found by process id and sized
+to the floor, and Live then Sim brought to the front by a posted click on the
+tab bar. Off a capture of that window, under the stored default theme:
+
+```
+bundle   Live ground   Sim ground   Live heading text   Sim heading text   strip card, Live and Sim in front
+qt       #0a0a0f       #08080b      #00ffcc             #00ffcc            #16162a  #16162a
+react    #0a0a0f       #08080b      #00ffcc             #00ffcc            #12121a  #12121a
 ```
 
 Two plants proved the reading can fail. With the fraction set to 0, every Sim
