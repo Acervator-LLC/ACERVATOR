@@ -2791,6 +2791,206 @@ rule answered 270 of 270 scrum fills and 61 of 61 fold fills, and the same over
 a fresh copy taken today; one row with its amount moved by one unit in the
 eighth place read as a disagreement.
 
+## The trade parity report every run writes
+
+Every Simulator run writes one report file when it ends: a Validation run, a
+Back Test run, a Portfolio Battery run. The gate-light comparison lives in that
+file and nowhere on the tab. The report names what the run verified and what it
+could not, and it carries the run's budget under the funding rule and every
+symbol the run refused. Nothing on the Sim tab draws a light, a table or a
+verdict for a run; when a run ends the Activity Log carries one line naming the
+report's path, and the operator opens the file from that path.
+
+`src/simulator/parity_report.py` — the writer
+
+```python
+def write_report(
+    mode: str, run: object, tablets: Optional[TabletSource]
+) -> ParityReport:
+    """Write the report of a finished ``run`` in ``mode`` and answer where it
+    landed."""
+    stamp = utc_stamp()
+    return write_figures(FIGURES[mode](run, tablets, stamp), stamp)
+```
+
+```mermaid
+flowchart LR
+    run[validation.run, back_test.run or portfolio_battery.run_battery] --> pass[the pass over the tablets]
+    pass --> figures[one dict of figures]
+    figures --> md[the Markdown file]
+    figures --> js[the JSON sidecar]
+    md --> dir[reports/simulator under the log root]
+    js --> dir
+    run --> report[the run object carries ParityReport]
+    report --> line[log_report on the Sim tab: one Activity Log line naming the path]
+```
+
+### Where the report lands
+
+The file lands under the `reports` bucket of the log root, in a `simulator`
+directory of its own, beside the version-sweep reports the bucket already
+holds. One run writes one Markdown file and one JSON sidecar with the same
+name. The name is the mode, the subject, the span and a UTC stamp to the
+microsecond, joined by two underscores, so two runs never share a name and no
+report is ever overwritten: the Markdown is created exclusively, and a name
+already taken moves to the next suffix.
+
+```
+validation__coinbase-live__2023-11-14_2023-11-17__20260918T052817474607Z.md
+validation__coinbase-live__2023-11-14_2023-11-17__20260918T052817474607Z.json
+back_test__coinbase-live__2023-11-14_2023-11-17__20260918T052817786519Z.md
+portfolio_battery__DEGEN__2022__20260918T052818006330Z.md
+```
+
+The subject is the exchange and the fleet's origin for Validation and Back
+Test, and the portfolio's name for a Battery, or `every-portfolio` when every
+portfolio ran. The span is the first and last day of the tape the run read, or
+the Battery's own span label.
+
+`src/simulator/parity_report.py` — no report is overwritten
+
+```python
+def create_pair(directory: Path, stem: str) -> tuple[Path, Path]:
+    """The first ``stem`` under ``directory`` whose Markdown and JSON paths both
+    do not exist, the Markdown created exclusively so no report is overwritten."""
+```
+
+### What the report holds
+
+Both files carry the same figures. The Markdown is for a person; the JSON is
+for a program, and a later unit reads the four comparison counts from it. The
+two cannot disagree on a number, because the Markdown is rendered from the same
+dictionary the JSON stores.
+
+Every mode carries these sections:
+
+- **Run.** The mode, the UTC stamp, the build, the fleet's origin, the
+  exchange, the span, the bot count, and the funding with the budget under it.
+  Validation and Portfolio Battery fund from the held Target Balances: the
+  budget is their sum and no fold is capped for cash. Back Test funds each
+  bot's fold from its own scrum proceeds and carries no run budget. A
+  Validation run states that it reruns gates and sizes no trade, so no buy was
+  refused for cash.
+- **Tablets.** Every Stone Tablet the run read: its key, asset, exchange,
+  timeframe, year, candle count, first and last candle, and the checksum the
+  MANIFEST row carries.
+- **Bots.** One row per bot: symbol, Target Balance, origin, class, venue, the
+  unit rule the pair trades under and whether the pair has a cited row, the
+  outcome, and what the run produced for it. Validation carries the snapped and
+  unsnapped trade counts and the rows compared and latching; Back Test carries
+  the trades, scrums, folds, units gained, cash and fees; the Battery carries
+  each symbol's capital and its weight of the portfolio, the trades, the units
+  gained, and the buy-and-hold baseline beside the accumulation.
+- **Not verified.** One line per thing the run could not verify. The section
+  is never empty: a run that verified everything says so in one line.
+- **Lines.** The run's own Activity Log lines, verbatim.
+
+### The gate-light comparison
+
+A Validation report carries every rerun row: the trade, the bot, the trade's
+stamp, the candle's and the gate row's, whether the row latches identically,
+how many of the nineteen lights agreed, the armed flags on both sides, every
+disagreeing light with its recorded state, its rerun state and which side drove
+it, and any blocker phrase that maps to no light. Above the rows sit the
+agreement counts and four counts under the words the module comparison uses,
+applied to the two sides of one gate row: the record the live bot wrote, and
+the rerun the Simulator latched.
+
+| count | what it reads |
+| --- | --- |
+| missing | a blocker the recorded row names that maps to no gate light |
+| extra | a blocker the rerun raised that maps to no gate light |
+| differs | a light in both whose recorded and rerun states differ |
+| variant differs | a row whose nineteen lights all agree and whose armed flags differ |
+
+Each count is written beside its definition, in both files.
+
+`src/simulator/parity_report.py` — the four counts
+
+```python
+def comparison_counts(rows: Sequence[RowComparison]) -> dict:
+    """``summarise`` over ``rows`` and the four ``COUNT_NAMES``."""
+    counts = dict(summarise(rows))
+    counts[MISSING] = sum(len(one.unknown_recorded_blockers) for one in rows)
+    counts[EXTRA] = sum(len(one.unknown_rerun_blockers) for one in rows)
+    counts[DIFFERS] = sum(len(one.disagreed) for one in rows)
+    counts[VARIANT_DIFFERS] = sum(
+        1 for one in rows if not one.disagreed and not one.latches_identically
+    )
+    return counts
+```
+
+### The Portfolio Battery section
+
+A Battery report carries, per portfolio and timeframe, how many symbols ran,
+the capital committed, the capital missing and its share of the weight with
+the symbols that carry it, the arithmetic of accumulation less baseline with
+the verdict word, the units gained, the trades and the fees; then every refused
+symbol with the line the run wrote for it. The defend, improve or reverse
+outcome against the portfolio's historical path reads `not computed`, with
+why: the design intent's default Target Balance, mix share and reading are the
+next Battery unit's, and today the run walks every symbol at the same capital
+with equal weights.
+
+### A run that raises
+
+A run that raises part-way still writes a file. It carries the header the run
+had, every bot it was handed, the tablets if the source still answers, the
+exception's type and message, and a Not verified section saying nothing was
+verified. Then the exception propagates as it did before. A report that cannot
+be written raises to the caller, so a run whose report is missing is never
+reported as done.
+
+`src/simulator/validation.py` — the wrap every runner carries
+
+```python
+    try:
+        outcome = _validate(bots, tablets, ytd, gates, exchange_id, limit, lag_sample)
+    except Exception as exc:
+        write_partial(
+            VALIDATION, exc, bots=bots, exchange_id=exchange_id, tablets=tablets
+        )
+        raise
+    return replace(outcome, report=write_report(VALIDATION, outcome, tablets))
+```
+
+### The line on the tab
+
+Each Sim host answers `log_report`, which writes one line through the tab's
+own Activity Log at the level Import Live Fleet uses. No button starts a run
+on the tab today; the units that press the Validation run and the Battery call
+it with the run's report.
+
+```
+Validation report written: <log root>/reports/simulator/validation__coinbase-live__2023-11-14_2023-11-17__20260918T052817474607Z.md
+```
+
+### What the report reading measured
+
+Before this, over a scratch home holding four stored bots, three Stone
+Tablets, three RA-StoneTablets, three YTD trade files and a gate.log of six
+rows, the three runners answered their lines and the reports bucket held no
+file after all three. After, each run wrote one Markdown file and one JSON
+sidecar under the simulator directory of the bucket, and running each mode
+twice wrote twelve files with none overwritten. The Validation sidecar's four
+counts read equal to the Markdown's. With a raise planted inside the tablet
+read, each mode wrote a partial file naming the planted exception and the
+exception still propagated. With one rerun row rewritten to disagree on one
+light, another rewritten to agree on every light with its scrum flag flipped,
+and a third given one recorded and two rerun blocker phrases that map to no
+light, the counts moved from missing 0, extra 0, differs 40, variant differs 0
+to 1, 2, 18 and 1, in both files. Every scratch file hashed equal before and
+after every run, and a second copy with one byte flipped read as changed.
+
+On the running Sim tab in both builds, the four bots imported through Import
+Live Fleet, each runner driven over the tab's own fleet source and tablet
+source under the debugger with a breakpoint on the writer: the writer was
+reached once per run with the runner's own `run` on the stack, the file
+appeared under the scratch reports directory, the sidecar's counts read equal
+to the Markdown's, and the Activity Log line naming the path was drawn through
+the tab's own log and read back off the Qt widget and off the React page. No
+bot was constructed and no socket left loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

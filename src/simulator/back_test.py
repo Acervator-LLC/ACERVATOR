@@ -18,7 +18,7 @@ shipped ``GapFiller``.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Optional, Sequence
 
 from ..trading.gate_chain import GateContext
@@ -211,10 +211,12 @@ def cited_rule_for(asset: str, exchange_id: str) -> tuple[str, str, Optional[str
     return class_name, venue, unit_rule(class_name, venue)
 
 
-def uncited_rule_line(result: BotResult) -> str:
-    """The Activity Log line for one ``UNCITED_RULE`` result."""
+def uncited_rule_line(result: Any) -> str:
+    """The Activity Log line for one ``UNCITED_RULE`` result, named by its
+    ``bot_id`` for a ``BotResult`` and by its ``asset`` for a ``SymbolRun``."""
+    name = getattr(result, "bot_id", "") or getattr(result, "asset", "")
     return (
-        f"{result.bot_id}: {result.symbol} is class {result.asset_class or 'none'} "
+        f"{name}: {result.symbol} is class {result.asset_class or 'none'} "
         f"on venue {result.venue or 'none'}, which has no cited unit rule; "
         "not simulated."
     )
@@ -673,6 +675,8 @@ class BackTestRun:
     interval_ms: int = 0
     funding: str = FUNDED_BY_PROCEEDS
     budget_usd: Optional[float] = None
+    #: The ``ParityReport`` ``run`` wrote for this pass; None until it has.
+    report: Any = None
 
     @property
     def ran(self) -> list[BotResult]:
@@ -779,6 +783,41 @@ def run(
     max_candles: int = 0,
     ticks_per_bot: int = 0,
     funding: str = FUNDED_BY_PROCEEDS,
+) -> BackTestRun:
+    """Walk every bot over its own tablet through ``_walk_fleet`` and write the
+    pass through ``write_report`` onto ``BackTestRun.report``.
+
+    ``max_candles``, ``step``, ``ticks_per_bot`` and ``funding`` reach
+    ``_walk_fleet`` unchanged; a ``_walk_fleet`` that raises reaches
+    ``write_partial`` with the exception and re-raises.
+    """
+    from .parity_report import BACK_TEST, write_partial, write_report
+
+    try:
+        outcome = _walk_fleet(
+            bots, tablets, exchange_id, step, max_candles, ticks_per_bot, funding
+        )
+    except Exception as exc:
+        write_partial(
+            BACK_TEST,
+            exc,
+            bots=bots,
+            exchange_id=exchange_id,
+            tablets=tablets,
+            funding=funding,
+        )
+        raise
+    return replace(outcome, report=write_report(BACK_TEST, outcome, tablets))
+
+
+def _walk_fleet(
+    bots: Sequence[SimBot],
+    tablets: Any,
+    exchange_id: str,
+    step: int,
+    max_candles: int,
+    ticks_per_bot: int,
+    funding: str,
 ) -> BackTestRun:
     """Walk every bot over its own tablet and report what the gates latched.
 

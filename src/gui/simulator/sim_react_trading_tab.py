@@ -68,6 +68,7 @@ from ...simulator.fleet_source import (
     SendRefused,
     exchange_choice,
 )
+from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource
@@ -987,6 +988,11 @@ if _HAS_WEBENGINE:
             imported = self._fleet_source.import_live_fleet(chosen)
             self.log(tab_surface.imported_line(len(imported), chosen), "success")
             self.fleet_changed.emit()
+
+        def log_report(self, report: ParityReport) -> None:
+            """One Activity Log line, ``report_line`` over ``report``, through
+            ``log`` at the ``success`` level ``_import_live_fleet`` uses."""
+            self.log(report_line(report), "success")
 
         def layer(self) -> str:
             """The layer the page shows behind the panel slot."""
