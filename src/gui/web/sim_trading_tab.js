@@ -31,6 +31,7 @@
   var OPTIONS = "options";
   var CHOSEN = "chosen";
   var ENABLED = "enabled";
+  var WIDTH_PX = "width_px";
   var VWAP = "vwap";
   var PLAYBACK = "playback";
   var COLOURS = "colours";
@@ -1237,7 +1238,7 @@
     labelProps[ARIA_LABEL] = text(label[NAME]);
     var selectProps = {
       value: text(chooser[CHOSEN]),
-      style: { minWidth: length(chooser[MINIMUM_WIDTH]) },
+      style: { width: length(chooser[WIDTH_PX]), flex: FLEX_NONE },
       onChange: function (event) {
         tabletChosen(text(event && event.target ? event.target.value : EMPTY));
       }

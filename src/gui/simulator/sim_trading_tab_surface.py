@@ -122,8 +122,10 @@ TABLET_LABEL_NAME = "sim-tablet-label"
 TABLET_CHOOSER_NAME = "sim-tablet-chooser"
 RETRIEVE_BUTTON_NAME = "sim-retrieve-button"
 
-#: The chooser takes the panel's bot selector minimum, so the two headers align.
-TABLET_CHOOSER_MIN_WIDTH_PX = 180
+#: The chooser's one width in both builds: the widest file key and the
+#: no-tablet item fit, and the layer's header keeps room for the flip under a
+#: monospace theme at the window's floor.
+TABLET_CHOOSER_WIDTH_PX = 240
 
 #: The Activity Log lines a tablet retrieval writes on both hosts.
 RETRIEVAL_STARTED_FORMAT = (
@@ -390,7 +392,7 @@ def replay_model(feed: Any, choices: Any = (), running: bool = False) -> dict:
         "tablet_label": {"text": sim.TABLET_LABEL_TEXT, "name": TABLET_LABEL_NAME},
         "chooser": {
             "name": TABLET_CHOOSER_NAME,
-            "minimum_width_px": TABLET_CHOOSER_MIN_WIDTH_PX,
+            "width_px": TABLET_CHOOSER_WIDTH_PX,
             "options": [
                 {"key": str(one["key"]), "text": str(one["text"])} for one in choices
             ],

@@ -289,7 +289,7 @@ REPLAY_LOG_TITLE = "Replay Log"
 RETRIEVE_TABLET_TEXT = "Retrieve Tablet"
 UPDATE_TABLET_TEXT = "Update Tablet"
 #: The chooser's item for a held market with no tablet on disk.
-NO_TABLET_CHOICE_FORMAT = "{key} — {refusal}"
+NO_TABLET_CHOICE_FORMAT = "{key} — no tablet"
 
 #: The Trading tab's own pane geometry, cloned. ``trading_tab.py`` sets these.
 MARGINS_PX = [2, 2, 2, 2]
@@ -662,8 +662,8 @@ def market_key(asset: str, exchange_id: str) -> str:
 def tablet_choices(source: TabletSource, bots: Sequence[Any] = ()) -> list[dict]:
     """The tablet chooser's items: one per MANIFEST row, keyed by
     ``tablet_key`` and shown as it, then one per held market in ``bots`` with
-    no tablet at ``NATIVE_TIMEFRAME``, keyed by ``market_key`` and shown with
-    ``NO_TABLET_TEXT``."""
+    no tablet at ``NATIVE_TIMEFRAME``, keyed by ``market_key`` and shown through
+    ``NO_TABLET_CHOICE_FORMAT``."""
     entries = source.entries()
     items = [
         {
@@ -687,7 +687,7 @@ def tablet_choices(source: TabletSource, bots: Sequence[Any] = ()) -> list[dict]
         items.append(
             {
                 "key": key,
-                "text": NO_TABLET_CHOICE_FORMAT.format(key=key, refusal=NO_TABLET_TEXT),
+                "text": NO_TABLET_CHOICE_FORMAT.format(key=key),
                 "asset": market[0],
                 "exchange_id": market[1],
                 "timeframe": NATIVE_TIMEFRAME,

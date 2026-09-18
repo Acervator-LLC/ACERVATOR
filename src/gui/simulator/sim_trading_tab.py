@@ -154,7 +154,7 @@ TABLET_LABEL_NAME = tab_surface.TABLET_LABEL_NAME
 TABLET_CHOOSER_NAME = tab_surface.TABLET_CHOOSER_NAME
 RETRIEVE_BUTTON_NAME = tab_surface.RETRIEVE_BUTTON_NAME
 
-TABLET_CHOOSER_MIN_WIDTH_PX = tab_surface.TABLET_CHOOSER_MIN_WIDTH_PX
+TABLET_CHOOSER_WIDTH_PX = tab_surface.TABLET_CHOOSER_WIDTH_PX
 
 #: The theme gives a button 20 px of side padding; the flip button keeps 4 px
 #: so its text draws whole beside the panel title at the window's floor.
@@ -842,7 +842,7 @@ class SimTradingTab(QWidget):
         self._tablet_chooser = QComboBox()
         self._tablet_chooser.setObjectName(TABLET_CHOOSER_NAME)
         self._tablet_chooser.setAccessibleName(TABLET_CHOOSER_NAME)
-        self._tablet_chooser.setMinimumWidth(TABLET_CHOOSER_MIN_WIDTH_PX)
+        self._tablet_chooser.setFixedWidth(TABLET_CHOOSER_WIDTH_PX)
         self._tablet_chooser.currentIndexChanged.connect(self._on_tablet_chosen)
         self._chart_header.addWidget(self._tablet_chooser)
         self._retrieve_button = QPushButton(surface.RETRIEVE_TABLET_TEXT)
