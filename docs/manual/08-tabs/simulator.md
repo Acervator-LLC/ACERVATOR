@@ -2599,6 +2599,92 @@ stored.
 A second import of an overlapping export adds only the rows whose id is new. A
 file that gains nothing is not rewritten at all.
 
+### One column map per exchange export
+
+The nine columns above are Coinbase's. Each exchange writes its own export, so
+the import carries one column map per exchange, chosen by the exchange id the
+import is given. A map names the export's column for each field of a trade,
+its buy and sell type strings, the number of rows above its header, the form
+of its timestamps and the currency marks on its money cells. Every map lands
+on the same trade fields and the same file, so Generate From YTD reads one
+format whichever exchange wrote the export.
+
+`src/exchange/ytd_csv_import.py` — the map
+
+```python
+@dataclass(frozen=True)
+class ExportColumnMap:
+    """The columns, type strings and text forms of one exchange's CSV export,
+    each column named for the ``YtdTrade`` field it fills."""
+
+    exchange_id: str
+    export_name: str
+    id_column: str
+    timestamp_column: str
+    type_column: str
+    asset_column: str
+    quote_column: str
+    quantity_column: str
+    price_column: str
+    cost_column: str
+    fee_column: str
+    buy_types: frozenset[str]
+    sell_types: frozenset[str]
+    header_scan_lines: int
+    timestamp_suffix_utc: str
+    timestamp_format: str
+    money_prefixes: str
+    dropped_columns: tuple[str, ...] = ()
+```
+
+Coinbase's map holds the nine columns, the two type sets, the twenty header
+rows, the timestamp suffix and the currency marks the import read before the
+maps existed, so a Coinbase export writes the same files it always did. A map
+is written from a sample export on disk and never from documentation. An
+exchange with no map is refused at import by name, with a line saying a
+sample export is needed, and nothing is written.
+
+`src/exchange/ytd_csv_import.py` — the registry and the refusal
+
+```python
+EXPORT_MAPS: dict[str, ExportColumnMap] = {COINBASE_MAP.exchange_id: COINBASE_MAP}
+
+
+def export_map_for(exchange_id: str) -> ExportColumnMap:
+    """Return ``EXPORT_MAPS[exchange_id]``, refusing an ``exchange_id`` with no
+    map by name."""
+```
+
+```
+no column map for exchange 'kraken': a sample kraken export is needed before its map is written. Maps exist for: ['coinbase'].
+```
+
+### The exchanges and their sample exports
+
+One row per exchange Acervator connects to. A map exists for Coinbase alone,
+written from the operator's own transactions export. No other sample export is
+on hand, and the export each of the others would map is not named until its
+sample arrives, because a name taken from documentation is a guess.
+
+```
+exchange     map       sample export on hand                        export it maps
+coinbase     present   yes, the operator's own transactions export   Coinbase transactions export
+binance      none      no                                           not named until a sample arrives
+kraken       none      no                                           not named until a sample arrives
+kucoin       none      no                                           not named until a sample arrives
+bybit        none      no                                           not named until a sample arrives
+okx          none      no                                           not named until a sample arrives
+gateio       none      no                                           not named until a sample arrives
+bitget       none      no                                           not named until a sample arrives
+huobi        none      no                                           not named until a sample arrives
+mexc         none      no                                           not named until a sample arrives
+bitfinex     none      no                                           not named until a sample arrives
+gemini       none      no                                           not named until a sample arrives
+poloniex     none      no                                           not named until a sample arrives
+bitstamp     none      no                                           not named until a sample arrives
+cryptocom    none      no                                           not named until a sample arrives
+```
+
 ### A period with no rows is a gap
 
 Where the export carries no trade for a symbol in a period the export covers,
