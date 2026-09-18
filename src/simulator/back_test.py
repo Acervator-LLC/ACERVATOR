@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field, replace
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
@@ -136,6 +136,11 @@ class SimTrade:
     units: float
     usd: float
     fee_usd: float
+
+
+#: The seam ``walk`` hands each ``SimTrade`` to as it fills, as ``run_battery``
+#: hands ``progress`` each portfolio's line.
+TradeSink = Callable[[SimTrade], None]
 
 
 @dataclass
@@ -594,10 +599,11 @@ def walk(
     funding: str = FUNDED_BY_PROCEEDS,
     *,
     rule: str,
+    on_trade: Optional[TradeSink] = None,
 ) -> BotResult:
     """Run ``bot`` over ``candles``, one gate-chain evaluation every ``step``
     bars, each fold funded as ``funding`` says and every fill sized under
-    ``rule``."""
+    ``rule``; ``on_trade`` is handed each ``SimTrade`` the moment it fills."""
     from ..trading.ta_engine import VotingEngine
 
     if len(candles) < MIN_CANDLES:
@@ -639,6 +645,8 @@ def walk(
         if filled is not None:
             trades.append(filled)
             fees += filled.fee_usd
+            if on_trade is not None:
+                on_trade(filled)
     return BotResult(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -783,19 +791,27 @@ def run(
     max_candles: int = 0,
     ticks_per_bot: int = 0,
     funding: str = FUNDED_BY_PROCEEDS,
+    on_trade: Optional[TradeSink] = None,
 ) -> BackTestRun:
     """Walk every bot over its own tablet through ``_walk_fleet`` and write the
     pass through ``write_report`` onto ``BackTestRun.report``.
 
-    ``max_candles``, ``step``, ``ticks_per_bot`` and ``funding`` reach
-    ``_walk_fleet`` unchanged; a ``_walk_fleet`` that raises reaches
+    ``max_candles``, ``step``, ``ticks_per_bot``, ``funding`` and ``on_trade``
+    reach ``_walk_fleet`` unchanged; a ``_walk_fleet`` that raises reaches
     ``write_partial`` with the exception and re-raises.
     """
     from .parity_report import BACK_TEST, write_partial, write_report
 
     try:
         outcome = _walk_fleet(
-            bots, tablets, exchange_id, step, max_candles, ticks_per_bot, funding
+            bots,
+            tablets,
+            exchange_id,
+            step,
+            max_candles,
+            ticks_per_bot,
+            funding,
+            on_trade,
         )
     except Exception as exc:
         write_partial(
@@ -818,14 +834,15 @@ def _walk_fleet(
     max_candles: int,
     ticks_per_bot: int,
     funding: str,
+    on_trade: Optional[TradeSink] = None,
 ) -> BackTestRun:
     """Walk every bot over its own tablet and report what the gates latched.
 
     ``max_candles`` caps how much of each tape is read, ``ticks_per_bot``
     replaces ``step`` with one ``shared_step`` every bot ticks on, ``funding``
     of ``FUNDED_BY_TARGETS`` reads ``run_budget_usd`` once here and caps no
-    fold, and a bot whose ``cited_rule_for`` answers no rule is ``UNCITED_RULE``
-    and walks nothing.
+    fold, ``on_trade`` reaches every ``walk``, and a bot whose
+    ``cited_rule_for`` answers no rule is ``UNCITED_RULE`` and walks nothing.
     """
     from ..trading.indicators.types import candles_from_raw
 
@@ -877,7 +894,9 @@ def _walk_fleet(
             raw = raw[-int(max_candles) :]
         if not interval_ms and len(raw) > 1:
             interval_ms = candle_interval_ms([int(one[0]) for one in raw])
-        walked = walk(bot, candles_from_raw(raw), step, funding, rule=rule)
+        walked = walk(
+            bot, candles_from_raw(raw), step, funding, rule=rule, on_trade=on_trade
+        )
         key = entry.file
         if key.endswith(TABLET_SUFFIX):
             key = key[: -len(TABLET_SUFFIX)]
@@ -960,6 +979,7 @@ __all__ = [
     "WINDOW_CANDLES",
     "SimPosition",
     "SimTrade",
+    "TradeSink",
     "apply_fold",
     "apply_scrum",
     "bb_detect_thresholds",

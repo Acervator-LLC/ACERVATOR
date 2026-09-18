@@ -27,6 +27,7 @@ from .back_test import (
     MIN_CANDLES,
     UNCITED_RULE,
     SimTrade,
+    TradeSink,
     cited_rule_for,
     new_bot,
     run_budget_usd,
@@ -481,9 +482,10 @@ def run_symbol(
     rows: Sequence[Sequence[float]],
     timeframe: str,
     ticks: int = TICKS_PER_SYMBOL,
+    on_trade: Optional[TradeSink] = None,
 ) -> SymbolRun:
     """Walk ``bot`` over ``rows`` folded to ``timeframe`` at its own
-    ``target_usd`` and read the result.
+    ``target_usd``, handing ``on_trade`` to ``walk``, and read the result.
 
     ``rows`` are one span's daily tablet candles; no bar answers ``NO_TABLET``,
     a class with no rule in ``cited_rule_for`` answers ``UNCITED_RULE``, and
@@ -548,6 +550,7 @@ def run_symbol(
         walk_step(len(bars), ticks),
         FUNDED_BY_TARGETS,
         rule=rule,
+        on_trade=on_trade,
     )
     return SymbolRun(
         asset=asset,
@@ -947,13 +950,15 @@ def run_portfolio(
     held: Optional[dict] = None,
     bots: Optional[dict[str, SimBot]] = None,
     fleet_origin: str = BATTERY_ORIGIN,
+    on_trade: Optional[TradeSink] = None,
 ) -> PortfolioResult:
     """Walk every symbol of ``name`` over ``span`` at each of ``timeframes``,
     each on the bot ``bots`` names for it, ``plan_run`` with no held fleet when
     ``bots`` is None.
 
     ``held`` keeps one ``(bot_id, timeframe, target)`` run across portfolios,
-    so a symbol two portfolios share on one bot is walked once.
+    so a symbol two portfolios share on one bot is walked once and its trades
+    reach ``on_trade`` once.
     """
     entry = PORTFOLIOS.get(str(name))
     symbols = entry.symbols if entry is not None else ()
@@ -973,7 +978,9 @@ def run_portfolio(
                 continue
             key = (bot.bot_id, timeframe, round(float(bot.target_usd or 0.0), 2))
             if key not in walked_by_key:
-                walked_by_key[key] = run_symbol(bot, tape.rows(asset), timeframe, ticks)
+                walked_by_key[key] = run_symbol(
+                    bot, tape.rows(asset), timeframe, ticks, on_trade
+                )
             walked.append(walked_by_key[key])
         by_timeframe.append(TimeframeResult(timeframe=timeframe, runs=tuple(walked)))
     return PortfolioResult(
@@ -996,19 +1003,21 @@ def run_battery(
     ticks: int = TICKS_PER_SYMBOL,
     plan: Optional[RunPlan] = None,
     progress: Optional[Callable[[str], None]] = None,
+    on_trade: Optional[TradeSink] = None,
 ) -> BatteryRun:
     """Run each portfolio in ``names`` over ``span`` through
     ``_walk_portfolios`` on ``plan``'s bots and write the pass through
     ``write_report`` onto ``BatteryRun.report``.
 
-    A ``_walk_portfolios`` that raises reaches ``write_partial`` with the
-    exception and re-raises.
+    ``progress`` is handed each portfolio's line and ``on_trade`` each
+    ``SimTrade`` as it fills; a ``_walk_portfolios`` that raises reaches
+    ``write_partial`` with the exception and re-raises.
     """
     from .parity_report import PORTFOLIO_BATTERY, write_partial, write_report
 
     try:
         outcome = _walk_portfolios(
-            tablets, names, span, timeframes, ticks, plan, progress
+            tablets, names, span, timeframes, ticks, plan, progress, on_trade
         )
     except Exception as exc:
         write_partial(
@@ -1026,9 +1035,11 @@ def _walk_portfolios(
     ticks: int,
     plan: Optional[RunPlan],
     progress: Optional[Callable[[str], None]],
+    on_trade: Optional[TradeSink] = None,
 ) -> BatteryRun:
     """Run each portfolio ``plan`` names, ``plan_run`` over ``names`` when it
-    is None, handing ``progress`` each ``PortfolioResult.line`` as it lands."""
+    is None, handing ``progress`` each ``PortfolioResult.line`` as it lands and
+    ``on_trade`` each ``SimTrade`` as it fills."""
     chosen = plan if plan is not None else plan_run(names, tablets)
     start_ms, end_ms = span_bounds(span, tablets.entries())
     tape = TapeCache(tablets, start_ms, end_ms)
@@ -1045,6 +1056,7 @@ def _walk_portfolios(
             walked_by_key,
             chosen.by_portfolio.get(name, {}),
             chosen.origins.get(name, BATTERY_ORIGIN),
+            on_trade,
         )
         results.append(result)
         if progress is not None:

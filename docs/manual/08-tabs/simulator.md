@@ -3366,6 +3366,190 @@ drew, and the 37 names drew 37 of 37. Every copied file and every trade file
 read byte-identical after every step, and a byte planted into a copy of
 `bot_state.json` moved its hash. No socket left loopback.
 
+## The Activity spool shows the trades of Validation, Back Test and Portfolio Battery runs
+
+Every simulated fill writes one line on the Sim tab's Activity Log, in both
+builds, as the walk produces it. The line is Live's fill line as Live's pane
+receives it: the bot prefix Live's window puts on every bot line, then
+`SELL FILLED` for a scrum or `BUY FILLED` for a fold, the units to six places,
+the asset, the price to eight places. The Simulator has no venue, so it has no
+intended price and no slippage to report; in their place the line carries what
+the walk knows about the fill, the dollars and the fee to five places, in the
+shape Live's proceeds line writes them. A scrum's dollars read `gross`, the
+notional sold; a fold's read `spent`. The line is written at Live's `info`
+level and paints at the pane's plain size, because that is what Live's fill
+line paints at.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the line one `SimTrade` writes
+
+```python
+TRADE_LINE_LEVEL = "info"
+BOT_PREFIX_FORMAT = "[{asset}/{tail}] "
+BOT_ID_TAIL_CHARS = 4
+TRADE_LINE_FORMAT = (
+    "{prefix}{word}: {units:.6f} {asset} @ ${price:.8f} "
+    "({usd_word} ${usd:.5f}, fee ${fee:.5f})"
+)
+SCRUM_FILL_WORD = "SELL FILLED"
+FOLD_FILL_WORD = "BUY FILLED"
+SCRUM_USD_WORD = "gross"
+FOLD_USD_WORD = "spent"
+```
+
+```
+[2021-02-05T00:00:00Z] [SPY/ahoo] SELL FILLED: 0.193792 SPY @ $387.70999146 (gross $75.13498, fee $0.45081)
+[2026-07-29T15:35:00Z] [BILL/0bda] BUY FILLED: 155.417407 BILL @ $0.02252000 (spent $3.50000, fee $0.05600)
+```
+
+### The stamp is the tape's time
+
+Every other line on the pane is stamped with the clock at the moment it is
+written, as Live's pane stamps it. A simulated fill happened at the tape's
+candle, and a daily tablet's candles all fall at midnight, so a clock stamp
+would read the same on every line of a daily walk and say nothing about when
+the fill fell. A trade line is stamped with the candle's time instead, the
+same UTC stamp the report writes for a run's first and last candle. Both
+forks of the pane gain one call for it, a write under a stamp the caller gives,
+which holds the line under a pause exactly as an ordinary write does and
+renders it otherwise.
+
+`src/gui/simulator/sim_status_log.py` — the write under a given stamp
+
+```python
+        def log_at(self, stamp: str, message: str, level: str = "info") -> None:
+            """``log`` under ``stamp`` instead of the clock: held under a pause, else rendered."""
+            self._tell("log", message, level)
+            if self._paused:
+                if len(self._pause_buffer) < self._pause_buffer_cap:
+                    self._pause_buffer.append((stamp, message, level))
+                return
+            self._render(stamp, message, level)
+```
+
+### The seam the walk hands each fill to
+
+The walk that sizes every simulated trade gains one callback, handed each
+`SimTrade` the moment it fills, the way the Battery hands its progress
+callback each portfolio's line. Every runner threads it through to the walk:
+Back Test's run, the Battery's symbol, portfolio and battery runs, and
+Validation's run. A symbol two portfolios share on one bot is walked once, so
+its fills reach the callback once.
+
+`src/simulator/back_test.py` — the seam
+
+```python
+#: The seam ``walk`` hands each ``SimTrade`` to as it fills, as ``run_battery``
+#: hands ``progress`` each portfolio's line.
+TradeSink = Callable[[SimTrade], None]
+```
+
+```python
+        if filled is not None:
+            trades.append(filled)
+            fees += filled.fee_usd
+            if on_trade is not None:
+                on_trade(filled)
+```
+
+### A Validation run's trades are the recorded fills it reruns
+
+Validation sizes no trade of its own; it reruns the recorded fills against the
+gate rows the live bot wrote. Its trade line is that recorded fill, one per
+rerun: the bot, its symbol, a scrum for a sell and a fold for a buy, the
+fill's time, price, amount, cost and fee. A fill the run does not rerun writes
+no line; the report names it under what could not be verified.
+
+`src/simulator/validation.py` — the recorded fill as a trade
+
+```python
+def rerun_trade(bot: SimBot, fill: Any) -> "SimTrade":
+    """The ``SimTrade`` one rerun YTD fill reads as: ``SCRUM`` for ``SIDE_SELL``
+    and ``FOLD`` otherwise, ``amount`` as the units, ``cost`` as the USD."""
+```
+
+### Off the worker thread, as the portfolio lines travel
+
+A Battery run walks on its worker thread. Each fill crosses to the GUI thread
+through a signal beside the one that carries each portfolio's line, and the
+host writes it there. On the Qt tab the line is appended to the pane as it
+arrives. On the React page the host paints it into its own log at once and
+pushes every line painted since the last push once per strip tick, two
+seconds, so a walk of thousands of fills does not push thousands of scripts;
+a push carries the pending lines ahead of anything else it carries.
+
+`src/gui/simulator/sim_trading_tab.py` — the signal and the writer
+
+```python
+    #: One ``SimTrade`` the Battery's walk filled on the worker thread.
+    battery_trade = Signal(object)
+```
+
+```python
+    def log_trade(self, trade: SimTrade) -> None:
+        """One Activity Log line per ``SimTrade``: ``trade_line`` under
+        ``trade_stamp`` through ``SimStatusLog.log_at`` at ``TRADE_LINE_LEVEL``."""
+        self._status_log.log_at(
+            tab_surface.trade_stamp(trade),
+            tab_surface.trade_line(trade),
+            tab_surface.TRADE_LINE_LEVEL,
+        )
+```
+
+`src/gui/simulator/sim_react_trading_tab.py` — the push cadence
+
+```python
+#: One push per strip tick carries every trade line ``log_trade`` painted since the
+#: last push, so a walk of thousands of fills does not push thousands of scripts.
+TRADE_PUSH_INTERVAL_MS = DASHBOARD_TICK_MS
+```
+
+### Nothing else reaches the spool during a run
+
+During a run the Activity Log's writers are the run's own: the started line
+when the press is taken, one line per portfolio as it lands, one line per fill
+as it fills, and when the run ends its summary lines and the report line. The
+watchdog writes only when the render-error count rises or when nothing has
+rendered for ten minutes while a sim bot runs, and a run renders continuously;
+the command bar's notices are reached only by its own presses; the window's
+notifications reach Live's pane. The pane holds 5,000 lines and drops the
+oldest past that; a pause holds 2,000 and drops the newest, and Resume replays
+the held lines in order under one line counting them.
+
+### Back Test and Validation, through the run
+
+No button starts a Back Test or a Validation run on the tab yet; the
+Validation run's button is the close's. Both runs take the same callback, and
+driven through their run function with the host's writer they write one line
+per fill on the Activity Log exactly as the Battery does from the corner.
+
+### What the trade-line reading measured
+
+Both builds, the real window with a scratch home holding a copy of
+`bot_state.json` with 38 coinbase bots, the BILL, CAP and VVV tablets, a copy
+of the whole RA-StoneTablet root, a copy of the gate log and YTD trade files
+built from the SCRUM and FOLD rows three of those bots wrote; every socket but
+loopback refused. Import Live Fleet held 38 bots. Back Test through its run
+walked 3 bots, produced 1,670 fills and wrote 1,670 trade lines and the report
+line; every line's stamp, prefix, word, units, asset, price, dollars and fee
+read equal to its fill. One bot at 1,300 candles, a walk of exactly three
+fills, wrote three lines, each with its fee. Validation through its run rerun
+36 recorded fills and wrote 36 lines and the report line. Run Portfolio on
+BOGLEHEAD over every span, pressed at the corner, wrote 204 trade lines for the
+204 fills its nine walks produced, beside the started line, one portfolio line,
+eight summary lines and the report line, and nothing else; the report's rows
+counted the same 204. Run Portfolio on FULL wrote its first fills within three
+seconds of the press with the run still in flight; Pause Console pressed then
+held every later line, 819 on the Qt tab and 719 on the React page, and Resume
+flushed them in their held order under the line counting them. Run Every
+Portfolio over the whole root produced 2,066 fills in 189 walks and wrote 2,066
+trade lines beside 47 of the run's own; on the Qt tab the pane read 681 lines
+at 9.2 seconds of a 27-second run and 2,054 at 27.3, and on the React page
+1,573 at 21.5 seconds against 1,587 fills produced. After that run both panes
+held 4,936 lines under the cap of 5,000. On the base commit the same sessions
+wrote no trade line in either build. Every copied file read byte-identical
+after every step, a byte planted into a copy of `bot_state.json` moved its
+hash, no bot was constructed and no socket left loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

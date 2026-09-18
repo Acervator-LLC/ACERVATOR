@@ -1,7 +1,9 @@
 """``SimStatusLog`` renders timestamped, colour-coded lines into a read-only pane.
 
 A fork of ``src/gui/widgets/status_log.py`` ``StatusLog`` under the Simulator's
-name; the Simulator's Activity Log spool.
+name; the Simulator's Activity Log spool. ``SimStatusLogModel`` is the fork of
+``StatusLogModel`` the React host holds. Both add ``log_at``, a ``log`` whose
+stamp the caller gives, which a simulated trade's line needs for its candle time.
 """
 
 from __future__ import annotations
@@ -10,11 +12,25 @@ import contextlib
 import html
 import logging
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 from .. import design_system as ds
+from ..main_tabs.status_log_surface import DEFAULT_LOG_LEVEL, StatusLogModel
 
 logger = logging.getLogger("acervator.gui")
+
+
+class SimStatusLogModel(StatusLogModel):
+    """``StatusLogModel`` with ``log_at``: ``log`` under a stamp the caller gives."""
+
+    def log_at(self, stamp: str, message: str, level: Any = DEFAULT_LOG_LEVEL) -> None:
+        """Paint ``message`` under ``stamp``, or hold it under a pause as ``log`` does."""
+        if self.paused:
+            if len(self.pause_buffer) < self.pause_buffer_cap:
+                self.pause_buffer.append((stamp, message, level))
+            return
+        self.render(stamp, message, level)
+
 
 try:
     from PySide6.QtWidgets import QTextEdit
@@ -123,6 +139,15 @@ if _HAS_QT:
                     self._pause_buffer.append((ts, message, level))
                 return
             self._render(ts, message, level)
+
+        def log_at(self, stamp: str, message: str, level: str = "info") -> None:
+            """``log`` under ``stamp`` instead of the clock: held under a pause, else rendered."""
+            self._tell("log", message, level)
+            if self._paused:
+                if len(self._pause_buffer) < self._pause_buffer_cap:
+                    self._pause_buffer.append((stamp, message, level))
+                return
+            self._render(stamp, message, level)
 
         def force_log(self, message: str, level: str = "warning") -> None:
             """Render *message* now, whatever ``_paused`` holds."""
