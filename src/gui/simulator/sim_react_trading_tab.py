@@ -1123,9 +1123,10 @@ if _HAS_WEBENGINE:
             exchange_id: str = "",
             defaults_override: Optional[dict] = None,
         ) -> None:
-            """Open the Simulator's Bot Creation Wizard over the seated venues,
-            the stored defaults and the tablet market table; on Finish hand its
-            config to ``FleetSource.create`` and fire ``fleet_changed``.
+            """Open the Simulator's Bot Creation Wizard over ``wizard_exchanges``,
+            the stored defaults, the tablet market table and each venue's
+            ``venue_timeframes``; on Finish hand its config to
+            ``FleetSource.create`` and fire ``fleet_changed``.
 
             The window's ``_create_bot``, forked, with no pre-flight, no
             ``ScrummingBot`` and no bot manager; ``defaults_override`` merges over
@@ -1135,15 +1136,21 @@ if _HAS_WEBENGINE:
                 "log", wizard_surface.OPENING_FORMAT.format(exchange_id=exchange_id)
             )
             wizard_class = surface_class(SIM_BOT_WIZARD)
-            exchanges = wizard_surface.seated_exchanges(
-                layer_exchanges(self._state.exchanges)[ALIAS_LAYER]
+            exchanges = wizard_surface.wizard_exchanges(
+                layer_exchanges(self._state.exchanges)[ALIAS_LAYER],
+                self._tablet_source,
             )
             defaults = wizard_surface.stored_defaults()
             if defaults_override:
                 defaults = {**defaults, **defaults_override}
             markets = wizard_surface.tablet_markets(self._tablet_source)
             wizard = wizard_class(
-                exchanges, defaults, self, theme=self._theme, markets=markets
+                exchanges,
+                defaults,
+                self,
+                theme=self._theme,
+                markets=markets,
+                timeframes=wizard_surface.venue_timeframes(exchanges),
             )
             if wizard.exec() != wizard.DialogCode.Accepted:
                 self.show_log_call("log", wizard_surface.CANCELLED_TEXT, "warning")

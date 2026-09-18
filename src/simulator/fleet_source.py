@@ -24,7 +24,7 @@ Bots table and the Extractor Bots table read; ``aggregate_stats`` answers the
 header strip's figures over a list of them with ``get_aggregate_stats``'s
 arithmetic; ``live_fleet`` builds one per stored bot, ``ytd_fleet`` one per YTD
 trade file, and ``wizard_record`` the stored-record shape from the bot
-wizard's config.
+wizard's config, its phantom keys from ``wizard_phantom_timeframes``.
 """
 
 from __future__ import annotations
@@ -367,7 +367,9 @@ def _held_bot(bot_id: str, record: dict) -> Optional[SimBot]:
 def wizard_record(config: dict) -> dict:
     """The stored-record shape ``get_full_state`` writes, built from the bot
     wizard's ``get_bot_config`` dict through ``bot_config_kwargs`` and
-    ``make_bot_config``, with ``state_when_saved`` idle and no stats.
+    ``make_bot_config``, with ``state_when_saved`` idle, no stats,
+    ``phantoms_enabled`` from the wizard's ``enable_phantoms`` and
+    ``phantom_timeframes`` from ``wizard_phantom_timeframes``.
 
     ``make_bot_config`` raises ``ValueError`` on a mode-foreign key or a bad
     shape and ``TypeError`` on a value a ``BotConfig`` field cannot hold.
@@ -384,12 +386,41 @@ def wizard_record(config: dict) -> dict:
     built = make_bot_config(mode, **kwargs)
     stored = asdict(built)
     stored["mode"] = built.mode.value
-    return {
+    scrumming = mode == BotMode.SCRUMMING
+    record = {
         "config": stored,
         "stats": {},
         "scrumming_state": {},
         "state_when_saved": BotState.IDLE.value,
+        "phantoms_enabled": scrumming and bool(collected.get("enable_phantoms", False)),
     }
+    timeframes = (
+        wizard_phantom_timeframes(
+            collected.get("phantom_timeframes"), built.ta_timeframe, built.exchange_id
+        )
+        if scrumming
+        else []
+    )
+    if timeframes:
+        record["phantom_timeframes"] = timeframes
+    return record
+
+
+def wizard_phantom_timeframes(
+    typed: Any, ta_timeframe: str, exchange_id: str
+) -> list[str]:
+    """The phantom timeframes ``ScrummingBot.__init__`` gives a new bot:
+    ``typed`` as the wizard handed it, or ``default_phantom_timeframes`` over
+    ``ta_timeframe`` when ``typed`` is empty, kept to what
+    ``available_timeframes`` lists for ``exchange_id``."""
+    from ..exchange.timeframes import available_timeframes
+    from ..trading.phantom_balance import default_phantom_timeframes
+
+    offered = list(available_timeframes(exchange_id))
+    chosen = [str(one) for one in (typed or []) if str(one)]
+    if not chosen:
+        chosen = default_phantom_timeframes(str(ta_timeframe or ""), offered)
+    return [one for one in chosen if one in offered]
 
 
 def ytd_target_usd(trades: Sequence[YtdTrade]) -> Optional[float]:
@@ -989,6 +1020,7 @@ __all__ = [
     "extractor_pool_color",
     "live_fleet",
     "row_status",
+    "wizard_phantom_timeframes",
     "wizard_record",
     "ytd_fleet",
     "ytd_record",

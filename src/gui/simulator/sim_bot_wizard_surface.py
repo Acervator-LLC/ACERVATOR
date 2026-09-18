@@ -5,9 +5,10 @@ share.
 answers it with Live's ``bot_wizard_surface.build_view_model`` under that
 name. ``tablet_markets`` lists one market row per tablet asset under each base
 currency, ``seated_exchanges`` builds the venue list from the seated ids,
-``stored_defaults`` reads the operator's settings file, and
-``extractor_parent_refusal`` is the window's parent rule over ``SimBot``
-records.
+``wizard_exchanges`` adds the tablets' exchanges to it, ``venue_timeframes``
+lists each venue's timeframes for the React fork, ``stored_defaults`` reads
+the operator's settings file, and ``extractor_parent_refusal`` is the
+window's parent rule over ``SimBot`` records.
 """
 
 from __future__ import annotations
@@ -107,6 +108,29 @@ def seated_exchanges(exchange_ids: Iterable[str]) -> list[dict]:
     ]
 
 
+def wizard_exchanges(exchange_ids: Iterable[str], tablet_source: Any) -> list[dict]:
+    """``seated_exchanges`` over the seated ids, then every exchange
+    ``tablet_source.entries`` names that is not seated, sorted."""
+    seated = [str(eid) for eid in exchange_ids if str(eid)]
+    filed = sorted(
+        {str(entry.exchange_id) for entry in tablet_source.entries()} - set(seated)
+    )
+    return seated_exchanges([*seated, *filed])
+
+
+def venue_timeframes(exchanges: Iterable[dict]) -> dict[str, list[str]]:
+    """The timeframes ``available_timeframes`` lists per venue in
+    ``exchanges``, the bag the React wizard narrows its pages with."""
+    from ...exchange.timeframes import available_timeframes
+
+    out: dict[str, list[str]] = {}
+    for venue in exchanges:
+        eid = str(venue.get(live.EXCHANGE_ID_KEY) or "")
+        if eid:
+            out[eid] = list(available_timeframes(eid))
+    return out
+
+
 def stored_defaults() -> dict:
     """The operator's stored settings, read through ``SettingsManager.get_all``
     as the window reads them for the wizard; nothing is written."""
@@ -175,5 +199,7 @@ __all__ = [
     "seated_exchanges",
     "stored_defaults",
     "tablet_markets",
+    "venue_timeframes",
     "view_model",
+    "wizard_exchanges",
 ]
