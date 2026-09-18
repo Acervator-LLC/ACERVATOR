@@ -110,6 +110,7 @@ from ..main_tabs.trading_tab_surface import (
     exchange_display_name,
 )
 from ..simulator_tab import LineView, PlaybackView
+from ..theme_engine import NIGREDO, TONE_PROPERTY
 from ..variant_surface import SIM_BOT_DETAIL, SIM_BOT_WIZARD, surface_class
 from . import sim_bot_wizard_surface as wizard_surface
 from .sim_bot_status_table_surface import usd_rates
@@ -185,6 +186,10 @@ class SimTradingTab(QWidget):
         super().__init__(parent)
         self.setObjectName(ACCESSIBLE_NAME)
         self.setAccessibleName(ACCESSIBLE_NAME)
+        # The theme's nigredo_qss paints this tree, and the windows it parents.
+        # A QWidget subclass paints its stylesheet ground only with this attribute.
+        self.setProperty(TONE_PROPERTY, NIGREDO)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self._tablet_source = (
             tablet_source
             if tablet_source is not None

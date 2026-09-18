@@ -21,6 +21,7 @@ from ...simulator.tablet_source import SendRefused
 from ..main_tabs import bot_live_settings_surface as surface
 from ..main_tabs import live_settings_tab_surface as settings_surface
 from ..react_history_panel import page_html
+from ..theme_engine import NIGREDO, TONE_PROPERTY
 from . import sim_bot_live_settings_surface as sim_surface
 
 try:
@@ -296,13 +297,15 @@ def host_script() -> str:
 
 
 def window_html(theme: object = None) -> str:
-    """The whole window page as one string, with no network fetch."""
+    """The whole window page as one string, with no network fetch, its chrome
+    in the ``NIGREDO`` tone."""
     return page_html(
         WINDOW_STYLE_ASSETS,
         WINDOW_SCRIPT_ASSETS,
         WINDOW_BODY,
         theme,
         (host_script(),),
+        NIGREDO,
     )
 
 
@@ -530,6 +533,8 @@ def _build() -> dict:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(0)
             self._web = QWebEngineView(self)
+            # repaint_pages reads the tone off the view on every theme switch.
+            self._web.setProperty(TONE_PROPERTY, NIGREDO)
             self._web_page = SimBotDetailPage(self)
             self._web.setPage(self._web_page)
             self._web.loadFinished.connect(self._on_load_finished)

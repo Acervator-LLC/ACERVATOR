@@ -100,46 +100,57 @@ def page_theme(theme: object = None) -> str:
     return stored_theme(applied_theme() if theme is None else theme)
 
 
-def _palette(theme: object = None) -> dict:
-    """The six chrome colours ``page_theme`` selects out of ``CHART_THEMES``."""
+def _palette(theme: object = None, tone: object = None) -> dict:
+    """The six chrome colours ``page_theme`` selects out of ``CHART_THEMES``,
+    the two grounds ``--bg`` and ``--btn-bg`` through ``toward_black`` at
+    ``NIGREDO_FRACTION`` when ``tone`` is ``NIGREDO``."""
+    from .theme_engine import NIGREDO, NIGREDO_FRACTION, toward_black
     from .tradingview_chart import CHART_THEMES
 
     colors = CHART_THEMES[page_theme(theme)]
+    ground = colors["bg"]
+    button = colors["btn_bg"]
+    if tone == NIGREDO:
+        ground = toward_black(ground, NIGREDO_FRACTION)
+        button = toward_black(button, NIGREDO_FRACTION)
     return {
-        "--bg": colors["bg"],
+        "--bg": ground,
         "--text": colors["text"],
         "--grid": colors["grid"],
         "--border": colors["border"],
         "--accent": colors["accent"],
-        "--btn-bg": colors["btn_bg"],
+        "--btn-bg": button,
     }
 
 
-def palette_script(theme: object = None) -> str:
-    """The one JS statement rewriting a drawn page's six chrome colours.
+def palette_script(theme: object = None, tone: object = None) -> str:
+    """The one JS statement rewriting a drawn page's six chrome colours, in
+    the ``tone`` ``_palette`` takes.
 
     ``repaint_pages`` runs it on a page already up, which keeps every drawn
     row and the scroll position that a fresh ``page_html`` would lose.
     """
     calls = "".join(
         "d.style.setProperty(%s,%s);" % (json.dumps(name), json.dumps(value))
-        for name, value in _palette(theme).items()
+        for name, value in _palette(theme, tone).items()
     )
     return "(function(){var d=document.documentElement;" + calls + "})();"
 
 
 def repaint_pages(root: Any, theme: object = None) -> int:
-    """Run ``palette_script`` on every ``QWebEngineView`` under ``root``.
+    """Run ``palette_script`` on every ``QWebEngineView`` under ``root``, each
+    in the tone its ``TONE_PROPERTY`` carries.
 
     Returns how many views took it, and 0 without WebEngine or without a
     ``root``.
     """
     if not _HAS_WEBENGINE or root is None:
         return 0
-    script = palette_script(theme)
+    from .theme_engine import TONE_PROPERTY
+
     painted = 0
     for view in root.findChildren(QWebEngineView):
-        view.page().runJavaScript(script)
+        view.page().runJavaScript(palette_script(theme, view.property(TONE_PROPERTY)))
         painted += 1
     return painted
 
@@ -150,6 +161,7 @@ def page_html(
     body: str,
     theme: object = None,
     inline_scripts: tuple = (),
+    tone: object = None,
 ) -> str:
     """One page as a string: styles, ``body``, the assets, then ``inline_scripts``.
 
@@ -158,7 +170,7 @@ def page_html(
     ``%``-formatted: the minified bundles named in ``ASSET_NAMES`` carry both
     ``%`` and braces.
     """
-    overrides = "".join(f"{k}:{v};" for k, v in _palette(theme).items())
+    overrides = "".join(f"{k}:{v};" for k, v in _palette(theme, tone).items())
     parts = [
         "<!DOCTYPE html>",
         '<html><head><meta charset="utf-8">',

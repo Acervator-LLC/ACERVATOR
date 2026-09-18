@@ -1544,6 +1544,137 @@ raised, and the username, the target balance, the visibility, the aggressive
 flag, the theme, the accent, the three phantom values, the indicator weights and
 the logging group all arrived as stored.
 
+#### The Simulator's tone, nigredo
+
+Every theme has a second tone, and one widget tree paints in it: the Simulator
+tab. The tone is the theme's own seven ground tokens moved part of the way to
+black. The accent, the text, the borders and the chart colours stay the
+theme's, so a Simulator screen reads as the same theme, darker.
+
+`src/gui/theme_engine.py` — the derivation
+
+```python
+NIGREDO_FRACTION = 0.25
+
+NIGREDO_GROUNDS = (
+    "bg_primary",
+    "bg_secondary",
+    "bg_tertiary",
+    "bg_card",
+    "bg_input",
+    "bg_hover",
+    "bg_selected",
+)
+
+
+def nigredo(theme: ThemeTokens, fraction: float = NIGREDO_FRACTION) -> ThemeTokens:
+    moved = {
+        name: toward_black(getattr(theme, name), fraction) for name in NIGREDO_GROUNDS
+    }
+    return replace(theme, **moved)
+```
+
+One function moves a colour. Each sRGB channel is scaled by one minus the
+fraction and rounded, so a fraction of 0 leaves the colour as it is and a
+fraction of 1 gives black. The function takes six-digit hex and refuses any
+other form.
+
+```python
+def toward_black(colour: str, fraction: float) -> str:
+    keep = 1.0 - fraction
+    return "#" + "".join(
+        f"{round(int(channel, 16) * keep):02x}" for channel in found.groups()
+    )
+```
+
+The fraction is one number. Every theme's ground, its darkened ground, and the
+contrast of that theme's body text on each, WCAG 2.2 ratio:
+
+```
+theme             ground    nigredo   text      ratio on ground  ratio on nigredo
+cyberpunk_dark    #0a0a0f   #08080b   #e0e0f0   15.13            15.33
+neon_light        #f5f5fa   #b8b8bc   #1a1a2e   15.70             8.63
+classic_terminal  #0a0a0a   #080808   #00ff00   14.43            14.60
+minimal_modern    #fafafa   #bcbcbc   #1a1a1a   16.67             9.16
+glass_metal       #1c1c24   #15151b   #d0d0e0   11.10            11.93
+```
+
+Every row is above 4.5 to 1. On the three dark themes the ratio rises. On the
+two light themes it falls, because their text is dark and a darker ground moves
+toward it; it stays above 4.5 to 1 up to a fraction near 0.45, and at 0.6
+Neon Light reads 2.80 and fails. On a near-black theme the ground moves by two
+to seven per channel, which the picture reports and the eye does not; the
+raised grounds, the cards and the tables, move by more.
+
+The stylesheet carries the tone. `generate_qss` ends with the theme's rules
+restated a second time, from the darkened tokens, each rule under one selector
+that names a Qt dynamic property.
+
+`src/gui/theme_engine.py` — the scope and the block
+
+```python
+TONE_PROPERTY = "tone"
+NIGREDO = "nigredo"
+
+NIGREDO_SELECTOR = f'QWidget[{TONE_PROPERTY}="{NIGREDO}"]'
+
+
+def generate_qss(theme: ThemeTokens) -> str:
+    return f"{_theme_qss(theme)}\n/* --- Simulator: {NIGREDO} --- */{nigredo_qss(theme)}\n"
+```
+
+The block's first rule, under Cyberpunk Dark:
+
+```css
+QWidget[tone="nigredo"], QWidget[tone="nigredo"] QWidget {
+    background-color: #08080b;
+    color: #e0e0f0;
+    font-family: 'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif;
+    font-size: 13px;
+    selection-background-color: #00ffcc;
+    selection-color: #08080b;
+}
+```
+
+A widget that sets the property `tone` to `nigredo` paints in the tone, and so
+does every widget under it, including a dialog it parents. The Simulator tab
+sets it in its constructor, in both builds. A theme switch re-applies the whole
+stylesheet, so the tone follows the theme with no second step.
+
+`src/gui/simulator/sim_trading_tab.py` — the tab takes the tone
+
+```python
+self.setProperty(TONE_PROPERTY, NIGREDO)
+self.setAttribute(Qt.WA_StyledBackground, True)
+```
+
+A React page reads the tone the same way. The page's `:root` chrome comes from
+`page_html`, which takes a tone and puts the two grounds through the same
+function; a theme switch runs `repaint_pages`, which reads the tone off each web
+view's property and pushes that view its own chrome.
+
+`src/gui/react_history_panel.py` — the page chrome in a tone
+
+```python
+if tone == NIGREDO:
+    ground = toward_black(ground, NIGREDO_FRACTION)
+    button = toward_black(button, NIGREDO_FRACTION)
+```
+
+```mermaid
+flowchart LR
+    switch[_switch_theme] --> apply[ThemeManager.apply_theme]
+    apply --> qss[generate_qss]
+    qss --> plain[_theme_qss: every widget]
+    qss --> dark[nigredo_qss: the tone=nigredo tree]
+    switch --> repaint[repaint_pages]
+    repaint --> live[palette_script: a Live view]
+    repaint --> sim[palette_script with NIGREDO: a Sim view]
+```
+
+The Simulator page under [the Simulator tab](simulator.md) states what each
+build paints in the tone and what was read off the renders.
+
 ### Settings > Logging
 
 ![Settings, the Logging page.](p41-i0.png)
