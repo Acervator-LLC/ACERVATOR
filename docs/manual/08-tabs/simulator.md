@@ -2208,6 +2208,183 @@ after every step in every run, and a byte planted into the live fleet file and
 into the manifest from outside the program moved the hash. No live bot, bot
 manager or bot container was constructed, and no socket left loopback.
 
+## Create New Bots fills one row through the forked wizard
+
+Create New Bots is Back Test's second way in, in both builds. It opens the
+Simulator's Create Auto Trader wizard from the Back Test corner, from the Get
+Started card when the mode is Back Test, and `+ New Bot` on a seated venue
+opens the same wizard. The wizard carries Live's five pages in Live's order
+with Live's fields, and Finish creates one sim bot: its record is held, the
+sim fleet file is written, the venue the bot names seats if it is new, and the
+row draws in that venue's Scrumming Bots table or Extractor Bots table. The
+row carries the wizard's target in the Target cell and the wizard's interval
+in the status the row is drawn from, and the Bot Settings window opened from
+the row's Detail shows every value the wizard took.
+
+`src/gui/simulator/sim_trading_tab.py` — the corner and the card reach the wizard
+
+```python
+        if action == surface.CREATE_NEW_BOTS_ACTION:
+            self._create_bot(self._current_venue_id())
+            return
+```
+
+```mermaid
+flowchart LR
+    corner[Create New Bots, corner or card] --> way[_way_in]
+    newbot[+ New Bot on a venue] --> create[_create_bot]
+    way --> create
+    create --> wizard[SimBotCreationWizard or SimBotWizardReactDialog]
+    wizard -->|Finish| config[get_bot_config, 49 keys or 13]
+    config --> rec[FleetSource.create, wizard_record]
+    rec --> changed[fleet_changed]
+    changed --> save[sim_fleet.json]
+    changed --> rows[the venue seats, the row draws]
+    rows --> detail[Detail: Bot Settings over SimBotView]
+```
+
+### Every field the wizard sets, and where it lands
+
+A scrumming walk hands 49 keys and an extractor walk 13, the counts Live's
+wizard hands from the same window. The record's config holds every field a
+bot's configuration declares, so a typed value on the Trading Parameters page
+reaches the Settings tab's control for that field, one control per field.
+
+| page | what it sets | the record | the row | the Settings window |
+|---|---|---|---|---|
+| Trading Mode | the mode | `config.mode` | which table the row lands in; the Mode cell of an extractor row | seven tabs for a scrumming bot, three for an extractor |
+| Select Asset Pair | exchange, base currency, target asset | the three ids and the symbol | the venue sub-tab; the Symbol cell | the title and the pair |
+| Extractor Pool | exchange, pool base | the same, the target asset `*` | the Symbol cell reads the pool base | the same |
+| Trading Parameters | 44 settings for a scrumming bot, 7 for an extractor | every one on the config | Target from the target balance; Pool from the chunk size; the Fire tip from the timeframe, the ceiling and the detonation | the Settings tab, one control per field |
+| Phantom Bots | enable, one timeframe, the lock count | the enable flag and the timeframes beside the config | — | the Phantom Bots tab's enable box and timeframe |
+
+The three Phantom Bots keys are stored beside the config, as the live process
+stores them for a running bot: the enable flag as typed, and the timeframes as
+the bot would hold them, the ticked one, or the one timeframe above the bot's
+own when none is ticked, kept to the timeframes the venue offers. An
+extractor stores the flag off and no timeframe. The lock count is the one
+field the wizard collects that reaches no new bot on Live: the phantom
+coordinator holds it and a new bot's coordinator holds 2, so the Simulator
+writes none and its Phantom Bots tab reads 2, as Live's does for a new bot.
+
+`src/simulator/fleet_source.py` — the phantom keys
+
+```python
+    scrumming = mode == BotMode.SCRUMMING
+    record = {
+        "config": stored,
+        "stats": {},
+        "scrumming_state": {},
+        "state_when_saved": BotState.IDLE.value,
+        "phantoms_enabled": scrumming and bool(collected.get("enable_phantoms", False)),
+    }
+    timeframes = (
+        wizard_phantom_timeframes(
+            collected.get("phantom_timeframes"), built.ta_timeframe, built.exchange_id
+        )
+        if scrumming
+        else []
+    )
+    if timeframes:
+        record["phantom_timeframes"] = timeframes
+```
+
+### The venues the wizard offers
+
+Live's wizard lists the venues connected in settings. The Simulator's markets
+are its Stone Tablets, so its wizard lists the seated venues first and then
+every exchange the tablet manifest names, and the Get Started card can create
+a bot before any fleet is loaded. The section "What the Simulator's wizard
+reads" above describes the list before the tablets' exchanges were added.
+
+`src/gui/simulator/sim_bot_wizard_surface.py` — the venue list
+
+```python
+def wizard_exchanges(exchange_ids: Iterable[str], tablet_source: Any) -> list[dict]:
+    seated = [str(eid) for eid in exchange_ids if str(eid)]
+    filed = sorted(
+        {str(entry.exchange_id) for entry in tablet_source.entries()} - set(seated)
+    )
+    return seated_exchanges([*seated, *filed])
+```
+
+### The React page narrows its timeframes as the Qt screen does
+
+The Qt wizard lists the picked venue's own timeframes in the TA Timeframe
+combo and greys the phantom timeframes the venue does not offer. The React
+wizard takes one list per venue and narrows both pages from it; the React
+host hands it that list, so both builds show the same timeframes for the
+same venue. Live's window hands its own React wizard no list, so Live's React
+page lists the wizard's fixed seven and greys nothing; that is Live's and is
+not changed here.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the list handed over
+
+```python
+            wizard = wizard_class(
+                exchanges,
+                defaults,
+                self,
+                theme=self._theme,
+                markets=markets,
+                timeframes=wizard_surface.venue_timeframes(exchanges),
+            )
+```
+
+### The old runner's bot builder is not on the path
+
+`new_bots` in `src/simulator/back_test.py` builds bots from six-key specs for
+the old tab's Back Test runner, which the window no longer builds. Create New
+Bots reaches it nowhere: watched across every reading below it counted 0
+calls, and a direct call counted 1. It is left as it is.
+
+### The route on a fresh Simulator
+
+With no fleet loaded the mode is Validation, the card and the corner offer
+Import Live Fleet and Generate From YTD, and no header row exists to press
+Back Test on. The route to Create New Bots is: load a fleet, press Back Test
+on the header, press Create New Bots at the corner, or `+ New Bot` on the
+venue. With the mode on Back Test and every bot deleted, the card returns
+offering Create New Bots.
+
+### What the creation reading measured
+
+Driven in the real window in both builds with a scratch home, every socket
+but loopback refused, a scratch live state file holding one bot on each of
+two exchanges and a scratch tablet manifest naming four assets on both.
+Before the change, the three Phantom Bots keys stopped at the wizard: the
+record carried none, the Phantom Bots tab read the enable box ticked with the
+wizard's box unticked and the timeframe 1d with 4h ticked, and the card's
+wizard opened with no venue and Finish was refused for an empty target asset.
+
+```
+reading                                              Qt                       React
+Back Test pressed: the corner                        Import Live Fleet, Create New Bots     the same
+the wizard, every page walked, every field typed     49 keys                  49 keys
+record config values against the typed values        47 of 47                 47 of 47
+Settings tab controls against the typed values       42 of 42                 42 of 42
+Phantom Bots tab: enable, timeframe, lock            off, 4h, 2               off, 4h, 2
+the row: Bot ID, Symbol, Trades, Target              id, BTC/USD, 0, $1,234.5600 (both)
+the row against a target of 200                      the Target cell differs (both)
+an extractor, pool base BTC on the same venue        13 keys; 12 of 12; Pool $250.50 (both)
+an extractor with no holder                          refused with Live's own box (both)
++ New Bot on the other venue                         one row, $333.3300 (both)
+Start on the created row: the strip's Bots           0 to 1                   0 to 1
+Spendable                                            a dash before and after (both)
+a second process over the same home                  every created row again, every value (both)
+every bot deleted under Back Test: the card          Import Live Fleet, Create New Bots (both)
+Create New Bots on the card: the venues offered      coinbase, kraken from the tablets (both)
+bot_state.json                                       unchanged after every step (both)
+ScrummingBot, ExtractorBot, BotManager               0 calls (both)
+```
+
+The strip's Spendable reads the fleet's cash balance, which a created bot has
+none of; the funding rule that makes it the sum of the held Target Balances
+belongs to the unit that shares the trading arithmetic, for Validation and
+Portfolio Battery. The venue page's rows in the React build carry no click
+that selects a row for the command bar, on Live's page and on the Simulator's;
+Detail selects the row as it opens.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

@@ -816,7 +816,7 @@ class SimTradingTab(QWidget):
         exchange_id: str = "",
         defaults_override: Optional[dict] = None,
     ) -> None:
-        """Open the Simulator's Bot Creation Wizard over the seated venues, the
+        """Open the Simulator's Bot Creation Wizard over ``wizard_exchanges``, the
         stored defaults and the tablet market table; on Finish hand its config
         to ``FleetSource.create`` and fire ``fleet_changed``.
 
@@ -827,7 +827,9 @@ class SimTradingTab(QWidget):
             wizard_surface.OPENING_FORMAT.format(exchange_id=exchange_id)
         )
         wizard_class = surface_class(SIM_BOT_WIZARD)
-        exchanges = wizard_surface.seated_exchanges(self._exchange_tabs)
+        exchanges = wizard_surface.wizard_exchanges(
+            self._exchange_tabs, self._tablet_source
+        )
         defaults = wizard_surface.stored_defaults()
         if defaults_override:
             defaults = {**defaults, **defaults_override}
