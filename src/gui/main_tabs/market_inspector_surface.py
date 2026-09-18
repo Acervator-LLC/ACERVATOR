@@ -212,6 +212,19 @@ CANDLES_FRESH_SECONDS = DEFAULT_MIN_REFRESH_S
 #: The age ``inspector_scan_age`` answers when no universe scan has ever run.
 NO_SCAN_AGE = float("inf")
 
+#: The source name ``sector_candle_read`` answers for candles the universe
+#: scan already holds.
+CANDLES_FROM_SCAN = "universe scan"
+#: The refusal ``sector_candle_read`` answers for a crypto name while no
+#: exchange connector is in reach.
+NO_CONNECTOR_TEXT = "no exchange connected"
+
+#: The pins one Scan Now press leaves on the signal handler, in order.
+SCAN_PRESSED_PIN = "inspector.ata.scan_pressed"
+SCAN_STARTED_PIN = "inspector.ata.scan_started"
+MARKET_READ_PIN = "inspector.ata.market_read"
+SCAN_FINISHED_PIN = "inspector.ata.scan_finished"
+
 #: The share a bullish bot feeds to the bot on the opposite market condition.
 OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
 OPPOSING_TRADES_NOUN = "opposing trades"
@@ -554,6 +567,9 @@ LEFT_MODULE_TITLES = (
     OPPOSING_TRADES_GROUP_TITLE,
     ARBITRAGE_GROUP_TITLE,
 )
+#: The share of the left pane's height each ``LEFT_MODULE_KEYS`` zone takes.
+#: ATA-SPM takes two, so its control rows and its entry both stay in view.
+LEFT_MODULE_SHARES = (2, 1, 1)
 
 SPLITTER_ORIENTATION = "Horizontal"
 SPLITTER_STRETCH = (1, 1)
@@ -2571,23 +2587,39 @@ def connector_candles(connectors: Any, symbol: Any, timeframe: Any) -> list:
     )
 
 
-def sector_candles(
+def sector_candle_read(
     inspector: Any, symbol: Any, timeframe: Any, connectors: Any = None
-) -> list:
-    """The candles for one scanned symbol, from the source its map names.
+) -> tuple:
+    """The source, the candles and the refusal for one scanned symbol.
 
     A symbol ``ata_asset_maps.listing_of`` names reads through that listing's
     venue; every other symbol takes ``inspector_candles`` while the universe
     scan is younger than ``CANDLES_FRESH_SECONDS`` and ``connector_candles``
-    once it is older.
+    once it is older, with ``NO_CONNECTOR_TEXT`` as the refusal while no
+    connector is in reach.
     """
-    if ata_asset_maps.listing_of(symbol) is not None:
-        return ata_asset_maps.venue_candles(symbol, timeframe)
+    listing = ata_asset_maps.listing_of(symbol)
+    if listing is not None:
+        candles, refusal = ata_asset_maps.venue_candle_read(symbol, timeframe)
+        return listing.venue, candles, refusal
     if inspector_scan_age(inspector) < CANDLES_FRESH_SECONDS:
         held = inspector_candles(inspector, symbol, timeframe)
         if held:
-            return held
-    return connector_candles(connectors, symbol, timeframe)
+            return CANDLES_FROM_SCAN, held, ""
+    if not connectors:
+        return ata_asset_maps.VENUE_EXCHANGE, [], NO_CONNECTOR_TEXT
+    return (
+        ata_asset_maps.VENUE_EXCHANGE,
+        connector_candles(connectors, symbol, timeframe),
+        "",
+    )
+
+
+def sector_candles(
+    inspector: Any, symbol: Any, timeframe: Any, connectors: Any = None
+) -> list:
+    """The candles ``sector_candle_read`` answers for one scanned symbol."""
+    return sector_candle_read(inspector, symbol, timeframe, connectors)[1]
 
 
 def ata_spm_skin(model: Any) -> dict:
@@ -3736,6 +3768,7 @@ def build_view_model(
         "right_zone_titles": list(RIGHT_ZONE_TITLES),
         "left_module_keys": list(LEFT_MODULE_KEYS),
         "left_module_titles": list(LEFT_MODULE_TITLES),
+        "left_module_shares": list(LEFT_MODULE_SHARES),
         "module_frame_px": MODULE_FRAME_PX,
         "module_margins_px": list(MODULE_MARGINS_PX),
         "module_title_padding_px": list(MODULE_TITLE_PADDING_PX),

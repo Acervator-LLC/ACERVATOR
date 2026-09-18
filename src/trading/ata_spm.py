@@ -232,6 +232,23 @@ CANDLE_SHAPE_LOG = "ATA-SPM candle row is not OHLCV: %s"
 ASSET_READ_FAILED_LOG = "ATA-SPM asset read failed on %s: %s"
 VOTE_FAILED_LOG = "ATA-SPM vote failed on %s %s: %s"
 
+#: The lines one Scan Now press writes, in the order its phases run.
+SCAN_PRESSED_TEXT = (
+    "ATA-SPM scan pressed: {asset_class} on {timeframes}, ticker '{ticker}', "
+    "target {hits} hit(s)"
+)
+SCAN_BUSY_TEXT = "ATA-SPM scan pressed while a scan is running; press ignored"
+NO_TIMEFRAME_LIST_TEXT = "no timeframe"
+TIMEFRAME_LIST_JOIN = " "
+MARKET_READ_TEXT = "ATA-SPM read {symbol} on {label} from {venue}: {candles} candle(s)"
+MARKET_EMPTY_TEXT = "ATA-SPM read {symbol} on {label} from {venue}: no candles"
+MARKET_REFUSED_TEXT = "ATA-SPM read {symbol} on {label} from {venue}: refused, {reason}"
+HIT_TEXT = "ATA-SPM hit: {call}"
+SCAN_FINISHED_TEXT = "ATA-SPM scan finished: {headline} · {meta}. {method}"
+SCAN_NOTE_TEXT = "ATA-SPM scan finished: {note}"
+SCAN_EMPTY_TEXT = "ATA-SPM scan finished: no sector to scan"
+SCAN_FAILED_TEXT = "ATA-SPM scan failed: {error}"
+
 
 def timeframes_for(asset_class: Any) -> tuple:
     """The four timeframes one asset class is scanned on.
