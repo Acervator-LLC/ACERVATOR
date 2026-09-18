@@ -372,8 +372,9 @@ In development.
 
 Every section from here to "The widget the rebuild replaced" is one build's own
 record, kept as it was written when that build merged, in build order: the
-Stone Tablet and RA-StoneTablet sections, the three mode sections and the YTD
-trade files from before the fork, then units 7 through 31a. Where a later
+Stone Tablet and RA-StoneTablet sections, the three mode sections, the YTD
+trade files and the tab's builder from before the fork, then units 7 through
+31a. Where a later
 unit changed what a sentence describes, the sentence now says so and names
 that unit's report on issue #117. The section above describes the tab on the
 current commit.
