@@ -14,7 +14,7 @@ from __future__ import annotations
 import bisect
 import logging
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
@@ -654,6 +654,8 @@ class ValidationRun:
     lag_checked: int = 0
     lag_interval_ms: int = FALLBACK_INTERVAL_MS
     by_bot: dict[str, dict] = field(default_factory=dict)
+    #: The ``ParityReport`` ``run`` wrote for this pass; None until it has.
+    report: Any = None
 
     @property
     def summary(self) -> dict:
@@ -688,6 +690,19 @@ def tablet_for(entries: Sequence[Any], asset: str, exchange_id: str):
     return None
 
 
+def bot_counts(bot: SimBot, outcome: str, rows: Sequence[SnappedTrade]) -> dict:
+    """One ``ValidationRun.by_bot`` entry: ``outcome``, the snapped and
+    unsnapped counts over ``rows``, and zero compared and latching."""
+    return {
+        "symbol": bot.symbol,
+        "outcome": outcome,
+        "snapped": sum(1 for one in rows if one.is_snapped),
+        "unsnapped": sum(1 for one in rows if not one.is_snapped),
+        "compared": 0,
+        "latching": 0,
+    }
+
+
 def run(
     bots: Sequence[SimBot],
     tablets: Any,
@@ -697,11 +712,36 @@ def run(
     limit: int = 0,
     lag_sample: int = LAG_SAMPLE_ROWS,
 ) -> ValidationRun:
-    """Snap every bot's YTD trades, rerun each against its recorded gate row.
+    """Snap every bot's YTD trades, rerun each against its recorded gate row,
+    and write the pass through ``write_report`` onto ``ValidationRun.report``.
 
     ``limit`` caps how many matched trades are rerun and ``lag_sample`` how
-    many have ``tape_lag`` measured; zero for either lifts that cap.
+    many have ``tape_lag`` measured; a ``_validate`` that raises reaches
+    ``write_partial`` with the exception and re-raises.
     """
+    from .parity_report import VALIDATION, write_partial, write_report
+
+    try:
+        outcome = _validate(bots, tablets, ytd, gates, exchange_id, limit, lag_sample)
+    except Exception as exc:
+        write_partial(
+            VALIDATION, exc, bots=bots, exchange_id=exchange_id, tablets=tablets
+        )
+        raise
+    return replace(outcome, report=write_report(VALIDATION, outcome, tablets))
+
+
+def _validate(
+    bots: Sequence[SimBot],
+    tablets: Any,
+    ytd: Any,
+    gates: Any,
+    exchange_id: str,
+    limit: int,
+    lag_sample: int,
+) -> ValidationRun:
+    """The pass ``run`` wraps: ``snap_trades``, ``compare_row`` and ``tape_lag``
+    over ``bots``, with no report written."""
     from ..trading.indicators.types import candles_from_raw
 
     tablet_entries = tablets.entries()
@@ -717,9 +757,11 @@ def run(
         tablet = tablet_for(tablet_entries, bot.asset, bot.exchange_id)
         if entry is None:
             outcomes[NO_YTD_FILE] += 1
+            by_bot[bot.bot_id] = bot_counts(bot, NO_YTD_FILE, [])
             continue
         if tablet is None:
             outcomes[NO_BOT_TABLET] += 1
+            by_bot[bot.bot_id] = bot_counts(bot, NO_BOT_TABLET, [])
             continue
         raw = tablets.candles(tablet)
         raw_by_symbol[bot.symbol] = raw
@@ -727,13 +769,7 @@ def run(
             newest_candle_ms = max(newest_candle_ms, int(raw[-1][0]))
         rows = snap_trades(ytd.trades(entry), raw)
         placed.extend((bot, one) for one in rows)
-        by_bot[bot.bot_id] = {
-            "symbol": bot.symbol,
-            "snapped": sum(1 for one in rows if one.is_snapped),
-            "unsnapped": sum(1 for one in rows if not one.is_snapped),
-            "compared": 0,
-            "latching": 0,
-        }
+        by_bot[bot.bot_id] = bot_counts(bot, VALIDATED, rows)
         outcomes[VALIDATED] += 1
 
     flat = [one for _bot, one in placed]
@@ -856,6 +892,7 @@ __all__ = [
     "SnappedTrade",
     "ValidationRun",
     "bb_reading",
+    "bot_counts",
     "candle_interval_ms",
     "compare_row",
     "coverage",

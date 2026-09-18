@@ -84,6 +84,7 @@ from ...simulator.fleet_source import (
     SendRefused,
     exchange_choice,
 )
+from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource
@@ -382,6 +383,11 @@ class SimTradingTab(QWidget):
             tab_surface.imported_line(len(imported), chosen), "success"
         )
         self.fleet_changed.emit()
+
+    def log_report(self, report: ParityReport) -> None:
+        """One Activity Log line, ``report_line`` over ``report``, through
+        ``SimStatusLog.log`` at the ``success`` level ``_import_live_fleet`` uses."""
+        self._status_log.log(report_line(report), "success")
 
     # -- construction ---------------------------------------------------
 

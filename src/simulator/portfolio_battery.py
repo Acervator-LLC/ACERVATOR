@@ -15,7 +15,7 @@ names for its class on its venue, and a symbol with no cited rule is
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
@@ -513,6 +513,8 @@ class BatteryRun:
     tablet_root: str = ""
     symbol_runs: int = 0
     uncited_assets: tuple[str, ...] = ()
+    #: The ``ParityReport`` ``run_battery`` wrote for this press; None until it has.
+    report: Any = None
 
     @property
     def summary(self) -> dict:
@@ -668,6 +670,33 @@ def run_battery(
     timeframes: Sequence[str] = TIMEFRAMES,
     capital_usd: float = SYMBOL_CAPITAL_USD,
     ticks: int = TICKS_PER_SYMBOL,
+) -> BatteryRun:
+    """Run each portfolio in ``names`` over ``span`` through
+    ``_walk_portfolios`` and write the pass through ``write_report`` onto
+    ``BatteryRun.report``.
+
+    A ``_walk_portfolios`` that raises reaches ``write_partial`` with the
+    exception and re-raises.
+    """
+    from .parity_report import PORTFOLIO_BATTERY, write_partial, write_report
+
+    try:
+        outcome = _walk_portfolios(tablets, names, span, timeframes, capital_usd, ticks)
+    except Exception as exc:
+        write_partial(
+            PORTFOLIO_BATTERY, exc, tablets=tablets, names=tuple(names), span=str(span)
+        )
+        raise
+    return replace(outcome, report=write_report(PORTFOLIO_BATTERY, outcome, tablets))
+
+
+def _walk_portfolios(
+    tablets: Any,
+    names: Sequence[str],
+    span: str,
+    timeframes: Sequence[str],
+    capital_usd: float,
+    ticks: int,
 ) -> BatteryRun:
     """Run each portfolio in ``names`` over ``span``, or every portfolio when it
     is empty."""

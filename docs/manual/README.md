@@ -242,4 +242,5 @@ git log --all --diff-filter=ADR --name-only -- generate_essay_ja.py    # three c
 | `generate_essay_ja.py` | The Japanese product manual, as a PDF, through reportlab |
 | `generate_essay_localized.py` | The Acervator technical essay in English, Japanese, Spanish, French and German |
 | `save_pdf_report` in `src/core/version_sweep.py` | A version-sweep report, written to the reports directory outside the repository |
+| `write_report` in `src/simulator/parity_report.py` | One trade parity report per Simulator run, a Markdown file and a JSON sidecar, written to the `simulator` directory of the reports directory outside the repository |
 | `generate_splash.py` under `deploy/kiosk/splash/` | The AcervatorOS boot splash image |
