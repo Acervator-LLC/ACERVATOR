@@ -38,21 +38,45 @@ class Portfolio:
     """One named basket of ``symbols`` from ``ARCHIVE_SOURCE``.
 
     The archive committed the same capital to every symbol it ran, so
-    ``weights`` divides one share equally across ``symbols``.
+    ``weights`` divides one share equally across ``symbols`` unless ``mix``
+    names a different known percentage per symbol; ``positions_usd`` carries
+    the known dollar size of each historical position, and no archive entry
+    records one.
     """
 
     name: str
     symbols: tuple[str, ...]
     description: str
     source: str = ARCHIVE_SOURCE
+    mix: Optional[dict[str, float]] = None
+    positions_usd: Optional[dict[str, float]] = None
 
     @property
     def weights(self) -> dict[str, float]:
-        """Return each symbol's equal share of one, or ``{}`` for no symbols."""
+        """Return each symbol's share of one: ``mix`` normalised over
+        ``symbols`` when it is given and sums above zero, else equal shares;
+        ``{}`` for no symbols."""
         if not self.symbols:
             return {}
+        if self.mix:
+            shares = {
+                symbol: float(self.mix.get(symbol, 0.0)) for symbol in self.symbols
+            }
+            whole = sum(shares.values())
+            if whole > 0.0:
+                return {symbol: share / whole for symbol, share in shares.items()}
         share = 1.0 / len(self.symbols)
         return {symbol: share for symbol in self.symbols}
+
+    @property
+    def sizes_known(self) -> bool:
+        """True when ``positions_usd`` names every symbol at a size above
+        zero."""
+        if not self.positions_usd or not self.symbols:
+            return False
+        return all(
+            float(self.positions_usd.get(symbol, 0.0)) > 0.0 for symbol in self.symbols
+        )
 
 
 def is_crypto(symbol: str) -> bool:

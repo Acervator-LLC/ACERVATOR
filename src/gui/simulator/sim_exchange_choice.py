@@ -1,11 +1,16 @@
 """The exchange chooser Import Live Fleet and Generate From YTD open when their
-source names more than one exchange, on both Sim hosts.
+source names more than one exchange, and the portfolio chooser Run Portfolio
+and Run Every Portfolio open, on both Sim hosts.
 
 ``SimExchangeChoiceDialog`` is Live's one-question ``QDialog``, the Bot Swarm
 tab's Configure Profit Wire, holding the bot wizard's ``Exchange:`` combo row:
 ``exchange_prompt_text`` above ``exchange_choice_options`` under ``title``,
 ``EXCHANGE_CHOICE_TITLE`` when none is given, then Ok and Cancel. ``chosen``
 answers the id picked once ``exec`` has accepted, and ``""`` after Cancel.
+``SimPortfolioChoiceDialog`` is the same dialog with a ``Portfolio:`` row over
+``portfolio_choice_options`` and a ``Span:`` row over ``span_choice_options``,
+the portfolio row left out when ``every`` is True; ``chosen_portfolio`` and
+``chosen_span`` answer the picks once ``exec`` has accepted.
 """
 
 from __future__ import annotations
@@ -14,16 +19,25 @@ import logging
 from typing import Any, Optional
 
 from .sim_trading_tab_surface import (
+    EVERY_PORTFOLIO_CHOICE_TITLE,
+    EVERY_PORTFOLIO_PROMPT_TEXT,
     EXCHANGE_CHOICE_MIN_WIDTH_PX,
     EXCHANGE_CHOICE_ROW_LABEL,
     EXCHANGE_CHOICE_TITLE,
+    PORTFOLIO_CHOICE_ROW_LABEL,
+    PORTFOLIO_CHOICE_TITLE,
+    PORTFOLIO_PROMPT_TEXT,
+    SPAN_CHOICE_ROW_LABEL,
     exchange_choice_options,
     exchange_prompt_text,
+    portfolio_choice_options,
+    span_choice_options,
 )
 
 logger = logging.getLogger("acervator.gui")
 
 ACCESSIBLE_NAME = "sim-exchange-choice"
+PORTFOLIO_ACCESSIBLE_NAME = "sim-portfolio-choice"
 
 try:
     from PySide6.QtWidgets import (
@@ -82,5 +96,78 @@ if _HAS_QT:
                 return ""
             return str(self._exchange.currentData() or "")
 
+    class SimPortfolioChoiceDialog(QDialog):
+        """One portfolio of ``portfolios`` and one span of ``spans`` picked from
+        two combos, Ok or Cancel; ``every`` leaves the portfolio row out."""
 
-__all__ = ["ACCESSIBLE_NAME", "SimExchangeChoiceDialog"]
+        def __init__(
+            self,
+            portfolios: Any,
+            spans: Any,
+            parent: Optional[Any] = None,
+            every: bool = False,
+        ) -> None:
+            super().__init__(parent)
+            self.setWindowTitle(
+                EVERY_PORTFOLIO_CHOICE_TITLE if every else PORTFOLIO_CHOICE_TITLE
+            )
+            self.setAccessibleName(PORTFOLIO_ACCESSIBLE_NAME)
+            self.setMinimumWidth(EXCHANGE_CHOICE_MIN_WIDTH_PX)
+            self._every = bool(every)
+            column = QVBoxLayout(self)
+            column.addWidget(
+                QLabel(EVERY_PORTFOLIO_PROMPT_TEXT if every else PORTFOLIO_PROMPT_TEXT)
+            )
+            rows = QFormLayout()
+            self._portfolio: Optional[QComboBox] = None
+            if not every:
+                self._portfolio = QComboBox()
+                self._portfolio.setAccessibleName(PORTFOLIO_CHOICE_ROW_LABEL)
+                for entry in portfolio_choice_options(portfolios):
+                    self._portfolio.addItem(entry["display_name"], entry["name"])
+                rows.addRow(PORTFOLIO_CHOICE_ROW_LABEL, self._portfolio)
+            self._span = QComboBox()
+            self._span.setAccessibleName(SPAN_CHOICE_ROW_LABEL)
+            for entry in span_choice_options(spans):
+                self._span.addItem(entry["display_name"], entry["span"])
+            rows.addRow(SPAN_CHOICE_ROW_LABEL, self._span)
+            column.addLayout(rows)
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(self.accept)
+            buttons.rejected.connect(self.reject)
+            column.addWidget(buttons)
+
+        def portfolio_options(self) -> list:
+            """The portfolio names the combo lists, in its order; empty under
+            ``every``."""
+            if self._portfolio is None:
+                return []
+            return [
+                str(self._portfolio.itemData(at))
+                for at in range(self._portfolio.count())
+            ]
+
+        def span_options(self) -> list:
+            """The span labels the combo lists, in its order."""
+            return [str(self._span.itemData(at)) for at in range(self._span.count())]
+
+        def chosen_portfolio(self) -> str:
+            """The portfolio name picked, or ``""`` while the dialog is not
+            accepted or under ``every``."""
+            if self.result() != QDialog.Accepted or self._portfolio is None:
+                return ""
+            return str(self._portfolio.currentData() or "")
+
+        def chosen_span(self) -> str:
+            """The span label picked, or ``""`` while the dialog is not accepted."""
+            if self.result() != QDialog.Accepted:
+                return ""
+            return str(self._span.currentData() or "")
+
+
+__all__ = [
+    "ACCESSIBLE_NAME",
+    "PORTFOLIO_ACCESSIBLE_NAME",
+    "SimExchangeChoiceDialog",
+    "SimPortfolioChoiceDialog",
+]

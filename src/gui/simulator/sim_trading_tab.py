@@ -33,7 +33,11 @@ exchanges the manifest names, opens the same chooser under Generate From
 YTD's title, holds one record per traded pair through
 ``FleetSource.generate_from_ytd``, writes one line per manifest row whose
 file is missing, the generation line and the no-target line, and fires
-``fleet_changed``.
+``fleet_changed``. ``_run_battery`` opens ``SimPortfolioChoiceDialog``, holds
+the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
+``fleet_changed`` and runs ``_compute_battery`` on a daemon thread, whose
+``battery_line`` and ``battery_finished`` signals reach the Activity Log and
+``_take_battery`` on the GUI thread.
 The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
 panel in ``_layer_stack``, reached by ``flip_layer``. A venue's ``+ New Bot``
 reaches ``_create_bot``, which opens ``SimBotCreationWizard`` and hands its
@@ -78,6 +82,7 @@ from PySide6.QtWidgets import (
 
 from ...core.sound_engine import get_sound_engine
 from ...exchange.api_logger import APIInteractionLog
+from ...simulator import portfolio_battery
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
@@ -85,6 +90,7 @@ from ...simulator.fleet_source import (
     exchange_choice,
 )
 from ...simulator.parity_report import ParityReport, report_line
+from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource
@@ -107,7 +113,7 @@ from ..simulator_tab import LineView, PlaybackView
 from ..variant_surface import SIM_BOT_DETAIL, SIM_BOT_WIZARD, surface_class
 from . import sim_bot_wizard_surface as wizard_surface
 from .sim_bot_status_table_surface import usd_rates
-from .sim_exchange_choice import SimExchangeChoiceDialog
+from .sim_exchange_choice import SimExchangeChoiceDialog, SimPortfolioChoiceDialog
 from .sim_exchange_tab import SimExchangeTab
 from .sim_indicator_panel import SimIndicatorVotingPanel
 from .sim_status_log import SimStatusLog
@@ -163,6 +169,10 @@ class SimTradingTab(QWidget):
 
     #: Fired by whatever loads a fleet; the venue sub-tabs re-seat on it.
     fleet_changed = Signal()
+    #: One Activity Log line and its level from the Battery's worker thread.
+    battery_line = Signal(str, str)
+    #: The ``BatteryRun`` the Battery's worker thread finished with.
+    battery_finished = Signal(object)
 
     def __init__(
         self,
@@ -170,6 +180,7 @@ class SimTradingTab(QWidget):
         fleet_source: Optional[FleetSource] = None,
         parent: Optional[QWidget] = None,
         api_log: Optional[APIInteractionLog] = None,
+        battery_tablet_source: Optional[TabletSource] = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(ACCESSIBLE_NAME)
@@ -179,17 +190,25 @@ class SimTradingTab(QWidget):
             if tablet_source is not None
             else TabletSource(surface.TABLET_ROOT)
         )
+        self._battery_tablet_source = (
+            battery_tablet_source
+            if battery_tablet_source is not None
+            else TabletSource(surface.BATTERY_TABLET_ROOT)
+        )
         self._fleet_source = fleet_source if fleet_source is not None else FleetSource()
         self._api_log = api_log if api_log is not None else APIInteractionLog()
         self._bot_manager = SimBotManager(self._fleet_source)
         self._layer = surface.LAYER_INDICATORS
         self._mode = surface.MODES[0]
+        self._battery_thread: Optional[threading.Thread] = None
         self._build()
         self._draw_way_ins()
         self._api_log.add_listener(self._on_api_event)
         self._indicator_panel.bot_selected.connect(self._feed_votes)
         self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
+        self.battery_line.connect(self._status_log.log)
+        self.battery_finished.connect(self._take_battery)
         self._sync_exchange_tabs()
 
     # -- what the window reads ------------------------------------------
@@ -197,6 +216,15 @@ class SimTradingTab(QWidget):
     def tablet_source(self) -> TabletSource:
         """The tablet reader the panel is fed from."""
         return self._tablet_source
+
+    def battery_tablet_source(self) -> TabletSource:
+        """The RA-StoneTablet reader the Portfolio Battery runs over."""
+        return self._battery_tablet_source
+
+    def battery_running(self) -> bool:
+        """True while a Battery worker thread is alive."""
+        thread = self._battery_thread
+        return thread is not None and thread.is_alive()
 
     def fleet_source(self) -> FleetSource:
         """The fleet reader the tables are fed from."""
@@ -298,10 +326,10 @@ class SimTradingTab(QWidget):
     def _way_in(self, action: str) -> None:
         """One way-in pressed at the corner or on the card: Create New Bots
         opens the wizard through ``_create_bot``, Import Live Fleet runs
-        ``_import_live_fleet``, Generate From YTD runs ``_generate_from_ytd``;
-        every other action asks ``FleetSource`` for it by name, which raises
-        ``SendRefused`` until that run lands, and the refusal is logged to the
-        Activity Log."""
+        ``_import_live_fleet``, Generate From YTD runs ``_generate_from_ytd``,
+        Run Portfolio and Run Every Portfolio run ``_run_battery``; every
+        other action asks ``FleetSource`` for it by name, which raises
+        ``SendRefused``, and the refusal is logged to the Activity Log."""
         if action == surface.CREATE_NEW_BOTS_ACTION:
             self._create_bot(self._current_venue_id())
             return
@@ -311,10 +339,81 @@ class SimTradingTab(QWidget):
         if action == surface.GENERATE_FROM_YTD_ACTION:
             self._generate_from_ytd()
             return
+        if action in (surface.RUN_PORTFOLIO_ACTION, surface.RUN_EVERY_PORTFOLIO_ACTION):
+            self._run_battery(action)
+            return
         try:
             getattr(self._fleet_source, action)
         except SendRefused as exc:
             self._status_log.log(tab_surface.way_in_refused_line(action, exc), "error")
+
+    def _run_battery(self, action: str) -> None:
+        """Run Portfolio or Run Every Portfolio: one line and nothing started
+        while ``battery_running``; ``SimPortfolioChoiceDialog`` over
+        ``PORTFOLIOS`` and ``BATTERY_SPANS``, the portfolio row left out for
+        ``RUN_EVERY_PORTFOLIO_ACTION``; then ``plan_run`` over the held fleet,
+        ``FleetSource.hold_battery_fleet`` on the plan's bots, ``fleet_changed``,
+        the started line, and ``_compute_battery`` on a daemon thread; a
+        cancelled chooser writes one line and moves nothing."""
+        if self.battery_running():
+            self._status_log.log(tab_surface.BATTERY_RUNNING_TEXT, "warning")
+            return
+        every = action == surface.RUN_EVERY_PORTFOLIO_ACTION
+        dialog = SimPortfolioChoiceDialog(
+            PORTFOLIOS, surface.BATTERY_SPANS, self, every=every
+        )
+        if dialog.exec() != QDialog.Accepted:
+            self._status_log.log(tab_surface.BATTERY_CANCELLED_TEXT, "warning")
+            return
+        names = () if every else (dialog.chosen_portfolio(),)
+        span = dialog.chosen_span() or surface.DEFAULT_SPAN
+        plan = portfolio_battery.plan_run(
+            names, self._battery_tablet_source, self._fleet_source.bots()
+        )
+        self._fleet_source.hold_battery_fleet(plan.bots)
+        self.fleet_changed.emit()
+        subject = tab_surface.EVERY_PORTFOLIO_SUBJECT if every else names[0]
+        self._status_log.log(
+            tab_surface.battery_started_line(
+                subject, span, len(plan.bots), plan.plan_origins, plan.budget_usd
+            ),
+            "success",
+        )
+        self._battery_thread = threading.Thread(
+            target=self._compute_battery,
+            args=(plan, span),
+            name="sim-portfolio-battery",
+            daemon=True,
+        )
+        self._battery_thread.start()
+
+    def _compute_battery(self, plan, span: str) -> None:
+        """Run ``portfolio_battery.run_battery`` over ``battery_tablet_source``
+        on ``plan`` and hand the ``BatteryRun`` to the GUI thread through
+        ``battery_finished``, each portfolio's line through ``battery_line``;
+        a run that raises writes one failed line instead."""
+        try:
+            outcome = portfolio_battery.run_battery(
+                self._battery_tablet_source,
+                names=plan.names,
+                span=span,
+                ticks=surface.BATTERY_TICKS_PER_SYMBOL,
+                plan=plan,
+                progress=lambda line: self.battery_line.emit(line, "info"),
+            )
+        except Exception as exc:  # noqa: BLE001 - the run runs off-thread
+            logger.exception("Portfolio Battery failed: %s", exc)
+            self.battery_line.emit(tab_surface.battery_failed_line(exc), "error")
+            return
+        self.battery_finished.emit(outcome)
+
+    def _take_battery(self, outcome) -> None:
+        """Write the finished run's ``lines`` and its report line through
+        ``log_report`` on the GUI thread."""
+        for line in outcome.lines:
+            self._status_log.log(line, "info")
+        if outcome.report is not None:
+            self.log_report(outcome.report)
 
     def _generate_from_ytd(self) -> None:
         """Generate From YTD: one line and nothing held unless

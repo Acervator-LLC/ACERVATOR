@@ -36,7 +36,7 @@ from .back_test import (
 from .fleet_source import SimBot
 from .portfolio_battery import (
     RAN,
-    SYMBOL_CAPITAL_USD,
+    READINGS,
     BatteryRun,
     SymbolRun,
     TimeframeResult,
@@ -113,10 +113,15 @@ NO_LIVE_FILL_TEXT = (
     "No fill is compared against a live one: Back Test has no recorded trade "
     "to compare to."
 )
-BATTERY_OUTCOME_WHY = (
-    "unit 24 has not landed: the run walks at SYMBOL_CAPITAL_USD per symbol "
-    "with equal weights, and the defend, improve or reverse reading against the "
-    "portfolio's historical path is not in the code"
+#: How the Battery reads one scrummed end against its historical path, the
+#: words ``portfolio_battery.reading_for`` answers.
+BATTERY_READING_RULE = (
+    "the historical path is buy-and-hold over the span: start = the Target "
+    "Balances committed, trough = the sum of each symbol's lowest untraded "
+    "value on a walked bar, end = baseline; the scrummed end is accumulation; "
+    "reversed = at or above the start after the path fell below it, improved = "
+    "above the end, defended = above the trough, undefended = at or below the "
+    "trough, not run = no symbol walked"
 )
 
 
@@ -598,6 +603,10 @@ def symbol_row(portfolio: str, symbol_run: SymbolRun, whole_usd: float) -> dict:
         "fees_usd": symbol_run.fees_usd,
         "first": iso_stamp(symbol_run.first_ts_ms),
         "last": iso_stamp(symbol_run.last_ts_ms),
+        "bot_id": symbol_run.bot_id,
+        "origin": symbol_run.origin,
+        "trough_usd": symbol_run.trough_usd,
+        "reading": symbol_run.reading,
     }
 
 
@@ -648,7 +657,7 @@ def battery_bots(run: BatteryRun) -> list[dict]:
 
 def battery_not_verified(run: BatteryRun) -> list[str]:
     """What the Portfolio Battery run could not verify, one line each."""
-    out = [f"defend, improve or reverse: {NOT_COMPUTED}; {BATTERY_OUTCOME_WHY}."]
+    out: list[str] = []
     for asset in run.missing_assets:
         out.append(f"{asset}: no RA-StoneTablet; its capital is missing weight.")
     for refusal in battery_refusals(run):
@@ -673,6 +682,34 @@ def battery_not_verified(run: BatteryRun) -> list[str]:
     return out
 
 
+def battery_outcome(run: BatteryRun) -> dict:
+    """The defend, improve or reverse reading of ``run``: the rule, one entry
+    per portfolio and timeframe with its arithmetic, and the counts of each
+    of ``READINGS`` per timeframe."""
+    per_portfolio = [
+        {
+            "portfolio": portfolio.name,
+            "timeframe": frame.timeframe,
+            "reading": frame.reading,
+            "historical_failed": frame.historical_failed,
+            "arithmetic": frame.reading_arithmetic,
+        }
+        for portfolio in run.portfolios
+        for frame in portfolio.timeframes
+    ]
+    counts = {tf: run.reading_counts(tf) for tf in run.timeframes}
+    summary = "; ".join(
+        f"at {tf}: " + ", ".join(f"{counts[tf][one]} {one}" for one in READINGS)
+        for tf in run.timeframes
+    )
+    return {
+        "defend_improve_reverse": summary or NOT_COMPUTED,
+        "rule": BATTERY_READING_RULE,
+        "counts": counts,
+        "per_portfolio": per_portfolio,
+    }
+
+
 def battery_subject(run: BatteryRun) -> str:
     """``EVERY_PORTFOLIO`` when every ``PORTFOLIOS`` name ran, else the names
     joined."""
@@ -687,13 +724,16 @@ def battery_figures(
 ) -> dict:
     """The figures of one ``BatteryRun``."""
     bots = battery_bots(run)
-    walked = {(row["asset"], row["timeframe"]) for row in bots if row["outcome"] == RAN}
+    walked = {
+        (row["bot_id"], row["timeframe"]) for row in bots if row["outcome"] == RAN
+    }
+    with_target = [one for one in run.bots if one.target_usd is not None]
     head = {
         "mode": PORTFOLIO_BATTERY,
         "title": MODE_TITLE[PORTFOLIO_BATTERY],
         "stamp": stamp,
         "build": str(__version__),
-        "fleet_origin": ["new"],
+        "fleet_origin": list(run.fleet_origins) or fleet_origins(run.bots),
         "exchange": "",
         "subject": battery_subject(run),
         "span": {
@@ -701,16 +741,17 @@ def battery_figures(
             "first": iso_stamp(run.start_ms),
             "last": iso_stamp(run.end_ms),
         },
-        "bots": len(walked),
+        "bots": len(run.bots),
         "budget": {
             "funding": FUNDED_BY_TARGETS,
             "rule": FUNDING_RULE[FUNDED_BY_TARGETS],
-            "budget_usd": float(len(walked)) * float(SYMBOL_CAPITAL_USD),
-            "bots_with_target": len(walked),
-            "bots_without_target": 0,
+            "budget_usd": float(run.budget_usd),
+            "bots_with_target": len(with_target),
+            "bots_without_target": len(run.bots) - len(with_target),
             "note": (
-                f"one bot per walked (asset, timeframe) at SYMBOL_CAPITAL_USD "
-                f"{SYMBOL_CAPITAL_USD:,.2f}; {len(walked)} walked"
+                f"the sum of the Target Balances of the run's {len(run.bots)} "
+                f"bot(s), origins {', '.join(run.fleet_origins) or 'none'}; "
+                f"{len(walked)} (bot, timeframe) walk(s) ran"
             ),
         },
         "tablet_root": run.tablet_root,
@@ -725,6 +766,9 @@ def battery_figures(
             "first": iso_stamp(portfolio.start_ms),
             "last": iso_stamp(portfolio.end_ms),
             "improved_timeframes": list(portfolio.improved_timeframes),
+            "fleet_origin": portfolio.fleet_origin,
+            "bot_ids": list(portfolio.bot_ids),
+            "readings": dict(portfolio.readings),
             "timeframes": [
                 timeframe_section(portfolio.name, one) for one in portfolio.timeframes
             ],
@@ -742,10 +786,7 @@ def battery_figures(
             "portfolios": portfolios,
             "refused": battery_refusals(run),
             "gaps": [dict(one) for one in run.gaps],
-            "outcome": {
-                "defend_improve_reverse": NOT_COMPUTED,
-                "why": BATTERY_OUTCOME_WHY,
-            },
+            "outcome": battery_outcome(run),
         },
         "summary": dict(run.summary),
         "not_verified": battery_not_verified(run),
@@ -1017,16 +1058,23 @@ def render_battery(figures: dict) -> list[str]:
     out = ["## Portfolio Battery", ""]
     outcome = section["outcome"]
     out += [
-        f"- defend, improve or reverse: {outcome['defend_improve_reverse']}; "
-        f"{outcome['why']}",
+        f"- defend, improve or reverse: {outcome['defend_improve_reverse']}",
+        f"- the reading: {outcome['rule']}",
         "",
     ]
     for portfolio in section["portfolios"]:
+        readings = ", ".join(
+            f"{tf} {read}" for tf, read in portfolio.get("readings", {}).items()
+        )
         out += [
             f"### {portfolio['name']}: {portfolio['description']}",
             "",
             f"- span: {portfolio['span']} ({portfolio['first']} to "
             f"{portfolio['last']})",
+            f"- bots: {portfolio.get('fleet_origin', '')} ("
+            + (", ".join(portfolio.get("bot_ids", [])) or "none")
+            + ")",
+            f"- defend, improve or reverse: {readings or 'none'}",
             "- improved timeframes: "
             + (", ".join(portfolio["improved_timeframes"]) or "none"),
             "",
@@ -1035,6 +1083,7 @@ def render_battery(figures: dict) -> list[str]:
             out += [
                 f"#### {portfolio['name']} at {frame['timeframe']}",
                 "",
+                f"- reading: {frame.get('reading_arithmetic', NOT_COMPUTED)}",
                 f"- symbols: {frame['symbols_run']} of {frame['symbols']} ran",
                 f"- committed: {money(frame['committed_usd'])}; missing: "
                 f"{money(frame['missing_usd'])} "
@@ -1212,6 +1261,7 @@ def report_line(report: ParityReport) -> str:
 
 __all__ = [
     "BACK_TEST",
+    "BATTERY_READING_RULE",
     "COUNT_DEFINITIONS",
     "COUNT_NAMES",
     "DIFFERS",
@@ -1230,6 +1280,7 @@ __all__ = [
     "ParityReport",
     "back_test_figures",
     "battery_figures",
+    "battery_outcome",
     "comparison_counts",
     "comparison_row",
     "create_pair",

@@ -32,7 +32,8 @@ from typing import Any, Optional
 
 from ...core.log_paths import get_log_root
 from ...exchange.ytd_trade_store import MANIFEST_NAME
-from ...simulator.fleet_source import BOT_STATE_NAME
+from ...simulator import portfolio_battery
+from ...simulator.fleet_source import BATTERY_ORIGIN, BOT_STATE_NAME
 from ...simulator.ytd_trade_source import ROOT_EMPTY, ROOT_MISSING, ROOT_NO_MANIFEST
 from ...trading.container.config import BotState
 from ..main_tabs import simulator_tab_surface as sim
@@ -237,6 +238,82 @@ def no_target_line(count: int) -> str:
     """The Activity Log line for ``count`` generated records holding no Target
     Balance."""
     return NO_TARGET_FORMAT.format(count=int(count))
+
+
+#: The portfolio chooser: the same one-question dialog with a ``Portfolio:``
+#: row over ``PORTFOLIOS`` and a ``Span:`` row over ``BATTERY_SPANS``.
+PORTFOLIO_CHOICE_TITLE = sim.RUN_PORTFOLIO_TEXT
+EVERY_PORTFOLIO_CHOICE_TITLE = sim.RUN_EVERY_PORTFOLIO_TEXT
+PORTFOLIO_CHOICE_ROW_LABEL = sim.PORTFOLIO_LABEL_TEXT
+SPAN_CHOICE_ROW_LABEL = sim.SPAN_LABEL_TEXT
+PORTFOLIO_PROMPT_TEXT = "Choose the historical portfolio and the span to run."
+EVERY_PORTFOLIO_PROMPT_TEXT = "Choose the span every historical portfolio runs over."
+PORTFOLIO_OPTION_FORMAT = "{name} — {count} symbols: {description}"
+
+#: The Activity Log lines the Portfolio Battery writes on both hosts.
+BATTERY_STARTED_FORMAT = (
+    "Portfolio Battery: {subject} over {span}; {bots} bot(s) {origins}; "
+    "budget ${budget:,.2f}, the sum of their Target Balances."
+)
+#: How a plan's per-portfolio origin, ``BATTERY_ORIGIN`` or ``HELD_FLEET``,
+#: is spelled on the started line.
+BATTERY_ORIGIN_TEXT = {
+    BATTERY_ORIGIN: "generated at ${default:,.2f} times each portfolio's mix share",
+    portfolio_battery.HELD_FLEET: (
+        "loaded from the held fleet at their own Target Balances"
+    ),
+}
+BATTERY_CANCELLED_TEXT = "Portfolio Battery cancelled."
+BATTERY_RUNNING_TEXT = "A Portfolio Battery run is in progress; wait for its report."
+BATTERY_FAILED_FORMAT = "Portfolio Battery failed: {error}"
+EVERY_PORTFOLIO_SUBJECT = "every portfolio"
+
+
+def portfolio_choice_options(portfolios: Any) -> list:
+    """One ``{name, display_name}`` entry per name in ``portfolios``, captioned
+    with its symbol count and description through ``PORTFOLIO_OPTION_FORMAT``."""
+    return [
+        {
+            "name": str(name),
+            "display_name": PORTFOLIO_OPTION_FORMAT.format(
+                name=name,
+                count=len(portfolios[name].symbols),
+                description=portfolios[name].description or "no description",
+            ),
+        }
+        for name in sorted(portfolios)
+    ]
+
+
+def span_choice_options(spans: Any) -> list:
+    """One ``{span, display_name}`` entry per label in ``spans``, in order."""
+    return [{"span": str(one), "display_name": str(one)} for one in spans]
+
+
+def battery_started_line(
+    subject: str, span: str, bots: int, origins: Any, budget_usd: float
+) -> str:
+    """The Activity Log line for a Battery press: ``subject`` over ``span``,
+    ``bots`` counted, each origin word in ``origins`` spelled through
+    ``BATTERY_ORIGIN_TEXT`` and ``budget_usd``."""
+    spelled = " and ".join(
+        BATTERY_ORIGIN_TEXT.get(str(one), str(one)).format(
+            default=portfolio_battery.DEFAULT_TARGET_USD
+        )
+        for one in origins
+    )
+    return BATTERY_STARTED_FORMAT.format(
+        subject=subject,
+        span=span,
+        bots=int(bots),
+        origins=spelled or "none",
+        budget=float(budget_usd),
+    )
+
+
+def battery_failed_line(error: Any) -> str:
+    """The Activity Log line for a Battery run that raised ``error``."""
+    return BATTERY_FAILED_FORMAT.format(error=error)
 
 
 def flip_button(layer: Any) -> dict:
