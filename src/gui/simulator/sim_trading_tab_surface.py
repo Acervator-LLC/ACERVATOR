@@ -19,8 +19,10 @@ voting panel's feed, read by both hosts; ``watchdog_lines`` is the Activity-Log
 watchdog's tick over the sim bots, run by both hosts every
 ``WATCHDOG_INTERVAL_MS``. ``api_block`` and ``api_event_off_thread`` are the
 two halves of Live's ``_on_api_event`` both hosts run over their own
-``APIInteractionLog``: the block one entry draws on the API Interaction Log,
-and the refusal of an entry recorded off the GUI thread.
+``SimApiLog``: the block one entry draws on the API Interaction Log,
+and the refusal of an entry recorded off the GUI thread. ``retrieval_api_entry``
+and ``ytd_api_entry`` are the two entries that log accepts, one per venue
+call of a Stone Tablet retrieval and one per Generate From YTD read.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from ...exchange.ytd_trade_store import MANIFEST_NAME
 from ...simulator import portfolio_battery
 from ...simulator.fleet_source import BATTERY_ORIGIN, BOT_STATE_NAME
 from ...simulator.read_only_connector import EXCHANGE_ID
+from ...simulator.sim_api_log import TABLET_ACTION, YTD_ACTION
 from ...simulator.validation import iso_stamp
 from ...simulator.ytd_trade_source import ROOT_EMPTY, ROOT_MISSING, ROOT_NO_MANIFEST
 from ...trading.container.config import BotState
@@ -152,7 +155,7 @@ RETRIEVAL_VERB = {True: "Update", False: "Retrieve"}
 RETRIEVAL_QUOTE = "USD"
 
 #: The API Interaction Log entry one venue call records, in Live's fields.
-RETRIEVAL_ACTION_FORMAT = "FETCH_TABLET {key}"
+RETRIEVAL_ACTION_FORMAT = TABLET_ACTION + " {key}"
 RETRIEVAL_REASON_FORMAT = (
     "Get {limit} candles ({timeframe}) for {symbol} since {since} - "
     "Stone Tablet {verb}"
@@ -165,6 +168,14 @@ RETRIEVAL_DATA_USAGE_FORMAT = (
     "Playback windows redraw from it"
 )
 RETRIEVAL_ERROR_USAGE_TEXT = "Nothing written"
+
+#: The API Interaction Log entry one Generate From YTD read records, in
+#: Live's fields; ``YTD_ACTION`` is the whole action.
+YTD_REASON_FORMAT = "Read the YTD trade files for {exchange} - Generate From YTD"
+YTD_RESULT_FORMAT = "{fills} fills read from {files} file(s): {names}"
+YTD_DATA_USAGE_FORMAT = "Generated {bots} bot(s) on the Scrumming Bots table"
+YTD_NOTHING_GENERATED_TEXT = "Nothing generated"
+YTD_MISSING_USAGE_FORMAT = "; {missing} manifest row(s) skipped, file missing"
 
 
 def way_in_buttons(mode: str = sim.MODES[0]) -> list:
@@ -501,6 +512,37 @@ def retrieval_api_entry(
             if error
             else RETRIEVAL_DATA_USAGE_FORMAT.format(file=file, root=root)
         ),
+    }
+
+
+def ytd_api_entry(made: Any, exchange_id: Any, root: Any, elapsed_ms: float) -> dict:
+    """One ``APIInteractionLog.record`` call's fields for the Generate From YTD
+    read ``made``, a ``YtdGeneration``, on ``exchange_id`` under ``root``."""
+    names = [str(name) for name in (getattr(made, "files", None) or ())]
+    fills = int(getattr(made, "trades_read", 0) or 0)
+    bots = len(getattr(made, "bots", None) or ())
+    missing = len(getattr(made, "missing", None) or ())
+    if names:
+        result = YTD_RESULT_FORMAT.format(
+            fills=fills, files=len(names), names=", ".join(names)
+        )
+    else:
+        result = RETRIEVAL_NO_DATA_TEXT
+    usage = (
+        YTD_DATA_USAGE_FORMAT.format(bots=bots) if bots else YTD_NOTHING_GENERATED_TEXT
+    )
+    if missing:
+        usage += YTD_MISSING_USAGE_FORMAT.format(missing=missing)
+    return {
+        "exchange": str(exchange_id),
+        "action": YTD_ACTION,
+        "reason": YTD_REASON_FORMAT.format(exchange=exchange_id),
+        "endpoint": str(root),
+        "params": {"exchange": str(exchange_id), "files": names},
+        "result": result,
+        "elapsed_ms": float(elapsed_ms),
+        "level": "success" if names else "warning",
+        "data_usage": usage,
     }
 
 
