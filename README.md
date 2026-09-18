@@ -14,77 +14,7 @@ engine.
 
 > *"Stop predicting. Stop HODLing. Stop waiting. Start accumulating."*
 
-Built by Anthony L. Brown, Ekthelius the Accumulator. Released to humanity.
-
-This page is the product manual. The front matter and the full catalogue of
-novel concepts are printed below in full. Every remaining part is one click
-away in the [map](#the-rest-of-the-manual), a row per section.
-
-## What is built, and what is not
-
-The manual is a design document as well as a description. It says what each
-part of the platform is meant to be, and some of those parts are not built yet.
-Read it that way.
-
-Built and running on live capital: the Live tab, the Market Inspector, the
-Bot Swarm, the Asset Charts, the History tab and the Console. The Trading tab
-is the Live tab renamed.
-
-**Built since: the Simulator and the Paper Trader. Not built: System Status and
-Proof of Accumulation.** The
-manual describes each of the four at length as a design. This product ships a
-backtesting engine, a paper-trading engine and no competition screen. Each one
-is named again, with its issue, under
-[the map](#four-subsystems-and-the-two-not-built).
-
-The window carries ten tabs. Every label is one word, and the order below is
-what the bar ends with.
-
-`src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
-
-```python
-CANONICAL_TAB_ORDER = (
-    SIM_TAB,
-    PAPER_TAB,
-    LIVE_TAB,
-    CHARTS_TAB,
-    INSPECTOR_TAB,
-    SWARM_TAB,
-    ACCUMULATION_TAB,
-    HISTORY_TAB,
-    STATUS_TAB,
-    CONSOLE_TAB,
-)
-```
-
-The Simulator was rebuilt and runs three modes: Validation, Back Test and
-Portfolio Battery. Nuclear Mode is cancelled and its code is deleted. The Paper
-Trader runs in real time against the venue's public market feed with a fake
-balance held in memory. Both reach their data downstream only: each source
-object answers a fixed set of read names and raises `SendRefused` for every
-other name, so neither can express an order.
-
-`src/simulator/tablet_source.py` — the Simulator's one data path
-
-```python
-class SendRefused(AttributeError):
-```
-
-Stone Tablets are the data layer under both. The live tablets sit under
-`~/.acervator/stone_tablets` and carry the assets the operator trades.
-RA-StoneTablets sit under `~/.acervator_ra_tablets` and carry the daily prices
-for the 35 portfolios the Portfolio Battery runs.
-
-```
-Price rises → SCRUM (sell excess above target → fold queue fills)
-Price dips  → FOLD  (buy back with queued USD at lower price → net accumulation)
-Repeat      → Target grows via compound profit folding
-```
-
-The running version is `__version__` in [`src/__init__.py`](src/__init__.py).
-It is not restated here, so it cannot go stale.
-
----
+Built Ekthelius the Accumulator aka Anthony L. Brown. Released to humanity.
 
 ## ACERVATOR
 
