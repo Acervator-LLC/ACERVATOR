@@ -1095,9 +1095,7 @@ if _HAS_QT:
             """Repaint the strip from the Simulator's fleet with Sim in front, else from the live fleet."""
             if self._header_strip_reads_sim():
                 sim_tab = self._simulator_tab
-                self._write_header_strip(
-                    sim_tab.fleet_source().aggregate(), sim_tab.exchange_count()
-                )
+                self._write_header_strip(sim_tab.aggregate(), sim_tab.exchange_count())
                 return
             if live_stats is None:
                 if not self._bot_manager:

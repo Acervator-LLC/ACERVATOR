@@ -11,6 +11,8 @@ import logging
 import math
 from typing import Any, Callable, Optional
 
+from .sizing import priced_usd
+
 logger = logging.getLogger("acervator.scrumming")
 
 
@@ -352,8 +354,8 @@ class ReconciliationEngineMixin:
             if _price > 0:
                 self.stats.current_price = _price
             if _price > 0 and self._current_holdings > 0:
-                self.stats.position_value = (
-                    self._current_holdings * _price * float(self._quote_to_usd or 1.0)
+                self.stats.position_value = priced_usd(
+                    self._current_holdings, _price, float(self._quote_to_usd or 1.0)
                 )
             else:
                 self.stats.position_value = 0.0

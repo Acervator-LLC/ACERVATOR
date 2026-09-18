@@ -1,11 +1,15 @@
-"""Back Test Mode: the shipped gate chains walked over Stone Tablet candles.
+"""The run modes' walk: the shipped gate chains over Stone Tablet candles, each
+trade sized by ``src.trading.scrumming.sizing``.
 
 ``new_bot`` makes one operator-defined ``SimBot`` and ``fleet_source.live_fleet``
 supplies the imported clone. ``tape_context`` builds a ``GateContext`` from a
 tablet window and the simulated position, ``validation.latch`` evaluates the same
-scrum and fold chains live runs, and ``run`` walks each bot's tablet keeping
-units, cash and tranches. ``missing_pairs`` names the tablets a run needs and
-``download_missing`` fills them through the shipped ``GapFiller``.
+scrum and fold chains live runs, ``apply_scrum`` and ``apply_fold`` size each
+fill with the Live bot's own functions, and ``run`` walks each bot's tablet
+keeping units, cash and fold tranches under one ``funding``: Back Test from each
+bot's own scrum proceeds, Validation and Portfolio Battery from ``run_budget_usd``,
+the sum of the held Target Balances. ``missing_pairs`` names the tablets a run
+needs and ``download_missing`` fills them through the shipped ``GapFiller``.
 """
 
 from __future__ import annotations
@@ -15,6 +19,29 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
 from ..trading.gate_chain import GateContext
+from ..trading.otd_math import fold_rebuy_factor
+from ..trading.scrumming.sizing import (
+    cycle_growth_cap_usd,
+    delta_below_interval,
+    eligible_fold_tranches,
+    estimated_fee_usd,
+    fold_cap_remaining_usd,
+    fold_rate_taper,
+    fold_spend_usd,
+    fold_units,
+    plan_fold_consumption,
+    position_ceiling,
+    priced_usd,
+    ratio_to_ceiling,
+    sale_proceeds_usd,
+    scrum_units,
+    scrumming_interval_usd,
+    settle_fold_plan,
+    target_delta_pct,
+    target_delta_usd,
+    wallet_capped_spend_usd,
+)
+from ..trading.scrumming.sizing import estimated_fee_usd as fee_usd
 from .fleet_source import NEW_ORIGIN, SimBot
 from .validation import (
     BB_MIDLINE,
@@ -73,6 +100,15 @@ BACK_TESTED = "back_tested"
 
 BOT_OUTCOMES = (NO_TABLET, SHORT_TABLET, BACK_TESTED)
 
+#: Back Test: each bot's fold spends its own scrum proceeds and no more.
+FUNDED_BY_PROCEEDS = "proceeds"
+
+#: Validation and Portfolio Battery: the run's budget is ``run_budget_usd`` and
+#: no fold is capped for cash.
+FUNDED_BY_TARGETS = "targets"
+
+FUNDINGS = (FUNDED_BY_PROCEEDS, FUNDED_BY_TARGETS)
+
 
 @dataclass(frozen=True)
 class SimTrade:
@@ -90,15 +126,26 @@ class SimTrade:
 
 @dataclass
 class SimPosition:
-    """What a simulated bot holds as the tape advances."""
+    """What a simulated bot holds as the tape advances: its units, the cash its
+    scrums left, the fold tranches those scrums queued in the shape
+    ``_tick_execute_scrum`` builds them, and the price its units were opened
+    at, which every tranche carries as ``initial_buy_price``."""
 
     units: float = 0.0
     cash_usd: float = 0.0
-    tranches: int = 0
+    fold_tranches: list = field(default_factory=list)
+    opening_price: float = 0.0
+    last_trade_price: float = 0.0
+    cycle_cap_consumed_usd: float = 0.0
+
+    @property
+    def tranches(self) -> int:
+        """How many fold tranches are queued."""
+        return len(self.fold_tranches)
 
     def value_usd(self, price: float) -> float:
         """``units`` at ``price``, ignoring cash held from an earlier scrum."""
-        return self.units * float(price)
+        return priced_usd(self.units, float(price))
 
 
 @dataclass(frozen=True)
@@ -263,9 +310,9 @@ def tape_context(
     bb_pos = float(reading.bb_position) if reading is not None else 0.0
     lower_dt, upper_dt = bb_detect_thresholds(bot.scrum_detect_pct)
     target_usd = float(bot.target_usd or 0.0)
-    delta = position.value_usd(close) - target_usd
-    interval_usd = target_usd * float(bot.scrumming_interval_pct) / 100.0
-    below_interval = abs(delta) < interval_usd
+    delta = target_delta_usd(position.value_usd(close), target_usd)
+    interval_usd = scrumming_interval_usd(target_usd, float(bot.scrumming_interval_pct))
+    below_interval = delta_below_interval(delta, interval_usd)
     is_bullish, is_bearish, direction_name, _confidence = ta_direction(summary, reading)
     trend_hold, trend_strength = trend_reading(window)
 
@@ -286,7 +333,7 @@ def tape_context(
         bb_upper_dt=upper_dt,
         bb_lower_dt=lower_dt,
         delta=delta,
-        delta_pct=abs(delta),
+        delta_pct=target_delta_pct(delta, target_usd),
         below_interval=below_interval,
         is_bullish=is_bullish,
         is_bearish=is_bearish,
@@ -334,26 +381,33 @@ def tape_context(
     )
 
 
-def fee_usd(notional_usd: float, fee_pct: float) -> float:
-    """``fee_pct`` of ``notional_usd``."""
-    return abs(float(notional_usd)) * float(fee_pct) / 100.0
-
-
 def apply_scrum(
     bot: SimBot, position: SimPosition, price: float, ts_ms: int, delta: float
 ) -> Optional[SimTrade]:
-    """Sell ``delta / price`` units and hold the proceeds as one fold tranche.
+    """Sell ``scrum_units`` of ``delta`` at ``price`` and queue the proceeds net
+    of ``estimated_fee_usd`` as one fold tranche, as ``_tick_execute_scrum``
+    books a sale over one lot.
 
     Nothing fills when ``position`` holds fewer units than the sell needs.
     """
-    units = abs(float(delta)) / float(price)
+    units = scrum_units(float(delta), float(price))
     if units <= 0.0 or units > position.units:
         return None
-    notional = units * float(price)
-    fee = fee_usd(notional, bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT)
+    notional = priced_usd(units, float(price))
+    fee = estimated_fee_usd(notional, bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT)
+    proceeds = sale_proceeds_usd(notional, fee)
     position.units -= units
-    position.cash_usd += notional - fee
-    position.tranches += 1
+    position.cash_usd += proceeds
+    position.last_trade_price = float(price)
+    position.fold_tranches.append(
+        {
+            "usd": proceeds,
+            "units": units,
+            "ref": float(price),
+            "initial_buy_price": position.opening_price,
+            "created_ts": float(ts_ms) / 1000.0,
+        }
+    )
     return SimTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -366,24 +420,75 @@ def apply_scrum(
     )
 
 
-def apply_fold(
-    bot: SimBot, position: SimPosition, price: float, ts_ms: int, delta: float
-) -> Optional[SimTrade]:
-    """Buy ``delta`` back at ``price`` and spend one tranche.
+def fold_taper(bot: SimBot, position: SimPosition) -> float:
+    """``fold_rate_taper`` over the position's ``ratio_to_ceiling`` at its
+    ``last_trade_price`` when the bot's ceiling is on and a trade has filled,
+    one otherwise, as ``ScrummingBot.fold_rate_taper`` reads ``ceiling_ratio``
+    with the anchor at the bot's target."""
+    if not bot.position_ceiling_enabled:
+        return 1.0
+    ceiling = position_ceiling(
+        float(bot.target_usd or 0.0), bot.position_ceiling_multiple
+    )
+    if ceiling <= 0.0 or position.last_trade_price <= 0.0:
+        return 1.0
+    value = position.value_usd(position.last_trade_price)
+    return fold_rate_taper(ratio_to_ceiling(value, ceiling))
 
-    The spend is capped at ``position.cash_usd``, so one scrum's proceeds fund
-    one fold.
+
+def apply_fold(
+    bot: SimBot,
+    position: SimPosition,
+    price: float,
+    ts_ms: int,
+    delta: float,
+    funding: str = FUNDED_BY_PROCEEDS,
+) -> Optional[SimTrade]:
+    """Rebuy the eligible tranches as ``_tick_execute_fold`` does: the tranches
+    ``eligible_fold_tranches`` names under ``fold_rebuy_factor``, sorted highest
+    ``initial_buy_price`` first, planned under ``cycle_growth_cap_usd`` by
+    ``plan_fold_consumption``, spent as ``fold_spend_usd`` under ``fold_taper``,
+    booked as ``fold_units`` at ``price``, and settled by ``settle_fold_plan``.
+
+    ``FUNDED_BY_PROCEEDS`` holds the spend to ``position.cash_usd`` through
+    ``wallet_capped_spend_usd`` and ``FUNDED_BY_TARGETS`` caps nothing, while
+    ``delta`` sizes nothing here as it sizes nothing in ``_tick_execute_fold``.
     """
-    spend = min(abs(float(delta)), position.cash_usd)
-    if spend <= 0.0 or position.tranches <= 0:
+    del delta
+    fee_pct = bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT
+    factor = fold_rebuy_factor(bot.scrumming_interval_pct, fee_pct)
+    eligible = eligible_fold_tranches(position.fold_tranches, float(price), factor)
+    if not eligible:
         return None
-    fee = fee_usd(spend, bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT)
-    units = (spend - fee) / float(price)
-    if units <= 0.0:
+    ordered = sorted(
+        eligible, key=lambda t: -float(t.get("initial_buy_price", t.get("ref", 0)))
+    )
+    cap = cycle_growth_cap_usd(
+        float(bot.target_usd or 0.0),
+        position.cycle_cap_consumed_usd,
+        bot.max_target_growth_pct,
+    )
+    plan, slices, _partial = plan_fold_consumption(
+        ordered, fold_cap_remaining_usd(cap, position.cycle_cap_consumed_usd)
+    )
+    if not slices:
         return None
+    taper = fold_taper(bot, position)
+    if taper <= 0.0:
+        return None
+    spend = fold_spend_usd(sum(one["usd"] for one in slices), taper)
+    if funding == FUNDED_BY_PROCEEDS:
+        spend = wallet_capped_spend_usd(spend, position.cash_usd)
+    if spend <= 0.0:
+        return None
+    units = fold_units(spend, float(price))
+    fee = estimated_fee_usd(spend, fee_pct)
     position.units += units
     position.cash_usd -= spend
-    position.tranches -= 1
+    position.last_trade_price = float(price)
+    position.fold_tranches, _removed, _spent = settle_fold_plan(
+        position.fold_tranches, plan
+    )
     return SimTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -397,15 +502,27 @@ def apply_fold(
 
 
 def opening_position(bot: SimBot, price: float) -> SimPosition:
-    """A ``SimPosition`` worth exactly ``bot.target_usd`` at ``price``."""
+    """A ``SimPosition`` worth exactly ``bot.target_usd`` at ``price``, the
+    ``fold_units`` the initial entry's buy of the target books."""
     target_usd = float(bot.target_usd or 0.0)
-    units = target_usd / float(price) if price > 0.0 else 0.0
-    return SimPosition(units=units, cash_usd=0.0, tranches=0)
+    units = fold_units(target_usd, float(price)) if price > 0.0 else 0.0
+    return SimPosition(units=units, cash_usd=0.0, opening_price=float(price))
 
 
-def walk(bot: SimBot, candles: Sequence[Any], step: int = 1) -> BotResult:
+def run_budget_usd(bots: Sequence[SimBot]) -> float:
+    """The sum of every held bot's ``target_usd``; a bot with no target adds
+    nothing."""
+    return sum(float(bot.target_usd) for bot in bots if bot.target_usd is not None)
+
+
+def walk(
+    bot: SimBot,
+    candles: Sequence[Any],
+    step: int = 1,
+    funding: str = FUNDED_BY_PROCEEDS,
+) -> BotResult:
     """Run ``bot`` over ``candles``, one gate-chain evaluation every ``step``
-    bars."""
+    bars, each fold funded as ``funding`` says."""
     from ..trading.ta_engine import VotingEngine
 
     if len(candles) < MIN_CANDLES:
@@ -440,7 +557,7 @@ def walk(bot: SimBot, candles: Sequence[Any], step: int = 1) -> BotResult:
             filled = apply_scrum(bot, position, price, stamp, context.delta)
         elif armed["fold_armed"]:
             fold_latched += 1
-            filled = apply_fold(bot, position, price, stamp, context.delta)
+            filled = apply_fold(bot, position, price, stamp, context.delta, funding)
         if filled is not None:
             trades.append(filled)
             fees += filled.fee_usd
@@ -467,7 +584,9 @@ def walk(bot: SimBot, candles: Sequence[Any], step: int = 1) -> BotResult:
 
 @dataclass(frozen=True)
 class BackTestRun:
-    """One Back Test pass: its fleet, its tablets and what the tape produced."""
+    """One pass of a run mode: its fleet, its tablets, what the tape produced,
+    the ``funding`` its folds ran under and, for ``FUNDED_BY_TARGETS``, the
+    ``budget_usd`` of ``run_budget_usd``."""
 
     exchange_id: str
     bots: tuple[SimBot, ...]
@@ -475,6 +594,8 @@ class BackTestRun:
     missing: tuple[tuple[str, str], ...] = ()
     bot_outcomes: dict[str, int] = field(default_factory=dict)
     interval_ms: int = 0
+    funding: str = FUNDED_BY_PROCEEDS
+    budget_usd: Optional[float] = None
 
     @property
     def ran(self) -> list[BotResult]:
@@ -573,13 +694,18 @@ def run(
     step: int = 1,
     max_candles: int = 0,
     ticks_per_bot: int = 0,
+    funding: str = FUNDED_BY_PROCEEDS,
 ) -> BackTestRun:
     """Walk every bot over its own tablet and report what the gates latched.
 
-    ``max_candles`` caps how much of each tape is read and ``ticks_per_bot``
-    replaces ``step`` with one ``shared_step`` every bot ticks on.
+    ``max_candles`` caps how much of each tape is read, ``ticks_per_bot``
+    replaces ``step`` with one ``shared_step`` every bot ticks on, and
+    ``funding`` of ``FUNDED_BY_TARGETS`` reads ``run_budget_usd`` once here and
+    caps no fold.
     """
     from ..trading.indicators.types import candles_from_raw
+
+    budget = run_budget_usd(bots) if funding == FUNDED_BY_TARGETS else None
 
     entries = tablets.entries()
     matched = [
@@ -610,7 +736,7 @@ def run(
             raw = raw[-int(max_candles) :]
         if not interval_ms and len(raw) > 1:
             interval_ms = candle_interval_ms([int(one[0]) for one in raw])
-        walked = walk(bot, candles_from_raw(raw), step)
+        walked = walk(bot, candles_from_raw(raw), step, funding)
         key = entry.file
         if key.endswith(TABLET_SUFFIX):
             key = key[: -len(TABLET_SUFFIX)]
@@ -623,6 +749,8 @@ def run(
         missing=tuple(missing_pairs(bots, entries)),
         bot_outcomes=outcomes,
         interval_ms=interval_ms,
+        funding=funding,
+        budget_usd=budget,
     )
 
 
@@ -668,6 +796,9 @@ __all__ = [
     "DEFAULT_TIMEFRAME",
     "DEFAULT_TRADING_FEE_PCT",
     "FOLD",
+    "FUNDED_BY_PROCEEDS",
+    "FUNDED_BY_TARGETS",
+    "FUNDINGS",
     "MIN_CANDLES",
     "NEW_ORIGIN",
     "NO_TABLET",
@@ -682,11 +813,13 @@ __all__ = [
     "bb_detect_thresholds",
     "download_missing",
     "fee_usd",
+    "fold_taper",
     "missing_pairs",
     "new_bot",
     "new_bots",
     "opening_position",
     "run",
+    "run_budget_usd",
     "shared_step",
     "signal_detail",
     "ta_direction",

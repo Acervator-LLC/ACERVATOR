@@ -2385,6 +2385,145 @@ Portfolio Battery. The venue page's rows in the React build carry no click
 that selects a row for the command bar, on Live's page and on the Simulator's;
 Detail selects the row as it opens.
 
+## One trading logic: the Simulator sizes its trades with the Live bot's own arithmetic
+
+The Live bot and the Simulator now share one definition of every sizing
+figure. The position value, the Target Delta, the delta percent, the scrumming
+interval in USD, the scrum's units, a sale's proceeds net of its fee, the
+fold's eligible tranches, the per-cycle growth cap, what a fold takes from each
+tranche, the fold's spend and its units, the position ceiling, the fold taper
+and the cartridge threshold each live as one function in a module beside the
+bot's mixins. The bot calls them at the lines that computed them inline, and
+the Simulator's walk calls the same functions over a simulated position. The
+module holds no state and imports no bot, no venue and no bus.
+
+`src/trading/scrumming/sizing.py` — three of the figures
+
+```python
+def scrum_units(delta_usd: float, price: float) -> float:
+    return abs(delta_usd) / price
+
+
+def fold_spend_usd(eligible_usd: float, taper: float) -> float:
+    return eligible_usd * taper
+
+
+def fold_units(spend_usd: float, price: float) -> float:
+    return spend_usd / price
+```
+
+### What the tick calls
+
+`ScrummingBot.tick` values the position through `priced_usd`, takes the delta
+through `target_delta_usd` and its percent through `target_delta_pct`, sizes
+the interval through `scrumming_interval_usd` and asks `delta_below_interval`
+whether to hold. The scrum sells `scrum_units` of the delta at the ticker and
+books the proceeds through `sale_proceeds_usd` less the fee the venue reports.
+The fold reads `eligible_fold_tranches` under the opposing-trade rebuy factor,
+plans what it takes from each tranche under `cycle_growth_cap_usd` and
+`fold_cap_remaining_usd` through `plan_fold_consumption`, spends
+`fold_spend_usd` of that under the taper, books `fold_units` at the fill and
+settles the tranches through `settle_fold_plan`.
+
+`src/trading/scrumming_bot.py` — the tick's four figures as they read now
+
+```python
+delta = target_delta_usd(current_value, self._target_balance)
+delta_pct = target_delta_pct(delta, self._target_balance)
+_interval_usd = scrumming_interval_usd(
+    self._target_balance, self.config.scrumming_interval_pct
+)
+```
+
+The bot's behaviour was read unchanged off the operator's own logs without
+building a bot: over 270 scrum fills paired with the gate row the bot wrote at
+each fire, `scrum_units` over the row's delta and ticker answered the row's
+filled amount on 270 of 270; over 61 fold fills, `fold_units` over the row's
+spend and fill answered the filled amount on 61 of 61. One row with its amount
+moved by one unit in the eighth place was read as a disagreement.
+
+### What the Simulator's walk calls
+
+`apply_scrum` sells `scrum_units` of the delta, values them through
+`priced_usd`, estimates the fee through `estimated_fee_usd` from the bot's
+Trading Fee, since a walk has no venue to report one, and queues the net
+proceeds as one fold tranche in the shape the tick builds. `apply_fold` is the
+tick's fold over the position's tranches: eligibility, the cap plan, the taper
+when the bot's ceiling is on, the spend and the units, then the settlement.
+The Target Delta no longer sizes a fold, as it never sized one in the tick.
+
+`src/simulator/back_test.py` — the fold's spend
+
+```python
+spend = fold_spend_usd(sum(one["usd"] for one in slices), taper)
+if funding == FUNDED_BY_PROCEEDS:
+    spend = wallet_capped_spend_usd(spend, position.cash_usd)
+```
+
+Before this the Simulator sized a fold on the Target Delta and capped it at
+the cash its scrums had left. Walked over one scratch tape, that sized 46 folds
+where the Live arithmetic sizes 187, each at most the per-cycle growth cap of
+its target; the 47 scrums latched on the same candles both ways, and 12 of
+them sold the same units, the two before the first fold and those where the
+folds between had brought both positions back to the same holding. A count of
+arithmetic on a price, units, a target, an interval, a delta, a spend or a fee
+across `src/simulator` reads zero sizing expressions; the twenty-one that
+remain value a held position for the strip, a portfolio's baseline and its
+improvement, an Extractor position's profit, and a candle interval in time.
+
+### The funding rule
+
+A Validation or Portfolio Battery run has no venue wallet. Its spendable budget
+is unbounded and always equals the sum of the held bots' Target Balances; a bot
+with no Target Balance adds nothing. The run reads that sum once as it starts
+and carries it as `budget_usd`, and no fold in these two modes is held to the
+cash the scrums left. Back Test keeps its own rule: each bot's fold spends its
+own scrum proceeds and no more, through `wallet_capped_spend_usd`, the cap
+Manual Fire applies at the wallet. A fold sized by the Live arithmetic spends
+at most the tranche dollars its own scrums queued, so on the same tape the two
+fundings walked the same 234 trades, one of them apart by two femto-dollars of
+rounding.
+
+`src/simulator/back_test.py` — the budget
+
+```python
+def run_budget_usd(bots: Sequence[SimBot]) -> float:
+    return sum(float(bot.target_usd) for bot in bots if bot.target_usd is not None)
+```
+
+The header strip reads the rule. With the Sim tab in front in Validation or
+Portfolio Battery, Spendable reads the sum of the held Target Balances; in Back
+Test it reads what it read before, the largest cash balance the held records
+carry. Driven with four held bots whose targets summed to twelve hundred
+dollars, one of them with no target, the cell drew `$1,200.00` in both modes
+and `$0.00` in Back Test, in both builds, and the walk over the tab's own fleet
+and tablets called eighteen of the twenty shared functions, every call from
+`walk`; the two never reached are the cartridge threshold, which only the tick
+fires, and the wallet cap, which only Back Test applies.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the mode's funding
+
+```python
+MODE_FUNDING = {
+    MODE_VALIDATION: back_test.FUNDED_BY_TARGETS,
+    MODE_BACK_TEST: back_test.FUNDED_BY_PROCEEDS,
+    MODE_PORTFOLIO_BATTERY: back_test.FUNDED_BY_TARGETS,
+}
+```
+
+### One drawdown
+
+The state an Extractor writes on a position below its entry value was spelled
+twice, once in the Extractor and once in the Simulator's fleet reader. Both
+names now read `DRAWDOWN_STATE` from the sizing module; a planted change to
+that one definition moved both.
+
+`src/trading/scrumming/sizing.py` — the state
+
+```python
+DRAWDOWN_STATE = "drawdown"
+```
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

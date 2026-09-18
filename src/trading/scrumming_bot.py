@@ -79,6 +79,18 @@ from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
     _STRONG_TREND_MIN_BULL_CANDLES,
 )
+from .scrumming.sizing import (
+    cartridge_threshold_usd,
+    cycle_growth_cap_usd,
+    delta_below_interval,
+    fold_rate_taper,
+    position_ceiling,
+    priced_usd,
+    ratio_to_ceiling,
+    scrumming_interval_usd,
+    target_delta_pct,
+    target_delta_usd,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -771,8 +783,7 @@ class ScrummingBot(
         if _pct <= 0.0:
             return 0.0
         # Never negative: consumption can exceed the target until the next reset.
-        _base = max(0.0, _target - _consumed)
-        return _base * (_pct / 100.0)
+        return cycle_growth_cap_usd(_target, _consumed, _pct)
 
     def _apply_fold_target_growth(self, accum_profit: float, source: str) -> float:
         """Drain fold surplus into ``_target_balance``, bounded by the per-cycle cap.
@@ -2449,10 +2460,10 @@ class ScrummingBot(
         price = getattr(self, "_last_trade_price", 0.0) or self.stats.current_price
         if not price or price <= 0:
             return 0.0
-        return (
-            float(self._current_holdings)
-            * float(price)
-            * float(self._quote_to_usd or 1.0)
+        return priced_usd(
+            float(self._current_holdings),
+            float(price),
+            float(self._quote_to_usd or 1.0),
         )
 
     @property
@@ -2480,8 +2491,8 @@ class ScrummingBot(
                 return None
             holdings = float(self._current_holdings)
             _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
-            value = holdings * price * _qrate
-            delta = value - tgt
+            value = priced_usd(holdings, price, _qrate)
+            delta = target_delta_usd(value, tgt)
             dust = max(tgt * 0.01, 0.01)
             if delta > dust:
                 return "scrum"
@@ -2501,8 +2512,7 @@ class ScrummingBot(
             return None
         try:
             mult = float(self.config.position_ceiling_multiple)
-            mult = max(1.0, min(10.0, mult))
-            return self._anchor_target_balance * mult
+            return position_ceiling(self._anchor_target_balance, mult)
         except Exception:
             return None
 
@@ -2523,12 +2533,12 @@ class ScrummingBot(
         price = getattr(self, "_last_trade_price", None)
         if not price or price <= 0:
             return None
-        value = (
-            self._current_holdings
-            * price
-            * float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
+        value = priced_usd(
+            self._current_holdings,
+            price,
+            float(getattr(self, "_quote_to_usd", 1.0) or 1.0),
         )
-        return value / ceiling
+        return ratio_to_ceiling(value, ceiling)
 
     @property
     def fold_rate_taper(self) -> float:
@@ -2547,11 +2557,7 @@ class ScrummingBot(
         ratio = self.ceiling_ratio
         if ratio is None:
             return 1.0
-        if ratio >= 1.0:
-            return 0.0
-        if ratio < 0.5:
-            return 1.0
-        return 1.0 - (ratio - 0.5) / 0.5 * 0.9
+        return fold_rate_taper(ratio)
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual Fire from the dashboard."""
@@ -2632,8 +2638,7 @@ class ScrummingBot(
                     _smart_mult = float(
                         getattr(self.config, "position_ceiling_multiple", 1.0)
                     )
-                    _smart_mult = max(1.0, min(10.0, _smart_mult))
-                    _smart_ceiling_usd = _anchor * _smart_mult
+                    _smart_ceiling_usd = position_ceiling(_anchor, _smart_mult)
                     if _projected > _smart_ceiling_usd:
                         return False, (
                             f"MEM-253 PRE-BUY REFUSED (path={path}, Layer 2): "
@@ -2762,11 +2767,11 @@ class ScrummingBot(
                 "Bot %s visible stack reconciler raised: %s", self.bot_id, _stack_v_exc
             )
 
-        current_value = (
-            self._current_holdings * ticker.last * float(self._quote_to_usd or 1.0)
+        current_value = priced_usd(
+            self._current_holdings, ticker.last, float(self._quote_to_usd or 1.0)
         )
 
-        _delta_early = current_value - self._target_balance
+        _delta_early = target_delta_usd(current_value, self._target_balance)
         self._update_opposing_hysteresis_state(_delta_early, ticker.last)
 
         # Within the dust band of target the tick returns; manual fire bypasses it.
@@ -2830,8 +2835,10 @@ class ScrummingBot(
         _cartridge_pct = self._tick_smart_cartridge_pct(_cartridge_pct)
 
         if _cartridge_pct > 0 and self._target_balance > 0:
-            _cartridge_threshold = self._target_balance * _cartridge_pct / 100.0
-            _cartridge_delta = current_value - self._target_balance
+            _cartridge_threshold = cartridge_threshold_usd(
+                self._target_balance, _cartridge_pct
+            )
+            _cartridge_delta = target_delta_usd(current_value, self._target_balance)
             if abs(_cartridge_delta) >= _cartridge_threshold:
                 _direction = "SCRUM" if _cartridge_delta > 0 else "FOLD"
 
@@ -2917,10 +2924,10 @@ class ScrummingBot(
 
         self.stats.position_value = current_value
 
-        delta = current_value - self._target_balance
-        delta_pct = abs(delta) / (self._target_balance + 1e-9) * 100
-        _interval_usd = (
-            self._target_balance * self.config.scrumming_interval_pct / 100.0
+        delta = target_delta_usd(current_value, self._target_balance)
+        delta_pct = target_delta_pct(delta, self._target_balance)
+        _interval_usd = scrumming_interval_usd(
+            self._target_balance, self.config.scrumming_interval_pct
         )
 
         ta_tf = self.config.ta_timeframe or "1h"
@@ -2983,7 +2990,7 @@ class ScrummingBot(
             )
             self._last_bb = bb_result
 
-        below_interval = abs(delta) < _interval_usd
+        below_interval = delta_below_interval(delta, _interval_usd)
 
         if below_interval and self._fold_queue_usd == 0 and self._dist_accumulator == 0:
             ta_dir = summary.consensus_direction.name if summary else "N/A"
@@ -3906,8 +3913,7 @@ class ScrummingBot(
                 _smart_mult_253 = float(
                     getattr(self.config, "position_ceiling_multiple", 1.0)
                 )
-                _smart_mult_253 = max(1.0, min(10.0, _smart_mult_253))
-                _mem253_smart_ceiling_usd = _anchor * _smart_mult_253
+                _mem253_smart_ceiling_usd = position_ceiling(_anchor, _smart_mult_253)
                 _mem253_at_smart_ceiling = (
                     _mem253_current_pos >= _mem253_smart_ceiling_usd
                 )
@@ -4340,8 +4346,8 @@ class ScrummingBot(
         price = getattr(ticker, "last", None) or 0.0
         if price <= 0:
             return False
-        current_value = (
-            self._current_holdings * price * float(self._quote_to_usd or 1.0)
+        current_value = priced_usd(
+            self._current_holdings, price, float(self._quote_to_usd or 1.0)
         )
         if current_value <= self._anchor_target_balance:
             return False

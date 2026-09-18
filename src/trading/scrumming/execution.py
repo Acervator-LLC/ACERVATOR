@@ -17,6 +17,14 @@ from ...exchange.base import OrderSide, OrderType
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
+from .sizing import (
+    fold_units,
+    priced_usd,
+    sale_proceeds_usd,
+    scrum_units,
+    target_delta_usd,
+    wallet_capped_spend_usd,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -358,7 +366,7 @@ class ExecutionEngineMixin:
         """
         _units = float(units)
         _price = float(price)
-        _gross = _units * _price
+        _gross = priced_usd(_units, _price)
         _fee = self._take_venue_fee(_units, _price)
         _refusal = ""
         if _fee is None or not _fee.reported:
@@ -390,7 +398,7 @@ class ExecutionEngineMixin:
                 ),
             )
             return _gross
-        _net = _gross - _fee.fee_amount
+        _net = sale_proceeds_usd(_gross, _fee.fee_amount)
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -449,8 +457,8 @@ class ExecutionEngineMixin:
             )
         _qrate = float(self._quote_to_usd or 1.0)
 
-        current_value = self._current_holdings * price * _qrate
-        delta_usd = current_value - self._target_balance
+        current_value = priced_usd(self._current_holdings, price, _qrate)
+        delta_usd = target_delta_usd(current_value, self._target_balance)
         dust = manual_fire_dust_band(self._target_balance)
 
         if caller_intent != "manual_button":
@@ -549,7 +557,7 @@ class ExecutionEngineMixin:
 
         if delta_usd > 0:
             _denom_sc = price * _qrate
-            sell_amount = (delta_usd / _denom_sc) if _denom_sc > 0 else 0.0
+            sell_amount = scrum_units(delta_usd, _denom_sc) if _denom_sc > 0 else 0.0
             sell_amount = min(sell_amount, self._current_holdings)
             if sell_amount <= 0:
                 self._bus.emit(
@@ -673,7 +681,7 @@ class ExecutionEngineMixin:
                     f"{new_tranches_count} tranche(s) queued "
                     f"(operator_initiated). Holdings now "
                     f"{self._current_holdings:.6f} "
-                    f"(~${self._current_holdings * price * float(self._quote_to_usd or 1.0):.2f})."
+                    f"(~${priced_usd(self._current_holdings, price, float(self._quote_to_usd or 1.0)):.2f})."
                 ),
             )
             self._bus.emit(
@@ -928,7 +936,7 @@ class ExecutionEngineMixin:
             _wallet_free = quote_free * _qrate
             usd_balance = _reservations.available(_wallet_key, _wallet_free)
             _held_by_others = _reservations.reserved(_wallet_key)
-            buy_usd = min(buy_usd_target, usd_balance)
+            buy_usd = wallet_capped_spend_usd(buy_usd_target, usd_balance)
             if buy_usd <= 0:
                 err_tail = f" (fetch error: {_bal_err})" if _bal_err else ""
                 held_tail = (
@@ -950,7 +958,7 @@ class ExecutionEngineMixin:
                 )
                 return
             denom = price * _qrate
-            buy_amount = (buy_usd / denom) if denom > 0 else 0.0
+            buy_amount = fold_units(buy_usd, denom) if denom > 0 else 0.0
             clipped = buy_usd < buy_usd_target
             self._bus.emit(
                 "bot.log",
@@ -1091,7 +1099,7 @@ class ExecutionEngineMixin:
                 message=(
                     msg + f" Holdings now "
                     f"{self._current_holdings:.6f} "
-                    f"(~${self._current_holdings * price * float(self._quote_to_usd or 1.0):.2f})."
+                    f"(~${priced_usd(self._current_holdings, price, float(self._quote_to_usd or 1.0)):.2f})."
                 ),
             )
             self.stats.total_folded_usd += float(
@@ -1162,12 +1170,14 @@ class ExecutionEngineMixin:
             return
 
         _qrate = float(self._quote_to_usd or 1.0)
-        current_value = self._current_holdings * price * _qrate
-        excess_usd = current_value - self._anchor_target_balance
+        current_value = priced_usd(self._current_holdings, price, _qrate)
+        excess_usd = target_delta_usd(current_value, self._anchor_target_balance)
         if excess_usd <= 0:
             return
 
-        sell_amount = excess_usd / (price * _qrate) if (price * _qrate) > 0 else 0.0
+        sell_amount = (
+            scrum_units(excess_usd, price * _qrate) if (price * _qrate) > 0 else 0.0
+        )
         sell_amount = min(sell_amount, self._current_holdings)
         if sell_amount <= 0:
             return
@@ -1707,8 +1717,8 @@ class ExecutionEngineMixin:
             _ctx = dict(trace_context or {})
             _path = _ctx.get("path", "unspecified")
             _holdings = self._current_holdings
-            _value = _holdings * price * float(self._quote_to_usd or 1.0)
-            _delta = _value - self._target_balance
+            _value = priced_usd(_holdings, price, float(self._quote_to_usd or 1.0))
+            _delta = target_delta_usd(_value, self._target_balance)
             _tranches_n = len(self._fold_tranches)
             _main_lots_n = len(self._main_lots)
             _ctx_extras = ", ".join(f"{k}={v}" for k, v in _ctx.items() if k != "path")
@@ -1929,7 +1939,7 @@ class ExecutionEngineMixin:
                     return None
 
         try:
-            amount = cost / price
+            amount = fold_units(cost, price)
             if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                 amount = amount / _qrate_buy
 
@@ -1956,7 +1966,7 @@ class ExecutionEngineMixin:
                 self.stats.verify_clean += 1
             else:
                 self.stats.verify_adjusted += 1
-                amount = cost / vh_fp
+                amount = fold_units(cost, vh_fp)
                 if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                     amount = amount / _qrate_buy
 

@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any, TYPE_CHECKING
 
+from .sizing import priced_usd
+
 logger = logging.getLogger("acervator.scrumming")
 
 if TYPE_CHECKING:
@@ -336,7 +338,9 @@ class WireRoutingMixin(_Host):
                     _stack_reason = "no last-trade price yet"
                 else:
                     _qrate_local = float(self._quote_to_usd or 1.0)
-                    _pos_usd = self._current_holdings * _last_px * _qrate_local
+                    _pos_usd = priced_usd(
+                        self._current_holdings, _last_px, _qrate_local
+                    )
                     _target = float(self._target_balance)
                     _band_usd = _target * stack_pct / 100.0
                     _at_center = abs(_pos_usd - _target) <= _band_usd
