@@ -7,7 +7,7 @@ from the YTD trade files, both read only.
 ``record_for``, ``exchanges``, ``symbols``, ``statuses``, ``aggregate``,
 ``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``stored_records``,
 ``stored_exchanges``, ``import_live_fleet``, ``generate_from_ytd``,
-``sim_dir``, ``sim_path`` and ``save``; it holds no venue, writes ``sim_path``
+``hold_battery_fleet``, ``sim_dir``, ``sim_path`` and ``save``; it holds no venue, writes ``sim_path``
 alone and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
 other name. ``bots``, ``exchanges``, ``statuses`` and ``aggregate`` read the
 held records alone, so the tab starts empty; ``stored_records`` and
@@ -82,6 +82,7 @@ READ_NAMES = (
     "stored_exchanges",
     "import_live_fleet",
     "generate_from_ytd",
+    "hold_battery_fleet",
     "sim_dir",
     "sim_path",
     "save",
@@ -90,6 +91,7 @@ READ_NAMES = (
 LIVE_ORIGIN = "live"
 YTD_ORIGIN = "ytd"
 NEW_ORIGIN = "new"
+BATTERY_ORIGIN = "battery"
 
 SCRUMMING_MODE = "scrumming"
 EXTRACTOR_MODE = "extractor"
@@ -464,6 +466,27 @@ def ytd_record(bot: SimBot, target_usd: Optional[float]) -> dict:
     return record
 
 
+def battery_record(bot: SimBot) -> dict:
+    """The stored-record shape for one generated Battery bot: ``wizard_record``
+    over its exchange, quote, base, symbol, ``target_usd``, ``ta_timeframe``
+    and ``scrumming_interval_pct``, ``bot_id`` its own and ``origin``
+    ``BATTERY_ORIGIN``."""
+    record = wizard_record(
+        {
+            "exchange_id": bot.exchange_id,
+            "base_currency": bot.base_currency,
+            "target_asset": bot.asset,
+            "symbol": bot.symbol,
+            "target_balance": float(bot.target_usd or 0.0),
+            "ta_timeframe": bot.ta_timeframe,
+            "scrumming_interval_pct": float(bot.scrumming_interval_pct),
+        }
+    )
+    record["bot_id"] = bot.bot_id
+    record["origin"] = BATTERY_ORIGIN
+    return record
+
+
 @dataclass(frozen=True)
 class YtdGeneration:
     """What one ``generate_from_ytd`` held: ``bots``, the ``SimBot`` of each
@@ -821,6 +844,27 @@ class FleetSource:
             missing=tuple(sorted(missing, key=lambda one: (one.symbol, one.year))),
         )
 
+    def hold_battery_fleet(self, bots: Sequence[SimBot]) -> list[SimBot]:
+        """Make ``bots`` the held fleet: a bot already held under its
+        ``bot_id`` on the same symbol, exchange and ``target_usd`` keeps its
+        record, every other is held as ``battery_record``, and every held
+        record outside ``bots`` is dropped; answers the ``SimBot`` of each
+        record held, by exchange then symbol then id. The sim fleet file takes
+        them on the next ``save``."""
+        kept: dict[str, dict] = {}
+        for bot in bots:
+            record = self._records.get(bot.bot_id)
+            held = _held_bot(bot.bot_id, record) if isinstance(record, dict) else None
+            same = (
+                held is not None
+                and held.symbol == bot.symbol
+                and held.exchange_id == bot.exchange_id
+                and held.target_usd == bot.target_usd
+            )
+            kept[bot.bot_id] = record if same else battery_record(bot)
+        self._records = kept
+        return self.bots()
+
     def create(self, config: dict) -> SimBot:
         """Hold one record built from the bot wizard's config through
         ``wizard_record`` and answer its ``SimBot``; its ``bot_id`` is the first
@@ -1002,6 +1046,7 @@ def ytd_fleet(source, exchange_id: str = "") -> list[SimBot]:
 
 
 __all__ = [
+    "BATTERY_ORIGIN",
     "BOT_ID_LENGTH",
     "BOT_STATE_NAME",
     "EMPTY_AGGREGATE",
@@ -1024,6 +1069,7 @@ __all__ = [
     "SimBot",
     "YtdGeneration",
     "aggregate_stats",
+    "battery_record",
     "exchange_choice",
     "extractor_pool_color",
     "live_fleet",

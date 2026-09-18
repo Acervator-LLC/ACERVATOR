@@ -1,15 +1,17 @@
 """Portfolio Battery Mode: every portfolio symbol walked over its RA-StoneTablet.
 
-``span_bounds`` names the window a run covers, ``asset_candles`` gathers one
-asset's RA tablets into one series and ``resample`` folds those daily rows into
-``1d``, ``1w`` and ``1M`` bars. ``run_symbol`` hands the bars to
-``back_test.walk``, the same gate chain a live bot ticks, and reads the
-buy-and-hold baseline off that walk's own ``start_price`` and ``end_price``.
-``run_portfolio`` sums those runs per timeframe and ``run_battery`` reports every
-portfolio, a symbol with no tablet as missing weight and a recorded gap through
-``gaps_in_span``. Each symbol walks under the unit rule ``cited_rule_for``
-names for its class on its venue, and a symbol with no cited rule is
-``UNCITED_RULE``, missing weight, and not walked.
+``plan_run`` gives each portfolio its bots, the held fleet's own where
+``matched_bots`` finds one per symbol on the venue the run reads, else one
+``generated_bot`` per symbol at the ``symbol_targets`` share of
+``DEFAULT_TARGET_USD``; ``span_bounds``, ``asset_candles`` and ``resample``
+give ``run_symbol`` the ``1d``, ``1w`` and ``1M`` bars it hands to
+``back_test.walk``, the same gate chain a live bot ticks, reading the
+buy-and-hold baseline and its trough off that walk's own prices.
+``run_portfolio`` sums those runs per timeframe and reads ``reading_for``, the
+highest historical mark the scrummed end clears, and ``run_battery`` reports
+every portfolio, a symbol with no tablet as missing weight, a recorded gap
+through ``gaps_in_span`` and a symbol with no ``cited_rule_for`` rule as
+``UNCITED_RULE``, missing weight and not walked.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 from ..trading.stone_tablets.ra_fetcher import read_gaps
 from .back_test import (
@@ -27,9 +29,11 @@ from .back_test import (
     SimTrade,
     cited_rule_for,
     new_bot,
+    run_budget_usd,
     walk,
 )
-from .portfolios import PERIODS, PORTFOLIOS, is_crypto
+from .fleet_source import BATTERY_ORIGIN, SCRUMMING_MODE, SimBot
+from .portfolios import PERIODS, PORTFOLIOS, Portfolio, is_crypto
 from .validation import iso_stamp
 
 logger = logging.getLogger("acervator.simulator.portfolio_battery")
@@ -47,11 +51,24 @@ FULL_SPAN = "All"
 #: Every span a run may be asked for: the archive's six, and the whole tape.
 SPANS = (FULL_SPAN,) + tuple(PERIODS)
 
-#: What one symbol is given, the Bot Wizard's own ``target_balance`` default.
-SYMBOL_CAPITAL_USD = 200.0
+#: The default Target Balance of one generated Battery bot, the operator's
+#: figure; a portfolio's mix shares ``DEFAULT_TARGET_USD`` per symbol.
+DEFAULT_TARGET_USD = 500.0
 
 #: ``scrumming_interval`` as the Bot Wizard opens it.
 SCRUMMING_INTERVAL_PCT = 1.0
+
+#: The reading of one scrummed end against its historical path's three marks,
+#: the highest one it clears.
+REVERSED = "reversed"
+IMPROVED = "improved"
+DEFENDED = "defended"
+UNDEFENDED = "undefended"
+NOT_RUN = "not run"
+READINGS = (REVERSED, IMPROVED, DEFENDED, UNDEFENDED, NOT_RUN)
+
+#: ``PortfolioResult.fleet_origin`` when the held fleet's own bots ran.
+HELD_FLEET = "held"
 
 #: Which venue a symbol's tablets are read from. Crypto prefers the venue the
 #: product trades.
@@ -72,6 +89,34 @@ WORSE = "worse"
 LEVEL = "level"
 
 DAY_MS = 86_400_000
+
+
+def reading_for(
+    ran: bool, start_usd: float, trough_usd: float, end_usd: float, scrummed_usd: float
+) -> str:
+    """The highest historical mark ``scrummed_usd`` clears: ``REVERSED`` at or
+    above ``start_usd`` when ``end_usd`` fell below it, ``IMPROVED`` above
+    ``end_usd``, ``DEFENDED`` above ``trough_usd``, else ``UNDEFENDED``;
+    ``NOT_RUN`` while ``ran`` is False."""
+    if not ran:
+        return NOT_RUN
+    if end_usd < start_usd and scrummed_usd >= start_usd:
+        return REVERSED
+    if scrummed_usd > end_usd:
+        return IMPROVED
+    if scrummed_usd > trough_usd:
+        return DEFENDED
+    return UNDEFENDED
+
+
+def reading_arithmetic(
+    start_usd: float, trough_usd: float, end_usd: float, scrummed_usd: float, read: str
+) -> str:
+    """The four figures ``reading_for`` compared, written out beside ``read``."""
+    return (
+        f"historical start {start_usd:,.2f}, trough {trough_usd:,.2f}, end "
+        f"{end_usd:,.2f}; scrummed end {scrummed_usd:,.2f}; reading {read}"
+    )
 
 
 @dataclass(frozen=True)
@@ -101,6 +146,9 @@ class SymbolRun:
     asset_class: str = ""
     venue: str = ""
     unit_rule: str = ""
+    bot_id: str = ""
+    origin: str = ""
+    trough_price: float = 0.0
 
     @property
     def ran(self) -> bool:
@@ -116,10 +164,29 @@ class SymbolRun:
         return self.capital_usd * self.end_price / self.start_price
 
     @property
+    def trough_usd(self) -> float:
+        """``capital_usd`` carried from ``start_price`` to ``trough_price``, the
+        lowest the untraded holding read on any walked bar."""
+        if self.start_price <= 0.0:
+            return 0.0
+        return self.capital_usd * self.trough_price / self.start_price
+
+    @property
     def accumulation_usd(self) -> float:
         """What the walk ended holding: ``end_units`` at ``end_price``, plus
         ``cash_usd``."""
         return self.end_units * self.end_price + self.cash_usd
+
+    @property
+    def reading(self) -> str:
+        """``reading_for`` over this symbol's own three marks."""
+        return reading_for(
+            self.ran,
+            self.capital_usd,
+            self.trough_usd,
+            self.baseline_usd,
+            self.accumulation_usd,
+        )
 
     @property
     def units_gained(self) -> float:
@@ -257,15 +324,166 @@ def battery_bot(asset: str, exchange_id: str, timeframe: str, capital_usd: float
     )
 
 
+def symbol_targets(
+    portfolio: Portfolio, default_usd: float = DEFAULT_TARGET_USD
+) -> dict[str, float]:
+    """Each symbol's Target Balance: its ``positions_usd`` size when
+    ``sizes_known``, else its ``weights`` share of ``default_usd`` per symbol,
+    to the cent."""
+    if portfolio.sizes_known:
+        sizes = portfolio.positions_usd or {}
+        return {symbol: round(float(sizes[symbol]), 2) for symbol in portfolio.symbols}
+    if portfolio.mix is None:
+        return {symbol: float(default_usd) for symbol in portfolio.symbols}
+    whole = float(default_usd) * len(portfolio.symbols)
+    weights = portfolio.weights
+    return {symbol: round(whole * weights[symbol], 2) for symbol in portfolio.symbols}
+
+
+def plan_venue(asset: str, entries: Sequence[Any]) -> str:
+    """``exchange_for`` when ``asset`` holds a tablet, else the venue its class
+    prefers, so a bot is seated even when its symbol reads ``NO_TABLET``."""
+    return exchange_for(asset, entries) or (
+        CRYPTO_EXCHANGE if is_crypto(asset) else EQUITY_EXCHANGE
+    )
+
+
+def generated_bot(asset: str, exchange_id: str, target_usd: float) -> SimBot:
+    """One scrumming ``SimBot`` for ``asset`` on ``exchange_id`` at
+    ``target_usd``, ``ta_timeframe`` ``TABLET_TIMEFRAME``, ``bot_id`` the pair
+    and venue, ``origin`` ``BATTERY_ORIGIN``."""
+    bot = new_bot(
+        f"{asset}/USD",
+        exchange_id,
+        target_usd,
+        ta_timeframe=TABLET_TIMEFRAME,
+        scrumming_interval_pct=SCRUMMING_INTERVAL_PCT,
+        bot_id=f"{asset}@{exchange_id}",
+    )
+    return replace(bot, origin=BATTERY_ORIGIN)
+
+
+def matched_bots(
+    portfolio: Portfolio, held: Sequence[SimBot], venue_of: Callable[[str], str]
+) -> Optional[dict[str, SimBot]]:
+    """One held scrumming bot per symbol of ``portfolio``, on ``venue_of`` that
+    symbol with ``target_usd`` above zero, the lowest ``bot_id`` where several
+    match; None when any symbol has none."""
+    out: dict[str, SimBot] = {}
+    for symbol in portfolio.symbols:
+        venue = venue_of(symbol)
+        found = sorted(
+            (
+                bot
+                for bot in held
+                if bot.mode == SCRUMMING_MODE
+                and bot.asset == symbol
+                and bot.exchange_id == venue
+                and bot.target_usd is not None
+                and float(bot.target_usd) > 0.0
+            ),
+            key=lambda bot: bot.bot_id,
+        )
+        if not found:
+            return None
+        out[symbol] = found[0]
+    return out
+
+
+@dataclass(frozen=True)
+class RunPlan:
+    """The bots one press runs: per portfolio name, one ``SimBot`` per symbol,
+    and whether they are the held fleet's own or generated."""
+
+    names: tuple[str, ...]
+    by_portfolio: dict[str, dict[str, SimBot]]
+    origins: dict[str, str]
+
+    @property
+    def bots(self) -> list[SimBot]:
+        """Every bot the run holds, one per ``bot_id``, the first portfolio's
+        where two name one id."""
+        seen: dict[str, SimBot] = {}
+        for name in self.names:
+            for bot in self.by_portfolio.get(name, {}).values():
+                seen.setdefault(bot.bot_id, bot)
+        return list(seen.values())
+
+    @property
+    def budget_usd(self) -> float:
+        """``run_budget_usd`` over ``bots``."""
+        return run_budget_usd(self.bots)
+
+    @property
+    def fleet_origins(self) -> tuple[str, ...]:
+        """The ``origin`` words ``bots`` carry, sorted."""
+        return tuple(sorted({bot.origin for bot in self.bots}))
+
+    @property
+    def plan_origins(self) -> tuple[str, ...]:
+        """The distinct ``origins`` values, ``BATTERY_ORIGIN`` or
+        ``HELD_FLEET``, sorted."""
+        return tuple(sorted(set(self.origins.values())))
+
+    @property
+    def summary(self) -> dict:
+        """The counts one plan reports."""
+        return {
+            "portfolios": list(self.names),
+            "bots": len(self.bots),
+            "budget_usd": self.budget_usd,
+            "origins": {name: self.origins.get(name, "") for name in self.names},
+            "targets": {
+                name: {asset: bot.target_usd for asset, bot in bots.items()}
+                for name, bots in self.by_portfolio.items()
+            },
+        }
+
+
+def plan_run(
+    names: Sequence[str],
+    tablets: Any,
+    held: Sequence[SimBot] = (),
+    default_usd: float = DEFAULT_TARGET_USD,
+) -> RunPlan:
+    """The ``RunPlan`` for ``names``, every ``PORTFOLIOS`` name when empty:
+    ``matched_bots`` from ``held`` where the whole portfolio matches, else one
+    ``generated_bot`` per symbol at ``symbol_targets``."""
+    wanted = [str(one) for one in names if str(one) in PORTFOLIOS] or sorted(PORTFOLIOS)
+    entries = tablets.entries()
+    venues: dict[str, str] = {}
+
+    def venue_of(asset: str) -> str:
+        if asset not in venues:
+            venues[asset] = plan_venue(asset, entries)
+        return venues[asset]
+
+    by_portfolio: dict[str, dict[str, SimBot]] = {}
+    origins: dict[str, str] = {}
+    for name in wanted:
+        portfolio = PORTFOLIOS[name]
+        matched = matched_bots(portfolio, held, venue_of)
+        if matched is not None:
+            by_portfolio[name] = matched
+            origins[name] = HELD_FLEET
+            continue
+        targets = symbol_targets(portfolio, default_usd)
+        by_portfolio[name] = {
+            symbol: generated_bot(symbol, venue_of(symbol), targets[symbol])
+            for symbol in portfolio.symbols
+        }
+        origins[name] = BATTERY_ORIGIN
+    return RunPlan(names=tuple(wanted), by_portfolio=by_portfolio, origins=origins)
+
+
 def run_symbol(
-    asset: str,
+    bot: SimBot,
     rows: Sequence[Sequence[float]],
-    exchange_id: str,
     timeframe: str,
-    capital_usd: float = SYMBOL_CAPITAL_USD,
     ticks: int = TICKS_PER_SYMBOL,
 ) -> SymbolRun:
-    """Walk ``asset`` over ``rows`` folded to ``timeframe`` and read the result.
+    """Walk ``bot`` over ``rows`` folded to ``timeframe`` at its own
+    ``target_usd`` and read the result.
 
     ``rows`` are one span's daily tablet candles; no bar answers ``NO_TABLET``,
     a class with no rule in ``cited_rule_for`` answers ``UNCITED_RULE``, and
@@ -273,8 +491,11 @@ def run_symbol(
     """
     from ..trading.indicators.types import candles_from_raw
 
+    asset = bot.asset
+    exchange_id = bot.exchange_id
+    capital_usd = float(bot.target_usd or 0.0)
     bars = resample(rows, timeframe)
-    symbol = f"{asset}/USD"
+    symbol = bot.symbol or f"{asset}/USD"
     if not bars:
         return SymbolRun(
             asset=asset,
@@ -282,7 +503,9 @@ def run_symbol(
             exchange_id=exchange_id,
             timeframe=timeframe,
             outcome=NO_TABLET,
-            capital_usd=float(capital_usd),
+            capital_usd=capital_usd,
+            bot_id=bot.bot_id,
+            origin=bot.origin,
         )
     class_name, venue, rule = cited_rule_for(asset, exchange_id)
     if rule is None:
@@ -292,12 +515,14 @@ def run_symbol(
             exchange_id=exchange_id,
             timeframe=timeframe,
             outcome=UNCITED_RULE,
-            capital_usd=float(capital_usd),
+            capital_usd=capital_usd,
             bars=len(bars),
             first_ts_ms=int(bars[0][0]),
             last_ts_ms=int(bars[-1][0]),
             asset_class=class_name,
             venue=venue,
+            bot_id=bot.bot_id,
+            origin=bot.origin,
         )
     if len(bars) < MIN_CANDLES:
         return SymbolRun(
@@ -306,17 +531,19 @@ def run_symbol(
             exchange_id=exchange_id,
             timeframe=timeframe,
             outcome=SHORT_TAPE,
-            capital_usd=float(capital_usd),
+            capital_usd=capital_usd,
             bars=len(bars),
             first_ts_ms=int(bars[0][0]),
             last_ts_ms=int(bars[-1][0]),
             asset_class=class_name,
             venue=venue,
             unit_rule=rule,
+            bot_id=bot.bot_id,
+            origin=bot.origin,
         )
-    bot = battery_bot(asset, exchange_id, timeframe, capital_usd)
+    walked = replace(bot, ta_timeframe=timeframe)
     result = walk(
-        bot,
+        walked,
         candles_from_raw(bars),
         walk_step(len(bars), ticks),
         FUNDED_BY_TARGETS,
@@ -328,7 +555,7 @@ def run_symbol(
         exchange_id=exchange_id,
         timeframe=timeframe,
         outcome=RAN,
-        capital_usd=float(capital_usd),
+        capital_usd=capital_usd,
         bars=len(bars),
         ticks=result.ticks,
         scrum_latched=result.scrum_latched,
@@ -346,6 +573,9 @@ def run_symbol(
         asset_class=class_name,
         venue=venue,
         unit_rule=rule,
+        bot_id=bot.bot_id,
+        origin=bot.origin,
+        trough_price=min(float(bar[4]) for bar in bars[MIN_CANDLES - 1 :]),
     )
 
 
@@ -431,6 +661,40 @@ class TimeframeResult:
         return WORSE if self.improvement_usd < 0.0 else LEVEL
 
     @property
+    def trough_usd(self) -> float:
+        """The sum of each covered symbol's ``trough_usd``, the floor the
+        untraded holdings never read below."""
+        return sum(one.trough_usd for one in self.ran)
+
+    @property
+    def historical_failed(self) -> bool:
+        """True when ``baseline_usd`` ended below ``committed_usd``."""
+        return bool(self.ran) and self.baseline_usd < self.committed_usd
+
+    @property
+    def reading(self) -> str:
+        """``reading_for`` over ``committed_usd``, ``trough_usd``,
+        ``baseline_usd`` and ``accumulation_usd``."""
+        return reading_for(
+            bool(self.ran),
+            self.committed_usd,
+            self.trough_usd,
+            self.baseline_usd,
+            self.accumulation_usd,
+        )
+
+    @property
+    def reading_arithmetic(self) -> str:
+        """``reading_arithmetic`` over the same four figures and ``reading``."""
+        return reading_arithmetic(
+            self.committed_usd,
+            self.trough_usd,
+            self.baseline_usd,
+            self.accumulation_usd,
+            self.reading,
+        )
+
+    @property
     def summary(self) -> dict:
         """The counts one Portfolio Battery row reports."""
         ran = self.ran
@@ -456,6 +720,10 @@ class TimeframeResult:
             "missing_weight": self.missing_weight,
             "missing_symbols": self.missing_symbols,
             "verdict": self.verdict,
+            "trough_usd": self.trough_usd,
+            "historical_failed": self.historical_failed,
+            "reading": self.reading,
+            "reading_arithmetic": self.reading_arithmetic,
         }
 
 
@@ -469,6 +737,8 @@ class PortfolioResult:
     start_ms: int
     end_ms: int
     timeframes: tuple[TimeframeResult, ...]
+    fleet_origin: str = BATTERY_ORIGIN
+    bot_ids: tuple[str, ...] = ()
 
     @property
     def improved_timeframes(self) -> list[str]:
@@ -481,6 +751,25 @@ class PortfolioResult:
         ran."""
         ranked = [one for one in self.timeframes if one.ran]
         return max(ranked, key=lambda one: one.improvement_usd) if ranked else None
+
+    @property
+    def readings(self) -> dict[str, str]:
+        """Each timeframe's ``reading``, by timeframe."""
+        return {one.timeframe: one.reading for one in self.timeframes}
+
+    @property
+    def line(self) -> str:
+        """One Activity Log line: the name, the span, each timeframe's reading
+        and how many symbols ran at the first timeframe."""
+        readings = ", ".join(f"{tf} {read}" for tf, read in self.readings.items())
+        first = self.timeframes[0] if self.timeframes else None
+        ran = (
+            f"{len(first.ran)} of {len(first.runs)}" if first is not None else "0 of 0"
+        )
+        return (
+            f"{self.name} over {self.span}: {readings}; {ran} symbol(s) ran; "
+            f"bots {self.fleet_origin}."
+        )
 
     @property
     def summary(self) -> dict:
@@ -496,6 +785,9 @@ class PortfolioResult:
             "improved_timeframes": self.improved_timeframes,
             "best_timeframe": best.timeframe if best is not None else "",
             "best_improvement_usd": best.improvement_usd if best is not None else 0.0,
+            "fleet_origin": self.fleet_origin,
+            "bot_ids": list(self.bot_ids),
+            "readings": self.readings,
         }
 
 
@@ -515,6 +807,18 @@ class BatteryRun:
     uncited_assets: tuple[str, ...] = ()
     #: The ``ParityReport`` ``run_battery`` wrote for this press; None until it has.
     report: Any = None
+    bots: tuple[SimBot, ...] = ()
+    budget_usd: float = 0.0
+    fleet_origins: tuple[str, ...] = ()
+
+    def reading_counts(self, timeframe: str) -> dict[str, int]:
+        """How many portfolios read each of ``READINGS`` at ``timeframe``."""
+        counts = {read: 0 for read in READINGS}
+        for portfolio in self.portfolios:
+            read = portfolio.readings.get(timeframe)
+            if read in counts:
+                counts[read] += 1
+        return counts
 
     @property
     def summary(self) -> dict:
@@ -531,23 +835,39 @@ class BatteryRun:
             "gaps": len(self.gaps),
             "missing_assets": list(self.missing_assets),
             "uncited_assets": list(self.uncited_assets),
+            "bots": len(self.bots),
+            "budget_usd": self.budget_usd,
+            "fleet_origins": list(self.fleet_origins),
+            "readings": {tf: self.reading_counts(tf) for tf in self.timeframes},
         }
 
     @property
     def lines(self) -> list[str]:
-        """The span, what improved, what had no tape and what had no cited
-        unit rule, in the pane's own order."""
+        """The span, the budget, the readings per timeframe, what improved,
+        what had no tape and what had no cited unit rule, in the pane's own
+        order."""
         read = self.summary
         if not self.portfolios:
             return ["No portfolio reached an RA-StoneTablet with enough candles."]
         out = [
             f"{read['portfolios']} portfolio(s) over {read['span']}, "
             f"{read['first_at']} to {read['last_at']}.",
+            f"{read['bots']} bot(s), budget ${read['budget_usd']:,.2f}, the sum of "
+            f"their Target Balances; bots {', '.join(read['fleet_origins'])}.",
             f"{read['symbol_runs']} symbol runs at "
             f"{', '.join(read['timeframes'])}.",
-            f"{read['portfolios_improved']} of {read['portfolios']} portfolio(s) "
-            "beat their own buy-and-hold at one timeframe or more.",
         ]
+        for timeframe in self.timeframes:
+            counts = self.reading_counts(timeframe)
+            out.append(
+                f"At {timeframe}: "
+                + ", ".join(f"{counts[one]} {one}" for one in READINGS)
+                + " against the historical path."
+            )
+        out.append(
+            f"{read['portfolios_improved']} of {read['portfolios']} portfolio(s) "
+            "beat their own buy-and-hold at one timeframe or more."
+        )
         if self.missing_assets:
             out.append(
                 f"{len(self.missing_assets)} symbol(s) hold no tablet: "
@@ -622,18 +942,25 @@ def run_portfolio(
     tablets: Any,
     span: str = FULL_SPAN,
     timeframes: Sequence[str] = TIMEFRAMES,
-    capital_usd: float = SYMBOL_CAPITAL_USD,
     ticks: int = TICKS_PER_SYMBOL,
     cache: Optional[TapeCache] = None,
     held: Optional[dict] = None,
+    bots: Optional[dict[str, SimBot]] = None,
+    fleet_origin: str = BATTERY_ORIGIN,
 ) -> PortfolioResult:
-    """Walk every symbol of ``name`` over ``span`` at each of ``timeframes``.
+    """Walk every symbol of ``name`` over ``span`` at each of ``timeframes``,
+    each on the bot ``bots`` names for it, ``plan_run`` with no held fleet when
+    ``bots`` is None.
 
-    ``held`` keeps one ``(asset, timeframe)`` run across portfolios, so a symbol
-    two portfolios share is walked once.
+    ``held`` keeps one ``(bot_id, timeframe, target)`` run across portfolios,
+    so a symbol two portfolios share on one bot is walked once.
     """
     entry = PORTFOLIOS.get(str(name))
     symbols = entry.symbols if entry is not None else ()
+    if bots is None:
+        plan = plan_run((str(name),), tablets)
+        bots = plan.by_portfolio.get(str(name), {})
+        fleet_origin = plan.origins.get(str(name), BATTERY_ORIGIN)
     start_ms, end_ms = span_bounds(span, tablets.entries())
     tape = cache if cache is not None else TapeCache(tablets, start_ms, end_ms)
     walked_by_key = held if held is not None else {}
@@ -641,16 +968,12 @@ def run_portfolio(
     for timeframe in timeframes:
         walked: list[SymbolRun] = []
         for asset in symbols:
-            key = (asset, timeframe)
+            bot = bots.get(asset)
+            if bot is None:
+                continue
+            key = (bot.bot_id, timeframe, round(float(bot.target_usd or 0.0), 2))
             if key not in walked_by_key:
-                walked_by_key[key] = run_symbol(
-                    asset,
-                    tape.rows(asset),
-                    tape.venue(asset),
-                    timeframe,
-                    capital_usd,
-                    ticks,
-                )
+                walked_by_key[key] = run_symbol(bot, tape.rows(asset), timeframe, ticks)
             walked.append(walked_by_key[key])
         by_timeframe.append(TimeframeResult(timeframe=timeframe, runs=tuple(walked)))
     return PortfolioResult(
@@ -660,6 +983,8 @@ def run_portfolio(
         start_ms=start_ms,
         end_ms=end_ms,
         timeframes=tuple(by_timeframe),
+        fleet_origin=fleet_origin,
+        bot_ids=tuple(bots[asset].bot_id for asset in symbols if asset in bots),
     )
 
 
@@ -668,12 +993,13 @@ def run_battery(
     names: Sequence[str] = (),
     span: str = FULL_SPAN,
     timeframes: Sequence[str] = TIMEFRAMES,
-    capital_usd: float = SYMBOL_CAPITAL_USD,
     ticks: int = TICKS_PER_SYMBOL,
+    plan: Optional[RunPlan] = None,
+    progress: Optional[Callable[[str], None]] = None,
 ) -> BatteryRun:
     """Run each portfolio in ``names`` over ``span`` through
-    ``_walk_portfolios`` and write the pass through ``write_report`` onto
-    ``BatteryRun.report``.
+    ``_walk_portfolios`` on ``plan``'s bots and write the pass through
+    ``write_report`` onto ``BatteryRun.report``.
 
     A ``_walk_portfolios`` that raises reaches ``write_partial`` with the
     exception and re-raises.
@@ -681,7 +1007,9 @@ def run_battery(
     from .parity_report import PORTFOLIO_BATTERY, write_partial, write_report
 
     try:
-        outcome = _walk_portfolios(tablets, names, span, timeframes, capital_usd, ticks)
+        outcome = _walk_portfolios(
+            tablets, names, span, timeframes, ticks, plan, progress
+        )
     except Exception as exc:
         write_partial(
             PORTFOLIO_BATTERY, exc, tablets=tablets, names=tuple(names), span=str(span)
@@ -695,22 +1023,32 @@ def _walk_portfolios(
     names: Sequence[str],
     span: str,
     timeframes: Sequence[str],
-    capital_usd: float,
     ticks: int,
+    plan: Optional[RunPlan],
+    progress: Optional[Callable[[str], None]],
 ) -> BatteryRun:
-    """Run each portfolio in ``names`` over ``span``, or every portfolio when it
-    is empty."""
-    wanted = [str(one) for one in names] or sorted(PORTFOLIOS)
+    """Run each portfolio ``plan`` names, ``plan_run`` over ``names`` when it
+    is None, handing ``progress`` each ``PortfolioResult.line`` as it lands."""
+    chosen = plan if plan is not None else plan_run(names, tablets)
     start_ms, end_ms = span_bounds(span, tablets.entries())
     tape = TapeCache(tablets, start_ms, end_ms)
-    walked_by_key: dict[tuple[str, str], SymbolRun] = {}
-    results = [
-        run_portfolio(
-            name, tablets, span, timeframes, capital_usd, ticks, tape, walked_by_key
+    walked_by_key: dict[tuple[str, str, float], SymbolRun] = {}
+    results: list[PortfolioResult] = []
+    for name in chosen.names:
+        result = run_portfolio(
+            name,
+            tablets,
+            span,
+            timeframes,
+            ticks,
+            tape,
+            walked_by_key,
+            chosen.by_portfolio.get(name, {}),
+            chosen.origins.get(name, BATTERY_ORIGIN),
         )
-        for name in wanted
-        if name in PORTFOLIOS
-    ]
+        results.append(result)
+        if progress is not None:
+            progress(result.line)
     assets = sorted({one.asset for one in walked_by_key.values()})
     missing = sorted(
         {one.asset for one in walked_by_key.values() if one.outcome == NO_TABLET}
@@ -729,6 +1067,9 @@ def _walk_portfolios(
         tablet_root=str(tablets.root()),
         symbol_runs=len(walked_by_key),
         uncited_assets=tuple(uncited),
+        bots=tuple(chosen.bots),
+        budget_usd=chosen.budget_usd,
+        fleet_origins=chosen.fleet_origins,
     )
 
 
@@ -736,23 +1077,31 @@ __all__ = [
     "BETTER",
     "CRYPTO_EXCHANGE",
     "DAY_MS",
+    "DEFAULT_TARGET_USD",
+    "DEFENDED",
     "EQUITY_EXCHANGE",
     "FULL_SPAN",
+    "HELD_FLEET",
+    "IMPROVED",
     "LEVEL",
     "MIN_CANDLES",
+    "NOT_RUN",
     "NO_TABLET",
     "RAN",
+    "READINGS",
+    "REVERSED",
     "SCRUMMING_INTERVAL_PCT",
     "SHORT_TAPE",
     "SPANS",
-    "SYMBOL_CAPITAL_USD",
     "SYMBOL_OUTCOMES",
     "TABLET_TIMEFRAME",
     "TICKS_PER_SYMBOL",
     "TIMEFRAMES",
+    "UNDEFENDED",
     "WORSE",
     "BatteryRun",
     "PortfolioResult",
+    "RunPlan",
     "SymbolRun",
     "TapeCache",
     "TimeframeResult",
@@ -763,11 +1112,18 @@ __all__ = [
     "exchange_for",
     "fold_bucket",
     "gaps_in_span",
+    "generated_bot",
+    "matched_bots",
+    "plan_run",
+    "plan_venue",
+    "reading_arithmetic",
+    "reading_for",
     "resample",
     "run_battery",
     "run_portfolio",
     "run_symbol",
     "slice_span",
     "span_bounds",
+    "symbol_targets",
     "walk_step",
 ]

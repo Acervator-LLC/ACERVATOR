@@ -2932,6 +2932,39 @@ why: the design intent's default Target Balance, mix share and reading are the
 next Battery unit's, and today the run walks every symbol at the same capital
 with equal weights.
 
+Since the Battery flow landed, that outcome is computed. The historical path is
+buy and hold over the span: its start is the Target Balances committed, its
+trough is the sum of each symbol's lowest untraded value on a walked bar, and
+its end is the baseline. The scrummed path ends at the accumulation. The reading
+is the highest of the three marks the scrummed end clears, and the report
+carries it per portfolio and timeframe with the four figures written out, then
+counts the readings per timeframe.
+
+`src/simulator/portfolio_battery.py` — the reading
+
+```python
+def reading_for(
+    ran: bool, start_usd: float, trough_usd: float, end_usd: float, scrummed_usd: float
+) -> str:
+    """The highest historical mark ``scrummed_usd`` clears: ``REVERSED`` at or
+    above ``start_usd`` when ``end_usd`` fell below it, ``IMPROVED`` above
+    ``end_usd``, ``DEFENDED`` above ``trough_usd``, else ``UNDEFENDED``;
+    ``NOT_RUN`` while ``ran`` is False."""
+    if not ran:
+        return NOT_RUN
+    if end_usd < start_usd and scrummed_usd >= start_usd:
+        return REVERSED
+    if scrummed_usd > end_usd:
+        return IMPROVED
+    if scrummed_usd > trough_usd:
+        return DEFENDED
+    return UNDEFENDED
+```
+
+The report's header names the run's budget as the sum of the run's bots' Target
+Balances, the origins those bots carry, and, per portfolio, whether the bots
+were generated or loaded from the held fleet.
+
 ### A run that raises
 
 A run that raises part-way still writes a file. It carries the header the run
@@ -2960,6 +2993,14 @@ Each Sim host answers `log_report`, which writes one line through the tab's
 own Activity Log at the level Import Live Fleet uses. No button starts a run
 on the tab today; the units that press the Validation run and the Battery call
 it with the run's report.
+
+Since the Battery flow landed, Run Portfolio and Run Every Portfolio start a run
+from the corner and the card and call it with the run's report when the run
+ends.
+
+```
+Portfolio Battery report written: <log root>/reports/simulator/portfolio_battery__CRYPTO_BLUE__2022__20260918T063630643184Z.md
+```
 
 ```
 Validation report written: <log root>/reports/simulator/validation__coinbase-live__2023-11-14_2023-11-17__20260918T052817474607Z.md
@@ -4278,6 +4319,90 @@ missing: IPOF (no_tablet), CCIV (no_tablet)
 Every portfolio over the whole tape reads 189 symbol runs in 26 seconds. Twelve
 of the thirty-five ended ahead of their own buy and hold at one timeframe or
 more.
+
+### The run from the corner
+
+Run Portfolio opens a chooser of the same shape as the exchange chooser, with a
+portfolio row listing the thirty-five names and a span row listing the seven
+spans; Run Every Portfolio opens it with the span row alone. On Ok the tab gives
+each portfolio its bots. Where the held fleet carries one scrumming bot per
+symbol of the portfolio, on the venue the run reads that symbol from, with a
+Target Balance above zero, those bots run at their own Target Balances and gate
+settings. Otherwise one bot is generated per symbol at the default Target
+Balance of $500 times the portfolio's mix share; every archive portfolio's mix
+is equal, so each bot reads $500. A portfolio that records the size of each
+position would run at those sizes; no archive entry records one.
+
+`src/simulator/portfolio_battery.py` — each bot's Target Balance
+
+```python
+def symbol_targets(
+    portfolio: Portfolio, default_usd: float = DEFAULT_TARGET_USD
+) -> dict[str, float]:
+    """Each symbol's Target Balance: its ``positions_usd`` size when
+    ``sizes_known``, else its ``weights`` share of ``default_usd`` per symbol,
+    to the cent."""
+    if portfolio.sizes_known:
+        sizes = portfolio.positions_usd or {}
+        return {symbol: round(float(sizes[symbol]), 2) for symbol in portfolio.symbols}
+    if portfolio.mix is None:
+        return {symbol: float(default_usd) for symbol in portfolio.symbols}
+    whole = float(default_usd) * len(portfolio.symbols)
+    weights = portfolio.weights
+    return {symbol: round(whole * weights[symbol], 2) for symbol in portfolio.symbols}
+```
+
+The run's bots become the held fleet: a bot already held under its id at the
+same symbol, venue and Target Balance keeps its record, a generated bot is held
+under the origin `battery`, and every other held record is dropped. The
+Scrumming Bots table then draws the run's bots and the strip's Spendable reads
+the run's budget, the sum of their Target Balances, before the run starts.
+
+`src/simulator/fleet_source.py` — the run's bots become the held fleet
+
+```python
+    def hold_battery_fleet(self, bots: Sequence[SimBot]) -> list[SimBot]:
+```
+
+The run itself walks on a worker thread, as the Market Inspector's Scan Now
+does, so the window keeps answering; each portfolio's reading reaches the
+Activity Log as it lands, then the run's own lines and the report line. A
+second press while a run is in flight writes one line and starts nothing. A
+symbol with no tablet or no cited unit rule is missing weight and named in the
+report, and the run proceeds over the rest.
+
+`src/gui/simulator/sim_trading_tab.py` — the worker thread
+
+```python
+        self._battery_thread = threading.Thread(
+            target=self._compute_battery,
+            args=(plan, span),
+            name="sim-portfolio-battery",
+            daemon=True,
+        )
+        self._battery_thread.start()
+```
+
+### What the Battery flow measured
+
+Before, in both builds over a scratch home holding a stored fleet of two coinbase
+bots and five 2022 tablets, a corner press on Run Portfolio opened no chooser and
+wrote one refusal line, and the runner driven directly walked every symbol at
+$200 with the outcome line reading `not computed`. After, Run Portfolio on
+CRYPTO_BLUE over 2022 opened the chooser, held three bots at $500 each with
+Spendable reading $1,500.00, ran on the worker thread, wrote one report whose
+Battery section read `1d improved, 1w defended, 1M not run` with BNB named as
+`no_tablet` and its $500 as missing weight, and wrote the report line; BOGLEHEAD
+over the same span read the same words with all three symbols run; Run Every
+Portfolio held sixty-three bots at $31,500.00 and wrote one report. A planted
+portfolio with a 60/30/10 mix read Targets of $900, $450 and $150; a stored fleet
+of BTC, ETH and BNB on coinbase at $1,000, $750 and $250 ran at those Targets
+with the report naming the bots loaded from the held fleet. Over a copy of the
+whole tape, Run Every Portfolio took 24.3 seconds in Qt and 24.9 in React while
+a 30 ms timer kept ticking with a longest gap of 0.342 and 0.125 seconds; the
+same run on the GUI thread read a gap of 1.035 seconds over a 1.32 second run.
+Every scratch file hashed equal before and after every press, no bot was
+constructed and no socket left loopback.
 
 ### It is not a Monte Carlo
 
