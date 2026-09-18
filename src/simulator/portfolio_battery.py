@@ -7,7 +7,9 @@ asset's RA tablets into one series and ``resample`` folds those daily rows into
 buy-and-hold baseline off that walk's own ``start_price`` and ``end_price``.
 ``run_portfolio`` sums those runs per timeframe and ``run_battery`` reports every
 portfolio, a symbol with no tablet as missing weight and a recorded gap through
-``gaps_in_span``.
+``gaps_in_span``. Each symbol walks under the unit rule ``cited_rule_for``
+names for its class on its venue, and a symbol with no cited rule is
+``UNCITED_RULE``, missing weight, and not walked.
 """
 
 from __future__ import annotations
@@ -18,7 +20,15 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from ..trading.stone_tablets.ra_fetcher import read_gaps
-from .back_test import FUNDED_BY_TARGETS, MIN_CANDLES, SimTrade, new_bot, walk
+from .back_test import (
+    FUNDED_BY_TARGETS,
+    MIN_CANDLES,
+    UNCITED_RULE,
+    SimTrade,
+    cited_rule_for,
+    new_bot,
+    walk,
+)
 from .portfolios import PERIODS, PORTFOLIOS, is_crypto
 from .validation import iso_stamp
 
@@ -55,7 +65,7 @@ NO_TABLET = "no_tablet"
 SHORT_TAPE = "short_tape"
 RAN = "ran"
 
-SYMBOL_OUTCOMES = (NO_TABLET, SHORT_TAPE, RAN)
+SYMBOL_OUTCOMES = (NO_TABLET, SHORT_TAPE, UNCITED_RULE, RAN)
 
 BETTER = "better"
 WORSE = "worse"
@@ -88,6 +98,9 @@ class SymbolRun:
     first_ts_ms: int = 0
     last_ts_ms: int = 0
     open_ts_ms: int = 0
+    asset_class: str = ""
+    venue: str = ""
+    unit_rule: str = ""
 
     @property
     def ran(self) -> bool:
@@ -254,8 +267,9 @@ def run_symbol(
 ) -> SymbolRun:
     """Walk ``asset`` over ``rows`` folded to ``timeframe`` and read the result.
 
-    ``rows`` are one span's daily tablet candles; too few bars answers
-    ``SHORT_TAPE`` and no bar answers ``NO_TABLET``.
+    ``rows`` are one span's daily tablet candles; no bar answers ``NO_TABLET``,
+    a class with no rule in ``cited_rule_for`` answers ``UNCITED_RULE``, and
+    too few bars answers ``SHORT_TAPE``.
     """
     from ..trading.indicators.types import candles_from_raw
 
@@ -270,6 +284,21 @@ def run_symbol(
             outcome=NO_TABLET,
             capital_usd=float(capital_usd),
         )
+    class_name, venue, rule = cited_rule_for(asset, exchange_id)
+    if rule is None:
+        return SymbolRun(
+            asset=asset,
+            symbol=symbol,
+            exchange_id=exchange_id,
+            timeframe=timeframe,
+            outcome=UNCITED_RULE,
+            capital_usd=float(capital_usd),
+            bars=len(bars),
+            first_ts_ms=int(bars[0][0]),
+            last_ts_ms=int(bars[-1][0]),
+            asset_class=class_name,
+            venue=venue,
+        )
     if len(bars) < MIN_CANDLES:
         return SymbolRun(
             asset=asset,
@@ -281,10 +310,17 @@ def run_symbol(
             bars=len(bars),
             first_ts_ms=int(bars[0][0]),
             last_ts_ms=int(bars[-1][0]),
+            asset_class=class_name,
+            venue=venue,
+            unit_rule=rule,
         )
     bot = battery_bot(asset, exchange_id, timeframe, capital_usd)
     result = walk(
-        bot, candles_from_raw(bars), walk_step(len(bars), ticks), FUNDED_BY_TARGETS
+        bot,
+        candles_from_raw(bars),
+        walk_step(len(bars), ticks),
+        FUNDED_BY_TARGETS,
+        rule=rule,
     )
     return SymbolRun(
         asset=asset,
@@ -307,6 +343,9 @@ def run_symbol(
         first_ts_ms=result.first_ts_ms,
         last_ts_ms=result.last_ts_ms,
         open_ts_ms=int(bars[MIN_CANDLES - 1][0]),
+        asset_class=class_name,
+        venue=venue,
+        unit_rule=rule,
     )
 
 
@@ -473,6 +512,7 @@ class BatteryRun:
     missing_assets: tuple[str, ...] = ()
     tablet_root: str = ""
     symbol_runs: int = 0
+    uncited_assets: tuple[str, ...] = ()
 
     @property
     def summary(self) -> dict:
@@ -488,12 +528,13 @@ class BatteryRun:
             "symbol_runs": self.symbol_runs,
             "gaps": len(self.gaps),
             "missing_assets": list(self.missing_assets),
+            "uncited_assets": list(self.uncited_assets),
         }
 
     @property
     def lines(self) -> list[str]:
-        """The span, what improved and what had no tape, in the pane's own
-        order."""
+        """The span, what improved, what had no tape and what had no cited
+        unit rule, in the pane's own order."""
         read = self.summary
         if not self.portfolios:
             return ["No portfolio reached an RA-StoneTablet with enough candles."]
@@ -512,6 +553,12 @@ class BatteryRun:
             )
         if self.gaps:
             out.append(f"{len(self.gaps)} recorded gap(s) fall inside the span.")
+        if self.uncited_assets:
+            out.append(
+                f"{len(self.uncited_assets)} symbol(s) have no cited unit rule "
+                "on their venue and were not simulated: "
+                + ", ".join(self.uncited_assets)
+            )
         return out
 
 
@@ -639,6 +686,9 @@ def run_battery(
     missing = sorted(
         {one.asset for one in walked_by_key.values() if one.outcome == NO_TABLET}
     )
+    uncited = sorted(
+        {one.asset for one in walked_by_key.values() if one.outcome == UNCITED_RULE}
+    )
     return BatteryRun(
         span=str(span),
         start_ms=start_ms,
@@ -649,6 +699,7 @@ def run_battery(
         missing_assets=tuple(missing),
         tablet_root=str(tablets.root()),
         symbol_runs=len(walked_by_key),
+        uncited_assets=tuple(uncited),
     )
 
 

@@ -18,6 +18,7 @@ from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
 from .sizing import (
+    FRACTIONAL_UNITS,
     fold_units,
     priced_usd,
     sale_proceeds_usd,
@@ -557,7 +558,11 @@ class ExecutionEngineMixin:
 
         if delta_usd > 0:
             _denom_sc = price * _qrate
-            sell_amount = scrum_units(delta_usd, _denom_sc) if _denom_sc > 0 else 0.0
+            sell_amount = (
+                scrum_units(delta_usd, _denom_sc, FRACTIONAL_UNITS)
+                if _denom_sc > 0
+                else 0.0
+            )
             sell_amount = min(sell_amount, self._current_holdings)
             if sell_amount <= 0:
                 self._bus.emit(
@@ -958,7 +963,9 @@ class ExecutionEngineMixin:
                 )
                 return
             denom = price * _qrate
-            buy_amount = fold_units(buy_usd, denom) if denom > 0 else 0.0
+            buy_amount = (
+                fold_units(buy_usd, denom, FRACTIONAL_UNITS) if denom > 0 else 0.0
+            )
             clipped = buy_usd < buy_usd_target
             self._bus.emit(
                 "bot.log",
@@ -1176,7 +1183,9 @@ class ExecutionEngineMixin:
             return
 
         sell_amount = (
-            scrum_units(excess_usd, price * _qrate) if (price * _qrate) > 0 else 0.0
+            scrum_units(excess_usd, price * _qrate, FRACTIONAL_UNITS)
+            if (price * _qrate) > 0
+            else 0.0
         )
         sell_amount = min(sell_amount, self._current_holdings)
         if sell_amount <= 0:
@@ -1939,7 +1948,7 @@ class ExecutionEngineMixin:
                     return None
 
         try:
-            amount = fold_units(cost, price)
+            amount = fold_units(cost, price, FRACTIONAL_UNITS)
             if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                 amount = amount / _qrate_buy
 
@@ -1966,7 +1975,7 @@ class ExecutionEngineMixin:
                 self.stats.verify_clean += 1
             else:
                 self.stats.verify_adjusted += 1
-                amount = fold_units(cost, vh_fp)
+                amount = fold_units(cost, vh_fp, FRACTIONAL_UNITS)
                 if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                     amount = amount / _qrate_buy
 

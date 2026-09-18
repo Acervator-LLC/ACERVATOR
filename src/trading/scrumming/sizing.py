@@ -5,12 +5,42 @@
 inline, and ``back_test.walk`` calls the same functions over a ``SimPosition``.
 ``priced_usd`` through ``cartridge_threshold_usd`` each answer the expression
 their Live site held, in that site's operand order, holding no state.
+``unit_rule`` answers the rule ``CITED_UNIT_RULES`` cites for an asset class on
+a venue, ``scrum_units`` and ``fold_units`` size under that rule through
+``sized_units``, and ``trim_fold_plan`` keeps what a whole-unit fold could not
+spend in its tranches.
 """
 
 from __future__ import annotations
 
+import math
+from typing import Optional
+
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
 DRAWDOWN_STATE = "drawdown"
+
+#: The two unit rules a venue's published documentation states for an asset
+#: class: an order may name a fraction of a unit, or only whole units.
+FRACTIONAL_UNITS = "fractional"
+WHOLE_UNITS = "whole"
+UNIT_RULES = (FRACTIONAL_UNITS, WHOLE_UNITS)
+
+#: A unit count within this of a whole number reads as that whole number: the
+#: ninth decimal, the most an Alpaca ``qty`` carries.
+WHOLE_UNIT_GRAIN = 1e-9
+
+#: The two asset classes the determination table cites, spelled as
+#: ``ata_spm.ASSET_CLASSES`` spells them.
+CLASS_CRYPTO = "crypto"
+CLASS_STOCKS = "stocks"
+
+#: The unit rule each ``(asset class, venue)`` trades under, one row per rule
+#: the manual's determination table cites from the venue's published page. A
+#: pair absent here has no cited rule and is not simulated.
+CITED_UNIT_RULES: dict[tuple[str, str], str] = {
+    (CLASS_CRYPTO, "coinbase"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "alpaca"): FRACTIONAL_UNITS,
+}
 
 #: ``position_ceiling`` clamps ``position_ceiling_multiple`` to this range.
 CEILING_MULTIPLE_MIN = 1.0
@@ -55,9 +85,27 @@ def delta_below_interval(delta_usd: float, interval_usd: float) -> bool:
     return abs(delta_usd) < interval_usd
 
 
-def scrum_units(delta_usd: float, price: float) -> float:
-    """The units a scrum sells: ``delta_usd`` at ``price``."""
-    return abs(delta_usd) / price
+def unit_rule(asset_class: str, venue: str) -> Optional[str]:
+    """The unit rule ``CITED_UNIT_RULES`` cites for ``asset_class`` on
+    ``venue``, or None when the table cites none for the pair."""
+    return CITED_UNIT_RULES.get((str(asset_class), str(venue)))
+
+
+def sized_units(units: float, rule: str) -> float:
+    """``units`` under ``rule``: unchanged when fractional, floored to a whole
+    number when whole, with a count within ``WHOLE_UNIT_GRAIN`` of a whole
+    number read as that number."""
+    if rule == FRACTIONAL_UNITS:
+        return units
+    if rule == WHOLE_UNITS:
+        return float(math.floor(units + WHOLE_UNIT_GRAIN))
+    raise ValueError(f"unit rule {rule!r} is not one of {UNIT_RULES}")
+
+
+def scrum_units(delta_usd: float, price: float, rule: str) -> float:
+    """The units a scrum sells: ``delta_usd`` at ``price``, sized under
+    ``rule``."""
+    return sized_units(abs(delta_usd) / price, rule)
 
 
 def sale_proceeds_usd(gross_usd: float, fee_usd: float) -> float:
@@ -160,9 +208,30 @@ def wallet_capped_spend_usd(spend_usd: float, available_usd: float) -> float:
     return min(spend_usd, available_usd)
 
 
-def fold_units(spend_usd: float, price: float) -> float:
-    """The units a buy of ``spend_usd`` at ``price`` books."""
-    return spend_usd / price
+def fold_units(spend_usd: float, price: float, rule: str) -> float:
+    """The units a buy of ``spend_usd`` at ``price`` books, sized under
+    ``rule``."""
+    return sized_units(spend_usd / price, rule)
+
+
+def trim_fold_plan(plan: list, unspent_usd: float) -> list:
+    """``plan`` with ``unspent_usd`` taken back off its last entries, dollars
+    and units alike, so ``settle_fold_plan`` leaves in the tranches what a
+    whole-unit fold could not spend."""
+    left = float(unspent_usd)
+    trimmed: list = []
+    for source, take_usd, take_units in reversed(plan):
+        if left <= 1e-12:
+            trimmed.append((source, take_usd, take_units))
+            continue
+        given_back = min(left, take_usd)
+        keep_usd = take_usd - given_back
+        keep_units = take_units * (keep_usd / take_usd) if take_usd > 0.0 else 0.0
+        left -= given_back
+        if keep_usd > 1e-12:
+            trimmed.append((source, keep_usd, keep_units))
+    trimmed.reverse()
+    return trimmed
 
 
 def position_ceiling(anchor_target_balance: float, multiple: float) -> float:
@@ -197,9 +266,16 @@ def cartridge_threshold_usd(target_balance: float, cartridge_pct: float) -> floa
 __all__ = [
     "CEILING_MULTIPLE_MAX",
     "CEILING_MULTIPLE_MIN",
+    "CITED_UNIT_RULES",
+    "CLASS_CRYPTO",
+    "CLASS_STOCKS",
     "DRAWDOWN_STATE",
+    "FRACTIONAL_UNITS",
     "TAPER_DROP",
     "TAPER_START_RATIO",
+    "UNIT_RULES",
+    "WHOLE_UNITS",
+    "WHOLE_UNIT_GRAIN",
     "cartridge_threshold_usd",
     "cycle_growth_cap_usd",
     "delta_below_interval",
@@ -217,7 +293,10 @@ __all__ = [
     "scrum_units",
     "scrumming_interval_usd",
     "settle_fold_plan",
+    "sized_units",
     "target_delta_pct",
     "target_delta_usd",
+    "trim_fold_plan",
+    "unit_rule",
     "wallet_capped_spend_usd",
 ]

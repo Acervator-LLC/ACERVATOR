@@ -2524,6 +2524,273 @@ that one definition moved both.
 DRAWDOWN_STATE = "drawdown"
 ```
 
+## The unit rule: fractional or whole, per asset class, cited from the venue
+
+A Portfolio Battery run walks shares and funds as well as coins, and a share
+can only be bought the way its venue sells it. Before any non-crypto symbol is
+simulated, one question is answered per asset class from the venue's own
+published page: does the class trade in fractions of a unit, or in whole units
+only. The answer is a row in a table the sizing module carries, and a class
+with no row is not simulated.
+
+The portfolios name sixty-three symbols and the RA-StoneTablet import asks for
+the same sixty-three. Thirteen are crypto: ADA, ATOM, AVAX, BNB, BTC, DOGE,
+DOT, ETH, LINK, MATIC, SOL, TRX and XRP. The other fifty are US exchange-listed
+shares and funds, every one read off the Yahoo route as a share: AAPL, AGG,
+AMC, AMD, AMZN, ARKF, ARKG, ARKK, ARKW, BABA, BBBY, BIDU, BND, CCIV, COIN, CVNA,
+DKNG, EXPR, GLD, GME, GOOGL, IEF, IPOF, IWM, JD, KOSS, MCHI, META, MSFT, NIO,
+NVDA, OPEN, PLTR, PRNT, PTON, QQQ, ROKU, SLV, SNDL, SOFI, SPY, TDOC, TIP, TLT,
+TSLA, USO, UWMC, VNQ, XLU and ZM. The classes are named with the words the
+ATA-SPM scanner spells: crypto and stocks. GLD, SLV and USO are the funds the
+scanner charts for the metals and energy classes; on the venue they are
+exchange-listed fund shares, so the stocks row binds them. No portfolio names a
+spot, forward or contract instrument of the metals, energy, forex or
+derivatives classes, and no connected venue lists one.
+
+### The determination
+
+Each page below was opened as a document on 2026-09-17 and its sentences
+quoted. No endpoint was called, no credential was sent, and no account page was
+opened. A rule a page does not state is not cited.
+
+| class | venue Acervator connects to | fractional | conditions |
+| --- | --- | --- | --- |
+| crypto | Coinbase, the one verified exchange and the venue every held live bot names | yes | the size is a multiple of the product's `base_increment` and at least its `base_min_size`; the connector reads both off the market as the amount precision and the minimum amount |
+| stocks | Alpaca, the one broker connector in the tree, which sends an order's `qty`; no screen constructs it today | yes | exchange-listed common stocks and ETFs, generally over one dollar with a daily volume over ten thousand shares; a per-asset `fractionable` flag read only through the authenticated assets endpoint, so it stays a condition and is not read; market, limit, stop or stop-limit orders; time in force Day; no short sales |
+| metals, energy, forex, derivatives | none | not cited | no connected venue lists the class; not simulated |
+
+The crypto row, quoted from the venue's pages
+
+```
+https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/orders/create-new-order
+  titled "Create a new order", no date shown, read 2026-09-17
+  "The size can be in any increment of the base currency (e.g. BTC for the
+   BTC-USD product)."
+  "The size can be in incremented in units of base_increment."
+  "The size must be no less than the base_min_size and no larger than the
+   base_max_size for the product."
+https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/products/get-product
+  titled "Get Product", no date shown, read 2026-09-17
+  base_increment: "Minimum amount base value can be increased or decreased
+   at once."
+```
+
+The stocks row, quoted from the venue's pages
+
+```
+https://alpaca.markets/support/fractional-shares
+  titled "Does Alpaca support fractional shares?", dated February 2024,
+  read 2026-09-17
+  "Yes! Alpaca supports fractional trading via API and the dashboard."
+  "Fractional Securities include: US Exchange listed Securities (Common
+   Stocks and Exchange Traded Funds) Selected Over the Counter American
+   Depository Receipts"
+  "We generally will allow securities to be fractionable under the below
+   scenarios: Exchange Listed Over $1 Average Daily Trading Volume over
+   10,000 shares"
+  "To see if an asset is fractional, check the field fractionable = true
+   from the GET/v2/assets endpoint."
+https://docs.alpaca.markets/docs/fractional-trading
+  titled "Fractional Trading", updated 2025-09-24, read 2026-09-17
+  "Alpaca currently supports fractional trading for market, limit, stop &
+   stop limit orders with a time in force=Day, accommodating both fractional
+   quantities and notional values."
+  "Both notional and qty fields can take up to 9 decimal point values."
+  "Not all assets are fractionable yet so please make sure you query assets
+   details to check for the parameter fractionable = true."
+  "We do not support short sales in fractional orders. All fractional sell
+   orders are marked long."
+```
+
+Both classes the portfolios name trade fractionally on the venue Acervator
+connects to for them. No class a Battery run walks today reads whole-unit, so
+today every walk sizes as it did before; the whole-unit variant below is the
+switch the table throws the day a row reads whole.
+
+`src/trading/scrumming/sizing.py` — the table and the function that reads it
+
+```python
+FRACTIONAL_UNITS = "fractional"
+WHOLE_UNITS = "whole"
+
+CITED_UNIT_RULES: dict[tuple[str, str], str] = {
+    (CLASS_CRYPTO, "coinbase"): FRACTIONAL_UNITS,
+    (CLASS_STOCKS, "alpaca"): FRACTIONAL_UNITS,
+}
+
+
+def unit_rule(asset_class: str, venue: str) -> Optional[str]:
+    return CITED_UNIT_RULES.get((str(asset_class), str(venue)))
+```
+
+A bot's class comes from its symbol and its venue: a name in the crypto list is
+crypto, every other archive name is stocks, and a name outside the archive on a
+crypto exchange is crypto. The venue a class trades on is the bot's own
+exchange for crypto and Alpaca for stocks. TRX has RA tablets from the Yahoo
+source alone, because Coinbase served it no candle, so its pair is crypto on
+`yahoo`, which no row cites, and TRX is not simulated.
+
+`src/simulator/portfolios.py` — the class and the venue
+
+```python
+def asset_class(symbol: str, exchange_id: str = "") -> Optional[str]:
+    name = str(symbol or "").upper()
+    if name in CRYPTO_SYMBOLS:
+        return CLASS_CRYPTO
+    if name in SYMBOLS:
+        return CLASS_STOCKS
+    if str(exchange_id or "") in crypto_venues():
+        return CLASS_CRYPTO
+    return None
+
+
+def trading_venue(class_name: Optional[str], exchange_id: str = "") -> str:
+    if class_name == CLASS_CRYPTO:
+        return str(exchange_id or "")
+    if class_name == CLASS_STOCKS:
+        return STOCKS_VENUE
+    return ""
+```
+
+### The whole-unit variant
+
+The two sizing functions now take the rule. Under the fractional rule they
+answer the expression they answered before, unchanged. Under the whole rule
+they floor to a whole number of units, and a count within one billionth of a
+whole number reads as that number: a bare floor read one unit under on 11,593
+of 200,000 exact multiples of a price in the pre-mortem sweep, and none with
+the grain, which is the ninth decimal an Alpaca quantity carries at most. A rule
+that is neither word raises, so no walk sizes under an unnamed rule.
+
+`src/trading/scrumming/sizing.py` — sizing under the rule
+
+```python
+WHOLE_UNIT_GRAIN = 1e-9
+
+
+def sized_units(units: float, rule: str) -> float:
+    if rule == FRACTIONAL_UNITS:
+        return units
+    if rule == WHOLE_UNITS:
+        return float(math.floor(units + WHOLE_UNIT_GRAIN))
+    raise ValueError(f"unit rule {rule!r} is not one of {UNIT_RULES}")
+
+
+def scrum_units(delta_usd: float, price: float, rule: str) -> float:
+    return sized_units(abs(delta_usd) / price, rule)
+
+
+def fold_units(spend_usd: float, price: float, rule: str) -> float:
+    return sized_units(spend_usd / price, rule)
+```
+
+The Live bot passes the fractional rule at each of its nine call sites and
+changes nothing else. The Simulator resolves the rule once per bot as a run
+reaches it and carries it through the walk: the opening position, every scrum
+and every fold size under it. A whole-unit scrum whose Target Delta buys fewer
+than one unit fills nothing and logs why. A whole-unit fold spends the whole
+units' price; what it could not spend is taken back off the last entries of the
+fold plan, so that remainder stays in the tranche, and a fold whose spend buys
+fewer than one unit fills nothing, settles nothing, and logs why.
+
+`src/simulator/back_test.py` — the whole-unit fold
+
+```python
+    units = fold_units(spend, float(price), rule)
+    if units <= 0.0:
+        if rule == WHOLE_UNITS:
+            logger.info(
+                "%s: a fold of $%.2f at %.8f is %s; nothing fills",
+                bot.bot_id,
+                spend,
+                float(price),
+                BELOW_ONE_UNIT,
+            )
+        return None
+    if rule == WHOLE_UNITS:
+        bought_usd = priced_usd(units, float(price))
+        plan = trim_fold_plan(plan, spend - bought_usd)
+        spend = bought_usd
+```
+
+A whole-unit fold needs tranche dollars of at least one unit's price. At the
+one percent default growth cap on a five hundred dollar target the cap is five
+dollars, so a share priced above five dollars would never fold in whole units.
+This binds the Battery's default Target Balance only if a row ever reads
+whole; today none does.
+
+### Not cited, not simulated
+
+A run resolves each bot's class and venue before it opens a position. A pair
+with no row in the table is refused: the bot's outcome reads `uncited_rule`,
+nothing is walked for it, and the run's lines carry one line naming the bot,
+its class, its venue and that the rule is not cited. The Battery does the same
+per symbol and counts the symbol's capital as missing weight, and its lines
+name every refused symbol.
+
+`src/simulator/back_test.py` — the refusal in the runner
+
+```python
+    for bot in bots:
+        class_name, venue, rule = cited_rule_for(bot.asset, bot.exchange_id)
+        if rule is None:
+            outcomes[UNCITED_RULE] += 1
+            results.append(
+                BotResult(
+                    bot_id=bot.bot_id,
+                    symbol=bot.symbol,
+                    tablet_key="",
+                    outcome=UNCITED_RULE,
+                    asset_class=class_name,
+                    venue=venue,
+                )
+            )
+            continue
+```
+
+`src/simulator/back_test.py` — the line the Activity Log draws
+
+```python
+def uncited_rule_line(result: BotResult) -> str:
+    return (
+        f"{result.bot_id}: {result.symbol} is class {result.asset_class or 'none'} "
+        f"on venue {result.venue or 'none'}, which has no cited unit rule; "
+        "not simulated."
+    )
+```
+
+### What the unit-rule reading measured
+
+Before this, over the unit 26 scratch tape with four scratch bots, an AAPL bot
+filled 47 scrums and 187 folds in fractional units, and a bot of no class and a
+BTC bot on an uncited venue each walked the same 234 trades with nothing
+refused. After, on the same tape: the AAPL bot walks as stocks on Alpaca under
+the fractional rule, 234 trades, and the BTC bot on Coinbase walks 234 trades
+identical to unit 26's reading over the same tape, trade for trade; the bot of
+no class, the BTC bot on Gemini and a TRX bot on the Yahoo route are each
+refused with their line. With the stocks row planted whole for one run, the
+AAPL bot walked 233 trades, every one a whole number of units between one and
+ten, every dollar figure equal to the units times the price, two scrum latches
+and two fold latches unfilled below one unit, and the BTC bot unchanged; with
+the crypto row planted whole instead, the BTC bot at a one thousand dollar
+target in a hundred dollar asset opened ten units and filled nothing, because
+its one percent interval never reached one unit, and the AAPL bot was
+unchanged. Each plant was removed and the table read as before.
+
+On the running Sim tab in both builds, one BTC bot and one AAPL bot imported
+through Import Live Fleet in Validation over scratch tablets, `back_test.run`
+under the debugger with a breakpoint on every pure sizing function: the rule
+was read twice, once per bot, from the runner; 470 sizing calls, 94 scrum
+sizes and 376 fold sizes, every one with `walk` on the stack; the BTC trades
+equal to unit 26's reading; under the planted stocks row the AAPL trades all
+whole and the plan trimmed on all 185 folds. Two bots imported on Gemini were
+refused and their two lines, drawn through the tab's own log method, read back
+off the Qt widget and off the React page. No bot was constructed and no socket
+left loopback. The Live replay over unit 26's copied logs with the fractional
+rule answered 270 of 270 scrum fills and 61 of 61 fold fills, and the same over
+a fresh copy taken today; one row with its amount moved by one unit in the
+eighth place read as a disagreement.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone

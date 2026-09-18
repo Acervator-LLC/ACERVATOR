@@ -3,15 +3,24 @@
 ``PORTFOLIOS`` maps each name to a ``Portfolio`` holding its symbols and equal
 ``weights``. ``PERIODS`` carries the six windows the archive addressed them
 over, and ``is_crypto`` routes a symbol to the crypto or the non-crypto
-historical price source. Nothing here reads or writes price data.
+historical price source. ``asset_class`` names a symbol's class in the words
+``sizing.CITED_UNIT_RULES`` is keyed by and ``trading_venue`` the venue
+Acervator trades that class on, so ``sizing.unit_rule`` can answer the pair.
+Nothing here reads or writes price data.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
+
+from ..trading.scrumming.sizing import CLASS_CRYPTO, CLASS_STOCKS
 
 ARCHIVE_SOURCE: str = "RAIntSimBat_standalone"
 """The archive every definition in this module was read out of."""
+
+STOCKS_VENUE: str = "alpaca"
+"""The ``SUPPORTED_BROKERS`` key of the one broker connector, ``AlpacaConnector``."""
 
 PERIODS: dict[str, tuple[str, str]] = {
     "2020": ("2020-01-01", "2020-12-31"),
@@ -49,6 +58,40 @@ class Portfolio:
 def is_crypto(symbol: str) -> bool:
     """True when ``symbol`` is in ``CRYPTO_SYMBOLS``, case-insensitively."""
     return symbol.upper() in CRYPTO_SYMBOLS
+
+
+def crypto_venues() -> frozenset[str]:
+    """Every exchange id ``SUPPORTED_EXCHANGES`` names, the venues that list
+    only crypto."""
+    from ..exchange.ccxt_connector import SUPPORTED_EXCHANGES
+
+    return frozenset(SUPPORTED_EXCHANGES)
+
+
+def asset_class(symbol: str, exchange_id: str = "") -> Optional[str]:
+    """``symbol``'s class: ``CLASS_CRYPTO`` for a ``CRYPTO_SYMBOLS`` name or any
+    symbol on a ``crypto_venues`` exchange, ``CLASS_STOCKS`` for every other
+    ``SYMBOLS`` name, None for a symbol neither the archive nor a crypto venue
+    names."""
+    name = str(symbol or "").upper()
+    if name in CRYPTO_SYMBOLS:
+        return CLASS_CRYPTO
+    if name in SYMBOLS:
+        return CLASS_STOCKS
+    if str(exchange_id or "") in crypto_venues():
+        return CLASS_CRYPTO
+    return None
+
+
+def trading_venue(class_name: Optional[str], exchange_id: str = "") -> str:
+    """The venue Acervator trades ``class_name`` on: the bot's own
+    ``exchange_id`` for crypto, ``STOCKS_VENUE`` for stocks, empty for any
+    other class."""
+    if class_name == CLASS_CRYPTO:
+        return str(exchange_id or "")
+    if class_name == CLASS_STOCKS:
+        return STOCKS_VENUE
+    return ""
 
 
 def symbols_for(portfolio_name: str) -> tuple[str, ...]:
@@ -427,8 +470,12 @@ __all__ = [
     "CRYPTO_SYMBOLS",
     "PERIODS",
     "PORTFOLIOS",
+    "STOCKS_VENUE",
     "SYMBOLS",
     "Portfolio",
+    "asset_class",
+    "crypto_venues",
     "is_crypto",
     "symbols_for",
+    "trading_venue",
 ]
