@@ -2463,7 +2463,9 @@ if funding == FUNDED_BY_PROCEEDS:
 Before this the Simulator sized a fold on the Target Delta and capped it at
 the cash its scrums had left. Walked over one scratch tape, that sized 46 folds
 where the Live arithmetic sizes 187, each at most the per-cycle growth cap of
-its target, and every scrum's units read equal before and after. A count of
+its target; the 47 scrums latched on the same candles both ways, and 12 of
+them sold the same units, the two before the first fold and those where the
+folds between had brought both positions back to the same holding. A count of
 arithmetic on a price, units, a target, an interval, a delta, a spend or a fee
 across `src/simulator` reads zero sizing expressions; the twenty-one that
 remain value a held position for the strip, a portfolio's baseline and its
