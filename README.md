@@ -12,8 +12,6 @@ guarantee — every completed cycle ends with more asset than it began with
 No prediction required. The volatility that destroys emotional traders is the
 engine.
 
-> *"Stop predicting. Stop HODLing. Stop waiting. Start accumulating."*
-
 Built Ekthelius the Accumulator aka Anthony L. Brown. Released to humanity.
 
 ## ACERVATOR
@@ -26,7 +24,7 @@ User Manual and Feature Design Intention Guide
 >
 > “The disturber of the balance is to be dissolved and reformed.”
 
-> “You are either gaining more territory cheaper or you are selling for higher than you bought it in direct response to the market’s moment to moment volatility.” - Ekthelius
+> *"Stop predicting. Stop HODLing. Stop waiting. Start accumulating."*
 
 ## Copyright and Attribution
 
