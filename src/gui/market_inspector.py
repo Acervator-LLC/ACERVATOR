@@ -16,7 +16,7 @@ import logging
 import threading
 
 from ..core import encryption
-from ..trading import ata_spm, ata_spm_push, ata_spm_signin
+from ..trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
 from . import sign_in_view
 from .main_tabs.market_inspector_surface import (
     READY_TO_SEND_ZONE,
@@ -121,14 +121,21 @@ from .main_tabs.market_inspector_surface import (
     TIMEFRAME_BOX_WIDTH_PX,
     TIMEFRAME_ROW_PART,
     TIMEFRAME_TITLE,
+    LEFT_MODULE_SHARES,
+    MARKET_READ_PIN,
+    SCAN_FINISHED_PIN,
+    SCAN_PRESSED_PIN,
+    SCAN_STARTED_PIN,
     class_markets,
     market_listing,
     open_chart_folder,
     sector_assets,
-    sector_candles,
+    sector_candle_read,
     ticker_matches,
     ticker_note,
 )
+from ..core.signal_contract import emit as _pin_emit
+from ..core.signal_contract import get_sink as _pin_sink
 from .main_tabs.market_inspector_surface import (
     DETAIL_STYLE,
     ENTRY_HEADLINE_STYLE,
@@ -222,6 +229,10 @@ ARBITRAGE_MODULE = "arbitrage"
 #: Scan Now runs the phases here; the window-drawing thread only draws.
 ATA_SCAN_THREAD_NAME = "ata-smp-scan"
 ATA_SCAN_THREAD_LOG = "ATA-SPM scan on thread %s: %s"
+#: The ``StatusLog.log`` levels the scan's phase lines take.
+ACTIVITY_INFO = "info"
+ACTIVITY_WARNING = "warning"
+ACTIVITY_ERROR = "error"
 
 ATA_SPM_GROUP_TITLE = "ATA-SPM"
 OPPOSING_TRADES_GROUP_TITLE = "Opposing Trades"
@@ -643,6 +654,8 @@ if _HAS_QT:
         """
 
         scanFinished = Signal(object)  # noqa: N815 - Qt signal name
+        #: One phase line of a running scan, and its Activity Log level.
+        scanLogged = Signal(str, str)  # noqa: N815 - Qt signal name
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -650,7 +663,9 @@ if _HAS_QT:
             self._show_active = False  # Default: hide markets already traded
             self._last_meta: dict = {}
             self._scan_thread = None
+            self._activity_log = None
             self.scanFinished.connect(self._take_scan)
+            self.scanLogged.connect(self._take_scan_line)
             self._pending_refresh = False
             self._scan_state = SCAN_NOT_ASKED
             # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
@@ -718,11 +733,11 @@ if _HAS_QT:
                 if key == ATA_SPM_MODULE:
                     box.addLayout(self._build_ata_row())
                 box.addWidget(stepper)
-                # Ignored height lets the three zones share the pane equally
-                # whatever their content asks for.
+                # Ignored height lets the three zones share the pane by
+                # LEFT_MODULE_SHARES whatever their content asks for.
                 group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
                 box.setSizeConstraint(QLayout.SetNoConstraint)
-                layout.addWidget(group, 1)
+                layout.addWidget(group, LEFT_MODULE_SHARES[len(self._left_zone_groups)])
                 if key == ATA_SPM_MODULE:
                     self._ata_group = group
                 self._left_zone_groups.append(group)
@@ -816,15 +831,19 @@ if _HAS_QT:
             self._size_zones()
 
         def _size_zones(self) -> None:
-            """Give each zone one third of its pane, less margins and spacing.
+            """Give each zone its share of its pane, less margins and spacing.
 
             The Qt layout hands out only the space above each child's size
-            hint, so an equal share is set rather than asked for.
+            hint, so the share is set rather than asked for: the left zones
+            take ``LEFT_MODULE_SHARES``, the right zones one share each.
             """
             # The React tab inherits this event and builds no Qt zones.
             left = getattr(self, "_left_zone_groups", [])
             right = getattr(self, "_right_zone_groups", [])
-            for groups in (left, right):
+            for groups, shares in (
+                (left, LEFT_MODULE_SHARES),
+                (right, (1,) * len(right)),
+            ):
                 if not groups:
                     continue
                 pane = groups[0].parentWidget()
@@ -836,10 +855,10 @@ if _HAS_QT:
                 # The splitter is horizontal, so each pane is as tall as it is,
                 # which is settled before the pane's own height is.
                 tall = max(pane.height(), self._outer_splitter.height())
-                usable = tall - margins.top() - margins.bottom() - spacing
-                share = max(0, usable // len(groups))
-                for group in groups:
-                    group.setFixedHeight(share)
+                usable = max(0, tall - margins.top() - margins.bottom() - spacing)
+                total = sum(shares[: len(groups)]) or len(groups)
+                for group, share in zip(groups, shares):
+                    group.setFixedHeight(usable * share // total)
 
         # ── the ATA-SPM control row ──────────────────────────────────
         def _build_ata_row(self) -> "QVBoxLayout":
@@ -1503,22 +1522,47 @@ if _HAS_QT:
             The window-drawing thread starts the thread and returns; the
             answer reaches ``_take_scan`` through ``scanFinished``.
             """
-            if self._scan_thread is not None and self._scan_thread.is_alive():
-                logger.debug("ATA-SMP scan already running; press ignored")
-                return
+            board = self._ata_board
+            at = self._ata_at()
             settings = self._push_board.settings
+            target = ata_spm.hits_target(settings.hits_per_scan)
+            ticked = board.ticked_at(at)
+            context = {
+                "asset_class": board.asset_class,
+                "ticker": board.text,
+                "timeframes": list(ticked),
+                "hit_target": target,
+            }
+            if self._scan_thread is not None and self._scan_thread.is_alive():
+                _pin_emit(
+                    SCAN_PRESSED_PIN, actual=False, expected=True, context=context
+                )
+                self._say(ata_spm.SCAN_BUSY_TEXT, ACTIVITY_WARNING)
+                return
+            self._say(
+                ata_spm.SCAN_PRESSED_TEXT.format(
+                    asset_class=board.asset_class,
+                    timeframes=ata_spm.TIMEFRAME_LIST_JOIN.join(
+                        ata_spm.timeframe_label(one) for one in ticked
+                    )
+                    or ata_spm.NO_TIMEFRAME_LIST_TEXT,
+                    ticker=board.text,
+                    hits=target,
+                )
+            )
             self._scan_thread = threading.Thread(
                 target=self._compute_scan,
                 args=(
                     settings.message_format,
                     settings.max_supporting_indicators,
                     settings.hits_per_scan,
-                    self._ata_at(),
+                    at,
                 ),
                 name=ATA_SCAN_THREAD_NAME,
                 daemon=True,
             )
             self._scan_thread.start()
+            _pin_emit(SCAN_PRESSED_PIN, actual=True, expected=True, context=context)
 
         def _compute_scan(
             self, message_format, max_supporting_indicators, hits_per_scan, at
@@ -1528,7 +1572,17 @@ if _HAS_QT:
             ``SectorBoard.compute`` writes nothing, and ``scanFinished``
             carries what it answered across the thread boundary.
             """
-            logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "compute")
+            thread_name = threading.current_thread().name
+            logger.info(ATA_SCAN_THREAD_LOG, thread_name, "compute")
+            _pin_emit(
+                SCAN_STARTED_PIN,
+                actual=thread_name,
+                expected=ATA_SCAN_THREAD_NAME,
+                context={
+                    "asset_class": self._ata_board.asset_class,
+                    "sectors_held": len(self._ata_board.sectors),
+                },
+            )
             try:
                 answered = self._ata_board.compute(
                     self._ata_asset_source or sector_assets,
@@ -1542,8 +1596,33 @@ if _HAS_QT:
                 )
             except Exception as exc:  # noqa: BLE001 - the scan runs off-thread
                 logger.exception("ATA-SPM scan failed: %s", exc)
+                self.scanLogged.emit(
+                    ata_spm.SCAN_FAILED_TEXT.format(error=exc), ACTIVITY_ERROR
+                )
                 return
             self.scanFinished.emit(answered)
+
+        def _say(self, message: str, level: str = ACTIVITY_INFO) -> None:
+            """Write one scan phase line to the log and to the Activity Log.
+
+            ``scanLogged`` crosses to the window thread, where
+            ``_take_scan_line`` hands the line to ``_activity_log``.
+            """
+            logger.info(message)
+            self.scanLogged.emit(message, level)
+
+        def _take_scan_line(self, message: str, level: str) -> None:
+            """Hand one phase line to the Activity Log callable, when one is wired."""
+            if self._activity_log is None:
+                return
+            try:
+                self._activity_log(message, level)
+            except Exception as exc:  # noqa: BLE001 - the pane is host-supplied
+                logger.debug("activity log write failed: %s", exc)
+
+        def set_activity_log(self, writer) -> None:
+            """Take the callable each scan phase line is written to."""
+            self._activity_log = writer
 
         def _take_scan(self, answered) -> None:
             """Write the worker's answer onto the board and redraw the zones.
@@ -1563,8 +1642,78 @@ if _HAS_QT:
                     self._ata_candle_source or self._scanned_candles,
                 )
                 self._zone_at[READY_TO_SEND_ZONE] = 0
+            self._say_scan_end(sectors, found, note)
             self._render_ata_row()
             self._render_left_modules()
+
+        def _say_scan_end(self, sectors, found, note) -> None:
+            """Write each hit, each sector's report line and the end pin, then flush.
+
+            ``found`` is the ``AtaSpmRun`` this press answered, or None when
+            it scanned nothing; ``note`` is the line a refused ticker left.
+            """
+            if note:
+                self._say(ata_spm.SCAN_NOTE_TEXT.format(note=note), ACTIVITY_WARNING)
+            elif found is None:
+                self._say(ata_spm.SCAN_EMPTY_TEXT, ACTIVITY_WARNING)
+            listed = {
+                one.name: sum(1 for row in one.listings if ata_spm.is_listed(row))
+                for one in sectors
+                if one.listings
+            }
+            read_total = 0
+            listed_total = 0
+            stopped_all = True
+            reports: list = []
+            for scan in (found.scans if found is not None else []):
+                for call in scan.calls:
+                    self._say(
+                        ata_spm.HIT_TEXT.format(
+                            call=ata_spm.CALL_LINE_FORMAT.format(
+                                symbol=call.symbol,
+                                label=ata_spm.timeframe_label(call.timeframe),
+                                direction=call.direction_text,
+                            )
+                        )
+                    )
+                entry = _sector_entry(scan, found.pulls)
+                self._say(
+                    ata_spm.SCAN_FINISHED_TEXT.format(
+                        headline=entry.get("headline", ""),
+                        meta=entry.get("meta", ""),
+                        method=entry.get("method_text", ""),
+                    ),
+                    ACTIVITY_INFO if scan.votes else ACTIVITY_WARNING,
+                )
+                read = (
+                    int(scan.markets_read)
+                    if scan.hit_target > ata_spm.NO_HIT_TARGET
+                    else len(scan.assets)
+                )
+                asked = listed.get(scan.sector) or len(scan.assets)
+                read_total += read
+                listed_total += asked
+                stopped_all = stopped_all and bool(scan.stopped_at_target)
+                reports.append(
+                    {
+                        "sector": scan.sector,
+                        "asset_class": scan.asset_class,
+                        "markets_read": read,
+                        "markets_listed": asked,
+                        "hits": len(scan.calls),
+                        "stopped_at_target": bool(scan.stopped_at_target),
+                        "report": entry.get("method_text", ""),
+                    }
+                )
+            _pin_emit(
+                SCAN_FINISHED_PIN,
+                actual=read_total,
+                expected=read_total if stopped_all and reports else listed_total,
+                context={"note": str(note or ""), "sectors": reports},
+            )
+            sink = _pin_sink()
+            if sink is not None:
+                sink.flush()
 
         def set_ata_sources(
             self, asset_source, candle_source, class_source=None
@@ -1584,21 +1733,52 @@ if _HAS_QT:
                 return []
 
         def _scanned_candles(self, symbol, timeframe) -> list:
-            """The candles for one scanned symbol, from the source its map names."""
+            """The candles for one scanned symbol, from the source its map names.
+
+            Each read leaves one ``MARKET_READ_TEXT`` line and one
+            ``MARKET_READ_PIN``, naming the source and the count or the refusal.
+            """
+            venue = ata_asset_maps.VENUE_EXCHANGE
+            candles: list = []
+            refusal = ""
             try:
                 from ..trading.market_inspector import get_shared_inspector
 
-                return sector_candles(
+                venue, candles, refusal = sector_candle_read(
                     get_shared_inspector(),
                     symbol,
                     timeframe,
                     self._connectors_now(),
                 )
             except Exception as exc:  # noqa: BLE001 - the source is off-process
-                logger.debug(
-                    "scanned candle read failed on %s %s: %s", symbol, timeframe, exc
+                refusal = f"{type(exc).__name__}: {exc}"
+            label = ata_spm.timeframe_label(timeframe)
+            if refusal:
+                line = ata_spm.MARKET_REFUSED_TEXT.format(
+                    symbol=symbol, label=label, venue=venue, reason=refusal
                 )
-                return []
+            elif candles:
+                line = ata_spm.MARKET_READ_TEXT.format(
+                    symbol=symbol, label=label, venue=venue, candles=len(candles)
+                )
+            else:
+                line = ata_spm.MARKET_EMPTY_TEXT.format(
+                    symbol=symbol, label=label, venue=venue
+                )
+            self._say(line, ACTIVITY_INFO if candles else ACTIVITY_WARNING)
+            _pin_emit(
+                MARKET_READ_PIN,
+                actual=len(candles),
+                expected=ata_spm.MIN_CANDLES_TO_VOTE,
+                ok=len(candles) >= ata_spm.MIN_CANDLES_TO_VOTE,
+                context={
+                    "symbol": str(symbol),
+                    "timeframe": str(timeframe),
+                    "venue": str(venue),
+                    "refusal": refusal,
+                },
+            )
+            return candles
 
         def _render_ata_row(self) -> None:
             """Write the class box, the four check boxes and the settings page.

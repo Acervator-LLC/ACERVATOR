@@ -26,6 +26,7 @@
   var LAST_META = "last_meta";
   var LEFT_MARGINS_PX = "left_margins_px";
   var LEFT_MODULE_KEYS = "left_module_keys";
+  var LEFT_MODULE_SHARES = "left_module_shares";
   var LEFT_MODULE_TITLES = "left_module_titles";
   var LEFT_MODULES = "left_modules";
   var RIGHT_ZONES = "right_zones";
@@ -104,6 +105,7 @@
     LAST_META,
     LEFT_MARGINS_PX,
     LEFT_MODULE_KEYS,
+    LEFT_MODULE_SHARES,
     LEFT_MODULE_TITLES,
     LEFT_MODULES,
     LEFT_SPACING_PX,
@@ -531,6 +533,7 @@
     GROUP_MARGINS_PX,
     LEFT_MARGINS_PX,
     LEFT_MODULE_KEYS,
+    LEFT_MODULE_SHARES,
     LEFT_MODULE_TITLES,
     LEFT_MODULES,
     MODULE_MARGINS_PX,
@@ -632,6 +635,7 @@
   var FLEX_NONE = "none";
   // Three equally sized rectangles down each side, as the Qt stretch gives.
   var EQUAL_SHARE = "1 1 0";
+  var SHARE_FLEX_TAIL = " 1 0";
   var AUTO = "auto";
   var ROW_WAY = "row";
   var COLUMN_WAY = "column";
@@ -1246,15 +1250,25 @@
     );
   }
 
+  // shareFlex is the flex one zone takes for `share` stretch units of its
+  // pane, the way a Qt layout stretch factor divides it; no share reads as one.
+  function shareFlex(share) {
+    var units = Number(share);
+    if (!isFinite(units) || units <= ZERO) {
+      return EQUAL_SHARE;
+    }
+    return String(units) + SHARE_FLEX_TAIL;
+  }
+
   // groupFrame is the themed QGroupBox: a 1 px frame and a title drawn in the
   // group own margin, so the title takes no row.
-  function groupFrame(model, shares) {
+  function groupFrame(model, shares, share) {
     var style = boxStyle(
       listField(model, MODULE_MARGINS_PX),
       model[GROUP_SPACING_PX],
       COLUMN_WAY
     );
-    style.flex = shares === true ? EQUAL_SHARE : FLEX_NONE;
+    style.flex = shares === true ? shareFlex(share) : FLEX_NONE;
     style.minWidth = ZERO;
     if (shares === true) {
       style.minHeight = ZERO;
@@ -2380,7 +2394,9 @@
   function ModuleGroup(props) {
     var model = props.model;
     var entry = asList(props.entry);
-    var groupProps = { style: groupFrame(model, props.shares === true) };
+    var groupProps = {
+      style: groupFrame(model, props.shares === true, props.share)
+    };
     groupProps[PART_ATTR] = MODULE_GROUP_PART;
     groupProps[NAME_ATTR] = text(entry[ZERO]);
     groupProps[ARIA_LABEL] = label(entry[ONE]);
@@ -2407,12 +2423,14 @@
   // ATA-SPM zone carries the sector row and Opposing Trades the scan row.
   function moduleGroups(model) {
     var keys = listField(model, LEFT_MODULE_KEYS);
+    var shares = listField(model, LEFT_MODULE_SHARES);
     return listField(model, LEFT_MODULES).map(function (entry, at) {
       return element(ModuleGroup, {
         key: MODULE_GROUP_PART + PATH_SPLIT + String(at),
         model: model,
         entry: entry,
         shares: true,
+        share: shares[at],
         hidesStepper: false,
         children: zoneContent(model, entry[ZERO], keys)
       });

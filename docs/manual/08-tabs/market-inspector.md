@@ -4130,4 +4130,289 @@ Energy reads the asset map's order: USO, BNO, UGA, UNG.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-18 16:10 - #23 - A Scan Now press says what it did, and the zone shows it
+
+> ATA-SMP - Please proceed back to ATA-SMP and get my Scan button working.
+> Unitize and apply same work flow under the correct Issue. It still does
+> nothing as of the build I am currently running.
+
+> For this, will need to verify and / or wire in Emitter Network and update
+> what the Inspector's subsystems (including ATA-SMP) write to the logs. Entire
+> idea for the Emitter Network is to provide us signals for verifying proper
+> software function resulting from all user actions or automated sequences...
+
+### What a press wrote before this entry
+
+A press reached the scan. The scan ran on its own thread, the answer crossed
+back, and the zone was redrawn. Two lines said so, and nothing else did.
+
+```
+ATA-SPM scan on thread ata-smp-scan: compute
+ATA-SPM scan on thread MainThread: draw
+```
+
+The operator's own console log, six files and 1,185,719 lines, holds twelve of
+those lines: six presses on 2026-09-15 and 2026-09-16, each pair 0 to 4 seconds
+apart. No line names a market, a candle count, a hit or a refusal. The Activity
+Log carried nothing, and the signal handler carried nothing.
+
+The zone did redraw, under a fold. The ATA-SPM zone took one third of the left
+pane, its control rows took most of that third, and the entry that carries the
+report sat below the rows in a strip too short to read. Measured on the
+operator's window, 1536 by 937 logical pixels at 125 % scale:
+
+| his window | window | page |
+| ---------- | ------ | ---- |
+| height the entry asks for | 123 to 139 px | 94 px |
+| height the zone gave it | 37 px | 8 px |
+| headline visible | 16 of 26 px | 3.5 px |
+| meta line visible | 6 px | 0 px |
+| method line visible | 0 px | 0 px |
+
+The only change he could see was the position line: `0 of 0` became `1 of 1`.
+
+### The press says what it did
+
+Every phase of one press now writes one line at info on the `acervator`
+logger, so `system.log` and the Console pane carry it. The formats live beside
+the scan's other texts.
+
+`src/trading/ata_spm.py` — the lines one press writes, in phase order
+
+```python
+SCAN_PRESSED_TEXT = (
+    "ATA-SPM scan pressed: {asset_class} on {timeframes}, ticker '{ticker}', "
+    "target {hits} hit(s)"
+)
+SCAN_BUSY_TEXT = "ATA-SPM scan pressed while a scan is running; press ignored"
+MARKET_READ_TEXT = "ATA-SPM read {symbol} on {label} from {venue}: {candles} candle(s)"
+MARKET_EMPTY_TEXT = "ATA-SPM read {symbol} on {label} from {venue}: no candles"
+MARKET_REFUSED_TEXT = "ATA-SPM read {symbol} on {label} from {venue}: refused, {reason}"
+HIT_TEXT = "ATA-SPM hit: {call}"
+SCAN_FINISHED_TEXT = "ATA-SPM scan finished: {headline} · {meta}. {method}"
+SCAN_NOTE_TEXT = "ATA-SPM scan finished: {note}"
+SCAN_EMPTY_TEXT = "ATA-SPM scan finished: no sector to scan"
+SCAN_FAILED_TEXT = "ATA-SPM scan failed: {error}"
+```
+
+The press line is written on the window thread before the thread starts. The
+thread start keeps its `compute` line. Each market read writes its own line
+from the thread. The hit lines and the finished line are written when the
+answer crosses back, one finished line per sector the run scanned. A press
+while a scan is running writes the busy line at warning, where it used to
+write a debug line nobody saw.
+
+One press on the energy sector, read off the console log:
+
+```
+ATA-SPM scan pressed: energy on 1hr 1d 1wk 1mnth, ticker '', target 3 hit(s)
+ATA-SPM scan on thread ata-smp-scan: compute
+ATA-SPM read USO on 1hr from yahoo: 384 candle(s)
+ATA-SPM read USO on 1d from yahoo: 365 candle(s)
+...
+ATA-SPM read UGA on 1hr from yahoo: refused, HTTPError: HTTP Error 404: Not Found
+...
+ATA-SPM scan on thread MainThread: draw
+ATA-SPM hit: USO on 1wk: bearish reversal
+ATA-SPM hit: BNO on 1wk: bearish reversal
+ATA-SPM scan finished: energy by volume · 4 market(s) read · 2 hit(s) · sector exhausted. USO on 1wk: bearish reversal
+```
+
+### Each market read is named
+
+The candle source the scan reads through now answers three things: where it
+read, what it read, and why it read nothing. The scan's reader on the tab
+writes the line and the pin from that answer.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the read behind `sector_candles`
+
+```python
+def sector_candle_read(
+    inspector: Any, symbol: Any, timeframe: Any, connectors: Any = None
+) -> tuple:
+    listing = ata_asset_maps.listing_of(symbol)
+    if listing is not None:
+        candles, refusal = ata_asset_maps.venue_candle_read(symbol, timeframe)
+        return listing.venue, candles, refusal
+    if inspector_scan_age(inspector) < CANDLES_FRESH_SECONDS:
+        held = inspector_candles(inspector, symbol, timeframe)
+        if held:
+            return CANDLES_FROM_SCAN, held, ""
+    if not connectors:
+        return ata_asset_maps.VENUE_EXCHANGE, [], NO_CONNECTOR_TEXT
+    return (
+        ata_asset_maps.VENUE_EXCHANGE,
+        connector_candles(connectors, symbol, timeframe),
+        "",
+    )
+```
+
+| the source | the name in the line | the refusal it can name |
+| ---------- | -------------------- | ----------------------- |
+| a mapped name, read from its venue now | `yahoo` | the venue's own error, an unserved timeframe, a name no map lists |
+| the universe scan's candles, under 15 minutes old | `universe scan` | none; it answers what it holds |
+| the exchange connector, read now | `exchange` | `no exchange connected` |
+
+`src/trading/ata_asset_maps.py` — the refusals a venue read names
+
+```python
+UNMAPPED_TEXT = "no map lists {symbol}"
+NO_VENUE_TEXT = "no configured venue lists {symbol}"
+UNSERVED_TEXT = "{venue} does not serve {timeframe}"
+NO_ADAPTER_TEXT = "no fetcher serves {venue}"
+```
+
+The venue's own error reaches the line as the fetcher reports it. A refused
+Yahoo read on this page's stand-in reads `refused, HTTPError: HTTP Error 404:
+Not Found`.
+
+### The Activity Log carries the same lines
+
+The scan runs on its own thread, and the Activity Log is a window widget. Each
+line crosses on a signal beside the one the answer crosses on.
+
+`src/gui/market_inspector.py` — the signal and the writer
+
+```python
+        #: One phase line of a running scan, and its Activity Log level.
+        scanLogged = Signal(str, str)  # noqa: N815 - Qt signal name
+```
+
+```python
+        def _say(self, message: str, level: str = ACTIVITY_INFO) -> None:
+            logger.info(message)
+            self.scanLogged.emit(message, level)
+```
+
+The Inspector tab mixin hands the tab the Live tab's pane, the same callable
+every other Activity Log writer calls. Under React the pane relays each line
+to the page the way it relays every other line.
+
+`src/gui/main_tabs/market_inspector_tab.py` — the wiring
+
+```python
+    def _wire_ata_activity_log(self, inspector: Any) -> None:
+        pane = getattr(self, "_status_log", None)
+        if pane is None or not hasattr(inspector, "set_activity_log"):
+            logger.debug("no Activity Log pane; ATA-SPM phase lines reach the log only")
+            return
+        inspector.set_activity_log(pane.log)
+```
+
+A read that answered candles draws at info. A read that answered none, the
+busy line and a finished line with no vote draw at warning. A scan that
+raised draws its error line at error.
+
+### Four pins on the signal handler
+
+Each phase leaves one record on the signal handler, through the one wire
+every pin uses, `signal_contract.emit`. Each carries an expectation, so the
+handler holds a verdict and not only a note.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the pin names
+
+```python
+SCAN_PRESSED_PIN = "inspector.ata.scan_pressed"
+SCAN_STARTED_PIN = "inspector.ata.scan_started"
+MARKET_READ_PIN = "inspector.ata.market_read"
+SCAN_FINISHED_PIN = "inspector.ata.scan_finished"
+```
+
+| pin | when | actual | expected | context |
+| --- | ---- | ------ | -------- | ------- |
+| `scan_pressed` | the press, window thread | whether a thread started | `True` | asset class, ticker text, timeframes ticked, hit target |
+| `scan_started` | first thing on the thread | the thread's name | `ata-smp-scan` | asset class, sectors held |
+| `market_read` | every symbol on every timeframe, on the thread | the candle count | the floor a vote needs | symbol, timeframe, source, refusal |
+| `scan_finished` | the answer's return, window thread | markets read | markets listed, or the count at the stop | per sector: read, listed, hits, stopped, the report line |
+
+The handler writes its file every 500 records. The run's end flushes it, so
+one press on a fresh instance leaves its records in
+`~/.acervator_logs/signals/session.jsonl` at once.
+
+### The zone shows the report
+
+The three left zones shared the pane in equal thirds, on both hosts, and the
+ATA-SPM zone's rows left its entry no room. The zones now share by one tuple,
+and the ATA-SPM zone takes two shares.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the shares
+
+```python
+#: The share of the left pane's height each ``LEFT_MODULE_KEYS`` zone takes.
+#: ATA-SPM takes two, so its control rows and its entry both stay in view.
+LEFT_MODULE_SHARES = (2, 1, 1)
+```
+
+The window sets each group's height from the tuple in `_size_zones`, and the
+page sets each fieldset's flex from the same tuple through `shareFlex`.
+
+`src/gui/web/market_inspector.js` — the page's share
+
+```javascript
+  function shareFlex(share) {
+    var units = Number(share);
+    if (!isFinite(units) || units <= ZERO) {
+      return EQUAL_SHARE;
+    }
+    return String(units) + SHARE_FLEX_TAIL;
+  }
+```
+
+### Read off both running builds, and both bundles
+
+Both builds were driven at the operator's window size, 1536 by 937 logical at
+125 % scale, on a scratch home with every socket but loopback refused. A
+loopback stand-in answered the Yahoo chart endpoint for USO and BNO and
+refused every other ticker with 404, and answered the Coinbase public candle
+endpoint for BTC-USD and ETH-USD and refused every other product. The real
+endpoints were never called.
+
+| press, empty field | log lines | Activity Log lines | pins | zone |
+| ------------------ | --------- | ------------------ | ---- | ---- |
+| energy: USO and BNO answered, UGA and UNG refused | 30 | 28 | 27: 1 pressed, 1 started, 24 read, 1 finished | `energy by volume` / `4 market(s) read · 2 hit(s) · sector exhausted` / `USO on 1wk: bearish reversal` |
+| crypto: BTC and ETH answered, 118 refused | 248 | 246 | 247: 244 read | `crypto by volume` / `120 market(s) read · 0 hit(s) · sector exhausted` / `No chart carried a reversal vote. No candles came back for 1INCH, AAVE, ADA, AGIX, AKT, ALGO and 112 more.` |
+| metals: every ticker refused | 20 | 18 | 19: 16 read | `metals by volume` / `4 market(s) read · 0 hit(s) · sector exhausted` / `No candles came back for GLD, PALL, PPLT, SLV.` |
+
+The counts are the same in the window and on the page. The Activity Log lines
+were read off the Qt pane's text and off the React page's own line elements,
+and the page held every line the pane held. The finished pin read
+`actual 4, expected 4` on energy and metals and `120, 120` on crypto, `ok`
+true on all three.
+
+The entry now draws in view, both hosts, at his size:
+
+| his window | window | page |
+| ---------- | ------ | ---- |
+| ATA-SPM zone height | 378 px, was 252 | 331 px, was 240 |
+| height the zone gives the entry | 163 px, was 37 | 94 px of 94, was 8 |
+| method line visible | 15 px, was 0 | 15 px, was 0 |
+
+`bot_state.json` on the scratch home compared byte for byte before and after
+every press, and a planted byte moved the comparison.
+
+Both bundles were built from this entry's code commit and launched in
+isolation on a scratch home, the Inspector tab opened by a click on its tab
+item and Scan Now pressed at the position UI Automation reports for the
+button, with crypto shown and the field empty. No exchange is configured on a
+scratch home, so every read names `exchange` and the refusal `no exchange
+connected`:
+
+| bundle | log lines after the press | pins in the handler's file | zone |
+| ------ | ------------------------- | -------------------------- | ---- |
+| Qt | 244 | 243 | `crypto by volume` / `120 market(s) read · 0 hit(s) · sector exhausted` / `No candles came back for ...` |
+| React | 244 | 243 | identical |
+
+### One line this entry overtakes
+
+`docs/manual/08-tabs/market-inspector.md:3959` - "Inside the 760 pane the
+ATA-SPM zone's entry shows one line in the window and none on the page, in
+both builds, before and after this entry." After this entry the zone's entry
+shows its headline, its counts and its method line in both builds at the
+operator's window size, and the same three lines in a 1400 by 900 window:
+the window gives the entry 144 px against the 124 it asks, and the page shows
+the method line's full 15 px.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).

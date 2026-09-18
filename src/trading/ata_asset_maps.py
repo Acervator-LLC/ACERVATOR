@@ -34,6 +34,12 @@ from .stone_tablets.ra_fetcher import (
 logger = logging.getLogger("acervator.ata_asset_maps")
 
 VENUE_FETCH_FAILED_LOG = "ata asset map: %s answered no candles: %s"
+
+#: The refusals ``venue_candle_read`` names, one per reason it read nothing.
+UNMAPPED_TEXT = "no map lists {symbol}"
+NO_VENUE_TEXT = "no configured venue lists {symbol}"
+UNSERVED_TEXT = "{venue} does not serve {timeframe}"
+NO_ADAPTER_TEXT = "no fetcher serves {venue}"
 VENUE_ROWS_REFUSED_LOG = "ata asset map: %s kept %d row(s), refused %d: %s"
 
 #: ``YahooChartAdapter.exchange_id``, the one non-crypto venue configured here.
@@ -276,18 +282,23 @@ def venue_window_days(timeframe: Any) -> int:
     return max(MIN_WINDOW_DAYS, math.ceil(asked))
 
 
-def venue_candles(symbol: Any, timeframe: Any, days: int = 0) -> list:
-    """The candles the venue listing ``symbol`` answers over the last ``days``.
+def venue_candle_read(symbol: Any, timeframe: Any, days: int = 0) -> tuple:
+    """The candles and the refusal the venue listing ``symbol`` answers.
 
     A ``days`` of zero reads ``venue_window_days``; a symbol no map names, a
-    row carrying ``NO_VENUE`` and an unserved timeframe answer no candles.
+    row carrying ``NO_VENUE``, an unserved timeframe and a venue error each
+    answer no candles and name the refusal.
     """
     found = listing_of(symbol)
-    if found is None or not found.listed or not found.serves(timeframe):
-        return []
+    if found is None:
+        return [], UNMAPPED_TEXT.format(symbol=symbol)
+    if not found.listed:
+        return [], NO_VENUE_TEXT.format(symbol=symbol)
+    if not found.serves(timeframe):
+        return [], UNSERVED_TEXT.format(venue=found.venue, timeframe=timeframe)
     adapter = _adapter_for(found.venue)
     if adapter is None:
-        return []
+        return [], NO_ADAPTER_TEXT.format(venue=found.venue)
     window = int(days) or venue_window_days(timeframe)
     now_ms = int(time.time() * 1000)
     attempt = asyncio.run(
@@ -301,8 +312,13 @@ def venue_candles(symbol: Any, timeframe: Any, days: int = 0) -> list:
     )
     if attempt.error:
         logger.debug(VENUE_FETCH_FAILED_LOG, found.ticker, attempt.error)
-        return []
-    return _candles_of(found.ticker, attempt.candles)
+        return [], str(attempt.error)
+    return _candles_of(found.ticker, attempt.candles), ""
+
+
+def venue_candles(symbol: Any, timeframe: Any, days: int = 0) -> list:
+    """The candles ``venue_candle_read`` answers over the last ``days``."""
+    return venue_candle_read(symbol, timeframe, days)[0]
 
 
 def _candles_of(ticker: str, rows: Any) -> list:
@@ -351,6 +367,7 @@ __all__ = [
     "listing_of",
     "listings_for",
     "sectors_for",
+    "venue_candle_read",
     "venue_candles",
     "venue_window_days",
 ]
