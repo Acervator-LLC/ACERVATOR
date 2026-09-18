@@ -142,12 +142,13 @@ class LineView(QWidget):
         """Fill the ground, then draw the close line and the VWAP line."""
         del event
         painter = QPainter(self)
-        painter.fillRect(self.rect(), _colour(ds.SURFACE_CHART))
+        colours = surface.replay_colours()
+        painter.fillRect(self.rect(), _colour(colours["ground"]))
         self._draw_line(
-            painter, self._payload.get("close_points") or [], _colour(ds.TEXT_HIGH)
+            painter, self._payload.get("close_points") or [], _colour(colours["close"])
         )
         self._draw_line(
-            painter, self._payload.get("vwap_points") or [], _colour(ds.ACCENT_GOLD)
+            painter, self._payload.get("vwap_points") or [], _colour(colours["vwap"])
         )
         painter.end()
 
@@ -176,14 +177,15 @@ class PlaybackView(QWidget):
         """Fill the ground, then draw each candle's wick and body."""
         del event
         painter = QPainter(self)
-        painter.fillRect(self.rect(), _colour(ds.SURFACE_CHART))
+        colours = surface.replay_colours()
+        painter.fillRect(self.rect(), _colour(colours["ground"]))
         shapes = self._payload.get("candles") or []
         width = float(self.width())
         height = float(self.height())
         column_px = width / max(len(shapes), 1)
         body_px = max(CANDLE_BODY_MIN_PX, column_px * CANDLE_GAP_RATIO)
         for shape in shapes:
-            colour = _colour(ds.SUCCESS if shape["up"] else ds.ERROR)
+            colour = _colour(colours["up"] if shape["up"] else colours["down"])
             x = shape["x"] * width
             painter.setPen(QPen(colour, WICK_WIDTH_PX))
             painter.drawLine(

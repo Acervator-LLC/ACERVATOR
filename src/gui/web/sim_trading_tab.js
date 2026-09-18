@@ -24,6 +24,22 @@
   var REPLAY_HEADER = "replay_header";
   var LAYER_SPLITTER = "layer_splitter";
   var FLIP_BUTTON = "flip_button";
+  var REPLAY = "replay";
+  var TABLET_LABEL = "tablet_label";
+  var CHOOSER = "chooser";
+  var RETRIEVE_BUTTON = "retrieve_button";
+  var OPTIONS = "options";
+  var CHOSEN = "chosen";
+  var ENABLED = "enabled";
+  var WIDTH_PX = "width_px";
+  var VWAP = "vwap";
+  var PLAYBACK = "playback";
+  var COLOURS = "colours";
+  var CLOSE_POINTS = "close_points";
+  var VWAP_POINTS = "vwap_points";
+  var POINT_COUNT = "point_count";
+  var CANDLES = "candles";
+  var CANDLE_COUNT = "candle_count";
   var NAME = "name";
 
   var DECLARED_FIELDS = [
@@ -40,6 +56,7 @@
     LAYER_SPLITTER,
     LOG_SPLITTER,
     MAIN_SPLITTER,
+    REPLAY,
     REPLAY_LAYER,
     TAB_TITLE,
     TOP_SPLITTER,
@@ -126,8 +143,12 @@
   var ACTIVITY_TOGGLE_ACTION = "activity_pause_button.toggled";
   var API_TOGGLE_ACTION = "api_pause_button.toggled";
   var FLIP_ACTION = "flip_button.clicked";
+  var CHOOSER_ACTION = "tablet_chooser.changed";
+  var RETRIEVE_ACTION = "retrieve_button.clicked";
   var WAY_IN_PARAM = "way_in";
   var REPLAY_LAYER_PARAM = "replay_layer";
+  var TABLET_PARAM = "tablet";
+  var RETRIEVE_PARAM = "retrieve_tablet";
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -191,6 +212,24 @@
   var SPAN_TAG = "span";
   var BUTTON_TAG = "button";
   var SVG_TAG = "svg";
+  var SELECT_TAG = "select";
+  var OPTION_TAG = "option";
+  var PATH_TAG = "path";
+  var LINE_TAG = "line";
+  var RECT_TAG = "rect";
+  var GROUP_TAG = "g";
+  var NONE_FILL = "none";
+  // The unit square the surface's points and shapes are scaled from.
+  var VIEW_BOX = "0 0 1000 1000";
+  var PRESERVE_NONE = "none";
+  var UNIT = 1000;
+  var LINE_WIDTH = 6;
+  var WICK_WIDTH = 3;
+  var CANDLE_GAP_RATIO = 0.7;
+  var MOVE_PEN = "M";
+  var LINE_PEN = "L";
+  var CLOSE_LINE = "close";
+  var VWAP_LINE = "vwap";
 
   // The two layers of the stack behind the panel, in stack order.
   var INDICATORS_LAYER = "indicators";
@@ -231,6 +270,13 @@
   var FLIP_BUTTON_PART = "sim-flip-button";
   var VWAP_VIEW_PART = "sim-vwap-view";
   var PLAYBACK_VIEW_PART = "sim-playback-view";
+  var TABLET_LABEL_PART = "sim-tablet-label";
+  var TABLET_CHOOSER_PART = "sim-tablet-chooser";
+  var RETRIEVE_BUTTON_PART = "sim-retrieve-button";
+  var POINT_COUNT_ATTR = "data-point-count";
+  var CANDLE_COUNT_ATTR = "data-candle-count";
+  var LINE_ATTR = "data-line";
+  var UP_ATTR = "data-up";
   var VWAP_SLOT = "vwap_view";
   var PLAYBACK_SLOT = "playback_view";
   var HEADER_ROW_PART = "header-row";
@@ -716,6 +762,21 @@
     return askTrading(params);
   }
 
+  // The tablet chooser moved; the host draws the item it names.
+  function tabletChosen(key) {
+    var params = {};
+    params[TABLET_PARAM] = key;
+    return askTrading(params);
+  }
+
+  // The retrieval button pressed; the host retrieves or updates the chosen
+  // tablet through its read-only connector.
+  function retrieveAsked() {
+    var params = {};
+    params[RETRIEVE_PARAM] = true;
+    return askTrading(params);
+  }
+
   // Qt's toggle pauses the pane as well as flipping the caption.
   function pauseToggled(slot, checked) {
     var wanted = checked !== true;
@@ -1073,13 +1134,142 @@
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
   }
 
-  // One replay window, named and empty; the points arrive in a later unit.
-  function ReplayWindow(props) {
-    var windowProps = { style: { flex: AUTO, minHeight: ZERO, width: FULL } };
-    windowProps[PART_ATTR] = props.part;
-    windowProps[SLOT_ATTR] = props.slot;
-    windowProps[ARIA_LABEL] = props.part;
-    return element(SVG_TAG, windowProps, null);
+  // The surface's unit-square points as one SVG path; a null point lifts
+  // the pen, as the Qt view breaks its run.
+  function pathOf(points) {
+    var parts = [];
+    var pen = MOVE_PEN;
+    (points || []).forEach(function (point) {
+      if (point === null) {
+        pen = MOVE_PEN;
+        return;
+      }
+      parts.push(pen + (point[0] * UNIT).toFixed(3) + GAP + (point[1] * UNIT).toFixed(3));
+      pen = LINE_PEN;
+    });
+    return parts.join(GAP);
+  }
+
+  // The VWAP window: the close line and the VWAP line over one price span,
+  // each colour arriving on the payload.
+  function VwapWindow(props) {
+    var model = props.model;
+    var colours = props.colours;
+    var windowProps = {
+      style: { flex: AUTO, minHeight: ZERO, width: FULL, background: colours.ground },
+      viewBox: VIEW_BOX,
+      preserveAspectRatio: PRESERVE_NONE
+    };
+    windowProps[PART_ATTR] = VWAP_VIEW_PART;
+    windowProps[SLOT_ATTR] = VWAP_SLOT;
+    windowProps[ARIA_LABEL] = VWAP_VIEW_PART;
+    windowProps[POINT_COUNT_ATTR] = String(model[POINT_COUNT] || 0);
+    var closeProps = { key: CLOSE_LINE, d: pathOf(model[CLOSE_POINTS]), fill: NONE_FILL, stroke: colours.close, strokeWidth: LINE_WIDTH };
+    closeProps[LINE_ATTR] = CLOSE_LINE;
+    var vwapProps = { key: VWAP_LINE, d: pathOf(model[VWAP_POINTS]), fill: NONE_FILL, stroke: colours.vwap, strokeWidth: LINE_WIDTH };
+    vwapProps[LINE_ATTR] = VWAP_LINE;
+    return element(
+      SVG_TAG,
+      windowProps,
+      element(PATH_TAG, closeProps),
+      element(PATH_TAG, vwapProps)
+    );
+  }
+
+  // The Stone Tablet playback window: one wick and one body per candle
+  // shape, coloured up or down off the payload.
+  function PlaybackWindow(props) {
+    var model = props.model;
+    var colours = props.colours;
+    var shapes = listField(model, CANDLES);
+    var bodyWidth = shapes.length > 0 ? (UNIT / shapes.length) * CANDLE_GAP_RATIO : 1;
+    var windowProps = {
+      style: { flex: AUTO, minHeight: ZERO, width: FULL, background: colours.ground },
+      viewBox: VIEW_BOX,
+      preserveAspectRatio: PRESERVE_NONE
+    };
+    windowProps[PART_ATTR] = PLAYBACK_VIEW_PART;
+    windowProps[SLOT_ATTR] = PLAYBACK_SLOT;
+    windowProps[ARIA_LABEL] = PLAYBACK_VIEW_PART;
+    windowProps[CANDLE_COUNT_ATTR] = String(model[CANDLE_COUNT] || 0);
+    return element(
+      SVG_TAG,
+      windowProps,
+      shapes.map(function (shape, index) {
+        var colour = shape.up ? colours.up : colours.down;
+        var x = shape.x * UNIT;
+        var top = shape.body_top * UNIT;
+        var bottom = shape.body_bottom * UNIT;
+        var groupProps = { key: CANDLES + String(index) };
+        groupProps[UP_ATTR] = String(shape.up);
+        return element(
+          GROUP_TAG,
+          groupProps,
+          element(LINE_TAG, {
+            x1: x,
+            x2: x,
+            y1: shape.wick_top * UNIT,
+            y2: shape.wick_bottom * UNIT,
+            stroke: colour,
+            strokeWidth: WICK_WIDTH
+          }),
+          element(RECT_TAG, {
+            x: x - bodyWidth / 2,
+            y: top,
+            width: bodyWidth,
+            height: Math.max(bottom - top, 1),
+            fill: colour
+          })
+        );
+      })
+    );
+  }
+
+  // The Tablet: label, the chooser over the host's items and the retrieval
+  // button, seated after the flip button as the Qt fork seats them.
+  function TabletChooser(props) {
+    var replay = props.replay;
+    var label = objectField(replay, TABLET_LABEL);
+    var chooser = objectField(replay, CHOOSER);
+    var button = objectField(replay, RETRIEVE_BUTTON);
+    var labelProps = {};
+    labelProps[PART_ATTR] = TABLET_LABEL_PART;
+    labelProps[SLOT_ATTR] = TABLET_LABEL_PART;
+    labelProps[ARIA_LABEL] = text(label[NAME]);
+    var selectProps = {
+      value: text(chooser[CHOSEN]),
+      style: { width: length(chooser[WIDTH_PX]), flex: FLEX_NONE },
+      onChange: function (event) {
+        tabletChosen(text(event && event.target ? event.target.value : EMPTY));
+      }
+    };
+    selectProps[PART_ATTR] = TABLET_CHOOSER_PART;
+    selectProps[SLOT_ATTR] = TABLET_CHOOSER_PART;
+    selectProps[ARIA_LABEL] = text(chooser[NAME]);
+    selectProps[ACTION_ATTR] = text(props.actions[CHOOSER_ACTION]);
+    var buttonProps = {
+      className: PANE_CLASS,
+      type: BUTTON_TYPE,
+      disabled: button[ENABLED] === false,
+      onClick: function () {
+        retrieveAsked();
+      }
+    };
+    buttonProps[PART_ATTR] = RETRIEVE_BUTTON_PART;
+    buttonProps[SLOT_ATTR] = RETRIEVE_BUTTON_PART;
+    buttonProps[ARIA_LABEL] = text(button[NAME]);
+    buttonProps[ACTION_ATTR] = text(props.actions[RETRIEVE_ACTION]);
+    return [
+      element(SPAN_TAG, Object.assign({ key: TABLET_LABEL_PART }, labelProps), text(label[TEXT])),
+      element(
+        SELECT_TAG,
+        Object.assign({ key: TABLET_CHOOSER_PART }, selectProps),
+        listField(chooser, OPTIONS).map(function (option) {
+          return element(OPTION_TAG, { key: text(option[KEY]), value: text(option[KEY]) }, text(option[TEXT]));
+        })
+      ),
+      element(BUTTON_TAG, Object.assign({ key: RETRIEVE_BUTTON_PART }, buttonProps), text(button[TEXT]))
+    ];
   }
 
   // The replay layer behind the panel: its header row holding the flip
@@ -1105,18 +1295,23 @@
     var spacerProps = { style: { flex: AUTO } };
     spacerProps[PART_ATTR] = STRETCH_PART;
     spacerProps[SLOT_ATTR] = REPLAY_HEADER_PART;
+    var replay = objectField(model, REPLAY);
+    var colours = objectField(replay, COLOURS);
+    headerProps.style.alignItems = CENTER;
     return element(
       DIV_TAG,
       layerProps,
       element(
         DIV_TAG,
         headerProps,
-        element(FlipButton, {
-          key: FLIP_BUTTON_PART,
-          model: model,
-          actions: objectField(model, ACTIONS)
-        }),
-        element(DIV_TAG, spacerProps, null)
+        [
+          element(FlipButton, {
+            key: FLIP_BUTTON_PART,
+            model: model,
+            actions: objectField(model, ACTIONS)
+          }),
+          element(DIV_TAG, Object.assign({ key: STRETCH_PART }, spacerProps), null)
+        ].concat(TabletChooser({ replay: replay, actions: objectField(model, ACTIONS) }))
       ),
       element(Splitter, {
         key: LAYER_SPLITTER + splitterKey(model, LAYER_SPLITTER),
@@ -1125,11 +1320,11 @@
         panes: [
           {
             slot: VWAP_SLOT,
-            node: element(ReplayWindow, { part: VWAP_VIEW_PART, slot: VWAP_SLOT })
+            node: element(VwapWindow, { model: objectField(replay, VWAP), colours: colours })
           },
           {
             slot: PLAYBACK_SLOT,
-            node: element(ReplayWindow, { part: PLAYBACK_VIEW_PART, slot: PLAYBACK_SLOT })
+            node: element(PlaybackWindow, { model: objectField(replay, PLAYBACK), colours: colours })
           }
         ]
       })
@@ -1808,6 +2003,10 @@
     return bag(FLIP_BUTTON);
   }
 
+  function replay() {
+    return bag(REPLAY);
+  }
+
   function actions() {
     return bag(ACTIONS);
   }
@@ -2056,7 +2255,9 @@
     ApiLogView: ApiLogView,
     IndicatorPanel: IndicatorPanel,
     ReplayLayer: ReplayLayer,
-    ReplayWindow: ReplayWindow,
+    VwapWindow: VwapWindow,
+    PlaybackWindow: PlaybackWindow,
+    TabletChooser: TabletChooser,
     FlipButton: FlipButton,
     ExchangeTabButton: ExchangeTabButton,
     ExchangePane: ExchangePane,
@@ -2075,6 +2276,7 @@
     pauseBuffer: pauseBuffer,
     replayLayer: replayLayer,
     flipButton: flipButton,
+    replay: replay,
     actions: actions,
     action: action,
     declarations: declarations,
@@ -2104,6 +2306,8 @@
     askTrading: askTrading,
     wayInAsked: wayInAsked,
     flipAsked: flipAsked,
+    tabletChosen: tabletChosen,
+    retrieveAsked: retrieveAsked,
     pauseToggled: pauseToggled,
     redraw: redraw,
     forget: forget
