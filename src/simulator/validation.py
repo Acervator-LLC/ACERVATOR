@@ -126,6 +126,49 @@ TAPE_FIELDS = (
     "deep_fold",
 )
 
+#: Why one light differs, read off the row's own fields: the tablet candle
+#: differs from the reading the bot recorded, a recorded field the light reads
+#: is absent, or the same inputs latched differently.
+TAPE_CAUSE = "tape"
+FIXTURE_CAUSE = "fixture"
+CHAIN_CAUSE = "chain"
+CAUSES = (TAPE_CAUSE, FIXTURE_CAUSE, CHAIN_CAUSE)
+
+SCRUM_FIXTURE = "scrum"
+FOLD_FIXTURE = "fold"
+
+#: The recorded fixture fields ``rerun_context`` reads for each light.
+LABEL_FIELDS: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {
+    ("S", "TGT"): ((SCRUM_FIXTURE, "delta"),),
+    ("S", "INT"): ((SCRUM_FIXTURE, "below_interval"),),
+    ("S", "BB"): ((SCRUM_FIXTURE, "scrum_ok"), (SCRUM_FIXTURE, "bb_upper_dt")),
+    ("S", "FIRE"): ((SCRUM_FIXTURE, "target_fires"),),
+    ("S", "TA"): ((SCRUM_FIXTURE, "eff_is_bullish"),),
+    ("S", "LS"): (),
+    ("S", "TRND"): ((SCRUM_FIXTURE, "eff_trend_hold"),),
+    ("S", "HTF"): ((SCRUM_FIXTURE, "eff_htf_blocks"),),
+    ("S", "CB"): ((SCRUM_FIXTURE, "cb_blocks_scrum"),),
+    ("S", "OTD"): (
+        (SCRUM_FIXTURE, "hyst_ok_scrum_side"),
+        (SCRUM_FIXTURE, "hyst_ref_scrum_side"),
+    ),
+    ("F", "BB"): ((SCRUM_FIXTURE, "bb_lower_dt"),),
+    ("F", "MID"): (),
+    ("F", "TA"): ((FOLD_FIXTURE, "eff_is_bearish"),),
+    ("F", "LS"): (),
+    ("F", "TRNQ"): ((FOLD_FIXTURE, "has_fold_tranches"),),
+    ("F", "CEIL"): ((FOLD_FIXTURE, "mem253_at_ceiling"),),
+    ("F", "HTF"): ((FOLD_FIXTURE, "eff_htf_blocks_fold"),),
+    ("F", "CB"): ((FOLD_FIXTURE, "cb_blocks_fold"),),
+    ("F", "OTD"): (
+        (FOLD_FIXTURE, "hyst_ok_fold_side"),
+        (FOLD_FIXTURE, "hyst_ref_fold_side"),
+    ),
+}
+
+#: The light state a blocker phrase paints.
+BLOCKED_STATE = "blocked"
+
 
 @dataclass(frozen=True)
 class SnappedTrade:
@@ -173,11 +216,19 @@ class LabelComparison:
     recorded: str
     rerun: str
     driven_by: str
+    #: One of ``CAUSES`` while the two states differ; empty while they agree.
+    cause: str = ""
 
     @property
     def agrees(self) -> bool:
         """True while the recorded state and the rerun state read the same."""
         return self.recorded == self.rerun
+
+    @property
+    def blocked_on_one_side(self) -> bool:
+        """True while exactly one side reads ``BLOCKED_STATE``: the light itself
+        moved, not only its bank's armed flag."""
+        return (self.recorded == BLOCKED_STATE) != (self.rerun == BLOCKED_STATE)
 
 
 @dataclass(frozen=True)
@@ -198,6 +249,13 @@ class RowComparison:
     phantom_locked_known: bool
     unknown_recorded_blockers: tuple[str, ...] = ()
     unknown_rerun_blockers: tuple[str, ...] = ()
+    #: The ``bb_pos`` the row recorded, None when the fixture carries none.
+    recorded_bb_pos: Optional[float] = None
+    #: The ``bb_pos`` the rerun read off the tablet window.
+    rerun_bb_pos: float = 0.0
+    #: The ``LABEL_FIELDS`` names absent from the row's fixtures, as
+    #: ``fixture.field``.
+    missing_fixture_fields: tuple[str, ...] = ()
 
     @property
     def agreed(self) -> int:
@@ -208,6 +266,12 @@ class RowComparison:
     def disagreed(self) -> tuple[LabelComparison, ...]:
         """Every light whose recorded state and rerun state differ."""
         return tuple(one for one in self.labels if not one.agrees)
+
+    @property
+    def causes(self) -> dict[str, int]:
+        """How many disagreeing lights carry each of ``CAUSES``."""
+        counted = Counter(one.cause for one in self.disagreed)
+        return {name: int(counted.get(name, 0)) for name in CAUSES}
 
     @property
     def latches_identically(self) -> bool:
@@ -485,11 +549,123 @@ def light_states(
     )
 
 
+def recorded_bb_pos(row: Any) -> Optional[float]:
+    """The ``bb_pos`` the row's scrum fixture recorded, or None."""
+    value = dict(row.scrum_fixture).get("bb_pos")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def missing_fixture_fields(row: Any) -> tuple[str, ...]:
+    """Every ``LABEL_FIELDS`` name absent from the row's two fixtures, as
+    ``fixture.field``, in ``LABEL_FIELDS`` order."""
+    fixtures = {
+        SCRUM_FIXTURE: dict(row.scrum_fixture),
+        FOLD_FIXTURE: dict(row.fold_fixture),
+    }
+    absent: list[str] = []
+    for fields in LABEL_FIELDS.values():
+        for fixture, field_name in fields:
+            name = f"{fixture}.{field_name}"
+            if field_name not in fixtures[fixture] and name not in absent:
+                absent.append(name)
+    return tuple(absent)
+
+
+def tape_moved(row: Any, context: GateContext, bank: str) -> bool:
+    """True while the tablet window read for ``bank`` differs from the
+    reading the row recorded: the recorded ``bb_pos`` is absent or sits more
+    than ``LAG_EXACT_GAP`` from the rerun's, or the bank's recorded band flag
+    (``bb_above_upper_dt`` for S, ``bb_below_lower_dt`` for F) differs."""
+    recorded = recorded_bb_pos(row)
+    if recorded is None or abs(recorded - float(context.bb_pos)) > LAG_EXACT_GAP:
+        return True
+    if bank == "S":
+        flag = dict(row.scrum_fixture).get("bb_above_upper_dt")
+        return flag is not None and bool(flag) != bool(context.bb_above_upper_dt)
+    flag = dict(row.fold_fixture).get("bb_below_lower_dt")
+    return flag is not None and bool(flag) != bool(context.bb_below_lower_dt)
+
+
+def light_cause(
+    light: LabelComparison,
+    row: Any,
+    context: GateContext,
+    locked_known: bool,
+    absent: Sequence[str],
+) -> str:
+    """One of ``CAUSES`` for a light that is ``blocked_on_one_side``: ``TAPE``
+    lights read the recorded ``bb_pos``, then ``tape_moved``, then the phantom
+    lock; ``RECORD`` lights read their ``LABEL_FIELDS`` against ``absent`` and
+    then ``tape_moved``; ``OVERRIDE`` lights are the chain's."""
+    key = (light.bank, light.label)
+    if light.driven_by == TAPE:
+        if recorded_bb_pos(row) is None:
+            return FIXTURE_CAUSE
+        if tape_moved(row, context, light.bank):
+            return TAPE_CAUSE
+        if key == ("S", "BB") and not locked_known:
+            return FIXTURE_CAUSE
+        return CHAIN_CAUSE
+    if light.driven_by == RECORD:
+        for fixture, field_name in LABEL_FIELDS.get(key, ()):
+            if f"{fixture}.{field_name}" in absent:
+                return FIXTURE_CAUSE
+        if tape_moved(row, context, light.bank):
+            return TAPE_CAUSE
+        return CHAIN_CAUSE
+    return CHAIN_CAUSE
+
+
+def bank_cause(causes: Sequence[str]) -> str:
+    """The cause a light blocked on neither side takes from its bank's blocked
+    lights: ``TAPE_CAUSE`` before ``FIXTURE_CAUSE`` before ``CHAIN_CAUSE``
+    where ``causes`` mix, ``CHAIN_CAUSE`` where it is empty."""
+    for name in CAUSES:
+        if name in causes:
+            return name
+    return CHAIN_CAUSE
+
+
+def classify_lights(
+    labels: Sequence[LabelComparison],
+    row: Any,
+    context: GateContext,
+    locked_known: bool,
+) -> tuple[LabelComparison, ...]:
+    """Every light of ``labels`` with its ``cause`` filled where it disagrees:
+    a light blocked on one side by ``light_cause``, any other disagreeing
+    light by ``bank_cause`` over its bank's blocked lights."""
+    absent = missing_fixture_fields(row)
+    primary: dict[str, list[str]] = {"S": [], "F": []}
+    firsts: dict[int, str] = {}
+    for at, light in enumerate(labels):
+        if light.agrees or not light.blocked_on_one_side:
+            continue
+        cause = light_cause(light, row, context, locked_known, absent)
+        firsts[at] = cause
+        primary.setdefault(light.bank, []).append(cause)
+    out = []
+    for at, light in enumerate(labels):
+        if light.agrees:
+            out.append(light)
+        elif at in firsts:
+            out.append(replace(light, cause=firsts[at]))
+        else:
+            out.append(replace(light, cause=bank_cause(primary.get(light.bank, []))))
+    return tuple(out)
+
+
 def compare_row(
     bot: SimBot, row: Any, snap: SnappedTrade, candles: Sequence[Any]
 ) -> RowComparison:
-    """One snapped trade's rerun beside its recorded row, light by light."""
-    context, _bb_pos, locked_known = rerun_context(bot, row, candles)
+    """One snapped trade's rerun beside its recorded row, light by light, each
+    disagreeing light carrying its ``cause`` from ``classify_lights``."""
+    context, bb_pos, locked_known = rerun_context(bot, row, candles)
     rerun = latch(context)
     recorded_lights = light_states(
         row.scrum_armed, row.fold_armed, row.scrum_blockers, row.fold_blockers
@@ -500,15 +676,22 @@ def compare_row(
         rerun["scrum_blockers"],
         rerun["fold_blockers"],
     )
-    labels = tuple(
-        LabelComparison(
-            bank=str(left["bank"]),
-            label=str(left["label"]),
-            recorded=str(left["state"]),
-            rerun=str(right["state"]),
-            driven_by=LABEL_DRIVER.get((str(left["bank"]), str(left["label"])), RECORD),
-        )
-        for left, right in zip(recorded_lights, rerun_lights, strict=True)
+    labels = classify_lights(
+        [
+            LabelComparison(
+                bank=str(left["bank"]),
+                label=str(left["label"]),
+                recorded=str(left["state"]),
+                rerun=str(right["state"]),
+                driven_by=LABEL_DRIVER.get(
+                    (str(left["bank"]), str(left["label"])), RECORD
+                ),
+            )
+            for left, right in zip(recorded_lights, rerun_lights, strict=True)
+        ],
+        row,
+        context,
+        locked_known,
     )
     return RowComparison(
         trade_id=snap.trade_id,
@@ -529,6 +712,9 @@ def compare_row(
         unknown_rerun_blockers=tuple(
             unknown_blockers(rerun["scrum_blockers"] + rerun["fold_blockers"])
         ),
+        recorded_bb_pos=recorded_bb_pos(row),
+        rerun_bb_pos=float(bb_pos),
+        missing_fixture_fields=missing_fixture_fields(row),
     )
 
 
@@ -660,6 +846,8 @@ class ValidationRun:
     by_bot: dict[str, dict] = field(default_factory=dict)
     #: The ``ParityReport`` ``run`` wrote for this pass; None until it has.
     report: Any = None
+    #: True when ``stop`` ended the pass before every bot and row was reached.
+    stopped: bool = False
 
     @property
     def summary(self) -> dict:
@@ -673,10 +861,31 @@ class ValidationRun:
         return MATCH_BY_PAIR if made else MATCH_BY_BOT_ID
 
     @property
-    def lines(self) -> list[str]:
-        """The fleet, the coverage, the latching verdict, then the tape lag."""
+    def unreached(self) -> list[str]:
+        """The bot ids the pass never reached: those with no ``by_bot`` entry."""
+        return [one.bot_id for one in self.bots if one.bot_id not in self.by_bot]
+
+    @property
+    def stopped_line(self) -> str:
+        """What the pass says when ``stopped``: the bots reached, the rows
+        rerun and the bots not reached; empty otherwise."""
+        if not self.stopped:
+            return ""
+        missed = self.unreached
+        named = ", ".join(missed) if missed else "none"
         return (
-            [
+            f"Stopped by the operator: {len(self.bots) - len(missed)} of "
+            f"{len(self.bots)} bots reached, {len(self.comparisons)} rows rerun; "
+            f"{len(missed)} bot(s) not reached: {named}."
+        )
+
+    @property
+    def lines(self) -> list[str]:
+        """The stop line when ``stopped``, the fleet, the coverage, the
+        latching verdict, then the tape lag."""
+        return (
+            ([self.stopped_line] if self.stopped else [])
+            + [
                 f"{len(self.bots)} bots, matched to a recorded gate row on "
                 f"{self.match_key}."
             ]
@@ -696,7 +905,8 @@ def tablet_for(entries: Sequence[Any], asset: str, exchange_id: str):
 
 def bot_counts(bot: SimBot, outcome: str, rows: Sequence[SnappedTrade]) -> dict:
     """One ``ValidationRun.by_bot`` entry: ``outcome``, the snapped and
-    unsnapped counts over ``rows``, and zero compared and latching."""
+    unsnapped counts over ``rows``, and zero compared, latching and
+    ``gate_rows`` until the pass fills them."""
     return {
         "symbol": bot.symbol,
         "outcome": outcome,
@@ -704,6 +914,7 @@ def bot_counts(bot: SimBot, outcome: str, rows: Sequence[SnappedTrade]) -> dict:
         "unsnapped": sum(1 for one in rows if not one.is_snapped),
         "compared": 0,
         "latching": 0,
+        "gate_rows": 0,
     }
 
 
@@ -733,20 +944,22 @@ def run(
     limit: int = 0,
     lag_sample: int = LAG_SAMPLE_ROWS,
     on_trade: Optional[Callable[["SimTrade"], None]] = None,
+    stop: Optional[Callable[[], bool]] = None,
 ) -> ValidationRun:
     """Snap every bot's YTD trades, rerun each against its recorded gate row,
     and write the pass through ``write_report`` onto ``ValidationRun.report``.
 
     ``limit`` caps how many matched trades are rerun, ``lag_sample`` how many
     have ``tape_lag`` measured, ``on_trade`` is handed ``rerun_trade`` of each
-    fill as it is rerun; a ``_validate`` that raises reaches ``write_partial``
-    with the exception and re-raises.
+    fill as it is rerun, ``stop`` is read before each bot and each row and ends
+    the pass where it is when it answers True; a ``_validate`` that raises
+    reaches ``write_partial`` with the exception and re-raises.
     """
     from .parity_report import VALIDATION, write_partial, write_report
 
     try:
         outcome = _validate(
-            bots, tablets, ytd, gates, exchange_id, limit, lag_sample, on_trade
+            bots, tablets, ytd, gates, exchange_id, limit, lag_sample, on_trade, stop
         )
     except Exception as exc:
         write_partial(
@@ -765,10 +978,12 @@ def _validate(
     limit: int,
     lag_sample: int,
     on_trade: Optional[Callable[["SimTrade"], None]] = None,
+    stop: Optional[Callable[[], bool]] = None,
 ) -> ValidationRun:
     """The pass ``run`` wraps: ``snap_trades``, ``compare_row`` and ``tape_lag``
     over ``bots``, with no report written; ``on_trade`` is handed
-    ``rerun_trade`` of each fill at its ``compare_row``."""
+    ``rerun_trade`` of each fill at its ``compare_row``, and ``stop`` answering
+    True before a bot or a row ends the pass there with ``stopped`` set."""
     from ..trading.indicators.types import candles_from_raw
 
     tablet_entries = tablets.entries()
@@ -779,8 +994,12 @@ def _validate(
     raw_by_symbol: dict[str, list] = {}
     by_bot: dict[str, dict] = {}
     newest_candle_ms = 0
+    halted = False
 
     for bot in bots:
+        if stop is not None and stop():
+            halted = True
+            break
         entry = ytd_entries.get((bot.exchange_id, bot.symbol))
         tablet = tablet_for(tablet_entries, bot.asset, bot.exchange_id)
         if entry is None:
@@ -826,6 +1045,16 @@ def _validate(
         gate_rows_read += 1
         rows_by_bot.setdefault(row.bot_id, []).append(row)
         rows_by_pair.setdefault((row.exchange_id, row.symbol), []).append(row)
+    for bot in bots:
+        counts = by_bot.get(bot.bot_id)
+        if counts is None:
+            continue
+        held = (
+            rows_by_bot.get(bot.bot_id)
+            if bot.origin == LIVE_ORIGIN
+            else rows_by_pair.get((bot.exchange_id, bot.symbol))
+        )
+        counts["gate_rows"] = len(held or [])
 
     comparisons: list[RowComparison] = []
     without_fixture = 0
@@ -835,6 +1064,11 @@ def _validate(
     lag_interval_ms = FALLBACK_INTERVAL_MS
     parsed_cache: dict[str, list] = {}
     for bot, snap in placed:
+        if halted:
+            break
+        if stop is not None and stop():
+            halted = True
+            break
         if not snap.is_snapped:
             continue
         near = (
@@ -888,6 +1122,7 @@ def _validate(
         lag_checked=lag_checked,
         lag_interval_ms=lag_interval_ms,
         by_bot=by_bot,
+        stopped=halted,
     )
 
 
@@ -896,10 +1131,16 @@ __all__ = [
     "BB_CONSOLIDATION_THRESHOLD",
     "BB_MIDLINE",
     "BEFORE_FIRST_CANDLE",
+    "BLOCKED_STATE",
+    "CAUSES",
+    "CHAIN_CAUSE",
     "FALLBACK_INTERVAL_MS",
+    "FIXTURE_CAUSE",
+    "FOLD_FIXTURE",
     "GATE_MATCH_WINDOW_MS",
     "INSIDE_GAP",
     "LABEL_DRIVER",
+    "LABEL_FIELDS",
     "LAG_EXACT_GAP",
     "LAG_SAMPLE_ROWS",
     "LAG_SEARCH_CANDLES",
@@ -912,9 +1153,11 @@ __all__ = [
     "OVERRIDE",
     "RECORD",
     "RERUN_WINDOW_CANDLES",
+    "SCRUM_FIXTURE",
     "SHORT_WINDOW",
     "SNAPPED",
     "TAPE",
+    "TAPE_CAUSE",
     "TAPE_FIELDS",
     "UNSNAPPED_REASONS",
     "VALIDATED",
@@ -923,9 +1166,11 @@ __all__ = [
     "RowComparison",
     "SnappedTrade",
     "ValidationRun",
+    "bank_cause",
     "bb_reading",
     "bot_counts",
     "candle_interval_ms",
+    "classify_lights",
     "compare_row",
     "coverage",
     "coverage_lines",
@@ -933,9 +1178,12 @@ __all__ = [
     "iso_stamp",
     "lag_lines",
     "latch",
+    "light_cause",
     "light_states",
+    "missing_fixture_fields",
     "nearest_gate_row",
     "phantom_locked",
+    "recorded_bb_pos",
     "rerun_context",
     "rerun_trade",
     "rerun_window",
@@ -945,5 +1193,6 @@ __all__ = [
     "summarise",
     "tablet_for",
     "tape_lag",
+    "tape_moved",
     "verdict_lines",
 ]

@@ -191,6 +191,8 @@ class BotResult:
     asset_class: str = ""
     venue: str = ""
     unit_rule: str = ""
+    #: True when ``stop`` ended the walk before the tape's last bar.
+    stopped: bool = False
 
     @property
     def units_gained(self) -> float:
@@ -600,10 +602,13 @@ def walk(
     *,
     rule: str,
     on_trade: Optional[TradeSink] = None,
+    stop: Optional[Callable[[], bool]] = None,
 ) -> BotResult:
     """Run ``bot`` over ``candles``, one gate-chain evaluation every ``step``
     bars, each fold funded as ``funding`` says and every fill sized under
-    ``rule``; ``on_trade`` is handed each ``SimTrade`` the moment it fills."""
+    ``rule``; ``on_trade`` is handed each ``SimTrade`` the moment it fills, and
+    ``stop`` answering True before a tick ends the walk at the last bar ticked
+    with ``stopped`` set."""
     from ..trading.ta_engine import VotingEngine
 
     if len(candles) < MIN_CANDLES:
@@ -624,7 +629,13 @@ def walk(
     fold_latched = 0
     ticks = 0
     fees = 0.0
+    halted = False
+    last_index = MIN_CANDLES - 1
     for index in range(MIN_CANDLES - 1, len(candles), max(int(step), 1)):
+        if stop is not None and stop():
+            halted = True
+            break
+        last_index = index
         window = list(candles[max(0, index + 1 - WINDOW_CANDLES) : index + 1])
         reading = bb_reading(window, bot)
         summary = engine.compute_all(window, timeframe, symbol=bot.symbol)
@@ -647,12 +658,13 @@ def walk(
             fees += filled.fee_usd
             if on_trade is not None:
                 on_trade(filled)
+    end_index = last_index if halted else len(candles) - 1
     return BotResult(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
         tablet_key="",
         outcome=BACK_TESTED,
-        candles_read=len(candles),
+        candles_read=end_index + 1,
         ticks=ticks,
         scrum_latched=scrum_latched,
         fold_latched=fold_latched,
@@ -660,12 +672,13 @@ def walk(
         start_units=start_units,
         end_units=position.units,
         start_price=float(candles[MIN_CANDLES - 1].close),
-        end_price=float(candles[-1].close),
+        end_price=float(candles[end_index].close),
         cash_usd=position.cash_usd,
         fees_usd=fees,
         first_ts_ms=int(candles[0].timestamp),
-        last_ts_ms=int(candles[-1].timestamp),
+        last_ts_ms=int(candles[end_index].timestamp),
         unit_rule=rule,
+        stopped=halted,
     )
 
 
@@ -685,6 +698,8 @@ class BackTestRun:
     budget_usd: Optional[float] = None
     #: The ``ParityReport`` ``run`` wrote for this pass; None until it has.
     report: Any = None
+    #: True when ``stop`` ended the pass before every bot was walked to its end.
+    stopped: bool = False
 
     @property
     def ran(self) -> list[BotResult]:
@@ -715,13 +730,40 @@ class BackTestRun:
         return [one for one in self.results if one.outcome == UNCITED_RULE]
 
     @property
+    def unreached(self) -> list[str]:
+        """The bot ids the pass never reached: those with no result."""
+        seen = {one.bot_id for one in self.results}
+        return [one.bot_id for one in self.bots if one.bot_id not in seen]
+
+    @property
+    def stopped_line(self) -> str:
+        """What the pass says when ``stopped``: the bots walked, the one cut
+        short and the bots not reached; empty otherwise."""
+        if not self.stopped:
+            return ""
+        missed = self.unreached
+        cut = [one.bot_id for one in self.results if one.stopped]
+        return (
+            f"Stopped by the operator: {len(self.results)} of {len(self.bots)} "
+            f"bots walked, {len(cut)} cut short at its last bar ticked; "
+            f"{len(missed)} bot(s) not reached: "
+            f"{', '.join(missed) if missed else 'none'}."
+        )
+
+    @property
     def lines(self) -> list[str]:
-        """The fleet, the tape span, what latched and each bot refused for an
-        uncited rule, in the pane's own order."""
+        """The stop line when ``stopped``, the fleet, the tape span, what
+        latched and each bot refused for an uncited rule, in the pane's own
+        order."""
         read = self.summary
         refused = [uncited_rule_line(one) for one in self.uncited]
+        opening = [self.stopped_line] if self.stopped else []
         if not read["bots_run"]:
-            return ["No bot reached a Stone Tablet with enough candles."] + refused
+            return (
+                opening
+                + ["No bot reached a Stone Tablet with enough candles."]
+                + refused
+            )
         first = min(one.first_ts_ms for one in self.ran if one.first_ts_ms)
         last = max(one.last_ts_ms for one in self.ran if one.last_ts_ms)
         out = [
@@ -739,7 +781,7 @@ class BackTestRun:
                 f"{len(self.missing)} tablet(s) missing: "
                 + ", ".join(f"{asset} on {venue}" for asset, venue in self.missing)
             )
-        return out + refused
+        return opening + out + refused
 
 
 def adapter_for(exchange_id: str, connector: Any) -> Any:
@@ -792,13 +834,14 @@ def run(
     ticks_per_bot: int = 0,
     funding: str = FUNDED_BY_PROCEEDS,
     on_trade: Optional[TradeSink] = None,
+    stop: Optional[Callable[[], bool]] = None,
 ) -> BackTestRun:
     """Walk every bot over its own tablet through ``_walk_fleet`` and write the
     pass through ``write_report`` onto ``BackTestRun.report``.
 
-    ``max_candles``, ``step``, ``ticks_per_bot``, ``funding`` and ``on_trade``
-    reach ``_walk_fleet`` unchanged; a ``_walk_fleet`` that raises reaches
-    ``write_partial`` with the exception and re-raises.
+    ``max_candles``, ``step``, ``ticks_per_bot``, ``funding``, ``on_trade`` and
+    ``stop`` reach ``_walk_fleet`` unchanged; a ``_walk_fleet`` that raises
+    reaches ``write_partial`` with the exception and re-raises.
     """
     from .parity_report import BACK_TEST, write_partial, write_report
 
@@ -812,6 +855,7 @@ def run(
             ticks_per_bot,
             funding,
             on_trade,
+            stop,
         )
     except Exception as exc:
         write_partial(
@@ -835,14 +879,16 @@ def _walk_fleet(
     ticks_per_bot: int,
     funding: str,
     on_trade: Optional[TradeSink] = None,
+    stop: Optional[Callable[[], bool]] = None,
 ) -> BackTestRun:
     """Walk every bot over its own tablet and report what the gates latched.
 
     ``max_candles`` caps how much of each tape is read, ``ticks_per_bot``
     replaces ``step`` with one ``shared_step`` every bot ticks on, ``funding``
     of ``FUNDED_BY_TARGETS`` reads ``run_budget_usd`` once here and caps no
-    fold, ``on_trade`` reaches every ``walk``, and a bot whose
-    ``cited_rule_for`` answers no rule is ``UNCITED_RULE`` and walks nothing.
+    fold, ``on_trade`` and ``stop`` reach every ``walk`` and ``stop`` is read
+    before each bot as well, and a bot whose ``cited_rule_for`` answers no rule
+    is ``UNCITED_RULE`` and walks nothing.
     """
     from ..trading.indicators.types import candles_from_raw
 
@@ -859,7 +905,11 @@ def _walk_fleet(
     outcomes: dict[str, int] = {name: 0 for name in BOT_OUTCOMES}
     results: list[BotResult] = []
     interval_ms = 0
+    halted = False
     for bot in bots:
+        if stop is not None and stop():
+            halted = True
+            break
         class_name, venue, rule = cited_rule_for(bot.asset, bot.exchange_id)
         if rule is None:
             outcomes[UNCITED_RULE] += 1
@@ -895,8 +945,15 @@ def _walk_fleet(
         if not interval_ms and len(raw) > 1:
             interval_ms = candle_interval_ms([int(one[0]) for one in raw])
         walked = walk(
-            bot, candles_from_raw(raw), step, funding, rule=rule, on_trade=on_trade
+            bot,
+            candles_from_raw(raw),
+            step,
+            funding,
+            rule=rule,
+            on_trade=on_trade,
+            stop=stop,
         )
+        halted = halted or walked.stopped
         key = entry.file
         if key.endswith(TABLET_SUFFIX):
             key = key[: -len(TABLET_SUFFIX)]
@@ -920,6 +977,7 @@ def _walk_fleet(
         interval_ms=interval_ms,
         funding=funding,
         budget_usd=budget,
+        stopped=halted,
     )
 
 

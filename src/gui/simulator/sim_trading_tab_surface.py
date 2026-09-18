@@ -388,6 +388,68 @@ def battery_failed_line(error: Any) -> str:
     return BATTERY_FAILED_FORMAT.format(error=error)
 
 
+#: The lines the command bar's Start and Stop write in Validation and Back
+#: Test modes, when the run they start covers the venue page's scrumming bots.
+RUN_MODES = (sim.MODE_VALIDATION, sim.MODE_BACK_TEST)
+RUN_STARTED_FORMAT = "{mode} started on {exchange} over {bots} bot(s); {funding}."
+RUN_FUNDING_TEXT = {
+    sim.MODE_VALIDATION: (
+        "budget ${budget:,.2f}, the sum of the held Target Balances; no rerun "
+        "fill is refused for cash"
+    ),
+    sim.MODE_BACK_TEST: "each fold spends its own scrum proceeds",
+}
+RUN_NO_BOT_FORMAT = "{mode}: no scrumming bot is held on {exchange}; nothing started."
+RUN_IN_FLIGHT_FORMAT = (
+    "A {mode} run is in flight over {bots} bot(s); Stop on one of its rows ends "
+    "it, and {command} waits for it."
+)
+RUN_STOPPING_FORMAT = (
+    "{mode} run stopping at Stop on bot {bot_id}; the partial report follows."
+)
+RUN_FAILED_FORMAT = "{mode} failed: {error}"
+RUN_THREAD_NAME = "sim-mode-run"
+
+
+def run_started_line(mode: str, exchange_id: Any, bots: int, budget_usd: float) -> str:
+    """The Activity Log line for a Start in ``mode``: the exchange, the bot
+    count and the mode's funding through ``RUN_FUNDING_TEXT``, the Validation
+    text carrying ``budget_usd``."""
+    return RUN_STARTED_FORMAT.format(
+        mode=sim.MODE_TEXT.get(mode, mode),
+        exchange=exchange_id,
+        bots=int(bots),
+        funding=RUN_FUNDING_TEXT.get(mode, "").format(budget=float(budget_usd)),
+    )
+
+
+def run_no_bot_line(mode: str, exchange_id: Any) -> str:
+    """The Activity Log line for a Start in ``mode`` on a page holding no
+    scrumming bot."""
+    return RUN_NO_BOT_FORMAT.format(
+        mode=sim.MODE_TEXT.get(mode, mode), exchange=exchange_id
+    )
+
+
+def run_in_flight_line(mode: str, bots: int, command: str) -> str:
+    """The Activity Log line for a bar press other than Stop on a run row
+    while a run in ``mode`` is in flight."""
+    return RUN_IN_FLIGHT_FORMAT.format(
+        mode=sim.MODE_TEXT.get(mode, mode), bots=int(bots), command=str(command)
+    )
+
+
+def run_stopping_line(mode: str, bot_id: Any) -> str:
+    """The Activity Log line written when Stop on ``bot_id`` asks a run in
+    ``mode`` to end."""
+    return RUN_STOPPING_FORMAT.format(mode=sim.MODE_TEXT.get(mode, mode), bot_id=bot_id)
+
+
+def run_failed_line(mode: str, error: Any) -> str:
+    """The Activity Log line for a run in ``mode`` that raised ``error``."""
+    return RUN_FAILED_FORMAT.format(mode=sim.MODE_TEXT.get(mode, mode), error=error)
+
+
 #: The trade line one ``SimTrade`` writes on both hosts: Live's ``SELL FILLED``
 #: and ``BUY FILLED`` bot line under the ``[asset/id tail]`` prefix
 #: ``MainWindow._on_bot_log`` gives every bot line, at the level it writes at.

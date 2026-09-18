@@ -3550,6 +3550,303 @@ wrote no trade line in either build. Every copied file read byte-identical
 after every step, a byte planted into a copy of `bot_state.json` moved its
 hash, no bot was constructed and no socket left loopback.
 
+## Start runs Validation and Back Test from the command bar
+
+The command bar's Start is the press that starts a run. Live starts a bot with
+Start on the selected row, and no other press on the Trading tab starts
+anything, so the Simulator's run control is that same Start. What it starts
+follows the run mode: in Validation mode it starts the Validation run, in Back
+Test mode the Back Test walk, and in Portfolio Battery mode it stays the state
+move the command bar section above describes, because the Battery's run is the
+corner's. Stop on a row of the run ends it. No new button is drawn.
+
+`src/gui/simulator/sim_trading_tab.py` — the dispatch in `_on_bot_command`
+
+```python
+        if self.run_running():
+            if command == "stop" and bot_id in self._run.get("bot_ids", []):
+                self._stop_run(bot_id)
+                return
+            self._status_log.log(
+                tab_surface.run_in_flight_line(
+                    self._run.get("mode", ""),
+                    len(self._run.get("bot_ids", [])),
+                    command,
+                ),
+                "warning",
+            )
+            return
+        if command == "start" and self._mode in tab_surface.RUN_MODES:
+            self._start_run(bot, self._mode)
+            return
+```
+
+```mermaid
+flowchart LR
+    press[Start on the command bar] --> cmd[_on_bot_command]
+    cmd -->|Validation or Back Test mode| start[_start_run: every scrumming bot on the page to running, fleet_changed, the started line]
+    start --> thread[_compute_run on a daemon thread]
+    thread -->|Validation| val[validation.run over TabletSource, YtdTradeSource, GateLogSource]
+    thread -->|Back Test| bt[back_test.run over TabletSource]
+    val --> fill[run_trade: one line per rerun fill]
+    bt --> fill
+    val --> report[write_report]
+    bt --> report
+    report --> done[run_finished: _take_run moves the bots to stopped, writes the lines and the report line]
+    stop[Stop on a run row] --> event[_stop_run sets the event the runner reads]
+```
+
+### The run is the page's scrumming fleet
+
+A Validation pass is one pass over a fleet: `validation.run` takes the bots,
+measures one coverage, one tape lag and one match key over them, and writes one
+report. Start therefore runs the mode over every held scrumming bot on the
+pressed page's exchange, `_run_bots` in both hosts, and every one of those rows
+reads `running` while the run is in flight and `stopped` when it ends. The
+selected row is the bar's own precondition, `Select a bot first.`, and is not
+changed. Extractor rows are not run: the gate chains the rerun evaluates are
+the scrumming bot's, and the walk sizes a scrum and a fold.
+
+`src/gui/simulator/sim_trading_tab.py` — the fleet a run covers
+
+```python
+    def _run_bots(self, exchange_id: str) -> list[SimBot]:
+        """Every held scrumming bot on ``exchange_id``, the fleet a run covers."""
+        return [
+            one
+            for one in self._fleet_source.bots()
+            if one.exchange_id == exchange_id and one.mode == SCRUMMING_MODE
+        ]
+```
+
+`_start_run` moves each of those bots to `running` through
+`SimBotManager.start`, the same rule Start applies to one bot, and fires
+`fleet_changed`, so the sim fleet file is saved and every venue page draws its
+rows again before the walk begins: the Bot ID cell reads `State: RUNNING` in
+its running colour. Then the started line is written and `_compute_run` starts
+on a daemon thread named `sim-mode-run`, the shape the Battery and the Market
+Inspector's Scan Now use, so the window keeps answering. When the worker ends,
+`_take_run` on the GUI thread moves every run bot to `stopped` through
+`SimBotManager.stop`, fires `fleet_changed` again, and writes the run's own
+lines and the report line through `log_report`.
+
+```
+Validation started on coinbase over 24 bot(s); budget $16,860.00, the sum of the held Target Balances; no rerun fill is refused for cash.
+Back Test started on coinbase over 24 bot(s); each fold spends its own scrum proceeds.
+```
+
+The Validation line names the run's budget under the funding rule: the sum of
+the held Target Balances, `run_budget_usd`, which is also what the strip's
+Spendable reads in that mode. Validation reruns gates and sizes no trade, so no
+fill is refused for cash, and the report's header says so. Back Test keeps the
+proceeds funding, unchanged.
+
+### What the worker reads
+
+The Validation worker reads the tab's `TabletSource` over the Stone Tablets,
+a `YtdTradeSource` over the YTD trade files, and a `GateLogSource` over
+`gate.log` and its rotations under the trade directory of the log root. Each
+answers reads alone and refuses every other name. The Back Test worker reads
+the `TabletSource` alone. Neither touches a widget, the fleet source or a
+venue; the worker's only write is the report.
+
+`src/gui/simulator/sim_trading_tab.py` — the two runners, called as unit 30's
+seam left them, with the stop event added
+
+```python
+                outcome = validation.run(
+                    bots,
+                    self._tablet_source,
+                    YtdTradeSource(),
+                    GateLogSource(),
+                    exchange_id=exchange_id,
+                    limit=surface.VALIDATION_RERUN_LIMIT,
+                    on_trade=self.run_trade.emit,
+                    stop=self._run_stop.is_set,
+                )
+```
+
+Each rerun fill crosses to the GUI thread on `run_trade` and is written by
+`log_trade` in the trade-line shape the Activity spool section describes; the
+run's lines and the failed line cross on `run_line`; the outcome crosses on
+`run_finished`. The React host carries the same three signals, the same
+`_start_run`, `_compute_run`, `_stop_run` and `_take_run`, and reaches them
+from the page's command bar through Live's own `ExchangeTabModel.cmd`.
+
+### Stop ends the run with a partial report
+
+Stop on a row of the run writes Live's `Stopping bot <id>...`, the run's
+stopping line, and sets a `threading.Event`. Both runners take `stop`, a
+callable read before each bot and before each row or tick: `_validate` reads it
+before each bot's snap and before each row's rerun, `_walk_fleet` before each
+bot and `walk` before each tick. When it answers True the pass ends where it
+is, with `stopped` set on the run, and the same `write_report` writes the
+report: `partial` reads yes with the stop named, the header carries `stopped`
+and the bots reached, every unreached bot's row reads `not reached`, and the
+Not verified section leads with the stop line. A stopped walk answers the
+candles it read, the last close it ticked and the trades it filled. When the
+worker ends, `_take_run` writes Live's `Bot <id> stopped.` for the row Stop was
+pressed on, moves every run bot to `stopped`, and writes the lines and the
+report line as for a whole run.
+
+```
+Stopped by the operator: 19 of 24 bots walked, 1 cut short at its last bar ticked; 5 bot(s) not reached: <ids>.
+Stopped by the operator: 1 of 24 bots reached, 0 rows rerun; 23 bot(s) not reached: <ids>.
+```
+
+While a run is in flight, Start, Pause, Restart and Delete on any row, and
+Stop on a row outside the run, write one line and move nothing:
+
+```
+A Validation run is in flight over 24 bot(s); Stop on one of its rows ends it, and start waits for it.
+```
+
+A run that raises writes the failed line, moves its bots to `stopped`, and its
+partial file is on disk from `write_partial`, as the report section describes.
+
+### Each differing light carries its cause
+
+A non-zero count is a finding, and the report says what drove it. Every
+disagreeing light already carries which side of the rerun moves it; it now
+carries a cause as well, one of three words read off the row's own fields.
+
+| cause | what it reads |
+| --- | --- |
+| tape | the tablet candle the rerun read differs from the reading the bot recorded: the recorded `bb_pos` sits more than the lag match gap from the rerun's, or the bank's recorded band flag differs from the rerun's |
+| fixture | a recorded field the light reads is absent from the row's fixture, or the phantom lock could not be recovered from the recorded row |
+| chain | the same inputs on both sides and a different light: the gate chain |
+
+`src/simulator/validation.py` — the cause of one light that is blocked on one
+side
+
+```python
+def light_cause(
+    light: LabelComparison,
+    row: Any,
+    context: GateContext,
+    locked_known: bool,
+    absent: Sequence[str],
+) -> str:
+    key = (light.bank, light.label)
+    if light.driven_by == TAPE:
+        if recorded_bb_pos(row) is None:
+            return FIXTURE_CAUSE
+        if tape_moved(row, context, light.bank):
+            return TAPE_CAUSE
+        if key == ("S", "BB") and not locked_known:
+            return FIXTURE_CAUSE
+        return CHAIN_CAUSE
+    if light.driven_by == RECORD:
+        for fixture, field_name in LABEL_FIELDS.get(key, ()):
+            if f"{fixture}.{field_name}" in absent:
+                return FIXTURE_CAUSE
+        if tape_moved(row, context, light.bank):
+            return TAPE_CAUSE
+        return CHAIN_CAUSE
+    return CHAIN_CAUSE
+```
+
+`LABEL_FIELDS` names, per light, the recorded fixture fields `rerun_context`
+reads for it. A light that is blocked on exactly one side is classified by the
+rules above. A light blocked on neither side, `passed` against
+`not_the_blocker`, moved only because its bank's armed flag moved, so it takes
+the cause of its bank's blocked lights: `tape` before `fixture` before `chain`
+where they mix, because the tape is the data the criterion is about, and
+`chain` where no light in the bank is blocked. The report writes the cause
+beside each disagreeing light, a per-row count of causes, and under the four
+counts a line `differs by cause: tape N, fixture N, chain N` with the three
+definitions, in both files. No tolerance is widened and no gate is changed to
+make a light agree; the chain is Live's.
+
+### The empty cases name the missing source
+
+The run still runs when a source is empty, and the report's Not verified
+section names what could not be rerun. With no YTD trade directory, the Start
+press writes the YTD root line before the started line, every bot reads `no
+YTD trade file; nothing snapped.` and the comparison table holds no row. With
+no `gate.log`, every bot's snapped fills match nothing, and the bot's own line
+says so. With no Stone Tablet for a pair, that bot reads `no Stone Tablet;
+nothing snapped.` and the rest of the fleet is rerun.
+
+```
+<id> (AAA/USD): no YTD trade file; nothing snapped.
+<id> (AAA/USD): no gate row recorded for this bot; 4 snapped trades matched nothing.
+<id> (BBB/USD): no Stone Tablet; nothing snapped.
+```
+
+`src/simulator/parity_report.py` — the per-bot line for a bot with no
+recorded gate row, read off the `gate_rows` count `_validate` fills
+
+```python
+        elif row["outcome"] == VALIDATED and not row["gate_rows"]:
+            out.append(
+                f"{row['bot_id']} ({row['symbol']}): no gate row recorded for this "
+                f"bot; {row['snapped']} snapped trades matched nothing."
+            )
+```
+
+### What the run from the bar measured
+
+Before, in both builds over a scratch home holding 24 scrumming bots on
+coinbase, one 5m Stone Tablet of 2,000 candles per pair, one YTD trade file per
+pair with four fills, and a `gate.log` of one fired row per fill in the
+operator's row shape, each row latched by the shipped chain over the tablet
+candle that holds its fill: Import Live Fleet held 24 rows, and Start in
+Validation mode wrote `✓ Bot <id> RUNNING.`, moved the one selected row,
+wrote no trade line and no report; Back Test the same; the two runners had no
+caller under the tab.
+
+After, in both builds over the same home: Start in Validation mode moved all
+24 rows to `RUNNING` within 40 ms on the Qt tab and within 0.6 seconds on the
+React page, wrote the started line with the budget of $16,860.00, wrote 96
+trade lines as the 96 recorded fills were rerun, wrote the run's six lines and
+the report line, and moved the rows to `STOPPED`; the report's comparison table
+read missing 0, extra 0, differs 0, variant differs 0 over 96 rows compared,
+the sidecar's four counts equal to the Markdown's. Start in Back Test mode
+moved the 24 rows the same way, walked 48,000 candles in about seven seconds,
+wrote 17 trade lines for the 17 fills, and wrote its report. Stop pressed on
+the last row one second into a Back Test wrote the stopping lines and a
+partial report reading 19 of 24 bots walked, one cut short and five not
+reached on the Qt tab, 11 of 24 and 13 not reached on the React page; a Start
+pressed while that run was in flight wrote the in-flight line and started
+nothing; Stop pressed the moment a Validation run started wrote a partial
+report reading 1 of 24 bots reached and 0 rows rerun on the Qt tab, 23 of 24
+and 0 rows rerun on the React page, and every run bot read `STOPPED` after
+each.
+
+Over a scratch home whose first bot's rows carried one recorded S/TA light
+flipped to blocked with its scrum disarmed, one recorded `target_fires`
+removed, and one recorded reading moved to the opposite band with its lights
+latched there, plus one fill a day past the tablet's last candle, the table
+read differs 21 by cause tape 11, fixture 1 and chain 9: the removed field's
+row read S/FIRE `fixture`; the flipped row read S/TA `chain` with its eight
+armed-flag lights `chain`; the moved row read S/BB `tape` with its ten
+dependent lights `tape`; and the fill past the tablet read
+`after_last_candle` under Not verified with the uncovered span. Both builds
+read the same 21.
+
+Over three more scratch homes, one with no YTD directory, one with no
+`gate.log` and one with no tablet for the second pair, the report named each
+case per bot as the lines above show, the YTD root line preceded the started
+line in the first, and the third rerun the first pair's four rows to four
+zeros.
+
+Over scratch copies of the operator's own `bot_state.json`, his `gate.log`
+and its five rotations, and the 38 Stone Tablets his 38 scrumming bots' assets
+and timeframes name, with no YTD trade file on this machine: Import Live
+Fleet held 38 rows and Start in Validation mode wrote the YTD root line, ran,
+and wrote a report whose 38 bot rows each read `no YTD trade file; nothing
+snapped.`, whose comparison table read four zeros over 0 rows compared, and
+whose header named the budget as the sum of the 38 Target Balances. Without
+the exchange's YTD export nothing can be snapped, so nothing can be rerun,
+and the report says so rather than reading a pass. With YTD trade files built
+from the fired rows his own gate log holds, one fill per SCRUM or FOLD row
+inside its tablet's span, the run rerun 55 recorded fills and the
+table read missing 0, extra 0, differs 275, variant differs 0, with 23 of the 55 rows latching identically and 770 of 1,045 lights agreeing; every one of the 275 differing lights read `tape`, none `fixture` and none `chain`, because 50 of the 55 recorded readings were reproduced from a window 50 candles, 250 minutes, behind the fill's own candle, the lag the first full run measured, so the bot read a different candle from the one the tablet holds at the fill's moment and the chain, fed the tablet's candle, lit the lights differently; fourteen bots carried a fired row inside their tablet's span and the other 24 read `no YTD trade file`. Every copied file read
+byte-identical after every press, a byte planted into a copy of
+`bot_state.json` moved its hash, no bot was constructed and no socket left
+loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
