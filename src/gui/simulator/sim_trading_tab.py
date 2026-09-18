@@ -36,8 +36,8 @@ file is missing, the generation line and the no-target line, and fires
 ``fleet_changed``. ``_run_battery`` opens ``SimPortfolioChoiceDialog``, holds
 the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
 ``fleet_changed`` and runs ``_compute_battery`` on a daemon thread, whose
-``battery_line`` and ``battery_finished`` signals reach the Activity Log and
-``_take_battery`` on the GUI thread.
+``battery_line``, ``battery_trade`` and ``battery_finished`` signals reach the
+Activity Log, ``log_trade`` and ``_take_battery`` on the GUI thread.
 The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
 panel in ``_layer_stack``, reached by ``flip_layer``; its header row holds the
 flip button, the ``Tablet:`` chooser and the retrieval button.
@@ -99,6 +99,7 @@ from PySide6.QtWidgets import (
 
 from ...core.sound_engine import get_sound_engine
 from ...simulator import portfolio_battery
+from ...simulator.back_test import SimTrade
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
@@ -206,6 +207,8 @@ class SimTradingTab(QWidget):
     fleet_changed = Signal()
     #: One Activity Log line and its level from the Battery's worker thread.
     battery_line = Signal(str, str)
+    #: One ``SimTrade`` the Battery's walk filled on the worker thread.
+    battery_trade = Signal(object)
     #: The ``BatteryRun`` the Battery's worker thread finished with.
     battery_finished = Signal(object)
     #: One Activity Log line and its level from a retrieval's worker thread.
@@ -264,6 +267,7 @@ class SimTradingTab(QWidget):
         self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
         self.battery_line.connect(self._status_log.log)
+        self.battery_trade.connect(self.log_trade)
         self.battery_finished.connect(self._take_battery)
         self.retrieval_line.connect(self._status_log.log)
         self.retrieval_call.connect(self._record_venue_call)
@@ -467,8 +471,9 @@ class SimTradingTab(QWidget):
     def _compute_battery(self, plan, span: str) -> None:
         """Run ``portfolio_battery.run_battery`` over ``battery_tablet_source``
         on ``plan`` and hand the ``BatteryRun`` to the GUI thread through
-        ``battery_finished``, each portfolio's line through ``battery_line``;
-        a run that raises writes one failed line instead."""
+        ``battery_finished``, each portfolio's line through ``battery_line`` and
+        each ``SimTrade`` through ``battery_trade``; a run that raises writes
+        one failed line instead."""
         try:
             outcome = portfolio_battery.run_battery(
                 self._battery_tablet_source,
@@ -477,6 +482,7 @@ class SimTradingTab(QWidget):
                 ticks=surface.BATTERY_TICKS_PER_SYMBOL,
                 plan=plan,
                 progress=lambda line: self.battery_line.emit(line, "info"),
+                on_trade=self.battery_trade.emit,
             )
         except Exception as exc:  # noqa: BLE001 - the run runs off-thread
             logger.exception("Portfolio Battery failed: %s", exc)
@@ -570,6 +576,15 @@ class SimTradingTab(QWidget):
         """One Activity Log line, ``report_line`` over ``report``, through
         ``SimStatusLog.log`` at the ``success`` level ``_import_live_fleet`` uses."""
         self._status_log.log(report_line(report), "success")
+
+    def log_trade(self, trade: SimTrade) -> None:
+        """One Activity Log line per ``SimTrade``: ``trade_line`` under
+        ``trade_stamp`` through ``SimStatusLog.log_at`` at ``TRADE_LINE_LEVEL``."""
+        self._status_log.log_at(
+            tab_surface.trade_stamp(trade),
+            tab_surface.trade_line(trade),
+            tab_surface.TRADE_LINE_LEVEL,
+        )
 
     # -- construction ---------------------------------------------------
 

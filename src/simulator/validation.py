@@ -16,8 +16,9 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
 
+from ..exchange.ytd_trade_store import SIDE_SELL
 from ..trading.gate_chain import (
     GateContext,
     build_scrumming_fold_chain,
@@ -26,6 +27,9 @@ from ..trading.gate_chain import (
 from ..trading.gate_vocabulary import gate_light_row, unknown_blockers
 from ..trading.scrumming.sizing import target_delta_pct
 from .fleet_source import LIVE_ORIGIN, SimBot
+
+if TYPE_CHECKING:
+    from .back_test import SimTrade
 
 logger = logging.getLogger("acervator.simulator.validation")
 
@@ -703,6 +707,23 @@ def bot_counts(bot: SimBot, outcome: str, rows: Sequence[SnappedTrade]) -> dict:
     }
 
 
+def rerun_trade(bot: SimBot, fill: Any) -> "SimTrade":
+    """The ``SimTrade`` one rerun YTD fill reads as: ``SCRUM`` for ``SIDE_SELL``
+    and ``FOLD`` otherwise, ``amount`` as the units, ``cost`` as the USD."""
+    from .back_test import FOLD, SCRUM, SimTrade
+
+    return SimTrade(
+        bot_id=bot.bot_id,
+        symbol=bot.symbol,
+        side=SCRUM if str(fill.side).upper() == SIDE_SELL else FOLD,
+        ts_ms=int(fill.ts_ms),
+        price=float(fill.price),
+        units=float(fill.amount),
+        usd=float(fill.cost),
+        fee_usd=float(fill.fee),
+    )
+
+
 def run(
     bots: Sequence[SimBot],
     tablets: Any,
@@ -711,18 +732,22 @@ def run(
     exchange_id: str = "",
     limit: int = 0,
     lag_sample: int = LAG_SAMPLE_ROWS,
+    on_trade: Optional[Callable[["SimTrade"], None]] = None,
 ) -> ValidationRun:
     """Snap every bot's YTD trades, rerun each against its recorded gate row,
     and write the pass through ``write_report`` onto ``ValidationRun.report``.
 
-    ``limit`` caps how many matched trades are rerun and ``lag_sample`` how
-    many have ``tape_lag`` measured; a ``_validate`` that raises reaches
-    ``write_partial`` with the exception and re-raises.
+    ``limit`` caps how many matched trades are rerun, ``lag_sample`` how many
+    have ``tape_lag`` measured, ``on_trade`` is handed ``rerun_trade`` of each
+    fill as it is rerun; a ``_validate`` that raises reaches ``write_partial``
+    with the exception and re-raises.
     """
     from .parity_report import VALIDATION, write_partial, write_report
 
     try:
-        outcome = _validate(bots, tablets, ytd, gates, exchange_id, limit, lag_sample)
+        outcome = _validate(
+            bots, tablets, ytd, gates, exchange_id, limit, lag_sample, on_trade
+        )
     except Exception as exc:
         write_partial(
             VALIDATION, exc, bots=bots, exchange_id=exchange_id, tablets=tablets
@@ -739,15 +764,18 @@ def _validate(
     exchange_id: str,
     limit: int,
     lag_sample: int,
+    on_trade: Optional[Callable[["SimTrade"], None]] = None,
 ) -> ValidationRun:
     """The pass ``run`` wraps: ``snap_trades``, ``compare_row`` and ``tape_lag``
-    over ``bots``, with no report written."""
+    over ``bots``, with no report written; ``on_trade`` is handed
+    ``rerun_trade`` of each fill at its ``compare_row``."""
     from ..trading.indicators.types import candles_from_raw
 
     tablet_entries = tablets.entries()
     ytd_entries = {(one.exchange_id, one.symbol): one for one in ytd.entries()}
     outcomes: Counter = Counter()
     placed: list[tuple[SimBot, SnappedTrade]] = []
+    fills: dict[tuple[str, str], Any] = {}
     raw_by_symbol: dict[str, list] = {}
     by_bot: dict[str, dict] = {}
     newest_candle_ms = 0
@@ -767,7 +795,9 @@ def _validate(
         raw_by_symbol[bot.symbol] = raw
         if raw:
             newest_candle_ms = max(newest_candle_ms, int(raw[-1][0]))
-        rows = snap_trades(ytd.trades(entry), raw)
+        recorded = list(ytd.trades(entry))
+        fills.update({(bot.bot_id, str(one.id)): one for one in recorded})
+        rows = snap_trades(recorded, raw)
         placed.extend((bot, one) for one in rows)
         by_bot[bot.bot_id] = bot_counts(bot, VALIDATED, rows)
         outcomes[VALIDATED] += 1
@@ -828,6 +858,8 @@ def _validate(
             continue
         seen = compare_row(bot, row, snap, window)
         comparisons.append(seen)
+        if on_trade is not None:
+            on_trade(rerun_trade(bot, fills[(bot.bot_id, snap.trade_id)]))
         counts = by_bot.get(bot.bot_id)
         if counts is not None:
             counts["compared"] += 1
@@ -905,6 +937,7 @@ __all__ = [
     "nearest_gate_row",
     "phantom_locked",
     "rerun_context",
+    "rerun_trade",
     "rerun_window",
     "run",
     "snap_index",

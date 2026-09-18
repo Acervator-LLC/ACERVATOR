@@ -54,8 +54,9 @@ file is missing, the generation line and the no-target line, and fires
 ``fleet_changed``; ``_run_battery`` opens ``SimPortfolioChoiceDialog``, holds
 the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
 ``fleet_changed`` and runs ``_compute_battery`` on a daemon thread, whose
-``battery_line`` and ``battery_finished`` signals reach ``log`` and
-``_take_battery`` on the GUI thread; a venue sub-tab press reaches
+``battery_line``, ``battery_trade`` and ``battery_finished`` signals reach
+``log``, ``log_trade`` and ``_take_battery`` on the GUI thread; a venue
+sub-tab press reaches
 ``run_action`` as the ``exchange`` ask and ``show_tab`` makes that venue
 current. The replay layer behind the panel is pushed as the tab's ``replay``:
 ``_refresh_replay`` builds the chooser's items from ``tablet_choices`` and
@@ -81,6 +82,7 @@ from typing import Any, Optional
 
 from ...core.sound_engine import get_sound_engine
 from ...simulator import portfolio_battery, tablet_retrieval
+from ...simulator.back_test import SimTrade
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
@@ -101,6 +103,7 @@ from ..main_tabs import design_system_surface as token_surface
 from ..main_tabs import extractor_bot_table_surface as extractor_surface
 from ..main_tabs import indicator_panel_surface, status_log_surface
 from ..main_tabs import simulator_tab_surface as sim
+from ..main_tabs.main_window_surface import DASHBOARD_TICK_MS
 from ..main_tabs.trading_tab_surface import (
     ALIAS_LAYER,
     EXCHANGE_PARAM,
@@ -120,6 +123,7 @@ from . import sim_bot_wizard_surface as wizard_surface
 from . import sim_exchange_tab_surface as venue_surface
 from . import sim_trading_tab_surface as tab_surface
 from .sim_indicator_panel import describe_no_data_cause, rate_fields
+from .sim_status_log import SimStatusLogModel
 
 try:
     from PySide6.QtCore import Qt, QTimer, Signal
@@ -498,20 +502,31 @@ def panel_payload(panel: indicator_panel_surface.IndicatorPanelModel) -> dict:
     return payload
 
 
+#: One push per strip tick carries every trade line ``log_trade`` painted since the
+#: last push, so a walk of thousands of fills does not push thousands of scripts.
+TRADE_PUSH_INTERVAL_MS = DASHBOARD_TICK_MS
+
+
 def log_payload(
     log: status_log_surface.StatusLogModel, asked: Optional[dict] = None
 ) -> dict:
-    """The Activity Log's payload under ``LOG_METHOD`` after one request."""
+    """The Activity Log's payload under ``LOG_METHOD`` after one request, the
+    lines ``log_at`` painted since the last push ahead of this request's batch."""
     request = dict(asked or {})
     paused = request.get("paused")
-    return status_log_surface.build_view_model(
+    whole = bool(request.get("whole", False))
+    pending = log.take_painted()
+    payload = status_log_surface.build_view_model(
         log,
         request.get("messages") or [],
         paused=None if paused is None else bool(paused),
         toggle=bool(request.get("toggle", False)),
         notices=request.get("notices") or [],
-        whole=bool(request.get("whole", False)),
+        whole=whole,
     )
+    if pending and not whole:
+        payload["document"] = {"lines": pending + list(payload["document"]["lines"])}
+    return payload
 
 
 #: Every design token whose name, or whose alias target, starts with this is a
@@ -848,6 +863,8 @@ if _HAS_WEBENGINE:
         fleet_changed = Signal()
         #: One Activity Log line and its level from the Battery's worker thread.
         battery_line = Signal(str, str)
+        #: One ``SimTrade`` the Battery's walk filled on the worker thread.
+        battery_trade = Signal(object)
         #: The ``BatteryRun`` the Battery's worker thread finished with.
         battery_finished = Signal(object)
         #: One Activity Log line and its level from a retrieval's worker thread.
@@ -905,7 +922,7 @@ if _HAS_WEBENGINE:
             self._bot_manager = SimBotManager(self._fleet_source)
             self._theme = theme
             self._state = tab_surface.SimTradingTabState()
-            self._log = status_log_surface.StatusLogModel()
+            self._log = SimStatusLogModel()
             self._panel = indicator_panel_surface.IndicatorPanelModel()
             self._models: dict = {}
             self._votes: dict = {}
@@ -920,6 +937,7 @@ if _HAS_WEBENGINE:
             self.fleet_changed.connect(self._fleet_source.save)
             self.fleet_changed.connect(self._sync_exchange_tabs)
             self.battery_line.connect(self.log)
+            self.battery_trade.connect(self.log_trade)
             self.battery_finished.connect(self._take_battery)
             self.retrieval_line.connect(self.log)
             self.retrieval_call.connect(self._record_venue_call)
@@ -933,6 +951,10 @@ if _HAS_WEBENGINE:
                 self._activity_log_watchdog
             )
             self._activity_log_watchdog_timer.start(WATCHDOG_INTERVAL_MS)
+            self._trade_push_timer = QTimer(self)
+            self._trade_push_timer.setSingleShot(True)
+            self._trade_push_timer.setInterval(TRADE_PUSH_INTERVAL_MS)
+            self._trade_push_timer.timeout.connect(self._push_pending_log)
 
         # -- what the window reads ----------------------------------------
 
@@ -1092,8 +1114,9 @@ if _HAS_WEBENGINE:
             """Run ``portfolio_battery.run_battery`` over
             ``battery_tablet_source`` on ``plan`` and hand the ``BatteryRun``
             to the GUI thread through ``battery_finished``, each portfolio's
-            line through ``battery_line``; a run that raises writes one failed
-            line instead."""
+            line through ``battery_line`` and each ``SimTrade`` through
+            ``battery_trade``; a run that raises writes one failed line
+            instead."""
             try:
                 outcome = portfolio_battery.run_battery(
                     self._battery_tablet_source,
@@ -1102,6 +1125,7 @@ if _HAS_WEBENGINE:
                     ticks=sim.BATTERY_TICKS_PER_SYMBOL,
                     plan=plan,
                     progress=lambda line: self.battery_line.emit(line, "info"),
+                    on_trade=self.battery_trade.emit,
                 )
             except Exception as exc:  # noqa: BLE001 - the run runs off-thread
                 logger.exception("Portfolio Battery failed: %s", exc)
@@ -1192,6 +1216,25 @@ if _HAS_WEBENGINE:
             """One Activity Log line, ``report_line`` over ``report``, through
             ``log`` at the ``success`` level ``_import_live_fleet`` uses."""
             self.log(report_line(report), "success")
+
+        def log_trade(self, trade: SimTrade) -> None:
+            """One Activity Log line per ``SimTrade``: ``trade_line`` under
+            ``trade_stamp`` through ``SimStatusLogModel.log_at`` at
+            ``TRADE_LINE_LEVEL``, pushed by ``_push_pending_log`` one
+            ``TRADE_PUSH_INTERVAL_MS`` later."""
+            self._log.log_at(
+                tab_surface.trade_stamp(trade),
+                tab_surface.trade_line(trade),
+                tab_surface.TRADE_LINE_LEVEL,
+            )
+            if not self._trade_push_timer.isActive():
+                self._trade_push_timer.start()
+
+        def _push_pending_log(self) -> bool:
+            """Push every line painted since the last push through ``log_payload``."""
+            if not self._log.painted:
+                return False
+            return self.show_models({LOG_METHOD: log_payload(self._log)})
 
         def layer(self) -> str:
             """The layer the page shows behind the panel slot."""

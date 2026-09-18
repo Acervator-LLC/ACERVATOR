@@ -36,6 +36,7 @@ from ...core.fmt import fmt_price_coerced
 from ...core.log_paths import get_log_root
 from ...exchange.ytd_trade_store import MANIFEST_NAME
 from ...simulator import portfolio_battery
+from ...simulator.back_test import SCRUM
 from ...simulator.fleet_source import BATTERY_ORIGIN, BOT_STATE_NAME
 from ...simulator.read_only_connector import EXCHANGE_ID
 from ...simulator.sim_api_log import TABLET_ACTION, YTD_ACTION
@@ -385,6 +386,52 @@ def battery_started_line(
 def battery_failed_line(error: Any) -> str:
     """The Activity Log line for a Battery run that raised ``error``."""
     return BATTERY_FAILED_FORMAT.format(error=error)
+
+
+#: The trade line one ``SimTrade`` writes on both hosts: Live's ``SELL FILLED``
+#: and ``BUY FILLED`` bot line under the ``[asset/id tail]`` prefix
+#: ``MainWindow._on_bot_log`` gives every bot line, at the level it writes at.
+TRADE_LINE_LEVEL = "info"
+BOT_PREFIX_FORMAT = "[{asset}/{tail}] "
+BOT_ID_TAIL_CHARS = 4
+TRADE_LINE_FORMAT = (
+    "{prefix}{word}: {units:.6f} {asset} @ ${price:.8f} "
+    "({usd_word} ${usd:.5f}, fee ${fee:.5f})"
+)
+SCRUM_FILL_WORD = "SELL FILLED"
+FOLD_FILL_WORD = "BUY FILLED"
+SCRUM_USD_WORD = "gross"
+FOLD_USD_WORD = "spent"
+
+
+def bot_prefix(asset: str, bot_id: str) -> str:
+    """``[{asset}/{tail}] `` over the last ``BOT_ID_TAIL_CHARS`` of ``bot_id``, as
+    ``MainWindow._on_bot_log`` prefixes a bot's line."""
+    tail = bot_id[-BOT_ID_TAIL_CHARS:] if len(bot_id) >= BOT_ID_TAIL_CHARS else bot_id
+    return BOT_PREFIX_FORMAT.format(asset=asset, tail=tail)
+
+
+def trade_stamp(trade: Any) -> str:
+    """The stamp a trade line carries: ``iso_stamp`` of the trade's ``ts_ms``,
+    the candle's time rather than the clock."""
+    return iso_stamp(trade.ts_ms)
+
+
+def trade_line(trade: Any) -> str:
+    """``TRADE_LINE_FORMAT`` over one ``SimTrade``: ``SCRUM_FILL_WORD`` and
+    ``SCRUM_USD_WORD`` for a ``SCRUM``, the fold words otherwise."""
+    asset = str(trade.symbol).split("/")[0]
+    is_scrum = trade.side == SCRUM
+    return TRADE_LINE_FORMAT.format(
+        prefix=bot_prefix(asset, str(trade.bot_id)),
+        word=SCRUM_FILL_WORD if is_scrum else FOLD_FILL_WORD,
+        units=float(trade.units),
+        asset=asset,
+        price=float(trade.price),
+        usd_word=SCRUM_USD_WORD if is_scrum else FOLD_USD_WORD,
+        usd=float(trade.usd),
+        fee=float(trade.fee_usd),
+    )
 
 
 def flip_button(layer: Any) -> dict:
