@@ -7,6 +7,7 @@ name; the Simulator's Activity Log spool.
 from __future__ import annotations
 
 import contextlib
+import html
 import logging
 from datetime import datetime
 from typing import Callable
@@ -173,6 +174,9 @@ if _HAS_QT:
                     )
 
         def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
+            # Every Simulator line is plain text; a venue error such as
+            # URLError's <urlopen error ...> would otherwise vanish as a tag.
+            message = html.escape(message, quote=False)
             if message.startswith("TRADE NOTIFICATION:"):
                 stage_color = ds.ERROR
                 if "FILLED" in message:

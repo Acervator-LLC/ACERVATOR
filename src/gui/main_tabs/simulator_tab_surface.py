@@ -7,6 +7,9 @@ Trading-tab clone: the Privacy Mode row, the bot list under
 window over the tablet playback window. ``reserved_rows`` names what the crypto
 news ticker and data-pool rows carry in each of ``MODES``, and ``run_validation``,
 ``run_back_test`` and ``run_battery`` fill the pane each mode draws.
+``tablet_choices``, ``default_tablet_key`` and ``replay_feed`` are the forked
+tab's replay layer as data: the chooser's items, the item the selected bot
+names, and the two windows' payloads over one tablet.
 ``src.core.desktop_bridge`` registers ``view_model`` under ``METHOD``, and
 nothing here imports Qt.
 """
@@ -22,6 +25,7 @@ from ...simulator.fleet_source import aggregate_stats
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.tablet_source import TabletSource, tablet_key
 from ...trading.stone_tablets.ra_paths import RA_STONE_TABLETS_DIR
+from ...trading.stone_tablets.registry import NATIVE_TIMEFRAME
 from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
 from .. import design_system as ds
 from ..theme_engine import NIGREDO_FRACTION, toward_black
@@ -268,14 +272,24 @@ LAYER_INDICATORS = "indicators"
 LAYER_PLAYBACK = "playback"
 LAYERS = (LAYER_INDICATORS, LAYER_PLAYBACK)
 
+#: The flip's text on each layer: the directive's word for the two windows on
+#: the panel, where the header row's room under a monospace theme is 90 px,
+#: and the panel's own word on the layer.
 FLIP_BUTTON_TEXT = {
-    LAYER_INDICATORS: "Show Playback",
-    LAYER_PLAYBACK: "Show Indicators",
+    LAYER_INDICATORS: "Replay",
+    LAYER_PLAYBACK: "Indicators",
 }
 
 VWAP_TITLE = "VWAP"
 PLAYBACK_TITLE = "Stone Tablet Playback"
 REPLAY_LOG_TITLE = "Replay Log"
+
+#: The retrieval button on the replay layer, read off the chosen item: the
+#: directive's own two words for a market with no tablet and for one with.
+RETRIEVE_TABLET_TEXT = "Retrieve Tablet"
+UPDATE_TABLET_TEXT = "Update Tablet"
+#: The chooser's item for a held market with no tablet on disk.
+NO_TABLET_CHOICE_FORMAT = "{key} — {refusal}"
 
 #: The Trading tab's own pane geometry, cloned. ``trading_tab.py`` sets these.
 MARGINS_PX = [2, 2, 2, 2]
@@ -626,6 +640,110 @@ def playback_payload(candles: Sequence[Sequence[float]]) -> dict:
         "high": span["high"],
         "candle_count": len(candles),
         "candles": candle_shapes(candles, span["low"], span["high"]),
+    }
+
+
+def replay_colours() -> dict:
+    """The five ``SKIN`` colours the two replay windows paint, in both builds."""
+    return {
+        "ground": SKIN["--sim-chart-ground"],
+        "close": SKIN["--sim-close-line"],
+        "vwap": SKIN["--sim-vwap-line"],
+        "up": SKIN["--sim-candle-up"],
+        "down": SKIN["--sim-candle-down"],
+    }
+
+
+def market_key(asset: str, exchange_id: str) -> str:
+    """The chooser's key for a held market with no tablet on disk."""
+    return f"{str(asset).upper()}_{NATIVE_TIMEFRAME}_{exchange_id}"
+
+
+def tablet_choices(source: TabletSource, bots: Sequence[Any] = ()) -> list[dict]:
+    """The tablet chooser's items: one per MANIFEST row, keyed by
+    ``tablet_key`` and shown as it, then one per held market in ``bots`` with
+    no tablet at ``NATIVE_TIMEFRAME``, keyed by ``market_key`` and shown with
+    ``NO_TABLET_TEXT``."""
+    entries = source.entries()
+    items = [
+        {
+            "key": tablet_key(entry),
+            "text": tablet_key(entry),
+            "asset": entry.asset,
+            "exchange_id": entry.exchange_id,
+            "timeframe": entry.timeframe,
+            "on_disk": True,
+        }
+        for entry in entries
+    ]
+    held = {(str(e.asset).upper(), str(e.exchange_id)) for e in entries}
+    seen: set[tuple[str, str]] = set()
+    for bot in bots:
+        market = (str(bot.asset).upper(), str(bot.exchange_id))
+        if market in held or market in seen:
+            continue
+        seen.add(market)
+        key = market_key(*market)
+        items.append(
+            {
+                "key": key,
+                "text": NO_TABLET_CHOICE_FORMAT.format(key=key, refusal=NO_TABLET_TEXT),
+                "asset": market[0],
+                "exchange_id": market[1],
+                "timeframe": NATIVE_TIMEFRAME,
+                "on_disk": False,
+            }
+        )
+    return items
+
+
+def default_tablet_key(source: TabletSource, bot: Any = None) -> str:
+    """The chooser's key for ``bot``: ``tablet_for`` at its timeframe, else the
+    newest entry for its market, else ``market_key``; with no bot,
+    ``source.newest``, or an empty string when the root holds nothing."""
+    if bot is not None:
+        entry = tablet_for(source, bot.exchange_id, bot.asset, bot.ta_timeframe)
+        if entry is not None:
+            return tablet_key(entry)
+        wanted = (str(bot.asset).upper(), str(bot.exchange_id))
+        held = [
+            one
+            for one in source.entries()
+            if (str(one.asset).upper(), str(one.exchange_id)) == wanted
+        ]
+        if held:
+            return tablet_key(max(held, key=lambda e: (e.last_ts_ms, tablet_key(e))))
+        return market_key(*wanted)
+    newest = source.newest()
+    return tablet_key(newest) if newest is not None else ""
+
+
+def replay_feed(source: TabletSource, key: str) -> dict:
+    """The two windows' payloads for the item ``key`` names: ``vwap_payload``
+    and ``playback_payload`` over ``window_of`` the tablet, empty with no
+    entry or under ``MIN_CANDLES``, with ``entry`` and ``refusal`` beside them."""
+    entry = source.entry_for(key) if key else None
+    candles = window_of(source.candles(entry)) if entry is not None else []
+    refusal = ""
+    if entry is None:
+        refusal = NO_TABLET_TEXT
+    elif len(candles) < MIN_CANDLES:
+        refusal = SHORT_TABLET_FORMAT.format(
+            asset=entry.asset, year=entry.year, count=len(candles), need=MIN_CANDLES
+        )
+    drawable: list[list[float]] = [] if refusal else candles
+    return {
+        "key": key,
+        "entry": entry,
+        "on_disk": entry is not None,
+        "refusal": refusal,
+        "window": len(candles),
+        "vwap": vwap_payload(drawable),
+        "playback": playback_payload(drawable),
+        "colours": replay_colours(),
+        "button_text": (
+            UPDATE_TABLET_TEXT if entry is not None else RETRIEVE_TABLET_TEXT
+        ),
     }
 
 

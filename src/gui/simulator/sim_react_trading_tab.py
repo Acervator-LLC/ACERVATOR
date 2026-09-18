@@ -54,20 +54,31 @@ the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
 ``battery_line`` and ``battery_finished`` signals reach ``log`` and
 ``_take_battery`` on the GUI thread; a venue sub-tab press reaches
 ``run_action`` as the ``exchange`` ask and ``show_tab`` makes that venue
-current.
+current. The replay layer behind the panel is pushed as the tab's ``replay``:
+``_refresh_replay`` builds the chooser's items from ``tablet_choices`` and
+``_feed_replay`` pushes ``replay_model`` over ``replay_feed`` through
+``show_tab``, at build, on every ``fleet_changed``, on the flip, on the
+chooser's ``tablet`` ask, on ``select_bot`` and after a retrieval; the
+``retrieve_tablet`` ask reaches ``_retrieve_tablet``, which runs
+``tablet_retrieval.retrieve`` on a daemon thread over the host's
+``ReadOnlyConnector``, the one venue path, whose every call crosses on
+``retrieval_call`` to ``_record_venue_call`` and the host's ``api_log``, and
+whose end crosses on ``retrieval_finished`` to ``_take_retrieval``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ...core.sound_engine import get_sound_engine
 from ...exchange.api_logger import APIInteractionLog
-from ...simulator import portfolio_battery
+from ...simulator import portfolio_battery, tablet_retrieval
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
     FleetSource,
@@ -76,10 +87,12 @@ from ...simulator.fleet_source import (
 )
 from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.portfolios import PORTFOLIOS
+from ...simulator.read_only_connector import ReadOnlyConnector, VenueCall
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
-from ...simulator.tablet_source import TabletSource
+from ...simulator.tablet_source import TabletSource, tablet_key
 from ...simulator.ytd_trade_source import ROOT_READY, YtdTradeSource
+from ...trading.stone_tablets.storage import tablet_filename
 from ..main_tabs import bot_status_table_surface as scrum_surface
 from ..main_tabs import design_system_surface as token_surface
 from ..main_tabs import extractor_bot_table_surface as extractor_surface
@@ -834,6 +847,12 @@ if _HAS_WEBENGINE:
         battery_line = Signal(str, str)
         #: The ``BatteryRun`` the Battery's worker thread finished with.
         battery_finished = Signal(object)
+        #: One Activity Log line and its level from a retrieval's worker thread.
+        retrieval_line = Signal(str, str)
+        #: One ``VenueCall`` the read-only connector made on the worker thread.
+        retrieval_call = Signal(object)
+        #: The ``RetrievalOutcome`` a retrieval's worker thread finished with.
+        retrieval_finished = Signal(object)
 
         def __init__(
             self,
@@ -843,10 +862,12 @@ if _HAS_WEBENGINE:
             theme: object = None,
             api_log: Optional[APIInteractionLog] = None,
             battery_tablet_source: Optional[TabletSource] = None,
+            connector: Optional[ReadOnlyConnector] = None,
         ) -> None:
             """Hold the two sources the tab's view models are built from, the
-            RA-StoneTablet source the Battery runs over and the API log
-            ``_on_api_event`` listens to."""
+            RA-StoneTablet source the Battery runs over, the API log
+            ``_on_api_event`` listens to and the read-only connector a
+            retrieval reads through."""
             super().__init__(parent)
             self.setObjectName(ACCESSIBLE_NAME)
             self.setAccessibleName(ACCESSIBLE_NAME)
@@ -868,6 +889,16 @@ if _HAS_WEBENGINE:
                 fleet_source if fleet_source is not None else FleetSource()
             )
             self._api_log = api_log if api_log is not None else APIInteractionLog()
+            self._connector = (
+                connector
+                if connector is not None
+                else ReadOnlyConnector(on_call=self._on_venue_call)
+            )
+            self._retrieval_thread: Optional[threading.Thread] = None
+            self._retrieval: dict = {}
+            self._tablet_key: str = ""
+            self._replay: dict = {}
+            self._choices: list = []
             self._bot_manager = SimBotManager(self._fleet_source)
             self._theme = theme
             self._state = tab_surface.SimTradingTabState()
@@ -887,6 +918,9 @@ if _HAS_WEBENGINE:
             self.fleet_changed.connect(self._sync_exchange_tabs)
             self.battery_line.connect(self.log)
             self.battery_finished.connect(self._take_battery)
+            self.retrieval_line.connect(self.log)
+            self.retrieval_call.connect(self._record_venue_call)
+            self.retrieval_finished.connect(self._take_retrieval)
             self._sync_exchange_tabs()
             self._api_log.add_listener(self._on_api_event)
             # Polls StatusLogModel.health_stats() every 60s on the GUI thread.
@@ -907,6 +941,23 @@ if _HAS_WEBENGINE:
         def panel_view(self):
             """The web view the tab draws in, or None before the first show."""
             return self._web
+
+        def connector(self) -> ReadOnlyConnector:
+            """The read-only connector a retrieval reads candles through."""
+            return self._connector
+
+        def retrieval_running(self) -> bool:
+            """True while a retrieval worker thread is alive."""
+            thread = self._retrieval_thread
+            return thread is not None and thread.is_alive()
+
+        def tablet_key(self) -> str:
+            """The chooser's chosen key, the item the two windows draw."""
+            return self._tablet_key
+
+        def replay(self) -> dict:
+            """The ``replay_feed`` the two windows last drew."""
+            return dict(self._replay)
 
         def models(self) -> dict:
             """A copy of the models the page was built from, empty before that."""
@@ -1555,6 +1606,190 @@ if _HAS_WEBENGINE:
             self._drop_unlisted_exchange_tabs(wanted)
             self.refresh_bots()
             self.refresh_votes()
+            self._refresh_replay()
+
+        # -- the replay layer ---------------------------------------------
+
+        def _selected_bot(self):
+            chosen = str(self._panel.selected_bot_id or "")
+            return self._fleet_source.bot_for(chosen) if chosen else None
+
+        def _refresh_replay(self, follow_bot: bool = False) -> dict:
+            """Rebuild the chooser's items from ``tablet_choices`` over the disk
+            and the held fleet, keep the chosen key when it is still listed or
+            take ``default_tablet_key`` for the selected bot, then
+            ``_feed_replay``."""
+            choices = sim.tablet_choices(self._tablet_source, self._fleet_source.bots())
+            keys = [str(one["key"]) for one in choices]
+            if follow_bot or self._tablet_key not in keys:
+                wanted = sim.default_tablet_key(
+                    self._tablet_source, self._selected_bot()
+                )
+                self._tablet_key = (
+                    wanted if wanted in keys else (keys[0] if keys else "")
+                )
+            self._choices = choices
+            return self._feed_replay()
+
+        def _feed_replay(self) -> dict:
+            """Build ``replay_feed`` for the chosen key and push it as the tab's
+            ``replay`` through ``show_tab``, so the page redraws the chooser, the
+            button and the two windows."""
+            feed = sim.replay_feed(self._tablet_source, self._tablet_key)
+            self._replay = feed
+            self.show_tab(
+                {
+                    tab_surface.REPLAY_PARAM: tab_surface.replay_model(
+                        feed, self._choices, self.retrieval_running()
+                    )
+                }
+            )
+            return feed
+
+        def _choose_tablet(self, key: str) -> dict:
+            """The page's chooser moved: draw the item ``key`` names."""
+            self._tablet_key = str(key or "")
+            return self._feed_replay()
+
+        def _follow_bot_tablet(self) -> None:
+            """The panel's bot changed: the chooser takes that bot's tablet."""
+            self._refresh_replay(follow_bot=True)
+
+        def _retrieve_tablet(self) -> None:
+            """Retrieve Tablet or Update Tablet: one line and nothing started
+            while ``retrieval_running`` or with no item chosen; else
+            ``retrieval_span`` over the chosen item, the started line, and
+            ``_compute_retrieval`` on a daemon thread over the read-only
+            connector."""
+            if self.retrieval_running():
+                self.log(tab_surface.RETRIEVAL_RUNNING_TEXT, "warning")
+                return
+            choice = next(
+                (
+                    one
+                    for one in sim.tablet_choices(
+                        self._tablet_source, self._fleet_source.bots()
+                    )
+                    if str(one["key"]) == self._tablet_key
+                ),
+                None,
+            )
+            if choice is None:
+                self.log(tab_surface.RETRIEVAL_NO_CHOICE_TEXT, "warning")
+                return
+            entry = self._tablet_source.entry_for(self._tablet_key)
+            since_ms, until_ms = tablet_retrieval.retrieval_span(entry)
+            if since_ms > until_ms:
+                self.log(
+                    tab_surface.retrieval_current_line(self._tablet_key, until_ms),
+                    "info",
+                )
+                return
+            asset = str(choice["asset"])
+            exchange_id = str(choice["exchange_id"])
+            year = datetime.fromtimestamp(until_ms / 1000.0, tz=timezone.utc).year
+            self._retrieval = {
+                "key": self._tablet_key,
+                "asset": asset,
+                "exchange_id": exchange_id,
+                "on_disk": entry is not None,
+                "file": tablet_filename(
+                    asset, tablet_retrieval.TIMEFRAME, year, exchange_id=exchange_id
+                ),
+                "root": self._tablet_source.root(),
+            }
+            self.log(
+                tab_surface.retrieval_started_line(
+                    self._tablet_key,
+                    asset,
+                    exchange_id,
+                    entry is not None,
+                    since_ms,
+                    until_ms,
+                ),
+                "success",
+            )
+            self._retrieval_thread = threading.Thread(
+                target=self._compute_retrieval,
+                args=(asset, exchange_id, since_ms, until_ms),
+                name="sim-tablet-retrieval",
+                daemon=True,
+            )
+            self._retrieval_thread.start()
+            self._feed_replay()
+
+        def _compute_retrieval(
+            self, asset: str, exchange_id: str, since_ms: int, until_ms: int
+        ) -> None:
+            """Run ``tablet_retrieval.retrieve`` over the tablet root and the
+            connector and hand the ``RetrievalOutcome`` to the GUI thread
+            through ``retrieval_finished``; a walk that raises hands one
+            carrying the error."""
+            try:
+                outcome = asyncio.run(
+                    tablet_retrieval.retrieve(
+                        self._tablet_source.root(),
+                        self._connector,
+                        asset,
+                        exchange_id,
+                        since_ms,
+                        until_ms,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 - the walk runs off-thread
+                logger.exception("Stone Tablet retrieval failed: %s", exc)
+                outcome = tablet_retrieval.RetrievalOutcome(
+                    asset=asset,
+                    exchange_id=exchange_id,
+                    since_ms=since_ms,
+                    until_ms=until_ms,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            self.retrieval_finished.emit(outcome)
+
+        def _on_venue_call(self, call: VenueCall) -> None:
+            """The connector's report, on the worker thread: cross to the GUI
+            thread."""
+            self.retrieval_call.emit(call)
+
+        def _record_venue_call(self, call: VenueCall) -> None:
+            """Record one venue call on ``api_log`` as ``retrieval_api_entry``
+            and write its progress line, on the GUI thread."""
+            held = self._retrieval
+            key = str(held.get("key") or "")
+            self._api_log.record(
+                **tab_surface.retrieval_api_entry(
+                    call,
+                    key,
+                    str(held.get("file") or ""),
+                    held.get("root", ""),
+                    bool(held.get("on_disk")),
+                )
+            )
+            if not call.error:
+                self.log(tab_surface.retrieval_progress_line(key, call), "info")
+
+        def _take_retrieval(self, outcome) -> None:
+            """Write the finished or refused line, point the chooser at the
+            tablet now on disk, redraw the two windows and re-read the panel."""
+            held = self._retrieval
+            key = str(held.get("key") or "")
+            self.log(
+                tab_surface.retrieval_finished_line(
+                    key, outcome, str(held.get("file") or ""), held.get("root", "")
+                ),
+                "error" if outcome.refused else "success",
+            )
+            written = sim.tablet_for(
+                self._tablet_source,
+                outcome.exchange_id,
+                outcome.asset,
+                tablet_retrieval.TIMEFRAME,
+            )
+            if written is not None:
+                self._tablet_key = tablet_key(written)
+            self._refresh_replay()
+            self._feed_votes()
 
         # -- what the operator presses ------------------------------------
 
@@ -1565,19 +1800,24 @@ if _HAS_WEBENGINE:
             return self._state.replay_layer
 
         def flip_layer(self) -> str:
-            """Swap the page between the panel layer and the replay layer."""
+            """Swap the page between the panel layer and the replay layer; a
+            flip to the replay layer re-reads the chooser off the disk."""
             other = (
                 sim.LAYER_PLAYBACK
                 if self._state.replay_layer == sim.LAYER_INDICATORS
                 else sim.LAYER_INDICATORS
             )
-            return self.show_layer(other)
+            shown = self.show_layer(other)
+            if shown == sim.LAYER_PLAYBACK:
+                self._refresh_replay()
+            return shown
 
         def run_action(self, payload: str) -> None:
             """Answer the flip, the Pause Console and Pause API Log presses,
-            a corner or card way-in, a venue sub-tab press, the panel's
-            ``select_bot``, both bot tables' asks and the venue page's mode
-            buttons, ``+ New Bot`` and command bar; every other ask is held."""
+            a corner or card way-in, the replay layer's chooser and retrieval
+            press, a venue sub-tab press, the panel's ``select_bot``, both bot
+            tables' asks and the venue page's mode buttons, ``+ New Bot`` and
+            command bar; every other ask is held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -1599,6 +1839,11 @@ if _HAS_WEBENGINE:
                 way_in = params.get(tab_surface.WAY_IN_PARAM)
                 if way_in is not None:
                     self._way_in(str(way_in))
+                chosen_tablet = params.get(tab_surface.TABLET_PARAM)
+                if chosen_tablet is not None:
+                    self._choose_tablet(str(chosen_tablet))
+                if params.get(tab_surface.RETRIEVE_PARAM):
+                    self._retrieve_tablet()
                 shown = params.get(EXCHANGE_PARAM)
                 if shown is not None:
                     self.show_tab({EXCHANGE_PARAM: str(shown)})
@@ -1621,6 +1866,7 @@ if _HAS_WEBENGINE:
                     str(params.get(tab_surface.BOT_ID_PARAM) or "")
                 )
                 self._feed_votes(chosen)
+                self._follow_bot_tablet()
             elif method in (SCRUM_METHOD, EXTRACTOR_METHOD, venue_surface.METHOD):
                 venue = self._venues.get(venue_of_ask(method, params))
                 if venue is not None and venue.answer(method, params):

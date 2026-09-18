@@ -39,7 +39,18 @@ the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
 ``battery_line`` and ``battery_finished`` signals reach the Activity Log and
 ``_take_battery`` on the GUI thread.
 The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
-panel in ``_layer_stack``, reached by ``flip_layer``. A venue's ``+ New Bot``
+panel in ``_layer_stack``, reached by ``flip_layer``; its header row holds the
+flip button, the ``Tablet:`` chooser and the retrieval button.
+``_refresh_replay`` fills the chooser from ``tablet_choices`` and
+``_feed_replay`` draws ``replay_feed`` on the two windows, at build, on every
+``fleet_changed``, on the flip, on the chooser's change, on ``bot_selected``
+and after a retrieval. ``_retrieve_tablet`` runs ``tablet_retrieval.retrieve``
+on a daemon thread over the tab's ``ReadOnlyConnector``, the one venue path,
+which answers ``get_ohlcv`` over the public candle endpoint and raises
+``SendRefused`` for every other name; each venue call crosses on
+``retrieval_call`` and ``_record_venue_call`` records it on ``api_log``, each
+line crosses on ``retrieval_line``, and ``_take_retrieval`` writes the finished
+or refused line and redraws. A venue's ``+ New Bot``
 reaches ``_create_bot``, which opens ``SimBotCreationWizard`` and hands its
 config to ``FleetSource.create``. A row's Fire reaches ``_on_bot_fire``, which
 asks ``FleetSource`` and logs its refusal; a row's Detail reaches
@@ -58,13 +69,16 @@ down and flushed in order on Resume.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -89,12 +103,15 @@ from ...simulator.fleet_source import (
     SendRefused,
     exchange_choice,
 )
+from ...simulator import tablet_retrieval
 from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.portfolios import PORTFOLIOS
+from ...simulator.read_only_connector import ReadOnlyConnector, VenueCall
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
-from ...simulator.tablet_source import TabletSource
+from ...simulator.tablet_source import TabletSource, tablet_key
 from ...simulator.ytd_trade_source import ROOT_READY, YtdTradeSource
+from ...trading.stone_tablets.storage import tablet_filename
 from .. import design_system as ds
 from ..color_alpha import rgba
 from ..main_tabs import simulator_tab_surface as surface
@@ -133,6 +150,19 @@ PLACEHOLDER_CARD_BORDER_ALPHA = 68
 ACCESSIBLE_NAME = "Sim"
 
 FLIP_BUTTON_NAME = "sim-flip-button"
+TABLET_LABEL_NAME = tab_surface.TABLET_LABEL_NAME
+TABLET_CHOOSER_NAME = tab_surface.TABLET_CHOOSER_NAME
+RETRIEVE_BUTTON_NAME = tab_surface.RETRIEVE_BUTTON_NAME
+
+TABLET_CHOOSER_MIN_WIDTH_PX = tab_surface.TABLET_CHOOSER_MIN_WIDTH_PX
+
+#: The theme gives a button 20 px of side padding; the flip button keeps 4 px
+#: so its text draws whole beside the panel title at the window's floor.
+FLIP_BUTTON_SIDE_PADDING_PX = 4
+FLIP_BUTTON_QSS = (
+    f"QPushButton#{FLIP_BUTTON_NAME} {{ padding-left: {FLIP_BUTTON_SIDE_PADDING_PX}px; "
+    f"padding-right: {FLIP_BUTTON_SIDE_PADDING_PX}px; }}"
+)
 
 #: Live's corner button is 24 px tall: its ＋ glyph sets that height, and the
 #: way-in buttons carry no such glyph.
@@ -159,6 +189,7 @@ class FlipButton(QPushButton):
         self.setObjectName(FLIP_BUTTON_NAME)
         self.setAccessibleName(FLIP_BUTTON_NAME)
         self.setSizePolicy(QSizePolicy.Preferred, self.sizePolicy().verticalPolicy())
+        self.setStyleSheet(FLIP_BUTTON_QSS)
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         """The base hint's height over a width of 0."""
@@ -174,6 +205,12 @@ class SimTradingTab(QWidget):
     battery_line = Signal(str, str)
     #: The ``BatteryRun`` the Battery's worker thread finished with.
     battery_finished = Signal(object)
+    #: One Activity Log line and its level from a retrieval's worker thread.
+    retrieval_line = Signal(str, str)
+    #: One ``VenueCall`` the read-only connector made on the worker thread.
+    retrieval_call = Signal(object)
+    #: The ``RetrievalOutcome`` a retrieval's worker thread finished with.
+    retrieval_finished = Signal(object)
 
     def __init__(
         self,
@@ -182,6 +219,7 @@ class SimTradingTab(QWidget):
         parent: Optional[QWidget] = None,
         api_log: Optional[APIInteractionLog] = None,
         battery_tablet_source: Optional[TabletSource] = None,
+        connector: Optional[ReadOnlyConnector] = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(ACCESSIBLE_NAME)
@@ -203,17 +241,30 @@ class SimTradingTab(QWidget):
         self._fleet_source = fleet_source if fleet_source is not None else FleetSource()
         self._api_log = api_log if api_log is not None else APIInteractionLog()
         self._bot_manager = SimBotManager(self._fleet_source)
+        self._connector = (
+            connector
+            if connector is not None
+            else ReadOnlyConnector(on_call=self._on_venue_call)
+        )
         self._layer = surface.LAYER_INDICATORS
         self._mode = surface.MODES[0]
         self._battery_thread: Optional[threading.Thread] = None
+        self._retrieval_thread: Optional[threading.Thread] = None
+        self._retrieval: dict = {}
+        self._tablet_key: str = ""
+        self._replay: dict = {}
         self._build()
         self._draw_way_ins()
         self._api_log.add_listener(self._on_api_event)
         self._indicator_panel.bot_selected.connect(self._feed_votes)
+        self._indicator_panel.bot_selected.connect(self._follow_bot_tablet)
         self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
         self.battery_line.connect(self._status_log.log)
         self.battery_finished.connect(self._take_battery)
+        self.retrieval_line.connect(self._status_log.log)
+        self.retrieval_call.connect(self._record_venue_call)
+        self.retrieval_finished.connect(self._take_retrieval)
         self._sync_exchange_tabs()
 
     # -- what the window reads ------------------------------------------
@@ -230,6 +281,23 @@ class SimTradingTab(QWidget):
         """True while a Battery worker thread is alive."""
         thread = self._battery_thread
         return thread is not None and thread.is_alive()
+
+    def connector(self) -> ReadOnlyConnector:
+        """The read-only connector a retrieval reads candles through."""
+        return self._connector
+
+    def retrieval_running(self) -> bool:
+        """True while a retrieval worker thread is alive."""
+        thread = self._retrieval_thread
+        return thread is not None and thread.is_alive()
+
+    def tablet_key(self) -> str:
+        """The chooser's chosen key, the item the two windows draw."""
+        return self._tablet_key
+
+    def replay(self) -> dict:
+        """The ``replay_feed`` the two windows last drew."""
+        return dict(self._replay)
 
     def fleet_source(self) -> FleetSource:
         """The fleet reader the tables are fed from."""
@@ -755,8 +823,9 @@ class SimTradingTab(QWidget):
         trading_layout.addWidget(main_splitter)
 
     def _build_chart_pane(self) -> QWidget:
-        """The replay layer: a header row for the flip button over ``LineView``
-        and ``PlaybackView`` in one splitter."""
+        """The replay layer: a header row for the flip button, the ``Tablet:``
+        chooser and the retrieval button, over ``LineView`` and
+        ``PlaybackView`` in one splitter."""
         pane = QWidget()
         column = QVBoxLayout(pane)
         column.setContentsMargins(0, 0, 0, 0)
@@ -766,6 +835,21 @@ class SimTradingTab(QWidget):
         self._chart_header = QHBoxLayout()
         self._chart_header.setContentsMargins(4, 2, 4, 2)
         self._chart_header.addStretch()
+        self._tablet_label = QLabel(surface.TABLET_LABEL_TEXT)
+        self._tablet_label.setObjectName(TABLET_LABEL_NAME)
+        self._tablet_label.setAccessibleName(TABLET_LABEL_NAME)
+        self._chart_header.addWidget(self._tablet_label)
+        self._tablet_chooser = QComboBox()
+        self._tablet_chooser.setObjectName(TABLET_CHOOSER_NAME)
+        self._tablet_chooser.setAccessibleName(TABLET_CHOOSER_NAME)
+        self._tablet_chooser.setMinimumWidth(TABLET_CHOOSER_MIN_WIDTH_PX)
+        self._tablet_chooser.currentIndexChanged.connect(self._on_tablet_chosen)
+        self._chart_header.addWidget(self._tablet_chooser)
+        self._retrieve_button = QPushButton(surface.RETRIEVE_TABLET_TEXT)
+        self._retrieve_button.setObjectName(RETRIEVE_BUTTON_NAME)
+        self._retrieve_button.setAccessibleName(RETRIEVE_BUTTON_NAME)
+        self._retrieve_button.clicked.connect(self._retrieve_tablet)
+        self._chart_header.addWidget(self._retrieve_button)
         column.addLayout(self._chart_header)
         self._layer_splitter = QSplitter(Qt.Vertical)
         self._layer_splitter.setHandleWidth(surface.HANDLE_WIDTH_PX)
@@ -869,6 +953,7 @@ class SimTradingTab(QWidget):
         self._drop_unlisted_exchange_tabs(wanted)
         self.refresh_bots()
         self.refresh_votes()
+        self._refresh_replay()
 
     # -- the rows -------------------------------------------------------
 
@@ -925,6 +1010,190 @@ class SimTradingTab(QWidget):
                 detail=feed["detail"],
             )
         return feed
+
+    # -- the replay layer -----------------------------------------------
+
+    def _selected_bot(self):
+        chosen = str(self._indicator_panel.selected_bot_id or "")
+        return self._fleet_source.bot_for(chosen) if chosen else None
+
+    def _refresh_replay(self, follow_bot: bool = False) -> dict:
+        """Rebuild the chooser from ``tablet_choices`` over the disk and the
+        held fleet, keep the chosen key when it is still listed or take
+        ``default_tablet_key`` for the selected bot, then ``_feed_replay``."""
+        choices = surface.tablet_choices(self._tablet_source, self._fleet_source.bots())
+        keys = [str(one["key"]) for one in choices]
+        if follow_bot or self._tablet_key not in keys:
+            wanted = surface.default_tablet_key(
+                self._tablet_source, self._selected_bot()
+            )
+            self._tablet_key = wanted if wanted in keys else (keys[0] if keys else "")
+        held = self._tablet_chooser.blockSignals(True)
+        try:
+            self._tablet_chooser.clear()
+            for one in choices:
+                self._tablet_chooser.addItem(str(one["text"]), str(one["key"]))
+            if self._tablet_key in keys:
+                self._tablet_chooser.setCurrentIndex(keys.index(self._tablet_key))
+        finally:
+            self._tablet_chooser.blockSignals(held)
+        return self._feed_replay()
+
+    def _feed_replay(self) -> dict:
+        """Draw ``replay_feed`` for the chosen key on the two windows and read
+        the retrieval button's text off it."""
+        feed = surface.replay_feed(self._tablet_source, self._tablet_key)
+        self._replay = feed
+        self._vwap_view.set_payload(feed["vwap"])
+        self._playback_view.set_payload(feed["playback"])
+        self._retrieve_button.setText(feed["button_text"])
+        self._retrieve_button.setEnabled(
+            bool(self._tablet_key) and not self.retrieval_running()
+        )
+        return feed
+
+    def _on_tablet_chosen(self, index: int) -> None:
+        """The chooser moved: draw the item it names."""
+        key = self._tablet_chooser.itemData(index) if index >= 0 else ""
+        self._tablet_key = str(key or "")
+        self._feed_replay()
+
+    def _follow_bot_tablet(self, bot_id: str = "") -> None:
+        """The panel's bot changed: the chooser takes that bot's tablet."""
+        del bot_id
+        self._refresh_replay(follow_bot=True)
+
+    def _retrieve_tablet(self) -> None:
+        """Retrieve Tablet or Update Tablet: one line and nothing started while
+        ``retrieval_running`` or with no item chosen; else ``retrieval_span``
+        over the chosen item, the started line, and ``_compute_retrieval`` on a
+        daemon thread over the read-only connector."""
+        if self.retrieval_running():
+            self._status_log.log(tab_surface.RETRIEVAL_RUNNING_TEXT, "warning")
+            return
+        choice = next(
+            (
+                one
+                for one in surface.tablet_choices(
+                    self._tablet_source, self._fleet_source.bots()
+                )
+                if str(one["key"]) == self._tablet_key
+            ),
+            None,
+        )
+        if choice is None:
+            self._status_log.log(tab_surface.RETRIEVAL_NO_CHOICE_TEXT, "warning")
+            return
+        entry = self._tablet_source.entry_for(self._tablet_key)
+        since_ms, until_ms = tablet_retrieval.retrieval_span(entry)
+        if since_ms > until_ms:
+            self._status_log.log(
+                tab_surface.retrieval_current_line(self._tablet_key, until_ms), "info"
+            )
+            return
+        asset = str(choice["asset"])
+        exchange_id = str(choice["exchange_id"])
+        year = datetime.fromtimestamp(until_ms / 1000.0, tz=timezone.utc).year
+        self._retrieval = {
+            "key": self._tablet_key,
+            "asset": asset,
+            "exchange_id": exchange_id,
+            "on_disk": entry is not None,
+            "file": tablet_filename(
+                asset, tablet_retrieval.TIMEFRAME, year, exchange_id=exchange_id
+            ),
+            "root": self._tablet_source.root(),
+        }
+        self._status_log.log(
+            tab_surface.retrieval_started_line(
+                self._tablet_key,
+                asset,
+                exchange_id,
+                entry is not None,
+                since_ms,
+                until_ms,
+            ),
+            "success",
+        )
+        self._retrieval_thread = threading.Thread(
+            target=self._compute_retrieval,
+            args=(asset, exchange_id, since_ms, until_ms),
+            name="sim-tablet-retrieval",
+            daemon=True,
+        )
+        self._retrieval_thread.start()
+        self._retrieve_button.setEnabled(False)
+
+    def _compute_retrieval(
+        self, asset: str, exchange_id: str, since_ms: int, until_ms: int
+    ) -> None:
+        """Run ``tablet_retrieval.retrieve`` over the tablet root and the
+        connector and hand the ``RetrievalOutcome`` to the GUI thread through
+        ``retrieval_finished``; a walk that raises hands one carrying the error."""
+        try:
+            outcome = asyncio.run(
+                tablet_retrieval.retrieve(
+                    self._tablet_source.root(),
+                    self._connector,
+                    asset,
+                    exchange_id,
+                    since_ms,
+                    until_ms,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - the walk runs off-thread
+            logger.exception("Stone Tablet retrieval failed: %s", exc)
+            outcome = tablet_retrieval.RetrievalOutcome(
+                asset=asset,
+                exchange_id=exchange_id,
+                since_ms=since_ms,
+                until_ms=until_ms,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        self.retrieval_finished.emit(outcome)
+
+    def _on_venue_call(self, call: VenueCall) -> None:
+        """The connector's report, on the worker thread: cross to the GUI thread."""
+        self.retrieval_call.emit(call)
+
+    def _record_venue_call(self, call: VenueCall) -> None:
+        """Record one venue call on ``api_log`` as ``retrieval_api_entry`` and
+        write its progress line, on the GUI thread."""
+        held = self._retrieval
+        key = str(held.get("key") or "")
+        self._api_log.record(
+            **tab_surface.retrieval_api_entry(
+                call,
+                key,
+                str(held.get("file") or ""),
+                held.get("root", ""),
+                bool(held.get("on_disk")),
+            )
+        )
+        if not call.error:
+            self._status_log.log(tab_surface.retrieval_progress_line(key, call), "info")
+
+    def _take_retrieval(self, outcome) -> None:
+        """Write the finished or refused line, point the chooser at the tablet
+        now on disk, redraw the two windows and re-read the panel."""
+        held = self._retrieval
+        key = str(held.get("key") or "")
+        self._status_log.log(
+            tab_surface.retrieval_finished_line(
+                key, outcome, str(held.get("file") or ""), held.get("root", "")
+            ),
+            "error" if outcome.refused else "success",
+        )
+        written = surface.tablet_for(
+            self._tablet_source,
+            outcome.exchange_id,
+            outcome.asset,
+            tablet_retrieval.TIMEFRAME,
+        )
+        if written is not None:
+            self._tablet_key = tablet_key(written)
+        self._refresh_replay()
+        self._feed_votes()
 
     def _create_bot(
         self,
@@ -1164,4 +1433,6 @@ class SimTradingTab(QWidget):
         self._layer_stack.setCurrentIndex(surface.LAYERS.index(self._layer))
         self._flip_button.setText(surface.FLIP_BUTTON_TEXT[self._layer])
         self._flip_button.show()
+        if self._layer == surface.LAYER_PLAYBACK:
+            self._refresh_replay()
         return self._layer

@@ -30,10 +30,13 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+from ...core.fmt import fmt_price_coerced
 from ...core.log_paths import get_log_root
 from ...exchange.ytd_trade_store import MANIFEST_NAME
 from ...simulator import portfolio_battery
 from ...simulator.fleet_source import BATTERY_ORIGIN, BOT_STATE_NAME
+from ...simulator.read_only_connector import EXCHANGE_ID
+from ...simulator.validation import iso_stamp
 from ...simulator.ytd_trade_source import ROOT_EMPTY, ROOT_MISSING, ROOT_NO_MANIFEST
 from ...trading.container.config import BotState
 from ..main_tabs import simulator_tab_surface as sim
@@ -104,7 +107,62 @@ ACTIONS = {
     "activity_pause_button.toggled": "toggle_activity_pause",
     "api_pause_button.toggled": "toggle_api_pause",
     "flip_button.clicked": "flip_layer",
+    "tablet_chooser.changed": "choose_tablet",
+    "retrieve_button.clicked": "retrieve_tablet",
 }
+
+#: The replay layer's chooser change asks ``tablet`` with the chosen key; its
+#: retrieval press asks ``retrieve_tablet``; the host pushes the layer's
+#: state as ``replay``.
+TABLET_PARAM = "tablet"
+RETRIEVE_PARAM = "retrieve_tablet"
+REPLAY_PARAM = "replay"
+
+TABLET_LABEL_NAME = "sim-tablet-label"
+TABLET_CHOOSER_NAME = "sim-tablet-chooser"
+RETRIEVE_BUTTON_NAME = "sim-retrieve-button"
+
+#: The chooser takes the panel's bot selector minimum, so the two headers align.
+TABLET_CHOOSER_MIN_WIDTH_PX = 180
+
+#: The Activity Log lines a tablet retrieval writes on both hosts.
+RETRIEVAL_STARTED_FORMAT = (
+    "Stone Tablet {key}: {verb} {asset}/{quote} {timeframe} candles on "
+    "{exchange_id} from {since} to {until}."
+)
+RETRIEVAL_PROGRESS_FORMAT = (
+    "Stone Tablet {key}: {rows} candles received, {first} to {last} ({ms:.0f} ms)."
+)
+RETRIEVAL_FINISHED_FORMAT = (
+    "Stone Tablet {key}: {appended} candles appended over {chunks} chunk(s); "
+    "{file} under {root}."
+)
+RETRIEVAL_REFUSED_FORMAT = (
+    "Stone Tablet {key}: {exchange_id} refused after {chunks} chunk(s): {error}; "
+    "{appended} candles appended, nothing more written."
+)
+RETRIEVAL_CURRENT_FORMAT = (
+    "Stone Tablet {key} is current to {until}; nothing to retrieve."
+)
+RETRIEVAL_RUNNING_TEXT = "A Stone Tablet retrieval is in progress; wait for its line."
+RETRIEVAL_NO_CHOICE_TEXT = "Choose a Stone Tablet on the replay layer first."
+RETRIEVAL_VERB = {True: "Update", False: "Retrieve"}
+RETRIEVAL_QUOTE = "USD"
+
+#: The API Interaction Log entry one venue call records, in Live's fields.
+RETRIEVAL_ACTION_FORMAT = "FETCH_TABLET {key}"
+RETRIEVAL_REASON_FORMAT = (
+    "Get {limit} candles ({timeframe}) for {symbol} since {since} - "
+    "Stone Tablet {verb}"
+)
+RETRIEVAL_RESULT_FORMAT = "{rows} candles received, latest close={close}"
+RETRIEVAL_NO_DATA_TEXT = "No data"
+RETRIEVAL_ERROR_RESULT_FORMAT = "refused: {error}"
+RETRIEVAL_DATA_USAGE_FORMAT = (
+    "Appended to Stone Tablet {file} under {root}; the VWAP and Stone Tablet "
+    "Playback windows redraw from it"
+)
+RETRIEVAL_ERROR_USAGE_TEXT = "Nothing written"
 
 
 def way_in_buttons(mode: str = sim.MODES[0]) -> list:
@@ -322,6 +380,128 @@ def flip_button(layer: Any) -> dict:
     return {"text": sim.FLIP_BUTTON_TEXT[shown], "name": FLIP_BUTTON_NAME}
 
 
+def replay_model(feed: Any, choices: Any = (), running: bool = False) -> dict:
+    """The replay layer as the page draws it: the ``Tablet:`` label, the
+    chooser over ``choices`` with ``feed["key"]`` chosen, the retrieval button
+    reading ``feed["button_text"]`` and disabled while ``running``, and the
+    two windows' payloads and colours out of ``feed``."""
+    held = dict(feed or {})
+    return {
+        "tablet_label": {"text": sim.TABLET_LABEL_TEXT, "name": TABLET_LABEL_NAME},
+        "chooser": {
+            "name": TABLET_CHOOSER_NAME,
+            "minimum_width_px": TABLET_CHOOSER_MIN_WIDTH_PX,
+            "options": [
+                {"key": str(one["key"]), "text": str(one["text"])} for one in choices
+            ],
+            "chosen": str(held.get("key") or ""),
+        },
+        "retrieve_button": {
+            "text": str(held.get("button_text") or sim.RETRIEVE_TABLET_TEXT),
+            "name": RETRIEVE_BUTTON_NAME,
+            "enabled": not bool(running),
+        },
+        "refusal": str(held.get("refusal") or ""),
+        "vwap": dict(held.get("vwap") or sim.vwap_payload([])),
+        "playback": dict(held.get("playback") or sim.playback_payload([])),
+        "colours": dict(held.get("colours") or sim.replay_colours()),
+    }
+
+
+def retrieval_started_line(
+    key: str, asset: str, exchange_id: str, on_disk: bool, since_ms: int, until_ms: int
+) -> str:
+    """The Activity Log line for one retrieval press."""
+    return RETRIEVAL_STARTED_FORMAT.format(
+        key=key,
+        verb=RETRIEVAL_VERB[bool(on_disk)],
+        asset=str(asset).upper(),
+        quote=RETRIEVAL_QUOTE,
+        timeframe=sim.NATIVE_TIMEFRAME,
+        exchange_id=exchange_id,
+        since=iso_stamp(since_ms),
+        until=iso_stamp(until_ms),
+    )
+
+
+def retrieval_current_line(key: str, until_ms: int) -> str:
+    """The Activity Log line for a press on a tablet that already holds the
+    newest closed candle."""
+    return RETRIEVAL_CURRENT_FORMAT.format(key=key, until=iso_stamp(until_ms))
+
+
+def retrieval_progress_line(key: str, call: Any) -> str:
+    """The Activity Log line for one venue call that answered rows."""
+    rows = list(getattr(call, "rows", None) or [])
+    first = iso_stamp(rows[0][0]) if rows else ""
+    last = iso_stamp(rows[-1][0]) if rows else ""
+    return RETRIEVAL_PROGRESS_FORMAT.format(
+        key=key, rows=len(rows), first=first, last=last, ms=float(call.elapsed_ms)
+    )
+
+
+def retrieval_finished_line(key: str, outcome: Any, file: str, root: Any) -> str:
+    """The Activity Log line for a walk that ended, refused or whole."""
+    if outcome.refused:
+        return RETRIEVAL_REFUSED_FORMAT.format(
+            key=key,
+            exchange_id=outcome.exchange_id,
+            chunks=int(outcome.chunks),
+            error=outcome.error,
+            appended=int(outcome.candles_appended),
+        )
+    return RETRIEVAL_FINISHED_FORMAT.format(
+        key=key,
+        appended=int(outcome.candles_appended),
+        chunks=int(outcome.chunks),
+        file=file,
+        root=root,
+    )
+
+
+def retrieval_api_entry(
+    call: Any, key: str, file: str, root: Any, on_disk: bool
+) -> dict:
+    """One ``APIInteractionLog.record`` call's fields for the venue call
+    ``call`` made for the tablet ``key``, in Live's ``get_ohlcv`` phrasing."""
+    rows = list(getattr(call, "rows", None) or [])
+    error = str(getattr(call, "error", "") or "")
+    if error:
+        result = RETRIEVAL_ERROR_RESULT_FORMAT.format(error=error)
+    elif rows:
+        result = RETRIEVAL_RESULT_FORMAT.format(
+            rows=len(rows), close=fmt_price_coerced(rows[-1][4])
+        )
+    else:
+        result = RETRIEVAL_NO_DATA_TEXT
+    return {
+        "exchange": EXCHANGE_ID,
+        "action": RETRIEVAL_ACTION_FORMAT.format(key=key),
+        "reason": RETRIEVAL_REASON_FORMAT.format(
+            limit=int(call.limit),
+            timeframe=call.timeframe,
+            symbol=call.symbol,
+            since=iso_stamp(call.since_ms),
+            verb=RETRIEVAL_VERB[bool(on_disk)].lower(),
+        ),
+        "endpoint": str(call.endpoint),
+        "params": {
+            "symbol": call.symbol,
+            "timeframe": call.timeframe,
+            "limit": int(call.limit),
+            "since": int(call.since_ms),
+        },
+        "result": result,
+        "elapsed_ms": float(call.elapsed_ms),
+        "level": "error" if error else "success",
+        "data_usage": (
+            RETRIEVAL_ERROR_USAGE_TEXT
+            if error
+            else RETRIEVAL_DATA_USAGE_FORMAT.format(file=file, root=root)
+        ),
+    }
+
+
 def placeholder_title_text(label: Any) -> str:
     """The Get Started card's heading for one layer: the first step is a fleet."""
     return f"No {label} Fleet Loaded"
@@ -446,12 +626,15 @@ def build_view_model(
     current_exchange: Any = None,
     replay_layer: Any = sim.LAYER_INDICATORS,
     mode: str = sim.MODES[0],
+    replay: Optional[dict] = None,
 ) -> dict:
     """Return the whole Simulator tab state as one serialisable dict.
 
     ``layer`` names the stack page on show, ``exchanges`` the venues seated,
-    ``replay_layer`` which of the panel and the replay layer shows, and
-    ``mode`` the run mode whose two ways in the corner and the card draw.
+    ``replay_layer`` which of the panel and the replay layer shows, ``mode``
+    the run mode whose two ways in the corner and the card draw, and
+    ``replay`` the layer's chooser, button and two windows as ``replay_model``
+    builds them.
     """
     key = "stock" if str(layer) == "stock" else "crypto"
     buffer = live.ApiPauseBuffer() if api_buffer is None else api_buffer
@@ -482,6 +665,7 @@ def build_view_model(
         "replay_layer": shown,
         "replay_header": dict(REPLAY_HEADER_LAYOUT),
         "flip_button": flip_button(shown),
+        "replay": dict(replay) if replay else replay_model(None),
         "activity_pane": {
             "layout": dict(live.ACTIVITY_PANE_LAYOUT),
             "header_row": dict(live.HEADER_ROW_LAYOUT),
@@ -515,7 +699,9 @@ class SimTradingTabState:
     ``api_buffer`` and ``api_pane`` persist across ``view_model`` calls, which
     reads ``replay_layer`` beside the fields Live's handler reads. ``mode`` is
     the run mode, the first of ``sim.MODES`` at open, the one place the React
-    host holds it; ``set_mode`` moves it and answers what it became.
+    host holds it; ``set_mode`` moves it and answers what it became. ``replay``
+    is the replay layer's last ``replay_model``, replaced when a request
+    carries ``REPLAY_PARAM``.
     """
 
     def __init__(self) -> None:
@@ -524,6 +710,7 @@ class SimTradingTabState:
         self.layer = "crypto"
         self.activity_paused = False
         self.replay_layer = sim.LAYER_INDICATORS
+        self.replay: dict = replay_model(None)
         self.exchanges: list = []
         self.current_exchange = ""
         self.mode = sim.MODES[0]
@@ -569,6 +756,8 @@ class SimTradingTabState:
             self.layer = str(asked.get("layer"))
         if asked.get(REPLAY_LAYER_PARAM) in sim.LAYERS:
             self.replay_layer = str(asked.get(REPLAY_LAYER_PARAM))
+        if isinstance(asked.get(REPLAY_PARAM), dict):
+            self.replay = dict(asked[REPLAY_PARAM])
         if asked.get(live.EXCHANGE_PARAM) is not None:
             self.current_exchange = str(asked.get(live.EXCHANGE_PARAM))
         return build_view_model(
@@ -580,6 +769,7 @@ class SimTradingTabState:
             current_exchange=self.current_exchange,
             replay_layer=self.replay_layer,
             mode=self.mode,
+            replay=self.replay,
         )
 
 

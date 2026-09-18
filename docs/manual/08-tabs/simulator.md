@@ -3032,6 +3032,172 @@ to the Markdown's, and the Activity Log line naming the path was drawn through
 the tab's own log and read back off the Qt widget and off the React page. No
 bot was constructed and no socket left loopback.
 
+## The replay layer draws the chosen tablet and retrieves through a read-only connector
+
+The second layer behind the Indicator Voting Panel holds the VWAP window over
+the Stone Tablet Playback window, and both draw the tablet the chooser names.
+The layer's header row, where the flip button sits, carries `Tablet:`, a
+chooser and one retrieval button, in both builds. The flip reads `Replay` on
+the panel's header and `Indicators` on the layer's: under the Classic
+Terminal theme the panel title leaves the flip 90 px at the window's floor,
+and `Replay` draws whole there under every theme. The chooser lists every
+tablet on disk by its file key and every held market that has no tablet, and
+starts on the selected bot's tablet by the rule the panel follows. The two
+windows draw the last hundred candles of the chosen tablet: the close line and
+the VWAP line above, one wick and one body per candle below. With no tablet
+chosen, or a tablet under thirty candles, both windows draw empty.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the chooser's items
+
+```python
+def tablet_choices(source: TabletSource, bots: Sequence[Any] = ()) -> list[dict]:
+    """The tablet chooser's items: one per MANIFEST row, keyed by
+    ``tablet_key`` and shown as it, then one per held market in ``bots`` with
+    no tablet at ``NATIVE_TIMEFRAME``, keyed by ``market_key`` and shown with
+    ``NO_TABLET_TEXT``."""
+```
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the two windows' payloads
+
+```python
+def replay_feed(source: TabletSource, key: str) -> dict:
+    """The two windows' payloads for the item ``key`` names: ``vwap_payload``
+    and ``playback_payload`` over ``window_of`` the tablet, empty with no
+    entry or under ``MIN_CANDLES``, with ``entry`` and ``refusal`` beside them."""
+```
+
+The Qt tab draws the feed on `LineView` and `PlaybackView` through
+`set_payload`; the React host pushes it as the tab's `replay` and the page
+draws two SVG windows from the same points and shapes. Both paint the same
+five colours, read off `SKIN` through `replay_colours`.
+
+### When the windows draw
+
+The feed runs at build, on every `fleet_changed`, on the flip to the layer, on
+the chooser's change, when the panel's bot changes, and when a retrieval ends.
+No timer feeds it: a tablet on disk does not move.
+
+`src/gui/simulator/sim_trading_tab.py` — the feed
+
+```python
+    def _feed_replay(self) -> dict:
+        feed = surface.replay_feed(self._tablet_source, self._tablet_key)
+        self._replay = feed
+        self._vwap_view.set_payload(feed["vwap"])
+        self._playback_view.set_payload(feed["playback"])
+        self._retrieve_button.setText(feed["button_text"])
+```
+
+### The retrieval button
+
+The button reads `Retrieve Tablet` while the chosen item has no tablet on
+disk and `Update Tablet` while it has one. A press retrieves the chosen market
+at the native five-minute timeframe: from the fetcher's own start,
+`YTD_START_MS`, when no tablet exists, or from the tablet's last candle when
+one does, up to the newest closed candle. The candle now forming is left out,
+because the registry never replaces a timestamp it already holds.
+
+`src/simulator/tablet_retrieval.py` — the span
+
+```python
+def retrieval_span(entry: Any, now_ms: Optional[int] = None) -> tuple[int, int]:
+    """``(since_ms, until_ms)`` for one press: ``YTD_START_MS`` with no
+    ``entry``, else one step past ``entry.last_ts_ms``; up to
+    ``closed_until_ms``."""
+```
+
+The walk runs on a daemon thread, as the Portfolio Battery's does, and never
+on the GUI thread. It goes one adapter chunk at a time, each chunk one
+`download_missing` call over a registry built on the tab's tablet root, and
+stops at the first chunk the venue refuses. Every write lands under that root
+and nowhere else.
+
+`src/simulator/tablet_retrieval.py` — the walk
+
+```python
+    registry = StoneTabletsRegistry(root)
+    span = int(adapter.chunk_span_ms)
+    cursor = int(since_ms)
+    while cursor <= int(until_ms):
+        chunk_end = min(cursor + span - STEP_5M_MS, int(until_ms))
+        reports = await download_missing(
+            [(outcome.asset, outcome.exchange_id)],
+            connector,
+            cursor,
+            chunk_end,
+            registry=registry,
+        )
+```
+
+### The read-only connector
+
+The connector the walk reads through is the Simulator's one venue path. It
+holds `CoinbasePublicCandles`, the shipped reader of the venue's public candle
+endpoint, which carries no key and reaches no account or order endpoint. It
+answers `get_ohlcv` and nothing else; every other name raises `SendRefused`,
+the shape `TabletSource` and `FleetSource` have. The Live connector is not
+used: it requires a key to connect, carries `place_order`, and records on the
+process-wide API log.
+
+`src/simulator/read_only_connector.py` — the refusal
+
+```python
+    def __getattr__(self, name: str) -> Any:
+        """Refuse every name outside ``READ_NAMES``."""
+        raise SendRefused(
+            f"ReadOnlyConnector answers {READ_NAMES} and cannot {name!r}. "
+            "The Simulator receives and asks; it sends nothing."
+        )
+```
+
+`get_ohlcv` pages the reader by the venue's three-hundred-row page so a chunk
+of three hundred and fifty candles comes back whole.
+
+### What the two spools show
+
+The Activity Log carries the started line naming the tablet and the span, one
+progress line per venue call naming the rows received and their span, and the
+finished line naming the candles appended, the chunks walked and the file. A
+refused venue writes one line naming the error and that nothing more was
+written. A second press while a walk is in flight writes one line and starts
+nothing.
+
+The API Interaction Log carries one block per venue call, in Live's block:
+the exchange and `FETCH_TABLET` with the tablet's key, a Reason line naming
+the candles asked and their start, the public endpoint path, the rows received
+and the latest close, the response time, and the file the rows were appended
+to. A refused call carries the error as its result. Each call crosses from the
+worker thread on a Qt signal and is recorded on the GUI thread, which is what
+the API log writer's thread rule requires.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the block's fields
+
+```python
+RETRIEVAL_ACTION_FORMAT = "FETCH_TABLET {key}"
+RETRIEVAL_REASON_FORMAT = (
+    "Get {limit} candles ({timeframe}) for {symbol} since {since} - "
+    "Stone Tablet {verb}"
+)
+RETRIEVAL_RESULT_FORMAT = "{rows} candles received, latest close={close}"
+```
+
+### What the replay reading measured
+
+Both builds, the real window with a scratch home, every socket but loopback
+refused, a scratch tablet root holding the BTC and ETH 5m 2026 coinbase
+tablets and a held fleet of the BTC, ETH and SOL coinbase bots. With the BTC
+bot selected and `Replay` pressed, the chooser listed the two tablets and
+`SOL_5m_coinbase — No Stone Tablet on disk.`, started on the BTC tablet, and
+both windows' payloads hashed equal to `vwap_payload` and `playback_payload`
+over the same hundred candles; moved to ETH, both redrew. A retrieval of SOL
+against a loopback candle server, the reader's endpoint pointed at it, wrote
+`SOL_5m_2026_coinbase.json` and its MANIFEST row under the scratch root, drew
+the windows from it, and recorded one API block per call; a second press
+updated from the last candle; the endpoint restored to the venue and the
+socket refused, the press wrote the refusal line and the root's files hashed
+identical. `bot_state.json` and the two copied tablets read byte-identical
+after every step. No bot was constructed and no socket left loopback.
+
 ## The clone the tab draws now
 
 The Sim tab is a clone of the Trading tab, and its data source is the Stone
