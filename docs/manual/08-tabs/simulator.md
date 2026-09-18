@@ -4,6 +4,1305 @@ Reference. The second step of [the promotion pipeline](promotion-pipeline.md):
 the live fleet, replayed against stored history. Issue #117 rebuilt the screen,
 and it carries three modes: Validation, Back Test and Portfolio Battery.
 
+## What the tab holds today
+
+The Sim tab is the Live tab's code, forked and modified, reading Stone Tablets
+and the YTD trade files instead of a venue. It sits first on the bar. The Qt
+build draws `SimTradingTab` and the React build draws `SimTradingTabReact`,
+which hosts one page module and six child modules forked from Live's. This
+section describes the tab in the order it draws, read off the running program
+in both builds on the current commit. The sections under "How each part was
+built" are each unit's own record, and the sections under "The widget the
+rebuild replaced" describe the screens that are gone.
+
+`src/gui/variant_surface.py` — the two loaders
+
+```python
+def _qt_simulator() -> type:
+    """Import and return the Qt Sim tab, ``SimTradingTab``."""
+    from .simulator.sim_trading_tab import SimTradingTab
+
+def _react_simulator() -> type:
+    """Import and return the React Sim tab, ``SimTradingTabReact``."""
+    from .simulator.sim_react_trading_tab import SimTradingTabReact
+```
+
+### The header strip over the tab
+
+The window's header strip stays in view with Sim in front, and it reads the
+Simulator's fleet rather than the live one. Only Paper is isolated. The five
+columns and the six cards are Live's: with nothing held the columns read an em
+dash and the cards read zero; with a fleet held, Bots, Trades, Scrummed, Folded
+and Errors count the held records.
+
+`src/gui/main_tabs/main_window_surface.py` — the tabs the strip reads from
+
+```python
+ISOLATED_TABS = (PAPER_TAB,)
+
+#: The tabs the header strip reads the Simulator's fleet on, not the live one.
+SIM_FED_TABS = (SIM_TAB,)
+```
+
+Spendable follows the run mode. In Validation and Portfolio Battery it is the
+run's budget, the sum of the held Target Balances, because no buy is refused
+for cash in those two modes. In Back Test it is Live's wallet arithmetic over
+the held bots' own cash.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the wallet by mode
+
+```python
+MODE_FUNDING = {
+    MODE_VALIDATION: back_test.FUNDED_BY_TARGETS,
+    MODE_BACK_TEST: back_test.FUNDED_BY_PROCEEDS,
+    MODE_PORTFOLIO_BATTERY: back_test.FUNDED_BY_TARGETS,
+}
+```
+
+### The venue stack and the Get Started card
+
+The Simulator starts empty. At open no venue is seated and the Get Started card
+shows in the venue pane. Live's card asks for a first exchange; the Simulator's
+asks for a first fleet and offers the two ways in of the active mode, which is
+Validation at open. Import Live Fleet copies the stored fleet's records for one
+exchange, through a chooser when more than one is stored, and the venue stack
+then seats one sub-tab per exchange the held fleet names. Every fleet change
+seats the stack again.
+
+`src/gui/simulator/sim_trading_tab.py` — the seating
+
+```python
+    def _sync_exchange_tabs(self) -> None:
+        wanted = [str(eid) for eid in self._fleet_source.exchanges() if eid]
+        for eid in wanted:
+            self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
+        self._drop_unlisted_exchange_tabs(wanted)
+        self.refresh_bots()
+        self.refresh_votes()
+        self._refresh_replay()
+```
+
+### The mode row and the corner
+
+The row above the bot list, where Live draws Privacy Mode and the news line,
+holds the three mode buttons, Validation, Back Test and Portfolio Battery, then
+`+ New Bot` where Live draws it. The active mode wears Live's Privacy Mode ON
+sheet. The data-pool row under it keeps Live's height and holds nothing. The
+corner Live gives to `＋ Add Crypto Exchange` holds the active mode's two ways
+in, and the Get Started card holds the same two. Validation offers Import Live
+Fleet and Generate From YTD. Back Test offers Import Live Fleet and Create New
+Bots. Portfolio Battery offers Run Portfolio and Run Every Portfolio. The mode
+row lives on the venue page, so before a fleet is held the card offers
+Validation's two.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the modes and their ways in
+
+```python
+MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
+
+ROWS_FOR_MODE = {
+    MODE_VALIDATION: RESERVED_ROWS,
+    MODE_BACK_TEST: BACK_TEST_ROWS,
+    MODE_PORTFOLIO_BATTERY: BATTERY_ROWS,
+}
+```
+
+### The two tables and the command bar
+
+The Scrumming Bots table is the forked `SimBotStatusTable`. It hides until a
+row arrives, then draws one row per held scrumming bot with Live's ten columns,
+the Bot ID cell coloured by the bot's state. The Extractor Bots table sits under
+it, forked the same way, and hides until an extractor record is held. Under the
+tables the command bar holds Start, Pause, Stop, Restart and Delete. Pause,
+Restart and Stop move the selected bot's state through the Simulator's bot
+manager, and the row reads it back. Delete asks Live's confirmation and removes
+the record. Start is the run's button in Validation and Back Test.
+
+`src/simulator/sim_bot_manager.py` — the states the bar moves
+
+```python
+    def pause(self, bot_id: str) -> str:
+        """``BotContainer.pause``'s rule: any state lands on ``paused``."""
+        self._require(bot_id)
+        return self._fleet.set_state(bot_id, BotState.PAUSED.value)
+
+    def stop(self, bot_id: str) -> str:
+        """``BotContainer.stop``'s rule: any state lands on ``stopped``."""
+        self._require(bot_id)
+        return self._fleet.set_state(bot_id, BotState.STOPPED.value)
+```
+
+Each row's Fire and Detail buttons are Live's. Detail opens the Simulator's
+Bot Settings window over the bot's record with Live's seven tabs for a
+scrumming bot: Status, Settings, Fold Tranches, Stack Tranches, Bot Swarm,
+Market Inspector and Phantom Bots. The window reads the record and writes
+nothing. `+ New Bot` opens the Simulator's Bot Wizard, titled Create Auto
+Trader, whose Finish holds one new record.
+
+`src/gui/simulator/sim_bot_detail.py` — the tabs a scrumming bot's window carries
+
+```python
+        tabs.addTab(
+            self._wrap_scrollable(self._create_status_tab()), surface.TAB_STATUS
+        )
+        tabs.addTab(
+            self._wrap_scrollable(self._create_settings_tab()), surface.TAB_SETTINGS
+        )
+        if mode == surface.MODE_SCRUMMING:
+            self._install_fold_tranches_tab(tabs)
+            self._install_stack_tranches_tab(tabs)
+```
+
+The held fleet is the Simulator's own. Every fleet change writes it to
+`sim_fleet.json` under the sim bucket of the log root, and the tab reads it
+back at the next build, so a created or imported bot survives a restart. The
+live `bot_state.json` is never written. The Simulator receives and asks; it
+never sends.
+
+`src/core/log_paths.py` — the bucket
+
+```python
+def get_sim_dir() -> Path:
+    """``sim/`` bucket — every file the Simulator writes.
+
+    ``src.simulator.fleet_source.FleetSource`` keeps the sim fleet file
+    here; ``~/.acervator/bot_state.json`` is never written from the
+    Simulator.
+    """
+    p = _LOG_ROOT / "sim"
+```
+
+### The Indicator Voting Panel and the replay layer behind it
+
+The panel beside the venue pane is the forked `SimIndicatorVotingPanel`. It
+carries Live's title, Bot selector, currency rate strip, two pillar tables, two
+confidence bar graphs, timeframe-lock line and staleness banner. Its selector
+holds the held fleet and follows each bot's state. While the selected bot runs,
+the pillar tables draw its reading from the last hundred candles of its Stone
+Tablet and the banner names the tablet's last candle. A bot that is not running
+draws Live's cause, and a bot with no tablet draws Live's no-tablet line.
+
+`src/gui/simulator/sim_trading_tab.py` — the feed
+
+```python
+        feed = tab_surface.ivp_feed(
+            self._tablet_source, self._fleet_source.bot_for(chosen)
+        )
+        if feed.get("summary"):
+            panel.show_stored(
+                feed["stored"], feed["when"], feed["age"], feed["message"]
+            )
+        else:
+            panel.show_no_data(
+```
+
+One flip button sits after the panel title and reads Replay. A press shows the
+layer behind the panel: the VWAP window over the Stone Tablet playback window,
+each drawn from the chosen tablet's last hundred candles. The layer's header
+holds the flip, now reading Indicators, a Tablet chooser 240 px wide that lists
+every tablet on disk and every held market without one, and one button reading
+Retrieve Tablet or Update Tablet. A press retrieves or updates one tablet
+through the Simulator's read-only connector, which answers `get_ohlcv` over the
+public candle endpoint and raises `SendRefused` for every other name. This
+layer is the first of the three permitted differences from Live.
+
+`src/simulator/read_only_connector.py` — the refusal
+
+```python
+    def __getattr__(self, name: str) -> Any:
+        """Refuse every name outside ``READ_NAMES``."""
+        raise SendRefused(
+            f"ReadOnlyConnector answers {READ_NAMES} and cannot {name!r}. "
+            "The Simulator receives and asks; it sends nothing."
+        )
+```
+
+### The two spools
+
+The Activity Log sits at the foot left with Pause Console, and the API
+Interaction Log at the foot right with Pause API Log, Live's titles at Live's
+positions. Pause holds new lines and Resume releases them in order.
+
+`src/gui/simulator/sim_trading_tab.py` — the pause
+
+```python
+        def _on_activity_pause_toggled(checked: bool):
+            if checked:
+                self._status_log.pause()
+                self._activity_pause_btn.setText("▶  Resume Console")
+            else:
+                self._status_log.resume()
+                self._activity_pause_btn.setText("⏸  Pause Console")
+```
+
+The Activity Log shows the trades of Validation, Back Test and Portfolio
+Battery runs, one line per simulated trade in Live's fill line shape, stamped
+with the candle's time rather than the clock. That is the second permitted
+difference. The API Interaction Log records Stone Tablet and YTD retrieval
+activity only: its log is a `SimApiLog` that accepts two action words and
+refuses every other by name, so a venue order line cannot reach it. That is the
+third. Generate From YTD writes one block per press.
+
+`src/simulator/sim_api_log.py` — the allowed actions
+
+```python
+TABLET_ACTION = "FETCH_TABLET"
+
+#: The word the Generate From YTD read's action opens with.
+YTD_ACTION = "FETCH_YTD"
+
+#: Every action word ``SimApiLog.record`` accepts. Any other raises ``SendRefused``.
+ALLOWED_ACTIONS = (TABLET_ACTION, YTD_ACTION)
+```
+
+### The three run modes and what each writes
+
+Validation. With Validation active, Start on the command bar moves every
+scrumming bot on the page to running, reruns the gate chain on the candle each
+recorded fill fell in, and puts the rerun lights beside the recorded ones. The
+run passes when they latch identically, never on profit and never on a trade
+count. Each rerun fill reaches the Activity Log as a trade line, and the bots
+land on stopped when the run ends.
+
+`src/simulator/validation.py` — the criterion
+
+```python
+    @property
+    def latches_identically(self) -> bool:
+        """True while every light and both armed flags read the same."""
+        return (
+            not self.disagreed
+            and self.recorded_scrum_armed == self.rerun_scrum_armed
+            and self.recorded_fold_armed == self.rerun_fold_armed
+        )
+```
+
+Back Test. With Back Test active, Start walks each bot along its Stone Tablet
+with the Live bot's own sizing arithmetic, shared as pure code, and each scrum
+and fold reaches the Activity Log as it fills.
+
+`src/simulator/back_test.py` — the shared arithmetic
+
+```python
+from ..trading.scrumming.sizing import (
+```
+
+Portfolio Battery. With Portfolio Battery active, Run Portfolio opens a chooser
+of one portfolio over the archive's thirty-five and one span over seven, and
+Run Every Portfolio opens it with the span alone. The run holds one bot per
+symbol at $500 times the portfolio's mix share, or the held fleet's own bots
+where they match, walks the RA-StoneTablets on a worker thread, and writes one
+reading per timeframe.
+
+`src/simulator/portfolio_battery.py` — the default Target Balance
+
+```python
+DEFAULT_TARGET_USD = 500.0
+```
+
+Stop on a row of the run in flight ends the run where it is.
+
+`src/gui/simulator/sim_trading_tab.py` — the stop
+
+```python
+    def _stop_run(self, bot_id: str) -> None:
+        self._status_log.log(f"Stopping bot {bot_id}...", "info")
+        self._run["stopper"] = bot_id
+        self._status_log.log(
+            tab_surface.run_stopping_line(self._run.get("mode", ""), bot_id), "warning"
+        )
+        self._run_stop.set()
+```
+
+Every run writes one trade parity report, a Markdown file and a JSON sidecar,
+under the simulator directory of the reports directory, named for the mode,
+the subject, the span and the time. A stopped run's report reads stopped and
+partial.
+
+`src/simulator/parity_report.py` — the file stem
+
+```python
+def report_name(mode: str, subject: str, span: str, stamp: str) -> str:
+    """The file stem: mode, subject, span and stamp joined by ``__``."""
+    return "__".join(
+        (safe_name(mode), safe_name(subject)[:SUBJECT_LIMIT], safe_name(span), stamp)
+    )
+```
+
+Every run also emits Live's topics on the Simulator's private event bus, and
+Live's log manager writes them under the sim bucket as four files: one row per
+gate evaluation, per fill and per voting summary, each gate and voting row
+carrying the run id the report carries. The live bucket's files are untouched.
+
+`src/simulator/sim_bus.py` — the files
+
+```python
+#: The files ``LogManager.attach_to_bus`` writes the four topics into.
+SIM_LOG_FILES = ("trade.log", "gate.log", "voting.log", "diagnostics.log")
+```
+
+### The colour
+
+Every Sim ground is the theme's nigredo tone. The widget tree carries the tone
+property, and the theme restates each ground token a quarter of the way to
+black under that selector, so the Sim's grounds sample darker than Live's under
+the same theme while the text and accent colours stay the theme's.
+
+`src/gui/theme_engine.py` — the tone
+
+```python
+TONE_PROPERTY = "tone"
+NIGREDO = "nigredo"
+
+#: The share of the distance to black every ``NIGREDO_GROUNDS`` token moves.
+NIGREDO_FRACTION = 0.25
+```
+
+### What is not built
+
+Privacy Mode, the news line and the data-pool line are not on the tab; their
+row holds the mode buttons, by ruling. A column map exists for the Coinbase
+export alone, so an export from another exchange is refused at import by name
+until a sample of it exists. Portfolio Battery walks an asset class only under
+a unit rule cited from its venue, and a class with no cited rule is not
+simulated.
+
+In development.
+
+## How each part was built
+
+Every section from here to "The widget the rebuild replaced" is one build's own
+record, kept as it was written when that build merged, in build order: the
+Stone Tablet and RA-StoneTablet sections, the three mode sections and the YTD
+trade files from before the fork, then units 7 through 31a. Where a later
+unit changed what a sentence describes, the sentence now says so and names
+that unit's report on issue #117. The section above describes the tab on the
+current commit.
+
+## The candles
+
+Stone Tablets are the history and a replay only reads them. The registry stores
+one timeframe and derives every other from it.
+
+`src/trading/stone_tablets/registry.py` — `NATIVE_TIMEFRAME`
+
+```python
+NATIVE_TIMEFRAME: str = "5m"
+"""Timeframe every tablet stores; ``_rollup`` derives all the others."""
+```
+
+Three functions in `src/trading/stone_tablets/storage.py` move tablets between
+disk and memory.
+
+| Function | What it does |
+| -------- | ------------ |
+| `read_tablet` | Loads one tablet from disk |
+| `write_tablet` | Writes one back |
+| `read_manifest` | Carries the index of what exists |
+
+The tape a replay hands the bots does not roll up. Fleet Replay asks the
+registry for the native timeframe only, and the tape refuses any other unless
+the caller supplied that series when the tape was built, which Fleet Replay does
+not do.
+
+`src/exchange/tablet_backend.py` — `TabletBackend.fetch_ohlcv`
+
+```python
+        key = (str(symbol), tf)
+        rows = self._tf_rows.get(key)
+        if rows is None:
+            raise ValueError(
+                f"no {tf} series for {symbol!r}. Serving the native "
+                f"{NATIVE_TIMEFRAME} series instead would make every "
+                f"timeframe agree with itself; supply tf_rows[{key!r}]."
+            )
+```
+
+## Portfolio Battery history
+
+The thirty-five portfolios from the historical archive are now named in code,
+and their sixty-three symbols are what the new mode runs over. Each one carries
+its symbols, an equal weight for every symbol, and the archive it was read out
+of.
+
+`src/simulator/portfolios.py` — one portfolio
+
+```python
+    "CRYPTO_BLUE": Portfolio(
+        name="CRYPTO_BLUE",
+        symbols=("BTC", "ETH", "BNB"),
+        description="Large-cap crypto — institutional grade",
+    ),
+```
+
+Their price history is real, and it is kept apart from the live fleet's. The
+tablets a replay reads sit under one root; the battery's sit under a second one,
+and a battery build never opens the first.
+
+`src/trading/stone_tablets/ra_paths.py` — the second root
+
+```python
+_RA_ROOT: Path = Path.home() / ".acervator_ra_tablets"
+```
+
+Two sources fill it and neither needs a key. Crypto arrives through the adapter
+the fleet already uses, driven by the venue's own public candle endpoint.
+Everything else arrives through a second adapter beside it.
+
+`src/trading/stone_tablets/ra_fetcher.py` — the non-crypto adapter
+
+```python
+class YahooChartAdapter(ExchangeAdapter):
+    exchange_id = "yahoo"
+    chunk_limit = RA_CHUNK_DAYS
+    BASE_URL: str = "https://query1.finance.yahoo.com/v8/finance/chart"
+    SOURCE: str = "yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED"
+```
+
+Every tablet records where its numbers came from and when they were fetched, and
+the builder refuses to write one without both. A price with no source is what
+made the archive's own figures worthless.
+
+`src/trading/stone_tablets/ra_fetcher.py` — the refusal
+
+```python
+        resolved = source or str(getattr(adapter, "SOURCE", ""))
+        if not resolved:
+            raise ValueError(
+                f"{type(adapter).__name__} carries no SOURCE; pass source= naming "
+                f"the endpoint the candles come from. {adapter.exchange_id!r} is "
+                f"an exchange id, not provenance."
+            )
+```
+
+Where a source has nothing, nothing is written in its place. The missing days
+are recorded as missing, in their own file beside the tablets.
+
+`src/trading/stone_tablets/ra_fetcher.py` — what a missing period records
+
+```python
+@dataclass
+class TabletGap:
+    """One requested period a source returned no rows for."""
+
+    asset: str
+    exchange_id: str
+    timeframe: str
+    year: int
+    since_ms: int
+    until_ms: int
+    reason: str
+    checked_at: str
+```
+
+At the RA coverage build nothing ran the bot logic over these tablets and no
+screen showed them; unit 24's Portfolio Battery walks them from the corner
+(comment 5725991788).
+
+`src/simulator/portfolio_battery.py` — the run over these tablets
+
+```python
+def plan_run(
+    names: Sequence[str],
+    tablets: Any,
+    held: Sequence[SimBot] = (),
+```
+
+## Portfolio Battery coverage
+
+Every symbol in every portfolio has real daily prices on disk. No portfolio
+names a period of its own, so all six archive periods apply to all thirty-five
+of them, and the span asked for is 2020 to 2026.
+
+`src/trading/stone_tablets/ra_import.py` — the years asked for
+
+```python
+def _archive_years() -> tuple[int, ...]:
+    """Return every calendar year ``PERIODS`` touches, ascending."""
+    years: set[int] = set()
+    for start, end in PERIODS.values():
+        years.update(range(int(start[:4]), int(end[:4]) + 1))
+    return tuple(sorted(years))
+```
+
+A symbol reaches one source or the other by what it is. A coin the crypto venue
+never listed falls to the second source instead of being left empty, and every
+tablet records which one served it.
+
+`src/trading/stone_tablets/ra_import.py` — the routing
+
+```python
+def route_for(symbol: str) -> SymbolRoute:
+    """Return ``symbol``'s route, crypto to Coinbase and everything else to Yahoo."""
+    upper = symbol.upper()
+    if is_crypto(upper):
+        return SymbolRoute(upper, COINBASE_SOURCE, YAHOO_CRYPTO_SOURCE)
+    return SymbolRoute(upper, YAHOO_SOURCE)
+```
+
+The import reads its own result back off disk and says what it holds. A count
+on its own would not be an answer, so the statement carries every source with
+its fetch times and every period no source served.
+
+`python -m src.trading.stone_tablets.ra_import coverage` — the headline
+
+```
+SYMBOLS
+  asked for ......... 63
+  returned data ..... 60
+  tablets ........... 411
+  candles ........... 105336
+
+SOURCES
+  coinbase_exchange_candles_ONE_DAY: 71 tablets
+  yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED: 340 tablets
+```
+
+A share year is not a calendar year. The market shuts at weekends and on public
+holidays, and those days are recorded as missing rather than filled, so a share
+year holds about 250 days where a coin year holds every one.
+
+`python -m src.trading.stone_tablets.ra_import coverage` — a share and a coin
+
+```
+  SPY
+    2022    251 rows  2022-01-03..2022-12-30
+    2023    250 rows  2023-01-03..2023-12-29
+  BTC
+    2022    365 rows  2022-01-01..2022-12-31
+    2023    365 rows  2023-01-01..2023-12-31
+```
+
+A ticker that no longer reaches the company the archive meant is recorded as a
+finding, not as a failure. Three of the sixty-three return nothing at all, and
+what the endpoint answered is written down in place of a price.
+
+`~/.acervator_ra_tablets/GAPS.json` — a ticker that no longer trades
+
+```
+  CCIV   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
+  EXPR   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
+  IPOF   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
+```
+
+Three more symbols are short at one end. `BBBY` reaches a company first traded
+in July 2026 rather than the one the archive ran, and `MATIC` stops on
+14 October 2025 because the coin was renamed.
+
+`python -m src.trading.stone_tablets.ra_import coverage` — a symbol cut short
+
+```
+  MATIC  missing: 2026
+    2024    366 rows  2024-01-01..2024-12-31
+    2025    287 rows  2025-01-01..2025-10-14
+```
+
+At the RA coverage build nothing ran the bot logic over these prices and no
+screen showed them; unit 24's Portfolio Battery walks them from the corner
+(comment 5725991788).
+
+`src/simulator/portfolio_battery.py` — the default Target Balance each symbol runs at
+
+```python
+DEFAULT_TARGET_USD = 500.0
+```
+
+## Validation Mode
+
+Validation takes each YTD trade, finds the historical candle its timestamp falls
+in, and reruns the gates on that candle. It then puts the gate row it latched
+beside the gate row the log recorded, one light at a time, over the nineteen
+lights the shared vocabulary names. A run passes when every light reads the
+same. It is never judged on profit and never on a trade count.
+
+`src/simulator/validation.py` — the criterion
+
+```python
+    @property
+    def latches_identically(self) -> bool:
+        """True while every light and both armed flags read the same."""
+        return (
+            not self.disagreed
+            and self.recorded_scrum_armed == self.rerun_scrum_armed
+            and self.recorded_fold_armed == self.rerun_fold_armed
+        )
+```
+
+### The two ways in
+
+Import Live Fleet clones the live running fleet from the bot_state load and
+keeps each bot's own id, so a recorded gate row belongs to a bot by that id.
+Generate From YTD scans the trade files and creates one new bot per pair that
+was traded. Those bots are new, they carry new ids, and they never wrote a gate
+row, so a recorded row belongs to one of them by exchange, symbol and the time
+window instead.
+
+```
+Import Live Fleet    38 bots, matched on bot id and time window
+Generate From YTD    39 bots, matched on exchange, symbol and time window
+```
+
+The two counts differ, and that is a fact about the two sources rather than a
+fault. A pair traded earlier in the year can have no live bot now, and a live
+bot can have traded nothing yet. Neither path invents a bot to close the gap.
+
+When more than one exchange is active the tab asks which one to use before it
+runs anything. One chooser serves both buttons.
+
+`src/simulator/fleet_source.py` — the chooser
+
+```python
+def exchange_choice(exchanges: list[str], chosen: str = "") -> dict:
+    """Whether the operator must pick an exchange, and which one is in force.
+
+    ``prompt`` is True while more than one exchange is active and ``chosen``
+    names none of them.
+    """
+```
+
+### It reports what it could not verify
+
+The tablets end on 1 August 2026 and the trade export runs to 7 September, so
+about five weeks of trades have no candle to snap to. Validation names that
+period and counts the entries on both sides of it. A count of verified trades
+with no denominator is exactly what this replaces.
+
+```
+3942 of 4904 YTD entries snapped to a candle; 962 could not be.
+after_last_candle: 905
+inside_gap: 57
+uncovered span 2026-08-01T18:52:58Z to 2026-09-07T21:46:48Z; the newest
+candle is 2026-08-01T18:35:00Z
+```
+
+### Which half of the rerun moves
+
+A candle supplies the price and the Bollinger reading. It cannot supply the
+bot's own state, so the delta, the tranche counts, the circuit breaker and every
+flag come from the row the log recorded. Each light says which half drove it, so
+a disagreement can be read back to its cause.
+
+```
+S/BB   F/BB   F/MID     the tablet candle
+S/LS   F/LS             the landing-strip override
+every other light       the recorded row
+```
+
+### What the first full run measured
+
+Every recorded reading the run checked was reproduced from the tablet exactly,
+but from a window sitting four hours behind the trade's own candle. The tablet
+prices are right: measured over one asset, 9,869 of 10,038 recorded prices sit
+inside the tablet candle covering their own moment. The tape is therefore sound,
+and the live reading it is compared against was taken from older candles than
+the ones that moment held.
+
+```
+38 bots, matched to a recorded gate row on bot id and time window.
+62 of 227 reruns latched every gate identically.
+3572 of 4313 gate lights agreed.
+60 of 60 recorded readings were reproduced exactly from the tablet.
+45 of them came from a window 50 candles (250 minutes) behind the trade's
+own candle.
+```
+
+## Back Test Mode
+
+Back Test runs the bot logic over a recorded tape. It walks each bot along its
+own Stone Tablet, feeds every window into the gates that run live, and records
+where a scrum and a fold latch. A latch that clears every gate then trades: the
+scrum sells the excess above the dollar target and the fold buys it back with
+the cash that scrum put aside.
+
+`src/simulator/back_test.py` — the one gate chain, shared with Validation
+
+```python
+from .validation import (
+    BB_MIDLINE,
+    MIN_RERUN_CANDLES,
+    RERUN_WINDOW_CANDLES,
+    bb_reading,
+    candle_interval_ms,
+    iso_stamp,
+    latch,
+    tablet_for,
+)
+```
+
+At the first clone a mode selector sat above the two button rows and a result
+pane below the Replay Log changed with it; unit 20 put the mode buttons on the
+venue page's header row, and the corner holds the active mode's two ways in
+(comment 5720691825).
+
+```
+Mode: Validation    Import Live Fleet   Generate From YTD
+Mode: Back Test     Import Live Fleet   Create New Bots
+```
+
+### The two ways into a back test
+
+Import Live Fleet clones the live running fleet from the bot_state load, the
+same reader Validation uses. Create New Bots makes one simulated bot on the
+Stone Tablet the selector is showing, taking its target balance and its
+scrumming interval from the Bot Wizard's own defaults.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the new bot the selector defines
+
+```python
+def new_bot_specs(entry) -> list[dict]:
+    """One new-bot spec for ``entry``'s asset, on the Bot Wizard's own
+    defaults."""
+```
+
+### One clock
+
+Every bot ticks on one cadence. The step is sized once from the longest tape in
+the run, so a short tablet and a long one are read on the same clock rather than
+each on its own.
+
+```python
+def shared_step(entries: Sequence[Any], ticks_per_bot: int, max_candles: int) -> int:
+    """One step in candles, sized off the longest tape so every bot ticks
+    together.
+
+    A ``ticks_per_bot`` of zero, or no entry, answers one.
+    """
+```
+
+### What one back test measured
+
+The imported fleet, read on 8 September 2026 from the live Stone Tablets.
+
+```
+38 of 38 bots ran over 1610472 tablet candles.
+2026-01-01T00:00:00Z to 2026-08-01T18:35:00Z, 5272 gate-chain evaluations.
+58 scrum latches and 55 fold latches.
+58 scrum sells and 55 fold buys filled, $38.02 in fees.
+```
+
+Each row names the bot, its tablet, how much tape it read, how often the gates
+latched, how many trades filled, the coin it gained or gave up and the cash it
+now holds. Units alone do not answer whether a cycle accumulated, because a bot
+that sold into a rise holds fewer coins and more cash.
+
+```
+Bot ID | Symbol | Tablet | Candles | Ticks | Scrum / Fold latched |
+Scrum / Fold filled | Units gained | Cash held
+```
+
+### A missing tablet is named, not fetched silently
+
+A bot whose asset has no tablet is listed with no tape and counted in the run's
+own lines. Filling one is a call for information and goes through the same gap
+filler the tablet build uses, into whichever tablet root the caller names.
+
+`src/simulator/back_test.py` — the fetch, and the answer with no connector
+
+```python
+async def download_missing(
+    pairs: Sequence[tuple[str, str]],
+    connector: Any,
+    since_ms: int,
+    until_ms: Optional[int] = None,
+    quote_currency: str = "USD",
+    registry: Any = None,
+) -> list[Any]:
+```
+
+Driven into a throwaway root with a recorded tape, it wrote one tablet of 701
+candles and a manifest, and the live tablet root kept its 407 files.
+
+```
+connector calls: 3
+report: ZZZTEST coinbase chunks_ok 3 errors 0 candles 701
+entry: ZZZTEST coinbase 5m 701 candles read back: 701
+live root unchanged: True 407
+```
+
+## Portfolio Battery Mode
+
+The third mode runs the thirty-five archive portfolios over their own price
+history. Every symbol streams its daily bars through the same gate chain a live
+bot ticks, at three timeframes, and each result is set against what holding that
+symbol untraded would have paid over the same span.
+
+`src/simulator/portfolio_battery.py` — the three timeframes
+
+```python
+#: The timeframes a daily tablet builds, spelled as ``HTF_TIMEFRAMES`` spells
+#: them.
+TIMEFRAMES = ("1d", "1w", "1M")
+```
+
+### The baseline comes off the same walk
+
+Buy and hold is not a figure carried over from the archive. It is the capital
+the symbol opened with, carried from the opening price to the closing price of
+the same walk, so the two sides cannot read different prices.
+
+`src/simulator/portfolio_battery.py` — the baseline
+
+```python
+    @property
+    def baseline_usd(self) -> float:
+        """``capital_usd`` carried from ``start_price`` to ``end_price``,
+        untraded."""
+        if self.start_price <= 0.0:
+            return 0.0
+        return self.capital_usd * self.end_price / self.start_price
+```
+
+### One gate chain, fed a different source
+
+The battery defines no gate of its own. It hands its bars to the Back Test
+walker, which builds the shipped scrum and fold chains and reads their answer.
+
+`src/simulator/portfolio_battery.py` — the walk
+
+```python
+    bot = battery_bot(asset, exchange_id, timeframe, capital_usd)
+    result = walk(bot, candles_from_raw(bars), walk_step(len(bars), ticks))
+```
+
+### A weekly and a monthly bar are folded, never invented
+
+The tablets hold one bar a day. A coarser bar is the calendar bucket its days
+fall in: the first open, the highest high, the lowest low, the last close and
+the summed volume. A trailing bucket is kept as it stands rather than padded out.
+
+`src/simulator/portfolio_battery.py` — one folded bar
+
+```python
+def fold_bucket(rows: Sequence[Sequence[float]]) -> list[float]:
+    """One bar from ``rows``: first open, highest high, lowest low, last close,
+    summed volume."""
+    return [
+        float(rows[0][0]),
+        float(rows[0][1]),
+        max(float(one[2]) for one in rows),
+        min(float(one[3]) for one in rows),
+        float(rows[-1][4]),
+        sum(float(one[5]) for one in rows),
+    ]
+```
+
+### Three symbols hold no tablet
+
+CCIV, IPOF and EXPR stopped trading and no source served them. A portfolio
+holding one runs on the symbols that exist and reports the share of its capital
+that reached no tape. That share is a column on every row, beside the count of
+symbols that ran.
+
+`src/simulator/portfolio_battery.py` — the missing share
+
+```python
+    @property
+    def missing_weight(self) -> float:
+        """``missing_usd`` as a share of every symbol's ``capital_usd``."""
+        whole = sum(one.capital_usd for one in self.runs)
+        return self.missing_usd / whole if whole > 0.0 else 0.0
+```
+
+### The two ways into a battery
+
+At the first clone the two rows the removed strips left carried one portfolio
+and all of them, with a portfolio selector and a span selector under the mode
+selector; since unit 24 Run Portfolio opens a chooser of the portfolio and the
+span, and Run Every Portfolio of the span alone (comment 5725991788). The span
+list is the archive's six periods followed by the whole tape.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the two ways in
+
+```python
+BATTERY_ROWS: tuple[dict[str, Any], ...] = (
+    {
+        "name": NEWS_TICKER_ROW,
+        "height_px": 24,
+        "action": RUN_PORTFOLIO_ACTION,
+        "text": RUN_PORTFOLIO_TEXT,
+        "button_name": button_name(RUN_PORTFOLIO_ACTION),
+    },
+    {
+        "name": DATA_POOL_ROW,
+        "height_px": 18,
+        "action": RUN_EVERY_PORTFOLIO_ACTION,
+        "text": RUN_EVERY_PORTFOLIO_TEXT,
+        "button_name": button_name(RUN_EVERY_PORTFOLIO_ACTION),
+    },
+)
+```
+
+### What one battery measured
+
+SPAC_BUST over the archive's Apr24-Apr25 period, driven through the Qt tab.
+Three of its five symbols have a tablet. The accumulation logic ended ahead of
+buy and hold at the daily bar and at the weekly bar. The monthly bar holds
+twelve bars, under the thirty the Bollinger window and the voting engine need,
+so it reports no run rather than a result.
+
+```
+SPAC_BUST  1d  3 of 5  756 bars  669 ticks  35 trades
+           buy and hold $390.75   accumulation $415.60   +24.85 (+6.36%)
+SPAC_BUST  1w  3 of 5  159 bars   72 ticks   6 trades
+           buy and hold $458.26   accumulation $478.74   +20.48 (+4.47%)
+SPAC_BUST  1M  0 of 5    0 bars    0 ticks   0 trades   missing weight 100%
+
+missing: IPOF (no_tablet), CCIV (no_tablet)
+7 recorded gaps fall inside the span
+```
+
+Every portfolio over the whole tape reads 189 symbol runs in 26 seconds. Twelve
+of the thirty-five ended ahead of their own buy and hold at one timeframe or
+more.
+
+### The run from the corner
+
+Run Portfolio opens a chooser of the same shape as the exchange chooser, with a
+portfolio row listing the thirty-five names and a span row listing the seven
+spans; Run Every Portfolio opens it with the span row alone. On Ok the tab gives
+each portfolio its bots. Where the held fleet carries one scrumming bot per
+symbol of the portfolio, on the venue the run reads that symbol from, with a
+Target Balance above zero, those bots run at their own Target Balances and gate
+settings. Otherwise one bot is generated per symbol at the default Target
+Balance of $500 times the portfolio's mix share; every archive portfolio's mix
+is equal, so each bot reads $500. A portfolio that records the size of each
+position would run at those sizes; no archive entry records one.
+
+`src/simulator/portfolio_battery.py` — each bot's Target Balance
+
+```python
+def symbol_targets(
+    portfolio: Portfolio, default_usd: float = DEFAULT_TARGET_USD
+) -> dict[str, float]:
+    """Each symbol's Target Balance: its ``positions_usd`` size when
+    ``sizes_known``, else its ``weights`` share of ``default_usd`` per symbol,
+    to the cent."""
+    if portfolio.sizes_known:
+        sizes = portfolio.positions_usd or {}
+        return {symbol: round(float(sizes[symbol]), 2) for symbol in portfolio.symbols}
+    if portfolio.mix is None:
+        return {symbol: float(default_usd) for symbol in portfolio.symbols}
+    whole = float(default_usd) * len(portfolio.symbols)
+    weights = portfolio.weights
+    return {symbol: round(whole * weights[symbol], 2) for symbol in portfolio.symbols}
+```
+
+The run's bots become the held fleet: a bot already held under its id at the
+same symbol, venue and Target Balance keeps its record, a generated bot is held
+under the origin `battery`, and every other held record is dropped. The
+Scrumming Bots table then draws the run's bots and the strip's Spendable reads
+the run's budget, the sum of their Target Balances, before the run starts.
+
+`src/simulator/fleet_source.py` — the run's bots become the held fleet
+
+```python
+    def hold_battery_fleet(self, bots: Sequence[SimBot]) -> list[SimBot]:
+```
+
+The run itself walks on a worker thread, as the Market Inspector's Scan Now
+does, so the window keeps answering; each portfolio's reading reaches the
+Activity Log as it lands, then the run's own lines and the report line. A
+second press while a run is in flight writes one line and starts nothing. A
+symbol with no tablet or no cited unit rule is missing weight and named in the
+report, and the run proceeds over the rest.
+
+`src/gui/simulator/sim_trading_tab.py` — the worker thread
+
+```python
+        self._battery_thread = threading.Thread(
+            target=self._compute_battery,
+            args=(plan, span),
+            name="sim-portfolio-battery",
+            daemon=True,
+        )
+        self._battery_thread.start()
+```
+
+### What the Battery flow measured
+
+Before, in both builds over a scratch home holding a stored fleet of two coinbase
+bots and five 2022 tablets, a corner press on Run Portfolio opened no chooser and
+wrote one refusal line, and the runner driven directly walked every symbol at
+$200 with the outcome line reading `not computed`. After, Run Portfolio on
+CRYPTO_BLUE over 2022 opened the chooser, held three bots at $500 each with
+Spendable reading $1,500.00, ran on the worker thread, wrote one report whose
+Battery section read `1d improved, 1w defended, 1M not run` with BNB named as
+`no_tablet` and its $500 as missing weight, and wrote the report line; BOGLEHEAD
+over the same span read the same words with all three symbols run; Run Every
+Portfolio held sixty-three bots at $31,500.00 and wrote one report. A planted
+portfolio with a 60/30/10 mix read Targets of $900, $450 and $150; a stored fleet
+of BTC, ETH and BNB on coinbase at $1,000, $750 and $250 ran at those Targets
+with the report naming the bots loaded from the held fleet. Over a copy of the
+whole tape, Run Every Portfolio took 24.3 seconds in Qt and 24.9 in React while
+a 30 ms timer kept ticking with a longest gap of 0.342 and 0.125 seconds; the
+same run on the GUI thread read a gap of 1.035 seconds over a 1.32 second run.
+Every scratch file hashed equal before and after every press, no bot was
+constructed and no socket left loopback.
+
+### It is not a Monte Carlo
+
+A Monte Carlo samples many paths and reports the spread of what they pay. This
+mode reads one recorded path per symbol, so it reports one outcome per timeframe
+and no distribution. Nothing on the screen carries a percentile.
+
+`src/simulator/portfolio_battery.py` — the spans, one recorded path each
+
+```python
+#: Every span a run may be asked for: the archive's six, and the whole tape.
+SPANS = (FULL_SPAN,) + tuple(PERIODS)
+```
+
+## The YTD trade files and the import
+
+The Simulator's second data source, kept as the first clone's record wrote it;
+unit 22 reads these files through Generate From YTD and unit 22a gave the
+importer one column map per exchange export.
+
+### The YTD trade files
+
+The Simulator's second data source is the operator's own trade record, kept on
+disk under the exchange history bucket. One file holds one exchange, one symbol
+and one year. Each file names its exchange inside itself, not only in its
+filename, so a file that is moved or renamed still says where its trades came
+from.
+
+`src/exchange/ytd_trade_store.py` — what one row holds
+
+```python
+@dataclass
+class YtdTrade:
+    """One fill: ``id``, ``ts_ms``, ``side``, ``amount``, ``price``, ``cost``
+    and ``fee``."""
+
+    id: str
+    ts_ms: int
+    side: str
+    amount: float
+    price: float
+    cost: float
+    fee: float
+    fee_currency: str
+```
+
+Beside the rows, each file carries a schema version, the time of the import, and
+one entry per export that contributed rows. That entry names the export file and
+its digest, so a file that grew over two imports records both. A MANIFEST beside
+the files indexes every one of them with its row count and its date span.
+
+`src/exchange/ytd_trade_store.py` — the provenance on each file
+
+```python
+@dataclass
+class ImportSource:
+    """One import that contributed rows: ``file``, ``sha256`` and ``rows_added``."""
+
+    file: str
+    sha256: str
+    imported_at: str
+    rows_added: int
+```
+
+### The columns the import requires
+
+The record arrives as a transactions CSV exported from the exchange. The import
+reads nine columns and refuses a file missing any one of them, naming which.
+Notes, sender address and recipient address are never carried in.
+
+`src/exchange/ytd_csv_import.py` — the required columns
+
+```python
+REQUIRED_COLUMNS: tuple[str, ...] = (
+    COL_ID,
+    COL_TIMESTAMP,
+    COL_TYPE,
+    COL_ASSET,
+    COL_QUANTITY,
+    COL_PRICE_CURRENCY,
+    COL_PRICE,
+    COL_SUBTOTAL,
+    COL_FEES,
+)
+```
+
+The transaction type decides the side. Buys and sells are kept; reward income,
+deposits and withdrawals are counted and dropped, because they are not trades
+and must never reach a validation run as though they were. The asset and the
+price currency together give the pair. The quantity is negative on a sell in the
+export, so its sign is checked against the type and then the magnitude is
+stored.
+
+A second import of an overlapping export adds only the rows whose id is new. A
+file that gains nothing is not rewritten at all.
+
+### One column map per exchange export
+
+The nine columns above are Coinbase's. Each exchange writes its own export, so
+the import carries one column map per exchange, chosen by the exchange id the
+import is given. A map names the export's column for each field of a trade,
+its buy and sell type strings, the number of rows above its header, the form
+of its timestamps and the currency marks on its money cells. Every map lands
+on the same trade fields and the same file, so Generate From YTD reads one
+format whichever exchange wrote the export.
+
+`src/exchange/ytd_csv_import.py` — the map
+
+```python
+@dataclass(frozen=True)
+class ExportColumnMap:
+    """The columns, type strings and text forms of one exchange's CSV export,
+    each column named for the ``YtdTrade`` field it fills."""
+
+    exchange_id: str
+    export_name: str
+    id_column: str
+    timestamp_column: str
+    type_column: str
+    asset_column: str
+    quote_column: str
+    quantity_column: str
+    price_column: str
+    cost_column: str
+    fee_column: str
+    buy_types: frozenset[str]
+    sell_types: frozenset[str]
+    header_scan_lines: int
+    timestamp_suffix_utc: str
+    timestamp_format: str
+    money_prefixes: str
+    dropped_columns: tuple[str, ...] = ()
+```
+
+Coinbase's map holds the nine columns, the two type sets, the twenty header
+rows, the timestamp suffix and the currency marks the import read before the
+maps existed, so a Coinbase export writes the same files it always did. A map
+is written from a sample export on disk and never from documentation. An
+exchange with no map is refused at import by name, with a line saying a
+sample export is needed, and nothing is written.
+
+`src/exchange/ytd_csv_import.py` — the registry and the refusal
+
+```python
+EXPORT_MAPS: dict[str, ExportColumnMap] = {COINBASE_MAP.exchange_id: COINBASE_MAP}
+
+def export_map_for(exchange_id: str) -> ExportColumnMap:
+    """Return ``EXPORT_MAPS[exchange_id]``, refusing an ``exchange_id`` with no
+    map by name."""
+```
+
+```
+no column map for exchange 'kraken': a sample kraken export is needed before its map is written. Maps exist for: ['coinbase'].
+```
+
+### The exchanges and their sample exports
+
+One row per exchange Acervator connects to. A map exists for Coinbase alone,
+written from the operator's own transactions export. No other sample export is
+on hand, and the export each of the others would map is not named until its
+sample arrives, because a name taken from documentation is a guess.
+
+```
+exchange     map       sample export on hand                        export it maps
+coinbase     present   yes, the operator's own transactions export   Coinbase transactions export
+binance      none      no                                           not named until a sample arrives
+kraken       none      no                                           not named until a sample arrives
+kucoin       none      no                                           not named until a sample arrives
+bybit        none      no                                           not named until a sample arrives
+okx          none      no                                           not named until a sample arrives
+gateio       none      no                                           not named until a sample arrives
+bitget       none      no                                           not named until a sample arrives
+huobi        none      no                                           not named until a sample arrives
+mexc         none      no                                           not named until a sample arrives
+bitfinex     none      no                                           not named until a sample arrives
+gemini       none      no                                           not named until a sample arrives
+poloniex     none      no                                           not named until a sample arrives
+bitstamp     none      no                                           not named until a sample arrives
+cryptocom    none      no                                           not named until a sample arrives
+```
+
+### A period with no rows is a gap
+
+Where the export carries no trade for a symbol in a period the export covers,
+that period is written to a gap record. Nothing is invented to fill it.
+
+`src/exchange/ytd_trade_store.py` — the gap record
+
+```python
+@dataclass
+class TradeGap:
+    """One period between ``since_ms`` and ``until_ms`` that no row covers."""
+
+    exchange_id: str
+    symbol: str
+    year: int
+    since_ms: int
+    until_ms: int
+    reason: str
+    checked_at: str
+```
+
+### Reading the trade files
+
+The Simulator reads these files through one class, on the same rule as the
+tablet reader. It answered six names at the first clone and answers eight
+since unit 22 (comment 5722467005), refusing every other name itself.
+
+`src/simulator/ytd_trade_source.py` — the refusal
+
+```python
+    def __getattr__(self, name: str):
+        """Refuse every name outside ``READ_NAMES``."""
+        raise SendRefused(
+            f"YtdTradeSource answers {READ_NAMES} and cannot {name!r}. "
+            "The Simulator receives and asks; it sends nothing."
+        )
+```
+
+### What the import run measured
+
+The operator's own export was read into a throwaway directory. The figures below
+come from that run.
+
+```
+export read     5,798 rows, 13 columns
+kept            5,766 trades - 3,229 buys, 2,537 sells
+dropped         32 - reward income 16, deposits 15, withdrawals 1
+written         39 files, one per symbol, all of them 2026
+range           2026-04-12 to 2026-09-07
+gaps recorded   76
+second import   0 rows added, 39 files byte-identical
+```
+
+## How the Sim tab reaches the bar
+
+`SimulatorTabMixin` builds the tab and inserts it into the window's tab book.
+The builder catches every error, writes one warning line, and leaves the tab
+off the bar. A tab that asks the panel for a value the panel does not publish
+is therefore a missing tab, not a crash the operator can see.
+
+`src/gui/main_tabs/simulator_tab.py` — the builder
+
+```python
+def _build_simulator_tab(self) -> None:
+    """Insert the Sim tab at ``SIMULATOR_BUILD_INDEX``."""
+    try:
+        from ..variant_surface import SIMULATOR, surface_class
+
+        self._simulator_tab = surface_class(SIMULATOR)()
+        self._main_tabs.insertTab(
+            SIMULATOR_BUILD_INDEX, self._simulator_tab, HEADING
+        )
+    except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
+        logger.warning("Sim tab unavailable: %s", exc)
+        self._simulator_tab = None
+```
+
+The window builds nine tabs. Sim takes the first slot and Paper the second.
+The Accumulation tab stays off the bar until the operator asks for it.
+
+```
+Sim  Paper  Live  Charts  Inspector  Swarm  History  Status  Console
+```
+
 ## The Qt tab is Live's tab code, forked
 
 The Qt build of the Sim tab is `SimTradingTab`, a fork of the Live tab's own
@@ -104,9 +1403,12 @@ invents from a random walk when no bot is loaded. Zero occurrences of
 `ScrummingBot`, `BotContainer`, `ExchangeInterface`, `EventBus` and
 `PhantomBalance` under `src/gui/simulator/`.
 
-The way-in buttons, the mode buttons, `+ New Bot`, the Fire buttons and the
-command bar's handler are wired to nothing. The tab holds two sources and
-nothing reads them yet, so every module draws as Live's does with no data.
+At unit 7 the way-in buttons, the mode buttons, `+ New Bot`, the Fire buttons
+and the command bar's handler were wired to nothing, and the tab held two
+sources that nothing read. Units 10 to 31 wired each of them (comments
+5706487452, 5707202420, 5708384371, 5714936418, 5716410892, 5718837037,
+5721499839, 5728708856, 5733262015); the section "What the tab holds today"
+describes what each does now.
 
 `src/gui/simulator/sim_trading_tab.py` — the two sources
 
@@ -121,8 +1423,10 @@ nothing reads them yet, so every module draws as Live's does with no data.
 
 Asked for a send by name, each raises `SendRefused`.
 
-The window's header strip hides while Sim is in front, as `ISOLATED_TABS`
-names it, so the three strip rows above the tab are absent on Sim today.
+At unit 7 the window's header strip hid while Sim was in front, as
+`ISOLATED_TABS` then named it. Unit 9 took Sim out of that tuple and fed the
+strip from the sim fleet (comment 5705741677); the section "The header strip
+shows on Sim" describes the strip as it draws.
 
 ## The React page is Live's page modules, forked
 
@@ -231,8 +1535,9 @@ the host redraws the tab with the other layer showing.
 The host builds one payload per bridge method from state it owns: the tab
 payload from its own `SimTradingTabState`, the Activity Log from its own
 `StatusLogModel`, the panel from its own `IndicatorPanelModel`, and each
-seated venue's three payloads from that venue's own `ExchangeTabModel`,
-`BotStatusTableModel` and `ExtractorBotTableModel`. Live's module-level
+seated venue's three payloads from that venue's own `ExchangeTabModel`, its
+`SimBotStatusTableModel`, the fork unit 13 made of Live's scrum model (comment
+5707202420), and Live's `ExtractorBotTableModel`. Live's module-level
 models are never read. The page asks each method once on mount and the host
 answers from those payloads; every push, `show_tab`, `show_votes`,
 `show_log_call` and `add_exchange_tab`, hands the page a fresh payload and
@@ -260,12 +1565,17 @@ def models(
 The host holds the same two sources the Qt fork holds, `TabletSource` and
 `FleetSource`, and no bot manager, no connector and no bus. The news ticker
 module, which reaches its feeds over the network, is not in the page's roster.
-The Activity-Log watchdog that read the live bot manager, the API-log listener,
-the data-pool line's text and its one-second timer, and Privacy Mode are not
-forked. Every ask the page makes is answered from the payloads the host holds
-and written to the console for the host to read; the host answers the flip and
-holds every other press, so the way-in buttons, the mode buttons, `+ New Bot`,
-the Fire buttons and the command bar change nothing.
+The data-pool line's text and its one-second timer, and Privacy Mode, are not
+forked. The Activity-Log watchdog and the API-log listener were not forked at
+unit 8; unit 17 forked the watchdog over the sim bot manager and unit 18 the
+listener over the sim log (comments 5717588355, 5718837037). Every ask the
+page makes is answered from the payloads the host holds and written to the
+console for the host to read. At unit 8 the host answered the flip and held
+every other press, so the way-in buttons, the mode buttons, `+ New Bot`, the
+Fire buttons and the command bar changed nothing; units 12 to 31 wired each
+press (comments 5708384371, 5707202420, 5714936418, 5716410892, 5717588355,
+5728708856, 5733262015), and the section "What the tab holds today" describes
+them.
 
 ## The header strip shows on Sim
 
@@ -325,10 +1635,11 @@ def aggregate(self) -> dict:
     return dict(EMPTY_AGGREGATE)
 ```
 
-No bot is loaded into the Simulator, so the strip reads on Sim as it reads on
-Live with no bots: the four money columns an em dash, EXCH the count of seated
-venues, the five cards zero. The figures arrive with the way-ins that load a
-fleet and the runs that trade it.
+At unit 9 no bot was loaded into the Simulator, so the strip read on Sim as it
+reads on Live with no bots: the four money columns an em dash, EXCH the count
+of seated venues, the five cards zero. Unit 21 made `aggregate` answer Live's
+arithmetic over the held records (comment 5721499839), so the figures arrive
+with the way-ins that load a fleet and the runs that trade it.
 
 ```mermaid
 flowchart LR
@@ -343,11 +1654,12 @@ flowchart LR
 ## The venue stack seats the fleet's exchanges
 
 The Sim tab seats one venue sub-tab per exchange the sim fleet names, in both
-builds. The fleet is the saved bot record the tab's fleet source reads, and
-the exchange set is the distinct exchange ids of the stored bots. Each host
-seats its venues when it is built and again whenever its `fleet_changed`
-signal fires. Nothing fires it yet; the way-ins that load a fleet fire it when
-they land. A sub-tab is captioned as Live captions an exchange saved with no
+builds. At unit 10 the fleet was the saved bot record the tab's fleet source
+read, and the exchange set the distinct exchange ids of the stored bots; since
+unit 21 the fleet is the held records and the Simulator starts empty (comment
+5721499839). Each host seats its venues when it is built and again whenever
+its `fleet_changed` signal fires, which every way-in does. A sub-tab is
+captioned as Live captions an exchange saved with no
 name, the capitalised id. Live's venue set is the live configuration; the
 Simulator never reads it.
 
@@ -376,7 +1688,7 @@ command bar, and both tables hidden until a row arrives.
 
 ```mermaid
 flowchart LR
-    file[bot_state.json] --> src[FleetSource.exchanges]
+    file[bot_state.json, through Import Live Fleet] --> src[FleetSource.exchanges]
     build[tab build] --> sync[_sync_exchange_tabs]
     fire[fleet_changed] --> sync
     src --> sync
@@ -394,9 +1706,10 @@ geometry and the order of its parts are Live's; its contents are the
 Simulator's. The heading reads `No Crypto Fleet Loaded`, the hint reads
 `Load a Crypto fleet to begin a run`, and the button position holds Import
 Live Fleet, Generate From YTD and Create New Bots, one under the other, each
-at Live's card-button size and in the layer's accent. They are wired to
-nothing until the way-ins land, and each way-in then wires the corner button
-and the card button of one action together.
+at Live's card-button size and in the layer's accent. At unit 10 they were
+wired to nothing; units 21, 22 and 23 then wired the corner button and the
+card button of each action together (comments 5721499839, 5722113817,
+5723035277).
 
 `src/gui/simulator/sim_trading_tab_surface.py` — the card's texts
 
@@ -404,7 +1717,6 @@ and the card button of one action together.
 def placeholder_title_text(label: Any) -> str:
     """The Get Started card's heading for one layer: the first step is a fleet."""
     return f"No {label} Fleet Loaded"
-
 
 def placeholder_hint_text(label: Any) -> str:
     """The line under the Get Started card's buttons for one layer."""
@@ -416,12 +1728,12 @@ cannot title the card differently. The venue stack is the first module of the
 tab to read one of its two sources; the tables, the panel and the two spools
 still draw empty.
 
-
 ## The Scrumming Bots table draws the sim fleet
 
 The Scrumming Bots table on each seated venue draws one row per sim bot on
 that exchange, in both builds. The rows come from the tab's fleet source: each
-stored bot record becomes one read-only record, and the record answers the
+held record, imported, generated or created (unit 21, comment 5721499839), is
+one read-only record, and the record answers the
 same status keys a live bot answers, so the forked table draws it with Live's
 own cell code. The table stays hidden until a row arrives and hides again when
 the last row leaves, as Live's does.
@@ -452,7 +1764,7 @@ Simulator's follow the fleet it holds.
 
 ```mermaid
 flowchart LR
-    file[bot_state.json record] --> rec[SimBot]
+    file[bot_state.json record, through Import Live Fleet] --> rec[SimBot]
     rec --> status[row_status]
     status --> src[FleetSource.statuses]
     src --> refresh[refresh_bots]
@@ -523,9 +1835,9 @@ Simulator is refused this way.
 Detail is present on every row. A press opens the Simulator's bot detail
 window: the frame of Live's Bot Settings window, with the title, the pair and
 mode header, the state badge, Prev and Next over the venue's sim fleet, the
-Status tab over the row's figures, and Close. It edits nothing. The six tabs
-that read a live bot's runtime state, and the React-drawn window, are not
-forked yet.
+Status tab over the row's figures, and Close. It edits nothing. At unit 13 the
+six tabs that read a live bot's runtime state, and the React-drawn window,
+were not forked; unit 13a forked them (comment 5712057220).
 
 `src/gui/simulator/sim_trading_tab.py` — the two presses
 
@@ -543,12 +1855,12 @@ Under React the page's Fire and Detail asks reach the host through the
 console line, the host applies the ask to that venue's own table model, and
 the same two handlers run.
 
-### Until the way-ins land
+### Until the way-ins landed
 
-The fleet source reads the saved bot record as it lies on disk, so a build
-with a saved fleet draws that fleet's rows at start. Import Live Fleet gates
-both the venues and the rows behind a press when it lands.
-
+At unit 13 the fleet source read the saved bot record as it lay on disk, so a
+build with a saved fleet drew that fleet's rows at start. Unit 21 gated both
+the venues and the rows behind Import Live Fleet, so the tab starts empty
+(comment 5721499839).
 
 ## New Bot opens the Simulator's wizard
 
@@ -646,10 +1958,11 @@ the assets it holds a tablet for. The phantom page's API-load warning reads
 Live's venue call rate; the Simulator makes no venue call, so the page answers
 True, as Live's React wizard does with no load reading.
 
-### A created bot is not persisted
+### A created bot was not persisted at unit 12
 
-The Simulator keeps no fleet file of its own. A created bot lives in the fleet
-source until the tab closes. Nothing writes `bot_state.json`.
+At unit 12 the Simulator kept no fleet file of its own, and a created bot lived
+in the fleet source until the tab closed; unit 12a gave it the sim fleet file
+(comment 5710961369). Nothing writes `bot_state.json`.
 
 ### The React host opens the wizard one turn later
 
@@ -665,7 +1978,6 @@ loads.
                 0, lambda: self._open_bot_wizard(exchange_id, defaults_override)
             )
 ```
-
 
 ## The Extractor Bots table draws the sim extractors
 
@@ -701,7 +2013,7 @@ def _extractor_status(bot: SimBot) -> dict:
 
 ```mermaid
 flowchart LR
-    file[bot_state.json record] --> rec[SimBot with the pool figures]
+    file[bot_state.json record, through Import Live Fleet] --> rec[SimBot with the pool figures]
     rec --> status[row_status, the extractor keys added]
     status --> src[FleetSource.statuses]
     src --> refresh[refresh_bots]
@@ -762,8 +2074,10 @@ parent scrumming bot on that venue holds.
 ### Detail and Fire on an extractor row
 
 Detail is present on every extractor row in both builds. A press opens the
-Simulator's bot detail window over that extractor, with its symbol, its
-mode, its state and its trade count, and selects the row, as a press on the
+Simulator's bot detail window over that extractor, with its symbol, its mode,
+its state and its trade count on the Status tab and, since unit 13a, the
+Settings and Positions Held tabs beside it (comment 5712057220), and selects
+the row, as a press on the
 Scrumming Bots table does. Under React the page's ask reaches the host
 through the console line, the host applies it to that venue's own extractor
 table model, and the same handler runs.
@@ -785,13 +2099,14 @@ nothing: no name is asked of the fleet source and no line is written.
             return True
 ```
 
-
 ## The Simulator keeps its own fleet file
 
 A bot created through the Simulator's wizard survives a restart, in both
 builds. The tab's fleet source writes one file of its own, `sim_fleet.json`,
-under the `sim` bucket of the log root, the directory every Simulator write
-lands in. Every `fleet_changed` writes it first, before the venues re-seat
+under the `sim` bucket of the log root; the parity reports of unit 25 land
+under the reports bucket instead, and the four log files of unit 31a beside
+the fleet file (comments 5725784001, 5734233752). Every `fleet_changed` writes
+it first, before the venues re-seat
 and the tables redraw, and the tab build reads it once. The write goes
 through the same helper the live process writes `bot_state.json` with, so a
 crash mid-write leaves the previous file whole. The section "A created bot
@@ -841,9 +2156,10 @@ keys the live state file carries less the smart-wire lists the Simulator has
 none of. Each entry under `bots` is the per-bot record the live process
 writes, `config`, `stats`, `scrumming_state`, `state_when_saved` and
 `bot_id`, so the one record reader that maps a stored live bot to a row maps
-a stored sim bot the same way. The file holds the wizard's bots and nothing
-of the live fleet; the live read stays beside it until Import Live Fleet
-gates it.
+a stored sim bot the same way. At unit 12a the file held the wizard's bots and
+nothing of the live fleet, with the live read beside it; since unit 21 it
+holds every held record, imported ones included, and the live read runs only
+through Import Live Fleet (comment 5721499839).
 
 `src/simulator/fleet_source.py` — the write
 
@@ -895,8 +2211,6 @@ comparison can report. The file removed drew the live row alone with no
 warning; the file overwritten with text that is not JSON drew the live row
 alone with one warning naming it; a file holding one readable record and one
 that names no symbol drew the readable one and named the other.
-
-
 
 ## Detail opens the Simulator's Bot Settings window with all seven tabs
 
@@ -1027,7 +2341,6 @@ record holding two. Next opened the next bot's window on the same tab. Every
 press above reached the refusal, and `bot_state.json` hashed the same after
 each one.
 
-
 ## The Sim venue pane is Live's width
 
 The Sim tab's top splitter now settles at the same pair as Live's at every
@@ -1087,8 +2400,10 @@ removing it restores the pair.
 
 ## The command bar acts on the sim fleet
 
-Start, Pause, Stop, Restart and Delete on the Simulator's venue page each
-change one sim bot's state, and the table reads it back. The bar itself is
+Pause, Stop, Restart and Delete on the Simulator's venue page each change one
+sim bot's state, and the table reads it back. Start did the same at unit 15;
+since unit 31 it starts the run in Validation and Back Test mode and moves
+every scrumming row on the page (comment 5733262015). The bar itself is
 Live's: it takes its bot from the table you clicked last, tries the other
 table with no selection there, and with none anywhere says `Select a bot
 first.` and does nothing, in both builds. The press then reaches the Sim
@@ -1099,8 +2414,10 @@ Simulator's bot manager instead of the live one.
 of `BotManager` that hold and move bots. It holds one `FleetSource` and no
 venue, no connector, no event bus and no coroutine. Its registry is the sim
 fleet file's records: `get_bot` answers a held record's `SimBot` and None for
-a row read from `bot_state.json`, so a command on such a row logs Live's `Bot
-<id> not found.` line and moves nothing. Each verb moves the record's
+an unknown id, so a command on such an id logs Live's `Bot <id> not found.`
+line and moves nothing; since unit 21 an imported row is a held record and no
+row is read from `bot_state.json` directly (comment 5721499839). Each verb
+moves the record's
 `state_when_saved` under the live bot's own rule for that verb.
 
 `src/simulator/sim_bot_manager.py` — the verbs
@@ -1356,7 +2673,9 @@ newest when full, a resume that replays the held lines with their original
 stamps under one line counting them, and `notice` and `force_log`, which draw
 through a pause. Each line is `[hh:mm:ss] message`, the stamp in the muted
 colour and the message in its level's colour, with the trade, wire-flow and
-wire-stack shapes Live raises. The React page draws the same lines from the
+wire-stack shapes Live raises; since unit 30 a simulated trade's line carries
+the tape's stamp instead (comment 5731181590). The React page draws the same
+lines from the
 host's own `StatusLogModel` through `sim_status_log.js`, the fork of
 `status_log.js`.
 
@@ -1440,7 +2759,8 @@ The API Interaction Log at the foot right of the Sim tab is Live's pane under
 Live's title with Live's `⏸  Pause API Log` toggle in both builds: read-only,
 the placeholder `API calls, responses, timing, data usage...`, no wrap, 2,000
 lines with the oldest dropped past that, and a pause buffer of 2,000. Each
-host holds an API log of its own, an `APIInteractionLog` built beside the two
+host holds an API log of its own, a `SimApiLog` since unit 29 (comment
+5730130103) and an `APIInteractionLog` at unit 18, built beside the two
 sources and read back through `api_log()`, and never the process-wide log the
 venue connectors write. The writer is Live's `_on_api_event`, forked over that
 log: one entry becomes Live's block, a stamped head line naming the exchange
@@ -1476,10 +2796,10 @@ directory, as Live's writer does.
 The Sim's log and the venue log are two objects. A venue call the Live bots
 make is recorded on the process-wide log, whose one listener is the Live
 tab's writer, so it draws on Live's pane and cannot reach the Sim's. An entry
-recorded on `api_log()` reaches the Sim's writer alone. Nothing records into
-the Sim's log yet: a Stone Tablet retrieval or update and the YTD trade-file
-read are the two recorders the directive names, and each lands with its own
-unit.
+recorded on `api_log()` reaches the Sim's writer alone. At unit 18 nothing
+recorded into the Sim's log; a Stone Tablet retrieval or update and the YTD
+trade-file read are the two recorders the directive names, and unit 28 landed
+the first and unit 29 the second (comments 5728708856, 5730130103).
 
 `src/gui/simulator/sim_trading_tab.py` — the log
 
@@ -1490,6 +2810,8 @@ unit.
         self._build()
         self._api_log.add_listener(self._on_api_event)
 ```
+
+Unit 29 changed that constructor to `SimApiLog()` (comment 5730130103).
 
 ### The block on the React page
 
@@ -1763,11 +3085,12 @@ flowchart LR
 
 Create New Bots, at the corner or on the card, opens the Simulator's Create
 Auto Trader wizard through `_create_bot`, the same path `+ New Bot` takes, in
-both builds. Import Live Fleet, Generate From YTD, Run Portfolio and Run Every
-Portfolio ask the fleet source for the run by name; the fleet source answers
-its read set and nothing else, so the ask raises `SendRefused`, and the tab
-writes one line to the Activity Log naming the button. The run that each of
-those four starts is not built.
+both builds. At unit 20 Import Live Fleet, Generate From YTD, Run Portfolio and
+Run Every Portfolio asked the fleet source for the run by name; the fleet
+source answered its read set and nothing else, so the ask raised
+`SendRefused`, and the tab wrote one line to the Activity Log naming the
+button. Units 21, 22 and 24 built the four runs (comments 5721499839,
+5722113817, 5725991788).
 
 `src/gui/simulator/sim_trading_tab.py` — the way-in handler
 
@@ -2403,14 +3726,16 @@ module holds no state and imports no bot, no venue and no bus.
 def scrum_units(delta_usd: float, price: float) -> float:
     return abs(delta_usd) / price
 
-
 def fold_spend_usd(eligible_usd: float, taper: float) -> float:
     return eligible_usd * taper
-
 
 def fold_units(spend_usd: float, price: float) -> float:
     return spend_usd / price
 ```
+
+Unit 26a gave `scrum_units` and `fold_units` a third argument, the unit rule;
+the section "The unit rule" quotes the three-argument forms (comment
+5725310316).
 
 ### What the tick calls
 
@@ -2618,7 +3943,6 @@ CITED_UNIT_RULES: dict[tuple[str, str], str] = {
     (CLASS_STOCKS, "alpaca"): FRACTIONAL_UNITS,
 }
 
-
 def unit_rule(asset_class: str, venue: str) -> Optional[str]:
     return CITED_UNIT_RULES.get((str(asset_class), str(venue)))
 ```
@@ -2643,7 +3967,6 @@ def asset_class(symbol: str, exchange_id: str = "") -> Optional[str]:
         return CLASS_CRYPTO
     return None
 
-
 def trading_venue(class_name: Optional[str], exchange_id: str = "") -> str:
     if class_name == CLASS_CRYPTO:
         return str(exchange_id or "")
@@ -2667,7 +3990,6 @@ that is neither word raises, so no walk sizes under an unnamed rule.
 ```python
 WHOLE_UNIT_GRAIN = 1e-9
 
-
 def sized_units(units: float, rule: str) -> float:
     if rule == FRACTIONAL_UNITS:
         return units
@@ -2675,10 +3997,8 @@ def sized_units(units: float, rule: str) -> float:
         return float(math.floor(units + WHOLE_UNIT_GRAIN))
     raise ValueError(f"unit rule {rule!r} is not one of {UNIT_RULES}")
 
-
 def scrum_units(delta_usd: float, price: float, rule: str) -> float:
     return sized_units(abs(delta_usd) / price, rule)
-
 
 def fold_units(spend_usd: float, price: float, rule: str) -> float:
     return sized_units(spend_usd / price, rule)
@@ -2926,11 +4246,12 @@ A Battery report carries, per portfolio and timeframe, how many symbols ran,
 the capital committed, the capital missing and its share of the weight with
 the symbols that carry it, the arithmetic of accumulation less baseline with
 the verdict word, the units gained, the trades and the fees; then every refused
-symbol with the line the run wrote for it. The defend, improve or reverse
-outcome against the portfolio's historical path reads `not computed`, with
-why: the design intent's default Target Balance, mix share and reading are the
-next Battery unit's, and today the run walks every symbol at the same capital
-with equal weights.
+symbol with the line the run wrote for it. At unit 25 the defend, improve or
+reverse outcome against the portfolio's historical path read `not computed`,
+with why: the design intent's default Target Balance, mix share and reading
+were the next Battery unit's, and the run walked every symbol at the same
+capital with equal weights. Unit 24 wrote the reading (comment 5725991788);
+the section "Portfolio Battery Mode" describes it.
 
 Since the Battery flow landed, that outcome is computed. The historical path is
 buy and hold over the span: its start is the Target Balances committed, its
@@ -2990,9 +4311,9 @@ reported as done.
 ### The line on the tab
 
 Each Sim host answers `log_report`, which writes one line through the tab's
-own Activity Log at the level Import Live Fleet uses. No button starts a run
-on the tab today; the units that press the Validation run and the Battery call
-it with the run's report.
+own Activity Log at the level Import Live Fleet uses. At unit 25 no button
+started a run on the tab; unit 24's Run Portfolio and unit 31's Start call it
+with the run's report (comments 5725991788, 5733262015).
 
 Since the Battery flow landed, Run Portfolio and Run Every Portfolio start a run
 from the corner and the card and call it with the run's report when the run
@@ -3032,6 +4353,161 @@ to the Markdown's, and the Activity Log line naming the path was drawn through
 the tab's own log and read back off the Qt widget and off the React page. No
 bot was constructed and no socket left loopback.
 
+## The Simulator colour distinction is the theme's nigredo tone
+
+The Sim tab paints every ground darker than Live's, under the same theme. The
+tone is the theme's own ground tokens moved a quarter of the way to black;
+the accent, the text and the borders are the theme's. The derivation, its one
+fraction and the contrast arithmetic per theme are on the Settings page under
+[the Simulator's tone, nigredo](settings.md#the-simulators-tone-nigredo).
+
+Nothing on the tab names a colour for this. The Qt build marks the tab with one
+property, and the theme's stylesheet paints the tree it marks; the windows the
+tab opens are its children, so the chooser and the Bot Settings window paint in
+the tone too.
+
+`src/gui/simulator/sim_trading_tab.py` — the mark
+
+```python
+# The theme's nigredo_qss paints this tree, and the windows it parents.
+# A QWidget subclass paints its stylesheet ground only with this attribute.
+self.setProperty(TONE_PROPERTY, NIGREDO)
+self.setAttribute(Qt.WA_StyledBackground, True)
+```
+
+The React build marks its host the same way for the Qt windows it parents,
+and its page takes the tone twice: once at build, when `panel_html` hands the
+tone to the page chrome, and once per theme switch, when the window's repaint
+reads the tone off the web view. The design tokens the page embeds go through
+the same function: every token whose name, or whose alias target, starts with
+`SURFACE_` is a ground the page paints, and the host darkens it before the
+page reads it.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the page side
+
+```python
+GROUND_NAME_PREFIX = "SURFACE_"
+
+def nigredo_design(model: dict) -> dict:
+    aliases = model.get("alias_targets", {})
+
+    def is_ground(name: str) -> bool:
+        return name.startswith(GROUND_NAME_PREFIX) or str(
+            aliases.get(name, "")
+        ).startswith(GROUND_NAME_PREFIX)
+```
+
+```python
+return page_html(
+    STYLE_ASSETS, (), page_body(), theme, (host_script(built, venues),), NIGREDO
+)
+```
+
+The two Sim windows drawn by React, the Bot Settings window and the wizard,
+hand the same tone to their page chrome and carry it on their web views.
+
+### What the tone reading measured
+
+The real window was built in each build over a scratch home with every socket
+but loopback refused, the theme switched five times through the Theme menu's
+own path, and the picture of the whole window grabbed with Live in front and
+again with Sim in front. The ground is the tab's own pixel at its top-left
+corner; the heading is the most common colour inside the Activity Log label,
+and the label's second colour is its text. At 1400 by 900, the window's floor:
+
+```
+theme             point            Live      Sim       Qt         Live      Sim       React
+cyberpunk_dark    ground           #0a0a0f   #08080b   differs    #0a0a0f   #08080b   differs
+cyberpunk_dark    heading ground   #0a0a0f   #08080b   differs    #0a0a0f   #08080b   differs
+cyberpunk_dark    heading text     #00ffcc   #00ffcc   same       #00ffcc   #00ffcc   same
+neon_light        ground           #f5f5fa   #b8b8bc   differs    #0a0a0f   #08080b   differs
+neon_light        heading ground   #f5f5fa   #b8b8bc   differs    #f5f5fa   #b8b8bc   differs
+classic_terminal  ground           #0a0a0a   #080808   differs    #0a0a0f   #08080b   differs
+classic_terminal  heading ground   #0a0a0a   #080808   differs    #0a0a0a   #080808   differs
+minimal_modern    ground           #fafafa   #bcbcbc   differs    #0a0a0f   #08080b   differs
+minimal_modern    heading ground   #fafafa   #bcbcbc   differs    #fafafa   #bcbcbc   differs
+glass_metal       ground           #1c1c24   #15151b   differs    #0a0a0f   #08080b   differs
+glass_metal       heading ground   #1c1c24   #15151b   differs    #1c1c24   #15151b   differs
+```
+
+Every Sim value is the Live value beside it through `toward_black` at 0.25.
+The same twenty rows read the same at 1920 by 1080. The heading text reads
+`#00ffcc` on every row in both builds, so the tone moved no text.
+
+The React ground column is the venue page's own ground, which is the design
+token `SURFACE_0` under every theme on Live and its darkened value on Sim; the
+page's outer ground, read at the web view's corner, follows the theme as the
+Qt ground does and darkens the same way. That split between the page's two
+grounds is Live's own, stated on the tabs page under the theme menu, and the
+tone keeps it.
+
+The header strip sits above every tab and takes no tone. Its ground read the
+theme's own value with Live in front and with Sim in front, on every theme, in
+both builds:
+
+```
+cyberpunk_dark  #0a0a0f   neon_light  #f5f5fa   classic_terminal  #0a0a0a
+minimal_modern  #fafafa   glass_metal #1c1c24
+```
+
+The windows the Sim opens read the tone at their own corner, both builds, every
+theme; the React Bot Settings window's page and the React wizard's page each
+read the same value as their frame:
+
+```
+theme             chooser   Bot Settings   wizard
+cyberpunk_dark    #08080b   #08080b        #08080b
+neon_light        #b8b8bc   #b8b8bc        #b8b8bc
+classic_terminal  #080808   #080808        #080808
+minimal_modern    #bcbcbc   #bcbcbc        #bcbcbc
+glass_metal       #15151b   #15151b        #15151b
+```
+
+The built bundles read the same way. Each variant was built, launched over an
+empty scratch home with every HTTP route pointed at a refused loopback port
+and Chromium's resolver mapped away, its window found by process id and sized
+to the floor, and Live then Sim brought to the front by a posted click on the
+tab bar. Off a capture of that window, under the stored default theme:
+
+```
+bundle   Live ground   Sim ground   Live heading text   Sim heading text   strip card, Live and Sim in front
+qt       #0a0a0f       #08080b      #00ffcc             #00ffcc            #16162a  #16162a
+react    #0a0a0f       #08080b      #00ffcc             #00ffcc            #12121a  #12121a
+```
+
+Two plants proved the reading can fail. With the fraction set to 0, every Sim
+value read equal to Live's, twenty rows per build. With the fraction set to 1,
+every Sim ground and every window read `#000000`. The plant was removed and
+the module compared byte for byte with its pre-plant digest. The scratch copy
+of the fleet file read the same digest before and after every one of the ten
+readings; a copy with one byte appended read a different digest, so the
+comparison reports a change.
+
+Before this change the same reading gave every Sim value equal to Live's, under
+every theme, in both builds: no distinction reached a pixel.
+
+### The skin dictionary carries the tone too
+
+The `SKIN` dictionary the surface serves puts its two ground entries through
+the same function, so a reader of the served payload gets the tone the tab
+paints. The block under [the skin tokens the sheet reads](#the-skin-tokens-the-sheet-reads)
+shows the ground entry as `ds.SURFACE_0`; it reads the darkened value now.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the two ground entries
+
+```python
+SKIN = {
+    "--sim-ground": toward_black(ds.SURFACE_0, NIGREDO_FRACTION),
+    "--sim-chart-ground": toward_black(ds.SURFACE_CHART, NIGREDO_FRACTION),
+```
+
+### The renders
+
+One pair per theme, Live beside Sim, in each build, at 1400 by 900, under
+`artifacts/u117/u27/` in the repository's ignored artifacts directory. The
+fraction each was taken at is 0.25, and it is one number in the theme engine.
+
+Back to [the subsystem index](README.md).
 ## The replay layer draws the chosen tablet and retrieves through a read-only connector
 
 The second layer behind the Indicator Voting Panel holds the VWAP window over
@@ -3396,6 +4872,9 @@ SCRUM_USD_WORD = "gross"
 FOLD_USD_WORD = "spent"
 ```
 
+Unit 31a moved the fill words to `src/simulator/sim_bus.py` (comment
+5734916119).
+
 ```
 [2021-02-05T00:00:00Z] [SPY/ahoo] SELL FILLED: 0.193792 SPY @ $387.70999146 (gross $75.13498, fee $0.45081)
 [2026-07-29T15:35:00Z] [BILL/0bda] BUY FILLED: 155.417407 BILL @ $0.02252000 (spent $3.50000, fee $0.05600)
@@ -3516,8 +4995,9 @@ oldest past that; a pause holds 2,000 and drops the newest, and Resume replays
 the held lines in order under one line counting them.
 
 ### Back Test and Validation, through the run
-
-No button starts a Back Test or a Validation run on the tab yet; the
+At unit 30 no button started a Back Test or a Validation run on the tab; unit
+31 made Start on the command bar that button (comment 5733262015). Both runs
+take the same callback, and
 Validation run's button is the close's. Both runs take the same callback, and
 driven through their run function with the host's writer they write one line
 per fill on the Activity Log exactly as the Battery does from the corner.
@@ -3866,7 +5346,6 @@ def new_sim_bus() -> EventBus:
     """A private ``EventBus`` for one Sim host, never ``get_event_bus``."""
     return EventBus()
 
-
 def sim_log_manager(
     bus: Any, symbol_of: Optional[Callable[[str], str]] = None
 ) -> LogManager:
@@ -4161,372 +5640,15 @@ candle with S/FIRE `fixture`, the flipped candle with S/TA `chain` and its
 eight armed-flag lights, and the moved candle with S/BB `tape` and its ten
 dependents, in both builds.
 
-## The clone the tab draws now
-
-The Sim tab is a clone of the Trading tab, and its data source is the Stone
-Tablets on disk. It carries the bot list, the Indicator Voting Panel, and a
-second layer holding the VWAP window over the tablet playback window. One
-button flips the panel area between those two layers.
-
-`src/gui/main_tabs/simulator_tab_surface.py` — the two layers and the button
-
-```python
-LAYER_INDICATORS = "indicators"
-LAYER_PLAYBACK = "playback"
-LAYERS = (LAYER_INDICATORS, LAYER_PLAYBACK)
-
-FLIP_BUTTON_TEXT = {
-    LAYER_INDICATORS: "Show Playback",
-    LAYER_PLAYBACK: "Show Indicators",
-}
-```
-
-One model is built from the tablet, and both builds draw it.
-
-```mermaid
-flowchart LR
-    files[RA-StoneTablet files] --> source[TabletSource]
-    source --> model[simulator_tab_surface]
-    model --> qt[SimulatorTabQt]
-    model --> react[simulator_tab.js]
-```
-
-### It receives and asks. It never sends.
-
-The Simulator's whole data path is one class that reads tablet files. It holds
-no venue and defines no write. It answers five names and refuses every other
-name itself, so a send cannot be expressed through it.
-
-`src/simulator/tablet_source.py` — the refusal
-
-```python
-    def __getattr__(self, name: str):
-        """Refuse every name outside ``READ_NAMES``."""
-        raise SendRefused(
-            f"TabletSource answers {READ_NAMES} and cannot {name!r}. "
-            "The Simulator receives and asks; it sends nothing."
-        )
-```
-
-Asked for nine venue calls — an order, a market buy, a cancellation, an edit, a
-withdrawal, a leverage change, a transfer, a tablet write and a save — it
-refused all nine and answered every read.
-
-### The columns are the Trading tab's own
-
-The bot list draws the ten columns the live table draws, and the same two fixed
-widths, because the surface imports them rather than restating them. A column
-added to the live table appears here with no second edit.
-
-```python
-from .bot_status_table_surface import COLUMN_LABELS, FIXED_WIDTHS
-```
-
-No simulated fleet exists yet, so the list holds no rows and says why. Import
-Live Fleet and Generate From YTD are what fill it, and both are later units.
-
-### One candle window, on both sides
-
-The live engine asks the venue for one hundred candles. The Simulator reads the
-last hundred rows off the tablet, so the indicator window is one number on both
-sides rather than two.
-
-```python
-#: The candle window live reads. ``ScrummingBot`` asks ``get_ohlcv`` for 100,
-#: and the Simulator reads the same count off the tablet.
-WINDOW_CANDLES = 100
-```
-
-The live engine now receives that hundred, and the newest row in it is the bar
-that just closed. The connector sends the count in the exchange library's count
-slot. Until this change it sent the count in the start-time slot and left the
-count slot empty, so the venue answered with a page of its own and the library
-kept the oldest 300 rows of it. Every indicator then read a window ending 50
-five-minute bars behind the price the gate compared it against. That is four
-hours and ten minutes.
-
-`src/exchange/ccxt_connector.py` — four arguments, each in its own slot
-
-```python
-data = await self._call_sync(
-    self._ex.fetch_ohlcv,
-    symbol,
-    timeframe,
-    None if since is None else int(since),
-    int(limit),
-)
-```
-
-The library's own slice was driven over 1,215 recorded five-minute pages. The
-window ended 50 bars early on every page before the change and on none after it.
-On 162 rows of the recorded gate log, the band latch differs between the stale
-window and the current one on 88.
-
-### The VWAP window
-
-VWAP is the published cumulative figure: typical price times volume, running,
-divided by running volume, where typical price is the average of the high, the
-low and the close. A point with no volume behind it yet carries nothing rather
-than a number.
-
-```python
-def vwap_series(candles: Sequence[Sequence[float]]) -> list[Optional[float]]:
-    """Cumulative ``sum(typical_price * volume) / sum(volume)`` per row.
-
-    A row whose cumulative volume is still zero carries None.
-    """
-```
-
-### The two strips that are not copied
-
-The crypto news ticker and the data pool line are not on this tab, and their
-code is not carried into it. A live news feed and a live cache-health line
-describe nothing a tablet reader does. The rows they held keep their height and
-hold nothing, and that space is where Import Live Fleet and Generate From YTD
-go.
-
-```python
-#: The rows the two strips held on the Trading tab, and the height each keeps.
-RESERVED_ROWS: tuple[dict[str, Any], ...] = (
-    {"name": "news_ticker_row", "height_px": 24},
-    {"name": "data_pool_row", "height_px": 18},
-)
-```
-
-### With no tablet on disk
-
-The tab draws an empty state and names what is missing. The panel reads
-`No TA data — No Stone Tablet on disk.`, the selector holds nothing, and both
-windows hold zero points. Nothing is invented in place of the missing tape.
-
-### The YTD trade files
-
-The Simulator's second data source is the operator's own trade record, kept on
-disk under the exchange history bucket. One file holds one exchange, one symbol
-and one year. Each file names its exchange inside itself, not only in its
-filename, so a file that is moved or renamed still says where its trades came
-from.
-
-`src/exchange/ytd_trade_store.py` — what one row holds
-
-```python
-@dataclass
-class YtdTrade:
-    """One fill: ``id``, ``ts_ms``, ``side``, ``amount``, ``price``, ``cost``
-    and ``fee``."""
-
-    id: str
-    ts_ms: int
-    side: str
-    amount: float
-    price: float
-    cost: float
-    fee: float
-    fee_currency: str
-```
-
-Beside the rows, each file carries a schema version, the time of the import, and
-one entry per export that contributed rows. That entry names the export file and
-its digest, so a file that grew over two imports records both. A MANIFEST beside
-the files indexes every one of them with its row count and its date span.
-
-`src/exchange/ytd_trade_store.py` — the provenance on each file
-
-```python
-@dataclass
-class ImportSource:
-    """One import that contributed rows: ``file``, ``sha256`` and ``rows_added``."""
-
-    file: str
-    sha256: str
-    imported_at: str
-    rows_added: int
-```
-
-### The columns the import requires
-
-The record arrives as a transactions CSV exported from the exchange. The import
-reads nine columns and refuses a file missing any one of them, naming which.
-Notes, sender address and recipient address are never carried in.
-
-`src/exchange/ytd_csv_import.py` — the required columns
-
-```python
-REQUIRED_COLUMNS: tuple[str, ...] = (
-    COL_ID,
-    COL_TIMESTAMP,
-    COL_TYPE,
-    COL_ASSET,
-    COL_QUANTITY,
-    COL_PRICE_CURRENCY,
-    COL_PRICE,
-    COL_SUBTOTAL,
-    COL_FEES,
-)
-```
-
-The transaction type decides the side. Buys and sells are kept; reward income,
-deposits and withdrawals are counted and dropped, because they are not trades
-and must never reach a validation run as though they were. The asset and the
-price currency together give the pair. The quantity is negative on a sell in the
-export, so its sign is checked against the type and then the magnitude is
-stored.
-
-A second import of an overlapping export adds only the rows whose id is new. A
-file that gains nothing is not rewritten at all.
-
-### One column map per exchange export
-
-The nine columns above are Coinbase's. Each exchange writes its own export, so
-the import carries one column map per exchange, chosen by the exchange id the
-import is given. A map names the export's column for each field of a trade,
-its buy and sell type strings, the number of rows above its header, the form
-of its timestamps and the currency marks on its money cells. Every map lands
-on the same trade fields and the same file, so Generate From YTD reads one
-format whichever exchange wrote the export.
-
-`src/exchange/ytd_csv_import.py` — the map
-
-```python
-@dataclass(frozen=True)
-class ExportColumnMap:
-    """The columns, type strings and text forms of one exchange's CSV export,
-    each column named for the ``YtdTrade`` field it fills."""
-
-    exchange_id: str
-    export_name: str
-    id_column: str
-    timestamp_column: str
-    type_column: str
-    asset_column: str
-    quote_column: str
-    quantity_column: str
-    price_column: str
-    cost_column: str
-    fee_column: str
-    buy_types: frozenset[str]
-    sell_types: frozenset[str]
-    header_scan_lines: int
-    timestamp_suffix_utc: str
-    timestamp_format: str
-    money_prefixes: str
-    dropped_columns: tuple[str, ...] = ()
-```
-
-Coinbase's map holds the nine columns, the two type sets, the twenty header
-rows, the timestamp suffix and the currency marks the import read before the
-maps existed, so a Coinbase export writes the same files it always did. A map
-is written from a sample export on disk and never from documentation. An
-exchange with no map is refused at import by name, with a line saying a
-sample export is needed, and nothing is written.
-
-`src/exchange/ytd_csv_import.py` — the registry and the refusal
-
-```python
-EXPORT_MAPS: dict[str, ExportColumnMap] = {COINBASE_MAP.exchange_id: COINBASE_MAP}
-
-
-def export_map_for(exchange_id: str) -> ExportColumnMap:
-    """Return ``EXPORT_MAPS[exchange_id]``, refusing an ``exchange_id`` with no
-    map by name."""
-```
-
-```
-no column map for exchange 'kraken': a sample kraken export is needed before its map is written. Maps exist for: ['coinbase'].
-```
-
-### The exchanges and their sample exports
-
-One row per exchange Acervator connects to. A map exists for Coinbase alone,
-written from the operator's own transactions export. No other sample export is
-on hand, and the export each of the others would map is not named until its
-sample arrives, because a name taken from documentation is a guess.
-
-```
-exchange     map       sample export on hand                        export it maps
-coinbase     present   yes, the operator's own transactions export   Coinbase transactions export
-binance      none      no                                           not named until a sample arrives
-kraken       none      no                                           not named until a sample arrives
-kucoin       none      no                                           not named until a sample arrives
-bybit        none      no                                           not named until a sample arrives
-okx          none      no                                           not named until a sample arrives
-gateio       none      no                                           not named until a sample arrives
-bitget       none      no                                           not named until a sample arrives
-huobi        none      no                                           not named until a sample arrives
-mexc         none      no                                           not named until a sample arrives
-bitfinex     none      no                                           not named until a sample arrives
-gemini       none      no                                           not named until a sample arrives
-poloniex     none      no                                           not named until a sample arrives
-bitstamp     none      no                                           not named until a sample arrives
-cryptocom    none      no                                           not named until a sample arrives
-```
-
-### A period with no rows is a gap
-
-Where the export carries no trade for a symbol in a period the export covers,
-that period is written to a gap record. Nothing is invented to fill it.
-
-`src/exchange/ytd_trade_store.py` — the gap record
-
-```python
-@dataclass
-class TradeGap:
-    """One period between ``since_ms`` and ``until_ms`` that no row covers."""
-
-    exchange_id: str
-    symbol: str
-    year: int
-    since_ms: int
-    until_ms: int
-    reason: str
-    checked_at: str
-```
-
-### Reading the trade files
-
-The Simulator reads these files through one class, on the same rule as the
-tablet reader. It answers six names and refuses every other name itself.
-
-`src/simulator/ytd_trade_source.py` — the refusal
-
-```python
-    def __getattr__(self, name: str):
-        """Refuse every name outside ``READ_NAMES``."""
-        raise SendRefused(
-            f"YtdTradeSource answers {READ_NAMES} and cannot {name!r}. "
-            "The Simulator receives and asks; it sends nothing."
-        )
-```
-
-### What the import run measured
-
-The operator's own export was read into a throwaway directory. The figures below
-come from that run.
-
-```
-export read     5,798 rows, 13 columns
-kept            5,766 trades - 3,229 buys, 2,537 sells
-dropped         32 - reward income 16, deposits 15, withdrawals 1
-written         39 files, one per symbol, all of them 2026
-range           2026-04-12 to 2026-09-07
-gaps recorded   76
-second import   0 rows added, 39 files byte-identical
-```
-
-### What one run measured
-
-Both builds were opened and read off the drawn window and the drawn page. The
-figures below come from that run.
-
-```
-tablet          XRP_1d_2026_coinbase, 250 candles, 2026-01-01 to 2026-09-07
-window          100 candles
-tablets listed  411
-votes           5 bullish, 2 bearish, 5 neutral
-Qt to React     32 of 32 values matched, with a tablet and again with none
-```
-
-## What the tab holds today
+## The widget the rebuild replaced
+
+Every section from here to the end of the page describes a screen that is
+gone: the empty Sim tab, the original Simulator widget with Fleet Replay,
+Nuclear Mode and the Bridge, and the first clone units 7 and 8 replaced. Each
+is kept whole as the record of what the rebuild replaced, and nothing in them
+describes the tab that draws.
+
+## The empty Sim tab before the fork
 
 The Simulator is removed. The tab is named Sim, it opens first on the bar, and
 it draws an empty panel with a heading and two sentences. Nothing behind it
@@ -4779,220 +5901,6 @@ The Simulator rebuild removed this file; it is not in the tree.
         COLUMNS = ("Symbol", "Target USD", "Sim Trades")
 ```
 
-## The candles
-
-Stone Tablets are the history and a replay only reads them. The registry stores
-one timeframe and derives every other from it.
-
-`src/trading/stone_tablets/registry.py` — `NATIVE_TIMEFRAME`
-
-```python
-NATIVE_TIMEFRAME: str = "5m"
-"""Timeframe every tablet stores; ``_rollup`` derives all the others."""
-```
-
-Three functions in `src/trading/stone_tablets/storage.py` move tablets between
-disk and memory.
-
-| Function | What it does |
-| -------- | ------------ |
-| `read_tablet` | Loads one tablet from disk |
-| `write_tablet` | Writes one back |
-| `read_manifest` | Carries the index of what exists |
-
-The tape a replay hands the bots does not roll up. Fleet Replay asks the
-registry for the native timeframe only, and the tape refuses any other unless
-the caller supplied that series when the tape was built, which Fleet Replay does
-not do.
-
-`src/exchange/tablet_backend.py` — `TabletBackend.fetch_ohlcv`
-
-```python
-        key = (str(symbol), tf)
-        rows = self._tf_rows.get(key)
-        if rows is None:
-            raise ValueError(
-                f"no {tf} series for {symbol!r}. Serving the native "
-                f"{NATIVE_TIMEFRAME} series instead would make every "
-                f"timeframe agree with itself; supply tf_rows[{key!r}]."
-            )
-```
-
-## Portfolio Battery history
-
-The thirty-five portfolios from the historical archive are now named in code,
-and their sixty-three symbols are what the new mode runs over. Each one carries
-its symbols, an equal weight for every symbol, and the archive it was read out
-of.
-
-`src/simulator/portfolios.py` — one portfolio
-
-```python
-    "CRYPTO_BLUE": Portfolio(
-        name="CRYPTO_BLUE",
-        symbols=("BTC", "ETH", "BNB"),
-        description="Large-cap crypto — institutional grade",
-    ),
-```
-
-Their price history is real, and it is kept apart from the live fleet's. The
-tablets a replay reads sit under one root; the battery's sit under a second one,
-and a battery build never opens the first.
-
-`src/trading/stone_tablets/ra_paths.py` — the second root
-
-```python
-_RA_ROOT: Path = Path.home() / ".acervator_ra_tablets"
-```
-
-Two sources fill it and neither needs a key. Crypto arrives through the adapter
-the fleet already uses, driven by the venue's own public candle endpoint.
-Everything else arrives through a second adapter beside it.
-
-`src/trading/stone_tablets/ra_fetcher.py` — the non-crypto adapter
-
-```python
-class YahooChartAdapter(ExchangeAdapter):
-    exchange_id = "yahoo"
-    chunk_limit = RA_CHUNK_DAYS
-    BASE_URL: str = "https://query1.finance.yahoo.com/v8/finance/chart"
-    SOURCE: str = "yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED"
-```
-
-Every tablet records where its numbers came from and when they were fetched, and
-the builder refuses to write one without both. A price with no source is what
-made the archive's own figures worthless.
-
-`src/trading/stone_tablets/ra_fetcher.py` — the refusal
-
-```python
-        resolved = source or str(getattr(adapter, "SOURCE", ""))
-        if not resolved:
-            raise ValueError(
-                f"{type(adapter).__name__} carries no SOURCE; pass source= naming "
-                f"the endpoint the candles come from. {adapter.exchange_id!r} is "
-                f"an exchange id, not provenance."
-            )
-```
-
-Where a source has nothing, nothing is written in its place. The missing days
-are recorded as missing, in their own file beside the tablets.
-
-`src/trading/stone_tablets/ra_fetcher.py` — what a missing period records
-
-```python
-@dataclass
-class TabletGap:
-    """One requested period a source returned no rows for."""
-
-    asset: str
-    exchange_id: str
-    timeframe: str
-    year: int
-    since_ms: int
-    until_ms: int
-    reason: str
-    checked_at: str
-```
-
-Nothing runs the bot logic over these tablets yet, and no screen shows them.
-That is the next unit.
-
-In development.
-
-## Portfolio Battery coverage
-
-Every symbol in every portfolio has real daily prices on disk. No portfolio
-names a period of its own, so all six archive periods apply to all thirty-five
-of them, and the span asked for is 2020 to 2026.
-
-`src/trading/stone_tablets/ra_import.py` — the years asked for
-
-```python
-def _archive_years() -> tuple[int, ...]:
-    """Return every calendar year ``PERIODS`` touches, ascending."""
-    years: set[int] = set()
-    for start, end in PERIODS.values():
-        years.update(range(int(start[:4]), int(end[:4]) + 1))
-    return tuple(sorted(years))
-```
-
-A symbol reaches one source or the other by what it is. A coin the crypto venue
-never listed falls to the second source instead of being left empty, and every
-tablet records which one served it.
-
-`src/trading/stone_tablets/ra_import.py` — the routing
-
-```python
-def route_for(symbol: str) -> SymbolRoute:
-    """Return ``symbol``'s route, crypto to Coinbase and everything else to Yahoo."""
-    upper = symbol.upper()
-    if is_crypto(upper):
-        return SymbolRoute(upper, COINBASE_SOURCE, YAHOO_CRYPTO_SOURCE)
-    return SymbolRoute(upper, YAHOO_SOURCE)
-```
-
-The import reads its own result back off disk and says what it holds. A count
-on its own would not be an answer, so the statement carries every source with
-its fetch times and every period no source served.
-
-`python -m src.trading.stone_tablets.ra_import coverage` — the headline
-
-```
-SYMBOLS
-  asked for ......... 63
-  returned data ..... 60
-  tablets ........... 411
-  candles ........... 105336
-
-SOURCES
-  coinbase_exchange_candles_ONE_DAY: 71 tablets
-  yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED: 340 tablets
-```
-
-A share year is not a calendar year. The market shuts at weekends and on public
-holidays, and those days are recorded as missing rather than filled, so a share
-year holds about 250 days where a coin year holds every one.
-
-`python -m src.trading.stone_tablets.ra_import coverage` — a share and a coin
-
-```
-  SPY
-    2022    251 rows  2022-01-03..2022-12-30
-    2023    250 rows  2023-01-03..2023-12-29
-  BTC
-    2022    365 rows  2022-01-01..2022-12-31
-    2023    365 rows  2023-01-01..2023-12-31
-```
-
-A ticker that no longer reaches the company the archive meant is recorded as a
-finding, not as a failure. Three of the sixty-three return nothing at all, and
-what the endpoint answered is written down in place of a price.
-
-`~/.acervator_ra_tablets/GAPS.json` — a ticker that no longer trades
-
-```
-  CCIV   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
-  EXPR   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
-  IPOF   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
-```
-
-Three more symbols are short at one end. `BBBY` reaches a company first traded
-in July 2026 rather than the one the archive ran, and `MATIC` stops on
-14 October 2025 because the coin was renamed.
-
-`python -m src.trading.stone_tablets.ra_import coverage` — a symbol cut short
-
-```
-  MATIC  missing: 2026
-    2024    366 rows  2024-01-01..2024-12-31
-    2025    287 rows  2025-01-01..2025-10-14
-```
-
-Nothing runs the bot logic over these prices yet, and no screen shows them.
-
-In development.
-
 ## The validation criterion
 
 The Simulator is validated when the gates latch identically on the same data.
@@ -5103,447 +6011,6 @@ it is a placeholder.
             VotingEngine over it, labelled with the real bot's symbol
             so the panel stays stable across refreshes.
             """
-```
-
-## Validation Mode
-
-Validation takes each YTD trade, finds the historical candle its timestamp falls
-in, and reruns the gates on that candle. It then puts the gate row it latched
-beside the gate row the log recorded, one light at a time, over the nineteen
-lights the shared vocabulary names. A run passes when every light reads the
-same. It is never judged on profit and never on a trade count.
-
-`src/simulator/validation.py` — the criterion
-
-```python
-    @property
-    def latches_identically(self) -> bool:
-        """True while every light and both armed flags read the same."""
-        return (
-            not self.disagreed
-            and self.recorded_scrum_armed == self.rerun_scrum_armed
-            and self.recorded_fold_armed == self.rerun_fold_armed
-        )
-```
-
-### The two ways in
-
-Import Live Fleet clones the live running fleet from the bot_state load and
-keeps each bot's own id, so a recorded gate row belongs to a bot by that id.
-Generate From YTD scans the trade files and creates one new bot per pair that
-was traded. Those bots are new, they carry new ids, and they never wrote a gate
-row, so a recorded row belongs to one of them by exchange, symbol and the time
-window instead.
-
-```
-Import Live Fleet    38 bots, matched on bot id and time window
-Generate From YTD    39 bots, matched on exchange, symbol and time window
-```
-
-The two counts differ, and that is a fact about the two sources rather than a
-fault. A pair traded earlier in the year can have no live bot now, and a live
-bot can have traded nothing yet. Neither path invents a bot to close the gap.
-
-When more than one exchange is active the tab asks which one to use before it
-runs anything. One chooser serves both buttons.
-
-`src/simulator/fleet_source.py` — the chooser
-
-```python
-def exchange_choice(exchanges: list[str], chosen: str = "") -> dict:
-    """Whether the operator must pick an exchange, and which one is in force.
-
-    ``prompt`` is True while more than one exchange is active and ``chosen``
-    names none of them.
-    """
-```
-
-### It reports what it could not verify
-
-The tablets end on 1 August 2026 and the trade export runs to 7 September, so
-about five weeks of trades have no candle to snap to. Validation names that
-period and counts the entries on both sides of it. A count of verified trades
-with no denominator is exactly what this replaces.
-
-```
-3942 of 4904 YTD entries snapped to a candle; 962 could not be.
-after_last_candle: 905
-inside_gap: 57
-uncovered span 2026-08-01T18:52:58Z to 2026-09-07T21:46:48Z; the newest
-candle is 2026-08-01T18:35:00Z
-```
-
-### Which half of the rerun moves
-
-A candle supplies the price and the Bollinger reading. It cannot supply the
-bot's own state, so the delta, the tranche counts, the circuit breaker and every
-flag come from the row the log recorded. Each light says which half drove it, so
-a disagreement can be read back to its cause.
-
-```
-S/BB   F/BB   F/MID     the tablet candle
-S/LS   F/LS             the landing-strip override
-every other light       the recorded row
-```
-
-### What the first full run measured
-
-Every recorded reading the run checked was reproduced from the tablet exactly,
-but from a window sitting four hours behind the trade's own candle. The tablet
-prices are right: measured over one asset, 9,869 of 10,038 recorded prices sit
-inside the tablet candle covering their own moment. The tape is therefore sound,
-and the live reading it is compared against was taken from older candles than
-the ones that moment held.
-
-```
-38 bots, matched to a recorded gate row on bot id and time window.
-62 of 227 reruns latched every gate identically.
-3572 of 4313 gate lights agreed.
-60 of 60 recorded readings were reproduced exactly from the tablet.
-45 of them came from a window 50 candles (250 minutes) behind the trade's
-own candle.
-```
-
-## Back Test Mode
-
-Back Test runs the bot logic over a recorded tape. It walks each bot along its
-own Stone Tablet, feeds every window into the gates that run live, and records
-where a scrum and a fold latch. A latch that clears every gate then trades: the
-scrum sells the excess above the dollar target and the fold buys it back with
-the cash that scrum put aside.
-
-`src/simulator/back_test.py` — the one gate chain, shared with Validation
-
-```python
-from .validation import (
-    BB_MIDLINE,
-    MIN_RERUN_CANDLES,
-    RERUN_WINDOW_CANDLES,
-    bb_reading,
-    candle_interval_ms,
-    iso_stamp,
-    latch,
-    tablet_for,
-)
-```
-
-The mode selector sits above the two button rows, and the result pane below the
-Replay Log changes with it.
-
-```
-Mode: Validation    Import Live Fleet   Generate From YTD
-Mode: Back Test     Import Live Fleet   Create New Bots
-```
-
-### The two ways into a back test
-
-Import Live Fleet clones the live running fleet from the bot_state load, the
-same reader Validation uses. Create New Bots makes one simulated bot on the
-Stone Tablet the selector is showing, taking its target balance and its
-scrumming interval from the Bot Wizard's own defaults.
-
-`src/gui/main_tabs/simulator_tab_surface.py` — the new bot the selector defines
-
-```python
-def new_bot_specs(entry) -> list[dict]:
-    """One new-bot spec for ``entry``'s asset, on the Bot Wizard's own
-    defaults."""
-```
-
-### One clock
-
-Every bot ticks on one cadence. The step is sized once from the longest tape in
-the run, so a short tablet and a long one are read on the same clock rather than
-each on its own.
-
-```python
-def shared_step(entries: Sequence[Any], ticks_per_bot: int, max_candles: int) -> int:
-    """One step in candles, sized off the longest tape so every bot ticks
-    together.
-
-    A ``ticks_per_bot`` of zero, or no entry, answers one.
-    """
-```
-
-### What one back test measured
-
-The imported fleet, read on 8 September 2026 from the live Stone Tablets.
-
-```
-38 of 38 bots ran over 1610472 tablet candles.
-2026-01-01T00:00:00Z to 2026-08-01T18:35:00Z, 5272 gate-chain evaluations.
-58 scrum latches and 55 fold latches.
-58 scrum sells and 55 fold buys filled, $38.02 in fees.
-```
-
-Each row names the bot, its tablet, how much tape it read, how often the gates
-latched, how many trades filled, the coin it gained or gave up and the cash it
-now holds. Units alone do not answer whether a cycle accumulated, because a bot
-that sold into a rise holds fewer coins and more cash.
-
-```
-Bot ID | Symbol | Tablet | Candles | Ticks | Scrum / Fold latched |
-Scrum / Fold filled | Units gained | Cash held
-```
-
-### A missing tablet is named, not fetched silently
-
-A bot whose asset has no tablet is listed with no tape and counted in the run's
-own lines. Filling one is a call for information and goes through the same gap
-filler the tablet build uses, into whichever tablet root the caller names.
-
-`src/simulator/back_test.py` — the fetch, and the answer with no connector
-
-```python
-async def download_missing(
-    pairs: Sequence[tuple[str, str]],
-    connector: Any,
-    since_ms: int,
-    until_ms: Optional[int] = None,
-    quote_currency: str = "USD",
-    registry: Any = None,
-) -> list[Any]:
-```
-
-Driven into a throwaway root with a recorded tape, it wrote one tablet of 701
-candles and a manifest, and the live tablet root kept its 407 files.
-
-```
-connector calls: 3
-report: ZZZTEST coinbase chunks_ok 3 errors 0 candles 701
-entry: ZZZTEST coinbase 5m 701 candles read back: 701
-live root unchanged: True 407
-```
-
-## Portfolio Battery Mode
-
-The third mode runs the thirty-five archive portfolios over their own price
-history. Every symbol streams its daily bars through the same gate chain a live
-bot ticks, at three timeframes, and each result is set against what holding that
-symbol untraded would have paid over the same span.
-
-`src/simulator/portfolio_battery.py` — the three timeframes
-
-```python
-#: The timeframes a daily tablet builds, spelled as ``HTF_TIMEFRAMES`` spells
-#: them.
-TIMEFRAMES = ("1d", "1w", "1M")
-```
-
-### The baseline comes off the same walk
-
-Buy and hold is not a figure carried over from the archive. It is the capital
-the symbol opened with, carried from the opening price to the closing price of
-the same walk, so the two sides cannot read different prices.
-
-`src/simulator/portfolio_battery.py` — the baseline
-
-```python
-    @property
-    def baseline_usd(self) -> float:
-        """``capital_usd`` carried from ``start_price`` to ``end_price``,
-        untraded."""
-        if self.start_price <= 0.0:
-            return 0.0
-        return self.capital_usd * self.end_price / self.start_price
-```
-
-### One gate chain, fed a different source
-
-The battery defines no gate of its own. It hands its bars to the Back Test
-walker, which builds the shipped scrum and fold chains and reads their answer.
-
-`src/simulator/portfolio_battery.py` — the walk
-
-```python
-    bot = battery_bot(asset, exchange_id, timeframe, capital_usd)
-    result = walk(bot, candles_from_raw(bars), walk_step(len(bars), ticks))
-```
-
-### A weekly and a monthly bar are folded, never invented
-
-The tablets hold one bar a day. A coarser bar is the calendar bucket its days
-fall in: the first open, the highest high, the lowest low, the last close and
-the summed volume. A trailing bucket is kept as it stands rather than padded out.
-
-`src/simulator/portfolio_battery.py` — one folded bar
-
-```python
-def fold_bucket(rows: Sequence[Sequence[float]]) -> list[float]:
-    """One bar from ``rows``: first open, highest high, lowest low, last close,
-    summed volume."""
-    return [
-        float(rows[0][0]),
-        float(rows[0][1]),
-        max(float(one[2]) for one in rows),
-        min(float(one[3]) for one in rows),
-        float(rows[-1][4]),
-        sum(float(one[5]) for one in rows),
-    ]
-```
-
-### Three symbols hold no tablet
-
-CCIV, IPOF and EXPR stopped trading and no source served them. A portfolio
-holding one runs on the symbols that exist and reports the share of its capital
-that reached no tape. That share is a column on every row, beside the count of
-symbols that ran.
-
-`src/simulator/portfolio_battery.py` — the missing share
-
-```python
-    @property
-    def missing_weight(self) -> float:
-        """``missing_usd`` as a share of every symbol's ``capital_usd``."""
-        whole = sum(one.capital_usd for one in self.runs)
-        return self.missing_usd / whole if whole > 0.0 else 0.0
-```
-
-### The two ways into a battery
-
-The two rows the removed strips left carry one portfolio and all of them. A
-portfolio selector and a span selector sit under the mode selector, and the span
-list is the archive's six periods followed by the whole tape.
-
-`src/gui/main_tabs/simulator_tab_surface.py` — the two ways in
-
-```python
-BATTERY_ROWS: tuple[dict[str, Any], ...] = (
-    {
-        "name": NEWS_TICKER_ROW,
-        "height_px": 24,
-        "action": RUN_PORTFOLIO_ACTION,
-        "text": RUN_PORTFOLIO_TEXT,
-        "button_name": button_name(RUN_PORTFOLIO_ACTION),
-    },
-    {
-        "name": DATA_POOL_ROW,
-        "height_px": 18,
-        "action": RUN_EVERY_PORTFOLIO_ACTION,
-        "text": RUN_EVERY_PORTFOLIO_TEXT,
-        "button_name": button_name(RUN_EVERY_PORTFOLIO_ACTION),
-    },
-)
-```
-
-### What one battery measured
-
-SPAC_BUST over the archive's Apr24-Apr25 period, driven through the Qt tab.
-Three of its five symbols have a tablet. The accumulation logic ended ahead of
-buy and hold at the daily bar and at the weekly bar. The monthly bar holds
-twelve bars, under the thirty the Bollinger window and the voting engine need,
-so it reports no run rather than a result.
-
-```
-SPAC_BUST  1d  3 of 5  756 bars  669 ticks  35 trades
-           buy and hold $390.75   accumulation $415.60   +24.85 (+6.36%)
-SPAC_BUST  1w  3 of 5  159 bars   72 ticks   6 trades
-           buy and hold $458.26   accumulation $478.74   +20.48 (+4.47%)
-SPAC_BUST  1M  0 of 5    0 bars    0 ticks   0 trades   missing weight 100%
-
-missing: IPOF (no_tablet), CCIV (no_tablet)
-7 recorded gaps fall inside the span
-```
-
-Every portfolio over the whole tape reads 189 symbol runs in 26 seconds. Twelve
-of the thirty-five ended ahead of their own buy and hold at one timeframe or
-more.
-
-### The run from the corner
-
-Run Portfolio opens a chooser of the same shape as the exchange chooser, with a
-portfolio row listing the thirty-five names and a span row listing the seven
-spans; Run Every Portfolio opens it with the span row alone. On Ok the tab gives
-each portfolio its bots. Where the held fleet carries one scrumming bot per
-symbol of the portfolio, on the venue the run reads that symbol from, with a
-Target Balance above zero, those bots run at their own Target Balances and gate
-settings. Otherwise one bot is generated per symbol at the default Target
-Balance of $500 times the portfolio's mix share; every archive portfolio's mix
-is equal, so each bot reads $500. A portfolio that records the size of each
-position would run at those sizes; no archive entry records one.
-
-`src/simulator/portfolio_battery.py` — each bot's Target Balance
-
-```python
-def symbol_targets(
-    portfolio: Portfolio, default_usd: float = DEFAULT_TARGET_USD
-) -> dict[str, float]:
-    """Each symbol's Target Balance: its ``positions_usd`` size when
-    ``sizes_known``, else its ``weights`` share of ``default_usd`` per symbol,
-    to the cent."""
-    if portfolio.sizes_known:
-        sizes = portfolio.positions_usd or {}
-        return {symbol: round(float(sizes[symbol]), 2) for symbol in portfolio.symbols}
-    if portfolio.mix is None:
-        return {symbol: float(default_usd) for symbol in portfolio.symbols}
-    whole = float(default_usd) * len(portfolio.symbols)
-    weights = portfolio.weights
-    return {symbol: round(whole * weights[symbol], 2) for symbol in portfolio.symbols}
-```
-
-The run's bots become the held fleet: a bot already held under its id at the
-same symbol, venue and Target Balance keeps its record, a generated bot is held
-under the origin `battery`, and every other held record is dropped. The
-Scrumming Bots table then draws the run's bots and the strip's Spendable reads
-the run's budget, the sum of their Target Balances, before the run starts.
-
-`src/simulator/fleet_source.py` — the run's bots become the held fleet
-
-```python
-    def hold_battery_fleet(self, bots: Sequence[SimBot]) -> list[SimBot]:
-```
-
-The run itself walks on a worker thread, as the Market Inspector's Scan Now
-does, so the window keeps answering; each portfolio's reading reaches the
-Activity Log as it lands, then the run's own lines and the report line. A
-second press while a run is in flight writes one line and starts nothing. A
-symbol with no tablet or no cited unit rule is missing weight and named in the
-report, and the run proceeds over the rest.
-
-`src/gui/simulator/sim_trading_tab.py` — the worker thread
-
-```python
-        self._battery_thread = threading.Thread(
-            target=self._compute_battery,
-            args=(plan, span),
-            name="sim-portfolio-battery",
-            daemon=True,
-        )
-        self._battery_thread.start()
-```
-
-### What the Battery flow measured
-
-Before, in both builds over a scratch home holding a stored fleet of two coinbase
-bots and five 2022 tablets, a corner press on Run Portfolio opened no chooser and
-wrote one refusal line, and the runner driven directly walked every symbol at
-$200 with the outcome line reading `not computed`. After, Run Portfolio on
-CRYPTO_BLUE over 2022 opened the chooser, held three bots at $500 each with
-Spendable reading $1,500.00, ran on the worker thread, wrote one report whose
-Battery section read `1d improved, 1w defended, 1M not run` with BNB named as
-`no_tablet` and its $500 as missing weight, and wrote the report line; BOGLEHEAD
-over the same span read the same words with all three symbols run; Run Every
-Portfolio held sixty-three bots at $31,500.00 and wrote one report. A planted
-portfolio with a 60/30/10 mix read Targets of $900, $450 and $150; a stored fleet
-of BTC, ETH and BNB on coinbase at $1,000, $750 and $250 ran at those Targets
-with the report naming the bots loaded from the held fleet. Over a copy of the
-whole tape, Run Every Portfolio took 24.3 seconds in Qt and 24.9 in React while
-a 30 ms timer kept ticking with a longest gap of 0.342 and 0.125 seconds; the
-same run on the GUI thread read a gap of 1.035 seconds over a 1.32 second run.
-Every scratch file hashed equal before and after every press, no bot was
-constructed and no socket left loopback.
-
-### It is not a Monte Carlo
-
-A Monte Carlo samples many paths and reports the spread of what they pay. This
-mode reads one recorded path per symbol, so it reports one outcome per timeframe
-and no distribution. Nothing on the screen carries a percentile.
-
-`src/simulator/portfolio_battery.py` — the spans, one recorded path each
-
-```python
-#: Every span a run may be asked for: the archive's six, and the whole tape.
-SPANS = (FULL_SPAN,) + tuple(PERIODS)
 ```
 
 ## Nuclear Mode
@@ -6004,35 +6471,155 @@ sides of it.
 uncovered span 2026-08-01T18:52:58Z to 2026-09-07T21:46:48Z
 ```
 
-## How the Sim tab reaches the bar
+## The first clone, before the fork
 
-`SimulatorTabMixin` builds the tab and inserts it into the window's tab book.
-The builder catches every error, writes one warning line, and leaves the tab
-off the bar. A tab that asks the panel for a value the panel does not publish
-is therefore a missing tab, not a crash the operator can see.
+The Sim tab is a clone of the Trading tab, and its data source is the Stone
+Tablets on disk. It carries the bot list, the Indicator Voting Panel, and a
+second layer holding the VWAP window over the tablet playback window. One
+button flips the panel area between those two layers.
 
-`src/gui/main_tabs/simulator_tab.py` — the builder
+`src/gui/main_tabs/simulator_tab_surface.py` — the two layers and the button
 
 ```python
-def _build_simulator_tab(self) -> None:
-    """Insert the Sim tab at ``SIMULATOR_BUILD_INDEX``."""
-    try:
-        from ..variant_surface import SIMULATOR, surface_class
+LAYER_INDICATORS = "indicators"
+LAYER_PLAYBACK = "playback"
+LAYERS = (LAYER_INDICATORS, LAYER_PLAYBACK)
 
-        self._simulator_tab = surface_class(SIMULATOR)()
-        self._main_tabs.insertTab(
-            SIMULATOR_BUILD_INDEX, self._simulator_tab, HEADING
+FLIP_BUTTON_TEXT = {
+    LAYER_INDICATORS: "Show Playback",
+    LAYER_PLAYBACK: "Show Indicators",
+}
+```
+
+One model is built from the tablet, and both builds draw it.
+
+```mermaid
+flowchart LR
+    files[RA-StoneTablet files] --> source[TabletSource]
+    source --> model[simulator_tab_surface]
+    model --> qt[SimulatorTabQt]
+    model --> react[simulator_tab.js]
+```
+
+### It receives and asks. It never sends.
+
+The Simulator's whole data path is one class that reads tablet files. It holds
+no venue and defines no write. It answers five names and refuses every other
+name itself, so a send cannot be expressed through it.
+
+`src/simulator/tablet_source.py` — the refusal
+
+```python
+    def __getattr__(self, name: str):
+        """Refuse every name outside ``READ_NAMES``."""
+        raise SendRefused(
+            f"TabletSource answers {READ_NAMES} and cannot {name!r}. "
+            "The Simulator receives and asks; it sends nothing."
         )
-    except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
-        logger.warning("Sim tab unavailable: %s", exc)
-        self._simulator_tab = None
 ```
 
-The window builds nine tabs. Sim takes the first slot and Paper the second.
-The Accumulation tab stays off the bar until the operator asks for it.
+Asked for nine venue calls — an order, a market buy, a cancellation, an edit, a
+withdrawal, a leverage change, a transfer, a tablet write and a save — it
+refused all nine and answered every read.
+
+### The columns are the Trading tab's own
+
+The bot list draws the ten columns the live table draws, and the same two fixed
+widths, because the surface imports them rather than restating them. A column
+added to the live table appears here with no second edit.
+
+```python
+from .bot_status_table_surface import COLUMN_LABELS, FIXED_WIDTHS
+```
+
+No simulated fleet exists yet, so the list holds no rows and says why. Import
+Live Fleet and Generate From YTD are what fill it, and both are later units.
+
+### One candle window, on both sides
+
+The live engine asks the venue for one hundred candles. The Simulator reads the
+last hundred rows off the tablet, so the indicator window is one number on both
+sides rather than two.
+
+```python
+#: The candle window live reads. ``ScrummingBot`` asks ``get_ohlcv`` for 100,
+#: and the Simulator reads the same count off the tablet.
+WINDOW_CANDLES = 100
+```
+
+The live engine now receives that hundred, and the newest row in it is the bar
+that just closed. The connector sends the count in the exchange library's count
+slot. Until this change it sent the count in the start-time slot and left the
+count slot empty, so the venue answered with a page of its own and the library
+kept the oldest 300 rows of it. Every indicator then read a window ending 50
+five-minute bars behind the price the gate compared it against. That is four
+hours and ten minutes.
+
+`src/exchange/ccxt_connector.py` — four arguments, each in its own slot
+
+```python
+data = await self._call_sync(
+    self._ex.fetch_ohlcv,
+    symbol,
+    timeframe,
+    None if since is None else int(since),
+    int(limit),
+)
+```
+
+The library's own slice was driven over 1,215 recorded five-minute pages. The
+window ended 50 bars early on every page before the change and on none after it.
+On 162 rows of the recorded gate log, the band latch differs between the stale
+window and the current one on 88.
+
+### The VWAP window
+
+VWAP is the published cumulative figure: typical price times volume, running,
+divided by running volume, where typical price is the average of the high, the
+low and the close. A point with no volume behind it yet carries nothing rather
+than a number.
+
+```python
+def vwap_series(candles: Sequence[Sequence[float]]) -> list[Optional[float]]:
+    """Cumulative ``sum(typical_price * volume) / sum(volume)`` per row.
+
+    A row whose cumulative volume is still zero carries None.
+    """
+```
+
+### The two strips that are not copied
+
+The crypto news ticker and the data pool line are not on this tab, and their
+code is not carried into it. A live news feed and a live cache-health line
+describe nothing a tablet reader does. The rows they held keep their height and
+hold nothing, and that space is where Import Live Fleet and Generate From YTD
+go.
+
+```python
+#: The rows the two strips held on the Trading tab, and the height each keeps.
+RESERVED_ROWS: tuple[dict[str, Any], ...] = (
+    {"name": "news_ticker_row", "height_px": 24},
+    {"name": "data_pool_row", "height_px": 18},
+)
+```
+
+### With no tablet on disk
+
+The tab draws an empty state and names what is missing. The panel reads
+`No TA data — No Stone Tablet on disk.`, the selector holds nothing, and both
+windows hold zero points. Nothing is invented in place of the missing tape.
+
+### What one run measured
+
+Both builds were opened and read off the drawn window and the drawn page. The
+figures below come from that run.
 
 ```
-Sim  Paper  Live  Charts  Inspector  Swarm  History  Status  Console
+tablet          XRP_1d_2026_coinbase, 250 candles, 2026-01-01 to 2026-09-07
+window          100 candles
+tablets listed  411
+votes           5 bullish, 2 bearish, 5 neutral
+Qt to React     32 of 32 values matched, with a tablet and again with none
 ```
 
 ### The line beside the voting panel title
@@ -6143,160 +6730,3 @@ charged = battery_payload_held or empty_battery(portfolio, span)
 Both builds pass the two values. Before this the idle payload named the
 defaults, so a chosen portfolio was lost until a run wrote it back.
 
-## The Simulator colour distinction is the theme's nigredo tone
-
-The Sim tab paints every ground darker than Live's, under the same theme. The
-tone is the theme's own ground tokens moved a quarter of the way to black;
-the accent, the text and the borders are the theme's. The derivation, its one
-fraction and the contrast arithmetic per theme are on the Settings page under
-[the Simulator's tone, nigredo](settings.md#the-simulators-tone-nigredo).
-
-Nothing on the tab names a colour for this. The Qt build marks the tab with one
-property, and the theme's stylesheet paints the tree it marks; the windows the
-tab opens are its children, so the chooser and the Bot Settings window paint in
-the tone too.
-
-`src/gui/simulator/sim_trading_tab.py` — the mark
-
-```python
-# The theme's nigredo_qss paints this tree, and the windows it parents.
-# A QWidget subclass paints its stylesheet ground only with this attribute.
-self.setProperty(TONE_PROPERTY, NIGREDO)
-self.setAttribute(Qt.WA_StyledBackground, True)
-```
-
-The React build marks its host the same way for the Qt windows it parents,
-and its page takes the tone twice: once at build, when `panel_html` hands the
-tone to the page chrome, and once per theme switch, when the window's repaint
-reads the tone off the web view. The design tokens the page embeds go through
-the same function: every token whose name, or whose alias target, starts with
-`SURFACE_` is a ground the page paints, and the host darkens it before the
-page reads it.
-
-`src/gui/simulator/sim_react_trading_tab.py` — the page side
-
-```python
-GROUND_NAME_PREFIX = "SURFACE_"
-
-
-def nigredo_design(model: dict) -> dict:
-    aliases = model.get("alias_targets", {})
-
-    def is_ground(name: str) -> bool:
-        return name.startswith(GROUND_NAME_PREFIX) or str(
-            aliases.get(name, "")
-        ).startswith(GROUND_NAME_PREFIX)
-```
-
-```python
-return page_html(
-    STYLE_ASSETS, (), page_body(), theme, (host_script(built, venues),), NIGREDO
-)
-```
-
-The two Sim windows drawn by React, the Bot Settings window and the wizard,
-hand the same tone to their page chrome and carry it on their web views.
-
-### What the tone reading measured
-
-The real window was built in each build over a scratch home with every socket
-but loopback refused, the theme switched five times through the Theme menu's
-own path, and the picture of the whole window grabbed with Live in front and
-again with Sim in front. The ground is the tab's own pixel at its top-left
-corner; the heading is the most common colour inside the Activity Log label,
-and the label's second colour is its text. At 1400 by 900, the window's floor:
-
-```
-theme             point            Live      Sim       Qt         Live      Sim       React
-cyberpunk_dark    ground           #0a0a0f   #08080b   differs    #0a0a0f   #08080b   differs
-cyberpunk_dark    heading ground   #0a0a0f   #08080b   differs    #0a0a0f   #08080b   differs
-cyberpunk_dark    heading text     #00ffcc   #00ffcc   same       #00ffcc   #00ffcc   same
-neon_light        ground           #f5f5fa   #b8b8bc   differs    #0a0a0f   #08080b   differs
-neon_light        heading ground   #f5f5fa   #b8b8bc   differs    #f5f5fa   #b8b8bc   differs
-classic_terminal  ground           #0a0a0a   #080808   differs    #0a0a0f   #08080b   differs
-classic_terminal  heading ground   #0a0a0a   #080808   differs    #0a0a0a   #080808   differs
-minimal_modern    ground           #fafafa   #bcbcbc   differs    #0a0a0f   #08080b   differs
-minimal_modern    heading ground   #fafafa   #bcbcbc   differs    #fafafa   #bcbcbc   differs
-glass_metal       ground           #1c1c24   #15151b   differs    #0a0a0f   #08080b   differs
-glass_metal       heading ground   #1c1c24   #15151b   differs    #1c1c24   #15151b   differs
-```
-
-Every Sim value is the Live value beside it through `toward_black` at 0.25.
-The same twenty rows read the same at 1920 by 1080. The heading text reads
-`#00ffcc` on every row in both builds, so the tone moved no text.
-
-The React ground column is the venue page's own ground, which is the design
-token `SURFACE_0` under every theme on Live and its darkened value on Sim; the
-page's outer ground, read at the web view's corner, follows the theme as the
-Qt ground does and darkens the same way. That split between the page's two
-grounds is Live's own, stated on the tabs page under the theme menu, and the
-tone keeps it.
-
-The header strip sits above every tab and takes no tone. Its ground read the
-theme's own value with Live in front and with Sim in front, on every theme, in
-both builds:
-
-```
-cyberpunk_dark  #0a0a0f   neon_light  #f5f5fa   classic_terminal  #0a0a0a
-minimal_modern  #fafafa   glass_metal #1c1c24
-```
-
-The windows the Sim opens read the tone at their own corner, both builds, every
-theme; the React Bot Settings window's page and the React wizard's page each
-read the same value as their frame:
-
-```
-theme             chooser   Bot Settings   wizard
-cyberpunk_dark    #08080b   #08080b        #08080b
-neon_light        #b8b8bc   #b8b8bc        #b8b8bc
-classic_terminal  #080808   #080808        #080808
-minimal_modern    #bcbcbc   #bcbcbc        #bcbcbc
-glass_metal       #15151b   #15151b        #15151b
-```
-
-The built bundles read the same way. Each variant was built, launched over an
-empty scratch home with every HTTP route pointed at a refused loopback port
-and Chromium's resolver mapped away, its window found by process id and sized
-to the floor, and Live then Sim brought to the front by a posted click on the
-tab bar. Off a capture of that window, under the stored default theme:
-
-```
-bundle   Live ground   Sim ground   Live heading text   Sim heading text   strip card, Live and Sim in front
-qt       #0a0a0f       #08080b      #00ffcc             #00ffcc            #16162a  #16162a
-react    #0a0a0f       #08080b      #00ffcc             #00ffcc            #12121a  #12121a
-```
-
-Two plants proved the reading can fail. With the fraction set to 0, every Sim
-value read equal to Live's, twenty rows per build. With the fraction set to 1,
-every Sim ground and every window read `#000000`. The plant was removed and
-the module compared byte for byte with its pre-plant digest. The scratch copy
-of the fleet file read the same digest before and after every one of the ten
-readings; a copy with one byte appended read a different digest, so the
-comparison reports a change.
-
-Before this change the same reading gave every Sim value equal to Live's, under
-every theme, in both builds: no distinction reached a pixel.
-
-### The skin dictionary carries the tone too
-
-The `SKIN` dictionary the surface serves puts its two ground entries through
-the same function, so a reader of the served payload gets the tone the tab
-paints. The block under [the skin tokens the sheet reads](#the-skin-tokens-the-sheet-reads)
-shows the ground entry as `ds.SURFACE_0`; it reads the darkened value now.
-
-`src/gui/main_tabs/simulator_tab_surface.py` — the two ground entries
-
-```python
-SKIN = {
-    "--sim-ground": toward_black(ds.SURFACE_0, NIGREDO_FRACTION),
-    "--sim-chart-ground": toward_black(ds.SURFACE_CHART, NIGREDO_FRACTION),
-```
-
-### The renders
-
-One pair per theme, Live beside Sim, in each build, at 1400 by 900, under
-`artifacts/u117/u27/` in the repository's ignored artifacts directory. The
-fraction each was taken at is 0.25, and it is one number in the theme engine.
-
-
-Back to [the subsystem index](README.md).
