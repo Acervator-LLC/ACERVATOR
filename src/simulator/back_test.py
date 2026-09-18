@@ -8,8 +8,11 @@ scrum and fold chains live runs, ``apply_scrum`` and ``apply_fold`` size each
 fill with the Live bot's own functions, and ``run`` walks each bot's tablet
 keeping units, cash and fold tranches under one ``funding``: Back Test from each
 bot's own scrum proceeds, Validation and Portfolio Battery from ``run_budget_usd``,
-the sum of the held Target Balances. ``missing_pairs`` names the tablets a run
-needs and ``download_missing`` fills them through the shipped ``GapFiller``.
+the sum of the held Target Balances. ``cited_rule_for`` names the unit rule a
+bot's class trades under on its venue, every fill is sized under it, and a bot
+with no cited rule is ``UNCITED_RULE`` and walks nothing. ``missing_pairs``
+names the tablets a run needs and ``download_missing`` fills them through the
+shipped ``GapFiller``.
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ from typing import Any, Optional, Sequence
 from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
+    WHOLE_UNITS,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -39,10 +43,13 @@ from ..trading.scrumming.sizing import (
     settle_fold_plan,
     target_delta_pct,
     target_delta_usd,
+    trim_fold_plan,
+    unit_rule,
     wallet_capped_spend_usd,
 )
 from ..trading.scrumming.sizing import estimated_fee_usd as fee_usd
 from .fleet_source import NEW_ORIGIN, SimBot
+from .portfolios import asset_class, trading_venue
 from .validation import (
     BB_MIDLINE,
     MIN_RERUN_CANDLES,
@@ -98,7 +105,14 @@ NO_TABLET = "no_tablet"
 SHORT_TABLET = "short_tablet"
 BACK_TESTED = "back_tested"
 
-BOT_OUTCOMES = (NO_TABLET, SHORT_TABLET, BACK_TESTED)
+#: The bot's class on its venue has no row in ``sizing.CITED_UNIT_RULES``, so
+#: ``run`` walks nothing for it.
+UNCITED_RULE = "uncited_rule"
+
+BOT_OUTCOMES = (NO_TABLET, SHORT_TABLET, BACK_TESTED, UNCITED_RULE)
+
+#: Why a whole-unit scrum or fold fills nothing: its dollars buy under one unit.
+BELOW_ONE_UNIT = "below one unit"
 
 #: Back Test: each bot's fold spends its own scrum proceeds and no more.
 FUNDED_BY_PROCEEDS = "proceeds"
@@ -169,6 +183,9 @@ class BotResult:
     fees_usd: float = 0.0
     first_ts_ms: int = 0
     last_ts_ms: int = 0
+    asset_class: str = ""
+    venue: str = ""
+    unit_rule: str = ""
 
     @property
     def units_gained(self) -> float:
@@ -184,6 +201,23 @@ class BotResult:
     def fold_trades(self) -> int:
         """How many trades in ``trades`` are a fold buy."""
         return sum(1 for one in self.trades if one.side == FOLD)
+
+
+def cited_rule_for(asset: str, exchange_id: str) -> tuple[str, str, Optional[str]]:
+    """``asset``'s class, the venue it trades that class on, and the rule
+    ``unit_rule`` cites for the pair, None when the pair has no row."""
+    class_name = asset_class(asset, exchange_id) or ""
+    venue = trading_venue(class_name, exchange_id)
+    return class_name, venue, unit_rule(class_name, venue)
+
+
+def uncited_rule_line(result: BotResult) -> str:
+    """The Activity Log line for one ``UNCITED_RULE`` result."""
+    return (
+        f"{result.bot_id}: {result.symbol} is class {result.asset_class or 'none'} "
+        f"on venue {result.venue or 'none'}, which has no cited unit rule; "
+        "not simulated."
+    )
 
 
 def new_bot(
@@ -382,16 +416,32 @@ def tape_context(
 
 
 def apply_scrum(
-    bot: SimBot, position: SimPosition, price: float, ts_ms: int, delta: float
+    bot: SimBot,
+    position: SimPosition,
+    price: float,
+    ts_ms: int,
+    delta: float,
+    rule: str,
 ) -> Optional[SimTrade]:
-    """Sell ``scrum_units`` of ``delta`` at ``price`` and queue the proceeds net
-    of ``estimated_fee_usd`` as one fold tranche, as ``_tick_execute_scrum``
-    books a sale over one lot.
+    """Sell ``scrum_units`` of ``delta`` at ``price`` under ``rule`` and queue
+    the proceeds net of ``estimated_fee_usd`` as one fold tranche, as
+    ``_tick_execute_scrum`` books a sale over one lot.
 
-    Nothing fills when ``position`` holds fewer units than the sell needs.
+    Nothing fills when ``position`` holds fewer units than the sell needs, or
+    when a whole-unit ``delta`` buys under one unit, which is logged.
     """
-    units = scrum_units(float(delta), float(price))
-    if units <= 0.0 or units > position.units:
+    units = scrum_units(float(delta), float(price), rule)
+    if units <= 0.0:
+        if rule == WHOLE_UNITS:
+            logger.info(
+                "%s: a scrum of $%.2f at %.8f is %s; nothing fills",
+                bot.bot_id,
+                abs(float(delta)),
+                float(price),
+                BELOW_ONE_UNIT,
+            )
+        return None
+    if units > position.units:
         return None
     notional = priced_usd(units, float(price))
     fee = estimated_fee_usd(notional, bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT)
@@ -443,16 +493,22 @@ def apply_fold(
     ts_ms: int,
     delta: float,
     funding: str = FUNDED_BY_PROCEEDS,
+    *,
+    rule: str,
 ) -> Optional[SimTrade]:
     """Rebuy the eligible tranches as ``_tick_execute_fold`` does: the tranches
     ``eligible_fold_tranches`` names under ``fold_rebuy_factor``, sorted highest
     ``initial_buy_price`` first, planned under ``cycle_growth_cap_usd`` by
     ``plan_fold_consumption``, spent as ``fold_spend_usd`` under ``fold_taper``,
-    booked as ``fold_units`` at ``price``, and settled by ``settle_fold_plan``.
+    booked as ``fold_units`` at ``price`` under ``rule``, and settled by
+    ``settle_fold_plan``.
 
     ``FUNDED_BY_PROCEEDS`` holds the spend to ``position.cash_usd`` through
     ``wallet_capped_spend_usd`` and ``FUNDED_BY_TARGETS`` caps nothing, while
-    ``delta`` sizes nothing here as it sizes nothing in ``_tick_execute_fold``.
+    ``delta`` sizes nothing here as it sizes nothing in ``_tick_execute_fold``,
+    and under ``WHOLE_UNITS`` the fold spends the whole units' price with
+    ``trim_fold_plan`` leaving the rest in the tranches, or fills nothing and
+    logs ``BELOW_ONE_UNIT`` when the spend buys under one unit.
     """
     del delta
     fee_pct = bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT
@@ -481,7 +537,21 @@ def apply_fold(
         spend = wallet_capped_spend_usd(spend, position.cash_usd)
     if spend <= 0.0:
         return None
-    units = fold_units(spend, float(price))
+    units = fold_units(spend, float(price), rule)
+    if units <= 0.0:
+        if rule == WHOLE_UNITS:
+            logger.info(
+                "%s: a fold of $%.2f at %.8f is %s; nothing fills",
+                bot.bot_id,
+                spend,
+                float(price),
+                BELOW_ONE_UNIT,
+            )
+        return None
+    if rule == WHOLE_UNITS:
+        bought_usd = priced_usd(units, float(price))
+        plan = trim_fold_plan(plan, spend - bought_usd)
+        spend = bought_usd
     fee = estimated_fee_usd(spend, fee_pct)
     position.units += units
     position.cash_usd -= spend
@@ -501,11 +571,11 @@ def apply_fold(
     )
 
 
-def opening_position(bot: SimBot, price: float) -> SimPosition:
-    """A ``SimPosition`` worth exactly ``bot.target_usd`` at ``price``, the
-    ``fold_units`` the initial entry's buy of the target books."""
+def opening_position(bot: SimBot, price: float, rule: str) -> SimPosition:
+    """A ``SimPosition`` worth ``bot.target_usd`` at ``price`` under ``rule``,
+    the ``fold_units`` the initial entry's buy of the target books."""
     target_usd = float(bot.target_usd or 0.0)
-    units = fold_units(target_usd, float(price)) if price > 0.0 else 0.0
+    units = fold_units(target_usd, float(price), rule) if price > 0.0 else 0.0
     return SimPosition(units=units, cash_usd=0.0, opening_price=float(price))
 
 
@@ -520,9 +590,12 @@ def walk(
     candles: Sequence[Any],
     step: int = 1,
     funding: str = FUNDED_BY_PROCEEDS,
+    *,
+    rule: str,
 ) -> BotResult:
     """Run ``bot`` over ``candles``, one gate-chain evaluation every ``step``
-    bars, each fold funded as ``funding`` says."""
+    bars, each fold funded as ``funding`` says and every fill sized under
+    ``rule``."""
     from ..trading.ta_engine import VotingEngine
 
     if len(candles) < MIN_CANDLES:
@@ -532,10 +605,11 @@ def walk(
             tablet_key="",
             outcome=SHORT_TABLET,
             candles_read=len(candles),
+            unit_rule=rule,
         )
     engine = VotingEngine()
     timeframe = bot.ta_timeframe or DEFAULT_TIMEFRAME
-    position = opening_position(bot, float(candles[MIN_CANDLES - 1].close))
+    position = opening_position(bot, float(candles[MIN_CANDLES - 1].close), rule)
     start_units = position.units
     trades: list[SimTrade] = []
     scrum_latched = 0
@@ -554,10 +628,12 @@ def walk(
         filled = None
         if armed["scrum_armed"]:
             scrum_latched += 1
-            filled = apply_scrum(bot, position, price, stamp, context.delta)
+            filled = apply_scrum(bot, position, price, stamp, context.delta, rule)
         elif armed["fold_armed"]:
             fold_latched += 1
-            filled = apply_fold(bot, position, price, stamp, context.delta, funding)
+            filled = apply_fold(
+                bot, position, price, stamp, context.delta, funding, rule=rule
+            )
         if filled is not None:
             trades.append(filled)
             fees += filled.fee_usd
@@ -579,6 +655,7 @@ def walk(
         fees_usd=fees,
         first_ts_ms=int(candles[0].timestamp),
         last_ts_ms=int(candles[-1].timestamp),
+        unit_rule=rule,
     )
 
 
@@ -617,15 +694,22 @@ class BackTestRun:
             "fold_trades": sum(one.fold_trades for one in ran),
             "fees_usd": sum(one.fees_usd for one in ran),
             "missing_tablets": len(self.missing),
+            "uncited_rule": len(self.uncited),
         }
 
     @property
+    def uncited(self) -> list[BotResult]:
+        """Every result whose ``outcome`` reads ``UNCITED_RULE``."""
+        return [one for one in self.results if one.outcome == UNCITED_RULE]
+
+    @property
     def lines(self) -> list[str]:
-        """The fleet, the tape span and what latched, in the pane's own
-        order."""
+        """The fleet, the tape span, what latched and each bot refused for an
+        uncited rule, in the pane's own order."""
         read = self.summary
+        refused = [uncited_rule_line(one) for one in self.uncited]
         if not read["bots_run"]:
-            return ["No bot reached a Stone Tablet with enough candles."]
+            return ["No bot reached a Stone Tablet with enough candles."] + refused
         first = min(one.first_ts_ms for one in self.ran if one.first_ts_ms)
         last = max(one.last_ts_ms for one in self.ran if one.last_ts_ms)
         out = [
@@ -643,7 +727,7 @@ class BackTestRun:
                 f"{len(self.missing)} tablet(s) missing: "
                 + ", ".join(f"{asset} on {venue}" for asset, venue in self.missing)
             )
-        return out
+        return out + refused
 
 
 def adapter_for(exchange_id: str, connector: Any) -> Any:
@@ -699,9 +783,10 @@ def run(
     """Walk every bot over its own tablet and report what the gates latched.
 
     ``max_candles`` caps how much of each tape is read, ``ticks_per_bot``
-    replaces ``step`` with one ``shared_step`` every bot ticks on, and
-    ``funding`` of ``FUNDED_BY_TARGETS`` reads ``run_budget_usd`` once here and
-    caps no fold.
+    replaces ``step`` with one ``shared_step`` every bot ticks on, ``funding``
+    of ``FUNDED_BY_TARGETS`` reads ``run_budget_usd`` once here and caps no
+    fold, and a bot whose ``cited_rule_for`` answers no rule is ``UNCITED_RULE``
+    and walks nothing.
     """
     from ..trading.indicators.types import candles_from_raw
 
@@ -719,6 +804,20 @@ def run(
     results: list[BotResult] = []
     interval_ms = 0
     for bot in bots:
+        class_name, venue, rule = cited_rule_for(bot.asset, bot.exchange_id)
+        if rule is None:
+            outcomes[UNCITED_RULE] += 1
+            results.append(
+                BotResult(
+                    bot_id=bot.bot_id,
+                    symbol=bot.symbol,
+                    tablet_key="",
+                    outcome=UNCITED_RULE,
+                    asset_class=class_name,
+                    venue=venue,
+                )
+            )
+            continue
         entry = tablet_for(entries, bot.asset, bot.exchange_id)
         if entry is None:
             outcomes[NO_TABLET] += 1
@@ -728,6 +827,9 @@ def run(
                     symbol=bot.symbol,
                     tablet_key="",
                     outcome=NO_TABLET,
+                    asset_class=class_name,
+                    venue=venue,
+                    unit_rule=rule,
                 )
             )
             continue
@@ -736,11 +838,20 @@ def run(
             raw = raw[-int(max_candles) :]
         if not interval_ms and len(raw) > 1:
             interval_ms = candle_interval_ms([int(one[0]) for one in raw])
-        walked = walk(bot, candles_from_raw(raw), step, funding)
+        walked = walk(bot, candles_from_raw(raw), step, funding, rule=rule)
         key = entry.file
         if key.endswith(TABLET_SUFFIX):
             key = key[: -len(TABLET_SUFFIX)]
-        results.append(BotResult(**{**walked.__dict__, "tablet_key": key}))
+        results.append(
+            BotResult(
+                **{
+                    **walked.__dict__,
+                    "tablet_key": key,
+                    "asset_class": class_name,
+                    "venue": venue,
+                }
+            )
+        )
         outcomes[walked.outcome] += 1
     return BackTestRun(
         exchange_id=exchange_id,
@@ -789,6 +900,7 @@ async def download_missing(
 
 __all__ = [
     "BACK_TESTED",
+    "BELOW_ONE_UNIT",
     "BOT_OUTCOMES",
     "BackTestRun",
     "BotResult",
@@ -805,12 +917,14 @@ __all__ = [
     "SCRUM",
     "SHORT_TABLET",
     "TA_CONFIDENCE_FLOOR",
+    "UNCITED_RULE",
     "WINDOW_CANDLES",
     "SimPosition",
     "SimTrade",
     "apply_fold",
     "apply_scrum",
     "bb_detect_thresholds",
+    "cited_rule_for",
     "download_missing",
     "fee_usd",
     "fold_taper",
@@ -825,5 +939,6 @@ __all__ = [
     "ta_direction",
     "tape_context",
     "trend_reading",
+    "uncited_rule_line",
     "walk",
 ]

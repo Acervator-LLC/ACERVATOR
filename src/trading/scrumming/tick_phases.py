@@ -10,6 +10,7 @@ from typing import Any, Callable, Optional
 from ..target_bands import at_target_dust_band
 from ..ta_engine import VotingEngine, candles_from_raw, detect_bb_proximity
 from .sizing import (
+    FRACTIONAL_UNITS,
     fold_cap_remaining_usd,
     fold_spend_usd,
     fold_units,
@@ -1128,7 +1129,7 @@ class TickPhaseMixin:
         _scrum_chain_result: Any,
     ) -> None:
         """Sell the authorised Target Delta and queue the proceeds as tranches."""
-        scrum_asset = scrum_units(delta, ticker.last)
+        scrum_asset = scrum_units(delta, ticker.last, FRACTIONAL_UNITS)
         try:
             self._emit_trade_fire_snapshot(
                 "scrum",
@@ -1668,7 +1669,7 @@ class TickPhaseMixin:
                     _mc_fold_exc,
                 )
 
-            buy_asset = fold_units(buy_cost, ticker.last)
+            buy_asset = fold_units(buy_cost, ticker.last, FRACTIONAL_UNITS)
             asset_at_scrum = sum(t["usd"] / t["ref"] for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             min_ref = min(t["ref"] for t in _eligible)
@@ -1707,7 +1708,7 @@ class TickPhaseMixin:
                     )
                 return True
 
-            buy_asset = fold_units(buy_cost, buy_fill)
+            buy_asset = fold_units(buy_cost, buy_fill, FRACTIONAL_UNITS)
             asset_at_scrum = sum(t["usd"] / t["ref"] for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             pct_cheaper = (1 - buy_fill / _intended_min_ref) * 100
@@ -1872,7 +1873,11 @@ class TickPhaseMixin:
                 side="buy",
                 type="FOLD",
                 price=buy_fill,
-                amount=fold_units(buy_cost, buy_fill) if buy_fill else 0.0,
+                amount=(
+                    fold_units(buy_cost, buy_fill, FRACTIONAL_UNITS)
+                    if buy_fill
+                    else 0.0
+                ),
                 size=buy_cost,
                 profit=_growth_applied,
                 **self._fill_fee_fields(buy_fill),
