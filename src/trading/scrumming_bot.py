@@ -2460,10 +2460,10 @@ class ScrummingBot(
         price = getattr(self, "_last_trade_price", 0.0) or self.stats.current_price
         if not price or price <= 0:
             return 0.0
-        return (
-            float(self._current_holdings)
-            * float(price)
-            * float(self._quote_to_usd or 1.0)
+        return priced_usd(
+            float(self._current_holdings),
+            float(price),
+            float(self._quote_to_usd or 1.0),
         )
 
     @property
