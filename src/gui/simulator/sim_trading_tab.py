@@ -37,7 +37,18 @@ file is missing, the generation line and the no-target line, and fires
 the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
 ``fleet_changed`` and runs ``_compute_battery`` on a daemon thread, whose
 ``battery_line``, ``battery_trade`` and ``battery_finished`` signals reach the
-Activity Log, ``log_trade`` and ``_take_battery`` on the GUI thread.
+Activity Log, ``log_trade`` and ``_take_battery`` on the GUI thread. The
+command bar's Start in Validation or Back Test mode reaches ``_start_run``,
+which moves every scrumming bot on the pressed page's exchange to ``running``
+through ``SimBotManager.start``, fires ``fleet_changed``, writes the started
+line and runs ``_compute_run`` on a daemon thread: ``validation.run`` over
+``TabletSource``, a ``YtdTradeSource`` and a ``GateLogSource`` in Validation,
+``back_test.run`` over ``TabletSource`` in Back Test, each fill crossing on
+``run_trade`` to ``log_trade`` and the outcome on ``run_finished`` to
+``_take_run``, which moves the run's bots to ``stopped`` and writes the run's
+lines and the report line; Stop on a run row reaches ``_stop_run``, which sets
+the event the runner reads, so the pass ends where it is and the report reads
+``stopped``.
 The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
 panel in ``_layer_stack``, reached by ``flip_layer``; its header row holds the
 flip button, the ``Tablet:`` chooser and the retrieval button.
@@ -98,14 +109,17 @@ from PySide6.QtWidgets import (
 )
 
 from ...core.sound_engine import get_sound_engine
-from ...simulator import portfolio_battery
+from ...simulator import back_test, portfolio_battery, validation
 from ...simulator.back_test import SimTrade
 from ...simulator.fleet_source import (
     EXTRACTOR_MODE,
+    SCRUMMING_MODE,
     FleetSource,
     SendRefused,
+    SimBot,
     exchange_choice,
 )
+from ...simulator.gate_log_source import GateLogSource
 from ...simulator import tablet_retrieval
 from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.portfolios import PORTFOLIOS
@@ -211,6 +225,15 @@ class SimTradingTab(QWidget):
     battery_trade = Signal(object)
     #: The ``BatteryRun`` the Battery's worker thread finished with.
     battery_finished = Signal(object)
+    #: One Activity Log line and its level from a Validation or Back Test
+    #: run's worker thread.
+    run_line = Signal(str, str)
+    #: One ``SimTrade`` a Validation or Back Test run filled on its worker
+    #: thread.
+    run_trade = Signal(object)
+    #: The ``ValidationRun`` or ``BackTestRun`` the worker thread finished
+    #: with, or None when it raised.
+    run_finished = Signal(object)
     #: One Activity Log line and its level from a retrieval's worker thread.
     retrieval_line = Signal(str, str)
     #: One ``VenueCall`` the read-only connector made on the worker thread.
@@ -255,6 +278,9 @@ class SimTradingTab(QWidget):
         self._layer = surface.LAYER_INDICATORS
         self._mode = surface.MODES[0]
         self._battery_thread: Optional[threading.Thread] = None
+        self._run_thread: Optional[threading.Thread] = None
+        self._run_stop = threading.Event()
+        self._run: dict = {}
         self._retrieval_thread: Optional[threading.Thread] = None
         self._retrieval: dict = {}
         self._tablet_key: str = ""
@@ -269,6 +295,9 @@ class SimTradingTab(QWidget):
         self.battery_line.connect(self._status_log.log)
         self.battery_trade.connect(self.log_trade)
         self.battery_finished.connect(self._take_battery)
+        self.run_line.connect(self._status_log.log)
+        self.run_trade.connect(self.log_trade)
+        self.run_finished.connect(self._take_run)
         self.retrieval_line.connect(self._status_log.log)
         self.retrieval_call.connect(self._record_venue_call)
         self.retrieval_finished.connect(self._take_retrieval)
@@ -288,6 +317,16 @@ class SimTradingTab(QWidget):
         """True while a Battery worker thread is alive."""
         thread = self._battery_thread
         return thread is not None and thread.is_alive()
+
+    def run_running(self) -> bool:
+        """True while a Validation or Back Test worker thread is alive."""
+        thread = self._run_thread
+        return thread is not None and thread.is_alive()
+
+    def run_state(self) -> dict:
+        """The run in flight or last finished: ``mode``, ``exchange_id``,
+        ``bot_ids`` and ``stopper``, the bot Stop was pressed on."""
+        return dict(self._run)
 
     def connector(self) -> ReadOnlyConnector:
         """The read-only connector a retrieval reads candles through."""
@@ -576,6 +615,126 @@ class SimTradingTab(QWidget):
         """One Activity Log line, ``report_line`` over ``report``, through
         ``SimStatusLog.log`` at the ``success`` level ``_import_live_fleet`` uses."""
         self._status_log.log(report_line(report), "success")
+
+    # -- the Validation and Back Test runs --------------------------------
+
+    def _run_bots(self, exchange_id: str) -> list[SimBot]:
+        """Every held scrumming bot on ``exchange_id``, the fleet a run covers."""
+        return [
+            one
+            for one in self._fleet_source.bots()
+            if one.exchange_id == exchange_id and one.mode == SCRUMMING_MODE
+        ]
+
+    def _start_run(self, bot: SimBot, mode: str) -> None:
+        """Start the run ``mode`` names over ``_run_bots`` of ``bot``'s
+        exchange: each bot to ``running`` through ``SimBotManager.start``,
+        ``fleet_changed``, the YTD root line when Validation's YTD directory is
+        not ready, the started line, then ``_compute_run`` on a daemon thread;
+        a page holding no scrumming bot writes one line and starts nothing."""
+        bots = self._run_bots(bot.exchange_id)
+        if not bots:
+            self._status_log.log(
+                tab_surface.run_no_bot_line(mode, bot.exchange_id), "warning"
+            )
+            return
+        self._run_stop.clear()
+        self._run = {
+            "mode": mode,
+            "exchange_id": bot.exchange_id,
+            "bot_ids": [one.bot_id for one in bots],
+            "stopper": "",
+        }
+        for one in bots:
+            self._bot_manager.start(one.bot_id)
+        self.fleet_changed.emit()
+        if mode == surface.MODE_VALIDATION:
+            source = YtdTradeSource()
+            state = source.root_state()
+            if state != ROOT_READY:
+                self._status_log.log(
+                    tab_surface.ytd_root_line(state, source.root()), "warning"
+                )
+        self._status_log.log(
+            tab_surface.run_started_line(
+                mode, bot.exchange_id, len(bots), back_test.run_budget_usd(bots)
+            ),
+            "success",
+        )
+        self._run_thread = threading.Thread(
+            target=self._compute_run,
+            args=(mode, bots, bot.exchange_id),
+            name=tab_surface.RUN_THREAD_NAME,
+            daemon=True,
+        )
+        self._run_thread.start()
+
+    def _compute_run(self, mode: str, bots: list, exchange_id: str) -> None:
+        """Run ``validation.run`` or ``back_test.run`` over ``bots`` and the
+        tab's sources on the worker thread, each fill through ``run_trade``
+        and the outcome through ``run_finished``; a run that raises writes the
+        failed line and hands None to ``run_finished``."""
+        try:
+            if mode == surface.MODE_VALIDATION:
+                outcome = validation.run(
+                    bots,
+                    self._tablet_source,
+                    YtdTradeSource(),
+                    GateLogSource(),
+                    exchange_id=exchange_id,
+                    limit=surface.VALIDATION_RERUN_LIMIT,
+                    on_trade=self.run_trade.emit,
+                    stop=self._run_stop.is_set,
+                )
+            else:
+                outcome = back_test.run(
+                    bots,
+                    self._tablet_source,
+                    exchange_id=exchange_id,
+                    ticks_per_bot=surface.BACK_TEST_TICKS_PER_BOT,
+                    funding=surface.funding_for(mode),
+                    on_trade=self.run_trade.emit,
+                    stop=self._run_stop.is_set,
+                )
+        except Exception as exc:
+            logger.exception("%s run failed: %s", mode, exc)
+            self.run_line.emit(tab_surface.run_failed_line(mode, exc), "error")
+            self.run_finished.emit(None)
+            return
+        self.run_finished.emit(outcome)
+
+    def _stop_run(self, bot_id: str) -> None:
+        """Stop on ``bot_id``, a row of the run in flight: Live's stopping
+        line, the run's stopping line, and the event the runner reads."""
+        self._status_log.log(f"Stopping bot {bot_id}...", "info")
+        self._run["stopper"] = bot_id
+        self._status_log.log(
+            tab_surface.run_stopping_line(self._run.get("mode", ""), bot_id), "warning"
+        )
+        self._run_stop.set()
+
+    def _take_run(self, outcome) -> None:
+        """Move every run bot to ``stopped`` through ``SimBotManager.stop`` and
+        fire ``fleet_changed``; write Live's stopped line for the bot Stop was
+        pressed on, the finished run's ``lines`` and its report line through
+        ``log_report`` on the GUI thread."""
+        for bot_id in self._run.get("bot_ids", []):
+            try:
+                self._bot_manager.stop(bot_id)
+            except KeyError:
+                continue
+        self.fleet_changed.emit()
+        stopper = self._run.get("stopper")
+        if stopper:
+            self._status_log.log(f"Bot {stopper} stopped.", "info")
+            self._notify(f"Bot {stopper} STOPPED", "info")
+            get_sound_engine().play_state_change()
+        if outcome is None:
+            return
+        for line in outcome.lines:
+            self._status_log.log(line, "info")
+        if outcome.report is not None:
+            self.log_report(outcome.report)
 
     def log_trade(self, trade: SimTrade) -> None:
         """One Activity Log line per ``SimTrade``: ``trade_line`` under
@@ -1340,6 +1499,23 @@ class SimTradingTab(QWidget):
         bot = self._bot_manager.get_bot(bot_id)
         if not bot:
             self._status_log.log(f"Bot {bot_id} not found.", "error")
+            return
+
+        if self.run_running():
+            if command == "stop" and bot_id in self._run.get("bot_ids", []):
+                self._stop_run(bot_id)
+                return
+            self._status_log.log(
+                tab_surface.run_in_flight_line(
+                    self._run.get("mode", ""),
+                    len(self._run.get("bot_ids", [])),
+                    command,
+                ),
+                "warning",
+            )
+            return
+        if command == "start" and self._mode in tab_surface.RUN_MODES:
+            self._start_run(bot, self._mode)
             return
 
         sound = get_sound_engine()

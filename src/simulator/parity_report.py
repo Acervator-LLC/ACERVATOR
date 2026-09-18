@@ -44,9 +44,14 @@ from .portfolio_battery import (
 from .portfolios import PORTFOLIOS
 from .tablet_source import TabletSource, tablet_key
 from .validation import (
+    CAUSES,
+    CHAIN_CAUSE,
+    FIXTURE_CAUSE,
     MIN_RERUN_CANDLES,
     NO_BOT_TABLET,
     NO_YTD_FILE,
+    TAPE_CAUSE,
+    VALIDATED,
     RowComparison,
     ValidationRun,
     iso_stamp,
@@ -79,6 +84,24 @@ EXTRA = "extra"
 DIFFERS = "differs"
 VARIANT_DIFFERS = "variant_differs"
 COUNT_NAMES = (MISSING, EXTRA, DIFFERS, VARIANT_DIFFERS)
+BY_CAUSE = "by_cause"
+
+#: What each cause of a differing light reads, from the row's own fields.
+CAUSE_DEFINITIONS = {
+    TAPE_CAUSE: (
+        "the tablet candle the rerun read differs from the reading the bot "
+        "recorded: the recorded bb_pos, or the bank's recorded band flag, "
+        "does not match the rerun's"
+    ),
+    FIXTURE_CAUSE: (
+        "a recorded field the light reads is absent from the row's fixture, "
+        "or the phantom lock could not be recovered from the recorded row"
+    ),
+    CHAIN_CAUSE: (
+        "the same inputs on both sides and a different light: the gate chain"
+    ),
+}
+STOPPED_NOTE = "the operator pressed Stop before every bot and row was reached"
 
 #: What each of the four counts reads, over the record Live wrote and the
 #: rerun the Simulator latched.
@@ -137,6 +160,8 @@ class ParityReport:
     stamp: str
     partial: bool = False
     error: str = ""
+    #: True when the run was ended by Stop; ``partial`` reads True as well.
+    stopped: bool = False
 
 
 def reports_dir() -> Path:
@@ -317,6 +342,9 @@ def comparison_counts(rows: Sequence[RowComparison]) -> dict:
     counts[VARIANT_DIFFERS] = sum(
         1 for one in rows if not one.disagreed and not one.latches_identically
     )
+    counts[BY_CAUSE] = {
+        name: sum(one.causes.get(name, 0) for one in rows) for name in CAUSES
+    }
     return counts
 
 
@@ -345,9 +373,14 @@ def comparison_row(row: RowComparison) -> dict:
                 "recorded": one.recorded,
                 "rerun": one.rerun,
                 "driven_by": one.driven_by,
+                "cause": one.cause,
             }
             for one in row.disagreed
         ],
+        "causes": dict(row.causes),
+        "recorded_bb_pos": row.recorded_bb_pos,
+        "rerun_bb_pos": row.rerun_bb_pos,
+        "missing_fixture_fields": list(row.missing_fixture_fields),
         "unknown_recorded_blockers": list(row.unknown_recorded_blockers),
         "unknown_rerun_blockers": list(row.unknown_rerun_blockers),
     }
@@ -369,6 +402,7 @@ def validation_bots(run: ValidationRun) -> list[dict]:
             "unsnapped": int(counts.get("unsnapped", 0)),
             "compared": int(counts.get("compared", 0)),
             "latching": int(counts.get("latching", 0)),
+            "gate_rows": int(counts.get("gate_rows", 0)),
         }
         row.update(rule_row(bot.asset, bot.exchange_id))
         rows.append(row)
@@ -376,8 +410,14 @@ def validation_bots(run: ValidationRun) -> list[dict]:
 
 
 def validation_not_verified(run: ValidationRun, bots: Sequence[dict]) -> list[str]:
-    """What the Validation run could not verify, one line each."""
+    """What the Validation run could not verify, one line each: the stop line
+    first when ``run.stopped``, then each bot with no YTD file, no tablet or no
+    recorded gate row, then the coverage and rerun gaps; the two lines counting
+    snapped rows against matched and rerun rows are left out of a stopped run,
+    whose stop line states the rows rerun."""
     out = []
+    if run.stopped:
+        out.append(run.stopped_line)
     for row in bots:
         if row["outcome"] == NO_YTD_FILE:
             out.append(
@@ -387,6 +427,11 @@ def validation_not_verified(run: ValidationRun, bots: Sequence[dict]) -> list[st
         elif row["outcome"] == NO_BOT_TABLET:
             out.append(
                 f"{row['bot_id']} ({row['symbol']}): no Stone Tablet; nothing snapped."
+            )
+        elif row["outcome"] == VALIDATED and not row["gate_rows"]:
+            out.append(
+                f"{row['bot_id']} ({row['symbol']}): no gate row recorded for this "
+                f"bot; {row['snapped']} snapped trades matched nothing."
             )
     cover = run.coverage
     for reason, count in sorted(cover.by_reason.items()):
@@ -398,7 +443,7 @@ def validation_not_verified(run: ValidationRun, bots: Sequence[dict]) -> list[st
             f"{iso_stamp(cover.tablet_last_ts_ms)}."
         )
     unmatched = cover.snapped - run.rows_matched
-    if unmatched > 0:
+    if unmatched > 0 and not run.stopped:
         out.append(f"{unmatched} snapped trades matched no recorded gate row.")
     if run.rows_without_fixture:
         out.append(
@@ -406,7 +451,7 @@ def validation_not_verified(run: ValidationRun, bots: Sequence[dict]) -> list[st
             "and were not rerun."
         )
     short = run.rows_matched - run.rows_without_fixture - len(run.comparisons)
-    if short > 0:
+    if short > 0 and not run.stopped:
         out.append(
             f"{short} matched rows were not rerun: over the rerun limit or a window "
             f"under {MIN_RERUN_CANDLES} candles."
@@ -462,15 +507,19 @@ def validation_figures(
     ] = "Validation reruns gates and sizes no trade; no buy was refused for cash."
     head["match_key"] = run.match_key
     head["gate_rows_read"] = int(run.gate_rows_read)
+    head["stopped"] = bool(run.stopped)
+    head["bots_reached"] = len(run.bots) - len(run.unreached)
     return {
         "mode": VALIDATION,
-        "partial": False,
+        "partial": bool(run.stopped),
+        "stopped": bool(run.stopped),
         "error": None,
         "header": head,
         "tablets": tablet_section,
         "bots": bots,
         "comparison": {
             "definitions": dict(COUNT_DEFINITIONS),
+            "cause_definitions": dict(CAUSE_DEFINITIONS),
             "counts": comparison_counts(run.comparisons),
             "rows": [comparison_row(one) for one in run.comparisons],
         },
@@ -512,8 +561,9 @@ def back_test_bot(result: BotResult, bot: Optional[SimBot]) -> dict:
 
 
 def back_test_not_verified(run: BackTestRun) -> list[str]:
-    """What the Back Test run could not verify, one line each."""
-    out = [NO_LIVE_FILL_TEXT]
+    """What the Back Test run could not verify, one line each: the stop line
+    first when ``run.stopped``."""
+    out = ([run.stopped_line] if run.stopped else []) + [NO_LIVE_FILL_TEXT]
     for asset, venue in run.missing:
         out.append(f"{asset} on {venue}: no Stone Tablet; the bot walked nothing.")
     for result in run.uncited:
@@ -560,9 +610,12 @@ def back_test_figures(
     head["budget"]["budget_usd"] = run.budget_usd
     head["interval_ms"] = int(run.interval_ms)
     head["bot_outcomes"] = dict(run.bot_outcomes)
+    head["stopped"] = bool(run.stopped)
+    head["bots_reached"] = len(run.bots) - len(run.unreached)
     return {
         "mode": BACK_TEST,
-        "partial": False,
+        "partial": bool(run.stopped),
+        "stopped": bool(run.stopped),
         "error": None,
         "header": head,
         "tablets": tablet_section,
@@ -883,7 +936,12 @@ def render_header(figures: dict) -> list[str]:
                 f"{name} {count}" for name, count in head["bot_outcomes"].items()
             )
         )
-    if figures.get("partial"):
+    if figures.get("stopped"):
+        out.append(
+            f"- partial: yes; {STOPPED_NOTE}; {head.get('bots_reached', 0)} of "
+            f"{head['bots']} bots reached"
+        )
+    elif figures.get("partial"):
         error = figures.get("error") or {}
         out.append(
             f"- partial: yes; the run raised {error.get('type')}: "
@@ -1026,6 +1084,17 @@ def render_comparison(figures: dict) -> list[str]:
             f"{section['definitions'][name]} |"
         )
     out.append("")
+    by_cause = counts.get(BY_CAUSE) or {}
+    cause_words = section.get("cause_definitions") or {}
+    if by_cause:
+        out.append(
+            "- differs by cause: "
+            + ", ".join(f"{name} {by_cause.get(name, 0)}" for name in CAUSES)
+        )
+        out += ["", "| cause | definition |", "|---|---|"]
+        for name in CAUSES:
+            out.append(f"| {name} | {cause_words.get(name, '')} |")
+        out.append("")
     rows = []
     for row in section["rows"]:
         shown = dict(row)
@@ -1037,7 +1106,7 @@ def render_comparison(figures: dict) -> list[str]:
         )
         shown["disagreed_text"] = "; ".join(
             f"{one['bank']}/{one['label']} {one['recorded']} > {one['rerun']} "
-            f"({one['driven_by']})"
+            f"({one['driven_by']}, {one.get('cause') or 'agrees'})"
             for one in row["disagreed"]
         )
         shown["unknown_text"] = (
@@ -1177,6 +1246,7 @@ def write_figures(figures: dict, stamp: str) -> ParityReport:
         stamp=stamp,
         partial=bool(figures.get("partial")),
         error=f"{error.get('type')}: {error.get('message')}" if error else "",
+        stopped=bool(figures.get("stopped")),
     )
 
 
@@ -1262,6 +1332,8 @@ def report_line(report: ParityReport) -> str:
 __all__ = [
     "BACK_TEST",
     "BATTERY_READING_RULE",
+    "BY_CAUSE",
+    "CAUSE_DEFINITIONS",
     "COUNT_DEFINITIONS",
     "COUNT_NAMES",
     "DIFFERS",
@@ -1275,6 +1347,7 @@ __all__ = [
     "REPORTS_SUBDIR",
     "REPORT_LINE_FORMAT",
     "STAMP_FORMAT",
+    "STOPPED_NOTE",
     "VALIDATION",
     "VARIANT_DIFFERS",
     "ParityReport",
