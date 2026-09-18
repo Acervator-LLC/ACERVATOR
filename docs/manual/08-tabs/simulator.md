@@ -5014,5 +5014,147 @@ charged = battery_payload_held or empty_battery(portfolio, span)
 Both builds pass the two values. Before this the idle payload named the
 defaults, so a chosen portfolio was lost until a run wrote it back.
 
+## The Simulator colour distinction is the theme's nigredo tone
+
+The Sim tab paints every ground darker than Live's, under the same theme. The
+tone is the theme's own ground tokens moved a quarter of the way to black;
+the accent, the text and the borders are the theme's. The derivation, its one
+fraction and the contrast arithmetic per theme are on the Settings page under
+[the Simulator's tone, nigredo](settings.md#the-simulators-tone-nigredo).
+
+Nothing on the tab names a colour for this. The Qt build marks the tab with one
+property, and the theme's stylesheet paints the tree it marks; the windows the
+tab opens are its children, so the chooser and the Bot Settings window paint in
+the tone too.
+
+`src/gui/simulator/sim_trading_tab.py` — the mark
+
+```python
+# The theme's nigredo_qss paints this tree, and the windows it parents.
+# A QWidget subclass paints its stylesheet ground only with this attribute.
+self.setProperty(TONE_PROPERTY, NIGREDO)
+self.setAttribute(Qt.WA_StyledBackground, True)
+```
+
+The React build marks its host the same way for the Qt windows it parents,
+and its page takes the tone twice: once at build, when `panel_html` hands the
+tone to the page chrome, and once per theme switch, when the window's repaint
+reads the tone off the web view. The design tokens the page embeds go through
+the same function: every token whose name, or whose alias target, starts with
+`SURFACE_` is a ground the page paints, and the host darkens it before the
+page reads it.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the page side
+
+```python
+GROUND_NAME_PREFIX = "SURFACE_"
+
+
+def nigredo_design(model: dict) -> dict:
+    aliases = model.get("alias_targets", {})
+
+    def is_ground(name: str) -> bool:
+        return name.startswith(GROUND_NAME_PREFIX) or str(
+            aliases.get(name, "")
+        ).startswith(GROUND_NAME_PREFIX)
+```
+
+```python
+return page_html(
+    STYLE_ASSETS, (), page_body(), theme, (host_script(built, venues),), NIGREDO
+)
+```
+
+The two Sim windows drawn by React, the Bot Settings window and the wizard,
+hand the same tone to their page chrome and carry it on their web views.
+
+### What the tone reading measured
+
+The real window was built in each build over a scratch home with every socket
+but loopback refused, the theme switched five times through the Theme menu's
+own path, and the picture of the whole window grabbed with Live in front and
+again with Sim in front. The ground is the tab's own pixel at its top-left
+corner; the heading is the most common colour inside the Activity Log label,
+and the label's second colour is its text. At 1400 by 900, the window's floor:
+
+```
+theme             point            Live      Sim       Qt         Live      Sim       React
+cyberpunk_dark    ground           #0a0a0f   #08080b   differs    #0a0a0f   #08080b   differs
+cyberpunk_dark    heading ground   #0a0a0f   #08080b   differs    #0a0a0f   #08080b   differs
+cyberpunk_dark    heading text     #00ffcc   #00ffcc   same       #00ffcc   #00ffcc   same
+neon_light        ground           #f5f5fa   #b8b8bc   differs    #0a0a0f   #08080b   differs
+neon_light        heading ground   #f5f5fa   #b8b8bc   differs    #f5f5fa   #b8b8bc   differs
+classic_terminal  ground           #0a0a0a   #080808   differs    #0a0a0f   #08080b   differs
+classic_terminal  heading ground   #0a0a0a   #080808   differs    #0a0a0a   #080808   differs
+minimal_modern    ground           #fafafa   #bcbcbc   differs    #0a0a0f   #08080b   differs
+minimal_modern    heading ground   #fafafa   #bcbcbc   differs    #fafafa   #bcbcbc   differs
+glass_metal       ground           #1c1c24   #15151b   differs    #0a0a0f   #08080b   differs
+glass_metal       heading ground   #1c1c24   #15151b   differs    #1c1c24   #15151b   differs
+```
+
+Every Sim value is the Live value beside it through `toward_black` at 0.25.
+The same twenty rows read the same at 1920 by 1080. The heading text reads
+`#00ffcc` on every row in both builds, so the tone moved no text.
+
+The React ground column is the venue page's own ground, which is the design
+token `SURFACE_0` under every theme on Live and its darkened value on Sim; the
+page's outer ground, read at the web view's corner, follows the theme as the
+Qt ground does and darkens the same way. That split between the page's two
+grounds is Live's own, stated on the tabs page under the theme menu, and the
+tone keeps it.
+
+The header strip sits above every tab and takes no tone. Its ground read the
+theme's own value with Live in front and with Sim in front, on every theme, in
+both builds:
+
+```
+cyberpunk_dark  #0a0a0f   neon_light  #f5f5fa   classic_terminal  #0a0a0a
+minimal_modern  #fafafa   glass_metal #1c1c24
+```
+
+The windows the Sim opens read the tone at their own corner, both builds, every
+theme; the React Bot Settings window's page read the same value as its frame:
+
+```
+theme             chooser   Bot Settings
+cyberpunk_dark    #08080b   #08080b
+neon_light        #b8b8bc   #b8b8bc
+classic_terminal  #080808   #080808
+minimal_modern    #bcbcbc   #bcbcbc
+glass_metal       #15151b   #15151b
+```
+
+Two plants proved the reading can fail. With the fraction set to 0, every Sim
+value read equal to Live's, twenty rows per build. With the fraction set to 1,
+every Sim ground and every window read `#000000`. The plant was removed and
+the module compared byte for byte with its pre-plant digest. The scratch copy
+of the fleet file read the same digest before and after every one of the ten
+readings; a copy with one byte appended read a different digest, so the
+comparison reports a change.
+
+Before this change the same reading gave every Sim value equal to Live's, under
+every theme, in both builds: no distinction reached a pixel.
+
+### The skin dictionary carries the tone too
+
+The `SKIN` dictionary the surface serves puts its two ground entries through
+the same function, so a reader of the served payload gets the tone the tab
+paints. The block under [the skin tokens the sheet reads](#the-skin-tokens-the-sheet-reads)
+shows the ground entry as `ds.SURFACE_0`; it reads the darkened value now.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the two ground entries
+
+```python
+SKIN = {
+    "--sim-ground": toward_black(ds.SURFACE_0, NIGREDO_FRACTION),
+    "--sim-chart-ground": toward_black(ds.SURFACE_CHART, NIGREDO_FRACTION),
+```
+
+### The renders
+
+One pair per theme, Live beside Sim, in each build, at 1400 by 900, under
+`artifacts/u117/u27/` in the repository's ignored artifacts directory. The
+fraction each was taken at is 0.25, and it is one number in the theme engine.
+
 
 Back to [the subsystem index](README.md).

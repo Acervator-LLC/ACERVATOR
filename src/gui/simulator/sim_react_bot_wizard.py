@@ -20,6 +20,7 @@ from typing import Any, Callable, Optional
 
 from ..main_tabs import bot_wizard_surface as surface
 from ..react_history_panel import STYLE_SOURCE_ASSETS, page_html
+from ..theme_engine import NIGREDO, TONE_PROPERTY
 from . import sim_bot_wizard_surface as sim_surface
 
 try:
@@ -172,9 +173,15 @@ HOST_SCRIPT = """(function (global) {
 
 
 def dialog_html(theme: object = None) -> str:
-    """The whole wizard page as one string, with no network fetch."""
+    """The whole wizard page as one string, with no network fetch, its chrome
+    in the ``NIGREDO`` tone."""
     return page_html(
-        (STYLE_ASSET,), WIZARD_SCRIPT_ASSETS, WIZARD_BODY, theme, (HOST_SCRIPT,)
+        (STYLE_ASSET,),
+        WIZARD_SCRIPT_ASSETS,
+        WIZARD_BODY,
+        theme,
+        (HOST_SCRIPT,),
+        NIGREDO,
     )
 
 
@@ -272,6 +279,8 @@ if _HAS_WEBENGINE:
             layout.setSpacing(surface.OUTER_SPACING_PX)
             self._web = QWebEngineView(self)
             self._web.setAccessibleName(ACCESSIBLE_NAME)
+            # repaint_pages reads the tone off the view on every theme switch.
+            self._web.setProperty(TONE_PROPERTY, NIGREDO)
             self._web_page = SimBotWizardPage(self)
             self._web.setPage(self._web_page)
             self._web.loadFinished.connect(self._on_load_finished)

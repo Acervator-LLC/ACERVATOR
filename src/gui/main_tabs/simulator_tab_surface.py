@@ -24,6 +24,7 @@ from ...simulator.tablet_source import TabletSource, tablet_key
 from ...trading.stone_tablets.ra_paths import RA_STONE_TABLETS_DIR
 from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
 from .. import design_system as ds
+from ..theme_engine import NIGREDO_FRACTION, toward_black
 from . import indicator_panel_surface as ivp
 from .bot_status_table_surface import COLUMN_LABELS, FIXED_WIDTHS
 
@@ -284,9 +285,11 @@ TOP_SPLITTER_SIZES = [600, 500]
 MAIN_SPLITTER_SIZES = [500, 350]
 LAYER_SPLITTER_SIZES = [500, 500]
 
+#: The two grounds carry the Simulator's tone, ``toward_black`` at
+#: ``NIGREDO_FRACTION``; every other entry is Live's own token.
 SKIN = {
-    "--sim-ground": ds.SURFACE_0,
-    "--sim-chart-ground": ds.SURFACE_CHART,
+    "--sim-ground": toward_black(ds.SURFACE_0, NIGREDO_FRACTION),
+    "--sim-chart-ground": toward_black(ds.SURFACE_CHART, NIGREDO_FRACTION),
     "--sim-heading-colour": ds.PRIMARY,
     "--sim-body-colour": ds.TEXT_MED,
     "--sim-empty-colour": ds.TEXT_EMPTY_STATE,

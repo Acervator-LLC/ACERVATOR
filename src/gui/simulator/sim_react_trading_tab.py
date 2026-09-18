@@ -97,6 +97,7 @@ from ..main_tabs.trading_tab_surface import (
 from ..react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from ..react_main_window import read_renderer_asset
 from ..react_trading_tab import settled_frames
+from ..theme_engine import NIGREDO, NIGREDO_FRACTION, TONE_PROPERTY, toward_black
 from ..variant_surface import SIM_BOT_DETAIL, SIM_BOT_WIZARD, surface_class
 from . import sim_bot_status_table_surface as sim_scrum_surface
 from . import sim_bot_wizard_surface as wizard_surface
@@ -105,7 +106,7 @@ from . import sim_trading_tab_surface as tab_surface
 from .sim_indicator_panel import describe_no_data_cause, rate_fields
 
 try:
-    from PySide6.QtCore import QTimer, Signal
+    from PySide6.QtCore import Qt, QTimer, Signal
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QDialog, QMessageBox, QVBoxLayout, QWidget
@@ -497,14 +498,43 @@ def log_payload(
     )
 
 
+#: Every design token whose name, or whose alias target, starts with this is a
+#: ground the page paints, and ``nigredo_design`` moves it toward black.
+GROUND_NAME_PREFIX = "SURFACE_"
+
+
+def nigredo_design(model: dict) -> dict:
+    """``model`` from ``token_surface.view_model`` with every ground token in
+    ``tokens`` and ``groups`` through ``toward_black`` at ``NIGREDO_FRACTION``;
+    a token is a ground when its name or its ``alias_targets`` entry starts
+    with ``GROUND_NAME_PREFIX``."""
+    aliases = model.get("alias_targets", {})
+
+    def is_ground(name: str) -> bool:
+        return name.startswith(GROUND_NAME_PREFIX) or str(
+            aliases.get(name, "")
+        ).startswith(GROUND_NAME_PREFIX)
+
+    tokens = {
+        name: toward_black(value, NIGREDO_FRACTION) if is_ground(name) else value
+        for name, value in model["tokens"].items()
+    }
+    groups = {
+        group: {name: tokens.get(name, value) for name, value in members.items()}
+        for group, members in model.get("groups", {}).items()
+    }
+    return {**model, "tokens": tokens, "groups": groups}
+
+
 def models(
     state: tab_surface.SimTradingTabState,
     log: status_log_surface.StatusLogModel,
     panel: indicator_panel_surface.IndicatorPanelModel,
 ) -> dict:
-    """The view model of every bridge method the page's modules ask for."""
+    """The view model of every bridge method the page's modules ask for, the
+    design tokens through ``nigredo_design``."""
     return {
-        token_surface.METHOD: token_surface.view_model({}),
+        token_surface.METHOD: nigredo_design(token_surface.view_model({})),
         tab_surface.METHOD: state.view_model({}),
         LOG_METHOD: log_payload(log, {"whole": True}),
         PANEL_METHOD: panel_payload(panel),
@@ -764,13 +794,14 @@ def page_body() -> str:
 
 
 def panel_html(built: dict, venues: Optional[dict] = None, theme: object = None) -> str:
-    """The whole Sim page as one string, with no network fetch.
+    """The whole Sim page as one string, with no network fetch, its chrome in
+    the ``NIGREDO`` tone.
 
     ``STYLE_ASSETS`` is inlined into the page head, so the tab's chrome
     reaches the browser without a stylesheet request.
     """
     return page_html(
-        STYLE_ASSETS, (), page_body(), theme, (host_script(built, venues),)
+        STYLE_ASSETS, (), page_body(), theme, (host_script(built, venues),), NIGREDO
     )
 
 
@@ -819,6 +850,9 @@ if _HAS_WEBENGINE:
             super().__init__(parent)
             self.setObjectName(ACCESSIBLE_NAME)
             self.setAccessibleName(ACCESSIBLE_NAME)
+            # The theme's nigredo_qss paints the Qt windows this host parents.
+            self.setProperty(TONE_PROPERTY, NIGREDO)
+            self.setAttribute(Qt.WA_StyledBackground, True)
             self._tablet_source = (
                 tablet_source
                 if tablet_source is not None
@@ -1610,6 +1644,8 @@ if _HAS_WEBENGINE:
             self._venue_models = venue_models(self._venues, self._state.mode)
             self._web = QWebEngineView(self)
             self._web.setAccessibleName(ACCESSIBLE_NAME)
+            # repaint_pages reads the tone off the view on every theme switch.
+            self._web.setProperty(TONE_PROPERTY, NIGREDO)
             self._web.setPage(SimTradingPage(self))
             self._web.loadFinished.connect(self._on_load_finished)
             self._web.setHtml(panel_html(self._models, self._venue_models, self._theme))

@@ -9,6 +9,12 @@ pair meets WCAG 2.2 AA contrast, and a changed hex value needs a fresh audit.
 
 ``stored_accent`` reads the operator's accent field and ``accented`` puts an
 accepted one over a theme's own ``accent_primary``.
+
+``nigredo`` is the Simulator's tone: the seven ground tokens moved
+``NIGREDO_FRACTION`` of the way to black by ``toward_black``, every other token
+the theme's own. ``generate_qss`` ends with ``nigredo_qss``, the ground rules
+restated under ``NIGREDO_SELECTOR``, so a widget tree carrying the ``tone``
+property at ``NIGREDO`` paints the darker grounds under the same theme.
 """
 
 from __future__ import annotations
@@ -420,9 +426,93 @@ def accented(theme: ThemeTokens, accent: object) -> ThemeTokens:
     return replace(theme, accent_primary=taken) if taken else theme
 
 
+#: The Qt dynamic property a widget tree sets to take a tone, and the Simulator's tone.
+TONE_PROPERTY = "tone"
+NIGREDO = "nigredo"
+
+#: The share of the distance to black every ``NIGREDO_GROUNDS`` token moves.
+NIGREDO_FRACTION = 0.25
+
+#: The tokens ``nigredo`` moves; the accent, text, border and chart tokens stay.
+NIGREDO_GROUNDS = (
+    "bg_primary",
+    "bg_secondary",
+    "bg_tertiary",
+    "bg_card",
+    "bg_input",
+    "bg_hover",
+    "bg_selected",
+)
+
+#: The selector ``nigredo_qss`` puts before every rule.
+NIGREDO_SELECTOR = f'QWidget[{TONE_PROPERTY}="{NIGREDO}"]'
+
+_HEX_CHANNELS = re.compile(r"\A#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})\Z")
+_QSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+
+
+def toward_black(colour: str, fraction: float) -> str:
+    """``colour`` moved ``fraction`` of the way to black: each sRGB channel
+    scaled by ``1 - fraction`` and rounded, six-digit hex in and out.
+    Raises ``ValueError`` on a colour that is not six-digit hex or a
+    ``fraction`` outside 0 to 1."""
+    found = _HEX_CHANNELS.match(colour.strip())
+    if found is None:
+        raise ValueError(f"toward_black needs a six-digit hex colour, got {colour!r}")
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError(f"toward_black needs a fraction from 0 to 1, got {fraction!r}")
+    keep = 1.0 - fraction
+    return "#" + "".join(
+        f"{round(int(channel, 16) * keep):02x}" for channel in found.groups()
+    )
+
+
+def nigredo(theme: ThemeTokens, fraction: float = NIGREDO_FRACTION) -> ThemeTokens:
+    """``theme`` with every ``NIGREDO_GROUNDS`` token through ``toward_black`` at
+    ``fraction``; the Simulator paints from this and keeps the theme's accent."""
+    moved = {
+        name: toward_black(getattr(theme, name), fraction) for name in NIGREDO_GROUNDS
+    }
+    return replace(theme, **moved)
+
+
+def _scoped(qss: str, scope: str) -> str:
+    """``qss`` with ``scope`` before each selector of every rule, so the rules
+    reach the widget tree ``scope`` names and no other. A bare ``QWidget``
+    selector also gains ``scope`` alone, which is the marked widget itself."""
+    parts = []
+    for chunk in qss.split("}"):
+        head, brace, body = chunk.partition("{")
+        if not brace:
+            parts.append(chunk)
+            continue
+        selectors = _QSS_COMMENT.sub("", head).strip()
+        prefixed = ", ".join(
+            f"{scope} {one.strip()}" for one in selectors.split(",") if one.strip()
+        )
+        if selectors == "QWidget":
+            prefixed = f"{scope}, {prefixed}"
+        parts.append(f"\n{prefixed} {brace}{body}")
+    return "}".join(parts)
+
+
+def nigredo_qss(theme: ThemeTokens, fraction: float = NIGREDO_FRACTION) -> str:
+    """The rules ``_theme_qss`` paints from ``nigredo(theme, fraction)``, each
+    under ``NIGREDO_SELECTOR``; ``generate_qss`` ends with this block."""
+    return _scoped(_theme_qss(nigredo(theme, fraction)), NIGREDO_SELECTOR)
+
+
 # QSS generator
 def generate_qss(theme: ThemeTokens) -> str:
-    """Generate a complete Qt stylesheet from theme tokens."""
+    """The complete Qt stylesheet for ``theme``: ``_theme_qss`` for the
+    application and ``nigredo_qss`` for the widget tree carrying ``NIGREDO``."""
+    return (
+        f"{_theme_qss(theme)}\n/* --- Simulator: {NIGREDO} --- */{nigredo_qss(theme)}\n"
+    )
+
+
+def _theme_qss(theme: ThemeTokens) -> str:
+    """Every rule the application paints from ``theme``, unscoped."""
     t = theme
     return f"""
 /* ===== Acervator — {t.display_name} ===== */
