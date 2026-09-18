@@ -32,8 +32,8 @@ def _react_simulator() -> type:
 The window's header strip stays in view with Sim in front, and it reads the
 Simulator's fleet rather than the live one. Only Paper is isolated. The five
 columns and the six cards are Live's: with nothing held the columns read an em
-dash and the cards read zero; with a fleet held, Bots, Trades, Scrummed, Folded
-and Errors count the held records.
+dash and the cards read zero; with a fleet held, the cards read Live's
+arithmetic over the held records, and EXCH counts the seated venues.
 
 `src/gui/main_tabs/main_window_surface.py` — the tabs the strip reads from
 
@@ -62,12 +62,11 @@ MODE_FUNDING = {
 ### The venue stack and the Get Started card
 
 The Simulator starts empty. At open no venue is seated and the Get Started card
-shows in the venue pane. Live's card asks for a first exchange; the Simulator's
-asks for a first fleet and offers the two ways in of the active mode, which is
+shows in the venue pane. The card asks for a first fleet, says a fleet is what
+begins a run, and offers the two ways in of the active mode, which is
 Validation at open. Import Live Fleet copies the stored fleet's records for one
-exchange, through a chooser when more than one is stored, and the venue stack
-then seats one sub-tab per exchange the held fleet names. Every fleet change
-seats the stack again.
+exchange, and the venue stack then seats one sub-tab per exchange the held
+fleet names. Every fleet change seats the stack again.
 
 `src/gui/simulator/sim_trading_tab.py` — the seating
 
@@ -84,11 +83,10 @@ seats the stack again.
 
 ### The mode row and the corner
 
-The row above the bot list, where Live draws Privacy Mode and the news line,
-holds the three mode buttons, Validation, Back Test and Portfolio Battery, then
-`+ New Bot` where Live draws it. The active mode wears Live's Privacy Mode ON
-sheet. The data-pool row under it keeps Live's height and holds nothing. The
-corner Live gives to `＋ Add Crypto Exchange` holds the active mode's two ways
+The row above the bot list holds the three mode buttons, Validation, Back Test
+and Portfolio Battery, then `+ New Bot`. The active mode's button wears Live's
+Privacy Mode ON sheet and the other two the OFF sheet. The data-pool row under
+it holds nothing. The venue tab bar's corner holds the active mode's two ways
 in, and the Get Started card holds the same two. Validation offers Import Live
 Fleet and Generate From YTD. Back Test offers Import Live Fleet and Create New
 Bots. Portfolio Battery offers Run Portfolio and Run Every Portfolio. The mode
@@ -135,9 +133,9 @@ the record. Start is the run's button in Validation and Back Test.
 Each row's Fire and Detail buttons are Live's. Detail opens the Simulator's
 Bot Settings window over the bot's record with Live's seven tabs for a
 scrumming bot: Status, Settings, Fold Tranches, Stack Tranches, Bot Swarm,
-Market Inspector and Phantom Bots. The window reads the record and writes
-nothing. `+ New Bot` opens the Simulator's Bot Wizard, titled Create Auto
-Trader, whose Finish holds one new record.
+Market Inspector and Phantom Bots. The window reads the record; opening and
+closing it writes nothing to the fleet file. `+ New Bot` opens the Simulator's
+Bot Wizard, titled Create Auto Trader, whose Finish holds one new record.
 
 `src/gui/simulator/sim_bot_detail.py` — the tabs a scrumming bot's window carries
 
@@ -178,9 +176,9 @@ The panel beside the venue pane is the forked `SimIndicatorVotingPanel`. It
 carries Live's title, Bot selector, currency rate strip, two pillar tables, two
 confidence bar graphs, timeframe-lock line and staleness banner. Its selector
 holds the held fleet and follows each bot's state. While the selected bot runs,
-the pillar tables draw its reading from the last hundred candles of its Stone
-Tablet and the banner names the tablet's last candle. A bot that is not running
-draws Live's cause, and a bot with no tablet draws Live's no-tablet line.
+the pillar tables draw its reading from its Stone Tablet and the banner names
+the tablet's last candle. A bot that is not running draws Live's cause
+instead.
 
 `src/gui/simulator/sim_trading_tab.py` — the feed
 
@@ -200,11 +198,13 @@ One flip button sits after the panel title and reads Replay. A press shows the
 layer behind the panel: the VWAP window over the Stone Tablet playback window,
 each drawn from the chosen tablet's last hundred candles. The layer's header
 holds the flip, now reading Indicators, a Tablet chooser 240 px wide that lists
-every tablet on disk and every held market without one, and one button reading
-Retrieve Tablet or Update Tablet. A press retrieves or updates one tablet
-through the Simulator's read-only connector, which answers `get_ohlcv` over the
-public candle endpoint and raises `SendRefused` for every other name. This
-layer is the first of the three permitted differences from Live.
+every tablet on disk, and one button reading Retrieve Tablet or Update Tablet.
+A press runs the retrieval or update through the Simulator's read-only
+connector on a worker thread, records each venue call on the API Interaction
+Log, and writes the started line and the finished or refused line on the
+Activity Log. The connector answers `get_ohlcv` over the public candle endpoint
+and raises `SendRefused` for every other name. This layer is the first of the
+three permitted differences from Live.
 
 `src/simulator/read_only_connector.py` — the refusal
 
@@ -290,9 +290,8 @@ from ..trading.scrumming.sizing import (
 Portfolio Battery. With Portfolio Battery active, Run Portfolio opens a chooser
 of one portfolio over the archive's thirty-five and one span over seven, and
 Run Every Portfolio opens it with the span alone. The run holds one bot per
-symbol at $500 times the portfolio's mix share, or the held fleet's own bots
-where they match, walks the RA-StoneTablets on a worker thread, and writes one
-reading per timeframe.
+symbol at $500 times the portfolio's mix share, walks the RA-StoneTablets on a
+worker thread, and writes one reading per timeframe.
 
 `src/simulator/portfolio_battery.py` — the default Target Balance
 
