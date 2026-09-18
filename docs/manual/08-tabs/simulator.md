@@ -399,10 +399,11 @@ disk and memory.
 | `write_tablet` | Writes one back |
 | `read_manifest` | Carries the index of what exists |
 
-The tape a replay hands the bots does not roll up. Fleet Replay asks the
-registry for the native timeframe only, and the tape refuses any other unless
-the caller supplied that series when the tape was built, which Fleet Replay does
-not do.
+The tape the removed Fleet Replay handed its bots did not roll up: it asked
+the registry for the native timeframe only, and the tape refused any other
+unless the caller supplied that series when the tape was built. The rebuild
+removed Fleet Replay (pull request 454); the forked tab reads tablets through
+its tablet source, and the section "What the tab holds today" describes it.
 
 `src/exchange/tablet_backend.py` — `TabletBackend.fetch_ohlcv`
 
@@ -741,9 +742,10 @@ Mode: Back Test     Import Live Fleet   Create New Bots
 ### The two ways into a back test
 
 Import Live Fleet clones the live running fleet from the bot_state load, the
-same reader Validation uses. Create New Bots makes one simulated bot on the
-Stone Tablet the selector is showing, taking its target balance and its
-scrumming interval from the Bot Wizard's own defaults.
+same reader Validation uses. At the first clone Create New Bots made one
+simulated bot on the Stone Tablet the selector showed, at the Bot Wizard's
+defaults; since unit 23 it opens the forked wizard and holds one record from
+the wizard's values (comment 5723334396).
 
 `src/gui/main_tabs/simulator_tab_surface.py` — the new bot the selector defines
 
