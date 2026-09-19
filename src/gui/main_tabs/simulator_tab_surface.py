@@ -39,6 +39,12 @@ from .. import design_system as ds
 from ..theme_engine import NIGREDO_FRACTION, toward_black
 from . import indicator_panel_surface as ivp
 from .bot_status_table_surface import COLUMN_LABELS, FIXED_WIDTHS
+from .native_chart_surface import (
+    MARK_GLYPHS,
+    MARK_HEIGHT_FRACTION,
+    MARK_OUTLINE_PX,
+    MARK_WIDTH_RATIO,
+)
 
 logger = logging.getLogger("acervator.gui")
 
@@ -323,29 +329,10 @@ SKIN = {
     "--sim-caption-size": f"{ds.TYPE_CAPTION}px",
 }
 
-#: The two hermetic glyphs the playback marks a fill with, one definition both
-#: hosts read: ``dissolve`` for a scrum, a triangle pointing down drawn as an
-#: outline; ``reform`` for a fold, a triangle pointing up drawn filled. Each
-#: corner is ``(dx, dy)`` in the unit mark, y down, centred on the fill.
-DISSOLVE_GLYPH = "dissolve"
-REFORM_GLYPH = "reform"
-MARK_GLYPHS = {
-    back_test.SCRUM: {
-        "name": DISSOLVE_GLYPH,
-        "points": [[-0.5, -0.5], [0.5, -0.5], [0.0, 0.5]],
-        "filled": False,
-    },
-    back_test.FOLD: {
-        "name": REFORM_GLYPH,
-        "points": [[-0.5, 0.5], [0.5, 0.5], [0.0, -0.5]],
-        "filled": True,
-    },
-}
-#: A mark's width as a share of one candle column, and its height as a share
-#: of the pane's height.
-MARK_WIDTH_RATIO = 1.0
-MARK_HEIGHT_FRACTION = 0.05
-MARK_OUTLINE_PX = 1.5
+#: ``MARK_GLYPHS`` is keyed by ``SCRUM_SIDE`` and ``FOLD_SIDE``, the strings
+#: ``back_test.SCRUM`` and ``back_test.FOLD`` carry.
+if MARK_GLYPHS.keys() != {back_test.SCRUM, back_test.FOLD}:
+    raise ImportError("MARK_GLYPHS keys differ from back_test.SCRUM and FOLD")
 
 #: The replay layer's header figures with no run held.
 NO_RUN_TEXT = "no run"

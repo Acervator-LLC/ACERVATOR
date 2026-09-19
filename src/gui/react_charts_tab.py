@@ -36,7 +36,13 @@ try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-    from .native_chart import POST_IMAGE_WIDTH_PX, Candle, ChartPainter, paint_image
+    from .native_chart import (
+        POST_IMAGE_WIDTH_PX,
+        Candle,
+        ChartPainter,
+        PositionMarker,
+        paint_image,
+    )
 
     _HAS_WEBENGINE = True
 except ImportError:
@@ -50,6 +56,9 @@ ACCESSIBLE_NAME = "React Charts Tab"
 
 #: The console-line prefix every bridge ask the page makes carries.
 ASK_PREFIX = "acervator-ask:"
+
+#: The bus topic every fill of every bot crosses; ``_on_trade_filled`` records it.
+FILLED_TOPIC = "trade.filled"
 
 #: The element ``trade_charts_tab.js`` draws the tab into.
 PANEL_ROOT_ID = "panel-root"
@@ -363,6 +372,10 @@ if _HAS_WEBENGINE:
 
             self._model.fetcher = ChartDataFetcher()
 
+            from src.core.event_bus import get_event_bus
+
+            get_event_bus().subscribe(FILLED_TOPIC, self._on_trade_filled)
+
         # -- what the page is built from ---------------------------------
 
         @property
@@ -428,12 +441,49 @@ if _HAS_WEBENGINE:
             return self._painter.set_overlay(str(key), bool(on))
 
         def _dressed(self, payload: dict) -> dict:
-            """``payload`` with each ``panel_chrome`` toggle checked as ``painter`` draws it."""
+            """``payload`` with each ``panel_chrome`` toggle checked and coloured as ``painter`` draws it.
+
+            The two legend styles resolve from the painter's theme too, so the
+            page's boxes and labels follow a Theme menu press.
+            """
             shown = self._painter.overlays_shown()
-            for toggle in payload.get("panel_chrome", {}).get("toggles", []):
+            chrome = payload.get("panel_chrome", {})
+            for toggle in chrome.get("toggles", []):
                 if toggle.get("key") in shown:
                     toggle["checked"] = shown[toggle["key"]]
+                field = toggle.get("color")
+                if isinstance(field, str) and field:
+                    toggle["color"] = self._painter.field_colour(field).name()
+            chrome["legend_styles"] = [
+                native_chart_surface.INDICATOR_STYLE_FORMAT.format(
+                    color=self._painter.field_colour(field).name()
+                )
+                for field in chrome.get("legend_fields", [])
+            ]
             return payload
+
+        def set_theme(self, tokens) -> None:
+            """Repaint the chart image in ``tokens`` and redraw the page from it."""
+            self._painter.set_theme(tokens)
+            self.redraw()
+
+        def _on_trade_filled(self, event) -> None:
+            """Record one ``trade.filled`` bus event through ``log_trade``.
+
+            The next ``update_charts`` tick draws it as a glyph on its candle.
+            """
+            data = getattr(event, "data", None)
+            if not isinstance(data, dict):
+                return
+            bot_id = str(data.get("bot_id", "") or "")
+            record = self._model.assets.get(bot_id) or {}
+            recorded = surface.fill_record(
+                getattr(event, "timestamp", 0.0),
+                data,
+                record.get(surface.SYMBOL_KEY, ""),
+            )
+            if recorded is not None:
+                self.log_trade(recorded)
 
         def _feed_painter(self) -> None:
             """Give ``painter`` what ``PanelSink`` holds, as the Qt tab gives its chart.
@@ -473,6 +523,20 @@ if _HAS_WEBENGINE:
                     panel.armed.get(surface.SCRUM_BLOCKERS_KEY, []),
                     panel.armed.get(surface.FOLD_BLOCKERS_KEY, []),
                 )
+            painter.set_landing_strip(panel.strip)
+            painter.set_positions(
+                []
+                if panel.position is None
+                else [
+                    PositionMarker(
+                        price=panel.position[surface.POSITION_PRICE_KEY],
+                        side=panel.position[surface.POSITION_SIDE_KEY],
+                        visibility=panel.position[surface.POSITION_VISIBILITY_KEY],
+                        filled=True,
+                        asset_held=panel.position[surface.POSITION_HELD_KEY],
+                    )
+                ]
+            )
 
         def _image_key(self, width_px: int, height_px: int, ratio: float) -> str:
             """A digest of everything the next ``chart_image`` would read."""
@@ -487,7 +551,10 @@ if _HAS_WEBENGINE:
                 "floors": panel.floors,
                 "tb": [panel.tb_anchor, panel.tb_ceiling],
                 "armed": panel.armed,
+                "strip": panel.strip,
+                "position": panel.position,
                 "overlays": self._painter.overlays_shown(),
+                "theme": self._painter.theme_name(),
                 "width": int(width_px),
                 "height": int(height_px),
                 "ratio": float(ratio),
@@ -539,6 +606,7 @@ if _HAS_WEBENGINE:
                 "candle_count": len(self._model.panel.candles),
                 "overlays": self._painter.overlays_shown(),
                 "legend": self._painter.legend_entries(),
+                "theme": self._painter.theme_name(),
                 "paint_ms": round(painted_ms, 2),
                 "encode_ms": round(
                     (time.perf_counter() - started) * 1000.0 - painted_ms, 2

@@ -38,9 +38,9 @@ from typing import Any, Optional
 from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
 from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
 from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
-from .native_chart_surface import LEGEND_INVISIBLE_STYLE as PANEL_LEGEND_INVISIBLE_STYLE
+from .native_chart_surface import LEGEND_INVISIBLE_FIELD as PANEL_LEGEND_INVISIBLE_FIELD
 from .native_chart_surface import LEGEND_INVISIBLE_TEXT as PANEL_LEGEND_INVISIBLE
-from .native_chart_surface import LEGEND_ON_BOOK_STYLE as PANEL_LEGEND_ON_BOOK_STYLE
+from .native_chart_surface import LEGEND_ON_BOOK_FIELD as PANEL_LEGEND_ON_BOOK_FIELD
 from .native_chart_surface import LEGEND_SPACING_PX as PANEL_LEGEND_GAP_PX
 from .native_chart_surface import LEGEND_ON_BOOK_TEXT as PANEL_LEGEND_ON_BOOK
 from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
@@ -118,6 +118,48 @@ HOLDINGS_ATTRIBUTE = "_current_holdings"
 QUOTE_RATE_ATTRIBUTE = "_quote_to_usd"
 GATE_STATE_ATTRIBUTE = "_last_gate_state"
 LOTS_ATTRIBUTE = "_main_lots"
+TRANCHES_ATTRIBUTE = "_fold_tranches"
+BB_ATTRIBUTE = "_last_bb"
+STATS_ATTRIBUTE = "stats"
+AVG_ENTRY_ATTRIBUTE = "avg_entry_exchange"
+CONFIG_ATTRIBUTE = "config"
+VISIBILITY_ATTRIBUTE = "visibility"
+DEFAULT_VISIBILITY = "orderbook"
+
+# The BBProximityResult fields the landing strip band reads.
+BB_STRIP_FLAG = "landing_strip"
+BB_STRIP_SIDE = "landing_strip_side"
+BB_STRIP_CANDLES = "landing_strip_candles"
+BB_UPPER = "upper"
+BB_LOWER = "lower"
+BB_TOLERANCE = "tolerance_pct"
+STRIP_SIDE_KEY = "side"
+STRIP_CANDLES_KEY = "candles"
+STRIP_UPPER_KEY = "upper"
+STRIP_LOWER_KEY = "lower"
+STRIP_TOLERANCE_KEY = "tolerance_pct"
+STRIP_TIMEFRAME_KEY = "timeframe"
+TIMEFRAME_ATTRIBUTE = "ta_timeframe"
+
+POSITION_PRICE_KEY = "price"
+POSITION_SIDE_KEY = "side"
+POSITION_VISIBILITY_KEY = "visibility"
+POSITION_HELD_KEY = "asset_held"
+
+# A fold tranche's fields and a fill row's keys, as the painter's markers read them.
+TRANCHE_REF_KEY = "ref"
+TRANCHE_CREATED_KEY = "created_ts"
+FILL_TS_KEY = "ts"
+FILL_SIDE_KEY = "side"
+FILL_PRICE_KEY = "price"
+FILL_ROLE_KEY = "role"
+FILL_TYPE_KEY = "type"
+FILL_DATA_KEY = "data"
+SCRUM_ROLE = "SCRUM"
+SELL_SIDE = "sell"
+BUY_SIDE = "buy"
+FILL_MATCH_WINDOW_S = 60
+FILL_MATCH_PRICE = 1e-9
 
 DEFAULT_ANCHOR_USD = 0
 DEFAULT_CAP_USD = 0.0
@@ -203,6 +245,10 @@ UPDATE_FIRE_FAILED = "update.fire_failed"
 UPDATE_FLOORS_SET = "update.floors_set"
 UPDATE_FLOORS_NONE = "update.floors_none"
 UPDATE_FLOORS_FAILED = "update.floors_failed"
+UPDATE_STRIP_SET = "update.strip_set"
+UPDATE_STRIP_FAILED = "update.strip_failed"
+UPDATE_POSITION_SET = "update.position_set"
+UPDATE_POSITION_FAILED = "update.position_failed"
 UPDATE_CHART_REPAINTED = "update.chart_repainted"
 UPDATE_PANEL_DROPPED = "update.panel_dropped"
 UPDATE_EMIT_MOUNTED = "update.emit_mounted"
@@ -320,6 +366,120 @@ def fire_armed_state(gate_state: Any) -> dict:
         SCRUM_BLOCKERS_KEY: list(gate_state.get(SCRUM_BLOCKERS_KEY) or []),
         FOLD_BLOCKERS_KEY: list(gate_state.get(FOLD_BLOCKERS_KEY) or []),
     }
+
+
+def landing_strip(bb: Any, timeframe: Any = "") -> Optional[dict]:
+    """The band the bot's ``_last_bb`` names, or None while it names no strip.
+
+    Five keys are the ``BBProximityResult`` fields the painter draws from,
+    the side, the candle count, both Bollinger bands and the tolerance, and
+    ``timeframe`` is the bot's own, which the candle count is read on.
+    """
+    if bb is None or not bool(getattr(bb, BB_STRIP_FLAG, False)):
+        return None
+    return {
+        STRIP_SIDE_KEY: str(getattr(bb, BB_STRIP_SIDE, "") or ""),
+        STRIP_CANDLES_KEY: int(getattr(bb, BB_STRIP_CANDLES, 0) or 0),
+        STRIP_UPPER_KEY: float(getattr(bb, BB_UPPER, 0.0) or 0.0),
+        STRIP_LOWER_KEY: float(getattr(bb, BB_LOWER, 0.0) or 0.0),
+        STRIP_TOLERANCE_KEY: float(getattr(bb, BB_TOLERANCE, 0.0) or 0.0),
+        STRIP_TIMEFRAME_KEY: str(timeframe or ""),
+    }
+
+
+def bot_timeframe(bot: Any) -> str:
+    """The ``ta_timeframe`` the bot's config names, empty without one."""
+    config = getattr(bot, CONFIG_ATTRIBUTE, None)
+    return str(getattr(config, TIMEFRAME_ATTRIBUTE, "") or "")
+
+
+def position_reading(bot: Any) -> Optional[dict]:
+    """The bot's holding as one position: the venue's average entry, the units held and the visibility.
+
+    None while the venue has reported no average entry or the bot holds nothing.
+    """
+    stats = getattr(bot, STATS_ATTRIBUTE, None)
+    price = float(getattr(stats, AVG_ENTRY_ATTRIBUTE, 0.0) or 0.0)
+    holdings = float(getattr(bot, HOLDINGS_ATTRIBUTE, DEFAULT_HOLDINGS) or 0)
+    if price <= 0 or holdings <= 0:
+        return None
+    config = getattr(bot, CONFIG_ATTRIBUTE, None)
+    return {
+        POSITION_PRICE_KEY: price,
+        POSITION_SIDE_KEY: BUY_SIDE,
+        POSITION_VISIBILITY_KEY: str(
+            getattr(config, VISIBILITY_ATTRIBUTE, "") or DEFAULT_VISIBILITY
+        ),
+        POSITION_HELD_KEY: holdings,
+    }
+
+
+def tranche_scrums(tranches: Any, bot_id: Any, symbol: Any) -> list:
+    """One SCRUM fill per standing fold tranche: ``ref`` is the sell price and ``created_ts`` its time."""
+    found = []
+    for one in tranches or []:
+        stamp = float(one.get(TRANCHE_CREATED_KEY, 0) or 0)
+        price = float(one.get(TRANCHE_REF_KEY, 0) or 0)
+        if stamp <= 0 or price <= 0:
+            continue
+        found.append(
+            {
+                BOT_ID_KEY: bot_id,
+                SYMBOL_KEY: symbol,
+                FILL_TS_KEY: int(stamp),
+                FILL_SIDE_KEY: SELL_SIDE,
+                FILL_PRICE_KEY: price,
+                FILL_ROLE_KEY: SCRUM_ROLE,
+            }
+        )
+    return found
+
+
+def fill_record(stamp: Any, data: Any, symbol: Any) -> Optional[dict]:
+    """A ``trade.filled`` event as the row ``log_trade`` records, or None with no price.
+
+    A nested ``data`` dict is merged over the top-level fields, the side is
+    lowered and ``type`` becomes the upper-case role.
+    """
+    merged = dict(data or {})
+    inner = merged.get(FILL_DATA_KEY)
+    if isinstance(inner, dict):
+        merged.update(inner)
+    try:
+        price = float(merged.get(FILL_PRICE_KEY, 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if price <= 0:
+        return None
+    role = merged.get(FILL_TYPE_KEY) or merged.get(FILL_ROLE_KEY) or ""
+    return {
+        BOT_ID_KEY: str(merged.get(BOT_ID_KEY, "") or ""),
+        SYMBOL_KEY: str(symbol or merged.get(SYMBOL_KEY, "") or ""),
+        FILL_TS_KEY: int(float(stamp or 0)),
+        FILL_SIDE_KEY: str(merged.get(FILL_SIDE_KEY, "") or "").lower(),
+        FILL_PRICE_KEY: price,
+        FILL_ROLE_KEY: str(role).upper(),
+    }
+
+
+def merged_fills(logged: Any, standing: Any) -> list:
+    """``logged`` fills, then each ``standing`` scrum no logged fill already names.
+
+    A logged fill names a standing scrum when the two prices are equal and
+    their stamps sit within ``FILL_MATCH_WINDOW_S`` of each other.
+    """
+    kept = [dict(one) for one in logged]
+    for scrum in standing:
+        already = any(
+            abs(float(one.get(FILL_PRICE_KEY, 0) or 0) - scrum[FILL_PRICE_KEY])
+            <= FILL_MATCH_PRICE
+            and abs(int(one.get(FILL_TS_KEY, 0) or 0) - scrum[FILL_TS_KEY])
+            <= FILL_MATCH_WINDOW_S
+            for one in kept
+        )
+        if not already:
+            kept.append(dict(scrum))
+    return kept
 
 
 def bot_readings(bot: Any) -> dict:
@@ -443,6 +603,8 @@ class PanelSink:
         self.tb_anchor: Optional[float] = None
         self.tb_ceiling: Optional[float] = None
         self.armed: Optional[dict] = None
+        self.strip: Optional[dict] = None
+        self.position: Optional[dict] = None
         self.minimum_height_px: Optional[int] = None
         self.maximum_height_px: Optional[int] = None
         self.chart_repaints = 0
@@ -540,6 +702,18 @@ class PanelSink:
         self.chart_repaints += 1
         self.calls.append(["chart.set_fire_armed_state", dict(state)])
 
+    def set_landing_strip(self, strip: Optional[dict]) -> None:
+        """Set the landing strip band ``landing_strip`` read, or clear it."""
+        self.strip = None if strip is None else dict(strip)
+        self.chart_repaints += 1
+        self.calls.append(["chart.set_landing_strip", self.strip])
+
+    def set_position(self, position: Optional[dict]) -> None:
+        """Set the one position marker ``position_reading`` read, or clear it."""
+        self.position = None if position is None else dict(position)
+        self.chart_repaints += 1
+        self.calls.append(["chart.set_positions", self.position])
+
     def repaint_chart(self) -> None:
         """Repaint the chart."""
         self.chart_repaints += 1
@@ -572,6 +746,8 @@ class PanelSink:
             "tb_anchor": self.tb_anchor,
             "tb_ceiling": self.tb_ceiling,
             "armed": None if self.armed is None else dict(self.armed),
+            "strip": None if self.strip is None else dict(self.strip),
+            "position": None if self.position is None else dict(self.position),
             "minimum_height_px": self.minimum_height_px,
             "maximum_height_px": self.maximum_height_px,
             "chart_repaints": self.chart_repaints,
@@ -1126,11 +1302,14 @@ class TradeChartsTabModel:
         leaves the other three drawn.
         """
         try:
-            for_this_bot = [
-                one
-                for one in self.trade_log
-                if one.get(BOT_ID_KEY) == bot_id and one.get(SYMBOL_KEY) == symbol
-            ]
+            for_this_bot = merged_fills(
+                [
+                    one
+                    for one in self.trade_log
+                    if one.get(BOT_ID_KEY) == bot_id and one.get(SYMBOL_KEY) == symbol
+                ],
+                tranche_scrums(getattr(bot, TRANCHES_ATTRIBUTE, []), bot_id, symbol),
+            )
             if for_this_bot:
                 panel.set_markers(for_this_bot)
                 self.calls.append([UPDATE_MARKERS_SET, bot_id, len(for_this_bot)])
@@ -1138,6 +1317,20 @@ class TradeChartsTabModel:
                 self.calls.append([UPDATE_MARKERS_NONE, bot_id])
         except Exception as exc:
             self.calls.append([UPDATE_MARKERS_FAILED, bot_id, type(exc).__name__])
+
+        try:
+            panel.set_landing_strip(
+                landing_strip(getattr(bot, BB_ATTRIBUTE, None), bot_timeframe(bot))
+            )
+            self.calls.append([UPDATE_STRIP_SET, bot_id, panel.strip is not None])
+        except Exception as exc:
+            self.calls.append([UPDATE_STRIP_FAILED, bot_id, type(exc).__name__])
+
+        try:
+            panel.set_position(position_reading(bot))
+            self.calls.append([UPDATE_POSITION_SET, bot_id, panel.position is not None])
+        except Exception as exc:
+            self.calls.append([UPDATE_POSITION_FAILED, bot_id, type(exc).__name__])
 
         try:
             lines = target_balance_lines(bot_readings(bot))
@@ -1540,10 +1733,11 @@ def build_view_model(
                 for key, label, colour in PANEL_INDICATOR_TOGGLES
             ],
             "legend": [PANEL_LEGEND_INVISIBLE, PANEL_LEGEND_ON_BOOK],
-            "legend_styles": [
-                PANEL_LEGEND_INVISIBLE_STYLE,
-                PANEL_LEGEND_ON_BOOK_STYLE,
+            "legend_fields": [
+                PANEL_LEGEND_INVISIBLE_FIELD,
+                PANEL_LEGEND_ON_BOOK_FIELD,
             ],
+            "legend_styles": [],
             "toggle_gap_px": PANEL_TOGGLE_GAP_PX,
             "legend_gap_px": PANEL_LEGEND_GAP_PX,
         },

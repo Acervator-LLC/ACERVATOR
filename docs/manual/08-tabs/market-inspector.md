@@ -5240,4 +5240,40 @@ render with the adx and rsi voters; the before pair sits under
 `artifacts/u55/C2/before/`. A count of the markdown image tags on this page
 answers 0 before this entry and 0 after it.
 
+## 2026-09-19 17:40 - #55 - the venue image paints in the theme in force
+
+His words, 2026-09-07: *"Refining our chart renderer ... will allow us to
+upgrade the visuals for one and align this to visuals of out going SM posts
+thus unifying direct usage with SM exposure."* The venue image and the Charts
+tab share one painter, so the painter's skin from this day reaches every
+venue image: the theme's tokens for every colour, the crisp grid and wicks,
+the right-edge tags, the design system's type, and no resize grip on an
+image. A venue image whose caller names no theme now paints in the theme the
+window is in, and the message stamp at its foot is drawn in that theme's own
+axis text colour.
+
+`src/gui/native_chart.py` - the theme the venue image takes
+
+```python
+        painter.set_theme(tokens if tokens is not None else theme_in_force())
+```
+
+### The venue readings, off the running program, under two themes
+
+Read on the recorded BTC 1h candles with a bearish call carrying the vortex,
+macd, adx and rsi voters and a caption, the theme applied through the theme
+manager before each call: under Neon Light the image's top-left pixel reads
+`#ffffff`, the theme's chart ground, and its foot pixel `#f0f0f8`, the
+theme's lower ground; under Cyberpunk Dark `#08080e` and `#0c0c16`. The two
+files differ, each carries one `charts.theme.applied` row naming its theme,
+and both draw all four voters. The venue image carries no resize grip: only
+a chart in a window draws one.
+
+### The sentence the theme in force overtakes
+
+Not reworded, quoted here. `docs/manual/08-tabs/market-inspector.md:978` -
+"and a ``QImage`` from ``render_chart_png``." The image now paints in the
+theme in force when `render_chart_png` is given no tokens; it painted
+Cyberpunk Dark before.
+
 Back to [the subsystem index](README.md).

@@ -11,13 +11,27 @@ indicator overlay. ``Candle``, ``TradeMarker``, ``PositionMarker`` and
 from __future__ import annotations
 
 import logging
+from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from src._variant import resolve_variant
 from src.core.signal_contract import emit as _pin_emit
-from src.gui.theme_engine import CYBERPUNK_DARK
+from src.gui import design_system as ds
+from src.gui.main_tabs.native_chart_surface import (
+    FOLD_SIDE,
+    INDICATOR_STYLE_FORMAT,
+    LEGEND_INVISIBLE_FIELD,
+    LEGEND_ON_BOOK_FIELD,
+    MARK_GLYPHS,
+    MARK_HEIGHT_FRACTION,
+    MARK_OUTLINE_PX,
+    MARK_WIDTH_RATIO,
+    PANEL_SOURCE_FIELD,
+    SCRUM_SIDE,
+)
+from src.gui.theme_engine import CYBERPUNK_DARK, THEMES, applied_theme
 from src.trading.ta_engine import (
     ADXIndicator,
     BollingerBands,
@@ -42,6 +56,53 @@ TOGGLED_PIN = "charts.indicator.toggled"
 
 #: The pin ``ChartPainter.set_candles`` writes once the series recompute.
 DRAWN_PIN = "charts.indicators.drawn"
+
+#: The pin ``ChartPainter.set_theme`` writes once every ``PALETTE_ROLES`` colour resolves.
+THEME_PIN = "charts.theme.applied"
+
+#: The pin ``paint_to`` writes when the set of annotations it drew changes.
+ANNOTATIONS_PIN = "charts.annotations.drawn"
+
+#: The design system's families and pixel sizes the painter sets its type in.
+HEADER_FONT_PX = ds.TYPE_H4
+OHLC_FONT_PX = ds.TYPE_SMALL
+CAPTION_FONT_PX = ds.TYPE_CAPTION
+
+#: A wick's width as a share of one candle column; never under one device pixel.
+WICK_FRACTION = 0.14
+
+#: The width of an indicator line, in logical pixels.
+LINE_WIDTH_PX = 1.2
+
+#: A right-edge tag's height, its text padding and its inset from the edge.
+TAG_H_PX = 14
+TAG_PAD_PX = 5
+TAG_INSET_PX = 2
+
+#: The seconds one candle of each timeframe spans, for the strip's column count.
+TIMEFRAME_SECONDS = {
+    "1m": 60,
+    "5m": 300,
+    "15m": 900,
+    "1h": 3600,
+    "4h": 14400,
+    "1d": 86400,
+    "1w": 604800,
+}
+DEFAULT_CANDLE_SECONDS = 3600
+
+#: The tag texts the annotations carry.
+TARGET_TAG_FORMAT = "TARGET {price}"
+CEILING_TAG_FORMAT = "CEILING {price}"
+FLOOR_TAG_FORMAT = "FLOOR {label}"
+FLOORS_TAG_FORMAT = "{count} FLOORS {low}–{high}"
+STRIP_TAG_FORMAT = "STRIP {side} {candles}c"
+SCRUM_ARMED_TAG = "SCRUM ARMED"
+FOLD_ARMED_TAG = "FOLD ARMED"
+POSITION_TAG_FORMAT = "POSITION {price}"
+FILL_TAG_FORMAT = "{label} {price}"
+STRIP_UPPER = "upper"
+STRIP_LOWER = "lower"
 
 #: The published reference levels each sub-pane rules: Wilder's RSI 30 and
 #: 70, ADX 20 and 25, and the Z-Score reversal threshold either side of 0.
@@ -378,10 +439,6 @@ CAPTION_ROW_H = 13
 CAPTION_STRIP_PAD = 8
 CAPTION_SIDE_PAD = 8
 
-#: The caption's own font, which ``_wrap_caption`` measures the break in.
-CAPTION_FONT_FAMILY = "Consolas"
-CAPTION_FONT_PT = 8
-
 #: No ``set_caption`` text, so ``_caption_strip_h`` takes no height.
 NO_CAPTION_STRIP = 0
 
@@ -445,6 +502,31 @@ if _HAS_QT:
         faded = QColor(colour)
         faded.setAlpha(alpha)
         return faded
+
+    def design_font(stack: str, size_px: int, bold: bool = False) -> QFont:
+        """A ``QFont`` on the design system's family ``stack`` at ``size_px`` pixels."""
+        font = QFont()
+        font.setFamilies([one.strip().strip("'\"") for one in stack.split(",")])
+        font.setPixelSize(int(size_px))
+        font.setWeight(QFont.Bold if bold else QFont.Normal)
+        font.setHintingPreference(QFont.PreferFullHinting)
+        return font
+
+    def caption_font() -> QFont:
+        """The mono font the legend, the axes, the tags and the caption are set in."""
+        return design_font(ds.FONT_FAMILY_MONO, CAPTION_FONT_PX)
+
+    def header_font() -> QFont:
+        """The UI font the header symbol is set in."""
+        return design_font(ds.FONT_FAMILY_UI, HEADER_FONT_PX, bold=True)
+
+    def ohlc_font() -> QFont:
+        """The mono font the OHLC row is set in."""
+        return design_font(ds.FONT_FAMILY_MONO, OHLC_FONT_PX, bold=True)
+
+    def theme_in_force():
+        """The ``ThemeTokens`` ``ThemeManager.apply_theme`` last painted."""
+        return THEMES.get(applied_theme(), DEFAULT_THEME_TOKENS)
 
     @dataclass
     class PaintContext:
@@ -559,9 +641,19 @@ if _HAS_QT:
         MARKER_EDGE: QColor
         GRIP: QColor
         ERROR_TEXT: QColor
+        PANEL_SOURCE_TEXT: QColor
+        TAG_TEXT: QColor
+        STRIP_FILL: QColor
+        STRIP_EDGE: QColor
+        FILL_TAG_SURFACE: QColor
 
         #: Each painted colour, as the theme field it reads and its alpha byte.
         PALETTE_ROLES: dict[str, tuple[str, int]] = {
+            "PANEL_SOURCE_TEXT": (PANEL_SOURCE_FIELD, 255),
+            "TAG_TEXT": ("chart_bg_top", 255),
+            "STRIP_FILL": ("chart_band", 40),
+            "STRIP_EDGE": ("chart_band", 210),
+            "FILL_TAG_SURFACE": ("chart_bg_top", 215),
             "BG_TOP": ("chart_bg_top", 255),
             "BG_BOT": ("chart_bg_bottom", 255),
             "GRID_MAJOR": ("chart_grid", 255),
@@ -640,27 +732,71 @@ if _HAS_QT:
 
         TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 
+        #: Only a chart in a window draws the resize grip; an image has no edge to drag.
+        DRAWS_GRIP = False
+
+        def _apply_tokens(self, tokens) -> int:
+            """Resolve every ``PALETTE_ROLES`` colour from ``tokens`` onto this instance.
+
+            A field ``tokens`` lacks keeps ``DEFAULT_THEME_TOKENS``' value for
+            that role; the count answered is the roles ``tokens`` resolved.
+            """
+            self._theme_tokens = tokens
+            resolved = 0
+            for role, (field, alpha) in self.PALETTE_ROLES.items():
+                source = tokens if hasattr(tokens, field) else DEFAULT_THEME_TOKENS
+                resolved += source is tokens
+                setattr(self, role, _role_colour(source, field, alpha))
+            return resolved
+
         def set_theme(self, tokens) -> None:
-            """Re-resolve every ``PALETTE_ROLES`` colour from ``tokens``.
+            """Re-resolve every ``PALETTE_ROLES`` colour from ``tokens`` and write ``THEME_PIN``.
 
             The instance values shadow the class ones, so the chart repaints in
             the theme without any other object holding a colour.
             """
-            self._theme_tokens = tokens
-            for role, (field, alpha) in self.PALETTE_ROLES.items():
-                setattr(self, role, _role_colour(tokens, field, alpha))
+            resolved = self._apply_tokens(tokens)
+            _pin_emit(
+                THEME_PIN,
+                actual=resolved,
+                expected=len(self.PALETTE_ROLES),
+                context={
+                    "theme": str(getattr(tokens, "name", "") or ""),
+                    "variant": resolve_variant(),
+                    "symbol": self._symbol,
+                },
+            )
             self._repaint()
+
+        def theme_name(self) -> str:
+            """The name of the ``ThemeTokens`` the painter paints in."""
+            return str(getattr(self._theme_tokens, "name", "") or "")
 
         def overlay_colour(self, overlay: ChartOverlay) -> QColor:
             """The colour one overlay's label and check box carry."""
-            return _role_colour(self._theme_tokens, overlay.colour_field, 255)
+            return self.field_colour(overlay.colour_field)
+
+        def field_colour(self, field: str) -> QColor:
+            """One ``ThemeTokens`` field of the painter's theme, opaque.
+
+            A field the theme lacks reads ``DEFAULT_THEME_TOKENS``.
+            """
+            source = (
+                self._theme_tokens
+                if hasattr(self._theme_tokens, field)
+                else DEFAULT_THEME_TOKENS
+            )
+            return _role_colour(source, field, 255)
 
         def _repaint(self) -> None:
             """Ask the host to redraw. A painter with no window has none."""
             return None
 
         def __init__(self, symbol: str = ""):
-            self._theme_tokens = DEFAULT_THEME_TOKENS
+            self._theme_tokens = theme_in_force()
+            self._apply_tokens(self._theme_tokens)
+            self._annotations_digest = ""
+            self._landing_strip: Optional[dict] = None
             self._symbol = symbol
             self._candles: list[Candle] = []
             self._markers: list[TradeMarker] = []
@@ -792,7 +928,7 @@ if _HAS_QT:
             A word wider than the room left stands on its own line rather than
             being cut.
             """
-            metrics = QFontMetrics(QFont(CAPTION_FONT_FAMILY, CAPTION_FONT_PT))
+            metrics = QFontMetrics(caption_font())
             room = int(width) - CAPTION_SIDE_PAD * 2
             wrapped: list = []
             for line in self._caption_lines:
@@ -1006,7 +1142,7 @@ if _HAS_QT:
                 return 0
             if int(width) <= NO_CAPTION_WIDTH:
                 return LEGEND_PAD * 2 + LEGEND_ROW_H
-            metrics = QFontMetrics(QFont(CAPTION_FONT_FAMILY, CAPTION_FONT_PT))
+            metrics = QFontMetrics(caption_font())
             return LEGEND_PAD * 2 + LEGEND_ROW_H * max(
                 1, len(self._legend_rows(width, metrics))
             )
@@ -1068,6 +1204,16 @@ if _HAS_QT:
 
         def set_positions(self, positions: list[PositionMarker]) -> None:
             self._positions = positions
+            self._repaint()
+
+        def set_landing_strip(self, strip: Optional[dict]) -> None:
+            """Set ``_landing_strip`` from the bot's ``BBProximityResult`` reading, or clear it.
+
+            The dict carries ``side``, ``candles``, ``upper``, ``lower``,
+            ``tolerance_pct`` and the bot's ``timeframe``; ``_draw_landing_strip``
+            paints the band between the side's band and its tolerance edge.
+            """
+            self._landing_strip = None if strip is None else dict(strip)
             self._repaint()
 
         def set_grid_lines(self, lines: list[GridLine]) -> None:
@@ -1208,23 +1354,28 @@ if _HAS_QT:
             The painter's device is the caller's: a widget from ``paintEvent``
             and a ``QImage`` from ``render_chart_png``.
             """
-            p.setRenderHint(QPainter.Antialiasing)
-            p.setRenderHint(QPainter.TextAntialiasing)
+            p.setRenderHint(QPainter.Antialiasing, True)
+            p.setRenderHint(QPainter.TextAntialiasing, True)
+            ratio = self._device_ratio(p)
+            px = 1.0 / ratio
+
+            def snap(value: float) -> float:
+                """``value`` moved to the centre of the device pixel it falls in."""
+                return (int(value * ratio) + 0.5) / ratio
 
             bg_grad = QLinearGradient(0, 0, 0, h)
             bg_grad.setColorAt(0, self.BG_TOP)
             bg_grad.setColorAt(1, self.BG_BOT)
             p.fillRect(0, 0, w, h, bg_grad)
 
-            font_sm = QFont("Consolas", 8)
-            font_sm.setHintingPreference(QFont.PreferFullHinting)
-            font_hdr = QFont("Segoe UI", 10, QFont.Bold)
-            font_ohlc = QFont("Consolas", 9, QFont.Bold)
+            font_sm = caption_font()
+            font_hdr = header_font()
+            font_ohlc = ohlc_font()
             fm = QFontMetrics(font_sm)
 
             if not self._candles:
                 p.setPen(QPen(self.TEXT_DIM))
-                p.setFont(QFont("Segoe UI", 11))
+                p.setFont(design_font(ds.FONT_FAMILY_UI, ds.TYPE_BODY))
                 msg = self._error_text or self._status_text
                 p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, msg)
                 self._draw_header(p, w, font_hdr, font_sm)
@@ -1328,6 +1479,8 @@ if _HAS_QT:
                     return 5 * mag
                 return 10 * mag
 
+            # The grid is one device pixel, aliased and snapped, so it stays a hairline at every ratio.
+            p.setRenderHint(QPainter.Antialiasing, False)
             grid_step = _nice_step(pr, target_ticks=6)
             if grid_step > 0:
                 import math as _m
@@ -1335,15 +1488,15 @@ if _HAS_QT:
                 g0 = _m.ceil(lo / grid_step) * grid_step
                 g = g0
                 while g <= hi + grid_step * GRID_TICK_TOLERANCE:
-                    y = int(p2y(g))
+                    y = p2y(g)
                     if price_top <= y <= price_bot:
                         is_major = round((g - g0) / grid_step) % 2 == 0
                         gc = self.GRID_MAJOR if is_major else self.GRID_MINOR
-                        p.setPen(QPen(gc, 1, Qt.DotLine))
-                        p.drawLine(ML, y, w - MR, y)
+                        p.setPen(QPen(gc, px, Qt.DotLine))
+                        p.drawLine(QPointF(ML, snap(y)), QPointF(w - MR, snap(y)))
                         p.setPen(QPen(self.TEXT_LIGHT))
                         p.setFont(font_sm)
-                        p.drawText(w - MR + 6, y + 4, self._fmt_price(g))
+                        p.drawText(w - MR + 6, int(y) + 4, self._fmt_price(g))
                     g += grid_step
 
             # About 6 ticks; each line spans every pane above the label band.
@@ -1355,11 +1508,13 @@ if _HAS_QT:
                 use_date = span_sec > 24 * 3600
                 for ti in range(0, n, tick_stride):
                     c = visible_candles[ti]
-                    tx = int(i2x(ti) + cw / 2)
+                    tx = i2x(ti) + cw / 2
                     if tx < ML or tx > w - MR:
                         continue
-                    p.setPen(QPen(self.GRID_MINOR, 1, Qt.DotLine))
-                    p.drawLine(tx, price_top, tx, time_axis_y)
+                    p.setPen(QPen(self.GRID_MINOR, px, Qt.DotLine))
+                    p.drawLine(
+                        QPointF(snap(tx), price_top), QPointF(snap(tx), time_axis_y)
+                    )
                     try:
                         tm = _t.gmtime(c.time)
                         if use_date:
@@ -1371,7 +1526,12 @@ if _HAS_QT:
                     if label:
                         p.setPen(QPen(self.TEXT_LIGHT))
                         p.setFont(font_sm)
-                        p.drawText(tx - 16, time_axis_y + 12, label)
+                        p.drawText(int(tx) - 16, time_axis_y + 12, label)
+
+            # One hairline separates the price pane from the strip under it.
+            p.setPen(QPen(self.GRID_MAJOR, px))
+            p.drawLine(QPointF(ML, snap(price_bot)), QPointF(w - MR, snap(price_bot)))
+            p.setRenderHint(QPainter.Antialiasing, True)
 
             self._draw_positions(p, w, ML, MR, price_top, price_h, p2y, font_sm)
 
@@ -1397,6 +1557,8 @@ if _HAS_QT:
                     (c.open, c.high, c.low, c.close, c.volume) for c in visible_candles
                 ]
 
+            # The wick follows the candle spacing and never drops under one device pixel.
+            wick_w = max(px, cw * WICK_FRACTION)
             for i, (ha_o, ha_h, ha_l, ha_c, _vol) in enumerate(ha_candles):
                 x = i2x(i)
                 is_up = ha_c >= ha_o
@@ -1405,20 +1567,20 @@ if _HAS_QT:
                 border = self.UP_BORDER if is_up else self.DOWN_BORDER
                 wick_c = self.UP_WICK if is_up else self.DOWN_WICK
 
-                wx = x + cw / 2
+                wx = snap(x + cw / 2)
                 y_hi = p2y(ha_h)
                 y_lo = p2y(ha_l)
-                p.setPen(QPen(wick_c, 1))
-                p.drawLine(int(wx), int(y_hi), int(wx), int(y_lo))
+                p.setPen(QPen(wick_c, wick_w, Qt.SolidLine, Qt.FlatCap))
+                p.drawLine(QPointF(wx, y_hi), QPointF(wx, y_lo))
 
                 y_open = p2y(ha_o)
                 y_close = p2y(ha_c)
                 bt = min(y_open, y_close)
-                bh = max(abs(y_open - y_close), 1)
-                body = QRectF(x + gap / 2, bt, bw, bh)
+                bh = max(abs(y_open - y_close), px)
+                body = QRectF(snap(x + gap / 2), snap(bt), bw, bh)
 
                 p.setBrush(QBrush(fill))
-                p.setPen(QPen(border, 1))
+                p.setPen(QPen(border, px))
                 p.drawRect(body)
 
                 if show_volume and VOL_H > 0:
@@ -1426,34 +1588,47 @@ if _HAS_QT:
                     vh = (cvol / max_vol) * VOL_H if cvol > 0 else 0
                     if vh > 0:
                         vol_y = vol_bot - vh
-                        vol_rect = QRectF(x + gap / 2, vol_y, bw, vh)
+                        vol_rect = QRectF(snap(x + gap / 2), vol_y, bw, vh)
                         vf = self.VOL_UP if is_up else self.VOL_DOWN
                         vb = self.VOL_UP_BORDER if is_up else self.VOL_DOWN_BORDER
                         p.setBrush(QBrush(vf))
-                        p.setPen(QPen(vb, 1))
+                        p.setPen(QPen(vb, px))
                         p.drawRect(vol_rect)
 
             for overlay in overlays_on(self, VOLUME_PANE):
                 getattr(self, overlay.draw)(p, ML, w - MR, vol_top)
 
             # The price line reads the latest candle, not the last visible one.
+            _fa = self._fire_armed_state or {}
+            drawn_counts = {
+                "fills": 0,
+                "floors": 0,
+                "target": 0,
+                "strip": 0,
+                "glow": 0,
+                "positions": sum(
+                    1
+                    for pos in self._positions
+                    if price_top <= p2y(pos.price) <= price_top + price_h
+                ),
+            }
             if self._candles:
                 last_close = self._candles[-1].close
                 yp = p2y(last_close)
-                p.setPen(QPen(self.PRICE_LINE_COLOR, 1, Qt.DashLine))
-                p.drawLine(ML, int(yp), w - MR, int(yp))
-                ptxt = self._fmt_price(last_close)
-                tw = fm.horizontalAdvance(ptxt) + 10
-                badge = QRectF(w - MR, yp - 9, tw, 18)
-                p.setBrush(QBrush(self.BADGE_SURFACE))
-                p.setPen(QPen(self.PRICE_LINE_COLOR, 1))
-                p.drawRoundedRect(badge, 3, 3)
-                p.setFont(font_sm)
-                p.drawText(badge, Qt.AlignCenter, ptxt)
+                p.setPen(QPen(self.PRICE_LINE_COLOR, px, Qt.DashLine))
+                p.drawLine(QPointF(ML, snap(yp)), QPointF(w - MR, snap(yp)))
+                self._right_tag(
+                    p,
+                    w,
+                    yp,
+                    self._fmt_price(last_close),
+                    self.PRICE_LINE_COLOR,
+                    font_sm,
+                )
 
             if n > 0:
 
-                def _draw_line_series(data, color, width=1.2, dashed=False):
+                def _draw_line_series(data, color, width=LINE_WIDTH_PX, dashed=False):
                     pen = QPen(color, width)
                     if dashed:
                         pen.setStyle(Qt.DashLine)
@@ -1491,98 +1666,85 @@ if _HAS_QT:
                 )
                 for overlay in overlays_on(self, PRICE_PANE):
                     getattr(self, overlay.draw)(ctx)
-                # Both Target Balance lines are dashed, with a right-edge badge.
-                if self._tb_anchor_price is not None:
-                    ay = p2y(float(self._tb_anchor_price))
-                    if price_top <= ay <= price_bot:
-                        anchor_color = self.TB_ANCHOR
-                        p.setPen(QPen(anchor_color, 1.4, Qt.DashLine))
-                        p.drawLine(ML, int(ay), w - MR, int(ay))
-                        txt = f"TB-Anchor {self._fmt_price(self._tb_anchor_price)}"
-                        tw = fm.horizontalAdvance(txt) + 10
-                        badge = QRectF(ML + 4, ay - 8, tw, 14)
-                        p.setBrush(QBrush(self.BADGE_SURFACE))
-                        p.setPen(QPen(anchor_color, 1))
-                        p.drawRoundedRect(badge, 2, 2)
-                        p.setPen(QPen(anchor_color))
-                        p.setFont(font_sm)
-                        p.drawText(badge, Qt.AlignCenter, txt)
 
-                if self._tb_ceiling_price is not None:
-                    cyl = p2y(float(self._tb_ceiling_price))
-                    if price_top <= cyl <= price_bot:
-                        ceiling_color = self.TB_CEILING
-                        p.setPen(QPen(ceiling_color, 1.4, Qt.DashLine))
-                        p.drawLine(ML, int(cyl), w - MR, int(cyl))
-                        txt = f"TB-Ceiling {self._fmt_price(self._tb_ceiling_price)}"
-                        tw = fm.horizontalAdvance(txt) + 10
-                        badge = QRectF(ML + 4, cyl - 8, tw, 14)
-                        p.setBrush(QBrush(self.BADGE_SURFACE))
-                        p.setPen(QPen(ceiling_color, 1))
-                        p.drawRoundedRect(badge, 2, 2)
-                        p.setPen(QPen(ceiling_color))
-                        p.setFont(font_sm)
-                        p.drawText(badge, Qt.AlignCenter, txt)
+                drawn_counts["strip"] = self._draw_landing_strip(ctx, snap)
 
-                # Right-edge glow: green when SCRUM is armed, red when FOLD is.
-                _fa = self._fire_armed_state or {}
-                _scrum_on = bool(_fa.get("scrum_armed"))
-                _fold_on = bool(_fa.get("fold_armed"))
-                if _scrum_on or _fold_on:
-                    glow_x = w - MR - 4
-                    glow_w = 6
-                    if _scrum_on:
-                        scrum_top = price_top + 4
-                        scrum_bot = price_top + (price_h * 0.5)
-                        grad = QLinearGradient(
-                            glow_x, scrum_top, glow_x + glow_w, scrum_top
-                        )
-                        grad.setColorAt(0.0, _with_alpha(self.GLOW_SCRUM, 0))
-                        grad.setColorAt(1.0, self.GLOW_SCRUM)
-                        p.setBrush(QBrush(grad))
-                        p.setPen(Qt.NoPen)
-                        p.drawRect(
-                            QRectF(glow_x, scrum_top, glow_w, scrum_bot - scrum_top)
-                        )
-                    if _fold_on:
-                        fold_top = price_top + (price_h * 0.5)
-                        fold_bot = price_bot - 4
-                        grad = QLinearGradient(
-                            glow_x, fold_top, glow_x + glow_w, fold_top
-                        )
-                        grad.setColorAt(0.0, _with_alpha(self.GLOW_FOLD, 0))
-                        grad.setColorAt(1.0, self.GLOW_FOLD)
-                        p.setBrush(QBrush(grad))
-                        p.setPen(Qt.NoPen)
-                        p.drawRect(
-                            QRectF(glow_x, fold_top, glow_w, fold_bot - fold_top)
-                        )
+                # Both Target Balance lines are dashed, tagged at the right edge in their colour.
+                for tb_price, tb_colour, tb_format in (
+                    (self._tb_anchor_price, self.TB_ANCHOR, TARGET_TAG_FORMAT),
+                    (self._tb_ceiling_price, self.TB_CEILING, CEILING_TAG_FORMAT),
+                ):
+                    if tb_price is None:
+                        continue
+                    ty = p2y(float(tb_price))
+                    if not price_top <= ty <= price_bot:
+                        continue
+                    p.setPen(QPen(tb_colour, LINE_WIDTH_PX, Qt.DashLine))
+                    p.drawLine(QPointF(ML, snap(ty)), QPointF(w - MR, snap(ty)))
+                    self._right_tag(
+                        p,
+                        w,
+                        ty,
+                        tb_format.format(price=self._fmt_price(float(tb_price))),
+                        tb_colour,
+                        font_sm,
+                    )
+                    drawn_counts["target"] += 1
+
+                # Right-edge glow: green when SCRUM is armed, red when FOLD is, each tagged.
+                glow_x = w - MR - 4
+                glow_w = 6
+                for armed, glow_colour, glow_top, glow_bot, glow_tag in (
+                    (
+                        bool(_fa.get("scrum_armed")),
+                        self.GLOW_SCRUM,
+                        price_top + 4,
+                        price_top + price_h * 0.5,
+                        SCRUM_ARMED_TAG,
+                    ),
+                    (
+                        bool(_fa.get("fold_armed")),
+                        self.GLOW_FOLD,
+                        price_top + price_h * 0.5,
+                        price_bot - 4,
+                        FOLD_ARMED_TAG,
+                    ),
+                ):
+                    if not armed:
+                        continue
+                    grad = QLinearGradient(glow_x, glow_top, glow_x + glow_w, glow_top)
+                    grad.setColorAt(0.0, _with_alpha(glow_colour, 0))
+                    grad.setColorAt(1.0, glow_colour)
+                    p.setBrush(QBrush(grad))
+                    p.setPen(Qt.NoPen)
+                    p.drawRect(QRectF(glow_x, glow_top, glow_w, glow_bot - glow_top))
+                    tag_y = (
+                        glow_top + TAG_H_PX
+                        if glow_tag == SCRUM_ARMED_TAG
+                        else glow_bot - TAG_H_PX
+                    )
+                    self._right_tag(p, w, tag_y, glow_tag, glow_colour, font_sm)
+                    drawn_counts["glow"] += 1
 
                 def _paint_sub_grid(top: float, bot: float, label: str):
-                    """Paint sub-pane backdrop + top separator + name label."""
+                    """Paint sub-pane backdrop, a hairline separator and the name label."""
                     p.setPen(Qt.NoPen)
                     p.setBrush(QBrush(self.SUB_PANE_WASH))
                     p.drawRect(QRectF(ML, top, w - ML - MR, bot - top))
-                    p.setPen(QPen(self.GRID_MAJOR, 1))
-                    p.drawLine(ML, int(top), w - MR, int(top))
+                    p.setRenderHint(QPainter.Antialiasing, False)
+                    p.setPen(QPen(self.GRID_MAJOR, px))
+                    p.drawLine(QPointF(ML, snap(top)), QPointF(w - MR, snap(top)))
+                    p.setRenderHint(QPainter.Antialiasing, True)
                     p.setPen(QPen(self.TEXT_DIM))
                     p.setFont(font_sm)
                     p.drawText(int(ML + 6), int(top + 11), label)
 
                 def _sub_axis_label(top: float, bot: float, value, color):
-                    """Right-side numeric label for a sub-pane axis value."""
+                    """Right-edge value tag of a sub-pane, in the series colour."""
                     if value is None:
                         return
                     txt = f"{value:.4f}" if abs(value) < 10 else f"{value:.2f}"
-                    tw = fm.horizontalAdvance(txt) + 8
-                    badge_y = (top + bot) / 2 - 8
-                    badge = QRectF(w - MR + 2, badge_y, tw, 14)
-                    p.setBrush(QBrush(self.BADGE_SURFACE))
-                    p.setPen(QPen(color, 1))
-                    p.drawRoundedRect(badge, 2, 2)
-                    p.setPen(QPen(color))
-                    p.setFont(font_sm)
-                    p.drawText(badge, Qt.AlignCenter, txt)
+                    self._right_tag(p, w, (top + bot) / 2, txt, color, font_sm)
 
                 def _paint_oscillator(
                     top, bot, data, extract, color, width=1.2, vmin=None, vmax=None
@@ -1625,20 +1787,7 @@ if _HAS_QT:
                 for overlay, sp_top, sp_bot in sub_layout:
                     getattr(self, overlay.draw)(ctx, sp_top, sp_bot)
 
-                # Tranche floor lines: the bot will not fold below these prices.
-                if self._tranche_floors:
-                    p.setPen(QPen(self.FLOOR_LINE, 1, Qt.DashLine))
-                    font_fl = QFont("Consolas", 7)
-                    p.setFont(font_fl)
-                    for fp, label in self._tranche_floors:
-                        try:
-                            yf = p2y(float(fp))
-                        except (TypeError, ValueError):
-                            continue
-                        p.setPen(QPen(self.FLOOR_LINE, 1, Qt.DashLine))
-                        p.drawLine(ML, int(yf), w - MR, int(yf))
-                        p.setPen(self.FLOOR_LINE)
-                        p.drawText(QPointF(ML + 4, yf - 2), f"FLOOR {label}")
+                drawn_counts["floors"] = self._draw_floors(ctx, snap)
 
                 self._draw_call(ctx, h)
 
@@ -1652,50 +1801,53 @@ if _HAS_QT:
             default_buy = self.MARKER_BUY
             default_sell = self.MARKER_SELL
 
+            # A fill sits on the candle whose interval holds its stamp; the window
+            # ends one interval past the last candle's open.
+            interval = self._candle_interval(visible_candles)
+            t_first = visible_candles[0].time
+            t_end = visible_candles[-1].time + interval
+            times = [c.time for c in visible_candles]
+            mark_w = cw * MARK_WIDTH_RATIO
+            mark_h = price_h * MARK_HEIGHT_FRACTION
+            fills_in_window = 0
             for m in self._markers:
-                # A marker outside the visible time range is skipped, not clamped.
-                best_i = min(
-                    range(n), key=lambda i: abs(visible_candles[i].time - m.time)
-                )
-                t_first = visible_candles[0].time
-                t_last = visible_candles[-1].time
-                if m.time < t_first or m.time > t_last:
+                if m.time < t_first or m.time >= t_end:
                     continue
-                mx = i2x(best_i) + cw / 2
                 my = p2y(m.price)
+                if not price_top <= my <= price_bot:
+                    continue
+                fills_in_window += 1
+                idx = max(0, bisect_right(times, m.time) - 1)
+                mx = i2x(idx) + cw / 2
                 is_buy = m.side == "buy"
+                glyph = MARK_GLYPHS[FOLD_SIDE if is_buy else SCRUM_SIDE]
                 tc = type_colors.get(m.label, default_buy if is_buy else default_sell)
-
-                sz = 5
-                diamond = QPolygonF(
+                polygon = QPolygonF(
                     [
-                        QPointF(mx, my - sz),
-                        QPointF(mx + sz, my),
-                        QPointF(mx, my + sz),
-                        QPointF(mx - sz, my),
+                        QPointF(mx + dx * mark_w, my + dy * mark_h)
+                        for dx, dy in glyph["points"]
                     ]
                 )
-                p.setBrush(QBrush(tc))
-                p.setPen(QPen(self.MARKER_EDGE, 0.8))
-                p.drawPolygon(diamond)
+                p.setPen(QPen(tc, MARK_OUTLINE_PX))
+                p.setBrush(QBrush(tc) if glyph["filled"] else Qt.NoBrush)
+                p.drawPolygon(polygon)
+                drawn_counts["fills"] += 1
 
-                p.setPen(QPen(tc, 1.2))
-                if is_buy:
-                    p.drawLine(int(mx), int(my + sz), int(mx), int(my + sz + 6))
-                else:
-                    p.drawLine(int(mx), int(my - sz), int(mx), int(my - sz - 6))
-
-                # Type label (SCRUM/FOLD/DIST/BUY/SELL)
                 label = m.label or ("BUY" if is_buy else "SELL")
-                p.setFont(QFont("Consolas", 7, QFont.Bold))
-                fm = p.fontMetrics()
-                tw = fm.horizontalAdvance(label) + 6
-                ty = my - sz - 18 if not is_buy else my + sz + 8
-                p.setBrush(QBrush(self.BADGE_SURFACE))
-                p.setPen(QPen(tc, 0.5))
-                p.drawRoundedRect(QRectF(mx - tw / 2, ty, tw, 13), 2, 2)
+                text = FILL_TAG_FORMAT.format(
+                    label=label, price=self._fmt_price(m.price)
+                )
+                p.setFont(font_sm)
+                tw = fm.horizontalAdvance(text) + TAG_PAD_PX * 2
+                tag_x = mx + mark_w / 2 + TAG_PAD_PX
+                if tag_x + tw > w - MR:
+                    tag_x = mx - mark_w / 2 - TAG_PAD_PX - tw
+                tag = QRectF(tag_x, my - TAG_H_PX / 2, tw, TAG_H_PX)
+                p.setBrush(QBrush(self.FILL_TAG_SURFACE))
+                p.setPen(QPen(tc, px))
+                p.drawRoundedRect(tag, 2, 2)
                 p.setPen(QPen(tc))
-                p.drawText(QRectF(mx - tw / 2, ty, tw, 13), Qt.AlignCenter, label)
+                p.drawText(tag, Qt.AlignCenter, text)
 
             if show_volume and max_vol > 0:
                 p.setPen(QPen(self.TEXT_DIM))
@@ -1844,15 +1996,205 @@ if _HAS_QT:
 
             self._draw_header(p, w, font_hdr, font_sm)
 
-            # Three low-contrast dashes marking the draggable bottom edge.
-            grip_y = h - self._resize_grip_h // 2
-            grip_color = self.GRIP
-            p.setPen(QPen(grip_color, 1.2))
-            cx = w / 2
-            for off in (-12, 0, 12):
+            # Three low-contrast dashes marking the draggable bottom edge of a window.
+            if self.DRAWS_GRIP:
+                grip_y = h - self._resize_grip_h // 2
+                p.setPen(QPen(self.GRIP, 1.2))
+                cx = w / 2
+                for off in (-12, 0, 12):
+                    p.drawLine(
+                        int(cx + off - 4), int(grip_y), int(cx + off + 4), int(grip_y)
+                    )
+
+            self._emit_annotations(
+                drawn_counts,
+                {
+                    "fills": fills_in_window,
+                    "floors": sum(
+                        1
+                        for fp, _label in self._tranche_floors
+                        if price_top <= p2y(float(fp)) <= price_bot
+                    ),
+                    "target": sum(
+                        1
+                        for tb in (self._tb_anchor_price, self._tb_ceiling_price)
+                        if tb is not None and price_top <= p2y(float(tb)) <= price_bot
+                    ),
+                    "strip": int(self._strip_bounds() is not None),
+                    "glow": int(bool(_fa.get("scrum_armed")))
+                    + int(bool(_fa.get("fold_armed"))),
+                    "positions": drawn_counts["positions"],
+                },
+                {
+                    "fills_fed": len(self._markers),
+                    "fills_off_window": len(self._markers) - fills_in_window,
+                    "floors_fed": len(self._tranche_floors),
+                },
+            )
+
+        def _emit_annotations(self, drawn: dict, expected: dict, context: dict) -> None:
+            """Write ``ANNOTATIONS_PIN`` when the drawn annotation counts changed since the last pass."""
+            digest = repr(sorted(drawn.items())) + repr(sorted(expected.items()))
+            if digest == self._annotations_digest:
+                return
+            self._annotations_digest = digest
+            _pin_emit(
+                ANNOTATIONS_PIN,
+                actual=dict(drawn),
+                expected=dict(expected),
+                context={
+                    "symbol": self._symbol,
+                    "variant": resolve_variant(),
+                    "theme": self.theme_name(),
+                    **context,
+                },
+            )
+
+        @staticmethod
+        def _device_ratio(p: QPainter) -> float:
+            """The device pixel ratio of the surface ``p`` paints, 1.0 when it reports none."""
+            device = p.device()
+            try:
+                ratio = float(device.devicePixelRatio()) if device is not None else 1.0
+            except (AttributeError, TypeError):
+                ratio = 1.0
+            return ratio if ratio > 0 else 1.0
+
+        @staticmethod
+        def _candle_interval(candles: list) -> int:
+            """The seconds between two candles, read as the median gap; ``DEFAULT_CANDLE_SECONDS`` with one candle."""
+            gaps = sorted(
+                int(candles[i].time - candles[i - 1].time)
+                for i in range(1, len(candles))
+                if candles[i].time > candles[i - 1].time
+            )
+            return gaps[len(gaps) // 2] if gaps else DEFAULT_CANDLE_SECONDS
+
+        def _right_tag(
+            self, p: QPainter, w: int, y: float, text: str, colour: QColor, font: QFont
+        ) -> QRectF:
+            """Draw ``text`` on a badge filled with ``colour`` at the right edge, centred on ``y``.
+
+            The badge starts in the price scale and grows leftwards over the
+            pane when the text is wider than the scale; the text is ``TAG_TEXT``.
+            """
+            metrics = QFontMetrics(font)
+            width = metrics.horizontalAdvance(text) + TAG_PAD_PX * 2
+            x = min(w - CHART_RIGHT_MARGIN_PX + TAG_INSET_PX, w - width - TAG_INSET_PX)
+            rect = QRectF(x, y - TAG_H_PX / 2, width, TAG_H_PX)
+            p.setBrush(QBrush(colour))
+            p.setPen(Qt.NoPen)
+            p.drawRoundedRect(rect, 2, 2)
+            p.setPen(QPen(self.TAG_TEXT))
+            p.setFont(font)
+            p.drawText(rect, Qt.AlignCenter, text)
+            return rect
+
+        def _strip_bounds(self) -> Optional[tuple]:
+            """The landing strip's two prices, ``(top, bottom)``, or None with no strip set.
+
+            The band lies between the side's Bollinger band and its tolerance
+            edge, ``(upper - lower) * tolerance_pct / 100`` inside it.
+            """
+            strip = self._landing_strip
+            if not strip:
+                return None
+            upper = float(strip.get("upper", 0.0) or 0.0)
+            lower = float(strip.get("lower", 0.0) or 0.0)
+            if upper <= lower:
+                return None
+            tolerance = (
+                (upper - lower) * float(strip.get("tolerance_pct", 0.0) or 0.0) / 100.0
+            )
+            side = str(strip.get("side", ""))
+            if side == STRIP_UPPER:
+                return (upper, upper - tolerance)
+            if side == STRIP_LOWER:
+                return (lower + tolerance, lower)
+            return None
+
+        def _draw_landing_strip(self, ctx, snap) -> int:
+            """Paint the landing strip band over its candles and tag it; 1 when drawn, else 0."""
+            bounds = self._strip_bounds()
+            if bounds is None:
+                return 0
+            strip = self._landing_strip or {}
+            top_price, bottom_price = bounds
+            y_top = ctx.p2y(top_price)
+            y_bot = ctx.p2y(bottom_price)
+            if y_bot < ctx.price_top or y_top > ctx.price_bot:
+                return 0
+            y_top = max(y_top, ctx.price_top)
+            y_bot = min(y_bot, ctx.price_bot)
+            candles = int(strip.get("candles", 0) or 0)
+            bot_seconds = TIMEFRAME_SECONDS.get(
+                str(strip.get("timeframe", "")), DEFAULT_CANDLE_SECONDS
+            )
+            span = (candles + 1) * bot_seconds
+            interval = self._candle_interval(ctx.visible_candles)
+            columns = min(ctx.n, max(1, -(-span // interval)))
+            x_left = ctx.i2x(ctx.n - columns)
+            x_right = ctx.i2x(ctx.n)
+            p = ctx.p
+            p.setBrush(QBrush(self.STRIP_FILL))
+            p.setPen(Qt.NoPen)
+            p.drawRect(QRectF(x_left, y_top, x_right - x_left, y_bot - y_top))
+            p.setPen(QPen(self.STRIP_EDGE, LINE_WIDTH_PX, Qt.DashLine))
+            p.drawLine(QPointF(x_left, snap(y_top)), QPointF(x_right, snap(y_top)))
+            p.drawLine(QPointF(x_left, snap(y_bot)), QPointF(x_right, snap(y_bot)))
+            self._right_tag(
+                p,
+                ctx.w,
+                (y_top + y_bot) / 2,
+                STRIP_TAG_FORMAT.format(
+                    side=str(strip.get("side", "")), candles=candles
+                ),
+                self.STRIP_EDGE,
+                ctx.font_sm,
+            )
+            return 1
+
+        def _draw_floors(self, ctx, snap) -> int:
+            """Paint one dashed line per tranche floor and a right-edge tag per floor group.
+
+            Floors whose tags would overlap share one tag naming their count and
+            price span. Answers the floors drawn inside the pane.
+            """
+            rows = []
+            for fp, label in self._tranche_floors:
+                try:
+                    price = float(fp)
+                except (TypeError, ValueError):
+                    continue
+                y_px = ctx.p2y(price)
+                if not ctx.price_top <= y_px <= ctx.price_bot:
+                    continue
+                rows.append((y_px, price, str(label)))
+            if not rows:
+                return 0
+            p = ctx.p
+            p.setPen(QPen(self.FLOOR_LINE, LINE_WIDTH_PX, Qt.DashLine))
+            for y_px, _price, _label in rows:
                 p.drawLine(
-                    int(cx + off - 4), int(grip_y), int(cx + off + 4), int(grip_y)
+                    QPointF(ctx.ML, snap(y_px)), QPointF(ctx.w - ctx.MR, snap(y_px))
                 )
+            rows.sort()
+            groups: list = []
+            for row in rows:
+                if groups and row[0] - groups[-1][-1][0] <= TAG_H_PX:
+                    groups[-1].append(row)
+                else:
+                    groups.append([row])
+            for group in groups:
+                if len(group) == 1:
+                    text = FLOOR_TAG_FORMAT.format(label=group[0][2])
+                else:
+                    text = FLOORS_TAG_FORMAT.format(
+                        count=len(group), low=group[-1][2], high=group[0][2]
+                    )
+                centre = (group[0][0] + group[-1][0]) / 2
+                self._right_tag(p, ctx.w, centre, text, self.FLOOR_LINE, ctx.font_sm)
+            return len(rows)
 
         def _draw_bollinger(self, ctx) -> None:
             """Paint the Bollinger cloud and its upper, middle and lower lines."""
@@ -2419,23 +2761,14 @@ if _HAS_QT:
                     p.setPen(Qt.NoPen)
                     p.drawEllipse(QPointF(icon_x + icon_size * 1.5, icon_y), 2, 2)
 
-                status = ""
-                if pos.filled:
-                    status = " FILLED"
-                elif is_invisible:
-                    status = " TRACKED"
-                else:
-                    status = " ON BOOK"
-                label = f"{'B' if is_buy else 'S'}{pos.level}{status}"
-                p.setFont(font)
-                p.setPen(
-                    QPen(
-                        QColor(
-                            line_color.red(), line_color.green(), line_color.blue(), 140
-                        )
-                    )
+                self._right_tag(
+                    p,
+                    w,
+                    price_y_px,
+                    POSITION_TAG_FORMAT.format(price=self._fmt_price(pos.price)),
+                    color,
+                    font,
                 )
-                p.drawText(w - right_margin_px + 6, icon_y + 3, label)
 
         def _draw_call(self, ctx, h: int) -> None:
             """Draw the reversal badge, the call bar mark and the voter strip.
@@ -2578,6 +2911,7 @@ if _HAS_QT:
         """
 
         timeframe_changed = Signal(str)
+        DRAWS_GRIP = True
 
         def __init__(self, symbol: str = "", parent=None):
             QWidget.__init__(self, parent)
@@ -2793,16 +3127,13 @@ if _HAS_QT:
 
             legend = QHBoxLayout()
             legend.setSpacing(12)
-            inv_lbl = QLabel("\u25c6 Invisible")
-            inv_lbl.setStyleSheet("color: #ffa000; font-size: 9px;")
-            legend.addWidget(inv_lbl)
-            vis_lbl = QLabel("\u25a1 On Book")
-            vis_lbl.setStyleSheet("color: #00b4ff; font-size: 9px;")
-            legend.addWidget(vis_lbl)
+            self._invisible_label = QLabel("\u25c6 Invisible")
+            legend.addWidget(self._invisible_label)
+            self._on_book_label = QLabel("\u25a1 On Book")
+            legend.addWidget(self._on_book_label)
             toolbar.addLayout(legend)
 
             self._source_label = QLabel("")
-            self._source_label.setStyleSheet("color: #555; font-size: 9px;")
             toolbar.addWidget(self._source_label)
 
             layout.addLayout(toolbar)
@@ -2823,10 +3154,6 @@ if _HAS_QT:
             for overlay in CHART_OVERLAYS:
                 box = QCheckBox(overlay.label)
                 box.setAccessibleName(f"{overlay.label} toggle")
-                box.setStyleSheet(
-                    f"color: {self._chart.overlay_colour(overlay).name()}; "
-                    f"font-size: {self.TOGGLE_FONT_PX}px;"
-                )
                 box.setToolTip(overlay.tooltip)
                 box.setChecked(overlay.starts_on)
                 box.toggled.connect(
@@ -2836,6 +3163,35 @@ if _HAS_QT:
                 self._toggles[overlay.key] = box
             toggle_row.addStretch()
             layout.addLayout(toggle_row)
+            self._restyle()
+
+        def _restyle(self) -> None:
+            """Colour the two legend labels, the source label and every box from the chart's theme."""
+            chart = self._chart
+            self._invisible_label.setStyleSheet(
+                INDICATOR_STYLE_FORMAT.format(
+                    color=chart.field_colour(LEGEND_INVISIBLE_FIELD).name()
+                )
+            )
+            self._on_book_label.setStyleSheet(
+                INDICATOR_STYLE_FORMAT.format(
+                    color=chart.field_colour(LEGEND_ON_BOOK_FIELD).name()
+                )
+            )
+            self._source_label.setStyleSheet(
+                INDICATOR_STYLE_FORMAT.format(color=chart.PANEL_SOURCE_TEXT.name())
+            )
+            for overlay in CHART_OVERLAYS:
+                self._toggles[overlay.key].setStyleSheet(
+                    INDICATOR_STYLE_FORMAT.format(
+                        color=chart.overlay_colour(overlay).name()
+                    )
+                )
+
+        def set_theme(self, tokens) -> None:
+            """Repaint the chart in ``tokens`` and restyle the labels and boxes from it."""
+            self._chart.set_theme(tokens)
+            self._restyle()
 
         @property
         def chart(self) -> CandlestickChart:
@@ -2927,13 +3283,14 @@ if _HAS_QT:
         ``max_overlays`` is the cap the ATA-SPM settings page sets, ``set_call``
         takes ``direction`` with the ``readings`` those voters published, and
         ``set_caption`` takes the standardised message the image carries.
+        ``tokens`` left None paints ``theme_in_force``, the theme the window is in.
         """
         if QGuiApplication.instance() is None:
             return ChartImage(note=NO_APPLICATION_NOTE)
         held = list(candles or [])
         drawn, undrawn = overlays_for_voters(voters, int(max_overlays))
         painter = ChartPainter(str(symbol))
-        painter.set_theme(tokens if tokens is not None else DEFAULT_THEME_TOKENS)
+        painter.set_theme(tokens if tokens is not None else theme_in_force())
         painter.set_timeframe(str(timeframe))
         painter.show_only(drawn)
         painter.set_candles(held)
