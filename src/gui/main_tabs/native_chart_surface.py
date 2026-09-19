@@ -340,6 +340,28 @@ FMT_SUB_MICRO = 0.0001
 FMT_SUB_CENT = 0.01
 FMT_SUB_UNIT = 1
 FMT_THOUSAND = 1000
+#: (upper bound, decimals) per price band, lowest first; ``fmt_price`` and the
+#: page's price badge read the same rows, and a price at or past the last bound
+#: takes ``FMT_GROUPED_DECIMALS`` with a thousands separator.
+PRICE_FORMAT_BANDS: tuple[tuple[float, int], ...] = (
+    (FMT_SUB_MICRO, 8),
+    (FMT_SUB_CENT, 6),
+    (FMT_SUB_UNIT, 4),
+    (FMT_THOUSAND, 2),
+)
+FMT_GROUPED_DECIMALS = 2
+
+#: The theme roles the readout's six lines paint in, by ``readout_lines`` row.
+READOUT_ROLE_LIGHT = "TEXT_LIGHT"
+READOUT_ROLE_DIM = "TEXT_DIM"
+READOUT_ROLE_UP = "UP_FILL"
+READOUT_ROLE_DOWN = "DOWN_FILL"
+READOUT_ROLE_COLOURS: dict[str, Color] = {
+    READOUT_ROLE_LIGHT: TEXT_LIGHT,
+    READOUT_ROLE_DIM: TEXT_DIM,
+    READOUT_ROLE_UP: UP_FILL,
+    READOUT_ROLE_DOWN: DOWN_FILL,
+}
 
 PANEL_SPACING_PX = 2
 PANEL_MARGINS = (0, 0, 0, 0)
@@ -812,16 +834,10 @@ def fmt_price(price: float) -> str:
     Bands are open at the top, so 1000 formats with a thousands separator
     and 999.999 does not, rounding instead to 1000.00.
     """
-    if price < FMT_SUB_MICRO:
-        return f"{price:.8f}"
-    elif price < FMT_SUB_CENT:
-        return f"{price:.6f}"
-    elif price < FMT_SUB_UNIT:
-        return f"{price:.4f}"
-    elif price < FMT_THOUSAND:
-        return f"{price:.2f}"
-    else:
-        return f"{price:,.2f}"
+    for bound, decimals in PRICE_FORMAT_BANDS:
+        if price < bound:
+            return f"{price:.{decimals}f}"
+    return f"{price:,.{FMT_GROUPED_DECIMALS}f}"
 
 
 def fmt_volume(volume: float) -> str:
@@ -1279,15 +1295,15 @@ def ohlc_row(candle: CandleLike) -> list[list]:
     ]
 
 
-def tooltip_rows(candle: CandleLike) -> list[list]:
-    """The hover tooltip's label, value and colour rows."""
-    is_up = candle.close >= candle.open
-    accent = UP_FILL if is_up else DOWN_FILL
+def readout_lines(candle: CandleLike) -> list[list[str]]:
+    """The crosshair readout's six rows for ``candle``: label, text and the theme
+    role the text paints in (a ``READOUT_ROLE_COLOURS`` key)."""
+    accent = READOUT_ROLE_UP if candle.close >= candle.open else READOUT_ROLE_DOWN
     change = candle.close - candle.open
     return [
-        ["O", fmt_price(candle.open), TEXT_LIGHT],
-        ["H", fmt_price(candle.high), TEXT_LIGHT],
-        ["L", fmt_price(candle.low), TEXT_LIGHT],
+        ["O", fmt_price(candle.open), READOUT_ROLE_LIGHT],
+        ["H", fmt_price(candle.high), READOUT_ROLE_LIGHT],
+        ["L", fmt_price(candle.low), READOUT_ROLE_LIGHT],
         ["C", fmt_price(candle.close), accent],
         [
             "Δ",
@@ -1298,8 +1314,26 @@ def tooltip_rows(candle: CandleLike) -> list[list]:
             ),
             accent,
         ],
-        ["V", fmt_tooltip_volume(candle.volume), TEXT_DIM],
+        ["V", fmt_tooltip_volume(candle.volume), READOUT_ROLE_DIM],
     ]
+
+
+def tooltip_rows(candle: CandleLike) -> list[list]:
+    """``readout_lines`` with each role resolved to its ``READOUT_ROLE_COLOURS`` colour."""
+    return [
+        [label, text, READOUT_ROLE_COLOURS[role]]
+        for label, text, role in readout_lines(candle)
+    ]
+
+
+def candle_at_x(x: float, width_px: int, visible_count: int) -> int | None:
+    """The index into the visible window of the candle under ``x``, or None when
+    ``x`` lies outside the pane's columns."""
+    if visible_count <= 0 or x < LEFT_MARGIN_PX or x > width_px - RIGHT_MARGIN_PX:
+        return None
+    column = candle_geometry(width_px - LEFT_MARGIN_PX - RIGHT_MARGIN_PX, visible_count)
+    under = int((x - LEFT_MARGIN_PX) / column["column_px"])
+    return under if 0 <= under < visible_count else None
 
 
 def tooltip_height(row_count: int) -> int:

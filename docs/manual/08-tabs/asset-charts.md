@@ -1224,3 +1224,173 @@ and caption, which the sentence does not name.
 
 **Figures.** `artifacts/u55/C5/` holds the tab's ATA-SMP chart in both
 variants, the three comparisons side by side and the seven venue images.
+
+## 2026-09-19 20:53 - #55 - the page's chart answers the pointer as the widget does
+
+The React page's chart takes the same five pointer inputs the Qt widget
+takes, and answers each one the same way to the candle: a hover draws a
+crosshair with its readout, a wheel tick zooms about the pointer, a drag pans,
+a double-click fits every candle again, and a leave takes the crosshair off.
+The mechanism differs by input. A hover repaints nothing: the page draws the
+crosshair itself on a canvas over the image, from the geometry the painter
+exports beside every image. A zoom, a pan and a reset move the painter's
+window and repaint the image, as the widget repaints itself.
+
+### One arithmetic, called by both
+
+The widget's handlers and the page's asks reach the same methods on
+`ChartPainter`, and those methods call the pure functions
+`native_chart_surface` already held: `zoom_window`, `pan_start`,
+`zoom_factor`, `clamp_y_zoom`, `effective_visible_start`,
+`effective_visible_count` and `fmt_price`. The drag state moved from the Qt
+widget onto the painter, so both variants keep it in one place.
+
+`src/gui/native_chart.py` - the wheel, on the painter both variants hold
+
+```python
+        def wheel_turned(
+            self, x: int, wheel_delta: float, width_px: int, control_held: bool = False
+        ) -> bool:
+            if not self._candles:
+                return False
+            if control_held:
+                self._y_zoom_pct = clamp_y_zoom(
+                    self._y_zoom_pct * zoom_factor(wheel_delta)
+                )
+                self._emit_view(
+                    VIEW_CAUSE_Y_ZOOM, self._visible_start, self._visible_count
+                )
+                self._repaint()
+                return True
+            window = zoom_window(
+                wheel_delta,
+                int(x),
+                int(width_px),
+                len(self._candles),
+                self._visible_start,
+                self._visible_count,
+            )
+            if window is None:
+                return False
+            self._visible_start = window["start"]
+            self._visible_count = window["count"]
+            self._emit_view(VIEW_CAUSE_ZOOM, window["start"], window["count"])
+            self._repaint()
+            return True
+```
+
+`CandlestickChart.wheelEvent` calls `wheel_turned` with the event's x, its
+angle delta, the widget's width and whether Ctrl is held.
+`CandlestickChart.mouseMoveEvent` calls `pointer_moved`, which places the
+crosshair and pans through `pan_to` while a drag is active;
+`mousePressEvent` and `mouseReleaseEvent` call `pointer_pressed` and
+`pointer_released`; `mouseDoubleClickEvent` calls `view_reset`;
+`leaveEvent` calls `pointer_left`. The grip drag along the bottom strip stays
+on the widget, which is the only variant that draws a grip.
+
+### The page's asks
+
+The page sends each input that moves the window as one ask on the bridge
+method `trade_charts_tab.view`, with the pointer's x and y, the host's width
+and height and the page's device pixel ratio. `ChartsTabReact.chart_view`
+answers it on the tab's painter through the same methods.
+
+`src/gui/react_charts_tab.py` - the ask answered
+
+```python
+            if action == surface.VIEW_ACTION_WHEEL:
+                moved = painter.wheel_turned(
+                    x,
+                    float(asked.get(surface.VIEW_DELTA_PARAM) or 0.0),
+                    width,
+                    bool(asked.get(surface.VIEW_CONTROL_PARAM, False)),
+                )
+            elif action == surface.VIEW_ACTION_PRESS:
+                painter.pointer_pressed(x)
+            elif action == surface.VIEW_ACTION_DRAG:
+                moved = painter.pan_to(x, width)
+            elif action == surface.VIEW_ACTION_RELEASE:
+                painter.pointer_released()
+            elif action == surface.VIEW_ACTION_RESET:
+                painter.view_reset()
+                moved = True
+```
+
+The answer carries the window's start and count and, when the window moved,
+the repainted image with its geometry, so a zoom costs one round trip. The
+image key now carries the window and the price padding, so the two-second
+`update_charts` pass answers the zoomed image again instead of the fitted one.
+A drag sends one move at a time; a move that arrives while one is in flight
+waits, and the latest goes when the answer lands.
+
+### The crosshair drawn by the page
+
+Every image answer carries `geometry`: the pane rect, the price scale, the
+candle column width, the window, and for each visible candle its time label
+and the six readout lines the painter formats with `readout_lines` - the
+same function `paint_to` draws the widget's readout from - with the theme's
+colours as CSS text. The page's `pointermove` handler draws the dotted
+crosshair, the price badge, the time badge and the readout box on the canvas
+from those numbers, at the positions `paint_to` uses, and writes what it drew
+on the chart host as `data-crosshair-x`, `data-crosshair-y`,
+`data-crosshair-candle` and `data-readout`. A `pointerleave` clears the canvas
+and the attributes. The price badge at the pointer's row is the one text the
+page formats itself, from `PRICE_FORMAT_BANDS`, the bands `fmt_price` reads.
+
+`src/gui/main_tabs/native_chart_surface.py` - the readout both draw from
+
+```python
+def readout_lines(candle: CandleLike) -> list[list[str]]:
+    accent = READOUT_ROLE_UP if candle.close >= candle.open else READOUT_ROLE_DOWN
+    change = candle.close - candle.open
+    return [
+        ["O", fmt_price(candle.open), READOUT_ROLE_LIGHT],
+        ["H", fmt_price(candle.high), READOUT_ROLE_LIGHT],
+        ["L", fmt_price(candle.low), READOUT_ROLE_LIGHT],
+        ["C", fmt_price(candle.close), accent],
+```
+
+### The two pointer emitters
+
+Two pins through `signal_contract.emit`. `charts.view.changed` writes each
+time the window moves, with `actual` the window the painter holds,
+`expected` the window the surface function answered, and the cause: `zoom`,
+`y_zoom`, `pan` or `reset`. `charts.crosshair.shown` writes at most once per
+quarter second per painter, with `actual` the candle `candle_at_x` places
+under the pointer and `expected` the candle the drawing pass placed: the
+widget's `paint_to` on the Qt build, the page's throttled `crosshair` ask on
+the React build.
+
+### The five inputs read off the running program
+
+Both variants built the real `MainWindow` with the home on scratch, every
+socket but loopback refused, one BTC/USD bot off a scratch copy of
+`bot_state.json`, 100 BTC 1h candles rolled from a copy of the operator's 5m
+tablet, at a device pixel ratio of 1.25, the widget and the page's chart host
+both 1358 pixels wide.
+
+| input | Qt widget | React page |
+| ----- | --------- | ---------- |
+| pointer at x 679 in the price pane | candle 52; readout O 64,634.01, H 64,846.02, L 64,632.71, C 64,741.54, delta +107.53 (+0.17%), V 445 | candle 52; the same six lines to the character |
+| one wheel tick in at x 679 | window None, None to 7, 85 | 7, 85; the image digest moved |
+| a drag of 120 px left | start 7 to 15 | 7 to 15 |
+| a double-click | None, None; padding 1.0 | None, None; padding 1.0 |
+| a leave | `_mouse_x` None; the crosshair pixels gone | the canvas holds 0 painted pixels; the attributes gone |
+| a pointer in the header band | no readout | no readout, no canvas pixels |
+
+With `ZOOM_IN_FACTOR` set to 0.5 in the React process only, the same wheel
+tick reads 26, 50 on the page against 7, 85 on the widget, so the equality
+reading can fail. The scratch `bot_state.json` and the tablet copy read the
+same digest after every input in both variants.
+
+### What a hover and a zoom cost
+
+Measured on the page at 1.25, the chart host 1358 by 561 CSS pixels: a hover
+draws in 0.3 to 0.4 ms per move over 60 moves, the widget's repaint reading
+13.9 ms per move over the same 60. A wheel tick on the page runs 66 to 83 ms
+from the ask to the image placed - 14.3 ms to paint, 41.1 ms to encode a
+222 KB PNG at 1698 by 701 pixels, the rest transport and the 30 KB geometry -
+against 13.4 ms on the widget. A hover on the page repaints nothing.
+
+**Figures.** `artifacts/u55/C4/` holds the crosshair and readout in both
+variants on the same candle, and both after the same wheel tick.

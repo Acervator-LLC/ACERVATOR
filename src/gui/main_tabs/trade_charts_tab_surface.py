@@ -47,6 +47,37 @@ from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
 
 METHOD = "trade_charts_tab.state"
 
+#: The bridge method the page's chart host asks with one pointer input; the
+#: answer carries the painter's window and, when the window moved, a new image.
+VIEW_METHOD = "trade_charts_tab.view"
+VIEW_ACTION_PARAM = "action"
+VIEW_X_PARAM = "x"
+VIEW_Y_PARAM = "y"
+VIEW_WIDTH_PARAM = "width"
+VIEW_HEIGHT_PARAM = "height"
+VIEW_RATIO_PARAM = "dpr"
+VIEW_DELTA_PARAM = "delta"
+VIEW_CONTROL_PARAM = "control"
+VIEW_CANDLE_PARAM = "candle"
+VIEW_ACTION_WHEEL = "wheel"
+VIEW_ACTION_PRESS = "press"
+VIEW_ACTION_DRAG = "drag"
+VIEW_ACTION_RELEASE = "release"
+VIEW_ACTION_RESET = "reset"
+VIEW_ACTION_CROSSHAIR = "crosshair"
+VIEW_ACTIONS = (
+    VIEW_ACTION_WHEEL,
+    VIEW_ACTION_PRESS,
+    VIEW_ACTION_DRAG,
+    VIEW_ACTION_RELEASE,
+    VIEW_ACTION_RESET,
+    VIEW_ACTION_CROSSHAIR,
+)
+VIEW_MOVED_KEY = "moved"
+VIEW_START_KEY = "start"
+VIEW_COUNT_KEY = "count"
+VIEW_IMAGE_KEY = "image"
+
 ACCESSIBLE_NAME = "Trade Charts Tab"
 
 OUTER_MARGINS_PX = (8, 8, 8, 8)

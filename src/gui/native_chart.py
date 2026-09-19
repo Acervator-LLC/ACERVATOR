@@ -20,8 +20,11 @@ from src._variant import resolve_variant
 from src.core.signal_contract import emit as _pin_emit
 from src.gui import design_system as ds
 from src.gui.main_tabs.native_chart_surface import (
+    CROSSHAIR_TIME_FORMAT,
+    FMT_GROUPED_DECIMALS,
     FOLD_SIDE,
     INDICATOR_STYLE_FORMAT,
+    LEFT_MARGIN_PX,
     LEGEND_INVISIBLE_FIELD,
     LEGEND_ON_BOOK_FIELD,
     MARK_GLYPHS,
@@ -29,7 +32,20 @@ from src.gui.main_tabs.native_chart_surface import (
     MARK_OUTLINE_PX,
     MARK_WIDTH_RATIO,
     PANEL_SOURCE_FIELD,
+    PRICE_FORMAT_BANDS,
+    RIGHT_MARGIN_PX,
     SCRUM_SIDE,
+    Y_ZOOM_DEFAULT,
+    candle_at_x,
+    clamp_y_zoom,
+    effective_visible_count,
+    effective_visible_start,
+    fmt_price,
+    gmt_label,
+    pan_start,
+    readout_lines,
+    zoom_factor,
+    zoom_window,
 )
 from src.gui.theme_engine import CYBERPUNK_DARK, THEMES, applied_theme
 from src.trading.ta_engine import (
@@ -62,6 +78,20 @@ THEME_PIN = "charts.theme.applied"
 
 #: The pin ``paint_to`` writes when the set of annotations it drew changes.
 ANNOTATIONS_PIN = "charts.annotations.drawn"
+
+#: The pin ``ChartPainter._emit_view`` writes each time the visible window moves.
+VIEW_PIN = "charts.view.changed"
+VIEW_CAUSE_ZOOM = "zoom"
+VIEW_CAUSE_Y_ZOOM = "y_zoom"
+VIEW_CAUSE_PAN = "pan"
+VIEW_CAUSE_RESET = "reset"
+
+#: The pin ``ChartPainter._emit_crosshair`` writes, at most once per
+#: ``CROSSHAIR_PIN_EVERY_S`` per painter, naming the candle under the pointer.
+CROSSHAIR_PIN = "charts.crosshair.shown"
+CROSSHAIR_PIN_EVERY_S = 0.25
+CROSSHAIR_SOURCE_PAINT = "paint"
+CROSSHAIR_SOURCE_PAGE = "page"
 
 #: The design system's families and pixel sizes the painter sets its type in.
 HEADER_FONT_PX = ds.TYPE_H4
@@ -118,8 +148,8 @@ RATIO_SCALE = (0.0, 1.0)
 ZSCORE_SCALE_FLOOR = 3.0
 
 #: The price pane's left margin and its right margin, which holds the price axis.
-CHART_LEFT_MARGIN_PX = 8
-CHART_RIGHT_MARGIN_PX = 78
+CHART_LEFT_MARGIN_PX = LEFT_MARGIN_PX
+CHART_RIGHT_MARGIN_PX = RIGHT_MARGIN_PX
 
 #: The pixel height one sub-pane takes at the chart's natural height, the
 #: least it shrinks to when the window gives less, and the price pane's
@@ -517,6 +547,15 @@ if _HAS_QT:
         faded.setAlpha(alpha)
         return faded
 
+    def css_colour(colour: QColor) -> str:
+        """``colour`` as the CSS ``rgba()`` text a web page paints with."""
+        return "rgba(%d, %d, %d, %.3f)" % (
+            colour.red(),
+            colour.green(),
+            colour.blue(),
+            colour.alphaF(),
+        )
+
     def design_font(stack: str, size_px: int, bold: bool = False) -> QFont:
         """A ``QFont`` on the design system's family ``stack`` at ``size_px`` pixels."""
         font = QFont()
@@ -862,7 +901,14 @@ if _HAS_QT:
             # None on either bound fits all candles; _y_zoom_pct scales price padding.
             self._visible_start: Optional[int] = None
             self._visible_count: Optional[int] = None
-            self._y_zoom_pct: float = 1.0
+            self._y_zoom_pct: float = Y_ZOOM_DEFAULT
+            self._drag_active = False
+            self._drag_start_x: Optional[int] = None
+            self._drag_start_visible_start: Optional[int] = None
+            # What the last paint_to laid out and drew for the crosshair.
+            self._geometry: dict = {}
+            self._readout: list = []
+            self._readout_candle: Optional[int] = None
 
         @property
         def symbol(self) -> str:
@@ -1406,30 +1452,185 @@ if _HAS_QT:
             )
 
         def _effective_visible_start(self) -> int:
-            """Resolve _visible_start to an int, defaulting to 0 (fit-all)."""
-            if self._visible_start is None:
-                return 0
-            n = len(self._candles)
-            return max(0, min(n - 1, self._visible_start))
+            """``effective_visible_start`` of the painter's window."""
+            return effective_visible_start(self._visible_start, len(self._candles))
 
         def _effective_visible_count(self) -> int:
-            """Resolve _visible_count to an int, defaulting to all candles."""
-            n = len(self._candles)
-            if self._visible_count is None:
-                return n
-            return max(8, min(n, self._visible_count))
+            """``effective_visible_count`` of the painter's window."""
+            return effective_visible_count(self._visible_count, len(self._candles))
 
         def _fmt_price(self, price: float) -> str:
-            if price < 0.0001:
-                return f"{price:.8f}"
-            elif price < 0.01:
-                return f"{price:.6f}"
-            elif price < 1:
-                return f"{price:.4f}"
-            elif price < 1000:
-                return f"{price:.2f}"
-            else:
-                return f"{price:,.2f}"
+            return fmt_price(price)
+
+        # -- the pointer, one arithmetic for both variants ---------------
+
+        def pointer_pressed(self, x: int) -> None:
+            """Start a drag pan at ``x``, holding the window it starts from."""
+            self._drag_active = True
+            self._drag_start_x = int(x)
+            self._drag_start_visible_start = (
+                self._visible_start if self._visible_start is not None else 0
+            )
+
+        def pointer_released(self) -> None:
+            """End a drag pan."""
+            self._drag_active = False
+            self._drag_start_x = None
+
+        def pan_to(self, x: int, width_px: int) -> bool:
+            """Slide the window by the drag from ``_drag_start_x`` to ``x`` through
+            ``pan_start``; True when ``_visible_start`` moved."""
+            if not self._drag_active or self._drag_start_x is None:
+                return False
+            start = pan_start(
+                self._drag_start_x,
+                int(x),
+                self._drag_start_visible_start,
+                int(width_px),
+                len(self._candles),
+                self._effective_visible_count(),
+            )
+            if start is None or start == self._visible_start:
+                return False
+            self._visible_start = start
+            self._emit_view(VIEW_CAUSE_PAN, start, self._visible_count)
+            return True
+
+        def pointer_moved(self, x: int, y: int, width_px: int) -> bool:
+            """Place the crosshair at ``x``, ``y``, pan through ``pan_to`` while a drag
+            is active, and repaint; True when the window moved."""
+            self._mouse_x = int(x)
+            self._mouse_y = int(y)
+            moved = self.pan_to(x, width_px)
+            self._repaint()
+            return moved
+
+        def wheel_turned(
+            self, x: int, wheel_delta: float, width_px: int, control_held: bool = False
+        ) -> bool:
+            """Zoom the window about ``x`` through ``zoom_window``, or the price padding
+            through ``clamp_y_zoom`` when control is held; True when something moved."""
+            if not self._candles:
+                return False
+            if control_held:
+                self._y_zoom_pct = clamp_y_zoom(
+                    self._y_zoom_pct * zoom_factor(wheel_delta)
+                )
+                self._emit_view(
+                    VIEW_CAUSE_Y_ZOOM, self._visible_start, self._visible_count
+                )
+                self._repaint()
+                return True
+            window = zoom_window(
+                wheel_delta,
+                int(x),
+                int(width_px),
+                len(self._candles),
+                self._visible_start,
+                self._visible_count,
+            )
+            if window is None:
+                return False
+            self._visible_start = window["start"]
+            self._visible_count = window["count"]
+            self._emit_view(VIEW_CAUSE_ZOOM, window["start"], window["count"])
+            self._repaint()
+            return True
+
+        def view_reset(self) -> None:
+            """Fit every candle again and repaint."""
+            self._visible_start = None
+            self._visible_count = None
+            self._y_zoom_pct = Y_ZOOM_DEFAULT
+            self._emit_view(VIEW_CAUSE_RESET, None, None)
+            self._repaint()
+
+        def pointer_left(self) -> None:
+            """Take the crosshair off and repaint."""
+            self._mouse_x = None
+            self._mouse_y = None
+            self._repaint()
+
+        def crosshair_readout(self) -> list:
+            """The label and text rows the last ``paint_to`` drew in the readout; empty
+            when no candle was under the pointer."""
+            return [list(row[:2]) for row in self._readout]
+
+        def _emit_view(
+            self, cause: str, start: Optional[int], count: Optional[int]
+        ) -> None:
+            """Write ``VIEW_PIN``: ``actual`` the window held, ``expected`` the window asked."""
+            _pin_emit(
+                VIEW_PIN,
+                actual=[self._visible_start, self._visible_count],
+                expected=[start, count],
+                context={
+                    "cause": cause,
+                    "variant": resolve_variant(),
+                    "symbol": self._symbol,
+                    "candles": len(self._candles),
+                    "y_zoom_pct": self._y_zoom_pct,
+                },
+            )
+
+        def _emit_crosshair(
+            self, x: int, width_px: int, named: Optional[int], source: str
+        ) -> None:
+            """Write ``CROSSHAIR_PIN`` at most once per ``CROSSHAIR_PIN_EVERY_S``: ``actual``
+            the candle ``candle_at_x`` places under ``x``, ``expected`` the candle
+            ``source`` named."""
+            under = candle_at_x(int(x), int(width_px), self._effective_visible_count())
+            placed = None if under is None else self._effective_visible_start() + under
+            _pin_emit(
+                CROSSHAIR_PIN,
+                actual=placed,
+                expected=named,
+                context={
+                    "source": source,
+                    "variant": resolve_variant(),
+                    "symbol": self._symbol,
+                    "x": int(x),
+                    "width": int(width_px),
+                },
+                every=CROSSHAIR_PIN_EVERY_S,
+                instance=str(id(self)),
+            )
+
+        def crosshair_named(self, x: int, width_px: int, named: Optional[int]) -> None:
+            """Write ``CROSSHAIR_PIN`` for a crosshair the page drew at ``x`` over candle ``named``."""
+            self._emit_crosshair(x, width_px, named, CROSSHAIR_SOURCE_PAGE)
+
+        def geometry_payload(self) -> dict:
+            """What the last ``paint_to`` laid out, for a page drawing its own
+            crosshair: the pane rect, the price scale, the candle column, the
+            window, each visible candle's time label and ``readout_lines`` with
+            the theme's colours, and the price bands."""
+            held = dict(self._geometry)
+            if not held:
+                return held
+            start = int(held["visible_start"])
+            count = int(held["visible_count"])
+            held["candles"] = [
+                {
+                    "time_label": gmt_label(one.time, CROSSHAIR_TIME_FORMAT),
+                    "lines": [
+                        [label, text, css_colour(getattr(self, role))]
+                        for label, text, role in readout_lines(one)
+                    ],
+                }
+                for one in self._candles[start : start + count]
+            ]
+            held["price_bands"] = [list(band) for band in PRICE_FORMAT_BANDS]
+            held["grouped_decimals"] = FMT_GROUPED_DECIMALS
+            held["crosshair_colour"] = css_colour(self.CROSSHAIR_COLOR)
+            held["badge_fill"] = css_colour(self.BADGE_SURFACE)
+            held["badge_edge"] = css_colour(self.BADGE_EDGE)
+            held["text_light"] = css_colour(self.TEXT_LIGHT)
+            held["text_dim"] = css_colour(self.TEXT_DIM)
+            held["font_family"] = ds.FONT_FAMILY_MONO
+            held["font_px"] = CAPTION_FONT_PX
+            held["pin_every_ms"] = int(CROSSHAIR_PIN_EVERY_S * 1000)
+            return held
 
         def paint_to(self, p: QPainter, w: int, h: int) -> None:
             """Draw the whole chart onto ``p`` over a ``w`` by ``h`` area.
@@ -1951,6 +2152,25 @@ if _HAS_QT:
                     vl = f"{max_vol:.0f}"
                 p.drawText(w - MR + 6, int(vol_top + 10), f"Vol {vl}")
 
+            self._geometry = {
+                "width": int(w),
+                "height": int(h),
+                "left": ML,
+                "right": w - MR,
+                "price_top": float(price_top),
+                "price_bot": float(price_bot),
+                "price_h": float(price_h),
+                "time_axis_y": float(time_axis_y),
+                "low": float(lo),
+                "span": float(pr),
+                "column_px": float(cw),
+                "visible_start": int(v_start),
+                "visible_count": int(n),
+                "candle_count": int(n_total),
+                "y_zoom_pct": float(self._y_zoom_pct),
+            }
+            self._readout = []
+            self._readout_candle = None
             if self._mouse_x is not None and self._mouse_y is not None:
                 mx, my = self._mouse_x, self._mouse_y
                 if ML <= mx <= w - MR and price_top <= my <= time_axis_y:
@@ -1972,13 +2192,12 @@ if _HAS_QT:
 
                     ci = int((mx - ML) / cw)
                     if 0 <= ci < n:
-                        import time as _t2
-
                         c = visible_candles[ci]
-                        try:
-                            tstr = _t2.strftime("%Y-%m-%d %H:%M", _t2.gmtime(c.time))
-                        except Exception:
-                            tstr = ""
+                        self._readout_candle = v_start + ci
+                        self._emit_crosshair(
+                            mx, w, v_start + ci, CROSSHAIR_SOURCE_PAINT
+                        )
+                        tstr = gmt_label(c.time, CROSSHAIR_TIME_FORMAT)
                         if tstr:
                             tw = fm.horizontalAdvance(tstr) + 12
                             t_badge = QRectF(mx - tw / 2, time_axis_y - 1, tw, 16)
@@ -1988,30 +2207,12 @@ if _HAS_QT:
                             p.setPen(QPen(self.TEXT_LIGHT))
                             p.drawText(t_badge, Qt.AlignCenter, tstr)
 
-                        is_up = c.close >= c.open
-                        tip_color = self.UP_FILL if is_up else self.DOWN_FILL
-                        chg = c.close - c.open
-                        chg_pct = (chg / c.open * 100) if c.open > 0 else 0
+                        self._readout = readout_lines(c)
                         lines = [
-                            ("O", self._fmt_price(c.open), self.TEXT_LIGHT),
-                            ("H", self._fmt_price(c.high), self.TEXT_LIGHT),
-                            ("L", self._fmt_price(c.low), self.TEXT_LIGHT),
-                            ("C", self._fmt_price(c.close), tip_color),
-                            ("Δ", f"{chg:+.6g} ({chg_pct:+.2f}%)", tip_color),
-                            (
-                                "V",
-                                (
-                                    f"{c.volume/1e6:.2f}M"
-                                    if c.volume >= 1e6
-                                    else (
-                                        f"{c.volume/1e3:.1f}K"
-                                        if c.volume >= 1e3
-                                        else f"{c.volume:.0f}"
-                                    )
-                                ),
-                                self.TEXT_DIM,
-                            ),
+                            (label, text, getattr(self, role))
+                            for label, text, role in self._readout
                         ]
+                        tip_color = lines[3][2]
                         line_h = 14
                         pad = 8
                         tip_w = 0
@@ -3049,9 +3250,6 @@ if _HAS_QT:
             self._resize_active = False
             self._resize_start_y: Optional[int] = None
             self._resize_start_height: Optional[int] = None
-            self._drag_active = False
-            self._drag_start_x: Optional[int] = None
-            self._drag_start_visible_start: Optional[int] = None
 
         def _repaint(self) -> None:
             """Schedule the widget's own repaint."""
@@ -3091,15 +3289,17 @@ if _HAS_QT:
                         logger.debug("chart parent height not raised: %s", exc)
 
         def mouseMoveEvent(self, event):
-            self._mouse_x = int(event.position().x())
-            self._mouse_y = int(event.position().y())
+            """The grip drag when one is active, else ``pointer_moved`` on the painter."""
+            mouse_y = int(event.position().y())
             grip_top_px = self.height() - self._resize_grip_h
-            in_grip = self._mouse_y >= grip_top_px
+            in_grip = mouse_y >= grip_top_px
             if self._resize_active or in_grip:
                 self.setCursor(Qt.SizeVerCursor)
             else:
                 self.setCursor(Qt.ArrowCursor)
             if self._resize_active and self._resize_start_y is not None:
+                self._mouse_x = int(event.position().x())
+                self._mouse_y = mouse_y
                 delta = self._mouse_y - self._resize_start_y
                 new_h = max(200, (self._resize_start_height or 200) + delta)
                 self._height_override = new_h
@@ -3115,24 +3315,11 @@ if _HAS_QT:
                 self.updateGeometry()
                 self._repaint()
                 return
-            if self._drag_active and self._drag_start_x is not None:
-                w = self.width()
-                ML, MR = 8, 78
-                chart_w = max(1, w - ML - MR)
-                count = self._effective_visible_count()
-                if count > 0:
-                    pixels_per_candle = chart_w / count
-                    delta_pixels = self._drag_start_x - self._mouse_x
-                    delta_candles = int(delta_pixels / max(pixels_per_candle, 0.001))
-                    new_start = (self._drag_start_visible_start or 0) + delta_candles
-                    n = len(self._candles)
-                    new_start = max(0, min(n - count, new_start))
-                    self._visible_start = new_start
-            self._repaint()
+            self.pointer_moved(int(event.position().x()), mouse_y, self.width())
 
         def mousePressEvent(self, event):
+            """The grip when pressed in the bottom strip, else ``pointer_pressed``."""
             if event.button() == Qt.LeftButton:
-                # The bottom 8px grip takes precedence over pan.
                 press_y_px = int(event.position().y())
                 grip_top_px = self.height() - self._resize_grip_h
                 if press_y_px >= grip_top_px:
@@ -3140,65 +3327,30 @@ if _HAS_QT:
                     self._resize_start_y = press_y_px
                     self._resize_start_height = self.height()
                     return
-                self._drag_active = True
-                self._drag_start_x = int(event.position().x())
-                self._drag_start_visible_start = (
-                    self._visible_start if self._visible_start is not None else 0
-                )
+                self.pointer_pressed(int(event.position().x()))
 
         def mouseReleaseEvent(self, event):
+            """End the drag pan and the grip drag."""
             if event.button() == Qt.LeftButton:
-                self._drag_active = False
-                self._drag_start_x = None
+                self.pointer_released()
                 self._resize_active = False
                 self._resize_start_y = None
                 self._resize_start_height = None
 
         def mouseDoubleClickEvent(self, event):
-            self._visible_start = None
-            self._visible_count = None
-            self._y_zoom_pct = 1.0
-            self._repaint()
+            self.view_reset()
 
         def wheelEvent(self, event):
-            """Zoom on the wheel.
-
-            A plain wheel moves ``_visible_count`` around the cursor;
-            Ctrl and the wheel move ``_y_zoom_pct``.
-            """
-            n = len(self._candles)
-            if n == 0:
-                return
-            delta = event.angleDelta().y()
-            zoom_factor = 0.85 if delta > 0 else 1.18
-
-            modifiers = event.modifiers()
-            if modifiers & Qt.ControlModifier:
-                new_y = self._y_zoom_pct * zoom_factor
-                self._y_zoom_pct = max(0.05, min(4.0, new_y))
-                self._repaint()
-                return
-
-            cur_count = self._effective_visible_count()
-            cur_start = self._effective_visible_start()
-            new_count = max(8, min(n, int(cur_count * zoom_factor)))
-            if new_count == cur_count:
-                return
-            mx = int(event.position().x())
-            ML, MR = 8, 78
-            chart_w = max(1, self.width() - ML - MR)
-            cursor_frac = max(0.0, min(1.0, (mx - ML) / chart_w))
-            anchor_idx = cur_start + cursor_frac * cur_count
-            new_start = int(anchor_idx - cursor_frac * new_count)
-            new_start = max(0, min(n - new_count, new_start))
-            self._visible_start = new_start
-            self._visible_count = new_count
-            self._repaint()
+            """``wheel_turned`` at the cursor; Ctrl held moves the price padding."""
+            self.wheel_turned(
+                int(event.position().x()),
+                event.angleDelta().y(),
+                self.width(),
+                bool(event.modifiers() & Qt.ControlModifier),
+            )
 
         def leaveEvent(self, event):
-            self._mouse_x = None
-            self._mouse_y = None
-            self._repaint()
+            self.pointer_left()
 
         def resizeEvent(self, event):
             """Re-apply the pane height when the width changes, since the legend wraps at it."""
