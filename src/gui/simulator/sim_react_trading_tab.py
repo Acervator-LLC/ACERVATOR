@@ -35,12 +35,21 @@ only, the ``FETCH_TABLET`` entries ``_record_venue_call`` records and the
 for any other action before anything is pushed; ``run_action`` answers the
 page's Pause API Log press through ``set_api_paused``. The run mode is held once, on
 ``SimTradingTabState.mode``; a venue page's mode press reaches ``set_mode``,
-which redraws the tab so the corner and the card offer that mode's two ways
-in and re-publishes every venue so its header carries the active sheet; a
-corner or card press reaches ``_way_in``, which opens the wizard for Create
-New Bots, runs ``_import_live_fleet`` for Import Live Fleet, runs
+which redraws the tab so the corner offers Clear Fleet then that mode's two
+ways in and the card the same two, with Clear Fleet above them while a fleet
+is held, and re-publishes every venue so its header carries the active sheet;
+``show_tab`` reads ``held`` off ``FleetSource.bots`` on every call; a
+corner or card press reaches ``_way_in``, which runs ``_clear_fleet`` for
+Clear Fleet, opens the wizard for Create New Bots, runs
+``_import_live_fleet`` for Import Live Fleet, runs
 ``_generate_from_ytd`` for Generate From YTD, and logs the ``SendRefused``
-``FleetSource`` raises for every other action. ``_import_live_fleet`` puts
+``FleetSource`` raises for every other action. ``_clear_fleet`` refuses with
+the in-flight line while a run or a Battery is in flight, says so with no
+record held, otherwise opens Live's Delete box shape naming the count and on
+Yes drops every held record through ``FleetSource.clear`` and fires
+``fleet_changed``, so every venue unseats, the card returns and the sim fleet
+file is written empty; each press emits ``CLEAR_PRESSED_SIGNAL`` and a clear
+emits ``CLEARED_SIGNAL`` through ``signal_contract``. ``_import_live_fleet`` puts
 ``exchange_choice`` over ``FleetSource.stored_exchanges``, opens
 ``SimExchangeChoiceDialog`` when it prompts, copies the chosen exchange's
 records through ``FleetSource.import_live_fleet`` and fires ``fleet_changed``,
@@ -88,6 +97,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from ...core.signal_contract import emit as _pin_emit
+from ...core.signal_contract import get_sink as _pin_sink
 from ...core.sound_engine import get_sound_engine
 from ...simulator import back_test, portfolio_battery, tablet_retrieval, validation
 from ...simulator.back_test import SimTrade
@@ -1100,13 +1111,16 @@ if _HAS_WEBENGINE:
             return str(self._state.current_exchange or next(iter(self._venues), ""))
 
         def _way_in(self, action: str) -> None:
-            """One way-in pressed at the corner or on the card: Create New Bots
-            opens the wizard through ``_create_bot``, Import Live Fleet runs
-            ``_import_live_fleet``, Generate From YTD runs
-            ``_generate_from_ytd``, Run Portfolio and Run Every Portfolio run
-            ``_run_battery``; every other action asks ``FleetSource`` for it by
-            name, which raises ``SendRefused``, and the refusal is logged to
-            the Activity Log."""
+            """One button pressed at the corner or on the card: Clear Fleet
+            runs ``_clear_fleet``, Create New Bots opens the wizard through
+            ``_create_bot``, Import Live Fleet runs ``_import_live_fleet``,
+            Generate From YTD runs ``_generate_from_ytd``, Run Portfolio and
+            Run Every Portfolio run ``_run_battery``; every other action asks
+            ``FleetSource`` for it by name, which raises ``SendRefused``, and
+            the refusal is logged to the Activity Log."""
+            if action == sim.CLEAR_FLEET_ACTION:
+                self._clear_fleet()
+                return
             if action == sim.CREATE_NEW_BOTS_ACTION:
                 self._create_bot(self._current_venue_id())
                 return
@@ -1123,6 +1137,83 @@ if _HAS_WEBENGINE:
                 getattr(self._fleet_source, action)
             except SendRefused as exc:
                 self.log(tab_surface.way_in_refused_line(action, exc), "error")
+
+        def _clear_fleet(self) -> None:
+            """Clear Fleet: the in-flight line and nothing removed while
+            ``battery_running`` or ``run_running``; the nothing-held line with
+            no record held; otherwise Live's Delete box shape under
+            ``CLEAR_FLEET_BOX_TITLE`` naming the count, and on Yes
+            ``FleetSource.clear``, the cleared line, the notification, the
+            sound and ``fleet_changed``, so every venue unseats, the card
+            returns and the sim fleet file is written empty; each press emits
+            ``CLEAR_PRESSED_SIGNAL`` with its outcome and a clear emits
+            ``CLEARED_SIGNAL`` with what left."""
+            held = self._fleet_source.bots()
+            venues = self._fleet_source.exchanges()
+            context = {"held": len(held), "venues": list(venues), "mode": self.mode()}
+
+            def pressed(outcome: str) -> None:
+                kept = 0 if outcome == tab_surface.CLEAR_OUTCOME_CLEARED else len(held)
+                _pin_emit(
+                    tab_surface.CLEAR_PRESSED_SIGNAL,
+                    actual={
+                        "outcome": outcome,
+                        "held_after": len(self._fleet_source.bots()),
+                    },
+                    expected={"outcome": outcome, "held_after": kept},
+                    context=context,
+                )
+                sink = _pin_sink()
+                if sink is not None:
+                    sink.flush()
+
+            if self.battery_running():
+                self.log(tab_surface.BATTERY_RUNNING_TEXT, "warning")
+                pressed(tab_surface.CLEAR_OUTCOME_IN_FLIGHT)
+                return
+            if self.run_running():
+                self.log(
+                    tab_surface.run_in_flight_line(
+                        self._run.get("mode", ""),
+                        len(self._run.get("bot_ids", [])),
+                        sim.CLEAR_FLEET_TEXT,
+                    ),
+                    "warning",
+                )
+                pressed(tab_surface.CLEAR_OUTCOME_IN_FLIGHT)
+                return
+            if not held:
+                self.log(tab_surface.NOTHING_HELD_TEXT, "warning")
+                pressed(tab_surface.CLEAR_OUTCOME_NOTHING_HELD)
+                return
+            confirm = QMessageBox.question(
+                self,
+                tab_surface.CLEAR_FLEET_BOX_TITLE,
+                tab_surface.clear_fleet_question(len(held), venues),
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if confirm != QMessageBox.Yes:
+                self.log(tab_surface.CLEAR_CANCELLED_TEXT, "warning")
+                pressed(tab_surface.CLEAR_OUTCOME_CANCELLED)
+                return
+            removed = self._fleet_source.clear()
+            self.log(tab_surface.cleared_line(removed, venues), "warning")
+            self._notify(tab_surface.FLEET_CLEARED_NOTICE, "warning")
+            get_sound_engine().play_state_change()
+            self.fleet_changed.emit()
+            pressed(tab_surface.CLEAR_OUTCOME_CLEARED)
+            _pin_emit(
+                tab_surface.CLEARED_SIGNAL,
+                actual={
+                    "held_after": len(self._fleet_source.bots()),
+                    "venues_after": self.exchange_count(),
+                },
+                expected={"held_after": 0, "venues_after": 0},
+                context={"removed": removed, "venues_unseated": list(venues)},
+            )
+            sink = _pin_sink()
+            if sink is not None:
+                sink.flush()
 
         def _run_battery(self, action: str) -> None:
             """Run Portfolio or Run Every Portfolio: one line and nothing
@@ -1463,8 +1554,10 @@ if _HAS_WEBENGINE:
 
             ``layer``, ``replay_layer``, ``activity_paused`` and ``api_paused``
             persist in the state; ``api_lines`` is spent on the call that
-            carries it.
+            carries it; ``held`` is read off ``FleetSource.bots`` on every call,
+            so the card's Clear Fleet follows the fleet.
             """
+            self._state.held = len(self._fleet_source.bots())
             return self.show_models({tab_surface.METHOD: self._state.view_model(asked)})
 
         def add_exchange_tab(self, exchange_id: str, display_name: str) -> None:
@@ -1854,6 +1947,7 @@ if _HAS_WEBENGINE:
             self.refresh_bots()
             self.refresh_votes()
             self._refresh_replay()
+            self.show_tab({})
 
         # -- the replay layer ---------------------------------------------
 

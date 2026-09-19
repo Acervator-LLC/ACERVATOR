@@ -2,10 +2,11 @@
 
 ``build_view_model`` is Live's ``trading_tab_surface.build_view_model`` under
 ``METHOD``, with each layer's corner holding ``way_in_buttons`` in place of the
-add button, the two ways in the active run mode offers from
-``sim.reserved_rows``, the Get Started card carrying the same two buttons in
-its button position under ``placeholder_title_text`` and
-``placeholder_hint_text``, the watchdog and the API-log listener not carried,
+add button, ``clear_fleet_button`` then the two ways in the active run mode
+offers from ``sim.reserved_rows``, the Get Started card carrying the same two
+buttons in its button position under ``placeholder_title_text`` and
+``placeholder_hint_text`` with Clear Fleet above them while ``held`` records
+are held, the watchdog and the API-log listener not carried,
 and ``replay_layer``, ``flip_button``, ``layer_splitter`` and ``replay_header``
 added. ``SimTradingTabState`` owns the run mode, the ``ApiPauseBuffer`` and
 ``ApiLogPane`` one host reads and the venues it has seated; ``way_in_refused_line``
@@ -179,10 +180,21 @@ YTD_NOTHING_GENERATED_TEXT = "Nothing generated"
 YTD_MISSING_USAGE_FORMAT = "; {missing} manifest row(s) skipped, file missing"
 
 
+def clear_fleet_button() -> dict:
+    """The corner's Clear Fleet button, at the way-in buttons' size."""
+    return {
+        "action": sim.CLEAR_FLEET_ACTION,
+        "text": sim.CLEAR_FLEET_TEXT,
+        "accessible_name": sim.button_name(sim.CLEAR_FLEET_ACTION),
+        "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+        "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+    }
+
+
 def way_in_buttons(mode: str = sim.MODES[0]) -> list:
-    """The two corner buttons ``mode`` offers, from ``sim.reserved_rows``, as
-    the page draws them."""
-    return [
+    """The corner's buttons as the page draws them: ``clear_fleet_button``
+    first, then the two ways in ``mode`` offers from ``sim.reserved_rows``."""
+    return [clear_fleet_button()] + [
         {
             "action": row["action"],
             "text": row["text"],
@@ -448,6 +460,46 @@ def run_stopping_line(mode: str, bot_id: Any) -> str:
 def run_failed_line(mode: str, error: Any) -> str:
     """The Activity Log line for a run in ``mode`` that raised ``error``."""
     return RUN_FAILED_FORMAT.format(mode=sim.MODE_TEXT.get(mode, mode), error=error)
+
+
+#: Clear Fleet's box, in Live's ``Delete Bot`` shape, and its Activity Log
+#: lines on both hosts.
+CLEAR_FLEET_BOX_TITLE = sim.CLEAR_FLEET_TEXT
+CLEAR_FLEET_QUESTION_FORMAT = (
+    "Clear the Simulator fleet of {count} bot(s) on {venues}? This cannot be undone."
+)
+CLEARED_FORMAT = "Cleared {count} bot(s) on {venues}; the Simulator fleet is empty."
+CLEAR_CANCELLED_TEXT = "Clear Fleet cancelled."
+NOTHING_HELD_TEXT = "No fleet is held; nothing to clear."
+FLEET_CLEARED_NOTICE = "Fleet cleared"
+
+#: The two signals a Clear Fleet press emits through ``signal_contract``: the
+#: press, whose held count after must move only on ``CLEAR_OUTCOME_CLEARED``,
+#: and the clear, after which nothing is held and no venue is seated.
+CLEAR_PRESSED_SIGNAL = "sim.fleet.clear_pressed"
+CLEARED_SIGNAL = "sim.fleet.cleared"
+CLEAR_OUTCOME_CLEARED = "cleared"
+CLEAR_OUTCOME_CANCELLED = "cancelled"
+CLEAR_OUTCOME_NOTHING_HELD = "nothing_held"
+CLEAR_OUTCOME_IN_FLIGHT = "refused_in_flight"
+
+
+def venues_text(venues: Any) -> str:
+    """The venue ids in ``venues`` joined for a line, ``no venue`` for none."""
+    joined = ", ".join(str(one) for one in venues if one)
+    return joined or "no venue"
+
+
+def clear_fleet_question(count: int, venues: Any) -> str:
+    """The box's question for ``count`` held records on ``venues``."""
+    return CLEAR_FLEET_QUESTION_FORMAT.format(
+        count=int(count), venues=venues_text(venues)
+    )
+
+
+def cleared_line(count: int, venues: Any) -> str:
+    """The Activity Log line for ``count`` records removed from ``venues``."""
+    return CLEARED_FORMAT.format(count=int(count), venues=venues_text(venues))
 
 
 #: The trade line one ``SimTrade`` writes on both hosts: Live's ``SELL FILLED``
@@ -717,9 +769,16 @@ def card_button_name(action: str) -> str:
     return sim.button_name(action) + "-card"
 
 
-def placeholder_way_in_buttons(accent: Any, mode: str = sim.MODES[0]) -> list:
-    """The two way-ins ``mode`` offers in the card's button position, at Live's
-    card-button size and sheet."""
+def placeholder_way_in_buttons(
+    accent: Any, mode: str = sim.MODES[0], held: int = 0
+) -> list:
+    """The card's buttons at Live's card-button size and sheet: Clear Fleet
+    first while ``held`` records are held, then the two ways in ``mode`` offers."""
+    rows = list(sim.reserved_rows(mode))
+    if int(held or 0) > 0:
+        rows.insert(
+            0, {"action": sim.CLEAR_FLEET_ACTION, "text": sim.CLEAR_FLEET_TEXT}
+        )
     return [
         {
             "action": row["action"],
@@ -729,19 +788,24 @@ def placeholder_way_in_buttons(accent: Any, mode: str = sim.MODES[0]) -> list:
             "style_sheet": live.placeholder_add_style(accent),
             "align": "center",
         }
-        for row in sim.reserved_rows(mode)
+        for row in rows
     ]
 
 
 def layer_card(
-    key: Any, exchanges: Any = None, current: Any = None, mode: str = sim.MODES[0]
+    key: Any,
+    exchanges: Any = None,
+    current: Any = None,
+    mode: str = sim.MODES[0],
+    held: int = 0,
 ) -> dict:
     """Live's ``layer_card`` with ``way_in_buttons`` and ``corner_layout`` added,
     and the Get Started card asking for a fleet.
 
     The card's ``placeholder`` keeps Live's frame and geometry; its title, its
     hint and its button position carry the Simulator's contents, the button
-    position the two ways in ``mode`` offers.
+    position Clear Fleet while ``held`` records are held and the two ways in
+    ``mode`` offers.
     """
     card = live.layer_card(key, exchanges, current)
     card["way_in_buttons"] = way_in_buttons(mode)
@@ -750,7 +814,9 @@ def layer_card(
     placeholder["order"] = list(PLACEHOLDER_ORDER)
     placeholder["title"]["text"] = placeholder_title_text(card["label"])
     placeholder["hint"]["text"] = placeholder_hint_text(card["label"])
-    placeholder["way_in_buttons"] = placeholder_way_in_buttons(card["accent"], mode)
+    placeholder["way_in_buttons"] = placeholder_way_in_buttons(
+        card["accent"], mode, held
+    )
     del placeholder["add_button"]
     return card
 
@@ -765,14 +831,16 @@ def build_view_model(
     replay_layer: Any = sim.LAYER_INDICATORS,
     mode: str = sim.MODES[0],
     replay: Optional[dict] = None,
+    held: int = 0,
 ) -> dict:
     """Return the whole Simulator tab state as one serialisable dict.
 
     ``layer`` names the stack page on show, ``exchanges`` the venues seated,
     ``replay_layer`` which of the panel and the replay layer shows, ``mode``
-    the run mode whose two ways in the corner and the card draw, and
-    ``replay`` the layer's chooser, button and two windows as ``replay_model``
-    builds them.
+    the run mode whose two ways in the corner and the card draw, ``replay``
+    the layer's chooser, button and two windows as ``replay_model`` builds
+    them, and ``held`` how many records the fleet holds, which puts Clear
+    Fleet on the card.
     """
     key = "stock" if str(layer) == "stock" else "crypto"
     buffer = live.ApiPauseBuffer() if api_buffer is None else api_buffer
@@ -794,8 +862,9 @@ def build_view_model(
             "current_index": live.LAYER_ORDER.index(key),
         },
         "mode": active,
+        "held": int(held or 0),
         "layers": [
-            layer_card(name, routed[name], current_exchange, active)
+            layer_card(name, routed[name], current_exchange, active, held)
             for name in live.LAYER_ORDER
         ],
         "alias_layer": live.ALIAS_LAYER,
@@ -839,7 +908,8 @@ class SimTradingTabState:
     the run mode, the first of ``sim.MODES`` at open, the one place the React
     host holds it; ``set_mode`` moves it and answers what it became. ``replay``
     is the replay layer's last ``replay_model``, replaced when a request
-    carries ``REPLAY_PARAM``.
+    carries ``REPLAY_PARAM``. ``held`` is how many records the fleet holds,
+    written by the host before each ``view_model``.
     """
 
     def __init__(self) -> None:
@@ -852,6 +922,7 @@ class SimTradingTabState:
         self.exchanges: list = []
         self.current_exchange = ""
         self.mode = sim.MODES[0]
+        self.held = 0
 
     def set_mode(self, mode: Any) -> str:
         """Make ``mode`` the run mode when it is one of ``sim.MODES``; answer
@@ -908,6 +979,7 @@ class SimTradingTabState:
             replay_layer=self.replay_layer,
             mode=self.mode,
             replay=self.replay,
+            held=self.held,
         )
 
 

@@ -16,12 +16,20 @@ tab holds the run mode, ``mode``, the first of ``MODES`` at open; a venue
 page's mode button reaches ``set_mode``, which draws the active sheet on every
 seated page through ``SimExchangeTab.show_mode`` and redraws the way-ins
 through ``_draw_way_ins``. The corner Live gives ``＋ Add Crypto Exchange``
-holds the two way-in buttons the run mode offers, from ``reserved_rows``, and
-the Get Started card holds the same two where Live's card holds its add
-button; each reaches ``_way_in``, which opens the wizard for Create New Bots,
+holds Clear Fleet then the two way-in buttons the run mode offers, from
+``way_in_buttons``, and the Get Started card holds the same two where Live's
+card holds its add button, with Clear Fleet above them while a fleet is held,
+from ``placeholder_way_in_buttons``; each reaches ``_way_in``, which runs
+``_clear_fleet`` for Clear Fleet, opens the wizard for Create New Bots,
 runs ``_import_live_fleet`` for Import Live Fleet, runs
 ``_generate_from_ytd`` for Generate From YTD, and logs the ``SendRefused``
-``FleetSource`` raises for every other action. ``_import_live_fleet`` puts
+``FleetSource`` raises for every other action. ``_clear_fleet`` refuses with
+the in-flight line while a run or a Battery is in flight, says so with no
+record held, otherwise opens Live's Delete box shape naming the count and on
+Yes drops every held record through ``FleetSource.clear`` and fires
+``fleet_changed``, so every venue unseats, the card returns and the sim fleet
+file is written empty; each press emits ``CLEAR_PRESSED_SIGNAL`` and a clear
+emits ``CLEARED_SIGNAL`` through ``signal_contract``. ``_import_live_fleet`` puts
 ``exchange_choice`` over ``FleetSource.stored_exchanges``, opens
 ``SimExchangeChoiceDialog`` when it prompts, copies the chosen exchange's
 records through ``FleetSource.import_live_fleet`` and fires ``fleet_changed``,
@@ -108,6 +116,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...core.signal_contract import emit as _pin_emit
+from ...core.signal_contract import get_sink as _pin_sink
 from ...core.sound_engine import get_sound_engine
 from ...simulator import back_test, portfolio_battery, validation
 from ...simulator.back_test import SimTrade
@@ -156,7 +166,6 @@ from .sim_indicator_panel import SimIndicatorVotingPanel
 from .sim_status_log import SimStatusLog
 from . import sim_trading_tab_surface as tab_surface
 from .sim_trading_tab_surface import (
-    card_button_name,
     notification_line,
     placeholder_hint_text,
     placeholder_title_text,
@@ -182,10 +191,6 @@ FLIP_BUTTON_QSS = (
     f"QPushButton#{FLIP_BUTTON_NAME} {{ padding-left: {FLIP_BUTTON_SIDE_PADDING_PX}px; "
     f"padding-right: {FLIP_BUTTON_SIDE_PADDING_PX}px; }}"
 )
-
-#: Live's corner button is 24 px tall: its ＋ glyph sets that height, and the
-#: way-in buttons carry no such glyph.
-WAY_IN_BUTTON_HEIGHT_PX = 24
 
 
 class WayInSlot:
@@ -415,10 +420,13 @@ class SimTradingTab(QWidget):
         return self._mode
 
     def _draw_way_ins(self) -> None:
-        """Draw the run mode's two way-in buttons at each layer's corner, at
-        Live's corner-button size, and on each layer's Get Started card between
-        its title and its hint, replacing the buttons drawn before."""
-        rows = surface.reserved_rows(self._mode)
+        """Draw ``way_in_buttons`` at each layer's corner, Clear Fleet then the
+        run mode's two way-ins at Live's corner-button size, and
+        ``placeholder_way_in_buttons`` on each layer's Get Started card between
+        its title and its hint, Clear Fleet leading while a fleet is held,
+        replacing the buttons drawn before."""
+        held = len(self._fleet_source.bots())
+        corner_rows = tab_surface.way_in_buttons(self._mode)
         self._way_in_buttons.clear()
         self._card_way_in_buttons.clear()
         for slot in self._way_in_slots:
@@ -431,25 +439,25 @@ class SimTradingTab(QWidget):
                     old.setParent(None)
                     old.deleteLater()
                 drawn.clear()
-            for row in rows:
+            for row in corner_rows:
                 way_in = QPushButton(row["text"])
-                way_in.setMinimumWidth(140)
-                way_in.setMinimumHeight(WAY_IN_BUTTON_HEIGHT_PX)
-                way_in.setAccessibleName(surface.button_name(row["action"]))
+                way_in.setMinimumWidth(row["minimum_width_px"])
+                way_in.setMinimumHeight(row["minimum_height_px"])
+                way_in.setAccessibleName(row["accessible_name"])
                 way_in.clicked.connect(
                     lambda _checked=False, action=row["action"]: self._way_in(action)
                 )
                 slot.corner.addWidget(way_in)
                 slot.corner_buttons.append(way_in)
                 self._way_in_buttons.setdefault(row["action"], way_in)
-            for at, row in enumerate(rows):
+            card_rows = tab_surface.placeholder_way_in_buttons(
+                slot.accent, self._mode, held
+            )
+            for at, row in enumerate(card_rows):
                 card_way_in = QPushButton(row["text"])
-                card_way_in.setMinimumSize(180, 36)
-                card_way_in.setStyleSheet(
-                    f"QPushButton {{ border: 1px solid {slot.accent}; "
-                    f"color: {slot.accent}; border-radius: 4px; }}"
-                )
-                card_way_in.setAccessibleName(card_button_name(row["action"]))
+                card_way_in.setMinimumSize(*row["minimum_size_px"])
+                card_way_in.setStyleSheet(row["style_sheet"])
+                card_way_in.setAccessibleName(row["accessible_name"])
                 card_way_in.clicked.connect(
                     lambda _checked=False, action=row["action"]: self._way_in(action)
                 )
@@ -463,12 +471,16 @@ class SimTradingTab(QWidget):
         return str(getattr(shown, "exchange_id", "") or "")
 
     def _way_in(self, action: str) -> None:
-        """One way-in pressed at the corner or on the card: Create New Bots
-        opens the wizard through ``_create_bot``, Import Live Fleet runs
-        ``_import_live_fleet``, Generate From YTD runs ``_generate_from_ytd``,
-        Run Portfolio and Run Every Portfolio run ``_run_battery``; every
-        other action asks ``FleetSource`` for it by name, which raises
-        ``SendRefused``, and the refusal is logged to the Activity Log."""
+        """One button pressed at the corner or on the card: Clear Fleet runs
+        ``_clear_fleet``, Create New Bots opens the wizard through
+        ``_create_bot``, Import Live Fleet runs ``_import_live_fleet``,
+        Generate From YTD runs ``_generate_from_ytd``, Run Portfolio and Run
+        Every Portfolio run ``_run_battery``; every other action asks
+        ``FleetSource`` for it by name, which raises ``SendRefused``, and the
+        refusal is logged to the Activity Log."""
+        if action == surface.CLEAR_FLEET_ACTION:
+            self._clear_fleet()
+            return
         if action == surface.CREATE_NEW_BOTS_ACTION:
             self._create_bot(self._current_venue_id())
             return
@@ -485,6 +497,83 @@ class SimTradingTab(QWidget):
             getattr(self._fleet_source, action)
         except SendRefused as exc:
             self._status_log.log(tab_surface.way_in_refused_line(action, exc), "error")
+
+    def _clear_fleet(self) -> None:
+        """Clear Fleet: the in-flight line and nothing removed while
+        ``battery_running`` or ``run_running``; the nothing-held line with no
+        record held; otherwise Live's Delete box shape under
+        ``CLEAR_FLEET_BOX_TITLE`` naming the count, and on Yes
+        ``FleetSource.clear``, the cleared line, the notification, the sound
+        and ``fleet_changed``, so every venue unseats, the card returns and
+        the sim fleet file is written empty; each press emits
+        ``CLEAR_PRESSED_SIGNAL`` with its outcome and a clear emits
+        ``CLEARED_SIGNAL`` with what left."""
+        held = self._fleet_source.bots()
+        venues = self._fleet_source.exchanges()
+        context = {"held": len(held), "venues": list(venues), "mode": self._mode}
+
+        def pressed(outcome: str) -> None:
+            kept = 0 if outcome == tab_surface.CLEAR_OUTCOME_CLEARED else len(held)
+            _pin_emit(
+                tab_surface.CLEAR_PRESSED_SIGNAL,
+                actual={
+                    "outcome": outcome,
+                    "held_after": len(self._fleet_source.bots()),
+                },
+                expected={"outcome": outcome, "held_after": kept},
+                context=context,
+            )
+            sink = _pin_sink()
+            if sink is not None:
+                sink.flush()
+
+        if self.battery_running():
+            self._status_log.log(tab_surface.BATTERY_RUNNING_TEXT, "warning")
+            pressed(tab_surface.CLEAR_OUTCOME_IN_FLIGHT)
+            return
+        if self.run_running():
+            self._status_log.log(
+                tab_surface.run_in_flight_line(
+                    self._run.get("mode", ""),
+                    len(self._run.get("bot_ids", [])),
+                    surface.CLEAR_FLEET_TEXT,
+                ),
+                "warning",
+            )
+            pressed(tab_surface.CLEAR_OUTCOME_IN_FLIGHT)
+            return
+        if not held:
+            self._status_log.log(tab_surface.NOTHING_HELD_TEXT, "warning")
+            pressed(tab_surface.CLEAR_OUTCOME_NOTHING_HELD)
+            return
+        confirm = QMessageBox.question(
+            self,
+            tab_surface.CLEAR_FLEET_BOX_TITLE,
+            tab_surface.clear_fleet_question(len(held), venues),
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            self._status_log.log(tab_surface.CLEAR_CANCELLED_TEXT, "warning")
+            pressed(tab_surface.CLEAR_OUTCOME_CANCELLED)
+            return
+        removed = self._fleet_source.clear()
+        self._status_log.log(tab_surface.cleared_line(removed, venues), "warning")
+        self._notify(tab_surface.FLEET_CLEARED_NOTICE, "warning")
+        get_sound_engine().play_state_change()
+        self.fleet_changed.emit()
+        pressed(tab_surface.CLEAR_OUTCOME_CLEARED)
+        _pin_emit(
+            tab_surface.CLEARED_SIGNAL,
+            actual={
+                "held_after": len(self._fleet_source.bots()),
+                "venues_after": self.exchange_count(),
+            },
+            expected={"held_after": 0, "venues_after": 0},
+            context={"removed": removed, "venues_unseated": list(venues)},
+        )
+        sink = _pin_sink()
+        if sink is not None:
+            sink.flush()
 
     def _run_battery(self, action: str) -> None:
         """Run Portfolio or Run Every Portfolio: one line and nothing started
@@ -1160,6 +1249,7 @@ class SimTradingTab(QWidget):
         self.refresh_bots()
         self.refresh_votes()
         self._refresh_replay()
+        self._draw_way_ins()
 
     # -- the rows -------------------------------------------------------
 

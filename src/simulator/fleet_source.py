@@ -5,8 +5,8 @@ from the YTD trade files, both read only.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
 ``record_for``, ``exchanges``, ``symbols``, ``statuses``, ``aggregate``,
-``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``stored_records``,
-``stored_exchanges``, ``import_live_fleet``, ``generate_from_ytd``,
+``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``clear``,
+``stored_records``, ``stored_exchanges``, ``import_live_fleet``, ``generate_from_ytd``,
 ``hold_battery_fleet``, ``sim_dir``, ``sim_path`` and ``save``; it holds no venue, writes ``sim_path``
 alone and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
 other name. ``bots``, ``exchanges``, ``statuses`` and ``aggregate`` read the
@@ -17,7 +17,8 @@ records on one exchange into the held map under their own ids with
 pair a ``YtdTradeSource`` names on one exchange under the pair's own id with
 ``YTD_ORIGIN`` and the Target Balance ``ytd_target_usd`` reads off its fills,
 and ``sim_bot_for``, ``set_state`` and ``remove`` read and move the held
-records, which is what ``SimBotManager`` acts on. ``SimBot`` is a read-only
+records, which is what ``SimBotManager`` acts on; ``clear`` drops every held
+record at once, which is what Clear Fleet asks. ``SimBot`` is a read-only
 record forked from the live bot's config, its stats and its saved state, never
 a ``ScrummingBot``; ``row_status`` answers one as the status dict the Scrumming
 Bots table and the Extractor Bots table read; ``aggregate_stats`` answers the
@@ -78,6 +79,7 @@ READ_NAMES = (
     "sim_bot_for",
     "set_state",
     "remove",
+    "clear",
     "stored_records",
     "stored_exchanges",
     "import_live_fleet",
@@ -922,6 +924,13 @@ class FleetSource:
         """Drop the held record under ``bot_id``; answers whether one was held.
         The sim fleet file loses it on the next ``save``."""
         return self._records.pop(str(bot_id), None) is not None
+
+    def clear(self) -> int:
+        """Drop every held record, on every exchange; answers how many were
+        held. The sim fleet file loses them on the next ``save``."""
+        count = len(self._records)
+        self._records = {}
+        return count
 
     def save(self) -> Optional[Path]:
         """Write the held records to ``sim_path`` through ``atomic_write_json``

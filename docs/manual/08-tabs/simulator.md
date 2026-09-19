@@ -105,6 +105,32 @@ ROWS_FOR_MODE = {
 }
 ```
 
+The corner's first button, in every mode, is Clear Fleet. It sits to the left
+of the mode's two ways in, at their size. A press empties the held fleet: every
+record on every venue leaves, the venues unseat, the Get Started card returns,
+and the sim fleet file is written with no record. The card holds Clear Fleet
+above its two ways in only while a fleet is held; with nothing held the card
+offers the two ways in alone. The section "Clear Fleet empties the held fleet"
+under "How each part was built" describes the press.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the corner's list
+
+```python
+def way_in_buttons(mode: str = sim.MODES[0]) -> list:
+    """The corner's buttons as the page draws them: ``clear_fleet_button``
+    first, then the two ways in ``mode`` offers from ``sim.reserved_rows``."""
+    return [clear_fleet_button()] + [
+        {
+            "action": row["action"],
+            "text": row["text"],
+            "accessible_name": row["button_name"],
+            "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+            "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+        }
+        for row in sim.reserved_rows(mode)
+    ]
+```
+
 ### The two tables and the command bar
 
 The Scrumming Bots table is the forked `SimBotStatusTable`. It hides until a
@@ -5641,6 +5667,170 @@ open, named three rows with a differing light by candle: the removed field's
 candle with S/FIRE `fixture`, the flipped candle with S/TA `chain` and its
 eight armed-flag lights, and the moved candle with S/BB `tape` and its ten
 dependents, in both builds.
+
+## Clear Fleet empties the held fleet
+
+Clear Fleet is the corner's first button in every mode and, while a fleet is
+held, the Get Started card's first button. A press empties the whole held
+fleet, every record on every venue, after one confirmation in Live's Delete
+Bot box shape. The venues unseat, the card returns, the header strip reads
+zeros and the sim fleet file is written with no record. `bot_state.json` is
+not touched. Both builds draw the button from one surface list and both
+hosts run one handler, `_clear_fleet`.
+
+### The button at the corner and on the card
+
+The corner's list is `way_in_buttons` in
+`src/gui/simulator/sim_trading_tab_surface.py`: `clear_fleet_button` first,
+then the run mode's two ways in, each at Live's corner-button size, 140 px
+wide and 24 px tall. The card's list is `placeholder_way_in_buttons`, which
+puts Clear Fleet above the two ways in only while `held`, the count of held
+records, is above zero. The Qt host draws both lists in
+`SimTradingTab._draw_way_ins` and draws them again at the end of every
+`_sync_exchange_tabs`; the React host writes `held` into
+`SimTradingTabState` on every `show_tab` and calls `show_tab` at the end of
+every `_sync_exchange_tabs`, so the page's `WayInButtons` and
+`PlaceholderWayIns` components draw the same two lists with no change to
+`src/gui/web/sim_trading_tab.js`. The button's accessible name is
+`sim-clear-fleet` at the corner and `sim-clear-fleet-card` on the card.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the card's list
+
+```python
+def placeholder_way_in_buttons(
+    accent: Any, mode: str = sim.MODES[0], held: int = 0
+) -> list:
+    """The card's buttons at Live's card-button size and sheet: Clear Fleet
+    first while ``held`` records are held, then the two ways in ``mode`` offers."""
+    rows = list(sim.reserved_rows(mode))
+    if int(held or 0) > 0:
+        rows.insert(
+            0, {"action": sim.CLEAR_FLEET_ACTION, "text": sim.CLEAR_FLEET_TEXT}
+        )
+```
+
+The card draws only on a layer that seats no venue. Every venue the Simulator
+seats today, `coinbase`, `kraken` and the Battery's `yahoo`, sits on the
+crypto layer, so the crypto card and a held crypto fleet are never on screen
+together. The card's Clear Fleet is the way to empty a fleet held on the
+other layer, such as an imported `bot_state.json` fleet on an equity venue,
+which the stack does not show.
+
+### The confirmation and the clear
+
+A press reaches `_way_in` on either host and then `_clear_fleet`. The box is
+`QMessageBox.question` under the title `Clear Fleet`, with Yes and No, as the
+command bar's Delete opens its `Delete Bot` box. The question names the
+count and the venues. Yes runs `FleetSource.clear`, which drops every held
+record and answers how many were held, then writes the cleared line, the
+notification `Fleet cleared`, plays Live's state-change sound and fires
+`fleet_changed` once. `FleetSource.save` writes the sim fleet file with
+`bot_count` 0. `_sync_exchange_tabs` reads no exchange, takes every venue
+off, adds the Get Started page back, and re-reads the tables, the panel and
+the replay layer. The header strip reads `aggregate_stats` over no bot on
+its next tick, every field zero, and EXCH 0. No is the cancelled line and
+nothing moves.
+
+`src/simulator/fleet_source.py` — the clear
+
+```python
+    def clear(self) -> int:
+        """Drop every held record, on every exchange; answers how many were
+        held. The sim fleet file loses them on the next ``save``."""
+        count = len(self._records)
+        self._records = {}
+        return count
+```
+
+Clear Fleet empties every venue, not the shown venue alone. Live's Delete
+acts on one bot id. The fleet is one map: `FleetSource` holds every venue's
+records together, `save` writes them as one file, and the strip reads them
+together. A per-venue clear would be a different control with a different
+name.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the box and the lines
+
+```python
+CLEAR_FLEET_BOX_TITLE = sim.CLEAR_FLEET_TEXT
+CLEAR_FLEET_QUESTION_FORMAT = (
+    "Clear the Simulator fleet of {count} bot(s) on {venues}? This cannot be undone."
+)
+CLEARED_FORMAT = "Cleared {count} bot(s) on {venues}; the Simulator fleet is empty."
+CLEAR_CANCELLED_TEXT = "Clear Fleet cancelled."
+NOTHING_HELD_TEXT = "No fleet is held; nothing to clear."
+FLEET_CLEARED_NOTICE = "Fleet cleared"
+```
+
+### A run in flight, nothing held, cancelled
+
+While a Validation or Back Test run is in flight, the press writes the same
+in-flight line the command bar writes, naming Clear Fleet as the command
+that waits, and opens no box. While a Portfolio Battery run is in flight, the
+press writes the Battery's in-progress line. With no record held, the press
+writes `No fleet is held; nothing to clear.` and opens no box. No on the box
+writes `Clear Fleet cancelled.` and removes nothing. In each of these cases
+`fleet_changed` does not fire and the sim fleet file is not written.
+
+### The two signals a press emits
+
+Every press emits `sim.fleet.clear_pressed` through `signal_contract.emit`,
+bound in each host as `_pin_emit`, and a confirmed clear emits
+`sim.fleet.cleared` after it. The press signal carries the outcome and the
+held count after the press, against the count the outcome allows: unchanged
+for a cancel, a refusal or nothing held, zero for a clear. The cleared
+signal carries the held count and the seated venue count after the clear,
+both expected zero, with the count removed and the venues unseated in its
+context. Each host flushes the process sink after the emit, so the handler's
+file under the runtime log directory's `signals` folder holds the rows right
+after the press.
+
+`src/gui/simulator/sim_trading_tab.py` — the cleared signal
+
+```python
+        _pin_emit(
+            tab_surface.CLEARED_SIGNAL,
+            actual={
+                "held_after": len(self._fleet_source.bots()),
+                "venues_after": self.exchange_count(),
+            },
+            expected={"held_after": 0, "venues_after": 0},
+            context={"removed": removed, "venues_unseated": list(venues)},
+        )
+```
+
+### What the clear reading measured
+
+Before, in both builds over a scratch home holding a `bot_state.json` with
+four records on `coinbase` and one on `kraken`, a tablet manifest naming four
+assets per venue and no sim fleet file: Import Live Fleet on both venues
+seated both and held five records; no button named `sim-clear-fleet` existed
+at the corner or on any card in any mode, the five records stayed held
+through every press, and the only route to an empty fleet was Delete, one
+row and one box at a time.
+
+After, in both builds over the same home: the corner read
+`sim-clear-fleet`, `sim-import-live-fleet` and `sim-generate-from-ytd` in
+that order from the left, each 140 by 24, Clear Fleet's left edge 142 px
+before Import Live Fleet's. With five records held, the stock layer's card
+held `sim-clear-fleet-card` first and the crypto card was not drawn. The
+corner press opened the box `Clear Fleet` reading `Clear the Simulator fleet
+of 5 bot(s) on coinbase, kraken? This cannot be undone.` with Yes and No; No
+wrote the cancelled line and left five held. Yes wrote
+`Cleared 5 bot(s) on coinbase, kraken; the Simulator fleet is empty.` and the
+notification, unseated both venues, drew the crypto card with two buttons
+and no Clear Fleet, zeroed the five cards and read EXCH 0 on the strip's
+next tick, wrote the sim fleet file with `bot_count` 0 and an empty `bots`
+map, and left two signal rows in `session.jsonl`, both `ok` true. Back Test
+then Create New Bots on the card walked the wizard to one bot on `coinbase`,
+which seated the venue and put Clear Fleet on the stock card; that card's
+press opened the box naming one bot and Yes emptied the fleet again. The
+corner press with nothing held wrote `No fleet is held; nothing to clear.`
+and opened no box. A Back Test started with its worker held open read
+`run_running` true; the corner press wrote the in-flight line naming Clear
+Fleet, opened no box and left five held. `bot_state.json` hashed identical
+after every step in every run, and a byte appended to a copy of it moved the
+hash. The Watchdog Archetype read every emit in both hosts wired to
+`signal_contract`.
 
 ## The widget the rebuild replaced
 

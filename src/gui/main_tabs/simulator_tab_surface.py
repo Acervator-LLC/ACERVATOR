@@ -69,6 +69,10 @@ CREATE_NEW_BOTS_TEXT = "Create New Bots"
 RUN_PORTFOLIO_TEXT = "Run Portfolio"
 RUN_EVERY_PORTFOLIO_TEXT = "Run Every Portfolio"
 
+#: The corner's first button in every mode: it empties the held fleet.
+CLEAR_FLEET_ACTION = "clear_fleet"
+CLEAR_FLEET_TEXT = "Clear Fleet"
+
 CHOOSE_PORTFOLIO_ACTION = "choose_portfolio"
 CHOOSE_SPAN_ACTION = "choose_span"
 
