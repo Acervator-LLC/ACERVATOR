@@ -66,7 +66,10 @@ the event the runner reads, so the pass ends where it is and the report reads
 ``signal_contract``.
 The replay layer, ``LineView`` over ``PlaybackView``, sits behind the
 panel in ``_layer_stack``, reached by ``flip_layer``; its header row holds the
-flip button, the ``Tablet:`` chooser and the retrieval button.
+flip button, the ``Tablet:`` chooser and the retrieval button. The one
+``FlipButton`` sits first in whichever header row is showing, at
+``FLIP_SEAT_INDEX``, and each press emits ``LAYER_FLIPPED_SIGNAL`` through
+``signal_contract`` with ``flip_rect`` against the previous press's rect.
 ``_refresh_replay`` fills the chooser from ``tablet_choices`` and
 ``_feed_replay`` draws ``replay_feed`` on the two windows, at build, on every
 ``fleet_changed``, on the flip, on the chooser's change, on ``bot_selected``
@@ -105,7 +108,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -118,6 +121,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QStyle,
+    QStyleOptionButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -198,6 +203,8 @@ FLIP_BUTTON_QSS = (
     f"QPushButton#{FLIP_BUTTON_NAME} {{ padding-left: {FLIP_BUTTON_SIDE_PADDING_PX}px; "
     f"padding-right: {FLIP_BUTTON_SIDE_PADDING_PX}px; }}"
 )
+#: The flip button's seat in both header rows: the row's first item.
+FLIP_SEAT_INDEX = 0
 
 
 class WayInSlot:
@@ -221,14 +228,34 @@ class WayInSlot:
 
 
 class FlipButton(QPushButton):
-    """A ``QPushButton`` named ``FLIP_BUTTON_NAME`` whose layout may shrink it to width 0."""
+    """A ``QPushButton`` named ``FLIP_BUTTON_NAME`` that asks one width for
+    every word in ``texts`` and whose layout may shrink it to width 0."""
 
-    def __init__(self, text: str, parent: Optional[QWidget] = None) -> None:
-        super().__init__(text, parent)
+    def __init__(self, texts: dict, parent: Optional[QWidget] = None) -> None:
+        super().__init__(texts[surface.LAYER_INDICATORS], parent)
+        self._texts = tuple(texts[layer] for layer in surface.LAYERS)
         self.setObjectName(FLIP_BUTTON_NAME)
         self.setAccessibleName(FLIP_BUTTON_NAME)
         self.setSizePolicy(QSizePolicy.Preferred, self.sizePolicy().verticalPolicy())
         self.setStyleSheet(FLIP_BUTTON_QSS)
+
+    def hint_for(self, text: str) -> QSize:
+        """The size the style asks for ``text``, the way ``QPushButton.sizeHint`` asks it."""
+        self.ensurePolished()
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        option.text = text
+        contents = self.fontMetrics().size(Qt.TextShowMnemonic, text)
+        option.rect.setSize(contents)
+        return self.style().sizeFromContents(
+            QStyle.CT_PushButton, option, contents, self
+        )
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        """The base hint, widened to the widest word in ``texts``."""
+        base = super().sizeHint()
+        widest = max(self.hint_for(text).width() for text in self._texts)
+        return QSize(max(base.width(), widest), base.height())
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         """The base hint's height over a width of 0."""
@@ -1054,13 +1081,15 @@ class SimTradingTab(QWidget):
         # Right panel: the forked voting panel, with the replay layer behind it
         self._indicator_panel = SimIndicatorVotingPanel()
         self._chart = None  # No chart in trading tab
-        self._flip_button = FlipButton(
-            surface.FLIP_BUTTON_TEXT[surface.LAYER_INDICATORS]
-        )
+        self._flip_button = FlipButton(surface.FLIP_BUTTON_TEXT)
         self._flip_button.clicked.connect(self.flip_layer)
-        # After the title and before the stretch, so the bot selector and the
-        # privacy dot keep Live's right-aligned geometry.
-        self._indicator_panel.header_row().insertWidget(1, self._flip_button)
+        # The rect the last flip press read, in the layer stack's coordinates.
+        self._last_flip_rect: Optional[dict] = None
+        # At the header's left edge, before the title: the same seat the
+        # replay layer's header gives it, so the way back is where the way in was.
+        self._indicator_panel.header_row().insertWidget(
+            FLIP_SEAT_INDEX, self._flip_button
+        )
         self._layer_stack = QStackedWidget()
         self._layer_stack.addWidget(self._indicator_panel)
         self._layer_stack.addWidget(self._build_chart_pane())
@@ -1207,10 +1236,12 @@ class SimTradingTab(QWidget):
         column = QVBoxLayout(pane)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(2)
-        # The same margins as the panel's header, so the flip button keeps
-        # its row when it moves here.
+        # The panel header's own margins and spacing, read off it, so the flip
+        # button keeps its corner when it moves here.
+        panel_header = self._indicator_panel.header_row()
         self._chart_header = QHBoxLayout()
-        self._chart_header.setContentsMargins(4, 2, 4, 2)
+        self._chart_header.setContentsMargins(panel_header.contentsMargins())
+        self._chart_header.setSpacing(panel_header.spacing())
         self._chart_header.addStretch()
         self._tablet_label = QLabel(surface.TABLET_LABEL_TEXT)
         self._tablet_label.setObjectName(TABLET_LABEL_NAME)
@@ -1807,24 +1838,50 @@ class SimTradingTab(QWidget):
 
     # -- what the operator presses --------------------------------------
 
+    def flip_rect(self) -> dict:
+        """The flip button's rect in the layer stack's coordinates."""
+        corner = self._flip_button.mapTo(self._layer_stack, QPoint(0, 0))
+        return {
+            "x": corner.x(),
+            "y": corner.y(),
+            "width": self._flip_button.width(),
+            "height": self._flip_button.height(),
+        }
+
     def flip_layer(self) -> str:
-        """Swap the stack between the panel layer and the chart layer."""
+        """Swap the stack between the panel layer and the chart layer; emits
+        ``LAYER_FLIPPED_SIGNAL`` with the pressed rect against the previous
+        press's rect."""
+        pressed = self.flip_rect()
+        leaving = self._layer
         self._layer = (
             surface.LAYER_PLAYBACK
-            if self._layer == surface.LAYER_INDICATORS
+            if leaving == surface.LAYER_INDICATORS
             else surface.LAYER_INDICATORS
         )
-        # One button, seated on whichever layer is showing, so the way back
-        # is never hidden with the panel.
+        # One button, seated first on whichever layer is showing, so the way
+        # back is never hidden with the panel and sits where the way in sat.
         if self._layer == surface.LAYER_PLAYBACK:
             self._indicator_panel.header_row().removeWidget(self._flip_button)
-            self._chart_header.insertWidget(0, self._flip_button)
+            self._chart_header.insertWidget(FLIP_SEAT_INDEX, self._flip_button)
         else:
             self._chart_header.removeWidget(self._flip_button)
-            self._indicator_panel.header_row().insertWidget(1, self._flip_button)
+            self._indicator_panel.header_row().insertWidget(
+                FLIP_SEAT_INDEX, self._flip_button
+            )
         self._layer_stack.setCurrentIndex(surface.LAYERS.index(self._layer))
         self._flip_button.setText(surface.FLIP_BUTTON_TEXT[self._layer])
         self._flip_button.show()
+        _pin_emit(
+            tab_surface.LAYER_FLIPPED_SIGNAL,
+            **tab_surface.flipped_pin(
+                leaving, self._layer, pressed, self._last_flip_rect
+            ),
+        )
+        self._last_flip_rect = pressed
+        sink = _pin_sink()
+        if sink is not None:
+            sink.flush()
         if self._layer == surface.LAYER_PLAYBACK:
             self._refresh_replay()
         return self._layer

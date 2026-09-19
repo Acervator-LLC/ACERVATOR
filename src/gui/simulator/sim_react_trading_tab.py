@@ -82,7 +82,10 @@ line, and Stop on a run row reaches ``_stop_run``, which sets the event the
 runner reads, each Start Run press emitting ``START_PRESSED_SIGNAL`` through
 ``signal_contract``; a venue sub-tab press reaches
 ``run_action`` as the ``exchange`` ask and ``show_tab`` makes that venue
-current. The replay layer behind the panel is pushed as the tab's ``replay``:
+current. A flip ask from either page module carries the pressed button's
+rect under ``FLIP_RECT_PARAM``, and ``show_layer`` emits
+``LAYER_FLIPPED_SIGNAL`` with it against the previous press's rect. The
+replay layer behind the panel is pushed as the tab's ``replay``:
 ``_refresh_replay`` builds the chooser's items from ``tablet_choices`` and
 ``_feed_replay`` pushes ``replay_model`` over ``replay_feed`` through
 ``show_tab``, at build, on every ``fleet_changed``, on the flip, on the
@@ -976,6 +979,8 @@ if _HAS_WEBENGINE:
             self._waiting: dict = {}
             self._page_ready = False
             self._web: Any = None
+            # The rect the last flip press carried, in the layer stack's coordinates.
+            self._last_flip_rect: Optional[dict] = None
             self._layout = QVBoxLayout(self)
             self._layout.setContentsMargins(0, 0, 0, 0)
             self._layout.setSpacing(0)
@@ -2198,13 +2203,29 @@ if _HAS_WEBENGINE:
 
         # -- what the operator presses ------------------------------------
 
-        def show_layer(self, layer: str) -> str:
-            """Show ``layer`` behind the panel slot and redraw the tab."""
+        def show_layer(self, layer: str, pressed: Optional[dict] = None) -> str:
+            """Show ``layer`` behind the panel slot and redraw the tab; a change
+            of layer emits ``LAYER_FLIPPED_SIGNAL`` with ``pressed``, the flip
+            button's rect the page read at the press, against the previous
+            press's rect."""
+            leaving = self._state.replay_layer
             if layer in sim.LAYERS:
                 self.show_tab({tab_surface.REPLAY_LAYER_PARAM: layer})
-            return self._state.replay_layer
+            shown = self._state.replay_layer
+            if shown != leaving:
+                _pin_emit(
+                    tab_surface.LAYER_FLIPPED_SIGNAL,
+                    **tab_surface.flipped_pin(
+                        leaving, shown, pressed, self._last_flip_rect
+                    ),
+                )
+                self._last_flip_rect = pressed
+                sink = _pin_sink()
+                if sink is not None:
+                    sink.flush()
+            return shown
 
-        def flip_layer(self) -> str:
+        def flip_layer(self, pressed: Optional[dict] = None) -> str:
             """Swap the page between the panel layer and the replay layer; a
             flip to the replay layer re-reads the chooser off the disk."""
             other = (
@@ -2212,7 +2233,7 @@ if _HAS_WEBENGINE:
                 if self._state.replay_layer == sim.LAYER_INDICATORS
                 else sim.LAYER_INDICATORS
             )
-            shown = self.show_layer(other)
+            shown = self.show_layer(other, pressed)
             if shown == sim.LAYER_PLAYBACK:
                 self._refresh_replay()
             return shown
@@ -2234,7 +2255,10 @@ if _HAS_WEBENGINE:
             if method == tab_surface.METHOD:
                 layer = params.get(tab_surface.REPLAY_LAYER_PARAM)
                 if layer in sim.LAYERS:
-                    self.show_layer(str(layer))
+                    self.show_layer(
+                        str(layer),
+                        tab_surface.flip_rect(params.get(tab_surface.FLIP_RECT_PARAM)),
+                    )
                 wanted = params.get(tab_surface.ACTIVITY_PAUSED_PARAM)
                 if wanted is not None:
                     self.set_activity_paused(bool(wanted))
@@ -2262,7 +2286,9 @@ if _HAS_WEBENGINE:
                 if wanted is not None:
                     self.set_activity_paused(bool(wanted))
             elif method == PANEL_METHOD and params.get("action") == "flip_layer":
-                self.flip_layer()
+                self.flip_layer(
+                    tab_surface.flip_rect(params.get(tab_surface.FLIP_RECT_PARAM))
+                )
             elif (
                 method == PANEL_METHOD
                 and params.get("action") == tab_surface.SELECT_BOT_ACTION

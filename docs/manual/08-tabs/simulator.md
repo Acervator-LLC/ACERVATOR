@@ -322,6 +322,26 @@ three permitted differences from Live.
         )
 ```
 
+The flip button now sits first in the header, at the panel's top-left
+corner, before the title, and the replay layer's header seats it first at
+the same corner. It draws one width on both layers, the width of the wider
+word, so Replay and Indicators occupy one rect and the way back is where the
+way in was. Each press emits `sim.layer.flipped` through `signal_contract`
+with the pressed rect against the previous press's rect.
+
+`src/gui/simulator/sim_trading_tab.py` — the seat
+
+```python
+        if self._layer == surface.LAYER_PLAYBACK:
+            self._indicator_panel.header_row().removeWidget(self._flip_button)
+            self._chart_header.insertWidget(FLIP_SEAT_INDEX, self._flip_button)
+        else:
+            self._chart_header.removeWidget(self._flip_button)
+            self._indicator_panel.header_row().insertWidget(
+                FLIP_SEAT_INDEX, self._flip_button
+            )
+```
+
 ### The two spools
 
 The Activity Log sits at the foot left with Pause Console, and the API
@@ -1514,6 +1534,19 @@ the replay layer, so the way back is never hidden with the panel.
             self._indicator_panel.header_row().insertWidget(1, self._flip_button)
 ```
 
+The seat later moved to the head of both rows, `FLIP_SEAT_INDEX`, and the
+chart header reads its margins and spacing off the panel's header row, so
+the button lands at one corner under both layers.
+
+`src/gui/simulator/sim_trading_tab.py` — the chart header's margins
+
+```python
+        panel_header = self._indicator_panel.header_row()
+        self._chart_header = QHBoxLayout()
+        self._chart_header.setContentsMargins(panel_header.contentsMargins())
+        self._chart_header.setSpacing(panel_header.spacing())
+```
+
 ### What the fork does not carry
 
 The copies hold no bot manager, no connector and no event bus. Every send the
@@ -1651,6 +1684,21 @@ the host redraws the tab with the other layer showing.
                 else sim.LAYER_INDICATORS
             )
             return self.show_layer(other)
+```
+
+The panel module later moved the flip before its title, so both modules
+draw it first in their header at the panel's top-left corner. Each module's
+ask carries the pressed button's rect under `flip_rect`, read by the tab
+module's `flipRect` in the layer stack's coordinates, and `show_layer` emits
+`sim.layer.flipped` with it on every change of layer.
+
+`src/gui/web/sim_indicator_panel.js` — the header's order
+
+```javascript
+    return element(DIV_TAG, headProps, [
+      flip,
+      element(Title, { key: TITLE_PART, model: model }),
+      spacer,
 ```
 
 ### What feeds the page
@@ -6111,6 +6159,123 @@ watched file, 59 of 59, hashed identical after every step in every run, and
 a byte appended to a copy of `bot_state.json` moved the hash. No socket left
 loopback. The Watchdog Archetype read every emit in both hosts wired to
 `signal_contract`.
+
+## The flip sits at the panel's top-left corner under both layers
+
+The operator's item: *"'Replay' button in the IVP panel needs to move to the
+IVP's upper left corner where the 'Indicators' button appears after 'Replay'
+is click. Both of these buttons should appear in the same location."* One
+button flips the layer stack. It now sits first in whichever header row is
+showing, at the row's left edge, and draws one width on both layers, so the
+rect that reads Replay on the panel is the rect that reads Indicators on the
+replay layer.
+
+### One seat under both layers
+
+The Qt host seats its one `FlipButton` at `FLIP_SEAT_INDEX`, the first item,
+in the panel's header row at build and on every flip, and at the same index
+in the replay layer's header. The replay layer's header takes its margins
+and spacing off the panel's header row instead of restating them. The page
+does the same from one declaration: `REPLAY_HEADER_LAYOUT` reads the panel
+header's margins and the panel column's spacing from
+`indicator_panel_surface`, `sim_indicator_panel.js` draws the flip before
+the title, and `sim_trading_tab.js` draws it first on the replay header.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the replay header's layout
+
+```python
+REPLAY_HEADER_LAYOUT = {
+    "margins_px": list(cast(list, panel.HEADER["margins_px"])),
+    "spacing_px": int(cast(int, panel.CONTAINER["spacing_px"])),
+}
+```
+
+### One width for both words
+
+Replay and Indicators differ in width, so one seat alone gives two rects.
+The Qt `FlipButton` answers `sizeHint` with the wider of the two words'
+hints, each asked of the style the way `QPushButton.sizeHint` asks it; its
+`minimumSizeHint` keeps a width of 0, so the pane pair the section "The Sim
+venue pane is Live's width" records does not move. The page's `flip_button`
+payload carries `other_text`, the word the button reads on the other layer,
+and the sheet reserves that word's width as a hidden zero-height line after
+the text. The sheet also pins the button to the top of its row, and the
+replay header wraps its chooser and retrieval button to a second line when
+the pane is narrower than its controls, so the button keeps its width and
+its corner at every pane width.
+
+`src/gui/simulator/sim_trading_tab.py` — the width
+
+```python
+    def sizeHint(self) -> QSize:  # noqa: N802
+        """The base hint, widened to the widest word in ``texts``."""
+        base = super().sizeHint()
+        widest = max(self.hint_for(text).width() for text in self._texts)
+        return QSize(max(base.width(), widest), base.height())
+```
+
+`src/gui/web/sim_trading_tab.css` — the reservation
+
+```css
+[data-part="sim-flip-button"]::after {
+  content: attr(data-other-text);
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+```
+
+### The flip's signal
+
+Each press emits `sim.layer.flipped` through `signal_contract`: `actual` is
+the pressed button's rect in the layer stack's coordinates, `expected` the
+rect of the previous press, `ok` their equality or None on the first press,
+and `context` names the layer left and the layer shown. The Qt host reads
+the rect in `flip_layer` before it moves the button; the page reads it at
+the press through the tab module's `flipRect` and sends it under
+`flip_rect` with either flip ask, and the React host's `show_layer` emits
+on every change of layer. One function builds the row for both hosts.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the row
+
+```python
+def flipped_pin(leaving: str, shown: str, pressed: Any, previous: Any) -> dict:
+    """The ``LAYER_FLIPPED_SIGNAL`` row for one press: ``actual`` the pressed
+    rect, ``expected`` the previous press's rect, ``ok`` their equality or
+    None on the first press, ``context`` the layer left and the layer shown."""
+    return {
+        "actual": pressed,
+        "expected": previous,
+        "ok": None if previous is None or pressed is None else pressed == previous,
+        "context": {"from": leaving, "to": shown},
+    }
+```
+
+### What the flip reading measured
+
+Read off the widget tree and the page in the layer stack's coordinates,
+over a scratch home holding a `bot_state.json` of two scrumming bots on
+`coinbase` and two 5m tablets, the live fleet imported. Before, at a 1400 by
+900 window, the Qt button read x 123, y 5, 47 by 20 on the panel and x 4, y
+5, 64 by 20 on the replay layer; the React button read x 122, y 2, 57 by 22
+and x 4, y 2, 74 by 22. At the Qt floor, 1145 by 1124, the same two rects;
+at the React reading of 900 by 700 the panel's title wrapped and the button
+read x 116, y 8, 57 by 22 against x 4, y 8, 54 by 22 on the layer, where the
+row squeezed it. No `sim.layer.` row existed.
+
+After, in both builds at 1400 and at the floor, the button read one rect on
+the panel, on the layer after a press, and on the panel after a second
+press: Qt x 4, y 5, 64 by 20; React x 4, y 2, 74 by 22. The title sat to
+the button's right at every reading. Seating the panel's button back after
+the title moved it to x 123 in Qt and x 122 in React, and seating it first
+again restored the rect, so the reading can fail. At the React floor the
+replay header wrapped its retrieval button to a second line at x 4, y 26,
+inside the pane. Four `sim.layer.flipped` rows landed per variant, the
+second and every later one `ok` true with `expected` equal to `actual`. The Qt
+top splitter read the same pair before and after. Every watched file, 8 of
+8, hashed identical after every step, and a byte appended to a copy of
+`bot_state.json` moved the hash. No socket left loopback.
 
 ## The widget the rebuild replaced
 

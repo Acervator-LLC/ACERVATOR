@@ -19,9 +19,25 @@
   font: inherit;
 }
 
+/* The flip button sits at the header's top-left corner under both layers,
+ * whatever height the rest of the row takes, and reserves the other
+ * layer's word as a hidden zero-height line so Replay and Indicators draw
+ * one width. */
+[data-part="sim-flip-button"] {
+  align-self: flex-start;
+}
+
 [data-part="way-in-button"]:hover,
 [data-part="sim-flip-button"]:hover {
   border-color: var(--PRIMARY, var(--accent));
+}
+
+[data-part="sim-flip-button"]::after {
+  content: attr(data-other-text);
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
 
 /* The Get Started card's button position: the three way-ins one under the
