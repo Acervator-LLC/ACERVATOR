@@ -2,7 +2,9 @@
 
 ``PORTFOLIOS`` maps each name to a ``Portfolio`` holding its symbols and equal
 ``weights``. ``PERIODS`` carries the six windows the archive addressed them
-over, and ``is_crypto`` routes a symbol to the crypto or the non-crypto
+over and ``TEST_RUN_SPAN``, the live fleet's own run from ``TEST_RUN_START``,
+whose end ``period_window`` reads as the current UTC day; ``is_crypto`` routes
+a symbol to the crypto or the non-crypto
 historical price source. ``asset_class`` names a symbol's class in the words
 ``sizing.CITED_UNIT_RULES`` is keyed by and ``trading_venue`` the venue
 Acervator trades that class on, so ``sizing.unit_rule`` can answer the pair.
@@ -12,6 +14,7 @@ Nothing here reads or writes price data.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
 from ..trading.scrumming.sizing import CLASS_CRYPTO, CLASS_STOCKS
@@ -22,6 +25,19 @@ ARCHIVE_SOURCE: str = "RAIntSimBat_standalone"
 STOCKS_VENUE: str = "alpaca"
 """The ``SUPPORTED_BROKERS`` key of the one broker connector, ``AlpacaConnector``."""
 
+TEST_RUN_SPAN: str = "2026 test run"
+"""The span label of the live fleet's own run, every bot on 5m from
+``TEST_RUN_START``."""
+
+TEST_RUN_START: str = "2026-04-01"
+"""The UTC day the live fleet's test run began."""
+
+
+def today_utc() -> str:
+    """The current UTC day as ``YYYY-MM-DD``."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 PERIODS: dict[str, tuple[str, str]] = {
     "2020": ("2020-01-01", "2020-12-31"),
     "2021": ("2021-01-01", "2021-12-31"),
@@ -29,8 +45,22 @@ PERIODS: dict[str, tuple[str, str]] = {
     "Apr23-Apr24": ("2023-04-01", "2024-04-01"),
     "Apr24-Apr25": ("2024-04-01", "2025-04-01"),
     "Apr25-Apr26": ("2025-04-01", "2026-04-01"),
+    TEST_RUN_SPAN: (TEST_RUN_START, today_utc()),
 }
-"""Each archive period label mapped to its ``(start, end)`` UTC dates."""
+"""Each archive period label mapped to its ``(start, end)`` UTC dates, then
+``TEST_RUN_SPAN`` ending on the day this module loaded; ``period_window``
+reads that end again at call time."""
+
+
+def period_window(span: str) -> Optional[tuple[str, str]]:
+    """``PERIODS[span]`` with ``TEST_RUN_SPAN``'s end read as ``today_utc``
+    now, or None for a label ``PERIODS`` does not hold."""
+    window = PERIODS.get(str(span))
+    if window is None:
+        return None
+    if str(span) == TEST_RUN_SPAN:
+        return (window[0], today_utc())
+    return window
 
 
 @dataclass(frozen=True)
@@ -496,10 +526,14 @@ __all__ = [
     "PORTFOLIOS",
     "STOCKS_VENUE",
     "SYMBOLS",
+    "TEST_RUN_SPAN",
+    "TEST_RUN_START",
     "Portfolio",
     "asset_class",
     "crypto_venues",
     "is_crypto",
+    "period_window",
     "symbols_for",
+    "today_utc",
     "trading_venue",
 ]
