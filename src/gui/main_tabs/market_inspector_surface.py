@@ -216,7 +216,9 @@ MESSAGE_ROW_NAME_FORMAT = "{symbol} {label}"
 NO_CALL_TEXT = "No chart carried a reversal vote."
 NO_CANDLE_TEXT = "No candles came back for {symbols}."
 #: The zone's sentence after ``NO_CANDLE_TEXT`` when a venue named its refusal.
-VENUE_SAID_FORMAT = "{text} The venue said: {refusal}"
+REFUSAL_SAID_FORMAT = "{text} {venue} said: {refusal}"
+#: The venue name on that sentence when the scan names none.
+UNNAMED_VENUE_TEXT = "The venue"
 #: The row name each market line takes in the field while a scan runs.
 SCAN_LINE_NAME_FORMAT = "scan-line-{at}"
 UNREAD_SYMBOL_CAP = 6
@@ -1402,7 +1404,9 @@ def no_call_text(scan: Any) -> str:
         )
     missing = NO_CANDLE_TEXT.format(symbols=listed)
     if scan.refusal:
-        missing = VENUE_SAID_FORMAT.format(text=missing, refusal=scan.refusal)
+        missing = REFUSAL_SAID_FORMAT.format(
+            text=missing, venue=scan.venue or UNNAMED_VENUE_TEXT, refusal=scan.refusal
+        )
     if not scan.votes:
         return missing
     return METHOD_SENTENCE_JOIN.join((NO_CALL_TEXT, missing))
