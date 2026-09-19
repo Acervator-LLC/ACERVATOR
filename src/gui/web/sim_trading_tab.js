@@ -42,6 +42,16 @@
   var POINT_COUNT = "point_count";
   var CANDLES = "candles";
   var CANDLE_COUNT = "candle_count";
+  var MARKS = "marks";
+  var MARK_COUNT = "mark_count";
+  var GLYPHS = "glyphs";
+  var GLYPH_POINTS = "points";
+  var GLYPH_FILLED = "filled";
+  var MARK_WIDTH_RATIO = "mark_width_ratio";
+  var MARK_HEIGHT_FRACTION = "mark_height_fraction";
+  var MARK_OUTLINE_PX = "mark_outline_px";
+  var FIGURES = "figures";
+  var SCRUM_SIDE = "scrum";
   var NAME = "name";
 
   var DECLARED_FIELDS = [
@@ -228,7 +238,10 @@
   var LINE_TAG = "line";
   var RECT_TAG = "rect";
   var GROUP_TAG = "g";
+  var POLYGON_TAG = "polygon";
   var NONE_FILL = "none";
+  // The mark outline keeps its pixel width under the window's non-uniform scale.
+  var NON_SCALING_STROKE = "non-scaling-stroke";
   // The unit square the surface's points and shapes are scaled from.
   var VIEW_BOX = "0 0 1000 1000";
   var PRESERVE_NONE = "none";
@@ -285,8 +298,15 @@
   var TABLET_LABEL_PART = "sim-tablet-label";
   var TABLET_CHOOSER_PART = "sim-tablet-chooser";
   var RETRIEVE_BUTTON_PART = "sim-retrieve-button";
+  var REPLAY_FIGURES_PART = "sim-replay-figures";
+  var PLAYBACK_MARK_PART = "sim-playback-mark";
   var POINT_COUNT_ATTR = "data-point-count";
   var CANDLE_COUNT_ATTR = "data-candle-count";
+  var MARK_COUNT_ATTR = "data-mark-count";
+  var SIDE_ATTR = "data-side";
+  var GLYPH_ATTR = "data-glyph";
+  var PRICE_ATTR = "data-price";
+  var CANDLE_INDEX_ATTR = "data-candle-index";
   var LINE_ATTR = "data-line";
   var UP_ATTR = "data-up";
   var VWAP_SLOT = "vwap_view";
@@ -1280,8 +1300,45 @@
     );
   }
 
+  // One mark per fill on a window candle: the surface's glyph corners scaled
+  // to the candle column and the pane height, dissolve as an outline and
+  // reform filled, at the candle's x and the price's y.
+  function playbackMarks(model, colours) {
+    var shapes = listField(model, CANDLES);
+    var glyphs = objectField(model, GLYPHS);
+    var column = shapes.length > 0 ? UNIT / shapes.length : UNIT;
+    var markWidth = column * Number(model[MARK_WIDTH_RATIO] || 1);
+    var markHeight = UNIT * Number(model[MARK_HEIGHT_FRACTION] || 0);
+    var outline = Number(model[MARK_OUTLINE_PX] || 1);
+    return listField(model, MARKS).map(function (mark, index) {
+      var glyph = objectField(glyphs, text(mark.side));
+      var points = listField(glyph, GLYPH_POINTS);
+      var centreX = Number(mark.x) * UNIT;
+      var centreY = Number(mark.y) * UNIT;
+      var colour = text(mark.side) === SCRUM_SIDE ? colours.mark_scrum : colours.mark_fold;
+      var markProps = {
+        key: MARKS + String(index),
+        points: points
+          .map(function (corner) {
+            return (centreX + corner[0] * markWidth).toFixed(3) + "," + (centreY + corner[1] * markHeight).toFixed(3);
+          })
+          .join(GAP),
+        fill: glyph[GLYPH_FILLED] ? colour : NONE_FILL,
+        stroke: colour,
+        strokeWidth: outline,
+        vectorEffect: NON_SCALING_STROKE
+      };
+      markProps[PART_ATTR] = PLAYBACK_MARK_PART;
+      markProps[SIDE_ATTR] = text(mark.side);
+      markProps[GLYPH_ATTR] = text(mark.glyph);
+      markProps[PRICE_ATTR] = String(mark.price);
+      markProps[CANDLE_INDEX_ATTR] = String(mark.index);
+      return element(POLYGON_TAG, markProps);
+    });
+  }
+
   // The Stone Tablet playback window: one wick and one body per candle
-  // shape, coloured up or down off the payload.
+  // shape, coloured up or down off the payload, then one polygon per mark.
   function PlaybackWindow(props) {
     var model = props.model;
     var colours = props.colours;
@@ -1296,6 +1353,7 @@
     windowProps[SLOT_ATTR] = PLAYBACK_SLOT;
     windowProps[ARIA_LABEL] = PLAYBACK_VIEW_PART;
     windowProps[CANDLE_COUNT_ATTR] = String(model[CANDLE_COUNT] || 0);
+    windowProps[MARK_COUNT_ATTR] = String(model[MARK_COUNT] || 0);
     return element(
       SVG_TAG,
       windowProps,
@@ -1325,8 +1383,21 @@
             fill: colour
           })
         );
-      })
+      }),
+      playbackMarks(model, colours)
     );
+  }
+
+  // The run's figures on the header's second line: the shown bot, the pairs,
+  // the two distances and the improvement, off the host's replay model. The
+  // first line's fixed-width chooser leaves the figures 180 px at 1400.
+  function ReplayFigures(props) {
+    var figures = objectField(props.replay, FIGURES);
+    var figuresProps = { style: { flexBasis: FULL, minWidth: ZERO } };
+    figuresProps[PART_ATTR] = REPLAY_FIGURES_PART;
+    figuresProps[SLOT_ATTR] = REPLAY_FIGURES_PART;
+    figuresProps[ARIA_LABEL] = text(figures[NAME]);
+    return element(SPAN_TAG, figuresProps, text(figures[TEXT]));
   }
 
   // The Tablet: label, the chooser over the host's items and the retrieval
@@ -1418,7 +1489,9 @@
             actions: objectField(model, ACTIONS)
           }),
           element(DIV_TAG, Object.assign({ key: STRETCH_PART }, spacerProps), null)
-        ].concat(TabletChooser({ replay: replay, actions: objectField(model, ACTIONS) }))
+        ]
+          .concat(TabletChooser({ replay: replay, actions: objectField(model, ACTIONS) }))
+          .concat([element(ReplayFigures, { key: REPLAY_FIGURES_PART, replay: replay })])
       ),
       element(Splitter, {
         key: LAYER_SPLITTER + splitterKey(model, LAYER_SPLITTER),

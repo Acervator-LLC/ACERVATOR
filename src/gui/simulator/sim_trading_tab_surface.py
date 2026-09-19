@@ -146,6 +146,14 @@ REPLAY_PARAM = "replay"
 TABLET_LABEL_NAME = "sim-tablet-label"
 TABLET_CHOOSER_NAME = "sim-tablet-chooser"
 RETRIEVE_BUTTON_NAME = "sim-retrieve-button"
+#: The replay layer's figures label, after the flip's seat, both hosts.
+REPLAY_FIGURES_NAME = "sim-replay-figures"
+#: The figures label's one line; ``NO_RUN_TEXT`` with no fill held.
+REPLAY_FIGURES_FORMAT = (
+    "{bot_id} · {pairs} pair{plural} · distance mean {mean} · median {median} · "
+    "improvement {improvement}"
+)
+PCT_FORMAT = "{value:+.2f}%"
 
 #: The chooser's one width in both builds: the widest file key and the
 #: no-tablet item fit, and the layer's header keeps room for the flip under a
@@ -602,6 +610,53 @@ def mode_shown_expected(mode: str, held_by_mode: Any) -> dict:
 #: the way in's position.
 LAYER_FLIPPED_SIGNAL = "sim.layer.flipped"
 
+#: The signal each replay draw emits through ``signal_contract``: the marks
+#: and figures the view holds against the ones the feed built.
+MARKS_DRAWN_SIGNAL = "sim.replay.marks_drawn"
+
+
+def pct_text(value: Any) -> str:
+    """``PCT_FORMAT`` over ``value``, ``NO_IMPROVEMENT_TEXT`` for None."""
+    if value is None:
+        return sim.NO_IMPROVEMENT_TEXT
+    return PCT_FORMAT.format(value=float(value))
+
+
+def replay_figures_text(figures: Any) -> str:
+    """The header's one line over ``replay_figures``: ``REPLAY_FIGURES_FORMAT``
+    while ``held``, else ``NO_RUN_TEXT``."""
+    held = dict(figures or {})
+    if not held.get("held"):
+        return sim.NO_RUN_TEXT
+    pairs = int(held.get("pairs") or 0)
+    return REPLAY_FIGURES_FORMAT.format(
+        bot_id=str(held.get("bot_id") or ""),
+        pairs=pairs,
+        plural="" if pairs == 1 else "s",
+        mean=pct_text(held.get("mean_pct")),
+        median=pct_text(held.get("median_pct")),
+        improvement=pct_text(held.get("improvement_pct")),
+    )
+
+
+def marks_reading(key: str, playback: Any, figures: Any) -> dict:
+    """The eight figures ``MARKS_DRAWN_SIGNAL`` carries on each side: the
+    tablet ``key``, the bot, the marks drawn, the fills handed, the pairs and
+    the three percentages, read off one ``playback`` payload and its
+    ``figures``."""
+    shapes = dict(playback or {})
+    held = dict(figures or {})
+    return {
+        "tablet": str(key or ""),
+        "bot": str(held.get("bot_id") or ""),
+        "marks": int(shapes.get("mark_count") or 0),
+        "fills": int(shapes.get("fills") or 0),
+        "pairs": int(held.get("pairs") or 0),
+        "mean_pct": held.get("mean_pct"),
+        "median_pct": held.get("median_pct"),
+        "improvement_pct": held.get("improvement_pct"),
+    }
+
 
 def flip_rect(value: Any) -> Optional[dict]:
     """``value`` as the four integer ``FLIP_RECT_KEYS``, or None when it does
@@ -698,11 +753,24 @@ def flip_button(layer: Any) -> dict:
 def replay_model(feed: Any, choices: Any = (), running: bool = False) -> dict:
     """The replay layer as the page draws it: the ``Tablet:`` label, the
     chooser over ``choices`` with ``feed["key"]`` chosen, the retrieval button
-    reading ``feed["button_text"]`` and disabled while ``running``, and the
-    two windows' payloads and colours out of ``feed``."""
+    reading ``feed["button_text"]`` and disabled while ``running``, the
+    ``figures`` line through ``replay_figures_text``, and the two windows'
+    payloads and colours out of ``feed``."""
     held = dict(feed or {})
+    figures = dict(held.get("figures") or {})
     return {
         "tablet_label": {"text": sim.TABLET_LABEL_TEXT, "name": TABLET_LABEL_NAME},
+        "figures": {
+            "name": REPLAY_FIGURES_NAME,
+            "text": replay_figures_text(figures),
+            "bot_id": str(figures.get("bot_id") or ""),
+            "held": bool(figures.get("held")),
+            "fills": int(figures.get("fills") or 0),
+            "pairs": int(figures.get("pairs") or 0),
+            "mean_pct": figures.get("mean_pct"),
+            "median_pct": figures.get("median_pct"),
+            "improvement_pct": figures.get("improvement_pct"),
+        },
         "chooser": {
             "name": TABLET_CHOOSER_NAME,
             "width_px": TABLET_CHOOSER_WIDTH_PX,

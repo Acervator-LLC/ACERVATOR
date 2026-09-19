@@ -34,6 +34,7 @@ from ..trading.scrumming.sizing import (
     fold_spend_usd,
     fold_units,
     plan_fold_consumption,
+    plan_source_price,
     position_ceiling,
     priced_usd,
     ratio_to_ceiling,
@@ -134,7 +135,10 @@ FUNDINGS = (FUNDED_BY_PROCEEDS, FUNDED_BY_TARGETS)
 
 @dataclass(frozen=True)
 class SimTrade:
-    """One scrum sell or fold buy the tape produced."""
+    """One scrum sell or fold buy the tape produced, with ``scrum_price`` the
+    scrum's own ``price`` on a scrum and ``plan_source_price`` over the
+    tranches consumed on a fold, zero naming no scrum. ``timeframe`` is the
+    ``ta_timeframe`` the walk ran at, empty when unknown."""
 
     bot_id: str
     symbol: str
@@ -144,6 +148,8 @@ class SimTrade:
     units: float
     usd: float
     fee_usd: float
+    scrum_price: float = 0.0
+    timeframe: str = ""
 
 
 #: The seam ``walk`` hands each ``SimTrade`` to as it fills, as ``run_battery``
@@ -515,6 +521,8 @@ def apply_scrum(
         units=units,
         usd=notional,
         fee_usd=fee,
+        scrum_price=float(price),
+        timeframe=str(bot.ta_timeframe or ""),
     )
 
 
@@ -604,6 +612,7 @@ def apply_fold(
     position.units += units
     position.cash_usd -= spend
     position.last_trade_price = float(price)
+    scrum_price = plan_source_price(plan)
     position.fold_tranches, _removed, _spent = settle_fold_plan(
         position.fold_tranches, plan
     )
@@ -616,6 +625,8 @@ def apply_fold(
         units=units,
         usd=spend,
         fee_usd=fee,
+        scrum_price=scrum_price,
+        timeframe=str(bot.ta_timeframe or ""),
     )
 
 

@@ -9,7 +9,8 @@ news ticker and data-pool rows carry in each of ``MODES``, and ``run_validation`
 ``run_back_test`` and ``run_battery`` fill the pane each mode draws.
 ``tablet_choices``, ``default_tablet_key`` and ``replay_feed`` are the forked
 tab's replay layer as data: the chooser's items, the item the selected bot
-names, and the two windows' payloads over one tablet.
+names, and the two windows' payloads over one tablet, the playback carrying
+``mark_shapes`` for the ``shown_bot``'s fills and ``replay_figures`` beside it.
 ``src.core.desktop_bridge`` registers ``view_model`` under ``METHOD``, and
 nothing here imports Qt.
 """
@@ -30,6 +31,7 @@ from ...simulator.fleet_source import (
 )
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.tablet_source import TabletSource, tablet_key
+from ...trading.scrumming.sizing import opposing_trade_distances
 from ...trading.stone_tablets.ra_paths import RA_STONE_TABLETS_DIR
 from ...trading.stone_tablets.registry import NATIVE_TIMEFRAME
 from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
@@ -316,12 +318,42 @@ SKIN = {
     "--sim-vwap-line": ds.ACCENT_GOLD,
     "--sim-candle-up": ds.SUCCESS,
     "--sim-candle-down": ds.ERROR,
+    "--sim-mark-scrum": ds.ACCENT_GOLD,
+    "--sim-mark-fold": ds.INFO,
     "--sim-better-colour": ds.SUCCESS,
     "--sim-agrees-colour": ds.SUCCESS,
     "--sim-disagrees-colour": ds.ERROR,
     "--sim-body-size": f"{ds.TYPE_BODY}px",
     "--sim-caption-size": f"{ds.TYPE_CAPTION}px",
 }
+
+#: The two hermetic glyphs the playback marks a fill with, one definition both
+#: hosts read: ``dissolve`` for a scrum, a triangle pointing down drawn as an
+#: outline; ``reform`` for a fold, a triangle pointing up drawn filled. Each
+#: corner is ``(dx, dy)`` in the unit mark, y down, centred on the fill.
+DISSOLVE_GLYPH = "dissolve"
+REFORM_GLYPH = "reform"
+MARK_GLYPHS = {
+    back_test.SCRUM: {
+        "name": DISSOLVE_GLYPH,
+        "points": [[-0.5, -0.5], [0.5, -0.5], [0.0, 0.5]],
+        "filled": False,
+    },
+    back_test.FOLD: {
+        "name": REFORM_GLYPH,
+        "points": [[-0.5, 0.5], [0.5, 0.5], [0.0, -0.5]],
+        "filled": True,
+    },
+}
+#: A mark's width as a share of one candle column, and its height as a share
+#: of the pane's height.
+MARK_WIDTH_RATIO = 1.0
+MARK_HEIGHT_FRACTION = 0.05
+MARK_OUTLINE_PX = 1.5
+
+#: The replay layer's header figures with no run held.
+NO_RUN_TEXT = "no run"
+NO_IMPROVEMENT_TEXT = "—"
 
 DECLARED_FIELDS = (
     "accessible_name",
@@ -446,6 +478,40 @@ def candle_shapes(
                 "wick_top": unit_y(float(row[2]), low, high),
                 "wick_bottom": unit_y(float(row[3]), low, high),
                 "up": close_px >= open_px,
+            }
+        )
+    return out
+
+
+def mark_shapes(
+    candles: Sequence[Sequence[float]],
+    fills: Sequence[Any],
+    low: float,
+    high: float,
+) -> list[dict]:
+    """One mark per fill in ``fills`` whose ``ts_ms`` is a candle's stamp in
+    ``candles``: the candle's ``index`` and ``x``, the fill's price as ``y``
+    over ``low`` and ``high``, its ``side`` and the ``MARK_GLYPHS`` name."""
+    count = len(candles)
+    index_of = {int(row[0]): index for index, row in enumerate(candles)}
+    out: list[dict] = []
+    for fill in fills:
+        index = index_of.get(int(fill.ts_ms))
+        if index is None:
+            continue
+        glyph = MARK_GLYPHS.get(str(fill.side))
+        if glyph is None:
+            continue
+        out.append(
+            {
+                "index": index,
+                "x": unit_x(index, count),
+                "y": unit_y(float(fill.price), low, high),
+                "ts_ms": int(fill.ts_ms),
+                "price": float(fill.price),
+                "side": str(fill.side),
+                "scrum_price": float(getattr(fill, "scrum_price", 0.0) or 0.0),
+                "glyph": glyph["name"],
             }
         )
     return out
@@ -633,28 +699,42 @@ def vwap_payload(candles: Sequence[Sequence[float]]) -> dict:
     }
 
 
-def playback_payload(candles: Sequence[Sequence[float]]) -> dict:
-    """The playback window: one shape per candle, and the price bounds."""
+def playback_payload(
+    candles: Sequence[Sequence[float]], fills: Sequence[Any] = ()
+) -> dict:
+    """The playback window: one shape per candle, the price bounds, and one
+    ``mark_shapes`` mark per fill in ``fills`` on a candle in ``candles``, with
+    ``fills`` the count handed and ``mark_count`` the count drawn."""
     span = bounds(
         [float(row[2]) for row in candles] + [float(row[3]) for row in candles]
     )
+    marks = mark_shapes(candles, fills, span["low"], span["high"])
     return {
         "title": PLAYBACK_TITLE,
         "low": span["low"],
         "high": span["high"],
         "candle_count": len(candles),
         "candles": candle_shapes(candles, span["low"], span["high"]),
+        "marks": marks,
+        "mark_count": len(marks),
+        "fills": len(fills),
+        "glyphs": {side: dict(glyph) for side, glyph in MARK_GLYPHS.items()},
+        "mark_width_ratio": MARK_WIDTH_RATIO,
+        "mark_height_fraction": MARK_HEIGHT_FRACTION,
+        "mark_outline_px": MARK_OUTLINE_PX,
     }
 
 
 def replay_colours() -> dict:
-    """The five ``SKIN`` colours the two replay windows paint, in both builds."""
+    """The seven ``SKIN`` colours the two replay windows paint, in both builds."""
     return {
         "ground": SKIN["--sim-chart-ground"],
         "close": SKIN["--sim-close-line"],
         "vwap": SKIN["--sim-vwap-line"],
         "up": SKIN["--sim-candle-up"],
         "down": SKIN["--sim-candle-down"],
+        "mark_scrum": SKIN["--sim-mark-scrum"],
+        "mark_fold": SKIN["--sim-mark-fold"],
     }
 
 
@@ -722,10 +802,114 @@ def default_tablet_key(source: TabletSource, bot: Any = None) -> str:
     return tablet_key(newest) if newest is not None else ""
 
 
-def replay_feed(source: TabletSource, key: str) -> dict:
+def shown_bot(
+    bots: Sequence[Any],
+    asset: str,
+    exchange_id: str,
+    last_bot_id: str = "",
+    selected_bot_id: str = "",
+) -> Any:
+    """The bot whose fills the playback marks for a tablet on ``asset`` and
+    ``exchange_id``: of the ``bots`` on that market, the one ``last_bot_id``
+    names, else the one ``selected_bot_id`` names, else the lowest ``bot_id``;
+    None with no bot on the market."""
+    wanted = (str(asset).upper(), str(exchange_id))
+    held = sorted(
+        (
+            bot
+            for bot in bots
+            if (str(bot.asset).upper(), str(bot.exchange_id)) == wanted
+        ),
+        key=lambda bot: str(bot.bot_id),
+    )
+    if not held:
+        return None
+    for preferred in (last_bot_id, selected_bot_id):
+        found = next((bot for bot in held if bot.bot_id == preferred), None)
+        if found is not None:
+            return found
+    return held[0]
+
+
+def fills_for(fills: Sequence[Any], bot_id: str, timeframe: str) -> list:
+    """The fills in ``fills`` of ``bot_id`` whose ``timeframe`` is ``timeframe``
+    or empty, in fill order."""
+    return [
+        fill
+        for fill in fills
+        if str(fill.bot_id) == str(bot_id)
+        and str(getattr(fill, "timeframe", "") or "") in ("", str(timeframe))
+    ]
+
+
+def trade_pairs(fills: Sequence[Any]) -> list[tuple[float, float]]:
+    """``(scrum_price, fold price)`` for each ``FOLD`` in ``fills`` whose
+    ``scrum_price`` is above zero."""
+    return [
+        (float(fill.scrum_price), float(fill.price))
+        for fill in fills
+        if str(fill.side) == back_test.FOLD
+        and float(getattr(fill, "scrum_price", 0.0) or 0.0) > 0.0
+    ]
+
+
+def improvement_pct(hodl_usd: float, harvest_fold_usd: float) -> Optional[float]:
+    """``harvest_fold_usd`` less ``hodl_usd`` as a percentage of ``hodl_usd``;
+    None when ``hodl_usd`` is not above zero."""
+    if float(hodl_usd) <= 0.0:
+        return None
+    return 100.0 * (float(harvest_fold_usd) - float(hodl_usd)) / float(hodl_usd)
+
+
+def improvement_for(outcome: Any, bot_id: str, timeframe: str) -> Optional[float]:
+    """``improvement_pct`` over ``baseline_usd`` and ``accumulation_usd`` of the
+    first ``SymbolRun`` in ``outcome`` that ran ``bot_id`` at ``timeframe``;
+    None with no such run or no ``outcome``."""
+    for portfolio in getattr(outcome, "portfolios", None) or ():
+        for frame in getattr(portfolio, "timeframes", None) or ():
+            for run in getattr(frame, "runs", None) or ():
+                if (
+                    str(run.bot_id) == str(bot_id)
+                    and str(run.timeframe) == str(timeframe)
+                    and run.ran
+                ):
+                    return improvement_pct(run.baseline_usd, run.accumulation_usd)
+    return None
+
+
+def replay_figures(
+    bot: Any, fills: Sequence[Any], improvement: Optional[float]
+) -> dict:
+    """The header's figures for ``bot`` over its ``fills``:
+    ``opposing_trade_distances`` over ``trade_pairs``, the ``improvement``
+    percentage, and ``held`` False with no fill."""
+    distances = opposing_trade_distances(trade_pairs(fills))
+    return {
+        "bot_id": str(bot.bot_id) if bot is not None else "",
+        "held": bool(fills),
+        "fills": len(fills),
+        "pairs": int(distances["count"]),
+        "mean_pct": distances["mean_pct"],
+        "median_pct": distances["median_pct"],
+        "improvement_pct": improvement,
+    }
+
+
+def replay_feed(
+    source: TabletSource,
+    key: str,
+    bots: Sequence[Any] = (),
+    fills: Sequence[Any] = (),
+    outcome: Any = None,
+    last_bot_id: str = "",
+    selected_bot_id: str = "",
+) -> dict:
     """The two windows' payloads for the item ``key`` names: ``vwap_payload``
     and ``playback_payload`` over ``window_of`` the tablet, empty with no
-    entry or under ``MIN_CANDLES``, with ``entry`` and ``refusal`` beside them."""
+    entry or under ``MIN_CANDLES``, with ``entry`` and ``refusal`` beside them,
+    the playback marking ``fills_for`` the ``shown_bot`` at the entry's
+    timeframe and ``figures`` reading ``replay_figures`` over the same fills
+    with ``improvement_for`` the bot's run in ``outcome``."""
     entry = source.entry_for(key) if key else None
     candles = window_of(source.candles(entry)) if entry is not None else []
     refusal = ""
@@ -736,6 +920,21 @@ def replay_feed(source: TabletSource, key: str) -> dict:
             asset=entry.asset, year=entry.year, count=len(candles), need=MIN_CANDLES
         )
     drawable: list[list[float]] = [] if refusal else candles
+    bot = (
+        shown_bot(bots, entry.asset, entry.exchange_id, last_bot_id, selected_bot_id)
+        if entry is not None
+        else None
+    )
+    shown = (
+        fills_for(fills, bot.bot_id, entry.timeframe)
+        if bot is not None and entry is not None
+        else []
+    )
+    improvement = (
+        improvement_for(outcome, bot.bot_id, entry.timeframe)
+        if bot is not None and entry is not None
+        else None
+    )
     return {
         "key": key,
         "entry": entry,
@@ -743,7 +942,8 @@ def replay_feed(source: TabletSource, key: str) -> dict:
         "refusal": refusal,
         "window": len(candles),
         "vwap": vwap_payload(drawable),
-        "playback": playback_payload(drawable),
+        "playback": playback_payload(drawable, shown),
+        "figures": replay_figures(bot, shown, improvement),
         "colours": replay_colours(),
         "button_text": (
             UPDATE_TABLET_TEXT if entry is not None else RETRIEVE_TABLET_TEXT
