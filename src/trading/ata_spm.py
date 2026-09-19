@@ -657,6 +657,8 @@ class SectorScan:
     judged: bool = False
     hits: list = field(default_factory=list)
     pulls: list = field(default_factory=list)
+    #: The first refusal a venue gave one of ``assets``, empty while none did.
+    refusal: str = ""
 
     @property
     def by_volume(self) -> bool:

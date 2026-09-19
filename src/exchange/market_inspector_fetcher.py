@@ -20,6 +20,7 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
+from urllib.error import HTTPError
 
 from ..trading.stone_tablets.ra_fetcher import CoinbasePublicCandles, _get_json
 from ..trading.stone_tablets.registry import _rollup
@@ -58,6 +59,13 @@ API_LEVEL_SUCCESS = "success"
 API_LEVEL_WARNING = "warning"
 API_LEVEL_ERROR = "error"
 SCAN_DATA_USAGE = "Fed into the ATA-SPM voters and the live trade gates"
+#: What a read names when the venue could not be reached, and when it answered.
+VENUE_UNREACHABLE_FORMAT = "{venue} unreachable: {error}"
+VENUE_REFUSED_FORMAT = "{venue} refused: {error}"
+#: ccxt's transport failures, matched by class name so ccxt is not imported here.
+UNREACHABLE_ERROR_NAMES = frozenset(
+    {"NetworkError", "RequestTimeout", "ExchangeNotAvailable", "DDoSProtection"}
+)
 
 _PUBLIC_LOCK = threading.Lock()
 _PUBLIC_LAST_CALL_MONO: float = 0.0
@@ -425,14 +433,27 @@ def public_products(
     return found
 
 
-def public_candles(
+def venue_refusal(venue: str, exc: BaseException) -> str:
+    """VENUE_UNREACHABLE_FORMAT for a transport failure, VENUE_REFUSED_FORMAT
+    for an answer the venue gave; HTTPError is an answer."""
+    error = f"{type(exc).__name__}: {exc}"
+    if isinstance(exc, HTTPError):
+        return VENUE_REFUSED_FORMAT.format(venue=venue, error=error)
+    names = {one.__name__ for one in type(exc).__mro__}
+    if isinstance(exc, (OSError, TimeoutError)) or names & UNREACHABLE_ERROR_NAMES:
+        return VENUE_UNREACHABLE_FORMAT.format(venue=venue, error=error)
+    return VENUE_REFUSED_FORMAT.format(venue=venue, error=error)
+
+
+def public_candle_read(
     symbol: str,
     timeframe: str,
     bars: int = DAILY_BARS,
     accepted_quotes: Iterable[str] = DEFAULT_QUOTES,
-) -> list:
-    """bars candles for symbol on timeframe through CoinbasePublicCandles, with
-    WEEKLY_TIMEFRAME read as DAILY_TIMEFRAME and passed through weekly_from_daily.
+) -> tuple[list, str]:
+    """bars candles for symbol on timeframe through CoinbasePublicCandles, and
+    the venue_refusal the last failed call left, with WEEKLY_TIMEFRAME read as
+    DAILY_TIMEFRAME and passed through weekly_from_daily.
 
     A timeframe outside CoinbasePublicCandles.GRANULARITY_S answers no candles
     with no call, and each call records one FETCH_OHLCV_ACTION block.
@@ -443,10 +464,11 @@ def public_candles(
     weekly = asked == WEEKLY_TIMEFRAME and asked not in table
     venue_timeframe = DAILY_TIMEFRAME if weekly else asked
     if not base or venue_timeframe not in table:
-        return []
+        return [], ""
     route = CoinbasePublicCandles()
     count = int(bars)
     step_ms = table[venue_timeframe] * 1000
+    refusal = ""
     for quote in accepted_quotes:
         pair = f"{base}/{quote}"
         reason = SCAN_REASON_FORMAT.format(
@@ -465,13 +487,14 @@ def public_candles(
                 )
             )
         except Exception as exc:  # noqa: BLE001 - per-pair best-effort
+            refusal = venue_refusal(PUBLIC_EXCHANGE, exc)
             _record_api(
                 PUBLIC_EXCHANGE,
                 FETCH_OHLCV_ACTION,
                 reason,
                 "candles",
                 params,
-                f"{type(exc).__name__}: {exc}",
+                refusal,
                 (time.monotonic() - start) * 1000,
                 API_LEVEL_WARNING,
             )
@@ -492,8 +515,18 @@ def public_candles(
             API_LEVEL_SUCCESS if candles else API_LEVEL_WARNING,
         )
         if candles:
-            return weekly_from_daily(candles) if weekly else candles
-    return []
+            return (weekly_from_daily(candles) if weekly else candles), ""
+    return [], refusal
+
+
+def public_candles(
+    symbol: str,
+    timeframe: str,
+    bars: int = DAILY_BARS,
+    accepted_quotes: Iterable[str] = DEFAULT_QUOTES,
+) -> list:
+    """The candles public_candle_read answers."""
+    return public_candle_read(symbol, timeframe, bars, accepted_quotes)[0]
 
 
 async def _fetch_one_symbol(
@@ -535,26 +568,25 @@ async def _fetch_one_symbol(
     return tf_map
 
 
-async def fetch_symbol_timeframe(
+async def fetch_symbol_timeframe_read(
     exchange_connectors: dict,
     symbol: str,
     timeframe: str,
     bars: int = DAILY_BARS,
-) -> list:
-    """Fetch bars candles for one base symbol on one timeframe, now.
+) -> tuple[list, str]:
+    """bars candles for one base symbol on one timeframe from the first pair in
+    DEFAULT_QUOTES any connector in exchange_connectors answers rows for, and
+    the venue_refusal the last failed call left.
 
-    Asks each connector in exchange_connectors for symbol against every quote
-    in DEFAULT_QUOTES and answers the first pair that returns rows, so a
-    caller reaches the market through the connectors the Market Inspector
-    already holds rather than opening a second route to a venue. A connector
-    whose _ex.timeframes table lacks WEEKLY_TIMEFRAME is asked for
-    DAILY_TIMEFRAME and the answer goes through weekly_from_daily; a
+    A connector whose _ex.timeframes table lacks WEEKLY_TIMEFRAME is asked for
+    DAILY_TIMEFRAME and the answer goes through weekly_from_daily, and a
     connector whose table lacks the timeframe asked is not asked.
     """
     base = str(symbol).strip().upper()
     asked = str(timeframe)
+    refusal = ""
     if not base or not exchange_connectors:
-        return []
+        return [], refusal
     for eid, connector in exchange_connectors.items():
         weekly = asked == WEEKLY_TIMEFRAME and not _exchange_supports_tf(
             connector, asked
@@ -569,11 +601,25 @@ async def fetch_symbol_timeframe(
                 rows = await connector.get_ohlcv(pair, venue_timeframe, int(bars))
             except Exception as _exc:  # noqa: BLE001 - per-pair best-effort
                 logger.debug("OHLCV fetch failed on %s %s: %s", eid, pair, _exc)
+                refusal = venue_refusal(str(eid), _exc)
                 continue
             candles = _ohlcv_to_candles(rows)
             if candles:
-                return weekly_from_daily(candles) if weekly else candles
-    return []
+                return (weekly_from_daily(candles) if weekly else candles), ""
+    return [], refusal
+
+
+async def fetch_symbol_timeframe(
+    exchange_connectors: dict,
+    symbol: str,
+    timeframe: str,
+    bars: int = DAILY_BARS,
+) -> list:
+    """The candles fetch_symbol_timeframe_read answers."""
+    candles, _refusal = await fetch_symbol_timeframe_read(
+        exchange_connectors, symbol, timeframe, bars
+    )
+    return candles
 
 
 @dataclass

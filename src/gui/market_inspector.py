@@ -705,6 +705,8 @@ if _HAS_QT:
             self._last_meta: dict = {}
             self._scan_thread = None
             self._activity_log = None
+            #: The first refusal each symbol's reads met on the running scan.
+            self._scan_refusals: dict = {}
             self.scanFinished.connect(self._take_scan)
             self.scanLogged.connect(self._take_scan_line)
             self.scanProgressed.connect(self._take_scan_progress)
@@ -1622,6 +1624,7 @@ if _HAS_QT:
                     hits=target,
                 )
             )
+            self._scan_refusals = {}
             self._ata_board.progress = ata_spm.ScanProgress(
                 asset_class=board.asset_class,
                 read=ata_spm.NO_MARKETS_READ,
@@ -1754,6 +1757,16 @@ if _HAS_QT:
             logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "draw")
             sectors, added, found, note = answered
             chosen = self._ata_board.asset_class
+            for scan in found.scans if found is not None else []:
+                if not scan.refusal:
+                    scan.refusal = next(
+                        (
+                            self._scan_refusals[one]
+                            for one in scan.assets
+                            if one in self._scan_refusals
+                        ),
+                        "",
+                    )
             self._ata_board.take(sectors, added, found, note)
             self._set_scan_busy(False)
             if added != ata_spm.NO_NEW_SECTOR:
@@ -1935,6 +1948,7 @@ if _HAS_QT:
                 refusal = f"{type(exc).__name__}: {exc}"
             label = ata_spm.timeframe_label(timeframe)
             if refusal:
+                self._scan_refusals.setdefault(str(symbol), str(refusal))
                 line = ata_spm.MARKET_REFUSED_TEXT.format(
                     symbol=symbol, label=label, venue=venue, reason=refusal
                 )

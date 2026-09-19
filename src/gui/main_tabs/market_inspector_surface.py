@@ -212,6 +212,8 @@ BAND_TAG_FORMAT = "{symbol} bands"
 MESSAGE_ROW_NAME_FORMAT = "{symbol} {label}"
 NO_CALL_TEXT = "No chart carried a reversal vote."
 NO_CANDLE_TEXT = "No candles came back for {symbols}."
+#: The zone's sentence after ``NO_CANDLE_TEXT`` when a venue named its refusal.
+VENUE_SAID_FORMAT = "{text} The venue said: {refusal}"
 UNREAD_SYMBOL_CAP = 6
 UNREAD_MORE_FORMAT = "{symbols} and {count} more"
 METHOD_SENTENCE_JOIN = " "
@@ -1398,6 +1400,8 @@ def no_call_text(scan: Any) -> str:
             symbols=listed, count=len(names) - UNREAD_SYMBOL_CAP
         )
     missing = NO_CANDLE_TEXT.format(symbols=listed)
+    if scan.refusal:
+        missing = VENUE_SAID_FORMAT.format(text=missing, refusal=scan.refusal)
     if not scan.votes:
         return missing
     return METHOD_SENTENCE_JOIN.join((NO_CALL_TEXT, missing))
@@ -3029,9 +3033,10 @@ def sector_candle_read(
 
     A symbol ``ata_asset_maps.listing_of`` names reads through that listing's
     venue; every other symbol takes ``inspector_candles`` while the universe
-    scan is younger than ``CANDLES_FRESH_SECONDS``, ``connector_candles``
-    once it is older, and ``public_candles`` on the public Coinbase route
-    while no connector is in reach.
+    scan is younger than ``CANDLES_FRESH_SECONDS``,
+    ``fetch_symbol_timeframe_read`` once it is older, and
+    ``public_candle_read`` on the public Coinbase route while no connector is
+    in reach; each of those names the venue's refusal when it read nothing.
     """
     listing = ata_asset_maps.listing_of(symbol)
     if listing is not None:
@@ -3042,18 +3047,18 @@ def sector_candle_read(
         if held:
             return CANDLES_FROM_SCAN, held, ""
     if not connectors:
-        from ...exchange.market_inspector_fetcher import public_candles
+        from ...exchange.market_inspector_fetcher import public_candle_read
 
-        return (
-            ata_asset_maps.VENUE_EXCHANGE,
-            list(public_candles(symbol, timeframe)),
-            "",
-        )
-    return (
-        ata_asset_maps.VENUE_EXCHANGE,
-        connector_candles(connectors, symbol, timeframe),
-        "",
+        candles, refusal = public_candle_read(symbol, timeframe)
+        return ata_asset_maps.VENUE_EXCHANGE, list(candles), refusal
+    import asyncio
+
+    from ...exchange.market_inspector_fetcher import fetch_symbol_timeframe_read
+
+    candles, refusal = asyncio.run(
+        fetch_symbol_timeframe_read(connectors, symbol, timeframe)
     )
+    return ata_asset_maps.VENUE_EXCHANGE, list(candles or []), refusal
 
 
 def sector_candles(
