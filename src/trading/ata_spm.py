@@ -164,7 +164,15 @@ PHASE_UNRUN = "No run yet"
 SECTOR_LINE_FORMAT = "{sector} ({asset_class})"
 SECTOR_META_FORMAT = "{assets} asset(s) · {votes} vote(s) · {calls} reversal call(s)"
 MARKET_LINE_FORMAT = "{ticker} in {asset_class}"
-MARKET_META_FORMAT = "1 market · {votes} vote(s) · {calls} reversal call(s)"
+MARKET_META_FORMAT = "1 market on {venue} · {votes} vote(s) · {hits} hit(s)"
+#: One phase-one row per timeframe of a one-market scan: the candles read
+#: and what the vote came to.
+MARKET_TIMEFRAME_FORMAT = "{candles} candle(s) · {reading}"
+#: What ``MARKET_META_FORMAT`` names for a market no configured venue lists.
+NO_VENUE_NAME = "no venue"
+MARKET_HIT_READING = "{direction} vote, hit"
+MARKET_REFUSED_READING = "{direction} vote, refused by the gates"
+MARKET_NO_VOTE_READING = "no vote"
 VOLUME_LINE_FORMAT = "{asset_class} by volume"
 MAP_ORDER_LINE_FORMAT = "{asset_class} in map order"
 VOLUME_META_FORMAT = "{read} market(s) read · {hits} hit(s) · {stop}"
@@ -181,6 +189,9 @@ NO_MARKET_TEXT = "none"
 
 #: The pin ``_scan_until_hits`` writes at each hit, through ``_pin_emit``.
 HIT_PIN = "inspector.ata.hit"
+#: The pin ``SectorBoard.compute`` writes once per press with text in the
+#: field: the market the text named and its class, or the refusal.
+TICKER_RESOLVED_PIN = "inspector.ata.ticker_resolved"
 
 #: The hits an empty-field scan stops at until the operator sets a count.
 DEFAULT_HITS_PER_SCAN = 3
@@ -192,8 +203,10 @@ TIMEFRAME_VOTE_FORMAT = (
 )
 NO_TIMEFRAME_TEXT = "No timeframe ticked."
 NO_ASSET_TEXT = "No asset source wired for {asset_class}."
-TICKER_UNHELD_FORMAT = (
-    "{asset_class} holds no ticker {ticker}. Pick one the field offers."
+TICKER_UNHELD_FORMAT = "No class lists ticker {ticker}. Pick one the field offers."
+CLASS_MOVED_TEXT = (
+    "ATA-SPM ticker {ticker} is listed under {placed}; the class box moves "
+    "from {chosen} to {placed}"
 )
 UNLISTED_TEXT = "No configured venue lists {symbols}."
 UNSERVED_TEXT = "No venue serves {labels}."
@@ -359,6 +372,29 @@ class MarketOrder:
         return self.source
 
 
+@dataclass
+class TickerPlacement:
+    """One typed ticker placed: the row read and the class that lists it.
+
+    ``typed`` is the text as the operator wrote it; ``symbol`` is the name
+    the class lists it under, which the scan and the zone carry.
+    """
+
+    listing: Any
+    asset_class: str
+    typed: str = ""
+
+    @property
+    def symbol(self) -> str:
+        """The symbol ``listing`` names."""
+        return symbol_of(self.listing)
+
+    @property
+    def venue(self) -> str:
+        """The venue ``listing`` names, empty for a row no venue lists."""
+        return str(getattr(self.listing, "venue", "") or "")
+
+
 def order_line(order: MarketOrder, read: Any) -> str:
     """``ORDER_LINE_FORMAT`` over the first ``read`` symbols of ``order``.
 
@@ -467,13 +503,15 @@ class TimeframeScan:
     """What one ticked timeframe of one sector returned.
 
     ``short`` names every asset whose history reached fewer than
-    ``MIN_CANDLES_TO_VOTE`` candles, which is reported and never voted.
+    ``MIN_CANDLES_TO_VOTE`` candles, which is reported and never voted;
+    ``read`` holds the candle count each asset's read answered.
     """
 
     timeframe: str
     votes: list = field(default_factory=list)
     unread: list = field(default_factory=list)
     short: list = field(default_factory=list)
+    read: dict = field(default_factory=dict)
 
     @property
     def calls(self) -> list:
@@ -542,17 +580,19 @@ class TimeframeAgreement:
 class SectorScan:
     """What one scan returned across every timeframe ticked on it.
 
-    A ``ticker`` says the scan read one market, which is what
+    A ``ticker`` says the scan read one market on ``venue``, which is what
     ``MARKET_LINE_FORMAT`` and ``MARKET_META_FORMAT`` are written for; a
     ``hit_target`` says it read ``markets_read`` markets in ``order``, which
-    is what ``VOLUME_META_FORMAT`` and ``stopped_at_target`` are written for,
-    and ``hits`` holds the votes ``ata_gate_scan.GateScan.would_fire``
-    admitted out of the ``pulls`` the scan judged.
+    is what ``VOLUME_META_FORMAT`` and ``stopped_at_target`` are written for.
+    ``judged`` says ``_scan_until_hits`` walked the scan, so ``hits`` holds
+    the votes ``ata_gate_scan.GateScan.would_fire`` admitted out of the
+    ``pulls`` it judged.
     """
 
     sector: str
     asset_class: str = CLASS_CRYPTO
     ticker: str = ""
+    venue: str = ""
     assets: list = field(default_factory=list)
     timeframes: list = field(default_factory=list)
     note: str = ""
@@ -564,6 +604,7 @@ class SectorScan:
     markets_read: int = NO_MARKETS_READ
     stopped_at_target: bool = False
     order: MarketOrder = field(default_factory=MarketOrder)
+    judged: bool = False
     hits: list = field(default_factory=list)
     pulls: list = field(default_factory=list)
 
@@ -587,10 +628,15 @@ class SectorScan:
 
     @property
     def calls(self) -> list:
-        """The by-volume scan's ``hits``, or every vote carrying a reversal."""
-        if self.by_volume:
+        """A judged scan's ``hits``, or every vote carrying a reversal."""
+        if self.judged:
             return list(self.hits)
         return [one for one in self.votes if one.is_reversal]
+
+    def hit_on(self, timeframe: Any) -> Optional[AssetVote]:
+        """The hit ``timeframe`` carries, or None while none fired there."""
+        asked = str(timeframe)
+        return next((one for one in self.hits if one.timeframe == asked), None)
 
 
 @dataclass
@@ -762,19 +808,27 @@ def symbol_of(listing: Any) -> str:
     return str(getattr(listing, "symbol", listing))
 
 
-def market_of(market_source: Any, ticker: Any, asset_class: Any) -> Any:
-    """The one asset row a typed ticker names inside one sector.
+def market_of(
+    market_source: Any, ticker: Any, asset_class: Any
+) -> Optional[TickerPlacement]:
+    """The ``TickerPlacement`` a typed ticker names, the chosen class first.
 
-    A source that is None, and a source that raises, both answer None, which
-    ``SectorBoard.compute`` reads as a ticker the sector does not hold.
+    A source answering a bare row is read as a row of ``asset_class``; a
+    source that is None, and a source that raises, both answer None, which
+    ``SectorBoard.compute`` reads as a ticker no class lists.
     """
     if market_source is None:
         return None
     try:
-        return market_source(ticker, asset_class)
+        placed = market_source(ticker, asset_class)
     except Exception as exc:  # noqa: BLE001 - the source is host-supplied
         logger.debug(MARKET_READ_FAILED_LOG, ticker, exc)
         return None
+    if placed is None or isinstance(placed, TickerPlacement):
+        return placed
+    return TickerPlacement(
+        listing=placed, asset_class=str(asset_class), typed=str(ticker or "")
+    )
 
 
 def markets_of(class_source: Any, asset_class: Any) -> MarketOrder:
@@ -822,8 +876,9 @@ def evaluate(
 
     Phase eight caps each sector at ``timeframes_supported`` of the ticked
     timeframes, measured from the ``RoundCost`` the rounds so far took. A
-    ``Sector.hit_target`` sector is walked by ``_scan_until_hits``, which
-    judges each vote through ``pull`` as it goes.
+    ``Sector.hit_target`` sector and a ``Sector.ticker`` market are walked
+    by ``_scan_until_hits``, which judges each vote through ``pull`` as it
+    goes; a market has no target, so every ticked timeframe is judged.
     """
     voter = engine if engine is not None else VotingEngine()
     ticker = clock if clock is not None else time.perf_counter
@@ -839,6 +894,7 @@ def evaluate(
             sector=sector.name,
             asset_class=sector.asset_class,
             ticker=sector.ticker,
+            venue=str(getattr(rows[0], "venue", "") or "") if rows else "",
             assets=assets,
             unlisted=tuple(symbol_of(one) for one in rows if not is_listed(one)),
             unserved=(
@@ -853,7 +909,7 @@ def evaluate(
             )
         elif not ticked:
             scan.note = NO_TIMEFRAME_TEXT
-        if sector.hit_target > NO_HIT_TARGET:
+        if sector.hit_target > NO_HIT_TARGET or sector.ticker:
             scan.hit_target = int(sector.hit_target)
             scan.order = (
                 sector.order
@@ -923,6 +979,7 @@ def _vote_one(
     """
     started = clock()
     candles = candles_for(candle_source, symbol, timeframe)
+    found.read[symbol] = len(candles)
     if not candles:
         found.unread.append(symbol)
         cost.take(clock() - started)
@@ -980,12 +1037,14 @@ def _scan_until_hits(
     Each market's votes are judged by ``judge`` in timeframe order after its
     last timeframe is read, a ``GateScan.would_fire`` verdict is one hit into
     ``scan.hits``, every ``ChartPull`` joins ``scan.pulls``, and the hit that
-    reaches the target ends the walk with ``scan.stopped_at_target`` True.
+    reaches the target ends the walk with ``scan.stopped_at_target`` True. A
+    target of ``NO_HIT_TARGET`` walks every market and stops at no count.
     """
     frames = [TimeframeScan(timeframe=one) for one in timeframes]
     scan.timeframes = frames
     scan.markets_read = NO_MARKETS_READ
     scan.stopped_at_target = False
+    scan.judged = True
     if not frames:
         return
     for symbol in assets:
@@ -1006,11 +1065,12 @@ def _scan_until_hits(
             if not held.gates.would_fire:
                 continue
             scan.hits.append(vote)
+            most = scan.hit_target if scan.by_volume else len(frames)
             _pin_emit(
                 HIT_PIN,
                 actual=len(scan.hits),
-                expected=scan.hit_target,
-                ok=len(scan.hits) <= scan.hit_target,
+                expected=most,
+                ok=len(scan.hits) <= most,
                 context={
                     "asset_class": scan.asset_class,
                     "symbol": vote.symbol,
@@ -1022,7 +1082,7 @@ def _scan_until_hits(
                     "markets_read": scan.markets_read,
                 },
             )
-            if len(scan.hits) >= scan.hit_target:
+            if NO_HIT_TARGET < scan.hit_target <= len(scan.hits):
                 scan.stopped_at_target = True
                 return
 
@@ -1338,9 +1398,10 @@ def run(
 
     ``ata_gate_scan.GateScan.would_fire`` is the one judgement: a vote it
     answers True for reaches ``calls`` and ``pulls``, and from there the
-    bucket, and every other vote leaves its scan in ``refused``. A by-volume
-    ``SectorScan`` judged its own votes inside ``evaluate`` and hands over
-    ``hits`` and ``pulls``; every other scan's votes are judged here.
+    bucket, and every other vote leaves its scan in ``refused``. A
+    ``SectorScan.judged`` scan, by volume or one market, judged its own
+    votes inside ``evaluate`` and hands over ``hits`` and ``pulls``; every
+    other scan's votes are judged here.
     """
     scans = evaluate(
         sectors,
@@ -1353,7 +1414,7 @@ def run(
     )
     found = AtaSpmRun(scans=scans)
     for scan in scans:
-        if not scan.by_volume:
+        if not scan.judged:
             continue
         found.calls.extend(scan.hits)
         for held in scan.pulls:
@@ -1361,7 +1422,7 @@ def run(
                 found.pulls.append(held)
             else:
                 found.refused.append(held.gates)
-    for vote in identify([one for one in scans if not one.by_volume]):
+    for vote in identify([one for one in scans if not one.judged]):
         held = pull(
             vote,
             candle_source,
@@ -1413,7 +1474,8 @@ class SectorBoard:
         """Take the asset class named, and answer whether it was accepted.
 
         A class outside ``ASSET_CLASSES`` is refused, so no sector carries
-        one with no timeframes behind it.
+        one with no timeframes behind it. A placed market keeps the class
+        that lists it; ``take`` moved the box to that class.
         """
         self.note = ""
         asked = str(name or "")
@@ -1422,7 +1484,7 @@ class SectorBoard:
         self.asset_class = asked
         self.timeframes = timeframes_for(asked)
         sector = self.sector_at(at)
-        if sector is not None:
+        if sector is not None and not sector.ticker:
             sector.asset_class = asked
             sector.timeframes = timeframes_for(asked)
         return True
@@ -1483,12 +1545,13 @@ class SectorBoard:
     ) -> tuple:
         """The scans this press holds, the index to show, the ``run`` and a note.
 
-        A ``self.text`` that ``market_of`` places scans that one market, a
-        ``self.text`` the ``asset_source`` answers rows for scans that whole
-        sector, anything else answers ``TICKER_UNHELD_FORMAT`` and runs
-        nothing, and an empty ``self.text`` scans what ``class_source`` lists
-        for ``asset_class`` until ``hit_target`` hits; nothing on the board is
-        written until ``take``.
+        A ``self.text`` that ``market_of`` places scans that one market under
+        the class the placement names, a ``self.text`` the ``asset_source``
+        answers rows for scans that whole sector, anything else answers
+        ``TICKER_UNHELD_FORMAT`` and runs nothing, and an empty ``self.text``
+        scans what ``class_source`` lists for ``asset_class`` until
+        ``hit_target`` hits; nothing on the board is written until ``take``.
+        Each press with text writes ``TICKER_RESOLVED_PIN`` once.
         """
         sectors = list(self.sectors)
         added = NO_NEW_SECTOR
@@ -1497,13 +1560,14 @@ class SectorBoard:
         if named:
             placed = market_of(market_source, named, self.asset_class)
             if placed is not None:
-                added = self._market_at(sectors, symbol_of(placed), placed, ticked)
+                self._say_resolved(named, placed.asset_class, placed=placed)
+                added = self._market_at(sectors, placed, ticked)
             elif self._sector_holds(asset_source, named):
+                self._say_resolved(named, self.asset_class, sector=named)
                 added = self._sector_at(sectors, named, ticked)
             else:
-                note = TICKER_UNHELD_FORMAT.format(
-                    asset_class=self.asset_class, ticker=named
-                )
+                note = TICKER_UNHELD_FORMAT.format(ticker=named)
+                self._say_resolved(named, "", refusal=note)
                 return (sectors, added, None, note)
         elif class_source is not None:
             order = markets_of(class_source, self.asset_class)
@@ -1520,6 +1584,33 @@ class SectorBoard:
             else None
         )
         return (sectors, added, found, "")
+
+    def _say_resolved(
+        self,
+        typed: str,
+        landed: str,
+        placed: Optional[TickerPlacement] = None,
+        sector: str = "",
+        refusal: str = "",
+    ) -> None:
+        """Write ``TICKER_RESOLVED_PIN``: ``landed`` is the class the text
+        named, ``asset_class`` the one chosen, and ok says a market or a
+        sector was named; a move reads ok with the two classes apart."""
+        _pin_emit(
+            TICKER_RESOLVED_PIN,
+            actual=landed,
+            expected=self.asset_class,
+            ok=not refusal,
+            context={
+                "typed": typed,
+                "symbol": placed.symbol if placed is not None else "",
+                "asset_class": landed,
+                "venue": placed.venue if placed is not None else "",
+                "moved": bool(landed) and landed != self.asset_class,
+                "sector": sector,
+                "refusal": refusal,
+            },
+        )
 
     def _sector_holds(self, asset_source: Any, named: str) -> bool:
         """True while ``asset_source`` answers any row for ``named`` as a sector."""
@@ -1539,20 +1630,21 @@ class SectorBoard:
         )
         return len(sectors) - 1
 
-    def _market_at(
-        self, sectors: list, ticker: str, listing: Any, ticked: tuple
-    ) -> int:
-        """The index of one market's scan in ``sectors``, appending it when new."""
+    def _market_at(self, sectors: list, placed: TickerPlacement, ticked: tuple) -> int:
+        """The index of one placed market's scan in ``sectors``, appending it
+        when new; the scan carries the class ``placed`` names."""
+        ticker = placed.symbol
         for at, one in enumerate(sectors):
-            if one.ticker == ticker and one.asset_class == self.asset_class:
+            if one.ticker == ticker and one.asset_class == placed.asset_class:
+                one.listings = (placed.listing,)
                 return at
         sectors.append(
             Sector(
                 name=ticker,
-                asset_class=self.asset_class,
+                asset_class=placed.asset_class,
                 timeframes=ticked,
                 ticker=ticker,
-                listings=(listing,),
+                listings=(placed.listing,),
             )
         )
         return len(sectors) - 1
@@ -1585,12 +1677,20 @@ class SectorBoard:
         return len(sectors) - 1
 
     def take(self, sectors: Any, added: Any, found: Any, note: Any = "") -> int:
-        """Write what ``compute`` answered onto the board, and answer ``added``."""
+        """Write what ``compute`` answered onto the board, and answer ``added``.
+
+        The class box follows the entry ``added`` names, so a placed market
+        moves it to the class that lists the market.
+        """
         self.sectors = list(sectors)
         self.note = str(note or "")
         if found is not None:
             self.run = found
-        return int(added)
+        shown = int(added)
+        if shown != NO_NEW_SECTOR and 0 <= shown < len(self.sectors):
+            self.asset_class = self.sectors[shown].asset_class
+            self.timeframes = tuple(self.sectors[shown].timeframes)
+        return shown
 
     def scan_now(
         self,

@@ -676,6 +676,9 @@
   // The id the ticker field's list attribute names, which is what binds the
   // field to the offered tickers.
   var TICKER_MATCH_LIST_ID = "ticker-matches";
+  // The offer text sits third in each ticker_matches row, after the symbol
+  // and its class.
+  var OFFER_AT = TWO;
   // The width a Level 1 or Level 1A group takes: the pane, less one gap at
   // the right edge, which is the clearance columns_for leaves the Qt grid.
   var PANE_WIDTH_HEAD = "calc(100% - ";
@@ -1717,7 +1720,9 @@
   }
 
   // TickerMatches is the datalist the field's list attribute names. It draws
-  // nothing itself, so it sits beside the field rather than around it.
+  // nothing itself, so it sits beside the field rather than around it. Each
+  // row is the symbol, its class and the offer text; picking one writes the
+  // symbol and the list shows the offer, as the Qt completer does.
   function TickerMatches(props) {
     var skin = props.skin;
     var listProps = { id: TICKER_MATCH_LIST_ID };
@@ -1726,7 +1731,14 @@
       DATALIST_TAG,
       listProps,
       asList(skin[TICKER_MATCHES]).map(function (one) {
-        return element(OPTION_TAG, { key: text(one), value: text(one) });
+        var row = asList(one);
+        var symbol = text(row[ZERO]);
+        var offer = text(row[OFFER_AT]);
+        return element(OPTION_TAG, {
+          key: offer,
+          value: symbol,
+          label: offer
+        });
       })
     );
   }

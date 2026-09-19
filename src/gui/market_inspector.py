@@ -185,8 +185,8 @@ try:
         QGridLayout,
         QCompleter,
     )
-    from PySide6.QtCore import Qt, Signal, QStringListModel
-    from PySide6.QtGui import QColor, QPainter
+    from PySide6.QtCore import Qt, Signal
+    from PySide6.QtGui import QColor, QPainter, QStandardItem, QStandardItemModel
 
     _HAS_QT = True
 except ImportError:
@@ -235,6 +235,9 @@ ATA_SCAN_THREAD_LOG = "ATA-SPM scan on thread %s: %s"
 ACTIVITY_INFO = "info"
 ACTIVITY_WARNING = "warning"
 ACTIVITY_ERROR = "error"
+#: The item role the completer writes into the field, ``Qt.UserRole + 1``:
+#: the bare symbol, while the display role carries the offer with its class.
+TICKER_SYMBOL_ROLE = 0x0100 + 1
 
 ATA_SPM_GROUP_TITLE = "ATA-SPM"
 OPPOSING_TRADES_GROUP_TITLE = "Opposing Trades"
@@ -890,10 +893,13 @@ if _HAS_QT:
             self._ticker_edit.setFixedHeight(FIELD_HEIGHT_PX)
             self._ticker_edit.setAccessibleName(TICKER_FIELD_PART)
             self._ticker_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            self._ticker_model = QStringListModel()
+            self._ticker_model = QStandardItemModel(self._ticker_edit)
             matches = QCompleter(self._ticker_model, self._ticker_edit)
             matches.setCaseSensitivity(Qt.CaseInsensitive)
             matches.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
+            # The popup shows the offer with its class; picking one writes
+            # the bare symbol, held under TICKER_SYMBOL_ROLE.
+            matches.setCompletionRole(TICKER_SYMBOL_ROLE)
             self._ticker_edit.setCompleter(matches)
             self._ticker_edit.textChanged.connect(self._on_ticker_typed)
             line.addWidget(self._ticker_edit)
@@ -924,12 +930,16 @@ if _HAS_QT:
             """Write the offered tickers into the completer, and the field's note.
 
             ``ticker_matches`` and ``ticker_note`` read the lists already in the
-            tree, so no venue is asked for a symbol.
+            process, so no venue is asked for a symbol.
             """
             asset_class = self._ata_board.asset_class
-            self._ticker_model.setStringList(
-                ticker_matches(self._ticker_edit.text(), asset_class)
-            )
+            self._ticker_model.clear()
+            for symbol, _class_name, offer in ticker_matches(
+                self._ticker_edit.text(), asset_class
+            ):
+                item = QStandardItem(offer)
+                item.setData(symbol, TICKER_SYMBOL_ROLE)
+                self._ticker_model.appendRow(item)
             note = ticker_note(asset_class, self._ata_board.note)
             self._ticker_note.setText(note)
             self._ticker_note.setVisible(bool(note))
@@ -1599,7 +1609,7 @@ if _HAS_QT:
                     self._ata_candle_source or self._scanned_candles,
                     message_format,
                     max_supporting_indicators,
-                    market_listing,
+                    self._market_placement,
                     self._ata_class_source or self._class_markets,
                     hits_per_scan,
                     at,
@@ -1642,9 +1652,19 @@ if _HAS_QT:
             """
             logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "draw")
             sectors, added, found, note = answered
+            chosen = self._ata_board.asset_class
             self._ata_board.take(sectors, added, found, note)
             if added != ata_spm.NO_NEW_SECTOR:
                 self._zone_at[ATA_SPM_MODULE] = added
+            placed = self._ata_board.asset_class
+            if placed != chosen:
+                self._say(
+                    ata_spm.CLASS_MOVED_TEXT.format(
+                        ticker=self._ata_board.sectors[added].ticker,
+                        placed=placed,
+                        chosen=chosen,
+                    )
+                )
             if not note and self._ata_board.run is not None:
                 self._push_board.load_run(self._ata_board.run)
                 self._push_board.after_scan(
@@ -1740,6 +1760,10 @@ if _HAS_QT:
             self._ata_asset_source = asset_source
             self._ata_candle_source = candle_source
             self._ata_class_source = class_source
+
+        def _market_placement(self, ticker, asset_class):
+            """``market_listing`` on the connectors in reach, for ``compute``."""
+            return market_listing(ticker, asset_class, self._connectors_now())
 
         def _class_markets(self, asset_class):
             """The ``ata_spm.MarketOrder`` one class holds, on the connectors in reach.
