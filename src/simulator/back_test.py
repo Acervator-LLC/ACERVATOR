@@ -3,16 +3,23 @@ trade sized by ``src.trading.scrumming.sizing``.
 
 ``new_bot`` makes one operator-defined ``SimBot`` and ``fleet_source.live_fleet``
 supplies the imported clone. ``tape_context`` builds a ``GateContext`` from a
-tablet window and the simulated position, ``validation.latch`` evaluates the same
-scrum and fold chains live runs, ``apply_scrum`` and ``apply_fold`` size each
-fill with the Live bot's own functions, and ``run`` walks each bot's tablet
-keeping units, cash and fold tranches under one ``funding``: Back Test from each
-bot's own scrum proceeds, Validation and Portfolio Battery from ``run_budget_usd``,
-the sum of the held Target Balances. ``cited_rule_for`` names the unit rule a
-bot's class trades under on its venue, every fill is sized under it, and a bot
-with no cited rule is ``UNCITED_RULE`` and walks nothing. ``missing_pairs``
-names the tablets a run needs and ``download_missing`` fills them through the
-shipped ``GapFiller``.
+tablet window, the simulated position's grown target and the higher-timeframe
+bias ``weigh_higher_tf_bias`` reads over ``phantom_tapes`` (the walk's own
+candles rolled up to each phantom timeframe through the registry's
+``_rollup``), ``validation.latch`` evaluates the same scrum and fold chains
+live runs, ``apply_scrum`` forms one fold tranche per lot it sells from and
+``apply_fold`` rebuys the eligible tranches, books the bought lots and grows
+the target by the surplus under ``cycle_growth_cap_usd`` with
+``growth_cycle_side`` resetting the cycle, each sized with the Live bot's own
+functions, and ``run`` walks each bot's tablet keeping units, lots, cash and
+fold tranches under one ``funding`` (Back Test from each bot's own scrum
+proceeds, Validation and Portfolio Battery from ``run_budget_usd``, the sum of
+the held Target Balances), emitting a ``BotStatsSnapshot`` on the run's bus
+under ``STATS_TOPIC`` every tick and every fill. ``cited_rule_for`` names the
+unit rule a bot's class trades under on its venue, every fill is sized under
+it, and a bot with no cited rule is ``UNCITED_RULE`` and walks nothing.
+``missing_pairs`` names the tablets a run needs and ``download_missing`` fills
+them through the shipped ``GapFiller``.
 """
 
 from __future__ import annotations
@@ -21,9 +28,12 @@ import logging
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Sequence
 
+from ..core.signal_contract import emit as pin_emit
+from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
+    GROWTH_SIDE_LOWER,
     WHOLE_UNITS,
     cycle_growth_cap_usd,
     delta_below_interval,
@@ -32,7 +42,9 @@ from ..trading.scrumming.sizing import (
     fold_cap_remaining_usd,
     fold_rate_taper,
     fold_spend_usd,
+    fold_surplus_usd,
     fold_units,
+    growth_cycle_side,
     plan_fold_consumption,
     plan_source_price,
     position_ceiling,
@@ -44,11 +56,13 @@ from ..trading.scrumming.sizing import (
     settle_fold_plan,
     target_delta_pct,
     target_delta_usd,
+    target_growth_applied,
     trim_fold_plan,
     unit_rule,
     wallet_capped_spend_usd,
 )
 from ..trading.scrumming.sizing import estimated_fee_usd as fee_usd
+from ..trading.stone_tablets.registry import _TF_SECONDS, _rollup
 from .fleet_source import NEW_ORIGIN, SimBot
 from .portfolios import asset_class, trading_venue
 from .sim_bus import (
@@ -132,13 +146,52 @@ FUNDED_BY_TARGETS = "targets"
 
 FUNDINGS = (FUNDED_BY_PROCEEDS, FUNDED_BY_TARGETS)
 
+#: The bus topic every walk emits its ``BotStatsSnapshot`` on through the run
+#: emitter's bus; each host subscribes to it and writes the held record.
+STATS_TOPIC = "bot.stats"
+
+#: The signals the walk emits through ``signal_contract``: the record's stats
+#: written on a fill and at the walk's end, and the higher-timeframe bias per
+#: candle, the latter admitted once per ``HTF_BIAS_PIN_EVERY_S`` per bot and on
+#: every fill.
+STATS_WRITTEN_SIGNAL = "sim.bot.stats_written"
+HTF_BIAS_SIGNAL = "sim.bot.htf_bias"
+HTF_BIAS_PIN_EVERY_S = 5.0
+
+#: The candles one phantom reads, ``PhantomBot._tick``'s ``limit``, and the
+#: fewest it sets a summary from, ``phantom_balance.MIN_TICK_CANDLES``.
+PHANTOM_WINDOW_CANDLES = 100
+PHANTOM_MIN_CANDLES = 30
+
+#: The four snapshot events: the walk's opening, a tick, a fill, the walk's end.
+SNAPSHOT_START = "start"
+SNAPSHOT_TICK = "tick"
+SNAPSHOT_FILL = "fill"
+SNAPSHOT_END = "end"
+
+#: Why a phantom timeframe the bot names reads no summary on a walk.
+PHANTOMS_OFF = "phantoms off"
+BELOW_PARENT = "at or below the walk's timeframe"
+UNROLLED = "cannot roll up from the walk's timeframe"
+
+SCRUM_SIDE_WORD = "SCRUM"
+FOLD_SIDE_WORD = "FOLD"
+
+#: The marks a walk's opening and closing snapshots carry, ``BotState``'s
+#: ``running`` and ``stopped`` values, unit 31's end state.
+RUNNING_STATE = BotState.RUNNING.value
+STOPPED_STATE = BotState.STOPPED.value
+
 
 @dataclass(frozen=True)
 class SimTrade:
     """One scrum sell or fold buy the tape produced, with ``scrum_price`` the
     scrum's own ``price`` on a scrum and ``plan_source_price`` over the
     tranches consumed on a fold, zero naming no scrum. ``timeframe`` is the
-    ``ta_timeframe`` the walk ran at, empty when unknown."""
+    ``ta_timeframe`` the walk ran at, empty when unknown; ``htf_bias`` is the
+    higher-timeframe bias name the fill's gates read, empty for none;
+    ``target_usd_after`` the position's target after the fill and
+    ``growth_applied_usd`` what the fill added to it."""
 
     bot_id: str
     symbol: str
@@ -150,6 +203,9 @@ class SimTrade:
     fee_usd: float
     scrum_price: float = 0.0
     timeframe: str = ""
+    htf_bias: str = ""
+    target_usd_after: float = 0.0
+    growth_applied_usd: float = 0.0
 
 
 #: The seam ``walk`` hands each ``SimTrade`` to as it fills, as ``run_battery``
@@ -159,10 +215,12 @@ TradeSink = Callable[[SimTrade], None]
 
 @dataclass
 class SimPosition:
-    """What a simulated bot holds as the tape advances: its units, the cash its
-    scrums left, the fold tranches those scrums queued in the shape
-    ``_tick_execute_scrum`` builds them, and the price its units were opened
-    at, which every tranche carries as ``initial_buy_price``."""
+    """What a simulated bot holds as the tape advances: its units and the
+    ``main_lots`` they sit in, the cash its scrums left, the fold tranches
+    those scrums queued in the shape ``_tick_execute_scrum`` builds them, the
+    target its folds have grown from ``anchor_target_usd``, the growth cycle's
+    consumed cap, standing surplus and side, and the counters
+    ``BotStats`` carries on a live bot."""
 
     units: float = 0.0
     cash_usd: float = 0.0
@@ -170,6 +228,23 @@ class SimPosition:
     opening_price: float = 0.0
     last_trade_price: float = 0.0
     cycle_cap_consumed_usd: float = 0.0
+    main_lots: list = field(default_factory=list)
+    target_usd: float = 0.0
+    anchor_target_usd: float = 0.0
+    standing_surplus_usd: float = 0.0
+    growth_side: Optional[str] = None
+    last_trade_side: str = ""
+    total_trades: int = 0
+    total_buys: int = 0
+    total_sells: int = 0
+    total_scrummed_usd: float = 0.0
+    total_folded_usd: float = 0.0
+    trade_volume: float = 0.0
+    tranches_created: int = 0
+    tranches_closed: int = 0
+    scrum_sells: int = 0
+    growth_applied_usd: float = 0.0
+    target_path: list = field(default_factory=list)
 
     @property
     def tranches(self) -> int:
@@ -179,6 +254,237 @@ class SimPosition:
     def value_usd(self, price: float) -> float:
         """``units`` at ``price``, ignoring cash held from an earlier scrum."""
         return priced_usd(self.units, float(price))
+
+    def cost_basis_usd(self) -> float:
+        """Each lot's units at its ``initial_buy_price``, summed: the cost basis
+        ``ScrummingBot.tick`` reads ``unrealised_pnl`` against."""
+        return sum(
+            float(lot.get("units", 0) or 0)
+            * float(lot.get("initial_buy_price", 0) or 0)
+            for lot in self.main_lots
+        )
+
+    def unrealised_pnl_usd(self, price: float) -> float:
+        """``value_usd`` at ``price`` less ``cost_basis_usd``."""
+        return self.value_usd(price) - self.cost_basis_usd()
+
+
+@dataclass(frozen=True)
+class BotStatsSnapshot:
+    """What one walk wrote at one moment, in the two shapes the held record
+    holds: ``stats`` in ``BotStats``'s keys and ``scrumming_state`` in the
+    keys ``SimBotView`` reads; ``state`` is the mark the walk's start and end
+    carry, empty on a tick or a fill."""
+
+    bot_id: str
+    symbol: str
+    timeframe: str
+    ts_ms: int
+    tick: int
+    event: str
+    state: str
+    stats: dict
+    scrumming_state: dict
+
+
+#: The seam a walk's ``BotStatsSnapshot`` reaches a host through.
+StatsSink = Callable[[BotStatsSnapshot], None]
+
+
+def stats_snapshot(
+    bot: SimBot,
+    position: SimPosition,
+    price: float,
+    ts_ms: int,
+    tick: int,
+    event: str,
+    state: str = "",
+) -> BotStatsSnapshot:
+    """The ``BotStatsSnapshot`` of ``position`` at ``price``: the tick figures
+    Live's tick writes (``current_price``, ``position_value``,
+    ``unrealised_pnl``), the fill figures Live's fills write (the trade
+    counts, the scrummed and folded sums, ``trade_volume``), and the
+    ``scrumming_state`` keys the record holds, the lists copied."""
+    stats = {
+        "current_price": float(price),
+        "position_value": position.value_usd(price),
+        "unrealised_pnl": position.unrealised_pnl_usd(price),
+        "total_trades": int(position.total_trades),
+        "total_buys": int(position.total_buys),
+        "total_sells": int(position.total_sells),
+        "total_scrummed_usd": float(position.total_scrummed_usd),
+        "total_folded_usd": float(position.total_folded_usd),
+        "trade_volume": float(position.trade_volume),
+        "standing_surplus_usd": float(position.standing_surplus_usd),
+    }
+    scrumming_state = {
+        "target_balance": float(position.target_usd),
+        "anchor_target_balance": float(position.anchor_target_usd),
+        "quote_to_usd": 1.0,
+        "main_lots": [dict(lot) for lot in position.main_lots],
+        "fold_tranches": [dict(one) for one in position.fold_tranches],
+        "stack_tranches": [],
+        "fold_queue_usd": sum(
+            float(one.get("usd", 0) or 0) for one in position.fold_tranches
+        ),
+        "fold_cycle_cap_consumed": float(position.cycle_cap_consumed_usd),
+        "standing_surplus_usd": float(position.standing_surplus_usd),
+        "target_grow_last_side": position.growth_side,
+        "last_trade_price": float(position.last_trade_price),
+        "last_trade_side": position.last_trade_side,
+        "fold_accumulator": float(position.growth_applied_usd),
+        "tranches_created_lifetime": int(position.tranches_created),
+        "tranches_closed_lifetime": int(position.tranches_closed),
+        "scrum_sells_lifetime": int(position.scrum_sells),
+    }
+    return BotStatsSnapshot(
+        bot_id=bot.bot_id,
+        symbol=bot.symbol,
+        timeframe=str(bot.ta_timeframe or ""),
+        ts_ms=int(ts_ms),
+        tick=int(tick),
+        event=str(event),
+        state=str(state),
+        stats=stats,
+        scrumming_state=scrumming_state,
+    )
+
+
+def emit_stats(emitter: Optional[RunEmitter], snapshot: BotStatsSnapshot) -> bool:
+    """Emit ``snapshot`` on ``emitter``'s bus under ``STATS_TOPIC`` with the
+    run's stamp; answers whether it was emitted."""
+    if emitter is None or not emitter.live:
+        return False
+    emitter.bus.emit(STATS_TOPIC, snapshot=snapshot, **emitter.stamp(snapshot.ts_ms))
+    return True
+
+
+class PhantomTape:
+    """One phantom timeframe's candles, rolled from the walk's own rows
+    through the registry's ``_rollup``: the completed buckets rolled once, the
+    bucket holding the walk's candle rolled from its rows up to that candle on
+    each read, so no later row reaches a window."""
+
+    def __init__(self, rows: Sequence[Sequence[float]], timeframe: str, factor: int):
+        self.timeframe = str(timeframe)
+        self.factor = int(factor)
+        self.bucket_ms = _TF_SECONDS[self.timeframe] * 1000
+        self.rows = [list(row) for row in rows]
+        self.keys = [
+            (int(row[0]) // self.bucket_ms) * self.bucket_ms for row in self.rows
+        ]
+        self.complete = _rollup(self.rows, self.factor, self.bucket_ms)
+        self.complete_index = {int(row[0]): n for n, row in enumerate(self.complete)}
+        self.starts: dict[int, int] = {}
+        for n, key in enumerate(self.keys):
+            self.starts.setdefault(key, n)
+
+    @property
+    def rank(self) -> int:
+        """``tf_rank`` of ``timeframe``."""
+        from ..trading.phantom_balance import tf_rank
+
+        return tf_rank(self.timeframe)
+
+    def window(self, index: int) -> list[list[float]]:
+        """The last ``PHANTOM_WINDOW_CANDLES`` rolled candles up to and
+        including the walk's candle at ``index``."""
+        key = self.keys[index]
+        partial = _rollup(
+            self.rows[self.starts[key] : index + 1], self.factor, self.bucket_ms
+        )
+        earlier_count = self.complete_index[key]
+        earlier = self.complete[
+            max(
+                0, earlier_count - (PHANTOM_WINDOW_CANDLES - len(partial))
+            ) : earlier_count
+        ]
+        return (earlier + partial)[-PHANTOM_WINDOW_CANDLES:]
+
+    def summary(self, index: int, engine: Any) -> Any:
+        """``engine.compute_all`` over ``window`` at ``index`` on
+        ``timeframe``, as ``PhantomBot._tick`` computes it; None under
+        ``PHANTOM_MIN_CANDLES`` rolled candles."""
+        from ..trading.indicators.types import candles_from_raw
+
+        window = self.window(index)
+        if len(window) < PHANTOM_MIN_CANDLES:
+            return None
+        return engine.compute_all(candles_from_raw(window), self.timeframe)
+
+
+def phantom_timeframes_for(bot: SimBot, walk_timeframe: str) -> list[str]:
+    """The phantom timeframes Live's bot would run for ``bot`` at
+    ``walk_timeframe``: the record's own, or ``default_phantom_timeframes``
+    above the walk's timeframe when it names none."""
+    from ..trading.phantom_balance import default_phantom_timeframes
+
+    named = [str(one) for one in (bot.phantom_timeframes or ()) if str(one)]
+    if named:
+        return named
+    return list(default_phantom_timeframes(str(walk_timeframe)))
+
+
+def phantom_tapes(
+    bot: SimBot, rows: Sequence[Sequence[float]], walk_timeframe: str
+) -> tuple[list[PhantomTape], dict[str, str]]:
+    """One ``PhantomTape`` per phantom timeframe of ``bot`` the walk's ``rows``
+    at ``walk_timeframe`` can roll up to, and the timeframes refused by name:
+    every one under ``PHANTOMS_OFF`` when the record's phantoms are off,
+    ``BELOW_PARENT`` for one ranked at or under the walk's own, ``UNROLLED``
+    for one outside the registry's table or not a whole multiple of it."""
+    from ..trading.phantom_balance import tf_rank
+
+    refused: dict[str, str] = {}
+    tapes: list[PhantomTape] = []
+    wanted = phantom_timeframes_for(bot, walk_timeframe)
+    if not bot.phantoms_enabled:
+        return [], {one: PHANTOMS_OFF for one in wanted}
+    walk_rank = tf_rank(str(walk_timeframe))
+    walk_seconds = _TF_SECONDS.get(str(walk_timeframe))
+    for timeframe in wanted:
+        if tf_rank(timeframe) <= walk_rank:
+            refused[timeframe] = BELOW_PARENT
+            continue
+        seconds = _TF_SECONDS.get(timeframe)
+        if (
+            walk_seconds is None
+            or seconds is None
+            or seconds % walk_seconds
+            or seconds // walk_seconds <= 1
+        ):
+            refused[timeframe] = UNROLLED
+            continue
+        tapes.append(PhantomTape(rows, timeframe, seconds // walk_seconds))
+    return tapes, refused
+
+
+def higher_tf_bias(
+    tapes: Sequence[PhantomTape], index: int, engine: Any
+) -> tuple[Optional[str], dict]:
+    """The bias name the tick's gates read at ``index`` and the per-timeframe
+    detail: each tape's ``summary``, weighed through
+    ``weigh_higher_tf_bias`` as ``get_higher_tf_bias`` weighs the registered
+    phantoms; None with no summary, as Live reads with no phantom."""
+    from ..trading.phantom_balance import weigh_higher_tf_bias
+
+    phantoms: dict[str, Any] = {}
+    higher = []
+    for tape in tapes:
+        summary = tape.summary(index, engine)
+        if summary is None:
+            phantoms[tape.timeframe] = "no summary"
+            continue
+        phantoms[tape.timeframe] = {
+            "direction": summary.consensus_direction.name,
+            "conf": round(float(summary.consensus_confidence), 4),
+        }
+        higher.append((tape.timeframe, tape.rank, summary))
+    direction, detail = weigh_higher_tf_bias(higher, [])
+    return (None if direction is None else str(direction.name)), {
+        "phantoms": phantoms,
+        "weighing": detail,
+    }
 
 
 @dataclass(frozen=True)
@@ -207,6 +513,15 @@ class BotResult:
     unit_rule: str = ""
     #: True when ``stop`` ended the walk before the tape's last bar.
     stopped: bool = False
+    #: The position's target at the walk's end, grown from the bot's own.
+    end_target_usd: float = 0.0
+    #: The ``stats`` of the walk's last ``BotStatsSnapshot``.
+    stats: dict = field(default_factory=dict)
+    #: One entry per fold that grew the target: the step's figures.
+    target_path: tuple = ()
+    #: The phantom timeframes evaluated, those refused by name, and the bias
+    #: counts over the ticks.
+    htf: dict = field(default_factory=dict)
 
     @property
     def units_gained(self) -> float:
@@ -382,23 +697,30 @@ def ta_direction(summary: Any, reading: Any) -> tuple[bool, bool, str, float]:
 
 def tape_context(
     bot: SimBot,
-    position: SimPosition,
+    position: Any,
     window: Sequence[Any],
     reading: Any,
     summary: Any,
+    htf_bias_name: Optional[str] = None,
 ) -> GateContext:
     """A ``GateContext`` for the last candle of ``window`` and the ``position``
     holding it.
 
-    The tape drives ``ticker_last``, ``bb_pos`` and every indicator; ``position``
-    drives ``delta`` and ``n_fold_tranches``; the circuit breaker, hysteresis and
-    higher-timeframe fields read as not populated.
+    The tape drives ``ticker_last``, ``bb_pos`` and every indicator;
+    ``position`` drives ``delta`` (against its own grown ``target_usd``, the
+    bot's when it holds none) and ``n_fold_tranches``; ``htf_bias_name`` sets
+    the higher-timeframe fields as ``ScrummingBot.tick`` sets them off the
+    coordinator's bias, blocking a scrum on ``BULLISH`` and a fold on
+    ``BEARISH`` under the two defer flags; the circuit breaker and hysteresis
+    fields read as not populated.
     """
     close = float(window[-1].close)
     bb_pos = float(reading.bb_position) if reading is not None else 0.0
     lower_dt, upper_dt = bb_detect_thresholds(bot.scrum_detect_pct)
-    target_usd = float(bot.target_usd or 0.0)
+    target_usd = float(getattr(position, "target_usd", 0.0) or bot.target_usd or 0.0)
     delta = target_delta_usd(position.value_usd(close), target_usd)
+    htf_blocks_scrum = htf_bias_name == BULLISH
+    htf_blocks_fold = htf_bias_name == BEARISH
     interval_usd = scrumming_interval_usd(target_usd, float(bot.scrumming_interval_pct))
     below_interval = delta_below_interval(delta, interval_usd)
     is_bullish, is_bearish, direction_name, _confidence = ta_direction(summary, reading)
@@ -431,8 +753,8 @@ def tape_context(
         eff_is_bullish=is_bullish if bot.scrum_require_ta_bullish else True,
         eff_is_bearish=is_bearish if bot.fold_require_ta_bearish else True,
         eff_trend_hold=trend_hold if bot.scrum_hold_in_uptrend else False,
-        eff_htf_blocks_scrum=False,
-        eff_htf_blocks_fold=False,
+        eff_htf_blocks_scrum=htf_blocks_scrum if bot.scrum_defer_to_htf else False,
+        eff_htf_blocks_fold=htf_blocks_fold if bot.fold_defer_to_htf else False,
         flag_require_ta_bullish=bot.scrum_require_ta_bullish,
         flag_hold_in_uptrend=bot.scrum_hold_in_uptrend,
         flag_defer_to_htf=bot.scrum_defer_to_htf,
@@ -456,9 +778,9 @@ def tape_context(
         mem253_current_pos=position.value_usd(close),
         has_fold_tranches=position.tranches > 0,
         n_fold_tranches=position.tranches,
-        htf_bias_name=None,
-        htf_blocks_scrum=False,
-        htf_blocks_fold=False,
+        htf_bias_name=htf_bias_name,
+        htf_blocks_scrum=htf_blocks_scrum,
+        htf_blocks_fold=htf_blocks_fold,
         scrumming_interval_pct=float(bot.scrumming_interval_pct),
         trading_fee_pct=float(bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT),
         ripe_scrum=banded and delta > 0 and not below_interval and above_upper,
@@ -477,9 +799,12 @@ def apply_scrum(
     delta: float,
     rule: str,
 ) -> Optional[SimTrade]:
-    """Sell ``scrum_units`` of ``delta`` at ``price`` under ``rule`` and queue
-    the proceeds net of ``estimated_fee_usd`` as one fold tranche, as
-    ``_tick_execute_scrum`` books a sale over one lot.
+    """Sell ``scrum_units`` of ``delta`` at ``price`` under ``rule`` from the
+    highest-priced ``main_lots`` first and queue the proceeds net of
+    ``estimated_fee_usd`` as one fold tranche per lot sold from, each
+    carrying that lot's ``initial_buy_price``, as ``_tick_execute_scrum``
+    books a sale over the lots; the trade counters move as Live's fill moves
+    them.
 
     Nothing fills when ``position`` holds fewer units than the sell needs, or
     when a whole-unit ``delta`` buys under one unit, which is logged.
@@ -503,15 +828,36 @@ def apply_scrum(
     position.units -= units
     position.cash_usd += proceeds
     position.last_trade_price = float(price)
-    position.fold_tranches.append(
-        {
-            "usd": proceeds,
-            "units": units,
-            "ref": float(price),
-            "initial_buy_price": position.opening_price,
-            "created_ts": float(ts_ms) / 1000.0,
-        }
+    position.last_trade_side = SCRUM_SIDE_WORD
+    position.main_lots.sort(
+        key=lambda lot: float(lot.get("initial_buy_price", 0) or 0), reverse=True
     )
+    remaining = units
+    for lot in list(position.main_lots):
+        if remaining <= 1e-12:
+            break
+        take = min(float(lot.get("units", 0) or 0), remaining)
+        if take <= 1e-12:
+            continue
+        position.fold_tranches.append(
+            {
+                "usd": (take / units) * proceeds,
+                "units": take,
+                "ref": float(price),
+                "initial_buy_price": float(lot.get("initial_buy_price", 0) or 0),
+                "created_ts": float(ts_ms) / 1000.0,
+            }
+        )
+        position.tranches_created += 1
+        lot["units"] = float(lot.get("units", 0) or 0) - take
+        remaining -= take
+        if lot["units"] <= 1e-12:
+            position.main_lots.remove(lot)
+    position.total_trades += 1
+    position.total_sells += 1
+    position.scrum_sells += 1
+    position.total_scrummed_usd += notional
+    position.trade_volume += notional
     return SimTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -564,7 +910,11 @@ def apply_fold(
     ``delta`` sizes nothing here as it sizes nothing in ``_tick_execute_fold``,
     and under ``WHOLE_UNITS`` the fold spends the whole units' price with
     ``trim_fold_plan`` leaving the rest in the tranches, or fills nothing and
-    logs ``BELOW_ONE_UNIT`` when the spend buys under one unit.
+    logs ``BELOW_ONE_UNIT`` when the spend buys under one unit. The bought
+    units join ``main_lots`` per consumed tranche's share, and the surplus
+    ``fold_surplus_usd`` reads grows ``position.target_usd`` through
+    ``target_growth_applied`` under the cycle cap, as
+    ``_apply_fold_target_growth`` grows a live bot's target.
     """
     del delta
     fee_pct = bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT
@@ -576,7 +926,7 @@ def apply_fold(
         eligible, key=lambda t: -float(t.get("initial_buy_price", t.get("ref", 0)))
     )
     cap = cycle_growth_cap_usd(
-        float(bot.target_usd or 0.0),
+        float(position.target_usd),
         position.cycle_cap_consumed_usd,
         bot.max_target_growth_pct,
     )
@@ -612,10 +962,25 @@ def apply_fold(
     position.units += units
     position.cash_usd -= spend
     position.last_trade_price = float(price)
+    position.last_trade_side = FOLD_SIDE_WORD
     scrum_price = plan_source_price(plan)
-    position.fold_tranches, _removed, _spent = settle_fold_plan(
+    slice_units = sum(float(one.get("units", 0) or 0) for one in slices) + 1e-12
+    for one in slices:
+        position.main_lots.append(
+            {
+                "units": units * (float(one.get("units", 0) or 0) / slice_units),
+                "initial_buy_price": float(one.get("initial_buy_price", 0) or 0),
+            }
+        )
+    position.fold_tranches, removed, _spent = settle_fold_plan(
         position.fold_tranches, plan
     )
+    position.tranches_closed += int(removed)
+    position.total_trades += 1
+    position.total_buys += 1
+    position.total_folded_usd += spend
+    position.trade_volume += spend
+    growth = grow_target(bot, position, units, slices, float(price), int(ts_ms))
     return SimTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -627,15 +992,98 @@ def apply_fold(
         fee_usd=fee,
         scrum_price=scrum_price,
         timeframe=str(bot.ta_timeframe or ""),
+        target_usd_after=float(position.target_usd),
+        growth_applied_usd=growth,
     )
+
+
+def grow_target(
+    bot: SimBot,
+    position: SimPosition,
+    units_bought: float,
+    slices: list,
+    price: float,
+    ts_ms: int,
+) -> float:
+    """Grow ``position.target_usd`` by the fold's surplus as
+    ``_apply_fold_target_growth`` grows a live bot's: ``fold_surplus_usd``
+    over the consumed ``slices``, ``target_growth_applied`` under what
+    ``cycle_growth_cap_usd`` leaves of the cycle, the applied growth added to
+    the target and to the consumed cap, the rest parked as standing surplus,
+    the growth side set to ``GROWTH_SIDE_LOWER``; nothing moves with
+    ``profit_folding_active`` off. Answers the growth applied and records the
+    step on ``position.target_path``.
+    """
+    if not bot.profit_folding_active:
+        return 0.0
+    surplus = fold_surplus_usd(units_bought, slices, price)
+    standing_before = float(position.standing_surplus_usd)
+    if surplus <= 1e-9 and standing_before <= 1e-9:
+        return 0.0
+    target_before = float(position.target_usd)
+    consumed_before = float(position.cycle_cap_consumed_usd)
+    cap = cycle_growth_cap_usd(
+        target_before, consumed_before, bot.max_target_growth_pct
+    )
+    cap_remaining = fold_cap_remaining_usd(cap, consumed_before)
+    applied, standing_after = target_growth_applied(
+        surplus, standing_before, cap_remaining
+    )
+    position.standing_surplus_usd = standing_after
+    if applied <= 0.0:
+        return 0.0
+    position.target_usd = target_before + applied
+    position.cycle_cap_consumed_usd = consumed_before + applied
+    position.growth_side = GROWTH_SIDE_LOWER
+    position.growth_applied_usd += applied
+    position.target_path.append(
+        {
+            "ts_ms": int(ts_ms),
+            "candle_at": iso_stamp(ts_ms),
+            "surplus_usd": surplus,
+            "standing_before": standing_before,
+            "growth_pct": float(bot.max_target_growth_pct),
+            "cap_usd": cap,
+            "consumed_before": consumed_before,
+            "cap_remaining": cap_remaining,
+            "applied_usd": applied,
+            "target_before": target_before,
+            "target_after": float(position.target_usd),
+            "standing_after": standing_after,
+        }
+    )
+    return applied
+
+
+def reset_growth_cycle(position: SimPosition, reading: Any) -> bool:
+    """The tick's growth-cycle check over ``reading.bb_position`` through
+    ``growth_cycle_side``: the side moves as Live's tick moves it and the
+    consumed cap zeroes when the opposite extreme is reached; answers whether
+    it reset. Nothing moves with no ``reading``."""
+    if reading is None:
+        return False
+    side, reset = growth_cycle_side(position.growth_side, float(reading.bb_position))
+    position.growth_side = side
+    if reset and position.cycle_cap_consumed_usd > 1e-9:
+        position.cycle_cap_consumed_usd = 0.0
+    return reset
 
 
 def opening_position(bot: SimBot, price: float, rule: str) -> SimPosition:
     """A ``SimPosition`` worth ``bot.target_usd`` at ``price`` under ``rule``,
-    the ``fold_units`` the initial entry's buy of the target books."""
+    the ``fold_units`` the initial entry's buy of the target books as one lot
+    at ``price``, its target and anchor the bot's own."""
     target_usd = float(bot.target_usd or 0.0)
     units = fold_units(target_usd, float(price), rule) if price > 0.0 else 0.0
-    return SimPosition(units=units, cash_usd=0.0, opening_price=float(price))
+    lots = [{"units": units, "initial_buy_price": float(price)}] if units > 0 else []
+    return SimPosition(
+        units=units,
+        cash_usd=0.0,
+        opening_price=float(price),
+        main_lots=lots,
+        target_usd=target_usd,
+        anchor_target_usd=target_usd,
+    )
 
 
 def run_budget_usd(bots: Sequence[SimBot]) -> float:
@@ -660,10 +1108,14 @@ def walk(
     bars, each fold funded as ``funding`` says and every fill sized under
     ``rule``; ``on_trade`` is handed each ``SimTrade`` the moment it fills,
     ``emitter`` emits ``trade_filled``, ``bot_line``, ``voting_snapshot`` and
-    ``gate_decision`` on every tick in Live's fire order, ``on_tick`` is handed
-    the bar reached, the bars in the tape and the ticks so far after each
-    tick, and ``stop`` answering True before a tick ends the walk at the last
-    bar ticked with ``stopped`` set."""
+    ``gate_decision`` on every tick in Live's fire order and a
+    ``BotStatsSnapshot`` under ``STATS_TOPIC`` at the walk's start, on every
+    tick, on every fill and at its end, ``on_tick`` is handed the bar reached,
+    the bars in the tape and the ticks so far after each tick, and ``stop``
+    answering True before a tick ends the walk at the last bar ticked with
+    ``stopped`` set. Each tick reads the higher-timeframe bias over
+    ``phantom_tapes`` and the growth cycle over the tick's Bollinger reading
+    before its gates, as ``ScrummingBot.tick`` orders them."""
     from ..trading.ta_engine import VotingEngine
 
     if len(candles) < MIN_CANDLES:
@@ -678,7 +1130,16 @@ def walk(
             unit_rule=rule,
         )
     engine = VotingEngine()
+    phantom_engine = VotingEngine()
     timeframe = bot.ta_timeframe or DEFAULT_TIMEFRAME
+    rows = [
+        [one.timestamp, one.open, one.high, one.low, one.close, one.volume]
+        for one in candles
+    ]
+    tapes, refused = phantom_tapes(bot, rows, timeframe)
+    for name, reason in refused.items():
+        logger.info("%s: phantom %s reads no summary: %s", bot.bot_id, name, reason)
+    bias_counts: dict[str, int] = {}
     position = opening_position(bot, float(candles[MIN_CANDLES - 1].close), rule)
     start_units = position.units
     trades: list[SimTrade] = []
@@ -688,6 +1149,17 @@ def walk(
     fees = 0.0
     halted = False
     last_index = MIN_CANDLES - 1
+    opening = stats_snapshot(
+        bot,
+        position,
+        position.opening_price,
+        int(candles[MIN_CANDLES - 1].timestamp),
+        0,
+        SNAPSHOT_START,
+        state=RUNNING_STATE,
+    )
+    emit_stats(emitter, opening)
+    run_id = emitter.run_id if emitter is not None else ""
     for index in range(MIN_CANDLES - 1, len(candles), max(int(step), 1)):
         if stop is not None and stop():
             halted = True
@@ -696,7 +1168,10 @@ def walk(
         window = list(candles[max(0, index + 1 - WINDOW_CANDLES) : index + 1])
         reading = bb_reading(window, bot)
         summary = engine.compute_all(window, timeframe, symbol=bot.symbol)
-        context = tape_context(bot, position, window, reading, summary)
+        htf_name, htf_detail = higher_tf_bias(tapes, index, phantom_engine)
+        bias_counts[str(htf_name)] = bias_counts.get(str(htf_name), 0) + 1
+        reset_growth_cycle(position, reading)
+        context = tape_context(bot, position, window, reading, summary, htf_name)
         armed = latch(context)
         ticks += 1
         price = float(window[-1].close)
@@ -711,6 +1186,11 @@ def walk(
                 bot, position, price, stamp, context.delta, funding, rule=rule
             )
         if filled is not None:
+            filled = replace(
+                filled,
+                htf_bias=str(htf_name or ""),
+                target_usd_after=float(position.target_usd),
+            )
             trades.append(filled)
             fees += filled.fee_usd
             if on_trade is not None:
@@ -732,9 +1212,35 @@ def walk(
                 trade_action=action,
                 side=fill_side(filled),
             )
+        snapshot = stats_snapshot(
+            bot,
+            position,
+            price,
+            stamp,
+            ticks,
+            SNAPSHOT_FILL if filled is not None else SNAPSHOT_TICK,
+        )
+        emit_stats(emitter, snapshot)
+        pin_htf_bias(
+            bot, stamp, htf_name, context, htf_detail, refused, filled is not None
+        )
+        if filled is not None:
+            pin_stats_written(snapshot, len(trades), run_id)
         if on_tick is not None:
             on_tick(index + 1, len(candles), ticks)
     end_index = last_index if halted else len(candles) - 1
+    end_price = float(candles[end_index].close)
+    closing = stats_snapshot(
+        bot,
+        position,
+        end_price,
+        int(candles[end_index].timestamp),
+        ticks,
+        SNAPSHOT_END,
+        state=STOPPED_STATE,
+    )
+    emit_stats(emitter, closing)
+    pin_stats_written(closing, len(trades), run_id)
     return BotResult(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -748,13 +1254,91 @@ def walk(
         start_units=start_units,
         end_units=position.units,
         start_price=float(candles[MIN_CANDLES - 1].close),
-        end_price=float(candles[end_index].close),
+        end_price=end_price,
         cash_usd=position.cash_usd,
         fees_usd=fees,
         first_ts_ms=int(candles[0].timestamp),
         last_ts_ms=int(candles[end_index].timestamp),
         unit_rule=rule,
         stopped=halted,
+        end_target_usd=float(position.target_usd),
+        stats=dict(closing.stats),
+        target_path=tuple(dict(one) for one in position.target_path),
+        htf={
+            "phantoms_enabled": bool(bot.phantoms_enabled),
+            "named": phantom_timeframes_for(bot, timeframe),
+            "evaluated": [one.timeframe for one in tapes],
+            "refused": dict(refused),
+            "bias_counts": bias_counts,
+        },
+    )
+
+
+def pin_htf_bias(
+    bot: SimBot,
+    stamp: int,
+    htf_name: Optional[str],
+    context: GateContext,
+    detail: dict,
+    refused: dict,
+    on_fill: bool,
+) -> None:
+    """Emit ``HTF_BIAS_SIGNAL`` for one tick: the bias and the two block flags
+    the gates read, each phantom's reading or refusal, against the timeframes
+    the bot names; ``ok`` when every named timeframe was evaluated or refused
+    by name. A fill's tick lands unthrottled; the rest once per
+    ``HTF_BIAS_PIN_EVERY_S`` per bot."""
+    phantoms = dict(detail.get("phantoms") or {})
+    named = list(bot.phantom_timeframes or ()) or list(phantoms) + list(refused)
+    covered = set(phantoms) | set(refused)
+    pin_emit(
+        HTF_BIAS_SIGNAL,
+        actual={
+            "bot": bot.bot_id,
+            "candle": iso_stamp(stamp),
+            "bias": htf_name,
+            "blocks_scrum": bool(context.htf_blocks_scrum),
+            "blocks_fold": bool(context.htf_blocks_fold),
+            "eff_blocks_scrum": bool(context.eff_htf_blocks_scrum),
+            "eff_blocks_fold": bool(context.eff_htf_blocks_fold),
+            "phantoms": phantoms,
+            "refused": dict(refused),
+        },
+        expected={"timeframes": named},
+        ok=all(one in covered for one in named),
+        context={"bot_id": bot.bot_id, "on_fill": bool(on_fill)},
+        every=0.0 if on_fill else HTF_BIAS_PIN_EVERY_S,
+        instance=bot.bot_id,
+    )
+
+
+def pin_stats_written(snapshot: BotStatsSnapshot, fills: int, run_id: str) -> None:
+    """Emit ``STATS_WRITTEN_SIGNAL`` for ``snapshot``: the bot, the tick, the
+    fills and the fields moved, against the fill count off the trades;
+    ``ok`` when the snapshot's trade count equals it."""
+    stats = snapshot.stats
+    pin_emit(
+        STATS_WRITTEN_SIGNAL,
+        actual={
+            "bot": snapshot.bot_id,
+            "tick": snapshot.tick,
+            "event": snapshot.event,
+            "fills": int(stats.get("total_trades", 0)),
+            "fields": {
+                "current_price": stats.get("current_price"),
+                "position_value": stats.get("position_value"),
+                "unrealised_pnl": stats.get("unrealised_pnl"),
+                "total_scrummed_usd": stats.get("total_scrummed_usd"),
+                "total_folded_usd": stats.get("total_folded_usd"),
+                "target_balance": snapshot.scrumming_state.get("target_balance"),
+                "fold_tranches": len(
+                    snapshot.scrumming_state.get("fold_tranches") or []
+                ),
+            },
+        },
+        expected={"fills": int(fills)},
+        ok=int(stats.get("total_trades", 0)) == int(fills),
+        context={"bot_id": snapshot.bot_id, "run_id": run_id, "state": snapshot.state},
     )
 
 
@@ -1114,9 +1698,11 @@ async def download_missing(
 __all__ = [
     "BACK_TESTED",
     "BELOW_ONE_UNIT",
+    "BELOW_PARENT",
     "BOT_OUTCOMES",
     "BackTestRun",
     "BotResult",
+    "BotStatsSnapshot",
     "DEFAULT_SCRUM_DETECT_PCT",
     "DEFAULT_TIMEFRAME",
     "DEFAULT_TRADING_FEE_PCT",
@@ -1124,13 +1710,29 @@ __all__ = [
     "FUNDED_BY_PROCEEDS",
     "FUNDED_BY_TARGETS",
     "FUNDINGS",
+    "HTF_BIAS_PIN_EVERY_S",
+    "HTF_BIAS_SIGNAL",
     "MIN_CANDLES",
     "NEW_ORIGIN",
     "NO_TABLET",
+    "PHANTOMS_OFF",
+    "PHANTOM_MIN_CANDLES",
+    "PHANTOM_WINDOW_CANDLES",
+    "PhantomTape",
+    "RUNNING_STATE",
     "SCRUM",
     "SHORT_TABLET",
+    "SNAPSHOT_END",
+    "SNAPSHOT_FILL",
+    "SNAPSHOT_START",
+    "SNAPSHOT_TICK",
+    "STATS_TOPIC",
+    "STATS_WRITTEN_SIGNAL",
+    "STOPPED_STATE",
+    "StatsSink",
     "TA_CONFIDENCE_FLOOR",
     "UNCITED_RULE",
+    "UNROLLED",
     "WINDOW_CANDLES",
     "SimPosition",
     "SimTrade",
@@ -1140,20 +1742,29 @@ __all__ = [
     "bb_detect_thresholds",
     "cited_rule_for",
     "download_missing",
+    "emit_stats",
     "fee_usd",
     "fill_action",
     "fill_side",
     "fold_taper",
+    "grow_target",
+    "higher_tf_bias",
     "missing_pairs",
     "new_bot",
     "new_bots",
     "no_tablet_line",
     "opening_position",
+    "phantom_tapes",
+    "phantom_timeframes_for",
+    "pin_htf_bias",
+    "pin_stats_written",
+    "reset_growth_cycle",
     "run",
     "run_budget_usd",
     "shared_step",
     "short_tablet_line",
     "signal_detail",
+    "stats_snapshot",
     "ta_direction",
     "tape_context",
     "trend_reading",

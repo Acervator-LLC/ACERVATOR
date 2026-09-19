@@ -8567,3 +8567,302 @@ the page, the marks drew at 4 px by 12 px and the line wrapped whole. Nine
 and both tablets hashed identical after every step, a planted byte moving the
 hash; the operator's RA root listed 414 entries before and after; no socket
 left loopback; no bot was constructed.
+
+## The simulated bot acts like its live equivalent
+
+A loaded bot reads `IDLE` until a run starts. While its walk runs its row
+reads `RUNNING` and moves as the walk fills: the trade count, the current
+position value, the target and the unrealised figure are written to the held
+record on every tick and every fill, in the fields the live bot writes, and
+the tables draw them. Scrums form fold tranches on the record in the live
+shape, folds consume them and grow the target by the surplus at the
+configured rate, and the Bot Settings window's Fold Tranches and Stack
+Tranches tabs draw the walk's tranches when opened mid-run. Every tick reads
+the higher-timeframe bias from the walk's own candles rolled up to the bot's
+phantom timeframes, through the registry's one rollup and the live
+coordinator's weighing, so no gate reads a hard-coded `None`. The operator's
+words, 2026-09-18: *"Loaded bots are showing running despite there not being a
+replay active. Should 'turn on' and begin updating trade counts, current
+position value, and target balance. Once running, bot metrics must update as
+trade actions are simulated ... It is imperative for simulated bots to be
+acting just like their live equivalent. Scrums and Folds form Tranches.
+Surplus profits compound at the configured rate."* And: *"Any TF higher than
+5m was supposed to be getting calculated using the 5m data."*
+
+```mermaid
+flowchart LR
+    walk[back_test.walk] -->|BotStatsSnapshot on bot.stats| bus[the host's sim bus]
+    bus -->|worker thread| sub[_on_bus_stats]
+    sub -->|bot_stats signal, queued| take[_take_bot_stats on the GUI thread]
+    take --> write[FleetSource.write_stats: stats, scrumming_state]
+    take -->|running / stopped| marks[SimBotManager.start / stop]
+    take -->|every 2 s| redraw[refresh_bots: the rows]
+    write --> detail[Detail: SimBotView over the record, the tranche tabs]
+    walk -->|phantom_tapes, _rollup, weigh_higher_tf_bias| gates[tape_context: the HTF fields]
+    walk -->|fold surplus, cycle cap| target[position.target_usd, target_path]
+```
+
+### A loaded bot reads IDLE
+
+Import Live Fleet copies each stored record and writes its state `idle`,
+whatever the live file saved, and the sim fleet file's records read `idle`
+at construction. That is the live restore's own rule: `restore_bots_from_state`
+recreates every persisted bot in IDLE and it stays there until the operator
+starts it. Before this an imported bot read the live file's `running` with no
+run in flight. Generate From YTD and Create already wrote `idle`.
+
+`src/simulator/fleet_source.py` — the one write
+
+```python
+def loaded_idle(record: dict) -> dict:
+    """``record`` with its ``state_when_saved`` written ``BotState.IDLE``, as
+    ``restore_bots_from_state`` recreates every persisted bot in IDLE until
+    the operator starts it; a loaded bot never reads ``running`` with no run."""
+    record["state_when_saved"] = BotState.IDLE.value
+    return record
+```
+
+### The row moves with the walk
+
+The walk emits a `BotStatsSnapshot` on the run's bus under `bot.stats` at its
+opening, on every tick, on every fill and at its end. Each host subscribes to
+that topic on its own bus at build; the subscriber runs on the walk's thread
+and re-emits the snapshot through the `bot_stats` signal, so the record is
+written on the GUI thread through `FleetSource.write_stats`. A tick writes
+what the live tick writes: the current price, the position value and the
+unrealised figure, with the lots the holdings are summed from. A fill writes
+what the live fill writes: the trade count, the buys and sells, the scrummed
+and folded sums, the trade volume, and the scrumming state the record holds,
+the grown target, the fold tranches, the lots, the cycle's consumed cap, the
+standing surplus and the growth side, the last trade's price and side, and
+the lifetime tranche counters. The Scrumming Bots table reads the position
+value off the holdings and the price, Trades off the trade count and Target
+off the grown target, all three from the record.
+
+The opening snapshot carries the `running` mark and the closing one
+`stopped`, so a row reads `RUNNING` while its own walk runs and `STOPPED` when
+it ends; a fleet of many bots walked one at a time reads one green row at a
+time. The Start Run press moves no Back Test row itself; under Validation,
+which reruns recorded rows in one pass and walks nothing, the press still
+moves every run bot to `running` as before. The rows redraw at once on a mark
+and every two seconds otherwise, the live dashboard's own interval, through
+`refresh_bots` alone rather than `fleet_changed`, which also writes the fleet
+file and re-seats the venues. A 5m walk ticks about two hundred times a
+second, so the record is always a few ticks ahead of the cells between two
+redraws, and equal to them at the end.
+
+`src/simulator/back_test.py` — the snapshot
+
+```python
+@dataclass(frozen=True)
+class BotStatsSnapshot:
+    """What one walk wrote at one moment, in the two shapes the held record
+    holds: ``stats`` in ``BotStats``'s keys and ``scrumming_state`` in the
+    keys ``SimBotView`` reads; ``state`` is the mark the walk's start and end
+    carry, empty on a tick or a fill."""
+
+    bot_id: str
+    symbol: str
+    timeframe: str
+    ts_ms: int
+    tick: int
+    event: str
+    state: str
+    stats: dict
+    scrumming_state: dict
+```
+
+`src/gui/simulator/sim_trading_tab.py` — the write on the GUI thread
+
+```python
+        bot_id = str(getattr(snapshot, "bot_id", ""))
+        try:
+            self._fleet_source.write_stats(
+                bot_id, snapshot.stats, snapshot.scrumming_state
+            )
+            if snapshot.state == back_test.RUNNING_STATE:
+                self._bot_manager.start(bot_id)
+                self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
+```
+
+The live bot's `stats.realised_pnl` is written by nothing on its scrum and
+fold path, so the walk writes it no more than the live bot does; the realised
+surplus of a completed cycle reaches the row where the live bot books it, in
+the target's growth, the folded sum and the standing surplus.
+
+### Scrums and folds form tranches on the record
+
+The position keeps its lots as the live bot keeps `_main_lots`: the opening
+entry is one lot at the opening price. A scrum sorts the lots by their
+original cost, highest first, sells from them in that order and queues one
+fold tranche per lot sold from, each carrying that lot's original cost as
+`initial_buy_price`, the sell price as `ref`, the proceeds' share as `usd` and
+the units taken. A fold rebuys the eligible tranches under unit 26's plan and
+settle, books the bought units as lots per consumed tranche's share, and
+closes the tranches it drained. The snapshot carries the tranches and the
+lots, so the Fold Tranches tab opened mid-run draws the walk's tranches, as
+the live window draws a bot's at open; it does not refresh while open, and
+the live window does not either. A tranche's age on the tab is measured from
+the wall clock, so a walk's tranche created on the tape's April candle reads
+months old in September. The live stack is Stack Mode's ladder of resting
+venue orders opened off a scrum; the walk places no order, so the Stack
+Tranches tab reads `No stack tranches yet.` for a walked bot. Merge, despawn
+and clear are not walked.
+
+`src/simulator/back_test.py` — one tranche per lot
+
+```python
+    position.main_lots.sort(
+        key=lambda lot: float(lot.get("initial_buy_price", 0) or 0), reverse=True
+    )
+    remaining = units
+    for lot in list(position.main_lots):
+        if remaining <= 1e-12:
+            break
+        take = min(float(lot.get("units", 0) or 0), remaining)
+        if take <= 1e-12:
+            continue
+        position.fold_tranches.append(
+            {
+                "usd": (take / units) * proceeds,
+                "units": take,
+                "ref": float(price),
+                "initial_buy_price": float(lot.get("initial_buy_price", 0) or 0),
+                "created_ts": float(ts_ms) / 1000.0,
+            }
+        )
+```
+
+### The surplus compounds into the target
+
+Each fold's surplus is the units bought less the units its consumed tranches
+sold at their sell price, priced at the fill, the live fold's own figure.
+The cycle cap is the growth rate of the cycle-open target, and the fold grows
+the target by the surplus plus any standing surplus, held to what the cap
+leaves; the rest stays standing. The growth side is set to `lower`, and the
+cycle resets when the tick's Bollinger position reaches the opposite extreme,
+0.75 after a lower-side growth, so the consumed cap zeroes and the next fold
+may grow the full cap again. The gates read the grown target for the Target
+Delta, as the live tick reads its own. Three pure functions carry the
+arithmetic beside unit 26's, and the live bot keeps its inline copy.
+
+`src/trading/scrumming/sizing.py` — the growth and the cycle
+
+```python
+def target_growth_applied(
+    surplus_usd: float, standing_usd: float, cap_remaining_usd: float
+) -> tuple[float, float]:
+    """What ``_apply_fold_target_growth`` adds to the target and what it parks:
+    ``(applied, standing_after)`` where the applied growth is the surplus plus
+    the standing pool held to ``cap_remaining_usd``, and the rest stays
+    standing; nothing is applied when the cap is consumed."""
+    if cap_remaining_usd <= 1e-9:
+        return 0.0, max(0.0, float(standing_usd) + max(0.0, float(surplus_usd)))
+    available = max(0.0, float(surplus_usd)) + max(0.0, float(standing_usd))
+    applied = min(available, float(cap_remaining_usd))
+    return applied, max(0.0, available - applied)
+```
+
+### The higher timeframes come from the walk's own candles
+
+For each phantom timeframe the record names, or the one above the walk's
+timeframe when it names none, the walk rolls its own candles up through the
+registry's `_rollup`: the completed buckets once, and the bucket holding the
+current candle from its rows up to that candle, so no later candle reaches a
+window. The window is the last hundred rolled candles, the live phantom's own
+fetch, and under thirty of them the phantom reads no summary, as the live
+phantom sets none. The voting engine votes on the window, and the summaries
+are weighed through `weigh_higher_tf_bias`, the loop lifted out of the live
+coordinator's `get_higher_tf_bias`, which now calls it: each higher summary at
+or above the confidence floor contributes its rank times its confidence to its
+side, both sides empty read `NEUTRAL`, the heavier side wins. The bias name
+and the two block flags then reach the gate context as the live tick sets
+them, a scrum deferred on `BULLISH` and a fold on `BEARISH` under the two
+defer flags. A record with phantoms off reads no bias, as the live bot builds
+no phantom for it. A timeframe the walk's candles cannot roll up to, one at or
+under the walk's own or outside the registry's table (`1w` among them), is
+refused by name on the report and reads no summary.
+
+`src/trading/phantom_balance.py` — the one weighing
+
+```python
+        return weigh_higher_tf_bias(
+            [(p.timeframe, p.rank, p.last_summary) for p in higher],
+            below_parent,
+            min_confidence,
+        )
+```
+
+`src/simulator/back_test.py` — the window without look-ahead
+
+```python
+    def window(self, index: int) -> list[list[float]]:
+        """The last ``PHANTOM_WINDOW_CANDLES`` rolled candles up to and
+        including the walk's candle at ``index``."""
+        key = self.keys[index]
+        partial = _rollup(
+            self.rows[self.starts[key] : index + 1], self.factor, self.bucket_ms
+        )
+```
+
+### The report gains the target's path and the bias per fill
+
+The Back Test report's bot rows carry the target at the walk's end, the
+snapshot's stats block, the target path and the HTF reading. A `Compounding`
+section lists each bot's target at open and at end, the growth applied, the
+steps, the standing surplus and the stats figures, then each bot's target path
+step by step: the candle, the surplus, the cycle cap, the consumed figure, the
+applied growth and the target before and after. A `Higher timeframes` section
+lists each bot's named, evaluated and refused timeframes with the bias counts
+over the ticks, then every fill with the bias its gates read, the target after
+it and the growth it applied. The sidecar holds the same dicts under `trades`,
+`compounding` and `htf`.
+
+### The stats emit and the bias emit
+
+Every fill and every walk's end emit `sim.bot.stats_written` through
+`signal_contract`: the bot, the tick, the fills and the fields moved, against
+the fill count off the trades, `ok` when the record's trade count equals it.
+Every tick emits `sim.bot.htf_bias`: the bot, the candle, the bias, the two
+block flags and each phantom's reading or refusal, against the timeframes the
+bot names, `ok` when each was evaluated or refused by name; a fill's row lands
+unthrottled and the rest once per five seconds per bot.
+
+### What the live-equivalent reading measured
+
+Read off the running program in both builds, scratch home, every socket but
+loopback refused, a `bot_state.json` of three scrumming bots whose saved state
+read `running`, each with one live fold tranche, the first with a 15m phantom,
+the second naming `1w`, the third with phantoms off on a rising tape, and one
+5m tablet of 1,500 candles per pair. On the base commit Import Live Fleet
+read three `RUNNING` rows with no run; during the Back Test the first row
+read `$720.0000`, `7`, `$805.0000` from before the press to the end while the
+spool carried 22 of its fills; the Fold Tranches tab drew the imported tranche;
+the report carried no target path and no bias; no emit row landed. After:
+Import Live Fleet read three `IDLE` rows in both builds. Start Run: the first
+row `RUNNING` and the other two `IDLE`, its record moving at a tenth of a
+second, 15 trades and a position of $721.84 against a target of $807.49, then
+19 trades, $758.15 and $809.46 with one tranche queued, the cells holding the
+opening `$800.0000`, `0`, `$800.0000` until the next redraw; Detail pressed
+while it ran drew one open tranche, `7.622694` units, `$99.3034` parked, sell
+ref `$13.07965900`, original cost `$11.36281900`, and the Stack Tranches tab
+`No stack tranches yet.`, in both builds; then the second row `RUNNING` alone,
+then the third. At the end every row `STOPPED` and equal to the report: the
+first 23 trades, position $783.6261, target $809.7497, unrealised $198.24,
+scrummed $395.90, folded $114.64, four tranches queued; the second 11 trades,
+target $704.15; the third 7 scrums, no fold, seven tranches queued, target
+$600.00. The first bot's 17 growth steps recomputed by hand from the first:
+surplus $0.3030 against a cycle cap of $8.00 with nothing consumed, applied
+$0.3030, target $800.00 to $800.3030. The first bot's 15m bias over 211
+ticks: 9 `None` before thirty rolled candles, 201 `NEUTRAL`, 1 `BEARISH`; its
+first fill's `NEUTRAL` recomputed by hand from 48 rolled candles, the 15m
+summary `BEARISH` at 0.2049 under the 0.30 floor. The second bot's `1w`
+refused as `cannot roll up from the walk's timeframe`, the third's `15m` as
+`phantoms off`, both reading no bias. Forty-four `sim.bot.stats_written` and
+forty-four `sim.bot.htf_bias` rows per build, every one `ok`. The scratch
+`bot_state.json`, the three tablets and the manifest hashed identical after
+every press, a planted byte moving a copy's hash; no socket left loopback; no
+bot was constructed. The Back Test still steps its tape at two hundred
+evaluations a bot, so a three-bot run over 1,500 candles lasts about three
+seconds; the row's movement is read off the record between two redraws and
+off the cells at the marks and at the end.

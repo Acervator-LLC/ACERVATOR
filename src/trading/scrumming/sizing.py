@@ -56,6 +56,17 @@ TAPER_START_RATIO = 0.5
 #: and 1.0, so the taper lands at a tenth of the size there.
 TAPER_DROP = 0.9
 
+#: The Bollinger positions ``growth_cycle_side`` reads as the two extremes: the
+#: cycle's consumed cap resets when ``bb_pos`` reaches the extreme opposite the
+#: side the last growth fired on.
+GROWTH_CYCLE_UPPER_BB = 0.75
+GROWTH_CYCLE_LOWER_BB = 0.25
+
+#: The side a fold's target growth is booked on, and the side a scrum-side
+#: growth would be booked on.
+GROWTH_SIDE_LOWER = "lower"
+GROWTH_SIDE_UPPER = "upper"
+
 
 def priced_usd(units: float, price: float, quote_to_usd: float = 1.0) -> float:
     """``units`` at ``price`` in USD: the position value ``ScrummingBot.tick``
@@ -244,6 +255,51 @@ def fold_spend_usd(eligible_usd: float, taper: float) -> float:
     return eligible_usd * taper
 
 
+def fold_surplus_usd(units_bought: float, slices: list, fill_price: float) -> float:
+    """The surplus one fold realised, as ``_tick_execute_fold`` books it:
+    the units bought less the units the consumed ``slices`` sold at their
+    ``ref``, priced at ``fill_price``; never below zero."""
+    asset_at_scrum = sum(
+        float(one.get("usd", 0) or 0) / float(one.get("ref", 0) or 0)
+        for one in slices
+        if float(one.get("ref", 0) or 0) > 0
+    )
+    return max(0.0, priced_usd(float(units_bought) - asset_at_scrum, float(fill_price)))
+
+
+def target_growth_applied(
+    surplus_usd: float, standing_usd: float, cap_remaining_usd: float
+) -> tuple[float, float]:
+    """What ``_apply_fold_target_growth`` adds to the target and what it parks:
+    ``(applied, standing_after)`` where the applied growth is the surplus plus
+    the standing pool held to ``cap_remaining_usd``, and the rest stays
+    standing; nothing is applied when the cap is consumed."""
+    if cap_remaining_usd <= 1e-9:
+        return 0.0, max(0.0, float(standing_usd) + max(0.0, float(surplus_usd)))
+    available = max(0.0, float(surplus_usd)) + max(0.0, float(standing_usd))
+    applied = min(available, float(cap_remaining_usd))
+    return applied, max(0.0, available - applied)
+
+
+def growth_cycle_side(
+    last_side: Optional[str], bb_pos: float
+) -> tuple[Optional[str], bool]:
+    """The tick's growth-cycle reading over ``bb_pos``: ``(side_after,
+    reset)``. A ``last_side`` of ``GROWTH_SIDE_LOWER`` resets at or above
+    ``GROWTH_CYCLE_UPPER_BB``, ``GROWTH_SIDE_UPPER`` at or below
+    ``GROWTH_CYCLE_LOWER_BB``, and no side takes the extreme it sits at."""
+    at = max(0.0, min(1.0, float(bb_pos)))
+    at_upper = at >= GROWTH_CYCLE_UPPER_BB
+    at_lower = at <= GROWTH_CYCLE_LOWER_BB
+    if last_side == GROWTH_SIDE_LOWER and at_upper:
+        return None, True
+    if last_side == GROWTH_SIDE_UPPER and at_lower:
+        return None, True
+    if last_side is None and (at_upper or at_lower):
+        return (GROWTH_SIDE_LOWER if at_lower else GROWTH_SIDE_UPPER), False
+    return last_side, False
+
+
 def wallet_capped_spend_usd(spend_usd: float, available_usd: float) -> float:
     """``spend_usd`` held to ``available_usd``, the cap Manual Fire applies."""
     return min(spend_usd, available_usd)
@@ -312,6 +368,10 @@ __all__ = [
     "CLASS_STOCKS",
     "DRAWDOWN_STATE",
     "FRACTIONAL_UNITS",
+    "GROWTH_CYCLE_LOWER_BB",
+    "GROWTH_CYCLE_UPPER_BB",
+    "GROWTH_SIDE_LOWER",
+    "GROWTH_SIDE_UPPER",
     "TAPER_DROP",
     "TAPER_START_RATIO",
     "UNIT_RULES",
@@ -325,7 +385,9 @@ __all__ = [
     "fold_cap_remaining_usd",
     "fold_rate_taper",
     "fold_spend_usd",
+    "fold_surplus_usd",
     "fold_units",
+    "growth_cycle_side",
     "opposing_trade_distance_pct",
     "opposing_trade_distances",
     "plan_fold_consumption",
@@ -340,6 +402,7 @@ __all__ = [
     "sized_units",
     "target_delta_pct",
     "target_delta_usd",
+    "target_growth_applied",
     "trim_fold_plan",
     "unit_rule",
     "wallet_capped_spend_usd",

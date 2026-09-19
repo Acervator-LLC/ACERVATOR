@@ -505,10 +505,24 @@ RUN_STOPPING_FORMAT = (
 RUN_FAILED_FORMAT = "{mode} failed: {error}"
 RUN_THREAD_NAME = "sim-mode-run"
 
+#: How often the rows redraw while a walk writes the held records: Live's
+#: dashboard interval, ``MainWindow._timer.start(2000)``.
+STATS_REDRAW_MS = 2000
+
+#: The Activity Log lines a walk's opening and closing snapshots write.
+WALK_STARTED_FORMAT = (
+    "{bot_id} walking {symbol} {timeframe} from {candle}: target ${target:,.2f}, "
+    "{units} units at ${price}."
+)
+WALK_ENDED_FORMAT = (
+    "{bot_id} walk ended at {candle}: {trades} fill(s), target ${target_open:,.2f} "
+    "to ${target_end:,.2f}, position ${position:,.2f}, {tranches} fold tranche(s) queued."
+)
+
 #: The signal a Start Run press emits through ``signal_contract``: the press,
 #: whose count of the venue's scrumming rows reading ``running`` after must
-#: equal the run's bot count on ``START_OUTCOME_STARTED`` under Validation or
-#: Back Test and the count before otherwise.
+#: equal the run's bot count on ``START_OUTCOME_STARTED`` under Validation and
+#: the count before otherwise; a Back Test row moves when its own walk starts.
 START_PRESSED_SIGNAL = "sim.run.start_pressed"
 START_OUTCOME_STARTED = "started"
 START_OUTCOME_IN_FLIGHT = "refused_in_flight"
@@ -546,6 +560,41 @@ def run_in_flight_line(mode: str, bots: int, command: str) -> str:
     while a run in ``mode`` is in flight."""
     return RUN_IN_FLIGHT_FORMAT.format(
         mode=sim.MODE_TEXT.get(mode, mode), bots=int(bots), command=str(command)
+    )
+
+
+def walk_started_line(snapshot: Any) -> str:
+    """``WALK_STARTED_FORMAT`` over a walk's opening ``BotStatsSnapshot``: the
+    bot, the pair, the timeframe, the opening candle, the target, the units
+    and the price it opened at."""
+    stats = snapshot.stats
+    saved = snapshot.scrumming_state
+    units = sum(float(lot.get("units", 0) or 0) for lot in saved.get("main_lots") or [])
+    return WALK_STARTED_FORMAT.format(
+        bot_id=snapshot.bot_id,
+        symbol=snapshot.symbol,
+        timeframe=snapshot.timeframe or "",
+        candle=iso_stamp(snapshot.ts_ms),
+        target=float(saved.get("target_balance", 0.0) or 0.0),
+        units=f"{units:.6f}",
+        price=fmt_price_coerced(stats.get("current_price", 0.0)),
+    )
+
+
+def walk_ended_line(snapshot: Any) -> str:
+    """``WALK_ENDED_FORMAT`` over a walk's closing ``BotStatsSnapshot``: the
+    bot, the last candle, the fills, the target's path, the position and the
+    tranches left queued."""
+    stats = snapshot.stats
+    saved = snapshot.scrumming_state
+    return WALK_ENDED_FORMAT.format(
+        bot_id=snapshot.bot_id,
+        candle=iso_stamp(snapshot.ts_ms),
+        trades=int(stats.get("total_trades", 0) or 0),
+        target_open=float(saved.get("anchor_target_balance", 0.0) or 0.0),
+        target_end=float(saved.get("target_balance", 0.0) or 0.0),
+        position=float(stats.get("position_value", 0.0) or 0.0),
+        tranches=len(saved.get("fold_tranches") or []),
     )
 
 
