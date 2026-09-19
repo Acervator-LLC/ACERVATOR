@@ -64,7 +64,7 @@ CHART_RIGHT_MARGIN_PX = 78
 #: least it shrinks to when the window gives less, and the price pane's
 #: layout height and its paint floor.
 SUB_PANE_H = 60
-SUB_PANE_MIN_H = 36
+SUB_PANE_MIN_H = 28
 PRICE_PANE_LAYOUT_H = 220
 PRICE_PANE_MIN_H = 120
 
@@ -86,6 +86,7 @@ try:
         QLabel,
         QComboBox,
         QCheckBox,
+        QSizePolicy,
     )
     from PySide6.QtCore import Qt, QRectF, QPointF, Signal
     from PySide6.QtGui import (
@@ -2040,8 +2041,9 @@ if _HAS_QT:
             """Paint one mark per ``SlingshotBar`` release or snapback in view.
 
             A release is a diamond, signed by the bar's momentum; a snapback
-            is a circle, signed by its side. A bullish mark sits under the
-            candle's low and a bearish one over its high.
+            is a circle, signed by its side, on the first bar of a run of the
+            same reading. A bullish mark sits under the candle's low and a
+            bearish one over its high.
             """
             p = ctx.p
             cw = ctx.cw
@@ -2052,10 +2054,14 @@ if _HAS_QT:
             for vis_i, bar in enumerate(visible):
                 if bar is None or vis_i >= len(visible_candles):
                     continue
+                full_i = ctx.v_start + vis_i
+                earlier = self._slingshot_data[full_i - 1] if full_i > 0 else None
                 marks = []
                 if bar.released and bar.momentum != 0.0:
                     marks.append(("release", bar.momentum > 0.0))
-                if bar.snapback:
+                if bar.snapback and (
+                    earlier is None or earlier.snapback != bar.snapback
+                ):
                     marks.append(("snapback", "bull" in bar.snapback))
                 if not marks:
                     continue
@@ -2578,6 +2584,8 @@ if _HAS_QT:
             ChartPainter.__init__(self, symbol)
             self.setAccessibleName("Candlestick Chart")
             self.setMinimumHeight(200)
+            # The layout's spare height goes to the panes, which paint_to fits.
+            self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
             self.setMouseTracking(True)
 
             # _height_override holds a dragged height; auto-expand never goes under it.

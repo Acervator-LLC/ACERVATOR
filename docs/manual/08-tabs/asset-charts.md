@@ -680,13 +680,13 @@ momentum, and each circle a bar it read as a Bollinger snapback.
 The sub-panes sit under the volume strip in registry order: Vortex, MACD,
 Stoch RSI, ADX, Z-Score, KER, RSI. Each takes 60 px at the chart's natural
 height. When the window gives less, every sub-pane shrinks alike, down to
-36 px, so the price pane keeps its 220 px and every pane stays on screen.
+28 px, so the price pane keeps its 220 px and every pane stays on screen.
 
 `src/gui/native_chart.py` - the pane heights
 
 ```python
 SUB_PANE_H = 60
-SUB_PANE_MIN_H = 36
+SUB_PANE_MIN_H = 28
 PRICE_PANE_LAYOUT_H = 220
 PRICE_PANE_MIN_H = 120
 ```

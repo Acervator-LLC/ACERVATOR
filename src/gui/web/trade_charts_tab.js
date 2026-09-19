@@ -169,6 +169,7 @@
   var IMAGE_WIDTH = "width_px";
   var IMAGE_HEIGHT = "height_px";
   var IMAGE_NATURAL_HEIGHT = "natural_height_px";
+  var IMAGE_MINIMUM_HEIGHT = "minimum_height_px";
   var IMAGE_RATIO = "device_pixel_ratio";
   var IMAGE_SHA = "sha256";
   var IMAGE_CANDLES = "candle_count";
@@ -1525,7 +1526,14 @@
     image.style.width = height(answer[IMAGE_WIDTH]);
     image.style.height = height(answer[IMAGE_HEIGHT]);
     image.src = String(answer[IMAGE_DATA_URI]);
-    mount.style.minHeight = height(answer[IMAGE_NATURAL_HEIGHT]);
+    // The mount holds at least the painter's minimum height, never its natural
+    // one, so a tall chart shrinks its sub-panes to the slot instead of
+    // pushing the toggle row off the page.
+    mount.style.minHeight = height(
+      answer[IMAGE_MINIMUM_HEIGHT] === undefined
+        ? answer[IMAGE_NATURAL_HEIGHT]
+        : answer[IMAGE_MINIMUM_HEIGHT]
+    );
     into.removeAttribute(FAULT_ATTR);
   }
 

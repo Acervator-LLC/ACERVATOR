@@ -530,6 +530,7 @@ if _HAS_WEBENGINE:
                 "width_px": width,
                 "height_px": height,
                 "natural_height_px": natural,
+                "minimum_height_px": minimum,
                 "device_pixel_ratio": scale,
                 "image_width_px": image.width(),
                 "image_height_px": image.height(),
