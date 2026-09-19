@@ -2857,15 +2857,17 @@ def open_chart_folder() -> str:
     """
     root = ata_post_paths.get_ata_post_root()
     ata_post_paths.venue_post_roots(ata_spm_push.TARGET_NAMES)
-    if ata_spm_push.open_path(root):
-        logger.info(CHART_FOLDER_OPENED_LOG, root)
-    else:
+    if not ata_spm_push.open_path(root):
         logger.warning(CHART_FOLDER_FAILED_LOG, root, HANDLER_REFUSED_TEXT)
     return str(root)
 
 
 def chart_folder_line(path: Any) -> str:
-    """The Activity Log line a Chart Folder press leaves, naming the root opened."""
+    """The line a Chart Folder press leaves, naming the root opened.
+
+    The host writes it to the Activity Log and to the log in one call, so
+    ``open_chart_folder`` itself logs only a refusal.
+    """
     return CHART_FOLDER_OPENED_LOG % (path,)
 
 
