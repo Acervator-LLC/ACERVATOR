@@ -818,3 +818,241 @@ Eleven on and three off.
 **Figures.** `artifacts/u55/C2/` holds the Qt window and the React page at
 1400 by 900 and at 1960 by 1200, the painter's image, and one venue PNG,
 before and after.
+
+## 2026-09-19 17:40 - #55 - the painter's skin and the Acervator annotations
+
+His words, 2026-08-21: *"Charts did get a slight visual over all during the
+last past some instances ago but I am still not completely satisfied."* And
+2026-09-08: *"I want our chart renderer to be top notch. I want to be able to
+add modern features and graphics and styling to it so that we can help asset
+trading migrate away from the pastel and bland."*
+
+### Every colour is a theme token
+
+The painter holds no colour of its own. Each colour it paints is one role in
+its palette table, and each role names a theme field and an alpha. A theme
+press on the Theme menu now reaches the painter in both builds: the window's
+theme switch calls the Charts tab, the tab calls the painter, and the painter
+resolves every role again. The toggle boxes under the chart and the two
+position labels above it read their colours from the painter, so they follow
+the press too. The toggle table in the chart's surface carries a theme field
+name per entry, not a hex string. A theme that lacks a field keeps the default
+theme's value for that role and the emitter row names how many roles it did
+resolve.
+
+`src/gui/native_chart.py` - the roles added this day
+
+```python
+        PALETTE_ROLES: dict[str, tuple[str, int]] = {
+            "PANEL_SOURCE_TEXT": (PANEL_SOURCE_FIELD, 255),
+            "TAG_TEXT": ("chart_bg_top", 255),
+            "STRIP_FILL": ("chart_band", 40),
+            "STRIP_EDGE": ("chart_band", 210),
+            "FILL_TAG_SURFACE": ("chart_bg_top", 215),
+```
+
+`src/gui/main_window.py` - the one line the theme switch gained
+
+```python
+                self._charts_tab.set_theme(tm.current)
+```
+
+At build the painter starts in the theme the window is in, and the venue image
+paints in that theme too when its caller names none.
+
+`src/gui/native_chart.py` - the theme in force
+
+```python
+    def theme_in_force():
+        """The ``ThemeTokens`` ``ThemeManager.apply_theme`` last painted."""
+        return THEMES.get(applied_theme(), DEFAULT_THEME_TOKENS)
+```
+
+### Crisp at every device pixel ratio
+
+The paint pass reads the device pixel ratio of the surface it paints and holds
+one device pixel as a logical length. The grid, the time ticks and the pane
+separators draw with anti-aliasing off, one device pixel wide, on coordinates
+moved to the centre of a device pixel. The wick is a share of one candle column
+and never under one device pixel; the candle border is one device pixel; the
+indicator lines keep their logical width and stay anti-aliased. Read on a
+1200 pixel image at ratio 1.0 the pens are 0.8, 1.0, 1.2, 1.4, 1.5 and 1.56
+logical pixels; at ratio 2.0 the set gains 0.5, the one-device-pixel pen.
+
+`src/gui/native_chart.py` - the device pixel and the snap
+
+```python
+            ratio = self._device_ratio(p)
+            px = 1.0 / ratio
+
+            def snap(value: float) -> float:
+                """``value`` moved to the centre of the device pixel it falls in."""
+                return (int(value * ratio) + 0.5) / ratio
+```
+
+### The type
+
+The header symbol is set in the design system's UI family at the card-title
+size, the OHLC row in the mono family at the label size, and the legend, the
+axes, the tags and the caption in the mono family at the caption size. The
+legend wraps at the chart's width as before; at 1400, 1366 and 1200 pixels it
+takes two rows and its widest row ends before the price scale.
+
+`src/gui/native_chart.py` - the fonts
+
+```python
+    def caption_font() -> QFont:
+        """The mono font the legend, the axes, the tags and the caption are set in."""
+        return design_font(ds.FONT_FAMILY_MONO, CAPTION_FONT_PX)
+
+    def header_font() -> QFont:
+        """The UI font the header symbol is set in."""
+        return design_font(ds.FONT_FAMILY_UI, HEADER_FONT_PX, bold=True)
+```
+
+### Every fill as the two glyphs
+
+A fill is drawn as one of the two hermetic glyphs the Simulator's playback
+draws, from one definition both read: a sell as `dissolve`, a triangle pointing
+down as an outline, and a buy as `reform`, a triangle pointing up filled. The
+definition moved from the Simulator's surface to the chart's surface, and the
+Simulator imports it from there. The glyph sits on the candle whose interval
+holds the fill's stamp, one candle column wide and a twentieth of the price
+pane tall, with a tag naming the role and the price beside it. A fill whose
+stamp falls before the window or past its end is counted and not drawn.
+
+`src/gui/main_tabs/native_chart_surface.py` - the one definition
+
+```python
+MARK_GLYPHS = {
+    SCRUM_SIDE: {
+        "name": DISSOLVE_GLYPH,
+        "points": [[-0.5, -0.5], [0.5, -0.5], [0.0, 0.5]],
+        "filled": False,
+    },
+    FOLD_SIDE: {
+        "name": REFORM_GLYPH,
+        "points": [[-0.5, 0.5], [0.5, 0.5], [0.0, -0.5]],
+        "filled": True,
+    },
+}
+```
+
+The fills come from two figures of the bot. Each tab subscribes to the bus
+topic every fill crosses and records it, so a fill made after launch draws on
+the next status tick. And each standing fold tranche the bot holds was made at
+a scrum: its reference price is that sell and its stamp is that sell's time,
+so the tab draws each one as a scrum glyph. Before this day nothing called the
+tab's trade recorder, so no fill had ever reached the chart.
+
+`src/gui/widgets/trade_charts_tab.py` - the subscription and the handler
+
+```python
+            get_event_bus().subscribe(FILLED_TOPIC, self._on_trade_filled)
+```
+
+```python
+        def _on_trade_filled(self, event) -> None:
+            """Record one ``trade.filled`` bus event through ``log_trade``.
+
+            The next ``update_charts`` tick draws it as a glyph on its candle.
+            """
+```
+
+### The target, the floors, the strip, the glow and the position
+
+Each annotation carries a tag at the right edge, a badge filled in the line's
+colour with the theme's ground colour for text. The target line and the
+ceiling line read `TARGET` and `CEILING` with their prices. Each tranche
+floor keeps its dashed line; floors whose tags would overlap share one tag
+naming their count and their price span, so 16 floors in one pane read as
+seven tags. The landing strip is a band between the side's Bollinger band and
+its tolerance edge, over the strip's candles at the bot's own timeframe,
+tagged with the side and the count; it draws from the bot's own proximity
+reading. The fire glow keeps its gradient and gains `SCRUM ARMED` or
+`FOLD ARMED`. The position is the venue's average entry with the units held,
+drawn as its line, its icon and a `POSITION` tag.
+
+`src/gui/native_chart.py` - the strip's bounds
+
+```python
+        def _strip_bounds(self) -> Optional[tuple]:
+            """The landing strip's two prices, ``(top, bottom)``, or None with no strip set.
+
+            The band lies between the side's Bollinger band and its tolerance
+            edge, ``(upper - lower) * tolerance_pct / 100`` inside it.
+            """
+```
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` - the readers both tabs share
+
+```python
+def landing_strip(bb: Any, timeframe: Any = "") -> Optional[dict]:
+```
+
+```python
+def position_reading(bot: Any) -> Optional[dict]:
+```
+
+```python
+def tranche_scrums(tranches: Any, bot_id: Any, symbol: Any) -> list:
+```
+
+### The theme and annotation emitters
+
+`charts.theme.applied` is written once per theme applied, with the theme, the
+variant and the symbol; `ok` is true when every palette role resolved from
+that theme. `charts.annotations.drawn` is written when the set of annotations
+the paint pass drew changes, with the counts drawn against the counts fed that
+fall inside the pane, and the fills fed and the fills off the window in its
+context. Both go through the emitter network's one wire.
+
+`src/gui/native_chart.py` - the two names
+
+```python
+THEME_PIN = "charts.theme.applied"
+
+ANNOTATIONS_PIN = "charts.annotations.drawn"
+```
+
+### The skin readings, off the running program
+
+Both builds, the real window, the home on a scratch directory, every socket
+but loopback refused, one BTC/USD bot's figures off a scratch copy of the
+operator's fleet file, and 100 recorded BTC 1h candles rolled from the 5m
+tablet by the registry's own rollup:
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| each of the five Theme menu entries pressed | 79 of 79 roles move on the four non-default themes, 0 on the default; the toggle boxes and the two labels restyle | the same 79; the image digest moves on each press and the page's boxes recolour |
+| literal colours in the painter and its surface | 3 and 17 before, 0 and 0 after; a literal planted into one draw call reads 1 | the same files |
+| two fills handed to the tab's handler, one live-shaped fill on the bus, three standing scrums off the record | 6 fills fed, 2 drawn as triangles on candles 60 and 80 of 100, 4 off the window and counted | the same 6, the same 2 triangles at the same vertices |
+| the glyph corners against the Simulator's | one object, `MARK_GLYPHS` | the same object |
+| 55 floors off the record | 55 lines fed, 16 inside the pane, 7 tags | the same |
+| the target and ceiling prices | equal to the anchor and the cycle ceiling over the units held and the quote rate; outside the pane on these candles | the same |
+| the position | the venue's average entry off the record, one `POSITION` tag | the same |
+| the strip | the bot's own detector reads none on any window of this tablet; a chosen 3-candle upper strip draws its band between the detector's own band and tolerance edge, tagged `STRIP upper 3c` | the same |
+| the glow | `SCRUM ARMED` tagged | the same |
+| pens at ratio 1.0 and 2.0 | 0.8 to 1.56 logical, then 0.5 joins at 2.0; anti-aliasing off eight times for the grid and the separators, on again after each | the same |
+| a theme with one role | no crash; that role takes the planted colour, every other keeps the default, the emitter row reads 5 of 79 and false | the same |
+| the legend at 1400, 1366 and 1200 | two rows, none clipped | the same |
+| `charts.theme.applied` | 7 rows, 79 of 79 on each | 7 rows |
+| `charts.annotations.drawn` | 2 rows, drawn equal to fed inside the pane | 2 rows |
+| `bot_state.json` after every press | byte-identical; a copy with one byte appended reads a different digest | the same |
+| the venue image under Neon Light and Cyberpunk Dark | the top-left pixel equals each theme's ground and the foot pixel its lower ground; the two files differ; the message stamp is drawn in the theme's own axis text colour | one painter |
+
+### Two sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/asset-charts.md:76` - "The setters name what they
+place." The table under it lacks `set_landing_strip`, which places the
+landing strip band.
+
+`docs/manual/08-tabs/simulator.md:8634` - "One definition, `MARK_GLYPHS`,
+names both marks, and both hosts read it". The definition now lives in the
+chart's surface, and the Charts painter is a third reader.
+
+**Figures.** `artifacts/u55/C3/` holds the Qt window and the React page at
+1400 by 900 and at 1960 by 1200, the painter's image at ratio 1.0 and 2.0
+with a crop of each, and the venue image under two themes, before and after.

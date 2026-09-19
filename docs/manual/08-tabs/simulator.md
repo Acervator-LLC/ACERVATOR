@@ -9379,3 +9379,42 @@ the Back Test still steps its tape at two hundred evaluations a bot; and the
 three code-block headers that name the Battery module as the home of the
 evaluations-expected and progress-cadence definitions, which now live in the
 Back Test module and reach the Battery by import.
+
+## 2026-09-19 17:40 - #55 - the glyph definition moves to the chart's surface
+
+His words on the Charts tab, 2026-09-08: *"Want charts tab to only display one
+richly detailed and Acervator-annonated chart at a time"*. The Charts painter
+now draws every fill as the two hermetic glyphs the playback draws, and the
+one definition both read lives in the chart's surface. The Simulator's
+surface imports it from there; the playback view, the page and the payload
+read the same names they read before, so nothing else on this tab changed.
+
+`src/gui/main_tabs/simulator_tab_surface.py` - the import and the key check
+
+```python
+from .native_chart_surface import (
+    MARK_GLYPHS,
+    MARK_HEIGHT_FRACTION,
+    MARK_OUTLINE_PX,
+    MARK_WIDTH_RATIO,
+)
+```
+
+```python
+#: ``MARK_GLYPHS`` is keyed by ``SCRUM_SIDE`` and ``FOLD_SIDE``, the strings
+#: ``back_test.SCRUM`` and ``back_test.FOLD`` carry.
+if MARK_GLYPHS.keys() != {back_test.SCRUM, back_test.FOLD}:
+    raise ImportError("MARK_GLYPHS keys differ from back_test.SCRUM and FOLD")
+```
+
+Read off the running program in both builds: the object the Charts painter
+draws its triangles from is the object the Simulator's surface holds, and a
+scrum on the Charts tab has the corners the playback gives a scrum.
+
+### One sentence this entry overtakes
+
+Not reworded, quoted here. `docs/manual/08-tabs/simulator.md:8634` - "One
+definition, `MARK_GLYPHS`, names both marks, and both hosts read it: the Qt
+view in Python, the page off the playback payload." Three readers now, the
+Charts painter the third, and the definition sits in
+`src/gui/main_tabs/native_chart_surface.py`.
