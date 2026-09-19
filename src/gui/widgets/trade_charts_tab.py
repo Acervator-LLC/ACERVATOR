@@ -8,6 +8,17 @@ import time as _time
 from datetime import datetime
 
 from .. import design_system as ds
+from ..main_tabs.trade_charts_tab_surface import (
+    bot_timeframe,
+    fill_record,
+    landing_strip,
+    merged_fills,
+    position_reading,
+    tranche_scrums,
+)
+
+#: The bus topic every fill of every bot crosses; ``_on_trade_filled`` records it.
+FILLED_TOPIC = "trade.filled"
 
 logger = logging.getLogger("acervator.gui")
 
@@ -191,10 +202,40 @@ if _HAS_QT:
             self._fetcher = ChartDataFetcher()
             self._refresh_selector()
 
+            from src.core.event_bus import get_event_bus
+
+            get_event_bus().subscribe(FILLED_TOPIC, self._on_trade_filled)
+
         @property
         def panel(self):
             """The one ChartPanel every asset is drawn in."""
             return self._panel
+
+        def set_theme(self, tokens) -> None:
+            """Repaint the chart, its boxes and its labels in ``tokens``."""
+            self._panel.set_theme(tokens)
+
+        def _symbol_of(self, bot_id: str) -> str:
+            """The symbol the tab lists for ``bot_id``, empty for a bot it does not list."""
+            for entry in self._entries:
+                if entry.get("bot_id") == bot_id:
+                    return str(entry.get("symbol", "") or "")
+            return ""
+
+        def _on_trade_filled(self, event) -> None:
+            """Record one ``trade.filled`` bus event through ``log_trade``.
+
+            The next ``update_charts`` tick draws it as a glyph on its candle.
+            """
+            data = getattr(event, "data", None)
+            if not isinstance(data, dict):
+                return
+            bot_id = str(data.get("bot_id", "") or "")
+            recorded = fill_record(
+                getattr(event, "timestamp", 0.0), data, self._symbol_of(bot_id)
+            )
+            if recorded is not None:
+                self.log_trade(recorded)
 
         @property
         def entries(self) -> list:
@@ -483,13 +524,39 @@ if _HAS_QT:
             chart = self._panel.chart
 
             with contextlib.suppress(Exception):
-                trades = [
-                    one
-                    for one in self._trade_log
-                    if one.get("bot_id") == bot_id and one.get("symbol") == symbol
-                ]
+                trades = merged_fills(
+                    [
+                        one
+                        for one in self._trade_log
+                        if one.get("bot_id") == bot_id and one.get("symbol") == symbol
+                    ],
+                    tranche_scrums(getattr(bot, "_fold_tranches", []), bot_id, symbol),
+                )
                 if trades:
                     chart.set_trade_history_markers(trades)
+
+            with contextlib.suppress(Exception):
+                chart.set_landing_strip(
+                    landing_strip(getattr(bot, "_last_bb", None), bot_timeframe(bot))
+                )
+
+            with contextlib.suppress(Exception):
+                from ..native_chart import PositionMarker
+
+                reading = position_reading(bot)
+                chart.set_positions(
+                    []
+                    if reading is None
+                    else [
+                        PositionMarker(
+                            price=reading["price"],
+                            side=reading["side"],
+                            visibility=reading["visibility"],
+                            filled=True,
+                            asset_held=reading["asset_held"],
+                        )
+                    ]
+                )
 
             # cycle_growth_cap_usd caps the whole cycle from its opening target;
             # the consumption comes off first.

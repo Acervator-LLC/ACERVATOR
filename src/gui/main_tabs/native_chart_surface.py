@@ -350,30 +350,60 @@ TIMEFRAME_LABEL = "TF:"
 TIMEFRAME_COMBO_MAX_WIDTH_PX = 90
 CHART_PANEL_MIN_HEIGHT_PX = 250
 LEGEND_INVISIBLE_TEXT = "◆ Invisible"
-LEGEND_INVISIBLE_STYLE = "color: #ffa000; font-size: 9px;"
 LEGEND_ON_BOOK_TEXT = "□ On Book"
-LEGEND_ON_BOOK_STYLE = "color: #00b4ff; font-size: 9px;"
-PANEL_SOURCE_STYLE = "color: #555; font-size: 9px;"
+#: The ``ThemeTokens`` field each panel label paints in; ``ChartPainter``
+#: resolves the hex, and ``INDICATOR_STYLE_FORMAT`` takes it.
+LEGEND_INVISIBLE_FIELD = "chart_trend_fast"
+LEGEND_ON_BOOK_FIELD = "chart_trend_slow"
+PANEL_SOURCE_FIELD = "text_muted"
 INDICATOR_STYLE_FORMAT = "color: {color}; font-size: 9px;"
 
 #: The twelve Voting Panel indicators in ``INDICATOR_COLS`` order, then the
 #: two overlays that draw no voter: the Z-Score algo point and BB Bullseye.
+#: The third entry is the ``ThemeTokens`` field the toggle's colour resolves from.
 INDICATOR_TOGGLES = (
-    ("bb", "BB", "#50a0f0"),
-    ("vortex", "Vortex", "#00ff88"),
-    ("macd", "MACD", "#ff8c00"),
-    ("stochrsi", "SRsi", "#ff9060"),
-    ("ichimoku", "Ichi", "#4fc3ff"),
-    ("volume", "Vol", "#b4b4d2"),
-    ("slingshot", "Sling", "#ff00aa"),
-    ("adx", "ADX", "#ffc800"),
-    ("supertrend", "STrd", "#5cffd0"),
-    ("zscore", "ZSc", "#ff0080"),
-    ("ker", "KER", "#4fc3ff"),
-    ("rsi", "RSI", "#ff86a8"),
-    ("zscore_point", "ZPt", "#ff0080"),
-    ("bbullseye", "BBull", "#fcee0a"),
+    ("bb", "BB", "chart_band"),
+    ("vortex", "Vortex", "chart_bull"),
+    ("macd", "MACD", "chart_trend_fast"),
+    ("stochrsi", "SRsi", "chart_oscillator"),
+    ("ichimoku", "Ichi", "chart_trend_slow"),
+    ("volume", "Vol", "chart_axis_text"),
+    ("slingshot", "Sling", "chart_event_mark"),
+    ("adx", "ADX", "chart_last_price"),
+    ("supertrend", "STrd", "chart_up_edge"),
+    ("zscore", "ZSc", "chart_zone_scrum"),
+    ("ker", "KER", "chart_trend_slow"),
+    ("rsi", "RSI", "chart_down_edge"),
+    ("zscore_point", "ZPt", "chart_zone_scrum"),
+    ("bbullseye", "BBull", "chart_zone_fold"),
 )
+
+#: The two hermetic glyphs a fill is marked with, one definition the Charts
+#: painter and the Simulator's playback both read: ``dissolve`` for a scrum, a
+#: triangle pointing down drawn as an outline; ``reform`` for a fold, a
+#: triangle pointing up drawn filled. Each corner is ``(dx, dy)`` in the unit
+#: mark, y down, centred on the fill.
+SCRUM_SIDE = "scrum"
+FOLD_SIDE = "fold"
+DISSOLVE_GLYPH = "dissolve"
+REFORM_GLYPH = "reform"
+MARK_GLYPHS = {
+    SCRUM_SIDE: {
+        "name": DISSOLVE_GLYPH,
+        "points": [[-0.5, -0.5], [0.5, -0.5], [0.0, 0.5]],
+        "filled": False,
+    },
+    FOLD_SIDE: {
+        "name": REFORM_GLYPH,
+        "points": [[-0.5, 0.5], [0.5, 0.5], [0.0, -0.5]],
+        "filled": True,
+    },
+}
+#: A mark's width as a share of one candle column, its height as a share of
+#: the pane's height, and its outline width in logical pixels.
+MARK_WIDTH_RATIO = 1.0
+MARK_HEIGHT_FRACTION = 0.05
+MARK_OUTLINE_PX = 1.5
 
 #: An overlay that paints a fill or a mark over the price pane, so it starts off.
 INDICATOR_OCCLUDES = {
@@ -664,12 +694,16 @@ METRICS = {
     "timeframe_combo_max_width_px": TIMEFRAME_COMBO_MAX_WIDTH_PX,
     "chart_panel_min_height_px": CHART_PANEL_MIN_HEIGHT_PX,
     "legend_invisible_text": LEGEND_INVISIBLE_TEXT,
-    "legend_invisible_style": LEGEND_INVISIBLE_STYLE,
+    "legend_invisible_field": LEGEND_INVISIBLE_FIELD,
     "legend_on_book_text": LEGEND_ON_BOOK_TEXT,
-    "legend_on_book_style": LEGEND_ON_BOOK_STYLE,
-    "panel_source_style": PANEL_SOURCE_STYLE,
+    "legend_on_book_field": LEGEND_ON_BOOK_FIELD,
+    "panel_source_field": PANEL_SOURCE_FIELD,
     "indicator_style_format": INDICATOR_STYLE_FORMAT,
     "indicator_toggles": INDICATOR_TOGGLES,
+    "mark_glyphs": MARK_GLYPHS,
+    "mark_width_ratio": MARK_WIDTH_RATIO,
+    "mark_height_fraction": MARK_HEIGHT_FRACTION,
+    "mark_outline_px": MARK_OUTLINE_PX,
     "candle_border_width_px": CANDLE_BORDER_WIDTH_PX,
     "wick_width_px": WICK_WIDTH_PX,
     "grid_line_width_px": GRID_LINE_WIDTH_PX,

@@ -3650,6 +3650,7 @@ if _HAS_QT:
                 if hasattr(swarm, "set_app_theme"):
                     swarm.set_app_theme(name)
                 painted = repaint_pages(self, name)
+                self._charts_tab.set_theme(tm.current)
                 self._remember_theme(name)
                 self._status_log.log(f"Theme switched to {name}.", "info")
                 self._status_log.log(
