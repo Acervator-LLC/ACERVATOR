@@ -4415,4 +4415,276 @@ the method line's full 15 px.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-18 17:40 - #23 - An empty field walks the class by a cited volume order and stops at the N-th push-gate hit
+
+> ATA-SMP - Scan Now - Seems to be expecting a Ticker field entry. This is
+> incorrect. If Ticker field has no entry, this button must scan sector's
+> markets (on each selected TF) in order of decreasing volume until x total
+> number of "hits" (across all selected TFs for the sector; add under settings,
+> default is 3) are found.
+
+> Entire idea for the Emitter Network is to provide us signals for verifying
+> proper software function resulting from all user actions or automated
+> sequences...
+
+### What the walk did before this entry, read against those words
+
+| the words say | the walk did | short |
+| ------------- | ------------ | ----- |
+| decreasing volume, every class | crypto by the venue's 24-hour quote volume; forex, metals and energy in map order | metals and energy carry a volume figure the walk never read, and the zone said `by volume` for a class read in map order |
+| a hit | the vote whose consensus and Bollinger voter agreed, counted in the walk; every vote then judged again by the live gate chains for the bucket | two gates, so the zone's count and the bucket disagreed |
+| across every ticked timeframe | every ticked timeframe of every market | none |
+| until x hits | the walk stopped at the x-th agreeing vote | the stop was at the wrong gate |
+| the markets read, in order | held in the scan and shown nowhere | none reached the operator |
+
+Driven on the unchanged code with six markets in a known volume order, three
+ticked timeframes and four planted charts the gate chains fire on, at a target
+of 3: the walk read all six markets, the zone said `0 hit(s)`, and the bucket
+loaded four posts.
+
+### What a hit is now
+
+A hit is a vote the live trade gates would fire on: `GateScan.would_fire`,
+the same verdict that decides whether a post reaches the bucket. The zone's
+count, the Activity Log's hit lines and the bucket now count one thing.
+
+`src/trading/ata_spm.py` — the walk, the judge and the stop
+
+```python
+    for symbol in assets:
+        scan.markets_read += 1
+        votes = [
+            vote
+            for vote in (
+                _vote_one(
+                    voter, symbol, found.timeframe, candle_source, cost, clock, found
+                )
+                for found in frames
+            )
+            if vote is not None
+        ]
+        for vote in votes:
+            held = judge(vote, scan)
+            scan.pulls.append(held)
+            if not held.gates.would_fire:
+                continue
+            scan.hits.append(vote)
+```
+
+Each market is read on every ticked timeframe first, because the gate chains
+read a market's other timeframes through the panel rows. Its votes are then
+judged in timeframe order, and the hit that reaches the target ends the walk;
+the markets after it are not read. The two gates are independent, read as
+numbers on 132 synthetic daily tapes through the real engine and chains:
+
+| tape | consensus | confidence | floor the chain judges at | agreeing vote | gate fires |
+| ---- | --------- | ---------- | ------------------------- | ------------- | ---------- |
+| fall 2 % a bar for 74 bars, rise 3 % for 6 | bearish | 0.1107 | 0.25 | yes | no |
+| rise 0.4 % a bar for 115, fall 4 % for 5, volume rising on the fall | bearish | 0.3377 | 0.2632 | no | yes, fold side |
+
+### Where each class's order comes from
+
+`src/gui/main_tabs/market_inspector_surface.py` — the order and its source
+
+```python
+def class_markets(asset_class: Any, connectors: Any = None) -> Any:
+    """Every market one class holds as an ``ata_spm.MarketOrder``, largest first.
+
+    Crypto ranks ``class_tickers`` by ``class_volumes`` and names its venues
+    as the source, or reads by name while no connector is in reach; every
+    mapped class ranks ``listing_volumes`` over its ``ata_asset_maps.MAPS``
+    rows, and a class whose rows carry no figure keeps map order.
+    """
+```
+
+| The sector menu shows | The figure the walk orders by | Where it comes from |
+| --------------------- | ----------------------------- | ------------------- |
+| crypto, with an exchange connected | the venue's 24-hour quote volume | the connector's ticker rows, served from the Refresh press's cache for 900 seconds |
+| crypto, with no exchange connected | none; by name | the zone says `name, no exchange connected for a volume figure` |
+| metals: GLD, SLV, PPLT, PALL | the last complete daily bar's volume times its close | one short daily chart call per fund on the chart endpoint, the same adapter the RA tablets read |
+| energy: USO, BNO, UGA, UNG | the same | the same |
+| forex | none; map order | every currency pair's row says its venue sends volume 0, so no call is made and the zone says `in map order` |
+| stocks, derivatives | none | no list exists, and the zone says so |
+
+The chart endpoint sends one volume figure per bar under
+`indicators.quote[0].volume`, which the adapter already reads into each
+candle. The published reader `yfinance` reads the same field in its
+`parse_quotes`, at raw.githubusercontent.com/ranaroussi/yfinance/main/yfinance/utils.py,
+read 2026-09-18. A fund carries a figure on every bar; a currency pair carries
+the field and it holds zero.
+
+`src/trading/ata_asset_maps.py` — a fund's figure
+
+```python
+def venue_quote_volume(symbol: Any, now_ms: Any = None) -> tuple:
+    """One listed name's quote volume, and the refusal when none was read.
+
+    The figure is ``complete_bar``'s volume times its close over
+    ``VOLUME_TIMEFRAME`` candles of the last ``VOLUME_WINDOW_DAYS``; a row
+    whose ``volumed`` is False, and a venue that refused, answer
+    ``NO_VOLUME_FIGURE`` with the refusal named.
+    """
+```
+
+The newest bar stamped before today's UTC day is a closed session, so the
+figure does not move through the day, and volume times close puts it in
+dollars beside crypto's quote volume.
+
+### The zone and the Activity Log name the order
+
+A by-volume entry keeps its headline; a class with no volume figure reads
+`in map order`. The open entry's first phase-one row names the source and the
+markets read, first read first, and the count not read.
+
+`src/trading/ata_spm.py` — the order line
+
+```python
+VOLUME_LINE_FORMAT = "{asset_class} by volume"
+MAP_ORDER_LINE_FORMAT = "{asset_class} in map order"
+ORDER_LINE_FORMAT = "Order by {source}: {markets}"
+ORDER_UNREAD_FORMAT = "{markets} ({unread} not read)"
+ORDER_UNFIGURED_FORMAT = "{source}, {unfigured} with no figure last by name"
+MAP_ORDER_SOURCE_TEXT = "map order, no volume figure"
+```
+
+The Activity Log carries the whole order at the press and the markets read at
+the end:
+
+```
+ATA-SPM order for energy: Order by last complete daily bar volume x close on yahoo: UNG, UGA, BNO, USO
+ATA-SPM hit: UNG on 1wk: bearish reversal
+ATA-SPM hit: UGA on 1d: bearish reversal
+ATA-SPM hit: BNO on 1hr: bearish reversal
+ATA-SPM scan finished: energy by volume · 3 market(s) read · 3 hit(s) · stopped at target. UNG on 1wk: bearish reversal
+ATA-SPM order for energy: Order by last complete daily bar volume x close on yahoo: UNG, UGA, BNO (1 not read)
+```
+
+### Two more pins
+
+| pin | written by | carries | verdict |
+| --- | ---------- | ------- | ------- |
+| `inspector.ata.volume_order` | the class read, once per press | the class, the source, the order, the count with no figure | actual: markets with a figure; expected: markets listed; a class read in map order reads false |
+| `inspector.ata.hit` | the walk, once per hit | the market, the timeframe, the direction, the side that fired, the net score and confidence | actual: the running count; expected: the target; false past the target |
+
+Both reach `signal_contract.emit` and the handler's file. The end pin from the
+entry above carries `stopped_at_target`.
+
+### Hits per scan holds across a restart
+
+`src/trading/ata_spm_push.py` — the file and the write
+
+```python
+def settings_path() -> Path:
+    """The file ``AtaSpmSettings`` persists ``PERSISTED_SETTINGS`` in."""
+    return Path.home() / STATE_DIR_NAME / ATA_SPM_SETTINGS_NAME
+```
+
+```python
+    @hits_per_scan.setter
+    def hits_per_scan(self, asked: Any) -> None:
+        """Take a count; ``ata_spm.hits_target`` reads 0 and text as the default."""
+        self._hits_per_scan = ata_spm.hits_target(asked)
+        self.save()
+```
+
+The file is `ata_spm_settings.json` beside the fleet state, written on every
+change to the field on either host and read back when the page is built. The
+other four settings keep the lifetime they had.
+
+### The window's timeframe boxes toggle the row they show
+
+The four boxes were bound to the crypto class's keys when the tab was built.
+After the class box moved to energy, the box labelled `1mnth` toggled `1w`
+and the box labelled `1hr` toggled nothing. Each box now reads its key at the
+press from the row the class shows, and its accessible name follows the row.
+
+### Six presses read off both running builds
+
+Both builds were driven at the operator's window size, 1536 by 937 logical at
+125 % scale, on a scratch home with every socket but loopback refused. A
+loopback stand-in answered the chart endpoint for the four energy funds with
+planted volumes UNG 4000, UGA 3000, BNO 2000, USO 1000, the reverse of map
+order, and planted charts the chains fire on for UNG on 1wk, UGA on 1d, BNO on
+1hr and USO on 1d. A stand-in connector answered six crypto names with
+volumes SOL 600, BTC 500, LINK 400, ADA 300, ETH 200, DOGE 100 and charts that
+fire for SOL on 1wk, BTC on 1d, LINK on 1wk and ADA on 1d. The real endpoints
+were never called: 0 refused connections in every run.
+
+| press | ticked | Hits per scan | walk | hits | zone |
+| ----- | ------ | ------------- | ---- | ---- | ---- |
+| energy | 1hr 1d 1wk | 3 | UNG, UGA, BNO | 3: UNG 1wk, UGA 1d, BNO 1hr | `energy by volume` / `3 market(s) read · 3 hit(s) · stopped at target` |
+| energy | 1hr 1d 1wk | 5 | UNG, UGA, BNO, USO | 4 | `4 market(s) read · 4 hit(s) · sector exhausted` |
+| energy, no chart fires | 1hr 1d 1wk | 5 | UNG, UGA, BNO, USO | 0 | `4 market(s) read · 0 hit(s) · sector exhausted` |
+| energy, volumes reversed | 1hr 1d 1wk | 3 | USO, BNO, UGA | 3: USO 1d, BNO 1hr, UGA 1d | `3 market(s) read · 3 hit(s) · stopped at target` |
+| crypto | 1hr 1d 1wk | 3 | SOL, BTC, LINK | 3: SOL 1wk, BTC 1d, LINK 1wk | `crypto by volume` / `3 market(s) read · 3 hit(s) · stopped at target` |
+| crypto | 1hr 1d 1wk | 5 | all 120 | 4 | `120 market(s) read · 4 hit(s) · sector exhausted` |
+
+Every row reads the same in the window and on the page: the walk, the hits,
+the headline, the counts, the open entry's rows and the pins. The Activity
+Log carried 23, 35, 32, 28, 23 and 267 lines for the six presses, the same on
+the Qt pane and on the page's own line elements. The pins per press: one
+order pin, one hit pin per hit, and the press, start, read and end pins the
+entry above wired. On crypto the order pin read `actual 6, expected 120`,
+false: six of the 120 map names had a figure.
+
+Hits per scan was typed as 7 through each host's own field, the file read
+`{"hits_per_scan": 7}`, the window was closed and a second one built on the
+same scratch home read 7 in the setting and in the field, both hosts.
+
+`bot_state.json` on the scratch home compared byte for byte after every press
+and read unchanged, and a planted byte moved the comparison.
+
+### The bundles
+
+Both bundles were built from this entry's code commit and launched in
+isolation on a scratch home with no network capability at all, the Inspector
+tab opened by a click on its tab item, the class box moved to energy, and Scan
+Now pressed at the button. No venue can be reached, so every volume read and
+every chart read is refused, and the class walks in map order and says so:
+
+| bundle | log lines after the press | pins in the handler's file | zone |
+| ------ | ------------------------- | -------------------------- | ---- |
+| Qt | 22 | 20: 1 pressed, 1 started, 1 order, 16 read, 1 finished | `energy in map order` / `4 market(s) read · 0 hit(s) · sector exhausted` / `No candles came back for BNO, UGA, UNG, USO.` |
+| React | 22 | 20, the same | identical |
+
+The order pin read `actual 0, expected 4`, false, source `map order, no
+volume figure`, on both. The press took 97 seconds in the Qt bundle and 121
+in the React one: the chart adapter retries each refused call three times,
+sleeping 2 and then 4 seconds between attempts, and a press on a dead network
+pays that on each of the 4 volume reads and the 12 chart reads. The bundle's
+own state timer saves the empty fleet every 60 seconds, so `bot_state.json`
+gained a new stamp during those presses and held the same fleet: 0 bots, an
+empty bot map. On a 15-second crypto press in the Qt bundle the file read
+byte for byte unchanged.
+
+### Four sentences and two code blocks this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:3814` - "| nothing | reads the
+sector menu's markets, largest volume first, until Hits per scan reversal
+calls land |". The count is now of hits the push gates admit.
+
+`docs/manual/08-tabs/market-inspector.md:3818` - "A hit is one market on one
+timeframe whose twelve-voter consensus and Bollinger voter name the same
+non-neutral direction. It is the vote the zone already counts as a reversal
+call, so the target and the zone count one thing." A hit is now a vote the
+live gate chains would fire on, and the zone, the Activity Log and the bucket
+count that.
+
+`docs/manual/08-tabs/market-inspector.md:3874` - "| metals | the asset map's
+order: the four spot pairs, then the four funds |". The four funds now order
+by their last complete daily bar's volume times close, and the four spot
+pairs, which no venue lists, come after them.
+
+`docs/manual/08-tabs/market-inspector.md:3918` - "The five settings live for
+the life of the process. A restart reads the ceiling as unset and Hits per
+scan as 3." Hits per scan now reads what was last typed.
+
+The loop quoted at `:3888` and the `class_markets` docstring quoted at
+`:3862` describe the code before this entry.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
