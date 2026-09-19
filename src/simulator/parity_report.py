@@ -26,6 +26,7 @@ from .back_test import (
     BotResult,
     FUNDED_BY_PROCEEDS,
     FUNDED_BY_TARGETS,
+    NO_TABLET,
     UNCITED_RULE,
     cited_rule_for,
     run_budget_usd,
@@ -680,12 +681,24 @@ def back_test_not_verified(run: BackTestRun) -> list[str]:
         out.append(f"{asset} on {venue}: no Stone Tablet; the bot walked nothing.")
     for result in run.uncited:
         out.append(uncited_rule_line(result))
+    by_id = {one.bot_id: one for one in run.bots}
     for result in run.results:
         if (
             result.outcome not in (BACK_TESTED, UNCITED_RULE)
             and result.tablet_key == ""
         ):
-            if result.candles_read:
+            bot = by_id.get(result.bot_id)
+            unrolled = (
+                result.outcome == NO_TABLET
+                and bot is not None
+                and (bot.asset, bot.exchange_id) not in run.missing
+            )
+            if unrolled:
+                out.append(
+                    f"{result.bot_id} ({result.symbol}): no Stone Tablet at "
+                    f"{result.timeframe}; the bot walked nothing."
+                )
+            elif result.candles_read:
                 out.append(
                     f"{result.bot_id} ({result.symbol}): {result.outcome}, "
                     f"{result.candles_read} candles; the bot walked nothing."
