@@ -29,7 +29,7 @@ import logging
 from typing import Any, Optional
 
 from ...core import encryption
-from ...exchange.market_inspector_fetcher import DEFAULT_MIN_REFRESH_S
+from ...exchange.market_inspector_fetcher import DEFAULT_MIN_REFRESH_S, DEFAULT_QUOTES
 from ...trading import (
     ata_asset_maps,
     ata_post_paths,
@@ -148,6 +148,12 @@ TICKER_FIELD_MIN_WIDTH_PX = 72
 #: The most matches one typed value offers, so a one-letter entry cannot fill
 #: the row with names.
 TICKER_MATCH_LIMIT = 8
+#: What one offer reads on the completer and the page's list: the symbol
+#: and the class that lists it.
+TICKER_OFFER_FORMAT = "{symbol}  ({asset_class})"
+#: The characters a typed ticker may carry between its base and its quote.
+TICKER_SEPARATORS = ("-", "_", " ")
+TICKER_JOIN = "/"
 
 #: What the field carries for a sector the tree lists no tickers for. The
 #: field still takes a typed name.
@@ -1110,17 +1116,47 @@ def phase_row(phase: Any, tag: Any, value: Any) -> list:
     return detail_row(PHASE_ROW_NAME_FORMAT.format(phase=phase, tag=tag), value)
 
 
+def market_timeframe_reading(scan: Any, frame: Any) -> str:
+    """One timeframe's verdict for a one-market scan: ``MARKET_HIT_READING``,
+    ``MARKET_REFUSED_READING`` or ``MARKET_NO_VOTE_READING``."""
+    vote = next((one for one in frame.votes if one.symbol == scan.ticker), None)
+    if vote is None:
+        return ata_spm.MARKET_NO_VOTE_READING
+    if scan.hit_on(frame.timeframe) is not None:
+        return ata_spm.MARKET_HIT_READING.format(direction=vote.direction_text)
+    return ata_spm.MARKET_REFUSED_READING.format(direction=vote.direction_text)
+
+
+def market_timeframe_rows(scan: Any) -> list:
+    """One ``phase_row`` per timeframe of a one-market scan, carrying the
+    candle count ``TimeframeScan.read`` holds and ``market_timeframe_reading``."""
+    return [
+        phase_row(
+            PHASE_ONE_NAME,
+            ata_spm.timeframe_label(frame.timeframe),
+            ata_spm.MARKET_TIMEFRAME_FORMAT.format(
+                candles=int(frame.read.get(scan.ticker, ata_spm.NO_CANDLES)),
+                reading=market_timeframe_reading(scan, frame),
+            ),
+        )
+        for frame in scan.timeframes
+    ]
+
+
 def phase_one_rows(scan: Any) -> list:
     """The expanded lines phase one leaves: one per timeframe scanned.
 
     ``scan.unlisted`` and ``scan.unserved`` each take a line of their own, so a
     venue gap never reads as a timeframe that voted nothing; a by-volume scan
-    opens with ``ata_spm.order_line`` under ``ORDER_TAG``.
+    opens with ``ata_spm.order_line`` under ``ORDER_TAG``, and a one-market
+    scan's rows come from ``market_timeframe_rows``.
     """
     if scan.note:
         rows = [detail_row(PHASE_NOTE_NAME, scan.note)]
     elif not scan.timeframes:
         rows = [detail_row(PHASE_NOTE_NAME, ata_spm.NO_TIMEFRAME_TEXT)]
+    elif scan.ticker:
+        rows = market_timeframe_rows(scan)
     else:
         rows = [
             phase_row(
@@ -1357,7 +1393,9 @@ def entry_meta(scan: Any, calls: Any) -> str:
     """
     if scan.ticker:
         return ata_spm.MARKET_META_FORMAT.format(
-            votes=len(scan.votes), calls=len(calls)
+            venue=scan.venue or ata_spm.NO_VENUE_NAME,
+            votes=len(scan.votes),
+            hits=len(calls),
         )
     if getattr(scan, "hit_target", ata_spm.NO_HIT_TARGET) > ata_spm.NO_HIT_TARGET:
         return ata_spm.VOLUME_META_FORMAT.format(
@@ -2569,22 +2607,139 @@ def class_markets(asset_class: Any, connectors: Any = None) -> Any:
     )
 
 
-def ticker_matches(typed: Any, asset_class: Any) -> list:
-    """The tickers of ``asset_class`` that ``typed`` names, prefix matches first.
-
-    An empty entry offers nothing and ``TICKER_MATCH_LIMIT`` caps the rest.
-    """
+def fold_ticker(typed: Any) -> str:
+    """``typed`` as the maps spell a name: upper case, outer spaces stripped,
+    and each of ``TICKER_SEPARATORS`` read as ``TICKER_JOIN``."""
     asked = str(typed or "").strip().upper()
+    for one in TICKER_SEPARATORS:
+        asked = asked.replace(one, TICKER_JOIN)
+    return asked
+
+
+def pair_base(folded: Any) -> str:
+    """The base of a pair whose quote is one of ``DEFAULT_QUOTES``, else empty.
+
+    ``BTC/USD`` and ``BTCUSD`` both answer ``BTC``; a quote outside
+    ``DEFAULT_QUOTES`` answers nothing.
+    """
+    asked = str(folded or "")
+    if TICKER_JOIN in asked:
+        base, _, quote = asked.partition(TICKER_JOIN)
+        return base if quote in DEFAULT_QUOTES and base else ""
+    for quote in DEFAULT_QUOTES:
+        if asked.endswith(quote) and len(asked) > len(quote):
+            return asked[: -len(quote)]
+    return ""
+
+
+def connector_tickers(connectors: Any = None) -> list:
+    """The crypto bases the connector's ticker read listed.
+
+    With no ``connectors`` the fetcher's ``cached_quote_volumes`` answers
+    whatever its age; with them ``class_volumes`` serves the cache while it
+    is fresh and asks the connector once otherwise.
+    """
+    if connectors:
+        return sorted(class_volumes(ata_spm.CLASS_CRYPTO, connectors))
+    from ...exchange.market_inspector_fetcher import cached_quote_volumes
+
+    return sorted(cached_quote_volumes())
+
+
+def class_names(asset_class: Any, connectors: Any = None) -> list:
+    """Every name one class recognises: ``class_tickers`` plus, for crypto,
+    ``connector_tickers``."""
+    held = set(class_tickers(asset_class))
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        held.update(str(one) for one in connector_tickers(connectors))
+    return sorted(held)
+
+
+def class_walk(asset_class: Any) -> list:
+    """``ata_spm.ASSET_CLASSES`` with ``asset_class`` first."""
+    chosen = str(asset_class)
+    rest = [one for one in ata_spm.ASSET_CLASSES if one != chosen]
+    return ([chosen] if chosen in ata_spm.ASSET_CLASSES else []) + rest
+
+
+def class_listing(symbol: Any, asset_class: Any) -> Any:
+    """The ``ata_asset_maps.AssetListing`` one class charts ``symbol`` on."""
+    name = str(symbol)
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        return ata_asset_maps.exchange_listing(name)
+    for sector in ata_asset_maps.sectors_for(asset_class):
+        for one in ata_asset_maps.listings_for(sector, asset_class):
+            if one.symbol.upper() == name.upper():
+                return one
+    return ata_asset_maps.AssetListing(symbol=name)
+
+
+def name_in(folded: str, names: Any) -> str:
+    """The one of ``names`` that ``folded`` spells: whole, with ``TICKER_JOIN``
+    removed from both sides, or by the base ``pair_base`` answers."""
+    joined = folded.replace(TICKER_JOIN, "")
+    base = pair_base(folded)
+    by_whole = {str(one).upper(): str(one) for one in names}
+    if folded in by_whole:
+        return by_whole[folded]
+    by_joined = {str(one).upper().replace(TICKER_JOIN, ""): str(one) for one in names}
+    if joined in by_joined:
+        return by_joined[joined]
+    if base and base in by_whole:
+        return by_whole[base]
+    return ""
+
+
+def placements_of(typed: Any, asset_class: Any, connectors: Any = None) -> list:
+    """Every ``ata_spm.TickerPlacement`` the typed text names, the chosen
+    class first, then the rest of ``ata_spm.ASSET_CLASSES`` in order."""
+    folded = fold_ticker(typed)
+    if not folded:
+        return []
+    found: list = []
+    for one in class_walk(asset_class):
+        named = name_in(folded, class_names(one, connectors))
+        if named:
+            found.append(
+                ata_spm.TickerPlacement(
+                    listing=class_listing(named, one),
+                    asset_class=one,
+                    typed=str(typed or ""),
+                )
+            )
+    return found
+
+
+def ticker_offer(symbol: Any, asset_class: Any) -> list:
+    """One completer row: the symbol, its class and ``TICKER_OFFER_FORMAT``."""
+    return [
+        str(symbol),
+        str(asset_class),
+        TICKER_OFFER_FORMAT.format(symbol=symbol, asset_class=asset_class),
+    ]
+
+
+def ticker_matches(typed: Any, asset_class: Any) -> list:
+    """The ``ticker_offer`` rows ``typed`` names across every class, prefix
+    matches first and the chosen class first inside each, capped at
+    ``TICKER_MATCH_LIMIT``. A typed pair offers the crypto base while its
+    quote part starts one of ``DEFAULT_QUOTES``; no venue is asked."""
+    asked = fold_ticker(typed)
     if not asked:
         return []
+    base, _, quote_part = asked.partition(TICKER_JOIN)
+    pair_typed = TICKER_JOIN in asked and any(
+        one.startswith(quote_part) for one in DEFAULT_QUOTES
+    )
     starts: list = []
     holds: list = []
-    for one in class_tickers(asset_class):
-        folded = one.upper()
-        if folded.startswith(asked):
-            starts.append(one)
-        elif asked in folded:
-            holds.append(one)
+    for one in class_walk(asset_class):
+        for symbol in class_names(one):
+            folded = symbol.upper()
+            if folded.startswith(asked) or (pair_typed and folded == base):
+                starts.append(ticker_offer(symbol, one))
+            elif asked in folded:
+                holds.append(ticker_offer(symbol, one))
     return (starts + holds)[:TICKER_MATCH_LIMIT]
 
 
@@ -2601,27 +2756,25 @@ def ticker_note(asset_class: Any, note: Any = "") -> str:
     return TICKER_NO_LIST_FORMAT.format(sector=asset_class)
 
 
-def market_listing(ticker: Any, asset_class: Any) -> Any:
-    """The one ``ata_asset_maps.AssetListing`` a typed ticker names in one sector.
+def market_listing(ticker: Any, asset_class: Any, connectors: Any = None) -> Any:
+    """The ``ata_spm.TickerPlacement`` a typed ticker names, across every class.
 
-    ``class_tickers`` decides whether the sector lists the name, and a sector
-    listing none takes any name, which is what ``TICKER_NO_LIST_FORMAT`` says
-    under the field; a name a listing sector does not hold answers None.
+    ``placements_of`` walks the chosen class first; a chosen class that
+    ``class_tickers`` lists nothing for takes any name no class holds, which
+    is what ``TICKER_NO_LIST_FORMAT`` says under the field; a name no class
+    holds under a listing class answers None.
     """
-    asked = str(ticker or "").strip().upper()
-    if not asked:
+    placed = placements_of(ticker, asset_class, connectors)
+    if placed:
+        return placed[0]
+    folded = fold_ticker(ticker)
+    if not folded or class_tickers(asset_class):
         return None
-    listed = class_tickers(asset_class)
-    named = next((one for one in listed if str(one).upper() == asked), None)
-    if listed and named is None:
-        return None
-    symbol = str(named) if named is not None else asked
-    if str(asset_class) == ata_spm.CLASS_CRYPTO:
-        return ata_asset_maps.exchange_listing(symbol)
-    found = ata_asset_maps.listing_of(symbol)
-    if found is not None:
-        return found
-    return ata_asset_maps.AssetListing(symbol=symbol)
+    return ata_spm.TickerPlacement(
+        listing=ata_asset_maps.AssetListing(symbol=folded),
+        asset_class=str(asset_class),
+        typed=str(ticker or ""),
+    )
 
 
 def open_chart_folder() -> str:
@@ -3085,6 +3238,10 @@ class MarketInspectorScreenModel:
             logger.debug(CANDLE_READ_FAILED_LOG, symbol, timeframe, exc)
             return []
 
+    def market_placement(self, ticker: Any, asset_class: Any) -> Any:
+        """``market_listing`` on the connectors in reach, for ``scan_now``."""
+        return market_listing(ticker, asset_class, self.connectors_now())
+
     def ata_report(self) -> Any:
         """The ATA-SPM zone's own run report, empty until a scan has run.
 
@@ -3124,15 +3281,15 @@ class MarketInspectorScreenModel:
         markets by volume until ``hits_per_scan`` hits.
 
         Answers the ``ata_spm.AtaSpmRun`` the three phases produced, or None
-        when ``market_listing`` cannot place the ticker and the board is left
-        carrying ``ata_spm.TICKER_UNHELD_FORMAT``.
+        when ``market_placement`` cannot place the ticker and the board is
+        left carrying ``ata_spm.TICKER_UNHELD_FORMAT``.
         """
         added = self.board.scan_now(
             self.ata_asset_source or sector_assets,
             self.ata_candle_source or self.scanned_candles,
             self.push.settings.message_format,
             self.push.settings.max_supporting_indicators,
-            market_listing,
+            self.market_placement,
             self.ata_class_source or self.class_markets,
             self.push.settings.hits_per_scan,
             self.zone_at.get(ATA_SPM_MODULE, 0),

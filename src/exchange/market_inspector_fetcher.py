@@ -146,6 +146,11 @@ def quote_volume_age_s() -> float:
     return max(0.0, time.monotonic() - _LAST_VOLUMES_MONO)
 
 
+def cached_quote_volumes() -> dict[str, float]:
+    """A copy of _LAST_VOLUMES, whatever its age; asks no connector."""
+    return dict(_LAST_VOLUMES)
+
+
 async def fetch_quote_volumes(
     exchange_connectors: dict,
     min_refresh_s: float = DEFAULT_MIN_REFRESH_S,
