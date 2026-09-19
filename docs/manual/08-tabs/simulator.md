@@ -6588,6 +6588,24 @@ payload on every fleet change), driven and read back 3 of 3 (each of the
 three card buttons pressed, and the active sheet, the rows and the file
 read after).
 
+Both bundles were built and launched in isolation, with no network and a
+scratch home holding two live bots, and driven through Windows UI
+Automation. In each: the card at open with its three mode buttons; Import
+Live Fleet, two rows, the way-in row; Back Test on the venue header, the
+card with Back Test active and its two ways in, the line `Back Test fleet
+shown: 0 bot(s) on no venue.`; Validation on the card's own button, the
+two rows and Validation's row again; Back Test on the header again, the
+card. The file held `fleets` with 2, 0 and 0, and three signal rows landed
+per build. The Qt bundle also walked Create New Bots through the wizard's
+Next and Finish buttons under Back Test, and the file then held 2, 1 and
+0 with the new bot under Back Test; the React wizard's asset pair is a
+page control UI Automation does not drive, so Create under Back Test on
+the React build is the source-tree reading above. On the bundles, the live
+application's own periodic save rewrote `bot_state.json` sixty seconds
+after launch with the same two live bots and no sim bot, as it does on
+every launch; in the source-tree readings the file hashed identical after
+every step.
+
 ## The widget the rebuild replaced
 
 Every section from here to the end of the page describes a screen that is
