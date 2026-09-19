@@ -66,6 +66,12 @@ SCAN_NOW_KEY = "scan-now"
 #: The parts phases five and six are pressed with, each handled by
 #: ``MarketInspectorScreenModel.push_action``.
 PUSH_KEYS = surface.PUSH_PARTS
+#: The three of them that send or open, run on the inherited hand-off worker.
+HAND_OFF_KEYS = (
+    surface.POST_SELECTED_PART,
+    surface.POST_ALL_PART,
+    surface.FULL_AUTO_PART,
+)
 
 SETTING_FIELD_KEY = surface.SETTING_FIELD_PART
 VENUE_BUTTON_KEY = surface.VENUE_BUTTON_PART
@@ -411,6 +417,8 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self.push()
             elif key == SCAN_NOW_KEY:
                 self._on_scan_now()
+            elif key in HAND_OFF_KEYS:
+                self._start_hand_off(key, lambda: self._screen.push_action(key))
             elif key in PUSH_KEYS:
                 self._screen.push_action(key)
                 self._say_lines(self._screen.press_lines)

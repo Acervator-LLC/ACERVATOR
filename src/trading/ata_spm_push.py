@@ -66,6 +66,14 @@ TARGET_TIKTOK = "TikTok"
 TARGET_FACEBOOK = "Facebook"
 TARGET_THREADS = "Threads"
 TARGET_REDDIT = "Reddit"
+TARGET_DISCORD = "Discord"
+TARGET_TELEGRAM = "Telegram"
+TARGET_WHATSAPP = "WhatsApp"
+
+#: The typed fields ``ata_spm_send`` reads for the two venues it posts through.
+DISCORD_WEBHOOK_FIELD = "discord-webhook-url"
+TELEGRAM_BOT_FIELD = "telegram-bot-token"
+TELEGRAM_CHAT_FIELD = "telegram-chat-id"
 
 SECTION_CALL = "call"
 SECTION_CHART = "chart"
@@ -461,6 +469,60 @@ PUSH_TARGETS = (
         "read <platform>:<app ID>:<version> (by /u/<username>), and rate "
         "limits a generic one hard.",
     ),
+    PushTarget(
+        TARGET_DISCORD,
+        image_width_px=1200,
+        image_height_px=675,
+        sections=(SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
+        body_limit=2000,
+        fields=(CredentialField(DISCORD_WEBHOOK_FIELD, "Webhook URL"),),
+        endpoint="POST https://discord.com/api/webhooks/<id>/<token>?wait=true",
+        registration="A channel's incoming webhook, no developer app and no "
+        "sign-in. In Discord open the channel's settings, then Integrations, "
+        "then Webhooks, press New Webhook and Copy Webhook URL. Paste it in "
+        "the box above; it is held once you leave the box.",
+        prerequisite="The Manage Webhooks permission on that channel. Discord "
+        "holds a message to 2,000 characters and a file to 20 MiB by "
+        "default; the post's text and its picture go in one request, and "
+        "Discord answers the message it created.",
+    ),
+    PushTarget(
+        TARGET_TELEGRAM,
+        image_width_px=1280,
+        image_height_px=720,
+        sections=(SECTION_CALL, SECTION_INDICATORS),
+        body_limit=1024,
+        fields=(
+            CredentialField(TELEGRAM_BOT_FIELD, "Bot token"),
+            CredentialField(TELEGRAM_CHAT_FIELD, "Chat id"),
+        ),
+        endpoint="POST https://api.telegram.org/bot<token>/sendPhoto",
+        registration="A bot from @BotFather (/newbot prints its token), added "
+        "to the channel or group as a member that can post. The chat id is "
+        "the channel's @username, or the numeric id a bot such as @userinfobot "
+        "prints for a group. Both are held once you leave the box.",
+        prerequisite="No review and no fee. Telegram holds a photo caption to "
+        "1,024 characters, so the post carries the call and the indicator "
+        "lines; a photo up to 10 MB, width plus height at most 10,000 px, the "
+        "ratio at most 20.",
+    ),
+    PushTarget(
+        TARGET_WHATSAPP,
+        image_width_px=1200,
+        image_height_px=675,
+        sections=(SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
+        body_limit=65536,
+        endpoint="Click-to-Chat: the .url file in the venue folder opens "
+        "WhatsApp with the message typed",
+        registration="Nothing. Post Selected opens the Click-to-Chat address "
+        "in the folder; WhatsApp opens with the message typed, you pick the "
+        "chat and attach the picture from the same folder.",
+        prerequisite="WhatsApp's Cloud API sends from a Meta business number "
+        "to individual numbers, or to groups of at most eight that the "
+        "business itself creates under an Official Business Account; it "
+        "posts to no group or community you are a member of, so no API "
+        "route is offered. A text holds 65,536 characters.",
+    ),
 )
 
 TARGET_NAMES = tuple(one.name for one in PUSH_TARGETS)
@@ -505,6 +567,12 @@ DELIVERY_INTENT_FORMAT = (
 DELIVERY_INTENT_READY_FORMAT = (
     "{target} · {symbol} {label} · compose address ready · {destination}"
 )
+#: ``DeliveryRecord.status``, the words ``BucketPost.meta`` carries after a press.
+STATUS_SENT_FORMAT = "sent · {destination}"
+STATUS_NOT_SENT_FORMAT = "not sent · {detail}"
+STATUS_IN_FOLDER_TEXT = "in folder"
+STATUS_INTENT_OPENED_TEXT = "intent handed to the OS"
+STATUS_INTENT_READY_TEXT = "intent ready"
 NO_FOLDER_FILE_TEXT = "No folder file was written for {target}."
 PRESS_LINE_FORMAT = "ATA-SPM hand-off: {line}"
 NOTHING_APPROVED_TEXT = (
@@ -526,6 +594,8 @@ BUCKET_HOLDS_FORMAT = (
 BUCKET_META_FORMAT = "{target} · {state}"
 #: ``BucketPost.meta`` while phase seven's timer has written its status.
 BUCKET_META_FOLLOW_UP_FORMAT = "{target} · {state} · {follow_up}"
+#: ``BucketPost.meta`` once a press has written ``DeliveryRecord.status``.
+BUCKET_META_DELIVERY_FORMAT = "{meta} · {delivery}"
 FULL_AUTO_ON_TEXT = "Full Auto on"
 FULL_AUTO_OFF_TEXT = "Full Auto off"
 
@@ -541,6 +611,8 @@ VAULT_KEY_FORMAT = "{target}:{field}"
 
 CREDENTIAL_HELD_TEXT = "held"
 CREDENTIAL_MISSING_TEXT = "not held"
+#: ``credential_row`` for a target whose row names no field, such as ``TARGET_WHATSAPP``.
+CREDENTIAL_NONE_NEEDED_TEXT = "none needed"
 NO_VAULT_TEXT = "Credential vault not wired."
 
 #: What ``held_value`` answers for a field the vault holds nothing for.
@@ -554,6 +626,11 @@ CONNECT_OK_FORMAT = "{target} accepted the credential."
 CONNECT_FAILED_FORMAT = "{target} refused the sign-in: {error}"
 MISSING_FIELD_FORMAT = "{label} is empty."
 NO_CONNECTOR_FORMAT = "No sign-in route wired for {target}."
+#: ``sign_in_answer`` for a target whose row names no field to type or issue.
+NO_SIGN_IN_NEEDED_FORMAT = (
+    "{target} needs no sign-in. Its post goes through the venue folder and the "
+    "compose address."
+)
 
 #: Reads inside ``CONNECT_FAILED_FORMAT`` where a venue completed its flow and
 #: still handed back nothing for one of its ``PushTarget.issued`` fields.
@@ -1529,6 +1606,19 @@ class DeliveryRecord:
         return self.route
 
     @property
+    def status(self) -> str:
+        """What happened to this post, as the words its bucket entry carries."""
+        if self.route == ROUTE_FOLDER:
+            return STATUS_IN_FOLDER_TEXT
+        if self.route == ROUTE_INTENT:
+            return (
+                STATUS_INTENT_OPENED_TEXT if self.opened else STATUS_INTENT_READY_TEXT
+            )
+        if self.sent:
+            return STATUS_SENT_FORMAT.format(destination=self.destination)
+        return STATUS_NOT_SENT_FORMAT.format(detail=self.detail)
+
+    @property
     def line(self) -> str:
         """This record as the one line the Activity Log and the zone read back.
 
@@ -1848,6 +1938,10 @@ class AtaSpmSettings:
         """
         name = str(target)
         answer = ConnectResult(target=name)
+        if push_target(name) is not None and not stored_fields(name):
+            answer.ok = True
+            answer.detail = NO_SIGN_IN_NEEDED_FORMAT.format(target=name)
+            return answer
         empty = self.missing_field(name)
         if empty is not None:
             answer.detail = MISSING_FIELD_FORMAT.format(label=empty.label)
@@ -1923,6 +2017,8 @@ class AtaSpmSettings:
         held = self.holds(target)
         if held:
             return [str(target), True, CREDENTIAL_HELD_TEXT]
+        if push_target(target) is not None and not stored_fields(target):
+            return [str(target), False, CREDENTIAL_NONE_NEEDED_TEXT]
         if self.vault is None:
             return [str(target), False, NO_VAULT_TEXT]
         return [str(target), False, CREDENTIAL_MISSING_TEXT]
@@ -1978,11 +2074,20 @@ def deliver_one(
     return record
 
 
+def sender_takes(sender: Any, target: Any) -> bool:
+    """Whether ``sender`` posts to one target: every target while it names no
+    ``targets``, as ``RecordedDestination`` does, else the ones it names."""
+    if sender is None:
+        return False
+    targets = getattr(sender, "targets", None)
+    return targets is None or str(target) in tuple(targets)
+
+
 def route_for(post: FormattedPost, settings: AtaSpmSettings, sender: Any) -> str:
     """The route one post takes: ``ROUTE_API`` while its venue is signed in and
-    a sender is wired, ``ROUTE_INTENT`` while its folder holds an intent file,
-    else ``ROUTE_FOLDER``."""
-    if sender is not None and settings.holds(post.target):
+    a sender that takes it is wired, ``ROUTE_INTENT`` while its folder holds an
+    intent file, else ``ROUTE_FOLDER``."""
+    if sender_takes(sender, post.target) and settings.holds(post.target):
         return ROUTE_API
     if post.intent_path:
         return ROUTE_INTENT
@@ -2090,21 +2195,32 @@ class WatchedMarket:
 
 @dataclass
 class BucketPost:
-    """One formatted post waiting in Ready to Send, its approval state, and
-    the status its call's ``FollowUpTimer`` last wrote."""
+    """One formatted post waiting in Ready to Send, its approval state, the
+    status its call's ``FollowUpTimer`` last wrote, and what the last press
+    did with it."""
 
     post: FormattedPost
     state: str = STATE_WAITING
     follow_up: str = ""
+    delivery: str = ""
 
     @property
     def meta(self) -> str:
-        """The target this post is for, whether it is approved, and the timer's status."""
+        """The target, whether it is approved, the timer's status, and the
+        ``DeliveryRecord.status`` of the last press that took this post."""
         if self.follow_up:
-            return BUCKET_META_FOLLOW_UP_FORMAT.format(
+            written = BUCKET_META_FOLLOW_UP_FORMAT.format(
                 target=self.post.target, state=self.state, follow_up=self.follow_up
             )
-        return BUCKET_META_FORMAT.format(target=self.post.target, state=self.state)
+        else:
+            written = BUCKET_META_FORMAT.format(
+                target=self.post.target, state=self.state
+            )
+        if self.delivery:
+            return BUCKET_META_DELIVERY_FORMAT.format(
+                meta=written, delivery=self.delivery
+            )
+        return written
 
 
 class ReadyToSend:
@@ -2311,6 +2427,8 @@ class ReadyToSend:
             self.repost,
             opener,
         )
+        for taken, record in zip(held, records):
+            taken.delivery = record.status
         self.records.extend(records)
         return records
 

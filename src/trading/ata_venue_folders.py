@@ -2,9 +2,10 @@
 
 ``write_venue_posts`` runs once per call phase three charts, and for every row
 of ``ata_spm_push.PUSH_TARGETS`` it draws that target's own message at the foot
-of the chart, writes the same message as plain text beside it, and for
-``TARGET_X`` writes the Web Intent address as an Internet Shortcut. Every file
-lands under ``ata_post_paths.venue_post_root`` and no venue is contacted.
+of the chart, writes the same message as plain text beside it, and for each
+``INTENT_FORMATS`` row writes the compose address as an Internet Shortcut.
+Every file lands under ``ata_post_paths.venue_post_root`` and no venue is
+contacted.
 """
 
 from __future__ import annotations
@@ -28,8 +29,15 @@ IMAGE_SIZE_PIN = "inspector.ata.image_size"
 #: X's Web Intent opens the compose window with ``text`` filled in.
 X_INTENT_FORMAT = "https://x.com/intent/post?text={text}"
 
+#: WhatsApp's Click-to-Chat address opens the app with ``text`` typed and the
+#: chat left for the operator to pick.
+WHATSAPP_INTENT_FORMAT = "https://wa.me/?text={text}"
+
 #: The compose address one target documents; a target absent here writes none.
-INTENT_FORMATS = {ata_spm_push.TARGET_X: X_INTENT_FORMAT}
+INTENT_FORMATS = {
+    ata_spm_push.TARGET_X: X_INTENT_FORMAT,
+    ata_spm_push.TARGET_WHATSAPP: WHATSAPP_INTENT_FORMAT,
+}
 
 #: The Internet Shortcut form the operating system opens in the browser.
 INTENT_SHORTCUT_FORMAT = "[InternetShortcut]\nURL={url}\n"
@@ -219,6 +227,7 @@ __all__ = [
     "INTENT_SHORTCUT_FORMAT",
     "TITLE_SEPARATOR",
     "VenuePost",
+    "WHATSAPP_INTENT_FORMAT",
     "X_INTENT_FORMAT",
     "intent_url",
     "post_text",

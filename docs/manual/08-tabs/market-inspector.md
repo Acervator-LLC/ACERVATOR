@@ -6018,4 +6018,273 @@ imported by the Inspector tab for the chime.
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
 
+## 2026-09-20 00:10 - #23 - Discord, Telegram and WhatsApp join ATA-SMP: two API senders, one compose address, ten entries per hit
+
+His words, 2026-09-19: *"ATA-SMP - Need to add post / message distribution
+for Discord, Telegram, WhatsApp, and Signal."* and *"ATA-SMP - For Signal, if
+its not being used for this sort of thing then we can skip it."* And
+2026-09-15: *"This will have to do. Do not want to build something that risks
+myself or others being banned."* Signal publishes no way for a program to post
+into a group, so it is skipped on his words; three venues join.
+
+### Three more venue rows
+
+Ten targets ship. Each of the three new ones is one row, and every screen and
+folder writer reads the rows, so the settings page, the venue folders and the
+bucket carry them with no screen edit. The figures come off each venue's own
+page, read on 2026-09-19.
+
+| Target | Body ceiling | Title ceiling | Counted in | Image | How a post leaves |
+| ------ | ------------ | ------------- | ---------- | ----- | ----------------- |
+| Discord | 2000 | none | Characters | 1200 by 675 | the channel's webhook, one request carrying the text and the picture |
+| Telegram | 1024 | none | Characters | 1280 by 720 | the bot's `sendPhoto`, the text as the photo's caption |
+| WhatsApp | 65536 | none | Characters | 1200 by 675 | the Click-to-Chat address in the venue folder, the picture attached by hand |
+
+`src/trading/ata_spm_push.py` - the three names
+
+```python
+TARGET_DISCORD = "Discord"
+TARGET_TELEGRAM = "Telegram"
+TARGET_WHATSAPP = "WhatsApp"
+```
+
+Discord's page states "the message contents (up to 2000 characters)", and a
+file's default limit of 20 MiB. Telegram's states a caption of "0-1024
+characters after entities parsing" and a photo "at most 10 MB in size", its
+width and height "must not exceed 10000 in total", its ratio "at most 20".
+WhatsApp's Cloud API sends from a Meta business number to individual numbers,
+or to groups of at most eight that the business itself creates under an
+Official Business Account; it posts to no group or community the operator is a
+member of, so WhatsApp takes the compose address, as X does.
+
+### What the settings page holds for them
+
+Level 1 draws ten venue buttons. Discord's Level 1A page draws one masked box,
+`Webhook URL`; Telegram's draws two, `Bot token` and `Chat id`; WhatsApp's
+draws none. A box reaches the vault when he leaves it, as every other venue's
+does, and these venues issue no token, so a venue reads `held` the moment its
+boxes are left. Connect checks the typed value reads as the form the venue's
+own page prints, opens no browser and reaches no venue.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the sign-in line for the three
+
+```python
+SIGN_IN_TYPED_TEXT = (
+    "Connect checks what you typed and holds it. No browser opens and no "
+    "venue is reached."
+)
+SIGN_IN_NONE_TEXT = (
+    "No sign-in. The post goes through the venue folder and the compose address."
+)
+```
+
+`src/trading/ata_spm_signin.py` - the two routes behind Connect
+
+```python
+def sign_in_discord(typed: dict, session: SignInSession) -> dict:
+def sign_in_telegram(typed: dict, session: SignInSession) -> dict:
+```
+
+A webhook URL that does not read as `https://discord.com/api/webhooks/<id>/<token>`
+is refused on the page with that form named. A bot token that does not read
+as BotFather prints it is refused the same way, and a chat id that is neither
+a number nor an `@name`. WhatsApp's Connect answers `WhatsApp needs no
+sign-in.` and its Level 1 button's wording reads `none needed`.
+
+### The two senders
+
+The first API senders in the tree. Post Selected, Post All and a Full Auto
+release take a Discord or Telegram post through its API once the venue reads
+`held` and `Max posts per hour` is set; every other venue keeps its folder or
+compose-address route, because the sender names the venues it takes and the
+route asks it.
+
+`src/trading/ata_spm_send.py` - what the board sends through
+
+```python
+SEND_ROUTES = {
+    ata_spm_push.TARGET_DISCORD: send_discord,
+    ata_spm_push.TARGET_TELEGRAM: send_telegram,
+}
+
+
+def build_sender(settings: Any, transport: Optional[Callable] = None) -> ApiSender:
+```
+
+One request per post, `multipart/form-data`, through the same URL opener the
+sign-ins use. Discord takes `payload_json` carrying `content` and `files[0]`
+carrying the venue PNG, at the webhook address with `wait=true`, and answers
+the created message and its `id`. Telegram takes `chat_id`, `caption` and
+`photo` at `sendPhoto` and answers `result.message_id`. The record reads
+`sent to channel <n>, message <id>` or `sent to chat <n>, message <id>`.
+
+`src/trading/ata_spm_push.py` - the route asks the sender
+
+```python
+def sender_takes(sender: Any, target: Any) -> bool:
+    """Whether ``sender`` posts to one target: every target while it names no
+    ``targets``, as ``RecordedDestination`` does, else the ones it names."""
+```
+
+### What a refusal reads
+
+A venue answering 429 is read for its wait; a 401 or 403 is read as the
+credential refused, with what the venue said; a caption over Telegram's 1,024
+is refused before any request, with the ceiling and the measure. The line and
+the entry carry the reason.
+
+`src/trading/ata_spm_send.py` - the three wordings
+
+```python
+RATE_LIMITED_FORMAT = "429, retry after {seconds:g} s"
+CREDENTIAL_REFUSED_FORMAT = "{http}, the credential was refused: {said}"
+HTTP_REFUSED_FORMAT = "{http}, {said}"
+```
+
+Nothing retries by itself. The post waits in the bucket for the next press.
+
+### The entry's status line says what the press did
+
+Each Ready to Send entry's status line now carries the outcome of the last
+press that took it, after the venue and the approval state: `sent · channel
+111222333, message 1001`, `not sent · Discord refused the post: 429, retry
+after 5 s`, `in folder`, `intent handed to the OS`, or `intent ready` after a
+Post All. The status line sits below the entry's visible fold at 1400 by 900,
+so the head-row badge carries the same outcome once a press took the post;
+before any press the badge carries the timer's status, as before.
+
+`src/trading/ata_spm_push.py` - the words the entry carries
+
+```python
+STATUS_SENT_FORMAT = "sent · {destination}"
+STATUS_NOT_SENT_FORMAT = "not sent · {detail}"
+STATUS_IN_FOLDER_TEXT = "in folder"
+STATUS_INTENT_OPENED_TEXT = "intent handed to the OS"
+STATUS_INTENT_READY_TEXT = "intent ready"
+```
+
+`src/gui/main_tabs/market_inspector_surface.py` - the badge both hosts draw
+
+```python
+def bucket_badge(held: Any) -> str:
+    """The head-row badge: the ``delivery`` of the last press that took the
+    post, else the timer's ``follow_up`` status, so either reads without
+    scrolling the entry."""
+```
+
+### WhatsApp by the compose address
+
+WhatsApp's folder holds the stamped picture, the text, and a `.url` file
+beside them carrying the Click-to-Chat address with the message typed in.
+Post Selected hands that file to the operating system's own handler; WhatsApp
+opens with the message, he picks the chat and attaches the picture from the
+same folder. No browser is driven.
+
+`src/trading/ata_venue_folders.py` - the second compose address
+
+```python
+WHATSAPP_INTENT_FORMAT = "https://wa.me/?text={text}"
+```
+
+### The press runs off the window thread
+
+A Post Selected, Post All or Full Auto press now runs on its own thread, one
+per press, and its records cross back to the window thread; a press while one
+runs is refused on the Activity Log. Every send therefore leaves the
+window-drawing thread free, as the scan and the confirmation reads already do.
+
+`src/gui/market_inspector.py` - the thread and the refusal
+
+```python
+HAND_OFF_THREAD_NAME = "ata-smp-hand-off"
+HAND_OFF_BUSY_TEXT = "ATA-SPM %s pressed while a hand-off is running; press ignored"
+```
+
+### The API block and the sent pin
+
+Every send writes one block on the Live tab's API Interaction Log, naming the
+venue, the action, the post, the text length, the image size and the message
+id or the refusal; the endpoint names the route with the token left out.
+`inspector.ata.sent` is written once per request with the venue, the symbol,
+the timeframe, the status, the message id and the elapsed time; `ok` is true
+on a send. `inspector.ata.handoff` carries the three venues as it carries the
+seven.
+
+`src/trading/ata_spm_send.py` - the pin and the block's endpoints
+
+```python
+SENT_PIN = "inspector.ata.sent"
+DISCORD_LOGGED_ENDPOINT = DISCORD_API_BASE + "/<id>/<token>?" + DISCORD_WAIT_QUERY
+TELEGRAM_LOGGED_ENDPOINT = TELEGRAM_API_BASE + "/bot<token>/" + TELEGRAM_SEND_PHOTO
+```
+
+### The three venues, read off both running builds
+
+Crypto, nothing typed, 1hr 1d 1wk ticked, hits per scan 1, Max posts per hour
+10, in each variant, with the home on a scratch directory, every socket but
+loopback refused, unit S5's candle stand-in and the two API stand-ins on
+loopback:
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| venue buttons on Level 1 | 10, WhatsApp's wording `none needed` | 10, the same |
+| Discord's page | one masked box; `Connect checks what you typed and holds it. No browser opens and no venue is reached.`; `Scopes none`; no redirect address | the same |
+| the webhook typed and the box left | `held`; the vault file under the scratch home holds no clear webhook | the same |
+| Telegram's page | two masked boxes, both `held` once left | the same |
+| WhatsApp's page | no box; `No sign-in. The post goes through the venue folder and the compose address.`; Connect leaves the page | the same |
+| one hit, ARB 1d | 10 entries, `1 of 10`, one per venue in row order, each with its venue PNG | the same |
+| folders | 10; Discord and Telegram one PNG and one TXT, WhatsApp one PNG, one TXT and one URL | the same |
+| Post Selected, Discord | one multipart POST to the stand-in: `payload_json` carrying `content`, `files[0]` carrying the 1200 by 675 PNG; badge `sent · channel 111222333, message 1001`; the Activity Log line; one API block `execute_webhook`, `200 message 1001`, on thread `ata-smp-hand-off`; one `sent` pin ok | the same, the line on the page's Activity Log and the block on the page's API log |
+| Post Selected, Telegram | `chat_id`, `caption` and `photo` at `sendPhoto`; `sent · chat -1001234567890, message 91`; the block `send_photo`, `200 message 91` | the same |
+| Post Selected, WhatsApp | no request; the `.url` handed to the OS handler; `intent handed to the OS` | the same |
+| the stand-in answering 429 | `not sent · Discord refused the post: 429, retry after 5 s`; Telegram `retry after 7 s`; the block reads `refused` at level error; the `sent` pin ok false | the same |
+| a wrong webhook and a wrong bot token typed | `401, the credential was refused: Invalid Webhook Token`; `401, the credential was refused: Unauthorized` | the same |
+| a Telegram caption over 1,024 | `Telegram publishes 1024; this post measures 2967.` with no request sent | the same |
+| Post All, ten approved | ten records: Discord and Telegram sent, WhatsApp and X `compose address ready`, the six others `in folder`; the root opened once | the same |
+| `inspector.ata.handoff` | the three venues with their route and outcome | the same |
+| `bot_state.json` | byte-identical after every press; the planted write moved the comparison | the same |
+| the operator's posts root | listed before and after, equal | the same |
+| connections refused | 0, because nothing asked for one | 0 |
+
+Nothing driven contacted a venue: every socket but loopback was refused and
+the two APIs were stood in on loopback, answering the shapes their own pages
+publish; the credentials typed were stand-in strings. The OS handler was
+recorded and not run.
+
+### The sentences the three venues overtake
+
+Not reworded, quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:322` - "Seven push targets ship, and
+adding one is adding a row, because no phase names a target." Ten ship; the
+second half is what made the three rows land with no screen edit.
+
+`docs/manual/08-tabs/market-inspector.md:653` - "Seven targets ship. Adding
+one is adding a row: no phase names a target, and the Settings credential list
+is built from the same rows, so a new row appears on the settings page with no
+screen edit." Ten ship; the rest holds and was read off both running builds.
+
+`docs/manual/08-tabs/market-inspector.md:1050` - "no sender reaches a
+platform." Two senders now reach Discord and Telegram; the sender is still
+handed the whole post, and the picture travels with the text.
+
+`docs/manual/08-tabs/market-inspector.md:1897` - "All seven venues use
+three-legged OAuth." The seven still do; Discord and Telegram take a typed
+credential and no OAuth, and WhatsApp takes none.
+
+`docs/manual/08-tabs/market-inspector.md:3501` - "The chart folder now holds
+seven folders, one per venue, named for it." Ten folders.
+
+`docs/manual/08-tabs/market-inspector.md:5017` - "`intent_path` the `.url`
+file, which only X's folder holds." X's and WhatsApp's.
+
+`docs/manual/08-tabs/market-inspector.md:5067` - "No sender is wired in the
+tree today, so every venue takes the folder route and X the intent route." A
+sender is wired in both hosts; it takes Discord and Telegram, and the seven
+keep the routes that sentence names, WhatsApp the intent route.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
+
 Back to [the subsystem index](README.md).
