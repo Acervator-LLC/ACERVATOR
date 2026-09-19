@@ -7,7 +7,8 @@ chart slot asks ``IMAGE_METHOD`` for the image one ``ChartPainter`` paints at
 the slot's width and the display's device pixel ratio, ``ChartPainter`` being
 the painter ``render_chart_png`` draws the ATA-SPM post images with. The tab
 answers ``update_charts``, ``fetch_chart_data`` and ``set_ata_source``, and
-``ChartsTabPage`` carries the page's own bridge asks back to ``run_ask``.
+``ChartsTabPage`` carries the page's own bridge asks back to ``run_ask``,
+``chart_view`` answering the pointer inputs the page's chart host sends.
 ``page_html`` inlines ``trade_charts_tab.css`` and every script, so the page
 fetches nothing.
 """
@@ -600,6 +601,11 @@ if _HAS_WEBENGINE:
                 "asked_overlays": panel.overlays,
                 "overlays": self._painter.overlays_shown(),
                 "theme": self._painter.theme_name(),
+                "window": [
+                    self._painter._visible_start,
+                    self._painter._visible_count,
+                    self._painter._y_zoom_pct,
+                ],
                 "width": int(width_px),
                 "height": int(height_px),
                 "ratio": float(ratio),
@@ -657,9 +663,62 @@ if _HAS_WEBENGINE:
                     (time.perf_counter() - started) * 1000.0 - painted_ms, 2
                 ),
                 "repainted": True,
+                "geometry": self._painter.geometry_payload(),
             }
             self._image_key_held = key
             return dict(self._image)
+
+        def chart_view(self, asked: dict) -> dict:
+            """Answer one pointer input from the page's chart host.
+
+            A wheel tick, a drag move and a double-click move ``painter``'s
+            window through the same methods the Qt widget's handlers call;
+            a press and a release bound the drag; a crosshair names the
+            candle the page drew under the pointer. The answer carries the
+            window and, when it moved, the repainted image with its geometry.
+            """
+            action = str(asked.get(surface.VIEW_ACTION_PARAM) or "")
+            if action not in surface.VIEW_ACTIONS:
+                raise ValueError(f"unknown chart view action {action!r}")
+            painter = self._painter
+            x = int(asked.get(surface.VIEW_X_PARAM) or 0)
+            width = (
+                int(asked.get(surface.VIEW_WIDTH_PARAM) or 0) or FALLBACK_IMAGE_WIDTH_PX
+            )
+            moved = False
+            if action == surface.VIEW_ACTION_WHEEL:
+                moved = painter.wheel_turned(
+                    x,
+                    float(asked.get(surface.VIEW_DELTA_PARAM) or 0.0),
+                    width,
+                    bool(asked.get(surface.VIEW_CONTROL_PARAM, False)),
+                )
+            elif action == surface.VIEW_ACTION_PRESS:
+                painter.pointer_pressed(x)
+            elif action == surface.VIEW_ACTION_DRAG:
+                moved = painter.pan_to(x, width)
+            elif action == surface.VIEW_ACTION_RELEASE:
+                painter.pointer_released()
+            elif action == surface.VIEW_ACTION_RESET:
+                painter.view_reset()
+                moved = True
+            else:
+                named = asked.get(surface.VIEW_CANDLE_PARAM)
+                painter.crosshair_named(x, width, None if named is None else int(named))
+            answer = {
+                surface.VIEW_ACTION_PARAM: action,
+                surface.VIEW_MOVED_KEY: moved,
+                surface.VIEW_START_KEY: painter._visible_start,
+                surface.VIEW_COUNT_KEY: painter._visible_count,
+                surface.VIEW_IMAGE_KEY: None,
+            }
+            if moved:
+                answer[surface.VIEW_IMAGE_KEY] = self.chart_image(
+                    asked.get(surface.VIEW_WIDTH_PARAM),
+                    asked.get(surface.VIEW_RATIO_PARAM),
+                    asked.get(surface.VIEW_HEIGHT_PARAM),
+                )
+            return answer
 
         # -- the calls the main window makes on the tab ------------------
 
@@ -803,6 +862,8 @@ if _HAS_WEBENGINE:
                     asked.get(IMAGE_RATIO_PARAM),
                     asked.get(IMAGE_HEIGHT_PARAM),
                 )
+            if method == surface.VIEW_METHOD:
+                return self.chart_view(asked)
             if method == native_chart_surface.METHOD:
                 return native_chart_surface.view_model(asked)
             if method == design_system_surface.METHOD:

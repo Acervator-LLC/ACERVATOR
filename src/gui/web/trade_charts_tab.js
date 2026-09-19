@@ -173,7 +173,82 @@
   var IMAGE_RATIO = "device_pixel_ratio";
   var IMAGE_SHA = "sha256";
   var IMAGE_CANDLES = "candle_count";
+  var IMAGE_GEOMETRY = "geometry";
   var PAINTER = "native_chart.py";
+
+  // The chart host sends each pointer input the Qt widget answers to the tab,
+  // which moves the painter's window through the same arithmetic and answers
+  // a new image; a hover draws the crosshair here from the image's geometry.
+  var VIEW_METHOD = "trade_charts_tab.view";
+  var VIEW_ACTION_PARAM = "action";
+  var VIEW_X_PARAM = "x";
+  var VIEW_Y_PARAM = "y";
+  var VIEW_WIDTH_PARAM = "width";
+  var VIEW_HEIGHT_PARAM = "height";
+  var VIEW_RATIO_PARAM = "dpr";
+  var VIEW_DELTA_PARAM = "delta";
+  var VIEW_CONTROL_PARAM = "control";
+  var VIEW_CANDLE_PARAM = "candle";
+  var VIEW_WHEEL = "wheel";
+  var VIEW_PRESS = "press";
+  var VIEW_DRAG = "drag";
+  var VIEW_RELEASE = "release";
+  var VIEW_RESET = "reset";
+  var VIEW_CROSSHAIR = "crosshair";
+  var VIEW_MOVED = "moved";
+  var VIEW_START = "start";
+  var VIEW_COUNT = "count";
+  var VIEW_IMAGE = "image";
+
+  var GEOMETRY_LEFT = "left";
+  var GEOMETRY_RIGHT = "right";
+  var GEOMETRY_PRICE_TOP = "price_top";
+  var GEOMETRY_PRICE_BOT = "price_bot";
+  var GEOMETRY_PRICE_H = "price_h";
+  var GEOMETRY_TIME_AXIS_Y = "time_axis_y";
+  var GEOMETRY_LOW = "low";
+  var GEOMETRY_SPAN = "span";
+  var GEOMETRY_COLUMN = "column_px";
+  var GEOMETRY_VISIBLE_START = "visible_start";
+  var GEOMETRY_VISIBLE_COUNT = "visible_count";
+  var GEOMETRY_CANDLES = "candles";
+  var GEOMETRY_TIME_LABEL = "time_label";
+  var GEOMETRY_LINES = "lines";
+  var GEOMETRY_PRICE_BANDS = "price_bands";
+  var GEOMETRY_GROUPED_DECIMALS = "grouped_decimals";
+  var GEOMETRY_CROSSHAIR_COLOUR = "crosshair_colour";
+  var GEOMETRY_BADGE_FILL = "badge_fill";
+  var GEOMETRY_BADGE_EDGE = "badge_edge";
+  var GEOMETRY_TEXT_LIGHT = "text_light";
+  var GEOMETRY_TEXT_DIM = "text_dim";
+  var GEOMETRY_FONT_FAMILY = "font_family";
+  var GEOMETRY_FONT_PX = "font_px";
+  var GEOMETRY_PIN_EVERY_MS = "pin_every_ms";
+
+  // The crosshair's pixel rules, as `paint_to` draws them.
+  var CROSSHAIR_DASH = [1, 2];
+  var PRICE_BADGE_PAD_PX = 12;
+  var PRICE_BADGE_HEIGHT_PX = 18;
+  var PRICE_BADGE_LIFT_PX = 9;
+  var PRICE_BADGE_RADIUS_PX = 3;
+  var TIME_BADGE_HEIGHT_PX = 16;
+  var TIME_BADGE_LIFT_PX = 1;
+  var TOOLTIP_LINE_HEIGHT_PX = 14;
+  var TOOLTIP_PAD_PX = 8;
+  var TOOLTIP_INSET_PX = 8;
+  var TOOLTIP_LABEL_INSET_PX = 6;
+  var TOOLTIP_VALUE_INSET_PX = 24;
+  var TOOLTIP_BASELINE_LIFT_PX = 3;
+  var TOOLTIP_STRIPE_WIDTH_PX = 3;
+  var TOOLTIP_RADIUS_PX = 4;
+  var TOOLTIP_STRIPE_RADIUS_PX = 2;
+  var READOUT_GAP = "  ";
+  var READOUT_LINE_JOIN = " ";
+  var READOUT_JOIN = "|";
+  var C_LINE_AT = 3;
+  var WHEEL_SIGN = -1;
+  var PRIMARY_BUTTON = 0;
+  var PASSIVE_OFF = { passive: false };
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -223,6 +298,9 @@
   var AUTO = "auto";
   var HIDDEN = "hidden";
   var FLEX_NONE = "none";
+  var RELATIVE = "relative";
+  var ABSOLUTE = "absolute";
+  var ZERO_PX = "0px";
   var NOWRAP = "nowrap";
   var WRAP = "wrap";
   var ELLIPSIS = "ellipsis";
@@ -265,6 +343,7 @@
   var CHART_PART = "chart-mount";
   var CHART_HOST_PART = "chart-host";
   var CHART_IMAGE_PART = "chart-image";
+  var CHART_OVERLAY_PART = "chart-overlay";
   var ERROR_PART = "panel-error";
   var EMPTY_PART = "empty-column";
 
@@ -282,6 +361,16 @@
   var IMAGE_RATIO_ATTR = "data-dpr";
   var IMAGE_SHA_ATTR = "data-sha256";
   var FAULT_ATTR = "data-fault";
+  // What the chart host reports about its own pointer handling.
+  var WIRED_ATTR = "data-pointer-wired";
+  var CROSSHAIR_X_ATTR = "data-crosshair-x";
+  var CROSSHAIR_Y_ATTR = "data-crosshair-y";
+  var CROSSHAIR_CANDLE_ATTR = "data-crosshair-candle";
+  var READOUT_ATTR = "data-readout";
+  var VIEW_START_ATTR = "data-view-start";
+  var VIEW_COUNT_ATTR = "data-view-count";
+  var HOVER_MS_ATTR = "data-hover-ms";
+  var VIEW_MS_ATTR = "data-view-ms";
 
   var SELECT_OPEN = "[";
   var SELECT_IS = "=\"";
@@ -736,9 +825,13 @@
     mountProps[CEILING_ATTR] = text(panel[TB_CEILING]);
     mountProps[ARMED_ATTR] = text(panel[ARMED] === null ? null : Boolean(panel[ARMED]));
 
-    // renderChartMounts places the image element inside this host itself, so
-    // React declares no child of its own inside it and never removes one.
-    var hostProps = { key: CHART_HOST_PART, style: { flex: AUTO, overflow: HIDDEN } };
+    // renderChartMounts places the image element and the crosshair canvas
+    // inside this host itself, so React declares no child of its own inside
+    // it and never removes one.
+    var hostProps = {
+      key: CHART_HOST_PART,
+      style: { flex: AUTO, overflow: HIDDEN, position: RELATIVE }
+    };
     hostProps[PART_ATTR] = CHART_HOST_PART;
     hostProps[BOT_ATTR] = text(props.botId);
 
@@ -1513,6 +1606,331 @@
     return found;
   }
 
+  // The one canvas over the image, where the crosshair and its readout draw.
+  function overlayIn(into) {
+    var found = into.querySelector(
+      SELECT_OPEN + PART_ATTR + SELECT_IS + CHART_OVERLAY_PART + SELECT_CLOSE
+    );
+    if (found !== null) {
+      return found;
+    }
+    found = document.createElement("canvas");
+    found.setAttribute(PART_ATTR, CHART_OVERLAY_PART);
+    found.style.position = ABSOLUTE;
+    found.style.left = ZERO_PX;
+    found.style.top = ZERO_PX;
+    found.style.pointerEvents = FLEX_NONE;
+    into.appendChild(found);
+    return found;
+  }
+
+  // The canvas takes the image's CSS size and the display's pixels.
+  function fitOverlay(into, answer) {
+    var canvas = overlayIn(into);
+    var ratio = Number(answer[IMAGE_RATIO]) || ONE;
+    var width = Number(answer[IMAGE_WIDTH]);
+    var heightPx = Number(answer[IMAGE_HEIGHT]);
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(heightPx * ratio);
+    canvas.style.width = height(width);
+    canvas.style.height = height(heightPx);
+    into.acervatorRatio = ratio;
+    return canvas;
+  }
+
+  function clearCrosshair(into) {
+    var canvas = overlayIn(into);
+    var context = canvas.getContext("2d");
+    context.setTransform(ONE, ZERO, ZERO, ONE, ZERO, ZERO);
+    context.clearRect(ZERO, ZERO, canvas.width, canvas.height);
+    into.removeAttribute(CROSSHAIR_X_ATTR);
+    into.removeAttribute(CROSSHAIR_Y_ATTR);
+    into.removeAttribute(CROSSHAIR_CANDLE_ATTR);
+    into.removeAttribute(READOUT_ATTR);
+  }
+
+  // The painter's price text, from the bands the geometry carries.
+  function formatPrice(price, geometry) {
+    var bands = listField(geometry, GEOMETRY_PRICE_BANDS);
+    for (var at = ZERO; at < bands.length; at++) {
+      if (price < Number(bands[at][ZERO])) {
+        return price.toFixed(Number(bands[at][ONE]));
+      }
+    }
+    var grouped = Number(geometry[GEOMETRY_GROUPED_DECIMALS]);
+    return price.toLocaleString("en-US", {
+      minimumFractionDigits: grouped,
+      maximumFractionDigits: grouped
+    });
+  }
+
+  function roundedRect(context, x, y, width, heightPx, radius) {
+    context.beginPath();
+    context.moveTo(x + radius, y);
+    context.lineTo(x + width - radius, y);
+    context.arcTo(x + width, y, x + width, y + radius, radius);
+    context.lineTo(x + width, y + heightPx - radius);
+    context.arcTo(x + width, y + heightPx, x + width - radius, y + heightPx, radius);
+    context.lineTo(x + radius, y + heightPx);
+    context.arcTo(x, y + heightPx, x, y + heightPx - radius, radius);
+    context.lineTo(x, y + radius);
+    context.arcTo(x, y, x + radius, y, radius);
+    context.closePath();
+  }
+
+  // The crosshair, the price badge, the time badge and the readout at the
+  // pointer's x and y, drawn as `paint_to` draws them, from the geometry the
+  // last image carried; nothing is asked of the tab.
+  function drawCrosshair(into, x, y) {
+    var started = performance.now();
+    var geometry = into.acervatorGeometry;
+    var canvas = overlayIn(into);
+    var context = canvas.getContext("2d");
+    var ratio = into.acervatorRatio || ONE;
+    context.setTransform(ratio, ZERO, ZERO, ratio, ZERO, ZERO);
+    context.clearRect(ZERO, ZERO, canvas.width, canvas.height);
+    into.removeAttribute(CROSSHAIR_CANDLE_ATTR);
+    into.removeAttribute(READOUT_ATTR);
+    if (!isPlainObject(geometry)) {
+      into.removeAttribute(CROSSHAIR_X_ATTR);
+      into.removeAttribute(CROSSHAIR_Y_ATTR);
+      return null;
+    }
+    var left = Number(geometry[GEOMETRY_LEFT]);
+    var right = Number(geometry[GEOMETRY_RIGHT]);
+    var priceTop = Number(geometry[GEOMETRY_PRICE_TOP]);
+    var priceBot = Number(geometry[GEOMETRY_PRICE_BOT]);
+    var priceH = Number(geometry[GEOMETRY_PRICE_H]);
+    var timeAxisY = Number(geometry[GEOMETRY_TIME_AXIS_Y]);
+    if (!(left <= x && x <= right && priceTop <= y && y <= timeAxisY)) {
+      into.removeAttribute(CROSSHAIR_X_ATTR);
+      into.removeAttribute(CROSSHAIR_Y_ATTR);
+      return null;
+    }
+    into.setAttribute(CROSSHAIR_X_ATTR, text(x));
+    into.setAttribute(CROSSHAIR_Y_ATTR, text(y));
+    var font = text(geometry[GEOMETRY_FONT_PX]) + PX + GAP + geometry[GEOMETRY_FONT_FAMILY];
+    var crosshair = geometry[GEOMETRY_CROSSHAIR_COLOUR];
+    context.font = font;
+    context.lineWidth = ONE;
+    context.strokeStyle = crosshair;
+    context.setLineDash(CROSSHAIR_DASH);
+    context.beginPath();
+    context.moveTo(x, priceTop);
+    context.lineTo(x, timeAxisY);
+    context.moveTo(left, y);
+    context.lineTo(right, y);
+    context.stroke();
+    context.setLineDash([]);
+    context.textBaseline = "alphabetic";
+    if (priceTop <= y && y <= priceBot) {
+      var price =
+        Number(geometry[GEOMETRY_LOW]) +
+        Number(geometry[GEOMETRY_SPAN]) * (ONE - (y - priceTop) / priceH);
+      var priceText = formatPrice(price, geometry);
+      var badgeW = context.measureText(priceText).width + PRICE_BADGE_PAD_PX;
+      roundedRect(context, right, y - PRICE_BADGE_LIFT_PX, badgeW, PRICE_BADGE_HEIGHT_PX, PRICE_BADGE_RADIUS_PX);
+      context.fillStyle = geometry[GEOMETRY_BADGE_FILL];
+      context.fill();
+      context.strokeStyle = crosshair;
+      context.stroke();
+      context.fillStyle = geometry[GEOMETRY_TEXT_LIGHT];
+      context.textAlign = CENTER;
+      context.textBaseline = "middle";
+      context.fillText(priceText, right + badgeW / 2, y);
+      context.textBaseline = "alphabetic";
+      context.textAlign = "left";
+    }
+    var candles = listField(geometry, GEOMETRY_CANDLES);
+    var column = Number(geometry[GEOMETRY_COLUMN]);
+    var under = Math.floor((x - left) / column);
+    if (!(under >= ZERO && under < candles.length)) {
+      return under;
+    }
+    var candle = candles[under];
+    var index = Number(geometry[GEOMETRY_VISIBLE_START]) + under;
+    into.setAttribute(CROSSHAIR_CANDLE_ATTR, text(index));
+    var timeLabel = text(candle[GEOMETRY_TIME_LABEL]);
+    if (timeLabel.length) {
+      var timeW = context.measureText(timeLabel).width + PRICE_BADGE_PAD_PX;
+      roundedRect(context, x - timeW / 2, timeAxisY - TIME_BADGE_LIFT_PX, timeW, TIME_BADGE_HEIGHT_PX, PRICE_BADGE_RADIUS_PX);
+      context.fillStyle = geometry[GEOMETRY_BADGE_FILL];
+      context.fill();
+      context.strokeStyle = crosshair;
+      context.stroke();
+      context.fillStyle = geometry[GEOMETRY_TEXT_LIGHT];
+      context.textAlign = CENTER;
+      context.textBaseline = "middle";
+      context.fillText(timeLabel, x, timeAxisY - TIME_BADGE_LIFT_PX + TIME_BADGE_HEIGHT_PX / 2);
+      context.textBaseline = "alphabetic";
+      context.textAlign = "left";
+    }
+    var lines = listField(candle, GEOMETRY_LINES);
+    var tipW = ZERO;
+    lines.forEach(function (line) {
+      tipW = Math.max(tipW, context.measureText(line[ZERO] + READOUT_GAP + line[ONE]).width);
+    });
+    tipW += TOOLTIP_PAD_PX * 2;
+    var tipH = TOOLTIP_LINE_HEIGHT_PX * lines.length + TOOLTIP_PAD_PX * 2;
+    var chartW = right - left;
+    var tx = x < left + chartW / 2 ? right - tipW - TOOLTIP_INSET_PX : left + TOOLTIP_INSET_PX;
+    var ty = priceTop + TOOLTIP_INSET_PX;
+    roundedRect(context, tx, ty, tipW, tipH, TOOLTIP_RADIUS_PX);
+    context.fillStyle = geometry[GEOMETRY_BADGE_FILL];
+    context.fill();
+    context.strokeStyle = geometry[GEOMETRY_BADGE_EDGE];
+    context.stroke();
+    var accent = lines.length > C_LINE_AT ? lines[C_LINE_AT][2] : geometry[GEOMETRY_TEXT_LIGHT];
+    roundedRect(context, tx, ty, TOOLTIP_STRIPE_WIDTH_PX, tipH, TOOLTIP_STRIPE_RADIUS_PX);
+    context.fillStyle = accent;
+    context.fill();
+    lines.forEach(function (line, at) {
+      var baseline = ty + TOOLTIP_PAD_PX + (at + ONE) * TOOLTIP_LINE_HEIGHT_PX - TOOLTIP_BASELINE_LIFT_PX;
+      context.fillStyle = geometry[GEOMETRY_TEXT_DIM];
+      context.fillText(line[ZERO], tx + TOOLTIP_PAD_PX + TOOLTIP_LABEL_INSET_PX, baseline);
+      context.fillStyle = line[2];
+      context.fillText(line[ONE], tx + TOOLTIP_PAD_PX + TOOLTIP_VALUE_INSET_PX, baseline);
+    });
+    into.setAttribute(
+      READOUT_ATTR,
+      lines
+        .map(function (line) {
+          return line[ZERO] + READOUT_LINE_JOIN + line[ONE];
+        })
+        .join(READOUT_JOIN)
+    );
+    into.setAttribute(HOVER_MS_ATTR, text(Math.round((performance.now() - started) * 1000) / 1000));
+    return index;
+  }
+
+  function hostPoint(into, event) {
+    var rect = into.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  // One pointer input to the tab; a moved window comes back with its image.
+  function sendView(mount, into, action, point, extra) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      into.setAttribute(FAULT_ATTR, NO_BRIDGE);
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[VIEW_ACTION_PARAM] = action;
+    params[VIEW_X_PARAM] = point.x;
+    params[VIEW_Y_PARAM] = point.y;
+    params[VIEW_WIDTH_PARAM] = into.clientWidth;
+    params[VIEW_HEIGHT_PARAM] = into.clientHeight;
+    params[VIEW_RATIO_PARAM] = global.devicePixelRatio || ONE;
+    Object.keys(extra || {}).forEach(function (key) {
+      params[key] = extra[key];
+    });
+    var started = performance.now();
+    return global.acervator.call(VIEW_METHOD, params).then(
+      function (answer) {
+        if (!isPlainObject(answer)) {
+          into.setAttribute(FAULT_ATTR, String(answer));
+          return null;
+        }
+        into.setAttribute(VIEW_START_ATTR, text(answer[VIEW_START]));
+        into.setAttribute(VIEW_COUNT_ATTR, text(answer[VIEW_COUNT]));
+        if (answer[VIEW_MOVED] && isPlainObject(answer[VIEW_IMAGE])) {
+          placeImage(mount, into, answer[VIEW_IMAGE]);
+          into.setAttribute(VIEW_MS_ATTR, text(Math.round((performance.now() - started) * 100) / 100));
+        }
+        return answer;
+      },
+      function (err) {
+        into.setAttribute(FAULT_ATTR, err && err.message ? err.message : String(err));
+        return null;
+      }
+    );
+  }
+
+  // A drag sends one move at a time; a move that arrives while one is in
+  // flight waits and the latest goes when the answer lands.
+  function sendDrag(mount, into, point) {
+    if (into.acervatorDragBusy) {
+      into.acervatorDragPending = point;
+      return;
+    }
+    into.acervatorDragBusy = true;
+    sendView(mount, into, VIEW_DRAG, point).then(function () {
+      into.acervatorDragBusy = false;
+      var pending = into.acervatorDragPending;
+      into.acervatorDragPending = null;
+      if (pending) {
+        sendDrag(mount, into, pending);
+      }
+    });
+  }
+
+  function pinCrosshair(mount, into, point, index) {
+    var geometry = into.acervatorGeometry;
+    var every = isPlainObject(geometry) ? Number(geometry[GEOMETRY_PIN_EVERY_MS]) : ZERO;
+    var now = performance.now();
+    if (into.acervatorPinAt !== undefined && now - into.acervatorPinAt < every) {
+      return;
+    }
+    into.acervatorPinAt = now;
+    var extra = {};
+    extra[VIEW_CANDLE_PARAM] = index;
+    sendView(mount, into, VIEW_CROSSHAIR, point, extra);
+  }
+
+  // The five inputs the Qt widget answers, wired once onto the chart host.
+  function wireHost(mount, into) {
+    if (into.getAttribute(WIRED_ATTR)) {
+      return;
+    }
+    into.setAttribute(WIRED_ATTR, text(true));
+    into.addEventListener("pointermove", function (event) {
+      var point = hostPoint(into, event);
+      into.acervatorPointer = point;
+      var index = drawCrosshair(into, point.x, point.y);
+      if (into.acervatorDragging) {
+        sendDrag(mount, into, point);
+      } else if (index !== null && index >= ZERO) {
+        pinCrosshair(mount, into, point, index);
+      }
+    });
+    into.addEventListener("pointerdown", function (event) {
+      if (event.button !== PRIMARY_BUTTON) {
+        return;
+      }
+      into.acervatorDragging = true;
+      sendView(mount, into, VIEW_PRESS, hostPoint(into, event));
+    });
+    into.addEventListener("pointerup", function (event) {
+      if (event.button !== PRIMARY_BUTTON) {
+        return;
+      }
+      into.acervatorDragging = false;
+      sendView(mount, into, VIEW_RELEASE, hostPoint(into, event));
+    });
+    into.addEventListener("dblclick", function (event) {
+      sendView(mount, into, VIEW_RESET, hostPoint(into, event));
+    });
+    into.addEventListener(
+      "wheel",
+      function (event) {
+        event.preventDefault();
+        var extra = {};
+        extra[VIEW_DELTA_PARAM] = WHEEL_SIGN * event.deltaY;
+        extra[VIEW_CONTROL_PARAM] = Boolean(event.ctrlKey);
+        sendView(mount, into, VIEW_WHEEL, hostPoint(into, event), extra);
+      },
+      PASSIVE_OFF
+    );
+    into.addEventListener("pointerleave", function (event) {
+      into.acervatorPointer = null;
+      clearCrosshair(into);
+      if (into.acervatorDragging) {
+        into.acervatorDragging = false;
+        sendView(mount, into, VIEW_RELEASE, hostPoint(into, event));
+      }
+    });
+  }
+
   // The answer's image goes into the host at its CSS size. The mount takes
   // the painter's natural height as its floor, so the toggles under it never
   // cover a sub-pane, while the image itself fills whatever height the host has.
@@ -1535,6 +1953,19 @@
         : answer[IMAGE_MINIMUM_HEIGHT]
     );
     into.removeAttribute(FAULT_ATTR);
+    var geometry = answer[IMAGE_GEOMETRY];
+    into.acervatorGeometry = isPlainObject(geometry) ? geometry : null;
+    fitOverlay(into, answer);
+    if (isPlainObject(geometry)) {
+      into.setAttribute(VIEW_START_ATTR, text(geometry[GEOMETRY_VISIBLE_START]));
+      into.setAttribute(VIEW_COUNT_ATTR, text(geometry[GEOMETRY_VISIBLE_COUNT]));
+    }
+    var pointer = into.acervatorPointer;
+    if (pointer) {
+      drawCrosshair(into, pointer.x, pointer.y);
+    } else {
+      clearCrosshair(into);
+    }
   }
 
   // Every chart slot asks the tab for the image `native_chart.py` paints of
@@ -1560,6 +1991,7 @@
         into.textContent = NO_BRIDGE;
         return;
       }
+      wireHost(mount, into);
       var params = {};
       params[IMAGE_WIDTH_PARAM] = into.clientWidth;
       params[IMAGE_HEIGHT_PARAM] = into.clientHeight;
