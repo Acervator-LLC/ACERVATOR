@@ -4687,4 +4687,282 @@ The loop quoted at `:3888` and the `class_markets` docstring quoted at
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-18 19:40 - #23 - A typed ticker is recognised across every class and read as one market
+
+> Sector Field - Incorrect naming... This entry field is for reading specific,
+> individual markets on demand and will require TICKER recognition...
+
+> Entire idea for the Emitter Network is to provide us signals for verifying
+> proper software function resulting from all user actions or automated
+> sequences...
+
+### What the field did before this entry, read against those words
+
+Recognition stopped at the sector menu. Typing `gl` under crypto offered
+nothing, because GLD is listed by metals. Typing `gld` under crypto and pressing
+Scan Now was refused with `crypto holds no ticker gld. Pick one the field
+offers.` and nothing ran. `BTC/USD` under crypto was refused the same way,
+because the pair form matched no name. `btc` under metals was refused. A typed
+name reached a market only when it was spelled as the chosen sector's list
+spelled it. The class box never moved. A market entry counted `reversal call(s)`
+by the twelve-voter consensus while the bucket counted the push gates, so
+`USO in metals · 1 market · 3 vote(s) · 0 reversal call(s)` sat beside one
+chart in the bucket. No signal recorded what the typed text named. Both
+running builds read the same twelve keystrokes and presses identically.
+
+### Typing offers every class's names, with the class beside each
+
+Each keystroke offers names from every class the maps and the connector list:
+the shipped sector map's 120 crypto names and the bases the connector's last
+ticker read listed, forex's 28 pairs, metals' 8 names and energy's 4 funds.
+Stocks and derivatives list nothing, as before. Each offer names its class.
+Nothing is fetched on a keystroke: the connector's bases come from the cache
+the Refresh press and the by-volume press fill.
+
+`src/gui/main_tabs/market_inspector_surface.py` - what one offer reads, and the separators a typed name may carry
+
+```python
+TICKER_OFFER_FORMAT = "{symbol}  ({asset_class})"
+#: The characters a typed ticker may carry between its base and its quote.
+TICKER_SEPARATORS = ("-", "_", " ")
+TICKER_JOIN = "/"
+```
+
+The offers come prefix matches first, the chosen class first inside each, then
+matches holding the text later in the name, eight at most. Typing `btc/u` under
+metals offers `BTC  (crypto)`, because the part after the slash starts a quote
+the connector route reads.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the rows the completer and the page's list draw
+
+```python
+def ticker_matches(typed: Any, asset_class: Any) -> list:
+    """The ``ticker_offer`` rows ``typed`` names across every class, prefix
+    matches first and the chosen class first inside each, capped at
+    ``TICKER_MATCH_LIMIT``. A typed pair offers the crypto base while its
+    quote part starts one of ``DEFAULT_QUOTES``; no venue is asked."""
+```
+
+The Qt completer shows the offer and writes the bare symbol into the field
+when one is picked. The page's list does the same: each option's label is the
+offer and its value is the symbol.
+
+### The press places the text in the class that lists it
+
+The typed text is folded first: upper case, outer spaces stripped, and `-`,
+`_` and an inner space read as `/`. The folded text is then matched against
+each class's names, the chosen class first and then the others in the order
+the class box lists them: whole, with the slash removed from both sides, or by
+the base of a pair whose quote is USD, USDC or USDT. The quote is not kept,
+because the connector route already tries those three quotes in that order.
+
+| typed | resolves to | class |
+| ----- | ----------- | ----- |
+| `btc`, `BTC/USD`, `btc-usd`, `BTCUSD` | BTC on the exchange | crypto |
+| `gld`, `GLD/USD` | GLD on yahoo | metals |
+| `eur/usd`, `eurusd`, ` eur usd ` | EUR/USD on yahoo | forex |
+| `BTC/EUR` | nothing | EUR is not a quote the connector route reads |
+| `ZZZQ` | nothing | no class lists it |
+
+`src/gui/main_tabs/market_inspector_surface.py` - the placement the press resolves
+
+```python
+def market_listing(ticker: Any, asset_class: Any, connectors: Any = None) -> Any:
+    """The ``ata_spm.TickerPlacement`` a typed ticker names, across every class.
+
+    ``placements_of`` walks the chosen class first; a chosen class that
+    ``class_tickers`` lists nothing for takes any name no class holds, which
+    is what ``TICKER_NO_LIST_FORMAT`` says under the field; a name no class
+    holds under a listing class answers None.
+    """
+```
+
+`src/trading/ata_spm.py` - what a placement carries
+
+```python
+@dataclass
+class TickerPlacement:
+    """One typed ticker placed: the row read and the class that lists it.
+
+    ``typed`` is the text as the operator wrote it; ``symbol`` is the name
+    the class lists it under, which the scan and the zone carry.
+    """
+
+    listing: Any
+    asset_class: str
+    typed: str = ""
+```
+
+At the press, the connector's bases are read through the same 900-second
+cache the by-volume walk reads, and the connector is asked once when the cache
+is older. A name two maps hold is placed in the chosen class when the chosen
+class holds it, else in the first class of the box's order that does.
+
+### The class box moves to the class that lists the market, and says so
+
+When the placed class differs from the chosen one, the answer's return moves
+the class box, redraws the four timeframe boxes for that class with the ticks
+that survive, and writes one line to the Activity Log and the console log.
+
+`src/trading/ata_spm.py` - the line
+
+```python
+CLASS_MOVED_TEXT = (
+    "ATA-SPM ticker {ticker} is listed under {placed}; the class box moves "
+    "from {chosen} to {placed}"
+)
+```
+
+A placed market keeps the class that lists it. Changing the class box while a
+market entry is shown no longer rewrites that entry's class; the box and the
+next press take the new class.
+
+### The one market is read on every ticked timeframe and its hits are the push gates' hits
+
+The placed market walks the same judged path an empty-field scan walks, with
+no stop count: every ticked timeframe the venue serves is read, each vote is
+judged through the live trade gates, and a hit is a vote the gates would fire
+on. The zone's count, the Activity Log's hit lines and the Ready to Send
+bucket count one thing.
+
+`src/trading/ata_spm.py` - the meta line and the rows a one-market entry carries
+
+```python
+MARKET_META_FORMAT = "1 market on {venue} · {votes} vote(s) · {hits} hit(s)"
+#: One phase-one row per timeframe of a one-market scan: the candles read
+#: and what the vote came to.
+MARKET_TIMEFRAME_FORMAT = "{candles} candle(s) · {reading}"
+MARKET_HIT_READING = "{direction} vote, hit"
+MARKET_REFUSED_READING = "{direction} vote, refused by the gates"
+MARKET_NO_VOTE_READING = "no vote"
+```
+
+The headline keeps `{ticker} in {asset_class}`. The meta names the venue the
+market was read on. One phase-one row per timeframe carries the candle count
+the read answered and the verdict. A venue that answers no candles reads
+`0 candle(s) · no vote` on each row, and the closed entry's method line keeps
+the sentence naming the market, as before.
+
+### A name no class lists is refused with the line naming it
+
+`src/trading/ata_spm.py` - the refusal
+
+```python
+TICKER_UNHELD_FORMAT = "No class lists ticker {ticker}. Pick one the field offers."
+```
+
+It draws on the line under the field, nothing runs, and no venue is asked.
+Under stocks and derivatives, which list nothing, a typed name still scans and
+the zone names what stopped it, as before.
+
+### One more pin
+
+| pin | written by | carries | verdict |
+| --- | ---------- | ------- | ------- |
+| `inspector.ata.ticker_resolved` | the press, once per press with text in the field | the typed text, the symbol placed, its class, its venue, whether the class box moves, or the refusal | actual: the class the text landed in, or empty; expected: the class chosen; ok: a market or a sector was named. A move reads ok with the two classes apart; a refusal reads false |
+
+It reaches `signal_contract.emit` and the handler's file as the six pins
+before it do.
+
+### Twelve keystrokes and presses read off both running builds
+
+Both builds were driven at the operator's window size, 1536 by 937 logical at
+125 % scale, on a scratch home with every socket but loopback refused. A
+loopback stand-in answered the Yahoo chart endpoint for GLD, SLV, PPLT, USO,
+BNO, UGA and UNG and refused every other ticker with 404, and a stand-in
+connector listed SOL, BTC, LINK, ADA, ETH and DOGE. The real endpoints were
+never called. Three timeframes were ticked on every press.
+
+| typed, class chosen | completer | class box after the press | zone |
+| ------------------- | --------- | ------------------------- | ---- |
+| `gl`, crypto | `GLD  (metals)` | - | - |
+| `aa`, crypto | `AAVE  (crypto)` | - | - |
+| `btc/u`, metals | `BTC  (crypto)` | - | - |
+| `gld`, crypto | - | metals | `GLD in metals` / `1 market on yahoo · 3 vote(s) · 1 hit(s)` / rows `384 candle(s) · bearish vote, refused by the gates`, `365 candle(s) · bearish vote, refused by the gates`, `200 candle(s) · bearish vote, hit` |
+| `BTC/USD`, crypto | - | crypto | `BTC in crypto` / `1 market on exchange · 2 vote(s) · 1 hit(s)`; 1hr unserved |
+| `btc`, metals | - | crypto | the same entry |
+| ` eur usd `, crypto | - | forex | `EUR/USD in forex` / `1 market on yahoo · 0 vote(s) · 0 hit(s)` / `No candles came back for EUR/USD.` |
+| `ZZZQ`, crypto | - | crypto | unchanged; the line under the field reads `No class lists ticker ZZZQ. Pick one the field offers.`; 0 venue calls |
+| `pall`, metals | - | metals | `PALL in metals` / `1 market on yahoo · 0 vote(s) · 0 hit(s)` / `No candles came back for PALL.` |
+| `goog`, stocks | - | stocks | `GOOG in stocks` / `1 market on no venue · 0 vote(s) · 0 hit(s)` / `No configured venue lists GOOG.` |
+| `uso`, metals, USO planted into the metals map | - | metals | `USO in metals` / `1 market on yahoo · 3 vote(s) · 1 hit(s)` |
+| `uso`, crypto, same plant | - | metals | the same entry, placed in the first class of the box's order that holds it |
+
+Every zone line was read off the window's own labels and off the page's own
+elements, and the two read identical on every row. The Activity Log held the
+same lines in the Qt pane and on the React page: 10 after the first press and
+189 after the last. The `ticker_resolved` record read `actual metals, expected
+crypto, ok true, moved true` on the first press, `actual "", expected crypto,
+ok false` with the refusal on `ZZZQ`, and `actual metals, expected metals` on
+`pall`. The hit record on a one-market press carries the count against the
+number of timeframes read. The scratch `bot_state.json` read byte for byte
+unchanged after every press, and a planted byte on a copy moved its digest.
+
+### Both bundles place gld under metals with no venue in reach
+
+Both bundles were built from this entry's code commits and launched in
+isolation on a scratch home with no network capability at all, the Inspector
+tab opened by a click on its tab item, `gld` written into the ticker field
+with crypto on the class box, and Scan Now pressed at the button. No venue can
+be reached, so every chart read is refused and the entry names the market
+with no candles; the placement needs no venue:
+
+| bundle | class box after the press | log lines after the press | pins in the handler's file | zone |
+| ------ | ------------------------- | ------------------------- | -------------------------- | ---- |
+| Qt | `metals` | 8 | 7: 1 pressed, 1 started, 1 resolved, 3 read, 1 finished | `GLD in metals` / `1 market on yahoo · 0 vote(s) · 0 hit(s)` / `No candles came back for GLD.` |
+| React | `metals` | 8 | 7, the same | identical |
+
+The resolved record read `actual metals, expected crypto, ok true, moved
+true` on both. The four timeframe boxes redrew as metals' four, with 1hr, 1d
+and 1wk ticked and the crypto-only 5m gone, and the second press's line read
+`metals on 1hr 1d 1wk`. A second press with `ZZZQ` in the field wrote 4
+lines and 4 records on both, the resolved record `ok false` with the refusal,
+and the page's own line under the field read
+`No class lists ticker ZZZQ. Pick one the field offers.` The zone headline
+and meta were read off the window's own labels and off the page's own text
+elements through UI Automation, and the class box off the window's combo box.
+The bundle's own state timer saves the empty fleet every 60 seconds, so
+`bot_state.json` gained a new stamp during the presses and held the same
+fleet: 0 bots, an empty bot map.
+
+### The Qt timeframe buttons take their label's width
+
+On both bundle captures at 125 % scale the fourth timeframe button read
+`mnt`: the bold `1mnth` label outgrew the fixed 64 px width. The width is
+now a floor and the button grows to its own size hint, so the label reads
+whole. The page's buttons were not clipped and are unchanged.
+
+### Sentences and code blocks this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:3141` - "Each letter narrows a list
+the program already holds. Nothing is fetched and no venue is asked. Crypto
+reads the shipped sector map. Every other sector reads the asset maps." The
+list is now every class's names, and crypto's also carry the bases the
+connector listed.
+
+`docs/manual/08-tabs/market-inspector.md:3239` - "| a ticker the sector lists
+| reads that one market, on every ticked timeframe |" and `:3241` - "| a name
+the sector lists as neither ticker nor sector | reads nothing, and the line
+under the field says so |". A ticker any class lists is read, under that
+class; a name no class lists is refused.
+
+`docs/manual/08-tabs/market-inspector.md:3339-3340` - "The press adds the typed
+value as a market when the sector lists it as a ticker, and as a sector only
+when the sector map holds it under that name." The market is added when any
+class lists it.
+
+`docs/manual/08-tabs/market-inspector.md:3812` - "| a ticker the sector lists
+| reads that one market, on every ticked timeframe, unchanged |". The market
+is now judged through the push gates as the by-volume walk is.
+
+The `market_listing` docstring quoted at `:3248`, the `MARKET_META_FORMAT`
+line quoted at `:3283` and the `TICKER_UNHELD_FORMAT` block quoted at `:3295`
+describe the code before this entry, and the `ZZZZ` row at `:3315` reads the
+refusal as it was worded then.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
