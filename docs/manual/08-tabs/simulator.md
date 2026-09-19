@@ -546,6 +546,20 @@ carrying the run id the report carries. The live bucket's files are untouched.
 SIM_LOG_FILES = ("trade.log", "gate.log", "voting.log", "diagnostics.log")
 ```
 
+Every emit a run raises on its worker thread, the TA engine's postcondition
+pins among them, lands in the Simulator's own signal sink,
+`signals/session.jsonl` under the sim bucket, and none in the process sink
+under `signals/` of the log root. The Activity Log names the sim sink's path
+at each run's start, and the process sink gains one `sim.sink.routed` row at
+each run's end.
+
+`src/simulator/sim_bus.py` — the line at a run's start
+
+```python
+#: The Activity Log line ``routed_run`` writes at each run's start.
+SINK_LINE_FORMAT = "{run} signals: {path}"
+```
+
 ### The colour
 
 Every Sim ground is the theme's nigredo tone. The widget tree carries the tone
@@ -6929,6 +6943,238 @@ scratch home, ran Portfolio over EQUITY_MACRO on `All` and read SPY and GLD
 at 1d 1,678 bars and 1,649 evaluations each, at 1w 349 and 320, at 1M 81 and
 52, and at 1d HODL end $2,513.22, Harvest-Fold end $2,001.64, difference
 -511.57 (-20.36% of HODL end) on the operator's own Yahoo files.
+
+## The Simulator's run emits go to the Simulator's own signal sink
+
+Every emit a run raises on its worker thread lands in the Simulator's own
+signal sink, `signals/session.jsonl` under the sim bucket, and none in the
+process sink under `signals/` of the log root. The operator, 2026-09-18:
+*"Entire idea for the Emitter Network is to provide us signals for verifying
+proper software function resulting from all user actions or automated
+sequences."* Before this, one Portfolio Battery press over one crypto
+portfolio at 5m emitted 1,287,112 rows into the process sink, its ladder of
+six files rotated through five backups, and the press row, the live pins and
+every row from before the press rotated out with them. The emit sites are not
+changed, `src/trading/ta_engine.py` is not opened, and the shared trading code
+does not know which side it runs on: the wire itself learned a routing by
+thread.
+
+`src/core/signal_contract.py` — the routing seam
+
+```python
+def route_thread(sink: SignalSink) -> None:
+    """Send every `emit` raised on the calling thread to `sink` until `unroute_thread`."""
+    with _ROUTES_LOCK:
+        _ROUTES[threading.get_ident()] = sink
+
+
+def unroute_thread() -> None:
+    """Return the calling thread's emits to the process sink `set_sink` installed."""
+    with _ROUTES_LOCK:
+        _ROUTES.pop(threading.get_ident(), None)
+
+
+def get_sink() -> Optional[SignalSink]:
+    """The sink the calling thread emits into: its `route_thread` sink when one
+    is set, else the process sink."""
+    if _ROUTES:
+        with _ROUTES_LOCK:
+            routed = _ROUTES.get(threading.get_ident())
+        if routed is not None:
+            return routed
+    with _ACTIVE_LOCK:
+        return _ACTIVE
+```
+
+`emit` reads `get_sink()` and hands the record to the sink it answers, as it
+did before. With no route set the dict is empty, and the wire is one truth
+test on an empty dict, then the lock and the process sink, as before. A thread
+routes itself, by its own ident, and clears its own route, so a route is never
+left under an ident the thread no longer holds.
+
+### The sim sink is the process sink's class over the sim bucket
+
+The sim sink is one `SignalSink` per process, the class the process sink is,
+at `sim/signals/session.jsonl`, opened on the first run of the process and
+answered on every run after. It rotates at 50 MiB into `.1` to `.5`, keeps
+350,000 rows in memory and flushes every 500 rows, the process sink's own
+figures, and thins its own `session.digest.jsonl` beside it as the process
+sink does. Each row has the shape `Signal.to_json` writes on both sides.
+
+`src/simulator/sim_bus.py` — the sim sink
+
+```python
+def sim_signal_sink() -> SignalSink:
+    """The one ``SignalSink`` per process at ``SIGNALS_FILE`` under
+    ``SIGNALS_DIR`` of ``get_sim_dir``, built as ``install_process_sink``
+    builds the process sink and opened on the first call."""
+    global _SIGNAL_SINK
+    with _SIGNAL_SINK_LOCK:
+        if _SIGNAL_SINK is None:
+            sink = SignalSink(flush_every=PROCESS_SINK_FLUSH_EVERY)
+            sink.path = get_sim_dir() / SIGNALS_DIR / SIGNALS_FILE
+            _SIGNAL_SINK = sink
+        return _SIGNAL_SINK
+```
+
+### Each worker marks itself for the length of its run
+
+Every run's worker thread routes itself on its first statement and clears the
+route when the run returns or raises. One context, `routed_run`, does both:
+on entry it opens the sim sink, routes the calling thread and writes the
+Activity Log line; on exit it reads whether the thread's sink is still the sim
+sink, clears the route, flushes the sim sink and emits the routed row on the
+process sink. The six worker entries wrap their bodies in it: `_compute_battery`,
+`_compute_run` and `_compute_retrieval` on each host.
+
+`src/simulator/sim_bus.py` — the run context
+
+```python
+@contextmanager
+def routed_run(run: str, line: Callable[[str], None]) -> Iterator[SignalSink]:
+    """Route the calling thread's emits to ``sim_signal_sink`` for the block,
+    hand ``line`` the ``SINK_LINE_FORMAT`` line on entry, and on exit unroute,
+    flush the sim sink and emit ``SINK_ROUTED_SIGNAL`` on the process sink."""
+    sink = sim_signal_sink()
+    thread = threading.get_ident()
+    rows_before = int(sink.health()["emitted"])
+    route_thread(sink)
+    try:
+        line(SINK_LINE_FORMAT.format(run=run, path=sink.path))
+        yield sink
+    finally:
+        routed = get_sink() is sink
+        unroute_thread()
+        sink.flush()
+        restored = get_sink() is not sink
+        emit(
+            SINK_ROUTED_SIGNAL,
+            actual={
+                "thread": thread,
+                "run": run,
+                "path": str(sink.path),
+                "routed": routed,
+                "restored": restored,
+                "rows": int(sink.health()["emitted"]) - rows_before,
+            },
+            expected={"routed": True, "restored": True},
+            ok=routed and restored,
+        )
+        process_sink = get_sink()
+        if process_sink is not None:
+            process_sink.flush()
+```
+
+`src/gui/simulator/sim_trading_tab.py` — the Battery's worker under the context
+
+```python
+        with routed_run(
+            surface.MODE_PORTFOLIO_BATTERY,
+            lambda line: self.battery_line.emit(line, "info"),
+        ):
+```
+
+A Validation or Back Test run routes under its mode name, and the replay
+layer's tablet retrieval under `retrieval`. No run spawns a thread of its own:
+`run_battery`, `back_test.run` and `validation.run` walk on the calling
+thread, and the retrieval runs its event loop on the worker thread. A route
+does not pass to a thread a routed thread starts.
+
+### The tab's own presses stay on the process sink
+
+The six pins the tab emits on the GUI thread, `sim.fleet.mode_shown`,
+`sim.fleet.clear_pressed`, `sim.fleet.cleared`, `sim.run.start_pressed`,
+`sim.replay.marks_drawn` and `sim.layer.flipped`, are the operator's actions
+on the running program, and they land on the process sink as before, beside
+the live bots' pins and the Console's own. The Indicator Voting Panel's feed,
+`ivp_feed`, computes the selected bot's stored reading on the GUI thread, so
+the thirteen postcondition pins of that one evaluation stay on the process
+sink too. The Console's lower pane reads the process sink on the GUI thread,
+so it draws those and never the walk.
+
+`src/gui/simulator/sim_trading_tab.py` — a GUI-thread pin, unchanged
+
+```python
+        _pin_emit(
+            tab_surface.LAYER_FLIPPED_SIGNAL,
+            **tab_surface.flipped_pin(
+                leaving, self._layer, pressed, self._last_flip_rect
+            ),
+        )
+```
+
+### The routed row and the Activity Log line
+
+At each run's end one `sim.sink.routed` row lands on the process sink. It
+carries the worker's thread ident, the run name, the sim sink's path, whether
+the thread's sink still read the sim sink when the run ended, whether it reads
+the process sink again after the unroute, and the rows the sim sink took over
+the run; it reads `ok` when both verdicts hold. A seam that stops consulting
+the route reads `routed` false, and one that does not clear it reads
+`restored` false. At each run's start the Activity Log names the sim sink's
+path, after the started line and before the first walk line.
+
+`src/simulator/sim_bus.py` — the row and the line
+
+```python
+#: The row ``routed_run`` emits on the process sink at each run's end.
+SINK_ROUTED_SIGNAL = "sim.sink.routed"
+
+#: The Activity Log line ``routed_run`` writes at each run's start.
+SINK_LINE_FORMAT = "{run} signals: {path}"
+```
+
+The Watchdog Archetype reads source, not a sink: a pin is wired when its name
+resolves to `signal_contract.emit`, and the routing lives inside that wire, so
+a sim emit site reads wired on the same rule as a live one and the archetype
+needs no sink named.
+
+```mermaid
+flowchart LR
+    press[Run Portfolio on the GUI thread] --> started[the started line, the press row on the process sink]
+    started --> worker[_compute_battery on sim-portfolio-battery]
+    worker --> routed[routed_run: route_thread, the signals line]
+    routed --> walk[run_battery, walk, compute_all]
+    walk --> pin[_ta_emit through signal_contract.emit]
+    pin --> sink{get_sink}
+    sink -->|routed thread| simsink[sim/signals/session.jsonl]
+    sink -->|any other thread| livesink[signals/session.jsonl]
+    walk --> done[finally: unroute_thread, flush]
+    done --> row[sim.sink.routed on the process sink]
+```
+
+### What the sink reading measured
+
+Both builds, the real window over a scratch home, every socket but loopback
+refused, the process sink installed as `main` installs it, unit 31's wide
+seed and a loopback stand-in for the public candle endpoint. Before, a Back
+Test over the 24 seeded bots took the process sink from 23 rows and 12,464
+bytes at the press to 61,824 rows and 42,183,886 bytes at the end, 61,802 of
+the new rows the TA engine's, with a planted emit on the worker thread beside
+them; Run Portfolio over CRYPTO_BLUE on `2026 test run` emitted 1,287,112
+rows, the ladder held 445,060 rows and 305,926,618 bytes in six files when
+the run ended, the sink's own health read 937,112 evicted, and the press row,
+the planted worker row and the planted GUI row had rotated out; no sim sink
+existed. After, the same Back Test left the process sink at 45 rows in Qt and
+42 in React, the rows above the press watermark the press row, the panel's
+one evaluation, the Console's own pins, the planted GUI row and the routed
+row, while the sim sink took 61,777 rows and 42,157,581 bytes, 61,776 of them
+the TA engine's and one the planted worker row; the same Battery press left
+the process sink at 60 rows in Qt and 57 in React with zero evicted, no
+`ta.*` row and no `sim.battery.*` row above the press watermark, while the
+sim sink took 1,287,136 rows in Qt and 1,287,162 in React, its ladder holding
+445,136 and 445,162 rows across six files at the end, its last row
+`sim.battery.portfolio_finished`. The routed row read `ok` with `routed` and
+`restored` true and `rows` 61,777 for the Back Test, 1,287,136 and 1,287,162
+for the Battery, and 0 for Retrieve Tablet, whose connector emits nothing.
+The Activity Log named the sim sink's path after each started line. A planted
+emit on the GUI thread landed on the process sink and not the sim sink; the
+GUI thread routed on purpose for one emit landed that emit on the sim sink,
+so the reading can fail; a helper thread that routed itself and exited left
+the next GUI emit on the process sink; the flip's row landed on the process
+sink. The scratch `bot_state.json` and every copied daily file hashed
+identical after every press, with a planted byte moving the hash; no socket
+left loopback.
 
 ## The widget the rebuild replaced
 

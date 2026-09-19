@@ -4,7 +4,10 @@ Defines `Signal`, the frozen record `emit()` produces, and `SignalSink`,
 the buffered sink that stores and rotates them under
 `~/.acervator_logs/signals/`. A satisfied expectation is recorded the
 same as a violated one, so a call site that never ran and one that
-always passed are both visible.
+always passed are both visible. `route_thread` sends the calling
+thread's emits to another `SignalSink` until `unroute_thread`; the
+Simulator routes each run's worker thread to its own sink under the sim
+bucket, so `get_sink` answers per thread.
 """
 
 from __future__ import annotations
@@ -26,6 +29,11 @@ if TYPE_CHECKING:
 
 DEFAULT_FLUSH_EVERY = 200
 """Rows buffered in memory before `flush()` writes them to disk."""
+
+PROCESS_SINK_FLUSH_EVERY = 500
+"""Rows the sink `install_process_sink` builds buffers before `flush()`; a sink
+built to match it, such as the Simulator's, reads this figure.
+"""
 
 RETAIN_ROWS = 350_000
 """Signal records kept in memory at once; older ones are evicted from memory but remain
@@ -1238,6 +1246,11 @@ class SignalSink:
 _ACTIVE: Optional[SignalSink] = None
 _ACTIVE_LOCK = threading.Lock()
 
+# `_ROUTES` maps a thread ident to the sink that thread's emits reach instead of
+# `_ACTIVE`; empty until a thread calls `route_thread`.
+_ROUTES: dict = {}
+_ROUTES_LOCK = threading.Lock()
+
 
 _THROTTLE_LOCK = threading.Lock()
 _THROTTLE: dict = {}
@@ -1275,7 +1288,26 @@ def set_sink(sink: Optional[SignalSink]) -> None:
         _ACTIVE = sink
 
 
+def route_thread(sink: SignalSink) -> None:
+    """Send every `emit` raised on the calling thread to `sink` until `unroute_thread`."""
+    with _ROUTES_LOCK:
+        _ROUTES[threading.get_ident()] = sink
+
+
+def unroute_thread() -> None:
+    """Return the calling thread's emits to the process sink `set_sink` installed."""
+    with _ROUTES_LOCK:
+        _ROUTES.pop(threading.get_ident(), None)
+
+
 def get_sink() -> Optional[SignalSink]:
+    """The sink the calling thread emits into: its `route_thread` sink when one
+    is set, else the process sink."""
+    if _ROUTES:
+        with _ROUTES_LOCK:
+            routed = _ROUTES.get(threading.get_ident())
+        if routed is not None:
+            return routed
     with _ACTIVE_LOCK:
         return _ACTIVE
 
@@ -1342,7 +1374,7 @@ def emit(
 
 def install_process_sink(
     log_dir: Optional[Path] = None,
-    flush_every: int = 500,
+    flush_every: int = PROCESS_SINK_FLUSH_EVERY,
 ) -> Optional["SignalSink"]:
     """Install the sink the whole process emits into; call once from `main()`.
 
