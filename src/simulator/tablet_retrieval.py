@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from ..trading.stone_tablets.fetcher import STEP_5M_MS, YTD_START_MS
 from ..trading.stone_tablets.registry import NATIVE_TIMEFRAME, StoneTabletsRegistry
+from ..trading.stone_tablets.storage import tablet_filename
 from .back_test import adapter_for, download_missing
-from .read_only_connector import PAGE_ROWS
+from .read_only_connector import EXCHANGE_ID, PAGE_ROWS, product_of
 
 #: Every retrieval walks and writes this timeframe; the registry stores no other.
 TIMEFRAME = NATIVE_TIMEFRAME
@@ -57,6 +60,27 @@ class RetrievalCost:
     def needed(self) -> bool:
         """True when the registry lacks at least one candle of the span."""
         return self.candles > 0
+
+
+def call_tablet(call: Any, exchange_id: str = EXCHANGE_ID) -> tuple[str, str]:
+    """``(key, file)`` of the tablet one ``VenueCall`` fills: ``tablet_filename``
+    over the call's ``symbol`` base, its ``timeframe`` and the UTC year of its
+    ``since_ms``, on ``exchange_id``; ``key`` is ``file`` without its suffix."""
+    asset = product_of(getattr(call, "symbol", "")).split("-")[0]
+    year = datetime.fromtimestamp(
+        int(getattr(call, "since_ms", 0) or 0) / 1000.0, tz=timezone.utc
+    ).year
+    file = tablet_filename(
+        asset, str(getattr(call, "timeframe", TIMEFRAME)), year, exchange_id=exchange_id
+    )
+    return file[: -len(".json")], file
+
+
+def tablet_on_disk(root: Any, file: str) -> bool:
+    """True when ``file`` exists under ``root``; False for an empty root."""
+    if not root:
+        return False
+    return (Path(str(root)) / str(file)).is_file()
 
 
 def venue_pages(call: Any, page_rows: int = PAGE_ROWS) -> int:
@@ -210,7 +234,9 @@ __all__ = [
     "RetrievalCost",
     "RetrievalOutcome",
     "call_count",
+    "call_tablet",
     "closed_until_ms",
+    "tablet_on_disk",
     "retrieval_cost",
     "retrieval_span",
     "retrieve",

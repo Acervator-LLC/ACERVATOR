@@ -7512,15 +7512,36 @@ prediction from the chooser's preflight beside the observed count.
             tape.refuse(
 ```
 
-The Sim API pane records a `FETCH_TABLET` block per venue call only for a
-call the tab's own connector makes, because the pane's writer accepts an
-entry from the GUI thread alone and the tab's connector crosses to it. The
-Battery builds its own connector when the host hands none, and both hosts
-hand none in this unit, so the Battery's venue calls reach the Activity Log
-and the signal sink and not the API pane. In development: each host passes
-`connector=self.connector()` to `run_battery` and its venue-call recorder
-takes the tablet key from the call rather than from the replay layer's held
-press.
+The Sim API pane records a `FETCH_TABLET` block per connector call, the
+same block the replay layer's Retrieve Tablet press writes, because both
+hosts hand `run_battery` the tab's own connector and that connector crosses
+each call to the GUI thread, where the pane's writer accepts it. The
+recorder names the tablet off the call itself, through `call_tablet`: the
+symbol's base, the timeframe and the year of the first candle asked, so a
+Battery call reads `FETCH_TABLET BTC_5m_2026_coinbase` and a replay-layer
+call keeps its own key. One block is one connector call of 350 candles; the
+public endpoint answers it in two pages of 300 and 50, which is why the
+chooser's call count is twice the block count. The Battery's per-asset lines
+stay on the Activity Log and the per-call progress line is the replay
+layer's alone.
+
+`src/simulator/tablet_retrieval.py` — the tablet one call names
+
+```python
+def call_tablet(call: Any, exchange_id: str = EXCHANGE_ID) -> tuple[str, str]:
+    """``(key, file)`` of the tablet one ``VenueCall`` fills: ``tablet_filename``
+    over the call's ``symbol`` base, its ``timeframe`` and the UTC year of its
+    ``since_ms``, on ``exchange_id``; ``key`` is ``file`` without its suffix."""
+```
+
+`src/gui/simulator/sim_trading_tab.py` — the Battery on the tab's connector
+
+```python
+                progress=lambda line: self.battery_line.emit(line, "info"),
+                on_trade=self.battery_trade.emit,
+                bus=self._bus,
+                connector=self._connector,
+```
 
 ### The 2026 test run span
 
@@ -7569,7 +7590,10 @@ retrieving line and the retrieved line for BTC and for ETH, and the refusal by
 name for BNB; `BTC_5m_2026_coinbase.json` and `ETH_5m_2026_coinbase.json`
 landed under the scratch root with their MANIFEST rows and candle counts near
 288 a day; two `sim.tablet.retrieved` rows and one `sim.tablet.refused` row
-reached the signal sink; the walk read BTC and ETH at `5m` and at `1d`, and
+reached the signal sink; the Sim API pane held 290 `FETCH_TABLET` blocks
+after two presses, 141 for BTC, 141 for ETH and 8 for BNB, read off the Qt
+pane's text and the React page's API log element, while the stand-in counted
+two pages for each; the walk read BTC and ETH at `5m` and at `1d`, and
 BNB `no_tablet` at 5m; the report's Tablets section named each bot's file,
 timeframe, candle count and checksum. A second press over the same span
 stated nothing to retrieve and fetched nothing, and the two 5m files hashed
