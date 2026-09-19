@@ -157,6 +157,7 @@ from .main_tabs.market_inspector_surface import (
     ENTRY_METHOD_STYLE,
     ENTRY_SPACING_PX,
     ENTRY_STYLE,
+    COUNTER_PART,
     POSITION_EMPTY_TEXT,
     POSITION_STYLE,
     STEP_BACK_TEXT,
@@ -480,6 +481,13 @@ if _HAS_QT:
             self.position_label.setStyleSheet(POSITION_STYLE)
             row.addWidget(self.position_label)
             row.addStretch()
+            # The running scan's counter, at the row's right end just above
+            # the entry; empty while no scan runs.
+            self.counter_label = QLabel("")
+            self.counter_label.setStyleSheet(POSITION_STYLE)
+            self.counter_label.setAccessibleName(COUNTER_PART)
+            self.counter_label.setVisible(False)
+            row.addWidget(self.counter_label)
             root.addLayout(row)
 
             self.entry = _ZoneEntry()
@@ -561,6 +569,9 @@ if _HAS_QT:
             total = int(view.get("total", 0))
             self.entry.setMinimumHeight(0)
             self.position_label.setText(str(view.get("position", "")))
+            counter = str(view.get("counter", "") or "")
+            self.counter_label.setText(counter)
+            self.counter_label.setVisible(bool(counter))
             self.back_button.setEnabled(total > 1)
             self.next_button.setEnabled(total > 1)
             self.headline_label.setText(str(view.get("headline", "")))
@@ -1625,6 +1636,7 @@ if _HAS_QT:
                 )
             )
             self._scan_refusals = {}
+            self._ata_board.progress_lines = []
             self._ata_board.progress = ata_spm.ScanProgress(
                 asset_class=board.asset_class,
                 read=ata_spm.NO_MARKETS_READ,
@@ -1665,6 +1677,8 @@ if _HAS_QT:
             if self._ata_board.progress is None:
                 return
             self._ata_board.progress = progress
+            if progress.line:
+                self._ata_board.progress_lines.append(str(progress.line))
             read = int(progress.read)
             if read and (read % PROGRESS_PIN_EVERY == 0 or read == int(progress.total)):
                 _pin_emit(
@@ -2074,7 +2088,7 @@ if _HAS_QT:
             """All six zones as the stepper draws them, left three then right three.
 
             The ATA-SPM zone carries the board's ``progress_text`` as its
-            running line.
+            counter and ``progress_lines`` as its rows while a scan runs.
             """
             rows = _left_module_rows(
                 self._ata_report(),
@@ -2083,7 +2097,6 @@ if _HAS_QT:
                 self._connectors_now(),
                 len(self._ata_board.sectors),
                 self._ata_board.note,
-                self._ata_board.progress_text,
             ) + _right_zone_rows(self._ata_report(), self._push_board.bucket)
             return [
                 zone_view(
@@ -2094,6 +2107,7 @@ if _HAS_QT:
                     self._zone_open.get(key, False),
                     status,
                     self._ata_board.progress_text if key == ATA_SPM_MODULE else "",
+                    self._ata_board.progress_lines if key == ATA_SPM_MODULE else (),
                 )
                 for key, title, status in rows
             ]

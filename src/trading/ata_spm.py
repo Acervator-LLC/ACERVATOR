@@ -199,6 +199,19 @@ NO_MARKET_TEXT = "none"
 SCAN_PROGRESS_FORMAT = "Scanning {asset_class} · {read} of {total} · {hits} hit(s)"
 #: The zone's line from the press until the market list is read.
 SCAN_LISTING_FORMAT = "Scanning {asset_class} · reading the market list"
+#: One line per market the walk read, drawn in the field as the scan runs.
+SCAN_MARKET_LINE_FORMAT = "{symbol} · {timeframes} · {votes} vote(s) · {verdict}"
+SCAN_MARKET_HIT_FORMAT = "hit on {labels}"
+SCAN_MARKET_BLOCKED_FORMAT = "no hit: the gates blocked {names}"
+#: The chain a vote of each direction fires: a bearish call folds, a bullish
+#: call scrums; a neutral vote names every blocked gate of both.
+VOTE_SIDES = {
+    SignalDirection.BEARISH: ata_gate_scan.SIDE_FOLD,
+    SignalDirection.BULLISH: ata_gate_scan.SIDE_SCRUM,
+}
+SCAN_MARKET_NO_VOTE_TEXT = "no hit: no vote"
+SCAN_MARKET_UNREAD_TEXT = "no candles"
+SCAN_LINE_JOIN = " "
 #: What the Scan Now button reads, disabled, from the press to the end.
 SCAN_BUSY_LABEL = "Scanning…"
 
@@ -443,6 +456,8 @@ class ScanProgress:
     read: int
     total: int
     hits: int
+    #: ``SCAN_MARKET_LINE_FORMAT`` over the market just read, empty before one.
+    line: str = ""
 
     @property
     def text(self) -> str:
@@ -1077,9 +1092,11 @@ def _gate_judge(
     return judge
 
 
-def _tell_progress(progress: Optional[Callable], scan: SectorScan, total: int) -> None:
-    """Hand ``progress`` one ``ScanProgress`` over ``scan``; a callable that
-    raises never stops the walk."""
+def _tell_progress(
+    progress: Optional[Callable], scan: SectorScan, total: int, line: str = ""
+) -> None:
+    """Hand ``progress`` one ``ScanProgress`` over ``scan`` carrying ``line``;
+    a callable that raises never stops the walk."""
     if progress is None:
         return
     try:
@@ -1089,10 +1106,52 @@ def _tell_progress(progress: Optional[Callable], scan: SectorScan, total: int) -
                 read=scan.markets_read,
                 total=total,
                 hits=len(scan.hits),
+                line=line,
             )
         )
     except Exception as exc:  # noqa: BLE001 - the callable is host-supplied
         logger.debug(PROGRESS_FAILED_LOG, scan.asset_class, exc)
+
+
+def market_line(symbol: str, frames: list, votes: list, pulls: list) -> str:
+    """``SCAN_MARKET_LINE_FORMAT`` for one market the walk read: the timeframes
+    that answered candles, the vote count, and the verdict from ``pulls``.
+
+    A hit names its timeframes through ``SCAN_MARKET_HIT_FORMAT``, a refused
+    vote names ``GateScan.blocked`` through ``SCAN_MARKET_BLOCKED_FORMAT``.
+    """
+    read = [
+        timeframe_label(one.timeframe)
+        for one in frames
+        if symbol not in one.unread and symbol not in one.short
+    ]
+    fired = [timeframe_label(one.timeframe) for one in pulls if one.gates.would_fire]
+    if fired:
+        verdict = SCAN_MARKET_HIT_FORMAT.format(labels=SCAN_LINE_JOIN.join(fired))
+    elif pulls:
+        names: list = []
+        for one in pulls:
+            side = VOTE_SIDES.get(one.direction)
+            readings = one.gates.side_readings(side) if side else one.gates.readings
+            names.extend(
+                reading.name
+                for reading in readings
+                if reading.state == ata_gate_scan.STATE_BLOCKED
+                and reading.name not in names
+            )
+        verdict = SCAN_MARKET_BLOCKED_FORMAT.format(
+            names=SYMBOL_SEPARATOR.join(names) or NO_MARKET_TEXT
+        )
+    elif read:
+        verdict = SCAN_MARKET_NO_VOTE_TEXT
+    else:
+        verdict = SCAN_MARKET_UNREAD_TEXT
+    return SCAN_MARKET_LINE_FORMAT.format(
+        symbol=symbol,
+        timeframes=SCAN_LINE_JOIN.join(read) or NO_MARKET_TEXT,
+        votes=len(votes),
+        verdict=verdict,
+    )
 
 
 def _scan_until_hits(
@@ -1136,9 +1195,11 @@ def _scan_until_hits(
             )
             if vote is not None
         ]
+        judged: list = []
         for vote in votes:
             held = judge(vote, scan)
             scan.pulls.append(held)
+            judged.append(held)
             if not held.gates.would_fire:
                 continue
             scan.hits.append(vote)
@@ -1161,9 +1222,13 @@ def _scan_until_hits(
             )
             if NO_HIT_TARGET < scan.hit_target <= len(scan.hits):
                 scan.stopped_at_target = True
-                _tell_progress(progress, scan, total)
+                _tell_progress(
+                    progress, scan, total, market_line(symbol, frames, votes, judged)
+                )
                 return
-        _tell_progress(progress, scan, total)
+        _tell_progress(
+            progress, scan, total, market_line(symbol, frames, votes, judged)
+        )
 
 
 def agreement_for(scans: Any, vote: AssetVote) -> TimeframeAgreement:
@@ -1547,6 +1612,8 @@ class SectorBoard:
         self.note = ""
         #: Where the running scan stands, None while none runs.
         self.progress: Optional[ScanProgress] = None
+        #: One ``market_line`` per market the running scan has read, in order.
+        self.progress_lines: list = []
 
     @property
     def scanning(self) -> bool:
@@ -1792,6 +1859,7 @@ class SectorBoard:
         self.sectors = list(sectors)
         self.note = str(note or "")
         self.progress = None
+        self.progress_lines = []
         if found is not None:
             self.run = found
         shown = int(added)

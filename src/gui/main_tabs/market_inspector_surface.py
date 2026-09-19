@@ -97,6 +97,9 @@ STEP_BUTTON_STYLE = "padding: 2px;"
 POSITION_FORMAT = "{at} of {total}"
 POSITION_EMPTY_TEXT = "0 of 0"
 POSITION_STYLE = "color: #aaa; font-size: 11px;"
+#: The running scan's counter, at the right end of the position row, just
+#: above the entry; both hosts name it so.
+COUNTER_PART = "zone-counter"
 
 ENTRY_CLASS = "_ZoneEntry"
 ENTRY_STYLE = "_ZoneEntry { border: 1px solid #333; border-radius: 6px; padding: 4px; }"
@@ -214,6 +217,8 @@ NO_CALL_TEXT = "No chart carried a reversal vote."
 NO_CANDLE_TEXT = "No candles came back for {symbols}."
 #: The zone's sentence after ``NO_CANDLE_TEXT`` when a venue named its refusal.
 VENUE_SAID_FORMAT = "{text} The venue said: {refusal}"
+#: The row name each market line takes in the field while a scan runs.
+SCAN_LINE_NAME_FORMAT = "scan-line-{at}"
 UNREAD_SYMBOL_CAP = 6
 UNREAD_MORE_FORMAT = "{symbols} and {count} more"
 METHOD_SENTENCE_JOIN = " "
@@ -1127,16 +1132,12 @@ def ata_spm_text(run: Any) -> str:
     )
 
 
-def ata_spm_zone_text(
-    run: Any, sector_count: Any, note: Any = "", progress: Any = ""
-) -> str:
+def ata_spm_zone_text(run: Any, sector_count: Any, note: Any = "") -> str:
     """The ATA-SPM zone's line for the run it holds and the scans added.
 
-    A ``progress`` line of a running scan comes first, then a ``note`` the
-    last press left, and a zone holding no scan reads ``ATA_SPM_NO_SECTOR_TEXT``.
+    A ``note`` the last press left is what the zone says, and a zone holding
+    no scan reads ``ATA_SPM_NO_SECTOR_TEXT``.
     """
-    if progress:
-        return str(progress)
     if note:
         return str(note)
     if not int(sector_count or 0):
@@ -2355,14 +2356,13 @@ def left_module_rows(
     connectors: Any,
     sector_count: Any = 0,
     ata_note: Any = "",
-    ata_progress: Any = "",
 ) -> list:
     """The three left-side regions as key, title and status, in screen order."""
     return [
         [
             ATA_SPM_MODULE,
             ATA_SPM_GROUP_TITLE,
-            ata_spm_zone_text(run, sector_count, ata_note, ata_progress),
+            ata_spm_zone_text(run, sector_count, ata_note),
         ],
         [
             OPPOSING_TRADES_MODULE,
@@ -2478,6 +2478,7 @@ def zone_view(
     expanded: Any,
     empty_text: Any,
     running: Any = "",
+    running_lines: Any = (),
 ) -> dict:
     """One zone as all three hosts draw it.
 
@@ -2486,7 +2487,9 @@ def zone_view(
     than as nothing drawn. An open entry drops the method line and the
     hint, which the four expanded lines already say, so every zone's open
     entry takes the same height whatever buttons it carries. A ``running``
-    line is the headline while a scan runs, with no meta and no method.
+    line is the ``counter`` drawn just above the entry at its right corner
+    while a scan runs, and ``running_lines`` are then the entry's rows, one
+    per market read, with no headline, meta or method.
     """
     held = list(entries or [])
     total = len(held)
@@ -2499,22 +2502,25 @@ def zone_view(
     open_now = bool(expanded) and total > 0 and not busy
     lines = own_detail if own_detail is not None else method_detail_rows(method)
     written = own_method_text if own_method_text is not None else method_line(method)
+    walked = [
+        [SCAN_LINE_NAME_FORMAT.format(at=index + 1), str(line)]
+        for index, line in enumerate(running_lines or ())
+    ]
     return {
         "key": key,
         "title": title,
         "total": total,
         "at": shown,
         "position": position_text(shown, total),
+        "counter": str(running) if busy else "",
         "headline": (
-            str(running)
-            if busy
-            else (entry.get("headline", "") if total else empty_text)
+            "" if busy else (entry.get("headline", "") if total else empty_text)
         ),
         "meta": entry.get("meta", "") if total and not busy else "",
         "method": "" if open_now or busy else (written if total else ""),
         "hint": total > 0 and not open_now and not busy,
-        "expanded": open_now,
-        "detail": lines if open_now else [],
+        "expanded": open_now or busy,
+        "detail": walked if busy else (lines if open_now else []),
         "thumbnail": entry.get("thumbnail") if total else None,
         "preview": entry.get("preview") if open_now else None,
         "actions": (entry.get("actions") or []) if open_now else [],
@@ -3669,7 +3675,6 @@ class MarketInspectorScreenModel:
             self.connectors_now(),
             len(self.board.sectors),
             self.board.note,
-            self.board.progress_text,
         )
 
     def right_zones(self) -> list:
@@ -3713,7 +3718,8 @@ class MarketInspectorScreenModel:
     def zone_views(self) -> list:
         """All six zones as the stepper draws them, left three then right three.
 
-        The ATA-SPM zone carries ``board.progress_text`` as its running line.
+        The ATA-SPM zone carries ``board.progress_text`` as its counter and
+        ``board.progress_lines`` as its rows while a scan runs.
         """
         rows = self.left_modules() + self.right_zones()
         return [
@@ -3725,6 +3731,7 @@ class MarketInspectorScreenModel:
                 self.zone_open.get(key, False),
                 status,
                 self.board.progress_text if key == ATA_SPM_MODULE else "",
+                self.board.progress_lines if key == ATA_SPM_MODULE else (),
             )
             for key, title, status in rows
         ]

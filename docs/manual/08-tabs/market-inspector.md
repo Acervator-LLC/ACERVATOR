@@ -5248,6 +5248,11 @@ answers 0 before this entry and 0 after it.
 > How the fuck is it that after I launch the build, not a god damn thing has
 > improved with this fucking button.
 
+The operator's correction, the same day: *"Make sure you correct my
+incorrect verbatims because SImulator does not have Scan Now...Inspector
+and ATA-SMP do."* Every `Simulator - Scan Now` above reads `ATA-SMP - Scan
+Now` on the Inspector tab; the words stand as he typed them.
+
 > If we are having difficulty sourcing the data for free we will need to
 > implement an API driven solution or get clever...
 
@@ -5390,6 +5395,44 @@ SCAN_BUSY_LABEL = "Scanning…"
 A scan thread that raises now emits `scanFailed`; the slot says the failed
 line, clears the record and frees the button. Before, the button was never
 disabled, so nothing needed freeing.
+
+### The counter's place, and the field's lines
+
+> Can see the scan counter in the upper left corner of the lower section.
+> Would rather have this counter just above and at the right corner of the
+> same field. Then have the field display the results of each scanned market.
+
+The counter is no longer the entry's headline. It sits at the right end of
+the stepper's position row, just above the field, in both variants: the Qt
+stepper's `counter_label` after the row's stretch, and the page's
+`zone-counter` element pushed to the row's right. `zone_view` carries it as
+`counter`, empty while no scan runs.
+
+While the scan walks, the field draws one line per market as it is read,
+newest last: the market, the timeframes that answered candles, the vote count
+and the verdict - the timeframes a hit landed on, the gates the vote's own
+chain blocked, no vote, or no candles. `market_line` builds each one after
+`_scan_until_hits` judges a market, it rides on `ScanProgress.line`, the
+GUI-thread slot appends it to `SectorBoard.progress_lines`, and `zone_view`
+answers the lines as the entry's rows. The report replaces them at the end,
+as before.
+
+`src/trading/ata_spm.py` - one market's line
+
+```python
+SCAN_MARKET_LINE_FORMAT = "{symbol} · {timeframes} · {votes} vote(s) · {verdict}"
+SCAN_MARKET_HIT_FORMAT = "hit on {labels}"
+SCAN_MARKET_BLOCKED_FORMAT = "no hit: the gates blocked {names}"
+SCAN_MARKET_NO_VOTE_TEXT = "no hit: no vote"
+SCAN_MARKET_UNREAD_TEXT = "no candles"
+```
+
+Read on the Qt window mid-scan at 1400 by 900: the counter's rectangle
+`[517, 322, 162, 24]` ends at x 679, the field's right edge (`[25, 350, 654,
+144]`), and sits 28 px above the field's top; the field held 27 lines when
+the counter read `27 of 90`, the last `DASH · 1hr 1d 1wk · 3 vote(s) · no
+hit: the gates blocked ...`. At the end the counter read empty and the field
+held the report.
 
 ### Every fetch is a block on the API Interaction Log
 
