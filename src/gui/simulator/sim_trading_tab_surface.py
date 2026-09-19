@@ -447,6 +447,42 @@ def battery_failed_line(error: Any) -> str:
     return BATTERY_FAILED_FORMAT.format(error=error)
 
 
+#: The lines the Battery's per-portfolio slots and its Stop write.
+BATTERY_LOADED_FORMAT = (
+    "Portfolio {name} loaded: {bots} bot(s) on {venues}, budget ${budget:,.2f}, "
+    "the sum of their Target Balances; the walk starts."
+)
+BATTERY_CLEARED_FORMAT = "Portfolio {name} cleared; the next portfolio loads."
+BATTERY_STOPPING_FORMAT = (
+    "Portfolio Battery stopping at Stop on bot {bot_id}; the partial report follows."
+)
+
+
+def battery_loaded_line(name: str, bots: Any, budget_usd: float = 0.0) -> str:
+    """The Activity Log line ``_battery_portfolio_started`` writes: ``name``,
+    how many of ``bots`` were held, the venues they sit on and ``budget_usd``,
+    the sum of their Target Balances."""
+    venues = sorted({str(bot.exchange_id) for bot in bots})
+    return BATTERY_LOADED_FORMAT.format(
+        name=name,
+        bots=len(list(bots)),
+        venues=", ".join(venues) or "no venue",
+        budget=float(budget_usd),
+    )
+
+
+def battery_cleared_line(name: str) -> str:
+    """The Activity Log line ``_battery_portfolio_finished`` writes when it
+    clears ``name``'s fleet before the next portfolio."""
+    return BATTERY_CLEARED_FORMAT.format(name=name)
+
+
+def battery_stopping_line(bot_id: Any) -> str:
+    """The Activity Log line written when Stop on ``bot_id`` asks the Battery
+    to end."""
+    return BATTERY_STOPPING_FORMAT.format(bot_id=bot_id)
+
+
 #: The lines the command bar's Start and Stop write in Validation and Back
 #: Test modes, when the run they start covers the venue page's scrumming bots.
 RUN_MODES = (sim.MODE_VALIDATION, sim.MODE_BACK_TEST)

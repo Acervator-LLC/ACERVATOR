@@ -241,26 +241,19 @@ BATTERY_COLUMNS = (
     "Span",
     "Symbols",
     "Bars",
-    "Ticks",
+    "Evaluations",
     "Trades",
-    "Buy and hold",
-    "Accumulation",
-    "Improvement",
+    "HODL end",
+    "Harvest-Fold end",
+    "Difference",
     "Missing weight",
 )
 
 #: How many portfolio-and-timeframe rows the Portfolio Battery table lists.
 BATTERY_ROW_LIMIT = 200
 
-#: How many gate-chain evaluations one press spends per symbol. Measured at
-#: 26 seconds for all 35 portfolios over the whole RA tape.
-BATTERY_TICKS_PER_SYMBOL = portfolio_battery.TICKS_PER_SYMBOL
-
 PORTFOLIO_LABEL_TEXT = "Portfolio:"
 SPAN_LABEL_TEXT = "Span:"
-
-#: The ``verdict`` both hosts colour a beaten baseline with.
-BETTER_VERDICT = portfolio_battery.BETTER
 
 #: The spans and timeframes both hosts list, from ``portfolio_battery``.
 BATTERY_SPANS = portfolio_battery.SPANS
@@ -1149,19 +1142,22 @@ def battery_row(portfolio: str, read: dict) -> dict:
         "symbols_text": f"{read['symbols_run']} of {read['symbols']}",
         "bars": read["bars"],
         "ticks": read["ticks"],
+        "evaluations_expected": read["evaluations_expected"],
         "scrum_latched": read["scrum_latched"],
         "fold_latched": read["fold_latched"],
         "trades": read["trades"],
+        "partial_exits": read["partial_exits"],
+        "re_entries": read["re_entries"],
         "baseline_usd": read["baseline_usd"],
         "baseline_text": usd_text(read["baseline_usd"]),
         "accumulation_usd": read["accumulation_usd"],
         "accumulation_text": usd_text(read["accumulation_usd"]),
-        "improvement_usd": read["improvement_usd"],
-        "improvement_pct": read["improvement_pct"],
-        "improvement_text": (
-            f"{read['improvement_usd']:+,.2f} ({read['improvement_pct']:+.2f}%)"
+        "difference_usd": read["difference_usd"],
+        "difference_pct": read["difference_pct"],
+        "difference_text": (
+            f"{read['difference_usd']:+,.2f} ({read['difference_pct']:+.2f}%)"
         ),
-        "verdict": read["verdict"],
+        "comparison": read["comparison"],
         "missing_weight": read["missing_weight"],
         "missing_text": pct_text(read["missing_weight"]),
         "missing_symbols": list(read["missing_symbols"]),
@@ -1270,7 +1266,6 @@ def run_battery(origin: str, portfolio: str = "", span: str = "") -> dict:
         TabletSource(BATTERY_TABLET_ROOT),
         names=names,
         span=window,
-        ticks=BATTERY_TICKS_PER_SYMBOL,
     )
     payload = battery_payload(outcome, origin, chosen)
     for result in outcome.portfolios:

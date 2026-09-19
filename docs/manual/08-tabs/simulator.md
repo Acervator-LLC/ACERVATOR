@@ -489,6 +489,22 @@ worker thread, and writes one reading per timeframe.
 DEFAULT_TARGET_USD = 500.0
 ```
 
+Since the Battery walked every candle, each bot evaluates every bar of its
+tablet from the thirtieth on, the Activity Log carries a line at each walk's
+start, every 5,000 bars and at its end, Run Every Portfolio holds one
+portfolio's bots, walks them, writes their report, clears them and holds the
+next, every reading is HODL end, Harvest-Fold end and the difference, and
+Stop on a Battery row ends the walk at the bar reached.
+
+`src/simulator/portfolio_battery.py` — the evaluations a walk makes
+
+```python
+def evaluations_expected(bars: int) -> int:
+    """How many gate-chain evaluations a walk over ``bars`` makes: one per bar
+    from the ``MIN_CANDLES``th on, none under ``MIN_CANDLES``."""
+    return max(0, int(bars) - (MIN_CANDLES - 1))
+```
+
 Stop on a row of the run in flight ends the run where it is.
 
 `src/gui/simulator/sim_trading_tab.py` — the stop
@@ -1012,6 +1028,15 @@ live root unchanged: True 407
 ```
 
 ## Portfolio Battery Mode
+
+The operator's words, 2026-09-18: *"Honest framing should be to show our
+strategy's ability to identify opportunities for partial exists and re-entries
+so as to improve portfolio end states. [...] I only seek to compare HODL
+against Harvest-Fold across as many historical markets and asset classes as
+possible."* The sentence left out says the mode is not a contest. The Battery reads one
+comparison, HODL end against Harvest-Fold end and the difference, per
+portfolio, per span, per timeframe; the section "The Battery walks every
+candle, one portfolio at a time, and reads HODL against Harvest-Fold" says how.
 
 The third mode runs the thirty-five archive portfolios over their own price
 history. Every symbol streams its daily bars through the same gate chain a live
@@ -6605,6 +6630,305 @@ application's own periodic save rewrote `bot_state.json` sixty seconds
 after launch with the same two live bots and no sim bot, as it does on
 every launch; in the source-tree readings the file hashed identical after
 every step.
+
+## The Battery walks every candle, one portfolio at a time, and reads HODL against Harvest-Fold
+
+The operator's words, 2026-09-18: *"Porfolio Battery - This is scaffolded. It
+does not appear to be loading any historical data. I run it twice and
+generated what are undoubtedly bogus but revealing reports. I love the Yahoo
+exchange appearing and loading the stocks but when 'running all portfolios'
+should load one, run, clear, load next, run, clear, repeat. These must be real
+runs against real data using the scrumming bots and IVP trading logic."* And
+the framing, the same day: *"I only seek to compare HODL against Harvest-Fold
+across as many historical markets and asset classes as possible."*
+
+Before this, a Battery bot evaluated about one bar in every fourteen of a
+daily tablet over six years, because the walk stepped so that each bot and
+timeframe spent about 120 evaluations; Run Every Portfolio held every
+portfolio's bots at once and walked them in one loop; and the report read
+each portfolio as `reversed`, `improved`, `defended` or `undefended` against
+its historical path. Now every bar is evaluated, one portfolio is held and
+walked at a time, and the report reads three figures.
+
+### Every candle
+
+The walk hands the Back Test walker no step. The walker evaluates every bar
+from the thirtieth on, so a walk over N bars makes N less 29 evaluations,
+and the report states both counts side by side. The walk is timed around the
+walker alone, and the report states the seconds per 1,000 evaluations it
+measured and, at that rate, how long a crypto bot's 5m walk takes over
+`2026 test run` and over `All`.
+
+`src/simulator/portfolio_battery.py` — the evaluations a walk makes
+
+```python
+def evaluations_expected(bars: int) -> int:
+    """How many gate-chain evaluations a walk over ``bars`` makes: one per bar
+    from the ``MIN_CANDLES``th on, none under ``MIN_CANDLES``."""
+    return max(0, int(bars) - (MIN_CANDLES - 1))
+```
+
+`src/simulator/portfolio_battery.py` — the walk, every bar
+
+```python
+    result = walk(
+        walked,
+        candles_from_raw(bars),
+        funding=FUNDED_BY_TARGETS,
+        rule=rule,
+        on_trade=took,
+        stop=stop,
+        emitter=emitter,
+        on_tick=on_tick,
+    )
+```
+
+### The walk reads as moving
+
+One Activity Log line opens each bot's walk at each timeframe, naming the
+bars and the evaluations to make; one line lands every 5,000 bars, naming the
+bar reached, the evaluations so far, the partial exits and re-entries so far
+and the seconds; one line closes it with the evaluations, the seconds, the
+rate and the three figures. At the measured rate a line lands about every
+eight seconds on a 5m walk, and a daily walk ends before its first one.
+
+`src/simulator/portfolio_battery.py` — the cadence
+
+```python
+#: How many bars a walk covers between two progress lines. At the measured
+#: rate of about 1.7 ms an evaluation a line lands about every 8.5 seconds on
+#: a 5m walk, and a daily walk ends before its first one.
+PROGRESS_EVERY_BARS = 5_000
+```
+
+`src/simulator/back_test.py` — the walker's tick callback
+
+```python
+        if on_tick is not None:
+            on_tick(index + 1, len(candles), ticks)
+```
+
+### Stop ends the walk at the bar reached
+
+Stop on a Battery row sets an event the walk reads before each portfolio,
+each walk and each tick. The walk in progress ends at the bar reached, the
+walks and portfolios not reached are named, and the partial report carries
+the bar, its candle stamp and the evaluations made. The remaining portfolios
+are not run, and the summary reads `partial`.
+
+`src/gui/simulator/sim_trading_tab.py` — the stop
+
+```python
+    def _stop_battery(self, bot_id: str) -> None:
+        """Stop on ``bot_id``, a row of the Battery in flight: Live's stopping
+        line, ``battery_stopping_line``, and the event the walk reads before
+        each tick."""
+        self._status_log.log(f"Stopping bot {bot_id}...", "info")
+        self._battery["stopper"] = bot_id
+        self._status_log.log(tab_surface.battery_stopping_line(bot_id), "warning")
+        self._battery_stop.set()
+```
+
+`src/simulator/portfolio_battery.py` — the stopped line
+
+```python
+WALK_STOPPED_LINE_FORMAT = (
+    "{asset} {timeframe} stopped at bar {bar:,} of {bars:,} ({candle_at}): "
+    "{evaluations:,} evaluation(s) made."
+)
+```
+
+### One portfolio at a time
+
+The runner walks the named portfolios in order. Before each, it hands the
+host that portfolio's bots; the host holds them as the Portfolio Battery
+fleet, fires the fleet change, and the venues seat, the rows and the strip
+draw them, and the Yahoo venue seats for a stock portfolio. The portfolio's
+bots walk on a fresh set of walks, so a symbol two portfolios share is walked
+in each; its report is written; the host is handed the report, writes its
+line and, under Run Every Portfolio, holds an empty fleet, so every venue
+unseats and the Get Started card returns before the next portfolio loads. A
+single Run Portfolio keeps its fleet held at the end. When the press names
+more than one portfolio the runner writes one more report, the summary, and
+the host writes its line last.
+
+`src/simulator/portfolio_battery.py` — the loop
+
+```python
+    for name in chosen.names:
+        if halted or (stop is not None and stop()):
+            halted = True
+            not_reached.append(name)
+            continue
+        bots = chosen.by_portfolio.get(name, {})
+        seated = [bots[asset] for asset in PORTFOLIOS[name].symbols if asset in bots]
+        if on_portfolio_started is not None:
+            on_portfolio_started(name, list(seated))
+        emit_portfolio_started(name, seated, str(span))
+        emitter = RunEmitter(bus, new_run_id(PORTFOLIO_BATTERY), PORTFOLIO_BATTERY)
+```
+
+`src/gui/simulator/sim_trading_tab.py` — the two slots
+
+```python
+    def _battery_portfolio_started(self, name: str, bots) -> None:
+        """Hold ``bots``, one portfolio's, as the fleet through
+        ``FleetSource.hold_battery_fleet``, fire ``fleet_changed`` so the
+        venues seat and the rows and the strip draw them, and write
+        ``battery_loaded_line``."""
+        self._fleet_source.hold_battery_fleet(list(bots))
+        self.fleet_changed.emit()
+        self._status_log.log(tab_surface.battery_loaded_line(name, bots), "info")
+
+    def _battery_portfolio_finished(self, name: str, run) -> None:
+        """Write ``run``'s report line through ``log_report``; when the press
+        names more than one portfolio, hold an empty fleet through
+        ``FleetSource.hold_battery_fleet``, fire ``fleet_changed`` so every
+        venue unseats, and write ``battery_cleared_line``."""
+        if run.report is not None:
+            self.log_report(run.report)
+        if not self._battery.get("every"):
+            return
+        self._fleet_source.hold_battery_fleet(())
+        self.fleet_changed.emit()
+        self._status_log.log(tab_surface.battery_cleared_line(name), "info")
+```
+
+Under Run Every Portfolio the press holds an empty fleet, so nothing is
+drawn while the crypto tablets are retrieved and the first fleet the tab
+draws is portfolio 1's. Under Run Portfolio the press holds that one
+portfolio's bots, as the section "The run from the corner" says, and the
+first portfolio's start re-holds the same records. Each portfolio's start
+also empties the held fills, so a bot two portfolios share marks one
+portfolio's fills on the replay layer, and its loaded line names the
+portfolio's bot count, venues and budget.
+
+`src/gui/simulator/sim_trading_tab.py` — the press
+
+```python
+        self._fleet_source.hold_battery_fleet(() if every else plan.bots)
+        self.fleet_changed.emit()
+```
+
+### The three figures
+
+HODL end is the Target Balance bought at the walk's opening bar and held to
+its last bar. Harvest-Fold end is the same capital walked by the scrumming bot
+on the IVP's logic, its units at the last close plus the cash its partial
+exits left. The difference is Harvest-Fold end less HODL end, as a figure and
+as a percentage of HODL end. The historical trough is the lowest the untraded
+holding read on a walked bar, a figure on the path. The partial exits and
+re-entries are counted beside them. The report's Battery section, the
+Activity Log's per-portfolio line and the summary read these per timeframe
+per portfolio; the summary totals them per timeframe over the portfolios that
+ran and lists each portfolio with its run id, its report file and its three
+figures. Nothing ranks, scores or declares a winner: the four words of the
+earlier reading, its rule, the verdict word, the best timeframe and the
+improved timeframes are gone from the module and the report.
+
+`src/simulator/portfolio_battery.py` — the comparison in the report's words
+
+```python
+COMPARISON_RULE = (
+    "HODL end is the Target Balance bought at the walk's opening bar and held to "
+    "its last bar; Harvest-Fold end is the same capital walked by the scrumming "
+    "bot on the IVP's logic, its units at the last close plus the cash its "
+    "partial exits left; difference is Harvest-Fold end less HODL end, as a "
+    "figure and as a percentage of HODL end; historical trough is the lowest the "
+    "untraded holding read on a walked bar. Nothing ranks or declares a winner."
+)
+```
+
+`src/simulator/portfolio_battery.py` — the three figures of one timeframe
+
+```python
+    @property
+    def difference_usd(self) -> float:
+        """``accumulation_usd`` less ``baseline_usd``."""
+        return self.accumulation_usd - self.baseline_usd
+
+    @property
+    def difference_pct(self) -> float:
+        """``difference_usd`` as a percentage of ``baseline_usd``."""
+        return difference_pct_of(self.baseline_usd, self.accumulation_usd)
+```
+
+`src/simulator/parity_report.py` — the section per timeframe
+
+```python
+                f"- HODL end: {money(frame['baseline_usd'])} (bought at the "
+                "opening bar, held to the last)",
+                f"- Harvest-Fold end: {money(frame['accumulation_usd'])} "
+                f"({frame['partial_exits']} partial exit(s), {frame['re_entries']} "
+                "re-entr"
+                + ("y" if frame["re_entries"] == 1 else "ies")
+                + ")",
+                f"- difference: {frame['difference_usd']:+,.2f} "
+                f"({frame['difference_pct']:+.2f}% of HODL end); {frame['arithmetic']}",
+                f"- historical trough: {money(frame['trough_usd'])}",
+```
+
+### The two emits
+
+Each portfolio's start emits `sim.battery.portfolio_started` with the bots
+seated against the portfolio's symbol count, and its end emits
+`sim.battery.portfolio_finished` with the three figures, the evaluations
+made against the evaluations expected and the fills per timeframe; the row
+reads `ok` when every walk that ran made every evaluation expected of it and
+Stop did not end it.
+
+`src/simulator/portfolio_battery.py` — the two signals
+
+```python
+#: The signals one portfolio's start and end emit through ``signal_contract``.
+PORTFOLIO_STARTED_SIGNAL = "sim.battery.portfolio_started"
+PORTFOLIO_FINISHED_SIGNAL = "sim.battery.portfolio_finished"
+```
+
+### What the every-candle reading measured
+
+Both builds, the real window over a scratch home, every socket but loopback
+refused, a scratch RA root holding the operator's daily files for SPY, GLD,
+BTC, ETH, BNB and SLV, and a loopback stand-in for the public candle endpoint
+serving 5m for BTC and ETH from 2026-04-01 and refusing every other product.
+Before, Run Portfolio over CRYPTO_BLUE on `2026 test run` read BTC at 5m
+49,328 bars and 121 ticks, BTC at 1d 172 bars and 143 ticks, the Battery
+section `5m defended, 1d defended`, and no line between the retrieved line and
+the portfolio line; Run Every Portfolio held sixty-three bots from the press
+to the end and wrote one report. After, the same press read BTC at 5m 49,336
+bars and 49,307 evaluations, ETH the same, BTC at 1d 172 bars and 143
+evaluations, each the bars less 29, in 223 and 203 seconds at 4.5 and 4.1
+seconds per 1,000 evaluations in Qt and 174 and 144 seconds at 3.5 and 2.9 in
+React; a line at each walk's start, every 5,000 bars and at its end; the
+Battery section reading, at 5m, HODL end $1,313.13, Harvest-Fold end
+$2,183.19, difference +870.06 (+66.26% of HODL end) with 609 partial exits
+and 2,769 re-entries on the stand-in's candles, and at 1d HODL end $1,093.45,
+Harvest-Fold end $1,096.17, difference +2.71 (+0.25%). Run Every Portfolio
+on the same span held no fleet at the press, no venue seated and the Get
+Started card drawn, then AGGRESSIVE's ten on Coinbase and Yahoo with the
+loaded line naming its budget of $5,000.00, then ALL_WEATHER's five on Yahoo
+at $2,500.00, then ARK_SUITE's five, then BALANCED's ten, and so on through
+thirty-five portfolios, the held fleet read empty between two of them and at
+the end and the fleet file's Portfolio Battery map holding no bot after the
+last clear (a first reading, before the press held nothing, had shown
+sixty-three bots at the press); thirty-six reports, one
+per portfolio and the summary, whose per-portfolio table lists thirty-five
+run ids; 844,289 evaluations of 844,289 expected in both builds, 80 minutes
+in Qt beside a React run of 51 minutes; the summary's totals at 5m over nine
+portfolios and at 1d over twenty-three read the same figures in both builds.
+Stop pressed on BNB's row a hundred seconds into the crypto walk ended it at
+bar 5,008 of 49,340 in Qt and 5,886 of 49,358 in React, the partial report
+naming the bar, its candle stamp and the evaluations made, and ETH and BNB
+as not walked. With `portfolio_battery.walk` wrapped in the driver process to
+step fourteen bars, BTC at 5m read 3,523 evaluations against 49,312 expected
+and the finished emit read `ok` false, so the reading can fail. Every copied
+daily file and `bot_state.json` hashed identical after every press, with a
+planted byte moving the hash; the operator's RA root listed 414 entries before
+and after; no socket left loopback. Both bundles, launched in isolation over a
+scratch home, ran Portfolio over EQUITY_MACRO on `All` and read SPY and GLD
+at 1d 1,678 bars and 1,649 evaluations each, at 1w 349 and 320, at 1M 81 and
+52, and at 1d HODL end $2,513.22, Harvest-Fold end $2,001.64, difference
+-511.57 (-20.36% of HODL end) on the operator's own Yahoo files.
 
 ## The widget the rebuild replaced
 

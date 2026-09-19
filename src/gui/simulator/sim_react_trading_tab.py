@@ -67,10 +67,19 @@ YTD's title, holds one record per traded pair through
 ``FleetSource.generate_from_ytd``, writes one line per manifest row whose
 file is missing, the generation line and the no-target line, and fires
 ``fleet_changed``; ``_run_battery`` opens ``SimPortfolioChoiceDialog``, holds
-the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
+the ``plan_run`` bots through ``FleetSource.hold_battery_fleet`` under Run
+Portfolio and none under Run Every Portfolio, fires
 ``fleet_changed`` and runs ``_compute_battery`` on a daemon thread, whose
 ``battery_line``, ``battery_trade`` and ``battery_finished`` signals reach
-``log``, ``log_trade`` and ``_take_battery`` on the GUI thread; Start Run at
+``log``, ``log_trade`` and ``_take_battery`` on the GUI thread; the thread
+walks one portfolio at a time, ``battery_portfolio_started`` reaching
+``_battery_portfolio_started``, which holds that portfolio's bots through
+``FleetSource.hold_battery_fleet`` and fires ``fleet_changed``, and
+``battery_portfolio_finished`` reaching ``_battery_portfolio_finished``, which
+writes the portfolio's report line and, under Run Every Portfolio, holds an
+empty fleet and fires ``fleet_changed`` so every venue unseats before the
+next; Stop on a Battery row reaches ``_stop_battery``, which sets the event
+the walk reads before each tick; Start Run at
 the corner reaches ``_start_run_pressed``, which refuses with the in-flight
 line while a run or a Battery is in flight, runs ``_run_battery`` under Run
 Portfolio's chooser in Portfolio Battery mode, and in Validation or Back Test
@@ -903,6 +912,13 @@ if _HAS_WEBENGINE:
         battery_trade = Signal(object)
         #: The ``BatteryRun`` the Battery's worker thread finished with.
         battery_finished = Signal(object)
+        #: One portfolio's name and its ``SimBot`` list, as the Battery's
+        #: worker thread reaches it; the slot holds them as the fleet.
+        battery_portfolio_started = Signal(str, object)
+        #: One portfolio's name and its own ``BatteryRun``, its report
+        #: written, as the worker thread leaves it; the slot writes the report
+        #: line and clears.
+        battery_portfolio_finished = Signal(str, object)
         #: One Activity Log line and its level from a Validation or Back Test
         #: run's worker thread.
         run_line = Signal(str, str)
@@ -950,6 +966,8 @@ if _HAS_WEBENGINE:
                 else TabletSource(sim.BATTERY_TABLET_ROOT)
             )
             self._battery_thread: Optional[threading.Thread] = None
+            self._battery_stop = threading.Event()
+            self._battery: dict = {}
             self._run_thread: Optional[threading.Thread] = None
             self._run_stop = threading.Event()
             self._run: dict = {}
@@ -994,6 +1012,8 @@ if _HAS_WEBENGINE:
             self.battery_line.connect(self.log)
             self.battery_trade.connect(self.log_trade)
             self.battery_finished.connect(self._take_battery)
+            self.battery_portfolio_started.connect(self._battery_portfolio_started)
+            self.battery_portfolio_finished.connect(self._battery_portfolio_finished)
             self.run_line.connect(self.log)
             self.run_trade.connect(self.log_trade)
             self.run_finished.connect(self._take_run)
@@ -1317,7 +1337,9 @@ if _HAS_WEBENGINE:
             started while ``battery_running``; ``SimPortfolioChoiceDialog``
             over ``PORTFOLIOS`` and ``BATTERY_SPANS``, the portfolio row left
             out for ``RUN_EVERY_PORTFOLIO_ACTION``; then ``plan_run`` over the
-            held fleet, ``FleetSource.hold_battery_fleet`` on the plan's bots,
+            held fleet, ``FleetSource.hold_battery_fleet`` on the plan's bots
+            under Run Portfolio and on nothing under Run Every Portfolio,
+            whose fleets ``_battery_portfolio_started`` holds one at a time,
             ``fleet_changed``, the started line, and ``_compute_battery`` on a
             daemon thread; a cancelled chooser writes one line and moves
             nothing. Answers the outcome: ``START_OUTCOME_IN_FLIGHT``,
@@ -1338,7 +1360,9 @@ if _HAS_WEBENGINE:
                 names, self._battery_tablet_source, self._fleet_source.bots()
             )
             self._begin_fills()
-            self._fleet_source.hold_battery_fleet(plan.bots)
+            # Run Every Portfolio loads each portfolio's fleet in turn through
+            # _battery_portfolio_started, so the press itself holds none.
+            self._fleet_source.hold_battery_fleet(() if every else plan.bots)
             self.fleet_changed.emit()
             subject = tab_surface.EVERY_PORTFOLIO_SUBJECT if every else names[0]
             self.log(
@@ -1360,21 +1384,32 @@ if _HAS_WEBENGINE:
             """Run ``portfolio_battery.run_battery`` over
             ``battery_tablet_source`` on ``plan``, its retrieval through the
             tab's own ``connector`` so each venue call reaches
-            ``_record_venue_call``, and hand the ``BatteryRun`` to the GUI
-            thread through ``battery_finished``, each portfolio's line through
-            ``battery_line`` and each ``SimTrade`` through ``battery_trade``;
-            a run that raises writes one failed line instead."""
+            ``_record_venue_call``, one portfolio at a time through
+            ``battery_portfolio_started`` and ``battery_portfolio_finished``,
+            ``stop`` the event ``_stop_battery`` sets, and hand the
+            ``BatteryRun`` to the GUI thread through ``battery_finished``, each
+            walk's and each portfolio's line through ``battery_line`` and each
+            ``SimTrade`` through ``battery_trade``; a run that raises writes
+            one failed line instead."""
+            self._battery_stop.clear()
+            self._battery = {
+                "bot_ids": [bot.bot_id for bot in plan.bots],
+                "every": len(plan.names) > 1,
+                "stopper": "",
+            }
             try:
                 outcome = portfolio_battery.run_battery(
                     self._battery_tablet_source,
                     names=plan.names,
                     span=span,
-                    ticks=sim.BATTERY_TICKS_PER_SYMBOL,
                     plan=plan,
                     progress=lambda line: self.battery_line.emit(line, "info"),
                     on_trade=self.battery_trade.emit,
                     bus=self._bus,
                     connector=self._connector,
+                    stop=self._battery_stop.is_set,
+                    on_portfolio_started=self.battery_portfolio_started.emit,
+                    on_portfolio_finished=self.battery_portfolio_finished.emit,
                 )
             except Exception as exc:  # noqa: BLE001 - the run runs off-thread
                 logger.exception("Portfolio Battery failed: %s", exc)
@@ -1382,11 +1417,56 @@ if _HAS_WEBENGINE:
                 return
             self.battery_finished.emit(outcome)
 
+        def _battery_portfolio_started(self, name: str, bots) -> None:
+            """Empty the held fills through ``_begin_fills`` so the replay
+            layer marks this portfolio's alone, hold ``bots``, one
+            portfolio's, as the fleet through ``FleetSource.hold_battery_fleet``,
+            fire ``fleet_changed`` so the venues seat and the page's rows and
+            the strip draw them, and write ``battery_loaded_line`` with their
+            budget."""
+            self._begin_fills()
+            self._fleet_source.hold_battery_fleet(list(bots))
+            self.fleet_changed.emit()
+            self.log(
+                tab_surface.battery_loaded_line(
+                    name, bots, back_test.run_budget_usd(list(bots))
+                ),
+                "info",
+            )
+
+        def _battery_portfolio_finished(self, name: str, run) -> None:
+            """Write ``run``'s report line through ``log_report``; when the
+            press names more than one portfolio, hold an empty fleet through
+            ``FleetSource.hold_battery_fleet``, fire ``fleet_changed`` so
+            every venue unseats, and write ``battery_cleared_line``."""
+            if run.report is not None:
+                self.log_report(run.report)
+            if not self._battery.get("every"):
+                return
+            self._fleet_source.hold_battery_fleet(())
+            self.fleet_changed.emit()
+            self.log(tab_surface.battery_cleared_line(name), "info")
+
+        def _stop_battery(self, bot_id: str) -> None:
+            """Stop on ``bot_id``, a row of the Battery in flight: Live's
+            stopping line, ``battery_stopping_line``, and the event the walk
+            reads before each tick."""
+            self.log(f"Stopping bot {bot_id}...", "info")
+            self._battery["stopper"] = bot_id
+            self.log(tab_surface.battery_stopping_line(bot_id), "warning")
+            self._battery_stop.set()
+
         def _take_battery(self, outcome) -> None:
-            """Write the finished run's ``lines`` and its report line through
-            ``log_report`` on the GUI thread, hold ``outcome`` for the replay
-            layer's improvement figure, and redraw the layer on the run's last
-            bot through ``_refresh_replay``."""
+            """Write Live's stopped line for the bot Stop was pressed on, the
+            finished run's ``lines`` and, when a summary was written, its report
+            line through ``log_report`` on the GUI thread; hold ``outcome`` for the
+            replay layer's improvement figure and redraw the layer on the run's
+            last bot through ``_refresh_replay``."""
+            stopper = self._battery.get("stopper")
+            if stopper:
+                self.log(f"Bot {stopper} stopped.", "info")
+                self._notify(f"Bot {stopper} STOPPED", "info")
+                get_sound_engine().play_state_change()
             self._battery_outcome = outcome
             for line in outcome.lines:
                 self.log(line, "info")
@@ -1971,6 +2051,14 @@ if _HAS_WEBENGINE:
             bot = self._bot_manager.get_bot(bot_id)
             if not bot:
                 self.log(f"Bot {bot_id} not found.", "error")
+                return
+
+            if (
+                self.battery_running()
+                and command == "stop"
+                and bot_id in self._battery.get("bot_ids", [])
+            ):
+                self._stop_battery(bot_id)
                 return
 
             if self.run_running():

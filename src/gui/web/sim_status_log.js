@@ -732,12 +732,22 @@
     return target;
   }
 
+  // The Qt pane sets its scroll bar to the maximum after every line, so the
+  // newest line is in view; the log element scrolls, so it follows the same way.
+  function followNewest(target) {
+    var pane = target.firstChild;
+    if (pane && typeof pane.scrollHeight === "number") {
+      pane.scrollTop = pane.scrollHeight;
+    }
+    return target;
+  }
+
   function renderLog(target, model) {
     var payload = model;
     if (!isPlainObject(payload)) {
       payload = held === null ? null : held.model;
     }
-    return draw(target, element(Log, { model: payload }));
+    return followNewest(draw(target, element(Log, { model: payload })));
   }
 
   // Every host this module has drawn into, re-drawn from the held model.

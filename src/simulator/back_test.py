@@ -654,14 +654,16 @@ def walk(
     on_trade: Optional[TradeSink] = None,
     stop: Optional[Callable[[], bool]] = None,
     emitter: Optional[RunEmitter] = None,
+    on_tick: Optional[Callable[[int, int, int], None]] = None,
 ) -> BotResult:
     """Run ``bot`` over ``candles``, one gate-chain evaluation every ``step``
     bars, each fold funded as ``funding`` says and every fill sized under
     ``rule``; ``on_trade`` is handed each ``SimTrade`` the moment it fills,
     ``emitter`` emits ``trade_filled``, ``bot_line``, ``voting_snapshot`` and
-    ``gate_decision`` on every tick in Live's fire order, and ``stop``
-    answering True before a tick ends the walk at the last bar ticked with
-    ``stopped`` set."""
+    ``gate_decision`` on every tick in Live's fire order, ``on_tick`` is handed
+    the bar reached, the bars in the tape and the ticks so far after each
+    tick, and ``stop`` answering True before a tick ends the walk at the last
+    bar ticked with ``stopped`` set."""
     from ..trading.ta_engine import VotingEngine
 
     if len(candles) < MIN_CANDLES:
@@ -730,6 +732,8 @@ def walk(
                 trade_action=action,
                 side=fill_side(filled),
             )
+        if on_tick is not None:
+            on_tick(index + 1, len(candles), ticks)
     end_index = last_index if halted else len(candles) - 1
     return BotResult(
         bot_id=bot.bot_id,
