@@ -4965,4 +4965,218 @@ refusal as it was worded then.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-18 21:20 - #23 - The Ready to Send entry carries the painter's chart, the folder opens, and the buttons hand off by the venue's route
+
+His words, 2026-09-15: *"Ready to Send Bucket - Want a folder button that
+opens the chart image directory. Want the standardized message marked on each
+image. Want this loading push candidates via a functioning market scanner..."*
+and *"Should have a catered folder for each venue."* And on posting: *"This
+will have to do. Do not want to build something that risks myself or others
+being banned."* And 2026-09-18: *"Entire idea for the Emitter Network is to
+provide us signals for verifying proper software function resulting from all
+user actions or automated sequences."*
+
+### What one entry shows now
+
+Each Ready to Send entry draws the chart its own venue folder holds: the PNG
+`render_chart_png` wrote for that venue, with that venue's message at its
+foot, scaled to the entry's width. The thumbnail is 120 px wide and the open
+entry's larger view 320 px wide; each takes the height the image's own shape
+needs. An entry whose post names no file on disk, a phase-seven follow-up,
+draws the rectangle strip it drew before.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the image one entry carries
+
+```python
+def chart_image(path: Any) -> tuple:
+    """The painter's PNG one post names, as a data address with its size.
+
+    A post naming no file, or a file that is gone, answers an empty address
+    and ``NO_IMAGE_SIZE``, and the entry draws its rectangle strip instead.
+    """
+```
+
+The Qt `_PostChart` decodes that address into a `QImage` and draws it over
+its box; the page's `PostChart` places one `img` with the same address in the
+same box. Both hosts read one `post_chart` payload, so the two draw one
+picture.
+
+### What one entry names
+
+A post names the files its own venue folder holds, not the root picture.
+
+`src/trading/ata_spm_push.py` - the three files one post names
+
+```python
+def venue_files(pull: Any, target: PushTarget) -> tuple:
+    """The image, text and intent paths ``ata_venue_folders`` wrote for one
+    target, or the root image alone where that folder was not written."""
+```
+
+`FormattedPost.image_path` is the venue's stamped PNG, `text_path` the message
+beside it, and `intent_path` the `.url` file, which only X's folder holds.
+`folder_path` is the venue folder the image sits in.
+
+### The venue folders, written from the scan
+
+Nothing here changed. Phase three writes every venue folder inside the scan,
+per hit, at the moment the live gate chains fire. Read off the running program
+after unit S2's energy scan stopped at three hits, in each variant: 3 PNG and
+3 TXT in each of the seven folders, 3 URL in `X/`, 24 renders on the scan
+thread, and the painter's `set_caption` called 24 times with the venue's own
+body. X's images carry `X_HEADER`; the six others carry `FIXED_HEADER`.
+
+### The Chart Folder press
+
+The button opens the root, so every venue folder is in view, as before. The
+press now also writes one line to the Activity Log naming the folder it
+opened, in both variants.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the line the press leaves
+
+```python
+def chart_folder_line(path: Any) -> str:
+    """The Activity Log line a Chart Folder press leaves, naming the root opened."""
+    return CHART_FOLDER_OPENED_LOG % (path,)
+```
+
+The handler is the operating system's own: `open_path` hands the folder's
+`file:` address to `webbrowser.open`, which is the file browser for a folder
+and the default browser for an Internet Shortcut. No browser is driven and
+nothing is typed into one.
+
+### The three buttons hand off by the venue's route
+
+A post takes one of three routes, decided by `route_for`.
+
+`src/trading/ata_spm_push.py` - the route one post takes
+
+```python
+def route_for(post: FormattedPost, settings: AtaSpmSettings, sender: Any) -> str:
+    """The route one post takes: ``ROUTE_API`` while its venue is signed in and
+    a sender is wired, ``ROUTE_INTENT`` while its folder holds an intent file,
+    else ``ROUTE_FOLDER``."""
+```
+
+| route | when | what the press does | the line |
+| ----- | ---- | ------------------- | -------- |
+| `api` | the venue is signed in and a sender is wired | `deliver_one`, as before: the ceiling, the hour guard, the sender | `<venue> · <symbol> <label> · sent to <destination>` or `· not sent · <detail>` |
+| `intent` | X, whose folder holds the `.url` | Post Selected hands the `.url` to the OS handler; the compose window opens with the message typed and the picture is attached by hand | `X · <symbol> <label> · compose address opened · <path>` |
+| `folder` | every other venue not signed in | Post Selected hands the venue folder to the OS handler | `<venue> · <symbol> <label> · in folder <path>` |
+
+No sender is wired in the tree today, so every venue takes the folder route
+and X the intent route. Post All takes every approved post and opens the post
+root once, so all seven folders are in view from one window; its X lines read
+`compose address ready`. Send Bucket Full Auto opens nothing and records each
+post's route. A Post All with no approved post says so, and a Full Auto press
+says its state. Every line reaches the Activity Log and `system.log` in both
+variants, prefixed `ATA-SPM`.
+
+`src/trading/ata_spm_push.py` - the lines a press leaves
+
+```python
+PRESS_LINE_FORMAT = "ATA-SPM hand-off: {line}"
+NOTHING_APPROVED_TEXT = (
+    "ATA-SPM Post All: no post is approved. Approve one, then press again."
+)
+FULL_AUTO_TOGGLED_FORMAT = "ATA-SPM Send Bucket Full Auto: {state}."
+```
+
+### The two pins
+
+`inspector.ata.candidate` is written once per bucket entry when the scan fills
+the bucket, with the symbol, the timeframe, the vote, the venue, the venue
+folder, the image, the text and the intent paths; `ok` is false when the image
+is not on disk. `inspector.ata.handoff` is written once per post a press took,
+with the venue, the route, the outcome, the destination and whether the OS
+handler was given it. Both go through `signal_contract.emit` and nothing else.
+
+`src/trading/ata_spm_push.py` - the two pin names
+
+```python
+CANDIDATE_PIN = "inspector.ata.candidate"
+
+HANDOFF_PIN = "inspector.ata.handoff"
+```
+
+### A scan that leaves no post
+
+The Ready to Send zone reads the ATA-SPM board's own run. After a scan with
+no hit it says `The last scan left no post. Nothing to approve.` Before it read
+`Phase source not wired. Nothing to approve.`, the universe scan's wording,
+after a scan that had run.
+
+### A message format naming a key the sentence does not have
+
+`Standardised message text` on the settings page may carry `label`,
+`reading`, `direction` and `confidence` in braces. A typed format naming any
+other key, or one `str.format` cannot parse, no longer stops the scan: the
+standard wording is written and one warning names the key.
+
+`src/trading/ata_spm.py` - the keys and the refusal
+
+```python
+MESSAGE_FORMAT_KEYS = ("label", "reading", "direction", "confidence")
+MESSAGE_FORMAT_REFUSED_LOG = (
+    "ATA-SPM message format refused, %s; the standard wording is used. Keys: %s"
+)
+```
+
+### Read off the running program
+
+Unit S2's energy plant, three timeframes ticked, three hits, in each variant
+with the home on a scratch directory and every socket but loopback refused:
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| bucket entries | 21, 3 hits by 7 venues | 21 |
+| entries naming their venue's own PNG | 21 of 21 | 21 of 21 |
+| thumbnail | the venue PNG, 1200 by 634 decoded, drawn at 120 by 63 | the same, one `img` in the box |
+| files per venue folder | 3 PNG, 3 TXT; X also 3 URL | the same |
+| `set_caption` calls, one per PNG | 24 | 24 |
+| Chart Folder | the root handed to the OS handler; the Activity Log names it | the same |
+| Post Selected, X | the `.url` handed to the OS handler; one `handoff` record, route `intent` | the same |
+| Post Selected, six others | the venue folder handed to the OS handler; route `folder` | the same |
+| Post All, nothing approved | `no post is approved` on the Activity Log | the same |
+| Post All, one approved | the root opened once; the post's line | the same |
+| `candidate` records after the scan | 21 | 21 |
+| a scan with no hit | 0 entries, no new file, `The last scan left no post.` | the same |
+| a changed message format | every venue PNG and TXT carry the new wording | the same |
+
+Nothing driven contacted a venue; connections refused: 0, because nothing
+asked for one. The OS handler was recorded and not run.
+
+### The files at the root of his folder
+
+The root of `~/.acervator_ata_posts` on the operator's machine holds 26 PNGs
+named `<symbol>_1d_<stamp>.png`, all dated 2026-09-08, and the seven venue
+folders hold nothing. No scan wrote them and no Battery run writes any post
+image: `src/simulator/portfolio_battery.py` names none of the post writers.
+They are what one earlier unit rendered from its recorded tablets into the
+real home, before the post root could be redirected. They are not push
+candidates. Nothing here removes them; the operator clears them when he
+chooses.
+
+### Three sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:541` - "Post Selected sends the post
+on screen. Post All sends every approved post. Send Bucket Full Auto releases
+approved posts with no further click. All three obey one ceiling, counted over
+the hour ending now." The ceiling and the hour guard hold on the `api` route.
+The `folder` and `intent` routes send nothing, so they obey no ceiling.
+
+`docs/manual/08-tabs/market-inspector.md:1051` - "The Ready to Send zone draws
+the text and does not show the picture." The zone now draws the venue's own
+picture in each entry.
+
+`docs/manual/08-tabs/market-inspector.md:3171` - "The Ready to Send zone
+carries a fourth button. It opens the folder holding the chart images, in the
+operating system's own file browser." Still true; the press now also says so
+on the Activity Log.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).

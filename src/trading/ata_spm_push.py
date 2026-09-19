@@ -1,9 +1,12 @@
 """ata_spm_push.py -- the ATA-SPM run, phases four to seven.
 
 ``format_post`` writes one ``FormattedPost`` per ``PushTarget`` from the
-``ata_spm.ChartPull`` phase three produced, and ``fit_to_target`` holds each
-body under the ``body_limit`` that target publishes. ``distribute`` hands
-those to a host-supplied sender and answers one ``DeliveryRecord`` each.
+``ata_spm.ChartPull`` phase three produced, naming the venue folder files
+``ata_venue_folders`` wrote for it, and ``fit_to_target`` holds each body
+under the ``body_limit`` that target publishes. ``hand_off`` takes one post
+by the route its target allows: ``deliver_one`` through a host-supplied
+sender where the venue is signed in, the venue folder for the rest, and
+``TARGET_X``'s intent file; each answers one ``DeliveryRecord``.
 ``ReadyToSend`` is the bucket the operator approves from, and
 ``FollowUpWatch`` is phase seven.
 """
@@ -17,9 +20,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from . import ata_spm
+from ..core.signal_contract import emit as _pin_emit
+from . import ata_post_paths, ata_spm
 
 logger = logging.getLogger("acervator.ata_spm_push")
+
+#: The pin ``PushBoard.load_run`` writes once per bucket entry, through ``_pin_emit``.
+CANDIDATE_PIN = "inspector.ata.candidate"
+
+#: The pin ``hand_off`` writes once per post a press took, through ``_pin_emit``.
+HANDOFF_PIN = "inspector.ata.handoff"
+
+#: ``DeliveryRecord.route``: the sender the venue's API takes the post through.
+ROUTE_API = "api"
+
+#: ``DeliveryRecord.route``: the venue folder the operator posts from by hand.
+ROUTE_FOLDER = "folder"
+
+#: ``DeliveryRecord.route``: the ``.url`` intent the OS opens the compose window from.
+ROUTE_INTENT = "intent"
 
 #: The header a ``PushTarget`` row carries unless the row names its own.
 FIXED_HEADER = (
@@ -417,6 +436,26 @@ NO_DESTINATION_TEXT = ""
 
 DELIVERY_SENT_FORMAT = "{target} · {symbol} {label} · sent to {destination}"
 DELIVERY_FAILED_FORMAT = "{target} · {symbol} {label} · not sent · {detail}"
+DELIVERY_FOLDER_FORMAT = "{target} · {symbol} {label} · in folder {destination}"
+DELIVERY_INTENT_FORMAT = (
+    "{target} · {symbol} {label} · compose address opened · {destination}"
+)
+DELIVERY_INTENT_READY_FORMAT = (
+    "{target} · {symbol} {label} · compose address ready · {destination}"
+)
+NO_FOLDER_FILE_TEXT = "No folder file was written for {target}."
+PRESS_LINE_FORMAT = "ATA-SPM hand-off: {line}"
+NOTHING_APPROVED_TEXT = (
+    "ATA-SPM Post All: no post is approved. Approve one, then press again."
+)
+FULL_AUTO_TOGGLED_FORMAT = "ATA-SPM Send Bucket Full Auto: {state}."
+
+#: The three presses ``PushBoard.press_lines`` writes lines for.
+PRESS_POST_SELECTED = "post_selected"
+PRESS_POST_ALL = "post_all"
+PRESS_FULL_AUTO = "full_auto"
+HANDOFF_LOG = "ATA-SPM hand-off %s"
+OPEN_FAILED_LOG = "ATA-SPM could not open %s: %s"
 
 BUCKET_EMPTY_TEXT = "No post formatted. Scan a sector first."
 BUCKET_HOLDS_FORMAT = (
@@ -738,6 +777,8 @@ class FormattedPost:
     last_close: float = ata_spm.NO_BAND_VALUE
     closes: tuple = ()
     image_path: str = ""
+    text_path: str = ""
+    intent_path: str = ""
     lines: tuple = ()
     follows: str = ""
     body_limit: int = NO_LIMIT_PUBLISHED
@@ -806,6 +847,30 @@ class FormattedPost:
             written[ARTEFACT_IMAGE] = self.image_path
         return written
 
+    @property
+    def folder_path(self) -> str:
+        """The venue folder this post's files sit in, empty while none was written."""
+        if not self.image_path:
+            return ""
+        return str(Path(self.image_path).parent)
+
+
+def venue_files(pull: Any, target: PushTarget) -> tuple:
+    """The image, text and intent paths ``ata_venue_folders`` wrote for one
+    target, or the root image alone where that folder was not written."""
+    held = (getattr(pull, "venue_posts", None) or {}).get(target.name)
+    if held is None:
+        return (
+            str(getattr(getattr(pull, "image", None), "path", "") or ""),
+            "",
+            "",
+        )
+    return (
+        str(getattr(getattr(held, "image", None), "path", "") or ""),
+        str(getattr(held, "text_path", "") or ""),
+        str(getattr(held, "intent_path", "") or ""),
+    )
+
 
 def format_post(
     vote: Any,
@@ -816,8 +881,9 @@ def format_post(
     """Phase four: one reversal call written for one push target.
 
     The sections come from ``target.sections`` and their wording from the
-    evidence ``ata_spm.pull`` answered, and ``fit_to_target`` holds the body
-    under the ceiling this target publishes.
+    evidence ``ata_spm.pull`` answered, ``fit_to_target`` holds the body
+    under the ceiling this target publishes, and ``venue_files`` names the
+    stamped image, the text and the intent this target's folder holds.
     """
     written: list = []
     for name in target.sections:
@@ -828,6 +894,7 @@ def format_post(
             (name, one) for one in writer(vote, pull, max_supporting_indicators)
         )
     lines, dropped = fit_to_target(ranked_lines(post_groups(written)), target)
+    image_path, text_path, intent_path = venue_files(pull, target)
     return FormattedPost(
         target=target.name,
         symbol=vote.symbol,
@@ -841,7 +908,9 @@ def format_post(
         bars=pull.bars,
         last_close=pull.last_close,
         closes=tuple(pull.closes),
-        image_path=str(getattr(getattr(pull, "image", None), "path", "") or ""),
+        image_path=image_path,
+        text_path=text_path,
+        intent_path=intent_path,
         lines=lines,
         body_limit=int(getattr(target, "body_limit", NO_LIMIT_PUBLISHED)),
         title_limit=int(getattr(target, "title_limit", NO_TITLE_FIELD)),
@@ -1174,11 +1243,41 @@ class DeliveryRecord:
     sent: bool = False
     destination: str = NO_DESTINATION_TEXT
     detail: str = ""
+    route: str = ROUTE_API
+    opened: bool = False
+
+    @property
+    def outcome(self) -> str:
+        """One word for what happened: sent, refused, folder or intent."""
+        if self.route == ROUTE_API:
+            return "sent" if self.sent else "refused"
+        return self.route
 
     @property
     def line(self) -> str:
-        """This record as the one line the Ready to Send zone reads back."""
+        """This record as the one line the Activity Log and the zone read back.
+
+        An intent reads ``opened`` only when the press handed it to the OS;
+        a release, or a Post All that opened the root, reads ``ready``.
+        """
         label = ata_spm.timeframe_label(self.timeframe)
+        if self.route == ROUTE_FOLDER and self.destination:
+            return DELIVERY_FOLDER_FORMAT.format(
+                target=self.target,
+                symbol=self.symbol,
+                label=label,
+                destination=self.destination,
+            )
+        if self.route == ROUTE_INTENT and self.destination:
+            written = (
+                DELIVERY_INTENT_FORMAT if self.opened else DELIVERY_INTENT_READY_FORMAT
+            )
+            return written.format(
+                target=self.target,
+                symbol=self.symbol,
+                label=label,
+                destination=self.destination,
+            )
         if self.sent:
             return DELIVERY_SENT_FORMAT.format(
                 target=self.target,
@@ -1581,6 +1680,82 @@ def deliver_one(
     return record
 
 
+def route_for(post: FormattedPost, settings: AtaSpmSettings, sender: Any) -> str:
+    """The route one post takes: ``ROUTE_API`` while its venue is signed in and
+    a sender is wired, ``ROUTE_INTENT`` while its folder holds an intent file,
+    else ``ROUTE_FOLDER``."""
+    if sender is not None and settings.holds(post.target):
+        return ROUTE_API
+    if post.intent_path:
+        return ROUTE_INTENT
+    return ROUTE_FOLDER
+
+
+def open_path(path: Any) -> bool:
+    """Hand one folder or ``.url`` file to the operating system's own handler.
+
+    ``webbrowser.open`` on a ``file:`` address is the OS handler: a folder
+    opens in the file browser, an Internet Shortcut in the default browser.
+    No browser is driven and nothing is typed into one.
+    """
+    import webbrowser
+
+    try:
+        return bool(webbrowser.open(Path(str(path)).as_uri(), new=2))
+    except Exception as exc:  # noqa: BLE001 - the handler is host-supplied
+        logger.warning(OPEN_FAILED_LOG, path, exc)
+        return False
+
+
+def hand_off(
+    post: FormattedPost,
+    sender: Optional[Callable],
+    settings: AtaSpmSettings,
+    rate: SendRate,
+    repost: RepostGuard,
+    now: float,
+    opener: Optional[Callable] = None,
+) -> DeliveryRecord:
+    """Take one post by ``route_for`` and answer the ``DeliveryRecord``.
+
+    The API route is ``deliver_one``. The folder route names the venue
+    folder the scan already filled, and the intent route names the
+    ``.url`` file; ``opener`` is handed that path when a press asks for it,
+    and ``HANDOFF_PIN`` records venue, route and outcome every time.
+    """
+    route = route_for(post, settings, sender)
+    if route == ROUTE_API:
+        record = deliver_one(post, sender, settings, rate, repost, now)
+    else:
+        record = DeliveryRecord(
+            target=post.target, symbol=post.symbol, timeframe=post.timeframe
+        )
+        record.route = route
+        record.destination = (
+            post.intent_path if route == ROUTE_INTENT else post.folder_path
+        )
+        if not record.destination:
+            record.detail = NO_FOLDER_FILE_TEXT.format(target=post.target)
+        elif opener is not None:
+            record.opened = bool(opener(record.destination))
+    logger.debug(HANDOFF_LOG, record.line)
+    _pin_emit(
+        HANDOFF_PIN,
+        actual=record.outcome,
+        context={
+            "venue": post.target,
+            "symbol": post.symbol,
+            "timeframe": post.timeframe,
+            "route": record.route,
+            "outcome": record.outcome,
+            "destination": record.destination,
+            "detail": record.detail,
+            "opened": record.opened,
+        },
+    )
+    return record
+
+
 def distribute(
     posts: Any,
     sender: Optional[Callable] = None,
@@ -1588,17 +1763,21 @@ def distribute(
     rate: Optional[SendRate] = None,
     clock: Optional[Callable] = None,
     repost: Optional[RepostGuard] = None,
+    opener: Optional[Callable] = None,
 ) -> list:
-    """Phase five: send every post given, and answer one record for each.
+    """Phase five: take every post given by its route, one record for each.
 
-    With no ``sender`` every post records the target it could not reach.
+    A venue that is not signed in, or has no sender wired, takes the
+    folder route, and ``TARGET_X`` its intent file; ``opener`` is what a
+    press opens those with.
     """
     held = settings if settings is not None else AtaSpmSettings()
     counter = rate if rate is not None else SendRate()
     guard = repost if repost is not None else RepostGuard()
     now = float(clock() if clock is not None else 0.0)
     return [
-        deliver_one(one, sender, held, counter, guard, now) for one in list(posts or [])
+        hand_off(one, sender, held, counter, guard, now, opener)
+        for one in list(posts or [])
     ]
 
 
@@ -1732,26 +1911,36 @@ class ReadyToSend:
         sender: Optional[Callable] = None,
         settings: Optional[AtaSpmSettings] = None,
         clock: Optional[Callable] = None,
+        opener: Optional[Callable] = None,
     ) -> list:
-        """Send the post on screen, and answer the records phase five wrote.
+        """Take the post on screen by its route, and answer the records written.
 
-        A ``STATE_DECLINED`` post is never sent and records ``DECLINED_TEXT``.
+        A ``STATE_DECLINED`` post is never taken and records ``DECLINED_TEXT``.
+        ``opener`` receives the one folder or intent file the route names.
         """
         held = self.at(index)
         if held is None:
             return []
         if held.state == STATE_DECLINED:
             return self._hold_declined([held])
-        return self._send([held], sender, settings, clock)
+        return self._send([held], sender, settings, clock, opener)
 
     def post_all(
         self,
         sender: Optional[Callable] = None,
         settings: Optional[AtaSpmSettings] = None,
         clock: Optional[Callable] = None,
+        opener: Optional[Callable] = None,
     ) -> list:
-        """Send every approved post, and answer the records phase five wrote."""
-        return self._send(self.approved(), sender, settings, clock)
+        """Take every approved post by its route, and answer the records written.
+
+        ``opener`` receives the post root once when any post took the folder
+        or intent route, so every venue folder is in view from one window.
+        """
+        records = self._send(self.approved(), sender, settings, clock, None)
+        if opener is not None and any(one.route != ROUTE_API for one in records):
+            opener(ata_post_paths.get_ata_post_root())
+        return records
 
     def release(
         self,
@@ -1759,10 +1948,10 @@ class ReadyToSend:
         settings: Optional[AtaSpmSettings] = None,
         clock: Optional[Callable] = None,
     ) -> list:
-        """Send every approved post while ``full_auto`` is on, and answer records."""
+        """Take every approved post while ``full_auto`` is on, opening nothing."""
         if not self.full_auto:
             return []
-        return self.post_all(sender, settings, clock)
+        return self.post_all(sender, settings, clock, None)
 
     def _hold_declined(self, held: list) -> list:
         records = [
@@ -1783,6 +1972,7 @@ class ReadyToSend:
         sender: Optional[Callable],
         settings: Optional[AtaSpmSettings],
         clock: Optional[Callable],
+        opener: Optional[Callable] = None,
     ) -> list:
         records = distribute(
             [one.post for one in held],
@@ -1791,6 +1981,7 @@ class ReadyToSend:
             self.rate,
             clock,
             self.repost,
+            opener,
         )
         self.records.extend(records)
         return records
@@ -1816,10 +2007,15 @@ class PushBoard:
         self.connect_result: Optional[ConnectResult] = None
         self.sender: Optional[Callable] = None
         self.clock: Optional[Callable] = None
+        self.opener: Optional[Callable] = open_path
 
     def set_sender(self, sender: Optional[Callable]) -> None:
         """Take what phase five sends through, or None to send nothing."""
         self.sender = sender
+
+    def set_opener(self, opener: Optional[Callable]) -> None:
+        """Take what a press opens a folder or intent file with, or None to open nothing."""
+        self.opener = opener
 
     def toggle_settings(self) -> bool:
         """Show Level 1, or the scan page, and answer which.
@@ -1859,8 +2055,34 @@ class PushBoard:
         return answer
 
     def load_run(self, run: Any) -> int:
-        """Fill the bucket from one run and answer how many posts it holds."""
-        return self.bucket.load_run(run, self.settings)
+        """Fill the bucket from one run and answer how many posts it holds.
+
+        ``CANDIDATE_PIN`` is written once per entry with its symbol,
+        timeframe, venue, folder and image, and a post whose venue folder
+        holds no image reads ``ok`` False.
+        """
+        count = self.bucket.load_run(run, self.settings)
+        for held in self.bucket.posts:
+            post = held.post
+            _pin_emit(
+                CANDIDATE_PIN,
+                actual=post.target,
+                ok=bool(post.image_path) and Path(post.image_path).is_file(),
+                context={
+                    "symbol": post.symbol,
+                    "timeframe": post.timeframe,
+                    "vote": post.vote,
+                    "venue": post.target,
+                    "venue_folder": post.folder_path,
+                    "image_path": post.image_path,
+                    "text_path": post.text_path,
+                    "intent_path": post.intent_path,
+                    "measured": post.measured,
+                    "body_limit": post.body_limit,
+                    "posts_in_bucket": count,
+                },
+            )
+        return count
 
     def after_scan(self, run: Any, candle_source: Any) -> list:
         """Phase seven around one scan, and the outcomes the check answered.
@@ -1876,16 +2098,40 @@ class PushBoard:
         return found
 
     def post_selected(self, index: Any) -> list:
-        """Press Post Selected on the post one zone index shows."""
-        return self.bucket.post_selected(index, self.sender, self.settings, self.clock)
+        """Press Post Selected on the post one zone index shows.
+
+        The route's folder or intent file opens through ``opener``.
+        """
+        return self.bucket.post_selected(
+            index, self.sender, self.settings, self.clock, self.opener
+        )
 
     def post_all(self) -> list:
-        """Press Post All over every approved post in the bucket."""
-        return self.bucket.post_all(self.sender, self.settings, self.clock)
+        """Press Post All over every approved post in the bucket.
+
+        The post root opens once through ``opener`` when any post took the
+        folder or intent route.
+        """
+        return self.bucket.post_all(self.sender, self.settings, self.clock, self.opener)
 
     def release(self) -> list:
-        """Release the bucket while Send Bucket Full Auto is on."""
+        """Release the bucket while Send Bucket Full Auto is on; nothing opens."""
         return self.bucket.release(self.sender, self.settings, self.clock)
+
+    def press_lines(self, key: Any, records: Any) -> list:
+        """The Activity Log lines one Ready to Send press leaves.
+
+        ``records`` are what the press answered; a Post All with none says
+        ``NOTHING_APPROVED_TEXT`` and a Full Auto press says its state.
+        """
+        held = [PRESS_LINE_FORMAT.format(line=one.line) for one in list(records or [])]
+        if key == PRESS_FULL_AUTO:
+            held.insert(
+                0, FULL_AUTO_TOGGLED_FORMAT.format(state=self.bucket.full_auto_text())
+            )
+        elif key == PRESS_POST_ALL and not held:
+            held.append(NOTHING_APPROVED_TEXT)
+        return held
 
     def watched_rows(self) -> list:
         """Every call under watch as symbol, timeframe and vote, oldest first.

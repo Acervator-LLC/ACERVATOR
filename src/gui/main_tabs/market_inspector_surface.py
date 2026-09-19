@@ -25,7 +25,11 @@ alone is reported. Nothing here imports Qt.
 
 from __future__ import annotations
 
+import base64
 import logging
+import struct
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
 
 from ...core import encryption
@@ -262,7 +266,9 @@ PHANTOM_HTF_UNWIRED_TEXT = "Phantom Bot source not wired."
 
 READY_TO_SEND_UNWIRED_TEXT = "Phase source not wired. Nothing to approve."
 READY_TO_SEND_NO_RUN_TEXT = "No run yet. Nothing to approve."
+READY_TO_SEND_NONE_TEXT = "The last scan left no post. Nothing to approve."
 READY_TO_SEND_HOLDS_FORMAT = "{count} post(s) waiting. Approve or decline each."
+NO_POSTS = 0
 
 # ── phases four, five and six: the bucket, its buttons and the settings ──
 
@@ -455,6 +461,16 @@ THUMBNAIL_WIDTH_PX = 120
 THUMBNAIL_HEIGHT_PX = 36
 PREVIEW_WIDTH_PX = 320
 PREVIEW_HEIGHT_PX = 160
+
+#: The PNG ``post_chart`` carries: a data address the page's ``img`` and the Qt
+#: ``_PostChart`` both decode, and the header ``png_size`` reads the size from.
+IMAGE_DATA_PREFIX = "data:image/png;base64,"
+IMAGE_FORMAT = "PNG"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_SIZE_OFFSET = 16
+PNG_SIZE_FORMAT = ">II"
+NO_IMAGE_SIZE = (0, 0)
+IMAGE_CACHE_ENTRIES = 64
 THUMBNAIL_COLUMNS = 40
 PREVIEW_COLUMNS = 80
 CHART_BORDER_PX = 1
@@ -702,6 +718,7 @@ ATA_RUN_FAILED_LOG = "ATA-SPM run read failed: %s"
 SECTOR_MAP_FAILED_LOG = "sector map read failed: %s"
 CHART_FOLDER_OPENED_LOG = "ATA chart folder opened: %s"
 CHART_FOLDER_FAILED_LOG = "ATA chart folder %s not opened: %s"
+HANDLER_REFUSED_TEXT = "the operating system's handler refused"
 CANDLE_READ_FAILED_LOG = "scanned candle read failed on %s %s: %s"
 VOLUME_READ_FAILED_LOG = "quote volume read failed for %s: %s"
 CONNECTORS_READ_FAILED_LOG = "exchange connector read failed: %s"
@@ -1557,19 +1574,71 @@ def chart_marks(post: Any, width_px: Any, height_px: Any, columns: Any) -> list:
     return marks
 
 
+def png_size(raw: bytes) -> tuple:
+    """The width and height a PNG header declares, or ``NO_IMAGE_SIZE``."""
+    if not raw.startswith(PNG_SIGNATURE) or len(raw) < PNG_SIZE_OFFSET + 8:
+        return NO_IMAGE_SIZE
+    width, height = struct.unpack_from(PNG_SIZE_FORMAT, raw, PNG_SIZE_OFFSET)
+    return (int(width), int(height))
+
+
+@lru_cache(maxsize=IMAGE_CACHE_ENTRIES)
+def _image_data(path: str, stamp: int, size: int) -> tuple:
+    """The PNG at ``path`` as its data address and its size; ``stamp`` and
+    ``size`` key the cache so a rewritten file is read again."""
+    del stamp, size
+    raw = Path(path).read_bytes()
+    width, height = png_size(raw)
+    if (width, height) == NO_IMAGE_SIZE:
+        return ("", NO_IMAGE_SIZE)
+    return (IMAGE_DATA_PREFIX + base64.b64encode(raw).decode("ascii"), (width, height))
+
+
+def chart_image(path: Any) -> tuple:
+    """The painter's PNG one post names, as a data address with its size.
+
+    A post naming no file, or a file that is gone, answers an empty address
+    and ``NO_IMAGE_SIZE``, and the entry draws its rectangle strip instead.
+    """
+    if not path:
+        return ("", NO_IMAGE_SIZE)
+    try:
+        held = Path(str(path)).stat()
+    except OSError:
+        return ("", NO_IMAGE_SIZE)
+    return _image_data(str(path), int(held.st_mtime_ns), int(held.st_size))
+
+
+def scaled_height(width_px: Any, image_size: Any, fallback_px: Any) -> int:
+    """The height ``width_px`` takes at the image's own aspect, or the fallback."""
+    width, height = image_size
+    if width <= 0 or height <= 0:
+        return int(fallback_px)
+    return max(1, int(round(int(width_px) * height / width)))
+
+
 def post_chart(post: Any, wide: Any = False) -> dict:
     """The chart one bucket post carries, as its thumbnail or its larger view.
 
-    ``wide`` picks ``PREVIEW_WIDTH_PX`` over ``THUMBNAIL_WIDTH_PX``, and
-    ``chart_marks`` answers every rectangle both hosts place inside it.
+    ``wide`` picks ``PREVIEW_WIDTH_PX`` over ``THUMBNAIL_WIDTH_PX``. ``image``
+    is the painter's PNG the post's ``image_path`` names, which both hosts
+    draw at the box's width; ``chart_marks`` answers the rectangles drawn
+    while the post names no file.
     """
     width_px = PREVIEW_WIDTH_PX if wide else THUMBNAIL_WIDTH_PX
-    height_px = PREVIEW_HEIGHT_PX if wide else THUMBNAIL_HEIGHT_PX
+    image, image_size = chart_image(getattr(post, "image_path", ""))
+    height_px = scaled_height(
+        width_px, image_size, PREVIEW_HEIGHT_PX if wide else THUMBNAIL_HEIGHT_PX
+    )
     columns = PREVIEW_COLUMNS if wide else THUMBNAIL_COLUMNS
     return {
         "part": PREVIEW_PART if wide else THUMBNAIL_PART,
         "width_px": width_px,
         "height_px": height_px,
+        "image": image,
+        "image_path": str(getattr(post, "image_path", "") or ""),
+        "image_width_px": image_size[0],
+        "image_height_px": image_size[1],
         "border_px": CHART_BORDER_PX,
         "column_part": CHART_COLUMN_PART,
         "band_part": CHART_BAND_PART,
@@ -2240,6 +2309,8 @@ def ready_to_send_text(run: Any) -> str:
     count = run.get(ATA_SPM_READY_KEY)
     if count is None:
         return READY_TO_SEND_NO_RUN_TEXT
+    if int(count) == NO_POSTS:
+        return READY_TO_SEND_NONE_TEXT
     return READY_TO_SEND_HOLDS_FORMAT.format(count=count)
 
 
@@ -2786,14 +2857,39 @@ def open_chart_folder() -> str:
     """
     root = ata_post_paths.get_ata_post_root()
     ata_post_paths.venue_post_roots(ata_spm_push.TARGET_NAMES)
-    try:
-        import webbrowser
-
-        webbrowser.open(root.as_uri(), new=2)
+    if ata_spm_push.open_path(root):
         logger.info(CHART_FOLDER_OPENED_LOG, root)
-    except Exception as exc:  # noqa: BLE001 - the browser is host-supplied
-        logger.warning(CHART_FOLDER_FAILED_LOG, root, exc)
+    else:
+        logger.warning(CHART_FOLDER_FAILED_LOG, root, HANDLER_REFUSED_TEXT)
     return str(root)
+
+
+def chart_folder_line(path: Any) -> str:
+    """The Activity Log line a Chart Folder press leaves, naming the root opened."""
+    return CHART_FOLDER_OPENED_LOG % (path,)
+
+
+#: The part each press reports, and the press key ``PushBoard.press_lines`` reads.
+PRESS_KEYS = {
+    POST_SELECTED_PART: ata_spm_push.PRESS_POST_SELECTED,
+    POST_ALL_PART: ata_spm_push.PRESS_POST_ALL,
+    FULL_AUTO_PART: ata_spm_push.PRESS_FULL_AUTO,
+}
+
+
+def push_press_lines(board: Any, key: Any, answered: Any) -> list:
+    """The Activity Log lines one Ready to Send press leaves, both hosts alike.
+
+    A post press hands its records to ``PushBoard.press_lines``; the Chart
+    Folder press names the root it opened; every other press leaves none.
+    """
+    part = str(key)
+    if part == CHART_FOLDER_PART:
+        return [chart_folder_line(answered)]
+    press = PRESS_KEYS.get(part)
+    if press is None:
+        return []
+    return board.press_lines(press, answered)
 
 
 def inspector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
@@ -3128,6 +3224,7 @@ class MarketInspectorScreenModel:
         self.zone_open: dict = {}
         self.scheduled: list = []
         self.emitted: list = []
+        self.press_lines: list = []
         self.calls: list = []
         self.set_ata_sources(sector_assets, self.scanned_candles, self.class_markets)
         self.build_ui()
@@ -3339,6 +3436,7 @@ class MarketInspectorScreenModel:
             return None
         answered = handled()
         self.calls.append([PUSH_ACTION_SET, str(key)])
+        self.press_lines = push_press_lines(self.push, key, answered)
         return answered
 
     def _press_thumbnail(self) -> bool:
@@ -3468,8 +3566,12 @@ class MarketInspectorScreenModel:
         )
 
     def right_zones(self) -> list:
-        """The three right-side zones, in the order the screen draws them."""
-        return right_zone_rows(self.ata_run(), self.push.bucket)
+        """The three right-side zones, in the order the screen draws them.
+
+        Ready to Send reads ``ata_report``, the ATA-SPM board's own run,
+        so a scan that left no post says so rather than reading unwired.
+        """
+        return right_zone_rows(self.ata_report(), self.push.bucket)
 
     def zone_entries(self, key: Any) -> list:
         """The entries one zone steps through.

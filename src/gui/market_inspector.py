@@ -11,9 +11,11 @@ covered.
 
 from __future__ import annotations
 
+import base64
 import html
 import logging
 import threading
+from typing import Any
 
 from ..core import encryption
 from ..trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
@@ -48,6 +50,8 @@ from .main_tabs.market_inspector_surface import (
     FULL_AUTO_LABEL,
     FULL_AUTO_PART,
     FULL_AUTO_TOOLTIP,
+    IMAGE_DATA_PREFIX,
+    IMAGE_FORMAT,
     CHART_FOLDER_LABEL,
     CHART_FOLDER_PART,
     CHART_FOLDER_TOOLTIP,
@@ -131,6 +135,7 @@ from .main_tabs.market_inspector_surface import (
     class_markets,
     market_listing,
     open_chart_folder,
+    push_press_lines,
     sector_assets,
     sector_candle_read,
     ticker_matches,
@@ -186,7 +191,13 @@ try:
         QCompleter,
     )
     from PySide6.QtCore import Qt, Signal
-    from PySide6.QtGui import QColor, QPainter, QStandardItem, QStandardItemModel
+    from PySide6.QtGui import (
+        QColor,
+        QImage,
+        QPainter,
+        QStandardItem,
+        QStandardItemModel,
+    )
 
     _HAS_QT = True
 except ImportError:
@@ -329,10 +340,12 @@ if _HAS_QT:
                 self.setMinimumHeight(tall)
 
     class _PostChart(QFrame):
-        """One bucket post's chart: its closes, its bands and its last close.
+        """One bucket post's chart: the painter's PNG the post names, scaled
+        to the box, or its closes, its bands and its last close as marks.
 
-        ``show_chart`` places one child per ``post_chart`` mark, so the Qt
-        widget and the page draw the same rectangles at the same boxes.
+        ``show_chart`` decodes the ``post_chart`` image the page's ``img``
+        also decodes, and places one child per mark where there is none, so
+        the Qt widget and the page draw the same picture in the same box.
         """
 
         clicked = Signal()
@@ -340,6 +353,7 @@ if _HAS_QT:
         def __init__(self, parent=None) -> None:
             super().__init__(parent)
             self.marks: list = []
+            self.image = QImage()
 
         def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt event name
             """Report the press so the zone opens its larger chart view."""
@@ -353,17 +367,32 @@ if _HAS_QT:
             self.setAccessibleName(str(chart["part"]))
             self.setToolTip(str(chart.get("tooltip", "")))
             self.marks = [list(one) for one in chart["marks"]]
+            self.image = decode_chart_image(chart.get("image", ""))
             self.update()
 
         def paintEvent(self, event) -> None:  # noqa: N802 - Qt event name
-            """Fill every mark, which is what the page's chart children are."""
+            """Draw the image scaled to the box, or fill every mark."""
             super().paintEvent(event)
             painter = QPainter(self)
+            if not self.image.isNull():
+                painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+                painter.drawImage(self.rect(), self.image)
+                painter.end()
+                return
             for _part, left, top, width, height, color in self.marks:
                 painter.fillRect(
                     int(left), int(top), int(width), int(height), QColor(color)
                 )
             painter.end()
+
+    def decode_chart_image(data: Any) -> "QImage":
+        """The ``QImage`` one ``post_chart`` data address carries, null while it has none."""
+        held = str(data or "")
+        if not held.startswith(IMAGE_DATA_PREFIX):
+            return QImage()
+        return QImage.fromData(
+            base64.b64decode(held[len(IMAGE_DATA_PREFIX) :]), IMAGE_FORMAT
+        )
 
     class _VotingPanel(QFrame):
         """The Indicator Voting Panel one scanned asset carries.
@@ -1498,26 +1527,37 @@ if _HAS_QT:
             return self._zone_at.get(READY_TO_SEND_ZONE, 0)
 
         def _on_push_action(self, key: str) -> None:
-            """Run one Ready to Send press against the bucket, then redraw."""
+            """Run one Ready to Send press against the bucket, then redraw.
+
+            The lines the press leaves, ``push_press_lines``, go to the
+            Activity Log through ``_say_lines``.
+            """
             board = self._push_board
             at = self._bucket_at()
+            answered: Any = None
             if key == APPROVE_PART:
                 board.bucket.approve(at)
             elif key == DECLINE_PART:
                 board.bucket.decline(at)
             elif key == POST_SELECTED_PART:
-                board.post_selected(at)
+                answered = board.post_selected(at)
             elif key == POST_ALL_PART:
-                board.post_all()
+                answered = board.post_all()
             elif key == FULL_AUTO_PART:
                 board.bucket.toggle_full_auto()
-                board.release()
+                answered = board.release()
             elif key == CHART_FOLDER_PART:
-                open_chart_folder()
+                answered = open_chart_folder()
             elif key == THUMBNAIL_PART:
                 self._zone_open[READY_TO_SEND_ZONE] = True
+            self._say_lines(push_press_lines(board, key, answered))
             self._full_auto_btn.setChecked(board.bucket.full_auto)
             self._render_left_modules()
+
+        def _say_lines(self, lines: Any) -> None:
+            """Write each line a press left to the Activity Log."""
+            for line in list(lines or []):
+                self._say(str(line))
 
         def _ata_at(self) -> int:
             """The zone index the ATA-SPM stepper is showing."""
@@ -1954,7 +1994,7 @@ if _HAS_QT:
                 self._connectors_now(),
                 len(self._ata_board.sectors),
                 self._ata_board.note,
-            ) + _right_zone_rows(self._ata_run(), self._push_board.bucket)
+            ) + _right_zone_rows(self._ata_report(), self._push_board.bucket)
             return [
                 zone_view(
                     key,
