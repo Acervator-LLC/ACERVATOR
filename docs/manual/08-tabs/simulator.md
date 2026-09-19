@@ -81,6 +81,35 @@ fleet names. Every fleet change seats the stack again.
         self._refresh_replay()
 ```
 
+
+Since one fleet per mode landed, the fleet the stack seats is the active
+mode's. The tab's fleet source holds three fleets, one for Validation, one
+for Back Test and one for Portfolio Battery, and every reader and every act
+works on the fleet of the mode in force. A mode press moves the source's
+mode and fires the same fleet change, so the venues, the rows, the strip and
+the way-in row redraw from that mode's fleet; a venue that only one mode's
+fleet names unseats when another mode is shown and seats again on return.
+A mode whose fleet is empty shows the Get Started card, and the card holds
+the three mode buttons above its two ways in, so the operator can leave an
+empty mode from the card. The section "One fleet per mode" under "How each
+part was built" describes the change.
+
+`src/simulator/fleet_source.py` — the fleet in force
+
+```python
+    @property
+    def _records(self) -> dict[str, dict]:
+        """The records map of the fleet in force, ``_fleets`` under ``_mode``."""
+        return self._fleets[self._mode]
+
+    def set_mode(self, mode: str) -> str:
+        """Make ``mode`` the fleet every reader and act works on; a name
+        outside ``MODES`` changes nothing. Answers the mode in force."""
+        if mode in MODES:
+            self._mode = str(mode)
+        return self._mode
+```
+
 ### The mode row and the corner
 
 The row above the bot list holds the three mode buttons, Validation, Back Test
@@ -103,6 +132,26 @@ ROWS_FOR_MODE = {
     MODE_BACK_TEST: BACK_TEST_ROWS,
     MODE_PORTFOLIO_BATTERY: BATTERY_ROWS,
 }
+```
+
+
+The three mode names and their tuple now live in the fleet source, because
+the sim fleet file is keyed by them; the surface imports the same four names,
+so the block above reads the same values from `src/simulator/fleet_source.py`.
+A mode press does more than restyle the row: the host hands the mode to the
+source, then fires the fleet change, and the tab draws that mode's fleet. A
+press while a run or a Battery is in flight writes the in-flight line and
+changes nothing. The card under the mode row holds the same three buttons.
+
+`src/gui/simulator/sim_trading_tab.py` — the press
+
+```python
+        self._fleet_source.set_mode(mode)
+        for venue in list(self._crypto_exchange_tabs.values()) + list(
+            self._stock_exchange_tabs.values()
+        ):
+            venue.show_mode(mode)
+        self.fleet_changed.emit()
 ```
 
 The corner's first button, in every mode, is Clear Fleet. It sits to the left
@@ -2350,6 +2399,34 @@ through Import Live Fleet (comment 5721499839).
             return None
 ```
 
+
+Since one fleet per mode landed, the file holds all three fleets. The top
+carries `saved_at`, `saved_at_human`, `bot_count` summed over the three,
+and `fleets`, one entry per mode; each entry carries the four keys the block
+above wrote for the one fleet, so a mode's entry is a file of the old shape.
+Every fleet change writes all three, so an import under Validation, a bot
+created under Back Test and a Battery run's generated fleet land in one file
+and survive a restart under their own modes.
+
+`src/simulator/fleet_source.py` — the write, one entry per mode
+
+```python
+        payload = {
+            "saved_at": saved_at,
+            "saved_at_human": saved_at_human,
+            "bot_count": sum(len(records) for records in self._fleets.values()),
+            FLEETS_KEY: {
+                mode: {
+                    "saved_at": saved_at,
+                    "saved_at_human": saved_at_human,
+                    "bot_count": len(records),
+                    "bots": dict(records),
+                }
+                for mode, records in self._fleets.items()
+            },
+        }
+```
+
 ### Absent, empty, malformed
 
 An absent file, or one holding no bytes, gives no sim bots and no log line.
@@ -2371,6 +2448,43 @@ did not load.
     if not isinstance(stored, dict):
         logger.warning("sim fleet file %s malformed: no bots object", path)
         return {}
+```
+
+
+Since one fleet per mode landed, the read answers three maps. A file holding
+`fleets` reads each mode's entry through the reading above, one warning per
+mode for a record that names no symbol; a mode name under `fleets` that is
+not one of the three is not read and is named in one warning line. A file in
+the old shape, one `bots` map at the top and no `fleets`, is read as the
+Validation fleet with the other two empty, and one line says so, so the
+fleet the operator held before the change is drawn at the next launch under
+Validation, the mode the tab opens in. The first fleet change after that
+launch writes the file in the new shape.
+
+`src/simulator/fleet_source.py` — the old shape and the unknown mode
+
+```python
+    stored_fleets = loaded.get(FLEETS_KEY)
+    if isinstance(stored_fleets, dict):
+        unknown = [str(name) for name in stored_fleets if name not in MODES]
+        if unknown:
+            logger.warning(
+                "sim fleet file %s names %d mode(s) outside %s and does not "
+                "read them: %s",
+                path,
+                len(unknown),
+                MODES,
+                ", ".join(unknown),
+            )
+```
+
+```python
+    fleets[MODE_VALIDATION] = _records_of(stored, path, MODE_VALIDATION)
+    logger.info(
+        "sim fleet file %s holds one fleet; read as the %s fleet",
+        path,
+        MODE_VALIDATION,
+    )
 ```
 
 Driven in the real window in both builds with a scratch home: a bot created
@@ -6276,6 +6390,203 @@ second and every later one `ok` true with `expected` equal to `actual`. The Qt
 top splitter read the same pair before and after. Every watched file, 8 of
 8, hashed identical after every step, and a byte appended to a copy of
 `bot_state.json` moved the hash. No socket left loopback.
+
+## One fleet per mode
+
+The Simulator holds one fleet for each run mode: a Validation fleet, a Back
+Test fleet and a Portfolio Battery fleet. The tab shows the fleet of the mode
+in force. Pressing a mode swaps the tables, the header strip, the venue stack
+and the way-in row to that mode's fleet. Import Live Fleet, Generate From
+YTD, Create New Bots, Clear Fleet and the Battery's generated fleet act on
+the fleet of the mode in force alone, so the Battery's generated fleet and
+its Yahoo venue live under Portfolio Battery and do not appear under
+Validation. One file holds all three fleets. Both builds draw the same
+screens and both hosts run the same source.
+
+### The source holds three fleets
+
+The fleet source keeps one records map per mode and one mode in force. Every
+reader and every act it answers works on the map of that mode, so no caller
+changed: the tables, the strip, the venue stack, the way-in row, the bot
+manager and the three runners all read the fleet in force through the calls
+they made before. The mode is set on the source by the hosts and read back
+by them; the Qt host's mode is that read, and the React host writes it into
+its tab state before each draw.
+
+`src/simulator/fleet_source.py` — the three modes and the fleet in force
+
+```python
+MODE_VALIDATION = "validation"
+MODE_BACK_TEST = "back_test"
+MODE_PORTFOLIO_BATTERY = "portfolio_battery"
+MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
+
+#: The sim fleet file's key holding one entry per mode of ``MODES``.
+FLEETS_KEY = "fleets"
+```
+
+```python
+    def held_by_mode(self) -> dict[str, dict]:
+        """Per mode of ``MODES``, ``held`` (how many records draw as a
+        ``SimBot``) and ``venues`` (their distinct ``exchange_id`` values,
+        sorted)."""
+```
+
+### The press swaps the fleet
+
+A mode press on the venue header or on the card reaches the host's
+`set_mode`. The host hands the mode to the source, restyles every seated
+venue header, then fires the fleet change: the file is written, the venues
+the new fleet names seat and the rest unseat, the rows, the panel and the
+replay re-read, and the way-in row and the card redraw. The strip reads the
+new fleet on the window's next tick. A press while a run or a Battery is in
+flight writes the in-flight line and changes nothing, because the run's end
+stops its bots by id on the fleet in force.
+
+```mermaid
+flowchart LR
+    press[mode button, header or card] --> host[host.set_mode]
+    host --> source[FleetSource.set_mode]
+    source --> changed[fleet_changed]
+    changed --> save[FleetSource.save, three fleets]
+    changed --> seat[_sync_exchange_tabs]
+    seat --> venues[venues seat and unseat]
+    seat --> rows[rows, panel, replay]
+    seat --> wayins[way-in row and card]
+    tick[window tick] --> strip[header strip]
+```
+
+### The card holds the mode row
+
+A mode whose fleet is empty shows the Get Started card and no venue, and the
+venue header is the only place the mode buttons were drawn. The card now
+holds the three mode buttons under its title, from the same list the venue
+header draws, with the same sheets: the active mode wears Live's Privacy
+Mode ON sheet and the other two the OFF sheet. The Qt host builds them once
+per layer and restyles them on every fleet change; the React page draws them
+from the card payload's `mode_buttons`, and a press sends `mode` on the tab's
+own ask, which the host hands to `set_mode` as it hands the venue header's
+press. The card's buttons are named `sim-mode-<mode>-card`.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the card's mode buttons
+
+```python
+def placeholder_mode_buttons(active: str = sim.MODES[0]) -> list:
+    """The card's three mode buttons, ``venue.mode_buttons`` over ``active``
+    under ``card_mode_name``, so the card offers the mode choice the venue
+    header offers."""
+    return [
+        {**button, "accessible_name": card_mode_name(button["key"])}
+        for button in venue.mode_buttons(active)
+    ]
+```
+
+### Clear Fleet names the mode
+
+Clear Fleet empties the fleet of the mode in force and keeps the other two.
+Its box and its cleared line name the mode.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the box and the line
+
+```python
+CLEAR_FLEET_QUESTION_FORMAT = (
+    "Clear the {mode} fleet of {count} bot(s) on {venues}? This cannot be undone."
+)
+CLEARED_FORMAT = "Cleared {count} bot(s) on {venues}; the {mode} fleet is empty."
+```
+
+### The signal a mode press emits
+
+Every mode press emits one row through the emitter network. The row's
+`actual` is the mode in force with its held count and venues after the
+press; its `expected` is the pressed mode with the count and venues the
+source held for it before the press; its context names the outcome, the
+mode left and every mode's count. The outcomes are `shown`,
+`refused_in_flight` and `unknown_mode`. The two Clear Fleet rows carry the
+mode in their context.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the signal
+
+```python
+MODE_SHOWN_SIGNAL = "sim.fleet.mode_shown"
+MODE_OUTCOME_SHOWN = "shown"
+MODE_OUTCOME_IN_FLIGHT = "refused_in_flight"
+MODE_OUTCOME_UNKNOWN = "unknown_mode"
+MODE_SHOWN_FORMAT = "{mode} fleet shown: {count} bot(s) on {venues}."
+```
+
+### The React wizard is deleted on the GUI thread
+
+Driving the flow on the React build found a crash: a bot created through
+the React wizard, then a Battery run, ended the process with a Chromium
+thread check, because the wizard's web view was left to Python's garbage
+collector, which ran on the Battery's worker thread. The React host now
+deletes the wizard through the event loop as soon as it closes, on the GUI
+thread, in both the accepted and the cancelled path. The same flow then ran
+to its end.
+
+`src/gui/simulator/sim_react_trading_tab.py` — the disposal
+
+```python
+            try:
+                accepted = wizard.exec() == wizard.DialogCode.Accepted
+                config = wizard.get_bot_config() if accepted else {}
+            finally:
+                # The dialog's QWebEngineView is deleted on this thread by the
+                # event loop; a worker thread's garbage collection would abort.
+                wizard.deleteLater()
+```
+
+### What the fleet-per-mode reading measured
+
+Read off the running program in both builds, over a scratch home holding a
+`bot_state.json` of 24 scrumming bots on `coinbase`, one 5m tablet per pair,
+four fills per pair in YTD files, one fired gate row per fill, and a scratch
+RA root holding the 2022 tablets of BTC, ETH, SPY, QQQ, IWM, GLD and SLV.
+
+Before, one fleet: Import Live Fleet under Validation drew 24 rows, and the
+same 24 rows drew under Back Test and Portfolio Battery; Create New Bots
+under Back Test made 25 under every mode; Run Portfolio over DIGITAL_GOLD
+2022 replaced them with 4 rows on `coinbase` and `yahoo` under every mode;
+Clear Fleet under Back Test left every mode empty. The file held one `bots`
+map. No card held a mode button, and no `sim.fleet.mode_shown` row existed.
+
+After, three fleets, the same readings in both builds: at open the card with
+three mode buttons, Validation active. Import under Validation, 24 rows on
+`coinbase`, the way-in row Clear Fleet, Import Live Fleet, Generate From YTD,
+Start Run, Spendable $15,470.00, EXCH 1. Back Test pressed on the header: no
+venue, no row, the card with Back Test active and Import Live Fleet and
+Create New Bots, Spendable an em dash, EXCH 0, one signal row `ok` true, the
+line `Back Test fleet shown: 0 bot(s) on no venue.` Create New Bots on the
+card through the wizard: one row on `coinbase`. Portfolio Battery pressed:
+the card again; Run Portfolio on the card over DIGITAL_GOLD 2022: 4 rows, 2
+on `coinbase` and 2 on `yahoo`, both tabs seated, Spendable $2,000.00, EXCH
+2. Each mode pressed in turn read its own fleet: 24 rows, 1 row, 4 rows,
+each with its way-in row, its strip and its venue tabs, and each press one
+signal row with `expected` equal to `actual`. The file held `fleets` with
+`bot_count` 24, 1 and 4. Clear Fleet under Back Test: the box read `Clear
+the Back Test fleet of 1 bot(s) on coinbase? This cannot be undone.`, the
+line `Cleared 1 bot(s) on coinbase; the Back Test fleet is empty.`, the file
+24, 0 and 4, the card back with Back Test active; the card's Validation
+button pressed drew the 24 rows again, and Portfolio Battery the 4.
+
+A file planted in the old shape, one `bots` map holding one record, drew
+that record under Validation and nothing under the other two, with the
+line `holds one fleet; read as the validation fleet`, and the first mode
+press rewrote it under `fleets`. A file planted with `fleets` naming
+`validation`, `back_test` and `paper` drew one row under Validation, one
+under Back Test and none under Portfolio Battery, with one warning naming
+`paper`, and the first press wrote the three modes without it. Every
+watched file, 61 of 61, hashed identical after every step, and a byte
+appended to a copy of `bot_state.json` moved the hash. No socket left
+loopback.
+
+Six-step counts for the React page: contract members 4 of 4 (the card's
+mode buttons, the card's mode row layout, the placeholder order, the tab
+ask's `mode`), feeds 2 of 2 (the card payload on every tab draw, the venue
+payload on every fleet change), driven and read back 3 of 3 (each of the
+three card buttons pressed, and the active sheet, the rows and the file
+read after).
 
 ## The widget the rebuild replaced
 

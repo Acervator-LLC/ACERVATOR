@@ -1,7 +1,8 @@
 // The Simulator tab, as the Python surface serves it. Forked from
 // trading_tab.js: a way-in row above the exchange tab bar and the Get Started
-// card hold the way-in buttons, the corner holds nothing, and the replay
-// layer sits behind the indicator panel.
+// card hold the way-in buttons, the card holds the three mode buttons too,
+// the corner holds nothing, and the replay layer sits behind the indicator
+// panel.
 (function (global) {
   "use strict";
 
@@ -94,6 +95,11 @@
   var ADD_BUTTON = "add_button";
   var WAY_IN_BUTTONS = "way_in_buttons";
   var WAY_IN_ROW_LAYOUT = "way_in_row_layout";
+  var MODE_BUTTONS = "mode_buttons";
+  var MODE_ROW_LAYOUT = "mode_row_layout";
+  var MODE_ACTIVE = "active";
+  var MODE_FOCUS_POLICY = "focus_policy";
+  var MODE_FOCUSABLE = "focusable";
   var ACTION = "action";
   var ACCESSIBLE_NAME = "accessible_name";
   var MINIMUM_HEIGHT = "minimum_height_px";
@@ -141,12 +147,14 @@
   var NOTIFY_RELAY = "notify_relay";
 
   var WAY_IN_ACTION = "layer.way_in_button.clicked";
+  var MODE_ACTION = "layer.mode_button.clicked";
   var ACTIVITY_TOGGLE_ACTION = "activity_pause_button.toggled";
   var API_TOGGLE_ACTION = "api_pause_button.toggled";
   var FLIP_ACTION = "flip_button.clicked";
   var CHOOSER_ACTION = "tablet_chooser.changed";
   var RETRIEVE_ACTION = "retrieve_button.clicked";
   var WAY_IN_PARAM = "way_in";
+  var MODE_PARAM = "mode";
   var REPLAY_LAYER_PARAM = "replay_layer";
   var FLIP_RECT_PARAM = "flip_rect";
   var TABLET_PARAM = "tablet";
@@ -262,6 +270,8 @@
   var TITLE_PART = "placeholder-title";
   var PLACEHOLDER_WAY_INS_PART = "placeholder-way-ins";
   var PLACEHOLDER_WAY_IN_PART = "placeholder-way-in-button";
+  var PLACEHOLDER_MODES_PART = "placeholder-modes";
+  var PLACEHOLDER_MODE_PART = "placeholder-mode-button";
   var HINT_PART = "placeholder-hint";
   var EXCHANGE_PANE_PART = "exchange-pane";
   var EXCHANGE_TAB_BUTTON_PART = "exchange-tab-button";
@@ -349,6 +359,9 @@
   // The step from one pane to the one the handle between them moves.
   var STEP = Number(true);
   var ZERO = Number(EMPTY);
+  // The tab index that takes a mode button out of the focus chain, Qt's NoFocus.
+  var NOT_FOCUSABLE = ZERO - STEP;
+  var FOCUS_ATTR = "data-focus-policy";
 
   var held = null;
   var tradingFaults = [];
@@ -758,6 +771,14 @@
     return askTrading(params);
   }
 
+  // One mode button pressed on the Get Started card; the host's set_mode
+  // moves the fleet source's mode and the tab redraws from that fleet.
+  function modeAsked(key) {
+    var params = {};
+    params[MODE_PARAM] = key;
+    return askTrading(params);
+  }
+
   // The flip button's rect in the layer stack's coordinates, the frame the
   // Qt host reads its flip rect in; null when the button is not in the stack.
   function flipRect(button) {
@@ -901,6 +922,51 @@
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
   }
 
+  // One of the card's three mode buttons, the venue header's button drawn
+  // where no venue is seated: the payload's sheet, Live's ON sheet on the
+  // active run mode and OFF on the rest, and Live's focus policy.
+  function PlaceholderMode(props) {
+    var model = isPlainObject(props.button) ? props.button : {};
+    var buttonProps = {
+      className: LAYER_CLASS,
+      style: styleOf(model[STYLE_SHEET]),
+      type: BUTTON_TYPE,
+      onClick: function () {
+        modeAsked(model[KEY]);
+      }
+    };
+    if (model[MODE_FOCUSABLE] === false) {
+      buttonProps.tabIndex = NOT_FOCUSABLE;
+    }
+    buttonProps[PART_ATTR] = PLACEHOLDER_MODE_PART;
+    buttonProps[KEY_ATTR] = text(model[KEY]);
+    buttonProps[INDEX_ATTR] = String(props.at);
+    buttonProps[ACTION_ATTR] = text(props.actions[MODE_ACTION]);
+    buttonProps[FOCUS_ATTR] = text(model[MODE_FOCUS_POLICY]);
+    buttonProps[ARIA_LABEL] = label(model[ACCESSIBLE_NAME]);
+    buttonProps[ARIA_PRESSED] = text(model[MODE_ACTIVE] === true);
+    return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
+  }
+
+  // The card's mode row, under the title: the three mode buttons in a row
+  // at the way-in row's margins and spacing.
+  function PlaceholderModes(props) {
+    var rowStyle = boxStyle(objectField(props.placeholder, MODE_ROW_LAYOUT), ROW);
+    centred(rowStyle, props.placeholder[ALIGN]);
+    var rowProps = { className: LAYER_CLASS, style: rowStyle };
+    rowProps[PART_ATTR] = PLACEHOLDER_MODES_PART;
+    rowProps[KEY_ATTR] = text(props.layerKey);
+    var drawn = listField(props.placeholder, MODE_BUTTONS).map(function (button, at) {
+      return element(PlaceholderMode, {
+        key: PLACEHOLDER_MODE_PART + String(at),
+        at: at,
+        button: button,
+        actions: props.actions
+      });
+    });
+    return element(DIV_TAG, rowProps, drawn);
+  }
+
   // The card's button position: the run mode's two way-ins one under the
   // other, at the card's own spacing.
   function PlaceholderWayIns(props) {
@@ -939,6 +1005,14 @@
         key: name,
         placeholder: model,
         layerKey: layerKey
+      });
+    }
+    if (name === MODE_BUTTONS) {
+      return element(PlaceholderModes, {
+        key: name,
+        placeholder: model,
+        layerKey: layerKey,
+        actions: actions
       });
     }
     if (name === WAY_IN_BUTTONS) {
@@ -1800,6 +1874,10 @@
     var placeholder = objectField(layer, PLACEHOLDER);
     checkSheet(where, CARD, objectField(placeholder, CARD)[STYLE_SHEET]);
     checkSheet(where, TITLE, objectField(placeholder, TITLE)[STYLE_SHEET]);
+    listField(placeholder, MODE_BUTTONS).forEach(function (button, at) {
+      var model = isPlainObject(button) ? button : {};
+      checkSheet(where, MODE_BUTTONS + String(at), model[STYLE_SHEET]);
+    });
     listField(placeholder, WAY_IN_BUTTONS).forEach(function (button, at) {
       var model = isPlainObject(button) ? button : {};
       checkSheet(where, WAY_IN_BUTTONS + String(at), model[STYLE_SHEET]);

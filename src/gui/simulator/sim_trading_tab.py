@@ -12,15 +12,19 @@ the rest as the window's ``_drop_unlisted_exchange_tabs`` does, and then
 ``refresh_votes`` hands the panel the fleet, its own rates and the selected
 bot's ``ivp_feed`` over ``TabletSource``, run again by ``bot_selected``; every
 ``fleet_changed`` first writes the sim fleet file through ``FleetSource.save``. The
-tab holds the run mode, ``mode``, the first of ``MODES`` at open; a venue
-page's mode button reaches ``set_mode``, which draws the active sheet on every
-seated page through ``SimExchangeTab.show_mode`` and redraws the way-ins
-through ``_draw_way_ins``. The corner Live gives ``＋ Add Crypto Exchange``
-holds nothing; a way-in row above each layer's exchange tab bar holds Clear
-Fleet then the two way-in buttons the run mode offers then Start Run while a
-fleet is held, from ``way_in_buttons``, and is hidden with nothing held; the
-Get Started card holds the mode's two where Live's card holds its add button,
-with Clear Fleet above them while a fleet is held, from
+run mode, ``mode``, is ``FleetSource.mode``, the first of ``MODES`` at open,
+and names which of the source's three fleets every table, the strip, the
+venue stack and the way-in row draw; a venue page's mode button or the card's
+reaches ``set_mode``, which moves ``FleetSource.set_mode``, draws the active
+sheet on every seated page through ``SimExchangeTab.show_mode`` and on the
+card's mode row, and fires ``fleet_changed``, so the venues, the rows and the
+way-ins redraw from that mode's fleet. The corner Live gives ``＋ Add Crypto
+Exchange`` holds nothing; a way-in row above each layer's exchange tab bar
+holds Clear Fleet then the two way-in buttons the run mode offers then Start
+Run while a fleet is held, from ``way_in_buttons``, and is hidden with nothing
+held; the Get Started card holds the three mode buttons from
+``placeholder_mode_buttons`` and the mode's two where Live's card holds its
+add button, with Clear Fleet above them while a fleet is held, from
 ``placeholder_way_in_buttons``; each
 reaches ``_way_in``, which runs ``_clear_fleet`` for Clear Fleet, runs
 ``_start_run_pressed`` for Start Run, opens the wizard for Create New Bots,
@@ -206,11 +210,15 @@ FLIP_BUTTON_QSS = (
 #: The flip button's seat in both header rows: the row's first item.
 FLIP_SEAT_INDEX = 0
 
+#: The card column's seat of its first way-in: after the title and the mode row.
+CARD_WAY_IN_SEAT = 2
+
 
 class WayInSlot:
     """One layer's two way-in positions: ``row``, the way-in row above the
     exchange tab bar inside ``row_widget``, and ``card``, the Get Started
-    card's column, with the buttons drawn in each."""
+    card's column, with the buttons drawn in each and the card's three mode
+    buttons in ``mode_buttons`` by mode."""
 
     def __init__(
         self,
@@ -218,6 +226,7 @@ class WayInSlot:
         row_widget: QWidget,
         card: QVBoxLayout,
         accent: str,
+        mode_buttons: Optional[dict[str, QPushButton]] = None,
     ) -> None:
         self.row = row
         self.row_widget = row_widget
@@ -225,6 +234,7 @@ class WayInSlot:
         self.accent = accent
         self.row_buttons: list[QPushButton] = []
         self.card_buttons: list[QPushButton] = []
+        self.mode_buttons: dict[str, QPushButton] = dict(mode_buttons or {})
 
 
 class FlipButton(QPushButton):
@@ -327,7 +337,6 @@ class SimTradingTab(QWidget):
         self._bus = new_sim_bus()
         self._log_manager = sim_log_manager(self._bus, self._symbol_of)
         self._layer = surface.LAYER_INDICATORS
-        self._mode = surface.MODES[0]
         self._battery_thread: Optional[threading.Thread] = None
         self._run_thread: Optional[threading.Thread] = None
         self._run_stop = threading.Event()
@@ -441,6 +450,11 @@ class SimTradingTab(QWidget):
         """The Get Started card's buttons, keyed by action."""
         return dict(self._card_way_in_buttons)
 
+    @property
+    def _mode(self) -> str:
+        """The run mode in force, ``FleetSource.mode``, the one place it lives."""
+        return self._fleet_source.mode()
+
     def mode(self) -> str:
         """The run mode in force, one of ``MODES``."""
         return self._mode
@@ -448,17 +462,69 @@ class SimTradingTab(QWidget):
     # -- the run mode -----------------------------------------------------
 
     def set_mode(self, mode: str) -> str:
-        """Make ``mode`` the run mode: the active sheet on every seated venue
-        page's header and the mode's two ways in at each corner and card.
-        A name outside ``MODES`` changes nothing; answers the mode in force."""
+        """Make ``mode`` the run mode through ``FleetSource.set_mode``, so its
+        fleet is the one every table, the strip, the venue stack and the
+        way-in row draw: the active sheet on every seated venue page's header
+        and on the card's mode row, then ``fleet_changed``. A name outside
+        ``MODES`` changes nothing; a press while ``battery_running`` or
+        ``run_running`` writes the in-flight line and changes nothing. Each
+        press emits ``MODE_SHOWN_SIGNAL`` with its outcome; answers the mode
+        in force."""
+        left = self._mode
+        expected = tab_surface.mode_shown_expected(
+            mode, self._fleet_source.held_by_mode()
+        )
+
+        def shown(outcome: str) -> None:
+            _pin_emit(
+                tab_surface.MODE_SHOWN_SIGNAL,
+                actual={
+                    "mode": self._mode,
+                    "held": len(self._fleet_source.bots()),
+                    "venues": list(self._fleet_source.exchanges()),
+                },
+                expected=expected,
+                context={
+                    "outcome": outcome,
+                    "from": left,
+                    "held_by_mode": self._fleet_source.held_by_mode(),
+                },
+            )
+            sink = _pin_sink()
+            if sink is not None:
+                sink.flush()
+
         if mode not in surface.MODES:
+            shown(tab_surface.MODE_OUTCOME_UNKNOWN)
             return self._mode
-        self._mode = mode
+        if self.battery_running():
+            self._status_log.log(tab_surface.BATTERY_RUNNING_TEXT, "warning")
+            shown(tab_surface.MODE_OUTCOME_IN_FLIGHT)
+            return self._mode
+        if self.run_running():
+            self._status_log.log(
+                tab_surface.run_in_flight_line(
+                    self._run.get("mode", ""),
+                    len(self._run.get("bot_ids", [])),
+                    surface.MODE_TEXT.get(mode, mode),
+                ),
+                "warning",
+            )
+            shown(tab_surface.MODE_OUTCOME_IN_FLIGHT)
+            return self._mode
+        self._fleet_source.set_mode(mode)
         for venue in list(self._crypto_exchange_tabs.values()) + list(
             self._stock_exchange_tabs.values()
         ):
             venue.show_mode(mode)
-        self._draw_way_ins()
+        self.fleet_changed.emit()
+        self._status_log.log(
+            tab_surface.mode_shown_line(
+                mode, len(self._fleet_source.bots()), self._fleet_source.exchanges()
+            ),
+            "info",
+        )
+        shown(tab_surface.MODE_OUTCOME_SHOWN)
         return self._mode
 
     def _draw_way_ins(self) -> None:
@@ -466,13 +532,20 @@ class SimTradingTab(QWidget):
         tab bar, Clear Fleet then the run mode's two way-ins then Start Run
         while a fleet is held, at Live's corner-button size, the row hidden
         with nothing held; and ``placeholder_way_in_buttons`` on each layer's
-        Get Started card between its title and its hint, Clear Fleet leading
-        while a fleet is held, replacing the buttons drawn before."""
+        Get Started card between its mode row and its hint, Clear Fleet leading
+        while a fleet is held, replacing the buttons drawn before; the card's
+        mode row takes the run mode's sheets through ``placeholder_mode_buttons``."""
         held = len(self._fleet_source.bots())
         row_entries = tab_surface.way_in_buttons(self._mode, held)
+        mode_sheets = {
+            entry["key"]: entry["style_sheet"]
+            for entry in tab_surface.placeholder_mode_buttons(self._mode)
+        }
         self._way_in_buttons.clear()
         self._card_way_in_buttons.clear()
         for slot in self._way_in_slots:
+            for key, mode_btn in slot.mode_buttons.items():
+                mode_btn.setStyleSheet(mode_sheets.get(key, mode_btn.styleSheet()))
             for layout, drawn in (
                 (slot.row, slot.row_buttons),
                 (slot.card, slot.card_buttons),
@@ -505,7 +578,9 @@ class SimTradingTab(QWidget):
                 card_way_in.clicked.connect(
                     lambda _checked=False, action=row["action"]: self._way_in(action)
                 )
-                slot.card.insertWidget(1 + at, card_way_in, alignment=Qt.AlignCenter)
+                slot.card.insertWidget(
+                    CARD_WAY_IN_SEAT + at, card_way_in, alignment=Qt.AlignCenter
+                )
                 slot.card_buttons.append(card_way_in)
                 self._card_way_in_buttons.setdefault(row["action"], card_way_in)
 
@@ -549,10 +624,11 @@ class SimTradingTab(QWidget):
         """Clear Fleet: the in-flight line and nothing removed while
         ``battery_running`` or ``run_running``; the nothing-held line with no
         record held; otherwise Live's Delete box shape under
-        ``CLEAR_FLEET_BOX_TITLE`` naming the count, and on Yes
-        ``FleetSource.clear``, the cleared line, the notification, the sound
-        and ``fleet_changed``, so every venue unseats, the card returns and
-        the sim fleet file is written empty; each press emits
+        ``CLEAR_FLEET_BOX_TITLE`` naming the run mode and the count, and on
+        Yes ``FleetSource.clear`` on that mode's fleet, the cleared line, the
+        notification, the sound and ``fleet_changed``, so every venue
+        unseats, the card returns and the sim fleet file is written with that
+        fleet empty and the other two kept; each press emits
         ``CLEAR_PRESSED_SIGNAL`` with its outcome and a clear emits
         ``CLEARED_SIGNAL`` with what left."""
         held = self._fleet_source.bots()
@@ -596,7 +672,7 @@ class SimTradingTab(QWidget):
         confirm = QMessageBox.question(
             self,
             tab_surface.CLEAR_FLEET_BOX_TITLE,
-            tab_surface.clear_fleet_question(len(held), venues),
+            tab_surface.clear_fleet_question(len(held), venues, self._mode),
             QMessageBox.Yes | QMessageBox.No,
         )
         if confirm != QMessageBox.Yes:
@@ -604,7 +680,9 @@ class SimTradingTab(QWidget):
             pressed(tab_surface.CLEAR_OUTCOME_CANCELLED)
             return
         removed = self._fleet_source.clear()
-        self._status_log.log(tab_surface.cleared_line(removed, venues), "warning")
+        self._status_log.log(
+            tab_surface.cleared_line(removed, venues, self._mode), "warning"
+        )
         self._notify(tab_surface.FLEET_CLEARED_NOTICE, "warning")
         get_sound_engine().play_state_change()
         self.fleet_changed.emit()
@@ -616,7 +694,11 @@ class SimTradingTab(QWidget):
                 "venues_after": self.exchange_count(),
             },
             expected={"held_after": 0, "venues_after": 0},
-            context={"removed": removed, "venues_unseated": list(venues)},
+            context={
+                "removed": removed,
+                "venues_unseated": list(venues),
+                "mode": self._mode,
+            },
         )
         sink = _pin_sink()
         if sink is not None:
@@ -1033,10 +1115,28 @@ class SimTradingTab(QWidget):
             ph_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
             ph_title.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_title)
-            # The card's button position, between the title and the hint,
+            # The card's mode row, under the title: the venue header's three
+            # mode buttons, so a mode whose fleet is empty can be left.
+            mode_row_widget = QWidget()
+            mode_row = QHBoxLayout(mode_row_widget)
+            mode_row.setContentsMargins(*tab_surface.WAY_IN_ROW_LAYOUT["margins_px"])
+            mode_row.setSpacing(tab_surface.WAY_IN_ROW_LAYOUT["spacing_px"])
+            card_modes: dict[str, QPushButton] = {}
+            for entry in tab_surface.placeholder_mode_buttons(self._mode):
+                mode_btn = QPushButton(entry["text"])
+                mode_btn.setAccessibleName(entry["accessible_name"])
+                mode_btn.setFocusPolicy(Qt.NoFocus)
+                mode_btn.setStyleSheet(entry["style_sheet"])
+                mode_btn.clicked.connect(
+                    lambda _checked=False, key=entry["key"]: self.set_mode(key)
+                )
+                mode_row.addWidget(mode_btn)
+                card_modes[entry["key"]] = mode_btn
+            ph_layout.addWidget(mode_row_widget, alignment=Qt.AlignCenter)
+            # The card's button position, between the mode row and the hint,
             # holds the run mode's two way-ins, drawn by _draw_way_ins.
             self._way_in_slots.append(
-                WayInSlot(way_in_row, way_in_row_widget, ph_layout, accent)
+                WayInSlot(way_in_row, way_in_row_widget, ph_layout, accent, card_modes)
             )
             ph_hint = QLabel(placeholder_hint_text(label_text))
             ph_hint.setStyleSheet(

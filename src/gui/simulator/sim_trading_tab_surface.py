@@ -50,6 +50,7 @@ from ..main_tabs import indicator_panel_surface as panel
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
 from ..main_tabs.main_window_surface import MAIN_THREAD_NAME, api_event_block
+from . import sim_exchange_tab_surface as venue
 from .sim_bot_status_table_surface import base_of, usd_rates
 
 logger = logging.getLogger("acervator.gui")
@@ -74,9 +75,12 @@ WAY_IN_REFUSED_FORMAT = "{text} refused: {error}"
 #: spacing; the tab bar's corner holds nothing.
 WAY_IN_ROW_LAYOUT = {"margins_px": [0, 0, 0, 0], "spacing_px": 2}
 
-#: The Get Started card's children, with the run mode's two way-ins where
-#: Live's card holds its add button.
-PLACEHOLDER_ORDER = ["title", "way_in_buttons", "hint"]
+#: The Get Started card's children: the three mode buttons, then the run
+#: mode's two way-ins where Live's card holds its add button.
+PLACEHOLDER_ORDER = ["title", "mode_buttons", "way_in_buttons", "hint"]
+
+#: The tab ask's key carrying a mode pressed on the card.
+MODE_PARAM = "mode"
 
 FLIP_BUTTON_NAME = "sim-flip-button"
 
@@ -124,6 +128,7 @@ THREAD_VIOLATION_LINE_FORMAT = (
 
 ACTIONS = {
     "layer.way_in_button.clicked": "way_in",
+    "layer.mode_button.clicked": "set_mode",
     "activity_pause_button.toggled": "toggle_activity_pause",
     "api_pause_button.toggled": "toggle_api_pause",
     "flip_button.clicked": "flip_layer",
@@ -515,9 +520,9 @@ def run_failed_line(mode: str, error: Any) -> str:
 #: lines on both hosts.
 CLEAR_FLEET_BOX_TITLE = sim.CLEAR_FLEET_TEXT
 CLEAR_FLEET_QUESTION_FORMAT = (
-    "Clear the Simulator fleet of {count} bot(s) on {venues}? This cannot be undone."
+    "Clear the {mode} fleet of {count} bot(s) on {venues}? This cannot be undone."
 )
-CLEARED_FORMAT = "Cleared {count} bot(s) on {venues}; the Simulator fleet is empty."
+CLEARED_FORMAT = "Cleared {count} bot(s) on {venues}; the {mode} fleet is empty."
 CLEAR_CANCELLED_TEXT = "Clear Fleet cancelled."
 NOTHING_HELD_TEXT = "No fleet is held; nothing to clear."
 FLEET_CLEARED_NOTICE = "Fleet cleared"
@@ -531,6 +536,35 @@ CLEAR_OUTCOME_CLEARED = "cleared"
 CLEAR_OUTCOME_CANCELLED = "cancelled"
 CLEAR_OUTCOME_NOTHING_HELD = "nothing_held"
 CLEAR_OUTCOME_IN_FLIGHT = "refused_in_flight"
+
+#: The signal a mode press emits through ``signal_contract``: the mode in
+#: force with its held count and venues, against the pressed mode's own.
+MODE_SHOWN_SIGNAL = "sim.fleet.mode_shown"
+MODE_OUTCOME_SHOWN = "shown"
+MODE_OUTCOME_IN_FLIGHT = "refused_in_flight"
+MODE_OUTCOME_UNKNOWN = "unknown_mode"
+MODE_SHOWN_FORMAT = "{mode} fleet shown: {count} bot(s) on {venues}."
+
+
+def mode_shown_line(mode: str, count: int, venues: Any) -> str:
+    """The Activity Log line for the fleet of ``mode`` drawn with ``count``
+    records on ``venues``."""
+    return MODE_SHOWN_FORMAT.format(
+        mode=sim.MODE_TEXT.get(mode, mode), count=int(count), venues=venues_text(venues)
+    )
+
+
+def mode_shown_expected(mode: str, held_by_mode: Any) -> dict:
+    """The ``MODE_SHOWN_SIGNAL`` row's ``expected`` for a press on ``mode``:
+    the mode with its ``held`` count and ``venues`` off ``held_by_mode``."""
+    entry = held_by_mode.get(mode) if isinstance(held_by_mode, dict) else None
+    entry = entry if isinstance(entry, dict) else {}
+    return {
+        "mode": mode,
+        "held": int(entry.get("held") or 0),
+        "venues": list(entry.get("venues") or []),
+    }
+
 
 #: The signal a flip press emits through ``signal_contract``: the pressed
 #: button's rect against the previous press's rect, so the way back reads at
@@ -567,16 +601,24 @@ def venues_text(venues: Any) -> str:
     return joined or "no venue"
 
 
-def clear_fleet_question(count: int, venues: Any) -> str:
-    """The box's question for ``count`` held records on ``venues``."""
+def clear_fleet_question(count: int, venues: Any, mode: str = sim.MODES[0]) -> str:
+    """The box's question for ``count`` held records on ``venues`` in the
+    fleet of ``mode``."""
     return CLEAR_FLEET_QUESTION_FORMAT.format(
-        count=int(count), venues=venues_text(venues)
+        count=int(count),
+        venues=venues_text(venues),
+        mode=sim.MODE_TEXT.get(mode, mode),
     )
 
 
-def cleared_line(count: int, venues: Any) -> str:
-    """The Activity Log line for ``count`` records removed from ``venues``."""
-    return CLEARED_FORMAT.format(count=int(count), venues=venues_text(venues))
+def cleared_line(count: int, venues: Any, mode: str = sim.MODES[0]) -> str:
+    """The Activity Log line for ``count`` records removed from ``venues`` in
+    the fleet of ``mode``."""
+    return CLEARED_FORMAT.format(
+        count=int(count),
+        venues=venues_text(venues),
+        mode=sim.MODE_TEXT.get(mode, mode),
+    )
 
 
 #: The trade line one ``SimTrade`` writes on both hosts: Live's ``SELL FILLED``
@@ -852,6 +894,21 @@ def card_button_name(action: str) -> str:
     return sim.button_name(action) + "-card"
 
 
+def card_mode_name(mode: str) -> str:
+    """The accessible name of the Get Started card's button that sends ``mode``."""
+    return f"sim-mode-{mode}-card"
+
+
+def placeholder_mode_buttons(active: str = sim.MODES[0]) -> list:
+    """The card's three mode buttons, ``venue.mode_buttons`` over ``active``
+    under ``card_mode_name``, so the card offers the mode choice the venue
+    header offers."""
+    return [
+        {**button, "accessible_name": card_mode_name(button["key"])}
+        for button in venue.mode_buttons(active)
+    ]
+
+
 def placeholder_way_in_buttons(
     accent: Any, mode: str = sim.MODES[0], held: int = 0
 ) -> list:
@@ -884,7 +941,8 @@ def layer_card(
     added, and the Get Started card asking for a fleet.
 
     The card's ``placeholder`` keeps Live's frame and geometry; its title, its
-    hint and its button position carry the Simulator's contents, the button
+    hint and its button position carry the Simulator's contents, the three
+    mode buttons under ``mode_buttons`` with ``mode`` active, the button
     position Clear Fleet while ``held`` records are held and the two ways in
     ``mode`` offers. The way-in row's list holds Clear Fleet, the two ways in
     and Start Run while ``held`` records are held, and nothing otherwise.
@@ -896,6 +954,8 @@ def layer_card(
     placeholder["order"] = list(PLACEHOLDER_ORDER)
     placeholder["title"]["text"] = placeholder_title_text(card["label"])
     placeholder["hint"]["text"] = placeholder_hint_text(card["label"])
+    placeholder["mode_buttons"] = placeholder_mode_buttons(mode)
+    placeholder["mode_row_layout"] = dict(WAY_IN_ROW_LAYOUT)
     placeholder["way_in_buttons"] = placeholder_way_in_buttons(
         card["accent"], mode, held
     )
@@ -987,8 +1047,9 @@ class SimTradingTabState:
 
     ``api_buffer`` and ``api_pane`` persist across ``view_model`` calls, which
     reads ``replay_layer`` beside the fields Live's handler reads. ``mode`` is
-    the run mode, the first of ``sim.MODES`` at open, the one place the React
-    host holds it; ``set_mode`` moves it and answers what it became. ``replay``
+    the run mode, the first of ``sim.MODES`` at open, written by the host from
+    ``FleetSource.mode`` before each ``view_model``; ``set_mode`` moves it and
+    answers what it became. ``replay``
     is the replay layer's last ``replay_model``, replaced when a request
     carries ``REPLAY_PARAM``. ``held`` is how many records the fleet holds,
     written by the host before each ``view_model``.
