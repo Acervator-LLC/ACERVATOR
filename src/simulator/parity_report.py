@@ -688,7 +688,45 @@ def symbol_row(portfolio: str, symbol_run: SymbolRun, whole_usd: float) -> dict:
         "origin": symbol_run.origin,
         "trough_usd": symbol_run.trough_usd,
         "reading": symbol_run.reading,
+        "tablet_timeframe": symbol_run.tablet_timeframe,
+        "tablets": symbol_run.tablet_rows,
+        "refusal": symbol_run.refusal,
     }
+
+
+def battery_tablets_by_bot(run: BatteryRun) -> list[dict]:
+    """One row per bot of ``run``: the bot's own ``ta_timeframe``, the
+    ``tablet_timeframe`` its walk read, every ``TabletRead`` file with its
+    candle count and checksum, the timeframes it walked with each outcome,
+    and the ``refusal`` where it read no bar."""
+    seated = {bot.bot_id: bot for bot in run.bots}
+    rows: dict[str, dict] = {}
+    for portfolio in run.portfolios:
+        for timeframe in portfolio.timeframes:
+            for one in timeframe.runs:
+                row = rows.get(one.bot_id)
+                if row is None:
+                    bot = seated.get(one.bot_id)
+                    row = {
+                        "bot_id": one.bot_id,
+                        "asset": one.asset,
+                        "exchange_id": one.exchange_id,
+                        "ta_timeframe": (
+                            str(bot.ta_timeframe) if bot is not None else ""
+                        ),
+                        "tablet_timeframe": one.tablet_timeframe,
+                        "files": list(one.tablet_rows),
+                        "candles": sum(
+                            int(read["candles"]) for read in one.tablet_rows
+                        ),
+                        "walked": {},
+                        "refusal": one.refusal,
+                    }
+                    rows[one.bot_id] = row
+                row["walked"][one.timeframe] = one.outcome
+                if one.refusal and not row["refusal"]:
+                    row["refusal"] = one.refusal
+    return [rows[key] for key in sorted(rows)]
 
 
 def timeframe_section(portfolio: str, result: TimeframeResult) -> dict:
@@ -739,8 +777,18 @@ def battery_bots(run: BatteryRun) -> list[dict]:
 def battery_not_verified(run: BatteryRun) -> list[str]:
     """What the Portfolio Battery run could not verify, one line each."""
     out: list[str] = []
+    refusals = {
+        one.asset: one.refusal
+        for portfolio in run.portfolios
+        for timeframe in portfolio.timeframes
+        for one in timeframe.runs
+        if one.refusal
+    }
     for asset in run.missing_assets:
-        out.append(f"{asset}: no RA-StoneTablet; its capital is missing weight.")
+        out.append(
+            f"{asset}: {refusals.get(asset) or 'no RA-StoneTablet'}; its capital "
+            "is missing weight."
+        )
     for refusal in battery_refusals(run):
         out.append(refusal["line"])
     short = sorted(
@@ -858,12 +906,15 @@ def battery_figures(
         }
         for portfolio in run.portfolios
     ]
+    tablet_section = tablet_rows(tablets)
+    tablet_section["by_bot"] = battery_tablets_by_bot(run)
+    tablet_section["retrievals"] = [dict(one) for one in run.retrievals]
     return {
         "mode": PORTFOLIO_BATTERY,
         "partial": False,
         "error": None,
         "header": head,
-        "tablets": tablet_rows(tablets),
+        "tablets": tablet_section,
         "bots": bots,
         "battery": {
             "portfolios": portfolios,
@@ -1040,7 +1091,60 @@ def render_tablets(figures: dict) -> list[str]:
     out.append(f"root: {section.get('root', '')}")
     out.append("")
     out += table(TABLET_COLUMNS, section.get("rows") or [])
+    by_bot = section.get("by_bot") or []
+    if by_bot:
+        out += ["", "### Per bot", ""]
+        out += table(
+            TABLET_BY_BOT_COLUMNS,
+            [
+                {
+                    "bot_id": row["bot_id"],
+                    "ta_timeframe": row["ta_timeframe"],
+                    "tablet_timeframe": row["tablet_timeframe"] or "none",
+                    "files": ", ".join(read["file"] for read in row["files"]) or "none",
+                    "candles": int(row["candles"]),
+                    "sha256": ", ".join(read["sha256"][:12] for read in row["files"])
+                    or "none",
+                    "walked": ", ".join(
+                        f"{tf} {outcome}" for tf, outcome in row["walked"].items()
+                    ),
+                    "refusal": row["refusal"] or "",
+                }
+                for row in by_bot
+            ],
+        )
+    retrievals = section.get("retrievals") or []
+    if retrievals:
+        out += ["", "### Retrieved before the walk", ""]
+        out += table(TABLET_RETRIEVAL_COLUMNS, retrievals)
     return out
+
+
+TABLET_BY_BOT_COLUMNS = (
+    ("bot_id", "bot"),
+    ("ta_timeframe", "bot timeframe"),
+    ("tablet_timeframe", "tablet timeframe"),
+    ("files", "file"),
+    ("candles", "candles"),
+    ("sha256", "sha256"),
+    ("walked", "walked"),
+    ("refusal", "refusal"),
+)
+
+TABLET_RETRIEVAL_COLUMNS = (
+    ("asset", "asset"),
+    ("exchange_id", "venue"),
+    ("timeframe", "timeframe"),
+    ("since", "since"),
+    ("until", "until"),
+    ("candles_asked", "candles asked"),
+    ("candles_appended", "appended"),
+    ("chunks", "chunks walked"),
+    ("chunks_fetched", "chunks fetched"),
+    ("calls", "calls"),
+    ("refused", "refused"),
+    ("error", "error"),
+)
 
 
 BOT_COLUMNS = {
@@ -1431,6 +1535,7 @@ __all__ = [
     "back_test_figures",
     "battery_figures",
     "battery_outcome",
+    "battery_tablets_by_bot",
     "comparison_counts",
     "comparison_row",
     "create_pair",

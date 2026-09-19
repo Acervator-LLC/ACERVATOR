@@ -39,7 +39,9 @@ from .storage import (
 logger = logging.getLogger("acervator.stone_tablets.ra_fetcher")
 
 RA_TIMEFRAME: str = "1d"
-"""The one timeframe RA-StoneTablets store; both sources serve daily candles."""
+"""The timeframe ``RaTabletBuilder`` writes; both sources serve daily candles.
+A crypto asset's 5m tablet lands beside them through ``StoneTabletsRegistry``
+on ``RA_STONE_TABLETS_DIR``, keyed by ``tablet_filename`` as these are."""
 
 DAY_MS: int = 86_400_000
 

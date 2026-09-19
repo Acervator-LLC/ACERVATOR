@@ -7696,3 +7696,239 @@ charged = battery_payload_held or empty_battery(portfolio, span)
 Both builds pass the two values. Before this the idle payload named the
 defaults, so a chosen portfolio was lost until a run wrote it back.
 
+## Crypto tablets are 5m and each bot walks the timeframe its tablet carries
+
+The RA store holds two kinds of tablet beside each other under one MANIFEST.
+A non-crypto asset keeps its daily file, `GLD_1d_2025_yahoo.json`, written by
+the daily builder as before. A crypto asset gains a native five-minute file,
+`BTC_5m_2026_coinbase.json`, the same shape the live fleet's store keeps, keyed
+on asset, timeframe, year and exchange by the same `tablet_filename`. The
+Battery reads a crypto bot off the 5m file and a non-crypto bot off the daily
+file, and the report names which one each bot read, with its timeframe, candle
+count and checksum. The operator's words, 2026-09-18: *"Crypto Tablets being
+daily is a failure. Must be 5m resolution. Cannot match trading logic for 5m
+against 1d charts."*
+
+`src/simulator/portfolio_battery.py` — the timeframe each asset's tablet carries
+
+```python
+def tablet_timeframe_for(asset: str) -> str:
+    """The timeframe ``asset``'s RA tablet carries: ``CRYPTO_TABLET_TIMEFRAME``
+    for a crypto asset, else ``TABLET_TIMEFRAME``."""
+    return CRYPTO_TABLET_TIMEFRAME if is_crypto(asset) else TABLET_TIMEFRAME
+```
+
+### One registry shape, one rollup
+
+The RA store reuses the live registry. `StoneTabletsRegistry` opened on the RA
+root reads the RA MANIFEST as it stands, indexes every daily row and every 5m
+row, writes a 5m tablet through the same `ingest_candles` the live store uses,
+and rolls 5m candles up to any higher timeframe it supports through its one
+`_rollup`. Nothing in the registry changed; the Battery calls it on a second
+root. The daily side keeps its own fold: `resample` still builds a weekly and a
+monthly bar from daily rows, because the registry does not roll up to a week
+or a month.
+
+`src/simulator/portfolio_battery.py` — the per-bot read
+
+```python
+    def bars(self, bot: SimBot, timeframe: str) -> list[list[float]]:
+        """``bot``'s bars at ``timeframe`` inside the span: a refused asset
+        answers none, a crypto bot reads ``registry().get_candles`` on
+        ``CRYPTO_EXCHANGE``, and a non-crypto bot ``resample`` over ``rows``."""
+        asset = bot.asset
+        if self.refusal(asset):
+            return []
+        if not is_crypto(asset):
+            return resample(self.rows(asset), timeframe)
+        if str(timeframe) not in SUPPORTED_TIMEFRAMES:
+            return []
+        if self._end_ms <= self._start_ms:
+            return []
+        return self.registry().get_candles(
+            asset,
+            self._start_ms,
+            self._end_ms - 1,
+            timeframe=str(timeframe),
+            exchange_id=CRYPTO_EXCHANGE,
+        )
+```
+
+### The timeframes a bot walks
+
+A crypto bot walks its own timeframe first, on the native 5m candles, then
+each of the Battery's three timeframes the registry can roll 5m up to. That is
+`1d`; `1w` and `1M` are outside the registry's supported set, so a crypto bot's
+walk is `5m` then `1d`. A non-crypto bot walks `1d`, `1w` and `1M` folded from
+its daily file, as before. A mixed portfolio reports four timeframes and each
+row names which bots reached it. Read against Live: the live bot's gate chain
+ticks its own timeframe, 5m on every one of the operator's thirty-eight bots,
+and its phantoms read higher timeframes from the venue; the Simulator's rollup
+is the registry's, so the Simulator and Live read the same hour from two
+sources, and the Back Test's phantom timeframes are unit 37's.
+
+`src/simulator/portfolio_battery.py` — the set
+
+```python
+def bot_timeframes(bot: SimBot, timeframes: Sequence[str] = TIMEFRAMES) -> tuple:
+    """The timeframes the walk evaluates ``bot`` at: a crypto bot its own
+    ``ta_timeframe`` on the native ``5m`` tablet and then each of
+    ``timeframes`` in ``SUPPORTED_TIMEFRAMES``, the ones the registry rolls
+    ``5m`` up to; a non-crypto bot ``timeframes`` as given, folded from its
+    daily tablet."""
+```
+
+### The chooser states the cost before the press
+
+Run Portfolio's chooser carries one more line under the portfolio and span
+combos. It reads the preflight for the choice in force: for each crypto asset
+of the portfolio, the 5m candles the RA root does not hold over the span, the
+chunks and venue calls the fetch will make, and the bytes at the measured 63
+bytes a stored candle. The line changes with every combo change. OK is the
+consent and nothing else asks. Over three crypto assets on the `2026 test
+run` span the line reads about 49,000 candles an asset, 846 calls and 9.3 MB;
+over `All` it reads 703,296 candles an asset, and the operator decides.
+
+`src/simulator/tablet_retrieval.py` — the cost of one asset
+
+```python
+def retrieval_cost(
+    registry: StoneTabletsRegistry,
+    asset: str,
+    exchange_id: str,
+    since_ms: int,
+    until_ms: int,
+) -> RetrievalCost:
+    """The ``RetrievalCost`` of ``asset`` on ``exchange_id`` over
+    ``[since_ms, until_ms]``: every ``TIMEFRAME`` step ``registry.missing_ranges``
+    reports, through ``adapter_for``'s ``chunk_limit`` and ``PAGE_ROWS``; an
+    exchange with no adapter costs nothing and is refused at the press."""
+```
+
+`src/gui/simulator/sim_exchange_choice.py` — the line on the chooser
+
+```python
+def battery_cost_text(parent: Any, names: Any, span: str) -> str:
+    """``portfolio_battery.cost_line`` over ``plan_costs`` on the parent's
+    ``battery_tablet_source`` for ``names`` and ``span``; ``COST_UNREAD_TEXT``
+    when the parent has no such source or the read raises."""
+```
+
+### The Battery's own thread retrieves, then walks
+
+After OK the Battery's daemon thread runs the retrieval before the first walk,
+through the same path the replay layer's Retrieve Tablet press uses: the
+read-only connector over the public candle endpoint, one chunk at a time
+through the gap filler, each chunk written into the year file and the MANIFEST
+as it lands, so a second press over the same span finds no gap and fetches
+nothing. One Activity Log line opens each asset's fetch and one closes it,
+naming the candles appended, the chunks, the calls and the file. A venue
+refusal closes the asset by name, and that bot reads `no_tablet` at 5m; the
+daily file never stands in for it. Each landed asset emits `sim.tablet.retrieved`
+and each refusal `sim.tablet.refused` through the signal contract, the
+prediction from the chooser's preflight beside the observed count.
+
+`src/simulator/portfolio_battery.py` — the retrieval before the walk
+
+```python
+    chosen = plan if plan is not None else plan_run(names, tablets)
+    start_ms, end_ms = span_bounds(span, tablets.entries())
+    costs = battery_costs(tablets, chosen.bots, start_ms, end_ms)
+    retrievals = retrieve_tablets(tablets, costs, str(span), connector, progress)
+    tape = TapeCache(tablets, start_ms, end_ms)
+    for row in retrievals:
+        if row["refused"]:
+            tape.refuse(
+```
+
+The Sim API pane records a `FETCH_TABLET` block per connector call, the
+same block the replay layer's Retrieve Tablet press writes, because both
+hosts hand `run_battery` the tab's own connector and that connector crosses
+each call to the GUI thread, where the pane's writer accepts it. The
+recorder names the tablet off the call itself, through `call_tablet`: the
+symbol's base, the timeframe and the year of the first candle asked, so a
+Battery call reads `FETCH_TABLET BTC_5m_2026_coinbase` and a replay-layer
+call keeps its own key. One block is one connector call of 350 candles; the
+public endpoint answers it in two pages of 300 and 50, which is why the
+chooser's call count is twice the block count. The Battery's per-asset lines
+stay on the Activity Log and the per-call progress line is the replay
+layer's alone.
+
+`src/simulator/tablet_retrieval.py` — the tablet one call names
+
+```python
+def call_tablet(call: Any, exchange_id: str = EXCHANGE_ID) -> tuple[str, str]:
+    """``(key, file)`` of the tablet one ``VenueCall`` fills: ``tablet_filename``
+    over the call's ``symbol`` base, its ``timeframe`` and the UTC year of its
+    ``since_ms``, on ``exchange_id``; ``key`` is ``file`` without its suffix."""
+```
+
+`src/gui/simulator/sim_trading_tab.py` — the Battery on the tab's connector
+
+```python
+                progress=lambda line: self.battery_line.emit(line, "info"),
+                on_trade=self.battery_trade.emit,
+                bus=self._bus,
+                connector=self._connector,
+```
+
+### The 2026 test run span
+
+The live fleet's test run began 2026-04-01 with every bot on 5m. The chooser
+offers that span beside the archive's six, `2026 test run`, from 2026-04-01 to
+the current UTC day, read at call time so a window left open over midnight
+still ends today.
+
+`src/simulator/portfolios.py` — the span
+
+```python
+def period_window(span: str) -> Optional[tuple[str, str]]:
+    """``PERIODS[span]`` with ``TEST_RUN_SPAN``'s end read as ``today_utc``
+    now, or None for a label ``PERIODS`` does not hold."""
+```
+
+### The report's Tablets section names each bot's file
+
+Under the MANIFEST table the Battery report carries a per-bot table: the bot,
+its own timeframe, the timeframe its tablet carries, the file or files it read,
+the candle count, the checksum, the timeframes it walked with each outcome,
+and the refusal where it read no bar. A retrieval table follows it, one row
+per crypto asset the press checked: the candles asked, the candles appended,
+the chunks, the calls and the refusal.
+
+`src/simulator/parity_report.py` — the per-bot rows
+
+```python
+def battery_tablets_by_bot(run: BatteryRun) -> list[dict]:
+    """One row per bot of ``run``: the bot's own ``ta_timeframe``, the
+    ``tablet_timeframe`` its walk read, every ``TabletRead`` file with its
+    candle count and checksum, the timeframes it walked with each outcome,
+    and the ``refusal`` where it read no bar."""
+```
+
+### What the 5m reading measured
+
+Both builds, the real window over a scratch home, every socket but loopback
+refused, a scratch RA root holding the operator's daily files for BTC, ETH,
+BNB, GLD and SLV, and a loopback stand-in for the public candle endpoint
+serving 5m from 2026-04-01 and refusing BNB. Under Portfolio Battery, Run
+Portfolio opened the chooser with the cost line under the combos; the line
+changed on a control span; CRYPTO_BLUE on `2026 test run` read three assets,
+49,313 candles each, 846 calls, 9.3 MB. OK: the Activity Log carried the
+retrieving line and the retrieved line for BTC and for ETH, and the refusal by
+name for BNB; `BTC_5m_2026_coinbase.json` and `ETH_5m_2026_coinbase.json`
+landed under the scratch root with their MANIFEST rows and candle counts near
+288 a day; two `sim.tablet.retrieved` rows and one `sim.tablet.refused` row
+reached the signal sink; the Sim API pane held 290 `FETCH_TABLET` blocks
+after two presses, 141 for BTC, 141 for ETH and 8 for BNB, read off the Qt
+pane's text and the React page's API log element, while the stand-in counted
+two pages for each; the walk read BTC and ETH at `5m` and at `1d`, and
+BNB `no_tablet` at 5m; the report's Tablets section named each bot's file,
+timeframe, candle count and checksum. A second press over the same span
+stated nothing to retrieve and fetched nothing, and the two 5m files hashed
+identical before and after it. On a daily-only root with the stand-in absent,
+DIGITAL_GOLD refused BTC and ETH by name and walked GLD and SLV on their daily
+files at `1d`, `1w` and `1M`. Every copied daily file and `bot_state.json`
+hashed identical after every press, with a planted byte moving the hash; the
+operator's RA root listed 414 entries before and after. No bot was constructed
+and no socket left loopback.

@@ -749,10 +749,11 @@ class SimTradingTab(QWidget):
 
     def _compute_battery(self, plan, span: str) -> None:
         """Run ``portfolio_battery.run_battery`` over ``battery_tablet_source``
-        on ``plan`` and hand the ``BatteryRun`` to the GUI thread through
-        ``battery_finished``, each portfolio's line through ``battery_line`` and
-        each ``SimTrade`` through ``battery_trade``; a run that raises writes
-        one failed line instead."""
+        on ``plan``, its retrieval through the tab's own ``connector`` so each
+        venue call reaches ``_record_venue_call``, and hand the ``BatteryRun``
+        to the GUI thread through ``battery_finished``, each portfolio's line
+        through ``battery_line`` and each ``SimTrade`` through
+        ``battery_trade``; a run that raises writes one failed line instead."""
         try:
             outcome = portfolio_battery.run_battery(
                 self._battery_tablet_source,
@@ -763,6 +764,7 @@ class SimTradingTab(QWidget):
                 progress=lambda line: self.battery_line.emit(line, "info"),
                 on_trade=self.battery_trade.emit,
                 bus=self._bus,
+                connector=self._connector,
             )
         except Exception as exc:  # noqa: BLE001 - the run runs off-thread
             logger.exception("Portfolio Battery failed: %s", exc)
@@ -1666,20 +1668,25 @@ class SimTradingTab(QWidget):
         self.retrieval_call.emit(call)
 
     def _record_venue_call(self, call: VenueCall) -> None:
-        """Record one venue call on ``api_log`` as ``retrieval_api_entry`` and
-        write its progress line, on the GUI thread."""
-        held = self._retrieval
-        key = str(held.get("key") or "")
+        """Record one venue call on ``api_log`` as ``retrieval_api_entry``, on
+        the GUI thread: the tablet key and file come from ``call_tablet`` over
+        the call itself, the root is the replay layer's held press while
+        ``retrieval_running`` and ``battery_tablet_source`` otherwise, and the
+        progress line is written for the replay layer's press alone, the
+        Battery writing its own line per asset."""
+        replay = self.retrieval_running()
+        key, file = tablet_retrieval.call_tablet(call)
+        root = (
+            self._retrieval.get("root", "")
+            if replay
+            else self._battery_tablet_source.root()
+        )
         self._api_log.record(
             **tab_surface.retrieval_api_entry(
-                call,
-                key,
-                str(held.get("file") or ""),
-                held.get("root", ""),
-                bool(held.get("on_disk")),
+                call, key, file, root, tablet_retrieval.tablet_on_disk(root, file)
             )
         )
-        if not call.error:
+        if replay and not call.error:
             self._status_log.log(tab_surface.retrieval_progress_line(key, call), "info")
 
     def _take_retrieval(self, outcome) -> None:
