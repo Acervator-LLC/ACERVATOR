@@ -1,6 +1,7 @@
 // The Simulator tab, as the Python surface serves it. Forked from
-// trading_tab.js: the corner and the Get Started card hold the three way-in
-// buttons and the replay layer sits behind the indicator panel.
+// trading_tab.js: a way-in row above the exchange tab bar and the Get Started
+// card hold the way-in buttons, the corner holds nothing, and the replay
+// layer sits behind the indicator panel.
 (function (global) {
   "use strict";
 
@@ -92,7 +93,7 @@
   var ACCENT = "accent";
   var ADD_BUTTON = "add_button";
   var WAY_IN_BUTTONS = "way_in_buttons";
-  var CORNER_LAYOUT = "corner_layout";
+  var WAY_IN_ROW_LAYOUT = "way_in_row_layout";
   var ACTION = "action";
   var ACCESSIBLE_NAME = "accessible_name";
   var MINIMUM_HEIGHT = "minimum_height_px";
@@ -104,7 +105,6 @@
   var TOOLTIP = "tooltip";
   var MINIMUM_WIDTH = "minimum_width_px";
   var MINIMUM_SIZE = "minimum_size_px";
-  var CORNER_WIDGET = "corner_widget";
   var STYLE_SHEET = "style_sheet";
   var ALIGN = "align";
   var ORDER = "order";
@@ -254,7 +254,7 @@
   var TAB_BUTTON_PART = "tab-button";
   var TAB_BODY_PART = "tab-body";
   var WAY_IN_BUTTON_PART = "way-in-button";
-  var CORNER_PART = "corner";
+  var WAY_IN_ROW_PART = "way-in-row";
   var PLACEHOLDER_PART = "placeholder";
   var CARD_PART = "placeholder-card";
   var TITLE_PART = "placeholder-title";
@@ -747,8 +747,8 @@
       });
   }
 
-  // One way-in button pressed, at the corner or on the Get Started card; the
-  // host's _way_in opens the wizard or logs the refusal of a run not landed.
+  // One way-in button pressed, on the way-in row or on the Get Started card;
+  // the host's _way_in runs the action or logs the refusal of one not landed.
   function wayInAsked(action) {
     var params = {};
     params[WAY_IN_PARAM] = action;
@@ -789,8 +789,8 @@
     return askTrading(params);
   }
 
-  // One of the run mode's two way-in buttons at the corner Live gives its
-  // add button.
+  // One button on the way-in row: Clear Fleet, one of the run mode's two
+  // way-ins, or Start Run.
   function WayInButton(props) {
     var model = isPlainObject(props.button) ? props.button : {};
     var style = {
@@ -814,14 +814,21 @@
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
   }
 
-  // The corner widget: the way-in buttons the payload lists, the run mode's
-  // two, in one row at the margins and spacing the payload names.
+  // The way-in row above the exchange tab bar: the buttons the payload lists,
+  // in one row at the margins and spacing the payload names, wrapping to a
+  // second line where the pane is narrower than the buttons; nothing is drawn
+  // while the list is empty.
   function WayInButtons(props) {
-    var cornerProps = { style: boxStyle(objectField(props.layer, CORNER_LAYOUT), ROW) };
-    cornerProps[PART_ATTR] = CORNER_PART;
-    cornerProps[KEY_ATTR] = text(props.layer[KEY]);
-    cornerProps[SLOT_ATTR] = text(objectField(props.layer, ADD_BUTTON)[CORNER_WIDGET]);
-    var drawn = listField(props.layer, WAY_IN_BUTTONS).map(function (button, at) {
+    var listed = listField(props.layer, WAY_IN_BUTTONS);
+    if (!listed.length) {
+      return null;
+    }
+    var rowStyle = boxStyle(objectField(props.layer, WAY_IN_ROW_LAYOUT), ROW);
+    rowStyle.flexWrap = WRAP;
+    var rowProps = { style: rowStyle };
+    rowProps[PART_ATTR] = WAY_IN_ROW_PART;
+    rowProps[KEY_ATTR] = text(props.layer[KEY]);
+    var drawn = listed.map(function (button, at) {
       return element(WayInButton, {
         key: WAY_IN_BUTTON_PART + String(at),
         at: at,
@@ -830,7 +837,7 @@
         actions: props.actions
       });
     });
-    return element(DIV_TAG, cornerProps, drawn);
+    return element(DIV_TAG, rowProps, drawn);
   }
 
   function PlaceholderTitle(props) {
@@ -1014,8 +1021,8 @@
     return element(DIV_TAG, paneProps, null);
   }
 
-  // One layer page: a tab bar carrying the corner add button, and the
-  // body of the tab on show.
+  // One layer page: the way-in row, the tab bar with the exchange tabs across
+  // its full width, and the body of the tab on show.
   function LayerPage(props) {
     var layer = props.layer;
     var placeholder = objectField(layer, PLACEHOLDER);
@@ -1081,13 +1088,8 @@
       element(
         DIV_TAG,
         widgetProps,
-        element(
-          DIV_TAG,
-          barProps,
-          barTabs,
-          element(DIV_TAG, spacerProps, null),
-          element(WayInButtons, { layer: layer, actions: props.actions })
-        ),
+        element(WayInButtons, { layer: layer, actions: props.actions }),
+        element(DIV_TAG, barProps, barTabs, element(DIV_TAG, spacerProps, null)),
         element(DIV_TAG, bodyProps, body)
       )
     );
@@ -1695,7 +1697,7 @@
     PAGE_LAYOUT,
     ADD_BUTTON,
     WAY_IN_BUTTONS,
-    CORNER_LAYOUT,
+    WAY_IN_ROW_LAYOUT,
     PLACEHOLDER
   ];
 

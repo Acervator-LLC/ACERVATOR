@@ -113,6 +113,10 @@ above its two ways in only while a fleet is held; with nothing held the card
 offers the two ways in alone. The section "Clear Fleet empties the held fleet"
 under "How each part was built" describes the press.
 
+Since the way-in row landed, Clear Fleet and the two ways in draw on a row
+above the exchange tab row, not in the corner, and only while a fleet is
+held; the paragraph after the next block describes that row.
+
 `src/gui/simulator/sim_trading_tab_surface.py` — the corner's list
 
 ```python
@@ -131,16 +135,31 @@ def way_in_buttons(mode: str = sim.MODES[0]) -> list:
     ]
 ```
 
-The corner's last button, while a fleet is held, is Start Run. It sits to the
-right of the mode's two ways in, at their size, in every mode. A press starts
-the active mode's run over the fleet on the venue shown: the Validation rerun,
-the Back Test walk, or the Portfolio Battery chooser and its run. With no
-fleet held the button is not drawn, because a run needs a fleet and the Get
-Started card is on screen instead. The card never holds Start Run. The section
-"Start Run starts the active mode's run from the corner" under "How each part
-was built" describes the press.
+The buttons the corner held draw on their own row above the exchange tab
+row: Clear Fleet, the mode's two ways in, then Start Run, in that order from
+the left, each at the corner button's size. The corner itself holds nothing,
+so the exchange tabs take the full row and a third venue's tab has room. The
+row draws only while a fleet is held. With no fleet held the row is absent
+and the Get Started card offers the mode's two ways in. A press on Start Run
+starts the active mode's run over the fleet on the venue shown: the
+Validation rerun, the Back Test walk, or the Portfolio Battery chooser and its
+run. The card never holds Start Run. The section "Start Run starts the active
+mode's run from the way-in row" under "How each part was built" describes the
+row and the press.
 
-`src/gui/simulator/sim_trading_tab_surface.py` — the corner's fourth button
+`src/gui/simulator/sim_trading_tab.py` — the row above the tab bar
+
+```python
+            way_in_row_widget = QWidget()
+            way_in_row = QHBoxLayout(way_in_row_widget)
+            way_in_row.setContentsMargins(*tab_surface.WAY_IN_ROW_LAYOUT["margins_px"])
+            way_in_row.setSpacing(tab_surface.WAY_IN_ROW_LAYOUT["spacing_px"])
+            way_in_row.addStretch(1)
+            way_in_row_widget.setVisible(False)
+            page_layout.addWidget(way_in_row_widget)
+```
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the row's last button
 
 ```python
 def start_run_button() -> dict:
@@ -154,12 +173,26 @@ def start_run_button() -> dict:
     }
 ```
 
-The corner's list takes the held count, and adds the button only above zero.
+The row's list takes the held count and is empty at zero, so the row is not
+drawn; above zero it is Clear Fleet, the mode's two and Start Run.
 
 ```python
-    if int(held or 0) > 0:
-        rows.append(start_run_button())
-    return rows
+    if int(held or 0) <= 0:
+        return []
+    return (
+        [clear_fleet_button()]
+        + [
+            {
+                "action": row["action"],
+                "text": row["text"],
+                "accessible_name": row["button_name"],
+                "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+                "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+            }
+            for row in sim.reserved_rows(mode)
+        ]
+        + [start_run_button()]
+    )
 ```
 
 ### The two tables and the command bar
@@ -173,9 +206,9 @@ Restart and Stop move the selected bot's state through the Simulator's bot
 manager, and the row reads it back. Delete asks Live's confirmation and removes
 the record. Start is the run's button in Validation and Back Test.
 
-Since Start Run landed at the corner, Start on the command bar moves the
+Since Start Run landed on the way-in row, Start on the command bar moves the
 selected bot's state in every mode, as Pause, Stop and Restart do, and starts
-no run. The run's button is Start Run at the corner. While a run is in flight,
+no run. The run's button is Start Run on the way-in row. While a run is in flight,
 Stop on one of its rows ends it and every other bar press writes the in-flight
 line.
 
@@ -329,9 +362,9 @@ ALLOWED_ACTIONS = (TABLET_ACTION, YTD_ACTION)
 
 ### The three run modes and what each writes
 
-Every mode's run starts from Start Run at the corner. Under Validation and
+Every mode's run starts from Start Run on the way-in row. Under Validation and
 Back Test the press starts the run the two paragraphs below describe, which
-Start on the command bar started before the corner button landed. Under
+Start on the command bar started before the row's button landed. Under
 Portfolio Battery the press opens Run Portfolio's chooser, one portfolio and
 one span, and runs it. One handler on each host, `_start_run_pressed`, reads
 the mode and the venue shown.
@@ -5756,6 +5789,14 @@ every `_sync_exchange_tabs`, so the page's `WayInButtons` and
 `src/gui/web/sim_trading_tab.js`. The button's accessible name is
 `sim-clear-fleet` at the corner and `sim-clear-fleet-card` on the card.
 
+Since the way-in row landed, that list draws on a row above the exchange tab
+bar in both builds, not in the tab bar's corner, and it is empty with no
+fleet held, so the row is absent and the card alone offers the ways in. The
+Qt host builds the row in `SimTradingTab._make_layer` and the React page draws
+it in `WayInButtons` above the tab bar. The corner holds nothing. The section
+"Start Run starts the active mode's run from the way-in row" describes the
+row.
+
 `src/gui/simulator/sim_trading_tab_surface.py` — the card's list
 
 ```python
@@ -5892,37 +5933,78 @@ after every step in every run, and a byte appended to a copy of it moved the
 hash. The Watchdog Archetype read every emit in both hosts wired to
 `signal_contract`.
 
-## Start Run starts the active mode's run from the corner
+## Start Run starts the active mode's run from the way-in row
 
-Start Run is one button at the corner, drawn under every mode while a fleet
-is held, to the right of the mode's two ways in. A press starts the active
+Start Run is one button on the way-in row above the exchange tab bar, drawn
+under every mode while a fleet is held, to the right of the mode's two ways
+in. A press starts the active
 mode's run over the fleet on the venue shown. Start on the command bar no
 longer starts a run in any mode; it moves the selected bot's state, as Pause,
 Stop and Restart do. Both builds draw the button from one surface list and
 both hosts run one handler, `_start_run_pressed`.
 
-### The button beside the way-ins
+### The button on the way-in row
 
-The corner's list is `way_in_buttons` in
-`src/gui/simulator/sim_trading_tab_surface.py`, which now takes the held count:
-Clear Fleet first, then the run mode's two ways in, then Start Run while
-`held` is above zero, each at Live's corner-button size, 140 px wide and
-24 px tall. The Qt host hands the count in `SimTradingTab._draw_way_ins`,
-which runs again at the end of every `_sync_exchange_tabs`; the React host
-hands it through `layer_card`, which the tab payload carries on every
-`show_tab`, so the page's `WayInButtons` component draws the fourth button
-with no change to `src/gui/web/sim_trading_tab.js`. The button's accessible
-name is `sim-start-run`. The Get Started card never holds it: the card draws
-on a layer with no venue, and a held fleet seats its venue.
+The row's list is `way_in_buttons` in
+`src/gui/simulator/sim_trading_tab_surface.py`, which takes the held count:
+empty at zero, otherwise Clear Fleet first, then the run mode's two ways in,
+then Start Run, each at Live's corner-button size, 140 px wide and 24 px
+tall. The Qt host hands the count in `SimTradingTab._draw_way_ins`, which
+runs again at the end of every `_sync_exchange_tabs`; the React host hands
+it through `layer_card`, which the tab payload carries on every `show_tab`.
+The button's accessible name is `sim-start-run`. The Get Started card never
+holds it: the card draws on a layer with no venue, and a held fleet seats its
+venue.
 
-`src/gui/simulator/sim_trading_tab_surface.py` — the corner's list
+`src/gui/simulator/sim_trading_tab_surface.py` — the row's list
 
 ```python
 def way_in_buttons(mode: str = sim.MODES[0], held: int = 0) -> list:
-    """The corner's buttons as the page draws them: ``clear_fleet_button``
-    first, then the two ways in ``mode`` offers from ``sim.reserved_rows``,
-    then ``start_run_button`` while ``held`` records are held."""
+    """The way-in row's buttons as the page draws them, while ``held``
+    records are held: ``clear_fleet_button`` first, then the two ways in
+    ``mode`` offers from ``sim.reserved_rows``, then ``start_run_button``;
+    an empty list with nothing held, so the row is absent and the card shows."""
 ```
+
+### The way-in row above the exchange tabs
+
+The row is a widget of its own above each layer's exchange tab bar, so the
+tabs and the buttons never share a line and a third or fourth venue's tab
+has room. The Qt host builds it in `SimTradingTab._make_layer` as a
+`QWidget` with a horizontal layout at margins 0 and spacing 2, added to the
+page's column before the tab widget, hidden while the list is empty; the tab
+widget gets no corner widget. The React page draws it in `WayInButtons` as
+the first child of the tab widget's column, above the tab bar, wrapping to a
+second line where the pane is narrower than the buttons, and draws nothing
+while the list is empty; the tab bar keeps its tabs and the stretch after
+them. Both hosts read the row's margins and spacing from one place.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the row's layout
+
+```python
+WAY_IN_ROW_LAYOUT = {"margins_px": [0, 0, 0, 0], "spacing_px": 2}
+```
+
+`src/gui/web/sim_trading_tab.js` — the row above the bar
+
+```javascript
+      element(
+        DIV_TAG,
+        widgetProps,
+        element(WayInButtons, { layer: layer, actions: props.actions }),
+        element(DIV_TAG, barProps, barTabs, element(DIV_TAG, spacerProps, null)),
+        element(DIV_TAG, bodyProps, body)
+      )
+```
+
+Read with three venues seated, `coinbase`, `yahoo` and `kraken`, in both
+builds: at a 1400 px window every tab and every button had its own rect, no
+two overlapping, the row's bottom edge above the bar's top edge, and the
+tab bar's corner empty, under all three modes. The Qt window's floor is its
+layout minimum, 1145 px wide in the reading, and the row fits on one line
+there. The React window shrinks to 900 px, where the pane is 476 px wide and
+Start Run wraps to a second line; every tab and button stayed inside the
+pane with no overlap.
 
 ### The press by mode
 
@@ -6008,9 +6090,9 @@ read Clear Fleet then the mode's two under every mode; no button named
 `sim-start-run` existed under any mode, and a press asked for it read no
 button in Qt and no element in React.
 
-After, in both builds over the same home: the corner read Clear Fleet, the
-mode's two, then `sim-start-run` under every mode, each 140 by 24, and read
-three buttons with no fleet held at open and after Clear Fleet. Start on the
+After, in both builds over the same home: the way-in row read Clear Fleet,
+the mode's two, then `sim-start-run` under every mode, each 140 by 24, and
+was absent with no fleet held at open and after Clear Fleet. Start on the
 bar with the first row selected, under each of the three modes, wrote the
 running line, moved that one row to RUNNING and no other, started no thread
 and wrote no report; Stop moved it to STOPPED. Start Run under Validation

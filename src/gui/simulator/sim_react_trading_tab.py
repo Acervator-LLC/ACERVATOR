@@ -35,12 +35,13 @@ only, the ``FETCH_TABLET`` entries ``_record_venue_call`` records and the
 for any other action before anything is pushed; ``run_action`` answers the
 page's Pause API Log press through ``set_api_paused``. The run mode is held once, on
 ``SimTradingTabState.mode``; a venue page's mode press reaches ``set_mode``,
-which redraws the tab so the corner offers Clear Fleet then that mode's two
-ways in then Start Run while a fleet is held, and the card the mode's two,
-with Clear Fleet above them while a fleet is held, and re-publishes every
-venue so its header carries the active sheet;
+which redraws the tab so the way-in row above each layer's exchange tab bar
+offers Clear Fleet then that mode's two ways in then Start Run while a fleet
+is held and nothing otherwise, the corner holding nothing, and the card the
+mode's two, with Clear Fleet above them while a fleet is held, and
+re-publishes every venue so its header carries the active sheet;
 ``show_tab`` reads ``held`` off ``FleetSource.bots`` on every call; a
-corner or card press reaches ``_way_in``, which runs ``_clear_fleet`` for
+row or card press reaches ``_way_in``, which runs ``_clear_fleet`` for
 Clear Fleet, runs ``_start_run_pressed`` for Start Run, opens the wizard for
 Create New Bots, runs
 ``_import_live_fleet`` for Import Live Fleet, runs
@@ -1117,7 +1118,7 @@ if _HAS_WEBENGINE:
             return str(self._state.current_exchange or next(iter(self._venues), ""))
 
         def _way_in(self, action: str) -> None:
-            """One button pressed at the corner or on the card: Clear Fleet
+            """One button pressed on the way-in row or on the card: Clear Fleet
             runs ``_clear_fleet``, Start Run runs ``_start_run_pressed``,
             Create New Bots opens the wizard through ``_create_bot``, Import
             Live Fleet runs ``_import_live_fleet``, Generate From YTD runs
@@ -1388,7 +1389,7 @@ if _HAS_WEBENGINE:
             ]
 
         def _start_run_pressed(self) -> None:
-            """Start Run at the corner: the in-flight line and nothing started
+            """Start Run on the way-in row: the in-flight line and nothing started
             while ``battery_running`` or ``run_running``; otherwise the run
             the tab's ``mode`` names over the venue on show, ``_start_run``
             for Validation and Back Test, ``_run_battery`` under Run

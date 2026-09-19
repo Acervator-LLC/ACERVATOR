@@ -16,10 +16,12 @@ tab holds the run mode, ``mode``, the first of ``MODES`` at open; a venue
 page's mode button reaches ``set_mode``, which draws the active sheet on every
 seated page through ``SimExchangeTab.show_mode`` and redraws the way-ins
 through ``_draw_way_ins``. The corner Live gives ``＋ Add Crypto Exchange``
-holds Clear Fleet then the two way-in buttons the run mode offers, then Start
-Run while a fleet is held, from ``way_in_buttons``, and the Get Started card
-holds the mode's two where Live's card holds its add button, with Clear Fleet
-above them while a fleet is held, from ``placeholder_way_in_buttons``; each
+holds nothing; a way-in row above each layer's exchange tab bar holds Clear
+Fleet then the two way-in buttons the run mode offers then Start Run while a
+fleet is held, from ``way_in_buttons``, and is hidden with nothing held; the
+Get Started card holds the mode's two where Live's card holds its add button,
+with Clear Fleet above them while a fleet is held, from
+``placeholder_way_in_buttons``; each
 reaches ``_way_in``, which runs ``_clear_fleet`` for Clear Fleet, runs
 ``_start_run_pressed`` for Start Run, opens the wizard for Create New Bots,
 runs ``_import_live_fleet`` for Import Live Fleet, runs
@@ -47,7 +49,7 @@ the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
 ``fleet_changed`` and runs ``_compute_battery`` on a daemon thread, whose
 ``battery_line``, ``battery_trade`` and ``battery_finished`` signals reach the
 Activity Log, ``log_trade`` and ``_take_battery`` on the GUI thread. Start Run
-at the corner reaches ``_start_run_pressed``, which refuses with the in-flight
+on the way-in row reaches ``_start_run_pressed``, which refuses with the in-flight
 line while a run or a Battery is in flight, runs ``_run_battery`` under Run
 Portfolio's chooser in Portfolio Battery mode, and in Validation or Back Test
 mode reaches ``_start_run`` over the venue on show, which moves every
@@ -199,14 +201,22 @@ FLIP_BUTTON_QSS = (
 
 
 class WayInSlot:
-    """One layer's two way-in positions: ``corner``, the corner row, and
-    ``card``, the Get Started card's column, with the buttons drawn in each."""
+    """One layer's two way-in positions: ``row``, the way-in row above the
+    exchange tab bar inside ``row_widget``, and ``card``, the Get Started
+    card's column, with the buttons drawn in each."""
 
-    def __init__(self, corner: QHBoxLayout, card: QVBoxLayout, accent: str) -> None:
-        self.corner = corner
+    def __init__(
+        self,
+        row: QHBoxLayout,
+        row_widget: QWidget,
+        card: QVBoxLayout,
+        accent: str,
+    ) -> None:
+        self.row = row
+        self.row_widget = row_widget
         self.card = card
         self.accent = accent
-        self.corner_buttons: list[QPushButton] = []
+        self.row_buttons: list[QPushButton] = []
         self.card_buttons: list[QPushButton] = []
 
 
@@ -397,7 +407,7 @@ class SimTradingTab(QWidget):
         return self._layer
 
     def way_in_buttons(self) -> dict[str, QPushButton]:
-        """The corner buttons, keyed by action."""
+        """The way-in row's buttons, keyed by action; empty with no fleet held."""
         return dict(self._way_in_buttons)
 
     def card_way_in_buttons(self) -> dict[str, QPushButton]:
@@ -425,18 +435,19 @@ class SimTradingTab(QWidget):
         return self._mode
 
     def _draw_way_ins(self) -> None:
-        """Draw ``way_in_buttons`` at each layer's corner, Clear Fleet then the
-        run mode's two way-ins then Start Run while a fleet is held, at Live's
-        corner-button size, and ``placeholder_way_in_buttons`` on each layer's
+        """Draw ``way_in_buttons`` on each layer's way-in row above the exchange
+        tab bar, Clear Fleet then the run mode's two way-ins then Start Run
+        while a fleet is held, at Live's corner-button size, the row hidden
+        with nothing held; and ``placeholder_way_in_buttons`` on each layer's
         Get Started card between its title and its hint, Clear Fleet leading
         while a fleet is held, replacing the buttons drawn before."""
         held = len(self._fleet_source.bots())
-        corner_rows = tab_surface.way_in_buttons(self._mode, held)
+        row_entries = tab_surface.way_in_buttons(self._mode, held)
         self._way_in_buttons.clear()
         self._card_way_in_buttons.clear()
         for slot in self._way_in_slots:
             for layout, drawn in (
-                (slot.corner, slot.corner_buttons),
+                (slot.row, slot.row_buttons),
                 (slot.card, slot.card_buttons),
             ):
                 for old in drawn:
@@ -444,7 +455,7 @@ class SimTradingTab(QWidget):
                     old.setParent(None)
                     old.deleteLater()
                 drawn.clear()
-            for row in corner_rows:
+            for row in row_entries:
                 way_in = QPushButton(row["text"])
                 way_in.setMinimumWidth(row["minimum_width_px"])
                 way_in.setMinimumHeight(row["minimum_height_px"])
@@ -452,9 +463,10 @@ class SimTradingTab(QWidget):
                 way_in.clicked.connect(
                     lambda _checked=False, action=row["action"]: self._way_in(action)
                 )
-                slot.corner.addWidget(way_in)
-                slot.corner_buttons.append(way_in)
+                slot.row.insertWidget(slot.row.count() - 1, way_in)
+                slot.row_buttons.append(way_in)
                 self._way_in_buttons.setdefault(row["action"], way_in)
+            slot.row_widget.setVisible(bool(row_entries))
             card_rows = tab_surface.placeholder_way_in_buttons(
                 slot.accent, self._mode, held
             )
@@ -476,7 +488,7 @@ class SimTradingTab(QWidget):
         return str(getattr(shown, "exchange_id", "") or "")
 
     def _way_in(self, action: str) -> None:
-        """One button pressed at the corner or on the card: Clear Fleet runs
+        """One button pressed on the way-in row or on the card: Clear Fleet runs
         ``_clear_fleet``, Start Run runs ``_start_run_pressed``, Create New
         Bots opens the wizard through ``_create_bot``, Import Live Fleet runs
         ``_import_live_fleet``, Generate From YTD runs ``_generate_from_ytd``,
@@ -747,7 +759,7 @@ class SimTradingTab(QWidget):
         ]
 
     def _start_run_pressed(self) -> None:
-        """Start Run at the corner: the in-flight line and nothing started
+        """Start Run on the way-in row: the in-flight line and nothing started
         while ``battery_running`` or ``run_running``; otherwise the run the
         tab's ``mode`` names over the venue on show, ``_start_run`` for
         Validation and Back Test, ``_run_battery`` under Run Portfolio's
@@ -965,13 +977,16 @@ class SimTradingTab(QWidget):
             page_layout.setContentsMargins(0, 0, 0, 0)
 
             tab_w = QTabWidget()
-            # The corner Live gives ＋ Add Crypto Exchange holds the run
-            # mode's two way-in buttons, drawn by _draw_way_ins.
-            corner = QWidget()
-            corner_row = QHBoxLayout(corner)
-            corner_row.setContentsMargins(0, 0, 0, 0)
-            corner_row.setSpacing(2)
-            tab_w.setCornerWidget(corner)
+            # The way-in row above the tab bar holds Clear Fleet, the run
+            # mode's two way-ins and Start Run, drawn by _draw_way_ins; the
+            # corner Live gives + Add Crypto Exchange holds nothing.
+            way_in_row_widget = QWidget()
+            way_in_row = QHBoxLayout(way_in_row_widget)
+            way_in_row.setContentsMargins(*tab_surface.WAY_IN_ROW_LAYOUT["margins_px"])
+            way_in_row.setSpacing(tab_surface.WAY_IN_ROW_LAYOUT["spacing_px"])
+            way_in_row.addStretch(1)
+            way_in_row_widget.setVisible(False)
+            page_layout.addWidget(way_in_row_widget)
 
             # Empty state placeholder
             placeholder = QWidget()
@@ -993,7 +1008,9 @@ class SimTradingTab(QWidget):
             ph_layout.addWidget(ph_title)
             # The card's button position, between the title and the hint,
             # holds the run mode's two way-ins, drawn by _draw_way_ins.
-            self._way_in_slots.append(WayInSlot(corner_row, ph_layout, accent))
+            self._way_in_slots.append(
+                WayInSlot(way_in_row, way_in_row_widget, ph_layout, accent)
+            )
             ph_hint = QLabel(placeholder_hint_text(label_text))
             ph_hint.setStyleSheet(
                 f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
