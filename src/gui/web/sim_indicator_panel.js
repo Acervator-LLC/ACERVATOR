@@ -1,7 +1,8 @@
 // Draws the Simulator's Indicator Voting Panel from the sim_indicator_panel.state
 // payload. Forked from indicator_panel.js; the header also seats the flip button
-// to the replay layer behind the panel, and the bot selector asks the host for
-// the chosen bot's reading.
+// to the replay layer behind the panel, first in the row at the panel's
+// top-left corner, and the bot selector asks the host for the chosen bot's
+// reading.
 (function (global) {
   "use strict";
 
@@ -82,6 +83,7 @@
   var TABLES = "tables";
   var TARGETS = "targets";
   var TEXT = "text";
+  var OTHER_TEXT = "other_text";
   var STYLE_SHEET = "style_sheet";
   var TEXT_COLOR = "text_color";
   var TIMEFRAME = "timeframe";
@@ -159,6 +161,8 @@
   var SELECT_ACTION = "select_bot";
   var ACTION_PARAM = "action";
   var BOT_ID_PARAM = "bot_id";
+  var FLIP_RECT_PARAM = "flip_rect";
+  var OTHER_TEXT_ATTR = "data-other-text";
   var SELECTOR_PART = "indicator-bot-selector";
   var DOT_PART = "indicator-privacy-dot";
   var STALENESS_PART = "indicator-staleness";
@@ -424,15 +428,29 @@
     return element(SPAN_TAG, titleProps, text(props.model[TITLE_TEXT]));
   }
 
-  // The ask that flips the tab to the replay layer behind this panel; the
-  // tab's host answers it and redraws.
-  function askFlip() {
+  // The pressed flip button's rect in the layer stack's coordinates, read by
+  // the tab module that owns the stack; null before that module loads.
+  function flipRectOf(button) {
+    var tab = global.acervatorSimTrading;
+    if (!tab || typeof tab.flipRect !== "function") {
+      return null;
+    }
+    return tab.flipRect(button);
+  }
+
+  // The ask that flips the tab to the replay layer behind this panel, carrying
+  // the pressed button's rect; the tab's host emits it, answers and redraws.
+  function askFlip(event) {
     if (!global.acervator || typeof global.acervator.call !== "function") {
       loadFault = NO_BRIDGE;
       return Promise.resolve(null);
     }
     var params = {};
     params[ACTION_PARAM] = FLIP_ACTION;
+    var rect = flipRectOf(event && event.currentTarget ? event.currentTarget : null);
+    if (rect) {
+      params[FLIP_RECT_PARAM] = rect;
+    }
     return global.acervator.call(METHOD, params);
   }
 
@@ -449,13 +467,16 @@
     return global.acervator.call(METHOD, params);
   }
 
-  // Seated after the title, where the Qt fork inserts its flip button.
+  // Seated first in the header, before the title, where the Qt fork inserts
+  // its flip button; `data-other-text` lets the sheet reserve the other
+  // layer's word so the replay layer's button draws the same width.
   function FlipButton(props) {
     var button = objectField(props.model, FLIP_BUTTON);
     var buttonProps = { type: BUTTON_TAG, onClick: askFlip };
     buttonProps[PART_ATTR] = FLIP_PART;
     buttonProps[SLOT_ATTR] = FLIP_PART;
     buttonProps[ARIA_LABEL] = text(button[NAME]);
+    buttonProps[OTHER_TEXT_ATTR] = text(button[OTHER_TEXT]);
     return element(BUTTON_TAG, buttonProps, text(button[TEXT]));
   }
 
@@ -518,8 +539,8 @@
       ? element(FlipButton, { key: FLIP_PART, model: model })
       : null;
     return element(DIV_TAG, headProps, [
-      element(Title, { key: TITLE_PART, model: model }),
       flip,
+      element(Title, { key: TITLE_PART, model: model }),
       spacer,
       element(SPAN_TAG, { key: HEADER_PART }, text(head.bot_label_text)),
       element(BotSelector, {
