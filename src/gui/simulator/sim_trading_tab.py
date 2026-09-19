@@ -1066,7 +1066,6 @@ class SimTradingTab(QWidget):
             for one in bots:
                 self._bot_manager.start(one.bot_id)
             self.fleet_changed.emit()
-        if mode == surface.MODE_VALIDATION:
             source = YtdTradeSource()
             state = source.root_state()
             if state != ROOT_READY:
