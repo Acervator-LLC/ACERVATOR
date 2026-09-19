@@ -5179,4 +5179,298 @@ on the Activity Log.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-19 09:10 - #23 - Scan Now works under the operator's own conditions: one rollup, a trading-only list, the scan on screen while it runs, stocks with nothing typed
+
+> Simulator - Scan Now - I should not have to have anything in the Ticker
+> field. Stocks is saying 'no ticker list'. This is scaffolded, unverified
+> garbage. I watched you perform various operations while working on this.
+> How the fuck is it that after I launch the build, not a god damn thing has
+> improved with this fucking button.
+
+> If we are having difficulty sourcing the data for free we will need to
+> implement an API driven solution or get clever...
+
+### What his press did, read off his own log
+
+Build `1517.gca1ff96b-qt`, 07:36:51 to 07:38:18, `crypto on 1hr 1d 1wk,
+ticker '', target 3 hit(s)`. The order line ranked 120 markets. Every one of
+the 120 `1wk` reads answered `no candles`, each after three refused calls: the
+venue lists no weekly granularity, and the scan asked for one anyway. The
+`1hr` tick read nothing, because the exchange's timeframe table in this tree
+was a fixed pair, daily and weekly. Thirty products the venue no longer trades
+were fetched on every timeframe. 182 candle fetches recorded an API block that
+the pane's thread guard refused, so the API Interaction Log stayed empty and a
+`thread_violation` file filled instead. The zone and the button did not change
+for 87 seconds. Fourteen more presses each wrote `press ignored` to the Live
+tab's Activity Log, which is not the tab he was on. The end was `0 hit(s)`.
+Stocks read `No ticker list for stocks`.
+
+### One rollup, and only what the venue serves
+
+Two rollups sat in the tree: `_resample_daily_to_weekly` in the Market
+Inspector fetcher, seven-bar windows from wherever a list began, and
+`_rollup` in the stone tablets' registry, calendar buckets that every derived
+tablet timeframe reads through. The registry's `_rollup` is the one
+definition now. The fetcher's helper is gone; `weekly_from_daily` calls
+`_rollup` with the week bucket moved onto Monday 00:00 UTC, the day the Yahoo
+chart endpoint stamps its weekly bar with.
+
+`src/exchange/market_inspector_fetcher.py` - the one rollup
+
+```python
+def weekly_from_daily(daily: list[_Candle]) -> list[_Candle]:
+    rows = [
+        [
+            one.timestamp * 1000 - MONDAY_OFFSET_MS,
+            one.open,
+            one.high,
+            one.low,
+            one.close,
+            one.volume,
+        ]
+        for one in daily
+    ]
+    return [
+        _Candle(
+            timestamp=(int(row[0]) + MONDAY_OFFSET_MS) // 1000,
+            open=float(row[1]),
+            high=float(row[2]),
+            low=float(row[3]),
+            close=float(row[4]),
+            volume=float(row[5]),
+        )
+        for row in _rollup(rows, DAYS_PER_WEEK, WEEK_MS)
+    ]
+```
+
+The scan asks a venue only for what its own table lists.
+`exchange_timeframes` reads each connector's `_ex.timeframes` and adds `1w`
+while `1d` is there; every crypto row carries that table as `served`, and
+`AssetListing.serves` reads it. `fetch_symbol_timeframe` asks a connector for
+`1w` only when its table lists it, reads `1d` and rolls up when it lists
+`1d`, and asks nothing when it lists neither. On the connector the operator
+runs, 300 daily candles give 44 weekly bars, above the 30 the voters need.
+
+`src/exchange/market_inspector_fetcher.py` - the timeframe read
+
+```python
+def exchange_timeframes(exchange_connectors: Any) -> tuple[str, ...]:
+    found: list[str] = []
+    tables = [
+        getattr(getattr(one, "_ex", None), "timeframes", None) or {}
+        for one in (exchange_connectors or {}).values()
+    ] or [CoinbasePublicCandles.GRANULARITY_S]
+    for table in tables:
+        for key in table:
+            if str(key) not in found:
+                found.append(str(key))
+    if DAILY_TIMEFRAME in found and WEEKLY_TIMEFRAME not in found:
+        found.append(WEEKLY_TIMEFRAME)
+    return tuple(found)
+```
+
+### The market list holds only what the venue trades
+
+`trading_products` reads the connector's loaded market table, the one
+`load_markets` filled at connect, and answers each base as trading while its
+product's `status` is online and `trading_disabled` is false. A sector-map
+name the venue does not trade goes on `MarketOrder.dead`, is named once on
+the order line, and is never fetched. With no connector in reach the same
+answer comes from `public_products`, the venue's public products list.
+
+`src/trading/ata_spm.py` - the order line's tail
+
+```python
+ORDER_DEAD_FORMAT = "{line}; {count} not trading, never fetched: {names}"
+```
+
+On the operator's list the order line now reads 90 trading products in
+volume order and then `30 not trading, never fetched: AGIX, AR, BOME, CBBTC,
+DYDX, ENJ, FXS, GALA, GMX, GUSD, IMX_G, JUP, MANTA, MATIC, NEAR_AI, PIXEL,
+POLYX, PYUSD, RNDR, RUNE, SC, SCRT, STETH, TRU, USDC, USDP, WBTC, WETH,
+WORMHOLE, XMR`.
+
+### The scan is on screen while it runs
+
+`_scan_until_hits` hands a callable one `ScanProgress` after each market and
+each hit. The tab's `_compute_scan` passes `_on_scan_progress`, which emits
+`scanProgressed` beside `scanLogged`; the GUI-thread slot writes
+`SectorBoard.progress`, and the ATA-SPM zone draws it as its headline through
+`zone_view`. The Scan Now button is disabled and reads `Scanning…` from the
+press until the answer or the failure crosses back, the shape the Live tab's
+Start button takes while a bot runs. Under React the skin carries
+`scan_running` and `scan_busy_label`, and `ScanNowButton` draws the same.
+
+`src/trading/ata_spm.py` - the zone's running line and the button's label
+
+```python
+SCAN_PROGRESS_FORMAT = "Scanning {asset_class} · {read} of {total} · {hits} hit(s)"
+SCAN_LISTING_FORMAT = "Scanning {asset_class} · reading the market list"
+SCAN_BUSY_LABEL = "Scanning…"
+```
+
+`src/gui/market_inspector.py` - the crossing and the button
+
+```python
+        def _on_scan_progress(self, progress) -> None:
+            """The walk's report, on the scan thread: cross to the GUI thread."""
+            self.scanProgressed.emit(progress)
+```
+
+```python
+        def _set_scan_busy(self, busy: bool) -> None:
+            button = getattr(self, "_scan_now_btn", None)
+            if button is not None:
+                button.setEnabled(not busy)
+                button.setText(ata_spm.SCAN_BUSY_LABEL if busy else SCAN_NOW_LABEL)
+            self._render_ata_row()
+```
+
+A scan thread that raises now emits `scanFailed`; the slot says the failed
+line, clears the record and frees the button. Before, the button was never
+disabled, so nothing needed freeing.
+
+### Every fetch is a block on the API Interaction Log
+
+The connector records each candle call on the API Interaction Log from the
+thread that made it. The pane's handler, `_on_api_event`, refuses any thread
+but the GUI thread and writes a `thread_violation` file instead. The main
+window now carries one signal, `apiEntryLogged`, and one receiver beside the
+handler, `_cross_api_event`. The Live tab registers the receiver as the
+listener; every entry, from any thread, crosses the signal and lands in
+`_on_api_event` on the GUI thread, the way the Simulator crosses its venue
+calls.
+
+`src/gui/main_window.py` - the crossing
+
+```python
+        def _cross_api_event(self, entry: dict) -> None:
+            """The `APIInteractionLog` listener: emit `apiEntryLogged`, which Qt
+            queues onto the GUI thread for `_on_api_event` from any other thread."""
+            self.apiEntryLogged.emit(entry)
+```
+
+The public Coinbase route and the Yahoo chart route record one `FETCH_OHLCV`
+block per fetch whose reason names the scan; the screener and the products
+list record one `FETCH_MARKETS` block each. The Yahoo route now keeps the same
+gap between calls the exchange connector keeps, 0.1 s.
+
+### Stocks scans with nothing typed
+
+At press time the stocks list is Yahoo's predefined `most_actives` screener,
+unauthenticated, ranked by `regularMarketVolume`, each quote carrying its
+sector. `screener_listings` reads it through the same request route the
+chart adapter uses. When the screener refuses, or answers no quote, the list
+is `STOCKS_PORTFOLIO`: the operator's RA portfolio equities from the
+simulator's portfolios, every non-crypto name the metals and energy maps do
+not carry, 47 names, in map order. The order line names which list was read.
+
+`src/trading/ata_asset_maps.py` - the two lists
+
+```python
+SCREENER_URL = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
+SCREENER_ID = "most_actives"
+SCREENER_COUNT = 100
+```
+
+```python
+STOCKS_PORTFOLIO: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in SYMBOLS
+    if one not in CRYPTO_SYMBOLS and one not in _MAPPED_FUNDS
+)
+```
+
+`src/gui/main_tabs/market_inspector_surface.py` - what the order line names
+
+```python
+STOCKS_SCREENER_SOURCE_FORMAT = "{source}, {sectors} sector(s)"
+STOCKS_PORTFOLIO_SOURCE_FORMAT = "RA portfolio equities in map order, the screener refused: {refusal}"
+```
+
+The ticker field no longer says `No ticker list for stocks`; it offers the
+47 names. Derivatives still lists nothing.
+
+### With no connector in reach
+
+A crypto scan with no exchange connected used to refuse every read with
+`no exchange connected`. It now reads the products list and the candles
+through `CoinbasePublicCandles`, the app's own public Coinbase Exchange
+route, at the connector's own interval. The order is by name and the line
+says so: `name on the coinbase public products list, no volume figure`. The
+public route serves no volume figure.
+
+### Two pins
+
+`inspector.scan.progress` carries class, read, total and hits, once every ten
+markets and at the end. `inspector.scan.list_source` carries class, source,
+count and the names not trading, once per list read. Both go through
+`signal_contract.emit`, beside the seven pins S1 to S4 left.
+
+### The operator's press, read off the running program
+
+The operator's press, crypto on 1hr 1d 1wk with nothing typed, on the real
+window in each variant, with the home on a scratch directory and every
+socket but loopback refused. The stand-ins answer the sources' documented
+limits: a 400 for a granularity the exchange does not list, `[]` for a
+product it does not trade, at most 300 candles; a ccxt backend whose table
+has no `1w`; a Yahoo chart serving 1h, 1d, 1wk and 1mo; a screener answering
+100 quotes with sectors, or a 429 on a plant.
+
+| reading | before, both variants | after, Qt | after, React |
+| ------- | --------------------- | --------- | ------------ |
+| `1wk` reads with candles | 0 of 120 | 44 candles each, from the daily rollup | the same |
+| `1hr` reads | 0 | one per market, 300 candles | the same |
+| asks for a weekly granularity | 360 | 0 | 0 |
+| asks for a product not trading | 180 | 0 | 0 |
+| order line | 120 names, 33 with no figure | 90 trading, then `30 not trading, never fetched` by name | the same |
+| zone while running | `No sector added.` | `Scanning crypto · 1 of 90 · 0 hit(s)`, counting up | the same on the page |
+| button while running | enabled, `Scan Now` | disabled, `Scanning…` | the same on the page |
+| API Interaction Log blocks during the scan | 0 | one per fetch, 167 by the stop | 167 on the page |
+| `thread_violation` lines | 270 | 0 | 0 |
+| a press while running | the busy line on the Live tab's Activity Log | the button is disabled; the handler, reached, still writes the busy line there | the same, on the page too |
+| end state | `0 hit(s) · sector exhausted` on the full walk | `28 market(s) read · 3 hit(s) · stopped at target` | the same |
+| stocks with nothing typed | `No ticker list for stocks`; `No asset source wired for stocks.` | `yahoo most_actives volume, 11 sector(s)`, 100 names; `3 market(s) read · 3 hit(s)` | the same |
+| stocks, the screener answering 429 | the same refusal | `RA portfolio equities in map order, the screener refused: HTTPError: HTTP Error 429`, 47 names; `43 market(s) read · 3 hit(s)` | the same |
+| no connector, crypto | 240 reads refused `no exchange connected` | 90 markets through the public route, `1wk` 44 candles, 174 calls at 7.9 a second | the same |
+| an entry recorded off the GUI thread | one `thread_violation` line, nothing on the pane | on the pane, no violation | the same |
+
+`bot_state.json` in the scratch home read byte-identical after every press;
+a planted byte moved the comparison. Nothing driven contacted a venue;
+connections refused: 0, because nothing asked for one.
+
+### Seven sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:155` - "`_resample_daily_to_weekly`
+| Derives the weekly series on the client when the venue lists no weekly
+timeframe". That helper is gone; `weekly_from_daily` does it through the
+registry's `_rollup`.
+
+`docs/manual/08-tabs/market-inspector.md:1363` - "Stocks and derivatives still
+answer nothing, and the map says why." and "no list of it sits in this tree."
+Stocks answers the screener's list at press time and `STOCKS_PORTFOLIO` in the
+tree; derivatives still answers nothing.
+
+`docs/manual/08-tabs/market-inspector.md:3061` - "a crypto name, no exchange
+connected | nothing, and the zone says so". The public route reads it now.
+
+`docs/manual/08-tabs/market-inspector.md:3160` - "Stocks and derivatives hold
+none, because no list of their membership sits in this tree. The field says
+so under itself and still takes a typed name." Stocks holds 47; the field
+says nothing under itself for stocks.
+
+`docs/manual/08-tabs/market-inspector.md:3873` and `:4503` - "crypto, with no
+exchange connected | by name". Still by name; the zone now says `name on the
+coinbase public products list, no volume figure`.
+
+`docs/manual/08-tabs/market-inspector.md:4242` and `:4254` - the
+`sector_candle_read` block returning `NO_CONNECTOR_TEXT`, and the row "the
+exchange connector, read now | `exchange` | `no exchange connected`". That
+branch reads `public_candles` now and names no refusal.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).

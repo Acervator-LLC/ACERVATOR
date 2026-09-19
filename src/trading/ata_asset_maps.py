@@ -3,18 +3,27 @@
 ``listings_for`` answers one sector's ``AssetListing`` rows and ``venue_candles``
 reads one listed name's candles through ``YahooChartAdapter``. A row carrying
 ``NO_VENUE`` is reported by ``ata_spm.evaluate`` and never scanned.
+``screener_listings`` reads the stocks list at press time from Yahoo's
+predefined screener, and ``MAPS[CLASS_STOCKS]`` holds the RA portfolio
+equities the scan walks when that screener refuses.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
+import threading
 import time
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from ..core.safe_url import SafeRequest, safe_urlopen
+from ..exchange.api_logger import get_api_log
 from ..exchange.market_inspector_fetcher import DAILY_BARS, WEEKLY_BARS
+from ..simulator.portfolios import CRYPTO_SYMBOLS, SYMBOLS
 from .ata_spm import (
     CLASS_CRYPTO,
     CLASS_DERIVATIVES,
@@ -27,6 +36,7 @@ from .indicators.types import CandleDomainError, candles_from_raw
 from .stone_tablets.ra_fetcher import (
     RA_TIMEFRAME,
     DAY_MS,
+    USER_AGENT,
     YAHOO_INTERVALS,
     YahooChartAdapter,
 )
@@ -34,6 +44,51 @@ from .stone_tablets.ra_fetcher import (
 logger = logging.getLogger("acervator.ata_asset_maps")
 
 VENUE_FETCH_FAILED_LOG = "ata asset map: %s answered no candles: %s"
+
+#: The predefined Yahoo screener the stocks list is read from at press time.
+SCREENER_URL = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
+SCREENER_ID = "most_actives"
+#: The screener serves at most 250 quotes per call.
+SCREENER_COUNT = 100
+SCREENER_TIMEOUT_S = 20.0
+SCREENER_VOLUME_KEY = "regularMarketVolume"
+SCREENER_SECTOR_KEY = "sector"
+SCREENER_SYMBOL_KEY = "symbol"
+SCREENER_QUOTE_TYPE_KEY = "quoteType"
+SCREENER_EQUITY = "EQUITY"
+SCREENER_SOURCE_TEXT = "yahoo most_actives volume"
+SCREENER_EMPTY_TEXT = "the screener answered no quote"
+SCREENER_REFUSED_LOG = "ata asset map: screener refused: %s"
+SCREENER_ACTION = "FETCH_MARKETS"
+SCREENER_REASON = "ATA-SPM scan: the most active US equities by volume"
+SCREENER_RESULT_FORMAT = "{count} quotes received, {sectors} sector(s)"
+VENUE_ACTION = "FETCH_OHLCV"
+VENUE_REASON_FORMAT = "ATA-SPM scan: {timeframe} candles for {ticker}"
+VENUE_RESULT_FORMAT = "{count} candles received"
+VENUE_NO_CANDLES_RESULT = "No data"
+API_LEVEL_SUCCESS = "success"
+API_LEVEL_WARNING = "warning"
+API_DATA_USAGE = "Fed into the ATA-SPM voters and the live trade gates"
+
+_SCREENED: dict[str, "AssetListing"] = {}
+"""The rows the last ``screener_listings`` read answered, by upper-case symbol."""
+
+#: The least gap between two venue reads, the interval the exchange
+#: connector already keeps between its own calls.
+VENUE_MIN_INTERVAL_S = 0.1
+_VENUE_LOCK = threading.Lock()
+_VENUE_LAST_CALL_MONO: float = 0.0
+
+
+def _venue_wait() -> None:
+    """Hold the venue route to one call per ``VENUE_MIN_INTERVAL_S``."""
+    global _VENUE_LAST_CALL_MONO
+    with _VENUE_LOCK:
+        gap = VENUE_MIN_INTERVAL_S - (time.monotonic() - _VENUE_LAST_CALL_MONO)
+        if gap > 0:
+            time.sleep(gap)
+        _VENUE_LAST_CALL_MONO = time.monotonic()
+
 
 #: The refusals ``venue_candle_read`` names, one per reason it read nothing.
 UNMAPPED_TEXT = "no map lists {symbol}"
@@ -98,6 +153,7 @@ SECTOR_EXOTIC = "exotic"
 SECTOR_SPOT = "spot"
 SECTOR_PETROLEUM = "petroleum"
 SECTOR_GAS = "gas"
+SECTOR_PORTFOLIO = "portfolio"
 
 USD = "USD"
 
@@ -108,7 +164,9 @@ class AssetListing:
 
     ``quote`` is the currency the venue prices ``ticker`` in, which
     ``YahooChartAdapter.fetch_chunk`` checks its answer against; ``volumed``
-    says whether ``venue`` sends a volume figure on ``ticker``'s bars.
+    says whether ``venue`` sends a volume figure on ``ticker``'s bars;
+    ``served`` is the venue's own timeframe table when the row was read off
+    one, and ``sector`` the sector the venue's quote named.
     """
 
     symbol: str
@@ -116,6 +174,8 @@ class AssetListing:
     venue: str = NO_VENUE
     ticker: str = ""
     volumed: bool = True
+    served: tuple = ()
+    sector: str = ""
 
     @property
     def listed(self) -> bool:
@@ -123,7 +183,10 @@ class AssetListing:
         return bool(self.venue) and bool(self.ticker)
 
     def serves(self, timeframe: Any) -> bool:
-        """True when ``venue`` answers candles on ``timeframe``."""
+        """True when ``venue`` answers candles on ``timeframe``: ``served``
+        while the row carries a table, else ``VENUE_TIMEFRAMES``."""
+        if self.served:
+            return str(timeframe) in self.served
         return str(timeframe) in VENUE_TIMEFRAMES.get(self.venue, ())
 
 
@@ -196,6 +259,19 @@ ENERGY_GAS: tuple[AssetListing, ...] = tuple(
     for one in ("UNG",)
 )
 
+#: The names the metals and energy maps already carry, kept off the stocks map.
+_MAPPED_FUNDS: frozenset[str] = frozenset(
+    one.symbol for one in METALS_PHYSICAL + ENERGY_PETROLEUM + ENERGY_GAS
+)
+
+#: The operator's RA portfolio equities, every non-crypto ``SYMBOLS`` name
+#: no other map carries, on ``VENUE_YAHOO`` in ``SYMBOLS`` order.
+STOCKS_PORTFOLIO: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in SYMBOLS
+    if one not in CRYPTO_SYMBOLS and one not in _MAPPED_FUNDS
+)
+
 MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
     CLASS_FOREX: {
         SECTOR_MAJOR: FOREX_MAJOR,
@@ -207,13 +283,18 @@ MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
         SECTOR_PETROLEUM: ENERGY_PETROLEUM,
         SECTOR_GAS: ENERGY_GAS,
     },
+    CLASS_STOCKS: {SECTOR_PORTFOLIO: STOCKS_PORTFOLIO},
 }
 
 #: What each class's map was built from, and when its tickers were measured.
 MAP_SOURCES: dict[str, str] = {
     CLASS_CRYPTO: (
         "Hand-curated asset tags in sector_map.json, read by load_sector_map. "
-        "Candles come from the Market Inspector universe scan."
+        "Candles come from the Market Inspector universe scan, or from the "
+        "connector's candle call. The market list at press time keeps the "
+        "products the venue's market table says it trades: status online and "
+        "trading_disabled false; the rest are named on the order line and "
+        "never fetched."
     ),
     CLASS_FOREX: (
         "Liquidity tiers: major holds USD, minor crosses two majors, exotic "
@@ -233,8 +314,14 @@ MAP_SOURCES: dict[str, str] = {
     ),
     CLASS_STOCKS: (
         "GICS names 11 sectors over 25 industry groups, 74 industries and 163 "
-        "sub-industries. The company membership is licensed by MSCI and S&P "
-        "and no list of it sits in this tree."
+        "sub-industries; the company membership is licensed by MSCI and S&P. "
+        "At press time the list is Yahoo's predefined most_actives screener, "
+        "unauthenticated, up to 250 US equities ranked by regularMarketVolume, "
+        "each quote naming its sector; screener_listings reads it. When that "
+        "screener refuses or answers no quote, the list is STOCKS_PORTFOLIO: "
+        "the operator's RA portfolio equities from src/simulator/portfolios.py, "
+        "every non-crypto SYMBOLS name the metals and energy maps do not carry, "
+        "on the yahoo chart endpoint in SYMBOLS order."
     ),
     CLASS_DERIVATIVES: "No classification is named for this class yet.",
     CLASS_ENERGY: (
@@ -250,10 +337,17 @@ MAP_SOURCES: dict[str, str] = {
 }
 
 
-def exchange_listing(symbol: Any) -> AssetListing:
-    """One crypto name as the row ``VENUE_EXCHANGE`` charts it under."""
+def exchange_listing(symbol: Any, served: Any = ()) -> AssetListing:
+    """One crypto name as the row ``VENUE_EXCHANGE`` charts it under, carrying
+    ``served``, the venue's own timeframe table, when the caller read one."""
     name = str(symbol)
-    return AssetListing(symbol=name, quote=USD, venue=VENUE_EXCHANGE, ticker=name)
+    return AssetListing(
+        symbol=name,
+        quote=USD,
+        venue=VENUE_EXCHANGE,
+        ticker=name,
+        served=tuple(str(one) for one in served or ()),
+    )
 
 
 def sectors_for(asset_class: Any) -> tuple[str, ...]:
@@ -268,14 +362,101 @@ def listings_for(sector: Any, asset_class: Any) -> tuple[AssetListing, ...]:
 
 
 def listing_of(symbol: Any) -> Optional[AssetListing]:
-    """The row every map holds for one symbol, or None when none names it."""
+    """The row every map holds for one symbol, else the row the last
+    ``screener_listings`` read holds for it, else None."""
     asked = str(symbol).strip().upper()
     for sectors in MAPS.values():
         for rows in sectors.values():
             for one in rows:
                 if one.symbol.upper() == asked:
                     return one
-    return None
+    return _SCREENED.get(asked)
+
+
+def screened_listings() -> tuple[AssetListing, ...]:
+    """The rows the last ``screener_listings`` read answered, in its order."""
+    return tuple(_SCREENED.values())
+
+
+def _screener_quotes(count: int, timeout_s: float) -> list:
+    """The quote dicts ``SCREENER_URL`` answers for ``SCREENER_ID``."""
+    params = {"scrIds": SCREENER_ID, "count": int(count)}
+    request = SafeRequest(f"{SCREENER_URL}?{urllib.parse.urlencode(params)}")
+    request.add_header("User-Agent", USER_AGENT)
+    with safe_urlopen(request, timeout=timeout_s) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    results = ((payload or {}).get("finance") or {}).get("result") or []
+    return list((results[0] or {}).get("quotes") or []) if results else []
+
+
+def screener_listings(
+    count: int = SCREENER_COUNT, timeout_s: float = SCREENER_TIMEOUT_S
+) -> tuple[list, dict, str]:
+    """The stocks rows ``SCREENER_URL`` ranks by ``SCREENER_VOLUME_KEY``, their
+    figures by symbol, and the refusal when it answered none.
+
+    Each quote becomes one ``AssetListing`` on ``VENUE_YAHOO`` carrying its
+    ``SCREENER_SECTOR_KEY``; the rows also fill ``_SCREENED`` for ``listing_of``.
+    """
+    start = time.monotonic()
+    try:
+        quotes = _screener_quotes(count, timeout_s)
+    except Exception as exc:  # noqa: BLE001 - the venue is off-process
+        refusal = f"{type(exc).__name__}: {exc}"
+        logger.debug(SCREENER_REFUSED_LOG, refusal)
+        get_api_log().record(
+            exchange=VENUE_YAHOO,
+            action=SCREENER_ACTION,
+            reason=SCREENER_REASON,
+            endpoint=SCREENER_ID,
+            params={"count": int(count)},
+            result=refusal,
+            elapsed_ms=(time.monotonic() - start) * 1000,
+            level=API_LEVEL_WARNING,
+            data_usage=API_DATA_USAGE,
+        )
+        return [], {}, refusal
+    rows: list = []
+    figures: dict = {}
+    for quote in quotes:
+        if not isinstance(quote, dict):
+            continue
+        symbol = str(quote.get(SCREENER_SYMBOL_KEY) or "").strip().upper()
+        kind = str(quote.get(SCREENER_QUOTE_TYPE_KEY) or SCREENER_EQUITY).upper()
+        if not symbol or kind != SCREENER_EQUITY or symbol in figures:
+            continue
+        try:
+            volume = float(quote.get(SCREENER_VOLUME_KEY) or 0.0)
+        except (TypeError, ValueError):
+            volume = 0.0
+        rows.append(
+            AssetListing(
+                symbol=symbol,
+                quote=USD,
+                venue=VENUE_YAHOO,
+                ticker=symbol,
+                sector=str(quote.get(SCREENER_SECTOR_KEY) or ""),
+            )
+        )
+        if volume > NO_VOLUME_FIGURE:
+            figures[symbol] = volume
+    sectors = {one.sector for one in rows if one.sector}
+    get_api_log().record(
+        exchange=VENUE_YAHOO,
+        action=SCREENER_ACTION,
+        reason=SCREENER_REASON,
+        endpoint=SCREENER_ID,
+        params={"count": int(count)},
+        result=SCREENER_RESULT_FORMAT.format(count=len(rows), sectors=len(sectors)),
+        elapsed_ms=(time.monotonic() - start) * 1000,
+        level=API_LEVEL_SUCCESS if rows else API_LEVEL_WARNING,
+        data_usage=API_DATA_USAGE,
+    )
+    if not rows:
+        return [], {}, SCREENER_EMPTY_TEXT
+    _SCREENED.clear()
+    _SCREENED.update({one.symbol: one for one in rows})
+    return rows, figures, ""
 
 
 def _adapter_for(venue: str) -> Optional[YahooChartAdapter]:
@@ -317,6 +498,8 @@ def venue_candle_read(symbol: Any, timeframe: Any, days: int = 0) -> tuple:
         return [], NO_ADAPTER_TEXT.format(venue=found.venue)
     window = int(days) or venue_window_days(timeframe)
     now_ms = int(time.time() * 1000)
+    _venue_wait()
+    start = time.monotonic()
     attempt = asyncio.run(
         adapter.fetch_chunk(
             found.ticker,
@@ -326,10 +509,30 @@ def venue_candle_read(symbol: Any, timeframe: Any, days: int = 0) -> tuple:
             timeframe=str(timeframe),
         )
     )
+    candles = [] if attempt.error else _candles_of(found.ticker, attempt.candles)
+    get_api_log().record(
+        exchange=found.venue,
+        action=VENUE_ACTION,
+        reason=VENUE_REASON_FORMAT.format(timeframe=timeframe, ticker=found.ticker),
+        endpoint=str(timeframe),
+        params={"symbol": found.ticker, "timeframe": str(timeframe), "days": window},
+        result=(
+            str(attempt.error)
+            if attempt.error
+            else (
+                VENUE_RESULT_FORMAT.format(count=len(candles))
+                if candles
+                else VENUE_NO_CANDLES_RESULT
+            )
+        ),
+        elapsed_ms=(time.monotonic() - start) * 1000,
+        level=API_LEVEL_SUCCESS if candles else API_LEVEL_WARNING,
+        data_usage=API_DATA_USAGE,
+    )
     if attempt.error:
         logger.debug(VENUE_FETCH_FAILED_LOG, found.ticker, attempt.error)
         return [], str(attempt.error)
-    return _candles_of(found.ticker, attempt.candles), ""
+    return candles, ""
 
 
 def venue_candles(symbol: Any, timeframe: Any, days: int = 0) -> list:
@@ -414,7 +617,12 @@ __all__ = [
     "SECTOR_EXOTIC",
     "SECTOR_MAJOR",
     "SECTOR_MINOR",
+    "SECTOR_PORTFOLIO",
     "SECTOR_SPOT",
+    "SCREENER_COUNT",
+    "SCREENER_SOURCE_TEXT",
+    "SCREENER_URL",
+    "STOCKS_PORTFOLIO",
     "TIMEFRAME_BARS_ASKED",
     "TIMEFRAME_BAR_DAYS",
     "VENUE_EXCHANGE",
@@ -427,6 +635,8 @@ __all__ = [
     "exchange_listing",
     "listing_of",
     "listings_for",
+    "screened_listings",
+    "screener_listings",
     "sectors_for",
     "venue_candle_read",
     "venue_candles",

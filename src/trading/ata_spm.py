@@ -189,9 +189,18 @@ SECTOR_EXHAUSTED_TEXT = "sector exhausted"
 ORDER_LINE_FORMAT = "Order by {source}: {markets}"
 ORDER_UNREAD_FORMAT = "{markets} ({unread} not read)"
 ORDER_UNFIGURED_FORMAT = "{source}, {unfigured} with no figure last by name"
+#: The order line's tail naming the products the venue does not trade, once.
+ORDER_DEAD_FORMAT = "{line}; {count} not trading, never fetched: {names}"
 MAP_ORDER_SOURCE_TEXT = "map order, no volume figure"
 UNSTATED_ORDER_SOURCE_TEXT = "the order the source listed"
 NO_MARKET_TEXT = "none"
+
+#: The zone's line while a by-volume scan runs, redrawn after each market.
+SCAN_PROGRESS_FORMAT = "Scanning {asset_class} · {read} of {total} · {hits} hit(s)"
+#: The zone's line from the press until the market list is read.
+SCAN_LISTING_FORMAT = "Scanning {asset_class} · reading the market list"
+#: What the Scan Now button reads, disabled, from the press to the end.
+SCAN_BUSY_LABEL = "Scanning…"
 
 #: The pin ``_scan_until_hits`` writes at each hit, through ``_pin_emit``.
 HIT_PIN = "inspector.ata.hit"
@@ -263,6 +272,7 @@ CLASS_READ_FAILED_LOG = "ATA-SPM market list read failed on %s: %s"
 CANDLE_SHAPE_LOG = "ATA-SPM candle row is not OHLCV: %s"
 ASSET_READ_FAILED_LOG = "ATA-SPM asset read failed on %s: %s"
 VOTE_FAILED_LOG = "ATA-SPM vote failed on %s %s: %s"
+PROGRESS_FAILED_LOG = "ATA-SPM progress callable failed on %s: %s"
 
 #: The lines one Scan Now press writes, in the order its phases run.
 SCAN_PRESSED_TEXT = (
@@ -357,6 +367,8 @@ class MarketOrder:
     source: str = UNSTATED_ORDER_SOURCE_TEXT
     figures: dict = field(default_factory=dict)
     unfigured: int = 0
+    #: The names the venue lists but does not trade, kept off ``listings``.
+    dead: list = field(default_factory=list)
 
     @property
     def by_volume(self) -> bool:
@@ -404,14 +416,46 @@ class TickerPlacement:
 def order_line(order: MarketOrder, read: Any) -> str:
     """``ORDER_LINE_FORMAT`` over the first ``read`` symbols of ``order``.
 
-    The symbols after ``read`` are counted into ``ORDER_UNREAD_FORMAT``.
+    The symbols after ``read`` are counted into ``ORDER_UNREAD_FORMAT``, and
+    ``order.dead`` is named once through ``ORDER_DEAD_FORMAT``.
     """
     symbols = order.symbols
     held = max(0, int(read or 0))
     named = SYMBOL_SEPARATOR.join(symbols[:held]) or NO_MARKET_TEXT
     if len(symbols) > held:
         named = ORDER_UNREAD_FORMAT.format(markets=named, unread=len(symbols) - held)
-    return ORDER_LINE_FORMAT.format(source=order.source_line, markets=named)
+    line = ORDER_LINE_FORMAT.format(source=order.source_line, markets=named)
+    if order.dead:
+        line = ORDER_DEAD_FORMAT.format(
+            line=line,
+            count=len(order.dead),
+            names=SYMBOL_SEPARATOR.join(str(one) for one in order.dead),
+        )
+    return line
+
+
+@dataclass(frozen=True)
+class ScanProgress:
+    """Where one by-volume walk stands: ``read`` of ``total`` markets and
+    ``hits`` so far, the figures ``SCAN_PROGRESS_FORMAT`` prints."""
+
+    asset_class: str
+    read: int
+    total: int
+    hits: int
+
+    @property
+    def text(self) -> str:
+        """``SCAN_PROGRESS_FORMAT`` over this record, or ``SCAN_LISTING_FORMAT``
+        while ``total`` is still ``NO_MARKETS_READ``."""
+        if self.total <= NO_MARKETS_READ:
+            return SCAN_LISTING_FORMAT.format(asset_class=self.asset_class)
+        return SCAN_PROGRESS_FORMAT.format(
+            asset_class=self.asset_class,
+            read=self.read,
+            total=self.total,
+            hits=self.hits,
+        )
 
 
 @dataclass
@@ -877,6 +921,7 @@ def evaluate(
     clock: Optional[Callable] = None,
     message_format: Optional[str] = None,
     max_supporting_indicators: Any = NO_INDICATOR_CAP,
+    progress: Optional[Callable] = None,
 ) -> list:
     """Phase one: scan every ``Sector`` on the timeframes ticked on it.
 
@@ -884,7 +929,8 @@ def evaluate(
     timeframes, measured from the ``RoundCost`` the rounds so far took. A
     ``Sector.hit_target`` sector and a ``Sector.ticker`` market are walked
     by ``_scan_until_hits``, which judges each vote through ``pull`` as it
-    goes; a market has no target, so every ticked timeframe is judged.
+    goes and hands ``progress`` its ``ScanProgress``; a market has no target,
+    so every ticked timeframe is judged.
     """
     voter = engine if engine is not None else VotingEngine()
     ticker = clock if clock is not None else time.perf_counter
@@ -931,6 +977,7 @@ def evaluate(
                 ticker,
                 scan,
                 _gate_judge(candle_source, message_format, max_supporting_indicators),
+                progress,
             )
             scan.assets = assets[: scan.markets_read]
             scan.round_seconds = cost.per_round_s
@@ -1028,6 +1075,24 @@ def _gate_judge(
     return judge
 
 
+def _tell_progress(progress: Optional[Callable], scan: SectorScan, total: int) -> None:
+    """Hand ``progress`` one ``ScanProgress`` over ``scan``; a callable that
+    raises never stops the walk."""
+    if progress is None:
+        return
+    try:
+        progress(
+            ScanProgress(
+                asset_class=scan.asset_class,
+                read=scan.markets_read,
+                total=total,
+                hits=len(scan.hits),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - the callable is host-supplied
+        logger.debug(PROGRESS_FAILED_LOG, scan.asset_class, exc)
+
+
 def _scan_until_hits(
     voter: VotingEngine,
     assets: list,
@@ -1037,14 +1102,16 @@ def _scan_until_hits(
     clock: Callable,
     scan: SectorScan,
     judge: Callable,
+    progress: Optional[Callable] = None,
 ) -> None:
-    """Market by market, every timeframe each, until ``scan.hit_target`` hits.
+    """Market by market, every timeframe each, until ``scan.hit_target`` hits,
+    with ``progress`` handed one ``ScanProgress`` after each market and each hit.
 
     Each market's votes are judged by ``judge`` in timeframe order after its
     last timeframe is read, a ``GateScan.would_fire`` verdict is one hit into
-    ``scan.hits``, every ``ChartPull`` joins ``scan.pulls``, and the hit that
-    reaches the target ends the walk with ``scan.stopped_at_target`` True. A
-    target of ``NO_HIT_TARGET`` walks every market and stops at no count.
+    ``scan.hits``, every ``ChartPull`` joins ``scan.pulls``, the hit that
+    reaches the target ends the walk with ``scan.stopped_at_target`` True, and
+    a target of ``NO_HIT_TARGET`` walks every market and stops at no count.
     """
     frames = [TimeframeScan(timeframe=one) for one in timeframes]
     scan.timeframes = frames
@@ -1053,6 +1120,8 @@ def _scan_until_hits(
     scan.judged = True
     if not frames:
         return
+    total = len(assets)
+    _tell_progress(progress, scan, total)
     for symbol in assets:
         scan.markets_read += 1
         votes = [
@@ -1090,7 +1159,9 @@ def _scan_until_hits(
             )
             if NO_HIT_TARGET < scan.hit_target <= len(scan.hits):
                 scan.stopped_at_target = True
+                _tell_progress(progress, scan, total)
                 return
+        _tell_progress(progress, scan, total)
 
 
 def agreement_for(scans: Any, vote: AssetVote) -> TimeframeAgreement:
@@ -1406,6 +1477,7 @@ def run(
     message_format: Optional[str] = None,
     clock: Optional[Callable] = None,
     max_supporting_indicators: Any = NO_INDICATOR_CAP,
+    progress: Optional[Callable] = None,
 ) -> AtaSpmRun:
     """Phases one, two, three and eight in order, as one ``AtaSpmRun``.
 
@@ -1414,7 +1486,7 @@ def run(
     bucket, and every other vote leaves its scan in ``refused``. A
     ``SectorScan.judged`` scan, by volume or one market, judged its own
     votes inside ``evaluate`` and hands over ``hits`` and ``pulls``; every
-    other scan's votes are judged here.
+    other scan's votes are judged here. ``progress`` reaches ``evaluate``.
     """
     scans = evaluate(
         sectors,
@@ -1424,6 +1496,7 @@ def run(
         clock,
         message_format,
         max_supporting_indicators,
+        progress,
     )
     found = AtaSpmRun(scans=scans)
     for scan in scans:
@@ -1470,6 +1543,18 @@ class SectorBoard:
         self.timeframes: tuple = timeframes_for(CLASS_CRYPTO)
         self.run: Optional[AtaSpmRun] = None
         self.note = ""
+        #: Where the running scan stands, None while none runs.
+        self.progress: Optional[ScanProgress] = None
+
+    @property
+    def scanning(self) -> bool:
+        """True while ``progress`` holds a running scan's record."""
+        return self.progress is not None
+
+    @property
+    def progress_text(self) -> str:
+        """``SCAN_PROGRESS_FORMAT`` over ``progress``, empty while none runs."""
+        return self.progress.text if self.progress is not None else ""
 
     def sector_at(self, at: Any) -> Optional[Sector]:
         """The sector one zone index shows, or None while the board is empty."""
@@ -1555,6 +1640,7 @@ class SectorBoard:
         class_source: Optional[Callable] = None,
         hit_target: Any = DEFAULT_HITS_PER_SCAN,
         at: Any = 0,
+        progress: Optional[Callable] = None,
     ) -> tuple:
         """The scans this press holds, the index to show, the ``run`` and a note.
 
@@ -1564,7 +1650,8 @@ class SectorBoard:
         ``TICKER_UNHELD_FORMAT`` and runs nothing, and an empty ``self.text``
         scans what ``class_source`` lists for ``asset_class`` until
         ``hit_target`` hits; nothing on the board is written until ``take``.
-        Each press with text writes ``TICKER_RESOLVED_PIN`` once.
+        Each press with text writes ``TICKER_RESOLVED_PIN`` once, and
+        ``progress`` reaches ``run``.
         """
         sectors = list(self.sectors)
         added = NO_NEW_SECTOR
@@ -1592,6 +1679,7 @@ class SectorBoard:
                 candle_source,
                 message_format=message_format,
                 max_supporting_indicators=max_supporting_indicators,
+                progress=progress,
             )
             if sectors
             else None
@@ -1697,10 +1785,11 @@ class SectorBoard:
         """Write what ``compute`` answered onto the board, and answer ``added``.
 
         The class box follows the entry ``added`` names, so a placed market
-        moves it to the class that lists the market.
+        moves it to the class that lists the market, and ``progress`` clears.
         """
         self.sectors = list(sectors)
         self.note = str(note or "")
+        self.progress = None
         if found is not None:
             self.run = found
         shown = int(added)
@@ -1719,6 +1808,7 @@ class SectorBoard:
         class_source: Optional[Callable] = None,
         hit_target: Any = DEFAULT_HITS_PER_SCAN,
         at: Any = 0,
+        progress: Optional[Callable] = None,
     ) -> int:
         """``compute`` and ``take`` on one thread, answering the index to show.
 
@@ -1733,6 +1823,7 @@ class SectorBoard:
             class_source,
             hit_target,
             at,
+            progress,
         )
         return self.take(sectors, added, found, note)
 

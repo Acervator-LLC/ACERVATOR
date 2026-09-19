@@ -62,7 +62,7 @@ try:
         QPlainTextEdit,
         QMessageBox,
     )
-    from PySide6.QtCore import Qt, QTimer, Slot
+    from PySide6.QtCore import Qt, QTimer, Signal, Slot
     from PySide6.QtGui import QIcon
 
     from .main_tabs.bot_swarm_tab import BotSwarmTabMixin
@@ -177,6 +177,9 @@ if _HAS_QT:
 
         # Annotated only: `_drain_signals` reads it by `getattr`, default False.
         _console_paused: bool
+
+        #: One API Interaction Log entry, crossed to the GUI thread for `_on_api_event`.
+        apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
 
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
             super().__init__(parent)
@@ -914,6 +917,11 @@ if _HAS_QT:
                     if abbrev in text:
                         gb.setToolTip(explanation)
                         break
+
+        def _cross_api_event(self, entry: dict) -> None:
+            """The `APIInteractionLog` listener: emit `apiEntryLogged`, which Qt
+            queues onto the GUI thread for `_on_api_event` from any other thread."""
+            self.apiEntryLogged.emit(entry)
 
         def _on_api_event(self, entry: dict) -> None:
             """Append one API entry to `_api_log_view`, refusing off-thread calls."""

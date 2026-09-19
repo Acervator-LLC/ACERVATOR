@@ -237,12 +237,25 @@ SCAN_STARTED_PIN = "inspector.ata.scan_started"
 VOLUME_ORDER_PIN = "inspector.ata.volume_order"
 MARKET_READ_PIN = "inspector.ata.market_read"
 SCAN_FINISHED_PIN = "inspector.ata.scan_finished"
+#: The pin the running walk leaves every ``PROGRESS_PIN_EVERY`` markets and
+#: at its end: class, read, total, hits.
+SCAN_PROGRESS_PIN = "inspector.scan.progress"
+PROGRESS_PIN_EVERY = 10
+#: The pin one class list read leaves: class, source, count, dead.
+LIST_SOURCE_PIN = "inspector.scan.list_source"
 
 #: What ``class_markets`` names as the source of each class's order.
 CRYPTO_ORDER_SOURCE_FORMAT = "24 h quote volume on {venues}"
 CRYPTO_NO_CONNECTOR_SOURCE_TEXT = "name, no exchange connected for a volume figure"
+CRYPTO_PUBLIC_SOURCE_TEXT = (
+    "name on the coinbase public products list, no volume figure"
+)
 CRYPTO_NO_FIGURE_SOURCE_TEXT = "name, the exchange sent no volume figure"
 VENUE_ORDER_SOURCE_FORMAT = "last complete daily bar volume x close on {venue}"
+STOCKS_SCREENER_SOURCE_FORMAT = "{source}, {sectors} sector(s)"
+STOCKS_PORTFOLIO_SOURCE_FORMAT = (
+    "RA portfolio equities in map order, the screener refused: {refusal}"
+)
 ORDER_VENUE_JOIN = ", "
 ORDER_LOG_FORMAT = "ATA-SPM order for {asset_class}: {line}"
 VOLUME_FIGURE_REFUSED_LOG = "volume figure refused for %s: %s"
@@ -1112,12 +1125,16 @@ def ata_spm_text(run: Any) -> str:
     )
 
 
-def ata_spm_zone_text(run: Any, sector_count: Any, note: Any = "") -> str:
+def ata_spm_zone_text(
+    run: Any, sector_count: Any, note: Any = "", progress: Any = ""
+) -> str:
     """The ATA-SPM zone's line for the run it holds and the scans added.
 
-    A ``note`` the last press left is what the zone says, and a zone holding
-    no scan reads ``ATA_SPM_NO_SECTOR_TEXT``.
+    A ``progress`` line of a running scan comes first, then a ``note`` the
+    last press left, and a zone holding no scan reads ``ATA_SPM_NO_SECTOR_TEXT``.
     """
+    if progress:
+        return str(progress)
     if note:
         return str(note)
     if not int(sector_count or 0):
@@ -2334,13 +2351,14 @@ def left_module_rows(
     connectors: Any,
     sector_count: Any = 0,
     ata_note: Any = "",
+    ata_progress: Any = "",
 ) -> list:
     """The three left-side regions as key, title and status, in screen order."""
     return [
         [
             ATA_SPM_MODULE,
             ATA_SPM_GROUP_TITLE,
-            ata_spm_zone_text(run, sector_count, ata_note),
+            ata_spm_zone_text(run, sector_count, ata_note, ata_progress),
         ],
         [
             OPPOSING_TRADES_MODULE,
@@ -2449,7 +2467,13 @@ def zone_entry(
 
 
 def zone_view(
-    key: Any, title: Any, entries: Any, at: Any, expanded: Any, empty_text: Any
+    key: Any,
+    title: Any,
+    entries: Any,
+    at: Any,
+    expanded: Any,
+    empty_text: Any,
+    running: Any = "",
 ) -> dict:
     """One zone as all three hosts draw it.
 
@@ -2457,7 +2481,8 @@ def zone_view(
     still reports a position, so an empty zone reads as a state rather
     than as nothing drawn. An open entry drops the method line and the
     hint, which the four expanded lines already say, so every zone's open
-    entry takes the same height whatever buttons it carries.
+    entry takes the same height whatever buttons it carries. A ``running``
+    line is the headline while a scan runs, with no meta and no method.
     """
     held = list(entries or [])
     total = len(held)
@@ -2466,7 +2491,8 @@ def zone_view(
     method = entry.get("method")
     own_detail = entry.get("detail")
     own_method_text = entry.get("method_text")
-    open_now = bool(expanded) and total > 0
+    busy = bool(running)
+    open_now = bool(expanded) and total > 0 and not busy
     lines = own_detail if own_detail is not None else method_detail_rows(method)
     written = own_method_text if own_method_text is not None else method_line(method)
     return {
@@ -2475,10 +2501,14 @@ def zone_view(
         "total": total,
         "at": shown,
         "position": position_text(shown, total),
-        "headline": entry.get("headline", "") if total else empty_text,
-        "meta": entry.get("meta", "") if total else "",
-        "method": "" if open_now else (written if total else ""),
-        "hint": total > 0 and not open_now,
+        "headline": (
+            str(running)
+            if busy
+            else (entry.get("headline", "") if total else empty_text)
+        ),
+        "meta": entry.get("meta", "") if total and not busy else "",
+        "method": "" if open_now or busy else (written if total else ""),
+        "hint": total > 0 and not open_now and not busy,
         "expanded": open_now,
         "detail": lines if open_now else [],
         "thumbnail": entry.get("thumbnail") if total else None,
@@ -2636,45 +2666,106 @@ def ranked_order(
     )
 
 
-def class_markets(asset_class: Any, connectors: Any = None) -> Any:
-    """Every market one class holds as an ``ata_spm.MarketOrder``, largest first.
+def stocks_markets() -> Any:
+    """The stocks ``ata_spm.MarketOrder``: ``screener_listings`` ranked by its
+    volume figures, or ``MAPS`` rows in map order when the screener refused.
 
-    Crypto ranks ``class_tickers`` by ``class_volumes`` and names its venues
-    as the source, or reads by name while no connector is in reach; every
-    mapped class ranks ``listing_volumes`` over its ``ata_asset_maps.MAPS``
-    rows, and a class whose rows carry no figure keeps map order.
+    The source names which list was read and, on the screener, how many
+    sectors its quotes named.
     """
-    if str(asset_class) != ata_spm.CLASS_CRYPTO:
-        rows = [
-            one
-            for sector in ata_asset_maps.sectors_for(asset_class)
-            for one in ata_asset_maps.listings_for(sector, asset_class)
-        ]
-        venues = sorted({one.venue for one in rows if one.venue})
+    rows, figures, refusal = ata_asset_maps.screener_listings()
+    if rows:
+        sectors = {one.sector for one in rows if one.sector}
         return ranked_order(
             rows,
-            listing_volumes(rows),
-            VENUE_ORDER_SOURCE_FORMAT.format(venue=ORDER_VENUE_JOIN.join(venues)),
+            figures,
+            STOCKS_SCREENER_SOURCE_FORMAT.format(
+                source=ata_asset_maps.SCREENER_SOURCE_TEXT, sectors=len(sectors)
+            ),
         )
-    volumes = class_volumes(asset_class, connectors)
-    rows = [ata_asset_maps.exchange_listing(one) for one in class_tickers(asset_class)]
+    held = [
+        one
+        for sector in ata_asset_maps.sectors_for(ata_spm.CLASS_STOCKS)
+        for one in ata_asset_maps.listings_for(sector, ata_spm.CLASS_STOCKS)
+    ]
+    return ata_spm.MarketOrder(
+        listings=held,
+        source=STOCKS_PORTFOLIO_SOURCE_FORMAT.format(refusal=refusal),
+        unfigured=len(held),
+    )
+
+
+def crypto_markets(connectors: Any) -> Any:
+    """The crypto ``ata_spm.MarketOrder``: the ``class_tickers`` names the
+    venue trades, ranked by ``class_volumes``, with the rest on ``dead``.
+
+    ``trading_products`` reads the connectors' loaded tables and
+    ``public_products`` the public route while none is in reach; each row
+    carries ``exchange_timeframes`` as its served table.
+    """
+    from ...exchange.market_inspector_fetcher import (
+        exchange_timeframes,
+        public_products,
+        trading_products,
+    )
+
+    served = exchange_timeframes(connectors)
+    trading = trading_products(connectors) if connectors else public_products()
+    names = sorted(class_tickers(ata_spm.CLASS_CRYPTO))
+    dead = [one for one in names if trading and not trading.get(one.upper(), False)]
+    rows = [
+        ata_asset_maps.exchange_listing(one, served) for one in names if one not in dead
+    ]
+    volumes = class_volumes(ata_spm.CLASS_CRYPTO, connectors)
     figures = {
         str(one.symbol): float(volumes[str(one.symbol).upper()])
         for one in rows
         if float(volumes.get(str(one.symbol).upper(), 0.0)) > 0.0
     }
-    rows.sort(key=lambda one: str(one.symbol))
     if not connectors:
         return ata_spm.MarketOrder(
-            listings=rows, source=CRYPTO_NO_CONNECTOR_SOURCE_TEXT, unfigured=len(rows)
+            listings=rows,
+            source=(
+                CRYPTO_PUBLIC_SOURCE_TEXT
+                if trading
+                else CRYPTO_NO_CONNECTOR_SOURCE_TEXT
+            ),
+            unfigured=len(rows),
+            dead=dead,
         )
-    return ranked_order(
+    order = ranked_order(
         rows,
         figures,
         CRYPTO_ORDER_SOURCE_FORMAT.format(
             venues=ORDER_VENUE_JOIN.join(sorted(str(one) for one in connectors))
         ),
         CRYPTO_NO_FIGURE_SOURCE_TEXT,
+    )
+    order.dead = dead
+    return order
+
+
+def class_markets(asset_class: Any, connectors: Any = None) -> Any:
+    """Every market one class holds as an ``ata_spm.MarketOrder``, largest first.
+
+    Crypto is ``crypto_markets``, stocks is ``stocks_markets``; every other
+    mapped class ranks ``listing_volumes`` over its ``ata_asset_maps.MAPS``
+    rows, and a class whose rows carry no figure keeps map order.
+    """
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        return crypto_markets(connectors)
+    if str(asset_class) == ata_spm.CLASS_STOCKS:
+        return stocks_markets()
+    rows = [
+        one
+        for sector in ata_asset_maps.sectors_for(asset_class)
+        for one in ata_asset_maps.listings_for(sector, asset_class)
+    ]
+    venues = sorted({one.venue for one in rows if one.venue})
+    return ranked_order(
+        rows,
+        listing_volumes(rows),
+        VENUE_ORDER_SOURCE_FORMAT.format(venue=ORDER_VENUE_JOIN.join(venues)),
     )
 
 
@@ -2938,9 +3029,9 @@ def sector_candle_read(
 
     A symbol ``ata_asset_maps.listing_of`` names reads through that listing's
     venue; every other symbol takes ``inspector_candles`` while the universe
-    scan is younger than ``CANDLES_FRESH_SECONDS`` and ``connector_candles``
-    once it is older, with ``NO_CONNECTOR_TEXT`` as the refusal while no
-    connector is in reach.
+    scan is younger than ``CANDLES_FRESH_SECONDS``, ``connector_candles``
+    once it is older, and ``public_candles`` on the public Coinbase route
+    while no connector is in reach.
     """
     listing = ata_asset_maps.listing_of(symbol)
     if listing is not None:
@@ -2951,7 +3042,13 @@ def sector_candle_read(
         if held:
             return CANDLES_FROM_SCAN, held, ""
     if not connectors:
-        return ata_asset_maps.VENUE_EXCHANGE, [], NO_CONNECTOR_TEXT
+        from ...exchange.market_inspector_fetcher import public_candles
+
+        return (
+            ata_asset_maps.VENUE_EXCHANGE,
+            list(public_candles(symbol, timeframe)),
+            "",
+        )
     return (
         ata_asset_maps.VENUE_EXCHANGE,
         connector_candles(connectors, symbol, timeframe),
@@ -2974,6 +3071,8 @@ def ata_spm_skin(model: Any) -> dict:
         "ticker_tooltip": TICKER_FIELD_TOOLTIP,
         "ticker_min_width_px": TICKER_FIELD_MIN_WIDTH_PX,
         "scan_label": SCAN_NOW_LABEL,
+        "scan_busy_label": ata_spm.SCAN_BUSY_LABEL,
+        "scan_running": bool(model.board.scanning),
         "scan_tooltip": SCAN_NOW_TOOLTIP,
         "scan_width_px": SCAN_NOW_WIDTH_PX,
         "button_height_px": PUSH_BUTTON_HEIGHT_PX,
@@ -3565,6 +3664,7 @@ class MarketInspectorScreenModel:
             self.connectors_now(),
             len(self.board.sectors),
             self.board.note,
+            self.board.progress_text,
         )
 
     def right_zones(self) -> list:
@@ -3606,7 +3706,10 @@ class MarketInspectorScreenModel:
         return open_now
 
     def zone_views(self) -> list:
-        """All six zones as the stepper draws them, left three then right three."""
+        """All six zones as the stepper draws them, left three then right three.
+
+        The ATA-SPM zone carries ``board.progress_text`` as its running line.
+        """
         rows = self.left_modules() + self.right_zones()
         return [
             zone_view(
@@ -3616,6 +3719,7 @@ class MarketInspectorScreenModel:
                 self.zone_at.get(key, 0),
                 self.zone_open.get(key, False),
                 status,
+                self.board.progress_text if key == ATA_SPM_MODULE else "",
             )
             for key, title, status in rows
         ]

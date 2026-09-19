@@ -454,6 +454,8 @@
   var TICKER_NOTE_SIZE_PX = "ticker_note_size_px";
   var TICKER_MATCH_PART = "ticker_match_part";
   var SCAN_LABEL = "scan_label";
+  var SCAN_BUSY_LABEL = "scan_busy_label";
+  var SCAN_NOW_RUNNING = "scan_running";
   var SCAN_TOOLTIP = "scan_tooltip";
   var CLASS_TOOLTIP = "class_tooltip";
   var CLASS_WIDTH_PX = "class_width_px";
@@ -1845,17 +1847,22 @@
     buttonStyle.boxSizing = BORDER_BOX;
     buttonStyle.width = length(skin[SCAN_WIDTH_PX]);
     buttonStyle.height = length(skin[BUTTON_HEIGHT_PX]);
+    // While the scan runs the button is disabled and reads the busy label,
+    // the state the Qt button holds from the press to the end.
+    var running = skin[SCAN_NOW_RUNNING] === true;
+    var shown = running ? skin[SCAN_BUSY_LABEL] : skin[SCAN_LABEL];
     var buttonProps = {
       type: BUTTON_TYPE,
       style: buttonStyle,
       title: label(skin[SCAN_TOOLTIP]),
+      disabled: running,
       onClick: function () {
         act(SCAN_NOW_PART, true);
       }
     };
     buttonProps[PART_ATTR] = SCAN_NOW_PART;
-    buttonProps[ARIA_LABEL] = label(skin[SCAN_LABEL]);
-    return element(BUTTON_TAG, buttonProps, text(skin[SCAN_LABEL]));
+    buttonProps[ARIA_LABEL] = label(shown);
+    return element(BUTTON_TAG, buttonProps, text(shown));
   }
 
   // PushButton is one of the buttons phases five and six are pressed with.
