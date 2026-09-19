@@ -1632,17 +1632,21 @@ class SectorBoard:
 
     def _market_at(self, sectors: list, placed: TickerPlacement, ticked: tuple) -> int:
         """The index of one placed market's scan in ``sectors``, appending it
-        when new; the scan carries the class ``placed`` names."""
+        when new; the scan carries the class ``placed`` names and the ticks of
+        ``ticked`` that class lists."""
         ticker = placed.symbol
         for at, one in enumerate(sectors):
             if one.ticker == ticker and one.asset_class == placed.asset_class:
                 one.listings = (placed.listing,)
                 return at
+        held = {str(one) for one in ticked}
         sectors.append(
             Sector(
                 name=ticker,
                 asset_class=placed.asset_class,
-                timeframes=ticked,
+                timeframes=tuple(
+                    one for one in timeframes_for(placed.asset_class) if one in held
+                ),
                 ticker=ticker,
                 listings=(placed.listing,),
             )
