@@ -46,6 +46,9 @@ except Exception as _exc:
     QAudioOutput = None
 from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
 
+#: The volume ``MusicPlayerPanel`` opens its ``QAudioOutput`` at.
+MUSIC_VOLUME = 0.5
+
 KEY_MULT = {
     "C": 1.0,
     "C#": 1.05946,
@@ -178,6 +181,19 @@ class ToneGenerator:
         return path
 
 
+def media_pair() -> tuple:
+    """A ``QAudioOutput`` and a ``QMediaPlayer`` wired together, or two Nones without QtMultimedia."""
+    if not _HAS_MEDIA:
+        return None, None
+    from PySide6.QtMultimedia import QAudioOutput as _Output
+    from PySide6.QtMultimedia import QMediaPlayer as _Player
+
+    audio_out = _Output()
+    player = _Player()
+    player.setAudioOutput(audio_out)
+    return audio_out, player
+
+
 def _sc(func, *a, **kw):
     # v3.13.6 R61 CBF — was bare `except:` (catches KeyboardInterrupt
     # and SystemExit). This is a Qt safe-call helper used all over this
@@ -214,6 +230,7 @@ if _HAS_QT:
                 self.update()
 
         def paintEvent(self, event):
+            super().paintEvent(event)
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
             w, h = self.width(), self.height()
@@ -292,10 +309,8 @@ if _HAS_QT:
             layout.addLayout(vr)
             if _HAS_MEDIA:
                 try:
-                    self._audio_out = QAudioOutput()
+                    self._audio_out, self._player = media_pair()
                     self._audio_out.setVolume(self._volume.value() / 100)
-                    self._player = QMediaPlayer()
-                    self._player.setAudioOutput(self._audio_out)
                     self._player.mediaStatusChanged.connect(self._on_end)
                     self._player.errorOccurred.connect(self._on_error)
                     self._player.playbackStateChanged.connect(self._on_state)
@@ -419,10 +434,8 @@ if _HAS_QT:
             self._playing = False
             self._files = []
             try:
-                self._ao = QAudioOutput()
-                self._ao.setVolume(0.5)
-                self._player = QMediaPlayer()
-                self._player.setAudioOutput(self._ao)
+                self._ao, self._player = media_pair()
+                self._ao.setVolume(MUSIC_VOLUME)
                 self._player.mediaStatusChanged.connect(self._oe)
             except Exception as exc:
                 # v3.13.6 R28 FL + R61 CBF — was bare `except:`
@@ -635,9 +648,3 @@ if _HAS_QT:
             self._at = QTimer(self)
             self._at.timeout.connect(lambda: self._wf.animate(0.033))
             self._at.start(33)
-
-else:  # not _HAS_QT — headless fallback stub for the one tab used elsewhere
-
-    class AudioSuiteTab:
-        def __init__(self, *a, **kw):
-            pass
