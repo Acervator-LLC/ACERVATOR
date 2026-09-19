@@ -195,14 +195,18 @@ class CredentialField:
 
 @dataclass(frozen=True)
 class PushTarget:
-    """One push target, its header, its sections, its text ceilings and its sign-in.
+    """One push target, its image size, its header, its sections, its text
+    ceilings and its sign-in.
 
-    ``fields`` is what the operator types and the Level 1A page draws a box
-    for; ``issued`` is what the venue's own flow hands back, and no page draws
-    one of those.
+    ``image_width_px`` and ``image_height_px`` are the single-image size the
+    venue publishes, ``fields`` is what the operator types and the Level 1A
+    page draws a box for, and ``issued`` is what the venue's own flow hands
+    back with no page drawing one of those.
     """
 
     name: str
+    image_width_px: int
+    image_height_px: int
     sections: tuple = ()
     body_limit: int = NO_LIMIT_PUBLISHED
     title_limit: int = NO_TITLE_FIELD
@@ -221,7 +225,9 @@ class PushTarget:
 PUSH_TARGETS = (
     PushTarget(
         TARGET_X,
-        (SECTION_CALL, SECTION_INDICATORS),
+        image_width_px=1200,
+        image_height_px=675,
+        sections=(SECTION_CALL, SECTION_INDICATORS),
         body_limit=280,
         count_unit=COUNT_WEIGHTED,
         header=X_HEADER,
@@ -250,7 +256,9 @@ PUSH_TARGETS = (
     ),
     PushTarget(
         TARGET_INSTAGRAM,
-        (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
+        image_width_px=1080,
+        image_height_px=1350,
+        sections=(SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=2200,
         fields=(
             CredentialField("instagram-client-id", "App ID"),
@@ -281,7 +289,9 @@ PUSH_TARGETS = (
     ),
     PushTarget(
         TARGET_LINKEDIN,
-        (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS),
+        image_width_px=1200,
+        image_height_px=627,
+        sections=(SECTION_CALL, SECTION_CHART, SECTION_INDICATORS),
         body_limit=3000,
         fields=(
             CredentialField("linkedin-client-id", "Client ID"),
@@ -301,7 +311,9 @@ PUSH_TARGETS = (
     ),
     PushTarget(
         TARGET_TIKTOK,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        image_width_px=1080,
+        image_height_px=1920,
+        sections=(SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=4000,
         title_limit=90,
         count_unit=COUNT_UTF16_RUNES,
@@ -330,7 +342,9 @@ PUSH_TARGETS = (
     ),
     PushTarget(
         TARGET_FACEBOOK,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        image_width_px=1200,
+        image_height_px=630,
+        sections=(SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
         fields=(
             CredentialField("facebook-app-id", "App ID"),
             CredentialField("facebook-app-secret", "App secret"),
@@ -356,7 +370,9 @@ PUSH_TARGETS = (
     ),
     PushTarget(
         TARGET_THREADS,
-        (SECTION_CALL, SECTION_INDICATORS),
+        image_width_px=1080,
+        image_height_px=1350,
+        sections=(SECTION_CALL, SECTION_INDICATORS),
         body_limit=500,
         count_unit=COUNT_UTF8_EMOJI,
         fields=(
@@ -378,7 +394,9 @@ PUSH_TARGETS = (
     ),
     PushTarget(
         TARGET_REDDIT,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        image_width_px=1200,
+        image_height_px=628,
+        sections=(SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=40000,
         title_limit=300,
         fields=(

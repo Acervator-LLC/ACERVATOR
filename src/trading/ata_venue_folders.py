@@ -15,10 +15,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from ..core.signal_contract import emit as _pin_emit
 from ..gui.native_chart import ChartImage, render_chart_png
 from . import ata_post_paths, ata_spm, ata_spm_push
 
 logger = logging.getLogger("acervator.ata_venue_folders")
+
+#: The pin ``write_venue_post`` writes once per venue image, through ``_pin_emit``:
+#: the written size against the row's size.
+IMAGE_SIZE_PIN = "inspector.ata.image_size"
 
 #: X's Web Intent opens the compose window with ``text`` filled in.
 X_INTENT_FORMAT = "https://x.com/intent/post?text={text}"
@@ -37,8 +42,9 @@ TITLE_SEPARATOR = "\n\n"
 
 NO_INTENT = ""
 
-VENUE_WRITTEN_LOG = "ATA venue folder %s: %s %s written, %d %s of %d"
+VENUE_WRITTEN_LOG = "ATA venue folder %s: %s %s written at %dx%d, %d %s of %d"
 VENUE_FAILED_LOG = "ATA venue folder %s: %s %s not written: %s"
+VENUE_IMAGE_REFUSED_LOG = "ATA venue folder %s: %s %s image refused: %s"
 
 
 @dataclass(frozen=True)
@@ -90,9 +96,10 @@ def write_venue_post(
 ) -> VenuePost:
     """Fill one target's folder for one call from ``ata_spm_push.format_post``.
 
-    The image carries ``post.body`` at its foot and the text file carries
-    ``post_text``, ``candles`` are ``native_chart.Candle`` rows, and
-    ``prune_post_images`` runs on the folder once the files are written.
+    The image is ``target.image_width_px`` by ``target.image_height_px`` with
+    ``post.body`` at its foot, the text file carries ``post_text``, ``candles``
+    are ``native_chart.Candle`` rows, and ``prune_post_images`` runs on the
+    folder once the files are written.
     """
     post = ata_spm_push.format_post(vote, pull, target, max_supporting_indicators)
     stamp = int(candles[-1].time) if candles else ata_spm.NO_TIMESTAMP
@@ -104,6 +111,8 @@ def write_venue_post(
         ata_post_paths.POST_IMAGE_SUFFIX,
         root,
     )
+    width_px = int(target.image_width_px)
+    height_px = int(target.image_height_px)
     image = render_chart_png(
         candles,
         vote.symbol,
@@ -114,6 +123,31 @@ def write_venue_post(
         direction=vote.direction_text,
         readings=[(one.indicator, one.message) for one in pull.messages or ()],
         caption=post.body,
+        width_px=width_px,
+        height_px=height_px,
+    )
+    if not image.path:
+        logger.warning(
+            VENUE_IMAGE_REFUSED_LOG,
+            target.name,
+            vote.symbol,
+            vote.timeframe,
+            image.note,
+        )
+    _pin_emit(
+        IMAGE_SIZE_PIN,
+        actual=[image.width_px, image.height_px],
+        expected=[width_px, height_px],
+        context={
+            "venue": target.name,
+            "symbol": vote.symbol,
+            "timeframe": vote.timeframe,
+            "width": width_px,
+            "height": height_px,
+            "overlays": list(image.drawn),
+            "path": image.path,
+            "note": image.note,
+        },
     )
     text_path = write_text(
         image_path.with_suffix(ata_post_paths.POST_TEXT_SUFFIX), post_text(post)
@@ -133,6 +167,8 @@ def write_venue_post(
         target.name,
         vote.symbol,
         vote.timeframe,
+        image.width_px,
+        image.height_px,
         post.measured,
         post.count_unit,
         post.body_limit,
