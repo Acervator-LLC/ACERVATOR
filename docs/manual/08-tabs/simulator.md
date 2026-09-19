@@ -6794,9 +6794,21 @@ the host writes its line last.
         self._status_log.log(tab_surface.battery_cleared_line(name), "info")
 ```
 
-Between OK and the first portfolio's start, the fleet the press holds before
-its thread starts, every named portfolio's bots, shows while the crypto
-tablets are retrieved; the first portfolio's start replaces it.
+Under Run Every Portfolio the press holds an empty fleet, so nothing is
+drawn while the crypto tablets are retrieved and the first fleet the tab
+draws is portfolio 1's. Under Run Portfolio the press holds that one
+portfolio's bots, as the section "The run from the corner" says, and the
+first portfolio's start re-holds the same records. Each portfolio's start
+also empties the held fills, so a bot two portfolios share marks one
+portfolio's fills on the replay layer, and its loaded line names the
+portfolio's bot count, venues and budget.
+
+`src/gui/simulator/sim_trading_tab.py` — the press
+
+```python
+        self._fleet_source.hold_battery_fleet(() if every else plan.bots)
+        self.fleet_changed.emit()
+```
 
 ### The three figures
 
@@ -6892,10 +6904,14 @@ Battery section reading, at 5m, HODL end $1,313.13, Harvest-Fold end
 $2,183.19, difference +870.06 (+66.26% of HODL end) with 609 partial exits
 and 2,769 re-entries on the stand-in's candles, and at 1d HODL end $1,093.45,
 Harvest-Fold end $1,096.17, difference +2.71 (+0.25%). Run Every Portfolio
-on the same span held sixty-three bots at the press, then AGGRESSIVE's ten on
-Coinbase and Yahoo, then ALL_WEATHER's five on Yahoo, then ARK_SUITE's five,
-then BALANCED's ten, and so on through thirty-five portfolios, the held
-fleet read empty between two of them and at the end; thirty-six reports, one
+on the same span held no fleet at the press, no venue seated and the Get
+Started card drawn, then AGGRESSIVE's ten on Coinbase and Yahoo with the
+loaded line naming its budget of $5,000.00, then ALL_WEATHER's five on Yahoo
+at $2,500.00, then ARK_SUITE's five, then BALANCED's ten, and so on through
+thirty-five portfolios, the held fleet read empty between two of them and at
+the end and the fleet file's Portfolio Battery map holding no bot after the
+last clear (a first reading, before the press held nothing, had shown
+sixty-three bots at the press); thirty-six reports, one
 per portfolio and the summary, whose per-portfolio table lists thirty-five
 run ids; 844,289 evaluations of 844,289 expected in both builds, 80 minutes
 in Qt beside a React run of 51 minutes; the summary's totals at 5m over nine
