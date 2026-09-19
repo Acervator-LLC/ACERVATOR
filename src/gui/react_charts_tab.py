@@ -21,6 +21,8 @@ import logging
 import time
 from typing import Any, Optional
 
+from ..core.signal_contract import emit as _pin_emit
+from .._variant import resolve_variant
 from .main_tabs import design_system_surface, native_chart_surface
 from .main_tabs import trade_charts_tab_surface as surface
 from .react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
@@ -353,6 +355,8 @@ if _HAS_WEBENGINE:
             self._painter = ChartPainter("")
             self._painter.set_timeframe(surface.PANEL_TIMEFRAME)
             self._fed_candles: Any = None
+            self._fed_overlays: Any = None
+            self._fed_call: Any = None
             self._image: dict = {}
             self._image_key_held = ""
             self._payload: dict = {}
@@ -416,7 +420,9 @@ if _HAS_WEBENGINE:
 
         def redraw(self) -> None:
             """Build the payload from the model and draw it in the page."""
-            self._payload = self._dressed(surface.build_view_model(self._model))
+            payload = surface.build_view_model(self._model)
+            self._feed_painter()
+            self._payload = self._dressed(payload)
             if not self._page_ready:
                 return
             if self._drawn:
@@ -513,6 +519,14 @@ if _HAS_WEBENGINE:
             if panel.error_text:
                 painter.set_error(str(panel.error_text))
             painter.set_source_label(str(panel.source))
+            if panel.overlays is not self._fed_overlays:
+                self._fed_overlays = panel.overlays
+                if panel.overlays is not None:
+                    painter.show_only(list(panel.overlays))
+            if panel.call is not self._fed_call:
+                self._fed_call = panel.call
+                self._feed_call(panel)
+            painter.set_caption(str(panel.caption))
             painter.set_trade_history_markers(list(panel.markers))
             painter.set_tranche_floors([tuple(one) for one in panel.floors])
             painter.set_target_balance_lines(panel.tb_anchor, panel.tb_ceiling)
@@ -538,6 +552,34 @@ if _HAS_WEBENGINE:
                 ]
             )
 
+        def _feed_call(self, panel: Any) -> None:
+            """``set_call`` on the painter from ``panel.call`` and write ``ATA_RENDERED_PIN``
+            when the call names a direction.
+            """
+            painter = self._painter
+            call = panel.call or {}
+            direction = str(call.get("direction", ""))
+            readings = [tuple(one) for one in call.get("readings", [])]
+            painter.set_call(direction, readings)
+            if not direction:
+                return
+            shown = sorted(key for key, on in painter.overlays_shown().items() if on)
+            _pin_emit(
+                surface.ATA_RENDERED_PIN,
+                actual=shown,
+                expected=sorted(panel.overlays or []),
+                context={
+                    "symbol": str(panel.symbol),
+                    "timeframe": str(panel.chart_timeframe or panel.timeframe),
+                    "list": surface.LIST_ATA,
+                    "width": self.width(),
+                    "height": self.height(),
+                    "direction": direction,
+                    "candles": len(panel.candles),
+                    "variant": resolve_variant(),
+                },
+            )
+
         def _image_key(self, width_px: int, height_px: int, ratio: float) -> str:
             """A digest of everything the next ``chart_image`` would read."""
             panel = self._model.panel
@@ -553,6 +595,9 @@ if _HAS_WEBENGINE:
                 "armed": panel.armed,
                 "strip": panel.strip,
                 "position": panel.position,
+                "call": panel.call,
+                "caption": panel.caption,
+                "asked_overlays": panel.overlays,
                 "overlays": self._painter.overlays_shown(),
                 "theme": self._painter.theme_name(),
                 "width": int(width_px),
@@ -657,6 +702,10 @@ if _HAS_WEBENGINE:
             """Take the callable answering the markets ATA-SMP has called."""
             self._model.set_ata_source(source)
 
+        def set_ata_call_source(self, source) -> None:
+            """Take the callable answering one market's ``ata_spm.ChartCall``, or None."""
+            self._model.set_ata_call_source(source)
+
         def toggle_list(self) -> str:
             """Move the arrows to the other list and answer the mode on screen."""
             mode = self._model.toggle_list()
@@ -731,20 +780,22 @@ if _HAS_WEBENGINE:
                     self.set_overlay(
                         asked[TOGGLE_KEY_PARAM], asked.get(TOGGLE_ON_PARAM, False)
                     )
-                self._payload = self._dressed(
-                    surface.build_view_model(
-                        self._model,
-                        asked.get("statuses"),
-                        asked.get("connectors"),
-                        asked.get("timeframe_change"),
-                        False,
-                        asked.get("trades"),
-                        asked.get("synthetic"),
-                        asked.get("step_by"),
-                        asked.get("pick_at"),
-                        asked.get("toggle_list", False),
-                    )
+                payload = surface.build_view_model(
+                    self._model,
+                    asked.get("statuses"),
+                    asked.get("connectors"),
+                    asked.get("timeframe_change"),
+                    False,
+                    asked.get("trades"),
+                    asked.get("synthetic"),
+                    asked.get("step_by"),
+                    asked.get("pick_at"),
+                    asked.get("toggle_list", False),
                 )
+                # The painter takes the model's picture before the toggles are
+                # dressed, so the boxes read the overlays the image draws.
+                self._feed_painter()
+                self._payload = self._dressed(payload)
                 return self._payload
             if method == IMAGE_METHOD:
                 return self.chart_image(

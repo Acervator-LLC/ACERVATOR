@@ -57,9 +57,10 @@ class MarketInspectorTabMixin:
         inspector.set_activity_log(pane.log)
 
     def _wire_ata_chart_list(self, inspector: Any) -> None:
-        """Point the Charts tab's ATA-SMP list at ``inspector``'s ``PushBoard``.
+        """Point the Charts tab's ATA-SMP list at ``inspector``'s ``PushBoard`` and
+        its chart at the ``SectorBoard``'s ``chart_call``.
 
-        The Charts tab is built first, so it reads the board through a
+        The Charts tab is built first, so it reads both boards through a
         callable instead of holding a second copy of the markets.
         """
         charts = getattr(self, "_charts_tab", None)
@@ -67,3 +68,9 @@ class MarketInspectorTabMixin:
             logger.debug("Charts tab offers no set_ata_source; ATA-SMP list is empty")
             return
         charts.set_ata_source(inspector.watched_markets)
+        # MarketInspectorTab keeps its SectorBoard as _ata_board and offers no accessor.
+        board = getattr(inspector, "_ata_board", None)
+        if board is None or not hasattr(charts, "set_ata_call_source"):
+            logger.debug("no SectorBoard reachable; ATA-SMP charts draw no call")
+            return
+        charts.set_ata_call_source(board.chart_call)

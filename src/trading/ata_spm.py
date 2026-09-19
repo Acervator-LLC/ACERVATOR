@@ -17,7 +17,12 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from ..core.signal_contract import emit as _pin_emit
-from ..gui.native_chart import Candle, ChartImage, render_chart_png
+from ..gui.native_chart import (
+    Candle,
+    ChartImage,
+    overlays_for_voters,
+    render_chart_png,
+)
 from . import ata_gate_scan, ata_post_paths
 from .ata_gate_scan import (
     BAND_LOWER_KEY,
@@ -720,8 +725,10 @@ class ChartPull:
     """The chart one reversal call was made on, and its confirming messages.
 
     ``image`` is that chart rendered to a PNG, which the post's caption
-    captions, and ``venue_posts`` holds what each push target's folder took.
-    A call ``gates`` refused carries the default empty ``ChartImage``.
+    captions, ``venue_posts`` holds what each push target's folder took,
+    ``candles`` are the ``chart_candles`` rows those images drew and
+    ``overlays`` the keys ``overlays_for_voters`` gave them. A call ``gates``
+    refused carries the default empty ``ChartImage``.
     """
 
     symbol: str
@@ -744,6 +751,41 @@ class ChartPull:
     panel: dict = field(default_factory=dict)
     image: ChartImage = field(default_factory=ChartImage)
     venue_posts: dict = field(default_factory=dict)
+    candles: list = field(default_factory=list)
+    overlays: tuple = ()
+
+
+@dataclass(frozen=True)
+class ChartCall:
+    """One call as the Charts tab draws it: the picture its venue images carry.
+
+    ``overlays`` are the keys the images switched on, ``readings`` the
+    ``(voter, message)`` pairs ``set_call`` takes, ``caption`` the root
+    image's ``post_caption`` and ``candles`` the ``chart_candles`` rows.
+    """
+
+    symbol: str
+    timeframe: str
+    direction: str
+    voters: tuple = ()
+    overlays: tuple = ()
+    readings: tuple = ()
+    caption: str = ""
+    candles: tuple = ()
+
+
+def chart_call(vote: "AssetVote", pull: ChartPull) -> ChartCall:
+    """The ``ChartCall`` of one ``vote`` and the ``ChartPull`` phase three drew for it."""
+    return ChartCall(
+        symbol=vote.symbol,
+        timeframe=vote.timeframe,
+        direction=vote.direction_text,
+        voters=tuple(one.indicator for one in confirming_signals(vote)),
+        overlays=tuple(pull.overlays),
+        readings=tuple((one.indicator, one.message) for one in pull.messages or ()),
+        caption=post_caption(vote),
+        candles=tuple(pull.candles),
+    )
 
 
 @dataclass
@@ -1527,6 +1569,11 @@ def pull(
     if gates.would_fire:
         from .ata_venue_folders import write_venue_posts
 
+        held.candles = chart_candles(candles)
+        held.overlays, _undrawn = overlays_for_voters(
+            [one.indicator for one in confirming_signals(vote)],
+            int(max_supporting_indicators or NO_INDICATOR_CAP),
+        )
         held.image = render_pull_image(
             vote, candles, max_supporting_indicators, messages
         )
@@ -1614,6 +1661,12 @@ class SectorBoard:
         self.progress: Optional[ScanProgress] = None
         #: One ``market_line`` per market the running scan has read, in order.
         self.progress_lines: list = []
+        #: One ``ChartCall`` per called symbol across every run ``take`` took.
+        self.chart_calls: dict = {}
+
+    def chart_call(self, symbol: Any) -> Optional[ChartCall]:
+        """The ``ChartCall`` held for ``symbol``, None for a market no run called."""
+        return self.chart_calls.get(str(symbol))
 
     @property
     def scanning(self) -> bool:
@@ -1862,6 +1915,11 @@ class SectorBoard:
         self.progress_lines = []
         if found is not None:
             self.run = found
+            pulls = {(one.symbol, one.timeframe): one for one in found.pulls}
+            for vote in found.calls:
+                pull = pulls.get((vote.symbol, vote.timeframe))
+                if pull is not None and pull.candles:
+                    self.chart_calls[vote.symbol] = chart_call(vote, pull)
         shown = int(added)
         if shown != NO_NEW_SECTOR and 0 <= shown < len(self.sectors):
             self.asset_class = self.sectors[shown].asset_class

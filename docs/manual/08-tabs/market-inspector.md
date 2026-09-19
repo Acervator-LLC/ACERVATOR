@@ -5613,4 +5613,166 @@ Not reworded, quoted here. `docs/manual/08-tabs/market-inspector.md:978` -
 theme in force when `render_chart_png` is given no tokens; it painted
 Cyberpunk Dark before.
 
+## 2026-09-19 20:10 - #55 - each venue image at its venue's own size
+
+His words, 2026-09-07: *"Refining our chart renderer (the one currently used
+under the Asset Charts Tab) will allow us to upgrade the visuals for one and
+align this to visuals of out going SM posts thus unifying direct usage with SM
+exposure."* And 2026-09-19: *"After its chart renderer is fully upgraded, it
+will need to be migrated to ATA-SMP."* Every venue folder now takes its
+image at the size that venue's own page publishes for a single image post,
+drawn by the one painter with the call's confirming indicators, the badge, the
+theme in force and the venue's message at the foot. Before this day every
+venue got the same 1200-wide image at whatever height the panes needed.
+
+### The seven sizes and the pages that publish them
+
+| venue | size | shape | the venue's page |
+| ----- | ---- | ----- | ---------------- |
+| X | 1200 by 675 | 16:9 | docs.x.com names a 5 MB image limit and no dimension; the figure is the operator's |
+| Instagram | 1080 by 1350 | 4:5 | the Instagram media reference: a ratio from 4:5 to 1.91:1, a width from 320 to 1440 |
+| Threads | 1080 by 1350 | 4:5 | the Threads posts reference: a ratio up to 10:1, a width from 320 to 1440 |
+| Facebook | 1200 by 630 | 1.91:1 | the Facebook sharing images page: at least 1200 by 630, as close to 1.91:1 as possible |
+| LinkedIn | 1200 by 627 | 1.91:1 | LinkedIn help, custom images for posts: a 1.91:1 ratio, 1200 by 627 |
+| TikTok | 1080 by 1920 | 9:16 | TikTok in-feed specifications: vertical 9:16 at 540 by 960 or more |
+| Reddit | 1200 by 628 | 1.91:1 | the Reddit image ad specifications: 1200 by 628 landscape; the figure is the operator's |
+
+Instagram and Threads take 4:5 because it is the tallest shape Instagram
+accepts, which gives the panes the most room, and the two Meta feeds then
+carry one picture. Each row of the push-target table carries its two figures,
+and the folder write hands them to the painter.
+
+`src/trading/ata_spm_push.py` - a row's size
+
+```python
+    PushTarget(
+        TARGET_X,
+        image_width_px=1200,
+        image_height_px=675,
+        sections=(SECTION_CALL, SECTION_INDICATORS),
+```
+
+`src/trading/ata_venue_folders.py` - the size reaching the painter
+
+```python
+    width_px = int(target.image_width_px)
+    height_px = int(target.image_height_px)
+    image = render_chart_png(
+        candles,
+        vote.symbol,
+        ata_spm.timeframe_label(vote.timeframe),
+        image_path,
+        voters=[one.indicator for one in ata_spm.confirming_signals(vote)],
+        max_overlays=int(max_supporting_indicators or ata_spm.NO_INDICATOR_CAP),
+        direction=vote.direction_text,
+        readings=[(one.indicator, one.message) for one in pull.messages or ()],
+        caption=post.body,
+        width_px=width_px,
+        height_px=height_px,
+    )
+```
+
+### How the painter fits a call into a venue's height
+
+A height the natural layout fits draws the natural layout, and any height
+left over goes to the price pane. A height it does not fit compresses, in
+this order: each sub-pane shrinks from 60 toward 28 pixels; then the reading
+strip folds from one row per reading to one row of voter names with their
+swatches, because the caption already carries every reading's sentence; then
+the price pane shrinks from 220 toward 120 pixels. A height under that least
+layout is refused by name, the folder keeps its text file, and the emitter row
+for that venue reads not ok.
+
+`src/gui/native_chart.py` - the fold and the refusal
+
+```python
+            strip_folded = bool(self._call_readings) and h < self._minimum_height_for_panes(w)
+```
+
+```python
+        asked_height = int(height_px)
+        if asked_height > NO_IMAGE_HEIGHT:
+            least = painter._least_height_for_panes(int(width_px))
+            if asked_height < least:
+                return ChartImage(
+                    note=IMAGE_TOO_SHORT_NOTE.format(
+                        width=int(width_px), height=asked_height, least=least
+                    ),
+```
+
+### The seven images of one hit, read off the running program
+
+The scan under his conditions, both variants, on the operator's tablet copies
+through a Coinbase-shaped connector: two calls, XLM 1d bearish and AXS 1h
+bearish, seven confirming voters each. The XLM images, read off the disk and
+off the painter's own heights at each width:
+
+| venue | image | natural height | reading strip | sub-panes | price pane | caption lines |
+| ----- | ----- | -------------- | ------------- | --------- | ---------- | ------------- |
+| X | 1200 by 675 | 758 | one row per reading, 7 rows | 4 at 39 px | 221 px | 5 |
+| Instagram | 1080 by 1350 | 849 | 7 rows | 4 at 60 px | 721 px | 12 |
+| Threads | 1080 by 1350 | 784 | 7 rows | 4 at 60 px | 786 px | 7 |
+| TikTok | 1080 by 1920 | 862 | 7 rows | 4 at 60 px | 1278 px | 13 |
+| Facebook | 1200 by 630 | 862 | folded to 1 row | 4 at 28 px | 206 px | 13 |
+| LinkedIn | 1200 by 627 | 849 | folded to 1 row | 4 at 28 px | 216 px | 12 |
+| Reddit | 1200 by 628 | 862 | folded to 1 row | 4 at 28 px | 204 px | 13 |
+
+The least height for this call is 440 at 1200 wide, so every venue holds it. The bucket thumbnails follow the shapes: X 120 by 68, Instagram 120 by 150, LinkedIn 120 by 63, TikTok 120 by 213.
+
+Every image carries the same seven overlays, the bearish badge, the theme's
+ground at its top-left pixel and its lower ground at its foot pixel, under
+Cyberpunk Dark and, after a Theme menu press and a second scan, under Neon
+Light (`#ffffff` and `#f0f0f8` on all fourteen files).
+
+### A size the layout cannot hold
+
+A row planted with a 200-pixel height on the same hit: the painter writes no
+file and answers `1200x200 cannot hold the panes: 440 px is the least height at
+that width.`; the folder keeps the text file; the log names the venue; the
+emitter row reads actual `[0, 0]` against expected `[1200, 200]`, not ok.
+
+### The image-size emitter
+
+`inspector.ata.image_size` writes once per venue image: the written size
+against the row's size, with the venue, the symbol, the timeframe, the
+overlays drawn, the path and the painter's note.
+
+`src/trading/ata_venue_folders.py` - the row
+
+```python
+    _pin_emit(
+        IMAGE_SIZE_PIN,
+        actual=[image.width_px, image.height_px],
+        expected=[width_px, height_px],
+        context={
+            "venue": target.name,
+            "symbol": vote.symbol,
+            "timeframe": vote.timeframe,
+            "width": width_px,
+            "height": height_px,
+            "overlays": list(image.drawn),
+            "path": image.path,
+            "note": image.note,
+        },
+    )
+```
+
+### The bucket thumbnail
+
+Each Ready to Send entry is one venue's post, and its thumbnail is that
+venue's own image scaled to the thumbnail width, so the X entry shows a 16:9
+picture and the TikTok entry a 9:16 one. Nothing there changed on this day.
+
+### The sentence the venue sizes overtake
+
+It was not reworded. It is quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:5134` - "the venue PNG, 1200 by 634
+decoded, drawn at 120 by 63". That was the X image on its day; the X image is
+1200 by 675 now, drawn at 120 by 68.
+
+**Figures.** `artifacts/u55/C5/` holds the seven images of one hit under
+both themes, the tab's chart beside three of them, and the refused-size
+reading.
+
 Back to [the subsystem index](README.md).

@@ -1056,3 +1056,171 @@ chart's surface, and the Charts painter is a third reader.
 **Figures.** `artifacts/u55/C3/` holds the Qt window and the React page at
 1400 by 900 and at 1960 by 1200, the painter's image at ratio 1.0 and 2.0
 with a crop of each, and the venue image under two themes, before and after.
+
+## 2026-09-19 20:10 - #55 - the ATA-SMP list draws the venue image's picture
+
+His words, 2026-09-08: *"After a market qualifies, has its chart rendered
+with the appropriate confirming indicators and test, and is to be sent to the
+Ready to Send bucket the Charts tabs will continue to track said market under
+a ATA-SMP chart list."* And 2026-09-19: *"After its chart renderer is fully
+upgraded, it will need to be migrated to ATA-SMP."* A called market on the
+ATA-SMP list now draws the picture its venue images carry: the candles the
+call was made on, at the call's timeframe, the overlays of its confirming
+voters and no other, the reversal badge, the reading strip and the caption
+band. The Live list is unchanged.
+
+### What a called market's chart draws now
+
+The chart takes the call's own candles, so it draws the same bars the venue
+image drew, and it fetches nothing for that market. The overlays switched on
+are exactly the ones the venue image switched on, the badge names the same
+direction, the strip carries the same readings and the foot carries the root
+image's caption. The bot annotations stay off: no fill glyph, no floor, no
+target line, no landing strip, no fire glow, no position marker.
+
+`src/gui/widgets/trade_charts_tab.py` - what one call puts on the panel
+
+```python
+        def _draw_call(self, entry: dict, call) -> None:
+            """Draw ``call`` on the panel: its candles at its timeframe, its
+            overlays, its badge and its caption, with no bot annotation.
+
+            The overlay set the Live list showed is held in ``_live_overlays``
+            until ``_leave_call`` restores it.
+            """
+            chart = self._panel.chart
+            if not self._live_overlays:
+                self._live_overlays = [
+                    key for key, on in chart.overlays_shown().items() if on
+                ]
+            self._clear_annotations()
+            chart.set_timeframe(str(call.timeframe))
+            self._panel.show_only(list(call.overlays))
+            chart.set_candles(list(call.candles))
+            chart.set_call(call.direction, call.readings)
+            chart.set_caption(call.caption)
+```
+
+The toggle boxes at the bottom follow the picture. The panel's own
+`show_only` flips the painter and sets each box to match, with the boxes'
+signals blocked so no press is counted, and the React page reads the same
+set off the payload it is drawn from.
+
+### Where the call comes from
+
+Phase three keeps, on the chart it pulled, the candles the images drew and the
+overlay keys they switched on. The Inspector's sector board turns each pulled
+call into one record per symbol when the run lands, and the Charts tab reads
+that record through a second callable beside the one that lists the markets.
+
+`src/trading/ata_spm.py` - one call as the tab draws it
+
+```python
+@dataclass(frozen=True)
+class ChartCall:
+    """One call as the Charts tab draws it: the picture its venue images carry.
+
+    ``overlays`` are the keys the images switched on, ``readings`` the
+    ``(voter, message)`` pairs ``set_call`` takes, ``caption`` the root
+    image's ``post_caption`` and ``candles`` the ``chart_candles`` rows.
+    """
+```
+
+`src/gui/main_tabs/market_inspector_tab.py` - the second callable
+
+```python
+        charts.set_ata_source(inspector.watched_markets)
+        # MarketInspectorTab keeps its SectorBoard as _ata_board and offers no accessor.
+        board = getattr(inspector, "_ata_board", None)
+        if board is None or not hasattr(charts, "set_ata_call_source"):
+            logger.debug("no SectorBoard reachable; ATA-SMP charts draw no call")
+            return
+        charts.set_ata_call_source(board.chart_call)
+```
+
+The newest call per symbol is the one drawn, which is the vote the list shows.
+A market on the list with no call held, because no run in this session called
+it, draws as before: its candles fetched, no badge.
+
+### The Live set held and given back
+
+The overlay set the Live list showed is held the moment a call is drawn and
+put back when the list returns to Live or moves to a market with no call. The
+badge, the strip and the caption clear at the same moment.
+
+`src/gui/widgets/trade_charts_tab.py` - leaving a call
+
+```python
+        def _leave_call(self) -> None:
+            """Clear the call's badge and caption and restore the Live overlay set."""
+            chart = self._panel.chart
+            chart.set_call("", ())
+            chart.set_caption("")
+            if self._live_overlays:
+                self._panel.show_only(self._live_overlays)
+                self._live_overlays = []
+            if self._showing_ata():
+                self._clear_annotations()
+```
+
+### The tab's ATA-SMP readings, off the running program, both variants
+
+The real window in each variant, the home on a scratch directory, every
+socket but loopback refused, a connector shaped like Coinbase Exchange
+serving the operator's own tablet copies, his scan shape (crypto, nothing
+typed, 1hr 1d 1wk, target 3), then the Charts tab's toggle pressed:
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| the list after the press | XLM bear 1d, AXS bear 1h | the same |
+| the chart | XLM, 1d, 213 candles | the same |
+| overlays on | adx, ichimoku, ker, macd, slingshot, supertrend, vortex; no other | the same |
+| badge and strip | bearish, 7 readings; caption 3 lines | the same |
+| floors, target line, glow, strip, position | none | none |
+| boxes checked at the bottom | the same seven | the same seven off the page |
+| X, Instagram, TikTok images against the chart | overlays equal, badge equal, candles 213 and 213 | the same |
+| a market with no voter, planted | 50 candles, no overlay, the badge and nothing else | the same |
+| `charts.ata.rendered` rows | one per call drawn, `ok` True | the same |
+| the scratch `bot_state.json` | the same bytes before and after every press | the same |
+
+### The rendered emitter
+
+`charts.ata.rendered` writes when a called market's chart draws: the overlays
+the painter shows against the call's, with the symbol, the timeframe, the
+list, the widget's size, the direction, the candle count and the variant.
+
+`src/gui/widgets/trade_charts_tab.py` - the row
+
+```python
+                _emit(
+                    ATA_RENDERED_PIN,
+                    actual=shown,
+                    expected=sorted(call.overlays),
+                    context={
+                        "symbol": call.symbol,
+                        "timeframe": call.timeframe,
+                        "list": LIST_ATA,
+                        "width": chart.width(),
+                        "height": chart.height(),
+                        "direction": call.direction,
+                        "candles": len(call.candles),
+                        "variant": "qt",
+                    },
+                )
+```
+
+### The sentence the ATA-SMP picture overtakes
+
+It was not reworded. It is quoted here.
+
+`docs/manual/08-tabs/asset-charts.md:266` - "An ATA-SMP market has no bot
+behind it, so the chart draws its candles without the trade markers, the
+target lines, the tranche floors and the fire glow that a traded asset
+carries." The sentence holds, and holds on screen now: on `5819ced6` the last
+bot's 55 floors, its target line and its glow stayed drawn when the list moved
+to a called market, and the candles were fetched. A called market's candles
+are the call's own, and its picture carries the call's overlays, badge, strip
+and caption, which the sentence does not name.
+
+**Figures.** `artifacts/u55/C5/` holds the tab's ATA-SMP chart in both
+variants, the three comparisons side by side and the seven venue images.

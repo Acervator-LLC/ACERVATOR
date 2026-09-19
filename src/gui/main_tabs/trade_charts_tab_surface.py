@@ -79,6 +79,10 @@ SYNTHETIC_KEY = "synthetic"
 VOTE_KEY = "vote"
 TIMEFRAMES_KEY = "timeframes"
 DEFAULT_VOTE = ""
+#: The ``ata_spm.ChartCall`` an ATA-SMP record carries, None while no run called it.
+CALL_KEY = "call"
+#: The pin ``ChartsTabReact._feed_painter`` writes when a called market's chart draws.
+ATA_RENDERED_PIN = "charts.ata.rendered"
 
 PANEL_TIMEFRAME = "1h"
 PANEL_MINIMUM_HEIGHT_PX = 300
@@ -260,6 +264,7 @@ TF_EMIT = "timeframe.emit"
 FETCH_START = "fetch.start"
 FETCH_THROTTLED = "fetch.throttled"
 FETCH_WILDCARD_SKIPPED = "fetch.wildcard_skipped"
+FETCH_CALL_SKIPPED = "fetch.call_skipped"
 FETCH_CANDLES = "fetch.candles"
 FETCH_EMPTY = "fetch.empty"
 FETCH_RAISED = "fetch.raised"
@@ -304,6 +309,7 @@ CALL_NAMES = (
     FETCH_START,
     FETCH_THROTTLED,
     FETCH_WILDCARD_SKIPPED,
+    FETCH_CALL_SKIPPED,
     FETCH_CANDLES,
     FETCH_EMPTY,
     FETCH_RAISED,
@@ -605,6 +611,9 @@ class PanelSink:
         self.armed: Optional[dict] = None
         self.strip: Optional[dict] = None
         self.position: Optional[dict] = None
+        self.overlays: Optional[list] = None
+        self.call: Optional[dict] = None
+        self.caption = ""
         self.minimum_height_px: Optional[int] = None
         self.maximum_height_px: Optional[int] = None
         self.chart_repaints = 0
@@ -714,6 +723,29 @@ class PanelSink:
         self.chart_repaints += 1
         self.calls.append(["chart.set_positions", self.position])
 
+    def set_overlays(self, keys: Optional[list]) -> None:
+        """Switch on exactly ``keys`` through ``ChartPainter.show_only``, or None to leave the toggles."""
+        self.overlays = None if keys is None else [str(one) for one in keys]
+        self.chart_repaints += 1
+        self.calls.append(["chart.show_only", self.overlays])
+
+    def set_call(self, direction: Any, readings: Any) -> None:
+        """Set the reversal badge, bar and reading strip ``ChartPainter.set_call`` draws, or clear them."""
+        self.call = {
+            "direction": str(direction or ""),
+            "readings": [list(one) for one in readings or ()],
+        }
+        self.chart_repaints += 1
+        self.calls.append(
+            ["chart.set_call", self.call["direction"], len(self.call["readings"])]
+        )
+
+    def set_caption(self, text: Any) -> None:
+        """Set the caption band ``ChartPainter.set_caption`` draws at the foot, or clear it."""
+        self.caption = str(text or "")
+        self.chart_repaints += 1
+        self.calls.append(["chart.set_caption", len(self.caption)])
+
     def repaint_chart(self) -> None:
         """Repaint the chart."""
         self.chart_repaints += 1
@@ -748,6 +780,9 @@ class PanelSink:
             "armed": None if self.armed is None else dict(self.armed),
             "strip": None if self.strip is None else dict(self.strip),
             "position": None if self.position is None else dict(self.position),
+            "overlays": None if self.overlays is None else list(self.overlays),
+            "call": None if self.call is None else dict(self.call),
+            "caption": self.caption,
             "minimum_height_px": self.minimum_height_px,
             "maximum_height_px": self.maximum_height_px,
             "chart_repaints": self.chart_repaints,
@@ -862,6 +897,8 @@ SELECT_REFUSED = "select.refused"
 SELECT_UNCHANGED = "select.unchanged"
 SELECT_FOLLOWED = "select.followed"
 SELECT_ALREADY = "select.already"
+SELECT_CALL_DRAWN = "select.call_drawn"
+SELECT_CALL_LEFT = "select.call_left"
 UPDATE_ASSET_ADDED = "update.asset_added"
 UPDATE_ASSET_KEPT = "update.asset_kept"
 UPDATE_ASSET_DROPPED = "update.asset_dropped"
@@ -881,6 +918,8 @@ SELECTOR_CALL_NAMES = (
     SELECT_UNCHANGED,
     SELECT_FOLLOWED,
     SELECT_ALREADY,
+    SELECT_CALL_DRAWN,
+    SELECT_CALL_LEFT,
     SELECT_LIST_TOGGLED,
     UPDATE_ASSET_ADDED,
     UPDATE_ASSET_KEPT,
@@ -925,6 +964,9 @@ class TradeChartsTabModel:
         self.order: list = []
         self.shown = FIRST_ASSET
         self.ata_source: Any = None
+        self.ata_call_source: Any = None
+        self.live_overlays: list = []
+        self.live_timeframe = ""
         self.ata_assets: dict = {}
         self.ata_order: list = []
         self.ata_shown = FIRST_ASSET
@@ -942,6 +984,23 @@ class TradeChartsTabModel:
         ``PushBoard.watched_markets`` is what the running window binds here.
         """
         self.ata_source = source
+
+    def set_ata_call_source(self, source: Any) -> None:
+        """Take the callable answering one market's ``ata_spm.ChartCall``, or None.
+
+        ``SectorBoard.chart_call`` is what the running window binds here.
+        """
+        self.ata_call_source = source
+
+    def _call_of(self, symbol: Any) -> Any:
+        """The ``ChartCall`` the call source holds for ``symbol``, or None."""
+        if self.ata_call_source is None:
+            return None
+        try:
+            return self.ata_call_source(symbol)
+        except Exception as exc:
+            self.calls.append([UPDATE_ATA_REFUSED, type(exc).__name__])
+            return None
 
     def showing_ata(self) -> bool:
         """Whether ``list_mode`` is ``LIST_ATA``."""
@@ -1078,11 +1137,67 @@ class TradeChartsTabModel:
         self.panel.set_candles([])
         self.panel.set_markers([])
         self.panel.set_source(EMPTY_SOURCE)
+        call = record.get(CALL_KEY) if self.showing_ata() else None
+        if call is not None:
+            self._draw_call(record, call)
+            return
+        self._leave_call()
         if symbol:
             self.panel.set_error(awaiting_text(symbol))
         if record:
             record[LAST_FETCH_KEY] = NEVER_FETCHED
         self.calls.append([SELECT_FOLLOWED, symbol])
+
+    def _draw_call(self, record: dict, call: Any) -> None:
+        """Put ``call`` on the panel: its candles at its timeframe, its overlays,
+        its badge and its caption, with no bot annotation.
+
+        The overlay set the Live list showed is held in ``live_overlays``
+        until ``_leave_call`` restores it.
+        """
+        if not self.live_overlays and self.panel.overlays is not None:
+            self.live_overlays = list(self.panel.overlays)
+        self._clear_annotations()
+        if not self.live_timeframe:
+            self.live_timeframe = self.panel.timeframe
+        self.panel.set_timeframe(str(call.timeframe))
+        self.panel.set_chart_timeframe(str(call.timeframe))
+        self.panel.set_overlays(list(call.overlays))
+        self.panel.set_candles([candle_row(one) for one in call.candles])
+        self.panel.set_call(call.direction, call.readings)
+        self.panel.set_caption(call.caption)
+        record[LAST_FETCH_KEY] = self._now()
+        self.calls.append(
+            [SELECT_CALL_DRAWN, call.symbol, call.timeframe, len(call.overlays)]
+        )
+
+    def _leave_call(self) -> None:
+        """Clear the call's badge and caption and restore the Live overlay set."""
+        if (
+            self.panel.call is None
+            and not self.panel.caption
+            and self.panel.overlays is None
+        ):
+            return
+        self.panel.set_call("", ())
+        self.panel.set_caption("")
+        self.panel.set_overlays(self.live_overlays or None)
+        self.live_overlays = []
+        if self.live_timeframe:
+            self.panel.set_timeframe(self.live_timeframe)
+            self.panel.set_chart_timeframe(self.live_timeframe)
+            self.live_timeframe = ""
+        if self.showing_ata():
+            self._clear_annotations()
+        self.calls.append([SELECT_CALL_LEFT])
+
+    def _clear_annotations(self) -> None:
+        """Take every bot annotation off the panel: floors, target lines, glow, strip, position."""
+        self.panel.set_floors([])
+        self.panel.set_target_balance_lines(None, None)
+        self.panel.set_armed(fire_armed_state({}))
+        self.panel.set_landing_strip(None)
+        self.panel.set_position(None)
 
     def update_charts(
         self,
@@ -1252,6 +1367,10 @@ class TradeChartsTabModel:
             record = self.ata_assets[symbol]
             record[VOTE_KEY] = vote
             record[TIMEFRAMES_KEY] = timeframes
+            call = self._call_of(symbol)
+            if call is not record.get(CALL_KEY) and self.followed == symbol:
+                self.followed = DEFAULT_SYMBOL
+            record[CALL_KEY] = call
             seen.append(symbol)
 
         for symbol in list(self.ata_assets):
@@ -1425,6 +1544,10 @@ class TradeChartsTabModel:
 
         if not record:
             self.calls.append([FETCH_NO_ASSET])
+            self._emit_freshness(now, exchange_connectors)
+            return None
+        if self.showing_ata() and record.get(CALL_KEY) is not None:
+            self.calls.append([FETCH_CALL_SKIPPED, bot_id])
             self._emit_freshness(now, exchange_connectors)
             return None
         if now - record.get(LAST_FETCH_KEY, NEVER_FETCHED) < FETCH_THROTTLE_S:

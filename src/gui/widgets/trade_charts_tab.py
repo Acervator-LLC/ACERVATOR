@@ -20,6 +20,10 @@ from ..main_tabs.trade_charts_tab_surface import (
 #: The bus topic every fill of every bot crosses; ``_on_trade_filled`` records it.
 FILLED_TOPIC = "trade.filled"
 
+#: The pin ``_follow_current`` writes when a called market's chart draws:
+#: the overlays the painter shows against the call's.
+ATA_RENDERED_PIN = "charts.ata.rendered"
+
 logger = logging.getLogger("acervator.gui")
 
 MOUNTED_SIGNAL = "charts.13.001.invariant.panels_mounted"
@@ -138,6 +142,9 @@ if _HAS_QT:
             self._ata_entries: list[dict] = []
             self._ata_shown = 0
             self._ata_source = None
+            self._ata_call_source = None
+            self._live_overlays: list = []
+            self._live_timeframe = ""
             self._list_mode = LIST_LIVE
             self._followed = ""
             self._trade_log: list[dict] = []
@@ -283,6 +290,13 @@ if _HAS_QT:
             """
             self._ata_source = source
 
+        def set_ata_call_source(self, source) -> None:
+            """Take the callable answering one market's ``ChartCall``, or None.
+
+            ``SectorBoard.chart_call`` is what the running window binds here.
+            """
+            self._ata_call_source = source
+
         def toggle_list(self) -> str:
             """Move the arrows to the other list and answer the mode on screen."""
             self._list_mode = LIST_ATA if self._list_mode == LIST_LIVE else LIST_LIVE
@@ -359,9 +373,78 @@ if _HAS_QT:
             chart.set_candles([])
             chart.set_trade_history_markers([])
             self._panel.set_source("")
+            call = entry.get("call") if self._showing_ata() else None
+            if call is not None:
+                self._draw_call(entry, call)
+                return
+            self._leave_call()
             if symbol:
                 chart.set_error(AWAITING_FORMAT.format(symbol=symbol))
             entry["last_fetch"] = 0
+
+        def _draw_call(self, entry: dict, call) -> None:
+            """Draw ``call`` on the panel: its candles at its timeframe, its
+            overlays, its badge and its caption, with no bot annotation.
+
+            The overlay set the Live list showed is held in ``_live_overlays``
+            until ``_leave_call`` restores it.
+            """
+            chart = self._panel.chart
+            if not self._live_overlays:
+                self._live_overlays = [
+                    key for key, on in chart.overlays_shown().items() if on
+                ]
+            self._clear_annotations()
+            if not self._live_timeframe:
+                self._live_timeframe = self._panel.timeframe
+            self._panel.choose_timeframe(str(call.timeframe))
+            self._panel.show_only(list(call.overlays))
+            chart.set_candles(list(call.candles))
+            chart.set_call(call.direction, call.readings)
+            chart.set_caption(call.caption)
+            entry["last_fetch"] = _time.time()
+            shown = sorted(key for key, on in chart.overlays_shown().items() if on)
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _emit
+
+                _emit(
+                    ATA_RENDERED_PIN,
+                    actual=shown,
+                    expected=sorted(call.overlays),
+                    context={
+                        "symbol": call.symbol,
+                        "timeframe": call.timeframe,
+                        "list": LIST_ATA,
+                        "width": chart.width(),
+                        "height": chart.height(),
+                        "direction": call.direction,
+                        "candles": len(call.candles),
+                        "variant": "qt",
+                    },
+                )
+
+        def _leave_call(self) -> None:
+            """Clear the call's badge and caption and restore the Live overlay set."""
+            chart = self._panel.chart
+            chart.set_call("", ())
+            chart.set_caption("")
+            if self._live_overlays:
+                self._panel.show_only(self._live_overlays)
+                self._live_overlays = []
+            if self._live_timeframe:
+                self._panel.choose_timeframe(self._live_timeframe)
+                self._live_timeframe = ""
+            if self._showing_ata():
+                self._clear_annotations()
+
+        def _clear_annotations(self) -> None:
+            """Take every bot annotation off the chart: floors, target lines, glow, strip, position."""
+            chart = self._panel.chart
+            chart.set_tranche_floors([])
+            chart.set_target_balance_lines(None, None)
+            chart.set_fire_armed_state(False, False, [], [])
+            chart.set_landing_strip(None)
+            chart.set_positions([])
 
         def update_charts(
             self,
@@ -492,12 +575,26 @@ if _HAS_QT:
                 )
                 entry["vote"] = str(getattr(market, "vote", ""))
                 entry["timeframes"] = list(getattr(market, "timeframes", ()))
+                call = self._call_of(symbol)
+                if call is not entry.get("call") and self._followed == symbol:
+                    self._followed = ""
+                entry["call"] = call
                 rebuilt.append(entry)
 
             self._ata_entries = rebuilt
             self._ata_shown = next(
                 (i for i, one in enumerate(rebuilt) if one["symbol"] == held_symbol), 0
             )
+
+        def _call_of(self, symbol: str):
+            """The ``ChartCall`` the call source holds for ``symbol``, or None."""
+            if self._ata_call_source is None:
+                return None
+            try:
+                return self._ata_call_source(symbol)
+            except Exception as exc:
+                logger.debug("ATA-SMP chart call read failed for %s: %s", symbol, exc)
+                return None
 
         def _label_current(self) -> None:
             """Write the shown asset's price and state into the chart header."""
@@ -654,6 +751,10 @@ if _HAS_QT:
             now = _time.time()
             entry = self.current_entry()
             if not entry:
+                self._emit_freshness(now)
+                return
+            if self._showing_ata() and entry.get("call") is not None:
+                # A called market draws the call's own candles; nothing is fetched.
                 self._emit_freshness(now)
                 return
             if now - entry.get("last_fetch", 0) < FETCH_THROTTLE_S:
