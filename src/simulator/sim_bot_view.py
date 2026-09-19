@@ -22,6 +22,7 @@ from ..trading.container.config import (
     bot_config_kwargs,
     make_bot_config,
 )
+from ..trading.scrumming.sizing import cycle_growth_cap_usd
 from .fleet_source import (
     EXTRACTOR_MODE,
     PHANTOMS_ENABLED_DEFAULT,
@@ -162,7 +163,11 @@ class SimBotView:
         self._chunk_extracted_total = _number(pool.get("chunk_extracted_total"), 0.0)
         self._usd_per_base_rate = _number(pool.get("chunk_to_base_rate"), 1.0)
         self._positions = _dicts(pool.get("positions"))
-        self.cycle_growth_cap_usd = None
+        self.cycle_growth_cap_usd = cycle_growth_cap_usd(
+            self._target_balance,
+            self._fold_cycle_cap_consumed,
+            float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0),
+        )
 
     def get_status(self) -> dict:
         """The status dict the tables and the Status tab read, ``row_status``."""

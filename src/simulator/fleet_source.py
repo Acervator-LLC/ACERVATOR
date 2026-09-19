@@ -5,7 +5,7 @@ from the YTD trade files, both read only.
 
 ``FleetSource`` answers ``root``, ``path``, ``saved_at``, ``bots``, ``bot_for``,
 ``record_for``, ``exchanges``, ``symbols``, ``statuses``, ``aggregate``,
-``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``clear``,
+``create``, ``sim_bot_for``, ``set_state``, ``write_stats``, ``remove``, ``clear``,
 ``stored_records``, ``stored_exchanges``, ``import_live_fleet``, ``generate_from_ytd``,
 ``hold_battery_fleet``, ``mode``, ``set_mode``, ``held_by_mode``, ``sim_dir``,
 ``sim_path`` and ``save``; it holds no venue, writes ``sim_path``
@@ -92,6 +92,7 @@ READ_NAMES = (
     "create",
     "sim_bot_for",
     "set_state",
+    "write_stats",
     "remove",
     "clear",
     "stored_records",
@@ -209,6 +210,7 @@ class SimBot:
     cash_balance_usd: float = 0.0
     ytd_scrummed_usd: float = 0.0
     ytd_folded_usd: float = 0.0
+    profit_folding_active: bool = True
 
     @property
     def asset(self) -> str:
@@ -377,6 +379,7 @@ def _sim_bot_from_record(
         cash_balance_usd=_number(stats.get("cash_balance_usd"), 0.0),
         ytd_scrummed_usd=_number(stats.get("ytd_scrummed_usd"), 0.0),
         ytd_folded_usd=_number(stats.get("ytd_folded_usd"), 0.0),
+        profit_folding_active=bool(config.get("profit_folding_active", True)),
     )
 
 
@@ -690,12 +693,20 @@ def aggregate_stats(bots: Sequence[SimBot], budget_usd: Optional[float] = None) 
 EMPTY_AGGREGATE = aggregate_stats(())
 
 
+def loaded_idle(record: dict) -> dict:
+    """``record`` with its ``state_when_saved`` written ``BotState.IDLE``, as
+    ``restore_bots_from_state`` recreates every persisted bot in IDLE until
+    the operator starts it; a loaded bot never reads ``running`` with no run."""
+    record["state_when_saved"] = BotState.IDLE.value
+    return record
+
+
 def _records_of(stored: dict, path: Path, mode: str) -> dict[str, dict]:
     """The records of one ``bots`` map ``stored`` under ``mode``, by
-    ``bot_id``; a record that names no symbol is kept and named in one
-    warning line with ``path``."""
+    ``bot_id``, each read as ``loaded_idle``; a record that names no symbol is
+    kept and named in one warning line with ``path``."""
     records = {
-        str(bot_id): record
+        str(bot_id): loaded_idle(record)
         for bot_id, record in stored.items()
         if bot_id and isinstance(record, dict)
     }
@@ -897,10 +908,11 @@ class FleetSource:
 
     def import_live_fleet(self, exchange_id: str) -> list[SimBot]:
         """Copy every stored bot on ``exchange_id`` from ``bot_state.json`` into
-        the held records under its own ``bot_id`` with ``origin`` ``LIVE_ORIGIN``,
-        replacing a held record of the same id and keeping every other; answers
-        the ``SimBot`` of each record copied, by symbol then bot_id, and none
-        for an empty ``exchange_id``. The sim fleet file takes them on the next
+        the held records under its own ``bot_id`` with ``origin`` ``LIVE_ORIGIN``
+        and its state ``loaded_idle`` whatever the live file saved, replacing a
+        held record of the same id and keeping every other; answers the
+        ``SimBot`` of each record copied, by symbol then bot_id, and none for
+        an empty ``exchange_id``. The sim fleet file takes them on the next
         ``save``."""
         wanted = str(exchange_id or "")
         if not wanted:
@@ -912,8 +924,8 @@ class FleetSource:
                 continue
             record["bot_id"] = bot_id
             record["origin"] = LIVE_ORIGIN
-            self._records[bot_id] = record
-            imported.append(bot)
+            self._records[bot_id] = loaded_idle(record)
+            imported.append(_held_bot(bot_id, record) or bot)
         return sorted(imported, key=lambda one: (one.symbol, one.bot_id))
 
     def generate_from_ytd(self, source: Any, exchange_id: str) -> YtdGeneration:
@@ -1025,6 +1037,43 @@ class FleetSource:
             stats["last_error"] = ""
             stats["consecutive_errors"] = 0
         return str(state)
+
+    def write_stats(
+        self,
+        bot_id: str,
+        stats: Optional[dict] = None,
+        scrumming_state: Optional[dict] = None,
+        state: str = "",
+    ) -> dict:
+        """Write a walk's figures into the held record under ``bot_id``:
+        ``stats`` merged into the record's ``stats``, ``scrumming_state`` into
+        its ``scrumming_state``, and ``state`` into ``state_when_saved`` when
+        given, so ``bots`` and ``statuses`` read them on the next draw.
+        Answers the keys written per part. Raises ``KeyError`` when no record
+        is held under ``bot_id``."""
+        wanted = str(bot_id)
+        record = self._records.get(wanted)
+        if not isinstance(record, dict):
+            raise KeyError(f"no sim record is held under {wanted!r}")
+        written: dict[str, list[str]] = {
+            "stats": [],
+            "scrumming_state": [],
+            "state": [],
+        }
+        for part, fields in (("stats", stats), ("scrumming_state", scrumming_state)):
+            if not fields:
+                continue
+            held = record.get(part)
+            if not isinstance(held, dict):
+                held = {}
+                record[part] = held
+            for key, value in fields.items():
+                held[str(key)] = value
+                written[part].append(str(key))
+        if state:
+            record["state_when_saved"] = str(state)
+            written["state"].append(str(state))
+        return written
 
     def remove(self, bot_id: str) -> bool:
         """Drop the held record under ``bot_id``; answers whether one was held.
@@ -1221,6 +1270,7 @@ __all__ = [
     "exchange_choice",
     "extractor_pool_color",
     "live_fleet",
+    "loaded_idle",
     "row_status",
     "wizard_phantom_timeframes",
     "wizard_record",

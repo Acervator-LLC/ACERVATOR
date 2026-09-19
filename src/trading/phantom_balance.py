@@ -85,6 +85,78 @@ def default_phantom_timeframes(
     return above[:1]
 
 
+def weigh_higher_tf_bias(
+    higher: list[tuple[str, int, VotingSummary]],
+    below_parent: list[str],
+    min_confidence: float = 0.30,
+) -> tuple[Optional[SignalDirection], dict]:
+    """Weigh each ``(timeframe, rank, summary)`` in ``higher`` by ``rank``
+    times ``consensus_confidence``, skipping any below ``min_confidence``;
+    the weighing ``get_higher_tf_bias`` runs over the registered phantoms
+    and the Simulator runs over the rolled-up tablet.
+
+    Returns a ``SignalDirection`` with a detail dict, or None when ``higher``
+    is empty. Every timeframe in ``below_parent`` is named in the detail
+    rather than dropped in silence.
+    """
+    if not higher:
+        return None, {
+            "reason": "no higher-TF phantoms with summaries",
+            "below_parent": below_parent,
+        }
+
+    bull_weight = 0.0
+    bear_weight = 0.0
+    contrib: list[dict] = [
+        {"tf": one, "skipped": True, "reason": BELOW_PARENT_REASON}
+        for one in below_parent
+    ]
+    for timeframe, rank, s in higher:
+        if s.consensus_confidence < min_confidence:
+            contrib.append(
+                {
+                    "tf": timeframe,
+                    "skipped": True,
+                    "conf": s.consensus_confidence,
+                    "direction": s.consensus_direction.name,
+                }
+            )
+            continue
+        # A 4h phantom at rank 6 and confidence 0.5 contributes 3.0.
+        weight = max(1, rank) * float(s.consensus_confidence)
+        if s.consensus_direction == SignalDirection.BULLISH:
+            bull_weight += weight
+        elif s.consensus_direction == SignalDirection.BEARISH:
+            bear_weight += weight
+        contrib.append(
+            {
+                "tf": timeframe,
+                "weight": round(weight, 3),
+                "direction": s.consensus_direction.name,
+                "conf": round(s.consensus_confidence, 3),
+            }
+        )
+
+    if bull_weight == 0 and bear_weight == 0:
+        return SignalDirection.NEUTRAL, {
+            "bull_weight": 0.0,
+            "bear_weight": 0.0,
+            "contributors": contrib,
+            "reason": "all higher-TF phantoms below confidence floor or NEUTRAL",
+        }
+    if bull_weight > bear_weight:
+        direction = SignalDirection.BULLISH
+    elif bear_weight > bull_weight:
+        direction = SignalDirection.BEARISH
+    else:
+        direction = SignalDirection.NEUTRAL
+    return direction, {
+        "bull_weight": round(bull_weight, 3),
+        "bear_weight": round(bear_weight, 3),
+        "contributors": contrib,
+    }
+
+
 @dataclass
 class TradeLock:
     """One entry in ``TimeframeCoordinator._locks``.
@@ -383,63 +455,11 @@ class TimeframeCoordinator:
                 ", ".join(below_parent),
                 base_timeframe,
             )
-        if not higher:
-            return None, {
-                "reason": "no higher-TF phantoms with summaries",
-                "below_parent": below_parent,
-            }
-
-        bull_weight = 0.0
-        bear_weight = 0.0
-        contrib: list[dict] = [
-            {"tf": one, "skipped": True, "reason": BELOW_PARENT_REASON}
-            for one in below_parent
-        ]
-        for p in higher:
-            s = p.last_summary
-            if s.consensus_confidence < min_confidence:
-                contrib.append(
-                    {
-                        "tf": p.timeframe,
-                        "skipped": True,
-                        "conf": s.consensus_confidence,
-                        "direction": s.consensus_direction.name,
-                    }
-                )
-                continue
-            # A 4h phantom at rank 6 and confidence 0.5 contributes 3.0.
-            weight = max(1, p.rank) * float(s.consensus_confidence)
-            if s.consensus_direction == SignalDirection.BULLISH:
-                bull_weight += weight
-            elif s.consensus_direction == SignalDirection.BEARISH:
-                bear_weight += weight
-            contrib.append(
-                {
-                    "tf": p.timeframe,
-                    "weight": round(weight, 3),
-                    "direction": s.consensus_direction.name,
-                    "conf": round(s.consensus_confidence, 3),
-                }
-            )
-
-        if bull_weight == 0 and bear_weight == 0:
-            return SignalDirection.NEUTRAL, {
-                "bull_weight": 0.0,
-                "bear_weight": 0.0,
-                "contributors": contrib,
-                "reason": "all higher-TF phantoms below confidence floor or NEUTRAL",
-            }
-        if bull_weight > bear_weight:
-            direction = SignalDirection.BULLISH
-        elif bear_weight > bull_weight:
-            direction = SignalDirection.BEARISH
-        else:
-            direction = SignalDirection.NEUTRAL
-        return direction, {
-            "bull_weight": round(bull_weight, 3),
-            "bear_weight": round(bear_weight, 3),
-            "contributors": contrib,
-        }
+        return weigh_higher_tf_bias(
+            [(p.timeframe, p.rank, p.last_summary) for p in higher],
+            below_parent,
+            min_confidence,
+        )
 
     def get_multi_tf_summary(self, parent_bot_id: str) -> dict:
         """Return each registered phantom's ``last_summary`` for

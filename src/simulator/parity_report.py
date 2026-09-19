@@ -573,8 +573,95 @@ def back_test_bot(result: BotResult, bot: Optional[SimBot]) -> dict:
         "fees_usd": result.fees_usd,
         "first": iso_stamp(result.first_ts_ms),
         "last": iso_stamp(result.last_ts_ms),
+        "end_target_usd": result.end_target_usd,
+        "end_price": result.end_price,
+        "stats": dict(result.stats),
+        "target_path": [dict(one) for one in result.target_path],
+        "htf": dict(result.htf),
     }
     return row
+
+
+def back_test_trades(run: BackTestRun) -> list[dict]:
+    """Every fill of ``run`` in fill order, each with the higher-timeframe
+    bias its gates read, the target after it and the growth it applied."""
+    out: list[dict] = []
+    for result in run.results:
+        for trade in result.trades:
+            out.append(
+                {
+                    "bot_id": trade.bot_id,
+                    "symbol": trade.symbol,
+                    "side": trade.side,
+                    "ts_ms": int(trade.ts_ms),
+                    "candle_at": iso_stamp(trade.ts_ms),
+                    "price": trade.price,
+                    "units": trade.units,
+                    "usd": trade.usd,
+                    "fee_usd": trade.fee_usd,
+                    "htf_bias": trade.htf_bias or None,
+                    "target_usd_after": trade.target_usd_after,
+                    "growth_applied_usd": trade.growth_applied_usd,
+                }
+            )
+    return out
+
+
+def compounding_rows(bots: Sequence[dict]) -> list[dict]:
+    """One row per bot of ``bots``: the target the walk opened at, the
+    target it ended at, the growth applied, the steps and the standing
+    surplus left, off each bot's ``target_path`` and ``stats``."""
+    out: list[dict] = []
+    for row in bots:
+        path = row.get("target_path") or []
+        stats = row.get("stats") or {}
+        out.append(
+            {
+                "bot_id": row.get("bot_id"),
+                "symbol": row.get("symbol"),
+                "target_usd": row.get("target_usd"),
+                "end_target_usd": row.get("end_target_usd"),
+                "growth_applied_usd": sum(
+                    float(one.get("applied_usd", 0) or 0) for one in path
+                ),
+                "steps": len(path),
+                "standing_surplus_usd": stats.get("standing_surplus_usd"),
+                "total_scrummed_usd": stats.get("total_scrummed_usd"),
+                "total_folded_usd": stats.get("total_folded_usd"),
+                "position_value": stats.get("position_value"),
+                "unrealised_pnl": stats.get("unrealised_pnl"),
+                "trades": stats.get("total_trades"),
+            }
+        )
+    return out
+
+
+def htf_rows(bots: Sequence[dict]) -> list[dict]:
+    """One row per bot of ``bots``: the phantom timeframes named, evaluated
+    and refused, and the bias counts over the ticks, off each bot's ``htf``."""
+    out: list[dict] = []
+    for row in bots:
+        htf = row.get("htf") or {}
+        refused = htf.get("refused") or {}
+        out.append(
+            {
+                "bot_id": row.get("bot_id"),
+                "symbol": row.get("symbol"),
+                "phantoms_enabled": htf.get("phantoms_enabled"),
+                "named": ", ".join(htf.get("named") or []) or "none",
+                "evaluated": ", ".join(htf.get("evaluated") or []) or "none",
+                "refused": (
+                    "; ".join(f"{name}: {why}" for name, why in refused.items())
+                    or "none"
+                ),
+                "bias_counts": ", ".join(
+                    f"{name} {count}"
+                    for name, count in (htf.get("bias_counts") or {}).items()
+                )
+                or "none",
+            }
+        )
+    return out
 
 
 def back_test_not_verified(run: BackTestRun) -> list[str]:
@@ -631,6 +718,7 @@ def back_test_figures(
     head["bot_outcomes"] = dict(run.bot_outcomes)
     head["stopped"] = bool(run.stopped)
     head["bots_reached"] = len(run.bots) - len(run.unreached)
+    bots = [back_test_bot(one, by_id.get(one.bot_id)) for one in run.results]
     return {
         "mode": BACK_TEST,
         "partial": bool(run.stopped),
@@ -638,7 +726,10 @@ def back_test_figures(
         "error": None,
         "header": head,
         "tablets": tablet_section,
-        "bots": [back_test_bot(one, by_id.get(one.bot_id)) for one in run.results],
+        "bots": bots,
+        "trades": back_test_trades(run),
+        "compounding": compounding_rows(bots),
+        "htf": htf_rows(bots),
         "summary": dict(run.summary),
         "not_verified": back_test_not_verified(run),
         "lines": list(run.lines),
@@ -1240,6 +1331,7 @@ BOT_COLUMNS = {
         ("units_gained", "units gained"),
         ("cash_usd", "cash"),
         ("fees_usd", "fees"),
+        ("end_target_usd", "end target"),
     ),
     PORTFOLIO_BATTERY: (
         ("portfolio", "portfolio"),
@@ -1522,12 +1614,107 @@ def render_lines(figures: dict) -> list[str]:
     return out
 
 
+COMPOUNDING_COLUMNS = (
+    ("bot_id", "bot"),
+    ("symbol", "symbol"),
+    ("target_usd", "target at open"),
+    ("end_target_usd", "target at end"),
+    ("growth_applied_usd", "growth applied"),
+    ("steps", "growth steps"),
+    ("standing_surplus_usd", "standing surplus"),
+    ("trades", "trades"),
+    ("total_scrummed_usd", "scrummed"),
+    ("total_folded_usd", "folded"),
+    ("position_value", "position value"),
+    ("unrealised_pnl", "unrealised"),
+)
+
+TARGET_STEP_COLUMNS = (
+    ("candle_at", "candle"),
+    ("surplus_usd", "surplus"),
+    ("standing_before", "standing before"),
+    ("cap_usd", "cycle cap"),
+    ("consumed_before", "consumed before"),
+    ("applied_usd", "applied"),
+    ("target_before", "target before"),
+    ("target_after", "target after"),
+    ("standing_after", "standing after"),
+)
+
+HTF_COLUMNS = (
+    ("bot_id", "bot"),
+    ("symbol", "symbol"),
+    ("phantoms_enabled", "phantoms on"),
+    ("named", "named"),
+    ("evaluated", "evaluated"),
+    ("refused", "refused"),
+    ("bias_counts", "bias per tick"),
+)
+
+FILL_COLUMNS = (
+    ("bot_id", "bot"),
+    ("side", "side"),
+    ("candle_at", "candle"),
+    ("price", "price"),
+    ("units", "units"),
+    ("usd", "usd"),
+    ("htf_bias", "HTF bias"),
+    ("target_usd_after", "target after"),
+    ("growth_applied_usd", "growth applied"),
+)
+
+COMPOUNDING_RULE = (
+    "Each fold's surplus is the units bought less the units its consumed "
+    "tranches sold, priced at the fill; it grows the target up to what the "
+    "cycle cap leaves, the rest standing until the cycle resets at the "
+    "opposite Bollinger extreme."
+)
+
+HTF_RULE = (
+    "Each tick rolls the walk's candles up to every phantom timeframe the bot "
+    "names, votes on the last 100, and weighs the summaries as the live "
+    "coordinator weighs its phantoms; a timeframe refused by name reads no "
+    "summary, as a live phantom with none."
+)
+
+
+def render_compounding(figures: dict) -> list[str]:
+    """The ``Compounding`` section: one row per bot and each bot's target
+    path; nothing for a mode without one."""
+    rows = figures.get("compounding")
+    if rows is None:
+        return []
+    out = ["## Compounding", "", COMPOUNDING_RULE, ""] + table(
+        COMPOUNDING_COLUMNS, rows
+    )
+    for bot in figures.get("bots") or []:
+        path = bot.get("target_path") or []
+        if not path:
+            continue
+        out += [f"### Target path of {bot.get('bot_id')} ({bot.get('symbol')})", ""]
+        out += table(TARGET_STEP_COLUMNS, path)
+    return out
+
+
+def render_htf(figures: dict) -> list[str]:
+    """The ``Higher timeframes`` section: one row per bot and one per fill;
+    nothing for a mode without one."""
+    rows = figures.get("htf")
+    if rows is None:
+        return []
+    out = ["## Higher timeframes", "", HTF_RULE, ""] + table(HTF_COLUMNS, rows)
+    out += ["### Fills", ""] + table(FILL_COLUMNS, figures.get("trades") or [])
+    return out
+
+
 def render_markdown(figures: dict) -> str:
     """The whole Markdown report of ``figures``."""
     parts = (
         render_header(figures)
         + render_tablets(figures)
         + render_bots(figures)
+        + render_compounding(figures)
+        + render_htf(figures)
         + render_comparison(figures)
         + render_battery(figures)
         + render_summary(figures)

@@ -313,6 +313,10 @@ class SimTradingTab(QWidget):
     #: The ``ValidationRun`` or ``BackTestRun`` the worker thread finished
     #: with, or None when it raised.
     run_finished = Signal(object)
+    #: One ``BotStatsSnapshot`` a walk emitted on the tab's bus under
+    #: ``STATS_TOPIC``, re-emitted off the worker thread so the record is
+    #: written on the GUI thread.
+    bot_stats = Signal(object)
     #: One Activity Log line and its level from a retrieval's worker thread.
     retrieval_line = Signal(str, str)
     #: One ``VenueCall`` the read-only connector made on the worker thread.
@@ -370,6 +374,11 @@ class SimTradingTab(QWidget):
         self._replay: dict = {}
         self._fills: list[SimTrade] = []
         self._battery_outcome: Any = None
+        self._stats_dirty = False
+        self._stats_redraw_timer = QTimer(self)
+        self._stats_redraw_timer.setSingleShot(True)
+        self._stats_redraw_timer.setInterval(tab_surface.STATS_REDRAW_MS)
+        self._stats_redraw_timer.timeout.connect(self._redraw_stats)
         self._build()
         self._draw_way_ins()
         self._api_log.add_listener(self._on_api_event)
@@ -385,6 +394,8 @@ class SimTradingTab(QWidget):
         self.run_line.connect(self._status_log.log)
         self.run_trade.connect(self.log_trade)
         self.run_finished.connect(self._take_run)
+        self.bot_stats.connect(self._take_bot_stats)
+        self._bus.subscribe(back_test.STATS_TOPIC, self._on_bus_stats)
         self.retrieval_line.connect(self._status_log.log)
         self.retrieval_call.connect(self._record_venue_call)
         self.retrieval_finished.connect(self._take_retrieval)
@@ -989,7 +1000,9 @@ class SimTradingTab(QWidget):
         Validation and Back Test, ``_run_battery`` under Run Portfolio's
         chooser for Portfolio Battery; each press emits
         ``START_PRESSED_SIGNAL`` with its outcome and the venue's scrumming
-        rows reading ``running`` after it."""
+        rows reading ``running`` after it, every run bot under a started
+        Validation and the count before the press otherwise, a Back Test row
+        moving when its own walk starts."""
         venue = self._current_venue_id()
         mode = self._mode
         run_bots = self._run_bots(venue)
@@ -1020,7 +1033,7 @@ class SimTradingTab(QWidget):
         expected_running = running_before
         if (
             outcome == tab_surface.START_OUTCOME_STARTED
-            and mode in tab_surface.RUN_MODES
+            and mode == surface.MODE_VALIDATION
         ):
             expected_running = len(run_bots)
         running_after = tab_surface.rows_running(self._run_bots(venue))
@@ -1036,11 +1049,15 @@ class SimTradingTab(QWidget):
 
     def _start_run(self, exchange_id: str, mode: str) -> str:
         """Start the run ``mode`` names over ``_run_bots`` of ``exchange_id``:
-        each bot to ``running`` through ``SimBotManager.start``,
-        ``fleet_changed``, the YTD root line when Validation's YTD directory is
-        not ready, the started line, then ``_compute_run`` on a daemon thread;
-        a venue holding no scrumming bot writes one line and starts nothing.
-        Answers ``START_OUTCOME_NO_BOT`` or ``START_OUTCOME_STARTED``."""
+        under Validation each bot to ``running`` through
+        ``SimBotManager.start`` and ``fleet_changed`` at the press, the rerun
+        being one pass over the fleet; under Back Test nothing moves at the
+        press, each row reading ``running`` when its own walk's opening
+        snapshot reaches ``_take_bot_stats``; then the YTD root line when
+        Validation's YTD directory is not ready, the started line and
+        ``_compute_run`` on a daemon thread; a venue holding no scrumming bot
+        writes one line and starts nothing. Answers ``START_OUTCOME_NO_BOT``
+        or ``START_OUTCOME_STARTED``."""
         bots = self._run_bots(exchange_id)
         if not bots:
             self._status_log.log(
@@ -1055,10 +1072,10 @@ class SimTradingTab(QWidget):
             "stopper": "",
         }
         self._begin_fills()
-        for one in bots:
-            self._bot_manager.start(one.bot_id)
-        self.fleet_changed.emit()
         if mode == surface.MODE_VALIDATION:
+            for one in bots:
+                self._bot_manager.start(one.bot_id)
+            self.fleet_changed.emit()
             source = YtdTradeSource()
             state = source.root_state()
             if state != ROOT_READY:
@@ -1169,6 +1186,56 @@ class SimTradingTab(QWidget):
             tab_surface.trade_line(trade),
             tab_surface.TRADE_LINE_LEVEL,
         )
+
+    # -- the walk's stats on the record -------------------------------------
+
+    def _on_bus_stats(self, event: Any) -> None:
+        """The bus subscriber for ``STATS_TOPIC``, called on the walk's
+        thread: re-emit the event's ``snapshot`` through ``bot_stats`` so
+        ``_take_bot_stats`` runs on the GUI thread."""
+        snapshot = (getattr(event, "data", None) or {}).get("snapshot")
+        if snapshot is not None:
+            self.bot_stats.emit(snapshot)
+
+    def _take_bot_stats(self, snapshot: Any) -> None:
+        """Write one ``BotStatsSnapshot`` into the held record through
+        ``FleetSource.write_stats`` on the GUI thread; a ``running`` mark
+        moves the bot through ``SimBotManager.start`` with Live's
+        ``✓ Bot <id> RUNNING.`` line and redraws the rows at once, a
+        ``stopped`` mark moves it through ``SimBotManager.stop`` with the
+        walk's ended line, and every other snapshot arms
+        ``_stats_redraw_timer`` so the rows redraw once per
+        ``STATS_REDRAW_MS``. A snapshot for a record no longer held is
+        dropped."""
+        bot_id = str(getattr(snapshot, "bot_id", ""))
+        try:
+            self._fleet_source.write_stats(
+                bot_id, snapshot.stats, snapshot.scrumming_state
+            )
+            if snapshot.state == back_test.RUNNING_STATE:
+                self._bot_manager.start(bot_id)
+                self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
+                self._status_log.log(tab_surface.walk_started_line(snapshot), "info")
+                self._redraw_stats()
+                return
+            if snapshot.state == back_test.STOPPED_STATE:
+                self._bot_manager.stop(bot_id)
+                self._status_log.log(tab_surface.walk_ended_line(snapshot), "info")
+                self._redraw_stats()
+                return
+        except KeyError:
+            logger.debug("stats for %s dropped: no record held", bot_id)
+            return
+        self._stats_dirty = True
+        if not self._stats_redraw_timer.isActive():
+            self._stats_redraw_timer.start()
+
+    def _redraw_stats(self) -> None:
+        """Redraw every venue's rows through ``refresh_bots`` and clear the
+        dirty mark; the strip reads the same records on the window's tick."""
+        self._stats_dirty = False
+        self._stats_redraw_timer.stop()
+        self.refresh_bots()
 
     # -- construction ---------------------------------------------------
 
