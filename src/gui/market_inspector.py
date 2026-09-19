@@ -123,9 +123,11 @@ from .main_tabs.market_inspector_surface import (
     TIMEFRAME_TITLE,
     LEFT_MODULE_SHARES,
     MARKET_READ_PIN,
+    ORDER_LOG_FORMAT,
     SCAN_FINISHED_PIN,
     SCAN_PRESSED_PIN,
     SCAN_STARTED_PIN,
+    VOLUME_ORDER_PIN,
     class_markets,
     market_listing,
     open_chart_folder,
@@ -945,8 +947,10 @@ if _HAS_QT:
                 button.setFixedSize(TIMEFRAME_BOX_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
                 button.setAccessibleName(f"{TIMEFRAME_ROW_PART} {key}")
                 button.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
+                # The key is read at the press: the class box moves the four
+                # rows, and the button at this position keeps its place.
                 button.clicked.connect(
-                    lambda _checked, name=key: self._on_timeframe_toggled(name)
+                    lambda _checked, position=at: self._on_timeframe_box(position)
                 )
                 grid.addWidget(button, at // BUTTON_COLUMNS, at % BUTTON_COLUMNS)
                 self._tf_boxes.append(button)
@@ -1516,6 +1520,12 @@ if _HAS_QT:
             self._ata_board.toggle_timeframe(self._ata_at(), key)
             self._render_ata_row()
 
+        def _on_timeframe_box(self, position: int) -> None:
+            """Toggle the timeframe the box at ``position`` names for the class shown."""
+            rows = self._ata_board.boxes(self._ata_at())
+            if 0 <= int(position) < len(rows):
+                self._on_timeframe_toggled(str(rows[int(position)][0]))
+
         def _on_scan_now(self) -> None:
             """Press Scan Now: run the phases on a worker thread.
 
@@ -1685,6 +1695,13 @@ if _HAS_QT:
                     ),
                     ACTIVITY_INFO if scan.votes else ACTIVITY_WARNING,
                 )
+                if scan.by_volume:
+                    self._say(
+                        ORDER_LOG_FORMAT.format(
+                            asset_class=scan.asset_class,
+                            line=ata_spm.order_line(scan.order, scan.markets_read),
+                        )
+                    )
                 read = (
                     int(scan.markets_read)
                     if scan.hit_target > ata_spm.NO_HIT_TARGET
@@ -1724,13 +1741,39 @@ if _HAS_QT:
             self._ata_candle_source = candle_source
             self._ata_class_source = class_source
 
-        def _class_markets(self, asset_class) -> list:
-            """Every market one class holds, largest volume first, on the connectors in reach."""
+        def _class_markets(self, asset_class):
+            """The ``ata_spm.MarketOrder`` one class holds, on the connectors in reach.
+
+            Each read leaves one ``ORDER_LOG_FORMAT`` line and one
+            ``VOLUME_ORDER_PIN`` naming the source, the order and the rows
+            with no figure.
+            """
             try:
-                return class_markets(asset_class, self._connectors_now())
+                order = class_markets(asset_class, self._connectors_now())
             except Exception as exc:  # noqa: BLE001 - the source is off-process
                 logger.debug("class market read failed on %s: %s", asset_class, exc)
-                return []
+                order = ata_spm.MarketOrder()
+            symbols = order.symbols
+            self._say(
+                ORDER_LOG_FORMAT.format(
+                    asset_class=asset_class,
+                    line=ata_spm.order_line(order, len(symbols)),
+                ),
+                ACTIVITY_INFO if order.by_volume else ACTIVITY_WARNING,
+            )
+            _pin_emit(
+                VOLUME_ORDER_PIN,
+                actual=len(symbols) - int(order.unfigured),
+                expected=len(symbols),
+                context={
+                    "asset_class": str(asset_class),
+                    "source": order.source,
+                    "by_volume": order.by_volume,
+                    "order": symbols,
+                    "unfigured": int(order.unfigured),
+                },
+            )
+            return order
 
         def _scanned_candles(self, symbol, timeframe) -> list:
             """The candles for one scanned symbol, from the source its map names.
@@ -1791,8 +1834,10 @@ if _HAS_QT:
             self._class_box.blockSignals(True)
             self._class_box.setCurrentText(self._ata_board.asset_class)
             self._class_box.blockSignals(False)
-            for check, (_key, label, ticked) in zip(self._tf_boxes, rows):
+            for check, (key, label, ticked) in zip(self._tf_boxes, rows):
                 check.setText(label)
+                check.setAccessibleName(f"{TIMEFRAME_ROW_PART} {key}")
+                check.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
                 check.blockSignals(True)
                 check.setChecked(ticked)
                 check.blockSignals(False)

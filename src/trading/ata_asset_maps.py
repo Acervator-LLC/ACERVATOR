@@ -40,7 +40,17 @@ UNMAPPED_TEXT = "no map lists {symbol}"
 NO_VENUE_TEXT = "no configured venue lists {symbol}"
 UNSERVED_TEXT = "{venue} does not serve {timeframe}"
 NO_ADAPTER_TEXT = "no fetcher serves {venue}"
+UNVOLUMED_TEXT = "{venue} sends volume 0 on every bar of {symbol}"
+NO_COMPLETE_BAR_TEXT = "{venue} sent no bar for {symbol}"
 VENUE_ROWS_REFUSED_LOG = "ata asset map: %s kept %d row(s), refused %d: %s"
+
+#: A listed name whose venue read no figure ranks with this one.
+NO_VOLUME_FIGURE = 0.0
+
+#: ``venue_quote_volume`` reads this timeframe over ``VOLUME_WINDOW_DAYS``,
+#: the least window holding one complete session across a weekend.
+VOLUME_TIMEFRAME = RA_TIMEFRAME
+VOLUME_WINDOW_DAYS = 7
 
 #: ``YahooChartAdapter.exchange_id``, the one non-crypto venue configured here.
 VENUE_YAHOO = "yahoo"
@@ -97,13 +107,15 @@ class AssetListing:
     """One asset a sector holds, with the venue and ticker carrying it.
 
     ``quote`` is the currency the venue prices ``ticker`` in, which
-    ``YahooChartAdapter.fetch_chunk`` checks its answer against.
+    ``YahooChartAdapter.fetch_chunk`` checks its answer against; ``volumed``
+    says whether ``venue`` sends a volume figure on ``ticker``'s bars.
     """
 
     symbol: str
     quote: str = USD
     venue: str = NO_VENUE
     ticker: str = ""
+    volumed: bool = True
 
     @property
     def listed(self) -> bool:
@@ -116,13 +128,17 @@ class AssetListing:
 
 
 def _yahoo_fx(symbol: str) -> AssetListing:
-    """One currency pair as the ``VENUE_YAHOO`` ticker spelling it."""
+    """One currency pair as the ``VENUE_YAHOO`` ticker spelling it.
+
+    ``volumed`` is False: ``MAP_SOURCES`` records volume 0 on every bar.
+    """
     base, _, quote = symbol.partition("/")
     return AssetListing(
         symbol=symbol,
         quote=quote,
         venue=VENUE_YAHOO,
         ticker=f"{base}{quote}=X",
+        volumed=False,
     )
 
 
@@ -321,6 +337,47 @@ def venue_candles(symbol: Any, timeframe: Any, days: int = 0) -> list:
     return venue_candle_read(symbol, timeframe, days)[0]
 
 
+def complete_bar(candles: Any, now_ms: Any) -> Any:
+    """The newest candle stamped before the UTC day holding ``now_ms``.
+
+    A window holding no such candle answers its newest one, and an empty
+    window answers None.
+    """
+    held = list(candles or [])
+    if not held:
+        return None
+    day_floor_ms = int(now_ms) - int(now_ms) % DAY_MS
+    closed = [one for one in held if float(one.timestamp) < day_floor_ms]
+    return closed[-1] if closed else held[-1]
+
+
+def venue_quote_volume(symbol: Any, now_ms: Any = None) -> tuple:
+    """One listed name's quote volume, and the refusal when none was read.
+
+    The figure is ``complete_bar``'s volume times its close over
+    ``VOLUME_TIMEFRAME`` candles of the last ``VOLUME_WINDOW_DAYS``; a row
+    whose ``volumed`` is False, and a venue that refused, answer
+    ``NO_VOLUME_FIGURE`` with the refusal named.
+    """
+    found = listing_of(symbol)
+    if found is None:
+        return NO_VOLUME_FIGURE, UNMAPPED_TEXT.format(symbol=symbol)
+    if not found.listed:
+        return NO_VOLUME_FIGURE, NO_VENUE_TEXT.format(symbol=symbol)
+    if not found.volumed:
+        return NO_VOLUME_FIGURE, UNVOLUMED_TEXT.format(venue=found.venue, symbol=symbol)
+    candles, refusal = venue_candle_read(symbol, VOLUME_TIMEFRAME, VOLUME_WINDOW_DAYS)
+    if refusal:
+        return NO_VOLUME_FIGURE, refusal
+    stamp = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    bar = complete_bar(candles, stamp)
+    if bar is None:
+        return NO_VOLUME_FIGURE, NO_COMPLETE_BAR_TEXT.format(
+            venue=found.venue, symbol=symbol
+        )
+    return float(bar.volume) * float(bar.close), ""
+
+
 def _candles_of(ticker: str, rows: Any) -> list:
     """Every row ``candles_from_raw`` accepts, one row at a time.
 
@@ -353,6 +410,7 @@ __all__ = [
     "METALS_SPOT",
     "MIN_WINDOW_DAYS",
     "NO_VENUE",
+    "NO_VOLUME_FIGURE",
     "SECTOR_EXOTIC",
     "SECTOR_MAJOR",
     "SECTOR_MINOR",
@@ -363,11 +421,15 @@ __all__ = [
     "VENUE_TIMEFRAMES",
     "VENUE_WINDOW_DAYS",
     "VENUE_YAHOO",
+    "VOLUME_TIMEFRAME",
+    "VOLUME_WINDOW_DAYS",
+    "complete_bar",
     "exchange_listing",
     "listing_of",
     "listings_for",
     "sectors_for",
     "venue_candle_read",
     "venue_candles",
+    "venue_quote_volume",
     "venue_window_days",
 ]
