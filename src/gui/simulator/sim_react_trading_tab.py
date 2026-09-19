@@ -137,7 +137,12 @@ from ...simulator.parity_report import ParityReport, report_line
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.read_only_connector import ReadOnlyConnector, VenueCall
 from ...simulator.sim_api_log import SimApiLog
-from ...simulator.sim_bus import new_sim_bus, sim_log_manager
+from ...simulator.sim_bus import (
+    RETRIEVAL_RUN,
+    new_sim_bus,
+    routed_run,
+    sim_log_manager,
+)
 from ...simulator.sim_bot_manager import SimBotManager
 from ...simulator.sim_bot_view import SimBotView
 from ...simulator.tablet_source import TabletSource, tablet_key
@@ -1400,33 +1405,40 @@ if _HAS_WEBENGINE:
             ``stop`` the event ``_stop_battery`` sets, and hand the
             ``BatteryRun`` to the GUI thread through ``battery_finished``, each
             walk's and each portfolio's line through ``battery_line`` and each
-            ``SimTrade`` through ``battery_trade``; a run that raises writes
-            one failed line instead."""
-            self._battery_stop.clear()
-            self._battery = {
-                "bot_ids": [bot.bot_id for bot in plan.bots],
-                "every": len(plan.names) > 1,
-                "stopper": "",
-            }
-            try:
-                outcome = portfolio_battery.run_battery(
-                    self._battery_tablet_source,
-                    names=plan.names,
-                    span=span,
-                    plan=plan,
-                    progress=lambda line: self.battery_line.emit(line, "info"),
-                    on_trade=self.battery_trade.emit,
-                    bus=self._bus,
-                    connector=self._connector,
-                    stop=self._battery_stop.is_set,
-                    on_portfolio_started=self.battery_portfolio_started.emit,
-                    on_portfolio_finished=self.battery_portfolio_finished.emit,
-                )
-            except Exception as exc:  # noqa: BLE001 - the run runs off-thread
-                logger.exception("Portfolio Battery failed: %s", exc)
-                self.battery_line.emit(tab_surface.battery_failed_line(exc), "error")
-                return
-            self.battery_finished.emit(outcome)
+            ``SimTrade`` through ``battery_trade``, the thread routed to the
+            sim signal sink by ``routed_run`` for the run's length; a run that
+            raises writes one failed line instead."""
+            with routed_run(
+                sim.MODE_PORTFOLIO_BATTERY,
+                lambda line: self.battery_line.emit(line, "info"),
+            ):
+                self._battery_stop.clear()
+                self._battery = {
+                    "bot_ids": [bot.bot_id for bot in plan.bots],
+                    "every": len(plan.names) > 1,
+                    "stopper": "",
+                }
+                try:
+                    outcome = portfolio_battery.run_battery(
+                        self._battery_tablet_source,
+                        names=plan.names,
+                        span=span,
+                        plan=plan,
+                        progress=lambda line: self.battery_line.emit(line, "info"),
+                        on_trade=self.battery_trade.emit,
+                        bus=self._bus,
+                        connector=self._connector,
+                        stop=self._battery_stop.is_set,
+                        on_portfolio_started=self.battery_portfolio_started.emit,
+                        on_portfolio_finished=self.battery_portfolio_finished.emit,
+                    )
+                except Exception as exc:  # noqa: BLE001 - the run runs off-thread
+                    logger.exception("Portfolio Battery failed: %s", exc)
+                    self.battery_line.emit(
+                        tab_surface.battery_failed_line(exc), "error"
+                    )
+                    return
+                self.battery_finished.emit(outcome)
 
         def _battery_portfolio_started(self, name: str, bots) -> None:
             """Empty the held fills through ``_begin_fills`` so the replay
@@ -1675,38 +1687,41 @@ if _HAS_WEBENGINE:
         def _compute_run(self, mode: str, bots: list, exchange_id: str) -> None:
             """Run ``validation.run`` or ``back_test.run`` over ``bots`` and
             the tab's sources on the worker thread, each fill through
-            ``run_trade`` and the outcome through ``run_finished``; a run that
-            raises writes the failed line and hands None to ``run_finished``."""
-            try:
-                if mode == sim.MODE_VALIDATION:
-                    outcome = validation.run(
-                        bots,
-                        self._tablet_source,
-                        YtdTradeSource(),
-                        GateLogSource(),
-                        exchange_id=exchange_id,
-                        limit=sim.VALIDATION_RERUN_LIMIT,
-                        on_trade=self.run_trade.emit,
-                        stop=self._run_stop.is_set,
-                        bus=self._bus,
-                    )
-                else:
-                    outcome = back_test.run(
-                        bots,
-                        self._tablet_source,
-                        exchange_id=exchange_id,
-                        ticks_per_bot=sim.BACK_TEST_TICKS_PER_BOT,
-                        funding=sim.funding_for(mode),
-                        on_trade=self.run_trade.emit,
-                        stop=self._run_stop.is_set,
-                        bus=self._bus,
-                    )
-            except Exception as exc:
-                logger.exception("%s run failed: %s", mode, exc)
-                self.run_line.emit(tab_surface.run_failed_line(mode, exc), "error")
-                self.run_finished.emit(None)
-                return
-            self.run_finished.emit(outcome)
+            ``run_trade`` and the outcome through ``run_finished``, the thread
+            routed to the sim signal sink by ``routed_run`` for the run's
+            length; a run that raises writes the failed line and hands None to
+            ``run_finished``."""
+            with routed_run(mode, lambda line: self.run_line.emit(line, "info")):
+                try:
+                    if mode == sim.MODE_VALIDATION:
+                        outcome = validation.run(
+                            bots,
+                            self._tablet_source,
+                            YtdTradeSource(),
+                            GateLogSource(),
+                            exchange_id=exchange_id,
+                            limit=sim.VALIDATION_RERUN_LIMIT,
+                            on_trade=self.run_trade.emit,
+                            stop=self._run_stop.is_set,
+                            bus=self._bus,
+                        )
+                    else:
+                        outcome = back_test.run(
+                            bots,
+                            self._tablet_source,
+                            exchange_id=exchange_id,
+                            ticks_per_bot=sim.BACK_TEST_TICKS_PER_BOT,
+                            funding=sim.funding_for(mode),
+                            on_trade=self.run_trade.emit,
+                            stop=self._run_stop.is_set,
+                            bus=self._bus,
+                        )
+                except Exception as exc:
+                    logger.exception("%s run failed: %s", mode, exc)
+                    self.run_line.emit(tab_surface.run_failed_line(mode, exc), "error")
+                    self.run_finished.emit(None)
+                    return
+                self.run_finished.emit(outcome)
 
         def _stop_run(self, bot_id: str) -> None:
             """Stop on ``bot_id``, a row of the run in flight: Live's stopping
@@ -2441,29 +2456,33 @@ if _HAS_WEBENGINE:
             """Run ``tablet_retrieval.retrieve`` over ``root``, the replay
             layer's tablet root at the press, and the connector and hand the
             ``RetrievalOutcome`` to the GUI thread through
-            ``retrieval_finished``; a walk that raises hands one carrying the
-            error."""
-            try:
-                outcome = asyncio.run(
-                    tablet_retrieval.retrieve(
-                        root,
-                        self._connector,
-                        asset,
-                        exchange_id,
-                        since_ms,
-                        until_ms,
+            ``retrieval_finished``, the thread routed to the sim signal sink by
+            ``routed_run`` for the walk's length; a walk that raises hands one
+            carrying the error."""
+            with routed_run(
+                RETRIEVAL_RUN, lambda line: self.retrieval_line.emit(line, "info")
+            ):
+                try:
+                    outcome = asyncio.run(
+                        tablet_retrieval.retrieve(
+                            root,
+                            self._connector,
+                            asset,
+                            exchange_id,
+                            since_ms,
+                            until_ms,
+                        )
                     )
-                )
-            except Exception as exc:  # noqa: BLE001 - the walk runs off-thread
-                logger.exception("Stone Tablet retrieval failed: %s", exc)
-                outcome = tablet_retrieval.RetrievalOutcome(
-                    asset=asset,
-                    exchange_id=exchange_id,
-                    since_ms=since_ms,
-                    until_ms=until_ms,
-                    error=f"{type(exc).__name__}: {exc}",
-                )
-            self.retrieval_finished.emit(outcome)
+                except Exception as exc:  # noqa: BLE001 - the walk runs off-thread
+                    logger.exception("Stone Tablet retrieval failed: %s", exc)
+                    outcome = tablet_retrieval.RetrievalOutcome(
+                        asset=asset,
+                        exchange_id=exchange_id,
+                        since_ms=since_ms,
+                        until_ms=until_ms,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                self.retrieval_finished.emit(outcome)
 
         def _on_venue_call(self, call: VenueCall) -> None:
             """The connector's report, on the worker thread: cross to the GUI

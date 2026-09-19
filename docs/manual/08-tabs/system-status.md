@@ -72,6 +72,20 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 """Byte size at which the sink's file rotates to `.1`."""
 ```
 
+The function stays one; the sinks are two. A thread that calls `route_thread`
+sends its own emits to another sink of the same class until it calls
+`unroute_thread`, and `get_sink` answers per thread. The Simulator routes each
+run's worker thread to its own sink under the sim bucket, so a run's rows
+never rotate the process sink; every other thread's emits reach the process
+sink as before. See [simulator.md](simulator.md).
+
+`src/core/signal_contract.py` — the routing
+
+```python
+def route_thread(sink: SignalSink) -> None:
+    """Send every `emit` raised on the calling thread to `sink` until `unroute_thread`."""
+```
+
 ### Tracked emitters
 
 A second module declares every emitter. A contract names a topic, the fields a

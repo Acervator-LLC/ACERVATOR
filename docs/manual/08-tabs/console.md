@@ -187,6 +187,21 @@ def _drain_signals(self) -> None:
     """Render sink records past `_signal_seq`, keeping the newest 200."""
 ```
 
+The drain reads the process sink, the one `get_sink` answers on the GUI
+thread. A Simulator run routes its worker thread to the Simulator's own sink
+under the sim bucket, so the walk's pins, the TA engine's thirteen
+postcondition pins per evaluation among them, no longer reach this pane; the
+Simulator's own presses on the GUI thread and the one `sim.sink.routed` row
+each run leaves at its end do. See [simulator.md](simulator.md).
+
+`src/core/signal_contract.py` — the sink the drain reads
+
+```python
+def get_sink() -> Optional[SignalSink]:
+    """The sink the calling thread emits into: its `route_thread` sink when one
+    is set, else the process sink."""
+```
+
 Seven counters ride along, published every five seconds: the sequence
 watermark, drain ticks, records read, records rendered, records the slice
 dropped, gap markers drawn, and health ticks seen. Ticks count invocations
