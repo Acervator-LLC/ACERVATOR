@@ -1,8 +1,9 @@
 """Supertrend -- ATR trailing stop (Oliver Seban).
 
-``SupertrendIndicator.compute`` builds Wilder's ATR from ``_true_range``
-and returns a ``Signal`` whose direction follows the sticky band it last
-crossed.
+``SupertrendIndicator.lines`` builds Wilder's ATR from ``_true_range`` and
+answers the sticky line and its side for every candle; ``compute`` reads
+the last two entries into a ``Signal`` whose direction follows the band
+the close last crossed.
 """
 
 from __future__ import annotations
@@ -14,6 +15,10 @@ from .types import (
 from .helpers import (
     _true_range,
 )
+
+#: One entry per candle, ``None`` before ``period`` bars.
+_Line = list[float | None]
+_Side = list[bool | None]
 
 
 class SupertrendIndicator:
@@ -39,41 +44,31 @@ class SupertrendIndicator:
         self.multiplier = multiplier
         self.weight = weight
 
-    def compute(self, candles: list, timeframe: str = "1h") -> Signal:
+    def lines(self, candles: list) -> tuple[_Line, _Side, _Line]:
+        """The Supertrend line, its side and the ATR under it, one entry per candle.
+
+        The line is the final lower band on a bullish bar and the final
+        upper band on a bearish bar, as the class docstring defines them;
+        the side is True for bullish. Every entry is ``None`` before
+        ``period`` bars, where no ATR has closed.
+        """
         n = len(candles)
-        if n < self.period + 2:
-            return Signal(
-                "supertrend",
-                timeframe,
-                SignalDirection.NEUTRAL,
-                0.0,
-                self.weight,
-                abstained=True,
-            )
+        line: _Line = [None] * n
+        side: _Side = [None] * n
+        atr_series: _Line = [None] * n
+        if n < self.period + 1:
+            return line, side, atr_series
 
         # Wilder's ATR averages every True Range, bar 0 included.
         tr_list = _true_range(candles)
 
-        atr = [0.0] * (self.period)
-        if len(tr_list) >= self.period:
-            first_atr = sum(tr_list[: self.period]) / self.period
-            atr = [first_atr]
-            for tr in tr_list[self.period :]:
-                atr.append((atr[-1] * (self.period - 1) + tr) / self.period)
-
-        if not atr:
-            return Signal(
-                "supertrend",
-                timeframe,
-                SignalDirection.NEUTRAL,
-                0.0,
-                self.weight,
-                abstained=True,
-            )
+        first_atr = sum(tr_list[: self.period]) / self.period
+        atr = [first_atr]
+        for tr in tr_list[self.period :]:
+            atr.append((atr[-1] * (self.period - 1) + tr) / self.period)
 
         # atr[j] is the ATR at candle period - 1 + j; see idx_atr below.
         start = self.period
-        curr_atr = atr[-1]
 
         ub = [0.0]
         lb = [0.0]
@@ -110,18 +105,36 @@ class SupertrendIndicator:
             ub.append(final_ub)
             lb.append(final_lb)
             st.append(curr_bull)
+            line[i] = final_lb if curr_bull else final_ub
+            side[i] = curr_bull
+            atr_series[i] = a
+        return line, side, atr_series
 
-        curr_bull = st[-1]
-        prev_bull = st[-2] if len(st) >= 2 else curr_bull
+    def compute(self, candles: list, timeframe: str = "1h") -> Signal:
+        n = len(candles)
+        if n < self.period + 2:
+            return Signal(
+                "supertrend",
+                timeframe,
+                SignalDirection.NEUTRAL,
+                0.0,
+                self.weight,
+                abstained=True,
+            )
+
+        line, side, atr_series = self.lines(candles)
+        curr_atr = atr_series[-1]
+        curr_bull = bool(side[-1])
+        prev_bull = side[-2] if side[-2] is not None else curr_bull
         flip_bull = curr_bull and not prev_bull
         flip_bear = not curr_bull and prev_bull
 
         price = candles[-1].close
-        st_line = lb[-1] if curr_bull else ub[-1]
+        st_line = line[-1]
 
         # `raw_lb` is `hl2 - multiplier * a` and goes at or below zero once
         # `a` passes `hl2 / multiplier`.
-        if st_line <= 0.0:
+        if st_line is None or st_line <= 0.0:
             return Signal(
                 "supertrend",
                 timeframe,

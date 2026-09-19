@@ -15,19 +15,68 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from src._variant import resolve_variant
+from src.core.signal_contract import emit as _pin_emit
 from src.gui.theme_engine import CYBERPUNK_DARK
 from src.trading.ta_engine import (
+    ADXIndicator,
     BollingerBands,
     IchimokuCloud,
+    KaufmanERIndicator,
     MACD,
+    RSIIndicator,
+    SlingshotIndicator,
     StochasticRSI,
+    SupertrendIndicator,
     VortexIndicator,
+    ZScoreIndicator,
 )
 
 logger = logging.getLogger("acervator.gui")
 
 # Fraction of one grid step the last price tick may overshoot by and still draw.
 GRID_TICK_TOLERANCE = 1e-9
+
+#: The pin ``ChartPainter.set_overlay`` writes once per press, through ``_pin_emit``.
+TOGGLED_PIN = "charts.indicator.toggled"
+
+#: The pin ``ChartPainter.set_candles`` writes once the series recompute.
+DRAWN_PIN = "charts.indicators.drawn"
+
+#: The published reference levels each sub-pane rules: Wilder's RSI 30 and
+#: 70, ADX 20 and 25, and the Z-Score reversal threshold either side of 0.
+RSI_BANDS = (30.0, 70.0)
+ADX_BANDS = (20.0, 25.0)
+ZSCORE_BANDS = (-2.0, 2.0)
+
+#: The fixed scales the RSI, ADX and KER sub-panes draw on.
+PERCENT_SCALE = (0.0, 100.0)
+RATIO_SCALE = (0.0, 1.0)
+
+#: The least half-range the Z-Score sub-pane draws, so the bands sit inside it.
+ZSCORE_SCALE_FLOOR = 3.0
+
+#: The price pane's left margin and its right margin, which holds the price axis.
+CHART_LEFT_MARGIN_PX = 8
+CHART_RIGHT_MARGIN_PX = 78
+
+#: The pixel height one sub-pane takes at the chart's natural height, the
+#: least it shrinks to when the window gives less, and the price pane's
+#: layout height and its paint floor.
+SUB_PANE_H = 60
+SUB_PANE_MIN_H = 28
+PRICE_PANE_LAYOUT_H = 220
+PRICE_PANE_MIN_H = 120
+
+#: The pixel height of one legend row, the padding over and under the band,
+#: and the gap between two entries.
+LEGEND_ROW_H = 13
+LEGEND_PAD = 3
+LEGEND_GAP_PX = 14
+
+#: The legend text of an overlay switched off, and of a series with no value yet.
+LEGEND_OFF_TEXT = "off"
+LEGEND_NO_VALUE_TEXT = "-"
 
 try:
     from PySide6.QtWidgets import (
@@ -37,6 +86,7 @@ try:
         QLabel,
         QComboBox,
         QCheckBox,
+        QSizePolicy,
     )
     from PySide6.QtCore import Qt, QRectF, QPointF, Signal
     from PySide6.QtGui import (
@@ -198,11 +248,76 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=True,
         draw="_draw_slingshot",
         tooltip=(
-            "Slingshot marks — diamond at a Bollinger squeeze release, "
-            "circle at a snapback. Opaque marks sit over the bands, so it "
-            "starts off."
+            "Slingshot marks — diamond at a squeeze release (Bollinger bands "
+            "back outside the Keltner channel, signed by momentum), circle at "
+            "a Bollinger snapback, from SlingshotIndicator.lines. Opaque marks "
+            "sit over the bands, so it starts off."
         ),
         voter="slingshot",
+    ),
+    ChartOverlay(
+        key="adx",
+        label="ADX",
+        colour_field="chart_last_price",
+        pane=SUB_PANE,
+        occludes=False,
+        draw="_draw_adx",
+        tooltip="ADX (14) with +DI and -DI, 0..100, 20 and 25 ruled, sub-pane",
+        voter="adx",
+    ),
+    ChartOverlay(
+        key="supertrend",
+        label="STrd",
+        colour_field="chart_up_edge",
+        pane=PRICE_PANE,
+        occludes=False,
+        draw="_draw_supertrend",
+        tooltip="Supertrend (10, 3.0): the ATR stop under price while bullish, over it while bearish",
+        voter="supertrend",
+    ),
+    ChartOverlay(
+        key="zscore",
+        label="ZSc",
+        colour_field="chart_zone_scrum",
+        pane=SUB_PANE,
+        occludes=False,
+        draw="_draw_zscore",
+        tooltip="Z-Score (50) of the close against its mean, VWMA-smoothed over 3, ±2 ruled, sub-pane",
+        voter="zscore",
+    ),
+    ChartOverlay(
+        key="ker",
+        label="KER",
+        colour_field="chart_trend_slow",
+        pane=SUB_PANE,
+        occludes=False,
+        draw="_draw_ker",
+        tooltip="Kaufman Efficiency Ratio (10), 0..1, sub-pane",
+        voter="kaufman_er",
+    ),
+    ChartOverlay(
+        key="rsi",
+        label="RSI",
+        colour_field="chart_down_edge",
+        pane=SUB_PANE,
+        occludes=False,
+        draw="_draw_rsi",
+        tooltip="Wilder RSI (14), 0..100, 30 and 70 ruled, sub-pane",
+        voter="rsi",
+    ),
+    ChartOverlay(
+        key="zscore_point",
+        label="ZPt",
+        colour_field="chart_zone_scrum",
+        pane=PRICE_PANE,
+        occludes=True,
+        draw="_draw_zscore_point",
+        tooltip=(
+            "Z-Score algo point — the resistance and support prices the "
+            "averaged reversals project (mean + target z × deviation). "
+            "Lines over the price pane, so it starts off."
+        ),
+        voter="zscore",
     ),
     ChartOverlay(
         key="bbullseye",
@@ -419,6 +534,15 @@ if _HAS_QT:
         VORTEX_PLUS: QColor
         VORTEX_MINUS: QColor
         OSC_LINE: QColor
+        ADX_LINE: QColor
+        DI_PLUS: QColor
+        DI_MINUS: QColor
+        ST_BULL: QColor
+        ST_BEAR: QColor
+        ZSCORE_LINE: QColor
+        ZSCORE_ZONE: QColor
+        KER_LINE: QColor
+        RSI_LINE: QColor
         GAP_MARK: QColor
         MARKER_SCRUM: QColor
         MARKER_FOLD: QColor
@@ -487,6 +611,15 @@ if _HAS_QT:
             "VORTEX_PLUS": ("chart_bull", 230),
             "VORTEX_MINUS": ("chart_bear", 230),
             "OSC_LINE": ("chart_oscillator", 230),
+            "ADX_LINE": ("chart_last_price", 230),
+            "DI_PLUS": ("chart_bull", 200),
+            "DI_MINUS": ("chart_bear", 200),
+            "ST_BULL": ("chart_bull", 230),
+            "ST_BEAR": ("chart_bear", 230),
+            "ZSCORE_LINE": ("chart_zone_scrum", 230),
+            "ZSCORE_ZONE": ("chart_zone_scrum", 170),
+            "KER_LINE": ("chart_trend_slow", 230),
+            "RSI_LINE": ("chart_down_edge", 230),
             "GAP_MARK": ("chart_gap", 200),
             "MARKER_SCRUM": ("chart_last_price", 255),
             "MARKER_FOLD": ("chart_trend_slow", 255),
@@ -552,8 +685,15 @@ if _HAS_QT:
             self._ichimoku_data: list[tuple] = (
                 []
             )  # [(tenkan, kijun, span_a, span_b, chikou), ...]
-            self._slingshot_data: list = []
+            self._slingshot_data: list = []  # [SlingshotBar | None, ...]
+            self._adx_data: list = []  # [(di_plus, di_minus, adx) | None, ...]
+            self._supertrend_data: list = []  # [(line, bullish, atr) | None, ...]
+            self._zscore_data: list = []  # [ZScoreBar | None, ...]
+            self._ker_data: list = []  # [ratio | None, ...]
+            self._rsi_data: list = []  # [rsi | None, ...]
             self._bbullseye_data: list = []
+            # The (vmin, vmax) each sub-pane last drew on, by overlay key.
+            self._sub_scale: dict[str, tuple] = {}
             self._tranche_floors: list[tuple] = []  # [(price, label), ...]
 
             self._tb_anchor_price: Optional[float] = None
@@ -583,11 +723,30 @@ if _HAS_QT:
             self._repaint()
 
         def set_candles(self, candles: list[Candle]) -> None:
+            """Take the candles, recompute every series and write ``DRAWN_PIN``.
+
+            The pin's ``actual`` is the switched-on entries of
+            ``legend_entries`` holding a value on the last candle, and
+            ``expected`` is every switched-on entry.
+            """
             self._candles = candles
             self._error_text = ""
             if candles:
                 self._status_text = f"{len(candles)} candles"
                 self._compute_indicators()
+                shown = [one for one in self.legend_entries() if one["on"]]
+                _pin_emit(
+                    DRAWN_PIN,
+                    actual=sum(1 for one in shown if one["has_value"]),
+                    expected=len(shown),
+                    context={
+                        "symbol": self._symbol,
+                        "timeframe": self._current_tf,
+                        "candles": len(candles),
+                        "keys": [one["key"] for one in shown],
+                        "values": {one["key"]: one["text"] for one in shown},
+                    },
+                )
             self._repaint()
 
         def set_source_label(self, source: str) -> None:
@@ -668,10 +827,11 @@ if _HAS_QT:
             return self.TEXT_DIM
 
         def _compute_indicators(self):
-            """Fill ``_bb_data``, ``_vortex_data``, ``_macd_data``,
-            ``_stochrsi_data`` and ``_ichimoku_data`` from the engine
-            classes. A ``None`` entry marks a candle with no value, and
-            ``paintEvent`` skips it.
+            """Fill every ``_<key>_data`` series from the engine classes' own
+            ``bands`` and ``lines``, one entry per candle.
+
+            A ``None`` entry marks a candle with no value, and every draw
+            method skips it.
             """
             candles = self._candles
             self._bb_data = BollingerBands(20, 2.0).bands(candles)
@@ -688,6 +848,185 @@ if _HAS_QT:
             self._stochrsi_data = StochasticRSI().lines(candles)
             # IchimokuCloud returns unshifted series; paintEvent shifts them 26 bars.
             self._ichimoku_data = IchimokuCloud(9, 26, 52).lines(candles)
+            self._slingshot_data = SlingshotIndicator().lines(candles)
+            di_plus, di_minus, adx = ADXIndicator().lines(candles)
+            self._adx_data = [
+                None if (p is None or m is None) else (p, m, a)
+                for p, m, a in zip(di_plus, di_minus, adx)
+            ]
+            st_line, st_side, st_atr = SupertrendIndicator().lines(candles)
+            self._supertrend_data = [
+                None if (ln is None or bull is None) else (ln, bull, a)
+                for ln, bull, a in zip(st_line, st_side, st_atr)
+            ]
+            self._zscore_data = ZScoreIndicator().lines(candles)
+            self._ker_data = KaufmanERIndicator().lines(candles)
+            self._rsi_data = RSIIndicator().lines(candles)
+
+        def _fmt_ratio(self, value) -> str:
+            """A sub-pane value as ``_sub_axis_label`` prints it."""
+            return f"{value:.4f}" if abs(value) < 10 else f"{value:.2f}"
+
+        def _legend_text(self, key: str) -> Optional[str]:
+            """The last candle's reading of ``key``'s series as one legend value.
+
+            ``None`` where the series holds no value on the last candle.
+            """
+            if not self._candles:
+                return None
+            fp = self._fmt_price
+            fr = self._fmt_ratio
+            if key == "bb" or key == "bbullseye":
+                band = self._bb_data[-1] if self._bb_data else None
+                if band is None:
+                    return None
+                if key == "bb":
+                    return f"{fp(band[0])} / {fp(band[1])} / {fp(band[2])}"
+                return f"u {fp(band[0])} l {fp(band[2])} ±0.5% ±0.2%"
+            if key == "vortex":
+                pair = self._vortex_data[-1] if self._vortex_data else None
+                return None if pair is None else f"VI+ {fr(pair[0])} VI- {fr(pair[1])}"
+            if key == "macd":
+                three = self._macd_data[-1] if self._macd_data else None
+                if three is None:
+                    return None
+                return f"{fr(three[0])} sig {fr(three[1])} hist {fr(three[2])}"
+            if key == "stochrsi":
+                value = self._stochrsi_data[-1] if self._stochrsi_data else None
+                return None if value is None else fr(value)
+            if key == "ichimoku":
+                five = self._ichimoku_data[-1] if self._ichimoku_data else None
+                if five is None or five[0] is None or five[1] is None:
+                    return None
+                return f"T {fp(five[0])} K {fp(five[1])}"
+            if key == "volume":
+                return self._fmt_volume(self._candles[-1].volume)
+            if key == "slingshot":
+                bar = self._slingshot_data[-1] if self._slingshot_data else None
+                if bar is None:
+                    return None
+                parts = ["sqz on" if bar.sqz_on else "sqz off"]
+                if bar.released:
+                    parts.append("release " + ("+" if bar.momentum > 0 else "-"))
+                if bar.snapback:
+                    parts.append("snapback " + ("+" if "bull" in bar.snapback else "-"))
+                return " ".join(parts)
+            if key == "adx":
+                three = self._adx_data[-1] if self._adx_data else None
+                if three is None:
+                    return None
+                adx = LEGEND_NO_VALUE_TEXT if three[2] is None else f"{three[2]:.2f}"
+                return f"{adx} +DI {three[0]:.2f} -DI {three[1]:.2f}"
+            if key == "supertrend":
+                three = self._supertrend_data[-1] if self._supertrend_data else None
+                if three is None:
+                    return None
+                return f"{fp(three[0])} {'bull' if three[1] else 'bear'}"
+            if key == "zscore" or key == "zscore_point":
+                bar = self._zscore_data[-1] if self._zscore_data else None
+                if bar is None:
+                    return None
+                if key == "zscore":
+                    return f"{bar.z:+.2f}"
+                return f"R {fp(bar.resistance_price)} S {fp(bar.support_price)}"
+            if key == "ker":
+                value = self._ker_data[-1] if self._ker_data else None
+                return None if value is None else fr(value)
+            if key == "rsi":
+                value = self._rsi_data[-1] if self._rsi_data else None
+                return None if value is None else f"{value:.2f}"
+            return None
+
+        @staticmethod
+        def _fmt_volume(volume: float) -> str:
+            """A volume as the strip's ``Vol`` label prints it."""
+            if volume >= 1e9:
+                return f"{volume / 1e9:.1f}B"
+            if volume >= 1e6:
+                return f"{volume / 1e6:.1f}M"
+            if volume >= 1e3:
+                return f"{volume / 1e3:.1f}K"
+            return f"{volume:.0f}"
+
+        def legend_entries(self) -> list:
+            """One entry per ``CHART_OVERLAYS`` key, in registry order.
+
+            Each carries ``key``, ``label``, ``text`` (the last candle's
+            value, ``LEGEND_OFF_TEXT`` when switched off,
+            ``LEGEND_NO_VALUE_TEXT`` when the series holds none),
+            ``colour`` as a hex name, ``on`` and ``has_value``.
+            """
+            found = []
+            for overlay in CHART_OVERLAYS:
+                on = bool(self._overlay_shown.get(overlay.key, False))
+                value = self._legend_text(overlay.key)
+                if not on:
+                    text = LEGEND_OFF_TEXT
+                elif value is None:
+                    text = LEGEND_NO_VALUE_TEXT
+                else:
+                    text = value
+                found.append(
+                    {
+                        "key": overlay.key,
+                        "label": overlay.label,
+                        "text": text,
+                        "colour": self.overlay_colour(overlay).name(),
+                        "on": on,
+                        "has_value": value is not None,
+                    }
+                )
+            return found
+
+        def _legend_rows(self, width: int, metrics: QFontMetrics) -> list:
+            """``legend_entries`` broken into rows at ``width``: one list of
+            ``(entry, x, label_w)`` per row, entries wrapping past the price axis."""
+            if not self._candles:
+                return []
+            rows: list = [[]]
+            x = CHART_LEFT_MARGIN_PX
+            room = int(width) - CHART_RIGHT_MARGIN_PX
+            for entry in self.legend_entries():
+                label_w = metrics.horizontalAdvance(entry["label"]) + 4
+                entry_w = label_w + metrics.horizontalAdvance(entry["text"])
+                if rows[-1] and x + entry_w > room:
+                    rows.append([])
+                    x = CHART_LEFT_MARGIN_PX
+                rows[-1].append((entry, x, label_w))
+                x += entry_w + LEGEND_GAP_PX
+            return rows
+
+        def _legend_strip_h(self, width: int) -> int:
+            """The pixel height the legend band takes under the OHLC row at ``width``.
+
+            No candles take no band; a width of ``NO_CAPTION_WIDTH`` or under
+            cannot be wrapped in and takes one row.
+            """
+            if not self._candles:
+                return 0
+            if int(width) <= NO_CAPTION_WIDTH:
+                return LEGEND_PAD * 2 + LEGEND_ROW_H
+            metrics = QFontMetrics(QFont(CAPTION_FONT_FAMILY, CAPTION_FONT_PT))
+            return LEGEND_PAD * 2 + LEGEND_ROW_H * max(
+                1, len(self._legend_rows(width, metrics))
+            )
+
+        def _draw_legend(self, p: QPainter, w: int, top: int, font_sm: QFont) -> None:
+            """Draw the legend rows from ``top``: each label in its overlay
+            colour and its value in ``TEXT_LIGHT``, an off entry in ``TEXT_DIM``."""
+            p.setFont(font_sm)
+            metrics = QFontMetrics(font_sm)
+            baseline = top + LEGEND_PAD + LEGEND_ROW_H - 3
+            for row in self._legend_rows(w, metrics):
+                for entry, x, label_w in row:
+                    label_colour = (
+                        QColor(entry["colour"]) if entry["on"] else self.TEXT_DIM
+                    )
+                    p.setPen(QPen(label_colour))
+                    p.drawText(int(x), int(baseline), entry["label"])
+                    p.setPen(QPen(self.TEXT_LIGHT if entry["on"] else self.TEXT_DIM))
+                    p.drawText(int(x + label_w), int(baseline), entry["text"])
+                baseline += LEGEND_ROW_H
 
         def add_marker(self, marker: TradeMarker) -> None:
             self._markers.append(marker)
@@ -776,10 +1115,19 @@ if _HAS_QT:
             self._repaint()
 
         def set_overlay(self, key: str, on: bool) -> bool:
-            """Switch one ``CHART_OVERLAYS`` key on or off; False for a key not in the registry."""
+            """Switch one ``CHART_OVERLAYS`` key on or off and write ``TOGGLED_PIN``.
+
+            False for a key not in the registry, which writes no pin.
+            """
             if key not in self._overlay_shown:
                 return False
             self._overlay_shown[key] = bool(on)
+            _pin_emit(
+                TOGGLED_PIN,
+                actual=self._overlay_shown[key],
+                expected=bool(on),
+                context={"key": key, "on": bool(on), "variant": resolve_variant()},
+            )
             self._repaint()
             return True
 
@@ -794,14 +1142,26 @@ if _HAS_QT:
             """Return the pixel height the toggled-on panes need.
 
             The price pane takes 220, the volume strip adds 28, each entry of
-            ``_sub_overlays_with_data`` adds 60, ``_call_strip_h`` adds the
+            ``_sub_overlays_with_data`` adds 60, ``_legend_strip_h`` adds the
+            legend rows wrapped at ``width``, ``_call_strip_h`` adds the
             voter rows and ``_caption_strip_h`` adds the caption wrapped at
             ``width``, over a 64px header.
             """
-            base = 28 + 18 + 220 + 18  # header + OHLC + price + time
+            return self._height_for_panes(width, SUB_PANE_H)
+
+        def _minimum_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
+            """The least pixel height the toggled-on panes draw in: each
+            sub-pane at ``SUB_PANE_MIN_H``, the rest as ``_natural_height_for_panes``.
+            """
+            return self._height_for_panes(width, SUB_PANE_MIN_H)
+
+        def _height_for_panes(self, width: int, sub_pane_h: int) -> int:
+            """The pixel height of every pane with each sub-pane at ``sub_pane_h``."""
+            base = 28 + 18 + PRICE_PANE_LAYOUT_H + 18  # header + OHLC + price + time
             if self._overlay_shown["volume"]:
                 base += 28
-            base += len(self._sub_overlays_with_data()) * 60
+            base += len(self._sub_overlays_with_data()) * int(sub_pane_h)
+            base += self._legend_strip_h(width)
             return base + self._call_strip_h() + self._caption_strip_h(width)
 
         def _sub_overlays_with_data(self) -> tuple:
@@ -870,10 +1230,11 @@ if _HAS_QT:
                 self._draw_header(p, w, font_hdr, font_sm)
                 return
 
-            ML = 8
-            MR = 78  # right margin (price axis + badges)
+            ML = CHART_LEFT_MARGIN_PX
+            MR = CHART_RIGHT_MARGIN_PX
             MT = 28  # header
             OHLC_H = 18  # OHLC info row at top of price pane
+            LEGEND_H = self._legend_strip_h(w)
             # time axis, then the voter strip, then the caption
             MB = 18 + self._call_strip_h() + self._caption_strip_h(w)
 
@@ -881,7 +1242,18 @@ if _HAS_QT:
             show_volume = self._overlay_shown["volume"]
 
             VOL_H = 28 if show_volume else 0
-            SUB_H = 60  # height of each oscillator sub-pane
+            # Each sub-pane takes SUB_PANE_H, and shrinks toward
+            # SUB_PANE_MIN_H when h leaves the price pane under its layout height.
+            fixed_h = MT + OHLC_H + LEGEND_H + MB + VOL_H
+            SUB_H = SUB_PANE_H
+            if (
+                sub_overlays
+                and h - fixed_h - SUB_H * len(sub_overlays) < PRICE_PANE_LAYOUT_H
+            ):
+                SUB_H = max(
+                    SUB_PANE_MIN_H,
+                    (h - fixed_h - PRICE_PANE_LAYOUT_H) // len(sub_overlays),
+                )
             total_sub_h = SUB_H * len(sub_overlays)
 
             chart_w = w - ML - MR
@@ -900,11 +1272,12 @@ if _HAS_QT:
                 n = n_total
                 v_start = 0
 
-            available = h - MT - OHLC_H - MB - VOL_H - total_sub_h
-            price_h = max(120, available)
+            available = h - fixed_h - total_sub_h
+            price_h = max(PRICE_PANE_MIN_H, available)
 
             ohlc_top = MT
-            price_top = ohlc_top + OHLC_H
+            self._draw_legend(p, w, ohlc_top + OHLC_H, font_sm)
+            price_top = ohlc_top + OHLC_H + LEGEND_H
             price_bot = price_top + price_h
             vol_top = price_bot
             vol_bot = vol_top + VOL_H
@@ -1664,104 +2037,188 @@ if _HAS_QT:
                     p.setBrush(QBrush(self.ZONE_SCRUM_WICK))
                     p.drawPolygon(QPolygonF(poly))
 
-            # BB_PERIOD, BB_STD, SQ_LB, SQ_THR and SN_LB are SlingshotIndicator's
-            # defaults; its Keltner release test is not drawn here.
-
         def _draw_slingshot(self, ctx) -> None:
-            """Paint one mark per Slingshot squeeze release or snapback."""
+            """Paint one mark per ``SlingshotBar`` release or snapback in view.
+
+            A release is a diamond, signed by the bar's momentum; a snapback
+            is a circle, signed by its side, on the first bar of a run of the
+            same reading. A bullish mark sits under the candle's low and a
+            bearish one over its high.
+            """
             p = ctx.p
             cw = ctx.cw
-            v_start = ctx.v_start
-            v_end = ctx.v_end
             visible_candles = ctx.visible_candles
             i2x = ctx.i2x
             p2y = ctx.p2y
-            if self._overlay_shown["slingshot"]:
-                # Full history: the leftmost visible candle needs a run-up.
-                full_closes = [c.close for c in self._candles]
-                n_full = len(full_closes)
-                BB_PERIOD = 20
-                BB_STD = 2.0
-                SQ_LB = 30  # squeeze lookback
-                SN_LB = 5  # snapback lookback
-                SQ_THR = 0.6  # bandwidth threshold (fraction of avg)
-                if n_full >= BB_PERIOD + SQ_LB + 2:
-                    sl_bb: list[Optional[tuple]] = [None] * n_full
-                    for k in range(BB_PERIOD - 1, n_full):
-                        window = full_closes[k - BB_PERIOD + 1 : k + 1]
-                        mid = sum(window) / BB_PERIOD
-                        if mid <= 0:
-                            continue
-                        var = sum((x - mid) ** 2 for x in window) / BB_PERIOD
-                        std = var**0.5
-                        up = mid + BB_STD * std
-                        lo = mid - BB_STD * std
-                        bw = (up - lo) / mid
-                        sl_bb[k] = (full_closes[k], up, lo, mid, bw)
+            visible = self._slingshot_data[ctx.v_start : ctx.v_end]
+            for vis_i, bar in enumerate(visible):
+                if bar is None or vis_i >= len(visible_candles):
+                    continue
+                full_i = ctx.v_start + vis_i
+                earlier = self._slingshot_data[full_i - 1] if full_i > 0 else None
+                marks = []
+                if bar.released and bar.momentum != 0.0:
+                    marks.append(("release", bar.momentum > 0.0))
+                if bar.snapback and (
+                    earlier is None or earlier.snapback != bar.snapback
+                ):
+                    marks.append(("snapback", "bull" in bar.snapback))
+                if not marks:
+                    continue
+                x = i2x(vis_i) + cw / 2
+                cdl = visible_candles[vis_i]
+                for kind, bullish in marks:
+                    if bullish:
+                        color = self.EVENT_BULL
+                        anchor_y = p2y(cdl.low) + 14
+                    else:
+                        color = self.EVENT_BEAR
+                        anchor_y = p2y(cdl.high) - 14
+                    p.setBrush(QBrush(color))
+                    p.setPen(QPen(color.lighter(140), 1.4))
+                    if kind == "release":
+                        sz = 6
+                        diamond = QPolygonF(
+                            [
+                                QPointF(x, anchor_y - sz),
+                                QPointF(x + sz, anchor_y),
+                                QPointF(x, anchor_y + sz),
+                                QPointF(x - sz, anchor_y),
+                            ]
+                        )
+                        p.drawPolygon(diamond)
+                    else:
+                        p.drawEllipse(QPointF(x, anchor_y), 5.5, 5.5)
 
-                    fires = []  # [(idx, kind, bullish)]; kind in {"squeeze","snapback"}
-                    for k in range(BB_PERIOD + SQ_LB, n_full):
-                        window = sl_bb[k - SQ_LB : k]
-                        window = [b for b in window if b is not None]
-                        if len(window) < SQ_LB - 2:
-                            continue
-                        avg_bw = sum(b[4] for b in window) / len(window)
-                        curr = sl_bb[k]
-                        prev = sl_bb[k - 1]
-                        if curr is None or prev is None:
-                            continue
-                        recent4 = [b for b in sl_bb[k - 3 : k + 1] if b is not None]
-                        n_squeezed = sum(1 for b in recent4 if b[4] < avg_bw * SQ_THR)
-                        was_squeezed = n_squeezed >= 2
-                        expanding = curr[4] > prev[4] * 1.02
-                        if was_squeezed and expanding:
-                            bullish = curr[0] > curr[3]  # close > middle
-                            fires.append((k, "squeeze", bullish))
-                            continue  # squeeze fired; don't double-mark snapback
+        def _draw_supertrend(self, ctx) -> None:
+            """Paint the Supertrend line: ``ST_BULL`` under price while bullish,
+            ``ST_BEAR`` over it while bearish, broken at every flip."""
+            visible = self._supertrend_data[ctx.v_start : ctx.v_end]
+            if not visible:
+                return
+            bull_line = [
+                one[0] if (one is not None and one[1]) else None for one in visible
+            ]
+            bear_line = [
+                one[0] if (one is not None and not one[1]) else None for one in visible
+            ]
+            ctx.draw_line_series(bull_line, self.ST_BULL, 1.4, False)
+            ctx.draw_line_series(bear_line, self.ST_BEAR, 1.4, False)
 
-                        # Snapback: a close broke the band within SN_LB bars.
-                        for j in range(max(BB_PERIOD, k - SN_LB), k):
-                            past = sl_bb[j]
-                            if past is None:
-                                continue
-                            pc, pu, pl, pm, _ = past
-                            cc, cu, cl, cm, _ = curr
-                            if pc < pl and cl < cc < cm and cc > pc:
-                                fires.append((k, "snapback", True))
-                                break
-                            if pc > pu and cm < cc < cu and cc < pc:
-                                fires.append((k, "snapback", False))
-                                break
+        def _draw_zscore_point(self, ctx) -> None:
+            """Paint the Z-Score algo point: ``resistance_price`` and
+            ``support_price`` from each ``ZScoreBar``, dashed, in ``ZSCORE_ZONE``."""
+            visible = self._zscore_data[ctx.v_start : ctx.v_end]
+            if not visible:
+                return
+            resistance = [
+                None if one is None else one.resistance_price for one in visible
+            ]
+            support = [None if one is None else one.support_price for one in visible]
+            ctx.draw_line_series(resistance, self.ZSCORE_ZONE, 1.0, True)
+            ctx.draw_line_series(support, self.ZSCORE_ZONE, 1.0, True)
 
-                    for idx, kind, bullish in fires:
-                        if idx < v_start or idx >= v_end:
-                            continue
-                        vis_i = idx - v_start
-                        x = i2x(vis_i) + cw / 2
-                        cdl = visible_candles[vis_i]
-                        if bullish:
-                            color = self.EVENT_BULL
-                            anchor_y = p2y(cdl.low) + 14
-                        else:
-                            color = self.EVENT_BEAR
-                            anchor_y = p2y(cdl.high) - 14
-                        p.setBrush(QBrush(color))
-                        p.setPen(QPen(color.lighter(140), 1.4))
-                        if kind == "squeeze":
-                            # Diamond — compression-then-release
-                            sz = 6
-                            diamond = QPolygonF(
-                                [
-                                    QPointF(x, anchor_y - sz),
-                                    QPointF(x + sz, anchor_y),
-                                    QPointF(x, anchor_y + sz),
-                                    QPointF(x - sz, anchor_y),
-                                ]
-                            )
-                            p.drawPolygon(diamond)
-                        else:
-                            # Circle — mean-reversion snapback
-                            p.drawEllipse(QPointF(x, anchor_y), 5.5, 5.5)
+        def _rule_bands(self, ctx, top: float, bot: float, bands, scale) -> None:
+            """Rule one dashed ``GRID_MINOR`` line per value of ``bands`` on ``scale``."""
+            p, w = ctx.p, ctx.w
+            vmin, vmax = scale
+            span = (vmax - vmin) or 1e-9
+            for ref in bands:
+                ref_y = bot - ((ref - vmin) / span) * (bot - top)
+                p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
+                p.drawLine(ctx.ML, int(ref_y), w - ctx.MR, int(ref_y))
+
+        def _draw_adx(self, ctx, top: float, bot: float) -> None:
+            """Paint +DI, -DI and ADX on ``PERCENT_SCALE`` with ``ADX_BANDS`` ruled."""
+            visible = self._adx_data[ctx.v_start : ctx.v_end]
+            if not visible:
+                return
+            ctx.paint_sub_grid(top, bot, "ADX (14)")
+            self._sub_scale["adx"] = PERCENT_SCALE
+            self._rule_bands(ctx, top, bot, ADX_BANDS, PERCENT_SCALE)
+            vmin, vmax = PERCENT_SCALE
+            ctx.paint_oscillator(
+                top,
+                bot,
+                visible,
+                lambda t: t[0] if t else None,
+                self.DI_PLUS,
+                1.0,
+                vmin=vmin,
+                vmax=vmax,
+            )
+            ctx.paint_oscillator(
+                top,
+                bot,
+                visible,
+                lambda t: t[1] if t else None,
+                self.DI_MINUS,
+                1.0,
+                vmin=vmin,
+                vmax=vmax,
+            )
+            last_adx = ctx.paint_oscillator(
+                top,
+                bot,
+                visible,
+                lambda t: t[2] if t else None,
+                self.ADX_LINE,
+                1.4,
+                vmin=vmin,
+                vmax=vmax,
+            )
+            ctx.sub_axis_label(top, bot, last_adx, self.ADX_LINE)
+
+        def _draw_zscore(self, ctx, top: float, bot: float) -> None:
+            """Paint the smoothed z on a symmetric scale of at least
+            ``ZSCORE_SCALE_FLOOR``, with ``ZSCORE_BANDS`` ruled."""
+            visible = self._zscore_data[ctx.v_start : ctx.v_end]
+            if not visible:
+                return
+            ctx.paint_sub_grid(top, bot, "Z-Score (50)")
+            values = [abs(one.z) for one in visible if one is not None]
+            half = max([ZSCORE_SCALE_FLOOR] + values)
+            scale = (-half, half)
+            self._sub_scale["zscore"] = scale
+            self._rule_bands(ctx, top, bot, ZSCORE_BANDS, scale)
+            last_z = ctx.paint_oscillator(
+                top,
+                bot,
+                visible,
+                lambda t: t.z if t else None,
+                self.ZSCORE_LINE,
+                1.4,
+                vmin=-half,
+                vmax=half,
+            )
+            ctx.sub_axis_label(top, bot, last_z, self.ZSCORE_LINE)
+
+        def _draw_ker(self, ctx, top: float, bot: float) -> None:
+            """Paint Kaufman's Efficiency Ratio on ``RATIO_SCALE``."""
+            visible = self._ker_data[ctx.v_start : ctx.v_end]
+            if not visible:
+                return
+            ctx.paint_sub_grid(top, bot, "KER (10)")
+            self._sub_scale["ker"] = RATIO_SCALE
+            vmin, vmax = RATIO_SCALE
+            last_ratio = ctx.paint_oscillator(
+                top, bot, visible, lambda v: v, self.KER_LINE, 1.4, vmin=vmin, vmax=vmax
+            )
+            ctx.sub_axis_label(top, bot, last_ratio, self.KER_LINE)
+
+        def _draw_rsi(self, ctx, top: float, bot: float) -> None:
+            """Paint Wilder's RSI on ``PERCENT_SCALE`` with ``RSI_BANDS`` ruled."""
+            visible = self._rsi_data[ctx.v_start : ctx.v_end]
+            if not visible:
+                return
+            ctx.paint_sub_grid(top, bot, "RSI (14)")
+            self._sub_scale["rsi"] = PERCENT_SCALE
+            self._rule_bands(ctx, top, bot, RSI_BANDS, PERCENT_SCALE)
+            vmin, vmax = PERCENT_SCALE
+            last_rsi = ctx.paint_oscillator(
+                top, bot, visible, lambda v: v, self.RSI_LINE, 1.4, vmin=vmin, vmax=vmax
+            )
+            ctx.sub_axis_label(top, bot, last_rsi, self.RSI_LINE)
 
         def _draw_macd(self, ctx, top: float, bot: float) -> None:
             """Paint the MACD histogram, its line and its signal in one sub-pane."""
@@ -2127,6 +2584,8 @@ if _HAS_QT:
             ChartPainter.__init__(self, symbol)
             self.setAccessibleName("Candlestick Chart")
             self.setMinimumHeight(200)
+            # The layout's spare height goes to the panes, which paint_to fits.
+            self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
             self.setMouseTracking(True)
 
             # _height_override holds a dragged height; auto-expand never goes under it.
@@ -2155,13 +2614,13 @@ if _HAS_QT:
                 logger.debug("chart height not re-applied on candles: %s", exc)
 
         def _apply_height_for_panes(self) -> None:
-            """Raise the minimum height to ``_natural_height_for_panes``.
+            """Raise the minimum height to ``_minimum_height_for_panes`` at the widget's width.
 
             ``_height_override`` from a grip drag wins when it is
             taller, and the parent widget is raised to the same height
-            plus 36.
+            plus 36; the layout's extra height goes to the panes.
             """
-            target = self._natural_height_for_panes()
+            target = self._minimum_height_for_panes(self.width())
             if self._height_override is not None:
                 target = max(target, self._height_override)
             if target != self.minimumHeight():
@@ -2285,6 +2744,15 @@ if _HAS_QT:
             self._mouse_y = None
             self._repaint()
 
+        def resizeEvent(self, event):
+            """Re-apply the pane height when the width changes, since the legend wraps at it."""
+            super().resizeEvent(event)
+            if event.oldSize().width() != event.size().width() and self._candles:
+                try:
+                    self._apply_height_for_panes()
+                except Exception as exc:
+                    logger.debug("chart height not re-applied on resize: %s", exc)
+
         def paintEvent(self, event):
             p = QPainter(self)
             self.paint_to(p, self.width(), self.height())
@@ -2387,12 +2855,12 @@ if _HAS_QT:
             self._chart.timeframe_changed.emit(tf)
 
         def _toggle_indicator(self, name: str, on: bool):
-            """Switch one overlay key on the chart and repaint it.
+            """Switch one overlay through ``ChartPainter.set_overlay`` and repaint.
 
             ``_apply_height_for_panes`` then raises the chart's minimum
             height for a newly visible sub-pane.
             """
-            self._chart._overlay_shown[name] = on
+            self._chart.set_overlay(name, on)
             try:
                 self._chart._apply_height_for_panes()
             except Exception as exc:
