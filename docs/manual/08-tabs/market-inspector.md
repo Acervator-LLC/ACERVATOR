@@ -5985,6 +5985,23 @@ together. The chime's output was set to 0 for the run and read, not heard.
 | `bot_state.json` | byte-identical after every press; the planted write moved the comparison | the same |
 | connections refused | 0, because nothing asked for one | 0 |
 
+### The public route's window ends now
+
+Read on the built Qt bundle with no connector in reach, against a loopback
+stand-in whose tape holds one close per calendar day: 90 markets, 540 reads,
+300 candles each, 0 hits, and every daily window ended 65 days before the
+press. The public route asked for 365 bars starting 365 days ago, and one
+request to the route is held to 300 candles, so the window it asked for ended
+at its start plus 300 days. The bars a read asks for are now held to that
+ceiling before the start is computed, so the window ends at the press: the
+newest 300 daily candles, the newest 300 hourly ones.
+
+`src/exchange/market_inspector_fetcher.py` - the bars one public read asks for
+
+```python
+    count = min(int(bars), RA_CHUNK_DAYS)
+```
+
 ### Two sentences this entry overtakes
 
 Not reworded, quoted here. `docs/manual/08-tabs/market-inspector.md:1663` -
