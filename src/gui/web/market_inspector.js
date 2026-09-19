@@ -632,6 +632,7 @@
   var ACROSS_ORIENTATION = "Horizontal";
 
   var FLEX = "flex";
+  var BLOCK = "block";
   var FLEX_NONE = "none";
   // Three equally sized rectangles down each side, as the Qt stretch gives.
   var EQUAL_SHARE = "1 1 0";
@@ -661,6 +662,7 @@
 
   var DIV_TAG = "div";
   var SPAN_TAG = "span";
+  var IMG_TAG = "img";
   var A_TAG = "a";
   var STRONG_TAG = "strong";
   var BUTTON_TAG = "button";
@@ -805,6 +807,8 @@
   var CHART_WIDTH_PX = "width_px";
   var CHART_HEIGHT_PX = "height_px";
   var CHART_MARKS = "marks";
+  var CHART_IMAGE = "image";
+  var CHART_IMAGE_PART = "chart-image";
   var CHART_TOOLTIP = "tooltip";
   var STRIP_BOX_STYLE = "box_style";
   var STRIP_TEXT = "text";
@@ -1348,8 +1352,22 @@
     return element(DIV_TAG, markProps, null);
   }
 
-  // PostChart is the chart one waiting post carries: its closes, its
-  // Bollinger bands and its last close, at thumbnail or at preview size.
+  // ChartImage is the painter's PNG one waiting post names, drawn at the
+  // frame's own width. The Qt _PostChart draws the same image in the same box.
+  function ChartImage(props) {
+    var imageProps = {
+      src: text(props.image),
+      alt: label(props.tooltip),
+      draggable: false,
+      style: { display: BLOCK, width: FULL, height: FULL }
+    };
+    imageProps[PART_ATTR] = CHART_IMAGE_PART;
+    return element(IMG_TAG, imageProps, null);
+  }
+
+  // PostChart is the chart one waiting post carries, at thumbnail or at
+  // preview size: the painter's PNG where the post names one, else its
+  // closes, its Bollinger bands and its last close as marks.
   function PostChart(props) {
     var chart = props.chart;
     var frame = styleOf(chart[STRIP_BOX_STYLE]);
@@ -1368,6 +1386,17 @@
       event.stopPropagation();
       act(THUMBNAIL_PART, true);
     };
+    if (text(chart[CHART_IMAGE])) {
+      return element(
+        DIV_TAG,
+        frameProps,
+        element(ChartImage, {
+          key: CHART_IMAGE,
+          image: chart[CHART_IMAGE],
+          tooltip: chart[CHART_TOOLTIP]
+        })
+      );
+    }
     return element(
       DIV_TAG,
       frameProps,

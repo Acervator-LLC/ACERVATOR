@@ -413,6 +413,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._on_scan_now()
             elif key in PUSH_KEYS:
                 self._screen.push_action(key)
+                self._say_lines(self._screen.press_lines)
                 self.push()
             elif key == VENUE_BUTTON_KEY:
                 self._screen.open_credentials(request.get("value"))

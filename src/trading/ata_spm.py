@@ -114,6 +114,12 @@ NO_INDICATOR_CAP = 0
 MESSAGE_FORMAT = "{label}: {reading}. Votes {direction} at {confidence}% confidence."
 NO_READING_TEXT = "no reading published"
 
+#: The only names a ``message_format`` may carry in braces.
+MESSAGE_FORMAT_KEYS = ("label", "reading", "direction", "confidence")
+MESSAGE_FORMAT_REFUSED_LOG = (
+    "ATA-SPM message format refused, %s; the standard wording is used. Keys: %s"
+)
+
 #: Each voter's screen name, the ``Signal.details`` keys carrying the reading
 #: its own direction is decided by, and the wording they are printed in.
 #: ``value`` binds the first key, so a one-key row reads by that name.
@@ -1174,7 +1180,10 @@ def indicator_message(
     """One confirming voter as its standardised sentence.
 
     ``message_format`` is the wording the ATA-SPM settings page sets, and
-    ``MESSAGE_FORMAT`` is what an unset page leaves.
+    ``MESSAGE_FORMAT`` is what an unset page leaves. A typed format naming a
+    key outside ``MESSAGE_FORMAT_KEYS``, or one ``str.format`` cannot parse,
+    is refused under ``MESSAGE_FORMAT_REFUSED_LOG`` and the standard wording
+    is written, so no setting stops a scan.
     """
     name = str(getattr(signal, "indicator", ""))
     label, keys, reading_format = READINGS.get(name, (name, (), ""))
@@ -1185,17 +1194,21 @@ def indicator_message(
         if reading_format and values
         else NO_READING_TEXT
     )
+    fields = {
+        "label": label,
+        "reading": reading,
+        "direction": direction_name(signal.direction),
+        "confidence": confidence_pct(signal.confidence),
+    }
     written = message_format or MESSAGE_FORMAT
-    return IndicatorMessage(
-        indicator=name,
-        label=label,
-        message=written.format(
-            label=label,
-            reading=reading,
-            direction=direction_name(signal.direction),
-            confidence=confidence_pct(signal.confidence),
-        ),
-    )
+    try:
+        message = written.format(**fields)
+    except (KeyError, IndexError, ValueError) as exc:
+        logger.warning(
+            MESSAGE_FORMAT_REFUSED_LOG, repr(exc), ", ".join(MESSAGE_FORMAT_KEYS)
+        )
+        message = MESSAGE_FORMAT.format(**fields)
+    return IndicatorMessage(indicator=name, label=label, message=message)
 
 
 def panel_rows_for(scans: Any, symbol: Any) -> dict:
