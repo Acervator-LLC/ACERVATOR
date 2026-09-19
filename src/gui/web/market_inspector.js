@@ -454,6 +454,8 @@
   var TICKER_NOTE_SIZE_PX = "ticker_note_size_px";
   var TICKER_MATCH_PART = "ticker_match_part";
   var SCAN_LABEL = "scan_label";
+  var SCAN_BUSY_LABEL = "scan_busy_label";
+  var SCAN_NOW_RUNNING = "scan_running";
   var SCAN_TOOLTIP = "scan_tooltip";
   var CLASS_TOOLTIP = "class_tooltip";
   var CLASS_WIDTH_PX = "class_width_px";
@@ -724,6 +726,7 @@
   var STEP_BACK_PART = "step-back";
   var STEP_NEXT_PART = "step-next";
   var POSITION_PART = "zone-position";
+  var COUNTER_PART = "zone-counter";
   var ENTRY_PART = "zone-entry";
   var ENTRY_BODY_PART = "entry-body";
   var ENTRY_HEAD_PART = "entry-head";
@@ -739,6 +742,7 @@
   var ZONE_KEY = "key";
   var ZONE_TOTAL = "total";
   var ZONE_POSITION = "position";
+  var ZONE_COUNTER = "counter";
   var ZONE_HEADLINE = "headline";
   var ZONE_META = "meta";
   var ZONE_METHOD = "method";
@@ -1553,6 +1557,14 @@
     var positionProps = { style: asLabel(styleOf(skin[POSITION_STYLE]), false) };
     positionProps[PART_ATTR] = POSITION_PART;
     positionProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    // The running scan's counter sits at the row's right end, just above
+    // the entry, the place the Qt stepper gives its counter label.
+    var counterStyle = asLabel(styleOf(skin[POSITION_STYLE]), false);
+    counterStyle.marginLeft = AUTO;
+    var counterProps = { style: counterStyle };
+    counterProps[PART_ATTR] = COUNTER_PART;
+    counterProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    counterProps[ARIA_LABEL] = text(view[ZONE_COUNTER]);
     var frame = styleOf(skin[ENTRY_STYLE]);
     frame.flex = ONE;
     frame.minHeight = ZERO;
@@ -1633,7 +1645,10 @@
           zone: view[ZONE_KEY],
           act: press
         }),
-        element(DIV_TAG, positionProps, text(view[ZONE_POSITION]))
+        element(DIV_TAG, positionProps, text(view[ZONE_POSITION])),
+        text(view[ZONE_COUNTER])
+          ? element(DIV_TAG, counterProps, text(view[ZONE_COUNTER]))
+          : null
       ),
       element(
         DIV_TAG,
@@ -1845,17 +1860,22 @@
     buttonStyle.boxSizing = BORDER_BOX;
     buttonStyle.width = length(skin[SCAN_WIDTH_PX]);
     buttonStyle.height = length(skin[BUTTON_HEIGHT_PX]);
+    // While the scan runs the button is disabled and reads the busy label,
+    // the state the Qt button holds from the press to the end.
+    var running = skin[SCAN_NOW_RUNNING] === true;
+    var shown = running ? skin[SCAN_BUSY_LABEL] : skin[SCAN_LABEL];
     var buttonProps = {
       type: BUTTON_TYPE,
       style: buttonStyle,
       title: label(skin[SCAN_TOOLTIP]),
+      disabled: running,
       onClick: function () {
         act(SCAN_NOW_PART, true);
       }
     };
     buttonProps[PART_ATTR] = SCAN_NOW_PART;
-    buttonProps[ARIA_LABEL] = label(skin[SCAN_LABEL]);
-    return element(BUTTON_TAG, buttonProps, text(skin[SCAN_LABEL]));
+    buttonProps[ARIA_LABEL] = label(shown);
+    return element(BUTTON_TAG, buttonProps, text(shown));
   }
 
   // PushButton is one of the buttons phases five and six are pressed with.

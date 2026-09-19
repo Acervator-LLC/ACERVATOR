@@ -126,10 +126,13 @@ from .main_tabs.market_inspector_surface import (
     TIMEFRAME_ROW_PART,
     TIMEFRAME_TITLE,
     LEFT_MODULE_SHARES,
+    LIST_SOURCE_PIN,
     MARKET_READ_PIN,
     ORDER_LOG_FORMAT,
+    PROGRESS_PIN_EVERY,
     SCAN_FINISHED_PIN,
     SCAN_PRESSED_PIN,
+    SCAN_PROGRESS_PIN,
     SCAN_STARTED_PIN,
     VOLUME_ORDER_PIN,
     class_markets,
@@ -154,6 +157,7 @@ from .main_tabs.market_inspector_surface import (
     ENTRY_METHOD_STYLE,
     ENTRY_SPACING_PX,
     ENTRY_STYLE,
+    COUNTER_PART,
     POSITION_EMPTY_TEXT,
     POSITION_STYLE,
     STEP_BACK_TEXT,
@@ -477,6 +481,13 @@ if _HAS_QT:
             self.position_label.setStyleSheet(POSITION_STYLE)
             row.addWidget(self.position_label)
             row.addStretch()
+            # The running scan's counter, at the row's right end just above
+            # the entry; empty while no scan runs.
+            self.counter_label = QLabel("")
+            self.counter_label.setStyleSheet(POSITION_STYLE)
+            self.counter_label.setAccessibleName(COUNTER_PART)
+            self.counter_label.setVisible(False)
+            row.addWidget(self.counter_label)
             root.addLayout(row)
 
             self.entry = _ZoneEntry()
@@ -558,6 +569,9 @@ if _HAS_QT:
             total = int(view.get("total", 0))
             self.entry.setMinimumHeight(0)
             self.position_label.setText(str(view.get("position", "")))
+            counter = str(view.get("counter", "") or "")
+            self.counter_label.setText(counter)
+            self.counter_label.setVisible(bool(counter))
             self.back_button.setEnabled(total > 1)
             self.next_button.setEnabled(total > 1)
             self.headline_label.setText(str(view.get("headline", "")))
@@ -690,6 +704,10 @@ if _HAS_QT:
         scanFinished = Signal(object)  # noqa: N815 - Qt signal name
         #: One phase line of a running scan, and its Activity Log level.
         scanLogged = Signal(str, str)  # noqa: N815 - Qt signal name
+        #: One ``ata_spm.ScanProgress`` of the running walk, after each market.
+        scanProgressed = Signal(object)  # noqa: N815 - Qt signal name
+        #: The error text of a scan thread that raised before answering.
+        scanFailed = Signal(str)  # noqa: N815 - Qt signal name
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -698,8 +716,12 @@ if _HAS_QT:
             self._last_meta: dict = {}
             self._scan_thread = None
             self._activity_log = None
+            #: The first refusal each symbol's reads met on the running scan.
+            self._scan_refusals: dict = {}
             self.scanFinished.connect(self._take_scan)
             self.scanLogged.connect(self._take_scan_line)
+            self.scanProgressed.connect(self._take_scan_progress)
+            self.scanFailed.connect(self._take_scan_failure)
             self._pending_refresh = False
             self._scan_state = SCAN_NOT_ASKED
             # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
@@ -1613,6 +1635,15 @@ if _HAS_QT:
                     hits=target,
                 )
             )
+            self._scan_refusals = {}
+            self._ata_board.progress_lines = []
+            self._ata_board.progress = ata_spm.ScanProgress(
+                asset_class=board.asset_class,
+                read=ata_spm.NO_MARKETS_READ,
+                total=ata_spm.NO_MARKETS_READ,
+                hits=0,
+            )
+            self._set_scan_busy(True)
             self._scan_thread = threading.Thread(
                 target=self._compute_scan,
                 args=(
@@ -1627,13 +1658,58 @@ if _HAS_QT:
             self._scan_thread.start()
             _pin_emit(SCAN_PRESSED_PIN, actual=True, expected=True, context=context)
 
+        def _set_scan_busy(self, busy: bool) -> None:
+            """Disable Scan Now and write ``SCAN_BUSY_LABEL`` on it while ``busy``,
+            then redraw the row so the page reads the same state."""
+            button = getattr(self, "_scan_now_btn", None)
+            if button is not None:
+                button.setEnabled(not busy)
+                button.setText(ata_spm.SCAN_BUSY_LABEL if busy else SCAN_NOW_LABEL)
+            self._render_ata_row()
+
+        def _on_scan_progress(self, progress) -> None:
+            """The walk's report, on the scan thread: cross to the GUI thread."""
+            self.scanProgressed.emit(progress)
+
+        def _take_scan_progress(self, progress) -> None:
+            """Write one ``ata_spm.ScanProgress`` onto the board, redraw the
+            zone, and pin every ``PROGRESS_PIN_EVERY`` markets and at the end."""
+            if self._ata_board.progress is None:
+                return
+            self._ata_board.progress = progress
+            if progress.line:
+                self._ata_board.progress_lines.append(str(progress.line))
+            read = int(progress.read)
+            if read and (read % PROGRESS_PIN_EVERY == 0 or read == int(progress.total)):
+                _pin_emit(
+                    SCAN_PROGRESS_PIN,
+                    actual=read,
+                    expected=int(progress.total),
+                    ok=read <= int(progress.total),
+                    context={
+                        "asset_class": str(progress.asset_class),
+                        "read": read,
+                        "total": int(progress.total),
+                        "hits": int(progress.hits),
+                    },
+                )
+            self._render_left_modules()
+
+        def _take_scan_failure(self, error: str) -> None:
+            """Say the failed line, clear the walk's record and free the button."""
+            self._say(ata_spm.SCAN_FAILED_TEXT.format(error=error), ACTIVITY_ERROR)
+            self._ata_board.progress = None
+            self._set_scan_busy(False)
+            self._render_left_modules()
+
         def _compute_scan(
             self, message_format, max_supporting_indicators, hits_per_scan, at
         ) -> None:
             """Run the ATA-SMP phases and report the answer to the GUI thread.
 
-            ``SectorBoard.compute`` writes nothing, and ``scanFinished``
-            carries what it answered across the thread boundary.
+            ``SectorBoard.compute`` writes nothing, ``scanProgressed`` carries
+            each market's ``ScanProgress`` across the thread boundary, and
+            ``scanFinished`` carries what it answered.
             """
             thread_name = threading.current_thread().name
             logger.info(ATA_SCAN_THREAD_LOG, thread_name, "compute")
@@ -1656,12 +1732,11 @@ if _HAS_QT:
                     self._ata_class_source or self._class_markets,
                     hits_per_scan,
                     at,
+                    self._on_scan_progress,
                 )
             except Exception as exc:  # noqa: BLE001 - the scan runs off-thread
                 logger.exception("ATA-SPM scan failed: %s", exc)
-                self.scanLogged.emit(
-                    ata_spm.SCAN_FAILED_TEXT.format(error=exc), ACTIVITY_ERROR
-                )
+                self.scanFailed.emit(str(exc))
                 return
             self.scanFinished.emit(answered)
 
@@ -1696,7 +1771,18 @@ if _HAS_QT:
             logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "draw")
             sectors, added, found, note = answered
             chosen = self._ata_board.asset_class
+            for scan in found.scans if found is not None else []:
+                if not scan.refusal:
+                    scan.refusal = next(
+                        (
+                            self._scan_refusals[one]
+                            for one in scan.assets
+                            if one in self._scan_refusals
+                        ),
+                        "",
+                    )
             self._ata_board.take(sectors, added, found, note)
+            self._set_scan_busy(False)
             if added != ata_spm.NO_NEW_SECTOR:
                 self._zone_at[ATA_SPM_MODULE] = added
             placed = self._ata_board.asset_class
@@ -1840,6 +1926,18 @@ if _HAS_QT:
                     "unfigured": int(order.unfigured),
                 },
             )
+            _pin_emit(
+                LIST_SOURCE_PIN,
+                actual=len(symbols),
+                expected=len(symbols) + len(order.dead),
+                ok=bool(symbols),
+                context={
+                    "asset_class": str(asset_class),
+                    "source": order.source,
+                    "count": len(symbols),
+                    "dead": [str(one) for one in order.dead],
+                },
+            )
             return order
 
         def _scanned_candles(self, symbol, timeframe) -> list:
@@ -1864,6 +1962,7 @@ if _HAS_QT:
                 refusal = f"{type(exc).__name__}: {exc}"
             label = ata_spm.timeframe_label(timeframe)
             if refusal:
+                self._scan_refusals.setdefault(str(symbol), str(refusal))
                 line = ata_spm.MARKET_REFUSED_TEXT.format(
                     symbol=symbol, label=label, venue=venue, reason=refusal
                 )
@@ -1986,7 +2085,11 @@ if _HAS_QT:
             return held
 
         def _zone_views(self) -> list:
-            """All six zones as the stepper draws them, left three then right three."""
+            """All six zones as the stepper draws them, left three then right three.
+
+            The ATA-SPM zone carries the board's ``progress_text`` as its
+            counter and ``progress_lines`` as its rows while a scan runs.
+            """
             rows = _left_module_rows(
                 self._ata_report(),
                 self._scan_state,
@@ -2003,6 +2106,8 @@ if _HAS_QT:
                     self._zone_at.get(key, 0),
                     self._zone_open.get(key, False),
                     status,
+                    self._ata_board.progress_text if key == ATA_SPM_MODULE else "",
+                    self._ata_board.progress_lines if key == ATA_SPM_MODULE else (),
                 )
                 for key, title, status in rows
             ]

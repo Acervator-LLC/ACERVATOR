@@ -45,9 +45,11 @@ class TradingTabMixin:
     # Annotations only; MainWindow supplies these at runtime.
     _add_exchange: Callable[..., Any]
     _bot_manager: Any
+    _cross_api_event: Callable[..., Any]
     _main_tabs: Any
     _on_api_event: Callable[..., Any]
     _settings: Any
+    apiEntryLogged: Any  # noqa: N815 - Qt signal name
     _status_log: Any
     _trading_tab: Any
 
@@ -485,7 +487,10 @@ class TradingTabMixin:
         from ...exchange.api_logger import get_api_log
 
         self._api_logger = get_api_log()
-        self._api_logger.add_listener(self._on_api_event)
+        # Every entry crosses apiEntryLogged, so a record on a worker thread
+        # reaches _on_api_event on the GUI thread instead of the thread guard.
+        self.apiEntryLogged.connect(self._on_api_event)
+        self._api_logger.add_listener(self._cross_api_event)
 
         from ..variant_surface import TRADING, draws_react
 
