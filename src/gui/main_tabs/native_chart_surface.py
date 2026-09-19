@@ -62,6 +62,12 @@ ACTIONS = {
     "ichimoku_check.toggled": "toggle_indicator",
     "volume_check.toggled": "toggle_indicator",
     "slingshot_check.toggled": "toggle_indicator",
+    "adx_check.toggled": "toggle_indicator",
+    "supertrend_check.toggled": "toggle_indicator",
+    "zscore_check.toggled": "toggle_indicator",
+    "ker_check.toggled": "toggle_indicator",
+    "rsi_check.toggled": "toggle_indicator",
+    "zscore_point_check.toggled": "toggle_indicator",
     "bbullseye_check.toggled": "toggle_indicator",
 }
 SIGNALS = ("timeframe_changed",)
@@ -350,6 +356,8 @@ LEGEND_ON_BOOK_STYLE = "color: #00b4ff; font-size: 9px;"
 PANEL_SOURCE_STYLE = "color: #555; font-size: 9px;"
 INDICATOR_STYLE_FORMAT = "color: {color}; font-size: 9px;"
 
+#: The twelve Voting Panel indicators in ``INDICATOR_COLS`` order, then the
+#: two overlays that draw no voter: the Z-Score algo point and BB Bullseye.
 INDICATOR_TOGGLES = (
     ("bb", "BB", "#50a0f0"),
     ("vortex", "Vortex", "#00ff88"),
@@ -358,10 +366,16 @@ INDICATOR_TOGGLES = (
     ("ichimoku", "Ichi", "#4fc3ff"),
     ("volume", "Vol", "#b4b4d2"),
     ("slingshot", "Sling", "#ff00aa"),
+    ("adx", "ADX", "#ffc800"),
+    ("supertrend", "STrd", "#5cffd0"),
+    ("zscore", "ZSc", "#ff0080"),
+    ("ker", "KER", "#4fc3ff"),
+    ("rsi", "RSI", "#ff86a8"),
+    ("zscore_point", "ZPt", "#ff0080"),
     ("bbullseye", "BBull", "#fcee0a"),
 )
 
-#: An overlay that paints a fill over the price pane, so it starts off.
+#: An overlay that paints a fill or a mark over the price pane, so it starts off.
 INDICATOR_OCCLUDES = {
     "bb": False,
     "vortex": False,
@@ -370,6 +384,12 @@ INDICATOR_OCCLUDES = {
     "ichimoku": False,
     "volume": False,
     "slingshot": True,
+    "adx": False,
+    "supertrend": False,
+    "zscore": False,
+    "ker": False,
+    "rsi": False,
+    "zscore_point": True,
     "bbullseye": True,
 }
 INDICATOR_DEFAULTS = {key: not occludes for key, occludes in INDICATOR_OCCLUDES.items()}

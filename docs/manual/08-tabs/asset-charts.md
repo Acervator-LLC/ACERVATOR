@@ -589,3 +589,232 @@ or a six-number row.
 ATA-SPM image before and after, for the same hundred candles. The React page
 draws the tab header line and the painter draws its own header line under it,
 so the label reads twice on that build.
+
+## 2026-09-19 08:23 - #55 - every Voting Panel indicator on the chart
+
+His words, 2026-08-21: *"Asset Charts Tab - Restructure - Must now display
+only one chart at a time with all indicators from the Indicator Voting Panel
+loaded and properly visualized."* And 2026-09-08: *"Want charts tab to only
+display one richly detailed and Acervator-annonated chart at a time with all
+Indicators visible by default excluding that might visually oclude BB or ICHI
+as Sling or Z-Score Algo Point. All indicators will need toggle check boxes at
+the bottom."*
+
+### The five series the indicator classes now answer
+
+ADX, Supertrend, Z-Score, KER and RSI each gain one method beside their vote,
+named as the Vortex and Ichimoku classes name theirs. The vote reads that
+method, so the line on the chart and the vote in the Voting Panel are one
+arithmetic.
+
+`src/trading/indicators/adx.py` - the series and the vote reading it
+
+```python
+    def lines(self, candles: list) -> tuple[_Line, _Line, _Line]:
+        """+DI, -DI and ADX, one entry per candle, for a chart to draw.
+```
+
+```python
+        di_plus_series, di_minus_series, adx_series = self.lines(candles)
+```
+
+| class | `lines` answers, one entry per candle |
+| ----- | ------------------------------------- |
+| `ADXIndicator` | +DI, -DI and ADX |
+| `SupertrendIndicator` | the line, its side and the ATR under it |
+| `ZScoreIndicator` | a `ZScoreBar`: the smoothed score, the two projected prices and the window figures |
+| `KaufmanERIndicator` | the ratio |
+| `RSIIndicator` | Wilder's RSI |
+| `SlingshotIndicator` | a `SlingshotBar`: the squeeze state, the release, the snapback and the momentum |
+
+The vote is unchanged. `compute` from the commit before and `compute` from
+this one ran over every prefix of 600 recorded BTC 1h candles, six classes,
+every Signal field compared: 0 of 600 prefixes differ for any class. The
+control: shifting one class's series by one candle makes the same comparison
+report 549 to 589 differing prefixes.
+
+### Fourteen overlays, seven sub-panes
+
+The overlay registry now holds the twelve Voting Panel indicators in the
+panel's own order, then the two overlays that draw no voter: the Z-Score
+algo point and BB Bullseye.
+
+`src/gui/native_chart.py` - one of the six new entries
+
+```python
+    ChartOverlay(
+        key="adx",
+        label="ADX",
+        colour_field="chart_last_price",
+        pane=SUB_PANE,
+        occludes=False,
+        draw="_draw_adx",
+        tooltip="ADX (14) with +DI and -DI, 0..100, 20 and 25 ruled, sub-pane",
+        voter="adx",
+    ),
+```
+
+| overlay | pane | what it paints | ruled |
+| ------- | ---- | -------------- | ----- |
+| ADX | sub-pane | +DI, -DI and ADX on 0..100 | 20 and 25 |
+| STrd | price pane | the Supertrend line, green under price while bullish, red over it while bearish | |
+| ZSc | sub-pane | the smoothed score on a symmetric scale of at least 3 | +2 and -2 |
+| KER | sub-pane | the Efficiency Ratio on 0..1 | |
+| RSI | sub-pane | Wilder's RSI on 0..100 | 30 and 70 |
+| ZPt | price pane | the resistance and support prices the averaged reversals project, dashed | |
+
+Slingshot now draws the indicator's own marks. Before, the painter re-derived
+a bandwidth squeeze of its own and drew marks the indicator never fired; now
+each diamond is a bar the class read as a squeeze release, signed by its
+momentum, and each circle a bar it read as a Bollinger snapback.
+
+`src/gui/native_chart.py` - the slingshot marks
+
+```python
+                if bar.released and bar.momentum != 0.0:
+                    marks.append(("release", bar.momentum > 0.0))
+                if bar.snapback:
+                    marks.append(("snapback", "bull" in bar.snapback))
+```
+
+The sub-panes sit under the volume strip in registry order: Vortex, MACD,
+Stoch RSI, ADX, Z-Score, KER, RSI. Each takes 60 px at the chart's natural
+height. When the window gives less, every sub-pane shrinks alike, down to
+36 px, so the price pane keeps its 220 px and every pane stays on screen.
+
+`src/gui/native_chart.py` - the pane heights
+
+```python
+SUB_PANE_H = 60
+SUB_PANE_MIN_H = 36
+PRICE_PANE_LAYOUT_H = 220
+PRICE_PANE_MIN_H = 120
+```
+
+### The legend
+
+A band under the OHLC row names every overlay with the last candle's value of
+its series, in the overlay's colour. An overlay that is off reads `off` in
+grey. The band wraps to the chart's width. It is painted by the painter, so
+the Qt widget, the React image and the ATA-SPM post images all carry it.
+
+`src/gui/native_chart.py` - what one legend entry carries
+
+```python
+                found.append(
+                    {
+                        "key": overlay.key,
+                        "label": overlay.label,
+                        "text": text,
+                        "colour": self.overlay_colour(overlay).name(),
+                        "on": on,
+                        "has_value": value is not None,
+                    }
+                )
+```
+
+### Fourteen toggles
+
+The toggle row under the chart holds one box per overlay, in the same order.
+The three occluders start off: Sling, ZPt and BBull, each a mark or a fill
+over the price pane. Every other indicator starts on.
+
+`src/gui/main_tabs/native_chart_surface.py` - the occluders
+
+```python
+INDICATOR_OCCLUDES = {
+    "bb": False,
+    "vortex": False,
+    "macd": False,
+    "stochrsi": False,
+    "ichimoku": False,
+    "volume": False,
+    "slingshot": True,
+    "adx": False,
+    "supertrend": False,
+    "zscore": False,
+    "ker": False,
+    "rsi": False,
+    "zscore_point": True,
+    "bbullseye": True,
+}
+```
+
+Both hosts flip an overlay through one method on the painter. The Qt check
+box calls it, and the React box asks the tab, which calls it.
+
+`src/gui/native_chart.py` - the Qt press
+
+```python
+            self._chart.set_overlay(name, on)
+```
+
+### The two emitters
+
+`charts.indicator.toggled` is written once per press, with the key, the state
+asked and the variant; `ok` is true when the painter's state after the press
+is the state asked. `charts.indicators.drawn` is written once the candles
+arrive and the series recompute, with the symbol, the timeframe, the keys
+shown and each one's legend value; `ok` is true when every shown overlay
+holds a value on the last candle. Both go through the emitter network's one
+wire and nothing else.
+
+`src/gui/native_chart.py` - the two names
+
+```python
+TOGGLED_PIN = "charts.indicator.toggled"
+
+DRAWN_PIN = "charts.indicators.drawn"
+```
+
+### Read off the running program
+
+The real window in each build, the home on a scratch directory, every socket
+but loopback refused, a two-bot fleet read off a copy of the operator's
+`bot_state.json`, and the real fetcher fed 100 recorded BTC 1h candles by a
+stand-in connector:
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| toggles under the chart, in order | 14: BB, Vortex, MACD, SRsi, Ichi, Vol, Sling, ADX, STrd, ZSc, KER, RSI, ZPt, BBull | the same 14 on the page |
+| starting states | 11 on, Sling, ZPt and BBull off | the same |
+| legend entries | 14, 11 with a value, 3 reading `off` | the same 14 in the image answer |
+| ADX on the last candle, by hand and on the painter | 20.16, +DI 10.91, -DI 40.24 | the same |
+| Supertrend | 63,003.61, bearish | the same |
+| Z-Score | -1.24 | the same |
+| KER | 0.7617 | the same |
+| RSI | 25.44 | the same |
+| each new toggle pressed off then on | the line gone and back, the image digest moved and returned, one emitter record per press | the same through the page's box |
+| sub-pane rules | RSI 30 and 70, ADX 20 and 25, Z-Score +2 and -2: 692 to 727 pixels on each ruled row differ from a repaint with no rules, 0 on the row above and 0 on a control row | the same |
+| `bot_state.json` after every press | byte-identical | byte-identical |
+| the planted legend value | the legend reads 99.99 where the series reads 25.44, and the comparison reports it | the same |
+
+The two builds paint one image: the painter's image for the same candles
+reads one digest in both.
+
+### Sentences this entry overtakes
+
+They were not reworded. They are quoted here.
+
+`docs/manual/08-tabs/asset-charts.md:97` - "The chart calls the engine rather
+than computing anything of its own. Five series arrive that way, and an entry
+with no value is skipped when the panel paints." Fourteen series arrive that
+way now.
+
+`docs/manual/08-tabs/asset-charts.md:112` - "The toolbar under each panel
+holds the timeframe picker and eight toggles." Fourteen toggles.
+
+`docs/manual/08-tabs/asset-charts.md:128` - "Volume starts on and the other
+seven start off." Eleven start on and three start off.
+
+`docs/manual/08-tabs/asset-charts.md:146` - "Sling and BBull paint a
+placeholder shape rather than the indicator, and each says as much in its own
+tooltip." Both paint the indicator, and neither tooltip says placeholder.
+
+`docs/manual/08-tabs/asset-charts.md:552` - "The starting states are six on
+and two off: BB, Vortex, MACD, SRsi, Ichi and Vol on; Sling and BBull off."
+Eleven on and three off.
+
+**Figures.** `artifacts/u55/C2/` holds the Qt window and the React page at
+1400 by 900 and at 1960 by 1200, the painter's image, and one venue PNG,
+before and after.

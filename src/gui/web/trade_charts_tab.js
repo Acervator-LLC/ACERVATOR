@@ -223,6 +223,7 @@
   var HIDDEN = "hidden";
   var FLEX_NONE = "none";
   var NOWRAP = "nowrap";
+  var WRAP = "wrap";
   var ELLIPSIS = "ellipsis";
   var SELECT_NONE = "none";
   var FULL = "100%";
@@ -693,11 +694,13 @@
     );
   }
 
+  // Fourteen boxes wrap to a second row where the tab is too narrow for one.
   function PanelToggles(props) {
     var chrome = props.chrome;
     var rowProps = {
       style: {
         display: FLEX,
+        flexWrap: WRAP,
         gap: height(chrome[TOGGLE_GAP]),
         flex: FLEX_NONE,
         alignItems: CENTER

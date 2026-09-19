@@ -343,6 +343,7 @@ if _HAS_WEBENGINE:
             self._model = surface.TradeChartsTabModel()
             self._painter = ChartPainter("")
             self._painter.set_timeframe(surface.PANEL_TIMEFRAME)
+            self._fed_candles: Any = None
             self._image: dict = {}
             self._image_key_held = ""
             self._payload: dict = {}
@@ -435,24 +436,30 @@ if _HAS_WEBENGINE:
             return payload
 
         def _feed_painter(self) -> None:
-            """Give ``painter`` what ``PanelSink`` holds, as the Qt tab gives its chart."""
+            """Give ``painter`` what ``PanelSink`` holds, as the Qt tab gives its chart.
+
+            The candles reach ``set_candles`` once per fetch: the same list
+            the panel held on the last feed is not fed again.
+            """
             panel = self._model.panel
             painter = self._painter
             painter.symbol = str(panel.label)
             painter.set_timeframe(str(panel.chart_timeframe or panel.timeframe))
-            painter.set_candles(
-                [
-                    Candle(
-                        int(row[0]),
-                        float(row[1]),
-                        float(row[2]),
-                        float(row[3]),
-                        float(row[4]),
-                        float(row[5]) if len(row) > 5 else 0.0,
-                    )
-                    for row in panel.candles
-                ]
-            )
+            if panel.candles is not self._fed_candles:
+                self._fed_candles = panel.candles
+                painter.set_candles(
+                    [
+                        Candle(
+                            int(row[0]),
+                            float(row[1]),
+                            float(row[2]),
+                            float(row[3]),
+                            float(row[4]),
+                            float(row[5]) if len(row) > 5 else 0.0,
+                        )
+                        for row in panel.candles
+                    ]
+                )
             if panel.error_text:
                 painter.set_error(str(panel.error_text))
             painter.set_source_label(str(panel.source))
@@ -495,8 +502,10 @@ if _HAS_WEBENGINE:
         ) -> dict:
             """The chart ``painter`` paints at ``width_px`` by ``height_px`` CSS pixels and ``ratio``, as a PNG data URI.
 
-            The height is never under the painter's natural height for the
-            overlays on, and the same inputs answer the last image without a repaint.
+            A measured slot height is never under the painter's minimum
+            height for the overlays on, so the sub-panes shrink to the slot; an
+            unmeasured slot takes the natural height. The same inputs answer
+            the last image without a repaint.
             """
             width = int(width_px or 0) or FALLBACK_IMAGE_WIDTH_PX
             scale = float(ratio or 0.0) or 1.0
@@ -507,7 +516,8 @@ if _HAS_WEBENGINE:
             started = time.perf_counter()
             self._feed_painter()
             natural = int(self._painter._natural_height_for_panes(width))
-            height = max(natural, asked_height)
+            minimum = int(self._painter._minimum_height_for_panes(width))
+            height = max(minimum, asked_height) if asked_height else natural
             image = paint_image(self._painter, width, height, scale)
             painted_ms = (time.perf_counter() - started) * 1000.0
             buffer = QBuffer()
@@ -527,6 +537,7 @@ if _HAS_WEBENGINE:
                 "sha256": hashlib.sha256(png).hexdigest()[:SHA_PREFIX_LENGTH],
                 "candle_count": len(self._model.panel.candles),
                 "overlays": self._painter.overlays_shown(),
+                "legend": self._painter.legend_entries(),
                 "paint_ms": round(painted_ms, 2),
                 "encode_ms": round(
                     (time.perf_counter() - started) * 1000.0 - painted_ms, 2
