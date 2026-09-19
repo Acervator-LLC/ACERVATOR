@@ -33,7 +33,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from ...core.fmt import fmt_price_coerced
 from ...core.log_paths import get_log_root
@@ -46,6 +46,7 @@ from ...simulator.sim_bus import fill_line
 from ...simulator.validation import iso_stamp
 from ...simulator.ytd_trade_source import ROOT_EMPTY, ROOT_MISSING, ROOT_NO_MANIFEST
 from ...trading.container.config import BotState
+from ..main_tabs import indicator_panel_surface as panel
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
 from ..main_tabs.main_window_surface import MAIN_THREAD_NAME, api_event_block
@@ -79,8 +80,18 @@ PLACEHOLDER_ORDER = ["title", "way_in_buttons", "hint"]
 
 FLIP_BUTTON_NAME = "sim-flip-button"
 
-#: The replay layer's header row, at the panel header's own margins.
-REPLAY_HEADER_LAYOUT = {"margins_px": [4, 2, 4, 2], "spacing_px": 2}
+#: The replay layer's header row, at the panel header's own margins and the
+#: panel column's spacing, read from ``indicator_panel_surface`` so the flip
+#: button lands at one corner under both layers.
+REPLAY_HEADER_LAYOUT = {
+    "margins_px": list(cast(list, panel.HEADER["margins_px"])),
+    "spacing_px": int(cast(int, panel.CONTAINER["spacing_px"])),
+}
+
+#: The ask param carrying the pressed flip button's rect, in the layer stack's
+#: coordinates, from either page module to the host.
+FLIP_RECT_PARAM = "flip_rect"
+FLIP_RECT_KEYS = ("x", "y", "width", "height")
 
 LAYER_SPLITTER = {
     "orientation": "vertical",
@@ -521,6 +532,34 @@ CLEAR_OUTCOME_CANCELLED = "cancelled"
 CLEAR_OUTCOME_NOTHING_HELD = "nothing_held"
 CLEAR_OUTCOME_IN_FLIGHT = "refused_in_flight"
 
+#: The signal a flip press emits through ``signal_contract``: the pressed
+#: button's rect against the previous press's rect, so the way back reads at
+#: the way in's position.
+LAYER_FLIPPED_SIGNAL = "sim.layer.flipped"
+
+
+def flip_rect(value: Any) -> Optional[dict]:
+    """``value`` as the four integer ``FLIP_RECT_KEYS``, or None when it does
+    not carry all four as numbers."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        return {key: int(round(float(value[key]))) for key in FLIP_RECT_KEYS}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def flipped_pin(leaving: str, shown: str, pressed: Any, previous: Any) -> dict:
+    """The ``LAYER_FLIPPED_SIGNAL`` row for one press: ``actual`` the pressed
+    rect, ``expected`` the previous press's rect, ``ok`` their equality or
+    None on the first press, ``context`` the layer left and the layer shown."""
+    return {
+        "actual": pressed,
+        "expected": previous,
+        "ok": None if previous is None or pressed is None else pressed == previous,
+        "context": {"from": leaving, "to": shown},
+    }
+
 
 def venues_text(venues: Any) -> str:
     """The venue ids in ``venues`` joined for a line, ``no venue`` for none."""
@@ -572,9 +611,15 @@ def trade_line(trade: Any) -> str:
 
 
 def flip_button(layer: Any) -> dict:
-    """The flip button as it reads on ``layer``."""
+    """The flip button as it reads on ``layer``, with ``other_text`` the word
+    it reads on the other layer, so the page reserves one width for both."""
     shown = layer if layer in sim.LAYERS else sim.LAYER_INDICATORS
-    return {"text": sim.FLIP_BUTTON_TEXT[shown], "name": FLIP_BUTTON_NAME}
+    other = next(one for one in sim.LAYERS if one != shown)
+    return {
+        "text": sim.FLIP_BUTTON_TEXT[shown],
+        "other_text": sim.FLIP_BUTTON_TEXT[other],
+        "name": FLIP_BUTTON_NAME,
+    }
 
 
 def replay_model(feed: Any, choices: Any = (), running: bool = False) -> dict:

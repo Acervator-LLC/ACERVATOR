@@ -102,6 +102,7 @@
   var CURRENT_EXCHANGE = "current_exchange";
   var PLACEHOLDER_SHOWN = "placeholder_shown";
   var TEXT = "text";
+  var OTHER_TEXT = "other_text";
   var TOOLTIP = "tooltip";
   var MINIMUM_WIDTH = "minimum_width_px";
   var MINIMUM_SIZE = "minimum_size_px";
@@ -147,6 +148,7 @@
   var RETRIEVE_ACTION = "retrieve_button.clicked";
   var WAY_IN_PARAM = "way_in";
   var REPLAY_LAYER_PARAM = "replay_layer";
+  var FLIP_RECT_PARAM = "flip_rect";
   var TABLET_PARAM = "tablet";
   var RETRIEVE_PARAM = "retrieve_tablet";
 
@@ -311,6 +313,7 @@
   var ORIENTATION_ATTR = "data-orientation";
   var COLLAPSIBLE_ATTR = "data-collapsible";
   var LAYER_ATTR = "data-layer";
+  var OTHER_TEXT_ATTR = "data-other-text";
   var CURRENT_ATTR = "data-current";
   var EXCHANGE_ATTR = "data-exchange";
   var HOVERED_ATTR = "data-hovered";
@@ -755,10 +758,33 @@
     return askTrading(params);
   }
 
-  // The flip between the panel and the replay layer behind it.
-  function flipAsked(layer) {
+  // The flip button's rect in the layer stack's coordinates, the frame the
+  // Qt host reads its flip rect in; null when the button is not in the stack.
+  function flipRect(button) {
+    var stack = button && button.closest
+      ? button.closest(SELECT_OPEN + PART_ATTR + SELECT_IS + LAYER_STACK_PART + SELECT_CLOSE)
+      : null;
+    if (!stack) {
+      return null;
+    }
+    var origin = stack.getBoundingClientRect();
+    var rect = button.getBoundingClientRect();
+    return {
+      x: Math.round(rect.left - origin.left),
+      y: Math.round(rect.top - origin.top),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    };
+  }
+
+  // The flip between the panel and the replay layer behind it; `rect` is the
+  // pressed button's rect, which the host's emit carries.
+  function flipAsked(layer, rect) {
     var params = {};
     params[REPLAY_LAYER_PARAM] = layer;
+    if (rect) {
+      params[FLIP_RECT_PARAM] = rect;
+    }
     return askTrading(params);
   }
 
@@ -1119,20 +1145,22 @@
   }
 
   // The flip button on the replay layer's own header, the way back to the
-  // panel; the panel module seats the same button after its title.
+  // panel, first in the row as the panel module seats it before its title.
+  // It keeps its content width; `data-other-text` lets the sheet reserve the
+  // other layer's word so both layers draw one width.
   function FlipButton(props) {
     var model = objectField(props.model, FLIP_BUTTON);
     var buttonProps = {
-      className: PANE_CLASS,
       type: BUTTON_TYPE,
-      onClick: function () {
-        flipAsked(INDICATORS_LAYER);
+      onClick: function (event) {
+        flipAsked(INDICATORS_LAYER, flipRect(event.currentTarget));
       }
     };
     buttonProps[PART_ATTR] = FLIP_BUTTON_PART;
     buttonProps[SLOT_ATTR] = FLIP_BUTTON_PART;
     buttonProps[ACTION_ATTR] = text(props.actions[FLIP_ACTION]);
     buttonProps[ARIA_LABEL] = label(model[NAME]);
+    buttonProps[OTHER_TEXT_ATTR] = text(model[OTHER_TEXT]);
     return element(BUTTON_TAG, buttonProps, text(model[TEXT]));
   }
 
@@ -1275,8 +1303,10 @@
   }
 
   // The replay layer behind the panel: its header row holding the flip
-  // button, over the VWAP window and the Stone Tablet playback window in one
-  // vertical splitter, as the Qt fork lays them out.
+  // button first, over the VWAP window and the Stone Tablet playback window
+  // in one vertical splitter, as the Qt fork lays them out. The header wraps
+  // when the pane is narrower than its controls, so the flip keeps its
+  // width and the retrieval button stays inside the pane.
   function ReplayLayer(props) {
     var model = props.model;
     var layerProps = {
@@ -1293,6 +1323,7 @@
     layerProps[SLOT_ATTR] = REPLAY_LAYER_PART;
     var headerProps = { style: boxStyle(objectField(model, REPLAY_HEADER), ROW) };
     headerProps.style.alignItems = CENTER;
+    headerProps.style.flexWrap = WRAP;
     headerProps[PART_ATTR] = REPLAY_HEADER_PART;
     var spacerProps = { style: { flex: AUTO } };
     spacerProps[PART_ATTR] = STRETCH_PART;
@@ -2308,6 +2339,7 @@
     askTrading: askTrading,
     wayInAsked: wayInAsked,
     flipAsked: flipAsked,
+    flipRect: flipRect,
     tabletChosen: tabletChosen,
     retrieveAsked: retrieveAsked,
     pauseToggled: pauseToggled,
