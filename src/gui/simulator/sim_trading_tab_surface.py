@@ -535,16 +535,52 @@ def rows_running(bots: Any) -> int:
     return sum(1 for one in bots if one.state == BotState.RUNNING.value)
 
 
-def run_started_line(mode: str, exchange_id: Any, bots: int, budget_usd: float) -> str:
+#: The sentence the Back Test's started line adds from ``back_test.fleet_cost``:
+#: the candles, the files, the evaluations and the minutes at the stated rate,
+#: then the bots with no bar to walk, by name.
+BACK_TEST_COST_FORMAT = (
+    " {walking} bot(s) walk {candles:,} candle(s) in {files} file(s), "
+    "{evaluations:,} evaluation(s), about {minutes:.1f} min at "
+    "{per_thousand:.2f} s per 1,000{absent}."
+)
+BACK_TEST_ABSENT_FORMAT = "; {count} bot(s) with no tablet at its timeframe: {names}"
+
+
+def back_test_cost_text(cost: Any) -> str:
+    """``BACK_TEST_COST_FORMAT`` over a ``FleetCost``, its
+    ``BACK_TEST_ABSENT_FORMAT`` clause when ``cost.absent`` names a bot."""
+    absent = list(cost.absent)
+    return BACK_TEST_COST_FORMAT.format(
+        walking=len(cost.walking),
+        candles=int(cost.candles),
+        files=int(cost.files),
+        evaluations=int(cost.evaluations),
+        minutes=float(cost.minutes),
+        per_thousand=float(cost.per_thousand),
+        absent=(
+            BACK_TEST_ABSENT_FORMAT.format(count=len(absent), names=", ".join(absent))
+            if absent
+            else ""
+        ),
+    )
+
+
+def run_started_line(
+    mode: str, exchange_id: Any, bots: int, budget_usd: float, cost: Any = None
+) -> str:
     """The Activity Log line for a Start in ``mode``: the exchange, the bot
     count and the mode's funding through ``RUN_FUNDING_TEXT``, the Validation
-    text carrying ``budget_usd``."""
-    return RUN_STARTED_FORMAT.format(
+    text carrying ``budget_usd``, and ``back_test_cost_text`` over ``cost``
+    when one is handed."""
+    line = RUN_STARTED_FORMAT.format(
         mode=sim.MODE_TEXT.get(mode, mode),
         exchange=exchange_id,
         bots=int(bots),
         funding=RUN_FUNDING_TEXT.get(mode, "").format(budget=float(budget_usd)),
     )
+    if cost is not None:
+        line += back_test_cost_text(cost)
+    return line
 
 
 def run_no_bot_line(mode: str, exchange_id: Any) -> str:

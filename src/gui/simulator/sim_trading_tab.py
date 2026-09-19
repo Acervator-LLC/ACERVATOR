@@ -1054,7 +1054,9 @@ class SimTradingTab(QWidget):
         being one pass over the fleet; under Back Test nothing moves at the
         press, each row reading ``running`` when its own walk's opening
         snapshot reaches ``_take_bot_stats``; then the YTD root line when
-        Validation's YTD directory is not ready, the started line and
+        Validation's YTD directory is not ready, the started line (under Back
+        Test carrying ``back_test.fleet_cost`` over the tab's tablets: the
+        candles, the files, the evaluations and the minutes) and
         ``_compute_run`` on a daemon thread; a venue holding no scrumming bot
         writes one line and starts nothing. Answers ``START_OUTCOME_NO_BOT``
         or ``START_OUTCOME_STARTED``."""
@@ -1072,6 +1074,7 @@ class SimTradingTab(QWidget):
             "stopper": "",
         }
         self._begin_fills()
+        cost = None
         if mode == surface.MODE_VALIDATION:
             for one in bots:
                 self._bot_manager.start(one.bot_id)
@@ -1082,9 +1085,11 @@ class SimTradingTab(QWidget):
                 self._status_log.log(
                     tab_surface.ytd_root_line(state, source.root()), "warning"
                 )
+        else:
+            cost = back_test.fleet_cost(bots, self._tablet_source)
         self._status_log.log(
             tab_surface.run_started_line(
-                mode, exchange_id, len(bots), back_test.run_budget_usd(bots)
+                mode, exchange_id, len(bots), back_test.run_budget_usd(bots), cost
             ),
             "success",
         )
@@ -1099,10 +1104,11 @@ class SimTradingTab(QWidget):
 
     def _compute_run(self, mode: str, bots: list, exchange_id: str) -> None:
         """Run ``validation.run`` or ``back_test.run`` over ``bots`` and the
-        tab's sources on the worker thread, each fill through ``run_trade``
-        and the outcome through ``run_finished``, the thread routed to the sim
-        signal sink by ``routed_run`` for the run's length; a run that raises
-        writes the failed line and hands None to ``run_finished``."""
+        tab's sources on the worker thread, each fill through ``run_trade``,
+        each Back Test walk's lines through ``run_line`` and the outcome
+        through ``run_finished``, the thread routed to the sim signal sink by
+        ``routed_run`` for the run's length; a run that raises writes the
+        failed line and hands None to ``run_finished``."""
         with routed_run(mode, lambda line: self.run_line.emit(line, "info")):
             try:
                 if mode == surface.MODE_VALIDATION:
@@ -1122,11 +1128,11 @@ class SimTradingTab(QWidget):
                         bots,
                         self._tablet_source,
                         exchange_id=exchange_id,
-                        ticks_per_bot=surface.BACK_TEST_TICKS_PER_BOT,
                         funding=surface.funding_for(mode),
                         on_trade=self.run_trade.emit,
                         stop=self._run_stop.is_set,
                         bus=self._bus,
+                        progress=lambda line: self.run_line.emit(line, "info"),
                     )
             except Exception as exc:
                 logger.exception("%s run failed: %s", mode, exc)

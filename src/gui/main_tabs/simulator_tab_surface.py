@@ -226,10 +226,6 @@ BACK_TEST_COLUMNS = (
 #: How many compared bots the Back Test table lists.
 BACK_TEST_ROW_LIMIT = 200
 
-#: How many gate-chain evaluations one press spends per bot. Measured at 1.7 ms
-#: each, so a 38-bot press reads the whole 2026 tape in about 13 seconds.
-BACK_TEST_TICKS_PER_BOT = 200
-
 BATTERY_TITLE = "Portfolio Battery"
 BATTERY_IDLE_TEXT = "No battery run yet. Run Portfolio or Run Every Portfolio."
 
@@ -1345,7 +1341,6 @@ def run_back_test(
         bots,
         TabletSource(TABLET_ROOT),
         exchange_id=choice["chosen"],
-        ticks_per_bot=BACK_TEST_TICKS_PER_BOT,
     )
     payload = back_test_payload(outcome, origin, choice)
     payload["fleet"] = fleet_model(

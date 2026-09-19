@@ -48,13 +48,17 @@ from .back_test import (
     FOLD,
     FUNDED_BY_TARGETS,
     MIN_CANDLES,
+    PROGRESS_EVERY_BARS,
+    RATE_LINE_FORMAT,
     SCRUM,
     UNCITED_RULE,
     SimTrade,
     TradeSink,
     cited_rule_for,
+    evaluations_expected,
     new_bot,
     run_budget_usd,
+    seconds_per_thousand,
     walk,
 )
 from .fleet_source import BATTERY_ORIGIN, SCRUMMING_MODE, SimBot
@@ -166,11 +170,6 @@ HELD_FLEET = "held"
 CRYPTO_EXCHANGE = "coinbase"
 EQUITY_EXCHANGE = "yahoo"
 
-#: How many bars a walk covers between two progress lines. At the measured
-#: rate of about 1.7 ms an evaluation a line lands about every 8.5 seconds on
-#: a 5m walk, and a daily walk ends before its first one.
-PROGRESS_EVERY_BARS = 5_000
-
 #: The signals one portfolio's start and end emit through ``signal_contract``.
 PORTFOLIO_STARTED_SIGNAL = "sim.battery.portfolio_started"
 PORTFOLIO_FINISHED_SIGNAL = "sim.battery.portfolio_finished"
@@ -215,10 +214,6 @@ COMPARISON_FORMAT = (
     "${trough:,.2f}; {partial_exits} partial exit(s), {re_entries} "
     "re-entr{re_entries_word}"
 )
-RATE_LINE_FORMAT = (
-    "{evaluations:,} evaluation(s) of {expected:,} expected in {seconds:.1f} s, "
-    "{per_thousand:.2f} s per 1,000."
-)
 COST_SPAN_FORMAT = "{span} ({bars:,} bars) in {cost}"
 COSTED_LINE_FORMAT = (
     "At {per_thousand:.2f} s per 1,000 evaluations a crypto bot at "
@@ -236,19 +231,6 @@ RAN = "ran"
 SYMBOL_OUTCOMES = (NO_TABLET, SHORT_TAPE, UNCITED_RULE, RAN)
 
 DAY_MS = 86_400_000
-
-
-def evaluations_expected(bars: int) -> int:
-    """How many gate-chain evaluations a walk over ``bars`` makes: one per bar
-    from the ``MIN_CANDLES``th on, none under ``MIN_CANDLES``."""
-    return max(0, int(bars) - (MIN_CANDLES - 1))
-
-
-def seconds_per_thousand(seconds: float, evaluations: int) -> float:
-    """``seconds`` scaled to 1,000 evaluations; zero when none were made."""
-    if int(evaluations) <= 0:
-        return 0.0
-    return float(seconds) * 1000.0 / float(evaluations)
 
 
 def difference_pct_of(hodl_usd: float, harvest_fold_usd: float) -> float:
