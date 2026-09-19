@@ -34,13 +34,16 @@ only, the ``FETCH_TABLET`` entries ``_record_venue_call`` records and the
 ``FETCH_YTD`` entry ``_generate_from_ytd`` records, and raises ``SendRefused``
 for any other action before anything is pushed; ``run_action`` answers the
 page's Pause API Log press through ``set_api_paused``. The run mode is held once, on
-``SimTradingTabState.mode``; a venue page's mode press reaches ``set_mode``,
-which redraws the tab so the way-in row above each layer's exchange tab bar
+``FleetSource.mode``, and names which of the source's three fleets the page
+draws; a venue page's mode press or the card's reaches ``set_mode``, which
+moves ``FleetSource.set_mode`` and fires ``fleet_changed``, so the venues
+re-seat from that mode's fleet with the active sheet on their headers and the
+tab redraws: the way-in row above each layer's exchange tab bar
 offers Clear Fleet then that mode's two ways in then Start Run while a fleet
 is held and nothing otherwise, the corner holding nothing, and the card the
-mode's two, with Clear Fleet above them while a fleet is held, and
-re-publishes every venue so its header carries the active sheet;
-``show_tab`` reads ``held`` off ``FleetSource.bots`` on every call; a
+three mode buttons and the mode's two, with Clear Fleet above them while a
+fleet is held;
+``show_tab`` reads ``held`` and ``mode`` off ``FleetSource`` on every call; a
 row or card press reaches ``_way_in``, which runs ``_clear_fleet`` for
 Clear Fleet, runs ``_start_run_pressed`` for Start Run, opens the wizard for
 Create New Bots, runs
@@ -1090,7 +1093,7 @@ if _HAS_WEBENGINE:
         def aggregate(self) -> dict:
             """The header strip's figures, ``fleet_aggregate`` over the held
             fleet in the tab's ``mode``."""
-            return sim.fleet_aggregate(self._fleet_source, self._state.mode)
+            return sim.fleet_aggregate(self._fleet_source, self.mode())
 
         def api_log(self) -> SimApiLog:
             """The tab's own API log; every entry it accepts reaches the pane,
@@ -1106,17 +1109,71 @@ if _HAS_WEBENGINE:
             return len(layer_exchanges(self._state.exchanges)[ALIAS_LAYER])
 
         def mode(self) -> str:
-            """The run mode in force, one of ``MODES``, off the tab state."""
-            return self._state.mode
+            """The run mode in force, one of ``MODES``, ``FleetSource.mode``."""
+            return self._fleet_source.mode()
 
         def set_mode(self, mode: str) -> str:
-            """Make ``mode`` the run mode: redraw the tab so each corner and
-            card offers that mode's two ways in, and re-publish every venue so
-            its header carries the active sheet; answers the mode in force."""
-            if self._state.set_mode(mode) == mode:
-                self.show_tab({})
-                self._venue_published()
-            return self._state.mode
+            """Make ``mode`` the run mode through ``FleetSource.set_mode``, so
+            its fleet is the one the page's tables, the strip, the venue
+            stack and the way-in row draw, then ``fleet_changed``, which
+            re-seats the venues with the active sheet and redraws the card's
+            mode row. A name outside ``MODES`` changes nothing; a press while
+            ``battery_running`` or ``run_running`` writes the in-flight line
+            and changes nothing. Each press emits ``MODE_SHOWN_SIGNAL`` with
+            its outcome; answers the mode in force."""
+            left = self.mode()
+            expected = tab_surface.mode_shown_expected(
+                mode, self._fleet_source.held_by_mode()
+            )
+
+            def shown(outcome: str) -> None:
+                _pin_emit(
+                    tab_surface.MODE_SHOWN_SIGNAL,
+                    actual={
+                        "mode": self.mode(),
+                        "held": len(self._fleet_source.bots()),
+                        "venues": list(self._fleet_source.exchanges()),
+                    },
+                    expected=expected,
+                    context={
+                        "outcome": outcome,
+                        "from": left,
+                        "held_by_mode": self._fleet_source.held_by_mode(),
+                    },
+                )
+                sink = _pin_sink()
+                if sink is not None:
+                    sink.flush()
+
+            if mode not in sim.MODES:
+                shown(tab_surface.MODE_OUTCOME_UNKNOWN)
+                return self.mode()
+            if self.battery_running():
+                self.log(tab_surface.BATTERY_RUNNING_TEXT, "warning")
+                shown(tab_surface.MODE_OUTCOME_IN_FLIGHT)
+                return self.mode()
+            if self.run_running():
+                self.log(
+                    tab_surface.run_in_flight_line(
+                        self._run.get("mode", ""),
+                        len(self._run.get("bot_ids", [])),
+                        sim.MODE_TEXT.get(mode, mode),
+                    ),
+                    "warning",
+                )
+                shown(tab_surface.MODE_OUTCOME_IN_FLIGHT)
+                return self.mode()
+            self._fleet_source.set_mode(mode)
+            self._state.set_mode(self.mode())
+            self.fleet_changed.emit()
+            self.log(
+                tab_surface.mode_shown_line(
+                    mode, len(self._fleet_source.bots()), self._fleet_source.exchanges()
+                ),
+                "info",
+            )
+            shown(tab_surface.MODE_OUTCOME_SHOWN)
+            return self.mode()
 
         def _current_venue_id(self) -> str:
             """The exchange of the venue on show, or ``""`` with none seated."""
@@ -1158,10 +1215,11 @@ if _HAS_WEBENGINE:
             """Clear Fleet: the in-flight line and nothing removed while
             ``battery_running`` or ``run_running``; the nothing-held line with
             no record held; otherwise Live's Delete box shape under
-            ``CLEAR_FLEET_BOX_TITLE`` naming the count, and on Yes
-            ``FleetSource.clear``, the cleared line, the notification, the
-            sound and ``fleet_changed``, so every venue unseats, the card
-            returns and the sim fleet file is written empty; each press emits
+            ``CLEAR_FLEET_BOX_TITLE`` naming the run mode and the count, and
+            on Yes ``FleetSource.clear`` on that mode's fleet, the cleared
+            line, the notification, the sound and ``fleet_changed``, so every
+            venue unseats, the card returns and the sim fleet file is written
+            with that fleet empty and the other two kept; each press emits
             ``CLEAR_PRESSED_SIGNAL`` with its outcome and a clear emits
             ``CLEARED_SIGNAL`` with what left."""
             held = self._fleet_source.bots()
@@ -1205,7 +1263,7 @@ if _HAS_WEBENGINE:
             confirm = QMessageBox.question(
                 self,
                 tab_surface.CLEAR_FLEET_BOX_TITLE,
-                tab_surface.clear_fleet_question(len(held), venues),
+                tab_surface.clear_fleet_question(len(held), venues, self.mode()),
                 QMessageBox.Yes | QMessageBox.No,
             )
             if confirm != QMessageBox.Yes:
@@ -1213,7 +1271,7 @@ if _HAS_WEBENGINE:
                 pressed(tab_surface.CLEAR_OUTCOME_CANCELLED)
                 return
             removed = self._fleet_source.clear()
-            self.log(tab_surface.cleared_line(removed, venues), "warning")
+            self.log(tab_surface.cleared_line(removed, venues, self.mode()), "warning")
             self._notify(tab_surface.FLEET_CLEARED_NOTICE, "warning")
             get_sound_engine().play_state_change()
             self.fleet_changed.emit()
@@ -1225,7 +1283,11 @@ if _HAS_WEBENGINE:
                     "venues_after": self.exchange_count(),
                 },
                 expected={"held_after": 0, "venues_after": 0},
-                context={"removed": removed, "venues_unseated": list(venues)},
+                context={
+                    "removed": removed,
+                    "venues_unseated": list(venues),
+                    "mode": self.mode(),
+                },
             )
             sink = _pin_sink()
             if sink is not None:
@@ -1628,10 +1690,12 @@ if _HAS_WEBENGINE:
 
             ``layer``, ``replay_layer``, ``activity_paused`` and ``api_paused``
             persist in the state; ``api_lines`` is spent on the call that
-            carries it; ``held`` is read off ``FleetSource.bots`` on every call,
-            so the card's Clear Fleet follows the fleet.
+            carries it; ``held`` and ``mode`` are read off ``FleetSource`` on
+            every call, so the card's Clear Fleet and its mode row follow the
+            fleet.
             """
             self._state.held = len(self._fleet_source.bots())
+            self._state.set_mode(self._fleet_source.mode())
             return self.show_models({tab_surface.METHOD: self._state.view_model(asked)})
 
         def add_exchange_tab(self, exchange_id: str, display_name: str) -> None:
@@ -1749,10 +1813,16 @@ if _HAS_WEBENGINE:
                 markets=markets,
                 timeframes=wizard_surface.venue_timeframes(exchanges),
             )
-            if wizard.exec() != wizard.DialogCode.Accepted:
+            try:
+                accepted = wizard.exec() == wizard.DialogCode.Accepted
+                config = wizard.get_bot_config() if accepted else {}
+            finally:
+                # The dialog's QWebEngineView is deleted on this thread by the
+                # event loop; a worker thread's garbage collection would abort.
+                wizard.deleteLater()
+            if not accepted:
                 self.show_log_call("log", wizard_surface.CANCELLED_TEXT, "warning")
                 return
-            config = wizard.get_bot_config()
             logger.info("Sim bot creation config: %s", config)
             if config.get("mode") == EXTRACTOR_MODE:
                 reason = wizard_surface.extractor_parent_refusal(
@@ -2248,10 +2318,11 @@ if _HAS_WEBENGINE:
 
         def run_action(self, payload: str) -> None:
             """Answer the flip, the Pause Console and Pause API Log presses,
-            a corner or card way-in, the replay layer's chooser and retrieval
-            press, a venue sub-tab press, the panel's ``select_bot``, both bot
-            tables' asks and the venue page's mode buttons, ``+ New Bot`` and
-            command bar; every other ask is held."""
+            a corner or card way-in, the card's mode buttons, the replay
+            layer's chooser and retrieval press, a venue sub-tab press, the
+            panel's ``select_bot``, both bot tables' asks and the venue page's
+            mode buttons, ``+ New Bot`` and command bar; every other ask is
+            held."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -2284,6 +2355,9 @@ if _HAS_WEBENGINE:
                 shown = params.get(EXCHANGE_PARAM)
                 if shown is not None:
                     self.show_tab({EXCHANGE_PARAM: str(shown)})
+                card_mode = params.get(tab_surface.MODE_PARAM)
+                if card_mode is not None:
+                    self.set_mode(str(card_mode))
             elif (
                 method == venue_surface.METHOD
                 and params.get(venue_surface.MODE_PARAM) is not None
@@ -2326,7 +2400,7 @@ if _HAS_WEBENGINE:
             if self._votes:
                 self._models[PANEL_METHOD] = self._votes
             self._waiting = {}
-            self._venue_models = venue_models(self._venues, self._state.mode)
+            self._venue_models = venue_models(self._venues, self.mode())
             self._web = QWebEngineView(self)
             self._web.setAccessibleName(ACCESSIBLE_NAME)
             # repaint_pages reads the tone off the view on every theme switch.
@@ -2339,7 +2413,7 @@ if _HAS_WEBENGINE:
         def _venue_published(self) -> None:
             """Re-read every seated venue, its header drawn for the run mode in
             force, and push the fleet to the page."""
-            self._venue_models = venue_models(self._venues, self._state.mode)
+            self._venue_models = venue_models(self._venues, self.mode())
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(push_script(self._venue_models))
 

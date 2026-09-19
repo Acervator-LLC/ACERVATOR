@@ -7,9 +7,14 @@ from the YTD trade files, both read only.
 ``record_for``, ``exchanges``, ``symbols``, ``statuses``, ``aggregate``,
 ``create``, ``sim_bot_for``, ``set_state``, ``remove``, ``clear``,
 ``stored_records``, ``stored_exchanges``, ``import_live_fleet``, ``generate_from_ytd``,
-``hold_battery_fleet``, ``sim_dir``, ``sim_path`` and ``save``; it holds no venue, writes ``sim_path``
+``hold_battery_fleet``, ``mode``, ``set_mode``, ``held_by_mode``, ``sim_dir``,
+``sim_path`` and ``save``; it holds no venue, writes ``sim_path``
 alone and sends nothing, and ``__getattr__`` raises ``SendRefused`` for every
-other name. ``bots``, ``exchanges``, ``statuses`` and ``aggregate`` read the
+other name. It holds one fleet per run mode of ``MODES``, and ``set_mode``
+names the one every other reader and act works on; the sim fleet file holds
+all three under ``FLEETS_KEY``, and a file holding one ``bots`` map at the top
+is read as the ``MODE_VALIDATION`` fleet. ``bots``, ``exchanges``,
+``statuses`` and ``aggregate`` read the
 held records alone, so the tab starts empty; ``stored_records`` and
 ``stored_exchanges`` read ``bot_state.json``, ``import_live_fleet`` copies its
 records on one exchange into the held map under their own ids with
@@ -63,6 +68,15 @@ SIM_FLEET_NAME = "sim_fleet.json"
 #: The ``saved_at_human`` format ``StateManager.save_state`` writes.
 SAVED_AT_HUMAN_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+#: The three run modes; ``FleetSource`` holds one fleet under each name.
+MODE_VALIDATION = "validation"
+MODE_BACK_TEST = "back_test"
+MODE_PORTFOLIO_BATTERY = "portfolio_battery"
+MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
+
+#: The sim fleet file's key holding one entry per mode of ``MODES``.
+FLEETS_KEY = "fleets"
+
 #: Every name ``FleetSource`` answers. ``__getattr__`` refuses the rest.
 READ_NAMES = (
     "root",
@@ -85,6 +99,9 @@ READ_NAMES = (
     "import_live_fleet",
     "generate_from_ytd",
     "hold_battery_fleet",
+    "mode",
+    "set_mode",
+    "held_by_mode",
     "sim_dir",
     "sim_path",
     "save",
@@ -673,31 +690,10 @@ def aggregate_stats(bots: Sequence[SimBot], budget_usd: Optional[float] = None) 
 EMPTY_AGGREGATE = aggregate_stats(())
 
 
-def _read_sim_records(path: Path) -> dict[str, dict]:
-    """The ``bots`` map of the sim fleet file at ``path``, by ``bot_id``.
-
-    An absent or empty file answers no records and logs nothing; a file that
-    is not a JSON object holding a ``bots`` object logs one warning naming
-    ``path`` and answers no records.
-    """
-    if not path.exists():
-        return {}
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.warning("sim fleet file %s unreadable: %s", path, exc)
-        return {}
-    if not text.strip():
-        return {}
-    try:
-        loaded = json.loads(text)
-    except json.JSONDecodeError as exc:
-        logger.warning("sim fleet file %s malformed: %s", path, exc)
-        return {}
-    stored = loaded.get("bots") if isinstance(loaded, dict) else None
-    if not isinstance(stored, dict):
-        logger.warning("sim fleet file %s malformed: no bots object", path)
-        return {}
+def _records_of(stored: dict, path: Path, mode: str) -> dict[str, dict]:
+    """The records of one ``bots`` map ``stored`` under ``mode``, by
+    ``bot_id``; a record that names no symbol is kept and named in one
+    warning line with ``path``."""
     records = {
         str(bot_id): record
         for bot_id, record in stored.items()
@@ -710,27 +706,135 @@ def _read_sim_records(path: Path) -> dict[str, dict]:
     ]
     if unread:
         logger.warning(
-            "sim fleet file %s: %d record(s) name no symbol and are not drawn: %s",
+            "sim fleet file %s, %s fleet: %d record(s) name no symbol "
+            "and are not drawn: %s",
             path,
+            mode,
             len(unread),
             ", ".join(unread),
         )
     return records
 
 
+def _empty_fleets() -> dict[str, dict[str, dict]]:
+    """One empty records map per mode of ``MODES``."""
+    return {mode: {} for mode in MODES}
+
+
+def _read_sim_records(path: Path) -> dict[str, dict[str, dict]]:
+    """One ``bots`` map per mode of ``MODES`` from the sim fleet file at
+    ``path``: each mode's entry under ``FLEETS_KEY``, a mode name outside
+    ``MODES`` not read and named in one warning line, and a file holding one
+    ``bots`` map at the top read as the ``MODE_VALIDATION`` fleet. An absent
+    or empty file answers three empty maps and logs nothing, and a file of
+    neither shape logs one warning naming ``path`` and answers the same."""
+    fleets = _empty_fleets()
+    if not path.exists():
+        return fleets
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("sim fleet file %s unreadable: %s", path, exc)
+        return fleets
+    if not text.strip():
+        return fleets
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError as exc:
+        logger.warning("sim fleet file %s malformed: %s", path, exc)
+        return fleets
+    if not isinstance(loaded, dict):
+        logger.warning("sim fleet file %s malformed: no bots object", path)
+        return fleets
+    stored_fleets = loaded.get(FLEETS_KEY)
+    if isinstance(stored_fleets, dict):
+        unknown = [str(name) for name in stored_fleets if name not in MODES]
+        if unknown:
+            logger.warning(
+                "sim fleet file %s names %d mode(s) outside %s and does not "
+                "read them: %s",
+                path,
+                len(unknown),
+                MODES,
+                ", ".join(unknown),
+            )
+        for mode in MODES:
+            entry = stored_fleets.get(mode)
+            if entry is None:
+                continue
+            stored = entry.get("bots") if isinstance(entry, dict) else None
+            if not isinstance(stored, dict):
+                logger.warning(
+                    "sim fleet file %s malformed: no bots object under %s",
+                    path,
+                    mode,
+                )
+                continue
+            fleets[mode] = _records_of(stored, path, mode)
+        return fleets
+    stored = loaded.get("bots")
+    if not isinstance(stored, dict):
+        logger.warning("sim fleet file %s malformed: no bots object", path)
+        return fleets
+    fleets[MODE_VALIDATION] = _records_of(stored, path, MODE_VALIDATION)
+    logger.info(
+        "sim fleet file %s holds one fleet; read as the %s fleet",
+        path,
+        MODE_VALIDATION,
+    )
+    return fleets
+
+
 class FleetSource:
-    """The records the sim fleet file holds, as ``SimBot`` records, and the
-    read of ``bot_state.json`` that ``import_live_fleet`` copies them from."""
+    """The records the sim fleet file holds, one fleet per mode of ``MODES``
+    as ``SimBot`` records, and the read of ``bot_state.json`` that
+    ``import_live_fleet`` copies them from; every act and reader works on the
+    fleet of ``mode``."""
 
     def __init__(
         self, root: Optional[Path] = None, sim_dir: Optional[Path] = None
     ) -> None:
         """Read the sim fleet file from ``sim_dir``, or from ``get_sim_dir``
-        when it is None; ``bot_state.json`` under ``root``, or under
-        ``~/.acervator`` when it is None, is read on ``stored_records`` alone."""
+        when it is None, with ``MODES[0]`` in force; ``bot_state.json`` under
+        ``root``, or under ``~/.acervator`` when it is None, is read on
+        ``stored_records`` alone."""
         self._root = Path(root) if root is not None else Path.home() / ".acervator"
         self._sim_dir = Path(sim_dir) if sim_dir is not None else get_sim_dir()
-        self._records: dict[str, dict] = _read_sim_records(self.sim_path())
+        self._mode: str = MODES[0]
+        self._fleets: dict[str, dict[str, dict]] = _read_sim_records(self.sim_path())
+
+    @property
+    def _records(self) -> dict[str, dict]:
+        """The records map of the fleet in force, ``_fleets`` under ``_mode``."""
+        return self._fleets[self._mode]
+
+    def mode(self) -> str:
+        """The run mode in force, one of ``MODES``."""
+        return self._mode
+
+    def set_mode(self, mode: str) -> str:
+        """Make ``mode`` the fleet every reader and act works on; a name
+        outside ``MODES`` changes nothing. Answers the mode in force."""
+        if mode in MODES:
+            self._mode = str(mode)
+        return self._mode
+
+    def held_by_mode(self) -> dict[str, dict]:
+        """Per mode of ``MODES``, ``held`` (how many records draw as a
+        ``SimBot``) and ``venues`` (their distinct ``exchange_id`` values,
+        sorted)."""
+        out: dict[str, dict] = {}
+        for mode, records in self._fleets.items():
+            bots = [
+                bot
+                for bot_id, record in records.items()
+                if (bot := _held_bot(bot_id, record)) is not None
+            ]
+            out[mode] = {
+                "held": len(bots),
+                "venues": sorted({bot.exchange_id for bot in bots if bot.exchange_id}),
+            }
+        return out
 
     def root(self) -> Path:
         """The directory holding the ``bot_state.json`` this source reads."""
@@ -856,12 +960,12 @@ class FleetSource:
         )
 
     def hold_battery_fleet(self, bots: Sequence[SimBot]) -> list[SimBot]:
-        """Make ``bots`` the held fleet: a bot already held under its
-        ``bot_id`` on the same symbol, exchange and ``target_usd`` keeps its
-        record, every other is held as ``battery_record``, and every held
-        record outside ``bots`` is dropped; answers the ``SimBot`` of each
-        record held, by exchange then symbol then id. The sim fleet file takes
-        them on the next ``save``."""
+        """Make ``bots`` the held fleet of the mode in force: a bot already
+        held under its ``bot_id`` on the same symbol, exchange and
+        ``target_usd`` keeps its record, every other is held as
+        ``battery_record``, and every held record outside ``bots`` is dropped;
+        answers the ``SimBot`` of each record held, by exchange then symbol
+        then id. The sim fleet file takes them on the next ``save``."""
         kept: dict[str, dict] = {}
         for bot in bots:
             record = self._records.get(bot.bot_id)
@@ -872,8 +976,10 @@ class FleetSource:
                 and held.exchange_id == bot.exchange_id
                 and held.target_usd == bot.target_usd
             )
-            kept[bot.bot_id] = record if same else battery_record(bot)
-        self._records = kept
+            kept[bot.bot_id] = (
+                record if same and record is not None else battery_record(bot)
+            )
+        self._fleets[self._mode] = kept
         return self.bots()
 
     def create(self, config: dict) -> SimBot:
@@ -926,22 +1032,35 @@ class FleetSource:
         return self._records.pop(str(bot_id), None) is not None
 
     def clear(self) -> int:
-        """Drop every held record, on every exchange; answers how many were
-        held. The sim fleet file loses them on the next ``save``."""
+        """Drop every held record of the mode in force, on every exchange;
+        answers how many were held. The sim fleet file loses them on the next
+        ``save``."""
         count = len(self._records)
-        self._records = {}
+        self._fleets[self._mode] = {}
         return count
 
     def save(self) -> Optional[Path]:
-        """Write the held records to ``sim_path`` through ``atomic_write_json``
-        under ``saved_at``, ``saved_at_human``, ``bot_count`` and ``bots``, the
-        keys ``StateManager.save_state`` writes; answers the path, or None when
-        the write fails."""
+        """Write every mode's held records to ``sim_path`` through
+        ``atomic_write_json``: ``saved_at``, ``saved_at_human``, ``bot_count``
+        summed over ``MODES``, and ``FLEETS_KEY`` holding one entry per mode
+        under the keys ``StateManager.save_state`` writes, ``saved_at``,
+        ``saved_at_human``, ``bot_count`` and ``bots``; answers the path, or
+        None when the write fails."""
+        saved_at = time.time()
+        saved_at_human = datetime.now().strftime(SAVED_AT_HUMAN_FORMAT)
         payload = {
-            "saved_at": time.time(),
-            "saved_at_human": datetime.now().strftime(SAVED_AT_HUMAN_FORMAT),
-            "bot_count": len(self._records),
-            "bots": dict(self._records),
+            "saved_at": saved_at,
+            "saved_at_human": saved_at_human,
+            "bot_count": sum(len(records) for records in self._fleets.values()),
+            FLEETS_KEY: {
+                mode: {
+                    "saved_at": saved_at,
+                    "saved_at_human": saved_at_human,
+                    "bot_count": len(records),
+                    "bots": dict(records),
+                }
+                for mode, records in self._fleets.items()
+            },
         }
         path = self.sim_path()
         try:
@@ -949,7 +1068,13 @@ class FleetSource:
         except (OSError, TypeError, ValueError) as exc:
             logger.error("sim fleet save failed: %s: %s", path, exc)
             return None
-        logger.info("sim fleet saved: %d bots to %s", len(self._records), path)
+        logger.info(
+            "sim fleet saved to %s: %s",
+            path,
+            ", ".join(
+                f"{mode} {len(records)}" for mode, records in self._fleets.items()
+            ),
+        )
         return path
 
     def bot_for(self, bot_id: str) -> Optional[SimBot]:
@@ -1070,7 +1195,12 @@ __all__ = [
     "EMPTY_AGGREGATE",
     "EXTRACTOR_DRAWDOWN_STATE",
     "EXTRACTOR_MODE",
+    "FLEETS_KEY",
     "LIVE_ORIGIN",
+    "MODES",
+    "MODE_BACK_TEST",
+    "MODE_PORTFOLIO_BATTERY",
+    "MODE_VALIDATION",
     "NEW_ORIGIN",
     "PHANTOMS_ENABLED_DEFAULT",
     "POOL_GREEN",
