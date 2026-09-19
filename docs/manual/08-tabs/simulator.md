@@ -9112,3 +9112,270 @@ bot was constructed. The Back Test still steps its tape at two hundred
 evaluations a bot, so a three-bot run over 1,500 candles lasts about three
 seconds; the row's movement is read off the record between two redraws and
 off the cells at the marks and at the end.
+
+## Back Test walks the full Stone Tablet
+
+> Back Test should be able to 'Load Live Fleet' but runs full Stone Tablet
+> for a given target asset or all tablets corresponding to the loaded /
+> configured fleet.
+
+Back Test walks every candle of every year file the tablet store holds for
+each bot's asset on the bot's venue, in time order, at the bot's own
+timeframe, with no stepping. Before this landed a bot read one year file, the
+oldest, and evaluated about two hundred of its bars. Now a bot with two year
+files of 3,000 candles evaluates 5,971 bars: 6,000 less the 29 the first
+window needs. A bot whose timeframe is not the store's 5m reads the same
+files rolled up through the registry's one rollup, so a 1h bot over the same
+two files evaluates 471 of 500 bars. A bot whose asset has no file, or whose
+timeframe the registry cannot roll 5m up to, is named on the Activity Log, in
+the started line and in the report, and walks nothing.
+
+`src/simulator/back_test.py` — the files and the tape one bot walks
+
+```python
+def native_entries(entries: Sequence[Any], asset: str, exchange_id: str) -> list:
+    """Every entry in ``entries`` for ``asset`` on ``exchange_id`` at
+    ``NATIVE_TIMEFRAME``, by year."""
+
+
+def bot_tape(registry: StoneTabletsRegistry, files: Sequence[Any], bot: SimBot) -> list:
+    """Every bar across ``files`` at ``bot_timeframe`` for ``bot``'s asset on
+    its venue, in time order, through ``registry.get_candles``; no file or a
+    timeframe outside ``SUPPORTED_TIMEFRAMES`` answers none."""
+    timeframe = bot_timeframe(bot)
+    if not files or timeframe not in SUPPORTED_TIMEFRAMES:
+        return []
+    since = min(int(one.first_ts_ms) for one in files)
+    until = max(int(one.last_ts_ms) for one in files)
+    return registry.get_candles(
+        bot.asset, since, until, timeframe=timeframe, exchange_id=bot.exchange_id
+    )
+```
+
+The runner reads the tape through a registry built on the tablet source's
+root for the run's length, the way the Portfolio Battery reads a crypto bot,
+and drops it when the run ends. The registry writes nothing. The stepping
+constant, the shared step and the two runner arguments that carried them are
+gone from the runner and from both hosts; the walk is called with its default
+step of one.
+
+`src/simulator/back_test.py` — the runner, per bot
+
+```python
+        files = native_entries(entries, bot.asset, bot.exchange_id)
+        raw = bot_tape(registry, files, bot)
+        if not raw:
+            outcomes[NO_TABLET] += 1
+```
+
+### The started line states the cost
+
+Start Run under Back Test writes one line before the walk begins. The line
+names the exchange, the bot count and the funding as before, then how many
+bots walk, the candles and files they read, the evaluations they make and
+about how many minutes that takes at the stated rate, and then the bots with
+no tablet at their timeframe, by name. The counts come from the MANIFEST
+rows alone, so the line lands at the press and reads no candle body.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the sentence the line adds
+
+```python
+BACK_TEST_COST_FORMAT = (
+    " {walking} bot(s) walk {candles:,} candle(s) in {files} file(s), "
+    "{evaluations:,} evaluation(s), about {minutes:.1f} min at "
+    "{per_thousand:.2f} s per 1,000{absent}."
+)
+BACK_TEST_ABSENT_FORMAT = "; {count} bot(s) with no tablet at its timeframe: {names}"
+```
+
+The rate the line uses is one constant, read off the walked lines on this
+machine with the sim bus live and phantoms on, and the report states the
+rate each walk measured beside it.
+
+`src/simulator/back_test.py` — the rate the started line assumes
+
+```python
+WALK_SECONDS_PER_THOUSAND = 5.4
+```
+
+Both hosts build the cost in the same place, inside the start of the run,
+and hand it to the started line.
+
+`src/gui/simulator/sim_trading_tab.py` — the cost at the press
+
+```python
+        else:
+            cost = back_test.fleet_cost(bots, self._tablet_source)
+        self._status_log.log(
+            tab_surface.run_started_line(
+                mode, exchange_id, len(bots), back_test.run_budget_usd(bots), cost
+            ),
+            "success",
+        )
+```
+
+### Each bot's walk reads as moving on the Activity Log
+
+Each bot's walk writes one line as it starts, naming the files, the bars and
+the evaluations to make; one line every 5,000 bars, naming the bar reached,
+the evaluations so far, the scrum sells and fold buys so far and the seconds;
+and one line as it ends, naming the evaluations, the bars, the files, the
+seconds and the rate. The lines cross to the Activity Log through the same
+signal the run's other lines use, on both hosts.
+
+`src/simulator/back_test.py` — the three lines
+
+```python
+WALK_STARTED_LINE_FORMAT = (
+    "Walking {bot_id} ({symbol}) at {timeframe} on {exchange_id}: {files} "
+    "file(s), {bars:,} bar(s), {evaluations:,} evaluation(s) to make."
+)
+WALK_PROGRESS_LINE_FORMAT = (
+    "{bot_id}: bar {bar:,} of {bars:,}, {evaluations:,} evaluation(s), "
+    "{scrums} scrum sell(s), {folds} fold buy(s), {seconds:.1f} s."
+)
+WALK_ENDED_LINE_FORMAT = (
+    "{bot_id} walked: {evaluations:,} evaluation(s) over {bars:,} bar(s) in "
+    "{files} file(s), {seconds:.1f} s ({per_thousand:.2f} s per 1,000); "
+    "{scrums} scrum sell(s), {folds} fold buy(s)."
+)
+```
+
+The progress cadence, the evaluations a walk makes and the rate arithmetic
+are one definition each, in the Back Test module, and the Portfolio Battery
+imports them from there.
+
+`src/simulator/portfolio_battery.py` — the four names imported
+
+```python
+from .back_test import (
+    FOLD,
+    FUNDED_BY_TARGETS,
+    MIN_CANDLES,
+    PROGRESS_EVERY_BARS,
+    RATE_LINE_FORMAT,
+```
+
+### Stop ends a Back Test walk at the bar reached
+
+Stop on a row of the run in flight ends the walk where it is. The walk in
+progress writes a stopped line naming the bar reached, its candle stamp and
+the evaluations made; the partial report carries that line on the bot's row,
+the evaluations made against the evaluations expected, and the bots not
+reached by name.
+
+`src/simulator/back_test.py` — the stopped line
+
+```python
+    @property
+    def stopped_at(self) -> str:
+        """``WALK_STOPPED_LINE_FORMAT`` when ``stopped``, else empty."""
+        if not self.stopped:
+            return ""
+        return WALK_STOPPED_LINE_FORMAT.format(
+            bot_id=self.bot_id,
+            bar=self.candles_read,
+            bars=self.bars,
+            candle_at=iso_stamp(self.last_ts_ms) or "none",
+            evaluations=self.ticks,
+        )
+```
+
+### The report counts the walk per bot
+
+The report's Bots table gains the timeframe, the files, the bars, the
+evaluations expected beside the evaluations made, the seconds, the rate and
+the stopped line; the tablet column names every file walked. The Run section
+carries the files walked, the evaluations, the evaluations expected, the
+seconds and the rate over the whole fleet, and the run's lines on the
+Activity Log carry the same totals in one rate line.
+
+`src/simulator/parity_report.py` — the columns added
+
+```python
+        ("tablet_key", "tablet"),
+        ("timeframe", "timeframe"),
+        ("files", "files"),
+        ("bars", "bars"),
+        ("ticks", "ticks"),
+        ("evaluations_expected", "expected"),
+        ("walk_seconds", "seconds"),
+        ("seconds_per_thousand", "s per 1,000"),
+```
+
+### One row per walked bot in the sim sink
+
+Each walked bot emits one row through the signal contract when its walk
+ends: the files, the bars, the evaluations, the fills, the seconds and
+whether Stop cut it short, against the evaluations expected. The row is
+`ok` only when the walk made every evaluation and was not stopped. The run's
+worker thread is routed to the Simulator's own signal sink, so the row lands
+there, and a long walk rotates that sink, so the row of an earlier bot sits
+in a rotated file beside the live one.
+
+`src/simulator/back_test.py` — the emit
+
+```python
+    pin_emit(
+        BOT_WALKED_SIGNAL,
+        actual={
+            "bot": bot.bot_id,
+            "files": list(keys),
+            "bars": result.bars,
+            "evaluations": result.ticks,
+            "fills": len(result.trades),
+            "seconds": round(seconds, 3),
+            "stopped": bool(result.stopped),
+        },
+        expected={"evaluations": expected, "stopped": False},
+        ok=result.ticks == expected and not result.stopped,
+```
+
+### The path from the press to the report
+
+```mermaid
+flowchart TD
+    press[Start Run under Back Test] --> start[_start_run: fleet_cost over the tab's tablets, the started line with candles, files, evaluations, minutes]
+    start --> worker[_compute_run on the worker thread, routed to the sim sink]
+    worker --> fleet[_walk_fleet: a registry on the tablet root]
+    fleet --> bot[per bot: native_entries, bot_tape at the bot's timeframe]
+    bot --> walk[_walk_bot: the walking line, walk over every bar, a line every 5,000 bars, the walked or stopped line, one bot_walked row]
+    walk --> report[write_report: files, bars, evaluations, expected, seconds, rate per bot]
+    report --> done[run_finished: the run's lines and the report line on the Activity Log]
+```
+
+### What was measured
+
+Two scrumming bots on coinbase at 5m, each asset with two year files of
+3,000 candles, the first ending 2025-12-31T23:55Z and the second starting
+2026-01-01T00:00Z, on a scratch home with every socket but loopback refused,
+read off the running program in both builds. Before: each bot read 3,000
+candles of one file and made 199 evaluations; the started line named no
+candle count and no time; no progress line landed. After: the started line
+read `2 bot(s) walk 12,000 candle(s) in 4 file(s), 11,942 evaluation(s),
+about 1.1 min at 5.40 s per 1,000`; each bot's walking line read 2 files,
+6,000 bars and 5,971 evaluations to make; one progress line landed at bar
+5,000 of 6,000; each walked line read 5,971 evaluations over 6,000 bars in 2
+files, 32.8 and 31.5 seconds in Qt, 32.7 and 32.2 in React, at 5.49, 5.27,
+5.48 and 5.39 seconds per 1,000; the report's rows read files 2, bars 6,000,
+ticks 5,971, expected 5,971, and 314 and 237 fills, equal to the spool's
+FILLED lines per bot; two rows in the sim sink, both `ok`. A bot whose asset
+had no file read `no Stone Tablet for CCC on coinbase at 5m; nothing walked.`
+on the Activity Log, `no_tablet` in the report and its name on the started
+line's absent clause. A bot at 1h over the same two files read 500 bars and
+471 evaluations, walked in 2.3 seconds. Stop pressed nine seconds into a walk
+read `stopped at bar 1,724 of 6,000 (2025-12-27T13:35:00Z): 1,695
+evaluation(s) made.` in Qt and bar 1,985 in React, the report `partial`, the
+second bot not reached, the sink row not `ok`. The walk wrapped to step ten
+bars read 598 evaluations against 5,971 expected, so the evaluation reading
+can fail. The scratch fleet file, the four tablets and the manifest hashed
+identical after every press, a planted byte moving a copy's hash; no socket
+left loopback; no bot was constructed.
+
+Three passages above describe what this section changes and are kept as
+written: the "One clock" passage under Back Test Mode, which quotes the
+shared step that is gone; the sentence under the simulated-bot section that
+the Back Test still steps its tape at two hundred evaluations a bot; and the
+three code-block headers that name the Battery module as the home of the
+evaluations-expected and progress-cadence definitions, which now live in the
+Back Test module and reach the Battery by import.

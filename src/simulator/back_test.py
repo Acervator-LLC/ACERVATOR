@@ -15,16 +15,24 @@ functions, and ``run`` walks each bot's tablet keeping units, lots, cash and
 fold tranches under one ``funding`` (Back Test from each bot's own scrum
 proceeds, Validation and Portfolio Battery from ``run_budget_usd``, the sum of
 the held Target Balances), emitting a ``BotStatsSnapshot`` on the run's bus
-under ``STATS_TOPIC`` every tick and every fill. ``cited_rule_for`` names the
-unit rule a bot's class trades under on its venue, every fill is sized under
-it, and a bot with no cited rule is ``UNCITED_RULE`` and walks nothing.
-``missing_pairs`` names the tablets a run needs and ``download_missing`` fills
-them through the shipped ``GapFiller``.
+under ``STATS_TOPIC`` every tick and every fill. Each bot walks every bar of
+every year file the store holds for its asset on its venue, joined in time
+order and rolled up to its ``ta_timeframe`` through ``bot_tape``, with no
+stepping; ``fleet_cost`` states the candles and the minutes before the walk,
+``progress`` carries one line at each walk's start, every
+``PROGRESS_EVERY_BARS`` bars and at its end, and ``BOT_WALKED_SIGNAL`` is
+emitted once per bot. ``cited_rule_for`` names the unit rule a bot's class
+trades under on its venue, every fill is sized under it, and a bot with no
+cited rule is ``UNCITED_RULE`` and walks nothing. ``missing_pairs`` names the
+tablets a run needs and ``download_missing`` fills them through the shipped
+``GapFiller``.
 """
 
 from __future__ import annotations
 
 import logging
+import math
+import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Sequence
 
@@ -62,7 +70,13 @@ from ..trading.scrumming.sizing import (
     wallet_capped_spend_usd,
 )
 from ..trading.scrumming.sizing import estimated_fee_usd as fee_usd
-from ..trading.stone_tablets.registry import _TF_SECONDS, _rollup
+from ..trading.stone_tablets.registry import (
+    _TF_SECONDS,
+    NATIVE_TIMEFRAME,
+    SUPPORTED_TIMEFRAMES,
+    StoneTabletsRegistry,
+    _rollup,
+)
 from .fleet_source import NEW_ORIGIN, SimBot
 from .portfolios import asset_class, trading_venue
 from .sim_bus import (
@@ -81,7 +95,6 @@ from .validation import (
     candle_interval_ms,
     iso_stamp,
     latch,
-    tablet_for,
 )
 
 logger = logging.getLogger("acervator.simulator.back_test")
@@ -145,6 +158,57 @@ FUNDED_BY_PROCEEDS = "proceeds"
 FUNDED_BY_TARGETS = "targets"
 
 FUNDINGS = (FUNDED_BY_PROCEEDS, FUNDED_BY_TARGETS)
+
+#: How many bars a walk covers between two progress lines. At the measured
+#: rate a line lands about every 27 seconds on a 5m walk, and a daily walk
+#: ends before its first one.
+PROGRESS_EVERY_BARS = 5_000
+
+#: The seconds one thousand gate-chain evaluations take on the Qt build with
+#: the sim bus live and phantoms on, read off the walked lines (5.49 and 5.27
+#: over two 6,000-bar walks); ``fleet_cost`` states the expected minutes at
+#: this rate before a walk.
+WALK_SECONDS_PER_THOUSAND = 5.4
+
+#: The signal one bot's whole walk emits through ``signal_contract``.
+BOT_WALKED_SIGNAL = "sim.backtest.bot_walked"
+
+#: The Activity Log lines one bot's Back Test walk writes through ``progress``.
+WALK_STARTED_LINE_FORMAT = (
+    "Walking {bot_id} ({symbol}) at {timeframe} on {exchange_id}: {files} "
+    "file(s), {bars:,} bar(s), {evaluations:,} evaluation(s) to make."
+)
+WALK_PROGRESS_LINE_FORMAT = (
+    "{bot_id}: bar {bar:,} of {bars:,}, {evaluations:,} evaluation(s), "
+    "{scrums} scrum sell(s), {folds} fold buy(s), {seconds:.1f} s."
+)
+WALK_ENDED_LINE_FORMAT = (
+    "{bot_id} walked: {evaluations:,} evaluation(s) over {bars:,} bar(s) in "
+    "{files} file(s), {seconds:.1f} s ({per_thousand:.2f} s per 1,000); "
+    "{scrums} scrum sell(s), {folds} fold buy(s)."
+)
+WALK_STOPPED_LINE_FORMAT = (
+    "{bot_id} stopped at bar {bar:,} of {bars:,} ({candle_at}): "
+    "{evaluations:,} evaluation(s) made."
+)
+RATE_LINE_FORMAT = (
+    "{evaluations:,} evaluation(s) of {expected:,} expected in {seconds:.1f} s, "
+    "{per_thousand:.2f} s per 1,000."
+)
+
+
+def evaluations_expected(bars: int) -> int:
+    """How many gate-chain evaluations a walk over ``bars`` makes: one per bar
+    from the ``MIN_CANDLES``th on, none under ``MIN_CANDLES``."""
+    return max(0, int(bars) - (MIN_CANDLES - 1))
+
+
+def seconds_per_thousand(seconds: float, evaluations: int) -> float:
+    """``seconds`` scaled to 1,000 evaluations; zero when none were made."""
+    if int(evaluations) <= 0:
+        return 0.0
+    return float(seconds) * 1000.0 / float(evaluations)
+
 
 #: The bus topic every walk emits its ``BotStatsSnapshot`` on through the run
 #: emitter's bus; each host subscribes to it and writes the held record.
@@ -522,6 +586,35 @@ class BotResult:
     #: The phantom timeframes evaluated, those refused by name, and the bias
     #: counts over the ticks.
     htf: dict = field(default_factory=dict)
+    #: The tablet files the walk read, by year, without their suffix.
+    tablet_files: tuple[str, ...] = ()
+    #: The timeframe the bars were read at, the bot's own.
+    timeframe: str = ""
+    #: The bars in the tape at ``timeframe``; ``candles_read`` is how many the
+    #: walk reached.
+    bars: int = 0
+    #: ``evaluations_expected`` over ``bars``.
+    evaluations_expected: int = 0
+    #: The seconds ``walk`` alone took.
+    walk_seconds: float = 0.0
+
+    @property
+    def seconds_per_thousand(self) -> float:
+        """``seconds_per_thousand`` over ``walk_seconds`` and ``ticks``."""
+        return seconds_per_thousand(self.walk_seconds, self.ticks)
+
+    @property
+    def stopped_at(self) -> str:
+        """``WALK_STOPPED_LINE_FORMAT`` when ``stopped``, else empty."""
+        if not self.stopped:
+            return ""
+        return WALK_STOPPED_LINE_FORMAT.format(
+            bot_id=self.bot_id,
+            bar=self.candles_read,
+            bars=self.bars,
+            candle_at=iso_stamp(self.last_ts_ms) or "none",
+            evaluations=self.ticks,
+        )
 
     @property
     def units_gained(self) -> float:
@@ -558,10 +651,12 @@ def uncited_rule_line(result: Any) -> str:
     )
 
 
-def no_tablet_line(bot: SimBot) -> str:
-    """The diagnostics line for one ``NO_TABLET`` bot."""
+def no_tablet_line(bot: SimBot, timeframe: str = "") -> str:
+    """The diagnostics line for one ``NO_TABLET`` bot, naming ``timeframe``
+    when given."""
+    at = f" at {timeframe}" if timeframe else ""
     return (
-        f"{bot.bot_id}: no Stone Tablet for {bot.asset} on {bot.exchange_id}; "
+        f"{bot.bot_id}: no Stone Tablet for {bot.asset} on {bot.exchange_id}{at}; "
         "nothing walked."
     )
 
@@ -573,6 +668,138 @@ def short_tablet_line(bot: SimBot, candles: int) -> str:
         f"{bot.bot_id}: the Stone Tablet holds {candles} candles, under "
         f"{MIN_CANDLES}; nothing walked."
     )
+
+
+def bot_timeframe(bot: SimBot) -> str:
+    """``bot.ta_timeframe``, or ``DEFAULT_TIMEFRAME`` when it names none."""
+    return str(bot.ta_timeframe or DEFAULT_TIMEFRAME)
+
+
+def native_entries(entries: Sequence[Any], asset: str, exchange_id: str) -> list:
+    """Every entry in ``entries`` for ``asset`` on ``exchange_id`` at
+    ``NATIVE_TIMEFRAME``, by year."""
+    return sorted(
+        (
+            one
+            for one in entries
+            if one.asset == asset
+            and one.exchange_id == exchange_id
+            and one.timeframe == NATIVE_TIMEFRAME
+        ),
+        key=lambda one: int(one.year),
+    )
+
+
+def rolled_bars(native_candles: int, timeframe: str) -> int:
+    """About how many bars ``native_candles`` at ``NATIVE_TIMEFRAME`` roll up
+    to at ``timeframe``; zero for a timeframe outside ``SUPPORTED_TIMEFRAMES``."""
+    if timeframe not in _TF_SECONDS:
+        return 0
+    factor = _TF_SECONDS[timeframe] // _TF_SECONDS[NATIVE_TIMEFRAME]
+    return int(math.ceil(int(native_candles) / float(max(factor, 1))))
+
+
+def bot_tape(registry: StoneTabletsRegistry, files: Sequence[Any], bot: SimBot) -> list:
+    """Every bar across ``files`` at ``bot_timeframe`` for ``bot``'s asset on
+    its venue, in time order, through ``registry.get_candles``; no file or a
+    timeframe outside ``SUPPORTED_TIMEFRAMES`` answers none."""
+    timeframe = bot_timeframe(bot)
+    if not files or timeframe not in SUPPORTED_TIMEFRAMES:
+        return []
+    since = min(int(one.first_ts_ms) for one in files)
+    until = max(int(one.last_ts_ms) for one in files)
+    return registry.get_candles(
+        bot.asset, since, until, timeframe=timeframe, exchange_id=bot.exchange_id
+    )
+
+
+@dataclass(frozen=True)
+class BotCost:
+    """What one bot's walk covers, read off the MANIFEST before it runs."""
+
+    bot_id: str
+    symbol: str
+    timeframe: str
+    files: tuple[str, ...]
+    candles: int
+    bars: int
+
+    @property
+    def evaluations(self) -> int:
+        """``evaluations_expected`` over ``bars``."""
+        return evaluations_expected(self.bars)
+
+    @property
+    def absent(self) -> bool:
+        """True when the bot has no bar to walk at ``timeframe``."""
+        return self.bars <= 0
+
+
+@dataclass(frozen=True)
+class FleetCost:
+    """What a Back Test over a fleet covers and about how long it takes."""
+
+    bots: tuple[BotCost, ...]
+    per_thousand: float = WALK_SECONDS_PER_THOUSAND
+
+    @property
+    def walking(self) -> list[BotCost]:
+        """Every bot with a bar to walk."""
+        return [one for one in self.bots if not one.absent]
+
+    @property
+    def absent(self) -> list[str]:
+        """The ids of every bot with no bar to walk at its timeframe."""
+        return [one.bot_id for one in self.bots if one.absent]
+
+    @property
+    def files(self) -> int:
+        """The files the walking bots read, summed."""
+        return sum(len(one.files) for one in self.walking)
+
+    @property
+    def candles(self) -> int:
+        """The native candles the walking bots read, summed."""
+        return sum(one.candles for one in self.walking)
+
+    @property
+    def evaluations(self) -> int:
+        """The evaluations the walking bots make, summed."""
+        return sum(one.evaluations for one in self.walking)
+
+    @property
+    def minutes(self) -> float:
+        """``evaluations`` at ``per_thousand``, in minutes."""
+        return self.evaluations * self.per_thousand / 1000.0 / 60.0
+
+
+def fleet_cost(bots: Sequence[SimBot], tablets: Any) -> FleetCost:
+    """One ``BotCost`` per bot off ``tablets.entries()``: its native files,
+    their candles summed, and the bars at its timeframe through
+    ``rolled_bars``; no body is read."""
+    entries = tablets.entries()
+    out = []
+    for bot in bots:
+        files = native_entries(entries, bot.asset, bot.exchange_id)
+        candles = sum(int(one.candle_count) for one in files)
+        timeframe = bot_timeframe(bot)
+        out.append(
+            BotCost(
+                bot_id=bot.bot_id,
+                symbol=bot.symbol,
+                timeframe=timeframe,
+                files=tuple(tablet_key_of(one) for one in files),
+                candles=candles,
+                bars=rolled_bars(candles, timeframe) if files else 0,
+            )
+        )
+    return FleetCost(bots=tuple(out))
+
+
+def tablet_key_of(entry: Any) -> str:
+    """``entry.file`` without ``TABLET_SUFFIX``."""
+    key = str(entry.file)
+    return key[: -len(TABLET_SUFFIX)] if key.endswith(TABLET_SUFFIX) else key
 
 
 def fill_action(filled: Optional[SimTrade]) -> str:
@@ -1388,6 +1615,13 @@ class BackTestRun:
             "fees_usd": sum(one.fees_usd for one in ran),
             "missing_tablets": len(self.missing),
             "uncited_rule": len(self.uncited),
+            "files_walked": sum(len(one.tablet_files) for one in ran),
+            "bars": sum(one.bars for one in ran),
+            "evaluations_expected": sum(one.evaluations_expected for one in ran),
+            "walk_seconds": sum(one.walk_seconds for one in ran),
+            "seconds_per_thousand": seconds_per_thousand(
+                sum(one.walk_seconds for one in ran), sum(one.ticks for one in ran)
+            ),
         }
 
     @property
@@ -1434,9 +1668,16 @@ class BackTestRun:
         last = max(one.last_ts_ms for one in self.ran if one.last_ts_ms)
         out = [
             f"{read['bots_run']} of {read['bots']} bots ran over "
-            f"{read['candles_read']} tablet candles.",
+            f"{read['candles_read']} tablet candles in {read['files_walked']} "
+            "file(s).",
             f"{iso_stamp(first)} to {iso_stamp(last)}, "
             f"{read['ticks']} gate-chain evaluations.",
+            RATE_LINE_FORMAT.format(
+                evaluations=read["ticks"],
+                expected=read["evaluations_expected"],
+                seconds=read["walk_seconds"],
+                per_thousand=read["seconds_per_thousand"],
+            ),
             f"{read['scrum_latched']} scrum latches and "
             f"{read['fold_latched']} fold latches.",
             f"{read['scrum_trades']} scrum sells and {read['fold_trades']} "
@@ -1466,51 +1707,35 @@ def adapter_for(exchange_id: str, connector: Any) -> Any:
 def missing_pairs(
     bots: Sequence[SimBot], entries: Sequence[Any]
 ) -> list[tuple[str, str]]:
-    """Each ``(asset, exchange_id)`` a bot names that no entry in ``entries``
-    covers."""
+    """Each ``(asset, exchange_id)`` a bot names that no ``native_entries``
+    row in ``entries`` covers."""
     out: list[tuple[str, str]] = []
     for bot in bots:
-        if tablet_for(entries, bot.asset, bot.exchange_id) is None:
+        if not native_entries(entries, bot.asset, bot.exchange_id):
             key = (bot.asset, bot.exchange_id)
             if key not in out:
                 out.append(key)
     return sorted(out)
 
 
-def shared_step(entries: Sequence[Any], ticks_per_bot: int, max_candles: int) -> int:
-    """One step in candles, sized off the longest tape so every bot ticks
-    together.
-
-    A ``ticks_per_bot`` of zero, or no entry, answers one.
-    """
-    if ticks_per_bot <= 0 or not entries:
-        return 1
-    longest = max(int(one.candle_count) for one in entries)
-    if max_candles:
-        longest = min(longest, int(max_candles))
-    return max(1, longest // int(ticks_per_bot))
-
-
 def run(
     bots: Sequence[SimBot],
     tablets: Any,
     exchange_id: str = "",
-    step: int = 1,
-    max_candles: int = 0,
-    ticks_per_bot: int = 0,
     funding: str = FUNDED_BY_PROCEEDS,
     on_trade: Optional[TradeSink] = None,
     stop: Optional[Callable[[], bool]] = None,
     bus: Any = None,
+    progress: Optional[Callable[[str], None]] = None,
 ) -> BackTestRun:
-    """Walk every bot over its own tablet through ``_walk_fleet`` and write the
-    pass through ``write_report`` onto ``BackTestRun.report``.
+    """Walk every bot over every bar of its whole tablet through
+    ``_walk_fleet`` and write the pass through ``write_report`` onto
+    ``BackTestRun.report``.
 
-    ``max_candles``, ``step``, ``ticks_per_bot``, ``funding``, ``on_trade`` and
-    ``stop`` reach ``_walk_fleet`` unchanged; ``bus`` becomes the
-    ``RunEmitter`` every row of the pass goes through, under ``new_run_id``;
-    a ``_walk_fleet`` that raises reaches ``write_partial`` with the exception
-    and re-raises.
+    ``funding``, ``on_trade``, ``stop`` and ``progress`` reach ``_walk_fleet``
+    unchanged; ``bus`` becomes the ``RunEmitter`` every row of the pass goes
+    through, under ``new_run_id``; a ``_walk_fleet`` that raises reaches
+    ``write_partial`` with the exception and re-raises.
     """
     from .parity_report import BACK_TEST, new_run_id, write_partial, write_report
 
@@ -1520,13 +1745,11 @@ def run(
             bots,
             tablets,
             exchange_id,
-            step,
-            max_candles,
-            ticks_per_bot,
             funding,
             on_trade,
             stop,
             emitter,
+            progress,
         )
     except Exception as exc:
         emitter.close()
@@ -1544,40 +1767,150 @@ def run(
     return replace(outcome, report=write_report(BACK_TEST, outcome, tablets))
 
 
+def _walk_bot(
+    bot: SimBot,
+    files: Sequence[Any],
+    bars: Sequence[Sequence[float]],
+    funding: str,
+    rule: str,
+    on_trade: Optional[TradeSink],
+    stop: Optional[Callable[[], bool]],
+    emitter: Optional[RunEmitter],
+    say: Callable[[str], None],
+) -> BotResult:
+    """``walk`` over every bar of ``bars`` for ``bot``, timed around the walk
+    alone, with ``WALK_STARTED_LINE_FORMAT`` before it,
+    ``WALK_PROGRESS_LINE_FORMAT`` every ``PROGRESS_EVERY_BARS`` bars and
+    ``WALK_ENDED_LINE_FORMAT`` or ``stopped_at`` after it through ``say``, and
+    ``BOT_WALKED_SIGNAL`` emitted once."""
+    from ..trading.indicators.types import candles_from_raw
+
+    keys = tuple(tablet_key_of(one) for one in files)
+    timeframe = bot_timeframe(bot)
+    expected = evaluations_expected(len(bars))
+    say(
+        WALK_STARTED_LINE_FORMAT.format(
+            bot_id=bot.bot_id,
+            symbol=bot.symbol,
+            timeframe=timeframe,
+            exchange_id=bot.exchange_id,
+            files=len(keys),
+            bars=len(bars),
+            evaluations=expected,
+        )
+    )
+    filled: list[SimTrade] = []
+
+    def took(trade: SimTrade) -> None:
+        filled.append(trade)
+        if on_trade is not None:
+            on_trade(trade)
+
+    started = time.perf_counter()
+
+    def on_tick(bar: int, bar_count: int, ticks: int) -> None:
+        if bar % PROGRESS_EVERY_BARS != 0 or bar >= bar_count:
+            return
+        say(
+            WALK_PROGRESS_LINE_FORMAT.format(
+                bot_id=bot.bot_id,
+                bar=bar,
+                bars=bar_count,
+                evaluations=ticks,
+                scrums=sum(1 for one in filled if one.side == SCRUM),
+                folds=sum(1 for one in filled if one.side == FOLD),
+                seconds=time.perf_counter() - started,
+            )
+        )
+
+    walked = walk(
+        bot,
+        candles_from_raw(bars),
+        funding=funding,
+        rule=rule,
+        on_trade=took,
+        stop=stop,
+        emitter=emitter,
+        on_tick=on_tick,
+    )
+    seconds = time.perf_counter() - started
+    result = replace(
+        walked,
+        tablet_key=", ".join(keys),
+        tablet_files=keys,
+        timeframe=timeframe,
+        bars=len(bars),
+        evaluations_expected=expected,
+        walk_seconds=seconds,
+    )
+    if result.stopped:
+        say(result.stopped_at)
+    else:
+        say(
+            WALK_ENDED_LINE_FORMAT.format(
+                bot_id=bot.bot_id,
+                evaluations=result.ticks,
+                bars=result.bars,
+                files=len(keys),
+                seconds=seconds,
+                per_thousand=result.seconds_per_thousand,
+                scrums=result.scrum_trades,
+                folds=result.fold_trades,
+            )
+        )
+    pin_emit(
+        BOT_WALKED_SIGNAL,
+        actual={
+            "bot": bot.bot_id,
+            "files": list(keys),
+            "bars": result.bars,
+            "evaluations": result.ticks,
+            "fills": len(result.trades),
+            "seconds": round(seconds, 3),
+            "stopped": bool(result.stopped),
+        },
+        expected={"evaluations": expected, "stopped": False},
+        ok=result.ticks == expected and not result.stopped,
+        context={
+            "symbol": bot.symbol,
+            "timeframe": timeframe,
+            "exchange_id": bot.exchange_id,
+            "run_id": emitter.run_id if emitter is not None else "",
+        },
+    )
+    return result
+
+
 def _walk_fleet(
     bots: Sequence[SimBot],
     tablets: Any,
     exchange_id: str,
-    step: int,
-    max_candles: int,
-    ticks_per_bot: int,
     funding: str,
     on_trade: Optional[TradeSink] = None,
     stop: Optional[Callable[[], bool]] = None,
     emitter: Optional[RunEmitter] = None,
+    progress: Optional[Callable[[str], None]] = None,
 ) -> BackTestRun:
-    """Walk every bot over its own tablet and report what the gates latched.
+    """Walk every bot over every bar of every year file the store holds for
+    its asset on its venue and report what the gates latched.
 
-    ``max_candles`` caps how much of each tape is read, ``ticks_per_bot``
-    replaces ``step`` with one ``shared_step`` every bot ticks on, ``funding``
-    of ``FUNDED_BY_TARGETS`` reads ``run_budget_usd`` once here and caps no
-    fold, ``on_trade``, ``stop`` and ``emitter`` reach every ``walk`` and ``stop``
-    is read before each bot as well, and a bot whose ``cited_rule_for`` answers
-    no rule is ``UNCITED_RULE`` and walks nothing; ``emitter.bot_line`` names each
-    bot that walks nothing.
+    A ``StoneTabletsRegistry`` on ``tablets.root()`` reads each bot's tape
+    through ``bot_tape`` at the bot's own timeframe; ``funding`` of
+    ``FUNDED_BY_TARGETS`` reads ``run_budget_usd`` once here and caps no fold;
+    ``on_trade``, ``stop`` and ``emitter`` reach every ``walk`` and ``stop`` is
+    read before each bot as well; ``progress`` is handed each bot's lines; a
+    bot whose ``cited_rule_for`` answers no rule is ``UNCITED_RULE`` and a bot
+    with no bar at its timeframe is ``NO_TABLET``, each named through
+    ``emitter.bot_line`` and ``progress`` and walking nothing.
     """
-    from ..trading.indicators.types import candles_from_raw
-
     budget = run_budget_usd(bots) if funding == FUNDED_BY_TARGETS else None
 
+    def say(line: str) -> None:
+        if progress is not None:
+            progress(line)
+
     entries = tablets.entries()
-    matched = [
-        one
-        for one in (tablet_for(entries, bot.asset, bot.exchange_id) for bot in bots)
-        if one is not None
-    ]
-    if ticks_per_bot > 0:
-        step = shared_step(matched, ticks_per_bot, max_candles)
+    registry = StoneTabletsRegistry(tablets.root())
     outcomes: dict[str, int] = {name: 0 for name in BOT_OUTCOMES}
     results: list[BotResult] = []
     interval_ms = 0
@@ -1601,9 +1934,11 @@ def _walk_fleet(
             )
             if emitter is not None:
                 emitter.bot_line(bot.bot_id, uncited_rule_line(results[-1]))
+            say(uncited_rule_line(results[-1]))
             continue
-        entry = tablet_for(entries, bot.asset, bot.exchange_id)
-        if entry is None:
+        files = native_entries(entries, bot.asset, bot.exchange_id)
+        raw = bot_tape(registry, files, bot)
+        if not raw:
             outcomes[NO_TABLET] += 1
             results.append(
                 BotResult(
@@ -1614,40 +1949,19 @@ def _walk_fleet(
                     asset_class=class_name,
                     venue=venue,
                     unit_rule=rule,
+                    timeframe=bot_timeframe(bot),
                 )
             )
+            line = no_tablet_line(bot, bot_timeframe(bot))
             if emitter is not None:
-                emitter.bot_line(bot.bot_id, no_tablet_line(bot))
+                emitter.bot_line(bot.bot_id, line)
+            say(line)
             continue
-        raw = tablets.candles(entry)
-        if max_candles:
-            raw = raw[-int(max_candles) :]
         if not interval_ms and len(raw) > 1:
             interval_ms = candle_interval_ms([int(one[0]) for one in raw])
-        walked = walk(
-            bot,
-            candles_from_raw(raw),
-            step,
-            funding,
-            rule=rule,
-            on_trade=on_trade,
-            stop=stop,
-            emitter=emitter,
-        )
+        walked = _walk_bot(bot, files, raw, funding, rule, on_trade, stop, emitter, say)
         halted = halted or walked.stopped
-        key = entry.file
-        if key.endswith(TABLET_SUFFIX):
-            key = key[: -len(TABLET_SUFFIX)]
-        results.append(
-            BotResult(
-                **{
-                    **walked.__dict__,
-                    "tablet_key": key,
-                    "asset_class": class_name,
-                    "venue": venue,
-                }
-            )
-        )
+        results.append(replace(walked, asset_class=class_name, venue=venue))
         outcomes[walked.outcome] += 1
     return BackTestRun(
         exchange_id=exchange_id,
@@ -1700,7 +2014,9 @@ __all__ = [
     "BELOW_ONE_UNIT",
     "BELOW_PARENT",
     "BOT_OUTCOMES",
+    "BOT_WALKED_SIGNAL",
     "BackTestRun",
+    "BotCost",
     "BotResult",
     "BotStatsSnapshot",
     "DEFAULT_SCRUM_DETECT_PCT",
@@ -1710,6 +2026,7 @@ __all__ = [
     "FUNDED_BY_PROCEEDS",
     "FUNDED_BY_TARGETS",
     "FUNDINGS",
+    "FleetCost",
     "HTF_BIAS_PIN_EVERY_S",
     "HTF_BIAS_SIGNAL",
     "MIN_CANDLES",
@@ -1718,7 +2035,9 @@ __all__ = [
     "PHANTOMS_OFF",
     "PHANTOM_MIN_CANDLES",
     "PHANTOM_WINDOW_CANDLES",
+    "PROGRESS_EVERY_BARS",
     "PhantomTape",
+    "RATE_LINE_FORMAT",
     "RUNNING_STATE",
     "SCRUM",
     "SHORT_TABLET",
@@ -1733,6 +2052,11 @@ __all__ = [
     "TA_CONFIDENCE_FLOOR",
     "UNCITED_RULE",
     "UNROLLED",
+    "WALK_ENDED_LINE_FORMAT",
+    "WALK_PROGRESS_LINE_FORMAT",
+    "WALK_SECONDS_PER_THOUSAND",
+    "WALK_STARTED_LINE_FORMAT",
+    "WALK_STOPPED_LINE_FORMAT",
     "WINDOW_CANDLES",
     "SimPosition",
     "SimTrade",
@@ -1740,16 +2064,21 @@ __all__ = [
     "apply_fold",
     "apply_scrum",
     "bb_detect_thresholds",
+    "bot_tape",
+    "bot_timeframe",
     "cited_rule_for",
     "download_missing",
     "emit_stats",
+    "evaluations_expected",
     "fee_usd",
     "fill_action",
     "fill_side",
+    "fleet_cost",
     "fold_taper",
     "grow_target",
     "higher_tf_bias",
     "missing_pairs",
+    "native_entries",
     "new_bot",
     "new_bots",
     "no_tablet_line",
@@ -1759,13 +2088,15 @@ __all__ = [
     "pin_htf_bias",
     "pin_stats_written",
     "reset_growth_cycle",
+    "rolled_bars",
     "run",
     "run_budget_usd",
-    "shared_step",
+    "seconds_per_thousand",
     "short_tablet_line",
     "signal_detail",
     "stats_snapshot",
     "ta_direction",
+    "tablet_key_of",
     "tape_context",
     "trend_reading",
     "uncited_rule_line",

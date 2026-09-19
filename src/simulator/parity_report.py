@@ -559,8 +559,16 @@ def back_test_bot(result: BotResult, bot: Optional[SimBot]) -> dict:
         "rule_cited": bool(result.unit_rule),
         "outcome": result.outcome,
         "tablet_key": result.tablet_key,
+        "tablet_files": list(result.tablet_files),
+        "files": len(result.tablet_files),
+        "timeframe": result.timeframe,
+        "bars": int(result.bars),
         "candles_read": int(result.candles_read),
         "ticks": int(result.ticks),
+        "evaluations_expected": int(result.evaluations_expected),
+        "walk_seconds": round(float(result.walk_seconds), 3),
+        "seconds_per_thousand": round(float(result.seconds_per_thousand), 3),
+        "stopped_at": result.stopped_at,
         "scrum_latched": int(result.scrum_latched),
         "fold_latched": int(result.fold_latched),
         "trades": len(result.trades),
@@ -718,6 +726,12 @@ def back_test_figures(
     head["bot_outcomes"] = dict(run.bot_outcomes)
     head["stopped"] = bool(run.stopped)
     head["bots_reached"] = len(run.bots) - len(run.unreached)
+    counts = run.summary
+    head["files_walked"] = int(counts["files_walked"])
+    head["evaluations"] = int(counts["ticks"])
+    head["evaluations_expected"] = int(counts["evaluations_expected"])
+    head["walk_seconds"] = round(float(counts["walk_seconds"]), 3)
+    head["seconds_per_thousand"] = round(float(counts["seconds_per_thousand"]), 3)
     bots = [back_test_bot(one, by_id.get(one.bot_id)) for one in run.results]
     return {
         "mode": BACK_TEST,
@@ -1144,8 +1158,10 @@ def render_header(figures: dict) -> list[str]:
         "interval_ms",
         "tablet_root",
         "symbol_runs",
+        "files_walked",
         "evaluations",
         "evaluations_expected",
+        "walk_seconds",
         "seconds_per_thousand",
     ):
         if key in head:
@@ -1322,7 +1338,13 @@ BOT_COLUMNS = {
         ("rule_cited", "cited"),
         ("outcome", "outcome"),
         ("tablet_key", "tablet"),
+        ("timeframe", "timeframe"),
+        ("files", "files"),
+        ("bars", "bars"),
         ("ticks", "ticks"),
+        ("evaluations_expected", "expected"),
+        ("walk_seconds", "seconds"),
+        ("seconds_per_thousand", "s per 1,000"),
         ("trades", "trades"),
         ("scrums", "scrums"),
         ("folds", "folds"),
@@ -1332,6 +1354,7 @@ BOT_COLUMNS = {
         ("cash_usd", "cash"),
         ("fees_usd", "fees"),
         ("end_target_usd", "end target"),
+        ("stopped_at", "stopped at"),
     ),
     PORTFOLIO_BATTERY: (
         ("portfolio", "portfolio"),
