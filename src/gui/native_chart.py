@@ -427,6 +427,11 @@ CALL_STRIP_PAD = 8
 #: The square each strip row draws its voter's overlay colour in.
 CALL_SWATCH_PX = 8
 
+#: The gap after each voter name on a folded strip row, and the text gap
+#: after a swatch.
+CALL_FOLD_GAP_PX = 14
+CALL_SWATCH_GAP_PX = 6
+
 #: The half-width and height of the triangle marking the call bar's close.
 CALL_MARK_PX = 6
 
@@ -445,6 +450,15 @@ NO_CAPTION_STRIP = 0
 #: A width ``_natural_height_for_panes`` was not given, which cannot be
 #: wrapped in, so the caption takes no height at it.
 NO_CAPTION_WIDTH = 0
+
+#: A ``render_chart_png`` height at or under this takes the natural height.
+NO_IMAGE_HEIGHT = 0
+
+#: ``render_chart_png``'s note for a height under ``_least_height_for_panes``.
+IMAGE_TOO_SHORT_NOTE = (
+    "{width}x{height} cannot hold the panes: {least} px is the least height "
+    "at that width."
+)
 
 
 @dataclass
@@ -556,6 +570,7 @@ if _HAS_QT:
         paint_sub_grid: object = None
         sub_axis_label: object = None
         paint_oscillator: object = None
+        strip_folded: bool = False
 
     class ChartPainter:
         """The chart's drawing state and ``paint_to``, with no window behind it.
@@ -905,11 +920,50 @@ if _HAS_QT:
             )
             self._repaint()
 
-        def _call_strip_h(self) -> int:
-            """The pixel height ``_call_readings`` takes under the time axis."""
+        def _call_strip_h(
+            self, width: int = NO_CAPTION_WIDTH, folded: bool = False
+        ) -> int:
+            """The pixel height ``_call_readings`` takes under the time axis.
+
+            One row per reading, or ``folded`` the rows ``_folded_call_rows``
+            lays the voter names on at ``width``.
+            """
             if not self._call_readings:
                 return NO_CALL_STRIP
-            return CALL_STRIP_PAD * 2 + CALL_ROW_H * len(self._call_readings)
+            rows = (
+                len(self._folded_call_rows(width))
+                if folded
+                else len(self._call_readings)
+            )
+            return CALL_STRIP_PAD * 2 + CALL_ROW_H * rows
+
+        def _folded_call_rows(self, width: int) -> tuple:
+            """``_call_readings`` voters laid left to right, each as its ``_voter_label`` after a swatch.
+
+            Each entry is ``(voter, label, x)``; a row wraps at the chart's right
+            margin, and a width of ``NO_CAPTION_WIDTH`` lays one row.
+            """
+            metrics = QFontMetrics(caption_font())
+            room = int(width) - CHART_RIGHT_MARGIN_PX
+            rows: list = []
+            row: list = []
+            x = CHART_LEFT_MARGIN_PX
+            for voter, _text in self._call_readings:
+                label = self._voter_label(voter)
+                span = (
+                    CALL_SWATCH_PX
+                    + CALL_SWATCH_GAP_PX
+                    + metrics.horizontalAdvance(label)
+                )
+                if row and int(width) > NO_CAPTION_WIDTH and x + span > room:
+                    rows.append(tuple(row))
+                    row = []
+                    x = CHART_LEFT_MARGIN_PX
+                row.append((voter, label, x))
+                x += span + CALL_FOLD_GAP_PX
+            if row:
+                rows.append(tuple(row))
+            return tuple(rows)
 
         def set_caption(self, text: str) -> None:
             """Take the standardised message this chart image carries.
@@ -951,6 +1005,13 @@ if _HAS_QT:
             return CAPTION_STRIP_PAD * 2 + CAPTION_ROW_H * len(
                 self._wrap_caption(width)
             )
+
+        def _voter_label(self, voter: str) -> str:
+            """The label of the switched-on overlay drawing ``voter``, else ``voter`` itself."""
+            for one in CHART_OVERLAYS:
+                if one.voter == voter and self._overlay_shown.get(one.key, False):
+                    return str(one.label)
+            return str(voter)
 
         def _voter_colour(self, voter: str) -> QColor:
             """The colour of the switched-on overlay drawing ``voter``.
@@ -1301,14 +1362,36 @@ if _HAS_QT:
             """
             return self._height_for_panes(width, SUB_PANE_MIN_H)
 
-        def _height_for_panes(self, width: int, sub_pane_h: int) -> int:
-            """The pixel height of every pane with each sub-pane at ``sub_pane_h``."""
-            base = 28 + 18 + PRICE_PANE_LAYOUT_H + 18  # header + OHLC + price + time
+        def _folded_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
+            """``_minimum_height_for_panes`` with the reading strip folded to voter names."""
+            return self._height_for_panes(width, SUB_PANE_MIN_H, folded=True)
+
+        def _least_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
+            """The height under which ``paint_to`` overflows: ``_folded_height_for_panes``
+            with the price pane at ``PRICE_PANE_MIN_H``.
+            """
+            return self._height_for_panes(
+                width, SUB_PANE_MIN_H, PRICE_PANE_MIN_H, folded=True
+            )
+
+        def _height_for_panes(
+            self,
+            width: int,
+            sub_pane_h: int,
+            price_h: int = PRICE_PANE_LAYOUT_H,
+            folded: bool = False,
+        ) -> int:
+            """The pixel height of every pane with each sub-pane at ``sub_pane_h``,
+            the price pane at ``price_h`` and the reading strip ``folded`` or not.
+            """
+            base = 28 + 18 + int(price_h) + 18  # header + OHLC + price + time
             if self._overlay_shown["volume"]:
                 base += 28
             base += len(self._sub_overlays_with_data()) * int(sub_pane_h)
             base += self._legend_strip_h(width)
-            return base + self._call_strip_h() + self._caption_strip_h(width)
+            return (
+                base + self._call_strip_h(width, folded) + self._caption_strip_h(width)
+            )
 
         def _sub_overlays_with_data(self) -> tuple:
             """Every sub-pane overlay that is switched on and holds values.
@@ -1386,8 +1469,13 @@ if _HAS_QT:
             MT = 28  # header
             OHLC_H = 18  # OHLC info row at top of price pane
             LEGEND_H = self._legend_strip_h(w)
+            # The strip folds to voter names when h cannot hold one row per
+            # reading with the sub-panes at SUB_PANE_MIN_H.
+            strip_folded = bool(
+                self._call_readings
+            ) and h < self._minimum_height_for_panes(w)
             # time axis, then the voter strip, then the caption
-            MB = 18 + self._call_strip_h() + self._caption_strip_h(w)
+            MB = 18 + self._call_strip_h(w, strip_folded) + self._caption_strip_h(w)
 
             sub_overlays = self._sub_overlays_with_data()
             show_volume = self._overlay_shown["volume"]
@@ -1663,6 +1751,7 @@ if _HAS_QT:
                     fm=fm,
                     font_sm=font_sm,
                     draw_line_series=_draw_line_series,
+                    strip_folded=strip_folded,
                 )
                 for overlay in overlays_on(self, PRICE_PANE):
                     getattr(self, overlay.draw)(ctx)
@@ -2783,7 +2872,10 @@ if _HAS_QT:
             colour = getattr(self, role)
             self._draw_call_badge(p, ctx.w, ctx.font_sm, colour)
             self._draw_call_bar(ctx, colour)
-            self._draw_call_strip(p, ctx.w, h, ctx.ML, ctx.font_sm)
+            if ctx.strip_folded:
+                self._draw_folded_call_strip(p, ctx.w, h, ctx.font_sm)
+            else:
+                self._draw_call_strip(p, ctx.w, h, ctx.ML, ctx.font_sm)
 
         def _draw_call_badge(self, p: QPainter, w: int, font_sm: QFont, colour) -> None:
             """Draw the direction word in the header band, against the right edge."""
@@ -2862,18 +2954,48 @@ if _HAS_QT:
             The strip sits above the caption, so ``_caption_strip_h`` at ``w``
             is taken off the foot first.
             """
-            top = h - self._caption_strip_h(w) - self._call_strip_h() + CALL_STRIP_PAD
+            top = h - self._caption_strip_h(w) - self._call_strip_h(w) + CALL_STRIP_PAD
             p.setFont(font_sm)
             for index, (voter, text) in enumerate(self._call_readings):
                 y = top + index * CALL_ROW_H
-                colour = self._voter_colour(voter)
-                p.setBrush(QBrush(colour))
-                p.setPen(QPen(colour, 1.0))
-                p.drawRect(QRectF(left, y + 2, CALL_SWATCH_PX, CALL_SWATCH_PX))
-                p.setPen(QPen(self.TEXT_LIGHT))
+                self._draw_call_swatch(p, left, y, voter)
                 p.drawText(
-                    int(left + CALL_SWATCH_PX + 6), int(y + CALL_SWATCH_PX + 1), text
+                    int(left + CALL_SWATCH_PX + CALL_SWATCH_GAP_PX),
+                    int(y + CALL_SWATCH_PX + 1),
+                    text,
                 )
+
+        def _draw_folded_call_strip(self, p: QPainter, w: int, h: int, font_sm: QFont):
+            """Draw ``_folded_call_rows`` under the time axis: each voter's name after
+            its swatch, the readings' sentences left to the caption.
+            """
+            rows = self._folded_call_rows(w)
+            top = (
+                h
+                - self._caption_strip_h(w)
+                - self._call_strip_h(w, True)
+                + CALL_STRIP_PAD
+            )
+            p.setFont(font_sm)
+            for index, row in enumerate(rows):
+                y = top + index * CALL_ROW_H
+                for voter, label, x in row:
+                    self._draw_call_swatch(p, x, y, voter)
+                    p.drawText(
+                        int(x + CALL_SWATCH_PX + CALL_SWATCH_GAP_PX),
+                        int(y + CALL_SWATCH_PX + 1),
+                        label,
+                    )
+
+        def _draw_call_swatch(
+            self, p: QPainter, x: float, y: float, voter: str
+        ) -> None:
+            """Fill one ``CALL_SWATCH_PX`` square at ``x``, ``y`` in ``voter``'s overlay colour."""
+            colour = self._voter_colour(voter)
+            p.setBrush(QBrush(colour))
+            p.setPen(QPen(colour, 1.0))
+            p.drawRect(QRectF(x, y + 2, CALL_SWATCH_PX, CALL_SWATCH_PX))
+            p.setPen(QPen(self.TEXT_LIGHT))
 
         def _draw_header(self, p: QPainter, w: int, font_hdr: QFont, font_sm: QFont):
             p.setFont(font_hdr)
@@ -3217,11 +3339,34 @@ if _HAS_QT:
             height for a newly visible sub-pane.
             """
             self._chart.set_overlay(name, on)
+            self._apply_height()
+            self._chart.update()
+
+        def show_only(self, keys) -> None:
+            """``ChartPainter.show_only`` over ``keys``, each box set to match without a press."""
+            self._chart.show_only(keys)
+            for key, box in self._toggles.items():
+                blocked = box.blockSignals(True)
+                box.setChecked(self._chart._overlay_shown.get(key, False))
+                box.blockSignals(blocked)
+            self._apply_height()
+            self._chart.update()
+
+        def choose_timeframe(self, timeframe: str) -> None:
+            """Move the combo to ``timeframe`` without its signal, and set the chart's own."""
+            asked = str(timeframe)
+            if asked in self.TIMEFRAMES:
+                blocked = self._tf_combo.blockSignals(True)
+                self._tf_combo.setCurrentText(asked)
+                self._tf_combo.blockSignals(blocked)
+            self._chart.set_timeframe(asked)
+
+        def _apply_height(self) -> None:
+            """``_apply_height_for_panes`` on the chart, a refusal logged and not raised."""
             try:
                 self._chart._apply_height_for_panes()
             except Exception as exc:
                 logger.debug("chart height not re-applied on toggle: %s", exc)
-            self._chart.update()
 
         def set_source(self, source: str):
             self._source_label.setText(source)
@@ -3275,6 +3420,7 @@ if _HAS_QT:
         direction: str = "",
         readings=(),
         caption: str = "",
+        height_px: int = NO_IMAGE_HEIGHT,
     ) -> ChartImage:
         """Draw ``candles`` through ``ChartPainter`` and write a PNG at ``path``.
 
@@ -3284,6 +3430,9 @@ if _HAS_QT:
         takes ``direction`` with the ``readings`` those voters published, and
         ``set_caption`` takes the standardised message the image carries.
         ``tokens`` left None paints ``theme_in_force``, the theme the window is in.
+        ``height_px`` over ``NO_IMAGE_HEIGHT`` is the image's height, and one
+        under ``_least_height_for_panes`` at ``width_px`` writes nothing and
+        answers ``IMAGE_TOO_SHORT_NOTE``.
         """
         if QGuiApplication.instance() is None:
             return ChartImage(note=NO_APPLICATION_NOTE)
@@ -3302,8 +3451,21 @@ if _HAS_QT:
             )
         if undrawn:
             painter.set_source_label(NOT_DRAWN_NOTE.format(voters=", ".join(undrawn)))
-        height_px = painter._natural_height_for_panes(int(width_px))
-        image = paint_image(painter, int(width_px), height_px)
+        asked_height = int(height_px)
+        if asked_height > NO_IMAGE_HEIGHT:
+            least = painter._least_height_for_panes(int(width_px))
+            if asked_height < least:
+                return ChartImage(
+                    note=IMAGE_TOO_SHORT_NOTE.format(
+                        width=int(width_px), height=asked_height, least=least
+                    ),
+                    bars=len(held),
+                    drawn=drawn,
+                    undrawn=undrawn,
+                )
+        else:
+            asked_height = painter._natural_height_for_panes(int(width_px))
+        image = paint_image(painter, int(width_px), asked_height)
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         if not image.save(str(target)):
@@ -3331,8 +3493,9 @@ else:
         direction: str = "",
         readings=(),
         caption: str = "",
+        height_px: int = NO_IMAGE_HEIGHT,
     ) -> ChartImage:
         """Answer that no image was drawn, because PySide6 is not installed."""
         del candles, symbol, timeframe, path, voters, max_overlays, tokens, width_px
-        del direction, readings, caption
+        del direction, readings, caption, height_px
         return ChartImage(note=NO_QT_NOTE)
