@@ -954,7 +954,10 @@ if _HAS_QT:
                 button.setCheckable(True)
                 button.setChecked(ticked)
                 button.setStyleSheet(CHECKED_BUTTON_STYLE)
-                button.setFixedSize(TIMEFRAME_BOX_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+                # A floor, not a fixed width: the bold 1mnth label outgrows it at 125 % scale.
+                button.setMinimumWidth(TIMEFRAME_BOX_WIDTH_PX)
+                button.setFixedHeight(PUSH_BUTTON_HEIGHT_PX)
+                button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
                 button.setAccessibleName(f"{TIMEFRAME_ROW_PART} {key}")
                 button.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
                 # The key is read at the press: the class box moves the four
