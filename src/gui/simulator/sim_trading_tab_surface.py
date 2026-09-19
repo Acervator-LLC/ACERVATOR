@@ -191,10 +191,22 @@ def clear_fleet_button() -> dict:
     }
 
 
-def way_in_buttons(mode: str = sim.MODES[0]) -> list:
+def start_run_button() -> dict:
+    """The corner's Start Run button, at the way-in buttons' size."""
+    return {
+        "action": sim.START_RUN_ACTION,
+        "text": sim.START_RUN_TEXT,
+        "accessible_name": sim.button_name(sim.START_RUN_ACTION),
+        "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+        "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+    }
+
+
+def way_in_buttons(mode: str = sim.MODES[0], held: int = 0) -> list:
     """The corner's buttons as the page draws them: ``clear_fleet_button``
-    first, then the two ways in ``mode`` offers from ``sim.reserved_rows``."""
-    return [clear_fleet_button()] + [
+    first, then the two ways in ``mode`` offers from ``sim.reserved_rows``,
+    then ``start_run_button`` while ``held`` records are held."""
+    rows = [clear_fleet_button()] + [
         {
             "action": row["action"],
             "text": row["text"],
@@ -204,6 +216,9 @@ def way_in_buttons(mode: str = sim.MODES[0]) -> list:
         }
         for row in sim.reserved_rows(mode)
     ]
+    if int(held or 0) > 0:
+        rows.append(start_run_button())
+    return rows
 
 
 def way_in_refused_line(action: str, error: Any) -> str:
@@ -421,6 +436,21 @@ RUN_STOPPING_FORMAT = (
 )
 RUN_FAILED_FORMAT = "{mode} failed: {error}"
 RUN_THREAD_NAME = "sim-mode-run"
+
+#: The signal a Start Run press emits through ``signal_contract``: the press,
+#: whose count of the venue's scrumming rows reading ``running`` after must
+#: equal the run's bot count on ``START_OUTCOME_STARTED`` under Validation or
+#: Back Test and the count before otherwise.
+START_PRESSED_SIGNAL = "sim.run.start_pressed"
+START_OUTCOME_STARTED = "started"
+START_OUTCOME_IN_FLIGHT = "refused_in_flight"
+START_OUTCOME_NO_BOT = "no_bot"
+START_OUTCOME_CANCELLED = "cancelled"
+
+
+def rows_running(bots: Any) -> int:
+    """How many of ``bots`` carry ``BotState.RUNNING`` as their ``state``."""
+    return sum(1 for one in bots if one.state == BotState.RUNNING.value)
 
 
 def run_started_line(mode: str, exchange_id: Any, bots: int, budget_usd: float) -> str:
@@ -803,10 +833,11 @@ def layer_card(
     The card's ``placeholder`` keeps Live's frame and geometry; its title, its
     hint and its button position carry the Simulator's contents, the button
     position Clear Fleet while ``held`` records are held and the two ways in
-    ``mode`` offers.
+    ``mode`` offers. The corner's list carries Start Run while ``held`` records
+    are held.
     """
     card = live.layer_card(key, exchanges, current)
-    card["way_in_buttons"] = way_in_buttons(mode)
+    card["way_in_buttons"] = way_in_buttons(mode, held)
     card["corner_layout"] = dict(CORNER_LAYOUT)
     placeholder = card["placeholder"]
     placeholder["order"] = list(PLACEHOLDER_ORDER)

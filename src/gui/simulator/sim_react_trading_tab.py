@@ -36,11 +36,13 @@ for any other action before anything is pushed; ``run_action`` answers the
 page's Pause API Log press through ``set_api_paused``. The run mode is held once, on
 ``SimTradingTabState.mode``; a venue page's mode press reaches ``set_mode``,
 which redraws the tab so the corner offers Clear Fleet then that mode's two
-ways in and the card the same two, with Clear Fleet above them while a fleet
-is held, and re-publishes every venue so its header carries the active sheet;
+ways in then Start Run while a fleet is held, and the card the mode's two,
+with Clear Fleet above them while a fleet is held, and re-publishes every
+venue so its header carries the active sheet;
 ``show_tab`` reads ``held`` off ``FleetSource.bots`` on every call; a
 corner or card press reaches ``_way_in``, which runs ``_clear_fleet`` for
-Clear Fleet, opens the wizard for Create New Bots, runs
+Clear Fleet, runs ``_start_run_pressed`` for Start Run, opens the wizard for
+Create New Bots, runs
 ``_import_live_fleet`` for Import Live Fleet, runs
 ``_generate_from_ytd`` for Generate From YTD, and logs the ``SendRefused``
 ``FleetSource`` raises for every other action. ``_clear_fleet`` refuses with
@@ -64,16 +66,20 @@ file is missing, the generation line and the no-target line, and fires
 the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
 ``fleet_changed`` and runs ``_compute_battery`` on a daemon thread, whose
 ``battery_line``, ``battery_trade`` and ``battery_finished`` signals reach
-``log``, ``log_trade`` and ``_take_battery`` on the GUI thread; the page's
-command bar Start in Validation or Back Test mode reaches ``_start_run``,
-which moves every scrumming bot on the pressed page's exchange to ``running``
+``log``, ``log_trade`` and ``_take_battery`` on the GUI thread; Start Run at
+the corner reaches ``_start_run_pressed``, which refuses with the in-flight
+line while a run or a Battery is in flight, runs ``_run_battery`` under Run
+Portfolio's chooser in Portfolio Battery mode, and in Validation or Back Test
+mode reaches ``_start_run`` over the venue on show, which moves every
+scrumming bot on that exchange to ``running``
 through ``SimBotManager.start``, fires ``fleet_changed``, writes the started
 line and runs ``_compute_run`` on a daemon thread, ``validation.run`` or
 ``back_test.run`` over the tab's sources, each fill crossing on ``run_trade``
 to ``log_trade`` and the outcome on ``run_finished`` to ``_take_run``, which
 moves the run's bots to ``stopped`` and writes the run's lines and the report
 line, and Stop on a run row reaches ``_stop_run``, which sets the event the
-runner reads; a venue sub-tab press reaches
+runner reads, each Start Run press emitting ``START_PRESSED_SIGNAL`` through
+``signal_contract``; a venue sub-tab press reaches
 ``run_action`` as the ``exchange`` ask and ``show_tab`` makes that venue
 current. The replay layer behind the panel is pushed as the tab's ``replay``:
 ``_refresh_replay`` builds the chooser's items from ``tablet_choices`` and
@@ -1112,14 +1118,18 @@ if _HAS_WEBENGINE:
 
         def _way_in(self, action: str) -> None:
             """One button pressed at the corner or on the card: Clear Fleet
-            runs ``_clear_fleet``, Create New Bots opens the wizard through
-            ``_create_bot``, Import Live Fleet runs ``_import_live_fleet``,
-            Generate From YTD runs ``_generate_from_ytd``, Run Portfolio and
-            Run Every Portfolio run ``_run_battery``; every other action asks
-            ``FleetSource`` for it by name, which raises ``SendRefused``, and
-            the refusal is logged to the Activity Log."""
+            runs ``_clear_fleet``, Start Run runs ``_start_run_pressed``,
+            Create New Bots opens the wizard through ``_create_bot``, Import
+            Live Fleet runs ``_import_live_fleet``, Generate From YTD runs
+            ``_generate_from_ytd``, Run Portfolio and Run Every Portfolio run
+            ``_run_battery``; every other action asks ``FleetSource`` for it
+            by name, which raises ``SendRefused``, and the refusal is logged
+            to the Activity Log."""
             if action == sim.CLEAR_FLEET_ACTION:
                 self._clear_fleet()
+                return
+            if action == sim.START_RUN_ACTION:
+                self._start_run_pressed()
                 return
             if action == sim.CREATE_NEW_BOTS_ACTION:
                 self._create_bot(self._current_venue_id())
@@ -1215,7 +1225,7 @@ if _HAS_WEBENGINE:
             if sink is not None:
                 sink.flush()
 
-        def _run_battery(self, action: str) -> None:
+        def _run_battery(self, action: str) -> str:
             """Run Portfolio or Run Every Portfolio: one line and nothing
             started while ``battery_running``; ``SimPortfolioChoiceDialog``
             over ``PORTFOLIOS`` and ``BATTERY_SPANS``, the portfolio row left
@@ -1223,17 +1233,18 @@ if _HAS_WEBENGINE:
             held fleet, ``FleetSource.hold_battery_fleet`` on the plan's bots,
             ``fleet_changed``, the started line, and ``_compute_battery`` on a
             daemon thread; a cancelled chooser writes one line and moves
-            nothing."""
+            nothing. Answers the outcome: ``START_OUTCOME_IN_FLIGHT``,
+            ``START_OUTCOME_CANCELLED`` or ``START_OUTCOME_STARTED``."""
             if self.battery_running():
                 self.log(tab_surface.BATTERY_RUNNING_TEXT, "warning")
-                return
+                return tab_surface.START_OUTCOME_IN_FLIGHT
             every = action == sim.RUN_EVERY_PORTFOLIO_ACTION
             dialog = SimPortfolioChoiceDialog(
                 PORTFOLIOS, sim.BATTERY_SPANS, self, every=every
             )
             if dialog.exec() != QDialog.Accepted:
                 self.log(tab_surface.BATTERY_CANCELLED_TEXT, "warning")
-                return
+                return tab_surface.START_OUTCOME_CANCELLED
             names = () if every else (dialog.chosen_portfolio(),)
             span = dialog.chosen_span() or sim.DEFAULT_SPAN
             plan = portfolio_battery.plan_run(
@@ -1255,6 +1266,7 @@ if _HAS_WEBENGINE:
                 daemon=True,
             )
             self._battery_thread.start()
+            return tab_surface.START_OUTCOME_STARTED
 
         def _compute_battery(self, plan, span: str) -> None:
             """Run ``portfolio_battery.run_battery`` over
@@ -1375,21 +1387,74 @@ if _HAS_WEBENGINE:
                 if one.exchange_id == exchange_id and one.mode == SCRUMMING_MODE
             ]
 
-        def _start_run(self, bot: SimBot, mode: str) -> None:
-            """Start the run ``mode`` names over ``_run_bots`` of ``bot``'s
-            exchange: each bot to ``running`` through ``SimBotManager.start``,
-            ``fleet_changed``, the YTD root line when Validation's YTD
-            directory is not ready, the started line, then ``_compute_run`` on
-            a daemon thread; a page holding no scrumming bot writes one line
-            and starts nothing."""
-            bots = self._run_bots(bot.exchange_id)
+        def _start_run_pressed(self) -> None:
+            """Start Run at the corner: the in-flight line and nothing started
+            while ``battery_running`` or ``run_running``; otherwise the run
+            the tab's ``mode`` names over the venue on show, ``_start_run``
+            for Validation and Back Test, ``_run_battery`` under Run
+            Portfolio's chooser for Portfolio Battery; each press emits
+            ``START_PRESSED_SIGNAL`` with its outcome and the venue's
+            scrumming rows reading ``running`` after it."""
+            venue = self._current_venue_id()
+            mode = self.mode()
+            run_bots = self._run_bots(venue)
+            running_before = tab_surface.rows_running(run_bots)
+            context = {
+                "mode": mode,
+                "venue": venue,
+                "held": len(self._fleet_source.bots()),
+                "bots": len(run_bots),
+            }
+            if self.battery_running():
+                self.log(tab_surface.BATTERY_RUNNING_TEXT, "warning")
+                outcome = tab_surface.START_OUTCOME_IN_FLIGHT
+            elif self.run_running():
+                self.log(
+                    tab_surface.run_in_flight_line(
+                        self._run.get("mode", ""),
+                        len(self._run.get("bot_ids", [])),
+                        sim.START_RUN_TEXT,
+                    ),
+                    "warning",
+                )
+                outcome = tab_surface.START_OUTCOME_IN_FLIGHT
+            elif mode in tab_surface.RUN_MODES:
+                outcome = self._start_run(venue, mode)
+            else:
+                outcome = self._run_battery(sim.RUN_PORTFOLIO_ACTION)
+            expected_running = running_before
+            if (
+                outcome == tab_surface.START_OUTCOME_STARTED
+                and mode in tab_surface.RUN_MODES
+            ):
+                expected_running = len(run_bots)
+            running_after = tab_surface.rows_running(self._run_bots(venue))
+            _pin_emit(
+                tab_surface.START_PRESSED_SIGNAL,
+                actual={"outcome": outcome, "rows_running": running_after},
+                expected={"outcome": outcome, "rows_running": expected_running},
+                context=context,
+            )
+            sink = _pin_sink()
+            if sink is not None:
+                sink.flush()
+
+        def _start_run(self, exchange_id: str, mode: str) -> str:
+            """Start the run ``mode`` names over ``_run_bots`` of
+            ``exchange_id``: each bot to ``running`` through
+            ``SimBotManager.start``, ``fleet_changed``, the YTD root line when
+            Validation's YTD directory is not ready, the started line, then
+            ``_compute_run`` on a daemon thread; a venue holding no scrumming
+            bot writes one line and starts nothing. Answers
+            ``START_OUTCOME_NO_BOT`` or ``START_OUTCOME_STARTED``."""
+            bots = self._run_bots(exchange_id)
             if not bots:
-                self.log(tab_surface.run_no_bot_line(mode, bot.exchange_id), "warning")
-                return
+                self.log(tab_surface.run_no_bot_line(mode, exchange_id), "warning")
+                return tab_surface.START_OUTCOME_NO_BOT
             self._run_stop.clear()
             self._run = {
                 "mode": mode,
-                "exchange_id": bot.exchange_id,
+                "exchange_id": exchange_id,
                 "bot_ids": [one.bot_id for one in bots],
                 "stopper": "",
             }
@@ -1403,17 +1468,18 @@ if _HAS_WEBENGINE:
                     self.log(tab_surface.ytd_root_line(state, source.root()), "warning")
             self.log(
                 tab_surface.run_started_line(
-                    mode, bot.exchange_id, len(bots), back_test.run_budget_usd(bots)
+                    mode, exchange_id, len(bots), back_test.run_budget_usd(bots)
                 ),
                 "success",
             )
             self._run_thread = threading.Thread(
                 target=self._compute_run,
-                args=(mode, bots, bot.exchange_id),
+                args=(mode, bots, exchange_id),
                 name=tab_surface.RUN_THREAD_NAME,
                 daemon=True,
             )
             self._run_thread.start()
+            return tab_surface.START_OUTCOME_STARTED
 
         def _compute_run(self, mode: str, bots: list, exchange_id: str) -> None:
             """Run ``validation.run`` or ``back_test.run`` over ``bots`` and
@@ -1806,9 +1872,6 @@ if _HAS_WEBENGINE:
                     ),
                     "warning",
                 )
-                return
-            if command == "start" and self.mode() in tab_surface.RUN_MODES:
-                self._start_run(bot, self.mode())
                 return
 
             sound = get_sound_engine()
