@@ -21,7 +21,13 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from ...simulator import back_test, portfolio_battery, validation
-from ...simulator.fleet_source import aggregate_stats
+from ...simulator.fleet_source import (
+    MODE_BACK_TEST,
+    MODE_PORTFOLIO_BATTERY,
+    MODE_VALIDATION,
+    MODES,
+    aggregate_stats,
+)
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.tablet_source import TabletSource, tablet_key
 from ...trading.stone_tablets.ra_paths import RA_STONE_TABLETS_DIR
@@ -83,10 +89,7 @@ CHOOSE_SPAN_ACTION = "choose_span"
 NEWS_TICKER_ROW = "news_ticker_row"
 DATA_POOL_ROW = "data_pool_row"
 
-MODE_VALIDATION = "validation"
-MODE_BACK_TEST = "back_test"
-MODE_PORTFOLIO_BATTERY = "portfolio_battery"
-MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
+#: The three run modes and their tuple are ``fleet_source``'s, one fleet each.
 MODE_LABEL_TEXT = "Mode:"
 MODE_TEXT = {
     MODE_VALIDATION: "Validation",
