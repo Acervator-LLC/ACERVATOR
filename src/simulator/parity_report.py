@@ -24,10 +24,8 @@ from .back_test import (
     BACK_TESTED,
     BackTestRun,
     BotResult,
-    FOLD,
     FUNDED_BY_PROCEEDS,
     FUNDED_BY_TARGETS,
-    SCRUM,
     UNCITED_RULE,
     cited_rule_for,
     run_budget_usd,
@@ -35,8 +33,8 @@ from .back_test import (
 )
 from .fleet_source import SimBot
 from .portfolio_battery import (
+    COMPARISON_RULE,
     RAN,
-    READINGS,
     BatteryRun,
     SymbolRun,
     TimeframeResult,
@@ -138,16 +136,9 @@ NO_LIVE_FILL_TEXT = (
     "No fill is compared against a live one: Back Test has no recorded trade "
     "to compare to."
 )
-#: How the Battery reads one scrummed end against its historical path, the
-#: words ``portfolio_battery.reading_for`` answers.
-BATTERY_READING_RULE = (
-    "the historical path is buy-and-hold over the span: start = the Target "
-    "Balances committed, trough = the sum of each symbol's lowest untraded "
-    "value on a walked bar, end = baseline; the scrummed end is accumulation; "
-    "reversed = at or above the start after the path fell below it, improved = "
-    "above the end, defended = above the trough, undefended = at or below the "
-    "trough, not run = no symbol walked"
-)
+#: The comparison the Battery section reads, ``portfolio_battery.COMPARISON_RULE``.
+BATTERY_COMPARISON_RULE = COMPARISON_RULE
+BATTERY_STOPPED_NOTE = "the operator pressed Stop before every walk was made"
 
 
 @dataclass(frozen=True)
@@ -673,24 +664,31 @@ def symbol_row(portfolio: str, symbol_run: SymbolRun, whole_usd: float) -> dict:
         "outcome": symbol_run.outcome,
         "bars": int(symbol_run.bars),
         "ticks": int(symbol_run.ticks),
+        "evaluations_expected": int(symbol_run.evaluations_expected),
+        "walk_seconds": round(float(symbol_run.walk_seconds), 3),
+        "seconds_per_thousand": round(float(symbol_run.seconds_per_thousand), 3),
         "trades": len(trades),
-        "scrums": sum(1 for one in trades if one.side == SCRUM),
-        "folds": sum(1 for one in trades if one.side == FOLD),
+        "partial_exits": int(symbol_run.partial_exits),
+        "re_entries": int(symbol_run.re_entries),
         "start_units": symbol_run.start_units,
         "end_units": symbol_run.end_units,
         "units_gained": symbol_run.units_gained,
         "baseline_usd": symbol_run.baseline_usd,
         "accumulation_usd": symbol_run.accumulation_usd,
+        "difference_usd": symbol_run.difference_usd,
+        "difference_pct": symbol_run.difference_pct,
         "fees_usd": symbol_run.fees_usd,
         "first": iso_stamp(symbol_run.first_ts_ms),
         "last": iso_stamp(symbol_run.last_ts_ms),
         "bot_id": symbol_run.bot_id,
         "origin": symbol_run.origin,
         "trough_usd": symbol_run.trough_usd,
-        "reading": symbol_run.reading,
         "tablet_timeframe": symbol_run.tablet_timeframe,
         "tablets": symbol_run.tablet_rows,
         "refusal": symbol_run.refusal,
+        "stopped": bool(symbol_run.stopped),
+        "bars_reached": int(symbol_run.bars_reached),
+        "stopped_at": symbol_run.stopped_at,
     }
 
 
@@ -730,14 +728,14 @@ def battery_tablets_by_bot(run: BatteryRun) -> list[dict]:
 
 
 def timeframe_section(portfolio: str, result: TimeframeResult) -> dict:
-    """One ``TimeframeResult``: its ``summary``, the arithmetic and its
-    symbol rows."""
+    """One ``TimeframeResult``: its ``summary``, the arithmetic of the
+    difference and its symbol rows."""
     whole = sum(one.capital_usd for one in result.runs)
     summary = dict(result.summary)
     summary["arithmetic"] = (
-        f"accumulation {result.accumulation_usd:,.2f} - baseline "
-        f"{result.baseline_usd:,.2f} = {result.improvement_usd:,.2f} "
-        f"({result.improvement_pct:.2f}%), verdict {result.verdict}"
+        f"Harvest-Fold end {result.accumulation_usd:,.2f} - HODL end "
+        f"{result.baseline_usd:,.2f} = {result.difference_usd:+,.2f} "
+        f"({result.difference_pct:+.2f}% of HODL end)"
     )
     summary["symbol_rows"] = [symbol_row(portfolio, one, whole) for one in result.runs]
     return summary
@@ -775,8 +773,13 @@ def battery_bots(run: BatteryRun) -> list[dict]:
 
 
 def battery_not_verified(run: BatteryRun) -> list[str]:
-    """What the Portfolio Battery run could not verify, one line each."""
-    out: list[str] = []
+    """What the Portfolio Battery run could not verify, one line each: the
+    ``stopped_line`` first when ``run.stopped``, then each missing asset, each
+    refused symbol, each short tape and each recorded gap."""
+    out: list[str] = [run.stopped_line] if run.stopped else []
+    for portfolio in run.portfolios:
+        for name in portfolio.not_walked:
+            out.append(f"{portfolio.name}: {name} was not walked; Stop came first.")
     refusals = {
         one.asset: one.refusal
         for portfolio in run.portfolios
@@ -811,38 +814,68 @@ def battery_not_verified(run: BatteryRun) -> list[str]:
     return out
 
 
-def battery_outcome(run: BatteryRun) -> dict:
-    """The defend, improve or reverse reading of ``run``: the rule, one entry
-    per portfolio and timeframe with its arithmetic, and the counts of each
-    of ``READINGS`` per timeframe."""
+def battery_comparison(run: BatteryRun) -> dict:
+    """HODL against Harvest-Fold over ``run``: the rule, the three figures
+    totalled per timeframe, one entry per portfolio and timeframe with its
+    three figures, the measured rate and the costed spans."""
     per_portfolio = [
         {
             "portfolio": portfolio.name,
             "timeframe": frame.timeframe,
-            "reading": frame.reading,
-            "historical_failed": frame.historical_failed,
-            "arithmetic": frame.reading_arithmetic,
+            "baseline_usd": frame.baseline_usd,
+            "accumulation_usd": frame.accumulation_usd,
+            "difference_usd": frame.difference_usd,
+            "difference_pct": frame.difference_pct,
+            "trough_usd": frame.trough_usd,
+            "partial_exits": frame.partial_exits,
+            "re_entries": frame.re_entries,
+            "evaluations": frame.evaluations,
+            "evaluations_expected": frame.evaluations_expected,
+            "comparison": frame.comparison,
         }
         for portfolio in run.portfolios
         for frame in portfolio.timeframes
     ]
-    counts = {tf: run.reading_counts(tf) for tf in run.timeframes}
-    summary = "; ".join(
-        f"at {tf}: " + ", ".join(f"{counts[tf][one]} {one}" for one in READINGS)
-        for tf in run.timeframes
-    )
     return {
-        "defend_improve_reverse": summary or NOT_COMPUTED,
-        "rule": BATTERY_READING_RULE,
-        "counts": counts,
+        "rule": BATTERY_COMPARISON_RULE,
+        "totals": {tf: run.totals(tf) for tf in run.timeframes},
         "per_portfolio": per_portfolio,
+        "rate": run.rate_line,
+        "costed": run.costed_line,
     }
 
 
+def battery_reports(run: BatteryRun) -> list[dict]:
+    """One row per ``BatteryRun.portfolio_runs`` entry: the portfolio, its
+    run id, its report file, and its three figures per timeframe."""
+    rows: list[dict] = []
+    for one in run.portfolio_runs:
+        result = one.portfolios[0]
+        row = {
+            "portfolio": result.name,
+            "run_id": one.run_id,
+            "report": str(one.report.markdown_path) if one.report is not None else "",
+            "stopped": bool(result.stopped),
+            "timeframes": {
+                frame.timeframe: {
+                    "baseline_usd": frame.baseline_usd,
+                    "accumulation_usd": frame.accumulation_usd,
+                    "difference_usd": frame.difference_usd,
+                    "difference_pct": frame.difference_pct,
+                    "symbols_run": len(frame.ran),
+                    "symbols": len(frame.runs),
+                }
+                for frame in result.timeframes
+            },
+        }
+        rows.append(row)
+    return rows
+
+
 def battery_subject(run: BatteryRun) -> str:
-    """``EVERY_PORTFOLIO`` when every ``PORTFOLIOS`` name ran, else the names
-    joined."""
-    names = [one.name for one in run.portfolios]
+    """``EVERY_PORTFOLIO`` when every ``PORTFOLIOS`` name was asked for, else
+    the names asked joined, the names run when none were asked."""
+    names = list(run.names) or [one.name for one in run.portfolios]
     if names and sorted(names) == sorted(PORTFOLIOS):
         return EVERY_PORTFOLIO
     return "-".join(names) or "no-portfolio"
@@ -851,11 +884,13 @@ def battery_subject(run: BatteryRun) -> str:
 def battery_figures(
     run: BatteryRun, tablets: Optional[TabletSource], stamp: str
 ) -> dict:
-    """The figures of one ``BatteryRun``."""
+    """The figures of one ``BatteryRun``: one portfolio's own, or the summary
+    over ``portfolio_runs`` with ``battery_reports`` beside the comparison."""
     bots = battery_bots(run)
     walked = {
         (row["bot_id"], row["timeframe"]) for row in bots if row["outcome"] == RAN
     }
+    reached = {row["bot_id"] for row in bots}
     with_target = [one for one in run.bots if one.target_usd is not None]
     head = {
         "mode": PORTFOLIO_BATTERY,
@@ -871,6 +906,7 @@ def battery_figures(
             "last": iso_stamp(run.end_ms),
         },
         "bots": len(run.bots),
+        "bots_reached": len(reached),
         "budget": {
             "funding": FUNDED_BY_TARGETS,
             "rule": FUNDING_RULE[FUNDED_BY_TARGETS],
@@ -886,6 +922,13 @@ def battery_figures(
         "tablet_root": run.tablet_root,
         "timeframes": list(run.timeframes),
         "symbol_runs": int(run.symbol_runs),
+        "evaluations": int(run.evaluations),
+        "evaluations_expected": int(run.evaluations_expected),
+        "walk_seconds": float(run.walk_seconds),
+        "seconds_per_thousand": float(run.seconds_per_thousand),
+        "portfolios_named": list(run.names),
+        "portfolios_not_reached": list(run.not_reached),
+        "stopped": bool(run.stopped),
         "run_id": run.run_id,
         "rows": rows_section(run.run_id, run.emitted),
     }
@@ -896,10 +939,11 @@ def battery_figures(
             "span": portfolio.span,
             "first": iso_stamp(portfolio.start_ms),
             "last": iso_stamp(portfolio.end_ms),
-            "improved_timeframes": list(portfolio.improved_timeframes),
             "fleet_origin": portfolio.fleet_origin,
             "bot_ids": list(portfolio.bot_ids),
-            "readings": dict(portfolio.readings),
+            "comparisons": dict(portfolio.comparisons),
+            "stopped": bool(portfolio.stopped),
+            "not_walked": list(portfolio.not_walked),
             "timeframes": [
                 timeframe_section(portfolio.name, one) for one in portfolio.timeframes
             ],
@@ -911,7 +955,8 @@ def battery_figures(
     tablet_section["retrievals"] = [dict(one) for one in run.retrievals]
     return {
         "mode": PORTFOLIO_BATTERY,
-        "partial": False,
+        "partial": bool(run.stopped),
+        "stopped": bool(run.stopped),
         "error": None,
         "header": head,
         "tablets": tablet_section,
@@ -920,7 +965,8 @@ def battery_figures(
             "portfolios": portfolios,
             "refused": battery_refusals(run),
             "gaps": [dict(one) for one in run.gaps],
-            "outcome": battery_outcome(run),
+            "comparison": battery_comparison(run),
+            "reports": battery_reports(run),
         },
         "summary": dict(run.summary),
         "not_verified": battery_not_verified(run),
@@ -1007,6 +1053,9 @@ def render_header(figures: dict) -> list[str]:
         "interval_ms",
         "tablet_root",
         "symbol_runs",
+        "evaluations",
+        "evaluations_expected",
+        "seconds_per_thousand",
     ):
         if key in head:
             out.append(f"- {key.replace('_', ' ')}: {head[key]}")
@@ -1017,7 +1066,15 @@ def render_header(figures: dict) -> list[str]:
                 f"{name} {count}" for name, count in head["bot_outcomes"].items()
             )
         )
-    if figures.get("stopped"):
+    if figures.get("stopped") and figures.get("mode") == PORTFOLIO_BATTERY:
+        out.append(
+            f"- partial: yes; {BATTERY_STOPPED_NOTE}; "
+            f"{len(head.get('portfolios_named', [])) - len(head.get('portfolios_not_reached', []))} "
+            f"of {len(head.get('portfolios_named', []))} portfolio(s) reached; "
+            f"{head.get('evaluations', 0):,} of {head.get('evaluations_expected', 0):,} "
+            "evaluation(s) made"
+        )
+    elif figures.get("stopped"):
         out.append(
             f"- partial: yes; {STOPPED_NOTE}; {head.get('bots_reached', 0)} of "
             f"{head['bots']} bots reached"
@@ -1196,13 +1253,20 @@ BOT_COLUMNS = {
         ("unit_rule", "unit rule"),
         ("rule_cited", "cited"),
         ("outcome", "outcome"),
-        ("ticks", "ticks"),
-        ("trades", "trades"),
-        ("scrums", "scrums"),
-        ("folds", "folds"),
+        ("bars", "bars"),
+        ("ticks", "evaluations"),
+        ("evaluations_expected", "expected"),
+        ("walk_seconds", "seconds"),
+        ("seconds_per_thousand", "s per 1,000"),
+        ("partial_exits", "partial exits (scrums)"),
+        ("re_entries", "re-entries (folds)"),
         ("units_gained", "units gained"),
-        ("baseline_usd", "baseline"),
-        ("accumulation_usd", "accumulation"),
+        ("baseline_usd", "HODL end"),
+        ("accumulation_usd", "Harvest-Fold end"),
+        ("difference_usd", "difference"),
+        ("difference_pct", "difference % of HODL"),
+        ("trough_usd", "historical trough"),
+        ("stopped_at", "stopped at"),
     ),
 }
 
@@ -1289,22 +1353,74 @@ def render_comparison(figures: dict) -> list[str]:
     return out
 
 
+REPORT_COLUMNS = (
+    ("portfolio", "portfolio"),
+    ("run_id", "run id"),
+    ("report", "report"),
+    ("figures", "HODL end / Harvest-Fold end / difference, per timeframe"),
+)
+
+
+def render_battery_totals(comparison: dict) -> list[str]:
+    """The three figures totalled per timeframe, one line each, then the
+    rate line and the costed line."""
+    out: list[str] = []
+    for timeframe, total in (comparison.get("totals") or {}).items():
+        if not total.get("portfolios"):
+            out.append(f"- at {timeframe}: no portfolio walked")
+            continue
+        out.append(
+            f"- at {timeframe} over {total['portfolios']} portfolio(s): "
+            f"{total['comparison']}; {total['evaluations']:,} of "
+            f"{total['evaluations_expected']:,} evaluation(s) over "
+            f"{total['bars']:,} bar(s)"
+        )
+    out.append(f"- rate: {comparison.get('rate') or NOT_COMPUTED}")
+    if comparison.get("costed"):
+        out.append(f"- cost: {comparison['costed']}")
+    return out
+
+
+def render_battery_reports(rows: Sequence[dict]) -> list[str]:
+    """The per-portfolio table of the summary: each portfolio, its run id, its
+    report file and its three figures per timeframe."""
+    if not rows:
+        return []
+    shown = []
+    for row in rows:
+        figures = "; ".join(
+            f"{tf} {money(frame['baseline_usd'])} / "
+            f"{money(frame['accumulation_usd'])} / {frame['difference_usd']:+,.2f} "
+            f"({frame['difference_pct']:+.2f}%), {frame['symbols_run']} of "
+            f"{frame['symbols']} symbol(s)"
+            for tf, frame in row["timeframes"].items()
+        )
+        shown.append(
+            {
+                "portfolio": row["portfolio"]
+                + (" (stopped)" if row["stopped"] else ""),
+                "run_id": row["run_id"],
+                "report": row["report"],
+                "figures": figures or "no timeframe walked",
+            }
+        )
+    return ["### Per portfolio", ""] + table(REPORT_COLUMNS, shown) + [""]
+
+
 def render_battery(figures: dict) -> list[str]:
-    """The ``Portfolio Battery`` section."""
+    """The ``Portfolio Battery`` section: the comparison rule, the three
+    figures totalled per timeframe, the per-portfolio table of a summary, then
+    each portfolio at each timeframe with its three figures."""
     section = figures.get("battery")
     if section is None:
         return []
     out = ["## Portfolio Battery", ""]
-    outcome = section["outcome"]
-    out += [
-        f"- defend, improve or reverse: {outcome['defend_improve_reverse']}",
-        f"- the reading: {outcome['rule']}",
-        "",
-    ]
+    comparison = section["comparison"]
+    out.append(f"- the comparison: {comparison['rule']}")
+    out += render_battery_totals(comparison)
+    out.append("")
+    out += render_battery_reports(section.get("reports") or [])
     for portfolio in section["portfolios"]:
-        readings = ", ".join(
-            f"{tf} {read}" for tf, read in portfolio.get("readings", {}).items()
-        )
         out += [
             f"### {portfolio['name']}: {portfolio['description']}",
             "",
@@ -1313,16 +1429,36 @@ def render_battery(figures: dict) -> list[str]:
             f"- bots: {portfolio.get('fleet_origin', '')} ("
             + (", ".join(portfolio.get("bot_ids", [])) or "none")
             + ")",
-            f"- defend, improve or reverse: {readings or 'none'}",
-            "- improved timeframes: "
-            + (", ".join(portfolio["improved_timeframes"]) or "none"),
-            "",
         ]
+        if portfolio.get("stopped"):
+            out.append(
+                "- stopped by the operator; not walked: "
+                + (", ".join(portfolio.get("not_walked", [])) or "none")
+            )
+        out.append("")
         for frame in portfolio["timeframes"]:
+            out += [f"#### {portfolio['name']} at {frame['timeframe']}", ""]
+            if not frame["symbols_run"]:
+                out += [
+                    f"- no symbol walked: {frame['symbols_run']} of "
+                    f"{frame['symbols']} ran"
+                    + (
+                        f"; missing symbols: {', '.join(frame['missing_symbols'])}"
+                        if frame["missing_symbols"]
+                        else ""
+                    ),
+                    "",
+                ]
+                continue
             out += [
-                f"#### {portfolio['name']} at {frame['timeframe']}",
-                "",
-                f"- reading: {frame.get('reading_arithmetic', NOT_COMPUTED)}",
+                f"- HODL end: {money(frame['baseline_usd'])} (bought at the "
+                "opening bar, held to the last)",
+                f"- Harvest-Fold end: {money(frame['accumulation_usd'])} "
+                f"({frame['partial_exits']} partial exit(s), {frame['re_entries']} "
+                "re-entr" + ("y" if frame["re_entries"] == 1 else "ies") + ")",
+                f"- difference: {frame['difference_usd']:+,.2f} "
+                f"({frame['difference_pct']:+.2f}% of HODL end); {frame['arithmetic']}",
+                f"- historical trough: {money(frame['trough_usd'])}",
                 f"- symbols: {frame['symbols_run']} of {frame['symbols']} ran",
                 f"- committed: {money(frame['committed_usd'])}; missing: "
                 f"{money(frame['missing_usd'])} "
@@ -1332,11 +1468,16 @@ def render_battery(figures: dict) -> list[str]:
                     if frame["missing_symbols"]
                     else ""
                 ),
-                f"- {frame['arithmetic']}",
+                f"- bars: {frame['bars']:,}; evaluations: {frame['ticks']:,} of "
+                f"{frame['evaluations_expected']:,} expected in "
+                f"{frame['walk_seconds']:.1f} s ({frame['seconds_per_thousand']:.2f} "
+                "s per 1,000)",
                 f"- units gained: {units(frame['units_gained'])}; "
                 f"trades: {frame['trades']}; fees: {money(frame['fees_usd'])}",
-                "",
             ]
+            for line in frame.get("stopped_at") or []:
+                out.append(f"- {line}")
+            out.append("")
     refused = section["refused"]
     out += ["### Refused symbols", ""]
     if refused:
@@ -1512,7 +1653,8 @@ def report_line(report: ParityReport) -> str:
 
 __all__ = [
     "BACK_TEST",
-    "BATTERY_READING_RULE",
+    "BATTERY_COMPARISON_RULE",
+    "BATTERY_STOPPED_NOTE",
     "BY_CAUSE",
     "CAUSE_DEFINITIONS",
     "COUNT_DEFINITIONS",
@@ -1534,7 +1676,8 @@ __all__ = [
     "ParityReport",
     "back_test_figures",
     "battery_figures",
-    "battery_outcome",
+    "battery_comparison",
+    "battery_reports",
     "battery_tablets_by_bot",
     "comparison_counts",
     "comparison_row",

@@ -5,13 +5,16 @@
 ``generated_bot`` per symbol at the ``symbol_targets`` share of
 ``DEFAULT_TARGET_USD``; ``span_bounds``, ``asset_candles`` and ``resample``
 give ``run_symbol`` the ``1d``, ``1w`` and ``1M`` bars it hands to
-``back_test.walk``, the same gate chain a live bot ticks, reading the
-buy-and-hold baseline and its trough off that walk's own prices.
-``run_portfolio`` sums those runs per timeframe and reads ``reading_for``, the
-highest historical mark the scrummed end clears, and ``run_battery`` reports
-every portfolio, a symbol with no tablet as missing weight, a recorded gap
-through ``gaps_in_span`` and a symbol with no ``cited_rule_for`` rule as
-``UNCITED_RULE``, missing weight and not walked.
+``back_test.walk``, the same gate chain a live bot ticks, over every bar from
+the ``MIN_CANDLES``th on, reading the HODL end and its trough off that walk's
+own prices and the Harvest-Fold end off what the walk ended holding.
+``run_portfolio`` sums those runs per timeframe into the three figures,
+``baseline_usd`` (HODL end), ``accumulation_usd`` (Harvest-Fold end) and
+``difference_usd``, and ``run_battery`` runs one portfolio at a time through
+``_walk_portfolios``, a report per portfolio and a summary over them, a symbol
+with no tablet as missing weight, a recorded gap through ``gaps_in_span`` and a
+symbol with no ``cited_rule_for`` rule as ``UNCITED_RULE``, missing weight and
+not walked. Nothing here ranks a portfolio or declares a winner.
 
 ``TapeCache.bars`` reads each bot at the timeframe its asset's tablet carries:
 a crypto bot the ``CRYPTO_TABLET_TIMEFRAME`` file through
@@ -28,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional, Sequence
@@ -41,8 +45,10 @@ from ..trading.stone_tablets.registry import (
     StoneTabletsRegistry,
 )
 from .back_test import (
+    FOLD,
     FUNDED_BY_TARGETS,
     MIN_CANDLES,
+    SCRUM,
     UNCITED_RULE,
     SimTrade,
     TradeSink,
@@ -52,7 +58,14 @@ from .back_test import (
     walk,
 )
 from .fleet_source import BATTERY_ORIGIN, SCRUMMING_MODE, SimBot
-from .portfolios import PERIODS, PORTFOLIOS, Portfolio, is_crypto, period_window
+from .portfolios import (
+    PERIODS,
+    PORTFOLIOS,
+    TEST_RUN_SPAN,
+    Portfolio,
+    is_crypto,
+    period_window,
+)
 from .read_only_connector import ReadOnlyConnector, VenueCall
 from .sim_bus import RunEmitter
 from .tablet_retrieval import (
@@ -145,15 +158,6 @@ DEFAULT_TARGET_USD = 500.0
 #: ``scrumming_interval`` as the Bot Wizard opens it.
 SCRUMMING_INTERVAL_PCT = 1.0
 
-#: The reading of one scrummed end against its historical path's three marks,
-#: the highest one it clears.
-REVERSED = "reversed"
-IMPROVED = "improved"
-DEFENDED = "defended"
-UNDEFENDED = "undefended"
-NOT_RUN = "not run"
-READINGS = (REVERSED, IMPROVED, DEFENDED, UNDEFENDED, NOT_RUN)
-
 #: ``PortfolioResult.fleet_origin`` when the held fleet's own bots ran.
 HELD_FLEET = "held"
 
@@ -162,8 +166,68 @@ HELD_FLEET = "held"
 CRYPTO_EXCHANGE = "coinbase"
 EQUITY_EXCHANGE = "yahoo"
 
-#: How many gate-chain evaluations one symbol spends, sizing ``walk``'s step.
-TICKS_PER_SYMBOL = 120
+#: How many bars a walk covers between two progress lines. At the measured
+#: rate of about 1.7 ms an evaluation a line lands about every 8.5 seconds on
+#: a 5m walk, and a daily walk ends before its first one.
+PROGRESS_EVERY_BARS = 5_000
+
+#: The signals one portfolio's start and end emit through ``signal_contract``.
+PORTFOLIO_STARTED_SIGNAL = "sim.battery.portfolio_started"
+PORTFOLIO_FINISHED_SIGNAL = "sim.battery.portfolio_finished"
+
+#: The comparison every Battery figure serves, in the words the report reads.
+COMPARISON_RULE = (
+    "HODL end is the Target Balance bought at the walk's opening bar and held to "
+    "its last bar; Harvest-Fold end is the same capital walked by the scrumming "
+    "bot on the IVP's logic, its units at the last close plus the cash its "
+    "partial exits left; difference is Harvest-Fold end less HODL end, as a "
+    "figure and as a percentage of HODL end; historical trough is the lowest the "
+    "untraded holding read on a walked bar. Nothing ranks or declares a winner."
+)
+
+#: The Activity Log lines one (bot, timeframe) walk writes through ``progress``.
+WALK_STARTED_LINE_FORMAT = (
+    "Walking {asset} {timeframe} on {exchange_id}: {bars:,} bar(s), "
+    "{evaluations:,} evaluation(s) to make."
+)
+WALK_PROGRESS_LINE_FORMAT = (
+    "{asset} {timeframe}: bar {bar:,} of {bars:,}, {evaluations:,} evaluation(s), "
+    "{partial_exits} partial exit(s), {re_entries} re-entr{re_entries_word}, "
+    "{seconds:.1f} s."
+)
+WALK_ENDED_LINE_FORMAT = (
+    "{asset} {timeframe} walked: {evaluations:,} evaluation(s) over {bars:,} "
+    "bar(s) in {seconds:.1f} s ({per_thousand:.2f} s per 1,000); HODL end "
+    "${hodl:,.2f}, Harvest-Fold end ${harvest_fold:,.2f}, difference "
+    "{difference:+,.2f} ({difference_pct:+.2f}% of HODL); {partial_exits} partial "
+    "exit(s), {re_entries} re-entr{re_entries_word}."
+)
+WALK_STOPPED_LINE_FORMAT = (
+    "{asset} {timeframe} stopped at bar {bar:,} of {bars:,} ({candle_at}): "
+    "{evaluations:,} evaluation(s) made."
+)
+
+#: The three figures one portfolio at one timeframe reads, on the Activity Log
+#: and in the report.
+COMPARISON_FORMAT = (
+    "HODL end ${hodl:,.2f}; Harvest-Fold end ${harvest_fold:,.2f}; difference "
+    "{difference:+,.2f} ({difference_pct:+.2f}% of HODL); historical trough "
+    "${trough:,.2f}; {partial_exits} partial exit(s), {re_entries} "
+    "re-entr{re_entries_word}"
+)
+RATE_LINE_FORMAT = (
+    "{evaluations:,} evaluation(s) of {expected:,} expected in {seconds:.1f} s, "
+    "{per_thousand:.2f} s per 1,000."
+)
+COST_SPAN_FORMAT = "{span} ({bars:,} bars) in {cost}"
+COSTED_LINE_FORMAT = (
+    "At {per_thousand:.2f} s per 1,000 evaluations a crypto bot at "
+    "{timeframe} walks {spans}."
+)
+STOPPED_LINE_FORMAT = (
+    "Stopped by the operator: {reached} of {named} portfolio(s) reached; "
+    "{where}; not reached: {not_reached}."
+)
 
 NO_TABLET = "no_tablet"
 SHORT_TAPE = "short_tape"
@@ -171,38 +235,64 @@ RAN = "ran"
 
 SYMBOL_OUTCOMES = (NO_TABLET, SHORT_TAPE, UNCITED_RULE, RAN)
 
-BETTER = "better"
-WORSE = "worse"
-LEVEL = "level"
-
 DAY_MS = 86_400_000
 
 
-def reading_for(
-    ran: bool, start_usd: float, trough_usd: float, end_usd: float, scrummed_usd: float
-) -> str:
-    """The highest historical mark ``scrummed_usd`` clears: ``REVERSED`` at or
-    above ``start_usd`` when ``end_usd`` fell below it, ``IMPROVED`` above
-    ``end_usd``, ``DEFENDED`` above ``trough_usd``, else ``UNDEFENDED``;
-    ``NOT_RUN`` while ``ran`` is False."""
-    if not ran:
-        return NOT_RUN
-    if end_usd < start_usd and scrummed_usd >= start_usd:
-        return REVERSED
-    if scrummed_usd > end_usd:
-        return IMPROVED
-    if scrummed_usd > trough_usd:
-        return DEFENDED
-    return UNDEFENDED
+def evaluations_expected(bars: int) -> int:
+    """How many gate-chain evaluations a walk over ``bars`` makes: one per bar
+    from the ``MIN_CANDLES``th on, none under ``MIN_CANDLES``."""
+    return max(0, int(bars) - (MIN_CANDLES - 1))
 
 
-def reading_arithmetic(
-    start_usd: float, trough_usd: float, end_usd: float, scrummed_usd: float, read: str
+def seconds_per_thousand(seconds: float, evaluations: int) -> float:
+    """``seconds`` scaled to 1,000 evaluations; zero when none were made."""
+    if int(evaluations) <= 0:
+        return 0.0
+    return float(seconds) * 1000.0 / float(evaluations)
+
+
+def difference_pct_of(hodl_usd: float, harvest_fold_usd: float) -> float:
+    """``harvest_fold_usd`` less ``hodl_usd`` as a percentage of ``hodl_usd``;
+    zero when ``hodl_usd`` is not above zero."""
+    if float(hodl_usd) <= 0.0:
+        return 0.0
+    return 100.0 * (float(harvest_fold_usd) - float(hodl_usd)) / float(hodl_usd)
+
+
+def re_entries_word(count: int) -> str:
+    """The ending ``re-entr`` takes for ``count``: ``y`` for one, ``ies``
+    otherwise."""
+    return "y" if int(count) == 1 else "ies"
+
+
+def seconds_text(seconds: float) -> str:
+    """``seconds`` as ``12.3 s``, ``4.5 min`` or ``1.2 h``."""
+    value = float(seconds)
+    if value < 60.0:
+        return f"{value:.1f} s"
+    if value < 3600.0:
+        return f"{value / 60.0:.1f} min"
+    return f"{value / 3600.0:.1f} h"
+
+
+def comparison_text(
+    hodl_usd: float,
+    harvest_fold_usd: float,
+    trough_usd: float,
+    partial_exits: int,
+    re_entries: int,
 ) -> str:
-    """The four figures ``reading_for`` compared, written out beside ``read``."""
-    return (
-        f"historical start {start_usd:,.2f}, trough {trough_usd:,.2f}, end "
-        f"{end_usd:,.2f}; scrummed end {scrummed_usd:,.2f}; reading {read}"
+    """``COMPARISON_FORMAT`` over the three figures, the trough and the two
+    counts."""
+    return COMPARISON_FORMAT.format(
+        hodl=float(hodl_usd),
+        harvest_fold=float(harvest_fold_usd),
+        difference=float(harvest_fold_usd) - float(hodl_usd),
+        difference_pct=difference_pct_of(hodl_usd, harvest_fold_usd),
+        trough=float(trough_usd),
+        partial_exits=int(partial_exits),
+        re_entries=int(re_entries),
+        re_entries_word=re_entries_word(re_entries),
     )
 
 
@@ -233,7 +323,9 @@ class SymbolRun:
 
     ``tablet_timeframe`` names the timeframe the tablet read carried and
     ``tablets`` the files; ``refusal`` names why a ``NO_TABLET`` run read no
-    bar.
+    bar; ``ticks`` counts the evaluations the walk made over every bar from
+    the ``MIN_CANDLES``th on, ``walk_seconds`` how long they took, and
+    ``stopped`` with ``bars_reached`` where Stop ended the walk.
     """
 
     asset: str
@@ -244,6 +336,9 @@ class SymbolRun:
     capital_usd: float = 0.0
     bars: int = 0
     ticks: int = 0
+    walk_seconds: float = 0.0
+    stopped: bool = False
+    bars_reached: int = 0
     scrum_latched: int = 0
     fold_latched: int = 0
     trades: tuple[SimTrade, ...] = ()
@@ -295,19 +390,39 @@ class SymbolRun:
     @property
     def accumulation_usd(self) -> float:
         """What the walk ended holding: ``end_units`` at ``end_price``, plus
-        ``cash_usd``."""
+        ``cash_usd``; the Harvest-Fold end."""
         return self.end_units * self.end_price + self.cash_usd
 
     @property
-    def reading(self) -> str:
-        """``reading_for`` over this symbol's own three marks."""
-        return reading_for(
-            self.ran,
-            self.capital_usd,
-            self.trough_usd,
-            self.baseline_usd,
-            self.accumulation_usd,
-        )
+    def difference_usd(self) -> float:
+        """``accumulation_usd`` less ``baseline_usd``: Harvest-Fold end less
+        HODL end."""
+        return self.accumulation_usd - self.baseline_usd
+
+    @property
+    def difference_pct(self) -> float:
+        """``difference_usd`` as a percentage of ``baseline_usd``."""
+        return difference_pct_of(self.baseline_usd, self.accumulation_usd)
+
+    @property
+    def evaluations_expected(self) -> int:
+        """``evaluations_expected`` over ``bars`` when the walk ran, else zero."""
+        return evaluations_expected(self.bars) if self.ran else 0
+
+    @property
+    def seconds_per_thousand(self) -> float:
+        """``walk_seconds`` scaled to 1,000 evaluations."""
+        return seconds_per_thousand(self.walk_seconds, self.ticks)
+
+    @property
+    def partial_exits(self) -> int:
+        """How many fills in ``trades`` are a scrum sell."""
+        return sum(1 for one in self.trades if one.side == SCRUM)
+
+    @property
+    def re_entries(self) -> int:
+        """How many fills in ``trades`` are a fold buy."""
+        return sum(1 for one in self.trades if one.side == FOLD)
 
     @property
     def units_gained(self) -> float:
@@ -318,6 +433,21 @@ class SymbolRun:
     def trade_count(self) -> int:
         """How many fills are in ``trades``."""
         return len(self.trades)
+
+    @property
+    def stopped_at(self) -> str:
+        """Where Stop ended this walk, ``WALK_STOPPED_LINE_FORMAT`` without
+        the evaluation count's context; empty when it ran to its end."""
+        if not self.stopped:
+            return ""
+        return WALK_STOPPED_LINE_FORMAT.format(
+            asset=self.asset,
+            timeframe=self.timeframe,
+            bar=int(self.bars_reached),
+            bars=int(self.bars),
+            candle_at=iso_stamp(self.last_ts_ms),
+            evaluations=int(self.ticks),
+        )
 
 
 def day_ms(day: str) -> int:
@@ -469,15 +599,6 @@ def resample(rows: Sequence[Sequence[float]], timeframe: str) -> list[list[float
     if held:
         out.append(fold_bucket(held))
     return out
-
-
-def walk_step(bar_count: int, ticks: int) -> int:
-    """One step in bars, so a walk over ``bar_count`` spends about ``ticks``
-    evaluations."""
-    if ticks <= 0:
-        return 1
-    usable = max(0, int(bar_count) - MIN_CANDLES + 1)
-    return max(1, usable // int(ticks))
 
 
 def battery_bot(asset: str, exchange_id: str, timeframe: str, capital_usd: float):
@@ -650,16 +771,21 @@ def run_symbol(
     bot: SimBot,
     bars: Sequence[Sequence[float]],
     timeframe: str,
-    ticks: int = TICKS_PER_SYMBOL,
     on_trade: Optional[TradeSink] = None,
     emitter: Optional[RunEmitter] = None,
     tablet_timeframe: str = "",
     tablets: Sequence[TabletRead] = (),
     refusal: str = "",
+    progress: Optional[Callable[[str], None]] = None,
+    stop: Optional[Callable[[], bool]] = None,
 ) -> SymbolRun:
-    """Walk ``bot`` over ``bars``, already at ``timeframe`` through
-    ``TapeCache.bars``, at its own ``target_usd``, handing ``on_trade`` and
-    ``emitter`` to ``walk``, and read the result.
+    """Walk ``bot`` over every bar of ``bars``, already at ``timeframe``
+    through ``TapeCache.bars``, at its own ``target_usd``, handing ``on_trade``,
+    ``emitter`` and ``stop`` to ``walk``, timing ``walk`` alone, handing
+    ``progress`` ``WALK_STARTED_LINE_FORMAT`` before it,
+    ``WALK_PROGRESS_LINE_FORMAT`` every ``PROGRESS_EVERY_BARS`` bars and
+    ``WALK_ENDED_LINE_FORMAT`` or ``WALK_STOPPED_LINE_FORMAT`` after it, and
+    read the result.
 
     No bar answers ``NO_TABLET`` carrying ``refusal``, a class with no rule in
     ``cited_rule_for`` answers ``UNCITED_RULE``, and too few bars answers
@@ -674,6 +800,11 @@ def run_symbol(
     capital_usd = float(bot.target_usd or 0.0)
     bars = [list(row) for row in bars]
     symbol = bot.symbol or f"{asset}/USD"
+
+    def say(line: str) -> None:
+        if progress is not None:
+            progress(line)
+
     if not bars:
         if emitter is not None:
             emitter.bot_line(bot.bot_id, no_tablet_line(bot))
@@ -740,16 +871,56 @@ def run_symbol(
             tablets=tuple(tablets),
         )
     walked = replace(bot, ta_timeframe=timeframe)
+    expected = evaluations_expected(len(bars))
+    say(
+        WALK_STARTED_LINE_FORMAT.format(
+            asset=asset,
+            timeframe=timeframe,
+            exchange_id=exchange_id,
+            bars=len(bars),
+            evaluations=expected,
+        )
+    )
+    filled: list[SimTrade] = []
+
+    def took(trade: SimTrade) -> None:
+        filled.append(trade)
+        if on_trade is not None:
+            on_trade(trade)
+
+    started = time.perf_counter()
+
+    def on_tick(bar: int, bar_count: int, ticks: int) -> None:
+        if bar % PROGRESS_EVERY_BARS != 0 or bar >= bar_count:
+            return
+        say(
+            WALK_PROGRESS_LINE_FORMAT.format(
+                asset=asset,
+                timeframe=timeframe,
+                bar=bar,
+                bars=bar_count,
+                evaluations=ticks,
+                partial_exits=sum(1 for one in filled if one.side == SCRUM),
+                re_entries=sum(1 for one in filled if one.side == FOLD),
+                re_entries_word=re_entries_word(
+                    sum(1 for one in filled if one.side == FOLD)
+                ),
+                seconds=time.perf_counter() - started,
+            )
+        )
+
     result = walk(
         walked,
         candles_from_raw(bars),
-        walk_step(len(bars), ticks),
-        FUNDED_BY_TARGETS,
+        funding=FUNDED_BY_TARGETS,
         rule=rule,
-        on_trade=on_trade,
+        on_trade=took,
+        stop=stop,
         emitter=emitter,
+        on_tick=on_tick,
     )
-    return SymbolRun(
+    seconds = time.perf_counter() - started
+    run = SymbolRun(
         asset=asset,
         symbol=symbol,
         exchange_id=exchange_id,
@@ -758,6 +929,9 @@ def run_symbol(
         capital_usd=capital_usd,
         bars=len(bars),
         ticks=result.ticks,
+        walk_seconds=seconds,
+        stopped=result.stopped,
+        bars_reached=result.candles_read,
         scrum_latched=result.scrum_latched,
         fold_latched=result.fold_latched,
         trades=result.trades,
@@ -775,10 +949,33 @@ def run_symbol(
         unit_rule=rule,
         bot_id=bot.bot_id,
         origin=bot.origin,
-        trough_price=min(float(bar[4]) for bar in bars[MIN_CANDLES - 1 :]),
+        trough_price=min(
+            float(bar[4]) for bar in bars[MIN_CANDLES - 1 : result.candles_read]
+        ),
         tablet_timeframe=tablet_timeframe,
         tablets=tuple(tablets),
     )
+    if run.stopped:
+        say(run.stopped_at)
+    else:
+        say(
+            WALK_ENDED_LINE_FORMAT.format(
+                asset=asset,
+                timeframe=timeframe,
+                evaluations=run.ticks,
+                bars=run.bars,
+                seconds=seconds,
+                per_thousand=run.seconds_per_thousand,
+                hodl=run.baseline_usd,
+                harvest_fold=run.accumulation_usd,
+                difference=run.difference_usd,
+                difference_pct=run.difference_pct,
+                partial_exits=run.partial_exits,
+                re_entries=run.re_entries,
+                re_entries_word=re_entries_word(run.re_entries),
+            )
+        )
+    return run
 
 
 @dataclass(frozen=True)
@@ -834,33 +1031,25 @@ class TimeframeResult:
 
     @property
     def baseline_usd(self) -> float:
-        """What holding the covered symbols untraded would have ended at."""
+        """What holding the covered symbols untraded would have ended at: the
+        HODL end."""
         return sum(one.baseline_usd for one in self.ran)
 
     @property
     def accumulation_usd(self) -> float:
-        """What the gate chain ended holding across the covered symbols."""
+        """What the gate chain ended holding across the covered symbols: the
+        Harvest-Fold end."""
         return sum(one.accumulation_usd for one in self.ran)
 
     @property
-    def improvement_usd(self) -> float:
+    def difference_usd(self) -> float:
         """``accumulation_usd`` less ``baseline_usd``."""
         return self.accumulation_usd - self.baseline_usd
 
     @property
-    def improvement_pct(self) -> float:
-        """``improvement_usd`` as a percentage of ``baseline_usd``."""
-        base = self.baseline_usd
-        return 100.0 * self.improvement_usd / base if base > 0.0 else 0.0
-
-    @property
-    def verdict(self) -> str:
-        """``BETTER``, ``WORSE`` or ``LEVEL`` against ``baseline_usd``."""
-        if not self.ran:
-            return LEVEL
-        if self.improvement_usd > 0.0:
-            return BETTER
-        return WORSE if self.improvement_usd < 0.0 else LEVEL
+    def difference_pct(self) -> float:
+        """``difference_usd`` as a percentage of ``baseline_usd``."""
+        return difference_pct_of(self.baseline_usd, self.accumulation_usd)
 
     @property
     def trough_usd(self) -> float:
@@ -869,31 +1058,55 @@ class TimeframeResult:
         return sum(one.trough_usd for one in self.ran)
 
     @property
-    def historical_failed(self) -> bool:
-        """True when ``baseline_usd`` ended below ``committed_usd``."""
-        return bool(self.ran) and self.baseline_usd < self.committed_usd
+    def evaluations(self) -> int:
+        """The ``ticks`` every run in ``ran`` made."""
+        return sum(one.ticks for one in self.ran)
 
     @property
-    def reading(self) -> str:
-        """``reading_for`` over ``committed_usd``, ``trough_usd``,
-        ``baseline_usd`` and ``accumulation_usd``."""
-        return reading_for(
-            bool(self.ran),
-            self.committed_usd,
-            self.trough_usd,
-            self.baseline_usd,
-            self.accumulation_usd,
-        )
+    def evaluations_expected(self) -> int:
+        """The ``evaluations_expected`` of every run in ``ran``."""
+        return sum(one.evaluations_expected for one in self.ran)
 
     @property
-    def reading_arithmetic(self) -> str:
-        """``reading_arithmetic`` over the same four figures and ``reading``."""
-        return reading_arithmetic(
-            self.committed_usd,
-            self.trough_usd,
+    def walk_seconds(self) -> float:
+        """The ``walk_seconds`` of every run in ``ran``."""
+        return sum(one.walk_seconds for one in self.ran)
+
+    @property
+    def seconds_per_thousand(self) -> float:
+        """``walk_seconds`` scaled to 1,000 ``evaluations``."""
+        return seconds_per_thousand(self.walk_seconds, self.evaluations)
+
+    @property
+    def partial_exits(self) -> int:
+        """The scrum sells every run in ``ran`` filled."""
+        return sum(one.partial_exits for one in self.ran)
+
+    @property
+    def re_entries(self) -> int:
+        """The fold buys every run in ``ran`` filled."""
+        return sum(one.re_entries for one in self.ran)
+
+    @property
+    def stopped(self) -> bool:
+        """True when Stop ended any run in ``ran``."""
+        return any(one.stopped for one in self.ran)
+
+    @property
+    def stopped_at(self) -> list[str]:
+        """Each ``SymbolRun.stopped_at`` in ``ran`` that is not empty."""
+        return [one.stopped_at for one in self.ran if one.stopped]
+
+    @property
+    def comparison(self) -> str:
+        """``comparison_text`` over the three figures, the trough and the two
+        counts."""
+        return comparison_text(
             self.baseline_usd,
             self.accumulation_usd,
-            self.reading,
+            self.trough_usd,
+            self.partial_exits,
+            self.re_entries,
         )
 
     @property
@@ -907,25 +1120,29 @@ class TimeframeResult:
             "first_at": iso_stamp(self.first_ts_ms),
             "last_at": iso_stamp(self.last_ts_ms),
             "bars": sum(one.bars for one in ran),
-            "ticks": sum(one.ticks for one in ran),
+            "ticks": self.evaluations,
+            "evaluations_expected": self.evaluations_expected,
+            "walk_seconds": self.walk_seconds,
+            "seconds_per_thousand": self.seconds_per_thousand,
             "scrum_latched": sum(one.scrum_latched for one in ran),
             "fold_latched": sum(one.fold_latched for one in ran),
             "trades": sum(one.trade_count for one in ran),
+            "partial_exits": self.partial_exits,
+            "re_entries": self.re_entries,
             "fees_usd": sum(one.fees_usd for one in ran),
             "committed_usd": self.committed_usd,
             "baseline_usd": self.baseline_usd,
             "accumulation_usd": self.accumulation_usd,
-            "improvement_usd": self.improvement_usd,
-            "improvement_pct": self.improvement_pct,
+            "difference_usd": self.difference_usd,
+            "difference_pct": self.difference_pct,
+            "trough_usd": self.trough_usd,
             "units_gained": sum(one.units_gained for one in ran),
             "missing_usd": self.missing_usd,
             "missing_weight": self.missing_weight,
             "missing_symbols": self.missing_symbols,
-            "verdict": self.verdict,
-            "trough_usd": self.trough_usd,
-            "historical_failed": self.historical_failed,
-            "reading": self.reading,
-            "reading_arithmetic": self.reading_arithmetic,
+            "comparison": self.comparison,
+            "stopped": self.stopped,
+            "stopped_at": self.stopped_at,
         }
 
 
@@ -941,42 +1158,59 @@ class PortfolioResult:
     timeframes: tuple[TimeframeResult, ...]
     fleet_origin: str = BATTERY_ORIGIN
     bot_ids: tuple[str, ...] = ()
+    #: True when Stop ended a walk of this portfolio; ``not_walked`` names
+    #: each ``(bot_id, timeframe)`` walk Stop kept from starting.
+    stopped: bool = False
+    not_walked: tuple[str, ...] = ()
 
     @property
-    def improved_timeframes(self) -> list[str]:
-        """Every timeframe whose ``verdict`` reads ``BETTER``."""
-        return [one.timeframe for one in self.timeframes if one.verdict == BETTER]
+    def comparisons(self) -> dict[str, str]:
+        """Each timeframe's ``comparison``, by timeframe."""
+        return {one.timeframe: one.comparison for one in self.timeframes}
 
     @property
-    def best(self) -> Optional[TimeframeResult]:
-        """The timeframe with the largest ``improvement_usd``, or None when none
-        ran."""
-        ranked = [one for one in self.timeframes if one.ran]
-        return max(ranked, key=lambda one: one.improvement_usd) if ranked else None
+    def evaluations(self) -> int:
+        """The ``evaluations`` of every timeframe."""
+        return sum(one.evaluations for one in self.timeframes)
 
     @property
-    def readings(self) -> dict[str, str]:
-        """Each timeframe's ``reading``, by timeframe."""
-        return {one.timeframe: one.reading for one in self.timeframes}
+    def evaluations_expected(self) -> int:
+        """The ``evaluations_expected`` of every timeframe."""
+        return sum(one.evaluations_expected for one in self.timeframes)
+
+    @property
+    def walk_seconds(self) -> float:
+        """The ``walk_seconds`` of every timeframe."""
+        return sum(one.walk_seconds for one in self.timeframes)
+
+    @property
+    def trade_count(self) -> int:
+        """Every fill of every timeframe."""
+        return sum(one.trade_count for frame in self.timeframes for one in frame.ran)
+
+    @property
+    def stopped_at(self) -> list[str]:
+        """Each ``TimeframeResult.stopped_at`` line, in timeframe order."""
+        return [line for one in self.timeframes for line in one.stopped_at]
 
     @property
     def line(self) -> str:
-        """One Activity Log line: the name, the span, each timeframe's reading
-        and how many symbols ran at the first timeframe."""
-        readings = ", ".join(f"{tf} {read}" for tf, read in self.readings.items())
+        """One Activity Log line: the name, the span, each timeframe's three
+        figures and how many symbols ran at the first timeframe."""
+        figures = "; ".join(f"at {tf} {text}" for tf, text in self.comparisons.items())
         first = self.timeframes[0] if self.timeframes else None
         ran = (
             f"{len(first.ran)} of {len(first.runs)}" if first is not None else "0 of 0"
         )
+        stopped = " Stopped by the operator." if self.stopped else ""
         return (
-            f"{self.name} over {self.span}: {readings}; {ran} symbol(s) ran; "
-            f"bots {self.fleet_origin}."
+            f"{self.name} over {self.span}: {figures or 'no timeframe walked'}; "
+            f"{ran} symbol(s) ran; bots {self.fleet_origin}.{stopped}"
         )
 
     @property
     def summary(self) -> dict:
         """The portfolio's own row, and one row per timeframe."""
-        best = self.best
         return {
             "portfolio": self.name,
             "description": self.description,
@@ -984,18 +1218,22 @@ class PortfolioResult:
             "first_at": iso_stamp(self.start_ms),
             "last_at": iso_stamp(self.end_ms),
             "timeframes": [one.summary for one in self.timeframes],
-            "improved_timeframes": self.improved_timeframes,
-            "best_timeframe": best.timeframe if best is not None else "",
-            "best_improvement_usd": best.improvement_usd if best is not None else 0.0,
             "fleet_origin": self.fleet_origin,
             "bot_ids": list(self.bot_ids),
-            "readings": self.readings,
+            "comparisons": self.comparisons,
+            "evaluations": self.evaluations,
+            "evaluations_expected": self.evaluations_expected,
+            "walk_seconds": self.walk_seconds,
+            "stopped": self.stopped,
+            "stopped_at": self.stopped_at,
+            "not_walked": list(self.not_walked),
         }
 
 
 @dataclass(frozen=True)
 class BatteryRun:
-    """One Portfolio Battery press: its span, its portfolios and the gaps."""
+    """One Portfolio Battery press, or one portfolio of it: its span, its
+    portfolios, the gaps, and the three figures totalled per timeframe."""
 
     span: str
     start_ms: int
@@ -1007,12 +1245,14 @@ class BatteryRun:
     tablet_root: str = ""
     symbol_runs: int = 0
     uncited_assets: tuple[str, ...] = ()
-    #: The ``ParityReport`` ``run_battery`` wrote for this press; None until it has.
+    #: The ``ParityReport`` written for this run: one portfolio's own, or the
+    #: summary over ``portfolio_runs``; None until written, and None on the
+    #: summary when the press named one portfolio, whose own report stands.
     report: Any = None
     bots: tuple[SimBot, ...] = ()
     budget_usd: float = 0.0
     fleet_origins: tuple[str, ...] = ()
-    #: The id every row of this press carries in ``data.run_id``; empty when
+    #: The id every row of this run carries in ``data.run_id``; empty when
     #: ``run_battery`` was handed no bus.
     run_id: str = ""
     #: What ``RunEmitter.close`` answered: the rows emitted per topic and the
@@ -1021,71 +1261,201 @@ class BatteryRun:
     #: One ``retrieval_row`` per crypto asset ``retrieve_tablets`` walked or
     #: refused before the first walk.
     retrievals: tuple = ()
+    #: The names the press asked for, in order; ``not_reached`` those Stop
+    #: kept from starting.
+    names: tuple[str, ...] = ()
+    stopped: bool = False
+    not_reached: tuple[str, ...] = ()
+    #: One ``BatteryRun`` per portfolio the press ran, each carrying its own
+    #: ``report``; empty on a single portfolio's own run.
+    portfolio_runs: tuple = ()
+    #: ``cost_span`` rows: the 5m bars each named span holds, so the measured
+    #: rate costs a crypto bot's walk over it.
+    costed: tuple[dict, ...] = ()
 
     @property
     def refused_assets(self) -> tuple:
         """Each asset in ``retrievals`` the venue refused, sorted."""
         return tuple(sorted(one["asset"] for one in self.retrievals if one["refused"]))
 
-    def reading_counts(self, timeframe: str) -> dict[str, int]:
-        """How many portfolios read each of ``READINGS`` at ``timeframe``."""
-        counts = {read: 0 for read in READINGS}
-        for portfolio in self.portfolios:
-            read = portfolio.readings.get(timeframe)
-            if read in counts:
-                counts[read] += 1
-        return counts
+    def frames(self, timeframe: str) -> list[TimeframeResult]:
+        """Every portfolio's ``TimeframeResult`` at ``timeframe`` in which a
+        symbol ran."""
+        return [
+            frame
+            for portfolio in self.portfolios
+            for frame in portfolio.timeframes
+            if frame.timeframe == timeframe and frame.ran
+        ]
+
+    def totals(self, timeframe: str) -> dict:
+        """The three figures, the trough, the two counts and the evaluations
+        summed over ``frames`` at ``timeframe``, with the portfolio count."""
+        frames = self.frames(timeframe)
+        hodl = sum(one.baseline_usd for one in frames)
+        harvest_fold = sum(one.accumulation_usd for one in frames)
+        partial_exits = sum(one.partial_exits for one in frames)
+        re_entries = sum(one.re_entries for one in frames)
+        evaluations = sum(one.evaluations for one in frames)
+        seconds = sum(one.walk_seconds for one in frames)
+        return {
+            "timeframe": timeframe,
+            "portfolios": len(frames),
+            "committed_usd": sum(one.committed_usd for one in frames),
+            "baseline_usd": hodl,
+            "accumulation_usd": harvest_fold,
+            "difference_usd": harvest_fold - hodl,
+            "difference_pct": difference_pct_of(hodl, harvest_fold),
+            "trough_usd": sum(one.trough_usd for one in frames),
+            "partial_exits": partial_exits,
+            "re_entries": re_entries,
+            "bars": sum(int(run.bars) for one in frames for run in one.ran),
+            "evaluations": evaluations,
+            "evaluations_expected": sum(one.evaluations_expected for one in frames),
+            "walk_seconds": seconds,
+            "seconds_per_thousand": seconds_per_thousand(seconds, evaluations),
+            "comparison": comparison_text(
+                hodl,
+                harvest_fold,
+                sum(one.trough_usd for one in frames),
+                partial_exits,
+                re_entries,
+            ),
+        }
+
+    @property
+    def evaluations(self) -> int:
+        """The evaluations every portfolio made."""
+        return sum(one.evaluations for one in self.portfolios)
+
+    @property
+    def evaluations_expected(self) -> int:
+        """The evaluations every portfolio's walks were expected to make."""
+        return sum(one.evaluations_expected for one in self.portfolios)
+
+    @property
+    def walk_seconds(self) -> float:
+        """The seconds every portfolio's walks took."""
+        return sum(one.walk_seconds for one in self.portfolios)
+
+    @property
+    def seconds_per_thousand(self) -> float:
+        """``walk_seconds`` scaled to 1,000 ``evaluations``."""
+        return seconds_per_thousand(self.walk_seconds, self.evaluations)
+
+    @property
+    def rate_line(self) -> str:
+        """``RATE_LINE_FORMAT`` over the evaluations, the expected count and
+        the seconds."""
+        return RATE_LINE_FORMAT.format(
+            evaluations=self.evaluations,
+            expected=self.evaluations_expected,
+            seconds=self.walk_seconds,
+            per_thousand=self.seconds_per_thousand,
+        )
+
+    @property
+    def costed_line(self) -> str:
+        """``COSTED_LINE_FORMAT`` over ``costed`` at ``seconds_per_thousand``;
+        empty with no rate or no costed span."""
+        rate = self.seconds_per_thousand
+        if rate <= 0.0 or not self.costed:
+            return ""
+        spans = " and ".join(
+            COST_SPAN_FORMAT.format(
+                span=one["span"],
+                bars=int(one["bars"]),
+                cost=seconds_text(
+                    rate * evaluations_expected(int(one["bars"])) / 1000.0
+                ),
+            )
+            for one in self.costed
+        )
+        return COSTED_LINE_FORMAT.format(
+            per_thousand=rate, timeframe=CRYPTO_TABLET_TIMEFRAME, spans=spans
+        )
+
+    @property
+    def stopped_line(self) -> str:
+        """``STOPPED_LINE_FORMAT`` naming the portfolios reached, the bar
+        each stopped walk reached and the portfolios not reached; empty
+        unless ``stopped``."""
+        if not self.stopped:
+            return ""
+        where = "; ".join(
+            line.rstrip(".")
+            for portfolio in self.portfolios
+            for line in portfolio.stopped_at
+        )
+        return STOPPED_LINE_FORMAT.format(
+            reached=len(self.portfolios),
+            named=len(self.names) or len(self.portfolios),
+            where=where or "no walk was in progress",
+            not_reached=", ".join(self.not_reached) or "none",
+        )
 
     @property
     def summary(self) -> dict:
         """The counts the Portfolio Battery pane reports."""
-        improved = sum(1 for one in self.portfolios if one.improved_timeframes)
         return {
             "span": self.span,
             "first_at": iso_stamp(self.start_ms),
             "last_at": iso_stamp(self.end_ms),
             "portfolios": len(self.portfolios),
-            "portfolios_improved": improved,
             "timeframes": list(self.timeframes),
             "symbol_runs": self.symbol_runs,
+            "evaluations": self.evaluations,
+            "evaluations_expected": self.evaluations_expected,
+            "walk_seconds": self.walk_seconds,
+            "seconds_per_thousand": self.seconds_per_thousand,
             "gaps": len(self.gaps),
             "missing_assets": list(self.missing_assets),
             "uncited_assets": list(self.uncited_assets),
             "bots": len(self.bots),
             "budget_usd": self.budget_usd,
             "fleet_origins": list(self.fleet_origins),
-            "readings": {tf: self.reading_counts(tf) for tf in self.timeframes},
+            "comparison": {tf: self.totals(tf) for tf in self.timeframes},
             "retrievals": [dict(one) for one in self.retrievals],
             "refused_assets": list(self.refused_assets),
+            "stopped": self.stopped,
+            "not_reached": list(self.not_reached),
+            "costed": [dict(one) for one in self.costed],
         }
 
     @property
     def lines(self) -> list[str]:
-        """The span, the budget, the readings per timeframe, what improved,
-        what had no tape and what had no cited unit rule, in the pane's own
-        order."""
+        """The span, the budget, the rate, the three figures totalled per
+        timeframe, the costed spans, what had no tape and what had no cited
+        unit rule, in the pane's own order; the stopped line first when
+        ``stopped``."""
         read = self.summary
         if not self.portfolios:
-            return ["No portfolio reached an RA-StoneTablet with enough candles."]
+            return (
+                [self.stopped_line]
+                if self.stopped
+                else ["No portfolio reached an RA-StoneTablet with enough candles."]
+            )
         out = [
             f"{read['portfolios']} portfolio(s) over {read['span']}, "
             f"{read['first_at']} to {read['last_at']}.",
             f"{read['bots']} bot(s), budget ${read['budget_usd']:,.2f}, the sum of "
             f"their Target Balances; bots {', '.join(read['fleet_origins'])}.",
             f"{read['symbol_runs']} symbol runs at "
-            f"{', '.join(read['timeframes'])}.",
+            f"{', '.join(read['timeframes'])}; {self.rate_line}",
         ]
+        if self.stopped:
+            out.insert(0, self.stopped_line)
         for timeframe in self.timeframes:
-            counts = self.reading_counts(timeframe)
+            total = read["comparison"][timeframe]
+            if not total["portfolios"]:
+                out.append(f"At {timeframe}: no portfolio walked.")
+                continue
             out.append(
-                f"At {timeframe}: "
-                + ", ".join(f"{counts[one]} {one}" for one in READINGS)
-                + " against the historical path."
+                f"At {timeframe} over {total['portfolios']} portfolio(s): "
+                f"{total['comparison']}."
             )
-        out.append(
-            f"{read['portfolios_improved']} of {read['portfolios']} portfolio(s) "
-            "beat their own buy-and-hold at one timeframe or more."
-        )
+        if self.costed_line:
+            out.append(self.costed_line)
         if self.missing_assets:
             out.append(
                 f"{len(self.missing_assets)} symbol(s) hold no tablet: "
@@ -1264,22 +1634,25 @@ def run_portfolio(
     tablets: Any,
     span: str = FULL_SPAN,
     timeframes: Sequence[str] = TIMEFRAMES,
-    ticks: int = TICKS_PER_SYMBOL,
     cache: Optional[TapeCache] = None,
     held: Optional[dict] = None,
     bots: Optional[dict[str, SimBot]] = None,
     fleet_origin: str = BATTERY_ORIGIN,
     on_trade: Optional[TradeSink] = None,
     emitter: Optional[RunEmitter] = None,
+    progress: Optional[Callable[[str], None]] = None,
+    stop: Optional[Callable[[], bool]] = None,
 ) -> PortfolioResult:
     """Walk every symbol of ``name`` over ``span`` at each timeframe
     ``bot_timeframes`` gives its bot from ``timeframes``, each on the bot
     ``bots`` names for it, ``plan_run`` with no held fleet when ``bots`` is
-    None; the bars come from ``TapeCache.bars``.
+    None; the bars come from ``TapeCache.bars``, every walk hands
+    ``progress`` its lines, and ``stop`` answering True before a walk ends
+    the portfolio with ``stopped`` set and that walk in ``not_walked``.
 
-    ``held`` keeps one ``(bot_id, timeframe, target)`` run across portfolios,
-    so a symbol two portfolios share on one bot is walked once and its trades
-    reach ``on_trade`` and ``emitter`` once.
+    ``held`` keeps one ``(bot_id, timeframe, target)`` run inside one
+    portfolio, so a bot named twice is walked once and its trades reach
+    ``on_trade`` and ``emitter`` once.
     """
     entry = PORTFOLIOS.get(str(name))
     symbols = entry.symbols if entry is not None else ()
@@ -1292,27 +1665,35 @@ def run_portfolio(
     walked_by_key = held if held is not None else {}
     seated = [bots[asset] for asset in symbols if asset in bots]
     by_timeframe: list[TimeframeResult] = []
+    halted = False
+    not_walked: list[str] = []
     for timeframe in walk_timeframes(seated, timeframes):
         walked: list[SymbolRun] = []
         for bot in seated:
             if timeframe not in bot_timeframes(bot, timeframes):
                 continue
             key = (bot.bot_id, timeframe, round(float(bot.target_usd or 0.0), 2))
-            if key not in walked_by_key:
-                bars = tape.bars(bot, timeframe)
-                walked_by_key[key] = run_symbol(
-                    bot,
-                    bars,
-                    timeframe,
-                    ticks,
-                    on_trade,
-                    emitter,
-                    tablet_timeframe=tablet_timeframe_for(bot.asset),
-                    tablets=tape.tablets_read(bot),
-                    refusal=(
-                        "" if bars else tape.bar_refusal(bot, timeframe, str(span))
-                    ),
-                )
+            if key in walked_by_key:
+                walked.append(walked_by_key[key])
+                continue
+            if halted or (stop is not None and stop()):
+                halted = True
+                not_walked.append(f"{bot.asset} {timeframe}")
+                continue
+            bars = tape.bars(bot, timeframe)
+            walked_by_key[key] = run_symbol(
+                bot,
+                bars,
+                timeframe,
+                on_trade,
+                emitter,
+                tablet_timeframe=tablet_timeframe_for(bot.asset),
+                tablets=tape.tablets_read(bot),
+                refusal=("" if bars else tape.bar_refusal(bot, timeframe, str(span))),
+                progress=progress,
+                stop=stop,
+            )
+            halted = halted or walked_by_key[key].stopped
             walked.append(walked_by_key[key])
         by_timeframe.append(TimeframeResult(timeframe=timeframe, runs=tuple(walked)))
     return PortfolioResult(
@@ -1324,6 +1705,8 @@ def run_portfolio(
         timeframes=tuple(by_timeframe),
         fleet_origin=fleet_origin,
         bot_ids=tuple(bots[asset].bot_id for asset in symbols if asset in bots),
+        stopped=halted,
+        not_walked=tuple(not_walked),
     )
 
 
@@ -1580,28 +1963,192 @@ def retrieve_tablets(
     return rows
 
 
+def cost_spans(entries: Sequence[Any]) -> list[dict]:
+    """One row per span the report costs, ``TEST_RUN_SPAN`` and ``FULL_SPAN``:
+    the ``CRYPTO_TABLET_TIMEFRAME`` bars its ``span_bounds`` hold at
+    ``STEP_5M_MS``."""
+    out: list[dict] = []
+    for span in (TEST_RUN_SPAN, FULL_SPAN):
+        start_ms, end_ms = span_bounds(span, entries)
+        bars = max(0, (int(end_ms) - int(start_ms)) // int(STEP_5M_MS))
+        out.append(
+            {"span": str(span), "timeframe": CRYPTO_TABLET_TIMEFRAME, "bars": bars}
+        )
+    return out
+
+
+def merged_emitted(reads: Sequence[dict]) -> dict:
+    """Every ``RunEmitter.close`` reading in ``reads`` summed into one: the
+    topic counts added, the observer's emissions and field presence added,
+    its violations added by topic, kind and detail."""
+    emitted: dict[str, int] = {}
+    emissions: dict[str, int] = {}
+    presence: dict[str, dict[str, int]] = {}
+    violations: dict[tuple, dict] = {}
+    declared = 0
+    for read in reads:
+        for topic, count in (read.get("emitted") or {}).items():
+            emitted[topic] = emitted.get(topic, 0) + int(count)
+        observer = read.get("observer") or {}
+        declared = max(declared, int(observer.get("topics_declared", 0) or 0))
+        for topic, count in (observer.get("emissions") or {}).items():
+            emissions[topic] = emissions.get(topic, 0) + int(count)
+        for topic, fields in (observer.get("field_presence") or {}).items():
+            held = presence.setdefault(topic, {})
+            for name, count in fields.items():
+                held[name] = held.get(name, 0) + int(count)
+        for one in observer.get("violations") or []:
+            key = (one.get("topic"), one.get("kind"), one.get("detail"))
+            if key in violations:
+                violations[key]["count"] += int(one.get("count", 1))
+            else:
+                violations[key] = dict(one)
+    return {
+        "emitted": emitted,
+        "observer": {
+            "topics_declared": declared,
+            "topics_seen": sum(1 for count in emissions.values() if count > 0),
+            "emissions": dict(sorted(emissions.items())),
+            "violations": [violations[key] for key in sorted(violations, key=str)],
+            "field_presence": {
+                topic: dict(sorted(fields.items()))
+                for topic, fields in sorted(presence.items())
+            },
+        },
+    }
+
+
+def portfolio_run(
+    result: PortfolioResult,
+    bots: Sequence[SimBot],
+    tablets: Any,
+    start_ms: int,
+    end_ms: int,
+    timeframes: Sequence[str],
+    retrievals: Sequence[dict],
+    run_id: str,
+    emitted: dict,
+    costed: Sequence[dict],
+) -> BatteryRun:
+    """The ``BatteryRun`` of one portfolio: ``result`` alone, its ``bots``,
+    the gaps of its assets, the retrievals of its crypto assets, and the
+    walks it made."""
+    runs = [one for frame in result.timeframes for one in frame.runs]
+    assets = sorted({one.asset for one in runs})
+    return BatteryRun(
+        span=result.span,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        portfolios=(result,),
+        gaps=tuple(gaps_in_span(assets, start_ms, end_ms)),
+        timeframes=walk_timeframes(bots, timeframes),
+        missing_assets=tuple(
+            sorted({one.asset for one in runs if one.outcome == NO_TABLET})
+        ),
+        tablet_root=str(tablets.root()),
+        symbol_runs=len(runs),
+        uncited_assets=tuple(
+            sorted({one.asset for one in runs if one.outcome == UNCITED_RULE})
+        ),
+        bots=tuple(bots),
+        budget_usd=run_budget_usd(bots),
+        fleet_origins=tuple(sorted({bot.origin for bot in bots})),
+        run_id=run_id,
+        emitted=dict(emitted),
+        retrievals=tuple(one for one in retrievals if one["asset"] in assets),
+        names=(result.name,),
+        stopped=result.stopped,
+        costed=tuple(costed),
+    )
+
+
+def emit_portfolio_started(name: str, bots: Sequence[SimBot], span: str) -> None:
+    """Emit ``PORTFOLIO_STARTED_SIGNAL`` for ``name``: the bots seated against
+    the portfolio's symbol count."""
+    symbols = PORTFOLIOS[name].symbols if name in PORTFOLIOS else ()
+    pin_emit(
+        PORTFOLIO_STARTED_SIGNAL,
+        actual={"portfolio": str(name), "bots": len(bots), "span": str(span)},
+        expected={"portfolio": str(name), "bots": len(symbols), "span": str(span)},
+        context={"bot_ids": [bot.bot_id for bot in bots]},
+    )
+
+
+def emit_portfolio_finished(run: BatteryRun) -> None:
+    """Emit ``PORTFOLIO_FINISHED_SIGNAL`` for the one portfolio of ``run``:
+    per timeframe the three figures, the evaluations made against the
+    evaluations expected, and the fills; ``ok`` when every walk that ran made
+    every evaluation expected of it."""
+    result = run.portfolios[0]
+    actual = {
+        "portfolio": result.name,
+        "span": result.span,
+        "stopped": bool(result.stopped),
+        "timeframes": {
+            frame.timeframe: {
+                "hodl_end": round(frame.baseline_usd, 2),
+                "harvest_fold_end": round(frame.accumulation_usd, 2),
+                "difference": round(frame.difference_usd, 2),
+                "evaluations": frame.evaluations,
+                "fills": sum(one.trade_count for one in frame.ran),
+            }
+            for frame in result.timeframes
+        },
+    }
+    expected = {
+        "portfolio": result.name,
+        "span": result.span,
+        "stopped": False,
+        "timeframes": {
+            frame.timeframe: {"evaluations": frame.evaluations_expected}
+            for frame in result.timeframes
+        },
+    }
+    pin_emit(
+        PORTFOLIO_FINISHED_SIGNAL,
+        actual=actual,
+        expected=expected,
+        ok=(
+            not result.stopped
+            and all(
+                frame.evaluations == frame.evaluations_expected
+                for frame in result.timeframes
+            )
+        ),
+        context={
+            "run_id": run.run_id,
+            "report": str(run.report.markdown_path) if run.report is not None else "",
+            "bot_ids": list(result.bot_ids),
+        },
+    )
+
+
 def run_battery(
     tablets: Any,
     names: Sequence[str] = (),
     span: str = FULL_SPAN,
     timeframes: Sequence[str] = TIMEFRAMES,
-    ticks: int = TICKS_PER_SYMBOL,
     plan: Optional[RunPlan] = None,
     progress: Optional[Callable[[str], None]] = None,
     on_trade: Optional[TradeSink] = None,
     bus: Any = None,
     connector: Any = None,
+    stop: Optional[Callable[[], bool]] = None,
+    on_portfolio_started: Optional[Callable[[str, list], None]] = None,
+    on_portfolio_finished: Optional[Callable[[str, BatteryRun], None]] = None,
 ) -> BatteryRun:
     """Run each portfolio in ``names`` over ``span`` through
-    ``_walk_portfolios`` on ``plan``'s bots and write the pass through
-    ``write_report`` onto ``BatteryRun.report``.
+    ``_walk_portfolios`` on ``plan``'s bots, one at a time with its own
+    report, and write the summary through ``write_report`` onto
+    ``BatteryRun.report`` when the press names more than one portfolio.
 
-    ``progress`` is handed each retrieval line and each portfolio's line,
-    ``on_trade`` each ``SimTrade`` as it fills, ``connector`` the venue path
-    ``retrieve_tablets`` fetches through; ``bus`` becomes the ``RunEmitter``
-    every row of the pass goes through, under ``new_run_id``; a
-    ``_walk_portfolios`` that raises reaches ``write_partial`` with the
-    exception and re-raises.
+    ``progress`` is handed each retrieval line, each walk's lines and each
+    portfolio's line, ``on_trade`` each ``SimTrade`` as it fills, ``connector``
+    the venue path ``retrieve_tablets`` fetches through, ``stop`` is read
+    before each portfolio, each walk and each tick, ``on_portfolio_started``
+    and ``on_portfolio_finished`` are called around each portfolio, ``bus``
+    becomes one ``RunEmitter`` per portfolio, and a ``_walk_portfolios`` that
+    raises reaches ``write_partial`` with the exception and re-raises.
     """
     from .parity_report import (
         PORTFOLIO_BATTERY,
@@ -1610,33 +2157,38 @@ def run_battery(
         write_report,
     )
 
-    emitter = RunEmitter(bus, new_run_id(PORTFOLIO_BATTERY), PORTFOLIO_BATTERY)
+    press_id = new_run_id(PORTFOLIO_BATTERY)
     try:
         outcome = _walk_portfolios(
             tablets,
             names,
             span,
             timeframes,
-            ticks,
             plan,
             progress,
             on_trade,
-            emitter,
+            bus,
             connector,
+            stop,
+            on_portfolio_started,
+            on_portfolio_finished,
         )
     except Exception as exc:
-        emitter.close()
         write_partial(
             PORTFOLIO_BATTERY,
             exc,
             tablets=tablets,
             names=tuple(names),
             span=str(span),
-            run_id=emitter.run_id,
+            run_id=press_id,
         )
         raise
-    outcome = replace(outcome, run_id=emitter.run_id, emitted=emitter.close())
-    return replace(outcome, report=write_report(PORTFOLIO_BATTERY, outcome, tablets))
+    outcome = replace(outcome, run_id=press_id)
+    if len(outcome.names) > 1 or not outcome.portfolio_runs:
+        return replace(
+            outcome, report=write_report(PORTFOLIO_BATTERY, outcome, tablets)
+        )
+    return outcome
 
 
 def _walk_portfolios(
@@ -1644,18 +2196,24 @@ def _walk_portfolios(
     names: Sequence[str],
     span: str,
     timeframes: Sequence[str],
-    ticks: int,
     plan: Optional[RunPlan],
     progress: Optional[Callable[[str], None]],
     on_trade: Optional[TradeSink] = None,
-    emitter: Optional[RunEmitter] = None,
+    bus: Any = None,
     connector: Any = None,
+    stop: Optional[Callable[[], bool]] = None,
+    on_portfolio_started: Optional[Callable[[str, list], None]] = None,
+    on_portfolio_finished: Optional[Callable[[str, BatteryRun], None]] = None,
 ) -> BatteryRun:
     """Run each portfolio ``plan`` names, ``plan_run`` over ``names`` when it
-    is None: ``retrieve_tablets`` over ``battery_costs`` first, then every
-    walk over a ``TapeCache`` that refuses each asset the venue refused,
-    handing ``progress`` each ``PortfolioResult.line`` as it lands and
-    ``on_trade`` and ``emitter`` each ``SimTrade`` as it fills."""
+    is None, one at a time: ``retrieve_tablets`` over ``battery_costs``
+    first, then per portfolio ``on_portfolio_started``, its walks over a
+    ``TapeCache`` that refuses each asset the venue refused on a
+    ``RunEmitter`` of its own, its ``portfolio_run`` written through
+    ``write_report``, ``emit_portfolio_finished`` and ``on_portfolio_finished``;
+    ``stop`` answering True before a portfolio names it in ``not_reached``."""
+    from .parity_report import PORTFOLIO_BATTERY, new_run_id, write_report
+
     chosen = plan if plan is not None else plan_run(names, tablets)
     start_ms, end_ms = span_bounds(span, tablets.entries())
     costs = battery_costs(tablets, chosen.bots, start_ms, end_ms)
@@ -1672,32 +2230,62 @@ def _walk_portfolios(
                     error=row["error"],
                 ),
             )
-    walked_by_key: dict[tuple[str, str, float], SymbolRun] = {}
+    costed = cost_spans(tablets.entries())
     results: list[PortfolioResult] = []
+    runs: list[BatteryRun] = []
+    not_reached: list[str] = []
+    halted = False
     for name in chosen.names:
+        if halted or (stop is not None and stop()):
+            halted = True
+            not_reached.append(name)
+            continue
+        bots = chosen.by_portfolio.get(name, {})
+        seated = [bots[asset] for asset in PORTFOLIOS[name].symbols if asset in bots]
+        if on_portfolio_started is not None:
+            on_portfolio_started(name, list(seated))
+        emit_portfolio_started(name, seated, str(span))
+        emitter = RunEmitter(bus, new_run_id(PORTFOLIO_BATTERY), PORTFOLIO_BATTERY)
         result = run_portfolio(
             name,
             tablets,
             span,
             timeframes,
-            ticks,
             tape,
-            walked_by_key,
-            chosen.by_portfolio.get(name, {}),
+            {},
+            bots,
             chosen.origins.get(name, BATTERY_ORIGIN),
             on_trade,
             emitter,
+            progress,
+            stop,
         )
-        results.append(result)
+        emitted = emitter.close()
+        one = portfolio_run(
+            result,
+            seated,
+            tablets,
+            start_ms,
+            end_ms,
+            timeframes,
+            retrievals,
+            emitter.run_id,
+            emitted,
+            costed,
+        )
+        one = replace(one, report=write_report(PORTFOLIO_BATTERY, one, tablets))
+        emit_portfolio_finished(one)
         if progress is not None:
             progress(result.line)
-    assets = sorted({one.asset for one in walked_by_key.values()})
-    missing = sorted(
-        {one.asset for one in walked_by_key.values() if one.outcome == NO_TABLET}
-    )
-    uncited = sorted(
-        {one.asset for one in walked_by_key.values() if one.outcome == UNCITED_RULE}
-    )
+        if on_portfolio_finished is not None:
+            on_portfolio_finished(name, one)
+        results.append(result)
+        runs.append(one)
+        halted = halted or result.stopped
+    walked = [
+        one for result in results for frame in result.timeframes for one in frame.runs
+    ]
+    assets = sorted({one.asset for one in walked})
     return BatteryRun(
         span=str(span),
         start_ms=start_ms,
@@ -1705,34 +2293,41 @@ def _walk_portfolios(
         portfolios=tuple(results),
         gaps=tuple(gaps_in_span(assets, start_ms, end_ms)),
         timeframes=walk_timeframes(chosen.bots, timeframes),
-        missing_assets=tuple(missing),
+        missing_assets=tuple(
+            sorted({one.asset for one in walked if one.outcome == NO_TABLET})
+        ),
         tablet_root=str(tablets.root()),
-        symbol_runs=len(walked_by_key),
-        uncited_assets=tuple(uncited),
+        symbol_runs=len(walked),
+        uncited_assets=tuple(
+            sorted({one.asset for one in walked if one.outcome == UNCITED_RULE})
+        ),
         bots=tuple(chosen.bots),
         budget_usd=chosen.budget_usd,
         fleet_origins=chosen.fleet_origins,
+        emitted=merged_emitted([one.emitted for one in runs]),
         retrievals=tuple(retrievals),
+        names=tuple(chosen.names),
+        stopped=halted,
+        not_reached=tuple(not_reached),
+        portfolio_runs=tuple(runs),
+        costed=tuple(costed),
     )
 
 
 __all__ = [
-    "BETTER",
+    "COMPARISON_RULE",
     "CRYPTO_EXCHANGE",
     "DAY_MS",
     "DEFAULT_TARGET_USD",
-    "DEFENDED",
     "EQUITY_EXCHANGE",
     "FULL_SPAN",
     "HELD_FLEET",
-    "IMPROVED",
-    "LEVEL",
     "MIN_CANDLES",
-    "NOT_RUN",
     "NO_TABLET",
+    "PORTFOLIO_FINISHED_SIGNAL",
+    "PORTFOLIO_STARTED_SIGNAL",
+    "PROGRESS_EVERY_BARS",
     "RAN",
-    "READINGS",
-    "REVERSED",
     "SCRUMMING_INTERVAL_PCT",
     "SHORT_TAPE",
     "SPANS",
@@ -1741,11 +2336,8 @@ __all__ = [
     "TABLET_RETRIEVED_SIGNAL",
     "TABLET_TIMEFRAME",
     "CRYPTO_TABLET_TIMEFRAME",
-    "TICKS_PER_SYMBOL",
     "TIMEFRAMES",
     "TIMEFRAME_ORDER",
-    "UNDEFENDED",
-    "WORSE",
     "BatteryRun",
     "PortfolioResult",
     "RunPlan",
@@ -1758,19 +2350,26 @@ __all__ = [
     "battery_costs",
     "bot_timeframes",
     "bucket_key",
+    "comparison_text",
     "cost_line",
+    "cost_spans",
     "crypto_assets",
     "day_ms",
+    "difference_pct_of",
+    "emit_portfolio_finished",
+    "emit_portfolio_started",
+    "evaluations_expected",
     "exchange_for",
     "fold_bucket",
     "gaps_in_span",
     "generated_bot",
     "matched_bots",
+    "merged_emitted",
     "plan_costs",
     "plan_run",
     "plan_venue",
-    "reading_arithmetic",
-    "reading_for",
+    "portfolio_run",
+    "re_entries_word",
     "resample",
     "retrieval_row",
     "retrieval_until_ms",
@@ -1778,12 +2377,13 @@ __all__ = [
     "run_battery",
     "run_portfolio",
     "run_symbol",
+    "seconds_per_thousand",
+    "seconds_text",
     "slice_span",
     "span_bounds",
     "symbol_targets",
     "tablet_files_for",
     "tablet_timeframe_for",
     "timeframe_rank",
-    "walk_step",
     "walk_timeframes",
 ]
