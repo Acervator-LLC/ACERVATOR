@@ -20,6 +20,7 @@ from typing import Any
 from ..core import encryption
 from ..trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
 from . import sign_in_view
+from .audio_suite import Chime
 from .main_tabs.market_inspector_surface import (
     READY_TO_SEND_ZONE,
     TOPOLOGIES_ZONE,
@@ -194,7 +195,7 @@ try:
         QGridLayout,
         QCompleter,
     )
-    from PySide6.QtCore import Qt, Signal
+    from PySide6.QtCore import Qt, QTimer, Signal
     from PySide6.QtGui import (
         QColor,
         QImage,
@@ -246,6 +247,17 @@ ARBITRAGE_MODULE = "arbitrage"
 #: Scan Now runs the phases here; the window-drawing thread only draws.
 ATA_SCAN_THREAD_NAME = "ata-smp-scan"
 ATA_SCAN_THREAD_LOG = "ATA-SPM scan on thread %s: %s"
+#: Each confirmation read runs here, started by ``_tick_follow_ups`` for the
+#: ``FollowUpTimer`` rows due; the window-drawing thread takes the outcome.
+FOLLOW_UP_THREAD_NAME = "ata-smp-follow-up"
+FOLLOW_UP_THREAD_LOG = "ATA-SPM confirmation read on thread %s: %s %s"
+#: The window-drawing thread's clock for the timers: one wake a second.
+FOLLOW_UP_TICK_MS = 1000
+#: The pin ``_chime_for`` writes once per chime, through ``_pin_emit``.
+CHIME_PIN = "inspector.ata.chime"
+CHIME_CAUSE_HIT = "hit"
+CHIME_CAUSE_CONFIRMATION = "confirmation"
+NO_HITS_CHIMED = 0
 #: The ``StatusLog.log`` levels the scan's phase lines take.
 ACTIVITY_INFO = "info"
 ACTIVITY_WARNING = "warning"
@@ -708,6 +720,9 @@ if _HAS_QT:
         scanProgressed = Signal(object)  # noqa: N815 - Qt signal name
         #: The error text of a scan thread that raised before answering.
         scanFailed = Signal(str)  # noqa: N815 - Qt signal name
+        #: One confirmation read back from its worker: the timer's key and
+        #: the ``ata_spm_push.FollowUpOutcome`` it answered.
+        followUpRead = Signal(object, object)  # noqa: N815 - Qt signal name
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -718,10 +733,18 @@ if _HAS_QT:
             self._activity_log = None
             #: The first refusal each symbol's reads met on the running scan.
             self._scan_refusals: dict = {}
+            #: The hits of the running scan the chime has already sounded for.
+            self._chimed_hits = NO_HITS_CHIMED
+            self._chime = Chime()
             self.scanFinished.connect(self._take_scan)
             self.scanLogged.connect(self._take_scan_line)
             self.scanProgressed.connect(self._take_scan_progress)
             self.scanFailed.connect(self._take_scan_failure)
+            self.followUpRead.connect(self._take_follow_up_read)
+            self._follow_up_clock = QTimer(self)
+            self._follow_up_clock.setInterval(FOLLOW_UP_TICK_MS)
+            self._follow_up_clock.timeout.connect(self._tick_follow_ups)
+            self._follow_up_clock.start()
             self._pending_refresh = False
             self._scan_state = SCAN_NOT_ASKED
             # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
@@ -1636,6 +1659,7 @@ if _HAS_QT:
                 )
             )
             self._scan_refusals = {}
+            self._chimed_hits = NO_HITS_CHIMED
             self._ata_board.progress_lines = []
             self._ata_board.progress = ata_spm.ScanProgress(
                 asset_class=board.asset_class,
@@ -1679,6 +1703,15 @@ if _HAS_QT:
             self._ata_board.progress = progress
             if progress.line:
                 self._ata_board.progress_lines.append(str(progress.line))
+            hits = int(progress.hits)
+            if hits > self._chimed_hits:
+                self._chime_for(
+                    CHIME_CAUSE_HIT,
+                    hits=hits - self._chimed_hits,
+                    line=str(progress.line),
+                    asset_class=str(progress.asset_class),
+                )
+                self._chimed_hits = hits
             read = int(progress.read)
             if read and (read % PROGRESS_PIN_EVERY == 0 or read == int(progress.total)):
                 _pin_emit(
@@ -1795,15 +1828,105 @@ if _HAS_QT:
                     )
                 )
             if not note and self._ata_board.run is not None:
-                self._push_board.load_run(self._ata_board.run)
-                self._push_board.after_scan(
-                    self._ata_board.run,
-                    self._ata_candle_source or self._scanned_candles,
-                )
+                run = self._ata_board.run
+                self._push_board.load_run(run)
+                landed = len(run.calls) - self._chimed_hits
+                if landed > NO_HITS_CHIMED:
+                    self._chime_for(
+                        CHIME_CAUSE_HIT,
+                        hits=landed,
+                        line=ata_spm.TIMEFRAME_LIST_JOIN.join(
+                            f"{one.symbol} {ata_spm.timeframe_label(one.timeframe)}"
+                            for one in run.calls[self._chimed_hits :]
+                        ),
+                        asset_class=str(chosen),
+                    )
+                    self._chimed_hits = len(run.calls)
+                stopped, started = self._push_board.after_scan(run)
+                for timer in stopped:
+                    self._say(
+                        timer.stopped_line(ata_spm_push.TIMER_STOPPED_LEFT_BUCKET),
+                        ACTIVITY_WARNING,
+                    )
+                for timer in started:
+                    self._say(timer.timer_line())
                 self._zone_at[READY_TO_SEND_ZONE] = 0
             self._say_scan_end(sectors, found, note)
             self._render_ata_row()
             self._render_left_modules()
+
+        def _chime_for(self, cause: str, **context) -> bool:
+            """Sound the chime once for ``cause`` and pin whether the player took it."""
+            played = self._chime.play()
+            _pin_emit(
+                CHIME_PIN,
+                actual=played,
+                expected=True,
+                context={"cause": cause, "played": int(self._chime.played), **context},
+            )
+            return played
+
+        def _tick_follow_ups(self) -> None:
+            """The clock's wake: hand every due ``FollowUpTimer`` to one worker thread."""
+            due = self._push_board.due_timers()
+            if not due:
+                return
+            threading.Thread(
+                target=self._read_follow_ups,
+                args=(due,),
+                name=FOLLOW_UP_THREAD_NAME,
+                daemon=True,
+            ).start()
+
+        def _read_follow_ups(self, timers) -> None:
+            """Read each timer's candles and judge its call, then cross to the GUI thread.
+
+            ``_follow_up_candles`` is the scan's own route with the universe
+            scan's cache skipped; ``followUpRead`` carries the outcome across.
+            """
+            thread_name = threading.current_thread().name
+            source = self._ata_candle_source
+            if source is None or source == self._scanned_candles:
+                source = self._follow_up_candles
+            for timer in timers:
+                call = timer.call
+                logger.info(
+                    FOLLOW_UP_THREAD_LOG, thread_name, call.symbol, call.timeframe
+                )
+                candles = ata_spm.candles_for(source, call.symbol, call.timeframe)
+                outcome = self._push_board.read_outcome(timer, candles)
+                try:
+                    self.followUpRead.emit(call.key, outcome)
+                except RuntimeError as exc:
+                    logger.debug("confirmation read dropped, tab gone: %s", exc)
+                    return
+
+        def _take_follow_up_read(self, key, outcome) -> None:
+            """Write one read's outcome onto the board, say its line, chime a
+            confirmation, and redraw the zones."""
+            timer = self._push_board.take_outcome(key, outcome)
+            if timer is None:
+                return
+            self._say(
+                timer.read_line(),
+                (
+                    ACTIVITY_WARNING
+                    if outcome.state == ata_spm_push.OUTCOME_FAILED
+                    else ACTIVITY_INFO
+                ),
+            )
+            if outcome.state == ata_spm_push.OUTCOME_CONFIRMED:
+                self._chime_for(
+                    CHIME_CAUSE_CONFIRMATION,
+                    symbol=timer.call.symbol,
+                    timeframe=timer.call.timeframe,
+                    close=float(outcome.close),
+                )
+            self._render_left_modules()
+
+        def _follow_up_candles(self, symbol, timeframe) -> list:
+            """``_scanned_candles`` with the universe scan's cache skipped."""
+            return self._scanned_candles(symbol, timeframe, fresh=True)
 
         def _say_scan_end(self, sectors, found, note) -> None:
             """Write each hit, each sector's report line and the end pin, then flush.
@@ -1940,11 +2063,12 @@ if _HAS_QT:
             )
             return order
 
-        def _scanned_candles(self, symbol, timeframe) -> list:
+        def _scanned_candles(self, symbol, timeframe, fresh: bool = False) -> list:
             """The candles for one scanned symbol, from the source its map names.
 
             Each read leaves one ``MARKET_READ_TEXT`` line and one
-            ``MARKET_READ_PIN``, naming the source and the count or the refusal.
+            ``MARKET_READ_PIN``, naming the source and the count or the refusal;
+            ``fresh`` skips the universe scan's cache.
             """
             venue = ata_asset_maps.VENUE_EXCHANGE
             candles: list = []
@@ -1953,7 +2077,7 @@ if _HAS_QT:
                 from ..trading.market_inspector import get_shared_inspector
 
                 venue, candles, refusal = sector_candle_read(
-                    get_shared_inspector(),
+                    None if fresh else get_shared_inspector(),
                     symbol,
                     timeframe,
                     self._connectors_now(),
@@ -2076,6 +2200,10 @@ if _HAS_QT:
             ``PushBoard.watched_markets`` is the one set phase seven also reads.
             """
             return self._push_board.watched_markets()
+
+        def ata_board(self):
+            """The ``ata_spm.SectorBoard`` this tab scans on, whose ``chart_call`` the Charts tab reads."""
+            return self._ata_board
 
         def _ata_report(self) -> dict:
             """The ATA-SPM run report, with the count its own bucket holds."""

@@ -16,7 +16,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -30,6 +32,9 @@ CANDIDATE_PIN = "inspector.ata.candidate"
 
 #: The pin ``hand_off`` writes once per post a press took, through ``_pin_emit``.
 HANDOFF_PIN = "inspector.ata.handoff"
+
+#: The pin ``PushBoard.take_outcome`` writes once per confirmation read, through ``_pin_emit``.
+FOLLOW_UP_READ_PIN = "inspector.ata.follow_up_read"
 
 #: ``DeliveryRecord.route``: the sender the venue's API takes the post through.
 ROUTE_API = "api"
@@ -142,6 +147,41 @@ OUTCOME_OPEN = "open"
 #: this many candles in a row. The floor is the definition, not a setting.
 CONTINUATION_CANDLE_FLOOR = 3
 
+#: The seconds one candle of each timeframe key the scan reads covers;
+#: ``MONTH_TIMEFRAME`` steps one calendar month in ``candle_close_ts``.
+TIMEFRAME_SECONDS = {"5m": 300, "1h": 3600, "1d": 86400, "1w": 604800}
+MONTH_TIMEFRAME = "1M"
+FIRST_MONTH = 1
+LAST_MONTH = 12
+FIRST_DAY = 1
+
+#: A ``FollowUpCall`` carrying this ``at_ts`` is anchored by its bar index.
+NO_READ_TS = 0.0
+
+#: A venue that has not published the candle a timer waited for is read again
+#: after ``FOLLOW_UP_RETRY_S``, at most ``FOLLOW_UP_RETRY_CAP`` times.
+FOLLOW_UP_RETRY_S = 60.0
+FOLLOW_UP_RETRY_CAP = 5
+NO_RETRIES = 0
+NO_READS = 0
+
+READ_TIME_FORMAT = "%Y-%m-%d %H:%M UTC"
+FOLLOW_UP_STATUS_OPEN_FORMAT = "open · next read {when}"
+FOLLOW_UP_STATUS_SETTLED_FORMAT = "{state} · close {close:g}"
+FOLLOW_UP_TIMER_LINE_FORMAT = (
+    "ATA-SPM confirmation timer for {symbol} {label}: next read {when}"
+)
+FOLLOW_UP_READ_OPEN_LINE_FORMAT = (
+    "ATA-SPM confirmation read for {symbol} {label}: {state}, next read {when}"
+)
+FOLLOW_UP_READ_SETTLED_LINE_FORMAT = (
+    "ATA-SPM confirmation read for {symbol} {label}: {state}, close {close:g}"
+)
+FOLLOW_UP_STOPPED_LINE_FORMAT = (
+    "ATA-SPM confirmation timer for {symbol} {label} stopped: {reason}"
+)
+TIMER_STOPPED_LEFT_BUCKET = "the entry left the bucket"
+
 #: A confirmation share of zero confirms nothing. The operator sets one on
 #: the settings page before any call can confirm.
 NO_SHARE_SET = 0
@@ -174,6 +214,10 @@ FOLLOW_UP_NOT_READY_FORMAT = (
 FOLLOW_UP_NO_SHARE_FORMAT = (
     "{candles} candle(s) since the call, last close {close:g}. "
     "Confirmation share is unset, so nothing confirms"
+)
+FOLLOW_UP_MIDLINE_BEHIND_FORMAT = (
+    "{candles} candle(s) since the call, last close {close:g}; the midline "
+    "{midline:g} lies behind a {direction} call, so no target yet"
 )
 FOLLOW_UP_NO_CANDLE_TEXT = "no candle has closed since the call"
 
@@ -480,6 +524,8 @@ BUCKET_HOLDS_FORMAT = (
     "{total} post(s) · {approved} approved · {declined} declined · {waiting} waiting"
 )
 BUCKET_META_FORMAT = "{target} · {state}"
+#: ``BucketPost.meta`` while phase seven's timer has written its status.
+BUCKET_META_FOLLOW_UP_FORMAT = "{target} · {state} · {follow_up}"
 FULL_AUTO_ON_TEXT = "Full Auto on"
 FULL_AUTO_OFF_TEXT = "Full Auto off"
 
@@ -524,7 +570,7 @@ SETTINGS_WRITE_FAILED_LOG = "ATA-SPM settings write failed on %s: %s"
 #: of the fleet state under the same directory, and reads it back on build.
 STATE_DIR_NAME = ".acervator"
 ATA_SPM_SETTINGS_NAME = "ata_spm_settings.json"
-PERSISTED_SETTINGS = ("hits_per_scan",)
+PERSISTED_SETTINGS = ("hits_per_scan", "confirmation_share_pct")
 
 #: Every ``connect`` outcome, accepted or not. ``CONNECT_FAILED_LOG`` covers only
 #: the branch a connector raises on, and four other branches raise nothing.
@@ -1013,25 +1059,33 @@ def format_follow_up(outcome: FollowUpOutcome, target: PushTarget) -> FormattedP
 
 
 class FollowUpWatch:
-    """Phase seven: the reversal calls being watched, and their outcomes.
+    """Phase seven: the reversal calls being watched, one ``FollowUpTimer`` each.
 
-    ``watch_run`` takes every call one run charted, and ``check`` reads each
-    chart again and answers what happened to it.
+    ``watch_run`` takes every call one run charted and starts its timer;
+    ``due`` names the timers whose candle has closed, and ``take_outcome``
+    writes what one read answered and sets the next read.
     """
 
     def __init__(self) -> None:
-        self.calls: list = []
+        self.timers: dict = {}
         self.outcomes: list = []
         self.settled: dict = {}
 
-    def watch_run(self, run: Any) -> int:
-        """Watch every charted reversal call, and answer how many are held.
+    @property
+    def calls(self) -> list:
+        """Every call still under watch, in the order its timer started."""
+        return [one.call for one in self.timers.values()]
+
+    def watch_run(self, run: Any, now: Any = None) -> list:
+        """Start one timer per charted reversal call, and answer the timers started.
 
         A call already watched, one already settled, and one the gates refused
-        a chart are not taken; ``FollowUpCall.key`` decides the first two.
+        a chart are not taken; a later call on a watched market and timeframe
+        replaces that timer, so one entry carries one timer.
         """
         pulls = {(one.symbol, one.timeframe): one for one in getattr(run, "pulls", [])}
-        held = {one.key for one in self.calls} | set(self.settled)
+        clock = float(now if now is not None else time.time())
+        started: list = []
         for vote in getattr(run, "calls", []):
             pull = pulls.get((vote.symbol, vote.timeframe))
             if pull is None or pull.bars <= ata_spm.NO_CANDLES:
@@ -1042,6 +1096,7 @@ class FollowUpWatch:
                 direction=vote.direction_text,
                 vote=vote_word(vote.direction_text),
                 at=pull.bars - 1,
+                at_ts=float(pull.last_ts),
                 close=pull.last_close,
                 headline=POST_HEADLINE_FORMAT.format(
                     symbol=vote.symbol,
@@ -1053,34 +1108,69 @@ class FollowUpWatch:
                 band_middle=pull.band_middle,
                 band_upper=pull.band_upper,
             )
-            if call.key in held:
+            if call.key in self.timers or call.key in self.settled:
                 continue
-            held.add(call.key)
-            self.calls.append(call)
-        return len(self.calls)
+            for key in [k for k in self.timers if k[:2] == call.key[:2]]:
+                del self.timers[key]
+            timer = FollowUpTimer(
+                call=call,
+                next_read_ts=next_read_ts(call.at_ts, call.timeframe, clock),
+            )
+            self.timers[call.key] = timer
+            started.append(timer)
+        return started
 
-    def check(self, candle_source: Any, share_pct: Any) -> list:
-        """Read each watched call's chart again and answer what happened to it.
+    def due(self, now: Any) -> list:
+        """Every timer whose next read has passed and holds no read in flight."""
+        clock = float(now)
+        return [one for one in self.timers.values() if one.due(clock)]
 
-        A settled call stops being watched and an open one stays, so no call
-        is posted on twice.
+    def take_outcome(
+        self, timer: FollowUpTimer, outcome: FollowUpOutcome, now: Any
+    ) -> FollowUpTimer:
+        """Write one read's outcome onto its timer and set the next read.
+
+        A settled call moves to ``settled`` and its timer is dropped; an
+        open one reads again at the next close, or after
+        ``FOLLOW_UP_RETRY_S`` while the venue has not published the candle
+        the timer waited for.
         """
-        found: list = []
-        still: list = []
-        for call in self.calls:
-            candles = ata_spm.candles_for(candle_source, call.symbol, call.timeframe)
-            outcome = follow_up_outcome(call, candles, share_pct)
-            found.append(outcome)
-            if outcome.settled:
-                self.settled[call.key] = call
-            else:
-                still.append(call)
-        self.calls = still
-        self.outcomes = found
-        return found
+        clock = float(now)
+        timer.reading = False
+        timer.reads += 1
+        timer.outcome = outcome
+        self.outcomes = [
+            one for one in self.outcomes if one.call.key != timer.call.key
+        ] + [outcome]
+        if outcome.settled:
+            self.settled[timer.call.key] = timer.call
+            self.timers.pop(timer.call.key, None)
+            return timer
+        waited = expected_candles(timer.call.at_ts, timer.call.timeframe, clock)
+        if outcome.candles < waited and timer.retries < FOLLOW_UP_RETRY_CAP:
+            timer.retries += 1
+            timer.next_read_ts = clock + FOLLOW_UP_RETRY_S
+        else:
+            timer.retries = NO_RETRIES
+            timer.next_read_ts = next_read_ts(
+                timer.call.at_ts, timer.call.timeframe, clock
+            )
+        return timer
+
+    def keep_entries(self, posts: Any) -> list:
+        """Drop every timer whose market and timeframe hold no bucket entry, and answer them."""
+        held = {
+            (one.post.symbol, one.post.timeframe)
+            for one in list(posts or [])
+            if not one.post.follows
+        }
+        dropped = [one for key, one in self.timers.items() if key[:2] not in held]
+        for one in dropped:
+            del self.timers[one.call.key]
+        return dropped
 
     def lines(self) -> list:
-        """Every outcome the last check answered, as the lines the zone reads."""
+        """The newest outcome of every call read so far, as the lines the zone reads."""
         return [one.line for one in self.outcomes]
 
 
@@ -1124,6 +1214,68 @@ def target_reached(direction_text: Any, close: Any, target: Any) -> bool:
     return False
 
 
+def midline_ahead(direction_text: Any, call_close: Any, midline: Any) -> bool:
+    """Whether ``midline`` lies on the side of ``call_close`` the call expects the run to go."""
+    if str(direction_text) == ata_spm.DIRECTION_BULLISH:
+        return float(midline) > float(call_close)
+    if str(direction_text) == ata_spm.DIRECTION_BEARISH:
+        return float(midline) < float(call_close)
+    return False
+
+
+def candle_close_ts(open_ts: Any, timeframe: Any) -> float:
+    """The close time of the candle opened at ``open_ts`` on ``timeframe``.
+
+    ``TIMEFRAME_SECONDS`` gives the fixed timeframes; ``MONTH_TIMEFRAME``
+    closes at the first instant of the next calendar month, UTC.
+    """
+    opened = float(open_ts)
+    if str(timeframe) == MONTH_TIMEFRAME:
+        when = datetime.fromtimestamp(opened, tz=timezone.utc)
+        year = when.year + 1 if when.month == LAST_MONTH else when.year
+        month = FIRST_MONTH if when.month == LAST_MONTH else when.month + 1
+        return datetime(year, month, FIRST_DAY, tzinfo=timezone.utc).timestamp()
+    return opened + TIMEFRAME_SECONDS[str(timeframe)]
+
+
+def next_read_ts(at_ts: Any, timeframe: Any, now: Any) -> float:
+    """The first candle close after ``now`` on the grid of closes that begins at ``at_ts``."""
+    close = candle_close_ts(at_ts, timeframe)
+    clock = float(now)
+    while close <= clock:
+        close = candle_close_ts(close, timeframe)
+    return close
+
+
+def expected_candles(at_ts: Any, timeframe: Any, now: Any) -> int:
+    """How many candles from the one opened at ``at_ts`` have closed by ``now``."""
+    count = 0
+    close = candle_close_ts(at_ts, timeframe)
+    clock = float(now)
+    while close <= clock:
+        count += 1
+        close = candle_close_ts(close, timeframe)
+    return count
+
+
+def read_time_text(ts: Any) -> str:
+    """One read time as ``READ_TIME_FORMAT`` writes it."""
+    return time.strftime(READ_TIME_FORMAT, time.gmtime(float(ts)))
+
+
+def closed_candles(candles: Any, timeframe: Any, closed_before: Any) -> list:
+    """The candles whose close time is at or before ``closed_before``; every candle when it is None."""
+    held = list(candles or [])
+    if closed_before is None:
+        return held
+    limit = float(closed_before)
+    return [
+        one
+        for one in held
+        if candle_close_ts(getattr(one, "timestamp", NO_READ_TS), timeframe) <= limit
+    ]
+
+
 def continues_against(direction_text: Any, close: Any, previous: Any) -> bool:
     """Whether one candle carried on the trend the reversal called against."""
     if str(direction_text) == ata_spm.DIRECTION_BULLISH:
@@ -1142,6 +1294,7 @@ class FollowUpCall:
     direction: str
     vote: str
     at: int = 0
+    at_ts: float = NO_READ_TS
     close: float = NO_MIDLINE
     headline: str = ""
     band_position: float = ata_spm.MIDLINE_POSITION
@@ -1151,8 +1304,98 @@ class FollowUpCall:
 
     @property
     def key(self) -> tuple:
-        """What tells two watched calls apart: the asset, its timeframe, its bar."""
-        return (self.symbol, self.timeframe, self.at)
+        """What tells two watched calls apart: the asset, its timeframe, its bar's open time."""
+        return (self.symbol, self.timeframe, self.at_ts)
+
+
+def call_bar_index(candles: Any, call: FollowUpCall) -> int:
+    """The index of the first candle opened at or after ``call.at_ts``.
+
+    A call carrying no ``at_ts`` answers the bar after ``call.at``, its index
+    on the window it was made on.
+    """
+    if call.at_ts <= NO_READ_TS:
+        return int(call.at) + 1
+    for index, one in enumerate(candles):
+        if float(getattr(one, "timestamp", NO_READ_TS)) >= call.at_ts:
+            return index
+    return len(candles)
+
+
+@dataclass
+class FollowUpTimer:
+    """One watched call's confirmation read timer: its next read and its last outcome.
+
+    ``next_read_ts`` is a candle close on the call's own grid, or a retry
+    ``FOLLOW_UP_RETRY_S`` after a read that found no closed candle.
+    """
+
+    call: FollowUpCall
+    next_read_ts: float
+    reads: int = NO_READS
+    retries: int = NO_RETRIES
+    reading: bool = False
+    outcome: Optional[FollowUpOutcome] = None
+
+    @property
+    def state(self) -> str:
+        """``OUTCOME_OPEN`` until a read answers, then the last read's state."""
+        return self.outcome.state if self.outcome is not None else OUTCOME_OPEN
+
+    @property
+    def settled(self) -> bool:
+        """Whether the last read confirmed or failed the call."""
+        return self.outcome is not None and self.outcome.settled
+
+    @property
+    def status(self) -> str:
+        """The entry's status text: the next read while open, the settling close after."""
+        if self.outcome is not None and self.outcome.settled:
+            return FOLLOW_UP_STATUS_SETTLED_FORMAT.format(
+                state=self.outcome.state, close=self.outcome.close
+            )
+        return FOLLOW_UP_STATUS_OPEN_FORMAT.format(
+            when=read_time_text(self.next_read_ts)
+        )
+
+    @property
+    def label(self) -> str:
+        """The call's timeframe as the check boxes word it."""
+        return ata_spm.timeframe_label(self.call.timeframe)
+
+    def due(self, now: Any) -> bool:
+        """Whether the next read has passed with no read in flight."""
+        return not self.reading and float(now) >= self.next_read_ts
+
+    def timer_line(self) -> str:
+        """The Activity Log line naming this timer and its next read."""
+        return FOLLOW_UP_TIMER_LINE_FORMAT.format(
+            symbol=self.call.symbol,
+            label=self.label,
+            when=read_time_text(self.next_read_ts),
+        )
+
+    def read_line(self) -> str:
+        """The Activity Log line the last read leaves: the state and the next read or the close."""
+        if self.outcome is not None and self.outcome.settled:
+            return FOLLOW_UP_READ_SETTLED_LINE_FORMAT.format(
+                symbol=self.call.symbol,
+                label=self.label,
+                state=self.outcome.state,
+                close=self.outcome.close,
+            )
+        return FOLLOW_UP_READ_OPEN_LINE_FORMAT.format(
+            symbol=self.call.symbol,
+            label=self.label,
+            state=self.state,
+            when=read_time_text(self.next_read_ts),
+        )
+
+    def stopped_line(self, reason: str) -> str:
+        """The Activity Log line a timer leaves when it stops before settling."""
+        return FOLLOW_UP_STOPPED_LINE_FORMAT.format(
+            symbol=self.call.symbol, label=self.label, reason=reason
+        )
 
 
 @dataclass
@@ -1202,6 +1445,13 @@ def follow_up_detail(outcome: FollowUpOutcome, share_pct: Any) -> str:
         return FOLLOW_UP_NO_SHARE_FORMAT.format(
             candles=outcome.candles, close=outcome.close
         )
+    if outcome.target <= NO_MIDLINE and outcome.midline > NO_MIDLINE:
+        return FOLLOW_UP_MIDLINE_BEHIND_FORMAT.format(
+            candles=outcome.candles,
+            close=outcome.close,
+            midline=outcome.midline,
+            direction=outcome.call.direction,
+        )
     if outcome.against_run > NO_CONTINUATION:
         return FOLLOW_UP_NOT_READY_FORMAT.format(
             run=outcome.against_run,
@@ -1215,25 +1465,32 @@ def follow_up_detail(outcome: FollowUpOutcome, share_pct: Any) -> str:
 
 
 def follow_up_outcome(
-    call: FollowUpCall, candles: Any, share_pct: Any
+    call: FollowUpCall, candles: Any, share_pct: Any, closed_before: Any = None
 ) -> FollowUpOutcome:
-    """Phase seven over the candles that closed after one watched call.
+    """Phase seven over the candles from one watched call's bar on, through
+    ``closed_candles`` and ``call_bar_index``, so a partial bar is never read.
 
-    A close reaching ``confirmation_target`` confirms it, and
-    ``CONTINUATION_CANDLE_FLOOR`` candles in a row against it fail it.
+    A close reaching ``confirmation_target`` confirms it while ``midline_ahead``
+    holds, and ``CONTINUATION_CANDLE_FLOOR`` candles in a row against it fail it.
     """
-    held = list(candles or [])
+    held = closed_candles(candles, call.timeframe, closed_before)
+    start = call_bar_index(held, call)
     closes = [float(getattr(one, "close", NO_MIDLINE)) for one in held]
-    midlines = ata_spm.midline_after(held, call.at)
+    midlines = ata_spm.midline_after(held, start - 1)
     found = FollowUpOutcome(call=call, close=call.close, closes=tuple(closes))
     share = int(share_pct or NO_SHARE_SET)
     previous = call.close
     run_against = NO_CONTINUATION
-    for step, close in enumerate(closes[call.at + 1 :]):
+    for step, close in enumerate(closes[start:]):
         found.candles = step + 1
         found.close = close
         found.midline = midlines[step] if step < len(midlines) else NO_MIDLINE
-        if share > NO_SHARE_SET and found.midline > NO_MIDLINE:
+        found.target = NO_MIDLINE
+        if (
+            share > NO_SHARE_SET
+            and found.midline > NO_MIDLINE
+            and midline_ahead(call.direction, call.close, found.midline)
+        ):
             found.target = confirmation_target(call.close, found.midline, share)
             if target_reached(call.direction, close, found.target):
                 found.state = OUTCOME_CONFIRMED
@@ -1382,6 +1639,16 @@ def settings_path() -> Path:
     return Path.home() / STATE_DIR_NAME / ATA_SPM_SETTINGS_NAME
 
 
+def share_percent(asked: Any) -> int:
+    """The confirmation share one typed value names; text that is not a whole
+    number, and any share under ``NO_SHARE_SET``, read as ``NO_SHARE_SET``."""
+    try:
+        held = int(str(asked).strip())
+    except (TypeError, ValueError):
+        return NO_SHARE_SET
+    return max(NO_SHARE_SET, held)
+
+
 class AtaSpmSettings:
     """The ATA-SPM settings page, carrying only what a phase reads.
 
@@ -1395,7 +1662,7 @@ class AtaSpmSettings:
     def __init__(self, path: Optional[Path] = None) -> None:
         self.max_posts_per_hour = NO_CEILING_SET
         self.max_supporting_indicators = NO_INDICATOR_CAP
-        self.confirmation_share_pct = NO_SHARE_SET
+        self._confirmation_share_pct = NO_SHARE_SET
         self.message_format = ata_spm.MESSAGE_FORMAT
         self._hits_per_scan = ata_spm.DEFAULT_HITS_PER_SCAN
         self.vault: Any = None
@@ -1415,6 +1682,17 @@ class AtaSpmSettings:
         self._hits_per_scan = ata_spm.hits_target(asked)
         self.save()
 
+    @property
+    def confirmation_share_pct(self) -> int:
+        """The share of the run to the midline a confirmation needs; ``NO_SHARE_SET`` confirms nothing."""
+        return self._confirmation_share_pct
+
+    @confirmation_share_pct.setter
+    def confirmation_share_pct(self, asked: Any) -> None:
+        """Take a whole percent; text that is not one reads ``NO_SHARE_SET``."""
+        self._confirmation_share_pct = share_percent(asked)
+        self.save()
+
     def persisted(self) -> dict:
         """Each ``PERSISTED_SETTINGS`` name and the value it holds now."""
         return {name: getattr(self, name) for name in PERSISTED_SETTINGS}
@@ -1432,6 +1710,8 @@ class AtaSpmSettings:
             return False
         if "hits_per_scan" in held:
             self._hits_per_scan = ata_spm.hits_target(held["hits_per_scan"])
+        if "confirmation_share_pct" in held:
+            self._confirmation_share_pct = share_percent(held["confirmation_share_pct"])
         return True
 
     def save(self) -> bool:
@@ -1810,14 +2090,20 @@ class WatchedMarket:
 
 @dataclass
 class BucketPost:
-    """One formatted post waiting in Ready to Send, and its approval state."""
+    """One formatted post waiting in Ready to Send, its approval state, and
+    the status its call's ``FollowUpTimer`` last wrote."""
 
     post: FormattedPost
     state: str = STATE_WAITING
+    follow_up: str = ""
 
     @property
     def meta(self) -> str:
-        """The target this post is for, and whether it is approved."""
+        """The target this post is for, whether it is approved, and the timer's status."""
+        if self.follow_up:
+            return BUCKET_META_FOLLOW_UP_FORMAT.format(
+                target=self.post.target, state=self.state, follow_up=self.follow_up
+            )
         return BUCKET_META_FORMAT.format(target=self.post.target, state=self.state)
 
 
@@ -1840,34 +2126,58 @@ class ReadyToSend:
         run: Any,
         settings: Optional[AtaSpmSettings] = None,
         targets: Any = PUSH_TARGETS,
+        keep: Any = (),
     ) -> int:
-        """Run ``format_run`` over ``run`` and hold every post it wrote.
+        """Run ``format_run`` over ``run`` and hold every post it wrote, beside
+        the posts of every market and timeframe in ``keep`` an earlier run wrote.
 
-        Answers how many posts the bucket now carries.
+        A market ``run`` hit again takes the new posts; answers how many posts
+        the bucket now carries.
         """
         cap = (
             settings.max_supporting_indicators
             if settings is not None
             else NO_INDICATOR_CAP
         )
-        self.posts = [BucketPost(post=one) for one in format_run(run, targets, cap)]
+        fresh = [BucketPost(post=one) for one in format_run(run, targets, cap)]
+        renewed = {(one.post.symbol, one.post.timeframe) for one in fresh}
+        held = {tuple(one) for one in keep}
+        kept = [
+            one
+            for one in self.posts
+            if not one.post.follows
+            and (one.post.symbol, one.post.timeframe) in held
+            and (one.post.symbol, one.post.timeframe) not in renewed
+        ]
+        self.posts = kept + fresh
         return len(self.posts)
 
     def load_follow_ups(self, outcomes: Any, targets: Any = PUSH_TARGETS) -> int:
         """Hold one phase seven post per settled outcome, per push target.
 
-        The follow-ups a previous check wrote are dropped first, so the
-        bucket never carries two posts about one call.
+        The follow-ups an earlier read wrote on the same calls are dropped
+        first, so the bucket never carries two posts about one call.
         """
-        self.posts = [one for one in self.posts if not one.post.follows]
+        settled = [one for one in list(outcomes or []) if one.settled]
+        headlines = {one.call.headline for one in settled}
+        self.posts = [one for one in self.posts if one.post.follows not in headlines]
         written = [
-            format_follow_up(one, target)
-            for one in list(outcomes or [])
-            if one.settled
-            for target in targets
+            format_follow_up(one, target) for one in settled for target in targets
         ]
         self.posts.extend(BucketPost(post=one) for one in written)
         return len(written)
+
+    def set_follow_up(self, symbol: Any, timeframe: Any, status: str) -> int:
+        """Write one timer's status on every post of its market and timeframe
+        that is not itself a follow-up, and answer how many took it."""
+        count = 0
+        for held in self.posts:
+            post = held.post
+            if post.follows or (post.symbol, post.timeframe) != (symbol, timeframe):
+                continue
+            held.follow_up = str(status)
+            count += 1
+        return count
 
     def at(self, index: Any) -> Optional[BucketPost]:
         """The bucket post one zone index shows, or None while it holds none."""
@@ -2075,13 +2385,21 @@ class PushBoard:
     def load_run(self, run: Any) -> int:
         """Fill the bucket from one run and answer how many posts it holds.
 
-        ``CANDIDATE_PIN`` is written once per entry with its symbol,
-        timeframe, venue, folder and image, and a post whose venue folder
-        holds no image reads ``ok`` False.
+        The entries of every call a ``FollowUpTimer`` still watches stay
+        beside the run's own; ``CANDIDATE_PIN`` is written once per new
+        entry with its symbol, timeframe, venue, folder and image, and a
+        post whose venue folder holds no image reads ``ok`` False.
         """
-        count = self.bucket.load_run(run, self.settings)
+        watched = {
+            (one.call.symbol, one.call.timeframe)
+            for one in self.follow_up.timers.values()
+        }
+        count = self.bucket.load_run(run, self.settings, keep=watched)
+        renewed = {(one.symbol, one.timeframe) for one in getattr(run, "calls", [])}
         for held in self.bucket.posts:
             post = held.post
+            if (post.symbol, post.timeframe) not in renewed:
+                continue
             _pin_emit(
                 CANDIDATE_PIN,
                 actual=post.target,
@@ -2102,18 +2420,73 @@ class PushBoard:
             )
         return count
 
-    def after_scan(self, run: Any, candle_source: Any) -> list:
-        """Phase seven around one scan, and the outcomes the check answered.
+    def now(self) -> float:
+        """The wall clock, or ``clock`` while a host set one."""
+        return float((self.clock or time.time)())
 
-        The calls watched before this scan are checked first, then this
-        run's own calls are taken, so no call is checked against no candle.
+    def after_scan(self, run: Any) -> tuple:
+        """Phase seven after one scan filled the bucket: the timers stopped
+        because their entry left it, and the timers this run's calls started.
+
+        Each started timer's status is written on its bucket entry; the
+        reads run from ``due_timers`` and ``take_outcome``, never here.
         """
-        found = self.follow_up.check(
-            candle_source, self.settings.confirmation_share_pct
-        )
-        self.bucket.load_follow_ups(found)
-        self.follow_up.watch_run(run)
+        stopped = self.follow_up.keep_entries(self.bucket.posts)
+        started = self.follow_up.watch_run(run, self.now())
+        for timer in started:
+            self.bucket.set_follow_up(
+                timer.call.symbol, timer.call.timeframe, timer.status
+            )
+        return stopped, started
+
+    def due_timers(self) -> list:
+        """Every ``FollowUpTimer`` whose candle has closed, marked as reading."""
+        found = self.follow_up.due(self.now())
+        for timer in found:
+            timer.reading = True
         return found
+
+    def read_outcome(self, timer: FollowUpTimer, candles: Any) -> FollowUpOutcome:
+        """``follow_up_outcome`` for one timer over ``candles``, closed before now."""
+        return follow_up_outcome(
+            timer.call, candles, self.settings.confirmation_share_pct, self.now()
+        )
+
+    def take_outcome(
+        self, key: Any, outcome: FollowUpOutcome
+    ) -> Optional[FollowUpTimer]:
+        """Write one read's outcome: the timer, the entry's status, the
+        follow-up posts on a settlement, and ``FOLLOW_UP_READ_PIN``."""
+        timer = self.follow_up.timers.get(tuple(key))
+        if timer is None:
+            return None
+        now = self.now()
+        self.follow_up.take_outcome(timer, outcome, now)
+        self.bucket.set_follow_up(timer.call.symbol, timer.call.timeframe, timer.status)
+        if outcome.settled:
+            self.bucket.load_follow_ups([outcome])
+        waited = expected_candles(timer.call.at_ts, timer.call.timeframe, now)
+        _pin_emit(
+            FOLLOW_UP_READ_PIN,
+            actual=int(outcome.candles),
+            expected=waited,
+            ok=int(outcome.candles) >= waited,
+            context={
+                "symbol": timer.call.symbol,
+                "timeframe": timer.call.timeframe,
+                "state": outcome.state,
+                "candles": int(outcome.candles),
+                "close": float(outcome.close),
+                "target": float(outcome.target),
+                "next_read": (
+                    read_time_text(timer.next_read_ts) if not outcome.settled else ""
+                ),
+                "reads": int(timer.reads),
+                "retries": int(timer.retries),
+                "detail": outcome.detail,
+            },
+        )
+        return timer
 
     def post_selected(self, index: Any) -> list:
         """Press Post Selected on the post one zone index shows.

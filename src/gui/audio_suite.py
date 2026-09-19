@@ -46,6 +46,28 @@ except Exception as _exc:
     QAudioOutput = None
 from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
 
+#: The volume ``MusicPlayerPanel`` and ``Chime`` open their ``QAudioOutput`` at.
+MUSIC_VOLUME = 0.5
+
+#: The ``ToneGenerator`` preset ``Chime`` renders: four partials over one
+#: ``CHIME_BASE_HZ`` base, ``CHIME_SECONDS`` long, rendered once per process.
+CHIME_PRESET = "Hit Chime"
+CHIME_PARTIALS = [(1.0, 0.45), (2.0, 0.18), (3.0, 0.09), (4.16, 0.05)]
+CHIME_SECONDS = 0.6
+CHIME_BASE_HZ = 880.0
+CHIME_MASTER_VOLUME = 0.8
+CHIME_KEY = "C"
+CHIME_NO_DETUNE = 1.0
+CHIME_NO_LFO = 1.0
+CHIME_NO_RICHNESS = 0.0
+#: ``Chime.render`` scales each sample by e to the minus this times its
+#: second, so the last sample of ``CHIME_SECONDS`` sits near 2 % of the first.
+CHIME_DECAY_PER_SECOND = 6.5
+SAMPLE_BYTES = 2
+STEREO_CHANNELS = 2
+SAMPLE_PEAK = 32767
+NO_PLAYS = 0
+
 KEY_MULT = {
     "C": 1.0,
     "C#": 1.05946,
@@ -115,6 +137,7 @@ class ToneGenerator:
             (4.0, 0.03),
             (5.0, 0.03),
         ],
+        CHIME_PRESET: CHIME_PARTIALS,
     }
 
     @classmethod
@@ -178,6 +201,100 @@ class ToneGenerator:
         return path
 
 
+def media_pair() -> tuple:
+    """A ``QAudioOutput`` and a ``QMediaPlayer`` wired together, or two Nones without QtMultimedia."""
+    if not _HAS_MEDIA:
+        return None, None
+    from PySide6.QtMultimedia import QAudioOutput as _Output
+    from PySide6.QtMultimedia import QMediaPlayer as _Player
+
+    audio_out = _Output()
+    player = _Player()
+    player.setAudioOutput(audio_out)
+    return audio_out, player
+
+
+class Chime:
+    """One synthesized chime, ``CHIME_PRESET`` through ``ToneGenerator``, played
+    through the ``media_pair`` output at ``MUSIC_VOLUME``.
+
+    ``render`` writes the tone once per process and ``play`` sounds it; a
+    process without QtMultimedia holds no player and ``play`` answers False.
+    """
+
+    path: str = ""
+
+    def __init__(self) -> None:
+        self.played = NO_PLAYS
+        self._audio_out, self._player = (None, None)
+
+    @classmethod
+    def render(cls) -> str:
+        """Write ``CHIME_PRESET`` through ``generate_wav`` with ``CHIME_DECAY_PER_SECOND``
+        applied, once per process, and answer the wav path."""
+        if cls.path and os.path.exists(cls.path):
+            return cls.path
+        path = ToneGenerator.generate_wav(
+            CHIME_PRESET,
+            CHIME_SECONDS,
+            CHIME_MASTER_VOLUME,
+            CHIME_KEY,
+            CHIME_BASE_HZ,
+            CHIME_NO_DETUNE,
+            CHIME_NO_LFO,
+            CHIME_NO_RICHNESS,
+        )
+        with wave.open(path, "rb") as source:
+            rate = source.getframerate()
+            frames = source.readframes(source.getnframes())
+        shaped = bytearray()
+        stride = SAMPLE_BYTES * STEREO_CHANNELS
+        for at in range(0, len(frames) - stride + 1, stride):
+            left, right = struct.unpack_from("<hh", frames, at)
+            gain = math.exp(-CHIME_DECAY_PER_SECOND * (at // stride) / rate)
+            shaped.extend(
+                struct.pack(
+                    "<hh",
+                    max(-SAMPLE_PEAK, min(SAMPLE_PEAK, int(left * gain))),
+                    max(-SAMPLE_PEAK, min(SAMPLE_PEAK, int(right * gain))),
+                )
+            )
+        with wave.open(path, "wb") as sink:
+            sink.setnchannels(STEREO_CHANNELS)
+            sink.setsampwidth(SAMPLE_BYTES)
+            sink.setframerate(rate)
+            sink.writeframes(bytes(shaped))
+        cls.path = path
+        return path
+
+    def player(self):
+        """The ``QMediaPlayer`` this chime plays through, built on first use, or None."""
+        if self._player is None and _HAS_QT and _HAS_MEDIA:
+            self._audio_out, self._player = media_pair()
+            if self._audio_out is not None:
+                self._audio_out.setVolume(MUSIC_VOLUME)
+        return self._player
+
+    def set_volume(self, volume: float) -> None:
+        """Set the output's volume, 0.0 to 1.0, when an output exists."""
+        if self.player() is not None and self._audio_out is not None:
+            self._audio_out.setVolume(float(volume))
+
+    def play(self) -> bool:
+        """Sound the chime once from its start, and answer whether a player took it."""
+        player = self.player()
+        if player is None:
+            return False
+        try:
+            player.setSource(QUrl.fromLocalFile(self.render()))
+            player.play()
+        except Exception as exc:  # noqa: BLE001 - the backend is host-supplied
+            logger.warning("chime play failed: %s", exc)
+            return False
+        self.played += 1
+        return True
+
+
 def _sc(func, *a, **kw):
     # v3.13.6 R61 CBF — was bare `except:` (catches KeyboardInterrupt
     # and SystemExit). This is a Qt safe-call helper used all over this
@@ -214,6 +331,7 @@ if _HAS_QT:
                 self.update()
 
         def paintEvent(self, event):
+            super().paintEvent(event)
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
             w, h = self.width(), self.height()
@@ -292,10 +410,8 @@ if _HAS_QT:
             layout.addLayout(vr)
             if _HAS_MEDIA:
                 try:
-                    self._audio_out = QAudioOutput()
+                    self._audio_out, self._player = media_pair()
                     self._audio_out.setVolume(self._volume.value() / 100)
-                    self._player = QMediaPlayer()
-                    self._player.setAudioOutput(self._audio_out)
                     self._player.mediaStatusChanged.connect(self._on_end)
                     self._player.errorOccurred.connect(self._on_error)
                     self._player.playbackStateChanged.connect(self._on_state)
@@ -419,10 +535,8 @@ if _HAS_QT:
             self._playing = False
             self._files = []
             try:
-                self._ao = QAudioOutput()
-                self._ao.setVolume(0.5)
-                self._player = QMediaPlayer()
-                self._player.setAudioOutput(self._ao)
+                self._ao, self._player = media_pair()
+                self._ao.setVolume(MUSIC_VOLUME)
                 self._player.mediaStatusChanged.connect(self._oe)
             except Exception as exc:
                 # v3.13.6 R28 FL + R61 CBF — was bare `except:`
@@ -635,9 +749,3 @@ if _HAS_QT:
             self._at = QTimer(self)
             self._at.timeout.connect(lambda: self._wf.animate(0.033))
             self._at.start(33)
-
-else:  # not _HAS_QT — headless fallback stub for the one tab used elsewhere
-
-    class AudioSuiteTab:
-        def __init__(self, *a, **kw):
-            pass

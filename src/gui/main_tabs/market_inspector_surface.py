@@ -1968,7 +1968,11 @@ def bucket_method_text(post: Any) -> str:
 
 
 def bucket_entry(held: Any) -> dict:
-    """One waiting post as the entry the Ready to Send zone steps through."""
+    """One waiting post as the entry the Ready to Send zone steps through.
+
+    The timer's status the post carries as ``follow_up`` is the head-row
+    badge, so it reads without scrolling the entry.
+    """
     post = held.post
     return zone_entry(
         BUCKET_HEADLINE_FORMAT.format(
@@ -1983,6 +1987,8 @@ def bucket_entry(held: Any) -> dict:
         actions=bucket_actions(),
         vote=post_vote(post),
         headline_width_px=BUCKET_HEADLINE_WIDTH_PX,
+        badge=str(getattr(held, "follow_up", "") or ""),
+        badge_style=ENTRY_META_STYLE,
     )
 
 
@@ -2451,13 +2457,16 @@ def zone_entry(
     vote: Any = None,
     headline_width_px: Any = None,
     panels: Any = None,
+    badge: Any = "",
+    badge_style: Any = "",
 ) -> dict:
     """One entry a zone steps through: its headline, its counts and its test.
 
     ``detail`` and ``method_text`` name the expanded lines and the method
     line outright, ``thumbnail``, ``preview``, ``actions`` and ``vote``
-    are what a Ready to Send post carries, and ``panels`` are the
-    ``voting_panel`` grids an open ATA-SMP entry draws.
+    are what a Ready to Send post carries, ``badge`` is the head-row text
+    after the vote, and ``panels`` are the ``voting_panel`` grids an open
+    ATA-SMP entry draws.
     """
     return {
         "headline": headline,
@@ -2471,6 +2480,8 @@ def zone_entry(
         "vote": vote,
         "headline_width_px": headline_width_px,
         "panels": panels,
+        "badge": badge,
+        "badge_style": badge_style,
     }
 
 
@@ -2531,6 +2542,8 @@ def zone_view(
         "vote": entry.get("vote") if total else None,
         "headline_width_px": entry.get("headline_width_px") if total else None,
         "panels": (entry.get("panels") or []) if open_now else [],
+        "badge": str(entry.get("badge") or "") if total and not busy else "",
+        "badge_style": str(entry.get("badge_style") or "") if total else "",
     }
 
 
@@ -3516,9 +3529,7 @@ class MarketInspectorScreenModel:
             self.calls.append([SCAN_NOW_UNNAMED])
             return None
         self.push.load_run(self.board.run)
-        self.push.after_scan(
-            self.board.run, self.ata_candle_source or self.scanned_candles
-        )
+        self.push.after_scan(self.board.run)
         self.zone_at[READY_TO_SEND_ZONE] = 0
         self.calls.append(
             [SCAN_NOW_RUN, len(self.board.sectors), len(self.board.run.calls)]
