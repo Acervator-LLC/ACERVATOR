@@ -10,9 +10,11 @@ those to a host-supplied sender and answers one ``DeliveryRecord`` each.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from . import ata_spm
@@ -458,6 +460,14 @@ SEND_FAILED_LOG = "ATA-SPM send failed on %s %s: %s"
 VAULT_READ_FAILED_LOG = "ATA-SPM credential read failed on %s: %s"
 VAULT_STORE_FAILED_LOG = "ATA-SPM credential store failed on %s: %s"
 CONNECT_FAILED_LOG = "ATA-SPM sign-in failed on %s: %s"
+SETTINGS_READ_FAILED_LOG = "ATA-SPM settings read failed on %s: %s"
+SETTINGS_WRITE_FAILED_LOG = "ATA-SPM settings write failed on %s: %s"
+
+#: ``AtaSpmSettings`` writes ``PERSISTED_SETTINGS`` to this file, a sibling
+#: of the fleet state under the same directory, and reads it back on build.
+STATE_DIR_NAME = ".acervator"
+ATA_SPM_SETTINGS_NAME = "ata_spm_settings.json"
+PERSISTED_SETTINGS = ("hits_per_scan",)
 
 #: Every ``connect`` outcome, accepted or not. ``CONNECT_FAILED_LOG`` covers only
 #: the branch a connector raises on, and four other branches raise nothing.
@@ -1250,17 +1260,22 @@ class RepostGuard:
         )
 
 
+def settings_path() -> Path:
+    """The file ``AtaSpmSettings`` persists ``PERSISTED_SETTINGS`` in."""
+    return Path.home() / STATE_DIR_NAME / ATA_SPM_SETTINGS_NAME
+
+
 class AtaSpmSettings:
     """The ATA-SPM settings page, carrying only what a phase reads.
 
-    ``max_posts_per_hour`` is the ceiling ``SendRate`` obeys and
-    ``max_supporting_indicators`` the cap phase four draws under.
-    ``confirmation_share_pct`` is the share of the run to the Bollinger
-    midline ``confirmation_target`` reads, and ``hits_per_scan`` the reversal
-    calls an empty-field Scan Now stops at.
+    ``max_posts_per_hour`` is the ceiling ``SendRate`` obeys,
+    ``max_supporting_indicators`` the cap phase four draws under,
+    ``confirmation_share_pct`` the share of the run to the Bollinger midline
+    ``confirmation_target`` reads, and ``hits_per_scan`` the hits an
+    empty-field Scan Now stops at, written to ``settings_path`` on each set.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, path: Optional[Path] = None) -> None:
         self.max_posts_per_hour = NO_CEILING_SET
         self.max_supporting_indicators = NO_INDICATOR_CAP
         self.confirmation_share_pct = NO_SHARE_SET
@@ -1269,16 +1284,50 @@ class AtaSpmSettings:
         self.vault: Any = None
         self.connector: Optional[Callable] = None
         self.typed: dict = {}
+        self.path = path if path is not None else settings_path()
+        self.load()
 
     @property
     def hits_per_scan(self) -> int:
-        """The reversal calls an empty-field scan stops at, never under 1."""
+        """The hits an empty-field scan stops at, never under 1."""
         return self._hits_per_scan
 
     @hits_per_scan.setter
     def hits_per_scan(self, asked: Any) -> None:
         """Take a count; ``ata_spm.hits_target`` reads 0 and text as the default."""
         self._hits_per_scan = ata_spm.hits_target(asked)
+        self.save()
+
+    def persisted(self) -> dict:
+        """Each ``PERSISTED_SETTINGS`` name and the value it holds now."""
+        return {name: getattr(self, name) for name in PERSISTED_SETTINGS}
+
+    def load(self) -> bool:
+        """Read ``PERSISTED_SETTINGS`` from ``path``; answer whether the file held any."""
+        try:
+            held = json.loads(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError) as exc:
+            logger.debug(SETTINGS_READ_FAILED_LOG, self.path, exc)
+            return False
+        if not isinstance(held, dict):
+            return False
+        if "hits_per_scan" in held:
+            self._hits_per_scan = ata_spm.hits_target(held["hits_per_scan"])
+        return True
+
+    def save(self) -> bool:
+        """Write ``persisted`` to ``path``; answer whether the write landed."""
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps(self.persisted(), indent=1), encoding="utf-8", newline="\n"
+            )
+        except OSError as exc:
+            logger.debug(SETTINGS_WRITE_FAILED_LOG, self.path, exc)
+            return False
+        return True
 
     def set_vault(self, vault: Any) -> None:
         """Take the credential vault every push target's token is held in."""

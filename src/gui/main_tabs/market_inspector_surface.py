@@ -166,7 +166,7 @@ SCAN_NOW_TOOLTIP = (
     "Scan now on the timeframes ticked beside it, without waiting for a "
     "rotation. A ticker in the field reads that one market; an empty field "
     "reads the sector menu's markets, largest volume first, until Hits per "
-    "scan reversal calls land."
+    "scan markets pass the push gates."
 )
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
 CLASS_BOX_WIDTH_PX = 92
@@ -195,6 +195,7 @@ NO_FOLLOW_UP_TEXT = "No call is being followed up yet."
 DEFERRED_TAG = "deferred"
 UNLISTED_TAG = "unlisted"
 UNSERVED_TAG = "unserved"
+ORDER_TAG = "order"
 PHASE_ROW_NAME_FORMAT = "{phase} {tag}"
 CALL_TAG_FORMAT = "{symbol} {label}"
 BAND_TAG_FORMAT = "{symbol} bands"
@@ -219,11 +220,22 @@ CANDLES_FROM_SCAN = "universe scan"
 #: exchange connector is in reach.
 NO_CONNECTOR_TEXT = "no exchange connected"
 
-#: The pins one Scan Now press leaves on the signal handler, in order.
+#: The pins one Scan Now press leaves on the signal handler, in order;
+#: ``ata_spm.HIT_PIN`` sits between the order and the end.
 SCAN_PRESSED_PIN = "inspector.ata.scan_pressed"
 SCAN_STARTED_PIN = "inspector.ata.scan_started"
+VOLUME_ORDER_PIN = "inspector.ata.volume_order"
 MARKET_READ_PIN = "inspector.ata.market_read"
 SCAN_FINISHED_PIN = "inspector.ata.scan_finished"
+
+#: What ``class_markets`` names as the source of each class's order.
+CRYPTO_ORDER_SOURCE_FORMAT = "24 h quote volume on {venues}"
+CRYPTO_NO_CONNECTOR_SOURCE_TEXT = "name, no exchange connected for a volume figure"
+CRYPTO_NO_FIGURE_SOURCE_TEXT = "name, the exchange sent no volume figure"
+VENUE_ORDER_SOURCE_FORMAT = "last complete daily bar volume x close on {venue}"
+ORDER_VENUE_JOIN = ", "
+ORDER_LOG_FORMAT = "ATA-SPM order for {asset_class}: {line}"
+VOLUME_FIGURE_REFUSED_LOG = "volume figure refused for %s: %s"
 
 #: The share a bullish bot feeds to the bot on the opposite market condition.
 OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
@@ -1102,7 +1114,8 @@ def phase_one_rows(scan: Any) -> list:
     """The expanded lines phase one leaves: one per timeframe scanned.
 
     ``scan.unlisted`` and ``scan.unserved`` each take a line of their own, so a
-    venue gap never reads as a timeframe that voted nothing.
+    venue gap never reads as a timeframe that voted nothing; a by-volume scan
+    opens with ``ata_spm.order_line`` under ``ORDER_TAG``.
     """
     if scan.note:
         rows = [detail_row(PHASE_NOTE_NAME, scan.note)]
@@ -1122,6 +1135,15 @@ def phase_one_rows(scan: Any) -> list:
             )
             for one in scan.timeframes
         ]
+        if getattr(scan, "hit_target", ata_spm.NO_HIT_TARGET) > ata_spm.NO_HIT_TARGET:
+            rows.insert(
+                0,
+                phase_row(
+                    PHASE_ONE_NAME,
+                    ORDER_TAG,
+                    ata_spm.order_line(scan.order, scan.markets_read),
+                ),
+            )
     unlisted = tuple(getattr(scan, "unlisted", ()) or ())
     if unlisted and not scan.note:
         rows.append(
@@ -1312,13 +1334,16 @@ def no_call_text(scan: Any) -> str:
 
 
 def entry_headline(scan: Any) -> str:
-    """The line one scan's zone entry is named by: market, by-volume or sector."""
+    """The line one scan's zone entry is named by: market, by-volume, map-order
+    or sector; ``MarketOrder.by_volume`` tells the middle two apart."""
     if scan.ticker:
         return ata_spm.MARKET_LINE_FORMAT.format(
             ticker=scan.ticker, asset_class=scan.asset_class
         )
     if getattr(scan, "hit_target", ata_spm.NO_HIT_TARGET) > ata_spm.NO_HIT_TARGET:
-        return ata_spm.VOLUME_LINE_FORMAT.format(asset_class=scan.asset_class)
+        if scan.order.by_volume:
+            return ata_spm.VOLUME_LINE_FORMAT.format(asset_class=scan.asset_class)
+        return ata_spm.MAP_ORDER_LINE_FORMAT.format(asset_class=scan.asset_class)
     return ata_spm.SECTOR_LINE_FORMAT.format(
         sector=scan.sector, asset_class=scan.asset_class
     )
@@ -2455,25 +2480,93 @@ def class_volumes(asset_class: Any, connectors: Any) -> dict:
         return {}
 
 
-def class_markets(asset_class: Any, connectors: Any = None) -> list:
-    """Every market one class holds, largest 24 h quote volume first.
+def listing_volumes(rows: Any) -> dict:
+    """Each listed and ``volumed`` row's ``venue_quote_volume`` figure by symbol.
 
-    Crypto ranks ``class_tickers`` by ``class_volumes``, a name with no figure
-    last by name; forex and metals keep ``ata_asset_maps.MAPS`` order, which
-    lists each sector from its highest liquidity tier down.
+    A row the venue refused, and one whose figure is ``NO_VOLUME_FIGURE``,
+    leave the dict, so the caller counts them as unfigured.
+    """
+    found: dict = {}
+    for one in rows:
+        if not (one.listed and one.volumed):
+            continue
+        figure, refusal = ata_asset_maps.venue_quote_volume(one.symbol)
+        if refusal:
+            logger.debug(VOLUME_FIGURE_REFUSED_LOG, one.symbol, refusal)
+            continue
+        if figure > ata_asset_maps.NO_VOLUME_FIGURE:
+            found[str(one.symbol)] = float(figure)
+    return found
+
+
+def ranked_order(
+    rows: Any,
+    figures: dict,
+    source: Any,
+    bare_source: Any = ata_spm.MAP_ORDER_SOURCE_TEXT,
+) -> Any:
+    """The ``ata_spm.MarketOrder`` of ``rows`` by ``figures``, largest first.
+
+    A row with no figure keeps its place after every figured row, in the
+    order ``rows`` came; no figure at all keeps ``rows`` whole under
+    ``bare_source``.
+    """
+    held = list(rows)
+    if not figures:
+        return ata_spm.MarketOrder(
+            listings=held, source=str(bare_source), unfigured=len(held)
+        )
+    figured = [one for one in held if str(one.symbol) in figures]
+    figured.sort(key=lambda one: (-figures[str(one.symbol)], str(one.symbol)))
+    unfigured = [one for one in held if str(one.symbol) not in figures]
+    return ata_spm.MarketOrder(
+        listings=figured + unfigured,
+        source=str(source),
+        figures=dict(figures),
+        unfigured=len(unfigured),
+    )
+
+
+def class_markets(asset_class: Any, connectors: Any = None) -> Any:
+    """Every market one class holds as an ``ata_spm.MarketOrder``, largest first.
+
+    Crypto ranks ``class_tickers`` by ``class_volumes`` and names its venues
+    as the source, or reads by name while no connector is in reach; every
+    mapped class ranks ``listing_volumes`` over its ``ata_asset_maps.MAPS``
+    rows, and a class whose rows carry no figure keeps map order.
     """
     if str(asset_class) != ata_spm.CLASS_CRYPTO:
-        return [
+        rows = [
             one
             for sector in ata_asset_maps.sectors_for(asset_class)
             for one in ata_asset_maps.listings_for(sector, asset_class)
         ]
+        venues = sorted({one.venue for one in rows if one.venue})
+        return ranked_order(
+            rows,
+            listing_volumes(rows),
+            VENUE_ORDER_SOURCE_FORMAT.format(venue=ORDER_VENUE_JOIN.join(venues)),
+        )
     volumes = class_volumes(asset_class, connectors)
-    ranked = sorted(
-        class_tickers(asset_class),
-        key=lambda one: (-float(volumes.get(str(one).upper(), 0.0)), str(one)),
+    rows = [ata_asset_maps.exchange_listing(one) for one in class_tickers(asset_class)]
+    figures = {
+        str(one.symbol): float(volumes[str(one.symbol).upper()])
+        for one in rows
+        if float(volumes.get(str(one.symbol).upper(), 0.0)) > 0.0
+    }
+    rows.sort(key=lambda one: str(one.symbol))
+    if not connectors:
+        return ata_spm.MarketOrder(
+            listings=rows, source=CRYPTO_NO_CONNECTOR_SOURCE_TEXT, unfigured=len(rows)
+        )
+    return ranked_order(
+        rows,
+        figures,
+        CRYPTO_ORDER_SOURCE_FORMAT.format(
+            venues=ORDER_VENUE_JOIN.join(sorted(str(one) for one in connectors))
+        ),
+        CRYPTO_NO_FIGURE_SOURCE_TEXT,
     )
-    return [ata_asset_maps.exchange_listing(one) for one in ranked]
 
 
 def ticker_matches(typed: Any, asset_class: Any) -> list:
@@ -2974,8 +3067,8 @@ class MarketInspectorScreenModel:
         self.ata_class_source = class_source
         self.calls.append([ATA_SOURCES_SET])
 
-    def class_markets(self, asset_class: Any) -> list:
-        """Every market one class holds, largest volume first, on the connectors in reach."""
+    def class_markets(self, asset_class: Any) -> Any:
+        """The ``ata_spm.MarketOrder`` one class holds, on the connectors in reach."""
         return class_markets(asset_class, self.connectors_now())
 
     def scanned_candles(self, symbol: Any, timeframe: Any) -> list:
@@ -3028,7 +3121,7 @@ class MarketInspectorScreenModel:
 
     def scan_now(self) -> Any:
         """Press Scan Now: read the typed ticker's market, or the sector menu's
-        markets by volume until ``hits_per_scan`` reversal calls.
+        markets by volume until ``hits_per_scan`` hits.
 
         Answers the ``ata_spm.AtaSpmRun`` the three phases produced, or None
         when ``market_listing`` cannot place the ticker and the board is left
