@@ -449,20 +449,25 @@ def battery_failed_line(error: Any) -> str:
 
 #: The lines the Battery's per-portfolio slots and its Stop write.
 BATTERY_LOADED_FORMAT = (
-    "Portfolio {name} loaded: {bots} bot(s) on {venues}; the walk starts."
+    "Portfolio {name} loaded: {bots} bot(s) on {venues}, budget ${budget:,.2f}, "
+    "the sum of their Target Balances; the walk starts."
 )
 BATTERY_CLEARED_FORMAT = "Portfolio {name} cleared; the next portfolio loads."
 BATTERY_STOPPING_FORMAT = (
-    "Portfolio Battery stopping at Stop on bot {bot_id}; the partial report " "follows."
+    "Portfolio Battery stopping at Stop on bot {bot_id}; the partial report follows."
 )
 
 
-def battery_loaded_line(name: str, bots: Any) -> str:
+def battery_loaded_line(name: str, bots: Any, budget_usd: float = 0.0) -> str:
     """The Activity Log line ``_battery_portfolio_started`` writes: ``name``,
-    how many of ``bots`` were held and the venues they sit on."""
+    how many of ``bots`` were held, the venues they sit on and ``budget_usd``,
+    the sum of their Target Balances."""
     venues = sorted({str(bot.exchange_id) for bot in bots})
     return BATTERY_LOADED_FORMAT.format(
-        name=name, bots=len(list(bots)), venues=", ".join(venues) or "no venue"
+        name=name,
+        bots=len(list(bots)),
+        venues=", ".join(venues) or "no venue",
+        budget=float(budget_usd),
     )
 
 

@@ -49,7 +49,8 @@ YTD's title, holds one record per traded pair through
 ``FleetSource.generate_from_ytd``, writes one line per manifest row whose
 file is missing, the generation line and the no-target line, and fires
 ``fleet_changed``. ``_run_battery`` opens ``SimPortfolioChoiceDialog``, holds
-the ``plan_run`` bots through ``FleetSource.hold_battery_fleet``, fires
+the ``plan_run`` bots through ``FleetSource.hold_battery_fleet`` under Run
+Portfolio and none under Run Every Portfolio, fires
 ``fleet_changed`` and runs ``_compute_battery`` on a daemon thread, whose
 ``battery_line``, ``battery_trade`` and ``battery_finished`` signals reach the
 Activity Log, ``log_trade`` and ``_take_battery`` on the GUI thread; the
@@ -747,7 +748,9 @@ class SimTradingTab(QWidget):
         while ``battery_running``; ``SimPortfolioChoiceDialog`` over
         ``PORTFOLIOS`` and ``BATTERY_SPANS``, the portfolio row left out for
         ``RUN_EVERY_PORTFOLIO_ACTION``; then ``plan_run`` over the held fleet,
-        ``FleetSource.hold_battery_fleet`` on the plan's bots, ``fleet_changed``,
+        ``FleetSource.hold_battery_fleet`` on the plan's bots under Run
+        Portfolio and on nothing under Run Every Portfolio, whose fleets
+        ``_battery_portfolio_started`` holds one at a time, ``fleet_changed``,
         the started line, and ``_compute_battery`` on a daemon thread; a
         cancelled chooser writes one line and moves nothing. Answers the
         outcome: ``START_OUTCOME_IN_FLIGHT``, ``START_OUTCOME_CANCELLED`` or
@@ -768,7 +771,9 @@ class SimTradingTab(QWidget):
             names, self._battery_tablet_source, self._fleet_source.bots()
         )
         self._begin_fills()
-        self._fleet_source.hold_battery_fleet(plan.bots)
+        # Run Every Portfolio loads each portfolio's fleet in turn through
+        # _battery_portfolio_started, so the press itself holds none.
+        self._fleet_source.hold_battery_fleet(() if every else plan.bots)
         self.fleet_changed.emit()
         subject = tab_surface.EVERY_PORTFOLIO_SUBJECT if every else names[0]
         self._status_log.log(
@@ -823,13 +828,20 @@ class SimTradingTab(QWidget):
         self.battery_finished.emit(outcome)
 
     def _battery_portfolio_started(self, name: str, bots) -> None:
-        """Hold ``bots``, one portfolio's, as the fleet through
-        ``FleetSource.hold_battery_fleet``, fire ``fleet_changed`` so the
-        venues seat and the rows and the strip draw them, and write
-        ``battery_loaded_line``."""
+        """Empty the held fills through ``_begin_fills`` so the replay layer
+        marks this portfolio's alone, hold ``bots``, one portfolio's, as the
+        fleet through ``FleetSource.hold_battery_fleet``, fire
+        ``fleet_changed`` so the venues seat and the rows and the strip draw
+        them, and write ``battery_loaded_line`` with their budget."""
+        self._begin_fills()
         self._fleet_source.hold_battery_fleet(list(bots))
         self.fleet_changed.emit()
-        self._status_log.log(tab_surface.battery_loaded_line(name, bots), "info")
+        self._status_log.log(
+            tab_surface.battery_loaded_line(
+                name, bots, back_test.run_budget_usd(list(bots))
+            ),
+            "info",
+        )
 
     def _battery_portfolio_finished(self, name: str, run) -> None:
         """Write ``run``'s report line through ``log_report``; when the press
