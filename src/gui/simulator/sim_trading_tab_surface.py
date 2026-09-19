@@ -1,9 +1,11 @@
 """The Simulator tab's page view model, forked from ``trading_tab_surface``.
 
 ``build_view_model`` is Live's ``trading_tab_surface.build_view_model`` under
-``METHOD``, with each layer's corner holding ``way_in_buttons`` in place of the
-add button, ``clear_fleet_button`` then the two ways in the active run mode
-offers from ``sim.reserved_rows``, the Get Started card carrying the same two
+``METHOD``, with each layer's corner holding nothing in place of the add button
+and a way-in row above the exchange tab bar holding ``way_in_buttons`` while
+records are held, ``clear_fleet_button`` then the two ways in the active run
+mode offers from ``sim.reserved_rows`` then ``start_run_button``, the Get
+Started card carrying the mode's two
 buttons in its button position under ``placeholder_title_text`` and
 ``placeholder_hint_text`` with Clear Fleet above them while ``held`` records
 are held, the watchdog and the API-log listener not carried,
@@ -67,7 +69,9 @@ WAY_IN_TEXT = {
 #: The Activity Log line for a way-in whose run has not landed.
 WAY_IN_REFUSED_FORMAT = "{text} refused: {error}"
 
-CORNER_LAYOUT = {"margins_px": [0, 0, 0, 0], "spacing_px": 2}
+#: The way-in row above the exchange tab bar, at the corner's own margins and
+#: spacing; the tab bar's corner holds nothing.
+WAY_IN_ROW_LAYOUT = {"margins_px": [0, 0, 0, 0], "spacing_px": 2}
 
 #: The Get Started card's children, with the run mode's two way-ins where
 #: Live's card holds its add button.
@@ -181,7 +185,7 @@ YTD_MISSING_USAGE_FORMAT = "; {missing} manifest row(s) skipped, file missing"
 
 
 def clear_fleet_button() -> dict:
-    """The corner's Clear Fleet button, at the way-in buttons' size."""
+    """The way-in row's Clear Fleet button, at the way-in buttons' size."""
     return {
         "action": sim.CLEAR_FLEET_ACTION,
         "text": sim.CLEAR_FLEET_TEXT,
@@ -191,19 +195,38 @@ def clear_fleet_button() -> dict:
     }
 
 
-def way_in_buttons(mode: str = sim.MODES[0]) -> list:
-    """The corner's buttons as the page draws them: ``clear_fleet_button``
-    first, then the two ways in ``mode`` offers from ``sim.reserved_rows``."""
-    return [clear_fleet_button()] + [
-        {
-            "action": row["action"],
-            "text": row["text"],
-            "accessible_name": row["button_name"],
-            "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
-            "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
-        }
-        for row in sim.reserved_rows(mode)
-    ]
+def start_run_button() -> dict:
+    """The way-in row's Start Run button, at the way-in buttons' size."""
+    return {
+        "action": sim.START_RUN_ACTION,
+        "text": sim.START_RUN_TEXT,
+        "accessible_name": sim.button_name(sim.START_RUN_ACTION),
+        "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+        "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+    }
+
+
+def way_in_buttons(mode: str = sim.MODES[0], held: int = 0) -> list:
+    """The way-in row's buttons as the page draws them, while ``held``
+    records are held: ``clear_fleet_button`` first, then the two ways in
+    ``mode`` offers from ``sim.reserved_rows``, then ``start_run_button``;
+    an empty list with nothing held, so the row is absent and the card shows."""
+    if int(held or 0) <= 0:
+        return []
+    return (
+        [clear_fleet_button()]
+        + [
+            {
+                "action": row["action"],
+                "text": row["text"],
+                "accessible_name": row["button_name"],
+                "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+                "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+            }
+            for row in sim.reserved_rows(mode)
+        ]
+        + [start_run_button()]
+    )
 
 
 def way_in_refused_line(action: str, error: Any) -> str:
@@ -421,6 +444,21 @@ RUN_STOPPING_FORMAT = (
 )
 RUN_FAILED_FORMAT = "{mode} failed: {error}"
 RUN_THREAD_NAME = "sim-mode-run"
+
+#: The signal a Start Run press emits through ``signal_contract``: the press,
+#: whose count of the venue's scrumming rows reading ``running`` after must
+#: equal the run's bot count on ``START_OUTCOME_STARTED`` under Validation or
+#: Back Test and the count before otherwise.
+START_PRESSED_SIGNAL = "sim.run.start_pressed"
+START_OUTCOME_STARTED = "started"
+START_OUTCOME_IN_FLIGHT = "refused_in_flight"
+START_OUTCOME_NO_BOT = "no_bot"
+START_OUTCOME_CANCELLED = "cancelled"
+
+
+def rows_running(bots: Any) -> int:
+    """How many of ``bots`` carry ``BotState.RUNNING`` as their ``state``."""
+    return sum(1 for one in bots if one.state == BotState.RUNNING.value)
 
 
 def run_started_line(mode: str, exchange_id: Any, bots: int, budget_usd: float) -> str:
@@ -797,17 +835,18 @@ def layer_card(
     mode: str = sim.MODES[0],
     held: int = 0,
 ) -> dict:
-    """Live's ``layer_card`` with ``way_in_buttons`` and ``corner_layout`` added,
-    and the Get Started card asking for a fleet.
+    """Live's ``layer_card`` with ``way_in_buttons`` and ``way_in_row_layout``
+    added, and the Get Started card asking for a fleet.
 
     The card's ``placeholder`` keeps Live's frame and geometry; its title, its
     hint and its button position carry the Simulator's contents, the button
     position Clear Fleet while ``held`` records are held and the two ways in
-    ``mode`` offers.
+    ``mode`` offers. The way-in row's list holds Clear Fleet, the two ways in
+    and Start Run while ``held`` records are held, and nothing otherwise.
     """
     card = live.layer_card(key, exchanges, current)
-    card["way_in_buttons"] = way_in_buttons(mode)
-    card["corner_layout"] = dict(CORNER_LAYOUT)
+    card["way_in_buttons"] = way_in_buttons(mode, held)
+    card["way_in_row_layout"] = dict(WAY_IN_ROW_LAYOUT)
     placeholder = card["placeholder"]
     placeholder["order"] = list(PLACEHOLDER_ORDER)
     placeholder["title"]["text"] = placeholder_title_text(card["label"])

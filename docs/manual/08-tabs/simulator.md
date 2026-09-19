@@ -113,6 +113,10 @@ above its two ways in only while a fleet is held; with nothing held the card
 offers the two ways in alone. The section "Clear Fleet empties the held fleet"
 under "How each part was built" describes the press.
 
+Since the way-in row landed, Clear Fleet and the two ways in draw on a row
+above the exchange tab row, not in the corner, and only while a fleet is
+held; the paragraph after the next block describes that row.
+
 `src/gui/simulator/sim_trading_tab_surface.py` — the corner's list
 
 ```python
@@ -131,6 +135,66 @@ def way_in_buttons(mode: str = sim.MODES[0]) -> list:
     ]
 ```
 
+The buttons the corner held draw on their own row above the exchange tab
+row: Clear Fleet, the mode's two ways in, then Start Run, in that order from
+the left, each at the corner button's size. The corner itself holds nothing,
+so the exchange tabs take the full row and a third venue's tab has room. The
+row draws only while a fleet is held. With no fleet held the row is absent
+and the Get Started card offers the mode's two ways in. A press on Start Run
+starts the active mode's run over the fleet on the venue shown: the
+Validation rerun, the Back Test walk, or the Portfolio Battery chooser and its
+run. The card never holds Start Run. The section "Start Run starts the active
+mode's run from the way-in row" under "How each part was built" describes the
+row and the press.
+
+`src/gui/simulator/sim_trading_tab.py` — the row above the tab bar
+
+```python
+            way_in_row_widget = QWidget()
+            way_in_row = QHBoxLayout(way_in_row_widget)
+            way_in_row.setContentsMargins(*tab_surface.WAY_IN_ROW_LAYOUT["margins_px"])
+            way_in_row.setSpacing(tab_surface.WAY_IN_ROW_LAYOUT["spacing_px"])
+            way_in_row.addStretch(1)
+            way_in_row_widget.setVisible(False)
+            page_layout.addWidget(way_in_row_widget)
+```
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the row's last button
+
+```python
+def start_run_button() -> dict:
+    """The corner's Start Run button, at the way-in buttons' size."""
+    return {
+        "action": sim.START_RUN_ACTION,
+        "text": sim.START_RUN_TEXT,
+        "accessible_name": sim.button_name(sim.START_RUN_ACTION),
+        "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+        "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+    }
+```
+
+The row's list takes the held count and is empty at zero, so the row is not
+drawn; above zero it is Clear Fleet, the mode's two and Start Run.
+
+```python
+    if int(held or 0) <= 0:
+        return []
+    return (
+        [clear_fleet_button()]
+        + [
+            {
+                "action": row["action"],
+                "text": row["text"],
+                "accessible_name": row["button_name"],
+                "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
+                "minimum_height_px": WAY_IN_BUTTON_HEIGHT_PX,
+            }
+            for row in sim.reserved_rows(mode)
+        ]
+        + [start_run_button()]
+    )
+```
+
 ### The two tables and the command bar
 
 The Scrumming Bots table is the forked `SimBotStatusTable`. It hides until a
@@ -141,6 +205,21 @@ tables the command bar holds Start, Pause, Stop, Restart and Delete. Pause,
 Restart and Stop move the selected bot's state through the Simulator's bot
 manager, and the row reads it back. Delete asks Live's confirmation and removes
 the record. Start is the run's button in Validation and Back Test.
+
+Since Start Run landed on the way-in row, Start on the command bar moves the
+selected bot's state in every mode, as Pause, Stop and Restart do, and starts
+no run. The run's button is Start Run on the way-in row. While a run is in flight,
+Stop on one of its rows ends it and every other bar press writes the in-flight
+line.
+
+`src/gui/simulator/sim_trading_tab.py` — the bar's Start, every mode
+
+```python
+        if command == "start":
+            try:
+                moved = self._bot_manager.start(bot_id) != bot.state
+                self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
+```
 
 `src/simulator/sim_bot_manager.py` — the states the bar moves
 
@@ -282,6 +361,22 @@ ALLOWED_ACTIONS = (TABLET_ACTION, YTD_ACTION)
 ```
 
 ### The three run modes and what each writes
+
+Every mode's run starts from Start Run on the way-in row. Under Validation and
+Back Test the press starts the run the two paragraphs below describe, which
+Start on the command bar started before the row's button landed. Under
+Portfolio Battery the press opens Run Portfolio's chooser, one portfolio and
+one span, and runs it. One handler on each host, `_start_run_pressed`, reads
+the mode and the venue shown.
+
+`src/gui/simulator/sim_trading_tab.py` — the press by mode
+
+```python
+        elif mode in tab_surface.RUN_MODES:
+            outcome = self._start_run(venue, mode)
+        else:
+            outcome = self._run_battery(surface.RUN_PORTFOLIO_ACTION)
+```
 
 Validation. With Validation active, Start on the command bar moves every
 scrumming bot on the page to running, reruns the gate chain on the candle each
@@ -5694,6 +5789,14 @@ every `_sync_exchange_tabs`, so the page's `WayInButtons` and
 `src/gui/web/sim_trading_tab.js`. The button's accessible name is
 `sim-clear-fleet` at the corner and `sim-clear-fleet-card` on the card.
 
+Since the way-in row landed, that list draws on a row above the exchange tab
+bar in both builds, not in the tab bar's corner, and it is empty with no
+fleet held, so the row is absent and the card alone offers the ways in. The
+Qt host builds the row in `SimTradingTab._make_layer` and the React page draws
+it in `WayInButtons` above the tab bar. The corner holds nothing. The section
+"Start Run starts the active mode's run from the way-in row" describes the
+row.
+
 `src/gui/simulator/sim_trading_tab_surface.py` — the card's list
 
 ```python
@@ -5828,6 +5931,185 @@ and opened no box. A Back Test started with its worker held open read
 Fleet, opened no box and left five held. `bot_state.json` hashed identical
 after every step in every run, and a byte appended to a copy of it moved the
 hash. The Watchdog Archetype read every emit in both hosts wired to
+`signal_contract`.
+
+## Start Run starts the active mode's run from the way-in row
+
+Start Run is one button on the way-in row above the exchange tab bar, drawn
+under every mode while a fleet is held, to the right of the mode's two ways
+in. A press starts the active
+mode's run over the fleet on the venue shown. Start on the command bar no
+longer starts a run in any mode; it moves the selected bot's state, as Pause,
+Stop and Restart do. Both builds draw the button from one surface list and
+both hosts run one handler, `_start_run_pressed`.
+
+### The button on the way-in row
+
+The row's list is `way_in_buttons` in
+`src/gui/simulator/sim_trading_tab_surface.py`, which takes the held count:
+empty at zero, otherwise Clear Fleet first, then the run mode's two ways in,
+then Start Run, each at Live's corner-button size, 140 px wide and 24 px
+tall. The Qt host hands the count in `SimTradingTab._draw_way_ins`, which
+runs again at the end of every `_sync_exchange_tabs`; the React host hands
+it through `layer_card`, which the tab payload carries on every `show_tab`.
+The button's accessible name is `sim-start-run`. The Get Started card never
+holds it: the card draws on a layer with no venue, and a held fleet seats its
+venue.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the row's list
+
+```python
+def way_in_buttons(mode: str = sim.MODES[0], held: int = 0) -> list:
+    """The way-in row's buttons as the page draws them, while ``held``
+    records are held: ``clear_fleet_button`` first, then the two ways in
+    ``mode`` offers from ``sim.reserved_rows``, then ``start_run_button``;
+    an empty list with nothing held, so the row is absent and the card shows."""
+```
+
+### The way-in row above the exchange tabs
+
+The row is a widget of its own above each layer's exchange tab bar, so the
+tabs and the buttons never share a line and a third or fourth venue's tab
+has room. The Qt host builds it in `SimTradingTab._make_layer` as a
+`QWidget` with a horizontal layout at margins 0 and spacing 2, added to the
+page's column before the tab widget, hidden while the list is empty; the tab
+widget gets no corner widget. The React page draws it in `WayInButtons` as
+the first child of the tab widget's column, above the tab bar, wrapping to a
+second line where the pane is narrower than the buttons, and draws nothing
+while the list is empty; the tab bar keeps its tabs and the stretch after
+them. Both hosts read the row's margins and spacing from one place.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the row's layout
+
+```python
+WAY_IN_ROW_LAYOUT = {"margins_px": [0, 0, 0, 0], "spacing_px": 2}
+```
+
+`src/gui/web/sim_trading_tab.js` — the row above the bar
+
+```javascript
+      element(
+        DIV_TAG,
+        widgetProps,
+        element(WayInButtons, { layer: layer, actions: props.actions }),
+        element(DIV_TAG, barProps, barTabs, element(DIV_TAG, spacerProps, null)),
+        element(DIV_TAG, bodyProps, body)
+      )
+```
+
+Read with three venues seated, `coinbase`, `yahoo` and `kraken`, in both
+builds: at a 1400 px window every tab and every button had its own rect, no
+two overlapping, the row's bottom edge above the bar's top edge, and the
+tab bar's corner empty, under all three modes. The Qt window's floor is its
+layout minimum, 1145 px wide in the reading, and the row fits on one line
+there. The React window shrinks to 900 px, where the pane is 476 px wide and
+Start Run wraps to a second line; every tab and button stayed inside the
+pane with no overlap.
+
+### The press by mode
+
+A press reaches `_way_in` on either host and then `_start_run_pressed`. The
+handler reads the tab's run mode and the venue on show. Under Validation and
+Back Test it runs `_start_run` over every held scrumming bot on that venue,
+the run the section "Start runs Validation and Back Test from the command
+bar" describes: each bot to running, the started line, the worker thread, the
+trade lines, the report and the report line, every bot to stopped. Under
+Portfolio Battery it runs `_run_battery` under Run Portfolio's action, so the
+chooser opens with the portfolio and span rows, and the run follows as the
+section "The run from the corner" describes. Run Portfolio and Run Every
+Portfolio keep their own buttons; Start Run under the Battery is a third way
+to the same chooser, because one button means one thing in every mode.
+
+`src/gui/simulator/sim_trading_tab.py` — the handler
+
+```python
+    def _start_run_pressed(self) -> None:
+        venue = self._current_venue_id()
+        mode = self._mode
+        run_bots = self._run_bots(venue)
+        running_before = tab_surface.rows_running(run_bots)
+```
+
+`_start_run` takes the venue id where it took a selected bot, because the
+corner has no selected row; the run it starts is unchanged.
+
+```python
+    def _start_run(self, exchange_id: str, mode: str) -> str:
+```
+
+### Start on the bar moves one bot
+
+The dispatch unit 31 put at the top of `_on_bot_command`, which read the
+mode and started the run on Start, is removed from both hosts. Start on the
+bar now reaches the state move in every mode: `SimBotManager.start` on the
+selected bot, the running line, the notification and `fleet_changed`. The
+in-flight guard above it stays: while a run is in flight, Stop on one of its
+rows ends the run and every other bar press writes the in-flight line.
+
+### A second press in flight
+
+Start Run is never disabled, because Live's command bar never disables Start.
+A press while a Validation or Back Test run is in flight writes the in-flight
+line naming Start Run as the command that waits, and starts nothing. A press
+while a Portfolio Battery run is in flight writes the Battery's in-progress
+line. A press on a venue holding no scrumming bot writes the no-bot line.
+
+```
+A Back Test run is in flight over 24 bot(s); Stop on one of its rows ends it, and Start Run waits for it.
+```
+
+### The signal a Start Run press emits
+
+Every press emits `sim.run.start_pressed` through `signal_contract.emit`,
+bound in each host as `_pin_emit`, and flushes the process sink after it. The
+signal carries the outcome, one of started, refused in flight, no bot or
+cancelled, and the count of the venue's scrumming rows reading running after
+the press, against the count the outcome implies: every run bot after a
+started Validation or Back Test, the count before the press otherwise. The
+mode, the venue, the held count and the run's bot count travel in its
+context.
+
+`src/gui/simulator/sim_trading_tab.py` — the signal
+
+```python
+        _pin_emit(
+            tab_surface.START_PRESSED_SIGNAL,
+            actual={"outcome": outcome, "rows_running": running_after},
+            expected={"outcome": outcome, "rows_running": expected_running},
+            context=context,
+        )
+```
+
+### What the Start Run reading measured
+
+Before, in both builds over a scratch home holding a `bot_state.json` of 24
+scrumming bots on `coinbase`, one 2,000-candle 5m tablet per pair, four
+fills per pair in YTD files, one fired gate row per fill, and a scratch RA
+root holding five 2022 tablets: Import Live Fleet held 24 rows; the corner
+read Clear Fleet then the mode's two under every mode; no button named
+`sim-start-run` existed under any mode, and a press asked for it read no
+button in Qt and no element in React.
+
+After, in both builds over the same home: the way-in row read Clear Fleet,
+the mode's two, then `sim-start-run` under every mode, each 140 by 24, and
+was absent with no fleet held at open and after Clear Fleet. Start on the
+bar with the first row selected, under each of the three modes, wrote the
+running line, moved that one row to RUNNING and no other, started no thread
+and wrote no report; Stop moved it to STOPPED. Start Run under Validation
+moved all 24 rows to RUNNING, wrote 96 trade lines and six run lines, wrote
+the Validation report and named it on the Activity Log, and the report read
+missing 0, extra 0, differs 0, variant differs 0 over 96 rows. Start Run
+under Back Test pressed twice fast wrote the started line and then the
+in-flight line naming Start Run, moved all 24 rows to RUNNING, wrote 17 trade
+lines and the Back Test report. Start Run under Portfolio Battery opened the
+chooser titled Run Portfolio with 35 portfolios and seven spans; CRYPTO_BLUE
+over 2022 wrote 45 trade lines, the Battery's eleven lines and the Battery
+report. Four signal rows landed in `session.jsonl`, every one `ok` true:
+started under Validation with 24 rows running, started and refused in flight
+under Back Test, started under Portfolio Battery with 0 rows running. Every
+watched file, 59 of 59, hashed identical after every step in every run, and
+a byte appended to a copy of `bot_state.json` moved the hash. No socket left
+loopback. The Watchdog Archetype read every emit in both hosts wired to
 `signal_contract`.
 
 ## The widget the rebuild replaced
