@@ -970,6 +970,8 @@ if _HAS_WEBENGINE:
             self._tablet_key: str = ""
             self._replay: dict = {}
             self._choices: list = []
+            self._fills: list[SimTrade] = []
+            self._battery_outcome: Any = None
             self._bot_manager = SimBotManager(self._fleet_source)
             self._theme = theme
             self._state = tab_surface.SimTradingTabState()
@@ -1039,6 +1041,23 @@ if _HAS_WEBENGINE:
         def replay(self) -> dict:
             """The ``replay_feed`` the two windows last drew."""
             return dict(self._replay)
+
+        def fills(self) -> list[SimTrade]:
+            """Every ``SimTrade`` the run in flight or last finished handed
+            ``log_trade``, in fill order; empty before the first run."""
+            return list(self._fills)
+
+        def battery_outcome(self) -> Any:
+            """The ``BatteryRun`` the last Battery finished with, or None."""
+            return self._battery_outcome
+
+        def replay_source(self) -> TabletSource:
+            """The tablet reader the replay layer lists and draws from:
+            ``battery_tablet_source`` under ``MODE_PORTFOLIO_BATTERY``,
+            ``tablet_source`` otherwise."""
+            if self.mode() == sim.MODE_PORTFOLIO_BATTERY:
+                return self._battery_tablet_source
+            return self._tablet_source
 
         def models(self) -> dict:
             """A copy of the models the page was built from, empty before that."""
@@ -1318,6 +1337,7 @@ if _HAS_WEBENGINE:
             plan = portfolio_battery.plan_run(
                 names, self._battery_tablet_source, self._fleet_source.bots()
             )
+            self._begin_fills()
             self._fleet_source.hold_battery_fleet(plan.bots)
             self.fleet_changed.emit()
             subject = tab_surface.EVERY_PORTFOLIO_SUBJECT if every else names[0]
@@ -1364,11 +1384,15 @@ if _HAS_WEBENGINE:
 
         def _take_battery(self, outcome) -> None:
             """Write the finished run's ``lines`` and its report line through
-            ``log_report`` on the GUI thread."""
+            ``log_report`` on the GUI thread, hold ``outcome`` for the replay
+            layer's improvement figure, and redraw the layer on the run's last
+            bot through ``_refresh_replay``."""
+            self._battery_outcome = outcome
             for line in outcome.lines:
                 self.log(line, "info")
             if outcome.report is not None:
                 self.log_report(outcome.report)
+            self._refresh_replay(follow_run=True)
 
         def _generate_from_ytd(self) -> None:
             """Generate From YTD: one line and nothing held unless
@@ -1528,6 +1552,7 @@ if _HAS_WEBENGINE:
                 "bot_ids": [one.bot_id for one in bots],
                 "stopper": "",
             }
+            self._begin_fills()
             for one in bots:
                 self._bot_manager.start(one.bot_id)
             self.fleet_changed.emit()
@@ -1615,17 +1640,27 @@ if _HAS_WEBENGINE:
                 self._notify(f"Bot {stopper} STOPPED", "info")
                 get_sound_engine().play_state_change()
             if outcome is None:
+                self._refresh_replay(follow_run=True)
                 return
             for line in outcome.lines:
                 self.log(line, "info")
             if outcome.report is not None:
                 self.log_report(outcome.report)
+            self._refresh_replay(follow_run=True)
+
+        def _begin_fills(self) -> None:
+            """Empty ``_fills`` and drop ``_battery_outcome`` as a run starts,
+            so the replay layer marks that run alone."""
+            self._fills = []
+            self._battery_outcome = None
 
         def log_trade(self, trade: SimTrade) -> None:
             """One Activity Log line per ``SimTrade``: ``trade_line`` under
             ``trade_stamp`` through ``SimStatusLogModel.log_at`` at
             ``TRADE_LINE_LEVEL``, pushed by ``_push_pending_log`` one
-            ``TRADE_PUSH_INTERVAL_MS`` later."""
+            ``TRADE_PUSH_INTERVAL_MS`` later, and the trade appended to
+            ``_fills`` for the replay layer's marks."""
+            self._fills.append(trade)
             self._log.log_at(
                 tab_surface.trade_stamp(trade),
                 tab_surface.trade_line(trade),
@@ -2096,16 +2131,25 @@ if _HAS_WEBENGINE:
             chosen = str(self._panel.selected_bot_id or "")
             return self._fleet_source.bot_for(chosen) if chosen else None
 
-        def _refresh_replay(self, follow_bot: bool = False) -> dict:
-            """Rebuild the chooser's items from ``tablet_choices`` over the disk
-            and the held fleet, keep the chosen key when it is still listed or
-            take ``default_tablet_key`` for the selected bot, then
+        def _last_fill_bot(self):
+            last = self._fills[-1].bot_id if self._fills else ""
+            return self._fleet_source.bot_for(last) if last else None
+
+        def _refresh_replay(
+            self, follow_bot: bool = False, follow_run: bool = False
+        ) -> dict:
+            """Rebuild the chooser's items from ``tablet_choices`` over
+            ``replay_source`` and the held fleet, keep the chosen key when it is
+            still listed or take ``default_tablet_key`` for the run's last bot
+            under ``follow_run`` and for the selected bot otherwise, then
             ``_feed_replay``."""
-            choices = sim.tablet_choices(self._tablet_source, self._fleet_source.bots())
+            source = self.replay_source()
+            choices = sim.tablet_choices(source, self._fleet_source.bots())
             keys = [str(one["key"]) for one in choices]
-            if follow_bot or self._tablet_key not in keys:
+            if follow_run or follow_bot or self._tablet_key not in keys:
+                bot = self._last_fill_bot() if follow_run else None
                 wanted = sim.default_tablet_key(
-                    self._tablet_source, self._selected_bot()
+                    source, bot if bot is not None else self._selected_bot()
                 )
                 self._tablet_key = (
                     wanted if wanted in keys else (keys[0] if keys else "")
@@ -2114,10 +2158,21 @@ if _HAS_WEBENGINE:
             return self._feed_replay()
 
         def _feed_replay(self) -> dict:
-            """Build ``replay_feed`` for the chosen key and push it as the tab's
+            """Build ``replay_feed`` for the chosen key, the run's fills marked
+            on the playback and the figures beside it, push it as the tab's
             ``replay`` through ``show_tab``, so the page redraws the chooser, the
-            button and the two windows."""
-            feed = sim.replay_feed(self._tablet_source, self._tablet_key)
+            button, the figures and the two windows, and emit
+            ``MARKS_DRAWN_SIGNAL`` with the pushed state against the feed."""
+            last = self._fills[-1].bot_id if self._fills else ""
+            feed = sim.replay_feed(
+                self.replay_source(),
+                self._tablet_key,
+                bots=self._fleet_source.bots(),
+                fills=self._fills,
+                outcome=self._battery_outcome,
+                last_bot_id=last,
+                selected_bot_id=str(self._panel.selected_bot_id or ""),
+            )
             self._replay = feed
             self.show_tab(
                 {
@@ -2126,6 +2181,20 @@ if _HAS_WEBENGINE:
                     )
                 }
             )
+            pushed = dict(self._state.replay or {})
+            _pin_emit(
+                tab_surface.MARKS_DRAWN_SIGNAL,
+                actual=tab_surface.marks_reading(
+                    self._tablet_key, pushed.get("playback"), pushed.get("figures")
+                ),
+                expected=tab_surface.marks_reading(
+                    self._tablet_key, feed["playback"], feed["figures"]
+                ),
+                context={"layer": self._state.replay_layer, "mode": self.mode()},
+            )
+            sink = _pin_sink()
+            if sink is not None:
+                sink.flush()
             return feed
 
         def _choose_tablet(self, key: str) -> dict:
@@ -2150,7 +2219,7 @@ if _HAS_WEBENGINE:
                 (
                     one
                     for one in sim.tablet_choices(
-                        self._tablet_source, self._fleet_source.bots()
+                        self.replay_source(), self._fleet_source.bots()
                     )
                     if str(one["key"]) == self._tablet_key
                 ),
@@ -2159,7 +2228,7 @@ if _HAS_WEBENGINE:
             if choice is None:
                 self.log(tab_surface.RETRIEVAL_NO_CHOICE_TEXT, "warning")
                 return
-            entry = self._tablet_source.entry_for(self._tablet_key)
+            entry = self.replay_source().entry_for(self._tablet_key)
             since_ms, until_ms = tablet_retrieval.retrieval_span(entry)
             if since_ms > until_ms:
                 self.log(
@@ -2178,7 +2247,7 @@ if _HAS_WEBENGINE:
                 "file": tablet_filename(
                     asset, tablet_retrieval.TIMEFRAME, year, exchange_id=exchange_id
                 ),
-                "root": self._tablet_source.root(),
+                "root": self.replay_source().root(),
             }
             self.log(
                 tab_surface.retrieval_started_line(
@@ -2193,7 +2262,13 @@ if _HAS_WEBENGINE:
             )
             self._retrieval_thread = threading.Thread(
                 target=self._compute_retrieval,
-                args=(asset, exchange_id, since_ms, until_ms),
+                args=(
+                    asset,
+                    exchange_id,
+                    since_ms,
+                    until_ms,
+                    self._retrieval["root"],
+                ),
                 name="sim-tablet-retrieval",
                 daemon=True,
             )
@@ -2201,16 +2276,22 @@ if _HAS_WEBENGINE:
             self._feed_replay()
 
         def _compute_retrieval(
-            self, asset: str, exchange_id: str, since_ms: int, until_ms: int
+            self,
+            asset: str,
+            exchange_id: str,
+            since_ms: int,
+            until_ms: int,
+            root: Any,
         ) -> None:
-            """Run ``tablet_retrieval.retrieve`` over the tablet root and the
-            connector and hand the ``RetrievalOutcome`` to the GUI thread
-            through ``retrieval_finished``; a walk that raises hands one
-            carrying the error."""
+            """Run ``tablet_retrieval.retrieve`` over ``root``, the replay
+            layer's tablet root at the press, and the connector and hand the
+            ``RetrievalOutcome`` to the GUI thread through
+            ``retrieval_finished``; a walk that raises hands one carrying the
+            error."""
             try:
                 outcome = asyncio.run(
                     tablet_retrieval.retrieve(
-                        self._tablet_source.root(),
+                        root,
                         self._connector,
                         asset,
                         exchange_id,
@@ -2269,7 +2350,7 @@ if _HAS_WEBENGINE:
                 "error" if outcome.refused else "success",
             )
             written = sim.tablet_for(
-                self._tablet_source,
+                self.replay_source(),
                 outcome.exchange_id,
                 outcome.asset,
                 tablet_retrieval.TIMEFRAME,

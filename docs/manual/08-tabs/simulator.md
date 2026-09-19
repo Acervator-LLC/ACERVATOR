@@ -7932,3 +7932,314 @@ files at `1d`, `1w` and `1M`. Every copied daily file and `bot_state.json`
 hashed identical after every press, with a planted byte moving the hash; the
 operator's RA root listed 414 entries before and after. No bot was constructed
 and no socket left loopback.
+
+## The playback marks each fill on its candle and the header reads the opposing-trade distance
+
+After a run, the Stone Tablet Playback window draws one glyph on the candle
+each fill landed on, at the fill's price, for the bot the chooser shows. A
+scrum draws `dissolve`, a triangle pointing down as a gold outline. A fold
+draws `reform`, a triangle pointing up filled blue. The layer's header carries
+a second line that reads the shown bot, the count of fold-to-scrum pairs, the
+mean and the median opposing-trade distance, and the estimated improvement.
+The operator's words, 2026-09-18: *"Just need to make sure these play back in
+the window with it marking where trades could have occurred. Not sure if
+relevant to even draw a VWAP chart but total estimated improvement in terms of
+% would be useful and can measure distances between opposing trades without
+having to know amounts that would have been traded."*
+
+```mermaid
+flowchart LR
+    walk[back_test.walk] -->|SimTrade with scrum_price, timeframe| signal[battery_trade / run_trade]
+    signal --> log_trade[log_trade: the Activity line, and _fills]
+    finished[battery_finished / run_finished] --> refresh[_refresh_replay follow_run]
+    refresh --> feed[replay_feed: shown_bot, fills_for, playback_payload, replay_figures]
+    feed --> qt[PlaybackView marks and the figures label]
+    feed --> page[PlaybackWindow polygons and the figures span]
+    feed --> pin[sim.replay.marks_drawn]
+```
+
+### The fills the host keeps
+
+Each host holds every `SimTrade` a run hands it, in fill order, on `_fills`.
+`log_trade` appends the trade beside the Activity line it writes, so a Battery
+fill and a Back Test fill reach the list by the one path both already took.
+The list empties when a run starts, in `_run_battery` after the chooser
+accepts and in `_start_run`, so a Back Test's marks never sit on a Battery's
+tape. The Battery's finished `BatteryRun` is held beside the list for the
+improvement figure. `fills` and `battery_outcome` answer both to the window.
+
+`src/gui/simulator/sim_trading_tab.py` — the fill kept
+
+```python
+    def log_trade(self, trade: SimTrade) -> None:
+        """One Activity Log line per ``SimTrade``: ``trade_line`` under
+        ``trade_stamp`` through ``SimStatusLog.log_at`` at ``TRADE_LINE_LEVEL``,
+        and the trade appended to ``_fills`` for the replay layer's marks."""
+        self._fills.append(trade)
+```
+
+### The scrum a fold re-entered against
+
+`SimTrade` carries two more fields. `scrum_price` is the scrum's own price on
+a scrum. On a fold it is `plan_source_price` over the fold's plan: each source
+tranche's `ref`, the price its scrum sold at, weighted by the dollars the plan
+takes from it. One fold that consumes two tranches reads their weighted
+centre, and the pair count is one per fold. Zero names no scrum, which is what
+a Validation rerun's fill carries, so a rerun forms no pair. `timeframe` is
+the `ta_timeframe` the walk ran at. The Battery walks a stock bot at `1d`,
+`1w` and `1M` under one bot id, and a weekly fill's stamp is a Monday's daily
+candle at the week's close; the daily tape marks the `1d` walk alone.
+
+`src/simulator/back_test.py` — the record
+
+```python
+@dataclass(frozen=True)
+class SimTrade:
+    """One scrum sell or fold buy the tape produced, with ``scrum_price`` the
+    scrum's own ``price`` on a scrum and ``plan_source_price`` over the
+    tranches consumed on a fold, zero naming no scrum. ``timeframe`` is the
+    ``ta_timeframe`` the walk ran at, empty when unknown."""
+
+    bot_id: str
+    symbol: str
+    side: str
+    ts_ms: int
+    price: float
+    units: float
+    usd: float
+    fee_usd: float
+    scrum_price: float = 0.0
+    timeframe: str = ""
+```
+
+`src/trading/scrumming/sizing.py` — the fold's scrum price
+
+```python
+def plan_source_price(plan: list) -> float:
+    """The scrum price a fold under ``plan`` re-enters against: each source
+    tranche's ``ref`` weighted by the USD the plan takes from it; zero for an
+    empty ``plan`` or one taking no USD."""
+```
+
+### The distance arithmetic
+
+The opposing-trade distance of one pair is the scrum price less the fold
+price, as a percentage of the scrum price. A fold that re-entered below its
+scrum reads positive; one above reads negative. Over a run the header reads
+the count of pairs, the mean and the median. The two functions sit in
+`sizing.py` beside the arithmetic the same fills were sized under, and read
+no record: the pairs come from `trade_pairs` in the surface, each fold whose
+`scrum_price` is above zero. The improvement is the Harvest-Fold end less the
+HODL end as a percentage of the HODL end, `baseline_usd` and
+`accumulation_usd` of the shown bot's `SymbolRun` at the tape's timeframe,
+the figure the report's Battery section carries. A run with no Battery
+outcome reads an em dash there.
+
+`src/trading/scrumming/sizing.py` — one pair, and the run's figures
+
+```python
+def opposing_trade_distance_pct(scrum_price: float, fold_price: float) -> float:
+    """``scrum_price`` less ``fold_price`` as a percentage of ``scrum_price``,
+    positive for a fold that re-entered below its scrum."""
+    return 100.0 * (float(scrum_price) - float(fold_price)) / float(scrum_price)
+
+
+def opposing_trade_distances(pairs: Sequence[Sequence[float]]) -> dict:
+    """``opposing_trade_distance_pct`` over each ``(scrum_price, fold_price)``
+    in ``pairs`` whose scrum price is above zero: the ``count``, the
+    ``mean_pct``, the ``median_pct`` and the ``distances_pct``, the two figures
+    None when ``count`` is zero."""
+```
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the improvement
+
+```python
+def improvement_pct(hodl_usd: float, harvest_fold_usd: float) -> Optional[float]:
+    """``harvest_fold_usd`` less ``hodl_usd`` as a percentage of ``hodl_usd``;
+    None when ``hodl_usd`` is not above zero."""
+```
+
+### The two glyphs
+
+One definition, `MARK_GLYPHS`, names both marks, and both hosts read it: the
+Qt view in Python, the page off the playback payload. Each glyph is three
+corners in a unit mark, y down, centred on the fill. `dissolve` is the scrum:
+the corners `(-0.5, -0.5)`, `(0.5, -0.5)`, `(0, 0.5)`, an outline. `reform` is
+the fold: `(-0.5, 0.5)`, `(0.5, 0.5)`, `(0, -0.5)`, filled. A mark is one
+candle column wide and a twentieth of the pane tall: 6 px by 13 px on the
+624 px pane at 1400, 4 px by 12 px on the 378 px pane at the floor. The
+colours are `--sim-mark-scrum`, Live's gold, and `--sim-mark-fold`, Live's
+blue, the two tokens the Charts tab colours its scrum and fold markers with.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the glyphs
+
+```python
+DISSOLVE_GLYPH = "dissolve"
+REFORM_GLYPH = "reform"
+MARK_GLYPHS = {
+    back_test.SCRUM: {
+        "name": DISSOLVE_GLYPH,
+        "points": [[-0.5, -0.5], [0.5, -0.5], [0.0, 0.5]],
+        "filled": False,
+    },
+    back_test.FOLD: {
+        "name": REFORM_GLYPH,
+        "points": [[-0.5, 0.5], [0.5, 0.5], [0.0, -0.5]],
+        "filled": True,
+    },
+}
+MARK_WIDTH_RATIO = 1.0
+MARK_HEIGHT_FRACTION = 0.05
+MARK_OUTLINE_PX = 1.5
+```
+
+### The marks on the payload
+
+`playback_payload` takes the shown bot's fills beside the candles and answers
+`marks`: one per fill whose stamp is a candle's stamp in the window, carrying
+the candle's index and x, the price's y over the window's bounds, the side,
+the scrum price and the glyph name. A fill on a candle outside the window is
+counted in `fills` and not in `mark_count`. The Qt view draws each mark as a
+polygon after the candles; the page draws one `polygon` element per mark with
+`data-side`, `data-glyph`, `data-price` and `data-candle-index`, its outline
+kept at pixel width under the window's non-uniform scale.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — one mark
+
+```python
+def mark_shapes(
+    candles: Sequence[Sequence[float]],
+    fills: Sequence[Any],
+    low: float,
+    high: float,
+) -> list[dict]:
+    """One mark per fill in ``fills`` whose ``ts_ms`` is a candle's stamp in
+    ``candles``: the candle's ``index`` and ``x``, the fill's price as ``y``
+    over ``low`` and ``high``, its ``side`` and the ``MARK_GLYPHS`` name."""
+```
+
+`src/gui/simulator_tab.py` — the Qt polygon
+
+```python
+            polygon = QPolygonF(
+                [
+                    QPointF(centre_x + dx * mark_w, centre_y + dy * mark_h)
+                    for dx, dy in glyph["points"]
+                ]
+            )
+            painter.setPen(QPen(colour, outline))
+            painter.setBrush(QBrush(colour) if glyph["filled"] else Qt.NoBrush)
+            painter.drawPolygon(polygon)
+```
+
+### The chooser reads the mode's tablet root
+
+The replay layer lists and draws the tablets of the mode in force.
+`replay_source` answers the Battery's RA reader under Portfolio Battery and
+the live-fleet reader otherwise, and `_refresh_replay`, `_feed_replay` and the
+retrieval press read it, so after a Battery run over a stock portfolio the
+chooser lists each bot's daily file by its key, `SPY_1d_2024_yahoo`, and a
+retrieval press writes under the root the chooser was read from. Before this
+change the layer read the live-fleet root in every mode and listed
+`SPY_5m_yahoo — no tablet` after the same run.
+
+`src/gui/simulator/sim_trading_tab.py` — the source by mode
+
+```python
+    def replay_source(self) -> TabletSource:
+        """The tablet reader the replay layer lists and draws from:
+        ``battery_tablet_source`` under ``MODE_PORTFOLIO_BATTERY``,
+        ``tablet_source`` otherwise."""
+        if self._mode == surface.MODE_PORTFOLIO_BATTERY:
+            return self._battery_tablet_source
+        return self._tablet_source
+```
+
+The chooser names a tablet, and `shown_bot` names the bot whose fills the
+tablet marks: of the held bots on the tablet's market, the run's last-fill
+bot, else the panel's selected bot, else the lowest bot id. At a run's end
+both hosts refresh the layer with `follow_run`, so the chooser defaults to the
+last fill's bot; a chooser change draws the other bot's marks and figures.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the shown bot
+
+```python
+def shown_bot(
+    bots: Sequence[Any],
+    asset: str,
+    exchange_id: str,
+    last_bot_id: str = "",
+    selected_bot_id: str = "",
+) -> Any:
+    """The bot whose fills the playback marks for a tablet on ``asset`` and
+    ``exchange_id``: of the ``bots`` on that market, the one ``last_bot_id``
+    names, else the one ``selected_bot_id`` names, else the lowest ``bot_id``;
+    None with no bot on the market."""
+```
+
+### The header's figures
+
+The figures sit on the header's second line in both builds. The first line's
+fixed-width chooser and the retrieval button leave 180 px at 1400, measured,
+and the line needs about 470. The Qt label wraps at the floor; the page's span
+takes the header's full width under its wrapping row. With no run held the
+line reads `no run`.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the line
+
+```python
+REPLAY_FIGURES_FORMAT = (
+    "{bot_id} · {pairs} pair{plural} · distance mean {mean} · median {median} · "
+    "improvement {improvement}"
+)
+```
+
+### When the marks draw
+
+The feed runs where it ran before: at build, on every `fleet_changed`, on the
+flip, on the chooser's change, when the panel's bot changes and after a
+retrieval. Two moments are added: the run's end, `_take_battery` and
+`_take_run`, with the chooser moved to the run's last bot. Every draw emits
+`sim.replay.marks_drawn` through `signal_contract` with the view's payload
+read back against the feed's: the tablet, the bot, the marks drawn, the fills
+handed, the pairs and the three percentages, on both sides.
+
+`src/gui/simulator/sim_trading_tab_surface.py` — the emit row's figures
+
+```python
+def marks_reading(key: str, playback: Any, figures: Any) -> dict:
+    """The eight figures ``MARKS_DRAWN_SIGNAL`` carries on each side: the
+    tablet ``key``, the bot, the marks drawn, the fills handed, the pairs and
+    the three percentages, read off one ``playback`` payload and its
+    ``figures``."""
+```
+
+### What the marks reading measured
+
+Read off the running program in both builds, scratch home, every socket but
+loopback refused, a scratch RA root holding EQUITY_MACRO's two daily files
+trimmed to 100 candles each, SPY's first hundred of 2024 and GLD's from row
+125. On the base commit the same Battery run put 14 fills on the spool, SPY 8
+and GLD 6, and the layer drew 0 candles, no mark, no figures line and no emit
+row, its chooser listing `GLD_5m_yahoo` and `SPY_5m_yahoo` with no tablet.
+After: Run Portfolio over EQUITY_MACRO on All, 14 fills on the spool at `1d`,
+the report's rows SPY 8 trades and GLD 6 at 1d and `short_tape` at 1w and 1M;
+the flip; the chooser on `GLD_1d_2024_yahoo`, the last fill's bot; 6 marks,
+four `dissolve` and two `reform`, each painted at its candle's x and its
+price's y, the Qt painter's polygons and the page's polygons both within a
+thousandth of a pixel of the payload's point; the header `GLD@yahoo · 2 pairs
+· distance mean +2.02% · median +2.02% · improvement -0.18%`, equal to the
+hand recomputation over the held fills (distances 1.89% and 2.15%) and to
+`(535.32 − 536.31) / 536.31` off the report's row. The chooser moved to
+`SPY_1d_2024_yahoo`, on the page through its own select: 8 marks, `SPY@yahoo
+· 4 pairs · distance mean +2.26% · median +2.14% · improvement -0.08%`, equal
+to the hand figures (1.85%, 1.64%, 3.13%, 2.43%) and the row's
+`(531.84 − 532.26) / 532.26`. A planted fill on a stamp outside the window
+raised `fills` to 9 and left `marks` at 8; a planted fold at 200 against a
+scrum at 100 moved the mean to −18.19% and the pairs to 5; the fills restored,
+the line read as before. At the floor, the pane at 378 px on Qt and 441 px on
+the page, the marks drew at 4 px by 12 px and the line wrapped whole. Nine
+`sim.replay.marks_drawn` rows per build, every one `ok`. `bot_state.json`
+and both tablets hashed identical after every step, a planted byte moving the
+hash; the operator's RA root listed 414 entries before and after; no socket
+left loopback; no bot was constructed.

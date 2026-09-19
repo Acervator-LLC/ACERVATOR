@@ -16,7 +16,7 @@ import logging
 from typing import Any, Optional
 
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -154,7 +154,8 @@ class LineView(QWidget):
 
 
 class PlaybackView(QWidget):
-    """The Stone Tablet playback window: one candle per surface shape."""
+    """The Stone Tablet playback window: one candle per surface shape, then
+    one ``MARK_GLYPHS`` glyph per mark at its candle's x and its price's y."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Start with no candles and the surface's empty payload."""
@@ -201,7 +202,48 @@ class PlaybackView(QWidget):
                 max(int(bottom - top), 1),
                 colour,
             )
+        self._draw_marks(painter, colours, column_px, width, height)
         painter.end()
+
+    def _draw_marks(
+        self,
+        painter: QPainter,
+        colours: dict,
+        column_px: float,
+        width: float,
+        height: float,
+    ) -> None:
+        """Draw each payload mark as its ``MARK_GLYPHS`` polygon, ``mark_scrum``
+        or ``mark_fold`` coloured, ``mark_width_ratio`` of ``column_px`` wide
+        and ``mark_height_fraction`` of ``height`` tall."""
+        glyphs = self._payload.get("glyphs") or {}
+        mark_w = column_px * float(
+            self._payload.get("mark_width_ratio", surface.MARK_WIDTH_RATIO)
+        )
+        mark_h = height * float(
+            self._payload.get("mark_height_fraction", surface.MARK_HEIGHT_FRACTION)
+        )
+        outline = float(self._payload.get("mark_outline_px", surface.MARK_OUTLINE_PX))
+        for mark in self._payload.get("marks") or []:
+            glyph = glyphs.get(mark["side"])
+            if glyph is None or mark.get("y") is None:
+                continue
+            centre_x = float(mark["x"]) * width
+            centre_y = float(mark["y"]) * height
+            polygon = QPolygonF(
+                [
+                    QPointF(centre_x + dx * mark_w, centre_y + dy * mark_h)
+                    for dx, dy in glyph["points"]
+                ]
+            )
+            colour = _colour(
+                colours["mark_scrum"]
+                if mark["side"] == surface.back_test.SCRUM
+                else colours["mark_fold"]
+            )
+            painter.setPen(QPen(colour, outline))
+            painter.setBrush(QBrush(colour) if glyph["filled"] else Qt.NoBrush)
+            painter.drawPolygon(polygon)
 
 
 class SimulatorTabQt(QWidget):

@@ -8,13 +8,16 @@ their Live site held, in that site's operand order, holding no state.
 ``unit_rule`` answers the rule ``CITED_UNIT_RULES`` cites for an asset class on
 a venue, ``scrum_units`` and ``fold_units`` size under that rule through
 ``sized_units``, and ``trim_fold_plan`` keeps what a whole-unit fold could not
-spend in its tranches.
+spend in its tranches. ``plan_source_price`` reads the scrum price a fold plan
+re-enters against, and ``opposing_trade_distances`` reads the distance between
+each fold and that scrum over a run's pairs.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Optional
+import statistics
+from typing import Optional, Sequence
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
 DRAWDOWN_STATE = "drawdown"
@@ -198,6 +201,44 @@ def settle_fold_plan(tranches: list, plan: list) -> tuple[list, int, int]:
     return kept, pre_remove - len(kept), len(spent)
 
 
+def plan_source_price(plan: list) -> float:
+    """The scrum price a fold under ``plan`` re-enters against: each source
+    tranche's ``ref`` weighted by the USD the plan takes from it; zero for an
+    empty ``plan`` or one taking no USD."""
+    taken_usd = sum(float(take_usd) for _src, take_usd, _units in plan)
+    if taken_usd <= 0.0:
+        return 0.0
+    weighted = sum(
+        float(src.get("ref", 0) or 0) * float(take_usd)
+        for src, take_usd, _units in plan
+    )
+    return weighted / taken_usd
+
+
+def opposing_trade_distance_pct(scrum_price: float, fold_price: float) -> float:
+    """``scrum_price`` less ``fold_price`` as a percentage of ``scrum_price``,
+    positive for a fold that re-entered below its scrum."""
+    return 100.0 * (float(scrum_price) - float(fold_price)) / float(scrum_price)
+
+
+def opposing_trade_distances(pairs: Sequence[Sequence[float]]) -> dict:
+    """``opposing_trade_distance_pct`` over each ``(scrum_price, fold_price)``
+    in ``pairs`` whose scrum price is above zero: the ``count``, the
+    ``mean_pct``, the ``median_pct`` and the ``distances_pct``, the two figures
+    None when ``count`` is zero."""
+    distances = [
+        opposing_trade_distance_pct(scrum, fold)
+        for scrum, fold in pairs
+        if float(scrum) > 0.0
+    ]
+    return {
+        "count": len(distances),
+        "mean_pct": statistics.mean(distances) if distances else None,
+        "median_pct": statistics.median(distances) if distances else None,
+        "distances_pct": distances,
+    }
+
+
 def fold_spend_usd(eligible_usd: float, taper: float) -> float:
     """The USD a fold buys with: ``eligible_usd`` times ``taper``."""
     return eligible_usd * taper
@@ -285,7 +326,10 @@ __all__ = [
     "fold_rate_taper",
     "fold_spend_usd",
     "fold_units",
+    "opposing_trade_distance_pct",
+    "opposing_trade_distances",
     "plan_fold_consumption",
+    "plan_source_price",
     "position_ceiling",
     "priced_usd",
     "ratio_to_ceiling",
