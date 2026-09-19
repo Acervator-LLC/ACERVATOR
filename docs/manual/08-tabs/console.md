@@ -73,6 +73,25 @@ self._console.setFont(QFont("Consolas", 9))
 `ConsoleQtTab` builds that view. Under React the same calls land on `PagePane`,
 which holds the blocks and pushes them to the page.
 
+The pushes of one event-loop turn coalesce into one. `redraw` starts a
+zero-interval single-shot timer and `_push_now` builds the payload and pushes
+it once when the timer fires, so a signals drain that appends 200 rows pushes
+the page once rather than 200 times. Measured on a Portfolio Battery walk,
+whose gate chain fires the TA engine's thirteen postcondition pins per
+evaluation into the drain: with a push per append the walk thread reached
+5,000 bars in 257 seconds while the GUI thread rebuilt the page per row; with
+the pushes coalesced, 14 seconds.
+
+`src/gui/react_console_tab.py` — the coalesced push
+
+```python
+        def redraw(self) -> None:
+            """Ask for one push of both panes on the next event-loop turn; the
+            asks of one turn coalesce into one ``_push_now``."""
+            if not self._redraw_timer.isActive():
+                self._redraw_timer.start()
+```
+
 `src/gui/qt_console_tab.py` — `ConsoleQtTab.__init__`
 
 ```python
