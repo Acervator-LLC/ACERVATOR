@@ -355,6 +355,48 @@ whole skill exists for, arriving through the fixture rather than through the che
 real data shape before believing any of them. That is what found this one, and it
 found it in a file the unit had already edited and reported as repaired.
 
+## A STAND-IN THAT SERVES WHAT THE SOURCE NEVER SERVES IS THE SAME FIXTURE
+
+MEASURED 2026-09-19. Four units read the Market Inspector's Scan Now green in
+both variants and on both bundles. Every reading ran with sockets refused and a
+loopback stand-in for the candle source. The stand-in answered candles on every
+timeframe the scan asked for, including weekly. Coinbase serves granularities of
+60, 300, 900, 3600, 21600 and 86400 seconds and no weekly one. The operator's own
+press (his `system.log`, 07:36:51 to 07:38:18) read 120 markets, got no candles
+on 1wk for all 120, found 0 hits after 87 seconds with nothing drawn while it
+ran, and read `no ticker list` for stocks because no list source exists. He
+pressed the button fourteen more times; each `press ignored` line went to the
+log and never to him.
+
+**Three fixtures were shaped like the assertion at once:**
+
+- the stand-in served what the venue does not (weekly candles);
+- the bundle launched with no network ended at `no candle`, and that empty end
+  state was read as a reading of the button;
+- the missing stocks list was written down as *his* ruling instead of fixed, so
+  the unit's acceptance never met the class he presses.
+
+**THE RULE, in three parts:**
+
+1. **Shape the stand-in from the source's documented limits, and say them.** A
+   brief that stands in for a venue, an exchange, a feed or an endpoint carries a
+   `### Real conditions` section naming the source's documented response shape
+   and limits with their figures (granularities, list endpoints, page sizes, rate
+   limits), and the operator's own recorded responses where his logs hold them.
+   The hook `block_stand_in_without_source.py` refuses a brief without it.
+2. **An empty end state is a non-reading.** A bundle that ends at `no candle`,
+   `no post`, `no tablet` or `0 of 0` did not exercise the feature. Report it as
+   not read, and require the end state the operator will see: hits, or a refusal
+   with its cause named on the screen he watches.
+3. **What he sees while it runs is a contract member.** A press that works for
+   87 seconds and shows nothing is a press that does nothing. Progress, the
+   in-flight refusal and every fetch's block on the pane he watches are read at
+   the widget, per variant, not only the end state.
+
+**And the referee's own defect:** a missing data source, an unsupported request,
+a thread guard refusing a feed — these are defects the unit fixes. Only a product
+choice is his. Writing a defect down as *his line* is how it shipped twice.
+
 ## THE RESIDUAL — what this does NOT catch
 
 **A check whose premise is wrong will pass its own two-sided control.**
