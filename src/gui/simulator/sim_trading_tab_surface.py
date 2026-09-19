@@ -776,9 +776,7 @@ def placeholder_way_in_buttons(
     first while ``held`` records are held, then the two ways in ``mode`` offers."""
     rows = list(sim.reserved_rows(mode))
     if int(held or 0) > 0:
-        rows.insert(
-            0, {"action": sim.CLEAR_FLEET_ACTION, "text": sim.CLEAR_FLEET_TEXT}
-        )
+        rows.insert(0, {"action": sim.CLEAR_FLEET_ACTION, "text": sim.CLEAR_FLEET_TEXT})
     return [
         {
             "action": row["action"],
