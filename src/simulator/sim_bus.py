@@ -14,13 +14,23 @@ from a walk's ``GateContext``. ``fill_line`` is Live's fill message for one
 
 from __future__ import annotations
 
+import threading
+from contextlib import contextmanager
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional
 
 from ..core.emit_contracts import CONTRACTS, EmitContract, EmitObserver
 from ..core.event_bus import EventBus
 from ..core.log_paths import get_sim_dir
 from ..core.logging_engine import LogManager
+from ..core.signal_contract import (
+    PROCESS_SINK_FLUSH_EVERY,
+    SignalSink,
+    emit,
+    get_sink,
+    route_thread,
+    unroute_thread,
+)
 from .validation import iso_stamp
 
 if TYPE_CHECKING:
@@ -57,6 +67,70 @@ FOLD_USD_WORD = "spent"
 #: ``_on_bot_log_bus`` writes ``symbol`` and ``message`` only, so a
 #: diagnostics row names its run and candle inside the message.
 BOT_LINE_FORMAT = "{message} (run {run_id}, candle {candle_at})"
+
+#: The sim signal sink's file under ``get_sim_dir``: ``sim/signals/session.jsonl``.
+SIGNALS_DIR = "signals"
+SIGNALS_FILE = "session.jsonl"
+
+#: The run name the replay layer's tablet retrieval routes under.
+RETRIEVAL_RUN = "retrieval"
+
+#: The row ``routed_run`` emits on the process sink at each run's end.
+SINK_ROUTED_SIGNAL = "sim.sink.routed"
+
+#: The Activity Log line ``routed_run`` writes at each run's start.
+SINK_LINE_FORMAT = "{run} signals: {path}"
+
+_SIGNAL_SINK: Optional[SignalSink] = None
+_SIGNAL_SINK_LOCK = threading.Lock()
+
+
+def sim_signal_sink() -> SignalSink:
+    """The one ``SignalSink`` per process at ``SIGNALS_FILE`` under
+    ``SIGNALS_DIR`` of ``get_sim_dir``, built as ``install_process_sink``
+    builds the process sink and opened on the first call."""
+    global _SIGNAL_SINK
+    with _SIGNAL_SINK_LOCK:
+        if _SIGNAL_SINK is None:
+            sink = SignalSink(flush_every=PROCESS_SINK_FLUSH_EVERY)
+            sink.path = get_sim_dir() / SIGNALS_DIR / SIGNALS_FILE
+            _SIGNAL_SINK = sink
+        return _SIGNAL_SINK
+
+
+@contextmanager
+def routed_run(run: str, line: Callable[[str], None]) -> Iterator[SignalSink]:
+    """Route the calling thread's emits to ``sim_signal_sink`` for the block,
+    hand ``line`` the ``SINK_LINE_FORMAT`` line on entry, and on exit unroute,
+    flush the sim sink and emit ``SINK_ROUTED_SIGNAL`` on the process sink."""
+    sink = sim_signal_sink()
+    thread = threading.get_ident()
+    rows_before = int(sink.health()["emitted"])
+    route_thread(sink)
+    try:
+        line(SINK_LINE_FORMAT.format(run=run, path=sink.path))
+        yield sink
+    finally:
+        routed = get_sink() is sink
+        unroute_thread()
+        sink.flush()
+        restored = get_sink() is not sink
+        emit(
+            SINK_ROUTED_SIGNAL,
+            actual={
+                "thread": thread,
+                "run": run,
+                "path": str(sink.path),
+                "routed": routed,
+                "restored": restored,
+                "rows": int(sink.health()["emitted"]) - rows_before,
+            },
+            expected={"routed": True, "restored": True},
+            ok=routed and restored,
+        )
+        process_sink = get_sink()
+        if process_sink is not None:
+            process_sink.flush()
 
 
 def new_sim_bus() -> EventBus:
@@ -392,12 +466,17 @@ __all__ = [
     "FOLD_SIDE",
     "FOLD_USD_WORD",
     "GATE_TOPIC",
+    "RETRIEVAL_RUN",
     "SCRUM_ACTION",
     "SCRUM_FILL_WORD",
     "SCRUM_SIDE",
     "SCRUM_USD_WORD",
+    "SIGNALS_DIR",
+    "SIGNALS_FILE",
     "SIM_LOG_FILES",
     "SIM_TOPICS",
+    "SINK_LINE_FORMAT",
+    "SINK_ROUTED_SIGNAL",
     "TRADE_TOPIC",
     "VOTING_TOPIC",
     "RunEmitter",
@@ -405,9 +484,11 @@ __all__ = [
     "fill_line",
     "fold_fixture",
     "new_sim_bus",
+    "routed_run",
     "scrum_fixture",
     "sim_contracts",
     "sim_log_manager",
     "sim_log_paths",
+    "sim_signal_sink",
     "tranche_snapshot",
 ]
