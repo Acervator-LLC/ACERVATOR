@@ -22,7 +22,11 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 from urllib.error import HTTPError
 
-from ..trading.stone_tablets.ra_fetcher import CoinbasePublicCandles, _get_json
+from ..trading.stone_tablets.ra_fetcher import (
+    RA_CHUNK_DAYS,
+    CoinbasePublicCandles,
+    _get_json,
+)
 from ..trading.stone_tablets.registry import _rollup
 from .api_logger import get_api_log
 from .market_pairs_scout import row_quote_volume_24h
@@ -456,7 +460,9 @@ def public_candle_read(
     DAILY_TIMEFRAME and passed through weekly_from_daily.
 
     A timeframe outside CoinbasePublicCandles.GRANULARITY_S answers no candles
-    with no call, and each call records one FETCH_OHLCV_ACTION block.
+    with no call, and each call records one FETCH_OHLCV_ACTION block. bars is
+    held to RA_CHUNK_DAYS, the route's one-request ceiling, so the window it
+    asks for ends now rather than bars minus RA_CHUNK_DAYS candles ago.
     """
     base = str(symbol).strip().upper()
     asked = str(timeframe)
@@ -466,7 +472,7 @@ def public_candle_read(
     if not base or venue_timeframe not in table:
         return [], ""
     route = CoinbasePublicCandles()
-    count = int(bars)
+    count = min(int(bars), RA_CHUNK_DAYS)
     step_ms = table[venue_timeframe] * 1000
     refusal = ""
     for quote in accepted_quotes:

@@ -5774,5 +5774,248 @@ decoded, drawn at 120 by 63". That was the X image on its day; the X image is
 **Figures.** `artifacts/u55/C5/` holds the seven images of one hit under
 both themes, the tab's chart beside three of them, and the refused-size
 reading.
+## 2026-09-19 21:30 - #23 - A hit sounds a chime, and each hit starts its own confirmation read timer
+
+His words, 2026-09-19: *"Simulator - Scan Now - ... There should be a chime
+when there is a hit. Once a hit is made, an isolated confirmation read timer
+starts based on the original hit's TF. The confirmation read mechanic should
+be partially documented already if not implemented..."* His correction, the
+same day: *"Make sure you correct my incorrect verbatims because SImulator
+does not have Scan Now...Inspector and ATA-SMP do."* The `Simulator - Scan
+Now` above reads `ATA-SMP - Scan Now` on the Inspector tab; the words stand
+as he typed them. And 2026-09-18: *"Entire idea for the Emitter Network is to
+provide us signals for verifying proper software function resulting from all
+user actions or automated sequences."*
+
+### The chime
+
+A hit sounds one chime the moment the window learns of it: during the walk,
+when the counter's hit figure rises, and at the scan's end for a hit the walk
+did not report, such as a typed ticker's. A confirmation sounds one more. A
+failed call sounds nothing, because the chime marks something to act on and
+a failure closes the call.
+
+The tone is the Audio Suite's own generator. One preset joins its table, four
+partials over an 880 Hz base, rendered once per process to a 0.6 second wav
+with a decay applied so the tone rings out, and played through one
+`QAudioOutput` and one `QMediaPlayer` on the tab, so both variants play the
+same bytes from the host.
+
+`src/gui/audio_suite.py` - the preset and its figures
+
+```python
+CHIME_PRESET = "Hit Chime"
+CHIME_PARTIALS = [(1.0, 0.45), (2.0, 0.18), (3.0, 0.09), (4.16, 0.05)]
+CHIME_SECONDS = 0.6
+CHIME_BASE_HZ = 880.0
+```
+
+The chime plays at 0.5, the volume the suite's music player opens at. The
+Audio Suite holds no mute control and the window does not build the suite,
+so the chime has no mute and no slider of its own.
+
+### The timer
+
+Each hit starts its own timer the moment it lands in the Ready to Send
+bucket. The interval is one candle of the hit's own timeframe: a 1d hit reads
+at each daily close, a 1wk hit at each Monday 00:00 UTC, the day the fetcher's
+rollup and Yahoo stamp a week with; a 1M hit at the first instant of each
+month. The first read waits for the candle the hit was read on to close.
+
+`src/trading/ata_spm_push.py` - one candle of each timeframe
+
+```python
+TIMEFRAME_SECONDS = {"5m": 300, "1h": 3600, "1d": 86400, "1w": 604800}
+MONTH_TIMEFRAME = "1M"
+```
+
+The next read is the first close after now on the grid of closes that
+begins at the hit's candle. The board keeps the timers, so a tab change loses
+nothing and both variants read one set; the tab's own clock wakes once a
+second and hands every due timer to one worker thread, which reads the
+market's newest candles through the scan's own route and judges the call.
+The outcome crosses back to the window thread, which writes the entry, the
+field, the Activity Log and the pin.
+
+`src/trading/ata_spm_push.py` - what one timer holds
+
+```python
+@dataclass
+class FollowUpTimer:
+    """One watched call's confirmation read timer: its next read and its last outcome.
+
+    ``next_read_ts`` is a candle close on the call's own grid, or a retry
+    ``FOLLOW_UP_RETRY_S`` after a read that found no closed candle.
+    """
+```
+
+A venue that has not yet published the candle the timer waited for is read
+again after 60 seconds, at most five times, then at the next close. A scan
+does not read: a Scan Now press while timers pend runs the walk on its own
+thread and touches no timer. The entries of every call under watch stay in
+the bucket through later scans, beside the new hits, until the call settles;
+a market hit again on a later candle takes the new entry and the new timer.
+A timer stops when its read settles the call, or when its entry leaves the
+bucket, which the Activity Log says.
+
+### The verdict, read by candle time
+
+Two defects in phase seven were measured while putting it on a timer, and
+both are repaired. A call was anchored by the index of its bar, and a venue
+serves a rolling window, so the same 300 candles fetched one day later put
+the call's bar one index lower and the read found no candle after it: on
+the tree before this entry, a day-old call read `no candle has closed since
+the call` on every re-read. A call now carries the open time of its bar, the
+candles counted are those opened at or after it whose close time is at or
+before the read, so the call's own candle is candle one once it closes and a
+venue's partial bar is never read as a close.
+
+`src/trading/ata_spm_push.py` - the candles a read counts
+
+```python
+def closed_candles(candles: Any, timeframe: Any, closed_before: Any) -> list:
+    """The candles whose close time is at or before ``closed_before``; every candle when it is None."""
+```
+
+The second: the target was a share of the run to the midline whichever side
+the midline lay on, so a bearish call whose close sat below the midline read
+`confirmed` on a rise. A target now exists only while the midline lies on the
+side the call expects the run to go: above a bullish close, below a bearish
+one. While it lies behind the call, the read stays open and says so.
+
+`src/trading/ata_spm_push.py` - the side the target needs
+
+```python
+def midline_ahead(direction_text: Any, call_close: Any, midline: Any) -> bool:
+    """Whether ``midline`` lies on the side of ``call_close`` the call expects the run to go."""
+```
+
+On the scan's own firing shape, a crash of five candles, a bearish call sits
+far below its midline, so such a call never gains a target from the moving
+midline: it fails on three closes in a row against it, or stays open. Whether
+a chain-fire hit's expected move is the called direction, as the post's
+wording says, or the bounce to the midline the fold side buys, is the
+operator's line.
+
+### What the entry, the field and the Activity Log read
+
+The Ready to Send entry's status line carries the timer's status after the
+venue and the approval state: `X · waiting · open · next read 2026-09-20
+00:00 UTC` the moment the hit lands, the next close after each read that
+leaves it open, then `X · waiting · confirmed · close 1476.67` or `X ·
+waiting · failed · close 992.34` with the close that settled it. The same
+status sits on the entry's head row after the vote word, the badge both
+hosts already drew and nothing fed, so it reads without scrolling the entry.
+Both hosts draw it from one payload.
+
+`src/trading/ata_spm_push.py` - the status line
+
+```python
+BUCKET_META_FOLLOW_UP_FORMAT = "{target} · {state} · {follow_up}"
+FOLLOW_UP_STATUS_OPEN_FORMAT = "open · next read {when}"
+FOLLOW_UP_STATUS_SETTLED_FORMAT = "{state} · close {close:g}"
+```
+
+The ATA-SPM zone's open entry carries one phase-seven row per watched call,
+the newest read. The Activity Log names each timer at its start with its next
+read, each read with its state and its next read or its settling close, and
+a timer that stopped before settling.
+
+`src/trading/ata_spm_push.py` - the Activity Log lines
+
+```python
+FOLLOW_UP_TIMER_LINE_FORMAT = (
+    "ATA-SPM confirmation timer for {symbol} {label}: next read {when}"
+)
+FOLLOW_UP_READ_OPEN_LINE_FORMAT = (
+    "ATA-SPM confirmation read for {symbol} {label}: {state}, next read {when}"
+)
+FOLLOW_UP_READ_SETTLED_LINE_FORMAT = (
+    "ATA-SPM confirmation read for {symbol} {label}: {state}, close {close:g}"
+)
+```
+
+A settled call's follow-up post is what phase seven already builds, one per
+venue, and it lands in the bucket as the scan's own entries do. The
+confirmation share the settings page carries now persists beside the hits
+per scan, so a share he set survives a restart; it stays 0 until he sets one,
+and a call reads `open` with the share unset until then.
+
+### The chime pin and the read pin
+
+`inspector.ata.chime` is written once per chime with its cause, `hit` or
+`confirmation`, the hits it covers or the call it confirms, and whether the
+player took it. `inspector.ata.follow_up_read` is written once per read with
+the symbol, the timeframe, the state, the candles counted against the
+candles the clock says have closed, the close, the target, the next read and
+the read count. Both go through `signal_contract.emit` and nothing else.
+
+`src/trading/ata_spm_push.py` and `src/gui/market_inspector.py` - the pin names
+
+```python
+FOLLOW_UP_READ_PIN = "inspector.ata.follow_up_read"
+CHIME_PIN = "inspector.ata.chime"
+```
+
+### The timer read off both running builds
+
+A crypto scan on 1hr 1d 1wk to three 1d hits, in each variant, with the home
+on a scratch directory, every socket but loopback refused, a Coinbase
+connector attached to a loopback stand-in shaped as ccxt's coinbase class
+answers, and the board's clock and the stand-in's clock driven forward
+together. The chime's output was set to 0 for the run and read, not heard.
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| chimes as the three hits landed | 3, one per hit; the player read `EndOfMedia` after each | 3, the same |
+| the wav | 26,460 frames, 44,100 Hz, stereo, 0.600 s; first 50 ms peak 15,987, last 50 ms peak 431 | the same bytes, one sha256 |
+| timers after the scan | 3, one per hit, each `next read 2026-09-20 00:00 UTC`, the next daily close | the same |
+| the entry after the scan | `X · waiting · open · next read 2026-09-20 00:00 UTC`; the head row reads `open · next read 2026-09-20 00:00 UTC` beside the vote | the same, read off the page |
+| the Activity Log | `ATA-SPM confirmation timer for ARB 1d: next read 2026-09-20 00:00 UTC`, and AVAX, DOGE | the same three on the page's pane |
+| the clock past the first close | three reads on thread `ata-smp-follow-up`, one fetch each, `open`, entry and log `next read 2026-09-21 00:00 UTC`, three `follow_up_read` pins | the same |
+| the field, entry open | one `Phase 7 Follow-Up` row per call, the newest read | the same |
+| Scan Now while the timers pend | the walk ran on its own thread, 0 hits, 21 entries kept, every timer's next read and read count unchanged | the same |
+| a planted bullish 1wk call | its timer's next read `2026-09-21 00:00 UTC`, a Monday | the same |
+| a planted removal of one market's entries | that timer stopped, `... stopped: the entry left the bucket` on the log; the other two held | the same |
+| a tab change with timers held | the same three timers before and after | the same |
+| the confirmation share typed as 50 | `ata_spm_settings.json` holds `"confirmation_share_pct": 50` beside `hits_per_scan` | the same |
+| the third daily close | ARB and DOGE `failed · close 992.34`, `the trend held for 3 candles in a row`; no chime; 14 follow-up entries, one per venue per call | the same |
+| the Monday close with the week withheld by the venue | `follow_up_read` pin `ok` False, 1 candle of 2; `next read 2026-09-28 00:01 UTC`, the 60 second retry | the same |
+| the retry with the week served | `confirmed · close 1476.67`, `reached 985.086, 50% of the run to midline 985.723`; the fourth chime; 7 more follow-up entries; the entry's head row `confirmed · close 1476.67` | the same |
+| `bot_state.json` | byte-identical after every press; the planted write moved the comparison | the same |
+| connections refused | 0, because nothing asked for one | 0 |
+
+### The public route's window ends now
+
+Read on the built Qt bundle with no connector in reach, against a loopback
+stand-in whose tape holds one close per calendar day: 90 markets, 540 reads,
+300 candles each, 0 hits, and every daily window ended 65 days before the
+press. The public route asked for 365 bars starting 365 days ago, and one
+request to the route is held to 300 candles, so the window it asked for ended
+at its start plus 300 days. The bars a read asks for are now held to that
+ceiling before the start is computed, so the window ends at the press: the
+newest 300 daily candles, the newest 300 hourly ones.
+
+`src/exchange/market_inspector_fetcher.py` - the bars one public read asks for
+
+```python
+    count = min(int(bars), RA_CHUNK_DAYS)
+```
+
+### Two sentences this entry overtakes
+
+Not reworded, quoted here. `docs/manual/08-tabs/market-inspector.md:1663` -
+"No wall clock is read, so a daily call cannot fail on the afternoon it was
+made." The verdict still counts closed candles and reads no clock; the timer
+reads the clock only to choose when to read, and a daily call still cannot
+fail before three daily closes.
+
+`docs/manual/08-tabs.md:2046` - "`audio_suite.py` | Not reachable from a live
+tab". The Audio Suite tab is still built by no live tab; the module is now
+imported by the Inspector tab for the chime.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 
 Back to [the subsystem index](README.md).
