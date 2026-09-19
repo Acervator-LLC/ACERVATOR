@@ -5179,4 +5179,65 @@ on the Activity Log.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+
+## 2026-09-19 08:23 - #55 - the venue image draws every voter that called
+
+His words, 2026-09-19: *"let's migrate to the Charts tab and do its visual
+upgrades. After its chart renderer is fully upgraded, it will need to be
+migrated to ATA-SMP."* The Charts tab and the venue images share one painter,
+so the five indicators the tab gained this day reach the venue image through
+the same overlay registry, with no change to the ATA-SPM render path.
+
+### What the venue image carries now
+
+The registry entry each overlay names its voter on, and the venue image draws
+every overlay whose voter confirmed the call. ADX, Supertrend, Z-Score, KER
+and RSI each carry a voter now, and the Z-Score algo point carries the
+Z-Score voter beside the score, so a Z-Score call draws both.
+
+`src/gui/native_chart.py` - the overlay keys a voter list answers
+
+```python
+def overlays_for_voters(voters, max_overlays: int = NO_OVERLAY_CAP) -> tuple:
+    """The overlay keys drawing ``voters``, and the voters no overlay draws.
+```
+
+The image also carries the legend band the Charts tab carries: every overlay
+named with its last value, the ones not drawn reading `off` in grey.
+
+### The venue readings, off the running program
+
+The scan over the recorded tablets, the home on a scratch directory and every
+socket but loopback refused: five markets, 2,401 windows of 300 1h bars each,
+264 hits. ADX confirmed on all 264. RSI confirmed on none: RSI votes only past
+70 or under 30, against the trend the other voters read, so no recorded call
+carried it. The reading was taken on the hit with the most new voters, and the
+RSI route on the same render call the venue folder makes.
+
+| reading | value |
+| ------- | ----- |
+| the hit | ADA/USD 1h, bearish, 7 confirming voters: Vortex, MACD, Stoch RSI, Slingshot, ADX, KER, Supertrend |
+| venue PNGs written | 7, one per venue folder |
+| overlays drawn on each | vortex, macd, stochrsi, slingshot, adx, supertrend, ker; undrawn none |
+| the same call on the commit before | drawn vortex, macd, stochrsi, slingshot; undrawn adx, kaufman_er, supertrend |
+| ADX 20 and 25 on the X venue PNG | 698 and 707 pixels on each ruled row differ from a repaint with no rules; 0 on a control row |
+| the render call with voters adx and rsi | drawn adx, rsi; undrawn none; on the commit before, drawn none |
+| RSI 30 and 70 on that PNG | 727 and 719 pixels on each ruled row differ; 0 on a control row |
+
+### One sentence this entry overtakes
+
+It was not reworded. It is quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:1024` - "A confirming voter with no
+overlay cannot be drawn, and the picture says so in its header line rather
+than passing over it. Z-Score and RSI are the two that vote and have no
+overlay today." Every one of the twelve voters has an overlay now; the header
+line still names any voter the cap cuts.
+
+**Figures.** `artifacts/u55/C2/after/u55c2_venue_X.png` is the X venue PNG
+of that hit and `artifacts/u55/C2/after/u55c2_venue_route_adx_rsi.png` the
+render with the adx and rsi voters; the before pair sits under
+`artifacts/u55/C2/before/`. A count of the markdown image tags on this page
+answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
