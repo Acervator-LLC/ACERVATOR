@@ -1672,4 +1672,54 @@ a Detail or Fire press selects the row on the model; the reading selected the
 row through the venue model's `select_scrum_row` and pressed the page's own
 Start.
 
+### What the bundle reading measured
+
+Both builds were made from this unit's commit and launched twice each,
+`HOME` and the profile variables on a scratch home holding a copy of the
+operator's `bot_state.json` and no credential file, each press an
+accessibility Invoke or a button message posted to the launched tree's own
+window, the window captured by its handle. In a Windows AppContainer with no
+network, Import Live Fleet made 39 calls in each build, every one refused by
+the container; a Detail press on two rows, the window it opened closed, and
+Start on the bar moved the two records to running; Start Paper Run started
+the runner and turned the seat to Stop Paper Run; over about 97 s the runner
+made 8 refused reads, 4 tickers and 4 candle windows, and wrote 4 paper rows
+each carrying *"The live feed answered no candle."*; the strip read $3,698.46
+for Spendable and Locked; Stop Paper Run ended the runner and the seat read
+Start Paper Run again.
+
+The one real reading, both bundles against the public host alone, no
+credential file, the adapter's own pace, the two same records running:
+
+```
+reading                                   Qt bundle                 React bundle
+Import Live Fleet                         39 calls, 917 products,   the same
+                                          38 of 38 tickers
+ticks over the run                        52 in 128 s               the same shape
+worked ticks                              6                         6
+venue calls during the run                8: 6 FETCH_TICKER,        8: 6 FETCH_TICKER,
+                                          2 FETCH_OHLCV of 100      2 FETCH_OHLCV of 100
+least gap between two calls               0.258 s                   0.257 s
+calls a second over 122 s                 0.066                     0.066
+the ADA/USDC book on one read             last 0.221450,            last 0.221840,
+                                          bid 0.221420,             bid 0.221760,
+                                          ask 0.221430              ask 0.221840
+paper rows written                        6, 3 per bot              6, 3 per bot
+fills                                     0, none expected          0
+strip while running                       $3,698.46 / $0.00 /       $3,698.46 / $0.00 /
+                                          $3,698.52 / $0.00 / 1     $3,698.46 / $0.00 / 1
+Stop Paper Run                            52 ticks, 6 worked,       the seat read Start
+                                          the seat read Start       Paper Run again
+thread-violation lines                    0                         0
+```
+
+The 100-bar window the venue answers is served from the adapter's cache for
+300 s, so the second worked tick of each bot read a fresh ticker and no
+candles. Locked moved with the venue's last price on the Qt run, from
+$3,698.46 to $3,698.52, and read $3,698.46 on the React run, whose two
+prices sat within a cent of their openings. The Activity
+Log's lines are not readable through UI Automation's text pattern on the
+React page, so the bundle's own `system.log` and the paper log carry the
+React reading.
+
 Back to [the subsystem index](README.md).
