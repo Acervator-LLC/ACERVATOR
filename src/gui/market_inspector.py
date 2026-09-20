@@ -622,25 +622,43 @@ if _HAS_QT:
             self._show_strips(view)
             self._show_panels(view.get("panels") or [])
             self._show_actions(view.get("actions") or [])
-            while self.detail_labels:
-                gone = self.detail_labels.pop()
-                self.detail_box.removeWidget(gone)
-                # setParent takes it off screen now; deleteLater waits for the
-                # event loop and leaves the old line drawn over the new one.
-                gone.setParent(None)
-                gone.deleteLater()
-            for _name, line in view.get("detail", []):
-                drawn = QLabel(line)
-                drawn.setStyleSheet(DETAIL_STYLE)
-                drawn.setWordWrap(True)
-                self.detail_box.addWidget(drawn)
-                self.detail_labels.append(drawn)
+            self._show_lines([str(line) for _name, line in view.get("detail", [])])
             # The scroll area shrinks its widget to the viewport unless the
             # widget asks for the height its own content needs.
             shape = self.entry.layout()
             shape.invalidate()
             shape.activate()
             self.entry.hold_height()
+            if counter:
+                self._scroll_to_newest()
+
+        def _show_lines(self, lines: list) -> None:
+            """Write one detail label per line, reusing the labels already drawn.
+
+            A label past the last line is hidden before it leaves the layout;
+            a new label is shown at once, so ``hold_height`` counts its row.
+            """
+            while len(self.detail_labels) > len(lines):
+                gone = self.detail_labels.pop()
+                gone.hide()
+                self.detail_box.removeWidget(gone)
+                gone.setParent(None)
+                gone.deleteLater()
+            for at, line in enumerate(lines):
+                if at < len(self.detail_labels):
+                    self.detail_labels[at].setText(line)
+                    continue
+                drawn = QLabel(line)
+                drawn.setStyleSheet(DETAIL_STYLE)
+                drawn.setWordWrap(True)
+                self.detail_box.addWidget(drawn)
+                drawn.show()
+                self.detail_labels.append(drawn)
+
+        def _scroll_to_newest(self) -> None:
+            """Move the entry scroll to its end, so the last line drawn is on screen."""
+            bar = self.entry_scroll.verticalScrollBar()
+            bar.setValue(bar.maximum())
 
         def _show_strips(self, view: dict) -> None:
             """Draw the thumbnail and, while the entry is open, the larger chart."""

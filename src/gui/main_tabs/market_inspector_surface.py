@@ -166,6 +166,15 @@ TICKER_JOIN = "/"
 #: What the field carries for a sector the tree lists no tickers for. The
 #: field still takes a typed name.
 TICKER_NO_LIST_FORMAT = "No ticker list for {sector}. A typed name still scans."
+#: What the field carries for a sector whose list the venue answers at press
+#: time, before its first press has read one.
+TICKER_PRESS_LIST_FORMAT = (
+    "Scan Now reads the {sector} list from {source}. A typed name still scans."
+)
+#: The classes whose list a press reads off a venue, and what the note names.
+CLASS_PRESS_SOURCES = {
+    ata_spm.CLASS_DERIVATIVES: "Coinbase's futures and perpetual products",
+}
 TICKER_FIELD_PART = "ticker-field"
 TICKER_NOTE_PART = "ticker-note"
 TICKER_MATCH_PART = "ticker-match"
@@ -183,7 +192,8 @@ SCAN_NOW_TOOLTIP = (
     "scan markets pass the push gates."
 )
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
-CLASS_BOX_WIDTH_PX = 92
+#: Wide enough for the longest class name, derivatives, beside the menu's arrow.
+CLASS_BOX_WIDTH_PX = 120
 TIMEFRAME_TITLE = "Timeframe"
 TIMEFRAME_BOX_TOOLTIP_FORMAT = "Scan this sector on {label}."
 TIMEFRAME_BOX_WIDTH_PX = 64
@@ -266,6 +276,8 @@ STOCKS_SCREENER_SOURCE_FORMAT = "{source}, {sectors} sector(s)"
 STOCKS_PORTFOLIO_SOURCE_FORMAT = (
     "RA portfolio equities in map order, the screener refused: {refusal}"
 )
+FUTURES_ORDER_SOURCE_FORMAT = "{source}, {expiring} expiring, {perpetual} perpetual"
+FUTURES_REFUSED_SOURCE_FORMAT = "no derivatives list, the venue refused: {refusal}"
 ORDER_VENUE_JOIN = ", "
 ORDER_LOG_FORMAT = "ATA-SPM order for {asset_class}: {line}"
 VOLUME_FIGURE_REFUSED_LOG = "volume figure refused for %s: %s"
@@ -2646,10 +2658,10 @@ def sector_assets(sector: Any, asset_class: Any) -> list:
 
 
 def class_tickers(asset_class: Any) -> list:
-    """Every ticker one sector names, read from the lists already in this tree.
+    """Every ticker one sector names, read from the lists already in this process.
 
-    ``ata_spm.CLASS_CRYPTO`` reads the shipped sector map and every other class
-    reads ``ata_asset_maps.MAPS``, so no venue is asked for a symbol.
+    ``ata_spm.CLASS_CRYPTO`` reads the shipped sector map, derivatives the last
+    ``futures_tickers`` press read, and every other class ``ata_asset_maps.MAPS``.
     """
     if str(asset_class) == ata_spm.CLASS_CRYPTO:
         from ...trading.topology_proposals import load_sector_map
@@ -2660,6 +2672,8 @@ def class_tickers(asset_class: Any) -> list:
             logger.debug(SECTOR_MAP_FAILED_LOG, exc)
             return []
         return sorted(str(one) for one in held)
+    if str(asset_class) == ata_spm.CLASS_DERIVATIVES:
+        return ata_asset_maps.futures_tickers()
     found = {
         str(one.symbol)
         for sector in ata_asset_maps.sectors_for(asset_class)
@@ -2763,6 +2777,32 @@ def stocks_markets() -> Any:
     )
 
 
+def derivatives_markets() -> Any:
+    """The derivatives ``ata_spm.MarketOrder``: ``futures_listings`` ranked by
+    the venue's own figures, or no rows under the refusal it answered.
+
+    The source names the venue and how many products expire or are perpetual.
+    """
+    rows, figures, refusal = ata_asset_maps.futures_listings()
+    if not rows:
+        return ata_spm.MarketOrder(
+            source=FUTURES_REFUSED_SOURCE_FORMAT.format(refusal=refusal)
+        )
+    return ranked_order(
+        rows,
+        figures,
+        FUTURES_ORDER_SOURCE_FORMAT.format(
+            source=ata_asset_maps.FUTURES_SOURCE_TEXT,
+            expiring=sum(
+                1 for one in rows if one.sector == ata_asset_maps.SECTOR_EXPIRING
+            ),
+            perpetual=sum(
+                1 for one in rows if one.sector == ata_asset_maps.SECTOR_PERPETUAL
+            ),
+        ),
+    )
+
+
 def crypto_markets(connectors: Any) -> Any:
     """The crypto ``ata_spm.MarketOrder``: the ``class_tickers`` names the
     venue trades, ranked by ``class_volumes``, with the rest on ``dead``.
@@ -2816,14 +2856,16 @@ def crypto_markets(connectors: Any) -> Any:
 def class_markets(asset_class: Any, connectors: Any = None) -> Any:
     """Every market one class holds as an ``ata_spm.MarketOrder``, largest first.
 
-    Crypto is ``crypto_markets``, stocks is ``stocks_markets``; every other
-    mapped class ranks ``listing_volumes`` over its ``ata_asset_maps.MAPS``
-    rows, and a class whose rows carry no figure keeps map order.
+    Crypto is ``crypto_markets``, stocks ``stocks_markets`` and derivatives
+    ``derivatives_markets``; every other mapped class ranks ``listing_volumes``
+    over its ``ata_asset_maps.MAPS`` rows, and rows with no figure keep map order.
     """
     if str(asset_class) == ata_spm.CLASS_CRYPTO:
         return crypto_markets(connectors)
     if str(asset_class) == ata_spm.CLASS_STOCKS:
         return stocks_markets()
+    if str(asset_class) == ata_spm.CLASS_DERIVATIVES:
+        return derivatives_markets()
     rows = [
         one
         for sector in ata_asset_maps.sectors_for(asset_class)
@@ -2893,7 +2935,10 @@ def class_walk(asset_class: Any) -> list:
 
 
 def class_listing(symbol: Any, asset_class: Any) -> Any:
-    """The ``ata_asset_maps.AssetListing`` one class charts ``symbol`` on."""
+    """The ``ata_asset_maps.AssetListing`` one class charts ``symbol`` on.
+
+    A name no map holds is the row the last press read, through ``listing_of``.
+    """
     name = str(symbol)
     if str(asset_class) == ata_spm.CLASS_CRYPTO:
         return ata_asset_maps.exchange_listing(name)
@@ -2901,12 +2946,16 @@ def class_listing(symbol: Any, asset_class: Any) -> Any:
         for one in ata_asset_maps.listings_for(sector, asset_class):
             if one.symbol.upper() == name.upper():
                 return one
+    read = ata_asset_maps.listing_of(name)
+    if read is not None:
+        return read
     return ata_asset_maps.AssetListing(symbol=name)
 
 
 def name_in(folded: str, names: Any) -> str:
     """The one of ``names`` that ``folded`` spells: whole, with ``TICKER_JOIN``
-    removed from both sides, or by the base ``pair_base`` answers."""
+    removed from both sides, with a name's ``TICKER_SEPARATORS`` folded the
+    same way, or by the base ``pair_base`` answers."""
     joined = folded.replace(TICKER_JOIN, "")
     base = pair_base(folded)
     by_whole = {str(one).upper(): str(one) for one in names}
@@ -2915,6 +2964,9 @@ def name_in(folded: str, names: Any) -> str:
     by_joined = {str(one).upper().replace(TICKER_JOIN, ""): str(one) for one in names}
     if joined in by_joined:
         return by_joined[joined]
+    by_folded = {fold_ticker(one): str(one) for one in names}
+    if folded in by_folded:
+        return by_folded[folded]
     if base and base in by_whole:
         return by_whole[base]
     return ""
@@ -2976,13 +3028,17 @@ def ticker_matches(typed: Any, asset_class: Any) -> list:
 def ticker_note(asset_class: Any, note: Any = "") -> str:
     """The line under the ticker field, from the last press or from the sector.
 
-    A ``note`` the last press left is what the field carries, and a sector
-    ``class_tickers`` lists nothing for carries ``TICKER_NO_LIST_FORMAT``.
+    A ``note`` the last press left is what the field carries; a sector
+    ``class_tickers`` lists nothing for carries ``TICKER_PRESS_LIST_FORMAT``
+    while ``CLASS_PRESS_SOURCES`` names its venue, else ``TICKER_NO_LIST_FORMAT``.
     """
     if note:
         return str(note)
     if class_tickers(asset_class):
         return ""
+    source = CLASS_PRESS_SOURCES.get(str(asset_class))
+    if source:
+        return TICKER_PRESS_LIST_FORMAT.format(sector=asset_class, source=source)
     return TICKER_NO_LIST_FORMAT.format(sector=asset_class)
 
 
@@ -2992,8 +3048,15 @@ def market_listing(ticker: Any, asset_class: Any, connectors: Any = None) -> Any
     ``placements_of`` walks the chosen class first; a chosen class that
     ``class_tickers`` lists nothing for takes any name no class holds, which
     is what ``TICKER_NO_LIST_FORMAT`` says under the field; a name no class
-    holds under a listing class answers None.
+    holds under a listing class answers None. A ``CLASS_PRESS_SOURCES`` class
+    with no list read yet reads it first, through ``futures_listings``.
     """
+    if (
+        str(asset_class) == ata_spm.CLASS_DERIVATIVES
+        and fold_ticker(ticker)
+        and not ata_asset_maps.futures_tickers()
+    ):
+        ata_asset_maps.futures_listings()
     placed = placements_of(ticker, asset_class, connectors)
     if placed:
         return placed[0]
