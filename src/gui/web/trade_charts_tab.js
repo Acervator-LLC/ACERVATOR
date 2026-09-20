@@ -68,7 +68,6 @@
   var FILTERS = "filters";
   var OUTCOMES = "outcomes";
   var FORMATS = "formats";
-  var FLOOR_FORMAT_SWITCH = "floor_format_switch";
   var EMPTY_SOURCE = "empty_source";
   var BOT_ID_LOG_LENGTH = "bot_id_log_length";
   var CANDLE_CLOSE_INDEX = "candle_close_index";
@@ -99,7 +98,6 @@
     EMPTY_SOURCE,
     FETCH,
     FILTERS,
-    FLOOR_FORMAT_SWITCH,
     FOLLOWED,
     FORMATS,
     KEYS,
@@ -145,7 +143,6 @@
   var ERROR_TEXT = "error_text";
   var SOURCE = "source";
   var MARKERS = "markers";
-  var FLOORS = "floors";
   var TB_ANCHOR = "tb_anchor";
   var TB_CEILING = "tb_ceiling";
   var ARMED = "armed";
@@ -383,7 +380,6 @@
   var SYNTHETIC_ATTR = "data-synthetic";
   var CANDLES_ATTR = "data-candle-count";
   var MARKERS_ATTR = "data-marker-count";
-  var FLOORS_ATTR = "data-floor-count";
   var ANCHOR_ATTR = "data-tb-anchor";
   var CEILING_ATTR = "data-tb-ceiling";
   var ARMED_ATTR = "data-armed";
@@ -834,7 +830,6 @@
     mountProps[CHART_TF_ATTR] = text(panel[CHART_TIMEFRAME]);
     mountProps[CANDLES_ATTR] = text(panel[CANDLE_COUNT]);
     mountProps[MARKERS_ATTR] = text(listField(panel, MARKERS).length);
-    mountProps[FLOORS_ATTR] = text(listField(panel, FLOORS).length);
     mountProps[ANCHOR_ATTR] = text(panel[TB_ANCHOR]);
     mountProps[CEILING_ATTR] = text(panel[TB_CEILING]);
     mountProps[ARMED_ATTR] = text(panel[ARMED] === null ? null : Boolean(panel[ARMED]));
@@ -1152,7 +1147,6 @@
     ERROR_TEXT,
     SOURCE,
     MARKERS,
-    FLOORS,
     MINIMUM_HEIGHT,
     CHART_REPAINTS,
     PANEL_REPAINTS,

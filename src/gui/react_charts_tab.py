@@ -16,6 +16,7 @@ fetches nothing.
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
 import logging
@@ -358,6 +359,8 @@ if _HAS_WEBENGINE:
             self._fed_candles: Any = None
             self._fed_overlays: Any = None
             self._fed_call: Any = None
+            self._history_asked = False
+            self._history_connected = False
             self._image: dict = {}
             self._image_key_held = ""
             self._payload: dict = {}
@@ -492,6 +495,37 @@ if _HAS_WEBENGINE:
             if recorded is not None:
                 self.log_trade(recorded)
 
+        def _read_history(self) -> None:
+            """Hand the window's History rows and fetch stamp to the model.
+
+            A History that has never fetched is asked to ``refresh`` once,
+            the call the window makes on activation; ``history_refreshed``
+            is connected once so the landing redraws without waiting for
+            the tick.
+            """
+            history = surface.history_of(self.window())
+            state = surface.history_state(history)
+            if history is not None and not self._history_connected:
+                with contextlib.suppress(Exception):
+                    history.history_refreshed.connect(self._on_history_refreshed)
+                    self._history_connected = True
+            if (
+                history is not None
+                and not self._history_asked
+                and surface.history_never_fetched(state)
+            ):
+                self._history_asked = True
+                with contextlib.suppress(Exception):
+                    history.refresh()
+            self._model.set_history(state["rows"], state["fetched_ts"])
+
+        def _on_history_refreshed(self, rows) -> None:
+            """Redraw the shown market's trade events when a History fetch lands."""
+            del rows
+            self._read_history()
+            self._model.feed_history()
+            self.redraw()
+
         def _feed_painter(self) -> None:
             """Give ``painter`` what ``PanelSink`` holds, as the Qt tab gives its chart.
 
@@ -529,7 +563,6 @@ if _HAS_WEBENGINE:
                 self._feed_call(panel)
             painter.set_caption(str(panel.caption))
             painter.set_trade_history_markers(list(panel.markers))
-            painter.set_tranche_floors([tuple(one) for one in panel.floors])
             painter.set_target_balance_lines(panel.tb_anchor, panel.tb_ceiling)
             if panel.armed is not None:
                 painter.set_fire_armed_state(
@@ -591,7 +624,6 @@ if _HAS_WEBENGINE:
                 "error": panel.error_text,
                 "source": panel.source,
                 "markers": panel.markers,
-                "floors": panel.floors,
                 "tb": [panel.tb_anchor, panel.tb_ceiling],
                 "armed": panel.armed,
                 "strip": panel.strip,
@@ -784,6 +816,7 @@ if _HAS_WEBENGINE:
             exchange_connectors: Optional[dict] = None,
         ) -> None:
             """Rebuild the asset list for one pass of bot statuses and redraw."""
+            self._read_history()
             self._model.update_charts(bot_statuses, bot_manager, exchange_connectors)
             self.redraw()
 

@@ -1019,4 +1019,282 @@ Detail                                       7 tabs, Apply refused    7 tabs, Ap
 old hosts in the import closure              neither                  neither
 ```
 
+## 2026-09-20 - #19 - The paper exchange adapter feeds the tab
+
+Unit Q2 of issue #19. The Paper tab now holds one paper exchange adapter,
+`PaperExchange` in `src/paper/paper_exchange.py`, beside the feed reader the
+sections above describe. It answers every read a paper bot asks of the venue
+from the Coinbase Advanced Trade public market endpoints, and no write. Import
+Live Fleet reads the venue's product list once and each record's ticker once,
+and every one of those reads is a block on the API Interaction Log in both
+builds.
+
+### The feed reader sentences today overtake two passages
+
+Two passages on this page describe the feed reader `LiveFeedSource`. Each is
+quoted here and kept above as it stands.
+
+- "The feed reader answers six names and refuses every other one, so a send
+  has no spelling." (Downstream only)
+- "The data path is the venue's public market feed, and it goes one way. The
+  reader names the six things it answers, and every other name raises."
+  (The tab as it stands now)
+
+The rule now: the tab's feed reader is `PaperExchange`, which answers the
+eleven names in its `READ_NAMES` and refuses every other public name.
+`LiveFeedSource` stays on disk for the two old hosts, which nothing loads, and
+its `GRANULARITY` and `BAR_SECONDS` tables grew from eight rows to nine, the
+`4h` row added, because the venue's candles page lists nine granularity names.
+A `1w` ask of `LiveFeedSource` sent `FIVE_MINUTE` to the venue and answered 5m
+bars under the weekly name; the adapter rolls `1w` up from daily bars instead.
+
+`src/paper/paper_exchange.py` — the read set
+
+```python
+READ_NAMES = (
+    "venue",
+    "product_id",
+    "granularity",
+    "timeframes",
+    "products",
+    "ticker",
+    "candles",
+    "windows",
+    "quote_rate",
+    "asked_at",
+    "calls",
+)
+```
+
+### What the adapter answers, and from which endpoint
+
+`products` reads `GET market/products` and keeps the products the venue
+trades, by the rule the Market Inspector's `_product_trades` states: `status`
+online and `trading_disabled` not set. `ticker` reads
+`GET market/products/{id}/ticker?limit=1` and answers the last trade's price
+as `last`, with the book's `best_bid` and `best_ask` from the same answer;
+`last` is None when the venue answers no trade. `candles` reads
+`GET market/products/{id}/candles` at any of the nine granularity names, at
+most 350 bars a call, and answers `[ts_ms, open, high, low, close, volume]`
+rows oldest first. `windows` answers one `candles` window per higher
+timeframe a record's phantoms name. `quote_rate` answers 1.0 for USD with no
+call, and otherwise the `{QUOTE}/USD` ticker's `last`, the book's mid when the
+venue answers no trade; the thirteen USDC records share one `USDC/USD` read.
+
+`src/paper/paper_exchange.py` — the ticker's answer
+
+```python
+    def _ticker_view(self, symbol: str, entry: TickerEntry) -> dict:
+        return {
+            "symbol": symbol,
+            "product_id": entry.symbol,
+            "last": entry.last or None,
+            "best_bid": entry.bid or None,
+            "best_ask": entry.ask or None,
+            "timestamp": entry.timestamp,
+        }
+```
+
+### One rollup, and only what the venue serves
+
+The venue lists no weekly granularity. A `1w` ask reads daily bars in pages of
+350, newest page first, until seven days per week asked are held, and rolls
+them through the stone tablets' `_rollup`, the one rollup every derived tablet
+timeframe reads through. Each timestamp is moved back by `MONDAY_OFFSET_MS`
+before the rollup and forward after it, the shift the Market Inspector's
+`weekly_from_daily` makes, so every weekly bucket starts on Monday 00:00 UTC.
+A 100-bar weekly window needs 700 daily bars, two calls. A granularity outside
+the nine is sent as spelled, so the venue's own 400 answers it and lands on
+the pane as an error block.
+
+`src/paper/paper_exchange.py` — the rollup
+
+```python
+def weekly_rows(daily: Sequence[Sequence[float]]) -> list[list[float]]:
+    shifted = [[row[0] - MONDAY_OFFSET_MS, *row[1:6]] for row in daily]
+    return [
+        [float(int(row[0]) + MONDAY_OFFSET_MS), *row[1:6]]
+        for row in _rollup(shifted, DAYS_PER_WEEK, WEEK_MS)
+    ]
+```
+
+### Cached with Live's two windows, paced at the connector's interval
+
+Every ticker answer is held in a `TickerEntry` and every candle window in a
+`CacheEntry`, the two slot types Live's `MarketDataPool` holds in
+`src/exchange/data_pool.py`. A ticker asked again within 5 s is served from the
+slot with no call and no block. A candle window asked again within one bar of
+its timeframe, `TF_SECONDS`, is served the same way while the slot holds enough
+rows. Every venue call waits `PUBLIC_MIN_INTERVAL_S` after the call before it,
+the figure `src/exchange/market_inspector_fetcher.py` states for the public
+route and the exchange connector keeps as `_min_request_interval`, 0.1 s; one
+lock holds the calls in order, so two threads asking at once are spaced. A 429
+is recorded as a warning block, waited out for the venue's `Retry-After`
+seconds when the answer carries one and one interval otherwise, and asked once
+more.
+
+`src/paper/paper_exchange.py` — the cache and the pace
+
+```python
+from ..exchange.data_pool import CacheEntry, TickerEntry
+from ..exchange.market_inspector_fetcher import (
+    API_LEVEL_ERROR,
+    API_LEVEL_SUCCESS,
+    API_LEVEL_WARNING,
+    DAYS_PER_WEEK,
+    MONDAY_OFFSET_MS,
+    PUBLIC_MIN_INTERVAL_S,
+    WEEK_MS,
+    _product_trades,
+)
+```
+
+### Every read is a block on the API Interaction Log
+
+The adapter records one entry per venue call on the `APIInteractionLog` its
+host hands it, the tab's own log, never the process-wide one Live's connector
+records on. The entry carries Live's fields: the exchange, the action
+(`FETCH_MARKETS`, `FETCH_TICKER` or `FETCH_OHLCV`, the words Live's connector
+records), the reason, the venue path as the endpoint, the params, the result,
+the response time, the level and the data usage. Each host now carries one
+signal, `apiEntryLogged`, and one receiver beside its `_on_api_event`,
+`_cross_api_event`, the crossing the main window carries for Live; the host
+registers the receiver as the log's listener, so an entry recorded on a worker
+thread lands in `_on_api_event` on the GUI thread through Qt's queued
+connection and draws as Live's block. The Live tab's pane is not written: the
+adapter never records on `get_api_log`.
+
+`src/gui/paper/paper_trading_tab.py` — the crossing
+
+```python
+    def _cross_api_event(self, entry: dict) -> None:
+        """The ``api_log()`` listener: emit ``apiEntryLogged``, which Qt queues
+        onto the GUI thread for ``_on_api_event`` from any other thread."""
+        self.apiEntryLogged.emit(entry)
+```
+
+### Import Live Fleet reads the venue once
+
+After Import Live Fleet copies the records and fires `fleet_changed`, each host
+starts one worker thread, `paper-feed-import`, which runs `read_fleet` over the
+adapter: one `products` read, then one `ticker` read per imported record. Each
+read lands on the pane as it completes. When the worker ends, its summary
+crosses a second signal, `feedRead`, and one line lands on the Activity Log
+naming how many products the venue trades, how many of the fleet's products
+are among them, how many tickers answered, and how many calls it took; a fleet
+product the venue does not trade is named on the line, and a product list the
+venue did not answer is said so, naming no product. The GUI thread never waits
+on a read.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the line
+
+```python
+FEED_LINE_FORMAT = (
+    "Feed: {products} product(s) trade on {exchange}; {traded} of {records} fleet "
+    "product(s) among them; {answered} of {records} ticker(s) answered in {calls} call(s)."
+)
+FEED_NO_PRODUCTS_FORMAT = (
+    "Feed: {exchange} answered no product list; {answered} of {records} ticker(s) "
+    "answered in {calls} call(s)."
+)
+FEED_UNTRADED_FORMAT = " Not traded: {symbols}."
+FEED_THREAD_NAME = "paper-feed-import"
+```
+
+### Every write name is refused
+
+`PaperExchange.__getattribute__` raises `SendRefused` for every public name
+outside `READ_NAMES`, before any attribute is read, and `__getattr__` raises it
+for a name the class does not define. `place_order`, `cancel_order`,
+`create_order` and every other write name have no spelling on the adapter, and
+a method planted on the class without its name in `READ_NAMES` is refused too.
+No file under `src/paper/` or `src/gui/paper/` imports a credential loader,
+`ccxt`, `ScrummingBot`, `BotContainer` or `BotManager`.
+
+`src/paper/paper_exchange.py` — the refusal
+
+```python
+    def __getattribute__(self, name: str):
+        """Answer a private name or one of ``READ_NAMES``; refuse the rest."""
+        if not name.startswith("_") and name not in READ_NAMES:
+            raise SendRefused(REFUSED_FORMAT.format(read_names=READ_NAMES, name=name))
+        return object.__getattribute__(self, name)
+```
+
+### What the feed reading measured
+
+Read off the real window in both builds over a scratch home holding a copy of
+the operator's `bot_state.json`, thirty-eight scrumming records on coinbase
+at 5m, every socket but loopback refused, and a loopback stand-in shaped from
+the venue's pages: the four endpoints with their fields, 400 for a granularity
+outside the nine names, empty candles for a listed product with
+`trading_disabled` set, 350 candles a call at most, a ticker carrying
+`best_bid` and `best_ask`, and a 429 on a plant. On the commit before this
+unit, Import Live Fleet put nothing on the pane in either build, the feed
+reader's ticker answered one price with no bid and no ask, and a `1w` ask sent
+`FIVE_MINUTE` to the stand-in.
+
+```
+reading                                      Qt                       React
+blocks on the pane after Import Live Fleet   39                       39 entries, 234 lines
+actions                                      1 FETCH_MARKETS,         1 FETCH_MARKETS,
+                                             38 FETCH_TICKER          38 FETCH_TICKER
+thread the reads ran on                      paper-feed-import        paper-feed-import
+thread violations written                    0                        0
+least gap between two stamps                 0.112 s                  0.112 s
+gaps under 0.1 s                             0                        0
+the Activity Log line                        38 of 38 tickers,        38 of 38 tickers,
+                                             39 calls                 39 calls
+a ticker asked twice within 5 s              two asks, one call       two asks, one call
+a 1w window against its daily rows           equal, Monday buckets    equal, Monday buckets
+a 12h ask                                    HTTP 400 error block     HTTP 400 error block
+a listed-not-traded product                  [] and a No data block   [] and a No data block
+a planted 429                                one wait of 1000 ms,     one wait of 1000 ms,
+                                             then answered            then answered
+place_order, cancel_order, create_order      SendRefused              SendRefused
+a method planted without its name            SendRefused              SendRefused
+a method planted with its name in READ_NAMES answered                 answered
+bot_state.json hash across the press         unchanged                unchanged
+a planted byte on a copy                     hash moved               hash moved
+sockets opened outside loopback              0                        0
+```
+
+The stand-in serves the `4h` name and a `USDC-USD` ticker with trades because
+the venue's pages list them; whether the real venue answers `FOUR_HOUR` and
+whether `USDC-USD` carries trades are read at the real venue, not here.
+
+One real reading followed, on both built bundles against the public host, no
+credential file present and the adapter's own pace: Import Live Fleet made 39
+calls in each build, the product list answering 917 trading products and 8
+not trading, all 38 fleet products among them, 38 of 38 tickers answered with
+their bid and ask, no 429, the least gap between two stamps 0.191 s in the Qt
+build and 0.168 s in the React build, the 39 calls spanning 11.4 s and 10.7 s.
+Launched in a Windows AppContainer with no network, the same press made 39
+calls in each build, every one refused by the container and every one a block
+on the pane naming its cause, and the Activity Log line read that the venue
+answered no product list and 0 of 38 tickers.
+
+One more real reading settled the ninth name against the source. Through the
+built bundle's own copy of `PaperExchange`, against the public host, no
+credential file present and the adapter's own pace, one candles ask per name
+in `GRANULARITY` on `BTC-USD`, nine calls, ten bars each:
+
+```
+name             status  rows  bar spacing
+ONE_MINUTE       200     10    60 s
+FIVE_MINUTE      200     10    300 s
+FIFTEEN_MINUTE   200     10    900 s
+THIRTY_MINUTE    200     10    1,800 s
+ONE_HOUR         200     10    3,600 s
+TWO_HOUR         200     10    7,200 s
+FOUR_HOUR        200     10    14,400 s
+SIX_HOUR         200     10    21,600 s
+ONE_DAY          200     10    86,400 s
+```
+
+The nine calls were 0.271 s apart at least and spanned 2.3 s; no 400 and no
+429. The venue answers `FOUR_HOUR`, so the `4h` row stays.
+`src/exchange/timeframes.py` still says the venue ships eight granularities
+and no `4h`; that file is Live's and this unit does not touch it.
+
 Back to [the subsystem index](README.md).

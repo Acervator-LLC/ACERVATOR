@@ -350,14 +350,34 @@ disk, loaded by nothing, until Q3. The manual section is
 `docs/manual/08-tabs/paper-trader.md`, "2026-09-19 - #19 - Live's tab code
 cloned under Paper names".
 
-**Resume at Q2**, the paper exchange adapter beside
-`src/paper/live_feed_source.py`: the ticker with `best_bid` and `best_ask`,
-candles at the nine granularities, the products list, the quote-to-USD rate,
-cached with Live's windows in `src/exchange/data_pool.py`, every write name
-raising `SendRefused`; comment 5747250806 row Q2 holds the acceptance. Read the
-Paper tab off the running program with a scratch home and every socket but
-loopback refused before changing a line; `main.py` sets its window floor at
-1400 by 900, so the tab is reached at that width and no narrower.
+**Q2 landed on branch `unit/19-q2-paper-feed`**: `PaperExchange` in
+`src/paper/paper_exchange.py`, the paper exchange adapter: `products`,
+`ticker` with `best_bid` and `best_ask`, `candles` at the nine granularity
+names with `1w` rolled from daily pages through the stone tablets' `_rollup`,
+`windows`, `quote_rate`; held in `TickerEntry` and `CacheEntry` slots from
+`src/exchange/data_pool.py`, paced at `PUBLIC_MIN_INTERVAL_S` from
+`src/exchange/market_inspector_fetcher.py`, one `APIInteractionLog` entry per
+venue call, `__getattribute__` refusing every public name outside
+`READ_NAMES`. Both hosts under `src/gui/paper/` carry `apiEntryLogged` and
+`_cross_api_event`, and after Import Live Fleet a `paper-feed-import` thread
+runs `read_fleet` and one `feed_line` lands on the Activity Log. The manual
+section is `docs/manual/08-tabs/paper-trader.md`, "2026-09-20 - #19 - The
+paper exchange adapter feeds the tab". Settled against the venue itself: one
+candles ask per granularity name on `BTC-USD` answered 200 with rows for all
+nine, `FOUR_HOUR` at 14,400 s spacing; `src/exchange/timeframes.py` still
+says eight and no `4h`, is Live's, and was not touched.
+
+**Resume at Q3**, the runner on one worker thread per run at Live's cadence,
+the tick rebuilt on `src/trading/scrumming/sizing.py` over `tape_context` and
+`latch`, a scrum at `best_bid`, a fold at `best_ask`, the venue's taker fee,
+the budget unbounded; comment 5747250806 row Q3 holds the acceptance. The
+runner reads the tab's `exchange()`; the old hosts
+`src/gui/paper_trader_tab.py` and `src/gui/react_paper_trader_tab.py` are
+removed in Q3, and `src/paper/paper_run.py` is the tick Q3 rebuilds. Read the
+Paper tab off the running program
+with a scratch home and every socket but loopback refused before changing a
+line; `main.py` sets its window floor at 1400 by 900, so the tab is reached at
+that width and no narrower.
 
 ```bash
 git log --oneline origin/current -- src/gui/paper src/paper | head -5

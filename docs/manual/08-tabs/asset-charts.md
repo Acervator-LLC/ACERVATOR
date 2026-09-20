@@ -1574,3 +1574,170 @@ draws no header line of its own.
 "The header line, the toolbar and the toggle row each take a rule between
 them." - the page has no toolbar and no header line; the toggle row keeps
 its rule.
+
+## 2026-09-20 06:10 - #55 - the trade events from the History; the floors gone
+
+His words, 2026-09-20: *"Dotted yellow lines for prior orders are supposed
+to be gone. Supposed to have hermetic symbols for trade events based on the
+History."* The chart draws no tranche floor on any surface, and every trade
+event of the shown market is drawn as its hermetic glyph from the History
+tab's rows, in both builds.
+
+### The rule
+
+No dashed floor line, no `FLOOR` tag and no `N FLOORS` tag on the Qt
+widget, the React page's image or any venue PNG. For each row the History
+tab holds for the shown symbol, one glyph: a sell as `dissolve`, a buy as
+`reform`, on the candle whose interval holds the row's stamp, tagged with
+the role and the price, `SCRUM` for a sell and `FOLD` for a buy. A row
+outside the window is counted and not drawn. The rows are the venue's own
+fills, and the History tab is the one place that fetches them; the Charts
+tab never calls a venue. A fill the bus carries after launch draws at once
+and is not doubled when the History's next fetch carries it. The ATA-SMP
+picture and every venue PNG carry no glyph.
+
+### Where the trade events come from
+
+The History tab holds the venue's fills in `_all_trades`, the time of its
+last fetch in `_last_fetched_ts` and whether a fetch is in flight in
+`_fetch_in_flight`; see [the History tab](history.md). The window builds
+it after the Charts tab, so the Charts tab reads it at each `update_charts`
+tick under the name the window gives it, `_history_tab`. One surface reader
+takes the three names, one reader turns the rows of the shown symbol into
+fills, and one join keeps each bus fill the venue has not answered for.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` - the rows to fills
+
+```python
+def history_fills(rows: Any, symbol: Any) -> list:
+    """One fill per History row of ``symbol``: the venue's id, side, price and stamp, the role from the side.
+
+    A row whose side is neither buy nor sell, or whose price or stamp is
+    not positive, gives no fill.
+    """
+```
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` - the join
+
+```python
+def merged_fills(venue: Any, logged: Any) -> list:
+    """``venue`` fills, then each ``logged`` fill no venue fill names.
+
+    A venue fill names a logged fill when both carry the same venue id, or
+    when their prices sit within ``FILL_MATCH_PRICE`` and their stamps
+    within ``FILL_MATCH_WINDOW_S`` of each other.
+    """
+```
+
+The bus fill carries no venue id today, so every join is by stamp and
+price. A fill the venue answers as several rows at several prices keeps its
+bus glyph beside them until the next launch.
+
+### The one ask, and the landing
+
+When the History has never fetched and no fetch is in flight, the Charts
+tab asks `refresh()` once in its life, the same call the window makes when
+the History tab is activated. The Charts tab also connects the History's
+`history_refreshed` signal once, so the rows landing redraw the shown market
+without waiting for the two-second tick. The window's own rule keeps the
+History fresh after that.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` - the one time the tab asks
+
+```python
+def history_never_fetched(state: dict) -> bool:
+    """True when the History has never landed a fetch and none is in flight: the one time the Charts tab asks."""
+    return state["fetched_ts"] == NEVER_FETCHED_TS and not state["in_flight"]
+```
+
+`src/gui/widgets/trade_charts_tab.py` - the Qt tab's draw
+
+```python
+        def _draw_history(self) -> None:
+            """Put the shown market's trade events on the chart: the History's fills
+            for its symbol, then each bus fill since launch the venue has not
+            answered for.
+
+            A History that has never fetched is asked to ``refresh`` once, the
+            call the window makes on activation; ``history_refreshed`` is
+            connected once so the landing redraws without waiting for the tick.
+            A called market on the ATA-SMP list gets none.
+            """
+```
+
+The React widget hands the same three names to its model through
+`set_history`, and the model's `feed_history` runs in `update_charts` before
+the bot's own annotations. Both builds read the same glyph set on the same
+candles from one painter.
+
+### The floors gone
+
+`ChartPainter` no longer holds `_tranche_floors`, `set_tranche_floors` or
+`_draw_floors`; `FLOOR_LINE` is no longer a palette role; the two floor tag
+formats are gone. The Qt tab no longer reads the bot's lots, the React model
+no longer carries floors, and the page no longer stamps a floor count. The
+annotation emitter `charts.annotations.drawn` names fills, target lines, the
+strip, the glow and positions, and no floors; it now also fires when the
+fed count or the off-window count moves, so a row landing outside the window
+writes a row. The standing scrums off the bot's fold tranches are no longer
+a source of markers: the History's rows are the venue's answer for the same
+sells.
+
+### The History readings, off the running program, both builds
+
+Both builds, the real window, the home on a scratch directory, every socket
+but loopback refused, a two-bot fleet off a scratch copy of one seed record,
+100 recorded BTC 1h candles rolled from the 5m tablet by the registry's own
+rollup and shifted by whole hours so the newest candle opens at the current
+hour, and a History venue on loopback answering `get_my_trades` with 40
+BTC/USD rows (26 on distinct candles inside the window, 14 older than it)
+and 6 ETH/USD rows, through the History tab's own fetch path:
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| `_draw_floors` and `set_tranche_floors` on the painter | absent; 0 floors held; the emitter names no floor | the same |
+| the History at the tab's first tick | never fetched; the tab asks once; the venue is asked once per market, 2 of 2; 46 rows land in 0.21 s | the same |
+| the shown market's rows against its glyphs | 40 rows for BTC/USD, 40 markers held, 26 drawn on 26 candles, 14 counted off the window | the same 40, 26 and 14 |
+| a six-notch zoom to 36 candles, then a reset | 5 drawn and 35 off; back to 26 and 14 | the same |
+| one bus fill on the newest candle | drawn at once, 27 of 41; the History's next fetch carrying it leaves 27 of 41 | the same |
+| a row planted inside the window, then one outside | 28 drawn of 42; then 28 drawn of 43 with 15 off | the same |
+| ETH/USD shown, then BTC/USD again | 6 rows, 4 drawn, 2 off; back to 28 of 43 | the same |
+| the History tab after these fetches | 49 of 49 trades shown, page 1 of 1 | the same |
+| the venue image with a call | no glyph, no floor | one painter |
+
+**Figures.** `artifacts/u55/C7/` holds the tab, the chart and the window at
+1920 and 1400 in both builds, before and after.
+
+### Six sentences the History glyphs overtake
+
+They were not reworded. They are quoted here.
+
+"`set_tranche_floors` | The standing fold-tranche floors" - the setter table
+row; the setter no longer exists and nothing places a floor.
+
+"The fills come from two figures of the bot. Each tab subscribes to the bus
+topic every fill crosses and records it, so a fill made after launch draws
+on the next status tick. And each standing fold tranche the bot holds was
+made at a scrum: its reference price is that sell and its stamp is that
+sell's time, so the tab draws each one as a scrum glyph." - the fills come
+from the History tab's rows for the shown symbol, then the bus fills since
+launch the venue has not answered for; the fold tranches are no longer a
+source.
+
+"Each tranche floor keeps its dashed line; floors whose tags would overlap
+share one tag naming their count and their price span, so 16 floors in one
+pane read as seven tags." - no floor draws on any surface.
+
+"`charts.annotations.drawn` is written when the set of annotations the
+paint pass drew changes, with the counts drawn against the counts fed that
+fall inside the pane, and the fills fed and the fills off the window in its
+context." - it is also written when the fills fed or the fills off the
+window change, and it names no floor.
+
+"55 floors off the record | 55 lines fed, 16 inside the pane, 7 tags | the
+same" - a reading of the floors, which no longer draw.
+
+"An ATA-SMP market has no bot behind it, so the chart draws its candles
+without the trade markers, the target lines, the tranche floors and the
+fire glow that a traded asset carries." - the sentence holds; there are no
+tranche floors on any market now.
