@@ -210,6 +210,9 @@ LINE_HEIGHT_LOOSE = 1.5  # long-form reading
 
 FONT_FAMILY_UI = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
 FONT_FAMILY_MONO = "'JetBrains Mono', 'Fira Code', 'Consolas', monospace"
+# Symbol glyphs such as the U+25C0 and U+25B6 arrows; the UI families draw
+# them under half the line height, these carry them at full size.
+FONT_FAMILY_GLYPH = "'Segoe UI Symbol', 'DejaVu Sans', 'Apple Symbols', sans-serif"
 
 # Font weights on the CSS 100-to-900 scale
 WEIGHT_REGULAR = 400
@@ -445,6 +448,7 @@ __all__ = [
     "LINE_HEIGHT_LOOSE",
     "FONT_FAMILY_UI",
     "FONT_FAMILY_MONO",
+    "FONT_FAMILY_GLYPH",
     "WEIGHT_REGULAR",
     "WEIGHT_MEDIUM",
     "WEIGHT_BOLD",
