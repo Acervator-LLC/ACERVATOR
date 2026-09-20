@@ -101,6 +101,9 @@ PRE_TICK_AUTO_FIRE = {
     "evaluated_at_tick": 0,
 }
 
+#: ``scrum_read_rate_min`` for a record without the key, ``BotConfig``'s default.
+SCRUM_READ_RATE_MIN_DEFAULT = 5
+
 #: ``phantoms_enabled`` for a record without the key, as the restore reads it.
 PHANTOMS_ENABLED_DEFAULT = True
 
@@ -129,6 +132,7 @@ class PaperBot:
     target_usd: Optional[float] = None
     ta_timeframe: str = ""
     scrumming_interval_pct: float = 0.0
+    scrum_read_rate_min: int = SCRUM_READ_RATE_MIN_DEFAULT
     trading_fee_pct: float = 0.0
     bb_midline_gate: bool = True
     bb_tolerance_pct: float = 1.0
@@ -284,6 +288,9 @@ def paper_bot_from_record(
         target_usd=config_target,
         ta_timeframe=str(config.get("ta_timeframe") or ""),
         scrumming_interval_pct=_number(config.get("scrumming_interval_pct"), 0.0),
+        scrum_read_rate_min=int(
+            _number(config.get("scrum_read_rate_min"), SCRUM_READ_RATE_MIN_DEFAULT)
+        ),
         trading_fee_pct=_number(config.get("trading_fee_pct"), 0.0),
         bb_midline_gate=bool(config.get("bb_midline_gate", True)),
         bb_tolerance_pct=_number(config.get("bb_tolerance_pct"), 1.0),
@@ -959,6 +966,7 @@ __all__ = [
     "READ_NAMES",
     "SAVED_AT_HUMAN_FORMAT",
     "SCRUMMING_MODE",
+    "SCRUM_READ_RATE_MIN_DEFAULT",
     "STATE_DIR_NAME",
     "PaperBot",
     "PaperFleetSource",

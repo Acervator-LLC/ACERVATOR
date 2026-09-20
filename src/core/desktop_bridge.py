@@ -230,7 +230,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         market_inspector_topologies_surface,
         native_chart_surface,
         notification_spool_surface,
-        paper_trader_tab_surface,
         phantom_bots_tab_surface,
         positions_held_surface,
         preflight_check_surface,
@@ -262,6 +261,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         widgets_package_surface,
         wire_canvas_surface,
     )
+    from src.gui.paper import paper_trading_tab_surface
 
     registry: Dict[str, Handler] = {
         history_surface.METHOD: history_surface.view_model,
@@ -314,7 +314,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
             market_inspector_topologies_surface.view_model
         ),
         native_chart_surface.METHOD: native_chart_surface.view_model,
-        paper_trader_tab_surface.METHOD: paper_trader_tab_surface.view_model,
+        paper_trading_tab_surface.METHOD: paper_trading_tab_surface.view_model,
         proof_of_accumulation_tab_surface.METHOD: (
             proof_of_accumulation_tab_surface.view_model
         ),
