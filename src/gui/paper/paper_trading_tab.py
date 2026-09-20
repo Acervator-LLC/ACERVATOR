@@ -15,6 +15,16 @@ does, and then ``refresh_bots`` hands each venue its rows from
 ``PaperFleetSource.statuses`` and ``refresh_votes`` hands the panel the fleet,
 its own rates and the selected bot's ``ivp_feed``; every ``fleet_changed``
 first writes the paper fleet file through ``PaperFleetSource.save``.
+``_start_paper_run`` is the Simulator's ``_start_run`` forked: Start Paper
+Run opens ``paper_run.start`` over the held fleet under ``run_rule`` and
+starts one ``PaperRunner`` on the ``RUN_THREAD_NAME`` thread, which ticks
+every record whose state reads ``running`` over ``exchange()``; while it
+runs the run button reads ``STOP_RUN_TEXT`` and its press reaches
+``_stop_paper_run``, the fork of ``_stop_run``, and ``_take_paper_run`` on
+``run_finished`` writes ``run_ended_line`` and relabels the button; each
+fill crosses on ``run_trade``, each runner line on ``run_line`` and the
+ledger's figures on ``run_figures`` to ``_take_figures``, so ``aggregate``
+reads a snapshot and never the runner's balances.
 ``_import_live_fleet`` puts ``exchange_choice`` over
 ``PaperFleetSource.stored_exchanges``, opens ``PaperExchangeChoiceDialog`` when
 it prompts, copies the chosen exchange's records through
@@ -63,6 +73,7 @@ from PySide6.QtWidgets import (
 
 from ...core.sound_engine import get_sound_engine
 from ...exchange.api_logger import APIInteractionLog
+from ...paper import paper_run
 from ...paper.fake_balance import PaperLedger
 from ...paper.fleet_source import (
     PaperFleetSource,
@@ -73,9 +84,9 @@ from ...paper.fleet_source import (
 from ...paper.paper_bot_manager import PaperBotManager
 from ...paper.paper_bot_view import PaperBotView
 from ...paper.paper_exchange import PaperExchange, read_fleet
+from ...paper.paper_run import PaperRun, PaperRunner, PaperTrade
 from .. import design_system as ds
 from ..color_alpha import rgba
-from ..main_tabs import paper_trader_tab_surface as paper
 from ..main_tabs.trading_tab_surface import (
     ADD_BUTTON_MIN_WIDTH_PX,
     BOTTOM_SPLITTER_SIZES_PX,
@@ -122,6 +133,14 @@ class PaperTradingTab(QWidget):
     apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
     #: One ``read_fleet`` summary, queued onto the GUI thread for ``_on_feed_read``.
     feedRead = Signal(object)  # noqa: N815 - Qt signal name
+    #: One runner line and its level, queued onto the GUI thread.
+    run_line = Signal(str, str)
+    #: One ``PaperTrade``, queued onto the GUI thread for ``_take_trade``.
+    run_trade = Signal(object)
+    #: The ``PaperRun`` the runner ended with, queued for ``_take_paper_run``.
+    run_finished = Signal(object)
+    #: The ledger's figures after a worked pass, queued for ``_take_figures``.
+    run_figures = Signal(object)
 
     def __init__(
         self,
@@ -142,9 +161,18 @@ class PaperTradingTab(QWidget):
         )
         self._bot_manager = PaperBotManager(self._fleet_source)
         self._ledger = PaperLedger()
+        self._figures: dict = {}
+        self._states: dict = {}
+        self._runner: Optional[PaperRunner] = None
+        self._fills: list[PaperTrade] = []
         self._corner_buttons: dict[str, QPushButton] = {}
         self._card_buttons: dict[str, QPushButton] = {}
+        self._run_buttons: list[QPushButton] = []
         self._build()
+        self.run_line.connect(self._status_log.log)
+        self.run_trade.connect(self._take_trade)
+        self.run_finished.connect(self._take_paper_run)
+        self.run_figures.connect(self._take_figures)
         self.apiEntryLogged.connect(self._on_api_event)
         self._api_log.add_listener(self._cross_api_event)
         self.feedRead.connect(self._on_feed_read)
@@ -169,8 +197,29 @@ class PaperTradingTab(QWidget):
 
     def aggregate(self) -> dict:
         """The header strip's figures, ``strip_aggregate`` over the held fleet
-        and ``PaperLedger.figures``."""
-        return strip_aggregate(self._fleet_source.bots(), self._ledger.figures())
+        and the ledger figures the runner last posted through ``run_figures``."""
+        return strip_aggregate(self._fleet_source.bots(), self._figures)
+
+    def figures(self) -> dict:
+        """The ledger figures the runner last posted, empty before a run."""
+        return dict(self._figures)
+
+    def runner(self) -> Optional[PaperRunner]:
+        """The ``PaperRunner`` of the run in flight or last finished, or None."""
+        return self._runner
+
+    def run(self) -> Optional[PaperRun]:
+        """The ``PaperRun`` in flight or last finished, or None before one."""
+        return self._runner.run if self._runner is not None else None
+
+    def run_running(self) -> bool:
+        """True while the ``RUN_THREAD_NAME`` worker thread is alive."""
+        return self._runner is not None and self._runner.running()
+
+    def fills(self) -> list[PaperTrade]:
+        """Every ``PaperTrade`` the run in flight or last finished handed
+        ``run_trade``, in fill order; empty before the first run."""
+        return list(self._fills)
 
     def api_log(self) -> APIInteractionLog:
         """The tab's own API log; every entry it records reaches the pane."""
@@ -196,14 +245,103 @@ class PaperTradingTab(QWidget):
 
     def _way_in(self, action: str) -> None:
         """Run the corner or card press ``action``: ``_import_live_fleet`` for
-        Import Live Fleet, ``start_run_line`` for Start Paper Run."""
-        if action == paper.IMPORT_LIVE_FLEET_ACTION:
+        Import Live Fleet, ``_start_paper_run`` for Start Paper Run with no
+        run up, ``_stop_paper_run`` for the same seat while one is up."""
+        if action == tab_surface.IMPORT_LIVE_FLEET_ACTION:
             self._import_live_fleet()
             return
-        if action == paper.START_RUN_ACTION:
-            self._status_log.log(tab_surface.start_run_line(), "warning")
+        if action in (tab_surface.START_RUN_ACTION, tab_surface.STOP_RUN_ACTION):
+            if self.run_running():
+                self._stop_paper_run()
+            elif action == tab_surface.START_RUN_ACTION:
+                self._start_paper_run()
             return
         self._status_log.log(f"{action} is not a way in.", "error")
+
+    def _start_paper_run(self) -> None:
+        """Start Paper Run: ``paper_run.start`` over the held fleet under
+        ``run_rule`` of ``exchange().venue()``, one ``PaperRunner`` on the
+        ``RUN_THREAD_NAME`` thread reading ``_states``, the started line,
+        and the run button relabelled Stop; a fleet holding no record or a
+        venue with no cited rule writes one line and starts nothing."""
+        bots = self._fleet_source.bots()
+        if not bots:
+            self._status_log.log(tab_surface.RUN_NO_BOT_TEXT, "warning")
+            return
+        venue = self._exchange.venue()
+        rule = paper_run.run_rule(venue)
+        if rule is None:
+            self._status_log.log(tab_surface.run_no_rule_line(venue), "warning")
+            return
+        run = paper_run.start(bots, rule)
+        self._ledger = run.ledger
+        self._figures = run.figures()
+        self._fills = []
+        self._refresh_states()
+        self._runner = PaperRunner(
+            run,
+            self._exchange,
+            self._read_states,
+            on_trade=self.run_trade.emit,
+            on_figures=self.run_figures.emit,
+            on_finished=self.run_finished.emit,
+            say=lambda line: self.run_line.emit(line, "info"),
+        )
+        self._runner.start()
+        self._status_log.log(
+            tab_surface.run_started_line(
+                len(bots),
+                len(tab_surface.running_bot_ids(bots)),
+                run.ledger.fleet_target_usd,
+            ),
+            "success",
+        )
+        self._relabel_run_buttons(True)
+
+    def _stop_paper_run(self) -> None:
+        """Stop Paper Run: ``RUN_STOPPING_TEXT`` and the event the runner
+        reads before each tick; ``run_finished`` follows from the thread."""
+        self._status_log.log(tab_surface.RUN_STOPPING_TEXT, "warning")
+        if self._runner is not None:
+            self._runner.stop()
+
+    def _take_paper_run(self, run: PaperRun) -> None:
+        """The runner's end on the GUI thread: the final figures held,
+        ``run_ended_line`` written and the run button relabelled Start."""
+        self._figures = run.figures()
+        self._status_log.log(tab_surface.run_ended_line(run), "info")
+        self._relabel_run_buttons(False)
+
+    def _take_figures(self, figures: dict) -> None:
+        """Hold the ledger figures the runner posted, what ``aggregate`` reads."""
+        self._figures = dict(figures or {})
+
+    def _take_trade(self, trade: PaperTrade) -> None:
+        """Hold one fill the runner posted, in fill order."""
+        self._fills.append(trade)
+
+    def _read_states(self) -> dict:
+        """The state per held ``bot_id`` as of the last ``_refresh_states``,
+        the map the runner reads on its own thread."""
+        return self._states
+
+    def _refresh_states(self) -> dict:
+        """Rebuild ``_states`` from ``PaperBotManager.bots`` on the GUI thread."""
+        self._states = {bot.bot_id: bot.state for bot in self._bot_manager.bots()}
+        return self._states
+
+    def _relabel_run_buttons(self, running: bool) -> None:
+        """Give every run button the face ``run_buttons`` names for ``running``:
+        its text and its accessible name."""
+        action, text = tab_surface.run_buttons(running)[1]
+        for button in self._run_buttons:
+            button.setText(text)
+            card = button.accessibleName().endswith("-card")
+            button.setAccessibleName(
+                tab_surface.card_button_name(action)
+                if card
+                else tab_surface.button_name(action)
+            )
 
     def _import_live_fleet(self) -> None:
         """Import Live Fleet: ``exchange_choice`` over the exchanges
@@ -308,6 +446,8 @@ class PaperTradingTab(QWidget):
                 corner_row.addWidget(way_btn)
                 if label_text == "Crypto":
                     self._corner_buttons[action] = way_btn
+                if action == tab_surface.START_RUN_ACTION:
+                    self._run_buttons.append(way_btn)
             tab_w.setCornerWidget(corner)
 
             # Empty state placeholder
@@ -341,6 +481,8 @@ class PaperTradingTab(QWidget):
                 ph_layout.addWidget(ph_add, alignment=Qt.AlignCenter)
                 if label_text == "Crypto":
                     self._card_buttons[action] = ph_add
+                if action == tab_surface.START_RUN_ACTION:
+                    self._run_buttons.append(ph_add)
             ph_hint = QLabel(placeholder_hint_text(label_text))
             ph_hint.setStyleSheet(
                 f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
@@ -600,6 +742,7 @@ class PaperTradingTab(QWidget):
         for eid in wanted:
             self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
         self._drop_unlisted_exchange_tabs(wanted)
+        self._refresh_states()
         self.refresh_bots()
         self.refresh_votes()
 

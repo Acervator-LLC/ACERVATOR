@@ -45,7 +45,7 @@ from . import bot_visualizer_surface
 from . import console_tab_surface
 from . import history_tab_surface
 from . import market_inspector_surface
-from . import paper_trader_tab_surface
+from ..paper import paper_trading_tab_surface
 from . import proof_of_accumulation_tab_surface
 from . import simulator_tab_surface
 from . import system_status_tab_surface
@@ -138,7 +138,7 @@ CONSOLE_TAB = "Console"
 
 # Each unbuilt tab is labelled by its own surface, so the bar and the empty
 # state it draws cannot carry two spellings of one name.
-PAPER_TAB = paper_trader_tab_surface.HEADING
+PAPER_TAB = paper_trading_tab_surface.HEADING
 STATUS_TAB = system_status_tab_surface.HEADING
 ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 
@@ -173,7 +173,7 @@ TAB_METHODS = {
     HISTORY_TAB: history_tab_surface.METHOD,
     SIM_TAB: simulator_tab_surface.METHOD,
     CONSOLE_TAB: console_tab_surface.METHOD,
-    PAPER_TAB: paper_trader_tab_surface.METHOD,
+    PAPER_TAB: paper_trading_tab_surface.METHOD,
     STATUS_TAB: system_status_tab_surface.METHOD,
     ACCUMULATION_TAB: proof_of_accumulation_tab_surface.METHOD,
 }

@@ -142,18 +142,34 @@ def gate_half(tick: Any) -> dict:
     }
 
 
-def paper_row(tick: Any, exchange_id: str = "", figures: Optional[dict] = None) -> dict:
-    """One paper action as a row: the gate half, the trade half and ``figures``.
+def fill_half(trade: Any) -> dict:
+    """One ``PaperTrade`` as its own fields, the inputs its size and price
+    were read from: ``asdict`` of the trade."""
+    return asdict(trade)
 
-    ``trade`` is None on a tick that filled nothing.
-    """
+
+def book_half(tick: Any) -> dict:
+    """The ``last``, ``bid`` and ``ask`` of the ticker read that priced ``tick``."""
+    return {
+        "last": float(getattr(tick, "last", 0.0) or 0.0),
+        "bid": float(getattr(tick, "bid", 0.0) or 0.0),
+        "ask": float(getattr(tick, "ask", 0.0) or 0.0),
+    }
+
+
+def paper_row(tick: Any, exchange_id: str = "", figures: Optional[dict] = None) -> dict:
+    """One paper action as a row: the gate half, the ``book_half``, the trade
+    half, the ``fill_half`` and ``figures``; ``trade`` and ``fill`` are None
+    on a tick that filled nothing."""
     return {
         "timestamp": iso_stamp(tick.wall_ms),
         "category": CATEGORY,
         "exchange": str(exchange_id),
         "bot_id": str(tick.bot_id),
         "data": gate_half(tick),
+        "book": book_half(tick),
         "trade": trade_half(tick.filled) if tick.filled is not None else None,
+        "fill": fill_half(tick.filled) if tick.filled is not None else None,
         "ledger": dict(figures or {}),
     }
 
@@ -196,6 +212,8 @@ __all__ = [
     "SIDE_FOR",
     "TRADE_ID_FORMAT",
     "append_row",
+    "book_half",
+    "fill_half",
     "fold_fixture",
     "gate_half",
     "gate_labels",

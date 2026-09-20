@@ -7,8 +7,11 @@ button, and the Get Started card carrying the same two under
 ``placeholder_title_text`` and ``placeholder_hint_text``; the watchdog and the
 API-log listener are not carried in the payload. ``PaperTradingTabState`` owns
 the ``ApiPauseBuffer`` and ``ApiLogPane`` the React host reads and the venues
-it has seated; ``imported_line``, ``no_stored_bot_line``, ``new_bot_line`` and
-``start_run_line`` are the Activity Log lines both hosts write, and
+it has seated and ``run_running``, which turns the run button's face to
+``STOP_RUN_BUTTON`` through ``run_buttons``; ``imported_line``,
+``no_stored_bot_line``, ``new_bot_line``, ``run_started_line``,
+``run_no_rule_line`` and ``run_ended_line`` are the Activity Log lines both
+hosts write, ``running_bot_ids`` names the records the runner ticks, and
 ``exchange_choice_options`` and ``exchange_prompt_text`` what
 ``PaperExchangeChoiceDialog`` lists. ``rate_snapshot`` feeds the voting panel's
 rate strip, ``watchdog_lines`` is the Activity-Log watchdog's tick over the
@@ -24,26 +27,57 @@ from datetime import datetime
 from typing import Any, Optional
 
 from ...core.log_paths import get_log_root
+from ...paper import paper_run
 from ...paper.fleet_source import BOT_STATE_NAME
 from ...trading.container.config import BotState
-from ..main_tabs import paper_trader_tab_surface as paper
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
-from ..main_tabs.main_window_surface import MAIN_THREAD_NAME, api_event_block
 from .paper_bot_status_table_surface import base_of, usd_rates
 
 logger = logging.getLogger("acervator.gui")
 
 METHOD = "paper_trading.tab"
 
-TAB_TITLE = paper.HEADING
+#: The tab's name on the bar, the main window's ``PAPER_TAB``.
+HEADING = "Paper"
+ISSUE = 19
+
+TAB_TITLE = HEADING
+
+IMPORT_LIVE_FLEET_ACTION = "import_live_fleet"
+START_RUN_ACTION = "start_paper_run"
+STOP_RUN_ACTION = "stop_paper_run"
+
+IMPORT_LIVE_FLEET_TEXT = "Import Live Fleet"
+START_RUN_TEXT = "Start Paper Run"
+STOP_RUN_TEXT = "Stop Paper Run"
 
 #: The two corner buttons, in order, each ``(action, text)``: the corner Live
 #: gives ``＋ Add Crypto Exchange`` holds them at Live's corner-button width.
 CORNER_BUTTONS = (
-    (paper.IMPORT_LIVE_FLEET_ACTION, paper.IMPORT_LIVE_FLEET_TEXT),
-    (paper.START_RUN_ACTION, paper.START_RUN_TEXT),
+    (IMPORT_LIVE_FLEET_ACTION, IMPORT_LIVE_FLEET_TEXT),
+    (START_RUN_ACTION, START_RUN_TEXT),
 )
+
+#: The second button's face while a run is up: the same seat, Stop.
+STOP_RUN_BUTTON = (STOP_RUN_ACTION, STOP_RUN_TEXT)
+
+#: The worker thread one Start Paper Run starts, ``paper_run.RUN_THREAD_NAME``.
+RUN_THREAD_NAME = paper_run.RUN_THREAD_NAME
+
+
+def button_name(action: str) -> str:
+    """The accessible name both hosts give the button that sends ``action``."""
+    return "paper-" + str(action).replace("_", "-")
+
+
+def run_buttons(running: bool = False) -> tuple:
+    """``CORNER_BUTTONS`` with the second seat reading ``STOP_RUN_BUTTON``
+    while ``running``."""
+    if not running:
+        return CORNER_BUTTONS
+    return (CORNER_BUTTONS[0], STOP_RUN_BUTTON)
+
 
 #: The way-in ask a corner or card press writes on the page's console line.
 WAY_IN_PARAM = "way_in"
@@ -88,29 +122,38 @@ NEW_BOT_FORMAT = (
     "{way_in}; the paper bot wizard is not built."
 )
 
-#: The Activity Log line Start Paper Run writes while no run exists.
-START_RUN_TEXT = "Start Paper Run: no paper run is built; nothing started."
+#: The Activity Log lines the paper run writes: at Start Paper Run, at a
+#: fleet holding no record, at a venue with no cited unit rule, at Stop
+#: Paper Run, and when the runner ends.
+RUN_STARTED_FORMAT = (
+    "Paper run started: {running} of {held} paper bot(s) running, fleet target "
+    "${target:,.2f} opens Paper Spendable and Paper Locked, unbounded; a tick "
+    "every {tick:.0f} s on thread {thread}; fills at the book with the "
+    "{fee:.2f}% taker fee."
+)
+RUN_NO_BOT_TEXT = "Paper run: no paper bot is held; nothing started."
+RUN_STOPPING_TEXT = "Paper run stopping; the runner ends at the tick reached."
+RUN_ENDED_FORMAT = (
+    "Paper run ended: {ticks} tick(s), {worked} worked, {scrums} scrum(s), "
+    "{folds} fold(s), fees ${fees:,.4f}, realized ${realized:,.4f}."
+)
+RUN_FAILED_FORMAT = "Paper run failed: {error}"
 
 #: The exchange chooser: Live's one-question dialog holding the bot wizard's
 #: ``Exchange:`` row, at the dialog width Live gives Configure Profit Wire.
-EXCHANGE_CHOICE_TITLE = paper.IMPORT_LIVE_FLEET_TEXT
+EXCHANGE_CHOICE_TITLE = IMPORT_LIVE_FLEET_TEXT
 EXCHANGE_CHOICE_ROW_LABEL = "Exchange:"
 EXCHANGE_CHOICE_MIN_WIDTH_PX = 350
 
 
-def button_name(action: str) -> str:
-    """The accessible name of the corner button that sends ``action``."""
-    return paper.button_name(action)
-
-
 def card_button_name(action: str) -> str:
     """The accessible name of the Get Started card's button that sends ``action``."""
-    return paper.button_name(action) + "-card"
+    return button_name(action) + "-card"
 
 
-def corner_buttons() -> list:
-    """The two corner buttons as the page draws them, in ``CORNER_BUTTONS``
-    order, each at ``live.ADD_BUTTON_MIN_WIDTH_PX``."""
+def corner_buttons(running: bool = False) -> list:
+    """The two corner buttons as the page draws them, ``run_buttons`` over
+    ``running``, each at ``live.ADD_BUTTON_MIN_WIDTH_PX``."""
     return [
         {
             "action": action,
@@ -119,12 +162,13 @@ def corner_buttons() -> list:
             "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
             "corner_widget": True,
         }
-        for action, text in CORNER_BUTTONS
+        for action, text in run_buttons(running)
     ]
 
 
-def placeholder_way_in_buttons(accent: Any) -> list:
-    """The card's two buttons at Live's card-button size and sheet."""
+def placeholder_way_in_buttons(accent: Any, running: bool = False) -> list:
+    """The card's two buttons at Live's card-button size and sheet,
+    ``run_buttons`` over ``running``."""
     return [
         {
             "action": action,
@@ -134,7 +178,7 @@ def placeholder_way_in_buttons(accent: Any) -> list:
             "style_sheet": live.placeholder_add_style(accent),
             "align": "center",
         }
-        for action, text in CORNER_BUTTONS
+        for action, text in run_buttons(running)
     ]
 
 
@@ -151,17 +195,20 @@ def placeholder_hint_text(label: Any) -> str:
 PLACEHOLDER_ORDER = ["title", "way_in_buttons", "hint"]
 
 
-def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
+def layer_card(
+    key: Any, exchanges: Any = None, current: Any = None, running: bool = False
+) -> dict:
     """Live's ``layer_card`` with ``corner_buttons`` in place of ``add_button``
-    and the Get Started card asking for a fleet under ``PLACEHOLDER_ORDER``."""
+    and the Get Started card asking for a fleet under ``PLACEHOLDER_ORDER``,
+    the run button reading Stop while ``running``."""
     card = live.layer_card(key, exchanges, current)
-    card["corner_buttons"] = corner_buttons()
+    card["corner_buttons"] = corner_buttons(running)
     del card["add_button"]
     placeholder = card["placeholder"]
     placeholder["order"] = list(PLACEHOLDER_ORDER)
     placeholder["title"]["text"] = placeholder_title_text(card["label"])
     placeholder["hint"]["text"] = placeholder_hint_text(card["label"])
-    placeholder["way_in_buttons"] = placeholder_way_in_buttons(card["accent"])
+    placeholder["way_in_buttons"] = placeholder_way_in_buttons(card["accent"], running)
     del placeholder["add_button"]
     return card
 
@@ -204,14 +251,50 @@ def no_stored_bot_line() -> str:
 def new_bot_line(exchange_id: Any) -> str:
     """The Activity Log line a ``+ New Bot`` press writes, naming
     ``IMPORT_LIVE_FLEET_TEXT`` as the fleet's way in."""
-    return NEW_BOT_FORMAT.format(
-        exchange=exchange_id, way_in=paper.IMPORT_LIVE_FLEET_TEXT
+    return NEW_BOT_FORMAT.format(exchange=exchange_id, way_in=IMPORT_LIVE_FLEET_TEXT)
+
+
+def run_started_line(held: int, running: int, target_usd: float) -> str:
+    """The Activity Log line Start Paper Run writes, ``RUN_STARTED_FORMAT``
+    over the ``held`` records, the ``running`` ones, the fleet ``target_usd``,
+    ``paper_run.TICK_INTERVAL_S``, ``RUN_THREAD_NAME`` and ``paper_run.TAKER_FEE_PCT``.
+    """
+    return RUN_STARTED_FORMAT.format(
+        running=int(running),
+        held=int(held),
+        target=float(target_usd),
+        tick=paper_run.TICK_INTERVAL_S,
+        thread=RUN_THREAD_NAME,
+        fee=paper_run.TAKER_FEE_PCT,
     )
 
 
-def start_run_line() -> str:
-    """The Activity Log line a Start Paper Run press writes, ``START_RUN_TEXT``."""
-    return START_RUN_TEXT
+def run_no_rule_line(venue: str) -> str:
+    """The Activity Log line for a ``venue`` with no cited unit rule,
+    ``paper_run.NO_UNIT_RULE_FORMAT`` over ``CLASS_CRYPTO``."""
+    from ...trading.scrumming.sizing import CLASS_CRYPTO
+
+    return paper_run.NO_UNIT_RULE_FORMAT.format(asset_class=CLASS_CRYPTO, venue=venue)
+
+
+def run_ended_line(run: Any) -> str:
+    """The Activity Log line the runner's end writes, ``RUN_ENDED_FORMAT``
+    over ``run.summary``."""
+    counts = run.summary
+    return RUN_ENDED_FORMAT.format(
+        ticks=counts["ticks"],
+        worked=counts["worked"],
+        scrums=counts["scrum_trades"],
+        folds=counts["fold_trades"],
+        fees=counts["fees_usd"],
+        realized=counts["realized_usd"],
+    )
+
+
+def running_bot_ids(bots: Any) -> list:
+    """The ``bot_id`` of each record in ``bots`` whose state reads
+    ``paper_run.RUNNING_STATE``, the bots the runner ticks."""
+    return [bot.bot_id for bot in bots if bot.state == paper_run.RUNNING_STATE]
 
 
 FEED_LINE_FORMAT = (
@@ -280,6 +363,8 @@ def watchdog_lines(
 def api_block(entry: dict) -> str:
     """Live's ``api_event_block`` over ``entry``, stamped ``hh:mm:ss`` from
     ``entry["timestamp"]`` in local time."""
+    from ..main_tabs.main_window_surface import api_event_block
+
     stamp = time.strftime("%H:%M:%S", time.localtime(entry["timestamp"]))
     return api_event_block(entry, stamp)
 
@@ -289,6 +374,8 @@ def api_event_off_thread(entry: dict, handler: str, current: str) -> bool:
     ``THREAD_VIOLATION_LINE_FORMAT`` line naming ``handler`` is appended to
     the day's ``THREAD_VIOLATION_FILE_FORMAT`` file under ``get_log_root``,
     or logged when that write fails."""
+    from ..main_tabs.main_window_surface import MAIN_THREAD_NAME
+
     if current == MAIN_THREAD_NAME:
         return False
     origin = entry.get("_thread_name", "unknown")
@@ -324,9 +411,11 @@ def build_view_model(
     api_pane: Optional[live.ApiLogPane] = None,
     exchanges: Any = None,
     current_exchange: Any = None,
+    run_running: bool = False,
 ) -> dict:
     """Return the whole Paper tab state as one serialisable dict; ``layer``
-    names the stack page on show and ``exchanges`` the venues seated."""
+    names the stack page on show, ``exchanges`` the venues seated and
+    ``run_running`` whether the run button reads Stop."""
     key = "stock" if str(layer) == "stock" else "crypto"
     buffer = live.ApiPauseBuffer() if api_buffer is None else api_buffer
     pane = live.ApiLogPane() if api_pane is None else api_pane
@@ -344,7 +433,7 @@ def build_view_model(
             "current_index": live.LAYER_ORDER.index(key),
         },
         "layers": [
-            layer_card(name, routed[name], current_exchange)
+            layer_card(name, routed[name], current_exchange, run_running)
             for name in live.LAYER_ORDER
         ],
         "alias_layer": live.ALIAS_LAYER,
@@ -388,6 +477,7 @@ class PaperTradingTabState:
         self.activity_paused = False
         self.exchanges: list = []
         self.current_exchange = ""
+        self.run_running = False
 
     def seat(self, exchange_id: str, display_name: str) -> None:
         """Record one venue for the layer stack to draw."""
@@ -430,7 +520,19 @@ class PaperTradingTabState:
             api_pane=self.api_pane,
             exchanges=self.exchanges,
             current_exchange=self.current_exchange,
+            run_running=self.run_running,
         )
+
+
+def view_model(params: dict) -> dict:
+    """Bridge handler for ``METHOD``: ``build_view_model`` over ``layer`` and
+    ``activity_paused`` in ``params``, one call holding no host, so no venue
+    is seated, no run is up and the Get Started card shows."""
+    asked = params if isinstance(params, dict) else {}
+    return build_view_model(
+        layer=str(asked.get("layer") or "crypto"),
+        activity_paused=bool(asked.get(ACTIVITY_PAUSED_PARAM, False)),
+    )
 
 
 def rate_snapshot(statuses: list) -> Any:

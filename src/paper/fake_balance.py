@@ -1,11 +1,16 @@
 """The Paper Trader's money: a fake balance held in memory and nowhere else.
 
-``FakeBalance`` carries the units, the cash, the cost basis and the open fold
-tranches one paper bot holds. ``PaperLedger`` carries Paper Spendable, Paper
-Locked, Paper Realized Profits and Paper Mature Profits; ``opening_ledger`` sets
-both opening figures to ``fleet_target_usd``, and ``FakeBalance.mature_usd``
-calls ``src.trading.smart_wire.mature_profit_usd``, the definition live reads.
-Nothing here reads or writes ``bot_state.json`` or a live ledger.
+``FakeBalance`` is the paper bot's position, forked from the Simulator's
+``SimPosition``: the units and the ``main_lots`` they sit in, the cash its
+scrums leave and its folds spend, the ``fold_tranches`` its scrums queue in
+the dict shape ``_tick_execute_scrum`` builds, the target and the growth
+cycle's figures, and the trade counters ``BotStats`` carries on a live bot.
+``PaperLedger`` carries Paper Spendable, Paper Locked, Paper Realized Profits
+and Paper Mature Profits; ``opening_ledger`` sets both opening figures to
+``fleet_target_usd``, the unbounded budget's opening, and
+``FakeBalance.mature_usd`` calls ``src.trading.smart_wire.mature_profit_usd``,
+the definition live reads. Nothing here reads or writes ``bot_state.json`` or
+a live ledger.
 """
 
 from __future__ import annotations
@@ -13,10 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
+from ..trading.scrumming.sizing import priced_usd
 from ..trading.smart_wire import MATURE_GROWTH_PCT, mature_profit_usd
-
-#: The paper budget as a multiple of the bot's dollar target.
-BUDGET_MULTIPLE = 2.0
 
 CURRENCY = "USD"
 
@@ -34,15 +37,6 @@ FIGURE_LABELS = (
 )
 
 
-def budget_usd(target_usd: float) -> float:
-    """``target_usd`` times ``BUDGET_MULTIPLE``, one bot's whole paper budget."""
-    try:
-        target = float(target_usd)
-    except (TypeError, ValueError):
-        target = 0.0
-    return max(0.0, target) * BUDGET_MULTIPLE
-
-
 def fleet_target_usd(bots: Sequence[Any]) -> float:
     """The sum of every bot's ``target_usd``, the figure both openings take."""
     total = 0.0
@@ -54,86 +48,74 @@ def fleet_target_usd(bots: Sequence[Any]) -> float:
     return total
 
 
-def fleet_budget_usd(bots: Sequence[Any]) -> float:
-    """``fleet_target_usd`` times ``BUDGET_MULTIPLE``, the whole fleet budget."""
-    return fleet_target_usd(bots) * BUDGET_MULTIPLE
-
-
 @dataclass
 class FakeBalance:
-    """What one paper bot holds: units, cash, cost basis and open tranches."""
+    """What one paper bot holds as the run ticks: its units and the
+    ``main_lots`` they sit in, the cash its scrums left and its folds spent,
+    the fold tranches those scrums queued in the shape ``_tick_execute_scrum``
+    builds them, the target its folds grow from ``anchor_target_usd``, the
+    growth cycle's consumed cap, standing surplus and side, and the counters
+    ``BotStats`` carries on a live bot."""
 
     units: float = 0.0
     cash_usd: float = 0.0
-    budget_usd: float = 0.0
-    cost_basis_usd: float = 0.0
-    tranche_proceeds_usd: list[float] = field(default_factory=list)
+    fold_tranches: list = field(default_factory=list)
+    opening_price: float = 0.0
+    last_trade_price: float = 0.0
+    cycle_cap_consumed_usd: float = 0.0
+    main_lots: list = field(default_factory=list)
+    target_usd: float = 0.0
+    anchor_target_usd: float = 0.0
+    standing_surplus_usd: float = 0.0
+    growth_side: Optional[str] = None
+    last_trade_side: str = ""
+    total_trades: int = 0
+    total_buys: int = 0
+    total_sells: int = 0
+    total_scrummed_usd: float = 0.0
+    total_folded_usd: float = 0.0
+    trade_volume: float = 0.0
+    tranches_created: int = 0
+    tranches_closed: int = 0
+    scrum_sells: int = 0
 
     @property
     def tranches(self) -> int:
-        """How many entries ``tranche_proceeds_usd`` holds, one per open tranche."""
-        return len(self.tranche_proceeds_usd)
+        """How many fold tranches are queued."""
+        return len(self.fold_tranches)
 
     def value_usd(self, price: float) -> float:
-        """``units`` at ``price``, ignoring ``cash_usd``."""
-        return self.units * float(price)
+        """``units`` at ``price``, ignoring cash held from an earlier scrum."""
+        return priced_usd(self.units, float(price))
 
     def total_usd(self, price: float) -> float:
         """``value_usd`` at ``price`` plus ``cash_usd``."""
         return self.value_usd(price) + self.cash_usd
 
+    def cost_basis_usd(self) -> float:
+        """Each lot's units at its ``initial_buy_price``, summed: the cost basis
+        ``ScrummingBot.tick`` reads ``unrealised_pnl`` against."""
+        return sum(
+            float(lot.get("units", 0) or 0)
+            * float(lot.get("initial_buy_price", 0) or 0)
+            for lot in self.main_lots
+        )
+
+    def unrealised_pnl_usd(self, price: float) -> float:
+        """``value_usd`` at ``price`` less ``cost_basis_usd``."""
+        return self.value_usd(price) - self.cost_basis_usd()
+
     def mature_usd(self, price: float) -> float:
         """``mature_profit_usd`` of ``cost_basis_usd`` against ``value_usd``."""
-        return mature_profit_usd(self.cost_basis_usd, self.value_usd(price))
-
-    def open_tranche(self, proceeds_usd: float) -> None:
-        """Append one scrum's ``proceeds_usd`` to ``tranche_proceeds_usd``."""
-        self.tranche_proceeds_usd.append(float(proceeds_usd))
-
-    def close_tranche(self, spend_usd: float) -> float:
-        """Pop the oldest tranche and return its proceeds less ``spend_usd``.
-
-        An empty ``tranche_proceeds_usd`` closes nothing and returns 0.0.
-        """
-        if not self.tranche_proceeds_usd:
-            return 0.0
-        return self.tranche_proceeds_usd.pop(0) - float(spend_usd)
-
-    def sell_basis(self, units_sold: float) -> float:
-        """Remove ``units_sold``'s share of ``cost_basis_usd`` and return it."""
-        held = float(self.units)
-        if held <= 0.0 or float(units_sold) <= 0.0:
-            return 0.0
-        share = min(1.0, float(units_sold) / held)
-        removed = self.cost_basis_usd * share
-        self.cost_basis_usd -= removed
-        return removed
-
-
-def opening_balance(target_usd: float, price: float) -> FakeBalance:
-    """A ``FakeBalance`` holding ``target_usd`` of units and ``target_usd`` of cash.
-
-    One bot's share of ``opening_ledger``; a ``price`` at or below zero buys no
-    units and leaves the whole ``budget_usd`` as ``cash_usd``.
-    """
-    whole = budget_usd(target_usd)
-    held_usd = min(whole / BUDGET_MULTIPLE, whole)
-    units = held_usd / float(price) if float(price) > 0.0 else 0.0
-    spent = units * float(price)
-    return FakeBalance(
-        units=units,
-        cash_usd=whole - spent,
-        budget_usd=whole,
-        cost_basis_usd=spent,
-    )
+        return mature_profit_usd(self.cost_basis_usd(), self.value_usd(price))
 
 
 @dataclass
 class PaperLedger:
     """The fleet's four paper figures and the fleet total both openings took.
 
-    ``realized_profit_usd`` accumulates as folds close the tranches scrums
-    opened.
+    ``realized_profit_usd`` accumulates the ``fold_surplus_usd`` of every fold
+    that closes tranches scrums opened.
     """
 
     fleet_target_usd: float = 0.0
@@ -149,26 +131,36 @@ class PaperLedger:
     def figures(
         self, balances: Optional[dict] = None, prices: Optional[dict] = None
     ) -> dict:
-        """The four figures over ``balances``, priced by ``prices`` per bot id.
-
-        ``spendable_usd`` sums ``cash_usd``, ``locked_usd`` sums ``value_usd``
-        and ``mature_profit_usd`` sums only the positions past
-        ``MATURE_GROWTH_PCT``.
-        """
-        held = balances or {}
-        at = prices or {}
-        spendable = 0.0
-        locked = 0.0
+        """The four figures over ``balances`` priced by ``prices`` per bot id:
+        ``spendable_usd`` is ``opening_spendable_usd`` with each open balance's
+        ``anchor_target_usd`` share replaced by its ``cash_usd``,
+        ``locked_usd`` is ``opening_locked_usd`` with each share replaced by
+        its ``value_usd``, and ``mature_profit_usd`` sums the positions past
+        ``MATURE_GROWTH_PCT``."""
+        held = dict(balances or {})
+        at = dict(prices or {})
+        spendable = self.opening_spendable_usd
+        locked = self.opening_locked_usd
         mature = 0.0
         mature_bots = 0
         for bot_id, balance in held.items():
             price = float(at.get(bot_id, 0.0) or 0.0)
-            spendable += balance.cash_usd
-            locked += balance.value_usd(price)
+            spendable += balance.cash_usd - balance.anchor_target_usd
+            locked += balance.value_usd(price) - balance.anchor_target_usd
             one = balance.mature_usd(price)
             if one > 0.0:
                 mature += one
                 mature_bots += 1
+        return self._figures(spendable, locked, mature, mature_bots, len(held))
+
+    def _figures(
+        self,
+        spendable: float,
+        locked: float,
+        mature: float,
+        mature_bots: int,
+        open_: int,
+    ) -> dict:
         return {
             "fleet_target_usd": self.fleet_target_usd,
             "opening_spendable_usd": self.opening_spendable_usd,
@@ -179,7 +171,7 @@ class PaperLedger:
             "mature_profit_usd": mature,
             "mature_positions": mature_bots,
             "mature_growth_pct": MATURE_GROWTH_PCT,
-            "bots_open": len(held),
+            "bots_open": open_,
         }
 
 
@@ -198,7 +190,6 @@ def opening_ledger(bots: Sequence[Any]) -> PaperLedger:
 
 
 __all__ = [
-    "BUDGET_MULTIPLE",
     "CURRENCY",
     "FIGURE_LABELS",
     "LOCKED_LABEL",
@@ -208,10 +199,7 @@ __all__ = [
     "SPENDABLE_LABEL",
     "FakeBalance",
     "PaperLedger",
-    "budget_usd",
-    "fleet_budget_usd",
     "fleet_target_usd",
     "mature_profit_usd",
-    "opening_balance",
     "opening_ledger",
 ]
