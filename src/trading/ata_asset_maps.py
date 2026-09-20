@@ -12,6 +12,7 @@ reads the derivatives list at press time from Coinbase's public product list.
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import logging
 import math
@@ -109,6 +110,16 @@ FUTURES_RESULT_FORMAT = (
 
 _FUTURES: dict[str, "AssetListing"] = {}
 """The rows the last ``futures_listings`` read answered, by upper-case symbol."""
+
+#: What a public product read raises: a transport or HTTP failure, a refused
+#: scheme or a body that is not JSON, and a body of an unexpected shape.
+VENUE_READ_ERRORS = (
+    OSError,
+    http.client.HTTPException,
+    ValueError,
+    TypeError,
+    AttributeError,
+)
 
 #: The least gap between two venue reads, the interval the exchange
 #: connector already keeps between its own calls.
@@ -516,7 +527,7 @@ def futures_listings(timeout_s: float = FUTURES_TIMEOUT_S) -> tuple[list, dict, 
     start = time.monotonic()
     try:
         products = _futures_products(timeout_s)
-    except Exception as exc:  # noqa: BLE001 - the venue is off-process
+    except VENUE_READ_ERRORS as exc:
         refusal = f"{type(exc).__name__}: {exc}"
         logger.debug(FUTURES_REFUSED_LOG, refusal)
         get_api_log().record(
