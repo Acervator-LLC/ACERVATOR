@@ -426,3 +426,139 @@ module loaded    system_status_tab
 style sheet      system_status_tab.css, 25 rules
 drawn            17 subsystems, 11 tab groups, 78 emitter rows
 ```
+
+### 2026-09-20 06:18 - #34 - the register equals the code
+
+The register in `src/core/signal_contract.py` now names every emitter the code
+calls, and only those. Every name under `src/` that reaches `emit` has an entry
+with its kind, and every entry has a call site. The tab map lives in the same
+module.
+
+`src/core/signal_contract.py` - one entry per group, with its reason
+
+```python
+_ALWAYS_ON_PINS: dict[str, str] = {
+    "charts.indicators.drawn": (
+        "the same `fetch_chart_data` pass calls `set_candles` on every fetch "
+        "that returns candles"
+    ),
+```
+
+```python
+_TOGGLE_PINS: dict[str, str] = {
+    "inspector.ata.scan_pressed": "the operator presses Scan Now or Scan All",
+```
+
+An entry is a name and one line. The line is the reason the kind was read at
+the call site, in the form the retired roster used. The two groups keep their
+kinds: a loop or a timer reaches an always-on pin on every pass; a toggle pin
+needs a trigger, and silence from it is normal. `CADENCE_BY_NAME` is built from
+the two groups as before.
+
+#### The tab map in the register
+
+The tab a subsystem serves is read from `TAB_BY_SUBSYSTEM` and `tab_of` in
+`src/core/signal_contract.py`, beside `subsystem_of`. The map names `inspector`
+to Inspector and `status` to Status. The surface imports the map and the
+function; it holds no copy.
+
+`src/core/signal_contract.py` - `tab_of`
+
+```python
+def tab_of(subsystem: str) -> str:
+    """Return the tab `subsystem`'s emitters serve, or `ENGINE_GROUP` when none does."""
+    return TAB_BY_SUBSYSTEM.get(subsystem, ENGINE_GROUP)
+```
+
+`src/gui/main_tabs/system_status_tab_surface.py` - the import
+
+```python
+from src.core.signal_contract import (
+    ENGINE_GROUP,
+    HEALTH_GREEN,
+    HEALTH_STATES,
+    HEALTH_YELLOW,
+    TAB_BY_SUBSYSTEM,
+    get_sink,
+    subsystem_health,
+    tab_of,
+)
+```
+
+#### What entered and what left
+
+Thirty-six names entered: 7 `charts.*`, 15 `inspector.*`, 14 `sim.*`. One of
+them, `charts.indicators.drawn`, is always-on: the 2000 ms dashboard timer
+schedules `fetch_chart_data`, and that pass calls `set_candles` on every fetch
+that returns candles. The other thirty-five need a press, a pointer, a call, or
+a run the operator starts.
+
+Twenty-seven entries left, each with no call site under `src/`: every
+`fleet.03.*` entry (8), every `sim.06.*` entry (14), `ta.07.001` and `ta.07.002`,
+and every `ytd.10.*` entry (3). Two of them were always-on,
+`sim.06.011.postcondition.price_chart.fed` and
+`sim.06.012.postcondition.gate_status.rendered`, and they held the Sim panel at
+Yellow with `always-on silent 2`.
+
+#### Overtaken sentences on this page
+
+Each sentence below stands as written above. The sentence under it is the
+current reading.
+
+> `src/gui/main_tabs/system_status_tab_surface.py` — the tab a subsystem's
+> emitters serve
+
+The map is in `src/core/signal_contract.py`, as `TAB_BY_SUBSYSTEM`, with
+`inspector` and `status` added.
+
+> **By subsystem** is one panel per prefix, seventeen of them.
+
+Sixteen. The `fleet` and `ytd` prefixes hold no entry after this change, and
+`inspector` holds fifteen.
+
+> Paper, Inspector, Accumulation and Status hold no subsystem at all, and each
+> says `no emitters` rather than drawing a light.
+
+Inspector holds `inspector`. Paper, Accumulation and Status still say `no emitters`.
+
+> The registry declares 78 emitters across 17 subsystems.
+
+The register declares 87 emitters across 16 subsystems.
+
+> The twenty-seven with no call site can never fire, so their subsystems read
+> silent whatever the platform does. Two of them are always-on, which is why Sim
+> cannot reach Green today.
+
+Those twenty-seven are gone. No entry lacks a call site, and the Sim panel's
+`always-on silent` reads 0.
+
+> drawn            17 subsystems, 11 tab groups, 78 emitter rows
+
+Drawn: 16 subsystems, 11 tab groups, 87 emitter rows.
+
+#### Measured on this change
+
+Read off the running program in both variants, on a scratch home with every
+socket but loopback refused, the tab shown, the page read at the widget.
+
+```
+declared emitters          87
+  always-on                15
+  toggle                   72
+subsystems                 16
+names in code not declared  0
+entries with no call site   0
+drawn                      16 subsystems, 11 tab groups, 87 emitter rows
+Inspector tab row          inspector
+Sim panel always-on silent 0
+```
+
+Before the change the same reading gave 17 subsystems, 80 rows on a page where
+two undeclared names had already fired at build, `always-on silent 2` on Sim,
+and `no emitters` on the Inspector row. One Scan Now on the loopback stand-in
+then raised an `inspector` panel with 11 undeclared rows under Engine. After
+the change the same press fills the Inspector panel: 15 declared, 11 fired, 0
+undeclared, and the panel sits under the Inspector row.
+
+The page still draws once, when the window builds. A Status tab opened after
+a scan shows what the sink held at build. The redraw is a later unit of #34.

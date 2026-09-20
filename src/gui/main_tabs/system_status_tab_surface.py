@@ -10,42 +10,19 @@ installed in this process, so no value is held here.
 from __future__ import annotations
 
 from src.core.signal_contract import (
+    ENGINE_GROUP,
     HEALTH_GREEN,
     HEALTH_STATES,
     HEALTH_YELLOW,
+    TAB_BY_SUBSYSTEM,
     get_sink,
     subsystem_health,
+    tab_of,
 )
 
 METHOD = "system_status_tab.state"
 
 HEADING = "Status"
-
-#: The group a subsystem's emitters fall under when they serve no tab of their own.
-ENGINE_GROUP = "Engine"
-
-#: The tab each subsystem prefix serves. Every prefix ``CADENCE_BY_NAME``
-#: declares is named here, so a new prefix reads as ``ENGINE_GROUP`` until it
-#: is placed.
-TAB_BY_SUBSYSTEM = {
-    "apitest": ENGINE_GROUP,
-    "bot": ENGINE_GROUP,
-    "charts": "Charts",
-    "console": "Console",
-    "exchange": "Live",
-    "extractor": ENGINE_GROUP,
-    "fleet": "Sim",
-    "gui": ENGINE_GROUP,
-    "history": "History",
-    "instance": ENGINE_GROUP,
-    "sim": "Sim",
-    "swarm": "Swarm",
-    "ta": ENGINE_GROUP,
-    "tick": ENGINE_GROUP,
-    "topology": ENGINE_GROUP,
-    "trading": "Live",
-    "ytd": ENGINE_GROUP,
-}
 
 LEGEND = (
     "Green and Yellow only. Green: every always-on emitter fired and nothing "
@@ -113,11 +90,6 @@ ROLLED_COUNTS = (
     "emitted",
     "failed",
 )
-
-
-def tab_of(subsystem: str) -> str:
-    """The tab ``subsystem``'s emitters serve, or ``ENGINE_GROUP`` when none does."""
-    return TAB_BY_SUBSYSTEM.get(subsystem, ENGINE_GROUP)
 
 
 def _feed(sink) -> dict:
