@@ -192,9 +192,64 @@ SCAN_NOW_TOOLTIP = (
     "reads the sector menu's markets, largest volume first, until Hits per "
     "scan markets pass the push gates."
 )
+SCAN_ALL_LABEL = "Scan All"
+SCAN_ALL_TOOLTIP = (
+    "Scan every market of every sector on every timeframe, with no stop at a "
+    "hit count. The reads are paced under each public host's limit, so the "
+    "walk takes minutes; each hit chimes and enters Ready to Send as it lands."
+)
+#: The Scan All button, named so a reader can find it beside Scan Now.
+SCAN_ALL_PART = "scan-all"
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
 #: Wide enough for the longest class name, derivatives, beside the menu's arrow.
 CLASS_BOX_WIDTH_PX = 120
+
+#: The confirmation timer tiles, right of the Timeframe row: one per watched
+#: call, its pair line over its countdown, wrapped by the region's width.
+TIMER_TILES_PART = "timer-tiles"
+TIMER_TILE_PART = "timer-tile"
+TIMER_PAIR_PART = "timer-pair"
+TIMER_COUNTDOWN_PART = "timer-countdown"
+TIMER_TILE_WIDTH_PX = 132
+TIMER_TILE_SPACING_PX = 4
+#: The region's height, three tile rows; past that the region scrolls, so the
+#: tiles never push the stepper and the field down the zone.
+TIMER_REGION_HEIGHT_PX = 110
+#: The region paints no ground of its own, the page's region has none; the
+#: tiles carry their own.
+TIMER_REGION_STYLE = (
+    "QScrollArea { background: transparent; border: none; } "
+    "QScrollArea > QWidget > QWidget { background: transparent; }"
+)
+TIMER_TILES_EMPTY_TEXT = "No confirmation timer running."
+TIMER_TILE_STYLE = (
+    f"background: {ds.SURFACE_INPUT}; border: 1px solid {ds.OUTLINE}; "
+    "border-radius: 4px; padding: 2px 6px;"
+)
+TIMER_PAIR_STYLE = (
+    f"color: {ds.TEXT_HIGH}; font-size: {ds.TYPE_CAPTION}px; font-weight: bold;"
+)
+TIMER_COUNTDOWN_STYLE = f"color: {ds.PRIMARY}; font-size: {ds.TYPE_CAPTION}px;"
+TIMER_READING_STYLE = f"color: {ds.WARNING}; font-size: {ds.TYPE_CAPTION}px;"
+TIMER_CONFIRMED_STYLE = f"color: {ds.SUCCESS}; font-size: {ds.TYPE_CAPTION}px;"
+TIMER_FAILED_STYLE = f"color: {ds.ERROR}; font-size: {ds.TYPE_CAPTION}px;"
+TIMER_EMPTY_STYLE = f"color: {ds.TEXT_LOW}; font-size: {ds.TYPE_CAPTION}px;"
+#: The countdown line's style by the tile's state; ``reading`` overrides ``open``.
+TIMER_STATE_STYLES = {
+    ata_spm_push.OUTCOME_OPEN: TIMER_COUNTDOWN_STYLE,
+    ata_spm_push.TIMER_READING_TEXT: TIMER_READING_STYLE,
+    ata_spm_push.OUTCOME_CONFIRMED: TIMER_CONFIRMED_STYLE,
+    ata_spm_push.OUTCOME_FAILED: TIMER_FAILED_STYLE,
+}
+
+
+def timer_line_style(row: Any) -> str:
+    """The second line's style for one tile row, from ``TIMER_STATE_STYLES``."""
+    if row.get("reading"):
+        return TIMER_STATE_STYLES[ata_spm_push.TIMER_READING_TEXT]
+    return TIMER_STATE_STYLES.get(str(row.get("state")), TIMER_COUNTDOWN_STYLE)
+
+
 TIMEFRAME_TITLE = "Timeframe"
 TIMEFRAME_BOX_TOOLTIP_FORMAT = "Scan this sector on {label}."
 TIMEFRAME_BOX_WIDTH_PX = 64
@@ -927,6 +982,7 @@ TIMEFRAME_TOGGLED = "sector.timeframe"
 SCAN_NOW_RUN = "scan_now.run"
 SCAN_NOW_UNNAMED = "scan_now.unnamed"
 SCAN_NOW_REFUSED = "scan_now.refused"
+SCAN_ALL_RUN = "scan_all.run"
 ZONE_STEPPED = "zone.stepped"
 ZONE_TOGGLED = "zone.toggled"
 
@@ -967,6 +1023,7 @@ CALL_NAMES = (
     TIMEFRAME_TOGGLED,
     SCAN_NOW_RUN,
     SCAN_NOW_UNNAMED,
+    SCAN_ALL_RUN,
     ZONE_STEPPED,
     ZONE_TOGGLED,
     PUSH_ACTION_SET,
@@ -1236,7 +1293,7 @@ def phase_one_rows(scan: Any) -> list:
             )
             for one in scan.timeframes
         ]
-        if getattr(scan, "hit_target", ata_spm.NO_HIT_TARGET) > ata_spm.NO_HIT_TARGET:
+        if ata_spm.walks_order(scan):
             rows.insert(
                 0,
                 phase_row(
@@ -1445,7 +1502,7 @@ def entry_headline(scan: Any) -> str:
         return ata_spm.MARKET_LINE_FORMAT.format(
             ticker=scan.ticker, asset_class=scan.asset_class
         )
-    if getattr(scan, "hit_target", ata_spm.NO_HIT_TARGET) > ata_spm.NO_HIT_TARGET:
+    if ata_spm.walks_order(scan):
         if scan.order.by_volume:
             return ata_spm.VOLUME_LINE_FORMAT.format(asset_class=scan.asset_class)
         return ata_spm.MAP_ORDER_LINE_FORMAT.format(asset_class=scan.asset_class)
@@ -1466,7 +1523,7 @@ def entry_meta(scan: Any, calls: Any) -> str:
             votes=len(scan.votes),
             hits=len(calls),
         )
-    if getattr(scan, "hit_target", ata_spm.NO_HIT_TARGET) > ata_spm.NO_HIT_TARGET:
+    if ata_spm.walks_order(scan):
         return ata_spm.VOLUME_META_FORMAT.format(
             read=scan.markets_read,
             hits=len(calls),
@@ -2702,17 +2759,23 @@ def class_volumes(asset_class: Any, connectors: Any) -> dict:
         return {}
 
 
-def listing_volumes(rows: Any) -> dict:
+def listing_volumes(rows: Any, pace: Any = None) -> dict:
     """Each listed and ``volumed`` row's ``venue_quote_volume`` figure by symbol.
 
     A row the venue refused, and one whose figure is ``NO_VOLUME_FIGURE``,
-    leave the dict, so the caller counts them as unfigured.
+    leave the dict, so the caller counts them as unfigured. Each read goes
+    through ``pace`` when a Scan All walk hands one.
     """
     found: dict = {}
     for one in rows:
         if not (one.listed and one.volumed):
             continue
-        figure, refusal = ata_asset_maps.venue_quote_volume(one.symbol)
+        _venue, figure, refusal = ata_spm.paced_read(
+            pace,
+            one.venue,
+            lambda row=one: (row.venue,)
+            + tuple(ata_asset_maps.venue_quote_volume(row.symbol)),
+        )
         if refusal:
             logger.debug(VOLUME_FIGURE_REFUSED_LOG, one.symbol, refusal)
             continue
@@ -2854,12 +2917,13 @@ def crypto_markets(connectors: Any) -> Any:
     return order
 
 
-def class_markets(asset_class: Any, connectors: Any = None) -> Any:
+def class_markets(asset_class: Any, connectors: Any = None, pace: Any = None) -> Any:
     """Every market one class holds as an ``ata_spm.MarketOrder``, largest first.
 
     Crypto is ``crypto_markets``, stocks ``stocks_markets`` and derivatives
     ``derivatives_markets``; every other mapped class ranks ``listing_volumes``
-    over its ``ata_asset_maps.MAPS`` rows, and rows with no figure keep map order.
+    over its ``ata_asset_maps.MAPS`` rows, through ``pace`` when a Scan All
+    walk hands one, and rows with no figure keep map order.
     """
     if str(asset_class) == ata_spm.CLASS_CRYPTO:
         return crypto_markets(connectors)
@@ -2875,7 +2939,7 @@ def class_markets(asset_class: Any, connectors: Any = None) -> Any:
     venues = sorted({one.venue for one in rows if one.venue})
     return ranked_order(
         rows,
-        listing_volumes(rows),
+        listing_volumes(rows, pace),
         VENUE_ORDER_SOURCE_FORMAT.format(venue=ORDER_VENUE_JOIN.join(venues)),
     )
 
@@ -3196,6 +3260,16 @@ def sector_candles(
     return sector_candle_read(inspector, symbol, timeframe, connectors)[1]
 
 
+def timer_tile_rows(push: Any) -> list:
+    """One row per ``PushBoard.timer_tiles`` tile, each carrying its line style."""
+    rows = []
+    for tile in push.timer_tiles():
+        row = tile.row()
+        row["line_style"] = timer_line_style(row)
+        rows.append(row)
+    return rows
+
+
 def ata_spm_skin(model: Any) -> dict:
     """Every value the ATA-SPM control row is drawn from, and its state."""
     row = model.ata_row()
@@ -3208,6 +3282,21 @@ def ata_spm_skin(model: Any) -> dict:
         "scan_running": bool(model.board.scanning),
         "scan_tooltip": SCAN_NOW_TOOLTIP,
         "scan_width_px": SCAN_NOW_WIDTH_PX,
+        "scan_all_label": SCAN_ALL_LABEL,
+        "scan_all_tooltip": SCAN_ALL_TOOLTIP,
+        "scan_all_part": SCAN_ALL_PART,
+        "timer_tiles": timer_tile_rows(model.push),
+        "timer_tiles_part": TIMER_TILES_PART,
+        "timer_tile_part": TIMER_TILE_PART,
+        "timer_pair_part": TIMER_PAIR_PART,
+        "timer_countdown_part": TIMER_COUNTDOWN_PART,
+        "timer_tile_width_px": TIMER_TILE_WIDTH_PX,
+        "timer_tile_spacing_px": TIMER_TILE_SPACING_PX,
+        "timer_region_height_px": TIMER_REGION_HEIGHT_PX,
+        "timer_tiles_empty_text": TIMER_TILES_EMPTY_TEXT,
+        "timer_tile_style": TIMER_TILE_STYLE,
+        "timer_pair_style": TIMER_PAIR_STYLE,
+        "timer_empty_style": TIMER_EMPTY_STYLE,
         "button_height_px": PUSH_BUTTON_HEIGHT_PX,
         "field_height_px": FIELD_HEIGHT_PX,
         "class_tooltip": CLASS_BOX_TOOLTIP,
@@ -3552,9 +3641,9 @@ class MarketInspectorScreenModel:
         self.ata_class_source = class_source
         self.calls.append([ATA_SOURCES_SET])
 
-    def class_markets(self, asset_class: Any) -> Any:
+    def class_markets(self, asset_class: Any, pace: Any = None) -> Any:
         """The ``ata_spm.MarketOrder`` one class holds, on the connectors in reach."""
-        return class_markets(asset_class, self.connectors_now())
+        return class_markets(asset_class, self.connectors_now(), pace)
 
     def scanned_candles(self, symbol: Any, timeframe: Any) -> list:
         """The candles for one scanned symbol, from the source its map names.
@@ -3562,13 +3651,19 @@ class MarketInspectorScreenModel:
         A source this screen cannot reach answers none, so the timeframe
         reads unread and Scan Now takes no exception.
         """
+        return self.candle_read(symbol, timeframe)[1]
+
+    def candle_read(self, symbol: Any, timeframe: Any) -> tuple:
+        """The venue, the candles and the refusal ``sector_candle_read`` answers
+        for one scanned symbol; a source this screen cannot reach answers
+        none with the exception as the refusal."""
         try:
-            return sector_candles(
+            return sector_candle_read(
                 self.inspector(), symbol, timeframe, self.connectors_now()
             )
         except Exception as exc:  # noqa: BLE001 - the source is off-process
             logger.debug(CANDLE_READ_FAILED_LOG, symbol, timeframe, exc)
-            return []
+            return ata_asset_maps.host_of(symbol), [], f"{type(exc).__name__}: {exc}"
 
     def market_placement(self, ticker: Any, asset_class: Any) -> Any:
         """``market_listing`` on the connectors in reach, for ``scan_now``."""
@@ -3639,6 +3734,50 @@ class MarketInspectorScreenModel:
         self.zone_at[READY_TO_SEND_ZONE] = 0
         self.calls.append(
             [SCAN_NOW_RUN, len(self.board.sectors), len(self.board.run.calls)]
+        )
+        return self.board.run
+
+    def scan_all(self) -> Any:
+        """Press Scan All: walk every class's markets on every timeframe, with
+        no hit target, and answer the ``ata_spm.AtaSpmRun`` the walk produced.
+
+        Every read goes through ``ata_asset_maps.scan_all_pace``: the
+        screen's own ``candle_read`` answers the refusal a 429 leaves, and an
+        injected candle source is read with none.
+        """
+        injected = self.ata_candle_source
+        pace = ata_asset_maps.scan_all_pace()
+
+        def read(symbol: Any, timeframe: Any) -> tuple:
+            if injected is not None:
+                return ata_asset_maps.host_of(symbol), injected(symbol, timeframe), ""
+            return self.candle_read(symbol, timeframe)
+
+        def paced(symbol: Any, timeframe: Any) -> list:
+            return ata_spm.paced_read(
+                pace,
+                ata_asset_maps.host_of(symbol),
+                lambda: read(symbol, timeframe),
+            )[1]
+
+        sectors, added, found, note = self.board.compute_all(
+            self.ata_asset_source or sector_assets,
+            paced,
+            self.push.settings.message_format,
+            self.push.settings.max_supporting_indicators,
+            self.ata_class_source
+            or (lambda asset_class: self.class_markets(asset_class, pace)),
+        )
+        self.board.take(sectors, added, found, note)
+        self.zone_at[ATA_SPM_MODULE] = added
+        if self.board.run is None:
+            self.calls.append([SCAN_NOW_UNNAMED])
+            return None
+        self.push.load_run(self.board.run)
+        self.push.after_scan(self.board.run)
+        self.zone_at[READY_TO_SEND_ZONE] = 0
+        self.calls.append(
+            [SCAN_ALL_RUN, len(self.board.sectors), len(self.board.run.calls)]
         )
         return self.board.run
 
@@ -4572,7 +4711,7 @@ def view_model(params: dict) -> dict:
 
     Reads ``reset``, ``proposals``, ``meta``, ``show_active``,
     ``bot_statuses``, ``sector_text``, ``sector_class``,
-    ``toggle_timeframe``, ``scan_now``, ``open_credentials``,
+    ``toggle_timeframe``, ``scan_now``, ``scan_all``, ``open_credentials``,
     ``step_zone``, ``toggle_zone``,
     ``render``, ``refresh``, ``force`` and
     ``bot_symbol`` from the request parameters. The screen keeps its rows
@@ -4600,6 +4739,8 @@ def view_model(params: dict) -> dict:
         model.toggle_timeframe(params["toggle_timeframe"])
     if params.get("scan_now", False):
         model.scan_now()
+    if params.get("scan_all", False):
+        model.scan_all()
     if params.get("push_action"):
         model.push_action(params["push_action"])
     if params.get("credential_text"):

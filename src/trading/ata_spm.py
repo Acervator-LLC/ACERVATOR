@@ -12,6 +12,8 @@ timeframe one call's asset voted on, and whether those votes agree.
 from __future__ import annotations
 
 import logging
+import re
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -204,6 +206,15 @@ NO_MARKET_TEXT = "none"
 SCAN_PROGRESS_FORMAT = "Scanning {asset_class} · {read} of {total} · {hits} hit(s)"
 #: The zone's line from the press until the market list is read.
 SCAN_LISTING_FORMAT = "Scanning {asset_class} · reading the market list"
+#: The same two lines while an all-sectors walk runs: the sector's place in
+#: the walk beside its name, and ``hits`` counted over every sector so far.
+SCAN_ALL_PROGRESS_FORMAT = (
+    "Scanning {asset_class} ({at} of {sectors}) · {read} of {total} · {hits} hit(s)"
+)
+SCAN_ALL_LISTING_FORMAT = (
+    "Scanning {asset_class} ({at} of {sectors}) · reading the market list"
+)
+NO_SECTORS_WALKED = 0
 #: One line per market the walk read, drawn in the field as the scan runs.
 SCAN_MARKET_LINE_FORMAT = "{symbol} · {timeframes} · {votes} vote(s) · {verdict}"
 SCAN_MARKET_HIT_FORMAT = "hit on {labels}"
@@ -231,6 +242,22 @@ DEFAULT_HITS_PER_SCAN = 3
 #: A ``Sector`` carrying this reads its whole list and stops at no count.
 NO_HIT_TARGET = 0
 NO_MARKETS_READ = 0
+
+#: The least gap Scan All keeps between two of its reads on one host: half of
+#: the 10 requests a second Coinbase publishes for its public endpoints, and
+#: 2 a second on Yahoo Finance, which publishes no limit.
+EXCHANGE_PACE_S = 0.2
+YAHOO_PACE_S = 0.5
+#: The hold Scan All keeps on a host after it answers 429 with no
+#: ``Retry-After``: Coinbase's window is one second, Yahoo names none.
+EXCHANGE_RATE_LIMIT_WAIT_S = 10.0
+YAHOO_RATE_LIMIT_WAIT_S = 60.0
+#: What a refusal carries when the host answered 429: the status code the
+#: public routes name, or the exception ccxt raises on the connector route.
+RATE_LIMIT_MARKS = ("429", "RateLimitExceeded")
+#: The ``Retry-After`` a refusal carries, as ``ra_fetcher.RETRY_AFTER_FORMAT`` writes it.
+RETRY_AFTER_PATTERN = re.compile(r"retry after (\d+(?:\.\d+)?) s")
+NO_HOLD_S = 0.0
 TIMEFRAME_VOTE_FORMAT = (
     "{votes} vote(s), {unread} without candles, {short} under {floor} candles"
 )
@@ -298,6 +325,9 @@ SCAN_PRESSED_TEXT = (
     "target {hits} hit(s)"
 )
 SCAN_BUSY_TEXT = "ATA-SPM scan pressed while a scan is running; press ignored"
+SCAN_ALL_PRESSED_TEXT = (
+    "ATA-SPM scan all pressed: {classes}, every timeframe, no hit target"
+)
 NO_TIMEFRAME_LIST_TEXT = "no timeframe"
 TIMEFRAME_LIST_JOIN = " "
 MARKET_READ_TEXT = "ATA-SPM read {symbol} on {label} from {venue}: {candles} candle(s)"
@@ -371,6 +401,107 @@ def hits_target(asked: Any) -> int:
     if held < 1:
         return DEFAULT_HITS_PER_SCAN
     return held
+
+
+def walks_order(scan: Any) -> bool:
+    """Whether one ``Sector`` or ``SectorScan`` walks its list market by market.
+
+    A ``walk_all`` scan walks the whole list; a ``hit_target`` above
+    ``NO_HIT_TARGET`` walks it until that many hits.
+    """
+    if getattr(scan, "walk_all", False):
+        return True
+    return int(getattr(scan, "hit_target", NO_HIT_TARGET)) > NO_HIT_TARGET
+
+
+def is_rate_limited(refusal: Any) -> bool:
+    """Whether one refusal names a 429, by ``RATE_LIMIT_MARKS``."""
+    text = str(refusal or "")
+    return any(mark in text for mark in RATE_LIMIT_MARKS)
+
+
+def retry_after_s(refusal: Any) -> float:
+    """The ``Retry-After`` seconds one refusal carries, or ``NO_HOLD_S``."""
+    found = RETRY_AFTER_PATTERN.search(str(refusal or ""))
+    return float(found.group(1)) if found else NO_HOLD_S
+
+
+class ReadPace:
+    """One clock per host: the least gap between two reads, and the hold a 429 leaves.
+
+    ``wait`` sleeps until the host's next read may start; ``take``, called
+    when a read ends, books the next one ``pace_s`` after that end, or the
+    hold a refusal naming a 429 leaves, its ``Retry-After`` or the host's
+    ``hold_s``. Booking from the end keeps every stamp a read leaves at
+    least ``pace_s`` from the last. Scan All reads through one of these;
+    Scan Now reads through none.
+    """
+
+    def __init__(
+        self,
+        pace_s: Any,
+        hold_s: Any,
+        clock: Callable = time.monotonic,
+        sleep: Callable = time.sleep,
+    ) -> None:
+        self._pace_s = {str(k): float(v) for k, v in dict(pace_s).items()}
+        self._hold_s = {str(k): float(v) for k, v in dict(hold_s).items()}
+        self._clock = clock
+        self._sleep = sleep
+        self._next_at: dict = {}
+        self._lock = threading.Lock()
+        self.holds: list = []
+
+    def pace_of(self, host: Any) -> float:
+        """The gap this pace keeps on one host, ``NO_HOLD_S`` for an unknown one."""
+        return self._pace_s.get(str(host), NO_HOLD_S)
+
+    def wait(self, host: Any) -> float:
+        """Sleep until ``host`` may be read, and answer the seconds slept."""
+        key = str(host)
+        with self._lock:
+            gap = self._next_at.get(key, NO_HOLD_S) - self._clock()
+        if gap > NO_HOLD_S:
+            self._sleep(gap)
+        return max(gap, NO_HOLD_S)
+
+    def take(self, host: Any, refusal: Any = "") -> float:
+        """Book ``host``'s next read from this read's end: ``pace_of`` later, or
+        the hold a 429 refusal leaves; answer the hold, ``NO_HOLD_S`` for none."""
+        key = str(host)
+        hold = NO_HOLD_S
+        if is_rate_limited(refusal):
+            hold = retry_after_s(refusal) or self._hold_s.get(key, NO_HOLD_S)
+            self.holds.append((key, hold))
+        with self._lock:
+            self._next_at[key] = self._clock() + max(hold, self.pace_of(key))
+        return hold
+
+
+def paced_read(pace: Any, host: Any, read: Callable) -> tuple:
+    """One read through ``pace``: wait, read, and read once more after the hold a 429 leaves.
+
+    ``read`` answers ``(venue, candles, refusal)``. A second refusal stands;
+    no third read is made. With no ``pace`` the read runs once, unpaced.
+    """
+    if pace is None:
+        return read()
+    pace.wait(host)
+    try:
+        answered = read()
+    except BaseException:
+        pace.take(host)
+        raise
+    if pace.take(host, answered[2]) <= NO_HOLD_S:
+        return answered
+    pace.wait(host)
+    try:
+        answered = read()
+    except BaseException:
+        pace.take(host)
+        raise
+    pace.take(host, answered[2])
+    return answered
 
 
 @dataclass
@@ -463,18 +594,81 @@ class ScanProgress:
     hits: int
     #: ``SCAN_MARKET_LINE_FORMAT`` over the market just read, empty before one.
     line: str = ""
+    #: This sector's place in an all-sectors walk, ``NO_SECTORS_WALKED`` outside one.
+    at: int = NO_SECTORS_WALKED
+    sectors: int = NO_SECTORS_WALKED
 
     @property
     def text(self) -> str:
         """``SCAN_PROGRESS_FORMAT`` over this record, or ``SCAN_LISTING_FORMAT``
-        while ``total`` is still ``NO_MARKETS_READ``."""
+        while ``total`` is still ``NO_MARKETS_READ``; the ``SCAN_ALL_`` pair
+        while ``sectors`` counts a walk."""
+        walking = self.sectors > NO_SECTORS_WALKED
         if self.total <= NO_MARKETS_READ:
+            if walking:
+                return SCAN_ALL_LISTING_FORMAT.format(
+                    asset_class=self.asset_class, at=self.at, sectors=self.sectors
+                )
             return SCAN_LISTING_FORMAT.format(asset_class=self.asset_class)
+        if walking:
+            return SCAN_ALL_PROGRESS_FORMAT.format(
+                asset_class=self.asset_class,
+                at=self.at,
+                sectors=self.sectors,
+                read=self.read,
+                total=self.total,
+                hits=self.hits,
+            )
         return SCAN_PROGRESS_FORMAT.format(
             asset_class=self.asset_class,
             read=self.read,
             total=self.total,
             hits=self.hits,
+        )
+
+
+class WalkProgress:
+    """The ``progress`` an all-sectors walk reports through: each sector's
+    ``ScanProgress`` carrying its place among ``classes`` and the hits of
+    every sector so far, so one count rises over the whole walk.
+    """
+
+    def __init__(self, progress: Optional[Callable], classes: Any) -> None:
+        self._progress = progress
+        self._classes = [str(one) for one in classes]
+        self._hits: dict = {}
+
+    def place_of(self, asset_class: Any) -> int:
+        """The sector's place in the walk, counted from one."""
+        asked = str(asset_class)
+        return self._classes.index(asked) + 1 if asked in self._classes else 1
+
+    def listing(self, asset_class: Any) -> None:
+        """Say one sector's market list is being read."""
+        self.take(
+            ScanProgress(
+                asset_class=str(asset_class),
+                read=NO_MARKETS_READ,
+                total=NO_MARKETS_READ,
+                hits=0,
+            )
+        )
+
+    def take(self, progress: ScanProgress) -> None:
+        """Hand the host one ``ScanProgress`` with the walk's place and its hits."""
+        if self._progress is None:
+            return
+        self._hits[str(progress.asset_class)] = int(progress.hits)
+        self._progress(
+            ScanProgress(
+                asset_class=progress.asset_class,
+                read=progress.read,
+                total=progress.total,
+                hits=sum(self._hits.values()),
+                line=progress.line,
+                at=self.place_of(progress.asset_class),
+                sectors=len(self._classes),
+            )
         )
 
 
@@ -485,7 +679,8 @@ class Sector:
     ``ticker`` names one market inside the sector and ``listings`` holds that
     market's own row, so ``_listings_for`` reads one market and asks no asset
     source; a ``hit_target`` above ``NO_HIT_TARGET`` reads ``listings`` in
-    ``order`` market by market and stops at that many hits.
+    ``order`` market by market and stops at that many hits; ``walk_all``
+    reads every row of ``listings`` and stops at no count.
     """
 
     name: str
@@ -495,6 +690,7 @@ class Sector:
     listings: tuple = ()
     hit_target: int = NO_HIT_TARGET
     order: Optional[MarketOrder] = None
+    walk_all: bool = False
 
     def ticked(self) -> tuple:
         """The ticked timeframes, in the order this sector's class lists them."""
@@ -653,10 +849,11 @@ class SectorScan:
     A ``ticker`` says the scan read one market on ``venue``, which is what
     ``MARKET_LINE_FORMAT`` and ``MARKET_META_FORMAT`` are written for; a
     ``hit_target`` says it read ``markets_read`` markets in ``order``, which
-    is what ``VOLUME_META_FORMAT`` and ``stopped_at_target`` are written for.
-    ``judged`` says ``_scan_until_hits`` walked the scan, so ``hits`` holds
-    the votes ``ata_gate_scan.GateScan.would_fire`` admitted out of the
-    ``pulls`` it judged.
+    is what ``VOLUME_META_FORMAT`` and ``stopped_at_target`` are written for,
+    and ``walk_all`` says it read every one of them. ``judged`` says
+    ``_scan_until_hits`` walked the scan, so ``hits`` holds the votes
+    ``ata_gate_scan.GateScan.would_fire`` admitted out of the ``pulls`` it
+    judged.
     """
 
     sector: str
@@ -679,11 +876,12 @@ class SectorScan:
     pulls: list = field(default_factory=list)
     #: The first refusal a venue gave one of ``assets``, empty while none did.
     refusal: str = ""
+    walk_all: bool = False
 
     @property
     def by_volume(self) -> bool:
-        """True while ``hit_target`` set the scan to walk ``order``."""
-        return self.hit_target > NO_HIT_TARGET
+        """True while ``hit_target`` or ``walk_all`` set the scan to walk ``order``."""
+        return walks_order(self)
 
     @property
     def supported(self) -> int:
@@ -894,14 +1092,34 @@ def candles_for(candle_source: Any, symbol: str, timeframe: str) -> list:
         return []
 
 
+class MarketMemo:
+    """One market's candles by timeframe, held from ``_vote_one`` to ``pull``
+    so ``_scan_until_hits`` asks ``candle_source`` for each timeframe once."""
+
+    def __init__(self, candle_source: Any) -> None:
+        self._source = candle_source
+        self._symbol = ""
+        self._held: dict = {}
+
+    def __call__(self, symbol: Any, timeframe: Any) -> list:
+        key = str(symbol)
+        if key != self._symbol:
+            self._symbol = key
+            self._held = {}
+        frame = str(timeframe)
+        if frame not in self._held:
+            self._held[frame] = candles_for(self._source, symbol, timeframe)
+        return list(self._held[frame])
+
+
 def _listings_for(asset_source: Any, sector: Sector) -> list:
     """The asset rows one source holds for one sector.
 
-    A ``Sector.listings`` naming one market, and a ``Sector.hit_target``, are
-    answered from ``listings`` outright; a source that raises answers none, so
-    the sector reads its unwired note.
+    A ``Sector.listings`` naming one market, and a sector ``walks_order``
+    answers True for, are answered from ``listings`` outright; a source that
+    raises answers none, so the sector reads its unwired note.
     """
-    if sector.listings or sector.hit_target > NO_HIT_TARGET:
+    if sector.listings or walks_order(sector):
         return list(sector.listings)
     if asset_source is None:
         return []
@@ -986,10 +1204,10 @@ def evaluate(
 
     Phase eight caps each sector at ``timeframes_supported`` of the ticked
     timeframes, measured from the ``RoundCost`` the rounds so far took. A
-    ``Sector.hit_target`` sector and a ``Sector.ticker`` market are walked
-    by ``_scan_until_hits``, which judges each vote through ``pull`` as it
-    goes and hands ``progress`` its ``ScanProgress``; a market has no target,
-    so every ticked timeframe is judged.
+    sector ``walks_order`` answers True for and a ``Sector.ticker`` market
+    are walked by ``_scan_until_hits``, which judges each vote through
+    ``pull`` as it goes and hands ``progress`` its ``ScanProgress``; a market
+    and a ``walk_all`` sector have no target, so every vote is judged.
     """
     voter = engine if engine is not None else VotingEngine()
     ticker = clock if clock is not None else time.perf_counter
@@ -1020,22 +1238,24 @@ def evaluate(
             )
         elif not ticked:
             scan.note = NO_TIMEFRAME_TEXT
-        if sector.hit_target > NO_HIT_TARGET or sector.ticker:
+        if walks_order(sector) or sector.ticker:
             scan.hit_target = int(sector.hit_target)
+            scan.walk_all = bool(sector.walk_all)
             scan.order = (
                 sector.order
                 if sector.order is not None
                 else MarketOrder(listings=list(rows))
             )
+            memo = MarketMemo(candle_source)
             _scan_until_hits(
                 voter,
                 assets,
                 served,
-                candle_source,
+                memo,
                 cost,
                 ticker,
                 scan,
-                _gate_judge(candle_source, message_format, max_supporting_indicators),
+                _gate_judge(memo, message_format, max_supporting_indicators),
                 progress,
             )
             scan.assets = assets[: scan.markets_read]
@@ -1224,6 +1444,7 @@ def _scan_until_hits(
     if not frames:
         return
     total = len(assets)
+    most = scan.hit_target if scan.hit_target > NO_HIT_TARGET else total * len(frames)
     _tell_progress(progress, scan, total)
     for symbol in assets:
         scan.markets_read += 1
@@ -1245,7 +1466,6 @@ def _scan_until_hits(
             if not held.gates.would_fire:
                 continue
             scan.hits.append(vote)
-            most = scan.hit_target if scan.by_volume else len(frames)
             _pin_emit(
                 HIT_PIN,
                 actual=len(scan.hits),
@@ -1773,9 +1993,10 @@ class SectorBoard:
         scans what ``class_source`` lists for ``asset_class`` until
         ``hit_target`` hits; nothing on the board is written until ``take``.
         Each press with text writes ``TICKER_RESOLVED_PIN`` once, and
-        ``progress`` reaches ``run``.
+        ``progress`` reaches ``run``. The sectors a Scan All left are not
+        walked again: this press holds the others and its own.
         """
-        sectors = list(self.sectors)
+        sectors = [one for one in self.sectors if not one.walk_all]
         added = NO_NEW_SECTOR
         named = self.text
         ticked = self.ticked_at(at)
@@ -1842,7 +2063,7 @@ class SectorBoard:
 
     def _sector_at(self, sectors: list, named: str, ticked: tuple) -> int:
         """The index one new sector took in ``sectors``, ``NO_NEW_SECTOR`` when held."""
-        if any(one.name == named and not one.hit_target for one in sectors):
+        if any(one.name == named and not walks_order(one) for one in sectors):
             return NO_NEW_SECTOR
         sectors.append(
             Sector(
@@ -1925,6 +2146,49 @@ class SectorBoard:
             self.asset_class = self.sectors[shown].asset_class
             self.timeframes = tuple(self.sectors[shown].timeframes)
         return shown
+
+    def compute_all(
+        self,
+        asset_source: Optional[Callable] = None,
+        candle_source: Optional[Callable] = None,
+        message_format: Optional[str] = None,
+        max_supporting_indicators: Any = NO_INDICATOR_CAP,
+        class_source: Optional[Callable] = None,
+        progress: Optional[Callable] = None,
+    ) -> tuple:
+        """The scans a Scan All press holds, the index to show, the ``run`` and a note.
+
+        One ``walk_all`` sector per class in ``ASSET_CLASSES``, on every
+        timeframe ``timeframes_for`` lists for it and every market
+        ``class_source`` lists, replaces what the board held; ``run`` walks
+        the six with no hit target. ``progress`` reads each sector's place
+        in the walk and the hits of every sector so far. Nothing on the board
+        is written until ``take``.
+        """
+        walk = WalkProgress(progress, ASSET_CLASSES)
+        sectors: list = []
+        for asset_class in ASSET_CLASSES:
+            walk.listing(asset_class)
+            order = markets_of(class_source, asset_class)
+            sectors.append(
+                Sector(
+                    name=asset_class,
+                    asset_class=asset_class,
+                    timeframes=timeframes_for(asset_class),
+                    listings=tuple(order.listings),
+                    order=order,
+                    walk_all=True,
+                )
+            )
+        found = run(
+            sectors,
+            asset_source,
+            candle_source,
+            message_format=message_format,
+            max_supporting_indicators=max_supporting_indicators,
+            progress=walk.take,
+        )
+        return (sectors, 0, found, "")
 
     def scan_now(
         self,

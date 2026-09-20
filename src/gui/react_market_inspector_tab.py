@@ -62,6 +62,7 @@ TICKER_FIELD_KEY = surface.TICKER_FIELD_PART
 CLASS_BOX_KEY = "class-box"
 TIMEFRAME_BOX_KEY = "timeframe-box"
 SCAN_NOW_KEY = "scan-now"
+SCAN_ALL_KEY = surface.SCAN_ALL_PART
 
 #: The parts phases five and six are pressed with, each handled by
 #: ``MarketInspectorScreenModel.push_action``.
@@ -181,6 +182,15 @@ def screen_push_script(model: dict) -> str:
         "window.acervatorMarketInspector.setTab("
         + json.dumps(model, ensure_ascii=True)
         + ");window.acervatorMountTopologies();"
+    )
+
+
+def tile_push_script(rows: list) -> str:
+    """The JS that hands the timer tile rows alone to the screen, once a second."""
+    return (
+        "window.acervatorMarketInspector.setTimerTiles("
+        + json.dumps(list(rows), ensure_ascii=True)
+        + ");"
     )
 
 
@@ -417,6 +427,8 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self.push()
             elif key == SCAN_NOW_KEY:
                 self._on_scan_now()
+            elif key == SCAN_ALL_KEY:
+                self._on_scan_all()
             elif key in HAND_OFF_KEYS:
                 self._start_hand_off(key, lambda: self._screen.push_action(key))
             elif key in PUSH_KEYS:
@@ -555,6 +567,14 @@ if _HAS_QT and _HAS_WEBENGINE:
             writes its own widgets instead.
             """
             self.push()
+
+        def _render_timer_tiles(self) -> None:
+            """Hand the page the timer tile rows alone, the field a full push
+            also carries, so a countdown moves without the whole payload."""
+            rows = surface.timer_tile_rows(self._push_board)
+            self._tiles_drawn = bool(rows)
+            if self._page_ready:
+                self._run(tile_push_script(rows))
 
         # -- internals ------------------------------------------------------
 
