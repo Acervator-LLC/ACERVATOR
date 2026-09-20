@@ -115,6 +115,7 @@ from .main_tabs.market_inspector_surface import sector_entry as _sector_entry
 from .main_tabs.market_inspector_surface import (
     ATA_ROW_SPACING_PX,
     CHECKED_BUTTON_STYLE,
+    CLASS_BOX_PART,
     CLASS_BOX_TOOLTIP,
     CLASS_BOX_WIDTH_PX,
     SCAN_NOW_LABEL,
@@ -1020,6 +1021,7 @@ if _HAS_QT:
 
             self._class_box = QComboBox()
             self._class_box.setToolTip(CLASS_BOX_TOOLTIP)
+            self._class_box.setAccessibleName(CLASS_BOX_PART)
             self._class_box.setFixedSize(CLASS_BOX_WIDTH_PX, FIELD_HEIGHT_PX)
             self._class_box.addItems(list(ata_spm.ASSET_CLASSES))
             self._class_box.currentTextChanged.connect(self._on_class_changed)

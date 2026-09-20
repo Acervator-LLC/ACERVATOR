@@ -176,6 +176,7 @@ CLASS_PRESS_SOURCES = {
     ata_spm.CLASS_DERIVATIVES: "Coinbase's futures and perpetual products",
 }
 TICKER_FIELD_PART = "ticker-field"
+CLASS_BOX_PART = "class-box"
 TICKER_NOTE_PART = "ticker-note"
 TICKER_MATCH_PART = "ticker-match"
 
