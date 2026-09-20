@@ -161,8 +161,8 @@ _ALWAYS_ON_PINS: dict[str, str] = {
         "the reporting loop of that same per-tick compute"
     ),
     "tick.08.001.event.throttled": (
-        "the throttle arm of the tick loop; the loop's own pacing takes it, "
-        "not any event"
+        "the throttle arm of the tick loop; the loop's own pacing takes it, not any "
+        "event"
     ),
     "tick.08.002.event.worked": "the work arm of the same tick loop",
     "charts.13.001.invariant.panels_mounted": (
@@ -176,12 +176,11 @@ _ALWAYS_ON_PINS: dict[str, str] = {
     ),
     "charts.13.005.invariant.panels_fresh": "the same scheduled pass",
     "charts.indicators.drawn": (
-        "the same `fetch_chart_data` pass calls `set_candles` on every fetch "
-        "that returns candles"
+        "the same `fetch_chart_data` pass calls `set_candles` on every fetch that "
+        "returns candles"
     ),
     "console.14.001.invariant.records_rendered": (
-        "the Console's 5000 ms health timer, which runs for the life of the "
-        "window"
+        "the Console's 5000 ms health timer, which runs for the life of the window"
     ),
     "console.14.002.invariant.view_holds_rendered": "the same health timer",
     "console.14.003.invariant.drain_alive": "the same health timer",
@@ -229,16 +228,12 @@ _TOGGLE_PINS: dict[str, str] = {
         "the operator presses Apply or Reset"
     ),
     "history.05.005.postcondition.page_rendered": "the operator turns a page",
-    "history.05.006.postcondition.joiner_indexes_built": (
-        "the operator turns a page"
-    ),
+    "history.05.006.postcondition.joiner_indexes_built": "the operator turns a page",
     "history.05.007.postcondition.csv_exported": "the operator presses Export CSV",
     "tick.08.003.event.exit_dust_band": (
         "only when the position sits inside the dust band"
     ),
-    "topology.09.001.state_transition.bot_attached": (
-        "a bot joins the wire topology"
-    ),
+    "topology.09.001.state_transition.bot_attached": "a bot joins the wire topology",
     "topology.09.002.postcondition.wires_received": "one wire import",
     "swarm.11.001.postcondition.sim_run_registered": (
         "a sim run registers with the swarm view"
@@ -250,9 +245,7 @@ _TOGGLE_PINS: dict[str, str] = {
         "the window assembles its UI once per process"
     ),
     "trading.12.002.postcondition.exchange_tab_routed": "an exchange tab is added",
-    "trading.12.003.postcondition.exchange_tabs_synced": (
-        "the settings dialog closes"
-    ),
+    "trading.12.003.postcondition.exchange_tabs_synced": "the settings dialog closes",
     "trading.12.004.postcondition.active_layer_alias": (
         "the operator switches the trading wing"
     ),
@@ -277,9 +270,7 @@ _TOGGLE_PINS: dict[str, str] = {
     "exchange.15.004.postcondition.privacy_applied_to_every_field": (
         "the operator presses the global privacy button"
     ),
-    "exchange.15.005.postcondition.privacy_button_matches_registry": (
-        "the same press"
-    ),
+    "exchange.15.005.postcondition.privacy_button_matches_registry": "the same press",
     "apitest.16.001.postcondition.label_matches_session": (
         "one `clicked` connection; the tab owns no timer"
     ),
@@ -299,8 +290,8 @@ _TOGGLE_PINS: dict[str, str] = {
         "one launch decision per process start"
     ),
     "charts.annotations.drawn": (
-        "a paint pass writes it only when the annotation counts moved since "
-        "the last pass"
+        "a paint pass writes it only when the annotation counts moved since the last "
+        "pass"
     ),
     "charts.ata.rendered": "an ATA call from the Inspector is drawn on the chart",
     "charts.crosshair.shown": "the pointer is over the chart",
@@ -314,8 +305,8 @@ _TOGGLE_PINS: dict[str, str] = {
     ),
     "inspector.ata.chime": "a hit or a confirmation sounds the chime",
     "inspector.ata.follow_up_read": (
-        "the follow-up clock reads a watched call's candle when it is due; no "
-        "hit, no timer, no read"
+        "the follow-up clock reads a watched call's candle when it is due; no hit, no "
+        "timer, no read"
     ),
     "inspector.ata.handoff": "the operator presses Post on the push board",
     "inspector.ata.hit": "a scan's vote passes the judge",
@@ -328,34 +319,26 @@ _TOGGLE_PINS: dict[str, str] = {
     "inspector.ata.ticker_resolved": (
         "a Scan press with text in the ticker field resolves that text"
     ),
-    "inspector.ata.volume_order": (
-        "a scan orders one asset class's markets by volume"
-    ),
-    "inspector.scan.list_source": (
-        "the same order; the class's market list is read"
-    ),
+    "inspector.ata.volume_order": "a scan orders one asset class's markets by volume",
+    "inspector.scan.list_source": "the same order; the class's market list is read",
     "inspector.scan.progress": (
         "a running scan reports every `PROGRESS_PIN_EVERY` markets read"
     ),
-    "sim.backtest.bot_walked": (
-        "one bot's walk ends inside a run the operator started"
-    ),
+    "sim.backtest.bot_walked": "one bot's walk ends inside a run the operator started",
     "sim.battery.portfolio_finished": "a Portfolio Battery run ends",
     "sim.battery.portfolio_started": "a Portfolio Battery run starts",
     "sim.bot.htf_bias": (
-        "a tick inside a run the operator started, on the run's own routed "
-        "sink; between runs the loop does not exist"
+        "a tick inside a run the operator started, on the run's own routed sink; "
+        "between runs the loop does not exist"
     ),
-    "sim.bot.stats_written": (
-        "a snapshot inside the same run, on the same routed sink"
-    ),
+    "sim.bot.stats_written": "a snapshot inside the same run, on the same routed sink",
     "sim.fleet.clear_pressed": "the operator presses Clear Fleet",
     "sim.fleet.cleared": "the same press, after the fleet is cleared",
     "sim.fleet.mode_shown": "the operator picks a sim mode, or the tab builds",
     "sim.layer.flipped": "the operator presses the flip button",
     "sim.replay.marks_drawn": (
-        "the replay draws at build, on a fleet change, a flip, a chooser "
-        "change, a bot selection or a retrieval"
+        "the replay draws at build, on a fleet change, a flip, a chooser change, a "
+        "bot selection or a retrieval"
     ),
     "sim.run.start_pressed": "the operator presses Start Run",
     "sim.sink.routed": "a run's sink is unrouted at the run's end, once per run",
