@@ -457,6 +457,26 @@
   var SCAN_BUSY_LABEL = "scan_busy_label";
   var SCAN_NOW_RUNNING = "scan_running";
   var SCAN_TOOLTIP = "scan_tooltip";
+  var SCAN_ALL_LABEL = "scan_all_label";
+  var SCAN_ALL_TOOLTIP = "scan_all_tooltip";
+  var SCAN_ALL_PART_FIELD = "scan_all_part";
+  // The confirmation timer tiles right of the Timeframe row: one row per
+  // watched call, its pair line over its countdown or outcome line.
+  var TIMER_TILES = "timer_tiles";
+  var TIMER_TILES_PART = "timer_tiles_part";
+  var TIMER_TILE_PART = "timer_tile_part";
+  var TIMER_PAIR_PART = "timer_pair_part";
+  var TIMER_COUNTDOWN_PART = "timer_countdown_part";
+  var TIMER_TILE_WIDTH_PX = "timer_tile_width_px";
+  var TIMER_TILE_SPACING_PX = "timer_tile_spacing_px";
+  var TIMER_REGION_HEIGHT_PX = "timer_region_height_px";
+  var TIMER_TILES_EMPTY_TEXT = "timer_tiles_empty_text";
+  var TIMER_TILE_STYLE = "timer_tile_style";
+  var TIMER_PAIR_STYLE = "timer_pair_style";
+  var TIMER_EMPTY_STYLE = "timer_empty_style";
+  var TILE_PAIR = "pair";
+  var TILE_TEXT = "text";
+  var TILE_LINE_STYLE = "line_style";
   var CLASS_TOOLTIP = "class_tooltip";
   var CLASS_WIDTH_PX = "class_width_px";
   var BOX_TOOLTIP_FORMAT = "box_tooltip_format";
@@ -501,7 +521,22 @@
     TICKER_NOTE_SIZE_PX,
     TICKER_PLACEHOLDER,
     TICKER_TOOLTIP,
-    TIMEFRAME_TITLE
+    TIMEFRAME_TITLE,
+    SCAN_ALL_LABEL,
+    SCAN_ALL_TOOLTIP,
+    SCAN_ALL_PART_FIELD,
+    TIMER_TILES,
+    TIMER_TILES_PART,
+    TIMER_TILE_PART,
+    TIMER_PAIR_PART,
+    TIMER_COUNTDOWN_PART,
+    TIMER_TILE_WIDTH_PX,
+    TIMER_TILE_SPACING_PX,
+    TIMER_REGION_HEIGHT_PX,
+    TIMER_TILES_EMPTY_TEXT,
+    TIMER_TILE_STYLE,
+    TIMER_PAIR_STYLE,
+    TIMER_EMPTY_STYLE
   ];
 
   var BAG_FIELDS = {};
@@ -643,6 +678,7 @@
   var ROW_WAY = "row";
   var COLUMN_WAY = "column";
   var CENTER = "center";
+  var FLEX_START = "flex-start";
   var FULL = "100%";
   var CLIPPED = "hidden";
   var NO_SELECT = "none";
@@ -778,6 +814,7 @@
   var CLASS_BOX_PART = "class-box";
   var TIMEFRAME_BOX_PART = "timeframe-box";
   var SCAN_NOW_PART = "scan-now";
+  var SCAN_ALL_PART = "scan-all";
 
   // Phases four, five and six: the bucket row, the settings page and the
   // band strip one waiting post draws.
@@ -914,6 +951,7 @@
   var SECTOR_CLASS_FIELD = "sector_class";
   var TOGGLE_TIMEFRAME_FIELD = "toggle_timeframe";
   var SCAN_NOW_FIELD = "scan_now";
+  var SCAN_ALL_FIELD = "scan_all";
 
   var STEP_ZONE_FIELD = "step_zone";
   var STEP_FIELD = "step";
@@ -1885,6 +1923,106 @@
     return element(BUTTON_TAG, buttonProps, text(shown));
   }
 
+  // ScanAllButton walks every sector on every timeframe with no hit target,
+  // at Scan Now's size, and reads the same busy label while any scan runs.
+  function ScanAllButton(props) {
+    var model = props.model;
+    var skin = props.skin;
+    var buttonStyle = marginStyle(listField(model, BUTTON_PADDING_PX));
+    buttonStyle.flex = FLEX_NONE;
+    buttonStyle.fontWeight = text(model[BUTTON_FONT_WEIGHT]);
+    buttonStyle.boxSizing = BORDER_BOX;
+    buttonStyle.width = length(skin[SCAN_WIDTH_PX]);
+    buttonStyle.height = length(skin[BUTTON_HEIGHT_PX]);
+    var running = skin[SCAN_NOW_RUNNING] === true;
+    var shown = running ? skin[SCAN_BUSY_LABEL] : skin[SCAN_ALL_LABEL];
+    var part = text(skin[SCAN_ALL_PART_FIELD]) || SCAN_ALL_PART;
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: buttonStyle,
+      title: label(skin[SCAN_ALL_TOOLTIP]),
+      disabled: running,
+      onClick: function () {
+        act(part, true);
+      }
+    };
+    buttonProps[PART_ATTR] = part;
+    buttonProps[ARIA_LABEL] = label(shown);
+    return element(BUTTON_TAG, buttonProps, text(shown));
+  }
+
+  // TimerTile is one watched call: its pair line over its countdown, its
+  // reading word, or its outcome, each in the style the surface named.
+  function TimerTile(props) {
+    var skin = props.skin;
+    var row = props.row;
+    var frameStyle = styleOf(skin[TIMER_TILE_STYLE]);
+    frameStyle.display = FLEX;
+    frameStyle.flexDirection = COLUMN_WAY;
+    frameStyle.flex = FLEX_NONE;
+    frameStyle.boxSizing = BORDER_BOX;
+    frameStyle.width = length(skin[TIMER_TILE_WIDTH_PX]);
+    frameStyle.overflow = CLIPPED;
+    var frameProps = { style: frameStyle };
+    frameProps[PART_ATTR] = text(skin[TIMER_TILE_PART]);
+    frameProps[NAME_ATTR] = text(row[TILE_PAIR]);
+    var pairProps = { style: asLabel(styleOf(skin[TIMER_PAIR_STYLE]), false) };
+    pairProps[PART_ATTR] = text(skin[TIMER_PAIR_PART]);
+    var lineProps = { style: asLabel(styleOf(row[TILE_LINE_STYLE]), false) };
+    lineProps[PART_ATTR] = text(skin[TIMER_COUNTDOWN_PART]);
+    lineProps[NAME_ATTR] = text(row[TILE_PAIR]);
+    lineProps[ARIA_LABEL] = text(row[TILE_TEXT]);
+    return element(
+      DIV_TAG,
+      frameProps,
+      element(DIV_TAG, pairProps, text(row[TILE_PAIR])),
+      element(DIV_TAG, lineProps, text(row[TILE_TEXT]))
+    );
+  }
+
+  // TimerTiles is the region right of the Timeframe row: one TimerTile per
+  // watched call, wrapped by the region's width, or the empty text.
+  function TimerTiles(props) {
+    var skin = props.skin;
+    var rows = listField(skin, TIMER_TILES);
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flexWrap: WRAP,
+      alignItems: FLEX_START,
+      alignContent: FLEX_START,
+      flex: ONE,
+      minWidth: ZERO
+    };
+    style.gap = length(skin[TIMER_TILE_SPACING_PX]);
+    style.height = length(skin[TIMER_REGION_HEIGHT_PX]);
+    style.overflowY = AUTO;
+    style.overflowX = CLIPPED;
+    var regionProps = { style: style };
+    regionProps[PART_ATTR] = text(skin[TIMER_TILES_PART]);
+    regionProps[ARIA_LABEL] = String(rows.length);
+    if (!rows.length) {
+      var emptyProps = { style: asLabel(styleOf(skin[TIMER_EMPTY_STYLE]), false) };
+      emptyProps[NAME_ATTR] = text(skin[TIMER_TILES_EMPTY_TEXT]);
+      return element(
+        DIV_TAG,
+        regionProps,
+        element(DIV_TAG, emptyProps, text(skin[TIMER_TILES_EMPTY_TEXT]))
+      );
+    }
+    return element(
+      DIV_TAG,
+      regionProps,
+      rows.map(function (row, at) {
+        return element(TimerTile, {
+          key: text(row[TILE_PAIR]) + PATH_SPLIT + String(at),
+          skin: skin,
+          row: row
+        });
+      })
+    );
+  }
+
   // PushButton is one of the buttons phases five and six are pressed with.
   function PushButton(props) {
     var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
@@ -2397,8 +2535,9 @@
     return element(DIV_TAG, lineProps, asList(children));
   }
 
-  // AtaRow is the ATA-SPM scan page: the sector line, the timeframe buttons
-  // under their heading, then Scan Now and the way in to Level 1.
+  // AtaRow is the ATA-SPM scan page: the sector line, then the timeframe
+  // buttons under their heading and Scan Now, Scan All and the way in to
+  // Level 1 in a left column, with the timer tiles in the region right of it.
   function AtaRow(props) {
     var model = props.model;
     var skin = objectField(model, ATA_SPM);
@@ -2410,6 +2549,19 @@
     style.gap = length(skin[ROW_SPACING_PX]);
     var rowProps = { style: style };
     rowProps[PART_ATTR] = ATA_ROW_PART;
+    var blockStyle = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flex: FLEX_NONE,
+      alignItems: FLEX_START
+    };
+    blockStyle.gap = length(skin[ROW_SPACING_PX]);
+    var leftStyle = {
+      display: FLEX,
+      flexDirection: COLUMN_WAY,
+      flex: FLEX_NONE
+    };
+    leftStyle.gap = length(skin[ROW_SPACING_PX]);
     return element(
       DIV_TAG,
       rowProps,
@@ -2419,38 +2571,52 @@
       ]),
       element(TickerMatches, { key: TICKER_MATCH_LIST_ID, skin: skin }),
       element(TickerNote, { key: TICKER_NOTE, skin: skin }),
-      sectionTitle(skin, skin[TIMEFRAME_TITLE]),
-      wrapAt(
-        skin,
-        text(skin[BOX_ROW_PART]),
-        skin[TIMEFRAME_TITLE],
-        BOX_GRID_WIDTH_PX,
-        asList(skin[BOXES]).map(function (row) {
-          return element(TimeframeButton, {
-            key: TIMEFRAME_BOX_PART + PATH_SPLIT + text(asList(row)[ZERO]),
-            model: model,
-            skin: skin,
-            row: row
-          });
-        })
-      ),
-      ataLine(skin, skin[SCAN_ROW_PART], [
-        element(ScanNowButton, {
-          key: SCAN_NOW_PART,
-          model: model,
-          skin: skin
-        }),
-        element(PushButton, {
-          key: SETTINGS_PART,
-          model: model,
-          part: settingsOf(model)[SETTINGS_PART],
-          label: settingsOf(model)[SETTINGS_LABEL],
-          tooltip: settingsOf(model)[SETTINGS_TOOLTIP],
-          width: settingsOf(model)[SETTINGS_WIDTH_PX],
-          height: settingsOf(model)[BUTTON_HEIGHT_PX],
-          on: settingsOf(model)[SETTINGS_OPEN] === true
-        })
-      ])
+      element(
+        DIV_TAG,
+        { style: blockStyle },
+        element(
+          DIV_TAG,
+          { style: leftStyle, key: TIMEFRAME_TITLE },
+          sectionTitle(skin, skin[TIMEFRAME_TITLE]),
+          wrapAt(
+            skin,
+            text(skin[BOX_ROW_PART]),
+            skin[TIMEFRAME_TITLE],
+            BOX_GRID_WIDTH_PX,
+            asList(skin[BOXES]).map(function (row) {
+              return element(TimeframeButton, {
+                key: TIMEFRAME_BOX_PART + PATH_SPLIT + text(asList(row)[ZERO]),
+                model: model,
+                skin: skin,
+                row: row
+              });
+            })
+          ),
+          ataLine(skin, skin[SCAN_ROW_PART], [
+            element(ScanNowButton, {
+              key: SCAN_NOW_PART,
+              model: model,
+              skin: skin
+            }),
+            element(ScanAllButton, {
+              key: SCAN_ALL_PART,
+              model: model,
+              skin: skin
+            }),
+            element(PushButton, {
+              key: SETTINGS_PART,
+              model: model,
+              part: settingsOf(model)[SETTINGS_PART],
+              label: settingsOf(model)[SETTINGS_LABEL],
+              tooltip: settingsOf(model)[SETTINGS_TOOLTIP],
+              width: settingsOf(model)[SETTINGS_WIDTH_PX],
+              height: settingsOf(model)[BUTTON_HEIGHT_PX],
+              on: settingsOf(model)[SETTINGS_OPEN] === true
+            })
+          ])
+        ),
+        element(TimerTiles, { key: TIMER_TILES, skin: skin })
+      )
     );
   }
 
@@ -3385,6 +3551,21 @@
     return report;
   }
 
+  // setTimerTiles replaces the held payload's timer tile rows alone and
+  // redraws, the once-a-second push the countdown falls by.
+  function setTimerTiles(rows) {
+    if (held === null || !isPlainObject(held.model)) {
+      return false;
+    }
+    var bag = objectField(held.model, ATA_SPM);
+    bag[TIMER_TILES] = asList(rows);
+    held.model[ATA_SPM] = bag;
+    if (hostTarget !== null) {
+      renderScreen(hostTarget, null);
+    }
+    return true;
+  }
+
   function renderPerBot(target, model) {
     return draw(target, element(PerBotView, { model: payloadOr(model) }));
   }
@@ -3440,6 +3621,8 @@
       asked[TOGGLE_TIMEFRAME_FIELD] = value;
     } else if (key === SCAN_NOW_PART) {
       asked[SCAN_NOW_FIELD] = true;
+    } else if (key === SCAN_ALL_PART) {
+      asked[SCAN_ALL_FIELD] = true;
     } else if (pushParts().indexOf(key) >= ZERO) {
       asked[PUSH_ACTION_FIELD] = key;
     } else if (key === settingsHeld()[VENUE_PART]) {
@@ -3477,6 +3660,7 @@
     method: METHOD,
     renderTab: renderTab,
     setTab: setTab,
+    setTimerTiles: setTimerTiles,
     Screen: Screen,
     Split: Split,
     LeftPane: LeftPane,
@@ -3492,6 +3676,9 @@
     ClassBox: ClassBox,
     TimeframeButton: TimeframeButton,
     ScanNowButton: ScanNowButton,
+    ScanAllButton: ScanAllButton,
+    TimerTiles: TimerTiles,
+    TimerTile: TimerTile,
     ZoneStepper: ZoneStepper,
     StepButton: StepButton,
     DetailLine: DetailLine,

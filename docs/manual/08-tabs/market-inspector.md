@@ -5683,6 +5683,11 @@ the price pane shrinks from 220 toward 120 pixels. A height under that least
 layout is refused by name, the folder keeps its text file, and the emitter row
 for that venue reads not ok.
 
+Since 2026-09-20 a sub-pane's natural height is the Charts tab's readable
+figure, 84 pixels, so the fold starts from 84 toward 28; the order, the strip
+fold, the price pane's floors and the refusal are unchanged. The rule is on
+the Asset Charts page under the oscillators.
+
 `src/gui/native_chart.py` - the fold and the refusal
 
 ```python
@@ -6546,5 +6551,315 @@ it draws every line now and scrolls to the newest.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+
+## 2026-09-20 03:50 - #23 - Scan All walks every sector with no stop, paced under each public host's limit, and each watched call's confirmation timer is a tile right of the Timeframe row
+
+His words, 2026-09-20: *"ATA-SMP - Add a Scan All button which will scan
+every market in every TF for every market in every sector. Have noticed that
+scans run really fast which is good but just do not to risk overloading a
+free API or something. For the attached image, I want the Confirmation
+Timers for prior Hits to appear here. Can be just a small ticker pair with a
+theme-consistent timer which triggers the rescan on completion."*
+
+### Scan All
+
+A second button sits beside Scan Now at its size, in both builds. A press
+walks every class the sector menu holds, in the menu's order: crypto,
+stocks, metals, derivatives, forex, energy. Each class is walked on every
+timeframe it scans, the four the Timeframe row lists for it, and on every
+market its list holds, with no stop at a hit count. The walk runs on the
+scan's own thread and both buttons read `Scanning…`, disabled, from the
+press to the end. A press while a scan runs writes the busy line to the
+Activity Log, as a Scan Now press does.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the button
+
+```python
+SCAN_ALL_LABEL = "Scan All"
+SCAN_ALL_PART = "scan-all"
+```
+
+The walk is the by-volume walk Scan Now runs, with a sector flag in place of
+a hit target. `Sector.walk_all` and `SectorScan.walk_all` say the list is
+read to its end; `walks_order` answers True for either flag and is what
+every reader of the old target check now asks, so a walk-all scan takes the
+same route through `evaluate`, `_scan_until_hits`, the judge, the hit pin,
+the chime and the bucket.
+
+`src/trading/ata_spm.py` - one function, both flags
+
+```python
+def walks_order(scan: Any) -> bool:
+    """Whether one ``Sector`` or ``SectorScan`` walks its list market by market.
+
+    A ``walk_all`` scan walks the whole list; a ``hit_target`` above
+    ``NO_HIT_TARGET`` walks it until that many hits.
+    """
+```
+
+`SectorBoard.compute_all` builds the six sectors, tells the counter which
+list it is reading, and runs them. Its sectors replace what the board held.
+A Scan Now after a Scan All drops them again before it walks, so it walks
+its own class and not six.
+
+`src/trading/ata_spm.py` - the six sectors
+
+```python
+        walk = WalkProgress(progress, ASSET_CLASSES)
+        sectors: list = []
+        for asset_class in ASSET_CLASSES:
+            walk.listing(asset_class)
+            order = markets_of(class_source, asset_class)
+            sectors.append(
+                Sector(
+                    name=asset_class,
+                    asset_class=asset_class,
+                    timeframes=timeframes_for(asset_class),
+                    listings=tuple(order.listings),
+                    order=order,
+                    walk_all=True,
+                )
+            )
+```
+
+### The counter, the field and the entries
+
+The counter names the sector, its place in the walk, the markets read of the
+list and the hits of the whole walk so far. The hits count over every sector
+because the chime sounds when that count rises; a count that fell back to
+zero at each new sector would leave the second sector's first hits silent.
+The field draws one line per market as before, over all six sectors. At the
+end the stepper holds one entry per sector, `1 of 6`, each reading
+`sector exhausted`, and the report replaces the lines.
+
+`src/trading/ata_spm.py` - the counter's lines
+
+```python
+SCAN_ALL_PROGRESS_FORMAT = (
+    "Scanning {asset_class} ({at} of {sectors}) · {read} of {total} · {hits} hit(s)"
+)
+SCAN_ALL_LISTING_FORMAT = (
+    "Scanning {asset_class} ({at} of {sectors}) · reading the market list"
+)
+```
+
+### The pace
+
+Coinbase publishes 10 requests a second per IP for its public endpoints and
+answers a burst over it with a 429. Yahoo Finance's chart endpoint publishes
+no limit; a 429 is its only signal. Scan All keeps every read to a host at
+least this far from the last one on that host: 0.2 s on each Coinbase host,
+half its published limit, and 0.5 s on Yahoo. The gap is measured from the
+end of the last read, so every stamp a read leaves on the API Interaction
+Log sits at least the pace from the one before it. The reads that rank a
+class's list are paced the same way.
+
+`src/trading/ata_spm.py` - the pace and the hold
+
+```python
+EXCHANGE_PACE_S = 0.2
+YAHOO_PACE_S = 0.5
+EXCHANGE_RATE_LIMIT_WAIT_S = 10.0
+YAHOO_RATE_LIMIT_WAIT_S = 60.0
+```
+
+A 429 is read as a wait, never as a burst. The read that met it names it in
+its refusal, the walk holds that host for the venue's `Retry-After` when the
+answer carried one, else the table's seconds, and reads that market and
+timeframe once more. A second 429 stands as the refusal; no third read is
+made. Inside one read no route retries a 429 any more: the Yahoo adapter
+the scan builds retries every transient code but 429, and the connector
+route stops asking the other quotes once one answered 429. The connector's
+own three attempts a second apart are the live bots' and stay as they are;
+the walk's hold begins once they are spent. Scan Now reads through no pace,
+so its speed is as he described it.
+
+`src/trading/ata_spm.py` - one paced read
+
+```python
+def paced_read(pace: Any, host: Any, read: Callable) -> tuple:
+    """One read through ``pace``: wait, read, and read once more after the hold a 429 leaves.
+
+    ``read`` answers ``(venue, candles, refusal)``. A second refusal stands;
+    no third read is made. With no ``pace`` the read runs once, unpaced.
+    """
+```
+
+### A market is read once per timeframe
+
+Before this entry every by-volume walk read each market twice per
+timeframe: `_vote_one` read it to vote, and `pull` read it again to draw
+the chart and run the gates. A walk now hands both the same market memo, so
+the second read answers the first's candles and a venue is asked once. On
+the stand-in a Scan Now of 12 crypto markets made 48 requests where it made
+96 before. Scan Now takes this too.
+
+`src/trading/ata_spm.py` - the memo
+
+```python
+class MarketMemo:
+    """One market's candles by timeframe, held from ``_vote_one`` to ``pull``
+    so ``_scan_until_hits`` asks ``candle_source`` for each timeframe once."""
+```
+
+### The timers on screen
+
+The region right of the Timeframe row, the scan line and the stepper holds
+one tile per watched call, in both builds. A tile reads the market and its
+timeframe on one line, the way the Activity Log names the timer, and on the
+second line the time to the call's next read, counted down once a second on
+the tab's own clock. At zero the read the timer wired fires as before, and
+the tile reads `reading` until the outcome crosses back; an open call then
+counts down to its next close, a confirmed or failed call reads its outcome
+and its close. A settled call's tile stays until its entry leaves the
+bucket, which the next scan's load does. While no call is watched the
+region reads `No confirmation timer running.` The tiles wrap by the
+region's width, 132 px each, the width the widest pair a class lists takes
+at the caption size. The region is 110 px tall, three tile rows, and scrolls
+past that, so the tiles never push the stepper and the field down the zone.
+
+`src/trading/ata_spm_push.py` - the tile's lines
+
+```python
+TIMER_PAIR_FORMAT = "{symbol} {label}"
+TIMER_COUNTDOWN_FORMAT = "{hours:02d}:{minutes:02d}:{seconds:02d}"
+TIMER_COUNTDOWN_DAYS_FORMAT = "{days}d {hours:02d}:{minutes:02d}:{seconds:02d}"
+TIMER_READING_TEXT = "reading"
+```
+
+`PushBoard.timer_tiles` answers the rows off the board: one per open timer
+in `FollowUpWatch.timers`, one per settled call whose entry the bucket still
+holds. The Qt widget `TimerTiles` draws them as frames; the page's
+`TimerTiles` draws the same rows from `ata_spm_skin`, and the clock's tick
+hands the page the rows alone through `setTimerTiles`, so a countdown moves
+without the whole payload. Both draw from the theme's tokens: the tile on
+`SURFACE_INPUT` inside an `OUTLINE` border, the pair in `TEXT_HIGH` at the
+caption size, the countdown in `PRIMARY`, `reading` in `WARNING`,
+`confirmed` in `SUCCESS`, `failed` in `ERROR`.
+
+`src/trading/ata_spm_push.py` - the rows
+
+```python
+    def timer_tiles(self) -> list:
+        """One ``TimerTile`` per call under watch, then one per settled call
+        whose entry the bucket still holds, in the order their timers started.
+```
+
+### The walk and the tiles read off both running variants
+
+Both builds, the home on a scratch directory, every socket but loopback
+refused, the stand-in serving the shapes the sources serve: 90 trading
+crypto products, 100 screener equities, 14 metals rows of which 6 read, 11
+futures products, 28 forex pairs, 5 energy funds; a 5-minute crash on ADA's
+tape, a daily one on nine names; three planted 429s, on AVAX/USD three times
+in a row on the connector route, on BIT-27FEB26-CDE once with `Retry-After:
+4` on the futures route, and on AMD once on Yahoo. The connector's interval
+was left as `attach_backend` sets it, 0.0 s, so the walk's pace is the only
+spacing.
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| the walk's minutes, press to the last sector's end | 7.83 (470.0 s) | 7.86 (471.5 s) |
+| the sectors, in walk order | crypto 90 of 90 read, 7 hit(s); stocks 100 of 100 read, 3 hit(s); metals 6 of 10 read, 0 hit(s); derivatives 11 of 11 read, 5 hit(s); forex 28 of 28 read, 0 hit(s); energy 4 of 4 read, 0 hit(s) | crypto 90 of 90 read, 7 hit(s); stocks 100 of 100 read, 3 hit(s); metals 6 of 10 read, 0 hit(s); derivatives 11 of 11 read, 5 hit(s); forex 28 of 28 read, 0 hit(s); energy 4 of 4 read, 0 hit(s) |
+| requests at the stand-in / blocks on the API Interaction Log | 960 / 957 | 960 / 957 |
+| hits, chime pins, hit pins | 15, 15, 15 | 15, 15, 15 |
+| both buttons `Scanning…` and disabled, polls | 894 of 894 | 880 of 880 |
+| distinct counter texts; entries at the end | 242; 6 | 241; 6 |
+| arrival gaps at the stand-in, per venue | yahoo 563 requests, least gap 0.515 s, mean 0.829 s, 0 under the pace; exchange 363 requests, least gap 0.202 s, mean 0.266 s, 0 under the pace; coinbase-futures 34 requests, least gap 0.216 s, mean 0.465 s, 0 under the pace | yahoo 563 requests, least gap 0.515 s, mean 0.832 s, 0 under the pace; exchange 363 requests, least gap 0.202 s, mean 0.266 s, 0 under the pace; coinbase-futures 34 requests, least gap 0.217 s, mean 0.469 s, 0 under the pace |
+| stamp gaps on the API Interaction Log, per venue | yahoo 563 blocks, least gap 0.514 s, 0 under 0.2 s, 0 under 0.5 s; coinbase 360 blocks, least gap 0.202 s, 0 under 0.2 s, 351 under 0.5 s; coinbase-futures 34 blocks, least gap 0.216 s, 0 under 0.2 s, 27 under 0.5 s | yahoo 563 blocks, least gap 0.514 s, 0 under 0.2 s, 0 under 0.5 s; coinbase 360 blocks, least gap 0.202 s, 0 under 0.2 s, 351 under 0.5 s; coinbase-futures 34 blocks, least gap 0.217 s, 0 under 0.2 s, 27 under 0.5 s |
+| the three planted 429s | exchange AVAX/USD answered 429/429/429/200/200/200/200, the retry 10.05 s after the last 429; coinbase-futures BIT-27FEB26-CDE answered 429/200/200/200, the retry 4.02 s after the last 429; yahoo AMD answered 429/200/200/200/200, the retry 60.03 s after the last 429 | exchange AVAX/USD answered 429/429/429/200/200/200/200, the retry 10.05 s after the last 429; coinbase-futures BIT-27FEB26-CDE answered 429/200/200/200, the retry 4.03 s after the last 429; yahoo AMD answered 429/200/200/200/200, the retry 60.02 s after the last 429 |
+| the holds the pace booked | exchange 10 s, yahoo 60 s, coinbase-futures 4 s | exchange 10 s, yahoo 60 s, coinbase-futures 4 s |
+| tiles after the walk; countdowns falling by one a second over five readings | 15; 15 of 15 | 15; 15 of 15 |
+| the ADA 5m tile across its close, one reading a second | 00:00:05 → 00:00:04 → 00:00:03 → 00:00:02 → 00:00:01 → reading → 00:04:57 → 00:04:56 → 00:04:55 → 00:04:54 | 00:00:05 → 00:00:04 → 00:00:03 → 00:00:02 → 00:00:01 → reading → failed · close 2.68396 |
+| the read's Activity Log line | ATA-SPM confirmation read for ADA 5m: open, next read 2026-09-20 09:40 UTC | ATA-SPM confirmation read for ADA 5m: failed, close 2.68396 |
+| tiles before and after a Scan Now on energy | 15 → 14 | 15 → 14 |
+| connections refused | 0 | 0 |
+
+The two builds' ADA reads met different closes because each run's clock
+stood at a different point on the 5-minute grid. The Qt read found one
+closed candle and stayed open, so the tile counted down to the next close;
+three closes then planted against the call, 900, 950 and 992.34, and the
+clock moved past the first of them, settled it `failed · close 950`, and
+the tile read that until the energy scan dropped its entry. The React read
+met the failure at once. Both are the read the S6 entry wired, unchanged.
+
+The walk's size before the run, at S8's real reading: 352 markets, 1,408
+reads; 820 on the Coinbase hosts at 0.2 s and 588 on Yahoo at 0.5 s, 458 s
+before the venues' own latency. On the stand-in, 248 markets, 992 reads,
+375 s at the pace; read at 470 s, the rest the stand-in's service, the
+chart rendering per hit and the three holds, 74 s.
+
+### Two plants
+
+A hit target of 3 planted onto every sector of the all-sectors walk on the
+short stand-in: crypto stopped at 11 of 15 markets, stocks at 3 of 12,
+derivatives at 7 of 11, each `stopped at target`; the reading fails. The
+board's clock pinned to one instant after a three-hit crypto scan: every
+tile read the same countdown over four seconds, the steps `0, 0, 0`, in
+both builds; the reading fails.
+
+### The real reading, once, on both bundles
+
+Built at `1e739a55` with this change on the tree, launched with the home on
+a scratch directory holding an empty fleet and no credential file, through
+a loopback proxy allowing `api.exchange.coinbase.com`, `api.coinbase.com`,
+`query1.finance.yahoo.com` and `query2.finance.yahoo.com`, one Scan All
+press each through UI Automation, the app's own throttle and pace. Every
+read went to a public host; the fleet's fields stayed empty, and the state
+file's stamp moved only by the app's own periodic save.
+
+| reading | Qt bundle | React bundle |
+| ------- | --------- | ------------ |
+| `Application ready`, the Inspector reached, Scan All pressed | 6.0 s; `invoke 'scan-all' -> invoked` | 6.0 s; a button message to the page's child window at the `Scan All` element |
+| the walk | 714.1 s, 11.9 min; 1,255 reads: 352 exchange, 351 futures, 552 Yahoo | 714.0 s; the same 1,255 |
+| the sectors | crypto 88 read, 0 hits; stocks 100, 6; metals 6, 0; derivatives 117, 0; forex 28, 2; energy 4, 0; every one `sector exhausted` | the same |
+| hits, timers, chimes | 8, 8, 8: NKE 1wk, TAP 1d, RKT 1d, RLX 1d, OPEN 1wk, KHC 1hr, EUR/CHF 1hr, NZD/CHF 1hr | the same 8 |
+| the buttons while the walk ran, then after | `scan-row` and `scan-all` both disabled; both enabled after | two `Scanning…` labels disabled; `Scan Now` and `Scan All` enabled after |
+| the counter 8 s in | read off the window by name | `Scanning crypto (1 of 6) · 1 of 88 · 0 hit(s)` |
+| the proxy ledger, connections per host, least gap, refused | api.exchange.coinbase.com 353, 0.273 s; api.coinbase.com 352, 0.279 s; query1.finance.yahoo.com 563, 0.280 s once between the screener's list call and the first paced read, else over 0.5 s; 0 refused | 353, 0.288 s; 352, 0.271 s; 563, 0.252 s once, else over 0.5 s; 0 refused |
+| the API Interaction Log's candle blocks, least gap | COINBASE 352, 0.278 s; COINBASE-FUTURES 351, 0.274 s; YAHOO 562, 0.596 s | 352, 0.294 s; 351, 0.286 s; 562, 0.599 s |
+| 429s | none | none |
+| the tiles at the end | 8 tiles by name; `NKE 1wk` over `5d 09:41:56`, `KHC 1hr` over `00:41:53` on the capture | 8 tiles, the countdowns read off the page a second apart: `5d 09:29:01`, `5d 09:29:00`, `5d 09:28:59` |
+| the stepper, the bucket | `1 of 6`, `1 of 80` | the same |
+| thread violations, credential files | 0, none | 0, none |
+
+The same two bundles launched with no network at all, the Qt one in an
+AppContainer with no capability and the React one behind a dead proxy with
+Chromium's resolver mapped away: `Application ready` after 7.0 and 6.0 s,
+the Inspector reached, Scan All pressed, the walk paced through every
+refused read, an empty end state, which is a non-reading. The build carrying
+the last styling line, the region's transparent ground, was launched the same
+way after the real reading and constructs the same.
+
+### Six steps for the two functions
+
+The contract this unit adds to the zone: the Scan All control, the tile
+region, and the tile row with its pair line, its second line and its state.
+Answered 3 of 3 on the Qt widget and 3 of 3 on the page. The feeds:
+`scanProgressed` with the sector's place and the walk's hits, the finished
+answer with six sectors, the clock's tile rows once a second, and the full
+push carrying the rows. Routed 4 of 4. Driven and read back at the widget
+and at the page: the press, the tiles each second, the pinned clock, 3 of 3.
+Same on both.
+
+### The three sentences Scan All and the tiles overtake
+
+Not reworded, quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:4418` - "An empty field walks the
+class by a cited volume order and stops at the N-th push-gate hit". It does
+under Scan Now. Under Scan All the walk stops at no hit and reads every
+market of every sector.
+
+`docs/manual/08-tabs/market-inspector.md:3882` - "The moment the target
+lands the scan ends, and the markets after it are not read." Under Scan All
+no target lands; every market is read.
+
+`docs/manual/08-tabs/market-inspector.md:5833` - "The board keeps the
+timers, so a tab change loses nothing and both variants read one set". The
+board still keeps them; the zone now draws one tile per timer.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
 
 Back to [the subsystem index](README.md).

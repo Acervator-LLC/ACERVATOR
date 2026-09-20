@@ -172,7 +172,6 @@
   var IMAGE_WIDTH = "width_px";
   var IMAGE_HEIGHT = "height_px";
   var IMAGE_NATURAL_HEIGHT = "natural_height_px";
-  var IMAGE_MINIMUM_HEIGHT = "minimum_height_px";
   var IMAGE_RATIO = "device_pixel_ratio";
   var IMAGE_SHA = "sha256";
   var IMAGE_CANDLES = "candle_count";
@@ -240,12 +239,12 @@
   var TOOLTIP_PAD_PX = 8;
   var TOOLTIP_INSET_PX = 8;
   var TOOLTIP_LABEL_INSET_PX = 6;
-  var TOOLTIP_VALUE_INSET_PX = 24;
+  // The value column starts this far past the widest label.
+  var TOOLTIP_VALUE_GAP_PX = 12;
   var TOOLTIP_BASELINE_LIFT_PX = 3;
   var TOOLTIP_STRIPE_WIDTH_PX = 3;
   var TOOLTIP_RADIUS_PX = 4;
   var TOOLTIP_STRIPE_RADIUS_PX = 2;
-  var READOUT_GAP = "  ";
   var READOUT_LINE_JOIN = " ";
   var READOUT_JOIN = "|";
   var C_LINE_AT = 3;
@@ -811,14 +810,18 @@
     );
   }
 
-  // The host the painted image lands in, carrying the panel values the tab fed it.
+  // The host the painted image lands in, carrying the panel values the tab fed
+  // it. The mount scrolls when the panel is shorter than the image's natural
+  // height; the toggle row under it stays at the panel's foot.
   function ChartMount(props) {
     var panel = props.panel;
     var mountProps = {
       className: CHART_CLASS,
       style: {
         flex: AUTO,
-        overflow: HIDDEN,
+        minHeight: ZERO_PX,
+        overflowX: HIDDEN,
+        overflowY: AUTO,
         display: FLEX,
         flexDirection: COLUMN
       }
@@ -1797,9 +1800,14 @@
       context.textAlign = "left";
     }
     var lines = listField(candle, GEOMETRY_LINES);
+    var labelW = ZERO;
+    lines.forEach(function (line) {
+      labelW = Math.max(labelW, context.measureText(line[ZERO]).width);
+    });
+    var valueX = TOOLTIP_LABEL_INSET_PX + labelW + TOOLTIP_VALUE_GAP_PX;
     var tipW = ZERO;
     lines.forEach(function (line) {
-      tipW = Math.max(tipW, context.measureText(line[ZERO] + READOUT_GAP + line[ONE]).width);
+      tipW = Math.max(tipW, valueX + context.measureText(line[ONE]).width);
     });
     tipW += TOOLTIP_PAD_PX * 2;
     var tipH = TOOLTIP_LINE_HEIGHT_PX * lines.length + TOOLTIP_PAD_PX * 2;
@@ -1820,7 +1828,7 @@
       context.fillStyle = geometry[GEOMETRY_TEXT_DIM];
       context.fillText(line[ZERO], tx + TOOLTIP_PAD_PX + TOOLTIP_LABEL_INSET_PX, baseline);
       context.fillStyle = line[2];
-      context.fillText(line[ONE], tx + TOOLTIP_PAD_PX + TOOLTIP_VALUE_INSET_PX, baseline);
+      context.fillText(line[ONE], tx + TOOLTIP_PAD_PX + valueX, baseline);
     });
     into.setAttribute(
       READOUT_ATTR,
@@ -1962,9 +1970,9 @@
     });
   }
 
-  // The answer's image goes into the host at its CSS size. The mount takes
-  // the painter's natural height as its floor, so the toggles under it never
-  // cover a sub-pane, while the image itself fills whatever height the host has.
+  // The answer's image goes into the host at its CSS size. The host takes the
+  // image's height, never under the painter's natural height, so a mount
+  // shorter than that scrolls and no sub-pane draws under its readable height.
   function placeImage(mount, into, answer) {
     var image = imageIn(into);
     image.setAttribute(IMAGE_WIDTH_ATTR, text(answer[IMAGE_WIDTH]));
@@ -1975,13 +1983,10 @@
     image.style.width = height(answer[IMAGE_WIDTH]);
     image.style.height = height(answer[IMAGE_HEIGHT]);
     image.src = String(answer[IMAGE_DATA_URI]);
-    // The mount holds at least the painter's minimum height, never its natural
-    // one, so a tall chart shrinks its sub-panes to the slot instead of
-    // pushing the toggle row off the page.
-    mount.style.minHeight = height(
-      answer[IMAGE_MINIMUM_HEIGHT] === undefined
-        ? answer[IMAGE_NATURAL_HEIGHT]
-        : answer[IMAGE_MINIMUM_HEIGHT]
+    into.style.minHeight = height(
+      answer[IMAGE_NATURAL_HEIGHT] === undefined
+        ? answer[IMAGE_HEIGHT]
+        : answer[IMAGE_NATURAL_HEIGHT]
     );
     into.removeAttribute(FAULT_ATTR);
     var geometry = answer[IMAGE_GEOMETRY];

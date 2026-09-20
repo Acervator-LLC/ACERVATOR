@@ -652,10 +652,10 @@ if _HAS_WEBENGINE:
         ) -> dict:
             """The chart ``painter`` paints at ``width_px`` by ``height_px`` CSS pixels and ``ratio``, as a PNG data URI.
 
-            A measured slot height is never under the painter's minimum
-            height for the overlays on, so the sub-panes shrink to the slot; an
-            unmeasured slot takes the natural height. The same inputs answer
-            the last image without a repaint.
+            The image is never under the painter's natural height for the
+            overlays on, so no sub-pane draws under ``SUB_PANE_READABLE_PX``
+            and a shorter slot scrolls it; a taller slot gives the rest to the
+            price pane. The same inputs answer the last image without a repaint.
             """
             width = int(width_px or 0) or FALLBACK_IMAGE_WIDTH_PX
             scale = float(ratio or 0.0) or 1.0
@@ -667,7 +667,7 @@ if _HAS_WEBENGINE:
             self._feed_painter()
             natural = int(self._painter._natural_height_for_panes(width))
             minimum = int(self._painter._minimum_height_for_panes(width))
-            height = max(minimum, asked_height) if asked_height else natural
+            height = max(natural, asked_height)
             image = paint_image(self._painter, width, height, scale)
             painted_ms = (time.perf_counter() - started) * 1000.0
             buffer = QBuffer()
