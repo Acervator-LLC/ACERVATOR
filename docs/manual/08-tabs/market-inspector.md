@@ -6518,15 +6518,16 @@ Not reworded, quoted here.
 classification named yet." It has one: the venue's own futures product list,
 read at press time.
 
-`docs/manual/08-tabs/market-inspector.md:3875` - "| metals | the asset map's
-order: the four spot pairs, then the four funds |". Six funds, and they rank
-by their last complete daily bar's volume times close.
+`docs/manual/08-tabs/market-inspector.md:3875` - the metals row, "the asset
+map's order: the four spot pairs, then the four funds". Six funds, and they
+rank by their last complete daily bar's volume times close.
 
-`docs/manual/08-tabs/market-inspector.md:3876` - "| stocks, derivatives | no
-list exists, and the zone says so |". Both lists exist; the zone counts them.
+`docs/manual/08-tabs/market-inspector.md:3876` - the stocks and derivatives
+row, "no list exists, and the zone says so". Both lists exist; the zone
+counts them.
 
-`docs/manual/08-tabs/market-inspector.md:4507` - "| stocks, derivatives |
-none | no list exists, and the zone says so |". The same.
+`docs/manual/08-tabs/market-inspector.md:4507` - the stocks and derivatives
+row, "none" and "no list exists, and the zone says so". The same.
 
 `docs/manual/08-tabs/market-inspector.md:4718` - "Stocks and derivatives list
 nothing, as before." Derivatives offers the products the last press read.
