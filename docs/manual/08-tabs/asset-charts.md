@@ -1394,3 +1394,183 @@ against 13.4 ms on the widget. A hover on the page repaints nothing.
 
 **Figures.** `artifacts/u55/C4/` holds the crosshair and readout in both
 variants on the same candle, and both after the same wheel tick.
+
+## 2026-09-20 05:40 - #55 - the frame: one control row, compact toggles, the value field on the ATA-SMP picture
+
+His words, 2026-09-20: *"it does not appear that the GUI Archetype organized
+all of the elements properly using any kind of rules as we still have a
+significant void space and poorly placed or incorrect icons"*; *"TA values
+are smashed together in a long row above the chart when they should be
+stacked in the lower left corner in their own field with a dark background
+and these only need to be present for ATA-SMP posting"*; *"Check boxes for
+indicators are over large and taking up too much real estate."* The tab now
+lays its controls by one rule, in both builds.
+
+### The layout rule
+
+One control row sits at the top of the tab. From the left: the list toggle,
+the previous arrow, the ticker menu, the next arrow, the `n of N` counter,
+the empty-list hint when the ATA-SMP list is empty, the `TF:` word and the
+timeframe menu, then a stretch, then the two legend labels and the source
+label at the right edge. Every control in the row is `CONTROL_HEIGHT_PX`
+tall and the gap between two controls is `SELECTOR_SPACING_PX`. The type is
+the design system's: the buttons and the menus at `TYPE_SMALL` in
+`FONT_FAMILY_UI`, the counter and the labels at `TYPE_CAPTION`, the two
+arrow glyphs at `ARROW_GLYPH_PX` in `FONT_FAMILY_GLYPH`. The chart fills
+the tab's width from the row's bottom edge to the toggle row. The toggle row
+is one line of fourteen boxes in `CHART_OVERLAYS` order, left-aligned, with
+no stretch between them; each box is `TOGGLE_BOX_PX` square, under the
+caption line height, and its label is at `TYPE_CAPTION` in the overlay's
+colour. The tab draws no legend band. The ATA-SMP picture draws the value
+field at the lower-left corner of the price pane. Nothing else moves.
+
+`src/gui/main_tabs/native_chart_surface.py` - the numbers both builds read
+
+```python
+CONTROL_HEIGHT_PX = 26
+ARROW_GLYPH_PX = 16
+ARROW_GLYPH_FAMILY = ds.FONT_FAMILY_GLYPH
+CONTROL_FONT_FAMILY = ds.FONT_FAMILY_UI
+CONTROL_FONT_PX = ds.TYPE_SMALL
+CAPTION_PX = ds.TYPE_CAPTION
+TOGGLE_BOX_PX = 12
+```
+
+### Who lays the row
+
+The Qt tab lays one `QHBoxLayout`. `ChartPanel` builds the `TF:` label, the
+timeframe menu, the two legend labels and the source label as before, and the
+tab places them in its row through `timeframe_widgets` and `legend_widgets`.
+The panel keeps the chart and the toggle row.
+
+`src/gui/widgets/trade_charts_tab.py` - the panel's controls join the row
+
+```python
+            for widget in self._panel.timeframe_widgets():
+                widget.setFixedHeight(CONTROL_HEIGHT_PX)
+                control_row.addWidget(widget)
+            control_row.addStretch()
+            for widget in self._panel.legend_widgets():
+                widget.setFixedHeight(CONTROL_HEIGHT_PX)
+                control_row.addWidget(widget)
+            layout.addLayout(control_row)
+```
+
+The React page draws the same row in `ControlRow`, from the sizes and the
+families `selector_values` carries, and the surface's `LAYOUT_SLOTS` reads
+three: the control row, the chart and the toggle row. The page no longer
+draws a header line of its own over the image; the painter's header line
+inside the image is the one both builds show.
+
+### The arrows draw their glyphs
+
+The arrows carry U+25C0 and U+25B6. In the UI family those glyphs are 6 by 7
+pixels at 12 pixels, a mark under a quarter of the button's height, which
+reads as an empty button. The buttons now set `FONT_FAMILY_GLYPH` at
+`ARROW_GLYPH_PX`, and the glyph reads 12 by 13 pixels in a 34 by 26 button.
+
+`src/gui/design_system.py` - the family for symbol glyphs
+
+```python
+FONT_FAMILY_GLYPH = "'Segoe UI Symbol', 'DejaVu Sans', 'Apple Symbols', sans-serif"
+```
+
+### The toggle boxes
+
+Each Qt box takes its own style sheet: the label in the overlay's colour at
+the caption size, the indicator `TOGGLE_BOX_PX` square with a one-pixel
+border. The page sizes each box's input from the same number, carried as
+`toggle_box_px` in the panel chrome.
+
+`src/gui/native_chart.py` - one box's style sheet
+
+```python
+TOGGLE_STYLE_FORMAT = (
+    "QCheckBox {{ color: {color}; font-size: {font_px}px; spacing: {gap}px; }}"
+    "QCheckBox::indicator {{ width: {box}px; height: {box}px; "
+    "border-width: 1px; border-radius: 2px; }}"
+)
+```
+
+### The value field on the ATA-SMP picture
+
+The legend band under the OHLC row is gone from every surface: the OHLC row
+sits directly over the price pane and the chart's natural height loses the
+band's rows. The values now draw as a field at the lower-left corner of the
+price pane, only on a chart that carries a call. Every venue PNG and the
+tab's ATA-SMP list call `set_call` with a direction; the Live list never
+does, so the tab shows no field. The field holds one caption-size line per
+overlay that is on, the label in the overlay's colour and the value in the
+axis text colour, on the theme's `chart_bg_top` at alpha 205 so the candles
+under it stay faint, inside a one-pixel border in `chart_grid`, `FIELD_PAD_PX`
+in from the pane's left edge and bottom edge. Lines past the pane's room are
+not drawn.
+
+`src/gui/native_chart.py` - what makes a chart the ATA-SMP picture
+
+```python
+        def draws_value_field(self) -> bool:
+            """True when the chart carries a call, which makes it the ATA-SMP picture.
+
+            Every venue PNG and the tab's ATA-SMP list call ``set_call`` with a
+            direction; the Live list never does, so the tab draws no field.
+            """
+            return CALL_DIRECTION_ROLES.get(self._call_direction) is not None
+```
+
+A market on both lists keeps one symbol and draws two pictures, the bot's and
+the call's, so a list press now clears the followed symbol before the chart
+follows the shown market. Before this, a market that was both traded and
+called kept the bot's picture on the ATA-SMP list.
+
+### Read off the running program, both builds
+
+Both builds built the real `MainWindow` with the home on scratch, every
+socket but loopback refused, one BTC/USD bot off a scratch copy of
+`bot_state.json`, 100 BTC 1h candles rolled from a copy of the 5m tablet, at
+the display's ratio of 1.25, the window 1920, 1400 and 900 pixels wide, each
+under `python -m pdb` with a breakpoint on the first statement of
+`_draw_legend`.
+
+| reading | before, Qt / React | after, Qt / React |
+| ------- | ------------------ | ----------------- |
+| distinct y of the controls | 8, 42, 78 / 12, 50, 115 | 8 / 12 |
+| the chart's top edge against the controls' bottom | 108 against 104 / 136.4 against 134.4 | 42 against 34 / 50.8 against 38 |
+| the arrow glyph | Segoe UI 12 px, 59 pixels of ink in the grabbed button / the browser's fallback | Segoe UI Symbol 16 px, 138 pixels of ink / the same family and size on the page |
+| the box | indicator 16 by 16 in a 24 px box, label 9 px / input 13 by 13, label 9 px | indicator 12 by 12 in a 14 px box, label 10 px / input 12 by 12, label 10 px; the caption line height 12 |
+| `_draw_legend` on the Live tab, the presses and ten repaints | 19 hits / 14 to 16 hits | 0 hits / 0 hits |
+| the natural chart height at 1886 wide | 764 / 764 | 732 / 732 |
+| the field on one planted call, on the tab | none | 191 by 51, three lines, at the pane's lower-left corner in both builds; gone again on the Live list |
+| the field on the six venue sizes | none | 191 by 51 with three voters, 191 by 181 with thirteen overlays on, inside the price pane on every size |
+
+With the row's spacing planted to zero in the driver's process only, the
+gaps between the controls read 0 in both builds against 8 unplanted, so the
+reading can fail.
+
+**Figures.** `artifacts/u55/C6/` holds the tab, the arrow buttons, one box,
+the window and the page at each width before and after, the six venue PNGs
+with three voters and with all twelve, and the tab on the planted call.
+
+### Five sentences the frame overtakes
+
+"The toggle is a button on its own row, above the blue arrows and the ticker
+menu." - the toggle is now the first control of the one row.
+
+"A band under the OHLC row names every overlay with the last candle's value
+of its series, in the overlay's colour. An overlay that is off reads `off` in
+grey. The band wraps to the chart's width. It is painted by the painter, so
+the Qt widget, the React image and the ATA-SPM post images all carry it." -
+no surface carries the band; the ATA-SMP picture carries the field, and an
+overlay that is off has no line in it.
+
+"The legend wraps at the chart's width as before; at 1400, 1366 and 1200
+pixels it takes two rows and its widest row ends before the price scale." -
+the field does not wrap; each value is one line.
+
+"The React page draws the tab header line and the painter draws its own
+header line under it, so the label reads twice on that build." - the page
+draws no header line of its own.
+
+"The header line, the toolbar and the toggle row each take a rule between
+them." - the page has no toolbar and no header line; the toggle row keeps
+its rule.

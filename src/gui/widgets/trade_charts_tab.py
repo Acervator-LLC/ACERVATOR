@@ -8,6 +8,14 @@ import time as _time
 from datetime import datetime
 
 from .. import design_system as ds
+from ..main_tabs.native_chart_surface import (
+    ARROW_GLYPH_FAMILY,
+    ARROW_GLYPH_PX,
+    CAPTION_PX,
+    CONTROL_FONT_FAMILY,
+    CONTROL_FONT_PX,
+    CONTROL_HEIGHT_PX,
+)
 from ..main_tabs.trade_charts_tab_surface import (
     bot_timeframe,
     fill_record,
@@ -56,13 +64,14 @@ LIST_TOGGLE_TOOLTIP = (
 ATA_EMPTY_TICKER_TEXT = "No called market"
 ATA_EMPTY_HINT = "A market joins this list when it reaches Ready to Send."
 LIST_TOGGLE_WIDTH_PX = 92
-LIST_TOGGLE_HEIGHT_PX = 26
+LIST_TOGGLE_HEIGHT_PX = CONTROL_HEIGHT_PX
+LIST_TOGGLE_PAD_PX = ds.SPACE_S
 ATA_EXCHANGE_ID = ""
 
 ARROW_WIDTH_PX = 34
-ARROW_HEIGHT_PX = 26
+ARROW_HEIGHT_PX = CONTROL_HEIGHT_PX
 TICKER_MIN_WIDTH_PX = 220
-SELECTOR_SPACING_PX = 8
+SELECTOR_SPACING_PX = ds.SPACE_S
 OUTER_MARGINS_PX = (8, 8, 8, 8)
 OUTER_SPACING_PX = 8
 
@@ -82,8 +91,9 @@ ERROR_TEXT_LIMIT = 60
 
 ARROW_STYLE = (
     f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
-    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
-    "font-weight: bold; font-size: 12px; }"
+    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: {ds.RADIUS_XS}px; "
+    f"font-family: {ARROW_GLYPH_FAMILY}; font-size: {ARROW_GLYPH_PX}px; "
+    "padding: 0px; }"
     f"QPushButton:hover {{ background: {ds.GLOW_PRIMARY_FAINT}; "
     f"border: 1px solid {ds.PRIMARY}; }}"
     f"QPushButton:disabled {{ background: {ds.CARD_METRIC_BORDER}; "
@@ -92,20 +102,23 @@ ARROW_STYLE = (
 )
 TICKER_STYLE = (
     f"QComboBox {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
-    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
-    "padding: 3px 8px; font-weight: bold; font-size: 12px; }"
+    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: {ds.RADIUS_XS}px; "
+    f"padding: 0px {ds.SPACE_S}px; font-family: {CONTROL_FONT_FAMILY}; "
+    f"font-weight: bold; font-size: {CONTROL_FONT_PX}px; }}"
     f"QComboBox:hover {{ border: 1px solid {ds.PRIMARY}; }}"
 )
-POSITION_STYLE = f"color: {ds.TEXT_LOW}; font-size: 10px;"
+POSITION_STYLE = f"color: {ds.TEXT_LOW}; font-size: {CAPTION_PX}px;"
 LIST_TOGGLE_STYLE = (
     f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
-    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
-    "font-weight: bold; font-size: 11px; }"
+    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: {ds.RADIUS_XS}px; "
+    f"font-family: {CONTROL_FONT_FAMILY}; font-weight: bold; "
+    f"font-size: {CONTROL_FONT_PX}px; }}"
     f"QPushButton:hover {{ background: {ds.GLOW_PRIMARY_FAINT}; "
     f"border: 1px solid {ds.PRIMARY}; }}"
 )
 
 try:
+    from PySide6.QtGui import QFontMetrics
     from PySide6.QtWidgets import (
         QComboBox,
         QHBoxLayout,
@@ -149,59 +162,75 @@ if _HAS_QT:
             self._followed = ""
             self._trade_log: list[dict] = []
 
-            list_row = QHBoxLayout()
-            list_row.setSpacing(SELECTOR_SPACING_PX)
-            self._list_btn = QPushButton(LIST_TEXTS[self._list_mode])
+            from ..native_chart import ChartPanel, design_font
+
+            self._control_font = design_font(
+                CONTROL_FONT_FAMILY, CONTROL_FONT_PX, bold=True
+            )
+            self._panel = ChartPanel("", self)
+            self._panel.chart.set_timeframe(PANEL_TIMEFRAME)
+            self._panel.setMinimumHeight(PANEL_MINIMUM_HEIGHT_PX)
+            self._panel.chart.timeframe_changed.connect(self._on_tf_changed)
+
+            control_row = QHBoxLayout()
+            control_row.setSpacing(SELECTOR_SPACING_PX)
+
+            self._list_btn = QPushButton(LIST_TEXTS[self._list_mode], self)
             self._list_btn.setAccessibleName("Chart list")
             self._list_btn.setToolTip(LIST_TOGGLE_TOOLTIP)
-            self._list_btn.setFixedSize(LIST_TOGGLE_WIDTH_PX, LIST_TOGGLE_HEIGHT_PX)
             self._list_btn.setStyleSheet(LIST_TOGGLE_STYLE)
+            self._list_btn.setFixedSize(
+                self._list_toggle_width(), LIST_TOGGLE_HEIGHT_PX
+            )
             self._list_btn.clicked.connect(self.toggle_list)
-            list_row.addWidget(self._list_btn)
-            list_row.addStretch()
-            layout.addLayout(list_row)
+            control_row.addWidget(self._list_btn)
 
-            selector = QHBoxLayout()
-            selector.setSpacing(SELECTOR_SPACING_PX)
-
-            self._prev_btn = QPushButton(PREV_TEXT)
+            self._prev_btn = QPushButton(PREV_TEXT, self)
             self._prev_btn.setAccessibleName("Previous asset")
             self._prev_btn.setToolTip(PREV_TOOLTIP)
             self._prev_btn.setFixedSize(ARROW_WIDTH_PX, ARROW_HEIGHT_PX)
             self._prev_btn.setStyleSheet(ARROW_STYLE)
             self._prev_btn.clicked.connect(lambda: self.step(-1))
-            selector.addWidget(self._prev_btn)
+            control_row.addWidget(self._prev_btn)
 
-            self._ticker_combo = QComboBox()
+            self._ticker_combo = QComboBox(self)
             self._ticker_combo.setAccessibleName("Asset ticker")
             self._ticker_combo.setToolTip(TICKER_TOOLTIP)
             self._ticker_combo.setMinimumWidth(TICKER_MIN_WIDTH_PX)
+            self._ticker_combo.setFixedHeight(CONTROL_HEIGHT_PX)
             self._ticker_combo.setStyleSheet(TICKER_STYLE)
             self._ticker_combo.currentIndexChanged.connect(self._on_ticker_picked)
-            selector.addWidget(self._ticker_combo)
+            control_row.addWidget(self._ticker_combo)
 
-            self._next_btn = QPushButton(NEXT_TEXT)
+            self._next_btn = QPushButton(NEXT_TEXT, self)
             self._next_btn.setAccessibleName("Next asset")
             self._next_btn.setToolTip(NEXT_TOOLTIP)
             self._next_btn.setFixedSize(ARROW_WIDTH_PX, ARROW_HEIGHT_PX)
             self._next_btn.setStyleSheet(ARROW_STYLE)
             self._next_btn.clicked.connect(lambda: self.step(1))
-            selector.addWidget(self._next_btn)
+            control_row.addWidget(self._next_btn)
 
-            self._position_label = QLabel(EMPTY_POSITION_TEXT)
+            self._position_label = QLabel(EMPTY_POSITION_TEXT, self)
             self._position_label.setAccessibleName("Asset position")
             self._position_label.setStyleSheet(POSITION_STYLE)
-            selector.addWidget(self._position_label)
-            selector.addStretch()
+            self._position_label.setFixedHeight(CONTROL_HEIGHT_PX)
+            control_row.addWidget(self._position_label)
 
-            layout.addLayout(selector)
+            self._hint_label = QLabel(ATA_EMPTY_HINT, self)
+            self._hint_label.setAccessibleName("Chart list hint")
+            self._hint_label.setStyleSheet(POSITION_STYLE)
+            self._hint_label.setFixedHeight(CONTROL_HEIGHT_PX)
+            self._hint_label.hide()
+            control_row.addWidget(self._hint_label)
 
-            from ..native_chart import ChartPanel
-
-            self._panel = ChartPanel("")
-            self._panel.chart.set_timeframe(PANEL_TIMEFRAME)
-            self._panel.setMinimumHeight(PANEL_MINIMUM_HEIGHT_PX)
-            self._panel.chart.timeframe_changed.connect(self._on_tf_changed)
+            for widget in self._panel.timeframe_widgets():
+                widget.setFixedHeight(CONTROL_HEIGHT_PX)
+                control_row.addWidget(widget)
+            control_row.addStretch()
+            for widget in self._panel.legend_widgets():
+                widget.setFixedHeight(CONTROL_HEIGHT_PX)
+                control_row.addWidget(widget)
+            layout.addLayout(control_row)
             layout.addWidget(self._panel)
 
             from src.exchange.chart_data import ChartDataFetcher
@@ -298,9 +327,14 @@ if _HAS_QT:
             self._ata_call_source = source
 
         def toggle_list(self) -> str:
-            """Move the arrows to the other list and answer the mode on screen."""
+            """Move the arrows to the other list and answer the mode on screen.
+
+            ``_followed`` is cleared first: a market on both lists keeps one
+            symbol and draws two pictures, the bot's and the call's.
+            """
             self._list_mode = LIST_ATA if self._list_mode == LIST_LIVE else LIST_LIVE
             self._list_btn.setText(LIST_TEXTS[self._list_mode])
+            self._followed = ""
             self._refresh_selector()
             self._follow_current()
             self._label_current()
@@ -356,6 +390,20 @@ if _HAS_QT:
             self._prev_btn.setEnabled(stepping)
             self._next_btn.setEnabled(stepping)
             self._position_label.setText(self._position_text())
+            self._hint_label.setVisible(self._showing_ata() and not entries)
+
+        def _list_toggle_width(self) -> int:
+            """The one width the list toggle keeps for both of its texts.
+
+            The longer of ``LIST_TEXTS`` in the control font plus
+            ``LIST_TOGGLE_PAD_PX`` a side, never under ``LIST_TOGGLE_WIDTH_PX``,
+            so a press does not move the arrows.
+            """
+            metrics = QFontMetrics(self._control_font)
+            widest = max(
+                metrics.horizontalAdvance(text) for text in LIST_TEXTS.values()
+            )
+            return max(LIST_TOGGLE_WIDTH_PX, widest + LIST_TOGGLE_PAD_PX * 2)
 
         def _follow_current(self) -> None:
             """Point the panel at the shown asset and clear the last one's tape.

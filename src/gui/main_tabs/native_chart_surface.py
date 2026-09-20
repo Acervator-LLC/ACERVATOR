@@ -31,6 +31,8 @@ import math
 import time
 from typing import Protocol, Sequence
 
+from .. import design_system as ds
+
 Color = tuple[int, int, int, int]
 
 
@@ -371,6 +373,16 @@ LEGEND_SPACING_PX = 12
 TIMEFRAME_LABEL = "TF:"
 TIMEFRAME_COMBO_MAX_WIDTH_PX = 90
 CHART_PANEL_MIN_HEIGHT_PX = 250
+#: The one height every control in the Charts tab's control row takes, the
+#: pixel size and family the two arrow glyphs are set in, and the side of a
+#: toggle box, which stays under the caption line height.
+CONTROL_HEIGHT_PX = 26
+ARROW_GLYPH_PX = 16
+ARROW_GLYPH_FAMILY = ds.FONT_FAMILY_GLYPH
+CONTROL_FONT_FAMILY = ds.FONT_FAMILY_UI
+CONTROL_FONT_PX = ds.TYPE_SMALL
+CAPTION_PX = ds.TYPE_CAPTION
+TOGGLE_BOX_PX = 12
 LEGEND_INVISIBLE_TEXT = "◆ Invisible"
 LEGEND_ON_BOOK_TEXT = "□ On Book"
 #: The ``ThemeTokens`` field each panel label paints in; ``ChartPainter``
@@ -378,7 +390,7 @@ LEGEND_ON_BOOK_TEXT = "□ On Book"
 LEGEND_INVISIBLE_FIELD = "chart_trend_fast"
 LEGEND_ON_BOOK_FIELD = "chart_trend_slow"
 PANEL_SOURCE_FIELD = "text_muted"
-INDICATOR_STYLE_FORMAT = "color: {color}; font-size: 9px;"
+INDICATOR_STYLE_FORMAT = "color: {color}; font-size: %dpx;" % CAPTION_PX
 
 #: The twelve Voting Panel indicators in ``INDICATOR_COLS`` order, then the
 #: two overlays that draw no voter: the Z-Score algo point and BB Bullseye.
@@ -715,6 +727,13 @@ METRICS = {
     "timeframe_label": TIMEFRAME_LABEL,
     "timeframe_combo_max_width_px": TIMEFRAME_COMBO_MAX_WIDTH_PX,
     "chart_panel_min_height_px": CHART_PANEL_MIN_HEIGHT_PX,
+    "control_height_px": CONTROL_HEIGHT_PX,
+    "arrow_glyph_px": ARROW_GLYPH_PX,
+    "arrow_glyph_family": ARROW_GLYPH_FAMILY,
+    "control_font_family": CONTROL_FONT_FAMILY,
+    "control_font_px": CONTROL_FONT_PX,
+    "caption_px": CAPTION_PX,
+    "toggle_box_px": TOGGLE_BOX_PX,
     "legend_invisible_text": LEGEND_INVISIBLE_TEXT,
     "legend_invisible_field": LEGEND_INVISIBLE_FIELD,
     "legend_on_book_text": LEGEND_ON_BOOK_TEXT,
