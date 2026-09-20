@@ -19,10 +19,13 @@ from ..main_tabs.native_chart_surface import (
 from ..main_tabs.trade_charts_tab_surface import (
     bot_timeframe,
     fill_record,
+    history_fills,
+    history_never_fetched,
+    history_of,
+    history_state,
     landing_strip,
     merged_fills,
     position_reading,
-    tranche_scrums,
 )
 
 #: The bus topic every fill of every bot crosses; ``_on_trade_filled`` records it.
@@ -161,6 +164,8 @@ if _HAS_QT:
             self._list_mode = LIST_LIVE
             self._followed = ""
             self._trade_log: list[dict] = []
+            self._history_asked = False
+            self._history_connected = False
 
             from ..native_chart import ChartPanel, design_font
 
@@ -272,6 +277,49 @@ if _HAS_QT:
             )
             if recorded is not None:
                 self.log_trade(recorded)
+
+        def _history(self):
+            """The window's History tab, or None before the window built one."""
+            return history_of(self.window())
+
+        def _on_history_refreshed(self, rows) -> None:
+            """Redraw the shown market's trade events when a History fetch lands."""
+            del rows
+            self._draw_history()
+            self._panel.chart.update()
+
+        def _draw_history(self) -> None:
+            """Put the shown market's trade events on the chart: the History's fills
+            for its symbol, then each bus fill since launch the venue has not
+            answered for.
+
+            A History that has never fetched is asked to ``refresh`` once, the
+            call the window makes on activation; ``history_refreshed`` is
+            connected once so the landing redraws without waiting for the tick.
+            A called market on the ATA-SMP list gets none.
+            """
+            if self._showing_ata():
+                return
+            symbol = self.current_entry().get("symbol", "")
+            if not symbol:
+                return
+            history = self._history()
+            state = history_state(history)
+            if history is not None and not self._history_connected:
+                with contextlib.suppress(Exception):
+                    history.history_refreshed.connect(self._on_history_refreshed)
+                    self._history_connected = True
+            if (
+                history is not None
+                and not self._history_asked
+                and history_never_fetched(state)
+            ):
+                self._history_asked = True
+                with contextlib.suppress(Exception):
+                    history.refresh()
+            venue = history_fills(state["rows"], symbol)
+            logged = [one for one in self._trade_log if one.get("symbol") == symbol]
+            self._panel.chart.set_trade_history_markers(merged_fills(venue, logged))
 
         @property
         def entries(self) -> list:
@@ -486,9 +534,9 @@ if _HAS_QT:
                 self._clear_annotations()
 
         def _clear_annotations(self) -> None:
-            """Take every bot annotation off the chart: floors, target lines, glow, strip, position."""
+            """Take every annotation off the chart: markers, target lines, glow, strip, position."""
             chart = self._panel.chart
-            chart.set_tranche_floors([])
+            chart.set_trade_history_markers([])
             chart.set_target_balance_lines(None, None)
             chart.set_fire_armed_state(False, False, [], [])
             chart.set_landing_strip(None)
@@ -546,6 +594,7 @@ if _HAS_QT:
             self._refresh_selector()
             self._follow_current()
             self._label_current()
+            self._draw_history()
             self._decorate_current(bot_manager)
             self._panel.chart.update()
 
@@ -657,28 +706,15 @@ if _HAS_QT:
             )
 
         def _decorate_current(self, bot_manager) -> None:
-            """Draw the shown bot's markers, target lines, glow and floors."""
+            """Draw the shown bot's strip, position, target lines and glow."""
             entry = self.current_entry()
             bot_id = entry.get("bot_id", "")
-            symbol = entry.get("symbol", "")
             if not bot_manager or not bot_id:
                 return
             bot = bot_manager.get_bot(bot_id)
             if not bot:
                 return
             chart = self._panel.chart
-
-            with contextlib.suppress(Exception):
-                trades = merged_fills(
-                    [
-                        one
-                        for one in self._trade_log
-                        if one.get("bot_id") == bot_id and one.get("symbol") == symbol
-                    ],
-                    tranche_scrums(getattr(bot, "_fold_tranches", []), bot_id, symbol),
-                )
-                if trades:
-                    chart.set_trade_history_markers(trades)
 
             with contextlib.suppress(Exception):
                 chart.set_landing_strip(
@@ -740,24 +776,6 @@ if _HAS_QT:
                     gate_state.get("scrum_blockers") or [],
                     gate_state.get("fold_blockers") or [],
                 )
-
-            with contextlib.suppress(Exception):
-                lots = getattr(bot, "_main_lots", [])
-                if lots:
-                    units_by_price: dict = {}
-                    for lot in lots:
-                        price = float(lot.get("initial_buy_price", 0) or 0)
-                        if price <= 0:
-                            continue
-                        units_by_price[price] = units_by_price.get(price, 0.0) + float(
-                            lot.get("units", 0) or 0
-                        )
-                    chart.set_tranche_floors(
-                        [
-                            (price, f"${price:.4f}" if price < 1 else f"${price:.2f}")
-                            for price in sorted(units_by_price)
-                        ]
-                    )
 
         def _on_tf_changed(self, tf: str):
             """Re-arm the shown asset's fetch after a timeframe change.

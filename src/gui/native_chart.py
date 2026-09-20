@@ -132,8 +132,6 @@ DEFAULT_CANDLE_SECONDS = 3600
 #: The tag texts the annotations carry.
 TARGET_TAG_FORMAT = "TARGET {price}"
 CEILING_TAG_FORMAT = "CEILING {price}"
-FLOOR_TAG_FORMAT = "FLOOR {label}"
-FLOORS_TAG_FORMAT = "{count} FLOORS {low}–{high}"
 STRIP_TAG_FORMAT = "STRIP {side} {candles}c"
 SCRUM_ARMED_TAG = "SCRUM ARMED"
 FOLD_ARMED_TAG = "FOLD ARMED"
@@ -702,7 +700,6 @@ if _HAS_QT:
         MARKER_DIST: QColor
         MARKER_BUY: QColor
         MARKER_SELL: QColor
-        FLOOR_LINE: QColor
         TB_ANCHOR: QColor
         TB_CEILING: QColor
         GLOW_SCRUM: QColor
@@ -790,7 +787,6 @@ if _HAS_QT:
             "MARKER_DIST": ("chart_event_mark", 255),
             "MARKER_BUY": ("chart_bull", 255),
             "MARKER_SELL": ("chart_bear", 255),
-            "FLOOR_LINE": ("chart_last_price", 180),
             "TB_ANCHOR": ("chart_trend_slow", 200),
             "TB_CEILING": ("chart_zone_scrum", 220),
             "GLOW_SCRUM": ("chart_bull", 220),
@@ -903,7 +899,6 @@ if _HAS_QT:
             self._bbullseye_data: list = []
             # The (vmin, vmax) each sub-pane last drew on, by overlay key.
             self._sub_scale: dict[str, tuple] = {}
-            self._tranche_floors: list[tuple] = []  # [(price, label), ...]
 
             self._tb_anchor_price: Optional[float] = None
             self._tb_ceiling_price: Optional[float] = None
@@ -1334,15 +1329,6 @@ if _HAS_QT:
                     self._markers.append(m)
                 except (TypeError, ValueError, KeyError):
                     continue
-            self._repaint()
-
-        def set_tranche_floors(self, floors: list[tuple]) -> None:
-            """Set ``_tranche_floors`` from (price, label) tuples.
-
-            Each price is a lot's ``initial_buy_price``, the level below
-            which that lot does not fold.
-            """
-            self._tranche_floors = list(floors)
             self._repaint()
 
         def set_positions(self, positions: list[PositionMarker]) -> None:
@@ -1924,7 +1910,6 @@ if _HAS_QT:
             _fa = self._fire_armed_state or {}
             drawn_counts = {
                 "fills": 0,
-                "floors": 0,
                 "target": 0,
                 "strip": 0,
                 "glow": 0,
@@ -2109,8 +2094,6 @@ if _HAS_QT:
                 ctx.paint_oscillator = _paint_oscillator
                 for overlay, sp_top, sp_bot in sub_layout:
                     getattr(self, overlay.draw)(ctx, sp_top, sp_bot)
-
-                drawn_counts["floors"] = self._draw_floors(ctx, snap)
 
                 self._draw_call(ctx, h)
 
@@ -2339,11 +2322,6 @@ if _HAS_QT:
                 drawn_counts,
                 {
                     "fills": fills_in_window,
-                    "floors": sum(
-                        1
-                        for fp, _label in self._tranche_floors
-                        if price_top <= p2y(float(fp)) <= price_bot
-                    ),
                     "target": sum(
                         1
                         for tb in (self._tb_anchor_price, self._tb_ceiling_price)
@@ -2357,13 +2335,16 @@ if _HAS_QT:
                 {
                     "fills_fed": len(self._markers),
                     "fills_off_window": len(self._markers) - fills_in_window,
-                    "floors_fed": len(self._tranche_floors),
                 },
             )
 
         def _emit_annotations(self, drawn: dict, expected: dict, context: dict) -> None:
-            """Write ``ANNOTATIONS_PIN`` when the drawn annotation counts changed since the last pass."""
-            digest = repr(sorted(drawn.items())) + repr(sorted(expected.items()))
+            """Write ``ANNOTATIONS_PIN`` when the drawn, expected or fed annotation counts changed since the last pass."""
+            digest = (
+                repr(sorted(drawn.items()))
+                + repr(sorted(expected.items()))
+                + repr(sorted(context.items()))
+            )
             if digest == self._annotations_digest:
                 return
             self._annotations_digest = digest
@@ -2482,48 +2463,6 @@ if _HAS_QT:
                 ctx.font_sm,
             )
             return 1
-
-        def _draw_floors(self, ctx, snap) -> int:
-            """Paint one dashed line per tranche floor and a right-edge tag per floor group.
-
-            Floors whose tags would overlap share one tag naming their count and
-            price span. Answers the floors drawn inside the pane.
-            """
-            rows = []
-            for fp, label in self._tranche_floors:
-                try:
-                    price = float(fp)
-                except (TypeError, ValueError):
-                    continue
-                y_px = ctx.p2y(price)
-                if not ctx.price_top <= y_px <= ctx.price_bot:
-                    continue
-                rows.append((y_px, price, str(label)))
-            if not rows:
-                return 0
-            p = ctx.p
-            p.setPen(QPen(self.FLOOR_LINE, LINE_WIDTH_PX, Qt.DashLine))
-            for y_px, _price, _label in rows:
-                p.drawLine(
-                    QPointF(ctx.ML, snap(y_px)), QPointF(ctx.w - ctx.MR, snap(y_px))
-                )
-            rows.sort()
-            groups: list = []
-            for row in rows:
-                if groups and row[0] - groups[-1][-1][0] <= TAG_H_PX:
-                    groups[-1].append(row)
-                else:
-                    groups.append([row])
-            for group in groups:
-                if len(group) == 1:
-                    text = FLOOR_TAG_FORMAT.format(label=group[0][2])
-                else:
-                    text = FLOORS_TAG_FORMAT.format(
-                        count=len(group), low=group[-1][2], high=group[0][2]
-                    )
-                centre = (group[0][0] + group[-1][0]) / 2
-                self._right_tag(p, ctx.w, centre, text, self.FLOOR_LINE, ctx.font_sm)
-            return len(rows)
 
         def _draw_bollinger(self, ctx) -> None:
             """Paint the Bollinger cloud and its upper, middle and lower lines."""
