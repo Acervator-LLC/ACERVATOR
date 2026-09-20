@@ -18,9 +18,13 @@ panel's ``select_bot``, both bot tables' asks and the venue page's ``+ New Bot``
 ``PaperBotManager``), a row's Fire (``_on_bot_fire``) and Detail
 (``_on_bot_detail`` over ``surface_class(PAPER_BOT_DETAIL)``). ``_on_api_event``
 pushes each entry of the host's own ``APIInteractionLog`` as one of
-``api_lines`` through ``show_tab``, and ``aggregate`` is ``strip_aggregate``
-over the held records and ``PaperLedger.figures``, what the header strip reads
-while Paper is in front.
+``api_lines`` through ``show_tab``, reached through ``_cross_api_event`` and
+``apiEntryLogged`` so a read on a worker thread lands on the GUI thread, and
+``aggregate`` is ``strip_aggregate`` over the held records and
+``PaperLedger.figures``, what the header strip reads while Paper is in front.
+The host holds one ``PaperExchange`` over that log, and ``_read_feed`` runs
+``read_fleet`` over it on a worker thread after each Import Live Fleet, whose
+summary ``feedRead`` carries to ``_on_feed_read`` and one ``feed_line``.
 """
 
 from __future__ import annotations
@@ -42,6 +46,7 @@ from ...paper.fleet_source import (
 )
 from ...paper.paper_bot_manager import PaperBotManager
 from ...paper.paper_bot_view import PaperBotView
+from ...paper.paper_exchange import PaperExchange, read_fleet
 from ..main_tabs import bot_status_table_surface as scrum_surface
 from ..main_tabs import design_system_surface as token_surface
 from ..main_tabs import extractor_bot_table_surface as extractor_surface
@@ -744,6 +749,10 @@ if _HAS_WEBENGINE:
 
         #: Fired by whatever loads a fleet; the venue sub-tabs re-seat on it.
         fleet_changed = Signal()
+        #: One ``APIInteractionLog`` entry, queued onto the GUI thread for ``_on_api_event``.
+        apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
+        #: One ``read_fleet`` summary, queued onto the GUI thread for ``_on_feed_read``.
+        feedRead = Signal(object)  # noqa: N815 - Qt signal name
 
         def __init__(
             self,
@@ -751,9 +760,11 @@ if _HAS_WEBENGINE:
             parent: Optional[QWidget] = None,
             theme: object = None,
             api_log: Optional[APIInteractionLog] = None,
+            exchange: Optional[PaperExchange] = None,
         ) -> None:
-            """Hold the fleet source the tab's view models are built from and
-            the API log ``_on_api_event`` listens to."""
+            """Hold the fleet source the tab's view models are built from, the
+            API log ``_on_api_event`` listens to, and the ``PaperExchange``
+            recording on it."""
             super().__init__(parent)
             self.setObjectName(ACCESSIBLE_NAME)
             self.setAccessibleName(ACCESSIBLE_NAME)
@@ -761,6 +772,11 @@ if _HAS_WEBENGINE:
                 fleet_source if fleet_source is not None else PaperFleetSource()
             )
             self._api_log = api_log if api_log is not None else APIInteractionLog()
+            self._exchange = (
+                exchange
+                if exchange is not None
+                else PaperExchange(api_log=self._api_log)
+            )
             self._bot_manager = PaperBotManager(self._fleet_source)
             self._ledger = PaperLedger()
             self._theme = theme
@@ -780,7 +796,9 @@ if _HAS_WEBENGINE:
             self.fleet_changed.connect(self._fleet_source.save)
             self.fleet_changed.connect(self._sync_exchange_tabs)
             self._sync_exchange_tabs()
-            self._api_log.add_listener(self._on_api_event)
+            self.apiEntryLogged.connect(self._on_api_event)
+            self._api_log.add_listener(self._cross_api_event)
+            self.feedRead.connect(self._on_feed_read)
             # Polls StatusLogModel.health_stats() every 60s on the GUI thread.
             self._activity_log_watchdog_state = WatchdogState()
             self._activity_log_watchdog_timer = QTimer(self)
@@ -829,6 +847,10 @@ if _HAS_WEBENGINE:
             """The host's own API log; every entry it records reaches the pane."""
             return self._api_log
 
+        def exchange(self) -> PaperExchange:
+            """The host's ``PaperExchange``, recording every venue call on ``api_log``."""
+            return self._exchange
+
         def exchange_count(self) -> int:
             """How many venues ``add_exchange_tab`` has seated; EXCH reads it."""
             return len(self._venues)
@@ -866,6 +888,25 @@ if _HAS_WEBENGINE:
             imported = self._fleet_source.import_live_fleet(chosen)
             self.log(tab_surface.imported_line(len(imported), chosen), "success")
             self.fleet_changed.emit()
+            self._read_feed([bot.symbol for bot in imported])
+
+        def _read_feed(self, symbols: list) -> None:
+            """Run ``read_fleet`` over ``exchange()`` for ``symbols`` on one
+            ``FEED_THREAD_NAME`` worker thread; its summary crosses ``feedRead``."""
+            if not symbols:
+                return
+
+            def run() -> None:
+                self.feedRead.emit(read_fleet(self._exchange, symbols))
+
+            threading.Thread(
+                target=run, name=tab_surface.FEED_THREAD_NAME, daemon=True
+            ).start()
+
+        def _on_feed_read(self, summary: dict) -> None:
+            """Write one ``feed_line`` for ``summary`` on the Activity Log."""
+            text, level = tab_surface.feed_line(summary)
+            self.log(text, level)
 
         # -- what the window pushes ---------------------------------------
 
@@ -1009,6 +1050,11 @@ if _HAS_WEBENGINE:
             if wanted != self._state.api_buffer.paused:
                 self.show_tab({tab_surface.API_PAUSED_PARAM: wanted})
             return self._state.api_buffer.paused
+
+        def _cross_api_event(self, entry: dict) -> None:
+            """The ``api_log()`` listener: emit ``apiEntryLogged``, which Qt
+            queues onto the GUI thread for ``_on_api_event`` from any other thread."""
+            self.apiEntryLogged.emit(entry)
 
         def _on_api_event(self, entry: dict) -> None:
             """Push one ``api_log()`` entry to the page as Live's block, refusing

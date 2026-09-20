@@ -29,7 +29,13 @@ Settings window through ``surface_class(PAPER_BOT_DETAIL)`` over a
 ``strip_aggregate`` over the held records and ``PaperLedger.figures``, what the
 header strip reads while Paper is in front. The API Interaction Log is written
 by ``_on_api_event``, the window's writer forked over the tab's own
-``APIInteractionLog``, never the process-wide ``get_api_log``.
+``APIInteractionLog``, never the process-wide ``get_api_log``; every entry
+reaches it through ``_cross_api_event`` and ``apiEntryLogged``, the window's
+crossing, so a read on a worker thread lands on the GUI thread. The tab holds
+one ``PaperExchange`` over that log, and ``_read_feed`` runs ``read_fleet``
+over it on a worker thread after each Import Live Fleet, one products read and
+one ticker read per record, whose summary ``feedRead`` carries to
+``_on_feed_read`` and one ``feed_line`` on the Activity Log.
 """
 
 from __future__ import annotations
@@ -66,6 +72,7 @@ from ...paper.fleet_source import (
 )
 from ...paper.paper_bot_manager import PaperBotManager
 from ...paper.paper_bot_view import PaperBotView
+from ...paper.paper_exchange import PaperExchange, read_fleet
 from .. import design_system as ds
 from ..color_alpha import rgba
 from ..main_tabs import paper_trader_tab_surface as paper
@@ -111,12 +118,17 @@ class PaperTradingTab(QWidget):
 
     #: Fired by whatever loads a fleet; the venue sub-tabs re-seat on it.
     fleet_changed = Signal()
+    #: One ``APIInteractionLog`` entry, queued onto the GUI thread for ``_on_api_event``.
+    apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
+    #: One ``read_fleet`` summary, queued onto the GUI thread for ``_on_feed_read``.
+    feedRead = Signal(object)  # noqa: N815 - Qt signal name
 
     def __init__(
         self,
         fleet_source: Optional[PaperFleetSource] = None,
         parent: Optional[QWidget] = None,
         api_log: Optional[APIInteractionLog] = None,
+        exchange: Optional[PaperExchange] = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(ACCESSIBLE_NAME)
@@ -125,12 +137,17 @@ class PaperTradingTab(QWidget):
             fleet_source if fleet_source is not None else PaperFleetSource()
         )
         self._api_log = api_log if api_log is not None else APIInteractionLog()
+        self._exchange = (
+            exchange if exchange is not None else PaperExchange(api_log=self._api_log)
+        )
         self._bot_manager = PaperBotManager(self._fleet_source)
         self._ledger = PaperLedger()
         self._corner_buttons: dict[str, QPushButton] = {}
         self._card_buttons: dict[str, QPushButton] = {}
         self._build()
-        self._api_log.add_listener(self._on_api_event)
+        self.apiEntryLogged.connect(self._on_api_event)
+        self._api_log.add_listener(self._cross_api_event)
+        self.feedRead.connect(self._on_feed_read)
         self._indicator_panel.bot_selected.connect(self._feed_votes)
         self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
@@ -158,6 +175,10 @@ class PaperTradingTab(QWidget):
     def api_log(self) -> APIInteractionLog:
         """The tab's own API log; every entry it records reaches the pane."""
         return self._api_log
+
+    def exchange(self) -> PaperExchange:
+        """The tab's ``PaperExchange``, recording every venue call on ``api_log``."""
+        return self._exchange
 
     def exchange_count(self) -> int:
         """How many venue sub-tabs ``add_exchange_tab`` has seated; EXCH reads it."""
@@ -206,6 +227,25 @@ class PaperTradingTab(QWidget):
             tab_surface.imported_line(len(imported), chosen), "success"
         )
         self.fleet_changed.emit()
+        self._read_feed([bot.symbol for bot in imported])
+
+    def _read_feed(self, symbols: list) -> None:
+        """Run ``read_fleet`` over ``exchange()`` for ``symbols`` on one
+        ``FEED_THREAD_NAME`` worker thread; its summary crosses ``feedRead``."""
+        if not symbols:
+            return
+
+        def run() -> None:
+            self.feedRead.emit(read_fleet(self._exchange, symbols))
+
+        threading.Thread(
+            target=run, name=tab_surface.FEED_THREAD_NAME, daemon=True
+        ).start()
+
+    def _on_feed_read(self, summary: dict) -> None:
+        """Write one ``feed_line`` for ``summary`` on the Activity Log."""
+        text, level = tab_surface.feed_line(summary)
+        self._status_log.log(text, level)
 
     # -- construction -----------------------------------------------------
 
@@ -642,6 +682,11 @@ class PaperTradingTab(QWidget):
         for text, level in lines:
             self._status_log.force_log(text, level)
             logger.log(logging.ERROR if level == "error" else logging.WARNING, text)
+
+    def _cross_api_event(self, entry: dict) -> None:
+        """The ``api_log()`` listener: emit ``apiEntryLogged``, which Qt queues
+        onto the GUI thread for ``_on_api_event`` from any other thread."""
+        self.apiEntryLogged.emit(entry)
 
     def _on_api_event(self, entry: dict) -> None:
         """Append one ``api_log()`` entry to ``_api_log_view`` as Live's block,
