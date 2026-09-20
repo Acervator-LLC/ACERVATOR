@@ -1263,4 +1263,15 @@ The stand-in serves the `4h` name and a `USDC-USD` ticker with trades because
 the venue's pages list them; whether the real venue answers `FOUR_HOUR` and
 whether `USDC-USD` carries trades are read at the real venue, not here.
 
+One real reading followed, on both built bundles against the public host, no
+credential file present and the adapter's own pace: Import Live Fleet made 39
+calls in each build, the product list answering 917 trading products and 8
+not trading, all 38 fleet products among them, 38 of 38 tickers answered with
+their bid and ask, no 429, the least gap between two stamps 0.191 s in the Qt
+build and 0.168 s in the React build, the 39 calls spanning 11.4 s and 10.7 s.
+Launched in a Windows AppContainer with no network, the same press made 39
+calls in each build, every one refused by the container and every one a block
+on the pane naming its cause, and the Activity Log line read that the venue
+answered no product list and 0 of 38 tickers.
+
 Back to [the subsystem index](README.md).
