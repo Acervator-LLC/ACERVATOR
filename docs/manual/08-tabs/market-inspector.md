@@ -6287,4 +6287,264 @@ keep the routes that sentence names, WhatsApp the intent route.
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
 
+## 2026-09-20 03:30 - #23 - Derivatives lists Coinbase's futures, Metals gains its base-metal funds, no window floats over the panel, and the field holds its lines at one size
+
+His words, 2026-09-20: *"ATA-SMP - The scanner freaking works but we do have
+some issues. Derivatives sector list is empty. Metals only has four in its
+list and I am pretty sure its a more complex sector than this but could be
+wrong. I see a series of floating windows rapidly appearing and disappearing
+over the ATA-SMP panel once the scan gets going. The field where the IVP
+fields are supposed to appear during the read initially displays text but
+this gets very small very fast before disappearing completely and the
+floating windows appear with some containing text before vanishing. I was
+able to get three hits and three charts generated. Very good progress."* And:
+*"ATA-SMP - Energy sector also only has four entries in its list. Probably
+not complete..."*
+
+### What he saw, read off the running program before the change
+
+The Qt window under the S5 candle stand-in, 90 trading products, a hit target
+of 3, the three firing products ranked last: Derivatives listed 0 markets and
+the field under the ticker read `No ticker list for derivatives`; Metals
+listed 8 rows, the four spot pairs on no venue and the four funds; Energy 4.
+One three-hit scan opened 2,331 top-level windows, every one a `QLabel` with
+no parent, and 71 of them were still visible when the scan ended. The
+field's rows were never laid out: each label kept the 480 px a widget is born
+with, the entry held 4 px a row, and the newest row was inside the field on
+0 of 88 readings. The font never changed: `DETAIL_STYLE` fixes 11 px in both
+variants. What shrank and vanished was the rows, and what floated was the
+rows. The React page opened no window and held its rows at 30.8 px, but its
+scroll never moved, so the newest row sat 2,942 px below the 75 px it shows.
+
+### Derivatives lists its markets
+
+The class had no source. It has one now: Coinbase Advanced Trade's public
+product list, read at press time the way the stocks screener is. Each
+product the venue says it trades becomes one row on the futures venue,
+ranked by the venue's own 24 h volume times price, and the rows stay in the
+process so the ticker field offers them after the press.
+
+`src/trading/ata_asset_maps.py` - the source and the read
+
+```python
+FUTURES_PRODUCTS_URL = "https://api.coinbase.com/api/v3/brokerage/market/products"
+FUTURES_PRODUCT_TYPE = "FUTURE"
+FUTURES_SOURCE_TEXT = "coinbase futures and perpetuals, 24 h volume x price"
+
+
+def futures_listings(timeout_s: float = FUTURES_TIMEOUT_S) -> tuple[list, dict, str]:
+    """The derivatives rows ``FUTURES_PRODUCTS_URL`` lists as trading, their
+    figures by symbol, and the refusal when it answered none.
+```
+
+A derivative's candles come from the same route's candles endpoint, which
+serves `ONE_HOUR` and `ONE_DAY` at 350 candles a request; the weekly line
+rolls up from the daily one, the rule the crypto class already follows.
+
+`src/trading/stone_tablets/ra_fetcher.py` - the candle route
+
+```python
+class CoinbaseFuturesCandles(ExchangeAdapter):
+    exchange_id = "coinbase-futures"
+    chunk_limit = FUTURES_CANDLE_CAP
+
+    BASE_URL: str = "https://api.coinbase.com/api/v3/brokerage/market/products"
+```
+
+Before the first press the line under the ticker field says where the list
+comes from, and a typed product id, `BIT-25SEP26-CDE` for one, reads the list
+first and scans that one market.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the line under the field
+
+```python
+TICKER_PRESS_LIST_FORMAT = (
+    "Scan Now reads the {sector} list from {source}. A typed name still scans."
+)
+```
+
+Read once against the venue on 2026-09-20, on both bundles: the list held
+117 trading products, every one a dated contract on the CDE venue marked
+`EXPIRING`, and none carrying the `-PERP-INTX` suffix the venue gives its
+perpetuals; 57 of the 117 carried no 24 h volume and ranked last by name,
+and 43 answered no candle on any granularity. The scan read all 117 and
+found no hit.
+
+### Metals and Energy list every fund their rule admits
+
+The rule stands: the listed instrument for each metal is the fund holding it.
+The base metals were missing. Read against the chart endpoint on
+2026-09-20: CPER, the copper fund, and DBB, the fund holding aluminium, zinc
+and copper together, each answered 250 daily rows with the last complete
+daily bar carrying volume, so both rank by a figure beside GLD SLV PPLT PALL.
+The notes JJN JJU JJT LD, for nickel, aluminium, tin and lead alone, answered
+HTTP 404 on every timeframe and are not carried.
+
+`src/trading/ata_asset_maps.py` - the base-metal sector
+
+```python
+METALS_BASE: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in ("CPER", "DBB")
+)
+```
+
+Metals now lists 10 rows: the four spot pairs, still on no venue, and six
+funds. Energy stays at four. UHN, the heating oil fund, answered HTTP 404
+on every timeframe again on 2026-09-20, and no fund holding gasoil is listed,
+so the count is a finding: the rule admits nothing more today.
+
+### No window floats over the panel
+
+Every scan progress rebuilt the field's labels. The old ones were taken off
+the layout with `setParent(None)`, and a label added to a visible entry is
+shown by a queued call. When the next progress landed before that call ran,
+the label was already a parentless widget, and the queued show opened it as a
+window at the desktop's default place, holding the line's text, until its
+deferred delete ran. That is the series of floating windows.
+
+The stepper keeps its labels now. A line is written into the label already at
+that row, a new label is added only past the last one and shown at once, and
+a surplus label is hidden before it leaves the layout.
+
+`src/gui/market_inspector.py` - the rows kept
+
+```python
+        def _show_lines(self, lines: list) -> None:
+            while len(self.detail_labels) > len(lines):
+                gone = self.detail_labels.pop()
+                gone.hide()
+                self.detail_box.removeWidget(gone)
+                gone.setParent(None)
+                gone.deleteLater()
+            for at, line in enumerate(lines):
+                if at < len(self.detail_labels):
+                    self.detail_labels[at].setText(line)
+                    continue
+                drawn = QLabel(line)
+                drawn.setStyleSheet(DETAIL_STYLE)
+                drawn.setWordWrap(True)
+                self.detail_box.addWidget(drawn)
+                drawn.show()
+                self.detail_labels.append(drawn)
+```
+
+Read on the Qt window over one 90-market, three-hit scan: 0 top-level
+windows opened, and the visible count read 1 at the press, 1 every second
+during the scan and 1 at the end. A window planted from the hit handler
+raised the count to 4, so the reading can fail.
+
+### The field holds its lines at one size
+
+The held height counted a hidden label as 0 px, and every new label was
+hidden until its queued show ran. Shown at once, each row is counted at its
+own wrapped height, the entry grows to what its rows need, and the scroll
+area scrolls it. While the counter is set the scroll follows the newest
+line, in both variants.
+
+`src/gui/market_inspector.py` - the scroll
+
+```python
+        def _scroll_to_newest(self) -> None:
+            bar = self.entry_scroll.verticalScrollBar()
+            bar.setValue(bar.maximum())
+```
+
+`src/gui/web/market_inspector.js` - the page's entry follows its newest row
+
+```javascript
+    entryProps.ref = function (node) {
+      if (node !== null && text(view[ZONE_COUNTER])) {
+        node.scrollTop = node.scrollHeight;
+      }
+    };
+```
+
+Read at every progress of the same scan: the row font 11 px at the first
+line and at the ninetieth in both variants; each Qt row 15 px a wrapped
+line, 30 px where the line wraps to two, from the first line to the
+ninetieth, and the entry 144 px at one line and 3,075 px at ninety; the
+newest line inside the field on 90 of 90 readings on the Qt window and 76 of
+76 on the page. A held height pinned to the viewport in place of the rule
+dropped every row to 0 px by the 28th line, so that reading can fail too.
+
+### A venue candle's stamp is written in seconds
+
+A hit on a Yahoo or futures row ended the scan with an error: the row's
+candles carried millisecond stamps, the follow-up timer and the chart read
+seconds, and `time.gmtime` refused the year the millisecond value names.
+Every venue candle is now stamped in seconds, the unit the connector's
+candles, the chart's time axis and the follow-up timer already read.
+
+`src/trading/ata_asset_maps.py` - the stamp
+
+```python
+            stamped = [float(row[0]) / MS_PER_S, *row[1:]]
+            kept.extend(candles_from_raw([stamped]))
+```
+
+### Read off both bundles
+
+Each variant was built and launched with the home on a scratch directory,
+no credential file, every socket refused, and its window read constructing:
+`Application ready` after 3.0 s on the Qt bundle and 2.0 s on the React
+bundle, the Inspector reached from the tab bar, the class menu reading
+`derivatives` at its full width, and the line under the ticker field reading
+the source. Then one scan per class on each bundle against the public hosts
+alone, through a loopback proxy that allows `api.exchange.coinbase.com`,
+`api.coinbase.com`, `query1.finance.yahoo.com` and `query2.finance.yahoo.com`
+and refuses everything else. The Qt bundle's ledger: 1,658 connections, 529
+to the exchange, 494 to Advanced Trade, 635 to Yahoo, 0 refused. The React
+bundle's, over two launches because the page's class menu did not open after
+its derivatives scan in the first: 1,393 and 265 connections, 529 to the
+exchange, 494 to Advanced Trade, 635 to Yahoo, 0 refused. On each bundle
+crypto read 88 trading products and found no hit; stocks read 38 of 100 and
+stopped at three hits; metals read 10 and energy 5, no hit; derivatives read
+117, no hit; forex read 28 with two hits. The bot state file was not touched
+and no thread violation was written.
+
+### Six steps
+
+The Qt stepper and the page draw the same `zone_view`: the contract's
+members, `counter` and `detail`, answered 2 of 2; the feeds, `scanProgressed`
+and the finished answer, routed 2 of 2; driven and read back at the widget
+and at the page, 2 of 2. The two renders agree on the rows and the counter.
+
+### The sentences the four functions overtake
+
+Not reworded, quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:1365` - "Derivatives has no
+classification named yet." It has one: the venue's own futures product list,
+read at press time.
+
+`docs/manual/08-tabs/market-inspector.md:3875` - the metals row, "the asset
+map's order: the four spot pairs, then the four funds". Six funds, and they
+rank by their last complete daily bar's volume times close.
+
+`docs/manual/08-tabs/market-inspector.md:3876` - the stocks and derivatives
+row, "no list exists, and the zone says so". Both lists exist; the zone
+counts them.
+
+`docs/manual/08-tabs/market-inspector.md:4507` - the stocks and derivatives
+row, "none" and "no list exists, and the zone says so". The same.
+
+`docs/manual/08-tabs/market-inspector.md:4718` - "Stocks and derivatives list
+nothing, as before." Derivatives offers the products the last press read.
+
+`docs/manual/08-tabs/market-inspector.md:4855` - "Under stocks and
+derivatives, which list nothing, a typed name still scans". A typed product
+id reads the list first.
+
+`docs/manual/08-tabs/market-inspector.md:5496` - "Derivatives still lists
+nothing." 117 products on 2026-09-20.
+
+`docs/manual/08-tabs/market-inspector.md:5432` - "the field held 27 lines
+when the counter read `27 of 90`". It held 27 labels and drew none of them;
+it draws every line now and scrolls to the newest.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
+
 Back to [the subsystem index](README.md).
