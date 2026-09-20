@@ -21,7 +21,7 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from . import ata_spm_push
+from . import ata_spm_push, ata_spm_send
 
 logger = logging.getLogger("acervator.ata_spm_signin")
 
@@ -880,6 +880,34 @@ def sign_in_reddit(typed: dict, session: SignInSession) -> dict:
 
 #: One route per push target name. A name with no row here cannot sign in, and
 #: ``build_connector`` says so rather than running a flow that fits no venue.
+def sign_in_discord(typed: dict, session: SignInSession) -> dict:
+    """Check the typed webhook URL reads as ``DISCORD_WEBHOOK_FORM`` and issue nothing.
+
+    No browser opens and no venue is reached; ``AtaSpmSettings.connect``
+    then stores the URL, which ``ata_spm_send.send_discord`` posts through.
+    """
+    del session
+    try:
+        ata_spm_send.parse_webhook(typed.get(ata_spm_push.DISCORD_WEBHOOK_FIELD))
+    except ata_spm_send.SendRefused as exc:
+        raise SignInError(exc.detail) from exc
+    return {}
+
+
+def sign_in_telegram(typed: dict, session: SignInSession) -> dict:
+    """Check the typed bot token and chat id read as their forms and issue nothing.
+
+    No browser opens and no venue is reached; ``AtaSpmSettings.connect``
+    then stores both, which ``ata_spm_send.send_telegram`` posts through.
+    """
+    del session
+    try:
+        ata_spm_send.check_telegram_credential(dict(typed))
+    except ata_spm_send.SendRefused as exc:
+        raise SignInError(exc.detail) from exc
+    return {}
+
+
 SIGN_IN_ROUTES = {
     ata_spm_push.TARGET_X: sign_in_x,
     ata_spm_push.TARGET_INSTAGRAM: sign_in_instagram,
@@ -888,6 +916,8 @@ SIGN_IN_ROUTES = {
     ata_spm_push.TARGET_FACEBOOK: sign_in_facebook,
     ata_spm_push.TARGET_THREADS: sign_in_threads,
     ata_spm_push.TARGET_REDDIT: sign_in_reddit,
+    ata_spm_push.TARGET_DISCORD: sign_in_discord,
+    ata_spm_push.TARGET_TELEGRAM: sign_in_telegram,
 }
 
 

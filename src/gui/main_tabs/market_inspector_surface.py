@@ -39,6 +39,7 @@ from ...trading import (
     ata_post_paths,
     ata_spm,
     ata_spm_push,
+    ata_spm_send,
     ata_spm_signin,
 )
 from .. import design_system as ds
@@ -404,7 +405,19 @@ SIGN_IN_LINE_FORMAT = "Connect opens your browser on {address}"
 #: What a venue answering at its own desktop redirect carries instead. Its
 #: sign-in opens inside the program, and no system browser is involved.
 SIGN_IN_VIEW_LINE_FORMAT = "Connect opens a sign-in window in Acervator on {address}"
+#: What a venue with typed fields and no authorize address carries: the
+#: boxes are held as they are left, and Connect checks their form.
+SIGN_IN_TYPED_TEXT = (
+    "Connect checks what you typed and holds it. No browser opens and no "
+    "venue is reached."
+)
+#: What a venue whose row names no field carries.
+SIGN_IN_NONE_TEXT = (
+    "No sign-in. The post goes through the venue folder and the compose address."
+)
 REDIRECT_LINE_FORMAT = "Redirect address to register: {redirect}"
+NO_REDIRECT_TEXT = "Redirect address to register: none, this venue issues no token"
+NO_SCOPES_TEXT = "Scopes none"
 PREREQUISITE_LINE_FORMAT = "Before it works: {prerequisite}"
 SCOPE_SEPARATOR = " · "
 NO_MESSAGE_TEXT = ""
@@ -1967,11 +1980,20 @@ def bucket_method_text(post: Any) -> str:
     )
 
 
+def bucket_badge(held: Any) -> str:
+    """The head-row badge: the ``delivery`` of the last press that took the
+    post, else the timer's ``follow_up`` status, so either reads without
+    scrolling the entry."""
+    delivery = str(getattr(held, "delivery", "") or "")
+    return delivery or str(getattr(held, "follow_up", "") or "")
+
+
 def bucket_entry(held: Any) -> dict:
     """One waiting post as the entry the Ready to Send zone steps through.
 
-    The timer's status the post carries as ``follow_up`` is the head-row
-    badge, so it reads without scrolling the entry.
+    ``bucket_badge`` is the head-row badge; the status line under the
+    headline carries the venue, the state, the timer's status and the
+    last press's outcome together.
     """
     post = held.post
     return zone_entry(
@@ -1987,7 +2009,7 @@ def bucket_entry(held: Any) -> dict:
         actions=bucket_actions(),
         vote=post_vote(post),
         headline_width_px=BUCKET_HEADLINE_WIDTH_PX,
-        badge=str(getattr(held, "follow_up", "") or ""),
+        badge=bucket_badge(held),
         badge_style=ENTRY_META_STYLE,
     )
 
@@ -2124,15 +2146,36 @@ def page_links(board: Any) -> list:
 
 
 def sign_in_line(target: Any) -> str:
-    """The wording one push target's Level 1A page carries for where Connect sends him.
+    """The wording one push target's Level 1A page carries for what Connect does.
 
     ``ata_spm_signin.redirects_to_view`` is what says whether the sign-in opens
-    in the system browser or in the view the program draws.
+    in the system browser or in the view the program draws; a venue with no
+    authorize address opens neither.
     """
+    if not ata_spm_push.stored_fields(target):
+        return SIGN_IN_NONE_TEXT
     address = ata_spm_signin.authorize_address(target)
+    if not address:
+        return SIGN_IN_TYPED_TEXT
     if ata_spm_signin.redirects_to_view(target):
         return SIGN_IN_VIEW_LINE_FORMAT.format(address=address)
     return SIGN_IN_LINE_FORMAT.format(address=address)
+
+
+def scopes_line(scopes: Any) -> str:
+    """``SCOPES_LINE_FORMAT`` over one row's scopes, or ``NO_SCOPES_TEXT`` for none."""
+    held = [str(one) for one in (scopes or ())]
+    if not held:
+        return NO_SCOPES_TEXT
+    return SCOPES_LINE_FORMAT.format(scopes=SCOPE_SEPARATOR.join(held))
+
+
+def redirect_line(target: Any) -> str:
+    """``REDIRECT_LINE_FORMAT`` over the registered redirect, or ``NO_REDIRECT_TEXT``."""
+    redirect = ata_spm_signin.registered_redirect(target)
+    if not redirect:
+        return NO_REDIRECT_TEXT
+    return REDIRECT_LINE_FORMAT.format(redirect=redirect)
 
 
 def message_colour(answered: Any) -> str:
@@ -2177,11 +2220,9 @@ def credential_page(board: Any) -> dict:
         "fields": [[one.key, one.label] for one in found.fields],
         PAGE_HELD_FIELDS: list(board.settings.held_fields(found.name)),
         "endpoint": ENDPOINT_LINE_FORMAT.format(endpoint=found.endpoint),
-        "scopes": SCOPES_LINE_FORMAT.format(scopes=SCOPE_SEPARATOR.join(found.scopes)),
+        "scopes": scopes_line(found.scopes),
         "sign_in": sign_in_line(found.name),
-        "redirect": REDIRECT_LINE_FORMAT.format(
-            redirect=ata_spm_signin.registered_redirect(found.name)
-        ),
+        "redirect": redirect_line(found.name),
         "registration": REGISTRATION_LINE_FORMAT.format(
             registration=found.registration
         ),
@@ -3344,6 +3385,7 @@ class MarketInspectorScreenModel:
         self.push.settings.set_connector(
             ata_spm_signin.build_connector(ata_spm_signin.default_session())
         )
+        self.push.set_sender(ata_spm_send.build_sender(self.push.settings))
         self.refresh_enabled = True
         self.status_label_text = STATUS_INITIAL_TEXT
         self.signal_rows: list = []

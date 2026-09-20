@@ -15,10 +15,16 @@ import base64
 import html
 import logging
 import threading
-from typing import Any
+from typing import Any, Callable
 
 from ..core import encryption
-from ..trading import ata_asset_maps, ata_spm, ata_spm_push, ata_spm_signin
+from ..trading import (
+    ata_asset_maps,
+    ata_spm,
+    ata_spm_push,
+    ata_spm_send,
+    ata_spm_signin,
+)
 from . import sign_in_view
 from .audio_suite import Chime
 from .main_tabs.market_inspector_surface import (
@@ -253,6 +259,14 @@ FOLLOW_UP_THREAD_NAME = "ata-smp-follow-up"
 FOLLOW_UP_THREAD_LOG = "ATA-SPM confirmation read on thread %s: %s %s"
 #: The window-drawing thread's clock for the timers: one wake a second.
 FOLLOW_UP_TICK_MS = 1000
+#: Post Selected, Post All and a Full Auto release run here, one thread per
+#: press; the window-drawing thread takes the records through ``handOffDone``.
+HAND_OFF_THREAD_NAME = "ata-smp-hand-off"
+HAND_OFF_THREAD_LOG = "ATA-SPM hand-off on thread %s: %s %d record(s)"
+HAND_OFF_FAILED_LOG = "ATA-SPM hand-off %s failed: %s"
+HAND_OFF_BUSY_TEXT = "ATA-SPM %s pressed while a hand-off is running; press ignored"
+#: The presses ``_on_push_action`` hands to the worker.
+HAND_OFF_PARTS = (POST_SELECTED_PART, POST_ALL_PART, FULL_AUTO_PART)
 #: The pin ``_chime_for`` writes once per chime, through ``_pin_emit``.
 CHIME_PIN = "inspector.ata.chime"
 CHIME_CAUSE_HIT = "hit"
@@ -723,6 +737,9 @@ if _HAS_QT:
         #: One confirmation read back from its worker: the timer's key and
         #: the ``ata_spm_push.FollowUpOutcome`` it answered.
         followUpRead = Signal(object, object)  # noqa: N815 - Qt signal name
+        #: One Ready to Send press back from its worker: the press part name
+        #: and the ``ata_spm_push.DeliveryRecord`` list it answered.
+        handOffDone = Signal(str, object)  # noqa: N815 - Qt signal name
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -730,6 +747,7 @@ if _HAS_QT:
             self._show_active = False  # Default: hide markets already traded
             self._last_meta: dict = {}
             self._scan_thread = None
+            self._hand_off_thread = None
             self._activity_log = None
             #: The first refusal each symbol's reads met on the running scan.
             self._scan_refusals: dict = {}
@@ -741,6 +759,7 @@ if _HAS_QT:
             self.scanProgressed.connect(self._take_scan_progress)
             self.scanFailed.connect(self._take_scan_failure)
             self.followUpRead.connect(self._take_follow_up_read)
+            self.handOffDone.connect(self._take_hand_off)
             self._follow_up_clock = QTimer(self)
             self._follow_up_clock.setInterval(FOLLOW_UP_TICK_MS)
             self._follow_up_clock.timeout.connect(self._tick_follow_ups)
@@ -759,6 +778,9 @@ if _HAS_QT:
             self._push_board.settings.set_vault(encryption.default_vault())
             self._push_board.settings.set_connector(
                 ata_spm_signin.build_connector(sign_in_view.sign_in_session())
+            )
+            self._push_board.set_sender(
+                ata_spm_send.build_sender(self._push_board.settings)
             )
             self.set_ata_sources(
                 sector_assets, self._scanned_candles, self._class_markets
@@ -1585,18 +1607,64 @@ if _HAS_QT:
             elif key == DECLINE_PART:
                 board.bucket.decline(at)
             elif key == POST_SELECTED_PART:
-                answered = board.post_selected(at)
+                self._start_hand_off(key, lambda: board.post_selected(at))
+                return
             elif key == POST_ALL_PART:
-                answered = board.post_all()
+                self._start_hand_off(key, board.post_all)
+                return
             elif key == FULL_AUTO_PART:
                 board.bucket.toggle_full_auto()
-                answered = board.release()
+                self._full_auto_btn.setChecked(board.bucket.full_auto)
+                self._start_hand_off(key, board.release)
+                return
             elif key == CHART_FOLDER_PART:
                 answered = open_chart_folder()
             elif key == THUMBNAIL_PART:
                 self._zone_open[READY_TO_SEND_ZONE] = True
             self._say_lines(push_press_lines(board, key, answered))
             self._full_auto_btn.setChecked(board.bucket.full_auto)
+            self._render_left_modules()
+
+        def _start_hand_off(self, key: str, run: Callable) -> bool:
+            """Run one Post Selected, Post All or Full Auto press on its own thread.
+
+            ``run`` answers the press's ``DeliveryRecord`` list, which reaches
+            ``_take_hand_off`` through ``handOffDone``; a press while one runs
+            is refused with ``HAND_OFF_BUSY_TEXT``.
+            """
+            if self._hand_off_thread is not None and self._hand_off_thread.is_alive():
+                self._say(HAND_OFF_BUSY_TEXT % (key,), ACTIVITY_WARNING)
+                return False
+            self._hand_off_thread = threading.Thread(
+                target=self._hand_off_worker,
+                args=(key, run),
+                name=HAND_OFF_THREAD_NAME,
+                daemon=True,
+            )
+            self._hand_off_thread.start()
+            return True
+
+        def _hand_off_worker(self, key: str, run: Callable) -> None:
+            """Take the press on ``HAND_OFF_THREAD_NAME`` and emit its records."""
+            records: list = []
+            try:
+                records = list(run() or [])
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - the venue and the OS handler are outside
+                logger.warning(HAND_OFF_FAILED_LOG, key, exc)
+            logger.info(
+                HAND_OFF_THREAD_LOG, threading.current_thread().name, key, len(records)
+            )
+            self.handOffDone.emit(key, records)
+
+        def _take_hand_off(self, key: str, records: Any) -> None:
+            """Write one press's lines to the Activity Log and redraw the zones."""
+            board = self._push_board
+            self._say_lines(push_press_lines(board, key, records))
+            button = getattr(self, "_full_auto_btn", None)
+            if button is not None:
+                button.setChecked(board.bucket.full_auto)
             self._render_left_modules()
 
         def _say_lines(self, lines: Any) -> None:
