@@ -598,15 +598,22 @@ class PaperExchange:
 def read_fleet(exchange: PaperExchange, symbols: Sequence[str]) -> dict:
     """One ``products`` read and one ``ticker`` read per symbol in ``symbols``
     through ``exchange``, answering the counts and the symbols the venue's
-    trading products do not carry."""
+    trading products do not carry; ``untraded`` stays empty while
+    ``products_answered`` is False, an unanswered list naming no product."""
     trading = {one.product_id for one in exchange.products()}
-    untraded = [one for one in symbols if exchange.product_id(one) not in trading]
+    products_answered = bool(trading)
+    untraded = [
+        one
+        for one in symbols
+        if products_answered and exchange.product_id(one) not in trading
+    ]
     answered = sum(1 for one in symbols if exchange.ticker(one) is not None)
     return {
         "exchange": exchange.venue(),
         "products": len(trading),
+        "products_answered": products_answered,
         "records": len(symbols),
-        "traded": len(symbols) - len(untraded),
+        "traded": len(symbols) - len(untraded) if products_answered else 0,
         "answered": answered,
         "untraded": untraded,
         "calls": exchange.calls(),

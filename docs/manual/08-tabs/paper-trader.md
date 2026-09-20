@@ -1182,8 +1182,9 @@ read lands on the pane as it completes. When the worker ends, its summary
 crosses a second signal, `feedRead`, and one line lands on the Activity Log
 naming how many products the venue trades, how many of the fleet's products
 are among them, how many tickers answered, and how many calls it took; a fleet
-product the venue does not trade is named on the line. The GUI thread never
-waits on a read.
+product the venue does not trade is named on the line, and a product list the
+venue did not answer is said so, naming no product. The GUI thread never waits
+on a read.
 
 `src/gui/paper/paper_trading_tab_surface.py` — the line
 
@@ -1191,6 +1192,10 @@ waits on a read.
 FEED_LINE_FORMAT = (
     "Feed: {products} product(s) trade on {exchange}; {traded} of {records} fleet "
     "product(s) among them; {answered} of {records} ticker(s) answered in {calls} call(s)."
+)
+FEED_NO_PRODUCTS_FORMAT = (
+    "Feed: {exchange} answered no product list; {answered} of {records} ticker(s) "
+    "answered in {calls} call(s)."
 )
 FEED_UNTRADED_FORMAT = " Not traded: {symbols}."
 FEED_THREAD_NAME = "paper-feed-import"

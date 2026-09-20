@@ -218,6 +218,10 @@ FEED_LINE_FORMAT = (
     "Feed: {products} product(s) trade on {exchange}; {traded} of {records} fleet "
     "product(s) among them; {answered} of {records} ticker(s) answered in {calls} call(s)."
 )
+FEED_NO_PRODUCTS_FORMAT = (
+    "Feed: {exchange} answered no product list; {answered} of {records} ticker(s) "
+    "answered in {calls} call(s)."
+)
 FEED_UNTRADED_FORMAT = " Not traded: {symbols}."
 FEED_THREAD_NAME = "paper-feed-import"
 
@@ -225,21 +229,30 @@ FEED_THREAD_NAME = "paper-feed-import"
 def feed_line(summary: dict) -> tuple[str, str]:
     """The Activity Log line and level for one ``read_fleet`` ``summary``:
     ``FEED_LINE_FORMAT`` with ``FEED_UNTRADED_FORMAT`` appended when a symbol
-    is untraded, ``warning`` when any symbol is untraded or unanswered."""
-    text = FEED_LINE_FORMAT.format(
-        products=summary.get("products", 0),
-        exchange=summary.get("exchange", ""),
-        traded=summary.get("traded", 0),
-        records=summary.get("records", 0),
-        answered=summary.get("answered", 0),
-        calls=summary.get("calls", 0),
+    is untraded, ``FEED_NO_PRODUCTS_FORMAT`` when ``products_answered`` is
+    False, ``warning`` unless every product traded and every ticker answered."""
+    fields = {
+        "products": summary.get("products", 0),
+        "exchange": summary.get("exchange", ""),
+        "traded": summary.get("traded", 0),
+        "records": summary.get("records", 0),
+        "answered": summary.get("answered", 0),
+        "calls": summary.get("calls", 0),
+    }
+    products_answered = bool(summary.get("products_answered", fields["products"]))
+    text = (FEED_LINE_FORMAT if products_answered else FEED_NO_PRODUCTS_FORMAT).format(
+        **fields
     )
     untraded = list(summary.get("untraded") or [])
     if untraded:
         text += FEED_UNTRADED_FORMAT.format(
             symbols=", ".join(str(one) for one in untraded)
         )
-    short = untraded or summary.get("answered", 0) < summary.get("records", 0)
+    short = (
+        not products_answered
+        or untraded
+        or summary.get("answered", 0) < summary.get("records", 0)
+    )
     return text, ("warning" if short else "info")
 
 
