@@ -248,33 +248,36 @@ def _ohlcv_to_candles(rows: list) -> list[_Candle]:
     return out
 
 
-def weekly_from_daily(daily: list[_Candle]) -> list[_Candle]:
-    """One weekly _Candle per calendar week of daily, through the tablets' _rollup.
+def weekly_rows_from_daily(rows: list) -> list:
+    """One weekly OHLCV row per calendar week of daily rows, through the
+    tablets' _rollup; each row is [ts_ms, open, high, low, close, volume].
 
     Each timestamp is moved back by MONDAY_OFFSET_MS before _rollup and forward
     after it, so every bucket starts on a Monday 00:00 UTC.
     """
+    shifted = [[int(row[0]) - MONDAY_OFFSET_MS, *row[1:6]] for row in rows]
+    return [
+        [int(row[0]) + MONDAY_OFFSET_MS, *row[1:]]
+        for row in _rollup(shifted, DAYS_PER_WEEK, WEEK_MS)
+    ]
+
+
+def weekly_from_daily(daily: list[_Candle]) -> list[_Candle]:
+    """One weekly _Candle per calendar week of daily, through weekly_rows_from_daily."""
     rows = [
-        [
-            one.timestamp * 1000 - MONDAY_OFFSET_MS,
-            one.open,
-            one.high,
-            one.low,
-            one.close,
-            one.volume,
-        ]
+        [one.timestamp * 1000, one.open, one.high, one.low, one.close, one.volume]
         for one in daily
     ]
     return [
         _Candle(
-            timestamp=(int(row[0]) + MONDAY_OFFSET_MS) // 1000,
+            timestamp=int(row[0]) // 1000,
             open=float(row[1]),
             high=float(row[2]),
             low=float(row[3]),
             close=float(row[4]),
             volume=float(row[5]),
         )
-        for row in _rollup(rows, DAYS_PER_WEEK, WEEK_MS)
+        for row in weekly_rows_from_daily(rows)
     ]
 
 
