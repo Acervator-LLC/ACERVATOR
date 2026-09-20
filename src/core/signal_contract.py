@@ -150,93 +150,204 @@ CADENCE_VERDICTS = (
 )
 """Every verdict a cadence row can carry."""
 
-_ALWAYS_ON_PINS: tuple[str, ...] = (
-    "bot.01.002.postcondition.capital_reservation",
-    "sim.06.011.postcondition.price_chart.fed",
-    "sim.06.012.postcondition.gate_status.rendered",
-    "ta.07.003.postcondition.computed",
-    "ta.07.004.postcondition.raw.{}",
-    "tick.08.001.event.throttled",
-    "tick.08.002.event.worked",
-    "charts.13.001.invariant.panels_mounted",
-    "charts.13.002.postcondition.panel_symbols_current",
-    "charts.13.004.postcondition.panel_refreshed",
-    "charts.13.005.invariant.panels_fresh",
-    "console.14.001.invariant.records_rendered",
-    "console.14.002.invariant.view_holds_rendered",
-    "console.14.003.invariant.drain_alive",
-    "exchange.15.002.invariant.every_bot_reaches_a_table",
-    "exchange.15.003.invariant.selection_survives_refresh",
-)
-"""The sixteen pins a loop or a timer reaches on every pass, categorised
-`CADENCE_ALWAYS_ON`.
+_ALWAYS_ON_PINS: dict[str, str] = {
+    "bot.01.002.postcondition.capital_reservation": (
+        "the no-raise arm of a call every tick of every bot makes"
+    ),
+    "ta.07.003.postcondition.computed": (
+        "the indicator compute every worked tick of every bot runs"
+    ),
+    "ta.07.004.postcondition.raw.{}": (
+        "the reporting loop of that same per-tick compute"
+    ),
+    "tick.08.001.event.throttled": (
+        "the throttle arm of the tick loop; the loop's own pacing takes it, not any "
+        "event"
+    ),
+    "tick.08.002.event.worked": "the work arm of the same tick loop",
+    "charts.13.001.invariant.panels_mounted": (
+        "the 2000 ms dashboard timer calls `update_charts` while any bot exists"
+    ),
+    "charts.13.002.postcondition.panel_symbols_current": (
+        "the same timer, the same call"
+    ),
+    "charts.13.004.postcondition.panel_refreshed": (
+        "the same 2000 ms timer schedules `fetch_chart_data`"
+    ),
+    "charts.13.005.invariant.panels_fresh": "the same scheduled pass",
+    "charts.indicators.drawn": (
+        "the same `fetch_chart_data` pass calls `set_candles` on every fetch that "
+        "returns candles"
+    ),
+    "console.14.001.invariant.records_rendered": (
+        "the Console's 5000 ms health timer, which runs for the life of the window"
+    ),
+    "console.14.002.invariant.view_holds_rendered": "the same health timer",
+    "console.14.003.invariant.drain_alive": "the same health timer",
+    "exchange.15.002.invariant.every_bot_reaches_a_table": (
+        "the 2000 ms dashboard timer calls `update_bots` once per exchange tab"
+    ),
+    "exchange.15.003.invariant.selection_survives_refresh": (
+        "the same timer, the same call"
+    ),
+}
+"""The fifteen pins a loop or a timer reaches on every pass, categorised
+`CADENCE_ALWAYS_ON`. Each value is the reason, read at the call site.
 """
 
-_TOGGLE_PINS: tuple[str, ...] = (
-    "bot.01.001.postcondition.capital_reservation",
-    "bot.01.003.postcondition.adoption_capped",
-    "extractor.02.001.postcondition.tranche_contained",
-    "extractor.02.002.invariant.arrival_atomic",
-    "fleet.03.001.postcondition.bots_loaded",
-    "fleet.03.002.invariant.bot_ids_mirror_live",
-    "fleet.03.003.invariant.sections_imported",
-    "fleet.03.004.postcondition.wires_loaded",
-    "fleet.03.005.invariant.state_parity",
-    "fleet.03.006.postcondition.state_imported",
-    "fleet.03.007.postcondition.positions_seeded_from_lots",
-    "fleet.03.008.postcondition.lotless_opened_locked",
-    "gui.04.001.postcondition.voting_panel.fit",
-    "gui.04.002.postcondition.clear_settled",
-    "gui.04.003.postcondition.despawn_rows_match_ledger",
-    "history.05.001.postcondition.scan_complete",
-    "history.05.002.postcondition.trades_stored",
-    "history.05.003.postcondition.filter_options_built",
-    "history.05.004.postcondition.filters_applied",
-    "history.05.005.postcondition.page_rendered",
-    "history.05.006.postcondition.joiner_indexes_built",
-    "history.05.007.postcondition.csv_exported",
-    "sim.06.001.postcondition.candles_stepped",
-    "sim.06.002.postcondition.bot_ticks_did_work",
-    "sim.06.003.counter.ticks_before_tape",
-    "sim.06.004.counter.trades_fired",
-    "sim.06.005.invariant.exceptions",
-    "sim.06.006.event.window_played",
-    "sim.06.007.postcondition.fleet_spawned",
-    "sim.06.008.invariant.state_persisted",
-    "sim.06.009.invariant.spawn_drift",
-    "sim.06.010.postcondition.bot_table.rendered",
-    "sim.06.013.state_transition.mode_selected",
-    "sim.06.014.event.log.line",
-    "ta.07.001.postcondition.coverage_per_bot",
-    "ta.07.002.invariant.invariants",
-    "tick.08.003.event.exit_dust_band",
-    "topology.09.001.state_transition.bot_attached",
-    "topology.09.002.postcondition.wires_received",
-    "ytd.10.001.gauge.trades_fetched",
-    "ytd.10.002.postcondition.fleet_symbol_coverage",
-    "ytd.10.003.gauge.per_symbol_counts",
-    "swarm.11.001.postcondition.sim_run_registered",
-    "swarm.11.002.postcondition.paper_run_registered",
-    "trading.12.001.postcondition.tab_assembled",
-    "trading.12.002.postcondition.exchange_tab_routed",
-    "trading.12.003.postcondition.exchange_tabs_synced",
-    "trading.12.004.postcondition.active_layer_alias",
-    "trading.12.005.postcondition.activity_log_paused",
-    "trading.12.006.postcondition.notification_relayed",
-    "charts.13.003.postcondition.timeframe_rearmed",
-    "console.14.004.postcondition.pause_quiets_both_panes",
-    "console.14.005.postcondition.pause_buffer_delivered",
-    "exchange.15.001.postcondition.command_routed_to_chosen_table",
-    "exchange.15.004.postcondition.privacy_applied_to_every_field",
-    "exchange.15.005.postcondition.privacy_button_matches_registry",
-    "apitest.16.001.postcondition.label_matches_session",
-    "apitest.16.002.postcondition.session_released",
-    "apitest.16.003.postcondition.reported_ok_ran_a_test",
-    "apitest.16.004.postcondition.green_probe_read_a_body",
-    "apitest.16.005.postcondition.indicator_is_mappable",
-    "instance.17.001.postcondition.auto_start_permitted",
-)
-"""The sixty-two pins that need a trigger. Silence from one is normal."""
+_TOGGLE_PINS: dict[str, str] = {
+    "bot.01.001.postcondition.capital_reservation": (
+        "the `except` arm only; the reservation ensure has to raise"
+    ),
+    "bot.01.003.postcondition.adoption_capped": (
+        "only when the operator's holdings exceed the adoption cap"
+    ),
+    "extractor.02.001.postcondition.tranche_contained": (
+        "only when an extractor tranche arrives at the parent bot"
+    ),
+    "extractor.02.002.invariant.arrival_atomic": (
+        "the same arrival; nothing arrives on the loop's own account"
+    ),
+    "gui.04.001.postcondition.voting_panel.fit": (
+        "a show or a resize event on the voting panel"
+    ),
+    "gui.04.002.postcondition.clear_settled": (
+        "the operator accepts a Clear in the dialog"
+    ),
+    "gui.04.003.postcondition.despawn_rows_match_ledger": (
+        "the operator opens or rebuilds the Fold Tranches tab"
+    ),
+    "history.05.001.postcondition.scan_complete": (
+        "the history scan thread, started once per venue connect"
+    ),
+    "history.05.002.postcondition.trades_stored": "the operator presses Refresh",
+    "history.05.003.postcondition.filter_options_built": (
+        "the operator loads or refreshes the tab"
+    ),
+    "history.05.004.postcondition.filters_applied": (
+        "the operator presses Apply or Reset"
+    ),
+    "history.05.005.postcondition.page_rendered": "the operator turns a page",
+    "history.05.006.postcondition.joiner_indexes_built": "the operator turns a page",
+    "history.05.007.postcondition.csv_exported": "the operator presses Export CSV",
+    "tick.08.003.event.exit_dust_band": (
+        "only when the position sits inside the dust band"
+    ),
+    "topology.09.001.state_transition.bot_attached": "a bot joins the wire topology",
+    "topology.09.002.postcondition.wires_received": "one wire import",
+    "swarm.11.001.postcondition.sim_run_registered": (
+        "a sim run registers with the swarm view"
+    ),
+    "swarm.11.002.postcondition.paper_run_registered": (
+        "a paper run registers with the swarm view"
+    ),
+    "trading.12.001.postcondition.tab_assembled": (
+        "the window assembles its UI once per process"
+    ),
+    "trading.12.002.postcondition.exchange_tab_routed": "an exchange tab is added",
+    "trading.12.003.postcondition.exchange_tabs_synced": "the settings dialog closes",
+    "trading.12.004.postcondition.active_layer_alias": (
+        "the operator switches the trading wing"
+    ),
+    "trading.12.005.postcondition.activity_log_paused": (
+        "the operator presses the Activity Log pause button"
+    ),
+    "trading.12.006.postcondition.notification_relayed": (
+        "the legacy notify stub relays a message"
+    ),
+    "charts.13.003.postcondition.timeframe_rearmed": (
+        "the operator moves a panel's timeframe combo"
+    ),
+    "console.14.004.postcondition.pause_quiets_both_panes": (
+        "the operator presses Pause"
+    ),
+    "console.14.005.postcondition.pause_buffer_delivered": (
+        "the operator presses Resume"
+    ),
+    "exchange.15.001.postcondition.command_routed_to_chosen_table": (
+        "the operator presses a bot command button"
+    ),
+    "exchange.15.004.postcondition.privacy_applied_to_every_field": (
+        "the operator presses the global privacy button"
+    ),
+    "exchange.15.005.postcondition.privacy_button_matches_registry": "the same press",
+    "apitest.16.001.postcondition.label_matches_session": (
+        "one `clicked` connection; the tab owns no timer"
+    ),
+    "apitest.16.002.postcondition.session_released": (
+        "one `clicked` connection; the tab owns no timer"
+    ),
+    "apitest.16.003.postcondition.reported_ok_ran_a_test": (
+        "one `clicked` connection; the tab owns no timer"
+    ),
+    "apitest.16.004.postcondition.green_probe_read_a_body": (
+        "one `clicked` connection; the tab owns no timer"
+    ),
+    "apitest.16.005.postcondition.indicator_is_mappable": (
+        "one `clicked` connection; the tab owns no timer"
+    ),
+    "instance.17.001.postcondition.auto_start_permitted": (
+        "one launch decision per process start"
+    ),
+    "charts.annotations.drawn": (
+        "a paint pass writes it only when the annotation counts moved since the last "
+        "pass"
+    ),
+    "charts.ata.rendered": "an ATA call from the Inspector is drawn on the chart",
+    "charts.crosshair.shown": "the pointer is over the chart",
+    "charts.indicator.toggled": "the operator switches one overlay on or off",
+    "charts.theme.applied": (
+        "a theme is applied to the chart, at build or on the operator's change"
+    ),
+    "charts.view.changed": "the operator pans, zooms or resets the chart window",
+    "inspector.ata.candidate": (
+        "a finished scan lands its calls on the push board, once per new entry"
+    ),
+    "inspector.ata.chime": "a hit or a confirmation sounds the chime",
+    "inspector.ata.follow_up_read": (
+        "the follow-up clock reads a watched call's candle when it is due; no hit, no "
+        "timer, no read"
+    ),
+    "inspector.ata.handoff": "the operator presses Post on the push board",
+    "inspector.ata.hit": "a scan's vote passes the judge",
+    "inspector.ata.image_size": "a venue folder post writes its image",
+    "inspector.ata.market_read": "one market's candles are read inside a scan",
+    "inspector.ata.scan_finished": "a scan the operator pressed ends",
+    "inspector.ata.scan_pressed": "the operator presses Scan Now or Scan All",
+    "inspector.ata.scan_started": "the scan thread starts after that press",
+    "inspector.ata.sent": "an API post is sent to a venue",
+    "inspector.ata.ticker_resolved": (
+        "a Scan press with text in the ticker field resolves that text"
+    ),
+    "inspector.ata.volume_order": "a scan orders one asset class's markets by volume",
+    "inspector.scan.list_source": "the same order; the class's market list is read",
+    "inspector.scan.progress": (
+        "a running scan reports every `PROGRESS_PIN_EVERY` markets read"
+    ),
+    "sim.backtest.bot_walked": "one bot's walk ends inside a run the operator started",
+    "sim.battery.portfolio_finished": "a Portfolio Battery run ends",
+    "sim.battery.portfolio_started": "a Portfolio Battery run starts",
+    "sim.bot.htf_bias": (
+        "a tick inside a run the operator started, on the run's own routed sink; "
+        "between runs the loop does not exist"
+    ),
+    "sim.bot.stats_written": "a snapshot inside the same run, on the same routed sink",
+    "sim.fleet.clear_pressed": "the operator presses Clear Fleet",
+    "sim.fleet.cleared": "the same press, after the fleet is cleared",
+    "sim.fleet.mode_shown": "the operator picks a sim mode, or the tab builds",
+    "sim.layer.flipped": "the operator presses the flip button",
+    "sim.replay.marks_drawn": (
+        "the replay draws at build, on a fleet change, a flip, a chooser change, a "
+        "bot selection or a retrieval"
+    ),
+    "sim.run.start_pressed": "the operator presses Start Run",
+    "sim.sink.routed": "a run's sink is unrouted at the run's end, once per run",
+    "sim.tablet.refused": "a tablet retrieval inside a battery run is refused",
+    "sim.tablet.retrieved": "a tablet retrieval inside a battery run lands",
+}
+"""The seventy-two pins that need a trigger. Silence from one is normal. Each
+value is the reason, read at the call site.
+"""
 
 CADENCE_BY_NAME = MappingProxyType(
     {
@@ -244,7 +355,7 @@ CADENCE_BY_NAME = MappingProxyType(
         **{pin: CADENCE_TOGGLE for pin in _TOGGLE_PINS},
     }
 )
-"""Every pin's declared category, by current name. 78 entries."""
+"""Every pin's declared category, by current name. 87 entries."""
 
 _NAME_TEMPLATE = "{}"
 """How a templated pin name is written; the trailing `{}` stands for a leaf built at run
@@ -395,6 +506,37 @@ def _never_fired_rows(seen_names: set) -> dict:
 SUBSYSTEM_SEPARATOR = "."
 """The character that ends the subsystem part of an emitter name."""
 
+ENGINE_GROUP = "Engine"
+"""The group a subsystem's emitters fall under when they serve no tab of their own."""
+
+TAB_BY_SUBSYSTEM = MappingProxyType(
+    {
+        "apitest": ENGINE_GROUP,
+        "bot": ENGINE_GROUP,
+        "charts": "Charts",
+        "console": "Console",
+        "exchange": "Live",
+        "extractor": ENGINE_GROUP,
+        "fleet": "Sim",
+        "gui": ENGINE_GROUP,
+        "history": "History",
+        "inspector": "Inspector",
+        "instance": ENGINE_GROUP,
+        "sim": "Sim",
+        "status": "Status",
+        "swarm": "Swarm",
+        "ta": ENGINE_GROUP,
+        "tick": ENGINE_GROUP,
+        "topology": ENGINE_GROUP,
+        "trading": "Live",
+        "ytd": ENGINE_GROUP,
+    }
+)
+"""The tab each subsystem prefix serves, by the tab's bar label. Every prefix
+`CADENCE_BY_NAME` declares is named here; a prefix it does not name reads as
+`ENGINE_GROUP` in `tab_of` until it is placed.
+"""
+
 HEALTH_GREEN = "green"
 """No retained record of this subsystem failed and every always-on emitter it declares
 fired.
@@ -417,6 +559,11 @@ HEALTH_STATES = (HEALTH_GREEN, HEALTH_YELLOW)
 def subsystem_of(name: str) -> str:
     """Return the subsystem `name` belongs to, the part before its first dot."""
     return name.split(SUBSYSTEM_SEPARATOR, 1)[0]
+
+
+def tab_of(subsystem: str) -> str:
+    """Return the tab `subsystem`'s emitters serve, or `ENGINE_GROUP` when none does."""
+    return TAB_BY_SUBSYSTEM.get(subsystem, ENGINE_GROUP)
 
 
 def declared_subsystems() -> tuple:
