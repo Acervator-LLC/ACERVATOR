@@ -20,13 +20,18 @@ from src._variant import resolve_variant
 from src.core.signal_contract import emit as _pin_emit
 from src.gui import design_system as ds
 from src.gui.main_tabs.native_chart_surface import (
+    CAPTION_PX,
+    CHART_PANEL_MIN_HEIGHT_PX,
+    CONTROL_HEIGHT_PX,
     CROSSHAIR_TIME_FORMAT,
     FMT_GROUPED_DECIMALS,
     FOLD_SIDE,
     INDICATOR_STYLE_FORMAT,
     LEFT_MARGIN_PX,
     LEGEND_INVISIBLE_FIELD,
+    LEGEND_INVISIBLE_TEXT,
     LEGEND_ON_BOOK_FIELD,
+    LEGEND_ON_BOOK_TEXT,
     MARK_GLYPHS,
     MARK_HEIGHT_FRACTION,
     MARK_OUTLINE_PX,
@@ -35,6 +40,9 @@ from src.gui.main_tabs.native_chart_surface import (
     PRICE_FORMAT_BANDS,
     RIGHT_MARGIN_PX,
     SCRUM_SIDE,
+    TIMEFRAME_COMBO_MAX_WIDTH_PX,
+    TIMEFRAME_LABEL,
+    TOGGLE_BOX_PX,
     Y_ZOOM_DEFAULT,
     candle_at_x,
     clamp_y_zoom,
@@ -159,15 +167,24 @@ SUB_PANE_MIN_H = 28
 PRICE_PANE_LAYOUT_H = 220
 PRICE_PANE_MIN_H = 120
 
-#: The pixel height of one legend row, the padding over and under the band,
-#: and the gap between two entries.
+#: The pixel height of one legend line in the value field, the field's inset
+#: from the price pane's left and bottom edges and its inner padding, and the
+#: gap between a label and its value.
 LEGEND_ROW_H = 13
-LEGEND_PAD = 3
-LEGEND_GAP_PX = 14
+FIELD_PAD_PX = 6
+FIELD_LABEL_GAP_PX = 4
 
 #: The legend text of an overlay switched off, and of a series with no value yet.
 LEGEND_OFF_TEXT = "off"
 LEGEND_NO_VALUE_TEXT = "-"
+
+#: One toggle box's style sheet: the label in the overlay's colour at the
+#: caption size, the indicator ``box`` pixels square with a one-pixel border.
+TOGGLE_STYLE_FORMAT = (
+    "QCheckBox {{ color: {color}; font-size: {font_px}px; spacing: {gap}px; }}"
+    "QCheckBox::indicator {{ width: {box}px; height: {box}px; "
+    "border-width: 1px; border-radius: 2px; }}"
+)
 
 try:
     from PySide6.QtWidgets import (
@@ -691,6 +708,7 @@ if _HAS_QT:
         GLOW_SCRUM: QColor
         GLOW_FOLD: QColor
         BADGE_SURFACE: QColor
+        FIELD_SURFACE: QColor
         BADGE_EDGE: QColor
         MARKER_EDGE: QColor
         GRIP: QColor
@@ -778,6 +796,7 @@ if _HAS_QT:
             "GLOW_SCRUM": ("chart_bull", 220),
             "GLOW_FOLD": ("chart_bear", 220),
             "BADGE_SURFACE": ("chart_bg_top", 235),
+            "FIELD_SURFACE": ("chart_bg_top", 205),
             "BADGE_EDGE": ("chart_grid", 255),
             "MARKER_EDGE": ("chart_axis_text", 120),
             "GRIP": ("chart_axis_text", 110),
@@ -1221,55 +1240,72 @@ if _HAS_QT:
                 )
             return found
 
-        def _legend_rows(self, width: int, metrics: QFontMetrics) -> list:
-            """``legend_entries`` broken into rows at ``width``: one list of
-            ``(entry, x, label_w)`` per row, entries wrapping past the price axis."""
-            if not self._candles:
-                return []
-            rows: list = [[]]
-            x = CHART_LEFT_MARGIN_PX
-            room = int(width) - CHART_RIGHT_MARGIN_PX
-            for entry in self.legend_entries():
-                label_w = metrics.horizontalAdvance(entry["label"]) + 4
-                entry_w = label_w + metrics.horizontalAdvance(entry["text"])
-                if rows[-1] and x + entry_w > room:
-                    rows.append([])
-                    x = CHART_LEFT_MARGIN_PX
-                rows[-1].append((entry, x, label_w))
-                x += entry_w + LEGEND_GAP_PX
-            return rows
+        def draws_value_field(self) -> bool:
+            """True when the chart carries a call, which makes it the ATA-SMP picture.
 
-        def _legend_strip_h(self, width: int) -> int:
-            """The pixel height the legend band takes under the OHLC row at ``width``.
-
-            No candles take no band; a width of ``NO_CAPTION_WIDTH`` or under
-            cannot be wrapped in and takes one row.
+            Every venue PNG and the tab's ATA-SMP list call ``set_call`` with a
+            direction; the Live list never does, so the tab draws no field.
             """
-            if not self._candles:
-                return 0
-            if int(width) <= NO_CAPTION_WIDTH:
-                return LEGEND_PAD * 2 + LEGEND_ROW_H
-            metrics = QFontMetrics(caption_font())
-            return LEGEND_PAD * 2 + LEGEND_ROW_H * max(
-                1, len(self._legend_rows(width, metrics))
-            )
+            return CALL_DIRECTION_ROLES.get(self._call_direction) is not None
 
-        def _draw_legend(self, p: QPainter, w: int, top: int, font_sm: QFont) -> None:
-            """Draw the legend rows from ``top``: each label in its overlay
-            colour and its value in ``TEXT_LIGHT``, an off entry in ``TEXT_DIM``."""
-            p.setFont(font_sm)
+        def _draw_legend(
+            self, p: QPainter, left: int, price_bot: float, room: float, font_sm: QFont
+        ) -> dict | None:
+            """Draw the value field at the lower-left corner of the price pane.
+
+            One ``LEGEND_ROW_H`` line per overlay that is on, its label in the
+            overlay's colour and its value in ``TEXT_LIGHT``, on ``FIELD_SURFACE``
+            inside a one-pixel ``GRID_MAJOR`` border, ``FIELD_PAD_PX`` in from
+            ``left`` and ``price_bot``. ``room`` is the pane's height; lines past
+            it are not drawn. Answers the rect drawn, None for no line.
+            """
+            entries = [one for one in self.legend_entries() if one["on"]]
             metrics = QFontMetrics(font_sm)
-            baseline = top + LEGEND_PAD + LEGEND_ROW_H - 3
-            for row in self._legend_rows(w, metrics):
-                for entry, x, label_w in row:
-                    label_colour = (
-                        QColor(entry["colour"]) if entry["on"] else self.TEXT_DIM
-                    )
-                    p.setPen(QPen(label_colour))
-                    p.drawText(int(x), int(baseline), entry["label"])
-                    p.setPen(QPen(self.TEXT_LIGHT if entry["on"] else self.TEXT_DIM))
-                    p.drawText(int(x + label_w), int(baseline), entry["text"])
+            fit = int((room - FIELD_PAD_PX * 4) // LEGEND_ROW_H)
+            entries = entries[: max(0, fit)]
+            if not entries:
+                return None
+            widths = [
+                metrics.horizontalAdvance(one["label"])
+                + FIELD_LABEL_GAP_PX
+                + metrics.horizontalAdvance(one["text"])
+                for one in entries
+            ]
+            field_w = max(widths) + FIELD_PAD_PX * 2
+            field_h = len(entries) * LEGEND_ROW_H + FIELD_PAD_PX * 2
+            field = QRectF(
+                left + FIELD_PAD_PX,
+                price_bot - FIELD_PAD_PX - field_h,
+                field_w,
+                field_h,
+            )
+            p.setBrush(QBrush(self.FIELD_SURFACE))
+            p.setPen(QPen(self.GRID_MAJOR, 1.0))
+            p.drawRect(field)
+            p.setFont(font_sm)
+            baseline = field.top() + FIELD_PAD_PX + LEGEND_ROW_H - 3
+            x = field.left() + FIELD_PAD_PX
+            for entry in entries:
+                p.setPen(QPen(QColor(entry["colour"])))
+                p.drawText(int(x), int(baseline), entry["label"])
+                p.setPen(QPen(self.TEXT_LIGHT))
+                p.drawText(
+                    int(
+                        x
+                        + metrics.horizontalAdvance(entry["label"])
+                        + FIELD_LABEL_GAP_PX
+                    ),
+                    int(baseline),
+                    entry["text"],
+                )
                 baseline += LEGEND_ROW_H
+            return {
+                "left": float(field.left()),
+                "top": float(field.top()),
+                "width": float(field.width()),
+                "height": float(field.height()),
+                "lines": len(entries),
+            }
 
         def add_marker(self, marker: TradeMarker) -> None:
             self._markers.append(marker)
@@ -1395,10 +1431,10 @@ if _HAS_QT:
             """Return the pixel height the toggled-on panes need.
 
             The price pane takes 220, the volume strip adds 28, each entry of
-            ``_sub_overlays_with_data`` adds 60, ``_legend_strip_h`` adds the
-            legend rows wrapped at ``width``, ``_call_strip_h`` adds the
+            ``_sub_overlays_with_data`` adds 60, ``_call_strip_h`` adds the
             voter rows and ``_caption_strip_h`` adds the caption wrapped at
-            ``width``, over a 64px header.
+            ``width``, over a 64px header. The value field draws inside the
+            price pane and adds nothing.
             """
             return self._height_for_panes(width, SUB_PANE_H)
 
@@ -1434,7 +1470,6 @@ if _HAS_QT:
             if self._overlay_shown["volume"]:
                 base += 28
             base += len(self._sub_overlays_with_data()) * int(sub_pane_h)
-            base += self._legend_strip_h(width)
             return (
                 base + self._call_strip_h(width, folded) + self._caption_strip_h(width)
             )
@@ -1669,7 +1704,6 @@ if _HAS_QT:
             MR = CHART_RIGHT_MARGIN_PX
             MT = 28  # header
             OHLC_H = 18  # OHLC info row at top of price pane
-            LEGEND_H = self._legend_strip_h(w)
             # The strip folds to voter names when h cannot hold one row per
             # reading with the sub-panes at SUB_PANE_MIN_H.
             strip_folded = bool(
@@ -1684,7 +1718,7 @@ if _HAS_QT:
             VOL_H = 28 if show_volume else 0
             # Each sub-pane takes SUB_PANE_H, and shrinks toward
             # SUB_PANE_MIN_H when h leaves the price pane under its layout height.
-            fixed_h = MT + OHLC_H + LEGEND_H + MB + VOL_H
+            fixed_h = MT + OHLC_H + MB + VOL_H
             SUB_H = SUB_PANE_H
             if (
                 sub_overlays
@@ -1716,8 +1750,7 @@ if _HAS_QT:
             price_h = max(PRICE_PANE_MIN_H, available)
 
             ohlc_top = MT
-            self._draw_legend(p, w, ohlc_top + OHLC_H, font_sm)
-            price_top = ohlc_top + OHLC_H + LEGEND_H
+            price_top = ohlc_top + OHLC_H
             price_bot = price_top + price_h
             vol_top = price_bot
             vol_bot = vol_top + VOL_H
@@ -2081,6 +2114,11 @@ if _HAS_QT:
 
                 self._draw_call(ctx, h)
 
+            field_drawn = (
+                self._draw_legend(p, ML, price_bot, price_h, font_sm)
+                if self.draws_value_field()
+                else None
+            )
             self._draw_caption_strip(p, w, h, font_sm)
 
             type_colors = {
@@ -2168,6 +2206,7 @@ if _HAS_QT:
                 "visible_count": int(n),
                 "candle_count": int(n_total),
                 "y_zoom_pct": float(self._y_zoom_pct),
+                "field": field_drawn,
             }
             self._readout = []
             self._readout_candle = None
@@ -3353,7 +3392,7 @@ if _HAS_QT:
             self.pointer_left()
 
         def resizeEvent(self, event):
-            """Re-apply the pane height when the width changes, since the legend wraps at it."""
+            """Re-apply the pane height when the width changes, since the caption and the reading strip wrap at it."""
             super().resizeEvent(event)
             if event.oldSize().width() != event.size().width() and self._candles:
                 try:
@@ -3367,17 +3406,20 @@ if _HAS_QT:
             p.end()
 
     class ChartPanel(QWidget):
-        """One CandlestickChart with a timeframe picker above and toggles below.
+        """One CandlestickChart with the toggle row under it.
 
-        The toggle row carries one check box per ``CHART_OVERLAYS`` entry, each
-        starting at that entry's ``starts_on``.
+        The timeframe menu, the two legend labels and the source label are
+        built here and placed by the owner's control row through
+        ``timeframe_widgets`` and ``legend_widgets``. The toggle row carries
+        one check box per ``CHART_OVERLAYS`` entry, each starting at that
+        entry's ``starts_on``, its box ``TOGGLE_BOX_PX`` square.
         """
 
         TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 
-        TOGGLE_FONT_PX = 9
         TOGGLE_ROW_SPACING_PX = 6
         TOGGLE_ROW_MARGIN_PX = 4
+        TOGGLE_LABEL_GAP_PX = 3
 
         def __init__(self, symbol: str = "", parent=None):
             super().__init__(parent)
@@ -3386,34 +3428,20 @@ if _HAS_QT:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(2)
 
-            toolbar = QHBoxLayout()
-            toolbar.setContentsMargins(4, 2, 4, 2)
-
-            self._tf_combo = QComboBox()
+            self._tf_label = QLabel(TIMEFRAME_LABEL, self)
+            self._tf_combo = QComboBox(self)
+            self._tf_combo.setAccessibleName("Chart timeframe")
             self._tf_combo.addItems(self.TIMEFRAMES)
             self._tf_combo.setCurrentText("1h")
-            self._tf_combo.setMaximumWidth(90)
+            self._tf_combo.setMaximumWidth(TIMEFRAME_COMBO_MAX_WIDTH_PX)
+            self._tf_combo.setFixedHeight(CONTROL_HEIGHT_PX)
             self._tf_combo.currentTextChanged.connect(self._on_tf_changed)
-            toolbar.addWidget(QLabel("TF:"))
-            toolbar.addWidget(self._tf_combo)
-
-            toolbar.addStretch()
-
-            legend = QHBoxLayout()
-            legend.setSpacing(12)
-            self._invisible_label = QLabel("\u25c6 Invisible")
-            legend.addWidget(self._invisible_label)
-            self._on_book_label = QLabel("\u25a1 On Book")
-            legend.addWidget(self._on_book_label)
-            toolbar.addLayout(legend)
-
-            self._source_label = QLabel("")
-            toolbar.addWidget(self._source_label)
-
-            layout.addLayout(toolbar)
+            self._invisible_label = QLabel(LEGEND_INVISIBLE_TEXT, self)
+            self._on_book_label = QLabel(LEGEND_ON_BOOK_TEXT, self)
+            self._source_label = QLabel("", self)
 
             self._chart = CandlestickChart(symbol)
-            self._chart.setMinimumHeight(250)
+            self._chart.setMinimumHeight(CHART_PANEL_MIN_HEIGHT_PX)
             layout.addWidget(self._chart)
 
             self._toggles: dict[str, QCheckBox] = {}
@@ -3426,7 +3454,7 @@ if _HAS_QT:
                 self.TOGGLE_ROW_MARGIN_PX,
             )
             for overlay in CHART_OVERLAYS:
-                box = QCheckBox(overlay.label)
+                box = QCheckBox(overlay.label, self)
                 box.setAccessibleName(f"{overlay.label} toggle")
                 box.setToolTip(overlay.tooltip)
                 box.setChecked(overlay.starts_on)
@@ -3438,6 +3466,14 @@ if _HAS_QT:
             toggle_row.addStretch()
             layout.addLayout(toggle_row)
             self._restyle()
+
+        def timeframe_widgets(self) -> list:
+            """The ``TF:`` label and the timeframe menu, for the owner's control row."""
+            return [self._tf_label, self._tf_combo]
+
+        def legend_widgets(self) -> list:
+            """The two legend labels and the source label, for the right end of the owner's control row."""
+            return [self._invisible_label, self._on_book_label, self._source_label]
 
         def _restyle(self) -> None:
             """Colour the two legend labels, the source label and every box from the chart's theme."""
@@ -3457,8 +3493,11 @@ if _HAS_QT:
             )
             for overlay in CHART_OVERLAYS:
                 self._toggles[overlay.key].setStyleSheet(
-                    INDICATOR_STYLE_FORMAT.format(
-                        color=chart.overlay_colour(overlay).name()
+                    TOGGLE_STYLE_FORMAT.format(
+                        color=chart.overlay_colour(overlay).name(),
+                        font_px=CAPTION_PX,
+                        gap=self.TOGGLE_LABEL_GAP_PX,
+                        box=TOGGLE_BOX_PX,
                     )
                 )
 

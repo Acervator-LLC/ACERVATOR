@@ -1577,6 +1577,13 @@
     entryProps.onClick = function () {
       press(ENTRY_PART, view[ZONE_KEY]);
     };
+    // While the counter is set the entry is the scan's field, and its scroll
+    // follows the newest line the way the Qt stepper's scroll area does.
+    entryProps.ref = function (node) {
+      if (node !== null && text(view[ZONE_COUNTER])) {
+        node.scrollTop = node.scrollHeight;
+      }
+    };
     var bodyProps = {
       style: boxStyle(
         asList(skin[ENTRY_MARGINS_PX]),

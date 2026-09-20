@@ -72,6 +72,17 @@ YAHOO_STEP_MS: dict[str, int] = {"1h": HOUR_MS, RA_TIMEFRAME: DAY_MS}
 RA_CHUNK_DAYS: int = 300
 """Coinbase Exchange returns at most 300 candles per request."""
 
+FUTURES_CANDLE_CAP: int = 350
+"""Coinbase Advanced Trade's market candles endpoint returns at most 350 a request."""
+
+#: The endpoint's granularity name for each ATA-SPM timeframe key it serves.
+FUTURES_GRANULARITIES: dict[str, str] = {"1h": "ONE_HOUR", RA_TIMEFRAME: "ONE_DAY"}
+
+#: Milliseconds one bar of each ``FUTURES_GRANULARITIES`` key covers.
+FUTURES_STEP_MS: dict[str, int] = {"1h": HOUR_MS, RA_TIMEFRAME: DAY_MS}
+
+FUTURES_CANDLES_KEY: str = "candles"
+
 USER_AGENT: str = "acervator-stone-tablets/1.0"
 
 RETRYABLE_HTTP_CODES: frozenset[int] = frozenset({408, 429, 500, 502, 503, 504})
@@ -197,6 +208,101 @@ class CoinbasePublicCandles:
         ]
         out.sort(key=lambda r: r[0])
         return out
+
+
+class CoinbaseFuturesCandles(ExchangeAdapter):
+    """Candles for one Coinbase Advanced Trade futures or perpetual product.
+
+    ``BASE_URL`` is the public market data route and carries no key.
+    ``fetch_chunk`` reads the newest ``FUTURES_CANDLE_CAP`` candles of a
+    ``FUTURES_GRANULARITIES`` key ending at ``until_ms``, the way
+    ``ata_asset_maps.venue_candle_read`` asks ``YahooChartAdapter``.
+    """
+
+    exchange_id = "coinbase-futures"
+    chunk_limit = FUTURES_CANDLE_CAP
+
+    BASE_URL: str = "https://api.coinbase.com/api/v3/brokerage/market/products"
+    SOURCE: str = "coinbase_advanced_trade_market_candles"
+
+    def __init__(self, timeout_s: float = 20.0) -> None:
+        super().__init__(connector=None)
+        self._timeout_s = timeout_s
+
+    async def fetch_chunk(
+        self,
+        asset: str,
+        quote: str,
+        since_ms: int,
+        until_ms: int,
+        timeframe: str = RA_TIMEFRAME,
+    ) -> FetchAttempt:
+        """Fetch ``asset``'s newest candles on ``timeframe`` and return a ``FetchAttempt``.
+
+        ``asset`` is the venue's ``product_id``; ``quote`` is carried, not checked.
+        """
+        del quote
+        granularity = FUTURES_GRANULARITIES.get(str(timeframe))
+        if granularity is None:
+            return FetchAttempt(
+                since_ms=since_ms,
+                until_ms=until_ms,
+                error=(
+                    f"{self.exchange_id} serves {sorted(FUTURES_GRANULARITIES)}, "
+                    f"not {timeframe}"
+                ),
+            )
+        step_s = FUTURES_STEP_MS[str(timeframe)] // 1000
+        end_s = int(until_ms) // 1000
+        start_s = max(int(since_ms) // 1000, end_s - FUTURES_CANDLE_CAP * step_s)
+        try:
+            payload = await asyncio.to_thread(
+                _get_json,
+                f"{self.BASE_URL}/{asset}/candles",
+                {"start": start_s, "end": end_s, "granularity": granularity},
+                self._timeout_s,
+            )
+        except Exception as exc:
+            return FetchAttempt(
+                since_ms=since_ms,
+                until_ms=until_ms,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        return FetchAttempt(
+            since_ms=since_ms,
+            until_ms=until_ms,
+            candles=self._rows_from_candles(payload, since_ms, until_ms),
+        )
+
+    @staticmethod
+    def _rows_from_candles(
+        payload: Any, since_ms: int, until_ms: int
+    ) -> list[list[float]]:
+        """The ``FUTURES_CANDLES_KEY`` dicts of ``payload`` as OHLCV rows, oldest first.
+
+        Each dict carries ``start`` in seconds and ``open``, ``high``, ``low``,
+        ``close`` and ``volume`` as strings; a dict missing one is dropped.
+        """
+        rows: list[list[float]] = []
+        held = (
+            (payload or {}).get(FUTURES_CANDLES_KEY)
+            if isinstance(payload, dict)
+            else None
+        )
+        for one in held or []:
+            if not isinstance(one, dict):
+                continue
+            try:
+                ts_ms = int(one["start"]) * 1000
+                values = [float(one[key]) for key in ("open", "high", "low", "close")]
+                volume = float(one.get("volume") or 0.0)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if ts_ms < since_ms or ts_ms > until_ms:
+                continue
+            rows.append([float(ts_ms), *values, volume])
+        rows.sort(key=lambda r: r[0])
+        return _last_per_stamp(rows)
 
 
 class YahooChartAdapter(ExchangeAdapter):
@@ -650,6 +756,9 @@ class RaTabletBuilder:
 
 __all__ = [
     "DAY_MS",
+    "FUTURES_CANDLE_CAP",
+    "FUTURES_GRANULARITIES",
+    "FUTURES_STEP_MS",
     "HOUR_MS",
     "RA_CHUNK_DAYS",
     "RA_STONE_TABLETS_DIR",
@@ -659,6 +768,7 @@ __all__ = [
     "YAHOO_INTERVALS",
     "YAHOO_REACH_DAYS",
     "YAHOO_STEP_MS",
+    "CoinbaseFuturesCandles",
     "CoinbasePublicCandles",
     "RaCoinbaseAdapter",
     "RaTabletBuilder",

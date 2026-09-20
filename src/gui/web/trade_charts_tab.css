@@ -1,10 +1,13 @@
-/* React Charts tab chrome: the Live / ATA-SMP toggle, the asset arrows and
- * ticker, and the one chart panel `trade_charts_tab.js` draws under them.
- * `react_charts_tab.PAGE_STYLE` carries the reset and the page ground, so
- * this file adds colour, border and type only. `native_chart.py` paints every
- * mark inside the chart into the image the slot shows, and the overlay colour
- * on a toggle arrives on that toggle's own `style` attribute, so no rule here
- * may set a `color` on a chart mark or on a toggle.
+/* React Charts tab chrome: the one control row (the Live / ATA-SMP toggle,
+ * the asset arrows and ticker, the counter, the timeframe menu, the legend
+ * labels and the source) and the one chart panel `trade_charts_tab.js` draws
+ * under it. `react_charts_tab.PAGE_STYLE` carries the reset and the page
+ * ground, so this file adds colour, border and type only; every size and
+ * font the row and the toggles take arrives on the element's own `style`
+ * attribute from the payload. `native_chart.py` paints every mark inside the
+ * chart into the image the slot shows, and the overlay colour on a toggle
+ * arrives on that toggle's own `style` attribute, so no rule here may set a
+ * `color` on a chart mark or on a toggle.
  */
 
 /* A part carries `display:flex` on its own style attribute, which outranks
@@ -21,7 +24,8 @@
   min-height: 0;
 }
 
-/* QPushButton: the two arrows and the list toggle share one skin. */
+/* QPushButton: the two arrows and the list toggle share one skin; the family
+ * and size arrive on each button's own `style` attribute. */
 [data-part="asset-prev"],
 [data-part="asset-next"],
 [data-part="chart-list-toggle"] {
@@ -29,14 +33,8 @@
   color: var(--PRIMARY, var(--accent));
   border: 1px solid var(--GLOW_PRIMARY_EDGE, var(--border));
   border-radius: 4px;
-  font-family: inherit;
-  font-size: 12px;
   font-weight: bold;
   cursor: pointer;
-}
-
-[data-part="chart-list-toggle"] {
-  font-size: 11px;
 }
 
 [data-part="asset-prev"]:hover,
@@ -60,9 +58,7 @@
   color: var(--PRIMARY, var(--accent));
   border: 1px solid var(--GLOW_PRIMARY_EDGE, var(--border));
   border-radius: 4px;
-  padding: 3px 8px;
-  font-family: inherit;
-  font-size: 12px;
+  padding: 0 8px;
   font-weight: bold;
 }
 
@@ -70,14 +66,16 @@
   border-color: var(--PRIMARY, var(--accent));
 }
 
-/* QLabel: which asset this is, of how many, and the empty-list hint. */
+/* QLabel: which asset this is, of how many, the empty-list hint and the
+ * `TF:` word before the timeframe menu. */
 [data-part="asset-position"],
-[data-part="chart-list-hint"] {
+[data-part="chart-list-hint"],
+[data-part="timeframe-label"] {
   color: var(--TEXT_LOW, var(--text));
-  font-size: 10px;
 }
 
-/* QFrame: the one chart panel, and the header line over the candles. */
+/* QFrame: the one chart panel; the painter draws the header line inside the
+ * image, as the Qt chart does. */
 .acervator-charts-panel {
   background: var(--SURFACE_0, var(--bg));
   border: 1px solid var(--CARD_METRIC_BORDER, var(--border));
@@ -85,18 +83,7 @@
   overflow: hidden;
 }
 
-[data-part="panel-header"] {
-  padding: 3px 6px;
-  border-bottom: 1px solid var(--CARD_METRIC_BORDER, var(--border));
-}
-
-[data-part="panel-toolbar"] {
-  gap: 6px;
-  padding: 2px 4px;
-  border-top: 1px solid var(--CARD_METRIC_BORDER, var(--border));
-}
-
-/* QComboBox: the TF picker at the left of the toolbar. */
+/* QComboBox: the TF picker, after the counter in the control row. */
 [data-part="timeframe"] {
   max-width: 90px;
   background: var(--SURFACE_CONTROL, var(--btn-bg));
@@ -106,15 +93,15 @@
   font: inherit;
 }
 
-/* QLabel: the feed the candles came from, at the end of the toolbar. */
+/* QLabel: the feed the candles came from, at the right end of the control
+ * row after the two legend labels; the legend's colours and size arrive on
+ * each label's own `style` attribute. */
 [data-part="panel-source"] {
   color: var(--TEXT_PLACEHOLDER, var(--grid));
-  font-size: 9px;
 }
 
 [data-part="panel-legend"] {
   gap: 12px;
-  font-size: 9px;
 }
 
 [data-part="panel-toggle-row"] {
@@ -124,7 +111,6 @@
 
 [data-part="panel-toggle"] {
   gap: 3px;
-  font-size: 9px;
   cursor: default;
 }
 
