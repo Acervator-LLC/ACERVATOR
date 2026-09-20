@@ -121,6 +121,22 @@ from .main_tabs.market_inspector_surface import (
     SCAN_NOW_LABEL,
     SCAN_NOW_TOOLTIP,
     SCAN_NOW_WIDTH_PX,
+    SCAN_ALL_LABEL,
+    SCAN_ALL_PART,
+    SCAN_ALL_TOOLTIP,
+    TIMER_COUNTDOWN_PART,
+    TIMER_EMPTY_STYLE,
+    TIMER_PAIR_PART,
+    TIMER_PAIR_STYLE,
+    TIMER_TILE_PART,
+    TIMER_TILE_SPACING_PX,
+    TIMER_REGION_HEIGHT_PX,
+    TIMER_REGION_STYLE,
+    TIMER_TILE_STYLE,
+    TIMER_TILE_WIDTH_PX,
+    TIMER_TILES_EMPTY_TEXT,
+    TIMER_TILES_PART,
+    timer_tile_rows,
     TICKER_FIELD_PLACEHOLDER,
     TICKER_FIELD_TOOLTIP,
     TICKER_FIELD_MIN_WIDTH_PX,
@@ -720,6 +736,84 @@ if _HAS_QT:
                 self.action_row.insertWidget(len(self.action_buttons), button)
                 self.action_buttons.append(button)
 
+    class TimerTiles(QWidget):
+        """The confirmation timer tiles right of the Timeframe row.
+
+        One frame per ``ata_spm_push.TimerTile`` row, its pair line over its
+        countdown line, placed on a grid ``TIMER_TILE_WIDTH_PX`` wide per
+        column and re-laid at the width the region has; the empty text
+        while no call is watched.
+        """
+
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            self.setAccessibleName(TIMER_TILES_PART)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            self.grid = QGridLayout(self)
+            self.grid.setContentsMargins(0, 0, 0, 0)
+            self.grid.setSpacing(TIMER_TILE_SPACING_PX)
+            self.grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+            self.tiles: list = []
+            self.rows: list = []
+            self.empty_label = QLabel(TIMER_TILES_EMPTY_TEXT)
+            self.empty_label.setStyleSheet(TIMER_EMPTY_STYLE)
+            self.empty_label.setAccessibleName(TIMER_TILES_EMPTY_TEXT)
+            self.grid.addWidget(self.empty_label, 0, 0)
+
+        def columns(self) -> int:
+            """How many tiles one row holds at this width, never under one."""
+            step = TIMER_TILE_WIDTH_PX + TIMER_TILE_SPACING_PX
+            return max(1, (self.width() + TIMER_TILE_SPACING_PX) // step)
+
+        def show_tiles(self, rows: list) -> None:
+            """Draw one tile per row, building or dropping frames as the count moves."""
+            self.rows = [dict(one) for one in rows]
+            while len(self.tiles) > len(self.rows):
+                frame, _pair, _line = self.tiles.pop()
+                self.grid.removeWidget(frame)
+                frame.setParent(None)
+                frame.deleteLater()
+            while len(self.tiles) < len(self.rows):
+                self.tiles.append(self._build_tile())
+            for (frame, pair, line), row in zip(self.tiles, self.rows):
+                frame.setAccessibleName(f"{TIMER_TILE_PART} {row['pair']}")
+                pair.setText(str(row["pair"]))
+                line.setText(str(row["text"]))
+                line.setStyleSheet(str(row.get("line_style") or ""))
+                line.setAccessibleName(f"{TIMER_COUNTDOWN_PART} {row['pair']}")
+            self.empty_label.setVisible(not self.rows)
+            self._place()
+
+        def _build_tile(self) -> tuple:
+            frame = QFrame()
+            frame.setObjectName(TIMER_TILE_PART)
+            frame.setStyleSheet(f"QFrame#{TIMER_TILE_PART} {{ {TIMER_TILE_STYLE} }}")
+            frame.setFixedWidth(TIMER_TILE_WIDTH_PX)
+            column = QVBoxLayout(frame)
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(0)
+            pair = QLabel()
+            pair.setStyleSheet(TIMER_PAIR_STYLE)
+            pair.setAccessibleName(TIMER_PAIR_PART)
+            line = QLabel()
+            column.addWidget(pair)
+            column.addWidget(line)
+            return (frame, pair, line)
+
+        def _place(self) -> None:
+            """Put every frame on the grid, wrapping at ``columns``."""
+            for frame, _pair, _line in self.tiles:
+                self.grid.removeWidget(frame)
+            across = self.columns()
+            for at, (frame, _pair, _line) in enumerate(self.tiles):
+                self.grid.addWidget(frame, at // across, at % across)
+                frame.setVisible(True)
+
+        def resizeEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Re-wrap the tiles at the width the region now has."""
+            super().resizeEvent(event)
+            self._place()
+
     class PaneWidthPage(QWidget):
         """A Level 1 or Level 1A page that re-lays its grids at the width it gets.
 
@@ -779,7 +873,12 @@ if _HAS_QT:
             self.scanFailed.connect(self._take_scan_failure)
             self.followUpRead.connect(self._take_follow_up_read)
             self.handOffDone.connect(self._take_hand_off)
+            #: The pace one Scan All walk reads through; a new one per press.
+            self._scan_pace = None
+            #: Whether the tile region drew a tile at the last redraw.
+            self._tiles_drawn = False
             self._follow_up_clock = QTimer(self)
+            self._follow_up_clock.setTimerType(Qt.PreciseTimer)
             self._follow_up_clock.setInterval(FOLLOW_UP_TICK_MS)
             self._follow_up_clock.timeout.connect(self._tick_follow_ups)
             self._follow_up_clock.start()
@@ -986,15 +1085,37 @@ if _HAS_QT:
 
             Three lines rather than one, so every control stays inside the
             zone's width. The four buttons belong to the sector on screen,
-            which is what ``_ata_board.boxes`` answers.
+            which is what ``_ata_board.boxes`` answers. The Timeframe title,
+            its grid and the scan line sit in a left column; the confirmation
+            timer tiles take the region right of them.
             """
             column = QVBoxLayout()
             column.setSpacing(ATA_ROW_SPACING_PX)
             column.addLayout(self._build_ticker_line())
             column.addWidget(self._build_ticker_note())
-            column.addWidget(self._section_title(TIMEFRAME_TITLE))
-            column.addLayout(self._build_timeframe_grid())
-            column.addLayout(self._build_scan_line())
+            block = QHBoxLayout()
+            block.setSpacing(ATA_ROW_SPACING_PX)
+            left = QVBoxLayout()
+            left.setSpacing(ATA_ROW_SPACING_PX)
+            left.addWidget(self._section_title(TIMEFRAME_TITLE))
+            left.addLayout(self._build_timeframe_grid())
+            left.addLayout(self._build_scan_line())
+            left.addStretch()
+            block.addLayout(left)
+            self._timer_tiles = TimerTiles()
+            self._timer_scroll = QScrollArea()
+            self._timer_scroll.setWidgetResizable(True)
+            self._timer_scroll.setFrameShape(QFrame.NoFrame)
+            self._timer_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._timer_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._timer_scroll.setFixedHeight(TIMER_REGION_HEIGHT_PX)
+            self._timer_scroll.setAccessibleName(TIMER_TILES_PART)
+            self._timer_scroll.setStyleSheet(TIMER_REGION_STYLE)
+            self._timer_scroll.viewport().setAutoFillBackground(False)
+            self._timer_tiles.setAutoFillBackground(False)
+            self._timer_scroll.setWidget(self._timer_tiles)
+            block.addWidget(self._timer_scroll, 1, Qt.AlignTop)
+            column.addLayout(block)
             return column
 
         def _build_ticker_line(self) -> "QHBoxLayout":
@@ -1087,7 +1208,7 @@ if _HAS_QT:
             return grid
 
         def _build_scan_line(self) -> "QHBoxLayout":
-            """Scan Now beside Settings, which is the way in to Level 1."""
+            """Scan Now, Scan All at its size, then Settings, the way in to Level 1."""
             line = QHBoxLayout()
             line.setSpacing(ATA_ROW_SPACING_PX)
             self._scan_now_btn = QPushButton(SCAN_NOW_LABEL)
@@ -1096,6 +1217,12 @@ if _HAS_QT:
             self._scan_now_btn.setAccessibleName(SCAN_ROW_PART)
             self._scan_now_btn.clicked.connect(self._on_scan_now)
             line.addWidget(self._scan_now_btn)
+            self._scan_all_btn = QPushButton(SCAN_ALL_LABEL)
+            self._scan_all_btn.setToolTip(SCAN_ALL_TOOLTIP)
+            self._scan_all_btn.setFixedSize(SCAN_NOW_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._scan_all_btn.setAccessibleName(SCAN_ALL_PART)
+            self._scan_all_btn.clicked.connect(self._on_scan_all)
+            line.addWidget(self._scan_all_btn)
             self._settings_btn = QPushButton(SETTINGS_LABEL)
             self._settings_btn.setToolTip(SETTINGS_TOOLTIP)
             self._settings_btn.setFixedSize(SETTINGS_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
@@ -1771,13 +1898,119 @@ if _HAS_QT:
             _pin_emit(SCAN_PRESSED_PIN, actual=True, expected=True, context=context)
 
         def _set_scan_busy(self, busy: bool) -> None:
-            """Disable Scan Now and write ``SCAN_BUSY_LABEL`` on it while ``busy``,
-            then redraw the row so the page reads the same state."""
-            button = getattr(self, "_scan_now_btn", None)
-            if button is not None:
-                button.setEnabled(not busy)
-                button.setText(ata_spm.SCAN_BUSY_LABEL if busy else SCAN_NOW_LABEL)
+            """Disable Scan Now and Scan All and write ``SCAN_BUSY_LABEL`` on both
+            while ``busy``, then redraw the row so the page reads the same state."""
+            for name, label in (
+                ("_scan_now_btn", SCAN_NOW_LABEL),
+                ("_scan_all_btn", SCAN_ALL_LABEL),
+            ):
+                button = getattr(self, name, None)
+                if button is not None:
+                    button.setEnabled(not busy)
+                    button.setText(ata_spm.SCAN_BUSY_LABEL if busy else label)
             self._render_ata_row()
+
+        def _on_scan_all(self) -> None:
+            """Press Scan All: walk every sector on every timeframe on a worker thread.
+
+            The same busy line, the same thread name and the same
+            ``scanFinished`` crossing as a Scan Now press; the walk stops at
+            no hit count and its reads are paced by ``_paced_candles``.
+            """
+            context = {
+                "asset_class": ata_spm.TIMEFRAME_LIST_JOIN.join(ata_spm.ASSET_CLASSES),
+                "ticker": "",
+                "timeframes": [],
+                "hit_target": ata_spm.NO_HIT_TARGET,
+                "walk_all": True,
+            }
+            if self._scan_thread is not None and self._scan_thread.is_alive():
+                _pin_emit(
+                    SCAN_PRESSED_PIN, actual=False, expected=True, context=context
+                )
+                self._say(ata_spm.SCAN_BUSY_TEXT, ACTIVITY_WARNING)
+                return
+            self._say(
+                ata_spm.SCAN_ALL_PRESSED_TEXT.format(
+                    classes=ata_spm.TIMEFRAME_LIST_JOIN.join(ata_spm.ASSET_CLASSES)
+                )
+            )
+            settings = self._push_board.settings
+            self._scan_refusals = {}
+            self._chimed_hits = NO_HITS_CHIMED
+            self._ata_board.progress_lines = []
+            self._ata_board.progress = ata_spm.ScanProgress(
+                asset_class=ata_spm.ASSET_CLASSES[0],
+                read=ata_spm.NO_MARKETS_READ,
+                total=ata_spm.NO_MARKETS_READ,
+                hits=0,
+                at=1,
+                sectors=len(ata_spm.ASSET_CLASSES),
+            )
+            self._set_scan_busy(True)
+            self._scan_thread = threading.Thread(
+                target=self._compute_scan_all,
+                args=(settings.message_format, settings.max_supporting_indicators),
+                name=ATA_SCAN_THREAD_NAME,
+                daemon=True,
+            )
+            self._scan_thread.start()
+            _pin_emit(SCAN_PRESSED_PIN, actual=True, expected=True, context=context)
+
+        def _compute_scan_all(self, message_format, max_supporting_indicators) -> None:
+            """Run the all-sectors walk and report its answer to the GUI thread.
+
+            ``SectorBoard.compute_all`` writes nothing; ``scanProgressed``
+            and ``scanFinished`` carry the walk across as for a Scan Now.
+            """
+            thread_name = threading.current_thread().name
+            logger.info(ATA_SCAN_THREAD_LOG, thread_name, "compute all")
+            _pin_emit(
+                SCAN_STARTED_PIN,
+                actual=thread_name,
+                expected=ATA_SCAN_THREAD_NAME,
+                context={
+                    "asset_class": ata_spm.TIMEFRAME_LIST_JOIN.join(
+                        ata_spm.ASSET_CLASSES
+                    ),
+                    "sectors_held": len(self._ata_board.sectors),
+                    "walk_all": True,
+                },
+            )
+            self._scan_pace = ata_asset_maps.scan_all_pace()
+            injected = self._ata_class_source
+            class_source = (
+                self._paced_class_markets
+                if injected is None or injected == self._class_markets
+                else injected
+            )
+            try:
+                answered = self._ata_board.compute_all(
+                    self._ata_asset_source or sector_assets,
+                    self._paced_candles,
+                    message_format,
+                    max_supporting_indicators,
+                    class_source,
+                    self._on_scan_progress,
+                )
+            except Exception as exc:  # noqa: BLE001 - the scan runs off-thread
+                logger.exception("ATA-SPM scan all failed: %s", exc)
+                self.scanFailed.emit(str(exc))
+                return
+            self.scanFinished.emit(answered)
+
+        def _paced_candles(self, symbol, timeframe) -> list:
+            """``_read_candles`` through ``_scan_pace``: the host's gap before the
+            read, and one more read after the hold a 429 leaves."""
+            source = self._ata_candle_source
+            host = ata_asset_maps.host_of(symbol)
+
+            def read() -> tuple:
+                if source is not None and source != self._scanned_candles:
+                    return host, list(source(symbol, timeframe) or []), ""
+                return self._read_candles(symbol, timeframe)
+
+            return ata_spm.paced_read(self._scan_pace, host, read)[1]
 
         def _on_scan_progress(self, progress) -> None:
             """The walk's report, on the scan thread: cross to the GUI thread."""
@@ -1940,6 +2173,7 @@ if _HAS_QT:
                     self._say(timer.timer_line())
                 self._zone_at[READY_TO_SEND_ZONE] = 0
             self._say_scan_end(sectors, found, note)
+            self._render_timer_tiles()
             self._render_ata_row()
             self._render_left_modules()
 
@@ -1955,16 +2189,27 @@ if _HAS_QT:
             return played
 
         def _tick_follow_ups(self) -> None:
-            """The clock's wake: hand every due ``FollowUpTimer`` to one worker thread."""
+            """The clock's wake: hand every due ``FollowUpTimer`` to one worker
+            thread, then redraw the tiles so each countdown falls by one."""
             due = self._push_board.due_timers()
-            if not due:
-                return
-            threading.Thread(
-                target=self._read_follow_ups,
-                args=(due,),
-                name=FOLLOW_UP_THREAD_NAME,
-                daemon=True,
-            ).start()
+            if due:
+                threading.Thread(
+                    target=self._read_follow_ups,
+                    args=(due,),
+                    name=FOLLOW_UP_THREAD_NAME,
+                    daemon=True,
+                ).start()
+            if due or self._push_board.follow_up.timers or self._tiles_drawn:
+                self._render_timer_tiles()
+
+        def _render_timer_tiles(self) -> None:
+            """Draw one tile per ``PushBoard.timer_tiles`` row in the region
+            right of the Timeframe row."""
+            rows = timer_tile_rows(self._push_board)
+            self._tiles_drawn = bool(rows)
+            tiles = getattr(self, "_timer_tiles", None)
+            if tiles is not None:
+                tiles.show_tiles(rows)
 
         def _read_follow_ups(self, timers) -> None:
             """Read each timer's candles and judge its call, then cross to the GUI thread.
@@ -2010,6 +2255,7 @@ if _HAS_QT:
                     timeframe=timer.call.timeframe,
                     close=float(outcome.close),
                 )
+            self._render_timer_tiles()
             self._render_left_modules()
 
         def _follow_up_candles(self, symbol, timeframe) -> list:
@@ -2064,7 +2310,7 @@ if _HAS_QT:
                     )
                 read = (
                     int(scan.markets_read)
-                    if scan.hit_target > ata_spm.NO_HIT_TARGET
+                    if ata_spm.walks_order(scan)
                     else len(scan.assets)
                 )
                 asked = listed.get(scan.sector) or len(scan.assets)
@@ -2105,7 +2351,11 @@ if _HAS_QT:
             """``market_listing`` on the connectors in reach, for ``compute``."""
             return market_listing(ticker, asset_class, self._connectors_now())
 
-        def _class_markets(self, asset_class):
+        def _paced_class_markets(self, asset_class):
+            """``_class_markets`` through the walk's ``_scan_pace``."""
+            return self._class_markets(asset_class, self._scan_pace)
+
+        def _class_markets(self, asset_class, pace=None):
             """The ``ata_spm.MarketOrder`` one class holds, on the connectors in reach.
 
             Each read leaves one ``ORDER_LOG_FORMAT`` line and one
@@ -2113,7 +2363,7 @@ if _HAS_QT:
             with no figure.
             """
             try:
-                order = class_markets(asset_class, self._connectors_now())
+                order = class_markets(asset_class, self._connectors_now(), pace)
             except Exception as exc:  # noqa: BLE001 - the source is off-process
                 logger.debug("class market read failed on %s: %s", asset_class, exc)
                 order = ata_spm.MarketOrder()
@@ -2152,7 +2402,12 @@ if _HAS_QT:
             return order
 
         def _scanned_candles(self, symbol, timeframe, fresh: bool = False) -> list:
-            """The candles for one scanned symbol, from the source its map names.
+            """The candles ``_read_candles`` answers for one scanned symbol."""
+            return self._read_candles(symbol, timeframe, fresh)[1]
+
+        def _read_candles(self, symbol, timeframe, fresh: bool = False) -> tuple:
+            """The venue, the candles and the refusal for one scanned symbol,
+            from the source its map names.
 
             Each read leaves one ``MARKET_READ_TEXT`` line and one
             ``MARKET_READ_PIN``, naming the source and the count or the refusal;
@@ -2199,7 +2454,7 @@ if _HAS_QT:
                     "refusal": refusal,
                 },
             )
-            return candles
+            return str(venue), list(candles), str(refusal)
 
         def _render_ata_row(self) -> None:
             """Write the class box, the four check boxes and the settings page.

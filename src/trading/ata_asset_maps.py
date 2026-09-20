@@ -37,12 +37,19 @@ from .ata_spm import (
     CLASS_FOREX,
     CLASS_METALS,
     CLASS_STOCKS,
+    EXCHANGE_PACE_S,
+    EXCHANGE_RATE_LIMIT_WAIT_S,
+    YAHOO_PACE_S,
+    YAHOO_RATE_LIMIT_WAIT_S,
+    ReadPace,
 )
 from .indicators.types import CandleDomainError, candles_from_raw
 from .stone_tablets.ra_fetcher import (
     FUTURES_GRANULARITIES,
     RA_TIMEFRAME,
     DAY_MS,
+    RATE_LIMIT_HTTP_CODE,
+    RETRYABLE_HTTP_CODES,
     USER_AGENT,
     YAHOO_INTERVALS,
     CoinbaseFuturesCandles,
@@ -171,6 +178,34 @@ VENUE_FUTURES = CoinbaseFuturesCandles.exchange_id
 
 #: The venue field of a name no configured venue lists.
 NO_VENUE = ""
+
+#: The gap Scan All keeps between two reads on each venue, and the hold a 429
+#: leaves there; the figures are ``ata_spm``'s, keyed by the venue names here.
+HOST_PACE_S = {
+    VENUE_EXCHANGE: EXCHANGE_PACE_S,
+    VENUE_FUTURES: EXCHANGE_PACE_S,
+    VENUE_YAHOO: YAHOO_PACE_S,
+}
+RATE_LIMIT_WAIT_S = {
+    VENUE_EXCHANGE: EXCHANGE_RATE_LIMIT_WAIT_S,
+    VENUE_FUTURES: EXCHANGE_RATE_LIMIT_WAIT_S,
+    VENUE_YAHOO: YAHOO_RATE_LIMIT_WAIT_S,
+}
+#: The transient codes an ATA-SPM venue read retries inside one read: every
+#: retryable code but 429, which the walk answers with a hold, never a retry.
+VENUE_RETRY_CODES = frozenset(RETRYABLE_HTTP_CODES - {RATE_LIMIT_HTTP_CODE})
+
+
+def scan_all_pace() -> ReadPace:
+    """One ``ReadPace`` over ``HOST_PACE_S`` and ``RATE_LIMIT_WAIT_S``, for one Scan All walk."""
+    return ReadPace(HOST_PACE_S, RATE_LIMIT_WAIT_S)
+
+
+def host_of(symbol: Any) -> str:
+    """The venue one scanned symbol reads from: its listing's, else ``VENUE_EXCHANGE``."""
+    found = listing_of(symbol)
+    return str(found.venue) if found is not None and found.listed else VENUE_EXCHANGE
+
 
 WEEKLY_TIMEFRAME = "1w"
 
@@ -675,9 +710,13 @@ def screener_listings(
 
 
 def _adapter_for(venue: str) -> Any:
-    """The fetcher one venue name is served by, or None for an unknown name."""
+    """The fetcher one venue name is served by, or None for an unknown name.
+
+    The Yahoo adapter retries ``VENUE_RETRY_CODES`` only, so a 429 reaches
+    the read as its refusal instead of two more requests seconds apart.
+    """
     if venue == VENUE_YAHOO:
-        return YahooChartAdapter()
+        return YahooChartAdapter(retry_codes=VENUE_RETRY_CODES)
     if venue == VENUE_FUTURES:
         return CoinbaseFuturesCandles()
     return None

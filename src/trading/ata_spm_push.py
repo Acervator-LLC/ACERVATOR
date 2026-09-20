@@ -14,6 +14,7 @@ sender where the venue is signed in, the venue folder for the rest, and
 from __future__ import annotations
 
 import json
+import math
 import logging
 import re
 import time
@@ -189,6 +190,19 @@ FOLLOW_UP_STOPPED_LINE_FORMAT = (
     "ATA-SPM confirmation timer for {symbol} {label} stopped: {reason}"
 )
 TIMER_STOPPED_LEFT_BUCKET = "the entry left the bucket"
+
+#: One watched call's tile: the market and its timeframe on the first line,
+#: the seconds to its next read counted down on the second, ``reading`` while
+#: the read runs, and ``FOLLOW_UP_STATUS_SETTLED_FORMAT`` once it settles.
+TIMER_PAIR_FORMAT = "{symbol} {label}"
+TIMER_COUNTDOWN_FORMAT = "{hours:02d}:{minutes:02d}:{seconds:02d}"
+TIMER_COUNTDOWN_DAYS_FORMAT = "{days}d {hours:02d}:{minutes:02d}:{seconds:02d}"
+TIMER_READING_TEXT = "reading"
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 3600
+SECONDS_PER_DAY = 86400
+NO_SECONDS_LEFT = 0
+NO_WAIT_S = 0.0
 
 #: A confirmation share of zero confirms nothing. The operator sets one on
 #: the settings page before any call can confirm.
@@ -1475,6 +1489,67 @@ class FollowUpTimer:
         )
 
 
+def countdown_text(seconds_left: Any) -> str:
+    """``TIMER_COUNTDOWN_FORMAT`` over whole seconds, with the days in front past one."""
+    held = max(NO_SECONDS_LEFT, int(seconds_left))
+    days, rest = divmod(held, SECONDS_PER_DAY)
+    hours, rest = divmod(rest, SECONDS_PER_HOUR)
+    minutes, seconds = divmod(rest, SECONDS_PER_MINUTE)
+    if days:
+        return TIMER_COUNTDOWN_DAYS_FORMAT.format(
+            days=days, hours=hours, minutes=minutes, seconds=seconds
+        )
+    return TIMER_COUNTDOWN_FORMAT.format(hours=hours, minutes=minutes, seconds=seconds)
+
+
+@dataclass
+class TimerTile:
+    """One watched call as the zone's tile draws it: the pair line, the
+    countdown or outcome line, and the state the line's colour follows."""
+
+    symbol: str
+    timeframe: str
+    seconds_left: int = NO_SECONDS_LEFT
+    state: str = OUTCOME_OPEN
+    reading: bool = False
+    close: float = NO_MIDLINE
+
+    @property
+    def pair(self) -> str:
+        """``TIMER_PAIR_FORMAT`` over the market and its timeframe label."""
+        return TIMER_PAIR_FORMAT.format(
+            symbol=self.symbol, label=ata_spm.timeframe_label(self.timeframe)
+        )
+
+    @property
+    def settled(self) -> bool:
+        """Whether the call confirmed or failed."""
+        return self.state in (OUTCOME_CONFIRMED, OUTCOME_FAILED)
+
+    @property
+    def text(self) -> str:
+        """The second line: the outcome, ``reading``, or the countdown."""
+        if self.settled:
+            return FOLLOW_UP_STATUS_SETTLED_FORMAT.format(
+                state=self.state, close=self.close
+            )
+        if self.reading:
+            return TIMER_READING_TEXT
+        return countdown_text(self.seconds_left)
+
+    def row(self) -> dict:
+        """The tile as the page and the widget read it."""
+        return {
+            "symbol": self.symbol,
+            "timeframe": self.timeframe,
+            "pair": self.pair,
+            "text": self.text,
+            "state": self.state,
+            "reading": bool(self.reading),
+            "seconds_left": int(self.seconds_left),
+        }
+
+
 @dataclass
 class FollowUpOutcome:
     """Phase seven for one call: confirmed, failed, or still open."""
@@ -2563,6 +2638,45 @@ class PushBoard:
         for timer in found:
             timer.reading = True
         return found
+
+    def timer_tiles(self) -> list:
+        """One ``TimerTile`` per call under watch, then one per settled call
+        whose entry the bucket still holds, in the order their timers started.
+
+        The seconds left count down to ``FollowUpTimer.next_read_ts`` on the
+        board's own clock; a settled call reads its outcome until
+        ``load_run`` drops its entry.
+        """
+        now = self.now()
+        tiles = [
+            TimerTile(
+                symbol=timer.call.symbol,
+                timeframe=timer.call.timeframe,
+                seconds_left=int(math.ceil(max(NO_WAIT_S, timer.next_read_ts - now))),
+                state=timer.state,
+                reading=bool(timer.reading),
+            )
+            for timer in self.follow_up.timers.values()
+        ]
+        held = {
+            (one.post.symbol, one.post.timeframe)
+            for one in self.bucket.posts
+            if not one.post.follows
+        }
+        outcomes = {one.call.key: one for one in self.follow_up.outcomes}
+        for key, call in self.follow_up.settled.items():
+            outcome = outcomes.get(key)
+            if outcome is None or (call.symbol, call.timeframe) not in held:
+                continue
+            tiles.append(
+                TimerTile(
+                    symbol=call.symbol,
+                    timeframe=call.timeframe,
+                    state=outcome.state,
+                    close=float(outcome.close),
+                )
+            )
+        return tiles
 
     def read_outcome(self, timer: FollowUpTimer, candles: Any) -> FollowUpOutcome:
         """``follow_up_outcome`` for one timer over ``candles``, closed before now."""

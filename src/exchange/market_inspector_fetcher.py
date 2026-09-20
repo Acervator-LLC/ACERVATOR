@@ -24,6 +24,7 @@ from urllib.error import HTTPError
 
 from ..trading.stone_tablets.ra_fetcher import (
     RA_CHUNK_DAYS,
+    RATE_LIMIT_HTTP_CODE,
     CoinbasePublicCandles,
     _get_json,
 )
@@ -70,6 +71,8 @@ VENUE_REFUSED_FORMAT = "{venue} refused: {error}"
 UNREACHABLE_ERROR_NAMES = frozenset(
     {"NetworkError", "RequestTimeout", "ExchangeNotAvailable", "DDoSProtection"}
 )
+#: ccxt's answer to a 429, matched the same way.
+RATE_LIMIT_ERROR_NAMES = frozenset({"RateLimitExceeded"})
 
 _PUBLIC_LOCK = threading.Lock()
 _PUBLIC_LAST_CALL_MONO: float = 0.0
@@ -440,6 +443,16 @@ def public_products(
     return found
 
 
+def rate_limited(exc: BaseException) -> bool:
+    """True when ``exc`` is the venue's 429: an ``HTTPError`` with that code, or
+    the ``RateLimitExceeded`` ccxt raises. The refusal such an answer leaves
+    carries the code or the name, which ``ata_spm.is_rate_limited`` reads."""
+    if isinstance(exc, HTTPError):
+        return exc.code == RATE_LIMIT_HTTP_CODE
+    names = {one.__name__ for one in type(exc).__mro__}
+    return bool(names & RATE_LIMIT_ERROR_NAMES)
+
+
 def venue_refusal(venue: str, exc: BaseException) -> str:
     """VENUE_UNREACHABLE_FORMAT for a transport failure, VENUE_REFUSED_FORMAT
     for an answer the venue gave; HTTPError is an answer."""
@@ -507,6 +520,8 @@ def public_candle_read(
                 (time.monotonic() - start) * 1000,
                 API_LEVEL_WARNING,
             )
+            if rate_limited(exc):
+                break
             continue
         candles = _ohlcv_to_candles(rows)
         _record_api(
@@ -589,7 +604,8 @@ async def fetch_symbol_timeframe_read(
 
     A connector whose _ex.timeframes table lacks WEEKLY_TIMEFRAME is asked for
     DAILY_TIMEFRAME and the answer goes through weekly_from_daily, and a
-    connector whose table lacks the timeframe asked is not asked.
+    connector whose table lacks the timeframe asked is not asked. A 429 ends
+    the read at once; the other quotes are not asked.
     """
     base = str(symbol).strip().upper()
     asked = str(timeframe)
@@ -611,6 +627,8 @@ async def fetch_symbol_timeframe_read(
             except Exception as _exc:  # noqa: BLE001 - per-pair best-effort
                 logger.debug("OHLCV fetch failed on %s %s: %s", eid, pair, _exc)
                 refusal = venue_refusal(str(eid), _exc)
+                if rate_limited(_exc):
+                    return [], refusal
                 continue
             candles = _ohlcv_to_candles(rows)
             if candles:
