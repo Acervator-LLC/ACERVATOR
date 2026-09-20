@@ -196,10 +196,14 @@ SIMULATOR_BUILD_INDEX = 1
 
 PAPER_BUILD_INDEX = 2
 
-ISOLATED_TABS = (PAPER_TAB,)
+#: The tabs the header strip hides on; none since the Paper tab reads it.
+ISOLATED_TABS: tuple = ()
 
 #: The tabs the header strip reads the Simulator's fleet on, not the live one.
 SIM_FED_TABS = (SIM_TAB,)
+
+#: The tabs the header strip reads the Paper Trader's ledger and records on.
+PAPER_FED_TABS = (PAPER_TAB,)
 
 HISTORY_STALE_AFTER_S = 300
 
@@ -705,6 +709,11 @@ def header_strip_visible(tab_name: Any) -> bool:
 def header_strip_reads_sim(tab_name: Any) -> bool:
     """Whether the stat strip reads the Simulator's fleet on the tab named."""
     return tab_name in SIM_FED_TABS
+
+
+def header_strip_reads_paper(tab_name: Any) -> bool:
+    """Whether the stat strip reads the Paper Trader's ledger and records on the tab named."""
+    return tab_name in PAPER_FED_TABS
 
 
 def history_refresh_due(last_fetched_ts: Any, in_flight: Any, now: Any) -> bool:

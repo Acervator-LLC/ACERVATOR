@@ -26,6 +26,7 @@ HISTORY = "History"
 HISTORY_TABLE = "History table"
 MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
+PAPER_BOT_DETAIL = "Paper bot settings"
 PAPER_TRADER = "Paper"
 SETTINGS_DIALOG = "Settings dialog"
 SIM_BOT_DETAIL = "Simulator bot settings"
@@ -266,17 +267,31 @@ def _react_simulator() -> type:
 
 
 def _qt_paper_trader() -> type:
-    """Import and return the Qt Paper tab."""
-    from .paper_trader_tab import PaperTraderTabQt
+    """Import and return the Qt Paper tab, ``PaperTradingTab``."""
+    from .paper.paper_trading_tab import PaperTradingTab
 
-    return PaperTraderTabQt
+    return PaperTradingTab
 
 
 def _react_paper_trader() -> type:
-    """Import and return the React Paper tab."""
-    from .react_paper_trader_tab import PaperTraderTabReact
+    """Import and return the React Paper tab, ``PaperTradingTabReact``."""
+    from .paper.paper_react_trading_tab import PaperTradingTabReact
 
-    return PaperTraderTabReact
+    return PaperTradingTabReact
+
+
+def _qt_paper_bot_detail() -> type:
+    """Import and return the Qt Paper Trader Bot Settings window."""
+    from .paper.paper_bot_detail import PaperBotDetailDialog
+
+    return PaperBotDetailDialog
+
+
+def _react_paper_bot_detail() -> type:
+    """Import and return the React Paper Trader Bot Settings window."""
+    from .paper.paper_react_bot_detail import dialog_class
+
+    return dialog_class()
 
 
 def _qt_trading() -> type:
@@ -394,6 +409,7 @@ register(START_ALL_PROGRESS, _qt_start_all_progress, _react_start_all_progress)
 register(BUY_CONFIRMATION, _qt_buy_confirmation, _react_buy_confirmation)
 register(SIMULATOR, _qt_simulator, _react_simulator)
 register(PAPER_TRADER, _qt_paper_trader, _react_paper_trader)
+register(PAPER_BOT_DETAIL, _qt_paper_bot_detail, _react_paper_bot_detail)
 register(TRADING, _qt_trading, _react_trading)
 register(CHARTS, _qt_charts, _react_charts)
 register(EXCHANGE, _qt_exchange, _react_exchange)
