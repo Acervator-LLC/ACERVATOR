@@ -236,7 +236,12 @@ class PaperTradingTab(QWidget):
             return
 
         def run() -> None:
-            self.feedRead.emit(read_fleet(self._exchange, symbols))
+            summary = read_fleet(self._exchange, symbols)
+            try:
+                self.feedRead.emit(summary)
+            except RuntimeError:
+                # The host was deleted while the reads ran; nothing draws the line.
+                return
 
         threading.Thread(
             target=run, name=tab_surface.FEED_THREAD_NAME, daemon=True
