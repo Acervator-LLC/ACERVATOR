@@ -47,6 +47,14 @@ class CandleLike(Protocol):
     volume: float
 
 
+class FillLike(Protocol):
+    """The side, the role label and the price every fill the chart tags carries."""
+
+    side: str
+    label: str
+    price: float
+
+
 METHOD = "native_chart.state"
 
 ACCESSIBLE_NAME = "Candlestick Chart"
@@ -252,7 +260,20 @@ TIME_AXIS_HEIGHT_PX = 18
 LEFT_MARGIN_PX = 8
 RIGHT_MARGIN_PX = 78
 VOLUME_STRIP_PX = 28
-SUB_PANE_PX = 60
+#: A right-edge tag's height in logical pixels: the caption line height with
+#: two pixels over and under.
+TAG_HEIGHT_PX = 14
+#: A sub-pane's label row, one tag tall, over its plot.
+SUB_PANE_LABEL_PX = TAG_HEIGHT_PX
+#: The tag-tall bands a sub-pane's plot holds: over the upper ruled level, the
+#: upper level, the value tag at the middle, the lower level, under the lower level.
+SUB_PANE_PLOT_BANDS = 5
+#: The height every sub-pane draws at on the Charts tab: the label row over
+#: the plot's bands. A host shorter than the panes' height scrolls.
+SUB_PANE_READABLE_PX = SUB_PANE_LABEL_PX + SUB_PANE_PLOT_BANDS * TAG_HEIGHT_PX
+#: The least height a sub-pane folds to on a fixed-height venue image.
+SUB_PANE_FOLD_PX = 28
+SUB_PANE_PX = SUB_PANE_READABLE_PX
 PRICE_PANE_PAINT_FLOOR_PX = 120
 PRICE_PANE_LAYOUT_FLOOR_PX = 220
 #: The sub-panes in the order CHART_OVERLAYS offers them.
@@ -358,11 +379,33 @@ READOUT_ROLE_LIGHT = "TEXT_LIGHT"
 READOUT_ROLE_DIM = "TEXT_DIM"
 READOUT_ROLE_UP = "UP_FILL"
 READOUT_ROLE_DOWN = "DOWN_FILL"
+#: The theme role a fill row paints in, by the fill's label; a label outside
+#: the map takes the buy or sell default by side.
+READOUT_FILL_ROLES = {
+    "SCRUM": "MARKER_SCRUM",
+    "FOLD": "MARKER_FOLD",
+    "DIST": "MARKER_DIST",
+}
+READOUT_ROLE_BUY = "MARKER_BUY"
+READOUT_ROLE_SELL = "MARKER_SELL"
+#: The one-character label of a fill row: the sell glyph and the buy glyph.
+READOUT_SELL_GLYPH = "▼"
+READOUT_BUY_GLYPH = "▲"
+#: The text a fill's tag and its readout row carry: the role and the price.
+FILL_TAG_FORMAT = "{label} {price}"
+FILL_BUY_LABEL = "BUY"
+FILL_SELL_LABEL = "SELL"
+FILL_BUY_SIDE = "buy"
 READOUT_ROLE_COLOURS: dict[str, Color] = {
     READOUT_ROLE_LIGHT: TEXT_LIGHT,
     READOUT_ROLE_DIM: TEXT_DIM,
     READOUT_ROLE_UP: UP_FILL,
     READOUT_ROLE_DOWN: DOWN_FILL,
+    READOUT_FILL_ROLES["SCRUM"]: MARKER_TYPE_COLORS["SCRUM"],
+    READOUT_FILL_ROLES["FOLD"]: MARKER_TYPE_COLORS["FOLD"],
+    READOUT_FILL_ROLES["DIST"]: MARKER_TYPE_COLORS["DIST"],
+    READOUT_ROLE_BUY: MARKER_DEFAULT_BUY,
+    READOUT_ROLE_SELL: MARKER_DEFAULT_SELL,
 }
 
 PANEL_SPACING_PX = 2
@@ -373,6 +416,8 @@ LEGEND_SPACING_PX = 12
 TIMEFRAME_LABEL = "TF:"
 TIMEFRAME_COMBO_MAX_WIDTH_PX = 90
 CHART_PANEL_MIN_HEIGHT_PX = 250
+#: The accessible name of the scroll area the chart sits in on the Qt panel.
+CHART_SCROLL_NAME = "Chart scroll"
 #: The one height every control in the Charts tab's control row takes, the
 #: pixel size and family the two arrow glyphs are set in, and the side of a
 #: toggle box, which stays under the caption line height.
@@ -727,6 +772,7 @@ METRICS = {
     "timeframe_label": TIMEFRAME_LABEL,
     "timeframe_combo_max_width_px": TIMEFRAME_COMBO_MAX_WIDTH_PX,
     "chart_panel_min_height_px": CHART_PANEL_MIN_HEIGHT_PX,
+    "chart_scroll_name": CHART_SCROLL_NAME,
     "control_height_px": CONTROL_HEIGHT_PX,
     "arrow_glyph_px": ARROW_GLYPH_PX,
     "arrow_glyph_family": ARROW_GLYPH_FAMILY,
@@ -1001,6 +1047,13 @@ def layout(
         "sub_panes": bounds,
         "time_axis_top_px": edge,
     }
+
+
+def device_pen_width(width_px: float, ratio: float) -> float:
+    """``width_px`` logical pixels scaled by ``ratio`` to whole device pixels, never
+    under one, given back in logical pixels."""
+    scale = float(ratio) if float(ratio) > 0 else 1.0
+    return max(1, round(float(width_px) * scale)) / scale
 
 
 def candle_geometry(chart_width_px: float, candle_count: int) -> dict:
@@ -1314,9 +1367,36 @@ def ohlc_row(candle: CandleLike) -> list[list]:
     ]
 
 
-def readout_lines(candle: CandleLike) -> list[list[str]]:
-    """The crosshair readout's six rows for ``candle``: label, text and the theme
-    role the text paints in (a ``READOUT_ROLE_COLOURS`` key)."""
+def fill_label(fill: FillLike) -> str:
+    """The role a fill's tag names: its label, else ``FILL_BUY_LABEL`` or ``FILL_SELL_LABEL`` by side."""
+    is_buy = str(fill.side).lower() == FILL_BUY_SIDE
+    return str(fill.label or (FILL_BUY_LABEL if is_buy else FILL_SELL_LABEL))
+
+
+def fill_role(fill: FillLike) -> str:
+    """The theme role a fill draws in: ``READOUT_FILL_ROLES`` by label, else the side's default."""
+    is_buy = str(fill.side).lower() == FILL_BUY_SIDE
+    return READOUT_FILL_ROLES.get(
+        fill_label(fill), READOUT_ROLE_BUY if is_buy else READOUT_ROLE_SELL
+    )
+
+
+def fill_row(fill: FillLike) -> list[str]:
+    """One readout row for ``fill``: the side's glyph, the tag's text and its role."""
+    is_buy = str(fill.side).lower() == FILL_BUY_SIDE
+    return [
+        READOUT_BUY_GLYPH if is_buy else READOUT_SELL_GLYPH,
+        FILL_TAG_FORMAT.format(label=fill_label(fill), price=fmt_price(fill.price)),
+        fill_role(fill),
+    ]
+
+
+def readout_lines(
+    candle: CandleLike, fills: Sequence[FillLike] = ()
+) -> list[list[str]]:
+    """The crosshair readout's rows for ``candle``: label, text and the theme
+    role the text paints in (a ``READOUT_ROLE_COLOURS`` key); six candle rows,
+    then one ``fill_row`` per entry of ``fills``."""
     accent = READOUT_ROLE_UP if candle.close >= candle.open else READOUT_ROLE_DOWN
     change = candle.close - candle.open
     return [
@@ -1334,7 +1414,7 @@ def readout_lines(candle: CandleLike) -> list[list[str]]:
             accent,
         ],
         ["V", fmt_tooltip_volume(candle.volume), READOUT_ROLE_DIM],
-    ]
+    ] + [fill_row(fill) for fill in fills]
 
 
 def tooltip_rows(candle: CandleLike) -> list[list]:

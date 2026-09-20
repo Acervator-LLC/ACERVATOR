@@ -1741,3 +1741,261 @@ same" - a reading of the floors, which no longer draw.
 without the trade markers, the target lines, the tranche floors and the
 fire glow that a traded asset carries." - the sentence holds; there are no
 tranche floors on any market now.
+
+## 2026-09-20 09:45 - #55 - the oscillators: one readable sub-pane height, whole-pixel pens, tags that never cross
+
+His words, 2026-09-20: *"Oscillators are not being drawn at the highest
+quality and are too compressed vertically to be read clearly."* And: *"it
+does not appear that the GUI Archetype organized all of the elements properly
+using any kind of rules."* Three rules now govern the seven sub-panes, the
+pens and the fill tags, and each is proved on the running program in both
+builds. The GUI Archetype carries no layout or draw-quality rule, so the
+rules are stated here and read off the widget and the page.
+
+### The height rule
+
+Every sub-pane on the Charts tab draws at one readable height. The figure is
+derived from what a sub-pane holds: a label row one tag tall over a plot of
+five bands one tag tall each - room over the upper ruled level, the upper
+level, the value tag at the middle, the lower level, and room under the
+lower level. A tag is 14 px, so a sub-pane is 14 + 5 x 14 = 84 px. The
+lines, the histogram and the ruled levels plot under the label row and never
+through it. The value tag sits at the plot's middle. The price pane never
+falls under 220 px.
+
+`src/gui/main_tabs/native_chart_surface.py` - the figure beside the pane numbers
+
+```python
+TAG_HEIGHT_PX = 14
+#: A sub-pane's label row, one tag tall, over its plot.
+SUB_PANE_LABEL_PX = TAG_HEIGHT_PX
+#: The tag-tall bands a sub-pane's plot holds: over the upper ruled level, the
+#: upper level, the value tag at the middle, the lower level, under the lower level.
+SUB_PANE_PLOT_BANDS = 5
+#: The height every sub-pane draws at on the Charts tab: the label row over
+#: the plot's bands. A host shorter than the panes' height scrolls.
+SUB_PANE_READABLE_PX = SUB_PANE_LABEL_PX + SUB_PANE_PLOT_BANDS * TAG_HEIGHT_PX
+#: The least height a sub-pane folds to on a fixed-height venue image.
+SUB_PANE_FOLD_PX = 28
+```
+
+The chart's height is the natural height of the panes on. With the volume
+strip and the seven sub-panes it is 28 + 18 + 220 + 28 + 7 x 84 + 18 = 900 px.
+A panel taller than that gives the rest to the price pane. A panel shorter
+than that keeps the chart at 900 and scrolls it.
+
+`src/gui/native_chart.py` - the widget's height
+
+```python
+        def _apply_height_for_panes(self) -> None:
+            """Set the minimum height to ``_natural_height_for_panes`` at the widget's width.
+
+            ``_height_override`` from a grip drag wins when it is taller. The
+            scroll area holding the chart scrolls when its viewport is shorter
+            than this height; a taller viewport's extra height goes to the price pane.
+            """
+            target = self._natural_height_for_panes(self.width())
+```
+
+### The scroll hosts
+
+On the Qt panel the chart sits in a scroll area with a vertical bar as needed
+and no horizontal bar. A wheel over the chart zooms the window, as before,
+and never scrolls the area, because the chart takes the wheel. The bar
+scrolls. The toggle row sits under the scroll area at the tab's foot.
+
+`src/gui/native_chart.py` - the scroll area in the panel
+
+```python
+            self._scroll = QScrollArea(self)
+            self._scroll.setAccessibleName(CHART_SCROLL_NAME)
+            self._scroll.setWidgetResizable(True)
+            self._scroll.setFrameShape(QFrame.NoFrame)
+            self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._scroll.setWidget(self._chart)
+            layout.addWidget(self._scroll)
+```
+
+On the page the chart mount scrolls the same way. The image host inside it
+is never under the natural height, so a shorter mount scrolls and the
+toggle row under the mount stays at the panel's foot. The wheel listener on
+the host already takes the wheel for the zoom.
+
+`src/gui/web/trade_charts_tab.js` - the mount and the host
+
+```javascript
+      style: {
+        flex: AUTO,
+        minHeight: ZERO_PX,
+        overflowX: HIDDEN,
+        overflowY: AUTO,
+        display: FLEX,
+        flexDirection: COLUMN
+      }
+```
+
+```javascript
+    into.style.minHeight = height(
+      answer[IMAGE_NATURAL_HEIGHT] === undefined
+        ? answer[IMAGE_HEIGHT]
+        : answer[IMAGE_NATURAL_HEIGHT]
+    );
+```
+
+The image the page asks for is never under the natural height either.
+
+`src/gui/react_charts_tab.py` - the image's height
+
+```python
+            natural = int(self._painter._natural_height_for_panes(width))
+            minimum = int(self._painter._minimum_height_for_panes(width))
+            height = max(natural, asked_height)
+```
+
+A fixed-height venue image keeps the fold of 2026-09-19: each sub-pane
+shrinks from the readable height toward 28 px, then the reading strip folds,
+then the price pane shrinks toward 120 px, and a height under the least
+layout is refused by name.
+
+### The quality rule
+
+Every stroke pen's width is its logical width scaled by the device pixel
+ratio to whole device pixels, never under one. The five logical widths 0.8,
+1.0, 1.2, 1.4 and 1.5 draw 1, 1, 1, 1 and 2 device pixels at ratio 1.0 and
+1, 1, 2, 2 and 2 at 1.25. Lines draw with anti-aliasing on. Axis rules - the
+grid, the pane separators, the ruled levels, the reference lines and the
+MACD zero line - draw with anti-aliasing off, one device pixel wide, on
+coordinates snapped to the centre of a device pixel. Bars - the volume bars
+and the MACD histogram - draw with anti-aliasing off on whole device pixels.
+Text stays at the caption size in the mono family.
+
+`src/gui/main_tabs/native_chart_surface.py` - the pen width
+
+```python
+def device_pen_width(width_px: float, ratio: float) -> float:
+    """``width_px`` logical pixels scaled by ``ratio`` to whole device pixels, never
+    under one, given back in logical pixels."""
+    scale = float(ratio) if float(ratio) > 0 else 1.0
+    return max(1, round(float(width_px) * scale)) / scale
+```
+
+`src/gui/native_chart.py` - one ruled level
+
+```python
+                def _rule_line(y: float, colour=None, dashed: bool = True) -> None:
+                    """One ruled level across the pane at ``y``: one device pixel, aliased, snapped."""
+                    pen = QPen(colour if colour is not None else self.GRID_MINOR, px)
+                    if dashed:
+                        pen.setStyle(Qt.DashLine)
+                    p.setRenderHint(QPainter.Antialiasing, False)
+                    p.setPen(pen)
+                    p.drawLine(QPointF(ML, snap(y)), QPointF(w - MR, snap(y)))
+                    p.setRenderHint(QPainter.Antialiasing, True)
+```
+
+### The tag rule and the readout
+
+Every glyph draws first. A fill tag is then placed at the right of its glyph,
+or at the left when the right would cross the price scale. A tag that would
+cross a glyph or a tag already drawn is not drawn. The glyph count does not
+move. Merging two tags into one naming a count was not chosen, because a
+count names no price and no role.
+
+`src/gui/native_chart.py` - where a tag goes
+
+```python
+        def _tag_place(
+            self,
+            right_x: float,
+            left_x: float,
+            y: float,
+            width: float,
+            drawn: list,
+            scale_x: float,
+        ) -> Optional[QRectF]:
+            """The rect a fill tag draws in: ``TAG_H_PX`` tall at ``right_x`` when
+            ``_tag_clear``, else at ``left_x`` when clear, else None and no tag."""
+            for x in (right_x, left_x):
+                rect = QRectF(x, y, width, TAG_H_PX)
+                if self._tag_clear(rect, drawn, scale_x):
+                    return rect
+            return None
+```
+
+The crosshair's readout names every fill on the candle under the pointer.
+One row per fill follows the six candle rows: its label is the side's glyph
+character, a sell as a filled triangle pointing down and a buy as one
+pointing up, and its text is the tag's text in the marker's colour. The
+painter's own tip and the page's canvas tip both draw the rows, because the
+page reads them off the geometry the image answer carries.
+
+`src/gui/main_tabs/native_chart_surface.py` - one readout row for a fill
+
+```python
+def fill_row(fill: FillLike) -> list[str]:
+    """One readout row for ``fill``: the side's glyph, the tag's text and its role."""
+    is_buy = str(fill.side).lower() == FILL_BUY_SIDE
+    return [
+        READOUT_BUY_GLYPH if is_buy else READOUT_SELL_GLYPH,
+        FILL_TAG_FORMAT.format(label=fill_label(fill), price=fmt_price(fill.price)),
+        fill_role(fill),
+    ]
+```
+
+### The oscillator readings, off the running program, both builds
+
+Each build ran the real window with the home on a scratch directory, every
+socket but loopback refused, two bots off a scratch copy of one record, 100
+BTC 1h candles and a loopback History venue answering 40 fills, 26 inside the
+window. The chart's host was resized to 690, 900 and 1100 px. Each run was
+driven under the debugger with a breakpoint on the paint pass, ignored on
+every crossing and counted at the end.
+
+| reading | before, Qt / React | after, Qt / React |
+| ------- | ------------------ | ----------------- |
+| seven sub-panes at a 690 px host | 54.0 px each, the price pane 220, no scroll | 84.0 px each, the price pane 220, the chart 900 tall, the bar's range 210 |
+| at 900 | 60.0 each, 388 | 84.0 each, 220, range 0 |
+| at 1100 | 60.0 each, 588 | 84.0 each, 420, range 0 |
+| the toggle row | under the chart | under the scroll host at the tab's foot: y 738 on Qt, 740.8 on the page, at 690 |
+| the wheel over the chart | zooms 100 to 85 candles | zooms 100 to 85; the bar stays at 0 |
+| the stroke pens in device pixels, ratio 1.0 | 0.8, 1.0, 1.2, 1.4, 1.5, 1.7 | 1, 2 |
+| ratio 1.25 | 1.0, 1.25, 1.5, 1.75, 1.875, 2.12 | 1, 2 |
+| the fills at 100 candles | 26 glyphs, 26 tags, 24 overlapping pairs | 26 glyphs, 15 tags, 0 overlapping pairs |
+| at 36 candles | 5 glyphs, 5 tags, 0 pairs | 5 glyphs, 4 tags, 0 pairs |
+| the squat venue, Facebook 1200 by 630, eight voters | seven sub-panes at 40 px, the strip folded, the price pane 226 | the same |
+| the readable figure planted to 20 | - | seven sub-panes at 20.0, the chart 452 tall; 84.0 restored |
+| the tag rule planted off | - | 26 tags, 24 overlapping pairs; 15 and 0 restored |
+
+The crops at 1.25, four times enlarged: before, the RSI line smeared over
+two to three device rows and the 30 and 70 rules over two faint rows; after,
+the line two device pixels and each rule one crisp dashed row, the label in
+its own row over the plot, the value tag legible. Renders sit under
+`artifacts/u55/C8/` before and after.
+
+### Four sentences the oscillators overtake
+
+They were not reworded. They are quoted here.
+
+"Each takes 60 px at the chart's natural height. When the window gives less,
+every sub-pane shrinks alike, down to 28 px, so the price pane keeps its 220
+px and every pane stays on screen." - each takes 84 px on the tab at every
+window height, and the panel scrolls when the window gives less; only a
+fixed-height venue image shrinks a sub-pane, toward 28 px.
+
+"`SUB_PANE_H = 60`" and "`SUB_PANE_MIN_H = 28`" - the two names are gone;
+the painter reads the surface's readable figure and its fold floor.
+
+"The wick is a share of one candle column and never under one device pixel;
+the candle border is one device pixel; the indicator lines keep their
+logical width and stay anti-aliased. Read on a 1200 pixel image at ratio 1.0
+the pens are 0.8, 1.0, 1.2, 1.4, 1.5 and 1.56 logical pixels; at ratio 2.0
+the set gains 0.5, the one-device-pixel pen." - every stroke pen is now a
+whole number of device pixels; at ratio 1.0 the set is 1 and 2, at 1.25 it
+is 0.8 and 1.6 logical, which are 1 and 2 device pixels.
+
+"The glyph sits on the candle whose interval holds the fill's stamp, one
+candle column wide and a twentieth of the price pane tall, with a tag naming
+the role and the price beside it." - the glyph holds; its tag draws only
+where it crosses no glyph and no other tag, and the readout names the fill
+under the pointer.
