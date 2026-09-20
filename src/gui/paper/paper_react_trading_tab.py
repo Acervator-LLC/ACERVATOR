@@ -22,6 +22,17 @@ pushes each entry of the host's own ``APIInteractionLog`` as one of
 ``apiEntryLogged`` so a read on a worker thread lands on the GUI thread, and
 ``aggregate`` is ``strip_aggregate`` over the held records and
 ``PaperLedger.figures``, what the header strip reads while Paper is in front.
+``_start_paper_run`` is the Simulator's ``_start_run`` forked: Start Paper
+Run opens ``paper_run.start`` over the held fleet under ``run_rule`` and
+starts one ``PaperRunner`` on the ``RUN_THREAD_NAME`` thread, which ticks
+every record whose state reads ``running`` over ``exchange()``; while it
+runs the page's run button reads ``STOP_RUN_TEXT`` through ``show_tab``
+and its press reaches ``_stop_paper_run``, the fork of ``_stop_run``, and
+``_take_paper_run`` on ``run_finished`` writes ``run_ended_line`` and
+redraws the button; each fill crosses on ``run_trade``, each runner line
+on ``run_line`` and the ledger's figures on ``run_figures`` to
+``_take_figures``, so ``aggregate`` reads a snapshot and never the runner's
+balances.
 The host holds one ``PaperExchange`` over that log, and ``_read_feed`` runs
 ``read_fleet`` over it on a worker thread after each Import Live Fleet, whose
 summary ``feedRead`` carries to ``_on_feed_read`` and one ``feed_line``.
@@ -37,6 +48,7 @@ from typing import Any, Optional
 
 from ...core.sound_engine import get_sound_engine
 from ...exchange.api_logger import APIInteractionLog
+from ...paper import paper_run
 from ...paper.fake_balance import PaperLedger
 from ...paper.fleet_source import (
     PaperFleetSource,
@@ -47,11 +59,11 @@ from ...paper.fleet_source import (
 from ...paper.paper_bot_manager import PaperBotManager
 from ...paper.paper_bot_view import PaperBotView
 from ...paper.paper_exchange import PaperExchange, read_fleet
+from ...paper.paper_run import PaperRun, PaperRunner, PaperTrade
 from ..main_tabs import bot_status_table_surface as scrum_surface
 from ..main_tabs import design_system_surface as token_surface
 from ..main_tabs import extractor_bot_table_surface as extractor_surface
 from ..main_tabs import indicator_panel_surface, status_log_surface
-from ..main_tabs import paper_trader_tab_surface as paper
 from ..main_tabs.trading_tab_surface import (
     EXCHANGE_PARAM,
     WATCHDOG_INTERVAL_MS,
@@ -85,7 +97,7 @@ except ImportError:
 
 logger = logging.getLogger("acervator.gui.paper_react_trading_tab")
 
-ACCESSIBLE_NAME = paper.HEADING
+ACCESSIBLE_NAME = tab_surface.HEADING
 
 #: The element ``paper_trading_tab.js`` draws the tab into.
 PANEL_ROOT_ID = "panel-root"
@@ -753,6 +765,14 @@ if _HAS_WEBENGINE:
         apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
         #: One ``read_fleet`` summary, queued onto the GUI thread for ``_on_feed_read``.
         feedRead = Signal(object)  # noqa: N815 - Qt signal name
+        #: One runner line and its level, queued onto the GUI thread.
+        run_line = Signal(str, str)
+        #: One ``PaperTrade``, queued onto the GUI thread for ``_take_trade``.
+        run_trade = Signal(object)
+        #: The ``PaperRun`` the runner ended with, queued for ``_take_paper_run``.
+        run_finished = Signal(object)
+        #: The ledger's figures after a worked pass, queued for ``_take_figures``.
+        run_figures = Signal(object)
 
         def __init__(
             self,
@@ -779,6 +799,10 @@ if _HAS_WEBENGINE:
             )
             self._bot_manager = PaperBotManager(self._fleet_source)
             self._ledger = PaperLedger()
+            self._figures: dict = {}
+            self._states: dict = {}
+            self._runner: Optional[PaperRunner] = None
+            self._fills: list[PaperTrade] = []
             self._theme = theme
             self._state = tab_surface.PaperTradingTabState()
             self._log = PaperStatusLogModel()
@@ -799,6 +823,10 @@ if _HAS_WEBENGINE:
             self.apiEntryLogged.connect(self._on_api_event)
             self._api_log.add_listener(self._cross_api_event)
             self.feedRead.connect(self._on_feed_read)
+            self.run_line.connect(self.log)
+            self.run_trade.connect(self._take_trade)
+            self.run_finished.connect(self._take_paper_run)
+            self.run_figures.connect(self._take_figures)
             # Polls StatusLogModel.health_stats() every 60s on the GUI thread.
             self._activity_log_watchdog_state = WatchdogState()
             self._activity_log_watchdog_timer = QTimer(self)
@@ -840,8 +868,30 @@ if _HAS_WEBENGINE:
 
         def aggregate(self) -> dict:
             """The header strip's figures, ``strip_aggregate`` over the held
-            fleet and ``PaperLedger.figures``."""
-            return strip_aggregate(self._fleet_source.bots(), self._ledger.figures())
+            fleet and the ledger figures the runner last posted through
+            ``run_figures``."""
+            return strip_aggregate(self._fleet_source.bots(), self._figures)
+
+        def figures(self) -> dict:
+            """The ledger figures the runner last posted, empty before a run."""
+            return dict(self._figures)
+
+        def runner(self) -> Optional[PaperRunner]:
+            """The ``PaperRunner`` of the run in flight or last finished, or None."""
+            return self._runner
+
+        def run(self) -> Optional[PaperRun]:
+            """The ``PaperRun`` in flight or last finished, or None before one."""
+            return self._runner.run if self._runner is not None else None
+
+        def run_running(self) -> bool:
+            """True while the ``RUN_THREAD_NAME`` worker thread is alive."""
+            return self._runner is not None and self._runner.running()
+
+        def fills(self) -> list[PaperTrade]:
+            """Every ``PaperTrade`` the run in flight or last finished handed
+            ``run_trade``, in fill order; empty before the first run."""
+            return list(self._fills)
 
         def api_log(self) -> APIInteractionLog:
             """The host's own API log; every entry it records reaches the pane."""
@@ -859,14 +909,92 @@ if _HAS_WEBENGINE:
 
         def _way_in(self, action: str) -> None:
             """Run the corner or card press ``action``: ``_import_live_fleet``
-            for Import Live Fleet, ``start_run_line`` for Start Paper Run."""
-            if action == paper.IMPORT_LIVE_FLEET_ACTION:
+            for Import Live Fleet, ``_start_paper_run`` for Start Paper Run with
+            no run up, ``_stop_paper_run`` for the same seat while one is up."""
+            if action == tab_surface.IMPORT_LIVE_FLEET_ACTION:
                 self._import_live_fleet()
                 return
-            if action == paper.START_RUN_ACTION:
-                self.log(tab_surface.start_run_line(), "warning")
+            if action in (tab_surface.START_RUN_ACTION, tab_surface.STOP_RUN_ACTION):
+                if self.run_running():
+                    self._stop_paper_run()
+                elif action == tab_surface.START_RUN_ACTION:
+                    self._start_paper_run()
                 return
             self.log(f"{action} is not a way in.", "error")
+
+        def _start_paper_run(self) -> None:
+            """Start Paper Run: ``paper_run.start`` over the held fleet under
+            ``run_rule`` of ``exchange().venue()``, one ``PaperRunner`` on the
+            ``RUN_THREAD_NAME`` thread reading ``_states``, the started line,
+            and the page's run button redrawn Stop; a fleet holding no record
+            or a venue with no cited rule writes one line and starts nothing."""
+            bots = self._fleet_source.bots()
+            if not bots:
+                self.log(tab_surface.RUN_NO_BOT_TEXT, "warning")
+                return
+            venue = self._exchange.venue()
+            rule = paper_run.run_rule(venue)
+            if rule is None:
+                self.log(tab_surface.run_no_rule_line(venue), "warning")
+                return
+            run = paper_run.start(bots, rule)
+            self._ledger = run.ledger
+            self._figures = run.figures()
+            self._fills = []
+            self._refresh_states()
+            self._runner = PaperRunner(
+                run,
+                self._exchange,
+                self._read_states,
+                on_trade=self.run_trade.emit,
+                on_figures=self.run_figures.emit,
+                on_finished=self.run_finished.emit,
+                say=lambda line: self.run_line.emit(line, "info"),
+            )
+            self._runner.start()
+            self.log(
+                tab_surface.run_started_line(
+                    len(bots),
+                    len(tab_surface.running_bot_ids(bots)),
+                    run.ledger.fleet_target_usd,
+                ),
+                "success",
+            )
+            self._state.run_running = True
+            self.show_tab({})
+
+        def _stop_paper_run(self) -> None:
+            """Stop Paper Run: ``RUN_STOPPING_TEXT`` and the event the runner
+            reads before each tick; ``run_finished`` follows from the thread."""
+            self.log(tab_surface.RUN_STOPPING_TEXT, "warning")
+            if self._runner is not None:
+                self._runner.stop()
+
+        def _take_paper_run(self, run: PaperRun) -> None:
+            """The runner's end on the GUI thread: the final figures held,
+            ``run_ended_line`` written and the run button redrawn Start."""
+            self._figures = run.figures()
+            self.log(tab_surface.run_ended_line(run), "info")
+            self._state.run_running = False
+            self.show_tab({})
+
+        def _take_figures(self, figures: dict) -> None:
+            """Hold the ledger figures the runner posted, what ``aggregate`` reads."""
+            self._figures = dict(figures or {})
+
+        def _take_trade(self, trade: PaperTrade) -> None:
+            """Hold one fill the runner posted, in fill order."""
+            self._fills.append(trade)
+
+        def _read_states(self) -> dict:
+            """The state per held ``bot_id`` as of the last ``_refresh_states``,
+            the map the runner reads on its own thread."""
+            return self._states
+
+        def _refresh_states(self) -> dict:
+            """Rebuild ``_states`` from ``PaperBotManager.bots`` on the GUI thread."""
+            self._states = {bot.bot_id: bot.state for bot in self._bot_manager.bots()}
+            return self._states
 
         def _import_live_fleet(self) -> None:
             """Import Live Fleet: ``exchange_choice`` over the exchanges
@@ -1232,6 +1360,7 @@ if _HAS_WEBENGINE:
             for eid in wanted:
                 self.add_exchange_tab(eid, exchange_display_name({"exchange_id": eid}))
             self._drop_unlisted_exchange_tabs(wanted)
+            self._refresh_states()
             self.refresh_bots()
             self.refresh_votes()
             self.show_tab({})

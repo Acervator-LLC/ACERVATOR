@@ -1297,4 +1297,429 @@ The nine calls were 0.271 s apart at least and spanned 2.3 s; no 400 and no
 `src/exchange/timeframes.py` still says the venue ships eight granularities
 and no `4h`; that file is Live's and this unit does not touch it.
 
+## 2026-09-20 - #19 - The paper bot ticks and fills on the clone
+
+Unit Q3 of issue #19. Start Paper Run now starts one worker thread that ticks
+every running paper bot at Live's cadence over `PaperExchange`, evaluates the
+shipped gate chains on each worked tick, sizes every scrum and fold with the
+pure functions Live calls, fills a scrum at the book's best bid and a fold at
+the best ask with the venue's taker fee, and moves the paper ledger the
+header strip reads. The old hosts left the tree.
+
+### The sentences this unit overtakes
+
+Seven passages on this page describe the run as it was before this unit. Each
+is quoted here and kept above as it stands.
+
+- "`src/gui/main_tabs/paper_trader_tab_surface.py` — the second row's two
+  faces" (The two presses). The file is removed; the two faces are
+  `run_buttons` in `src/gui/paper/paper_trading_tab_surface.py`.
+- "A run ticks on the wall clock and asks the feed for one bot per fire, so a
+  fleet of many bots never blocks the window on a single pass. One bar is
+  shared across the open bots." and "`src/gui/paper_trader_tab.py` — the
+  round robin" with its `advance_once` block (Real time). The runner ticks
+  every running bot each 5 s on its own thread, and the window is never asked
+  to wait.
+- "The Qt window and the React page print one line from one view model, so
+  the two hosts cannot report different money." with its `LEDGER_SEPARATOR`
+  block (The fleet ledger). The four figures reach both hosts through
+  `strip_aggregate` and the header strip, from one figures dict the runner
+  posts.
+- "`src/gui/paper_trader_tab.py` — the press that opens a run" with its
+  `_tick_timer` block, and "`src/gui/react_paper_trader_tab.py` — the sheet
+  the page carries" with `paper_trader_tab.css` (Start Paper Run redraws the
+  pane, The style sheet the Paper page loads). Both files, the page module
+  and the sheet are removed.
+- "The two hosts the sections above describe, `src/gui/paper_trader_tab.py`
+  and `src/gui/react_paper_trader_tab.py`, stay on disk and nothing loads
+  them; a later unit removes them once a paper bot ticks on the clone."
+  (2026-09-19). This is that unit.
+- "`BUDGET_MULTIPLE` in `src/paper/fake_balance.py` still reads `2.0`; the
+  unit that starts a paper run retires it, and no clone code reads it." (The
+  budget rule today overtakes four sentences). Retired: `BUDGET_MULTIPLE`,
+  `budget_usd`, `fleet_budget_usd` and the `budget_usd` field are gone.
+- "A press on Start Paper Run writes one line saying no paper run is built;
+  the run is a later unit's too." with `START_RUN_TEXT` (What the fork
+  draws). The press starts the run below.
+
+The `apply_scrum` and `apply_fold` the earlier sections describe sized a fill
+with their own arithmetic; the two below are the Simulator's, forked over
+`src/trading/scrumming/sizing.py`.
+
+### Who runs a paper bot
+
+`PaperRunner` in `src/paper/paper_run.py` is the forked shape of the
+Simulator's `_walk_bot`: one `threading.Thread` named `RUN_THREAD_NAME`
+(`paper-run`) per Start Paper Run. Its loop calls `advance` once, waits
+`TICK_INTERVAL_S` (5.0 s, the value `ScrummingBot.tick_interval` answers)
+through the one clock seam `WallClock.wait`, and reads the stop event before
+each pass. The tape the Simulator walks is replaced by the adapter's live
+reads.
+
+`src/paper/paper_run.py` — the loop
+
+```python
+    def _loop(self) -> None:
+        try:
+            while not self._stop.is_set():
+                self.advance()
+                if self._stop.is_set():
+                    break
+                self._clock.wait(self._stop, self._tick_interval_s)
+```
+
+Each pass reads every held record's state through the host's `_states` map,
+which the host rebuilds on the GUI thread at every `fleet_changed`. A record
+whose state reads `running` counts one tick; a `paused`, `stopped` or `idle`
+record is skipped that pass and picked up the pass after the command bar
+moves it. A running bot is worked every `tick_skip` ticks, the rule
+`ScrummingBot.tick` applies: `scrum_read_rate_min` minutes over the 5 s tick,
+a tenth of that in track or fire, and the first tick after a bot starts
+running always worked, as Live's init tick is. `PaperBot` in
+`src/paper/fleet_source.py` carries `scrum_read_rate_min` from the record's
+config, 5 when the config names none.
+
+`src/paper/paper_run.py` — the skip
+
+```python
+def tick_skip(scrum_read_rate_min: int, scrum_target_mode: Optional[str]) -> int:
+    rate = max(0, int(scrum_read_rate_min or 0))
+    if rate <= 0:
+        return 1
+    base = max(1, int((rate * 60) / max(TICK_INTERVAL_S, 0.1)))
+    if str(scrum_target_mode or "") in TRACK_MODES:
+        return max(1, base // 10)
+    return base
+```
+
+A worked tick reads `ticker` and `candles` on the runner's thread, never on
+the GUI thread. The ticker is cached 5 s and the candle window one bar, the
+two windows `src/exchange/data_pool.py` gives Live, so a 5m bot's gates read
+a new window every 300 s while its fill price follows the book every 5 s.
+
+### Who evaluates and who sizes
+
+`tick` builds the `GateContext` through the Simulator's `tape_context` over
+the window's newest close, `bb_reading` and `VotingEngine.compute_all`, and
+evaluates it with `latch`, unchanged from the sections above. The
+higher-timeframe bias is None in this unit, so the two defer flags block
+nothing; unit Q5 widens it.
+
+`apply_scrum` and `apply_fold` are the Simulator's two fills forked over a
+`FakeBalance`, and every figure comes from `src/trading/scrumming/sizing.py`
+by name: `scrum_units`, `priced_usd`, `estimated_fee_usd` and
+`sale_proceeds_usd` on a scrum; `fold_rebuy_factor`,
+`eligible_fold_tranches`, `cycle_growth_cap_usd`, `fold_cap_remaining_usd`,
+`plan_fold_consumption`, `fold_rate_taper`, `fold_spend_usd`, `fold_units`,
+`settle_fold_plan`, `plan_source_price` and `fold_surplus_usd` on a fold. A
+scrum sells from the highest-priced lot first and queues one fold tranche per
+lot sold from, in the dict shape Live's `_tick_execute_scrum` builds. A fold
+is planned under the cycle growth cap, as Live's `tick_phases` plans it, and
+the target's growth from the surplus is unit Q4's.
+
+`src/paper/paper_run.py` — the scrum's size and proceeds
+
+```python
+    units = scrum_units(float(delta), float(price), rule)
+    ...
+    notional = priced_usd(units, float(price))
+    fee = estimated_fee_usd(notional, taker_fee_pct(bot))
+    proceeds = sale_proceeds_usd(notional, fee)
+```
+
+The unit rule is read once per run through `run_rule`, which is
+`unit_rule(CLASS_CRYPTO, venue)`: `fractional` on coinbase. A venue with no
+cited rule starts nothing and writes `run_no_rule_line`.
+
+### Who fills, at what price and fee
+
+A scrum fills at the tick's `best_bid` and a fold at the tick's `best_ask`,
+both from the one `PaperExchange.ticker` read of that tick; never at `last`.
+A fold's tranche eligibility is read at the tick's `last`, where Live's
+`fold_tranches.py` reads it. The fee is `estimated_fee_usd` of the notional
+at `taker_fee_pct`: the record's `trading_fee_pct` when set, else
+`TAKER_FEE_PCT`, the venue's taker fee at the default tier, 0.6 percent, the
+rule the Simulator's `DEFAULT_TRADING_FEE_PCT` applies. A scrum's cash gains
+the proceeds net of the fee; a fold's cash loses the spend plus the fee. Each
+`PaperTrade` carries the `bid`, `ask` and `last` of its read and the inputs
+its size came from, `delta_usd` on a scrum, `eligible_usd` and `taper` on a
+fold, so the paper log can be replayed through the same functions. The
+fill's stamp is the clock's seconds.
+
+`src/paper/paper_run.py` — the two fills at the book
+
+```python
+    if armed["scrum_armed"]:
+        filled = apply_scrum(bot, balance, bid, now_s, stamp, context.delta, rule)
+    elif armed["fold_armed"]:
+        filled = apply_fold(bot, balance, ask, last, now_s, stamp, rule)
+```
+
+### Who holds the money
+
+`FakeBalance` in `src/paper/fake_balance.py` is the fork of the Simulator's
+`SimPosition`: `units`, `cash_usd`, `fold_tranches` as a list of Live's
+tranche dicts, `main_lots`, `target_usd`, `anchor_target_usd`, the growth
+cycle's figures and the trade counters, with `cost_basis_usd` over the lots
+and `mature_usd` through `mature_profit_usd`. It opens on the bot's first
+worked tick as the Simulator's `opening_position` opens: `fold_units` of the
+target at the read's `last` as one lot, plus `cash_usd` of the target, the
+bot's share of the unbounded budget.
+
+`src/paper/paper_run.py` — the opening
+
+```python
+def opening_balance(bot: PaperBot, price: float, rule: str) -> FakeBalance:
+    target_usd = float(bot.target_usd or 0.0)
+    units = fold_units(target_usd, float(price), rule) if price > 0.0 else 0.0
+    lots = [{"units": units, "initial_buy_price": float(price)}] if units > 0 else []
+    return FakeBalance(
+        units=units,
+        cash_usd=target_usd,
+        opening_price=float(price),
+        main_lots=lots,
+        target_usd=target_usd,
+        anchor_target_usd=target_usd,
+    )
+```
+
+The ledger opens at the fleet total. `opening_ledger` sets Paper Spendable
+and Paper Locked to `fleet_target_usd` over every held record; on the
+operator's 38 records that is $3,698.46. `PaperLedger.figures` keeps both
+figures whole: each open balance replaces its `anchor_target_usd` share of
+the opening with its `cash_usd` for Spendable and its `value_usd` for
+Locked, so a record the runner has not opened still counts its target. No
+fold is refused for cash; the spend is not capped by the wallet, the
+`FUNDED_BY_TARGETS` rule the Simulator's Validation runs under, and
+Spendable reads negative rather than refuse. Paper Realized Profits is the
+sum of `fold_surplus_usd` over the run's folds, added through `record_close`
+at each fold.
+
+`src/paper/fake_balance.py` — the two figures over the open balances
+
+```python
+        for bot_id, balance in held.items():
+            price = float(at.get(bot_id, 0.0) or 0.0)
+            spendable += balance.cash_usd - balance.anchor_target_usd
+            locked += balance.value_usd(price) - balance.anchor_target_usd
+```
+
+### What crosses to the GUI thread
+
+Both hosts, `PaperTradingTab` in `src/gui/paper/paper_trading_tab.py` and
+`PaperTradingTabReact` in `src/gui/paper/paper_react_trading_tab.py`, carry
+four queued signals in the Simulator's shape: `run_line` for each runner
+line, `run_trade` for each `PaperTrade`, `run_finished` for the run at the
+thread's end, and `run_figures` for the ledger's figures, which the runner
+computes on its thread after each worked pass and each fill and the host
+holds as `_figures`. `aggregate` lays that snapshot over `strip_aggregate`,
+so the header strip's four money cells read a dict the GUI thread owns and
+never the runner's balances. The strip repaints from it on the window's 2 s
+dashboard tick.
+
+`src/gui/paper/paper_trading_tab.py` — the crossing
+
+```python
+        self._runner = PaperRunner(
+            run,
+            self._exchange,
+            self._read_states,
+            on_trade=self.run_trade.emit,
+            on_figures=self.run_figures.emit,
+            on_finished=self.run_finished.emit,
+            say=lambda line: self.run_line.emit(line, "info"),
+        )
+```
+
+### Start Paper Run and Stop Paper Run
+
+`_start_paper_run` is the Simulator's `_start_run` forked. A press with no
+run up opens `paper_run.start` over the held fleet under the run rule, starts
+the runner, writes `run_started_line` and turns the run button's face to
+`STOP_RUN_BUTTON`, "Stop Paper Run", on the corner and on the Get Started
+card. A fleet holding no record writes `RUN_NO_BOT_TEXT` and starts nothing.
+While the run is up the same seat's press reaches `_stop_paper_run`, which
+writes `RUN_STOPPING_TEXT` and sets the event the runner reads; the loop ends
+at the tick reached, `run_finished` crosses, and `_take_paper_run` writes
+`run_ended_line` and turns the button back to "Start Paper Run". The
+balances, the ledger and the trades stay readable on `run()` after the end.
+The Qt host relabels its four run buttons; the React host redraws the page
+through `show_tab` with `run_running` on `PaperTradingTabState`, and the
+page draws the seat's text and action from the payload as it did before.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the seat's two faces
+
+```python
+def run_buttons(running: bool = False) -> tuple:
+    if not running:
+        return CORNER_BUTTONS
+    return (CORNER_BUTTONS[0], STOP_RUN_BUTTON)
+```
+
+The command bar is unchanged: Start, Pause and Stop move one record's state
+through `PaperBotManager`, and the runner reads that state each pass. Start
+Paper Run starts the runner whatever the records read, so a bot started on
+the bar during a run ticks from the next pass.
+
+### The old hosts are gone
+
+`src/gui/paper_trader_tab.py`, `src/gui/react_paper_trader_tab.py`,
+`src/gui/web/paper_trader_tab.js`, `src/gui/web/paper_trader_tab.css` and
+`src/gui/main_tabs/paper_trader_tab_surface.py` are removed. The six names
+the clone read off the old surface, `HEADING`, `IMPORT_LIVE_FLEET_ACTION`,
+`IMPORT_LIVE_FLEET_TEXT`, `START_RUN_ACTION`, `START_RUN_TEXT` and
+`button_name`, live in `src/gui/paper/paper_trading_tab_surface.py` with
+`STOP_RUN_ACTION` and `STOP_RUN_TEXT`. `src/gui/main_tabs/main_window_surface.py`
+reads the tab's name and method there, `src/gui/main_tabs/paper_trader_tab.py`
+reads the name there, and `src/core/desktop_bridge.py` serves the clone's
+`view_model` under `paper_trading.tab` for the Electron shell, one call
+holding no host. `tools/sync_renderer_modules.py` rewrote
+`desktop/renderer/module_manifest.js`, which now lists the seven paper page
+modules and no old page.
+
+`src/gui/main_tabs/main_window_surface.py` — the tab's name
+
+```python
+from ..paper import paper_trading_tab_surface
+...
+PAPER_TAB = paper_trading_tab_surface.HEADING
+```
+
+### The paper log row gains the book and the fill
+
+`paper_row` in `src/paper/paper_log.py` carries a `book` block, the `last`,
+`bid` and `ask` of the tick's read, and a `fill` block, every field of the
+`PaperTrade`, beside the gate half and the trade half. The log stays the only
+file a run writes, under `PAPER_ROOT`. Unit Q6 rebuilds the log on the bus.
+
+### What the run reading measured
+
+Read off the real window in both builds, under `pdb`, over a scratch home
+holding a copy of the operator's `bot_state.json`, thirty-eight scrumming
+records on coinbase at 5m, every socket but loopback refused, and Q2's
+loopback stand-in extended with a tape: every product's 5m candles follow one
+recorded shape whose newest bar advances one bar per stand-in minute from the
+first candles read, the ticker's last is that bar's close with the bid 0.05
+percent under it and the ask 0.05 percent over it, and a 15 s delay can be
+planted on one ticker answer. The two records started on the bar read
+`scrumming_interval_pct` 5.0 and `scrum_read_rate_min` 1, so the tape rose
+about eight percent over five bars in a zig-zag and fell about fourteen over
+the four after. On the commit before this unit, in both builds, Start Paper
+Run wrote *"Start Paper Run: no paper run is built; nothing started."*, no
+thread started, `BUDGET_MULTIPLE` read 2.0, the fleet budget read $7,396.91,
+twice the target, and `apply_scrum` filled at the price it was handed with
+no bid and no ask in its signature.
+
+```
+reading                                         Qt                          React
+Import Live Fleet, rows                         38                          38
+Start on two rows through the command bar       both running                both running
+thread after Start Paper Run                    paper-run                   paper-run
+the started line                                2 of 38 running,            2 of 38 running,
+                                                target $3,698.46            target $3,698.46
+ledger at the press, Spendable and Locked       3,698.4572 each             3,698.4572 each
+the run button while up                         Stop Paper Run, 4 seats     Stop Paper Run, 3 seats
+ticks in the first minute, two bots             24 (one per bot per 5 s)    24
+worked ticks in the first minute                4 (one per bot per 60 s)    4
+first scrum, ADA/USDC, bar 51                   at 725.294446 = the bid;    the same
+                                                last 725.657275
+first scrum, AERO/USDC                          at 929.390286 = the bid     the same
+scrum units against scrum_units on the          0.00241917, equal;          equal, equal
+log row's delta, bid and rule                   0.00188792, equal
+scrum fee against 0.6% of the notional          0.01052768, equal, twice    equal, twice
+strip after the scrums                          $3,701.95 / $0.00 /         the same
+                                                $3,698.46 / $0.00 / 1
+first fold, ADA/USDC, bar 57                    at 654.668976 = the ask;    the same
+                                                last 654.341805
+fold units against fold_units on the row's      0.00038187, equal;          equal, equal
+usd, ask and rule                               0.00029801, equal
+fold fee against 0.6% of the spend              0.0015, equal, twice        equal, twice
+realized per fold, fold_surplus_usd             0.02434372, twice           the same
+Realized on the ledger against the sum          0.04868745 = 0.04868745     the same
+strip after the folds                           $3,701.44 / $0.05 /         the same
+                                                $3,694.04 / $0.00 / 1
+fills at last                                   0 of 4                      0 of 4
+a 15 s delay on one ticker answer               the answer waited 15.0 s;   15.0 s; 378 paints
+                                                803 paints over 40 s        over 40 s
+the control, the GUI thread held 3 s            0 paints                    0 paints
+thread-violation lines                          0                           0
+Stop Paper Run                                  thread ended; 218 ticks,    the same
+                                                20 worked, 2 scrums,
+                                                2 folds, fees $0.0241,
+                                                realized $0.0487
+the run button after the stop                   Start Paper Run             Start Paper Run
+a planted zero-cash balance, a fold             filled $0.25; cash -0.2515  the same
+a fill's price planted to last                  read as not at the book     the same
+bot_state.json across the four presses          unchanged                   unchanged
+a planted byte on a copy                        hash moved                  hash moved
+stand-in calls over the run                     79: 1 products, 58 ticker,  79, 0.139 a second
+                                                20 candles; 0.14 a second
+sockets opened outside loopback                 0                           0
+```
+
+The stand-in's tape holds fewer than one hundred bars, so the adapter's
+candle cache never held enough rows and every worked tick read a fresh
+window; on the real venue a 5m window holds one hundred bars and is served
+from the cache for 300 s. The scratch copy of `bot_state.json` was rewritten
+during the run by `main.py`'s `periodic_save`, the live application's own
+sixty-second state save under the scratch home; no file under `src/paper/`
+or `src/gui/paper/` writes it.
+
+One line for another item: no element on the React page, Live's
+`src/gui/web/exchange_tab.js` or the forks, calls the page's own
+`selectScrumRow`, so a row press selects nothing for the command bar and only
+a Detail or Fire press selects the row on the model; the reading selected the
+row through the venue model's `select_scrum_row` and pressed the page's own
+Start.
+
+### What the bundle reading measured
+
+Both builds were made from this unit's commit and launched twice each,
+`HOME` and the profile variables on a scratch home holding a copy of the
+operator's `bot_state.json` and no credential file, each press an
+accessibility Invoke or a button message posted to the launched tree's own
+window, the window captured by its handle. In a Windows AppContainer with no
+network, Import Live Fleet made 39 calls in each build, every one refused by
+the container; a Detail press on two rows, the window it opened closed, and
+Start on the bar moved the two records to running; Start Paper Run started
+the runner and turned the seat to Stop Paper Run; over about 97 s the runner
+made 8 refused reads, 4 tickers and 4 candle windows, and wrote 4 paper rows
+each carrying *"The live feed answered no candle."*; the strip read $3,698.46
+for Spendable and Locked; Stop Paper Run ended the runner and the seat read
+Start Paper Run again.
+
+The one real reading, both bundles against the public host alone, no
+credential file, the adapter's own pace, the two same records running:
+
+```
+reading                                   Qt bundle                 React bundle
+Import Live Fleet                         39 calls, 917 products,   the same
+                                          38 of 38 tickers
+ticks over the run                        52 in 128 s               the same shape
+worked ticks                              6                         6
+venue calls during the run                8: 6 FETCH_TICKER,        8: 6 FETCH_TICKER,
+                                          2 FETCH_OHLCV of 100      2 FETCH_OHLCV of 100
+least gap between two calls               0.258 s                   0.257 s
+calls a second over 122 s                 0.066                     0.066
+the ADA/USDC book on one read             last 0.221450,            last 0.221840,
+                                          bid 0.221420,             bid 0.221760,
+                                          ask 0.221430              ask 0.221840
+paper rows written                        6, 3 per bot              6, 3 per bot
+fills                                     0, none expected          0
+strip while running                       $3,698.46 / $0.00 /       $3,698.46 / $0.00 /
+                                          $3,698.52 / $0.00 / 1     $3,698.46 / $0.00 / 1
+Stop Paper Run                            52 ticks, 6 worked,       the seat read Start
+                                          the seat read Start       Paper Run again
+thread-violation lines                    0                         0
+```
+
+The 100-bar window the venue answers is served from the adapter's cache for
+300 s, so the second worked tick of each bot read a fresh ticker and no
+candles. Locked moved with the venue's last price on the Qt run, from
+$3,698.46 to $3,698.52, and read $3,698.46 on the React run, whose two
+prices sat within a cent of their openings. The Activity
+Log's lines are not readable through UI Automation's text pattern on the
+React page, so the bundle's own `system.log` and the paper log carry the
+React reading.
+
 Back to [the subsystem index](README.md).
