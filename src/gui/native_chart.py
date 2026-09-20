@@ -22,8 +22,10 @@ from src.gui import design_system as ds
 from src.gui.main_tabs.native_chart_surface import (
     CAPTION_PX,
     CHART_PANEL_MIN_HEIGHT_PX,
+    CHART_SCROLL_NAME,
     CONTROL_HEIGHT_PX,
     CROSSHAIR_TIME_FORMAT,
+    FILL_TAG_FORMAT,
     FMT_GROUPED_DECIMALS,
     FOLD_SIDE,
     INDICATOR_STYLE_FORMAT,
@@ -38,14 +40,22 @@ from src.gui.main_tabs.native_chart_surface import (
     MARK_WIDTH_RATIO,
     PANEL_SOURCE_FIELD,
     PRICE_FORMAT_BANDS,
+    PRICE_PANE_LAYOUT_FLOOR_PX,
+    PRICE_PANE_PAINT_FLOOR_PX,
     RIGHT_MARGIN_PX,
     SCRUM_SIDE,
+    SUB_PANE_FOLD_PX,
+    SUB_PANE_LABEL_PX,
+    SUB_PANE_READABLE_PX,
+    TAG_HEIGHT_PX,
     TIMEFRAME_COMBO_MAX_WIDTH_PX,
     TIMEFRAME_LABEL,
     TOGGLE_BOX_PX,
     Y_ZOOM_DEFAULT,
     candle_at_x,
     clamp_y_zoom,
+    device_pen_width,
+    fill_label,
     effective_visible_count,
     effective_visible_start,
     fmt_price,
@@ -113,7 +123,7 @@ WICK_FRACTION = 0.14
 LINE_WIDTH_PX = 1.2
 
 #: A right-edge tag's height, its text padding and its inset from the edge.
-TAG_H_PX = 14
+TAG_H_PX = TAG_HEIGHT_PX
 TAG_PAD_PX = 5
 TAG_INSET_PX = 2
 
@@ -136,7 +146,6 @@ STRIP_TAG_FORMAT = "STRIP {side} {candles}c"
 SCRUM_ARMED_TAG = "SCRUM ARMED"
 FOLD_ARMED_TAG = "FOLD ARMED"
 POSITION_TAG_FORMAT = "POSITION {price}"
-FILL_TAG_FORMAT = "{label} {price}"
 STRIP_UPPER = "upper"
 STRIP_LOWER = "lower"
 
@@ -156,14 +165,6 @@ ZSCORE_SCALE_FLOOR = 3.0
 #: The price pane's left margin and its right margin, which holds the price axis.
 CHART_LEFT_MARGIN_PX = LEFT_MARGIN_PX
 CHART_RIGHT_MARGIN_PX = RIGHT_MARGIN_PX
-
-#: The pixel height one sub-pane takes at the chart's natural height, the
-#: least it shrinks to when the window gives less, and the price pane's
-#: layout height and its paint floor.
-SUB_PANE_H = 60
-SUB_PANE_MIN_H = 28
-PRICE_PANE_LAYOUT_H = 220
-PRICE_PANE_MIN_H = 120
 
 #: The pixel height of one legend line in the value field, the field's inset
 #: from the price pane's left and bottom edges and its inner padding, and the
@@ -192,6 +193,8 @@ try:
         QLabel,
         QComboBox,
         QCheckBox,
+        QFrame,
+        QScrollArea,
         QSizePolicy,
     )
     from PySide6.QtCore import Qt, QRectF, QPointF, Signal
@@ -600,7 +603,9 @@ if _HAS_QT:
     class PaintContext:
         """The geometry of one paint pass, handed to every overlay method.
 
-        ``i2x`` maps a visible index to a pixel and ``p2y`` maps a price to one.
+        ``i2x`` maps a visible index to a pixel and ``p2y`` maps a price to one;
+        ``pen_w`` maps a logical pen width to whole device pixels, ``snap`` a
+        coordinate to the centre of its device pixel, and ``px`` is one device pixel.
         """
 
         p: object
@@ -621,7 +626,11 @@ if _HAS_QT:
         fm: object
         font_sm: object
         draw_line_series: object
+        pen_w: object
+        snap: object
+        px: float
         paint_sub_grid: object = None
+        rule_line: object = None
         sub_axis_label: object = None
         paint_oscillator: object = None
         strip_folded: bool = False
@@ -923,6 +932,8 @@ if _HAS_QT:
             self._geometry: dict = {}
             self._readout: list = []
             self._readout_candle: Optional[int] = None
+            # The fills of the window keyed by candle index, for the readout.
+            self._fills_on_candle: dict = {}
 
         @property
         def symbol(self) -> str:
@@ -1275,7 +1286,9 @@ if _HAS_QT:
                 field_h,
             )
             p.setBrush(QBrush(self.FIELD_SURFACE))
-            p.setPen(QPen(self.GRID_MAJOR, 1.0))
+            p.setPen(
+                QPen(self.GRID_MAJOR, device_pen_width(1.0, self._device_ratio(p)))
+            )
             p.drawRect(field)
             p.setFont(font_sm)
             baseline = field.top() + FIELD_PAD_PX + LEGEND_ROW_H - 3
@@ -1416,37 +1429,38 @@ if _HAS_QT:
         def _natural_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
             """Return the pixel height the toggled-on panes need.
 
-            The price pane takes 220, the volume strip adds 28, each entry of
-            ``_sub_overlays_with_data`` adds 60, ``_call_strip_h`` adds the
-            voter rows and ``_caption_strip_h`` adds the caption wrapped at
-            ``width``, over a 64px header. The value field draws inside the
-            price pane and adds nothing.
+            The price pane takes ``PRICE_PANE_LAYOUT_FLOOR_PX``, the volume
+            strip adds 28, each entry of ``_sub_overlays_with_data`` adds
+            ``SUB_PANE_READABLE_PX``, ``_call_strip_h`` adds the voter rows and
+            ``_caption_strip_h`` adds the caption wrapped at ``width``, over a
+            64px header. The value field draws inside the price pane and adds
+            nothing.
             """
-            return self._height_for_panes(width, SUB_PANE_H)
+            return self._height_for_panes(width, SUB_PANE_READABLE_PX)
 
         def _minimum_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
             """The least pixel height the toggled-on panes draw in: each
-            sub-pane at ``SUB_PANE_MIN_H``, the rest as ``_natural_height_for_panes``.
+            sub-pane at ``SUB_PANE_FOLD_PX``, the rest as ``_natural_height_for_panes``.
             """
-            return self._height_for_panes(width, SUB_PANE_MIN_H)
+            return self._height_for_panes(width, SUB_PANE_FOLD_PX)
 
         def _folded_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
             """``_minimum_height_for_panes`` with the reading strip folded to voter names."""
-            return self._height_for_panes(width, SUB_PANE_MIN_H, folded=True)
+            return self._height_for_panes(width, SUB_PANE_FOLD_PX, folded=True)
 
         def _least_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
             """The height under which ``paint_to`` overflows: ``_folded_height_for_panes``
-            with the price pane at ``PRICE_PANE_MIN_H``.
+            with the price pane at ``PRICE_PANE_PAINT_FLOOR_PX``.
             """
             return self._height_for_panes(
-                width, SUB_PANE_MIN_H, PRICE_PANE_MIN_H, folded=True
+                width, SUB_PANE_FOLD_PX, PRICE_PANE_PAINT_FLOOR_PX, folded=True
             )
 
         def _height_for_panes(
             self,
             width: int,
             sub_pane_h: int,
-            price_h: int = PRICE_PANE_LAYOUT_H,
+            price_h: int = PRICE_PANE_LAYOUT_FLOOR_PX,
             folded: bool = False,
         ) -> int:
             """The pixel height of every pane with each sub-pane at ``sub_pane_h``,
@@ -1636,10 +1650,12 @@ if _HAS_QT:
                     "time_label": gmt_label(one.time, CROSSHAIR_TIME_FORMAT),
                     "lines": [
                         [label, text, css_colour(getattr(self, role))]
-                        for label, text, role in readout_lines(one)
+                        for label, text, role in readout_lines(
+                            one, self._fills_on_candle.get(start + at, ())
+                        )
                     ],
                 }
-                for one in self._candles[start : start + count]
+                for at, one in enumerate(self._candles[start : start + count], start)
             ]
             held["price_bands"] = [list(band) for band in PRICE_FORMAT_BANDS]
             held["grouped_decimals"] = FMT_GROUPED_DECIMALS
@@ -1668,6 +1684,14 @@ if _HAS_QT:
                 """``value`` moved to the centre of the device pixel it falls in."""
                 return (int(value * ratio) + 0.5) / ratio
 
+            def edge(value: float) -> float:
+                """``value`` moved to the edge of the device pixel it falls in."""
+                return int(value * ratio) / ratio
+
+            def pen_w(width: float) -> float:
+                """``width`` logical pixels as whole device pixels, through ``device_pen_width``."""
+                return device_pen_width(width, ratio)
+
             bg_grad = QLinearGradient(0, 0, 0, h)
             bg_grad.setColorAt(0, self.BG_TOP)
             bg_grad.setColorAt(1, self.BG_BOT)
@@ -1691,7 +1715,7 @@ if _HAS_QT:
             MT = 28  # header
             OHLC_H = 18  # OHLC info row at top of price pane
             # The strip folds to voter names when h cannot hold one row per
-            # reading with the sub-panes at SUB_PANE_MIN_H.
+            # reading with the sub-panes at SUB_PANE_FOLD_PX.
             strip_folded = bool(
                 self._call_readings
             ) and h < self._minimum_height_for_panes(w)
@@ -1702,17 +1726,17 @@ if _HAS_QT:
             show_volume = self._overlay_shown["volume"]
 
             VOL_H = 28 if show_volume else 0
-            # Each sub-pane takes SUB_PANE_H, and shrinks toward
-            # SUB_PANE_MIN_H when h leaves the price pane under its layout height.
+            # Every sub-pane takes SUB_PANE_READABLE_PX. Only a fixed-height
+            # image whose h cannot hold them shrinks each toward SUB_PANE_FOLD_PX.
             fixed_h = MT + OHLC_H + MB + VOL_H
-            SUB_H = SUB_PANE_H
+            SUB_H = SUB_PANE_READABLE_PX
             if (
                 sub_overlays
-                and h - fixed_h - SUB_H * len(sub_overlays) < PRICE_PANE_LAYOUT_H
+                and h - fixed_h - SUB_H * len(sub_overlays) < PRICE_PANE_LAYOUT_FLOOR_PX
             ):
                 SUB_H = max(
-                    SUB_PANE_MIN_H,
-                    (h - fixed_h - PRICE_PANE_LAYOUT_H) // len(sub_overlays),
+                    SUB_PANE_FOLD_PX,
+                    (h - fixed_h - PRICE_PANE_LAYOUT_FLOOR_PX) // len(sub_overlays),
                 )
             total_sub_h = SUB_H * len(sub_overlays)
 
@@ -1733,7 +1757,7 @@ if _HAS_QT:
                 v_start = 0
 
             available = h - fixed_h - total_sub_h
-            price_h = max(PRICE_PANE_MIN_H, available)
+            price_h = max(PRICE_PANE_PAINT_FLOOR_PX, available)
 
             ohlc_top = MT
             price_top = ohlc_top + OHLC_H
@@ -1865,8 +1889,9 @@ if _HAS_QT:
                     (c.open, c.high, c.low, c.close, c.volume) for c in visible_candles
                 ]
 
-            # The wick follows the candle spacing and never drops under one device pixel.
-            wick_w = max(px, cw * WICK_FRACTION)
+            # The wick follows the candle spacing, in whole device pixels, never under one.
+            wick_w = pen_w(cw * WICK_FRACTION)
+            vol_bars = []
             for i, (ha_o, ha_h, ha_l, ha_c, _vol) in enumerate(ha_candles):
                 x = i2x(i)
                 is_up = ha_c >= ha_o
@@ -1895,13 +1920,23 @@ if _HAS_QT:
                     cvol = _vol
                     vh = (cvol / max_vol) * VOL_H if cvol > 0 else 0
                     if vh > 0:
-                        vol_y = vol_bot - vh
-                        vol_rect = QRectF(snap(x + gap / 2), vol_y, bw, vh)
-                        vf = self.VOL_UP if is_up else self.VOL_DOWN
-                        vb = self.VOL_UP_BORDER if is_up else self.VOL_DOWN_BORDER
-                        p.setBrush(QBrush(vf))
-                        p.setPen(QPen(vb, px))
-                        p.drawRect(vol_rect)
+                        vol_bars.append((x, vol_bot - vh, is_up))
+
+            # Every bar sits on whole device pixels, aliased: its left edge, its
+            # width and both ends snapped, one device pixel of border.
+            p.setRenderHint(QPainter.Antialiasing, False)
+            for x, vol_y, is_up in vol_bars:
+                left = edge(x + gap / 2)
+                top = edge(vol_y)
+                vol_rect = QRectF(
+                    left, top, max(px, edge(bw)), max(px, edge(vol_bot) - top)
+                )
+                vf = self.VOL_UP if is_up else self.VOL_DOWN
+                vb = self.VOL_UP_BORDER if is_up else self.VOL_DOWN_BORDER
+                p.setBrush(QBrush(vf))
+                p.setPen(QPen(vb, px))
+                p.drawRect(vol_rect)
+            p.setRenderHint(QPainter.Antialiasing, True)
 
             for overlay in overlays_on(self, VOLUME_PANE):
                 getattr(self, overlay.draw)(p, ML, w - MR, vol_top)
@@ -1936,7 +1971,7 @@ if _HAS_QT:
             if n > 0:
 
                 def _draw_line_series(data, color, width=LINE_WIDTH_PX, dashed=False):
-                    pen = QPen(color, width)
+                    pen = QPen(color, pen_w(width))
                     if dashed:
                         pen.setStyle(Qt.DashLine)
                     p.setPen(pen)
@@ -1970,6 +2005,9 @@ if _HAS_QT:
                     fm=fm,
                     font_sm=font_sm,
                     draw_line_series=_draw_line_series,
+                    pen_w=pen_w,
+                    snap=snap,
+                    px=px,
                     strip_folded=strip_folded,
                 )
                 for overlay in overlays_on(self, PRICE_PANE):
@@ -1987,7 +2025,7 @@ if _HAS_QT:
                     ty = p2y(float(tb_price))
                     if not price_top <= ty <= price_bot:
                         continue
-                    p.setPen(QPen(tb_colour, LINE_WIDTH_PX, Qt.DashLine))
+                    p.setPen(QPen(tb_colour, pen_w(LINE_WIDTH_PX), Qt.DashLine))
                     p.drawLine(QPointF(ML, snap(ty)), QPointF(w - MR, snap(ty)))
                     self._right_tag(
                         p,
@@ -2034,8 +2072,10 @@ if _HAS_QT:
                     self._right_tag(p, w, tag_y, glow_tag, glow_colour, font_sm)
                     drawn_counts["glow"] += 1
 
-                def _paint_sub_grid(top: float, bot: float, label: str):
-                    """Paint sub-pane backdrop, a hairline separator and the name label."""
+                def _paint_sub_grid(top: float, bot: float, label: str) -> float:
+                    """Paint the sub-pane's wash, its hairline separator and its name in
+                    the label row; answer the plot's top, ``SUB_PANE_LABEL_PX`` under ``top``.
+                    """
                     p.setPen(Qt.NoPen)
                     p.setBrush(QBrush(self.SUB_PANE_WASH))
                     p.drawRect(QRectF(ML, top, w - ML - MR, bot - top))
@@ -2046,9 +2086,20 @@ if _HAS_QT:
                     p.setPen(QPen(self.TEXT_DIM))
                     p.setFont(font_sm)
                     p.drawText(int(ML + 6), int(top + 11), label)
+                    return min(top + SUB_PANE_LABEL_PX, bot)
+
+                def _rule_line(y: float, colour=None, dashed: bool = True) -> None:
+                    """One ruled level across the pane at ``y``: one device pixel, aliased, snapped."""
+                    pen = QPen(colour if colour is not None else self.GRID_MINOR, px)
+                    if dashed:
+                        pen.setStyle(Qt.DashLine)
+                    p.setRenderHint(QPainter.Antialiasing, False)
+                    p.setPen(pen)
+                    p.drawLine(QPointF(ML, snap(y)), QPointF(w - MR, snap(y)))
+                    p.setRenderHint(QPainter.Antialiasing, True)
 
                 def _sub_axis_label(top: float, bot: float, value, color):
-                    """Right-edge value tag of a sub-pane, in the series colour."""
+                    """Right-edge value tag of a sub-pane at the plot's middle, in the series colour."""
                     if value is None:
                         return
                     txt = f"{value:.4f}" if abs(value) < 10 else f"{value:.2f}"
@@ -2057,7 +2108,8 @@ if _HAS_QT:
                 def _paint_oscillator(
                     top, bot, data, extract, color, width=1.2, vmin=None, vmax=None
                 ):
-                    """Draw one oscillator line between ``top`` and ``bot``.
+                    """Draw one oscillator line between ``top`` and ``bot`` at ``width``
+                    logical pixels rounded to whole device pixels.
 
                     ``vmin`` and ``vmax`` fix the scale; ``None`` on
                     either fits it to the extracted values.
@@ -2069,7 +2121,7 @@ if _HAS_QT:
                     sp_lo = vmin if vmin is not None else min(vals)
                     sp_hi = vmax if vmax is not None else max(vals)
                     rng = (sp_hi - sp_lo) or 1e-9
-                    pen = QPen(color, width)
+                    pen = QPen(color, pen_w(width))
                     p.setPen(pen)
                     prev = None
                     last_val = None
@@ -2090,6 +2142,7 @@ if _HAS_QT:
                     return last_val
 
                 ctx.paint_sub_grid = _paint_sub_grid
+                ctx.rule_line = _rule_line
                 ctx.sub_axis_label = _sub_axis_label
                 ctx.paint_oscillator = _paint_oscillator
                 for overlay, sp_top, sp_bot in sub_layout:
@@ -2121,14 +2174,20 @@ if _HAS_QT:
             mark_w = cw * MARK_WIDTH_RATIO
             mark_h = price_h * MARK_HEIGHT_FRACTION
             fills_in_window = 0
+            fill_tags: list = []
+            placed: list = []
+            self._fills_on_candle.clear()
+            # Every glyph draws first; a tag is placed against the glyphs and
+            # the tags already drawn, and is left out where it would cross one.
             for m in self._markers:
                 if m.time < t_first or m.time >= t_end:
                     continue
+                idx = max(0, bisect_right(times, m.time) - 1)
+                self._fills_on_candle.setdefault(v_start + idx, []).append(m)
                 my = p2y(m.price)
                 if not price_top <= my <= price_bot:
                     continue
                 fills_in_window += 1
-                idx = max(0, bisect_right(times, m.time) - 1)
                 mx = i2x(idx) + cw / 2
                 is_buy = m.side == "buy"
                 glyph = MARK_GLYPHS[FOLD_SIDE if is_buy else SCRUM_SIDE]
@@ -2139,21 +2198,34 @@ if _HAS_QT:
                         for dx, dy in glyph["points"]
                     ]
                 )
-                p.setPen(QPen(tc, MARK_OUTLINE_PX))
+                p.setPen(QPen(tc, pen_w(MARK_OUTLINE_PX)))
                 p.setBrush(QBrush(tc) if glyph["filled"] else Qt.NoBrush)
                 p.drawPolygon(polygon)
                 drawn_counts["fills"] += 1
-
-                label = m.label or ("BUY" if is_buy else "SELL")
+                placed.append((m, mx, my, tc))
+            obstacles = [
+                [mx - mark_w / 2, my - mark_h / 2, mark_w, mark_h]
+                for _m, mx, my, _tc in placed
+            ]
+            p.setFont(font_sm)
+            for m, mx, my, tc in placed:
                 text = FILL_TAG_FORMAT.format(
-                    label=label, price=self._fmt_price(m.price)
+                    label=fill_label(m), price=self._fmt_price(m.price)
                 )
-                p.setFont(font_sm)
                 tw = fm.horizontalAdvance(text) + TAG_PAD_PX * 2
-                tag_x = mx + mark_w / 2 + TAG_PAD_PX
-                if tag_x + tw > w - MR:
-                    tag_x = mx - mark_w / 2 - TAG_PAD_PX - tw
-                tag = QRectF(tag_x, my - TAG_H_PX / 2, tw, TAG_H_PX)
+                tag = self._tag_place(
+                    mx + mark_w / 2 + TAG_PAD_PX,
+                    mx - mark_w / 2 - TAG_PAD_PX - tw,
+                    my - TAG_H_PX / 2,
+                    tw,
+                    obstacles,
+                    w - MR,
+                )
+                if tag is None:
+                    continue
+                rect = [tag.x(), tag.y(), tag.width(), tag.height()]
+                fill_tags.append(rect)
+                obstacles.append(rect)
                 p.setBrush(QBrush(self.FILL_TAG_SURFACE))
                 p.setPen(QPen(tc, px))
                 p.drawRoundedRect(tag, 2, 2)
@@ -2190,15 +2262,24 @@ if _HAS_QT:
                 "candle_count": int(n_total),
                 "y_zoom_pct": float(self._y_zoom_pct),
                 "field": field_drawn,
+                "sub_panes": [
+                    {"key": overlay.key, "top": float(sp_top), "bot": float(sp_bot)}
+                    for overlay, sp_top, sp_bot in sub_layout
+                ],
+                "fill_tags": [[float(v) for v in one] for one in fill_tags],
             }
             self._readout = []
             self._readout_candle = None
             if self._mouse_x is not None and self._mouse_y is not None:
                 mx, my = self._mouse_x, self._mouse_y
                 if ML <= mx <= w - MR and price_top <= my <= time_axis_y:
-                    p.setPen(QPen(self.CROSSHAIR_COLOR, 1, Qt.DotLine))
-                    p.drawLine(mx, int(price_top), mx, int(time_axis_y))
-                    p.drawLine(ML, my, w - MR, my)
+                    p.setRenderHint(QPainter.Antialiasing, False)
+                    p.setPen(QPen(self.CROSSHAIR_COLOR, px, Qt.DotLine))
+                    p.drawLine(
+                        QPointF(snap(mx), price_top), QPointF(snap(mx), time_axis_y)
+                    )
+                    p.drawLine(QPointF(ML, snap(my)), QPointF(w - MR, snap(my)))
+                    p.setRenderHint(QPainter.Antialiasing, True)
 
                     if price_top <= my <= price_bot:
                         cp = lo + pr * (1 - (my - price_top) / price_h)
@@ -2206,7 +2287,7 @@ if _HAS_QT:
                         cp_w = fm.horizontalAdvance(cp_txt) + 12
                         badge = QRectF(w - MR, my - 9, cp_w, 18)
                         p.setBrush(QBrush(self.BADGE_SURFACE))
-                        p.setPen(QPen(self.CROSSHAIR_COLOR, 1))
+                        p.setPen(QPen(self.CROSSHAIR_COLOR, pen_w(1.0)))
                         p.drawRoundedRect(badge, 3, 3)
                         p.setPen(QPen(self.TEXT_LIGHT))
                         p.setFont(font_sm)
@@ -2224,12 +2305,14 @@ if _HAS_QT:
                             tw = fm.horizontalAdvance(tstr) + 12
                             t_badge = QRectF(mx - tw / 2, time_axis_y - 1, tw, 16)
                             p.setBrush(QBrush(self.BADGE_SURFACE))
-                            p.setPen(QPen(self.CROSSHAIR_COLOR, 1))
+                            p.setPen(QPen(self.CROSSHAIR_COLOR, pen_w(1.0)))
                             p.drawRoundedRect(t_badge, 3, 3)
                             p.setPen(QPen(self.TEXT_LIGHT))
                             p.drawText(t_badge, Qt.AlignCenter, tstr)
 
-                        self._readout = readout_lines(c)
+                        self._readout = readout_lines(
+                            c, self._fills_on_candle.get(v_start + ci, ())
+                        )
                         lines = [
                             (label, text, getattr(self, role))
                             for label, text, role in self._readout
@@ -2237,9 +2320,13 @@ if _HAS_QT:
                         tip_color = lines[3][2]
                         line_h = 14
                         pad = 8
+                        label_w = max(
+                            fm.horizontalAdvance(lbl) for lbl, _v, _c in lines
+                        )
+                        value_x = 6 + label_w + 12
                         tip_w = 0
                         for lbl, val, _col in lines:
-                            line_w = fm.horizontalAdvance(f"{lbl}  {val}")
+                            line_w = value_x + fm.horizontalAdvance(val)
                             tip_w = max(tip_w, line_w)
                         tip_w += pad * 2
                         tip_h = line_h * len(lines) + pad * 2
@@ -2250,7 +2337,7 @@ if _HAS_QT:
                         ty = price_top + 8
                         bg_rect = QRectF(tx, ty, tip_w, tip_h)
                         p.setBrush(QBrush(self.BADGE_SURFACE))
-                        p.setPen(QPen(self.BADGE_EDGE, 1))
+                        p.setPen(QPen(self.BADGE_EDGE, pen_w(1.0)))
                         p.drawRoundedRect(bg_rect, 4, 4)
                         stripe = QRectF(tx, ty, 3, tip_h)
                         p.setBrush(QBrush(tip_color))
@@ -2262,7 +2349,7 @@ if _HAS_QT:
                             p.setPen(QPen(self.TEXT_DIM))
                             p.drawText(tx + pad + 6, int(y_line), lbl)
                             p.setPen(QPen(col))
-                            p.drawText(tx + pad + 24, int(y_line), val)
+                            p.drawText(tx + pad + value_x, int(y_line), val)
 
             if self._candles:
                 last = self._candles[-1]
@@ -2311,7 +2398,7 @@ if _HAS_QT:
             # Three low-contrast dashes marking the draggable bottom edge of a window.
             if self.DRAWS_GRIP:
                 grip_y = h - self._resize_grip_h // 2
-                p.setPen(QPen(self.GRIP, 1.2))
+                p.setPen(QPen(self.GRIP, pen_w(1.2)))
                 cx = w / 2
                 for off in (-12, 0, 12):
                     p.drawLine(
@@ -2379,6 +2466,38 @@ if _HAS_QT:
                 if candles[i].time > candles[i - 1].time
             )
             return gaps[len(gaps) // 2] if gaps else DEFAULT_CANDLE_SECONDS
+
+        def _tag_clear(self, rect: QRectF, drawn: list, scale_x: float) -> bool:
+            """Whether ``rect`` lies inside the pane left of ``scale_x`` and crosses
+            none of the ``drawn`` glyph and tag rects (``[x, y, w, h]`` each)."""
+            if rect.x() < 0 or rect.x() + rect.width() > scale_x:
+                return False
+            for x, y, width, height in drawn:
+                if (
+                    rect.x() < x + width
+                    and x < rect.x() + rect.width()
+                    and rect.y() < y + height
+                    and y < rect.y() + rect.height()
+                ):
+                    return False
+            return True
+
+        def _tag_place(
+            self,
+            right_x: float,
+            left_x: float,
+            y: float,
+            width: float,
+            drawn: list,
+            scale_x: float,
+        ) -> Optional[QRectF]:
+            """The rect a fill tag draws in: ``TAG_H_PX`` tall at ``right_x`` when
+            ``_tag_clear``, else at ``left_x`` when clear, else None and no tag."""
+            for x in (right_x, left_x):
+                rect = QRectF(x, y, width, TAG_H_PX)
+                if self._tag_clear(rect, drawn, scale_x):
+                    return rect
+            return None
 
         def _right_tag(
             self, p: QPainter, w: int, y: float, text: str, colour: QColor, font: QFont
@@ -2449,7 +2568,7 @@ if _HAS_QT:
             p.setBrush(QBrush(self.STRIP_FILL))
             p.setPen(Qt.NoPen)
             p.drawRect(QRectF(x_left, y_top, x_right - x_left, y_bot - y_top))
-            p.setPen(QPen(self.STRIP_EDGE, LINE_WIDTH_PX, Qt.DashLine))
+            p.setPen(QPen(self.STRIP_EDGE, ctx.pen_w(LINE_WIDTH_PX), Qt.DashLine))
             p.drawLine(QPointF(x_left, snap(y_top)), QPointF(x_right, snap(y_top)))
             p.drawLine(QPointF(x_left, snap(y_bot)), QPointF(x_right, snap(y_bot)))
             self._right_tag(
@@ -2581,7 +2700,7 @@ if _HAS_QT:
 
                 # Chikou at visible k is the close at v_start + k + SHIFT.
                 chikou_color = self.CHIKOU_LINE
-                p.setPen(QPen(chikou_color, 1.0))
+                p.setPen(QPen(chikou_color, ctx.pen_w(1.0)))
                 prev_pt = None
                 for k in range(len(span_a)):
                     src_idx = v_start + k + SHIFT
@@ -2685,7 +2804,7 @@ if _HAS_QT:
                         color = self.EVENT_BEAR
                         anchor_y = p2y(cdl.high) - 14
                     p.setBrush(QBrush(color))
-                    p.setPen(QPen(color.lighter(140), 1.4))
+                    p.setPen(QPen(color.lighter(140), ctx.pen_w(1.4)))
                     if kind == "release":
                         sz = 6
                         diamond = QPolygonF(
@@ -2729,21 +2848,19 @@ if _HAS_QT:
             ctx.draw_line_series(support, self.ZSCORE_ZONE, 1.0, True)
 
         def _rule_bands(self, ctx, top: float, bot: float, bands, scale) -> None:
-            """Rule one dashed ``GRID_MINOR`` line per value of ``bands`` on ``scale``."""
-            p, w = ctx.p, ctx.w
+            """Rule one dashed ``GRID_MINOR`` line per value of ``bands`` on ``scale``
+            through ``ctx.rule_line``, between the plot's ``top`` and ``bot``."""
             vmin, vmax = scale
             span = (vmax - vmin) or 1e-9
             for ref in bands:
-                ref_y = bot - ((ref - vmin) / span) * (bot - top)
-                p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
-                p.drawLine(ctx.ML, int(ref_y), w - ctx.MR, int(ref_y))
+                ctx.rule_line(bot - ((ref - vmin) / span) * (bot - top))
 
         def _draw_adx(self, ctx, top: float, bot: float) -> None:
             """Paint +DI, -DI and ADX on ``PERCENT_SCALE`` with ``ADX_BANDS`` ruled."""
             visible = self._adx_data[ctx.v_start : ctx.v_end]
             if not visible:
                 return
-            ctx.paint_sub_grid(top, bot, "ADX (14)")
+            top = ctx.paint_sub_grid(top, bot, "ADX (14)")
             self._sub_scale["adx"] = PERCENT_SCALE
             self._rule_bands(ctx, top, bot, ADX_BANDS, PERCENT_SCALE)
             vmin, vmax = PERCENT_SCALE
@@ -2785,7 +2902,7 @@ if _HAS_QT:
             visible = self._zscore_data[ctx.v_start : ctx.v_end]
             if not visible:
                 return
-            ctx.paint_sub_grid(top, bot, "Z-Score (50)")
+            top = ctx.paint_sub_grid(top, bot, "Z-Score (50)")
             values = [abs(one.z) for one in visible if one is not None]
             half = max([ZSCORE_SCALE_FLOOR] + values)
             scale = (-half, half)
@@ -2808,7 +2925,7 @@ if _HAS_QT:
             visible = self._ker_data[ctx.v_start : ctx.v_end]
             if not visible:
                 return
-            ctx.paint_sub_grid(top, bot, "KER (10)")
+            top = ctx.paint_sub_grid(top, bot, "KER (10)")
             self._sub_scale["ker"] = RATIO_SCALE
             vmin, vmax = RATIO_SCALE
             last_ratio = ctx.paint_oscillator(
@@ -2821,7 +2938,7 @@ if _HAS_QT:
             visible = self._rsi_data[ctx.v_start : ctx.v_end]
             if not visible:
                 return
-            ctx.paint_sub_grid(top, bot, "RSI (14)")
+            top = ctx.paint_sub_grid(top, bot, "RSI (14)")
             self._sub_scale["rsi"] = PERCENT_SCALE
             self._rule_bands(ctx, top, bot, RSI_BANDS, PERCENT_SCALE)
             vmin, vmax = PERCENT_SCALE
@@ -2832,11 +2949,11 @@ if _HAS_QT:
 
         def _draw_macd(self, ctx, top: float, bot: float) -> None:
             """Paint the MACD histogram, its line and its signal in one sub-pane."""
-            p, w = ctx.p, ctx.w
+            p = ctx.p
             visible = self._macd_data[ctx.v_start : ctx.v_end]
             if not visible:
                 return
-            ctx.paint_sub_grid(top, bot, "MACD (12, 26, 9)")
+            top = ctx.paint_sub_grid(top, bot, "MACD (12, 26, 9)")
             all_vals: list[float] = []
             for one in visible:
                 if one is None:
@@ -2850,20 +2967,29 @@ if _HAS_QT:
             v_hi += v_pad
             span = v_hi - v_lo
             if v_lo < 0 < v_hi:
-                zero_y = bot - ((0 - v_lo) / span) * (bot - top)
-                p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
-                p.drawLine(ctx.ML, int(zero_y), w - ctx.MR, int(zero_y))
+                ctx.rule_line(bot - ((0 - v_lo) / span) * (bot - top))
+            # Every histogram bar sits on whole device pixels, aliased, one device pixel of edge.
+            px = ctx.px
+            p.setRenderHint(QPainter.Antialiasing, False)
             for index, one in enumerate(visible):
                 if one is None or one[2] is None:
                     continue
                 hist = one[2]
-                x = ctx.i2x(index) + ctx.gap / 2
-                y0 = bot - ((0 - v_lo) / span) * (bot - top)
-                y1 = bot - ((hist - v_lo) / span) * (bot - top)
+                left = ctx.snap(ctx.i2x(index) + ctx.gap / 2) - px / 2
+                y0 = ctx.snap(bot - ((0 - v_lo) / span) * (bot - top)) - px / 2
+                y1 = ctx.snap(bot - ((hist - v_lo) / span) * (bot - top)) - px / 2
                 rising = hist >= 0
                 p.setBrush(QBrush(self.HIST_UP if rising else self.HIST_DOWN))
-                p.setPen(QPen(self.HIST_UP_EDGE if rising else self.HIST_DOWN_EDGE, 1))
-                p.drawRect(QRectF(x, min(y0, y1), ctx.bw, abs(y1 - y0) or 1))
+                p.setPen(QPen(self.HIST_UP_EDGE if rising else self.HIST_DOWN_EDGE, px))
+                p.drawRect(
+                    QRectF(
+                        left,
+                        min(y0, y1),
+                        max(px, ctx.snap(ctx.bw) - px / 2),
+                        abs(y1 - y0) or px,
+                    )
+                )
+            p.setRenderHint(QPainter.Antialiasing, True)
             last_macd = ctx.paint_oscillator(
                 top,
                 bot,
@@ -2888,14 +3014,11 @@ if _HAS_QT:
 
         def _draw_vortex(self, ctx, top: float, bot: float) -> None:
             """Paint VI+ and VI- against the 1.0 reference in one sub-pane."""
-            p, w = ctx.p, ctx.w
             visible = self._vortex_data[ctx.v_start : ctx.v_end]
             if not visible:
                 return
-            ctx.paint_sub_grid(top, bot, "Vortex (14)")
-            ref_y = bot - ((1.0 - 0.3) / (1.7 - 0.3)) * (bot - top)
-            p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
-            p.drawLine(ctx.ML, int(ref_y), w - ctx.MR, int(ref_y))
+            top = ctx.paint_sub_grid(top, bot, "Vortex (14)")
+            ctx.rule_line(bot - ((1.0 - 0.3) / (1.7 - 0.3)) * (bot - top))
             last_plus = ctx.paint_oscillator(
                 top,
                 bot,
@@ -2920,15 +3043,12 @@ if _HAS_QT:
 
         def _draw_stochrsi(self, ctx, top: float, bot: float) -> None:
             """Paint the Stochastic RSI against its 0.2 and 0.8 references."""
-            p, w = ctx.p, ctx.w
             visible = self._stochrsi_data[ctx.v_start : ctx.v_end]
             if not visible:
                 return
-            ctx.paint_sub_grid(top, bot, "Stoch RSI (14, 14)")
+            top = ctx.paint_sub_grid(top, bot, "Stoch RSI (14, 14)")
             for ref in (0.2, 0.8):
-                ref_y = bot - ref * (bot - top)
-                p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
-                p.drawLine(ctx.ML, int(ref_y), w - ctx.MR, int(ref_y))
+                ctx.rule_line(bot - ref * (bot - top))
             last_value = ctx.paint_oscillator(
                 top,
                 bot,
@@ -2944,12 +3064,16 @@ if _HAS_QT:
         def _draw_volume(
             self, p: QPainter, left_px: int, right_px: int, top_px: float
         ) -> None:
-            """Rule the line that separates the volume strip from the price pane.
-
-            Each bar is painted beside its candle body in the same pass.
+            """Rule the line that separates the volume strip from the price pane:
+            one device pixel, aliased, snapped. The bars are painted in ``paint_to``.
             """
-            p.setPen(QPen(self.GRID_MAJOR, 1))
-            p.drawLine(left_px, int(top_px), right_px, int(top_px))
+            ratio = self._device_ratio(p)
+            px = 1.0 / ratio
+            y = (int(top_px * ratio) + 0.5) / ratio
+            p.setRenderHint(QPainter.Antialiasing, False)
+            p.setPen(QPen(self.GRID_MAJOR, px))
+            p.drawLine(QPointF(left_px, y), QPointF(right_px, y))
+            p.setRenderHint(QPainter.Antialiasing, True)
 
         def _draw_positions(
             self,
@@ -2969,6 +3093,7 @@ if _HAS_QT:
             if not self._positions:
                 return
 
+            pen_px = device_pen_width(1.0, self._device_ratio(p))
             for pos in self._positions:
                 price_y_px = p2y(pos.price)
                 if (
@@ -2983,7 +3108,7 @@ if _HAS_QT:
 
                 pen = QPen(
                     QColor(line_color.red(), line_color.green(), line_color.blue(), 50),
-                    1,
+                    pen_px,
                     Qt.DashDotLine,
                 )
                 p.setPen(pen)
@@ -3009,7 +3134,7 @@ if _HAS_QT:
                         ]
                     )
                     p.setBrush(QBrush(color))
-                    p.setPen(QPen(color.lighter(140), 1))
+                    p.setPen(QPen(color.lighter(140), pen_px))
                     p.drawPolygon(diamond)
                 else:
                     # Order-book visibility draws an open square with a centre dot.
@@ -3023,7 +3148,7 @@ if _HAS_QT:
                         icon_size * 2,
                     )
                     p.setBrush(Qt.NoBrush)
-                    p.setPen(QPen(color, 1.5))
+                    p.setPen(QPen(color, pen_px))
                     p.drawRect(rect)
                     p.setBrush(QBrush(color))
                     p.setPen(Qt.NoPen)
@@ -3069,7 +3194,7 @@ if _HAS_QT:
                 18,
             )
             p.setBrush(QBrush(self.BADGE_SURFACE))
-            p.setPen(QPen(colour, 1.2))
+            p.setPen(QPen(colour, device_pen_width(1.2, self._device_ratio(p))))
             p.drawRoundedRect(badge, 3, 3)
             p.setFont(font_badge)
             p.setPen(QPen(colour))
@@ -3085,8 +3210,10 @@ if _HAS_QT:
             x = ctx.i2x(ctx.n - 1) + ctx.cw / 2
             p = ctx.p
             p.setBrush(Qt.NoBrush)
-            p.setPen(QPen(colour, 1.0, Qt.DashLine))
-            p.drawLine(int(x), int(ctx.price_top), int(x), int(ctx.price_bot))
+            p.setPen(QPen(colour, ctx.pen_w(1.0), Qt.DashLine))
+            p.drawLine(
+                QPointF(ctx.snap(x), ctx.price_top), QPointF(ctx.snap(x), ctx.price_bot)
+            )
             up = self._call_direction == CALL_BULLISH
             if up:
                 tip = ctx.p2y(bar.low)
@@ -3095,7 +3222,7 @@ if _HAS_QT:
                 tip = ctx.p2y(bar.high)
                 base = tip - CALL_MARK_PX
             p.setBrush(QBrush(colour))
-            p.setPen(QPen(colour, 1.0))
+            p.setPen(QPen(colour, ctx.pen_w(1.0)))
             p.drawPolygon(
                 QPolygonF(
                     [
@@ -3172,7 +3299,7 @@ if _HAS_QT:
             """Fill one ``CALL_SWATCH_PX`` square at ``x``, ``y`` in ``voter``'s overlay colour."""
             colour = self._voter_colour(voter)
             p.setBrush(QBrush(colour))
-            p.setPen(QPen(colour, 1.0))
+            p.setPen(Qt.NoPen)
             p.drawRect(QRectF(x, y + 2, CALL_SWATCH_PX, CALL_SWATCH_PX))
             p.setPen(QPen(self.TEXT_LIGHT))
 
@@ -3246,25 +3373,18 @@ if _HAS_QT:
                 logger.debug("chart height not re-applied on candles: %s", exc)
 
         def _apply_height_for_panes(self) -> None:
-            """Raise the minimum height to ``_minimum_height_for_panes`` at the widget's width.
+            """Set the minimum height to ``_natural_height_for_panes`` at the widget's width.
 
-            ``_height_override`` from a grip drag wins when it is
-            taller, and the parent widget is raised to the same height
-            plus 36; the layout's extra height goes to the panes.
+            ``_height_override`` from a grip drag wins when it is taller. The
+            scroll area holding the chart scrolls when its viewport is shorter
+            than this height; a taller viewport's extra height goes to the price pane.
             """
-            target = self._minimum_height_for_panes(self.width())
+            target = self._natural_height_for_panes(self.width())
             if self._height_override is not None:
                 target = max(target, self._height_override)
             if target != self.minimumHeight():
                 self.setMinimumHeight(target)
                 self.updateGeometry()
-                _parent = self.parent()
-                if _parent is not None:
-                    try:
-                        _parent.setMinimumHeight(target + 36)
-                        _parent.updateGeometry()
-                    except Exception as exc:
-                        logger.debug("chart parent height not raised: %s", exc)
 
         def mouseMoveEvent(self, event):
             """The grip drag when one is active, else ``pointer_moved`` on the painter."""
@@ -3279,17 +3399,12 @@ if _HAS_QT:
                 self._mouse_x = int(event.position().x())
                 self._mouse_y = mouse_y
                 delta = self._mouse_y - self._resize_start_y
-                new_h = max(200, (self._resize_start_height or 200) + delta)
+                new_h = max(
+                    self._natural_height_for_panes(self.width()),
+                    (self._resize_start_height or 200) + delta,
+                )
                 self._height_override = new_h
                 self.setMinimumHeight(new_h)
-                # The parent grows too, plus 36px for the toolbar above the chart.
-                _parent = self.parent()
-                if _parent is not None:
-                    try:
-                        _parent.setMinimumHeight(new_h + 36)
-                        _parent.updateGeometry()
-                    except Exception as exc:
-                        logger.debug("chart parent height not dragged: %s", exc)
                 self.updateGeometry()
                 self._repaint()
                 return
@@ -3345,8 +3460,10 @@ if _HAS_QT:
             p.end()
 
     class ChartPanel(QWidget):
-        """One CandlestickChart with the toggle row under it.
+        """One CandlestickChart in a scroll area, with the toggle row under it.
 
+        The scroll area's bar appears when the panel is shorter than the
+        chart's natural height; a wheel over the chart zooms and never scrolls.
         The timeframe menu, the two legend labels and the source label are
         built here and placed by the owner's control row through
         ``timeframe_widgets`` and ``legend_widgets``. The toggle row carries
@@ -3381,7 +3498,14 @@ if _HAS_QT:
 
             self._chart = CandlestickChart(symbol)
             self._chart.setMinimumHeight(CHART_PANEL_MIN_HEIGHT_PX)
-            layout.addWidget(self._chart)
+            self._scroll = QScrollArea(self)
+            self._scroll.setAccessibleName(CHART_SCROLL_NAME)
+            self._scroll.setWidgetResizable(True)
+            self._scroll.setFrameShape(QFrame.NoFrame)
+            self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._scroll.setWidget(self._chart)
+            layout.addWidget(self._scroll)
 
             self._toggles: dict[str, QCheckBox] = {}
             toggle_row = QHBoxLayout()

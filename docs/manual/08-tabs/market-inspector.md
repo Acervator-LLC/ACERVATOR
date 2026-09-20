@@ -5683,6 +5683,11 @@ the price pane shrinks from 220 toward 120 pixels. A height under that least
 layout is refused by name, the folder keeps its text file, and the emitter row
 for that venue reads not ok.
 
+Since 2026-09-20 a sub-pane's natural height is the Charts tab's readable
+figure, 84 pixels, so the fold starts from 84 toward 28; the order, the strip
+fold, the price pane's floors and the refusal are unchanged. The rule is on
+the Asset Charts page under the oscillators.
+
 `src/gui/native_chart.py` - the fold and the refusal
 
 ```python
