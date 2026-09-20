@@ -37,8 +37,8 @@ READ_NAMES = (
     "asked_at",
 )
 
-#: The venue's candle granularity for each timeframe the platform offers.
-#: Coinbase ships these eight and no others.
+#: The venue's candle granularity for each timeframe the platform offers, the
+#: nine names the venue's candles page lists; ``1w`` is rolled from ``1d``.
 GRANULARITY = {
     "1m": "ONE_MINUTE",
     "5m": "FIVE_MINUTE",
@@ -46,6 +46,7 @@ GRANULARITY = {
     "30m": "THIRTY_MINUTE",
     "1h": "ONE_HOUR",
     "2h": "TWO_HOUR",
+    "4h": "FOUR_HOUR",
     "6h": "SIX_HOUR",
     "1d": "ONE_DAY",
 }
@@ -60,6 +61,7 @@ BAR_SECONDS = {
     "30m": 1800,
     "1h": 3600,
     "2h": 7200,
+    "4h": 14400,
     "6h": 21600,
     "1d": 86400,
 }
