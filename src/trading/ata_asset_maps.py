@@ -306,14 +306,14 @@ METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
 #: for copper and DBB for aluminium, zinc and copper together.
 METALS_BASE: tuple[AssetListing, ...] = tuple(
     AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
-    for one in ("CPER", "DBB", "JJN", "JJU", "JJT", "LD")
+    for one in ("CPER", "DBB")
 )
 
 #: The listed instrument for each petroleum product: a fund priced in
 #: dollars whose shares carry no expiry, so its chart is one series.
 ENERGY_PETROLEUM: tuple[AssetListing, ...] = tuple(
     AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
-    for one in ("USO", "BNO", "UGA", "UHN")
+    for one in ("USO", "BNO", "UGA")
 )
 
 #: The listed instrument for natural gas, a fund of the same kind.
@@ -376,7 +376,12 @@ MAP_SOURCES: dict[str, str] = {
         "day: GLD SLV PPLT PALL, 274 daily rows each, every bar carrying "
         "volume. The futures GC=F SI=F PL=F PA=F answer the same window and "
         "are not carried: a chart of them joins contracts at a price nobody "
-        "traded, and PL=F sends 132 of 275 bars with volume 0."
+        "traded, and PL=F sends 132 of 275 bars with volume 0. The base "
+        "metals under the same rule, measured 2026-09-20: CPER for copper and "
+        "DBB for aluminium, zinc and copper together, 250 daily rows each, "
+        "the last complete daily bar carrying volume; the notes JJN JJU JJT "
+        "LD for nickel, aluminium, tin and lead answered HTTP 404, so no "
+        "listed instrument carries any of those four alone."
     ),
     CLASS_STOCKS: (
         "GICS names 11 sectors over 25 industry groups, 74 industries and 163 "
@@ -397,7 +402,10 @@ MAP_SOURCES: dict[str, str] = {
         "-PERP-INTX suffix). The list keeps the products whose status is "
         "online and trading_disabled is not set, ranked by volume_24h x price. "
         "Candles come from the same route's candles endpoint on ONE_HOUR and "
-        "ONE_DAY, 350 a request, and 1w from the daily rollup."
+        "ONE_DAY, 350 a request, and 1w from the daily rollup. Measured "
+        "2026-09-20: 117 trading products, every one EXPIRING on the CDE "
+        "venue and none carrying the -PERP-INTX suffix; 57 of them carried no "
+        "24 h volume, and 43 answered no candle on any granularity."
     ),
     CLASS_ENERGY: (
         "S&P GSCI groups energy as petroleum and natural gas. The listed "
@@ -407,7 +415,9 @@ MAP_SOURCES: dict[str, str] = {
         "every bar carrying volume. The futures CL=F BZ=F NG=F answer the same "
         "window and are not carried: a chart of them joins contracts at a "
         "price nobody traded. UHN, the heating oil fund, answered 0 rows, so "
-        "no listed instrument carries heating oil."
+        "no listed instrument carries heating oil; read again 2026-09-20 it "
+        "answered HTTP 404 on every timeframe, and no fund holding gasoil is "
+        "listed, so the class stays at the four funds."
     ),
 }
 
