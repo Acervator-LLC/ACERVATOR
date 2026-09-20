@@ -307,10 +307,18 @@ git log --merges --since=2026-09-03 --format=%s origin/current \
 
 | merged | item |
 |---|---|
-| 36 | **#147** Proof of Accumulation tab — the lead item |
+| 86 | **#147** Proof of Accumulation tab |
+| 72 | **#665** Phantom Bots page |
+| 50 | **#117** Simulator rebuild |
+| 26 | **#23** ATA-SMP |
+| 18 | **#585** PoA Content |
+| 17 | **#586** PoA Action |
 | 15 | **#128** Qt to React conversion, surface by surface on his call |
 | 11 | **#407** ATA-PMT, reversal zones from Market Inspector |
-| 8 | **#117** Simulator rebuild |
+| 2 | **#19** Paper tab — the active item since 2026-09-19, see its section below |
+
+Re-measured 2026-09-19 with the command above. The table before that date
+read 36, 15, 11 and 8 for #147, #128, #407 and #117.
 
 **Issue routing, learned the hard way twice.** Every Simulator finding folds
 into **#117**. Every TestNet, PoA or **Competition** finding folds into **#147**
@@ -319,6 +327,41 @@ open a new issue for either. A finding on an unbuilt screen gets one line folded
 into its owning item, never an issue of its own.
 
 ---
+
+## #19 — THE PAPER TAB. THE ACTIVE ITEM.
+
+The operator, 2026-09-19: a clone of the Live tab that trades real exchange
+data in real time against a fake, unbounded budget opening at the fleet's
+total Target Balance, receiving only, recording every event as if executed.
+Issue 19 comments 5747250193, 5747250703 and 5747250806 hold the contract,
+the W5H and the eight units Q1 to Q8 in build order.
+
+**Q1 landed on branch `unit/19-q1-paper-clone`**: Live's tab code under Paper
+names in both builds, under `src/gui/paper/` and `src/paper/`; the seam in
+`src/gui/variant_surface.py` answers `PaperTradingTab` and
+`PaperTradingTabReact`; the header strip shows on Paper and reads the paper
+ledger through `header_strip_reads_paper` in
+`src/gui/main_tabs/main_window_surface.py` and one branch in
+`src/gui/main_window.py`; Import Live Fleet copies `bot_state.json` records
+whole into `paper_fleet.json` under `PAPER_ROOT` through
+`src/paper/fleet_source.py`, each written `idle`. The old hosts
+`src/gui/paper_trader_tab.py` and `src/gui/react_paper_trader_tab.py` stay on
+disk, loaded by nothing, until Q3. The manual section is
+`docs/manual/08-tabs/paper-trader.md`, "2026-09-19 - #19 - Live's tab code
+cloned under Paper names".
+
+**Resume at Q2**, the paper exchange adapter beside
+`src/paper/live_feed_source.py`: the ticker with `best_bid` and `best_ask`,
+candles at the nine granularities, the products list, the quote-to-USD rate,
+cached with Live's windows in `src/exchange/data_pool.py`, every write name
+raising `SendRefused`; comment 5747250806 row Q2 holds the acceptance. Read the
+Paper tab off the running program with a scratch home and every socket but
+loopback refused before changing a line; `main.py` sets its window floor at
+1400 by 900, so the tab is reached at that width and no narrower.
+
+```bash
+git log --oneline origin/current -- src/gui/paper src/paper | head -5
+```
 
 ## #147 — PROOF OF ACCUMULATION. START HERE.
 
@@ -622,6 +665,9 @@ under it. Do not delete the citation, and do not recreate the file.
 - `docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py`
   — the release gate's own self-check fixture, which is why the gate cannot
   report ready. The issue is #416.
+- `src/gui/main_tabs/main_tab_bar.py` — named in the #128 section as one of
+  the three unpaired files; commit `59c59d59` removed it when the tab bar was
+  unpainted, so the unpaired count there is one lower than written.
 
 The docs archetype still reports that path as a medium hallucination finding,
 because its rule does not read this heading. That gap is **#541**, open. The

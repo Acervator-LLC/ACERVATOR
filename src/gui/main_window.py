@@ -21,6 +21,7 @@ from .main_tabs.main_window_surface import (
     HISTORY_TAB,
     ISOLATED_TABS,
     UNBUILT_TABS,
+    header_strip_reads_paper,
     header_strip_reads_sim,
 )
 from .main_tabs.trading_tab_surface import (
@@ -1083,6 +1084,13 @@ if _HAS_QT:
                 return False
             return header_strip_reads_sim(tabs.tabText(tabs.currentIndex()))
 
+        def _header_strip_reads_paper(self) -> bool:
+            """True while the tab in front is one ``PAPER_FED_TABS`` names."""
+            tabs = getattr(self, "_main_tabs", None)
+            if tabs is None or getattr(self, "_paper_trader_tab", None) is None:
+                return False
+            return header_strip_reads_paper(tabs.tabText(tabs.currentIndex()))
+
         def _write_header_strip(self, agg: dict, exchanges: int) -> None:
             """Write the five cards and the five columns from one aggregate."""
             _scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
@@ -1100,10 +1108,16 @@ if _HAS_QT:
             )
 
         def _refresh_header_strip(self, live_stats: Optional[dict] = None) -> None:
-            """Repaint the strip from the Simulator's fleet with Sim in front, else from the live fleet."""
+            """Repaint the strip from the Simulator's fleet with Sim in front, from the paper ledger with Paper in front, else from the live fleet."""
             if self._header_strip_reads_sim():
                 sim_tab = self._simulator_tab
                 self._write_header_strip(sim_tab.aggregate(), sim_tab.exchange_count())
+                return
+            if self._header_strip_reads_paper():
+                paper_tab = self._paper_trader_tab
+                self._write_header_strip(
+                    paper_tab.aggregate(), paper_tab.exchange_count()
+                )
                 return
             if live_stats is None:
                 if not self._bot_manager:

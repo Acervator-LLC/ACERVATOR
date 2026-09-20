@@ -620,4 +620,403 @@ word it held before the press while the run was open.
 Both builds carry the same draw.
 
 
+## 2026-09-19 - #19 - Live's tab code cloned under Paper names
+
+Unit Q1 of issue #19. The Paper tab is now Live's tab code, forked under Paper
+names in both builds, with Import Live Fleet as the fleet's one way in and the
+header strip reading the paper ledger while Paper is in front. The two hosts
+the sections above describe, `src/gui/paper_trader_tab.py` and
+`src/gui/react_paper_trader_tab.py`, stay on disk and nothing loads them; a
+later unit removes them once a paper bot ticks on the clone.
+
+### The budget rule today overtakes four sentences
+
+Four sentences on this page carry a figure the operator's words of 2026-09-19
+overtake. Each is quoted here and kept above as it stands.
+
+- "The paper budget is twice the dollar target, so a bot has room to fold
+  without the exercise ending on the first dip." (What the step is)
+- "Each bot opens a budget of twice its dollar target: units worth the target,
+  and the rest in cash to fund a fold." (The fake balance)
+- "Each variable holds the full fleet sum, which is twice the fleet's dollar
+  target in total." (The fleet ledger)
+- "Real time is Paper's defining property, and its budget is twice the dollar
+  target." (2026-09-08 08:17)
+
+The rule now: the paper budget is unbounded, and Paper Spendable opens at the
+sum of the fleet's Target Balances. His words: *"a fake, unbounded (starts
+equal to bots total target balance) budget."* No fold is refused for cash.
+`BUDGET_MULTIPLE` in `src/paper/fake_balance.py` still reads `2.0`; the unit
+that starts a paper run retires it, and no clone code reads it.
+
+`src/paper/fake_balance.py` — the opening figure the rule keeps
+
+```python
+def fleet_target_usd(bots: Sequence[Any]) -> float:
+    """The sum of every bot's ``target_usd``, the figure both openings take."""
+```
+
+### The Qt tab is Live's tab code, forked
+
+The Qt build of the Paper tab is `PaperTradingTab`, a fork of the Live tab's
+own code under the Paper Trader's name. The seam's Qt loader answers it.
+
+`src/gui/variant_surface.py` — the Qt loader
+
+```python
+def _qt_paper_trader() -> type:
+    """Import and return the Qt Paper tab, ``PaperTradingTab``."""
+    from .paper.paper_trading_tab import PaperTradingTab
+
+    return PaperTradingTab
+```
+
+Each module under `src/gui/paper/` is one Live module copied and renamed, or
+one of the Simulator's forks copied once more where that fork's only change
+was the feed. The copy keeps Live's layout, titles, sizes and design tokens.
+
+| Paper module | forked from |
+|---|---|
+| `paper_trading_tab.py` `PaperTradingTab` | `src/gui/main_tabs/trading_tab.py` `_build_trading_tab`, and the window's `add_exchange_tab` |
+| `paper_exchange_tab.py` `PaperExchangeTab` | `src/gui/widgets/exchange_tab.py` `ExchangeTab` |
+| `paper_bot_status_table.py` `PaperBotStatusTable` | `src/gui/simulator/sim_bot_status_table.py` `SimBotStatusTable` |
+| `paper_extractor_bot_table.py` `PaperExtractorBotTable` | `src/gui/simulator/sim_extractor_bot_table.py` `SimExtractorBotTable` |
+| `paper_indicator_panel.py` `PaperIndicatorVotingPanel` | `src/gui/simulator/sim_indicator_panel.py` `SimIndicatorVotingPanel` |
+| `paper_status_log.py` `PaperStatusLog` | `src/gui/simulator/sim_status_log.py` `SimStatusLog` |
+| `paper_bot_detail.py` `PaperBotDetailDialog` and its seven tab mixins | `src/gui/simulator/sim_bot_detail.py` `SimBotDetailDialog` and its seven |
+| `paper_exchange_choice.py` `PaperExchangeChoiceDialog` | `src/gui/simulator/sim_exchange_choice.py` `SimExchangeChoiceDialog` |
+| `src/paper/fleet_source.py` `PaperFleetSource`, `PaperBot` | `src/simulator/fleet_source.py` `FleetSource`, `SimBot`, one fleet and no run mode |
+| `src/paper/paper_bot_manager.py` `PaperBotManager` | `src/simulator/sim_bot_manager.py` `SimBotManager` |
+| `src/paper/paper_bot_view.py` `PaperBotView` | `src/simulator/sim_bot_view.py` `SimBotView` |
+
+```mermaid
+flowchart LR
+    seam[variant_surface PAPER_TRADER] --> tab[PaperTradingTab]
+    tab --> stack[exchange layer stack]
+    stack --> venue[PaperExchangeTab]
+    venue --> scrum[PaperBotStatusTable]
+    venue --> extractor[PaperExtractorBotTable]
+    tab --> panel[PaperIndicatorVotingPanel]
+    tab --> activity[PaperStatusLog]
+    tab --> api[API Interaction Log]
+    tab --> source[PaperFleetSource]
+    source --> file[paper_fleet.json under PAPER_ROOT]
+```
+
+### What the fork draws
+
+The tab is Live's four splitters at Live's sizes: the exchange layer stack
+beside the panel on top, the Activity Log and the API Interaction Log side by
+side below. Every module carries Live's title. The venue page holds Privacy
+Mode where Live draws it, `+ New Bot` where Live draws it, the Scrumming Bots
+table and the Extractor Bots table, both hidden until a row arrives, and the
+command bar of Start, Pause, Stop, Restart and Delete. The panel holds its
+title, the Bot selector and its privacy dot, the currency rate strip, both
+indicator tables, both confidence bar graphs, the timeframe-lock line and the
+staleness banner.
+
+Three positions differ from Live by ruling, the ruling unit 7 of issue #117
+made for the Simulator. The corner Live gives `＋ Add Crypto Exchange` holds
+Import Live Fleet and Start Paper Run, each at Live's corner-button width. The
+Get Started card holds the same two where Live's card holds its add button.
+The news line and the data-pool line are not forked; the data-pool row keeps
+Live's height and holds nothing.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the corner buttons
+
+```python
+CORNER_BUTTONS = (
+    (paper.IMPORT_LIVE_FLEET_ACTION, paper.IMPORT_LIVE_FLEET_TEXT),
+    (paper.START_RUN_ACTION, paper.START_RUN_TEXT),
+)
+```
+
+A press on `+ New Bot` writes one Activity Log line naming Import Live Fleet
+as the fleet's way in; the paper bot wizard is a later unit's. A press on
+Start Paper Run writes one line saying no paper run is built; the run is a
+later unit's too.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the two lines
+
+```python
+NEW_BOT_FORMAT = (
+    "+ New Bot on {exchange}: the Paper fleet is loaded through "
+    "{way_in}; the paper bot wizard is not built."
+)
+
+START_RUN_TEXT = "Start Paper Run: no paper run is built; nothing started."
+```
+
+### What the fork does not carry
+
+The copies hold no live bot manager, no connector and no event bus. Every
+send the Live code makes is cut, not stubbed: the signal-contract emits, the
+event-bus emit behind the bot selector, the API-log listener on the
+process-wide log, the watchdog over the live bot manager, the TA snapshot
+store, the data-pool read behind the display price, and the demo readings the
+Live panel invents from a random walk. Zero occurrences of `ScrummingBot`,
+`BotContainer`, `BotManager`, `EventBus` and `PhantomBalance` under
+`src/gui/paper/` and `src/paper/`.
+
+The Simulator's run modes, its way-in row, its replay layer, its Stone Tablet
+source, its Portfolio Battery, its retrieval and its nigredo tone are not
+carried. A Paper module forked from a Simulator fork has those parts cut.
+
+Asked for a send by name, `PaperFleetSource` raises `SendRefused`. The Fire
+button on a row reaches it and the refusal lands in the Activity Log.
+
+`src/paper/fleet_source.py` — the refusal
+
+```python
+    def __getattr__(self, name: str):
+        """Refuse every name outside ``READ_NAMES``."""
+        raise SendRefused(
+            f"PaperFleetSource answers {READ_NAMES} and cannot {name!r}. "
+            "The Paper Trader receives and asks; it sends nothing."
+        )
+```
+
+### The React page is Live's page modules, forked
+
+The React build of the Paper tab is `PaperTradingTabReact`, a fork of the
+Live tab's React host under the Paper Trader's name, and it loads seven page
+modules that are Live's seven copied under Paper names. The seam's React
+loader answers it.
+
+`src/gui/variant_surface.py` — the React loader
+
+```python
+def _react_paper_trader() -> type:
+    """Import and return the React Paper tab, ``PaperTradingTabReact``."""
+    from .paper.paper_react_trading_tab import PaperTradingTabReact
+
+    return PaperTradingTabReact
+```
+
+| Paper module | forked from |
+|---|---|
+| `src/gui/web/paper_trading_tab.js` | `trading_tab.js` |
+| `src/gui/web/paper_exchange_tab.js` | `exchange_tab.js` |
+| `src/gui/web/paper_indicator_panel.js` | `sim_indicator_panel.js`, the flip button cut |
+| `src/gui/web/paper_status_log.js` | `sim_status_log.js` |
+| `src/gui/web/paper_bot_status_table.js` | `sim_bot_status_table.js` |
+| `src/gui/web/paper_extractor_bot_table.js` | `sim_extractor_bot_table.js` |
+| `src/gui/web/paper_table_cells.js` | `sim_table_cells.js` |
+| `src/gui/paper/paper_react_trading_tab.py` `PaperTradingTabReact` | `src/gui/react_trading_tab.py` `TradingTabReact` |
+| `src/gui/paper/paper_trading_tab_surface.py` | `src/gui/main_tabs/trading_tab_surface.py`, the payload builder |
+| `src/gui/paper/paper_exchange_tab_surface.py` | `src/gui/main_tabs/exchange_tab_surface.py`, the payload builder |
+| `src/gui/paper/paper_react_bot_detail.py` `PaperBotDetailReactDialog` | `src/gui/simulator/sim_react_bot_detail.py`, over Live's nine window bundles |
+
+```mermaid
+flowchart LR
+    seam[variant_surface PAPER_TRADER] --> host[PaperTradingTabReact]
+    host --> page[paper_trading_tab.js]
+    page --> venue[paper_exchange_tab.js]
+    venue --> scrum[paper_bot_status_table.js]
+    venue --> extractor[paper_extractor_bot_table.js]
+    scrum --> cells[paper_table_cells.js]
+    extractor --> cells
+    page --> panel[paper_indicator_panel.js]
+    page --> activity[paper_status_log.js]
+    page --> api[API Interaction Log pane]
+```
+
+### What the page draws
+
+The page is Live's four splitters at Live's sizes, read off Live's own
+`trading_tab_surface`. Every module carries Live's title and Live's part name,
+so the page and the Qt fork enumerate the same modules in the same order. The
+corner holds Import Live Fleet and Start Paper Run in Live's corner-button
+chrome, and the Get Started card holds the same two at Live's card-button
+size. The venue page holds Privacy Mode, plain space where Live draws the news
+line, `+ New Bot`, the data-pool row at Live's height holding a blank line,
+the two tables and the command bar.
+
+`src/gui/web/paper_trading_tab.js` — the corner
+
+```javascript
+  // The corner Live gives its add button: the payload's buttons in one row.
+  function CornerButtons(props) {
+    var listed = listField(props.layer, CORNER_BUTTONS);
+```
+
+The host builds one payload per bridge method from state it owns: the tab
+payload from its own `PaperTradingTabState`, the Activity Log from its own
+`PaperStatusLogModel`, the panel from its own `IndicatorPanelModel`, and each
+seated venue's three payloads from that venue's own `ExchangeTabModel`, its
+`PaperBotStatusTableModel` and Live's `ExtractorBotTableModel`. Every ask the
+page makes is written to the console line the host reads, and
+`run_action` answers it; nothing is sent anywhere else.
+
+`src/gui/paper/paper_react_trading_tab.py` — the console line
+
+```python
+ACTION_PREFIX = "acervator-paper:"
+```
+
+### The header strip shows on Paper
+
+The window's header strip stays on screen while the Paper tab is in front.
+`ISOLATED_TABS` names no tab now, so the strip hides on nothing. While Paper
+is in front the ten fields carry the Paper Trader's figures: SPENDABLE,
+REALISED, LOCKED and MATURE from the paper ledger, EXCH from the seated
+venues, and the five cards from the held records. On every other tab the
+strip carries what it carried before; the live fleet's figures do not appear
+while Paper is in front, and no paper figure appears on Live.
+
+`src/gui/main_tabs/main_window_surface.py` — the tuples and the reader
+
+```python
+ISOLATED_TABS: tuple = ()
+
+#: The tabs the header strip reads the Paper Trader's ledger and records on.
+PAPER_FED_TABS = (PAPER_TAB,)
+
+
+def header_strip_reads_paper(tab_name: Any) -> bool:
+    """Whether the stat strip reads the Paper Trader's ledger and records on the tab named."""
+    return tab_name in PAPER_FED_TABS
+```
+
+`src/gui/main_window.py` — `_refresh_header_strip`, the branch beside the Sim's
+
+```python
+            if self._header_strip_reads_paper():
+                paper_tab = self._paper_trader_tab
+                self._write_header_strip(
+                    paper_tab.aggregate(), paper_tab.exchange_count()
+                )
+                return
+```
+
+The tab's `aggregate` is `strip_aggregate`: Live's arithmetic over the held
+records, with the ledger's four money figures laid over the four money keys.
+Before a run the ledger holds zeros, so the four money columns read an em
+dash, as Live's read with no bot.
+
+`src/paper/fleet_source.py` — the ledger's keys over the aggregate's
+
+```python
+LEDGER_TO_AGGREGATE = (
+    ("spendable_usd", "wallet_cash_usd"),
+    ("locked_usd", "crypto_position_value_usd"),
+    ("realized_profit_usd", "total_realized_exchange"),
+    ("mature_profit_usd", "total_mature_exchange"),
+)
+```
+
+```mermaid
+flowchart LR
+    tick[dashboard tick, 2000 ms] --> pick{tab in front}
+    change[tab change] --> pick
+    pick -- Sim --> sim[SimTradingTab.aggregate]
+    pick -- Paper --> paper[PaperTradingTab.aggregate]
+    pick -- any other --> live[BotManager.get_aggregate_stats]
+    sim --> strip[the ten cells]
+    paper --> strip
+    live --> strip
+```
+
+### Import Live Fleet fills the tables and the strip
+
+Import Live Fleet copies the stored bots of one exchange out of the live fleet
+file into the Paper Trader's own fleet file, in both builds. A press at the
+corner or on the Get Started card reads which exchanges the live file names.
+With more than one it opens the chooser; with exactly one it takes that one
+and opens nothing; with none it writes one Activity Log line naming the file
+and moves nothing. Each stored bot on the chosen exchange is copied whole,
+every key of the record, into the paper fleet under its own bot id, and the
+fleet signal fires: the paper fleet file is written, the venue seats, and the
+two tables draw one row per imported bot. The Activity Log reads `Imported 38
+bot(s) from bot_state.json on coinbase.` on a fleet of thirty-eight. The live
+fleet file is only read, never written.
+
+`src/paper/fleet_source.py` — the copy
+
+```python
+    def import_live_fleet(self, exchange_id: str) -> list[PaperBot]:
+```
+
+`src/paper/paper_paths.py` — where the paper fleet file lives
+
+```python
+#: The paper fleet file under ``PAPER_ROOT``, in ``bot_state.json``'s shape.
+PAPER_FLEET_NAME = "paper_fleet.json"
+```
+
+The tab starts empty. The fleet source answers the records the paper fleet
+file holds and nothing else, so with no paper fleet there is no venue, no row
+and no figure until Import Live Fleet loads one. On the next launch the tab
+reads the paper fleet file once and draws the imported rows from it.
+
+### A loaded bot reads IDLE
+
+Import Live Fleet copies each stored record and writes its state `idle`,
+whatever the live file saved, and the paper fleet file's records read `idle`
+at construction. That is the live restore's own rule, and the Simulator's.
+A row's state is the Bot ID cell's colour and its tooltip's `State:` line;
+Live's ten columns hold no State column.
+
+`src/paper/fleet_source.py` — the one write
+
+```python
+def loaded_idle(record: dict) -> dict:
+    """``record`` with its ``state_when_saved`` written ``BotState.IDLE``, as
+    ``restore_bots_from_state`` recreates every persisted bot in IDLE until
+    the operator starts it; a loaded bot never reads ``running`` with no run."""
+    record["state_when_saved"] = BotState.IDLE.value
+    return record
+```
+
+The command bar moves a record's state through `PaperBotManager`: Start
+writes `running` and Live's `✓ Bot <id> RUNNING.` line, Pause `paused`, Stop
+`stopped`, Restart `running`, and Delete opens Live's Delete box. No paper bot
+ticks yet; the state is the record's. Detail opens the seven tabs over the
+record through `PaperBotDetailDialog`, and Apply is refused: the pending line
+reads `Refused 1 change(s) — the Paper Trader sends nothing`.
+
+### How the Paper tab reaches the bar today
+
+The builder in `src/gui/main_tabs/paper_trader_tab.py` is unchanged. It asks
+the seam for the Paper class, and the seam now answers the clone in both
+builds. The window builds nine tabs and Paper takes the second slot, after
+Sim, in both.
+
+`src/gui/variant_surface.py` — the registration
+
+```python
+register(PAPER_TRADER, _qt_paper_trader, _react_paper_trader)
+register(PAPER_BOT_DETAIL, _qt_paper_bot_detail, _react_paper_bot_detail)
+```
+
+The window's floor is 1400 by 900 pixels, set in `src/gui/main_window.py`, so
+no tab is reached narrower than 1400 through the window. Constructed alone,
+the Qt tab draws at 806 pixels wide and no narrower after a fleet loads, the
+sum of Live's own minimum sizes; the React page draws at 700.
+
+### What the clone reading measured
+
+Read off the real window in both builds over a scratch home holding a
+stand-in `bot_state.json` of the operator's record shape, thirty-eight
+scrumming records on coinbase at 5m, every socket but loopback refused:
+
+```
+reading                                      Qt                       React
+Paper on the bar                             second of nine           second of nine
+Live modules on the tab before the clone     0 of 6                   0 of 10
+Paper modules on the tab after the clone     6 of 6                   10 of 10
+strip on Paper at open                       — — — — EXCH 0           — — — — EXCH 0
+Import Live Fleet: rows                      38, State: IDLE          38, State: IDLE
+Import Live Fleet: Bot ID cell colour        #888888                  rgb(136, 136, 136)
+venue seated, EXCH                           Coinbase, 1              Coinbase, 1
+paper fleet file                             38 records, all idle     38 records, all idle
+bot_state.json hash after every press        unchanged                unchanged
+a planted byte on a copy                     hash moved               hash moved
+a planted live figure on the Paper strip     did not appear           did not appear
+a planted paper figure on the Paper strip    appeared                 appeared
+the same paper figure on the Live strip      did not appear           did not appear
+Detail                                       7 tabs, Apply refused    7 tabs, Apply refused
+old hosts in the import closure              neither                  neither
+```
+
 Back to [the subsystem index](README.md).
