@@ -6461,12 +6461,12 @@ line, in both variants.
 ```
 
 Read at every progress of the same scan: the row font 11 px at the first
-line and at the ninetieth in both variants; each Qt row 30 px, two wrapped
-lines of 15, from the first line to the ninetieth, and the entry 144 px at
-one line and 3,075 px at ninety; the newest line inside the field on 90 of
-90 readings on the Qt window and 83 of 83 on the page. A held height pinned
-to the viewport in place of the rule dropped every row to 0 px by the 28th
-line, so that reading can fail too.
+line and at the ninetieth in both variants; each Qt row 15 px a wrapped
+line, 30 px where the line wraps to two, from the first line to the
+ninetieth, and the entry 144 px at one line and 3,075 px at ninety; the
+newest line inside the field on 90 of 90 readings on the Qt window and 76 of
+76 on the page. A held height pinned to the viewport in place of the rule
+dropped every row to 0 px by the 28th line, so that reading can fail too.
 
 ### A venue candle's stamp is written in seconds
 
