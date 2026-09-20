@@ -362,9 +362,10 @@ venue call, `__getattribute__` refusing every public name outside
 `_cross_api_event`, and after Import Live Fleet a `paper-feed-import` thread
 runs `read_fleet` and one `feed_line` lands on the Activity Log. The manual
 section is `docs/manual/08-tabs/paper-trader.md`, "2026-09-20 - #19 - The
-paper exchange adapter feeds the tab". One conflict named on the issue and
-not touched: `src/exchange/timeframes.py` says eight granularities and no
-`4h`; the venue's page read in Q0 says nine.
+paper exchange adapter feeds the tab". Settled against the venue itself: one
+candles ask per granularity name on `BTC-USD` answered 200 with rows for all
+nine, `FOUR_HOUR` at 14,400 s spacing; `src/exchange/timeframes.py` still
+says eight and no `4h`, is Live's, and was not touched.
 
 **Resume at Q3**, the runner on one worker thread per run at Live's cadence,
 the tick rebuilt on `src/trading/scrumming/sizing.py` over `tape_context` and

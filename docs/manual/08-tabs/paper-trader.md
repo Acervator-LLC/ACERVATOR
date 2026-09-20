@@ -1274,4 +1274,27 @@ calls in each build, every one refused by the container and every one a block
 on the pane naming its cause, and the Activity Log line read that the venue
 answered no product list and 0 of 38 tickers.
 
+One more real reading settled the ninth name against the source. Through the
+built bundle's own copy of `PaperExchange`, against the public host, no
+credential file present and the adapter's own pace, one candles ask per name
+in `GRANULARITY` on `BTC-USD`, nine calls, ten bars each:
+
+```
+name             status  rows  bar spacing
+ONE_MINUTE       200     10    60 s
+FIVE_MINUTE      200     10    300 s
+FIFTEEN_MINUTE   200     10    900 s
+THIRTY_MINUTE    200     10    1,800 s
+ONE_HOUR         200     10    3,600 s
+TWO_HOUR         200     10    7,200 s
+FOUR_HOUR        200     10    14,400 s
+SIX_HOUR         200     10    21,600 s
+ONE_DAY          200     10    86,400 s
+```
+
+The nine calls were 0.271 s apart at least and spanned 2.3 s; no 400 and no
+429. The venue answers `FOUR_HOUR`, so the `4h` row stays.
+`src/exchange/timeframes.py` still says the venue ships eight granularities
+and no `4h`; that file is Live's and this unit does not touch it.
+
 Back to [the subsystem index](README.md).
