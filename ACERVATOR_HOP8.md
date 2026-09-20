@@ -371,8 +371,9 @@ the tick rebuilt on `src/trading/scrumming/sizing.py` over `tape_context` and
 `latch`, a scrum at `best_bid`, a fold at `best_ask`, the venue's taker fee,
 the budget unbounded; comment 5747250806 row Q3 holds the acceptance. The
 runner reads the tab's `exchange()`; the old hosts
-`src/gui/paper_trader_tab.py` and `src/gui/react_paper_trader_tab.py` and
-`src/paper/paper_run.py` go in Q3. Read the Paper tab off the running program
+`src/gui/paper_trader_tab.py` and `src/gui/react_paper_trader_tab.py` are
+removed in Q3, and `src/paper/paper_run.py` is the tick Q3 rebuilds. Read the
+Paper tab off the running program
 with a scratch home and every socket but loopback refused before changing a
 line; `main.py` sets its window floor at 1400 by 900, so the tab is reached at
 that width and no narrower.
