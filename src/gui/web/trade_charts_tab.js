@@ -10,8 +10,14 @@
   var NEXT_TOOLTIP = "next_tooltip";
   var TICKER_TOOLTIP = "ticker_tooltip";
   var ARROW_WIDTH = "arrow_width_px";
-  var ARROW_HEIGHT = "arrow_height_px";
+  var ARROW_GLYPH_PX = "arrow_glyph_px";
+  var ARROW_GLYPH_FAMILY = "arrow_glyph_family";
+  var CONTROL_HEIGHT = "control_height_px";
+  var CONTROL_FONT_FAMILY = "control_font_family";
+  var CONTROL_FONT_PX = "control_font_px";
+  var CAPTION_PX = "caption_px";
   var TICKER_MIN_WIDTH = "ticker_min_width_px";
+  var TIMEFRAME_LABEL = "timeframe_label";
   var SELECTOR_ITEMS = "items";
   var SELECTOR_SHOWN = "shown";
   var POSITION_TEXT = "position_text";
@@ -24,7 +30,6 @@
   var LIST_MODE = "list_mode";
   var TOGGLE_TOOLTIP = "toggle_tooltip";
   var TOGGLE_WIDTH = "toggle_width_px";
-  var TOGGLE_HEIGHT = "toggle_height_px";
   var SHOWING_ATA = "showing_ata";
   var ATA_EMPTY_HINT = "ata_empty_hint";
   var LISTS = "lists";
@@ -55,6 +60,7 @@
   var CHECKED = "checked";
   var COLOR = "color";
   var TOGGLE_GAP = "toggle_gap_px";
+  var TOGGLE_BOX = "toggle_box_px";
   var LEGEND_GAP = "legend_gap_px";
   var PANEL_DEFAULTS = "panel_defaults";
   var NUCLEAR_DEFAULTS = "nuclear_defaults";
@@ -123,8 +129,8 @@
   var SPACING = "spacing_px";
   var LAYOUT_SLOTS = "layout_slots";
 
-  // The list-toggle row, the selector row, the chart panel and the toggle row.
-  var LAYOUT_SLOT_COUNT = 4;
+  // The control row, the chart panel and the toggle row.
+  var LAYOUT_SLOT_COUNT = 3;
 
   var SYMBOL = "symbol";
   var EXCHANGE_ID = "exchange_id";
@@ -266,7 +272,6 @@
 
   var PANEL_AT = "asset:";
   var LEGEND_AT = "legend:";
-  var TOOLBAR_GAP_KEY = "toolbar-gap";
   var TOGGLE_BOX_SUFFIX = ":box";
   var PATH_SPLIT = ".";
   var EMPTY = "";
@@ -302,7 +307,6 @@
   var ABSOLUTE = "absolute";
   var ZERO_PX = "0px";
   var NOWRAP = "nowrap";
-  var WRAP = "wrap";
   var ELLIPSIS = "ellipsis";
   var SELECT_NONE = "none";
   var FULL = "100%";
@@ -324,8 +328,8 @@
 
   var TAB_PART = "tab";
   var CONTENT_PART = "content";
-  var SELECTOR_PART = "asset-selector";
-  var LIST_ROW_PART = "chart-list-row";
+  var CONTROL_ROW_PART = "control-row";
+  var CONTROL_GAP_KEY = "control-gap";
   var LIST_TOGGLE_PART = "chart-list-toggle";
   var LIST_HINT_PART = "chart-list-hint";
   var PREV_PART = "asset-prev";
@@ -333,9 +337,8 @@
   var TICKER_PART = "asset-ticker";
   var POSITION_PART = "asset-position";
   var PANEL_PART = "chart-panel";
-  var HEADER_PART = "panel-header";
-  var TOOLBAR_PART = "panel-toolbar";
   var TIMEFRAME_PART = "timeframe";
+  var TIMEFRAME_LABEL_PART = "timeframe-label";
   var SOURCE_PART = "panel-source";
   var LEGEND_PART = "panel-legend";
   var TOGGLE_ROW_PART = "panel-toggle-row";
@@ -678,7 +681,7 @@
   }
 
   function TimeframeControl(props) {
-    var style = { flex: FLEX_NONE };
+    var style = { flex: FLEX_NONE, height: props.height };
     var selectProps = {
       style: style,
       value: text(props.timeframe),
@@ -696,28 +699,17 @@
     return element(SELECT_TAG, selectProps, drawn);
   }
 
-  // Qt paints the header with the chart, so nothing here may be selected.
-  function PanelHeader(props) {
-    var style = {
-      flex: FLEX_NONE,
-      overflow: HIDDEN,
-      whiteSpace: NOWRAP,
-      textOverflow: ELLIPSIS,
-      userSelect: SELECT_NONE
-    };
-    var headerProps = { style: style };
-    headerProps[PART_ATTR] = HEADER_PART;
-    headerProps[BOT_ATTR] = text(props.botId);
-    return element(DIV_TAG, headerProps, text(props.panel[LABEL]));
-  }
-
   function PanelSource(props) {
     var style = {
       flex: FLEX_NONE,
       overflow: HIDDEN,
       whiteSpace: NOWRAP,
       textOverflow: ELLIPSIS,
-      userSelect: SELECT_NONE
+      userSelect: SELECT_NONE,
+      fontSize: props.fontSize,
+      height: props.height,
+      display: FLEX,
+      alignItems: CENTER
     };
     var sourceProps = { style: style };
     sourceProps[PART_ATTR] = SOURCE_PART;
@@ -741,6 +733,8 @@
     var legendProps = {
       style: {
         display: FLEX,
+        alignItems: CENTER,
+        height: props.height,
         gap: height(chrome[LEGEND_GAP]),
         flex: FLEX_NONE
       }
@@ -760,11 +754,18 @@
     );
   }
 
-  // One check box per overlay the chart can draw, in the order it offers them.
-  function PanelToggle(one) {
+  // One check box per overlay the chart can draw, in the order it offers them;
+  // the box is the chrome's toggle size and the label the caption size.
+  function PanelToggle(one, chrome) {
     var boxProps = {
       key: one[TOGGLE_KEY],
-      style: { color: text(one[COLOR]), display: FLEX, alignItems: CENTER }
+      style: {
+        color: text(one[COLOR]),
+        fontSize: height(chrome[CAPTION_PX]),
+        display: FLEX,
+        alignItems: CENTER,
+        flex: FLEX_NONE
+      }
     };
     boxProps[PART_ATTR] = TOGGLE_PART;
     boxProps[TOGGLE_ATTR] = text(one[TOGGLE_KEY]);
@@ -774,6 +775,12 @@
       element(INPUT_TAG, {
         key: one[TOGGLE_KEY] + TOGGLE_BOX_SUFFIX,
         type: CHECKBOX_TYPE,
+        style: {
+          width: height(chrome[TOGGLE_BOX]),
+          height: height(chrome[TOGGLE_BOX]),
+          margin: ZERO_PX,
+          flex: FLEX_NONE
+        },
         "aria-label": text(one[LABEL]),
         checked: Boolean(one[CHECKED]),
         onChange: function (event) {
@@ -784,21 +791,28 @@
     );
   }
 
-  // Fourteen boxes wrap to a second row where the tab is too narrow for one.
+  // Fourteen boxes on one line, left-aligned, with no stretch between them.
   function PanelToggles(props) {
     var chrome = props.chrome;
     var rowProps = {
       style: {
         display: FLEX,
-        flexWrap: WRAP,
+        flexWrap: NOWRAP,
         gap: height(chrome[TOGGLE_GAP]),
         flex: FLEX_NONE,
-        alignItems: CENTER
+        alignItems: CENTER,
+        overflow: HIDDEN
       }
     };
     rowProps[PART_ATTR] = TOGGLE_ROW_PART;
     rowProps[BOT_ATTR] = text(props.botId);
-    return element(DIV_TAG, rowProps, listField(chrome, TOGGLES).map(PanelToggle));
+    return element(
+      DIV_TAG,
+      rowProps,
+      listField(chrome, TOGGLES).map(function (one) {
+        return PanelToggle(one, chrome);
+      })
+    );
   }
 
   // The host the painted image lands in, carrying the panel values the tab fed it.
@@ -850,25 +864,36 @@
     return element(DIV_TAG, mountProps, drawn);
   }
 
-  // The Live / ATA-SMP toggle, above the arrows and the ticker list.
-  function ListToggle(props) {
+  // The one control row over the chart: the list toggle, the previous arrow,
+  // the ticker menu, the next arrow, the counter, the empty-list hint, the
+  // timeframe menu, a stretch, then the two legend labels and the source.
+  function ControlRow(props) {
     var selector = props.selector;
+    var panel = props.panel;
     var rowProps = {
       style: {
         display: FLEX,
         flexDirection: ROW,
         alignItems: CENTER,
         flex: FLEX_NONE,
-        gap: spacing(selector[SPACING])
+        gap: spacing(selector[SPACING]),
+        height: height(selector[CONTROL_HEIGHT])
       }
     };
-    rowProps[PART_ATTR] = LIST_ROW_PART;
+    rowProps[PART_ATTR] = CONTROL_ROW_PART;
     rowProps[LIST_ATTR] = text(selector[LIST_MODE]);
+    var controlFont = {
+      fontFamily: text(selector[CONTROL_FONT_FAMILY]),
+      fontSize: height(selector[CONTROL_FONT_PX])
+    };
 
     var toggleProps = {
+      key: LIST_TOGGLE_PART,
       style: {
-        width: height(selector[TOGGLE_WIDTH]),
-        height: height(selector[TOGGLE_HEIGHT]),
+        minWidth: height(selector[TOGGLE_WIDTH]),
+        height: height(selector[CONTROL_HEIGHT]),
+        fontFamily: controlFont.fontFamily,
+        fontSize: controlFont.fontSize,
         flex: FLEX_NONE
       },
       title: text(selector[TOGGLE_TOOLTIP]),
@@ -878,39 +903,18 @@
     };
     toggleProps[PART_ATTR] = LIST_TOGGLE_PART;
     toggleProps[ARIA_LABEL] = label(selector[TOGGLE_TOOLTIP]);
-    toggleProps.key = LIST_TOGGLE_PART;
-
-    var drawn = [element(BUTTON_TAG, toggleProps, text(selector[LIST_TEXT]))];
-    if (selector[SHOWING_ATA] === true && !props.listed) {
-      var hintProps = { key: LIST_HINT_PART, style: { flex: FLEX_NONE } };
-      hintProps[PART_ATTR] = LIST_HINT_PART;
-      drawn.push(element(DIV_TAG, hintProps, text(selector[ATA_EMPTY_HINT])));
-    }
-    return element(DIV_TAG, rowProps, drawn);
-  }
-
-  // The arrows, the ticker list and the readout that says which of how many.
-  function Selector(props) {
-    var selector = props.selector;
-    var rowProps = {
-      style: {
-        display: FLEX,
-        flexDirection: ROW,
-        alignItems: CENTER,
-        flex: FLEX_NONE,
-        gap: spacing(selector[SPACING])
-      }
-    };
-    rowProps[PART_ATTR] = SELECTOR_PART;
 
     var stepping = selector[STEPPING_ENABLED] === true;
     var arrowStyle = {
       width: height(selector[ARROW_WIDTH]),
-      height: height(selector[ARROW_HEIGHT]),
+      height: height(selector[CONTROL_HEIGHT]),
+      fontFamily: text(selector[ARROW_GLYPH_FAMILY]),
+      fontSize: height(selector[ARROW_GLYPH_PX]),
+      padding: ZERO_PX,
       flex: FLEX_NONE
     };
-
     var prevProps = {
+      key: PREV_PART,
       style: arrowStyle,
       disabled: !stepping,
       title: text(selector[PREV_TOOLTIP]),
@@ -920,8 +924,8 @@
     };
     prevProps[PART_ATTR] = PREV_PART;
     prevProps[ARIA_LABEL] = label(selector[PREV_TOOLTIP]);
-
     var nextProps = {
+      key: NEXT_PART,
       style: arrowStyle,
       disabled: !stepping,
       title: text(selector[NEXT_TOOLTIP]),
@@ -934,7 +938,14 @@
 
     var items = listField(selector, SELECTOR_ITEMS);
     var tickerProps = {
-      style: { minWidth: height(selector[TICKER_MIN_WIDTH]), flex: FLEX_NONE },
+      key: TICKER_PART,
+      style: {
+        minWidth: height(selector[TICKER_MIN_WIDTH]),
+        height: height(selector[CONTROL_HEIGHT]),
+        fontFamily: controlFont.fontFamily,
+        fontSize: controlFont.fontSize,
+        flex: FLEX_NONE
+      },
       value: text(items[selector[SELECTOR_SHOWN]]),
       title: text(selector[TICKER_TOOLTIP]),
       onChange: function (event) {
@@ -943,21 +954,65 @@
     };
     tickerProps[PART_ATTR] = TICKER_PART;
     tickerProps[ARIA_LABEL] = label(selector[TICKER_TOOLTIP]);
-    var drawn = items.map(function (one) {
+    var options = items.map(function (one) {
       return element(OPTION_TAG, { key: String(one), value: text(one) }, text(one));
     });
 
-    var positionProps = { style: { flex: FLEX_NONE, userSelect: SELECT_NONE } };
+    var captionStyle = {
+      fontSize: height(selector[CAPTION_PX]),
+      height: height(selector[CONTROL_HEIGHT]),
+      display: FLEX,
+      alignItems: CENTER,
+      flex: FLEX_NONE,
+      userSelect: SELECT_NONE
+    };
+    var positionProps = { key: POSITION_PART, style: captionStyle };
     positionProps[PART_ATTR] = POSITION_PART;
 
-    return element(
-      DIV_TAG,
-      rowProps,
+    var drawn = [
+      element(BUTTON_TAG, toggleProps, text(selector[LIST_TEXT])),
       element(BUTTON_TAG, prevProps, text(selector[PREV_TEXT])),
-      element(SELECT_TAG, tickerProps, drawn),
+      element(SELECT_TAG, tickerProps, options),
       element(BUTTON_TAG, nextProps, text(selector[NEXT_TEXT])),
       element(DIV_TAG, positionProps, text(selector[POSITION_TEXT]))
+    ];
+    if (selector[SHOWING_ATA] === true && !props.listed) {
+      var hintProps = { key: LIST_HINT_PART, style: captionStyle };
+      hintProps[PART_ATTR] = LIST_HINT_PART;
+      drawn.push(element(DIV_TAG, hintProps, text(selector[ATA_EMPTY_HINT])));
+    }
+    var tfLabelProps = { key: TIMEFRAME_LABEL_PART, style: captionStyle };
+    tfLabelProps[PART_ATTR] = TIMEFRAME_LABEL_PART;
+    drawn.push(element(DIV_TAG, tfLabelProps, text(selector[TIMEFRAME_LABEL])));
+    drawn.push(
+      element(TimeframeControl, {
+        key: TIMEFRAME_PART,
+        botId: props.botId,
+        timeframe: panel[TIMEFRAME],
+        options: props.options,
+        action: props.action,
+        height: height(selector[CONTROL_HEIGHT])
+      })
     );
+    drawn.push(element(DIV_TAG, { key: CONTROL_GAP_KEY, style: { flex: AUTO } }));
+    drawn.push(
+      element(PanelLegend, {
+        key: LEGEND_PART,
+        botId: props.botId,
+        chrome: props.chrome,
+        height: height(selector[CONTROL_HEIGHT])
+      })
+    );
+    drawn.push(
+      element(PanelSource, {
+        key: SOURCE_PART,
+        botId: props.botId,
+        panel: panel,
+        fontSize: height(selector[CAPTION_PX]),
+        height: height(selector[CONTROL_HEIGHT])
+      })
+    );
+    return element(DIV_TAG, rowProps, drawn);
   }
 
   function Panel(props) {
@@ -976,35 +1031,16 @@
     panelProps[DELETED_ATTR] = text(panel[DELETED]);
     panelProps[CONNECTED_ATTR] = text(panel[TIMEFRAME_CONNECTED]);
 
-    var toolbarProps = {
-      style: { display: FLEX, flexDirection: ROW, alignItems: CENTER, flex: FLEX_NONE }
-    };
-    toolbarProps[PART_ATTR] = TOOLBAR_PART;
-    toolbarProps[BOT_ATTR] = text(props.botId);
-
+    // The painter draws the header line inside the image, as the Qt chart does.
     return element(
       DIV_TAG,
       panelProps,
-      element(PanelHeader, { botId: props.botId, panel: panel }),
-      element(
-        DIV_TAG,
-        toolbarProps,
-        element(TimeframeControl, {
-          botId: props.botId,
-          timeframe: panel[TIMEFRAME],
-          options: props.options,
-          action: props.action
-        }),
-        element(DIV_TAG, { key: TOOLBAR_GAP_KEY, style: { flex: AUTO } }),
-        element(PanelLegend, { botId: props.botId, chrome: props.chrome }),
-        element(PanelSource, { botId: props.botId, panel: panel })
-      ),
       element(ChartMount, { botId: props.botId, panel: panel }),
       element(PanelToggles, { botId: props.botId, chrome: props.chrome })
     );
   }
 
-  // The toggle row and the selector row over the one chart panel Qt draws.
+  // The one control row over the one chart panel Qt draws.
   function Content(props) {
     var model = props.model;
     var content = objectField(model, CONTENT);
@@ -1021,14 +1057,15 @@
     contentProps[LISTED_ATTR] = text(listField(model, ASSET_ORDER).length);
 
     var drawn = [
-      element(ListToggle, {
-        key: LIST_ROW_PART,
+      element(ControlRow, {
+        key: CONTROL_ROW_PART,
+        botId: shownId,
         selector: selectorBag,
-        listed: listField(model, ASSET_ORDER).length
-      }),
-      element(Selector, {
-        key: SELECTOR_PART,
-        selector: selectorBag
+        listed: listField(model, ASSET_ORDER).length,
+        panel: objectField(model, PANEL),
+        chrome: objectField(model, PANEL_CHROME),
+        options: timeframeOptionList(model),
+        action: objectField(model, ACTIONS)[TIMEFRAME_ACTION]
       })
     ];
     if (known.length) {
@@ -2064,10 +2101,8 @@
     method: METHOD,
     Tab: Tab,
     Content: Content,
-    ListToggle: ListToggle,
-    Selector: Selector,
+    ControlRow: ControlRow,
     Panel: Panel,
-    PanelHeader: PanelHeader,
     PanelSource: PanelSource,
     TimeframeControl: TimeframeControl,
     ChartMount: ChartMount,

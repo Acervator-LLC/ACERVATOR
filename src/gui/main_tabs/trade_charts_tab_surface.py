@@ -35,6 +35,9 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+from .native_chart_surface import ARROW_GLYPH_FAMILY, ARROW_GLYPH_PX, CAPTION_PX
+from .native_chart_surface import CONTROL_FONT_FAMILY, CONTROL_FONT_PX
+from .native_chart_surface import CONTROL_HEIGHT_PX, TOGGLE_BOX_PX
 from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
 from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
 from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
@@ -43,6 +46,7 @@ from .native_chart_surface import LEGEND_INVISIBLE_TEXT as PANEL_LEGEND_INVISIBL
 from .native_chart_surface import LEGEND_ON_BOOK_FIELD as PANEL_LEGEND_ON_BOOK_FIELD
 from .native_chart_surface import LEGEND_SPACING_PX as PANEL_LEGEND_GAP_PX
 from .native_chart_surface import LEGEND_ON_BOOK_TEXT as PANEL_LEGEND_ON_BOOK
+from .native_chart_surface import TIMEFRAME_LABEL as PANEL_TIMEFRAME_LABEL
 from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
 
 METHOD = "trade_charts_tab.state"
@@ -897,17 +901,15 @@ LIST_TOGGLE_TOOLTIP = (
 ATA_EMPTY_TICKER_TEXT = "No called market"
 ATA_EMPTY_HINT = "A market joins this list when it reaches Ready to Send."
 LIST_TOGGLE_WIDTH_PX = 92
-LIST_TOGGLE_HEIGHT_PX = 26
 ATA_EXCHANGE_ID = ""
 NO_TIMEFRAMES: tuple = ()
 
 ARROW_WIDTH_PX = 34
-ARROW_HEIGHT_PX = 26
 TICKER_MIN_WIDTH_PX = 220
 SELECTOR_SPACING_PX = 8
 
-#: The list-toggle row, the selector row, the chart and the toggle row.
-LAYOUT_SLOTS = 4
+#: The control row, the chart and the toggle row.
+LAYOUT_SLOTS = 3
 ONE_PANEL = 1
 NO_PANEL = 0
 FIRST_ASSET = 0
@@ -1065,9 +1067,14 @@ class TradeChartsTabModel:
         return ATA_EMPTY_TICKER_TEXT if self.showing_ata() else EMPTY_TICKER_TEXT
 
     def toggle_list(self) -> str:
-        """Move the arrows to the other list and answer the mode on screen."""
+        """Move the arrows to the other list and answer the mode on screen.
+
+        ``followed`` is cleared first: a market on both lists keeps one
+        symbol and draws two pictures, the bot's and the call's.
+        """
         self.list_mode = LIST_ATA if self.list_mode == LIST_LIVE else LIST_LIVE
         self.calls.append([SELECT_LIST_TOGGLED, self.list_mode, len(self.list_order())])
+        self.followed = DEFAULT_SYMBOL
         self._follow_shown()
         self._label_shown()
         self._feed_shown()
@@ -1091,7 +1098,7 @@ class TradeChartsTabModel:
         return ONE_PANEL if self.panel is not None else NO_PANEL
 
     def _layout_slots(self) -> int:
-        """The selector row, the chart and the toggle row."""
+        """The control row, the chart and the toggle row."""
         return LAYOUT_SLOTS
 
     def shown_id(self) -> str:
@@ -1749,7 +1756,13 @@ def selector_values(model: TradeChartsTabModel) -> dict:
         "next_tooltip": NEXT_TOOLTIP,
         "ticker_tooltip": TICKER_TOOLTIP,
         "arrow_width_px": ARROW_WIDTH_PX,
-        "arrow_height_px": ARROW_HEIGHT_PX,
+        "arrow_glyph_px": ARROW_GLYPH_PX,
+        "arrow_glyph_family": ARROW_GLYPH_FAMILY,
+        "control_height_px": CONTROL_HEIGHT_PX,
+        "control_font_family": CONTROL_FONT_FAMILY,
+        "control_font_px": CONTROL_FONT_PX,
+        "caption_px": CAPTION_PX,
+        "timeframe_label": PANEL_TIMEFRAME_LABEL,
         "ticker_min_width_px": TICKER_MIN_WIDTH_PX,
         "spacing_px": SELECTOR_SPACING_PX,
         "items": model.ticker_items(),
@@ -1766,7 +1779,6 @@ def selector_values(model: TradeChartsTabModel) -> dict:
         "showing_ata": model.showing_ata(),
         "toggle_tooltip": LIST_TOGGLE_TOOLTIP,
         "toggle_width_px": LIST_TOGGLE_WIDTH_PX,
-        "toggle_height_px": LIST_TOGGLE_HEIGHT_PX,
         "live_empty_ticker_text": EMPTY_TICKER_TEXT,
         "ata_empty_ticker_text": ATA_EMPTY_TICKER_TEXT,
         "ata_empty_hint": ATA_EMPTY_HINT,
@@ -1893,6 +1905,8 @@ def build_view_model(
             ],
             "legend_styles": [],
             "toggle_gap_px": PANEL_TOGGLE_GAP_PX,
+            "toggle_box_px": TOGGLE_BOX_PX,
+            "caption_px": CAPTION_PX,
             "legend_gap_px": PANEL_LEGEND_GAP_PX,
         },
         "nuclear_defaults": {
