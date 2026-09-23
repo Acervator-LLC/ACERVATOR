@@ -773,7 +773,12 @@ class Signal:
     None when none was measured. `nth` is the 1-based ordinal of this
     emission for its identity, 0 when never measured. `duration` is how
     long the observed operation took, supplied by the caller; None when
-    not measured, never 0.0 for "not measured".
+    not measured, never 0.0 for "not measured". `cadence`, `budget_s`
+    and `tab` are stamped by `SignalSink.emit` from `cadence_of`,
+    `always_on_stale_after` and `tab_of`, so a record can be judged
+    without the register that wrote it; `cadence` and `tab` are None for
+    a name the register does not declare, and `budget_s` is None for
+    every pin that is not always-on.
     """
 
     name: str
@@ -790,6 +795,9 @@ class Signal:
     dt: Optional[float] = None
     nth: int = 0
     duration: Optional[float] = None
+    cadence: Optional[str] = None
+    budget_s: Optional[float] = None
+    tab: Optional[str] = None
 
     def to_json(self, extra: Optional[dict] = None) -> str:
         """Return this record as a JSON line.
@@ -813,6 +821,9 @@ class Signal:
             "duration": self.duration,
             "site": self.site,
             "context": self.context or {},
+            "cadence": self.cadence,
+            "budget_s": self.budget_s,
+            "tab": self.tab,
         }
         if extra:
             payload.update(extra)
@@ -860,6 +871,28 @@ def _as_ordinal(value: Any) -> int:
     if type(value) is int and value > 0:
         return value
     return 0
+
+
+def _as_cadence(value: Any) -> Optional[str]:
+    """Return `value` when it is one of `CADENCE_CATEGORIES`, else None."""
+    if type(value) is str and value in CADENCE_CATEGORIES:
+        return value
+    return None
+
+
+def _as_budget(value: Any) -> Optional[float]:
+    """Return `value` as a finite float above 0.0, else None."""
+    got = _as_float(value)
+    if got is None or not math.isfinite(got) or got <= 0.0:
+        return None
+    return got
+
+
+def _as_tab(value: Any) -> Optional[str]:
+    """Return `value` when it is a non-empty string, else None."""
+    if type(value) is str and value:
+        return value
+    return None
 
 
 def _as_measured_duration(value: Any) -> Optional[float]:
@@ -963,6 +996,9 @@ class SignalSink:
         self._seen: dict = {}
         # `_cadence` maps identity to [first_monotonic, throttle], set beside `_seen`.
         self._cadence: dict = {}
+        # `_declared` maps a name to (cadence, tab); both are fixed for a name, so the
+        # register is walked once per name instead of once per record.
+        self._declared: dict = {}
         self._max_identities = max(1, int(max_identities))
         self._identity_overflow = 0
         self._seq = 0
@@ -986,6 +1022,20 @@ class SignalSink:
         self._digest_dropped = 0
         self._digest_rotate_failures = 0
         self._digest_identity_overflow = 0
+
+    def _declared_for(self, name: str) -> tuple:
+        """Return `(cadence, tab)` for `name`, from `cadence_of` and `tab_of`.
+
+        Caches the pair per name up to `_max_identities`; past that the
+        register is read on every emit rather than remembered.
+        """
+        got = self._declared.get(name)
+        if got is not None:
+            return got
+        pair = (cadence_of(name), tab_of(subsystem_of(name)))
+        if len(self._declared) < self._max_identities:
+            self._declared[name] = pair
+        return pair
 
     def emit(
         self,
@@ -1027,6 +1077,9 @@ class SignalSink:
                 _now = time.monotonic()
                 _ts = _utc_iso()
                 _prev = self._seen.get((_name, _site))
+                # The identity's widest `every=` window, which sets an always-on
+                # pin's budget; an untracked identity falls back to this call's own.
+                _window = float(every or 0.0)
                 if _prev is None:
                     # First emission of this identity: `dt` stays None, nothing to
                     # compare.
@@ -1052,8 +1105,11 @@ class SignalSink:
                     # The widest `every=` window across call sites sharing an identity
                     # sets its budget.
                     _aux = self._cadence.get((_name, _site))
-                    if _aux is not None and float(every or 0.0) > _aux[1]:
-                        _aux[1] = float(every or 0.0)
+                    if _aux is not None:
+                        if _window > _aux[1]:
+                            _aux[1] = _window
+                        _window = _aux[1]
+                _cadence, _tab = self._declared_for(_name)
                 sig = Signal(
                     name=_name,
                     site=_site,
@@ -1069,6 +1125,13 @@ class SignalSink:
                     nth=_nth,
                     duration=_dur,
                     context=freeze(context) if context else None,
+                    cadence=_cadence,
+                    budget_s=(
+                        always_on_stale_after(_window)
+                        if _cadence == CADENCE_ALWAYS_ON
+                        else None
+                    ),
+                    tab=_tab,
                 )
                 # `_evicted` (from `_all`) is not a loss, already on disk; `_dropped`
                 # (from `_buf`) is.
@@ -1581,6 +1644,11 @@ def read_records(path: Path) -> tuple:
                         # A missing `duration` restores None, not 0.0, which would claim
                         # a measured instant.
                         duration=_as_float(d.get("duration")),
+                        # A line written before these three carried them restores None
+                        # for each, which reads as "the writer declared nothing".
+                        cadence=_as_cadence(d.get("cadence")),
+                        budget_s=_as_budget(d.get("budget_s")),
+                        tab=_as_tab(d.get("tab")),
                     )
                 )
     except OSError:
