@@ -6862,4 +6862,175 @@ board still keeps them; the zone now draws one tile per timer.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+
+## 2026-09-23 22:10 - #23 - The confirmation read waits a count of the hit's own candles, and each timer tile carries a red x
+
+The operator, 2026-09-23: *"Confirmation timers are too short and should be
+a multiple of the timeframe on which the hit occurred i.e. a weekly chart
+confirmation read should not be happening again in a few days but in a few
+weeks and a daily chart should happen in a few days rather than a few
+hours."* And: *"Confirmation Reading timers need a small red 'x' for their
+deletion and this provides a confirmation pop up."*
+
+### The interval
+
+A hit's first confirmation read still waits for the candle the hit was read
+on to close. Every read after it waits a count of closed candles of the
+hit's own timeframe. The count is `Confirmation read candles` on the ATA-SPM
+settings page and it starts at 3. A 1d hit therefore reads again three days
+on, and a 1wk hit three weeks on.
+
+`src/trading/ata_spm_push.py` - the count and its default
+
+```python
+DEFAULT_CONFIRMATION_CANDLES = 3
+ONE_CANDLE = 1
+```
+
+`next_read_ts` holds the whole rule. It starts at `candle_close_ts(at_ts)`,
+the close of the candle the hit was read on, and steps `candles` closes at a
+time until it passes the clock. The grid is anchored at that first close, so
+a read that the venue delayed, and a retry, both land back on it.
+
+`src/trading/ata_spm_push.py` - the next read
+
+```python
+def next_read_ts(
+    at_ts: Any, timeframe: Any, now: Any, candles: Any = ONE_CANDLE
+) -> float:
+    """The next confirmation read after ``now`` on the grid that begins at ``at_ts``.
+
+    The first read is the close of the candle opened at ``at_ts``; every read
+    after it waits ``candles`` more closes of the same timeframe.
+    """
+```
+
+`FollowUpWatch.watch_run` arms each timer with the count, and
+`FollowUpWatch.take_outcome` sets the next read with it. `PushBoard`
+supplies it from `self.settings.confirmation_candles` in `after_scan` and in
+`take_outcome`, so one setting reaches both. The retry is unchanged: a venue
+that has not published the candle the timer waited for is read again after
+`FOLLOW_UP_RETRY_S`, at most `FOLLOW_UP_RETRY_CAP` times, and the timer then
+returns to the grid.
+
+A changed count re-anchors a timer that is already running. The timer keeps
+the grid that begins at the hit's own candle close and takes the new step, so
+the one read across the change can fall sooner than the new count. Every read
+after it is the new count apart. Read on the running program: a 1d timer
+whose next read stood at the first close plus three candles, with the count
+moved from 3 to 5, read next at the first close plus five.
+
+### The setting
+
+`Confirmation read candles` sits beside `Confirmation share %` on the ATA-SPM
+settings page of both builds, and is stored the same way.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the row
+
+```python
+SETTING_CONFIRMATION_CANDLES = "confirmation_candles"
+```
+
+`SETTING_ROWS` names the row and `COUNT_SETTINGS` says it takes a whole
+number, so `setting_rows` draws it and `set_setting` writes it in both
+builds with no host code of its own. `AtaSpmSettings.confirmation_candles`
+is a property whose setter saves, and `PERSISTED_SETTINGS` names it beside
+`confirmation_share_pct`, so `~/.acervator/ata_spm_settings.json` carries it
+and the next launch reads it back. `read_candles` reads text that is not a
+whole number, and any count under one, as 3.
+
+### The x
+
+Each timer tile carries a small red x at its top right. A press opens one
+pop-up that names the pair. **No** closes it and the tile, its countdown and
+its timer stand. **Yes** removes that tile and its timer, and nothing else:
+the call keeps its entry in Ready to Send, the bucket keeps its count, and
+every other tile keeps its countdown. The Activity Log writes
+`ATA-SPM confirmation timer for ARB 1d stopped: the operator deleted it`.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the x and its pop-up
+
+```python
+TIMER_CLOSE_PART = "timer-close"
+TIMER_CLOSE_TEXT = "×"
+TIMER_DROP_TITLE = "Delete confirmation timer"
+```
+
+The Qt tile builds the x as a `QPushButton` in `TimerTiles._build_tile`; the
+page builds it as a `button` in `TimerClose`, which carries the row's
+`close_value`. Both reach `MarketInspectorTab._ask_drop_timer`, the Qt tile
+through the button and the page through `run_action`. That method opens the
+`QMessageBox` and, on a Yes, calls `PushBoard.drop_timer`, which drops the
+one timer from `FollowUpWatch.timers`, or the one settled call from
+`FollowUpWatch.settled`, and touches `ReadyToSend.posts` not at all. The
+pop-up comes from the host in both builds, the way the hit chime does, so
+both builds ask the same question.
+
+### The interval and the x read off both running builds
+
+Both builds, the home on a scratch directory, every socket but loopback
+refused, the loopback stand-in serving the Coinbase Exchange candles shape
+through the real `CoinbasePublicCandles` route, its clock movable, and one
+planted hit on ARB. Connections refused: 0. Requests at the stand-in: 123.
+
+| reading | Qt | React |
+| ------- | -- | ----- |
+| 5m hit at 21:50, its own candle closes 21:55 | armed at 21:55, 0 candles past the first close | armed at 22:10 from a 22:05 hit, 0 candles past |
+| the 5m next read after the first | 22:10, 3 candles on | 22:25, 3 candles on |
+| 1h hit at 21:00, its own candle closes 22:00 | armed at 22:00, 0 candles past | armed at 23:00 from a 22:00 hit, 0 candles past |
+| the 1h next read after the first | 01:00, 3 candles on | 02:00, 3 candles on |
+| 1d hit on 09-23, its own candle closes 09-24 | armed at 09-24 00:00, 0 candles past | the same |
+| the 1d next read after the first | 09-27 00:00, 3 candles on | 09-27 00:00, 3 candles on |
+| 1wk hit on 09-21, its own candle closes 09-28 | armed at 09-28 00:00, 0 candles past | the same |
+| the 1wk next read after the first | 10-19 00:00, 3 candles on | 10-19 00:00, 3 candles on |
+| the clock one candle short of the next read | no second read; reads stay at 1 | the same |
+| the clock two seconds past it | the second read runs; reads 2 | the same |
+| the count typed as 5, the file after | `"confirmation_candles": 5` | the same, typed through the page |
+| the next read after the change, 1d | 09-29 00:00, 5 candles past the first close | the same |
+| a second launch on the same home | (read on React) | the row reads 5 and the timer arms 5 candles on |
+| the tile | `ARB 1d` over `01:48:34`, one x | `ARB 1d`, `×`, `01:47:23` in the page's own text |
+| the pop-up | `Delete confirmation timer` · `Delete the confirmation timer for ARB 1d?` · Yes, No | the same box, opened by the page's press |
+| No pressed | 1 tile, 1 x, bucket 10, next read unmoved | the same |
+| Yes pressed | 0 tiles, 0 x, bucket 10 | 0 tiles and 0 x in the page's own DOM, bucket 10 |
+| the settings page | six rows, `Confirmation read candles` reading 5 | the same six rows |
+
+### The red, read off the program before the change
+
+The same stand-in and the same planted hit, on the build before this entry: a
+1d hit's next read after the first was 09-25 00:00, one candle on; a 1wk
+hit's was 10-05 00:00, one candle on. The settings page held five rows and
+named no candle count. No tile carried a close control: 0 of 1.
+
+### Two plants, each reading fails
+
+The count planted to 1: the 1d next read read 09-25 00:00, one candle on, so
+the reading that says three candles fails. The x's handler planted to drop
+with no question: the pop-up did not open and the tile left on the first
+press, so the reading that says a pop-up opens fails.
+
+### The three sentences the interval and the x overtake
+
+Not reworded, quoted here.
+
+`docs/manual/08-tabs/market-inspector.md:5825` - "The interval is one candle
+of the hit's own timeframe: a 1d hit reads at each daily close, a 1wk hit at
+each Monday 00:00 UTC, the day the fetcher's rollup and Yahoo stamp a week
+with; a 1M hit at the first instant of each month." The first read is still
+that close. Every read after it waits `Confirmation read candles` closes of
+the same timeframe, three by default.
+
+`docs/manual/08-tabs/market-inspector.md:5837` - "The next read is the first
+close after now on the grid of closes that begins at the hit's candle." The
+grid still begins at that close, and it now steps `Confirmation read
+candles` closes at a time.
+
+`docs/manual/08-tabs/market-inspector.md:6708` - "A tile reads the market and
+its timeframe on one line, the way the Activity Log names the timer, and on
+the second line the time to the call's next read, counted down once a second
+on the tab's own clock." The tile reads the same two lines, and a small red x
+sits at the right of the first one.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
