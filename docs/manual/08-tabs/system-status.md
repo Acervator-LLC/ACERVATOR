@@ -652,3 +652,55 @@ Before the change the same reading gave fifteen fields on every line and no
 The panels do not read the three fields yet. `subsystem_health` still counts
 silence since launch, so the light is still Green or Yellow and never Red.
 Reading a budget off the record is a later unit of #34.
+
+### 2026-09-23 - #34 - the qt bundle ships the shell renderer
+
+This tab draws through a React page, and the page host sits in the renderer
+folder beside the application. A qt build shipped no copy of that folder. The
+tab then raised a missing shell asset and drew an empty pane. Every build now
+ships the folder.
+
+`tools/spec_common.py` - the pair every build copies
+
+```python
+def renderer_candidate(project_root: str) -> tuple[str, str]:
+    """The (source, destination) pair of ``SHELL_RENDERER``, which every variant ships."""
+```
+
+`shell_candidates` now holds what the Electron shell alone needs: the three
+shell files and the Electron runtime. A React build ships those, and no other
+variant does.
+
+#### The overtaken sentence about the bundle
+
+The sentence below stands as written above. The sentence under it is the
+current reading.
+
+> The window builds this panel under both builds.
+
+The window builds this panel under both builds. Before this change only a React
+bundle carried the page host, so only a React bundle could draw the panel. Both
+bundles carry it now.
+
+#### Read off the launched bundles
+
+Both variants were built from one commit and launched with no network: a
+scratch home, an application container with no capability, and the name
+resolver mapped away. The Status tab was pressed through its accessibility
+action. The page was read off the accessibility tree.
+
+```
+qt bundle before     no desktop folder in the bundle
+                     1 missing-asset line in system.log
+                     0 panels, 0 emitter rows, empty pane
+
+qt bundle after      desktop/renderer, 8 files, 38,592 bytes
+                     0 missing-asset lines in system.log
+                     16 panels, 87 emitter rows, 11 tab rows
+
+react bundle after   desktop, 11 files: 3 shell files and the renderer
+```
+
+A build that names a renderer folder which is not on disk ships no renderer,
+and its Status tab raises the missing asset again. That is how the reading is
+known to be able to fail.

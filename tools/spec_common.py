@@ -3,10 +3,11 @@
 ``COMMON_HIDDENIMPORTS`` and ``EXCLUDES`` hold the names both spec files pass to
 PyInstaller, and ``hiddenimports_for`` adds the one ``KEYRING_BACKENDS`` entry
 that is per-platform. ``read_acervator_version`` and ``bake_version_datas``
-resolve the version and write it under ``BAKE_SUBDIR`` for the bundle to carry,
-and ``datas_candidates`` adds ``shell_candidates`` to a ``REACT`` build.
-Nothing here imports PyInstaller, so ``tests/test_specs_parity.py`` reads this
-module on a machine that has none.
+resolve the version and write it under ``BAKE_SUBDIR`` for the bundle to carry.
+``datas_candidates`` ships ``renderer_candidate`` in every variant, because the
+Status tab reads ``panel_host.js`` from it under both, and adds
+``shell_candidates`` to a ``REACT`` build alone. Nothing here imports
+PyInstaller, so the module imports on a machine that has none.
 """
 
 from __future__ import annotations
@@ -47,20 +48,28 @@ def bake_version_datas(project_root: str) -> list[tuple[str, str]]:
     return [(out_path, "src")]
 
 
-def shell_candidates(project_root: str) -> list[tuple[str, str]]:
-    """Every (source, destination) pair the Electron shell needs, present or not.
+def renderer_candidate(project_root: str) -> tuple[str, str]:
+    """The (source, destination) pair of ``SHELL_RENDERER``, which every variant ships.
 
-    ``SHELL_FILES`` and ``SHELL_RENDERER`` keep the layout ``DESKTOP_DIRNAME``
-    has on disk, and ``ELECTRON_RUNTIME`` carries the electron executable.
+    ``src/gui/react_main_window.py`` reads ``panel_host.js`` from this folder
+    under the bundle root, for the Status tab in both variants.
+    """
+    desktop = os.path.join(project_root, DESKTOP_DIRNAME)
+    return (
+        os.path.join(desktop, SHELL_RENDERER),
+        os.path.join(DESKTOP_DIRNAME, SHELL_RENDERER),
+    )
+
+
+def shell_candidates(project_root: str) -> list[tuple[str, str]]:
+    """Every (source, destination) pair the Electron shell needs beyond ``renderer_candidate``.
+
+    ``SHELL_FILES`` keep the layout ``DESKTOP_DIRNAME`` has on disk, and
+    ``ELECTRON_RUNTIME`` carries the electron executable; a ``REACT`` build
+    ships them and no other variant does.
     """
     desktop = os.path.join(project_root, DESKTOP_DIRNAME)
     pairs = [(os.path.join(desktop, name), DESKTOP_DIRNAME) for name in SHELL_FILES]
-    pairs.append(
-        (
-            os.path.join(desktop, SHELL_RENDERER),
-            os.path.join(DESKTOP_DIRNAME, SHELL_RENDERER),
-        )
-    )
     pairs.append(
         (
             os.path.join(desktop, ELECTRON_RUNTIME),
@@ -73,8 +82,8 @@ def shell_candidates(project_root: str) -> list[tuple[str, str]]:
 def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]:
     """Every (source, destination) pair a ``variant`` build would ship.
 
-    ``REACT`` adds ``shell_candidates`` to the three directories every build
-    ships; every other variant returns those three alone.
+    Every variant ships three directories and ``renderer_candidate``; ``REACT``
+    adds ``shell_candidates``, and every other variant returns those four alone.
     """
     pairs = [
         (os.path.join(project_root, "src"), "src"),
@@ -84,6 +93,7 @@ def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]:
             os.path.join(project_root, "data", "historical"),
             os.path.join("data", "historical"),
         ),
+        renderer_candidate(project_root),
     ]
     if normalise(variant) == REACT:
         pairs.extend(shell_candidates(project_root))
