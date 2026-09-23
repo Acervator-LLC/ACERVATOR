@@ -449,6 +449,17 @@ if _HAS_WEBENGINE:
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(STOP_FEEDS_JS)
 
+        def toggle_privacy(self, column: Any) -> None:
+            """Hide or show one bot-table column, then publish the fleet again.
+
+            ``TradingTabReact.run_action`` calls this when the dot under a
+            column's label is pressed on the Live page.
+            """
+            scrum_surface.drive(
+                self._scrum, {scrum_surface.PRIVACY_TOGGLE_PARAM: column}
+            )
+            self._publish()
+
         def _refresh_privacy_mode_btn_style(self) -> None:
             """Rewrite the Privacy Mode button from the register's own answer."""
             self._screen.refresh_privacy_mode_btn_style()

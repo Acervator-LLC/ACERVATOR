@@ -32,6 +32,13 @@
   var FIRE_COLUMN = "fire_column";
   var FIRE_PARAM = "fire_param";
   var HEADER_CLICK_PARAM = "header_click_param";
+  var HEADER_RESIZE_MODE = "header_resize_mode";
+  var PRIVACY_TOGGLE_PARAM = "privacy_toggle_param";
+  var HEADER_LABEL_STYLE = "header_label_style";
+  var HEADER_LABEL_WRAP = "header_label_wrap";
+  var HEADER_DOT_STYLE = "header_dot_style";
+  var HEADER_DOT_ROW_PX = "header_dot_row_px";
+  var HEADER_CELL_PAD_PX = "header_cell_pad_px";
   var RESET_PARAM_FIELD = "reset_param";
   var STATUSES_PARAM_FIELD = "statuses_param";
   var FIRE_GLOWS = "fire_glows";
@@ -118,9 +125,20 @@
     "glows",
     HAS_SELECTION,
     HEADER_CLICK_PARAM,
-    "header_resize_mode",
+    HEADER_CELL_PAD_PX,
+    "header_cell_gap_px",
+    "header_dot_action_mask",
+    "header_dot_action_reveal",
+    "header_dot_font_px",
+    HEADER_DOT_ROW_PX,
+    HEADER_DOT_STYLE,
+    "header_dot_tip_format",
+    "header_label_font_px",
+    "header_label_min_font_px",
+    HEADER_LABEL_STYLE,
+    HEADER_LABEL_WRAP,
+    HEADER_RESIZE_MODE,
     "header_state_tip_format",
-    "header_text_format",
     HEADERS,
     "icon_download",
     "icon_size",
@@ -147,6 +165,7 @@
     "position_paths",
     POSITION_VALUE_COLUMN,
     PRIVACY_FIELD_BY_COL,
+    PRIVACY_TOGGLE_PARAM,
     "quote_btc",
     "quote_eth",
     RESET_PARAM_FIELD,
@@ -201,6 +220,9 @@
   var GLOW = "glow";
 
   var FIELD_ID = "field_id";
+  var MASKED = "masked";
+  var DOT_TEXT = "dot_text";
+  var DOT_TOOLTIP = "dot_tooltip";
 
   var ROW_FIELDS = [BOT_ID, SKIPPED, CELLS, FIRE, DETAIL];
   var CELL_FIELDS = [
@@ -227,9 +249,9 @@
     GLOW_OFFSET
   ];
   var DETAIL_FIELDS = [TEXT, ENABLED, HEIGHT, STYLE_SHEET, TOOLTIP];
-  var HEADER_FIELDS = [TEXT, TOOLTIP, FIELD_ID];
+  var HEADER_FIELDS = [TEXT, TOOLTIP, FIELD_ID, DOT_TEXT, DOT_TOOLTIP];
 
-  var HEADER_CLICKED = "header_clicked";
+  var PRIVACY_TOGGLED = "privacy_toggled";
   var CELL_CLICKED = "cell_clicked";
   var FIRE_CLICKED = "fire_clicked";
   var DETAIL_CLICKED = "detail_clicked";
@@ -276,11 +298,30 @@
   var BUTTON_TAG = "button";
   var BUTTON_TYPE = "button";
   var DISC_TAG = "span";
+  var LABEL_TAG = "span";
+  var DOT_TAG = "span";
+
+  var STRETCH_MODE = "Stretch";
+  var FIXED_TABLE_LAYOUT = "fixed";
+  var FULL_WIDTH = "100%";
+
+  // The CSS spelling of the wrap the surface asks a header label for.
+  var WRAP_WHITE_SPACE = "normal";
+  var WRAP_OVERFLOW = "break-word";
+  var BLOCK_DISPLAY = "block";
+  var CENTRE_ALIGN = "center";
+  var HEADER_VERTICAL_ALIGN = "bottom";
+  var DOT_MARGIN = "0 auto";
+  var DOT_CURSOR = "pointer";
+  var LABEL_KEY = "label";
+  var DOT_KEY = "dot";
 
   var PART_ATTR = "data-part";
   var TABLE_PART = "table";
   var HEAD_ROW_PART = "head-row";
   var HEADER_PART = "header";
+  var HEADER_LABEL_PART = "header-label";
+  var PRIVACY_DOT_PART = "privacy-dot";
   var ROW_PART = "row";
   var CELL_PART = "cell";
   var FIRE_PART = "fire-button";
@@ -296,6 +337,7 @@
   var PATH_ATTR = "data-path";
   var GLOW_ATTR = "data-glow";
   var FIELD_ID_ATTR = "data-field-id";
+  var MASKED_ATTR = "data-masked";
   var ACTION_ATTR = "data-action";
   var CHART_URL_ATTR = "data-chart-url";
   var ICON_ATTR = "data-icon";
@@ -495,6 +537,51 @@
     return global.React.createElement.apply(null, arguments);
   }
 
+  // The label wraps inside its own column and the dot sits under it, so a
+  // press on the label is not a control and only the dot masks.
+  function HeaderLabel(props) {
+    var model = props.model;
+    var style = styleOf(model[HEADER_LABEL_STYLE]);
+    if (model[HEADER_LABEL_WRAP]) {
+      style.whiteSpace = WRAP_WHITE_SPACE;
+      style.overflowWrap = WRAP_OVERFLOW;
+    }
+    style.display = BLOCK_DISPLAY;
+    style.textAlign = CENTRE_ALIGN;
+    var labelProps = { className: TABLE_CLASS, style: style };
+    labelProps[PART_ATTR] = HEADER_LABEL_PART;
+    return element(LABEL_TAG, labelProps, text(props.label));
+  }
+
+  function HeaderDot(props) {
+    var model = props.model;
+    var header = props.header;
+    var column = props.column;
+    var style = styleOf(model[HEADER_DOT_STYLE]);
+    style.display = BLOCK_DISPLAY;
+    style.height = length(model[HEADER_DOT_ROW_PX]);
+    style.margin = DOT_MARGIN;
+    if (!isFilledText(header[FIELD_ID])) {
+      return element(DOT_TAG, { className: TABLE_CLASS, style: style });
+    }
+    style.cursor = DOT_CURSOR;
+    var dotProps = {
+      className: TABLE_CLASS,
+      type: BUTTON_TYPE,
+      style: style,
+      title: label(header[DOT_TOOLTIP]),
+      onClick: function () {
+        sendPrivacyToggle(model, column);
+      }
+    };
+    dotProps[PART_ATTR] = PRIVACY_DOT_PART;
+    dotProps[FIELD_ID_ATTR] = text(header[FIELD_ID]);
+    dotProps[MASKED_ATTR] = text(header[MASKED]);
+    dotProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[PRIVACY_TOGGLED]);
+    dotProps[ARIA_LABEL] = label(header[DOT_TOOLTIP]);
+    return element(BUTTON_TAG, dotProps, text(header[DOT_TEXT]));
+  }
+
   function HeaderCell(props) {
     var model = props.model;
     var header = isPlainObject(props.header) ? props.header : {};
@@ -504,6 +591,8 @@
     if (width !== undefined) {
       style.width = length(width);
     }
+    style.verticalAlign = HEADER_VERTICAL_ALIGN;
+    style.padding = length(model[HEADER_CELL_PAD_PX]);
     var headProps = {
       className: TABLE_CLASS,
       style: style,
@@ -513,13 +602,17 @@
     headProps[COLUMN_ATTR] = text(column);
     headProps[FIELD_ID_ATTR] = text(header[FIELD_ID]);
     headProps[ARIA_LABEL] = label(header[TEXT]);
-    if (isFilledText(header[FIELD_ID])) {
-      headProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[HEADER_CLICKED]);
-      headProps.onClick = function () {
-        sendHeaderClick(model, column);
-      };
-    }
-    return element(HEAD_CELL_TAG, headProps, text(header[TEXT]));
+    return element(
+      HEAD_CELL_TAG,
+      headProps,
+      element(HeaderLabel, { key: LABEL_KEY, model: model, label: header[TEXT] }),
+      element(HeaderDot, {
+        key: DOT_KEY,
+        model: model,
+        header: header,
+        column: column
+      })
+    );
   }
 
   function FireButton(props) {
@@ -691,10 +784,17 @@
     var headers = listField(model, HEADERS);
     var headProps = { className: TABLE_CLASS };
     headProps[PART_ATTR] = HEAD_ROW_PART;
+    var tableStyle = styleOf(model[STYLE_SHEET]);
+    if (model[HEADER_RESIZE_MODE] === STRETCH_MODE) {
+      // The CSS spelling of the Qt stretch: every column takes its own
+      // share of the table, and a label wraps rather than widen it.
+      tableStyle.tableLayout = FIXED_TABLE_LAYOUT;
+      tableStyle.width = FULL_WIDTH;
+    }
     var tableProps = {
       id: props.id,
       className: TABLE_CLASS,
-      style: styleOf(model[STYLE_SHEET])
+      style: tableStyle
     };
     tableProps[PART_ATTR] = TABLE_PART;
     tableProps[EXCHANGE_ATTR] = text(model[EXCHANGE_ID]);
@@ -1033,11 +1133,11 @@
     });
   }
 
-  function sendHeaderClick(model, column) {
+  function sendPrivacyToggle(model, column) {
     return dispatch(
       model,
-      actionNamed(model, HEADER_CLICKED),
-      request(model, HEADER_CLICK_PARAM, column)
+      actionNamed(model, PRIVACY_TOGGLED),
+      request(model, PRIVACY_TOGGLE_PARAM, column)
     );
   }
 
@@ -1364,7 +1464,7 @@
     redraw: redraw,
     modelFor: modelFor,
     drawnExchanges: drawnExchanges,
-    sendHeaderClick: sendHeaderClick,
+    sendPrivacyToggle: sendPrivacyToggle,
     sendCellClick: sendCellClick,
     sendFire: sendFire,
     sendDetail: sendDetail,
