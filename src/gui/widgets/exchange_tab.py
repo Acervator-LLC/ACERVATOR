@@ -451,7 +451,16 @@ if _HAS_QT:
                 pass
 
         def _refresh_privacy_mode_btn_style(self) -> None:
-            """ON (all fields masked) = green; OFF = muted."""
+            """ON (all fields masked) = green; OFF = muted.
+
+            The bot table's own dots re-read the register here, so the
+            Privacy Mode button and the dots under the labels agree. The
+            constructor calls this before it builds the table, and that
+            table paints its own dots when it is built.
+            """
+            table = getattr(self, "_bot_table", None)
+            if table is not None:
+                table.refresh_privacy_dots()
             try:
                 reg = get_privacy_mask_registry()
                 all_masked = all(reg.is_masked(fid) for fid in reg.known_field_ids())
