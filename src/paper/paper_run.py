@@ -5,12 +5,16 @@ exchange adapter, filled at the book against the unbounded fake budget.
 worker thread per Start Paper Run that ticks every ``running`` paper bot each
 ``TICK_INTERVAL_S`` and works one every ``tick_skip`` ticks, reading the
 adapter's ``ticker`` and ``candles`` on that thread and never on the GUI
-thread. ``tick`` builds a ``GateContext`` through ``tape_context`` and
-evaluates it with ``latch``, ``apply_scrum`` and ``apply_fold`` are the
-Simulator's two fills forked over ``src.trading.scrumming.sizing`` and a
-``FakeBalance``, a scrum filling at the tick's ``best_bid`` and a fold at its
-``best_ask`` with ``taker_fee_pct``, and ``record`` files each ``PaperTick``
-on the ``PaperRun`` with one ``paper_log`` row, the only file a run writes.
+thread. ``tick`` builds a ``GateContext`` through ``paper_tape_context``,
+which prices the position at the ticker's last as Live's tick does and leaves
+the candle window to the indicators, and evaluates it with ``latch``;
+``apply_scrum`` and ``apply_fold`` are the Simulator's two fills forked over
+``src.trading.scrumming.sizing`` and a ``FakeBalance``, a scrum filling at the
+tick's ``best_bid`` and a fold at its ``best_ask`` with ``taker_fee_pct`` and
+then compounding its surplus into the target through ``grow_target``.
+``record`` files each ``PaperTick`` on the ``PaperRun`` with one ``paper_log``
+row, the only file a run writes, and ``post_stats`` hands ``on_stats`` the
+``stats_snapshot`` a host writes into the held record.
 """
 
 from __future__ import annotations
@@ -22,23 +26,39 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Sequence
 
 from ..simulator.back_test import (
+    BEARISH,
     BELOW_ONE_UNIT,
+    BULLISH,
     DEFAULT_TRADING_FEE_PCT,
     FOLD,
     FOLD_SIDE_WORD,
     MIN_CANDLES,
     SCRUM,
     SCRUM_SIDE_WORD,
+    SNAPSHOT_END,
+    SNAPSHOT_FILL,
+    SNAPSHOT_START,
+    SNAPSHOT_TICK,
+    STOPPED_STATE,
     WINDOW_CANDLES,
-    tape_context,
+    BotStatsSnapshot,
+    bb_detect_thresholds,
+    grow_target,
+    reset_growth_cycle,
+    signal_detail,
+    stats_snapshot,
+    ta_direction,
+    trend_reading,
 )
-from ..simulator.validation import bb_reading, latch
+from ..simulator.validation import BB_MIDLINE, bb_reading, latch
 from ..trading.container.config import BotState
+from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
     CLASS_CRYPTO,
     WHOLE_UNITS,
     cycle_growth_cap_usd,
+    delta_below_interval,
     eligible_fold_tranches,
     estimated_fee_usd,
     fold_cap_remaining_usd,
@@ -53,7 +73,10 @@ from ..trading.scrumming.sizing import (
     ratio_to_ceiling,
     sale_proceeds_usd,
     scrum_units,
+    scrumming_interval_usd,
     settle_fold_plan,
+    target_delta_pct,
+    target_delta_usd,
     trim_fold_plan,
     unit_rule,
 )
@@ -121,7 +144,8 @@ class PaperTrade:
     the same read's last trade, ``delta_usd`` the Target Delta a scrum was
     sized on, ``eligible_usd`` and ``taper`` what a fold's spend was sized
     on, ``realized_usd`` a fold's ``fold_surplus_usd``, ``scrum_price`` the
-    ``plan_source_price`` a fold re-entered against."""
+    ``plan_source_price`` a fold re-entered against, and ``target_usd_after``
+    the balance's target once ``grow_target`` has taken a fold's surplus."""
 
     bot_id: str
     symbol: str
@@ -142,6 +166,7 @@ class PaperTrade:
     taper: float = 0.0
     scrum_price: float = 0.0
     timeframe: str = ""
+    target_usd_after: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -198,6 +223,104 @@ def fold_taper(bot: PaperBot, balance: FakeBalance) -> float:
         return 1.0
     value = balance.value_usd(balance.last_trade_price)
     return fold_rate_taper(ratio_to_ceiling(value, ceiling))
+
+
+def paper_tape_context(
+    bot: PaperBot,
+    balance: FakeBalance,
+    window: Sequence[Any],
+    reading: Any,
+    summary: Any,
+    ticker_last: float,
+    htf_bias_name: Optional[str] = None,
+) -> GateContext:
+    """A ``GateContext`` for the newest candle of ``window`` with the position
+    priced at ``ticker_last``.
+
+    The Simulator's ``tape_context`` prices the position at the newest bar's
+    close, the only price a tape carries. Live's tick prices it at the
+    ticker's last each ``tick_interval`` and reads the candle window for the
+    indicators alone, so this fork takes ``ticker_last`` for ``ticker_last``,
+    for the ``delta`` against the position's grown ``target_usd`` and for
+    ``mem253_current_pos``, and leaves ``reading``, ``summary`` and ``window``
+    to drive ``bb_pos``, every indicator and ``trend_reading``.
+    """
+    last = float(ticker_last)
+    bb_pos = float(reading.bb_position) if reading is not None else 0.0
+    lower_dt, upper_dt = bb_detect_thresholds(bot.scrum_detect_pct)
+    target_usd = float(getattr(balance, "target_usd", 0.0) or bot.target_usd or 0.0)
+    position_usd = balance.value_usd(last)
+    delta = target_delta_usd(position_usd, target_usd)
+    htf_blocks_scrum = htf_bias_name == BULLISH
+    htf_blocks_fold = htf_bias_name == BEARISH
+    interval_usd = scrumming_interval_usd(target_usd, float(bot.scrumming_interval_pct))
+    below_interval = delta_below_interval(delta, interval_usd)
+    is_bullish, is_bearish, direction_name, _confidence = ta_direction(summary, reading)
+    trend_hold, trend_strength = trend_reading(window)
+
+    if bot.bb_midline_gate:
+        scrum_ok = bb_pos > BB_MIDLINE
+        fold_ok_midline = bb_pos < BB_MIDLINE
+    else:
+        scrum_ok = True
+        fold_ok_midline = True
+
+    above_upper = bb_pos >= upper_dt
+    below_lower = bb_pos <= lower_dt
+    banded = reading is not None and reading.upper > 0 and reading.lower > 0
+    return GateContext(
+        symbol=bot.symbol,
+        ticker_last=last,
+        bb_pos=bb_pos,
+        bb_upper_dt=upper_dt,
+        bb_lower_dt=lower_dt,
+        delta=delta,
+        delta_pct=target_delta_pct(delta, target_usd),
+        below_interval=below_interval,
+        is_bullish=is_bullish,
+        is_bearish=is_bearish,
+        trend_hold=trend_hold,
+        trend_strength=trend_strength,
+        eff_direction_name=direction_name,
+        eff_is_bullish=is_bullish if bot.scrum_require_ta_bullish else True,
+        eff_is_bearish=is_bearish if bot.fold_require_ta_bearish else True,
+        eff_trend_hold=trend_hold if bot.scrum_hold_in_uptrend else False,
+        eff_htf_blocks_scrum=htf_blocks_scrum if bot.scrum_defer_to_htf else False,
+        eff_htf_blocks_fold=htf_blocks_fold if bot.fold_defer_to_htf else False,
+        flag_require_ta_bullish=bot.scrum_require_ta_bullish,
+        flag_hold_in_uptrend=bot.scrum_hold_in_uptrend,
+        flag_defer_to_htf=bot.scrum_defer_to_htf,
+        flag_fold_require_ta_bearish=bot.fold_require_ta_bearish,
+        flag_fold_defer_to_htf=bot.fold_defer_to_htf,
+        bb_above_upper_dt=above_upper,
+        bb_below_lower_dt=below_lower,
+        scrum_ok=scrum_ok,
+        fold_ok_midline=fold_ok_midline,
+        target_fires=True,
+        cb_blocks_scrum=False,
+        cb_blocks_fold=False,
+        hyst_ok_scrum_side=True,
+        hyst_ok_fold_side=True,
+        hyst_armed_scrum_side=False,
+        hyst_armed_fold_side=False,
+        hyst_ref_scrum_side=0.0,
+        hyst_ref_fold_side=0.0,
+        mem253_at_ceiling=False,
+        mem253_smart_ceiling_usd=0.0,
+        mem253_current_pos=position_usd,
+        has_fold_tranches=balance.tranches > 0,
+        n_fold_tranches=balance.tranches,
+        htf_bias_name=htf_bias_name,
+        htf_blocks_scrum=htf_blocks_scrum,
+        htf_blocks_fold=htf_blocks_fold,
+        scrumming_interval_pct=float(bot.scrumming_interval_pct),
+        trading_fee_pct=float(bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT),
+        ripe_scrum=banded and delta > 0 and not below_interval and above_upper,
+        deep_fold=banded and delta < 0 and not below_interval and below_lower,
+        adx=signal_detail(summary, "adx", "adx"),
+        efficiency_ratio=signal_detail(summary, "kaufman_er", "er"),
+        z_score=signal_detail(summary, "zscore", "z"),
+    )
 
 
 def apply_scrum(
@@ -298,7 +421,12 @@ def apply_fold(
     the cash charged the spend plus ``estimated_fee_usd``, the bought units
     joining ``main_lots`` per consumed slice's share, and the surplus
     ``fold_surplus_usd`` reads carried as ``realized_usd``: the Simulator's
-    ``apply_fold`` under ``FUNDED_BY_TARGETS`` over a ``FakeBalance``."""
+    ``apply_fold`` under ``FUNDED_BY_TARGETS`` over a ``FakeBalance``.
+
+    ``grow_target`` then compounds that surplus into ``balance.target_usd``
+    under the cycle cap, as ``_apply_fold_target_growth`` compounds a live
+    bot's.
+    """
     fee_pct = taker_fee_pct(bot)
     factor = fold_rebuy_factor(bot.scrumming_interval_pct, fee_pct)
     eligible = eligible_fold_tranches(balance.fold_tranches, float(ticker_last), factor)
@@ -362,6 +490,7 @@ def apply_fold(
     balance.total_folded_usd += spend
     balance.trade_volume += spend
     realized = fold_surplus_usd(units, slices, float(price))
+    grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
     return PaperTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -422,9 +551,15 @@ def tick(
     now_s: float,
     engine: Any = None,
 ) -> PaperTick:
-    """Evaluate the shipped chains on the newest bar of ``candles`` and fill
-    what latched at ``book``'s ``best_bid`` or ``best_ask``, ``engine`` the
-    ``VotingEngine`` the window is voted by; a refusal arms nothing."""
+    """Evaluate the shipped chains against ``book``'s last trade over the
+    newest bar of ``candles`` and fill what latched at ``book``'s
+    ``best_bid`` or ``best_ask``, ``engine`` the ``VotingEngine`` the window
+    is voted by; a refusal arms nothing.
+
+    ``reset_growth_cycle`` reads the bar's band position before the context is
+    built, as the Simulator's walk reads it, so the growth cycle and the gates
+    see the same bar.
+    """
     from ..trading.ta_engine import VotingEngine
 
     held = dict(book or {})
@@ -451,18 +586,25 @@ def tick(
     reading = bb_reading(window, bot)
     voter = engine if engine is not None else VotingEngine()
     summary = voter.compute_all(window, bot.ta_timeframe, symbol=bot.symbol)
-    context = tape_context(bot, balance, window, reading, summary)
-    armed = latch(context)
     close = float(window[-1].close)
     stamp = int(window[-1].timestamp)
     last = last or close
+    reset_growth_cycle(balance, reading)
+    context = paper_tape_context(bot, balance, window, reading, summary, last)
+    armed = latch(context)
     filled = None
     if armed["scrum_armed"]:
         filled = apply_scrum(bot, balance, bid, now_s, stamp, context.delta, rule)
     elif armed["fold_armed"]:
         filled = apply_fold(bot, balance, ask, last, now_s, stamp, rule)
     if filled is not None:
-        filled = replace(filled, bid=bid, ask=ask, last=last)
+        filled = replace(
+            filled,
+            bid=bid,
+            ask=ask,
+            last=last,
+            target_usd_after=float(balance.target_usd),
+        )
     return PaperTick(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -588,9 +730,10 @@ class PaperRunner:
     """One worker thread ticking ``run``'s bots over ``exchange`` at Live's
     cadence: ``states`` answers each record's state so only ``RUNNING_STATE``
     bots tick, ``on_trade`` takes each ``PaperTrade``, ``on_tick`` each
-    ``PaperTick``, ``on_figures`` the ledger's figures after each worked pass,
-    ``on_finished`` the run when the loop ends, ``say`` each line, and
-    ``clock`` is the one seam time is read through."""
+    ``PaperTick``, ``on_stats`` each ``BotStatsSnapshot``, ``on_figures`` the
+    ledger's figures after each worked pass, ``on_finished`` the run when the
+    loop ends, ``say`` each line, and ``clock`` is the one seam time is read
+    through."""
 
     def __init__(
         self,
@@ -601,6 +744,7 @@ class PaperRunner:
         on_tick: Optional[Callable[[PaperTick], None]] = None,
         on_figures: Optional[Callable[[dict], None]] = None,
         on_finished: Optional[Callable[[PaperRun], None]] = None,
+        on_stats: Optional[Callable[[BotStatsSnapshot], None]] = None,
         say: Optional[Callable[[str], None]] = None,
         clock: Optional[WallClock] = None,
         tick_interval_s: float = TICK_INTERVAL_S,
@@ -614,6 +758,7 @@ class PaperRunner:
         self._on_tick = on_tick
         self._on_figures = on_figures
         self._on_finished = on_finished
+        self._on_stats = on_stats
         self._say = say
         self._clock = clock if clock is not None else WALL_CLOCK
         self._tick_interval_s = float(tick_interval_s)
@@ -662,8 +807,25 @@ class PaperRunner:
             if self._say is not None:
                 self._say(f"Paper run failed: {exc}")
         stop(self._run)
+        self.close_stats()
         if self._on_finished is not None:
             self._on_finished(self._run)
+
+    def close_stats(self) -> int:
+        """Post one ``SNAPSHOT_END`` snapshot per opened balance carrying
+        ``STOPPED_STATE``, the mark the row reads after Stop Paper Run, and
+        answer how many were posted."""
+        posted = 0
+        for bot in self._run.bots:
+            balance = self._run.balances.get(bot.bot_id)
+            if balance is None:
+                continue
+            price = self._run.last_price.get(bot.bot_id, balance.opening_price)
+            if self.post_stats(
+                bot, balance, float(price), None, SNAPSHOT_END, STOPPED_STATE
+            ):
+                posted += 1
+        return posted
 
     def advance(self) -> list[PaperTick]:
         """One tick over every bot whose state reads ``RUNNING_STATE``: each
@@ -697,17 +859,25 @@ class PaperRunner:
         """One worked tick of ``bot``: the adapter's ``ticker`` and
         ``candles`` read on this thread, the balance opened at the read's
         ``last`` on the first, ``tick`` over them, ``record`` on the run,
-        ``on_trade`` on a fill and ``on_tick`` after."""
+        ``on_trade`` on a fill and ``on_tick`` after.
+
+        ``post_stats`` carries the opening snapshot on the tick the balance
+        opens, with ``SNAPSHOT_START`` and ``RUNNING_STATE``, and one snapshot
+        after every tick, ``SNAPSHOT_FILL`` when it filled.
+        """
         book = self._exchange.ticker(bot.symbol)
         candles = candles_for(self._exchange, bot)
         balance = self._run.balances.get(bot.bot_id)
+        opened = False
         if balance is None and not refusal_for(bot, candles, book):
             price = float((book or {}).get("last") or candles[-1].close)
             balance = opening_balance(bot, price, self._run.rule)
             self._run.balances[bot.bot_id] = balance
+            opened = True
+        held = balance or FakeBalance()
         seen = tick(
             bot,
-            balance or FakeBalance(),
+            held,
             candles,
             book,
             self._run.rule,
@@ -715,11 +885,48 @@ class PaperRunner:
             self._engine,
         )
         record(self._run, bot, seen)
+        priced = seen.last or seen.price
+        if opened:
+            self.post_stats(bot, held, priced, seen, SNAPSHOT_START, RUNNING_STATE)
         if seen.filled is not None and self._on_trade is not None:
             self._on_trade(seen.filled)
+        if not seen.refusal:
+            event = SNAPSHOT_FILL if seen.filled is not None else SNAPSHOT_TICK
+            self.post_stats(bot, held, priced, seen, event)
         if self._on_tick is not None:
             self._on_tick(seen)
         return seen
+
+    def post_stats(
+        self,
+        bot: PaperBot,
+        balance: FakeBalance,
+        price: float,
+        seen: Optional[PaperTick],
+        event: str,
+        state: str = "",
+    ) -> Optional[BotStatsSnapshot]:
+        """Hand ``on_stats`` the ``stats_snapshot`` of ``balance`` at
+        ``price``, the shape ``PaperFleetSource.write_stats`` writes into the
+        held record; answers the snapshot, or None with no ``on_stats``.
+
+        ``stats_snapshot`` is the Simulator's own builder over a duck-typed
+        position, so a paper row and a simulated row carry the same keys.
+        """
+        if self._on_stats is None:
+            return None
+        stamp = int(seen.wall_ms) if seen is not None else int(self._clock.now() * 1000)
+        snapshot = stats_snapshot(
+            bot,
+            balance,
+            float(price),
+            stamp,
+            len(self._run.ticks),
+            event,
+            state=state,
+        )
+        self._on_stats(snapshot)
+        return snapshot
 
 
 __all__ = [
@@ -727,6 +934,13 @@ __all__ = [
     "MIN_CANDLES",
     "NO_BOOK_TEXT",
     "NO_FEED_TEXT",
+    "SNAPSHOT_END",
+    "SNAPSHOT_FILL",
+    "SNAPSHOT_START",
+    "SNAPSHOT_TICK",
+    "STOPPED_STATE",
+    "BotStatsSnapshot",
+    "paper_tape_context",
     "NO_UNIT_RULE_FORMAT",
     "RUN_STATES",
     "RUN_THREAD_NAME",

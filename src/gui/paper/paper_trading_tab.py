@@ -24,7 +24,12 @@ runs the run button reads ``STOP_RUN_TEXT`` and its press reaches
 ``run_finished`` writes ``run_ended_line`` and relabels the button; each
 fill crosses on ``run_trade``, each runner line on ``run_line`` and the
 ledger's figures on ``run_figures`` to ``_take_figures``, so ``aggregate``
-reads a snapshot and never the runner's balances.
+reads a snapshot and never the runner's balances. Each ``BotStatsSnapshot``
+crosses on ``bot_stats`` to ``_take_bot_stats``, which writes the held record
+through ``PaperFleetSource.write_stats`` and arms ``_stats_redraw_timer`` at
+``STATS_REDRAW_MS``, so the row's Trades, Current Position Value and Target
+follow a fill; a ``running`` or ``stopped`` mark moves the record through
+``PaperBotManager`` and redraws at once.
 ``_import_live_fleet`` puts ``exchange_choice`` over
 ``PaperFleetSource.stored_exchanges``, opens ``PaperExchangeChoiceDialog`` when
 it prompts, copies the chosen exchange's records through
@@ -53,7 +58,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -141,6 +146,9 @@ class PaperTradingTab(QWidget):
     run_finished = Signal(object)
     #: The ledger's figures after a worked pass, queued for ``_take_figures``.
     run_figures = Signal(object)
+    #: One ``BotStatsSnapshot``, queued off the runner's thread so
+    #: ``_take_bot_stats`` writes the held record on the GUI thread.
+    bot_stats = Signal(object)
 
     def __init__(
         self,
@@ -168,11 +176,17 @@ class PaperTradingTab(QWidget):
         self._corner_buttons: dict[str, QPushButton] = {}
         self._card_buttons: dict[str, QPushButton] = {}
         self._run_buttons: list[QPushButton] = []
+        self._stats_dirty = False
+        self._stats_redraw_timer = QTimer(self)
+        self._stats_redraw_timer.setSingleShot(True)
+        self._stats_redraw_timer.setInterval(tab_surface.STATS_REDRAW_MS)
+        self._stats_redraw_timer.timeout.connect(self._redraw_stats)
         self._build()
         self.run_line.connect(self._status_log.log)
         self.run_trade.connect(self._take_trade)
         self.run_finished.connect(self._take_paper_run)
         self.run_figures.connect(self._take_figures)
+        self.bot_stats.connect(self._take_bot_stats)
         self.apiEntryLogged.connect(self._on_api_event)
         self._api_log.add_listener(self._cross_api_event)
         self.feedRead.connect(self._on_feed_read)
@@ -285,6 +299,7 @@ class PaperTradingTab(QWidget):
             on_trade=self.run_trade.emit,
             on_figures=self.run_figures.emit,
             on_finished=self.run_finished.emit,
+            on_stats=self.bot_stats.emit,
             say=lambda line: self.run_line.emit(line, "info"),
         )
         self._runner.start()
@@ -319,6 +334,50 @@ class PaperTradingTab(QWidget):
     def _take_trade(self, trade: PaperTrade) -> None:
         """Hold one fill the runner posted, in fill order."""
         self._fills.append(trade)
+
+    def _take_bot_stats(self, snapshot: Any) -> None:
+        """Write one ``BotStatsSnapshot`` into the held record through
+        ``PaperFleetSource.write_stats`` on the GUI thread.
+
+        A ``running`` mark moves the bot through ``PaperBotManager.start`` with
+        Live's RUNNING line and redraws the rows at once, a ``stopped`` mark
+        moves it through ``PaperBotManager.stop`` with the run's ended line and
+        redraws at once, and every other snapshot arms ``_stats_redraw_timer``
+        so the rows redraw once per ``STATS_REDRAW_MS``. A snapshot for a
+        record no longer held is dropped.
+        """
+        bot_id = str(getattr(snapshot, "bot_id", ""))
+        try:
+            self._fleet_source.write_stats(
+                bot_id, snapshot.stats, snapshot.scrumming_state
+            )
+            if snapshot.state == paper_run.RUNNING_STATE:
+                self._bot_manager.start(bot_id)
+                self._status_log.log(tab_surface.bot_running_line(bot_id), "success")
+                self._status_log.log(tab_surface.bot_opened_line(snapshot), "info")
+                self._redraw_stats()
+                return
+            if snapshot.state == paper_run.STOPPED_STATE:
+                self._bot_manager.stop(bot_id)
+                self._status_log.log(tab_surface.bot_stopped_line(bot_id), "info")
+                self._status_log.log(tab_surface.bot_ended_line(snapshot), "info")
+                self._redraw_stats()
+                return
+        except KeyError:
+            logger.debug("paper stats for %s dropped: no record held", bot_id)
+            return
+        self._stats_dirty = True
+        if not self._stats_redraw_timer.isActive():
+            self._stats_redraw_timer.start()
+
+    def _redraw_stats(self) -> None:
+        """Redraw every venue's rows through ``refresh_bots``, refresh the
+        state map the runner reads and clear the dirty mark; the header strip
+        reads the same records on the window's own tick."""
+        self._stats_dirty = False
+        self._stats_redraw_timer.stop()
+        self._refresh_states()
+        self.refresh_bots()
 
     def _read_states(self) -> dict:
         """The state per held ``bot_id`` as of the last ``_refresh_states``,

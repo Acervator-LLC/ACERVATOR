@@ -54,8 +54,9 @@ class FakeBalance:
     ``main_lots`` they sit in, the cash its scrums left and its folds spent,
     the fold tranches those scrums queued in the shape ``_tick_execute_scrum``
     builds them, the target its folds grow from ``anchor_target_usd``, the
-    growth cycle's consumed cap, standing surplus and side, and the counters
-    ``BotStats`` carries on a live bot."""
+    growth cycle's consumed cap, standing surplus and side, the growth
+    ``grow_target`` has applied and the steps it recorded in ``target_path``,
+    and the counters ``BotStats`` carries on a live bot."""
 
     units: float = 0.0
     cash_usd: float = 0.0
@@ -78,6 +79,8 @@ class FakeBalance:
     tranches_created: int = 0
     tranches_closed: int = 0
     scrum_sells: int = 0
+    growth_applied_usd: float = 0.0
+    target_path: list = field(default_factory=list)
 
     @property
     def tranches(self) -> int:
