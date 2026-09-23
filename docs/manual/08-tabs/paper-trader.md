@@ -1916,4 +1916,76 @@ to 5, so the instrument would have seen the move. With
 surplus each and the target stayed exactly $100.00000000 and $200.00000000
 with an empty `target_path`.
 
+### What the bundle reading measured, against the venue
+
+The Qt bundle, built from this branch and launched in isolation: a scratch home
+with no `bot_state.json` at launch and no credential file at any point, the
+window driven through the .NET UIAutomationClient assembly, every press an
+`InvokePattern` invoke or a `SelectionItemPattern` select on an element found
+under a window matched by its own process id. Two records on pairs the venue
+lists, `BTC/USD` at a $100 target and `ETH/USD` at $200, written to the scratch
+file after launch so no bot is ever restored.
+
+```
+moment                                    reading
+------------------------------------------------------------------------
+Import Live Fleet                         915 product(s) trade on coinbase;
+                                          2 of 2 fleet products among them;
+                                          2 of 2 tickers answered in 3 calls
+row after Import                          paperlive1 BTC/USD, Trades 0,
+                                          Target $100.0000
+Start on the first row                    "✓ Bot paperlive1 RUNNING."
+Start Paper Run                           the runner thread up, Bots card 1
+Current Position Value at 52 s            $99.9882
+                       72 s               $99.9868
+                       92 s               $99.9628
+                      112 s               $99.9428
+                      132 s               $99.9645
+                      152 s               $99.9623
+Ammo across the same marks                $0.0118 to $0.0377
+LOCKED on the header strip                $299.99 down to $299.94, back to $299.97
+SPENDABLE / REALISED / MATURE             $300.00 / $0.00 / $0.00
+cards: Scrummed, Folded, Trades, Errors   $0.00, $0.00, 0, 0
+the ETH row's Target BTC cell             0.002371 then 0.002372
+after Stop Paper Run                      $99.9694, Trades 0
+bot_state.json across every press         575DED46ED9CB7B7, unchanged
+the planted-byte control                  B7821D9854A0EB0F, a different digest
+```
+
+No fill was expected inside two minutes and none came; the position value is
+the live book moving under a fixed holding, which is what a two-minute reading
+shows.
+
+The call ledger, read off the API Interaction Log pane, carries 28 calls over
+150 seconds:
+
+```
+13:03:23  FETCH_MARKETS                     Import Live Fleet
+13:03:23  FETCH_TICKER  BTC/USD             the same press
+13:03:23  FETCH_TICKER  ETH/USD             the same press
+13:03:54  FETCH_TICKER                      the run's first worked tick
+13:03:55  FETCH_OHLCV   100 bars at 5m      the same tick, the only one
+13:04:00  FETCH_TICKER                      then one every five seconds
+   ...                                      to 13:05:53, 24 of them
+```
+
+One candle read serves the whole run, because the adapter holds a 5m window for
+three hundred seconds; the ticker is read once per five-second tick, the
+cadence `ScrummingBot.tick_interval` sets. That is 0.19 calls a second, and the
+adapter's own `PUBLIC_MIN_INTERVAL_S` paces them.
+
+**Two controls could not be pressed, and the routes are named.** The command
+bar starts the first row and no other: `PaperBotStatusTable.get_selected_bot_id`
+reads both `selectedItems()` and `currentRow()`, and only the first row's cell
+answers `HasKeyboardFocus=True`. Four attempts on the second row each reported
+`IsSelected=True HasKeyboardFocus=False`, and the Activity Log answered
+`Select a bot first.` or repeated the first bot's line. On the React bundle the
+Paper panel never reaches the accessibility tree at all: the Paper tab item
+answers `invoked` to an `InvokePattern` and `selected` to a
+`SelectionItemPattern`, and no child window contains the tab's own rect, so
+there is nothing to post a button message to. The window's descendant count
+stays at 225 through all three routes. Unit T1b of issue 34 read the same wall
+on the same bundle, and the React readings on this page stand on the
+source-tree React build.
+
 Back to [the subsystem index](README.md).
