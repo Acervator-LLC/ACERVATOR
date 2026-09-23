@@ -1,11 +1,12 @@
 """Z-Score Predictive Zones of price against its own N-period mean.
 
-``ZScoreIndicator.compute`` returns the Signal.
+``ZScoreIndicator.lines`` answers one ``ZScoreBar`` per candle;
+``ZScoreIndicator.compute`` reads the last two into the Signal.
 """
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from .types import (
     SignalDirection,
@@ -14,6 +15,28 @@ from .types import (
 from .helpers import (
     _window_has_no_range,
 )
+
+
+class ZScoreBar(NamedTuple):
+    """One candle's Z-Score reading: the smoothed score, the two projected
+    prices, and the window and reversal figures they came from."""
+
+    z: float
+    resistance_price: float
+    support_price: float
+    sma: float
+    std: float
+    z_raw: float
+    target_z_high: float
+    target_z_low: float
+    peaks_held: int
+    troughs_held: int
+    z_volume_weighted: bool
+
+
+#: One entry per candle, ``None`` before ``period`` bars and on a window
+#: with no range.
+_Line = list[Optional[ZScoreBar]]
 
 
 def _window_zscore(closes: list, close: float) -> Optional[tuple]:
@@ -44,29 +67,46 @@ def _vwma(values: list, volumes: list, period: int) -> Optional[float]:
     return weighted / volume
 
 
-def _reversal_levels(series: list, bars: int, threshold: float, depth: int) -> tuple:
-    """Mean of the last ``depth`` peaks and troughs in ``series``.
+class _ReversalLevels:
+    """The ``peaks`` and ``troughs`` of a z ``series``, judged as ``push`` grows it.
 
     A peak is above the ``bars`` readings each side and at or past
     ``threshold``; a trough is below them and at or past ``-threshold``.
     """
-    peaks: list = []
-    troughs: list = []
-    for i in range(bars, len(series) - bars):
-        value = series[i]
+
+    def __init__(self, bars: int, threshold: float, depth: int):
+        self.bars = bars
+        self.threshold = threshold
+        self.depth = depth
+        self.series: list = []
+        self.peaks: list = []
+        self.troughs: list = []
+
+    def push(self, value: float) -> None:
+        """Append ``value``, then judge the reading ``bars`` behind it."""
+        series = self.series
+        series.append(value)
+        bars = self.bars
+        i = len(series) - 1 - bars
+        if i < bars:
+            return
+        judged = series[i]
         neighbours = series[i - bars : i] + series[i + 1 : i + 1 + bars]
-        if value >= threshold and all(value > other for other in neighbours):
-            peaks.append(value)
-        elif value <= -threshold and all(value < other for other in neighbours):
-            troughs.append(value)
-    held_peaks = peaks[-depth:]
-    held_troughs = troughs[-depth:]
-    return (
-        sum(held_peaks) / len(held_peaks) if held_peaks else None,
-        sum(held_troughs) / len(held_troughs) if held_troughs else None,
-        len(held_peaks),
-        len(held_troughs),
-    )
+        if judged >= self.threshold and all(judged > other for other in neighbours):
+            self.peaks.append(judged)
+        elif judged <= -self.threshold and all(judged < other for other in neighbours):
+            self.troughs.append(judged)
+
+    def levels(self) -> tuple:
+        """Mean of the last ``depth`` peaks and troughs, and how many each held."""
+        held_peaks = self.peaks[-self.depth :]
+        held_troughs = self.troughs[-self.depth :]
+        return (
+            sum(held_peaks) / len(held_peaks) if held_peaks else None,
+            sum(held_troughs) / len(held_troughs) if held_troughs else None,
+            len(held_peaks),
+            len(held_troughs),
+        )
 
 
 # 10. Z-Score — Absolute statistical price deviation from mean
@@ -106,59 +146,86 @@ class ZScoreIndicator:
             abstained=True,
         )
 
-    def compute(self, candles: list, timeframe: str = "1h") -> Signal:
-        if len(candles) < self.period + 1:
-            return self._abstain(timeframe)
+    def lines(self, candles: list) -> _Line:
+        """One ``ZScoreBar`` per candle, for a chart to draw the score and its algo point.
 
+        Each bar's ``z_raw`` is ``_window_zscore`` over the ``period`` closes
+        ending there, ``z`` is ``_vwma`` over the last ``smoothing_period``
+        readings, and ``resistance_price`` and ``support_price`` project
+        ``_ReversalLevels`` back through that bar's ``sma`` and ``std``.
+        """
         closes = [c.close for c in candles]
         end = len(candles)
+        out: _Line = [None] * end
 
         # `_window_zscore` reads the closes the venue sent, so a halted
         # window answers None instead of rounding `deviation` to ULPs.
         z_series: list = []
         z_volumes: list = []
-        last_window = None
+        reversals = _ReversalLevels(
+            self.pivot_bars, self.reversal_threshold, self.lookback_depth
+        )
         for i in range(self.period - 1, end):
             found = _window_zscore(closes[i - self.period + 1 : i + 1], closes[i])
             if found is None:
                 continue
-            z_series.append(found[2])
+            sma, std, z_raw = found
+            z_series.append(z_raw)
             z_volumes.append(candles[i].volume)
-            if i == end - 1:
-                last_window = found
+            reversals.push(z_raw)
 
-        if last_window is None:
+            # A venue sending no volume leaves `_vwma` None, so `z` is
+            # `z_raw` and `z_volume_weighted` publishes which `z` holds.
+            smoothed = _vwma(z_series, z_volumes, self.smoothing_period)
+            z = z_raw if smoothed is None else smoothed
+
+            peak_z, trough_z, peaks_held, troughs_held = reversals.levels()
+            target_z_high = self.reversal_threshold if peak_z is None else peak_z
+            target_z_low = -self.reversal_threshold if trough_z is None else trough_z
+            out[i] = ZScoreBar(
+                z=z,
+                resistance_price=sma + target_z_high * std,
+                support_price=sma + target_z_low * std,
+                sma=sma,
+                std=std,
+                z_raw=z_raw,
+                target_z_high=target_z_high,
+                target_z_low=target_z_low,
+                peaks_held=peaks_held,
+                troughs_held=troughs_held,
+                z_volume_weighted=smoothed is not None,
+            )
+        return out
+
+    def compute(self, candles: list, timeframe: str = "1h") -> Signal:
+        if len(candles) < self.period + 1:
             return self._abstain(timeframe)
 
-        sma, std, z_raw = last_window
+        bars = self.lines(candles)
+        last = bars[-1]
+        if last is None:
+            return self._abstain(timeframe)
 
-        # A venue sending no volume leaves `_vwma` None, so `z` is `z_raw`
-        # and `z_volume_weighted` publishes which of the two `z` holds.
-        smoothed = _vwma(z_series, z_volumes, self.smoothing_period)
-        z_volume_weighted = smoothed is not None
-        z = z_raw if smoothed is None else smoothed
+        end = len(candles)
+        sma, std, z_raw = last.sma, last.std, last.z_raw
+        z = last.z
+        z_volume_weighted = last.z_volume_weighted
 
         # A previous window with no range leaves `z_prev` at `z_raw`, which
         # holds `z_reverting` False.
         z_prev = z_raw
-        if end >= self.period + 2:
-            earlier = _window_zscore(closes[-self.period - 1 : -1], closes[-2])
-            if earlier is not None:
-                z_prev = earlier[2]
+        if end >= self.period + 2 and bars[-2] is not None:
+            z_prev = bars[-2].z_raw
 
         z_reverting = (z_raw > 0 and z_raw < z_prev) or (z_raw < 0 and z_raw > z_prev)
 
-        peak_z, trough_z, peaks_held, troughs_held = _reversal_levels(
-            z_series,
-            self.pivot_bars,
-            self.reversal_threshold,
-            self.lookback_depth,
-        )
-        target_z_high = self.reversal_threshold if peak_z is None else peak_z
-        target_z_low = -self.reversal_threshold if trough_z is None else trough_z
+        peaks_held = last.peaks_held
+        troughs_held = last.troughs_held
+        target_z_high = last.target_z_high
+        target_z_low = last.target_z_low
 
-        resistance_price = sma + target_z_high * std
-        support_price = sma + target_z_low * std
+        resistance_price = last.resistance_price
+        support_price = last.support_price
 
         in_resistance = z > target_z_high
         in_support = z < target_z_low

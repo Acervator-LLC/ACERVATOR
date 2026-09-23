@@ -45,11 +45,10 @@ from . import bot_visualizer_surface
 from . import console_tab_surface
 from . import history_tab_surface
 from . import market_inspector_surface
-from . import paper_trader_tab_surface
+from ..paper import paper_trading_tab_surface
 from . import proof_of_accumulation_tab_surface
 from . import simulator_tab_surface
 from . import system_status_tab_surface
-from . import theme_engine_surface
 from . import trade_charts_tab_surface
 from . import trading_tab_surface
 
@@ -139,7 +138,7 @@ CONSOLE_TAB = "Console"
 
 # Each unbuilt tab is labelled by its own surface, so the bar and the empty
 # state it draws cannot carry two spellings of one name.
-PAPER_TAB = paper_trader_tab_surface.HEADING
+PAPER_TAB = paper_trading_tab_surface.HEADING
 STATUS_TAB = system_status_tab_surface.HEADING
 ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 
@@ -156,31 +155,13 @@ CANONICAL_TAB_ORDER = (
     CONSOLE_TAB,
 )
 
-# The ground each tab is painted on. `TAB_GROUND_COLOURS` resolves a ground
-# against one theme's tokens.
-BLACK_GROUND = "black"
-WHITE_GROUND = "white"
-GOLD_GROUND = "gold"
+# The tabs `_setup_ui` skips. Dropping ACCUMULATION_TAB from this tuple is
+# the one edit that builds the Accumulation tab and puts it back on the bar.
+UNBUILT_TABS = (ACCUMULATION_TAB,)
 
-TAB_GROUNDS = {
-    SIM_TAB: BLACK_GROUND,
-    PAPER_TAB: WHITE_GROUND,
-    LIVE_TAB: GOLD_GROUND,
-    CHARTS_TAB: GOLD_GROUND,
-    INSPECTOR_TAB: GOLD_GROUND,
-    SWARM_TAB: GOLD_GROUND,
-    ACCUMULATION_TAB: GOLD_GROUND,
-    HISTORY_TAB: GOLD_GROUND,
-    STATUS_TAB: GOLD_GROUND,
-    CONSOLE_TAB: GOLD_GROUND,
-}
-
-# The two theme-token names each ground paints from.
-TAB_GROUND_TOKENS = {
-    BLACK_GROUND: ("tab_black_bg", "tab_black_text"),
-    WHITE_GROUND: ("tab_white_bg", "tab_white_text"),
-    GOLD_GROUND: ("tab_gold_bg", "tab_gold_text"),
-}
+# CANONICAL_TAB_ORDER without the tabs nothing builds, which is the order
+# `_reorder_main_tabs` and `reordered_tabs` move the bar into.
+BAR_TAB_ORDER = tuple(name for name in CANONICAL_TAB_ORDER if name not in UNBUILT_TABS)
 
 # The bridge method that serves each tab. A frontend with no tab book of its
 # own joins its panels to this window's tabs on the method each one calls.
@@ -192,7 +173,7 @@ TAB_METHODS = {
     HISTORY_TAB: history_tab_surface.METHOD,
     SIM_TAB: simulator_tab_surface.METHOD,
     CONSOLE_TAB: console_tab_surface.METHOD,
-    PAPER_TAB: paper_trader_tab_surface.METHOD,
+    PAPER_TAB: paper_trading_tab_surface.METHOD,
     STATUS_TAB: system_status_tab_surface.METHOD,
     ACCUMULATION_TAB: proof_of_accumulation_tab_surface.METHOD,
 }
@@ -215,7 +196,14 @@ SIMULATOR_BUILD_INDEX = 1
 
 PAPER_BUILD_INDEX = 2
 
-ISOLATED_TABS = (SIM_TAB, PAPER_TAB)
+#: The tabs the header strip hides on; none since the Paper tab reads it.
+ISOLATED_TABS: tuple = ()
+
+#: The tabs the header strip reads the Simulator's fleet on, not the live one.
+SIM_FED_TABS = (SIM_TAB,)
+
+#: The tabs the header strip reads the Paper Trader's ledger and records on.
+PAPER_FED_TABS = (PAPER_TAB,)
 
 HISTORY_STALE_AFTER_S = 300
 
@@ -359,7 +347,7 @@ ABOUT_TEXT = (
     "A multi-exchange crypto auto-trading platform.\n"
     "Grid Mode - Speculative Scrumming\n"
     "Profit Folding - Upward Distribution\n"
-    "Phantom Balance Bots - 7-Indicator TA Voting\n"
+    "Phantom Bots - 7-Indicator TA Voting\n"
     "TradingView Charts - Multi-Timeframe Analysis\n"
     "Verbose API Interaction Logging"
 )
@@ -569,7 +557,7 @@ ABBREVIATION_TOOLTIPS = (
     ),
     (
         "Phantom",
-        "Phantom Balance Bot - shadow bot analyzing a different timeframe",
+        "Phantom Bot - shadow bot analyzing a different timeframe",
     ),
     (
         "Folding",
@@ -675,12 +663,12 @@ def wing_title(mode: Any) -> str:
 
 
 def constructed_tabs(failed: Any = None) -> list:
-    """The tab bar the builders leave, with every name in `failed` skipped.
+    """The tab bar the builders leave, with `failed` and `UNBUILT_TABS` skipped.
 
     Each builder in `BUILT_TAB_ORDER` appends; `SIM_TAB` inserts at
     `SIMULATOR_BUILD_INDEX` and `PAPER_TAB` at `PAPER_BUILD_INDEX`.
     """
-    skipped = set(failed or ())
+    skipped = set(failed or ()) | set(UNBUILT_TABS)
     inserted = {SIM_TAB: SIMULATOR_BUILD_INDEX, PAPER_TAB: PAPER_BUILD_INDEX}
     order: list = []
     for name in BUILT_TAB_ORDER:
@@ -693,41 +681,22 @@ def constructed_tabs(failed: Any = None) -> list:
     return order
 
 
-def tab_colours(theme: Any = None) -> dict:
-    """Each tab's ground and text colour, resolved against one theme's tokens.
-
-    A theme the table does not hold resolves against `DEFAULT_THEME`.
-    """
-    themes = theme_engine_surface.THEMES
-    tokens = themes.get(theme) or themes[DEFAULT_THEME]
-    painted = {}
-    for tab, ground in TAB_GROUNDS.items():
-        ground_token, text_token = TAB_GROUND_TOKENS[ground]
-        painted[tab] = {
-            "ground": tokens[ground_token],
-            "text": tokens[text_token],
-        }
-    return painted
-
-
 def reordered_tabs(labels: Any, desired: Any) -> list:
-    """`labels` after the reorder pass moves each named tab into its slot.
+    """`labels` after each name in `desired` moves to the next slot.
 
-    Tabs whose labels are not in `desired` keep their relative position
-    at the end. The first tab carrying a name is the one that moves. A
-    slot past the last tab is not a slot: with a tab missing, every name
-    after it asks for an index the bar does not have and the bar moves
-    nothing, so the last named tabs keep the order they were built in.
+    A name `labels` does not carry takes no slot, and tabs `desired` does not
+    name keep their relative position at the end.
     """
     order = list(labels)
-    for target_index, name in enumerate(desired):
+    target_index = 0
+    for name in desired:
         if target_index >= len(order):
             break
-        for current_index in range(len(order)):
+        for current_index in range(target_index, len(order)):
             if order[current_index] == name:
                 if current_index != target_index:
-                    moved = order.pop(current_index)
-                    order.insert(target_index, moved)
+                    order.insert(target_index, order.pop(current_index))
+                target_index += 1
                 break
     return order
 
@@ -735,6 +704,16 @@ def reordered_tabs(labels: Any, desired: Any) -> list:
 def header_strip_visible(tab_name: Any) -> bool:
     """Whether the window-level stat strip shows on the tab named."""
     return tab_name not in ISOLATED_TABS
+
+
+def header_strip_reads_sim(tab_name: Any) -> bool:
+    """Whether the stat strip reads the Simulator's fleet on the tab named."""
+    return tab_name in SIM_FED_TABS
+
+
+def header_strip_reads_paper(tab_name: Any) -> bool:
+    """Whether the stat strip reads the Paper Trader's ledger and records on the tab named."""
+    return tab_name in PAPER_FED_TABS
 
 
 def history_refresh_due(last_fetched_ts: Any, in_flight: Any, now: Any) -> bool:
@@ -1342,7 +1321,6 @@ class MainWindowModel:
         self.theme = DEFAULT_THEME
         self.tab_labels: list = []
         self.tab_methods = dict(TAB_METHODS)
-        self.tab_colours = tab_colours(self.theme)
         self.tabs_movable = TABS_MOVABLE
         self.current_tab = ""
         self.header_strip_shown = True
@@ -1390,11 +1368,10 @@ class MainWindowModel:
         self.subscriptions = list(BUS_SUBSCRIPTIONS)
         self._record("subscribe", self.subscriptions)
         built = constructed_tabs(self.failed_tabs)
-        self.tab_labels = reordered_tabs(built, CANONICAL_TAB_ORDER)
+        self.tab_labels = reordered_tabs(built, BAR_TAB_ORDER)
         self._record("tabs", list(self.tab_labels))
         if self.settings is not None:
-            self.theme = self.settings.get("theme", DEFAULT_THEME)
-        self.tab_colours = tab_colours(self.theme)
+            self.theme = self.stored_theme()
         self.timers = [
             {"name": "dashboard", "interval_ms": DASHBOARD_TICK_MS, "started": True},
             {"name": "pulse", "interval_ms": PULSE_TICK_MS, "started": True},
@@ -1544,12 +1521,22 @@ class MainWindowModel:
         self._record("trading_mode", self.trading_mode)
         return self
 
+    def stored_theme(self) -> Any:
+        """The stored theme name, or ``DEFAULT_THEME`` when the menu lacks it.
+
+        ``switch_theme`` raises for a name the menu does not offer, so a
+        store holding an unknown name opens on the default instead.
+        """
+        if self.settings is None:
+            return DEFAULT_THEME
+        name = self.settings.get("theme", DEFAULT_THEME)
+        return name if name in self.themes.names() else DEFAULT_THEME
+
     def switch_theme(self, name: Any) -> "MainWindowModel":
         """A Theme menu item."""
         if name not in self.themes.names():
             raise ValueError(f"Unknown theme: {name}. Available: {self.themes.names()}")
         self.theme = name
-        self.tab_colours = tab_colours(name)
         self.log(THEME_SWITCHED_LOG_FORMAT.format(name=name), "info")
         self._record("theme", name)
         return self
@@ -1559,7 +1546,7 @@ class MainWindowModel:
         if self.settings is None:
             self._record("settings_changed_skipped", True)
             return self
-        self.switch_theme(self.settings.get("theme", DEFAULT_THEME))
+        self.switch_theme(self.stored_theme())
         ai_config = self.settings.get("ai_monitor", {})
         if self.fleet is not None:
             pill = ai_pill(ai_config)
@@ -1780,7 +1767,6 @@ class MainWindowModel:
             "menus": self.menus,
             "tab_labels": list(self.tab_labels),
             "tab_methods": dict(self.tab_methods),
-            "tab_colours": {tab: dict(pair) for tab, pair in self.tab_colours.items()},
             "theme": self.theme,
             "tabs_movable": self.tabs_movable,
             "current_tab": self.current_tab,

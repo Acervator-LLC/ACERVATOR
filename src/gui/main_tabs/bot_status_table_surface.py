@@ -30,6 +30,7 @@ from typing import Any, Dict, Optional
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 from ...exchange.exchange_chart_urls import chart_url
 from .. import design_system as ds
+from ..color_alpha import coin_disc_color
 from .table_cells_surface import (
     NO_TARGET_TEXT,
     POSITION_BLANK_TEXT,
@@ -164,7 +165,7 @@ SKIP_LOG_FORMAT = (
 SKIP_BOT_ID_LENGTH = 8
 SKIP_BOT_ID_MISSING = "?"
 
-ICON_ASSET_SIZE_PX = 18
+ICON_ASSET_SIZE_PX = ds.COIN_ICON_SIZE_PX
 ICON_DOWNLOAD = False
 
 LINK_COLOR = ds.TEXT_INFO_SOFT
@@ -480,6 +481,8 @@ def cell(
         "alignment_value": ALIGNMENT_VALUE,
         "icon_asset": EMPTY_TEXT,
         "icon_size": ICON_ASSET_SIZE_PX,
+        "icon_color": EMPTY_TEXT,
+        "icon_letter": EMPTY_TEXT,
         "chart_url": EMPTY_TEXT,
         "underline": False,
     }
@@ -721,7 +724,12 @@ class BotStatusTableModel:
             return cell(text)
         asset = icon_asset_of(text)
         self.calls.append([ROW_ICON, asset, ICON_ASSET_SIZE_PX])
-        found = cell(text, icon_asset=asset)
+        found = cell(
+            text,
+            icon_asset=asset,
+            icon_color=coin_disc_color(asset),
+            icon_letter=asset[:1],
+        )
         try:
             url = chart_url(exchange_id, status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT)
         except Exception as exc:

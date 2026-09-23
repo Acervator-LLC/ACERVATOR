@@ -10,8 +10,14 @@
   var NEXT_TOOLTIP = "next_tooltip";
   var TICKER_TOOLTIP = "ticker_tooltip";
   var ARROW_WIDTH = "arrow_width_px";
-  var ARROW_HEIGHT = "arrow_height_px";
+  var ARROW_GLYPH_PX = "arrow_glyph_px";
+  var ARROW_GLYPH_FAMILY = "arrow_glyph_family";
+  var CONTROL_HEIGHT = "control_height_px";
+  var CONTROL_FONT_FAMILY = "control_font_family";
+  var CONTROL_FONT_PX = "control_font_px";
+  var CAPTION_PX = "caption_px";
   var TICKER_MIN_WIDTH = "ticker_min_width_px";
+  var TIMEFRAME_LABEL = "timeframe_label";
   var SELECTOR_ITEMS = "items";
   var SELECTOR_SHOWN = "shown";
   var POSITION_TEXT = "position_text";
@@ -24,7 +30,6 @@
   var LIST_MODE = "list_mode";
   var TOGGLE_TOOLTIP = "toggle_tooltip";
   var TOGGLE_WIDTH = "toggle_width_px";
-  var TOGGLE_HEIGHT = "toggle_height_px";
   var SHOWING_ATA = "showing_ata";
   var ATA_EMPTY_HINT = "ata_empty_hint";
   var LISTS = "lists";
@@ -50,10 +55,12 @@
   var PANEL_CHROME = "panel_chrome";
   var TOGGLES = "toggles";
   var LEGEND = "legend";
+  var LEGEND_STYLES = "legend_styles";
   var TOGGLE_KEY = "key";
   var CHECKED = "checked";
   var COLOR = "color";
   var TOGGLE_GAP = "toggle_gap_px";
+  var TOGGLE_BOX = "toggle_box_px";
   var LEGEND_GAP = "legend_gap_px";
   var PANEL_DEFAULTS = "panel_defaults";
   var NUCLEAR_DEFAULTS = "nuclear_defaults";
@@ -61,7 +68,6 @@
   var FILTERS = "filters";
   var OUTCOMES = "outcomes";
   var FORMATS = "formats";
-  var FLOOR_FORMAT_SWITCH = "floor_format_switch";
   var EMPTY_SOURCE = "empty_source";
   var BOT_ID_LOG_LENGTH = "bot_id_log_length";
   var CANDLE_CLOSE_INDEX = "candle_close_index";
@@ -92,7 +98,6 @@
     EMPTY_SOURCE,
     FETCH,
     FILTERS,
-    FLOOR_FORMAT_SWITCH,
     FOLLOWED,
     FORMATS,
     KEYS,
@@ -122,8 +127,8 @@
   var SPACING = "spacing_px";
   var LAYOUT_SLOTS = "layout_slots";
 
-  // The list-toggle row, the selector row, the chart panel and the toggle row.
-  var LAYOUT_SLOT_COUNT = 4;
+  // The control row, the chart panel and the toggle row.
+  var LAYOUT_SLOT_COUNT = 3;
 
   var SYMBOL = "symbol";
   var EXCHANGE_ID = "exchange_id";
@@ -138,12 +143,10 @@
   var ERROR_TEXT = "error_text";
   var SOURCE = "source";
   var MARKERS = "markers";
-  var FLOORS = "floors";
   var TB_ANCHOR = "tb_anchor";
   var TB_CEILING = "tb_ceiling";
   var ARMED = "armed";
   var MINIMUM_HEIGHT = "minimum_height_px";
-  var NATURAL_HEIGHT = "natural_height_px";
   var MAXIMUM_HEIGHT = "maximum_height_px";
   var CHART_REPAINTS = "chart_repaints";
   var PANEL_REPAINTS = "panel_repaints";
@@ -156,6 +159,98 @@
 
   var TIMEFRAME_ACTION = "panel.chart.timeframe_changed";
   var TIMEFRAME_CHANGE_PARAM = "timeframe_change";
+
+  // The chart slot asks the tab for the image `native_chart.py` paints, at
+  // the slot's own width and the page's device pixel ratio.
+  var IMAGE_METHOD = "trade_charts_tab.image";
+  var IMAGE_WIDTH_PARAM = "width";
+  var IMAGE_HEIGHT_PARAM = "height";
+  var IMAGE_RATIO_PARAM = "dpr";
+  var TOGGLE_KEY_PARAM = "toggle_overlay";
+  var TOGGLE_ON_PARAM = "toggle_on";
+  var IMAGE_DATA_URI = "data_uri";
+  var IMAGE_WIDTH = "width_px";
+  var IMAGE_HEIGHT = "height_px";
+  var IMAGE_NATURAL_HEIGHT = "natural_height_px";
+  var IMAGE_RATIO = "device_pixel_ratio";
+  var IMAGE_SHA = "sha256";
+  var IMAGE_CANDLES = "candle_count";
+  var IMAGE_GEOMETRY = "geometry";
+  var PAINTER = "native_chart.py";
+
+  // The chart host sends each pointer input the Qt widget answers to the tab,
+  // which moves the painter's window through the same arithmetic and answers
+  // a new image; a hover draws the crosshair here from the image's geometry.
+  var VIEW_METHOD = "trade_charts_tab.view";
+  var VIEW_ACTION_PARAM = "action";
+  var VIEW_X_PARAM = "x";
+  var VIEW_Y_PARAM = "y";
+  var VIEW_WIDTH_PARAM = "width";
+  var VIEW_HEIGHT_PARAM = "height";
+  var VIEW_RATIO_PARAM = "dpr";
+  var VIEW_DELTA_PARAM = "delta";
+  var VIEW_CONTROL_PARAM = "control";
+  var VIEW_CANDLE_PARAM = "candle";
+  var VIEW_WHEEL = "wheel";
+  var VIEW_PRESS = "press";
+  var VIEW_DRAG = "drag";
+  var VIEW_RELEASE = "release";
+  var VIEW_RESET = "reset";
+  var VIEW_CROSSHAIR = "crosshair";
+  var VIEW_MOVED = "moved";
+  var VIEW_START = "start";
+  var VIEW_COUNT = "count";
+  var VIEW_IMAGE = "image";
+
+  var GEOMETRY_LEFT = "left";
+  var GEOMETRY_RIGHT = "right";
+  var GEOMETRY_PRICE_TOP = "price_top";
+  var GEOMETRY_PRICE_BOT = "price_bot";
+  var GEOMETRY_PRICE_H = "price_h";
+  var GEOMETRY_TIME_AXIS_Y = "time_axis_y";
+  var GEOMETRY_LOW = "low";
+  var GEOMETRY_SPAN = "span";
+  var GEOMETRY_COLUMN = "column_px";
+  var GEOMETRY_VISIBLE_START = "visible_start";
+  var GEOMETRY_VISIBLE_COUNT = "visible_count";
+  var GEOMETRY_CANDLES = "candles";
+  var GEOMETRY_TIME_LABEL = "time_label";
+  var GEOMETRY_LINES = "lines";
+  var GEOMETRY_PRICE_BANDS = "price_bands";
+  var GEOMETRY_GROUPED_DECIMALS = "grouped_decimals";
+  var GEOMETRY_CROSSHAIR_COLOUR = "crosshair_colour";
+  var GEOMETRY_BADGE_FILL = "badge_fill";
+  var GEOMETRY_BADGE_EDGE = "badge_edge";
+  var GEOMETRY_TEXT_LIGHT = "text_light";
+  var GEOMETRY_TEXT_DIM = "text_dim";
+  var GEOMETRY_FONT_FAMILY = "font_family";
+  var GEOMETRY_FONT_PX = "font_px";
+  var GEOMETRY_PIN_EVERY_MS = "pin_every_ms";
+
+  // The crosshair's pixel rules, as `paint_to` draws them.
+  var CROSSHAIR_DASH = [1, 2];
+  var PRICE_BADGE_PAD_PX = 12;
+  var PRICE_BADGE_HEIGHT_PX = 18;
+  var PRICE_BADGE_LIFT_PX = 9;
+  var PRICE_BADGE_RADIUS_PX = 3;
+  var TIME_BADGE_HEIGHT_PX = 16;
+  var TIME_BADGE_LIFT_PX = 1;
+  var TOOLTIP_LINE_HEIGHT_PX = 14;
+  var TOOLTIP_PAD_PX = 8;
+  var TOOLTIP_INSET_PX = 8;
+  var TOOLTIP_LABEL_INSET_PX = 6;
+  // The value column starts this far past the widest label.
+  var TOOLTIP_VALUE_GAP_PX = 12;
+  var TOOLTIP_BASELINE_LIFT_PX = 3;
+  var TOOLTIP_STRIPE_WIDTH_PX = 3;
+  var TOOLTIP_RADIUS_PX = 4;
+  var TOOLTIP_STRIPE_RADIUS_PX = 2;
+  var READOUT_LINE_JOIN = " ";
+  var READOUT_JOIN = "|";
+  var C_LINE_AT = 3;
+  var WHEEL_SIGN = -1;
+  var PRIMARY_BUTTON = 0;
+  var PASSIVE_OFF = { passive: false };
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -171,11 +266,8 @@
 
   var NO_BRIDGE = "the preload bridge is not present";
 
-  var NUMBER_KIND = "number";
-
   var PANEL_AT = "asset:";
   var LEGEND_AT = "legend:";
-  var TOOLBAR_GAP_KEY = "toolbar-gap";
   var TOGGLE_BOX_SUFFIX = ":box";
   var PATH_SPLIT = ".";
   var EMPTY = "";
@@ -207,6 +299,9 @@
   var AUTO = "auto";
   var HIDDEN = "hidden";
   var FLEX_NONE = "none";
+  var RELATIVE = "relative";
+  var ABSOLUTE = "absolute";
+  var ZERO_PX = "0px";
   var NOWRAP = "nowrap";
   var ELLIPSIS = "ellipsis";
   var SELECT_NONE = "none";
@@ -219,7 +314,9 @@
   var OPTION_TAG = "option";
   var LABEL_TAG = "label";
   var INPUT_TAG = "input";
+  var IMG_TAG = "img";
   var CHECKBOX_TYPE = "checkbox";
+  var BLOCK = "block";
 
   var TAB_CLASS = "acervator-charts-tab";
   var PANEL_CLASS = "acervator-charts-panel";
@@ -227,8 +324,8 @@
 
   var TAB_PART = "tab";
   var CONTENT_PART = "content";
-  var SELECTOR_PART = "asset-selector";
-  var LIST_ROW_PART = "chart-list-row";
+  var CONTROL_ROW_PART = "control-row";
+  var CONTROL_GAP_KEY = "control-gap";
   var LIST_TOGGLE_PART = "chart-list-toggle";
   var LIST_HINT_PART = "chart-list-hint";
   var PREV_PART = "asset-prev";
@@ -236,18 +333,20 @@
   var TICKER_PART = "asset-ticker";
   var POSITION_PART = "asset-position";
   var PANEL_PART = "chart-panel";
-  var HEADER_PART = "panel-header";
-  var TOOLBAR_PART = "panel-toolbar";
   var TIMEFRAME_PART = "timeframe";
+  var TIMEFRAME_LABEL_PART = "timeframe-label";
   var SOURCE_PART = "panel-source";
   var LEGEND_PART = "panel-legend";
   var TOGGLE_ROW_PART = "panel-toggle-row";
   var TOGGLE_PART = "panel-toggle";
   var CHART_PART = "chart-mount";
+  var CHART_HOST_PART = "chart-host";
+  var CHART_IMAGE_PART = "chart-image";
+  var CHART_OVERLAY_PART = "chart-overlay";
   var ERROR_PART = "panel-error";
   var EMPTY_PART = "empty-column";
 
-  // `native_chart.js` draws the candles into the host this tab keeps.
+  // The slot `native_chart.py` paints into, through the tab's image ask.
   var CHART_SLOT = "native_chart";
 
   var PART_ATTR = "data-part";
@@ -255,7 +354,22 @@
   var BOT_ATTR = "data-bot";
   var SYMBOL_ATTR = "data-symbol";
   var TOGGLE_ATTR = "data-toggle";
-  var CHILD_ATTR = "data-child-module";
+  var PAINTER_ATTR = "data-painter";
+  var IMAGE_WIDTH_ATTR = "data-width-px";
+  var IMAGE_HEIGHT_ATTR = "data-height-px";
+  var IMAGE_RATIO_ATTR = "data-dpr";
+  var IMAGE_SHA_ATTR = "data-sha256";
+  var FAULT_ATTR = "data-fault";
+  // What the chart host reports about its own pointer handling.
+  var WIRED_ATTR = "data-pointer-wired";
+  var CROSSHAIR_X_ATTR = "data-crosshair-x";
+  var CROSSHAIR_Y_ATTR = "data-crosshair-y";
+  var CROSSHAIR_CANDLE_ATTR = "data-crosshair-candle";
+  var READOUT_ATTR = "data-readout";
+  var VIEW_START_ATTR = "data-view-start";
+  var VIEW_COUNT_ATTR = "data-view-count";
+  var HOVER_MS_ATTR = "data-hover-ms";
+  var VIEW_MS_ATTR = "data-view-ms";
 
   var SELECT_OPEN = "[";
   var SELECT_IS = "=\"";
@@ -265,7 +379,6 @@
   var SYNTHETIC_ATTR = "data-synthetic";
   var CANDLES_ATTR = "data-candle-count";
   var MARKERS_ATTR = "data-marker-count";
-  var FLOORS_ATTR = "data-floor-count";
   var ANCHOR_ATTR = "data-tb-anchor";
   var CEILING_ATTR = "data-tb-ceiling";
   var ARMED_ATTR = "data-armed";
@@ -538,8 +651,32 @@
       });
   }
 
+  // A toggled overlay reaches the painter through the surface, and the box
+  // reads the painter's own state back off the answer.
+  function overlayChosen(key, on) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[TOGGLE_KEY_PARAM] = key;
+    params[TOGGLE_ON_PARAM] = Boolean(on);
+    return global.acervator
+      .call(METHOD, params)
+      .then(function (model) {
+        loadFault = null;
+        setCharts(model);
+        redraw();
+        return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
+  }
+
   function TimeframeControl(props) {
-    var style = { flex: FLEX_NONE };
+    var style = { flex: FLEX_NONE, height: props.height };
     var selectProps = {
       style: style,
       value: text(props.timeframe),
@@ -557,33 +694,32 @@
     return element(SELECT_TAG, selectProps, drawn);
   }
 
-  // Qt paints the header with the chart, so nothing here may be selected.
-  function PanelHeader(props) {
-    var style = {
-      flex: FLEX_NONE,
-      overflow: HIDDEN,
-      whiteSpace: NOWRAP,
-      textOverflow: ELLIPSIS,
-      userSelect: SELECT_NONE
-    };
-    var headerProps = { style: style };
-    headerProps[PART_ATTR] = HEADER_PART;
-    headerProps[BOT_ATTR] = text(props.botId);
-    return element(DIV_TAG, headerProps, text(props.panel[LABEL]));
-  }
-
   function PanelSource(props) {
     var style = {
       flex: FLEX_NONE,
       overflow: HIDDEN,
       whiteSpace: NOWRAP,
       textOverflow: ELLIPSIS,
-      userSelect: SELECT_NONE
+      userSelect: SELECT_NONE,
+      fontSize: props.fontSize,
+      height: props.height,
+      display: FLEX,
+      alignItems: CENTER
     };
     var sourceProps = { style: style };
     sourceProps[PART_ATTR] = SOURCE_PART;
     sourceProps[BOT_ATTR] = text(props.botId);
     return element(SPAN_TAG, sourceProps, text(props.panel[SOURCE]));
+  }
+
+  // acervatorHeader owns the Qt style sheet parsing that paints a legend entry.
+  function legendStyle(chrome, at) {
+    var api = global.acervatorHeader;
+    var sheets = listField(chrome, LEGEND_STYLES);
+    if (!api || typeof api.styleOf !== "function" || at >= sheets.length) {
+      return {};
+    }
+    return api.styleOf(sheets[at]);
   }
 
   // The two position markers the chart pins to the price axis.
@@ -592,6 +728,8 @@
     var legendProps = {
       style: {
         display: FLEX,
+        alignItems: CENTER,
+        height: props.height,
         gap: height(chrome[LEGEND_GAP]),
         flex: FLEX_NONE
       }
@@ -602,16 +740,27 @@
       DIV_TAG,
       legendProps,
       listField(chrome, LEGEND).map(function (one, at) {
-        return element(SPAN_TAG, { key: LEGEND_AT + String(at) }, text(one));
+        return element(
+          SPAN_TAG,
+          { key: LEGEND_AT + String(at), style: legendStyle(chrome, at) },
+          text(one)
+        );
       })
     );
   }
 
-  // One check box per overlay the chart can draw, in the order it offers them.
-  function PanelToggle(one) {
+  // One check box per overlay the chart can draw, in the order it offers them;
+  // the box is the chrome's toggle size and the label the caption size.
+  function PanelToggle(one, chrome) {
     var boxProps = {
       key: one[TOGGLE_KEY],
-      style: { color: text(one[COLOR]), display: FLEX, alignItems: CENTER }
+      style: {
+        color: text(one[COLOR]),
+        fontSize: height(chrome[CAPTION_PX]),
+        display: FLEX,
+        alignItems: CENTER,
+        flex: FLEX_NONE
+      }
     };
     boxProps[PART_ATTR] = TOGGLE_PART;
     boxProps[TOGGLE_ATTR] = text(one[TOGGLE_KEY]);
@@ -621,33 +770,62 @@
       element(INPUT_TAG, {
         key: one[TOGGLE_KEY] + TOGGLE_BOX_SUFFIX,
         type: CHECKBOX_TYPE,
+        style: {
+          width: height(chrome[TOGGLE_BOX]),
+          height: height(chrome[TOGGLE_BOX]),
+          margin: ZERO_PX,
+          flex: FLEX_NONE
+        },
         "aria-label": text(one[LABEL]),
         checked: Boolean(one[CHECKED]),
-        readOnly: true
+        onChange: function (event) {
+          overlayChosen(one[TOGGLE_KEY], event.target.checked);
+        }
       }),
       text(one[LABEL])
     );
   }
 
+  // Fourteen boxes on one line, left-aligned, with no stretch between them.
   function PanelToggles(props) {
     var chrome = props.chrome;
     var rowProps = {
       style: {
         display: FLEX,
+        flexWrap: NOWRAP,
         gap: height(chrome[TOGGLE_GAP]),
         flex: FLEX_NONE,
-        alignItems: CENTER
+        alignItems: CENTER,
+        overflow: HIDDEN
       }
     };
     rowProps[PART_ATTR] = TOGGLE_ROW_PART;
     rowProps[BOT_ATTR] = text(props.botId);
-    return element(DIV_TAG, rowProps, listField(chrome, TOGGLES).map(PanelToggle));
+    return element(
+      DIV_TAG,
+      rowProps,
+      listField(chrome, TOGGLES).map(function (one) {
+        return PanelToggle(one, chrome);
+      })
+    );
   }
 
-  // The host native_chart.js paints into, carrying the panel values the tab fed it.
+  // The host the painted image lands in, carrying the panel values the tab fed
+  // it. The mount scrolls when the panel is shorter than the image's natural
+  // height; the toggle row under it stays at the panel's foot.
   function ChartMount(props) {
     var panel = props.panel;
-    var mountProps = { className: CHART_CLASS, style: { flex: AUTO, overflow: HIDDEN } };
+    var mountProps = {
+      className: CHART_CLASS,
+      style: {
+        flex: AUTO,
+        minHeight: ZERO_PX,
+        overflowX: HIDDEN,
+        overflowY: AUTO,
+        display: FLEX,
+        flexDirection: COLUMN
+      }
+    };
     mountProps[PART_ATTR] = CHART_PART;
     mountProps[SLOT_ATTR] = CHART_SLOT;
     mountProps[BOT_ATTR] = text(props.botId);
@@ -655,40 +833,65 @@
     mountProps[CHART_TF_ATTR] = text(panel[CHART_TIMEFRAME]);
     mountProps[CANDLES_ATTR] = text(panel[CANDLE_COUNT]);
     mountProps[MARKERS_ATTR] = text(listField(panel, MARKERS).length);
-    mountProps[FLOORS_ATTR] = text(listField(panel, FLOORS).length);
     mountProps[ANCHOR_ATTR] = text(panel[TB_ANCHOR]);
     mountProps[CEILING_ATTR] = text(panel[TB_CEILING]);
     mountProps[ARMED_ATTR] = text(panel[ARMED] === null ? null : Boolean(panel[ARMED]));
 
+    // renderChartMounts places the image element and the crosshair canvas
+    // inside this host itself, so React declares no child of its own inside
+    // it and never removes one.
+    var hostProps = {
+      key: CHART_HOST_PART,
+      style: { flex: AUTO, overflow: HIDDEN, position: RELATIVE }
+    };
+    hostProps[PART_ATTR] = CHART_HOST_PART;
+    hostProps[BOT_ATTR] = text(props.botId);
+
+    var drawn = [];
     var errorText = panel[ERROR_TEXT];
-    if (typeof errorText !== "string" || !errorText.length) {
-      return element(DIV_TAG, mountProps, null);
+    if (typeof errorText === "string" && errorText.length) {
+      var errorProps = {
+        key: ERROR_PART,
+        style: { flex: FLEX_NONE, userSelect: SELECT_NONE }
+      };
+      errorProps[PART_ATTR] = ERROR_PART;
+      errorProps[BOT_ATTR] = text(props.botId);
+      drawn.push(element(DIV_TAG, errorProps, errorText));
     }
-    var errorProps = { style: { userSelect: SELECT_NONE } };
-    errorProps[PART_ATTR] = ERROR_PART;
-    errorProps[BOT_ATTR] = text(props.botId);
-    return element(DIV_TAG, mountProps, element(DIV_TAG, errorProps, errorText));
+    drawn.push(element(DIV_TAG, hostProps, null));
+    return element(DIV_TAG, mountProps, drawn);
   }
 
-  // The Live / ATA-SMP toggle, above the arrows and the ticker list.
-  function ListToggle(props) {
+  // The one control row over the chart: the list toggle, the previous arrow,
+  // the ticker menu, the next arrow, the counter, the empty-list hint, the
+  // timeframe menu, a stretch, then the two legend labels and the source.
+  function ControlRow(props) {
     var selector = props.selector;
+    var panel = props.panel;
     var rowProps = {
       style: {
         display: FLEX,
         flexDirection: ROW,
         alignItems: CENTER,
         flex: FLEX_NONE,
-        gap: spacing(selector[SPACING])
+        gap: spacing(selector[SPACING]),
+        height: height(selector[CONTROL_HEIGHT])
       }
     };
-    rowProps[PART_ATTR] = LIST_ROW_PART;
+    rowProps[PART_ATTR] = CONTROL_ROW_PART;
     rowProps[LIST_ATTR] = text(selector[LIST_MODE]);
+    var controlFont = {
+      fontFamily: text(selector[CONTROL_FONT_FAMILY]),
+      fontSize: height(selector[CONTROL_FONT_PX])
+    };
 
     var toggleProps = {
+      key: LIST_TOGGLE_PART,
       style: {
-        width: height(selector[TOGGLE_WIDTH]),
-        height: height(selector[TOGGLE_HEIGHT]),
+        minWidth: height(selector[TOGGLE_WIDTH]),
+        height: height(selector[CONTROL_HEIGHT]),
+        fontFamily: controlFont.fontFamily,
+        fontSize: controlFont.fontSize,
         flex: FLEX_NONE
       },
       title: text(selector[TOGGLE_TOOLTIP]),
@@ -698,39 +901,18 @@
     };
     toggleProps[PART_ATTR] = LIST_TOGGLE_PART;
     toggleProps[ARIA_LABEL] = label(selector[TOGGLE_TOOLTIP]);
-    toggleProps.key = LIST_TOGGLE_PART;
-
-    var drawn = [element(BUTTON_TAG, toggleProps, text(selector[LIST_TEXT]))];
-    if (selector[SHOWING_ATA] === true && !props.listed) {
-      var hintProps = { key: LIST_HINT_PART, style: { flex: FLEX_NONE } };
-      hintProps[PART_ATTR] = LIST_HINT_PART;
-      drawn.push(element(DIV_TAG, hintProps, text(selector[ATA_EMPTY_HINT])));
-    }
-    return element(DIV_TAG, rowProps, drawn);
-  }
-
-  // The arrows, the ticker list and the readout that says which of how many.
-  function Selector(props) {
-    var selector = props.selector;
-    var rowProps = {
-      style: {
-        display: FLEX,
-        flexDirection: ROW,
-        alignItems: CENTER,
-        flex: FLEX_NONE,
-        gap: spacing(selector[SPACING])
-      }
-    };
-    rowProps[PART_ATTR] = SELECTOR_PART;
 
     var stepping = selector[STEPPING_ENABLED] === true;
     var arrowStyle = {
       width: height(selector[ARROW_WIDTH]),
-      height: height(selector[ARROW_HEIGHT]),
+      height: height(selector[CONTROL_HEIGHT]),
+      fontFamily: text(selector[ARROW_GLYPH_FAMILY]),
+      fontSize: height(selector[ARROW_GLYPH_PX]),
+      padding: ZERO_PX,
       flex: FLEX_NONE
     };
-
     var prevProps = {
+      key: PREV_PART,
       style: arrowStyle,
       disabled: !stepping,
       title: text(selector[PREV_TOOLTIP]),
@@ -740,8 +922,8 @@
     };
     prevProps[PART_ATTR] = PREV_PART;
     prevProps[ARIA_LABEL] = label(selector[PREV_TOOLTIP]);
-
     var nextProps = {
+      key: NEXT_PART,
       style: arrowStyle,
       disabled: !stepping,
       title: text(selector[NEXT_TOOLTIP]),
@@ -754,7 +936,14 @@
 
     var items = listField(selector, SELECTOR_ITEMS);
     var tickerProps = {
-      style: { minWidth: height(selector[TICKER_MIN_WIDTH]), flex: FLEX_NONE },
+      key: TICKER_PART,
+      style: {
+        minWidth: height(selector[TICKER_MIN_WIDTH]),
+        height: height(selector[CONTROL_HEIGHT]),
+        fontFamily: controlFont.fontFamily,
+        fontSize: controlFont.fontSize,
+        flex: FLEX_NONE
+      },
       value: text(items[selector[SELECTOR_SHOWN]]),
       title: text(selector[TICKER_TOOLTIP]),
       onChange: function (event) {
@@ -763,21 +952,65 @@
     };
     tickerProps[PART_ATTR] = TICKER_PART;
     tickerProps[ARIA_LABEL] = label(selector[TICKER_TOOLTIP]);
-    var drawn = items.map(function (one) {
+    var options = items.map(function (one) {
       return element(OPTION_TAG, { key: String(one), value: text(one) }, text(one));
     });
 
-    var positionProps = { style: { flex: FLEX_NONE, userSelect: SELECT_NONE } };
+    var captionStyle = {
+      fontSize: height(selector[CAPTION_PX]),
+      height: height(selector[CONTROL_HEIGHT]),
+      display: FLEX,
+      alignItems: CENTER,
+      flex: FLEX_NONE,
+      userSelect: SELECT_NONE
+    };
+    var positionProps = { key: POSITION_PART, style: captionStyle };
     positionProps[PART_ATTR] = POSITION_PART;
 
-    return element(
-      DIV_TAG,
-      rowProps,
+    var drawn = [
+      element(BUTTON_TAG, toggleProps, text(selector[LIST_TEXT])),
       element(BUTTON_TAG, prevProps, text(selector[PREV_TEXT])),
-      element(SELECT_TAG, tickerProps, drawn),
+      element(SELECT_TAG, tickerProps, options),
       element(BUTTON_TAG, nextProps, text(selector[NEXT_TEXT])),
       element(DIV_TAG, positionProps, text(selector[POSITION_TEXT]))
+    ];
+    if (selector[SHOWING_ATA] === true && !props.listed) {
+      var hintProps = { key: LIST_HINT_PART, style: captionStyle };
+      hintProps[PART_ATTR] = LIST_HINT_PART;
+      drawn.push(element(DIV_TAG, hintProps, text(selector[ATA_EMPTY_HINT])));
+    }
+    var tfLabelProps = { key: TIMEFRAME_LABEL_PART, style: captionStyle };
+    tfLabelProps[PART_ATTR] = TIMEFRAME_LABEL_PART;
+    drawn.push(element(DIV_TAG, tfLabelProps, text(selector[TIMEFRAME_LABEL])));
+    drawn.push(
+      element(TimeframeControl, {
+        key: TIMEFRAME_PART,
+        botId: props.botId,
+        timeframe: panel[TIMEFRAME],
+        options: props.options,
+        action: props.action,
+        height: height(selector[CONTROL_HEIGHT])
+      })
     );
+    drawn.push(element(DIV_TAG, { key: CONTROL_GAP_KEY, style: { flex: AUTO } }));
+    drawn.push(
+      element(PanelLegend, {
+        key: LEGEND_PART,
+        botId: props.botId,
+        chrome: props.chrome,
+        height: height(selector[CONTROL_HEIGHT])
+      })
+    );
+    drawn.push(
+      element(PanelSource, {
+        key: SOURCE_PART,
+        botId: props.botId,
+        panel: panel,
+        fontSize: height(selector[CAPTION_PX]),
+        height: height(selector[CONTROL_HEIGHT])
+      })
+    );
+    return element(DIV_TAG, rowProps, drawn);
   }
 
   function Panel(props) {
@@ -796,35 +1029,16 @@
     panelProps[DELETED_ATTR] = text(panel[DELETED]);
     panelProps[CONNECTED_ATTR] = text(panel[TIMEFRAME_CONNECTED]);
 
-    var toolbarProps = {
-      style: { display: FLEX, flexDirection: ROW, alignItems: CENTER, flex: FLEX_NONE }
-    };
-    toolbarProps[PART_ATTR] = TOOLBAR_PART;
-    toolbarProps[BOT_ATTR] = text(props.botId);
-
+    // The painter draws the header line inside the image, as the Qt chart does.
     return element(
       DIV_TAG,
       panelProps,
-      element(PanelHeader, { botId: props.botId, panel: panel }),
-      element(
-        DIV_TAG,
-        toolbarProps,
-        element(TimeframeControl, {
-          botId: props.botId,
-          timeframe: panel[TIMEFRAME],
-          options: props.options,
-          action: props.action
-        }),
-        element(DIV_TAG, { key: TOOLBAR_GAP_KEY, style: { flex: AUTO } }),
-        element(PanelLegend, { botId: props.botId, chrome: props.chrome }),
-        element(PanelSource, { botId: props.botId, panel: panel })
-      ),
       element(ChartMount, { botId: props.botId, panel: panel }),
       element(PanelToggles, { botId: props.botId, chrome: props.chrome })
     );
   }
 
-  // The toggle row and the selector row over the one chart panel Qt draws.
+  // The one control row over the one chart panel Qt draws.
   function Content(props) {
     var model = props.model;
     var content = objectField(model, CONTENT);
@@ -832,6 +1046,7 @@
     var shownId = text(model[SHOWN_ID]);
     var selectorBag = objectField(model, SELECTOR);
     var contentProps = { style: boxStyle(content, COLUMN) };
+    contentProps.style.flex = AUTO;
     contentProps[PART_ATTR] = CONTENT_PART;
     contentProps[SLOTS_ATTR] = text(content[LAYOUT_SLOTS]);
     contentProps[MOUNTED_ATTR] = String(known.length ? ONE : ZERO);
@@ -840,14 +1055,15 @@
     contentProps[LISTED_ATTR] = text(listField(model, ASSET_ORDER).length);
 
     var drawn = [
-      element(ListToggle, {
-        key: LIST_ROW_PART,
+      element(ControlRow, {
+        key: CONTROL_ROW_PART,
+        botId: shownId,
         selector: selectorBag,
-        listed: listField(model, ASSET_ORDER).length
-      }),
-      element(Selector, {
-        key: SELECTOR_PART,
-        selector: selectorBag
+        listed: listField(model, ASSET_ORDER).length,
+        panel: objectField(model, PANEL),
+        chrome: objectField(model, PANEL_CHROME),
+        options: timeframeOptionList(model),
+        action: objectField(model, ACTIONS)[TIMEFRAME_ACTION]
       })
     ];
     if (known.length) {
@@ -934,7 +1150,6 @@
     ERROR_TEXT,
     SOURCE,
     MARKERS,
-    FLOORS,
     MINIMUM_HEIGHT,
     CHART_REPAINTS,
     PANEL_REPAINTS,
@@ -1409,55 +1624,431 @@
     );
   }
 
-  // Qt builds one ChartPanel inside each panel, so every chart slot asks
-  // native_chart.js for the chart of the symbol its panel follows, with the
-  // candles that panel holds. The panel host draws it, so a chart that does
-  // not register is named on the slot rather than drawn.
-  function renderChartMounts(target, payload) {
-    var host = global.acervatorPanelHost;
-    var api = global.acervatorChart;
+  // The one image element inside a chart host, made on the first answer.
+  function imageIn(into) {
+    var found = into.querySelector(
+      SELECT_OPEN + PART_ATTR + SELECT_IS + CHART_IMAGE_PART + SELECT_CLOSE
+    );
+    if (found !== null) {
+      return found;
+    }
+    found = document.createElement(IMG_TAG);
+    found.setAttribute(PART_ATTR, CHART_IMAGE_PART);
+    found.setAttribute(PAINTER_ATTR, PAINTER);
+    found.style.display = BLOCK;
+    into.appendChild(found);
+    return found;
+  }
+
+  // The one canvas over the image, where the crosshair and its readout draw.
+  function overlayIn(into) {
+    var found = into.querySelector(
+      SELECT_OPEN + PART_ATTR + SELECT_IS + CHART_OVERLAY_PART + SELECT_CLOSE
+    );
+    if (found !== null) {
+      return found;
+    }
+    found = document.createElement("canvas");
+    found.setAttribute(PART_ATTR, CHART_OVERLAY_PART);
+    found.style.position = ABSOLUTE;
+    found.style.left = ZERO_PX;
+    found.style.top = ZERO_PX;
+    found.style.pointerEvents = FLEX_NONE;
+    into.appendChild(found);
+    return found;
+  }
+
+  // The canvas takes the image's CSS size and the display's pixels.
+  function fitOverlay(into, answer) {
+    var canvas = overlayIn(into);
+    var ratio = Number(answer[IMAGE_RATIO]) || ONE;
+    var width = Number(answer[IMAGE_WIDTH]);
+    var heightPx = Number(answer[IMAGE_HEIGHT]);
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(heightPx * ratio);
+    canvas.style.width = height(width);
+    canvas.style.height = height(heightPx);
+    into.acervatorRatio = ratio;
+    return canvas;
+  }
+
+  function clearCrosshair(into) {
+    var canvas = overlayIn(into);
+    var context = canvas.getContext("2d");
+    context.setTransform(ONE, ZERO, ZERO, ONE, ZERO, ZERO);
+    context.clearRect(ZERO, ZERO, canvas.width, canvas.height);
+    into.removeAttribute(CROSSHAIR_X_ATTR);
+    into.removeAttribute(CROSSHAIR_Y_ATTR);
+    into.removeAttribute(CROSSHAIR_CANDLE_ATTR);
+    into.removeAttribute(READOUT_ATTR);
+  }
+
+  // The painter's price text, from the bands the geometry carries.
+  function formatPrice(price, geometry) {
+    var bands = listField(geometry, GEOMETRY_PRICE_BANDS);
+    for (var at = ZERO; at < bands.length; at++) {
+      if (price < Number(bands[at][ZERO])) {
+        return price.toFixed(Number(bands[at][ONE]));
+      }
+    }
+    var grouped = Number(geometry[GEOMETRY_GROUPED_DECIMALS]);
+    return price.toLocaleString("en-US", {
+      minimumFractionDigits: grouped,
+      maximumFractionDigits: grouped
+    });
+  }
+
+  function roundedRect(context, x, y, width, heightPx, radius) {
+    context.beginPath();
+    context.moveTo(x + radius, y);
+    context.lineTo(x + width - radius, y);
+    context.arcTo(x + width, y, x + width, y + radius, radius);
+    context.lineTo(x + width, y + heightPx - radius);
+    context.arcTo(x + width, y + heightPx, x + width - radius, y + heightPx, radius);
+    context.lineTo(x + radius, y + heightPx);
+    context.arcTo(x, y + heightPx, x, y + heightPx - radius, radius);
+    context.lineTo(x, y + radius);
+    context.arcTo(x, y, x + radius, y, radius);
+    context.closePath();
+  }
+
+  // The crosshair, the price badge, the time badge and the readout at the
+  // pointer's x and y, drawn as `paint_to` draws them, from the geometry the
+  // last image carried; nothing is asked of the tab.
+  function drawCrosshair(into, x, y) {
+    var started = performance.now();
+    var geometry = into.acervatorGeometry;
+    var canvas = overlayIn(into);
+    var context = canvas.getContext("2d");
+    var ratio = into.acervatorRatio || ONE;
+    context.setTransform(ratio, ZERO, ZERO, ratio, ZERO, ZERO);
+    context.clearRect(ZERO, ZERO, canvas.width, canvas.height);
+    into.removeAttribute(CROSSHAIR_CANDLE_ATTR);
+    into.removeAttribute(READOUT_ATTR);
+    if (!isPlainObject(geometry)) {
+      into.removeAttribute(CROSSHAIR_X_ATTR);
+      into.removeAttribute(CROSSHAIR_Y_ATTR);
+      return null;
+    }
+    var left = Number(geometry[GEOMETRY_LEFT]);
+    var right = Number(geometry[GEOMETRY_RIGHT]);
+    var priceTop = Number(geometry[GEOMETRY_PRICE_TOP]);
+    var priceBot = Number(geometry[GEOMETRY_PRICE_BOT]);
+    var priceH = Number(geometry[GEOMETRY_PRICE_H]);
+    var timeAxisY = Number(geometry[GEOMETRY_TIME_AXIS_Y]);
+    if (!(left <= x && x <= right && priceTop <= y && y <= timeAxisY)) {
+      into.removeAttribute(CROSSHAIR_X_ATTR);
+      into.removeAttribute(CROSSHAIR_Y_ATTR);
+      return null;
+    }
+    into.setAttribute(CROSSHAIR_X_ATTR, text(x));
+    into.setAttribute(CROSSHAIR_Y_ATTR, text(y));
+    var font = text(geometry[GEOMETRY_FONT_PX]) + PX + GAP + geometry[GEOMETRY_FONT_FAMILY];
+    var crosshair = geometry[GEOMETRY_CROSSHAIR_COLOUR];
+    context.font = font;
+    context.lineWidth = ONE;
+    context.strokeStyle = crosshair;
+    context.setLineDash(CROSSHAIR_DASH);
+    context.beginPath();
+    context.moveTo(x, priceTop);
+    context.lineTo(x, timeAxisY);
+    context.moveTo(left, y);
+    context.lineTo(right, y);
+    context.stroke();
+    context.setLineDash([]);
+    context.textBaseline = "alphabetic";
+    if (priceTop <= y && y <= priceBot) {
+      var price =
+        Number(geometry[GEOMETRY_LOW]) +
+        Number(geometry[GEOMETRY_SPAN]) * (ONE - (y - priceTop) / priceH);
+      var priceText = formatPrice(price, geometry);
+      var badgeW = context.measureText(priceText).width + PRICE_BADGE_PAD_PX;
+      roundedRect(context, right, y - PRICE_BADGE_LIFT_PX, badgeW, PRICE_BADGE_HEIGHT_PX, PRICE_BADGE_RADIUS_PX);
+      context.fillStyle = geometry[GEOMETRY_BADGE_FILL];
+      context.fill();
+      context.strokeStyle = crosshair;
+      context.stroke();
+      context.fillStyle = geometry[GEOMETRY_TEXT_LIGHT];
+      context.textAlign = CENTER;
+      context.textBaseline = "middle";
+      context.fillText(priceText, right + badgeW / 2, y);
+      context.textBaseline = "alphabetic";
+      context.textAlign = "left";
+    }
+    var candles = listField(geometry, GEOMETRY_CANDLES);
+    var column = Number(geometry[GEOMETRY_COLUMN]);
+    var under = Math.floor((x - left) / column);
+    if (!(under >= ZERO && under < candles.length)) {
+      return under;
+    }
+    var candle = candles[under];
+    var index = Number(geometry[GEOMETRY_VISIBLE_START]) + under;
+    into.setAttribute(CROSSHAIR_CANDLE_ATTR, text(index));
+    var timeLabel = text(candle[GEOMETRY_TIME_LABEL]);
+    if (timeLabel.length) {
+      var timeW = context.measureText(timeLabel).width + PRICE_BADGE_PAD_PX;
+      roundedRect(context, x - timeW / 2, timeAxisY - TIME_BADGE_LIFT_PX, timeW, TIME_BADGE_HEIGHT_PX, PRICE_BADGE_RADIUS_PX);
+      context.fillStyle = geometry[GEOMETRY_BADGE_FILL];
+      context.fill();
+      context.strokeStyle = crosshair;
+      context.stroke();
+      context.fillStyle = geometry[GEOMETRY_TEXT_LIGHT];
+      context.textAlign = CENTER;
+      context.textBaseline = "middle";
+      context.fillText(timeLabel, x, timeAxisY - TIME_BADGE_LIFT_PX + TIME_BADGE_HEIGHT_PX / 2);
+      context.textBaseline = "alphabetic";
+      context.textAlign = "left";
+    }
+    var lines = listField(candle, GEOMETRY_LINES);
+    var labelW = ZERO;
+    lines.forEach(function (line) {
+      labelW = Math.max(labelW, context.measureText(line[ZERO]).width);
+    });
+    var valueX = TOOLTIP_LABEL_INSET_PX + labelW + TOOLTIP_VALUE_GAP_PX;
+    var tipW = ZERO;
+    lines.forEach(function (line) {
+      tipW = Math.max(tipW, valueX + context.measureText(line[ONE]).width);
+    });
+    tipW += TOOLTIP_PAD_PX * 2;
+    var tipH = TOOLTIP_LINE_HEIGHT_PX * lines.length + TOOLTIP_PAD_PX * 2;
+    var chartW = right - left;
+    var tx = x < left + chartW / 2 ? right - tipW - TOOLTIP_INSET_PX : left + TOOLTIP_INSET_PX;
+    var ty = priceTop + TOOLTIP_INSET_PX;
+    roundedRect(context, tx, ty, tipW, tipH, TOOLTIP_RADIUS_PX);
+    context.fillStyle = geometry[GEOMETRY_BADGE_FILL];
+    context.fill();
+    context.strokeStyle = geometry[GEOMETRY_BADGE_EDGE];
+    context.stroke();
+    var accent = lines.length > C_LINE_AT ? lines[C_LINE_AT][2] : geometry[GEOMETRY_TEXT_LIGHT];
+    roundedRect(context, tx, ty, TOOLTIP_STRIPE_WIDTH_PX, tipH, TOOLTIP_STRIPE_RADIUS_PX);
+    context.fillStyle = accent;
+    context.fill();
+    lines.forEach(function (line, at) {
+      var baseline = ty + TOOLTIP_PAD_PX + (at + ONE) * TOOLTIP_LINE_HEIGHT_PX - TOOLTIP_BASELINE_LIFT_PX;
+      context.fillStyle = geometry[GEOMETRY_TEXT_DIM];
+      context.fillText(line[ZERO], tx + TOOLTIP_PAD_PX + TOOLTIP_LABEL_INSET_PX, baseline);
+      context.fillStyle = line[2];
+      context.fillText(line[ONE], tx + TOOLTIP_PAD_PX + valueX, baseline);
+    });
+    into.setAttribute(
+      READOUT_ATTR,
+      lines
+        .map(function (line) {
+          return line[ZERO] + READOUT_LINE_JOIN + line[ONE];
+        })
+        .join(READOUT_JOIN)
+    );
+    into.setAttribute(HOVER_MS_ATTR, text(Math.round((performance.now() - started) * 1000) / 1000));
+    return index;
+  }
+
+  function hostPoint(into, event) {
+    var rect = into.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  // One pointer input to the tab; a moved window comes back with its image.
+  function sendView(mount, into, action, point, extra) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      into.setAttribute(FAULT_ATTR, NO_BRIDGE);
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[VIEW_ACTION_PARAM] = action;
+    params[VIEW_X_PARAM] = point.x;
+    params[VIEW_Y_PARAM] = point.y;
+    params[VIEW_WIDTH_PARAM] = into.clientWidth;
+    params[VIEW_HEIGHT_PARAM] = into.clientHeight;
+    params[VIEW_RATIO_PARAM] = global.devicePixelRatio || ONE;
+    Object.keys(extra || {}).forEach(function (key) {
+      params[key] = extra[key];
+    });
+    var started = performance.now();
+    return global.acervator.call(VIEW_METHOD, params).then(
+      function (answer) {
+        if (!isPlainObject(answer)) {
+          into.setAttribute(FAULT_ATTR, String(answer));
+          return null;
+        }
+        into.setAttribute(VIEW_START_ATTR, text(answer[VIEW_START]));
+        into.setAttribute(VIEW_COUNT_ATTR, text(answer[VIEW_COUNT]));
+        if (answer[VIEW_MOVED] && isPlainObject(answer[VIEW_IMAGE])) {
+          placeImage(mount, into, answer[VIEW_IMAGE]);
+          into.setAttribute(VIEW_MS_ATTR, text(Math.round((performance.now() - started) * 100) / 100));
+        }
+        return answer;
+      },
+      function (err) {
+        into.setAttribute(FAULT_ATTR, err && err.message ? err.message : String(err));
+        return null;
+      }
+    );
+  }
+
+  // A drag sends one move at a time; a move that arrives while one is in
+  // flight waits and the latest goes when the answer lands.
+  function sendDrag(mount, into, point) {
+    if (into.acervatorDragBusy) {
+      into.acervatorDragPending = point;
+      return;
+    }
+    into.acervatorDragBusy = true;
+    sendView(mount, into, VIEW_DRAG, point).then(function () {
+      into.acervatorDragBusy = false;
+      var pending = into.acervatorDragPending;
+      into.acervatorDragPending = null;
+      if (pending) {
+        sendDrag(mount, into, pending);
+      }
+    });
+  }
+
+  function pinCrosshair(mount, into, point, index) {
+    var geometry = into.acervatorGeometry;
+    var every = isPlainObject(geometry) ? Number(geometry[GEOMETRY_PIN_EVERY_MS]) : ZERO;
+    var now = performance.now();
+    if (into.acervatorPinAt !== undefined && now - into.acervatorPinAt < every) {
+      return;
+    }
+    into.acervatorPinAt = now;
+    var extra = {};
+    extra[VIEW_CANDLE_PARAM] = index;
+    sendView(mount, into, VIEW_CROSSHAIR, point, extra);
+  }
+
+  // The five inputs the Qt widget answers, wired once onto the chart host.
+  function wireHost(mount, into) {
+    if (into.getAttribute(WIRED_ATTR)) {
+      return;
+    }
+    into.setAttribute(WIRED_ATTR, text(true));
+    into.addEventListener("pointermove", function (event) {
+      var point = hostPoint(into, event);
+      into.acervatorPointer = point;
+      var index = drawCrosshair(into, point.x, point.y);
+      if (into.acervatorDragging) {
+        sendDrag(mount, into, point);
+      } else if (index !== null && index >= ZERO) {
+        pinCrosshair(mount, into, point, index);
+      }
+    });
+    into.addEventListener("pointerdown", function (event) {
+      if (event.button !== PRIMARY_BUTTON) {
+        return;
+      }
+      into.acervatorDragging = true;
+      sendView(mount, into, VIEW_PRESS, hostPoint(into, event));
+    });
+    into.addEventListener("pointerup", function (event) {
+      if (event.button !== PRIMARY_BUTTON) {
+        return;
+      }
+      into.acervatorDragging = false;
+      sendView(mount, into, VIEW_RELEASE, hostPoint(into, event));
+    });
+    into.addEventListener("dblclick", function (event) {
+      sendView(mount, into, VIEW_RESET, hostPoint(into, event));
+    });
+    into.addEventListener(
+      "wheel",
+      function (event) {
+        event.preventDefault();
+        var extra = {};
+        extra[VIEW_DELTA_PARAM] = WHEEL_SIGN * event.deltaY;
+        extra[VIEW_CONTROL_PARAM] = Boolean(event.ctrlKey);
+        sendView(mount, into, VIEW_WHEEL, hostPoint(into, event), extra);
+      },
+      PASSIVE_OFF
+    );
+    into.addEventListener("pointerleave", function (event) {
+      into.acervatorPointer = null;
+      clearCrosshair(into);
+      if (into.acervatorDragging) {
+        into.acervatorDragging = false;
+        sendView(mount, into, VIEW_RELEASE, hostPoint(into, event));
+      }
+    });
+  }
+
+  // The answer's image goes into the host at its CSS size. The host takes the
+  // image's height, never under the painter's natural height, so a mount
+  // shorter than that scrolls and no sub-pane draws under its readable height.
+  function placeImage(mount, into, answer) {
+    var image = imageIn(into);
+    image.setAttribute(IMAGE_WIDTH_ATTR, text(answer[IMAGE_WIDTH]));
+    image.setAttribute(IMAGE_HEIGHT_ATTR, text(answer[IMAGE_HEIGHT]));
+    image.setAttribute(IMAGE_RATIO_ATTR, text(answer[IMAGE_RATIO]));
+    image.setAttribute(IMAGE_SHA_ATTR, text(answer[IMAGE_SHA]));
+    image.setAttribute(CANDLES_ATTR, text(answer[IMAGE_CANDLES]));
+    image.style.width = height(answer[IMAGE_WIDTH]);
+    image.style.height = height(answer[IMAGE_HEIGHT]);
+    image.src = String(answer[IMAGE_DATA_URI]);
+    into.style.minHeight = height(
+      answer[IMAGE_NATURAL_HEIGHT] === undefined
+        ? answer[IMAGE_HEIGHT]
+        : answer[IMAGE_NATURAL_HEIGHT]
+    );
+    into.removeAttribute(FAULT_ATTR);
+    var geometry = answer[IMAGE_GEOMETRY];
+    into.acervatorGeometry = isPlainObject(geometry) ? geometry : null;
+    fitOverlay(into, answer);
+    if (isPlainObject(geometry)) {
+      into.setAttribute(VIEW_START_ATTR, text(geometry[GEOMETRY_VISIBLE_START]));
+      into.setAttribute(VIEW_COUNT_ATTR, text(geometry[GEOMETRY_VISIBLE_COUNT]));
+    }
+    var pointer = into.acervatorPointer;
+    if (pointer) {
+      drawCrosshair(into, pointer.x, pointer.y);
+    } else {
+      clearCrosshair(into);
+    }
+  }
+
+  // Every chart slot asks the tab for the image `native_chart.py` paints of
+  // the asset its panel follows, at the slot's width and the page's device
+  // pixel ratio. A refused ask is named on the slot rather than drawn over.
+  function renderChartMounts(target) {
     var mounts = chartMounts(target);
     var reachable =
       Boolean(global.acervator) && typeof global.acervator.call === "function";
-    if (!api || !host || !reachable) {
-      return Promise.resolve([]);
-    }
-    var panel = objectField(isPlainObject(payload) ? payload : {}, PANEL);
-    var candles = listField(panel, CANDLES);
     var drawn = [];
     var chain = Promise.resolve();
     Array.prototype.forEach.call(mounts, function (mount) {
       var symbol = mount.getAttribute(SYMBOL_ATTR);
-
-      function ask() {
-        return global.acervator.call(api.method, {
-          reset: true,
-          symbol: symbol,
-          timeframe: mount.getAttribute(CHART_TF_ATTR),
-          source: text(panel[SOURCE]),
-          candles: candles,
-          width: mount.clientWidth,
-          height: mount.clientHeight
-        });
+      var into = mount.querySelector(
+        SELECT_OPEN + PART_ATTR + SELECT_IS + CHART_HOST_PART + SELECT_CLOSE
+      );
+      if (into === null) {
+        return;
       }
-
-      // The sub-panes the candles fill decide the height the chart needs,
-      // so the first answer sizes the slot and the second draws into it.
+      mount.setAttribute(SLOT_ATTR, CHART_SLOT);
+      if (!reachable) {
+        into.setAttribute(FAULT_ATTR, NO_BRIDGE);
+        into.textContent = NO_BRIDGE;
+        return;
+      }
+      wireHost(mount, into);
+      var params = {};
+      params[IMAGE_WIDTH_PARAM] = into.clientWidth;
+      params[IMAGE_HEIGHT_PARAM] = into.clientHeight;
+      params[IMAGE_RATIO_PARAM] = global.devicePixelRatio || 1;
       chain = chain
-        .then(ask)
-        .then(function (model) {
-          var wanted = model ? model[NATURAL_HEIGHT] : null;
-          if (typeof wanted !== NUMBER_KIND || wanted <= mount.clientHeight) {
-            return model;
-          }
-          mount.style.minHeight = height(wanted);
-          return ask();
+        .then(function () {
+          return global.acervator.call(IMAGE_METHOD, params);
         })
-        .then(function (model) {
-          mount.setAttribute(CHILD_ATTR, CHART_SLOT);
-          host.mount(CHART_SLOT, mount, model);
-          drawn.push(symbol);
-        });
+        .then(
+          function (answer) {
+            if (!isPlainObject(answer)) {
+              into.setAttribute(FAULT_ATTR, String(answer));
+              return;
+            }
+            placeImage(mount, into, answer);
+            drawn.push(symbol);
+          },
+          function (err) {
+            into.setAttribute(FAULT_ATTR, err && err.message ? err.message : String(err));
+          }
+        );
     });
     return chain.then(function () {
       return drawn;
@@ -1471,7 +2062,7 @@
     }
     lastTarget = target;
     var shown = draw(target, element(Tab, { model: payload }));
-    renderChartMounts(target, payload);
+    renderChartMounts(target);
     return shown;
   }
 
@@ -1509,10 +2100,8 @@
     method: METHOD,
     Tab: Tab,
     Content: Content,
-    ListToggle: ListToggle,
-    Selector: Selector,
+    ControlRow: ControlRow,
     Panel: Panel,
-    PanelHeader: PanelHeader,
     PanelSource: PanelSource,
     TimeframeControl: TimeframeControl,
     ChartMount: ChartMount,

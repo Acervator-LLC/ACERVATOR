@@ -203,7 +203,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         bot_visualizer_surface,
         bot_wizard_surface,
         buy_confirmation_surface,
-        capital_registry_surface,
         competition_tab_surface,
         console_log_surface,
         console_tab_surface,
@@ -231,7 +230,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         market_inspector_topologies_surface,
         native_chart_surface,
         notification_spool_surface,
-        paper_trader_tab_surface,
         phantom_bots_tab_surface,
         positions_held_surface,
         preflight_check_surface,
@@ -263,6 +261,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         widgets_package_surface,
         wire_canvas_surface,
     )
+    from src.gui.paper import paper_trading_tab_surface
 
     registry: Dict[str, Handler] = {
         history_surface.METHOD: history_surface.view_model,
@@ -275,7 +274,6 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         status_log_surface.METHOD: status_log_surface.view_model,
         stock_main_window_surface.METHOD: stock_main_window_surface.view_model,
         notification_spool_surface.METHOD: notification_spool_surface.view_model,
-        capital_registry_surface.METHOD: capital_registry_surface.view_model,
         bot_node_surface.METHOD: bot_node_surface.view_model,
         bot_selection_surface.METHOD: bot_selection_surface.view_model,
         bot_status_table_surface.METHOD: bot_status_table_surface.view_model,
@@ -316,7 +314,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
             market_inspector_topologies_surface.view_model
         ),
         native_chart_surface.METHOD: native_chart_surface.view_model,
-        paper_trader_tab_surface.METHOD: paper_trader_tab_surface.view_model,
+        paper_trading_tab_surface.METHOD: paper_trading_tab_surface.view_model,
         proof_of_accumulation_tab_surface.METHOD: (
             proof_of_accumulation_tab_surface.view_model
         ),
@@ -356,6 +354,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         registry[bot_status_table_surface.METHOD] = bot_status_table_surface.bind_live(
             live
         )
+        registry[bot_wizard_surface.METHOD] = bot_wizard_surface.bind_live(live)
         registry[extractor_bot_table_surface.METHOD] = (
             extractor_bot_table_surface.bind_live(live)
         )

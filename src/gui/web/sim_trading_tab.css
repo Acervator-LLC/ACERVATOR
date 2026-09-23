@@ -1,0 +1,64 @@
+/* The parts the Simulator's page adds to Live's trading_tab.css and
+ * exchange_tab.css, in the chrome Live gives its corner add button. Every
+ * colour is Live's token; the Simulator colour distinction is not here. */
+
+/* The corner widget of one layer: the three way-in buttons where Live draws
+ * its add button, placed as that button is placed. */
+[data-part="corner"] {
+  align-self: center;
+  margin: 0 2px 3px 8px;
+}
+
+[data-part="way-in-button"],
+[data-part="sim-flip-button"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 10px;
+  font: inherit;
+}
+
+/* The flip button sits at the header's top-left corner under both layers,
+ * whatever height the rest of the row takes, and reserves the other
+ * layer's word as a hidden zero-height line so Replay and Indicators draw
+ * one width. */
+[data-part="sim-flip-button"] {
+  align-self: flex-start;
+}
+
+[data-part="way-in-button"]:hover,
+[data-part="sim-flip-button"]:hover {
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+[data-part="sim-flip-button"]::after {
+  content: attr(data-other-text);
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* The Get Started card's button position: the three way-ins one under the
+ * other, each in the chrome Live gives the card's own button. */
+[data-part="placeholder-way-ins"] {
+  flex: none;
+}
+
+[data-part="placeholder-way-in-button"] {
+  background: var(--SURFACE_2, var(--btn-bg));
+  font: inherit;
+}
+
+/* The replay layer behind the panel: its header row keeps the panel
+ * header's height, and each window fills its pane. */
+[data-part="replay-header"] {
+  flex: none;
+}
+
+[data-part="sim-vwap-view"],
+[data-part="sim-playback-view"] {
+  display: block;
+  height: 100%;
+}

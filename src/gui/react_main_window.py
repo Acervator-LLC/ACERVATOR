@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from .main_tabs import design_system_surface, main_window_surface
+from .main_tabs import design_system_surface
 from .react_history_panel import page_html
 
 try:
@@ -137,7 +137,7 @@ _HOST_SOURCE = """(function (global) {
     };
   }
 
-  global.acervatorMainWindowSetTabs = function (labels, selected, colours) {
+  global.acervatorMainWindowSetTabs = function (labels, selected) {
     var host = global.acervatorPanelHost;
     var bar = global.acervatorTabBar;
     bar.forget();
@@ -148,7 +148,6 @@ _HOST_SOURCE = """(function (global) {
       host.register(stub(), labels[index]);
     }
     global.ACERVATOR_MODULES = declared;
-    bar.paint(colours);
     var panels = document.getElementById(PANELS);
     panels.textContent = "";
     var drawn = bar.build(
@@ -197,11 +196,21 @@ _HOST_SOURCE = """(function (global) {
 })(window);"""
 
 
-def chrome_html(theme: str = "cyberpunk_dark") -> str:
+#: The page ground behind ``#tabs``, which is narrower and shorter than the
+#: bar. ``design_tokens.js`` writes SURFACE_0; ``page_html`` writes ``--bg``.
+PAGE_STYLE = (
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "html,body{height:100%;overflow:hidden}"
+    "body{background:var(--SURFACE_0, var(--bg));color:var(--text)}"
+)
+
+
+def chrome_html(theme: object = None) -> str:
     """The whole bar page as one string, with no network fetch."""
     body = (
         "<style>"
         + read_renderer_asset(SHELL_STYLE)
+        + PAGE_STYLE
         + "</style>"
         + f'<nav id="{TABS_ID}"></nav><div id="{PANELS_ID}" hidden></div>'
     )
@@ -209,17 +218,13 @@ def chrome_html(theme: str = "cyberpunk_dark") -> str:
     return page_html((), BAR_SCRIPT_ASSETS, body, theme, inline + (host_script(),))
 
 
-def set_tabs_script(
-    labels: list, selected: Optional[str], colours: Optional[dict] = None
-) -> str:
-    """The one JS statement handing the page its tabs, selection and colours."""
+def set_tabs_script(labels: list, selected: Optional[str]) -> str:
+    """The one JS statement that hands the page its tab set and selection."""
     return (
         "window.acervatorMainWindowSetTabs("
         + json.dumps(list(labels), ensure_ascii=True)
         + ", "
         + json.dumps(selected, ensure_ascii=True)
-        + ", "
-        + json.dumps(dict(colours or {}), ensure_ascii=True)
         + ");"
     )
 
@@ -274,14 +279,8 @@ if _HAS_WEBENGINE:
             self._layout.setSpacing(0)
             self._layout.addWidget(self._book, 1)
             self.currentChanged = self._book.currentChanged
-            self._theme = main_window_surface.DEFAULT_THEME
             self._book.currentChanged.connect(self._on_current_changed)
             self._book.tabBar().tabMoved.connect(self._on_tab_moved)
-
-        def set_theme(self, name: str) -> None:
-            """Repaint the bar's tabs from ``name``'s own tab tokens."""
-            self._theme = name
-            self._push_tabs()
 
         # -- the QTabWidget calls the window makes ------------------------
 
@@ -388,8 +387,7 @@ if _HAS_WEBENGINE:
         def _push_tabs(self) -> None:
             index = self._book.currentIndex()
             selected = self._book.tabText(index) if index >= 0 else None
-            colours = main_window_surface.tab_colours(self._theme)
-            self._run(set_tabs_script(self.labels(), selected, colours))
+            self._run(set_tabs_script(self.labels(), selected))
 
         def _on_current_changed(self, index: int) -> None:
             if index >= 0:

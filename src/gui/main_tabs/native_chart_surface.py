@@ -31,6 +31,8 @@ import math
 import time
 from typing import Protocol, Sequence
 
+from .. import design_system as ds
+
 Color = tuple[int, int, int, int]
 
 
@@ -43,6 +45,14 @@ class CandleLike(Protocol):
     low: float
     close: float
     volume: float
+
+
+class FillLike(Protocol):
+    """The side, the role label and the price every fill the chart tags carries."""
+
+    side: str
+    label: str
+    price: float
 
 
 METHOD = "native_chart.state"
@@ -62,6 +72,12 @@ ACTIONS = {
     "ichimoku_check.toggled": "toggle_indicator",
     "volume_check.toggled": "toggle_indicator",
     "slingshot_check.toggled": "toggle_indicator",
+    "adx_check.toggled": "toggle_indicator",
+    "supertrend_check.toggled": "toggle_indicator",
+    "zscore_check.toggled": "toggle_indicator",
+    "ker_check.toggled": "toggle_indicator",
+    "rsi_check.toggled": "toggle_indicator",
+    "zscore_point_check.toggled": "toggle_indicator",
     "bbullseye_check.toggled": "toggle_indicator",
 }
 SIGNALS = ("timeframe_changed",)
@@ -244,7 +260,20 @@ TIME_AXIS_HEIGHT_PX = 18
 LEFT_MARGIN_PX = 8
 RIGHT_MARGIN_PX = 78
 VOLUME_STRIP_PX = 28
-SUB_PANE_PX = 60
+#: A right-edge tag's height in logical pixels: the caption line height with
+#: two pixels over and under.
+TAG_HEIGHT_PX = 14
+#: A sub-pane's label row, one tag tall, over its plot.
+SUB_PANE_LABEL_PX = TAG_HEIGHT_PX
+#: The tag-tall bands a sub-pane's plot holds: over the upper ruled level, the
+#: upper level, the value tag at the middle, the lower level, under the lower level.
+SUB_PANE_PLOT_BANDS = 5
+#: The height every sub-pane draws at on the Charts tab: the label row over
+#: the plot's bands. A host shorter than the panes' height scrolls.
+SUB_PANE_READABLE_PX = SUB_PANE_LABEL_PX + SUB_PANE_PLOT_BANDS * TAG_HEIGHT_PX
+#: The least height a sub-pane folds to on a fixed-height venue image.
+SUB_PANE_FOLD_PX = 28
+SUB_PANE_PX = SUB_PANE_READABLE_PX
 PRICE_PANE_PAINT_FLOOR_PX = 120
 PRICE_PANE_LAYOUT_FLOOR_PX = 220
 #: The sub-panes in the order CHART_OVERLAYS offers them.
@@ -334,6 +363,50 @@ FMT_SUB_MICRO = 0.0001
 FMT_SUB_CENT = 0.01
 FMT_SUB_UNIT = 1
 FMT_THOUSAND = 1000
+#: (upper bound, decimals) per price band, lowest first; ``fmt_price`` and the
+#: page's price badge read the same rows, and a price at or past the last bound
+#: takes ``FMT_GROUPED_DECIMALS`` with a thousands separator.
+PRICE_FORMAT_BANDS: tuple[tuple[float, int], ...] = (
+    (FMT_SUB_MICRO, 8),
+    (FMT_SUB_CENT, 6),
+    (FMT_SUB_UNIT, 4),
+    (FMT_THOUSAND, 2),
+)
+FMT_GROUPED_DECIMALS = 2
+
+#: The theme roles the readout's six lines paint in, by ``readout_lines`` row.
+READOUT_ROLE_LIGHT = "TEXT_LIGHT"
+READOUT_ROLE_DIM = "TEXT_DIM"
+READOUT_ROLE_UP = "UP_FILL"
+READOUT_ROLE_DOWN = "DOWN_FILL"
+#: The theme role a fill row paints in, by the fill's label; a label outside
+#: the map takes the buy or sell default by side.
+READOUT_FILL_ROLES = {
+    "SCRUM": "MARKER_SCRUM",
+    "FOLD": "MARKER_FOLD",
+    "DIST": "MARKER_DIST",
+}
+READOUT_ROLE_BUY = "MARKER_BUY"
+READOUT_ROLE_SELL = "MARKER_SELL"
+#: The one-character label of a fill row: the sell glyph and the buy glyph.
+READOUT_SELL_GLYPH = "▼"
+READOUT_BUY_GLYPH = "▲"
+#: The text a fill's tag and its readout row carry: the role and the price.
+FILL_TAG_FORMAT = "{label} {price}"
+FILL_BUY_LABEL = "BUY"
+FILL_SELL_LABEL = "SELL"
+FILL_BUY_SIDE = "buy"
+READOUT_ROLE_COLOURS: dict[str, Color] = {
+    READOUT_ROLE_LIGHT: TEXT_LIGHT,
+    READOUT_ROLE_DIM: TEXT_DIM,
+    READOUT_ROLE_UP: UP_FILL,
+    READOUT_ROLE_DOWN: DOWN_FILL,
+    READOUT_FILL_ROLES["SCRUM"]: MARKER_TYPE_COLORS["SCRUM"],
+    READOUT_FILL_ROLES["FOLD"]: MARKER_TYPE_COLORS["FOLD"],
+    READOUT_FILL_ROLES["DIST"]: MARKER_TYPE_COLORS["DIST"],
+    READOUT_ROLE_BUY: MARKER_DEFAULT_BUY,
+    READOUT_ROLE_SELL: MARKER_DEFAULT_SELL,
+}
 
 PANEL_SPACING_PX = 2
 PANEL_MARGINS = (0, 0, 0, 0)
@@ -343,25 +416,75 @@ LEGEND_SPACING_PX = 12
 TIMEFRAME_LABEL = "TF:"
 TIMEFRAME_COMBO_MAX_WIDTH_PX = 90
 CHART_PANEL_MIN_HEIGHT_PX = 250
+#: The accessible name of the scroll area the chart sits in on the Qt panel.
+CHART_SCROLL_NAME = "Chart scroll"
+#: The one height every control in the Charts tab's control row takes, the
+#: pixel size and family the two arrow glyphs are set in, and the side of a
+#: toggle box, which stays under the caption line height.
+CONTROL_HEIGHT_PX = 26
+ARROW_GLYPH_PX = 16
+ARROW_GLYPH_FAMILY = ds.FONT_FAMILY_GLYPH
+CONTROL_FONT_FAMILY = ds.FONT_FAMILY_UI
+CONTROL_FONT_PX = ds.TYPE_SMALL
+CAPTION_PX = ds.TYPE_CAPTION
+TOGGLE_BOX_PX = 12
 LEGEND_INVISIBLE_TEXT = "◆ Invisible"
-LEGEND_INVISIBLE_STYLE = "color: #ffa000; font-size: 9px;"
 LEGEND_ON_BOOK_TEXT = "□ On Book"
-LEGEND_ON_BOOK_STYLE = "color: #00b4ff; font-size: 9px;"
-PANEL_SOURCE_STYLE = "color: #555; font-size: 9px;"
-INDICATOR_STYLE_FORMAT = "color: {color}; font-size: 9px;"
+#: The ``ThemeTokens`` field each panel label paints in; ``ChartPainter``
+#: resolves the hex, and ``INDICATOR_STYLE_FORMAT`` takes it.
+LEGEND_INVISIBLE_FIELD = "chart_trend_fast"
+LEGEND_ON_BOOK_FIELD = "chart_trend_slow"
+PANEL_SOURCE_FIELD = "text_muted"
+INDICATOR_STYLE_FORMAT = "color: {color}; font-size: %dpx;" % CAPTION_PX
 
+#: The twelve Voting Panel indicators in ``INDICATOR_COLS`` order, then the
+#: two overlays that draw no voter: the Z-Score algo point and BB Bullseye.
+#: The third entry is the ``ThemeTokens`` field the toggle's colour resolves from.
 INDICATOR_TOGGLES = (
-    ("bb", "BB", "#50a0f0"),
-    ("vortex", "Vortex", "#00ff88"),
-    ("macd", "MACD", "#ff8c00"),
-    ("stochrsi", "SRsi", "#ff9060"),
-    ("ichimoku", "Ichi", "#4fc3ff"),
-    ("volume", "Vol", "#b4b4d2"),
-    ("slingshot", "Sling", "#ff00aa"),
-    ("bbullseye", "BBull", "#fcee0a"),
+    ("bb", "BB", "chart_band"),
+    ("vortex", "Vortex", "chart_bull"),
+    ("macd", "MACD", "chart_trend_fast"),
+    ("stochrsi", "SRsi", "chart_oscillator"),
+    ("ichimoku", "Ichi", "chart_trend_slow"),
+    ("volume", "Vol", "chart_axis_text"),
+    ("slingshot", "Sling", "chart_event_mark"),
+    ("adx", "ADX", "chart_last_price"),
+    ("supertrend", "STrd", "chart_up_edge"),
+    ("zscore", "ZSc", "chart_zone_scrum"),
+    ("ker", "KER", "chart_trend_slow"),
+    ("rsi", "RSI", "chart_down_edge"),
+    ("zscore_point", "ZPt", "chart_zone_scrum"),
+    ("bbullseye", "BBull", "chart_zone_fold"),
 )
 
-#: An overlay that paints a fill over the price pane, so it starts off.
+#: The two hermetic glyphs a fill is marked with, one definition the Charts
+#: painter and the Simulator's playback both read: ``dissolve`` for a scrum, a
+#: triangle pointing down drawn as an outline; ``reform`` for a fold, a
+#: triangle pointing up drawn filled. Each corner is ``(dx, dy)`` in the unit
+#: mark, y down, centred on the fill.
+SCRUM_SIDE = "scrum"
+FOLD_SIDE = "fold"
+DISSOLVE_GLYPH = "dissolve"
+REFORM_GLYPH = "reform"
+MARK_GLYPHS = {
+    SCRUM_SIDE: {
+        "name": DISSOLVE_GLYPH,
+        "points": [[-0.5, -0.5], [0.5, -0.5], [0.0, 0.5]],
+        "filled": False,
+    },
+    FOLD_SIDE: {
+        "name": REFORM_GLYPH,
+        "points": [[-0.5, 0.5], [0.5, 0.5], [0.0, -0.5]],
+        "filled": True,
+    },
+}
+#: A mark's width as a share of one candle column, its height as a share of
+#: the pane's height, and its outline width in logical pixels.
+MARK_WIDTH_RATIO = 1.0
+MARK_HEIGHT_FRACTION = 0.05
+MARK_OUTLINE_PX = 1.5
+
+#: An overlay that paints a fill or a mark over the price pane, so it starts off.
 INDICATOR_OCCLUDES = {
     "bb": False,
     "vortex": False,
@@ -370,6 +493,12 @@ INDICATOR_OCCLUDES = {
     "ichimoku": False,
     "volume": False,
     "slingshot": True,
+    "adx": False,
+    "supertrend": False,
+    "zscore": False,
+    "ker": False,
+    "rsi": False,
+    "zscore_point": True,
     "bbullseye": True,
 }
 INDICATOR_DEFAULTS = {key: not occludes for key, occludes in INDICATOR_OCCLUDES.items()}
@@ -643,13 +772,25 @@ METRICS = {
     "timeframe_label": TIMEFRAME_LABEL,
     "timeframe_combo_max_width_px": TIMEFRAME_COMBO_MAX_WIDTH_PX,
     "chart_panel_min_height_px": CHART_PANEL_MIN_HEIGHT_PX,
+    "chart_scroll_name": CHART_SCROLL_NAME,
+    "control_height_px": CONTROL_HEIGHT_PX,
+    "arrow_glyph_px": ARROW_GLYPH_PX,
+    "arrow_glyph_family": ARROW_GLYPH_FAMILY,
+    "control_font_family": CONTROL_FONT_FAMILY,
+    "control_font_px": CONTROL_FONT_PX,
+    "caption_px": CAPTION_PX,
+    "toggle_box_px": TOGGLE_BOX_PX,
     "legend_invisible_text": LEGEND_INVISIBLE_TEXT,
-    "legend_invisible_style": LEGEND_INVISIBLE_STYLE,
+    "legend_invisible_field": LEGEND_INVISIBLE_FIELD,
     "legend_on_book_text": LEGEND_ON_BOOK_TEXT,
-    "legend_on_book_style": LEGEND_ON_BOOK_STYLE,
-    "panel_source_style": PANEL_SOURCE_STYLE,
+    "legend_on_book_field": LEGEND_ON_BOOK_FIELD,
+    "panel_source_field": PANEL_SOURCE_FIELD,
     "indicator_style_format": INDICATOR_STYLE_FORMAT,
     "indicator_toggles": INDICATOR_TOGGLES,
+    "mark_glyphs": MARK_GLYPHS,
+    "mark_width_ratio": MARK_WIDTH_RATIO,
+    "mark_height_fraction": MARK_HEIGHT_FRACTION,
+    "mark_outline_px": MARK_OUTLINE_PX,
     "candle_border_width_px": CANDLE_BORDER_WIDTH_PX,
     "wick_width_px": WICK_WIDTH_PX,
     "grid_line_width_px": GRID_LINE_WIDTH_PX,
@@ -758,16 +899,10 @@ def fmt_price(price: float) -> str:
     Bands are open at the top, so 1000 formats with a thousands separator
     and 999.999 does not, rounding instead to 1000.00.
     """
-    if price < FMT_SUB_MICRO:
-        return f"{price:.8f}"
-    elif price < FMT_SUB_CENT:
-        return f"{price:.6f}"
-    elif price < FMT_SUB_UNIT:
-        return f"{price:.4f}"
-    elif price < FMT_THOUSAND:
-        return f"{price:.2f}"
-    else:
-        return f"{price:,.2f}"
+    for bound, decimals in PRICE_FORMAT_BANDS:
+        if price < bound:
+            return f"{price:.{decimals}f}"
+    return f"{price:,.{FMT_GROUPED_DECIMALS}f}"
 
 
 def fmt_volume(volume: float) -> str:
@@ -912,6 +1047,13 @@ def layout(
         "sub_panes": bounds,
         "time_axis_top_px": edge,
     }
+
+
+def device_pen_width(width_px: float, ratio: float) -> float:
+    """``width_px`` logical pixels scaled by ``ratio`` to whole device pixels, never
+    under one, given back in logical pixels."""
+    scale = float(ratio) if float(ratio) > 0 else 1.0
+    return max(1, round(float(width_px) * scale)) / scale
 
 
 def candle_geometry(chart_width_px: float, candle_count: int) -> dict:
@@ -1225,15 +1367,42 @@ def ohlc_row(candle: CandleLike) -> list[list]:
     ]
 
 
-def tooltip_rows(candle: CandleLike) -> list[list]:
-    """The hover tooltip's label, value and colour rows."""
-    is_up = candle.close >= candle.open
-    accent = UP_FILL if is_up else DOWN_FILL
+def fill_label(fill: FillLike) -> str:
+    """The role a fill's tag names: its label, else ``FILL_BUY_LABEL`` or ``FILL_SELL_LABEL`` by side."""
+    is_buy = str(fill.side).lower() == FILL_BUY_SIDE
+    return str(fill.label or (FILL_BUY_LABEL if is_buy else FILL_SELL_LABEL))
+
+
+def fill_role(fill: FillLike) -> str:
+    """The theme role a fill draws in: ``READOUT_FILL_ROLES`` by label, else the side's default."""
+    is_buy = str(fill.side).lower() == FILL_BUY_SIDE
+    return READOUT_FILL_ROLES.get(
+        fill_label(fill), READOUT_ROLE_BUY if is_buy else READOUT_ROLE_SELL
+    )
+
+
+def fill_row(fill: FillLike) -> list[str]:
+    """One readout row for ``fill``: the side's glyph, the tag's text and its role."""
+    is_buy = str(fill.side).lower() == FILL_BUY_SIDE
+    return [
+        READOUT_BUY_GLYPH if is_buy else READOUT_SELL_GLYPH,
+        FILL_TAG_FORMAT.format(label=fill_label(fill), price=fmt_price(fill.price)),
+        fill_role(fill),
+    ]
+
+
+def readout_lines(
+    candle: CandleLike, fills: Sequence[FillLike] = ()
+) -> list[list[str]]:
+    """The crosshair readout's rows for ``candle``: label, text and the theme
+    role the text paints in (a ``READOUT_ROLE_COLOURS`` key); six candle rows,
+    then one ``fill_row`` per entry of ``fills``."""
+    accent = READOUT_ROLE_UP if candle.close >= candle.open else READOUT_ROLE_DOWN
     change = candle.close - candle.open
     return [
-        ["O", fmt_price(candle.open), TEXT_LIGHT],
-        ["H", fmt_price(candle.high), TEXT_LIGHT],
-        ["L", fmt_price(candle.low), TEXT_LIGHT],
+        ["O", fmt_price(candle.open), READOUT_ROLE_LIGHT],
+        ["H", fmt_price(candle.high), READOUT_ROLE_LIGHT],
+        ["L", fmt_price(candle.low), READOUT_ROLE_LIGHT],
         ["C", fmt_price(candle.close), accent],
         [
             "Δ",
@@ -1244,8 +1413,26 @@ def tooltip_rows(candle: CandleLike) -> list[list]:
             ),
             accent,
         ],
-        ["V", fmt_tooltip_volume(candle.volume), TEXT_DIM],
+        ["V", fmt_tooltip_volume(candle.volume), READOUT_ROLE_DIM],
+    ] + [fill_row(fill) for fill in fills]
+
+
+def tooltip_rows(candle: CandleLike) -> list[list]:
+    """``readout_lines`` with each role resolved to its ``READOUT_ROLE_COLOURS`` colour."""
+    return [
+        [label, text, READOUT_ROLE_COLOURS[role]]
+        for label, text, role in readout_lines(candle)
     ]
+
+
+def candle_at_x(x: float, width_px: int, visible_count: int) -> int | None:
+    """The index into the visible window of the candle under ``x``, or None when
+    ``x`` lies outside the pane's columns."""
+    if visible_count <= 0 or x < LEFT_MARGIN_PX or x > width_px - RIGHT_MARGIN_PX:
+        return None
+    column = candle_geometry(width_px - LEFT_MARGIN_PX - RIGHT_MARGIN_PX, visible_count)
+    under = int((x - LEFT_MARGIN_PX) / column["column_px"])
+    return under if 0 <= under < visible_count else None
 
 
 def tooltip_height(row_count: int) -> int:

@@ -12,6 +12,7 @@ import time
 from typing import Any, Optional
 
 from ..bot_container import as_finite_float, despawn_threshold_days
+from .sizing import eligible_fold_tranches, plan_fold_consumption, settle_fold_plan
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -56,11 +57,7 @@ class FoldTrancheAccountingMixin:
         ``tick_phases`` both call this, so the two cannot report
         different sets.
         """
-        return [
-            t
-            for t in self._fold_tranches
-            if ticker_last <= float(t.get("ref", 0)) * otd_factor
-        ]
+        return eligible_fold_tranches(self._fold_tranches, ticker_last, otd_factor)
 
     def _apply_scrum_fold_pct(
         self, _tranche_count_before: int, scrum_usd: float, scrum_asset: float
@@ -134,37 +131,7 @@ class FoldTrancheAccountingMixin:
           (plan, slices, part-consumed count). ``plan`` is a list of
           ``(source tranche, usd taken, units taken)``.
         """
-        plan: list[tuple[dict, float, float]] = []
-        slices: list[dict] = []
-        running_usd = 0.0
-        partial_count = 0
-        for _t in eligible:
-            room = cap_remaining - running_usd
-            if room <= 1e-12:
-                break
-            tranche_usd = float(_t.get("usd", 0) or 0)
-            tranche_units = float(_t.get("units", 0) or 0)
-            if tranche_usd <= 0.0 or tranche_units <= 0.0:
-                continue
-            if tranche_usd <= room + 1e-9:
-                take_usd = tranche_usd
-                take_units = tranche_units
-            else:
-                take_usd = room
-                take_units = tranche_units * (take_usd / tranche_usd)
-                partial_count += 1
-            slices.append(
-                {
-                    "usd": take_usd,
-                    "units": take_units,
-                    "ref": float(_t.get("ref", 0) or 0),
-                    "initial_buy_price": _t["initial_buy_price"],
-                    "created_ts": _t.get("created_ts", 0.0),
-                }
-            )
-            plan.append((_t, take_usd, take_units))
-            running_usd += take_usd
-        return plan, slices, partial_count
+        return plan_fold_consumption(eligible, cap_remaining)
 
     def _drop_malformed_fold_tranches(self) -> int:
         """Remove every queued tranche whose ``ref`` is not above zero.
@@ -236,17 +203,10 @@ class FoldTrancheAccountingMixin:
         Returns:
           (records removed from the queue, records drained to nothing).
         """
-        pre_remove = len(self._fold_tranches)
-        spent: set[int] = set()
-        for src, took_usd, took_units in plan:
-            src["usd"] = max(0.0, float(src.get("usd", 0) or 0) - took_usd)
-            src["units"] = max(0.0, float(src.get("units", 0) or 0) - took_units)
-            if src["usd"] <= 1e-9 or src["units"] <= 1e-12:
-                spent.add(id(src))
-            else:
-                src["fold_partial_spent"] = True
-        self._fold_tranches = [t for t in self._fold_tranches if id(t) not in spent]
-        return pre_remove - len(self._fold_tranches), len(spent)
+        self._fold_tranches, removed, spent = settle_fold_plan(
+            self._fold_tranches, plan
+        )
+        return removed, spent
 
     def _top_up_remnant_fold_tranches(
         self, first_new_index: int, bb_lower: float, bb_upper: float
@@ -770,8 +730,9 @@ class FoldTrancheAccountingMixin:
         that FOLDED. That split keeps
         ``created - closed - discarded == standing`` true.
 
-        This is the only site in src/ that removes a stack tranche, so
-        ``_stack_discarded`` moves here beside ``_stack_created``, which
+        This is the only age-driven site that removes a stack tranche;
+        ``ScrummingBot.clear_stack_tranches`` is the other remover, and
+        both move ``_stack_discarded`` beside ``_stack_created``, which
         holds the Stack panel's ``filled / created`` readout to the same
         invariant. On that ledger the ``closed`` term is structurally
         zero: filling a stack tranche sets its ``status`` and leaves the
@@ -799,18 +760,19 @@ class FoldTrancheAccountingMixin:
             removes nothing and says so.
 
         Returns:
-          A report of what the sweep did, keyed ``fold_delisted``,
-          ``stack_delisted``, ``stack_kept_live_order``, ``ageless_kept``
-          and ``usd_delisted``.
+          A report of what the sweep did, keyed ``fold_removed``,
+          ``stack_removed``, ``stack_kept_live_order``, ``ageless_kept``
+          and ``usd_removed``. Despawn removes rather than delists, so the
+          count keys match ``despawn_preview`` in ``bot_container``.
         """
         _days = self._despawn_threshold_days()
         report = {
             "threshold_days": _days,
-            "fold_delisted": 0,
-            "stack_delisted": 0,
+            "fold_removed": 0,
+            "stack_removed": 0,
             "stack_kept_live_order": 0,
             "ageless_kept": 0,
-            "usd_delisted": 0.0,
+            "usd_removed": 0.0,
         }
         if _days <= 0:
             return report
@@ -818,7 +780,7 @@ class FoldTrancheAccountingMixin:
         _now = time.time() if now is None else as_finite_float(now)
         if _now is None:
             logger.warning(
-                "Bot %s: despawn sweep delisted nothing — `now` was %r, "
+                "Bot %s: despawn sweep removed nothing — `now` was %r, "
                 "which is not a finite number, so no age is measurable",
                 self.bot_id,
                 now,
@@ -833,10 +795,10 @@ class FoldTrancheAccountingMixin:
                 report["ageless_kept"] += 1
                 _fold_keep.append(_t)
             elif _age >= _cutoff:
-                report["fold_delisted"] += 1
+                report["fold_removed"] += 1
                 _usd = as_finite_float(_t.get("usd", 0))
                 if _usd is not None:
-                    report["usd_delisted"] += _usd
+                    report["usd_removed"] += _usd
             else:
                 _fold_keep.append(_t)
 
@@ -852,12 +814,12 @@ class FoldTrancheAccountingMixin:
                 report["stack_kept_live_order"] += 1
                 _stack_keep.append(_t)
             else:
-                report["stack_delisted"] += 1
+                report["stack_removed"] += 1
 
-        if not (report["fold_delisted"] or report["stack_delisted"]):
+        if not (report["fold_removed"] or report["stack_removed"]):
             return report
 
-        if report["fold_delisted"]:
+        if report["fold_removed"]:
             self._fold_tranches = _fold_keep
             self._fold_queue_usd = sum(
                 (as_finite_float(_t.get("usd", 0)) or 0.0) for _t in self._fold_tranches
@@ -867,7 +829,7 @@ class FoldTrancheAccountingMixin:
                     as_finite_float(getattr(self, "_tranches_discarded_lifetime", 0))
                     or 0.0
                 )
-                + report["fold_delisted"]
+                + report["fold_removed"]
             )
             try:
                 self.stats.tranches_discarded_lifetime = (
@@ -875,11 +837,11 @@ class FoldTrancheAccountingMixin:
                 )
             except AttributeError as exc:
                 logger.debug("despawn: stats mirror failed: %s", exc)
-        if report["stack_delisted"]:
+        if report["stack_removed"]:
             self._stack_tranches = _stack_keep
             self._stack_discarded = (
                 int(as_finite_float(getattr(self, "_stack_discarded", 0)) or 0.0)
-                + report["stack_delisted"]
+                + report["stack_removed"]
             )
 
         _parked = as_finite_float(getattr(self, "_pending_wire_credits", 0.0)) or 0.0
@@ -896,7 +858,7 @@ class FoldTrancheAccountingMixin:
             _skipped = (
                 f" {report['stack_kept_live_order']} aged stack "
                 f"tranche(s) KEPT: they hold resting exchange "
-                f"orders, and delisting a record that owns a "
+                f"orders, and removing a record that owns a "
                 f"live order would strand it."
             )
         try:
@@ -904,10 +866,10 @@ class FoldTrancheAccountingMixin:
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"TRANCHES DESPAWNED (>= {_days}d): delisted "
-                    f"{report['fold_delisted']} fold tranche(s) "
-                    f"holding ${report['usd_delisted']:.4f} and "
-                    f"{report['stack_delisted']} stack tranche(s). "
+                    f"TRANCHES DESPAWNED (>= {_days}d): removed "
+                    f"{report['fold_removed']} fold tranche(s) "
+                    f"holding ${report['usd_removed']:.4f} and "
+                    f"{report['stack_removed']} stack tranche(s). "
                     f"No order was placed or cancelled; holdings, "
                     f"cost basis and target balance are "
                     f"unchanged.{_skipped}{_warn}"
@@ -920,8 +882,8 @@ class FoldTrancheAccountingMixin:
             "Bot %s: despawned %d fold + %d stack tranche(s) at >= %d "
             "days (kept %d ageless, %d with live orders)",
             self.bot_id,
-            report["fold_delisted"],
-            report["stack_delisted"],
+            report["fold_removed"],
+            report["stack_removed"],
             _days,
             report["ageless_kept"],
             report["stack_kept_live_order"],

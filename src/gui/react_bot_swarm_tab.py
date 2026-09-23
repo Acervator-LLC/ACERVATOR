@@ -118,7 +118,7 @@ HOST_SCRIPT = """(function (global) {
 HELPERS_SCRIPT = "window.acervatorBotSwarmHelpers();"
 
 
-def tab_html(theme: str = "cyberpunk_dark") -> str:
+def tab_html(theme: object = None) -> str:
     """The whole tab page as one string, with no network fetch."""
     return page_html(
         TAB_STYLE_ASSETS, TAB_SCRIPT_ASSETS, TAB_BODY, theme, (HOST_SCRIPT,)
@@ -178,7 +178,7 @@ if _HAS_WEBENGINE:
         the document state, and ``row_count`` counts the rows the DOM drew.
         """
 
-        def __init__(self, parent=None, theme: str = "cyberpunk_dark") -> None:
+        def __init__(self, parent=None, theme: object = None) -> None:
             super().__init__(parent)
             self.setAccessibleName(ACCESSIBLE_NAME)
             self._state = surface.BotVisualizerModel()

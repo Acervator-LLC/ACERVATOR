@@ -8,7 +8,7 @@ runtime counters. ``make_bot_config`` refuses a kwarg foreign to the given
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, fields
 from enum import Enum
 from typing import Optional
 
@@ -55,24 +55,10 @@ class BotConfig:
     symbol: str = ""  # Derived: "BTC/USDT"
     mode: BotMode = BotMode.SCRUMMING
 
-    investment_amount: float = 200.0  # Total bot capital
-    increment_style: str = "linear"  # "linear" or "logarithmic"
-    spacing_style: str = (
-        "expanding"  # "expanding" (wider gaps) or "stacked" (fixed gap)
-    )
-
     profit_folding_active: bool = True
 
     target_balance: float = 200.0  # Balance the bot trades relative to
-    # Caps USD adopted from an existing exchange balance; 0.0 uses target_balance.
-    max_adoptable_usd: float = 0.0
     scrumming_interval_pct: float = 1.0  # % market move between actions
-
-    # Scrumming: Profit routing (where excess delta goes after sell)
-    profit_route: str = (
-        "fold_to_target"  # "fold_to_target" | "spendable" | "split" | "cross_bot"
-    )
-    profit_route_bot_id: str = ""  # Target bot ID for cross-bot routing
 
     scrum_fold_pct: int = 100  # 1-100: % of scrum proceeds queued for fold
 
@@ -98,7 +84,8 @@ class BotConfig:
     scrum_read_rate_min: int = 5
     # % of BB band width price must travel since the last fold; 0 is off.
     band_travel_pct: int = 70
-    # Rapid Fire override when price touches a BB band within 0.1%.
+    # A band touch inside 0.5%, or a wick inside 0.2%, lowers the TA
+    # confidence floor; scrum_fire_pct is untouched.
     bb_bullseye_check: bool = True
     # A separate USD reserve for buying sharp drawdowns.
     hedge_rebalance_active: bool = True
@@ -129,11 +116,8 @@ class BotConfig:
         True  # trend_hold blocks scrum during sustained uptrend
     )
     scrum_defer_to_htf: bool = True  # Refuses scrum when higher-TF phantom is BULLISH
-    # FOLD-side (buy at bottom), mirroring the three above:
+    # FOLD-side (buy at bottom); scrum_hold_in_uptrend has no fold twin.
     fold_require_ta_bearish: bool = True  # Requires is_bearish for auto-fold
-    fold_hold_in_downtrend: bool = (
-        True  # trend_hold blocks fold during sustained downtrend
-    )
     fold_defer_to_htf: bool = True  # Refuses fold when higher-TF phantom is BEARISH
 
     visibility: str = "orderbook"  # "orderbook" or "internal"
@@ -163,30 +147,25 @@ class BotConfig:
     trading_fee_pct: float = 0.6
 
     # Caps accumulation at position_ceiling_multiple x the anchor target_balance;
-    # only fold is capped, and its interval tapers 100%->10% over ratio 0.5->1.0.
+    # fold_rate_taper shrinks the fold's USD size 100%->10% over ratio 0.5->1.0.
     position_ceiling_enabled: bool = False
     position_ceiling_multiple: float = 5.0  # Range [1.0, 10.0]
     # A BULLISH reversal on detonation_timeframe at or above
     # detonation_confidence_min market-sells above the anchor, once per reversal.
+    # position_ceiling_enabled gates none of the three: detonation fires on the
+    # anchor, not on the ceiling.
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"  # "1d", "1w"
     detonation_confidence_min: float = (
         0.75  # BULLISH confidence threshold; operator-adjustable 0.50-1.00
     )
 
-    # Reserves target-balance-worth of the target asset in CapitalReservationRegistry.
-    self_reserve_capital: bool = True
     # Target-asset units held out of the bot's decision math and reservation.
     personal_hold_qty: float = 0.0
 
     # BotMode.EXTRACTOR anchors to a base-asset pool and sends chunks into ALT
     # pairs; it spawns no child bots.
 
-    # "normal" buys alt first for more base; "inverted" sells alt first for the
-    # quote currency.
-    extractor_direction: str = "normal"
-    # Operator-entered ALT quantity reserved at startup for the inverted direction.
-    inverted_extractor_standing_alt_units: float = 0.0
     extractor_chunk_size_usd: float = 100.0
     # USD-equivalent base currency owned; converted to base units at creation, then
     # tracked in base units.
@@ -195,30 +174,8 @@ class BotConfig:
     extractor_scan_top_n: int = 8
     # Re-ranks the top-N every N ticks.
     extractor_scan_refresh_candles: int = 60
-    # % of the chunk kept free; a new round needs (chunk_free - artillery_size)
-    # >= reserve.
-    extractor_pool_reserve_pct: float = 50.0
     # % of the alt position sold on a bullish trigger; 100 is a full exit.
     extractor_exit_pct: float = 100.0
-    # USD drawdown threshold below which averaging-down may trigger.
-    extractor_drawdown_threshold_pct: float = 3.0
-    # Minimum candles between consecutive averaging-down rounds on the same position.
-    extractor_correction_skip_candles: int = 4
-    # Cost basis of a position cannot exceed this multiple of the original
-    # artillery_size.
-    extractor_max_cost_basis_multiple: float = 2.0
-    # Per-position tier counter capped at extractor_max_compounding_tier; realized
-    # gain always credits chunk_free_base.
-    extractor_max_compounding_tier: int = 3
-    # Separate base-currency reserve for averaging-down; 0 draws from
-    # chunk_free instead.
-    extractor_hedge_budget_usd: float = 0.0
-    # Trend-hold threshold for the per-symbol TASignalProvider.
-    extractor_trend_strength_threshold: float = 0.65
-
-    # Empty list: auto-pick top-N */<base> pairs via extractor_scan_top_n.
-    # Non-empty: trade exactly these symbols, set from the wizard's pool picker.
-    extractor_alt_targets: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.symbol:
@@ -303,14 +260,9 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
 #: raises ValueError if any of these is passed.
 _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
     {
-        "investment_amount",
-        "increment_style",
-        "spacing_style",
         "profit_folding_active",
-        # Scrumming-specific accumulation/routing
+        # Scrumming-specific accumulation
         "scrumming_interval_pct",
-        "profit_route",
-        "profit_route_bot_id",
         "scrum_fold_pct",
         "max_target_growth_pct",
         # tranche_despawn_days sweeps the fold and stack ledgers, both
@@ -338,7 +290,6 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "scrum_hold_in_uptrend",
         "scrum_defer_to_htf",
         "fold_require_ta_bearish",
-        "fold_hold_in_downtrend",
         "fold_defer_to_htf",
         # risk-control fields
         "position_ceiling_enabled",
@@ -347,7 +298,6 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "detonation_timeframe",
         "detonation_confidence_min",
         # interop fields
-        "self_reserve_capital",
         "personal_hold_qty",
     }
 )
@@ -360,22 +310,15 @@ _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(
         "extractor_artillery_size_usd",
         "extractor_scan_top_n",
         "extractor_scan_refresh_candles",
-        "extractor_pool_reserve_pct",
         "extractor_exit_pct",
-        "extractor_drawdown_threshold_pct",
-        "extractor_correction_skip_candles",
-        "extractor_max_cost_basis_multiple",
-        "extractor_max_compounding_tier",
-        "extractor_hedge_budget_usd",
-        "extractor_trend_strength_threshold",
-        "extractor_alt_targets",
-        "extractor_direction",
-        "inverted_extractor_standing_alt_units",
     }
 )
 
 
-#: Keys `_sanitize_deprecated_kwargs` drops before `BotConfig.__init__`.
+#: A retirement record, not a setting set. Each name is a setting removed from
+#: the product, kept so a config stored before its removal still builds;
+#: `_sanitize_deprecated_kwargs` drops each before `BotConfig.__init__`.
+#: Add no name. Only `bulk_trading` is read, by `bot_config_kwargs`.
 _DEPRECATED_KWARGS: frozenset = frozenset(
     {
         "bulk_trading",  # renamed to stack_mode
@@ -643,6 +586,43 @@ def make_bot_config(mode, **kwargs) -> BotConfig:
     return cfg
 
 
+def bot_config_kwargs(mode, collected: dict, *, exchange_id: str = "") -> dict:
+    """Return the `make_bot_config` kwargs for `mode` out of `collected`.
+
+    `exchange_id` names the venue when `collected` carries no `exchange_id`.
+    """
+    foreign = (
+        _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
+        if mode == BotMode.EXTRACTOR
+        else _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS
+    )
+    # make_bot_config sets mode itself and raises on a foreign field.
+    carried = {f.name for f in fields(BotConfig)} - foreign - {"mode"}
+    kwargs = {
+        key: value
+        for key, value in _sanitize_deprecated_kwargs(collected).items()
+        if key in carried
+    }
+    # BotConfig declares no default for either, and make_bot_config defaults
+    # target_asset itself.
+    kwargs.setdefault("exchange_id", exchange_id)
+    kwargs.setdefault("base_currency", "USDT")
+    # An Extractor's parameter page offers no target_balance row; its pool is
+    # the figure the bot trades against.
+    kwargs.setdefault(
+        "target_balance",
+        (
+            collected.get("extractor_chunk_size_usd", 200.0)
+            if mode == BotMode.EXTRACTOR
+            else 200.0
+        ),
+    )
+    # An absent bulk_trading is the retired Grid checkbox, so False rather
+    # than STACK_MODE_DEFAULT.
+    kwargs.setdefault("stack_mode", collected.get("bulk_trading", False))
+    return kwargs
+
+
 @dataclass
 class BotStats:
     """Mutable runtime statistics — updated by the bot during operation."""
@@ -658,7 +638,6 @@ class BotStats:
     current_price: float = 0.0
     position_value: float = 0.0
     accumulated_fold: float = 0.0  # Tracks toward extended position
-    accumulated_distribute: float = 0.0  # Tracks toward extended position
     # Fold tranches discarded by ScrummingBot.clear_fold_tranches, never folded.
     tranches_discarded_lifetime: int = 0
     # USD of parked wire credit released by an operator clear; an earmark,

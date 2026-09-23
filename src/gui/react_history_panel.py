@@ -89,50 +89,101 @@ def read_asset(name: str) -> str:
         ) from exc
 
 
-def _palette(theme: str) -> dict:
-    """The six chrome colours, read from ``CHART_THEMES``.
+def page_theme(theme: object = None) -> str:
+    """The theme name a page opens in, always a name ``THEMES`` holds.
 
-    An unknown ``theme`` falls back to ``cyberpunk_dark``.
+    A ``theme`` of None takes ``applied_theme``, which is the theme the
+    application is painted in, so a page opens on the operator's choice.
     """
+    from .theme_engine import applied_theme, stored_theme
+
+    return stored_theme(applied_theme() if theme is None else theme)
+
+
+def _palette(theme: object = None, tone: object = None) -> dict:
+    """The six chrome colours ``page_theme`` selects out of ``CHART_THEMES``,
+    the two grounds ``--bg`` and ``--btn-bg`` through ``toward_black`` at
+    ``NIGREDO_FRACTION`` when ``tone`` is ``NIGREDO``."""
+    from .theme_engine import NIGREDO, NIGREDO_FRACTION, toward_black
     from .tradingview_chart import CHART_THEMES
 
-    colors = CHART_THEMES.get(theme) or CHART_THEMES["cyberpunk_dark"]
+    colors = CHART_THEMES[page_theme(theme)]
+    ground = colors["bg"]
+    button = colors["btn_bg"]
+    if tone == NIGREDO:
+        ground = toward_black(ground, NIGREDO_FRACTION)
+        button = toward_black(button, NIGREDO_FRACTION)
     return {
-        "--bg": colors["bg"],
+        "--bg": ground,
         "--text": colors["text"],
         "--grid": colors["grid"],
         "--border": colors["border"],
         "--accent": colors["accent"],
-        "--btn-bg": colors["btn_bg"],
+        "--btn-bg": button,
     }
+
+
+def palette_script(theme: object = None, tone: object = None) -> str:
+    """The one JS statement rewriting a drawn page's six chrome colours, in
+    the ``tone`` ``_palette`` takes.
+
+    ``repaint_pages`` runs it on a page already up, which keeps every drawn
+    row and the scroll position that a fresh ``page_html`` would lose.
+    """
+    calls = "".join(
+        "d.style.setProperty(%s,%s);" % (json.dumps(name), json.dumps(value))
+        for name, value in _palette(theme, tone).items()
+    )
+    return "(function(){var d=document.documentElement;" + calls + "})();"
+
+
+def repaint_pages(root: Any, theme: object = None) -> int:
+    """Run ``palette_script`` on every ``QWebEngineView`` under ``root``, each
+    in the tone its ``TONE_PROPERTY`` carries.
+
+    Returns how many views took it, and 0 without WebEngine or without a
+    ``root``.
+    """
+    if not _HAS_WEBENGINE or root is None:
+        return 0
+    from .theme_engine import TONE_PROPERTY
+
+    painted = 0
+    for view in root.findChildren(QWebEngineView):
+        view.page().runJavaScript(palette_script(theme, view.property(TONE_PROPERTY)))
+        painted += 1
+    return painted
 
 
 def page_html(
     style_assets: tuple,
     script_assets: tuple,
     body: str,
-    theme: str = "cyberpunk_dark",
+    theme: object = None,
     inline_scripts: tuple = (),
+    tone: object = None,
 ) -> str:
     """One page as a string: styles, ``body``, the assets, then ``inline_scripts``.
 
-    ``parts`` is joined, never ``%``-formatted: the minified bundles named in
-    ``ASSET_NAMES`` carry both ``%`` and braces.
+    Each name in ``style_assets`` gets a ``<style data-asset>`` tag of its own,
+    so a page can report which sheet it holds. ``parts`` is joined, never
+    ``%``-formatted: the minified bundles named in ``ASSET_NAMES`` carry both
+    ``%`` and braces.
     """
-    overrides = "".join(f"{k}:{v};" for k, v in _palette(theme).items())
+    overrides = "".join(f"{k}:{v};" for k, v in _palette(theme, tone).items())
     parts = [
         "<!DOCTYPE html>",
         '<html><head><meta charset="utf-8">',
-        "<style>",
     ]
     for name in style_assets:
+        parts.append(f'<style data-asset="{name}">')
         parts.append(read_asset(name))
+        parts.append("</style>")
     parts.extend(
         [
-            ":root{",
+            "<style>:root{",
             overrides,
-            "}",
-            "</style></head><body>",
+            "}</style></head><body>",
             body,
         ]
     )
@@ -148,7 +199,7 @@ def page_html(
     return "\n".join(parts)
 
 
-def panel_html(theme: str = "cyberpunk_dark") -> str:
+def panel_html(theme: object = None) -> str:
     """The whole page as one string, with no network fetch."""
     return page_html((STYLE_ASSET,), ASSET_NAMES, '<div id="root"></div>', theme)
 
@@ -220,7 +271,7 @@ if _HAS_WEBENGINE:
         counts the rows the DOM drew.
         """
 
-        def __init__(self, parent=None, theme: str = "cyberpunk_dark") -> None:
+        def __init__(self, parent=None, theme: object = None) -> None:
             super().__init__(parent)
             self.setAccessibleName("React History Table")
             self._last_model: dict = {}

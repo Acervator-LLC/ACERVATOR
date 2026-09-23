@@ -91,7 +91,7 @@ the screen's state.
 | ---- | ------ |
 | [08-tabs/README.md](08-tabs/README.md) | Index of the files below, the live tab set, how a screen reaches its renderer |
 | [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) | The header strip: spendable columns, counter cards, privacy dots |
-| [08-tabs/simulator.md](08-tabs/simulator.md) | Fleet Replay, Stone Tablets, the gate-latch criterion, Nuclear Mode |
+| [08-tabs/simulator.md](08-tabs/simulator.md) | Live's tab forked over Stone Tablets: Validation, Back Test, Portfolio Battery, the gate-latch criterion, the replay layer |
 | [08-tabs/paper-trader.md](08-tabs/paper-trader.md) | What the step is, and the two live surfaces that still offer it |
 | [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain |
 | [08-tabs/market-inspector.md](08-tabs/market-inspector.md) | Signal table, opposing pairs, topology proposals, adopt |
@@ -242,4 +242,5 @@ git log --all --diff-filter=ADR --name-only -- generate_essay_ja.py    # three c
 | `generate_essay_ja.py` | The Japanese product manual, as a PDF, through reportlab |
 | `generate_essay_localized.py` | The Acervator technical essay in English, Japanese, Spanish, French and German |
 | `save_pdf_report` in `src/core/version_sweep.py` | A version-sweep report, written to the reports directory outside the repository |
+| `write_report` in `src/simulator/parity_report.py` | One trade parity report per Simulator run, a Markdown file and a JSON sidecar, written to the `simulator` directory of the reports directory outside the repository |
 | `generate_splash.py` under `deploy/kiosk/splash/` | The AcervatorOS boot splash image |

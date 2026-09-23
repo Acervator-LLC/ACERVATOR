@@ -101,6 +101,30 @@ def _sign_direction(value) -> str:
     return "NEUTRAL"
 
 
+#: The ``CurrencyRates`` fields ``update_currency_rates`` paints from.
+RATE_FIELDS = (
+    "btc_usd",
+    "eth_usd",
+    "sat_per_dollar",
+    "sat_per_cent",
+    "gwei_per_dollar",
+    "gwei_per_cent",
+)
+
+
+def rate_fields(snapshot: object) -> dict | None:
+    """``RATE_FIELDS`` and ``source`` off ``snapshot`` as plain numbers.
+
+    ``panel_reading`` hands this to a second panel, which paints it through
+    ``indicator_panel_surface.rate_strip_text``.
+    """
+    if snapshot is None:
+        return None
+    read = {name: float(getattr(snapshot, name, 0) or 0) for name in RATE_FIELDS}
+    read["source"] = str(getattr(snapshot, "source", "") or "")
+    return read
+
+
 def _default_ta_state_dir() -> Path:
     """The live application's state directory.
 
@@ -854,6 +878,13 @@ if _HAS_QT:
             self._no_data_message: str = ""
             # True while the table shows a stored reading, not a live one.
             self._showing_stored: bool = False
+            # What _render_stored_reading drew, so panel_reading can hand the
+            # same reading, time and age to a second panel.
+            self._shown_stored: dict | None = None
+            # The last CurrencyRates snapshot as plain fields, None until one
+            # arrives and _rates_seen says which of those two it is.
+            self._rate_snapshot: dict | None = None
+            self._rates_seen: bool = False
             from PySide6.QtWidgets import QSizePolicy
 
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1032,8 +1063,8 @@ if _HAS_QT:
                     "Composite Net — parent Net rank-weighted with all "
                     "active higher-TF phantom bot summaries. "
                     "Phantoms boost (bullish) or suppress (bearish) "
-                    "the parent's signal only when Phantom Balance "
-                    "Bots are enabled and have completed their first "
+                    "the parent's signal only when Phantom Bots "
+                    "are enabled and have completed their first "
                     "signal cycle. Populated on the parent bot's TF "
                     "row only; phantom TF rows read “—”."
                 ),
@@ -1046,10 +1077,12 @@ if _HAS_QT:
                 ),
             }
             row_a_container, self._table_a, self._conf_bars_a = (
-                self._make_indicator_row(_ROW_A_INDICATOR_COLS)
+                self._make_indicator_row(_ROW_A_INDICATOR_COLS, include_aggregates=True)
             )
             row_b_container, self._table_b, self._conf_bars_b = (
-                self._make_indicator_row(_ROW_B_INDICATOR_COLS)
+                self._make_indicator_row(
+                    _ROW_B_INDICATOR_COLS, include_aggregates=False
+                )
             )
             self._body = CollatedPillarsWidget()
             body_layout = QVBoxLayout(self._body)
@@ -1068,12 +1101,21 @@ if _HAS_QT:
             self._locks_label.setMaximumHeight(20)
             layout.addWidget(self._locks_label)
 
-        def _make_indicator_row(self, indicator_subset: list) -> tuple:
+        def _make_indicator_row(
+            self, indicator_subset: list, *, include_aggregates: bool = False
+        ) -> tuple:
             """One mini-panel: a QTableWidget of _PANEL_COLUMN_COUNT columns
-            over its own ConfidenceBarsWidget, returned with both."""
+            over its own ConfidenceBarsWidget, returned with both.
+
+            ``include_aggregates`` heads this table's collated columns with
+            _AGGREGATE_TITLES, so the pillars are named at their tops.
+            """
             from PySide6.QtWidgets import QSizePolicy
 
             container = QWidget()
+            # CollatedPillarsWidget paints the pillars behind this container,
+            # so the container and its children draw no ground of their own.
+            container.setStyleSheet("QWidget { background: transparent; }")
             cl = QVBoxLayout(container)
             cl.setContentsMargins(0, 0, 0, 0)
             cl.setSpacing(2)
@@ -1095,16 +1137,23 @@ if _HAS_QT:
             table.setShowGrid(False)
             table.setItemDelegate(RuledCellDelegate(table))
             table.viewport().setAutoFillBackground(False)
+            hdr_view = table.horizontalHeader()
+            hdr_view.setAutoFillBackground(False)
+            hdr_view.viewport().setAutoFillBackground(False)
+            # QTableWidget border and QHeaderView ground both cut a band
+            # across a pillar, so the table draws neither.
             table.setStyleSheet(
-                "QTableWidget { background: transparent; } "
-                "QTableView { background: transparent; } "
+                "QTableWidget { background: transparent; border: none; } "
+                "QTableView { background: transparent; border: none; } "
+                "QHeaderView { background: transparent; border: none; } "
                 "QHeaderView::section { background: transparent; border: none; }"
             )
 
-            col_names = ["TF"] + [short for _, short, _ in indicator_subset]
             # Both rows carry one grid, so column i of one sits under column
-            # i of the other; the aggregate slots stay empty on the second.
-            col_names += [""] * (_PANEL_COLUMN_COUNT - len(col_names))
+            # i of the other; only the aggregate table heads those columns.
+            col_names = ivp.column_titles(
+                indicator_subset, include_aggregates=include_aggregates
+            )
             table.setColumnCount(len(col_names))
             table.setHorizontalHeaderLabels(col_names)
             for _idx, _name in enumerate(col_names):
@@ -1218,6 +1267,8 @@ if _HAS_QT:
             unsupported exchange), the affected side falls back to
             an em-dash instead of showing 0.
             """
+            self._rates_seen = True
+            self._rate_snapshot = rate_fields(snapshot)
             if snapshot is None:
                 self._rate_strip.setText("BTC —   ETH —   (currency rates unavailable)")
                 return
@@ -1514,6 +1565,12 @@ if _HAS_QT:
             self.update_data(dict(stored.get("timeframes") or {}), stored_symbol)
             self._showing_stored = True
             when = time.strftime("%H:%M:%S", time.localtime(taken_at))
+            self._shown_stored = {
+                "stored": dict(stored),
+                "when": when,
+                "age": age_phrase(age_s),
+                "message": message,
+            }
             self._staleness_label.setText(
                 f"⏱ LAST TA READ, NOT CURRENT — taken {when}, "
                 f"{age_phrase(age_s)}. {message}"
@@ -1526,6 +1583,31 @@ if _HAS_QT:
                 format_age(age_s),
                 self._no_data_cause or "free-text",
             )
+
+        def panel_reading(self) -> dict:
+            """Everything on this panel, for a second panel to draw the same.
+
+            ``react_trading_tab.votes_payload`` turns it into the
+            ``indicator_panel.state`` payload the React page reads.
+            """
+            masked = False
+            try:
+                masked = get_privacy_mask_registry().is_masked("ivp.bot_selector")
+            except Exception as _mask_exc:  # noqa: BLE001
+                logger.debug("privacy mask not read: %s", _mask_exc)
+            read = {
+                "selected_bot_id": self._selected_bot_id,
+                "symbol": self._symbol,
+                "summary": dict(self._data or {}),
+                "message": self._no_data_message,
+                "cause": self._no_data_cause,
+                "masked": masked,
+            }
+            if self._showing_stored and self._shown_stored:
+                read.update(self._shown_stored)
+            if self._rates_seen:
+                read["rates"] = self._rate_snapshot
+            return read
 
         def stored_reading_age_seconds(self) -> float | None:
             """Age of the reading currently on screen, or None if live.
@@ -1736,6 +1818,7 @@ if _HAS_QT:
             self._data = multi_tf_summary
             # Only _render_stored_reading raises the stale band after this.
             self._showing_stored = False
+            self._shown_stored = None
             self._staleness_label.setText("")
             self._staleness_label.hide()
             self._symbol = str(symbol)
@@ -1975,6 +2058,11 @@ if _HAS_QT:
                 elif comp_val < 0:
                     item.setForeground(QBrush(QColor("#ff3366")))
             item.setTextAlignment(Qt.AlignCenter)
+            from src.gui.main_tabs.indicator_panel_surface import (
+                comp_skipped_tooltip,
+            )
+
+            item.setToolTip(comp_skipped_tooltip(tf_data))
             table.setItem(row, col, item)
 
         def _populate_conf_cell(self, table, row, col, tf_data) -> None:

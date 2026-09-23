@@ -2,16 +2,41 @@
 
 ``PORTFOLIOS`` maps each name to a ``Portfolio`` holding its symbols and equal
 ``weights``. ``PERIODS`` carries the six windows the archive addressed them
-over, and ``is_crypto`` routes a symbol to the crypto or the non-crypto
-historical price source. Nothing here reads or writes price data.
+over and ``TEST_RUN_SPAN``, the live fleet's own run from ``TEST_RUN_START``,
+whose end ``period_window`` reads as the current UTC day; ``is_crypto`` routes
+a symbol to the crypto or the non-crypto
+historical price source. ``asset_class`` names a symbol's class in the words
+``sizing.CITED_UNIT_RULES`` is keyed by and ``trading_venue`` the venue
+Acervator trades that class on, so ``sizing.unit_rule`` can answer the pair.
+Nothing here reads or writes price data.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Optional
+
+from ..trading.scrumming.sizing import CLASS_CRYPTO, CLASS_STOCKS
 
 ARCHIVE_SOURCE: str = "RAIntSimBat_standalone"
 """The archive every definition in this module was read out of."""
+
+STOCKS_VENUE: str = "alpaca"
+"""The ``SUPPORTED_BROKERS`` key of the one broker connector, ``AlpacaConnector``."""
+
+TEST_RUN_SPAN: str = "2026 test run"
+"""The span label of the live fleet's own run, every bot on 5m from
+``TEST_RUN_START``."""
+
+TEST_RUN_START: str = "2026-04-01"
+"""The UTC day the live fleet's test run began."""
+
+
+def today_utc() -> str:
+    """The current UTC day as ``YYYY-MM-DD``."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
 
 PERIODS: dict[str, tuple[str, str]] = {
     "2020": ("2020-01-01", "2020-12-31"),
@@ -20,8 +45,22 @@ PERIODS: dict[str, tuple[str, str]] = {
     "Apr23-Apr24": ("2023-04-01", "2024-04-01"),
     "Apr24-Apr25": ("2024-04-01", "2025-04-01"),
     "Apr25-Apr26": ("2025-04-01", "2026-04-01"),
+    TEST_RUN_SPAN: (TEST_RUN_START, today_utc()),
 }
-"""Each archive period label mapped to its ``(start, end)`` UTC dates."""
+"""Each archive period label mapped to its ``(start, end)`` UTC dates, then
+``TEST_RUN_SPAN`` ending on the day this module loaded; ``period_window``
+reads that end again at call time."""
+
+
+def period_window(span: str) -> Optional[tuple[str, str]]:
+    """``PERIODS[span]`` with ``TEST_RUN_SPAN``'s end read as ``today_utc``
+    now, or None for a label ``PERIODS`` does not hold."""
+    window = PERIODS.get(str(span))
+    if window is None:
+        return None
+    if str(span) == TEST_RUN_SPAN:
+        return (window[0], today_utc())
+    return window
 
 
 @dataclass(frozen=True)
@@ -29,26 +68,84 @@ class Portfolio:
     """One named basket of ``symbols`` from ``ARCHIVE_SOURCE``.
 
     The archive committed the same capital to every symbol it ran, so
-    ``weights`` divides one share equally across ``symbols``.
+    ``weights`` divides one share equally across ``symbols`` unless ``mix``
+    names a different known percentage per symbol; ``positions_usd`` carries
+    the known dollar size of each historical position, and no archive entry
+    records one.
     """
 
     name: str
     symbols: tuple[str, ...]
     description: str
     source: str = ARCHIVE_SOURCE
+    mix: Optional[dict[str, float]] = None
+    positions_usd: Optional[dict[str, float]] = None
 
     @property
     def weights(self) -> dict[str, float]:
-        """Return each symbol's equal share of one, or ``{}`` for no symbols."""
+        """Return each symbol's share of one: ``mix`` normalised over
+        ``symbols`` when it is given and sums above zero, else equal shares;
+        ``{}`` for no symbols."""
         if not self.symbols:
             return {}
+        if self.mix:
+            shares = {
+                symbol: float(self.mix.get(symbol, 0.0)) for symbol in self.symbols
+            }
+            whole = sum(shares.values())
+            if whole > 0.0:
+                return {symbol: share / whole for symbol, share in shares.items()}
         share = 1.0 / len(self.symbols)
         return {symbol: share for symbol in self.symbols}
+
+    @property
+    def sizes_known(self) -> bool:
+        """True when ``positions_usd`` names every symbol at a size above
+        zero."""
+        if not self.positions_usd or not self.symbols:
+            return False
+        return all(
+            float(self.positions_usd.get(symbol, 0.0)) > 0.0 for symbol in self.symbols
+        )
 
 
 def is_crypto(symbol: str) -> bool:
     """True when ``symbol`` is in ``CRYPTO_SYMBOLS``, case-insensitively."""
     return symbol.upper() in CRYPTO_SYMBOLS
+
+
+def crypto_venues() -> frozenset[str]:
+    """Every exchange id ``SUPPORTED_EXCHANGES`` names, the venues that list
+    only crypto."""
+    from ..exchange.ccxt_connector import SUPPORTED_EXCHANGES
+
+    return frozenset(SUPPORTED_EXCHANGES)
+
+
+def asset_class(symbol: str, exchange_id: str = "") -> Optional[str]:
+    """``symbol``'s class: ``CLASS_CRYPTO`` for a ``CRYPTO_SYMBOLS`` name or any
+    symbol on a ``crypto_venues`` exchange, ``CLASS_STOCKS`` for every other
+    ``SYMBOLS`` name, None for a symbol neither the archive nor a crypto venue
+    names."""
+    name = str(symbol or "").upper()
+    if name in CRYPTO_SYMBOLS:
+        return CLASS_CRYPTO
+    if name in SYMBOLS:
+        return CLASS_STOCKS
+    if str(exchange_id or "") in crypto_venues():
+        return CLASS_CRYPTO
+    return None
+
+
+def trading_venue(class_name: Optional[str], exchange_id: str = "") -> str:
+    """The venue Acervator trades ``class_name`` on: the bot's own
+    ``exchange_id`` for crypto, ``STOCKS_VENUE`` for stocks, empty for any
+    other class."""
+    if class_name == CLASS_CRYPTO:
+        return str(exchange_id or "")
+    if class_name == CLASS_STOCKS:
+        return STOCKS_VENUE
+    return ""
 
 
 def symbols_for(portfolio_name: str) -> tuple[str, ...]:
@@ -427,8 +524,16 @@ __all__ = [
     "CRYPTO_SYMBOLS",
     "PERIODS",
     "PORTFOLIOS",
+    "STOCKS_VENUE",
     "SYMBOLS",
+    "TEST_RUN_SPAN",
+    "TEST_RUN_START",
     "Portfolio",
+    "asset_class",
+    "crypto_venues",
     "is_crypto",
+    "period_window",
     "symbols_for",
+    "today_utc",
+    "trading_venue",
 ]

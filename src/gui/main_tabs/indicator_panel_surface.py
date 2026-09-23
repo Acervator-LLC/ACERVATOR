@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ...exchange.timeframes import ALL_TIMEFRAMES
+
 METHOD = "indicator_panel.state"
 
 LOGGER_NAME = "acervator.gui"
@@ -138,6 +140,9 @@ CONFIDENCE_FORMAT = "{symbol} {value:.0%}"
 NET_FORMAT = "{value:+.2f}"
 COMP_FORMAT = "{value:+.2f}"
 COMP_ABSENT_TEXT = "—"
+COMP_SKIPPED_FORMAT = (
+    "Left out of Comp, at or below this bot's TA Timeframe: {timeframes}"
+)
 CONF_FORMAT = "{bar} {value:.0%}"
 
 CONF_BAR_FILLED = "█"
@@ -245,7 +250,7 @@ BARS_SIZE_POLICY = ["Expanding", "Expanding"]
 PANEL_SIZE_POLICY = ["Expanding", "Expanding"]
 
 #: Timeframes in the order the table lists them; anything else sorts last.
-TIMEFRAME_ORDER = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]
+TIMEFRAME_ORDER = list(ALL_TIMEFRAMES)
 UNKNOWN_TIMEFRAME_RANK = 99
 
 BOT_SELECTED_TOPIC = "indicator.bot_selected"
@@ -467,18 +472,42 @@ def net_cell(tf_data: dict) -> dict:
     return {"text": NET_FORMAT.format(value=net), "text_color": color}
 
 
+def comp_skipped_tooltip(tf_data: dict) -> str:
+    """The Comp cell's note naming the phantoms left out of the composite.
+
+    Empty while ``composite_skipped`` names none.
+    """
+    skipped = (tf_data or {}).get("composite_skipped") or []
+    if not skipped:
+        return ""
+    return COMP_SKIPPED_FORMAT.format(timeframes=", ".join(str(one) for one in skipped))
+
+
 def comp_cell(tf_data: dict) -> dict:
-    """The Comp column's cell, an em-dash on a row carrying no composite."""
+    """The Comp column's cell, an em-dash on a row carrying no composite.
+
+    Carries ``comp_skipped_tooltip`` so a phantom the composite refused is
+    named on the cell the operator reads.
+    """
+    tooltip = comp_skipped_tooltip(tf_data)
     comp = (tf_data or {}).get("composite_net")
     if comp is None:
-        return {"text": COMP_ABSENT_TEXT, "text_color": ABSENT_TEXT_COLOR}
+        return {
+            "text": COMP_ABSENT_TEXT,
+            "text_color": ABSENT_TEXT_COLOR,
+            "tooltip": tooltip,
+        }
     value = _number(comp)
     color = None
     if value > 0:
         color = BULLISH_TEXT_COLOR
     elif value < 0:
         color = BEARISH_TEXT_COLOR
-    return {"text": COMP_FORMAT.format(value=value), "text_color": color}
+    return {
+        "text": COMP_FORMAT.format(value=value),
+        "text_color": color,
+        "tooltip": tooltip,
+    }
 
 
 def conf_cell(tf_data: dict) -> dict:
@@ -674,8 +703,8 @@ HEADER_TOOLTIPS = {
         "Composite Net — parent Net rank-weighted with all "
         "active higher-TF phantom bot summaries. "
         "Phantoms boost (bullish) or suppress (bearish) "
-        "the parent's signal only when Phantom Balance "
-        "Bots are enabled and have completed their first "
+        "the parent's signal only when Phantom Bots "
+        "are enabled and have completed their first "
         "signal cycle. Populated on the parent bot's TF "
         "row only; phantom TF rows read “—”."
     ),
@@ -689,13 +718,16 @@ HEADER_TOOLTIPS = {
 }
 
 
-def column_titles(subset: list) -> list:
+def column_titles(subset: list, *, include_aggregates: bool = False) -> list:
     """TF and ``subset``, padded to PANEL_COLUMN_COUNT.
 
-    AGGREGATE_TITLES name the pillars at their bases and nowhere else, so a
-    header cell over a collated column carries EMPTY_TITLE.
+    ``include_aggregates`` heads the collated columns with AGGREGATE_TITLES,
+    which the table carrying the aggregate cells asks for; the other table
+    pads with EMPTY_TITLE so a title is printed once over each pillar.
     """
     titles = [TF_COLUMN_TITLE] + [short for _, short, _ in subset]
+    pad = AGGREGATE_TITLES if include_aggregates else []
+    titles = titles + list(pad)
     return titles + [EMPTY_TITLE] * (PANEL_COLUMN_COUNT - len(titles))
 
 
@@ -710,7 +742,9 @@ class IndicatorTableModel:
     def __init__(self, subset: list, *, include_aggregates: bool) -> None:
         self.subset = list(subset)
         self.include_aggregates = bool(include_aggregates)
-        self.titles = column_titles(self.subset)
+        self.titles = column_titles(
+            self.subset, include_aggregates=self.include_aggregates
+        )
         self.rows: list = []
 
     def column_count(self) -> int:
@@ -981,6 +1015,18 @@ def rate_strip_text(snapshot: Optional[dict]) -> str:
     return RATE_STRIP_JOIN.join(parts) + tail
 
 
+def no_data_text(multi_tf_summary: dict, message: str) -> str:
+    """``message`` through ``NO_DATA_FORMAT``, or empty while a summary exists.
+
+    A panel drawing a reading says nothing, so ``show_stored`` keeps its
+    ``no_data_message`` for ``staleness_line`` without raising this line.
+    """
+    summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
+    if summary or not message:
+        return EMPTY_TEXT
+    return NO_DATA_FORMAT.format(message=message)
+
+
 def collected_locks(multi_tf_summary: dict) -> list:
     """Every active lock the summary carries, in timeframe order."""
     summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
@@ -1229,7 +1275,9 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "rule_rgb": list(BARS_BASELINE_RGB),
             "pad_fraction": PILLAR_PAD_FRACTION,
             "glow_alpha": PILLAR_GLOW_ALPHA,
+            "glow_inset_px": BARS_GLOW_INSET_PX,
             "label_rgb": list(BARS_LABEL_RGB),
+            "label_font": list(BARS_LABEL_FONT),
             "colors": {name: list(rgb) for name, rgb in BAR_COLORS.items()},
             "gradient_alphas": list(BARS_GRADIENT_ALPHAS),
             "gradient_stops": list(BARS_GRADIENT_STOPS),
@@ -1272,6 +1320,7 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "cause": model.no_data_cause,
             "message": model.no_data_message,
             "format": NO_DATA_FORMAT,
+            "text": no_data_text(model.summary, model.no_data_message),
         },
         "showing_stored": model.showing_stored,
     }

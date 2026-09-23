@@ -46,6 +46,7 @@
   var MAXIMUM_BLOCK_COUNT = "maximum_block_count";
 
   var STAMP = "stamp";
+  var STAMP_TEXT = "stamp_text";
   var MESSAGE = "message";
   var LEVEL = "level";
   var KIND = "kind";
@@ -279,17 +280,23 @@
     var messageProps = {};
     messageProps[PART_ATTR] = MESSAGE_PART;
 
+    // An unstamped line carries no span and no gap, as `notice` appends it.
+    var painted = text(line[STAMP_TEXT]);
+    var body = element(
+      bodyTag(line),
+      bodyProps,
+      element(SPAN_TAG, bulletProps, text(line[BULLET])),
+      element(SPAN_TAG, messageProps, text(line[MESSAGE]))
+    );
+    if (painted === EMPTY) {
+      return element(DIV_TAG, lineProps, body);
+    }
     return element(
       DIV_TAG,
       lineProps,
-      element(SPAN_TAG, stampProps, text(line[STAMP])),
+      element(SPAN_TAG, stampProps, painted),
       GAP,
-      element(
-        bodyTag(line),
-        bodyProps,
-        element(SPAN_TAG, bulletProps, text(line[BULLET])),
-        element(SPAN_TAG, messageProps, text(line[MESSAGE]))
-      )
+      body
     );
   }
 
@@ -519,8 +526,31 @@
     return report();
   }
 
-  // One round trip per page, and a failed ask is not remembered.
+  // Keeps the lines already held and adds the batch `model` carries, so the
+  // pane spools the way the Qt document does.
+  function takeLog(model) {
+    if (!isPlainObject(model)) {
+      return setLog(model);
+    }
+    var kept = held === null ? [] : documentLines(held.model).slice();
+    var joined = kept.concat(documentLines(model));
+    var cap = Number(objectField(model, WIDGET)[MAXIMUM_BLOCK_COUNT]);
+    if (cap > 0 && joined.length > cap) {
+      joined = joined.slice(joined.length - cap);
+    }
+    var merged = copyOf(model);
+    var carried = {};
+    carried[LINES] = joined;
+    merged[DOCUMENT] = carried;
+    return setLog(merged);
+  }
+
+  // One round trip per page, and a failed ask is not remembered. A model
+  // already held answers without a second ask, so a redraw keeps its lines.
   function loadLog(params) {
+    if (held !== null) {
+      return Promise.resolve(held.model);
+    }
     if (asked !== null) {
       return asked;
     }
@@ -755,9 +785,11 @@
   }
 
   global.acervatorSetLog = setLog;
+  global.acervatorTakeLog = takeLog;
   global.acervatorLoadLog = loadLog;
   global.acervatorLog = {
     method: METHOD,
+    take: takeLog,
     Log: Log,
     Line: Line,
     Placeholder: Placeholder,

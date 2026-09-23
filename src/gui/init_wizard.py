@@ -10,6 +10,12 @@ from . import design_system as ds
 
 logger = logging.getLogger("acervator.gui")
 
+# QTextEdit has no setEchoMode, so the secret row hides its text through the style sheet.
+SECRET_HIDDEN_STYLE = (
+    "color: transparent; selection-color: transparent; "
+    f"placeholder-text-color: {ds.TEXT_PLACEHOLDER};"
+)
+
 try:
     from PySide6.QtWidgets import (
         QWizard,
@@ -184,6 +190,7 @@ if _HAS_QT:
             self.addPage(page3)
 
             self.currentIdChanged.connect(self._on_page_changed)
+            self._toggle_visibility(self._show_key.isChecked())
 
         def _on_skip(self) -> None:
             """Skip the entire setup process."""
@@ -197,13 +204,7 @@ if _HAS_QT:
             mode = QLineEdit.Normal if show else QLineEdit.Password
             self._api_key.setEchoMode(mode)
             self._passphrase.setEchoMode(mode)
-            # QTextEdit doesn't have echo mode - use font color trick
-            if show:
-                self._api_secret.setStyleSheet("")
-            else:
-                self._api_secret.setStyleSheet(
-                    "color: transparent; background-selection-color: transparent;"
-                )
+            self._api_secret.setStyleSheet("" if show else SECRET_HIDDEN_STYLE)
 
         def _on_page_changed(self, page_id: int) -> None:
             if page_id == 2:

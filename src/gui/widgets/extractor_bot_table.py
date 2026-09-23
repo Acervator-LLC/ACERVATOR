@@ -92,6 +92,18 @@ if _HAS_QT:
             self._on_bot_clicked = on_bot_clicked
             self._bot_ids = []
 
+        def sizeHint(self):  # noqa: N802
+            """The header plus every row, so a stretch of 0 shows whole rows.
+
+            ``ExchangeTab`` adds this table at ``EXTRACTOR_TABLE_STRETCH``, so the
+            page hands it this height and gives the Scrumming table the rest.
+            """
+            hint = super().sizeHint()
+            rows = sum(self.rowHeight(row) for row in range(self.rowCount()))
+            frame = 2 * self.frameWidth()
+            hint.setHeight(self.horizontalHeader().height() + rows + frame)
+            return hint
+
         def update_bots(self, bot_statuses: list[dict]) -> None:
             # Read before `setRowCount` and the `_bot_ids` rebuild
             # discard the old row-to-bot mapping.
@@ -155,7 +167,9 @@ if _HAS_QT:
                         try:
                             from ..bot_wizard import _get_coin_icon
 
-                            icon = _get_coin_icon(text, 18, download=False)
+                            icon = _get_coin_icon(
+                                text, ds.COIN_ICON_SIZE_PX, download=False
+                            )
                             if icon:
                                 item.setIcon(icon)
                         except Exception:  # noqa: S110

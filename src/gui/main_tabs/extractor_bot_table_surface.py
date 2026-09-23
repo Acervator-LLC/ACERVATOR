@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 
 from .. import design_system as ds
+from ..color_alpha import coin_disc_color
 
 METHOD = "extractor_bot_table.state"
 
@@ -414,6 +415,8 @@ def row_values(status: dict) -> dict:
     brushes: list = []
     tooltips: list = []
     icons: list = []
+    icon_colors: list = []
+    icon_letters: list = []
     for column in range(COLUMN_COUNT):
         if column in BUTTON_COLUMNS:
             texts.append(MISSING_TEXT)
@@ -422,11 +425,16 @@ def row_values(status: dict) -> dict:
             brushes.append(UNSET_BRUSH)
             tooltips.append(EMPTY_TIP)
             icons.append(False)
+            icon_colors.append(EMPTY_TIP)
+            icon_letters.append(EMPTY_TIP)
             continue
         value = values[column]
         texts.append(cell_text(value))
         types.append(cell_type(value))
-        icons.append(column == ICON_COLUMN and icon_shown(value))
+        shown = column == ICON_COLUMN and icon_shown(value)
+        icons.append(shown)
+        icon_colors.append(coin_disc_color(value) if shown else EMPTY_TIP)
+        icon_letters.append(str(value)[:1] if shown else EMPTY_TIP)
         if column == COL_MODE:
             colors.append(state_color(state))
             brushes.append(SET_BRUSH)
@@ -450,6 +458,8 @@ def row_values(status: dict) -> dict:
         "brushes": brushes,
         "tooltips": tooltips,
         "icons": icons,
+        "icon_colors": icon_colors,
+        "icon_letters": icon_letters,
         "buttons": buttons(),
         "state": state,
         "pool_color_name": pool_color_name,
@@ -674,6 +684,7 @@ def build_payload(model: ExtractorBotTableModel) -> dict:
         "coloured_columns": list(COLOURED_COLUMNS),
         "stretch_columns": list(STRETCH_COLUMNS),
         "icon_column": ICON_COLUMN,
+        "icon_size": ds.COIN_ICON_SIZE_PX,
         "items_per_selected_row": ITEMS_PER_SELECTED_ROW,
         "state_colors": dict(STATE_COLORS),
         "pool_colors": dict(POOL_COLORS),

@@ -47,7 +47,7 @@
   var TEXTS = "texts";
   var THREAD_COUNT = "thread_count";
   var THRESHOLDS = "thresholds";
-  var TIMEFRAME_CHECKS = "timeframe_checks";
+  var TIMEFRAME_COMBO = "timeframe_combo";
   var TIMEFRAME_GROUP = "timeframe_group";
   var TIMEFRAME_HINT = "timeframe_hint";
   var TIMEFRAMES = "timeframes";
@@ -99,7 +99,7 @@
     TEXTS,
     THREAD_COUNT,
     THRESHOLDS,
-    TIMEFRAME_CHECKS,
+    TIMEFRAME_COMBO,
     TIMEFRAME_GROUP,
     TIMEFRAME_HINT,
     TIMEFRAMES,
@@ -134,6 +134,7 @@
     TABLE_RULES,
     TEXTS,
     THRESHOLDS,
+    TIMEFRAME_COMBO,
     TIMEFRAME_GROUP,
     TIMEFRAME_HINT,
     TIMERS
@@ -149,16 +150,15 @@
     FALLBACK_TIMEFRAMES,
     STEPS,
     SUMMARY_ROWS,
-    TIMEFRAME_CHECKS,
     TIMEFRAMES,
     TIMER_DELAYS_MS
   ];
 
   // ACTION_NAMES lists the three settings, so no bag key order pairs them.
   var ENABLE_TOGGLED = "phantom_enable.toggled";
-  var TIMEFRAME_TOGGLED = "timeframe_check.toggled";
+  var TIMEFRAME_PICKED = "timeframe_combo.changed";
   var LOCK_MOVED = "lock_spin.valueChanged";
-  var ACTION_NAMES = [ENABLE_TOGGLED, TIMEFRAME_TOGGLED, LOCK_MOVED];
+  var ACTION_NAMES = [ENABLE_TOGGLED, TIMEFRAME_PICKED, LOCK_MOVED];
 
   var TITLE = "title";
   var TEXT = "text";
@@ -171,6 +171,10 @@
   var CONFIGURED_BY_HOST = "configured_by_host";
   var CONFIGURED = "configured";
   var ROW_LABEL = "row_label";
+  var ITEMS = "items";
+  var CURRENT = "current";
+  var PARENT = "parent";
+  var REFUSAL = "refusal";
   var MINIMUM = "minimum";
   var MAXIMUM = "maximum";
   var REQUESTED = "requested";
@@ -225,6 +229,8 @@
   var ROW_TAG = "tr";
   var HEAD_CELL_TAG = "th";
   var CELL_TAG = "td";
+  var SELECT_TAG = "select";
+  var OPTION_TAG = "option";
   var CHECKBOX_TYPE = "checkbox";
   var NUMBER_TYPE = "number";
 
@@ -238,10 +244,11 @@
   var TIMEFRAME_GROUP_PART = "timeframe-group";
   var TIMEFRAME_TITLE_PART = "timeframe-group-title";
   var TIMEFRAME_HINT_PART = "timeframe-hint";
-  var TIMEFRAME_STRIP_PART = "timeframe-strip";
-  var TIMEFRAME_ROW_PART = "timeframe-check-row";
-  var TIMEFRAME_CHECK_PART = "timeframe-check";
-  var TIMEFRAME_TEXT_PART = "timeframe-check-text";
+  var TIMEFRAME_ROW_PART = "timeframe-row";
+  var TIMEFRAME_LABEL_PART = "timeframe-label";
+  var TIMEFRAME_SELECT_PART = "timeframe-select";
+  var TIMEFRAME_OPTION_PART = "timeframe-option";
+  var TIMEFRAME_REFUSAL_PART = "timeframe-refusal";
   var LOCK_GROUP_PART = "lock-group";
   var LOCK_TITLE_PART = "lock-group-title";
   var LOCK_ROW_PART = "lock-row";
@@ -315,6 +322,7 @@
   var VALUE_ATTR = "data-value";
   var HOST_ATTR = "data-configured-by-host";
   var MATCHED_ATTR = "data-matched";
+  var PARENT_ATTR = "data-parent";
   var MARGINS_ATTR = "data-margins-set";
   var ALTERNATING_ATTR = "data-alternating";
   var RESIZE_ATTR = "data-resize-mode";
@@ -338,7 +346,6 @@
   var FLEX = "flex";
   var ROW_DIRECTION = "row";
   var COLUMN_DIRECTION = "column";
-  var WRAP = "wrap";
   var FULL = "100%";
   var COLLAPSE = "collapse";
   var NOWRAP = "nowrap";
@@ -499,19 +506,24 @@
     return ACTION_NAMES.slice();
   }
 
-  function timeframeChecks() {
-    return listField(model(), TIMEFRAME_CHECKS);
+  function timeframeCombo() {
+    return objectField(model(), TIMEFRAME_COMBO);
+  }
+
+  function timeframeItems() {
+    var held = timeframeCombo()[ITEMS];
+    return Array.isArray(held) ? held.slice() : [];
   }
 
   function timeframeNames() {
-    return timeframeChecks().map(function (one) {
+    return timeframeItems().map(function (one) {
       return Array.isArray(one) ? text(one[ZERO]) : undefined;
     });
   }
 
-  // One timeframe switch found by its own name, never by where it sits.
+  // One timeframe entry found by its own name, never by where it sits.
   function timeframeNamed(name) {
-    var found = timeframeChecks().filter(function (one) {
+    var found = timeframeItems().filter(function (one) {
       return Array.isArray(one) && text(one[ZERO]) === text(name);
     });
     var one = found.shift();
@@ -520,10 +532,17 @@
     }
     return {
       name: text(one[ZERO]),
-      checked: one[STEP] === true,
-      supported: one[STEP + STEP] === true,
-      tooltip: one[STEP + STEP + STEP]
+      supported: one[STEP] === true,
+      tooltip: one[STEP + STEP]
     };
+  }
+
+  function timeframeCurrent() {
+    return text(timeframeCombo()[CURRENT]);
+  }
+
+  function timeframeRefusal() {
+    return text(timeframeCombo()[REFUSAL]);
   }
 
   // Whether the exchange serves this timeframe, matched by name.
@@ -535,15 +554,10 @@
     );
   }
 
-  // The timeframes ticked now, in the order the strip draws them.
+  // The one timeframe the picker holds, as the list a change carries.
   function pickedTimeframes() {
-    return timeframeChecks()
-      .filter(function (one) {
-        return Array.isArray(one) && one[STEP] === true;
-      })
-      .map(function (one) {
-        return text(one[ZERO]);
-      });
+    var held = timeframeCurrent();
+    return held === EMPTY ? [] : [held];
   }
 
   function summaryRows() {
@@ -721,20 +735,20 @@
     });
   }
 
-  // Eleven switches against eight served timeframes, paired by name alone.
+  // Eleven entries against eight served timeframes, paired by name alone.
   function checkTimeframes(found) {
     var named = listField(found, TIMEFRAMES).map(function (one) {
       return text(one);
     });
     var drawn = timeframeNames();
     if (Boolean(drawn.length) && String(named) !== String(drawn)) {
-      tabFaults.push(fault(null, TIMEFRAME_CHECKS, DISAGREES_FAULT, drawn.length));
+      tabFaults.push(fault(null, TIMEFRAME_COMBO, DISAGREES_FAULT, drawn.length));
     }
     drawn.forEach(function (name, at) {
       var one = timeframeNamed(name);
       var where = TIMEFRAME_AT + String(name);
       if (one === undefined) {
-        tabFaults.push(fault(where, TIMEFRAME_CHECKS, UNPLACED_FAULT, at));
+        tabFaults.push(fault(where, TIMEFRAME_COMBO, UNPLACED_FAULT, at));
         return;
       }
       if (one.supported !== isAllowed(name)) {
@@ -742,10 +756,11 @@
           fault(where, ALLOWED_TIMEFRAMES, DISAGREES_FAULT, one.supported)
         );
       }
-      if (one.checked && !one.supported) {
-        tabFaults.push(fault(where, TIMEFRAME_CHECKS, DISAGREES_FAULT, one.checked));
-      }
     });
+    var held = timeframeCurrent();
+    if (drawn.length && held !== EMPTY && drawn.indexOf(held) < ZERO) {
+      tabFaults.push(fault(null, CURRENT, UNPLACED_FAULT, held));
+    }
   }
 
   // Four status rows, each found by the label the payload names it with.
@@ -855,13 +870,14 @@
         });
       });
     });
-    timeframeChecks().forEach(function (one) {
+    timeframeItems().forEach(function (one) {
       (Array.isArray(one) ? one : []).forEach(function (value) {
         if (typeof value === "string") {
-          words.push([TIMEFRAME_CHECKS, value]);
+          words.push([TIMEFRAME_COMBO, value]);
         }
       });
     });
+    words.push([TIMEFRAME_COMBO, timeframeRefusal()]);
     return words;
   }
 
@@ -950,60 +966,57 @@
     );
   }
 
-  function TimeframeCheck(props) {
+  function TimeframeOption(props) {
     var one = props.one;
-    var rowProps = {
+    var optionProps = {
       className: TAB_CLASS,
-      style: { display: FLEX, flexDirection: ROW_DIRECTION, alignItems: CENTER }
-    };
-    rowProps[PART_ATTR] = TIMEFRAME_ROW_PART;
-    rowProps[KEY_ATTR] = text(one.name);
-    var boxProps = {
-      className: TAB_CLASS,
-      type: CHECKBOX_TYPE,
-      checked: one.checked,
+      value: text(one.name),
       disabled: !one.supported,
-      title: label(one.tooltip),
-      onChange: function (event) {
-        pressTimeframe(one.name, event.target.checked, props.onTimeframe);
-      }
+      title: label(one.tooltip)
     };
-    boxProps[PART_ATTR] = TIMEFRAME_CHECK_PART;
-    boxProps[KEY_ATTR] = text(one.name);
-    boxProps[CHECKED_ATTR] = String(one.checked);
-    boxProps[ENABLED_ATTR] = String(one.supported);
-    boxProps[ACTION_ATTR] = label(action(TIMEFRAME_TOGGLED));
-    boxProps[STEP_ATTR] = text(stepFor(TIMEFRAME_TOGGLED));
-    boxProps[ARIA_LABEL] = label(one.tooltip);
-    var wordsProps = { className: TAB_CLASS };
-    wordsProps[PART_ATTR] = TIMEFRAME_TEXT_PART;
-    wordsProps[KEY_ATTR] = text(one.name);
-    return element(
-      DIV_TAG,
-      rowProps,
-      element(INPUT_TAG, boxProps),
-      element(SPAN_TAG, wordsProps, text(one.name))
-    );
+    optionProps[PART_ATTR] = TIMEFRAME_OPTION_PART;
+    optionProps[KEY_ATTR] = text(one.name);
+    optionProps[ENABLED_ATTR] = String(one.supported);
+    return element(OPTION_TAG, optionProps, text(one.name));
   }
 
   function TimeframeGroup(props) {
     var found = props.model;
+    var combo = objectField(found, TIMEFRAME_COMBO);
     var groupProps = {
       className: TAB_CLASS,
       style: { display: FLEX, flexDirection: COLUMN_DIRECTION }
     };
     groupProps[PART_ATTR] = TIMEFRAME_GROUP_PART;
-    groupProps[COUNT_ATTR] = String(timeframeChecks().length);
-    var stripProps = {
+    groupProps[COUNT_ATTR] = String(timeframeItems().length);
+    var rowProps = {
       className: TAB_CLASS,
-      style: { display: FLEX, flexDirection: ROW_DIRECTION, flexWrap: WRAP }
+      style: { display: FLEX, flexDirection: ROW_DIRECTION, alignItems: CENTER }
     };
-    stripProps[PART_ATTR] = TIMEFRAME_STRIP_PART;
+    rowProps[PART_ATTR] = TIMEFRAME_ROW_PART;
+    var labelProps = { className: TAB_CLASS };
+    labelProps[PART_ATTR] = TIMEFRAME_LABEL_PART;
+    var selectProps = {
+      className: TAB_CLASS,
+      value: timeframeCurrent(),
+      title: label(combo[TOOLTIP]),
+      onChange: function (event) {
+        pressTimeframe(event.target.value, props.onTimeframe);
+      }
+    };
+    selectProps[PART_ATTR] = TIMEFRAME_SELECT_PART;
+    selectProps[VALUE_ATTR] = timeframeCurrent();
+    selectProps[PARENT_ATTR] = text(combo[PARENT]);
+    selectProps[ACTION_ATTR] = label(action(TIMEFRAME_PICKED));
+    selectProps[STEP_ATTR] = text(stepFor(TIMEFRAME_PICKED));
+    selectProps[ARIA_LABEL] = label(combo[TOOLTIP]);
+    var refusalProps = { className: TAB_CLASS };
+    refusalProps[PART_ATTR] = TIMEFRAME_REFUSAL_PART;
+    refusalProps[SHOWN_ATTR] = String(timeframeRefusal() !== EMPTY);
     var drawn = timeframeNames().map(function (name) {
-      return element(TimeframeCheck, {
+      return element(TimeframeOption, {
         key: String(name),
-        one: timeframeNamed(name),
-        onTimeframe: props.onTimeframe
+        one: timeframeNamed(name)
       });
     });
     return element(
@@ -1020,7 +1033,13 @@
         model: found,
         field: TIMEFRAME_HINT
       }),
-      element(DIV_TAG, stripProps, drawn)
+      element(
+        DIV_TAG,
+        rowProps,
+        element(SPAN_TAG, labelProps, text(combo[ROW_LABEL])),
+        element(SELECT_TAG, selectProps, drawn)
+      ),
+      element(SPAN_TAG, refusalProps, timeframeRefusal())
     );
   }
 
@@ -1367,18 +1386,14 @@
     return found;
   }
 
-  function pressTimeframe(name, checked, then) {
+  function pressTimeframe(name, then) {
     var one = timeframeNamed(name);
     if (one === undefined || !one.supported) {
       return null;
     }
-    var found = press(TIMEFRAME_TOGGLED, [
-      stepFor(TIMEFRAME_TOGGLED),
-      one.name,
-      checked === true
-    ]);
+    var found = press(TIMEFRAME_PICKED, [stepFor(TIMEFRAME_PICKED), one.name]);
     if (typeof then === "function") {
-      then([one.name, checked === true]);
+      then(one.name);
     }
     return found;
   }
@@ -1476,7 +1491,7 @@
       },
       held: {
         fields: heldFieldCount(found),
-        timeframes: timeframeChecks().length,
+        timeframes: timeframeItems().length,
         phantoms: rowsOf(PHANTOM_KIND).length,
         locks: rowsOf(LOCKS_KIND).length,
         columns: columnsOf(PHANTOM_KIND).length,
@@ -1667,9 +1682,12 @@
     cellStyle: cellStyle,
     isPainted: isPainted,
     noCellColour: noCellColour,
-    timeframeChecks: timeframeChecks,
+    timeframeCombo: timeframeCombo,
+    timeframeItems: timeframeItems,
     timeframeNames: timeframeNames,
     timeframeNamed: timeframeNamed,
+    timeframeCurrent: timeframeCurrent,
+    timeframeRefusal: timeframeRefusal,
     isAllowed: isAllowed,
     pickedTimeframes: pickedTimeframes,
     summaryRows: summaryRows,

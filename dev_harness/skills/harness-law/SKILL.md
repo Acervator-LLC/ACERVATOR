@@ -5,8 +5,72 @@ description: Load at the START of any turn that will write, edit, or review code
 
 # Harness law
 
+**Load these with it, now, before anything else. This skill is the door, not
+the room.** Operator, 2026-09-13, watching it load alone: *"It should be making
+you load all the other skills."*
+
+| load | it governs |
+|---|---|
+| `acervator` | the address book: which manual page, issue or skill holds a fact |
+| `ground-to-issue-and-manual` | the only three sources allowed |
+| `ocir` | a zero is a claim about the instrument; calibrate before trusting |
+| `w5h` | the six questions, answered before the work |
+| `hyper-refocus` | every line checked against the item before it is reported |
+| `canonized-code-testing` | you run a named tool; you author no test |
+| `no-detours` | the work is the item, and nothing beside it |
+| `file-passes-only` | what a report may contain |
+
+Four more when the work reaches them: `archetype-peer-review` for a second
+verdict, `branch-discipline` before a branch, `unit-decomposition` before a
+split, `two-sided-control` before trusting any check.
+
+Loading one and working from memory of the rest is how a rule gets obeyed in
+spirit and broken in fact.
+
+
 The harness is the authority. Not your judgement, not a delta, not a
 green gate.
+
+## THE GATE IS `tools/local_ci.py`, AND IT RUNS BEFORE EVERY MERGE
+
+Operator, 2026-09-13, after catching seven merges that skipped it:
+*"We built our own local CI. You are supposed to be running canonized tests.
+Do not make me repeat this again."*
+
+```bash
+python -m tools.local_ci --all
+```
+
+It runs the lanes `.github/workflows/ci.yml` states, on this machine, at four
+workers and never `auto`. **Its verdict line is quoted in the report, before
+and after.** A merge with no quoted verdict did not happen.
+
+**What must pass:** every lane that can report. Operator, 2026-09-13: *"Only
+care that the canonized tests pass and our workflow and harness do not get
+violated or deviated from."*
+
+`fast` and `full` exit 5 with nothing collected, because the test files were
+removed on purpose in `05449360`. Those two lanes report on a tree that holds no
+test, so they read FAIL for a reason that is not the change under it. **Quote
+them anyway, every time, as known-empty.** Never write a test to turn them
+green, and never drop them from the run to make the verdict read better. When
+the test tree returns, they report again and this paragraph goes.
+
+**GitHub's own CI is disabled** — `gh workflow list` reads `CI
+disabled_manually`, and the runs stopped on billing. That is why the local one
+exists. It is not an excuse to merge ungated; it is the reason the local gate is
+the gate.
+
+### What happened when it was skipped
+
+Seven pull requests merged in one afternoon on archetype verdicts alone. The
+gate, run afterwards, read **FAILED**: black would reformat 22 files, flake8
+found three, and two of the three were in files merged that day — an unused
+import beside its own redefinition, and a blank-line error. Every one would have
+been caught before it landed.
+
+An archetype verdict is not the gate. The archetype reads one file; the gate
+reads the tree.
 
 ## The four permanent rules
 

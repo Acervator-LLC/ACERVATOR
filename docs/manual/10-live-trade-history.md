@@ -842,39 +842,20 @@ draw their lights from that one function, so both surfaces name the same gates
 in the same order. The labels themselves, and the indicator readings behind
 them, are in [the indicator reference](07-indicators.md).
 
-`src/trading/gate_coverage.py` pairs each fill with the nearest gate entry for
-the same bot and gives it one status out of six. The tolerance is 300 seconds,
-one five-minute candle either side of the fill, and a fill that finds an entry
-inside that window has a gate. The reported coverage counts only those.
+`lookup_gate_entry` in `src/exchange/history_helpers.py` pairs each fill with
+the nearest gate entry for the same bot. The tolerance is 60 seconds either
+side of the fill, and a fill that finds an entry inside that window carries its
+gate. A fill that finds none carries no gate.
 
 ```python
-DEFAULT_TOLERANCE_S: float = 300.0
-LOG_GAP_THRESHOLD_S: float = 1800.0
+JOIN_TOLERANCE_SECONDS = 60.0
 
 
-class GateStatus:
-    HAS_GATE = "has_gate"
-    BEFORE_LOGGING = "before_logging"
-    LOG_GAP = "log_gap"
-    NO_GATE_FOR_BOT = "no_gate_for_bot"
-    NO_GATE_DATA = "no_gate_data"
-    NO_GATE_IN_TOLERANCE = "no_gate_in_tolerance"
+def gate_cell_text(entry: Optional[dict]) -> str:
+    if not entry:
+        return "no record"
 ```
 
-`classify_trades` returns the pairings and `GateCoverageReport.coverage_pct`
-gives the percentage.
-
-The five statuses that are not a gate each name a different reason a fill has
-none. A fill the log could not have seen and a fill the log should have seen
-are different findings, and the report keeps them apart rather than folding
-both into one coverage shortfall.
-
-| Status | What it marks |
-| --- | --- |
-| before_logging | a fill older than the first gate entry |
-| log_gap | a fill inside a silence longer than 1,800 seconds, six candles |
-| no_gate_in_tolerance | a bot logging either side of the fill but not inside the window |
-| no_gate_for_bot | a bot with no entries at all |
-| no_gate_data | a run given no gate log |
-
-`format_coverage_lines` renders the counts, one line per status.
+A fill with no entry reads "no record" in the Gates column, and its tooltip
+says no gate record joined to the trade. Nothing measures coverage over a set
+of fills, and nothing names a reason a fill has no gate.

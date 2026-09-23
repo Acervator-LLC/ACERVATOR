@@ -1,11 +1,14 @@
 """Slingshot -- volatility squeeze plus directional snapback.
 
 ``SlingshotIndicator`` implements Carter's TTM squeeze with Bollinger's
-band rules. It builds ``tr_all``, the Donchian midline and
-``_linreg_endpoint`` from raw candles.
+band rules. ``_bars`` builds ``tr_all``, the Donchian midline and
+``_linreg_endpoint`` from raw candles into one row per bar; ``compute``
+votes off the last rows and ``lines`` marks every bar for a chart.
 """
 
 from __future__ import annotations
+
+from typing import NamedTuple, Optional
 
 from .types import (
     SignalDirection,
@@ -16,6 +19,99 @@ from .helpers import (
     _stdev_tail,
     _window_has_no_range,
 )
+
+#: The ``_bars`` row: close, upper band, lower band, mid, bandwidth,
+#: squeeze on, momentum and the Keltner range.
+_Row = tuple[float, float, float, float, float, bool, float, float]
+
+#: The row fields ``_release_at`` and ``_snapback_at`` read.
+ROW_CLOSE = 0
+ROW_UPPER = 1
+ROW_LOWER = 2
+ROW_SQZ_ON = 5
+ROW_MOMENTUM = 6
+
+BULLISH_SNAPBACK = "bullish_snapback"
+BEARISH_SNAPBACK = "bearish_snapback"
+
+#: No snapback at a bar: no type, no confidence, no break bar.
+NO_SNAPBACK = ("", 0.0, -1)
+
+
+class SlingshotBar(NamedTuple):
+    """One candle's Slingshot reading: the squeeze state, the release and
+    snapback marks the vote reads at that bar, and the momentum that signs
+    a release."""
+
+    sqz_on: bool
+    released: bool
+    snapback: str
+    momentum: float
+
+
+#: One entry per candle, ``None`` before ``bb_period`` bars.
+_Line = list[Optional[SlingshotBar]]
+
+
+def _release_at(rows: list, k: int) -> bool:
+    """StockCharts: the squeeze releases when the bands expand back outside
+    the Keltner Channel, the ``sqz_on`` -> not ``sqz_on`` transition at row ``k``."""
+    if k < 1 or rows[k] is None or rows[k - 1] is None:
+        return False
+    return bool(rows[k - 1][ROW_SQZ_ON] and not rows[k][ROW_SQZ_ON])
+
+
+def _snapback_at(rows: list, k: int, lookback: int) -> tuple:
+    """Bollinger rule 8 at row ``k``: a close outside a band within
+    ``lookback`` bars, back inside now; ``(type, confidence, break row)``."""
+    current = rows[k]
+    if current is None:
+        return NO_SNAPBACK
+    curr_close, curr_up, curr_lo = (
+        current[ROW_CLOSE],
+        current[ROW_UPPER],
+        current[ROW_LOWER],
+    )
+    for idx in range(k - lookback + 1, k):
+        if idx < 1 or idx >= len(rows) or rows[idx] is None:
+            continue
+
+        past_close, past_up, past_lo = (
+            rows[idx][ROW_CLOSE],
+            rows[idx][ROW_UPPER],
+            rows[idx][ROW_LOWER],
+        )
+
+        if past_close < past_lo:
+            if curr_close > curr_lo:
+                # The branch puts `past_close` under `past_lo`, and
+                # `candles_from_raw` keeps it above zero.
+                penetration = (past_lo - past_close) / past_lo
+                midward = curr_close > past_close
+                return (
+                    BULLISH_SNAPBACK,
+                    max(
+                        0.0,
+                        min(1.0, penetration * 8 + (0.2 if midward else 0.0) + 0.35),
+                    ),
+                    idx,
+                )
+
+        elif past_close > past_up:
+            if curr_close < curr_up:
+                # `past_up` is `mid` plus a non-negative deviation, so
+                # it carries `mid`'s positive sign.
+                penetration = (past_close - past_up) / past_up
+                midward = curr_close < past_close
+                return (
+                    BEARISH_SNAPBACK,
+                    max(
+                        0.0,
+                        min(1.0, penetration * 8 + (0.2 if midward else 0.0) + 0.35),
+                    ),
+                    idx,
+                )
+    return NO_SNAPBACK
 
 
 class SlingshotIndicator:
@@ -90,35 +186,26 @@ class SlingshotIndicator:
         intercept = (sum_y - slope * sum_x) / n
         return intercept + slope * (n - 1)
 
-    def compute(self, candles: list, timeframe: str = "1h") -> Signal:
-        """Vote on ``candles``: the squeeze release first, the snapback second.
+    def _bars(self, candles: list, start: int) -> list:
+        """One ``_Row`` per bar from ``start`` on, ``None`` under ``bb_period``.
 
-        Returns an abstaining :class:`Signal` when the tape is shorter than
-        the formula needs, or when the window it reads carries no price
-        range and every volatility denominator below is therefore zero.
+        Each row holds the close, the Bollinger bands, the bandwidth, the
+        Bollinger-inside-Keltner squeeze, the ``_linreg_endpoint`` momentum
+        and the Keltner range; the SMA, deviation and True Range SMA are
+        computed only for the ``tail`` those rows read.
         """
         n = len(candles)
-        min_len = self.bb_period + self.squeeze_lookback + 2
-        if n < min_len:
-            return Signal(
-                "slingshot",
-                timeframe,
-                SignalDirection.NEUTRAL,
-                0.0,
-                self.weight,
-                abstained=True,
-            )
-
         closes = [c.close for c in candles]
+        first = max(int(start), 0)
         # `_need` covers the delta loop, which reaches `bb_period` bars
-        # below the `bb` loop.
-        _need = self.squeeze_lookback + 5 + self.bb_period
+        # below the row loop.
+        _need = (n - first) + self.bb_period
         sma_v = _sma_tail(closes, self.bb_period, tail=_need)
         std_v = _stdev_tail(closes, self.bb_period, tail=_need)
 
         # Carter's Keltner leg needs True Range; `tr_all` computes it
         # without `ATRIndicator`.
-        tr_all = [candles[0].high - candles[0].low]
+        tr_all = [candles[0].high - candles[0].low] if n else []
         for i in range(1, n):
             c = candles[i]
             prev_close = candles[i - 1].close
@@ -127,8 +214,7 @@ class SlingshotIndicator:
             )
         trma_v = _sma_tail(tr_all, self.bb_period, tail=_need)
 
-        win = self.squeeze_lookback + 5
-        delta_lo = max(0, n - win - self.bb_period)
+        delta_lo = max(0, first - self.bb_period)
         deltas: dict = {}
         for i in range(delta_lo, n):
             j0 = max(0, i - self.bb_period + 1)
@@ -138,8 +224,8 @@ class SlingshotIndicator:
             sma_i = sma_v[i]
             deltas[i] = closes[i] - (donchian_mid + sma_i) / 2.0
 
-        bb = []
-        for i in range(n - win, n):
+        rows: list = [None] * n
+        for i in range(first, n):
             if i < self.bb_period:
                 continue
             mid = sma_v[i]
@@ -159,7 +245,50 @@ class SlingshotIndicator:
                 deltas[k] for k in range(max(delta_lo, i - self.bb_period + 1), i + 1)
             ]
             val = self._linreg_endpoint(seg)
-            bb.append((candles[i].close, up, lo, mid, bw, sqz_on, val, rangema))
+            rows[i] = (candles[i].close, up, lo, mid, bw, sqz_on, val, rangema)
+        return rows
+
+    def lines(self, candles: list) -> _Line:
+        """One ``SlingshotBar`` per candle, for a chart to mark the releases and snapbacks.
+
+        ``_release_at`` and ``_snapback_at`` read the same ``_bars`` rows the
+        vote reads, so a mark on the chart is a bar the vote would have
+        fired on.
+        """
+        rows = self._bars(candles, 0)
+        out: _Line = [None] * len(rows)
+        for k, row in enumerate(rows):
+            if row is None:
+                continue
+            out[k] = SlingshotBar(
+                sqz_on=bool(row[ROW_SQZ_ON]),
+                released=_release_at(rows, k),
+                snapback=_snapback_at(rows, k, self.snapback_lookback)[0],
+                momentum=float(row[ROW_MOMENTUM]),
+            )
+        return out
+
+    def compute(self, candles: list, timeframe: str = "1h") -> Signal:
+        """Vote on ``candles``: the squeeze release first, the snapback second.
+
+        Returns an abstaining :class:`Signal` when the tape is shorter than
+        the formula needs, or when the window it reads carries no price
+        range and every volatility denominator below is therefore zero.
+        """
+        n = len(candles)
+        min_len = self.bb_period + self.squeeze_lookback + 2
+        if n < min_len:
+            return Signal(
+                "slingshot",
+                timeframe,
+                SignalDirection.NEUTRAL,
+                0.0,
+                self.weight,
+                abstained=True,
+            )
+
+        win = self.squeeze_lookback + 5
+        bb = [row for row in self._bars(candles, n - win) if row is not None]
 
         if len(bb) < self.squeeze_lookback:
             return Signal(
@@ -219,11 +348,10 @@ class SlingshotIndicator:
         min_recent_bw = min(b[4] for b in bb[-4:])
         squeeze_depth = max(0.0, avg_bw - min_recent_bw) / avg_bw
 
-        # StockCharts: the squeeze releases when the bands expand back
-        # outside the Keltner Channel, the sqzOn -> not sqzOn transition.
+        # The most recent `_release_at` row in the window.
         fire_idx = -1
         for k in range(last, 0, -1):
-            if bb[k - 1][5] and not bb[k][5]:
+            if _release_at(bb, k):
                 fire_idx = k
                 break
 
@@ -231,7 +359,7 @@ class SlingshotIndicator:
         # The release stays live for `snapback_lookback` bars, so a later
         # snapback confirms the same fire.
         squeeze_live = 0 <= bars_since_fire <= self.snapback_lookback
-        fire_val = bb[fire_idx][6] if fire_idx >= 0 else 0.0
+        fire_val = bb[fire_idx][ROW_MOMENTUM] if fire_idx >= 0 else 0.0
 
         # Direction at the fire is the sign of `fire_val`, never the
         # price's own side of the midline.
@@ -246,44 +374,9 @@ class SlingshotIndicator:
 
         # Bollinger rule 8: a close outside the band is continuation; the
         # close back inside is the signal.
-        snapback_type = ""
-        snapback_conf = 0.0
-        snapback_break_idx = -1
-
-        for j in range(-self.snapback_lookback, -1):
-            idx = len(bb) + j
-            if idx < 1 or idx >= len(bb):
-                continue
-
-            past_close, past_up, past_lo, past_mid = bb[idx][:4]
-
-            if past_close < past_lo:
-                if curr_close > curr_lo:
-                    # The branch puts `past_close` under `past_lo`, and
-                    # `candles_from_raw` keeps it above zero.
-                    penetration = (past_lo - past_close) / past_lo
-                    midward = curr_close > past_close
-                    snapback_conf = max(
-                        0.0,
-                        min(1.0, penetration * 8 + (0.2 if midward else 0.0) + 0.35),
-                    )
-                    snapback_type = "bullish_snapback"
-                    snapback_break_idx = idx
-                    break
-
-            elif past_close > past_up:
-                if curr_close < curr_up:
-                    # `past_up` is `mid` plus a non-negative deviation, so
-                    # it carries `mid`'s positive sign.
-                    penetration = (past_close - past_up) / past_up
-                    midward = curr_close < past_close
-                    snapback_conf = max(
-                        0.0,
-                        min(1.0, penetration * 8 + (0.2 if midward else 0.0) + 0.35),
-                    )
-                    snapback_type = "bearish_snapback"
-                    snapback_break_idx = idx
-                    break
+        snapback_type, snapback_conf, snapback_break_idx = _snapback_at(
+            bb, last, self.snapback_lookback
+        )
 
         # Squeeze takes precedence (predictive); snapback is reactive.
         direction = SignalDirection.NEUTRAL

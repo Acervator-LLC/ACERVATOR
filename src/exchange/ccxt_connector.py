@@ -6,6 +6,7 @@ CCXT-backed :class:`ExchangeInterface` for the venues in ``SUPPORTED_EXCHANGES``
 
 from __future__ import annotations
 
+from ..core.encryption import unescape_pem_newlines
 from ..core.fmt import fmt_price_coerced
 from ..core.retry import linear_delay, retry_any, retry_sync, with_retry
 from ..core.safe_url import SafeRequest, safe_urlopen
@@ -37,6 +38,9 @@ MEM_220_CALL_TIMEOUT_SEC: float = 25.0
 
 # ccxt caps a coinbase fetch_ohlcv page at this many candles.
 EFFECTIVE_OHLCV_PAGE_SIZE = 300
+
+# get_spot_positions answers from _spot_positions_cache within this many seconds.
+SPOT_POSITIONS_CACHE_SEC: float = 60.0
 
 
 class CCXTQueueFullError(RuntimeError):
@@ -235,6 +239,7 @@ class CCXTConnector(ExchangeInterface):
         self._ccxt_sync: Any = None  # ccxt (sync) exchange instance
         self._connected = False
         self._markets_cache: list[AssetInfo] | None = None
+        self._spot_positions_cache: tuple[float, dict] | None = None
         self._last_request_time: float = 0.0
         self._min_request_interval: float = 0.1
 
@@ -333,18 +338,12 @@ class CCXTConnector(ExchangeInterface):
         _log = get_api_log()
 
         # --- Coinbase CDP key PEM newline fix ---
+        # A secret stored before the dialog converted on the way in still
+        # arrives escaped, so this repeats the conversion and changes nothing
+        # when the stored secret already carries real newlines.
         if self._exchange_id == "coinbase" and api_secret:
-            if "\\n" in api_secret:
-                api_secret = api_secret.replace("\\n", "\n")
-                config["secret"] = api_secret
-            if "BEGIN EC PRIVATE KEY" in api_secret and "\n" not in api_secret.strip():
-                api_secret = api_secret.replace(
-                    "-----BEGIN EC PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----\n"
-                )
-                api_secret = api_secret.replace(
-                    "-----END EC PRIVATE KEY-----", "\n-----END EC PRIVATE KEY-----\n"
-                )
-                config["secret"] = api_secret
+            api_secret = unescape_pem_newlines(api_secret)
+            config["secret"] = api_secret
 
             is_cdp = api_key.startswith("organizations/")
             # Log the last four characters only, never the key prefix.
@@ -1230,6 +1229,74 @@ class CCXTConnector(ExchangeInterface):
                 )
                 continue
         return result
+
+    async def get_spot_positions(self) -> Optional[dict]:
+        """The venue's open spot positions keyed by asset, from ccxt ``fetch_portfolio_details``.
+
+        None when the ccxt exchange has no ``fetch_portfolios``, when a call
+        raises, or when no portfolio answers; a positive answer is held for
+        ``SPOT_POSITIONS_CACHE_SEC``. Positions for one asset across several
+        portfolios sum, and ``avg_entry_price`` is that sum's cost over balance.
+        """
+        from .base import SpotPosition
+
+        self._ensure_connected()
+        if not hasattr(self._ex, "fetch_portfolios") or not hasattr(
+            self._ex, "fetch_portfolio_details"
+        ):
+            return None
+        cached = self._spot_positions_cache
+        if cached is not None and time.time() - cached[0] < SPOT_POSITIONS_CACHE_SEC:
+            return cached[1]
+        try:
+            await self._rate_limit()
+            portfolios = await self._call_sync(self._ex.fetch_portfolios)
+            positions: dict = {}
+            answered = 0
+            for entry in portfolios or []:
+                uuid = str(entry.get("id", "") or "")
+                if not uuid:
+                    continue
+                await self._rate_limit()
+                rows = await self._call_sync(self._ex.fetch_portfolio_details, uuid)
+                answered += 1
+                for row in rows or []:
+                    if row.get("is_cash"):
+                        continue
+                    asset = str(row.get("currency", "") or "")
+                    if not asset:
+                        continue
+                    basis = float(row.get("cost_basis", 0) or 0)
+                    balance = float(row.get("total_balance_crypto", 0) or 0)
+                    unrealized = float(row.get("unrealized_pnl", 0) or 0)
+                    avg = float(row.get("average_entry_price", 0) or 0)
+                    held = positions.get(asset)
+                    if held is None:
+                        positions[asset] = SpotPosition(
+                            asset=asset,
+                            cost_basis_usd=basis,
+                            avg_entry_price=avg,
+                            unrealized_pnl_usd=unrealized,
+                            balance=balance,
+                            raw=dict(row),
+                        )
+                        continue
+                    held.cost_basis_usd += basis
+                    held.unrealized_pnl_usd += unrealized
+                    held.balance += balance
+                    if held.balance > 0:
+                        held.avg_entry_price = held.cost_basis_usd / held.balance
+        except Exception as exc:
+            logger.warning(
+                "get_spot_positions: %s portfolio breakdown failed: %s",
+                self._exchange_id,
+                exc,
+            )
+            return None
+        if answered == 0:
+            return None
+        self._spot_positions_cache = (time.time(), positions)
+        return positions
 
     # -- Asset discovery ------------------------------------------------
     @_with_retry()

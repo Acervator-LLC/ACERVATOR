@@ -4,8 +4,7 @@
 ``gate.log``, ``voting.log`` and ``diagnostics.log`` under ``get_trade_dir()``,
 with the ``acervator`` logger going to ``system.log`` under
 ``get_console_dir()``. ``PnLCascade`` writes one file per day under
-``get_pnl_dir()``, and ``build_weekly``, ``build_monthly`` and ``build_yearly``
-concatenate those days.
+``get_pnl_dir()``.
 """
 
 from __future__ import annotations
@@ -63,7 +62,6 @@ class LogEntry:
     exchange: str = ""
     bot_id: str = ""
     data: dict = field(default_factory=dict)
-    highlight: bool = False
 
     def __post_init__(self) -> None:
         if not self.timestamp:
@@ -181,16 +179,12 @@ class SizeBoundedFileHandler(RotatingFileHandler):
 class PnLCascade:
     """P/L snapshots in one directory per key of ``PERIODS``.
 
-    ``record_daily`` writes ``daily/<date>.ndjson``, and ``build_weekly``,
-    ``build_monthly`` and ``build_yearly`` each read ``daily/`` through
-    ``_concat_days``, never one another's output.
+    ``record_daily`` writes ``daily/<date>.ndjson``, and it is the only
+    writer the cascade has.
     """
 
     PERIODS = {
         "daily": 1,
-        "weekly": 7,
-        "monthly": 30,
-        "yearly": 365,
     }
 
     def __init__(self, base_dir: Path) -> None:
@@ -204,41 +198,6 @@ class PnLCascade:
         path = self._base / "daily" / f"{today}.ndjson"
         with open(path, "a", encoding="utf-8") as f:
             f.write(entry.to_json() + "\n")
-
-    def build_weekly(self, week_start: str) -> list[dict]:
-        """Concatenate 7 daily files from ``week_start``, formatted YYYY-MM-DD."""
-        return self._concat_days(week_start, 7, "weekly")
-
-    def build_monthly(self, month_start: str) -> list[dict]:
-        """Concatenate 30 daily files from ``month_start``, formatted YYYY-MM-DD."""
-        return self._concat_days(month_start, 30, "monthly")
-
-    def build_yearly(self, year_start: str) -> list[dict]:
-        """Concatenate 365 daily files from ``year_start``, formatted YYYY-MM-DD."""
-        return self._concat_days(year_start, 365, "yearly")
-
-    def _concat_days(self, start: str, count: int, output_dir: str) -> list[dict]:
-        from datetime import timedelta
-
-        start_date = datetime.strptime(start, "%Y-%m-%d")
-        entries: list[dict] = []
-        for i in range(count):
-            day = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
-            path = self._base / "daily" / f"{day}.ndjson"
-            if path.exists():
-                with open(path, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line:
-                            try:
-                                entries.append(json.loads(line))
-                            except json.JSONDecodeError:
-                                continue
-        out_path = self._base / output_dir / f"{start}_{count}d.ndjson"
-        with open(out_path, "w", encoding="utf-8") as f:
-            for e in entries:
-                f.write(json.dumps(e, separators=(",", ":")) + "\n")
-        return entries
 
 
 class LogManager:

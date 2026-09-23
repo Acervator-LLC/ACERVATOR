@@ -90,6 +90,95 @@ if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
     return text
 ```
 
+### What the venue answers, and what the platform derives
+
+The venue's portfolio breakdown answers three figures per open spot position:
+the cost basis, the average entry price and the unrealised profit. Each bot
+reads those three from the venue on every refresh and holds them as its own.
+The breakdown carries no lifetime realised figure for a spot position, so
+Realised is derived: every fill the venue holds for the bot's symbol, matched
+first in, first out, one figure per bot, summed across the fleet.
+
+`src/exchange/ccxt_connector.py` — `get_spot_positions`
+
+```python
+portfolios = await self._call_sync(self._ex.fetch_portfolios)
+rows = await self._call_sync(self._ex.fetch_portfolio_details, uuid)
+basis = float(row.get("cost_basis", 0) or 0)
+```
+
+The venue's cost basis is the check on the derivation. After the fills are
+matched, the bot logs the venue's cost basis beside the cost of the buys FIFO
+left open and beside the average-cost basis, with each gap in per cent, and
+names the closer of the two. A venue whose account uses another matching method
+shows up there as a gap on both.
+
+`src/trading/scrumming/reconciliation.py` — `_log_basis_check`
+
+```python
+_fifo_gap = abs(_fifo - float(venue_basis)) / _scale
+_avg_gap = abs(_avg - float(venue_basis)) / _scale
+_closer = "fifo" if _fifo_gap <= _avg_gap else "average"
+```
+
+A venue without a portfolio breakdown leaves the three figures to the same
+derivation, and the check does not run.
+
+`src/exchange/position_health.py` — `compute_position_health`
+
+```python
+while sell_remaining > 1e-12 and buy_queue:
+    buy_lot = buy_queue[0]
+    take = min(buy_lot[0], sell_remaining)
+    realized += (t.price - buy_lot[1]) * take
+```
+
+A sell is matched against the oldest open buy, so a sell placed above the latest
+fold and below the first buy of a market that has fallen since lowers the
+figure. Over the 2026 fill export, 1,302 of 2,653 sells lowered it and 66 were
+priced under the most recent buy.
+
+Each bot holds the complete fill history for its symbol. The first refresh pages
+the venue newest to oldest until a page comes back short; every later refresh
+fetches one page and stops at the first fill it already holds.
+
+`src/exchange/fill_history.py` — `FillHistory.refresh`
+
+```python
+if len(fills) < FILL_PAGE_LIMIT:
+    ended_short = True
+    break
+if joined:
+    break
+```
+
+Before this, one call fetched the newest 500 fills and the figure was FIFO over
+that window alone. On the two symbols past 500 fills the window read $-137.38
+and $119.91 where the complete history reads $-390.53 and $60.27.
+
+`src/trading/scrumming/reconciliation.py` — `refresh_exchange_position_health`
+
+```python
+_trades = await self.fetch_fill_history()
+if _trades is None:
+    return False
+_asset_base = self.config.symbol.split("/")[0]
+_ph = compute_position_health(_trades, _asset_base)
+```
+
+Mature applies one constant. A position counts once its value reaches its cost
+plus two hundred per cent of its cost, and the column sums the profit on the
+positions that qualify.
+
+`src/trading/smart_wire.py` — `mature_profit_usd`
+
+```python
+MATURE_GROWTH_PCT: float = 200.0
+if value < basis * (1.0 + MATURE_GROWTH_PCT / 100.0):
+    return 0.0
+return value - basis
+```
+
 ## Right: the five counter cards
 
 Five cards close the row, and each one counts a single thing.
@@ -203,6 +292,36 @@ The Simulator draws its own strip in place of this one. `SimStatStrip` in
 `src/gui/simulator_tab/sim_stat_strip.py` mirrors these ten fields against sim
 balances.
 The Simulator rebuild removed this file; it is not in the tree.
+
+### The strip stays on Sim and reads the sim fleet
+
+The Simulator rebuild took the Sim tab out of the isolated pair, so the strip
+hides on Paper alone. On Sim the same ten fields carry the Simulator's
+figures, read from the Sim tab's fleet source, and the live fleet's numbers do
+not reach the strip while Sim is in front. The window picks the fleet on every
+tick and on every tab change.
+
+`src/gui/main_tabs/main_window_surface.py` — the two tuples
+
+```python
+ISOLATED_TABS = (PAPER_TAB,)
+
+#: The tabs the header strip reads the Simulator's fleet on, not the live one.
+SIM_FED_TABS = (SIM_TAB,)
+```
+
+`src/gui/main_window.py` — `_refresh_header_strip`
+
+```python
+if self._header_strip_reads_sim():
+    sim_tab = self._simulator_tab
+    self._write_header_strip(
+        sim_tab.fleet_source().aggregate(), sim_tab.exchange_count()
+    )
+    return
+```
+
+[simulator.md](simulator.md) covers what each field reads on Sim.
 
 ## Bridge
 

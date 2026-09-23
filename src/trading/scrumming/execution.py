@@ -17,6 +17,15 @@ from ...exchange.base import OrderSide, OrderType
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
+from .sizing import (
+    FRACTIONAL_UNITS,
+    fold_units,
+    priced_usd,
+    sale_proceeds_usd,
+    scrum_units,
+    target_delta_usd,
+    wallet_capped_spend_usd,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -358,7 +367,7 @@ class ExecutionEngineMixin:
         """
         _units = float(units)
         _price = float(price)
-        _gross = _units * _price
+        _gross = priced_usd(_units, _price)
         _fee = self._take_venue_fee(_units, _price)
         _refusal = ""
         if _fee is None or not _fee.reported:
@@ -390,7 +399,7 @@ class ExecutionEngineMixin:
                 ),
             )
             return _gross
-        _net = _gross - _fee.fee_amount
+        _net = sale_proceeds_usd(_gross, _fee.fee_amount)
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -449,8 +458,8 @@ class ExecutionEngineMixin:
             )
         _qrate = float(self._quote_to_usd or 1.0)
 
-        current_value = self._current_holdings * price * _qrate
-        delta_usd = current_value - self._target_balance
+        current_value = priced_usd(self._current_holdings, price, _qrate)
+        delta_usd = target_delta_usd(current_value, self._target_balance)
         dust = manual_fire_dust_band(self._target_balance)
 
         if caller_intent != "manual_button":
@@ -510,7 +519,7 @@ class ExecutionEngineMixin:
                 return
             if delta_usd < 0:
                 _growth = float(
-                    getattr(self.config, "max_target_growth_pct", 0.0) or 0.0
+                    getattr(self.config, "max_target_growth_pct", 1.0) or 0.0
                 )
                 _ceiling = float(self._target_balance) * (1.0 + _growth / 100.0)
                 _prospective = _xvalue + abs(delta_usd)
@@ -549,7 +558,11 @@ class ExecutionEngineMixin:
 
         if delta_usd > 0:
             _denom_sc = price * _qrate
-            sell_amount = (delta_usd / _denom_sc) if _denom_sc > 0 else 0.0
+            sell_amount = (
+                scrum_units(delta_usd, _denom_sc, FRACTIONAL_UNITS)
+                if _denom_sc > 0
+                else 0.0
+            )
             sell_amount = min(sell_amount, self._current_holdings)
             if sell_amount <= 0:
                 self._bus.emit(
@@ -673,7 +686,7 @@ class ExecutionEngineMixin:
                     f"{new_tranches_count} tranche(s) queued "
                     f"(operator_initiated). Holdings now "
                     f"{self._current_holdings:.6f} "
-                    f"(~${self._current_holdings * price * float(self._quote_to_usd or 1.0):.2f})."
+                    f"(~${priced_usd(self._current_holdings, price, float(self._quote_to_usd or 1.0)):.2f})."
                 ),
             )
             self._bus.emit(
@@ -928,7 +941,7 @@ class ExecutionEngineMixin:
             _wallet_free = quote_free * _qrate
             usd_balance = _reservations.available(_wallet_key, _wallet_free)
             _held_by_others = _reservations.reserved(_wallet_key)
-            buy_usd = min(buy_usd_target, usd_balance)
+            buy_usd = wallet_capped_spend_usd(buy_usd_target, usd_balance)
             if buy_usd <= 0:
                 err_tail = f" (fetch error: {_bal_err})" if _bal_err else ""
                 held_tail = (
@@ -950,7 +963,9 @@ class ExecutionEngineMixin:
                 )
                 return
             denom = price * _qrate
-            buy_amount = (buy_usd / denom) if denom > 0 else 0.0
+            buy_amount = (
+                fold_units(buy_usd, denom, FRACTIONAL_UNITS) if denom > 0 else 0.0
+            )
             clipped = buy_usd < buy_usd_target
             self._bus.emit(
                 "bot.log",
@@ -1091,7 +1106,7 @@ class ExecutionEngineMixin:
                 message=(
                     msg + f" Holdings now "
                     f"{self._current_holdings:.6f} "
-                    f"(~${self._current_holdings * price * float(self._quote_to_usd or 1.0):.2f})."
+                    f"(~${priced_usd(self._current_holdings, price, float(self._quote_to_usd or 1.0)):.2f})."
                 ),
             )
             self.stats.total_folded_usd += float(
@@ -1162,12 +1177,16 @@ class ExecutionEngineMixin:
             return
 
         _qrate = float(self._quote_to_usd or 1.0)
-        current_value = self._current_holdings * price * _qrate
-        excess_usd = current_value - self._anchor_target_balance
+        current_value = priced_usd(self._current_holdings, price, _qrate)
+        excess_usd = target_delta_usd(current_value, self._anchor_target_balance)
         if excess_usd <= 0:
             return
 
-        sell_amount = excess_usd / (price * _qrate) if (price * _qrate) > 0 else 0.0
+        sell_amount = (
+            scrum_units(excess_usd, price * _qrate, FRACTIONAL_UNITS)
+            if (price * _qrate) > 0
+            else 0.0
+        )
         sell_amount = min(sell_amount, self._current_holdings)
         if sell_amount <= 0:
             return
@@ -1411,14 +1430,31 @@ class ExecutionEngineMixin:
                 total_holdings=float(self._current_holdings or 0),
             )
             if amount > _crr_effective + 1e-12:
+                try:
+                    _crr_holders = ", ".join(
+                        f"{r.bot_id} holds {r.qty:.6f}"
+                        for r in _crr_reg.reservations_for(
+                            asset=self.config.target_asset,
+                            excluding_bot_id=self.bot_id,
+                        )
+                    )
+                except Exception as _crr_who:  # noqa: BLE001
+                    # Must not raise: the outer except turns a refusal into a sell.
+                    _crr_holders = ""
+                    logger.debug(
+                        "Bot %s could not list claim holders on %s: %s",
+                        self.bot_id,
+                        self.config.target_asset,
+                        _crr_who,
+                    )
                 _crr_msg = (
                     f"SELL REFUSED (capital reservation, v3.20.2): "
                     f"requested {amount:.6f} {self.config.target_asset} but "
                     f"only {_crr_effective:.6f} available to this bot — "
-                    f"other bots hold reservations on this asset. "
                     f"_current_holdings={float(self._current_holdings or 0):.6f}; "
-                    f"check Settings → Capital Reservations or "
-                    f"force_release if a reservation is stale."
+                    f"claimed by "
+                    f"{_crr_holders or 'a bot the registry cannot name'}. "
+                    f"Stopping a named bot releases its claim."
                 )
                 self._bus.emit("bot.log", bot_id=self.bot_id, message=_crr_msg)
                 self._emit_trade_notification(
@@ -1436,11 +1472,16 @@ class ExecutionEngineMixin:
                 )
                 return None
         except Exception as _crr_exc:
-            logger.debug(
-                "Bot %s capital reservation pre-check raised %s — "
-                "falling through to existing gates; v3.20.1 backstop "
-                "remains active.",
+            # The only reader of another bot's claim; without it this sell is
+            # bounded by _current_holdings alone.
+            logger.warning(
+                "Bot %s sell of %.6f %s is NOT bounded by any other bot's "
+                "capital reservation: the pre-check raised %s: %s. A sibling "
+                "bot's claim on this asset is invisible to this sell.",
                 self.bot_id,
+                amount,
+                self.config.target_asset,
+                type(_crr_exc).__name__,
                 _crr_exc,
             )
 
@@ -1685,8 +1726,8 @@ class ExecutionEngineMixin:
             _ctx = dict(trace_context or {})
             _path = _ctx.get("path", "unspecified")
             _holdings = self._current_holdings
-            _value = _holdings * price * float(self._quote_to_usd or 1.0)
-            _delta = _value - self._target_balance
+            _value = priced_usd(_holdings, price, float(self._quote_to_usd or 1.0))
+            _delta = target_delta_usd(_value, self._target_balance)
             _tranches_n = len(self._fold_tranches)
             _main_lots_n = len(self._main_lots)
             _ctx_extras = ", ".join(f"{k}={v}" for k, v in _ctx.items() if k != "path")
@@ -1892,11 +1933,11 @@ class ExecutionEngineMixin:
             if _smart_ceiling_usd is not None and _smart_ceiling_usd > 0:
                 if _projected_position_usd > _smart_ceiling_usd:
                     _reason = (
-                        f"MEM-251 v2 LAYER 2 (SMART CEILING) BREACH — "
+                        f"MEM-251 v2 LAYER 2 (POSITION CEILING) BREACH — "
                         f"buy REFUSED. Path={_path}. Projected position "
-                        f"${_projected_position_usd:.2f} > Smart Ceiling "
+                        f"${_projected_position_usd:.2f} > Position Ceiling "
                         f"${_smart_ceiling_usd:.2f} (anchor "
-                        f"${_anchor:.2f} × multiple "
+                        f"${_anchor:.2f} × Ceiling Multiple "
                         f"{self.config.position_ceiling_multiple}). "
                         f"Bot has reached configured maturity — no further "
                         f"acquisition until detonation harvests grown "
@@ -1907,7 +1948,7 @@ class ExecutionEngineMixin:
                     return None
 
         try:
-            amount = cost / price
+            amount = fold_units(cost, price, FRACTIONAL_UNITS)
             if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                 amount = amount / _qrate_buy
 
@@ -1934,7 +1975,7 @@ class ExecutionEngineMixin:
                 self.stats.verify_clean += 1
             else:
                 self.stats.verify_adjusted += 1
-                amount = cost / vh_fp
+                amount = fold_units(cost, vh_fp, FRACTIONAL_UNITS)
                 if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                     amount = amount / _qrate_buy
 

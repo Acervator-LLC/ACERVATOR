@@ -15,7 +15,6 @@
   var EMPTY_TEXT = "empty_text";
   var FETCHED = "fetched";
   var FIELDS = "fields";
-  var FOLDING_PAGE = "folding_page";
   var FORMATS = "formats";
   var GROUPS = "groups";
   var ICON = "icon";
@@ -67,7 +66,6 @@
     EMPTY_TEXT,
     FETCHED,
     FIELDS,
-    FOLDING_PAGE,
     FORMATS,
     GROUPS,
     ICON,
@@ -110,7 +108,6 @@
     ASSET_PAGE,
     CONFIG,
     FIELDS,
-    FOLDING_PAGE,
     FORMATS,
     GROUPS,
     ICON,
@@ -191,7 +188,6 @@
   var INFO_BUTTON_STYLE = "info_button_style";
   var TARGET_MINIMUM_WIDTH_PX = "target_minimum_width_px";
   var ALT_ITEMS = "alt_items";
-  var ALT_CHECKED = "alt_checked";
   var ALT_LIST_MINIMUM_HEIGHT_PX = "alt_list_minimum_height_px";
   var ALT_LIST_ACCESSIBLE_NAME = "alt_list_accessible_name";
 
@@ -234,18 +230,16 @@
   // NULLABLE_FIELDS names the values a healthy payload may carry as null.
   var NULLABLE_FIELDS = [INFO_BOX, WARNING_BOX, TARGET_DATA];
 
-  // The six page names the payload keys its titles, rows and groups by.
+  // The five page names the payload keys its titles, rows and groups by.
   var ASSET_PAGE_NAME = "asset";
   var MODE_PAGE_NAME = "mode";
   var PARAMS_PAGE_NAME = "params";
-  var FOLDING_PAGE_NAME = "folding";
   var PHANTOM_PAGE_NAME = "phantom";
   var POOL_PAGE_NAME = "extractor_pool";
   var PAGE_NAMES_READ = [
     ASSET_PAGE_NAME,
     MODE_PAGE_NAME,
     PARAMS_PAGE_NAME,
-    FOLDING_PAGE_NAME,
     PHANTOM_PAGE_NAME,
     POOL_PAGE_NAME
   ];
@@ -254,18 +248,13 @@
   var POOL_EXCHANGE_TIP = "pool_exchange";
   var EXCHANGE_STEP = "exchange_index";
   var POOL_EXCHANGE_STEP = "pool_exchange_index";
-  var ALT_CHECKS_STEP = "alt_checks";
   var PHANTOM_TIMEFRAMES_STEP = "phantom_timeframes";
-  var SELECT_ALL_STEP = "select_all";
-  var CLEAR_ALL_STEP = "clear_all";
   var SHOW_INFO_STEP = "show_info";
 
   var TA_COMBO = "ta_combo";
   var DESCRIPTION_SUFFIX = "_description";
   var ALT_HEADING = "alt_list_heading";
   var PHANTOM_HEADING = "phantom_timeframes_heading";
-  var SELECT_ALL_KEY = "select_all";
-  var CLEAR_ALL_KEY = "clear_all";
   var INFO_KEY = "info";
 
   var PAGE_AT = "page:";
@@ -320,11 +309,7 @@
   var INFO_BOX_PART = "info-box";
   var ALT_LIST_PART = "alt-list";
   var ALT_ROW_PART = "alt-row";
-  var ALT_CHECK_PART = "alt-check";
   var ALT_TEXT_PART = "alt-text";
-  var BUTTON_ROW_PART = "button-row";
-  var SELECT_ALL_PART = "select-all";
-  var CLEAR_ALL_PART = "clear-all";
   var TIMEFRAME_STRIP_PART = "timeframe-strip";
   var TIMEFRAME_ROW_PART = "timeframe-row";
   var TIMEFRAME_CHECK_PART = "timeframe-check";
@@ -666,14 +651,6 @@
     return listField(bag(POOL_PAGE), ALT_ITEMS);
   }
 
-  function altChecked() {
-    return listField(bag(POOL_PAGE), ALT_CHECKED);
-  }
-
-  function altCheckedAt(at) {
-    var found = altChecked();
-    return at < found.length ? found[at] === true : false;
-  }
 
   function timeframeNames() {
     return listField(bag(PHANTOM_PAGE), TIMEFRAMES).slice();
@@ -905,10 +882,6 @@
   function checkAlts(found) {
     var pool = objectField(found, POOL_PAGE);
     var items = listField(pool, ALT_ITEMS);
-    var ticks = listField(pool, ALT_CHECKED);
-    if (items.length !== ticks.length) {
-      wizardFaults.push(fault(null, ALT_CHECKED, SHORT_LIST_FAULT, items.length));
-    }
     var seen = {};
     items.forEach(function (one, at) {
       var named = Array.isArray(one) ? text(one[STEP]) : undefined;
@@ -1362,22 +1335,11 @@
     body[PART_ATTR] = ALT_ROW_PART;
     body[NAME_ATTR] = props.name;
     body[INDEX_ATTR] = String(props.at);
-    body[CHECKED_ATTR] = String(Boolean(props.checked));
-    var boxBody = { key: ALT_CHECK_PART, type: CHECKBOX_TYPE, checked: props.checked === true };
-    boxBody[PART_ATTR] = ALT_CHECK_PART;
-    boxBody[NAME_ATTR] = props.name;
-    boxBody[INDEX_ATTR] = String(props.at);
-    boxBody[ARIA_LABEL] = label(props.label);
-    boxBody.onChange = function (event) {
-      if (props.onAlt) {
-        props.onAlt(props.at, event.target.checked === true);
-      }
-    };
+    body[ARIA_LABEL] = label(props.label);
     var wordBody = { key: ALT_TEXT_PART };
     wordBody[PART_ATTR] = ALT_TEXT_PART;
     wordBody[NAME_ATTR] = props.name;
     return element(DIV_TAG, body, [
-      element(INPUT_TAG, boxBody),
       element(SPAN_TAG, wordBody, text(props.label))
     ]);
   }
@@ -1408,37 +1370,10 @@
             key: String(at),
             at: at,
             name: text(one[STEP]),
-            label: text(one[ZERO]),
-            checked: props.checkedAt(at),
-            onAlt: props.onAlt
+            label: text(one[ZERO])
           });
         })
       )
-    );
-    var buttonsBody = { key: BUTTON_ROW_PART };
-    buttonsBody[PART_ATTR] = BUTTON_ROW_PART;
-    buttonsBody.style = { display: FLEX, flexDirection: ROW_DIRECTION };
-    var allBody = { key: SELECT_ALL_PART, type: BUTTON_TAG };
-    allBody[PART_ATTR] = SELECT_ALL_PART;
-    allBody.title = label(props.selectAllTip);
-    allBody.onClick = function () {
-      if (props.onSelectAll) {
-        props.onSelectAll();
-      }
-    };
-    var clearBody = { key: CLEAR_ALL_PART, type: BUTTON_TAG };
-    clearBody[PART_ATTR] = CLEAR_ALL_PART;
-    clearBody.title = label(props.clearAllTip);
-    clearBody.onClick = function () {
-      if (props.onClearAll) {
-        props.onClearAll();
-      }
-    };
-    pieces.push(
-      element(DIV_TAG, buttonsBody, [
-        element(BUTTON_TAG, allBody, text(props.selectAllText)),
-        element(BUTTON_TAG, clearBody, text(props.clearAllText))
-      ])
     );
     return pieces;
   }
@@ -1614,19 +1549,11 @@
       return PoolBody({
         rows: rows,
         items: altItems(),
-        checkedAt: altCheckedAt,
         status: pool[STATUS],
         heading: labelText(ALT_HEADING),
         headingName: ALT_HEADING,
         listName: pool[ALT_LIST_ACCESSIBLE_NAME],
-        minimumHeight: pool[ALT_LIST_MINIMUM_HEIGHT_PX],
-        selectAllText: buttonText(SELECT_ALL_KEY),
-        clearAllText: buttonText(CLEAR_ALL_KEY),
-        selectAllTip: toolTip(SELECT_ALL_KEY),
-        clearAllTip: toolTip(CLEAR_ALL_KEY),
-        onAlt: handlers.onAlt,
-        onSelectAll: handlers.onSelectAll,
-        onClearAll: handlers.onClearAll
+        minimumHeight: pool[ALT_LIST_MINIMUM_HEIGHT_PX]
       });
     }
     if (name === PHANTOM_PAGE_NAME) {
@@ -1841,16 +1768,6 @@
     return press(name, step);
   }
 
-  function pressAlt(at, value, then) {
-    var step = {};
-    step[ALT_CHECKS_STEP] = {};
-    step[ALT_CHECKS_STEP][String(at)] = value;
-    if (then) {
-      then(at, value);
-    }
-    return press(String(at), step);
-  }
-
   function pressTimeframe(name, value, then) {
     var step = {};
     step[PHANTOM_TIMEFRAMES_STEP] = {};
@@ -2016,7 +1933,7 @@
         rows: placedFieldCount(found),
         timeframes: Object.keys(objectField(objectField(found, PHANTOM_PAGE), CHECKED))
           .length,
-        alts: listField(objectField(found, POOL_PAGE), ALT_CHECKED).length,
+        alts: listField(objectField(found, POOL_PAGE), ALT_ITEMS).length,
         actions: Object.keys(objectField(found, ACTIONS)).length,
         steps: listField(objectField(found, WALK), STEPS).length
       },
@@ -2166,9 +2083,6 @@
       onText: function (name, value) {
         pressText(name, value, wired.onText);
       },
-      onAlt: function (at, value) {
-        pressAlt(at, value, wired.onAlt);
-      },
       onTimeframe: function (name, value) {
         pressTimeframe(name, value, wired.onTimeframe);
       },
@@ -2180,12 +2094,6 @@
       },
       onInfo: function () {
         pressButton(SHOW_INFO_STEP, wired.onInfo);
-      },
-      onSelectAll: function () {
-        pressButton(SELECT_ALL_STEP, wired.onSelectAll);
-      },
-      onClearAll: function () {
-        pressButton(CLEAR_ALL_STEP, wired.onClearAll);
       },
       onWalk: function (name) {
         var moved = pressWalk(name, wired.onWalk);
@@ -2295,7 +2203,6 @@
     isWrapped: isWrapped,
     targetItems: targetItems,
     altItems: altItems,
-    altChecked: altChecked,
     timeframeNames: timeframeNames,
     timeframeChecked: timeframeChecked,
     timeframeEnabled: timeframeEnabled,
@@ -2312,7 +2219,6 @@
     pressFlag: pressFlag,
     pressIndex: pressIndex,
     pressText: pressText,
-    pressAlt: pressAlt,
     pressTimeframe: pressTimeframe,
     pressTarget: pressTarget,
     pressVenue: pressVenue,

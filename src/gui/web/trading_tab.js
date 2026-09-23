@@ -955,9 +955,18 @@
     return element(DIV_TAG, stackProps, drawn);
   }
 
-  // The panel Qt draws beside the stack, kept as a named empty host.
+  // The panel Qt draws beside the stack, kept as a named empty host. The
+  // column lets indicator_panel.js take the pane height its 1fr rows divide.
   function IndicatorPanel() {
-    var panelProps = { style: { flex: AUTO, overflow: AUTO } };
+    var panelProps = {
+      style: {
+        flex: AUTO,
+        overflow: AUTO,
+        display: FLEX,
+        flexDirection: COLUMN,
+        minHeight: ZERO
+      }
+    };
     panelProps[PART_ATTR] = INDICATOR_PART;
     panelProps[SLOT_ATTR] = INDICATOR_PART;
     return element(DIV_TAG, panelProps, null);

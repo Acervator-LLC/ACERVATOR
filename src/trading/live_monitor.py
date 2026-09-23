@@ -7,7 +7,7 @@ Acervator(TM) is a trademark of Anthony L. Brown.
 """
 
 from __future__ import annotations
-import json, hashlib, logging, time, platform
+import json, hashlib, logging, math, time, platform
 from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -62,7 +62,8 @@ class TradeJournal:
             pnl=0.0,
             volume=0.0,
             peak=0.0,
-            max_dd=0.0,
+            # A share of peak, the way analytics_engine names max_drawdown_pct.
+            max_dd_pct=0.0,
         )
         if self._path.exists():
             self._resume()
@@ -106,9 +107,8 @@ class TradeJournal:
         if trade.portfolio_value > s["peak"]:
             s["peak"] = trade.portfolio_value
         if s["peak"] > 0:
-            dd = (s["peak"] - trade.portfolio_value) / s["peak"] * 100
-            if dd > s["max_dd"]:
-                s["max_dd"] = dd
+            dd_pct = (s["peak"] - trade.portfolio_value) / s["peak"] * 100
+            s["max_dd_pct"] = max(s["max_dd_pct"], dd_pct)
         return ch
 
     def verify(self) -> tuple[bool, int]:
@@ -193,7 +193,7 @@ class ReportGenerator:
                 "passive": passive,
                 "advantage": round(adv, 2),
                 "advantage_pct": round(adv / passive * 100 if passive else 0, 2),
-                "max_dd": round(s["max_dd"], 2),
+                "max_dd": round(s["max_dd_pct"], 2),
             },
             "activity": {
                 k: s[k]
@@ -264,18 +264,37 @@ class LiveMonitor:
 
     DEFAULT_CONNECT = "acervator-heapbuilder-live"
     DEFAULT_CONFIRM = "the-heap-grows-by-accumulation"
+    DEFAULT_INTERVAL_HOURS = 4.0
+
+    @classmethod
+    def wait_hours(cls, raw) -> float:
+        """Return ``raw`` as the wait ``should_check`` counts, else the default.
+
+        A stored ``interval_hours`` of zero, a negative, a string or None would
+        make ``should_check`` answer True on every tick or raise inside it, so
+        ``configure_live_monitor`` cannot hand either through.
+        """
+        hours = float(raw) if isinstance(raw, (int, float)) else 0.0
+        if not math.isfinite(hours) or hours <= 0:
+            logger.warning(
+                "LiveMonitor: check interval %r is not a wait; using %.1fh",
+                raw,
+                cls.DEFAULT_INTERVAL_HOURS,
+            )
+            return cls.DEFAULT_INTERVAL_HOURS
+        return hours
 
     def __init__(
         self,
         api_key="",
         journal=None,
-        interval_hours=4.0,
+        interval_hours=DEFAULT_INTERVAL_HOURS,
         connect_phrase="",
         confirm_phrase="",
     ):
         self._key = api_key
         self._journal = journal or TradeJournal()
-        self._interval = interval_hours
+        self._interval = self.wait_hours(interval_hours)
         self._last = 0.0
         self._history = []
         self._enabled = bool(api_key)
@@ -290,6 +309,11 @@ class LiveMonitor:
     @property
     def authenticated(self):
         return self._authenticated
+
+    @property
+    def interval_hours(self):
+        """The wait between two reviews, as ``should_check`` counts it."""
+        return self._interval
 
     @property
     def should_check(self):
@@ -370,7 +394,7 @@ class LiveMonitor:
             f"{pv_line}\n"
             f"Trades: {s['trades']} H:{s['harvests']} F:{s['folds']} "
             f"BS:{s['boost_sells']} BF:{s['boost_folds']} W:{s['wires']}\n"
-            f"Volume: ${s['volume']:,.2f} | DD: {s['max_dd']:.1f}% | Bots: {bots}"
+            f"Volume: ${s['volume']:,.2f} | DD: {s['max_dd_pct']:.1f}% | Bots: {bots}"
         )
         try:
             text = await self._call(msg)

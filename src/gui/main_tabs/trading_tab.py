@@ -22,6 +22,12 @@ from .. import design_system as ds
 from ..color_alpha import rgba
 from ..widgets.status_log import StatusLog
 from .main_window_surface import LIVE_TAB
+from .trading_tab_surface import (
+    BOTTOM_SPLITTER_SIZES_PX,
+    LOG_SPLITTER_SIZES_PX,
+    MAIN_SPLITTER_SIZES_PX,
+    TOP_SPLITTER_SIZES_PX,
+)
 from .notify_stub import _NotifyStub
 
 logger = logging.getLogger("acervator.gui")
@@ -30,13 +36,58 @@ PLACEHOLDER_CARD_BORDER_ALPHA = 68
 
 
 class TradingTabMixin:
-    """Exchange layers, the indicator panel and the two log panes."""
+    """Exchange layers, the indicator panel and the two log panes.
+
+    ``variant_surface`` decides whether the Live tab shows that Qt page or the
+    React one, and ``_react_trading_page`` keeps the Qt page either way.
+    """
 
     # Annotations only; MainWindow supplies these at runtime.
     _add_exchange: Callable[..., Any]
     _bot_manager: Any
+    _cross_api_event: Callable[..., Any]
     _main_tabs: Any
     _on_api_event: Callable[..., Any]
+    _settings: Any
+    apiEntryLogged: Any  # noqa: N815 - Qt signal name
+    _status_log: Any
+    _trading_tab: Any
+
+    def _react_trading_page(self, qt_page: QWidget) -> QWidget:
+        """The React Live tab, holding ``qt_page`` as a hidden child.
+
+        ``LiveSystem`` carries ``_bot_manager`` and ``_settings`` to
+        ``trading_tab_surface``, which is the bridge method the Qt tab reads.
+        """
+        from ...core.desktop_bridge import LiveSystem
+        from ..variant_surface import TRADING, surface_class
+
+        page = surface_class(TRADING)(LiveSystem(self._bot_manager, self._settings))
+        # MainWindow writes to the Qt widgets, so qt_page stays alive off screen.
+        qt_page.setParent(page)
+        qt_page.setVisible(False)
+        return page
+
+    def _push_live_tab(self, asked: Any) -> bool:
+        """Hand the React Live tab one fresh ``trading.tab`` request.
+
+        The Qt page answers False, so a caller routes a feed with one call
+        whichever variant is drawing.
+        """
+        show = getattr(getattr(self, "_trading_tab", None), "show_tab", None)
+        if not callable(show):
+            return False
+        return bool(show(asked))
+
+    def _wire_live_feeds(self) -> None:
+        """Route every ``StatusLog`` call to the React Live tab as it paints.
+
+        ``set_relay`` reaches ``log``, ``force_log``, ``notice``, ``pause`` and
+        ``resume``, which is every path that writes the Activity Log.
+        """
+        relay = getattr(getattr(self, "_trading_tab", None), "show_log_call", None)
+        if callable(relay):
+            self._status_log.set_relay(relay)
 
     def _build_trading_tab(self) -> None:
         """Build the Trading tab and add it to the main tab widget."""
@@ -162,7 +213,7 @@ class TradingTabMixin:
         self._chart = None  # No chart in trading tab
         top_splitter.addWidget(self._indicator_panel)
 
-        top_splitter.setSizes([600, 500])
+        top_splitter.setSizes(list(TOP_SPLITTER_SIZES_PX))
 
         _crypto_host = (
             self._crypto_tab_widget.parentWidget() if self._crypto_tab_widget else None
@@ -268,6 +319,7 @@ class TradingTabMixin:
             else:
                 self._status_log.resume()
                 self._activity_pause_btn.setText("⏸  Pause Console")
+            self._push_live_tab({"activity_paused": checked})
             import contextlib
 
             with contextlib.suppress(Exception):
@@ -404,6 +456,7 @@ class TradingTabMixin:
                         f"--- (resumed; {len(buf)} buffered line(s) above) ---"
                     )
                 self._api_pause_btn.setText("⏸  Pause API Log")
+            self._push_live_tab({"api_paused": checked})
 
         self._api_pause_btn.toggled.connect(_on_api_pause_toggled)
         api_header_row.addWidget(self._api_pause_btn)
@@ -422,18 +475,27 @@ class TradingTabMixin:
         log_splitter.addWidget(api_widget)
 
         # Equal sizes for symmetry
-        log_splitter.setSizes([500, 500])
+        log_splitter.setSizes(list(LOG_SPLITTER_SIZES_PX))
         bottom_splitter.addWidget(log_splitter)
 
-        bottom_splitter.setSizes([120, 300])
+        bottom_splitter.setSizes(list(BOTTOM_SPLITTER_SIZES_PX))
         main_splitter.addWidget(bottom_splitter)
 
-        main_splitter.setSizes([500, 350])
+        main_splitter.setSizes(list(MAIN_SPLITTER_SIZES_PX))
         trading_layout.addWidget(main_splitter)
 
         from ...exchange.api_logger import get_api_log
 
         self._api_logger = get_api_log()
-        self._api_logger.add_listener(self._on_api_event)
+        # Every entry crosses apiEntryLogged, so a record on a worker thread
+        # reaches _on_api_event on the GUI thread instead of the thread guard.
+        self.apiEntryLogged.connect(self._on_api_event)
+        self._api_logger.add_listener(self._cross_api_event)
 
+        from ..variant_surface import TRADING, draws_react
+
+        if draws_react(TRADING):
+            trading_tab = self._react_trading_page(trading_tab)
+        self._trading_tab = trading_tab
+        self._wire_live_feeds()
         self._main_tabs.addTab(trading_tab, LIVE_TAB)

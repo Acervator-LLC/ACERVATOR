@@ -687,21 +687,36 @@ def main() -> int:
     # A parentless timer needs a module-level reference to stay alive.
     globals()["_persistent_gc_timer"] = _gc_timer
 
-    from src.gui.theme_engine import ThemeManager
+    from src.gui.theme_engine import (
+        DEFAULT_THEME_NAME,
+        THEME_ACCENT,
+        ThemeManager,
+        stored_accent,
+        stored_theme,
+    )
 
     theme_mgr = ThemeManager()
-    theme_name = settings.get("theme", "cyberpunk_dark")
-    theme_mgr.apply_theme(theme_name, app)
+    stored_name = settings.get("theme", DEFAULT_THEME_NAME)
+    theme_name = stored_theme(stored_name)
+    if theme_name != stored_name:
+        log_manager.warning(
+            f"Stored theme {stored_name!r} is not a known theme; "
+            f"painting {theme_name}"
+        )
+    stored_hex = settings.get("accent_color", THEME_ACCENT)
+    accent = stored_accent(stored_hex)
+    if not accent and str(stored_hex).strip():
+        log_manager.warning(
+            f"Stored accent colour {stored_hex!r} is not a hex colour; "
+            f"painting the {theme_name} accent"
+        )
+    theme_mgr.apply_theme(theme_name, app, accent)
 
-    username = settings.get("username", "")
     stored_version = settings.get("app_version", "")
     current_version = _acervator_version
 
-    if not username:
-        settings.set("username", "User")
-        settings.set("app_version", current_version)
-        username = "User"
-        log_manager.info("First run — default user created, no wizard")
+    if not settings.get("username", ""):
+        log_manager.info("First run — no stored name, no wizard")
 
     if stored_version != current_version:
         settings.set("app_version", current_version)
@@ -715,6 +730,33 @@ def main() -> int:
 
     state_mgr = StateManager()
     bot_manager.set_state_manager(state_mgr)
+
+    # Before restore, so a restored bot votes with the stored weights.
+    from src.trading.ta_engine import weights_from_settings
+
+    bot_manager.set_ta_weights(
+        weights_from_settings(settings.get("ta_indicator_weights", {}))
+    )
+
+    # Before the first fill: get_sound_engine holds SoundConfig defaults until
+    # something pushes the stored group.
+    from src.core.sound_engine import get_sound_engine, sound_config_from_settings
+
+    get_sound_engine().update_config(
+        sound_config_from_settings(settings.get("sound", {}))
+    )
+
+    # Before the first fill: get_sms_engine holds SMSConfig defaults until
+    # something pushes the stored group.
+    from src.core.sms_engine import (
+        SETTINGS_GROUP,
+        get_sms_engine,
+        sms_config_from_settings,
+    )
+
+    get_sms_engine().update_config(
+        sms_config_from_settings(settings.get(SETTINGS_GROUP, {}))
+    )
 
     _preflight = state_mgr.preflight_snapshot()
     if _preflight:

@@ -9,7 +9,8 @@ switches and the master ``volume``. Each generator imports ``wave``,
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, fields
 from typing import Optional
 
 logger = logging.getLogger("acervator.sound")
@@ -27,6 +28,61 @@ class SoundConfig:
     profit_sound: bool = True
     drip_sound: bool = True
     volume: float = 0.7
+
+
+VOLUME_FIELD = "volume"
+
+#: Every ``SoundConfig`` field ``play`` reads as a switch, taken off the
+#: dataclass so the two cannot drift.
+SOUND_SWITCHES: tuple[str, ...] = tuple(
+    one.name for one in fields(SoundConfig) if one.name != VOLUME_FIELD
+)
+
+MIN_VOLUME = 0.0
+MAX_VOLUME = 1.0
+
+
+def sound_config_from_settings(stored: Optional[dict]) -> SoundConfig:
+    """The ten sound values, with every entry ``stored`` carries over the defaults.
+
+    ``stored`` is the ``sound`` mapping the settings file holds. A switch that is
+    not ``True`` or ``False``, and a ``volume`` outside ``MIN_VOLUME`` to
+    ``MAX_VOLUME``, are dropped with a warning rather than reaching the engine:
+    each generator multiplies ``volume`` into every sample before ``struct.pack``,
+    which raises outside that range, and ``play`` reads a switch for truth, so a
+    non-empty string would open a sound the operator had closed.
+    """
+    taken = SoundConfig()
+    for name, value in (stored or {}).items():
+        if name in SOUND_SWITCHES:
+            if isinstance(value, bool):
+                setattr(taken, name, value)
+            else:
+                logger.warning(
+                    "sound %s=%r is not on or off; default kept", name, value
+                )
+            continue
+        if name == VOLUME_FIELD:
+            if isinstance(value, bool):
+                logger.warning("sound volume %r is not a number; default kept", value)
+                continue
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                logger.warning("sound volume %r is not a number; default kept", value)
+                continue
+            if not math.isfinite(number):
+                logger.warning(
+                    "sound volume %r is not a finite number; default kept", value
+                )
+                continue
+            if not MIN_VOLUME <= number <= MAX_VOLUME:
+                logger.warning("sound volume %r is out of range; default kept", value)
+                continue
+            taken.volume = number
+            continue
+        logger.warning("sound %r is not a sound setting; ignored", name)
+    return taken
 
 
 class SoundEngine:

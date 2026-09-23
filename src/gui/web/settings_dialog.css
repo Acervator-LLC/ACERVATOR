@@ -1,8 +1,8 @@
 /* React Settings dialog chrome: the page ground, the tab bar, the eleven tab
- * pages, the form rows and the footer `settings_dialog.js` draws. The banner,
- * the font preview and the AI status line each arrive with their own `style`
- * attribute from the Python payload, so no rule here may set a `color` on a
- * part carrying `data-styled`.
+ * pages, the form rows and the footer `settings_dialog.js` draws. The banner
+ * and the AI status line each arrive with their own `style` attribute from the
+ * Python payload, so no rule here may set a `color` on a part carrying
+ * `data-styled`.
  */
 * {
   margin: 0;
@@ -123,8 +123,7 @@ button.acervator-settings-dialog[data-part="tab-button"]:focus {
   font: inherit;
 }
 
-input.acervator-settings-dialog[data-part="control"][type="checkbox"],
-input.acervator-settings-dialog[data-part="control"][type="radio"] {
+input.acervator-settings-dialog[data-part="control"][type="checkbox"] {
   flex: none;
   width: 14px;
   height: 14px;
@@ -139,6 +138,11 @@ input.acervator-settings-dialog[data-part="control"][type="range"] {
 textarea.acervator-settings-dialog[data-part="control"] {
   min-height: 60px;
   resize: vertical;
+}
+
+/* A textarea has no password type, so -webkit-text-security masks it. */
+textarea.acervator-settings-dialog[data-part="control"][data-echo="password"] {
+  -webkit-text-security: disc;
 }
 
 .acervator-settings-dialog[data-part="control"]:focus {
@@ -169,7 +173,6 @@ textarea.acervator-settings-dialog[data-part="control"] {
 }
 
 .acervator-settings-dialog[data-part="ta-rows"],
-.acervator-settings-dialog[data-part="tf-row"],
 .acervator-settings-dialog[data-part="sound-row"] {
   gap: 6px;
 }

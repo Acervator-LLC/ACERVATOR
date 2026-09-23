@@ -75,6 +75,25 @@ Where the export covers a period and carries no trade for a symbol in it, that
 period is written to a gap record rather than filled. See
 [the Simulator tab](simulator.md) for the file format and the reader.
 
+The import reads the export through a column map chosen by the exchange id it
+is given. One map exists, for Coinbase, and a Coinbase export writes the same
+files it always did. An exchange with no map is refused by name, with a line
+saying a sample export is needed, and nothing is written. The maps and the
+table of exchanges are in [the Simulator tab](simulator.md).
+
+`src/exchange/ytd_csv_import.py` — the map chosen at import
+
+```python
+def import_ytd_csv(
+    csv_path: Path,
+    exchange_id: str,
+    root: Optional[Path] = None,
+) -> ImportResult:
+    """Read ``csv_path`` and write ``exchange_id``'s trade files under
+    ``get_ytd_root(root)``."""
+    column_map = export_map_for(exchange_id)
+```
+
 ## Filtering, paging, export
 
 Eight methods carry the controls under the table.
@@ -258,23 +277,19 @@ read the same labels and the same blocker prefixes, so a gate added on one
 surface cannot be missing from the other. That shared seam is what makes the
 Simulator's gate comparison meaningful.
 
-Coverage across a window is `classify_trades` in
-`src/trading/gate_coverage.py`. Every trade gets one status and the report
-counts only the trades that found a gate. Two thresholds decide what counts as
-a match and what counts as a hole in the log.
+Each trade is joined to its gate entry by `lookup_gate_entry` in
+`src/exchange/history_helpers.py`. One threshold decides what counts as a
+match, and a trade with no entry inside it reads "no record" in the cell.
 
-`src/trading/gate_coverage.py` — the two thresholds
+`src/exchange/history_helpers.py` — the join threshold
 
 ```python
-DEFAULT_TOLERANCE_S: float = 300.0
-"""One 5m candle either side of a trade, the window ``_nearest`` searches."""
-
-LOG_GAP_THRESHOLD_S: float = 1800.0
-"""Six 5m candles of silence, above which ``_in_log_gap`` returns True."""
+JOIN_TOLERANCE_SECONDS = 60.0
+"""Largest gap ``_best_entry_within_window`` accepts between a trade and a log
+entry, and the backdate the index builders apply to ``since``."""
 ```
 
-`compute_validation_window` turns coverage into the window the run can be
-judged over.
+Nothing measures coverage across a window.
 
 `build_page_voting_index` and `lookup_voting_entry` do the same for the
 indicator voting snapshot behind each trade.

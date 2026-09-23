@@ -6,17 +6,24 @@ Qt stylesheet themes, as flat colour tokens.
 renders them into a stylesheet. ``ThemeManager`` serves Cyberpunk Dark, Neon
 Light, Classic Terminal, Minimal Modern and Glass Metal. Every ``ThemeTokens``
 pair meets WCAG 2.2 AA contrast, and a changed hex value needs a fresh audit.
+
+``stored_accent`` reads the operator's accent field and ``accented`` puts an
+accepted one over a theme's own ``accent_primary``.
+
+``nigredo`` is the Simulator's tone: the seven ground tokens moved
+``NIGREDO_FRACTION`` of the way to black by ``toward_black``, every other token
+the theme's own. ``generate_qss`` ends with ``nigredo_qss``, the ground rules
+restated under ``NIGREDO_SELECTOR``, so a widget tree carrying the ``tone``
+property at ``NIGREDO`` paints the darker grounds under the same theme.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from .color_alpha import rgba
-
-#: The object name the main window's tab bar carries, so the sheet reaches it.
-MAIN_TAB_BAR_OBJECT_NAME = "mainWindowTabBar"
 
 
 # Theme token set
@@ -76,14 +83,6 @@ class ThemeTokens:
     radius_sm: str = "4px"
     radius_md: str = "8px"
     radius_lg: str = "12px"
-
-    # Main-window tab grounds. Each pair meets WCAG 2.2 AA at 4.5:1.
-    tab_black_bg: str = "#0a0a0f"
-    tab_black_text: str = "#ff5577"
-    tab_white_bg: str = "#f5f5fa"
-    tab_white_text: str = "#0a0a0f"
-    tab_gold_bg: str = "#fcee0a"
-    tab_gold_text: str = "#8c0018"
 
     # Locust growth stages on the Swarm grid. Body is the fill, trim the
     # outline and the growth text. Each trim clears 4.5:1 on the swarm ground.
@@ -154,12 +153,6 @@ NEON_LIGHT = ThemeTokens(
     glow_color=rgba("#6600cc", 34),
     scrollbar_bg="#e0e0ea",
     scrollbar_handle="#bbbbcc",
-    tab_black_bg="#1a1a2e",
-    tab_black_text="#ff6b8a",
-    tab_white_bg="#ffffff",
-    tab_white_text="#1a1a2e",
-    tab_gold_bg="#f0cf1f",
-    tab_gold_text="#99001f",
     locust_hopper_body="#5a5a66",
     locust_hopper_trim="#d8d8e2",
     locust_fledgling_body="#d33a4c",
@@ -219,12 +212,6 @@ CLASSIC_TERMINAL = ThemeTokens(
     scrollbar_bg="#0a0a0a",
     scrollbar_handle="#003300",
     font_family="'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-    tab_black_bg="#0a0a0a",
-    tab_black_text="#ff3333",
-    tab_white_bg="#e8e8e8",
-    tab_white_text="#0a0a0a",
-    tab_gold_bg="#ffff00",
-    tab_gold_text="#990000",
     locust_hopper_body="#2e3a2e",
     locust_hopper_trim="#9ab89a",
     locust_fledgling_body="#b83a34",
@@ -284,12 +271,6 @@ MINIMAL_MODERN = ThemeTokens(
     scrollbar_bg="#f0f0f0",
     scrollbar_handle="#cccccc",
     font_family="'SF Pro Display', 'Inter', 'Segoe UI', sans-serif",
-    tab_black_bg="#1a1a1a",
-    tab_black_text="#ff6b6b",
-    tab_white_bg="#ffffff",
-    tab_white_text="#1a1a1a",
-    tab_gold_bg="#eab308",
-    tab_gold_text="#7f1d1d",
     locust_hopper_body="#50545c",
     locust_hopper_trim="#a6acb6",
     locust_fledgling_body="#c23a48",
@@ -349,12 +330,6 @@ GLASS_METAL = ThemeTokens(
     scrollbar_bg="#1c1c24",
     scrollbar_handle="#3a3a50",
     font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",
-    tab_black_bg="#1c1c24",
-    tab_black_text="#ff6688",
-    tab_white_bg="#e8e8f0",
-    tab_white_text="#1c1c24",
-    tab_gold_bg="#e8b34a",
-    tab_gold_text="#6b1020",
     locust_hopper_body="#474b54",
     locust_hopper_trim="#a2a8b4",
     locust_fledgling_body="#c03848",
@@ -394,10 +369,150 @@ THEMES: dict[str, ThemeTokens] = {
     for t in [CYBERPUNK_DARK, NEON_LIGHT, CLASSIC_TERMINAL, MINIMAL_MODERN, GLASS_METAL]
 }
 
+#: The theme name every store read falls back to.
+DEFAULT_THEME_NAME = CYBERPUNK_DARK.name
+
+
+def stored_theme(name: object) -> str:
+    """Return ``name`` when ``THEMES`` holds it, else ``DEFAULT_THEME_NAME``.
+
+    ``ThemeManager.apply_theme`` raises for a name the table lacks, so the
+    store reads in ``main`` and in the main window pass through here.
+    """
+    return name if isinstance(name, str) and name in THEMES else DEFAULT_THEME_NAME
+
+
+_applied_name = DEFAULT_THEME_NAME
+
+
+def applied_theme() -> str:
+    """Return the theme name ``ThemeManager.apply_theme`` last painted.
+
+    ``main`` applies ``stored_theme`` before the window is built and the Theme
+    menu applies every switch after it, so ``applied_theme`` answers the theme
+    the application is painted in now.
+    """
+    return _applied_name
+
+
+#: The accent field's value that leaves a theme's own ``accent_primary`` painting.
+THEME_ACCENT = ""
+
+# Three or six hex digits are the two forms generate_qss paints as asked. Neither
+# can carry the ';' or '}' that would end the declaration it sits in.
+_ACCENT_HEX = re.compile(r"\A#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\Z")
+
+
+def stored_accent(value: object) -> str:
+    """Return ``value`` when it is a hex colour, else ``THEME_ACCENT``.
+
+    The store's accent field is free text, and a value ``generate_qss`` cannot
+    read either drops its declaration or escapes it, so the reads in ``main``
+    and in the main window pass through here.
+    """
+    if not isinstance(value, str):
+        return THEME_ACCENT
+    asked = value.strip()
+    return asked if _ACCENT_HEX.match(asked) else THEME_ACCENT
+
+
+def accented(theme: ThemeTokens, accent: object) -> ThemeTokens:
+    """Return ``theme`` with ``accent_primary`` at ``accent``, or ``theme`` itself.
+
+    An accent ``stored_accent`` refuses leaves every token of ``theme`` alone,
+    which keeps that theme's audited contrast.
+    """
+    taken = stored_accent(accent)
+    return replace(theme, accent_primary=taken) if taken else theme
+
+
+#: The Qt dynamic property a widget tree sets to take a tone, and the Simulator's tone.
+TONE_PROPERTY = "tone"
+NIGREDO = "nigredo"
+
+#: The share of the distance to black every ``NIGREDO_GROUNDS`` token moves.
+NIGREDO_FRACTION = 0.25
+
+#: The tokens ``nigredo`` moves; the accent, text, border and chart tokens stay.
+NIGREDO_GROUNDS = (
+    "bg_primary",
+    "bg_secondary",
+    "bg_tertiary",
+    "bg_card",
+    "bg_input",
+    "bg_hover",
+    "bg_selected",
+)
+
+#: The selector ``nigredo_qss`` puts before every rule.
+NIGREDO_SELECTOR = f'QWidget[{TONE_PROPERTY}="{NIGREDO}"]'
+
+_HEX_CHANNELS = re.compile(r"\A#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})\Z")
+_QSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+
+
+def toward_black(colour: str, fraction: float) -> str:
+    """``colour`` moved ``fraction`` of the way to black: each sRGB channel
+    scaled by ``1 - fraction`` and rounded, six-digit hex in and out.
+    Raises ``ValueError`` on a colour that is not six-digit hex or a
+    ``fraction`` outside 0 to 1."""
+    found = _HEX_CHANNELS.match(colour.strip())
+    if found is None:
+        raise ValueError(f"toward_black needs a six-digit hex colour, got {colour!r}")
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError(f"toward_black needs a fraction from 0 to 1, got {fraction!r}")
+    keep = 1.0 - fraction
+    return "#" + "".join(
+        f"{round(int(channel, 16) * keep):02x}" for channel in found.groups()
+    )
+
+
+def nigredo(theme: ThemeTokens, fraction: float = NIGREDO_FRACTION) -> ThemeTokens:
+    """``theme`` with every ``NIGREDO_GROUNDS`` token through ``toward_black`` at
+    ``fraction``; the Simulator paints from this and keeps the theme's accent."""
+    moved = {
+        name: toward_black(getattr(theme, name), fraction) for name in NIGREDO_GROUNDS
+    }
+    return replace(theme, **moved)
+
+
+def _scoped(qss: str, scope: str) -> str:
+    """``qss`` with ``scope`` before each selector of every rule, so the rules
+    reach the widget tree ``scope`` names and no other. A bare ``QWidget``
+    selector also gains ``scope`` alone, which is the marked widget itself."""
+    parts = []
+    for chunk in qss.split("}"):
+        head, brace, body = chunk.partition("{")
+        if not brace:
+            parts.append(chunk)
+            continue
+        selectors = _QSS_COMMENT.sub("", head).strip()
+        prefixed = ", ".join(
+            f"{scope} {one.strip()}" for one in selectors.split(",") if one.strip()
+        )
+        if selectors == "QWidget":
+            prefixed = f"{scope}, {prefixed}"
+        parts.append(f"\n{prefixed} {brace}{body}")
+    return "}".join(parts)
+
+
+def nigredo_qss(theme: ThemeTokens, fraction: float = NIGREDO_FRACTION) -> str:
+    """The rules ``_theme_qss`` paints from ``nigredo(theme, fraction)``, each
+    under ``NIGREDO_SELECTOR``; ``generate_qss`` ends with this block."""
+    return _scoped(_theme_qss(nigredo(theme, fraction)), NIGREDO_SELECTOR)
+
 
 # QSS generator
 def generate_qss(theme: ThemeTokens) -> str:
-    """Generate a complete Qt stylesheet from theme tokens."""
+    """The complete Qt stylesheet for ``theme``: ``_theme_qss`` for the
+    application and ``nigredo_qss`` for the widget tree carrying ``NIGREDO``."""
+    return (
+        f"{_theme_qss(theme)}\n/* --- Simulator: {NIGREDO} --- */{nigredo_qss(theme)}\n"
+    )
+
+
+def _theme_qss(theme: ThemeTokens) -> str:
+    """Every rule the application paints from ``theme``, unscoped."""
     t = theme
     return f"""
 /* ===== Acervator — {t.display_name} ===== */
@@ -455,16 +570,6 @@ QTabBar::tab:selected {{
 QTabBar::tab:hover {{
     background-color: {t.bg_hover};
     color: {t.text_primary};
-}}
-
-/* --- Main-window tab grounds --- */
-QTabBar#{MAIN_TAB_BAR_OBJECT_NAME} {{
-    qproperty-tab_black_bg: {t.tab_black_bg};
-    qproperty-tab_black_text: {t.tab_black_text};
-    qproperty-tab_white_bg: {t.tab_white_bg};
-    qproperty-tab_white_text: {t.tab_white_text};
-    qproperty-tab_gold_bg: {t.tab_gold_bg};
-    qproperty-tab_gold_text: {t.tab_gold_text};
 }}
 
 /* --- Cards / Frames --- */
@@ -800,18 +905,23 @@ class ThemeManager:
             raise ValueError(f"Unknown theme: {name}. Available: {list(THEMES.keys())}")
         return THEMES[name]
 
-    def get_qss(self, name: str) -> str:
-        """Generate QSS for the named theme."""
-        return generate_qss(self.get_theme(name))
+    def get_qss(self, name: str, accent: object = THEME_ACCENT) -> str:
+        """Generate QSS for the named theme, with ``accent`` over its own."""
+        return generate_qss(accented(self.get_theme(name), accent))
 
-    def apply_theme(self, name: str, app: object) -> None:
+    def apply_theme(
+        self, name: str, app: object, accent: object = THEME_ACCENT
+    ) -> None:
         """
         Apply a theme to a QApplication instance.
         *app* should be a ``QApplication`` — we accept ``object`` to avoid
-        importing Qt at module level.
+        importing Qt at module level. ``accent`` paints over the theme's
+        ``accent_primary`` when ``stored_accent`` accepts it.
         """
-        qss = self.get_qss(name)
-        self._current = self.get_theme(name)
+        global _applied_name
+        qss = self.get_qss(name, accent)
+        self._current = accented(self.get_theme(name), accent)
+        _applied_name = self._current.name
         if hasattr(app, "setStyleSheet"):
             app.setStyleSheet(qss)
 

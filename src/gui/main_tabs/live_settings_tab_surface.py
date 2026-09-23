@@ -64,9 +64,7 @@ BREAKER_GROUP_TITLE = "Circuit Breakers (v3.15.58)"
 DANGER_GROUP_TITLE = "DANGER ZONE — Self-Destruct (v3.15.62)"
 RISK_GROUP_TITLE = "Risk Controls (MEM-244)"
 GATES_GROUP_TITLE = "Strategy Gate Flags (v3.16.15)"
-ROUTING_GROUP_TITLE = "Profit Routing (v3.20.85)"
 EXTRACTOR_GROUP_TITLE = "Extractor — Pool & Artillery"
-ALT_TARGETS_GROUP_TITLE = "Alt Targets (manual override)"
 
 SCRUMMING_MODE = "scrumming"
 EXTRACTOR_MODE = "extractor"
@@ -81,13 +79,6 @@ SPACING_ITEMS = (
     ("Exponential (1, 2, 4, 8…)", "exponential"),
 )
 DETONATION_ITEMS = ("1d", "1w")
-ROUTE_ITEMS = (
-    ("Fold back to target balance", "fold_to_target"),
-    ("Send to spendable", "spendable"),
-    ("Split fold/spendable per %", "split"),
-    ("Route to another bot (cross-bot)", "cross_bot"),
-)
-
 FALLBACK_TIMEFRAMES = (
     "1m",
     "5m",
@@ -106,7 +97,6 @@ NO_MATCH_INDEX = -1
 
 SPACING_DEFAULT = "linear"
 DETONATION_TF_DEFAULT = "1d"
-ROUTE_DEFAULT = "fold_to_target"
 
 DENOM_PLACEHOLDER = "—"
 DENOM_NOT_LISTED = "(not listed on exchange)"
@@ -180,21 +170,6 @@ RESET_FAILED_TEXT = "Reset failed"
 RESET_ALL_SCOPE = "all"
 RESET_APPLIED_KEY = "applied"
 RESET_RESTORE_DELAY_MS = 2000
-
-ALT_TARGETS_ACTIVE_FORMAT = "Manual override active — {count} pair(s):"
-ALT_TARGETS_JOIN = ", "
-ALT_TARGETS_ACTIVE_STYLE = f"color: {ds.TEXT_INACTIVE}; font-size: 11px;"
-ALT_TARGETS_LIST_STYLE = (
-    f"color: {ds.PRIMARY}; font-family: monospace; font-size: 11px;"
-)
-ALT_TARGETS_LIST_WORD_WRAP = True
-ALT_TARGETS_EMPTY_TEXT = (
-    "Auto-scan active (empty manual list). Bot "
-    "rotates top-N by 24h volume each refresh."
-)
-ALT_TARGETS_EMPTY_STYLE = (
-    f"color: {ds.TEXT_INACTIVE}; font-size: 11px; font-style: italic;"
-)
 
 SELF_DESTRUCT_PHRASE = "SELF-DESTRUCT"
 SELF_DESTRUCT_METHOD = "self_destruct"
@@ -280,12 +255,12 @@ TOOLTIPS = {
     "midline_gate": "When enabled: scrums ONLY fire above BB midline,\nfolds ONLY fire below midline (sell-high/buy-low).",
     "read_rate": "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster.",
     "band_travel": "Secondary harvest trigger: % of BB band width price must travel since last fold. 0 disables.",
-    "bullseye": "Rapid Fire override when price touches BB band within 0.5% (or the candle wick reaches within 0.2%).\nWhen triggered, bypasses the fire threshold — bullseye alone can arm a fire, subject to midline gate.",
+    "bullseye": "Counts a band touch within 0.5% (or a candle wick within 0.2%) as BB proximity.\nWith the delta at or over the interval that arms the BB priority skew, which lowers the TA confidence floor. The fire threshold and the midline gate are unchanged.",
     "scrum_fold_pct": "% of scrum sale proceeds queued for fold (rebuy).\n100% = full reentry (max accumulation, max risk).\nLower values preserve cash buffer — safer when\nprice keeps falling after the scrum.",
     "tranche_despawn_days": "DESPAWN any tranche this old - both fold tranches\nand stack tranches, from this one setting. 0 = Off\n(default).\n\nMERGE, DESPAWN and CLEAR are the only three things\nthat collapse or remove a tranche. This is despawn:\nthe age-driven one.\n\nIT IS NOT A TRADE. No order is placed or cancelled,\nno balance moves, holdings and cost basis are\nuntouched. The record goes.\n\nWHAT THE RECORD HELD: the tranche's ref price, its\nparked fold USD, its units, and its initial_buy_price\n(the MEM-171 provenance figure). The scrum sale that\nmade it already happened, so those dollars are\nalready in the wallet - the record was only the\nqueued intent to buy the units back. A despawned\ntranche can no longer fold back, so that money goes\nfrom queued rebuy to ordinary spendable balance.\n\nA tranche is despawned at exactly this age or older.\nA tranche with no timestamp is NEVER despawned, and\na stack tranche holding a resting exchange order is\nkept until that order settles.\n\nSEE THE COUNT FIRST: the Fold Tranches tab prints how\nmany of this bot's tranches each candidate window\nwould remove, and what they hold.",
     "wire_inflow_stack_pct": "Wire inflow stacking percentage. Controls how aggressively the bot stacks new buy-side positions when fresh wire-inflow signals arrive. Default 1.0%; rarely adjusted in practice.",
-    "hedge_active": "Separate USD reserve for buying on sharp drawdowns.\nNOT taken from Target Balance.",
-    "hedge_balance": "USD reserve amount for hedge rebalancing (separate from Target Balance).",
+    "hedge_active": "Separate USD reserve for buying on sharp drawdowns.\nNOT taken from Target Balance.\n\nTicking this on a running bot fills the reserve up to Hedge Balance at once.\nUnticking keeps the reserve and refuses every hedge buy and every refill.",
+    "hedge_balance": "USD reserve amount for hedge rebalancing (separate from Target Balance).\n\n$ 0.00 is NOT an off switch. It is an empty reserve that never refills,\nand any reserve the bot already holds stays spendable until it drains.\nUntick Hedge Rebalance Active to turn the hedge off.",
     "cb_soft_pct": "SOFT Circuit Breaker threshold. Single-candle move ≥ this % interrupts the side of the market that just moved (UP→SCRUM, DOWN→FOLD). Re-opens after cooldown candles. Default 25%. Set 0 to disable.",
     "cb_hard_pct": "HARD Circuit Breaker threshold. Single-candle move ≥ this % PAUSES the bot. Operator reset required to resume. Persists across restart. Default 35%. Set 0 to disable.",
     "cb_cooldown": "Number of candles the soft breaker stays active before re-opening. Default 3.",
@@ -304,16 +279,11 @@ TOOLTIPS = {
     "gate_scrum_htf": "ON (Conservative): refuse scrum when a higher-TF phantom signals BULLISH. OFF (Lean): cartridge captures HTF swings organically; this gate is redundant if Smart Cartridge is ON.",
     "gate_fold_ta": "ON (Conservative): mirror of SCRUM TA gate on the fold side. OFF (Lean): fold fires at BB-lower + tranche-eligible regardless of TA.",
     "gate_fold_htf": "ON (Conservative): mirror of SCRUM HTF gate on the fold side. OFF (Lean): fold fires regardless of higher-TF bearish bias.",
-    "profit_route": "Where realized profit flows on fold. fold_to_target = increase target balance (compound); spendable = mark for withdrawal; split = use fold % below; cross_bot = route to the target bot ID.",
-    "profit_route_bot_id": "Target bot ID for cross-bot profit routing. Only consulted when route = cross_bot. Leave blank otherwise.",
     "ext_chunk_size": "USD-equivalent of base currency this bot owns. Sized at construction; changing live re-anchors the pool's reference USD value (not the held base units — those are exchange-tracked).",
     "ext_artillery_size": "USD-equivalent per artillery round. Smaller = more opportunities; larger = bigger per-round impact.",
-    "ext_scan_top_n": "Top-N */<base> pairs by 24h volume to keep on the auto-scan watch list. Range [5, 10] per design doc §6. Ignored when manual alt-targets are set.",
-    "ext_scan_refresh": "Ticks between watch-list refreshes. Lower = more responsive; higher = less thrashing.",
-    "ext_pool_reserve": "% of chunk reserved as untouchable. New artillery fires only if (chunk_free - artillery_size) >= reserve.",
+    "ext_scan_top_n": "Top-N */<base> pairs by 24h volume to keep on the auto-scan watch list. Range [5, 10] per design doc §6.",
+    "ext_scan_refresh": "Candles of this bot's timeframe between watch-list refreshes. Lower = more responsive; higher = less thrashing.",
     "ext_exit_pct": "% of alt position sold on bullish trigger. 100 = full exit; <100 leaves a rider tail.",
-    "ext_max_tier": "Compounding tier counter (currently informational — logs ROLL_TO_NEXT_TIER vs LOCK_TO_POOL). At this version, realized base gain always deposits directly to the pool regardless of tier. The gain-as-next-artillery-size rolling mechanism is a planned enhancement (see extractor_bot.py:1264-1266).",
-    "ext_max_cost_basis": "Safety cap: cost basis of any position cannot exceed multiplier x original artillery_size. Hard floor against runaway averaging-down.",
 }
 
 
@@ -552,9 +522,7 @@ BREAKER_GROUP = "breaker"
 DANGER_GROUP = "danger"
 RISK_GROUP = "risk"
 GATES_GROUP = "gates"
-ROUTING_GROUP = "routing"
 EXTRACTOR_GROUP = "extractor"
-ALT_TARGETS_GROUP = "alt_targets"
 
 NO_ROW_LABEL: Optional[str] = None
 NO_FIELD: Optional[str] = None
@@ -1079,26 +1047,6 @@ CONTROL_SPECS = (
         "default": True,
     },
     {
-        "name": "profit_route",
-        "kind": COMBO_DATA,
-        "group": ROUTING_GROUP,
-        "row_label": "Route:",
-        "field": "profit_route",
-        "reading": BARE_READING,
-        "default": ROUTE_DEFAULT,
-        "items": ROUTE_ITEMS,
-    },
-    {
-        "name": "profit_route_bot_id",
-        "kind": LINE,
-        "group": ROUTING_GROUP,
-        "row_label": "Target bot ID:",
-        "field": "profit_route_bot_id",
-        "reading": TEXT_READING,
-        "default": "",
-        "placeholder": "leave blank unless route = cross_bot",
-    },
-    {
         "name": "ext_chunk_size",
         "kind": DOUBLE_SPIN,
         "group": EXTRACTOR_GROUP,
@@ -1140,20 +1088,8 @@ CONTROL_SPECS = (
         "field": "extractor_scan_refresh_candles",
         "reading": INT_READING,
         "default": 60,
-        "range": (10, 600),
-        "suffix": " ticks",
-    },
-    {
-        "name": "ext_pool_reserve",
-        "kind": DOUBLE_SPIN,
-        "group": EXTRACTOR_GROUP,
-        "row_label": "Pool reserve:",
-        "field": "extractor_pool_reserve_pct",
-        "reading": FLOAT_READING,
-        "default": 50.0,
-        "range": (0.0, 90.0),
-        "decimals": 1,
-        "suffix": " %",
+        "range": (10, 240),
+        "suffix": " candles",
     },
     {
         "name": "ext_exit_pct",
@@ -1167,33 +1103,10 @@ CONTROL_SPECS = (
         "decimals": 1,
         "suffix": " %",
     },
-    {
-        "name": "ext_max_tier",
-        "kind": SPIN,
-        "group": EXTRACTOR_GROUP,
-        "row_label": "Max compounding tier:",
-        "field": "extractor_max_compounding_tier",
-        "reading": INT_READING,
-        "default": 3,
-        "range": (1, 10),
-    },
-    {
-        "name": "ext_max_cost_basis",
-        "kind": DOUBLE_SPIN,
-        "group": EXTRACTOR_GROUP,
-        "row_label": "Max cost-basis multiple:",
-        "field": "extractor_max_cost_basis_multiple",
-        "reading": FLOAT_READING,
-        "default": 2.0,
-        "range": (1.0, 10.0),
-        "decimals": 2,
-        "suffix": "x",
-    },
 )
 
 CONTROL_NAMES = tuple(spec["name"] for spec in CONTROL_SPECS)
-EXTRACTOR_ONLY_GROUPS = (EXTRACTOR_GROUP, ALT_TARGETS_GROUP)
-ALT_TARGETS_FIELD = "extractor_alt_targets"
+EXTRACTOR_ONLY_GROUPS = (EXTRACTOR_GROUP,)
 
 
 def reading_kinds() -> dict:
@@ -1261,7 +1174,6 @@ BUILD_DENOM_ROWS = "build.denom_rows"
 BUILD_TIMER = "build.timer"
 BUILD_RESET_BUTTON = "build.reset_button"
 BUILD_DANGER = "build.danger"
-BUILD_ALT_TARGETS = "build.alt_targets"
 BUILD_STRETCH = "build.stretch"
 BUILD_RETURN = "build.return"
 DENOM_START = "denom.start"
@@ -1302,7 +1214,6 @@ CALL_NAMES = (
     BUILD_TIMER,
     BUILD_RESET_BUTTON,
     BUILD_DANGER,
-    BUILD_ALT_TARGETS,
     BUILD_STRETCH,
     BUILD_RETURN,
     DENOM_START,
@@ -1493,7 +1404,6 @@ class LiveSettingsTabModel:
         self.rows: list = []
         self.values: dict = {}
         self.combo_index: dict = {}
-        self.alt_targets: list = []
         self.tooltips_applied: dict = {}
         self.forms_expected = FORM_COUNT_BASE
         self.timeframe_items: list = []
@@ -1658,19 +1568,12 @@ class LiveSettingsTabModel:
             if spec["group"] == GATES_GROUP:
                 self._add_control(config, spec)
 
-        self._add_group(ROUTING_GROUP, ROUTING_GROUP_TITLE)
-        self._add_form()
-        for spec in CONTROL_SPECS:
-            if spec["group"] == ROUTING_GROUP:
-                self._add_control(config, spec)
-
         if is_extractor:
             self._add_group(EXTRACTOR_GROUP, EXTRACTOR_GROUP_TITLE)
             self._add_form()
             for spec in CONTROL_SPECS:
                 if spec["group"] == EXTRACTOR_GROUP:
                     self._add_control(config, spec)
-            self._add_alt_targets(config)
             self.forms_expected = FORM_COUNT_EXTRACTOR
 
         self.built = True
@@ -1739,16 +1642,6 @@ class LiveSettingsTabModel:
         self.refresh_denom_rows()
         self.timer_started = True
         self.calls.append([BUILD_TIMER, DENOM_REFRESH_INTERVAL_MS])
-
-    def _add_alt_targets(self, config: Any) -> None:
-        """The manual override list, or the auto-scan line when it is empty."""
-        self._add_group(ALT_TARGETS_GROUP, ALT_TARGETS_GROUP_TITLE)
-        alts = list(getattr(config, ALT_TARGETS_FIELD, []) or [])
-        self.calls.append([BUILD_ALT_TARGETS, len(alts)])
-        self._add_row(ALT_TARGETS_GROUP, NO_ROW_LABEL, "alt_info_lbl")
-        if alts:
-            self._add_row(ALT_TARGETS_GROUP, NO_ROW_LABEL, "alt_list_lbl")
-        self.alt_targets = alts
 
     def refresh_denom_rows(self) -> None:
         """Repaint the Target-BTC and Target-ETH rows. Never raises.
@@ -1931,9 +1824,7 @@ def build_view_model(
             "danger": DANGER_GROUP_TITLE,
             "risk": RISK_GROUP_TITLE,
             "gates": GATES_GROUP_TITLE,
-            "routing": ROUTING_GROUP_TITLE,
             "extractor": EXTRACTOR_GROUP_TITLE,
-            "alt_targets": ALT_TARGETS_GROUP_TITLE,
         },
         "rows": [list(one) for one in model.rows],
         "row_count": len(model.rows),
@@ -1964,12 +1855,6 @@ def build_view_model(
             "surplus": SURPLUS_ROW_LABEL,
             "budget": BUDGET_ROW_LABEL,
             "over_cap": OVER_CAP_ROW_LABEL,
-        },
-        "alt_targets": {
-            "pairs": list(model.alt_targets),
-            "active_format": ALT_TARGETS_ACTIVE_FORMAT,
-            "join": ALT_TARGETS_JOIN,
-            "empty_text": ALT_TARGETS_EMPTY_TEXT,
         },
         "reset_button": {
             "text": RESET_BUTTON_TEXT,
@@ -2008,12 +1893,10 @@ def build_view_model(
             "visibility": [list(one) for one in VISIBILITY_ITEMS],
             "spacing": [list(one) for one in SPACING_ITEMS],
             "detonation": list(DETONATION_ITEMS),
-            "route": [list(one) for one in ROUTE_ITEMS],
         },
         "defaults": {
             "spacing": SPACING_DEFAULT,
             "detonation_tf": DETONATION_TF_DEFAULT,
-            "route": ROUTE_DEFAULT,
         },
         "reading_kinds": reading_kinds(),
         "bare_number_fields": list(bare_number_fields()),
@@ -2051,7 +1934,6 @@ def build_view_model(
             "confirm_prompt": CONFIRM_PROMPT_FORMAT,
             "dispatched": DISPATCHED_TEXT_FORMAT,
             "thread_name": THREAD_NAME_FORMAT,
-            "alt_targets_active": ALT_TARGETS_ACTIVE_FORMAT,
             "style": STYLE_FORMAT,
         },
         "colors": {
@@ -2080,7 +1962,6 @@ def build_view_model(
             "tranches": TRANCHES_ATTRIBUTE,
             "tranche_usd_key": TRANCHE_USD_KEY,
             "despawn_field": DESPAWN_FIELD,
-            "alt_targets_field": ALT_TARGETS_FIELD,
         },
         "call_names": list(CALL_NAMES),
         "calls": [list(call) for call in model.calls],

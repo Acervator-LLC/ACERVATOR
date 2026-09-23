@@ -1,13 +1,30 @@
 // The Proof of Accumulation tab shell, as the Python surface serves it.
 //
-// Three zones: the player window and the square enemy screen across the upper
-// band, the party window across the lower half. The Quintessence balance sits
+// The top row is bisected: VesselPanel draws the current Vessel and its details
+// left of the divider, RightRegion draws MapRegion right of it until
+// encounter.running is set and EncounterRegion after that, with the square enemy
+// screen inside it. The party window takes the lower half. The Quintessence balance sits
 // in the party header and the wallet opens as a panel over the party window.
-// Four subtabs sit above the zones and selectSubtab draws one of them; the map
-// entry and the player window's map button both read the payload's reachable
-// flag. A row of control buttons sits under the state line and fireControl sends
+// Seven subtabs sit above the zones and selectSubtab draws one of them. Each
+// SubtabButton carries its own shortcut as a kbd and an aria-keyshortcuts, and
+// pressSubtabKey reads the same shortcut off the payload, so the tab's keydown and
+// the bar open the same subtab. VesselPanel is a role="button" that opens the subtab
+// vessel.click_subtab names. The map entry and the player window's map button both
+// read the payload's reachable flag. DetailsPanel, ResourcePanel, QuintPanel,
+// GuildPanel and SkillPagesPanel draw the other subtabs through titledRows, and
+// SkillPage names the Vessel and Reincarnate pages.
+// A row of control buttons sits under the state line and fireControl sends
 // the params the payload gave that control, then redraws from the answer, so the
-// verdict and the figures on screen are the mechanism's own.
+// verdict and the figures on screen are the mechanism's own. MeterPair draws the
+// block fill and the turn completion side by side in the player window, and
+// ResetPanel names the two chain files and both reasons a reset carries, and
+// WorldPanel names the world the chain holds, its grid and its seed commitment.
+// IdentityPanel names the identity this node holds by its public half, and the
+// stored private key reaches no row in it.
+// Glyph draws one stand-in mark a kind; GlyphLegend lists them all and
+// GlyphAbsence names what nothing supplies. MapGrid lays the payload's squares
+// out at its own width and MapSquare draws one, its glyph only where the
+// participant holds a knowledge reference.
 // Every word on screen comes from the payload.
 (function (global) {
   "use strict";
@@ -17,60 +34,84 @@
   var ACCESSIBLE_NAME = "accessible_name";
   var BUILT = "built";
   var CHAIN = "chain";
+  var CHAIN_RESET = "chain_reset";
+  var CHARACTER_DETAILS = "character_details";
   var CHARACTER_STATS = "character_stats";
   var CLASSES = "classes";
   var CONSERVATION = "conservation";
   var CONTROLS = "controls";
+  var ENCOUNTER = "encounter";
   var EVENT = "event";
   var GEAR = "gear";
+  var GUILD = "guild";
   var HEADING = "heading";
+  var IDENTITY = "identity";
   var ISSUE = "issue";
   var ISSUE_TEXT = "issue_text";
   var MAP = "map";
+  var MAP_MARKS = "map_marks";
+  var METERS = "meters";
   var METRIC_SOURCES = "metric_sources";
   var METHOD_FIELD = "method";
   var MODES = "modes";
   var PARTICIPANTS = "participants";
   var PARTY = "party";
   var PICK_NOTE = "pick_note";
+  var QUINT = "quint";
   var REDISTRIBUTION = "redistribution";
+  var RESOURCES = "resources";
   var SEASON = "season";
-  var SKILL_TREE = "skill_tree";
+  var SKILL_PAGES = "skill_pages";
   var SKILLS = "skills";
   var STATE_TEXT = "state_text";
   var SUBTAB = "subtab";
+  var SUBTAB_SHORTCUT_TEXT = "subtab_shortcut_text";
   var SUBTABS = "subtabs";
+  var VESSEL = "vessel";
   var WALLET = "wallet";
+  var WORLD = "world";
   var ZONES = "zones";
 
   var DECLARED_FIELDS = [
     ACCESSIBLE_NAME,
     BUILT,
     CHAIN,
+    CHAIN_RESET,
+    CHARACTER_DETAILS,
     CHARACTER_STATS,
     CLASSES,
     CONSERVATION,
     CONTROLS,
+    ENCOUNTER,
     EVENT,
     GEAR,
+    GUILD,
     HEADING,
+    IDENTITY,
     ISSUE,
     ISSUE_TEXT,
     MAP,
+    MAP_MARKS,
+    METERS,
     METRIC_SOURCES,
     METHOD_FIELD,
     MODES,
     PARTICIPANTS,
     PARTY,
     PICK_NOTE,
+    QUINT,
     REDISTRIBUTION,
+    RESOURCES,
     SEASON,
-    SKILL_TREE,
+    SKILL_PAGES,
     SKILLS,
     STATE_TEXT,
     SUBTAB,
+    SUBTAB_SHORTCUT_TEXT,
     SUBTABS,
+    VESSEL,
     WALLET,
+    WORLD,
     ZONES
   ];
 
@@ -100,13 +141,32 @@
   var UPPER_PART = "upper-band";
   var SUBTAB_BAR_PART = "subtab-bar";
   var SUBTAB_BUTTON_PART = "subtab-button";
+  var SUBTAB_KEY_PART = "subtab-key";
+  var SUBTAB_KEY_NOTE_PART = "subtab-key-note";
   var SUBTAB_PANEL_PART = "subtab-panel";
   var SUBTAB_TITLE_PART = "subtab-title";
+
+  var DETAILS_PANEL_PART = "details-panel";
+  var DETAILS_LIST_PART = "details-list";
+  var DETAILS_ROW_PART = "details-row";
+  var DETAILS_LABEL_PART = "details-label";
+  var DETAILS_VALUE_PART = "details-value";
+  var DETAILS_TITLE_PART = "details-title";
+  var DETAILS_NOTE_PART = "details-note";
+
+  var RESOURCE_PANEL_PART = "resource-panel";
+  var QUINT_PANEL_PART = "quint-panel";
+  var GUILD_PANEL_PART = "guild-panel";
+  var SKILL_PAGE_PART = "skill-page";
+  var SKILL_PAGE_TITLE_PART = "skill-page-title";
+  var SKILL_PAGE_ABSENT_PART = "skill-page-absent";
 
   // A button the running event does not open carries data-reachable="false".
   var REACHABLE_ATTR = "data-reachable";
   var SELECTED_ATTR = "data-selected";
   var SUBTAB_ATTR = "data-subtab";
+  var KEYS_ATTR = "aria-keyshortcuts";
+  var PAGE_ATTR = "data-page";
 
   var STATS_PANEL_PART = "stats-panel";
   var STAT_LIST_PART = "stat-list";
@@ -137,11 +197,81 @@
   var TREE_LIST_NOTE_PART = "tree-list-note";
   var TREE_NOTE_PART = "tree-note";
 
+  // One glyph span a kind. data-kind names the kind and data-codepoint the glyph,
+  // so a reader can tell which mark drew without reading the character itself.
+  var GLYPH_PART = "glyph";
+  var GLYPH_LEGEND_PART = "glyph-legend";
+  var GLYPH_ABSENCE_PART = "glyph-absence";
+  var GLYPH_TITLE_PART = "glyph-title";
+  var GLYPH_FAMILY_PART = "glyph-family";
+  var GLYPH_FAMILY_NAME_PART = "glyph-family-name";
+  var GLYPH_LIST_PART = "glyph-list";
+  var GLYPH_ROW_PART = "glyph-row";
+  var GLYPH_LABEL_PART = "glyph-label";
+  var GLYPH_CODEPOINT_PART = "glyph-codepoint";
+  var GLYPH_COUNT_PART = "glyph-count";
+  var GLYPH_COLOUR_PART = "glyph-colour";
+  var GLYPH_ART_PART = "glyph-art";
+  var GLYPH_ABSENT_TITLE_PART = "glyph-absent-title";
+  var GLYPH_ABSENT_LIST_PART = "glyph-absent-list";
+  var GLYPH_ABSENT_ROW_PART = "glyph-absent-row";
+  var GLYPH_ABSENT_NAME_PART = "glyph-absent-name";
+  var GLYPH_ABSENT_NOTE_PART = "glyph-absent-note";
+
+  var KIND_ATTR = "data-kind";
+  var CODEPOINT_ATTR = "data-codepoint";
+  var FAMILY_ATTR = "data-family";
+
+  var CSS_VAR_OPEN = "var(--";
+  var CSS_VAR_CLOSE = ")";
+
   var MAP_PANEL_PART = "map-panel";
   var MAP_NOTE_PART = "map-note";
   var MAP_CONTROL_PART = "map-control";
   var MAP_REFUSAL_PART = "map-refusal";
   var MAP_OPEN_PART = "map-open";
+  var MAP_REGION_PART = "map-region";
+  var MAP_REGION_TITLE_PART = "map-region-title";
+  var MAP_GRID_PART = "map-grid";
+  var MAP_SQUARE_PART = "map-square";
+  var MAP_VIEW_NOTE_PART = "map-note-view";
+  var MAP_UNDISCOVERED_NOTE_PART = "map-note-undiscovered";
+  var MAP_POSITION_NOTE_PART = "map-note-position";
+  var MAP_ACTIONS_NOTE_PART = "map-note-actions";
+
+  // A square carries its relation to the participant, its index and its sight.
+  var STATE_ATTR = "data-state";
+  var SQUARE_ATTR = "data-square";
+  var IN_VIEW_ATTR = "data-in-view";
+
+  // The top row's divider and the right half it separates the Vessel from.
+  var TOP_DIVIDER_PART = "top-divider";
+  var RIGHT_REGION_PART = "right-region";
+  var ENCOUNTER_REGION_PART = "encounter-region";
+  var ENCOUNTER_TEXT_PART = "encounter-text";
+  var ENCOUNTER_TITLE_PART = "encounter-title";
+  var ENEMY_SLOT_PART = "enemy-slot";
+  var ENCOUNTER_NOTE_PART = "encounter-note";
+  var TACTICAL_NOTE_PART = "tactical-note";
+
+  // The right half carries data-encounter, which says which of its two states drew.
+  var ENCOUNTER_ATTR = "data-encounter";
+
+  var VESSEL_PANEL_PART = "vessel-panel";
+  var VESSEL_LIST_PART = "vessel-list";
+  var VESSEL_ROW_PART = "vessel-row";
+  var VESSEL_ROW_LABEL_PART = "vessel-row-label";
+  var VESSEL_ROW_VALUE_PART = "vessel-row-value";
+  var VESSEL_DETAILS_TITLE_PART = "vessel-details-title";
+  var VESSEL_DETAILS_LIST_PART = "vessel-details-list";
+  var VESSEL_NOTE_PART = "vessel-note";
+  var VESSEL_BOUND_PART = "vessel-bound";
+  var VESSEL_ABSENT_TITLE_PART = "vessel-absent-title";
+  var VESSEL_ABSENT_LIST_PART = "vessel-absent-list";
+  var VESSEL_ABSENT_ROW_PART = "vessel-absent-row";
+  var VESSEL_ABSENT_NAME_PART = "vessel-absent-name";
+  var VESSEL_ABSENT_NOTE_PART = "vessel-absent-note";
+  var VESSEL_CLICK_NOTE_PART = "vessel-click-note";
   var ZONE_TITLE_PART = "zone-title";
   var ZONE_PLACEHOLDER_PART = "zone-placeholder";
   var PARTY_HEADER_PART = "party-header";
@@ -219,6 +349,46 @@
   var KEEP_ROW_VALUE_PART = "keep-row-value";
   var KEEP_NOTE_PART = "keep-note";
 
+  var METER_PAIR_PART = "meter-pair";
+  var METER_PAIR_TITLE_PART = "meter-pair-title";
+  var METER_PART = "meter";
+  var METER_LABEL_PART = "meter-label";
+  var METER_BAR_PART = "meter-bar";
+  var METER_FILL_PART = "meter-fill";
+  var METER_PERCENT_PART = "meter-percent";
+  var METER_VALUE_PART = "meter-value";
+  var METER_NOTE_PART = "meter-note";
+
+  // The meter a card draws, which is what the style sheet colours its bar by.
+  var METER_ATTR = "data-meter";
+
+  // The share the bar draws. A chain past its capacity still draws a full bar.
+  var FULL_BAR = 100;
+
+  var IDENTITY_PANEL_PART = "identity-panel";
+  var IDENTITY_TITLE_PART = "identity-title";
+  var IDENTITY_ROW_PART = "identity-row";
+  var IDENTITY_ROW_LABEL_PART = "identity-row-label";
+  var IDENTITY_ROW_VALUE_PART = "identity-row-value";
+  var IDENTITY_NOTE_PART = "identity-note";
+
+  var RESET_PANEL_PART = "reset-panel";
+  var RESET_TITLE_PART = "reset-title";
+  var RESET_ROW_PART = "reset-row";
+  var RESET_ROW_LABEL_PART = "reset-row-label";
+  var RESET_ROW_VALUE_PART = "reset-row-value";
+  var RESET_NOTE_PART = "reset-note";
+
+  var WORLD_PANEL_PART = "world-panel";
+  var WORLD_TITLE_PART = "world-title";
+  var WORLD_ROW_PART = "world-row";
+  var WORLD_ROW_LABEL_PART = "world-row-label";
+  var WORLD_ROW_VALUE_PART = "world-row-value";
+  var WORLD_NOTE_PART = "world-note";
+
+  // Set while the chain holds a world, so the style sheet can mark the panel.
+  var HELD_ATTR = "data-held";
+
   var SEASON_PANEL_PART = "season-panel";
   var SEASON_TITLE_PART = "season-title";
   var SEASON_ROW_PART = "season-row";
@@ -269,6 +439,17 @@
   var subtabName = null;
 
   var NO_SUCH_SUBTAB = "no subtab carries that name";
+  var NO_KEY_BOUND = "no subtab carries that shortcut";
+
+  // Every shortcut the payload serves is this modifier and one more key.
+  var SHORTCUT_MODIFIER = "Ctrl";
+  var KEY_JOIN = "+";
+
+  // The tab takes focus so its own keydown runs, and never enters the tab order.
+  var KEYBOARD_TAB_INDEX = -1;
+
+  var ENTER_KEY = "Enter";
+  var SPACE_KEY = " ";
   var NO_SUCH_CONTROL = "no control carries that name";
   var NO_SUCH_CHAIN = "no chain carries that name";
   var NO_SUCH_EVENT = "no event type carries that name";
@@ -323,6 +504,135 @@
       }
     });
     return found;
+  }
+
+  // The glyph draws in the colour colour_token names, read off the page root.
+  function Glyph(props) {
+    var mark = props.mark;
+    var label = text(props.label === undefined ? mark.label : props.label);
+    var glyphProps = named(TAB_CLASS + "-glyph", GLYPH_PART, label);
+    glyphProps[KIND_ATTR] = text(mark.kind);
+    glyphProps[CODEPOINT_ATTR] = text(mark.codepoint);
+    glyphProps.style = {
+      color: CSS_VAR_OPEN + String(mark.colour_token) + CSS_VAR_CLOSE
+    };
+    return element("span", glyphProps, text(mark.glyph));
+  }
+
+  function GlyphRow(props) {
+    var mark = props.mark;
+    var label = text(mark.label);
+    return element(
+      "li",
+      named(TAB_CLASS + "-glyph-row", GLYPH_ROW_PART, label),
+      element(Glyph, { mark: mark }),
+      element(
+        "span",
+        named(TAB_CLASS + "-glyph-label", GLYPH_LABEL_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-glyph-codepoint", GLYPH_CODEPOINT_PART, label),
+        text(mark.codepoint)
+      )
+    );
+  }
+
+  function GlyphFamily(props) {
+    var entry = props.entry;
+    var marks = Array.isArray(entry.marks) ? entry.marks : [];
+    var familyProps = part(TAB_CLASS + "-glyph-family", GLYPH_FAMILY_PART);
+    familyProps[FAMILY_ATTR] = text(entry.family);
+    return element(
+      "div",
+      familyProps,
+      element(
+        "h5",
+        part(TAB_CLASS + "-glyph-family-name", GLYPH_FAMILY_NAME_PART),
+        text(entry.family)
+      ),
+      element(
+        "ul",
+        part(TAB_CLASS + "-glyph-list", GLYPH_LIST_PART),
+        marks.filter(isPlainObject).map(function (mark) {
+          return element(GlyphRow, { key: mark.kind, mark: mark });
+        })
+      )
+    );
+  }
+
+  function GlyphAbsentRow(props) {
+    var row = props.row;
+    var label = text(row.family);
+    return element(
+      "li",
+      named(TAB_CLASS + "-glyph-absent-row", GLYPH_ABSENT_ROW_PART, label),
+      element(
+        "span",
+        named(TAB_CLASS + "-glyph-absent-name", GLYPH_ABSENT_NAME_PART, label),
+        label
+      ),
+      element(
+        "span",
+        named(TAB_CLASS + "-glyph-absent-note", GLYPH_ABSENT_NOTE_PART, label),
+        text(row.note)
+      )
+    );
+  }
+
+  function GlyphLegend(props) {
+    var marks = props.marks;
+    var families = Array.isArray(marks.families) ? marks.families : [];
+    return element(
+      "div",
+      part(TAB_CLASS + "-glyph-legend", GLYPH_LEGEND_PART),
+      element(
+        "h4",
+        part(TAB_CLASS + "-glyph-title", GLYPH_TITLE_PART),
+        text(marks.title)
+      ),
+      element(
+        "p",
+        part(TAB_CLASS + "-glyph-count", GLYPH_COUNT_PART),
+        text(marks.count_text)
+      ),
+      families.filter(isPlainObject).map(function (entry) {
+        return element(GlyphFamily, { key: entry.family, entry: entry });
+      }),
+      element(
+        "p",
+        part(TAB_CLASS + "-glyph-colour", GLYPH_COLOUR_PART),
+        text(marks.colour_text)
+      ),
+      element(
+        "p",
+        part(TAB_CLASS + "-glyph-art", GLYPH_ART_PART),
+        text(marks.art_text)
+      )
+    );
+  }
+
+  // Drawn in the enemy screen, the zone a monster would draw in.
+  function GlyphAbsence(props) {
+    var marks = props.marks;
+    var absent = Array.isArray(marks.absent) ? marks.absent : [];
+    return element(
+      "div",
+      part(TAB_CLASS + "-glyph-absence", GLYPH_ABSENCE_PART),
+      element(
+        "h5",
+        part(TAB_CLASS + "-glyph-absent-title", GLYPH_ABSENT_TITLE_PART),
+        text(marks.absent_title)
+      ),
+      element(
+        "ul",
+        part(TAB_CLASS + "-glyph-absent-list", GLYPH_ABSENT_LIST_PART),
+        absent.filter(isPlainObject).map(function (row) {
+          return element(GlyphAbsentRow, { key: row.family, row: row });
+        })
+      )
+    );
   }
 
   // One mark slot a row. An absent mark leaves the slot empty and unpainted.
@@ -473,6 +783,85 @@
     );
   }
 
+  // One meter: its label, a bar at its own share, the percentage and the figures
+  // behind it. The bar stops at FULL_BAR so a chain past its capacity still draws.
+  // A meter carrying no note draws none, so the pair keeps one baseline.
+  function Meter(props) {
+    var row = props.row;
+    var label = text(row.label);
+    var share = Number(row.percent);
+    var barProps = named(TAB_CLASS + "-meter-bar", METER_BAR_PART, label);
+    barProps["aria-valuenow"] = text(row.percent);
+    var fillProps = named(TAB_CLASS + "-meter-fill", METER_FILL_PART, label);
+    fillProps.style = {
+      width: String(share > FULL_BAR ? FULL_BAR : share) + "%"
+    };
+    var meterProps = named(TAB_CLASS + "-meter", METER_PART, label);
+    meterProps[METER_ATTR] = text(row.name);
+    var children = [
+      element(
+        "span",
+        Object.assign(
+          named(TAB_CLASS + "-meter-label", METER_LABEL_PART, label),
+          { key: METER_LABEL_PART }
+        ),
+        label
+      ),
+      element(
+        "div",
+        Object.assign(barProps, { key: METER_BAR_PART }),
+        element("div", fillProps)
+      ),
+      element(
+        "span",
+        Object.assign(
+          named(TAB_CLASS + "-meter-percent", METER_PERCENT_PART, label),
+          { key: METER_PERCENT_PART }
+        ),
+        text(row.percent_text)
+      ),
+      element(
+        "span",
+        Object.assign(
+          named(TAB_CLASS + "-meter-value", METER_VALUE_PART, label),
+          { key: METER_VALUE_PART }
+        ),
+        text(row.value_text)
+      )
+    ];
+    if (text(row.note)) {
+      children.push(
+        element(
+          "p",
+          Object.assign(
+            named(TAB_CLASS + "-meter-note", METER_NOTE_PART, label),
+            { key: METER_NOTE_PART }
+          ),
+          text(row.note)
+        )
+      );
+    }
+    return element("div", meterProps, children);
+  }
+
+  // The two meters read as one unit: one heading over two equal columns, in the
+  // order the payload lists them.
+  function MeterPair(props) {
+    var meters = props.meters;
+    var rows = Array.isArray(meters.rows) ? meters.rows : [];
+    var titleProps = part(TAB_CLASS + "-meter-pair-title", METER_PAIR_TITLE_PART);
+    titleProps.key = METER_PAIR_TITLE_PART;
+    var children = [element("h4", titleProps, text(meters.title))];
+    rows.filter(isPlainObject).forEach(function (row) {
+      children.push(element(Meter, { key: text(row.name), row: row }));
+    });
+    return element(
+      "div",
+      named(TAB_CLASS + "-meter-pair", METER_PAIR_PART, text(meters.title)),
+      children
+    );
+  }
+
   function ranksText(row) {
     return (
       "difficulty " +
@@ -491,6 +880,7 @@
     return element(
       "li",
       named(TAB_CLASS + "-mode-row", MODE_ROW_PART, text(row.code)),
+      element(Glyph, { mark: row, label: text(row.code) }),
       element(
         "span",
         named(TAB_CLASS + "-mode-name", MODE_NAME_PART, text(row.code)),
@@ -529,6 +919,7 @@
     return element(
       "li",
       named(TAB_CLASS + "-class-row", CLASS_ROW_PART, text(entry.name)),
+      element(Glyph, { mark: entry, label: text(entry.name) }),
       element(
         "span",
         named(TAB_CLASS + "-class-name", CLASS_NAME_PART, text(entry.name)),
@@ -830,6 +1221,24 @@
       lines.push(element("p", noteProps, note));
     }
     children.push(element("div", resultProps, lines));
+    if (isPlainObject(props.identity)) {
+      children.push(
+        element(IdentityPanel, {
+          key: IDENTITY_PANEL_PART,
+          identity: props.identity
+        })
+      );
+    }
+    if (isPlainObject(props.reset)) {
+      children.push(
+        element(ResetPanel, { key: RESET_PANEL_PART, reset: props.reset })
+      );
+    }
+    if (isPlainObject(props.world)) {
+      children.push(
+        element(WorldPanel, { key: WORLD_PANEL_PART, world: props.world })
+      );
+    }
     var barProps = named(TAB_CLASS + "-control-bar", CONTROL_BAR_PART, text(bar.title));
     return element("div", barProps, children);
   }
@@ -856,6 +1265,108 @@
       KEEP_PANEL_PART,
       text(keep.title)
     );
+    return element("div", panelProps, children);
+  }
+
+  // The identity this node holds, named by its public half. The stored private
+  // key is in no row: replacing an identity orphans the wallet, Vessel, guild
+  // seat and store it owns, so the panel reports and never offers a replacement.
+  function IdentityPanel(props) {
+    var panel = props.identity;
+    var titleProps = part(TAB_CLASS + "-identity-title", IDENTITY_TITLE_PART);
+    titleProps.key = IDENTITY_TITLE_PART;
+    var children = [element("h4", titleProps, text(panel.title))];
+    children = children.concat(
+      figureRows(
+        panel.rows,
+        IDENTITY_ROW_PART,
+        IDENTITY_ROW_LABEL_PART,
+        IDENTITY_ROW_VALUE_PART
+      )
+    );
+    if (text(panel.note)) {
+      var noteProps = named(
+        TAB_CLASS + "-identity-note",
+        IDENTITY_NOTE_PART,
+        text(panel.note)
+      );
+      noteProps.key = IDENTITY_NOTE_PART;
+      children.push(element("p", noteProps, text(panel.note)));
+    }
+    var panelProps = named(
+      TAB_CLASS + "-identity-panel",
+      IDENTITY_PANEL_PART,
+      text(panel.title)
+    );
+    panelProps[HELD_ATTR] = String(panel.held === true);
+    return element("div", panelProps, children);
+  }
+
+  // The two chain files the reset control deletes, and both reasons one signal
+  // carries, so a deliberate reset and a schema wipe read differently here. It
+  // sits in the control bar, under the two buttons it reports on.
+  function ResetPanel(props) {
+    var panel = props.reset;
+    var titleProps = part(TAB_CLASS + "-reset-title", RESET_TITLE_PART);
+    titleProps.key = RESET_TITLE_PART;
+    var children = [element("h4", titleProps, text(panel.title))];
+    children = children.concat(
+      figureRows(
+        panel.rows,
+        RESET_ROW_PART,
+        RESET_ROW_LABEL_PART,
+        RESET_ROW_VALUE_PART
+      )
+    );
+    if (text(panel.note)) {
+      var noteProps = named(
+        TAB_CLASS + "-reset-note",
+        RESET_NOTE_PART,
+        text(panel.note)
+      );
+      noteProps.key = RESET_NOTE_PART;
+      children.push(element("p", noteProps, text(panel.note)));
+    }
+    var panelProps = named(
+      TAB_CLASS + "-reset-panel",
+      RESET_PANEL_PART,
+      text(panel.title)
+    );
+    panelProps[CHAIN_ATTR] = text(panel.chain);
+    return element("div", panelProps, children);
+  }
+
+  // The world the chain holds, beside the two buttons that declare one. The
+  // concealed seed is never in these rows; only its commitment is.
+  function WorldPanel(props) {
+    var panel = props.world;
+    var titleProps = part(TAB_CLASS + "-world-title", WORLD_TITLE_PART);
+    titleProps.key = WORLD_TITLE_PART;
+    var children = [element("h4", titleProps, text(panel.title))];
+    children = children.concat(
+      figureRows(
+        panel.rows,
+        WORLD_ROW_PART,
+        WORLD_ROW_LABEL_PART,
+        WORLD_ROW_VALUE_PART
+      )
+    );
+    if (text(panel.note)) {
+      var noteProps = named(
+        TAB_CLASS + "-world-note",
+        WORLD_NOTE_PART,
+        text(panel.note)
+      );
+      noteProps.key = WORLD_NOTE_PART;
+      children.push(element("p", noteProps, text(panel.note)));
+    }
+    var panelProps = named(
+      TAB_CLASS + "-world-panel",
+      WORLD_PANEL_PART,
+      text(panel.title)
+    );
+    panelProps[CHAIN_ATTR] = text(panel.chain);
+    panelProps[HELD_ATTR] = String(panel.held === true);
     return element("div", panelProps, children);
   }
 
@@ -1050,6 +1561,33 @@
     return found;
   }
 
+  // The subtab whose own shortcut ends in `key`, so the binding is the payload's.
+  function subtabForKey(model, key) {
+    var found = null;
+    subtabList(model).forEach(function (entry) {
+      if (!isPlainObject(entry) || typeof entry.shortcut !== "string") {
+        return;
+      }
+      var parts = entry.shortcut.split(KEY_JOIN);
+      if (parts[0] === SHORTCUT_MODIFIER && parts[parts.length - 1] === key) {
+        found = entry.name;
+      }
+    });
+    return found;
+  }
+
+  // Answers the same shape selectSubtab does, so a refused key reads like a refused click.
+  function pressSubtabKey(key, withModifier) {
+    if (withModifier !== true || held === null) {
+      return { name: held === null ? null : selectedSubtab(held), opened: false, refusal: NO_KEY_BOUND };
+    }
+    var name = subtabForKey(held, key);
+    if (name === null) {
+      return { name: selectedSubtab(held), opened: false, refusal: NO_KEY_BOUND };
+    }
+    return selectSubtab(name);
+  }
+
   // An entry the running event does not open is never the drawn one, so a
   // chosen map falls back to the payload's subtab when the mode changes.
   function selectedSubtab(model) {
@@ -1060,9 +1598,11 @@
     return text(model[SUBTAB]);
   }
 
+  // The shortcut rides in the button, so a reader finds the key without a tooltip.
   function SubtabButton(props) {
     var entry = props.entry;
     var label = text(entry.title);
+    var key = text(entry.shortcut);
     var buttonArgs = buttonProps(SUBTAB_BUTTON_PART, label, function () {
       selectSubtab(entry.name);
     });
@@ -1070,11 +1610,29 @@
     buttonArgs[SUBTAB_ATTR] = text(entry.name);
     buttonArgs[SELECTED_ATTR] = String(entry.name === props.selected);
     buttonArgs[REACHABLE_ATTR] = String(entry.reachable !== false);
+    if (key !== undefined) {
+      buttonArgs[KEYS_ATTR] = key;
+    }
     if (entry.reachable === false) {
       buttonArgs.disabled = true;
       buttonArgs.title = text(entry.refusal);
     }
-    return element("button", buttonArgs, label);
+    return element(
+      "button",
+      buttonArgs,
+      element(
+        "span",
+        named(TAB_CLASS + "-subtab-label", SUBTAB_BUTTON_PART + "-label", label),
+        label
+      ),
+      key === undefined
+        ? null
+        : element(
+            "kbd",
+            named(TAB_CLASS + "-subtab-key", SUBTAB_KEY_PART, key),
+            key
+          )
+    );
   }
 
   function SubtabBar(props) {
@@ -1087,7 +1645,8 @@
           entry: entry,
           selected: props.selected
         });
-      })
+      }),
+      note("subtab-key-note", SUBTAB_KEY_NOTE_PART, props.keyNote)
     );
   }
 
@@ -1170,13 +1729,21 @@
       part(TAB_CLASS + "-gear", GEAR_PANEL_PART),
       element(
         "ul",
-        part(TAB_CLASS + "-gear-list", GEAR_LIST_PART),
+        Object.assign(part(TAB_CLASS + "-gear-list", GEAR_LIST_PART), {
+          key: GEAR_LIST_PART
+        }),
         rows.filter(isPlainObject).map(function (row) {
           return element(GearRow, { key: row.label, row: row });
         })
       ),
       note("gear-note", GEAR_NOTE_PART, gear.note),
-      note("gear-absent", GEAR_ABSENT_PART, gear.absent_text)
+      note("gear-absent", GEAR_ABSENT_PART, gear.absent_text),
+      titledRows(gear.types_title, gear.types, DETAILS_LIST_PART + "-item-types"),
+      titledRows(
+        gear.mechanism_title,
+        gear.mechanisms,
+        DETAILS_LIST_PART + "-item-mechanisms"
+      )
     );
   }
 
@@ -1235,28 +1802,246 @@
     return element("div", part(TAB_CLASS + "-tree", TREE_PANEL_PART), children);
   }
 
+  // One square a cell. A square carrying no glyph is one this participant has not
+  // discovered, and it draws nothing.
+  function MapSquare(props) {
+    var square = props.square;
+    var mark = isPlainObject(square.mark) ? square.mark : null;
+    var squareProps = named(
+      TAB_CLASS + "-map-square",
+      MAP_SQUARE_PART,
+      text(square.label)
+    );
+    squareProps[STATE_ATTR] = text(square.state);
+    squareProps[SQUARE_ATTR] = String(square.index);
+    squareProps[IN_VIEW_ATTR] = String(square.in_view === true);
+    if (mark === null || !text(mark.glyph)) {
+      return element("span", squareProps);
+    }
+    return element(
+      "span",
+      squareProps,
+      element(Glyph, { mark: mark, label: text(square.label) })
+    );
+  }
+
+  // The layer drawn, width squares to a row off the payload's own width.
+  function MapGrid(props) {
+    var squares = Array.isArray(props.squares) ? props.squares : [];
+    if (squares.length === 0) {
+      return null;
+    }
+    var gridProps = part(TAB_CLASS + "-map-grid", MAP_GRID_PART);
+    gridProps.style = {
+      gridTemplateColumns: "repeat(" + String(props.width) + ", 1fr)"
+    };
+    return element(
+      "div",
+      gridProps,
+      squares.filter(isPlainObject).map(function (square) {
+        return element(MapSquare, { key: square.index, square: square });
+      })
+    );
+  }
+
   function MapPanel(props) {
+    var map = props.map;
+    var layerRows = Array.isArray(map.layer_rows) ? map.layer_rows : [];
     return element(
       "div",
       part(TAB_CLASS + "-map", MAP_PANEL_PART),
-      note("map-note", MAP_NOTE_PART, props.map.absent_text)
+      element(MapGrid, { squares: map.squares, width: map.width }),
+      note("map-note", MAP_VIEW_NOTE_PART, map.view_text),
+      note("map-note", MAP_UNDISCOVERED_NOTE_PART, map.undiscovered_text),
+      note("map-note", MAP_POSITION_NOTE_PART, map.position_text),
+      note("map-note", MAP_ACTIONS_NOTE_PART, map.actions_absent_text),
+      note("map-note", MAP_NOTE_PART, map.absent_text),
+      layerRows.length === 0
+        ? null
+        : titledRows(map.layer_title, layerRows, DETAILS_LIST_PART + "-layer"),
+      titledRows(map.grid_title, map.grid, DETAILS_LIST_PART + "-grid"),
+      note("details-note", DETAILS_NOTE_PART, map.world_text),
+      note("details-note", DETAILS_NOTE_PART + "-tactical", map.tactical_absent_text)
+    );
+  }
+
+  // A heading over one labelled list, which is the shape five subtabs draw in.
+  function titledRows(title, rows, listPart) {
+    var heading = text(title);
+    var children = [];
+    if (heading !== undefined) {
+      children.push(
+        element(
+          "h4",
+          Object.assign(
+            named(TAB_CLASS + "-details-title", DETAILS_TITLE_PART, heading),
+            { key: DETAILS_TITLE_PART + "-" + listPart }
+          ),
+          heading
+        )
+      );
+    }
+    children.push(
+      element(
+        "div",
+        Object.assign(part(TAB_CLASS + "-details-list", listPart), {
+          key: listPart
+        }),
+        figureRows(rows, DETAILS_ROW_PART, DETAILS_LABEL_PART, DETAILS_VALUE_PART)
+      )
+    );
+    return element(
+      "div",
+      Object.assign(part(TAB_CLASS + "-details-group", listPart + "-group"), {
+        key: listPart + "-group"
+      }),
+      children
+    );
+  }
+
+  function DetailsPanel(props) {
+    var details = props.details;
+    return element(
+      "div",
+      part(TAB_CLASS + "-details", DETAILS_PANEL_PART),
+      note("details-note", DETAILS_NOTE_PART + "-vessel", details.vessel_text),
+      titledRows(details.stats_title, details.stats, DETAILS_LIST_PART + "-stats"),
+      note("details-note", DETAILS_NOTE_PART + "-count", details.count_text),
+      titledRows(details.sphere_title, details.spheres, DETAILS_LIST_PART + "-spheres")
+    );
+  }
+
+  function ResourcePanel(props) {
+    var resources = props.resources;
+    return element(
+      "div",
+      part(TAB_CLASS + "-resource", RESOURCE_PANEL_PART),
+      titledRows(
+        resources.list_title,
+        resources.rows,
+        DETAILS_LIST_PART + "-materials"
+      ),
+      note("details-note", DETAILS_NOTE_PART + "-count", resources.count_text),
+      note("details-note", DETAILS_NOTE_PART + "-held", resources.held_absent_text),
+      note(
+        "details-note",
+        DETAILS_NOTE_PART + "-ceiling",
+        resources.ceiling_absent_text
+      )
+    );
+  }
+
+  function QuintPanel(props) {
+    var quint = props.quint;
+    return element(
+      "div",
+      part(TAB_CLASS + "-quint", QUINT_PANEL_PART),
+      titledRows(quint.rows_title, quint.rows, DETAILS_LIST_PART + "-quint"),
+      note("details-note", DETAILS_NOTE_PART + "-wallet", quint.wallet_note),
+      note("details-note", DETAILS_NOTE_PART + "-absent", quint.absent_text)
+    );
+  }
+
+  function GuildPanel(props) {
+    var guild = props.guild;
+    var guilds = Array.isArray(guild.guilds) ? guild.guilds : [];
+    return element(
+      "div",
+      part(TAB_CLASS + "-guild", GUILD_PANEL_PART),
+      titledRows(guild.rows_title, guild.rows, DETAILS_LIST_PART + "-guild"),
+      guilds.length === 0
+        ? null
+        : titledRows(
+            guild.rows_title,
+            guilds.map(function (entry) {
+              return { label: entry.name, value: String(entry.members) };
+            }),
+            DETAILS_LIST_PART + "-guilds"
+          ),
+      note("details-note", DETAILS_NOTE_PART + "-empty", guild.empty_text),
+      note("details-note", DETAILS_NOTE_PART + "-tie", guild.world_tie_text)
+    );
+  }
+
+  // One page a skill kind. Only the page whose holds_ladder is set carries the ladder.
+  function SkillPage(props) {
+    var page = props.page;
+    var title = text(page.title);
+    var pageProps = named(TAB_CLASS + "-skill-page", SKILL_PAGE_PART, title);
+    pageProps.key = SKILL_PAGE_PART + "-" + text(page.name);
+    pageProps[PAGE_ATTR] = text(page.name);
+    return element(
+      "section",
+      pageProps,
+      element(
+        "h4",
+        named(TAB_CLASS + "-skill-page-title", SKILL_PAGE_TITLE_PART, title),
+        title
+      ),
+      note("skill-page-absent", SKILL_PAGE_ABSENT_PART, page.absent_text),
+      page.holds_ladder === true ? props.ladder : null
+    );
+  }
+
+  function SkillPagesPanel(props) {
+    var pages = Array.isArray(props.skillPages.pages) ? props.skillPages.pages : [];
+    var ladder = element(TreePanel, { tree: props.skillPages });
+    return element(
+      "div",
+      part(TAB_CLASS + "-skill-pages", TREE_PANEL_PART + "-pages"),
+      note("details-note", DETAILS_NOTE_PART + "-pages", props.skillPages.page_note),
+      pages.filter(isPlainObject).map(function (page) {
+        return element(SkillPage, {
+          key: SKILL_PAGE_PART + "-" + text(page.name),
+          page: page,
+          ladder: page.holds_ladder === true ? ladder : null
+        });
+      })
     );
   }
 
   var SUBTAB_BODY = {};
-  SUBTAB_BODY[CHARACTER_STATS] = function (model) {
-    return isPlainObject(model[CHARACTER_STATS])
-      ? element(StatsPanel, { stats: model[CHARACTER_STATS] })
-      : null;
+  SUBTAB_BODY[CHARACTER_DETAILS] = function (model) {
+    return element(
+      "div",
+      part(TAB_CLASS + "-details-pair", DETAILS_PANEL_PART + "-pair"),
+      isPlainObject(model[CHARACTER_DETAILS])
+        ? element(DetailsPanel, {
+            key: DETAILS_PANEL_PART,
+            details: model[CHARACTER_DETAILS]
+          })
+        : null,
+      isPlainObject(model[CHARACTER_STATS])
+        ? element(StatsPanel, {
+            key: STATS_PANEL_PART,
+            stats: model[CHARACTER_STATS]
+          })
+        : null
+    );
   };
   SUBTAB_BODY[GEAR] = function (model) {
     return isPlainObject(model[GEAR])
       ? element(GearPanel, { gear: model[GEAR] })
       : null;
   };
-  SUBTAB_BODY[SKILL_TREE] = function (model) {
-    return isPlainObject(model[SKILL_TREE])
-      ? element(TreePanel, { tree: model[SKILL_TREE] })
+  SUBTAB_BODY[RESOURCES] = function (model) {
+    return isPlainObject(model[RESOURCES])
+      ? element(ResourcePanel, { resources: model[RESOURCES] })
+      : null;
+  };
+  SUBTAB_BODY[QUINT] = function (model) {
+    return isPlainObject(model[QUINT])
+      ? element(QuintPanel, { quint: model[QUINT] })
+      : null;
+  };
+  SUBTAB_BODY[SKILLS] = function (model) {
+    return isPlainObject(model[SKILL_PAGES])
+      ? element(SkillPagesPanel, { skillPages: model[SKILL_PAGES] })
+      : null;
+  };
+  SUBTAB_BODY[GUILD] = function (model) {
+    return isPlainObject(model[GUILD])
+      ? element(GuildPanel, { guild: model[GUILD] })
       : null;
   };
   SUBTAB_BODY[MAP] = function (model) {
@@ -1354,14 +2139,202 @@
     return props;
   }
 
+  // One absent mechanism and what it waits on, from the vessels module's own list.
+  function VesselAbsentRow(props) {
+    var entry = props.entry;
+    var rowProps = part(TAB_CLASS + "-vessel-absent-row", VESSEL_ABSENT_ROW_PART);
+    rowProps.key = VESSEL_ABSENT_ROW_PART + "-" + text(entry.name);
+    return element(
+      "li",
+      rowProps,
+      element(
+        "span",
+        part(TAB_CLASS + "-vessel-absent-name", VESSEL_ABSENT_NAME_PART),
+        text(entry.name)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-vessel-absent-note", VESSEL_ABSENT_NOTE_PART),
+        text(entry.note)
+      )
+    );
+  }
+
+  // The left half: the Vessel the class pick names, its details against the wallet
+  // balance, and the mechanisms no module builds for it.
+  function VesselPanel(props) {
+    var vessel = props.vessel;
+    var absent = Array.isArray(vessel.absent) ? vessel.absent : [];
+    var children = [
+      element(
+        "div",
+        part(TAB_CLASS + "-vessel-list", VESSEL_LIST_PART),
+        figureRows(
+          vessel.rows,
+          VESSEL_ROW_PART,
+          VESSEL_ROW_LABEL_PART,
+          VESSEL_ROW_VALUE_PART
+        )
+      ),
+      element(
+        "h3",
+        part(TAB_CLASS + "-vessel-details-title", VESSEL_DETAILS_TITLE_PART),
+        text(vessel.details_title)
+      ),
+      element(
+        "div",
+        part(TAB_CLASS + "-vessel-details-list", VESSEL_DETAILS_LIST_PART),
+        figureRows(
+          vessel.details,
+          VESSEL_ROW_PART,
+          VESSEL_ROW_LABEL_PART,
+          VESSEL_ROW_VALUE_PART
+        )
+      ),
+      note("vessel-note", VESSEL_NOTE_PART, vessel.note),
+      note("vessel-note", VESSEL_BOUND_PART, vessel.bound),
+      note("vessel-note", VESSEL_CLICK_NOTE_PART, vessel.click_note),
+      element(
+        "h3",
+        part(TAB_CLASS + "-vessel-absent-title", VESSEL_ABSENT_TITLE_PART),
+        text(vessel.absent_title)
+      ),
+      element(
+        "ul",
+        part(TAB_CLASS + "-vessel-absent-list", VESSEL_ABSENT_LIST_PART),
+        absent.filter(isPlainObject).map(function (entry) {
+          return element(VesselAbsentRow, {
+            key: VESSEL_ABSENT_ROW_PART + "-" + text(entry.name),
+            entry: entry
+          });
+        })
+      )
+    ];
+    var opens = text(vessel.click_subtab);
+    function open() {
+      return selectSubtab(opens);
+    }
+    var panelProps = named(
+      TAB_CLASS + "-vessel-panel",
+      VESSEL_PANEL_PART,
+      text(vessel.click_note)
+    );
+    panelProps.role = "button";
+    panelProps.tabIndex = 0;
+    panelProps.onClick = open;
+    panelProps.onKeyDown = function (event) {
+      if (event.key === ENTER_KEY || event.key === SPACE_KEY) {
+        event.preventDefault();
+        open();
+      }
+    };
+    panelProps[SUBTAB_ATTR] = opens;
+    return element("div", panelProps, children);
+  }
+
+  // The right half while an encounter runs. The enemy screen draws inside it as its
+  // own zone, squared off the row height, with the title and the absence beside it.
+  function EncounterRegion(props) {
+    var encounter = props.encounter;
+    return element(
+      "section",
+      named(
+        TAB_CLASS + "-encounter-region",
+        ENCOUNTER_REGION_PART,
+        text(encounter.title)
+      ),
+      element(
+        "div",
+        part(TAB_CLASS + "-encounter-text", ENCOUNTER_TEXT_PART),
+        element(
+          "h2",
+          part(TAB_CLASS + "-encounter-title", ENCOUNTER_TITLE_PART),
+          text(encounter.title)
+        ),
+        note("encounter-note", ENCOUNTER_NOTE_PART, encounter.running_text),
+        note("tactical-note", TACTICAL_NOTE_PART, encounter.tactical_absent)
+      ),
+      element(
+        "div",
+        part(TAB_CLASS + "-enemy-slot", ENEMY_SLOT_PART),
+        props.zone === null
+          ? null
+          : element(UpperZone, { zone: props.zone, absent: props.marks })
+      )
+    );
+  }
+
+  // The right-hand half while no encounter runs. The whole region is the button,
+  // so clicking the map opens the map subtab through selectSubtab.
+  function MapRegion(props) {
+    var map = props.map;
+    var label = text(map.title);
+    var regionProps = buttonProps(MAP_REGION_PART, label, function () {
+      selectSubtab(MAP);
+    });
+    return element(
+      "button",
+      regionProps,
+      element(
+        "span",
+        part(TAB_CLASS + "-map-region-title", MAP_REGION_TITLE_PART),
+        label
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-map-note", MAP_NOTE_PART),
+        text(map.region_text)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-encounter-note", ENCOUNTER_NOTE_PART),
+        text(props.encounter.resting_text)
+      ),
+      element(
+        "span",
+        part(TAB_CLASS + "-map-open", MAP_OPEN_PART),
+        text(map.open_text)
+      )
+    );
+  }
+
+  // The right half of the top row: the Encounter while one runs, the Map otherwise.
+  function RightRegion(props) {
+    var encounter = props.encounter;
+    var running = isPlainObject(encounter) && encounter.running === true;
+    var regionProps = part(TAB_CLASS + "-right-region", RIGHT_REGION_PART);
+    regionProps[ENCOUNTER_ATTR] = String(running);
+    var body = null;
+    if (running) {
+      body = element(EncounterRegion, {
+        encounter: encounter,
+        zone: props.zone,
+        marks: props.marks
+      });
+    } else if (isPlainObject(props.map) && isPlainObject(encounter)) {
+      body = element(MapRegion, { map: props.map, encounter: encounter });
+    }
+    return element("div", regionProps, body);
+  }
+
   function UpperZone(props) {
     var zone = props.zone;
     var titleProps = part(TAB_CLASS + "-zone-title", ZONE_TITLE_PART);
     titleProps.key = ZONE_TITLE_PART;
     var children = [element("h2", titleProps, text(zone.title))];
+    if (isPlainObject(props.vessel)) {
+      children.push(
+        element(VesselPanel, { key: VESSEL_PANEL_PART, vessel: props.vessel })
+      );
+    }
     if (isPlainObject(props.event)) {
       children.push(
         element(EventBand, { key: EVENT_BAND_PART, event: props.event })
+      );
+    }
+    if (isPlainObject(props.meters)) {
+      children.push(
+        element(MeterPair, { key: METER_PAIR_PART, meters: props.meters })
       );
     }
     if (isPlainObject(props.map)) {
@@ -1369,6 +2342,16 @@
     }
     if (Array.isArray(props.modes)) {
       children.push(element(ModeList, { key: MODE_LIST_PART, rows: props.modes }));
+    }
+    if (isPlainObject(props.marks)) {
+      children.push(
+        element(GlyphLegend, { key: GLYPH_LEGEND_PART, marks: props.marks })
+      );
+    }
+    if (isPlainObject(props.absent)) {
+      children.push(
+        element(GlyphAbsence, { key: GLYPH_ABSENCE_PART, marks: props.absent })
+      );
     }
     var placeholderProps = part(
       TAB_CLASS + "-zone-placeholder",
@@ -1477,11 +2460,21 @@
     var event = isPlainObject(model[EVENT]) ? model[EVENT] : null;
     var modeRows = Array.isArray(model[MODES]) ? model[MODES] : null;
     var map = isPlainObject(model[MAP]) ? model[MAP] : null;
+    var encounter = isPlainObject(model[ENCOUNTER]) ? model[ENCOUNTER] : null;
+    var vessel = isPlainObject(model[VESSEL]) ? model[VESSEL] : null;
+    var marks = isPlainObject(model[MAP_MARKS]) ? model[MAP_MARKS] : null;
+    var meters = isPlainObject(model[METERS]) ? model[METERS] : null;
     var chosen = selectedSubtab(model);
     var tabProps = {
       className: TAB_CLASS,
-      "aria-label": text(model[ACCESSIBLE_NAME])
+      "aria-label": text(model[ACCESSIBLE_NAME]),
+      onKeyDown: function (event) {
+        if (pressSubtabKey(event.key, event.ctrlKey).opened) {
+          event.preventDefault();
+        }
+      }
     };
+    tabProps.tabIndex = KEYBOARD_TAB_INDEX;
     tabProps[CHAIN_ATTR] = text(model[CHAIN]);
     tabProps[ISSUE_ATTR] = text(model[ISSUE]);
     tabProps[OPEN_ATTR] = String(walletOpen);
@@ -1492,9 +2485,18 @@
       element("h1", part(TAB_CLASS + "-heading", HEADING_PART), text(model[HEADING])),
       element("p", part(TAB_CLASS + "-state", STATE_PART), text(model[STATE_TEXT])),
       isPlainObject(model[CONTROLS])
-        ? element(ControlBar, { controls: model[CONTROLS] })
+        ? element(ControlBar, {
+            controls: model[CONTROLS],
+            identity: isPlainObject(model[IDENTITY]) ? model[IDENTITY] : null,
+            reset: isPlainObject(model[CHAIN_RESET]) ? model[CHAIN_RESET] : null,
+            world: isPlainObject(model[WORLD]) ? model[WORLD] : null
+          })
         : null,
-      element(SubtabBar, { entries: subtabList(model), selected: chosen }),
+      element(SubtabBar, {
+        entries: subtabList(model),
+        selected: chosen,
+        keyNote: text(model[SUBTAB_SHORTCUT_TEXT])
+      }),
       element(SubtabArea, { model: model, selected: chosen }),
       element(
         "div",
@@ -1503,11 +2505,20 @@
           ? null
           : element(UpperZone, {
               zone: player,
+              vessel: vessel,
               event: event,
+              meters: meters,
               modes: modeRows,
-              map: map
+              map: map,
+              marks: marks
             }),
-        enemy === null ? null : element(UpperZone, { zone: enemy })
+        element("div", part(TAB_CLASS + "-top-divider", TOP_DIVIDER_PART)),
+        element(RightRegion, {
+          zone: enemy,
+          map: map,
+          marks: marks,
+          encounter: encounter
+        })
       ),
       party === null
         ? null
@@ -1833,7 +2844,15 @@
     subtab: function () {
       return held === null ? null : selectedSubtab(held);
     },
+    subtabShortcuts: function () {
+      return held === null
+        ? []
+        : subtabList(held).map(function (entry) {
+            return [entry.shortcut, entry.name];
+          });
+    },
     selectSubtab: selectSubtab,
+    pressSubtabKey: pressSubtabKey,
     controlNames: function () {
       return controlRows(held).map(function (row) {
         return row.name;

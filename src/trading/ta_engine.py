@@ -44,6 +44,8 @@ indicator and adds up the votes.
 
 from __future__ import annotations
 
+import logging
+import math
 import time
 from typing import Optional
 
@@ -127,6 +129,7 @@ __all__ = [
     "FVG_PROXIMITY_PCT",
     "HACandle",
     "HA_BODY_PCT_UNIT",
+    "INDICATOR_CLASSES",
     "IchimokuCloud",
     "KaufmanERIndicator",
     "MACD",
@@ -159,7 +162,11 @@ __all__ = [
     "detect_macd_taper",
     "detect_volume_confirmed_spring",
     "detect_w_bottom",
+    "weights_from_settings",
 ]
+
+
+logger = logging.getLogger("acervator.ta_engine")
 
 
 DEFAULT_WEIGHTS = {
@@ -177,6 +184,51 @@ DEFAULT_WEIGHTS = {
     # Both are built on Wilder's RSI, so this vote overlaps stochastic_rsi.
     "rsi": 0.8,
 }
+
+# Keyed by the DEFAULT_WEIGHTS name, so _create_indicators needs no second list
+# of figures and KeyErrors on a weight name that has no indicator.
+INDICATOR_CLASSES: dict[str, type] = {
+    "bollinger_bands": BollingerBands,
+    "vortex": VortexIndicator,
+    "macd": MACD,
+    "stochastic_rsi": StochasticRSI,
+    "ichimoku": IchimokuCloud,
+    "volume": VolumeAnalysis,
+    "slingshot": SlingshotIndicator,
+    "adx": ADXIndicator,
+    "kaufman_er": KaufmanERIndicator,
+    "supertrend": SupertrendIndicator,
+    "zscore": ZScoreIndicator,
+    "rsi": RSIIndicator,
+}
+
+
+def weights_from_settings(stored: Optional[dict]) -> dict[str, float]:
+    """The twelve voting weights, with every figure ``stored`` carries over them.
+
+    ``stored`` is the ``ta_indicator_weights`` mapping the settings file holds.
+    A name DEFAULT_WEIGHTS does not declare, and a figure that is not a finite
+    number, are both dropped with a warning rather than reaching an indicator.
+    """
+    found = dict(DEFAULT_WEIGHTS)
+    for name, figure in (stored or {}).items():
+        if name not in found:
+            logger.warning("ta weight %r is not an indicator; ignored", name)
+            continue
+        try:
+            number = float(figure)
+        except (TypeError, ValueError):
+            logger.warning(
+                "ta weight %s=%r is not a number; default kept", name, figure
+            )
+            continue
+        if not math.isfinite(number) or number < 0.0:
+            logger.warning(
+                "ta weight %s=%r is out of range; default kept", name, figure
+            )
+            continue
+        found[name] = number
+    return found
 
 
 class _TAInstrumentationOff(Exception):
@@ -212,21 +264,26 @@ class VotingEngine:
         self._indicators = self._create_indicators()
 
     def _create_indicators(self) -> list:
-        """Instantiate all indicator instances with configured weights."""
+        """One indicator per DEFAULT_WEIGHTS key, in that order, at its weight.
+
+        An absent key falls back to the DEFAULT_WEIGHTS figure, so this method
+        holds no second copy of the twelve.
+        """
         return [
-            BollingerBands(weight=self.weights.get("bollinger_bands", 1.0)),
-            VortexIndicator(weight=self.weights.get("vortex", 0.9)),
-            MACD(weight=self.weights.get("macd", 1.2)),
-            StochasticRSI(weight=self.weights.get("stochastic_rsi", 1.0)),
-            IchimokuCloud(weight=self.weights.get("ichimoku", 1.1)),
-            VolumeAnalysis(weight=self.weights.get("volume", 0.8)),
-            SlingshotIndicator(weight=self.weights.get("slingshot", 1.0)),
-            ADXIndicator(weight=self.weights.get("adx", 1.0)),
-            KaufmanERIndicator(weight=self.weights.get("kaufman_er", 1.0)),
-            SupertrendIndicator(weight=self.weights.get("supertrend", 1.0)),
-            ZScoreIndicator(weight=self.weights.get("zscore", 0.9)),
-            RSIIndicator(weight=self.weights.get("rsi", 0.8)),
+            INDICATOR_CLASSES[name](weight=self.weights.get(name, default))
+            for name, default in DEFAULT_WEIGHTS.items()
         ]
+
+    def set_weights(self, weights: Optional[dict[str, float]] = None) -> None:
+        """Take a new set of weights and rebuild the indicators on them.
+
+        ``_create_indicators`` reads ``self.weights`` once, so assigning that
+        mapping alone reaches no indicator. Callers that push a weight into a
+        voter already running come through here. ``None`` restores
+        ``DEFAULT_WEIGHTS``.
+        """
+        self.weights = dict(weights) if weights else DEFAULT_WEIGHTS.copy()
+        self._indicators = self._create_indicators()
 
     def compute_all(
         self,

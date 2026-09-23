@@ -28,6 +28,23 @@
   var GRID_FRACTIONS = "grid_fractions";
   var ARROW_MIN_FRACTION = "arrow_min_fraction";
   var SHINE_MIN_FRACTION = "shine_min_fraction";
+  var ARROW_FONT = "arrow_font";
+  var ARROW_HEIGHT_PX = "arrow_height_px";
+  var ARROW_MIN_HEIGHT_PX = "arrow_min_height_px";
+  var COLUMN_MIN_PAD_PX = "column_min_pad_px";
+  var COLUMN_PAD_FRACTION = "column_pad_fraction";
+  var EMPTY_FONT = "empty_font";
+  var GLOW_INSET_PX = "glow_inset_px";
+  var LABEL_FONT = "label_font";
+  var LABEL_HEIGHT_PX = "label_height_px";
+  var LABEL_OFFSET_PX = "label_offset_px";
+  var MARGIN_BOTTOM_PX = "margin_bottom_px";
+  var MARGIN_LEFT_PX = "margin_left_px";
+  var MARGIN_TOP_PX = "margin_top_px";
+  var SHINE_FRACTION = "shine_fraction";
+  var SHINE_LIMIT_PX = "shine_limit_px";
+  var SHINE_MIN_HEIGHT_PX = "shine_min_height_px";
+  var SHINE_RADIUS_PX = "shine_radius_px";
   var PERCENT_SCALE = "percent_scale";
   var GRADIENT_ALPHAS = "gradient_alphas";
   var GRADIENT_STOPS = "gradient_stops";
@@ -61,6 +78,7 @@
   var TABLES = "tables";
   var TARGETS = "targets";
   var TEXT = "text";
+  var STYLE_SHEET = "style_sheet";
   var TEXT_COLOR = "text_color";
   var TIMEFRAME = "timeframe";
   var TITLES = "titles";
@@ -169,13 +187,20 @@
   var CENTER = "center";
   var RELATIVE = "relative";
   var BOLD = "bold";
+  var NORMAL = "normal";
+  var ABSOLUTE = "absolute";
+  var TRANSPARENT = "transparent";
+  var EM = "em";
+  var CALC_OPEN = "calc(100% - 2 * max(";
+  var MIN_OPEN = "min(";
   var ZERO = "0";
   var FLEX_NONE = "none";
   var BORDER_BOX = "border-box";
   var GRADIENT_TO_RIGHT = "linear-gradient(to right, ";
   var REPEAT_X = "repeat-x";
-  // A dotted rule: two pixels marked, two clear.
-  var GRID_DASH_SIZE = "4px 1px";
+  // QPen Qt.DotLine at width one marks one pixel and leaves two.
+  var GRID_DASH_SIZE = "3px 1px";
+  var GRID_DASH_STOP = "33.334%";
   var GRID = "grid";
   var TABLE_BOX = "table";
   var BLOCK = "block";
@@ -185,12 +210,13 @@
   var REPEAT_CLOSE = ", 1fr)";
   var FULL_SPAN = "1 / -1";
   var SPAN_SPLIT = " / ";
-  // Rows one mini-panel takes: its table, then its graph's three.
-  var MINI_ROW_STEP = 5;
+  // Rows one mini-panel takes: its table, the spacing under it, then its
+  // graph's three.
+  var MINI_ROW_STEP = 6;
   // A pillar runs the row-A plot row to the row-B plot row.
-  var PILLAR_ROWS = "3 / 9";
+  var PILLAR_ROWS = "4 / 11";
   // The label strip under the row-B plot row.
-  var PILLAR_LABEL_ROW = "9";
+  var PILLAR_LABEL_ROW = "11";
 
   var NOT_AN_OBJECT_FAULT = "payload is not an object";
   var MISSING_FIELD_FAULT = "declared field is absent";
@@ -208,6 +234,10 @@
   var loadFault = null;
   var asked = null;
   var roots = [];
+  // The bar area height the last draw measured, which is what an ornament
+  // threshold is tested against.
+  var areaHeight = 0;
+  var sized = [];
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -253,6 +283,21 @@
       return undefined;
     }
     return String(value) + PX;
+  }
+
+  // A published (family, points) pair. fontScale sizes one pair against
+  // label_font, whose points are the table font Qt draws every cell in.
+  function fontFamily(pair) {
+    return text((Array.isArray(pair) ? pair : [])[0]);
+  }
+
+  function fontScale(pair, ground) {
+    var points = number((Array.isArray(pair) ? pair : [])[1], FULL);
+    var base = number((Array.isArray(ground) ? ground : [])[1], FULL);
+    if (base <= ALPHA_FLOOR) {
+      return undefined;
+    }
+    return String(points / base) + EM;
   }
 
   function percentScaleOf(model) {
@@ -361,8 +406,10 @@
     return style;
   }
 
+  // Measured off both renders: the QLabel draws title_text at the panel's
+  // own weight, so a bold span would draw a wider title than Qt does.
   function Title(props) {
-    var titleProps = { style: { fontWeight: BOLD } };
+    var titleProps = { style: { fontWeight: NORMAL } };
     titleProps[PART_ATTR] = TITLE_PART;
     return element(SPAN_TAG, titleProps, text(props.model[TITLE_TEXT]));
   }
@@ -413,7 +460,11 @@
   function HeaderRow(props) {
     var model = props.model;
     var head = objectField(model, HEADER);
-    var style = boxStyle(head[MARGINS_PX], undefined, ROW);
+    // The QHBoxLayout spaces its label, its selector and its dot apart; the
+    // panel's own spacing_px is the only spacing the payload declares.
+    var style = boxStyle(
+      head[MARGINS_PX], objectField(model, CONTAINER)[SPACING_PX], ROW
+    );
     style.alignItems = CENTER;
     var headProps = { style: style };
     headProps[PART_ATTR] = HEADER_PART;
@@ -435,15 +486,27 @@
     ]);
   }
 
+  // The font, size, padding and radius Qt declares. The colour and the
+  // background come from the payload's own channels, which carry Qt's alpha.
+  function sheetStyle(sheet) {
+    var api = global.acervatorHeader;
+    if (!api || typeof api.styleOf !== "function") {
+      return {};
+    }
+    return api.styleOf(sheet);
+  }
+
   function StalenessBanner(props) {
     var model = props.model;
     var band = objectField(model, STALENESS);
-    var bandProps = {
-      style: {
-        color: text(band[TEXT_COLOR]),
-        backgroundColor: rgba(model, band[BACKGROUND_RGB], band[BACKGROUND_ALPHA])
-      }
-    };
+    var bandStyle = sheetStyle(band[STYLE_SHEET]);
+    bandStyle.color = text(band[TEXT_COLOR]);
+    bandStyle.backgroundColor = rgba(
+      model,
+      band[BACKGROUND_RGB],
+      band[BACKGROUND_ALPHA]
+    );
+    var bandProps = { style: bandStyle };
     bandProps[PART_ATTR] = STALENESS_PART;
     bandProps[SLOT_ATTR] = STALENESS_PART;
     bandProps.hidden = band[VISIBLE] !== true;
@@ -455,12 +518,16 @@
   function RateStrip(props) {
     var model = props.model;
     var strip = objectField(model, RATE_STRIP);
-    var stripProps = {
-      style: {
-        color: text(strip[TEXT_COLOR]),
-        backgroundColor: rgba(model, strip[BACKGROUND_RGB], strip[BACKGROUND_ALPHA])
-      }
-    };
+    var stripStyle = sheetStyle(strip[STYLE_SHEET]);
+    stripStyle.color = text(strip[TEXT_COLOR]);
+    stripStyle.backgroundColor = rgba(
+      model,
+      strip[BACKGROUND_RGB],
+      strip[BACKGROUND_ALPHA]
+    );
+    // RATE_STRIP_JOIN holds three spaces a QLabel keeps and HTML would fold.
+    stripStyle.whiteSpace = "pre";
+    var stripProps = { style: stripStyle };
     stripProps[PART_ATTR] = RATE_PART;
     stripProps[SLOT_ATTR] = RATE_PART;
     stripProps[ARIA_LABEL] = label(strip.accessible_name);
@@ -484,6 +551,8 @@
   function HeadCell(props) {
     var cellProps = { style: ruleStyle(props.model, props.pillars, props.at) };
     cellProps.style.textAlign = CENTER;
+    // QHeaderView takes the table's own font; a th would draw it bold.
+    cellProps.style.fontWeight = NORMAL;
     cellProps[PART_ATTR] = HEAD_CELL_PART;
     cellProps[TITLE_ATTR] = label(props.tooltip);
     cellProps[ARIA_LABEL] = label(props.title);
@@ -523,7 +592,14 @@
   // A row laid out as its own fixed table keeps one column width once the
   // body is a block, which is what lets the body take a height at all.
   function rowBox(model) {
-    return { display: TABLE_BOX, width: whole(model), tableLayout: FIXED };
+    return {
+      display: TABLE_BOX,
+      width: whole(model),
+      tableLayout: FIXED,
+      // setShowGrid(False) abuts the cells, so no border-spacing stands
+      // between a row and the row_height_px the payload publishes.
+      borderSpacing: ZERO
+    };
   }
 
   function MiniTable(props) {
@@ -549,9 +625,11 @@
         })
       )
     );
+    // Qt fixes the table to its header plus slack_rows, so the body keeps
+    // that height whether it holds one row or more.
     var bodyStyle = {
       display: BLOCK,
-      maxHeight: length(slackHeight(table)),
+      height: length(slackHeight(table)),
       overflow: HIDDEN
     };
     var rowStyle = rowBox(model);
@@ -576,7 +654,9 @@
       })
     );
     // tableLayout fixed gives every column one width, as BarsPane divides its row.
-    var tableProps = { style: { width: whole(model), tableLayout: FIXED } };
+    var tableProps = {
+      style: { width: whole(model), tableLayout: FIXED, borderSpacing: ZERO }
+    };
     tableProps[PART_ATTR] = TABLE_PART;
     tableProps[STATE_ATTR] = text(table[KIND]);
     return element(TABLE_TAG, tableProps, [head, body]);
@@ -586,6 +666,16 @@
     var table = objectField(bars, COLORS);
     var channels = table[text(one[DIRECTION])];
     return rgba(model, channels, byte);
+  }
+
+  // Qt tests an ornament against the bar it painted, so a measured
+  // areaHeight decides by pixels and the published fraction stands in
+  // until renderPanel has one.
+  function carries(filled, painted, shape, pixels, fraction) {
+    if (areaHeight > ALPHA_FLOOR) {
+      return painted > number(shape[pixels], ALPHA_FLOOR);
+    }
+    return filled >= number(shape[fraction], FULL);
   }
 
   function Bar(props) {
@@ -605,23 +695,32 @@
       Math.max(number(one[CONFIDENCE], ALPHA_FLOOR), ALPHA_FLOOR),
       FULL
     );
+    var painted = Math.max(
+      number(shape.min_height_px, ALPHA_FLOOR), filled * areaHeight
+    );
     var style = {
       height: percent(model, filled),
-      // The body takes the share of its column the surface publishes; the
-      // rest of the column is the pad Qt leaves each side.
-      width: percent(model, number(shape.column_body_fraction, FULL)),
+      // Qt pads each side by column_pad_fraction and never under
+      // column_min_pad_px, which is what the body leaves of its column.
+      width:
+        CALC_OPEN + length(shape[COLUMN_MIN_PAD_PX]) + COMMA_SPACE +
+        percent(model, number(shape[COLUMN_PAD_FRACTION], ALPHA_FLOOR)) +
+        CLOSE + CLOSE,
       alignSelf: CENTER,
       minHeight: length(shape.min_height_px),
       minWidth: length(shape.min_width_px),
       borderRadius: length(shape[BODY_RADIUS_PX]),
       backgroundImage:
         GRADIENT_OPEN + faces.join(COMMA_SPACE) + CLOSE,
+      // Qt fills a rounded rect glow_inset_px outside the body, not a blur.
       boxShadow:
         ZERO +
         SPACE +
         ZERO +
         SPACE +
-        length(shape.glow_radius_px) +
+        ZERO +
+        SPACE +
+        length(shape[GLOW_INSET_PX]) +
         SPACE +
         barColour(model, bars, one, paint[GLOW_ALPHA]),
       borderStyle: SOLID,
@@ -634,12 +733,20 @@
     barProps[STATE_ATTR] = text(one[DIRECTION]);
     barProps[ARIA_LABEL] = label(text(one[NAME]));
     var drawn = [];
-    if (filled >= number(shape[SHINE_MIN_FRACTION], FULL)) {
+    if (carries(filled, painted, shape, SHINE_MIN_HEIGHT_PX, SHINE_MIN_FRACTION)) {
       var shineProps = {
         key: BAR_SHINE_PART,
         style: {
-          height: percent(model, number(shape.shine_fraction, ALPHA_FLOOR)),
-          borderRadius: length(shape.shine_radius_px),
+          position: ABSOLUTE,
+          top: length(FULL),
+          left: length(FULL),
+          right: length(FULL),
+          // Qt caps the highlight at shine_limit_px on a tall bar.
+          height:
+            MIN_OPEN +
+            percent(model, number(shape[SHINE_FRACTION], ALPHA_FLOOR)) +
+            COMMA_SPACE + length(shape[SHINE_LIMIT_PX]) + CLOSE,
+          borderRadius: length(shape[SHINE_RADIUS_PX]),
           backgroundImage:
             GRADIENT_OPEN +
             rgba(model, paint[SHINE_RGB], paint[SHINE_START_ALPHA]) +
@@ -651,10 +758,20 @@
       shineProps[PART_ATTR] = BAR_SHINE_PART;
       drawn.push(element(DIV_TAG, shineProps, null));
     }
-    if (filled >= number(shape[ARROW_MIN_FRACTION], FULL)) {
+    if (carries(filled, painted, shape, ARROW_MIN_HEIGHT_PX, ARROW_MIN_FRACTION)) {
+      var arrowBox = length(shape[ARROW_HEIGHT_PX]);
       var arrowProps = {
         key: BAR_ARROW_PART,
         style: {
+          // Qt centres the symbol in an arrow_height_px box a third down.
+          position: ABSOLUTE,
+          top: percent(model, number(shape[SHINE_FRACTION], ALPHA_FLOOR)),
+          left: ZERO,
+          right: ZERO,
+          height: arrowBox,
+          lineHeight: arrowBox,
+          fontFamily: fontFamily(paint[ARROW_FONT]),
+          fontSize: fontScale(paint[ARROW_FONT], paint[LABEL_FONT]),
           color: rgba(model, paint[SHINE_RGB], paint[ARROW_ALPHA]),
           textAlign: CENTER
         }
@@ -678,6 +795,8 @@
     var emptyProps = {
       style: {
         color: opaque(model, paint.empty_text_rgb),
+        fontFamily: fontFamily(paint[EMPTY_FONT]),
+        fontSize: fontScale(paint[EMPTY_FONT], paint[LABEL_FONT]),
         textAlign: CENTER,
         alignSelf: CENTER,
         margin: AUTO
@@ -687,14 +806,22 @@
     return element(DIV_TAG, emptyProps, text(bars[EMPTY_TEXT]));
   }
 
+  // Qt draws label_font bold in a label_height_px box, label_offset_px under
+  // the baseline, so the name centres in that box and not at its top.
   function BarLabel(props) {
     var model = props.model;
+    var shape = objectField(props.bars, GEOMETRY);
     var paint = objectField(props.bars, PAINT);
+    var box = length(shape[LABEL_HEIGHT_PX]);
     var labelProps = {
       style: {
         color: opaque(model, paint[LABEL_RGB]),
         textAlign: CENTER,
-        fontWeight: BOLD
+        fontWeight: BOLD,
+        fontFamily: fontFamily(paint[LABEL_FONT]),
+        marginTop: length(shape[LABEL_OFFSET_PX]),
+        height: box,
+        lineHeight: box
       }
     };
     labelProps[PART_ATTR] = BAR_LABEL_PART;
@@ -704,7 +831,7 @@
   // The height Qt paints a bar inside, above the label strip.
   // The height Qt paints a bar inside, above the label strip. The baseline
   // measures the indicator bars, so only their areas carry it.
-  function barArea(part, model, paint, ruled, shape) {
+  function barArea(part, model, paint, ruled, shape, inset) {
     var areaProps = {
       key: part,
       style: {
@@ -712,7 +839,9 @@
         flexDirection: COLUMN,
         justifyContent: "flex-end",
         flex: FULL,
-        minHeight: ZERO
+        minHeight: ZERO,
+        // margin_left_px is where Qt starts the grid and the baseline.
+        marginLeft: length(number(inset, ALPHA_FLOOR))
       }
     };
     if (ruled) {
@@ -721,7 +850,11 @@
       if (lines.length) {
         areaProps.style.backgroundImage = lines
           .map(function () {
-            return GRADIENT_TO_RIGHT + mark + COMMA_SPACE + mark + CLOSE;
+            return (
+              GRADIENT_TO_RIGHT + mark + SPACE + ZERO + COMMA_SPACE +
+              mark + SPACE + GRID_DASH_STOP + COMMA_SPACE +
+              TRANSPARENT + SPACE + GRID_DASH_STOP + CLOSE
+            );
           })
           .join(COMMA_SPACE);
         areaProps.style.backgroundRepeat = lines
@@ -762,7 +895,7 @@
     // No side padding and no gap, so a cell lines up with a HeadCell. The
     // bottom margin is the label strip each cell reserves, not pane padding.
     var style = boxStyle(
-      [ALPHA_FLOOR, shape.margin_top_px, ALPHA_FLOOR, ALPHA_FLOOR],
+      [ALPHA_FLOOR, shape[MARGIN_TOP_PX], ALPHA_FLOOR, ALPHA_FLOOR],
       ALPHA_FLOOR,
       ROW
     );
@@ -797,12 +930,18 @@
           }
         },
         [
-          element(DIV_TAG, barArea(TF_CELL_PART, model, paint, true, shape), null),
+          element(
+            DIV_TAG,
+            barArea(
+              TF_CELL_PART, model, paint, true, shape, shape[MARGIN_LEFT_PX]
+            ),
+            null
+          ),
           element(
             DIV_TAG,
             {
               key: BAR_LABEL_PART,
-              style: { height: length(shape.margin_bottom_px), flex: FLEX_NONE }
+              style: { height: length(shape[MARGIN_BOTTOM_PX]), flex: FLEX_NONE }
             },
             null
           )
@@ -834,7 +973,7 @@
               {
                 key: BAR_LABEL_PART,
                 style: {
-                  height: length(shape.margin_bottom_px),
+                  height: length(shape[MARGIN_BOTTOM_PX]),
                   flex: FLEX_NONE
                 }
               },
@@ -882,9 +1021,14 @@
         marginRight: pad,
         borderRadius: length(pillars.body_radius_px),
         backgroundImage: GRADIENT_OPEN + faces.join(COMMA_SPACE) + CLOSE,
+        // Qt widens the glow rect by glow_inset_px each side and leaves its
+        // ceiling and floor where the body has them.
         boxShadow:
-          ZERO + SPACE + ZERO + SPACE + length(pillars.glow_radius_px) + SPACE +
-          rgba(model, channels, pillars.glow_alpha),
+          "-" + length(pillars[GLOW_INSET_PX]) + SPACE + ZERO + SPACE + ZERO +
+          SPACE + ZERO + SPACE + rgba(model, channels, pillars.glow_alpha) +
+          COMMA_SPACE +
+          length(pillars[GLOW_INSET_PX]) + SPACE + ZERO + SPACE + ZERO +
+          SPACE + ZERO + SPACE + rgba(model, channels, pillars.glow_alpha),
         borderStyle: SOLID,
         borderWidth: length(FULL),
         borderColor: rgba(model, channels, pillars[OUTLINE_ALPHA])
@@ -893,13 +1037,16 @@
     bodyProps[PART_ATTR] = PILLAR_PART;
     bodyProps[STATE_ATTR] = text(spec[DIRECTION]);
     bodyProps[ARIA_LABEL] = label(text(spec[NAME]));
+    // Qt centres the name in the label_strip_px strip under the pillar.
     var labelProps = {
       style: {
         gridColumn: cell,
         gridRow: PILLAR_LABEL_ROW,
         color: opaque(model, pillars[LABEL_RGB]),
         textAlign: CENTER,
-        fontWeight: BOLD
+        fontWeight: BOLD,
+        fontFamily: fontFamily(pillars[LABEL_FONT]),
+        lineHeight: length(pillars.label_strip_px)
       }
     };
     labelProps[PART_ATTR] = PILLAR_LABEL_PART;
@@ -958,8 +1105,12 @@
       style: {
         display: GRID,
         gridTemplateColumns: REPEAT_OPEN + String(count) + REPEAT_CLOSE,
+        // A mini-panel's own layout spaces its table off its graph, so a
+        // gap row stands under each table as well as between the two.
         gridTemplateRows: [
-          AUTO, ceiling, FRACTION, strip, gap, AUTO, ceiling, FRACTION, strip
+          AUTO, gap, ceiling, FRACTION, strip,
+          gap,
+          AUTO, gap, ceiling, FRACTION, strip
         ].join(SPACE),
         flex: FULL,
         minHeight: ZERO,
@@ -986,7 +1137,7 @@
           DIV_TAG,
           gridSlot(
             BARS_PART + String(at),
-            String(first + 2) + SPAN_SPLIT + String(first + 5)
+            String(first + 3) + SPAN_SPLIT + String(first + 6)
           ),
           mini.bars
         )
@@ -997,12 +1148,11 @@
 
   function LocksLine(props) {
     var locks = objectField(props.model, LOCKS);
-    var lineProps = {
-      style: {
-        maxHeight: length(locks[MAXIMUM_HEIGHT_PX]),
-        overflow: HIDDEN
-      }
-    };
+    // setContentsMargins(margins_px) insets the line Qt draws.
+    var style = boxStyle(locks[MARGINS_PX], undefined, COLUMN);
+    style.maxHeight = length(locks[MAXIMUM_HEIGHT_PX]);
+    style.overflow = HIDDEN;
+    var lineProps = { style: style };
     lineProps[PART_ATTR] = LOCKS_PART;
     lineProps[SLOT_ATTR] = LOCKS_PART;
     return element(DIV_TAG, lineProps, text(locks[TEXT]));
@@ -1239,12 +1389,43 @@
     return target;
   }
 
+  function measuredArea(target) {
+    var area = target.querySelector(
+      "[" + PART_ATTR + '="' + BAR_AREA_PART + '"]'
+    );
+    return area === null
+      ? ALPHA_FLOOR
+      : Math.round(area.getBoundingClientRect().height);
+  }
+
+  // A resized panel repaints under Qt, so the page draws again and the
+  // ornament thresholds meet the bar area they now have.
+  function watchSize(target) {
+    if (typeof global.ResizeObserver !== "function") {
+      return;
+    }
+    if (sized.indexOf(target) !== -1) {
+      return;
+    }
+    sized.push(target);
+    new global.ResizeObserver(function () {
+      renderPanel(target, null);
+    }).observe(target);
+  }
+
   function renderPanel(target, model) {
     var drawn = model;
     if (!isPlainObject(drawn)) {
       drawn = held === null ? null : held.model;
     }
-    return draw(target, element(Panel, { model: drawn }));
+    draw(target, element(Panel, { model: drawn }));
+    var found = measuredArea(target);
+    if (found > ALPHA_FLOOR && found !== areaHeight) {
+      areaHeight = found;
+      draw(target, element(Panel, { model: drawn }));
+    }
+    watchSize(target);
+    return target;
   }
 
   function forget() {

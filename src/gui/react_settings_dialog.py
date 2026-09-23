@@ -18,6 +18,7 @@ from typing import Any, Callable, Optional
 from .main_tabs import settings_dialog_surface as surface
 from .react_history_panel import page_html
 from .settings_dialog import _HAS_QT, SettingsDialog
+from .theme_engine import DEFAULT_THEME_NAME, stored_theme
 
 try:
     from PySide6.QtWebEngineCore import QWebEnginePage
@@ -70,7 +71,7 @@ HOST_SCRIPT = """(function (global) {
   root.setAttribute("data-part", api.spacePart);
 
   function readValue(node, kind) {
-    if (kind === "check" || kind === "radio") {
+    if (kind === "check") {
       return node.checked === true;
     }
     if (kind === "combo_text" || kind === "combo_data") {
@@ -91,9 +92,13 @@ HOST_SCRIPT = """(function (global) {
     if (name === null || kind === null) {
       return false;
     }
-    console.log(
-      "%(edit)s" + JSON.stringify({ name: name, value: readValue(node, kind) })
-    );
+    var value = readValue(node, kind);
+    // An emptied number box parses to NaN, which is no figure to report.
+    if (typeof value === "number" && !isFinite(value)) {
+      node.value = api.valueOf(name);
+      return false;
+    }
+    console.log("%(edit)s" + JSON.stringify({ name: name, value: value }));
     return true;
   }
 
@@ -142,7 +147,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def dialog_html(theme: str = "cyberpunk_dark") -> str:
+def dialog_html(theme: object = None) -> str:
     """The whole dialog page as one string, with no network fetch."""
     return page_html(
         DIALOG_STYLE_ASSETS, DIALOG_SCRIPT_ASSETS, DIALOG_BODY, theme, (HOST_SCRIPT,)
@@ -223,7 +228,7 @@ class PageTextArea(_Held):
 
 
 class PageToggle(_Held):
-    """A tick box or a radio button, as ``QCheckBox`` reports it."""
+    """A tick box, as ``QCheckBox`` reports it."""
 
     def isChecked(self) -> bool:  # noqa: N802
         """True while the box is ticked."""
@@ -232,38 +237,6 @@ class PageToggle(_Held):
     def setChecked(self, ticked: Any) -> None:  # noqa: N802
         """Tick or clear the box and redraw."""
         self._put(bool(ticked))
-
-
-def radio_siblings(name: str) -> tuple:
-    """Every other radio sharing one group box with ``name``.
-
-    ``QGroupBox`` clears these when one radio inside it is ticked.
-    """
-    spec = surface.spec_for(name)
-    return tuple(
-        one["name"]
-        for one in surface.CONTROL_SPECS
-        if one["kind"] == surface.RADIO
-        and one["tab"] == spec["tab"]
-        and one["group"] == spec["group"]
-        and one["name"] != name
-    )
-
-
-class PageRadio(PageToggle):
-    """A radio button, exclusive inside its group box."""
-
-    def setChecked(self, ticked: Any) -> None:  # noqa: N802
-        """Tick this radio, clearing the others in its group box."""
-        on = bool(ticked)
-        if on:
-            for other in radio_siblings(self._name):
-                self._owner.store().values[other] = False
-        self._put(on)
-
-    def admit(self, value: Any) -> None:
-        """Take one operator tick, clearing the others in its group box."""
-        self.setChecked(value)
 
 
 class PageNumber(_Held):
@@ -375,6 +348,17 @@ class PageList(_Held):
         lines.append(str(words))
         self._put(lines)
 
+    def item(self, at: Any) -> Optional[ListRow]:
+        """The line at ``at``, or None when ``at`` is outside the list."""
+        lines = self._lines()
+        try:
+            found = int(at)
+        except (TypeError, ValueError):
+            return None
+        if not 0 <= found < len(lines):
+            return None
+        return ListRow(lines[found])
+
     def setCurrentRow(self, at: Any) -> None:  # noqa: N802
         """Select the line at ``at``."""
         try:
@@ -452,7 +436,6 @@ HOLDER_BY_KIND = {
     surface.LINE: PageLine,
     surface.TEXT_AREA: PageTextArea,
     surface.CHECK: PageToggle,
-    surface.RADIO: PageRadio,
     surface.SPIN: PageNumber,
     surface.DOUBLE_SPIN: PageNumber,
     surface.SLIDER: PageNumber,
@@ -465,7 +448,6 @@ TEXT_NAMES: tuple[str, ...] = (
     "ai_status",
     "ai_hash",
     "ai_checks",
-    "font_preview",
     "vol_label",
 )
 
@@ -482,12 +464,13 @@ ACTION_HANDLERS: dict[str, str] = {
     "save_btn": "_save",
 }
 
-#: The control whose edit runs a method, and the method it runs.
+#: The control whose edit runs a method, and the method it runs. ``apply_edit``
+#: calls with no argument, so every entry names a method that takes none.
 EDIT_HANDLERS: dict[str, str] = {
     "new_exchange": "_on_exchange_changed",
-    "font_family": "_update_font_preview",
-    "font_size": "_update_font_preview",
-    "sound_volume": "_on_sfx_volume_changed",
+    "sms_carrier": "_fill_gateway_email",
+    surface.VOLUME_NAME: "_push_sound_config",
+    **{name: "_push_sound_config" for _key, name in surface.SOUND_CONFIG_FIELDS},
 }
 
 
@@ -534,7 +517,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._owner.run_action(message[len(ACTION_PREFIX) :])
 
     class SettingsDialogReact(SettingsDialog):
-        """The Settings dialog with all eleven tabs drawn by React."""
+        """The Settings dialog with all ten tabs drawn by React."""
 
         def _setup_ui(self) -> None:
             """Build the one web view the whole dialog is drawn in.
@@ -548,9 +531,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._tab = surface.TAB_TITLES[0]
             self._page_ready = False
             self._last_model: dict = {}
-            self._passphrase_exchanges = surface.PASSPHRASE_EXCHANGE_IDS
-            self._ta_weight_sliders: dict = {}
-            self._phantom_tf_checks: dict = {}
+            self._passphrase_exchanges = surface.passphrase_exchange_ids()
             self._build_holders()
 
             self.setAccessibleName(ACCESSIBLE_NAME)
@@ -653,9 +634,20 @@ if _HAS_QT and _HAS_WEBENGINE:
             name = str(asked.get("name") or "")
             if name not in self._holders:
                 return
-            self._holders[name].admit(asked.get("value"))
+            try:
+                self._holders[name].admit(asked.get("value"))
+            except Exception as exc:  # noqa: BLE001
+                # A cleared number box reports null, which admit refuses; redraw
+                # puts the held figure back instead of leaving the box empty.
+                logger.warning(
+                    "Settings page sent %s a value its control refuses: %s",
+                    name,
+                    exc,
+                )
+                self.redraw()
+                return
             if name == "pp_check":
-                self._new_passphrase.setVisible(self._pp_check.isChecked())
+                self._sync_passphrase_row()
             if name == "sound_volume":
                 self._vol_label.setText(f"{self._sound_volume.value()}%")
             handler = EDIT_HANDLERS.get(name)
@@ -688,9 +680,10 @@ if _HAS_QT and _HAS_WEBENGINE:
         # -- internals ----------------------------------------------------
 
         def _theme_name(self) -> str:
+            """The stored theme the page paints in, always a name ``THEMES`` holds."""
             if not self._sm:
-                return "cyberpunk_dark"
-            return str(self._sm.get("theme", "cyberpunk_dark"))
+                return DEFAULT_THEME_NAME
+            return stored_theme(self._sm.get("theme", DEFAULT_THEME_NAME))
 
         def _build_holders(self) -> None:
             self._holders: dict = {}
@@ -707,6 +700,12 @@ if _HAS_QT and _HAS_WEBENGINE:
                 setattr(self, "_" + name, PageText(self, name))
             for name in PRESS_NAMES:
                 setattr(self, "_" + name, PagePress(self, name))
+            # _stored_groups reads the weights out of this dict, so the page
+            # holders go in it under the same keys the Qt sliders use.
+            self._ta_weight_sliders = {
+                indicator: self._holders[surface.ta_slider_name(indicator)]
+                for indicator, _weight in surface.TA_INDICATOR_WEIGHTS
+            }
 
         def _run(self, script: str) -> None:
             self._web.page().runJavaScript(script)

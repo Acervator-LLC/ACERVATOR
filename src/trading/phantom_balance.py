@@ -1,11 +1,13 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-"""``PhantomBalanceBot`` read-only TA observers, one per timeframe.
+"""``PhantomBot`` read-only TA observers, one per timeframe.
 
-Each ``PhantomBalanceBot._tick`` computes TA on its own timeframe and stores it
+Each ``PhantomBot._tick`` computes TA on its own timeframe and stores it
 on ``last_summary``, constructing no order. ``TimeframeCoordinator`` weights
 those summaries by ``tf_rank`` in ``get_higher_tf_bias`` and returns them per
-timeframe in ``get_multi_tf_summary``. ``TIMEFRAME_ORDER`` runs 1m to 1w,
-lowest rank first.
+timeframe in ``get_multi_tf_summary``. ``TIMEFRAME_ORDER`` runs 1m to 1w and
+takes its names from ``src.exchange.timeframes.ALL_TIMEFRAMES``, the one
+declaration every phantom surface ranks by. ``default_phantom_timeframes``
+gives a bot with no stored selection the one timeframe above its own.
 """
 
 from __future__ import annotations
@@ -20,25 +22,14 @@ if TYPE_CHECKING:
     from ..exchange.base import ExchangeInterface
 
 from ..core.event_bus import get_event_bus
+from ..exchange.timeframes import ALL_TIMEFRAMES
 from .bot_container import BotState
 from .ta_engine import VotingEngine, VotingSummary, SignalDirection, candles_from_raw
 
 logger = logging.getLogger("acervator.phantom")
 
 
-TIMEFRAME_ORDER: list[str] = [
-    "1m",
-    "5m",
-    "15m",
-    "30m",
-    "1h",
-    "2h",
-    "4h",
-    "6h",
-    "12h",
-    "1d",
-    "1w",
-]
+TIMEFRAME_ORDER: list[str] = list(ALL_TIMEFRAMES)
 
 TIMEFRAME_SECONDS: dict[str, int] = {
     "1m": 60,
@@ -54,6 +45,12 @@ TIMEFRAME_SECONDS: dict[str, int] = {
     "1w": 604800,
 }
 
+MIN_TICK_CANDLES: int = 30
+
+#: Written into ``get_higher_tf_bias`` contributors for a phantom ``tf_rank``
+#: places at or below its parent, which the Comp field never weighs.
+BELOW_PARENT_REASON: str = "at or below the parent timeframe"
+
 
 def tf_rank(timeframe: str) -> int:
     """Return the index of ``timeframe`` in ``TIMEFRAME_ORDER``, or -1."""
@@ -66,6 +63,98 @@ def tf_rank(timeframe: str) -> int:
 def is_higher_tf(a: str, b: str) -> bool:
     """Return True when ``tf_rank(a)`` exceeds ``tf_rank(b)``."""
     return tf_rank(a) > tf_rank(b)
+
+
+def default_phantom_timeframes(
+    parent_timeframe: str,
+    offered: Optional[list[str]] = None,
+) -> list[str]:
+    """Return the one ``TIMEFRAME_ORDER`` name directly above
+    ``parent_timeframe``, restricted to ``offered`` when given.
+
+    Returns an empty list when nothing in ``offered`` outranks
+    ``parent_timeframe``, so no phantom is built that ``is_higher_tf``
+    would refuse.
+    """
+    allowed = TIMEFRAME_ORDER if offered is None else list(offered)
+    above = [
+        one
+        for one in TIMEFRAME_ORDER
+        if one in allowed and is_higher_tf(one, parent_timeframe)
+    ]
+    return above[:1]
+
+
+def weigh_higher_tf_bias(
+    higher: list[tuple[str, int, VotingSummary]],
+    below_parent: list[str],
+    min_confidence: float = 0.30,
+) -> tuple[Optional[SignalDirection], dict]:
+    """Weigh each ``(timeframe, rank, summary)`` in ``higher`` by ``rank``
+    times ``consensus_confidence``, skipping any below ``min_confidence``;
+    the weighing ``get_higher_tf_bias`` runs over the registered phantoms
+    and the Simulator runs over the rolled-up tablet.
+
+    Returns a ``SignalDirection`` with a detail dict, or None when ``higher``
+    is empty. Every timeframe in ``below_parent`` is named in the detail
+    rather than dropped in silence.
+    """
+    if not higher:
+        return None, {
+            "reason": "no higher-TF phantoms with summaries",
+            "below_parent": below_parent,
+        }
+
+    bull_weight = 0.0
+    bear_weight = 0.0
+    contrib: list[dict] = [
+        {"tf": one, "skipped": True, "reason": BELOW_PARENT_REASON}
+        for one in below_parent
+    ]
+    for timeframe, rank, s in higher:
+        if s.consensus_confidence < min_confidence:
+            contrib.append(
+                {
+                    "tf": timeframe,
+                    "skipped": True,
+                    "conf": s.consensus_confidence,
+                    "direction": s.consensus_direction.name,
+                }
+            )
+            continue
+        # A 4h phantom at rank 6 and confidence 0.5 contributes 3.0.
+        weight = max(1, rank) * float(s.consensus_confidence)
+        if s.consensus_direction == SignalDirection.BULLISH:
+            bull_weight += weight
+        elif s.consensus_direction == SignalDirection.BEARISH:
+            bear_weight += weight
+        contrib.append(
+            {
+                "tf": timeframe,
+                "weight": round(weight, 3),
+                "direction": s.consensus_direction.name,
+                "conf": round(s.consensus_confidence, 3),
+            }
+        )
+
+    if bull_weight == 0 and bear_weight == 0:
+        return SignalDirection.NEUTRAL, {
+            "bull_weight": 0.0,
+            "bear_weight": 0.0,
+            "contributors": contrib,
+            "reason": "all higher-TF phantoms below confidence floor or NEUTRAL",
+        }
+    if bull_weight > bear_weight:
+        direction = SignalDirection.BULLISH
+    elif bear_weight > bull_weight:
+        direction = SignalDirection.BEARISH
+    else:
+        direction = SignalDirection.NEUTRAL
+    return direction, {
+        "bull_weight": round(bull_weight, 3),
+        "bear_weight": round(bear_weight, 3),
+        "contributors": contrib,
+    }
 
 
 @dataclass
@@ -90,7 +179,7 @@ class TradeLock:
         return self.candles_remaining <= 0
 
 
-class PhantomBalanceBot:
+class PhantomBot:
     """A read-only TA observer registered on one ``TimeframeCoordinator``.
 
     ``_tick`` refreshes ``last_summary`` for ``timeframe``; ``target_balance``,
@@ -109,11 +198,7 @@ class PhantomBalanceBot:
         coordinator: "TimeframeCoordinator",
         ta_weights: Optional[dict[str, float]] = None,
         bus=None,
-        sim_mode: bool = False,
     ) -> None:
-        # When True, _run_loop never self-schedules; tick_for_cursor drives ticks.
-        self._sim_mode = bool(sim_mode)
-        self._last_cursor_bucket: Optional[int] = None
         self.parent_bot_id = parent_bot_id
         self.phantom_id = phantom_id
         self.timeframe = timeframe
@@ -162,23 +247,6 @@ class PhantomBalanceBot:
                 pass
         self.state = BotState.STOPPED
 
-    async def tick_for_cursor(self, cursor_ts: float) -> bool:
-        """Run ``_tick`` when ``cursor_ts`` enters a new ``candle_seconds``
-        bucket, and return whether it ran.
-
-        Repeated calls inside one bucket return False without ticking.
-        """
-        try:
-            _period = max(1, int(self.candle_seconds))
-        except Exception:
-            return False
-        _bucket = int(float(cursor_ts) // _period)
-        if _bucket == getattr(self, "_last_cursor_bucket", None):
-            return False
-        self._last_cursor_bucket = _bucket
-        await self._tick()
-        return True
-
     async def _run_loop(self) -> None:
         """Call ``_tick`` until ``_stop_event`` is set, logging any exception."""
         while not self._stop_event.is_set():
@@ -193,9 +261,6 @@ class PhantomBalanceBot:
                     phantom=self.phantom_id,
                     error=str(exc),
                 )
-            if getattr(self, "_sim_mode", False):
-                await self._stop_event.wait()
-                break
             # Wall clock: 60s for every phantom once candle_seconds exceeds 60.
             await asyncio.sleep(min(self.candle_seconds, 60))
 
@@ -203,8 +268,8 @@ class PhantomBalanceBot:
         """Fetch candles for ``timeframe`` and set ``last_summary`` from
         ``voting_engine``.
 
-        Returns without setting ``last_summary`` on fewer than 30 candles, and
-        constructs no order on any path.
+        Returns without setting ``last_summary`` below ``MIN_TICK_CANDLES``,
+        and constructs no order on any path.
         """
         raw = await self.exchange.get_ohlcv(
             self.symbol,
@@ -212,7 +277,7 @@ class PhantomBalanceBot:
             limit=100,
         )
         candles = candles_from_raw(raw)
-        if len(candles) < 30:
+        if len(candles) < MIN_TICK_CANDLES:
             return
 
         summary = self.voting_engine.compute_all(candles, self.timeframe)
@@ -249,7 +314,7 @@ class PhantomBalanceBot:
 
 
 class TimeframeCoordinator:
-    """Registry of ``PhantomBalanceBot`` instances and their ``TradeLock`` list.
+    """Registry of ``PhantomBot`` instances and their ``TradeLock`` list.
 
     ``get_higher_tf_bias`` and ``get_multi_tf_summary`` read the registered
     phantoms; ``create_lock``, ``is_locked`` and ``tick_candle`` own the locks.
@@ -258,23 +323,23 @@ class TimeframeCoordinator:
     def __init__(self, lock_candle_count: int = 2, bus=None) -> None:
         self.lock_candle_count = lock_candle_count
         self._locks: list[TradeLock] = []
-        self._phantoms: dict[str, PhantomBalanceBot] = {}
+        self._phantoms: dict[str, PhantomBot] = {}
         self._bus = bus if bus is not None else get_event_bus()
 
-    def register_phantom(self, phantom: PhantomBalanceBot) -> None:
+    def register_phantom(self, phantom: PhantomBot) -> None:
         self._phantoms[phantom.phantom_id] = phantom
 
     def unregister_phantom(self, phantom_id: str) -> None:
         self._phantoms.pop(phantom_id, None)
 
-    def get_phantoms_for_parent(self, parent_bot_id: str) -> list[PhantomBalanceBot]:
+    def get_phantoms_for_parent(self, parent_bot_id: str) -> list[PhantomBot]:
         return [p for p in self._phantoms.values() if p.parent_bot_id == parent_bot_id]
 
     def get_phantom_by_timeframe(
         self,
         parent_bot_id: str,
         timeframe: str,
-    ) -> Optional[PhantomBalanceBot]:
+    ) -> Optional[PhantomBot]:
         for p in self._phantoms.values():
             if p.parent_bot_id == parent_bot_id and p.timeframe == timeframe:
                 return p
@@ -374,65 +439,27 @@ class TimeframeCoordinator:
         ``min_confidence``.
 
         Returns a ``SignalDirection`` with a detail dict, or None when no
-        higher phantom has a ``last_summary``.
+        higher phantom has a ``last_summary``. Every phantom at or below
+        ``base_timeframe`` is named in ``below_parent`` and in ``contributors``
+        rather than dropped in silence.
         """
         base_rank = tf_rank(base_timeframe)
-        higher = [
-            p
-            for p in self.get_phantoms_for_parent(parent_bot_id)
-            if p.rank > base_rank and p.last_summary is not None
-        ]
-        if not higher:
-            return None, {"reason": "no higher-TF phantoms with summaries"}
-
-        bull_weight = 0.0
-        bear_weight = 0.0
-        contrib: list[dict] = []
-        for p in higher:
-            s = p.last_summary
-            if s.consensus_confidence < min_confidence:
-                contrib.append(
-                    {
-                        "tf": p.timeframe,
-                        "skipped": True,
-                        "conf": s.consensus_confidence,
-                        "direction": s.consensus_direction.name,
-                    }
-                )
-                continue
-            # A 4h phantom at rank 6 and confidence 0.5 contributes 3.0.
-            weight = max(1, p.rank) * float(s.consensus_confidence)
-            if s.consensus_direction == SignalDirection.BULLISH:
-                bull_weight += weight
-            elif s.consensus_direction == SignalDirection.BEARISH:
-                bear_weight += weight
-            contrib.append(
-                {
-                    "tf": p.timeframe,
-                    "weight": round(weight, 3),
-                    "direction": s.consensus_direction.name,
-                    "conf": round(s.consensus_confidence, 3),
-                }
+        registered = self.get_phantoms_for_parent(parent_bot_id)
+        higher = [p for p in registered if p.rank > base_rank and p.last_summary]
+        below_parent = [p.timeframe for p in registered if p.rank <= base_rank]
+        if below_parent:
+            logger.info(
+                "Phantom %s: %s at or below the parent %s, so none of them "
+                "reaches the Comp field",
+                parent_bot_id,
+                ", ".join(below_parent),
+                base_timeframe,
             )
-
-        if bull_weight == 0 and bear_weight == 0:
-            return SignalDirection.NEUTRAL, {
-                "bull_weight": 0.0,
-                "bear_weight": 0.0,
-                "contributors": contrib,
-                "reason": "all higher-TF phantoms below confidence floor or NEUTRAL",
-            }
-        if bull_weight > bear_weight:
-            direction = SignalDirection.BULLISH
-        elif bear_weight > bull_weight:
-            direction = SignalDirection.BEARISH
-        else:
-            direction = SignalDirection.NEUTRAL
-        return direction, {
-            "bull_weight": round(bull_weight, 3),
-            "bear_weight": round(bear_weight, 3),
-            "contributors": contrib,
-        }
+        return weigh_higher_tf_bias(
+            [(p.timeframe, p.rank, p.last_summary) for p in higher],
+            below_parent,
+            min_confidence,
+        )
 
     def get_multi_tf_summary(self, parent_bot_id: str) -> dict:
         """Return each registered phantom's ``last_summary`` for
@@ -472,7 +499,7 @@ class TimeframeCoordinator:
 
 
 class PhantomBalanceManager:
-    """Owns one ``PhantomBalanceBot`` set per parent bot id.
+    """Owns one ``PhantomBot`` set per parent bot id.
 
     ``create_phantom_set`` builds and registers them on ``coordinator``, and
     ``start_all``, ``stop_all`` and ``remove_set`` act on a whole set.
@@ -480,7 +507,7 @@ class PhantomBalanceManager:
 
     def __init__(self, coordinator: TimeframeCoordinator) -> None:
         self.coordinator = coordinator
-        self._sets: dict[str, list[PhantomBalanceBot]] = {}
+        self._sets: dict[str, list[PhantomBot]] = {}
 
     def create_phantom_set(
         self,
@@ -491,8 +518,8 @@ class PhantomBalanceManager:
         symbol: str,
         balance_scaling: str = "equal",
         ta_weights: Optional[dict[str, float]] = None,
-    ) -> list[PhantomBalanceBot]:
-        """Build one ``PhantomBalanceBot`` per entry in ``timeframes`` and
+    ) -> list[PhantomBot]:
+        """Build one ``PhantomBot`` per entry in ``timeframes`` and
         register each on ``coordinator``.
 
         ``balance_scaling`` of "weighted" scales ``target_balance`` by
@@ -508,7 +535,7 @@ class PhantomBalanceManager:
             else:
                 ptb = target_balance
 
-            phantom = PhantomBalanceBot(
+            phantom = PhantomBot(
                 parent_bot_id=parent_bot_id,
                 phantom_id=f"{parent_bot_id}_phantom_{tf}",
                 timeframe=tf,
@@ -534,7 +561,7 @@ class PhantomBalanceManager:
         for phantom in self._sets.get(parent_bot_id, []):
             await phantom.stop()
 
-    def get_phantoms(self, parent_bot_id: str) -> list[PhantomBalanceBot]:
+    def get_phantoms(self, parent_bot_id: str) -> list[PhantomBot]:
         return self._sets.get(parent_bot_id, [])
 
     def remove_set(self, parent_bot_id: str) -> None:

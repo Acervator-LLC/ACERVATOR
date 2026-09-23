@@ -88,7 +88,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def tab_html(theme: str = "cyberpunk_dark") -> str:
+def tab_html(theme: object = None) -> str:
     """The whole tab page as one string, with no network fetch."""
     return page_html(
         TAB_STYLE_ASSETS, TAB_SCRIPT_ASSETS, TAB_BODY, theme, (HOST_SCRIPT,)
@@ -233,7 +233,7 @@ if _HAS_WEBENGINE:
         ``pause_refresh`` the timer the pause state starts and stops.
         """
 
-        def __init__(self, parent=None, theme: str = "cyberpunk_dark") -> None:
+        def __init__(self, parent=None, theme: object = None) -> None:
             super().__init__(parent)
             self.setAccessibleName(ACCESSIBLE_NAME)
             self._page_ready = False
@@ -247,6 +247,12 @@ if _HAS_WEBENGINE:
             self.pause_indicator = PageLabel(self, surface.PAUSE_INDICATOR_TEXT)
             self.pause_refresh = QTimer(self)
             self.pause_refresh.setInterval(surface.PAUSE_REFRESH_INTERVAL_MS)
+            # Every append asks for a redraw; the pushes of one event-loop turn
+            # coalesce into one, so a drain of 200 signal rows pushes the page once.
+            self._redraw_timer = QTimer(self)
+            self._redraw_timer.setSingleShot(True)
+            self._redraw_timer.setInterval(0)
+            self._redraw_timer.timeout.connect(self._push_now)
             self.log_handler = _QtLogHandler(None, painter=self._paint_log_line)
             self.log_handler.setFormatter(
                 logging.Formatter(surface.LOG_FORMAT, datefmt=surface.LOG_DATEFMT)
@@ -284,6 +290,12 @@ if _HAS_WEBENGINE:
             self._pressed = handler
 
         def redraw(self) -> None:
+            """Ask for one push of both panes on the next event-loop turn; the
+            asks of one turn coalesce into one ``_push_now``."""
+            if not self._redraw_timer.isActive():
+                self._redraw_timer.start()
+
+        def _push_now(self) -> None:
             """Build the payload from both panes and push it to the page."""
             model = surface.build_view_model(self._log, self._signals, self._ledger)
             model["pause_button"] = {

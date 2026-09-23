@@ -5,6 +5,8 @@ test from statsmodels; ``correlation_test`` runs the Pearson coefficient and
 its two-sided t test from scipy. Both answer a ``MethodResult`` naming the
 method, the window it ran on and the statistic, which is what the Opposing
 Pairs table and the topology cards print beside every proposal.
+``engle_granger_p_value``, ``johansen_trace`` and ``correlation_test`` import
+statsmodels and scipy when they are called, never when this module is.
 """
 
 from __future__ import annotations
@@ -15,11 +17,6 @@ from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
 import numpy as np
-from scipy.stats import pearsonr  # type: ignore[import-untyped]
-from statsmodels.tsa.stattools import coint  # type: ignore[import-untyped]
-from statsmodels.tsa.vector_ar.vecm import (  # type: ignore[import-untyped]
-    coint_johansen,
-)
 
 logger = logging.getLogger("acervator.pair_selection")
 
@@ -205,6 +202,8 @@ def _aligned(
 
 def engle_granger_p_value(left: Sequence[float], right: Sequence[float]) -> float:
     """The Engle-Granger two-step p-value from ``statsmodels.tsa.stattools.coint``."""
+    from statsmodels.tsa.stattools import coint  # type: ignore[import-untyped]
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return float(coint(np.asarray(left, float), np.asarray(right, float))[1])
@@ -212,6 +211,10 @@ def engle_granger_p_value(left: Sequence[float], right: Sequence[float]) -> floa
 
 def johansen_trace(left: Sequence[float], right: Sequence[float]) -> tuple:
     """The Johansen trace statistic for rank zero and its 95% critical value."""
+    from statsmodels.tsa.vector_ar.vecm import (  # type: ignore[import-untyped]
+        coint_johansen,
+    )
+
     data = np.column_stack([np.asarray(left, float), np.asarray(right, float)])
     with warnings.catch_warnings():
         # coint_johansen casts complex eigenvalues to real inside statsmodels.
@@ -249,6 +252,8 @@ def cointegration_test(
     try:
         p_value = engle_granger_p_value(left, right)
         trace, critical = johansen_trace(left, right)
+    except ImportError:
+        raise
     except Exception as exc:  # noqa: BLE001 - statsmodels refuses degenerate input
         logger.debug("cointegration test refused: %s", exc)
         return _refused(
@@ -295,6 +300,8 @@ def correlation_test(
     returns_right = returns_right[-length:]
     if is_flat(returns_left) or is_flat(returns_right):
         return _refused(METHOD_CORRELATION, len(left), FLAT_SERIES_DETAIL)
+    from scipy.stats import pearsonr  # type: ignore[import-untyped]
+
     try:
         measured = pearsonr(returns_left, returns_right)
         correlation = float(measured.statistic)

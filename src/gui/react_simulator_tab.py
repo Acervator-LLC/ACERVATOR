@@ -38,7 +38,7 @@ TAB_ROOT_ID = "tab-root"
 
 ACCESSIBLE_NAME = "Sim"
 
-TAB_STYLE_ASSETS: tuple[str, ...] = ()
+TAB_STYLE_ASSETS: tuple[str, ...] = ("simulator_tab.css",)
 
 #: The scripts the page carries. Order is load order.
 TAB_SCRIPT_ASSETS: tuple[str, ...] = (
@@ -61,6 +61,15 @@ CREATE_NEW_BOTS_ACTION = surface.CREATE_NEW_BOTS_ACTION
 RUN_PORTFOLIO_ACTION = surface.RUN_PORTFOLIO_ACTION
 RUN_EVERY_PORTFOLIO_ACTION = surface.RUN_EVERY_PORTFOLIO_ACTION
 
+#: The presses ``reserved_rows`` puts on the page; ``run_mode`` picks the pane.
+FLEET_ACTIONS = (
+    IMPORT_LIVE_FLEET_ACTION,
+    GENERATE_FROM_YTD_ACTION,
+    CREATE_NEW_BOTS_ACTION,
+    RUN_PORTFOLIO_ACTION,
+    RUN_EVERY_PORTFOLIO_ACTION,
+)
+
 #: The bridge this host answers. The Electron shell binds ``window.acervator``
 #: in its own preload, so this source is never a file under ``src/gui/web``.
 HOST_SCRIPT = """(function (global) {
@@ -80,7 +89,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def tab_html(theme: str = "cyberpunk_dark") -> str:
+def tab_html(theme: object = None) -> str:
     """The whole tab page as one string, with no network fetch."""
     return page_html(
         TAB_STYLE_ASSETS, TAB_SCRIPT_ASSETS, TAB_BODY, theme, (HOST_SCRIPT,)
@@ -129,7 +138,7 @@ if _HAS_WEBENGINE:
             self,
             source: Optional[TabletSource] = None,
             parent: Optional[QWidget] = None,
-            theme: str = "cyberpunk_dark",
+            theme: object = None,
         ) -> None:
             """Load the page; the first successful load draws the model."""
             super().__init__(parent)
@@ -227,6 +236,30 @@ if _HAS_WEBENGINE:
             """The mode the page is showing, one of ``surface.MODES``."""
             return self._mode
 
+        def first_way_in(self) -> dict:
+            """Clone the live fleet from bot_state and run the showing mode on
+            it."""
+            if self._mode == surface.MODE_PORTFOLIO_BATTERY:
+                return self.run_mode(RUN_PORTFOLIO_ACTION)
+            return self.run_mode(IMPORT_LIVE_FLEET_ACTION)
+
+        def second_way_in(self) -> dict:
+            """Run the showing mode's second way in: YTD, new bots, or every
+            portfolio."""
+            if self._mode == surface.MODE_BACK_TEST:
+                return self.run_mode(CREATE_NEW_BOTS_ACTION)
+            if self._mode == surface.MODE_PORTFOLIO_BATTERY:
+                return self.run_mode(RUN_EVERY_PORTFOLIO_ACTION)
+            return self.run_mode(GENERATE_FROM_YTD_ACTION)
+
+        def run_mode(self, origin: str, exchange_id: str = "") -> dict:
+            """Run ``origin``'s fleet in the showing mode and redraw its pane."""
+            if self._mode == surface.MODE_BACK_TEST:
+                return self.run_back_test(origin, exchange_id)
+            if self._mode == surface.MODE_PORTFOLIO_BATTERY:
+                return self.run_battery(origin)
+            return self.run_validation(origin, exchange_id)
+
         def import_live_fleet(self) -> dict:
             """Clone the live fleet from bot_state and validate it."""
             return self.run_validation(IMPORT_LIVE_FLEET_ACTION)
@@ -317,17 +350,8 @@ if _HAS_WEBENGINE:
                 self.choose_portfolio(str(asked.get("value") or ""))
             elif key == SPAN_ACTION:
                 self.choose_span(str(asked.get("value") or ""))
-            elif key in (RUN_PORTFOLIO_ACTION, RUN_EVERY_PORTFOLIO_ACTION):
-                self.run_battery(key)
-            elif key == CREATE_NEW_BOTS_ACTION:
-                self.run_back_test(key)
-            elif key == IMPORT_LIVE_FLEET_ACTION:
-                if self._mode == surface.MODE_BACK_TEST:
-                    self.run_back_test(key)
-                else:
-                    self.run_validation(key)
-            elif key == GENERATE_FROM_YTD_ACTION:
-                self.run_validation(key)
+            elif key in FLEET_ACTIONS:
+                self.run_mode(key)
 
         # -- drawing ----------------------------------------------------
 
@@ -341,6 +365,8 @@ if _HAS_WEBENGINE:
                 self._mode,
                 self._back_test,
                 self._battery,
+                self._portfolio,
+                self._span,
             )
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(push_script(self._model))

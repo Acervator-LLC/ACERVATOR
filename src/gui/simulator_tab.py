@@ -16,7 +16,7 @@ import logging
 from typing import Any, Optional
 
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -142,18 +142,20 @@ class LineView(QWidget):
         """Fill the ground, then draw the close line and the VWAP line."""
         del event
         painter = QPainter(self)
-        painter.fillRect(self.rect(), _colour(ds.SURFACE_CHART))
+        colours = surface.replay_colours()
+        painter.fillRect(self.rect(), _colour(colours["ground"]))
         self._draw_line(
-            painter, self._payload.get("close_points") or [], _colour(ds.TEXT_HIGH)
+            painter, self._payload.get("close_points") or [], _colour(colours["close"])
         )
         self._draw_line(
-            painter, self._payload.get("vwap_points") or [], _colour(ds.ACCENT_GOLD)
+            painter, self._payload.get("vwap_points") or [], _colour(colours["vwap"])
         )
         painter.end()
 
 
 class PlaybackView(QWidget):
-    """The Stone Tablet playback window: one candle per surface shape."""
+    """The Stone Tablet playback window: one candle per surface shape, then
+    one ``MARK_GLYPHS`` glyph per mark at its candle's x and its price's y."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """Start with no candles and the surface's empty payload."""
@@ -176,14 +178,15 @@ class PlaybackView(QWidget):
         """Fill the ground, then draw each candle's wick and body."""
         del event
         painter = QPainter(self)
-        painter.fillRect(self.rect(), _colour(ds.SURFACE_CHART))
+        colours = surface.replay_colours()
+        painter.fillRect(self.rect(), _colour(colours["ground"]))
         shapes = self._payload.get("candles") or []
         width = float(self.width())
         height = float(self.height())
         column_px = width / max(len(shapes), 1)
         body_px = max(CANDLE_BODY_MIN_PX, column_px * CANDLE_GAP_RATIO)
         for shape in shapes:
-            colour = _colour(ds.SUCCESS if shape["up"] else ds.ERROR)
+            colour = _colour(colours["up"] if shape["up"] else colours["down"])
             x = shape["x"] * width
             painter.setPen(QPen(colour, WICK_WIDTH_PX))
             painter.drawLine(
@@ -199,7 +202,48 @@ class PlaybackView(QWidget):
                 max(int(bottom - top), 1),
                 colour,
             )
+        self._draw_marks(painter, colours, column_px, width, height)
         painter.end()
+
+    def _draw_marks(
+        self,
+        painter: QPainter,
+        colours: dict,
+        column_px: float,
+        width: float,
+        height: float,
+    ) -> None:
+        """Draw each payload mark as its ``MARK_GLYPHS`` polygon, ``mark_scrum``
+        or ``mark_fold`` coloured, ``mark_width_ratio`` of ``column_px`` wide
+        and ``mark_height_fraction`` of ``height`` tall."""
+        glyphs = self._payload.get("glyphs") or {}
+        mark_w = column_px * float(
+            self._payload.get("mark_width_ratio", surface.MARK_WIDTH_RATIO)
+        )
+        mark_h = height * float(
+            self._payload.get("mark_height_fraction", surface.MARK_HEIGHT_FRACTION)
+        )
+        outline = float(self._payload.get("mark_outline_px", surface.MARK_OUTLINE_PX))
+        for mark in self._payload.get("marks") or []:
+            glyph = glyphs.get(mark["side"])
+            if glyph is None or mark.get("y") is None:
+                continue
+            centre_x = float(mark["x"]) * width
+            centre_y = float(mark["y"]) * height
+            polygon = QPolygonF(
+                [
+                    QPointF(centre_x + dx * mark_w, centre_y + dy * mark_h)
+                    for dx, dy in glyph["points"]
+                ]
+            )
+            colour = _colour(
+                colours["mark_scrum"]
+                if mark["side"] == surface.back_test.SCRUM
+                else colours["mark_fold"]
+            )
+            painter.setPen(QPen(colour, outline))
+            painter.setBrush(QBrush(colour) if glyph["filled"] else Qt.NoBrush)
+            painter.drawPolygon(polygon)
 
 
 class SimulatorTabQt(QWidget):
@@ -743,6 +787,8 @@ class SimulatorTabQt(QWidget):
             self._mode,
             self._back_test,
             self._battery,
+            self._portfolio,
+            self._span,
         )
         self._draw(self._model)
         return self._model
@@ -926,7 +972,11 @@ class SimulatorTabQt(QWidget):
 
     def _draw_indicators(self, panel: dict) -> None:
         self._indicator_title.setText(panel["title_text"])
-        self._indicator_summary.setText(panel["summary_text"])
+        # no_data text is empty while the panel holds a reading, so the
+        # summary label shows only the one reason there is nothing to draw.
+        reason = panel["no_data"]["text"]
+        self._indicator_summary.setText(reason)
+        self._indicator_summary.setVisible(bool(reason))
         for table, spec in zip(self._indicator_tables, panel["tables"], strict=True):
             self._fill_indicator_table(table, spec)
 

@@ -191,6 +191,7 @@
 
   var HEADER_HEIGHT = "header_height_px";
   var HEADER_SYMBOL_X = "header_symbol_x_px";
+  var HEADER_INFO_GAP = "header_info_gap_px";
   var HEADER_ERROR_DROP = "header_error_drop_px";
   var OHLC_ROW_HEIGHT = "ohlc_row_height_px";
   var OHLC_INSET = "ohlc_inset_px";
@@ -592,7 +593,10 @@
         SPAN_TAG,
         dressed(HEADER_TEXT_PART, {
           key: HEADER_TEXT_PART,
-          style: { color: skinColour(model, TEXT_DIM) }
+          style: {
+            color: skinColour(model, TEXT_DIM),
+            marginLeft: px(metric(model, HEADER_INFO_GAP))
+          }
         }),
         text(model[HEADER_TEXT])
       ),

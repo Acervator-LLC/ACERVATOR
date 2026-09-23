@@ -12,10 +12,13 @@ from __future__ import annotations
 import json
 import threading
 from copy import deepcopy
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, fields, asdict
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
+
+from .sms_engine import SMSConfig
+from .sound_engine import SoundConfig
 
 try:
     import tomllib  # Python 3.11+
@@ -37,38 +40,9 @@ except ImportError:
     _CAN_WRITE_TOML = False
 
 
-class IncrementStyle(str, Enum):
-    LINEAR = "linear"
-    LOGARITHMIC = "logarithmic"
-
-
-class FoldDistributeMode(str, Enum):
-    EQUAL = "equal"
-    LOGARITHMIC = "logarithmic"
-
-
-class FoldTarget(str, Enum):
-    ALL_BUY = "all_buy"
-    X_BUY = "x_buy"
-    MOST_RECENT_BUY = "most_recent_buy"
-
-
-class DistributeTarget(str, Enum):
-    ALL_SELL = "all_sell"
-    X_SELL = "x_sell"
-    MOST_RECENT_SELL = "most_recent_sell"
-
-
 class BotVisibility(str, Enum):
     ORDERBOOK = "orderbook"
     INTERNAL = "internal"
-
-
-class LogPeriodicity(str, Enum):
-    DAILY = "24h"
-    WEEKLY = "1_week"
-    MONTHLY = "1_month"
-    YEARLY = "1_year"
 
 
 class VisualTheme(str, Enum):
@@ -77,32 +51,6 @@ class VisualTheme(str, Enum):
     CLASSIC_TERMINAL = "classic_terminal"
     MINIMAL_MODERN = "minimal_modern"
     GLASS_METAL = "glass_metal"
-
-
-@dataclass
-class ProfitFoldingSettings:
-    """Field defaults for the ``AppSettings.profit_folding`` group."""
-
-    active: bool = True
-    mode: FoldDistributeMode = FoldDistributeMode.EQUAL
-    fold_target: FoldTarget = FoldTarget.ALL_BUY
-    fold_target_count: int = 5
-    distribute_target: DistributeTarget = DistributeTarget.ALL_SELL
-    distribute_target_count: int = 5
-
-
-@dataclass
-class DataLoggingSettings:
-    """Field defaults for the ``AppSettings.data_logging`` group."""
-
-    ta_signal_logging: bool = True
-    highlight_trade_proximity: bool = True
-    active_periodicities: list[str] = field(
-        default_factory=lambda: [
-            LogPeriodicity.DAILY.value,
-            LogPeriodicity.WEEKLY.value,
-        ]
-    )
 
 
 @dataclass
@@ -136,6 +84,12 @@ class ExchangeConfig:
     hw_volume_serial: str = ""  # USB volume serial that holds .acervator_auth
 
 
+#: Every ``ExchangeConfig`` field holding an encrypted token.
+CREDENTIAL_FIELDS: tuple[str, ...] = tuple(
+    one.name for one in fields(ExchangeConfig) if one.name.endswith("_enc")
+)
+
+
 @dataclass
 class AppSettings:
     """Every field ``SettingsManager`` persists.
@@ -153,41 +107,76 @@ class AppSettings:
 
     exchanges: list[dict] = field(default_factory=list)  # asdict(ExchangeConfig)
 
-    default_position_count: int = 10
     default_target_balance: float = 200.0
-    position_distance_pct: float = 2.0
-    increment_style: str = IncrementStyle.LINEAR.value
-
-    profit_folding: dict = field(
-        default_factory=lambda: asdict(ProfitFoldingSettings())
-    )
 
     bot_visibility: str = BotVisibility.ORDERBOOK.value
     aggressive_trading: bool = False
 
     theme: str = VisualTheme.CYBERPUNK_DARK.value
-    accent_color: str = "#00ffcc"
-
-    # These four mirror the font widgets in settings_dialog._create_theme_tab.
-    font_family: str = "Segoe UI"
-    font_size: int = 11
-    heading_font_size: int = 14
-    log_font_size: int = 10
+    # Empty leaves each theme's own accent painting. theme_engine.stored_accent
+    # takes a hex colour here and refuses anything else.
+    accent_color: str = ""
 
     ai_monitor: dict = field(default_factory=lambda: asdict(AIMonitorSettings()))
 
-    data_logging: dict = field(default_factory=lambda: asdict(DataLoggingSettings()))
+    # Indicator name -> voting weight. Empty means every indicator votes at the
+    # figure ta_engine.DEFAULT_WEIGHTS declares for it.
+    ta_indicator_weights: dict = field(default_factory=dict)
+
+    # The wizard's phantom box opens on this. A bot's own enable_phantoms,
+    # which bot_container writes per bot, is a separate value.
+    default_enable_phantoms: bool = True
+
+    # The one phantom timeframe a new bot starts with. 1d is the only entry
+    # above the wizard's 1h ta_timeframe default that every venue offers;
+    # coinbase has no 4h, 12h or 1w, and kraken no 2h or 6h.
+    default_phantom_timeframe: str = "1d"
+
+    # The wizard's lock box opens on this. A bot's own lock_candle_count, held
+    # by its TimeframeCoordinator, is a separate value.
+    default_lock_candle_count: int = 2
+
+    # The Sound page's nine switches and its volume.
+    # sound_engine.sound_config_from_settings reads this group back.
+    sound: dict = field(default_factory=lambda: asdict(SoundConfig()))
+
+    # The SMS page's twenty-two values. The name carries the channels the page
+    # is to hold; sms_engine.sms_config_from_settings reads this group back.
+    message_channels: dict = field(default_factory=lambda: asdict(SMSConfig()))
 
 
 _DEFAULT_DIR = Path.home() / ".acervator"
+
+#: Each ``AppSettings`` field paired with the type its own default carries.
+DECLARED_TYPES: dict[str, type] = {
+    name: type(value) for name, value in asdict(AppSettings()).items()
+}
+
+
+def declared_type_holds(key: str, value: Any) -> bool:
+    """Say whether *value* is a type the ``AppSettings`` field *key* declares.
+
+    ``bool`` is refused where a number is declared, a whole number is
+    admitted where ``float`` is, and a key ``AppSettings`` does not declare
+    holds, leaving the refusal to ``SettingsManager.set``.
+    """
+    declared = DECLARED_TYPES.get(key)
+    if declared is None:
+        return True
+    if declared is bool:
+        return isinstance(value, bool)
+    if declared is int:
+        return isinstance(value, int) and not isinstance(value, bool)
+    if declared is float:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, declared)
 
 
 class SettingsManager:
     """Thread-safe reader and writer for one ``AppSettings``.
 
-    ``get`` and ``set`` address a top-level field while ``get_nested`` and
-    ``set_nested`` address a key inside ``profit_folding``, ``ai_monitor`` or
-    ``data_logging``.
+    ``get`` and ``set`` address a top-level field. A dict field such as
+    ``ai_monitor`` or ``ta_indicator_weights`` is read and written whole.
     """
 
     _lock = threading.RLock()
@@ -208,32 +197,19 @@ class SettingsManager:
     def set(self, key: str, value: Any) -> None:
         """Set the ``AppSettings`` attribute *key* and call ``_save``.
 
-        A *key* that ``AppSettings`` does not declare raises ``KeyError``.
+        A *key* that ``AppSettings`` does not declare raises ``KeyError`` and
+        a *value* ``declared_type_holds`` refuses raises ``TypeError``.
         """
         with self._lock:
             if not hasattr(self._settings, key):
                 raise KeyError(f"Unknown setting: {key}")
+            if not declared_type_holds(key, value):
+                raise TypeError(
+                    f"Setting '{key}' takes "
+                    f"{DECLARED_TYPES[key].__name__}, not "
+                    f"{type(value).__name__}"
+                )
             setattr(self._settings, key, value)
-            self._save()
-
-    def get_nested(self, group: str, key: str, default: Any = None) -> Any:
-        """Return *key* from the ``AppSettings`` dict field *group*, or *default*."""
-        with self._lock:
-            group_dict = getattr(self._settings, group, {})
-            if isinstance(group_dict, dict):
-                return group_dict.get(key, default)
-            return default
-
-    def set_nested(self, group: str, key: str, value: Any) -> None:
-        """Write *value* at *key* inside the ``AppSettings`` dict field *group*.
-
-        A *group* that is not a dict raises ``KeyError``.
-        """
-        with self._lock:
-            group_dict = getattr(self._settings, group, None)
-            if not isinstance(group_dict, dict):
-                raise KeyError(f"Setting '{group}' is not a dict")
-            group_dict[key] = value
             self._save()
 
     def get_all(self) -> dict:
@@ -248,13 +224,27 @@ class SettingsManager:
             self._save()
 
     def add_exchange(self, config: ExchangeConfig) -> None:
-        """Replace any entry sharing ``config.exchange_id``, then append it."""
+        """Store ``config``, keeping the place any entry sharing its id held.
+
+        A ``CREDENTIAL_FIELDS`` token that ``config`` leaves empty keeps the
+        token the stored entry carried, so re-adding a venue with the rows
+        blank cannot erase credentials the operator never retyped.
+        """
         with self._lock:
-            exchanges = self._settings.exchanges
-            exchanges = [
-                e for e in exchanges if e.get("exchange_id") != config.exchange_id
-            ]
-            exchanges.append(asdict(config))
+            entry = asdict(config)
+            exchanges = list(self._settings.exchanges)
+            at = -1
+            for found, e in enumerate(exchanges):
+                if e.get("exchange_id") == config.exchange_id:
+                    at = found
+                    break
+            if at < 0:
+                exchanges.append(entry)
+            else:
+                for name in CREDENTIAL_FIELDS:
+                    if not entry.get(name):
+                        entry[name] = exchanges[at].get(name, "")
+                exchanges[at] = entry
             self._settings.exchanges = exchanges
             self._save()
 
@@ -344,9 +334,23 @@ class SettingsManager:
     def _apply_dict(self, data: dict) -> None:
         """Copy every ``AppSettings`` field that *data* carries onto ``_settings``.
 
-        A field absent from *data* keeps its ``AppSettings`` default.
+        A field absent from *data*, or one ``declared_type_holds`` refuses,
+        keeps its ``AppSettings`` default and names *key* in the log.
         """
+        import logging as _logging
+
         defaults = asdict(AppSettings())
         for key, default_val in defaults.items():
-            if key in data:
-                setattr(self._settings, key, data[key])
+            if key not in data:
+                continue
+            if not declared_type_holds(key, data[key]):
+                _logging.getLogger(__name__).warning(
+                    "Settings kept the default for %s: the file holds %s, "
+                    "the field takes %s.",
+                    key,
+                    type(data[key]).__name__,
+                    DECLARED_TYPES[key].__name__,
+                )
+                setattr(self._settings, key, default_val)
+                continue
+            setattr(self._settings, key, data[key])

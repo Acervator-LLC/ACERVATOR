@@ -347,7 +347,8 @@ class NotificationManager:
             from ..core.sms_engine import get_sms_engine
 
             engine = get_sms_engine()
-            engine.send(phone, f"{title}: {message}")
+            # send(message, event_type); the number lives on SMSConfig.phone_number.
+            engine.send(f"{title}: {message}")
         except Exception as e:
             logger.warning("SMS send failed: %s", e)
 

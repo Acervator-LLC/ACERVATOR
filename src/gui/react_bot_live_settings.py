@@ -268,7 +268,7 @@ def host_script() -> str:
     }
 
 
-def window_html(theme: str = "cyberpunk_dark") -> str:
+def window_html(theme: object = None) -> str:
     """The whole window page as one string, with no network fetch."""
     return page_html(
         WINDOW_STYLE_ASSETS,

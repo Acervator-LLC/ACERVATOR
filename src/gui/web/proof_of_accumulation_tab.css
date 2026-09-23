@@ -9,16 +9,28 @@ body {
   height: 100%;
 }
 
-/* Three equal rows below the heading, the state line, the control bar and the
-   subtab bar: the subtab panel, the upper band, then the party window. */
+/* The desktop window's page holds the tab in this element alone, and without a
+   height here the grid below has none to divide. The shell sizes its own host. */
+body:has(> #panel-root) {
+  margin: 0;
+}
+
+body > #panel-root {
+  height: 100%;
+}
+
+/* The last two rows are the upper band and the party window, an equal half each.
+   The control bar caps at its buttons and verdict; the subtab panel takes 22% so a
+   seven-page subtab draws more than three rows before it scrolls. */
 .acervator-poa-tab {
   box-sizing: border-box;
   display: grid;
-  grid-template-rows: auto auto auto auto 1fr 1fr 1fr;
+  grid-template-rows: auto auto minmax(0, 15%) auto minmax(0, 22%) 1fr 1fr;
   height: 100%;
   margin: 0;
   padding: calc(var(--SPACE_M) * 1px);
   gap: calc(var(--SPACE_S) * 1px);
+  overflow-y: auto;
   background: var(--SURFACE_0);
   color: var(--TEXT_HIGH);
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -45,6 +57,8 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: calc(var(--SPACE_XS) * 1px);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .acervator-poa-tab [data-part="chain-label"],
@@ -78,6 +92,30 @@ body {
   background: var(--SURFACE_2);
   color: var(--TEXT_HIGH);
   font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+/* The two reset buttons are the only pair that deletes, so a rule across the row
+   separates them from the nine mechanism controls and marks the one that acts. */
+.acervator-poa-tab [data-part="control-button"][data-action="reset"] {
+  margin-left: calc(var(--SPACE_M) * 1px);
+  border-left: 2px solid var(--OUTLINE_STRONG);
+}
+
+.acervator-poa-tab [data-part="control-button"][data-action="reset_confirm"] {
+  border-color: var(--DANGER);
+  color: var(--DANGER);
+}
+
+/* The world pair writes chain state where the reset pair deletes it, so the row
+   separates them and marks the one that writes. */
+.acervator-poa-tab [data-part="control-button"][data-action="world"] {
+  margin-left: calc(var(--SPACE_M) * 1px);
+  border-left: 2px solid var(--OUTLINE_STRONG);
+}
+
+.acervator-poa-tab [data-part="control-button"][data-action="world_confirm"] {
+  border-color: var(--ACCENT);
+  color: var(--ACCENT);
 }
 
 .acervator-poa-tab [data-part="control-result"] {
@@ -139,11 +177,32 @@ body {
 }
 
 .acervator-poa-tab [data-part="subtab-button"] {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
   padding: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
   border: 1px solid var(--OUTLINE);
   border-radius: calc(var(--RADIUS_XS) * 1px);
   background: var(--SURFACE_2);
   color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+/* The key each button opens on, shown so nobody has to find it in a tooltip. */
+.acervator-poa-tab [data-part="subtab-key"] {
+  padding: 0 calc(var(--SPACE_XXS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  color: var(--TEXT_MED);
+  font-family: inherit;
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="subtab-key-note"] {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--TEXT_LOW);
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
@@ -287,17 +346,29 @@ body {
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
-/* The upper band: the player window takes the width the square enemy screen
-   leaves, which is the only place the two zone sizes are related. */
+/* The top row is bisected: the current Vessel left, the Map or the Encounter right,
+   and the 1px divider column between them. */
 .acervator-poa-tab [data-part="upper-band"] {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr 1px 1fr;
   gap: calc(var(--SPACE_S) * 1px);
+  min-height: 0;
+}
+
+.acervator-poa-tab [data-part="top-divider"] {
+  background: var(--OUTLINE_STRONG);
+}
+
+.acervator-poa-tab [data-part="right-region"] {
+  display: grid;
+  min-width: 0;
   min-height: 0;
 }
 
 .acervator-poa-tab [data-part="player-window"],
 .acervator-poa-tab [data-part="enemy-screen"],
+.acervator-poa-tab [data-part="map-region"],
+.acervator-poa-tab [data-part="encounter-region"],
 .acervator-poa-tab [data-part="party-window"] {
   box-sizing: border-box;
   padding: calc(var(--SPACE_S) * 1px);
@@ -308,8 +379,198 @@ body {
   overflow: hidden;
 }
 
+/* The Encounter state of the right half: its title and notes take the width the
+   square leaves, the way the enemy screen used to sit beside the player window. */
+.acervator-poa-tab [data-part="encounter-region"] {
+  container-type: size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: calc(var(--SPACE_S) * 1px);
+  min-width: 0;
+}
+
+.acervator-poa-tab [data-part="encounter-text"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.acervator-poa-tab [data-part="encounter-text"] > * {
+  flex-shrink: 0;
+}
+
+/* The slot squares off the region's height, so the enemy screen keeps the side the
+   top row gives it. Reading 100cqw here instead loops against the auto track. */
+.acervator-poa-tab [data-part="enemy-slot"] {
+  width: 100cqh;
+  height: 100cqh;
+  max-width: 100%;
+}
+
+.acervator-poa-tab [data-part="encounter-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
 .acervator-poa-tab [data-part="enemy-screen"] {
-  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.acervator-poa-tab [data-part="enemy-screen"] > * {
+  flex-shrink: 0;
+}
+
+/* The whole map region is the button that opens the map subtab, so it carries the
+   zone border and no button look of its own. */
+.acervator-poa-tab [data-part="map-region"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+  color: var(--TEXT_HIGH);
+  font-family: inherit;
+  font-size: calc(var(--TYPE_BODY) * 1px);
+  text-align: left;
+  overflow-y: auto;
+}
+
+.acervator-poa-tab [data-part="map-region"] > * {
+  flex-shrink: 0;
+}
+
+.acervator-poa-tab [data-part="map-region"] [data-part="map-open"] {
+  align-self: flex-start;
+}
+
+.acervator-poa-tab [data-part="map-region-title"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="encounter-note"],
+.acervator-poa-tab [data-part="tactical-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+/* The left half's Vessel card: its four facts, then its details, then the eight
+   mechanisms no module builds for it. */
+/* The whole card opens the Character Details subtab, so it is a target and not text. */
+.acervator-poa-tab [data-part="vessel-panel"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XXS) * 1px);
+  border: 1px solid transparent;
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  text-align: left;
+  cursor: pointer;
+}
+
+.acervator-poa-tab [data-part="vessel-panel"]:hover,
+.acervator-poa-tab [data-part="vessel-panel"]:focus-visible {
+  border-color: var(--OUTLINE_STRONG);
+  background: var(--SURFACE_2);
+}
+
+.acervator-poa-tab [data-part="vessel-list"],
+.acervator-poa-tab [data-part="vessel-details-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+}
+
+.acervator-poa-tab [data-part="vessel-row"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="vessel-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="vessel-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="vessel-details-title"],
+.acervator-poa-tab [data-part="vessel-absent-title"] {
+  margin: calc(var(--SPACE_XS) * 1px) 0 0 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="vessel-note"],
+.acervator-poa-tab [data-part="vessel-bound"],
+.acervator-poa-tab [data-part="vessel-click-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+.acervator-poa-tab [data-part="vessel-absent-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acervator-poa-tab [data-part="vessel-absent-row"] {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: calc(var(--SPACE_XS) * 1px);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="vessel-absent-name"] {
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="vessel-absent-note"] {
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The event band, the meters, the map control and the mode list stack past the
+   zone's height, so the zone scrolls and clips none of them. */
+.acervator-poa-tab [data-part="player-window"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+  overflow-y: auto;
 }
 
 .acervator-poa-tab [data-part="party-window"] {
@@ -317,6 +578,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: calc(var(--SPACE_S) * 1px);
+  overflow-y: auto;
+}
+
+/* Every band inside a zone keeps the height its own content needs. Without this
+   the bands share the zone and the mode list and the slot pages draw at nothing. */
+.acervator-poa-tab [data-part="player-window"] > *,
+.acervator-poa-tab [data-part="party-window"] > * {
+  flex-shrink: 0;
 }
 
 .acervator-poa-tab [data-part="zone-title"] {
@@ -370,13 +639,14 @@ body {
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
+/* The forty slots of one page take the zone's spare height and never less than
+   the five rows a group holds. */
 .acervator-poa-tab [data-part="party-pages"] {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   gap: calc(var(--SPACE_S) * 1px);
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 1 0 auto;
 }
 
 .acervator-poa-tab [data-part="party-group"] {
@@ -509,7 +779,7 @@ body {
 
 .acervator-poa-tab [data-part="mode-row"] {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: calc(var(--SPACE_XS) * 1px);
   padding: 0 calc(var(--SPACE_XS) * 1px);
@@ -543,6 +813,142 @@ body {
   color: var(--TEXT_LOW);
   font-size: calc(var(--TYPE_SMALL) * 1px);
   white-space: nowrap;
+}
+
+/* The stand-in mark of one kind. The renderer writes the colour as a style name
+   off the page root, so this rule sets the size and the box and never a colour. */
+.acervator-poa-tab [data-part="glyph"] {
+  display: inline-block;
+  min-width: calc(var(--TYPE_CARD_VALUE) * 1px);
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
+  font-size: calc(var(--TYPE_CARD_VALUE) * 1px);
+  text-align: center;
+}
+
+/* The mark table, under the mode list in the player window. */
+.acervator-poa-tab [data-part="glyph-legend"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+}
+
+.acervator-poa-tab [data-part="glyph-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="glyph-count"],
+.acervator-poa-tab [data-part="glyph-colour"] {
+  margin: 0;
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="glyph-art"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+.acervator-poa-tab [data-part="glyph-family"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+}
+
+.acervator-poa-tab [data-part="glyph-family-name"] {
+  margin: 0;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+/* The rows wrap into as many columns as the zone is wide, and a column never
+   narrows past the width a kind's name and its codepoint need side by side. */
+.acervator-poa-tab [data-part="glyph-list"] {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(calc(var(--SPACE_XXL) * 4px), 1fr)
+  );
+  gap: calc(var(--SPACE_XS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acervator-poa-tab [data-part="glyph-row"] {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+  min-width: 0;
+}
+
+.acervator-poa-tab [data-part="glyph-label"] {
+  flex: 1 1 auto;
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acervator-poa-tab [data-part="glyph-codepoint"] {
+  margin-left: auto;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+/* The kinds nothing supplies, in the enemy screen. */
+.acervator-poa-tab [data-part="glyph-absence"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  min-height: 0;
+}
+
+.acervator-poa-tab [data-part="glyph-absent-title"] {
+  margin: 0;
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="glyph-absent-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acervator-poa-tab [data-part="glyph-absent-row"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_XS) * 1px);
+  border-left: 2px solid var(--OUTLINE);
+}
+
+.acervator-poa-tab [data-part="glyph-absent-name"] {
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="glyph-absent-note"] {
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
 .acervator-poa-tab [data-part="pick-note"] {
@@ -743,6 +1149,83 @@ body {
   font-style: italic;
 }
 
+/* The block fill and the turn completion are one unit: a heading across the top
+   and two equal columns under it, so neither reads as the larger of the pair. */
+.acervator-poa-tab [data-part="meter-pair"] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+}
+
+.acervator-poa-tab [data-part="meter-pair-title"] {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+/* Both cards lay their rows on one set of grid lines, so the two labels, the two
+   bars and the two percentages sit on the same baselines. */
+.acervator-poa-tab [data-part="meter"] {
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr;
+  align-content: start;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+  min-width: 0;
+}
+
+.acervator-poa-tab [data-part="meter-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  text-transform: uppercase;
+}
+
+.acervator-poa-tab [data-part="meter-bar"] {
+  height: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="meter-fill"] {
+  height: 100%;
+  background: var(--SUCCESS);
+}
+
+.acervator-poa-tab [data-part="meter"][data-meter="block_fill"]
+  [data-part="meter-fill"] {
+  background: var(--WARNING);
+}
+
+.acervator-poa-tab [data-part="meter-percent"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_CARD_VALUE) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="meter-value"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="meter-note"] {
+  grid-row: 5;
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
 /* The four-bucket report and the season, under the pot division. Both scroll
    inside themselves so the party pages keep the space they already have. */
 .acervator-poa-tab [data-part="keep-panel"],
@@ -759,7 +1242,153 @@ body {
   overflow-y: auto;
 }
 
+/* The identity this node holds, on its own row above the reset and world pair.
+   Its public key is 64 characters, which needs the full width of the bar. */
+.acervator-poa-tab [data-part="identity-panel"] {
+  display: grid;
+  flex: 1 1 100%;
+  grid-template-columns: repeat(2, 1fr);
+  gap: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+}
+
+.acervator-poa-tab [data-part="identity-panel"][data-held="true"] {
+  border-color: var(--ACCENT);
+}
+
+.acervator-poa-tab [data-part="identity-title"],
+.acervator-poa-tab [data-part="identity-note"] {
+  grid-column: 1 / -1;
+}
+
+.acervator-poa-tab [data-part="identity-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="identity-row"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="identity-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+/* A public key is 64 characters with no space in it, so the value wraps. */
+.acervator-poa-tab [data-part="identity-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  text-align: right;
+  word-break: break-all;
+}
+
+.acervator-poa-tab [data-part="identity-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+/* The chain reset's own readout, on the row under the two buttons it reports on.
+   Its rows pair off across the width, so five readings take three lines. */
+.acervator-poa-tab [data-part="reset-panel"] {
+  display: grid;
+  flex: 1 1 calc(50% - var(--SPACE_XS) * 1px);
+  grid-template-columns: repeat(2, 1fr);
+  gap: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+}
+
+.acervator-poa-tab [data-part="reset-title"],
+.acervator-poa-tab [data-part="reset-note"] {
+  grid-column: 1 / -1;
+}
+
+/* The world this chain holds, beside the reset panel so the pair takes one row of
+   the control bar. data-held="false" is the state where the map draws no square. */
+.acervator-poa-tab [data-part="world-panel"] {
+  display: grid;
+  flex: 1 1 calc(50% - var(--SPACE_XS) * 1px);
+  grid-template-columns: repeat(2, 1fr);
+  gap: calc(var(--SPACE_XXS) * 1px) calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+}
+
+.acervator-poa-tab [data-part="world-panel"][data-held="true"] {
+  border-color: var(--ACCENT);
+}
+
+.acervator-poa-tab [data-part="world-title"],
+.acervator-poa-tab [data-part="world-note"] {
+  grid-column: 1 / -1;
+}
+
+.acervator-poa-tab [data-part="world-title"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="world-row"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="world-row-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  white-space: nowrap;
+}
+
+/* A world row carries a 64-character commitment, so it wraps where the bucket
+   and season values do not. */
+.acervator-poa-tab [data-part="world-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  text-align: right;
+  word-break: break-all;
+}
+
+.acervator-poa-tab [data-part="world-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
 .acervator-poa-tab [data-part="keep-title"],
+.acervator-poa-tab [data-part="reset-title"],
 .acervator-poa-tab [data-part="season-title"] {
   margin: 0;
   color: var(--TEXT_MAX);
@@ -768,6 +1397,7 @@ body {
 }
 
 .acervator-poa-tab [data-part="keep-row"],
+.acervator-poa-tab [data-part="reset-row"],
 .acervator-poa-tab [data-part="season-row"] {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -781,6 +1411,7 @@ body {
 }
 
 .acervator-poa-tab [data-part="keep-row-label"],
+.acervator-poa-tab [data-part="reset-row-label"],
 .acervator-poa-tab [data-part="season-row-label"] {
   color: var(--TEXT_MED);
   font-size: calc(var(--TYPE_SMALL) * 1px);
@@ -795,7 +1426,18 @@ body {
   white-space: nowrap;
 }
 
+/* A reset row carries a file name or a reason sentence, so it wraps where the
+   bucket and season values do not. */
+.acervator-poa-tab [data-part="reset-row-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+  text-align: right;
+  word-break: break-all;
+}
+
 .acervator-poa-tab [data-part="keep-note"],
+.acervator-poa-tab [data-part="reset-note"],
 .acervator-poa-tab [data-part="season-boundary"],
 .acervator-poa-tab [data-part="season-advance"] {
   margin: 0;
@@ -804,26 +1446,29 @@ body {
   font-style: italic;
 }
 
-/* The wallet opens over the party window and over nothing else. */
+/* The wallet opens over the party window and over nothing else. Two header rows
+   carry the title beside Close and the participant beside the chain, so the four
+   holdings take every line the panel has left. */
 .acervator-poa-tab [data-part="wallet-panel"] {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--SPACE_S) * 1px);
-  padding: calc(var(--SPACE_M) * 1px);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto 1fr;
+  gap: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_M) * 1px);
+  padding: calc(var(--SPACE_S) * 1px);
   border: 1px solid var(--OUTLINE_STRONG);
   border-radius: calc(var(--RADIUS_SM) * 1px);
   background: var(--SURFACE_3);
 }
 
-/* The three holdings share the band the party window leaves, so none of them
+/* The four holdings share the band the party window leaves, so none of them
    falls below the panel. */
 .acervator-poa-tab [data-part="wallet-sections"] {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, 1fr);
   gap: calc(var(--SPACE_S) * 1px);
-  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -835,7 +1480,7 @@ body {
 }
 
 .acervator-poa-tab [data-part="wallet-section"] {
-  padding: calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
   border: 1px solid var(--OUTLINE);
   border-radius: calc(var(--RADIUS_XS) * 1px);
   background: var(--SURFACE_2);
@@ -879,4 +1524,142 @@ body {
   color: var(--TEXT_PLACEHOLDER);
   font-size: calc(var(--TYPE_SMALL) * 1px);
   font-style: italic;
+}
+
+/* The five subtabs that draw labelled lists: Character Details, Resources, Quint,
+   Guild and the grid under Maps. Every one goes through titledRows. */
+.acervator-poa-tab [data-part="details-panel"],
+.acervator-poa-tab [data-part="resource-panel"],
+.acervator-poa-tab [data-part="quint-panel"],
+.acervator-poa-tab [data-part="guild-panel"],
+.acervator-poa-tab [data-part="gear-panel"],
+.acervator-poa-tab [data-part="map-panel"],
+.acervator-poa-tab [data-part="tree-panel-pages"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XS) * 1px);
+}
+
+/* The layer drawn under Maps. One cell a square, the payload's own width to a row,
+   and the cell stays square at any panel width. */
+.acervator-poa-tab [data-part="map-grid"] {
+  display: grid;
+  gap: 1px;
+  align-self: start;
+  max-width: 100%;
+  padding: 1px;
+  border: 1px solid var(--OUTLINE_STRONG);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--OUTLINE);
+}
+
+.acervator-poa-tab [data-part="map-square"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  min-width: calc(var(--TYPE_CARD_VALUE) * 1px);
+  min-height: calc(var(--TYPE_CARD_VALUE) * 1px);
+  background: var(--SURFACE_1);
+}
+
+/* An undiscovered square carries no glyph and no fill of its own. */
+.acervator-poa-tab [data-part="map-square"][data-state="unknown"] {
+  background: var(--SURFACE_0);
+}
+
+.acervator-poa-tab [data-part="map-square"][data-state="known"] {
+  background: var(--SURFACE_2);
+}
+
+.acervator-poa-tab [data-part="map-square"][data-state="own"] {
+  background: var(--SURFACE_3);
+}
+
+/* Viewrange. The outline is inset so the grid's own 1px gaps stay visible. */
+.acervator-poa-tab [data-part="map-square"][data-in-view="true"] {
+  outline: 2px solid var(--ACCENT_GOLD);
+  outline-offset: -2px;
+}
+
+/* The Character Details subtab puts its stat table beside the metric list. */
+.acervator-poa-tab [data-part="details-panel-pair"] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(var(--SPACE_S) * 1px);
+  align-items: start;
+}
+
+.acervator-poa-tab [data-part="details-title"] {
+  margin: 0;
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part^="details-list"] {
+  display: grid;
+  gap: calc(var(--SPACE_XXS) * 1px);
+}
+
+.acervator-poa-tab [data-part="details-row"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: baseline;
+  gap: calc(var(--SPACE_XS) * 1px);
+  padding: 0 calc(var(--SPACE_XS) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_INPUT);
+  overflow: hidden;
+}
+
+.acervator-poa-tab [data-part="details-label"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-poa-tab [data-part="details-value"] {
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  overflow-wrap: anywhere;
+}
+
+.acervator-poa-tab [data-part^="details-note"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+/* One page a skill kind. The absence sits above the ladder so neither page can read
+   as a tree or a ring that failed to draw. */
+.acervator-poa-tab [data-part="skill-page"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_XXS) * 1px);
+  padding: calc(var(--SPACE_XS) * 1px);
+  border: 1px dashed var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+}
+
+.acervator-poa-tab [data-part="skill-page-title"] {
+  margin: 0;
+  color: var(--TEXT_HIGH);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-weight: bold;
+}
+
+.acervator-poa-tab [data-part="skill-page-absent"] {
+  margin: 0;
+  color: var(--TEXT_PLACEHOLDER);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+  font-style: italic;
+}
+
+@media (width <= 900px) {
+  .acervator-poa-tab [data-part="details-panel-pair"] {
+    grid-template-columns: 1fr;
+  }
 }

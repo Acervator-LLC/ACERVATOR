@@ -41,12 +41,26 @@ class MarketInspectorTabMixin:
         )
         self._market_inspector.set_adopt_handler(self._adopt_topology_proposal)
         self._wire_ata_chart_list(self._market_inspector)
+        self._wire_ata_activity_log(self._market_inspector)
         self._main_tabs.addTab(self._market_inspector, INSPECTOR_TAB)
 
-    def _wire_ata_chart_list(self, inspector: Any) -> None:
-        """Point the Charts tab's ATA-SMP list at ``inspector``'s ``PushBoard``.
+    def _wire_ata_activity_log(self, inspector: Any) -> None:
+        """Point ``inspector``'s scan phase lines at the Live tab's ``StatusLog``.
 
-        The Charts tab is built first, so it reads the board through a
+        The Live tab is built first, so ``_status_log`` is the pane every
+        other Activity Log writer already calls.
+        """
+        pane = getattr(self, "_status_log", None)
+        if pane is None or not hasattr(inspector, "set_activity_log"):
+            logger.debug("no Activity Log pane; ATA-SPM phase lines reach the log only")
+            return
+        inspector.set_activity_log(pane.log)
+
+    def _wire_ata_chart_list(self, inspector: Any) -> None:
+        """Point the Charts tab's ATA-SMP list at ``inspector``'s ``PushBoard`` and
+        its chart at the ``SectorBoard``'s ``chart_call``.
+
+        The Charts tab is built first, so it reads both boards through a
         callable instead of holding a second copy of the markets.
         """
         charts = getattr(self, "_charts_tab", None)
@@ -54,3 +68,9 @@ class MarketInspectorTabMixin:
             logger.debug("Charts tab offers no set_ata_source; ATA-SMP list is empty")
             return
         charts.set_ata_source(inspector.watched_markets)
+        # MarketInspectorTab keeps its SectorBoard as _ata_board and offers no accessor.
+        board = getattr(inspector, "_ata_board", None)
+        if board is None or not hasattr(charts, "set_ata_call_source"):
+            logger.debug("no SectorBoard reachable; ATA-SMP charts draw no call")
+            return
+        charts.set_ata_call_source(board.chart_call)

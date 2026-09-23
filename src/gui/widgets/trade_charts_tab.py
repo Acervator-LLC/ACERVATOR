@@ -8,6 +8,32 @@ import time as _time
 from datetime import datetime
 
 from .. import design_system as ds
+from ..main_tabs.native_chart_surface import (
+    ARROW_GLYPH_FAMILY,
+    ARROW_GLYPH_PX,
+    CAPTION_PX,
+    CONTROL_FONT_FAMILY,
+    CONTROL_FONT_PX,
+    CONTROL_HEIGHT_PX,
+)
+from ..main_tabs.trade_charts_tab_surface import (
+    bot_timeframe,
+    fill_record,
+    history_fills,
+    history_never_fetched,
+    history_of,
+    history_state,
+    landing_strip,
+    merged_fills,
+    position_reading,
+)
+
+#: The bus topic every fill of every bot crosses; ``_on_trade_filled`` records it.
+FILLED_TOPIC = "trade.filled"
+
+#: The pin ``_follow_current`` writes when a called market's chart draws:
+#: the overlays the painter shows against the call's.
+ATA_RENDERED_PIN = "charts.ata.rendered"
 
 logger = logging.getLogger("acervator.gui")
 
@@ -41,13 +67,14 @@ LIST_TOGGLE_TOOLTIP = (
 ATA_EMPTY_TICKER_TEXT = "No called market"
 ATA_EMPTY_HINT = "A market joins this list when it reaches Ready to Send."
 LIST_TOGGLE_WIDTH_PX = 92
-LIST_TOGGLE_HEIGHT_PX = 26
+LIST_TOGGLE_HEIGHT_PX = CONTROL_HEIGHT_PX
+LIST_TOGGLE_PAD_PX = ds.SPACE_S
 ATA_EXCHANGE_ID = ""
 
 ARROW_WIDTH_PX = 34
-ARROW_HEIGHT_PX = 26
+ARROW_HEIGHT_PX = CONTROL_HEIGHT_PX
 TICKER_MIN_WIDTH_PX = 220
-SELECTOR_SPACING_PX = 8
+SELECTOR_SPACING_PX = ds.SPACE_S
 OUTER_MARGINS_PX = (8, 8, 8, 8)
 OUTER_SPACING_PX = 8
 
@@ -67,8 +94,9 @@ ERROR_TEXT_LIMIT = 60
 
 ARROW_STYLE = (
     f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
-    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
-    "font-weight: bold; font-size: 12px; }"
+    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: {ds.RADIUS_XS}px; "
+    f"font-family: {ARROW_GLYPH_FAMILY}; font-size: {ARROW_GLYPH_PX}px; "
+    "padding: 0px; }"
     f"QPushButton:hover {{ background: {ds.GLOW_PRIMARY_FAINT}; "
     f"border: 1px solid {ds.PRIMARY}; }}"
     f"QPushButton:disabled {{ background: {ds.CARD_METRIC_BORDER}; "
@@ -77,20 +105,23 @@ ARROW_STYLE = (
 )
 TICKER_STYLE = (
     f"QComboBox {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
-    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
-    "padding: 3px 8px; font-weight: bold; font-size: 12px; }"
+    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: {ds.RADIUS_XS}px; "
+    f"padding: 0px {ds.SPACE_S}px; font-family: {CONTROL_FONT_FAMILY}; "
+    f"font-weight: bold; font-size: {CONTROL_FONT_PX}px; }}"
     f"QComboBox:hover {{ border: 1px solid {ds.PRIMARY}; }}"
 )
-POSITION_STYLE = f"color: {ds.TEXT_LOW}; font-size: 10px;"
+POSITION_STYLE = f"color: {ds.TEXT_LOW}; font-size: {CAPTION_PX}px;"
 LIST_TOGGLE_STYLE = (
     f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
-    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
-    "font-weight: bold; font-size: 11px; }"
+    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: {ds.RADIUS_XS}px; "
+    f"font-family: {CONTROL_FONT_FAMILY}; font-weight: bold; "
+    f"font-size: {CONTROL_FONT_PX}px; }}"
     f"QPushButton:hover {{ background: {ds.GLOW_PRIMARY_FAINT}; "
     f"border: 1px solid {ds.PRIMARY}; }}"
 )
 
 try:
+    from PySide6.QtGui import QFontMetrics
     from PySide6.QtWidgets import (
         QComboBox,
         QHBoxLayout,
@@ -127,63 +158,84 @@ if _HAS_QT:
             self._ata_entries: list[dict] = []
             self._ata_shown = 0
             self._ata_source = None
+            self._ata_call_source = None
+            self._live_overlays: list = []
+            self._live_timeframe = ""
             self._list_mode = LIST_LIVE
             self._followed = ""
             self._trade_log: list[dict] = []
+            self._history_asked = False
+            self._history_connected = False
 
-            list_row = QHBoxLayout()
-            list_row.setSpacing(SELECTOR_SPACING_PX)
-            self._list_btn = QPushButton(LIST_TEXTS[self._list_mode])
+            from ..native_chart import ChartPanel, design_font
+
+            self._control_font = design_font(
+                CONTROL_FONT_FAMILY, CONTROL_FONT_PX, bold=True
+            )
+            self._panel = ChartPanel("", self)
+            self._panel.chart.set_timeframe(PANEL_TIMEFRAME)
+            self._panel.setMinimumHeight(PANEL_MINIMUM_HEIGHT_PX)
+            self._panel.chart.timeframe_changed.connect(self._on_tf_changed)
+
+            control_row = QHBoxLayout()
+            control_row.setSpacing(SELECTOR_SPACING_PX)
+
+            self._list_btn = QPushButton(LIST_TEXTS[self._list_mode], self)
             self._list_btn.setAccessibleName("Chart list")
             self._list_btn.setToolTip(LIST_TOGGLE_TOOLTIP)
-            self._list_btn.setFixedSize(LIST_TOGGLE_WIDTH_PX, LIST_TOGGLE_HEIGHT_PX)
             self._list_btn.setStyleSheet(LIST_TOGGLE_STYLE)
+            self._list_btn.setFixedSize(
+                self._list_toggle_width(), LIST_TOGGLE_HEIGHT_PX
+            )
             self._list_btn.clicked.connect(self.toggle_list)
-            list_row.addWidget(self._list_btn)
-            list_row.addStretch()
-            layout.addLayout(list_row)
+            control_row.addWidget(self._list_btn)
 
-            selector = QHBoxLayout()
-            selector.setSpacing(SELECTOR_SPACING_PX)
-
-            self._prev_btn = QPushButton(PREV_TEXT)
+            self._prev_btn = QPushButton(PREV_TEXT, self)
             self._prev_btn.setAccessibleName("Previous asset")
             self._prev_btn.setToolTip(PREV_TOOLTIP)
             self._prev_btn.setFixedSize(ARROW_WIDTH_PX, ARROW_HEIGHT_PX)
             self._prev_btn.setStyleSheet(ARROW_STYLE)
             self._prev_btn.clicked.connect(lambda: self.step(-1))
-            selector.addWidget(self._prev_btn)
+            control_row.addWidget(self._prev_btn)
 
-            self._ticker_combo = QComboBox()
+            self._ticker_combo = QComboBox(self)
             self._ticker_combo.setAccessibleName("Asset ticker")
             self._ticker_combo.setToolTip(TICKER_TOOLTIP)
             self._ticker_combo.setMinimumWidth(TICKER_MIN_WIDTH_PX)
+            self._ticker_combo.setFixedHeight(CONTROL_HEIGHT_PX)
             self._ticker_combo.setStyleSheet(TICKER_STYLE)
             self._ticker_combo.currentIndexChanged.connect(self._on_ticker_picked)
-            selector.addWidget(self._ticker_combo)
+            control_row.addWidget(self._ticker_combo)
 
-            self._next_btn = QPushButton(NEXT_TEXT)
+            self._next_btn = QPushButton(NEXT_TEXT, self)
             self._next_btn.setAccessibleName("Next asset")
             self._next_btn.setToolTip(NEXT_TOOLTIP)
             self._next_btn.setFixedSize(ARROW_WIDTH_PX, ARROW_HEIGHT_PX)
             self._next_btn.setStyleSheet(ARROW_STYLE)
             self._next_btn.clicked.connect(lambda: self.step(1))
-            selector.addWidget(self._next_btn)
+            control_row.addWidget(self._next_btn)
 
-            self._position_label = QLabel(EMPTY_POSITION_TEXT)
+            self._position_label = QLabel(EMPTY_POSITION_TEXT, self)
             self._position_label.setAccessibleName("Asset position")
             self._position_label.setStyleSheet(POSITION_STYLE)
-            selector.addWidget(self._position_label)
-            selector.addStretch()
+            self._position_label.setFixedHeight(CONTROL_HEIGHT_PX)
+            control_row.addWidget(self._position_label)
 
-            layout.addLayout(selector)
+            self._hint_label = QLabel(ATA_EMPTY_HINT, self)
+            self._hint_label.setAccessibleName("Chart list hint")
+            self._hint_label.setStyleSheet(POSITION_STYLE)
+            self._hint_label.setFixedHeight(CONTROL_HEIGHT_PX)
+            self._hint_label.hide()
+            control_row.addWidget(self._hint_label)
 
-            from ..native_chart import ChartPanel
-
-            self._panel = ChartPanel("")
-            self._panel.chart.set_timeframe(PANEL_TIMEFRAME)
-            self._panel.setMinimumHeight(PANEL_MINIMUM_HEIGHT_PX)
-            self._panel.chart.timeframe_changed.connect(self._on_tf_changed)
+            for widget in self._panel.timeframe_widgets():
+                widget.setFixedHeight(CONTROL_HEIGHT_PX)
+                control_row.addWidget(widget)
+            control_row.addStretch()
+            for widget in self._panel.legend_widgets():
+                widget.setFixedHeight(CONTROL_HEIGHT_PX)
+                control_row.addWidget(widget)
+            layout.addLayout(control_row)
             layout.addWidget(self._panel)
 
             from src.exchange.chart_data import ChartDataFetcher
@@ -191,10 +243,83 @@ if _HAS_QT:
             self._fetcher = ChartDataFetcher()
             self._refresh_selector()
 
+            from src.core.event_bus import get_event_bus
+
+            get_event_bus().subscribe(FILLED_TOPIC, self._on_trade_filled)
+
         @property
         def panel(self):
             """The one ChartPanel every asset is drawn in."""
             return self._panel
+
+        def set_theme(self, tokens) -> None:
+            """Repaint the chart, its boxes and its labels in ``tokens``."""
+            self._panel.set_theme(tokens)
+
+        def _symbol_of(self, bot_id: str) -> str:
+            """The symbol the tab lists for ``bot_id``, empty for a bot it does not list."""
+            for entry in self._entries:
+                if entry.get("bot_id") == bot_id:
+                    return str(entry.get("symbol", "") or "")
+            return ""
+
+        def _on_trade_filled(self, event) -> None:
+            """Record one ``trade.filled`` bus event through ``log_trade``.
+
+            The next ``update_charts`` tick draws it as a glyph on its candle.
+            """
+            data = getattr(event, "data", None)
+            if not isinstance(data, dict):
+                return
+            bot_id = str(data.get("bot_id", "") or "")
+            recorded = fill_record(
+                getattr(event, "timestamp", 0.0), data, self._symbol_of(bot_id)
+            )
+            if recorded is not None:
+                self.log_trade(recorded)
+
+        def _history(self):
+            """The window's History tab, or None before the window built one."""
+            return history_of(self.window())
+
+        def _on_history_refreshed(self, rows) -> None:
+            """Redraw the shown market's trade events when a History fetch lands."""
+            del rows
+            self._draw_history()
+            self._panel.chart.update()
+
+        def _draw_history(self) -> None:
+            """Put the shown market's trade events on the chart: the History's fills
+            for its symbol, then each bus fill since launch the venue has not
+            answered for.
+
+            A History that has never fetched is asked to ``refresh`` once, the
+            call the window makes on activation; ``history_refreshed`` is
+            connected once so the landing redraws without waiting for the tick.
+            A called market on the ATA-SMP list gets none.
+            """
+            if self._showing_ata():
+                return
+            symbol = self.current_entry().get("symbol", "")
+            if not symbol:
+                return
+            history = self._history()
+            state = history_state(history)
+            if history is not None and not self._history_connected:
+                with contextlib.suppress(Exception):
+                    history.history_refreshed.connect(self._on_history_refreshed)
+                    self._history_connected = True
+            if (
+                history is not None
+                and not self._history_asked
+                and history_never_fetched(state)
+            ):
+                self._history_asked = True
+                with contextlib.suppress(Exception):
+                    history.refresh()
+            venue = history_fills(state["rows"], symbol)
+            logged = [one for one in self._trade_log if one.get("symbol") == symbol]
+            self._panel.chart.set_trade_history_markers(merged_fills(venue, logged))
 
         @property
         def entries(self) -> list:
@@ -242,10 +367,22 @@ if _HAS_QT:
             """
             self._ata_source = source
 
+        def set_ata_call_source(self, source) -> None:
+            """Take the callable answering one market's ``ChartCall``, or None.
+
+            ``SectorBoard.chart_call`` is what the running window binds here.
+            """
+            self._ata_call_source = source
+
         def toggle_list(self) -> str:
-            """Move the arrows to the other list and answer the mode on screen."""
+            """Move the arrows to the other list and answer the mode on screen.
+
+            ``_followed`` is cleared first: a market on both lists keeps one
+            symbol and draws two pictures, the bot's and the call's.
+            """
             self._list_mode = LIST_ATA if self._list_mode == LIST_LIVE else LIST_LIVE
             self._list_btn.setText(LIST_TEXTS[self._list_mode])
+            self._followed = ""
             self._refresh_selector()
             self._follow_current()
             self._label_current()
@@ -301,6 +438,20 @@ if _HAS_QT:
             self._prev_btn.setEnabled(stepping)
             self._next_btn.setEnabled(stepping)
             self._position_label.setText(self._position_text())
+            self._hint_label.setVisible(self._showing_ata() and not entries)
+
+        def _list_toggle_width(self) -> int:
+            """The one width the list toggle keeps for both of its texts.
+
+            The longer of ``LIST_TEXTS`` in the control font plus
+            ``LIST_TOGGLE_PAD_PX`` a side, never under ``LIST_TOGGLE_WIDTH_PX``,
+            so a press does not move the arrows.
+            """
+            metrics = QFontMetrics(self._control_font)
+            widest = max(
+                metrics.horizontalAdvance(text) for text in LIST_TEXTS.values()
+            )
+            return max(LIST_TOGGLE_WIDTH_PX, widest + LIST_TOGGLE_PAD_PX * 2)
 
         def _follow_current(self) -> None:
             """Point the panel at the shown asset and clear the last one's tape.
@@ -318,9 +469,78 @@ if _HAS_QT:
             chart.set_candles([])
             chart.set_trade_history_markers([])
             self._panel.set_source("")
+            call = entry.get("call") if self._showing_ata() else None
+            if call is not None:
+                self._draw_call(entry, call)
+                return
+            self._leave_call()
             if symbol:
                 chart.set_error(AWAITING_FORMAT.format(symbol=symbol))
             entry["last_fetch"] = 0
+
+        def _draw_call(self, entry: dict, call) -> None:
+            """Draw ``call`` on the panel: its candles at its timeframe, its
+            overlays, its badge and its caption, with no bot annotation.
+
+            The overlay set the Live list showed is held in ``_live_overlays``
+            until ``_leave_call`` restores it.
+            """
+            chart = self._panel.chart
+            if not self._live_overlays:
+                self._live_overlays = [
+                    key for key, on in chart.overlays_shown().items() if on
+                ]
+            self._clear_annotations()
+            if not self._live_timeframe:
+                self._live_timeframe = self._panel.timeframe
+            self._panel.choose_timeframe(str(call.timeframe))
+            self._panel.show_only(list(call.overlays))
+            chart.set_candles(list(call.candles))
+            chart.set_call(call.direction, call.readings)
+            chart.set_caption(call.caption)
+            entry["last_fetch"] = _time.time()
+            shown = sorted(key for key, on in chart.overlays_shown().items() if on)
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _emit
+
+                _emit(
+                    ATA_RENDERED_PIN,
+                    actual=shown,
+                    expected=sorted(call.overlays),
+                    context={
+                        "symbol": call.symbol,
+                        "timeframe": call.timeframe,
+                        "list": LIST_ATA,
+                        "width": chart.width(),
+                        "height": chart.height(),
+                        "direction": call.direction,
+                        "candles": len(call.candles),
+                        "variant": "qt",
+                    },
+                )
+
+        def _leave_call(self) -> None:
+            """Clear the call's badge and caption and restore the Live overlay set."""
+            chart = self._panel.chart
+            chart.set_call("", ())
+            chart.set_caption("")
+            if self._live_overlays:
+                self._panel.show_only(self._live_overlays)
+                self._live_overlays = []
+            if self._live_timeframe:
+                self._panel.choose_timeframe(self._live_timeframe)
+                self._live_timeframe = ""
+            if self._showing_ata():
+                self._clear_annotations()
+
+        def _clear_annotations(self) -> None:
+            """Take every annotation off the chart: markers, target lines, glow, strip, position."""
+            chart = self._panel.chart
+            chart.set_trade_history_markers([])
+            chart.set_target_balance_lines(None, None)
+            chart.set_fire_armed_state(False, False, [], [])
+            chart.set_landing_strip(None)
+            chart.set_positions([])
 
         def update_charts(
             self,
@@ -374,6 +594,7 @@ if _HAS_QT:
             self._refresh_selector()
             self._follow_current()
             self._label_current()
+            self._draw_history()
             self._decorate_current(bot_manager)
             self._panel.chart.update()
 
@@ -451,12 +672,26 @@ if _HAS_QT:
                 )
                 entry["vote"] = str(getattr(market, "vote", ""))
                 entry["timeframes"] = list(getattr(market, "timeframes", ()))
+                call = self._call_of(symbol)
+                if call is not entry.get("call") and self._followed == symbol:
+                    self._followed = ""
+                entry["call"] = call
                 rebuilt.append(entry)
 
             self._ata_entries = rebuilt
             self._ata_shown = next(
                 (i for i, one in enumerate(rebuilt) if one["symbol"] == held_symbol), 0
             )
+
+        def _call_of(self, symbol: str):
+            """The ``ChartCall`` the call source holds for ``symbol``, or None."""
+            if self._ata_call_source is None:
+                return None
+            try:
+                return self._ata_call_source(symbol)
+            except Exception as exc:
+                logger.debug("ATA-SMP chart call read failed for %s: %s", symbol, exc)
+                return None
 
         def _label_current(self) -> None:
             """Write the shown asset's price and state into the chart header."""
@@ -471,10 +706,9 @@ if _HAS_QT:
             )
 
         def _decorate_current(self, bot_manager) -> None:
-            """Draw the shown bot's markers, target lines, glow and floors."""
+            """Draw the shown bot's strip, position, target lines and glow."""
             entry = self.current_entry()
             bot_id = entry.get("bot_id", "")
-            symbol = entry.get("symbol", "")
             if not bot_manager or not bot_id:
                 return
             bot = bot_manager.get_bot(bot_id)
@@ -483,13 +717,27 @@ if _HAS_QT:
             chart = self._panel.chart
 
             with contextlib.suppress(Exception):
-                trades = [
-                    one
-                    for one in self._trade_log
-                    if one.get("bot_id") == bot_id and one.get("symbol") == symbol
-                ]
-                if trades:
-                    chart.set_trade_history_markers(trades)
+                chart.set_landing_strip(
+                    landing_strip(getattr(bot, "_last_bb", None), bot_timeframe(bot))
+                )
+
+            with contextlib.suppress(Exception):
+                from ..native_chart import PositionMarker
+
+                reading = position_reading(bot)
+                chart.set_positions(
+                    []
+                    if reading is None
+                    else [
+                        PositionMarker(
+                            price=reading["price"],
+                            side=reading["side"],
+                            visibility=reading["visibility"],
+                            filled=True,
+                            asset_held=reading["asset_held"],
+                        )
+                    ]
+                )
 
             # cycle_growth_cap_usd caps the whole cycle from its opening target;
             # the consumption comes off first.
@@ -528,24 +776,6 @@ if _HAS_QT:
                     gate_state.get("scrum_blockers") or [],
                     gate_state.get("fold_blockers") or [],
                 )
-
-            with contextlib.suppress(Exception):
-                lots = getattr(bot, "_main_lots", [])
-                if lots:
-                    units_by_price: dict = {}
-                    for lot in lots:
-                        price = float(lot.get("initial_buy_price", 0) or 0)
-                        if price <= 0:
-                            continue
-                        units_by_price[price] = units_by_price.get(price, 0.0) + float(
-                            lot.get("units", 0) or 0
-                        )
-                    chart.set_tranche_floors(
-                        [
-                            (price, f"${price:.4f}" if price < 1 else f"${price:.2f}")
-                            for price in sorted(units_by_price)
-                        ]
-                    )
 
         def _on_tf_changed(self, tf: str):
             """Re-arm the shown asset's fetch after a timeframe change.
@@ -587,6 +817,10 @@ if _HAS_QT:
             now = _time.time()
             entry = self.current_entry()
             if not entry:
+                self._emit_freshness(now)
+                return
+            if self._showing_ata() and entry.get("call") is not None:
+                # A called market draws the call's own candles; nothing is fetched.
                 self._emit_freshness(now)
                 return
             if now - entry.get("last_fetch", 0) < FETCH_THROTTLE_S:

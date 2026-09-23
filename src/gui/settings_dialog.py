@@ -5,6 +5,7 @@ settings_dialog.py - Settings Menu Dialog v1.1
 from __future__ import annotations
 
 import logging
+from typing import Callable
 
 logger = logging.getLogger("acervator.gui")
 
@@ -21,7 +22,6 @@ try:
         QSpinBox,
         QDoubleSpinBox,
         QCheckBox,
-        QRadioButton,
         QGroupBox,
         QPushButton,
         QSlider,
@@ -98,11 +98,9 @@ if _HAS_QT:
             tabs.addTab(self._create_user_tab(), "User")
             tabs.addTab(self._create_exchange_tab(), "Exchanges")
             tabs.addTab(self._create_trading_tab(), "Trading")
-            tabs.addTab(self._create_folding_tab(), "Profit Folding")
             tabs.addTab(self._create_ta_tab(), "TA Indicators")
             tabs.addTab(self._create_phantom_tab(), "Phantom Bots")
             tabs.addTab(self._create_theme_tab(), "Theme")
-            tabs.addTab(self._create_logging_tab(), "Logging")
             tabs.addTab(self._create_sound_tab(), "Sound")
             tabs.addTab(self._create_sms_tab(), "SMS")
             tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
@@ -205,18 +203,18 @@ if _HAS_QT:
             )
             add_form.addRow("API Secret:", self._new_api_secret)
 
-            self._pp_check = QCheckBox("This exchange uses an API passphrase")
-            self._pp_check.toggled.connect(
-                lambda on: self._new_passphrase.setVisible(on)
-            )
-            add_form.addRow(self._pp_check)
-
+            # _new_passphrase is built above _pp_check so _sync_passphrase_row
+            # has both names. The rows keep the painted order below.
             self._new_passphrase = QLineEdit()
             self._new_passphrase.setEchoMode(QLineEdit.Password)
             self._new_passphrase.setPlaceholderText(
                 "Passphrase set when creating API key"
             )
             self._new_passphrase.setVisible(False)
+
+            self._pp_check = QCheckBox("This exchange uses an API passphrase")
+            self._pp_check.toggled.connect(lambda: self._sync_passphrase_row())
+            add_form.addRow(self._pp_check)
             add_form.addRow("", self._new_passphrase)
 
             btn_row = QHBoxLayout()
@@ -240,6 +238,8 @@ if _HAS_QT:
                     "no live brokers ship yet. Use the Crypto Wing "
                     "for active trading."
                 )
+                # setEnabled and setToolTip refuse only a deleted C++ object,
+                # and _create_exchange_tab builds every widget named here.
                 for _w in (
                     self._test_btn,
                     self._add_btn,
@@ -248,13 +248,8 @@ if _HAS_QT:
                     self._new_passphrase,
                     self._pp_check,
                 ):
-                    try:
-                        _w.setEnabled(False)
-                        _w.setToolTip(_disabled_tip)
-                    except (
-                        Exception
-                    ):  # R28-OK: defensive disable; tooltip is best-effort UX
-                        pass
+                    _w.setEnabled(False)
+                    _w.setToolTip(_disabled_tip)
 
             layout.addWidget(add_group)
 
@@ -270,12 +265,34 @@ if _HAS_QT:
             eid = self._new_exchange.currentData()
             needs_pp = eid in self._passphrase_exchanges
             self._pp_check.setChecked(needs_pp)
+            self._sync_passphrase_row()
             self._api_feedback.setText("")
+
+        def _sync_passphrase_row(self) -> None:
+            """Draw ``_new_passphrase`` while ``_pp_check`` is ticked.
+
+            Both builds call this; the React holder's ``setChecked`` emits no
+            Qt ``toggled``.
+            """
+            self._new_passphrase.setVisible(self._pp_check.isChecked())
+
+        def _typed_secret(self) -> str:
+            """The API Secret row, with a pasted PEM's escaped newlines made real.
+
+            The row's tooltip promises the conversion, so it runs here rather
+            than at connect, and every venue receives the same bytes.
+            """
+            from src.core.encryption import looks_like_pem, unescape_pem_newlines
+
+            typed = self._new_api_secret.toPlainText().strip()
+            if looks_like_pem(typed):
+                return unescape_pem_newlines(typed)
+            return typed
 
         def _test_api_connection(self):
             eid = self._new_exchange.currentData()
             key = self._new_api_key.text().strip()
-            secret = self._new_api_secret.toPlainText().strip()
+            secret = self._typed_secret()
             pp = (
                 self._new_passphrase.text().strip()
                 if self._pp_check.isChecked()
@@ -344,7 +361,7 @@ if _HAS_QT:
             try:
                 eid = self._new_exchange.currentData()
                 key = self._new_api_key.text().strip()
-                secret = self._new_api_secret.toPlainText().strip()
+                secret = self._typed_secret()
                 pp = (
                     self._new_passphrase.text().strip()
                     if self._pp_check.isChecked()
@@ -361,23 +378,25 @@ if _HAS_QT:
                 config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
 
                 if key and secret:
-                    from src.core.encryption import encrypt
+                    from src.core.encryption import encrypt, vault_phrase
 
-                    master = f"qat_{self._sm.get('username', 'user')}_vault"
+                    master = vault_phrase(self._sm.get("username", ""))
                     config.api_key_enc = encrypt(key, master)
                     config.api_secret_enc = encrypt(secret, master)
                     if pp:
                         config.passphrase_enc = encrypt(pp, master)
 
                 self._sm.add_exchange(config)
-                self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
+                self._list_exchange_once(eid)
                 self._new_api_key.clear()
                 self._new_api_secret.clear()
                 self._new_passphrase.clear()
 
-                has_creds = (
-                    "with credentials (verified)" if key else "without credentials"
+                from .main_tabs.settings_dialog_surface import (
+                    stored_credential_phrase,
                 )
+
+                has_creds = stored_credential_phrase(self._sm.get_exchange(eid))
                 self._set_feedback(f"{eid.capitalize()} added {has_creds}.", "success")
                 if self._status_log:
                     self._status_log.log(
@@ -393,6 +412,24 @@ if _HAS_QT:
             finally:
                 self._add_btn.setEnabled(True)
                 self._test_btn.setEnabled(True)
+
+        def _list_exchange_once(self, eid: str) -> None:
+            """Draw ``eid`` in ``_exchange_list`` while no line names it yet.
+
+            Both builds run this method and the Qt-free model calls the same
+            ``listed_exchange_position``.
+            """
+            from .main_tabs.settings_dialog_surface import (
+                NO_MATCH_INDEX,
+                listed_exchange_position,
+            )
+
+            drawn = [
+                self._exchange_list.item(at).text()
+                for at in range(self._exchange_list.count())
+            ]
+            if listed_exchange_position(drawn, eid) == NO_MATCH_INDEX:
+                self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
 
         def _remove_exchange(self) -> None:
             item = self._exchange_list.currentItem()
@@ -410,17 +447,6 @@ if _HAS_QT:
         def _create_trading_tab(self) -> QWidget:
             w = QWidget()
             form = QFormLayout(w)
-            self._pos_distance = QDoubleSpinBox()
-            self._pos_distance.setRange(1.0, 50.0)
-            self._pos_distance.setSuffix("%")
-            self._pos_distance.setDecimals(1)
-            form.addRow("Position Distance:", self._pos_distance)
-            self._increment_style = QComboBox()
-            self._increment_style.addItems(["linear", "logarithmic"])
-            form.addRow("Increment Style:", self._increment_style)
-            self._default_positions = QSpinBox()
-            self._default_positions.setRange(1, 100)
-            form.addRow("Default Positions:", self._default_positions)
             self._default_balance = QDoubleSpinBox()
             self._default_balance.setRange(1.0, 1000000.0)
             self._default_balance.setPrefix("$")
@@ -433,79 +459,37 @@ if _HAS_QT:
             form.addRow(self._aggressive)
             return w
 
-        def _create_folding_tab(self) -> QWidget:
-            w = QWidget()
-            layout = QVBoxLayout(w)
-            self._folding_active = QCheckBox(
-                "Profit Folding / Upward Distribution Active"
-            )
-            layout.addWidget(self._folding_active)
-
-            mode_group = QGroupBox("Distribution Mode")
-            mode_layout = QVBoxLayout(mode_group)
-            self._fold_equal = QRadioButton("Equal distribution")
-            self._fold_log = QRadioButton("Logarithmic distribution")
-            self._fold_equal.setChecked(True)
-            mode_layout.addWidget(self._fold_equal)
-            mode_layout.addWidget(self._fold_log)
-            layout.addWidget(mode_group)
-
-            fold_group = QGroupBox("Profit Folding Target")
-            fold_layout = QVBoxLayout(fold_group)
-            self._fold_all = QRadioButton("Fold to ALL buy positions")
-            self._fold_x = QRadioButton("Fold to X# of buy positions:")
-            self._fold_recent = QRadioButton("Fold to most recent buy positions")
-            self._fold_x_count = QSpinBox()
-            self._fold_x_count.setRange(1, 100)
-            self._fold_x_count.setValue(5)
-            self._fold_all.setChecked(True)
-            fold_layout.addWidget(self._fold_all)
-            x_row = QHBoxLayout()
-            x_row.addWidget(self._fold_x)
-            x_row.addWidget(self._fold_x_count)
-            fold_layout.addLayout(x_row)
-            fold_layout.addWidget(self._fold_recent)
-            layout.addWidget(fold_group)
-
-            dist_group = QGroupBox("Upward Distribution Target")
-            dist_layout = QVBoxLayout(dist_group)
-            self._dist_all = QRadioButton("Distribute to ALL sell positions")
-            self._dist_x = QRadioButton("Distribute to X# of sell positions:")
-            self._dist_recent = QRadioButton("Distribute to most recent sell positions")
-            self._dist_x_count = QSpinBox()
-            self._dist_x_count.setRange(1, 100)
-            self._dist_x_count.setValue(5)
-            self._dist_all.setChecked(True)
-            dist_layout.addWidget(self._dist_all)
-            dx_row = QHBoxLayout()
-            dx_row.addWidget(self._dist_x)
-            dx_row.addWidget(self._dist_x_count)
-            dist_layout.addLayout(dx_row)
-            dist_layout.addWidget(self._dist_recent)
-            layout.addWidget(dist_group)
-            layout.addStretch()
-            return w
-
         def _create_ta_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.addWidget(QLabel("Adjust indicator weights in the voting engine."))
+            from src.gui.main_tabs.settings_dialog_surface import (
+                TA_LABEL_MIN_WIDTH,
+                TA_SLIDER_RANGE,
+                TA_SLIDER_SCALE,
+                TA_VALUE_MIN_WIDTH,
+                ta_label,
+                ta_slider_value,
+                ta_value_text,
+            )
             from src.trading.ta_engine import DEFAULT_WEIGHTS
 
             self._ta_weight_sliders = {}
             for ind_name, default_w in DEFAULT_WEIGHTS.items():
                 row = QHBoxLayout()
-                label = QLabel(f"{ind_name.replace('_', ' ').title()}:")
-                label.setMinimumWidth(140)
+                label = QLabel(ta_label(ind_name))
+                label.setMinimumWidth(TA_LABEL_MIN_WIDTH)
                 row.addWidget(label)
                 slider = QSlider(Qt.Horizontal)
-                slider.setRange(0, 200)
-                slider.setValue(int(default_w * 100))
+                slider.setRange(*TA_SLIDER_RANGE)
+                slider.setValue(ta_slider_value(default_w))
                 row.addWidget(slider)
-                val_label = QLabel(f"{default_w:.2f}")
-                val_label.setMinimumWidth(40)
+                val_label = QLabel(ta_value_text(default_w))
+                val_label.setMinimumWidth(TA_VALUE_MIN_WIDTH)
                 slider.valueChanged.connect(
-                    lambda v, lbl=val_label: lbl.setText(f"{v/100:.2f}")
+                    lambda v, lbl=val_label: lbl.setText(
+                        ta_value_text(v / TA_SLIDER_SCALE)
+                    )
                 )
                 row.addWidget(val_label)
                 self._ta_weight_sliders[ind_name] = slider
@@ -516,37 +500,31 @@ if _HAS_QT:
         def _create_phantom_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
-            self._phantoms_enabled = QCheckBox(
-                "Enable Phantom Balance Bots for Scrumming"
-            )
+            self._phantoms_enabled = QCheckBox("Enable Phantom Bots for Scrumming")
             self._phantoms_enabled.setChecked(True)
             layout.addWidget(self._phantoms_enabled)
+            from src.gui.main_tabs.settings_dialog_surface import (
+                LOCK_CANDLE_DEFAULT,
+                PHANTOM_TIMEFRAME_DEFAULT,
+                PHANTOM_TIMEFRAMES,
+            )
+
             layout.addWidget(QLabel("Default Phantom Timeframes:"))
-            self._phantom_tf_checks = {}
-            tf_grid = QHBoxLayout()
-            for tf in [
-                "1m",
-                "5m",
-                "15m",
-                "30m",
-                "1h",
-                "2h",
-                "4h",
-                "6h",
-                "12h",
-                "1d",
-                "1w",
-            ]:
-                cb = QCheckBox(tf)
-                cb.setChecked(tf in ["5m", "15m", "1h", "4h", "1d"])
-                self._phantom_tf_checks[tf] = cb
-                tf_grid.addWidget(cb)
-            layout.addLayout(tf_grid)
+            self._phantom_timeframe = QComboBox()
+            for tf in PHANTOM_TIMEFRAMES:
+                self._phantom_timeframe.addItem(tf, tf)
+            self._phantom_timeframe.setCurrentIndex(
+                self._phantom_timeframe.findData(PHANTOM_TIMEFRAME_DEFAULT)
+            )
+            self._phantom_timeframe.setToolTip(
+                "The one phantom timeframe a new bot starts with"
+            )
+            layout.addWidget(self._phantom_timeframe)
             lock_group = QGroupBox("Higher-TF Lock Settings")
             lock_form = QFormLayout(lock_group)
             self._lock_candles = QSpinBox()
             self._lock_candles.setRange(1, 10)
-            self._lock_candles.setValue(2)
+            self._lock_candles.setValue(LOCK_CANDLE_DEFAULT)
             lock_form.addRow("Lock duration (candles):", self._lock_candles)
             layout.addWidget(lock_group)
             layout.addStretch()
@@ -569,95 +547,6 @@ if _HAS_QT:
             self._accent_color.setPlaceholderText("#00ffcc")
             layout.addWidget(self._accent_color)
 
-            font_group = QGroupBox("Font Settings")
-            font_form = QFormLayout(font_group)
-
-            self._font_family = QComboBox()
-            self._font_family.setEditable(True)
-            fonts = [
-                "Segoe UI",
-                "Consolas",
-                "Cascadia Code",
-                "Courier New",
-                "Arial",
-                "Helvetica",
-                "Roboto",
-                "Fira Code",
-                "JetBrains Mono",
-                "Source Code Pro",
-                "Ubuntu",
-                "Verdana",
-            ]
-            self._font_family.addItems(fonts)
-            self._font_family.setCurrentText("Segoe UI")
-            self._font_family.setToolTip("Font family for all application text")
-            font_form.addRow("Font Family:", self._font_family)
-
-            self._font_size = QSpinBox()
-            self._font_size.setRange(8, 24)
-            self._font_size.setValue(11)
-            self._font_size.setSuffix(" pt")
-            self._font_size.setToolTip("Base font size for all UI text")
-            font_form.addRow("Base Font Size:", self._font_size)
-
-            self._heading_size = QSpinBox()
-            self._heading_size.setRange(10, 32)
-            self._heading_size.setValue(14)
-            self._heading_size.setSuffix(" pt")
-            self._heading_size.setToolTip("Font size for headings and stat card values")
-            font_form.addRow("Heading Font Size:", self._heading_size)
-
-            self._log_font_size = QSpinBox()
-            self._log_font_size.setRange(8, 18)
-            self._log_font_size.setValue(10)
-            self._log_font_size.setSuffix(" pt")
-            self._log_font_size.setToolTip(
-                "Font size for Activity Log and API Log panels"
-            )
-            font_form.addRow("Log Font Size:", self._log_font_size)
-
-            self._font_preview = QLabel("The quick brown fox jumps over the lazy dog")
-            self._font_preview.setStyleSheet("padding: 8px; border: 1px solid #333;")
-            self._font_family.currentTextChanged.connect(self._update_font_preview)
-            self._font_size.valueChanged.connect(self._update_font_preview)
-            font_form.addRow("Preview:", self._font_preview)
-
-            layout.addWidget(font_group)
-            layout.addStretch()
-            return w
-
-        def _update_font_preview(self) -> None:
-            family = self._font_family.currentText()
-            size = self._font_size.value()
-            self._font_preview.setStyleSheet(
-                f"font-family: '{family}'; font-size: {size}pt; "
-                f"padding: 8px; border: 1px solid #333;"
-            )
-
-        def _create_logging_tab(self) -> QWidget:
-            w = QWidget()
-            layout = QVBoxLayout(w)
-            self._ta_logging = QCheckBox(
-                "Log TA signal samples with all values and timestamps"
-            )
-            self._ta_logging.setChecked(True)
-            layout.addWidget(self._ta_logging)
-            self._highlight_trades = QCheckBox(
-                "Highlight entries near Scrumming Bot trades"
-            )
-            self._highlight_trades.setChecked(True)
-            layout.addWidget(self._highlight_trades)
-            layout.addWidget(QLabel("P/L Log Periodicity:"))
-            self._log_24h = QCheckBox("24 Hours")
-            self._log_24h.setChecked(True)
-            self._log_1w = QCheckBox("1 Week")
-            self._log_1w.setChecked(True)
-            self._log_1m = QCheckBox("1 Month")
-            self._log_1y = QCheckBox("1 Year")
-            layout.addWidget(self._log_24h)
-            layout.addWidget(self._log_1w)
-            layout.addWidget(self._log_1m)
-            layout.addWidget(self._log_1y)
             layout.addStretch()
             return w
 
@@ -746,6 +635,11 @@ if _HAS_QT:
             vol_row.addWidget(self._vol_label)
             layout.addLayout(vol_row)
 
+            from src.gui.main_tabs.settings_dialog_surface import SOUND_CONFIG_FIELDS
+
+            for _key, name in SOUND_CONFIG_FIELDS:
+                getattr(self, f"_{name}").toggled.connect(self._push_sound_config)
+
             test_row = QHBoxLayout()
             test_buy = QPushButton("Test Buy")
             test_buy.clicked.connect(lambda: self._test_sound("buy"))
@@ -775,39 +669,42 @@ if _HAS_QT:
             return w
 
         def _on_sfx_volume_changed(self, v: int) -> None:
-            """MEM-236 — Slider → SoundEngine live wiring.
-            Because sound wavs bake volume at synth time, we must
-            clear the cache and re-generate. The regen happens lazily
-            on next play(), so cost here is just clearing state."""
-            try:
-                from src.core.sound_engine import get_sound_engine, SoundConfig
+            """Hand the engine this page's switches at volume ``v``, in percent.
 
-                se = get_sound_engine()
-                new_cfg = SoundConfig(
-                    enabled=self._sound_enabled.isChecked(),
-                    buy_sound=self._sound_buy.isChecked(),
-                    sell_sound=self._sound_sell.isChecked(),
-                    error_sound=self._sound_error.isChecked(),
-                    bot_state_sound=self._sound_state.isChecked(),
-                    fire_sound=self._sound_fire.isChecked(),
-                    track_sound=self._sound_track.isChecked(),
-                    profit_sound=self._sound_profit.isChecked(),
-                    drip_sound=self._sound_drip.isChecked(),
-                    volume=v / 100.0,
+            Each sample bakes its volume when it is made, so the engine's cache
+            is dropped and the next ``play`` regenerates. The switches come from
+            ``SOUND_CONFIG_FIELDS``, which is also what ``_sound_rows`` persists.
+            """
+            try:
+                from src.core.sound_engine import SoundConfig, get_sound_engine
+                from src.gui.main_tabs.settings_dialog_surface import (
+                    SOUND_CONFIG_FIELDS,
+                    VOLUME_SCALE,
                 )
-                se.update_config(new_cfg)
+
+                asked = {
+                    key: getattr(self, f"_{name}").isChecked()
+                    for key, name in SOUND_CONFIG_FIELDS
+                }
+                se = get_sound_engine()
+                se.update_config(SoundConfig(volume=v / VOLUME_SCALE, **asked))
                 se._available = False
                 se._cache = {}
             except Exception as _sf_exc:  # noqa: BLE001
-                logger.warning(
-                    "settings widget population failed — a field may show a default instead of its saved value: %s",
-                    _sf_exc,
-                )
+                logger.warning("sound settings did not reach the engine: %s", _sf_exc)
+
+        def _push_sound_config(self) -> None:
+            """Hand the engine every switch at the volume the slider is showing.
+
+            Wired to each sound box, so one box ticked on its own reaches the
+            engine without the slider moving.
+            """
+            self._on_sfx_volume_changed(self._sound_volume.value())
 
         def _test_sound(self, name: str) -> None:
             from src.core.sound_engine import get_sound_engine
 
-            self._on_sfx_volume_changed(self._sound_volume.value())
+            self._push_sound_config()
             get_sound_engine().play(name)
 
         def _create_sms_tab(self) -> QWidget:
@@ -832,9 +729,15 @@ if _HAS_QT:
             pf.setSpacing(6)
             pf.setContentsMargins(8, 16, 8, 8)
 
+            from src.core.sms_engine import CARRIER_GATEWAYS, FIELD_BOUNDS, SMSConfig
+            from src.gui.main_tabs.settings_dialog_surface import SMS_PROVIDERS
+
+            built = SMSConfig()
+
             self._sms_provider = QComboBox()
             self._sms_provider.setMinimumHeight(28)
-            self._sms_provider.addItems(["Email-to-SMS Gateway", "Twilio API"])
+            for label, value in SMS_PROVIDERS:
+                self._sms_provider.addItem(label, value)
             pf.addRow("Provider:", self._sms_provider)
 
             self._sms_phone = QLineEdit()
@@ -842,16 +745,35 @@ if _HAS_QT:
             self._sms_phone.setPlaceholderText("+15551234567")
             pf.addRow("Phone Number:", self._sms_phone)
 
+            self._sms_twilio_sid = QLineEdit()
+            self._sms_twilio_sid.setMinimumHeight(28)
+            self._sms_twilio_sid.setPlaceholderText("AC...")
+            pf.addRow("Twilio Account SID:", self._sms_twilio_sid)
+
+            self._sms_twilio_token = QLineEdit()
+            self._sms_twilio_token.setMinimumHeight(28)
+            self._sms_twilio_token.setEchoMode(QLineEdit.Password)
+            self._sms_twilio_token.setPlaceholderText(
+                "Auth token from the Twilio console"
+            )
+            pf.addRow("Twilio Auth Token:", self._sms_twilio_token)
+
+            self._sms_twilio_from = QLineEdit()
+            self._sms_twilio_from.setMinimumHeight(28)
+            self._sms_twilio_from.setPlaceholderText("+15559876543")
+            pf.addRow("Twilio From Number:", self._sms_twilio_from)
+
             sep = QLabel("Email Gateway Settings")
             sep.setStyleSheet("color: #00cccc; font-weight: bold; margin-top: 6px;")
             pf.addRow(sep)
 
             self._sms_carrier = QComboBox()
             self._sms_carrier.setMinimumHeight(28)
-            from src.core.sms_engine import CARRIER_GATEWAYS
-
             for carrier in CARRIER_GATEWAYS:
                 self._sms_carrier.addItem(carrier)
+            self._sms_carrier.currentIndexChanged.connect(
+                lambda _at: self._fill_gateway_email()
+            )
             pf.addRow("Carrier:", self._sms_carrier)
 
             self._sms_gateway = QLineEdit()
@@ -873,6 +795,17 @@ if _HAS_QT:
             )
             pf.addRow("SMTP Password:", self._sms_smtp_pass)
 
+            self._sms_smtp_server = QLineEdit()
+            self._sms_smtp_server.setMinimumHeight(28)
+            self._sms_smtp_server.setPlaceholderText(built.smtp_server)
+            pf.addRow("Mail Server:", self._sms_smtp_server)
+
+            self._sms_smtp_port = QSpinBox()
+            self._sms_smtp_port.setMinimumHeight(28)
+            self._sms_smtp_port.setRange(*FIELD_BOUNDS["smtp_port"])
+            self._sms_smtp_port.setValue(built.smtp_port)
+            pf.addRow("Mail Port:", self._sms_smtp_port)
+
             layout.addWidget(provider_group)
 
             events_group = QGroupBox("Notification Events")
@@ -880,23 +813,23 @@ if _HAS_QT:
             ef.setSpacing(6)
             ef.setContentsMargins(8, 16, 8, 8)
             self._sms_buy = QCheckBox("Buy fills")
-            self._sms_buy.setChecked(True)
+            self._sms_buy.setChecked(built.notify_buy_fills)
             ef.addRow(self._sms_buy)
             self._sms_sell = QCheckBox("Sell fills")
-            self._sms_sell.setChecked(True)
+            self._sms_sell.setChecked(built.notify_sell_fills)
             ef.addRow(self._sms_sell)
             self._sms_state = QCheckBox("Bot state changes (start/stop/error)")
-            self._sms_state.setChecked(True)
+            self._sms_state.setChecked(built.notify_bot_state_changes)
             ef.addRow(self._sms_state)
             self._sms_errors = QCheckBox("API errors and failures")
-            self._sms_errors.setChecked(True)
+            self._sms_errors.setChecked(built.notify_errors)
             ef.addRow(self._sms_errors)
             self._sms_pl = QCheckBox("P/L threshold alerts")
             ef.addRow(self._sms_pl)
             self._sms_pl_amount = QDoubleSpinBox()
             self._sms_pl_amount.setMinimumHeight(28)
-            self._sms_pl_amount.setRange(1, 100000)
-            self._sms_pl_amount.setValue(100)
+            self._sms_pl_amount.setRange(*FIELD_BOUNDS["pl_threshold_amount"])
+            self._sms_pl_amount.setValue(built.pl_threshold_amount)
             self._sms_pl_amount.setPrefix("$")
             ef.addRow("P/L threshold:", self._sms_pl_amount)
             self._sms_balance = QCheckBox("Low balance warnings")
@@ -912,13 +845,13 @@ if _HAS_QT:
             rf.setContentsMargins(8, 16, 8, 8)
             self._sms_max_hour = QSpinBox()
             self._sms_max_hour.setMinimumHeight(28)
-            self._sms_max_hour.setRange(1, 100)
-            self._sms_max_hour.setValue(20)
+            self._sms_max_hour.setRange(*FIELD_BOUNDS["max_messages_per_hour"])
+            self._sms_max_hour.setValue(built.max_messages_per_hour)
             rf.addRow("Max messages per hour:", self._sms_max_hour)
             self._sms_cooldown = QSpinBox()
             self._sms_cooldown.setMinimumHeight(28)
-            self._sms_cooldown.setRange(5, 300)
-            self._sms_cooldown.setValue(30)
+            self._sms_cooldown.setRange(*FIELD_BOUNDS["cooldown_seconds"])
+            self._sms_cooldown.setValue(built.cooldown_seconds)
             self._sms_cooldown.setSuffix(" sec")
             rf.addRow("Min time between messages:", self._sms_cooldown)
             layout.addWidget(rate_group)
@@ -1050,35 +983,319 @@ if _HAS_QT:
             self._ai_status.setText("Settings saved — handshake runs on next bot cycle")
             self._ai_status.setStyleSheet("color: #00ddff; font-weight: bold;")
 
+        def _show_text(self, combo: QComboBox, value: object) -> None:
+            """Shows ``value`` in a drop-down, by its row or as typed text.
+
+            A fixed list that does not offer ``value`` keeps the row it is on.
+            """
+            at = combo.findText(str(value))
+            if at >= 0:
+                combo.setCurrentIndex(at)
+            elif combo.isEditable():
+                combo.setCurrentText(str(value))
+
+        def _show_data(self, combo: QComboBox, value: object) -> None:
+            """Shows the drop-down row carrying ``value``, or keeps the row it is on."""
+            at = combo.findData(value)
+            if at >= 0:
+                combo.setCurrentIndex(at)
+
+        def _stored_rows(self) -> tuple:
+            """Every setting this dialog persists at the top level of the store.
+
+            One row carries the store key, the read off its control, the write
+            back into that control, and what stands in for a store without the
+            key. ``_save`` and ``_load_current`` walk these same rows, so no row
+            can be written without also being loaded.
+            """
+            from src.gui.main_tabs.settings_dialog_surface import (
+                ACCENT_DEFAULT,
+                LOCK_CANDLE_DEFAULT,
+                PHANTOM_TIMEFRAME_DEFAULT,
+            )
+
+            return (
+                (
+                    "username",
+                    lambda: self._username.text().strip(),
+                    self._username.setText,
+                    "",
+                ),
+                (
+                    "default_target_balance",
+                    self._default_balance.value,
+                    self._default_balance.setValue,
+                    200.0,
+                ),
+                (
+                    "bot_visibility",
+                    self._visibility.currentText,
+                    lambda value: self._show_text(self._visibility, value),
+                    "orderbook",
+                ),
+                (
+                    "aggressive_trading",
+                    self._aggressive.isChecked,
+                    lambda value: self._aggressive.setChecked(bool(value)),
+                    False,
+                ),
+                (
+                    "default_enable_phantoms",
+                    self._phantoms_enabled.isChecked,
+                    lambda value: self._phantoms_enabled.setChecked(bool(value)),
+                    True,
+                ),
+                (
+                    "default_phantom_timeframe",
+                    self._phantom_timeframe.currentData,
+                    lambda value: self._show_data(self._phantom_timeframe, value),
+                    PHANTOM_TIMEFRAME_DEFAULT,
+                ),
+                (
+                    "default_lock_candle_count",
+                    self._lock_candles.value,
+                    lambda value: self._lock_candles.setValue(int(value)),
+                    LOCK_CANDLE_DEFAULT,
+                ),
+                (
+                    "theme",
+                    self._theme_combo.currentData,
+                    lambda value: self._show_data(self._theme_combo, value),
+                    "cyberpunk_dark",
+                ),
+                (
+                    "accent_color",
+                    lambda: self._accent_color.text().strip(),
+                    self._accent_color.setText,
+                    ACCENT_DEFAULT,
+                ),
+            )
+
+        def _stored_groups(self) -> tuple:
+            """Every group this dialog persists as one key, with the rows inside it.
+
+            A row reads and writes the same way a ``_stored_rows`` row does.
+            """
+            from src.core.sms_engine import SETTINGS_GROUP as MESSAGE_CHANNELS_GROUP_KEY
+
+            return (
+                (
+                    "ai_monitor",
+                    (
+                        (
+                            "api_key",
+                            lambda: self._ai_api_key.text().strip(),
+                            self._ai_api_key.setText,
+                            "",
+                        ),
+                        (
+                            "interval_hours",
+                            self._ai_interval.value,
+                            self._ai_interval.setValue,
+                            4.0,
+                        ),
+                        (
+                            "connect_phrase",
+                            lambda: self._ai_connect_phrase.text().strip(),
+                            self._ai_connect_phrase.setText,
+                            "",
+                        ),
+                        (
+                            "confirm_phrase",
+                            lambda: self._ai_confirm_phrase.text().strip(),
+                            self._ai_confirm_phrase.setText,
+                            "",
+                        ),
+                        (
+                            "enabled",
+                            self._ai_enabled.isChecked,
+                            lambda value: self._ai_enabled.setChecked(bool(value)),
+                            False,
+                        ),
+                        (
+                            "auto_handshake",
+                            self._ai_auto_handshake.isChecked,
+                            lambda value: self._ai_auto_handshake.setChecked(
+                                bool(value)
+                            ),
+                            True,
+                        ),
+                        (
+                            "log_feedback",
+                            self._ai_log_feedback.isChecked,
+                            lambda value: self._ai_log_feedback.setChecked(bool(value)),
+                            True,
+                        ),
+                    ),
+                ),
+                ("ta_indicator_weights", self._ta_weight_rows()),
+                ("sound", self._sound_rows()),
+                (MESSAGE_CHANNELS_GROUP_KEY, self._sms_rows()),
+            )
+
+        def _fill_gateway_email(self) -> None:
+            """Build the Gateway Email row from the carrier and the typed number.
+
+            A number the carrier's gateway cannot address, and the manual choice,
+            both leave the row as the operator left it.
+            """
+            from src.core.sms_engine import gateway_address
+
+            built = gateway_address(
+                self._sms_carrier.currentText(), self._sms_phone.text()
+            )
+            if built:
+                self._sms_gateway.setText(built)
+
+        def _sms_rows(self) -> tuple:
+            """One ``_stored_groups`` row per SMS page control.
+
+            ``SMS_CONFIG_FIELDS`` pairs each ``SMSConfig`` field with the control
+            carrying it, and the control's spec kind decides how a row reads it.
+            """
+            from src.core.sms_engine import SMSConfig
+            from src.gui.main_tabs.settings_dialog_surface import (
+                CHECK,
+                COMBO_DATA,
+                COMBO_TEXT,
+                DOUBLE_SPIN,
+                LINE,
+                SMS_CONFIG_FIELDS,
+                spec_for,
+            )
+
+            built = SMSConfig()
+
+            def pick_text(box) -> Callable[[object], None]:
+                # findText and setCurrentIndex are the two calls both builds'
+                # drop-downs answer; isEditable is Qt's alone.
+                def put(value: object) -> None:
+                    at = box.findText(str(value))
+                    if at >= 0:
+                        box.setCurrentIndex(at)
+
+                return put
+
+            def row(key: str, name: str) -> tuple:
+                box = getattr(self, f"_{name}")
+                fallback = getattr(built, key)
+                kind = spec_for(name)["kind"]
+                if kind == CHECK:
+                    return (
+                        key,
+                        box.isChecked,
+                        lambda value: box.setChecked(bool(value)),
+                        fallback,
+                    )
+                if kind == LINE:
+                    return (key, lambda: box.text().strip(), box.setText, fallback)
+                if kind == COMBO_DATA:
+                    return (
+                        key,
+                        box.currentData,
+                        lambda value: self._show_data(box, value),
+                        fallback,
+                    )
+                if kind == COMBO_TEXT:
+                    return (key, box.currentText, pick_text(box), fallback)
+                if kind == DOUBLE_SPIN:
+                    return (
+                        key,
+                        box.value,
+                        lambda value: box.setValue(float(value)),
+                        fallback,
+                    )
+                return (
+                    key,
+                    box.value,
+                    lambda value: box.setValue(int(value)),
+                    fallback,
+                )
+
+            return tuple(row(key, name) for key, name in SMS_CONFIG_FIELDS)
+
+        def _sound_rows(self) -> tuple:
+            """One ``_stored_groups`` row per sound switch, plus the volume.
+
+            The slider shows whole percent and ``SoundConfig.volume`` holds a
+            fraction, so the volume row divides out and multiplies back.
+            """
+            from src.core.sound_engine import SoundConfig
+            from src.gui.main_tabs.settings_dialog_surface import (
+                SOUND_CONFIG_FIELDS,
+                VOLUME_SCALE,
+            )
+
+            built = SoundConfig()
+
+            def show(box) -> Callable[[object], None]:
+                return lambda value: box.setChecked(bool(value))
+
+            switches = tuple(
+                (
+                    key,
+                    getattr(self, f"_{name}").isChecked,
+                    show(getattr(self, f"_{name}")),
+                    getattr(built, key),
+                )
+                for key, name in SOUND_CONFIG_FIELDS
+            )
+            return switches + (
+                (
+                    "volume",
+                    lambda: self._sound_volume.value() / VOLUME_SCALE,
+                    lambda value: self._sound_volume.setValue(
+                        int(round(float(value) * VOLUME_SCALE))
+                    ),
+                    built.volume,
+                ),
+            )
+
+        def _ta_weight_rows(self) -> tuple:
+            """One ``_stored_groups`` row per indicator weight slider.
+
+            A slider holds the weight times ``TA_SLIDER_SCALE``, so a row reads
+            the weight out of the position and writes the position back in.
+            """
+            from src.gui.main_tabs.settings_dialog_surface import TA_SLIDER_SCALE
+            from src.trading.ta_engine import DEFAULT_WEIGHTS
+
+            def read(name: str) -> Callable[[], float]:
+                return lambda: (self._ta_weight_sliders[name].value() / TA_SLIDER_SCALE)
+
+            def show(name: str) -> Callable[[object], None]:
+                return lambda value: self._ta_weight_sliders[name].setValue(
+                    int(round(float(value) * TA_SLIDER_SCALE))
+                )
+
+            return tuple(
+                (name, read(name), show(name), figure)
+                for name, figure in DEFAULT_WEIGHTS.items()
+            )
+
+        def _show_stored(
+            self, key: str, show: Callable[[object], None], value: object
+        ) -> None:
+            """Puts one stored value into its control.
+
+            A value the control refuses leaves that control on its build figure
+            and names ``key`` in the log, so one unreadable entry in the
+            settings file cannot stop the dialog opening.
+            """
+            try:
+                show(value)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Settings kept the default for %s: %s", key, exc)
+
         def _load_current(self) -> None:
             if not self._sm:
                 return
-            self._username.setText(self._sm.get("username", ""))
-            self._pos_distance.setValue(self._sm.get("position_distance_pct", 2.0))
-            self._default_positions.setValue(self._sm.get("default_position_count", 10))
-            self._default_balance.setValue(
-                self._sm.get("default_target_balance", 200.0)
-            )
-            self._accent_color.setText(self._sm.get("accent_color", "#00ffcc"))
-
-            ai = self._sm.get("ai_monitor", {})
-            self._ai_api_key.setText(ai.get("api_key", ""))
-            self._ai_interval.setValue(ai.get("interval_hours", 4.0))
-            self._ai_connect_phrase.setText(ai.get("connect_phrase", ""))
-            self._ai_confirm_phrase.setText(ai.get("confirm_phrase", ""))
-            self._ai_enabled.setChecked(ai.get("enabled", False))
-            self._ai_auto_handshake.setChecked(ai.get("auto_handshake", True))
-            self._ai_log_feedback.setChecked(ai.get("log_feedback", True))
-            theme = self._sm.get("theme", "cyberpunk_dark")
-            idx = self._theme_combo.findData(theme)
-            if idx >= 0:
-                self._theme_combo.setCurrentIndex(idx)
-            style = self._sm.get("increment_style", "linear")
-            idx = self._increment_style.findText(style)
-            if idx >= 0:
-                self._increment_style.setCurrentIndex(idx)
-            pf = self._sm.get("profit_folding", {})
-            self._folding_active.setChecked(pf.get("active", True))
+            for key, _read, show, fallback in self._stored_rows():
+                self._show_stored(key, show, self._sm.get(key, fallback))
+            for group, rows in self._stored_groups():
+                stored = self._sm.get(group, {})
+                for key, _read, show, fallback in rows:
+                    self._show_stored(f"{group}.{key}", show, stored.get(key, fallback))
             for exch in self._sm.list_exchanges():
                 _eid = (exch.get("exchange_id", "") or "").lower()
                 _is_equity = _eid in EQUITY_EXCHANGE_IDS
@@ -1089,6 +1306,7 @@ if _HAS_QT:
                 self._exchange_list.addItem(
                     f"{exch.get('display_name', '')} ({exch.get('exchange_id', '')})"
                 )
+            self._push_sound_config()
 
         def _save(self) -> None:
             """Save all settings and close. ALWAYS closes the dialog."""
@@ -1106,21 +1324,7 @@ if _HAS_QT:
                 return
 
             # A setting that fails to save never blocks the close.
-            pairs = {
-                "username": lambda: self._username.text().strip(),
-                "position_distance_pct": lambda: self._pos_distance.value(),
-                "increment_style": lambda: self._increment_style.currentText(),
-                "default_position_count": lambda: self._default_positions.value(),
-                "default_target_balance": lambda: self._default_balance.value(),
-                "bot_visibility": lambda: self._visibility.currentText(),
-                "aggressive_trading": lambda: self._aggressive.isChecked(),
-                "theme": lambda: self._theme_combo.currentData(),
-                "accent_color": lambda: self._accent_color.text().strip(),
-                "font_family": lambda: self._font_family.currentText(),
-                "font_size": lambda: self._font_size.value(),
-                "heading_font_size": lambda: self._heading_size.value(),
-                "log_font_size": lambda: self._log_font_size.value(),
-            }
+            pairs = {key: read for key, read, _show, _fallback in self._stored_rows()}
             saved = 0
             failed: list[str] = []
             for key, getter in pairs.items():
@@ -1131,79 +1335,16 @@ if _HAS_QT:
                     failed.append(f"{key} ({e})")
                     print(f"[SETTINGS ERROR] {key}: {e}", file=sys.stderr, flush=True)
 
-            try:
-                fold_target = "all_buy"
-                if self._fold_x.isChecked():
-                    fold_target = "x_buy"
-                elif self._fold_recent.isChecked():
-                    fold_target = "most_recent_buy"
-                dist_target = "all_sell"
-                if self._dist_x.isChecked():
-                    dist_target = "x_sell"
-                elif self._dist_recent.isChecked():
-                    dist_target = "most_recent_sell"
-                self._sm.set(
-                    "profit_folding",
-                    {
-                        "active": self._folding_active.isChecked(),
-                        "mode": (
-                            "logarithmic" if self._fold_log.isChecked() else "equal"
-                        ),
-                        "fold_target": fold_target,
-                        "fold_target_count": self._fold_x_count.value(),
-                        "distribute_target": dist_target,
-                        "distribute_target_count": self._dist_x_count.value(),
-                    },
-                )
-                saved += 1
-            except Exception as e:
-                failed.append(f"profit_folding ({e})")
-                print(
-                    f"[SETTINGS ERROR] profit_folding: {e}", file=sys.stderr, flush=True
-                )
-
-            try:
-                periods = []
-                if self._log_24h.isChecked():
-                    periods.append("24h")
-                if self._log_1w.isChecked():
-                    periods.append("1_week")
-                if self._log_1m.isChecked():
-                    periods.append("1_month")
-                if self._log_1y.isChecked():
-                    periods.append("1_year")
-                self._sm.set(
-                    "data_logging",
-                    {
-                        "ta_signal_logging": self._ta_logging.isChecked(),
-                        "highlight_trade_proximity": self._highlight_trades.isChecked(),
-                        "active_periodicities": periods,
-                    },
-                )
-                saved += 1
-            except Exception as e:
-                failed.append(f"data_logging ({e})")
-                print(
-                    f"[SETTINGS ERROR] data_logging: {e}", file=sys.stderr, flush=True
-                )
-
-            try:
-                self._sm.set(
-                    "ai_monitor",
-                    {
-                        "api_key": self._ai_api_key.text().strip(),
-                        "interval_hours": self._ai_interval.value(),
-                        "connect_phrase": self._ai_connect_phrase.text().strip(),
-                        "confirm_phrase": self._ai_confirm_phrase.text().strip(),
-                        "enabled": self._ai_enabled.isChecked(),
-                        "auto_handshake": self._ai_auto_handshake.isChecked(),
-                        "log_feedback": self._ai_log_feedback.isChecked(),
-                    },
-                )
-                saved += 1
-            except Exception as e:
-                failed.append(f"ai_monitor ({e})")
-                print(f"[SETTINGS ERROR] ai_monitor: {e}", file=sys.stderr, flush=True)
+            for group, rows in self._stored_groups():
+                try:
+                    self._sm.set(
+                        group,
+                        {key: read() for key, read, _show, _fallback in rows},
+                    )
+                    saved += 1
+                except Exception as e:
+                    failed.append(f"{group} ({e})")
+                    print(f"[SETTINGS ERROR] {group}: {e}", file=sys.stderr, flush=True)
 
             try:
                 self.settings_changed.emit()

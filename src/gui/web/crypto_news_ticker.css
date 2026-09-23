@@ -1,0 +1,53 @@
+/* React news strip chrome: the page ground and the one-line strip
+ * `crypto_news_ticker.js` shows a story in. The headline carries its own
+ * `color`, cursor and padding on a `style` attribute from the Python
+ * payload, so no rule here may set a colour on it.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--SURFACE_0, var(--bg));
+  color: var(--TEXT_HIGH, var(--text));
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+/* The element the host draws the strip into. */
+#news-ticker-root {
+  height: 100%;
+}
+
+/* A part carries `display:flex` on its own style attribute, which outranks
+ * the browser's own rule for a hidden element. */
+[hidden] {
+  display: none !important;
+}
+
+/* QFrame around the strip, matching the space the exchange header keeps. */
+.acervator-news-ticker[data-part="ticker"] {
+  min-width: 0;
+  height: 100%;
+  border: 1px solid var(--OUTLINE, var(--border));
+  border-radius: 3px;
+}
+
+/* QLabel: one story on one line, clipped rather than wrapped to a second. */
+.acervator-news-ticker-line[data-part="headline"] {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.acervator-news-ticker-line[data-part="headline"]:focus-visible {
+  outline: 1px solid var(--OUTLINE_STRONG, var(--accent));
+}

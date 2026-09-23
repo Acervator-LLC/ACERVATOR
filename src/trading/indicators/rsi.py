@@ -1,7 +1,8 @@
 """Relative Strength Index.
 
-``RSIIndicator.compute`` casts the vote; ``RSIIndicator._compute_metrics``
-carries the divergence flags and the trailing series.
+``RSIIndicator.lines`` answers Wilder's series for every candle;
+``RSIIndicator._compute_metrics`` reads it for the divergence flags and the
+trailing series, and ``RSIIndicator.compute`` casts the vote.
 """
 
 from __future__ import annotations
@@ -10,6 +11,10 @@ from .types import (
     SignalDirection,
     Signal,
 )
+
+#: One entry per candle, ``None`` through the seed window and on a bar
+#: whose smoothed gain and loss are both zero.
+_Line = list[float | None]
 
 
 class RSIIndicator:
@@ -23,6 +28,37 @@ class RSIIndicator:
     def __init__(self, period: int = 14, weight: float = 0.8):
         self.period = period
         self.weight = weight
+
+    def lines(self, candles: list) -> _Line:
+        """Wilder's RSI, one entry per candle, for a chart to draw.
+
+        Wilder (1978): ``avg_gain`` and ``avg_loss`` seed as the mean over
+        ``period`` bars, then smooth by ``(prior * (period - 1) + bar) / period``;
+        RSI is ``100 - 100 / (1 + avg_gain / avg_loss)``, 100 with any gain
+        against a zero ``avg_loss``, and ``None`` with neither.
+        """
+        n = len(candles)
+        out: _Line = [None] * n
+        if n < self.period + 1:
+            return out
+        closes = [c.close for c in candles]
+        deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        # `losses` are positive magnitudes; the leading float zero keeps
+        # `max` at +0.0 on a flat bar.
+        gains = [max(0.0, d) for d in deltas]
+        losses = [max(0.0, -d) for d in deltas]
+        avg_gain = sum(gains[: self.period]) / self.period
+        avg_loss = sum(losses[: self.period]) / self.period
+        for i in range(self.period, len(deltas)):
+            avg_gain = (avg_gain * (self.period - 1) + gains[i]) / self.period
+            avg_loss = (avg_loss * (self.period - 1) + losses[i]) / self.period
+            if avg_loss > 0.0:
+                out[i + 1] = 100 - 100 / (1 + avg_gain / avg_loss)
+            elif avg_gain > 0.0:
+                # Wilder: a zero `avg_loss` with any gain is an infinite RS,
+                # i.e. RSI 100.
+                out[i + 1] = 100.0
+        return out
 
     def _compute_metrics(self, candles: list) -> dict:
         """Return the RSI value, its overbought/oversold flags, both
@@ -42,25 +78,11 @@ class RSIIndicator:
                 "rs_indeterminate": False,
             }
         closes = [c.close for c in candles]
-        deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
-        # `losses` are positive magnitudes; the leading float zero keeps
-        # `max` at +0.0 on a flat bar.
-        gains = [max(0.0, d) for d in deltas]
-        losses = [max(0.0, -d) for d in deltas]
-        avg_gain = sum(gains[: self.period]) / self.period
-        avg_loss = sum(losses[: self.period]) / self.period
-        rsi_series = []
-        rs_indeterminate = False
-        for i in range(self.period, len(deltas)):
-            avg_gain = (avg_gain * (self.period - 1) + gains[i]) / self.period
-            avg_loss = (avg_loss * (self.period - 1) + losses[i]) / self.period
-            rs_indeterminate = avg_gain <= 0.0 and avg_loss <= 0.0
-            if avg_loss > 0.0:
-                rsi_series.append(100 - 100 / (1 + avg_gain / avg_loss))
-            else:
-                # Wilder: a zero `avg_loss` with any gain is an infinite RS,
-                # i.e. RSI 100.
-                rsi_series.append(100.0 if avg_gain > 0.0 else 0.0)
+        aligned = self.lines(candles)
+        # The seed window ends at ``period``; past it a None is a bar with
+        # neither gain nor loss, which the divergence windows read as 0.0.
+        rsi_series = [0.0 if one is None else one for one in aligned[self.period + 1 :]]
+        rs_indeterminate = len(aligned) > self.period + 1 and aligned[-1] is None
         rsi = rsi_series[-1] if rsi_series else 50.0
         bull_div = bear_div = False
         if len(rsi_series) >= 20 and len(closes) >= 20:

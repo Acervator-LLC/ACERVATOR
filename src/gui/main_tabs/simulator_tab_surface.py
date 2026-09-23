@@ -7,6 +7,10 @@ Trading-tab clone: the Privacy Mode row, the bot list under
 window over the tablet playback window. ``reserved_rows`` names what the crypto
 news ticker and data-pool rows carry in each of ``MODES``, and ``run_validation``,
 ``run_back_test`` and ``run_battery`` fill the pane each mode draws.
+``tablet_choices``, ``default_tablet_key`` and ``replay_feed`` are the forked
+tab's replay layer as data: the chooser's items, the item the selected bot
+names, and the two windows' payloads over one tablet, the playback carrying
+``mark_shapes`` for the ``shown_bot``'s fills and ``replay_figures`` beside it.
 ``src.core.desktop_bridge`` registers ``view_model`` under ``METHOD``, and
 nothing here imports Qt.
 """
@@ -17,14 +21,30 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
-from ...simulator import portfolio_battery, validation
+from ...simulator import back_test, portfolio_battery, validation
+from ...simulator.fleet_source import (
+    MODE_BACK_TEST,
+    MODE_PORTFOLIO_BATTERY,
+    MODE_VALIDATION,
+    MODES,
+    aggregate_stats,
+)
 from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.tablet_source import TabletSource, tablet_key
+from ...trading.scrumming.sizing import opposing_trade_distances
 from ...trading.stone_tablets.ra_paths import RA_STONE_TABLETS_DIR
+from ...trading.stone_tablets.registry import NATIVE_TIMEFRAME
 from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
 from .. import design_system as ds
+from ..theme_engine import NIGREDO_FRACTION, toward_black
 from . import indicator_panel_surface as ivp
 from .bot_status_table_surface import COLUMN_LABELS, FIXED_WIDTHS
+from .native_chart_surface import (
+    MARK_GLYPHS,
+    MARK_HEIGHT_FRACTION,
+    MARK_OUTLINE_PX,
+    MARK_WIDTH_RATIO,
+)
 
 logger = logging.getLogger("acervator.gui")
 
@@ -63,22 +83,51 @@ CREATE_NEW_BOTS_TEXT = "Create New Bots"
 RUN_PORTFOLIO_TEXT = "Run Portfolio"
 RUN_EVERY_PORTFOLIO_TEXT = "Run Every Portfolio"
 
+#: The corner's first button in every mode: it empties the held fleet.
+CLEAR_FLEET_ACTION = "clear_fleet"
+CLEAR_FLEET_TEXT = "Clear Fleet"
+
+#: The corner's last button while a fleet is held: it starts the run mode's run.
+START_RUN_ACTION = "start_run"
+START_RUN_TEXT = "Start Run"
+
 CHOOSE_PORTFOLIO_ACTION = "choose_portfolio"
 CHOOSE_SPAN_ACTION = "choose_span"
 
 NEWS_TICKER_ROW = "news_ticker_row"
 DATA_POOL_ROW = "data_pool_row"
 
-MODE_VALIDATION = "validation"
-MODE_BACK_TEST = "back_test"
-MODE_PORTFOLIO_BATTERY = "portfolio_battery"
-MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
+#: The three run modes and their tuple are ``fleet_source``'s, one fleet each.
 MODE_LABEL_TEXT = "Mode:"
 MODE_TEXT = {
     MODE_VALIDATION: "Validation",
     MODE_BACK_TEST: "Back Test",
     MODE_PORTFOLIO_BATTERY: "Portfolio Battery",
 }
+
+#: How each mode's run funds its folds, in ``back_test``'s two fundings.
+MODE_FUNDING = {
+    MODE_VALIDATION: back_test.FUNDED_BY_TARGETS,
+    MODE_BACK_TEST: back_test.FUNDED_BY_PROCEEDS,
+    MODE_PORTFOLIO_BATTERY: back_test.FUNDED_BY_TARGETS,
+}
+
+
+def funding_for(mode: Any) -> str:
+    """The ``back_test`` funding of ``mode``, Back Test's for a name outside
+    ``MODES``."""
+    return MODE_FUNDING.get(mode, back_test.FUNDED_BY_PROCEEDS)
+
+
+def fleet_aggregate(fleet_source: Any, mode: Any) -> dict:
+    """The header strip's figures for the Sim tab in ``mode``: ``aggregate_stats``
+    over the held bots, with the wallet reading ``run_budget_usd`` while the
+    mode's funding is ``FUNDED_BY_TARGETS``."""
+    bots = fleet_source.bots()
+    budget = None
+    if funding_for(mode) == back_test.FUNDED_BY_TARGETS:
+        budget = back_test.run_budget_usd(bots)
+    return aggregate_stats(bots, budget_usd=budget)
 
 
 def button_name(action: str) -> str:
@@ -183,10 +232,6 @@ BACK_TEST_COLUMNS = (
 #: How many compared bots the Back Test table lists.
 BACK_TEST_ROW_LIMIT = 200
 
-#: How many gate-chain evaluations one press spends per bot. Measured at 1.7 ms
-#: each, so a 38-bot press reads the whole 2026 tape in about 13 seconds.
-BACK_TEST_TICKS_PER_BOT = 200
-
 BATTERY_TITLE = "Portfolio Battery"
 BATTERY_IDLE_TEXT = "No battery run yet. Run Portfolio or Run Every Portfolio."
 
@@ -198,26 +243,19 @@ BATTERY_COLUMNS = (
     "Span",
     "Symbols",
     "Bars",
-    "Ticks",
+    "Evaluations",
     "Trades",
-    "Buy and hold",
-    "Accumulation",
-    "Improvement",
+    "HODL end",
+    "Harvest-Fold end",
+    "Difference",
     "Missing weight",
 )
 
 #: How many portfolio-and-timeframe rows the Portfolio Battery table lists.
 BATTERY_ROW_LIMIT = 200
 
-#: How many gate-chain evaluations one press spends per symbol. Measured at
-#: 26 seconds for all 35 portfolios over the whole RA tape.
-BATTERY_TICKS_PER_SYMBOL = portfolio_battery.TICKS_PER_SYMBOL
-
 PORTFOLIO_LABEL_TEXT = "Portfolio:"
 SPAN_LABEL_TEXT = "Span:"
-
-#: The ``verdict`` both hosts colour a beaten baseline with.
-BETTER_VERDICT = portfolio_battery.BETTER
 
 #: The spans and timeframes both hosts list, from ``portfolio_battery``.
 BATTERY_SPANS = portfolio_battery.SPANS
@@ -234,19 +272,32 @@ FLEET_EMPTY_TEXT = "No simulated fleet. Import Live Fleet builds one."
 TABLET_LABEL_TEXT = "Tablet:"
 NO_TABLET_TEXT = "No Stone Tablet on disk."
 SHORT_TABLET_FORMAT = "{asset} {year} holds {count} candles; {need} are needed."
+#: Under the staleness banner over a tablet reading: the day of the newest
+#: candle the reading was computed on.
+TABLET_ENDS_FORMAT = "Stone Tablet ends {day}."
 
 LAYER_INDICATORS = "indicators"
 LAYER_PLAYBACK = "playback"
 LAYERS = (LAYER_INDICATORS, LAYER_PLAYBACK)
 
+#: The flip's text on each layer: the directive's word for the two windows on
+#: the panel, where the header row's room under a monospace theme is 90 px,
+#: and the panel's own word on the layer.
 FLIP_BUTTON_TEXT = {
-    LAYER_INDICATORS: "Show Playback",
-    LAYER_PLAYBACK: "Show Indicators",
+    LAYER_INDICATORS: "Replay",
+    LAYER_PLAYBACK: "Indicators",
 }
 
 VWAP_TITLE = "VWAP"
 PLAYBACK_TITLE = "Stone Tablet Playback"
 REPLAY_LOG_TITLE = "Replay Log"
+
+#: The retrieval button on the replay layer, read off the chosen item: the
+#: directive's own two words for a market with no tablet and for one with.
+RETRIEVE_TABLET_TEXT = "Retrieve Tablet"
+UPDATE_TABLET_TEXT = "Update Tablet"
+#: The chooser's item for a held market with no tablet on disk.
+NO_TABLET_CHOICE_FORMAT = "{key} — no tablet"
 
 #: The Trading tab's own pane geometry, cloned. ``trading_tab.py`` sets these.
 MARGINS_PX = [2, 2, 2, 2]
@@ -256,9 +307,11 @@ TOP_SPLITTER_SIZES = [600, 500]
 MAIN_SPLITTER_SIZES = [500, 350]
 LAYER_SPLITTER_SIZES = [500, 500]
 
+#: The two grounds carry the Simulator's tone, ``toward_black`` at
+#: ``NIGREDO_FRACTION``; every other entry is Live's own token.
 SKIN = {
-    "--sim-ground": ds.SURFACE_0,
-    "--sim-chart-ground": ds.SURFACE_CHART,
+    "--sim-ground": toward_black(ds.SURFACE_0, NIGREDO_FRACTION),
+    "--sim-chart-ground": toward_black(ds.SURFACE_CHART, NIGREDO_FRACTION),
     "--sim-heading-colour": ds.PRIMARY,
     "--sim-body-colour": ds.TEXT_MED,
     "--sim-empty-colour": ds.TEXT_EMPTY_STATE,
@@ -267,9 +320,23 @@ SKIN = {
     "--sim-vwap-line": ds.ACCENT_GOLD,
     "--sim-candle-up": ds.SUCCESS,
     "--sim-candle-down": ds.ERROR,
+    "--sim-mark-scrum": ds.ACCENT_GOLD,
+    "--sim-mark-fold": ds.INFO,
+    "--sim-better-colour": ds.SUCCESS,
+    "--sim-agrees-colour": ds.SUCCESS,
+    "--sim-disagrees-colour": ds.ERROR,
     "--sim-body-size": f"{ds.TYPE_BODY}px",
     "--sim-caption-size": f"{ds.TYPE_CAPTION}px",
 }
+
+#: ``MARK_GLYPHS`` is keyed by ``SCRUM_SIDE`` and ``FOLD_SIDE``, the strings
+#: ``back_test.SCRUM`` and ``back_test.FOLD`` carry.
+if MARK_GLYPHS.keys() != {back_test.SCRUM, back_test.FOLD}:
+    raise ImportError("MARK_GLYPHS keys differ from back_test.SCRUM and FOLD")
+
+#: The replay layer's header figures with no run held.
+NO_RUN_TEXT = "no run"
+NO_IMPROVEMENT_TEXT = "—"
 
 DECLARED_FIELDS = (
     "accessible_name",
@@ -399,6 +466,40 @@ def candle_shapes(
     return out
 
 
+def mark_shapes(
+    candles: Sequence[Sequence[float]],
+    fills: Sequence[Any],
+    low: float,
+    high: float,
+) -> list[dict]:
+    """One mark per fill in ``fills`` whose ``ts_ms`` is a candle's stamp in
+    ``candles``: the candle's ``index`` and ``x``, the fill's price as ``y``
+    over ``low`` and ``high``, its ``side`` and the ``MARK_GLYPHS`` name."""
+    count = len(candles)
+    index_of = {int(row[0]): index for index, row in enumerate(candles)}
+    out: list[dict] = []
+    for fill in fills:
+        index = index_of.get(int(fill.ts_ms))
+        if index is None:
+            continue
+        glyph = MARK_GLYPHS.get(str(fill.side))
+        if glyph is None:
+            continue
+        out.append(
+            {
+                "index": index,
+                "x": unit_x(index, count),
+                "y": unit_y(float(fill.price), low, high),
+                "ts_ms": int(fill.ts_ms),
+                "price": float(fill.price),
+                "side": str(fill.side),
+                "scrum_price": float(getattr(fill, "scrum_price", 0.0) or 0.0),
+                "glyph": glyph["name"],
+            }
+        )
+    return out
+
+
 def privacy_masked() -> bool:
     """True when the registry holds fields and every one of them is masked."""
     from ...core.privacy_mask_registry import get_privacy_mask_registry
@@ -493,8 +594,24 @@ def tablet_row(entry) -> dict:
     }
 
 
+def tablet_for(source: TabletSource, exchange_id: str, asset: str, timeframe: str):
+    """The newest MANIFEST entry filed under ``asset`` on ``exchange_id`` at
+    ``timeframe``, or None; a tie on ``last_ts_ms`` breaks on the key."""
+    wanted = (str(asset).upper(), str(exchange_id), str(timeframe))
+    found = [
+        entry
+        for entry in source.entries()
+        if (str(entry.asset).upper(), str(entry.exchange_id), str(entry.timeframe))
+        == wanted
+    ]
+    if not found:
+        return None
+    return max(found, key=lambda entry: (entry.last_ts_ms, tablet_key(entry)))
+
+
 def multi_tf_summary(candles: Sequence[Sequence[float]], timeframe: str) -> dict:
-    """The voting engine's reading of ``candles``, keyed by ``timeframe``.
+    """The voting engine's reading of ``candles``, keyed by ``timeframe``, each
+    signal carrying the ``details`` its indicator published.
 
     An empty dict comes back when ``candles_from_raw`` or ``compute_all`` raises.
     """
@@ -520,7 +637,7 @@ def multi_tf_summary(candles: Sequence[Sequence[float]], timeframe: str) -> dict
                     "indicator": one.indicator,
                     "direction": one.direction.name,
                     "confidence": one.confidence,
-                    "details": {},
+                    "details": dict(getattr(one, "details", None) or {}),
                 }
                 for one in summary.signals
             ],
@@ -565,17 +682,255 @@ def vwap_payload(candles: Sequence[Sequence[float]]) -> dict:
     }
 
 
-def playback_payload(candles: Sequence[Sequence[float]]) -> dict:
-    """The playback window: one shape per candle, and the price bounds."""
+def playback_payload(
+    candles: Sequence[Sequence[float]], fills: Sequence[Any] = ()
+) -> dict:
+    """The playback window: one shape per candle, the price bounds, and one
+    ``mark_shapes`` mark per fill in ``fills`` on a candle in ``candles``, with
+    ``fills`` the count handed and ``mark_count`` the count drawn."""
     span = bounds(
         [float(row[2]) for row in candles] + [float(row[3]) for row in candles]
     )
+    marks = mark_shapes(candles, fills, span["low"], span["high"])
     return {
         "title": PLAYBACK_TITLE,
         "low": span["low"],
         "high": span["high"],
         "candle_count": len(candles),
         "candles": candle_shapes(candles, span["low"], span["high"]),
+        "marks": marks,
+        "mark_count": len(marks),
+        "fills": len(fills),
+        "glyphs": {side: dict(glyph) for side, glyph in MARK_GLYPHS.items()},
+        "mark_width_ratio": MARK_WIDTH_RATIO,
+        "mark_height_fraction": MARK_HEIGHT_FRACTION,
+        "mark_outline_px": MARK_OUTLINE_PX,
+    }
+
+
+def replay_colours() -> dict:
+    """The seven ``SKIN`` colours the two replay windows paint, in both builds."""
+    return {
+        "ground": SKIN["--sim-chart-ground"],
+        "close": SKIN["--sim-close-line"],
+        "vwap": SKIN["--sim-vwap-line"],
+        "up": SKIN["--sim-candle-up"],
+        "down": SKIN["--sim-candle-down"],
+        "mark_scrum": SKIN["--sim-mark-scrum"],
+        "mark_fold": SKIN["--sim-mark-fold"],
+    }
+
+
+def market_key(asset: str, exchange_id: str) -> str:
+    """The chooser's key for a held market with no tablet on disk."""
+    return f"{str(asset).upper()}_{NATIVE_TIMEFRAME}_{exchange_id}"
+
+
+def tablet_choices(source: TabletSource, bots: Sequence[Any] = ()) -> list[dict]:
+    """The tablet chooser's items: one per MANIFEST row, keyed by
+    ``tablet_key`` and shown as it, then one per held market in ``bots`` with
+    no tablet at ``NATIVE_TIMEFRAME``, keyed by ``market_key`` and shown through
+    ``NO_TABLET_CHOICE_FORMAT``."""
+    entries = source.entries()
+    items = [
+        {
+            "key": tablet_key(entry),
+            "text": tablet_key(entry),
+            "asset": entry.asset,
+            "exchange_id": entry.exchange_id,
+            "timeframe": entry.timeframe,
+            "on_disk": True,
+        }
+        for entry in entries
+    ]
+    held = {(str(e.asset).upper(), str(e.exchange_id)) for e in entries}
+    seen: set[tuple[str, str]] = set()
+    for bot in bots:
+        market = (str(bot.asset).upper(), str(bot.exchange_id))
+        if market in held or market in seen:
+            continue
+        seen.add(market)
+        key = market_key(*market)
+        items.append(
+            {
+                "key": key,
+                "text": NO_TABLET_CHOICE_FORMAT.format(key=key),
+                "asset": market[0],
+                "exchange_id": market[1],
+                "timeframe": NATIVE_TIMEFRAME,
+                "on_disk": False,
+            }
+        )
+    return items
+
+
+def default_tablet_key(source: TabletSource, bot: Any = None) -> str:
+    """The chooser's key for ``bot``: ``tablet_for`` at its timeframe, else the
+    newest entry for its market, else ``market_key``; with no bot,
+    ``source.newest``, or an empty string when the root holds nothing."""
+    if bot is not None:
+        entry = tablet_for(source, bot.exchange_id, bot.asset, bot.ta_timeframe)
+        if entry is not None:
+            return tablet_key(entry)
+        wanted = (str(bot.asset).upper(), str(bot.exchange_id))
+        held = [
+            one
+            for one in source.entries()
+            if (str(one.asset).upper(), str(one.exchange_id)) == wanted
+        ]
+        if held:
+            return tablet_key(max(held, key=lambda e: (e.last_ts_ms, tablet_key(e))))
+        return market_key(*wanted)
+    newest = source.newest()
+    return tablet_key(newest) if newest is not None else ""
+
+
+def shown_bot(
+    bots: Sequence[Any],
+    asset: str,
+    exchange_id: str,
+    last_bot_id: str = "",
+    selected_bot_id: str = "",
+) -> Any:
+    """The bot whose fills the playback marks for a tablet on ``asset`` and
+    ``exchange_id``: of the ``bots`` on that market, the one ``last_bot_id``
+    names, else the one ``selected_bot_id`` names, else the lowest ``bot_id``;
+    None with no bot on the market."""
+    wanted = (str(asset).upper(), str(exchange_id))
+    held = sorted(
+        (
+            bot
+            for bot in bots
+            if (str(bot.asset).upper(), str(bot.exchange_id)) == wanted
+        ),
+        key=lambda bot: str(bot.bot_id),
+    )
+    if not held:
+        return None
+    for preferred in (last_bot_id, selected_bot_id):
+        found = next((bot for bot in held if bot.bot_id == preferred), None)
+        if found is not None:
+            return found
+    return held[0]
+
+
+def fills_for(fills: Sequence[Any], bot_id: str, timeframe: str) -> list:
+    """The fills in ``fills`` of ``bot_id`` whose ``timeframe`` is ``timeframe``
+    or empty, in fill order."""
+    return [
+        fill
+        for fill in fills
+        if str(fill.bot_id) == str(bot_id)
+        and str(getattr(fill, "timeframe", "") or "") in ("", str(timeframe))
+    ]
+
+
+def trade_pairs(fills: Sequence[Any]) -> list[tuple[float, float]]:
+    """``(scrum_price, fold price)`` for each ``FOLD`` in ``fills`` whose
+    ``scrum_price`` is above zero."""
+    return [
+        (float(fill.scrum_price), float(fill.price))
+        for fill in fills
+        if str(fill.side) == back_test.FOLD
+        and float(getattr(fill, "scrum_price", 0.0) or 0.0) > 0.0
+    ]
+
+
+def improvement_pct(hodl_usd: float, harvest_fold_usd: float) -> Optional[float]:
+    """``harvest_fold_usd`` less ``hodl_usd`` as a percentage of ``hodl_usd``;
+    None when ``hodl_usd`` is not above zero."""
+    if float(hodl_usd) <= 0.0:
+        return None
+    return 100.0 * (float(harvest_fold_usd) - float(hodl_usd)) / float(hodl_usd)
+
+
+def improvement_for(outcome: Any, bot_id: str, timeframe: str) -> Optional[float]:
+    """``improvement_pct`` over ``baseline_usd`` and ``accumulation_usd`` of the
+    first ``SymbolRun`` in ``outcome`` that ran ``bot_id`` at ``timeframe``;
+    None with no such run or no ``outcome``."""
+    for portfolio in getattr(outcome, "portfolios", None) or ():
+        for frame in getattr(portfolio, "timeframes", None) or ():
+            for run in getattr(frame, "runs", None) or ():
+                if (
+                    str(run.bot_id) == str(bot_id)
+                    and str(run.timeframe) == str(timeframe)
+                    and run.ran
+                ):
+                    return improvement_pct(run.baseline_usd, run.accumulation_usd)
+    return None
+
+
+def replay_figures(
+    bot: Any, fills: Sequence[Any], improvement: Optional[float]
+) -> dict:
+    """The header's figures for ``bot`` over its ``fills``:
+    ``opposing_trade_distances`` over ``trade_pairs``, the ``improvement``
+    percentage, and ``held`` False with no fill."""
+    distances = opposing_trade_distances(trade_pairs(fills))
+    return {
+        "bot_id": str(bot.bot_id) if bot is not None else "",
+        "held": bool(fills),
+        "fills": len(fills),
+        "pairs": int(distances["count"]),
+        "mean_pct": distances["mean_pct"],
+        "median_pct": distances["median_pct"],
+        "improvement_pct": improvement,
+    }
+
+
+def replay_feed(
+    source: TabletSource,
+    key: str,
+    bots: Sequence[Any] = (),
+    fills: Sequence[Any] = (),
+    outcome: Any = None,
+    last_bot_id: str = "",
+    selected_bot_id: str = "",
+) -> dict:
+    """The two windows' payloads for the item ``key`` names: ``vwap_payload``
+    and ``playback_payload`` over ``window_of`` the tablet, empty with no
+    entry or under ``MIN_CANDLES``, with ``entry`` and ``refusal`` beside them,
+    the playback marking ``fills_for`` the ``shown_bot`` at the entry's
+    timeframe and ``figures`` reading ``replay_figures`` over the same fills
+    with ``improvement_for`` the bot's run in ``outcome``."""
+    entry = source.entry_for(key) if key else None
+    candles = window_of(source.candles(entry)) if entry is not None else []
+    refusal = ""
+    if entry is None:
+        refusal = NO_TABLET_TEXT
+    elif len(candles) < MIN_CANDLES:
+        refusal = SHORT_TABLET_FORMAT.format(
+            asset=entry.asset, year=entry.year, count=len(candles), need=MIN_CANDLES
+        )
+    drawable: list[list[float]] = [] if refusal else candles
+    bot = (
+        shown_bot(bots, entry.asset, entry.exchange_id, last_bot_id, selected_bot_id)
+        if entry is not None
+        else None
+    )
+    shown = (
+        fills_for(fills, bot.bot_id, entry.timeframe)
+        if bot is not None and entry is not None
+        else []
+    )
+    improvement = (
+        improvement_for(outcome, bot.bot_id, entry.timeframe)
+        if bot is not None and entry is not None
+        else None
+    )
+    return {
+        "key": key,
+        "entry": entry,
+        "on_disk": entry is not None,
+        "refusal": refusal,
+        "window": len(candles),
+        "vwap": vwap_payload(drawable),
+        "playback": playback_payload(drawable, shown),
+        "figures": replay_figures(bot, shown, improvement),
+        "colours": replay_colours(),
+        "button_text": (
+            UPDATE_TABLET_TEXT if entry is not None else RETRIEVE_TABLET_TEXT
+        ),
     }
 
 
@@ -770,19 +1125,22 @@ def battery_row(portfolio: str, read: dict) -> dict:
         "symbols_text": f"{read['symbols_run']} of {read['symbols']}",
         "bars": read["bars"],
         "ticks": read["ticks"],
+        "evaluations_expected": read["evaluations_expected"],
         "scrum_latched": read["scrum_latched"],
         "fold_latched": read["fold_latched"],
         "trades": read["trades"],
+        "partial_exits": read["partial_exits"],
+        "re_entries": read["re_entries"],
         "baseline_usd": read["baseline_usd"],
         "baseline_text": usd_text(read["baseline_usd"]),
         "accumulation_usd": read["accumulation_usd"],
         "accumulation_text": usd_text(read["accumulation_usd"]),
-        "improvement_usd": read["improvement_usd"],
-        "improvement_pct": read["improvement_pct"],
-        "improvement_text": (
-            f"{read['improvement_usd']:+,.2f} ({read['improvement_pct']:+.2f}%)"
+        "difference_usd": read["difference_usd"],
+        "difference_pct": read["difference_pct"],
+        "difference_text": (
+            f"{read['difference_usd']:+,.2f} ({read['difference_pct']:+.2f}%)"
         ),
-        "verdict": read["verdict"],
+        "comparison": read["comparison"],
         "missing_weight": read["missing_weight"],
         "missing_text": pct_text(read["missing_weight"]),
         "missing_symbols": list(read["missing_symbols"]),
@@ -891,7 +1249,6 @@ def run_battery(origin: str, portfolio: str = "", span: str = "") -> dict:
         TabletSource(BATTERY_TABLET_ROOT),
         names=names,
         span=window,
-        ticks=BATTERY_TICKS_PER_SYMBOL,
     )
     payload = battery_payload(outcome, origin, chosen)
     for result in outcome.portfolios:
@@ -938,7 +1295,7 @@ def back_test_fleet(origin: str, exchange_id: str, specs: Sequence[dict]) -> tup
         )
         return made, choice
     fleet = FleetSource()
-    choice = exchange_choice(fleet.exchanges(), exchange_id)
+    choice = exchange_choice(fleet.stored_exchanges(), exchange_id)
     return live_fleet(fleet, choice["chosen"]), choice
 
 
@@ -971,7 +1328,6 @@ def run_back_test(
         bots,
         TabletSource(TABLET_ROOT),
         exchange_id=choice["chosen"],
-        ticks_per_bot=BACK_TEST_TICKS_PER_BOT,
     )
     payload = back_test_payload(outcome, origin, choice)
     payload["fleet"] = fleet_model(
@@ -990,8 +1346,9 @@ def run_back_test(
 def build_fleet(origin: str, exchange_id: str = "") -> tuple:
     """The fleet one button asks for, and the exchange choice it resolved.
 
-    ``IMPORT_LIVE_FLEET_ACTION`` reads ``bot_state.json``;
-    ``GENERATE_FROM_YTD_ACTION`` reads the YTD trade files.
+    ``IMPORT_LIVE_FLEET_ACTION`` reads ``bot_state.json`` through
+    ``stored_exchanges`` and ``live_fleet``; ``GENERATE_FROM_YTD_ACTION`` reads
+    the YTD trade files.
     """
     from ...simulator.fleet_source import (
         FleetSource,
@@ -1008,7 +1365,7 @@ def build_fleet(origin: str, exchange_id: str = "") -> tuple:
         )
         return ytd_fleet(ytd, choice["chosen"]), choice
     fleet = FleetSource()
-    choice = exchange_choice(fleet.exchanges(), exchange_id)
+    choice = exchange_choice(fleet.stored_exchanges(), exchange_id)
     return live_fleet(fleet, choice["chosen"]), choice
 
 
@@ -1067,18 +1424,21 @@ def build_view_model(
     mode: str = MODE_VALIDATION,
     back_test_payload_held: Optional[dict] = None,
     battery_payload_held: Optional[dict] = None,
+    portfolio: str = "",
+    span: str = "",
 ) -> dict:
     """The whole Sim tab as one dict, read from ``source``.
 
     ``validation_payload_held``, ``back_test_payload_held`` and
     ``battery_payload_held`` carry the last run of each mode, and the matching
-    ``empty_`` payload stands in before the first press.
+    ``empty_`` payload stands in before the first press. ``portfolio`` and
+    ``span`` carry the two battery selectors before a battery has run.
     """
     chosen_layer = layer if layer in LAYERS else LAYER_INDICATORS
     chosen_mode = mode if mode in MODES else MODE_VALIDATION
     held = validation_payload_held or empty_validation()
     tested = back_test_payload_held or empty_back_test()
-    charged = battery_payload_held or empty_battery()
+    charged = battery_payload_held or empty_battery(portfolio, span)
     shown = {
         MODE_BACK_TEST: tested,
         MODE_PORTFOLIO_BATTERY: charged,

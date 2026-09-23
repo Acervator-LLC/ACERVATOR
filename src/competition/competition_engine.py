@@ -29,6 +29,8 @@ from typing import Dict, List, Optional
 
 from .bot_identity import BotIdentity, TradeRecord
 from .merkle_log import MerkleTradeLog
+from .participant_node import ParticipantNode, ParticipantRegistry
+from .quintessence_ledger import QuintessenceLedger
 from .season_schedule import classify_tier
 from .token_ledger import TokenLedger
 
@@ -46,6 +48,8 @@ class CompetitionStatus(str, Enum):
 
 @dataclass
 class BotRegistration:
+    """One bot's registration, which is a source of activity and not a participant."""
+
     bot_id: str
     config_hash: str  # SHA-256 of strategy config — proves consistency
     capital_usd: float
@@ -71,7 +75,11 @@ class PerformanceSubmission:
 
 @dataclass
 class CompetitionResult:
-    """Final result record — immutable once adjudicated."""
+    """Final result record — immutable once adjudicated.
+
+    ``participants`` counts the participant nodes registered and ``source_bots``
+    counts the bots whose submissions this result ranks.
+    """
 
     competition_id: str
     season: int
@@ -84,6 +92,7 @@ class CompetitionResult:
     winner_bot_id: str
     winner_tier: str
     winner_token_award: int
+    source_bots: int = 0
     adjudicated_at: float = field(default_factory=time.time)
 
 
@@ -101,6 +110,7 @@ class CompetitionEngine:
         duration_ticks: int = 500,
         ledger: Optional[TokenLedger] = None,
         results_dir: Optional[str] = None,
+        quint_ledger: Optional[QuintessenceLedger] = None,
     ):
         self.competition_id = competition_id or f"COMP-{uuid.uuid4().hex[:8].upper()}"
         self.season = season
@@ -118,18 +128,39 @@ class CompetitionEngine:
 
         self._ledger = ledger or TokenLedger()
         self._results_dir = Path(results_dir or DEFAULT_RESULTS_DIR)
+        self._participants = ParticipantRegistry(quint_ledger)
 
     # ── Registration phase ────────────────────────────────────────────────────
 
-    def register_bot(
-        self, identity: BotIdentity, capital_usd: float, config: Optional[dict] = None
-    ) -> BotRegistration:
-        """
-        Register a bot for this competition.
-        Raises if competition is not in REGISTRATION status.
+    def register_participant(
+        self, node_id: str, wallet_address: str
+    ) -> ParticipantNode:
+        """Register ``node_id`` as one participant holding ``wallet_address``.
+
+        Raises if competition is not in REGISTRATION status, or if the Quintessence
+        ledger holds no record of ``wallet_address``.
         """
         if self.status != CompetitionStatus.REGISTRATION:
             raise RuntimeError(f"Cannot register: competition is {self.status.value}")
+        return self._participants.register_node(node_id, wallet_address)
+
+    def register_bot(
+        self,
+        identity: BotIdentity,
+        capital_usd: float,
+        config: Optional[dict] = None,
+        node_id: Optional[str] = None,
+    ) -> BotRegistration:
+        """
+        Register a bot for this competition, as one source of the activity feeding
+        participant ``node_id`` when one is named.
+        Raises if competition is not in REGISTRATION status, or if ``node_id``
+        registered no participant wallet.
+        """
+        if self.status != CompetitionStatus.REGISTRATION:
+            raise RuntimeError(f"Cannot register: competition is {self.status.value}")
+        if node_id is not None:
+            self._participants.attach_bot(identity.bot_id, node_id)
 
         config_hash = self._hash_config(config or {})
         reg = BotRegistration(
@@ -145,6 +176,32 @@ class CompetitionEngine:
             bot_id=identity.bot_id,
         )
         return reg
+
+    def participant_count(self) -> int:
+        """Return how many participant nodes registered a Quintessence wallet."""
+        return self._participants.participant_count()
+
+    def participant_nodes(self) -> tuple[ParticipantNode, ...]:
+        """Return every participant node, in the order each one registered."""
+        return self._participants.participant_nodes()
+
+    def source_bot_count(self) -> int:
+        """Return how many registered bots feed a participant node."""
+        return self._participants.source_bot_count()
+
+    def unattached_bot_count(self) -> int:
+        """Return how many registered bots feed no participant node."""
+        return sum(
+            1 for bot_id in self._registrations if self.node_of_bot(bot_id) is None
+        )
+
+    def source_bots_of(self, node_id: str) -> tuple[str, ...]:
+        """Return every registered bot feeding ``node_id``."""
+        return self._participants.source_bots_of(node_id)
+
+    def node_of_bot(self, bot_id: str) -> Optional[str]:
+        """Return the participant node ``bot_id`` feeds, or None when it feeds none."""
+        return self._participants.node_of_bot(bot_id)
 
     def open(self):
         """
@@ -329,11 +386,12 @@ class CompetitionEngine:
             market_regime=self.market_regime,
             start_time=self.start_time,
             end_time=self.end_time,
-            participants=n,
+            participants=self.participant_count(),
             submissions=results,
             winner_bot_id=winner_bot.bot_id,
             winner_tier=winner_award.name if winner_award else "None",
             winner_token_award=winner_award.base_value if winner_award else 0,
+            source_bots=n,
         )
         self.status = CompetitionStatus.ADJUDICATED
         self._save_result()
@@ -348,7 +406,8 @@ class CompetitionEngine:
         r = self._result
         lines = [
             f"  COMPETITION {r.competition_id}  ·  Season {r.season}",
-            f"  {r.symbol}  ·  Regime: {r.market_regime}  ·  {r.participants} bots",
+            f"  {r.symbol}  ·  Regime: {r.market_regime}  ·  "
+            f"{r.participants} participant node(s)  ·  {r.source_bots} source bot(s)",
             f"  {'─'*68}",
             f"  {'Rank':<5} {'Bot ID':<14} {'Adv%':>8} {'Adv$':>10} "
             f"{'Trades':>7} {'Tier':<20}",
@@ -392,6 +451,8 @@ class CompetitionEngine:
                     "symbol": self._result.symbol,
                     "market_regime": self._result.market_regime,
                     "participants": self._result.participants,
+                    "source_bots": self._result.source_bots,
+                    "participant_nodes": self._participants.summary()["nodes"],
                     "submissions": self._result.submissions,
                     "winner_bot_id": self._result.winner_bot_id,
                     "winner_tier": self._result.winner_tier,

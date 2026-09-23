@@ -190,6 +190,8 @@
   var TOOLTIP = "tooltip";
   var ICON_ASSET = "icon_asset";
   var ICON_SIZE = "icon_size";
+  var ICON_COLOR = "icon_color";
+  var ICON_LETTER = "icon_letter";
   var CHART_URL = "chart_url";
   var UNDERLINE = "underline";
 
@@ -273,6 +275,7 @@
   var CELL_TAG = "td";
   var BUTTON_TAG = "button";
   var BUTTON_TYPE = "button";
+  var DISC_TAG = "span";
 
   var PART_ATTR = "data-part";
   var TABLE_PART = "table";
@@ -282,6 +285,7 @@
   var CELL_PART = "cell";
   var FIRE_PART = "fire-button";
   var DETAIL_PART = "detail-button";
+  var DISC_PART = "coin-icon";
 
   var ROW_ATTR = "data-row";
   var COLUMN_ATTR = "data-column";
@@ -315,6 +319,8 @@
   // The unit factor that turns a unitless token into a CSS length.
   var PX_FACTOR = " * 1px)";
   var PX = "px";
+  // QFont point size in _get_coin_icon: int(size * 0.45).
+  var DISC_LETTER_SHARE = 0.45;
 
   // ALIGNMENT_STYLE maps each published alignment word to CSS.
   var ALIGNMENT_STYLE = { AlignCenter: { textAlign: "center" } };
@@ -572,6 +578,25 @@
     return element(BUTTON_TAG, buttonProps, text(button[TEXT]));
   }
 
+  // The disc _get_coin_icon paints: icon_color fills it, icon_letter names it
+  // and icon_size sizes it.
+  function CoinDisc(props) {
+    var found = props.cell;
+    var size = Number(found[ICON_SIZE]);
+    var style = { background: colour(found[ICON_COLOR]) };
+    if (size > 0) {
+      style.width = size + PX;
+      style.height = size + PX;
+      style.lineHeight = size + PX;
+      style.fontSize = Math.round(size * DISC_LETTER_SHARE) + PX;
+    }
+    var discProps = { className: TABLE_CLASS, style: style };
+    discProps[PART_ATTR] = DISC_PART;
+    discProps[ICON_ATTR] = text(found[ICON_ASSET]);
+    discProps[ICON_SIZE_ATTR] = text(found[ICON_SIZE]);
+    return element(DISC_TAG, discProps, text(found[ICON_LETTER]));
+  }
+
   function BodyCell(props) {
     var model = props.model;
     var found = props.cell;
@@ -605,6 +630,14 @@
     }
     if (props.children !== undefined) {
       return element(CELL_TAG, cellProps, props.children);
+    }
+    if (isFilledText(found[ICON_COLOR])) {
+      return element(
+        CELL_TAG,
+        cellProps,
+        element(CoinDisc, { key: DISC_PART, cell: found }),
+        text(found[TEXT])
+      );
     }
     return element(CELL_TAG, cellProps, text(found[TEXT]));
   }
@@ -1059,7 +1092,7 @@
   // -- reading the held payload ----------------------------------------------------------
 
   function payload() {
-    return held === null ? {} : copyOf(held.model);
+    return copyOf(heldModel());
   }
 
   function declaredNames() {

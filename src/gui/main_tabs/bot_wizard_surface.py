@@ -6,7 +6,7 @@ the base-currency extractor. Accumulation goes on to the pair page, the
 trading-parameter page and the phantom page. The extractor goes on to
 the pool page and the trading-parameter page, and ends there.
 
-``PAGE_IDS`` names the six pages and the number each is registered
+``PAGE_IDS`` names the five pages and the number each is registered
 under. ``NEXT_PAGE`` is the route the wizard takes out of each page, and
 ``FINAL_PAGES`` names the pages the route ends on. The route depends on
 the mode, so ``next_page_id`` takes it as an argument.
@@ -36,10 +36,15 @@ the lowest, and text is refused.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``bot_wizard.state`` method, which is how the Electron renderer
-reaches it. Every value below is written out here rather than read from
-``src.gui.bot_wizard``, from ``src.gui.design_system``, from
-``src.exchange.timeframes`` or from ``src.trading.bot_container``, so a
-value changed on one side alone is reported. Nothing here imports Qt.
+reaches it, and ``bind_live`` replaces that handler while the program is
+running. ``live_view_model`` is the one place that reads the running
+program's ``settings_manager``: it puts the stored defaults into the
+request the frontend sends without them, and reaches no disk of its own.
+``PHANTOM_TIMEFRAMES`` is ``src.exchange.timeframes.ALL_TIMEFRAMES``, the
+one ranked declaration ``src.trading.phantom_balance`` also reads. Every
+other value below is written out here rather than read from
+``src.gui.bot_wizard``, from ``src.gui.design_system`` or from
+``src.trading.bot_container``. Nothing here imports Qt.
 """
 
 from __future__ import annotations
@@ -47,6 +52,8 @@ from __future__ import annotations
 import math
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
+
+from ...exchange.timeframes import ALL_TIMEFRAMES
 
 METHOD = "bot_wizard.state"
 
@@ -66,21 +73,19 @@ OPENING_SIZE_PX = (1100, 750)
 ASSET = "asset"
 MODE = "mode"
 PARAMS = "params"
-FOLDING = "folding"
 PHANTOM = "phantom"
 EXTRACTOR_POOL = "extractor_pool"
 
-PAGES = (ASSET, MODE, PARAMS, FOLDING, PHANTOM, EXTRACTOR_POOL)
+PAGES = (ASSET, MODE, PARAMS, PHANTOM, EXTRACTOR_POOL)
 PAGE_IDS = {
     ASSET: 0,
     MODE: 1,
     PARAMS: 2,
-    FOLDING: 3,
-    PHANTOM: 4,
-    EXTRACTOR_POOL: 5,
+    PHANTOM: 3,
+    EXTRACTOR_POOL: 4,
 }
 PAGE_NAMES = {number: name for name, number in PAGE_IDS.items()}
-PAGE_REGISTER_ORDER = (ASSET, MODE, EXTRACTOR_POOL, PARAMS, FOLDING, PHANTOM)
+PAGE_REGISTER_ORDER = (ASSET, MODE, EXTRACTOR_POOL, PARAMS, PHANTOM)
 START_PAGE = MODE
 START_PAGE_ID = PAGE_IDS[MODE]
 NO_PAGE_ID = -1
@@ -94,7 +99,6 @@ SCRUMMING_ROUTE = {
     ASSET: PARAMS,
     EXTRACTOR_POOL: PARAMS,
     PARAMS: PHANTOM,
-    FOLDING: None,
     PHANTOM: None,
 }
 EXTRACTOR_ROUTE = {
@@ -102,28 +106,24 @@ EXTRACTOR_ROUTE = {
     ASSET: PARAMS,
     EXTRACTOR_POOL: PARAMS,
     PARAMS: None,
-    FOLDING: None,
     PHANTOM: None,
 }
 NEXT_PAGE = {SCRUMMING_MODE: SCRUMMING_ROUTE, EXTRACTOR_MODE: EXTRACTOR_ROUTE}
-FINAL_PAGES = {SCRUMMING_MODE: (PHANTOM, FOLDING), EXTRACTOR_MODE: (PARAMS, FOLDING)}
-UNREACHABLE_PAGES = (FOLDING,)
+FINAL_PAGES = {SCRUMMING_MODE: (PHANTOM,), EXTRACTOR_MODE: (PARAMS,)}
 GRID_IS_SELECTABLE = False
 
 PAGE_TITLES = {
     ASSET: "Select Asset Pair",
     MODE: "Trading Mode",
     PARAMS: "Trading Parameters",
-    FOLDING: "Profit Folding & Upward Distribution",
-    PHANTOM: "Phantom Balance Bots",
+    PHANTOM: "Phantom Bots",
     EXTRACTOR_POOL: "Extractor Pool",
 }
 PAGE_SUBTITLES = {
     ASSET: "Choose the exchange and trading pair.",
     MODE: "Select the trading engine for this bot.",
     PARAMS: EMPTY_TEXT,
-    FOLDING: "Configure how realized profits are recycled into new positions.",
-    PHANTOM: "Multi-timeframe shadow bots. Higher TFs override lower TFs.",
+    PHANTOM: "One shadow bot, on a timeframe above this bot's own.",
     EXTRACTOR_POOL: (
         "Choose the base currency the pool accumulates and "
         "select target alt pairs from the exchange scan. "
@@ -351,14 +351,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "value": 60,
         "suffix": " candles",
     },
-    "ext_pool_reserve": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 90.0,
-        "decimals": 1,
-        "suffix": "%",
-        "value": 50.0,
-    },
     "ext_exit_pct": {
         "kind": SPIN_DOUBLE,
         "minimum": 10.0,
@@ -367,55 +359,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "suffix": "%",
         "value": 100.0,
     },
-    "ext_max_tier": {"kind": SPIN_INT, "minimum": 1, "maximum": 10, "value": 3},
-    "ext_max_cost_basis": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 1.0,
-        "maximum": 10.0,
-        "decimals": 1,
-        "suffix": "×",
-        "value": 2.0,
-    },
-    "ext_standing_alt_units": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 1_000_000_000.0,
-        "decimals": 8,
-        "value": 0.0,
-    },
-    "ext_correction_skip": {
-        "kind": SPIN_INT,
-        "minimum": 0,
-        "maximum": 100,
-        "value": 4,
-        "suffix": " candles",
-    },
-    "ext_drawdown_threshold": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 50.0,
-        "decimals": 2,
-        "suffix": "%",
-        "value": 3.0,
-    },
-    "ext_hedge_budget": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 10_000_000.0,
-        "decimals": 2,
-        "prefix": "$",
-        "value": 0.0,
-    },
-    "ext_trend_strength": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.0,
-        "maximum": 1.0,
-        "decimals": 3,
-        "step": 0.05,
-        "value": 0.65,
-    },
-    "fold_x_count": {"kind": SPIN_INT, "minimum": 1, "maximum": 50, "value": 5},
-    "dist_x_count": {"kind": SPIN_INT, "minimum": 1, "maximum": 50, "value": 5},
     "lock_candles": {"kind": SPIN_INT, "minimum": 1, "maximum": 10, "value": 2},
 }
 
@@ -435,21 +378,12 @@ CHECK_FIELDS: dict[str, bool] = {
     "gate_scrum_htf_chk": True,
     "gate_fold_ta_chk": True,
     "gate_fold_htf_chk": True,
-    "folding_active": True,
     "phantom_enable": False,
 }
 
 RADIO_FIELDS: dict[str, bool] = {
     "scrumming": True,
     "extractor": False,
-    "fold_equal": True,
-    "fold_log": False,
-    "fold_all": True,
-    "fold_x": False,
-    "fold_recent": False,
-    "dist_all": True,
-    "dist_x": False,
-    "dist_recent": False,
 }
 
 COMBO_FIELDS: dict[str, tuple] = {
@@ -488,16 +422,6 @@ COMBO_FIELDS: dict[str, tuple] = {
         ("1d", "1d"),
     ),
     "detonation_timeframe": (("1d", "1d"), ("1w", "1w")),
-    "profit_route": (
-        ("Fold back to target balance", "fold_to_target"),
-        ("Send to spendable", "spendable"),
-        ("Split fold/spendable per %", "split"),
-        ("Route to another bot (cross-bot)", "cross_bot"),
-    ),
-    "ext_direction": (
-        ("Normal (base → alt: buy first)", "normal"),
-        ("Inverted (standing alt → base: sell first)", "inverted"),
-    ),
 }
 COMBO_DEFAULT_INDEX: dict[str, int] = {
     "base": 0,
@@ -506,8 +430,6 @@ COMBO_DEFAULT_INDEX: dict[str, int] = {
     "stack_spacing": 0,
     "ta_timeframe": 4,
     "detonation_timeframe": 0,
-    "profit_route": 0,
-    "ext_direction": 0,
 }
 POOL_BASES = tuple(label for label, _value in COMBO_FIELDS["pool_base"])
 BASE_CURRENCIES = tuple(label for label, _value in COMBO_FIELDS["base"])
@@ -515,23 +437,27 @@ TA_TIMEFRAMES = tuple(value for _label, value in COMBO_FIELDS["ta_timeframe"])
 TA_TIMEFRAME_DEFAULT = "1h"
 TA_COMBO_NAME = "ta_timeframe"
 
-TEXT_FIELDS: dict[str, str] = {"profit_route_bot_id": EMPTY_TEXT}
-PLACEHOLDERS = {"profit_route_bot_id": "leave blank unless route = cross_bot"}
+TEXT_FIELDS: dict[str, str] = {}
+PLACEHOLDERS: dict[str, str] = {}
 
-PHANTOM_TIMEFRAMES = (
-    "1m",
-    "5m",
-    "15m",
-    "30m",
-    "1h",
-    "2h",
-    "4h",
-    "6h",
-    "12h",
-    "1d",
-    "1w",
-)
+PHANTOM_TIMEFRAMES = ALL_TIMEFRAMES
 PHANTOM_TIMEFRAME_DEFAULT = False
+#: Reached only by a wizard built with no settings; the store declares the
+#: same value and always carries the key the page reads.
+PHANTOM_TIMEFRAME_STORED_DEFAULT = "1d"
+
+
+def is_higher_timeframe(timeframe: Any, parent: Any) -> bool:
+    """Say whether ``timeframe`` sits above ``parent`` in ``PHANTOM_TIMEFRAMES``.
+
+    The tuple's order is the rank order, matching ``TIMEFRAME_ORDER`` in
+    ``phantom_balance``, which the Comp field reads.
+    """
+    order = list(PHANTOM_TIMEFRAMES)
+    if timeframe not in order or parent not in order:
+        return False
+    return order.index(timeframe) > order.index(parent)
+
 
 GROUP_TITLES = {
     "mode_group": "Trading Parameters",
@@ -541,13 +467,7 @@ GROUP_TITLES = {
     "cb_group": "Circuit Breakers (v3.15.58)",
     "risk_group": "Risk Controls (MEM-244)",
     "gates_group": "Strategy Gate Flags (v3.16.15)",
-    "routing_group": "Profit Routing (v3.20.85)",
     "extractor_group": "Extractor — Pool & Artillery",
-    "fold_mode_group": "Distribution Mode",
-    "fold_target_group": "Profit Folding Target (sell profits -> buy positions)",
-    "dist_target_group": (
-        "Upward Distribution Target (accumulated asset -> sell positions)"
-    ),
     "lock_group": "Higher-TF Lock Duration",
 }
 GROUP_ROWS = {
@@ -604,26 +524,13 @@ GROUP_ROWS = {
         "gate_fold_ta_chk",
         "gate_fold_htf_chk",
     ),
-    "routing_group": ("profit_route", "profit_route_bot_id"),
     "extractor_group": (
         "ext_chunk_size_usd",
         "ext_artillery_size_usd",
         "ext_scan_top_n",
         "ext_scan_refresh",
-        "ext_pool_reserve",
         "ext_exit_pct",
-        "ext_max_tier",
-        "ext_max_cost_basis",
-        "ext_direction",
-        "ext_standing_alt_units",
-        "ext_correction_skip",
-        "ext_drawdown_threshold",
-        "ext_hedge_budget",
-        "ext_trend_strength",
     ),
-    "fold_mode_group": ("fold_equal", "fold_log"),
-    "fold_target_group": ("fold_all", "fold_x", "fold_x_count", "fold_recent"),
-    "dist_target_group": ("dist_all", "dist_x", "dist_x_count", "dist_recent"),
     "lock_group": ("lock_candles",),
 }
 
@@ -635,17 +542,14 @@ SCRUM_GROUPS = (
     "cb_group",
     "risk_group",
     "gates_group",
-    "routing_group",
 )
 EXTRACTOR_GROUPS = ("extractor_group",)
-FOLDING_GROUPS = ("fold_mode_group", "fold_target_group", "dist_target_group")
 PHANTOM_GROUPS = ("lock_group",)
 
 PAGE_GROUPS = {
     ASSET: (),
     MODE: (),
     PARAMS: SCRUM_GROUPS + EXTRACTOR_GROUPS,
-    FOLDING: FOLDING_GROUPS,
     PHANTOM: PHANTOM_GROUPS,
     EXTRACTOR_POOL: (),
 }
@@ -653,7 +557,6 @@ PAGE_ROWS = {
     ASSET: ("exchange", "base", "target"),
     MODE: MODES,
     PARAMS: (),
-    FOLDING: ("folding_active",),
     PHANTOM: ("phantom_enable",),
     EXTRACTOR_POOL: ("exchange", "pool_base"),
 }
@@ -693,24 +596,11 @@ ROW_LABELS = {
     "position_ceiling_multiple": "Ceiling Multiple:",
     "detonation_timeframe": "Detonation TF:",
     "detonation_confidence_min": "Min Confidence:",
-    "profit_route": "Route:",
-    "profit_route_bot_id": "Target bot ID:",
     "ext_chunk_size_usd": "Chunk size (USD):",
     "ext_artillery_size_usd": "Artillery size (USD):",
     "ext_scan_top_n": "Watch list top-N:",
     "ext_scan_refresh": "Watch list refresh:",
-    "ext_pool_reserve": "Pool reserve:",
     "ext_exit_pct": "Exit %:",
-    "ext_max_tier": "Max compounding tier:",
-    "ext_max_cost_basis": "Max cost-basis multiple:",
-    "ext_direction": "Direction:",
-    "ext_standing_alt_units": "Standing alt units (Inverted):",
-    "ext_correction_skip": "Correction skip candles:",
-    "ext_drawdown_threshold": "Drawdown threshold:",
-    "ext_hedge_budget": "Hedge budget (USD):",
-    "ext_trend_strength": "Trend strength threshold:",
-    "fold_x_count": "  Count:",
-    "dist_x_count": "  Count:",
     "lock_candles": "Candles to lock:",
 }
 
@@ -728,36 +618,27 @@ CHECK_TEXTS = {
     "gate_scrum_htf_chk": "SCRUM defers to higher-TF bullish",
     "gate_fold_ta_chk": "FOLD requires bearish TA",
     "gate_fold_htf_chk": "FOLD defers to higher-TF bearish",
-    "folding_active": "Enable Profit Folding",
-    "phantom_enable": "Enable Phantom Balance Bots",
+    "phantom_enable": "Enable Phantom Bots",
 }
 
 RADIO_TEXTS = {
     "scrumming": "Accumulation Trading (Scrumming)",
     "extractor": "Base Currency Extractor (Multi-Target)",
-    "fold_equal": "Equal - spread evenly",
-    "fold_log": "Logarithmic - weight toward nearest",
-    "fold_all": "All buy positions",
-    "fold_x": "Nearest X buys:",
-    "fold_recent": "Most recent buy only",
-    "dist_all": "All sell positions",
-    "dist_x": "Nearest X sells:",
-    "dist_recent": "Most recent sell only",
 }
 
 BUTTON_TEXTS = {
     "info": " ℹ ",
-    "select_all": "Select all",
-    "clear_all": "Clear",
 }
 
 LABEL_TEXTS = {
-    "alt_list_heading": "Target alt pairs (multi-select):",
-    "phantom_timeframes_heading": "Active Timeframes:",
+    "alt_list_heading": "Compatible alt pairs (auto-scanned):",
+    "phantom_timeframes_heading": (
+        "Active Timeframe — pick one, above this bot's TA Timeframe:"
+    ),
     "scrumming_description": (
         "The core trading engine. Uses 12-indicator TA voting to optimize "
         "scrum-fold cycles relative to a Target Balance. Supports multi-timeframe "
-        "Phantom Balance coordination, Landing Strip detection, MR Inspector "
+        "Phantom Bot coordination, Landing Strip detection, MR Inspector "
         "Boosted Fold, and Smart Wire cross-compounding."
     ),
     "extractor_description": (
@@ -795,11 +676,9 @@ TOOL_TIPS = {
         "alts that trade against it."
     ),
     "alt_list": (
-        "Tick the alt pairs this Extractor may hunt. Leave every "
-        "box clear and it auto-scans the top-N by 24h volume."
+        "The alt pairs that trade against this pool's base. The "
+        "Extractor auto-scans the top-N of them by 24h volume."
     ),
-    "select_all": "Tick every alt pair in the list.",
-    "clear_all": "Clear every tick. No ticks means auto-scan.",
     "visibility": "How orders appear on the exchange.",
     "aggressive": (
         "When ON, every engine-initiated buy/sell executes as "
@@ -909,11 +788,11 @@ TOOL_TIPS = {
         "must travel since last fold. 0 disables."
     ),
     "bb_bullseye": (
-        "Rapid Fire override when price touches BB band "
-        "within 0.5 % (or the candle wick reaches within "
-        "0.2 %). When triggered, bypasses the fire threshold "
-        "— bullseye alone can arm a fire, subject to midline "
-        "gate."
+        "Counts a band touch within 0.5 % (or a candle wick "
+        "within 0.2 %) as BB proximity. With the delta at or "
+        "over the interval that arms the BB priority skew, "
+        "which lowers the TA confidence floor. The fire "
+        "threshold and the midline gate are unchanged."
     ),
     "wire_inflow_stack_pct": (
         "Wire inflow stacking percentage. Controls how "
@@ -1024,17 +903,6 @@ TOOL_TIPS = {
         "the fold side. OFF (Lean): fold fires regardless "
         "of higher-TF bearish bias."
     ),
-    "profit_route": (
-        "Where realized profit flows on fold. "
-        "fold_to_target = increase target balance "
-        "(compound); spendable = mark for withdrawal; "
-        "split = use fold % below; cross_bot = route to "
-        "the target bot ID."
-    ),
-    "profit_route_bot_id": (
-        "Target bot ID for cross-bot profit routing. Only "
-        "consulted when route = cross_bot."
-    ),
     "ext_chunk_size_usd": (
         "USD-equivalent of base currency THIS bot owns. Converted "
         "to base units at bot creation; thereafter tracked in "
@@ -1056,76 +924,10 @@ TOOL_TIPS = {
         "hour at 1m cadence. Lower = more responsive to volume "
         "shifts; higher = less API churn."
     ),
-    "ext_pool_reserve": (
-        "Fraction of chunk that stays free as reserve. New "
-        "artillery only fires if (chunk_free − artillery_size) "
-        "≥ reserve. Default 50% — caps concurrent deployment."
-    ),
     "ext_exit_pct": (
         "Fraction of position sold on bullish trigger. 100 = "
         "full exit. Below 100 leaves a 'rider' tail in the "
         "position for continued upside."
-    ),
-    "ext_max_tier": (
-        "Per-position compounding tier max. Tier 1 always locks "
-        "to pool. Higher tiers roll the realized gain back into "
-        "the next round on the same pair. The counter dies with "
-        "the position."
-    ),
-    "ext_max_cost_basis": (
-        "Safety cap: cost basis of any position can't exceed "
-        "this multiplier × original artillery_size. Hard floor "
-        "against runaway averaging-down. Default 2× (one full "
-        "doubling). Set 1.0 to disable averaging-down entirely."
-    ),
-    "ext_direction": (
-        "Normal Extractor (default): allocates from base "
-        "currency (cash) — fires artillery as BUYS on dips, "
-        "exits on bounces. Inverted Extractor: allocates from "
-        "an existing standing alt position — fires artillery "
-        "as SELLS on spikes, exits via buy-backs when prices "
-        "fall. Use Inverted when you have a LINK / SOL / etc. "
-        "you want to harvest volatility from without selling "
-        "into cash. v3.20.74 backend; v3.20.84 wizard wiring."
-    ),
-    "ext_standing_alt_units": (
-        "Inverted Extractor only — units of standing alt this "
-        "bot owns. Used by set_initial_chunk_rate to reflect "
-        "the existing position so artillery rounds size "
-        "correctly against the standing supply. Ignored when "
-        "Direction = Normal (default 0)."
-    ),
-    "ext_correction_skip": (
-        "Averaging-down throttle: after a correction (drawdown) "
-        "fire, wait this many candles before the next "
-        "correction-driven fire on the same pair. Default 4. "
-        "Higher = more selective; lower = more aggressive "
-        "cost-basis averaging."
-    ),
-    "ext_drawdown_threshold": (
-        "USD drawdown threshold below cost basis that triggers "
-        "an averaging-down correction fire. Default 3%. "
-        "Symmetric for Inverted (drawup spike). Higher = react "
-        "less often; lower = react earlier."
-    ),
-    "ext_hedge_budget": (
-        "Optional separate base-currency hedge reserve, in USD. "
-        "Default $0 (disabled). When >0, this amount is held "
-        "out of artillery rotation as a hedge buffer. Operator "
-        "tuning field; safe to leave 0 for v3.20.74 + v3.20.84 "
-        "behavior."
-    ),
-    "ext_trend_strength": (
-        "Trend-hold threshold gating Extractor BB+trend "
-        "signals. Default 0.65. Below this, fires require BB "
-        "trigger; at/above, trend-hold suppresses noise fires. "
-        "Tighter = fewer fires in choppy ranges; looser = more "
-        "fires, more cost-basis churn."
-    ),
-    "folding_active": (
-        "Realized sell profits fold into buy positions. "
-        "Accumulated asset distributes into sell positions. "
-        "Extended Positions created when enough accumulates."
     ),
 }
 
@@ -1201,6 +1003,13 @@ PHANTOM_SUPPORTED_TEXT = "supported"
 PHANTOM_UNSUPPORTED_FORMAT = "NOT supported by {exchange}"
 PHANTOM_UNKNOWN_EXCHANGE = "this exchange"
 PHANTOM_TOOL_TIP_FORMAT = "Timeframe {timeframe}: {state}"
+PHANTOM_NOT_HIGHER_FORMAT = (
+    "Timeframe {timeframe}: REFUSED, a phantom must sit above the bot's own "
+    "TA Timeframe of {parent}"
+)
+PHANTOM_NOT_OFFERED_FORMAT = (
+    "Timeframe {timeframe}: REFUSED, {exchange} does not offer it"
+)
 
 API_WARNING_TITLE = "Phantom Bots — API load warning"
 API_WARNING_FORMAT = (
@@ -1222,6 +1031,11 @@ API_WARNING_CONTINUE_ROLE = "AcceptRole"
 SAFE_EVENTS_REASON = "legacy P4.1 site"
 
 DEFAULT_TARGET_BALANCE_KEY = "default_target_balance"
+DEFAULT_ENABLE_PHANTOMS_KEY = "default_enable_phantoms"
+DEFAULT_PHANTOM_TIMEFRAME_KEY = "default_phantom_timeframe"
+DEFAULT_LOCK_CANDLE_COUNT_KEY = "default_lock_candle_count"
+BOT_VISIBILITY_KEY = "bot_visibility"
+AGGRESSIVE_TRADING_KEY = "aggressive_trading"
 EXCHANGE_DISPLAY_KEY = "display_name"
 EXCHANGE_ID_KEY = "exchange_id"
 MARKET_SYMBOL_KEY = "symbol"
@@ -1237,7 +1051,6 @@ REFUSAL_TOO_LARGE = "this number is too large for the field to hold"
 REFUSAL_NOT_A_WHOLE_NUMBER = "a whole-number field cannot hold {kind}"
 REFUSAL_UNKNOWN_FIELD = "no field is named {name}"
 REFUSAL_UNKNOWN_PAGE = "no page is named {name}"
-REFUSAL_UNKNOWN_ALT = "no alt sits at position {position}"
 
 INT32_MIN = -2147483648
 INT32_MAX = 2147483647
@@ -1252,12 +1065,16 @@ REFUSAL_API_LOAD = "api_load"
 REFUSAL_NOT_FINAL = "not_final_page"
 REFUSAL_NO_ROUTE = "no_next_page"
 REFUSAL_NO_HISTORY = "no_previous_page"
+REFUSAL_PHANTOM_NOT_HIGHER = "phantom_not_higher"
+REFUSAL_PHANTOM_NOT_OFFERED = "phantom_not_offered"
 REFUSAL_TYPES = (
     REFUSAL_NONE,
     REFUSAL_API_LOAD,
     REFUSAL_NOT_FINAL,
     REFUSAL_NO_ROUTE,
     REFUSAL_NO_HISTORY,
+    REFUSAL_PHANTOM_NOT_HIGHER,
+    REFUSAL_PHANTOM_NOT_OFFERED,
 )
 
 WIZARD_SET_WINDOW_TITLE = "wizard.setWindowTitle"
@@ -1284,7 +1101,6 @@ COMBO_ADD_ITEM = "combo.addItem"
 TEXT_SET_TEXT = "line.setText"
 LIST_CLEAR = "list.clear"
 LIST_ADD_ITEM = "list.addItem"
-LIST_SET_CHECK_STATE = "list.setCheckState"
 LABEL_SET_TEXT = "label.setText"
 CHECK_SET_ENABLED = "check.setEnabled"
 CHECK_SET_TOOL_TIP = "check.setToolTip"
@@ -1320,7 +1136,6 @@ CALL_NAMES = (
     TEXT_SET_TEXT,
     LIST_CLEAR,
     LIST_ADD_ITEM,
-    LIST_SET_CHECK_STATE,
     LABEL_SET_TEXT,
     CHECK_SET_ENABLED,
     CHECK_SET_TOOL_TIP,
@@ -1339,13 +1154,11 @@ ACTIONS = {
     "info_button.clicked": "show_info",
     "pool_exchange.currentIndexChanged": "on_pool_exchange_changed",
     "pool_base.currentIndexChanged": "refresh_alt_list",
-    "select_all.clicked": "select_all_alts",
-    "clear_all.clicked": "clear_all_alts",
     "visibility.currentIndexChanged": "on_visibility_changed",
     "wizard.currentIdChanged": "on_page_changed",
 }
-RUNTIME_CONNECT_TOTAL = 10
-SOURCE_CONNECT_TOTAL = 10
+RUNTIME_CONNECT_TOTAL = 8
+SOURCE_CONNECT_TOTAL = 8
 
 SIGNAL_NAMES: tuple[str, ...] = ()
 SIGNAL_EMIT_TOTAL = 0
@@ -1367,9 +1180,6 @@ STEP_NAMES = (
     "exchange_index",
     "pool_exchange_index",
     "markets",
-    "alt_checks",
-    "select_all",
-    "clear_all",
     "target_index",
     "show_info",
     "descriptions",
@@ -1609,7 +1419,7 @@ class BotWizardModel:
         markets: Any = None,
         timeframes: Any = None,
     ) -> None:
-        """Lay out the six pages from the venue list and the stored defaults."""
+        """Lay out the five pages from the venue list and the stored defaults."""
         self.calls: list[list] = []
         self.exchanges = [readable_bag(one) for one in (readable_list(exchanges) or [])]
         self.defaults = readable_bag(defaults)
@@ -1644,7 +1454,6 @@ class BotWizardModel:
         self.target_hues: list[int] = []
         self.target_index = -1
         self.alt_items: list[list] = []
-        self.alt_checked: list[bool] = []
         self.asset_status = EMPTY_TEXT
         self.pool_status = EMPTY_TEXT
         self.info_tool_tip = EMPTY_TEXT
@@ -1665,7 +1474,7 @@ class BotWizardModel:
     # -- build ---------------------------------------------------------
 
     def _build(self) -> None:
-        """Record the calls that lay out the wizard and its six pages."""
+        """Record the calls that lay out the wizard and its five pages."""
         self.calls.append([WIZARD_SET_WINDOW_TITLE, WINDOW_TITLE])
         self.calls.append([WIZARD_SET_ACCESSIBLE_NAME, ACCESSIBLE_NAME])
         self.calls.append([WIZARD_SET_ACCESSIBLE_DESCRIPTION, ACCESSIBLE_DESCRIPTION])
@@ -1689,6 +1498,10 @@ class BotWizardModel:
         for name, text in TEXT_FIELDS.items():
             self.calls.append([TEXT_SET_TEXT, name, text])
         self._apply_stored_target_balance()
+        self._apply_stored_visibility()
+        self._apply_stored_aggressive()
+        self._apply_stored_phantom_enable()
+        self._apply_stored_lock_candles()
         for found in PHANTOM_TIMEFRAMES:
             self.calls.append([CHECK_SET_CHECKED, found, PHANTOM_TIMEFRAME_DEFAULT])
         for name in PAGE_REGISTER_ORDER:
@@ -1702,18 +1515,77 @@ class BotWizardModel:
     def _apply_stored_target_balance(self) -> None:
         """Put the stored target balance into the field, as the wizard does.
 
-        The stored value reaches the spin box with no guard, so a value
-        the operator never entered settles on whatever the spin box
-        keeps for it.
+        A value ``number_value`` refuses leaves the field on its own
+        ``NUMBER_FIELDS`` figure, the way an unknown visibility name leaves
+        that drop-down on its first entry.
         """
-        stored = self.defaults.get(
-            DEFAULT_TARGET_BALANCE_KEY, NUMBER_FIELDS["target_balance"]["value"]
-        )
-        self.numbers["target_balance"] = number_value(
-            stored, NUMBER_FIELDS["target_balance"]
-        )
+        spec = NUMBER_FIELDS["target_balance"]
+        stored = self.defaults.get(DEFAULT_TARGET_BALANCE_KEY, spec["value"])
+        try:
+            self.numbers["target_balance"] = number_value(stored, spec)
+        except (TypeError, OverflowError):
+            self.numbers["target_balance"] = spec["value"]
         self.calls.append(
             [NUMBER_SET_VALUE, "target_balance", self.numbers["target_balance"]]
+        )
+
+    def _apply_stored_visibility(self) -> None:
+        """Open the visibility drop-down on the stored default, as the wizard does.
+
+        The Settings dialog writes ``bot_visibility``. A name neither entry
+        carries leaves the box on its first entry, the way ``findData``
+        refuses one on the Qt build.
+        """
+        stored = self.defaults.get(BOT_VISIBILITY_KEY)
+        items = self._combo_items("visibility")
+        for at, one in enumerate(items):
+            if one[1] == stored:
+                self.combo_indexes["visibility"] = at
+                break
+        self.calls.append(
+            [COMBO_SET_CURRENT_INDEX, "visibility", self.combo_indexes["visibility"]]
+        )
+
+    def _apply_stored_aggressive(self) -> None:
+        """Open the aggressive box on the stored default, as the wizard does.
+
+        The Settings dialog writes ``aggressive_trading``, and this is the
+        only place it reaches a new bot. A bot already on disk keeps its own
+        stored flag.
+        """
+        stored = self.defaults.get(AGGRESSIVE_TRADING_KEY, CHECK_FIELDS["aggressive"])
+        self.checks["aggressive"] = bool(stored)
+        self.calls.append([CHECK_SET_CHECKED, "aggressive", self.checks["aggressive"]])
+
+    def _apply_stored_lock_candles(self) -> None:
+        """Open the lock spin box on the stored default, as the wizard does.
+
+        The Settings dialog writes ``default_lock_candle_count``, and the box
+        holds whatever that figure settles on inside its own range.
+        """
+        stored = self.defaults.get(
+            DEFAULT_LOCK_CANDLE_COUNT_KEY, NUMBER_FIELDS["lock_candles"]["value"]
+        )
+        self.numbers["lock_candles"] = number_value(
+            stored, NUMBER_FIELDS["lock_candles"]
+        )
+        self.calls.append(
+            [NUMBER_SET_VALUE, "lock_candles", self.numbers["lock_candles"]]
+        )
+
+    def _apply_stored_phantom_enable(self) -> None:
+        """Open the phantom enable box on the stored default, as the wizard does.
+
+        The Settings dialog's phantom master box writes
+        ``default_enable_phantoms``, and this is the only place it reaches a
+        new bot. A bot already on disk keeps its own stored flag.
+        """
+        stored = self.defaults.get(
+            DEFAULT_ENABLE_PHANTOMS_KEY, CHECK_FIELDS["phantom_enable"]
+        )
+        self.checks["phantom_enable"] = bool(stored)
+        self.calls.append(
+            [CHECK_SET_CHECKED, "phantom_enable", self.checks["phantom_enable"]]
         )
 
     # -- fields --------------------------------------------------------
@@ -1970,48 +1842,20 @@ class BotWizardModel:
             key=lambda row: bag_number(row, MARKET_VOLUME_KEY) or 0.0, reverse=True
         )
         self.alt_items = []
-        self.alt_checked = []
         for row in kept:
             label = alt_label(row)
             named = bag_text(row, MARKET_SYMBOL_KEY)
             self.alt_items.append([label, named])
-            self.alt_checked.append(False)
-            self.calls.append([LIST_ADD_ITEM, "alt_list", label, named, False])
+            self.calls.append([LIST_ADD_ITEM, "alt_list", label, named])
         self.pool_status = POOL_PAIR_COUNT_FORMAT.format(count=len(kept), base=base)
         self.calls.append([LABEL_SET_TEXT, "pool_status", self.pool_status])
 
-    def set_alt_checked(self, position: int, value: Any) -> None:
-        """Tick or clear one alt in the list."""
-        if not 0 <= position < len(self.alt_checked):
-            raise IndexError(REFUSAL_UNKNOWN_ALT.format(position=position))
-        wanted = check_value(value)
-        self.alt_checked[position] = wanted
-        self.calls.append([LIST_SET_CHECK_STATE, "alt_list", position, wanted])
-
-    def select_all_alts(self) -> None:
-        """Tick every alt in the list."""
-        for position in range(len(self.alt_checked)):
-            self.alt_checked[position] = True
-            self.calls.append([LIST_SET_CHECK_STATE, "alt_list", position, True])
-
-    def clear_all_alts(self) -> None:
-        """Clear every tick in the alt list."""
-        for position in range(len(self.alt_checked)):
-            self.alt_checked[position] = False
-            self.calls.append([LIST_SET_CHECK_STATE, "alt_list", position, False])
-
     def pool_config(self) -> dict:
-        """The venue, pool base and ticked alts the pool page collected."""
-        checked = [
-            self.alt_items[position][1]
-            for position, ticked in enumerate(self.alt_checked)
-            if ticked and self.alt_items[position][1]
-        ]
+        """The venue and pool base the pool page collected."""
         return {
             "exchange_id": self.pool_exchange_id(),
             "base_currency": self.combo_text("pool_base").strip().upper(),
             "target_asset": POOL_SIGIL,
-            "extractor_alt_targets": checked,
         }
 
     # -- the parameter page --------------------------------------------
@@ -2083,28 +1927,89 @@ class BotWizardModel:
                 if offered
                 else PHANTOM_UNSUPPORTED_FORMAT.format(exchange=named)
             )
-            self.phantom_tool_tips[found] = PHANTOM_TOOL_TIP_FORMAT.format(
-                timeframe=found, state=state
-            )
+            self.phantom_tool_tips[found] = self.phantom_refusal(
+                found
+            ) or PHANTOM_TOOL_TIP_FORMAT.format(timeframe=found, state=state)
             self.calls.append(
                 [CHECK_SET_TOOL_TIP, found, self.phantom_tool_tips[found]]
             )
 
+    def apply_stored_phantom_timeframe(self) -> None:
+        """Tick the one stored phantom timeframe, refusing one the bot cannot use.
+
+        The Settings dialog writes ``default_phantom_timeframe`` and this is
+        where it reaches a new bot. A timeframe at or below the bot's own TA
+        Timeframe, or one the venue does not offer, stays clear and its box
+        carries the refusal. A box the operator has already ticked keeps his
+        choice.
+        """
+        wanted = str(
+            self.defaults.get(
+                DEFAULT_PHANTOM_TIMEFRAME_KEY, PHANTOM_TIMEFRAME_STORED_DEFAULT
+            )
+        )
+        if any(self.phantom_checks.values()):
+            return
+        if wanted not in self.phantom_checks:
+            return
+        self.set_phantom_timeframe(wanted, True)
+
+    def phantom_refusal(self, timeframe: str) -> str:
+        """The line refusing ``timeframe`` as a phantom, empty when it runs.
+
+        A timeframe at or below the bot's own TA Timeframe, or one the venue
+        does not offer, can never reach the Comp field.
+        """
+        parent = str(self.combo_data(TA_COMBO_NAME) or EMPTY_TEXT)
+        if not is_higher_timeframe(timeframe, parent):
+            return PHANTOM_NOT_HIGHER_FORMAT.format(timeframe=timeframe, parent=parent)
+        if not self.phantom_enabled_timeframes[timeframe]:
+            return PHANTOM_NOT_OFFERED_FORMAT.format(
+                timeframe=timeframe,
+                exchange=self.exchange_id or PHANTOM_UNKNOWN_EXCHANGE,
+            )
+        return EMPTY_TEXT
+
     def set_phantom_timeframe(self, timeframe: str, value: Any) -> None:
-        """Tick or clear one phantom timeframe."""
+        """Tick or clear one phantom timeframe, keeping the selection at one.
+
+        Ticking clears every other box. A timeframe ``phantom_refusal``
+        names stays clear and carries the reason in its tool tip.
+        """
         if timeframe not in self.phantom_checks:
             raise KeyError(REFUSAL_UNKNOWN_FIELD.format(name=timeframe))
-        self.phantom_checks[timeframe] = check_value(value)
-        self.calls.append(
-            [CHECK_SET_CHECKED, timeframe, self.phantom_checks[timeframe]]
-        )
+        wanted = check_value(value)
+        if not wanted:
+            self.phantom_checks[timeframe] = False
+            self.calls.append([CHECK_SET_CHECKED, timeframe, False])
+            return
+        refused = self.phantom_refusal(timeframe)
+        if refused:
+            why = (
+                REFUSAL_PHANTOM_NOT_OFFERED
+                if not self.phantom_enabled_timeframes[timeframe]
+                else REFUSAL_PHANTOM_NOT_HIGHER
+            )
+            self.refusal = why
+            self.refusals.append(why)
+            self.phantom_tool_tips[timeframe] = refused
+            self.calls.append([CHECK_SET_TOOL_TIP, timeframe, refused])
+            self.calls.append([CHECK_SET_CHECKED, timeframe, False])
+            return
+        for found in PHANTOM_TIMEFRAMES:
+            if found != timeframe and self.phantom_checks[found]:
+                self.phantom_checks[found] = False
+                self.calls.append([CHECK_SET_CHECKED, found, False])
+        self.phantom_checks[timeframe] = True
+        self.calls.append([CHECK_SET_CHECKED, timeframe, True])
 
     def phantom_selection(self) -> list:
-        """The phantom timeframes both ticked and offered by the venue."""
+        """The one ticked phantom timeframe that the venue offers and that
+        outranks the bot's own TA Timeframe."""
         return [
             found
             for found in PHANTOM_TIMEFRAMES
-            if self.phantom_checks[found] and self.phantom_enabled_timeframes[found]
+            if self.phantom_checks[found] and not self.phantom_refusal(found)
         ]
 
     def params_config(self) -> dict:
@@ -2124,26 +2029,7 @@ class BotWizardModel:
                     "extractor_scan_refresh_candles": int(
                         self.numbers["ext_scan_refresh"]
                     ),
-                    "extractor_pool_reserve_pct": self.numbers["ext_pool_reserve"],
                     "extractor_exit_pct": self.numbers["ext_exit_pct"],
-                    "extractor_max_compounding_tier": int(self.numbers["ext_max_tier"]),
-                    "extractor_max_cost_basis_multiple": self.numbers[
-                        "ext_max_cost_basis"
-                    ],
-                    "extractor_direction": self.combo_data("ext_direction"),
-                    "inverted_extractor_standing_alt_units": self.numbers[
-                        "ext_standing_alt_units"
-                    ],
-                    "extractor_correction_skip_candles": int(
-                        self.numbers["ext_correction_skip"]
-                    ),
-                    "extractor_drawdown_threshold_pct": self.numbers[
-                        "ext_drawdown_threshold"
-                    ],
-                    "extractor_hedge_budget_usd": self.numbers["ext_hedge_budget"],
-                    "extractor_trend_strength_threshold": self.numbers[
-                        "ext_trend_strength"
-                    ],
                 }
             )
             return config
@@ -2194,38 +2080,12 @@ class BotWizardModel:
                 "scrum_hold_in_uptrend": self.checks["gate_scrum_uptrend_chk"],
                 "scrum_defer_to_htf": self.checks["gate_scrum_htf_chk"],
                 "fold_require_ta_bearish": self.checks["gate_fold_ta_chk"],
-                "fold_hold_in_downtrend": FOLD_HOLD_IN_DOWNTREND,
                 "fold_defer_to_htf": self.checks["gate_fold_htf_chk"],
-                "profit_route": self.combo_data("profit_route"),
-                "profit_route_bot_id": self.texts["profit_route_bot_id"].strip(),
             }
         )
         return config
 
-    # -- the folding and phantom pages ---------------------------------
-
-    def folding_config(self) -> dict:
-        """The recycling settings the folding page collected."""
-        fold_target = FOLD_TARGET_ALL
-        if self.radios["fold_x"]:
-            fold_target = FOLD_TARGET_X
-        elif self.radios["fold_recent"]:
-            fold_target = FOLD_TARGET_RECENT
-        distribute_target = DIST_TARGET_ALL
-        if self.radios["dist_x"]:
-            distribute_target = DIST_TARGET_X
-        elif self.radios["dist_recent"]:
-            distribute_target = DIST_TARGET_RECENT
-        return {
-            "profit_folding_active": self.checks["folding_active"],
-            "fold_mode": (
-                FOLD_MODE_LOGARITHMIC if self.radios["fold_log"] else FOLD_MODE_EQUAL
-            ),
-            "fold_target": fold_target,
-            "fold_target_count": int(self.numbers["fold_x_count"]),
-            "distribute_target": distribute_target,
-            "distribute_target_count": int(self.numbers["dist_x_count"]),
-        }
+    # -- the phantom page ----------------------------------------------
 
     def phantom_config(self) -> dict:
         """The phantom settings the phantom page collected."""
@@ -2332,6 +2192,7 @@ class BotWizardModel:
             self.set_exchange_id(venue, offered)
         elif self.current_page == PHANTOM:
             self.set_phantom_exchange_id(venue, offered)
+            self.apply_stored_phantom_timeframe()
 
     def cancel(self) -> None:
         """Close the wizard without creating a bot.
@@ -2388,19 +2249,6 @@ class BotWizardModel:
         return config
 
 
-FOLD_HOLD_IN_DOWNTREND = True
-FOLD_MODE_EQUAL = "equal"
-FOLD_MODE_LOGARITHMIC = "logarithmic"
-FOLD_TARGET_ALL = "all_buy"
-FOLD_TARGET_X = "x_buy"
-FOLD_TARGET_RECENT = "most_recent_buy"
-DIST_TARGET_ALL = "all_sell"
-DIST_TARGET_X = "x_sell"
-DIST_TARGET_RECENT = "most_recent_sell"
-FOLD_MODES = (FOLD_MODE_EQUAL, FOLD_MODE_LOGARITHMIC)
-FOLD_TARGETS = (FOLD_TARGET_ALL, FOLD_TARGET_X, FOLD_TARGET_RECENT)
-DIST_TARGETS = (DIST_TARGET_ALL, DIST_TARGET_X, DIST_TARGET_RECENT)
-
 CONFIG_FIELDS = (
     "mode",
     "exchange_id",
@@ -2440,12 +2288,6 @@ def _apply_field_steps(model: BotWizardModel, steps: dict) -> None:
             setter(name, value)
     if steps.get("target_index") is not None:
         model.set_target_index(steps["target_index"])
-    for position, value in readable_bag(steps.get("alt_checks")).items():
-        model.set_alt_checked(int(position), value)
-    if steps.get("select_all"):
-        model.select_all_alts()
-    if steps.get("clear_all"):
-        model.clear_all_alts()
 
 
 def drive_model(model: BotWizardModel, steps: dict) -> BotWizardModel:
@@ -2555,7 +2397,6 @@ def refusal_catalogue() -> dict:
         "not_a_whole_number": REFUSAL_NOT_A_WHOLE_NUMBER,
         "unknown_field": REFUSAL_UNKNOWN_FIELD,
         "unknown_page": REFUSAL_UNKNOWN_PAGE,
-        "unknown_alt": REFUSAL_UNKNOWN_ALT,
         "none": REFUSAL_NONE,
         "api_load": REFUSAL_API_LOAD,
         "not_final": REFUSAL_NOT_FINAL,
@@ -2593,7 +2434,6 @@ def page_state(model: BotWizardModel) -> dict:
         "no_page_id": NO_PAGE_ID,
         "titles": dict(PAGE_TITLES),
         "subtitles": dict(PAGE_SUBTITLES),
-        "unreachable": list(UNREACHABLE_PAGES),
         "groups": {name: list(found) for name, found in PAGE_GROUPS.items()},
         "rows": {name: list(found) for name, found in PAGE_ROWS.items()},
         "current": model.current_page,
@@ -2646,7 +2486,6 @@ def pool_page_state(model: BotWizardModel) -> dict:
         "exchange_index": model.pool_exchange_index,
         "exchange_items": model.exchange_items(),
         "alt_items": [list(one) for one in model.alt_items],
-        "alt_checked": list(model.alt_checked),
         "status": model.pool_status,
         "pool_bases": list(POOL_BASES),
         "alt_list_minimum_height_px": ALT_LIST_MINIMUM_HEIGHT_PX,
@@ -2713,7 +2552,6 @@ def build_view_model(
             "titles": dict(GROUP_TITLES),
             "scrum": list(SCRUM_GROUPS),
             "extractor": list(EXTRACTOR_GROUPS),
-            "folding": list(FOLDING_GROUPS),
             "phantom": list(PHANTOM_GROUPS),
             "rows": {name: list(found) for name, found in GROUP_ROWS.items()},
             "visible": dict(model.group_visible),
@@ -2725,13 +2563,6 @@ def build_view_model(
         "asset_page": asset_page_state(model),
         "pool_page": pool_page_state(model),
         "phantom_page": phantom_page_state(model),
-        "folding_page": {
-            "config": model.folding_config(),
-            "modes": list(FOLD_MODES),
-            "fold_targets": list(FOLD_TARGETS),
-            "distribute_targets": list(DIST_TARGETS),
-            "fold_hold_in_downtrend": FOLD_HOLD_IN_DOWNTREND,
-        },
         "timeframes": {
             "offered": {name: list(found) for name, found in model.timeframes.items()},
             "ta": list(TA_TIMEFRAMES),
@@ -2808,3 +2639,28 @@ def view_model(params: dict) -> dict:
         steps,
         params.get("timeframes"),
     )
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Answer the request with the running program's stored settings in it.
+
+    The frontend sends the step values alone, so the defaults bag is put in
+    here before the model is built. A request carrying its own bag keeps it.
+    """
+    asked = dict(params or {})
+    manager = getattr(live, "settings_manager", None)
+    if asked.get("defaults") is None and hasattr(manager, "get_all"):
+        asked["defaults"] = manager.get_all()
+    return view_model(asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``bot_wizard.state`` handler reading ``live``.
+
+    ``build_registry`` calls this when the running program serves the bridge.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler

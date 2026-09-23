@@ -9,6 +9,15 @@ from typing import Any, Callable, Optional
 
 from ..target_bands import at_target_dust_band
 from ..ta_engine import VotingEngine, candles_from_raw, detect_bb_proximity
+from .sizing import (
+    FRACTIONAL_UNITS,
+    fold_cap_remaining_usd,
+    fold_spend_usd,
+    fold_units,
+    priced_usd,
+    scrum_units,
+    target_delta_usd,
+)
 from .snapshots import yes_no as _yes_no
 
 logger = logging.getLogger("acervator.scrumming")
@@ -54,7 +63,6 @@ class TickPhaseMixin:
     _get_ohlcv: Callable[..., Any]
     _get_ticker: Callable[..., Any]
     _hedge_bal: float
-    _hedge_balance_initial: float
     _hedge_trades: int
     _initialised: Any
     _invisible: bool
@@ -99,6 +107,20 @@ class TickPhaseMixin:
     note_scrum_retention_usd: Callable[..., None]
     reset_swos_cycle: Callable[..., None]
     stats: Any
+
+    @property
+    def _hedge_balance_initial(self) -> float:
+        """Return the hedge ceiling off config.hedge_balance, and zero while
+        hedge_rebalance_active is off."""
+        if not self.config.hedge_rebalance_active:
+            return 0.0
+        return float(self.config.hedge_balance)
+
+    @_hedge_balance_initial.setter
+    def _hedge_balance_initial(self, value: float) -> None:
+        """Write the ceiling onto config.hedge_balance, the one place it is
+        stored."""
+        self.config.hedge_balance = float(value)
 
     async def _tick_initialise(self, symbol: str) -> None:
         """Run the boot handshake; the tick ends whatever this decides."""
@@ -229,9 +251,7 @@ class TickPhaseMixin:
             _own = max(0.0, float(_h2) - _sib_units)
 
             _px_cap = float(getattr(ticker, "last", 0.0) or 0.0)
-            _cap_usd = float(getattr(self.config, "max_adoptable_usd", 0.0) or 0.0)
-            if _cap_usd <= 0:
-                _cap_usd = float(self._target_balance or 0.0)
+            _cap_usd = float(self._target_balance or 0.0)
             _uncapped = _own
             _was_capped = False
             if _cap_usd > 0 and _px_cap > 0 and _own * _px_cap > _cap_usd:
@@ -247,8 +267,8 @@ class TickPhaseMixin:
                         f"this bot may adopt at most ${_cap_usd:.2f} "
                         f"({_own:.6f} units @ ${_px_cap:.8f}). The "
                         f"remaining {_uncapped - _own:.6f} units stay "
-                        f"unmanaged. Raise max_adoptable_usd to change "
-                        f"this."
+                        f"unmanaged. Raise this bot's Target Balance to "
+                        f"change this."
                     ),
                 )
                 try:
@@ -334,7 +354,7 @@ class TickPhaseMixin:
         )
         self._initialised = True
         _qrate = float(self._quote_to_usd or 1.0)
-        _init_usd = self._current_holdings * ticker.last * _qrate
+        _init_usd = priced_usd(self._current_holdings, ticker.last, _qrate)
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -347,10 +367,10 @@ class TickPhaseMixin:
             ),
         )
 
-        _init_usd = (
-            self._current_holdings * ticker.last * float(self._quote_to_usd or 1.0)
+        _init_usd = priced_usd(
+            self._current_holdings, ticker.last, float(self._quote_to_usd or 1.0)
         )
-        _init_delta = _init_usd - self._target_balance
+        _init_delta = target_delta_usd(_init_usd, self._target_balance)
         _init_region = (
             "on-target"
             if abs(_init_delta) < at_target_dust_band(self._target_balance)
@@ -413,10 +433,10 @@ class TickPhaseMixin:
 
     async def _tick_manual_fire(self, ticker: Any) -> None:
         """Run the operator-invoked rebalance for this tick."""
-        _mf_usd = (
-            self._current_holdings * ticker.last * float(self._quote_to_usd or 1.0)
+        _mf_usd = priced_usd(
+            self._current_holdings, ticker.last, float(self._quote_to_usd or 1.0)
         )
-        _mf_delta = _mf_usd - self._target_balance
+        _mf_delta = target_delta_usd(_mf_usd, self._target_balance)
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -640,7 +660,7 @@ class TickPhaseMixin:
                 float(lot.get("units", 0) or 0) for lot in self._main_lots
             )
             _fresh_units_eff = _attributed_units
-            _fresh_usd = _attributed_units * ticker.last * _qrate
+            _fresh_usd = priced_usd(_attributed_units, ticker.last, _qrate)
 
             if self._current_holdings > 0 and _fresh_units_eff == 0:
                 self._bus.emit(
@@ -651,7 +671,7 @@ class TickPhaseMixin:
                         f"attributed units 0 but saved state "
                         f"holds {self._current_holdings:.6f} "
                         f"units "
-                        f"(~${self._current_holdings * ticker.last * _qrate:.2f}). "
+                        f"(~${priced_usd(self._current_holdings, ticker.last, _qrate):.2f}). "
                         f"Refusing buy on top of existing position. "
                         f"Clear saved state manually before restart."
                     ),
@@ -691,15 +711,15 @@ class TickPhaseMixin:
                             bot_id=self.bot_id,
                             message=(
                                 f"INITIAL ENTRY BLOCKED "
-                                f"(Smart Ceiling): prospective "
+                                f"(Position Ceiling): prospective "
                                 f"position ${_prospective:.2f} "
                                 f"(existing ${_fresh_usd:.2f} + "
                                 f"buy ${self._target_balance:.2f}) "
-                                f"would exceed Smart Ceiling "
+                                f"would exceed Position Ceiling "
                                 f"${_smart_ceiling_usd:.2f} "
                                 f"(anchor "
                                 f"${self._anchor_target_balance:.2f} "
-                                f"× {_smart_mult:.1f}x). "
+                                f"× Ceiling Multiple {_smart_mult:.1f}x). "
                                 f"Refusing buy."
                             ),
                         )
@@ -919,7 +939,7 @@ class TickPhaseMixin:
                     "initial_buy_price": entry_fill,
                 }
             )
-            _entry_usd = self._current_holdings * entry_fill
+            _entry_usd = priced_usd(self._current_holdings, entry_fill)
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
@@ -1109,7 +1129,7 @@ class TickPhaseMixin:
         _scrum_chain_result: Any,
     ) -> None:
         """Sell the authorised Target Delta and queue the proceeds as tranches."""
-        scrum_asset = abs(delta) / ticker.last
+        scrum_asset = scrum_units(delta, ticker.last, FRACTIONAL_UNITS)
         try:
             self._emit_trade_fire_snapshot(
                 "scrum",
@@ -1129,7 +1149,9 @@ class TickPhaseMixin:
         _scrum_skipped_below_min = False
         try:
             _qrate_for_cost = float(self._quote_to_usd or 1.0)
-            _scrum_notional_usd = scrum_asset * float(ticker.last) * _qrate_for_cost
+            _scrum_notional_usd = priced_usd(
+                scrum_asset, float(ticker.last), _qrate_for_cost
+            )
             _min_amt_sc, _min_cost_sc, _ = await self._get_market_limits(
                 self.config.symbol
             )
@@ -1523,8 +1545,8 @@ class TickPhaseMixin:
                 0.0,
                 float(self._target_balance) - float(self._fold_cycle_cap_consumed),
             )
-            _cap_remaining_for_queue = max(
-                0.0, _cycle_cap_usd - self._fold_cycle_cap_consumed
+            _cap_remaining_for_queue = fold_cap_remaining_usd(
+                _cycle_cap_usd, self._fold_cycle_cap_consumed
             )
             _elig_sorted = sorted(
                 _eligible,
@@ -1568,10 +1590,10 @@ class TickPhaseMixin:
             _taper = self.fold_rate_taper
             if _taper <= 0.0:
                 _ratio = self.ceiling_ratio or 0.0
-                _ceiling_pos_usd = (
-                    self._current_holdings
-                    * ticker.last
-                    * float(self._quote_to_usd or 1.0)
+                _ceiling_pos_usd = priced_usd(
+                    self._current_holdings,
+                    ticker.last,
+                    float(self._quote_to_usd or 1.0),
                 )
                 self._bus.emit(
                     "bot.log",
@@ -1589,7 +1611,7 @@ class TickPhaseMixin:
         if _eligible:
             _fusd = sum(t["usd"] for t in _eligible)
             sum(t["units"] for t in _eligible)
-            buy_cost = _fusd * _taper
+            buy_cost = fold_spend_usd(_fusd, _taper)
             if _taper < 1.0:
                 self._bus.emit(
                     "bot.log",
@@ -1647,12 +1669,12 @@ class TickPhaseMixin:
                     _mc_fold_exc,
                 )
 
-            buy_asset = buy_cost / ticker.last
+            buy_asset = fold_units(buy_cost, ticker.last, FRACTIONAL_UNITS)
             asset_at_scrum = sum(t["usd"] / t["ref"] for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             min_ref = min(t["ref"] for t in _eligible)
             pct_cheaper = (1 - ticker.last / min_ref) * 100
-            accum_profit = extra_asset * ticker.last
+            accum_profit = priced_usd(extra_asset, ticker.last)
 
             _intended_min_ref = min(t["ref"] for t in _eligible)
 
@@ -1686,11 +1708,11 @@ class TickPhaseMixin:
                     )
                 return True
 
-            buy_asset = buy_cost / buy_fill
+            buy_asset = fold_units(buy_cost, buy_fill, FRACTIONAL_UNITS)
             asset_at_scrum = sum(t["usd"] / t["ref"] for t in _eligible)
             extra_asset = buy_asset - asset_at_scrum
             pct_cheaper = (1 - buy_fill / _intended_min_ref) * 100
-            accum_profit = extra_asset * buy_fill
+            accum_profit = priced_usd(extra_asset, buy_fill)
 
             _total_elig_units = sum(t["units"] for t in _eligible) + 1e-12
             for _t in _eligible:
@@ -1851,7 +1873,11 @@ class TickPhaseMixin:
                 side="buy",
                 type="FOLD",
                 price=buy_fill,
-                amount=(buy_cost / buy_fill) if buy_fill else 0.0,
+                amount=(
+                    fold_units(buy_cost, buy_fill, FRACTIONAL_UNITS)
+                    if buy_fill
+                    else 0.0
+                ),
                 size=buy_cost,
                 profit=_growth_applied,
                 **self._fill_fee_fields(buy_fill),

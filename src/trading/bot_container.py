@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     )
 
 from ..core.event_bus import get_event_bus
+from ..exchange.timeframes import ALL_TIMEFRAMES
 from .container import (
     BotRegistryMixin,
     FleetAggregationMixin,
@@ -43,6 +44,7 @@ from .container.config import (
     _DEPRECATED_KWARGS,
     _sanitize_deprecated_kwargs,
     as_finite_float,
+    bot_config_kwargs,
     despawn_preview,
     despawn_threshold_days,
     make_bot_config,
@@ -68,6 +70,7 @@ __all__ = [
     "_DEPRECATED_KWARGS",
     "_sanitize_deprecated_kwargs",
     "as_finite_float",
+    "bot_config_kwargs",
     "despawn_preview",
     "despawn_threshold_days",
     "make_bot_config",
@@ -101,7 +104,6 @@ class BotContainer:
         self._data_pool = None  # set by BotManager.set_data_pool
         self._market_limits_cache: dict[str, tuple] = {}
         self._phantoms_enabled: bool = False
-        self._phantom_config: dict = {}
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual fire hook; the base implementation does nothing."""
@@ -591,12 +593,26 @@ class BotContainer:
         }
         state["config"]["mode"] = self.config.mode.value
 
-        if hasattr(self, "_phantom_config"):
-            state["phantom_config"] = self._phantom_config
-
         # Persist the phantom flag so an explicit OFF survives restart.
         if hasattr(self, "_phantoms_enabled"):
             state["phantoms_enabled"] = bool(self._phantoms_enabled)
+
+        # The key spells the field and the attribute: phantom_timeframes.
+        # Every name the bot holds is written, however many, so a set of
+        # several survives a restart instead of falling back to a default.
+        _phantom_tfs = [
+            str(one)
+            for one in (getattr(self, "_phantom_timeframes", None) or [])
+            if str(one) in ALL_TIMEFRAMES
+        ]
+        if _phantom_tfs:
+            state["phantom_timeframes"] = _phantom_tfs
+
+        # The coordinator owns the count; no BotConfig field carries it.
+        _coordinator = getattr(self, "_coordinator", None)
+        _lock_candles = getattr(_coordinator, "lock_candle_count", None)
+        if _lock_candles is not None:
+            state["lock_candle_count"] = int(_lock_candles)
 
         # Fetched by name: this parent does not define the exporter.
         _export_scrumming = getattr(self, "export_scrumming_state", None)
@@ -626,7 +642,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
     aggregate fleet stats, and save or restore state."""
 
     def __init__(self, bus=None) -> None:
-        """Subscribe three handlers on ``bus``, defaulting to the
+        """Subscribe two handlers on ``bus``, defaulting to the
         process-wide bus."""
         self._bots: dict[str, BotContainer] = {}
         # Retained so detach_bus can retract them.
@@ -636,6 +652,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         self._restore_completed: bool = False
         self._bus = bus if bus is not None else get_event_bus()
         self._state_manager = None
+        self._ta_weights: Optional[dict] = None  # set from the settings store
         self._volume_guard = None  # one VolumeGuard shared by every bot
         self._data_pool = None  # one MarketDataPool shared by every bot
         self._ticker_refresh_task = None
@@ -648,9 +665,6 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         from .smart_wire import SmartWireManager
 
         self._smart_wire_mgr = SmartWireManager(bus=self._bus)
-        self._bus_unsubs.append(
-            self._bus.subscribe("profit.cross_bot", self._on_cross_bot_profit)
-        )
         self._bus_unsubs.append(
             self._bus.subscribe("wire.created", self._on_wire_created_mgr)
         )
@@ -717,38 +731,48 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         except Exception as exc:
             logger.warning("BotManager wire.removed handler raised: %s", exc)
 
-    def _on_cross_bot_profit(self, event) -> None:
-        """Book a cross-bot profit transfer to the recipient's
-        ``realised_pnl``, never to its target balance."""
-        target_id = event.data.get("target_bot_id", "")
-        amount = event.data.get("amount", 0)
-        source_id = event.data.get("source_bot_id", "")
-        target_bot = self._bots.get(target_id)
-        if target_bot and amount > 0:
-            if hasattr(target_bot, "stats") and hasattr(
-                target_bot.stats, "realised_pnl"
-            ):
-                target_bot.stats.realised_pnl += float(amount)
-            self._bus.emit(
-                "bot.log",
-                bot_id=target_id,
-                message=(
-                    f"CROSS-BOT RECEIVED: +${amount:.4f} from "
-                    f"{source_id[:8]} booked to realised_pnl "
-                    f"(Target frozen at ${target_bot.config.target_balance:.2f} — "
-                    f"MEM-249 cross-wire no longer touches Target)."
-                ),
-            )
-        elif not target_bot:
-            self._bus.emit(
-                "bot.log",
-                bot_id=source_id,
-                message=f"CROSS-BOT FAILED: target bot {target_id[:8]} not found",
-            )
-
     def set_state_manager(self, sm) -> None:
         """Attach a StateManager for persistence."""
         self._state_manager = sm
+
+    def set_ta_weights(self, weights) -> None:
+        """Hold the indicator weights every bot built from here votes with.
+
+        Set before ``restore_bots_from_state`` so a restored bot carries the
+        figures the Settings dialog stored. None leaves each bot on
+        ``ta_engine.DEFAULT_WEIGHTS``.
+        """
+        self._ta_weights = dict(weights) if weights else None
+        logger.info(
+            "TA weights attached to BotManager (%d names)",
+            0 if not self._ta_weights else len(self._ta_weights),
+        )
+
+    @property
+    def ta_weights(self):
+        """The indicator weights a new bot is built with, or None."""
+        return None if self._ta_weights is None else dict(self._ta_weights)
+
+    def push_ta_weights(self, weights) -> int:
+        """Hold ``weights`` and hand them to every bot already built.
+
+        ``set_ta_weights`` holds without pushing, which is what the launch path
+        wants: a restored bot is built with the figures rather than given them
+        afterwards. This one is for a weight the operator saves while bots run,
+        and it returns how many bots took it.
+        """
+        self.set_ta_weights(weights)
+        reached = 0
+        for bot in list(self._bots.values()):
+            taker = getattr(bot, "set_ta_weights", None)
+            if taker is None:
+                continue
+            taker(self._ta_weights)
+            reached += 1
+        logger.info(
+            "TA weights pushed to %d of %d running bots", reached, len(self._bots)
+        )
+        return reached
 
     def force_fire(self, bot_id: str, aggressive: bool = False) -> bool:
         """Call ``force_fire`` on ``bot_id``; returns False for an
@@ -952,7 +976,8 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
     def configure_live_monitor(self, settings: dict) -> None:
         """Create or clear the LiveMonitor from ``settings``, reading
         enabled, api_key, interval_hours, connect_phrase and
-        confirm_phrase."""
+        confirm_phrase. ``LiveMonitor.wait_hours`` refuses an interval
+        ``should_check`` cannot count."""
         if not settings.get("enabled") or not settings.get("api_key"):
             self._live_monitor = None
             logger.info("LiveMonitor disabled")
@@ -963,13 +988,16 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         self._live_monitor = LiveMonitor(
             api_key=settings["api_key"],
             journal=journal,
-            interval_hours=settings.get("interval_hours", 4.0),
+            interval_hours=settings.get(
+                "interval_hours", LiveMonitor.DEFAULT_INTERVAL_HOURS
+            ),
             connect_phrase=settings.get("connect_phrase", ""),
             confirm_phrase=settings.get("confirm_phrase", ""),
         )
+        # interval_hours is the figure wait_hours kept, not the stored one.
         logger.info(
             "LiveMonitor configured (interval=%.1fh, phrase='%s')",
-            settings.get("interval_hours", 4.0),
+            self._live_monitor.interval_hours,
             settings.get("connect_phrase", "")[:20],
         )
 

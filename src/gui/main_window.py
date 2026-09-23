@@ -16,11 +16,18 @@ from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
 from .main_tabs.main_window_surface import (
-    CANONICAL_TAB_ORDER,
+    ACCUMULATION_TAB,
+    BAR_TAB_ORDER,
     HISTORY_TAB,
     ISOLATED_TABS,
+    UNBUILT_TABS,
+    header_strip_reads_paper,
+    header_strip_reads_sim,
 )
-from .main_tabs.trading_tab_surface import exchange_display_name
+from .main_tabs.trading_tab_surface import (
+    PLACEHOLDER_TAB_TITLE,
+    exchange_display_name,
+)
 
 
 from .table_cells import (
@@ -56,7 +63,7 @@ try:
         QPlainTextEdit,
         QMessageBox,
     )
-    from PySide6.QtCore import Qt, QTimer, Slot
+    from PySide6.QtCore import Qt, QTimer, Signal, Slot
     from PySide6.QtGui import QIcon
 
     from .main_tabs.bot_swarm_tab import BotSwarmTabMixin
@@ -75,7 +82,6 @@ try:
     from .widgets.api_tester_tab import APITesterTab
     from .widgets.bot_selection import _reanchor_bot_selection, _select_row_for_bot
     from .widgets.bot_status_table import SCRUMMING_COLUMNS, BotStatusTable
-    from .widgets.capital_registry_panel import CapitalRegistryPanel
     from .widgets.dashboard_stat_card import StatCard
     from .widgets.exchange_tab import ExchangeTab
     from .widgets.extractor_bot_table import EXTRACTOR_COLUMNS, ExtractorBotTable
@@ -95,7 +101,6 @@ from src.gui.qt_safe_events import safe_process_events
 __all__ = [
     "APITesterTab",
     "BotStatusTable",
-    "CapitalRegistryPanel",
     "EXTRACTOR_COLUMNS",
     "ExchangeTab",
     "ExtractorBotTable",
@@ -173,6 +178,9 @@ if _HAS_QT:
 
         # Annotated only: `_drain_signals` reads it by `getattr`, default False.
         _console_paused: bool
+
+        #: One API Interaction Log entry, crossed to the GUI thread for `_on_api_event`.
+        apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
 
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
             super().__init__(parent)
@@ -263,7 +271,7 @@ if _HAS_QT:
             for name, tokens in THEMES.items():
                 theme_menu.addAction(
                     tokens.display_name,
-                    lambda n=name: self._switch_theme(n),
+                    lambda n=name: self._switch_theme(n, self._stored_accent()),
                 )
             help_menu = menu_bar.addMenu("&Help")
             help_menu.addAction("&About", self._show_about)
@@ -297,22 +305,31 @@ if _HAS_QT:
             self._build_console_tab()
             self._build_paper_trader_tab()
             self._build_system_status_tab()
-            self._build_proof_of_accumulation_tab()
+            if ACCUMULATION_TAB not in UNBUILT_TABS:
+                self._build_proof_of_accumulation_tab()
 
-            self._reorder_main_tabs(list(CANONICAL_TAB_ORDER))
+            self._reorder_main_tabs(list(BAR_TAB_ORDER))
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
 
             main_layout.addWidget(self._main_tabs, 1)
 
         def _reorder_main_tabs(self, desired: list[str]) -> None:
-            """Move each label in ``desired`` to its index; unlisted tabs stay put."""
+            """Move each label in ``desired`` to the next slot; unlisted tabs stay put.
+
+            A label no tab carries takes no slot, so a tab that failed to build
+            leaves the labels after it in ``desired`` order.
+            """
             tab_bar = self._main_tabs.tabBar()
-            for target_idx, name in enumerate(desired):
-                for cur_idx in range(self._main_tabs.count()):
+            target_idx = 0
+            for name in desired:
+                if target_idx >= self._main_tabs.count():
+                    break
+                for cur_idx in range(target_idx, self._main_tabs.count()):
                     if self._main_tabs.tabText(cur_idx) == name:
                         if cur_idx != target_idx:
                             tab_bar.moveTab(cur_idx, target_idx)
+                        target_idx += 1
                         break
 
         def _on_main_tab_changed(self, index: int) -> None:
@@ -325,6 +342,10 @@ if _HAS_QT:
             container = getattr(self, "_header_strip_container", None)
             if container is not None:
                 container.setVisible(tab_name not in isolated_tabs)
+            try:
+                self._refresh_header_strip()
+            except Exception as _strip_exc:
+                logger.debug("header strip refresh on tab change: %s", _strip_exc)
 
             if tab_name == HISTORY_TAB:
                 hist = getattr(self, "_history_tab", None)
@@ -623,6 +644,7 @@ if _HAS_QT:
                     self._schedule_async(mon.refresh_from_connectors(connectors))
                 if hasattr(self, "_indicator_panel"):
                     self._indicator_panel.update_currency_rates(mon.snapshot())
+                    self._publish_votes()
                 self._currency_pump_fault.note_success()
             except Exception as exc:  # noqa: BLE001
                 self._currency_pump_fault.note_failure(exc)
@@ -808,6 +830,7 @@ if _HAS_QT:
                     and hasattr(self._indicator_panel, "refresh_privacy_dot")
                 ):
                     self._indicator_panel.refresh_privacy_dot()
+                    self._publish_votes()
             except Exception:  # noqa: S110
                 pass
 
@@ -834,7 +857,7 @@ if _HAS_QT:
                 "Extended": "Extended Position - extra position created when accumulated profit reaches position size",
                 "Grid": "Grid Mode - stacked buy/sell pairs at fixed price intervals",
                 "Scrumming": "Speculative Scrumming - TA-driven delta trading against a target balance",
-                "Phantom": "Phantom Balance Bot - shadow bot analyzing a different timeframe",
+                "Phantom": "Phantom Bot - shadow bot analyzing a different timeframe",
                 "Folding": "Profit Folding - distributing realized sell profits back into buy positions",
                 "Distribution": "Upward Distribution - distributing accumulated asset into sell positions",
                 "TA": "Technical Analysis - mathematical indicators computed from price/volume data",
@@ -896,6 +919,11 @@ if _HAS_QT:
                         gb.setToolTip(explanation)
                         break
 
+        def _cross_api_event(self, entry: dict) -> None:
+            """The `APIInteractionLog` listener: emit `apiEntryLogged`, which Qt
+            queues onto the GUI thread for `_on_api_event` from any other thread."""
+            self.apiEntryLogged.emit(entry)
+
         def _on_api_event(self, entry: dict) -> None:
             """Append one API entry to `_api_log_view`, refusing off-thread calls."""
             # Touching a widget off the GUI thread ends the process through Qt.
@@ -952,6 +980,7 @@ if _HAS_QT:
                 plain_lines.append(f"  Data usage: {entry['data_usage']}")
 
             block_text = "\n".join(plain_lines)
+            self._push_live_tab({"api_lines": [block_text]})
             if getattr(self, "_api_log_paused", False):
                 buf = self._api_log_pause_buffer
                 buf.append(block_text)
@@ -1048,27 +1077,62 @@ if _HAS_QT:
                         data_usage="User must add API key and secret in Settings before trading on this exchange.",
                     )
 
+        def _header_strip_reads_sim(self) -> bool:
+            """True while the tab in front is one ``SIM_FED_TABS`` names."""
+            tabs = getattr(self, "_main_tabs", None)
+            if tabs is None or getattr(self, "_simulator_tab", None) is None:
+                return False
+            return header_strip_reads_sim(tabs.tabText(tabs.currentIndex()))
+
+        def _header_strip_reads_paper(self) -> bool:
+            """True while the tab in front is one ``PAPER_FED_TABS`` names."""
+            tabs = getattr(self, "_main_tabs", None)
+            if tabs is None or getattr(self, "_paper_trader_tab", None) is None:
+                return False
+            return header_strip_reads_paper(tabs.tabText(tabs.currentIndex()))
+
+        def _write_header_strip(self, agg: dict, exchanges: int) -> None:
+            """Write the five cards and the five columns from one aggregate."""
+            _scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
+            _fld = float(agg.get("total_folded_usd", 0.0) or 0.0)
+            self._stat_scrummed.set_value(f"${_scr:,.2f}")
+            self._stat_folded.set_value(f"${_fld:,.2f}")
+            self._stat_pnl.set_value(f"${agg['total_realised_pnl']:+,.4f}")
+            self._stat_trades.set_value(str(agg["total_trades"]))
+            self._stat_bots.set_value(str(agg["running"]))
+            self._stat_errors.set_value(str(agg.get("total_errors_lifetime", 0)))
+            # One builder for both hosts: the React strip reads the same
+            # `profits_payload` over the bridge.
+            self._spendable_widget.update_profits(
+                header_strip_surface.profits_payload(agg, exchanges)
+            )
+
+        def _refresh_header_strip(self, live_stats: Optional[dict] = None) -> None:
+            """Repaint the strip from the Simulator's fleet with Sim in front, from the paper ledger with Paper in front, else from the live fleet."""
+            if self._header_strip_reads_sim():
+                sim_tab = self._simulator_tab
+                self._write_header_strip(sim_tab.aggregate(), sim_tab.exchange_count())
+                return
+            if self._header_strip_reads_paper():
+                paper_tab = self._paper_trader_tab
+                self._write_header_strip(
+                    paper_tab.aggregate(), paper_tab.exchange_count()
+                )
+                return
+            if live_stats is None:
+                if not self._bot_manager:
+                    return
+                live_stats = self._bot_manager.get_aggregate_stats()
+            self._write_header_strip(live_stats, len(self._exchange_tabs))
+
         @Slot()
         def _refresh_dashboard(self) -> None:
             if not self._bot_manager:
+                self._refresh_header_strip()
                 return
             try:
                 agg = self._bot_manager.get_aggregate_stats()
-                _scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
-                _fld = float(agg.get("total_folded_usd", 0.0) or 0.0)
-                self._stat_scrummed.set_value(f"${_scr:,.2f}")
-                self._stat_folded.set_value(f"${_fld:,.2f}")
-                self._stat_pnl.set_value(f"${agg['total_realised_pnl']:+,.4f}")
-                self._stat_trades.set_value(str(agg["total_trades"]))
-                self._stat_bots.set_value(str(agg["running"]))
-                self._stat_errors.set_value(str(agg.get("total_errors_lifetime", 0)))
-
-                exchanges = len(self._exchange_tabs)
-                # One builder for both hosts: the React strip reads the same
-                # `profits_payload` over the bridge.
-                self._spendable_widget.update_profits(
-                    header_strip_surface.profits_payload(agg, exchanges)
-                )
+                self._refresh_header_strip(agg)
 
                 all_statuses = []
                 for eid, tab in self._exchange_tabs.items():
@@ -1174,6 +1238,7 @@ if _HAS_QT:
                                 }
                                 merged: dict = {tf: parent_tf_data}
                                 composite_net = parent_net
+                                skipped: list = []
                                 try:
                                     if getattr(bot, "_phantoms_enabled", False):
                                         pmulti = (
@@ -1196,6 +1261,7 @@ if _HAS_QT:
                                                 continue
                                             p_rank = _tf_rank(p_tf)
                                             if p_rank <= _tf_rank(tf):
+                                                skipped.append(p_tf)
                                                 continue
                                             p_conf = float(
                                                 p_data.get("confidence", 0) or 0
@@ -1214,6 +1280,9 @@ if _HAS_QT:
                                         "phantom composite Net calc raised: %s", _cp_exc
                                     )
                                 parent_tf_data["composite_net"] = composite_net
+                                # Named on the Comp cell's tool tip: these
+                                # phantoms never reach composite_net.
+                                parent_tf_data["composite_skipped"] = skipped
                                 symbol = bot.config.symbol
                                 self._indicator_panel.update_data(merged, symbol)
                                 self._indicator_panel.remember_ta(
@@ -1242,6 +1311,7 @@ if _HAS_QT:
                                 )
                         else:
                             self._indicator_panel.show_no_data(cause="no_selection")
+                        self._publish_votes(all_bot_statuses)
                     except Exception as exc:
                         logger.error("DASHBOARD: Indicator panel CRASHED: %s", exc)
 
@@ -1320,6 +1390,24 @@ if _HAS_QT:
 
                 traceback.print_exc()
 
+        def _publish_votes(self, bot_statuses=None) -> bool:
+            """Draw the same voting reading on the React Live tab.
+
+            ``IndicatorVotingPanel.panel_reading`` names what the Qt panel
+            holds, so both panels show one bot, one set of cells, one staleness
+            banner and one rate line.
+            """
+            show = getattr(getattr(self, "_trading_tab", None), "show_votes", None)
+            panel = getattr(self, "_indicator_panel", None)
+            if not callable(show) or panel is None:
+                return False
+            statuses = bot_statuses
+            if statuses is None:
+                statuses = self._bot_manager.list_bots() if self._bot_manager else []
+            from .react_trading_tab import votes_payload
+
+            return bool(show(votes_payload(statuses, panel.panel_reading())))
+
         def _is_equity_exchange(self, exchange_id: str) -> bool:
             """Return True if this exchange ID belongs to the stock/equity layer."""
             return exchange_id.lower() in self._equity_exchange_ids
@@ -1341,15 +1429,22 @@ if _HAS_QT:
                 return
 
             ph = getattr(self, target_ph_attr, None)
+            # ph stays set, so _drop_unlisted_exchange_tabs can add it back.
+            _ph_dropped = False
             if ph is not None:
                 idx = target_widget.indexOf(ph)
                 if idx >= 0:
                     target_widget.removeTab(idx)
-                setattr(self, target_ph_attr, None)
-                if target_tabs is self._exchange_tabs:
-                    self._empty_placeholder = None
+                    _ph_dropped = True
 
-            tab = ExchangeTab(
+            from .variant_surface import EXCHANGE, surface_class
+
+            try:
+                page_class = surface_class(EXCHANGE)
+            except Exception as exc:
+                logger.warning("React exchange page unavailable: %s", exc)
+                page_class = ExchangeTab
+            tab = page_class(
                 exchange_id,
                 display_name,
                 on_new_bot=self._create_bot,
@@ -1363,6 +1458,14 @@ if _HAS_QT:
 
             if target_tabs is self._exchange_tabs:
                 self._exchange_tabs[exchange_id] = tab
+
+            # Only TradingTabReact holds a venue; the Qt page draws its own.
+            hold_venue = getattr(
+                getattr(self, "_trading_tab", None), "hold_venue", None
+            )
+            if callable(hold_venue):
+                hold_venue(tab)
+            self._push_live_tab({})
 
             # `_landed` asks both layer widgets, never `target_widget`, the argument.
             _landed = "none"
@@ -1384,7 +1487,7 @@ if _HAS_QT:
                         "stock_tabs": self._stock_tab_widget.count(),
                         "crypto_tabs": self._crypto_tab_widget.count(),
                         "in_layer_store": target_tabs.get(exchange_id) is tab,
-                        "placeholder_dropped": ph is not None,
+                        "placeholder_dropped": _ph_dropped,
                     },
                 )
 
@@ -2205,28 +2308,17 @@ if _HAS_QT:
                 ai_cfg = self._settings.get("ai_monitor", {}) if self._settings else {}
                 if ai_cfg.get("log_feedback"):
                     try:
-                        from ..trading.live_monitor import TradeRecord
-
-                        rec = TradeRecord(
-                            timestamp=data.get("timestamp", ""),
-                            unix_ts=time.time(),
+                        # _journal is reconciliation.TradeJournal, so the note
+                        # goes in through record_from_trade as a JournalEntry.
+                        self._journal.record_from_trade(
                             bot_id="AI_MONITOR",
-                            asset="SYSTEM",
+                            symbol="SYSTEM",
                             action="AI_FEEDBACK",
                             side="neutral",
-                            price=0,
-                            quantity=0,
-                            usd_value=0,
-                            target_balance=0,
-                            portfolio_value=0,
-                            delta_pct=0,
-                            confidence=0,
-                            notes=feedback[:500],
+                            price=0.0,
+                            quantity=0.0,
+                            reason=feedback[:500],
                         )
-                        if hasattr(self, "_journal") and hasattr(
-                            self._journal, "record"
-                        ):
-                            self._journal.record(rec)
                     except Exception:
                         logger.exception(
                             "AI feedback note was not written to " "the journal"
@@ -2372,9 +2464,9 @@ if _HAS_QT:
                 return False, msg
 
             try:
-                from ..core.encryption import decrypt
+                from ..core.encryption import decrypt, vault_phrase
 
-                master = f"qat_{self._settings.get('username', 'user')}_vault"
+                master = vault_phrase(self._settings.get("username", ""))
                 api_key = decrypt(exch_config["api_key_enc"], master)
                 api_secret = decrypt(exch_config["api_secret_enc"], master)
                 # None means no stored passphrase; `sync_connect` still receives "".
@@ -2852,8 +2944,33 @@ if _HAS_QT:
         def _on_settings_changed(self) -> None:
             if not self._settings:
                 return
-            theme = self._settings.get("theme", "cyberpunk_dark")
-            self._switch_theme(theme)
+            from .theme_engine import DEFAULT_THEME_NAME, stored_theme
+
+            theme = stored_theme(self._settings.get("theme", DEFAULT_THEME_NAME))
+            self._switch_theme(theme, self._stored_accent())
+
+            # A saved SMS page reaches the engine here, so a changed number or
+            # switch applies without a restart.
+            from src.core.sms_engine import (
+                SETTINGS_GROUP,
+                get_sms_engine,
+                sms_config_from_settings,
+            )
+
+            get_sms_engine().update_config(
+                sms_config_from_settings(self._settings.get(SETTINGS_GROUP, {}))
+            )
+
+            # Save emits settings_changed, and settings_changed is the only
+            # caller of push_ta_weights.
+            from src.trading.ta_engine import weights_from_settings
+
+            if self._bot_manager:
+                self._bot_manager.push_ta_weights(
+                    weights_from_settings(
+                        self._settings.get("ta_indicator_weights", {})
+                    )
+                )
 
             ai_cfg = self._settings.get("ai_monitor", {})
             if self._bot_manager:
@@ -2929,6 +3046,7 @@ if _HAS_QT:
                     "→ CRYPTO WING: crypto exchanges. (Stock wing paused.)",
                     "info",
                 )
+            self._push_live_tab({"layer": self._trading_mode})
             self._update_mode_btn_style()
 
             # `_alias_page` comes from `_tab_widget`'s parent, not from either branch.
@@ -3016,8 +3134,53 @@ if _HAS_QT:
             dlg.exec()
             self._sync_exchange_tabs()
 
+        def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
+            """Take off every exchange tab whose id is not in ``listed``.
+
+            The layer's Get Started page is added back once its bar empties, and
+            each dropped tab is asked to ``stop_feeds`` before it is deleted.
+            """
+            kept = set(listed)
+            dropped = 0
+            layers = (
+                (
+                    self._crypto_exchange_tabs,
+                    self._crypto_tab_widget,
+                    "_crypto_placeholder",
+                ),
+                (
+                    self._stock_exchange_tabs,
+                    self._stock_tab_widget,
+                    "_stock_placeholder",
+                ),
+            )
+            for store, bar, ph_attr in layers:
+                for eid in [one for one in store if one not in kept]:
+                    tab = store.pop(eid)
+                    self._exchange_tabs.pop(eid, None)
+                    at = bar.indexOf(tab)
+                    if at >= 0:
+                        bar.removeTab(at)
+                    stop = getattr(tab, "stop_feeds", None)
+                    if callable(stop):
+                        stop()
+                    tab.setParent(None)
+                    tab.deleteLater()
+                    dropped += 1
+                    self._status_log.log(f"Exchange tab removed: {eid}", "warning")
+                ph = getattr(self, ph_attr, None)
+                if ph is not None and not store and bar.indexOf(ph) < 0:
+                    bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
+            if dropped:
+                self._push_live_tab({})
+            return dropped
+
         def _sync_exchange_tabs(self) -> None:
-            """Add a tab for each configured exchange missing one, in its own layer."""
+            """Add a tab for each configured exchange missing one, in its own layer.
+
+            A tab the store no longer lists is dropped, so the bar carries what
+            ``list_exchanges`` carries.
+            """
             if not self._settings:
                 return
             _wanted: list[str] = []
@@ -3039,6 +3202,8 @@ if _HAS_QT:
                         f"({'stock' if self._is_equity_exchange(eid) else 'crypto'} layer)",
                         "success",
                     )
+
+            _gone = self._drop_unlisted_exchange_tabs(_wanted)
 
             # `_missing` asks the layer tab bar, not the store the loop above wrote.
             _missing = 0
@@ -3063,12 +3228,29 @@ if _HAS_QT:
                     expected=0,
                     context={
                         "configured": len(_wanted),
+                        "dropped": _gone,
                         "crypto_bar": self._crypto_tab_widget.count(),
                         "stock_bar": self._stock_tab_widget.count(),
                         "crypto_store": len(self._crypto_exchange_tabs),
                         "stock_store": len(self._stock_exchange_tabs),
                     },
                 )
+
+        def _stored_ta_weights(self):
+            """The indicator weights a new bot votes with, read off the store.
+
+            Falls back to the manager's copy, then to None, which leaves the
+            engine on ``ta_engine.DEFAULT_WEIGHTS``.
+            """
+            if self._settings is not None:
+                from ..trading.ta_engine import weights_from_settings
+
+                return weights_from_settings(
+                    self._settings.get("ta_indicator_weights", {})
+                )
+            if self._bot_manager is not None:
+                return getattr(self._bot_manager, "ta_weights", None)
+            return None
 
         def _refuse_extractor_without_parent(
             self,
@@ -3179,22 +3361,42 @@ if _HAS_QT:
                 data_usage="Wizard will fetch available markets from exchange API for asset selection",
             )
 
-            from .bot_wizard import BotCreationWizard
+            from .variant_surface import BOT_WIZARD, surface_class
 
+            try:
+                wizard_class = surface_class(BOT_WIZARD)
+            except Exception as exc:
+                logger.warning("React bot wizard unavailable: %s", exc)
+                from .bot_wizard import BotCreationWizard
+
+                wizard_class = BotCreationWizard
             exchanges = self._settings.list_exchanges() if self._settings else []
             defaults = self._settings.get_all() if self._settings else {}
             if defaults_override:
                 defaults = {**defaults, **defaults_override}
-            wizard = BotCreationWizard(exchanges, defaults, self)
+            wizard = wizard_class(exchanges, defaults, self)
             if wizard.exec() == wizard.DialogCode.Accepted:
                 config = wizard.get_bot_config()
                 logger.info("Bot creation config: %s", config)
+
+                # An extractor config carries no target_balance and a
+                # scrumming one no extractor_chunk_size_usd.
+                if config.get("mode") == "extractor":
+                    _created = (
+                        f"Chunk size=${config.get('extractor_chunk_size_usd', 0):.2f}, "
+                        f"Scan top={config.get('extractor_scan_top_n', 0)}"
+                    )
+                else:
+                    _created = (
+                        f"Balance=${config.get('target_balance', 0):.2f}, "
+                        f"Tranche count={config.get('stack_tranche_count_target', 0)}"
+                    )
 
                 _log.record(
                     exchange=config.get("exchange_id", exchange_id),
                     action="BOT_CREATE",
                     reason=f"Creating {config.get('mode','').upper()} bot for {config.get('target_asset','')}/{config.get('base_currency','')}",
-                    result=f"Balance=${config.get('target_balance',0):.2f}, Positions={config.get('position_count',0)}",
+                    result=_created,
                     level="info",
                     data_usage="Bot will be registered with BotManager in IDLE state. Must be started manually.",
                 )
@@ -3227,9 +3429,7 @@ if _HAS_QT:
                                 + config.get("base_currency", "USDT")
                             )
                             _pf_exchange = config.get("exchange_id", exchange_id)
-                            _pf_target = config.get(
-                                "target_balance", config.get("investment_amount", 200.0)
-                            )
+                            _pf_target = config.get("target_balance", 200.0)
                             _pf = check_symbol(
                                 exchange_id=_pf_exchange,
                                 symbol=_pf_symbol,
@@ -3293,100 +3493,17 @@ if _HAS_QT:
                         _mode = BotMode.EXTRACTOR
                     else:
                         _mode = BotMode.SCRUMMING
-                    from ..trading.bot_container import make_bot_config
+                    from ..trading.bot_container import (
+                        bot_config_kwargs,
+                        make_bot_config,
+                    )
 
-                    _ta_default = "*" if _mode == BotMode.EXTRACTOR else "BTC"
-
-                    _shared_kwargs = {
-                        "exchange_id": config.get("exchange_id", exchange_id),
-                        "base_currency": config.get("base_currency", "USDT"),
-                        "target_asset": config.get("target_asset", _ta_default),
-                        "target_balance": config.get(
-                            "target_balance",
-                            (
-                                config.get("extractor_chunk_size_usd", 200.0)
-                                if _mode == BotMode.EXTRACTOR
-                                else 200.0
-                            ),
-                        ),
-                        "ta_timeframe": config.get("ta_timeframe", "1h"),
-                        "visibility": config.get("visibility", "orderbook"),
-                        "aggressive_trading": config.get("aggressive_trading", False),
-                        "stack_mode": config.get(
-                            "stack_mode", config.get("bulk_trading", False)
-                        ),
-                        "split_distance": config.get("split_distance", 1.0),
-                        "stack_tranche_count_target": config.get(
-                            "stack_tranche_count_target", 3
-                        ),
-                        "stack_spacing_mode": config.get(
-                            "stack_spacing_mode", "linear"
-                        ),
-                    }
-
-                    if _mode == BotMode.SCRUMMING:
-                        _mode_kwargs = {
-                            "investment_amount": config.get("investment_amount", 200.0),
-                            "increment_style": config.get("increment_style", "linear"),
-                            "max_target_growth_pct": config.get(
-                                "max_target_growth_pct", 1.0
-                            ),
-                            "scrumming_interval_pct": config.get(
-                                "scrumming_interval_pct", 1.0
-                            ),
-                            "profit_folding_active": config.get(
-                                "profit_folding_active", True
-                            ),
-                            "bb_tolerance_pct": config.get("bb_tolerance_pct", 1.0),
-                            "bb_landing_strip_candles": config.get(
-                                "bb_landing_strip_candles", 3
-                            ),
-                            "scrum_detect_pct": config.get("scrum_detect_pct", 75),
-                            "scrum_fire_pct": config.get("scrum_fire_pct", 0.5),
-                            "bb_midline_gate": config.get("bb_midline_gate", True),
-                            "scrum_read_rate_min": config.get("scrum_read_rate_min", 5),
-                            "band_travel_pct": config.get("band_travel_pct", 70),
-                            "bb_bullseye_check": config.get("bb_bullseye_check", True),
-                            "hedge_rebalance_active": config.get(
-                                "hedge_rebalance_active", True
-                            ),
-                            "hedge_balance": config.get("hedge_balance", 200.0),
-                        }
-                    else:
-                        _mode_kwargs = {
-                            "extractor_chunk_size_usd": config.get(
-                                "extractor_chunk_size_usd", 100.0
-                            ),
-                            "extractor_artillery_size_usd": config.get(
-                                "extractor_artillery_size_usd", 5.0
-                            ),
-                            "extractor_scan_top_n": config.get(
-                                "extractor_scan_top_n", 8
-                            ),
-                            "extractor_scan_refresh_candles": config.get(
-                                "extractor_scan_refresh_candles", 60
-                            ),
-                            "extractor_pool_reserve_pct": config.get(
-                                "extractor_pool_reserve_pct", 50.0
-                            ),
-                            "extractor_exit_pct": config.get(
-                                "extractor_exit_pct", 100.0
-                            ),
-                            "extractor_max_compounding_tier": config.get(
-                                "extractor_max_compounding_tier", 3
-                            ),
-                            "extractor_max_cost_basis_multiple": config.get(
-                                "extractor_max_cost_basis_multiple", 2.0
-                            ),
-                            "extractor_alt_targets": list(
-                                config.get("extractor_alt_targets", []) or []
-                            ),
-                        }
+                    _wizard_kwargs = bot_config_kwargs(
+                        _mode, config, exchange_id=exchange_id
+                    )
 
                     try:
-                        bot_config = make_bot_config(
-                            _mode, **_shared_kwargs, **_mode_kwargs
-                        )
+                        bot_config = make_bot_config(_mode, **_wizard_kwargs)
                     except (ValueError, TypeError) as _bc_err:
                         msg = (
                             f"Bot creation REJECTED — mode-shape "
@@ -3435,6 +3552,7 @@ if _HAS_QT:
                             _PlaceholderExchange(bot_config.exchange_id),
                             enable_phantoms=config.get("enable_phantoms", False),
                             phantom_timeframes=config.get("phantom_timeframes", []),
+                            ta_weights=self._stored_ta_weights(),
                         )
 
                     if self._bot_manager:
@@ -3465,6 +3583,7 @@ if _HAS_QT:
                                 symbol=bot_config.symbol,
                                 ta_timeframe=bot_config.ta_timeframe,
                             )
+                            self._publish_votes()
                         except Exception:  # noqa: S110
                             pass
 
@@ -3512,24 +3631,45 @@ if _HAS_QT:
                     data_usage="No action taken",
                 )
 
-        def _switch_theme(self, name: str) -> None:
-            from .theme_engine import ThemeManager
+        def _stored_accent(self) -> object:
+            """The accent field the store holds, None when there is no store."""
+            return self._settings.get("accent_color") if self._settings else None
+
+        def _remember_theme(self, name: str) -> None:
+            """Store ``name`` under ``theme`` so the Theme menu survives a restart."""
+            if not self._settings or self._settings.get("theme") == name:
+                return
+            self._settings.set("theme", name)
+
+        def _switch_theme(self, name: str, accent: object = None) -> None:
+            from .react_history_panel import repaint_pages
+            from .theme_engine import ThemeManager, stored_accent
 
             tm = ThemeManager()
+            taken = stored_accent(accent)
+            if not taken and str(accent or "").strip():
+                self._status_log.log(
+                    f"Accent colour {accent!r} is not a hex colour; "
+                    f"painting the {name} accent.",
+                    "warning",
+                )
             app = self.parent()
             if app is None:
                 from PySide6.QtWidgets import QApplication
 
                 app = QApplication.instance()
             if app:
-                tm.apply_theme(name, app)
-                book = getattr(self, "_main_tabs", None)
-                if hasattr(book, "set_theme"):
-                    book.set_theme(name)
+                tm.apply_theme(name, app, taken)
                 swarm = getattr(self, "_bot_viz", None)
                 if hasattr(swarm, "set_app_theme"):
                     swarm.set_app_theme(name)
+                painted = repaint_pages(self, name)
+                self._charts_tab.set_theme(tm.current)
+                self._remember_theme(name)
                 self._status_log.log(f"Theme switched to {name}.", "info")
+                self._status_log.log(
+                    f"{painted} React pages repainted in {name}.", "info"
+                )
 
         def _show_about(self) -> None:
             QMessageBox.about(
@@ -3539,7 +3679,7 @@ if _HAS_QT:
                 "A multi-exchange crypto auto-trading platform.\n"
                 "Grid Mode - Speculative Scrumming\n"
                 "Profit Folding - Upward Distribution\n"
-                "Phantom Balance Bots - 7-Indicator TA Voting\n"
+                "Phantom Bots - 7-Indicator TA Voting\n"
                 "TradingView Charts - Multi-Timeframe Analysis\n"
                 "Verbose API Interaction Logging",
             )

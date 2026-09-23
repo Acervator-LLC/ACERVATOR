@@ -1,0 +1,132 @@
+/* React Charts tab chrome: the one control row (the Live / ATA-SMP toggle,
+ * the asset arrows and ticker, the counter, the timeframe menu, the legend
+ * labels and the source) and the one chart panel `trade_charts_tab.js` draws
+ * under it. `react_charts_tab.PAGE_STYLE` carries the reset and the page
+ * ground, so this file adds colour, border and type only; every size and
+ * font the row and the toggles take arrives on the element's own `style`
+ * attribute from the payload. `native_chart.py` paints every mark inside the
+ * chart into the image the slot shows, and the overlay colour on a toggle
+ * arrives on that toggle's own `style` attribute, so no rule here may set a
+ * `color` on a chart mark or on a toggle.
+ */
+
+/* A part carries `display:flex` on its own style attribute, which outranks
+ * the browser's own rule for a hidden element. */
+[hidden] {
+  display: none !important;
+}
+
+/* A flex child keeps its content's size without a floor of its own, so a
+ * long ticker name pushes the arrow beside it off the row. */
+.acervator-charts-tab > *,
+.acervator-charts-panel > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* QPushButton: the two arrows and the list toggle share one skin; the family
+ * and size arrive on each button's own `style` attribute. */
+[data-part="asset-prev"],
+[data-part="asset-next"],
+[data-part="chart-list-toggle"] {
+  background: var(--SURFACE_CONTROL, var(--btn-bg));
+  color: var(--PRIMARY, var(--accent));
+  border: 1px solid var(--GLOW_PRIMARY_EDGE, var(--border));
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+[data-part="asset-prev"]:hover,
+[data-part="asset-next"]:hover,
+[data-part="chart-list-toggle"]:hover {
+  background: var(--GLOW_PRIMARY_FAINT, var(--btn-bg));
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+[data-part="asset-prev"]:disabled,
+[data-part="asset-next"]:disabled {
+  background: var(--CARD_METRIC_BORDER, var(--border));
+  color: var(--TEXT_PLACEHOLDER, var(--grid));
+  border-color: var(--CARD_METRIC_BORDER, var(--border));
+  cursor: default;
+}
+
+/* QComboBox: the ticker list, which names the asset on screen. */
+[data-part="asset-ticker"] {
+  background: var(--SURFACE_CONTROL, var(--btn-bg));
+  color: var(--PRIMARY, var(--accent));
+  border: 1px solid var(--GLOW_PRIMARY_EDGE, var(--border));
+  border-radius: 4px;
+  padding: 0 8px;
+  font-weight: bold;
+}
+
+[data-part="asset-ticker"]:hover {
+  border-color: var(--PRIMARY, var(--accent));
+}
+
+/* QLabel: which asset this is, of how many, the empty-list hint and the
+ * `TF:` word before the timeframe menu. */
+[data-part="asset-position"],
+[data-part="chart-list-hint"],
+[data-part="timeframe-label"] {
+  color: var(--TEXT_LOW, var(--text));
+}
+
+/* QFrame: the one chart panel; the painter draws the header line inside the
+ * image, as the Qt chart does. */
+.acervator-charts-panel {
+  background: var(--SURFACE_0, var(--bg));
+  border: 1px solid var(--CARD_METRIC_BORDER, var(--border));
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* QComboBox: the TF picker, after the counter in the control row. */
+[data-part="timeframe"] {
+  max-width: 90px;
+  background: var(--SURFACE_CONTROL, var(--btn-bg));
+  color: var(--text);
+  border: 1px solid var(--CARD_METRIC_BORDER, var(--border));
+  border-radius: 2px;
+  font: inherit;
+}
+
+/* QLabel: the feed the candles came from, at the right end of the control
+ * row after the two legend labels; the legend's colours and size arrive on
+ * each label's own `style` attribute. */
+[data-part="panel-source"] {
+  color: var(--TEXT_PLACEHOLDER, var(--grid));
+}
+
+[data-part="panel-legend"] {
+  gap: 12px;
+}
+
+[data-part="panel-toggle-row"] {
+  padding: 3px 4px;
+  border-top: 1px solid var(--CARD_METRIC_BORDER, var(--border));
+}
+
+[data-part="panel-toggle"] {
+  gap: 3px;
+  cursor: default;
+}
+
+/* The chart's own waiting line, drawn in the mount until candles arrive. */
+[data-part="panel-error"] {
+  padding: 8px;
+  color: var(--TEXT_LOW, var(--text));
+}
+
+/* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
+[data-part="content"]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-part="content"]::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}

@@ -1,12 +1,11 @@
 """The single home-relative root for the chart images ATA-SPM posts carry.
 
 ``ATA_POST_ROOT`` is a sibling of ``~/.acervator`` and of ``~/.acervator_logs``,
-never a subdirectory of either, so a rendered image never lands in a live tree.
-``post_image_path`` names one PNG per asset, timeframe and call time, and
-``get_ata_post_root`` creates the directory on first use. ``ATA_POST_ROOT_ENV``
-redirects the root, which is how the suite keeps its writes out of the
-operator's home. ``prune_post_images`` bounds the store, holding the newest
-``POST_IMAGES_KEPT_PER_MARKET`` images of each market and removing the rest.
+``ATA_POST_ROOT_ENV`` redirects it, and ``get_ata_post_root`` creates it.
+``post_image_path`` names one PNG per asset, timeframe and call time under the
+root, and ``venue_post_path`` names one file under the ``venue_post_root`` of
+one push target. ``prune_post_images`` holds the newest
+``POST_IMAGES_KEPT_PER_MARKET`` files of each market and suffix in one store.
 """
 
 from __future__ import annotations
@@ -26,7 +25,18 @@ ATA_POST_ROOT: Path = Path.home() / ".acervator_ata_posts"
 
 POST_IMAGE_NAME_FORMAT = "{symbol}_{timeframe}_{stamp}.png"
 
+POST_STEM_FORMAT = "{symbol}_{timeframe}_{stamp}"
+
 POST_IMAGE_SUFFIX = ".png"
+
+#: The plain-text message beside a venue folder's image.
+POST_TEXT_SUFFIX = ".txt"
+
+#: The Internet Shortcut holding a venue's compose address, opened on one click.
+POST_INTENT_SUFFIX = ".url"
+
+#: The suffixes a venue folder holds, which its ``prune_post_images`` reads.
+POST_FILE_SUFFIXES = (POST_IMAGE_SUFFIX, POST_TEXT_SUFFIX, POST_INTENT_SUFFIX)
 
 #: ``POST_IMAGE_NAME_FORMAT`` writes symbol, timeframe and stamp, and
 #: ``name_part`` folds every underscore, so the name splits into three.
@@ -94,14 +104,45 @@ def post_image_path(
     )
 
 
-def market_of(path: object) -> Optional[tuple]:
-    """The asset and timeframe one post image name carries, or None.
+def venue_post_root(venue: object, root: Optional[Path] = None) -> Path:
+    """The folder one push target's files land in, under ``get_ata_post_root(root)``, created."""
+    held = get_ata_post_root(root) / name_part(venue)
+    held.mkdir(parents=True, exist_ok=True)
+    return held
 
-    A file ``POST_IMAGE_NAME_FORMAT`` did not write reads as no market, so
-    ``prune_post_images`` leaves it where it is.
+
+def venue_post_roots(venues: object, root: Optional[Path] = None) -> list:
+    """One ``venue_post_root`` per name in ``venues``, every folder created."""
+    return [venue_post_root(one, root) for one in venues or ()]
+
+
+def venue_post_path(
+    venue: object,
+    symbol: object,
+    timeframe: object,
+    stamp: object,
+    suffix: str = POST_IMAGE_SUFFIX,
+    root: Optional[Path] = None,
+) -> Path:
+    """The file for one call under ``venue_post_root(venue, root)``, named as ``post_image_path`` names it."""
+    return venue_post_root(venue, root) / (
+        POST_STEM_FORMAT.format(
+            symbol=name_part(symbol),
+            timeframe=name_part(timeframe),
+            stamp=name_part(stamp),
+        )
+        + suffix
+    )
+
+
+def market_of(path: object, suffixes: tuple = (POST_IMAGE_SUFFIX,)) -> Optional[tuple]:
+    """The asset and timeframe one post file name carries, or None.
+
+    A file outside ``suffixes`` or not shaped by ``POST_STEM_FORMAT`` reads as
+    no market, so ``prune_post_images`` leaves it where it is.
     """
     held = Path(str(path))
-    if held.suffix != POST_IMAGE_SUFFIX:
+    if held.suffix not in suffixes:
         return None
     fields = held.stem.split("_")
     if len(fields) != POST_IMAGE_NAME_FIELDS:
@@ -123,21 +164,24 @@ def stamp_order(path: object) -> tuple:
 def prune_post_images(
     kept_path: Optional[Path] = None,
     root: Optional[Path] = None,
+    suffixes: tuple = (POST_IMAGE_SUFFIX,),
 ) -> PrunedPostImages:
-    """Hold each market's newest post images under the root, remove the older.
+    """Hold each market's newest post files under the root, remove the older.
 
-    Only ``get_ata_post_root(root)`` is read, ``kept_path`` stays whatever its
-    ``stamp_order``, and an image the host holds open refuses deletion.
+    Only ``get_ata_post_root(root)`` is read and only names ``market_of``
+    reads under ``suffixes``, every file sharing the stem of ``kept_path``
+    stays whatever its ``stamp_order``, and a file the host holds open refuses
+    deletion.
     """
     store = get_ata_post_root(root)
-    written = Path(str(kept_path)).name if kept_path else ""
+    written = Path(str(kept_path)).stem if kept_path else ""
     markets: dict = {}
     for one in store.iterdir():
         if not one.is_file():
             continue
-        market = market_of(one)
+        market = market_of(one, suffixes)
         if market is not None:
-            markets.setdefault(market, []).append(one)
+            markets.setdefault(market + (one.suffix,), []).append(one)
     found = PrunedPostImages()
     for images in markets.values():
         images.sort(key=stamp_order, reverse=True)
@@ -153,13 +197,13 @@ def _prune_market(
     written: str,
     found: PrunedPostImages,
 ) -> PrunedPostImages:
-    """Remove one market's images past ``POST_IMAGES_KEPT_PER_MARKET``."""
+    """Remove one market's files of one suffix past ``POST_IMAGES_KEPT_PER_MARKET``."""
     removed = found.removed
     reclaimed = found.bytes_reclaimed
     kept = found.kept
     refused = found.refused
     for index, one in enumerate(images):
-        if index < POST_IMAGES_KEPT_PER_MARKET or one.name == written:
+        if index < POST_IMAGES_KEPT_PER_MARKET or one.stem == written:
             kept += 1
             continue
         try:
@@ -179,10 +223,14 @@ def _prune_market(
 __all__ = [
     "ATA_POST_ROOT",
     "ATA_POST_ROOT_ENV",
+    "POST_FILE_SUFFIXES",
     "POST_IMAGE_NAME_FIELDS",
     "POST_IMAGE_NAME_FORMAT",
     "POST_IMAGE_SUFFIX",
     "POST_IMAGES_KEPT_PER_MARKET",
+    "POST_INTENT_SUFFIX",
+    "POST_STEM_FORMAT",
+    "POST_TEXT_SUFFIX",
     "PrunedPostImages",
     "get_ata_post_root",
     "market_of",
@@ -190,4 +238,7 @@ __all__ = [
     "post_image_path",
     "prune_post_images",
     "stamp_order",
+    "venue_post_path",
+    "venue_post_root",
+    "venue_post_roots",
 ]

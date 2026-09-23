@@ -50,7 +50,16 @@ STRIP_SCRIPT_ASSETS: tuple[str, ...] = (
     + ("privacy_dot.js", "spendable_profits.js")
 )
 
-STRIP_BODY = f'<div id="{STRIP_ROOT_ID}"></div>'
+#: The page ground. ``page_html`` declares these six chrome colours on the
+#: root from the theme, so the strip carries no colour of its own.
+PAGE_STYLE = (
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "html,body{height:100%;overflow:hidden}"
+    "body{background:var(--bg);color:var(--text)}"
+    f"#{STRIP_ROOT_ID}{{height:100%}}"
+)
+
+STRIP_BODY = "<style>" + PAGE_STYLE + "</style>" + f'<div id="{STRIP_ROOT_ID}"></div>'
 
 #: The JS expression reading the five amounts the browser drew.
 VALUE_TEXTS_JS = (
@@ -89,9 +98,26 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def strip_html(theme: str = "cyberpunk_dark") -> str:
+def strip_html(theme: object = None) -> str:
     """The whole strip page as one string, with no network fetch."""
     return page_html((), STRIP_SCRIPT_ASSETS, STRIP_BODY, theme, (HOST_SCRIPT,))
+
+
+def _as_json(expression: str) -> str:
+    """``expression`` inside ``JSON.stringify``; ``runJavaScript`` hands a JS array to Python as ``''``."""
+    return "JSON.stringify(" + expression + ")"
+
+
+def _parsed(callback: Callable[[Any], None]) -> Callable[[Any], None]:
+    """A receiver handing ``callback`` the ``json.loads`` of a page result, or the result itself when it is not JSON."""
+
+    def receive(result: Any) -> None:
+        try:
+            callback(json.loads(result))
+        except (TypeError, ValueError):
+            callback(result)
+
+    return receive
 
 
 def draw_script(model: dict) -> str:
@@ -202,7 +228,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             """
             if not self._page_ready:
                 return False
-            self._web.page().runJavaScript(VALUE_TEXTS_JS, callback)
+            self._web.page().runJavaScript(_as_json(VALUE_TEXTS_JS), _parsed(callback))
             return True
 
         def glyphs(self, callback: Callable[[Any], None]) -> bool:
@@ -212,7 +238,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             """
             if not self._page_ready:
                 return False
-            self._web.page().runJavaScript(DOT_GLYPHS_JS, callback)
+            self._web.page().runJavaScript(_as_json(DOT_GLYPHS_JS), _parsed(callback))
             return True
 
         def _push(self) -> None:

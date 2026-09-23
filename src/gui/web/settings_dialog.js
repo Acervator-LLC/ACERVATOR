@@ -1,4 +1,5 @@
-// The settings_dialog.state payload draws this dialog and its eleven tabs.
+// The settings_dialog.state payload draws this dialog. Its tabs list names
+// every page, so no tab name is written here.
 (function (global) {
   "use strict";
   var METHOD = "settings_dialog.state";
@@ -25,7 +26,6 @@
   var METHOD_FIELD = "method";
   var MINIMUM_SIZE = "minimum_size";
   var PAINTED = "painted";
-  var PHANTOM_TIMEFRAMES = "phantom_timeframes";
   var PRINTS = "prints";
   var PROCESSED_EVENTS = "processed_events";
   var REJECTED = "rejected";
@@ -69,7 +69,6 @@
     MESSAGE_BOXES,
     MINIMUM_SIZE,
     PAINTED,
-    PHANTOM_TIMEFRAMES,
     PRINTS,
     PROCESSED_EVENTS,
     REJECTED,
@@ -123,7 +122,6 @@
     LISTED_EXCHANGES,
     MESSAGE_BOXES,
     MINIMUM_SIZE,
-    PHANTOM_TIMEFRAMES,
     PRINTS,
     PROCESSED_EVENTS,
     ROWS,
@@ -143,7 +141,6 @@
   var NAME = "name";
   var KIND = "kind";
   var TAB = "tab";
-  var GROUP_KEY = "group";
   var LABEL_KEY = "label";
   var TEXT_KEY = "text";
   var ITEMS = "items";
@@ -216,7 +213,6 @@
   var STRETCH_ROLE = "stretch";
   var BANNER_ROLE = "banner";
   var TA_ROWS_ROLE = "ta_rows";
-  var TF_ROW_ROLE = "tf_row";
   var SOUND_ROW_ROLE = "sound_row";
   var ADD_GROUP_ROLE = "add_group";
 
@@ -224,7 +220,6 @@
   var COMBO_TEXT_KIND = "combo_text";
   var COMBO_DATA_KIND = "combo_data";
   var CHECK_KIND = "check";
-  var RADIO_KIND = "radio";
   var SPIN_KIND = "spin";
   var DOUBLE_SPIN_KIND = "double_spin";
   var SLIDER_KIND = "slider";
@@ -277,7 +272,6 @@
   var PASSWORD_TYPE = "password";
   var NUMBER_TYPE = "number";
   var CHECKBOX_TYPE = "checkbox";
-  var RADIO_TYPE = "radio";
   var RANGE_TYPE = "range";
 
   var DIALOG_PART = "settings-dialog";
@@ -311,9 +305,6 @@
   var TA_LABEL_PART = "ta-label";
   var TA_SLIDER_PART = "ta-slider";
   var TA_VALUE_PART = "ta-value";
-  var TF_ROW_PART = "tf-row";
-  var TF_CHECK_PART = "tf-check";
-  var TF_BOX_PART = "tf-box";
   var SOUND_ROW_PART = "sound-row";
   var SOUND_BUTTON_PART = "sound-button";
   var FOOTER_PART = "footer";
@@ -381,6 +372,12 @@
   var STEP = Number(true);
   var SECOND = STEP + STEP;
   var THIRD = SECOND + STEP;
+
+  // A ta_rows row carries a label, a position, a figure and its slider's name.
+  var TA_ROW_WIDTH = THIRD + STEP;
+
+  // Every drawn control and TA slider carries both, so one selector reaches all.
+  var DRAWN_SELECT = SELECT_OPEN + NAME_ATTR + "]" + SELECT_OPEN + KIND_ATTR + "]";
 
   var held = null;
   var dialogFaults = [];
@@ -662,31 +659,13 @@
     return listField(model(), TA_ROWS_FIELD);
   }
 
+  // name is the slider's control name, the key the engine weights, the same
+  // column TaRows draws into the row's NAME_ATTR.
   function taRowNamed(name) {
     var found;
     taRows().forEach(function (row) {
-      if (Array.isArray(row) && String(at(row, ZERO)) === String(name)) {
+      if (Array.isArray(row) && String(at(row, THIRD)) === String(name)) {
         found = row;
-      }
-    });
-    return found;
-  }
-
-  function phantomTimeframes() {
-    return listField(model(), PHANTOM_TIMEFRAMES);
-  }
-
-  function timeframeNames() {
-    return phantomTimeframes().map(function (row) {
-      return text(at(row, ZERO));
-    });
-  }
-
-  function timeframeTicked(name) {
-    var found;
-    phantomTimeframes().forEach(function (row) {
-      if (Array.isArray(row) && String(at(row, ZERO)) === String(name)) {
-        found = at(row, STEP);
       }
     });
     return found;
@@ -1095,13 +1074,8 @@
   }
 
   function checkPaired(found) {
-    listField(found, PHANTOM_TIMEFRAMES).forEach(function (row, index) {
-      if (!Array.isArray(row) || row.length !== SECOND) {
-        note(AT + String(index), PHANTOM_TIMEFRAMES, SHORT_LIST_FAULT, kindOf(row));
-      }
-    });
     listField(found, TA_ROWS_FIELD).forEach(function (row, index) {
-      if (!Array.isArray(row) || row.length !== THIRD) {
+      if (!Array.isArray(row) || row.length !== TA_ROW_WIDTH) {
         note(AT + String(index), TA_ROWS_FIELD, SHORT_LIST_FAULT, kindOf(row));
       }
     });
@@ -1321,9 +1295,6 @@
     if (kind === CHECK_KIND) {
       return CHECKBOX_TYPE;
     }
-    if (kind === RADIO_KIND) {
-      return RADIO_TYPE;
-    }
     if (kind === SLIDER_KIND) {
       return RANGE_TYPE;
     }
@@ -1445,13 +1416,9 @@
       return element(TEXTAREA_TAG, one);
     }
     one.type = inputType(spec);
-    if (kind === CHECK_KIND || kind === RADIO_KIND) {
+    if (kind === CHECK_KIND) {
       one.defaultChecked = seeded === true;
       one[TICKED_ATTR] = text(seeded);
-      // A shared name is what makes one group box hold one ticked radio.
-      if (kind === RADIO_KIND) {
-        one.name = text(spec[GROUP_KEY]);
-      }
       return element(INPUT_TAG, one);
     }
     one.defaultValue = text(seeded);
@@ -1529,8 +1496,11 @@
           display: FLEX,
           flexDirection: ROW_DIRECTION
         });
+        var sliderName = at(row, THIRD);
         rowProps.key = String(index);
-        rowProps[NAME_ATTR] = text(at(row, ZERO));
+        // ControlRow and FormRow name a row by its control, and taRowNamed
+        // matches this attribute, not the printed label at index ZERO.
+        rowProps[NAME_ATTR] = text(sliderName);
         rowProps[INDEX_ATTR] = text(at(row, STEP));
         var labelProps = partProps(TA_LABEL_PART);
         labelProps[KEY_ATTR] = text(at(row, ZERO));
@@ -1538,6 +1508,16 @@
         sliderProps.type = RANGE_TYPE;
         sliderProps.defaultValue = text(at(row, STEP));
         sliderProps[INDEX_ATTR] = text(at(row, STEP));
+        // The host's change listener reports a node only once it carries both,
+        // so these two are what carry a dragged weight back to the dialog.
+        var sliderSpec = specFor(sliderName);
+        var sliderRange = isPlainObject(sliderSpec) ? sliderSpec[RANGE] : undefined;
+        sliderProps[NAME_ATTR] = text(sliderName);
+        sliderProps[KIND_ATTR] = SLIDER_KIND;
+        if (Array.isArray(sliderRange)) {
+          sliderProps.min = text(at(sliderRange, ZERO));
+          sliderProps.max = text(at(sliderRange, STEP));
+        }
         var valueProps = partProps(TA_VALUE_PART);
         valueProps[KEY_ATTR] = text(at(row, ZERO));
         return element(
@@ -1546,34 +1526,6 @@
           element(SPAN_TAG, labelProps, text(at(row, ZERO))),
           element(INPUT_TAG, sliderProps),
           element(SPAN_TAG, valueProps, text(at(row, SECOND)))
-        );
-      })
-    );
-  }
-
-  function TimeframeRow() {
-    var rowProps = partProps(TF_ROW_PART, {
-      display: FLEX,
-      flexDirection: ROW_DIRECTION
-    });
-    rowProps[COUNT_ATTR] = text(phantomTimeframes().length);
-    return element(
-      DIV_TAG,
-      rowProps,
-      phantomTimeframes().map(function (row, index) {
-        var one = partProps(TF_CHECK_PART);
-        one.key = String(index);
-        one[NAME_ATTR] = text(at(row, ZERO));
-        one[TICKED_ATTR] = text(at(row, STEP));
-        var boxProps = partProps(TF_BOX_PART);
-        boxProps.type = CHECKBOX_TYPE;
-        boxProps.defaultChecked = at(row, STEP) === true;
-        boxProps[NAME_ATTR] = text(at(row, ZERO));
-        return element(
-          SPAN_TAG,
-          one,
-          element(INPUT_TAG, boxProps),
-          text(at(row, ZERO))
         );
       })
     );
@@ -1662,9 +1614,6 @@
     }
     if (role === TA_ROWS_ROLE) {
       return element(TaRows, null);
-    }
-    if (role === TF_ROW_ROLE) {
-      return element(TimeframeRow, null);
     }
     if (role === SOUND_ROW_ROLE) {
       return element(SoundRow, null);
@@ -2044,12 +1993,53 @@
     return found;
   }
 
+  function writeSeeded(node, kind, seeded) {
+    if (kind === CHECK_KIND) {
+      var ticked = seeded === true;
+      if (node.checked !== ticked) {
+        node.checked = ticked;
+      }
+      return;
+    }
+    if (kind === COMBO_TEXT_KIND || kind === COMBO_DATA_KIND) {
+      var chosen = Number(seeded);
+      if (isFiniteNumber(chosen) && node.selectedIndex !== chosen) {
+        node.selectedIndex = chosen;
+      }
+      return;
+    }
+    var printed = seeded === undefined || seeded === null ? EMPTY : String(seeded);
+    if (node.value !== printed) {
+      node.value = printed;
+    }
+  }
+
+  // A drawn control takes a seeded value once, so each draw writes the model
+  // into every control but the focused one, which holds a half-typed value.
+  function syncDrawn(target) {
+    if (held === null || typeof target.querySelectorAll !== FUNCTION_KIND) {
+      return;
+    }
+    var owner = target.ownerDocument;
+    var typing = owner ? owner.activeElement : null;
+    Array.prototype.slice
+      .call(target.querySelectorAll(DRAWN_SELECT))
+      .forEach(function (node) {
+        var kind = node.getAttribute(KIND_ATTR);
+        if (node === typing || kind === LIST_KIND) {
+          return;
+        }
+        writeSeeded(node, kind, valueOf(node.getAttribute(NAME_ATTR)));
+      });
+  }
+
   // flushSync makes the document current before draw returns.
   function draw(target, node) {
     var root = rootFor(target);
     global.ReactDOM.flushSync(function () {
       root.render(node);
     });
+    syncDrawn(target);
     return target;
   }
 
@@ -2132,8 +2122,6 @@
     textRowNames: textRowNames,
     taRows: taRows,
     taRowNamed: taRowNamed,
-    timeframeNames: timeframeNames,
-    timeframeTicked: timeframeTicked,
     soundButtons: soundButtons,
     soundButtonNamed: soundButtonNamed,
     exchangeItems: exchangeItems,

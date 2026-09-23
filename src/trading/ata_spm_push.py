@@ -1,31 +1,60 @@
 """ata_spm_push.py -- the ATA-SPM run, phases four to seven.
 
 ``format_post`` writes one ``FormattedPost`` per ``PushTarget`` from the
-``ata_spm.ChartPull`` phase three produced, and ``fit_to_target`` holds each
-body under the ``body_limit`` that target publishes. ``distribute`` hands
-those to a host-supplied sender and answers one ``DeliveryRecord`` each.
+``ata_spm.ChartPull`` phase three produced, naming the venue folder files
+``ata_venue_folders`` wrote for it, and ``fit_to_target`` holds each body
+under the ``body_limit`` that target publishes. ``hand_off`` takes one post
+by the route its target allows: ``deliver_one`` through a host-supplied
+sender where the venue is signed in, the venue folder for the rest, and
+``TARGET_X``'s intent file; each answers one ``DeliveryRecord``.
 ``ReadyToSend`` is the bucket the operator approves from, and
 ``FollowUpWatch`` is phase seven.
 """
 
 from __future__ import annotations
 
+import json
+import math
 import logging
 import re
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
-from . import ata_spm
+from ..core.signal_contract import emit as _pin_emit
+from . import ata_post_paths, ata_spm
 
 logger = logging.getLogger("acervator.ata_spm_push")
 
-#: Ships on every artefact ``FormattedPost`` composes. No caller supplies it
-#: and no caller can remove it.
+#: The pin ``PushBoard.load_run`` writes once per bucket entry, through ``_pin_emit``.
+CANDIDATE_PIN = "inspector.ata.candidate"
+
+#: The pin ``hand_off`` writes once per post a press took, through ``_pin_emit``.
+HANDOFF_PIN = "inspector.ata.handoff"
+
+#: The pin ``PushBoard.take_outcome`` writes once per confirmation read, through ``_pin_emit``.
+FOLLOW_UP_READ_PIN = "inspector.ata.follow_up_read"
+
+#: ``DeliveryRecord.route``: the sender the venue's API takes the post through.
+ROUTE_API = "api"
+
+#: ``DeliveryRecord.route``: the venue folder the operator posts from by hand.
+ROUTE_FOLDER = "folder"
+
+#: ``DeliveryRecord.route``: the ``.url`` intent the OS opens the compose window from.
+ROUTE_INTENT = "intent"
+
+#: The header a ``PushTarget`` row carries unless the row names its own.
 FIXED_HEADER = (
     "This is not investment advice. It is a demonstration of Ekthelius's "
     "proprietary TA engine housed in the Acervator governance execution "
     "platform."
 )
+
+#: The header ``TARGET_X``'s row carries in place of ``FIXED_HEADER``.
+X_HEADER = "Not investment advice. Acervator TA engine demonstration."
 
 #: Ships under the lines on every artefact ``compose`` writes. ``fit_to_target``
 #: drops evidence lines to reach a ceiling and never this.
@@ -38,6 +67,14 @@ TARGET_TIKTOK = "TikTok"
 TARGET_FACEBOOK = "Facebook"
 TARGET_THREADS = "Threads"
 TARGET_REDDIT = "Reddit"
+TARGET_DISCORD = "Discord"
+TARGET_TELEGRAM = "Telegram"
+TARGET_WHATSAPP = "WhatsApp"
+
+#: The typed fields ``ata_spm_send`` reads for the two venues it posts through.
+DISCORD_WEBHOOK_FIELD = "discord-webhook-url"
+TELEGRAM_BOT_FIELD = "telegram-bot-token"
+TELEGRAM_CHAT_FIELD = "telegram-chat-id"
 
 SECTION_CALL = "call"
 SECTION_CHART = "chart"
@@ -52,7 +89,7 @@ ARTEFACT_TITLE = "title"
 #: The PNG ``ata_spm.render_pull_image`` drew, which ``caption`` captions.
 ARTEFACT_IMAGE = "image"
 
-#: The three artefacts every post carries, each composed with ``FIXED_HEADER``.
+#: The three artefacts every post carries, each composed with the row's header.
 ARTEFACT_KEYS = (ARTEFACT_BODY, ARTEFACT_CAPTION, ARTEFACT_THREAD_ROOT)
 
 #: The unit each push target counts its text in, from the audit page.
@@ -119,6 +156,54 @@ OUTCOME_OPEN = "open"
 #: this many candles in a row. The floor is the definition, not a setting.
 CONTINUATION_CANDLE_FLOOR = 3
 
+#: The seconds one candle of each timeframe key the scan reads covers;
+#: ``MONTH_TIMEFRAME`` steps one calendar month in ``candle_close_ts``.
+TIMEFRAME_SECONDS = {"5m": 300, "1h": 3600, "1d": 86400, "1w": 604800}
+MONTH_TIMEFRAME = "1M"
+FIRST_MONTH = 1
+LAST_MONTH = 12
+FIRST_DAY = 1
+
+#: A ``FollowUpCall`` carrying this ``at_ts`` is anchored by its bar index.
+NO_READ_TS = 0.0
+
+#: A venue that has not published the candle a timer waited for is read again
+#: after ``FOLLOW_UP_RETRY_S``, at most ``FOLLOW_UP_RETRY_CAP`` times.
+FOLLOW_UP_RETRY_S = 60.0
+FOLLOW_UP_RETRY_CAP = 5
+NO_RETRIES = 0
+NO_READS = 0
+
+READ_TIME_FORMAT = "%Y-%m-%d %H:%M UTC"
+FOLLOW_UP_STATUS_OPEN_FORMAT = "open · next read {when}"
+FOLLOW_UP_STATUS_SETTLED_FORMAT = "{state} · close {close:g}"
+FOLLOW_UP_TIMER_LINE_FORMAT = (
+    "ATA-SPM confirmation timer for {symbol} {label}: next read {when}"
+)
+FOLLOW_UP_READ_OPEN_LINE_FORMAT = (
+    "ATA-SPM confirmation read for {symbol} {label}: {state}, next read {when}"
+)
+FOLLOW_UP_READ_SETTLED_LINE_FORMAT = (
+    "ATA-SPM confirmation read for {symbol} {label}: {state}, close {close:g}"
+)
+FOLLOW_UP_STOPPED_LINE_FORMAT = (
+    "ATA-SPM confirmation timer for {symbol} {label} stopped: {reason}"
+)
+TIMER_STOPPED_LEFT_BUCKET = "the entry left the bucket"
+
+#: One watched call's tile: the market and its timeframe on the first line,
+#: the seconds to its next read counted down on the second, ``reading`` while
+#: the read runs, and ``FOLLOW_UP_STATUS_SETTLED_FORMAT`` once it settles.
+TIMER_PAIR_FORMAT = "{symbol} {label}"
+TIMER_COUNTDOWN_FORMAT = "{hours:02d}:{minutes:02d}:{seconds:02d}"
+TIMER_COUNTDOWN_DAYS_FORMAT = "{days}d {hours:02d}:{minutes:02d}:{seconds:02d}"
+TIMER_READING_TEXT = "reading"
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 3600
+SECONDS_PER_DAY = 86400
+NO_SECONDS_LEFT = 0
+NO_WAIT_S = 0.0
+
 #: A confirmation share of zero confirms nothing. The operator sets one on
 #: the settings page before any call can confirm.
 NO_SHARE_SET = 0
@@ -152,6 +237,10 @@ FOLLOW_UP_NO_SHARE_FORMAT = (
     "{candles} candle(s) since the call, last close {close:g}. "
     "Confirmation share is unset, so nothing confirms"
 )
+FOLLOW_UP_MIDLINE_BEHIND_FORMAT = (
+    "{candles} candle(s) since the call, last close {close:g}; the midline "
+    "{midline:g} lies behind a {direction} call, so no target yet"
+)
 FOLLOW_UP_NO_CANDLE_TEXT = "no candle has closed since the call"
 
 POST_HEADLINE_FORMAT = "{symbol} {label} · {vote}"
@@ -163,18 +252,38 @@ CALL_SECTION_FORMAT = "{symbol} on {label}: {direction} reversal called."
 
 
 @dataclass(frozen=True)
-class PushTarget:
-    """One push target, its evidence sections in order, and its text ceilings.
+class CredentialField:
+    """One value a push target's sign-in needs, its part name and its empty wording."""
 
-    ``body_limit``, ``title_limit`` and ``count_unit`` are the numbers the
-    platform publishes, and ``NO_LIMIT_PUBLISHED`` marks one that publishes none.
+    key: str
+    label: str
+
+
+@dataclass(frozen=True)
+class PushTarget:
+    """One push target, its image size, its header, its sections, its text
+    ceilings and its sign-in.
+
+    ``image_width_px`` and ``image_height_px`` are the single-image size the
+    venue publishes, ``fields`` is what the operator types and the Level 1A
+    page draws a box for, and ``issued`` is what the venue's own flow hands
+    back with no page drawing one of those.
     """
 
     name: str
+    image_width_px: int
+    image_height_px: int
     sections: tuple = ()
     body_limit: int = NO_LIMIT_PUBLISHED
     title_limit: int = NO_TITLE_FIELD
     count_unit: str = COUNT_CHARACTERS
+    header: str = FIXED_HEADER
+    fields: tuple = ()
+    issued: tuple = ()
+    endpoint: str = ""
+    scopes: tuple = ()
+    registration: str = ""
+    prerequisite: str = ""
 
 
 #: A target is added by naming a row here; ``format_post``, ``distribute``
@@ -182,42 +291,251 @@ class PushTarget:
 PUSH_TARGETS = (
     PushTarget(
         TARGET_X,
-        (SECTION_CALL, SECTION_INDICATORS),
+        image_width_px=1200,
+        image_height_px=675,
+        sections=(SECTION_CALL, SECTION_INDICATORS),
         body_limit=280,
         count_unit=COUNT_WEIGHTED,
+        header=X_HEADER,
+        fields=(
+            CredentialField("x-client-id", "Client ID"),
+            CredentialField("x-client-secret", "Client secret"),
+        ),
+        issued=(
+            CredentialField("x-access-token", "Access token"),
+            CredentialField("x-refresh-token", "Refresh token"),
+        ),
+        endpoint="https://api.x.com/2/tweets",
+        scopes=(
+            "tweet.write",
+            "tweet.read",
+            "users.read",
+            "media.write",
+            "offline.access",
+        ),
+        registration="An X developer app with OAuth 2.0 user authentication "
+        "and a loopback callback address. Register the app at "
+        "https://console.x.com.",
+        prerequisite="X ended its free tier on 6 February 2026 and now bills "
+        "per post, about $0.015 for a post and about $0.20 where the post "
+        "carries a link. The app needs a paid usage plan before it can post.",
     ),
     PushTarget(
         TARGET_INSTAGRAM,
-        (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
+        image_width_px=1080,
+        image_height_px=1350,
+        sections=(SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=2200,
+        fields=(
+            CredentialField("instagram-client-id", "App ID"),
+            CredentialField("instagram-client-secret", "App secret"),
+        ),
+        issued=(
+            CredentialField("instagram-user-id", "Instagram user id"),
+            CredentialField("instagram-access-token", "Access token"),
+        ),
+        endpoint="POST /<IG_ID>/media then /<IG_ID>/media_publish",
+        scopes=("instagram_business_basic", "instagram_business_content_publish"),
+        registration="A Meta app with Instagram Login, and an Instagram "
+        "professional account. Register the app at "
+        "developers.facebook.com/apps/creation/. Meta publishes no Business "
+        "use case, so pick the Other use case, then the Business app type. "
+        "Add the Instagram product. Open API setup with Instagram Login in "
+        "the left menu: the App ID and App secret boxes above take the "
+        "Instagram app ID and Instagram app secret printed on that panel, "
+        "which are not the App ID and App secret on App settings then Basic. "
+        "Add your account under Generate access tokens, then enter the "
+        "redirect address under Business login settings, which is not in the "
+        "main OAuth settings. This route needs no Facebook Page.",
+        prerequisite="No App Review. Meta grants Standard Access to every "
+        "permission automatically, and it covers any account holding a role "
+        "on the app, so give your account a role on it. Page Publishing "
+        "Authorization must be complete, and publishing is capped at 100 "
+        "posts in a rolling 24 hours, 50 where the post is a carousel.",
     ),
     PushTarget(
         TARGET_LINKEDIN,
-        (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS),
+        image_width_px=1200,
+        image_height_px=627,
+        sections=(SECTION_CALL, SECTION_CHART, SECTION_INDICATORS),
         body_limit=3000,
+        fields=(
+            CredentialField("linkedin-client-id", "Client ID"),
+            CredentialField("linkedin-version", "Linkedin-Version (YYYYMM)"),
+        ),
+        issued=(CredentialField("linkedin-access-token", "Access token"),),
+        endpoint="https://api.linkedin.com/rest/posts",
+        scopes=("w_member_social",),
+        registration="A LinkedIn developer app carrying the Community "
+        "Management API, with a loopback redirect address. Register the app "
+        "at www.linkedin.com/developers/apps, then press Create app.",
+        prerequisite="LinkedIn is the one venue that may refuse outright. The "
+        "Community Management API needs a registered company, a verified Page "
+        "and a two-tier review carrying a screencast. LinkedIn must also "
+        "switch its native PKCE flow on for the app by hand. Until both are "
+        "granted, Connect reaches LinkedIn and LinkedIn turns it away.",
     ),
     PushTarget(
         TARGET_TIKTOK,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        image_width_px=1080,
+        image_height_px=1920,
+        sections=(SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=4000,
         title_limit=90,
         count_unit=COUNT_UTF16_RUNES,
+        fields=(
+            CredentialField("tiktok-client-key", "Client key"),
+            CredentialField("tiktok-client-secret", "Client secret"),
+            CredentialField("tiktok-url-prefix", "Verified URL prefix"),
+        ),
+        issued=(
+            CredentialField("tiktok-open-id", "Open id"),
+            CredentialField("tiktok-access-token", "Access token"),
+            CredentialField("tiktok-refresh-token", "Refresh token"),
+        ),
+        endpoint="POST /v2/post/publish/content/init/",
+        scopes=("user.info.basic", "video.publish"),
+        registration="A TikTok developer app with Content Posting and Direct "
+        "Post switched on, and a verified address prefix. Register the app at "
+        "developers.tiktok.com/apps.",
+        prerequisite="The app will be unaudited, and TikTok restricts every "
+        "post an unaudited client makes to private viewing, which means only "
+        "you see it. TikTok also caps an unaudited client at 5 posting "
+        "accounts in 24 hours and requires the account to be private at the "
+        "time of posting. TikTok's audit of the API client is what lifts "
+        "that; video.publish posts to the profile and video.upload would "
+        "instead leave the post in your drafts.",
     ),
     PushTarget(
         TARGET_FACEBOOK,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        image_width_px=1200,
+        image_height_px=630,
+        sections=(SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        fields=(
+            CredentialField("facebook-app-id", "App ID"),
+            CredentialField("facebook-app-secret", "App secret"),
+        ),
+        issued=(
+            CredentialField("facebook-page-id", "Page id"),
+            CredentialField("facebook-page-token", "Page access token"),
+        ),
+        endpoint="POST /<page_id>/feed and /<page_id>/photos",
+        scopes=(
+            "pages_manage_posts",
+            "pages_manage_metadata",
+            "pages_read_engagement",
+            "pages_show_list",
+        ),
+        registration="A Meta app with the Pages API, and a Page you "
+        "administer. Register the app at "
+        "developers.facebook.com/apps/creation/, and pick the use case "
+        "Manage everything on your Page.",
+        prerequisite="No App Review. Meta grants Standard Access to every "
+        "permission automatically, and it covers any account holding a role "
+        "on the app, so give your account a role on it.",
     ),
     PushTarget(
         TARGET_THREADS,
-        (SECTION_CALL, SECTION_INDICATORS),
+        image_width_px=1080,
+        image_height_px=1350,
+        sections=(SECTION_CALL, SECTION_INDICATORS),
         body_limit=500,
         count_unit=COUNT_UTF8_EMOJI,
+        fields=(
+            CredentialField("threads-client-id", "App ID"),
+            CredentialField("threads-client-secret", "App secret"),
+        ),
+        issued=(
+            CredentialField("threads-user-id", "Threads user id"),
+            CredentialField("threads-access-token", "Access token"),
+        ),
+        endpoint="POST /<threads-user-id>/threads then /threads_publish",
+        scopes=("threads_basic", "threads_content_publish"),
+        registration="A Meta app with the Threads API, on a Threads profile. "
+        "Register the app at developers.facebook.com/apps/creation/, and pick "
+        "the use case Access the Threads API.",
+        prerequisite="No App Review. Meta grants Standard Access to every "
+        "permission automatically, and it covers any account holding a role "
+        "on the app, so give your account a role on it.",
     ),
     PushTarget(
         TARGET_REDDIT,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        image_width_px=1200,
+        image_height_px=628,
+        sections=(SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
         body_limit=40000,
         title_limit=300,
+        fields=(
+            CredentialField("reddit-app-id", "App ID"),
+            CredentialField("reddit-app-secret", "App secret"),
+            CredentialField("reddit-subreddit", "Subreddit"),
+            CredentialField("reddit-user-agent", "User agent"),
+        ),
+        issued=(
+            CredentialField("reddit-access-token", "Access token"),
+            CredentialField("reddit-refresh-token", "Refresh token"),
+        ),
+        endpoint="https://www.reddit.com/api/v1/access_token then /api/submit",
+        scopes=("identity", "submit"),
+        registration="A Reddit app at www.reddit.com/prefs/apps carrying a "
+        "loopback redirect address, and a target subreddit.",
+        prerequisite="No review and no fee. Reddit requires the User-Agent to "
+        "read <platform>:<app ID>:<version> (by /u/<username>), and rate "
+        "limits a generic one hard.",
+    ),
+    PushTarget(
+        TARGET_DISCORD,
+        image_width_px=1200,
+        image_height_px=675,
+        sections=(SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
+        body_limit=2000,
+        fields=(CredentialField(DISCORD_WEBHOOK_FIELD, "Webhook URL"),),
+        endpoint="POST https://discord.com/api/webhooks/<id>/<token>?wait=true",
+        registration="A channel's incoming webhook, no developer app and no "
+        "sign-in. In Discord open the channel's settings, then Integrations, "
+        "then Webhooks, press New Webhook and Copy Webhook URL. Paste it in "
+        "the box above; it is held once you leave the box.",
+        prerequisite="The Manage Webhooks permission on that channel. Discord "
+        "holds a message to 2,000 characters and a file to 20 MiB by "
+        "default; the post's text and its picture go in one request, and "
+        "Discord answers the message it created.",
+    ),
+    PushTarget(
+        TARGET_TELEGRAM,
+        image_width_px=1280,
+        image_height_px=720,
+        sections=(SECTION_CALL, SECTION_INDICATORS),
+        body_limit=1024,
+        fields=(
+            CredentialField(TELEGRAM_BOT_FIELD, "Bot token"),
+            CredentialField(TELEGRAM_CHAT_FIELD, "Chat id"),
+        ),
+        endpoint="POST https://api.telegram.org/bot<token>/sendPhoto",
+        registration="A bot from @BotFather (/newbot prints its token), added "
+        "to the channel or group as a member that can post. The chat id is "
+        "the channel's @username, or the numeric id a bot such as @userinfobot "
+        "prints for a group. Both are held once you leave the box.",
+        prerequisite="No review and no fee. Telegram holds a photo caption to "
+        "1,024 characters, so the post carries the call and the indicator "
+        "lines; a photo up to 10 MB, width plus height at most 10,000 px, the "
+        "ratio at most 20.",
+    ),
+    PushTarget(
+        TARGET_WHATSAPP,
+        image_width_px=1200,
+        image_height_px=675,
+        sections=(SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
+        body_limit=65536,
+        endpoint="Click-to-Chat: the .url file in the venue folder opens "
+        "WhatsApp with the message typed",
+        registration="Nothing. Post Selected opens the Click-to-Chat address "
+        "in the folder; WhatsApp opens with the message typed, you pick the "
+        "chat and attach the picture from the same folder.",
+        prerequisite="WhatsApp's Cloud API sends from a Meta business number "
+        "to individual numbers, or to groups of at most eight that the "
+        "business itself creates under an Official Business Account; it "
+        "posts to no group or community you are a member of, so no API "
+        "route is offered. A text holds 65,536 characters.",
     ),
 )
 
@@ -256,26 +574,152 @@ NO_DESTINATION_TEXT = ""
 
 DELIVERY_SENT_FORMAT = "{target} · {symbol} {label} · sent to {destination}"
 DELIVERY_FAILED_FORMAT = "{target} · {symbol} {label} · not sent · {detail}"
+DELIVERY_FOLDER_FORMAT = "{target} · {symbol} {label} · in folder {destination}"
+DELIVERY_INTENT_FORMAT = (
+    "{target} · {symbol} {label} · compose address opened · {destination}"
+)
+DELIVERY_INTENT_READY_FORMAT = (
+    "{target} · {symbol} {label} · compose address ready · {destination}"
+)
+#: ``DeliveryRecord.status``, the words ``BucketPost.meta`` carries after a press.
+STATUS_SENT_FORMAT = "sent · {destination}"
+STATUS_NOT_SENT_FORMAT = "not sent · {detail}"
+STATUS_IN_FOLDER_TEXT = "in folder"
+STATUS_INTENT_OPENED_TEXT = "intent handed to the OS"
+STATUS_INTENT_READY_TEXT = "intent ready"
+NO_FOLDER_FILE_TEXT = "No folder file was written for {target}."
+PRESS_LINE_FORMAT = "ATA-SPM hand-off: {line}"
+NOTHING_APPROVED_TEXT = (
+    "ATA-SPM Post All: no post is approved. Approve one, then press again."
+)
+FULL_AUTO_TOGGLED_FORMAT = "ATA-SPM Send Bucket Full Auto: {state}."
+
+#: The three presses ``PushBoard.press_lines`` writes lines for.
+PRESS_POST_SELECTED = "post_selected"
+PRESS_POST_ALL = "post_all"
+PRESS_FULL_AUTO = "full_auto"
+HANDOFF_LOG = "ATA-SPM hand-off %s"
+OPEN_FAILED_LOG = "ATA-SPM could not open %s: %s"
 
 BUCKET_EMPTY_TEXT = "No post formatted. Scan a sector first."
 BUCKET_HOLDS_FORMAT = (
     "{total} post(s) · {approved} approved · {declined} declined · {waiting} waiting"
 )
 BUCKET_META_FORMAT = "{target} · {state}"
+#: ``BucketPost.meta`` while phase seven's timer has written its status.
+BUCKET_META_FOLLOW_UP_FORMAT = "{target} · {state} · {follow_up}"
+#: ``BucketPost.meta`` once a press has written ``DeliveryRecord.status``.
+BUCKET_META_DELIVERY_FORMAT = "{meta} · {delivery}"
 FULL_AUTO_ON_TEXT = "Full Auto on"
 FULL_AUTO_OFF_TEXT = "Full Auto off"
 
-#: The two values ``CredentialVault.store`` takes for one push target, in the
-#: order ``save_credentials`` reads them.
-CREDENTIAL_FIELD_KEYS = ("credential-key", "credential-signature")
+#: Every ``CredentialField`` key across ``PUSH_TARGETS``, which is what a page
+#: reports back as the part one credential box was typed into.
+CREDENTIAL_FIELD_KEYS = tuple(
+    one.key for target in PUSH_TARGETS for one in target.fields
+)
+
+#: ``CredentialVault.store`` keys one entry per push target and field, so a
+#: target holding five values holds five entries.
+VAULT_KEY_FORMAT = "{target}:{field}"
 
 CREDENTIAL_HELD_TEXT = "held"
 CREDENTIAL_MISSING_TEXT = "not held"
+#: ``credential_row`` for a target whose row names no field, such as ``TARGET_WHATSAPP``.
+CREDENTIAL_NONE_NEEDED_TEXT = "none needed"
 NO_VAULT_TEXT = "Credential vault not wired."
+
+#: What ``held_value`` answers for a field the vault holds nothing for.
+NO_CREDENTIAL_VALUE = ""
+
+#: ``CredentialVault.retrieve`` answers a key, a secret and a phrase.
+#: ``hold_credential`` writes one field into the first of the three.
+VAULT_VALUE_AT = 0
+
+CONNECT_OK_FORMAT = "{target} accepted the credential."
+CONNECT_FAILED_FORMAT = "{target} refused the sign-in: {error}"
+MISSING_FIELD_FORMAT = "{label} is empty."
+NO_CONNECTOR_FORMAT = "No sign-in route wired for {target}."
+#: ``sign_in_answer`` for a target whose row names no field to type or issue.
+NO_SIGN_IN_NEEDED_FORMAT = (
+    "{target} needs no sign-in. Its post goes through the venue folder and the "
+    "compose address."
+)
+
+#: Reads inside ``CONNECT_FAILED_FORMAT`` where a venue completed its flow and
+#: still handed back nothing for one of its ``PushTarget.issued`` fields.
+NO_ISSUED_FORMAT = "it issued no {label}"
 
 SEND_FAILED_LOG = "ATA-SPM send failed on %s %s: %s"
 VAULT_READ_FAILED_LOG = "ATA-SPM credential read failed on %s: %s"
 VAULT_STORE_FAILED_LOG = "ATA-SPM credential store failed on %s: %s"
+CONNECT_FAILED_LOG = "ATA-SPM sign-in failed on %s: %s"
+SETTINGS_READ_FAILED_LOG = "ATA-SPM settings read failed on %s: %s"
+SETTINGS_WRITE_FAILED_LOG = "ATA-SPM settings write failed on %s: %s"
+
+#: ``AtaSpmSettings`` writes ``PERSISTED_SETTINGS`` to this file, a sibling
+#: of the fleet state under the same directory, and reads it back on build.
+STATE_DIR_NAME = ".acervator"
+ATA_SPM_SETTINGS_NAME = "ata_spm_settings.json"
+PERSISTED_SETTINGS = ("hits_per_scan", "confirmation_share_pct")
+
+#: Every ``connect`` outcome, accepted or not. ``CONNECT_FAILED_LOG`` covers only
+#: the branch a connector raises on, and four other branches raise nothing.
+CONNECT_RESULT_LOG = "ATA-SPM sign-in on %s: accepted=%s, %s"
+
+
+@dataclass
+class ConnectResult:
+    """One Level 1A press: the push target, whether it accepted, and its wording."""
+
+    target: str = ""
+    ok: bool = False
+    detail: str = ""
+
+
+def push_target(target: Any) -> Optional[PushTarget]:
+    """The ``PushTarget`` row one name carries, or None for a name outside it."""
+    for one in PUSH_TARGETS:
+        if one.name == str(target):
+            return one
+    return None
+
+
+def credential_fields(target: Any) -> tuple:
+    """Every ``CredentialField`` the operator types for one push target, in page order."""
+    found = push_target(target)
+    return () if found is None else tuple(found.fields)
+
+
+def issued_fields(target: Any) -> tuple:
+    """Every ``CredentialField`` one push target's own sign-in flow hands back."""
+    found = push_target(target)
+    return () if found is None else tuple(found.issued)
+
+
+def stored_fields(target: Any) -> tuple:
+    """``credential_fields`` and ``issued_fields`` together, as the vault holds them."""
+    return credential_fields(target) + issued_fields(target)
+
+
+def target_scopes(target: Any) -> tuple:
+    """The permissions one push target's own documentation names, in page order."""
+    found = push_target(target)
+    return () if found is None else tuple(found.scopes)
+
+
+def missing_value(target: Any, held: Any) -> Optional[CredentialField]:
+    """The first ``stored_fields`` entry of one push target carrying no text."""
+    values = dict(held or {})
+    for one in stored_fields(target):
+        if not str(values.get(one.key, "")).strip():
+            return one
+    return None
+
+
+def vault_key(target: Any, field_key: Any) -> str:
+    """The ``CredentialVault`` entry name one push target's field is held under."""
+    return VAULT_KEY_FORMAT.format(target=str(target), field=str(field_key))
 
 
 def vote_word(direction_text: Any) -> str:
@@ -315,15 +759,18 @@ def measure_text(text: Any, count_unit: Any = COUNT_CHARACTERS) -> int:
     return len(written)
 
 
-def compose(lines: Any) -> str:
-    """``FIXED_HEADER`` over ``lines`` over ``ORGANIZATION_URL``.
+def compose(lines: Any, header: Any = FIXED_HEADER) -> str:
+    """``header`` over ``lines`` over ``ORGANIZATION_URL``.
 
     ``fit_to_target`` drops ``lines`` to reach a ceiling and reaches neither
-    ``FIXED_HEADER`` nor ``ORGANIZATION_URL``.
+    ``header`` nor ``ORGANIZATION_URL``.
     """
-    return POST_LINE_SEPARATOR.join(
-        (FIXED_HEADER,) + tuple(lines) + (ORGANIZATION_URL,)
-    )
+    return POST_LINE_SEPARATOR.join((str(header),) + tuple(lines) + (ORGANIZATION_URL,))
+
+
+def target_header(target: Any) -> str:
+    """The header one push target's row carries, ``FIXED_HEADER`` where the row names none."""
+    return str(getattr(target, "header", FIXED_HEADER) or FIXED_HEADER)
 
 
 def fit_to_target(ranked: Any, target: Any) -> tuple:
@@ -336,9 +783,10 @@ def fit_to_target(ranked: Any, target: Any) -> tuple:
     lines = [line for _rank, line in rows]
     limit = int(getattr(target, "body_limit", NO_LIMIT_PUBLISHED) or NO_LIMIT_PUBLISHED)
     unit = getattr(target, "count_unit", COUNT_CHARACTERS)
+    header = target_header(target)
     if limit <= NO_LIMIT_PUBLISHED:
         return tuple(lines), NO_DROPPED
-    if measure_text(compose(lines), unit) <= limit:
+    if measure_text(compose(lines, header), unit) <= limit:
         return tuple(lines), NO_DROPPED
     order = sorted(
         (at for at, (rank, _line) in enumerate(rows) if rank is not None),
@@ -350,7 +798,7 @@ def fit_to_target(ranked: Any, target: Any) -> tuple:
         gone.add(at)
         kept = [line for pos, line in enumerate(lines) if pos not in gone]
         kept.append(ABBREVIATED_FORMAT.format(dropped=len(gone)))
-        if measure_text(compose(kept), unit) <= limit:
+        if measure_text(compose(kept, header), unit) <= limit:
             break
     return tuple(kept), len(gone)
 
@@ -358,14 +806,14 @@ def fit_to_target(ranked: Any, target: Any) -> tuple:
 def title_notes(target: Any, headline: str) -> tuple:
     """What one target's title field could not carry, as the note phase five records.
 
-    A ``title_limit`` too small for ``FIXED_HEADER`` with ``headline`` answers
+    A ``title_limit`` too small for the row's header with ``headline`` answers
     one ``TITLE_TOO_SMALL_FORMAT`` note.
     """
     limit = int(getattr(target, "title_limit", NO_TITLE_FIELD) or NO_TITLE_FIELD)
     if limit <= NO_TITLE_FIELD:
         return ()
     unit = getattr(target, "count_unit", COUNT_CHARACTERS)
-    measured = measure_text(compose((headline,)), unit)
+    measured = measure_text(compose((headline,), target_header(target)), unit)
     if measured <= limit:
         return ()
     return (
@@ -467,7 +915,7 @@ SECTION_WRITERS = {
 class FormattedPost:
     """One reversal call formatted for one push target.
 
-    ``body``, ``caption`` and ``thread_root`` each compose ``FIXED_HEADER``
+    ``body``, ``caption`` and ``thread_root`` each compose ``header``
     with the lines, so no artefact of this post can omit the header.
     """
 
@@ -475,6 +923,7 @@ class FormattedPost:
     symbol: str
     timeframe: str
     vote: str
+    header: str = FIXED_HEADER
     band_position: float = ata_spm.MIDLINE_POSITION
     band_lower: float = ata_spm.NO_BAND_VALUE
     band_middle: float = ata_spm.NO_BAND_VALUE
@@ -483,6 +932,8 @@ class FormattedPost:
     last_close: float = ata_spm.NO_BAND_VALUE
     closes: tuple = ()
     image_path: str = ""
+    text_path: str = ""
+    intent_path: str = ""
     lines: tuple = ()
     follows: str = ""
     body_limit: int = NO_LIMIT_PUBLISHED
@@ -502,25 +953,25 @@ class FormattedPost:
 
     @property
     def body(self) -> str:
-        """The post body: ``FIXED_HEADER`` over this target's own sections."""
-        return compose(self.lines)
+        """The post body: ``header`` over this target's own sections."""
+        return compose(self.lines, self.header)
 
     @property
     def caption(self) -> str:
-        """The caption for ``image_path``: ``FIXED_HEADER`` over the headline."""
-        return compose((self.headline,))
+        """The caption for ``image_path``: ``header`` over the headline."""
+        return compose((self.headline,), self.header)
 
     @property
     def thread_root(self) -> str:
-        """The thread root: ``FIXED_HEADER`` over the headline."""
-        return compose((self.headline,))
+        """The thread root: ``header`` over the headline."""
+        return compose((self.headline,), self.header)
 
     @property
     def title(self) -> str:
         """This target's own title field, empty where ``title_limit`` cannot hold it."""
         if self.title_limit <= NO_TITLE_FIELD:
             return ""
-        written = compose((self.headline,))
+        written = compose((self.headline,), self.header)
         if measure_text(written, self.count_unit) > self.title_limit:
             return ""
         return written
@@ -541,7 +992,7 @@ class FormattedPost:
         """Every artefact of this post, keyed by ``ARTEFACT_KEYS`` and ``ARTEFACT_TITLE``.
 
         A post whose phase-three render wrote no file carries no
-        ``ARTEFACT_IMAGE`` key, and every text key composes ``FIXED_HEADER``.
+        ``ARTEFACT_IMAGE`` key, and every text key composes ``header``.
         """
         written = dict(zip(ARTEFACT_KEYS, (self.body, self.caption, self.thread_root)))
         title = self.title
@@ -550,6 +1001,30 @@ class FormattedPost:
         if self.image_path:
             written[ARTEFACT_IMAGE] = self.image_path
         return written
+
+    @property
+    def folder_path(self) -> str:
+        """The venue folder this post's files sit in, empty while none was written."""
+        if not self.image_path:
+            return ""
+        return str(Path(self.image_path).parent)
+
+
+def venue_files(pull: Any, target: PushTarget) -> tuple:
+    """The image, text and intent paths ``ata_venue_folders`` wrote for one
+    target, or the root image alone where that folder was not written."""
+    held = (getattr(pull, "venue_posts", None) or {}).get(target.name)
+    if held is None:
+        return (
+            str(getattr(getattr(pull, "image", None), "path", "") or ""),
+            "",
+            "",
+        )
+    return (
+        str(getattr(getattr(held, "image", None), "path", "") or ""),
+        str(getattr(held, "text_path", "") or ""),
+        str(getattr(held, "intent_path", "") or ""),
+    )
 
 
 def format_post(
@@ -561,8 +1036,9 @@ def format_post(
     """Phase four: one reversal call written for one push target.
 
     The sections come from ``target.sections`` and their wording from the
-    evidence ``ata_spm.pull`` answered, and ``fit_to_target`` holds the body
-    under the ceiling this target publishes.
+    evidence ``ata_spm.pull`` answered, ``fit_to_target`` holds the body
+    under the ceiling this target publishes, and ``venue_files`` names the
+    stamped image, the text and the intent this target's folder holds.
     """
     written: list = []
     for name in target.sections:
@@ -573,11 +1049,13 @@ def format_post(
             (name, one) for one in writer(vote, pull, max_supporting_indicators)
         )
     lines, dropped = fit_to_target(ranked_lines(post_groups(written)), target)
+    image_path, text_path, intent_path = venue_files(pull, target)
     return FormattedPost(
         target=target.name,
         symbol=vote.symbol,
         timeframe=vote.timeframe,
         vote=vote_word(vote.direction_text),
+        header=target_header(target),
         band_position=float(vote.band_position),
         band_lower=pull.band_lower,
         band_middle=pull.band_middle,
@@ -585,7 +1063,9 @@ def format_post(
         bars=pull.bars,
         last_close=pull.last_close,
         closes=tuple(pull.closes),
-        image_path=str(getattr(getattr(pull, "image", None), "path", "") or ""),
+        image_path=image_path,
+        text_path=text_path,
+        intent_path=intent_path,
         lines=lines,
         body_limit=int(getattr(target, "body_limit", NO_LIMIT_PUBLISHED)),
         title_limit=int(getattr(target, "title_limit", NO_TITLE_FIELD)),
@@ -651,6 +1131,7 @@ def format_follow_up(outcome: FollowUpOutcome, target: PushTarget) -> FormattedP
         symbol=call.symbol,
         timeframe=call.timeframe,
         vote=call.vote,
+        header=target_header(target),
         band_position=call.band_position,
         band_lower=call.band_lower,
         band_middle=call.band_middle,
@@ -669,25 +1150,33 @@ def format_follow_up(outcome: FollowUpOutcome, target: PushTarget) -> FormattedP
 
 
 class FollowUpWatch:
-    """Phase seven: the reversal calls being watched, and their outcomes.
+    """Phase seven: the reversal calls being watched, one ``FollowUpTimer`` each.
 
-    ``watch_run`` takes every call one run charted, and ``check`` reads each
-    chart again and answers what happened to it.
+    ``watch_run`` takes every call one run charted and starts its timer;
+    ``due`` names the timers whose candle has closed, and ``take_outcome``
+    writes what one read answered and sets the next read.
     """
 
     def __init__(self) -> None:
-        self.calls: list = []
+        self.timers: dict = {}
         self.outcomes: list = []
         self.settled: dict = {}
 
-    def watch_run(self, run: Any) -> int:
-        """Watch every charted reversal call, and answer how many are held.
+    @property
+    def calls(self) -> list:
+        """Every call still under watch, in the order its timer started."""
+        return [one.call for one in self.timers.values()]
+
+    def watch_run(self, run: Any, now: Any = None) -> list:
+        """Start one timer per charted reversal call, and answer the timers started.
 
         A call already watched, one already settled, and one the gates refused
-        a chart are not taken; ``FollowUpCall.key`` decides the first two.
+        a chart are not taken; a later call on a watched market and timeframe
+        replaces that timer, so one entry carries one timer.
         """
         pulls = {(one.symbol, one.timeframe): one for one in getattr(run, "pulls", [])}
-        held = {one.key for one in self.calls} | set(self.settled)
+        clock = float(now if now is not None else time.time())
+        started: list = []
         for vote in getattr(run, "calls", []):
             pull = pulls.get((vote.symbol, vote.timeframe))
             if pull is None or pull.bars <= ata_spm.NO_CANDLES:
@@ -698,6 +1187,7 @@ class FollowUpWatch:
                 direction=vote.direction_text,
                 vote=vote_word(vote.direction_text),
                 at=pull.bars - 1,
+                at_ts=float(pull.last_ts),
                 close=pull.last_close,
                 headline=POST_HEADLINE_FORMAT.format(
                     symbol=vote.symbol,
@@ -709,34 +1199,69 @@ class FollowUpWatch:
                 band_middle=pull.band_middle,
                 band_upper=pull.band_upper,
             )
-            if call.key in held:
+            if call.key in self.timers or call.key in self.settled:
                 continue
-            held.add(call.key)
-            self.calls.append(call)
-        return len(self.calls)
+            for key in [k for k in self.timers if k[:2] == call.key[:2]]:
+                del self.timers[key]
+            timer = FollowUpTimer(
+                call=call,
+                next_read_ts=next_read_ts(call.at_ts, call.timeframe, clock),
+            )
+            self.timers[call.key] = timer
+            started.append(timer)
+        return started
 
-    def check(self, candle_source: Any, share_pct: Any) -> list:
-        """Read each watched call's chart again and answer what happened to it.
+    def due(self, now: Any) -> list:
+        """Every timer whose next read has passed and holds no read in flight."""
+        clock = float(now)
+        return [one for one in self.timers.values() if one.due(clock)]
 
-        A settled call stops being watched and an open one stays, so no call
-        is posted on twice.
+    def take_outcome(
+        self, timer: FollowUpTimer, outcome: FollowUpOutcome, now: Any
+    ) -> FollowUpTimer:
+        """Write one read's outcome onto its timer and set the next read.
+
+        A settled call moves to ``settled`` and its timer is dropped; an
+        open one reads again at the next close, or after
+        ``FOLLOW_UP_RETRY_S`` while the venue has not published the candle
+        the timer waited for.
         """
-        found: list = []
-        still: list = []
-        for call in self.calls:
-            candles = ata_spm.candles_for(candle_source, call.symbol, call.timeframe)
-            outcome = follow_up_outcome(call, candles, share_pct)
-            found.append(outcome)
-            if outcome.settled:
-                self.settled[call.key] = call
-            else:
-                still.append(call)
-        self.calls = still
-        self.outcomes = found
-        return found
+        clock = float(now)
+        timer.reading = False
+        timer.reads += 1
+        timer.outcome = outcome
+        self.outcomes = [
+            one for one in self.outcomes if one.call.key != timer.call.key
+        ] + [outcome]
+        if outcome.settled:
+            self.settled[timer.call.key] = timer.call
+            self.timers.pop(timer.call.key, None)
+            return timer
+        waited = expected_candles(timer.call.at_ts, timer.call.timeframe, clock)
+        if outcome.candles < waited and timer.retries < FOLLOW_UP_RETRY_CAP:
+            timer.retries += 1
+            timer.next_read_ts = clock + FOLLOW_UP_RETRY_S
+        else:
+            timer.retries = NO_RETRIES
+            timer.next_read_ts = next_read_ts(
+                timer.call.at_ts, timer.call.timeframe, clock
+            )
+        return timer
+
+    def keep_entries(self, posts: Any) -> list:
+        """Drop every timer whose market and timeframe hold no bucket entry, and answer them."""
+        held = {
+            (one.post.symbol, one.post.timeframe)
+            for one in list(posts or [])
+            if not one.post.follows
+        }
+        dropped = [one for key, one in self.timers.items() if key[:2] not in held]
+        for one in dropped:
+            del self.timers[one.call.key]
+        return dropped
 
     def lines(self) -> list:
-        """Every outcome the last check answered, as the lines the zone reads."""
+        """The newest outcome of every call read so far, as the lines the zone reads."""
         return [one.line for one in self.outcomes]
 
 
@@ -780,6 +1305,68 @@ def target_reached(direction_text: Any, close: Any, target: Any) -> bool:
     return False
 
 
+def midline_ahead(direction_text: Any, call_close: Any, midline: Any) -> bool:
+    """Whether ``midline`` lies on the side of ``call_close`` the call expects the run to go."""
+    if str(direction_text) == ata_spm.DIRECTION_BULLISH:
+        return float(midline) > float(call_close)
+    if str(direction_text) == ata_spm.DIRECTION_BEARISH:
+        return float(midline) < float(call_close)
+    return False
+
+
+def candle_close_ts(open_ts: Any, timeframe: Any) -> float:
+    """The close time of the candle opened at ``open_ts`` on ``timeframe``.
+
+    ``TIMEFRAME_SECONDS`` gives the fixed timeframes; ``MONTH_TIMEFRAME``
+    closes at the first instant of the next calendar month, UTC.
+    """
+    opened = float(open_ts)
+    if str(timeframe) == MONTH_TIMEFRAME:
+        when = datetime.fromtimestamp(opened, tz=timezone.utc)
+        year = when.year + 1 if when.month == LAST_MONTH else when.year
+        month = FIRST_MONTH if when.month == LAST_MONTH else when.month + 1
+        return datetime(year, month, FIRST_DAY, tzinfo=timezone.utc).timestamp()
+    return opened + TIMEFRAME_SECONDS[str(timeframe)]
+
+
+def next_read_ts(at_ts: Any, timeframe: Any, now: Any) -> float:
+    """The first candle close after ``now`` on the grid of closes that begins at ``at_ts``."""
+    close = candle_close_ts(at_ts, timeframe)
+    clock = float(now)
+    while close <= clock:
+        close = candle_close_ts(close, timeframe)
+    return close
+
+
+def expected_candles(at_ts: Any, timeframe: Any, now: Any) -> int:
+    """How many candles from the one opened at ``at_ts`` have closed by ``now``."""
+    count = 0
+    close = candle_close_ts(at_ts, timeframe)
+    clock = float(now)
+    while close <= clock:
+        count += 1
+        close = candle_close_ts(close, timeframe)
+    return count
+
+
+def read_time_text(ts: Any) -> str:
+    """One read time as ``READ_TIME_FORMAT`` writes it."""
+    return time.strftime(READ_TIME_FORMAT, time.gmtime(float(ts)))
+
+
+def closed_candles(candles: Any, timeframe: Any, closed_before: Any) -> list:
+    """The candles whose close time is at or before ``closed_before``; every candle when it is None."""
+    held = list(candles or [])
+    if closed_before is None:
+        return held
+    limit = float(closed_before)
+    return [
+        one
+        for one in held
+        if candle_close_ts(getattr(one, "timestamp", NO_READ_TS), timeframe) <= limit
+    ]
+
+
 def continues_against(direction_text: Any, close: Any, previous: Any) -> bool:
     """Whether one candle carried on the trend the reversal called against."""
     if str(direction_text) == ata_spm.DIRECTION_BULLISH:
@@ -798,6 +1385,7 @@ class FollowUpCall:
     direction: str
     vote: str
     at: int = 0
+    at_ts: float = NO_READ_TS
     close: float = NO_MIDLINE
     headline: str = ""
     band_position: float = ata_spm.MIDLINE_POSITION
@@ -807,8 +1395,159 @@ class FollowUpCall:
 
     @property
     def key(self) -> tuple:
-        """What tells two watched calls apart: the asset, its timeframe, its bar."""
-        return (self.symbol, self.timeframe, self.at)
+        """What tells two watched calls apart: the asset, its timeframe, its bar's open time."""
+        return (self.symbol, self.timeframe, self.at_ts)
+
+
+def call_bar_index(candles: Any, call: FollowUpCall) -> int:
+    """The index of the first candle opened at or after ``call.at_ts``.
+
+    A call carrying no ``at_ts`` answers the bar after ``call.at``, its index
+    on the window it was made on.
+    """
+    if call.at_ts <= NO_READ_TS:
+        return int(call.at) + 1
+    for index, one in enumerate(candles):
+        if float(getattr(one, "timestamp", NO_READ_TS)) >= call.at_ts:
+            return index
+    return len(candles)
+
+
+@dataclass
+class FollowUpTimer:
+    """One watched call's confirmation read timer: its next read and its last outcome.
+
+    ``next_read_ts`` is a candle close on the call's own grid, or a retry
+    ``FOLLOW_UP_RETRY_S`` after a read that found no closed candle.
+    """
+
+    call: FollowUpCall
+    next_read_ts: float
+    reads: int = NO_READS
+    retries: int = NO_RETRIES
+    reading: bool = False
+    outcome: Optional[FollowUpOutcome] = None
+
+    @property
+    def state(self) -> str:
+        """``OUTCOME_OPEN`` until a read answers, then the last read's state."""
+        return self.outcome.state if self.outcome is not None else OUTCOME_OPEN
+
+    @property
+    def settled(self) -> bool:
+        """Whether the last read confirmed or failed the call."""
+        return self.outcome is not None and self.outcome.settled
+
+    @property
+    def status(self) -> str:
+        """The entry's status text: the next read while open, the settling close after."""
+        if self.outcome is not None and self.outcome.settled:
+            return FOLLOW_UP_STATUS_SETTLED_FORMAT.format(
+                state=self.outcome.state, close=self.outcome.close
+            )
+        return FOLLOW_UP_STATUS_OPEN_FORMAT.format(
+            when=read_time_text(self.next_read_ts)
+        )
+
+    @property
+    def label(self) -> str:
+        """The call's timeframe as the check boxes word it."""
+        return ata_spm.timeframe_label(self.call.timeframe)
+
+    def due(self, now: Any) -> bool:
+        """Whether the next read has passed with no read in flight."""
+        return not self.reading and float(now) >= self.next_read_ts
+
+    def timer_line(self) -> str:
+        """The Activity Log line naming this timer and its next read."""
+        return FOLLOW_UP_TIMER_LINE_FORMAT.format(
+            symbol=self.call.symbol,
+            label=self.label,
+            when=read_time_text(self.next_read_ts),
+        )
+
+    def read_line(self) -> str:
+        """The Activity Log line the last read leaves: the state and the next read or the close."""
+        if self.outcome is not None and self.outcome.settled:
+            return FOLLOW_UP_READ_SETTLED_LINE_FORMAT.format(
+                symbol=self.call.symbol,
+                label=self.label,
+                state=self.outcome.state,
+                close=self.outcome.close,
+            )
+        return FOLLOW_UP_READ_OPEN_LINE_FORMAT.format(
+            symbol=self.call.symbol,
+            label=self.label,
+            state=self.state,
+            when=read_time_text(self.next_read_ts),
+        )
+
+    def stopped_line(self, reason: str) -> str:
+        """The Activity Log line a timer leaves when it stops before settling."""
+        return FOLLOW_UP_STOPPED_LINE_FORMAT.format(
+            symbol=self.call.symbol, label=self.label, reason=reason
+        )
+
+
+def countdown_text(seconds_left: Any) -> str:
+    """``TIMER_COUNTDOWN_FORMAT`` over whole seconds, with the days in front past one."""
+    held = max(NO_SECONDS_LEFT, int(seconds_left))
+    days, rest = divmod(held, SECONDS_PER_DAY)
+    hours, rest = divmod(rest, SECONDS_PER_HOUR)
+    minutes, seconds = divmod(rest, SECONDS_PER_MINUTE)
+    if days:
+        return TIMER_COUNTDOWN_DAYS_FORMAT.format(
+            days=days, hours=hours, minutes=minutes, seconds=seconds
+        )
+    return TIMER_COUNTDOWN_FORMAT.format(hours=hours, minutes=minutes, seconds=seconds)
+
+
+@dataclass
+class TimerTile:
+    """One watched call as the zone's tile draws it: the pair line, the
+    countdown or outcome line, and the state the line's colour follows."""
+
+    symbol: str
+    timeframe: str
+    seconds_left: int = NO_SECONDS_LEFT
+    state: str = OUTCOME_OPEN
+    reading: bool = False
+    close: float = NO_MIDLINE
+
+    @property
+    def pair(self) -> str:
+        """``TIMER_PAIR_FORMAT`` over the market and its timeframe label."""
+        return TIMER_PAIR_FORMAT.format(
+            symbol=self.symbol, label=ata_spm.timeframe_label(self.timeframe)
+        )
+
+    @property
+    def settled(self) -> bool:
+        """Whether the call confirmed or failed."""
+        return self.state in (OUTCOME_CONFIRMED, OUTCOME_FAILED)
+
+    @property
+    def text(self) -> str:
+        """The second line: the outcome, ``reading``, or the countdown."""
+        if self.settled:
+            return FOLLOW_UP_STATUS_SETTLED_FORMAT.format(
+                state=self.state, close=self.close
+            )
+        if self.reading:
+            return TIMER_READING_TEXT
+        return countdown_text(self.seconds_left)
+
+    def row(self) -> dict:
+        """The tile as the page and the widget read it."""
+        return {
+            "symbol": self.symbol,
+            "timeframe": self.timeframe,
+            "pair": self.pair,
+            "text": self.text,
+            "state": self.state,
+            "reading": bool(self.reading),
+            "seconds_left": int(self.seconds_left),
+        }
 
 
 @dataclass
@@ -858,6 +1597,13 @@ def follow_up_detail(outcome: FollowUpOutcome, share_pct: Any) -> str:
         return FOLLOW_UP_NO_SHARE_FORMAT.format(
             candles=outcome.candles, close=outcome.close
         )
+    if outcome.target <= NO_MIDLINE and outcome.midline > NO_MIDLINE:
+        return FOLLOW_UP_MIDLINE_BEHIND_FORMAT.format(
+            candles=outcome.candles,
+            close=outcome.close,
+            midline=outcome.midline,
+            direction=outcome.call.direction,
+        )
     if outcome.against_run > NO_CONTINUATION:
         return FOLLOW_UP_NOT_READY_FORMAT.format(
             run=outcome.against_run,
@@ -871,25 +1617,32 @@ def follow_up_detail(outcome: FollowUpOutcome, share_pct: Any) -> str:
 
 
 def follow_up_outcome(
-    call: FollowUpCall, candles: Any, share_pct: Any
+    call: FollowUpCall, candles: Any, share_pct: Any, closed_before: Any = None
 ) -> FollowUpOutcome:
-    """Phase seven over the candles that closed after one watched call.
+    """Phase seven over the candles from one watched call's bar on, through
+    ``closed_candles`` and ``call_bar_index``, so a partial bar is never read.
 
-    A close reaching ``confirmation_target`` confirms it, and
-    ``CONTINUATION_CANDLE_FLOOR`` candles in a row against it fail it.
+    A close reaching ``confirmation_target`` confirms it while ``midline_ahead``
+    holds, and ``CONTINUATION_CANDLE_FLOOR`` candles in a row against it fail it.
     """
-    held = list(candles or [])
+    held = closed_candles(candles, call.timeframe, closed_before)
+    start = call_bar_index(held, call)
     closes = [float(getattr(one, "close", NO_MIDLINE)) for one in held]
-    midlines = ata_spm.midline_after(held, call.at)
+    midlines = ata_spm.midline_after(held, start - 1)
     found = FollowUpOutcome(call=call, close=call.close, closes=tuple(closes))
     share = int(share_pct or NO_SHARE_SET)
     previous = call.close
     run_against = NO_CONTINUATION
-    for step, close in enumerate(closes[call.at + 1 :]):
+    for step, close in enumerate(closes[start:]):
         found.candles = step + 1
         found.close = close
         found.midline = midlines[step] if step < len(midlines) else NO_MIDLINE
-        if share > NO_SHARE_SET and found.midline > NO_MIDLINE:
+        found.target = NO_MIDLINE
+        if (
+            share > NO_SHARE_SET
+            and found.midline > NO_MIDLINE
+            and midline_ahead(call.direction, call.close, found.midline)
+        ):
             found.target = confirmation_target(call.close, found.midline, share)
             if target_reached(call.direction, close, found.target):
                 found.state = OUTCOME_CONFIRMED
@@ -917,11 +1670,54 @@ class DeliveryRecord:
     sent: bool = False
     destination: str = NO_DESTINATION_TEXT
     detail: str = ""
+    route: str = ROUTE_API
+    opened: bool = False
+
+    @property
+    def outcome(self) -> str:
+        """One word for what happened: sent, refused, folder or intent."""
+        if self.route == ROUTE_API:
+            return "sent" if self.sent else "refused"
+        return self.route
+
+    @property
+    def status(self) -> str:
+        """What happened to this post, as the words its bucket entry carries."""
+        if self.route == ROUTE_FOLDER:
+            return STATUS_IN_FOLDER_TEXT
+        if self.route == ROUTE_INTENT:
+            return (
+                STATUS_INTENT_OPENED_TEXT if self.opened else STATUS_INTENT_READY_TEXT
+            )
+        if self.sent:
+            return STATUS_SENT_FORMAT.format(destination=self.destination)
+        return STATUS_NOT_SENT_FORMAT.format(detail=self.detail)
 
     @property
     def line(self) -> str:
-        """This record as the one line the Ready to Send zone reads back."""
+        """This record as the one line the Activity Log and the zone read back.
+
+        An intent reads ``opened`` only when the press handed it to the OS;
+        a release, or a Post All that opened the root, reads ``ready``.
+        """
         label = ata_spm.timeframe_label(self.timeframe)
+        if self.route == ROUTE_FOLDER and self.destination:
+            return DELIVERY_FOLDER_FORMAT.format(
+                target=self.target,
+                symbol=self.symbol,
+                label=label,
+                destination=self.destination,
+            )
+        if self.route == ROUTE_INTENT and self.destination:
+            written = (
+                DELIVERY_INTENT_FORMAT if self.opened else DELIVERY_INTENT_READY_FORMAT
+            )
+            return written.format(
+                target=self.target,
+                symbol=self.symbol,
+                label=label,
+                destination=self.destination,
+            )
         if self.sent:
             return DELIVERY_SENT_FORMAT.format(
                 target=self.target,
@@ -1003,74 +1799,287 @@ class RepostGuard:
         )
 
 
+def settings_path() -> Path:
+    """The file ``AtaSpmSettings`` persists ``PERSISTED_SETTINGS`` in."""
+    return Path.home() / STATE_DIR_NAME / ATA_SPM_SETTINGS_NAME
+
+
+def share_percent(asked: Any) -> int:
+    """The confirmation share one typed value names; text that is not a whole
+    number, and any share under ``NO_SHARE_SET``, read as ``NO_SHARE_SET``."""
+    try:
+        held = int(str(asked).strip())
+    except (TypeError, ValueError):
+        return NO_SHARE_SET
+    return max(NO_SHARE_SET, held)
+
+
 class AtaSpmSettings:
     """The ATA-SPM settings page, carrying only what a phase reads.
 
-    ``max_posts_per_hour`` is the ceiling ``SendRate`` obeys and
-    ``max_supporting_indicators`` the cap phase four draws under.
-    ``confirmation_share_pct`` is the share of the run to the Bollinger
-    midline ``confirmation_target`` reads.
+    ``max_posts_per_hour`` is the ceiling ``SendRate`` obeys,
+    ``max_supporting_indicators`` the cap phase four draws under,
+    ``confirmation_share_pct`` the share of the run to the Bollinger midline
+    ``confirmation_target`` reads, and ``hits_per_scan`` the hits an
+    empty-field Scan Now stops at, written to ``settings_path`` on each set.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, path: Optional[Path] = None) -> None:
         self.max_posts_per_hour = NO_CEILING_SET
         self.max_supporting_indicators = NO_INDICATOR_CAP
-        self.confirmation_share_pct = NO_SHARE_SET
+        self._confirmation_share_pct = NO_SHARE_SET
         self.message_format = ata_spm.MESSAGE_FORMAT
+        self._hits_per_scan = ata_spm.DEFAULT_HITS_PER_SCAN
         self.vault: Any = None
+        self.connector: Optional[Callable] = None
         self.typed: dict = {}
+        self.path = path if path is not None else settings_path()
+        self.load()
+
+    @property
+    def hits_per_scan(self) -> int:
+        """The hits an empty-field scan stops at, never under 1."""
+        return self._hits_per_scan
+
+    @hits_per_scan.setter
+    def hits_per_scan(self, asked: Any) -> None:
+        """Take a count; ``ata_spm.hits_target`` reads 0 and text as the default."""
+        self._hits_per_scan = ata_spm.hits_target(asked)
+        self.save()
+
+    @property
+    def confirmation_share_pct(self) -> int:
+        """The share of the run to the midline a confirmation needs; ``NO_SHARE_SET`` confirms nothing."""
+        return self._confirmation_share_pct
+
+    @confirmation_share_pct.setter
+    def confirmation_share_pct(self, asked: Any) -> None:
+        """Take a whole percent; text that is not one reads ``NO_SHARE_SET``."""
+        self._confirmation_share_pct = share_percent(asked)
+        self.save()
+
+    def persisted(self) -> dict:
+        """Each ``PERSISTED_SETTINGS`` name and the value it holds now."""
+        return {name: getattr(self, name) for name in PERSISTED_SETTINGS}
+
+    def load(self) -> bool:
+        """Read ``PERSISTED_SETTINGS`` from ``path``; answer whether the file held any."""
+        try:
+            held = json.loads(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return False
+        except (OSError, ValueError) as exc:
+            logger.debug(SETTINGS_READ_FAILED_LOG, self.path, exc)
+            return False
+        if not isinstance(held, dict):
+            return False
+        if "hits_per_scan" in held:
+            self._hits_per_scan = ata_spm.hits_target(held["hits_per_scan"])
+        if "confirmation_share_pct" in held:
+            self._confirmation_share_pct = share_percent(held["confirmation_share_pct"])
+        return True
+
+    def save(self) -> bool:
+        """Write ``persisted`` to ``path``; answer whether the write landed."""
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps(self.persisted(), indent=1), encoding="utf-8", newline="\n"
+            )
+        except OSError as exc:
+            logger.debug(SETTINGS_WRITE_FAILED_LOG, self.path, exc)
+            return False
+        return True
 
     def set_vault(self, vault: Any) -> None:
         """Take the credential vault every push target's token is held in."""
         self.vault = vault
 
+    def set_connector(self, connector: Optional[Callable]) -> None:
+        """Take what signs one push target in, or None while no route is wired."""
+        self.connector = connector
+
     def set_credential_text(self, target: Any, field: Any, typed: Any) -> None:
-        """Hold what one credential field carries until Save reads it.
+        """Hold what one credential field carries until ``connect`` reads it.
 
         Nothing here reaches ``credential_rows``, so no view model or render
         carries a typed value.
         """
-        self.typed.setdefault(str(target), {})[str(field)] = str(typed or "")
+        # A pasted value carries edge whitespace and the venue reads it
+        # literally, so it is stripped here, where ``missing_field`` strips.
+        held = str(typed or "").strip()
+        self.typed.setdefault(str(target), {})[str(field)] = held
 
-    def typed_credential(self, target: Any) -> list:
-        """The two values one target's fields hold, in ``CREDENTIAL_FIELD_KEYS``."""
-        held = self.typed.get(str(target), {})
-        return [str(held.get(one, "")) for one in CREDENTIAL_FIELD_KEYS]
+    def hold_credential(self, target: Any, field: Any) -> bool:
+        """Encrypt what one finished credential box carries into ``vault``.
 
-    def save_credentials(self) -> list:
-        """Encrypt every typed credential into the vault and clear what was typed.
-
-        Answers the targets whose credential landed.
+        Level 1A calls this when he leaves a box, not on every keystroke, and
+        answers whether the vault now holds a value for it. A box he emptied
+        drops its entry instead, so ``held_fields`` reads what is held without
+        decrypting anything.
         """
-        stored = []
-        for name in TARGET_NAMES:
-            api_key, api_secret = self.typed_credential(name)
-            if self.store_credential(name, api_key, api_secret):
-                stored.append(name)
-        self.typed = {}
-        return stored
+        name = str(target)
+        key = str(field)
+        typed = self.typed.get(name, {})
+        if key not in typed or self.vault is None:
+            return False
+        held = str(typed[key]).strip()
+        try:
+            if held:
+                self.vault.store(vault_key(name, key), held, "")
+            else:
+                self.vault.delete(vault_key(name, key))
+        except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
+            logger.debug(VAULT_STORE_FAILED_LOG, name, exc)
+            return False
+        return bool(held)
 
-    def store_credential(self, target: Any, api_key: Any, api_secret: Any) -> bool:
-        """Encrypt one target's credential into ``vault``, and answer whether it landed.
+    def held_value(self, target: Any, field_key: Any) -> str:
+        """The value ``vault`` holds for one field of one push target, or no text."""
+        if self.vault is None:
+            return NO_CREDENTIAL_VALUE
+        entry = vault_key(target, field_key)
+        try:
+            if not self.vault.has_exchange(entry):
+                return NO_CREDENTIAL_VALUE
+            return str(self.vault.retrieve(entry)[VAULT_VALUE_AT])
+        except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
+            logger.debug(VAULT_READ_FAILED_LOG, target, exc)
+            return NO_CREDENTIAL_VALUE
+
+    def credential_value(self, target: Any, field_key: Any) -> str:
+        """What one credential box carries: what he typed, or what ``vault`` holds.
+
+        A key he has typed into this run wins, so emptying a held box reads
+        empty rather than falling back to the value it replaced.
+        """
+        held = self.typed.get(str(target), {})
+        key = str(field_key)
+        if key in held:
+            return str(held[key])
+        return self.held_value(target, key)
+
+    def held_fields(self, target: Any) -> tuple:
+        """Every ``CredentialField`` key of one push target ``vault`` holds a value for.
+
+        ``has_exchange`` answers this without decrypting, so Level 1A can draw
+        a box as held on every paint and no value leaves the vault.
+        """
+        if self.vault is None:
+            return ()
+        try:
+            return tuple(
+                one.key
+                for one in credential_fields(target)
+                if self.vault.has_exchange(vault_key(target, one.key))
+            )
+        except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
+            logger.debug(VAULT_READ_FAILED_LOG, target, exc)
+            return ()
+
+    def typed_credential(self, target: Any) -> dict:
+        """Each ``CredentialField`` key of one push target, and the value it carries."""
+        return {
+            one.key: self.credential_value(target, one.key)
+            for one in credential_fields(target)
+        }
+
+    def missing_field(self, target: Any) -> Optional[CredentialField]:
+        """The first ``CredentialField`` of one push target carrying no text.
+
+        A value the vault holds counts as present, so a page he filled before
+        a restart takes Connect without being typed again.
+        """
+        for one in credential_fields(target):
+            if not self.credential_value(target, one.key).strip():
+                return one
+        return None
+
+    def connect(self, target: Any) -> "ConnectResult":
+        """Sign one push target in, and record what it answered.
+
+        Every branch of ``sign_in_answer`` reaches this one ``CONNECT_RESULT_LOG``
+        line, so a sign-in that raises nothing is still written down.
+        """
+        answer = self.sign_in_answer(target)
+        logger.info(CONNECT_RESULT_LOG, answer.target, answer.ok, answer.detail)
+        return answer
+
+    def sign_in_answer(self, target: Any) -> "ConnectResult":
+        """Sign one push target in, and store the credential only once it accepts.
+
+        An empty box, an unwired ``connector`` and a refusing venue each
+        answer ``ok`` False with the wording Level 1A prints.
+        """
+        name = str(target)
+        answer = ConnectResult(target=name)
+        if push_target(name) is not None and not stored_fields(name):
+            answer.ok = True
+            answer.detail = NO_SIGN_IN_NEEDED_FORMAT.format(target=name)
+            return answer
+        empty = self.missing_field(name)
+        if empty is not None:
+            answer.detail = MISSING_FIELD_FORMAT.format(label=empty.label)
+            return answer
+        if self.connector is None:
+            answer.detail = NO_CONNECTOR_FORMAT.format(target=name)
+            return answer
+        typed = self.typed_credential(name)
+        try:
+            issued = self.connector(name, dict(typed))
+        except Exception as exc:  # noqa: BLE001 - the connector is host-supplied
+            logger.debug(CONNECT_FAILED_LOG, name, exc)
+            answer.detail = CONNECT_FAILED_FORMAT.format(target=name, error=exc)
+            return answer
+        held = dict(typed)
+        held.update({str(key): str(one) for key, one in dict(issued or {}).items()})
+        absent = missing_value(name, held)
+        if absent is not None:
+            answer.detail = CONNECT_FAILED_FORMAT.format(
+                target=name, error=NO_ISSUED_FORMAT.format(label=absent.label)
+            )
+            return answer
+        if not self.store_credential(name, held):
+            answer.detail = NO_VAULT_TEXT
+            return answer
+        self.typed.pop(name, None)
+        answer.ok = True
+        answer.detail = CONNECT_OK_FORMAT.format(target=name)
+        return answer
+
+    def store_credential(self, target: Any, typed: Any) -> bool:
+        """Encrypt one push target's ``stored_fields`` into ``vault``, one entry each.
 
         A missing or refusing ``vault`` answers False, and the target then
         reads unreachable.
         """
-        if self.vault is None or not str(api_key or ""):
+        if self.vault is None:
+            return False
+        held = dict(typed or {})
+        if not held:
             return False
         try:
-            self.vault.store(str(target), str(api_key), str(api_secret or ""))
+            for field_key, value in held.items():
+                self.vault.store(vault_key(target, field_key), str(value), "")
         except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
             logger.debug(VAULT_STORE_FAILED_LOG, target, exc)
             return False
         return True
 
     def holds(self, target: Any) -> bool:
-        """Whether ``vault`` holds a credential for one push target."""
-        if self.vault is None:
+        """Whether ``vault`` holds every ``stored_fields`` entry one push target needs.
+
+        A target reads held only once its own sign-in has run, since the
+        ``PushTarget.issued`` entries reach the vault nowhere else.
+        """
+        fields = stored_fields(target)
+        if self.vault is None or not fields:
             return False
         try:
-            return bool(self.vault.has_exchange(str(target)))
+            return all(
+                bool(self.vault.has_exchange(vault_key(target, one.key)))
+                for one in fields
+            )
         except Exception as exc:  # noqa: BLE001 - the vault is host-supplied
             logger.debug(VAULT_READ_FAILED_LOG, target, exc)
             return False
@@ -1083,6 +2092,8 @@ class AtaSpmSettings:
         held = self.holds(target)
         if held:
             return [str(target), True, CREDENTIAL_HELD_TEXT]
+        if push_target(target) is not None and not stored_fields(target):
+            return [str(target), False, CREDENTIAL_NONE_NEEDED_TEXT]
         if self.vault is None:
             return [str(target), False, NO_VAULT_TEXT]
         return [str(target), False, CREDENTIAL_MISSING_TEXT]
@@ -1138,6 +2149,91 @@ def deliver_one(
     return record
 
 
+def sender_takes(sender: Any, target: Any) -> bool:
+    """Whether ``sender`` posts to one target: every target while it names no
+    ``targets``, as ``RecordedDestination`` does, else the ones it names."""
+    if sender is None:
+        return False
+    targets = getattr(sender, "targets", None)
+    return targets is None or str(target) in tuple(targets)
+
+
+def route_for(post: FormattedPost, settings: AtaSpmSettings, sender: Any) -> str:
+    """The route one post takes: ``ROUTE_API`` while its venue is signed in and
+    a sender that takes it is wired, ``ROUTE_INTENT`` while its folder holds an
+    intent file, else ``ROUTE_FOLDER``."""
+    if sender_takes(sender, post.target) and settings.holds(post.target):
+        return ROUTE_API
+    if post.intent_path:
+        return ROUTE_INTENT
+    return ROUTE_FOLDER
+
+
+def open_path(path: Any) -> bool:
+    """Hand one folder or ``.url`` file to the operating system's own handler.
+
+    ``webbrowser.open`` on a ``file:`` address is the OS handler: a folder
+    opens in the file browser, an Internet Shortcut in the default browser.
+    No browser is driven and nothing is typed into one.
+    """
+    import webbrowser
+
+    try:
+        return bool(webbrowser.open(Path(str(path)).as_uri(), new=2))
+    except Exception as exc:  # noqa: BLE001 - the handler is host-supplied
+        logger.warning(OPEN_FAILED_LOG, path, exc)
+        return False
+
+
+def hand_off(
+    post: FormattedPost,
+    sender: Optional[Callable],
+    settings: AtaSpmSettings,
+    rate: SendRate,
+    repost: RepostGuard,
+    now: float,
+    opener: Optional[Callable] = None,
+) -> DeliveryRecord:
+    """Take one post by ``route_for`` and answer the ``DeliveryRecord``.
+
+    The API route is ``deliver_one``. The folder route names the venue
+    folder the scan already filled, and the intent route names the
+    ``.url`` file; ``opener`` is handed that path when a press asks for it,
+    and ``HANDOFF_PIN`` records venue, route and outcome every time.
+    """
+    route = route_for(post, settings, sender)
+    if route == ROUTE_API:
+        record = deliver_one(post, sender, settings, rate, repost, now)
+    else:
+        record = DeliveryRecord(
+            target=post.target, symbol=post.symbol, timeframe=post.timeframe
+        )
+        record.route = route
+        record.destination = (
+            post.intent_path if route == ROUTE_INTENT else post.folder_path
+        )
+        if not record.destination:
+            record.detail = NO_FOLDER_FILE_TEXT.format(target=post.target)
+        elif opener is not None:
+            record.opened = bool(opener(record.destination))
+    logger.debug(HANDOFF_LOG, record.line)
+    _pin_emit(
+        HANDOFF_PIN,
+        actual=record.outcome,
+        context={
+            "venue": post.target,
+            "symbol": post.symbol,
+            "timeframe": post.timeframe,
+            "route": record.route,
+            "outcome": record.outcome,
+            "destination": record.destination,
+            "detail": record.detail,
+            "opened": record.opened,
+        },
+    )
+    return record
+
+
 def distribute(
     posts: Any,
     sender: Optional[Callable] = None,
@@ -1145,17 +2241,21 @@ def distribute(
     rate: Optional[SendRate] = None,
     clock: Optional[Callable] = None,
     repost: Optional[RepostGuard] = None,
+    opener: Optional[Callable] = None,
 ) -> list:
-    """Phase five: send every post given, and answer one record for each.
+    """Phase five: take every post given by its route, one record for each.
 
-    With no ``sender`` every post records the target it could not reach.
+    A venue that is not signed in, or has no sender wired, takes the
+    folder route, and ``TARGET_X`` its intent file; ``opener`` is what a
+    press opens those with.
     """
     held = settings if settings is not None else AtaSpmSettings()
     counter = rate if rate is not None else SendRate()
     guard = repost if repost is not None else RepostGuard()
     now = float(clock() if clock is not None else 0.0)
     return [
-        deliver_one(one, sender, held, counter, guard, now) for one in list(posts or [])
+        hand_off(one, sender, held, counter, guard, now, opener)
+        for one in list(posts or [])
     ]
 
 
@@ -1170,15 +2270,32 @@ class WatchedMarket:
 
 @dataclass
 class BucketPost:
-    """One formatted post waiting in Ready to Send, and its approval state."""
+    """One formatted post waiting in Ready to Send, its approval state, the
+    status its call's ``FollowUpTimer`` last wrote, and what the last press
+    did with it."""
 
     post: FormattedPost
     state: str = STATE_WAITING
+    follow_up: str = ""
+    delivery: str = ""
 
     @property
     def meta(self) -> str:
-        """The target this post is for, and whether it is approved."""
-        return BUCKET_META_FORMAT.format(target=self.post.target, state=self.state)
+        """The target, whether it is approved, the timer's status, and the
+        ``DeliveryRecord.status`` of the last press that took this post."""
+        if self.follow_up:
+            written = BUCKET_META_FOLLOW_UP_FORMAT.format(
+                target=self.post.target, state=self.state, follow_up=self.follow_up
+            )
+        else:
+            written = BUCKET_META_FORMAT.format(
+                target=self.post.target, state=self.state
+            )
+        if self.delivery:
+            return BUCKET_META_DELIVERY_FORMAT.format(
+                meta=written, delivery=self.delivery
+            )
+        return written
 
 
 class ReadyToSend:
@@ -1200,34 +2317,58 @@ class ReadyToSend:
         run: Any,
         settings: Optional[AtaSpmSettings] = None,
         targets: Any = PUSH_TARGETS,
+        keep: Any = (),
     ) -> int:
-        """Run ``format_run`` over ``run`` and hold every post it wrote.
+        """Run ``format_run`` over ``run`` and hold every post it wrote, beside
+        the posts of every market and timeframe in ``keep`` an earlier run wrote.
 
-        Answers how many posts the bucket now carries.
+        A market ``run`` hit again takes the new posts; answers how many posts
+        the bucket now carries.
         """
         cap = (
             settings.max_supporting_indicators
             if settings is not None
             else NO_INDICATOR_CAP
         )
-        self.posts = [BucketPost(post=one) for one in format_run(run, targets, cap)]
+        fresh = [BucketPost(post=one) for one in format_run(run, targets, cap)]
+        renewed = {(one.post.symbol, one.post.timeframe) for one in fresh}
+        held = {tuple(one) for one in keep}
+        kept = [
+            one
+            for one in self.posts
+            if not one.post.follows
+            and (one.post.symbol, one.post.timeframe) in held
+            and (one.post.symbol, one.post.timeframe) not in renewed
+        ]
+        self.posts = kept + fresh
         return len(self.posts)
 
     def load_follow_ups(self, outcomes: Any, targets: Any = PUSH_TARGETS) -> int:
         """Hold one phase seven post per settled outcome, per push target.
 
-        The follow-ups a previous check wrote are dropped first, so the
-        bucket never carries two posts about one call.
+        The follow-ups an earlier read wrote on the same calls are dropped
+        first, so the bucket never carries two posts about one call.
         """
-        self.posts = [one for one in self.posts if not one.post.follows]
+        settled = [one for one in list(outcomes or []) if one.settled]
+        headlines = {one.call.headline for one in settled}
+        self.posts = [one for one in self.posts if one.post.follows not in headlines]
         written = [
-            format_follow_up(one, target)
-            for one in list(outcomes or [])
-            if one.settled
-            for target in targets
+            format_follow_up(one, target) for one in settled for target in targets
         ]
         self.posts.extend(BucketPost(post=one) for one in written)
         return len(written)
+
+    def set_follow_up(self, symbol: Any, timeframe: Any, status: str) -> int:
+        """Write one timer's status on every post of its market and timeframe
+        that is not itself a follow-up, and answer how many took it."""
+        count = 0
+        for held in self.posts:
+            post = held.post
+            if post.follows or (post.symbol, post.timeframe) != (symbol, timeframe):
+                continue
+            held.follow_up = str(status)
+            count += 1
+        return count
 
     def at(self, index: Any) -> Optional[BucketPost]:
         """The bucket post one zone index shows, or None while it holds none."""
@@ -1289,26 +2430,36 @@ class ReadyToSend:
         sender: Optional[Callable] = None,
         settings: Optional[AtaSpmSettings] = None,
         clock: Optional[Callable] = None,
+        opener: Optional[Callable] = None,
     ) -> list:
-        """Send the post on screen, and answer the records phase five wrote.
+        """Take the post on screen by its route, and answer the records written.
 
-        A ``STATE_DECLINED`` post is never sent and records ``DECLINED_TEXT``.
+        A ``STATE_DECLINED`` post is never taken and records ``DECLINED_TEXT``.
+        ``opener`` receives the one folder or intent file the route names.
         """
         held = self.at(index)
         if held is None:
             return []
         if held.state == STATE_DECLINED:
             return self._hold_declined([held])
-        return self._send([held], sender, settings, clock)
+        return self._send([held], sender, settings, clock, opener)
 
     def post_all(
         self,
         sender: Optional[Callable] = None,
         settings: Optional[AtaSpmSettings] = None,
         clock: Optional[Callable] = None,
+        opener: Optional[Callable] = None,
     ) -> list:
-        """Send every approved post, and answer the records phase five wrote."""
-        return self._send(self.approved(), sender, settings, clock)
+        """Take every approved post by its route, and answer the records written.
+
+        ``opener`` receives the post root once when any post took the folder
+        or intent route, so every venue folder is in view from one window.
+        """
+        records = self._send(self.approved(), sender, settings, clock, None)
+        if opener is not None and any(one.route != ROUTE_API for one in records):
+            opener(ata_post_paths.get_ata_post_root())
+        return records
 
     def release(
         self,
@@ -1316,10 +2467,10 @@ class ReadyToSend:
         settings: Optional[AtaSpmSettings] = None,
         clock: Optional[Callable] = None,
     ) -> list:
-        """Send every approved post while ``full_auto`` is on, and answer records."""
+        """Take every approved post while ``full_auto`` is on, opening nothing."""
         if not self.full_auto:
             return []
-        return self.post_all(sender, settings, clock)
+        return self.post_all(sender, settings, clock, None)
 
     def _hold_declined(self, held: list) -> list:
         records = [
@@ -1340,6 +2491,7 @@ class ReadyToSend:
         sender: Optional[Callable],
         settings: Optional[AtaSpmSettings],
         clock: Optional[Callable],
+        opener: Optional[Callable] = None,
     ) -> list:
         records = distribute(
             [one.post for one in held],
@@ -1348,7 +2500,10 @@ class ReadyToSend:
             self.rate,
             clock,
             self.repost,
+            opener,
         )
+        for taken, record in zip(held, records):
+            taken.delivery = record.status
         self.records.extend(records)
         return records
 
@@ -1369,46 +2524,237 @@ class PushBoard:
         self.bucket = ReadyToSend()
         self.follow_up = FollowUpWatch()
         self.settings_open = False
+        self.credential_target: Optional[str] = None
+        self.connect_result: Optional[ConnectResult] = None
         self.sender: Optional[Callable] = None
         self.clock: Optional[Callable] = None
+        self.opener: Optional[Callable] = open_path
 
     def set_sender(self, sender: Optional[Callable]) -> None:
         """Take what phase five sends through, or None to send nothing."""
         self.sender = sender
 
+    def set_opener(self, opener: Optional[Callable]) -> None:
+        """Take what a press opens a folder or intent file with, or None to open nothing."""
+        self.opener = opener
+
     def toggle_settings(self) -> bool:
-        """Show the ATA-SPM settings page, or the scan page, and answer which."""
+        """Show Level 1, or the scan page, and answer which.
+
+        Closing drops ``credential_target`` and ``connect_result``, so Level 1A
+        never reopens on a target the operator left.
+        """
         self.settings_open = not self.settings_open
+        if not self.settings_open:
+            self.credential_target = None
+            self.connect_result = None
         return self.settings_open
 
+    def open_credentials(self, target: Any) -> Optional[str]:
+        """Show one push target's Level 1A page, and answer which target it draws."""
+        found = push_target(target)
+        if found is None:
+            return None
+        self.settings_open = True
+        self.credential_target = found.name
+        self.connect_result = None
+        return self.credential_target
+
+    def close_credentials(self) -> None:
+        """Leave Level 1A for Level 1, dropping what the last ``connect`` said."""
+        self.credential_target = None
+        self.connect_result = None
+
+    def connect_credentials(self) -> Optional[ConnectResult]:
+        """Sign the open Level 1A target in, and leave the page only once it accepts."""
+        if self.credential_target is None:
+            return None
+        answer = self.settings.connect(self.credential_target)
+        self.connect_result = answer
+        if answer.ok:
+            self.credential_target = None
+        return answer
+
     def load_run(self, run: Any) -> int:
-        """Fill the bucket from one run and answer how many posts it holds."""
-        return self.bucket.load_run(run, self.settings)
+        """Fill the bucket from one run and answer how many posts it holds.
 
-    def after_scan(self, run: Any, candle_source: Any) -> list:
-        """Phase seven around one scan, and the outcomes the check answered.
-
-        The calls watched before this scan are checked first, then this
-        run's own calls are taken, so no call is checked against no candle.
+        The entries of every call a ``FollowUpTimer`` still watches stay
+        beside the run's own; ``CANDIDATE_PIN`` is written once per new
+        entry with its symbol, timeframe, venue, folder and image, and a
+        post whose venue folder holds no image reads ``ok`` False.
         """
-        found = self.follow_up.check(
-            candle_source, self.settings.confirmation_share_pct
-        )
-        self.bucket.load_follow_ups(found)
-        self.follow_up.watch_run(run)
+        watched = {
+            (one.call.symbol, one.call.timeframe)
+            for one in self.follow_up.timers.values()
+        }
+        count = self.bucket.load_run(run, self.settings, keep=watched)
+        renewed = {(one.symbol, one.timeframe) for one in getattr(run, "calls", [])}
+        for held in self.bucket.posts:
+            post = held.post
+            if (post.symbol, post.timeframe) not in renewed:
+                continue
+            _pin_emit(
+                CANDIDATE_PIN,
+                actual=post.target,
+                ok=bool(post.image_path) and Path(post.image_path).is_file(),
+                context={
+                    "symbol": post.symbol,
+                    "timeframe": post.timeframe,
+                    "vote": post.vote,
+                    "venue": post.target,
+                    "venue_folder": post.folder_path,
+                    "image_path": post.image_path,
+                    "text_path": post.text_path,
+                    "intent_path": post.intent_path,
+                    "measured": post.measured,
+                    "body_limit": post.body_limit,
+                    "posts_in_bucket": count,
+                },
+            )
+        return count
+
+    def now(self) -> float:
+        """The wall clock, or ``clock`` while a host set one."""
+        return float((self.clock or time.time)())
+
+    def after_scan(self, run: Any) -> tuple:
+        """Phase seven after one scan filled the bucket: the timers stopped
+        because their entry left it, and the timers this run's calls started.
+
+        Each started timer's status is written on its bucket entry; the
+        reads run from ``due_timers`` and ``take_outcome``, never here.
+        """
+        stopped = self.follow_up.keep_entries(self.bucket.posts)
+        started = self.follow_up.watch_run(run, self.now())
+        for timer in started:
+            self.bucket.set_follow_up(
+                timer.call.symbol, timer.call.timeframe, timer.status
+            )
+        return stopped, started
+
+    def due_timers(self) -> list:
+        """Every ``FollowUpTimer`` whose candle has closed, marked as reading."""
+        found = self.follow_up.due(self.now())
+        for timer in found:
+            timer.reading = True
         return found
 
+    def timer_tiles(self) -> list:
+        """One ``TimerTile`` per call under watch, then one per settled call
+        whose entry the bucket still holds, in the order their timers started.
+
+        The seconds left count down to ``FollowUpTimer.next_read_ts`` on the
+        board's own clock; a settled call reads its outcome until
+        ``load_run`` drops its entry.
+        """
+        now = self.now()
+        tiles = [
+            TimerTile(
+                symbol=timer.call.symbol,
+                timeframe=timer.call.timeframe,
+                seconds_left=int(math.ceil(max(NO_WAIT_S, timer.next_read_ts - now))),
+                state=timer.state,
+                reading=bool(timer.reading),
+            )
+            for timer in self.follow_up.timers.values()
+        ]
+        held = {
+            (one.post.symbol, one.post.timeframe)
+            for one in self.bucket.posts
+            if not one.post.follows
+        }
+        outcomes = {one.call.key: one for one in self.follow_up.outcomes}
+        for key, call in self.follow_up.settled.items():
+            outcome = outcomes.get(key)
+            if outcome is None or (call.symbol, call.timeframe) not in held:
+                continue
+            tiles.append(
+                TimerTile(
+                    symbol=call.symbol,
+                    timeframe=call.timeframe,
+                    state=outcome.state,
+                    close=float(outcome.close),
+                )
+            )
+        return tiles
+
+    def read_outcome(self, timer: FollowUpTimer, candles: Any) -> FollowUpOutcome:
+        """``follow_up_outcome`` for one timer over ``candles``, closed before now."""
+        return follow_up_outcome(
+            timer.call, candles, self.settings.confirmation_share_pct, self.now()
+        )
+
+    def take_outcome(
+        self, key: Any, outcome: FollowUpOutcome
+    ) -> Optional[FollowUpTimer]:
+        """Write one read's outcome: the timer, the entry's status, the
+        follow-up posts on a settlement, and ``FOLLOW_UP_READ_PIN``."""
+        timer = self.follow_up.timers.get(tuple(key))
+        if timer is None:
+            return None
+        now = self.now()
+        self.follow_up.take_outcome(timer, outcome, now)
+        self.bucket.set_follow_up(timer.call.symbol, timer.call.timeframe, timer.status)
+        if outcome.settled:
+            self.bucket.load_follow_ups([outcome])
+        waited = expected_candles(timer.call.at_ts, timer.call.timeframe, now)
+        _pin_emit(
+            FOLLOW_UP_READ_PIN,
+            actual=int(outcome.candles),
+            expected=waited,
+            ok=int(outcome.candles) >= waited,
+            context={
+                "symbol": timer.call.symbol,
+                "timeframe": timer.call.timeframe,
+                "state": outcome.state,
+                "candles": int(outcome.candles),
+                "close": float(outcome.close),
+                "target": float(outcome.target),
+                "next_read": (
+                    read_time_text(timer.next_read_ts) if not outcome.settled else ""
+                ),
+                "reads": int(timer.reads),
+                "retries": int(timer.retries),
+                "detail": outcome.detail,
+            },
+        )
+        return timer
+
     def post_selected(self, index: Any) -> list:
-        """Press Post Selected on the post one zone index shows."""
-        return self.bucket.post_selected(index, self.sender, self.settings, self.clock)
+        """Press Post Selected on the post one zone index shows.
+
+        The route's folder or intent file opens through ``opener``.
+        """
+        return self.bucket.post_selected(
+            index, self.sender, self.settings, self.clock, self.opener
+        )
 
     def post_all(self) -> list:
-        """Press Post All over every approved post in the bucket."""
-        return self.bucket.post_all(self.sender, self.settings, self.clock)
+        """Press Post All over every approved post in the bucket.
+
+        The post root opens once through ``opener`` when any post took the
+        folder or intent route.
+        """
+        return self.bucket.post_all(self.sender, self.settings, self.clock, self.opener)
 
     def release(self) -> list:
-        """Release the bucket while Send Bucket Full Auto is on."""
+        """Release the bucket while Send Bucket Full Auto is on; nothing opens."""
         return self.bucket.release(self.sender, self.settings, self.clock)
+
+    def press_lines(self, key: Any, records: Any) -> list:
+        """The Activity Log lines one Ready to Send press leaves.
+
+        ``records`` are what the press answered; a Post All with none says
+        ``NOTHING_APPROVED_TEXT`` and a Full Auto press says its state.
+        """
+        held = [PRESS_LINE_FORMAT.format(line=one.line) for one in list(records or [])]
+        if key == PRESS_FULL_AUTO:
+            held.insert(
+                0, FULL_AUTO_TOGGLED_FORMAT.format(state=self.bucket.full_auto_text())
+            )
+        elif key == PRESS_POST_ALL and not held:
+            held.append(NOTHING_APPROVED_TEXT)
+        return held
 
     def watched_rows(self) -> list:
         """Every call under watch as symbol, timeframe and vote, oldest first.

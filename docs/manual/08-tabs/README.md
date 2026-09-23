@@ -39,7 +39,7 @@ rule_id="DOC012"   # a dated update that runs backwards
 | File | Covers | State |
 | ---- | ------ | ----- |
 | [portfolio-panels.md](portfolio-panels.md) | The header strip: spendable columns, five counter cards, privacy dots | Live |
-| [simulator.md](simulator.md) | Validation, Back Test, Portfolio Battery, the gate-latch criterion | Live, rebuilt under issue #117 |
+| [simulator.md](simulator.md) | Live's tab forked over Stone Tablets: Validation, Back Test, Portfolio Battery, the gate-latch criterion, the replay layer | Live, rebuilt under issue #117 |
 | [paper-trader.md](paper-trader.md) | The live feed, the fake balance, the paper log | Live — issue #19 |
 | [proof-of-accumulation.md](proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain | Skeleton tab, engine only — issue #147 |
 | [market-inspector.md](market-inspector.md) | Higher-timeframe scanner, opposing pairs, topology proposals, adopt | Live |

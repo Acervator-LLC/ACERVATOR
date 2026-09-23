@@ -73,6 +73,25 @@ self._console.setFont(QFont("Consolas", 9))
 `ConsoleQtTab` builds that view. Under React the same calls land on `PagePane`,
 which holds the blocks and pushes them to the page.
 
+The pushes of one event-loop turn coalesce into one. `redraw` starts a
+zero-interval single-shot timer and `_push_now` builds the payload and pushes
+it once when the timer fires, so a signals drain that appends 200 rows pushes
+the page once rather than 200 times. Measured on a Portfolio Battery walk,
+whose gate chain fires the TA engine's thirteen postcondition pins per
+evaluation into the drain: with a push per append the walk thread reached
+5,000 bars in 257 seconds while the GUI thread rebuilt the page per row; with
+the pushes coalesced, 14 seconds.
+
+`src/gui/react_console_tab.py` — the coalesced push
+
+```python
+        def redraw(self) -> None:
+            """Ask for one push of both panes on the next event-loop turn; the
+            asks of one turn coalesce into one ``_push_now``."""
+            if not self._redraw_timer.isActive():
+                self._redraw_timer.start()
+```
+
 `src/gui/qt_console_tab.py` — `ConsoleQtTab.__init__`
 
 ```python
@@ -166,6 +185,21 @@ slice drops are counted and announced with a gap marker drawn above the slice.
 ```python
 def _drain_signals(self) -> None:
     """Render sink records past `_signal_seq`, keeping the newest 200."""
+```
+
+The drain reads the process sink, the one `get_sink` answers on the GUI
+thread. A Simulator run routes its worker thread to the Simulator's own sink
+under the sim bucket, so the walk's pins, the TA engine's thirteen
+postcondition pins per evaluation among them, no longer reach this pane; the
+Simulator's own presses on the GUI thread and the one `sim.sink.routed` row
+each run leaves at its end do. See [simulator.md](simulator.md).
+
+`src/core/signal_contract.py` — the sink the drain reads
+
+```python
+def get_sink() -> Optional[SignalSink]:
+    """The sink the calling thread emits into: its `route_thread` sink when one
+    is set, else the process sink."""
 ```
 
 Seven counters ride along, published every five seconds: the sequence
@@ -444,5 +478,101 @@ Three further emitters sit in the same mixin: a trade notification carrying its
 own text prefix, a voting-panel snapshot at fire time, and a gate decision at
 fire time. The last two emit events rather than text lines, and the Console
 tab's signal pane reads them.
+
+### A missing capital reservation in the log
+
+A bot claims the units it is allowed to work with so that a second bot on the
+same asset cannot sell them. Four places let a bot carry on when that claim is
+not there, and all four now write a warning naming what was lost. They appear in
+the upper pane at warning level.
+
+`src/trading/scrumming/execution.py` — the one that bears on a sale
+
+```python
+logger.warning(
+    "Bot %s sell of %.6f %s is NOT bounded by any other bot's "
+    "capital reservation: the pre-check raised %s: %s. A sibling "
+    "bot's claim on this asset is invisible to this sell.",
+```
+
+The other three name an allocation that is not held aside at admission, an
+Extractor whose base currency is empty, and a dollar grant made without an
+over-allocation check.
+
+```
+src/trading/container/registry.py      at admission
+src/trading/extractor_bot.py           at the chunk-rate claim
+src/trading/capital_registry.py        at the dollar grant
+```
+
+Two of those three lines have changed. `src/trading/capital_registry.py` is
+removed, so no dollar grant is made and that warning can no longer be written.
+The Extractor writes a second warning now, described under the next heading but
+one.
+
+### A claim that never reached the disk
+
+The registry keeps the claim table in memory and writes it to a file. The
+writer is `_save` in `src/trading/capital_reservation.py`. A failed write does
+not stop the bot. It logs an error that names the file, the reason, and the
+count of changes that are not on the disk.
+
+The line that records the claim now carries the answer as well.
+`CapitalReservationRegistry.reserve` logs the field `on_disk`. The line is an
+error when the value is False, and information when the value is True. Read
+the last line, not the first: a claim with `on_disk=False` exists for this run
+only, and the next start loses it.
+
+### A claim the bot refuses to place
+
+The bot reads its exchange balance before it claims. The reader is
+`_get_cached_exchange_balance` in `src/trading/scrumming_bot.py`. The reader
+answers None when the venue call fails.
+
+A balance that did not read is not a balance of zero, and it is not a licence
+to claim. `CapitalReservationMixin._ensure_capital_reservation` in
+`src/trading/scrumming/capital_reservation_mixin.py` stops on that answer. It
+places no new claim. It resizes no standing claim. It writes a warning that
+names the bot and the asset, and it tries again on the next call.
+
+#### The Extractor refuses on the same answer
+
+The Extractor reads its base currency the same way. The reader is
+`_read_base_holdings` in `src/trading/extractor_bot.py`, and it answers nothing
+when the venue call fails.
+
+`set_initial_chunk_rate` stops on that answer. It places no claim, and it writes
+one warning at the upper pane that names the bot and the asset. The line reads:
+
+```
+Bot <id> could not read its <asset> balance; placing no claim, because no
+holdings figure bounds it.
+```
+
+The Extractor claims once for each run, so it does not try again on a later
+call. A start reads the balance again.
+
+### The bot named in a refused sale
+
+A sale stops when another bot claims the units. The check is
+`effective_available` in `src/trading/capital_reservation.py`, and the caller
+is `src/trading/scrumming/execution.py`.
+
+The refusal names the bots that hold the claim and the units each one holds.
+Stop a named bot to release its claim: `ScrummingBot.stop` calls
+`_release_capital_reservation`. The refusal names no page, because no page
+edits this table.
+
+### A claim that expires on its own clock
+
+A bot pulses a heartbeat while it runs. A bot that stops pulsing leaves a
+claim that blocks every other bot on the same asset.
+
+`prune_expired` in `src/trading/capital_reservation.py` drops a claim after
+`HEARTBEAT_TTL` seconds of silence, which is 120. `_prune_on_schedule` runs it
+once every HEARTBEAT_INTERVAL seconds, which is 30. Two methods call it:
+`effective_available`, before it answers, and `heartbeat`, after it stamps.
+A running bot stamps first, so it never drops its own claim. No setting
+changes either interval.
 
 Back to [the subsystem index](README.md).

@@ -79,12 +79,12 @@ class CapitalReservationMixin(_Host):
     async def _ensure_capital_reservation(self, current_price: float) -> None:
         """Reserve on the first eligible call and update on later ones.
 
-        Returns without claiming when ``self_reserve_capital`` is off, when
-        ``current_price`` or ``target_asset`` is unusable, or when ``_crr``
-        answers None; failures log at WARNING and clear ``_crr_token``.
+        Returns without claiming when ``current_price`` or ``target_asset``
+        is unusable, when ``_crr`` answers None, or when
+        ``_get_cached_exchange_balance`` answers None outside sim mode;
+        failures log at WARNING and clear ``_crr_token``. No setting turns
+        the claim off.
         """
-        if not bool(getattr(self.config, "self_reserve_capital", True)):
-            return
         if current_price is None or current_price <= 0:
             return
         _asset = str(getattr(self.config, "target_asset", "") or "").upper()
@@ -94,10 +94,14 @@ class CapitalReservationMixin(_Host):
         if _qty <= 0:
             return
         _total_holdings = await self._get_cached_exchange_balance(_asset)
+        # None from the balance read means unread, which is not a holdings
+        # figure; sim's None below is a deliberate skip and stays known.
+        _balance_known = _total_holdings is not None
 
         # Passing _total_holdings None skips reserve()'s over-commit check.
         if getattr(self, "_sim_mode", False) and self._crr_token is None:
             _total_holdings = None
+            _balance_known = True
         try:
             _crr_reg = self._crr()
             if _crr_reg is None:
@@ -105,6 +109,20 @@ class CapitalReservationMixin(_Host):
             if self._crr_token is None:
                 # release_for clears a standing reservation no token can reach.
                 _crr_reg.release_for(self.bot_id, _asset)
+            if not _balance_known:
+                # A standing claim still bounds siblings, so only an absent
+                # one is a warning; the read repeats every tick.
+                logger.log(
+                    logging.WARNING if self._crr_token is None else logging.DEBUG,
+                    "Bot %s could not read its %s balance; placing no new "
+                    "claim and resizing no standing one, because no holdings "
+                    "figure bounds it. Standing claim: %s. Retrying next call.",
+                    self.bot_id,
+                    _asset,
+                    self._crr_token[:8] if self._crr_token else "none",
+                )
+                _crr_reg.heartbeat(self.bot_id)
+                return
             if _total_holdings is not None:
                 # _headroom leaves a co-tenant Extractor's claim untouched.
                 _others_reserved = sum(

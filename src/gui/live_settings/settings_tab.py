@@ -125,7 +125,6 @@ class SettingsTabMixin:
             from PySide6.QtWidgets import (
                 QInputDialog,
                 QMessageBox,
-                QLineEdit,
             )
         except Exception:
             return
@@ -278,17 +277,18 @@ class SettingsTabMixin:
         mf.addRow("Tranche Count:", self._stack_count)
 
         self._stack_spacing = QComboBox()
+        # Each sequence is level_multipliers(mode, 4) from stack_math.
         self._stack_spacing.addItem("Linear (1, 2, 3, 4…)", "linear")
-        self._stack_spacing.addItem("Quadratic (1, 2, 4, 7…)", "quadratic")
+        self._stack_spacing.addItem("Quadratic (1, 4, 9, 16…)", "quadratic")
         self._stack_spacing.addItem("Exponential (1, 2, 4, 8…)", "exponential")
         _cur_spacing = getattr(cfg, "stack_spacing_mode", "linear")
         _idx = self._stack_spacing.findData(_cur_spacing)
         if _idx >= 0:
             self._stack_spacing.setCurrentIndex(_idx)
         self._stack_spacing.setToolTip(
-            "Spacing model for successive Stack tranches. The "
-            "sequences show Δp in units of Split Distance between "
-            "consecutive tranches."
+            "Spacing model for successive Stack tranches. Each "
+            "sequence is the cumulative distance from the anchor, "
+            "in units of Split Distance."
         )
         self._stack_spacing.currentIndexChanged.connect(
             lambda: self._mark_changed(
@@ -664,10 +664,11 @@ class SettingsTabMixin:
         self._bullseye = QCheckBox("BB Bullseye Check")
         self._bullseye.setChecked(bool(cfg.bb_bullseye_check))
         self._bullseye.setToolTip(
-            "Rapid Fire override when price touches BB band within 0.5% "
-            "(or the candle wick reaches within 0.2%).\n"
-            "When triggered, bypasses the fire threshold — bullseye "
-            "alone can arm a fire, subject to midline gate."
+            "Counts a band touch within 0.5% (or a candle wick within "
+            "0.2%) as BB proximity.\n"
+            "With the delta at or over the interval that arms the BB "
+            "priority skew, which lowers the TA confidence floor. The "
+            "fire threshold and the midline gate are unchanged."
         )
         self._bullseye.toggled.connect(
             lambda v: self._mark_changed("bb_bullseye_check", v)
@@ -756,7 +757,11 @@ class SettingsTabMixin:
         self._hedge_active.setChecked(bool(cfg.hedge_rebalance_active))
         self._hedge_active.setToolTip(
             "Separate USD reserve for buying on sharp drawdowns.\n"
-            "NOT taken from Target Balance."
+            "NOT taken from Target Balance.\n\n"
+            "Ticking this on a running bot fills the reserve up to "
+            "Hedge Balance at once.\n"
+            "Unticking keeps the reserve and refuses every hedge buy "
+            "and every refill."
         )
         self._hedge_active.toggled.connect(
             lambda v: self._mark_changed("hedge_rebalance_active", v)
@@ -770,7 +775,12 @@ class SettingsTabMixin:
         self._hedge_balance.setValue(float(cfg.hedge_balance))
         self._hedge_balance.setToolTip(
             "USD reserve amount for hedge rebalancing (separate from "
-            "Target Balance)."
+            "Target Balance).\n\n"
+            "$ 0.00 is NOT an off switch. It is an empty reserve that "
+            "never refills,\n"
+            "and any reserve the bot already holds stays spendable until "
+            "it drains.\n"
+            "Untick Hedge Rebalance Active to turn the hedge off."
         )
         self._hedge_balance.valueChanged.connect(
             lambda v: self._mark_changed("hedge_balance", v)
@@ -1113,52 +1123,6 @@ class SettingsTabMixin:
 
         layout.addWidget(gates_group)
 
-        routing_group = QGroupBox("Profit Routing (v3.20.85)")
-        pr = QFormLayout(routing_group)
-        self._configure_form(pr)
-
-        self._profit_route = QComboBox()
-        self._profit_route.addItem("Fold back to target balance", "fold_to_target")
-        self._profit_route.addItem("Send to spendable", "spendable")
-        self._profit_route.addItem("Split fold/spendable per %", "split")
-        self._profit_route.addItem("Route to another bot (cross-bot)", "cross_bot")
-        _cur_route = getattr(cfg, "profit_route", "fold_to_target")
-        _r_idx = self._profit_route.findData(_cur_route)
-        if _r_idx >= 0:
-            self._profit_route.setCurrentIndex(_r_idx)
-        self._profit_route.setToolTip(
-            "Where realized profit flows on fold. "
-            "fold_to_target = increase target balance "
-            "(compound); spendable = mark for withdrawal; "
-            "split = use fold % below; cross_bot = route to "
-            "the target bot ID."
-        )
-        self._profit_route.currentIndexChanged.connect(
-            lambda: self._mark_changed("profit_route", self._profit_route.currentData())
-        )
-        pr.addRow("Route:", self._profit_route)
-
-        self._profit_route_bot_id = QLineEdit()
-        self._profit_route_bot_id.setText(
-            str(getattr(cfg, "profit_route_bot_id", "") or "")
-        )
-        self._profit_route_bot_id.setPlaceholderText(
-            "leave blank unless route = cross_bot"
-        )
-        self._profit_route_bot_id.setToolTip(
-            "Target bot ID for cross-bot profit routing. Only "
-            "consulted when route = cross_bot. Leave blank "
-            "otherwise."
-        )
-        self._profit_route_bot_id.editingFinished.connect(
-            lambda: self._mark_changed(
-                "profit_route_bot_id", self._profit_route_bot_id.text().strip()
-            )
-        )
-        pr.addRow("Target bot ID:", self._profit_route_bot_id)
-
-        layout.addWidget(routing_group)
-
         if cfg.mode.value == "extractor":
             ext_group = QGroupBox("Extractor — Pool & Artillery")
             ef = QFormLayout(ext_group)
@@ -1212,35 +1176,21 @@ class SettingsTabMixin:
             ef.addRow("Auto-scan top-N:", self._ext_scan_top_n)
 
             self._ext_scan_refresh = QSpinBox()
-            self._ext_scan_refresh.setRange(10, 600)
-            self._ext_scan_refresh.setSuffix(" ticks")
+            # The wizard row and the manual both offer 10 to 240 candles.
+            self._ext_scan_refresh.setRange(10, 240)
+            self._ext_scan_refresh.setSuffix(" candles")
             self._ext_scan_refresh.setValue(
                 int(getattr(cfg, "extractor_scan_refresh_candles", 60))
             )
             self._ext_scan_refresh.setToolTip(
-                "Ticks between watch-list refreshes. Lower = more "
-                "responsive; higher = less thrashing."
+                "Candles of this bot's timeframe between watch-list "
+                "refreshes. Lower = more responsive; higher = less "
+                "thrashing."
             )
             self._ext_scan_refresh.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_scan_refresh_candles", v)
             )
             ef.addRow("Scan refresh:", self._ext_scan_refresh)
-
-            self._ext_pool_reserve = QDoubleSpinBox()
-            self._ext_pool_reserve.setRange(0.0, 90.0)
-            self._ext_pool_reserve.setDecimals(1)
-            self._ext_pool_reserve.setSuffix(" %")
-            self._ext_pool_reserve.setValue(
-                float(getattr(cfg, "extractor_pool_reserve_pct", 50.0))
-            )
-            self._ext_pool_reserve.setToolTip(
-                "% of chunk reserved as untouchable. New artillery "
-                "fires only if (chunk_free - artillery_size) >= reserve."
-            )
-            self._ext_pool_reserve.valueChanged.connect(
-                lambda v: self._mark_changed("extractor_pool_reserve_pct", v)
-            )
-            ef.addRow("Pool reserve:", self._ext_pool_reserve)
 
             self._ext_exit_pct = QDoubleSpinBox()
             self._ext_exit_pct.setRange(10.0, 100.0)
@@ -1258,66 +1208,7 @@ class SettingsTabMixin:
             )
             ef.addRow("Exit %:", self._ext_exit_pct)
 
-            self._ext_max_tier = QSpinBox()
-            self._ext_max_tier.setRange(1, 10)
-            self._ext_max_tier.setValue(
-                int(getattr(cfg, "extractor_max_compounding_tier", 3))
-            )
-            self._ext_max_tier.setToolTip(
-                "Compounding tier counter (currently informational — "
-                "logs ROLL_TO_NEXT_TIER vs LOCK_TO_POOL). At this "
-                "version, realized base gain always deposits directly "
-                "to the pool regardless of tier. The gain-as-next-"
-                "artillery-size rolling mechanism is a planned "
-                "enhancement (see extractor_bot.py:1264-1266)."
-            )
-            self._ext_max_tier.valueChanged.connect(
-                lambda v: self._mark_changed("extractor_max_compounding_tier", v)
-            )
-            ef.addRow("Max compounding tier:", self._ext_max_tier)
-
-            self._ext_max_cost_basis = QDoubleSpinBox()
-            self._ext_max_cost_basis.setRange(1.0, 10.0)
-            self._ext_max_cost_basis.setDecimals(2)
-            self._ext_max_cost_basis.setSuffix("x")
-            self._ext_max_cost_basis.setValue(
-                float(getattr(cfg, "extractor_max_cost_basis_multiple", 2.0))
-            )
-            self._ext_max_cost_basis.setToolTip(
-                "Safety cap: cost basis of any position cannot "
-                "exceed multiplier x original artillery_size. "
-                "Hard floor against runaway averaging-down."
-            )
-            self._ext_max_cost_basis.valueChanged.connect(
-                lambda v: self._mark_changed("extractor_max_cost_basis_multiple", v)
-            )
-            ef.addRow("Max cost-basis multiple:", self._ext_max_cost_basis)
-
             layout.addWidget(ext_group)
-
-            alts_group = QGroupBox("Alt Targets (manual override)")
-            af = QVBoxLayout(alts_group)
-            alts = list(getattr(cfg, "extractor_alt_targets", []) or [])
-            if alts:
-                info_lbl = QLabel(f"Manual override active — {len(alts)} pair(s):")
-                info_lbl.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; font-size: 11px;")
-                af.addWidget(info_lbl)
-                alts_lbl = QLabel(", ".join(alts))
-                alts_lbl.setWordWrap(True)
-                alts_lbl.setStyleSheet(
-                    f"color: {ds.PRIMARY}; font-family: monospace; " "font-size: 11px;"
-                )
-                af.addWidget(alts_lbl)
-            else:
-                info_lbl = QLabel(
-                    "Auto-scan active (empty manual list). Bot "
-                    "rotates top-N by 24h volume each refresh."
-                )
-                info_lbl.setStyleSheet(
-                    f"color: {ds.TEXT_INACTIVE}; font-size: 11px; font-style: italic;"
-                )
-                af.addWidget(info_lbl)
-            layout.addWidget(alts_group)
 
         layout.addStretch()
         return w

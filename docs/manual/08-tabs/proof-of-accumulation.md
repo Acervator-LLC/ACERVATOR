@@ -1,11 +1,34 @@
 # Proof of Accumulation
 
-Reference. **Not built.** The window builds neither the Competition tab nor the
-Local Testnet tab. The tab row carries an empty tab labelled Accumulation in
-their place, and issue #147 carries the build-out. `src/competition/` is the
-Proof of Accumulation package, and its engine runs today with no screen in
-front of it. The rest of this file describes that engine and the contract
-design behind it, as a design, not as a shipped feature.
+Reference. **Built.** React draws this tab inside the desktop window, and the
+tab row carries it under the name Accumulation. The window still builds neither
+the Competition tab nor the Local Testnet tab. The page halves its top row: the
+current Vessel on the left, the Map or the Encounter on the right. The party
+window takes the lower half, and it lists up to 120 party rows, 40 a page.
+Seven subtabs open over those zones — Maps, Character Details, Gear, Resources,
+Quint, Skills and Guild. Ctrl+1 to Ctrl+7 open them in that order. Maps opens
+only in an event that carries a map.
+
+The page draws 35 buttons. A player picks a chain, Live or Demo TestNet, then
+picks one of eight event types. A bar of fifteen controls drives the engine
+from the screen: they write this node's identity, distil a trade fee into
+Quintessence, record a skill use, send Quint to another participant, cast a
+band, grade a trade, pay out a pot, close an event, draw loot, file a market
+exclusion, reset the chain and declare a world. The identity, the reset and the
+world each ask first and act on a second press. Every control prints what its
+mechanism did, or that mechanism's own refusal. Until this node writes
+`bot_identity.json`, every other control refuses for want of a participant.
+
+The page names what is absent. It draws no pixel art, so every class, loot tier
+and event mode shows a stand-in glyph. Nothing gives a Vessel assignments,
+lifeskilling, crafting, notifications, gear, equipping, destruction or
+permadeath, and the page lists all eight. Nothing holds a field for experience,
+level, character class, gear, enemy, threat or guild, so those seven metrics
+read nothing. A guild roster saves to a file and the Guild subtab reads it back,
+and no control founds a guild. Nothing advances the season.
+`src/competition/` is the Proof of Accumulation package, and issue #147 carries
+the rest of the build-out. The sections below describe that engine and the
+contract design behind it.
 
 The design is an on-chain competition layer where bots compete publicly and the
 winners are awarded ACRV tokens on Base, which is Coinbase's L2. It evolved
@@ -19,25 +42,55 @@ NFT trophy.
 
 ## The skeleton
 
-The tab exists and draws three lines: its name, one sentence saying it is not
-built, and the issue that owns it. It reads no competition, no token balance
-and no trophy.
+The window builds this tab on every launch. `ProofOfAccumulationTabMixin` appends
+one panel to the tab bar and names it Accumulation. The panel holds a single web
+view, and React draws the whole screen inside that view. This screen has no Qt
+version, so nothing chooses between two frontends.
 
-`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
+`src/gui/main_tabs/proof_of_accumulation_tab.py` — the method the window calls
 
 ```python
+    def _build_proof_of_accumulation_tab(self) -> None:
+        """Append the Accumulation tab, and hold None when its page cannot be built."""
+        try:
+            from ..react_proof_of_accumulation_tab import ProofOfAccumulationReactPanel
+
+            self._proof_of_accumulation_tab = ProofOfAccumulationReactPanel()
+            self._main_tabs.addTab(self._proof_of_accumulation_tab, HEADING)
+        except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
+            logger.warning("Accumulation tab unavailable: %s", exc)
+            self._proof_of_accumulation_tab = None
+```
+
+Built through that method, the tab reads Accumulation on the bar and its page
+loads. The page draws 35 buttons. The control bar holds 25 of them: two name the
+chain, eight name the event type, and fifteen fire a mechanism. Seven more open
+the seven subtabs.
+
+One module serves that whole screen as data, and it alone declares the shell. It
+reads the Quintessence ledger, the token ledger and the loot store, so the wallet
+over the party window carries a balance and a list each for trophies, loot and
+Vessels.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — what the screen declares
+
+```python
+METHOD = "proof_of_accumulation_tab.state"
+
 HEADING = "Accumulation"
 ISSUE = 147
-BUILT = False
-STATE_TEXT = "This tab is not built."
+BUILT = True
+STATE_TEXT = (
+    "The top row is halved: the current Vessel on the left, the Map or the "
+    "Encounter on the right. The party window takes the lower half. No pixel art "
+    "is drawn."
+)
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
-Two frontends draw that one view model. `EmptyTabsMixin` in
-`src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
-`src/gui/web/proof_of_accumulation_tab.js` registers a panel with the Electron
-shell's panel host. `src.core.desktop_bridge` serves the model under
-`proof_of_accumulation_tab.state`.
+`src/gui/web/proof_of_accumulation_tab.js` is the renderer module that draws the
+zones. `src.core.desktop_bridge` registers the surface under the method name
+above, so the renderer asks the bridge for the shell by that one name.
 
 ## Identity
 
@@ -100,12 +153,15 @@ feed, or between two machines exchanging signed submissions.
 of the four modes pairs with one Elite flag, so there are eight event types and
 no mode is written twice.
 
-| Mode | Shape |
-| ---- | ----- |
-| `monster_smash` | One participant against low to midlevel creatures |
-| `team_monster_smash` | A certified guild, up to 120 against 1 |
-| `dungeon_crawl` | One participant, or a group of six, through a dungeon |
-| `raid` | A group of sixty, the most challenging and the most rewarding |
+| Mode | Label on screen | Shape |
+| ---- | --------------- | ----- |
+| `monster_smash` | Fixation | One participant against low to midlevel creatures |
+| `team_monster_smash` | Coagulation | A certified guild, up to 120 against 1 |
+| `dungeon_crawl` | Descension | One participant, or a group of six, through a dungeon |
+| `raid` | Cementation | A group of sixty, the most challenging and the most rewarding |
+
+The code is what every other module keys on. The label is what the screen draws
+beside the Standard or Elite word, so a reader matches a row above to a button.
 
 `src/competition/poa_modes.py` — the one table the Elite flag indexes
 
@@ -124,20 +180,24 @@ turn does not spend.
 
 ## The token
 
-The ledger is append-only, and four methods are its whole surface.
+The ledger is append-only. Ask the class for its public names and ten methods
+answer. Its own docstring lists four of them, and one of those four names
+nothing: no method answers to `remaining_supply`. The method that reports what
+is still mintable is `remaining_ever`.
 
-`src/competition/token_ledger.py` — `TokenLedger`
+`src/competition/token_ledger.py` — the ten methods `TokenLedger` declares
 
 ```python
-class TokenLedger:
-    """
-    Append-only ACRV token ledger.
-
-    award()  — mint tokens for a competition result (idempotent)
-    balance()  — current balance for a bot
-    total_minted()  — total ACRV in existence
-    remaining_supply()  — tokens still mintable this season
-    """
+    def award(
+    def balance(self, bot_id: str) -> int:
+    def awards(self, bot_id: str) -> List[AwardRecord]:
+    def total_minted(self) -> int:
+    def remaining_ever(self) -> int:
+    def season_minted(self, season: int) -> int:
+    def leaderboard(self, top_n: int = 20) -> List[dict]:
+    def supply_summary(self) -> dict:
+    def save(self):
+    def load(self) -> "TokenLedger":
 ```
 
 The hard cap is ten million, and the ledger refuses an award that would pass
@@ -157,17 +217,44 @@ MIN_SEASON_REWARD = 100  # Floor — never less than this per season
 Awards are idempotent: settling the same result twice writes one record.
 Balances are replayed from the log, and no operation edits a balance.
 
-Five tiers are awarded on rank within the field, and the rarest three carry a
-lifetime cap on how many can ever exist. Each tier is named for a stage of the
-Corpus Hermeticum alchemical path, and pays a fixed number of tokens.
+Five tiers are awarded on rank within the field. Iterate the tier table and four
+of the five carry a lifetime cap on how many can ever exist. Harvest is the one
+that carries none. Each tier is named for a stage of the Corpus Hermeticum
+alchemical path, and pays a fixed number of tokens.
 
 | Tier | Stage | Rank | ACRV paid | Ever minted, at most |
 | ---- | ----- | ---- | --------: | -------------------: |
 | Harvest | NIGREDO | top 50% | 10 | no cap |
-| Gold Fold | ALBEDO | top 10% | 50 | no cap |
+| Gold Fold | ALBEDO | top 10% | 50 | 100,000 |
 | Bear Slayer | CITRINITAS | top 25% in a verified bear market | 100 | 10,000 |
 | Grand Accumulator | RUBEDO | top 1% across three consecutive seasons | 500 | 1,000 |
 | Ekthelius | UNIO MYSTICA | perfect score across every metric | 10,000 | 21 |
+
+The cap field is `max_ever`. It holds nothing for Harvest alone. The first two
+tiers show both cases.
+
+`src/competition/season_schedule.py` — the uncapped tier, then the next one
+
+```python
+    RarityTier(
+        name="Harvest",
+        emoji="🌾",
+        description="Top 50% of competition field",
+        rank_pct_max=0.50,
+        condition="Win rate > 50% of competing bots",
+        max_ever=None,
+        base_value=10,
+    ),
+    RarityTier(
+        name="Gold Fold",
+        emoji="🪙",
+        description="Top 10% of competition field",
+        rank_pct_max=0.10,
+        condition="Advantage/capital in top 10% of field",
+        max_ever=100_000,
+        base_value=50,
+    ),
+```
 
 ## The token contract
 
@@ -228,12 +315,13 @@ it, and nothing destroys it. It keeps its own ledger, apart from the token
 ledger above, because the two obey opposite rules: the token only ever moves
 outward into a balance, while Quintessence circulates.
 
-`src/competition/quintessence_ledger.py` — the eight operations
+`src/competition/quintessence_ledger.py` — the nine operations
 
 ```python
 def distil(self, address: str, fee_usd: object, trade_grade: object) -> Decimal:
 def spend(self, address: str, amount: object, held_address: str) -> Decimal:
 def transfer(self, sender, recipient, amount, skill_level) -> QuintessenceTransfer:
+def payout(self, held_address: str, credits: dict) -> Decimal:
 def respawn(self, address: str, amount: object) -> Decimal:
 def embed_from_pleroma(self, amount: object) -> Decimal:
 def embed_from_wallet(self, address, amount, embedded_amount) -> QuintessenceEmbed:
@@ -244,7 +332,9 @@ def release_all_to_pleroma(self, amount: object) -> Decimal:
 Quintessence can be in exactly four places, and the four always add up to
 everything ever distilled. A wallet holds what a participant can spend. A held
 address holds what they have already spent, which rests there and funds later
-awards. The pleroma holds what bled out of a transfer, and the ledger respawns
+awards. The payout operation is what pays one out, and it moves the award from
+the held address into the winner's wallet. The pleroma holds what bled out of a
+transfer, and the ledger respawns
 that to other participants. The embedded bucket holds what a thing in the world
 carries in itself, drawn out of the pleroma and returned there when the thing is
 broken.
@@ -253,7 +343,8 @@ broken.
 flowchart LR
     FEE[certified exchange fee] -->|distil| WALLET[wallet]
     WALLET -->|spend| HELD[held address]
-    WALLET -->|transfer| OTHER[another wallet]
+    HELD -->|payout| OTHER[another wallet]
+    WALLET -->|transfer| OTHER
     WALLET -->|bleed| PLEROMA[the pleroma]
     PLEROMA -->|respawn| OTHER
     PLEROMA -->|embed| EMBEDDED[embedded]
@@ -280,6 +371,7 @@ is_within_cap=self._total_ever_minted <= QUINTESSENCE_SUPPLY_CAP,
 | Grade curve | the trade's grade, zero to one, multiplies the award |
 | Destruction | never |
 | Transfer bleed | 8% at skill level one, falling to 4% at level ten |
+| Resolution | one Quintessence divides into 100,000,000 minimum units of 0.00000001 |
 
 The module holds the cap and the rate as constants, and the write path refuses a
 mint past the cap rather than reporting it afterwards.
@@ -288,25 +380,140 @@ mint past the cap rather than reporting it afterwards.
 
 ```python
 QUINTESSENCE_SUPPLY_CAP = Decimal(33_000_000)
+QUINTESSENCE_MINIMUM_UNIT = Decimal("0.00000001")
+QUINTESSENCE_UNITS_PER_WHOLE = 100_000_000
 QUINTESSENCE_PER_FEE_USD = Decimal(1)
 BLEED_FRACTION_AT_LEVEL_1 = Decimal("0.08")
 BLEED_FRACTION_AT_LEVEL_10 = Decimal("0.04")
 ```
 
-Every launch builds the ledger and attaches it to the window beside the local
-chain, so a later panel finds it where it finds the chain.
+### One whole Quintessence divides into a hundred million minimum units
 
-`src/gui/shared_testnet.py` — the line that builds it
+The minimum unit is the smallest amount of Quintessence that can exist. A
+divine essence is potent at a minute amount, so one whole unit carries a hundred
+million places to hold power in, the way one bitcoin carries a hundred million
+satoshi.
+
+Every amount a bucket receives is a whole number of minimum units. The amount is
+rounded down onto that figure as it is written, so no wallet, held address,
+pleroma or embedded balance can carry a fraction the currency cannot express.
+
+`src/competition/quintessence_ledger.py` — the rounding and the refusal
 
 ```python
-main_win._quint_ledger = cls.install_quint_ledger(quint_ledger_path)
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    return amount.quantize(QUINTESSENCE_MINIMUM_UNIT, rounding=ROUND_DOWN)
+
+
+def is_on_quintessence_grid(amount: Decimal) -> bool:
+    return amount == quantize_quintessence(amount)
 ```
 
-Nothing spends Quintessence yet. No screen shows a balance and no trade
-certifies, so the ledger loads empty on every launch and reports nothing ever
-distilled. The transfer duration, the skill that gates a transfer, the guild
-check, and the share of a market pool a participant may take are all other
-units.
+### The rounding leftover returns to the pleroma, because nothing is destroyed
+
+A bleed of eight per cent down to four per cent does not divide evenly at eight
+of the ten skill levels. The amount the recipient receives is rounded down and
+the bleed takes the rest, so the fraction that cannot be paid joins the pleroma
+rather than vanishing. That keeps the four buckets equal to everything ever
+distilled, to the unit.
+
+`src/competition/quintessence_ledger.py` — the transfer split
+
+```python
+received = quantize_quintessence(sent - sent * fraction)
+bled = sent - received
+```
+
+A transfer too small for the recipient to receive one minimum unit is refused
+rather than paid as nothing, which is the refusal `contracts/Quintessence.sol`
+already makes.
+
+| Skill level | Bleed on 100 Quintessence | Received |
+| ----------- | ------------------------- | -------- |
+| 1 | 8 | 92 |
+| 2 | 7.55555556 | 92.44444444 |
+| 3 | 7.11111112 | 92.88888888 |
+| 4 | 6.66666667 | 93.33333333 |
+| 5 | 6.22222223 | 93.77777777 |
+| 6 | 5.77777778 | 94.22222222 |
+| 7 | 5.33333334 | 94.66666666 |
+| 8 | 4.88888889 | 95.11111111 |
+| 9 | 4.44444445 | 95.55555555 |
+| 10 | 4 | 96 |
+
+The five stat requirements are whole Quintessence already — one stat measures 550
+at level 100 and five of them measure 2,750 — so the resolution changes nothing
+about the stat scale.
+
+Every launch builds the ledger and attaches it to the window beside the local
+chain, so a later panel finds it where it finds the chain. The same launch hands
+that ledger to the certification socket, so the socket and the panels move one
+ledger and not two.
+
+`src/gui/shared_testnet.py` — the two lines that build it, and the socket that takes it
+
+```python
+        ledger = cls.install_quint_ledger(quint_ledger_path)
+        main_win._quint_ledger = ledger
+        main_win._market_rotation = bridge.install_market_rotation(rotation_path)
+        main_win._capture_bounds = bridge.install_capture_bounds(
+            main_win._market_rotation, bounds_path
+        )
+        main_win._certification_socket = bridge.install_certification_socket(
+            ledger, socket_path, main_win._capture_bounds
+        )
+```
+
+The screen spends Quintessence. The distil control mints from a trade
+fee. The spend control then casts a band and rests its cost in the event pot.
+The wallet over the party window draws what the spend left. Fire the two in that
+order on the Demo TestNet chain and each prints what its mechanism did.
+
+```
+distil   Distilled 0.1 Quint.
+spend    Band x1 cost 0.001 Quint, resting at poa_elite_event_pot.
+wallet   Quint reads -- before the distil and 0.099 after the spend
+```
+
+A trade certifies through `CertificationSocket.certify`, which signs one fill,
+logs it, posts it and distils the venue's fee. It refuses a fill already
+certified.
+
+`src/competition/certification_socket.py` — what the method contracts to do
+
+```python
+    def certify(self, identity: BotIdentity, fill: CertifiedFill) -> CertificationReceipt:
+        """Sign, log, post and distil one fill, and return its receipt.
+```
+
+The ledger loads whatever its file holds. On a chain that has distilled, the
+Quint subtab names the file as held and reports the figure minted on it.
+
+```
+Ledger file      quintessence_ledger_testnet.json - held
+Minted so far    0.1
+Smallest unit    0.00000001
+Supply cap       33000000
+```
+
+The transfer duration, the transfer skill, the guild and the share of a pot are
+all drawn. The skills subtab states the duration and the bleed. The train control
+records one use and reports the level it reached. A Guild subtab opens on Ctrl+7
+and reports the roster. The pot returns three quarters of itself to the
+participants.
+
+```
+duration      1000 Quint takes 100 hours at level 1 and 10 hours at level 10.
+train         Quintessence Transfer stands at level 1 on 1.0 weighted uses.
+standing      level 1 - effect 1.1x - bleed 8.00% - transfers sent 0
+guild         Guild, Ctrl+7 - 0 guilds, 0 members, ranks officer and member
+return pool   Return pool, 75%
+```
+
+`GuildRoster.save` writes a guild roster file and the subtab reads it back, so the
+roster loads empty only until something writes that file, and no control founds a
+guild. Nothing advances the season either: the counter lives behind a gated
+registry function on the chain and no module under `src` reaches it.
 
 ## Head to head
 
@@ -371,7 +578,9 @@ so a trophy lasts as long as the chain does.
 ## The chain
 
 `local_testnet.py` simulates the whole Base environment in memory, with no
-wallet, no ETH and no network. Four classes make it up.
+wallet, no ETH and no network. Ask the module for the classes it declares and
+seven answer. Four are the chain and its contracts. Three are the records those
+four store.
 
 | Class | Holds |
 | ----- | ----- |
@@ -379,6 +588,9 @@ wallet, no ETH and no network. Four classes make it up.
 | `LocalACRV` | The ERC-20 balances and the mint history |
 | `LocalRegistry` | Competitions, submissions and adjudications |
 | `LocalTestnet` | The three above, plus a mock oracle and transaction receipts |
+| `Block` | One block's number, hash, parent hash, timestamp and transactions |
+| `TxRecord` | One transaction's hash, block, sender, function, arguments and gas |
+| `ChainEvent` | One event a contract emitted, with its block and its arguments |
 
 One call runs a whole competition on that chain and returns the result table.
 It registers the entrants, trades them, takes their submissions, adjudicates,
@@ -404,14 +616,43 @@ The real targets sit ready for the day it deploys.
   Base Sepolia: chain_id=84532 — testnet (deploy here first)
 ```
 
-The contract addresses and ABIs sit beside them.
+The two ABIs sit beside them, and the four address fields are empty. Read the
+two configs and both the token address and the registry address answer an empty
+string on each network, because no deploy has put a contract on either. The ABIs
+are complete, so the calls are already described the day an address arrives.
+
+`src/competition/base_config.py` — what the two configs answer
+
+```
+BASE_MAINNET   acrv_address = ''   registry_address = ''
+BASE_SEPOLIA   acrv_address = ''   registry_address = ''
+ACRV_ABI       12 entries
+REGISTRY_ABI   16 entries
+```
 
 ## The two shelved tabs
 
 Both tab modules exist and the window builds neither. Their surfaces stay
 registered in the bridge, so the view models answer with no Qt tab in front of
 them. The Testnet tab is where a competition would be run and its blocks read
-in a block explorer; today the demo run above is the only way to reach either.
+in a block explorer.
+
+The local chain is reachable without either tab. Pick the Demo TestNet chain on
+the Accumulation tab, press the identity control twice, then the distil control
+and the spend control. Each one writes a file under the runtime directory.
+
+```
+the identity control writes   bot_identity.json
+the distil control writes     quintessence_ledger_testnet.json
+the spend control writes      poa_record_store_testnet.json
+```
+
+Nothing draws a block explorer. The Quint subtab says so in its own words.
+
+```
+No block height and no merkle root is drawn. merkle_log writes the trade log
+and no subtab reads its root.
+```
 
 `src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
 
@@ -1063,12 +1304,20 @@ and to the Quintessence ledger.
 
 ```python
             leaf = log.append(record)
-            distilled = self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+            distilled = (
+                self._ledger.distil(participant, fee, grade)
+                if award_reason == AWARDED
+                else Decimal(0)
+            )
             self._certified_fill_ids.setdefault(bot_id, set()).add(fill_id)
             self._lifetime_fee_usd[bot_id] = (
                 self._lifetime_fee_usd.get(bot_id, Decimal(0)) + fee
             )
 ```
+
+``participant`` is the wallet the award credits. It is the node's wallet for a
+bot that feeds a participant node, and the bot's own synthesised address for a
+bot that feeds none.
 
 Most of certification was already in the package. Signing belongs to the bot
 identity, the append-only log already refuses three kinds of bad record, and the
@@ -1187,8 +1436,8 @@ cap, so those three remain open.
 
 The wallet holds real state. The balance in the party window's header is the
 figure the Quintessence ledger computed for this node, and it stays on screen
-while the wallet is closed. Opening the wallet lays three holdings side by side
-across the party window: Quintessence, trophies, loot.
+while the wallet is closed. Opening the wallet lays four holdings side by side
+across the party window: Quintessence, trophies, loot, Vessels.
 
 Quintessence reads the ledger file belonging to the chain the tab is showing.
 Five figures, every one of them the ledger's own, none of them worked out on the
@@ -1708,8 +1957,8 @@ A TestNet run asks the same surface for the same model and names its own chain.
 The fleet file for a demo chain carries the chain in its name.
 
 ```
-chain live      bot_state.json           exists   38 participants, 7 classes
-chain testnet   bot_state_testnet.json   absent    0 participants, 7 classes
+chain live      bot_state.json           exists   38 source bots, 7 classes
+chain testnet   bot_state_testnet.json   absent    0 source bots, 7 classes
 ```
 
 The classes are not chain data, so both runs list all seven. The party window
@@ -2231,10 +2480,10 @@ modes the design names.
 passed=False     8 high findings       wrote <repo>/logs/tournaments
 ```
 
-Two things in it were worth keeping and both carried over. A participant is
-named by its bot id rather than by holding a bot object, and one event shape
+Two things in it were worth keeping and both carried over. A party row is named
+by its bot id rather than by holding a bot object, and one event shape
 serves the screen as a plain row. The seeded simulation, the scorer for
-computer-run participants, the invented candles and the settlement adapter that
+computer-run party rows, the invented candles and the settlement adapter that
 paid nobody are all gone.
 
 ### Demo mode answers the same event
@@ -2243,8 +2492,8 @@ A TestNet run asks the same surface and names its own chain. The modes, the turn
 and the pool are not chain data, so both runs answer the same event.
 
 ```
-chain live      38 participants   8 event types   raid_elite, 1m candle
-chain testnet    0 participants   8 event types   raid_elite, 1m candle
+chain live      38 source bots   8 event types   raid_elite, 1m candle
+chain testnet    0 source bots   8 event types   raid_elite, 1m candle
 ```
 
 ### What the modes and the turn do not reach
@@ -2406,7 +2655,8 @@ so the same 120 prices come back on every run, and the competition still names a
 winner and mints the award.
 
 ```
-participants   3
+participant nodes   0
+source bots         3
 winner tier    Harvest
 winner tokens  10
 rank 1 value   371.46   the same figure on a second run
@@ -2781,15 +3031,15 @@ together. That same tier is the one the brief cannot specify yet, so it goes las
 
 ### The 120-participant event has no dungeon map
 
-The mode table settles this. Team Based Monster Smash is the only mode that reaches a
-hundred and twenty participants, and it carries no map. The Raid reaches sixty and the
-Dungeon Crawl reaches six, and those two are the modes with a map rail.
+The mode table settles this. Coagulation is the only mode that reaches a
+hundred and twenty participants, and it carries no map. Cementation reaches sixty and
+Descension reaches six, and those two are the modes with a map rail.
 
 ```
-Monster Smash               1 participant          no map
-Team Based Monster Smash    up to 120              no map
-Dungeon Crawl               1 to 6                 map
-Raid                        2 to 60                map
+Fixation                    1 participant          no map
+Coagulation                 up to 120              no map
+Descension                  1 to 6                 map
+Cementation                 2 to 60                map
 ```
 
 The Old One Avatar the operator wants in a 120-participant event therefore fights in
@@ -3904,7 +4154,7 @@ bot's lifetime fee, and it mints nothing.
 
 ```python
             distilled = (
-                self._ledger.distil(self._wallet_for(bot_id), fee, grade)
+                self._ledger.distil(participant, fee, grade)
                 if award_reason == AWARDED
                 else Decimal(0)
             )
@@ -4054,10 +4304,21 @@ what anybody spent.
 
 ```python
 RETURN_PERCENT = 75
-BASE_UNITS_PER_QUINTESSENCE = 10**18
 
 return_pool_units = pot_units * RETURN_PERCENT // 100
-amount_units = return_pool_units * own // total_score_units
+amount_units = int(return_pool_units * own / total_score_ratio)
+```
+
+The grain is the ledger's own. ``QUINTESSENCE_UNITS_PER_WHOLE`` and
+``QUINTESSENCE_MINIMUM_UNIT`` arrive by import, so the division cannot divide a
+Quintessence more finely than a wallet can hold one.
+
+```python
+from .quintessence_ledger import (
+    QUINTESSENCE_MINIMUM_UNIT,
+    QUINTESSENCE_UNITS_PER_WHOLE,
+    amount_text,
+)
 ```
 
 ### The top spender performed worst and took nothing
@@ -4070,8 +4331,8 @@ spending.
 ```
                 spent    actions   grade   axes   payout
 big_spender     0.800          8   F 0.0      4   0
-middle          0.030          3   C 0.5748   4   0.227485458470916941
-small_spender   0.001          1   A+ 1.0     4   0.395764541529083058
+middle          0.030          3   C 0.5748   4   0.22748545
+small_spender   0.001          1   A+ 1.0     4   0.39576454
 ```
 
 The participant who put 0.800 of a 0.831 pot in took nothing back. The one who put
@@ -4085,8 +4346,8 @@ its default. That 0.5 is not a measurement, so the division refuses it a share, 
 same refusal the capture bounds already make on an award.
 
 ```
-alpha   grade 0.8008   axes 2   share 0.444691248334073745   0.103724233673922701
-beta    grade 1        axes 2   share 0.555308751665926254   0.129525766326077298
+alpha   grade 0.8008   axes 2   share 0.44469124   0.10372423
+beta    grade 1        axes 2   share 0.55530875   0.12952576
 gamma   grade 0.5      axes 0   no scored axis, so no share
 ```
 
@@ -4098,24 +4359,24 @@ Quintessence moves from the pot into wallets and none is made or lost.
 ```
 before   wallets 2.689                 held 0.311                 pleroma 0
          minted 3   delta 0   balanced True   negative buckets 0
-after    wallets 2.922249999999999999   held 0.077750000000000001   pleroma 0
+after    wallets 2.92224999            held 0.07775001            pleroma 0
          minted 3   delta 0   balanced True   negative buckets 0
 ```
 
 ### The pot equals the payouts plus the reserve, exactly
 
 This division does not divide evenly. The return pool is 0.23325 and the two shares
-come to one indivisible unit less. That unit is not dropped and not rounded away; it
+come to one minimum unit less. That unit is not dropped and not rounded away; it
 joins the quarter that never left and rests at the pot address as the reserve.
 
 ```
 pot                   0.311
 return pool, 75%      0.23325
-paid to participants  0.233249999999999999
-division remainder    0.000000000000000001
-reserve               0.077750000000000001
+paid to participants  0.23324999
+division remainder    0.00000001
+reserve               0.07775001
 
-0.233249999999999999 + 0.077750000000000001 = 0.311
+0.23324999 + 0.07775001 = 0.311
 ```
 
 The reserve is also what the pot address still holds, so the figure on the screen and
@@ -4138,8 +4399,8 @@ The Accumulation page carries a Redistribution panel under the skill ladder. The
 page was drawn and its own text read back.
 
 ```
-chain live      3180 characters   Pot 0.311   reserve 0.077750000000000001
-chain testnet   3188 characters   Pot 0.311   reserve 0.077750000000000001
+chain live      3180 characters   Pot 0.311   reserve 0.07775001
+chain testnet   3188 characters   Pot 0.311   reserve 0.07775001
 
 quintessence_ledger.json           poa_record_store.json
 quintessence_ledger_testnet.json   poa_record_store_testnet.json
@@ -4481,7 +4742,7 @@ KAT/USD   grade A+  1.0  axes 0  ->  total 0  fills 0  score 0
 score    {'address': '0xadf9793469cec8ae...', 'score': '0', 'scored_axes': 0,
           'standing': 'no_score'}
 shares   []
-reserve  1.000000000000000000
+reserve  1
 ```
 
 ### Real fills off the operator's own log, divided
@@ -4495,12 +4756,12 @@ nought.
 
 ```
                     fills  grade total  score     spent    payout
-0x3ecef1619dd90c8d      4       2.2955  0.573875  0.100    0.023488715820590074
-0x48cce07b5732795f      4       3.5     0.875     0.010    0.035813768404297652
-0xca3e3124a3226b20      4       3.0     0.75      0.010    0.030697515775112273
+0x3ecef1619dd90c8d      4       2.2955  0.573875  0.100    0.02348871
+0x48cce07b5732795f      4       3.5     0.875     0.010    0.03581376
+0xca3e3124a3226b20      4       3.0     0.75      0.010    0.03069751
 
-pot 0.120   return pool 0.090   paid 0.089999999999999999
-remainder 0.000000000000000001   reserve 0.030000000000000001   exact True
+pot 0.120   return pool 0.090   paid 0.08999998
+remainder 0.00000002   reserve 0.03000002   exact True
 ```
 
 The biggest spender of the three scored worst and took the smallest payout.
@@ -4529,10 +4790,10 @@ that participant's score halved instead moved all three, which proves the readin
 was live.
 
 ```
-spends  0.100    0.010  0.010   shares  0.0978696492  0.1492240350  0.1279063157
-spends  100.000  0.010  0.010   shares  0.0978696492  0.1492240350  0.1279063157
+spends  0.100    0.010  0.010   shares  0.09786964  0.14922403  0.12790631
+spends  100.000  0.010  0.010   shares  0.09786964  0.14922403  0.12790631
 
-scores  0.2869375  0.875  0.75  shares  0.0562788074  0.1716191036  0.1471020888
+scores  0.2869375  0.875  0.75  shares  0.0562788  0.1716191  0.14710208
 ```
 
 ### The books balance and a second settle gets nothing
@@ -4544,7 +4805,7 @@ objects then read the event back off disk and asked to pay it again.
 ```
 before  wallets 8.6755                held 0.12                  pleroma 0
         minted 8.7955  delta 0  balanced True  negative buckets 0
-after   wallets 8.765499999999999999  held 0.030000000000000001   pleroma 0
+after   wallets 8.76549998           held 0.03000002            pleroma 0
         minted 8.7955  delta 0  balanced True  negative buckets 0
 
 restart  settled_at read off disk 1789037532.1853175
@@ -4559,8 +4820,8 @@ construction. A demo run is one more of the same object over the demo chain's ow
 files, running the same join and the same division. No flag chooses between them.
 
 ```
-live     chain 2322666782976   poa_record_store.json           paid 0.089999999999999999
-testnet  chain 2322667254944   poa_record_store_testnet.json   paid 0.089999999999999999
+live     chain 2322666782976   poa_record_store.json           paid 0.08999998
+testnet  chain 2322667254944   poa_record_store_testnet.json   paid 0.08999998
 ```
 
 ### What the join does not reach
@@ -5159,13 +5420,13 @@ Driving records through the chain, letting the chain save itself and reading the
 file size gives this.
 
 ```
-one action on the chain today            988 bytes
+one action on the chain today          1,473 bytes
 one action in a chosen encoding          399 bytes
 recommended ceiling                      1 MB per layer per one-hour world turn
-participants a layer                     655
-squares a layer                          655
+participants a layer                      79
+squares a layer                           79
 squares per participant                  1, fixed rather than chosen
-a twenty-layer world                     20 MB an hour, 13,100 participants
+a twenty-layer world                     20 MB an hour, 1,580 participants
 his 3,136-block chain reloads in         65 ms
 a hundred times those records            4.9 s
 what binds                               the save, not the size and not the load
@@ -5279,7 +5540,7 @@ In development.
 
 ### One megabyte an hour, recommended
 
-The per-action cost rounds up to 400 bytes and the budget rounds down from the 1.28
+The per-action cost rounds up to 1,473 bytes and the budget rounds down from the 1.28
 megabytes a ten-second load would allow. Both roundings keep the bound safe.
 
 Maximum world size and maximum participants reach the ceiling together, so nothing
@@ -5287,18 +5548,22 @@ is left over to spend on world and no trade-off exists between the two. One numb
 moves and both caps land on the same budget point.
 
 ```
-1,048,576 / 400  = 2,621 action records a world turn
+1,048,576 / 1,473  = 711 action records a world turn
 
 actions each   participants   world squares   squares per participant
-      4             655            655                  1
-      8             327            327                  1
-     20             131            131                  1
-     40              65             65                  1
+      4             177            177                  1
+      8              88             88                  1
+      9              79             79                  1
+     20              35             35                  1
+     40              17             17                  1
 
 a 720-turn season = 720 MB, which reloads in 14.7 s
 ```
 
-The recommended point is the first row: 655 participants on 655 squares, per layer.
+The recommended point is the nine-action row: 79 participants on 79 squares, per layer.
+Nine is the Impetus grant at the top of the hundred-level arc, so the bound holds at
+every level. The four-action row is the same layer on its first day, 177 participants,
+and it is not the bound.
 One megabyte rests on the ten-second load ceiling and nothing else.
 
 ### A world is a cube, so the layer count multiplies the chain
@@ -5309,9 +5574,9 @@ wording rather than a ruling, so ten sits beside it.
 
 ```
 layers   chain an hour   participants   squares   a 720-turn season
-   1         1 MB              655        655        720 MB
-  10        10 MB            6,550      6,550      7,200 MB
-  20        20 MB           13,100     13,100     14,400 MB
+   1         1 MB               79         79        720 MB
+  10        10 MB              790        790      7,200 MB
+  20        20 MB            1,580      1,580     14,400 MB
 ```
 
 The cube figure is the real one. The flat figure is a comparison, and quoting it for
@@ -5323,15 +5588,15 @@ Capping size and participants together fixes area per participant, and a third a
 can honour that two ways.
 
 ```
-density per world   655 participants over 20 layers, so a layer holds 33 of them
-                    on 33 squares, about six by six
+density per world   79 participants over 20 layers, so a layer holds 3 of them
+                    on 3 squares, about two by two
 density per layer   each layer keeps the cap, so every layer stays a world and the
                     cube holds twenty times the participants and the storage
 ```
 
 These figures take the second reading. The first holds the density constant only by
-shrinking a layer to a six-by-six board, which is not a world and leaves a zone
-thirty-three participants to take a level from. Keeping every layer a world means the
+shrinking a layer to a two-by-two board, which is not a world and leaves a zone
+three participants to take a level from. Keeping every layer a world means the
 cap is per layer, and a twenty-layer world then costs twenty megabytes an hour.
 
 ### How often a checkpoint has to be written
@@ -5398,13 +5663,13 @@ so the two figures pull apart. A participant sees a higher or lower layer only o
 able to enter it.
 
 ```
-the chain holds, twenty layers         52,420 records a world turn
-one participant, one layer                  4 records a world turn
-one participant, all twenty layers         80 records a world turn
+the chain holds, twenty layers         14,220 records a world turn
+one participant, one layer                  9 records a world turn
+one participant, all twenty layers        180 records a world turn
 ```
 
-At base viewrange on one layer a participant receives one record in thirteen
-thousand. A range boost multiplies that share by the squares it adds and changes
+At base viewrange on one layer a participant receives one record in one thousand
+five hundred. A range boost multiplies that share by the squares it adds and changes
 nothing about what the chain stores. Nothing in the competition package carries a
 zone, a square, a tile, a layer or a viewrange, so neither figure has a consumer yet.
 
@@ -5548,7 +5813,7 @@ after    4,031,424 bytes
 
 Twenty-seven bytes takes one action from 988 bytes to 1,015 in this encoding, so a
 one-megabyte layer holds 1,033 actions an hour rather than 1,061. The recommended
-ceiling of one megabyte does not move, and 655 participants on one square each sits
+ceiling of one megabyte does not move, and 79 participants on one square each sits
 far under both figures.
 
 ### A record written before content names is called legacy
@@ -5708,8 +5973,8 @@ this draws a list.
 
 ### The mode decides whether the map opens
 
-`EventMode.has_map` already holds on Dungeon Crawl and Raid and fails on both Monster
-Smash modes. The subtab reads that one property, the same way the turn length reads one
+`EventMode.has_map` already holds on Descension and Cementation and fails on Fixation
+and Coagulation. The subtab reads that one property, the same way the turn length reads one
 property of the variant, so no second rule names which modes allow a map.
 
 ```python
@@ -5724,7 +5989,7 @@ panel. In either smash the button is dead, the bar entry is dead, and the senten
 the button says which modes do carry a map.
 
 ```
-Monster Smash carries no map, so this subtab does not open. Dungeon Crawl and Raid do.
+Fixation carries no map, so this subtab does not open. Descension and Cementation do.
 ```
 
 That sentence names its modes off the same property, so a mode that gains a map appears
@@ -5832,9 +6097,9 @@ zero after every one of them.
 ```
 drawn into the world    w 0.0000496      p 0.00000039     e 0.00000001   delta 0
 put in by a maker       w 0.00004955     p 0.00000041     e 0.00000004   delta 0
-taken back out          w 0.000049567    p 0.000000433    e 0            delta 0
+taken back out          w 0.00004956     p 0.00000044     e 0            delta 0
 taken out with none
-  recovered             w 0.000049567    p 0.000000433    e 0            delta 0
+  recovered             w 0.00004955     p 0.00000045     e 0            delta 0
 ```
 
 On the chain the same five movements left the pleroma exactly 0.000000033 higher
@@ -5964,11 +6229,11 @@ since the last snapshot, so bounding that count bounds the wait whatever the hou
 CHECKPOINT_RECORD_INTERVAL = 50_000
 ```
 
-At twenty layers 52,420 records fill one world turn, so this is about one snapshot an
-hour and a load that never replays more than about half a second of records. The
-world budget recommended about once a day; a day at twenty layers leaves 1.26 million
-records to replay, which is longer than the 4.9 seconds that same measurement called
-free.
+At twenty layers 14,220 records fill one world turn, so this is about one snapshot
+every three and a half hours and a load that never replays more than about a second
+of records. The world budget recommended about once a day; a day at twenty layers
+leaves 341,280 records to replay, which is longer than the 4.9 seconds that same
+measurement called free.
 
 ### A load reads the snapshot and the tail, or the whole log
 
@@ -6226,7 +6491,7 @@ files written           market_rotation_testnet.json
 
 ### The party window lists the fleet on both chains
 
-The participant list was reading a chain-suffixed fleet file, so the demo chain
+The party list was reading a chain-suffixed fleet file, so the demo chain
 drew an empty party. A fleet is not chain state: the same bots play on either
 chain and only the ledger changes. The list now reads the one fleet file, and the
 demo chain draws the same forty slots the live chain draws.
@@ -6259,7 +6524,7 @@ with one another. The grid is regular and carries addressing. A zone is a patch 
 terrain with its own shape. The tree levels are the third axis.
 
 ```
-the world grid    regular. 676 addressable squares, 655 of them budgeted at one
+the world grid    regular. 81 addressable squares, 79 of them budgeted at one
                   square a participant. Addressing, the byte budget and sight.
 zone regions      irregular, varied in size and shape, joined at their own
                   borders. A zone IS a terrain region.
@@ -6275,17 +6540,17 @@ TREE_SPHERES = 10
 SEPHIROT_LAYERS = TREE_SPHERES * 2
 ```
 
-### The grid holds 676 squares and base sight covers one
+### The grid holds 81 squares and base sight covers one
 
-655 participants at one square each is the measured figure from the world budget.
-655 squares is a grid 25.6 on a side, which is not a whole number of squares, so
+79 participants at one square each is the measured figure from the world budget.
+79 squares is a grid 8.9 on a side, which is not a whole number of squares, so
 the grid takes the smallest whole side that holds them.
 
 ```
-participants a layer carries       655
-squares a layer holds, one each    655
-smallest whole side holding 655    26
-addressable squares                676
+participants a layer carries        79
+squares a layer holds, one each     79
+smallest whole side holding 79       9
+addressable squares                 81
 ```
 
 The declared size is free. The byte budget bounds how much a world writes in one
@@ -6293,19 +6558,19 @@ turn, never how large the world is.
 
 ```
 square (0, 0)                  0
-square (25, 25)                675
-index 340 back to x and y      (2, 13)
-square (26, 0)                 refused - off a grid 26 across holding 676
-index 676                      refused - off a grid holding 676
+square (8, 8)                  80
+index 23 back to x and y       (5, 2)
+square (9, 0)                  refused - off a grid 9 across holding 81
+index 81                       refused - off a grid holding 81
 ```
 
 Sight is one square, which is the participant's own.
 
 ```
 squares base sight covers             1
-squares in view from 340 at base      (340,)
-squares in view from 340 at radius 1  (313, 314, 315, 339, 340, 341, 365, 366, 367)
-squares in view from 0 at radius 1    (0, 1, 26, 27)
+squares in view from 23 at base        (23,)
+squares in view from 23 at radius 1    (13, 14, 15, 22, 23, 24, 31, 32, 33)
+squares in view from 0 at radius 1     (0, 1, 9, 10)
 ```
 
 The last row is a corner. A radius that reaches off the grid yields fewer squares
@@ -6579,14 +6844,14 @@ a layer past the declared count refused - layer 20 is outside the 20 layers
 
 ### The arena is the one place known without being found
 
-Monster Smash happens at an arena, it is where everyone starts, and every other
+Fixation happens at an arena, it is where everyone starts, and every other
 dungeon type is found out in the world. That solves the problem lazy discovery
 creates: a brand-new participant in an undiscovered world has exactly one place to
 go.
 
 ```
-arena square      324, the middle of a grid 26 across
-as x and y        (12, 12)
+arena square      40, the middle of a grid 9 across
+as x and y        (4, 4)
 reachable with no discovery   True
 the square beside it          False
 zones discovered at creation  none
@@ -6960,3 +7225,9311 @@ store directly. The tab's controls own that.
 
 No drawing. The Map subtab still says no world is generated, and that sentence is
 still true.
+
+## 2026-09-10 21:26 - #147 - entity stats, measured in Quintessence
+
+Every entity in PoA now carries stats, and a stat holds an amount of
+Quintessence outright. Nothing converts a stat into Quintessence. A Vessel, a
+monster and one component of an item all hold the same kind of record, and the
+Quintessence needed to occupy and control that entity is the sum of the stats on
+it.
+
+```
+src/competition/entity_stats.py
+```
+
+### A stat is an amount of Quintessence, so no exchange rate exists
+
+The directive asked for stats that convert to a measurement or a function of
+Quintessence. The strongest reading makes the conversion identity: a stat value
+already is a Quintessence amount. Nothing multiplies, so there is no rate for
+anyone to pick and no second number to keep in step.
+
+```
+a stat value          IS a Quintessence quantity, carried as Decimal
+an entity's stats     sum to the Quintessence it requires
+a Vessel's occupancy  that sum
+an item's cohesion    the same sum over the item's components
+```
+
+One function does all three. A Vessel and a monster hand it one record; an item
+hands it one record a component.
+
+```python
+def quintessence_requirement(blocks: Iterable[StatBlock]) -> Decimal:
+    """Add every amount of every block in ``blocks``, exactly.
+
+    ``blocks`` holds one block a Vessel or a monster, and one block a component.
+    """
+```
+
+### The stat set is provisional and lives in one table
+
+A separate unit researches which stats exist. Until that answer lands the set is
+a placeholder, and it sits in one table so the answer has one place to go.
+Adding, removing or renaming a stat changes the table and nothing else.
+
+```python
+STATS: tuple[StatDef, ...] = (
+    StatDef("strength", SALT, "max weight"),
+    StatDef("dexterity", SULPHUR, NO_EFFECT_NAMED),
+    StatDef("constitution", SALT, "turn point penalty while carrying"),
+    StatDef("intelligence", MERCURY, NO_EFFECT_NAMED),
+    StatDef("wisdom", MERCURY, NO_EFFECT_NAMED),
+)
+```
+
+Strength sets max weight and Constitution sets the carrying penalty. Those two
+meanings hold. The other three carry no effect, and the table says so in plain
+words rather than leaving the field blank.
+
+Nothing in the code counts the stats. One runtime entry into the table moved
+every figure on its own:
+
+```
+shipped table        5 stats, a level 50 entity requires 750
+one entry added      6 stats, a level 50 entity requires 900
+rows on the page     5 becomes 6
+one stat's curve     unchanged, 550 at level 100
+no function edited
+```
+
+### Each stat sits in one of the three principles
+
+The seven classes already map the Paracelsian principles onto the four roles, so
+the stats follow that table rather than a new one. Salt is the body, Sulphur is
+the active and combustive, Mercury is spirit and mind.
+
+```
+Salt      strength, constitution     both fix a property of the body
+Sulphur   dexterity                  the principle the two Damage classes carry
+Mercury   intelligence, wisdom       the principle the Healer and Support classes carry
+```
+
+The first row follows from what the two stats already do. The other two rows read
+the class table, and they may change with the stat research.
+
+The principle changes no price. Giving one principle a cheaper rate would make
+one stat the correct stat for everyone, and it would need a figure nobody has
+chosen.
+
+### The curve climbs the ten spheres of the Tree
+
+A stat advances in ten bands of ten levels, and the band is a sphere on the
+Tree. The rate inside a band is the band's own position, so a level in the first
+sphere adds one Quintessence and a level in the tenth adds ten.
+
+```
+TREE_SPHERES        10, imported from the world grid, not declared twice
+LEVELS_PER_SPHERE   10, ARC_LEVELS over TREE_SPHERES
+```
+
+Driven across every level from one to one hundred:
+
+```
+sphere 1   opens at level   1   1 a level   stat reaches  10
+sphere 2   opens at level  11   2 a level   stat reaches  30
+sphere 3   opens at level  21   3 a level   stat reaches  60
+sphere 4   opens at level  31   4 a level   stat reaches 100
+sphere 5   opens at level  41   5 a level   stat reaches 150
+sphere 6   opens at level  51   6 a level   stat reaches 210
+sphere 7   opens at level  61   7 a level   stat reaches 280
+sphere 8   opens at level  71   8 a level   stat reaches 360
+sphere 9   opens at level  81   9 a level   stat reaches 450
+sphere 10  opens at level  91  10 a level   stat reaches 550
+```
+
+The requirement never falls and never stands still. Over all one hundred levels
+it fell on none and held on none, and the step grows from 5 to 50 as the bands
+change. An entity at the top of the arc needs 2,750 Quintessence against a
+supply cap of 33,000,000.
+
+### A Vessel under its requirement runs below full, and is never refused
+
+A holder short of the amount still occupies the Vessel. The reading answers what
+fraction of full potential the balance reaches, and full is one case of it.
+
+```
+a level 12 Vessel      band 2, every stat at 14, needs 70
+a balance of 40        reaches 0.5714285714285714285714285714 of full
+the shortfall          30
+is_full                False
+```
+
+The full reading compares the two Quintessence amounts directly and never the
+fraction, so a balance one hundredth short cannot round up into full.
+
+The program says the same thing in its own log:
+
+```
+acervator.entity_stats INFO a balance of 40 against a requirement of 70
+reaches 0.5714285714285714285714285714, shortfall 30
+```
+
+### No stat is cheaper than another
+
+If one stat bought more power a Quintessence than another, every player would
+raise that one. Under the identity reading a point costs the same everywhere,
+and moving points between stats changes nothing.
+
+```
+one extra point        costs 1, in every stat in the table
+all points in one      a level 50 entity requires 750
+spread evenly          a level 50 entity requires 750
+```
+
+The price therefore carries no cheap direction. Power per point is a different
+question, and it belongs to whatever reads a stat. Two stats have a named
+meaning and nothing built reads either, so no stat converts into an advantage
+today.
+
+An entity whose stats sum past the supply cap meets no refusal. Nobody could
+ever hold that much, so the reading stays under full permanently, which is the
+same answer the partial rule gives everywhere else.
+
+### Every figure, and where it came from
+
+```
+TREE_SPHERES = 10        already in the world grid, with ten levels a sphere
+ARC_LEVELS = 100         already in the classes module
+FIRST_LEVEL = 1          already in the classes module
+LEVELS_PER_SPHERE = 10   ARC_LEVELS over TREE_SPHERES, computed
+rate inside a band       the band's own number, no coefficient
+a stat point             one Quintessence, the identity itself
+supply cap 33,000,000    already in the Quintessence ledger
+FIRST_SPHERE = 1         the first of the ten bands
+```
+
+Nobody picked a figure here to make a curve feel right.
+
+### What reads this
+
+Nothing. The occupancy gate that would refuse or degrade a Vessel does not
+exist, and neither does the equip check that holds gear to the equipping
+player's Quintessence. The character stats subtab does not draw these rows.
+
+```
+In development.
+```
+
+### What the stats do not build
+
+No turn points. Constitution sets a penalty against a turn budget, and no turn
+budget exists to subtract one from.
+
+No weight and no encumbrance. Strength sets max weight, and nothing weighs
+anything. The journey store takes an encumbrance multiplier as an argument and
+no code derives one.
+
+No per-level record. A stat block comes out of the level on each call, so
+nothing holds it and nothing can drift.
+
+No spread rule. A level 100 entity may put every point in one stat for the same
+price as spreading them, and no rule gives a stat a floor. Whatever gate reads
+this will decide that.
+
+
+## 2026-09-10 21:30 - #147 - a reset control, two meters and the wallet's fourth holding
+
+> "PoA - Demo Mode - ... Must be able to reset the testnet."
+
+The reset itself was already built and locked, on a screen that was retired. Two
+buttons now sit at the end of the control row and reach it.
+
+```
+Ask what a reset deletes            names both files, their bytes and the block height
+Delete both files and start fresh   calls the reset the shared chain already carried
+```
+
+### The first button deletes nothing
+
+Pressing Ask loads the chain and reports what a reset would take. The verdict
+reads refused, and every figure under it is the chain's own.
+
+```
+testnet_chain_testnet.json and testnet_chain_testnet.log hold 38778 bytes at
+block height 32. Confirm the reset deletes both; this control deletes nothing.
+
+Block height             32
+Chain events             24
+Bytes both files hold    38778
+```
+
+Reading the page again after that press showed the same block height and the same
+38,778 bytes. Nothing moved.
+
+### The second button acts, and the chain starts again at its genesis block
+
+```
+testnet_chain_testnet.json and testnet_chain_testnet.log are deleted and the
+Demo TestNet chain stands at block height 0 for the reason the Accumulation
+tab's reset control.
+
+Block height             0
+Chain events             0
+Bytes both files hold    0
+```
+
+### A deliberate reset and a schema wipe do not read the same
+
+One signal announces both. Every reset carries a reason, and the panel under the
+buttons prints the two reasons together, so a reader can tell which one happened.
+
+```
+A deliberate reset reads   the Accumulation tab's reset control
+A schema wipe reads        schema version upgrade (another schema → 1)
+```
+
+### Reset acts on the demo chain and refuses on the live one
+
+The live chain is the one a running window holds in memory. Deleting its files
+would leave that window free to write the chain back, so both buttons refuse
+there and say why.
+
+```
+Reset clears the Demo TestNet chain. The Live chain is the one a running window
+holds in memory, which would write it back, so this refuses there.
+```
+
+### Two meters, side by side
+
+> "A block fill and real time turn completion meter next to each other."
+
+They sit in the player window as one pair under one heading, two equal cards on
+one baseline.
+
+```
+BLOCK FILL         2.7%    28230 of 1048576 bytes
+TURN COMPLETION   98.7%    296s of 300s elapsed
+```
+
+Together they answer a question neither answers alone. A block near full with the
+turn barely begun is a world running hot; a quiet block with the turn nearly
+closed is a world with room to spare.
+
+### The byte bound is now a number the program reads
+
+The fill meter needs something to fill against, and the only bound is the one the
+world budget recommends: one megabyte a layer a world turn. That figure was a
+line in a report until this unit, and it is now a constant beside the chain's
+checkpoint cadence.
+
+```python
+#: One layer's byte ceiling for one world turn, which buys 2,621 records at 400 bytes.
+TURN_BYTE_CAPACITY = 1_048_576
+```
+
+### The fill meter costs two reads and parses nothing
+
+A meter that redraws every second must not walk the chain. This one asks the file
+system for the length of the checkpoint and the length of the log, which is what
+the save path wrote, and adds them.
+
+```
+28230 of 1048576 bytes   2.7%
+38778 of 1048576 bytes   3.7%   after ten more records were saved
+0 of 1048576 bytes       0.0%   after the reset deleted both files
+```
+
+Nothing records the bytes one world turn wrote, so the meter reads every byte the
+chain holds since its last reset, and its note on the page says so.
+
+### The wallet's fourth holding
+
+The requirement, in his own words:
+
+```
+So a Quint wallet must be able to show Quint, NFTs, Loot, and Vessels all
+tied to PoA.
+```
+
+Vessels joins Quintessence, trophies and loot, drawn the same way as the other
+three and reading the same way: a real Vessel, or a plain sentence saying there is
+none.
+
+```
+Vessels
+Iron Edge             level 1 - Impetus 4
+Summed requirement    --
+```
+
+A Vessel is the class a Reincarnate occupies. Nothing on disk keeps a set of
+Vessels against a wallet address, so the section reads the class pick the running
+request names and says plainly when that names nobody.
+
+```
+poa_record_store.json keeps no Vessel for this participant. A Vessel is the
+class a Reincarnate occupies, and only a class pick names one.
+```
+
+### The summed requirement has no figure yet
+
+Several Vessels are meant to sum their Quintessence requirement against one
+wallet total. No field anywhere holds what a Vessel's level requires, so the row
+is there and its value is two dashes.
+
+```
+No field holds the Quintessence a Vessel's level requires, so no requirement
+sums against the balance above.
+```
+
+### What these three do not reach
+
+No control on the page picks a class, so the Vessels section reads a Vessel only
+when a request names one. Nothing writes a Vessel to a file, and the record store
+that already keeps skill uses against an address is where one would sit.
+
+The reset loads the chain it is about to clear, so a press costs one replay of
+that chain. The live chain is refused before any load, and nothing here changes
+the saved schema version.
+
+
+---
+
+## 2026-09-10 22:15 - #147 - the tab is proportioned, and the zones own it
+
+### The two zones take the tab and split it in half
+
+The tab used to divide its height into three equal rows, so the subtab panel was the
+same size as the player window and the same size as the party window. His layout gives
+the upper band the upper half and the party window the lower half, and that is what the
+tab now does. The control bar and the subtab panel are chrome: each takes the height its
+own content needs, up to a share of the tab, and scrolls past that share instead of
+pushing a zone down the page.
+
+`src/gui/web/proof_of_accumulation_tab.css` - the seven rows of the tab
+
+```css
+grid-template-rows: auto auto minmax(0, 15%) auto minmax(0, 13%) 1fr 1fr;
+```
+
+### What the player window measures now
+
+Read off the rendered page in the Electron shell at the window size the shell opens,
+and off the rendered page in the desktop window at the same page height.
+
+```
+                        before   after
+Electron shell            116      181
+desktop window           1055      182
+```
+
+The desktop window's figure moved for a second reason. Its page had no height to
+divide, so every row grew to its own content and the whole tab stood 3,506 pixels tall
+inside a 696-pixel window. The square enemy screen took its side from that height and
+left the player window 260 pixels of width; at a 900-pixel-wide window it left 18. The
+page now carries a height and the enemy screen is a 182-pixel square.
+
+### Every band inside a zone keeps its own height
+
+The bands stacked inside the two zones used to share the zone between them, so a short
+zone drew several of them at no height at all. The eight mode rows in the player window
+and the forty slots of a party page were both drawing at zero. Each band now keeps the
+height its content needs and the zone scrolls.
+
+```
+                    before   after
+mode list              0      150
+party page slots       0       88
+skill ladder          10       66
+pot division          10       49
+```
+
+### The player window still scrolls
+
+Its bands come to 410 pixels: the zone title, the event band, the two meters, the map
+button, the eight mode rows and the placeholder sentence. The zone is 181 pixels at the
+window size the shell opens and 254 at a full-screen one, so the mode rows are still
+reached by scrolling that zone. The eight event types are named twice on this screen,
+once as the event buttons in the control bar and once as the mode rows here, and
+dropping either copy is a change to what the tab says rather than to how it is sized.
+
+## 2026-09-10 23:05 - #147 - the conversion rates, and the figures still owed
+
+Every mechanism in this design turns something into Quintessence. Those rates sat
+in separate modules, or in nothing at all. One table now holds all of them, and
+every entry says where its figure came from.
+
+```
+src/competition/conversion_rates.py
+```
+
+### A figure is measured, decided or working
+
+An entry carries exactly one of three words. The third one is the point. A
+working figure is one this table chose so the stitching could exist, and it
+declares itself rather than sitting in the code as a number nobody chose.
+
+```
+measured   read back out of the module that owns it, and the entry names that module
+decided    the operator named it, and his figure is reproduced exactly
+working    chosen here so the table can exist, and the operator replaces it
+```
+
+### Nothing reads a working figure without seeing that it is working
+
+No function in the module hands back a bare number. The lookup answers the whole
+entry, so the provenance is in the reader's hand every time.
+
+```python
+def rate_named(name: str) -> ConversionRate:
+    """The entry in ``CONVERSION_RATES`` whose ``name`` matches, refusing any other.
+
+    The whole entry answers, so a reader always holds its ``provenance``.
+    """
+```
+
+The question "what figures does he still owe?" is answered by running something
+rather than by reading the file. Two readers list them, and both print their
+counts to the log.
+
+```
+working_rates()   every entry the operator still has to rule on
+absent_rates()    every entry that carries no figure at all
+```
+
+### Eleven rows are anchored, and eight check against their own module
+
+Three of the eleven are the operator's own figures, and this table is where they
+land. The other eight are figures a module already holds, so the table imports
+the real symbol and keeps no copy of its own.
+
+```
+stat_point_quintessence                      1             entity_stats.quintessence_requirement
+stat_quintessence_per_level_at_sphere_1      1             entity_stats.quintessence_per_level
+stat_quintessence_per_level_at_sphere_10     10            entity_stats.quintessence_per_level
+quintessence_per_certified_fee_usd           1             quintessence_ledger.QUINTESSENCE_PER_FEE_USD
+minimum_units_per_quintessence               100000000     quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+impetus_per_turn_at_level_1                  4             poa_modes.base_impetus
+impetus_per_turn_at_level_100                9             poa_modes.base_impetus
+steps_per_square                             100           world_grid.SQUARE_STEPS
+iron_ore_quintessence_low_quality            0.00000001    his figure, held by no module before now
+iron_ore_quintessence_high_quality           0.00000005    his figure, held by no module before now
+world_budget_per_participant_quintessence    1             his rule, held by no module before now
+```
+
+The fee rate is a ceiling rather than a payment. Distillation multiplies it by a
+trade grade of zero to one, so one dollar of certified venue fee mints one whole
+Quintessence only on a perfect grade.
+
+```python
+        amount = fee * QUINTESSENCE_PER_FEE_USD * grade
+```
+
+### The stat rate is the identity, and the table drives the real function to say so
+
+A stat amount already is a Quintessence amount. The table does not restate that
+as a coefficient. It builds a stat block holding one point and asks the stats
+module what that block requires.
+
+```python
+ONE_POINT_BLOCK = stat_block(
+    {name: (1 if name == STAT_NAMES[0] else 0) for name in STAT_NAMES}
+)
+```
+
+### His ore figures reach code here for the first time
+
+The operator gave a band rather than one number, because one unit of ore has a
+quality. Both ends land as named figures, and both print exactly as he wrote
+them.
+
+```
+one unit of iron ore, lowest quality    0.00000001 Quintessence
+one unit of iron ore, highest quality   0.00000005 Quintessence
+```
+
+### The smallest unit comes from the ledger, not from a copy here
+
+The operator set one hundred million minimum units to the whole Quintessence, the
+same resolution as Bitcoin. The Quintessence ledger declares that figure, so this
+table imports the real symbol and keeps no copy of its own.
+
+```
+minimum_units_per_quintessence   100000000   quintessence_ledger.QUINTESSENCE_UNITS_PER_WHOLE
+```
+
+A rate is a ratio and needs no grid of its own. Rounding an amount onto the
+minimum unit belongs to the ledger, at the moment an amount enters a bucket.
+
+```python
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    """Return ``amount`` rounded down onto the QUINTESSENCE_MINIMUM_UNIT grid."""
+```
+
+### His lowest ore grade sits exactly on the resolution floor
+
+Two of his own figures meet here. The poorest unit of iron ore carries
+0.00000001 Quintessence, and that is one minimum unit exactly. Nothing poorer
+than his lowest ore grade can be held, so the ore band starts at the floor rather
+than above it.
+
+```
+QUINTESSENCE_MINIMUM_UNIT            0.00000001
+iron_ore_quintessence_low_quality    0.00000001
+iron_ore_quintessence_high_quality   0.00000005, five minimum units
+```
+
+### Twenty-six rows are working, and they are the list he still owes
+
+Thirteen of those carry no figure at all. Thirteen carry a placeholder that can be
+replaced without touching a function.
+
+```
+TempResource_0001_low_quality                 0.00000001   a non-ore material, lowest quality
+TempResource_0001_high_quality                0.00000005   a non-ore material, highest quality
+TempStat_0001                                 1            dexterity, effect unnamed
+TempStat_0002                                 1            intelligence, effect unnamed
+TempStat_0003                                 1            wisdom, effect unnamed
+item_cohesion_per_component_quintessence      1            what holds an item together
+TempWeight_0001                               1            the weight one material unit carries
+max_weight_per_strength_quintessence          1            what strength may haul
+impetus_speed_per_constitution_quintessence   absent       the carrying penalty
+loot_released_quintessence_calx               0.00000005   a destroyed Calx item
+loot_released_quintessence_cauda_pavonis      0.00000005   a destroyed Cauda Pavonis item
+loot_released_quintessence_flores             0.00000005   a destroyed Flores item
+loot_released_quintessence_elixir             0.00000005   a destroyed Elixir item
+loot_released_quintessence_magisterium        0.00000005   a destroyed Magisterium item
+TempMonsterTier_descending_0006               absent       a creature at depth -6
+TempMonsterTier_descending_0005               absent       a creature at depth -5
+TempMonsterTier_descending_0004               absent       a creature at depth -4
+TempMonsterTier_descending_0003               absent       a creature at depth -3
+TempMonsterTier_descending_0002               absent       a creature at depth -2
+TempMonsterTier_descending_0001               absent       a creature at depth -1
+TempMonsterTier_ascending_0001                absent       a creature at depth 1
+TempMonsterTier_ascending_0002                absent       a creature at depth 2
+TempMonsterTier_ascending_0003                absent       a creature at depth 3
+TempMonsterTier_ascending_0004                absent       a creature at depth 4
+TempMonsterTier_ascending_0005                absent       a creature at depth 5
+TempMonsterTier_ascending_0006                absent       a creature at depth 6
+```
+
+Three of the five stats name no effect in the stats table, so three rows stand in
+for them. Damage, restoration and support potency are the proposed readings, and
+they are the operator's to rule on.
+
+```
+dexterity      no effect named in the stats table    TempStat_0001
+intelligence   no effect named in the stats table    TempStat_0002
+wisdom         no effect named in the stats table    TempStat_0003
+```
+
+### A material other than iron ore takes the ore band, and no lore name is invented
+
+Naming materials is content and belongs to the content issue. This table holds
+one placeholder slot for a material, and that slot carries the ore band, so the
+scale is right while the material itself is unnamed.
+
+```
+TempResource_0001   the iron ore band, until the operator names this material's own scale
+```
+
+### The loot rows are flat on purpose
+
+Five loot tiers exist, each with a weight and two bonuses. What a destroyed item
+of each tier releases does not exist, so every tier carries the same placeholder.
+Flat is the honest placeholder: any slope across the five tiers is a design
+decision and it is his.
+
+```
+all five tiers   0.00000005 Quintessence released, no curve and no salvage loss
+```
+
+### A creature's Quintessence falls out of its stats, once a tier has a level
+
+The monster table declares twelve tiers, and each has a row here. Their rows
+carry no figure, and the missing figure is not a Quintessence amount at all. It
+is the level each tier sits at. The amount then comes from the stats requirement,
+the same way a Vessel's does.
+
+```
+the descending six   absent; the tier's level is what is owed
+the ascending six    absent; the tier's level is what is owed
+```
+
+### Constitution's penalty has a door and no figure
+
+The stats table says constitution sets a penalty against a turn budget. The door
+it enters through already exists, because the Impetus grant takes a speed
+multiplier. No figure sets how much constitution buys back, and any figure here
+moves the turn economy, so the row stays absent and his.
+
+```python
+def impetus_grant(level: int, speed_multiplier: object = 1) -> int:
+```
+
+### One check runs on every real start
+
+The module drives every anchored rate against the module that owns it, at import,
+and refuses to load when one disagrees. A failure would mean a figure published
+here no longer matches the engine, and the two would drift apart with nothing
+reporting it. Zero disagreed on the first run. What the check would have caught
+is a wrong module or symbol name beside a figure, or a figure typed by hand
+instead of imported.
+
+```
+acervator.conversion_rates INFO drove 8 anchored conversion rates against their own modules, 0 disagreed
+```
+
+### What calls this table
+
+Nothing. The table is imported and built on a real start of the Accumulation tab
+path, and no code calls it yet. Materials, items, crafting, salvage and the
+creature roster are the consumers, and none of them exists.
+
+```
+In development.
+```
+
+### What the conversion rates do not build
+
+No materials and no items. This is the table of rates between things, not the
+things.
+
+No minimum-unit grid. The rates are ratios, and the ledger owns the grid an
+amount lands on.
+
+No salvage. The loot rows say what a destroyed item releases, and nothing
+destroys an item.
+
+No screen. The Accumulation tab draws no row of this table.
+
+## 2026-09-10 23:40 - #586 - the PvP vote, and who may destroy a Vessel
+
+### His words set the rule
+
+> "There will be PvP Worlds and Events. A world entering PvP mode is determined by an
+> active Player Vote and that can put forth once every 24hrs. The voting window
+> persists for 15m or three 5m candles. Only while in PvP mode or participating in PvP
+> events can one player destroy another's Vessels. This will allow players to have
+> specific Vessels they are willing to fight to the death with..."
+
+Somebody calls a vote in one world turn, and it settles on the next world-turn boundary.
+Actions placed in the peaceful turn resolve peacefully, and PvP begins with the next
+turn's placements. A participant has to log in once in an hour rather than be awake at one
+particular minute. A vote called while a rival guild sleeps also fails outright, because
+every absent player stays in the count the majority has to beat.
+
+```
+called on world turn 100     the peaceful turn
+settles on world turn 101    the first PvP turn
+resolution on turn 100       refused
+a sleeping majority          blocks the vote
+```
+
+### The window is three standard candles, and the clock already existed
+
+His fifteen minutes is three turns of the standard five-minute candle. The modes module
+already measures a turn off the shared candle clock, so the vote declares no clock of its
+own and counts three of those turns.
+
+```
+standard candle      300 s
+three candles        900 s
+his window       15 min  =  900 s
+```
+
+### A majority of the whole world carries it, and there is no separate quorum
+
+> "51% or higher. Proper Democracy over here..."
+
+The majority counts against every participant in the world, never against the people who
+happened to vote. No separate turnout test exists, because 51 per cent of the electorate
+cannot vote in favour at under 51 per cent turnout. The threshold is its own quorum. Every
+figure is whole numbers multiplied across, so no decimal fraction of a vote exists.
+
+```
+participants on one layer         79      votes to carry      41
+a full world of twenty layers  1,580      votes to carry     806
+```
+
+Driven on a full world. Eight hundred and six votes in favour carried the vote and turned
+the mode on at the next boundary, at a turnout of fifty-one per cent exactly. Eight
+hundred and five did not, and the mode stayed off. Every roll from one to one thousand
+five hundred and eighty then met a count-up search for the same figure, and the two agreed
+on every roll. A decimal version of the same sum disagreed on fifteen.
+
+```
+806 of 1,580 in favour   carried      turnout 51.0%   mode on from world turn 101
+805 of 1,580 in favour   not carried  turnout 50.9%   mode stays off
+rolls 1 to 1,580         whole-number disagreements 0     decimal disagreements 15
+```
+
+A world where more than half the participants have gone quiet can never enter PvP mode.
+Their silence protects their Vessels, and it follows from the threshold rather than from
+any separate rule.
+
+```
+participants who never vote      more than half
+the vote                         cannot carry
+```
+
+### The mode lasts twenty-four world turns and then lapses
+
+His cap is one vote every twenty-four hours and a world turn is an hour, so the life of
+the mode and the gap between two votes are one number. A world goes back to peace unless
+somebody votes it into PvP again. Nothing stops a world staying in PvP indefinitely, and
+that costs a fresh majority of the world every twenty-four turns.
+
+```
+turn 100   the vote is called
+turn 101   PvP begins
+turn 124   the last PvP turn, and the earliest a new vote may be called
+turn 125   the first mode lapses, and a vote called on 124 settles here
+```
+
+### Three carries in seventy-two turns lock the world for a week
+
+> "Three successive pro-PVP votes over 72hrs will lock the World in PvP mode for an entire
+> week starting from the third vote."
+
+Seventy-two turns is the window the three carries have to fit inside, not the gap between
+them. At the tightest rhythm the cadence allows, three carries span forty-nine turns, so a
+world that misses a beat still qualifies. The lock begins at the third vote's resolution
+and runs one hundred and sixty-eight turns, which is a week of one-hour turns. Sustained
+aggression is now a commitment with a payoff rather than a daily chore: three carries buy
+the week outright, where holding it otherwise takes seven more separate votes.
+
+```
+vote 1   called 100   resolves 101
+vote 2   called 124   resolves 125
+vote 3   called 148   resolves 149
+span     first call to third resolution    49 turns, inside the window of 72
+lock     149 to 317                       168 turns
+```
+
+Successive means consecutive carries with nothing failing between them. One failed vote
+breaks the chain and the count starts again. The run drove both halves, and the window has
+an exact edge.
+
+```
+carry, carry, carry          carry run 3   lock from turn 149
+carry, carry, FAIL, carry    carry run 1   no lock
+three carries spanning 72    lock from turn 172
+three carries spanning 73    no lock
+three carries spanning 81    no lock
+```
+
+The lock outlives the twenty-four-turn mode, so the lock is the outer authority. The third
+vote's own mode lapses on turn 173 and the world is still in PvP at turn 180.
+
+```
+turn 180, the mode alone          off
+turn 180, with the lock           on
+turn 316, the last locked turn    on
+turn 317, the lock lapsed         off
+```
+
+### The program refuses a vote called inside a lock
+
+A vote that cannot change the outcome is a control that lies, so the program refuses it
+rather than accepting it and doing nothing. The first turn past the lock accepts a vote
+again.
+
+```
+a vote called on turn 172, inside the lock     refused
+a vote called on turn 317, past the lock       accepted
+```
+
+Once a lock begins, nothing ends it early. A world that changes its mind on the second day
+stays in PvP for five more, and that holds every participant who voted against. The vote
+asked the majority three separate times, and this is the sharpest edge in the mechanism.
+
+```
+an unlock   Not built, and not asked for.
+```
+
+### What the permission answers
+
+One call answers whether one participant may destroy another's Vessels right now. The
+answer is yes inside a live PvP mode, inside a lock, or in a PvP event, and no everywhere
+else. Every row below came off the built objects.
+
+```
+two participants, inside the mode                 yes
+the peaceful turn the vote was called in          no
+after the mode has lapsed, with no lock           no
+after the mode has lapsed, inside a lock          yes
+a participant against its own                     no
+a PvP event, with no mode at all                  yes
+```
+
+### Nine refusals, each driven, each with its accepted neighbour
+
+A refusal is worth nothing unless the program accepts the case one step away. The run
+drove both sides of every boundary below.
+
+```
+a call 23 world turns after the last       refused
+a call 24 world turns after the last       accepted
+a call on a roll of nobody                 refused
+a call on a roll of one                    accepted
+a vote at second 900 of the window         refused
+a vote at second 899 of the window         accepted
+a resolution inside the calling turn       refused
+a resolution on the next turn              accepted
+a call on turn 172, inside a lock          refused
+a call on turn 317, past the lock          accepted
+the same participant voting twice          refused
+a vote past the roll counted at the call   refused
+a second resolution of one ballot          refused
+a vote after the ballot has settled        refused
+```
+
+### Nothing counts a world's participants
+
+The majority counts against a roll the caller hands in, because no module keeps a list of a
+world's participants. The world store reports how many of them have discovered something,
+which is a different number, and the layer figure gives a capacity rather than a roll. The
+ballot freezes that roll at the moment of the call, so a participant who votes and then
+leaves cannot shrink the number their vote counted against.
+
+```
+PROPOSED
+src/competition/world_grid.py
+    PoaWorld.participants(world_id) -> tuple[str, ...]
+    the addresses enrolled in one world, which the vote would count
+```
+
+### No screen calls any of this
+
+No control calls a vote, casts one, or resolves one, and nothing in the running program
+reaches this module at all. The unused-function check names the six calls a screen would
+make, and the two the module calls on itself do not appear.
+
+```
+named unused    call_vote  cast_vote  resolve  mode_from  may_destroy  ballot_row
+called inside   carry_run  lock_from
+```
+
+### Nothing keeps a Vessel, so there is nothing to destroy
+
+The permission is the gate and the thing it guards is absent. The tab already says so in
+its own words, on screen, for any participant.
+
+```
+"keeps no Vessel for this participant"
+```
+
+### What the PvP vote does not build
+
+Vessel destruction is not built, and neither is a PvP event. Whether any of the eight
+existing event types is a PvP one is his ruling, and nothing sets the event flag the
+permission reads. Who may call a vote is not settled either: the ballot records its caller
+and checks no privilege.
+
+```
+Vessel destruction         In development.
+a PvP event flag           In development.
+the right to call a vote   In development.
+a control to cast a vote   In development.
+```
+## 2026-09-10 23:55 - #585 - a glyph and a colour for each kind
+
+### Dwarf Fortress draws its world in characters, and so does this
+
+The operator asked for a world map in the manner of Dwarf Fortress, sharper, with
+hermetic icons. Sixteen kinds in the package now carry a stand-in mark: the seven
+classes, the five loot tiers and the four event modes. A mark is one character and
+one colour, and the module derives both.
+
+`src/competition/map_glyphs.py` - one mark a kind
+
+```python
+@dataclass(frozen=True)
+class MapMark:
+    kind: str
+    family: str
+    label: str
+    glyph: str
+    colour_token: str
+```
+
+### A class's glyph comes from its planet, not from a choice
+
+The class table already gives each of the seven classes one classical planet, and
+every one of those planets has its own character in Unicode. The module reads the
+glyph out of that table instead of picking one, so a class cannot drift from its
+mark.
+
+`src/competition/map_glyphs.py` - the seven planets
+
+```
+Saturn    U+2644  Lead Ward            Luna      U+263D  Silver Mirror
+Jupiter   U+2643  Tin Bulwark          Mercury   U+263F  Quicksilver Draught
+Mars      U+2642  Iron Edge            Venus     U+2640  Copper Conduit
+Sol       U+2609  Solar Lance
+```
+
+Mars and Venus are the codepoints Unicode names MALE SIGN and FEMALE SIGN. Those
+are the standard astronomical and alchemical marks for iron and copper, and the
+module says so where a later reader would otherwise correct them.
+
+### The other eleven marks
+
+The five loot tiers take the alchemical stage each name denotes, rising from the
+barred circle of the calcined residue to the pentagram of the Great Work. The four
+event modes take a heraldic mark each.
+
+```
+Calx           U+2296      Fixation              U+2720
+Cauda Pavonis  U+26B9      Coagulation           U+2691
+Flores         U+2698      Descension            U+2656
+Elixir         U+2625      Cementation           U+26E8
+Magisterium    U+26E4
+```
+
+### A colour is a style name, never a new colour
+
+Every mark names a colour out of the one style table the whole interface draws
+from. A class takes the colour of its role, a loot tier takes its place on a
+rarity ramp from grey to gold, and an event mode takes its place on a heat ramp
+from the easiest to the hardest. Ten names cover the sixteen kinds.
+
+`src/gui/react_proof_of_accumulation_tab.py` - the page carries what the marks name
+
+```python
+MARK_SKIN = {f"--{name}": getattr(ds, name) for name in colour_token_names()}
+```
+
+### Where they are on screen
+
+The player window carries a Map marks band under the mode list, listing every mark
+with its name and its codepoint. The seven class marks also sit in the class list
+in the party window, and the four mode marks sit on the mode rows. At the window
+size the shell opens, the player window's own scrollbar reaches the band, the way
+it already reached the mode rows.
+
+```
+glyph spans drawn        31
+  Map marks band         16
+  class list              7
+  mode rows               8
+```
+
+### What nothing supplies
+
+The enemy screen is the zone that would draw an enemy, and no monster kind carries
+a mark, so that zone names what is missing instead of drawing an empty frame. Two
+more kinds the directive names have no entity behind them either, and the same
+panel carries both.
+
+```
+Monster           12 tiers and 21 names are declared; six tiers carry no name, and
+                  no hermetic glyph set covers twelve positions
+World fact kind   WorldFact.kind is text the caller passes in
+Zone terrain      ZoneRegion carries a boundary and no terrain kind
+```
+
+### Both variants draw every mark
+
+The tab rendered twice, once in the desktop window and once in the Electron
+shell, and every figure below comes off those two pictures, not off the code. All
+thirty-one drew, each as its own mark, with the same colour on both.
+
+```
+                        desktop window   Electron shell
+glyph spans                   31               31
+distinct codepoints           16               16
+drawn as an empty box          0                0
+```
+
+Each page also carried a character no font holds, which proves a missing glyph
+shows as an empty box. Two permanently unassigned characters drew as empty boxes
+on both pages, next to marks that drew as marks.
+
+## 2026-09-11 01:10 - #585 - the twelve monster tiers
+
+### Monsters run six tiers down and six tiers up
+
+The operator set the shape. Demons, Old Ones and Pure Nightmare Entities go below;
+Angels, Watchers and Others go above. A tier is not a species list. A tier names a
+position on an axis of dominant nature, so a goblin, a dragon and a slime each sit
+somewhere on that axis according to what the creature fundamentally is. Toward
+either extreme the nature fixes the form. In the middle bands a creature may still
+read as an animal or a person.
+
+`src/competition/monster_table.py` - one row a tier
+
+```python
+@dataclass(frozen=True)
+class MonsterTier:
+    depth: int
+    name: str
+    nature: str
+    entities: int | None
+    nominal_cell_px: tuple[int, ...]
+    level: int | None
+```
+
+The number carries the side. A negative depth sits below the participant's own
+plane and a positive one above it, and there is no zero, so no tier reads as
+neutral and no reader has to learn that seven means up.
+
+```
+depth -6 to -1   six tiers down, every figure transcribed from the art brief
+depth  1 to  6   six tiers up, declared and undescribed
+no depth 0       the participant's own plane is not a monster tier
+```
+
+### The six below come out of the art brief, and the six above stay deliberately empty
+
+The art brief commissions the tab's pixel art, and its six tiers make up the
+descending half. The table transcribes each one as the brief writes it: the
+creatures, the old text attesting each creature, the sprite size, the frame count,
+how many appear on screen at once, what the creature does in a fight and how it
+reads visually.
+
+```
+depth  name                                creatures   source examples
+  -1   the surface floor                        3      Mesopotamian incantations
+  -2   executors of a mandate or of fate        6      Epic of Gilgamesh, Theogony
+  -3   the decan rank                          36      hermetic texts, unnamed
+  -4   floor bosses                             7      Lugal-e, Theogony
+  -5   the fall tier                            3      1 Enoch 6-16, Tobit
+  -6   the summit                               2      invented, built on Lovecraft
+```
+
+Nothing in the operator's material names a single entity for the six tiers above.
+Those six tiers exist on the axis and carry nothing else. Their nature sentence is
+empty, their sprite size is empty, and they hold no creature. Inventing an angelic
+roster would break the one rule the art brief states about itself, which demands
+that every creature name the old text attesting it.
+
+```
+Angels, Watchers, Others   the three words he gave, held as waypoints
+what each tier above owes  a nature sentence, a form rule, and its creatures
+what is in code today      the six tiers, present and empty
+```
+
+### The thirty-six decans are thirty-six drawing jobs
+
+The brief counts twenty-one designs across five tiers, and the decan rank is the
+sixth tier it leaves out of that count. Its own frame arithmetic settles what the
+decans are: nine hundred and thirty-six frames at twenty-six frames each makes
+thirty-six separate animations, not one animation under thirty-six names. The names
+themselves sit behind manuscript editions nobody has in hand, so the tier counts
+thirty-six and names none of them.
+
+```
+named designs                    21       across five tiers
+creature names                   23       21 attested in a text, 2 invented
+drawing jobs, all twelve tiers   57       21 named, 36 unnamed
+frames, all twelve tiers      1,467       531 for the named set, 936 decans
+```
+
+### A pixel size is how big the drawing is, and nothing else
+
+Each descending tier says what size an artist draws its sprites at, rising from
+thirty-two pixels on the surface floor to one hundred and sixty at the summit. That
+figure instructs an artist. It carries no power rating, no character level and no
+amount of Quintessence, and the table keeps it in a field named for authoring so
+nobody reads it as strength.
+
+```
+depth -1   32 pixels        depth -4    96 pixels
+depth -2   48 pixels        depth -5    96 pixels
+depth -3   64 pixels        depth -6   160 and 96 pixels
+```
+
+### All twelve owe a level, and that is the only missing number
+
+Nobody picks a creature's embedded Quintessence. Once a tier has a character level,
+the amount falls out of its stats, exactly the way a Vessel's does. No source names
+a level for any of the twelve, so every row carries the level as absent and the
+program refuses to answer rather than handing back a stand-in.
+
+```
+levels owed        12
+asked anyway       "the tier at depth -6 has no level, so no Quintessence
+                    amount follows"
+once a level is named
+  level  1   embeds 5 Quintessence
+  level 50   embeds 750 Quintessence
+```
+
+The rate table records all twelve creature tiers as owing this figure. It reads the
+depths off this table, so neither module can hold its own count of the tiers.
+
+```
+TempMonsterTier_descending_0001 to _0006   depth -1 down to depth -6
+TempMonsterTier_ascending_0001 to _0006    depth 1 up to depth 6
+```
+
+### A creature earns its place two ways, and the refusals sit beside them
+
+The operator wants a wide range of encounters without losing the tone. A creature
+meets both conditions: it holds a position on the nature axis, and it carries a
+source attested in its own pre-modern text. The table also records the excluded
+material as data beside those conditions, because a table holding only the
+inclusions cannot report that a proposed creature fails.
+
+```
+refused   nineteenth and twentieth century occult revival
+refused   correspondence tables, tarot-to-sphere charts, planetary seal sets
+refused   Golden Dawn godforms, Enochian alphabet plates
+refused   reconstructed Egypt, against attested temple and funerary imagery
+refused   anything Crowley, or beyond the old verified texts
+```
+
+Four proposals went through the refusal, and it named the term excluding each one.
+The real sources admitted cleanly.
+
+```
+"Crowley, Liber 777"            refused, carries crowley
+"a Golden Dawn godform plate"   refused, carries golden dawn
+"a tarot-to-sphere chart"       refused, carries tarot
+no source at all                refused, needs an attested text
+"1 Enoch 6-16", "Tobit"         admitted
+```
+
+The structure takes a far larger roster than the brief commissions. A creature is a
+row naming its own tier, so a hundred creatures at one tier need no change of
+shape, only a larger count on that tier. The brief's published frame totals stay
+pinned to the twenty-one designs it commissioned.
+
+### The Watchers stand on both sides of the plane
+
+The art brief puts the Watchers below, at the fall tier, citing the story of their
+descent and calling them the corrupt lineage that perverted the craft. The operator
+has since named Watchers as a family above. Both readings come out of that same
+text, because the Watchers are angels who fell, so that one family occupies both
+directions: above as what they were, below as what they became.
+
+```
+below, depth -5   the Watchers and the Nephilim, one design, 1 Enoch 6-16
+above             Watchers, one of the three families he named
+measured          Watchers is the only name appearing on both sides
+```
+
+The hinge of the twelve-tier structure sits here, and this page reports it rather
+than settling it. The table holds the overlap as a measured fact and refuses to
+start if that fact ever changes and nothing declares it.
+
+### Nothing ties a monster tier to a world layer
+
+The world has twenty Sephirot layers, being ten spheres and their inversions, and a
+dungeon has ten floors taking the ten sphere names. The monster axis has twelve
+positions. Twelve does not divide into twenty, nothing in the operator's material
+connects a tier to a layer, and the table says so rather than aligning them.
+
+```
+world layers       20   ten spheres and their inversions
+dungeon floors     10   each takes its sphere's attested name
+monster tiers      12   tied to neither
+```
+
+### What the monster table still owes
+
+Two tiers below name a membership where the others name a nature, and the axis has
+no rule for placing an arbitrary creature. The table records both gaps instead of
+filling them.
+
+```
+a nature sentence        depth -3 names the decan rank, depth -6 names the summit
+a placement rule         nothing says which tier an arbitrary creature belongs to
+the six tiers above      nature, form rule and creatures, all absent
+a level, twelve times    the only figure standing between a tier and its
+                         embedded Quintessence
+```
+
+### Nothing draws it yet
+
+The program reaches the table. Opening the Proof of Accumulation path loads the
+package, the package loads the table, and the table checks itself against the art
+brief's published counts before the program carries on. The glyph registry and the
+rate table read its counts, and the enemy screen prints them in a sentence.
+
+```
+reached            src/competition/monster_table.py, through the package import
+checks on start    six, all passing
+what the log says  "12 monster tiers, 6 below and 6 above, count 57 drawing jobs
+                    and 1467 frames. 21 designs are named, 36 entities are not,
+                    12 levels are owed, and ['Watchers'] appear on both sides"
+on a screen        the enemy screen names the counts; no creature is drawn
+```
+
+## 2026-09-11 01:45 - #585 - monster generation
+
+### A monster's identity comes out of the seed, the layer and the place
+
+The operator set the rule. Generation derives a monster the way a world fact's
+Quintessence already comes out: a world commits to a concealed seed at creation,
+and every place on every layer has a locator. Hash those two together and the
+result decides what stands there. The derivation rolls nothing and keeps no
+record, so two people who derive the same place always get the same creature.
+
+`src/competition/monster_spawn.py` - the whole of the derivation
+
+```python
+def derive_monster(seed, locator, weights):
+    layer, _ = require_locator(locator)
+    leaf = discovery_leaf(seed, locator)
+    tier_roll, depth = tier_for_leaf(leaf, weights)
+    design_roll, design_name = design_for_leaf(leaf, depth)
+```
+
+### The hash is one value and the two draws read different digits of it
+
+The world grid already reads the first sixteen digits of that hash to set a
+place's Quintessence. Generation never touches those sixteen. It reads the next
+sixteen to choose the tier and the sixteen after that to choose the creature. The
+amount at a place and the monster at a place are separate draws off one hash, and
+a reader cannot work either one back from the other.
+
+```
+digits  1 to 16    the Quintessence amount, which the world grid sets
+digits 17 to 32    which of the twelve tiers
+digits 33 to 48    which creature inside that tier
+digits 49 to 64    unread
+```
+
+### Nothing reads a place nobody has found
+
+Anyone holding the seed derives every place in a world, found or not. Anyone
+without it derives nothing at all. The chain carries no field naming a seed until
+the world publishes it, so before publication nobody can list a world's creatures
+in advance. After publication anyone can, which is the same trade the
+Quintessence amounts already make.
+
+```
+at creation            the chain posts the hash of the seed. Chain fields
+                       naming a seed, measured: none
+a discovered place     its own hash is already on the chain, so anyone derives
+                       that place's creature and learns nothing about any other
+an undiscovered place  a seed holder derives it and nobody else can
+after the seed is published   anyone recomputes every place in the world
+```
+
+### How often a tier appears is the one figure nobody has set
+
+A hash is even. Drawn evenly, a world would hold as many summit Avatars as
+surface afflicters, and the art brief says the opposite: four to eight creatures
+on the surface floor, one alone at a floor boss. An even draw is wrong. The brief
+publishes how many of a tier stand in one square at once, as a low figure and a
+high figure. It names no rule saying which of the two carries a draw share, and
+four ways of reading that one pair order the twelve tiers three different ways.
+
+```
+reading      the order it gives, most common tier first
+low          -2  -1  -3  -6  -5  -4
+high         -1  -2  -6  -3  -5  -4
+span width   -1  -6  -2  -5  -3  -4
+span sum     -1  -2  -6  -3  -5  -4
+distinct orders across the four readings   3
+```
+
+Three of the four readings put the summit above the decan rank and one drops the
+surface floor to second. Nobody has set the figure, and the module holds no curve
+of its own. A caller passes the weighting in, and the module refuses a weighting
+that leaves any of the twelve tiers unnamed.
+
+```
+what is owed    how often each of the twelve tiers is encountered
+what is built   the draw, which honours whatever weighting it is given
+the refusal     "a tier weighting names every depth in [-6, -5, -4, -3, -2, -1,
+                 1, 2, 3, 4, 5, 6] and carries no share for [...]"
+```
+
+### The decan rank hands back a tier with no creature name
+
+Seven of the twelve tiers name no creature. The decan rank counts thirty-six and
+the art brief leaves every one of the thirty-six unnamed, and the six tiers above
+the participant's plane hold no creature at all. A derivation landing on one of
+those returns the tier and leaves the creature name empty, with a line saying what
+would fill it. It does not refuse, because the tier is real and populated, and it
+invents no name.
+
+```
+depth -3          36 entities, 0 names, so the creature name is empty
+depths 1 to 6     no entity at all, so the creature name is empty
+every other tier  one of the 21 designs the brief names
+```
+
+### Generation derives identity and refuses power
+
+No tier has a character level. No derived monster therefore has stats, and none
+has an amount of embedded Quintessence. The derived record carries no level field
+at all, and asking it for its Quintessence raises, with the refusal naming the
+level as the thing that is missing.
+
+```
+the record holds   the place, the layer, the hash, the tier, the creature name
+                   and the two rolls
+it does not hold   a level, a stat, or an amount of Quintessence
+asking anyway      LevelAbsentError - "the tier at depth -1 has no level, so no
+                   Quintessence amount follows"
+```
+
+### Ten thousand places on one square
+
+One run drove the derivation over every step pair of one square on one layer, ten
+thousand places, under a world seed of thirty-two letter a. Every place landed on
+one of the six weighted tiers, and twenty-two outcomes came up. Each tier took the
+share the run handed it, to within four tenths of a part in a hundred. Anyone with
+that seed gets these same numbers again.
+
+```
+places derived      10,000
+distinct tiers           6
+distinct outcomes       22    the 21 named designs and the unnamed decan rank
+
+depth -1   share 4   expected 30.77%   got 30.67%
+depth -2   share 4   expected 30.77%   got 30.83%
+depth -3   share 2   expected 15.38%   got 15.41%
+depth -4   share 1   expected  7.69%   got  8.07%
+depth -5   share 1   expected  7.69%   got  7.54%
+depth -6   share 1   expected  7.69%   got  7.48%
+
+3:40:50:50   depth -6, the summit, a direct servant
+3:40:50:50   derived again, the same creature
+3:40:50:51   depth -1, the surface floor, Lilith
+```
+
+### Nothing calls the derivation yet
+
+The enemy screen is the zone a monster would draw in, and it states in words that
+it draws no pixel art. Nothing reads a derived monster. The package does not
+import the new module either, so opening the Proof of Accumulation path does not
+reach it. One entry in the package's own export list would change that.
+
+```
+reached by the PoA path   src.competition, and monster_table inside it
+not reached               src/competition/monster_spawn.py
+owed                      the module's entry in the package export list
+on a screen               nothing
+```
+
+## 2026-09-11 02:30 - #585 - materials and the Quintessence they embed
+
+### His two sentences about the cap are one rule, and the ledger already holds it
+
+The operator said the Quintessence inside a material does not count against the
+circulating hard cap. He also said it stays budgeted against the hard limit.
+Those read as opposites and they are not. The ledger keeps four buckets, not one,
+and every movement it allows keeps the four adding up to everything ever
+distilled. Embedded is one of the four. An embedded amount is inside the
+33,000,000 limit and inside nobody's wallet at the same time, which is exactly
+budgeted and not circulating.
+
+`src/competition/quintessence_ledger.py` - `conservation`, the sum every
+movement has to keep
+
+```python
+buckets = wallets_total + held_total + self._pleroma + self._embedded
+delta = buckets - self._total_ever_minted
+```
+
+### A material states what it holds, and moves nothing
+
+The new module declares a band and reads it back. It mints nothing, spends
+nothing and moves nothing between buckets. Four methods on the ledger already do
+every movement an embedded amount can make, and the material module calls none of
+them. That split is deliberate: one place owns the accounting, and the content
+layer only declares figures for it to move.
+
+`src/competition/materials.py` calls none of these, which is the whole of the
+movement path
+
+```
+quintessence_ledger.embed_from_pleroma       a world's own Quintessence embeds
+quintessence_ledger.embed_from_wallet        a player's Quintessence embeds
+quintessence_ledger.release_from_embedded    part comes back, the rest bleeds
+quintessence_ledger.release_all_to_pleroma   none comes back
+```
+
+### The lowest grade of ore is the smallest amount the currency can express
+
+He gave one figure pair: a unit of iron ore holds 0.00000001 to 0.00000005
+Quintessence. Measured against the ledger, the low end is the minimum unit
+exactly and the high end is five of them. Ore spans the smallest amounts that can
+exist at all, and nothing embeds less than one minimum unit. The module refuses a
+band that tries to.
+
+Measured, all four read off the running program
+
+```
+QUINTESSENCE_MINIMUM_UNIT                 0.00000001
+iron ore at its lowest quality            0.00000001    one minimum unit
+iron ore at its highest quality           0.00000005    five minimum units
+a declared band under one minimum unit    refused, with the refusal naming both
+```
+
+### Quality has five grades, and nobody had to invent them
+
+Quality is the axis that turns one material into a spread of amounts, so the
+grades had to come from something already settled. Three candidates were checked
+against his band. The five loot tiers fit it exactly, one minimum unit a step.
+The ten sphere bands cannot: they need a step of four ninths of a minimum unit,
+and the second grade then lands on an amount no bucket can hold. A trade grade is
+a reading of a real trade fill, runs continuously from zero to one, and is not a
+property of a material at all.
+
+Measured, each scale driven across his band
+
+```
+scale               step across the band        every amount on the grid
+five loot tiers     one minimum unit            yes
+ten sphere bands    0.4444... minimum units     no, the second grade is off it
+trade grade         continuous, zero to one     not a grade of a material
+```
+
+The five tiers were the closest fit for another reason as well. The conversion
+table already pairs them with these same ore figures: it carries one
+Quintessence-release row a tier, every one of them at his high figure. The grade
+ladder and the ore band were already sitting next to each other before this unit
+existed.
+
+`src/competition/conversion_rates.py` - the pairing that was already there
+
+```python
+def _loot_release_rates() -> tuple[ConversionRate, ...]:
+    """One working entry a ``TIER_NAMES`` name, at ``LOOT_RELEASED_QUINTESSENCE``."""
+```
+
+### One unit of iron ore, at each of its five grades
+
+Read off the constructed objects, not off the source. Every amount is a whole
+number of minimum units, his two ends reproduce exactly, and the three grades
+between them are the second, third and fourth minimum unit.
+
+```
+Calx            0.00000001
+Cauda Pavonis   0.00000002
+Flores          0.00000003
+Elixir          0.00000004
+Magisterium     0.00000005
+```
+
+### Seven materials, one an ore of each metal the classes already name
+
+The class table gives every class a classical planet and that planet's metal.
+Seven classes, seven distinct metals, and iron is one of them, the metal his own
+example names. The material table therefore reads the metals out of the class
+table and names no material of its own. Change the classes and the materials
+follow.
+
+`src/competition/materials.py` - `MATERIAL_NAMES`, in the order the class table
+declares the metals
+
+```
+lead ore    tin ore    iron ore    gold ore    quicksilver ore    copper ore
+silver ore
+
+iron ore          its band is the operator's, and marked decided
+the other six     they take the iron band, and are marked working
+```
+
+That marking matters. Only one of the seven carries a figure he gave. The other
+six carry a placeholder with his figures in it, and the conversion table already
+says what that means: a material other than iron ore takes the iron ore band
+until he names its own scale.
+
+### Gear takes a slot, consumables and resources stack
+
+His rule was that the three must not conflict. Only gear takes fixed storage
+space, counted in slots. Consumables and resources stack to a large amount and
+take no slot. All seven materials are resources, so nothing here declares a piece
+of gear or a consumable; items are a later unit's work and they will name their
+own class.
+
+`src/competition/materials.py` - `STORAGE_CLASSES`, with what each one is
+declared to do
+
+```
+gear          takes one fixed slot, does not stack    none declared here
+consumable    stacks, takes no slot                   none declared here
+resource      stacks, takes no slot                   seven declared here
+```
+
+How large a stack runs is absent. He said large, and no figure anywhere says how
+large. Whatever sets it will be read from the same place the slot count is read
+from, and neither exists yet.
+
+### Weight is declared on every material, and nothing weighs anything
+
+Weight is what the two stacking classes share; a slot count is not, because only
+gear takes slots. Every material declares a weight a unit. The figure is one
+weight unit, it comes from the conversion table, and the conversion table marks
+it working and says plainly that nothing weighs anything today. A real figure is
+owed and it is his.
+
+Measured, read back off the conversion table
+
+```
+the row            TempWeight_0001, one unit of any material
+its figure         1 weight unit
+its provenance     working
+its own note       "Nothing weighs anything today and no figure sets a
+                   material's weight"
+```
+
+Weight is read on one occasion only, by his narrowing: encumbrance matters while
+a Vessel is moving items itself, such as after a foraging run. It is a function
+of strength for the maximum weight and constitution for the turn point penalty
+while carrying. Nothing in this unit builds any of that. No Vessel exists to
+carry anything, so the declared weight has no reader.
+
+### Salvage is named here and built nowhere
+
+Destroying an item to get its Quintessence back is his rule and a later unit's
+work. What this unit can say is the ceiling: the most a salvage could ever return
+from one unit of a material is everything that unit embeds, and not one minimum
+unit more. What share of that a salvage actually returns is absent.
+
+`src/competition/materials.py` - the rule stated, with no figure attached
+
+```
+the ceiling          the embedded amount at that grade, and no more
+the share returned   absent
+his rule             much is lost without proportionate skill, and salvage of a
+                     powerful item without it is destructive
+what would set it    a salvaging skill level, and the loss curve he puts on it
+the movement         quintessence_ledger.release_from_embedded already takes a
+                     recovered amount and sends the remainder to the pleroma
+```
+
+### Every amount is checked at import, and the check has been seen refusing
+
+The module drives all seven materials across all five grades every time it is
+imported, and refuses to finish loading if any amount breaks one of three rules.
+A failure would mean a material declaring Quintessence that no bucket can hold,
+which would take that amount outside the four-bucket sum and let the 33,000,000
+limit be passed with nothing reporting it.
+
+What the program printed, from the module's own logging
+
+```
+acervator.materials INFO drove 7 materials across 5 quality grades,
+                         0 amounts broke a rule
+```
+
+The three rules were each driven against a band built to break them, and each one
+refused in its own words.
+
+```
+half a minimum unit        "is under the 0.00000001 minimum unit, and no material
+                            embeds less Quintessence than the currency expresses"
+one and a half units       "is not a whole number of 0.00000001, and no bucket
+                            holds it"
+an end that drifts         reported as not reproducing the declared figure
+```
+
+### What nothing supplies, and what nothing reads
+
+Nothing in the running program reads a material. The module imports cleanly
+through the Proof of Accumulation path and the package does not export it, so a
+reader has to name it directly. One entry in the package's own export list would
+change that, and no screen shows a material either way.
+
+```
+reads this module              nothing
+owed                           the module's entry in the package export list
+owed to this module            a real weight a unit, and a salvage loss curve
+owed by this module to others   a material list for an item, which crafting reads
+on a screen                    nothing
+```
+
+## 2026-09-11 02:50 - #585 - the guild roster, and where a treasury holds
+
+A guild now exists as a record. It carries its members, its officers and one
+treasury address, and four mechanisms that were already built can read it.
+
+### A guild forms, and it holds a treasury
+
+His own terms set both halves.
+
+> "only those holding PoA tokens can form a guild... guild membership locks and
+> stakes PoA tokens, by guild rank... a guild may hold any number of members"
+
+> "A guild holds a Quintessence treasury, filled two ways and spent one way.
+> Filled by the transfer skill, from a member, paying the bleed. Filled by the
+> guild's own event awards. Spent on action costs for guild members, inside an
+> event. Never paid out to a member's personal wallet."
+
+The record is a name, a key, a founder, a list of members and a list of officers.
+The founder is the first member and the first officer, because an officer is the
+only one who can commit the treasury, and a guild opened without one could never
+spend.
+
+```python
+guild = roster.found("The Gold Fold Collective", "bot-officer-0002")
+roster.join(guild.key, "bot-actor-0001")
+
+key        the_gold_fold_collective
+treasury   poa_guild_treasury_the_gold_fold_collective
+founder    bot-officer-0002, member and officer
+```
+
+The treasury address comes from the guild's key, so the same guild always derives
+the same address and two guilds can never share one. The name and the key derive
+the same address, which one run confirmed.
+
+### The treasury holds in the wallets bucket, and one run measured it
+
+An earlier entry on this page left a question open: the design calls a treasury a
+held address, and the ledger can only spend from a wallet. The two built paths
+that touch a treasury both answer the wallets side, so that is where a treasury
+holds.
+
+```mermaid
+graph LR
+  M["a member's wallet"] -->|transfer skill| T["the guild treasury, wallets bucket"]
+  M -->|bleed| P["the pleroma"]
+  T -->|an action's cost| POT["the event pot, held bucket"]
+  POT -->|payout by performance| W["participants' wallets"]
+```
+
+The transfer skill credits a wallet, and an action's cost leaves a wallet. One run
+drove both ends against one treasury address and read the two balances off the
+ledger.
+
+```
+transfer    sent 0.50000000   received 0.48000000   bled 0.02000000
+treasury    wallet balance 0.48000000    held balance 0
+the action  treasury 0.48000000 -> 0.47000000    actor 0 -> 0
+the record  underwritten 0.010   spent 0   actions 1
+the pot     held balance 0.01000000
+```
+
+The run added no bucket and minted nothing beyond the one unit it distilled. The
+four totals still balance and still sit under the cap.
+
+```
+wallets 0.97000000 + held 0.01000000 + pleroma 0.02000000 + embedded 0
+  == 1.00000000 ever minted     delta 0     balanced true     within cap true
+```
+
+### Four things an officer's commitment now refuses
+
+Before the roster, the treasury payment took an officer's name and a treasury
+address as given and checked neither. A caller could name a stranger as the
+officer, and the program accepted it.
+
+```
+offer_underwrite accepted a stranger as officer: 'bot-outsider-0004'
+REFUSED: guild-held-only-0005 holds 0 Quintessence and band x10 costs 0.010
+```
+
+The roster answers four questions the payment could not. Each refusal names the
+guild and the addresses involved.
+
+```
+no guild        bot-outsider-0004 belongs to no guild and commits no treasury
+no office       bot-plain-0003 is a member of the_gold_fold_collective and not
+                an officer; 1 officer(s) commit its treasury
+not a member    bot-outsider-0004 is no member of the_gold_fold_collective, so
+                treasury poa_guild_treasury_... pays nothing for that action
+paying oneself  bot-officer-0002 is both the officer and the actor; an underwrite
+                takes two addresses and nobody underwrites their own act
+```
+
+The last one keeps his rule that the commitment takes two acts by two people. A
+guild of one is still allowed, because he wrote that a guild may hold any number
+of members. The roster refuses one address playing both parts.
+
+### Every mode's guild flag, read for the first time
+
+Every event mode declares whether it needs a guild. Until now nothing read that
+flag. The roster answers it, beside the same mode's own party floor and ceiling.
+
+```
+team_monster_smash   guild_required true    party 2 to 120
+two members of one guild            admitted
+one member only                     admits 2 to 120 and this party holds 1
+an outsider in the party            1 of 2 are no members of that guild
+one address seated twice            one address takes one seat
+monster_smash with two seats        admits 1 to 1 and this party holds 2
+```
+
+The PvP vote freezes its roll of participants at the call, so nobody can move the
+threshold during the window. The roster does the opposite on purpose. A vote
+counts an eligibility total once; a treasury payment moves money, so it reads the
+roster at the moment it moves. The roster turns away a member who leaves between
+the officer's commitment and their own acceptance.
+
+```
+before leaving   require_underwrite answers guild the_gold_fold_collective
+the member left  the guild now holds 2 member(s) and 1 officer(s)
+after leaving    bot-actor-0001 is no member of the_gold_fold_collective, so
+                 treasury poa_guild_treasury_... pays nothing for that action
+```
+
+### One address belongs to one guild
+
+Quintessence moves only between members of the same guild. If one participant
+could belong to two guilds, that participant becomes a bridge between them and the
+rule stops closing anything. Membership is exclusive, and the roster turns away a
+second guild.
+
+```
+founder bot-officer-0002 already belongs to the_gold_fold_collective;
+one address belongs to one guild, so a transfer between guild members
+reads one guild
+```
+
+The roster writes out and reads back whole, so a transfer and a payout read the
+same membership after a restart. The stored file also names the bucket its
+treasuries hold in, and the roster turns away a file naming a different one.
+
+```
+to_dict / from_dict round trip equal: true
+summary  guild_count 1   member_count 2   treasury_bucket wallets
+```
+
+### Nothing reads the roster yet, and nothing shows a guild
+
+The roster exists and no other module calls it. Nothing in the running program
+builds a guild. One sentence on the transfer subtab still reads "No guild roster
+is built, so the guild term of a transfer reads nothing", and that is the only
+place a guild appears on any screen.
+
+```
+built        src/competition/guild_roster.py
+read by      nothing
+on a screen  nothing, beyond the sentence saying a roster is not built
+```
+
+This entry leaves five things owed and builds none of them.
+
+```
+the package export list     one entry, so other modules can import the roster
+the transfer skill          its guild term reads the roster
+the action payment          its officer check and its treasury call read the roster
+the guild metric            the metric named as held by no field reads the roster
+a surface                   a control that forms a guild, and a list that shows one
+```
+
+Four figures stay owed, and this entry invents none of them.
+
+```
+PoA tokens to form a guild   no number exists
+the stake each rank locks    no number exists
+a cap on officers            no number exists
+a cap on members             none, by his own words
+```
+
+---
+
+## 2026-09-11 03:10 - #585 - the Vessel, and one wallet behind all of them
+
+A Vessel is now a thing on disk rather than a word in other modules' docstrings.
+It carries an owner, a class, a level and an id, and every Vessel a player holds
+reads the same single wallet balance.
+
+```
+src/competition/vessels.py
+```
+
+### The requirement, in his own words
+
+```
+Players in PoA are actually Reincarnates and their Class at a given point is a
+Vessel. Vessel have levels and require increasing amount of Quint to 'power' or
+operate... A Reincarnate cannot be completely destroyed... but they can be
+'fully merged with the pleroma' if they do not hold a Quint balance.
+```
+
+```
+Players can have multiple Vessels that they micromanage to do lifeskilling and
+crafting (all multi-turn and sometimes lengthy processes) assuming their total
+Quint wallet budget supports this...
+```
+
+### A Vessel is a class, a level, an owner and an id
+
+The class is one of the seven already in the package, so nothing new decides what
+a Vessel can be. The level is one of the hundred on the arc. The owner is the
+wallet address, and a Reincarnate refuses a Vessel whose owner is a different
+address, so no player can attribute a Vessel to someone else's balance. The id is
+drawn at construction and holds two Vessels of one class apart.
+
+```python
+@dataclass(frozen=True)
+class Vessel:
+    owner: str
+    class_name: str
+    level: int = FIRST_LEVEL
+    vessel_id: str = ""
+```
+
+Its requirement comes from the stat table and nowhere else. Asking the Vessel for
+its requirement adds the five stats the level gives it.
+
+```
+Iron Edge at level 12          needs  70
+Silver Mirror at level 25      needs 225
+Lead Ward at level 1           needs   5
+```
+
+### Many Vessels, one balance, and that is the whole rule
+
+His sentence says a player may run several Vessels *assuming their total Quint
+wallet budget supports this*. The budget is the wallet, so the requirements of
+every Vessel are added together and read against the one balance. A player with
+five Vessels holds no more Quintessence than a player with one.
+
+One run drove a real wallet holding 100 Quintessence and added a Vessel at a
+time:
+
+```
+1 Vessel     summed requirement  70    each runs at 1 of full
+2 Vessels    summed requirement 295    each runs at 0.3389830508474576271186440678
+3 Vessels    summed requirement 300    each runs at 0.3333333333333333333333333333
+```
+
+The first Vessel never changed and its power fell twice. That is the point of the
+shared reading, and the alternative is the reason for it. Had each Vessel carried
+its own budget, the same three Vessels on the same balance would read:
+
+```
+Iron Edge        1 of full     full power
+Silver Mirror    0.4444444444444444444444444444
+Lead Ward        1 of full     full power
+```
+
+Two of the three at full, and a player could add Vessels for ever at no cost. The
+shared reading closes that.
+
+### Powering a Vessel spends nothing
+
+The requirement is a threshold a balance is measured against. It is not a charge,
+and nothing is moved or burned. The same Quintessence satisfies the requirement
+and stays in the wallet where it can be spent on something else.
+
+```
+balance before every reading   100.00000000
+balance after                  100.00000000
+four-bucket conservation        balanced
+```
+
+### Under the requirement a Vessel is not refused
+
+A player short of the amount still occupies the Vessel and runs it below full
+potential. No call anywhere in this module refuses a Vessel for want of
+Quintessence, and the fraction above is what a player gets instead.
+
+```
+acervator.vessels INFO reincarnate-holder runs 3 Vessels needing 300 against a
+balance of 100, each at 0.3333333333333333333333333333 of full
+```
+
+### The zero-balance rule, and the newcomer it would have deleted
+
+His rule merges a Reincarnate with the pleroma at a zero balance. Read on the
+balance alone it also merges every person who has just arrived, because a wallet
+nobody has paid into holds nothing. Nobody could ever start.
+
+The ledger already tells the two apart. It keeps every movement that has touched
+an address, and a brand-new address has none.
+
+```
+a newcomer        balance 0       movements 0
+a spent player    balance 0E-8    movements 2
+```
+
+The merger therefore needs two things together, and the second one is a balance
+the player once held. Driven against three real addresses on one ledger:
+
+```
+a holder          balance 100.00000000   merged False   holds a Quintessence balance
+a newcomer        balance 0              merged False   has never held a Quintessence balance
+a spent player    balance 0E-8           merged True    fully merged with the pleroma
+```
+
+Nothing is destroyed by this reading. It answers a question and removes no
+record, which keeps his rule that a Reincarnate cannot be completely destroyed.
+
+### No figure caps how many Vessels a player may hold
+
+Nobody has named a limit, and none was invented here. The wallet balance is the
+only bound: a player who adds Vessels keeps diluting all of them, so the cost of
+a twentieth Vessel is the power of the other nineteen.
+
+```
+the only bound on Vessel count   the wallet balance
+a figure that caps the count     absent
+```
+
+### What a Vessel still cannot do
+
+Eight mechanisms name a Vessel and six of them are unbuilt. The module lists all
+eight by name and what each one waits on, so none of them is silently missing. Two
+of the eight now ship, and their notes say which code holds them.
+
+```
+assignments     nothing gives a Vessel a task to carry over several turns
+lifeskilling    one skill ladder exists and no Vessel runs it
+crafting        crafting.CraftRegister makes one. begin_craft takes the components
+                and complete_craft delivers the item
+notifications   nothing tells a player that a Vessel finished
+gear            no module holds an item a Vessel wears
+equipping       items.equip_check holds it: an item type's cohesion read against
+                the total Quintessence held
+destruction     the PvP vote answers who may, and nothing destroys
+permadeath      no module ends a Vessel
+```
+
+His rule that the Quintessence level of gear cannot exceed the total of the
+equipping player is the one `equip_check` answers. No module records an item as
+worn, so the answer reaches no wearer yet.
+
+```
+In development.
+```
+
+### What reads this today
+
+Nothing. The wallet's Vessels section on the tab still reads a class pick rather
+than a Vessel, and the summed requirement row still prints two dashes. Driving
+the tab on both chains shows the section stops earlier than that, because no
+participant identity exists on this machine at all.
+
+```
+section 'Vessels'
+    note   bot_identity.json does not exist, so no participant is named.
+```
+
+The wallet section already prints a movement count beside the balance, which is
+the second half of the merger rule, so the page is reading the right ledger
+already. Two things are owed before any of this shows: the module's entry in the
+package export list, and the wallet section reading a Reincarnate instead of a
+class pick.
+
+```
+owed   the module's entry in the package export list
+owed   the wallet's Vessels section reading a Reincarnate
+```
+
+## 2026-09-11 03:30 - #586 - the world tier, and the Quintessence a slaying imports
+
+A world now has a tier. The tier runs from one to six, and it names the deepest
+dimension the world reaches. Raising it reaches further down, where the
+creatures are harder, so a mature world grows harder and pays more.
+
+```
+src/competition/world_tier.py
+```
+
+### The cataclysm rule, in his own words
+
+```
+PoA - Cataclysms - Monsters - Creatures fought during a cataclysm (alignment
+skewed world event) actually 'import' additional Quint that is added to the
+World if they are slain. This is also the mechanism whereby a World's tier
+(lowest dimension on which it resides) is raised thus permanently increasing
+difficulty and proportionate rewards. This allows loot and resources to roll off
+of charts for mature worlds having predominantly players that do not need their
+statistical bandwith being consumed by unneeded items.
+```
+
+### A higher tier number reaches a lower dimension
+
+His definition reads straight through. The tier counts from one to six. The count
+names the lowest dimension the world sits on. Raising the count reaches deeper,
+and deeper runs harder. That reading is the one this unit took, and nothing he
+has written asks for the opposite.
+
+The depths are not new. The monster table already declares twelve tiers at
+signed depths, six below the player's own plane and six above. A world at tier
+one reaches only the first depth below it. A world at tier six reaches all six.
+This module declares no second scale.
+
+```
+world_tier.lowest_depth_of   reads monster_table.monster_tier_at
+
+tier 1   depth -1   the surface floor
+tier 2   depth -2   executors of a mandate or of fate
+tier 3   depth -3   the decan rank
+tier 4   depth -4   floor bosses
+tier 5   depth -5   the fall tier
+tier 6   depth -6   the summit
+```
+
+Driving the module produced those six names, and nothing copied them from a
+table. The module refuses a seventh tier, and refuses a tier below one.
+
+```
+world w rises to tier 6, reaching depth -6
+WorldTierBoundError: world 'w' sits at tier 6 of 6 and reaches depth -6 already
+WorldTierBoundError: a world tier runs 1 to 6, the 6 descending ranks
+monster_table declares, got 7
+```
+
+### The import moves Quintessence and creates none
+
+Quintessence has a cap of thirty-three million, and that cap holds only while
+every amount sits in one of four places. An import can make none. The ledger
+already had the door. One call takes an amount out of the pleroma, where
+Quintessence rests while nothing holds it, and puts it in the embedded place,
+where a world holds it. His own rule sends a slain creature's Quintessence back
+to the pleroma. The import uses that same door the other way.
+
+```python
+def import_on_slaying(self, ledger, world_id, amount) -> Decimal:
+    standing = self.world(world_id)
+    imported = ledger.embed_from_pleroma(amount)
+```
+
+### One import, driven on a real ledger
+
+The run opened a ledger on a temporary file. It distilled a hundred
+Quintessence, then bled four of that into the pleroma with a transfer. It made
+one import of 1.25 for a world, and read the four totals off the ledger either
+side of the call.
+
+```
+quintessence_ledger.embed_from_pleroma, through
+world_tier.WorldTierRegistry.import_on_slaying
+
+              wallets   held   pleroma   embedded   ever minted   difference
+before          96.00      0      4.00       0.00        100.00         0.00
+after           96.00      0      2.75       1.25        100.00         0.00
+```
+
+The import created nothing. The amount ever minted did not move, and the four
+totals still add to it with no difference. Had that mint figure risen, the
+import would have been making Quintessence, and the thirty-three million cap
+would no longer bound the supply at all. The module said what it did as it did
+it.
+
+```
+acervator.world_tier world world-1 opens at tier 1, reaching depth -1
+acervator.world_tier world world-1 imports 1.25 Quintessence out of the pleroma
+```
+
+### What happens when the pleroma runs dry
+
+Every world draws on one finite pleroma, so an import draws on a shared pool.
+The run drove the ledger dry to find out what it does.
+
+```
+pleroma 0      import 1      ValueError: the pleroma holds 0, cannot embed
+                             1.00000000
+pleroma 0.4    import 1      ValueError: the pleroma holds 0.40000000, cannot
+                             embed 1.00000000
+pleroma 0.4    import 0.4    moved 0.40000000, pleroma left at 0
+```
+
+An import never part-fills. The ledger refuses an amount larger than the pleroma
+holds, whole, and credits the world nothing. After both refusals the world's own
+total still read zero and the four totals still balanced. An amount smaller than
+the smallest unit the currency can express moves nothing and answers zero.
+
+### Farming a world to raise its tier
+
+A world can reach tier six by farming, and nothing in the tree stops it. The
+raise takes one call, and no figure says how much imported Quintessence earns
+one. Six calls to the raise walk a world from tier one to tier six. The module
+declares that figure absent and refuses to answer for it, rather than choosing a
+number nobody chose.
+
+```
+world_tier.tier_raise_threshold
+
+FigureAbsentError: no threshold raises a world tier: the imported Quintessence
+that raises a world one tier. No statement names one, so nothing bounds how
+often raise_tier may be called and a world can be farmed to MAX_WORLD_TIER by
+repeated slaying
+```
+
+The pleroma is the only real brake today, and it brakes the import, not the
+tier.
+
+### The monster table owes the amount one creature imports
+
+Asking what a slain creature imports hands back a refusal, and the monster table
+raises it rather than this module. All twelve of its tiers carry no character
+level, so no Quintessence amount follows from any of them. The monster table
+already counts twelve levels it owes.
+
+```
+world_tier.slaying_import_amount, through
+monster_table.tier_embedded_quintessence
+
+LevelAbsentError: the tier at depth -1 has no level, so no Quintessence amount
+follows: the character level this tier sits at. No source names one.
+```
+
+This module refuses a depth the world does not reach, and that one check is all
+it adds to that path.
+
+```
+WorldTierBoundError: a world at tier 2 reaches [-1, -2], and no creature of it
+sits at depth -5
+```
+
+### Loot rolls off the low end, and one figure decides how much
+
+His sentence rolls loot and resources off the chart as a world matures, because
+mature players do not want their item lists full of things they cannot use. A
+tier picks a band of the chart instead of the whole chart.
+
+The five loot tiers already run commonest first, and the material quality grades
+take the same five names in the same order from the same place. One band answers
+loot and resources together. Cutting from the low end takes the commonest items
+first, which is what his sentence asks for.
+
+```
+world_tier.loot_band   cuts loot_drop.TIER_NAMES, which materials.QUALITY_GRADES
+                       also reads
+
+cut 0    Calx, Cauda Pavonis, Flores, Elixir, Magisterium
+cut 1    Cauda Pavonis, Flores, Elixir, Magisterium
+cut 2    Flores, Elixir, Magisterium
+cut 3    Elixir, Magisterium
+cut 4    Magisterium
+```
+
+How many tiers one world tier cuts is the figure nobody has set. Six world tiers
+and five loot tiers divide by no whole count, so the module refuses to answer a
+band from a tier until someone names that figure.
+
+```
+world_tier.loot_band_at_tier
+
+FigureAbsentError: no band follows from a world tier: how many loot tiers leave
+the chart for each world tier above FIRST_WORLD_TIER. No statement names one.
+```
+
+### A cut band is not yet a drop table
+
+A drop roll needs weights that add to a hundred. A cut band falls short, and
+adding the weights at each cut shows by how much.
+
+```
+world_tier.band_weight_total, against loot_drop.WEIGHT_TOTAL_PCT of 100
+
+cut 0    weights total 100.0
+cut 1    weights total  40.0
+cut 2    weights total  15.0
+cut 3    weights total   4.0
+cut 4    weights total   0.5
+```
+
+Only the uncut chart passes the check the loot module already runs on itself. A
+band names which items a mature world can drop. Nothing reweights what the cut
+leaves, so no roll comes out of a band yet.
+
+### Which clock
+
+The import belongs to the event turn, because a participant slays a creature
+inside an event. The tier raise belongs to the world turn, because the tier is a
+fact about the world that every participant has to see the same way, and a raise
+part way through an event would change the difficulty of a fight already
+running. Nothing schedules either one.
+
+```
+event turn   300 seconds, 60 for an Elite event, read from
+             poa_modes.EventVariant.turn_seconds
+world turn   one hour, counted in whole turns and in seconds nowhere under src
+```
+
+### The registry holds the tier in memory
+
+The registry keeps every world's tier in memory and writes no file, the same as
+the guild roster. His word is permanently, so a world's tier has to outlive a
+restart before this work finishes.
+
+```
+owed   a world's tier surviving a restart
+```
+
+### Nothing calls it
+
+Four things this needs do not exist, and a count found each absence.
+
+```
+cataclysm    no module under src names one
+alignment    no module under src/competition names one
+combat       no module under src names one, so nothing can slay a creature
+world tier   world_grid declares layers and declared no tier before this module
+```
+
+The module provides the two calls a cataclysm would make, and nothing calls it.
+Twelve of the thirteen findings the coding review returned say exactly that: the
+registry, its methods and the reading functions have no caller. The thirteenth
+names a missing copyright line, which no file in the package carries.
+
+Nothing shows a world tier either. Driving the tab's own handler returns
+thirty-one sections, and searching each one finds the words world tier zero
+times, and cataclysm zero times. The conservation panel does already print the
+pleroma and the embedded totals, so an import would show its effect there the
+moment something made one.
+
+```
+owed   a cataclysm, which would raise the tier
+owed   a combat result, which would make the import
+owed   the module's entry in the package export list
+owed   a surface showing a world's tier
+```
+
+### What the world tier reads, and what it hands back
+
+```
+reads, nothing provides   the amount one slain creature imports. The monster
+                          table refuses it, because no tier carries a level
+reads, nothing provides   the imported Quintessence that earns one tier raise
+reads, nothing provides   how many loot tiers one world tier cuts
+reads, nothing provides   a reweighting rule for a cut band
+provides, nothing reads   a world's tier, and the depths that tier reaches
+provides, nothing reads   the import, and the total each world has imported
+provides, nothing reads   the loot band a cut leaves on the chart
+```
+## 2026-09-11 03:50 - #586 - alignment, and the three levels it rolls up
+
+Alignment is now a running total of what a Vessel has done. A player does not pick
+a side. Each action carries its own ratio of Creation to Destruction, and a
+Vessel's alignment adds every one of those scores together. The same total rolls
+up to a guild, and the guilds add up to a world.
+
+```
+src/competition/alignment.py
+```
+
+### His words, and what they ask for
+
+```
+Remember to note how alignment is going to work in PoA. Abilities are ratios of
+Creation and Destruction on a gradient that persistently scores every vessels
+action so that alignment becomes a function all a Vessel's 'life' choices.
+```
+
+```
+Individual Vessel alignment informs Guild Alignment which then defines World
+Alignment.
+```
+
+### An action carries the ratio, and this module holds no ratios
+
+A score arrives with the action that earned it. The module that keeps the totals
+holds no table of ratios and picks none, because no ability exists yet to carry
+one. The caller hands over the two parts and the module adds them.
+
+```python
+ledger.score(vessel, "raised a wall", 3, 1)
+```
+
+The one action the package builds is the Quintessence Transfer in
+`src/competition/skill_ladder.py`. Whether a transfer scores at all, and which
+way, is a ruling nobody has made. This module gives it no ratio.
+
+### The scale runs pole to pole, with a real middle
+
+One action's reading is its Creation less its Destruction, divided by the two
+added together. All Creation reads 1. All Destruction reads -1. A ratio of three
+to one reads 0.5. Nothing can leave that range, because neither part is ever
+negative.
+
+```
+all Creation            polarity   1
+three Creation to one   polarity   0.5
+one to one              polarity   0
+one Creation to three   polarity  -0.5
+all Destruction         polarity  -1
+```
+
+Every amount stays exact. The module refuses a ratio handed to it as a binary
+fraction, and rounds nothing.
+
+```
+creation must be int, str or Decimal, not float; a ratio between
+('creation', 'destruction') decided by binary floating point is refused
+```
+
+### An unscored Vessel and a balanced one are not the same thing
+
+A Vessel that has done nothing and a Vessel whose good and bad cancel both show
+a net of zero. They are still different, and the difference falls out of the
+arithmetic: a reading is a net divided by a total, and a Vessel with no actions
+has a total of zero, so it has no reading at all.
+
+```
+before any score   actions=0   net=0   total=0   polarity=None   balanced=False
+after 3 to 1       actions=1   net=2   total=4   polarity=0.5    balanced=False
+after 1 to 3       actions=2   net=0   total=8   polarity=0      balanced=True
+```
+
+The balanced Vessel reads zero. The unscored one reads nothing. A world event can
+tell them apart on either the reading or the action count.
+
+### The total never decays
+
+Nothing removes a score, and no clock reduces one. His sentence says alignment is
+a function of all a Vessel's life choices, and a total that faded would stop being
+that. The design has no decay, so no figure sets a decay rate.
+
+```
+DECAY_ABSENT   no scored action is ever dropped from a total, and no clock
+               reduces one
+```
+
+### The Vessel holds it, and its key leaves the level out
+
+A Vessel is a frozen record of an owner, a class, a level and an id, in
+`src/competition/vessels.py`. It carries an identity field, and this key does not
+read it yet. The module files each score under the owner and the class name, so a
+Vessel that gains a level keeps the alignment it earned.
+
+```
+the key       owner, class_name
+left out      level, so levelling up loses nothing
+```
+
+One thing that key cannot do is separate two Vessels of the same class under one
+owner. Nothing stops a player holding two, and today they would share one
+alignment. Separating them needs the identity field on the Vessel record, which
+the Vessel now carries and this key does not read.
+
+### A Vessel informs its guild, and the guilds define the world
+
+His two verbs differ and the difference is worth stating plainly. A guild's
+alignment is the sum of its members' Vessels, and other things may inform it
+later, such as the guild's own acts. A world's alignment is the sum of its
+guilds and nothing else, which is what defines means.
+
+```
+a Vessel     every score it has taken
+a guild      every Vessel of every member
+a world      every guild on the roster
+```
+
+The sum is the same operation at both levels today. The verbs differ only in
+whether more contributors may arrive, and nothing else contributes yet.
+
+Summing rather than averaging is what makes his single-guild rule come out right.
+A world with one guild takes that guild's reading exactly, with nothing to pull
+it back toward the middle. A world with guilds on opposite sides cancels toward
+the middle in the sum, which is the position a victor has to hold.
+
+### One run, three levels, and a change at the bottom moved the top
+
+One run drove two Vessels in one guild. The second Vessel drained a creature at
+nothing to forty, which is as far toward Destruction as a score goes.
+
+```
+alpha Iron Edge        net   0   total  8   polarity  0
+beta Silver Mirror     net -40   total 40   polarity -1
+the guild              net -40   total 48   polarity -0.8333333333333333333333333333
+the world              net -40   total 48   polarity -0.8333333333333333333333333333
+```
+
+The first Vessel then restored a spring at twenty to nothing. Its own reading
+moved, and so did both levels above it.
+
+```
+alpha Iron Edge        net  20   total 28   polarity  0.7142857142857142857142857143
+the guild              net -20   total 68   polarity -0.2941176470588235294117647059
+the world              net -20   total 68   polarity -0.2941176470588235294117647059
+```
+
+One action changed all three readings. That is the roll-up working.
+
+### A player in no guild reaches the world nowhere
+
+The chain runs Vessel, then guild, then world. The roster in
+`src/competition/guild_roster.py` allows a player to belong to no guild, and
+answers nothing when asked which guild such a player is in. An unguilded player's
+actions therefore reach no guild and no world.
+
+A third Vessel, owned by a player in no guild, mended a road at five to nothing.
+The world did not move.
+
+```
+gamma Lead Ward        net   5   total  5   polarity  1
+the world              net -20   total 68   unchanged
+unguilded addresses    ('gamma',)
+```
+
+The module reports those addresses rather than hiding them, and invents no route
+for them. **This is a question for the operator:** either an unguilded player's
+actions should not count toward a world, or the chain needs a fourth step that
+carries them.
+
+### Offsetting is open, and the consequence is his to see
+
+The net is a plain sum, so light good acts cancel heavy bad ones. One run scored
+a single profound Destruction of a thousand, then a thousand trivial Creations of
+one each. The Vessel came out exactly balanced.
+
+```
+actions 1001      net 0      total 2000      polarity 0      balanced True
+```
+
+A player can also park a Vessel near the middle by alternating. His own rule
+calls necromancy and energy vampirism profoundly evil, which reads as weight
+rather than count, and weight is the ratio the action carries. Nothing in the
+totals stops many light acts cancelling one heavy act.
+
+The one thing the totals do keep is how much weight went in. A Vessel at zero with
+a total of two thousand is not the same as a Vessel at zero with a total of two,
+and a reader can tell them apart.
+
+```
+a brake on offsetting   nothing sets one, and the operator would set it
+```
+
+### The monster tiers are a different axis, and the module says why
+
+The twelve monster tiers run six below the player's plane and six above. One
+reading makes them the same Creation-to-Destruction axis, and the table in
+`src/competition/monster_table.py` refutes it on five counts, so the two axes stay
+separate.
+
+```
+a tier is never at depth 0, and this scale needs a middle
+the decan rank below the plane is invoked to HEAL, not to destroy
+one tier of the twelve is marked morally wicked; the rest are indifferent
+the Watchers sit below the plane AND in the families named above it
+no rule places an arbitrary creature on the tier axis at all
+```
+
+The last line is the decisive one. The tier axis answers what a creature is. This
+scale answers what a Vessel has done. Nothing could score an action from a table
+that cannot place a creature.
+
+### The neutral band is the one figure nobody has set
+
+Exact balance needs no figure. A net of zero against any total above zero reads
+balanced, and the module answers that today. Naming a reading neutral over a range
+needs a width around zero, and no source gives one.
+
+```
+NEUTRAL_BAND   absent. The operator sets how far from zero still reads neutral
+```
+
+A three-way naming of a world's polarity is what the width would buy. His guild
+rule says a victor must hold a neutral polarity to survive, so a world event that
+asks whether a world is neutral will need it.
+
+### What reads this, and what it reads
+
+Nothing reads a Vessel's alignment, a guild's, or a world's. The module provides a
+world alignment that a cascade would read, and nothing reads it. The module names
+seven absent readers, each with the thing it waits on.
+
+```
+cataclysms          no module names one
+world polarity      this module derives one, and nothing stores or shows it
+abilities           one skill exists, and no ability carries a ratio
+combat              nothing resolves a fight, so no fight scores anything
+necromancy          no skill exists to score, and its ratio is the operator's
+energy vampirism    no skill exists to score, and its ratio is the operator's
+a surface           no tab or panel shows an alignment at any level
+```
+
+The module owes two more things. It has no entry in the package's export list, and
+nothing ties a roster to one world on the map, so a world alignment comes off
+whichever roster the caller hands over.
+
+```
+owed   the module's entry in the package export list
+owed   a tie between a guild roster and a world on the map
+```
+
+The cascade his directive describes has no brake. Creatures pushing a world
+further toward its own end would make more of those creatures appear, and nothing
+stated sets a ceiling or slows it down. A reader of the world alignment will need
+one.
+
+## 2026-09-11 04:10 - #586 - parties, and the armies their Raids link into
+
+A party now exists as a record. A party holds its members, its event mode, and
+the one member who leads it. Above the party sits an army. An army links two or
+more Raid parties and reads a General off each one.
+
+```
+src/competition/army_command.py
+```
+
+### His structure, in his own words
+
+```
+Armies are comprised from multiple, linked Raids. Raid Leaders become Generals
+under such structures. Generals must coordinate their raids while avoiding
+devastating multi-square type abilities and AoEs that last multiple turns. These
+events should be intense and always a bit chaotic.
+```
+
+```
+Idea is for cataclysms to be the peak event type for PoA since it effects all
+players in a world. My vision is to have entire player armies fighting cosmic /
+nightmare type bosses at some point during one of these.
+```
+
+### Nothing held a party's members until now
+
+Every event mode has declared a party range from the start, and one check already
+read those ranges. The party itself was missing. Nothing anywhere held a list of
+members, so the range had nothing to measure.
+
+```
+poa_modes.MODES             every mode's party range, declared
+guild_roster.require_party  checks a list of addresses against one range
+army_command.Party          the record that holds the members
+```
+
+### A party forms inside its mode's own range and nowhere outside it
+
+Forming runs through the check that already existed. The range that refuses a
+party is the mode's own declared range, and no second copy of it exists. A Raid
+admits two to sixty. One run drove both ends and both refusals.
+
+```
+form_party, through guild_roster.require_party
+
+a Raid of  2   forms     w0 leads a Raid party of 2
+a Raid of 60   forms     w10 leads a Raid party of 60
+a Raid of  1   refused   Raid admits 2 to 60 participants and this party holds 1
+a Raid of 61   refused   Raid admits 2 to 60 participants and this party holds 61
+a leader holding no seat
+               refused   'w99' leads this Raid party of 2 and holds no seat in it
+```
+
+This work changes no range. It adds no mode, and it raises no ceiling.
+
+```
+Fixation                   1 to 1      no guild
+Coagulation                2 to 120    one guild
+Descension                 1 to 6      no guild
+Cementation                2 to 60     one guild
+```
+
+### An army links Raids and refuses every other kind of party
+
+His sentence names Raids, so Raids are what an army links. A Dungeon Crawl party
+forms normally, and the link then refuses it. One raid is not an army either. The
+smallest army links two raids.
+
+```
+a Dungeon Crawl party   refused   a Dungeon Crawl party links into no army; an
+                                  army is built from Raid parties
+an army of one raid     refused   army 'The Fourfold Host' links 1 Raid party(s);
+                                  an army links at least 2 of them
+```
+
+### One address holds one seat in one army
+
+This is the refusal a size check cannot see. Two raids can each be a legal Raid
+party and still name the same player. An army admitting both would count that
+player twice in every fight, under two Generals.
+
+```
+two disjoint raids of four   linked    2 raids, 8 members
+a third raid naming w3, who already sits in raid 0
+                             refused   w3 already hold seats in army 'The
+                                       Fourfold Host' across its 2 linked raid(s)
+the same third raid, in a fresh army
+                             linked    2 raids, 7 members
+```
+
+The third line is the one that matters. The party the first army refused links
+into a fresh army without complaint. The refusal came from the shared address and
+from nothing else about that party.
+
+### A General is a role a leader takes, not an appointment
+
+His sentence gives one General to each linked raid. Raid Leaders is plural and
+Generals is plural, and the sentence maps one onto the other. Nothing he has
+written names a single commander standing over a whole army.
+
+The army records no General of its own. Each raid keeps its leader, and the army
+reads each linked raid's leader as that raid's General at read time. The same
+wallet answers differently to a party and to an army.
+
+```
+the party alone calls w4 a leader
+the army calls the same wallet a general
+a stored raid carries leader, members, mode and guild_key, and no general field
+```
+
+That shape answers a General leaving in the middle of an event without a rule of
+its own. No separate record exists to go stale. Forming freezes a party, so
+nothing in the package removes a member from one, and the departure path is an
+open item of its own.
+
+### An army reconstructs through the same refusals that formed it
+
+A stored army rebuilds raid by raid, and each raid goes back through forming and
+linking. Every refusal above applies to a stored army and to a new one. The load
+refuses a stored party whose members have since left the guild.
+
+```
+two raids of four, stored as 280 bytes of JSON
+rebuilt   generals ('w0', 'w4')   2 raids   8 members   round trip identical
+```
+
+### Which clock a party and an army answer to
+
+No clock times either object. A party forms before an event begins, and an army
+forms before a cataclysm, so neither forming sits inside a turn of either clock.
+Once an event runs, the seating call that already exists puts a party's members on
+the event turn. A cataclysm reaches every player in a world, so an army belongs to
+the world turn. Nothing schedules either one.
+
+```
+event turn   300 seconds, 60 for an Elite event, from
+             poa_modes.EventVariant.turn_seconds
+world turn   one hour
+owed         a deadline for forming a party, and one for linking an army
+```
+
+### The party window holds two raids and no more
+
+The screen that would show an army has a measured ceiling. The window pages forty
+participants at a time and holds a hundred and twenty in all.
+
+```
+proof_of_accumulation_tab_surface.party(), driven
+
+capacity 120   per page 40   pages 3   group size 5   groups 8
+header "Page 1 of 3 - 40 a page - up to 120"
+```
+
+Two full Raids of sixty fill it exactly. A third raid does not fit. The window
+shows no leader and no General, and carries no army section at all.
+
+```
+owed   a party window that pages an army, not one party
+owed   a mark on the window for the General of each raid
+```
+
+### How many raids one army may link is his to set
+
+No cap sits in the code. A world seats a fixed number of participants, and
+dividing that by a Raid's own ceiling gives the raids a world could field at once.
+Whether that is the bound he wants is his decision, so nothing declares it.
+
+```
+79 participants a layer  x  20 layers     = 1,580 seats a world
+1,580 seats  /  60 a Raid                 = 26 raids
+declared in army_command                  = no cap
+```
+
+### What stays absent
+
+Four things an army exists to fight do not exist. A count found each absence.
+
+```
+combat           no module under src resolves a fight
+abilities        skill_ladder holds one skill, the Quintessence transfer
+an area effect   needs an ability and a turn resolution
+a cataclysm      no module under src names one
+```
+
+The multi-square reach his sentence describes has a real anchor already. The world
+grid addresses squares and gives every position a locator, so an ability covering
+more than one square would read those. Nothing builds one here.
+
+### Nothing forms a party in the running program
+
+Driving the tab's own handler returns the party window's paging and nothing else.
+No member, no leader, no army. The handler imports twenty-nine modules from the
+competition package, and neither the guild roster nor this module is among them.
+
+```
+proof_of_accumulation_tab_surface.view_model({}), under python -X dev
+
+party block keys   capacity, group_size, groups, mark_ranks, mark_seam_note,
+                   mark_seams, page, page_text, pages, per_page, placeholder
+army key           absent
+general key        absent
+```
+
+The coding review returns seven findings on the new module. Six of them say a
+method has no caller, which is the same sentence in another form. The seventh
+names a missing copyright line, which no file in the package carries.
+
+```
+owed   the module's entry in the package export list
+owed   who may form an army, and whether its raids must share one guild
+```
+
+### What a party reads, and what an army hands back
+
+```
+reads, nothing provides   a party, from a screen or an event entry. Nothing
+                          forms one
+reads, nothing provides   a combat result, which is what a General coordinates
+reads, nothing provides   a cataclysm, which is the event an army is raised for
+provides, nothing reads   a party's members, its mode, its leader and its guild
+provides, nothing reads   an army's linked raids, and the General of each one
+provides, nothing reads   one row a linked raid, as a surface would serve it
+```
+## 2026-09-11 04:30 - #147 - the top row is halved, and the right half is the map or the encounter
+
+### His words set the top row
+
+The operator settled the top row on 2026-09-10.
+
+```
+"So top row of PoA GUI should be Current Vessel and Current Vessel Details on
+ the left half and Map or Encounter on the right half."
+```
+
+The top row used to be one wide region beside a small square. It is now two
+halves of the same width with a divider down the middle. The lower half is
+unchanged and still holds the party window.
+
+### Two halves and a divider
+
+The top row is a three-column grid. The first and third columns are equal
+fractions and the middle one is a single pixel that draws the divider.
+
+`src/gui/web/proof_of_accumulation_tab.css` - the top row's columns
+
+```css
+grid-template-columns: 1fr 1px 1fr;
+```
+
+### What each half measures now
+
+Read off the rendered page in the Electron shell and off the rendered page in
+the desktop window, at the window size the shell opens and at a narrow one.
+
+```
+                         left half        right half
+                       before  after    before  after
+Electron shell  1386    1165    669       181    669
+Electron shell   900     684    426       176    426
+desktop window  1386    1164    669       183    669
+desktop window   900     683    426       177    426
+```
+
+The before figures are the player window and the square enemy screen beside it.
+The after figures are the two halves.
+
+### A record on the event decides which state the right half draws
+
+The right half draws the map until an encounter runs, and the encounter after
+that. Nothing in the platform held a flag for a running encounter, so the tab
+reads one off the pot the payout panel was already reading: a participant record
+on the declared event with no payout yet is an encounter in progress.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py`
+
+```python
+def encounter(pot: dict) -> dict:
+    """Whether ``pot``'s event holds participant records and no payout, which runs one."""
+    joined = len(pot["shares"]) + len(pot["unscored"])
+    running = joined > 0 and not bool(pot.get("is_settled"))
+```
+
+Both directions were driven from the page itself on the demo chain. The grade
+button wrote one record and the right half became the encounter; the payout
+button settled the event and the right half went back to the map.
+
+```
+control fired   right half
+none            Map
+grade           Encounter - "Records on this event: 1. No payout yet."
+payout          Map
+```
+
+### The square keeps its shape, and the row's height sets its side
+
+The enemy screen is square and draws inside the encounter, beside its title and
+its notes rather than under them. Its side is the height of the top row, which
+is what the side used to be, so halving the width did not shrink it.
+
+```
+                         enemy screen
+                       before   after
+Electron shell  1386     181     164
+Electron shell   900     176     158
+desktop window  1386     183     165
+desktop window   900     177     160
+```
+
+The remaining difference is the region's own padding and border. The square
+grows with the window the way it did before.
+
+### The left half is the Vessel, and it says what keeps none
+
+The left half prints the class, the planet, the assignment and the level of the
+Vessel a class pick names, then its own requirement, the summed requirement of
+every Vessel the participant occupies, the wallet balance, the fraction of full
+power that balance reaches, and the pleroma standing.
+
+No module keeps a Vessel against an address, so with no class pick the half
+prints no rows and says why instead of drawing an empty frame.
+
+```
+poa_record_store.json keeps no Vessel for this participant. A Vessel is the
+class a Reincarnate occupies, and only a class pick names one.
+```
+
+Under that it lists the eight mechanisms a Vessel takes part in that no module
+builds, each with the sentence naming what it waits on. Those eight come from
+the Vessel module's own list, not from a second copy here.
+
+### The wallet's summed requirement is a figure now
+
+The wallet's Vessels section printed two dashes where the summed requirement
+goes, because nothing held the figure. The Vessel module holds it, so that row
+prints it and the note beside it says what the sum covers. The section still
+takes its Vessel from a class pick rather than from a stored Reincarnate.
+
+### Both variants, matched reading by reading
+
+The same reading script ran against the desktop window's page and the shell's
+page.
+
+```
+readings compared   145
+identical            96
+differing            49
+```
+
+Every difference is one of three things: the page box, since the shell window
+is taller than the harness window; one pixel a text line, which the two engines
+round differently; and the participant address, which each run generates fresh
+in its own scratch home. No width of either half differs on any reading. The
+four box readings whose width does differ are the enemy square, which follows
+the row height.
+
+### What the top row does not draw
+
+```
+the seven subtabs and their shortcuts   four subtabs exist; the row is unchanged
+clicking the Vessel                     no character details subtab carries them
+the tactical map                        nothing holds an encounter's enemies
+skill trees and skill rings             content inside a subtab
+pixel art                               no art is commissioned
+```
+
+The map region opens the existing map subtab when it is clicked, which is the
+one route of his sentence that a built subtab already answers.
+
+## 2026-09-11 04:50 - #586 - domination, and the two forms a taking takes
+
+A Vessel now carries a condition, and only a condition of incapacity opens it to
+a taking. A taking comes in two forms. In the first the owner keeps the Vessel and
+another player acts with it. In the second the Vessel changes hands.
+
+```
+src/competition/domination.py
+```
+
+### His words, in full
+
+```
+PoA - Classes - Abilities - Destruction - Another example of an ability or group
+of abilities that sits far on the demonic side of things would be domination or
+possession which allows one player (during PvP) to temporarily control or
+literally steal a Vessel from another. This can only be done to Vessels that are
+incapacitated in some way.
+```
+
+```
+Vessel Incapacitation causes: Health At Zero or Mentally Comprimised by Daze or
+similar.
+```
+
+```
+Do not get too far down the hole on the incapacitation. This will tied to what
+certain abilities do and the length of time it lasts depends on what was used to
+cause it.
+```
+
+### The ability is absent, and these are the two mechanisms it would call
+
+No ability system exists. The skill ladder holds one entry, the Quintessence
+Transfer. This work builds no ability, no ability table and no skill tree. It
+builds the state his rule gates on, and the taking itself.
+
+```
+skill_ladder.SKILL_NAMES   one entry, the Quintessence Transfer
+an ability                 absent. The ability that invokes them is absent
+a skill slot               absent, and a separate item
+```
+
+### Both gates bind, and neither one is optional
+
+His sentence carries two conditions. A taking happens during PvP, and only to a
+Vessel carrying an incapacitation. The PvP half already existed, and this work
+reads it rather than writing a second one. The permission already honours a
+carried mode, a week-long lock and a PvP event flag, and it already refuses a
+player acting against their own address.
+
+```
+during PvP only        pvp_vote.may_destroy answers it. No second permission
+                       exists in this work
+incapacitated only     require_incapacitated refuses a Vessel that reads able
+
+driven, both refusals
+
+no PvP mode      refused   0xthief may not take 0xvictim's Vessel on world turn
+                           0; may_destroy permits a taking while a PvP mode or a
+                           PvP lock holds that turn or a PvP event is set
+health above zero,
+no effect        refused   0xvictim's Lead Ward reads able and only a Vessel
+                           reading incapacitated may be taken
+```
+
+### Two causes, and the line he drew between them
+
+His sentence names a body and a mind. The code keeps them apart, as two kinds. A
+taking reads either kind and asks for neither in particular, because nothing in
+his words prefers one.
+
+```
+physical   health at zero
+mental     compromised by a daze or similar
+```
+
+His phrase, or similar, makes the mental kind a class and not one effect. The
+daze is the one member he named. A second joins the list without any other
+change, and nothing here invents what the others are.
+
+```
+INCAPACITATION_KINDS   physical, mental
+MENTAL_EFFECTS         daze
+an unnamed effect      refused. 'stun' is no mental effect
+```
+
+### How long it lasts belongs to the ability, not to the state
+
+His second sentence settles the length. It depends on what caused it, which makes
+it a property of each ability. No ability exists, so nothing here decides a length
+and nothing here runs a timer. The state records an end its caller gives, and
+reports whether a Vessel is incapacitated now.
+
+```
+one run, a daze given an end of world turn 1
+
+on world turn 0   kinds (mental,)   a taking is permitted
+on world turn 1   kinds ()          refused, the Vessel reads able
+given no end      holds at every world turn
+```
+
+That keeps the length out of this work entirely. A caller that applies an
+incapacitation says how long it holds. This module compares that end against one
+world turn and computes nothing.
+
+### Both causes read a value nothing supplies
+
+This is the honest half. His causes are now named and both are still out of
+reach, because nothing can reduce a health value and nothing can apply a daze.
+
+```
+a Vessel's health    vessels.Vessel carries an owner, a class, a level and an
+                     id. There is no health field, and this work adds none
+health as a stat     the five stats are strength, dexterity, constitution,
+                     intelligence and wisdom. Health is not among them
+a maximum            no figure names full health
+a daze               no module applies one, and no module removes one
+```
+
+A bot's health in dollars is a different thing and is not reused. The trading
+metaphor reads a dollar target and names no Vessel, so no Vessel's health comes
+from it.
+
+```
+rpg_metrics.health_metrics   max_health_usd from scrumming_state.target_balance
+```
+
+The register takes a health reading from whoever calls it, and says as much in its
+own output. Health is a decimal, never a binary fraction.
+
+### Two forms, and they are not one call
+
+His sentence draws a line between controlling a Vessel and stealing it. Two
+separate calls keep that line. Only one of them moves an owner.
+
+```
+take_control   the owner keeps the Vessel, and another player acts with it
+steal_vessel   the owner changes, and both players are rebuilt around the move
+
+driven, a dazed Vessel under another player's control
+
+controller 0xthief   owner 0xvictim   ownership moved  False
+the victim still holds four Vessels
+```
+
+What ends a temporary control is not stated and nothing ends it. The only clock
+figure within reach is the turn the PvP permission lapses on, and that lapses the
+permission rather than the hold.
+
+```
+owed   how long a temporary control lasts, and what ends it
+```
+
+### A stolen Vessel makes the thief weaker, and that rule was already there
+
+Every Vessel a player owns draws on one wallet balance. Adding a Vessel raises
+what the wallet must cover, and the same balance then stretches further. Taking a
+Vessel costs the thief on every Vessel it already had. This work adds no penalty
+for theft. The existing rule already charges for it, and a second charge would be
+a figure nobody chose.
+
+```
+one owner at level 12, against a balance of 100
+
+3 Vessels   requirement 210   each reaches 0.4761904761 of full
+4 Vessels   requirement 280   each reaches 0.3571428571
+5 Vessels   requirement 350   each reaches 0.2857142857
+```
+
+### One theft, driven on real objects
+
+One run drove a theft between two players and read both sides off the objects
+themselves, before and after. The victim held four Vessels and the thief held
+three. Both readings used one balance, which a theft does not touch.
+
+```
+steal_vessel, driven under python -X dev -X faulthandler
+
+the Vessel moved      0xvictim's Lead Ward now reads owner 0xthief
+0xvictim  4 -> 3      requirement 280 -> 210    0.3571428571 -> 0.4761904761
+0xthief   3 -> 4      requirement 210 -> 280    0.4761904761 -> 0.3571428571
+```
+
+The victim's remaining Vessels grew stronger. Every Vessel the thief owns grew
+weaker. That is the whole cost of a theft and it needed nothing new to price it.
+
+A first run of this went red. The module's own report of the result carried more
+placeholders than values, and it raised a type error instead of printing. A
+failure of that run would have meant a taking whose outcome nobody could read. The
+correction landed, and the same run now prints both sides.
+
+### The four abuse questions, answered
+
+Four ways a player might misuse a taking. One run drove each of them, and each
+answer is what the code did rather than what it intends.
+
+```
+take a Vessel they cannot power     YES. The shortfall is simply larger, and the
+                                    thief carries it. Driven: the thief ends at
+                                    0.3571428571 of full with a shortfall of 180
+take an already taken Vessel        YES, by a third player. The condition moves
+                                    with the Vessel, and nothing removes it
+dump a Vessel on an enemy           NO. A taking has no recipient field. The new
+                                    owner is always the taker, so the dilution
+                                    lands on whoever takes
+take their own Vessel               NO. The PvP permission already refuses a
+                                    player acting against their own address
+```
+
+The third answer is the one worth stating plainly. Because extra Vessels weaken
+their owner, forcing a Vessel onto an enemy would harm them. No call does it. A
+taking moves a Vessel to the taker and to nobody else.
+
+### The condition stayed behind on a theft, and now moves with the Vessel
+
+A Vessel's condition files under its owner and its class. A theft changes the
+owner, so the entry must move with the Vessel. It did not at first. The taken
+Vessel read able under its new owner, and the victim's next Vessel of that same
+class read incapacitated with nothing having touched it. Both readings were
+wrong and both are now right.
+
+```
+the taken Lead Ward, after the theft   incapacitated, under its new owner
+a fresh Lead Ward of 0xvictim          able
+```
+
+The scored actions a Vessel has taken do not move with it. They stay filed under
+the old owner. A Vessel carries an id of its own, which is the field that would
+carry them across, and the alignment key does not read it yet.
+
+### Whose alignment moves
+
+A taking can carry a score on the Creation to Destruction scale, and the score
+files against the Vessel that performed it. His rule makes alignment a function of
+all a Vessel's life choices, so the acting Vessel is the reading this work takes.
+Adding a player's Vessels still gives a player-level reading.
+
+This work chooses no ratio. An action carries its own ratio, this module declares
+none, and the figure is his.
+
+```
+score_taking, driven with a caller-supplied ratio of 0 creation to 1 destruction
+
+scored against   0xthief's Quicksilver Draught, the acting Vessel
+polarity         -1
+action           theft of another player's Vessel
+a wrong Vessel   refused
+
+owed   the ratio a control and a theft each carry
+```
+
+### Which clock a taking answers to
+
+The world clock. The permission reads a world turn, and a taking records that same
+turn. Neither kind of incapacitation carries a clock of its own.
+
+```
+world turn   one hour, and the turn may_destroy reads the permission on
+event turn   not read by a taking
+a given end  recorded against a world turn, and supplied by the caller
+```
+
+### What stays absent around a taking
+
+Seven things read a taking or an incapacitation, and none of them exists.
+
+```
+an ability                    nothing invokes either form
+combat                        nothing resolves a fight, so nothing empties a
+                              health value
+a surface                     no tab or panel shows a taking or a condition
+a health reading              no module holds a Vessel's health
+a mental effect               nothing applies a daze, and nothing removes one
+a control duration            no figure names one
+a ratio                       the operator sets it
+```
+
+### Nothing in the running program yet takes a Vessel
+
+Nothing outside this module's own driven check calls either form. The package
+export list carries no name from it, so a taking needs a direct import of the
+module.
+
+```
+owed   the module's entry in the package export list
+owed   a control on a screen that starts a taking
+```
+
+### What a taking reads, and what it hands back
+
+```
+reads, nothing provides   a health value, and anything that lowers one to zero
+reads, nothing provides   a daze, and anything that applies or removes one
+reads, nothing provides   a domination ability, which is the caller of both forms
+reads, nothing provides   a ratio of Creation to Destruction for either form
+reads, nothing provides   an end for an incapacitation, which each ability carries
+provides, nothing reads   a Vessel's condition, and the kind behind it
+provides, nothing reads   a control hold, naming the controller and the owner
+provides, nothing reads   a theft record, reconstructible after the owner moved
+provides, nothing reads   both players' potential before and after a taking
+```
+
+## 2026-09-11 05:10 - #586 - prayer, the first thing that writes another player's alignment
+
+Every alignment score until now was a Vessel scoring its own action. A prayer is
+the first mechanism that reaches across and writes somebody else. A priest prays
+in the direction of their own alignment, the target moves that way, and the priest
+moves the same way by a smaller amount.
+
+```
+src/competition/prayer.py
+```
+
+### His words, and the three rules in them
+
+```
+PoA - Classes - Abilities - Priests - Can use prayer (of their particular
+alignment) to shift that of other players but this also further shifts the
+priest's in the same direction but a slower rate and multiple priests can act
+together to speed up the process while reducing their own penalties.
+```
+
+Three rules sit in that sentence, and all three are built.
+
+```
+the target    a prayer moves another player toward the priest's own pole
+the priest    moves the same way, at a strictly smaller rate
+a group       moves the target faster, and each priest pays less
+```
+
+### The prayer writes through the ledger that was already there
+
+Nothing new keeps alignment. A prayer files two scores through the same ledger
+every other action files through, one against the target and one against each
+priest. The scale is untouched and no second store exists.
+
+```python
+roll = PrayerRoll(ledger, may_pray)
+filed = roll.pray((priest,), target, rates)
+```
+
+### The direction is the priest's own pole, read off their own alignment
+
+His words say the prayer is of the priest's particular alignment, so the
+direction is not chosen. The module reads the praying Vessel's running total and
+takes the side it sits on.
+
+```
+net above the middle    the prayer is Creation
+net below the middle    the prayer is Destruction
+no scored action        refused; the Vessel carries no alignment to pray
+exactly the middle      refused; the middle names neither pole
+```
+
+Priests praying together must read one pole. A congregation holding two poles is
+refused, because the two halves would pull the target in opposite directions and
+the prayer would name no direction at all.
+
+```
+MixedPoleError: priests praying together hold one pole;
+Copper Conduit reads creation, Silver Mirror reads destruction
+```
+
+### The priest's own shift is a penalty, not a reward
+
+A reader seeing a priest pushed toward their own alignment could easily read it as
+a bonus. It is the opposite. In his design a strong polarity is dangerous.
+
+```
+PoA - Single Guild Worlds - Mechanically will be Quint polarized and, as such,
+will have a high amount of cataclysms and world events making it extremely
+difficult to survive.
+```
+
+```
+Unless the victorious Guild manages its alignment smartly and maintains a
+neutral Quint polarity
+```
+
+Every prayer a priest leads pushes that priest further from the neutral position
+his own rule rewards. Praying steers a world, and the priest pays the bill in its
+own polarity.
+
+### Four figures are owed, and a prayer without them is refused
+
+None of the four numbers a prayer needs has been set. The module holds the four
+as a record the caller fills in, and it defaults none of them.
+
+```
+target_shift    how far one prayer moves the target
+priest_shift    how far the same prayer moves each priest that led it
+group_speedup   what each priest past the first adds to the target's shift
+group_relief    what each priest past the first takes off every priest's shift
+```
+
+A missing figure is refused by name, and the refusal says who sets it. The
+operator sets all four.
+
+```
+FigureAbsentError: target_shift is not set; how much Creation or Destruction
+one prayer scores against the target. No figure names it and the operator sets it
+```
+
+### What holds even with the figures absent, which is the whole point of this unit
+
+His sentence gives no numbers. It gives relations, and relations can be enforced
+without a number. The module refuses any set of figures that breaks one of them.
+
+```
+at every size    each priest's own shift is strictly under the target's
+as size rises    the target's shift never falls
+as size rises    each priest's own shift never rises
+```
+
+That is his design holding whatever the four figures turn out to be. A figure set
+that breaks a relation is refused at the moment it is built, not when it is used.
+
+### One prayer and one group prayer, driven on real alignments
+
+Both were run against real Vessels with real running totals. The figures below
+were supplied by the run and are set by nobody. A priest with a Creation total of
+four over ten prays over a target sitting at six Destruction over ten.
+
+```
+rates                 target 10, priest 6, speedup 3, relief 1
+
+one priest
+  target before       net -6 over 10, reading -0.6
+  target after        net  4 over 20, reading  0.2
+  priest before       net  4 over 10, reading  0.4
+  priest after        net 10 over 16, reading  0.625
+  shifts filed        target 10, priest 6
+
+three priests, an identical target
+  target before       net -6 over 10, reading -0.6
+  target after        net 10 over 26, reading  0.3846
+  priest before       net  4 over 10, reading  0.4
+  priest after        net  8 over 14, reading  0.5714
+  shifts filed        target 16, priest 4
+```
+
+The target moved toward Creation both times. Three priests moved it sixteen where
+one moved it ten, and each of the three paid four where the single priest paid
+six. That is all three of his rules, read off the objects the run built.
+
+### The ordering is on the shift, not on how far a reading moves
+
+This distinction matters and it is easy to miss. The rule the module enforces is
+on the amount scored. How far a Vessel's reading actually travels depends on how
+much that Vessel has already done.
+
+```
+the priest above    paid 6 and its reading moved 0.225
+the target above    took 10 and its reading moved 0.800
+```
+
+A priest with almost no history can see its own reading move further than a
+heavily scored target's, while still paying the strictly smaller shift. The
+relation is honoured on the shift in every case.
+
+### A large congregation cannot pray the penalty away
+
+This is the dangerous case, and the answer is no. Relief reduces each priest's
+own shift as the congregation grows, so a large enough group would drive that
+shift to nothing and steer a world at no cost to itself.
+
+```
+six priests    each pays 1, and the prayer files
+seven priests  each would pay 0, and the prayer is refused
+```
+
+The refusal is not a number anybody invented. A score carrying nothing on either
+pole is already refused by the module that keeps alignment, so the last workable
+size falls out of his own two figures.
+
+```
+CongregationError: 7 priests reduce each own shift to 0, which scores nothing;
+6 is the last size that files
+```
+
+With relief set to nothing there is no last size, and a congregation of any size
+still costs each priest the full amount. Either way the penalty never reaches
+zero. A smallest own shift, if he sets one, would replace the refusal with a floor
+and let a congregation grow without limit.
+
+### Being prayed over is not the target's choice, and that is a question for him
+
+His alignment rule reads one way and this mechanism reads another.
+
+```
+alignment becomes a function all a Vessel's 'life' choices
+```
+
+A prayer is somebody else's choice. After this unit a Vessel's total is its own
+choices plus what other players did to it. Two readings were available and only
+one keeps his sentence true.
+
+```
+record it as the target's own action   his sentence stops being true
+record it apart from the target's own  his sentence survives
+```
+
+**The second was built.** A prayer's shift on the target files under its own
+action name, so the two can always be told apart afterwards. The running total
+still adds both, which is his roll-up unchanged.
+
+```
+the target's own run   razed a field
+worked on the target   prayer received
+reading from choices   -0.6
+reading from prayers    1
+reading from both       0.2
+```
+
+Whether that is the separation he wants is his to say. The alternative is that a
+prayer counts as the target's own life choice, which cannot be undone later
+without rereading every score ever filed.
+
+### Who counts as a priest is not settled
+
+No class in this design is called a priest. The seven are named for planets and
+metals, and the roles across them are Tank, Damage, pure healer, support healer
+and pure support.
+
+```
+"Should be period consistent with ancient technologies and time aligned to our
+core themes while also including all of our magic systems (mage, priest,
+necromancer w/ sub specialities)."
+```
+
+Mage, priest and necromancer are a third axis over the seven classes, and that
+axis has never been recorded in code. The three Mercury classes carry the healing
+and support roles and are the obvious guess. **The guess was not made.**
+
+```
+the eligible classes are an argument the caller supplies
+a class outside the list is refused by name
+the operator names which classes may pray
+```
+
+### Which clock a prayer answers to
+
+None. A prayer's shift has no duration to measure, because no scored action
+decays and the ledger stores neither a turn nor a timestamp. The shift is
+permanent the moment it files.
+
+```
+the world turn   not read; a prayer's shift does not expire
+the event turn   not read; the same
+a cadence        the one part that would need a clock, and no figure sets one
+```
+
+Nothing limits how often one target takes a prayer, from one priest or from many.
+No consent record exists either. A cadence measured in world turns is the shape
+the PvP vote already uses for the same kind of limit, and the number is his.
+
+### One received prayer can silence a priest
+
+This came out of the run rather than out of the design, and it is worth stating.
+A priest sitting at exactly the middle carries no pole, so it cannot pray. One
+prayer of the opposite direction is enough to put a priest there.
+
+```
+priest at the start        net  4 over 10, reading 0.4
+after leading one prayer   net 10 over 16, reading 0.625
+after receiving one        net  0 over 26, reading 0, exactly balanced
+praying again              refused; the middle names neither pole
+```
+
+Two priests of opposite alignment cannot cancel each other's penalty with one
+prayer apiece. The shift a priest takes always exceeds the shift it pays, so one
+prayer each overshoots the middle. Over an unequal run of prayers they can land on
+exact balance, and whichever lands there loses the ability to pray at all.
+
+### A place is a second kind of target, and it is not built here
+
+A later directive makes a consecrated place something prayer maintains against
+decay. That case belongs to another unit and no place exists in this code.
+
+```
+Without persistent and repeated prayer by one or more priests, a place will
+slowly lose its consecration status.
+```
+
+The figures and the relations in this module name no target at all, so a place
+reuses them without a change. Only the step that files the two scores needs a
+Vessel, and a place would need its own.
+
+```
+the four figures and the relations   target-agnostic, reusable as they stand
+the filing step                     needs a Vessel, so a place needs its own
+the group pair                      one pair of figures, read by both mechanisms
+```
+
+### Nothing prays in the running program
+
+The module is reached by no caller. No ability exists to pray with, no screen
+shows a prayer or an alignment, and the package entry file does not re-export it
+yet.
+
+```
+In development.
+```
+
+### What a prayer reads, and what it hands back
+
+```
+reads, nothing provides   how far one prayer moves the target
+reads, nothing provides   how far it moves each priest that led it
+reads, nothing provides   what each priest past the first adds to the target
+reads, nothing provides   what each priest past the first takes off the penalty
+reads, nothing provides   which classes count as priests
+reads, nothing provides   a priest ability, which is the caller of all of it
+provides, nothing reads   a target's alignment moved by another player
+provides, nothing reads   each priest's own shift in the same direction
+provides, nothing reads   a prayer record naming who prayed over whom
+provides, nothing reads   a Vessel's own choices, separable from what was done to it
+```
+
+## 2026-09-11 05:30 - #585 - an item is a material list, and cohesion holds it together
+
+### Four item types, and not one name was invented
+
+His rule for this layer is that content is sourced, not made up. The gear subtab
+already prints the four kinds of item that nothing builds. Those four names were
+decided before this unit existed, so the item table takes them exactly as the
+screen spells them. No artefact is named: every entry is a type, and a named
+instance waits on crafting, which does not exist.
+
+Read off the running surface module and off the new table
+
+```
+the subtab prints   "Nothing builds armour, weapons, accessories, consumables,
+                     so this subtab manages loot alone."
+the table declares   armour, weapons, accessories, consumables
+named instances      none, and ITEM_TYPES says so in every row it serves
+```
+
+### An item is a material list, and the list is what a salvage would read
+
+One entry in a list names a material, how many whole units of it, and at which
+quality grade. Every declared type holds one unit of iron ore at the lowest
+grade. Iron ore is the one material whose embedded band the operator set himself;
+the other six take iron's band as a working figure, so a list naming one of them
+would rest on a figure he has not given. One unit is the count because no recipe
+sets a larger one.
+
+`src/competition/items.py` - one item read off the constructed object
+
+```json
+{
+ "name": "armour",
+ "storage_class": "gear",
+ "occupies_slot": true,
+ "stacks": false,
+ "components": [
+  {"material": "iron ore", "units": 1, "quality": "Calx", "embedded": "0.00000001"}
+ ],
+ "cohesion": "0.00000001"
+}
+```
+
+Every field a rebuild needs is in that row. A salvage reads the material, the
+units and the grade, and can work out what the item embeds without holding the
+item.
+
+### What holds an item together is the sum a Vessel already uses
+
+He asked for the Quintessence needed to hold an item together, read down its
+components. That sum was already built. One function adds a stat block for a
+Vessel, for a monster, or for an item's components, and it is the same function
+behind a Vessel's occupancy requirement. This unit writes no second sum: each
+component becomes one block, and the built function adds them.
+
+`src/competition/entity_stats.py` - the one sum, unchanged by this unit
+
+```python
+def quintessence_requirement(blocks: Iterable[StatBlock]) -> Decimal:
+    """Add every amount of every block in ``blocks``, exactly.
+
+    ``blocks`` holds one block a Vessel or a monster, and one block a component.
+    """
+```
+
+The conversion table already carried the row that turns a component's stats into
+cohesion. Measured, it holds a figure of one and marks it working, so cohesion is
+one for one with that sum today. A coefficient other than one is his to set, and
+the import check below would report at once if it took a cohesion off the grid.
+
+`src/competition/conversion_rates.py` - the row, read back at import
+
+```
+name          item_cohesion_per_component_quintessence
+figure        1
+provenance    working
+its own note  "One for one with entity_stats.quintessence_requirement until a
+               component model names a coefficient"
+```
+
+### Twenty cohesion amounts, and every one is a whole number of minimum units
+
+Quality is the axis that spreads one material over five amounts, so it spreads an
+item over five as well. Four types across five grades is twenty readings. Every
+one is a whole number of the smallest amount the currency can express, the lowest
+grade is exactly one of them, and nothing lands between two.
+
+Read off the constructed objects, every type identical because no recipe differs
+
+```
+grade            cohesion       minimum units
+Calx             0.00000001     1
+Cauda Pavonis    0.00000002     2
+Flores           0.00000003     3
+Elixir           0.00000004     4
+Magisterium      0.00000005     5
+```
+
+### Gear takes a slot, consumables stack, and a resource is a material
+
+His third storage rule is that the three classes must not conflict. Three of the
+four types take a counted slot and one stacks. No item type takes the resource
+class, and that is deliberate rather than missing: every material in the material
+table already declares itself a resource, so a resource item type would restate a
+material under a second name.
+
+Read off the item table by storage class
+
+```
+gear          armour, weapons, accessories      each takes a counted slot
+consumable    consumables                       stacks
+resource      none                              a resource is a material
+stack ceiling absent                            no figure sets how large a stack runs
+slot count    absent                            no figure sets a Vessel's slots
+```
+
+### His gear rule is one comparison, and nothing asks it
+
+Gear may not carry more Quintessence than the player who equips it. That refusal
+can be asked today, because a total is already a built figure and the reader that
+compares a balance to a requirement already exists. One call reads the item's own
+blocks against a total and answers full or short. Nothing equips anything, so the
+question has no caller.
+
+`src/competition/items.py` - the same reading at three totals
+
+```
+total held     cohesion      answer
+0              0.00000001    refused, short by 0.00000001
+0.00000001     0.00000001    allowed, exactly covered
+5              0.00000001    allowed, a level one Vessel's own requirement
+```
+
+The comparison reads the blocks that the cohesion sum adds, so the two figures
+cannot drift apart. A second subtraction would have been two numbers that can
+disagree, and there is only one.
+
+### Three ways to abuse a material list, and the answer to each
+
+A list is data, so the question is what a hostile list can declare. Three were
+driven against the real module and each one refused, with the refusal naming the
+rule it broke.
+
+What the program raised, quoted from the runs
+
+```
+a list with no material
+  "a type lists no material, so nothing holds it together and its cohesion
+   would be under the 0.00000001 minimum unit"
+
+one material listed twice
+  "a type lists ('iron ore', 'iron ore') and names one material twice; raise
+   that component's units instead"
+
+a cohesion above everything that can exist
+  "a type is held together by 40000000, above the 33000000 Quintessence that
+   can exist, so no holder could ever cover it"
+```
+
+The third refusal is bounded at the supply cap and no lower. Under the cap, a
+list can still ask for more than any real player holds, and the gear comparison
+above is what refuses it. That is the design, not a gap.
+
+### Every cohesion is checked at import, and the check reports its own count
+
+The module drives all four types across all five grades every time it loads. A
+fault row would mean an item claiming Quintessence that no bucket can hold, which
+would put that amount outside the ledger's four-bucket sum and let the 33,000,000
+limit be passed with nothing reporting it.
+
+What the program printed, from the module's own logging
+
+```
+acervator.items INFO drove 4 item types across 5 quality grades,
+                     0 cohesions broke a rule
+```
+
+### What an item is owed, and what reads one today
+
+Nothing in the running program reads an item. The module loads cleanly through
+the Proof of Accumulation path, and the package export list does not name it, so
+a reader has to name the module directly. The material table it is built on sits
+in the same state.
+
+```
+reads this module               nothing
+owed                            the module's entry in the package export list
+on a screen                     nothing; the gear subtab still prints that the
+                                four classes are built by nothing
+what this module owes nothing   crafting, salvage, equipping, an inventory, a
+                                Vessel's slot count, encumbrance, loot generation
+absent figures                  a stack ceiling, a Vessel's slot count, a salvage
+                                recovery share
+working figures                 the cohesion coefficient at one, and a weight of
+                                one per material unit, which nothing multiplies
+```
+
+## 2026-09-11 05:50 - #586 - consecrated places, and the prayer that holds one
+
+A priest can now consecrate a place for a guild. The place adds its own weight to
+that guild's alignment, and the guilds add up to the world, so a held place is
+the third thing that steers a world. The first is what a Vessel does. The second
+is a prayer said over another player. This one is ground, and it is held only
+while priests keep attending to it.
+
+```
+src/competition/consecration.py
+```
+
+### His words on a consecrated place
+
+```
+PoA - Classes - Abilities - Priests - Blessed and Cursed Places - Priests can
+further effect world alignment by consecrating locations for their Guilds. These
+can be single simple buildings or entire Guild Halls. Size defines the required
+time and cost.
+```
+
+```
+Without persistent and repeated prayer by one or more priests, a place will
+slowly lose its consecration status.
+```
+
+### Blessed and cursed are one act in two directions
+
+The direction a place is consecrated in is not chosen. It is read off the
+consecrating priest's own running alignment. A priest on the Creation side
+blesses, a priest on the Destruction side curses, and the record is otherwise
+identical. A priest who has done nothing, and a priest whose good and bad cancel
+exactly, cannot consecrate at all, because neither has a side to read.
+
+```
+priest reads  0.5   ->  blessed, the weight goes to Creation
+priest reads -1     ->  cursed,  the weight goes to Destruction
+priest reads  0     ->  refused, neither side is named
+priest unscored     ->  refused, there is no reading at all
+```
+
+### A place joins the chain at the guild level
+
+His sentence puts the effect on world alignment and the holding on the guild, so a
+place enters the chain one level above a Vessel. The module holding the running
+totals was not touched. A guild reading is now its members' Vessels plus the
+places it holds, and a world reading is every guild's Vessels plus every guild's
+held places.
+
+```python
+register.guild_alignment(ledger, guild, world_turn, rates)
+register.world_alignment(ledger, roster, world_turn, rates)
+```
+
+One run, two blessed places of different size for one guild:
+
+```
+world before any place      net   2   total  4   polarity  0.5
+world after two places      net  47   total 49   polarity  0.959
+```
+
+The same act by a priest on the other side, on a second guild's place:
+
+```
+world before the cursed place    net  38   total 58   polarity  0.655
+world after the cursed place     net  -2   total 98   polarity -0.020
+```
+
+One cursed place carried that whole world across the middle.
+
+### Size sets the required time and cost, and no figure names either
+
+Size is a whole rank, smallest first. Nothing names how many ranks there are, nor
+which rank a single simple building holds and which an entire Guild Hall holds.
+The required turns and the required cost arrive with the size, and a size that
+lacks either is refused outright.
+
+What is enforced with no figure at all is his relation. A larger place must
+require at least as much time and at least as much cost as a smaller one, and a
+ladder that breaks either is refused.
+
+```
+REFUSED  size 4 requires 1 world turns and the smaller size 1 requires 2;
+         a larger size requires at least as much time
+REFUSED  size 4 costs 1 and the smaller size 1 costs 10;
+         a larger size requires at least as much cost
+```
+
+The cost is declared and nothing spends it. The Quintessence ledger owns every
+movement of Quintessence, and debiting a guild belongs to a later unit.
+
+### A place without prayer loses its status
+
+A consecration opens at full status and falls by a flat amount for every world
+turn of silence. A prayer puts the status back up and never down, and more
+priests praying together restore at least as much as fewer do, which is the same
+group rule the prayer module already applies to a congregation. The fall rate,
+the amount a priest restores, and the point at which a place is no longer
+consecrated are three figures nobody has named, so every reading asks the caller
+for all three and refuses without them.
+
+One run, at a fall of 0.25 a turn and a lapse point of zero:
+
+```
+turn 100   status 1.00   consecrated   the guild's places add 45
+turn 101   status 0.75   consecrated   the guild's places add 45
+turn 102   status 0.50   consecrated   the guild's places add 45
+turn 103   status 0.25   consecrated   the guild's places add 45
+turn 104   status 0      lapsed        the guild's places add 0
+```
+
+At turn 104 the place stops steering the world and the guild falls back to its
+Vessels alone. One priest praying on turn 102 took that status from 0.50 to 1.00.
+Three priests restored 1.5 where one restored 0.5.
+
+A set of figures that no amount of prayer could hold is refused before it is
+used:
+
+```
+REFUSED  a status falls 0.25 a world turn and a praying priest restores 0,
+         so no amount of prayer holds a place consecrated
+```
+
+### One locator holds one consecration
+
+A place is named by a locator, which is its layer, its square, and the whole
+percent across that square. One locator carries one consecration. A second
+consecration there is refused while the first still holds, whoever asks and in
+whichever direction.
+
+```
+REFUSED  3:7:68:12 is already consecrated as blessed for guild
+         order_of_the_kiln, last prayed over on world turn 102;
+         guild sworn_of_ash cannot consecrate it as cursed
+```
+
+A rival takes a place only after it has lapsed. Nothing breaks a consecration
+that priests are still praying over, and no act exists that would.
+
+### How far stacking reaches, measured
+
+A guild holding enough places could outweigh everything its players have ever
+done. Twenty places against one Vessel action were measured:
+
+```
+turn 100, twenty places held      net 801   total 801   the places carried 800
+turn 104, nobody prayed           net   1   total   1   the places carried 0
+```
+
+The arithmetic caps nothing, and his decay rule is the bound. Every held place
+lapses four turns after its last prayer at these figures, so holding twenty
+places costs twenty prayers every four turns. A guild reaches exactly as far as
+its priests keep reaching, and no cap of any kind was added.
+
+### Which clock, and what a consecration does not have
+
+Every turn on a consecration is a whole world turn, counted the way the PvP vote
+counts one. A world turn is one hour by his own words, and `poa_modes` now names
+that length, so the figure is in the code and not only in prose.
+
+A consecration records the guild it is held for and confers no ownership of the
+place. The world grid carries no owner on a square, a zone, or a fact. No
+building, guild hall or structure is constructed either: his own rule made a
+building system conditional on world instance storage on chain being viable, the
+world grid is now built with its byte budget measured, so the condition is met
+and the building is a later unit.
+
+```
+no caller       nothing in the running program yet consecrates a place
+no priest       no class is a priest, so any Vessel can consecrate
+no membership   nothing checks that the priest belongs to the guild named
+no prayer       the prayer module writes a player's alignment and targets no
+                place, so nothing yet restores a consecration's status
+no surface      no tab, no panel and no map glyph shows a consecrated place
+no warning      nothing tells a guild that a place it holds is lapsing
+```
+
+## 2026-09-11 06:10 - #147 - the package entry reaches every module, and says so when it does not
+
+### Eleven modules exist and the package could not reach them
+
+The package `src/competition` holds 40 modules. Its entry file imported 29 of
+them. The other eleven were unreachable by the package name, so a reader had to
+name each module file directly.
+
+Counted by listing the files on the disk and asking the imported package for each
+name
+
+```
+modules on the disk              40
+bound by the entry file before   29
+unreachable before               11
+
+  alignment      domination      materials       prayer      world_tier
+  army_command   guild_roster    monster_spawn   vessels
+  consecration   items
+```
+
+One unit built each of the eleven, and the brief for each unit forbade editing
+the entry file. Each unit then wrote down that the entry file still owed its
+export, and moved on. The manual carries ten such lines, one per module, and the
+`consecration` unit is the only one of the eleven that never wrote one. One
+module went further and put the note in its own code, where it prints on every
+launch.
+
+The constant in `src/competition/domination.py`, read at line 204
+
+```python
+PACKAGE_EXPORT_OWED = (
+    "src/competition/__init__.py re-exports no name from this module, so every "
+    "form is reachable by importing src.competition.domination directly"
+)
+```
+
+Ten units named the gap. None could close it. A note that tells nobody in
+particular is a queue with no owner, and the same eleven names came back.
+
+### What the entry file now binds
+
+The entry file imports all eleven modules and names their public forms. The order
+follows what each module reads, because a module placed before the one it reads
+would stop the package from loading.
+
+```
+guild_roster, vessels, materials, monster_spawn, world_tier   read nothing new
+alignment     reads guild_roster and vessels
+army_command  reads guild_roster
+items         reads materials
+consecration  reads alignment, guild_roster and vessels
+domination    reads alignment and vessels
+prayer        reads alignment
+```
+
+The entry file adds 322 names. It keeps every existing import line and every
+existing name.
+
+```
+names in the export list before   494
+names added                       322
+names in the export list after    817
+```
+
+### The entry file holds back sixteen names, and each would have overwritten a value
+
+A package name carries one value. Sixteen of the new modules' names repeat a name
+the entry file already binds, and nine of the ten repeated names carry a
+different value in each module. Exporting one would silently replace a value that
+already works, so the entry file skips all sixteen and a reader reaches them by
+naming their own module.
+
+The two clearest, measured by reading the value from each module
+
+```
+DIRECTIONS    monster_table  ('descending', 'ascending')
+              consecration   ('blessed', 'cursed')
+
+tier_bounds   loot_drop      the loot tier function
+              monster_spawn  a different function of the same name
+```
+
+The tenth repeated name is `FIGURE_ABSENT`, and its value is the same string in
+all four modules that declare it. The entry file skips it with the other fifteen,
+so this unit redefines no module's own surface.
+
+```
+held back from   the name kept      the names held back
+monster_spawn    loot_drop          tier_bounds
+world_tier       monster_table      FIGURE_ABSENT
+alignment        monster_table      FIGURE_ABSENT
+consecration     monster_table      DIRECTIONS, FIGURE_ABSENT
+consecration     monster_spawn      LocatorError
+consecration     alignment          ABSENT_READERS, ABSENT_READER_NOTES
+items            vessels            ABSENT_MECHANISMS, ABSENT_MECHANISM_NOTES
+items            materials          grid_faults
+domination       alignment          ABSENT_READERS, ABSENT_READER_NOTES
+prayer           alignment          ABSENT_READERS, ABSENT_READER_NOTES
+prayer           world_tier         FigureAbsentError
+```
+
+### The package now reports the gap itself, every time it loads
+
+Reconciling the list once does not stop it growing again. The entry file now
+reads its own folder and compares the module files it holds against the names it
+binds. The log line names every module file the package holds and does not bind.
+
+`report_unbound_modules` in `src/competition/__init__.py`
+
+```python
+def report_unbound_modules(held: list[str] | None = None) -> list[str]:
+    """Log and return each module file in this package that the imports do not bind."""
+    if held is None:
+        try:
+            held = [path.stem for path in Path(__file__).parent.glob("*.py")]
+        except OSError as exc:
+            logger.debug("competition package directory unreadable: %s", exc)
+            return []
+    unbound = sorted(
+        name for name in held if name != "__init__" and name not in globals()
+    )
+    if unbound:
+        logger.warning(
+            "competition package holds %d module(s) it does not bind: %s",
+            len(unbound),
+            ", ".join(unbound),
+        )
+    else:
+        logger.debug("competition package binds every module it holds")
+    return unbound
+```
+
+It never stops the program. The package loads on the path that builds the desktop
+bridge, and that path runs before the operator sees a window, so a refusal here
+would be a failed launch over a missing export. Reading the folder is the only
+step that can fail, and a folder it cannot read returns an empty list and a debug
+line.
+
+What the program printed on the path from `main.py`, with all 40 modules bound
+
+```
+acervator.competition DEBUG competition package binds every module it holds
+```
+
+What it prints when the package holds a module it does not bind, read by passing
+the function a module list with one extra name
+
+```
+acervator.competition WARNING competition package holds 1 module(s) it does not
+                             bind: tarot_spread
+```
+
+The warning goes to the `acervator` log tree, the same place every other part of
+the platform writes. The healthy line is a debug line, so a normal launch stays
+quiet and a missing export does not.
+
+### What reads this, and what is still owed
+
+```
+reads the export list      src/gui/competition_tab.py, and every module that
+                           imports a PoA form by the package name
+reads the report           nothing branches on it; it writes to the log only
+on a screen                nothing shows it
+owed                       a reader that acts on the warning, rather than
+                           printing it
+absent figures             none; this section measures the module count, the
+                           bound count and every name count
+```
+
+The earlier entries on this page still say the entry file owes a module's export.
+Each of those sentences held on the day its unit wrote it, and this unit changes
+none of them. The export list above closes all ten.
+
+## 2026-09-11 06:30 - #585 - a craft takes Quintessence out of a wallet and destroys none
+
+### His two sentences on crafting are one rule
+
+He said Quintessence used in crafting is burned, or back in the platonic space,
+and in the same breath that it remains budgeted against the hard limit. Those read
+as opposites and they are not. The platonic space is the pleroma, and the pleroma
+is one of the four buckets the supply already counts. What a craft spends leaves a
+wallet and arrives in a bucket that is still inside the thirty-three million cap,
+so nothing is created and nothing is destroyed.
+
+His own words, and where each half lands
+
+```
+"Quint used in crafting is effectively 'burned' or 'back in the platonic
+ space' but remains budgeted against the hard limit"
+
+what the item holds      the embedded bucket
+what the craft lost      the pleroma
+what the cap counts      both of those, plus the wallets and the held addresses
+```
+
+### The movement a craft needs was already built, and nothing had called it
+
+The ledger already carried one movement that does the whole of a craft. It debits
+a wallet once, puts a named part of that debit into the embedded bucket, and puts
+the rest into the pleroma. Both halves commit together, and the ledger rolls
+the whole thing back if any part of it refuses. Measured before this unit: nothing
+in the tree called it. A craft is now its only caller, and no second mover was
+written.
+
+`src/competition/quintessence_ledger.py` - the movement, unchanged by this unit
+
+```python
+def embed_from_wallet(
+    self,
+    address: str,
+    amount: object,
+    embedded_amount: object,
+) -> QuintessenceEmbed:
+    """Move ``amount`` out of address's wallet, ``embedded_amount`` of it into
+    the embedded bucket and the remainder into the pleroma.
+    """
+```
+
+The paired release movement runs the other way, out of embedded and back toward a
+wallet. That is what destroying an item does, not what making one does, so no
+craft calls it. Salvage is still absent, and the earlier entry on this page that
+names it absent is unchanged.
+
+### The amount leaving the wallet equals what the item holds plus what is lost
+
+That equality is the whole of this unit, and it holds without any figure he has
+not given. The item's cohesion is what the item itself holds, and the built
+cohesion sum already computes it. The loss is whatever the craft paid above that.
+Add the two and you have the wallet debit, exactly, with nothing left over. Two
+separate objects answer those three amounts, so they can be compared rather than
+assumed.
+
+`src/competition/crafting.py` - the three amounts, each read off its own source
+
+```python
+@property
+def quintessence_embedded(self) -> Decimal:
+    """The produced item's cohesion, which is what the item itself holds."""
+    return self.item_type.cohesion_at(self.produced_quality)
+
+@property
+def quintessence_lost(self) -> Decimal:
+    """``loss_share`` of ``quintessence_embedded``, rounded down onto the grid."""
+    return quantize_quintessence(self.quintessence_embedded * self.loss_share)
+
+@property
+def quintessence_from_wallet(self) -> Decimal:
+    """``quintessence_embedded`` plus ``quintessence_lost``, and nothing else."""
+    return self.quintessence_embedded + self.quintessence_lost
+```
+
+The finished record keeps its own three amounts beside the three the ledger
+reported, and reads whether they agree. A disagreement refuses the craft rather
+than recording it. Nothing is compared to itself: one set is arithmetic on an
+item, the other is what the ledger moved.
+
+Read off a finished craft, at the highest grade and a loss equal to the item
+
+```
+the record says         0.0000001 left the wallet
+                        0.00000005 is embedded
+                        0.00000005 joined the pleroma
+the ledger says         spent 0.0000001
+                        embedded 0.00000005
+                        pleroma 0.00000005
+unaccounted             0
+```
+
+### A recipe names a material list, a grade, a loss and a turn count
+
+A recipe is the thing that says what is consumed and what comes out. It reuses the
+component entry the item table already declares, so a material, its whole units
+and its quality grade are spelled one way across the package. The item it makes
+comes from the item table by name, and the grade it carries is one of the five
+quality grades already in use.
+
+`src/competition/crafting.py` - the recipe, as its fields declare it
+
+```python
+@dataclass(frozen=True)
+class Recipe:
+    item_type_name: str
+    produced_quality: str
+    components: tuple[Component, ...]
+    loss_share: Decimal
+    turns_required: int
+```
+
+### Two figures are owed, and a craft without either is refused
+
+He set a salvage loss in words and set no crafting loss at all, and he said
+crafting is multi-turn and lengthy without naming a turn count. Neither figure is
+invented here. Both arrive with the recipe, and a recipe built without one refuses
+at once with a sentence saying what would set it. A loss share of zero is a
+different thing from an absent loss share, and only the absent one is refused.
+
+Driven, both refusals read off the real objects
+
+```
+loss_share absent      "the operator set a salvage loss and set no crafting
+                        loss, so loss_share arrives with the Recipe and this
+                        module holds no table of it"
+turns absent           "The operator's words say crafting is multi-turn and
+                        sometimes lengthy and name no figure, and nothing here
+                        derives turns from an item's grade, its material count
+                        or its cohesion"
+```
+
+The loss share multiplies what the item holds, rather than dividing the wallet
+amount. That choice is made so every amount stays a whole number of the smallest
+unit the currency can express. Dividing would leave a part no bucket could hold,
+and the ledger refuses an amount off that grid.
+
+Measured consequence, at the smallest item there is
+
+```
+cohesion        0.00000001     one minimum unit
+loss share      0.5
+loss            0              rounds down, the same rule distil already uses
+wallet debit    0.00000001
+```
+
+A share above one is allowed and loses more than the item holds, which is what
+his much of it will be lost permits. Only the wallet balance bounds it.
+
+### Which clock a craft counts in
+
+A craft counts world turns, and the module takes that name from the one place that
+already declares it rather than spelling it a second time. One world turn lasts
+3,600 seconds, which the same place now names. Every turn field here is still a
+whole turn index, and no craft converts to wall clock time.
+
+`src/competition/consecration.py` - the clock name and its length, both imported
+
+```
+CLOCK                        "world turn"
+WORLD_TURN_SECONDS           3600, read from poa_modes
+WORLD_TURN_SECONDS_ABSENT    "one world turn is 3600 seconds, the operator's one
+                             turn an hour"
+```
+
+A craft opens on a turn and finishes on the turn its required count reaches, using
+the same arithmetic the action charge already uses. Completing before that turn is
+refused, and the refusal says no part of an item exists.
+
+### Four ways to abuse a craft, and the answer to each
+
+Every one of these was asked before the code was written, and each has an answer
+that can be driven.
+
+```
+make an item worth more than     refused. A recipe whose item needs more
+what was consumed                Quintessence than its material list embeds
+                                 cannot be built at all
+
+craft with no loss at all        allowed. A loss share of zero takes only the
+                                 cohesion out of the wallet, the pleroma gets
+                                 nothing, and conservation still holds
+
+consume the same materials       refused. Completing a craft removes it and
+twice                            records its identifier, so a second call
+                                 raises and moves nothing
+
+abandon a craft part way         nothing to lose. An open craft holds no
+                                 Quintessence at all, so there is nothing in
+                                 flight to go missing
+```
+
+The last one is the dangerous case, and the shape of the code answers it rather
+than a guard. Opening a craft makes no ledger call and abandoning one makes no
+ledger call. The only write path is completion, and completion is a single
+movement that either commits whole or rolls back whole. No moment exists at which
+Quintessence has left a wallet and not yet reached a bucket.
+
+`src/competition/crafting.py` - opening a craft, which moves nothing
+
+```python
+def begin_craft(self, recipe, vessel, opened_turn) -> Craft:
+    """Open ``recipe`` for ``vessel``, refusing a wallet that cannot cover it.
+
+    Nothing is debited here; ``complete_craft`` is the only write path.
+    """
+```
+
+### A Vessel crafts, and the wallet it spends is shared with every other Vessel
+
+His words put crafting on secondary Vessels, so a craft names a Vessel and takes
+its owner as the wallet. Nothing marks a Vessel primary or secondary: the Vessel
+record carries an owner, a class, a level and an id and no such field. A craft
+takes any Vessel and refuses none on that ground, so which Vessels may craft is
+owed.
+
+The wallet a craft debits is the same one every Vessel of that Reincarnate runs
+on, which is his own rule that a player's total wallet budget has to support the
+work. Spending on a craft lowers the fraction each of them reaches, with no second
+rule needed.
+
+Measured on a real ledger, one craft at the highest grade
+
+```
+before        wallets 1.00000000   pleroma 0           embedded 0
+after         wallets 0.99999990   pleroma 0.00000005  embedded 0.00000005
+minted        1.00000000 both times, unchanged
+delta         0 both times
+```
+
+### Driven on a real ledger, and the delta never left zero
+
+The whole path ran against a real ledger at a temporary file, under the
+interpreter's development checks with warnings promoted to errors. Every reading
+below came off the constructed objects, not off a description of them. The
+exercise covered an open craft, an early completion, a finished craft, a second
+completion, an abandoned craft, a recipe that cannot hold its item together, both
+absent figures, and a wallet too small to pay.
+
+What the run reported
+
+```
+conservation delta          0 at every reading, nine readings
+total ever minted           1.00000000 before and after, unchanged
+wallet change               -0.0000001
+embedded change             +0.00000005
+pleroma change              +0.00000005
+unaccounted                 0
+ledger movement log         distil, then embed_from_wallet, then bleed
+exit code                   0
+```
+
+The module also drives itself once at import, across every item type at every
+grade at both ends of the loss range, and reports its own count. That check runs
+on every launch and raises if a craft would ever move an amount no bucket holds.
+
+The module's own line from the run
+
+```
+drove 4 item types across 5 quality grades at 2 loss ends,
+0 amounts broke a rule
+```
+
+Reading those deltas is itself a check worth naming. Had the reader been blind the
+three changes would all have read zero while a movement plainly existed in the
+log. They read the amounts above, and two recipes of genuinely different size were
+run through the same reader and answered different numbers.
+
+### What reads a craft, and what is still owed
+
+Nothing in the running program yet crafts. The module supplies the recipe, the
+craft and the accounting, and no panel and no assignment calls any of it. The gear
+subtab still prints that nothing builds armour, weapons, accessories or
+consumables, and that sentence is still true from a player's side.
+
+```
+reads a craft              nothing. No surface and no Vessel assignment exists
+supplies a surface         every finished craft serves a dict the gear subtab
+                           could print without any further work
+declares a recipe          nothing. A recipe needs the loss share and the turn
+                           count, so no recipe table is declared here
+package export             bound. The entry file imports 28 of this module's
+                           names, and the package report names no module
+absent                     assignments, notifications, lifeskilling, salvage,
+                           inventory, a crafting skill
+absent figures             the loss share, and how many turns a craft takes
+```
+
+Nothing counts the materials a Vessel carries, because no inventory exists, so a
+recipe names units that nothing has checked against a store. The wallet balance is
+the only thing that refuses a craft today. The module names that gap in its own
+text rather than hiding it.
+
+## 2026-09-11 06:50 - #147 - seven subtabs, a key each, and the Vessel opens its own page
+
+### What the bar carried before, and what it carries now
+
+The subtab bar held four entries and no keyboard binding. Searching the tab's
+three files for a key handler returned nothing.
+
+Counted off `SUBTABS` in `src/gui/main_tabs/proof_of_accumulation_tab_surface.py`
+
+```
+                        before   after
+subtabs on the bar           4       7
+keys bound                   0       7
+new subtabs                          3     Resources, Quint, Guild
+```
+
+The operator named seven: maps, character details, gear, resources, Quint, skills
+and guild. Four already existed under other labels and three are new. `Skill Tree`
+became `Skills`, because his own words divide it into a Vessel page and a
+Reincarnate page, and a tree is one thing a page could hold.
+
+### The key each subtab opens on
+
+Each button carries its key on its face, so nobody has to hunt for it. A sentence
+under the bar names the range, and each button also carries the key as an
+`aria-keyshortcuts` attribute for a screen reader.
+
+```
+Ctrl+1  Maps               Ctrl+5  Quint
+Ctrl+2  Character Details  Ctrl+6  Skills
+Ctrl+3  Gear               Ctrl+7  Guild
+Ctrl+4  Resources
+```
+
+Ctrl and a digit is the published way to reach the Nth tab in the browser engine
+both hosts run. Nothing in the application takes those keys. Measured by asking
+the running Electron shell for its own menu, and by reading the Qt side
+
+```
+Electron default menu accelerators      15
+  of those on Ctrl and a digit           0     Ctrl+0 is Actual Size
+globally registered Ctrl+1 to Ctrl+7     0
+Qt menu bar mnemonics                    Alt+F, Alt+E, Alt+T, Alt+H
+Qt key sequences elsewhere               Ctrl+Left, Ctrl+Right, in one dialog
+```
+
+### Clicking the Vessel opens its page
+
+The Vessel card in the top-left half is now the click target itself. Clicking it,
+or pressing Enter or Space on it, opens Character Details. The card says so on its
+face.
+
+The card carries a heading and a list, which HTML does not allow inside a button,
+so it takes the published pattern for making any element behave as one.
+
+```javascript
+panelProps.role = "button";
+panelProps.tabIndex = 0;
+panelProps.onClick = open;
+panelProps.onKeyDown = function (event) {
+  if (event.key === ENTER_KEY || event.key === SPACE_KEY) {
+    event.preventDefault();
+    open();
+  }
+};
+```
+
+### What each subtab draws, and what it says it cannot
+
+Every figure below is read from a module at draw time. No number is typed into the
+screen.
+
+| Subtab | What it draws | Module behind it |
+| ------ | ------------- | ---------------- |
+| Maps | 5 grid bounds: 9 squares a side, 81 a layer, 20 layers, 79 participants a layer, 1 square in view | `world_grid` |
+| Character Details | 5 stats with their principle and effect, the 10 bands a stat climbs, and the 27 trading metrics | `entity_stats`, `rpg_metrics` |
+| Gear | the loot the wallet holds, 4 item classes with their cohesion, 8 mechanisms | `loot_drop`, `items` |
+| Resources | 7 materials, each with the Quintessence band one unit embeds and where that band came from | `materials` |
+| Quint | the chain, its two files, the smallest unit, the supply cap, the minted total | `quintessence_ledger` |
+| Skills | two named pages and the one skill on the ladder, over its 10 levels | `skill_ladder` |
+| Guild | 0 guilds, 0 members, the two ranks and the treasury address shape | `guild_roster` |
+
+Three things the operator named are not built, and each subtab says so in its own
+words rather than showing an empty frame.
+
+```
+skill trees    no module declares an ability and no module declares a tree
+skill rings    no module declares a ring, a tier or a Sephirot position
+tactical map   nothing holds an encounter's enemies or their turn order
+```
+
+The Skills subtab names both pages, Vessel and Reincarnate, and says under each
+that nothing supplies its tree or its ring. The Guild roster loads empty because
+no module writes a roster file, and it says that too.
+
+### Maps opens only where a map exists
+
+The rule that already governed the map subtab still governs its key. Under an
+event whose mode carries no map, Ctrl+1 does nothing and the button is disabled
+with the reason on it.
+
+```
+Monster Smash   Ctrl+1 refused    "Monster Smash carries no map, so this subtab
+                                   does not open. Dungeon Crawl and Raid do."
+Dungeon Crawl   Ctrl+1 opens Maps
+```
+
+### Both builds were driven, and every reading matched
+
+Each of the seven keys was pressed as a real keypress and the subtab showing
+afterwards was read off the drawn page, not off the code. The Vessel was clicked
+the same way. The Qt window and the Electron shell were driven separately against
+the same live backend.
+
+```
+readings compared                            157
+readings that differed                         0
+seven keys, seven different subtabs          Qt yes, Electron yes
+Vessel click opens Character Details         Qt yes, Electron yes
+Ctrl+9, which nothing binds, changes nothing Qt yes, Electron yes
+```
+
+### One sentence on the tab was wrong and is corrected
+
+The Vessel card used to say that no subtab carried its details, so nothing opened.
+That subtab now exists, so the card names it instead.
+
+```python
+VESSEL_CLICK_NOTE = (
+    "Click this Vessel to open the Character Details subtab, or press its shortcut."
+)
+```
+
+The Gear subtab used to say nothing builds the four item classes. Those classes
+are now declared with their material lists, and a craft that makes one landed the
+same day, so the sentence now names the limit that is real.
+
+```python
+GEAR_ABSENT_TEXT = (
+    "{names} are declared as classes. {inventory}, so this subtab lists the loot the "
+    "wallet holds and no item a Vessel wears."
+)
+```
+
+### Still owed
+
+The items module listed crafting among the things nothing supplies, while the
+crafting module now completes one. That entry now names the recipe instead. The
+Gear subtab prints that module's own sentence, so correcting the module corrected
+the screen.
+
+```python
+ABSENT_MECHANISM_NOTES = {
+    "a crafting recipe": (
+        "crafting.CraftRegister.complete_craft turns a component list into an "
+        "item, and no Recipe is declared because loss_share and turns_required "
+        "are two figures no source sets"
+    ),
+    ...
+}
+```
+
+## 2026-09-11 07:10 - #585 - the package binds crafting, and the gear list names the real gap
+
+### The package named the module it could not reach, at every start
+
+The crafting module landed and the package entry file imported nothing from it. The
+entry file reads its own folder at every load and compares the module files it holds
+against the names it binds, so it named crafting on every start.
+
+What a fresh interpreter printed before this unit
+
+```
+acervator.competition WARNING competition package holds 1 module(s) it does not
+                             bind: crafting
+```
+
+### What the entry file binds from crafting
+
+The entry file imports crafting last, after prayer. The module reads items,
+materials, the Quintessence ledger, vessels and one name from consecration, so every
+module it reads is already imported above it. A module placed before the one it reads
+would stop the package from loading, and the package loads before the operator sees
+a window.
+
+```python
+# crafting imports items, materials, quintessence_ledger, vessels and consecration.
+# 6 repeats of names bound above, grid_faults among them, stay unexported.
+from .crafting import (
+    MIN_CRAFT_TURNS,
+    CRAFT_MOVEMENT,
+    RELEASE_IS_SALVAGE,
+    LOSS_SHARE_ABSENT,
+    ...
+    recipe_for,
+    recipe_rows,
+)
+```
+
+Every existing import line and every existing name is kept.
+
+```
+names in the export list before   817
+names added                        28
+names in the export list after    845
+module files on the disk           41
+module files the package binds     41
+```
+
+### Six names stay unexported, and four of them would have overwritten a value
+
+A package name carries one value. Six of crafting's names repeat a name the entry
+file already binds. Exporting one would replace a value that already works, so the
+entry file skips all six, and a reader reaches them by naming the crafting module.
+
+Measured by reading the value out of each module
+
+```
+the name the package keeps        crafting's own value        the two
+materials.grid_faults            a different function         differ
+vessels.ABSENT_MECHANISMS        nine absences of a craft     differ
+vessels.ABSENT_MECHANISM_NOTES   nine notes of a craft        differ
+the package logger               acervator.crafting           differ
+monster_table.FIGURE_ABSENT      None                         are the same
+items.MIN_COMPONENTS             1                            are the same
+```
+
+Two of the six carry the same value in both modules, so holding those two back
+changes nothing a reader sees. No module's own surface is redefined.
+
+### The items module said nothing builds a craft
+
+The items module listed crafting among the mechanisms no module builds. The crafting
+module completes a craft, so that entry named the wrong gap. It now names the recipe.
+The recipe is absent because two figures are owed, the loss share and the turn count,
+and one decided pair of figures is all a recipe for each item type would need.
+
+The absent-mechanism list and its notes in `src/competition/items.py`
+
+```python
+ABSENT_MECHANISMS: tuple[str, ...] = (
+    "a crafting recipe",
+    ...
+)
+
+ABSENT_MECHANISM_NOTES: dict[str, str] = {
+    "a crafting recipe": (
+        "crafting.CraftRegister.complete_craft turns a component list into an "
+        "item, and no Recipe is declared because loss_share and turns_required "
+        "are two figures no source sets"
+    ),
+    ...
+}
+```
+
+### The Gear subtab prints the module's own sentence
+
+The gear panel builds its mechanism rows straight from the items module's notes, so
+correcting the module corrected the screen and no screen file changed.
+
+```python
+"mechanisms": [
+    row(name, note) for name, note in ITEM_MECHANISM_NOTES.items()
+],
+```
+
+### Driven on the real tab path
+
+The desktop bridge registry was built and the PoA tab's own handler was called
+through it, under the interpreter's development checks with every warning raised as
+an error. The eight rows the Gear subtab draws were read off the payload the handler
+returned, and the package's own log line came from that same run.
+
+```
+acervator.competition DEBUG competition package binds every module it holds
+
+a crafting recipe   crafting.CraftRegister.complete_craft turns a component list
+                    into an item, and no Recipe is declared because loss_share and
+                    turns_required are two figures no source sets
+salvage             nothing destroys an item for the Quintessence it embeds
+equipping           nothing holds an item to a Vessel, so equip_check has no caller
+inventory           nothing holds the items one Vessel carries
+slot count          no figure sets how many gear slots a Vessel has
+encumbrance         nothing weighs what a Vessel hauls
+loot generation     loot_drop.drop_from_pool draws a tier and names no item
+named instances     no artefact is named here; every entry in ITEM_TYPES is a type,
+                    and a named instance waits on crafting naming what it made
+```
+
+Each crafting name was read off the package and compared against the object the
+crafting module holds.
+
+```
+crafting names read off the package      28
+names that did not match the module       0
+names held back                           6
+imported by the package name alone       Recipe, CraftRegister, recipe_for
+```
+
+### What reads the crafting export, and what is still owed
+
+```
+reads the export list      every module that imports a PoA form by the package
+                           name, and src/gui/competition_tab.py
+reads the gear list        proof_of_accumulation_tab_surface.gear builds the Gear
+                           subtab's mechanism rows from it
+on a screen                the Gear subtab, eight rows
+owed                       a recipe. Nothing declares one, and the operator naming
+                           one loss share and one turn count would set both figures
+                           every recipe needs
+absent figures             the loss share and the turn count, both absent. No
+                           module defaults either, and Recipe refuses a craft
+                           without them
+```
+
+The crafting module's own text still says the package binds no name from it, and the
+06:10 entry above still counts 40 modules on the disk. Each held on the day its unit
+wrote it, and this unit changes neither.
+
+## 2026-09-11 07:15 - #586 - the world turn's pool, counted in steps
+
+> "Its a function of Strength (max weight) and Constitution (turn point penalty
+> while carrying)."
+
+> "Just need to be able to say that character A traversed x% of a given square in
+> a given turn... Should be simple enough to make this dynamic and per character
+> or army or group with encumberance playing a role."
+
+### One clock was bounded and the other was not
+
+The event turn has an action economy. Impetus grants four actions at the first
+level and one more every twenty levels, so a Vessel at level 100 acts nine times
+in one candle and the pool refuses a tenth.
+
+Read by asking the modes module for each figure
+
+```
+IMPETUS_AT_FIRST_LEVEL      4
+IMPETUS_LEVELS_PER_STEP     20
+base_impetus(1)             4
+base_impetus(100)           9
+```
+
+The world turn had none of it. No pool, no budget and no action count existed for
+the hour a participant spends out in the world, so a choice made in world time
+cost nothing.
+
+### The step was already a world turn's denomination
+
+A square divides into one hundred steps, so a step is one whole percent of a
+square. His sentence about traversing a percentage of a square in a turn names a
+step count, and movement already spends steps by the turn.
+
+The rate a journey leg runs at, in `world_movement`
+
+```python
+#: Steps a mover covers in one world turn before any multiplier, one square.
+BASE_STEPS_PER_TURN = SQUARE_STEPS
+
+
+def leg_rate(terrain: Decimal, encumbrance: Decimal) -> Decimal:
+    """``BASE_STEPS_PER_TURN`` under the ``terrain`` and ``encumbrance`` multipliers."""
+```
+
+That is a rate, not a pool, and the difference is the whole of this unit. Three
+readings separate them, each taken off the movement module itself.
+
+```
+it holds no remainder    progress_at derives every figure from the turn a leg
+                         opened, its rate and its length, and writes no record.
+                         Nothing is subtracted, so no participant has steps left
+                         to read
+
+it is bounded per leg    open_leg checks the legs of the one journey it is given,
+                         so no rule there compares two journeys of one mover
+
+only movement spends it  a craft counts whole turns to its completion turn and
+                         spends no step in any of them
+```
+
+The budget did not exist under another name. The step is the right unit for one,
+because a penalty measured in steps removes distance, and removed distance is
+exactly how carrying a load slows a journey.
+
+### The pool, and what it refuses
+
+One participant holds one pool for one world turn. The pool keys on a wallet
+address, because the mover on a journey leg carries an address and a Reincarnate
+answers to one. Impetus counts per level, which belongs to a Vessel, and no
+directive says which of the two holds a world turn's pool.
+
+The grant, and the only figure that lowers it
+
+```python
+    @property
+    def granted_steps(self) -> int:
+        """``unladen_steps`` less ``penalty_steps``, never below ``MIN_GRANT_STEPS``."""
+        return max(MIN_GRANT_STEPS, self.unladen_steps - self.penalty_steps)
+```
+
+The spend, which refuses another turn and refuses a cost above what is left
+
+```python
+    def spend(self, cost: int, at_turn: int) -> int:
+        """Spend ``cost`` steps, refusing another turn or a cost above ``remaining``.
+
+        Returns the steps remaining after the spend.
+        """
+        asked = _as_turn_index(at_turn, "at_turn")
+        if asked != self.turn_index:
+            refusal = (
+                f"this pool granted {self.granted} {STEP_UNIT}s to "
+                f"{self.participant} for {CLOCK} {self.turn_index} and "
+                f"{self.remaining} is unspent; {CLOCK} {asked} is a different "
+                f"turn, and a {CLOCK}'s steps expire with the turn that "
+                f"granted them"
+            )
+            raise ExpiredTurnError(refusal)
+        steps = _as_steps(cost, "cost", COST_SOURCE, MIN_SPEND_STEPS)
+        if steps > self.remaining:
+            refusal = (
+                f"this action costs {steps} {STEP_UNIT}s and {self.remaining} "
+                f"remains of {self.granted} in {CLOCK} {self.turn_index}; no "
+                f"partial action exists and nobody borrows against the next turn"
+            )
+            raise ExhaustedPoolError(refusal)
+        self.spent += steps
+        return self.remaining
+```
+
+Seven refusals were driven through the real module, each one quoting what the
+module said
+
+```
+a pool with no figure   unladen_steps is absent; unladen_steps arrives with the
+                        grant and no source names it ... The operator sets the
+                        figure
+
+a fractional grant      unladen_steps must be a whole number of steps, not float;
+                        a world turn figure decided by binary floating point is
+                        refused
+
+a penalty that raises   penalty_steps must be 0 or more steps, got -5
+
+a second pool           0xalice already holds a pool of 40 steps for world turn 0
+                        with 40 unspent; one participant holds one pool a world
+                        turn
+
+a closed turn reopened  0xalice holds a pool for world turn 5, and world turn 4
+                        has closed; a closed turn grants nothing a second time
+
+a spend in another turn 0xalice holds a pool for world turn 0, not world turn 1;
+                        a world turn's steps expire with the turn that granted
+                        them
+
+a spend of nothing      cost must be 1 or more steps, got 0
+```
+
+### What the program printed
+
+One participant's turn was driven from its grant to its refusal, on the path that
+loads the PoA package. Every figure below is the module reporting its own pool.
+
+```
+acervator.world_turn INFO 0xalice holds 40 steps for world turn 0, 40 unladen less 0 penalty
+acervator.world_turn INFO 0xalice spent 25 of 40 steps in world turn 0, 15 remaining
+acervator.world_turn INFO 0xalice spent 40 of 40 steps in world turn 0, 0 remaining
+acervator.world_turn INFO 0xcarol holds 0 steps for world turn 0, 40 unladen less 55 penalty
+acervator.world_turn INFO 0xbob holds 40 steps for world turn 1, 40 unladen less 0 penalty
+acervator.world_turn INFO 0xbob spent 10 of 40 steps in world turn 1, 30 remaining
+acervator.world_turn INFO 0xbob lost 30 of 40 steps unspent when world turn 1 closed
+acervator.world_turn INFO 0xbob holds 40 steps for world turn 2, 40 unladen less 0 penalty
+acervator.world_turn INFO 0xalice holds 28 steps for world turn 1, 40 unladen less 12 penalty
+
+src.competition.world_turn.ExhaustedPoolError: this action costs 29 steps and 28
+remains of 28 in world turn 1; no partial action exists and nobody borrows
+against the next turn
+```
+
+Four lines carry the answers a reader needs. A penalty of 55 against a grant of
+40 reads zero and never less, so a fully laden turn buys nothing and never owes
+anything. Thirty unspent steps are lost when the turn closes, and the next turn
+grants a fresh forty. The penalty of twelve takes the grant to twenty-eight, and
+a spend of twenty-nine is refused.
+
+### The figure is owed, and it is one number
+
+```
+owed      unladen_steps, the steps one participant may spend in one world turn
+          at zero encumbrance
+
+why not   leg_rate already multiplies 100 steps by terrain and by encumbrance, so
+100       a grant read off that rate would count both multipliers twice
+
+refused   a pool built without it, by name, with that sentence in the refusal
+```
+
+A world turn's length is 3,600 seconds, and `poa_modes` names it. Every turn field
+here is still a whole turn index, the same way the PvP vote and a consecration both
+count one.
+
+### What spends this, and what is still owed
+
+```
+reads it today     nothing. No module constructs a world-turn pool, and the only
+                   lines above came from driving it directly
+
+movement           derives a leg's progress from its own rate and reads no pool
+
+encumbrance        absent. It needs a Vessel's carried weight and a weight per
+                   material, and no module holds either, so nothing computes the
+                   penalty a grant takes
+
+crafting           counts whole turns to its completion turn and spends no step
+
+a surface          the tab's turn meter reads the event turn's candle and its
+                   Impetus line reads that pool. No panel names a world turn, so
+                   nothing shows a turn's steps remaining
+
+the package entry  does not yet name this module. The package says so itself on
+                   every launch: competition package holds 1 module(s) it does
+                   not bind: world_turn
+```
+---
+
+## 2026-09-11 07:40 - #586 - entering a dungeon moves a participant to the other clock
+
+### His question, and the answer it has
+
+He asked it as a design question rather than a work item.
+
+> "PoA - Dungeons - World Map - Another example of needed inference. What happens
+> after a player enters a dungeon? These are the sorts of design questions I want
+> you to ask while proceeding. Who. What Where. When. Why. How."
+
+The answer is a clock change. Outside a dungeon a participant counts world turns,
+which run continuously and survive an absence. Inside one they count event turns,
+which last one market candle and expire when that candle closes. Entering a
+dungeon moves a participant from the first clock to the second, and leaving moves
+them back.
+
+`src/competition/dungeon_entry.py` - the two clock names, each read from one place
+
+```python
+#: The clock outside a dungeon, the name ``consecration`` already declares.
+WORLD_CLOCK = CLOCK
+
+#: The clock inside a dungeon, one candle of ``EventVariant.turn_timeframe``.
+EVENT_CLOCK = "event turn"
+
+#: The two clocks a participant can be on. There is no third.
+CLOCKS: tuple[str, ...] = (WORLD_CLOCK, EVENT_CLOCK)
+```
+
+### The two clocks nest exactly, and the program printed the count
+
+The event turn is one candle of the event type's own timeframe. A Standard event
+runs on the five-minute candle and an Elite event on the one-minute candle, both
+taken from the same table the exchange reads. A world turn is an hour. Every
+dungeon variant divides an hour with nothing left over, so a participant inside a
+dungeon never holds part of a turn.
+
+`src/exchange/data_pool.py` - the one table both clocks read
+
+```
+TF_SECONDS["1h"]  3600    the world turn, an hour
+TF_SECONDS["5m"]   300    the Standard event turn
+TF_SECONDS["1m"]    60    the Elite event turn
+```
+
+What the program printed, driven directly:
+
+```
+dungeon_crawl        5m   300s   12 event turns an hour
+dungeon_crawl_elite  1m    60s   60 event turns an hour
+raid                 5m   300s   12 event turns an hour
+raid_elite           1m    60s   60 event turns an hour
+```
+
+The module refuses a world turn the candle does not divide, and rounds nothing.
+Driven with 3,500 seconds against the five-minute candle the refusal reads:
+
+```
+a world turn of 3500s holds 11 whole 5m candles and 200s over; the two clocks
+nest as exact multiples or a participant inside holds part of a turn
+```
+
+### Two of the four event types hold a dungeon, and the mode table says which
+
+Nothing lists the dungeon modes by name. The event mode table already carries a
+map flag, and reading that flag answers the question once for each caller.
+
+`src/competition/dungeon_entry.py` - the dungeon modes, derived
+
+```python
+#: The modes held at a map locator, read off ``EventMode.has_map``.
+DUNGEON_MODES: tuple[EventMode, ...] = tuple(mode for mode in MODES if mode.has_map)
+```
+
+The table the program printed:
+
+```
+mode                      dungeon  party      guild
+monster_smash             no       1 to 1     no
+team_monster_smash        no       2 to 120   yes
+dungeon_crawl             yes      1 to 6     no
+raid                      yes      2 to 60    yes
+```
+
+This matches his own two sentences. Fixation is where every player starts,
+so the arena is not a dungeon and nobody enters one there. Descension takes
+one to six and Cementation takes two to sixty, and Cementation needs a guild where
+Descension does not.
+
+### A dungeon is a locator, and no module declares one
+
+No module in the tree declares a dungeon object. A place on the world map is a
+fact with a kind, and the kind is whatever text the discovering caller passed.
+No list of valid kinds exists, so a dungeon is a locator plus a name.
+
+`src/competition/dungeon_entry.py` - what the module says about this itself
+
+```python
+DUNGEON_IS_A_LOCATOR = (
+    "no module declares a dungeon. world_grid.WorldFact carries a kind and that "
+    "kind is caller text with no declared values, so a dungeon is the locator a "
+    "fact sits at plus the kind whoever discovered it named"
+)
+```
+
+An entry names the square and the position across it that the party stands on,
+and the module derives the locator from those. No caller can claim an entry at a
+place the party does not stand on.
+
+### One entry, one exit, and both are rebuildable from the record
+
+An entry records who went in, which place, which event type, the world turn they
+left, and the event turn they joined. An exit records both turn indexes again.
+Nothing edits either record afterwards, so the two rebuild the whole visit.
+
+`src/competition/dungeon_entry.py` - the entry record's own fields
+
+```python
+entry_id: str
+world_id: str
+fact_id: str
+locator: str
+layer: int
+square_index: int
+step_x: int
+step_y: int
+kind: str
+mode_code: str
+elite: bool
+leader: str
+members: tuple[str, ...]
+entered_world_turn: int
+entered_event_turn: int
+entered_at: float
+```
+
+Driven on a real world with a real party of three, the program printed:
+
+```
+0xLeader took 3 into ruined_keep at 3:45:68:12,
+off world turn 41 onto event turn 5856666 of the 5m candle
+
+0xLeader brought 3 out of 3:45:68:12,
+off event turn 5856696 back onto world turn 44
+```
+
+Written to a file and read back, the rebuilt entry and exit compared equal to the
+originals and the clock reading after the replay was the world turn.
+
+### The run read the clock three times off the real objects
+
+Before the entry, during it and after it, for each of the three party members and
+for one participant who never entered.
+
+```
+                 before entry   inside        after exit
+0xLeader         world turn     event turn    world turn
+0xSecond         world turn     event turn    world turn
+0xThird          world turn     event turn    world turn
+0xElsewhere      world turn     world turn    world turn
+```
+
+The last row is the control. The same reading that moves for each member inside
+does not move for someone who is not, so a reading of `event turn` means the
+participant is genuinely in a dungeon and not that the reader always says so.
+
+### Five things make an entry impossible
+
+The run drove each one and each refused. Every refusal below comes from that run.
+
+```
+an arena mode          Monster Smash is held at no map locator, so nothing is
+                       entered in it. Only [dungeon_crawl, raid] hold a dungeon
+
+the wrong party        this party was formed for Dungeon Crawl and admits 1 to 6;
+                       entering a Raid needs a party formed in raid
+
+an undiscovered place  0xElsewhere leads this Dungeon Crawl and holds no
+                       reference to u76world:3:49:1:2; a dungeon is entered only
+                       where it has been discovered
+
+already inside         0xSecond is inside 3:45:68:12 on entry ... and answers to
+                       the event turn; entry ... would put one participant on two
+                       event clocks at once
+
+leaving twice          entry ... returned to world turn 44 already; nothing is
+                       inside it to bring out a second time
+```
+
+The third refusal is his own rule in code. He wrote that a party must find a
+dungeon out in the world first, so the party's leader must already hold a
+reference to the place. The leader is the one who navigates, which is his rule too.
+
+### Four ways to abuse an entry, and what each one does
+
+```
+enter twice              refused. One participant holds at most one open entry
+
+enter while inside       refused, the same check. Driven on a member of a party
+                         that was already in, not only on the leader
+
+enter with a member       not refused, and this is a gap. One position is taken
+who is elsewhere          for the whole party, and no module holds a position per
+                          member, so nothing can tell that a member stands away
+
+escape a world-time       no. Measured: a journey leg kept covering ground on
+threat by going in        world turns 41 to 44 while the party was inside, and an
+                          incapacitation set to end on world turn 44 still held on
+                          41 and 43 and lapsed on 44. Neither reads the dungeon
+                          register, so world time does not pause for anyone inside
+```
+
+The last one was the question worth asking. Because world time keeps running, a
+dungeon is not a hiding place, and that is the same answer his own rule gives for
+a secondary Vessel whose work survives an absence.
+
+### Two parties can stand in one dungeon at once
+
+Nothing caps how many parties hold an open entry at one locator. Driven, a party
+of three and a separate participant both entered the same place on the same event
+turn, and the register admitted both.
+
+**In development.** Whether a dungeon admits one party at a time belongs with the
+inside of a dungeon, which is the ruling below.
+
+### What a dungeon still does not have
+
+Every one of these is absent rather than partly built, and the module says so
+itself through a reader that lists them.
+
+```
+the inside          HIS RULING IS OWED, and the two readings cost very different
+                    amounts. A dungeon may be a place ON the world grid, in which
+                    case a participant keeps the square and the step it already
+                    has and nothing new is needed. Or a dungeon may be a separate
+                    space with its own coordinates, which is a second grid with
+                    its own sight range and its own set of positions, roughly
+                    doubling the world state. His seven-level dungeon points at
+                    the second. The entry is built so either can follow it
+
+combat              nothing resolves a fight. The monster tiers exist and the
+                    stat blocks exist, and no module turns two of them into a
+                    result
+
+permadeath          his ten-round window has no code and a round has no declared
+                    length, so entering a dungeon currently costs nothing
+
+a member's position  one position is taken for the party. Movement derives a
+                    position from each mover's own journey leg, so a member
+                    standing somewhere else is not refused
+
+losing a member      one exit closes the whole entry. Whether a single member can
+                    leave alone, and what a party of none becomes, is unanswered
+
+the world turn       nothing acts on a world turn closing while a party is
+closing mid-dungeon  inside. The entry records the turn they left and the exit
+                     records the turn they returned to, and no rule of his covers
+                     the turns between
+
+the world turn's     3,600 seconds, named in poa_modes as the 1h timeframe.
+length               event_turns_per_world_turn takes that length as its own
+                     default, so no caller supplies one
+
+the screen           this module draws nothing. His map click opens the map
+                    subtab, and the screen belongs elsewhere
+```
+
+### What reads a dungeon entry, and what is still owed
+
+```
+reads it today     nothing. No module enters a dungeon, and every line above
+                   came from driving the entry directly
+
+combat             would read the entry to know which event turn a fight is on,
+                   and does not exist
+
+a surface          would read the entry to show a party inside a dungeon, and the
+                   map subtab reads no entry
+
+the world-turn     grants one pool a world turn. Nothing connects it to an entry,
+pool               so a party inside still holds its world-turn steps
+
+the package entry  does not yet name this module. The package says so itself on
+                   every launch: competition package holds 2 module(s) it does
+                   not bind: dungeon_entry, world_turn
+```
+
+## 2026-09-11 08:00 - #147 - the world map draws one layer, and only what one participant found
+
+### The grid is nine squares a side, and the module says so
+
+The Maps subtab now draws squares. Before this it drew the grid's bounds as a
+table of five numbers and nothing else. The width is not written on the screen or
+in this page. It falls out of the byte budget, and the module computes it.
+
+`src/competition/world_grid.py` - the width, derived from the budget
+
+```python
+#: The default grid side, holding ``BUDGETED_SQUARES_PER_LAYER`` squares.
+DEFAULT_GRID_WIDTH = smallest_whole_side(BUDGETED_SQUARES_PER_LAYER)
+```
+
+What the module answered when asked:
+
+```
+squares a side          9
+squares a layer        81
+layers                 20
+participants a layer   79
+squares in view         1
+```
+
+### A square draws only what that participant has found
+
+His rule is that a zone appears on the map after player discovery, and that one
+player discovering something does not discover it for everyone. The map is
+therefore drawn per participant. The surface reads the knowledge references that
+one participant holds, and nothing else reaches a square.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - the only source of a mark
+
+```python
+def known_facts(world: PoaWorld, world_id: str, address: str, layer: int) -> tuple:
+    """Every ``WorldFact`` on ``layer`` that ``address`` holds a knowledge reference to."""
+    found = []
+    for reference in world.knows(world_id, address):
+        try:
+            fact = world.fact(world_id, reference)
+        except WorldGridError:
+            continue
+        if fact.layer == layer:
+            found.append(fact)
+    return tuple(found)
+```
+
+A square with no fact in that list carries a mark with no glyph, so it draws
+nothing at all. That is the whole of the lazy-discovery rule on screen.
+
+### Four states, and each one looks different
+
+A square is the participant's own, or discovered, or undiscovered. Sight is a
+fourth reading laid over the first three, and today it covers one square.
+
+```
+own          the arena square, a stronger ground
+in view      a gold outline, from BASE_VIEWRANGE_SQUARES
+discovered   a lighter ground, and the glyph of the thing found there
+undiscovered the darkest ground, and nothing drawn inside it
+```
+
+### Both variants drew the same layer, read off the pictures
+
+A world was created in a scratch home, one layer breached, and five places
+discovered. A second participant discovered a sixth place that the first
+participant was never told about. The tab was then drawn twice. Every figure
+below comes off the rendered pages, not off the payload behind them.
+
+```
+                             desktop window   Electron shell
+squares drawn                      81               81
+grid columns                        9                9
+grid side in pixels             155.6            155.6
+the participant's own square       40               40
+squares in view                     1                1
+squares drawing a glyph             4                4
+squares drawing nothing            77               77
+```
+
+The sixth place, found by the other participant, read as undiscovered and drew
+nothing on both pages. That is his rule holding on screen.
+
+### A missing glyph draws as a box, and the reading can see one
+
+A code point that exists in Unicode is not a glyph that exists on the machine.
+Two permanently reserved noncharacters were drawn in the page's own resolved
+font, and their pixels were counted. Both produced the same 71 inked pixels,
+which is the replacement box. Each mark on the map was then measured the same way
+and compared against it.
+
+```
+the box, twice          71 inked pixels, identical
+Magisterium  U+26E4     68 inked pixels, gold
+Elixir       U+2625     59 inked pixels, pink
+Calx         U+2296     83 inked pixels, grey
+Flores       U+2698     68 inked pixels, blue
+```
+
+No mark matched the box on either page.
+
+### Nothing creates a world on a normal start
+
+No module in the tree calls the function that makes a world. The map above was
+produced by calling it directly against a local test chain in a scratch home.
+On the operator's machine the subtab therefore says there is no world, and draws
+no grid rather than an empty one.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - the three reasons nothing draws
+
+```
+no world file      No world is generated. No grid, no tile and no position is
+                   held anywhere, so this subtab draws no map.
+no breached layer  World <name> declares 20 layers and nobody has breached one,
+                   so no layer exists to draw.
+no identity        bot_identity.json does not exist, so no participant is named.
+```
+
+Each sentence names what would set it. The screen with no world was rendered and
+read: zero squares drawn, and no grid element on the page at all.
+
+### Where a participant is, and why it does not move
+
+The arena is the one square known with no discovery record, and it is where the
+map puts the participant. A journey record can derive a later square, but the
+derivation needs the index of the running world turn.
+
+```
+world_movement.JourneyLeg.progress_at   derives a square from a turn index
+poa_modes.WORLD_TURN_SECONDS            3600 seconds in one world turn
+```
+
+No module can say which turn is running now, and the map stays on the arena. The
+subtab prints that sentence, so a reader knows the position is a default and not
+a choice.
+
+### What this map does not draw
+
+Four things his design names and nothing supplies.
+
+```
+the tactical map   his words turn the map into a tactical map during an
+                   encounter. Nothing holds an encounter's enemies or their turn
+                   order, so no tactical map is drawn
+an action menu     his words give a location options when a player moves into
+                   the correct square. Movement exists and no module holds an
+                   enter, a scout or a camp, so no menu is drawn
+pixel art          no sprite exists anywhere. The glyphs are the stand-in, which
+                   is the point of the Dwarf Fortress decision
+monster marks      map_glyphs gives monsters no mark on purpose, because six of
+                   the twelve tiers carry no name and no hermetic set covers
+                   twelve positions
+```
+
+A fact whose kind carries no mark is drawn as discovered with no glyph. One of
+the five places above was given such a kind, and the square read as discovered
+and empty on both pages.
+
+## 2026-09-11 08:15 - #147 - the package binds its last two modules
+
+The PoA package held 43 module files and named 41 of them. Two were reachable
+only by their own full path. The package reported that gap itself on every
+launch, because it reads its own folder and compares the files it holds against
+the names it binds.
+
+What a fresh interpreter printed before this unit
+
+```
+acervator.competition WARNING competition package holds 2 module(s) it does not
+                             bind: dungeon_entry, world_turn
+```
+
+The entry file now imports both. It keeps every existing import line and every
+existing name, and adds no line of arithmetic.
+
+```
+names in the export list before   845
+names added                        56
+names in the export list after    901
+
+names added from world_turn        17
+names added from dungeon_entry     39
+
+module files on the disk           43
+module files the package binds     43
+```
+
+### Where the two imports sit, and why that order holds
+
+Both imports go after crafting, at the end of the import section. A module
+placed before the one it reads would stop the package from loading, and the
+package loads before the operator sees a window. Every module these two read is
+already bound above them.
+
+The import edges, read out of the two module files
+
+```
+world_turn     reads consecration and world_movement
+
+dungeon_entry  reads world_turn, poa_modes, world_grid, consecration and the
+               platform's own atomic JSON writer
+
+army_command   named in dungeon_entry only under TYPE_CHECKING, so it is not a
+               runtime edge and sets no order
+```
+
+The entry file takes the world turn first, because the dungeon entry reads its
+first turn index. The reverse order would put a module before the one it reads.
+
+```python
+# world_turn imports consecration and world_movement, dungeon_entry imports world_turn,
+# poa_modes, world_grid and consecration.
+# 4 repeats of names bound above, ABSENT_READERS among them, stay unexported.
+from .world_turn import (
+    STEP_UNIT,
+    ...
+    turn_economy_row,
+)
+from .dungeon_entry import (
+    WORLD_CLOCK,
+    ...
+    nesting_rows,
+)
+```
+
+### Four names stay unexported, and three would have overwritten a value
+
+A package name carries one value. Four of the two modules' names repeat a name
+the entry file already binds. Three of the four carry a different value in each
+module, so exporting one would silently replace a value that already works. The
+entry file skips all four. A reader reaches them by naming their own module.
+
+Measured by reading the value out of each module
+
+```
+held back from   the name the package keeps       the two values
+world_turn       alignment.ABSENT_READERS         differ
+world_turn       alignment.ABSENT_READER_NOTES    differ
+world_turn       monster_table.FIGURE_ABSENT      are the same
+dungeon_entry    vessels.ABSENT_MECHANISMS        differ
+```
+
+The three that differ, read side by side
+
+```
+ABSENT_READERS        alignment      7 names, cataclysms first
+                      world_turn     4 names, movement first
+
+ABSENT_READER_NOTES   alignment      one note for each of its 7
+                      world_turn     one note for each of its 4
+
+ABSENT_MECHANISMS     vessels        a tuple of 8 absences
+                      dungeon_entry  a dictionary of 9 absences and their notes
+```
+
+Each module also holds its own logger, and the entry file exports neither. The
+package keeps one logger of its own, named for the package.
+
+```
+the package     acervator.competition
+world_turn      acervator.world_turn
+dungeon_entry   acervator.dungeon_entry
+```
+
+### Driven through the PoA tab's own handler
+
+The run built the desktop bridge registry and called the PoA tab's own handler
+through it, under the interpreter's development checks with every warning raising
+an error. That same run read both modules' names off the package, and the
+package's own log line came from it.
+
+```
+acervator.competition DEBUG competition package binds every module it holds
+
+the PoA handler returned          38 sections
+the surface module imported       src.gui.main_tabs.proof_of_accumulation_tab_surface
+
+world_turn off the package        STEP_UNIT 'step', MIN_SPEND_STEPS 1
+dungeon_entry off the package     CLOCKS ('world turn', 'event turn')
+                                  DUNGEON_MODE_CODES ('dungeon_crawl', 'raid')
+
+report_unbound_modules returned   an empty list
+```
+
+A circular import would stop the launch rather than slow it, so the surface
+module importing is the proof that the order holds.
+
+### What the two prior entries said, and what is owed
+
+The 07:15 and 07:40 entries above each end with a line saying the package entry
+does not yet name that module, and each quotes the warning it drew at the time.
+Both held on the day their unit wrote them. This unit changes neither, the same
+way the 07:10 entry left the counts before it standing.
+
+```
+owed  dungeon_entry.EXPORT_OWED still reads "src/competition/__init__.py binds
+      no name from dungeon_entry". The package now binds 39 of its names, so
+      that sentence is stale. The module is not this unit's to edit, and the
+      export is now on the package, so a reader sees the stale sentence and not
+      a warning
+
+owed  domination.PACKAGE_EXPORT_OWED reads "src/competition/__init__.py
+      re-exports no name from this module". The package has bound domination for
+      two entries, and the module logs that sentence at every load
+
+absent  world_turn carries no owed-export note of its own, so nothing in it went
+        stale
+
+absent  no file under src/gui or desktop names either module, so neither note
+        reaches a screen and no screen file changed
+```
+
+## 2026-09-11 08:30 - #147 - a control creates the world, and the map draws it
+
+### The press declares a world and breaches its first layer
+
+Nothing in the program created a world. The function that makes one had no caller
+anywhere under `src`, so the map had nothing to draw and every module that
+addresses a world sat idle for that one reason. The Accumulation tab now carries
+two more buttons, beside the two that reset the chain. The first asks and writes
+nothing. The second declares the world and opens its first layer in one press.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - the press, in full
+
+```python
+record = world.create_world(world_id)
+layer = world.breach_layer(world_id, address, FIRST_LAYER_INDEX)
+```
+
+Two calls, because one is not enough. A world on its own draws nothing: the map
+asks for the layers somebody has breached, and a new world has none. The map says
+so itself, and the run read both of its refusals straight off the screen.
+
+```
+no world          No world is generated. No grid, no tile and no position is
+                  held anywhere, so this subtab draws no map.
+no breached layer World WORLD-testnet declares 20 layers and nobody has
+                  breached one, so no layer exists to draw.
+```
+
+The second sentence is the one a world alone would leave on screen. Breaching
+layer zero in the same press is what clears it.
+
+### The figures a world declares, each read off the module
+
+A new panel sits under the two buttons and reports the world the chain holds. It
+draws nothing of its own: every figure comes from the world store's own summary.
+The width, the layer count and the arena are the module's constants and
+functions, not numbers written here or on screen.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - what the panel drew
+
+```
+World              WORLD-testnet
+Squares a side     9
+Squares a layer    81
+Layers declared    20
+Layers breached    1
+Arena square       40
+Seed commitment    3ccc798a7a12165e056c33eef0c09bb83b7007042219d0286ffe94d1b19d3fb8
+Seed published     False
+```
+
+Before the press the same panel holds no rows and one sentence instead, naming
+the button that would fill it. The world lands in its own file on the demo chain,
+and that file is what the Maps subtab reads back.
+
+```
+the file           poa_world_testnet.json
+what it holds      worlds, seeds, breached, zones, facts, knowledge,
+                   extracted, published, bands, version
+```
+
+Two buttons and a panel cost the control bar height, and the bar was already
+scrolling before them. It shows 169 points of its content and the rest scrolls,
+which is how the bar has always worked. The panel sits beside the reset readout
+rather than under it, and that placement gives back 89 of the 189 points the
+stacked version took.
+
+```
+control bar, before this unit     178 points of content in a 169 point window
+the two buttons, stacked panel    367 points
+the two buttons, panel beside     278 points
+what stays visible with no scroll the buttons, and the green result line
+                                  carrying the sentence and all eight figures
+```
+
+### Three refusals, and the live chain is one of them
+
+The control that deletes a chain already refuses the live chain and already
+refuses without a confirmation. A control that writes chain state keeps the same
+two, and adds a third of its own: one world a chain. The run drove all three, and
+each sentence below is the one the program printed.
+
+```
+the live chain     A world is created on the Demo TestNet chain only. The Live
+                   chain is the one a running window holds, so this refuses
+                   there.
+no confirmation    Confirm the world writes poa_world_testnet.json and declares
+                   world WORLD-testnet: 9 squares a side, 81 a layer, 20
+                   layers, arena at 40. This control writes nothing.
+a second world     poa_world_testnet.json already holds world WORLD-testnet.
+                   One world a chain, so this refuses a second. Confirm the
+                   reset clears the chain and the world with it.
+```
+
+After the unconfirmed press the run looked for the file, and the file was still
+absent. The second press came after a world existed, and found the first one
+unchanged.
+
+### The seed never reaches a screen, and the run searched the output for it
+
+A world's seed decides every creature and every amount in it. Anyone holding it
+could work out the whole world in advance, so the module keeps it back and
+publishes only its commitment. That makes the seed the one value this work had to
+keep off the screen, and a search proves that better than a reading does.
+
+```
+the seed              32 hex characters, drawn by the module
+its commitment        matches the hash of that seed, confirmed
+files searched        9 - both rendered pages, both reports, the payload,
+                      the console output of both runs
+files holding it      none
+files holding the
+commitment            7 of the 9
+```
+
+The last line is the control. A search that finds the commitment in seven files
+is a search able to find a string of that shape, so the empty seed result is a
+fact about the output and not about the search. A line carrying the seed was then
+written into a tenth file, found, and the file removed.
+
+### Both variants drew the board, read off the pictures
+
+The run drew both the desktop window and the Electron shell with a world on the
+demo chain, and every figure below comes off the saved picture. The count comes
+from the grid's own gap lines in the image: nine columns and nine rows leave ten
+lines across and ten down.
+
+```
+                              desktop window   Electron shell
+squares in the picture              81               81
+columns, from the picture            9                9
+rows, from the picture               9                9
+gap lines across                    10               10
+gap lines down                      10               10
+the participant's own square          1                1
+squares drawing nothing             80               80
+squares drawn as discovered          0                0
+```
+
+All eight panel figures matched across the two, and so did the sentence under
+them. One reading differed, and that difference belongs to the screen rather than
+to the product: the desktop window runs at a device pixel ratio of 1.25 and
+reports the grid side as 155.6 points, the shell runs at 1.0 and reports 156. The
+same ratio
+accounts for the gold ring around the participant's square measuring 144 device
+pixels in one and 112 in the other.
+
+### Two earlier sentences are now conditional
+
+Two sentences on this page said the Map subtab still reports no world, and both
+were true when written. They stay true of a program nobody has pressed anything
+in, and they stop being true after the press.
+
+```
+what it said       "No drawing. The Map subtab still says no world is
+                   generated, and that sentence is still true."
+what replaces it   The subtab says that until the world control is confirmed,
+                   and draws 81 squares after it.
+
+what it said       "The Map subtab's sentence that no world is generated stays
+                   true, because installing the mechanism creates no world."
+what replaces it   Installing the mechanism still creates no world. The
+                   control does, on a press, on the demo chain only.
+```
+
+The heading that says nothing creates a world on a normal start stands exactly as
+written. A start creates no world; an operator pressing a button does.
+
+### What the press does not create
+
+The press stops at a world and its first layer. It reaches none of the five
+things below, and this page names each one rather than half-building it.
+
+```
+participants       nobody is entered into the world. The control's sender is
+                   this node's own identity and no player record is written
+discovery          no place is found. All 81 squares read as undiscovered, so
+                   the board draws no mark at all
+monsters           none are generated. The seed that would decide them is
+                   committed and nothing reads it yet
+dungeons           none exist. A dungeon is a locator and no module declares
+                   one
+consecration       no ground is consecrated, and the press reaches no part of
+                   that mechanism
+```
+
+The participant stands on the arena square, and this press does not change that.
+Nothing in the program can say which world turn is running, so nothing can derive
+a later square. That figure is still owed.
+
+```
+the seconds in a world turn   3,600, in poa_modes. What is still unset is the
+                              index of the turn running now, which would let the
+                              map move the participant off the arena
+```
+
+A second gate already sat in front of every button on this tab, and it now sits in
+front of these two as well. The node needs an identity file before any control
+will act, and on the operator's machine that file does not exist. The one piece of
+the program that writes it belongs to the Competition tab, a shelved screen.
+
+```
+the file           bot_identity.json, under the runtime directory
+what writes it     src/gui/competition_tab.py, on a shelved screen
+what it blocks     every control on this tab, with the sentence the tab
+                   already prints
+```
+
+## 2026-09-11 08:35 - #585 - what one Vessel carries, in two halves
+
+### The two halves of one Vessel's store
+
+Four modules each recorded the same gap in their own words. The item table said
+nothing holds the items one Vessel carries. The craft register said a recipe
+names material units nothing has counted. The material table sets no ceiling on
+how far a stack runs. A loot drop named the wallet it went to and named no item.
+A store now exists, and it has two halves, under the operator's rule that gear,
+consumables and resources must not conflict.
+
+`src/competition/inventory.py` — the storage class decides which half
+
+```python
+    def put_in(
+        self,
+        name: str,
+        quality: str,
+        units: object = MIN_MOVED_UNITS,
+    ) -> StoreChange:
+        moved = _as_moved_units(units, "units")
+        held = _as_holding(name, quality)
+        with self._lock:
+            if occupies_slot(held):
+                self._fill_slots(name, quality, moved)
+            else:
+                self._raise_stack(name, quality, moved)
+            return self._change(name, quality, moved, is_put_in=True)
+```
+
+The three class names are the ones the material table already declares. Gear
+takes a counted slot. A consumable and a resource go on a stack and take no
+slot. Nothing here adds a fourth class and nothing renames one.
+
+### Three gear slots filled, and the fourth item refused
+
+A store was opened for one Vessel with three gear slots. Three pieces of armour
+went in, one at a time, and the slot count and the weight were read off the real
+object after each one. The fourth piece was refused, and the store was read
+again afterwards to show it held what it held before.
+
+```
+slot_count=3 slots_used=0 slots_free=3 stack_ceiling=100 weight_carried=0
+
+put_in armour #1: held=1 slots_used=1 weight_carried=1
+put_in armour #2: held=2 slots_used=2 weight_carried=2
+put_in armour #3: held=3 slots_used=3 weight_carried=3
+
+a fourth armour: refused, SlotsFullError: vessel-a holds 3 of 3 gear slots and
+1 armour takes 1 more; no gear is held in a slot this Vessel does not have
+
+after the refusal slots_used=3 weight_carried=3
+```
+
+The refusal changed nothing. A store never holds gear in a slot the Vessel was
+not given.
+
+### Forty units of ore stacked, and fifteen taken back out
+
+Forty units of lead ore went into the same store at the lowest grade. The slot
+count did not move, which is the whole point of the two halves. Fifteen units
+came back out, and then three ways of taking out too much were each refused.
+
+```
+put_in 40 lead ore: held=40 slots_used=3 weight_carried=43
+take_out 15 lead ore: held=25 weight_carried=28
+
+taking more than is held: refused, HoldingUnitsError: vessel-a holds 25 lead ore
+at Calx and 26 was asked for; a stack never falls under nothing
+
+taking zero units: refused, HoldingUnitsError: units must be a whole number of
+units at or above 1, got 0
+
+taking gear never put in: refused, HoldingUnitsError: vessel-a holds 0 weapons
+at Calx and 1 was asked for; a store gives out nothing it does not hold
+```
+
+A stack cannot go negative and cannot give out what it does not hold. Forty
+units took no slot at all.
+
+### The weight carried adds up to what is held
+
+The store was then read item by item, and each weight was added by hand off the
+two lists the store serves. That hand total was compared with the one number the
+store reports.
+
+```
+  gear  armour at Calx weighs 1
+  gear  armour at Calx weighs 1
+  stack 25 lead ore at Calx weighs 25 (1 a unit)
+
+added by hand off held_gear and held_stacks = 27
+store.weight_carried                        = 27
+the two readings agree: True
+```
+
+An empty store read zero. The weight carried is the sum of what is held and of
+nothing else.
+
+### The derived store key drops the id, so the store is named by the caller
+
+A Vessel holds an owner address, a class name, a level and an id. The derived key
+reads the first three and not the id, so a key made from them
+alone cannot separate a player's second Iron Edge from the first. The craft
+register already keys a Vessel this way, and the same collision sits in it.
+
+```
+vessel_key(vessel)  = 0xEkthelius:Iron Edge:1
+vessel_key(second)  = 0xEkthelius:Iron Edge:1
+```
+
+The store takes its key from whoever opens it, and the book refuses a key it
+already holds. That is how two Vessels of one class under one owner get two
+stores. The derived key is still served, and its collision is written next to
+it. The Vessel id is the clean answer and this module does not read it yet.
+
+### Two figures stop a store opening, and two more wait on a hauling rule
+
+No module sets how many gear slots a Vessel has. No module sets how far a stack
+runs. Both arrive from whoever opens the store, and a store refuses to open
+without either of them. The weight one material unit carries, and the weight one
+Quintessence of strength can lift, both sit in the conversion table as working
+figures of one. The operator has not decided either.
+
+```
+a Vessel's gear slot count                   no figure, required to open a store
+the stack ceiling                            no figure, required to open a store
+weight per material unit                     1, working
+maximum weight per Quintessence of strength  1, working
+
+slot_count absent: refused, StoreFigureError: slot_count is absent; no figure
+sets how many gear slots a Vessel has
+
+stack_ceiling absent: refused, StoreFigureError: stack_ceiling is absent;
+materials.STACK_CEILING_ABSENT carries no figure and the operator's word is
+'large', so every VesselStore takes its stack_ceiling from its caller
+```
+
+The first two are refusals, so no store ever runs on a slot count nobody chose.
+The third is read off every material and is used in every weight above. The
+fourth is read by nothing here, and an encumbrance rule is what would read it.
+
+### One hand-over, and what a refused one leaves behind
+
+Moving something between two Vessels is one call. It takes out of the first
+store before it puts into the second, and it puts the units back when the second
+store refuses them.
+
+```
+10 lead ore at Calx moved from vessel-a to vessel-b
+  the giver holds 15, the taker holds 10
+  vessel-a weight_carried=17  vessel-b weight_carried=10  added = 27
+
+a handover past the taker's ceiling: refused, StackCeilingError: vessel-c holds
+0 lead ore at Calx and 15 more reaches 15, above the 5 stack ceiling it was
+built with
+  vessel-a held 15 before and 15 after
+  vessel-c holds []
+
+gear into a no-slot store: refused, SlotsFullError: vessel-c holds 0 of 0 gear
+slots and 1 armour takes 1 more
+  vessel-a gear unchanged, two pieces of armour
+```
+
+The weight the first store carried before the move, twenty-seven, is the weight
+the two stores carry after it. A move moves; it does not mint and it does not
+lose.
+
+### A bad grade landed in the store before the refusal
+
+The first version of this module checked the quality grade too late. A grade the
+table does not carry was written onto a stack, and the refusal then came from the
+reading that followed the write. The caller saw a refusal and the store was left
+holding a thing nothing could read.
+
+```
+before the fix
+  put_in with grade 'Pristine'   refused, UnknownQualityError
+  held_stacks                    raised UnknownQualityError
+  weight_carried                 raised UnknownQualityError
+  to_dict                        raised UnknownQualityError
+  a later good put_in            raised UnknownQualityError
+
+after the fix
+  put_in with grade 'Pristine'   refused, UnknownQualityError
+  held_stacks                    ()
+  weight_carried                 0
+  to_dict                        read back clean
+  a later good put_in            held 1 lead ore
+```
+
+For a player that was every item in the Vessel becoming unreadable from one
+mistyped grade. The grade and the name are now checked before anything is
+written, on the way in and on the way out.
+
+### Can the same thing be in two stores at once
+
+It cannot be put in two stores by a hand-over. The hand-over removes before it
+adds, and its refusal path was driven above and returned the units. The store
+keyed under one name exists once, and a repeated key is refused.
+
+```
+a repeated store_key: refused, StoreKeyError: vessel-a already names a store
+
+can a stack exceed what exists        no module counts a world supply of a
+                                      material, so stack_ceiling is the only
+                                      bound there is
+can gear sit in a slot that is not
+there                                 no, the slot count refuses it
+can weight be carried with no store   no, weight_carried is a reading on a
+                                      store and no free function weighs a list
+```
+
+The open half is honest and is named. An item carries no name of its own yet, so
+two stores each holding one piece of armour cannot be told apart from one piece
+recorded twice. Nothing outside this module creates units, so today the only
+writer is a caller. Named instances come with a craft that names what it made.
+
+### What a store does not do
+
+```
+encumbrance        the weight is read and nothing turns it into a refusal or a
+                   turn point penalty; both figures it needs are working
+a hauling trip     the operator's rule is that encumbrance counts only while a
+                   Vessel moves items itself, and nothing carries anything
+a foraging run     nothing gathers a material, so every put-in is a caller's
+equipping          the item table answers one total against one cohesion, and no
+                   slot here holds gear to a Vessel's Quintessence
+trading            a hand-over asks no price and nothing prices a holding
+a surface          no panel calls this module
+a package export   the package entry binds no name from it
+```
+
+### What the two subtabs read, and what is still owed
+
+The Gear subtab and the Resources subtab each print a sentence about this gap
+today, and the run read both off the real handler.
+
+```
+Gear       "Nothing holds the items one Vessel carries, so this subtab lists the
+           loot the wallet holds and no item a Vessel wears."
+Resources  "Nothing holds how many units a participant carries, so no material
+           shows an amount."
+Resources  "No stack ceiling is set and no salvage recovery fraction is set."
+```
+
+The store answers the first two of those three. The gear list and the slot count
+are what the Gear subtab needs, and the units held at a grade are what the
+Resources subtab needs. Neither subtab calls the module, and the screen files
+belong to another unit, so nothing on screen changes today.
+
+```
+owed  src/competition/__init__.py binds no name from inventory. The package says
+      so itself at every start: "competition package holds 1 module(s) it does
+      not bind: inventory"
+
+owed  a slot count a Vessel actually has, and a stack ceiling for the operator's
+      word 'large'
+
+owed  the store reading the Vessel id. Two Vessels of one class at one level
+      under one owner are two values, and the store still works round the
+      derived key with a caller-supplied one
+
+absent  encumbrance, a hauling trip, a foraging run, equipping, trading, a
+        surface. Each is named in the module and none is built here
+```
+
+## 2026-09-11 08:50 - #585 - a Vessel has an id, and a level gained keeps it
+
+A Vessel carries a fourth field. Two Vessels of the same class, at the same level,
+under the same owner were one value, and three other modules each wrote that
+collision down beside a workaround for it. The field closes the collision at the
+record. None of the three workarounds changes here.
+
+```
+src/competition/vessels.py
+```
+
+### Where the id comes from, and the three shapes that could not answer
+
+The package already makes identifiers four ways, and one of them makes a value
+that is new on every call. A world draws its seed and then hashes it, so the same
+call twice gives two worlds. The Vessel id follows that shape, with the owner
+address hashed in beside the drawn value.
+
+```python
+VESSEL_ID_BYTES = 32
+
+
+def new_vessel_id(owner: object) -> str:
+    """Draw one id for a Vessel of ``owner``, hashing the address with a drawn value."""
+    address = _as_address(owner, "owner")
+    drawn = hashlib.sha256(
+        f"{address}|{secrets.token_hex(VESSEL_ID_BYTES)}".encode(),
+    ).hexdigest()
+    logger.info("%s drew vessel id %s", address, drawn)
+    return drawn
+```
+
+The other three shapes were read and set aside, each for a reason the code states
+about itself.
+
+```
+the craft register    joins the owner, the class and the level with colons. That
+                      is the colliding triple itself, and the module says so
+the guild roster      normalises a name its caller gives. No Vessel carries a
+                      name, and no register holds Vessels to refuse a repeat
+a counter per owner   needs a register that counts. Nothing keeps a Vessel
+                      against an address, so there is nothing to count in
+```
+
+The owner goes into the hash with the drawn value, so one drawn value under two
+addresses gives two ids. The result is sixty-four hex characters, the width every
+other identifier in this package already has.
+
+### Two Vessels of one class under one owner are two values
+
+The run built two Vessels with the same owner, the same class and the same level,
+then read the id off each object. The same two compared equal before the field
+existed.
+
+```
+before   a == b: True
+         Vessel(owner='0xEkthelius', class_name='Iron Edge', level=1)
+         Vessel(owner='0xEkthelius', class_name='Iron Edge', level=1)
+
+after    a == b: False
+         a  8ded319904cf1dbbd4765b27795c9937055a6706308126c602bb8ecb39f1717a
+         b  eb5d96cf18ace2abd1aacf3b728451f0304d9e4af7a1fbd3287133a1012a085e
+```
+
+A failure here would mean a player's second Iron Edge is the first Iron Edge to
+every module that holds one. One store, one alignment and one craft history would
+cover both.
+
+### A level gained keeps the id, and so does a theft
+
+The level is not in the drawn value, and the field is copied when a Vessel is
+rebuilt, so the id survives both changes a Vessel goes through today. An id that
+moved on a level-up would orphan the Vessel's store and reset the alignment it
+earned.
+
+```
+level 1 to level 2   id unchanged: True
+owner moved          id unchanged: True
+```
+
+The package proves the second half without being asked. Importing it builds seven
+Vessels and steals one, and the program's own log shows seven ids drawn for eight
+Vessel objects, because the stolen one kept its own.
+
+```
+acervator.vessels INFO 0xvictim drew vessel id f19c44141db54d5ed0193c0a2af1d07bca069ae4f8fc446626b9c569df16e306
+acervator.vessels INFO 0xthief drew vessel id be929363404f610478e19abe412e694f694b2806a259473182f038d0cdc9bfca
+acervator.domination INFO 0xthief stole 0xvictim's Lead Ward on world turn 0
+```
+
+### What stops a forged claim
+
+Nothing in the id stops one, and nothing needs to. The owner field stops it, and
+it did so before this change. A caller can copy another player's id onto a Vessel
+of their own address, and the Reincarnate record refuses that Vessel because its
+owner is a different address.
+
+```
+same id under another owner   accepted at the Vessel
+Reincarnate refuses it        Iron Edge is owned by '0xThief', not by '0xEkthelius'
+```
+
+What the id adds is that it cannot be guessed. It is a hash over thirty-two drawn
+bytes, so naming one Vessel's id needs that Vessel's record. No store reads the
+field yet, so no store can be reached with one either way.
+
+### A Vessel cannot be built without an id
+
+A blank id, a run of spaces and a tab each draw one. A value that is not text is
+refused. No call in the module returns a Vessel whose id is empty.
+
+```
+given ''      id length 64
+given '   '   id length 64
+given a tab   id length 64
+given None    vessel_id must be a string, got NoneType
+given 7       vessel_id must be a string, got int
+```
+
+Two Vessels can still share an id, because a caller may pass a copy of one and
+nothing refuses it. Nothing keys on the field yet, so nothing is in a position to.
+Each of the three modules below already refuses a repeated key of its own, and
+each becomes the refuser when it keys on this field.
+
+### What the three consumers may read now
+
+All three can read the field today with no change to the record. None of them
+does, and each is its own unit.
+
+```
+inventory   vessel_key joins the owner, the class and the level. The module states
+            the collision beside it, and a store still takes its key from a caller
+crafting    craft_id_for joins the recipe with those same three fields
+alignment   vessel_key files a score under the owner and the class, leaving the
+            level out so a level gained keeps the alignment
+```
+
+Every module that builds a Vessel still builds one. The three construction sites
+all pass three values in order, so the field takes its default and draws.
+
+```
+src/competition/domination.py      the driven theft, seven Vessels
+src/gui/main_tabs/proof_of_accumulation_tab_surface.py   current_vessel, one
+```
+
+### What this entry leaves owed
+
+No screen shows the id. The wallet's Vessels section and the Character Details
+subtab each draw a Vessel and neither prints it, and the screen files belong to
+another unit.
+
+```
+owed  inventory keys a store on the Vessel id
+owed  crafting keys a craft on the Vessel id
+owed  alignment files a score under the Vessel id
+owed  the package entry binds new_vessel_id and VesselIdError. Neither name is in
+      the export list, and the module itself is bound
+owed  three constants say a Vessel carries no id, each in a file this entry does
+      not edit: inventory.VESSEL_ID_ABSENT, alignment.VESSEL_ID_OWED and
+      domination.HEALTH_SOURCE_ABSENT
+owed  something that keeps a Vessel against an address. current_vessel builds one
+      on every read, so the id behind the tab is a new id each time
+```
+
+## 2026-09-11 08:55 - #585 - a drop names the thing that dropped
+
+### A drop carried a tier and no thing
+
+Two units recorded the same gap in their own words. The loot module made a drop
+that named a rarity tier and a wallet, and named nothing that had dropped. The
+item table declares four types. The store holds items in two halves. A drop had
+nowhere to go, and the drop record is what changed.
+
+`src/competition/loot_drop.py` — the record names the type, and refuses one the
+item table does not declare
+
+```python
+    item_id: str
+    tier_name: str
+    short_form: str
+    item_type: str
+    exchange_id: str
+    symbol: str
+    season: int
+    roll: int
+    holder: str
+    dropped_at: float
+
+    def __post_init__(self) -> None:
+        """Refuse an ``item_type`` or a ``quality`` the item tables do not declare."""
+        drop_storage_class(self.item_type, self.quality)
+```
+
+Nothing about the five tiers changed. Their names, short forms, weights, Impetus
+relief and effect bonuses are the same bytes as before, the weights still total
+100, and the map mark registry still resolves all five.
+
+### The five quality grades are the five loot tiers, in one tuple
+
+An item's cohesion varies by quality grade. A previous unit measured that the
+grades are the loot tiers themselves. The run read both sets off the real
+modules and they are one object.
+
+```
+TIER_NAMES          ('Calx', 'Cauda Pavonis', 'Flores', 'Elixir', 'Magisterium')
+QUALITY_GRADES      ('Calx', 'Cauda Pavonis', 'Flores', 'Elixir', 'Magisterium')
+same tuple object   True
+```
+
+The material table assigns its grade tuple from the loot module's tier names, so
+the two cannot drift apart. A drop's tier already names its quality.
+No second scale exists, and the module adds none. The drop carries no separate
+grade field and reads its own tier name instead.
+
+### Which type a tier yields is an input, and an absent one refuses the drop
+
+No source names the item type a tier yields. The operator has not set it and no
+module holds it. The loot module decides nothing and asks its caller.
+
+```python
+#: What no source sets, and what ``require_yields`` refuses a drop without.
+TIER_YIELD_ABSENT = (
+    "no source names the item type a loot tier yields, so drop_for_market takes a "
+    "yields mapping from its caller and refuses a drop without one"
+)
+```
+
+One figure stays owed: the mapping from each of the five tiers to one of the four
+item types. Without that mapping the module draws no drop at all.
+
+### Four ways a drop is refused before it exists
+
+Each refusal ran on the real objects. Each sentence is the module's own.
+
+```
+no mapping at all
+  TierYieldError: no source names the item type a loot tier yields, so
+  drop_for_market takes a yields mapping from its caller and refuses a drop
+  without one
+
+a type the item table does not declare
+  DropItemError: Calx yields 'potions', which is not a PoA item type; the table
+  carries armour, weapons, accessories, consumables
+
+a tier that is not one of the five
+  UnknownTierError: Lapis names no loot tier; the five are Calx, Cauda Pavonis,
+  Flores, Elixir, Magisterium
+
+a tier left without a type
+  TierYieldError: Elixir carries no item type, so a roll landing on it would
+  name no thing
+```
+
+The item type list in that second message is the item table's own. The loot
+module writes no second list of types and no second list of grades.
+
+### The item table is read when a drop is made, not when the module loads
+
+The material table imports the loot module for its tier names, and the item table
+imports the material table. The plain import the other way was driven and it
+failed.
+
+```
+ImportError: cannot import name 'rate_named' from partially initialized module
+'src.competition.conversion_rates' (most likely due to a circular import)
+```
+
+The item table is read inside the call that needs it. One comment in the file
+carries the rule a reader needs, and it is that a drop's storage class comes from
+the item type and never from the drop.
+
+### A drop delivered into the slot half, read off the store
+
+A store was opened for one Vessel with one gear slot and a hundred unit stack
+ceiling. The drops came from eight real rolls under the module's own seed. The
+store was read off the real object before and after.
+
+```
+before    held_gear () held_stacks () slots_used 0 weight_carried 0
+
+roll  844 tier Cauda Pavonis  item_type accessories  storage_class gear
+
+deliver   vessel-u84 took in 1 accessories at Cauda Pavonis; it now holds 1,
+          1 of 1 gear slots, weight 1
+
+after     held_gear (SlotItem(name='accessories', quality='Cauda Pavonis'),)
+          held_stacks ()
+          slots_used 1 weight_carried 1
+```
+
+The store decided which half took it. The drop named a type and a grade, and the
+storage class the item table gives that type is what sent it to a counted slot.
+
+### The same drop refused a second time, and refused to a second store
+
+A delivery is recorded against the item's own identifier, which is the hash of
+the drop's own contents. A second delivery of the same item is refused, to the
+same store and to any other.
+
+```
+again, same store     DropDeliveryError: item 2d960fa0e8cfab76 already went to
+                      vessel-u84; one drop reaches one store
+
+to a second store     DropDeliveryError: item 2d960fa0e8cfab76 already went to
+                      vessel-u84; one drop reaches one store
+
+the second store held ()  ()
+```
+
+### A consumable drop goes on a stack and takes no slot
+
+The same store had no free gear slot left. A consumable drop still went in,
+because a consumable stacks and takes no slot.
+
+```
+roll  370 tier Calx  item_type consumables  storage_class consumable
+
+deliver   vessel-u84 took in 1 consumables at Calx; it now holds 1, 1 of 1 gear
+          slots, weight 2
+
+after     held_gear (SlotItem(name='accessories', quality='Cauda Pavonis'),)
+          held_stacks (Stack(name='consumables', quality='Calx', units=1),)
+          slots_used 1
+```
+
+The two halves did not take each other's space. That is the operator's own rule
+on gear, consumables and resources, and the store already enforced it.
+
+### A gear drop into a store with no free slot stays earned
+
+This is the question that matters for a player. A full store refuses gear, so a
+gear drop can be unplaceable. The delivery is recorded only after the
+store accepts it, so a refused drop stays undelivered and can be placed later.
+
+```
+slots_free            0
+refused               SlotsFullError: vessel-u84 holds 1 of 1 gear slots and 1
+                      accessories takes 1 more; no gear is held in a slot this
+                      Vessel does not have
+
+the store after       held_gear (SlotItem(name='accessories',
+                      quality='Cauda Pavonis'),)  slots_used 1
+delivered_to          None
+still undelivered     6 of 8
+
+the same drop into a store with a free slot
+                      vessel-u84-b took in 1 accessories at Cauda Pavonis; it
+                      now holds 1, 1 of 4 gear slots, weight 1
+```
+
+Nothing was lost. The store was unchanged by the refusal and the drop was still
+the player's to place.
+
+### The file carries the deliveries, and a swapped type is refused
+
+The loot file now records which store took each item, and the file version moved
+from one to two. No version one file exists on this machine, so nothing had to be
+converted.
+
+```
+drops replayed        8
+deliveries replayed   vessel-u84, vessel-u84-b
+still undelivered     5
+
+a second replay       LootStoreError: ... is already loaded; a second replay
+                      would double it
+
+a file whose item type was swapped for 'potions'
+                      LootStoreError: ... could not be replayed: 'potions' is
+                      not a PoA item type; the table carries armour, weapons,
+                      accessories, consumables
+```
+
+The run compared the swapped file against the good one and printed that the bytes
+differed, so that last refusal is a reading and not an assumption.
+
+### Nothing in the running program delivers a drop into a store
+
+The tab's drop button was pressed on the real handler. It refuses before it
+reaches any of this, because no market qualifies on this machine.
+
+```
+action   drop
+acted    False
+message  pool_below_floor:  holds 0 eligible markets, under the floor of 12, so
+         it draws nothing
+```
+
+The button adds a drop to the loot file and never puts one in a Vessel's store.
+No module calls the delivery. The three new refusals are all raised as loot
+faults, which the tab already catches and prints as its own message, so a press
+after the mapping is set will read the owed figure on screen rather than crash.
+
+### One sentence in the items module is now false
+
+The items module still prints that loot generation draws a tier and names no
+item, and the Gear subtab prints that sentence word for word. That file and the
+screen files belong to other units, so neither was touched.
+
+```
+the sentence   loot generation     loot_drop.drop_from_pool draws a tier and
+                                   names no item
+where          src/competition/items.py, in ABSENT_MECHANISM_NOTES
+now false      a drop names one of armour, weapons, accessories, consumables
+owed           the owning unit rewrites that note, and the Gear subtab stops
+               printing it
+```
+
+One sentence in the 08:35 entry above is corrected by this change, from "A loot
+drop names the wallet it went to and names no item" to "A loot drop named the
+wallet it went to and named no item". Nothing else on this page is reworded.
+
+### What reads a drop's item type, and what is still owed
+
+The Gear subtab lists the loot a wallet holds. It prints the tier short form, the
+market symbol, the season and the tier bonus, and it reads no item type.
+
+```
+reads the item type   nothing
+
+provides and unread   item_type, quality and storage_class on every drop,
+                      LootStore.deliver, LootStore.drop, LootStore.delivered_to
+                      and LootStore.undelivered
+
+owed                  the mapping from each of the five tiers to one of the four
+                      item types. One figure, and the only one
+
+owed                  a Vessel on the drop. A drop names a wallet address and a
+                      store is keyed per Vessel, so the delivery is given the
+                      receiving store by its caller
+
+owed                  the package entry binds no new name from this module
+
+absent                a loot table per monster, a chest, a dungeon drop, a
+                      control that delivers, a surface that shows an item type.
+                      None is built here
+
+## 2026-09-11 09:20 - #147 - a control creates the node identity, and the other controls stop refusing
+
+### The press writes one keypair and names this node
+
+Every control on this tab refused, and all of them refused for one reason. The
+file that names the participant was written by nothing a running window builds.
+The only code that wrote it sits on the Competition tab, a screen nothing
+constructs. The tab now carries two more buttons, at the head of the control row.
+The first asks and writes nothing. The second writes the file and names this node.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - the press, in full
+
+```python
+path.parent.mkdir(parents=True, exist_ok=True)
+made = BotIdentity(str(path)).generate()
+```
+
+One call is enough, because the identity module already loads an existing record
+rather than replacing it. The control refuses before it reaches that call anyway,
+so a second press answers with a sentence on screen instead of a silent
+no-change.
+
+### What the identity record holds, and what the panel never draws
+
+A new panel sits in the control bar and reports the identity this node holds. It
+draws four readings. The run below was made on a scratch home with no identity in
+it, and every line is what the program printed.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` - what the panel drew
+
+```
+File           bot_identity.json - held
+Participant    429a35254f71
+Public key     429a35254f710d3c6355fa127e45bf4b8a83e2938862a902689e6d25a721879f
+Created        2026-09-11 09:06:42
+```
+
+The record on disk holds five fields. Four of them are above. The fifth is the
+private key, and it reaches no row here and no line anywhere else.
+
+```
+the file         bot_identity.json, 288 bytes
+what it holds    version, bot_id, created_at, pubkey_hex, privkey_b64
+what is drawn    the four readings above
+what is not      privkey_b64, the half that signs
+```
+
+Before the press the same panel holds one reading and one sentence instead,
+naming the button that would fill it.
+
+```
+File             bot_identity.json - no file yet
+the sentence     bot_identity.json holds no identity. Confirm the identity is
+                 the only thing that writes one, and until it is pressed every
+                 other control here refuses.
+```
+
+### The control that refused now runs, and both readings came off the page
+
+The panel filling up is the smaller half of the proof. The half that matters is a
+different control, one that refused before the press, running after it. The run
+drew the page in both builds and read the result line off the drawn document.
+
+```
+before the press   Distil   refused   bot_identity.json does not exist, so no
+                                      participant is named.
+after the press    Distil   acted     Distilled 0.1 Quint.
+```
+
+Nothing about the Distil button changed. The only thing that changed between
+those two lines is that an identity exists.
+
+### Two refusals, and the replacement is the one that matters
+
+A control that writes lasting state on this tab asks first and acts second, which
+is how the chain reset and the world control already work. This control keeps
+that, and adds one of its own: one identity a node, with no way back.
+
+```
+no confirmation  Confirm the identity writes bot_identity.json and names this
+                 node by the public half of one keypair. One identity a node,
+                 and both chains read it. This control writes nothing.
+a second one     bot_identity.json already holds the identity of participant
+                 429a35254f71. One identity a node, so this refuses a second:
+                 replacing it abandons the wallet, the Vessel, the guild seat
+                 and the store that one owns.
+```
+
+The second sentence is the whole reason this control is careful. An identity is
+the address that owns things. A new keypair would not lose the old wallet, the
+old Vessel or the old guild seat; it would leave them on an address nobody on
+this machine can sign for again. After the refused second press the run read the
+file back, and the participant was the first one, unchanged.
+
+### One identity a node, and both chains read it
+
+The reset control and the world control both refuse the live chain, because both
+write chain state. This control writes none, and the file it writes carries no
+chain name.
+
+```
+the path          the runtime directory, and the file name with no suffix
+who reads it      the tab's own participant lookup, and the node name the
+                  shared TestNet bridge answers with
+what that means   the Demo TestNet chain and the Live chain name this node the
+                  same way, off one file
+```
+
+The control therefore acts on either chain, and pressing it twice from two chains
+is the same second press, refused the same way.
+
+### The private key reaches no output, and the search proved it can find one
+
+The private key is the one value this work had to keep off every surface. A
+search proves that better than a reading does, and a search nobody has watched
+find anything proves nothing at all. The run searched every file it wrote for the
+stored key in all three of its shapes, then planted the key in one more file to
+show the search works.
+
+```
+files searched                 27 - both rendered pages, four payloads, both
+                               readings files, both console outputs, the
+                               scratch runtime tree
+shapes looked for              the stored text, the same bytes in hex, and the
+                               raw bytes
+files holding the private key  none
+files holding the public key   12 of 27
+planted one file with the key  found, 1 file
+removed that file              none again
+```
+
+The public key line is the control. A search that finds it in twelve files can
+find a string of that shape, so the empty result for the private key is a fact
+about the output rather than about the search. The pictures are covered
+separately: the panel's rows were counted off the drawn document, four labels and
+four values, and the private key is in none of them.
+
+### What the file lands with, and what already guards a credential here
+
+The identity file lands beside the exchange credentials, so the run measured both
+rather than inventing a rule.
+
+```
+bot_identity.json          0o666
+coinbase_credentials.json  0o666
+instance.lock              0o666, and the code that opens it asks for 0o600
+a plain write              0o666
+an open asking for 0o600   0o666
+a change to 0o600 after    0o666
+```
+
+Windows does not carry those permission bits, so all three ways of asking give
+the same answer on this machine. Nothing in the tree narrows a credential file
+either, which makes this file consistent with the one beside it. The guard that
+does exist here is a habit rather than a permission: the suite's own walk over
+the runtime tree reads sizes and never opens a file, so it cannot read the
+credentials it walks past.
+
+### Both variants drew the panel, read off the pictures
+
+The run drew all four pages twice, once in the desktop window and once in the
+Electron shell, and compared them reading by reading off the drawn document.
+
+```
+pages drawn         4 - before the press, the press, the refused second press,
+                    and the control that now runs
+readings compared   64 in each build
+differences         0
+the control         one value changed by hand, 1 difference reported
+panel height        75 device pixels with no identity, 97 with one, in both
+```
+
+Four readings were left out of the comparison on purpose, because each is a fact
+about the window the host gave rather than about the tab: the two window sizes,
+the height the control bar was given, and where on screen the panel landed.
+
+### Where the panel sits, and what it costs the bar
+
+The control bar scrolled before this unit and scrolls after it. The two new
+buttons and the result line are visible with no scrolling; the new panel joins
+the reset readout and the world readout below the fold.
+
+```
+control bar content     320 points with no identity, 338 with one
+what the bar showed     136 points, in a window 1600 by 1000
+visible with no scroll  both new buttons, and the result line
+below the fold          the identity panel, the reset readout, the world readout
+```
+
+The result line is what carries the press, and it carries all four identity
+readings the moment the button is pressed, so the panel below is a standing
+readout rather than the only place the figures appear. The Quint subtab is the
+nearest subtab home, because it already lists the chain's files. It was not used:
+the two controls that already write lasting state put their readouts in the
+control bar, and a readout for the thing every control needs should not sit
+behind a keyboard shortcut.
+
+### Two earlier sentences stop being true on a press
+
+Two sentences on this page said nothing here creates an identity, and both were
+true when written. They stay true of a program nobody has pressed anything in.
+
+```
+what it said       "Its key file is read, never created, so a machine with no
+                   identity yet names none."
+what replaces it   The participant lookup still only reads. The identity
+                   control creates the file, and the lookup reads it after.
+
+what it said       "The one piece of the program that writes it belongs to the
+                   Competition tab, a shelved screen."
+what replaces it   That screen still writes one and is still shelved. This tab
+                   now writes one too, on a press, and that is the path an
+                   operator can reach.
+```
+
+### What no press here creates yet
+
+The press stops at an identity. It reaches none of the five things below, and
+each is named here rather than half-built.
+
+```
+a participant      nobody is entered into anything. The identity is an address
+                   and no player record is written
+a registration     no bot is registered in a competition
+a distillation     no Quintessence is minted. The Distil button does that, and
+                   it is a different press
+a world            no world is declared. The world control does that
+an ability         nothing is designed, chosen or granted
+```
+
+One figure is owed and is not invented here.
+
+```
+a second identity  there is no way to retire one and start again. The control
+                   refuses a replacement and nothing else removes the file, so
+                   an operator who wants a fresh address deletes it by hand
+```
+
+---
+
+## 2026-09-11 09:45 - #586 - the four event modes take the names of alchemical operations
+
+**HIS.**
+
+> "Please rename events to match Hermetic tests or similar..."
+
+The four modes carried game-genre names. Each now carries the name of an operation
+the pre-modern alchemical corpus describes, picked so the operation's own meaning
+matches what that mode does. Only the label moved.
+
+```
+mode code            was                       now
+monster_smash        Monster Smash             Fixation
+team_monster_smash   Team Based Monster Smash  Coagulation
+dungeon_crawl        Dungeon Crawl             Descension
+raid                 Raid                      Cementation
+```
+
+Every label is now eleven characters or fewer, which the twelve-character short-form
+rule asks for. Three of the four old labels were longer than that.
+
+### The operation behind each mode, and why it fits
+
+Three of the four come from the eight operations of the Summa perfectionis
+magisterii of pseudo-Geber, written shortly before 1310. The fourth is the parting
+assay of the pre-modern metal testers.
+
+```
+Fixation      a volatile body made to stay in the fire without flight.
+              One party seat, no guild, no map, the lowest tier.
+              A single body, alone in the fire, that holds or does not
+
+Coagulation   a fluid brought to one solid body, the coagula of solve et coagula.
+              Two to a hundred and twenty seats, and one guild required.
+              Separate parts set into a single mass
+
+Descension    the active part driven down to the bottom of the vessel instead of
+              rising as vapour, worked in a pierced-base descensory.
+              One to six seats, and the mode carries a map
+
+Cementation   a mass packed in a corrosive cement and held in fire until the base
+              part is eaten out. The parting assay of the German assay booklets of
+              about 1510 and of Agricola's seventh book, 1556.
+              Two to sixty seats, one guild, a map, the highest tier
+```
+
+Cementation is the widest of the four readings. Its source meaning parts a mass by
+fire, and the mode applies a guild host of up to sixty to one target. Ceration was
+the alternative and it lost: it softens a hard body for admission, which matches a
+raid less well than parting a mass does.
+
+### Sublimation was the first pick and the Flores tier already holds it
+
+Sublimation fitted the solo mode and is not available. The five loot tiers are gates
+1, 5, 8, 9 and 10 of Ripley's twelve, and the eighth gate is Sublimation, which
+named the Flores tier. Two different things would have shared one word.
+
+```
+gate   operation        already names
+  1    Calcination      the Calx tier
+  5    Putrefaction     the Cauda Pavonis tier
+  8    Sublimation      the Flores tier
+  9    Fermentation     the Elixir tier
+ 10    Exaltation       the Magisterium tier
+```
+
+Conjunction and Projection were rejected on the rule this project already applied to
+the tier names: a word that carries another meaning in the tree is not taken twice.
+Conjunction means a boolean AND in the engine's own comments, and the charts surface
+already holds a price projection.
+
+```
+candidate        files naming it across src, contracts and docs
+Fixation          1   a quoted source in a design note, no second meaning
+Descension        0
+Coagulation       0
+Cementation       0
+Conjunction       5   rejected
+Projection        4   rejected
+Separation        7   rejected
+Multiplication    4   rejected
+```
+
+### The codes did not move, and a saved record is why
+
+A mode has a code and a label. The label is what a person reads. Every other module
+keys on the code, and a saved record stores the code. The four codes are unchanged.
+
+```
+a saved party record     {'mode': 'raid', 'leader': 'a', 'members': ['a', 'b'],
+                          'guild_key': 'g'}
+a saved dungeon entry    carries mode_code, replayed through mode_named
+a renamed code on replay UnknownModeError | 'cementation' is not a PoA event mode;
+                          the four are monster_smash, team_monster_smash,
+                          dungeon_crawl, raid
+```
+
+No saved PoA file exists yet, so renaming a code would break nothing today. It would
+refuse every saved record the first time anyone plays, and no migration exists.
+
+### The screen took the new names with no edit of its own
+
+The tab reads the label out of the module, so no screen file changed. All eight event
+rows the tab serves carry the new label.
+
+```
+monster_smash             -> Fixation    | Standard | party 1 - 1   | map False
+monster_smash_elite       -> Fixation    | Elite    | party 1 - 1   | map False
+team_monster_smash        -> Coagulation | Standard | party 2 - 120 | map False
+team_monster_smash_elite  -> Coagulation | Elite    | party 2 - 120 | map False
+dungeon_crawl             -> Descension  | Standard | party 1 - 6   | map True
+dungeon_crawl_elite       -> Descension  | Elite    | party 1 - 6   | map True
+raid                      -> Cementation | Standard | party 2 - 60  | map True
+raid_elite                -> Cementation | Elite    | party 2 - 60  | map True
+```
+
+The map refusal, the party refusals and the army refusal read the label too, so all
+of them now name the operations.
+
+```
+Fixation carries no map, so this subtab does not open. Descension and Cementation do.
+Cementation admits 2 to 60 participants and this party holds 61
+a Descension party links into no army; an army is built from Cementation parties
+```
+
+The map glyph table keys on the code, not the label, so each mode kept its mark. The
+registry answered all sixteen marks and the distinctness check passed.
+
+```
+kind= monster_smash       glyph= U+2720  label= Fixation     token= STATE_ARMED
+kind= team_monster_smash  glyph= U+2691  label= Coagulation  token= WARNING
+kind= dungeon_crawl       glyph= U+2656  label= Descension   token= WARNING_STRONG
+kind= raid                glyph= U+26E8  label= Cementation  token= DANGER
+```
+
+### What the rename did not touch
+
+Every field of all four modes was read off the module before and after the change.
+One hundred and twenty-eight field readings across the eight event rows, sixteen
+lines differ, and all sixteen are the label.
+
+```
+before   EventMode(code='raid', label='Raid', tier=4, party_min=2, party_max=60,
+                   guild_required=True, has_map=True)
+after    EventMode(code='raid', label='Cementation', tier=4, party_min=2,
+                   party_max=60, guild_required=True, has_map=True)
+
+non-label fields changed   0
+```
+
+No figure changed. No party range, no guild flag, no map flag, no turn length, no
+tier, and no difficulty, entry fee, loot rarity or loot drop rank.
+
+Dated sections above this one quote refusals and keypress readings from the runs that
+produced them. Those blocks keep the label those runs printed, so the record of each
+run stays true, and the table at the head of this section is where the retired names
+are declared.
+
+### The name clearance on these four is owed
+
+The clearance page checks every PoA name against similar content, and against its own
+source meaning. These four labels landed after that page and have not been through it.
+
+```
+owed   Fixation, Coagulation, Descension and Cementation through the
+       similar-content search in docs/design/poa_name_clearance.md
+```
+
+## 2026-09-11 10:10 - #147 - every Vessel record keys on the Vessel id
+
+A player owns several Vessels. Each record the package files must name one of
+them. One Vessel now holds one key, and `Vessel.record_key` is that key. It
+carries the owner, the class and the `vessel_id`. The level is not in it.
+
+Two modules each built their own key before. Both read `record_key` now, so a
+store and an alignment cannot disagree about which Vessel a record belongs to.
+
+```
+vessels      record_key returns the owner, the class_name and the vessel_id
+alignment    vessel_key returns record_key unchanged
+inventory    vessel_key joins record_key with colons, the store_key shape
+crafting     craft_id_for joins record_key between the recipe and the turn
+```
+
+### Two Vessels of one class under one owner read two records
+
+A run built two Vessels with one owner, one class and one level. It scored one
+action against each.
+
+before
+```
+vessel_key(first)   ('addr_owner_one', 'Lead Ward')
+vessel_key(second)  ('addr_owner_one', 'Lead Ward')
+vessel_count        1
+actions_of(first)   ['forge a blade', 'raze a village']
+actions_of(second)  ['forge a blade', 'raze a village']
+```
+
+after
+```
+vessel_key(first)   ('addr_owner_one', 'Lead Ward', 'fb244aa7d4...')
+vessel_key(second)  ('addr_owner_one', 'Lead Ward', 'b7d1569db1...')
+vessel_count        2
+actions_of(first)   ['forge a blade']
+actions_of(second)  ['raze a village']
+```
+
+The owner stays in the key, so the roll-up still reads it. The same run read 2
+scored actions at the address, 2 at the guild and 2 at the world, on both sides.
+
+### A level gained keeps the store
+
+A run opened a store for a Vessel at level 7 and put one armour in a gear slot.
+It then raised the same Vessel to level 8 and asked the book for the store.
+
+before
+```
+key at level 7   addr_owner_one:Tin Bulwark:7
+key at level 8   addr_owner_one:Tin Bulwark:8
+the book         UnknownStoreError: 'addr_owner_one:Tin Bulwark:8' names no
+                 store; the book holds addr_owner_one:Tin Bulwark:7
+```
+
+after
+```
+key at level 7   addr_owner_one:Tin Bulwark:15ac17bff769edc2...
+key at level 8   addr_owner_one:Tin Bulwark:15ac17bff769edc2...
+the book         the same store, holding armour
+```
+
+### Two Vessels of one class open two crafts
+
+The same run gave one recipe and one turn to two Vessels of one class at one
+level under one owner.
+
+before
+```
+craft_id_for(first)   armour:Calx:addr_owner_one:Tin Bulwark:7:0
+craft_id_for(second)  armour:Calx:addr_owner_one:Tin Bulwark:7:0
+the second craft      HeldCraftError: already open
+```
+
+after
+```
+craft_id_for(first)   armour:Calx:addr_owner_one:Tin Bulwark:15ac17bff7...:0
+craft_id_for(second)  armour:Calx:addr_owner_one:Tin Bulwark:fba9b6fe10...:0
+the second craft      open
+```
+
+### The three modules that read the key
+
+```
+domination   a health of zero on one Vessel read incapacitated on its twin
+             before. The twin reads able now, and the marked Vessel still
+             reads incapacitated
+prayer       two Vessels of one class in one congregation were refused as one
+             Vessel before. The prayer files at a congregation of 2 now, and
+             the same Vessel named twice is still refused
+consecration a place records the priest's key. The record carries three parts
+             now, and the class stays the second part the log reads
+```
+
+### A theft still moves the key
+
+`steal_vessel` copies the `vessel_id` onto the moved Vessel and writes a new
+owner. The owner is in the key, so the key still changes. `carry_to` moves the
+incapacitation onto the new key, and the scored actions stay under the
+victim's key. No other Vessel of the victim's ever held that key now.
+
+### What the Vessel key leaves owed
+
+```
+owed  the scored actions a stolen Vessel earned. A key of the vessel_id alone
+      would carry them, and it would leave alignment_of_address and
+      unguilded_addresses no owner to read
+owed  a screen that shows a key. No subtab draws one
+owed  open_store still takes its key from a caller, so a caller that builds
+      its own key can still name one store twice
+## 2026-09-11 10:25 - #147 - the package binds its last module, and the item notes say what exists
+
+The PoA package reads its own folder at import. It compares the files it holds
+against the names it binds, and it logs the difference. That log line is the
+package's own statement about itself.
+
+The package held 44 module files and bound 43. One file was reachable only by its
+own full path.
+
+```
+before   acervator.competition WARNING
+         competition package holds 1 module(s) it does not bind: inventory
+
+after    acervator.competition DEBUG
+         competition package binds every module it holds
+```
+
+`report_unbound_modules` returned `['inventory']` before the change and `[]` after
+it. The entry file now imports the module. It keeps every existing import line and
+every existing name.
+
+```
+names in the export list before   901
+names added                        36
+names in the export list after    937
+
+public names inventory declares    39
+names held back                     3
+```
+
+### Three names stay unexported
+
+A package name carries one value. Three of inventory's names repeat a name the
+entry file already binds, and each repeat carries a different value. The entry file
+skips all three, so no value that already works is replaced. A reader reaches them
+by naming the module.
+
+```
+ABSENT_MECHANISMS        vessels holds this name
+ABSENT_MECHANISM_NOTES   vessels holds this name
+vessel_key               alignment holds this name
+```
+
+The import goes after the dungeon entry, at the end of the import section. Every
+module inventory reads is bound above it: the conversion rates, the items, the
+materials, the Quintessence ledger and the vessels.
+
+### Four modules said the package did not bind them
+
+Four modules each carry a sentence about their own export surface. Three of those
+sentences were false before this unit, and the fourth became false when the package
+bound inventory. Each sentence is now restated. None is removed.
+
+```
+dungeon_entry   EXPORT_OWED              the entry file already imported it
+domination      PACKAGE_EXPORT_OWED      the entry file already imported it
+crafting        the package export note  the entry file already imported it
+inventory       the package export note  the entry file imports it in this unit
+```
+
+Each restated sentence names what the package binds and what stays out of reach. A
+name a module repeats from a module bound above it is still reached by importing
+that module directly.
+
+### The Gear subtab prints eight item notes, and five were false
+
+The Gear subtab reads its mechanism rows from the items module. Each row is a claim
+about what the tree builds. All eight were driven against the real modules, one at a
+time. Five were false.
+
+```
+a crafting recipe   FALSE   recipe_for returned a Recipe: loss_share 0.25,
+                            turns_required 3. A Recipe with no loss_share refused
+salvage             holds   no module destroys an item for its Quintessence
+equipping           FALSE   put_in held armour in slot 1 of 4
+inventory           FALSE   put_in held 7 units of lead ore, units_held 7
+slot count          holds   a store built with no slot figure refused
+encumbrance         FALSE   weight_carried returned 7 on that store
+loot generation     FALSE   a drop carried item_type armour, quality Calx,
+                            storage_class gear
+named instances     holds   an item type carries a name, a storage class, a
+                            component list and a note, and no instance name
+```
+
+The tuple keeps all eight entries and all eight keys. An entry whose mechanism now
+exists keeps its place, and its note says what builds it and what is still missing.
+The tuple's own description now says that.
+
+### What the screen shows
+
+The subtab payload was read off the bridge method `proof_of_accumulation_tab.state`,
+the same request the screen sends. The corrected sentences reached the payload with
+no change to the panel that prints them, because the panel reads the module.
+
+```
+mechanism rows in the payload   8
+rows whose text this unit changed   5
+```
+
+The heading above those rows read "Nothing supplies these". Five rows now name
+something that is supplied, so the heading was false. It now reads "What supplies
+these, and what does not".
+
+### What is still absent
+
+Binding a module does not build a mechanism. These gaps are unchanged.
+
+```
+no figure sets a Vessel's gear slot count
+no figure sets the stack ceiling
+nothing turns a carried weight into a refusal or a turn point penalty
+nothing reads an item's cohesion against a Vessel's Quintessence, so the
+    equip check has no caller
+nothing destroys an item for the Quintessence it embeds
+no table names a recipe, and both recipe figures arrive from the caller
+no source names the item type a loot tier yields
+no artefact carries an instance name
+no panel calls the store
+```
+
+## 2026-09-11 11:05 - #585 - a finished craft puts its item in the crafting Vessel's store
+
+### The store takes the item before the Quintessence moves
+
+The craft register made an item and the store held nothing of it. The register
+returned a `CraftResult` naming the item, and no module read that name. The two
+modules are now wired. `CraftRegister` is built with a `StoreBook` as well as a
+ledger, and `complete_craft` puts the made item in the store the book holds for
+the crafting Vessel.
+
+The store key is never built by hand. `inventory.vessel_key` renders it from the
+Vessel's own `record_key`, so the craft and the store name the same Vessel.
+
+`src/competition/crafting.py` — the store takes the item, then the ledger moves
+
+```python
+            recipe = craft.recipe
+            store = self._store_for(craft.vessel)
+            stored = self._store_item(craft, store)
+            try:
+                moved = self._ledger.embed_from_wallet(
+                    craft.crafter,
+                    recipe.quintessence_from_wallet,
+                    recipe.quintessence_embedded,
+                )
+            except Exception:
+                store.take_out(
+                    recipe.item_type_name,
+                    recipe.produced_quality,
+                    UNITS_PER_CRAFT,
+                )
+```
+
+`VesselStore.put_in` reads the storage class off the item type itself. Armour,
+weapons and accessories are gear and reach a counted slot. A consumable reaches
+a stack. The craft sets no class of its own.
+
+One craft was driven end to end. The store, the wallet and the four buckets were
+read off the real objects on each side of the one `complete_craft` call. The
+recipe figures and both store figures are driving inputs of that run. No module
+holds either of them.
+
+```
+driving inputs   loss_share 0.25, turns_required 3, slot_count 2,
+                 stack_ceiling 4, fee_usd 1000, trade_grade 1
+
+before   held_gear []            held_stacks []       slots_used 0 of 2
+         units_held armour at Calx 0
+         wallet 1000             embedded 0           delta 0
+
+after    held_gear [armour, Calx, storage_class gear, weight 1]
+         held_stacks []          slots_used 1 of 2
+         units_held armour at Calx 1
+         wallet 999.99999999     embedded 0.00000001  delta 0
+         is_stored True          is_accounted True
+```
+
+The item in the slot carries the grade the craft made it at. The Quintessence
+that left the wallet equals what the embedded bucket gained, and conservation
+balances on both sides.
+
+### A full store refuses, and the craft waits
+
+A store can refuse. Its slots fill and its stack ceiling is reached. A refused
+store raises before `embed_from_wallet` runs, so the craft stays in
+`open_crafts`, the wallet keeps what the craft owes, and the store holds what it
+held. Nothing is made and nothing is lost.
+
+A store was opened with no gear slot at all. The craft opened, then the
+completion was refused.
+
+```
+driving inputs   slot_count 0, stack_ceiling 1
+
+CraftDeliveryError, raised from SlotsFullError
+  ... holds 0 of 0 gear slots and 1 armour takes 1 more; no gear is held in a
+  slot this Vessel does not have
+
+after    held_gear []            slots_used 0 of 0
+         wallet 1000             embedded 0           delta 0
+         ledger movements 1      open_crafts 1        completed_crafts 0
+```
+
+The one ledger movement is the distil that funded the wallet. The craft made no
+movement of its own.
+
+A second store was opened with a stack ceiling of one unit and one consumable
+already on the stack. The same refusal held for the stacking half.
+
+```
+CraftDeliveryError, raised from StackCeilingError
+  ... holds 1 consumables at Calx and 1 more reaches 2, above the 1 stack
+  ceiling it was built with
+
+after    held_stacks [consumables, Calx, 1 unit]
+         wallet 1000             embedded 0           delta 0
+         open_crafts 1           completed_crafts 0
+```
+
+A book that holds no store for the Vessel refuses earlier still. `begin_craft`
+asks the book for the store and raises, so no craft opens that would have
+nowhere to put its item.
+
+```
+CraftDeliveryError at begin_craft
+  ... names no store in the book this register holds, so a finished craft would
+  have nowhere to put its item
+
+after    open_crafts 0           wallet 1000          delta 0
+```
+
+Each refused craft completed later. The store was given two slots, the same
+craft id opened again, and the item reached the slot.
+
+### A drained wallet sends the item back out of the store
+
+The store takes the item first, so a ledger that refuses leaves an item in a
+slot. The register takes that item back out before it raises.
+
+A craft opened while the wallet covered it. The wallet was then emptied into
+another address. The completion was driven on the empty wallet.
+
+```
+the craft takes out of the wallet   0.00000001
+drained out of the wallet           1000.00000000
+
+ValueError from the ledger
+  u89-reincarnate-undo holds 0E-8, cannot move 1E-8
+
+after    held_gear []            slots_used 0        weight_carried 0
+         units_held armour 0
+         wallet 0                embedded 0          delta 0
+         ledger movements 2      open_crafts 1       completed_crafts 0
+```
+
+The two ledger movements are the distil and the drain. The craft moved nothing.
+The store holds nothing. The craft still stands open, and it completed once
+0.00000001 was paid back into the wallet.
+
+### Two Vessels of one owner, two stores, two items
+
+One Reincarnate holds many Vessels. Two Vessels of one class at one level under
+one owner carry two Vessel ids, so `vessel_key` renders two store keys and the
+book holds two stores. Each craft reaches its own crafter's store.
+
+Two Vessels of one owner opened one craft each on the same turn, one for armour
+and one for consumables, and both completed.
+
+```
+vessel a key   u89-reincarnate:Lead Ward:3dc1540b...
+vessel b key   u89-reincarnate:Lead Ward:5dc6cb9e...
+keys differ    True
+
+store a   held_gear [armour, Calx]      armour 1   consumables 0
+store b   held_stacks [consumables, Calx, 1 unit]  armour 0   consumables 1
+
+wallet 999.99999998   embedded 0.00000002   delta 0
+```
+
+The gear item reached the slot half of one store. The consumable reached the
+stack half of the other. Neither item reached the wrong store.
+
+### What a craft still does not take out of a store
+
+A craft puts in. It takes nothing out.
+
+```
+a Recipe names component units and nothing deducts them from a store
+no figure sets a Vessel's gear slot count
+no figure sets the stack ceiling
+no table names a recipe, so a loss share and a turn count arrive from the caller
+nothing tells a player that a craft finished
+nothing hands a Vessel a craft to carry
+```
+
+No control on screen reaches this. The PoA tab surface names no store and no
+craft register. The Gear subtab, `Ctrl+3`, is the surface that would: it already
+prints the four item classes and reads the note saying what holds them.
+
+## 2026-09-11 11:40 - #585 - a craft consumes the material list it names
+
+### The components leave when the craft opens
+
+A recipe named its materials and took none of them. `Recipe` carried a list of
+`Component` entries, and no store ever lost a unit to a craft. The two are now
+wired. `CraftRegister.begin_craft` takes every component's units out of the store
+the book holds for the crafting Vessel, at the grade that component names.
+
+The units leave at the start, not at the finish. A craft runs over the world turns
+its recipe names, and a Vessel cannot carry material it already works. A store
+that still held the ore could hand it to a second store, or open a second craft on
+the same unit, so the deduction cannot wait for `complete_craft`.
+
+`src/competition/crafting.py` — `begin_craft` reads every shortfall before it moves a unit
+
+```python
+        recipe = craft.recipe
+        short = self._component_shortfalls(recipe, store)
+        if short:
+            raise CraftComponentError(
+                f"craft {craft.craft_id} consumes "
+                f"{_component_text(recipe.components)} and {store.store_key} is "
+                f"short of {_shortfall_text(short)}. {COMPONENT_REFUSAL_HOLDS}",
+            )
+        taken: list[StoreChange] = []
+        for part in recipe.components:
+            try:
+                taken.append(store.take_out(part.material, part.quality, part.units))
+            except InventoryError as exc:
+                self._put_components_back(
+                    store,
+                    recipe.components[: len(taken)],
+                    COMPONENT_REFUSAL_HOLDS,
+                )
+```
+
+One craft was driven end to end on two trees, the tree before this change and the
+tree after it, by one script with one set of figures. The recipe figures and both
+store figures are driving inputs of those runs. No module holds any of them.
+
+```
+driving inputs   loss_share 0.25, turns_required 3, slot_count 2,
+                 stack_ceiling 4, fee_usd 1000, trade_grade 1,
+                 armour at Calx out of 1 iron ore at Calx
+
+before the change, after the craft finished
+    units_held iron ore at Calx 1     units_held armour at Calx 1
+    weight_carried 2
+    wallet 999.99999999   embedded 0.00000001   delta 0
+
+after the change, after begin_craft
+    units_held iron ore at Calx 0     units_held armour at Calx 0
+    weight_carried 0
+    wallet 1000.00000000  embedded 0             delta 0
+
+after the change, after complete_craft
+    units_held iron ore at Calx 0     units_held armour at Calx 1
+    weight_carried 1
+    wallet 999.99999999   embedded 0.00000001   delta 0
+```
+
+The ore came through a whole craft untouched on the earlier tree. It does not
+now. The Quintessence reading is the same on both trees, because a material unit
+in a store carries no ledger entry of its own.
+
+### A store short of one unit refuses and moves nothing
+
+`begin_craft` reads what the store holds of every component before it takes any
+of them. A store that cannot cover the whole material list gives out nothing.
+
+A store was opened and given no component unit at all.
+
+```
+CraftComponentError at begin_craft
+  craft armour:Calx:... consumes 1 iron ore at Calx and ... is short of 1 iron
+  ore at Calx, holding 0
+
+after    held_stacks []         weight_carried 0
+         wallet 1000.00000000   embedded 0        delta 0
+         ledger movements 1     open_crafts 0     completed_crafts 0
+```
+
+The one ledger movement is the distil that funded the wallet. The craft made no
+movement of its own.
+
+A second store was driven against a recipe naming two materials. It held the
+first material in full and was two units short on the second.
+
+```
+driving inputs   a recipe of 2 iron ore and 3 lead ore, both at Calx
+                 the store holds 2 iron ore and 1 lead ore
+
+CraftComponentError at begin_craft
+  ... is short of 3 lead ore at Calx, holding 1
+
+after    units_held iron ore at Calx 2   units_held lead ore at Calx 1
+         weight_carried 3
+         wallet 1000.00000000   embedded 0   delta 0
+         open_crafts 0          completed_crafts 0
+```
+
+The first material was not touched. A refusal part-way down a list returns every
+unit already taken, so no half-consumed list reaches the store.
+
+### An abandoned craft gives the units back
+
+An abandoned craft made no item, and the ledger moved nothing for it. The
+components go back where `begin_craft` found them. A unit kept back would leave
+the world holding less material with no bucket and no wallet recording the
+difference. No source sets a part-worked loss, so the whole list returns.
+
+```
+after begin_craft     units_held iron ore at Calx 0   weight_carried 0
+after abandon_craft   units_held iron ore at Calx 1   weight_carried 1
+                      wallet 1000.00000000   embedded 0   delta 0
+                      ledger movements 1     open_crafts 0
+```
+
+### A store with no room leaves the craft holding its components
+
+A store can refuse the units back. Another put-in can fill its stack to the
+ceiling while the craft runs. `abandon_craft` puts the units back before it takes
+the craft out of `open_crafts`, so a refusal leaves the craft standing and holding
+its components. No unit leaves the world, and the same call carries them back once
+the stack has room.
+
+A store with a four unit stack ceiling was filled to that ceiling while its craft
+ran. The abandonment was then driven.
+
+```
+CraftComponentError at abandon_craft, raised from StackCeilingError
+  ... would not take back 1 iron ore at Calx: ... holds 4 iron ore at Calx and
+  1 more reaches 5, above the 4 stack ceiling it was built with
+
+after the refusal   units_held iron ore at Calx 4   weight_carried 4
+                    open_crafts 1                   completed_crafts 0
+                    wallet 1000.00000000   embedded 0   delta 0
+
+after one unit was taken off the stack by hand
+                    units_held iron ore at Calx 3   weight_carried 3
+
+after the same abandon_craft was driven again
+                    units_held iron ore at Calx 4   weight_carried 4
+                    open_crafts 0
+                    wallet 1000.00000000   embedded 0   delta 0
+```
+
+### A refused completion keeps the components with the craft
+
+The store or the wallet can refuse a completion. The components left at
+`begin_craft`, so a refused completion consumes nothing more and the craft stays
+open holding them.
+
+A craft was opened while the wallet covered it. The wallet was then emptied. The
+completion was driven on the empty wallet, and the craft was completed once the
+wallet was funded again. A second completion of the same craft was then driven.
+
+```
+ValueError from the ledger
+  u91-reincarnate-drain holds 0E-8, cannot move 1E-8
+
+after the ledger refusal   units_held iron ore 0   units_held armour 0
+                           wallet 0   embedded 0   delta 0
+                           open_crafts 1           completed_crafts 0
+
+after the wallet was funded and the craft completed
+                           units_held armour at Calx 1   weight_carried 1
+                           open_crafts 0                 completed_crafts 1
+
+UnknownCraftError from the second completion
+  ... has already completed
+
+after the second refusal   units_held iron ore 0   units_held armour at Calx 1
+                           weight_carried 1        embedded 0.00000001
+                           delta 0
+```
+
+One craft consumed one material list once. A refusal consumed none.
+
+### The Gear subtab says what a craft now does to a store
+
+The Gear subtab, `Ctrl+3`, prints a note for each mechanism an item takes part in.
+Its inventory note said that a hand-over is the only move between two stores.
+That stays true, and it no longer covers every way a store changes: a craft is the
+other way. The note now says both halves, and the two readings below come off the
+screen route, not off the module.
+
+```
+before, as the subtab printed it
+  Inventory.VesselStore holds them, gear in counted slots and consumables and
+  resources in stacks, and StoreBook.hand_over is the only move between two
+  stores, so this subtab lists the loot the wallet holds and no item a Vessel
+  wears.
+
+after, as the subtab prints it
+  Inventory.VesselStore holds them, gear in counted slots and consumables and
+  resources in stacks, StoreBook.hand_over is still the only move between two
+  stores, and a craft is the other way a store changes:
+  crafting.CraftRegister.complete_craft puts a made item in the crafting
+  Vessel's store and begin_craft takes that recipe's component units out of it;
+  no panel calls either, so this subtab lists the loot the wallet holds and no
+  item a Vessel wears.
+```
+
+The subtab prints the same eight mechanism names on both trees. No name left the
+list to make room.
+
+### What a craft's material list still stands on
+
+A craft takes its materials out and puts its item in. Nothing fills the store in
+the first place.
+
+```
+no module gathers a material unit, so every unit a craft consumes was put in by
+  a caller's own put_in
+no module counts how many units of a material a world holds
+no bucket records the Quintessence a material unit in a store carries, so
+  consuming a component moves nothing in the ledger
+material_surplus reads 0 for all four item types at all five grades, because each
+  declared list is one unit of iron ore and one component of Quintessence holds
+  one Quintessence of an item together
+no figure sets a Vessel's gear slot count
+no figure sets the stack ceiling
+no table names a recipe, so a loss share and a turn count arrive from the caller
+no source sets what an abandoned craft loses, so it loses nothing
+```
+
+No control on screen reaches this. The PoA tab surface names no store and no
+craft register, and the one thing it reads of this work is the prose above. The
+Gear subtab is the surface that would call a craft: it already prints the four
+item classes and the note that now names both halves of what a craft does.
+## 2026-09-11 11:45 - #586 - the player window reads what is left of the turn
+
+The player window reported the turn that was gone. It now reports the turn that
+is left: the seconds left in the candle, and the actions left in the pool.
+
+The reading below is pinned twelve seconds before a 5m candle closes, and every
+figure in it was read off the page the tab draws.
+
+```
+                  was                             now
+turn meter label  Turn completion                 Turn remaining
+turn meter        96.0%  288s of 300s elapsed      4.0%  12s of 300s left
+Impetus line      Impetus 4 this turn - level 1    Impetus 4 of 4 left this
+                                                  turn - level 1
+```
+
+### The turn meter counts down, and its own text says so
+
+The meter keeps the same arithmetic over the same two figures. It draws the
+seconds left against the candle's length, where it drew the seconds gone.
+
+```python
+def turn_meter(running: dict, variant: EventVariant) -> dict:
+    """The share of this turn's candle that is left, from its own seconds left."""
+    length = Decimal(variant.turn_seconds)
+    left = Decimal(str(running["seconds_left"])).quantize(Decimal(1))
+```
+
+The row name moved with the label. Nothing reads the old name: the style sheet
+colours the fill meter's bar by `data-meter="block_fill"`, and it names no other
+meter.
+
+```
+meter row name    was turn_completion    now turn_remaining
+meter pair title  was Block fill and turn completion
+                  now Block fill and turn remaining
+```
+
+### The Impetus line names what is unspent
+
+The line printed the grant. It prints what is unspent against the grant, so the
+line that reports the pool falls when the pool falls.
+
+```
+Impetus 3 of 4 left this turn - level 1
+```
+
+### The window holds a pool against the turn that granted it
+
+The window built a fresh pool on every redraw. A fresh pool has spent nothing, so
+a spend could not survive a redraw and the window could never fall. The surface
+holds the pool now, keyed on the participant and the event code, and a turn index
+the held pool was not granted for takes a new pool.
+
+```
+HELD_POOLS keyed     [('', 'monster_smash')]
+spend(1) returns     3
+the payload then     granted 4   spent 1   remaining 3
+the line then        Impetus 3 of 4 left this turn - level 1
+one turn later       granted 4   spent 0   remaining 4
+```
+
+The pool is not chain data, so the key carries no chain name. A live run and a
+demo run share the one pool a participant holds for one event.
+
+Both refusals stand unchanged. A spend against a turn the pool was not granted
+for raises, and a cost above what remains raises.
+
+```
+this pool granted 4 Impetus for turn 5890752 and 3 is unspent; turn 5890753 is a
+different turn, and Impetus expires with the candle that granted it
+
+this action costs 5 Impetus and 4 remains in turn 5890752; no partial action
+exists and nobody borrows against the next turn
+```
+
+### The payload carries the pool's three figures
+
+The grant, the spend and what is left all ride in the event payload, so nothing
+on screen recomputes a figure the pool already answers.
+
+```
+impetus_granted     4
+impetus_spent       1
+impetus_remaining   3
+```
+
+### The grant and what is left read the same until something spends
+
+No control on this tab spends Impetus. `spent` is nought on every draw the screen
+makes on its own, and what is left equals the grant. The reading above spends
+through the held pool, and the window's figures then fall.
+
+Three places still read the grant where the design asks for another figure.
+
+```
+the party slot column    prints each participant's grant, and nothing holds a
+                         pool for another participant
+the gear section         takes the grant as one action's Impetus cost
+the wallet section       takes the grant as one action's Impetus cost
+```
+
+No figure sets what one action costs in Impetus. The turn economy owes that
+figure, and the two sections stand in with the grant until it exists.
+
+---
+
+## 2026-09-11 12:10 - #585 - a Vessel on a square gathers what the square holds
+
+A Vessel stands on a square. A foraging run takes the material that square holds
+and puts it in that Vessel's store. Before this, nothing gathered a material. A
+craft and a hand-over were the only things that changed a store, and every
+material unit in a store was put there by a caller.
+
+The run lives in `src/competition/foraging.py`. The package binds it, so every
+name reads as `src.competition.<name>`.
+
+### A square holds one material, and the same square always holds it
+
+The square decides. It decides which of the seven materials it holds, and which
+of the five quality grades that material is at. Both come out of the square's own
+discovery leaf, which is the hash of the world seed and the square's locator.
+
+A creature already comes off the same leaf. `monster_spawn` draws a tier from one
+window of the leaf and a design from the next. A square's material is two more
+windows of that same leaf, so the material, the grade, the creature and the
+committed Quintessence are four draws off one hash. No new seed and no new hash
+is added.
+
+```mermaid
+flowchart LR
+    seed[world seed] --> leaf[discovery leaf of the square]
+    locator[square locator] --> leaf
+    leaf --> amount[digits 0 to 16: committed Quintessence]
+    leaf --> tier[digits 16 to 32: monster tier]
+    leaf --> design[digits 32 to 48: monster design]
+    leaf --> material[digits 48 to 56: the material]
+    leaf --> grade[digits 56 to 64: the grade]
+    material --> store[the Vessel store]
+    grade --> store
+```
+
+The locator names the square's origin step, never the step the Vessel stands on.
+A Vessel anywhere inside a square forages the same material. The step it stands
+on is read once, to name the square.
+
+The module refuses at import if a foraging window reads any digit another draw
+already reads. That keeps a square's material independent of its creature.
+
+### The two windows the draw reads, and what already reads the leaf
+
+A leaf is 64 hex digits. The other draws read 16 digits each. A foraging draw
+reads 8, so the two draws fit in the last 16 digits that nothing else reads.
+
+```
+leaf digits                 64
+draws elsewhere             digits 0 to 16, 16 to 32, 32 to 48
+the material draw           digits 48 to 56
+the grade draw              digits 56 to 64
+```
+
+The spread was measured over 10,000 squares of one layer under one seed.
+
+```
+materials declared / drawn    7 / 7
+grades declared / drawn       5 / 5
+material and grade pairs      35 of 35 possible
+even share a material         1428.57     lowest 1394    highest 1466
+even share a grade            2000        lowest 1957    highest 2065
+even share a pair             285.71      lowest 251     highest 323
+```
+
+The same 10,000 squares were then derived under a second seed and compared.
+
+```
+same material under both seeds    1361    an even draw gives 1428.57
+same grade under both seeds       1975    an even draw gives 2000
+same material and grade           283     an even draw gives 285.71
+```
+
+The seed reaches the draw. One square was watched where both seeds named silver
+ore at Cauda Pavonis. Its two leaves differ and its two window values differ,
+779,275,405 against 2,597,397,249. Both land on the same material because both
+divide by seven materials and leave six. At 64 squares that looked like a fault.
+At 10,000 squares the rate is 283 against 285.71, so one coincidence caused it
+and not a correlation.
+
+### What one run puts in the store
+
+One run was driven on a world whose seed is published, on square 21 of layer 3.
+
+```
+before the run
+    units_held silver ore at Cauda Pavonis   0
+    weight_carried                           0
+
+after the run
+    units_held silver ore at Cauda Pavonis   1
+    weight_carried                           1
+    units_gathered                           1
+    Quintessence the unit embeds             0.00000002
+```
+
+The square named silver ore at Cauda Pavonis off material roll 6 and grade roll
+1. A second run on the same square named the same material at the same grade and
+raised the stack to two. A run on square 22 named gold ore at Flores.
+
+The run moves no Quintessence. The amount one gathered unit embeds is read off
+the materials table and reported, and no bucket records it. A craft already says
+the same about the units it consumes.
+
+### What the yield figure stands on
+
+Nobody has set how many units one run yields. The figure sits in the conversion
+rate table, marked as a working figure, beside the other figures the operator
+owes.
+
+```
+rate name       material_units_per_forage_run
+per unit        one foraging run on one square
+yields          material units
+figure          1
+provenance      working
+```
+
+No number is written into the foraging module. The module reads the rate and
+refuses a figure that is absent, a fraction of a unit, or under one unit.
+
+**The operator owes this figure.** A yield of one unit a run is a placeholder and
+nothing more.
+
+### Every way a run refuses, and what the store holds after
+
+Each refusal was driven. In every case the store held exactly what it held before
+the call, and the register recorded no run.
+
+```
+the Vessel is on another square
+  VesselNotOnSquareError - Lead Ward of ... stands on square 21 of layer 3 and
+  square 22 was named; a Vessel forages the square it stands on
+  store units before / after   2 / 2
+
+the store cannot take what is gathered
+  ForageStoreError - ... cannot take the 1 quicksilver ore at Cauda Pavonis that
+  square 7 of layer 3 yielded ..., so the store holds what it held
+  store units before / after   1 / 1
+
+the world has not published its seed
+  SeedNotPublishedError - world ... holds its seed under commitment
+  d6b2c308a93f08a2 and has not published it, so Lead Ward of ... reads no leaf at
+  square 21 of layer 3
+  store units before / after   2 / 2
+
+the seed offered is not the published one
+  SeedCommitmentError - the seed offered rebuilds commitment d6b2c308a93f08a2 and
+  world u94-world published 75b8bddf70267c93
+  store units before / after   2 / 2
+
+the square is off the layer
+  ForageSquareError - ... stands on no square of world u94-world: square 64 is
+  off a grid holding 64
+
+nobody has breached the layer
+  ForageWorldError - ... cannot forage square 21 of layer 5: layer 5 of world
+  u94-world does not exist; layers breached: 3
+
+the book holds no store for this Vessel
+  ForageStoreError - ... names no store in the book this register holds, so a run
+  would have nowhere to put what it gathered
+
+the yield figure is not whole units
+  ForageYieldError - ... of 0.5 is not a whole number of units, and a store holds
+  no part unit
+```
+
+A control ran after every refusal. The same call with every argument right gathered
+one lead ore at Cauda Pavonis on square 9, so the refusals above are refusals and
+not a broken call.
+
+### Which subtab would reach a run, and which does
+
+The Resources subtab, which opens on Ctrl+4, is the subtab a run belongs on. It
+already prints every material and the Quintessence one unit embeds. It also
+prints that nothing holds how many units a participant carries.
+
+**Nothing on screen opens a run today.** No control on any subtab calls this
+module. The Maps subtab draws the squares and names no material. The run was
+driven from the real modules and not from the screen.
+
+### What a foraging run still does not do
+
+```
+a square that runs out   no source sets a deposit size, so the same square
+                         yields the same material and the same units every time
+a world supply           nothing counts how many units of a material a world
+                         holds, and a run deducts from no total
+a turn cost              a run spends nothing out of the world turn's pool
+encumbrance              the weight is read and nothing turns it into a refusal
+                         or a turn point penalty
+a skill                  no skill gates a run, raises its yield, or reaches a
+                         grade the square does not already hold
+a surface                no control opens a run
+```
+
+The operator's rule is that encumbrance counts only while a Vessel moves items
+itself, such as after a foraging run. The run now exists. Nothing moves a Vessel
+with its load, and both figures an encumbrance rule needs are still working
+figures.
+
+## 2026-09-11 12:25 - #586 - a dungeon entry refuses a party that is not all standing there
+
+### A dungeon is a place, and the whole party has to be at it
+
+A dungeon sits at one locator on the world map. A party walks to that locator and
+goes in. Every member of the party has to be standing at the place, because a
+dungeon is a place and not an invitation.
+
+The entry took one position for the whole party and checked nobody. A member on
+the far side of the world went in with the party, and nothing refused it.
+
+The entry now reads each member's own locator and refuses the party when any
+member is somewhere else. A member's locator comes from that member's own journey
+leg, which is the one record movement writes.
+
+`src/competition/world_movement.py` - where one mover stands, read from its own leg
+
+```python
+def mover_locator(self, world_id: str, address: str, turn: int) -> str | None:
+    """The ``GridPosition.locator`` ``address`` stands at during ``turn``.
+
+    None answers a mover whose own journeys all open after ``turn`` and one
+    that has opened none, and the locator carries the covering leg's own
+    ``layer``, so a position on two layers never reads as one place.
+    """
+```
+
+`src/competition/dungeon_entry.py` - the one reader that holds a party's places together
+
+```python
+def party_locators(
+    self,
+    journeys: WorldJourneys,
+    world_id: str,
+    members: Sequence[object],
+    world_turn: int,
+) -> dict[str, str | None]:
+```
+
+### What the program printed when one member stood elsewhere
+
+Three participants walked on a real eight-square grid. The dungeon is a crypt at
+square 9, half a square in each direction. Two of them walked to it. The third
+walked to square 0 instead.
+
+What movement derived for the three, at the world turn the entry names:
+
+```
+0xLeader      square 9  step (50, 50)   arrived
+0xStander     square 9  step (50, 50)   arrived
+0xWanderer    square 0  step (90, 10)   arrived
+```
+
+The same three read as locators, which is the form the entry compares:
+
+```
+dungeon locator    0:9:50:50
+0xLeader           0:9:50:50
+0xStander          0:9:50:50
+0xWanderer         0:0:90:10
+```
+
+Before this change the entry opened and held all three. The register printed:
+
+```
+enter RETURNED entry_id=u93world:0:9:50:50:0xLeader:w2:e5866666
+entry members = ('0xLeader', '0xStander', '0xWanderer')
+clock_row 0xWanderer  clock=event turn  locator=0:9:50:50
+```
+
+The wanderer was on square 0 and the register put it on the event clock inside
+the crypt. After this change the same call refuses:
+
+```
+0xLeader leads this Descension into 0:9:50:50 and 1 of 3 members stand away
+from it: 0xWanderer at 0:0:90:10; a party walks into a dungeon from the
+dungeon's own position
+```
+
+### The same square on another layer is a different place
+
+A locator carries the layer, the square and the two steps. Two participants can
+hold the same square and the same steps on two different layers, and they are not
+in the same place.
+
+A fourth participant walked to square 9 step (50, 50) on layer 1, while the crypt
+sits on layer 0. The entry refuses it:
+
+```
+0xLeader       at 0:9:50:50
+0xOtherLayer   at 1:9:50:50
+
+0xLeader leads this Descension into 0:9:50:50 and 1 of 2 members stand away
+from it: 0xOtherLayer at 1:9:50:50; a party walks into a dungeon from the
+dungeon's own position
+```
+
+Comparing the square and the steps alone would have let that member in. The
+comparison is on the whole locator for that reason.
+
+### A member that has walked nowhere gets no entry
+
+Movement writes one record a leg. A participant that has opened no leg has no
+leg to derive a position from, so it has no locator at all. That is an absence
+and not a place.
+
+The entry refuses such a member. The module refuses every other absence the same
+way: an undiscovered locator, a zone with no terrain multiplier, a world it cannot
+name. Admitting this one would pass the check for exactly the members nothing in
+the tree can place, and a party could then walk in with a member nobody can find.
+
+What the program printed for a participant with no leg:
+
+```
+mover_journeys(0xNewcomer) = ()
+mover_locator(0xNewcomer)  = None
+
+0xLeader leads this Descension into 0:9:50:50 and 1 of 2 members stand away
+from it: 0xNewcomer at no journey leg open by this turn; a party walks into a
+dungeon from the dungeon's own position
+```
+
+Every participant starts at the arena, and a player discovers a dungeon out in
+the world. A member that has walked nowhere has not left the arena, and nothing
+in the tree records a participant standing still there.
+
+### The party standing together enters as it always did
+
+The two participants that walked to the crypt entered with nothing changed about
+the entry record. The row the register serves:
+
+```
+entry_id             u93world:0:9:50:50:0xLeader:w2:e5866666
+locator              0:9:50:50
+kind                 crypt
+variant_code         dungeon_crawl
+leader               0xLeader
+party_size           2
+members              ['0xLeader', '0xStander']
+entered_world_turn   2
+entered_event_turn   5866666
+turn_timeframe       5m
+clock                event turn
+```
+
+### The refusals a dungeon already had still read the same
+
+Three earlier refusals ran on the same register, after the crypt held an open
+entry. Each printed its own message word for word as before.
+
+A leader already inside:
+
+```
+0xLeader is inside 0:9:50:50 on entry u93world:0:9:50:50:0xLeader:w2:e5866666
+and answers to the event turn; entry u93world:0:9:50:50:0xLeader:w2:e5866666
+would put one participant on two event clocks at once
+```
+
+A leader that has not discovered the place:
+
+```
+0xStander leads this Descension and holds no reference to u93world:0:9:50:50;
+a dungeon is entered only where it has been discovered, and this leader knows
+0 place(s)
+```
+
+A party formed in the wrong mode:
+
+```
+this party was formed for Fixation and admits 1 to 1; entering a Descension
+needs a party formed in dungeon_crawl
+```
+
+### A refused entry leaves the register alone
+
+The check runs before the entry record exists and before anything reaches the
+file. A refused entry opens no entry, moves no clock and writes no file.
+
+The register before and after a refused entry, printed both times:
+
+```
+entry_ids     ()
+open_entries  []
+0xLeader      clock=world turn  entry_id=None
+0xStander     clock=world turn  entry_id=None
+0xWanderer    clock=world turn  entry_id=None
+```
+
+The register wrote its own file and a second register read that file back. The
+loaded register answered the same as the one in memory:
+
+```
+entry_ids equal   True
+entry_rows equal  True
+clock_rows equal  True
+```
+
+The loaded register refuses a scattered party as well, so the refusal is not a
+property of one register in memory.
+
+### What reaches this refusal at runtime
+
+Nothing on the Accumulation tab reaches a dungeon entry. No screen file builds a
+register, and the bridge that installs the world and the journeys installs no
+register beside them. Only an import of the package reaches the module.
+
+The Maps subtab is where the control belongs. The operator set that himself: a
+click on the map during a Crawl or a Raid opens the Maps subtab, and a location
+carries its own options when the player moves into the right square. Entering is
+one of those options, and the player's own square is the square this refusal
+reads.
+
+### What a dungeon entry still does not know
+
+The entry reads where every member stands at the world turn it names, and nothing
+holds a member there. A member can open a leg away from the locator after the
+check reads it and before the party goes in.
+
+Nothing records a participant standing still. A position exists only while a
+journey leg covers it, so the arena every participant starts on is not a position
+any module can read.
+
+The rest of the dungeon stands where it stood. Nothing rules the inside, nothing
+resolves a fight, and a round still has no length.
+
+## 2026-09-11 12:45 - #586 - a trimmed chart rolls, and keeps the odds it had
+
+### A mature world stops dropping junk
+
+His sentence: loot and resources roll off the chart as a world matures, so that
+mature players do not spend their item lists on things they cannot use.
+
+The code already cut the chart. Nothing rolled on what the cut left. A trimmed
+chart existed and no drop could come out of it.
+
+### What the roll refused, and what it answers now
+
+A roll needs weights that add to a hundred. The five declared weights add to a
+hundred. A band is the chart with its commonest tiers cut off the low end, so a
+band adds to less than a hundred and the roll turned it away.
+
+What the program printed when a band met the roll:
+
+```
+band Cauda Pavonis, Flores, Elixir, Magisterium
+LootTableError: the 4 loot weights total 40.0, not 100; no roll span can be
+cut from them
+```
+
+The weight the cut tiers held now spreads across the tiers that stay, in
+proportion to what each one already held. A tier that held twice another tier's
+weight still holds twice it. Every band adds to exactly a hundred.
+
+`src/competition/loot_drop.py` - the rule, in the one function that states it
+
+```python
+def band_weight_pct(band: object) -> tuple[tuple[LootTier, Fraction], ...]:
+    """Return every tier in ``band`` beside the percent it owns of the band.
+
+    The weight of each tier off the chart is spread across the tiers left in
+    proportion to what they already held, so every surviving pair keeps the odds
+    it had on the full chart and a ``Fraction`` carries the share exactly.
+    """
+```
+
+The share is an exact fraction and not a decimal. Three tiers left on the chart
+give each one a third of a whole number, and a decimal cannot hold a third. A
+fraction holds it, so the total lands on a hundred and not near it.
+
+### Every band, and the odds it keeps
+
+Five bands exist. Nothing off the chart, one tier off, and so on to four tiers
+off. Cutting all five leaves nothing to roll, and the module turns that away.
+
+What the program printed for each band. The span is the whole numbers a roll comes
+from, out of the thousand a full chart holds:
+
+```
+tiers off   band                                          span   total
+0           Calx, Cauda Pavonis, Flores, Elixir, Magist.  1000   100/1
+1           Cauda Pavonis, Flores, Elixir, Magisterium     400   100/1
+2           Flores, Elixir, Magisterium                    150   100/1
+3           Elixir, Magisterium                             40   100/1
+4           Magisterium                                      5   100/1
+```
+
+Every weight, before the cut and after it:
+
+```
+band            tier             before   span   after exact   after pct
+0 off chart     Calx                 60    600          60/1   60.000000
+                Cauda Pavonis        25    250          25/1   25.000000
+                Flores               11    110          11/1   11.000000
+                Elixir              3.5     35           7/2    3.500000
+                Magisterium         0.5      5           1/2    0.500000
+
+1 off chart     Cauda Pavonis        25    250         125/2   62.500000
+                Flores               11    110          55/2   27.500000
+                Elixir              3.5     35          35/4    8.750000
+                Magisterium         0.5      5           5/4    1.250000
+
+2 off chart     Flores               11    110         220/3   73.333333
+                Elixir              3.5     35          70/3   23.333333
+                Magisterium         0.5      5          10/3    3.333333
+
+3 off chart     Elixir              3.5     35         175/2   87.500000
+                Magisterium         0.5      5          25/2   12.500000
+
+4 off chart     Magisterium         0.5      5         100/1  100.000000
+```
+
+The band with two tiers off the chart is the one a decimal cannot carry. Its three
+weights are 220/3, 70/3 and 10/3. Each one repeats forever as a decimal, and the
+three add to exactly 300/3, which is a hundred.
+
+### The odds between the tiers that stay
+
+Each pair of tiers holds one ratio on the full chart. The same pair holds the same
+ratio on every band that keeps both. The program printed each pair twice, once off
+the full chart and once off the band:
+
+```
+band 1 off chart
+  Cauda Pavonis : Flores         full     25/11   band     25/11   same True
+  Cauda Pavonis : Elixir         full      50/7   band      50/7   same True
+  Cauda Pavonis : Magisterium    full      50/1   band      50/1   same True
+  Flores        : Elixir         full      22/7   band      22/7   same True
+  Flores        : Magisterium    full      22/1   band      22/1   same True
+  Elixir        : Magisterium    full       7/1   band       7/1   same True
+
+band 3 off chart
+  Elixir        : Magisterium    full       7/1   band       7/1   same True
+```
+
+Elixir stays seven times as likely as Magisterium on every band that holds both.
+Elixir holds seven times on the full chart, seven times with one tier cut, and
+seven times with three cut.
+
+### A real drop on a trimmed band
+
+The program drew four thousand drops on each trimmed band, through the same
+rotation and the same drop call the rest of the package uses. What came out:
+
+```
+band Flores, Elixir, Magisterium
+
+tier              drawn    drawn pct     band pct
+Calx                  0     0.000000    off chart
+Cauda Pavonis         0     0.000000    off chart
+Flores             2907    72.675000    73.333333
+Elixir              950    23.750000    23.333333
+Magisterium         143     3.575000     3.333333
+```
+
+Nothing landed on a tier off the chart, on any band. The rarest tier left on the
+chart still came out: Magisterium reached 143 drops of four thousand on this band,
+56 on the band with one tier cut, and 495 on the band with three cut.
+
+Four thousand draws a band shows that the odds sit near the weights. It does not
+prove the exact share, and it cannot show a tier rarer than about one draw in four
+thousand.
+
+The same four thousand draws on the full chart do reach the cut tiers:
+
+```
+Calx           drawn 2358 times on the full chart
+Cauda Pavonis  drawn 1045 times on the full chart
+Flores          428
+Elixir          149
+Magisterium      20
+```
+
+A count of zero on a trimmed band therefore means the band works. It does not mean
+the counter missed a drop.
+
+One drop on a trimmed band went into a real Vessel store, and onto disk:
+
+```
+band             = Elixir, Magisterium
+drop             = roll 14, Elixir, armour
+delivered to     = u96vessel
+held_tiers       = ['Elixir']
+```
+
+### The full chart did not move
+
+One script drove the full chart's roll and its refusal before this change and
+after it. The two runs printed the same thing to the character. That includes the
+name the drop hashes itself under:
+
+```
+roll          = 370
+tier_name     = Calx
+item_id       = 3a9fe5488c13c80e767e61dae6ff5a37760494547fd85727974958df4d005b20
+```
+
+A hand-written set of five weights that does not add to a hundred still gets
+turned away, and the refusal still names both numbers:
+
+```
+dropping Calx         the 4 loot weights total 40.0, not 100
+dropping Magisterium  the 4 loot weights total 99.5, not 100
+```
+
+Dropping Magisterium takes only half a point off the total, and the roll turns
+that set away too. The check reads the total, and not how many tiers there are.
+
+### What a band means for material grades
+
+The material quality grades are the same five names, read from the same place as
+the loot tiers. They are one list and not two.
+
+A band cuts both. A world that drops no Calx loot also yields no Calx grade of any
+material.
+
+A grade that left the chart is still a grade. The grade table still answers for
+Calx, because items already held carry their own grade. A band decides what a
+world drops, and not what a grade is.
+
+### What still has no figure
+
+How many tiers leave the chart for each world tier. Nobody has set that number.
+The module turns away a band read from a world tier until somebody does:
+
+```
+world_tier.loot_band_at_tier(2)
+FigureAbsentError: no band follows from a world tier: how many loot tiers leave
+the chart for each world tier above FIRST_WORLD_TIER. No statement names one.
+```
+
+Nothing raises a world's tier on its own either. No module names a cataclysm, so a
+world stays at the tier it opened on, and every world rolls the full chart today.
+
+A band rolls, and nothing reaches it. A caller that hands a band to the drop call
+gets a correct roll. No control and no subtab hands it one.
+
+## 2026-09-11 12:50 - #586 - a participant who has not moved stands at the arena
+
+Every participant is somewhere. A participant who has never walked is standing at
+the arena. Before this, nothing could say that. Movement wrote one record a leg,
+and a participant with no leg had no place at all.
+
+Two units reached the same absence from two sides. One could not place a party
+member who had walked nowhere. One could not forage with a Vessel whose owner had
+walked nowhere. The world already declared its arena square. Nothing read it as a
+position.
+
+### The arena is where a participant stands before it walks
+
+`PoaWorld.create_world` fixes the arena square at the middle of the grid and puts
+it on the chain. The world has always known it. Now a reader answers it.
+
+`src/competition/world_grid.py` - the world answers its own arena as a place
+
+```python
+def arena_position(self, world_id: str) -> GridPosition:
+    """Where a participant of ``world_id`` stands before it walks anywhere."""
+
+def arena_locator(self, world_id: str) -> str:
+    """``arena_position`` as the locator text on ``ARENA_LAYER``."""
+```
+
+`ARENA_LAYER` is 0, the lowest layer ordinal `breach_layer` admits. The arena
+position sits on the square's origin step, so its locator is `0:40:0:0` on a grid
+9 squares across.
+
+`src/competition/world_movement.py` - one reader answers where a mover stands
+
+```python
+def mover_standing(self, world_id: str, address: str, turn: int) -> MoverStanding:
+    """Where ``address`` stands in ``world_id`` during ``turn``, and what said so."""
+
+def mover_locator(self, world_id: str, address: str, turn: int) -> str:
+    """The ``GridPosition.locator`` ``address`` stands at during ``turn``."""
+```
+
+`mover_locator` reads `mover_standing`, so one rule decides a place and the
+locator text cannot disagree with it.
+
+A `MoverStanding` carries its own source. A standing has one of two sources, and
+no third source exists.
+
+```
+journey leg    the mover's own latest covering leg derived the place
+arena          the mover held no covering leg, so the world answered its arena
+```
+
+```mermaid
+flowchart TD
+    ask[a consumer asks where an address stands] --> legs{does a covering leg exist?}
+    legs -- yes --> leg[progress_at derives the square and the two steps]
+    legs -- no --> arena[PoaWorld.arena_position]
+    leg --> standing[MoverStanding source = journey leg]
+    arena --> standing2[MoverStanding source = arena]
+    standing --> locator[locator text every place comparison reads]
+    standing2 --> locator
+```
+
+### What the world answers for a participant with no journey leg
+
+Two participants on a real grid 9 squares across, arena at square 40. One walked
+from the arena to square 9, half a square in each direction. One opened no leg.
+
+What the reader answered before this change:
+
+```
+0xNewcomer   mover_journeys = ()                   mover_locator = None
+0xWalker     mover_journeys = ('walker-journey',)  mover_locator = '0:9:50:50'
+```
+
+What the reader answers now:
+
+```
+0xNewcomer   mover_locator = '0:40:0:0'   source = 'arena'        walked_nowhere = True
+0xWalker     mover_locator = '0:9:50:50'  source = 'journey leg'  walked_nowhere = False
+```
+
+The walker reads the same locator on both sides. A leg still decides a place for
+every mover that opened one.
+
+### The party check still refuses a member who walked nowhere
+
+The walker discovered a crypt at square 9, out in the world. A party of two tried
+to enter it: the walker, and the participant that had opened no leg.
+
+Before, the entry refused the member with no leg for an absence:
+
+```
+party_locators = {'0xWalker': '0:9:50:50', '0xNewcomer': None}
+
+0xWalker leads this Descension into 0:9:50:50 and 1 of 2 members stand away from
+it: 0xNewcomer at no journey leg open by this turn; a party walks into a dungeon
+from the dungeon's own position
+```
+
+Now the entry refuses the same member for standing at the arena:
+
+```
+party_locators = {'0xWalker': '0:9:50:50', '0xNewcomer': '0:40:0:0'}
+
+0xWalker leads this Descension into 0:9:50:50 and 1 of 2 members stand away from
+it: 0xNewcomer at 0:40:0:0; a party walks into a dungeon from the dungeon's own
+position
+```
+
+The refusal is the same refusal. `register.entry_ids()` answered `()` after the
+attempt on both sides, so the register held nothing either time. The message now
+names a place instead of a gap in the records.
+
+### A Vessel whose owner walked nowhere forages the arena
+
+A foraging run takes a standing `GridPosition` from its caller. Before this, a
+caller had nothing to build one from for an owner that had never moved, so the
+run refused:
+
+```
+forage REFUSED ForageError:
+  a GridPosition was expected, got NoneType; no module records where a Vessel
+  stands ...
+```
+
+Now the caller reads the standing off the world and hands it over. The run
+gathers:
+
+```
+standing = {'mover': '0xNewcomer', 'layer': 0, 'square_index': 40,
+            'step_x': 0, 'step_y': 0, 'locator': '0:40:0:0', 'source': 'arena'}
+
+material        iron ore at Magisterium
+units_gathered  1
+units_held      1
+weight_carried  1
+square foraged  40 on layer 0
+store now holds (Stack(name='iron ore', quality='Magisterium', units=1),)
+```
+
+The forage path itself never refused the arena square. A position handed in by
+hand foraged square 40 on both sides. What was absent was a module that could say
+a Vessel stood there.
+
+A Vessel still forages only the square it stands on. The walker stands on square
+9, and naming the arena square refuses it:
+
+```
+Quicksilver Draught of 0xWalker stands on square 9 of layer 0 and square 40 was
+named; a Vessel forages the square it stands on
+```
+
+### The same square, reached two ways
+
+A third participant walked off the arena to square 41 and walked back. Its
+locator reads `0:40:0:0`, the arena's own text, and its source reads
+`journey leg`:
+
+```
+0xReturner   mover_locator = '0:40:0:0'   source = 'journey leg'   walked_nowhere = False
+```
+
+The locator alone cannot separate a participant that returned from one that never
+left. The source can. A consumer that must refuse an assumed place reads the
+source.
+
+### A dungeon at the arena admits a party that never moved
+
+Nothing refuses a discovery at the arena locator. A still leader discovered a
+crypt at `0:40:0:0`. A party of two, neither of which had opened a leg, tried to
+enter it.
+
+Before, the entry refused both members:
+
+```
+party_locators = {'0xStillLeader': None, '0xStillMember': None}
+
+0xStillLeader leads this Descension into 0:40:0:0 and 2 of 2 members stand away
+from it: 0xStillLeader at no journey leg open by this turn; 0xStillMember at no
+journey leg open by this turn
+```
+
+Now both stand at the door and the entry admits them:
+
+```
+party_locators = {'0xStillLeader': '0:40:0:0', '0xStillMember': '0:40:0:0'}
+
+entry_id             u99world:0:40:0:0:0xStillLeader:w7:e5866666
+locator              0:40:0:0
+kind                 crypt
+mode_code            dungeon_crawl
+members              ['0xStillLeader', '0xStillMember']
+entered_world_turn   7
+entered_event_turn   5866666
+
+clock_row 0xStillLeader   clock=event turn  locator=0:40:0:0
+clock_row 0xStillMember   clock=event turn  locator=0:40:0:0
+```
+
+This change makes that entry possible. The rule matches every other entry: a
+party enters from the dungeon's own position, and the arena is now a position.
+The check on the mode stands apart from the check on the place. Monster Smash and
+team Monster Smash hold no map locator, and `require_dungeon` refuses both
+wherever they run.
+
+### The three edges, and the one the world cannot answer
+
+Nothing can build a world with no arena. `WorldRecord.arena_square` carries no
+default, and `create_world` always sets the middle square. A world the store does
+not hold now refuses instead of answering:
+
+```
+before   mover_locator('nosuchworld', ...) RETURNED None
+now      mover_locator('nosuchworld', ...) RAISED WorldGridError:
+         no world 'nosuchworld' is held; worlds: u99world
+```
+
+A blank address names nobody, and the reader refuses it:
+
+```
+mover_locator('')     RAISED MovementError: a mover must be a non-empty wallet address, got ''
+mover_locator('   ')  RAISED MovementError: a mover must be a non-empty wallet address, got '   '
+mover_locator(None)   RAISED MovementError: a mover must be a non-empty wallet address, got None
+```
+
+The third edge is open. No module holds the list of addresses a world has, so any
+address string that is not blank reads the arena:
+
+```
+knows(0xNobody)          = ()
+mover_journeys(0xNobody) = ()
+mover_locator(0xNobody)  = '0:40:0:0'
+```
+
+The caller holds the participant. A party names its own members and a run names
+its own Vessel, so each consumer already knows whose place it wants. The package
+does not, and `dungeon_entry.MEMBER_POSITION_ABSENT` records that.
+
+### What reaches the arena position at runtime
+
+No control on the Accumulation tab calls the reader. Two of the three consumers
+are not built on any screen.
+
+```
+WorldJourneys        installed. src/gui/shared_testnet.py builds one over the
+                     demo chain and attaches it to the main window
+DungeonRegister      no screen file builds one
+ForageRegister       no screen file builds one
+Map subtab           prints the arena square as "Own square", read straight off
+                     the world record, not through the reader
+```
+
+The Map subtab already says a participant stands on the arena square. It reads
+`record.arena_square` itself. The reader now answers the same square as a
+position, with the layer and the two steps the locator needs.
+
+The Maps subtab is where a dungeon entry belongs, by the operator's own ruling: a
+map click during a Crawl or a Raid opens it, and a location carries its options
+when the player moves into the square. The Resources subtab is where a foraging
+run belongs. Neither carries the control yet.
+
+### What a standing position still does not know
+
+```
+who a world holds       no roster names the addresses of a world, so the arena
+                        answers any address a caller names
+a Vessel's own place    a standing places an address. A Vessel is placed by its
+                        owner's address and has no position of its own
+a turn that is real     a turn index below the first one the clocks count still
+                        reads the arena. world_movement cannot read
+                        world_turn.FIRST_TURN_INDEX, because world_turn imports
+                        world_movement
+holding a member still  a member can open a leg away from a dungeon after the
+                        entry check reads its place and before the party goes in
+the seconds in a turn   unset, so nothing in the program can say which world
+                        turn is running and derive a later square
+```
+
+The rest of a dungeon stands where it stood. Nothing rules the inside, nothing
+resolves a fight, and a round still has no length.
+
+## 2026-09-11 13:05 - #147 - a participant is a node, and a bot is a source that feeds one
+
+A participant is one active Acervator node. The node qualifies by holding a
+Quintessence wallet address the ledger can answer for. One or more bots feed that
+node with their trading activity. A node running ten bots is one participant with
+ten sources. A bot is a source of activity, not a player.
+
+The engine counted bot registrations and called the total its participants. One
+node with three bots therefore read as three participants. The count now counts
+nodes, and a new count beside it counts the bots.
+
+### One node, three bots, one participant
+
+The run below registers three bots on one node twice, on the old reading and on
+the new one. Nothing else about the run changes.
+
+`src/competition/competition_engine.py` - the same three bots on the same node
+
+```
+before   bot registrations filed            3
+         CompetitionResult.participants     3
+         the results table                  3 bots
+
+after    bot registrations filed            3
+         participant_count()                1
+         source_bot_count()                 3
+         CompetitionResult.participants     1
+         CompetitionResult.source_bots      3
+         the results table                  1 participant node(s)
+                                            3 source bot(s)
+```
+
+The node that registers is named by the identity file the tab writes. The node id
+is the first twelve characters of its public key and the wallet address is the
+whole of it. Both readings come off one file.
+
+```
+bot_identity.json            one file under the runtime directory
+node id                      c3838662e5ea
+wallet address               c3838662e5ea37ce9ac0e908165297aac9e7f2a77cb9215
+                             0dfc0f034f4715640
+the node id is its first 12  true
+```
+
+The shared TestNet bridge reads that same file and answers with that same node
+id, so the participant and the chain peer are one node.
+
+```
+SharedTestnetBridge.node_id()      dc61ee1c59a3
+the file's own short id            dc61ee1c59a3
+the participant registered         node dc61ee1c59a3, wallet dc61ee1c59a3...
+```
+
+### The wallet a participant registers is one the ledger can answer for
+
+Two things are checked and both are checked against the Quintessence ledger
+itself. The address must pass the ledger's own address rule. The ledger must hold
+a wallet record for it, which happens only after a movement has fed that wallet.
+
+`src/competition/participant_node.py` - the two refusals, in full
+
+```
+the address rule    node d960314c3eba gave '   ', which is no wallet address
+
+no wallet record    node d960314c3eba gave wallet d960314c3eba9f1d209ceaa801
+                    db9b4289050ba8e1414c02f060f6dcd6903990, which the
+                    Quintessence ledger holds no record of; a participant's
+                    wallet is one the ledger can answer for
+```
+
+The same node registers once Quintessence has moved into that wallet. The run
+distilled four Quintessence into it and the register call then took it.
+
+```
+before the movement   holds_wallet    false     register_node   refused
+after the movement    holds_wallet    true      register_node   took it
+                      balance         4.00000000
+                      participant_count()       1
+```
+
+The ledger answers a balance of nothing for an address no movement names, so a
+balance alone cannot tell an unknown wallet from a wallet spent down to nothing.
+A new query answers that one question and the check reads it.
+
+A bot that names a node nobody registered is turned away. A bot that names no
+node at all registers, trades and signs as before, and feeds no participant.
+
+```
+names an unfiled node   bot d3526f03b07e names node node-nobody-filed, which
+                        registered no participant wallet; a node registers
+                        before its bots feed it
+names no node           registered, node_of_bot None
+                        participant_count()   1
+                        source_bot_count()    0
+                        unattached_bot_count()   1
+```
+
+### Two nodes count as two, and each reads only its own bots
+
+Two nodes registered two wallets. Two bots fed the first and three fed the
+second. The count read two, and each node's list held only its own.
+
+```
+node A   032307a2ebc5   ad2c2447e93e, 92423dabc184
+node B   f314c2ee858c   7c5ee511d482, 22578d0b8fa6, 87b9a0c71f89
+
+node A's list holding any of B's bots    empty
+node B's list holding any of A's bots    empty
+a bot read back to its node              A's first bot -> 032307a2ebc5
+                                         B's first bot -> f314c2ee858c
+
+participant_count()                      2
+source_bot_count()                       5
+the results table                        2 participant node(s)
+                                         5 source bot(s)
+```
+
+One wallet cannot carry two nodes. The second node to name a wallet another node
+registered is turned away, so one wallet never reads as two participants.
+
+### A bot still signs its own trades, and the log stays keyed by the bot
+
+A bot is what signs a trade, and none of this moves that. The trade log keys on
+the bot id, the signature verifies against the bot's public key, and the Merkle
+proof verifies.
+
+```
+the signing bot                  c5baf7827ace
+the record's public key is its   true
+signature length                 128 hex characters
+verify_trade on the sell         true
+verify_trade on the buy          true
+the log key is the bot id        true
+log size                         2
+Merkle inclusion of trade 0      true
+Merkle inclusion of trade 1      true
+a second bot keeps its own log   true
+```
+
+### What a reader of the participant count should read now
+
+Four readers carry the count and each reads nodes now.
+
+```
+CompetitionResult.participants    participant nodes registered
+CompetitionResult.source_bots     bots whose submissions the result ranks
+the results table line            both counts, named
+the saved result file             both counts, and each node with its own bots
+```
+
+The saved result file carries the nodes themselves, so a finished competition
+records which wallet each participant held and which bots fed it.
+
+```json
+{"participants": 1, "source_bots": 3,
+ "participant_nodes": [{"node_id": "711224c3165c",
+   "wallet_address": "711224c3165c5ebe745fedf08ace5b94d04079c3267278cb0029a8973bd7246b",
+   "source_bots": ["db8f5f8e3cf7...", "74240b2f425e...", "1ca0f82cb76a..."]}]}
+```
+
+The TestNet demo control registers three bots and registers no node, because it
+holds no Quintessence ledger to check a wallet against. Its table therefore reads
+nought participants and three source bots, which is what is true of it.
+
+```
+LocalTestnet.run_demo_competition(n_bots=3)
+  0 participant node(s)  ·  3 source bot(s)
+  winner tier Harvest, award 10 ACRV
+```
+
+### Where one wallet a bot still stands
+
+The certification socket derives one address from each bot id. That address is
+still the sender of the bot's own trade commitment, and it is still the credited
+wallet for a bot that feeds no participant node. A bot that feeds one credits
+that node's wallet instead, so the market share ceiling and the cooldown bound
+the participant.
+
+`src/competition/certification_socket.py` - the synthesised address
+
+```python
+    @staticmethod
+    def _wallet_for(bot_id: str) -> str:
+        """Return the address synthesised from ``bot_id``.
+
+        ``_post_commitment`` sends every trade commitment from this address,
+        because a trade is the bot's own, and ``award_wallet_for`` returns it as the
+        credited wallet for a bot feeding no participant node.
+        """
+        return f"0x{bot_id[:40]}"
+```
+
+The dated section below carries the move, the readings on both sides of it, and
+the reason a bot on no node keeps this address.
+
+The party window is the other place. It lists one row a bot from the fleet load
+and its row field is named for a participant. Those rows are source bots under
+this reading, and the wallet panel above them is the one that names the
+participant.
+
+```
+the party row field          participant, holding a bot id
+the wallet panel label       Participant, holding the node id
+the on-chain view name       getParticipantCount, counting one wallet a bot
+the on-chain record key      participants, holding one wallet a bot
+```
+
+The two on-chain names are a contract interface and a stored record shape.
+Renaming either changes what a chain record holds, so both stand and neither is
+read as a participant count of nodes.
+
+## 2026-09-11 13:07 - #147 - every game fee is Quintessence, and a movement on the chain costs Fluor
+
+**HIS.**
+
+> "Everything is Quint and we can invent our version of gas using an alchemical
+> term for 'flow' or 'move' or 'fuel'"
+
+Two rules follow, and they do not overlap.
+
+```
+the game charges a fee     the fee is Quintessence
+an exchange reports a fee  the fee stays in US dollars
+```
+
+### What the game charges, and what the exchange charges
+
+The game charges Quintessence for every act it prices. An action band costs
+Quintessence. A transfer between two wallets loses a share to the pleroma, 8% at
+transfer skill level 1 and 4% at level 10. A first skill level costs
+quality-weighted uses. A consecration declares a Quintessence cost. An event's
+entry fee carries a rank today and no currency.
+
+A trading fee is different. The exchange took that fee, the exchange reports it,
+and the exchange is the authority on it. The platform stores the figure the venue
+gave and changes nothing about it.
+
+```
+the fill carries      fee_usd, in dollars
+certification reads   that one figure
+the ledger converts   at QUINTESSENCE_PER_FEE_USD, which stands at 1
+```
+
+Nothing in the package charges a game fee in dollars. The Base layer two also
+charges its own gas in gwei, and that is a public chain's charge, not this game's.
+
+### Fluor is the name of what a movement on the chain costs
+
+A movement of value on the PoA chain costs **Fluor**, and Fluor is paid in
+Quintessence like every other game fee.
+
+Georgius Agricola printed the word in *Bermannus, sive de re metallica dialogus*,
+1530. Miners called stones that melt in fire *fluores*. A smelter adds them to a
+charge so the metal runs. The singular is *fluor*, a flowing.
+
+The name fits the thing. A flux is not burnt for heat. It is spent so a mass can
+move, and it is gone when the work ends. That is what a charge for moving value is.
+
+```
+src/competition/quintessence_ledger.py
+  FLUOR              the name, five characters
+  FLUOR_SOURCE       the book and the year
+  FLUOR_RATE_ABSENT  says no source sets a figure
+```
+
+The package entry binds all three, so `from src.competition import FLUOR` reaches
+the name.
+
+### No figure is set, and none is written
+
+Nobody has set what one movement costs. No module holds a Fluor figure and no
+screen shows one. The nearest charge that exists today is the transfer bleed, and
+whether Fluor names that charge or a separate charge on every chain write is still
+open.
+
+Six other names were researched and each lost on a named ground. The clearance
+work, the sources and the collision counts sit in
+[the PoA name clearance page](../../design/poa_name_clearance.md).
+
+## 2026-09-11 13:10 - #585 - a guild roster saves to a file, and the Guild subtab reads it back
+
+A guild lived until the screen drew itself again. The Guild subtab built a new
+empty roster each draw, and no module wrote a roster to disk. A roster now has a
+file of its own. The subtab reads that file. A guild founded once is on the page
+on every later draw.
+
+`src/competition/guild_roster.py` holds the roster. It now carries `save`, `load`
+and a default file. Twelve other modules in the package already declare a default
+path under `~/.acervator`, and this one follows them:
+
+```
+DEFAULT_ROSTER_PATH   ~/.acervator/poa_guild_roster.json
+ROSTER_FILE_VERSION   1
+save                  writes every guild, its members and its officers
+load                  reads that file back into the roster that asks
+roster_path           the file this roster saves to and loads from
+```
+
+A roster takes its file by construction, as a world and a journey store do. A
+caller that names no file gets `DEFAULT_ROSTER_PATH`.
+
+### The next draw loses a founding that nothing wrote
+
+The readings below come off the screen route. A driving script called the bridge
+handler the React tab calls, and printed the strings the Guild panel draws.
+
+```
+before, the Guild subtab after one founding of a guild with two members
+  Guilds            : 0
+  Members           : 0
+  Roster file       : the row did not exist
+  the panel drew no guild list
+  note: No module writes a roster file, so the roster loads empty and no guild
+        is listed. Founding one through a control is not built.
+
+after, the same founding, and the roster was not saved
+  Guilds            : 0
+  Members           : 0
+  Roster file       : poa_guild_roster.json - no file yet
+  the panel drew no guild list
+
+after, the same founding, and the roster was saved
+  Guilds            : 1
+  Members           : 2
+  Roster file       : poa_guild_roster.json - held
+  listed guild      : The Salt Wardens - 2 member(s)
+```
+
+The third block held on the next draw, and on the draw after it. Only a save puts
+a guild on the page, and a save is enough.
+
+### The same guild, read back into a second roster
+
+One roster saved its file. A second roster object read the same file. Both answer
+the same.
+
+```
+first  guild_count 2   member_count 3
+second guild_count 2   member_count 3
+bot-u100-founder-0001    first officer   second officer
+bot-u100-joiner-0002     first officer   second officer
+bot-u100-second-0004     first member    second member
+bot-u100-outsider-0003   first None      second None
+keys  both ['silver_mirrors', 'the_salt_wardens']
+rows  both name, founder, treasury, 2 members and 2 officers, then 1 and 0
+```
+
+Every treasury address matched. A treasury address follows from the guild key, so
+a roster read back pays from the address it paid from before.
+
+### What an absent, an empty and a foreign file each do
+
+A read the module cannot trust changes nothing. The roster keeps what it holds, and
+the module writes one line to the log. This matches `PoaWorld.load` and
+`WorldJourneys.load`, which the same bridge installs.
+
+```
+an absent file             guild_count 0, and no file is created
+an absent file, under a
+  roster holding a guild   that guild is still there after the load
+an empty file              guild_count 0
+                           log: failed to read ...: Expecting value
+a file of version 99       guild_count 0
+                           log: carries version 99, not 1; nothing was read
+a file naming the pleroma
+  treasury bucket          guild_count 0
+                           log: the stored roster holds its treasuries in the
+                           'pleroma' bucket and this one reads 'wallets'
+a file carrying one key
+  twice                    guild_count 0
+                           log: the stored roster carries 'twins' twice and one
+                           key names one treasury address
+the same reader on a
+  sound file               guild_count 2, member_count 3
+```
+
+The last line is the control. The same reader that answered nought five times
+answered two guilds and three members on a file that was sound.
+
+### Where the program holds its roster
+
+Two places hold a roster, and one file joins them.
+
+The Guild subtab reads the picked chain's own roster file, through `roster_store`.
+This is what `world_store` does for the world and what `loaded_ledger` does for the
+Quintessence ledger. The bridge handler gets parameters and no window, so a file is
+the only thing it can read.
+
+```
+Live chain           ~/.acervator/poa_guild_roster.json
+Demo TestNet chain   ~/.acervator/poa_guild_roster_testnet.json
+```
+
+The live file and `DEFAULT_ROSTER_PATH` are the same file. A demo guild is on the
+demo subtab and not on the live one, and the live guild did not change when a caller
+wrote the demo file.
+
+`SharedTestnetBridge.install_roster` builds the running program's own roster and
+reads its file at launch, beside the world and the journeys. `install_on` attaches
+it to the window as `_guild_roster`. Driven on a stand-in host, the window held a
+roster of one guild and two members off a file another caller had saved.
+
+Three modules take a roster and none builds one: `alignment.world_alignment`,
+`consecration.add_guild_places` and `army_command.open_party`. `install_roster`
+builds the roster those three can take. Nothing reads the window's copy yet, which
+is also true of the world and the journeys beside it.
+
+### The refusals a roster already had, unchanged
+
+```
+a duplicate guild name   'The Salt Wardens' already holds the key
+                         'the_salt_wardens' and its treasury
+                         poa_guild_treasury_the_salt_wardens; two guilds never
+                         share one treasury address
+a member joining twice    address bot-u100-joiner-0002 already belongs to
+                         the_salt_wardens; one address belongs to one guild, so a
+                         transfer between guild members reads one guild
+promote, no membership   bot-u100-outsider-0003 is no member of the_salt_wardens,
+                         which holds 2 member(s)
+demote, no membership    bot-u100-outsider-0003 is no member of the_salt_wardens,
+                         which holds 2 member(s)
+leave, no membership     bot-u100-outsider-0003 is no member of the_salt_wardens,
+                         which holds 2 member(s)
+an unknown guild key     'no_such_guild' is no guild in this roster; it holds 1
+                         of them
+a name with no letter    a guild name carries at least one letter or digit, got
+                         '   '
+```
+
+### What founding a guild still costs
+
+Nothing. `found` takes a name and a founder, and no third value:
+
+```
+found's parameters        ['self', 'name', 'founder']
+found with a third value  GuildRoster.found() takes 3 positional arguments but 4
+                          were given
+a stored guild's fields   founder, key, members, name, officers, treasury
+the stored roster fields  guilds, treasury_bucket
+```
+
+No stored field names a price. The operator owes three figures, and no unit invents
+one:
+
+```
+how many tokens found a guild
+the stake a rank locks
+a cap on how many officers a guild holds
+```
+
+### Which control reaches a roster
+
+None. The page draws fifteen controls, and no control name carries the word guild:
+
+```
+identity, identity_confirm, distil, train, transfer, spend, grade, payout, close,
+drop, season, reset, reset_confirm, world, world_confirm
+```
+
+Founding, joining, leaving, promoting and demoting are each reached by no control.
+A caller reaches all five, and a roster saved by a caller is on the page. The Guild
+subtab, `Ctrl+7`, is the surface that would carry a founding control, the way the
+world control declares a world.
+
+The reset control deletes the Demo TestNet chain's record file and its log, and it
+refuses on the Live chain. It does not touch a roster file, so a reset leaves the
+guilds standing.
+
+## 2026-09-11 13:30 - #586 - one world turn is 3,600 seconds, and a constant says so
+
+The operator set the length himself: world turns are 1hr. No constant carried it.
+The code said so out loud, in a sentence four modules read, and a clock ratio that
+needed the figure had to be handed one by its caller. The hour is now a constant.
+
+`src/competition/poa_modes.py` already named both event timeframes. The world turn
+sits beside them, in the same shape:
+
+```
+ELITE_TIMEFRAME        "1m"
+STANDARD_TIMEFRAME     "5m"
+WORLD_TURN_TIMEFRAME   "1h"
+WORLD_TURN_SECONDS     TF_SECONDS["1h"], which is 3600
+```
+
+`TF_SECONDS` is the one table the event candle already read. The world turn reads
+the same table, so one scale measures both clocks and no second figure exists to
+drift from the first.
+
+### The hour now has a name in the code
+
+`consecration.WORLD_TURN_SECONDS_ABSENT` keeps its name, because the package entry
+binds it, and it no longer reports an absence. It reports the length and where the
+length came from.
+
+```
+before   "no constant names the seconds in a world turn. pvp_vote counts whole
+         world turns and its own notes carry the operator's one turn an hour, so
+         the hour lives in prose and every turn field here is a whole turn index"
+
+after    "one world turn is 3600 seconds, the operator's one turn an hour.
+         poa_modes declares it as WORLD_TURN_TIMEFRAME 1h beside ELITE_TIMEFRAME
+         and STANDARD_TIMEFRAME and reads the seconds off the one TF_SECONDS table
+         both clocks are measured by, so no second scale names it. Every turn
+         field here stays a whole turn index"
+```
+
+### Twelve standard turns and sixty elite turns an hour
+
+`event_turns_per_world_turn` could not answer before. It took the length as a
+required value and no constant could supply one. It now answers from the two
+declared lengths, and both divide the hour with nothing left over.
+
+```
+before   event_turns_per_world_turn(standard)
+         TypeError: missing 1 required positional argument: 'world_turn_seconds'
+
+before   event_turns_per_world_turn(standard, WORLD_TURN_SECONDS_ABSENT)
+         ClockNestingError: a world turn of "no constant names the seconds in a
+         world turn..." is not a count of seconds
+
+after    event_turns_per_world_turn(standard)   12
+         event_turns_per_world_turn(elite)      60
+```
+
+The run printed every dungeon variant's count off `nesting_rows`, which now takes
+the length as its own default too:
+
+```
+dungeon_crawl         5m candle, 300s   12 event turns a world turn   remainder 0s
+dungeon_crawl_elite   1m candle,  60s   60 event turns a world turn   remainder 0s
+raid                  5m candle, 300s   12 event turns a world turn   remainder 0s
+raid_elite            1m candle,  60s   60 event turns a world turn   remainder 0s
+```
+
+Both candles divide the hour exactly, so the refusal for a part-turn remainder
+never fires on the declared pair. A caller may still pass its own length, and a
+length the candle does not divide is still refused.
+
+### Every reader of the note now carries the number
+
+Four modules read the sentence. Each one now reads the length beside it.
+
+```
+consecration   ConsecrationRegister.to_dict gains a world_turn_seconds key of 3600
+world_turn     turn_economy_row gains the same key; the refusal for a fractional
+               turn index now quotes the length
+crafting       CRAFT_CLOCK_NOTE says turns_required counts 3600-second turns, and
+               Craft.to_dict gains the key
+dungeon_entry  WORLD_TURN_SECONDS_NOTE says both clock functions default to the
+               length; ABSENT_MECHANISMS keeps its world_turn_seconds entry
+```
+
+No key was dropped from any of those dictionaries and no sentence was deleted. A
+reader that asked for the absence note still gets a sentence at that key, and the
+sentence now carries the figure.
+
+### Only one name holds the seconds
+
+Every module in the package was imported and every module-level whole number
+compared against 3,600. Five names hold it, all of them the same name, and all five
+are the one object `poa_modes` declared.
+
+```
+src/competition/consecration.py::WORLD_TURN_SECONDS    the declared object
+src/competition/crafting.py::WORLD_TURN_SECONDS        the declared object
+src/competition/dungeon_entry.py::WORLD_TURN_SECONDS   the declared object
+src/competition/poa_modes.py::WORLD_TURN_SECONDS       the declaration
+src/competition/world_turn.py::WORLD_TURN_SECONDS      the declared object
+46 modules scanned
+```
+
+One other `3600` is written in the package, and it is not a turn length:
+`challenge_protocol.py` defaults a challenge to expire an hour after it is raised.
+The PvP vote's three figures count world turns rather than seconds, so its 24, 72
+and 7 x 24 stay as they are and read no length.
+
+### The screen reads the length in one place
+
+The turn meter does not read a world turn. It reads the running event candle, which
+is 300 seconds standard and 60 elite, and the event band draws the mode and the
+Impetus. The map panel is the one surface that names a world turn, and it was saying
+the length did not exist.
+
+```
+turn_meter      120s of 300s left, 40.0% - the event candle, not the world turn
+event band      the mode code, its label, its variant and the Impetus line
+map panel       before: "No module names the seconds in a world turn, so
+                JourneyLeg.progress_at is given no turn"
+                after:  "A world turn is 3600 seconds and no module turns a clock
+                reading into a turn index, so JourneyLeg.progress_at is given no
+                turn"
+```
+
+The first clause was false after this change and the second clause was always the
+real blocker. `progress_at` takes a turn index, not a count of seconds, so the
+length was never what stopped it. The panel was driven on a real world with one
+layer breached, and it printed the new sentence.
+
+### Crafting and equipping exist, and the notes say so now
+
+`vessels.ABSENT_MECHANISM_NOTES` said crafting and equipping were both missing.
+Both ship. A craft was driven end to end and an equip check was driven on both
+sides of its own test.
+
+```
+begin_craft      took 1 iron ore at Calx out of the crafting Vessel's store
+complete_craft   delivered armour at Calx into a gear slot, is_stored True,
+                 is_accounted True, embedded 0.00000001, unaccounted 0
+equip_check      cohesion 0.00000001 against a total of 0.00000001 - allowed
+equip_check      cohesion 0.00000001 against a total of 0        - refused,
+                 shortfall 0.00000001
+```
+
+No key left that dictionary. The two notes now name the code that holds each
+mechanism and the gap each one still has.
+
+```
+crafting    before: "no module makes an item"
+            after:  "crafting.CraftRegister makes one. begin_craft takes a
+            Recipe's components out of the crafting Vessel's store and
+            complete_craft delivers the item and embeds its Quintessence, and
+            crafting.TURNS_ABSENT names the turn count no source sets"
+
+equipping   before: "nothing holds gear to the equipping holder's Quintessence"
+            after:  "items.equip_check holds it: the ItemType's cohesion is read
+            against the total Quintessence held and EquipCheck.is_allowed is that
+            Potential.is_full. No module writes the gear a Vessel wears, so
+            nothing records an item as worn"
+```
+
+The `gear` note beside them still reads correctly. A store carries gear in counted
+slots, and carrying is not wearing: nothing records a worn item, so that note stays
+as it was.
+
+### What the world turn still does not say
+
+The length is the only figure this unit added. Four things the operator named in
+the same breath carry no figure, and no unit invents one.
+
+```
+what a world turn costs        no module prices one action in Impetus or steps
+how many world-level actions
+  fit in one block             nothing counts actions against a block
+the UTC sequencing rule        nothing orders two zones' actions by a clock
+the view range                 base sight is the participant's own square and
+                              squares_in_view takes a radius nobody supplies
+the index of the turn running
+  now                         no module turns a clock reading into a turn index,
+                              so the map cannot move a participant off the arena
+```
+
+The last row is what the map panel needs, and it needs an origin second as well as
+a length: nothing records when world turn zero opened.
+## 2026-09-11 14:30 - #147 - an award credits the participant's wallet, and the ceiling bounds the participant
+
+A participant is one active Acervator node with a connected Quint wallet address,
+and one or more bots feed that node. The certification socket used to derive one
+address from each bot id and credit that. The market share ceiling and the
+cooldown then bounded a bot. Both now count against the participant.
+
+The socket takes the participant register the same way it takes the chain, the
+ledger and the capture bounds: by construction. One reader answers which wallet
+an award credits, and the socket asks it once, before it writes anything.
+
+`src/competition/certification_socket.py` - the one reader
+
+```python
+    def award_wallet_for(self, bot_id: str) -> str:
+        if self._participants is None:
+            return self._wallet_for(bot_id)
+        node_id = self._participants.node_of_bot(bot_id)
+        if node_id is None:
+            return self._wallet_for(bot_id)
+        wallet = self._participants.wallet_of(node_id)
+        if wallet is None or not self._ledger.holds_wallet(wallet):
+            raise CertificationRefusedError(...)
+        return wallet
+```
+
+### One bot on one node credits that node's wallet
+
+The run below certifies one fill twice. The first socket holds no register. The
+second holds one, with the node registered and the bot attached to it. Each side
+ran its own node and its own bot, so each side prints its own addresses. The fee
+was thirty dollars at a grade of one, which distils thirty Quintessence.
+
+```
+no register        node wallet          c2dc8100979e04184762b2a54b...
+                  synthesised address  0x3d182c3cf23714fc4bc183b6e42d1a1319978e62
+                  socket credits       0x3d182c3cf23714fc4bc183b6e42d1a1319978e62
+                  award_reason         awarded, distilled 30.00000000
+                  node wallet          0 -> 0
+                  bot address          0 -> 30.00000000
+                  ledger answers for the node wallet   False
+
+with the register  node wallet          bdb615176fccc081dd346e2de8...
+                  synthesised address  0x002c27ddf67cad9a8414f8cdac8cee7a6df19274
+                  socket credits       bdb615176fccc081dd346e2de8...
+                  award_reason         awarded, distilled 30.00000000
+                  node wallet          1.00000000 -> 31.00000000
+                  bot address          0 -> 0
+                  ledger answers for the bot address   False
+```
+
+The one Quintessence already in the node wallet is the movement the register
+needs before it files a node. The section on the unattached bot says why.
+
+### The ceiling now counts two bots as one participant
+
+This is the money change. Two bots fed one node. Each had one fill worth thirty
+Quintessence of a pool of a thousand, and the ceiling on that pool is fifty. Each
+fill passed the ceiling on its own. The second fill sat past the cooldown, so the
+cooldown could not be what refused it.
+
+```
+market pool on BTC/USD     1000 Quintessence
+share ceiling              50, which is 5% of the pool
+each fill's award          30 Quintessence, under the ceiling alone
+both fills together        60 Quintessence, over the ceiling
+
+no register        bot A credits   0xfa761491d5752447b7943b74e3667a2c1d5d7c61
+                  bot B credits   0x558db9285fe7be2a3e20527b69d0cf966e366b25
+                  bot A           awarded, distilled 30.00000000
+                  bot B           awarded, distilled 30.00000000
+                  pool drawn      60.00 of 1000
+                  drawn past the ceiling   True
+
+with the register  bot A credits   36d7c52da3996e391e205138d9...
+                  bot B credits   36d7c52da3996e391e205138d9...
+                  bot A           awarded, distilled 30.00000000
+                  bot B           allotment_taken, distilled 0
+                  pool drawn      30.00 of 1000
+                  drawn past the ceiling   False
+```
+
+Two bots on one node took sixty Quintessence of a pool that allows one
+participant fifty. They now take thirty. The bound that refuses the second fill
+is the one allotment a participant a market an activation period, not the ceiling
+test: `_refusal_for` reads the allotment rule first, so the node's second fill on
+the same market never reaches the ceiling comparison. The ceiling is what sets
+what the node may hold of that market, and the allotment rule is what keeps the
+node inside it.
+
+### The cooldown now runs on the participant
+
+The same two bots on one node, on two different markets, with the second fill six
+hundred seconds after the first. The cooldown is three candles of the bot's own
+timeframe, floored at nine hundred seconds, which is ten thousand eight hundred
+seconds on an hour candle.
+
+```
+no register        bot A credits   0x661a690670a3c1d4f1e91a6e2fd65ac9f88b3167
+                  bot B credits   0x6ac0a4fac6021d5ba2baa6f51f590da28869cbee
+                  one address for both     False
+                  bot A           awarded, distilled 30.00000000
+                  bot B           awarded, distilled 30.00000000
+                  A's cooldown left       10200s
+                  B's cooldown left       10800s
+                  ETH/USD drawn           30.00
+
+with the register  one address for both     True
+                  bot A           awarded, distilled 30.00000000
+                  bot B           cooldown_running, distilled 0
+                  A's cooldown left       10200s
+                  B's cooldown left       10200s
+                  ETH/USD drawn           0
+```
+
+Two bots used to hold two cooldowns. A node that runs ten bots could take ten
+awards inside one window. One node now holds one cooldown, and both bots read the
+same seconds left on it.
+
+### A bot that feeds no node keeps its own address
+
+A bot that feeds no node credits the address the socket synthesises from its bot
+id, as it did before. That is a decision, and the register itself gives the
+reason. `ParticipantRegistry.register_node` refuses a wallet no movement has put
+in the ledger's wallet book. Distilling a certified fill is the movement that
+puts one there. Refusing such a fill would leave no wallet ever fed, so no node
+could ever register.
+
+`src/competition/participant_node.py` - the refusal, read before any movement
+
+```
+register_node, wallet unfed   refused: node d90f2deced15 gave wallet
+                              d90f2deced157f42a15088eff7c47f9d993c22303a28d5cc...,
+                              which the Quintessence ledger holds no record of
+ledger answers for it         False
+movements on the ledger       0
+
+the bot's node                None
+socket credits                0x8e835c1b6daa2e01a9543057d8826292d3bbc892
+award_reason                  awarded, distilled 30.00000000
+ledger answers for it         True
+
+then the node registers       took it, node d90f2deced15
+socket credits now            d90f2deced157f42a15088eff7c47f9d993c22303a28d5cc...
+```
+
+No path credits a wallet the ledger cannot answer for. A node whose wallet this
+socket's own ledger holds no record of is refused, and the refusal lands before
+the socket writes anything. The run below gave the register one ledger and the
+socket another.
+
+```
+the register's ledger answers for it   True
+the socket's ledger answers for it     False
+certify                                refused
+the bot's certified fill count         0
+the bot's trade log                    No trades in log
+total ever minted                      0
+```
+
+### What did not change
+
+The bot is still what signs a trade. The trade log still keys on the bot id. The
+socket's lifetime certified fee still only rises. Conservation balanced on every
+path the run drove, including every refusal.
+
+```
+signature verifies                True, 128 hex characters
+the record's public key is the bot's   True
+A's log keyed by A's bot id       True
+B's log keyed by B's bot id       True
+A's log size 2, B's log size 1    two bots, two roots
+A's lifetime fee, in order        0, 30.0, 60.0, 60.0
+that total only rises             True
+
+conservation on every path        balanced True, delta 0, negative buckets 0
+no fill_id                        refused, nothing minted
+a fill already certified          refused, nothing minted
+the same market again             allotment_taken, distilled 0
+inside the cooldown               cooldown_running, distilled 0
+a fill naming no activation       no_activation_named, distilled 0
+```
+
+The chain sender of a trade commitment is still the address synthesised from the
+bot id, because a trade is the bot's own. The award record on the chain is sent
+from the participant's wallet, because the award is the participant's.
+
+### Nothing reaches a certified fill in the running app
+
+The socket is built at launch. `SharedTestnetBridge.install_on` builds it and
+attaches it to the main window, reached from `src/gui/main_window.py` line 277.
+Nothing then subscribes it to a fill.
+
+```
+certify callers              one, _on_trade_filled inside the socket
+_on_trade_filled runs        only after attach_to_bus subscribes trade.filled
+attach_to_bus callers        none, anywhere in src or main.py
+controls on the PoA tab that reach certify   none
+```
+
+No fill reaches certification in the running application, and no control on the
+tab reaches it. The register arrives by construction the way the bounds do, so
+whoever subscribes the bus passes the register in the same call.

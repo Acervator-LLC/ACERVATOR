@@ -27,6 +27,8 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
+from .theme_engine import DEFAULT_THEME_NAME, THEMES, stored_theme
+
 logger = logging.getLogger("acervator.gui")
 
 #: Logged where PySide6 ships without its WebEngine, in place of a chart.
@@ -279,7 +281,7 @@ def page_html(colors: dict) -> str:
 
 
 # Theme-aware color sets
-CHART_THEMES = {
+_CHART_CHROME: dict[str, dict[str, str]] = {
     "cyberpunk_dark": {
         "bg": "#0a0a0f",
         "text": "#e0e0f0",
@@ -332,6 +334,12 @@ CHART_THEMES = {
     },
 }
 
+# One entry per name THEMES declares, so the two tables cannot hold
+# different theme names.
+CHART_THEMES: dict[str, dict[str, str]] = {
+    name: _CHART_CHROME.get(name, _CHART_CHROME[DEFAULT_THEME_NAME]) for name in THEMES
+}
+
 
 # Qt Widget
 if _HAS_WEBENGINE:
@@ -365,7 +373,8 @@ if _HAS_WEBENGINE:
             layout.setContentsMargins(0, 0, 0, 0)
 
             self._web = QWebEngineView()
-            colors = CHART_THEMES.get(self._theme, CHART_THEMES["cyberpunk_dark"])
+            # A copy: 'symbol' below would otherwise stay in the shared table.
+            colors = dict(CHART_THEMES[stored_theme(self._theme)])
             colors["symbol"] = self._symbol
 
             self._web.setHtml(page_html(colors))
@@ -395,7 +404,7 @@ if _HAS_WEBENGINE:
         def set_theme(self, theme: str) -> None:
             """Switch chart theme."""
             self._theme = theme
-            colors = CHART_THEMES.get(theme, CHART_THEMES["cyberpunk_dark"])
+            colors = dict(CHART_THEMES[stored_theme(theme)])
             colors["symbol"] = self._symbol
             self._web.setHtml(page_html(colors))
 

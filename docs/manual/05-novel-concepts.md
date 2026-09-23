@@ -175,6 +175,108 @@ Phantom Bots tab prints as zero, because the key the tab reads is never written
 timeframe (issue #313). Issue #155 tracks the remaining build-out. Replacing
 multi-screen monitoring is an intention, not current behaviour.
 
+**The saved record carries the timeframe.** The bot writes the key
+`phantom_timeframes` when it holds exactly one name. The fleet load reads that
+key and gives the list to the bot it builds. The key, the change field and the
+bot attribute now use one spelling.
+
+| step | module | symbol |
+| ---- | ------ | ------ |
+| write the key | `src/trading/bot_container.py` | `BotContainer.get_full_state` |
+| read the key | `src/trading/container/restore.py` | `StateRestoreMixin.restore_bots_from_state` |
+| hold the list | `src/trading/scrumming_bot.py` | `ScrummingBot.DEFAULT_PHANTOM_TIMEFRAMES` |
+| build the set | `src/trading/scrumming/tick_phases.py` | `TickPhaseMixin._tick_initialise` |
+| run one timeframe | `src/trading/phantom_balance.py` | `PhantomBalanceManager.create_phantom_set` |
+
+A record written before the key took the plural spelling still restores. The
+fleet load reads the older singular key `phantom_timeframe` when the plural key
+is absent. A bot that holds more than one name writes no key, and the engine
+default takes charge on the next start.
+
+**The venue decides which names survive.** The bot drops any stored timeframe
+its exchange does not serve. A record naming one timeframe the exchange refuses
+restores with no phantom at all, and the bot writes the dropped name to its own
+log line.
+
+**The record drops one key.** It no longer carries `phantom_config`. The
+attribute behind it held an empty dictionary and no code read it. A record that
+still carries the key loads, and the fleet load steps past it.
+
+The saved fleet on the trading machine, read once:
+
+```
+38 records, all scrumming        count
+phantom_timeframes                   0
+phantom_timeframe                    0
+phantom_config                      38
+phantoms_enabled false              38
+```
+
+No bot in that fleet runs a phantom. Every record holds the enable flag off.
+
+**The cursor tick keeps a timestamp.** `PhantomBot.tick_for_cursor` stores the
+cursor itself, not a bucket number. It divides the stored cursor by the candle
+length on every call, so both bucket numbers come from one divisor.
+
+**The cursor tick is gone.** `PhantomBot` carries no such method now. No module
+in the tree called it, and no module passed the simulator flag beside it. The
+attribute that held the cursor went with it.
+
+**One phantom, above the parent.** A bot whose record names no timeframe takes
+one name. The name is the lowest timeframe above the bot's own TA Timeframe
+that the venue serves. The class constant that held six names is gone.
+
+`src/trading/phantom_balance.py` — `default_phantom_timeframes`
+
+```python
+above = [
+    one
+    for one in TIMEFRAME_ORDER
+    if one in allowed and is_higher_tf(one, parent_timeframe)
+]
+return above[:1]
+```
+
+Driven on a Coinbase bot with a 1h TA Timeframe, the bot holds 2h. It held five
+names before, and four of the five sat at or below that 1h parent.
+
+**The record keeps every name the bot holds.** The save writes the key for any
+number of names. A bot holding 2h, 6h and 1d writes all three. The fleet load
+hands all three back, and the phantom manager builds three PhantomBots on them.
+The save wrote no key at all for that bot before.
+
+| step | module | symbol |
+| ---- | ------ | ------ |
+| write the key | `src/trading/bot_container.py` | `BotContainer.get_full_state` |
+| read the key | `src/trading/container/restore.py` | `StateRestoreMixin.restore_bots_from_state` |
+| pick a default | `src/trading/phantom_balance.py` | `default_phantom_timeframes` |
+| build the set | `src/trading/phantom_balance.py` | `PhantomBalanceManager.create_phantom_set` |
+
+**The eleven names are declared once.** `src/exchange/timeframes.py` declares
+`ALL_TIMEFRAMES`. Five modules read that tuple. Each held its own copy of the
+same ranked list before, and one module held two copies.
+
+| reader | module |
+| ------ | ------ |
+| the rank order | `src/trading/phantom_balance.py` |
+| the wizard page | `src/gui/main_tabs/bot_wizard_surface.py` |
+| the Settings page | `src/gui/main_tabs/settings_dialog_surface.py` |
+| the Phantom Bots tab | `src/gui/main_tabs/phantom_bots_tab_surface.py` |
+| the Comp column | `src/gui/main_tabs/indicator_panel_surface.py` |
+
+**A refused phantom is named on screen.** The Phantom Bots tab carries six
+status rows. Two of them name the timeframes no phantom runs on. The first
+names the timeframes the venue dropped. The second names the timeframes at or
+below the bot's own TA Timeframe. The Comp column's cell carries that second
+list in its tool tip.
+
+| reading | module | symbol |
+| ------- | ------ | ------ |
+| the venue drop | `src/trading/scrumming_bot.py` | `ScrummingBot._phantom_tf_dropped` |
+| the parent refusal | `src/gui/main_tabs/phantom_bots_tab_surface.py` | `below_parent_timeframes` |
+| the Comp tool tip | `src/gui/main_tabs/indicator_panel_surface.py` | `comp_skipped_tooltip` |
+| the engine record | `src/trading/phantom_balance.py` | `TimeframeCoordinator.get_higher_tf_bias` |
+
 ## 3 - The Landing Strip
 
 Perhaps the earliest assumption that hit me the most and really presented the catalyzing challenge to creating all of my alternate trading methods, is that you cannot predict what the market will do and after only a short while of actively trading I asked the questions: “But what if I don’t have to?” “What if I decide that I do not have to speculate at all?” I do not remember exactly when I first used the term but I think it was when I was trading ADA and XLM some years ago while participating in a Telegram group with some psytrance friends and associations called the Better Bitcoin Bureau. The name changed a few times but this is the one I recall.

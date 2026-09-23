@@ -52,7 +52,17 @@ CARD_SCRIPT_ASSETS: tuple[str, ...] = (
     + ("dashboard_stat_card.js",)
 )
 
-CARD_BODY = f'<div id="{CARD_ROOT_ID}"></div>'
+#: The page ground. ``page_html`` declares these six chrome colours on the
+#: root from the theme, so the card carries no colour of its own.
+PAGE_STYLE = (
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "html,body{height:100%;overflow:hidden}"
+    "body{background:var(--bg);color:var(--text)}"
+    f"#{CARD_ROOT_ID}{{height:100%}}"
+    '[data-part="card"]{height:100%;background:var(--btn-bg)}'
+)
+
+CARD_BODY = "<style>" + PAGE_STYLE + "</style>" + f'<div id="{CARD_ROOT_ID}"></div>'
 
 #: The JS expression reading the caption the browser drew.
 LABEL_TEXT_JS = "document.querySelector('[data-part=\"label\"]').textContent"
@@ -108,7 +118,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def card_html(theme: str = "cyberpunk_dark") -> str:
+def card_html(theme: object = None) -> str:
     """The whole card page as one string, with no network fetch."""
     return page_html((), CARD_SCRIPT_ASSETS, CARD_BODY, theme, (HOST_SCRIPT,))
 

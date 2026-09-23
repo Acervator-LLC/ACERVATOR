@@ -25,10 +25,24 @@ alone is reported. Nothing here imports Qt.
 
 from __future__ import annotations
 
+import base64
 import logging
+import struct
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
 
-from ...trading import ata_asset_maps, ata_spm, ata_spm_push
+from ...core import encryption
+from ...exchange.market_inspector_fetcher import DEFAULT_MIN_REFRESH_S, DEFAULT_QUOTES
+from ...trading import (
+    ata_asset_maps,
+    ata_post_paths,
+    ata_spm,
+    ata_spm_push,
+    ata_spm_send,
+    ata_spm_signin,
+)
+from .. import design_system as ds
 from . import indicator_panel_surface as ivp
 
 logger = logging.getLogger("acervator.market_inspector_gui")
@@ -84,6 +98,9 @@ STEP_BUTTON_STYLE = "padding: 2px;"
 POSITION_FORMAT = "{at} of {total}"
 POSITION_EMPTY_TEXT = "0 of 0"
 POSITION_STYLE = "color: #aaa; font-size: 11px;"
+#: The running scan's counter, at the right end of the position row, just
+#: above the entry; both hosts name it so.
+COUNTER_PART = "zone-counter"
 
 ENTRY_CLASS = "_ZoneEntry"
 ENTRY_STYLE = "_ZoneEntry { border: 1px solid #333; border-radius: 6px; padding: 4px; }"
@@ -127,28 +144,124 @@ ATA_SPM_PHASE_KEY = "phase"
 ATA_SPM_READY_KEY = "ready_to_send"
 
 ATA_SPM_NO_SECTOR_TEXT = "No sector added. Name one and press Scan Now."
-SECTOR_FIELD_PLACEHOLDER = "Sector"
-SECTOR_FIELD_TOOLTIP = (
-    "Name a market sector to scan. Every asset the sector holds is "
-    "charted and run through the twelve voters."
+TICKER_FIELD_PLACEHOLDER = "Ticker"
+TICKER_FIELD_TOOLTIP = (
+    "Name one market to read on demand. Typing offers the tickers the "
+    "sector menu beside it holds."
 )
-#: The sector field takes the row's slack, so no other control's position
+#: The ticker field takes the row's slack, so no other control's position
 #: follows from the width its own text happens to take.
-SECTOR_FIELD_MIN_WIDTH_PX = 72
+TICKER_FIELD_MIN_WIDTH_PX = 72
+
+#: The most matches one typed value offers, so a one-letter entry cannot fill
+#: the row with names.
+TICKER_MATCH_LIMIT = 8
+#: What one offer reads on the completer and the page's list: the symbol
+#: and the class that lists it.
+TICKER_OFFER_FORMAT = "{symbol}  ({asset_class})"
+#: The characters a typed ticker may carry between its base and its quote.
+TICKER_SEPARATORS = ("-", "_", " ")
+TICKER_JOIN = "/"
+
+#: What the field carries for a sector the tree lists no tickers for. The
+#: field still takes a typed name.
+TICKER_NO_LIST_FORMAT = "No ticker list for {sector}. A typed name still scans."
+#: What the field carries for a sector whose list the venue answers at press
+#: time, before its first press has read one.
+TICKER_PRESS_LIST_FORMAT = (
+    "Scan Now reads the {sector} list from {source}. A typed name still scans."
+)
+#: The classes whose list a press reads off a venue, and what the note names.
+CLASS_PRESS_SOURCES = {
+    ata_spm.CLASS_DERIVATIVES: "Coinbase's futures and perpetual products",
+}
+TICKER_FIELD_PART = "ticker-field"
+CLASS_BOX_PART = "class-box"
+TICKER_NOTE_PART = "ticker-note"
+TICKER_MATCH_PART = "ticker-match"
+
+#: The note's own colour and size, published so the window's style sheet and
+#: the page's style read one source.
+TICKER_NOTE_COLOUR = "#ccc"
+TICKER_NOTE_SIZE_PX = 11
+TICKER_NOTE_STYLE = f"color: {TICKER_NOTE_COLOUR}; font-size: {TICKER_NOTE_SIZE_PX}px;"
 SCAN_NOW_LABEL = "Scan Now"
 SCAN_NOW_TOOLTIP = (
-    "Scan this sector now on the timeframes ticked beside it, without "
-    "waiting for a rotation."
+    "Scan now on the timeframes ticked beside it, without waiting for a "
+    "rotation. A ticker in the field reads that one market; an empty field "
+    "reads the sector menu's markets, largest volume first, until Hits per "
+    "scan markets pass the push gates."
 )
+SCAN_ALL_LABEL = "Scan All"
+SCAN_ALL_TOOLTIP = (
+    "Scan every market of every sector on every timeframe, with no stop at a "
+    "hit count. The reads are paced under each public host's limit, so the "
+    "walk takes minutes; each hit chimes and enters Ready to Send as it lands."
+)
+#: The Scan All button, named so a reader can find it beside Scan Now.
+SCAN_ALL_PART = "scan-all"
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
-CLASS_BOX_WIDTH_PX = 92
+#: Wide enough for the longest class name, derivatives, beside the menu's arrow.
+CLASS_BOX_WIDTH_PX = 120
+
+#: The confirmation timer tiles, right of the Timeframe row: one per watched
+#: call, its pair line over its countdown, wrapped by the region's width.
+TIMER_TILES_PART = "timer-tiles"
+TIMER_TILE_PART = "timer-tile"
+TIMER_PAIR_PART = "timer-pair"
+TIMER_COUNTDOWN_PART = "timer-countdown"
+TIMER_TILE_WIDTH_PX = 132
+TIMER_TILE_SPACING_PX = 4
+#: The region's height, three tile rows; past that the region scrolls, so the
+#: tiles never push the stepper and the field down the zone.
+TIMER_REGION_HEIGHT_PX = 110
+#: The region paints no ground of its own, the page's region has none; the
+#: tiles carry their own.
+TIMER_REGION_STYLE = (
+    "QScrollArea { background: transparent; border: none; } "
+    "QScrollArea > QWidget > QWidget { background: transparent; }"
+)
+TIMER_TILES_EMPTY_TEXT = "No confirmation timer running."
+TIMER_TILE_STYLE = (
+    f"background: {ds.SURFACE_INPUT}; border: 1px solid {ds.OUTLINE}; "
+    "border-radius: 4px; padding: 2px 6px;"
+)
+TIMER_PAIR_STYLE = (
+    f"color: {ds.TEXT_HIGH}; font-size: {ds.TYPE_CAPTION}px; font-weight: bold;"
+)
+TIMER_COUNTDOWN_STYLE = f"color: {ds.PRIMARY}; font-size: {ds.TYPE_CAPTION}px;"
+TIMER_READING_STYLE = f"color: {ds.WARNING}; font-size: {ds.TYPE_CAPTION}px;"
+TIMER_CONFIRMED_STYLE = f"color: {ds.SUCCESS}; font-size: {ds.TYPE_CAPTION}px;"
+TIMER_FAILED_STYLE = f"color: {ds.ERROR}; font-size: {ds.TYPE_CAPTION}px;"
+TIMER_EMPTY_STYLE = f"color: {ds.TEXT_LOW}; font-size: {ds.TYPE_CAPTION}px;"
+#: The countdown line's style by the tile's state; ``reading`` overrides ``open``.
+TIMER_STATE_STYLES = {
+    ata_spm_push.OUTCOME_OPEN: TIMER_COUNTDOWN_STYLE,
+    ata_spm_push.TIMER_READING_TEXT: TIMER_READING_STYLE,
+    ata_spm_push.OUTCOME_CONFIRMED: TIMER_CONFIRMED_STYLE,
+    ata_spm_push.OUTCOME_FAILED: TIMER_FAILED_STYLE,
+}
+
+
+def timer_line_style(row: Any) -> str:
+    """The second line's style for one tile row, from ``TIMER_STATE_STYLES``."""
+    if row.get("reading"):
+        return TIMER_STATE_STYLES[ata_spm_push.TIMER_READING_TEXT]
+    return TIMER_STATE_STYLES.get(str(row.get("state")), TIMER_COUNTDOWN_STYLE)
+
+
+TIMEFRAME_TITLE = "Timeframe"
 TIMEFRAME_BOX_TOOLTIP_FORMAT = "Scan this sector on {label}."
 TIMEFRAME_BOX_WIDTH_PX = 64
-TIMEFRAME_BOX_HEIGHT_PX = 22
 
-#: The indicator and its label together, which is one Qt ``QCheckBox`` and
-#: one page label element.
+#: The four timeframe buttons together, which is one Qt ``QGridLayout`` and
+#: one page row.
 TIMEFRAME_ROW_PART = "timeframe-row"
+
+#: The sector line and the two page buttons under the timeframes, named so a
+#: reader can find either line on its own.
+SECTOR_ROW_PART = "sector-row"
+SCAN_ROW_PART = "scan-row"
 ATA_ROW_SPACING_PX = 6
 
 #: The expanded ATA-SPM entry's line names, one per phase readback.
@@ -162,11 +275,68 @@ NO_FOLLOW_UP_TEXT = "No call is being followed up yet."
 DEFERRED_TAG = "deferred"
 UNLISTED_TAG = "unlisted"
 UNSERVED_TAG = "unserved"
+ORDER_TAG = "order"
 PHASE_ROW_NAME_FORMAT = "{phase} {tag}"
 CALL_TAG_FORMAT = "{symbol} {label}"
 BAND_TAG_FORMAT = "{symbol} bands"
 MESSAGE_ROW_NAME_FORMAT = "{symbol} {label}"
 NO_CALL_TEXT = "No chart carried a reversal vote."
+NO_CANDLE_TEXT = "No candles came back for {symbols}."
+#: The zone's sentence after ``NO_CANDLE_TEXT`` when a venue named its refusal.
+REFUSAL_SAID_FORMAT = "{text} {venue} said: {refusal}"
+#: The venue name on that sentence when the scan names none.
+UNNAMED_VENUE_TEXT = "The venue"
+#: The row name each market line takes in the field while a scan runs.
+SCAN_LINE_NAME_FORMAT = "scan-line-{at}"
+UNREAD_SYMBOL_CAP = 6
+UNREAD_MORE_FORMAT = "{symbols} and {count} more"
+METHOD_SENTENCE_JOIN = " "
+
+#: The age past which a scan refetches rather than reading the universe scan's
+#: candles; ``fetch_htf_universe`` serves its own cache over the same window.
+CANDLES_FRESH_SECONDS = DEFAULT_MIN_REFRESH_S
+
+#: The age ``inspector_scan_age`` answers when no universe scan has ever run.
+NO_SCAN_AGE = float("inf")
+
+#: The source name ``sector_candle_read`` answers for candles the universe
+#: scan already holds.
+CANDLES_FROM_SCAN = "universe scan"
+#: The refusal ``sector_candle_read`` answers for a crypto name while no
+#: exchange connector is in reach.
+NO_CONNECTOR_TEXT = "no exchange connected"
+
+#: The pins one Scan Now press leaves on the signal handler, in order;
+#: ``ata_spm.HIT_PIN`` sits between the order and the end.
+SCAN_PRESSED_PIN = "inspector.ata.scan_pressed"
+SCAN_STARTED_PIN = "inspector.ata.scan_started"
+VOLUME_ORDER_PIN = "inspector.ata.volume_order"
+MARKET_READ_PIN = "inspector.ata.market_read"
+SCAN_FINISHED_PIN = "inspector.ata.scan_finished"
+#: The pin the running walk leaves every ``PROGRESS_PIN_EVERY`` markets and
+#: at its end: class, read, total, hits.
+SCAN_PROGRESS_PIN = "inspector.scan.progress"
+PROGRESS_PIN_EVERY = 10
+#: The pin one class list read leaves: class, source, count, dead.
+LIST_SOURCE_PIN = "inspector.scan.list_source"
+
+#: What ``class_markets`` names as the source of each class's order.
+CRYPTO_ORDER_SOURCE_FORMAT = "24 h quote volume on {venues}"
+CRYPTO_NO_CONNECTOR_SOURCE_TEXT = "name, no exchange connected for a volume figure"
+CRYPTO_PUBLIC_SOURCE_TEXT = (
+    "name on the coinbase public products list, no volume figure"
+)
+CRYPTO_NO_FIGURE_SOURCE_TEXT = "name, the exchange sent no volume figure"
+VENUE_ORDER_SOURCE_FORMAT = "last complete daily bar volume x close on {venue}"
+STOCKS_SCREENER_SOURCE_FORMAT = "{source}, {sectors} sector(s)"
+STOCKS_PORTFOLIO_SOURCE_FORMAT = (
+    "RA portfolio equities in map order, the screener refused: {refusal}"
+)
+FUTURES_ORDER_SOURCE_FORMAT = "{source}, {expiring} expiring, {perpetual} perpetual"
+FUTURES_REFUSED_SOURCE_FORMAT = "no derivatives list, the venue refused: {refusal}"
+ORDER_VENUE_JOIN = ", "
+ORDER_LOG_FORMAT = "ATA-SPM order for {asset_class}: {line}"
+VOLUME_FIGURE_REFUSED_LOG = "volume figure refused for %s: %s"
 
 #: The share a bullish bot feeds to the bot on the opposite market condition.
 OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
@@ -187,7 +357,9 @@ PHANTOM_HTF_UNWIRED_TEXT = "Phantom Bot source not wired."
 
 READY_TO_SEND_UNWIRED_TEXT = "Phase source not wired. Nothing to approve."
 READY_TO_SEND_NO_RUN_TEXT = "No run yet. Nothing to approve."
+READY_TO_SEND_NONE_TEXT = "The last scan left no post. Nothing to approve."
 READY_TO_SEND_HOLDS_FORMAT = "{count} post(s) waiting. Approve or decline each."
+NO_POSTS = 0
 
 # ── phases four, five and six: the bucket, its buttons and the settings ──
 
@@ -196,18 +368,22 @@ DECLINE_LABEL = "Decline"
 POST_SELECTED_LABEL = "Post Selected"
 POST_ALL_LABEL = "Post All"
 FULL_AUTO_LABEL = "Send Bucket Full Auto"
+CHART_FOLDER_LABEL = "Chart Folder"
 SETTINGS_LABEL = "Settings"
-SAVE_CREDENTIALS_LABEL = "Save credentials"
 
 APPROVE_PART = "approve-button"
 DECLINE_PART = "decline-button"
+BUCKET_ROW_PART = "bucket-row"
 POST_SELECTED_PART = "post-selected"
 POST_ALL_PART = "post-all"
 FULL_AUTO_PART = "full-auto"
+CHART_FOLDER_PART = "chart-folder"
 SETTINGS_PART = "settings-button"
-SAVE_CREDENTIALS_PART = "save-credentials"
 SETTING_FIELD_PART = "setting-field"
 THUMBNAIL_PART = "post-thumbnail"
+CONNECT_PART = "connect-button"
+BACK_PART = "back-button"
+ZONES_PART = "zones-button"
 
 #: Every press ``MarketInspectorScreenModel.push_action`` answers, which is
 #: how the Electron host knows which key to send as one.
@@ -217,8 +393,12 @@ PUSH_PARTS = (
     POST_SELECTED_PART,
     POST_ALL_PART,
     FULL_AUTO_PART,
+    CHART_FOLDER_PART,
     SETTINGS_PART,
     THUMBNAIL_PART,
+    CONNECT_PART,
+    BACK_PART,
+    ZONES_PART,
 )
 
 #: Sized here rather than by their own text, so the Qt widget and the page
@@ -227,49 +407,156 @@ PUSH_BUTTON_HEIGHT_PX = 36
 FIELD_HEIGHT_PX = 37
 APPROVE_WIDTH_PX = 100
 DECLINE_WIDTH_PX = 92
-POST_SELECTED_WIDTH_PX = 128
-POST_ALL_WIDTH_PX = 92
-FULL_AUTO_WIDTH_PX = 184
+#: One width for every Ready to Send button, so the Qt grid and the page's own
+#: wrap break at the same count. It holds the longest label, Send Bucket Full
+#: Auto.
+BUCKET_BUTTON_WIDTH_PX = 184
 SETTINGS_WIDTH_PX = 96
 SCAN_NOW_WIDTH_PX = 108
 
-#: The wording each empty credential field shows, in the order
-#: ``ata_spm_push.CREDENTIAL_FIELD_KEYS`` names them.
-CREDENTIAL_PLACEHOLDERS = ("API key", "API signature")
+#: Every credential box's part name, which is what a page reports back when
+#: the operator types into one.
+CREDENTIAL_FIELD_KEYS = ata_spm_push.CREDENTIAL_FIELD_KEYS
 
-#: The two fields one push target's credential is typed into, each as its
-#: part name and the wording the empty field shows.
-CREDENTIAL_FIELDS = tuple(
-    zip(ata_spm_push.CREDENTIAL_FIELD_KEYS, CREDENTIAL_PLACEHOLDERS)
+#: The two pages the ATA-SPM zone shows in place of its stepper. Level 1 is
+#: the accounts, categories and settings; Level 1A is one venue's sign-in.
+LEVEL_ONE = "level-1"
+LEVEL_ONE_A = "level-1a"
+
+SM_ACCOUNTS_TITLE = "SM Accounts"
+ASSET_CATEGORY_TITLE = "Asset Category"
+ATA_SETTINGS_TITLE = "Settings"
+
+VENUE_BUTTON_PART = "venue-button"
+ASSET_CATEGORY_PART = "asset-category"
+CREDENTIAL_PAGE_PART = "credential-page"
+CREDENTIAL_MESSAGE_PART = "credential-message"
+SECTION_TITLE_PART = "section-title"
+ENDPOINT_LINE_PART = "endpoint-line"
+SCOPES_LINE_PART = "scopes-line"
+REGISTRATION_LINE_PART = "registration-line"
+SIGN_IN_LINE_PART = "sign-in-line"
+REDIRECT_LINE_PART = "redirect-line"
+PREREQUISITE_LINE_PART = "prerequisite-line"
+
+VENUE_BUTTON_WIDTH_PX = 108
+ASSET_CATEGORY_WIDTH_PX = 108
+CONNECT_WIDTH_PX = 96
+BACK_WIDTH_PX = 76
+
+#: How many timeframe buttons the scan page puts on a line. The four fit the
+#: zone at every width the window opens at, so this one count is a constant.
+#: Level 1 and Level 1A take theirs from ``columns_for`` instead.
+BUTTON_COLUMNS = 4
+
+
+#: The pressed look every checkable button on this screen draws: a venue whose
+#: credential is held, the asset class a scan uses, and a ticked timeframe.
+#: The page paints the same two tokens through its ``data-scan-state`` rule,
+#: so neither side leaves the state to the platform's own default.
+CHECKED_BUTTON_STYLE = (
+    f"QPushButton:checked{{background:{ds.PRIMARY};color:{ds.ON_PRIMARY};"
+    f"border:1px solid {ds.PRIMARY};}}"
 )
+
+CONNECT_LABEL = "Connect"
+BACK_LABEL = "Back"
+VENUE_TOOLTIP_FORMAT = "{target} credentials · {state}"
+CATEGORY_TOOLTIP_FORMAT = "Scan {name} sectors."
+CONNECT_TOOLTIP = "Sign in to this venue and hold the credential in the vault."
+BACK_TOOLTIP = "Leave this venue's page without signing in."
+ZONES_TOOLTIP = "Leave the accounts page for the three scan zones."
+ENDPOINT_LINE_FORMAT = "Posts to {endpoint}"
+SCOPES_LINE_FORMAT = "Scopes {scopes}"
+REGISTRATION_LINE_FORMAT = "Register first: {registration}"
+SIGN_IN_LINE_FORMAT = "Connect opens your browser on {address}"
+#: What a venue answering at its own desktop redirect carries instead. Its
+#: sign-in opens inside the program, and no system browser is involved.
+SIGN_IN_VIEW_LINE_FORMAT = "Connect opens a sign-in window in Acervator on {address}"
+#: What a venue with typed fields and no authorize address carries: the
+#: boxes are held as they are left, and Connect checks their form.
+SIGN_IN_TYPED_TEXT = (
+    "Connect checks what you typed and holds it. No browser opens and no "
+    "venue is reached."
+)
+#: What a venue whose row names no field carries.
+SIGN_IN_NONE_TEXT = (
+    "No sign-in. The post goes through the venue folder and the compose address."
+)
+REDIRECT_LINE_FORMAT = "Redirect address to register: {redirect}"
+NO_REDIRECT_TEXT = "Redirect address to register: none, this venue issues no token"
+NO_SCOPES_TEXT = "Scopes none"
+PREREQUISITE_LINE_FORMAT = "Before it works: {prerequisite}"
+SCOPE_SEPARATOR = " · "
+NO_MESSAGE_TEXT = ""
 
 APPROVE_TOOLTIP = "Approve this post so Post All and Full Auto release it."
 DECLINE_TOOLTIP = "Decline this post. No button sends a declined post."
 POST_SELECTED_TOOLTIP = "Send the post on screen, at no more than the configured rate."
 POST_ALL_TOOLTIP = "Send every approved post, at no more than the configured rate."
 FULL_AUTO_TOOLTIP = "Release approved posts without a click, at the configured rate."
-SETTINGS_TOOLTIP = "Show the ATA-SPM settings page, or the scan page."
-SAVE_CREDENTIALS_TOOLTIP = "Encrypt every credential typed above into the vault."
-CREDENTIAL_FIELD_WIDTH_PX = 96
-SETTING_FIELD_WIDTH_PX = 180
+CHART_FOLDER_TOOLTIP = (
+    "Open the folder holding the chart images, in the system file browser. "
+    "Each image carries the standardised message, so it can be posted by hand. "
+    "One folder per venue holds that venue's own image and message text."
+)
+SETTINGS_TOOLTIP = "Show the ATA-SPM accounts page, or the scan page."
+CREDENTIAL_FIELD_WIDTH_PX = 160
+SETTING_FIELD_WIDTH_PX = 160
 SETTINGS_ROW_SPACING_PX = 6
 SETTINGS_LABEL_WIDTH_PX = 150
+
+
+def grid_width(count: int, cell: int, spacing: int = SETTINGS_ROW_SPACING_PX) -> int:
+    """How wide ``count`` cells of ``cell`` sit with ``spacing`` between them."""
+    return count * cell + (count - 1) * spacing
+
+
+def columns_for(
+    available: int, cell: int, spacing: int = SETTINGS_ROW_SPACING_PX
+) -> int:
+    """How many ``cell`` wide cells a pane of ``available`` holds on one line.
+
+    Every Level 1 and Level 1A group breaks at this count in both builds, and
+    one ``spacing`` is left clear past the last cell so the Qt grid and the
+    page's own ``calc(100% - gap)`` wrap at the same pane width.
+    """
+    step = cell + spacing
+    if available < step:
+        return 1
+    return available // step
+
+
+#: The scan page's timeframe buttons wrap after ``BUTTON_COLUMNS``, at the ATA
+#: column's own spacing.
+TIMEFRAME_GRID_WIDTH_PX = grid_width(
+    BUTTON_COLUMNS, TIMEFRAME_BOX_WIDTH_PX, ATA_ROW_SPACING_PX
+)
+CREDENTIAL_ROW_WIDTH_PX = (
+    SETTINGS_LABEL_WIDTH_PX + SETTINGS_ROW_SPACING_PX + CREDENTIAL_FIELD_WIDTH_PX
+)
+SETTING_ROW_WIDTH_PX = (
+    SETTINGS_LABEL_WIDTH_PX + SETTINGS_ROW_SPACING_PX + SETTING_FIELD_WIDTH_PX
+)
 
 #: Every ATA-SPM setting a phase reads, with the wording its row carries.
 SETTING_MAX_POSTS = "max_posts_per_hour"
 SETTING_MAX_INDICATORS = "max_supporting_indicators"
 SETTING_CONFIRMATION_SHARE = "confirmation_share_pct"
 SETTING_MESSAGE_FORMAT = "message_format"
+SETTING_HITS_PER_SCAN = "hits_per_scan"
 SETTING_ROWS = (
     (SETTING_MAX_POSTS, "Max posts per hour"),
     (SETTING_MAX_INDICATORS, "Max supporting indicators"),
     (SETTING_CONFIRMATION_SHARE, "Confirmation share %"),
     (SETTING_MESSAGE_FORMAT, "Standardised message text"),
+    (SETTING_HITS_PER_SCAN, "Hits per scan"),
 )
 COUNT_SETTINGS = (
     SETTING_MAX_POSTS,
     SETTING_MAX_INDICATORS,
     SETTING_CONFIRMATION_SHARE,
+    SETTING_HITS_PER_SCAN,
 )
 
 #: The chart one bucket post carries, at its thumbnail and its larger size.
@@ -277,6 +564,16 @@ THUMBNAIL_WIDTH_PX = 120
 THUMBNAIL_HEIGHT_PX = 36
 PREVIEW_WIDTH_PX = 320
 PREVIEW_HEIGHT_PX = 160
+
+#: The PNG ``post_chart`` carries: a data address the page's ``img`` and the Qt
+#: ``_PostChart`` both decode, and the header ``png_size`` reads the size from.
+IMAGE_DATA_PREFIX = "data:image/png;base64,"
+IMAGE_FORMAT = "PNG"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_SIZE_OFFSET = 16
+PNG_SIZE_FORMAT = ">II"
+NO_IMAGE_SIZE = (0, 0)
+IMAGE_CACHE_ENTRIES = 64
 THUMBNAIL_COLUMNS = 40
 PREVIEW_COLUMNS = 80
 CHART_BORDER_PX = 1
@@ -354,6 +651,9 @@ BUCKET_METHOD_FORMAT = (
 PUSH_ACTION_SET = "push.action"
 CREDENTIAL_STORED = "credential.stored"
 CREDENTIAL_REFUSED = "credential.refused"
+CREDENTIAL_PAGE_OPENED = "credential.opened"
+CREDENTIAL_PAGE_CLOSED = "credential.closed"
+CREDENTIAL_PAGE_REFUSED = "credential.unknown_target"
 SETTING_WRITTEN = "setting.written"
 SETTINGS_PAGE_TOGGLED = "settings.toggled"
 
@@ -398,26 +698,24 @@ BUTTON_FONT_WEIGHT = "bold"
 FIELD_PADDING_PX = (12, 8, 12, 8)
 FIELD_BORDER_PX = 1
 
-#: The indicator box and the gap to its text, read off a themed ``QCheckBox``
-#: as ``PM_IndicatorWidth`` 22 and ``PM_CheckBoxLabelSpacing`` 8.
-CHECK_INDICATOR_PX = 22
-CHECK_LABEL_SPACING_PX = 8
-
 LEFT_MODULE_KEYS = (ATA_SPM_MODULE, OPPOSING_TRADES_MODULE, ARBITRAGE_MODULE)
 LEFT_MODULE_TITLES = (
     ATA_SPM_GROUP_TITLE,
     OPPOSING_TRADES_GROUP_TITLE,
     ARBITRAGE_GROUP_TITLE,
 )
+#: The share of the left pane's height each ``LEFT_MODULE_KEYS`` zone takes.
+#: ATA-SPM takes two, so its control rows and its entry both stay in view.
+LEFT_MODULE_SHARES = (2, 1, 1)
 
 SPLITTER_ORIENTATION = "Horizontal"
 SPLITTER_STRETCH = (1, 1)
 SPLITTER_SIZES_PX = (800, 800)
 SPLITTER_PANES = 2
 
-#: The drag handle a ``QSplitter`` keeps between the two panes. Measured 7 px
-#: under the shipped theme, which is the width the splitter reports, so the
-#: panes share what is left rather than the whole tab.
+#: The drag handle between the two panes. Both builds set it: the window calls
+#: ``setHandleWidth`` and the page draws it as the split row's gap, so the two
+#: panes are the same width in either build and a group wraps at the same count.
 SPLITTER_HANDLE_PX = 7
 
 OUTER_MARGINS_PX = (0, 0, 0, 0)
@@ -449,6 +747,11 @@ COLOR_CORRELATION = "#ffcc66"
 COLOR_METHOD = "#00cccc"
 NO_COLOR = ""
 NO_CELL = None
+
+#: What Level 1A draws its message in. Every other line on that page is plain
+#: body text, so a message in body text reads as more of the page's own prose.
+MESSAGE_REFUSED_COLOUR = ds.ERROR
+MESSAGE_ACCEPTED_COLOUR = ds.SUCCESS
 
 #: The strip marker colour each bucket vote draws in, and the fill behind it.
 VOTE_COLORS = {
@@ -516,7 +819,11 @@ PROPOSALS_FAILED_LOG = "topology proposal read failed: %s"
 TOPOLOGIES_MISSING_LOG = "topologies pane unavailable: %s"
 ATA_RUN_FAILED_LOG = "ATA-SPM run read failed: %s"
 SECTOR_MAP_FAILED_LOG = "sector map read failed: %s"
+CHART_FOLDER_OPENED_LOG = "ATA chart folder opened: %s"
+CHART_FOLDER_FAILED_LOG = "ATA chart folder %s not opened: %s"
+HANDLER_REFUSED_TEXT = "the operating system's handler refused"
 CANDLE_READ_FAILED_LOG = "scanned candle read failed on %s %s: %s"
+VOLUME_READ_FAILED_LOG = "quote volume read failed for %s: %s"
 CONNECTORS_READ_FAILED_LOG = "exchange connector read failed: %s"
 
 SCAN_NOT_ASKED = "not_asked"
@@ -632,7 +939,9 @@ ACTIONS = {
     "zone_stepped": "step_zone",
     "zone_toggled": "toggle_zone",
     "push_pressed": "push_action",
-    "credential_saved": "store_credential",
+    "venue_pressed": "open_credentials",
+    "credential_typed": "set_credential_text",
+    "credential_held": "hold_credential",
     "setting_written": "set_setting",
 }
 
@@ -670,9 +979,10 @@ SECTOR_TEXT_SET = "sector.text"
 SECTOR_CLASS_SET = "sector.class"
 SECTOR_CLASS_REFUSED = "sector.class_refused"
 TIMEFRAME_TOGGLED = "sector.timeframe"
-TIMEFRAME_UNREACHABLE = "sector.timeframe_unreachable"
 SCAN_NOW_RUN = "scan_now.run"
 SCAN_NOW_UNNAMED = "scan_now.unnamed"
+SCAN_NOW_REFUSED = "scan_now.refused"
+SCAN_ALL_RUN = "scan_all.run"
 ZONE_STEPPED = "zone.stepped"
 ZONE_TOGGLED = "zone.toggled"
 
@@ -711,14 +1021,17 @@ CALL_NAMES = (
     SECTOR_CLASS_SET,
     SECTOR_CLASS_REFUSED,
     TIMEFRAME_TOGGLED,
-    TIMEFRAME_UNREACHABLE,
     SCAN_NOW_RUN,
     SCAN_NOW_UNNAMED,
+    SCAN_ALL_RUN,
     ZONE_STEPPED,
     ZONE_TOGGLED,
     PUSH_ACTION_SET,
     CREDENTIAL_STORED,
     CREDENTIAL_REFUSED,
+    CREDENTIAL_PAGE_OPENED,
+    CREDENTIAL_PAGE_CLOSED,
+    CREDENTIAL_PAGE_REFUSED,
     SETTING_WRITTEN,
     SETTINGS_PAGE_TOGGLED,
 )
@@ -904,12 +1217,14 @@ def ata_spm_text(run: Any) -> str:
     )
 
 
-def ata_spm_zone_text(run: Any, sector_count: Any) -> str:
-    """The ATA-SPM zone's line for the run it holds and the sectors added.
+def ata_spm_zone_text(run: Any, sector_count: Any, note: Any = "") -> str:
+    """The ATA-SPM zone's line for the run it holds and the scans added.
 
-    A zone holding no sector names what it waits for rather than reporting
-    a run nobody asked for.
+    A ``note`` the last press left is what the zone says, and a zone holding
+    no scan reads ``ATA_SPM_NO_SECTOR_TEXT``.
     """
+    if note:
+        return str(note)
     if not int(sector_count or 0):
         return ATA_SPM_NO_SECTOR_TEXT
     return ata_spm_text(run)
@@ -923,16 +1238,47 @@ def phase_row(phase: Any, tag: Any, value: Any) -> list:
     return detail_row(PHASE_ROW_NAME_FORMAT.format(phase=phase, tag=tag), value)
 
 
+def market_timeframe_reading(scan: Any, frame: Any) -> str:
+    """One timeframe's verdict for a one-market scan: ``MARKET_HIT_READING``,
+    ``MARKET_REFUSED_READING`` or ``MARKET_NO_VOTE_READING``."""
+    vote = next((one for one in frame.votes if one.symbol == scan.ticker), None)
+    if vote is None:
+        return ata_spm.MARKET_NO_VOTE_READING
+    if scan.hit_on(frame.timeframe) is not None:
+        return ata_spm.MARKET_HIT_READING.format(direction=vote.direction_text)
+    return ata_spm.MARKET_REFUSED_READING.format(direction=vote.direction_text)
+
+
+def market_timeframe_rows(scan: Any) -> list:
+    """One ``phase_row`` per timeframe of a one-market scan, carrying the
+    candle count ``TimeframeScan.read`` holds and ``market_timeframe_reading``."""
+    return [
+        phase_row(
+            PHASE_ONE_NAME,
+            ata_spm.timeframe_label(frame.timeframe),
+            ata_spm.MARKET_TIMEFRAME_FORMAT.format(
+                candles=int(frame.read.get(scan.ticker, ata_spm.NO_CANDLES)),
+                reading=market_timeframe_reading(scan, frame),
+            ),
+        )
+        for frame in scan.timeframes
+    ]
+
+
 def phase_one_rows(scan: Any) -> list:
     """The expanded lines phase one leaves: one per timeframe scanned.
 
     ``scan.unlisted`` and ``scan.unserved`` each take a line of their own, so a
-    venue gap never reads as a timeframe that voted nothing.
+    venue gap never reads as a timeframe that voted nothing; a by-volume scan
+    opens with ``ata_spm.order_line`` under ``ORDER_TAG``, and a one-market
+    scan's rows come from ``market_timeframe_rows``.
     """
     if scan.note:
         rows = [detail_row(PHASE_NOTE_NAME, scan.note)]
     elif not scan.timeframes:
         rows = [detail_row(PHASE_NOTE_NAME, ata_spm.NO_TIMEFRAME_TEXT)]
+    elif scan.ticker:
+        rows = market_timeframe_rows(scan)
     else:
         rows = [
             phase_row(
@@ -947,6 +1293,15 @@ def phase_one_rows(scan: Any) -> list:
             )
             for one in scan.timeframes
         ]
+        if ata_spm.walks_order(scan):
+            rows.insert(
+                0,
+                phase_row(
+                    PHASE_ONE_NAME,
+                    ORDER_TAG,
+                    ata_spm.order_line(scan.order, scan.markets_read),
+                ),
+            )
     unlisted = tuple(getattr(scan, "unlisted", ()) or ())
     if unlisted and not scan.note:
         rows.append(
@@ -1101,24 +1456,101 @@ def phase_eight_rows(scan: Any, pulls: Any) -> list:
     return rows
 
 
-def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
-    """One scanned sector as the entry the ATA-SPM zone steps through.
+def unread_symbols(scan: Any) -> tuple:
+    """Every symbol one scan read no candles for, on every timeframe it ran.
 
-    The expansion carries every phase readback in order, and ``held`` narrows
-    ``pulls`` to this sector's assets; ``run`` already dropped every market the
-    gate chains refused.
+    A symbol that voted on one timeframe is not named, so the sentence only
+    carries the assets nothing at all came back for.
+    """
+    frames = list(getattr(scan, "timeframes", ()) or ())
+    if not frames:
+        return ()
+    unread = set(frames[0].unread)
+    for one in frames[1:]:
+        unread &= set(one.unread)
+    return tuple(sorted(unread))
+
+
+def no_call_text(scan: Any) -> str:
+    """The method line one sector with no reversal call carries.
+
+    A scan that read no candles names the symbols outright rather than
+    reporting a vote that never happened.
+    """
+    names = unread_symbols(scan)
+    if not names:
+        return NO_CALL_TEXT
+    listed = ata_spm.SYMBOL_SEPARATOR.join(names[:UNREAD_SYMBOL_CAP])
+    if len(names) > UNREAD_SYMBOL_CAP:
+        listed = UNREAD_MORE_FORMAT.format(
+            symbols=listed, count=len(names) - UNREAD_SYMBOL_CAP
+        )
+    missing = NO_CANDLE_TEXT.format(symbols=listed)
+    if scan.refusal:
+        missing = REFUSAL_SAID_FORMAT.format(
+            text=missing, venue=scan.venue or UNNAMED_VENUE_TEXT, refusal=scan.refusal
+        )
+    if not scan.votes:
+        return missing
+    return METHOD_SENTENCE_JOIN.join((NO_CALL_TEXT, missing))
+
+
+def entry_headline(scan: Any) -> str:
+    """The line one scan's zone entry is named by: market, by-volume, map-order
+    or sector; ``MarketOrder.by_volume`` tells the middle two apart."""
+    if scan.ticker:
+        return ata_spm.MARKET_LINE_FORMAT.format(
+            ticker=scan.ticker, asset_class=scan.asset_class
+        )
+    if ata_spm.walks_order(scan):
+        if scan.order.by_volume:
+            return ata_spm.VOLUME_LINE_FORMAT.format(asset_class=scan.asset_class)
+        return ata_spm.MAP_ORDER_LINE_FORMAT.format(asset_class=scan.asset_class)
+    return ata_spm.SECTOR_LINE_FORMAT.format(
+        sector=scan.sector, asset_class=scan.asset_class
+    )
+
+
+def entry_meta(scan: Any, calls: Any) -> str:
+    """The counts one scan's zone entry carries: market, by-volume or sector.
+
+    A by-volume scan counts the markets it read and says what stopped it,
+    ``ata_spm.STOPPED_AT_TARGET_TEXT`` or ``ata_spm.SECTOR_EXHAUSTED_TEXT``.
+    """
+    if scan.ticker:
+        return ata_spm.MARKET_META_FORMAT.format(
+            venue=scan.venue or ata_spm.NO_VENUE_NAME,
+            votes=len(scan.votes),
+            hits=len(calls),
+        )
+    if ata_spm.walks_order(scan):
+        return ata_spm.VOLUME_META_FORMAT.format(
+            read=scan.markets_read,
+            hits=len(calls),
+            stop=(
+                ata_spm.STOPPED_AT_TARGET_TEXT
+                if scan.stopped_at_target
+                else ata_spm.SECTOR_EXHAUSTED_TEXT
+            ),
+        )
+    return ata_spm.SECTOR_META_FORMAT.format(
+        assets=len(scan.assets), votes=len(scan.votes), calls=len(calls)
+    )
+
+
+def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
+    """One scan as the entry the ATA-SPM zone steps through.
+
+    ``entry_headline`` and ``entry_meta`` say whether the scan read one market
+    or a whole sector, and ``held`` narrows ``pulls`` to this scan's assets.
     """
     calls = scan.calls
     assets = set(scan.assets)
     held = [one for one in pulls if one.symbol in assets]
     strongest = calls[0] if calls else None
     return zone_entry(
-        ata_spm.SECTOR_LINE_FORMAT.format(
-            sector=scan.sector, asset_class=scan.asset_class
-        ),
-        ata_spm.SECTOR_META_FORMAT.format(
-            assets=len(scan.assets), votes=len(scan.votes), calls=len(calls)
-        ),
+        entry_headline(scan),
+        entry_meta(scan, calls),
         detail=(
             phase_one_rows(scan)
             + phase_two_rows(calls)
@@ -1136,7 +1568,7 @@ def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
                 direction=strongest.direction_text,
             )
             if strongest is not None
-            else scan.note or NO_CALL_TEXT
+            else scan.note or no_call_text(scan)
         ),
     )
 
@@ -1251,19 +1683,71 @@ def chart_marks(post: Any, width_px: Any, height_px: Any, columns: Any) -> list:
     return marks
 
 
+def png_size(raw: bytes) -> tuple:
+    """The width and height a PNG header declares, or ``NO_IMAGE_SIZE``."""
+    if not raw.startswith(PNG_SIGNATURE) or len(raw) < PNG_SIZE_OFFSET + 8:
+        return NO_IMAGE_SIZE
+    width, height = struct.unpack_from(PNG_SIZE_FORMAT, raw, PNG_SIZE_OFFSET)
+    return (int(width), int(height))
+
+
+@lru_cache(maxsize=IMAGE_CACHE_ENTRIES)
+def _image_data(path: str, stamp: int, size: int) -> tuple:
+    """The PNG at ``path`` as its data address and its size; ``stamp`` and
+    ``size`` key the cache so a rewritten file is read again."""
+    del stamp, size
+    raw = Path(path).read_bytes()
+    width, height = png_size(raw)
+    if (width, height) == NO_IMAGE_SIZE:
+        return ("", NO_IMAGE_SIZE)
+    return (IMAGE_DATA_PREFIX + base64.b64encode(raw).decode("ascii"), (width, height))
+
+
+def chart_image(path: Any) -> tuple:
+    """The painter's PNG one post names, as a data address with its size.
+
+    A post naming no file, or a file that is gone, answers an empty address
+    and ``NO_IMAGE_SIZE``, and the entry draws its rectangle strip instead.
+    """
+    if not path:
+        return ("", NO_IMAGE_SIZE)
+    try:
+        held = Path(str(path)).stat()
+    except OSError:
+        return ("", NO_IMAGE_SIZE)
+    return _image_data(str(path), int(held.st_mtime_ns), int(held.st_size))
+
+
+def scaled_height(width_px: Any, image_size: Any, fallback_px: Any) -> int:
+    """The height ``width_px`` takes at the image's own aspect, or the fallback."""
+    width, height = image_size
+    if width <= 0 or height <= 0:
+        return int(fallback_px)
+    return max(1, int(round(int(width_px) * height / width)))
+
+
 def post_chart(post: Any, wide: Any = False) -> dict:
     """The chart one bucket post carries, as its thumbnail or its larger view.
 
-    ``wide`` picks ``PREVIEW_WIDTH_PX`` over ``THUMBNAIL_WIDTH_PX``, and
-    ``chart_marks`` answers every rectangle both hosts place inside it.
+    ``wide`` picks ``PREVIEW_WIDTH_PX`` over ``THUMBNAIL_WIDTH_PX``. ``image``
+    is the painter's PNG the post's ``image_path`` names, which both hosts
+    draw at the box's width; ``chart_marks`` answers the rectangles drawn
+    while the post names no file.
     """
     width_px = PREVIEW_WIDTH_PX if wide else THUMBNAIL_WIDTH_PX
-    height_px = PREVIEW_HEIGHT_PX if wide else THUMBNAIL_HEIGHT_PX
+    image, image_size = chart_image(getattr(post, "image_path", ""))
+    height_px = scaled_height(
+        width_px, image_size, PREVIEW_HEIGHT_PX if wide else THUMBNAIL_HEIGHT_PX
+    )
     columns = PREVIEW_COLUMNS if wide else THUMBNAIL_COLUMNS
     return {
         "part": PREVIEW_PART if wide else THUMBNAIL_PART,
         "width_px": width_px,
         "height_px": height_px,
+        "image": image,
+        "image_path": str(getattr(post, "image_path", "") or ""),
+        "image_width_px": image_size[0],
+        "image_height_px": image_size[1],
         "border_px": CHART_BORDER_PX,
         "column_part": CHART_COLUMN_PART,
         "band_part": CHART_BAND_PART,
@@ -1530,8 +2014,8 @@ def bucket_actions() -> list:
 def bucket_detail_rows(held: Any) -> list:
     """The expanded lines one bucket post leaves: the body that would be sent.
 
-    Line zero is ``ata_spm_push.FIXED_HEADER``, which every artefact of the
-    post composes.
+    Line zero is the header the post's ``PushTarget`` row carries, which every
+    artefact of the post composes.
     """
     post = held.post
     return [
@@ -1566,8 +2050,21 @@ def bucket_method_text(post: Any) -> str:
     )
 
 
+def bucket_badge(held: Any) -> str:
+    """The head-row badge: the ``delivery`` of the last press that took the
+    post, else the timer's ``follow_up`` status, so either reads without
+    scrolling the entry."""
+    delivery = str(getattr(held, "delivery", "") or "")
+    return delivery or str(getattr(held, "follow_up", "") or "")
+
+
 def bucket_entry(held: Any) -> dict:
-    """One waiting post as the entry the Ready to Send zone steps through."""
+    """One waiting post as the entry the Ready to Send zone steps through.
+
+    ``bucket_badge`` is the head-row badge; the status line under the
+    headline carries the venue, the state, the timer's status and the
+    last press's outcome together.
+    """
     post = held.post
     return zone_entry(
         BUCKET_HEADLINE_FORMAT.format(
@@ -1582,6 +2079,8 @@ def bucket_entry(held: Any) -> dict:
         actions=bucket_actions(),
         vote=post_vote(post),
         headline_width_px=BUCKET_HEADLINE_WIDTH_PX,
+        badge=bucket_badge(held),
+        badge_style=ENTRY_META_STYLE,
     )
 
 
@@ -1612,22 +2111,258 @@ def setting_rows(settings: Any) -> list:
     ]
 
 
-def settings_page(board: Any) -> dict:
-    """Every value the ATA-SPM settings page is drawn from, and its state."""
+def category_rows(asset_class: Any) -> list:
+    """One row per ``ata_spm.ASSET_CLASSES`` name, and whether a scan uses it now."""
+    return [[one, one == str(asset_class)] for one in ata_spm.ASSET_CLASSES]
+
+
+#: A word of a Level 1A line becomes a link only where it names a host and a
+#: path. ``video.publish`` carries a dot and no path, and ``/api/submit`` a path
+#: and no host, so neither is one.
+LINK_SCHEMES = ("https://", "http://")
+LINK_DEFAULT_SCHEME = "https://"
+LINK_TRAILING = ".,;:)]}"
+LINK_TOP_LABEL_MIN = 2
+LINK_SPACE = " "
+PATH_MARK = "/"
+LABEL_MARK = "."
+NO_LINK = ""
+
+#: The colour both builds draw a Level 1A link in.
+LINK_COLOUR = ds.PRIMARY
+
+#: The part name a Level 1A link reports its press under.
+CREDENTIAL_LINK_PART = "credential-link"
+
+#: The ``credential_page`` values drawn as link segments. Each is a fixed text
+#: on the venue's own ``ata_spm_push.PushTarget`` row; nothing typed and nothing
+#: a venue answered is on this list.
+#: The ``credential_page`` list naming which boxes the vault already holds a
+#: value for. It carries ``CredentialField`` keys and never a value.
+PAGE_HELD_FIELDS = "held_fields"
+
+#: The wording a box whose value the vault holds draws instead of its label.
+CREDENTIAL_HELD_PLACEHOLDER = "Held · type to replace"
+
+#: The part name a finished credential box reports itself under.
+CREDENTIAL_HELD_PART = "credential-held"
+
+PAGE_ENDPOINT_LINKS = "endpoint_links"
+PAGE_REGISTRATION_LINKS = "registration_links"
+PAGE_PREREQUISITE_LINKS = "prerequisite_links"
+CREDENTIAL_LINK_KEYS = (
+    PAGE_ENDPOINT_LINKS,
+    PAGE_REGISTRATION_LINKS,
+    PAGE_PREREQUISITE_LINKS,
+)
+
+
+def link_address(word: Any) -> str:
+    """The whole address one word of a Level 1A line carries, or an empty string.
+
+    A word naming a path and no host is not an address, and neither is a word
+    carrying a dot and no path.
+    """
+    held = str(word).rstrip(LINK_TRAILING)
+    if held.startswith(LINK_SCHEMES):
+        return held
+    if PATH_MARK not in held:
+        return NO_LINK
+    labels = held.split(PATH_MARK, 1)[0].split(LABEL_MARK)
+    if len(labels) < 2 or not all(labels):
+        return NO_LINK
+    top = labels[-1]
+    if len(top) < LINK_TOP_LABEL_MIN or not top.isalpha():
+        return NO_LINK
+    return LINK_DEFAULT_SCHEME + held
+
+
+def link_segments(text: Any) -> list:
+    """One Level 1A line as ``[words, address]`` pairs, the address empty where plain.
+
+    Both builds draw a line from this, so a word is a link on the page exactly
+    where it is a link in the window.
+    """
+    held: list = []
+    for at, word in enumerate(str(text).split(LINK_SPACE)):
+        if at:
+            held.append([LINK_SPACE, NO_LINK])
+        address = link_address(word)
+        if not address:
+            held.append([word, NO_LINK])
+            continue
+        bare = word.rstrip(LINK_TRAILING)
+        held.append([bare, address])
+        if len(bare) < len(word):
+            held.append([word[len(bare) :], NO_LINK])
+    if not any(one[1] for one in held):
+        return [[str(text), NO_LINK]]
+    return held
+
+
+def page_links(board: Any) -> list:
+    """Every address the open Level 1A page publishes, and nothing else.
+
+    A host opens an address only where it is on this list, so a page reporting
+    one the venue's own ``PushTarget`` row does not carry opens nothing.
+    """
+    page = credential_page(board)
+    held: list = []
+    for key in CREDENTIAL_LINK_KEYS:
+        for _chunk, address in page.get(key) or []:
+            if address and address not in held:
+                held.append(address)
+    return held
+
+
+def sign_in_line(target: Any) -> str:
+    """The wording one push target's Level 1A page carries for what Connect does.
+
+    ``ata_spm_signin.redirects_to_view`` is what says whether the sign-in opens
+    in the system browser or in the view the program draws; a venue with no
+    authorize address opens neither.
+    """
+    if not ata_spm_push.stored_fields(target):
+        return SIGN_IN_NONE_TEXT
+    address = ata_spm_signin.authorize_address(target)
+    if not address:
+        return SIGN_IN_TYPED_TEXT
+    if ata_spm_signin.redirects_to_view(target):
+        return SIGN_IN_VIEW_LINE_FORMAT.format(address=address)
+    return SIGN_IN_LINE_FORMAT.format(address=address)
+
+
+def scopes_line(scopes: Any) -> str:
+    """``SCOPES_LINE_FORMAT`` over one row's scopes, or ``NO_SCOPES_TEXT`` for none."""
+    held = [str(one) for one in (scopes or ())]
+    if not held:
+        return NO_SCOPES_TEXT
+    return SCOPES_LINE_FORMAT.format(scopes=SCOPE_SEPARATOR.join(held))
+
+
+def redirect_line(target: Any) -> str:
+    """``REDIRECT_LINE_FORMAT`` over the registered redirect, or ``NO_REDIRECT_TEXT``."""
+    redirect = ata_spm_signin.registered_redirect(target)
+    if not redirect:
+        return NO_REDIRECT_TEXT
+    return REDIRECT_LINE_FORMAT.format(redirect=redirect)
+
+
+def message_colour(answered: Any) -> str:
+    """The colour Level 1A draws one ``ConnectResult`` in.
+
+    Both builds read this one value, so ``MESSAGE_REFUSED_COLOUR`` cannot reach
+    one page and body text the other.
+    """
+    if answered is None:
+        return NO_COLOR
+    return MESSAGE_ACCEPTED_COLOUR if answered.ok else MESSAGE_REFUSED_COLOUR
+
+
+def credential_page(board: Any) -> dict:
+    """Every value one push target's Level 1A page is drawn from.
+
+    ``target`` is empty while Level 1 is the page, and ``message`` carries
+    what the last ``PushBoard.connect_credentials`` answered.
+    """
+    found = ata_spm_push.push_target(board.credential_target)
+    answered = board.connect_result
+    if found is None:
+        return {
+            "target": NO_SYMBOL,
+            "fields": [],
+            "endpoint": NO_SYMBOL,
+            "scopes": NO_SYMBOL,
+            "sign_in": NO_SYMBOL,
+            "redirect": NO_SYMBOL,
+            "registration": NO_SYMBOL,
+            "prerequisite": NO_SYMBOL,
+            PAGE_HELD_FIELDS: [],
+            PAGE_ENDPOINT_LINKS: [],
+            PAGE_REGISTRATION_LINKS: [],
+            PAGE_PREREQUISITE_LINKS: [],
+            "message": NO_MESSAGE_TEXT,
+            "message_colour": NO_COLOR,
+            "ok": False,
+        }
+    return {
+        "target": found.name,
+        "fields": [[one.key, one.label] for one in found.fields],
+        PAGE_HELD_FIELDS: list(board.settings.held_fields(found.name)),
+        "endpoint": ENDPOINT_LINE_FORMAT.format(endpoint=found.endpoint),
+        "scopes": scopes_line(found.scopes),
+        "sign_in": sign_in_line(found.name),
+        "redirect": redirect_line(found.name),
+        "registration": REGISTRATION_LINE_FORMAT.format(
+            registration=found.registration
+        ),
+        "prerequisite": PREREQUISITE_LINE_FORMAT.format(
+            prerequisite=found.prerequisite
+        ),
+        PAGE_ENDPOINT_LINKS: link_segments(
+            ENDPOINT_LINE_FORMAT.format(endpoint=found.endpoint)
+        ),
+        PAGE_REGISTRATION_LINKS: link_segments(
+            REGISTRATION_LINE_FORMAT.format(registration=found.registration)
+        ),
+        PAGE_PREREQUISITE_LINKS: link_segments(
+            PREREQUISITE_LINE_FORMAT.format(prerequisite=found.prerequisite)
+        ),
+        "message": NO_MESSAGE_TEXT if answered is None else str(answered.detail),
+        "message_colour": message_colour(answered),
+        "ok": bool(answered is not None and answered.ok),
+    }
+
+
+def settings_page(board: Any, asset_class: Any = "") -> dict:
+    """Every value Level 1 and Level 1A are drawn from, and which one shows."""
     return {
         "open": bool(board.settings_open),
+        "level": LEVEL_ONE_A if board.credential_target else LEVEL_ONE,
         "settings_label": SETTINGS_LABEL,
         "settings_tooltip": SETTINGS_TOOLTIP,
         "settings_part": SETTINGS_PART,
-        "save_label": SAVE_CREDENTIALS_LABEL,
-        "save_tooltip": SAVE_CREDENTIALS_TOOLTIP,
-        "save_part": SAVE_CREDENTIALS_PART,
         "setting_part": SETTING_FIELD_PART,
-        "credential_fields": [list(one) for one in CREDENTIAL_FIELDS],
+        "venue_part": VENUE_BUTTON_PART,
+        "category_part": ASSET_CATEGORY_PART,
+        "connect_part": CONNECT_PART,
+        "back_part": BACK_PART,
+        "zones_part": ZONES_PART,
+        "zones_tooltip": ZONES_TOOLTIP,
+        "page_part": CREDENTIAL_PAGE_PART,
+        "message_part": CREDENTIAL_MESSAGE_PART,
+        "title_part": SECTION_TITLE_PART,
+        "endpoint_part": ENDPOINT_LINE_PART,
+        "scopes_part": SCOPES_LINE_PART,
+        "sign_in_part": SIGN_IN_LINE_PART,
+        "redirect_part": REDIRECT_LINE_PART,
+        "registration_part": REGISTRATION_LINE_PART,
+        "prerequisite_part": PREREQUISITE_LINE_PART,
+        "link_part": CREDENTIAL_LINK_PART,
+        "link_colour": LINK_COLOUR,
+        "held_part": CREDENTIAL_HELD_PART,
+        "held_placeholder": CREDENTIAL_HELD_PLACEHOLDER,
+        "accounts_title": SM_ACCOUNTS_TITLE,
+        "category_title": ASSET_CATEGORY_TITLE,
+        "settings_title": ATA_SETTINGS_TITLE,
+        "connect_label": CONNECT_LABEL,
+        "connect_tooltip": CONNECT_TOOLTIP,
+        "back_label": BACK_LABEL,
+        "back_tooltip": BACK_TOOLTIP,
+        "venue_tooltip_format": VENUE_TOOLTIP_FORMAT,
+        "category_tooltip_format": CATEGORY_TOOLTIP_FORMAT,
         "credential_rows": credential_rows(board.settings),
+        "category_rows": category_rows(asset_class),
         "setting_rows": setting_rows(board.settings),
+        "credential": credential_page(board),
         "credential_width_px": CREDENTIAL_FIELD_WIDTH_PX,
         "setting_width_px": SETTING_FIELD_WIDTH_PX,
+        "venue_width_px": VENUE_BUTTON_WIDTH_PX,
+        "category_width_px": ASSET_CATEGORY_WIDTH_PX,
+        "connect_width_px": CONNECT_WIDTH_PX,
+        "back_width_px": BACK_WIDTH_PX,
+        "credential_row_width_px": CREDENTIAL_ROW_WIDTH_PX,
+        "setting_row_width_px": SETTING_ROW_WIDTH_PX,
         "field_padding_px": list(FIELD_PADDING_PX),
         "field_border_px": FIELD_BORDER_PX,
         "field_height_px": FIELD_HEIGHT_PX,
@@ -1638,8 +2373,8 @@ def settings_page(board: Any) -> dict:
     }
 
 
-def bucket_skin(board: Any) -> dict:
-    """Every value the Ready to Send buttons and the settings page are drawn from."""
+def bucket_skin(board: Any, asset_class: Any = "") -> dict:
+    """Every value the Ready to Send buttons and the two account pages draw from."""
     bucket = board.bucket
     return {
         "post_selected_label": POST_SELECTED_LABEL,
@@ -1651,10 +2386,11 @@ def bucket_skin(board: Any) -> dict:
         "full_auto_label": FULL_AUTO_LABEL,
         "full_auto_tooltip": FULL_AUTO_TOOLTIP,
         "full_auto_part": FULL_AUTO_PART,
+        "chart_folder_label": CHART_FOLDER_LABEL,
+        "chart_folder_tooltip": CHART_FOLDER_TOOLTIP,
+        "chart_folder_part": CHART_FOLDER_PART,
         "button_height_px": PUSH_BUTTON_HEIGHT_PX,
-        "post_selected_width_px": POST_SELECTED_WIDTH_PX,
-        "post_all_width_px": POST_ALL_WIDTH_PX,
-        "full_auto_width_px": FULL_AUTO_WIDTH_PX,
+        "bucket_button_width_px": BUCKET_BUTTON_WIDTH_PX,
         "full_auto_on": bool(bucket.full_auto),
         "full_auto_text": bucket.full_auto_text(),
         "push_parts": list(PUSH_PARTS),
@@ -1666,7 +2402,7 @@ def bucket_skin(board: Any) -> dict:
         "watching": len(board.follow_up.calls),
         "targets": list(ata_spm_push.TARGET_NAMES),
         "states": list(ata_spm_push.STATE_WORDS),
-        "settings": settings_page(board),
+        "settings": settings_page(board, asset_class),
     }
 
 
@@ -1716,6 +2452,8 @@ def ready_to_send_text(run: Any) -> str:
     count = run.get(ATA_SPM_READY_KEY)
     if count is None:
         return READY_TO_SEND_NO_RUN_TEXT
+    if int(count) == NO_POSTS:
+        return READY_TO_SEND_NONE_TEXT
     return READY_TO_SEND_HOLDS_FORMAT.format(count=count)
 
 
@@ -1738,10 +2476,15 @@ def left_module_rows(
     pair_count: Any,
     connectors: Any,
     sector_count: Any = 0,
+    ata_note: Any = "",
 ) -> list:
     """The three left-side regions as key, title and status, in screen order."""
     return [
-        [ATA_SPM_MODULE, ATA_SPM_GROUP_TITLE, ata_spm_zone_text(run, sector_count)],
+        [
+            ATA_SPM_MODULE,
+            ATA_SPM_GROUP_TITLE,
+            ata_spm_zone_text(run, sector_count, ata_note),
+        ],
         [
             OPPOSING_TRADES_MODULE,
             OPPOSING_TRADES_GROUP_TITLE,
@@ -1825,13 +2568,16 @@ def zone_entry(
     vote: Any = None,
     headline_width_px: Any = None,
     panels: Any = None,
+    badge: Any = "",
+    badge_style: Any = "",
 ) -> dict:
     """One entry a zone steps through: its headline, its counts and its test.
 
     ``detail`` and ``method_text`` name the expanded lines and the method
     line outright, ``thumbnail``, ``preview``, ``actions`` and ``vote``
-    are what a Ready to Send post carries, and ``panels`` are the
-    ``voting_panel`` grids an open ATA-SMP entry draws.
+    are what a Ready to Send post carries, ``badge`` is the head-row text
+    after the vote, and ``panels`` are the ``voting_panel`` grids an open
+    ATA-SMP entry draws.
     """
     return {
         "headline": headline,
@@ -1845,11 +2591,20 @@ def zone_entry(
         "vote": vote,
         "headline_width_px": headline_width_px,
         "panels": panels,
+        "badge": badge,
+        "badge_style": badge_style,
     }
 
 
 def zone_view(
-    key: Any, title: Any, entries: Any, at: Any, expanded: Any, empty_text: Any
+    key: Any,
+    title: Any,
+    entries: Any,
+    at: Any,
+    expanded: Any,
+    empty_text: Any,
+    running: Any = "",
+    running_lines: Any = (),
 ) -> dict:
     """One zone as all three hosts draw it.
 
@@ -1857,7 +2612,10 @@ def zone_view(
     still reports a position, so an empty zone reads as a state rather
     than as nothing drawn. An open entry drops the method line and the
     hint, which the four expanded lines already say, so every zone's open
-    entry takes the same height whatever buttons it carries.
+    entry takes the same height whatever buttons it carries. A ``running``
+    line is the ``counter`` drawn just above the entry at its right corner
+    while a scan runs, and ``running_lines`` are then the entry's rows, one
+    per market read, with no headline, meta or method.
     """
     held = list(entries or [])
     total = len(held)
@@ -1866,27 +2624,37 @@ def zone_view(
     method = entry.get("method")
     own_detail = entry.get("detail")
     own_method_text = entry.get("method_text")
-    open_now = bool(expanded) and total > 0
+    busy = bool(running)
+    open_now = bool(expanded) and total > 0 and not busy
     lines = own_detail if own_detail is not None else method_detail_rows(method)
     written = own_method_text if own_method_text is not None else method_line(method)
+    walked = [
+        [SCAN_LINE_NAME_FORMAT.format(at=index + 1), str(line)]
+        for index, line in enumerate(running_lines or ())
+    ]
     return {
         "key": key,
         "title": title,
         "total": total,
         "at": shown,
         "position": position_text(shown, total),
-        "headline": entry.get("headline", "") if total else empty_text,
-        "meta": entry.get("meta", "") if total else "",
-        "method": "" if open_now else (written if total else ""),
-        "hint": total > 0 and not open_now,
-        "expanded": open_now,
-        "detail": lines if open_now else [],
+        "counter": str(running) if busy else "",
+        "headline": (
+            "" if busy else (entry.get("headline", "") if total else empty_text)
+        ),
+        "meta": entry.get("meta", "") if total and not busy else "",
+        "method": "" if open_now or busy else (written if total else ""),
+        "hint": total > 0 and not open_now and not busy,
+        "expanded": open_now or busy,
+        "detail": walked if busy else (lines if open_now else []),
         "thumbnail": entry.get("thumbnail") if total else None,
         "preview": entry.get("preview") if open_now else None,
         "actions": (entry.get("actions") or []) if open_now else [],
         "vote": entry.get("vote") if total else None,
         "headline_width_px": entry.get("headline_width_px") if total else None,
         "panels": (entry.get("panels") or []) if open_now else [],
+        "badge": str(entry.get("badge") or "") if total and not busy else "",
+        "badge_style": str(entry.get("badge_style") or "") if total else "",
     }
 
 
@@ -1947,48 +2715,611 @@ def sector_assets(sector: Any, asset_class: Any) -> list:
     ]
 
 
+def class_tickers(asset_class: Any) -> list:
+    """Every ticker one sector names, read from the lists already in this process.
+
+    ``ata_spm.CLASS_CRYPTO`` reads the shipped sector map, derivatives the last
+    ``futures_tickers`` press read, and every other class ``ata_asset_maps.MAPS``.
+    """
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        from ...trading.topology_proposals import load_sector_map
+
+        try:
+            held = load_sector_map()
+        except Exception as exc:  # noqa: BLE001 - the map is operator-editable
+            logger.debug(SECTOR_MAP_FAILED_LOG, exc)
+            return []
+        return sorted(str(one) for one in held)
+    if str(asset_class) == ata_spm.CLASS_DERIVATIVES:
+        return ata_asset_maps.futures_tickers()
+    found = {
+        str(one.symbol)
+        for sector in ata_asset_maps.sectors_for(asset_class)
+        for one in ata_asset_maps.listings_for(sector, asset_class)
+    }
+    return sorted(found)
+
+
+def class_volumes(asset_class: Any, connectors: Any) -> dict:
+    """The 24 h quote volume per crypto symbol, read through the fetcher.
+
+    ``fetch_quote_volumes`` serves the figures the Refresh press already read
+    inside its cache window; every other class, and no connector, answer none.
+    """
+    if str(asset_class) != ata_spm.CLASS_CRYPTO or not connectors:
+        return {}
+    import asyncio
+
+    from ...exchange.market_inspector_fetcher import fetch_quote_volumes
+
+    try:
+        return dict(asyncio.run(fetch_quote_volumes(connectors)) or {})
+    except Exception as exc:  # noqa: BLE001 - the source is off-process
+        logger.debug(VOLUME_READ_FAILED_LOG, asset_class, exc)
+        return {}
+
+
+def listing_volumes(rows: Any, pace: Any = None) -> dict:
+    """Each listed and ``volumed`` row's ``venue_quote_volume`` figure by symbol.
+
+    A row the venue refused, and one whose figure is ``NO_VOLUME_FIGURE``,
+    leave the dict, so the caller counts them as unfigured. Each read goes
+    through ``pace`` when a Scan All walk hands one.
+    """
+    found: dict = {}
+    for one in rows:
+        if not (one.listed and one.volumed):
+            continue
+        _venue, figure, refusal = ata_spm.paced_read(
+            pace,
+            one.venue,
+            lambda row=one: (row.venue,)
+            + tuple(ata_asset_maps.venue_quote_volume(row.symbol)),
+        )
+        if refusal:
+            logger.debug(VOLUME_FIGURE_REFUSED_LOG, one.symbol, refusal)
+            continue
+        if figure > ata_asset_maps.NO_VOLUME_FIGURE:
+            found[str(one.symbol)] = float(figure)
+    return found
+
+
+def ranked_order(
+    rows: Any,
+    figures: dict,
+    source: Any,
+    bare_source: Any = ata_spm.MAP_ORDER_SOURCE_TEXT,
+) -> Any:
+    """The ``ata_spm.MarketOrder`` of ``rows`` by ``figures``, largest first.
+
+    A row with no figure keeps its place after every figured row, in the
+    order ``rows`` came; no figure at all keeps ``rows`` whole under
+    ``bare_source``.
+    """
+    held = list(rows)
+    if not figures:
+        return ata_spm.MarketOrder(
+            listings=held, source=str(bare_source), unfigured=len(held)
+        )
+    figured = [one for one in held if str(one.symbol) in figures]
+    figured.sort(key=lambda one: (-figures[str(one.symbol)], str(one.symbol)))
+    unfigured = [one for one in held if str(one.symbol) not in figures]
+    return ata_spm.MarketOrder(
+        listings=figured + unfigured,
+        source=str(source),
+        figures=dict(figures),
+        unfigured=len(unfigured),
+    )
+
+
+def stocks_markets() -> Any:
+    """The stocks ``ata_spm.MarketOrder``: ``screener_listings`` ranked by its
+    volume figures, or ``MAPS`` rows in map order when the screener refused.
+
+    The source names which list was read and, on the screener, how many
+    sectors its quotes named.
+    """
+    rows, figures, refusal = ata_asset_maps.screener_listings()
+    if rows:
+        sectors = {one.sector for one in rows if one.sector}
+        return ranked_order(
+            rows,
+            figures,
+            STOCKS_SCREENER_SOURCE_FORMAT.format(
+                source=ata_asset_maps.SCREENER_SOURCE_TEXT, sectors=len(sectors)
+            ),
+        )
+    held = [
+        one
+        for sector in ata_asset_maps.sectors_for(ata_spm.CLASS_STOCKS)
+        for one in ata_asset_maps.listings_for(sector, ata_spm.CLASS_STOCKS)
+    ]
+    return ata_spm.MarketOrder(
+        listings=held,
+        source=STOCKS_PORTFOLIO_SOURCE_FORMAT.format(refusal=refusal),
+        unfigured=len(held),
+    )
+
+
+def derivatives_markets() -> Any:
+    """The derivatives ``ata_spm.MarketOrder``: ``futures_listings`` ranked by
+    the venue's own figures, or no rows under the refusal it answered.
+
+    The source names the venue and how many products expire or are perpetual.
+    """
+    rows, figures, refusal = ata_asset_maps.futures_listings()
+    if not rows:
+        return ata_spm.MarketOrder(
+            source=FUTURES_REFUSED_SOURCE_FORMAT.format(refusal=refusal)
+        )
+    return ranked_order(
+        rows,
+        figures,
+        FUTURES_ORDER_SOURCE_FORMAT.format(
+            source=ata_asset_maps.FUTURES_SOURCE_TEXT,
+            expiring=sum(
+                1 for one in rows if one.sector == ata_asset_maps.SECTOR_EXPIRING
+            ),
+            perpetual=sum(
+                1 for one in rows if one.sector == ata_asset_maps.SECTOR_PERPETUAL
+            ),
+        ),
+    )
+
+
+def crypto_markets(connectors: Any) -> Any:
+    """The crypto ``ata_spm.MarketOrder``: the ``class_tickers`` names the
+    venue trades, ranked by ``class_volumes``, with the rest on ``dead``.
+
+    ``trading_products`` reads the connectors' loaded tables and
+    ``public_products`` the public route while none is in reach; each row
+    carries ``exchange_timeframes`` as its served table.
+    """
+    from ...exchange.market_inspector_fetcher import (
+        exchange_timeframes,
+        public_products,
+        trading_products,
+    )
+
+    served = exchange_timeframes(connectors)
+    trading = trading_products(connectors) if connectors else public_products()
+    names = sorted(class_tickers(ata_spm.CLASS_CRYPTO))
+    dead = [one for one in names if trading and not trading.get(one.upper(), False)]
+    rows = [
+        ata_asset_maps.exchange_listing(one, served) for one in names if one not in dead
+    ]
+    volumes = class_volumes(ata_spm.CLASS_CRYPTO, connectors)
+    figures = {
+        str(one.symbol): float(volumes[str(one.symbol).upper()])
+        for one in rows
+        if float(volumes.get(str(one.symbol).upper(), 0.0)) > 0.0
+    }
+    if not connectors:
+        return ata_spm.MarketOrder(
+            listings=rows,
+            source=(
+                CRYPTO_PUBLIC_SOURCE_TEXT
+                if trading
+                else CRYPTO_NO_CONNECTOR_SOURCE_TEXT
+            ),
+            unfigured=len(rows),
+            dead=dead,
+        )
+    order = ranked_order(
+        rows,
+        figures,
+        CRYPTO_ORDER_SOURCE_FORMAT.format(
+            venues=ORDER_VENUE_JOIN.join(sorted(str(one) for one in connectors))
+        ),
+        CRYPTO_NO_FIGURE_SOURCE_TEXT,
+    )
+    order.dead = dead
+    return order
+
+
+def class_markets(asset_class: Any, connectors: Any = None, pace: Any = None) -> Any:
+    """Every market one class holds as an ``ata_spm.MarketOrder``, largest first.
+
+    Crypto is ``crypto_markets``, stocks ``stocks_markets`` and derivatives
+    ``derivatives_markets``; every other mapped class ranks ``listing_volumes``
+    over its ``ata_asset_maps.MAPS`` rows, through ``pace`` when a Scan All
+    walk hands one, and rows with no figure keep map order.
+    """
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        return crypto_markets(connectors)
+    if str(asset_class) == ata_spm.CLASS_STOCKS:
+        return stocks_markets()
+    if str(asset_class) == ata_spm.CLASS_DERIVATIVES:
+        return derivatives_markets()
+    rows = [
+        one
+        for sector in ata_asset_maps.sectors_for(asset_class)
+        for one in ata_asset_maps.listings_for(sector, asset_class)
+    ]
+    venues = sorted({one.venue for one in rows if one.venue})
+    return ranked_order(
+        rows,
+        listing_volumes(rows, pace),
+        VENUE_ORDER_SOURCE_FORMAT.format(venue=ORDER_VENUE_JOIN.join(venues)),
+    )
+
+
+def fold_ticker(typed: Any) -> str:
+    """``typed`` as the maps spell a name: upper case, outer spaces stripped,
+    and each of ``TICKER_SEPARATORS`` read as ``TICKER_JOIN``."""
+    asked = str(typed or "").strip().upper()
+    for one in TICKER_SEPARATORS:
+        asked = asked.replace(one, TICKER_JOIN)
+    return asked
+
+
+def pair_base(folded: Any) -> str:
+    """The base of a pair whose quote is one of ``DEFAULT_QUOTES``, else empty.
+
+    ``BTC/USD`` and ``BTCUSD`` both answer ``BTC``; a quote outside
+    ``DEFAULT_QUOTES`` answers nothing.
+    """
+    asked = str(folded or "")
+    if TICKER_JOIN in asked:
+        base, _, quote = asked.partition(TICKER_JOIN)
+        return base if quote in DEFAULT_QUOTES and base else ""
+    for quote in DEFAULT_QUOTES:
+        if asked.endswith(quote) and len(asked) > len(quote):
+            return asked[: -len(quote)]
+    return ""
+
+
+def connector_tickers(connectors: Any = None) -> list:
+    """The crypto bases the connector's ticker read listed.
+
+    With no ``connectors`` the fetcher's ``cached_quote_volumes`` answers
+    whatever its age; with them ``class_volumes`` serves the cache while it
+    is fresh and asks the connector once otherwise.
+    """
+    if connectors:
+        return sorted(class_volumes(ata_spm.CLASS_CRYPTO, connectors))
+    from ...exchange.market_inspector_fetcher import cached_quote_volumes
+
+    return sorted(cached_quote_volumes())
+
+
+def class_names(asset_class: Any, connectors: Any = None) -> list:
+    """Every name one class recognises: ``class_tickers`` plus, for crypto,
+    ``connector_tickers``."""
+    held = set(class_tickers(asset_class))
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        held.update(str(one) for one in connector_tickers(connectors))
+    return sorted(held)
+
+
+def class_walk(asset_class: Any) -> list:
+    """``ata_spm.ASSET_CLASSES`` with ``asset_class`` first."""
+    chosen = str(asset_class)
+    rest = [one for one in ata_spm.ASSET_CLASSES if one != chosen]
+    return ([chosen] if chosen in ata_spm.ASSET_CLASSES else []) + rest
+
+
+def class_listing(symbol: Any, asset_class: Any) -> Any:
+    """The ``ata_asset_maps.AssetListing`` one class charts ``symbol`` on.
+
+    A name no map holds is the row the last press read, through ``listing_of``.
+    """
+    name = str(symbol)
+    if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        return ata_asset_maps.exchange_listing(name)
+    for sector in ata_asset_maps.sectors_for(asset_class):
+        for one in ata_asset_maps.listings_for(sector, asset_class):
+            if one.symbol.upper() == name.upper():
+                return one
+    read = ata_asset_maps.listing_of(name)
+    if read is not None:
+        return read
+    return ata_asset_maps.AssetListing(symbol=name)
+
+
+def name_in(folded: str, names: Any) -> str:
+    """The one of ``names`` that ``folded`` spells: whole, with ``TICKER_JOIN``
+    removed from both sides, with a name's ``TICKER_SEPARATORS`` folded the
+    same way, or by the base ``pair_base`` answers."""
+    joined = folded.replace(TICKER_JOIN, "")
+    base = pair_base(folded)
+    by_whole = {str(one).upper(): str(one) for one in names}
+    if folded in by_whole:
+        return by_whole[folded]
+    by_joined = {str(one).upper().replace(TICKER_JOIN, ""): str(one) for one in names}
+    if joined in by_joined:
+        return by_joined[joined]
+    by_folded = {fold_ticker(one): str(one) for one in names}
+    if folded in by_folded:
+        return by_folded[folded]
+    if base and base in by_whole:
+        return by_whole[base]
+    return ""
+
+
+def placements_of(typed: Any, asset_class: Any, connectors: Any = None) -> list:
+    """Every ``ata_spm.TickerPlacement`` the typed text names, the chosen
+    class first, then the rest of ``ata_spm.ASSET_CLASSES`` in order."""
+    folded = fold_ticker(typed)
+    if not folded:
+        return []
+    found: list = []
+    for one in class_walk(asset_class):
+        named = name_in(folded, class_names(one, connectors))
+        if named:
+            found.append(
+                ata_spm.TickerPlacement(
+                    listing=class_listing(named, one),
+                    asset_class=one,
+                    typed=str(typed or ""),
+                )
+            )
+    return found
+
+
+def ticker_offer(symbol: Any, asset_class: Any) -> list:
+    """One completer row: the symbol, its class and ``TICKER_OFFER_FORMAT``."""
+    return [
+        str(symbol),
+        str(asset_class),
+        TICKER_OFFER_FORMAT.format(symbol=symbol, asset_class=asset_class),
+    ]
+
+
+def ticker_matches(typed: Any, asset_class: Any) -> list:
+    """The ``ticker_offer`` rows ``typed`` names across every class, prefix
+    matches first and the chosen class first inside each, capped at
+    ``TICKER_MATCH_LIMIT``. A typed pair offers the crypto base while its
+    quote part starts one of ``DEFAULT_QUOTES``; no venue is asked."""
+    asked = fold_ticker(typed)
+    if not asked:
+        return []
+    base, _, quote_part = asked.partition(TICKER_JOIN)
+    pair_typed = TICKER_JOIN in asked and any(
+        one.startswith(quote_part) for one in DEFAULT_QUOTES
+    )
+    starts: list = []
+    holds: list = []
+    for one in class_walk(asset_class):
+        for symbol in class_names(one):
+            folded = symbol.upper()
+            if folded.startswith(asked) or (pair_typed and folded == base):
+                starts.append(ticker_offer(symbol, one))
+            elif asked in folded:
+                holds.append(ticker_offer(symbol, one))
+    return (starts + holds)[:TICKER_MATCH_LIMIT]
+
+
+def ticker_note(asset_class: Any, note: Any = "") -> str:
+    """The line under the ticker field, from the last press or from the sector.
+
+    A ``note`` the last press left is what the field carries; a sector
+    ``class_tickers`` lists nothing for carries ``TICKER_PRESS_LIST_FORMAT``
+    while ``CLASS_PRESS_SOURCES`` names its venue, else ``TICKER_NO_LIST_FORMAT``.
+    """
+    if note:
+        return str(note)
+    if class_tickers(asset_class):
+        return ""
+    source = CLASS_PRESS_SOURCES.get(str(asset_class))
+    if source:
+        return TICKER_PRESS_LIST_FORMAT.format(sector=asset_class, source=source)
+    return TICKER_NO_LIST_FORMAT.format(sector=asset_class)
+
+
+def market_listing(ticker: Any, asset_class: Any, connectors: Any = None) -> Any:
+    """The ``ata_spm.TickerPlacement`` a typed ticker names, across every class.
+
+    ``placements_of`` walks the chosen class first; a chosen class that
+    ``class_tickers`` lists nothing for takes any name no class holds, which
+    is what ``TICKER_NO_LIST_FORMAT`` says under the field; a name no class
+    holds under a listing class answers None. A ``CLASS_PRESS_SOURCES`` class
+    with no list read yet reads it first, through ``futures_listings``.
+    """
+    if (
+        str(asset_class) == ata_spm.CLASS_DERIVATIVES
+        and fold_ticker(ticker)
+        and not ata_asset_maps.futures_tickers()
+    ):
+        ata_asset_maps.futures_listings()
+    placed = placements_of(ticker, asset_class, connectors)
+    if placed:
+        return placed[0]
+    folded = fold_ticker(ticker)
+    if not folded or class_tickers(asset_class):
+        return None
+    return ata_spm.TickerPlacement(
+        listing=ata_asset_maps.AssetListing(symbol=folded),
+        asset_class=str(asset_class),
+        typed=str(ticker or ""),
+    )
+
+
+def open_chart_folder() -> str:
+    """Ask the host to show the chart image directory, and answer its path.
+
+    ``ata_post_paths.venue_post_roots`` creates the root and one folder per
+    name in ``ata_spm_push.TARGET_NAMES`` first, so the press opens a root
+    holding every venue folder before any chart is drawn.
+    """
+    root = ata_post_paths.get_ata_post_root()
+    ata_post_paths.venue_post_roots(ata_spm_push.TARGET_NAMES)
+    if not ata_spm_push.open_path(root):
+        logger.warning(CHART_FOLDER_FAILED_LOG, root, HANDLER_REFUSED_TEXT)
+    return str(root)
+
+
+def chart_folder_line(path: Any) -> str:
+    """The line a Chart Folder press leaves, naming the root opened.
+
+    The host writes it to the Activity Log and to the log in one call, so
+    ``open_chart_folder`` itself logs only a refusal.
+    """
+    return CHART_FOLDER_OPENED_LOG % (path,)
+
+
+#: The part each press reports, and the press key ``PushBoard.press_lines`` reads.
+PRESS_KEYS = {
+    POST_SELECTED_PART: ata_spm_push.PRESS_POST_SELECTED,
+    POST_ALL_PART: ata_spm_push.PRESS_POST_ALL,
+    FULL_AUTO_PART: ata_spm_push.PRESS_FULL_AUTO,
+}
+
+
+def push_press_lines(board: Any, key: Any, answered: Any) -> list:
+    """The Activity Log lines one Ready to Send press leaves, both hosts alike.
+
+    A post press hands its records to ``PushBoard.press_lines``; the Chart
+    Folder press names the root it opened; every other press leaves none.
+    """
+    part = str(key)
+    if part == CHART_FOLDER_PART:
+        return [chart_folder_line(answered)]
+    press = PRESS_KEYS.get(part)
+    if press is None:
+        return []
+    return board.press_lines(press, answered)
+
+
 def inspector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
     """The candles the last universe scan kept for one symbol on one timeframe."""
     held = getattr(inspector, "last_candles", None) or {}
     return list((held.get(str(symbol)) or {}).get(str(timeframe)) or [])
 
 
-def sector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
-    """The candles for one scanned symbol, from the source its map names.
+def inspector_scan_age(inspector: Any) -> float:
+    """The seconds since the Market Inspector's last universe scan.
 
-    A symbol ``ata_asset_maps.listing_of`` names is read through that
-    listing's venue; every other symbol comes off the universe scan.
+    An analyzer that has never scanned answers ``NO_SCAN_AGE``, which no
+    freshness window accepts.
     """
-    if ata_asset_maps.listing_of(symbol) is not None:
-        return ata_asset_maps.venue_candles(symbol, timeframe)
-    return inspector_candles(inspector, symbol, timeframe)
+    import time
+
+    at = float(getattr(inspector, "last_scan_ts", 0.0) or 0.0)
+    if at <= 0.0:
+        return NO_SCAN_AGE
+    return max(0.0, time.time() - at)
+
+
+def connector_candles(connectors: Any, symbol: Any, timeframe: Any) -> list:
+    """The candles ``fetch_symbol_timeframe`` reads for one symbol now.
+
+    It runs on the connectors already in reach, and no connector answers
+    none, so the timeframe reads unread.
+    """
+    if not connectors:
+        return []
+    import asyncio
+
+    from ...exchange.market_inspector_fetcher import fetch_symbol_timeframe
+
+    return list(
+        asyncio.run(fetch_symbol_timeframe(connectors, symbol, timeframe)) or []
+    )
+
+
+def sector_candle_read(
+    inspector: Any, symbol: Any, timeframe: Any, connectors: Any = None
+) -> tuple:
+    """The source, the candles and the refusal for one scanned symbol.
+
+    A symbol ``ata_asset_maps.listing_of`` names reads through that listing's
+    venue; every other symbol takes ``inspector_candles`` while the universe
+    scan is younger than ``CANDLES_FRESH_SECONDS``,
+    ``fetch_symbol_timeframe_read`` once it is older, and
+    ``public_candle_read`` on the public Coinbase route while no connector is
+    in reach; each of those names the venue's refusal when it read nothing.
+    """
+    listing = ata_asset_maps.listing_of(symbol)
+    if listing is not None:
+        candles, refusal = ata_asset_maps.venue_candle_read(symbol, timeframe)
+        return listing.venue, candles, refusal
+    if inspector_scan_age(inspector) < CANDLES_FRESH_SECONDS:
+        held = inspector_candles(inspector, symbol, timeframe)
+        if held:
+            return CANDLES_FROM_SCAN, held, ""
+    if not connectors:
+        from ...exchange.market_inspector_fetcher import public_candle_read
+
+        candles, refusal = public_candle_read(symbol, timeframe)
+        return ata_asset_maps.VENUE_EXCHANGE, list(candles), refusal
+    import asyncio
+
+    from ...exchange.market_inspector_fetcher import fetch_symbol_timeframe_read
+
+    candles, refusal = asyncio.run(
+        fetch_symbol_timeframe_read(connectors, symbol, timeframe)
+    )
+    return ata_asset_maps.VENUE_EXCHANGE, list(candles or []), refusal
+
+
+def sector_candles(
+    inspector: Any, symbol: Any, timeframe: Any, connectors: Any = None
+) -> list:
+    """The candles ``sector_candle_read`` answers for one scanned symbol."""
+    return sector_candle_read(inspector, symbol, timeframe, connectors)[1]
+
+
+def timer_tile_rows(push: Any) -> list:
+    """One row per ``PushBoard.timer_tiles`` tile, each carrying its line style."""
+    rows = []
+    for tile in push.timer_tiles():
+        row = tile.row()
+        row["line_style"] = timer_line_style(row)
+        rows.append(row)
+    return rows
 
 
 def ata_spm_skin(model: Any) -> dict:
     """Every value the ATA-SPM control row is drawn from, and its state."""
     row = model.ata_row()
     return {
-        "sector_placeholder": SECTOR_FIELD_PLACEHOLDER,
-        "sector_tooltip": SECTOR_FIELD_TOOLTIP,
-        "sector_min_width_px": SECTOR_FIELD_MIN_WIDTH_PX,
+        "ticker_placeholder": TICKER_FIELD_PLACEHOLDER,
+        "ticker_tooltip": TICKER_FIELD_TOOLTIP,
+        "ticker_min_width_px": TICKER_FIELD_MIN_WIDTH_PX,
         "scan_label": SCAN_NOW_LABEL,
+        "scan_busy_label": ata_spm.SCAN_BUSY_LABEL,
+        "scan_running": bool(model.board.scanning),
         "scan_tooltip": SCAN_NOW_TOOLTIP,
         "scan_width_px": SCAN_NOW_WIDTH_PX,
+        "scan_all_label": SCAN_ALL_LABEL,
+        "scan_all_tooltip": SCAN_ALL_TOOLTIP,
+        "scan_all_part": SCAN_ALL_PART,
+        "timer_tiles": timer_tile_rows(model.push),
+        "timer_tiles_part": TIMER_TILES_PART,
+        "timer_tile_part": TIMER_TILE_PART,
+        "timer_pair_part": TIMER_PAIR_PART,
+        "timer_countdown_part": TIMER_COUNTDOWN_PART,
+        "timer_tile_width_px": TIMER_TILE_WIDTH_PX,
+        "timer_tile_spacing_px": TIMER_TILE_SPACING_PX,
+        "timer_region_height_px": TIMER_REGION_HEIGHT_PX,
+        "timer_tiles_empty_text": TIMER_TILES_EMPTY_TEXT,
+        "timer_tile_style": TIMER_TILE_STYLE,
+        "timer_pair_style": TIMER_PAIR_STYLE,
+        "timer_empty_style": TIMER_EMPTY_STYLE,
         "button_height_px": PUSH_BUTTON_HEIGHT_PX,
         "field_height_px": FIELD_HEIGHT_PX,
         "class_tooltip": CLASS_BOX_TOOLTIP,
         "class_width_px": CLASS_BOX_WIDTH_PX,
+        "timeframe_title": TIMEFRAME_TITLE,
         "box_tooltip_format": TIMEFRAME_BOX_TOOLTIP_FORMAT,
         "box_width_px": TIMEFRAME_BOX_WIDTH_PX,
-        "box_height_px": TIMEFRAME_BOX_HEIGHT_PX,
         "box_row_part": TIMEFRAME_ROW_PART,
+        "box_grid_width_px": TIMEFRAME_GRID_WIDTH_PX,
+        "sector_row_part": SECTOR_ROW_PART,
+        "scan_row_part": SCAN_ROW_PART,
+        "title_part": SECTION_TITLE_PART,
         "row_spacing_px": ATA_ROW_SPACING_PX,
         "field_padding_px": list(FIELD_PADDING_PX),
         "field_border_px": FIELD_BORDER_PX,
-        "check_indicator_px": CHECK_INDICATOR_PX,
-        "check_label_spacing_px": CHECK_LABEL_SPACING_PX,
         "sector_text": row["sector_text"],
         "sector_class": row["sector_class"],
+        "ticker_matches": ticker_matches(row["sector_text"], row["sector_class"]),
+        "ticker_note": ticker_note(row["sector_class"], model.board.note),
+        "ticker_note_part": TICKER_NOTE_PART,
+        "ticker_note_colour": TICKER_NOTE_COLOUR,
+        "ticker_note_size_px": TICKER_NOTE_SIZE_PX,
+        "ticker_match_part": TICKER_MATCH_PART,
         "asset_classes": row["asset_classes"],
         "boxes": [list(one) for one in row["boxes"]],
         "sectors": [sector_row(one) for one in model.board.sectors],
@@ -2200,8 +3531,14 @@ class MarketInspectorScreenModel:
         self.ata_run_source: Any = None
         self.ata_asset_source: Any = None
         self.ata_candle_source: Any = None
+        self.ata_class_source: Any = None
         self.board = ata_spm.SectorBoard()
         self.push = ata_spm_push.PushBoard()
+        self.push.settings.set_vault(encryption.default_vault())
+        self.push.settings.set_connector(
+            ata_spm_signin.build_connector(ata_spm_signin.default_session())
+        )
+        self.push.set_sender(ata_spm_send.build_sender(self.push.settings))
         self.refresh_enabled = True
         self.status_label_text = STATUS_INITIAL_TEXT
         self.signal_rows: list = []
@@ -2211,7 +3548,9 @@ class MarketInspectorScreenModel:
         self.zone_open: dict = {}
         self.scheduled: list = []
         self.emitted: list = []
+        self.press_lines: list = []
         self.calls: list = []
+        self.set_ata_sources(sector_assets, self.scanned_candles, self.class_markets)
         self.build_ui()
 
     def build_ui(self) -> None:
@@ -2292,11 +3631,19 @@ class MarketInspectorScreenModel:
             logger.debug(ATA_RUN_FAILED_LOG, exc)
             return None
 
-    def set_ata_sources(self, asset_source: Any, candle_source: Any) -> None:
-        """Wire the assets a sector holds and the candles each one charts on."""
+    def set_ata_sources(
+        self, asset_source: Any, candle_source: Any, class_source: Any = None
+    ) -> None:
+        """Wire the assets a sector holds, the candles each one charts on, and
+        the markets a class lists by volume."""
         self.ata_asset_source = asset_source
         self.ata_candle_source = candle_source
+        self.ata_class_source = class_source
         self.calls.append([ATA_SOURCES_SET])
+
+    def class_markets(self, asset_class: Any, pace: Any = None) -> Any:
+        """The ``ata_spm.MarketOrder`` one class holds, on the connectors in reach."""
+        return class_markets(asset_class, self.connectors_now(), pace)
 
     def scanned_candles(self, symbol: Any, timeframe: Any) -> list:
         """The candles for one scanned symbol, from the source its map names.
@@ -2304,11 +3651,23 @@ class MarketInspectorScreenModel:
         A source this screen cannot reach answers none, so the timeframe
         reads unread and Scan Now takes no exception.
         """
+        return self.candle_read(symbol, timeframe)[1]
+
+    def candle_read(self, symbol: Any, timeframe: Any) -> tuple:
+        """The venue, the candles and the refusal ``sector_candle_read`` answers
+        for one scanned symbol; a source this screen cannot reach answers
+        none with the exception as the refusal."""
         try:
-            return sector_candles(self.inspector(), symbol, timeframe)
+            return sector_candle_read(
+                self.inspector(), symbol, timeframe, self.connectors_now()
+            )
         except Exception as exc:  # noqa: BLE001 - the source is off-process
             logger.debug(CANDLE_READ_FAILED_LOG, symbol, timeframe, exc)
-            return []
+            return ata_asset_maps.host_of(symbol), [], f"{type(exc).__name__}: {exc}"
+
+    def market_placement(self, ticker: Any, asset_class: Any) -> Any:
+        """``market_listing`` on the connectors in reach, for ``scan_now``."""
+        return market_listing(ticker, asset_class, self.connectors_now())
 
     def ata_report(self) -> Any:
         """The ATA-SPM zone's own run report, empty until a scan has run.
@@ -2339,38 +3698,86 @@ class MarketInspectorScreenModel:
         self.calls.append([SECTOR_CLASS_SET, self.board.asset_class])
 
     def toggle_timeframe(self, key: Any) -> None:
-        """Tick or untick one timeframe box on the sector shown."""
+        """Tick or untick one timeframe, on the sector shown or on the next one."""
         at = self.zone_at.get(ATA_SPM_MODULE, 0)
-        if self.board.sector_at(at) is None:
-            self.calls.append([TIMEFRAME_UNREACHABLE, str(key)])
-            return
         ticked = self.board.toggle_timeframe(at, key)
         self.calls.append([TIMEFRAME_TOGGLED, str(key), ticked])
 
     def scan_now(self) -> Any:
-        """Press Scan Now: add the typed sector if it is new, then run.
+        """Press Scan Now: read the typed ticker's market, or the sector menu's
+        markets by volume until ``hits_per_scan`` hits.
 
-        Answers the ``ata_spm.AtaSpmRun`` the three phases produced, or
-        None while the board names no sector.
+        Answers the ``ata_spm.AtaSpmRun`` the three phases produced, or None
+        when ``market_placement`` cannot place the ticker and the board is
+        left carrying ``ata_spm.TICKER_UNHELD_FORMAT``.
         """
         added = self.board.scan_now(
             self.ata_asset_source or sector_assets,
             self.ata_candle_source or self.scanned_candles,
             self.push.settings.message_format,
             self.push.settings.max_supporting_indicators,
+            self.market_placement,
+            self.ata_class_source or self.class_markets,
+            self.push.settings.hits_per_scan,
+            self.zone_at.get(ATA_SPM_MODULE, 0),
         )
         if added != ata_spm.NO_NEW_SECTOR:
             self.zone_at[ATA_SPM_MODULE] = added
+        if self.board.note:
+            self.calls.append([SCAN_NOW_REFUSED, self.board.note])
+            return None
         if self.board.run is None:
             self.calls.append([SCAN_NOW_UNNAMED])
             return None
         self.push.load_run(self.board.run)
-        self.push.after_scan(
-            self.board.run, self.ata_candle_source or self.scanned_candles
-        )
+        self.push.after_scan(self.board.run)
         self.zone_at[READY_TO_SEND_ZONE] = 0
         self.calls.append(
             [SCAN_NOW_RUN, len(self.board.sectors), len(self.board.run.calls)]
+        )
+        return self.board.run
+
+    def scan_all(self) -> Any:
+        """Press Scan All: walk every class's markets on every timeframe, with
+        no hit target, and answer the ``ata_spm.AtaSpmRun`` the walk produced.
+
+        Every read goes through ``ata_asset_maps.scan_all_pace``: the
+        screen's own ``candle_read`` answers the refusal a 429 leaves, and an
+        injected candle source is read with none.
+        """
+        injected = self.ata_candle_source
+        pace = ata_asset_maps.scan_all_pace()
+
+        def read(symbol: Any, timeframe: Any) -> tuple:
+            if injected is not None:
+                return ata_asset_maps.host_of(symbol), injected(symbol, timeframe), ""
+            return self.candle_read(symbol, timeframe)
+
+        def paced(symbol: Any, timeframe: Any) -> list:
+            return ata_spm.paced_read(
+                pace,
+                ata_asset_maps.host_of(symbol),
+                lambda: read(symbol, timeframe),
+            )[1]
+
+        sectors, added, found, note = self.board.compute_all(
+            self.ata_asset_source or sector_assets,
+            paced,
+            self.push.settings.message_format,
+            self.push.settings.max_supporting_indicators,
+            self.ata_class_source
+            or (lambda asset_class: self.class_markets(asset_class, pace)),
+        )
+        self.board.take(sectors, added, found, note)
+        self.zone_at[ATA_SPM_MODULE] = added
+        if self.board.run is None:
+            self.calls.append([SCAN_NOW_UNNAMED])
+            return None
+        self.push.load_run(self.board.run)
+        self.push.after_scan(self.board.run)
+        self.zone_at[READY_TO_SEND_ZONE] = 0
+        self.calls.append(
+            [SCAN_ALL_RUN, len(self.board.sectors), len(self.board.run.calls)]
         )
         return self.board.run
 
@@ -2390,13 +3797,18 @@ class MarketInspectorScreenModel:
             POST_SELECTED_PART: lambda: self.push.post_selected(self.bucket_at()),
             POST_ALL_PART: self.push.post_all,
             FULL_AUTO_PART: self._press_full_auto,
+            CHART_FOLDER_PART: open_chart_folder,
             SETTINGS_PART: self._press_settings,
             THUMBNAIL_PART: self._press_thumbnail,
+            CONNECT_PART: self._press_connect,
+            BACK_PART: self._press_back,
+            ZONES_PART: self._press_settings,
         }.get(str(key))
         if handled is None:
             return None
         answered = handled()
         self.calls.append([PUSH_ACTION_SET, str(key)])
+        self.press_lines = push_press_lines(self.push, key, answered)
         return answered
 
     def _press_thumbnail(self) -> bool:
@@ -2411,26 +3823,51 @@ class MarketInspectorScreenModel:
         return self.push.release()
 
     def _press_settings(self) -> bool:
-        """Show the ATA-SPM settings page, or the scan page, and answer which."""
+        """Show Level 1, or the scan page, and answer which."""
         open_now = self.push.toggle_settings()
         self.calls.append([SETTINGS_PAGE_TOGGLED, open_now])
         return open_now
 
+    def _press_connect(self) -> Any:
+        """Sign the open Level 1A target in, and answer what the venue said."""
+        answered = self.push.connect_credentials()
+        if answered is None:
+            return None
+        self.calls.append(
+            [
+                CREDENTIAL_STORED if answered.ok else CREDENTIAL_REFUSED,
+                str(answered.target),
+                str(answered.detail),
+            ]
+        )
+        return answered
+
+    def _press_back(self) -> bool:
+        """Leave Level 1A for Level 1 without signing in."""
+        self.push.close_credentials()
+        self.calls.append([CREDENTIAL_PAGE_CLOSED, LEVEL_ONE])
+        return True
+
+    def open_credentials(self, target: Any) -> Any:
+        """Open one push target's Level 1A page and answer which target draws."""
+        name = self.push.open_credentials(target)
+        if name is None:
+            self.calls.append([CREDENTIAL_PAGE_REFUSED, str(target or "")])
+            return None
+        self.calls.append([CREDENTIAL_PAGE_OPENED, name])
+        return name
+
     def set_credential_text(self, target: Any, field: Any, typed: Any) -> None:
-        """Hold what one credential field carries until Save reads it."""
+        """Hold what one credential field carries until Connect reads it."""
         self.push.settings.set_credential_text(target, field, typed)
 
-    def save_credentials(self) -> list:
-        """Encrypt every typed credential into the vault and answer what landed."""
-        stored = self.push.settings.save_credentials()
-        for name in ata_spm_push.TARGET_NAMES:
-            self.calls.append(
-                [
-                    CREDENTIAL_STORED if name in stored else CREDENTIAL_REFUSED,
-                    str(name),
-                ]
-            )
-        return stored
+    def hold_credential(self, target: Any, field: Any) -> bool:
+        """Encrypt one finished credential box into the vault, and answer whether it holds it.
+
+        Nothing here carries the value, so the answer says only that a box is
+        held and no render or call log can carry a token.
+        """
+        return self.push.settings.hold_credential(target, field)
 
     def set_setting(self, key: Any, value: Any) -> Any:
         """Write one ATA-SPM setting and answer what the settings page now holds.
@@ -2497,11 +3934,16 @@ class MarketInspectorScreenModel:
             len(self.pair_rows),
             self.connectors_now(),
             len(self.board.sectors),
+            self.board.note,
         )
 
     def right_zones(self) -> list:
-        """The three right-side zones, in the order the screen draws them."""
-        return right_zone_rows(self.ata_run(), self.push.bucket)
+        """The three right-side zones, in the order the screen draws them.
+
+        Ready to Send reads ``ata_report``, the ATA-SPM board's own run,
+        so a scan that left no post says so rather than reading unwired.
+        """
+        return right_zone_rows(self.ata_report(), self.push.bucket)
 
     def zone_entries(self, key: Any) -> list:
         """The entries one zone steps through.
@@ -2534,7 +3976,11 @@ class MarketInspectorScreenModel:
         return open_now
 
     def zone_views(self) -> list:
-        """All six zones as the stepper draws them, left three then right three."""
+        """All six zones as the stepper draws them, left three then right three.
+
+        The ATA-SPM zone carries ``board.progress_text`` as its counter and
+        ``board.progress_lines`` as its rows while a scan runs.
+        """
         rows = self.left_modules() + self.right_zones()
         return [
             zone_view(
@@ -2544,6 +3990,8 @@ class MarketInspectorScreenModel:
                 self.zone_at.get(key, 0),
                 self.zone_open.get(key, False),
                 status,
+                self.board.progress_text if key == ATA_SPM_MODULE else "",
+                self.board.progress_lines if key == ATA_SPM_MODULE else (),
             )
             for key, title, status in rows
         ]
@@ -3045,11 +4493,12 @@ def build_view_model(
         "zones": [dict(one) for one in model.zone_views()],
         "stepper": stepper_skin(),
         "ata_spm": ata_spm_skin(model),
-        "bucket": bucket_skin(model.push),
+        "bucket": bucket_skin(model.push, model.board.asset_class),
         "right_zone_keys": list(RIGHT_ZONE_KEYS),
         "right_zone_titles": list(RIGHT_ZONE_TITLES),
         "left_module_keys": list(LEFT_MODULE_KEYS),
         "left_module_titles": list(LEFT_MODULE_TITLES),
+        "left_module_shares": list(LEFT_MODULE_SHARES),
         "module_frame_px": MODULE_FRAME_PX,
         "module_margins_px": list(MODULE_MARGINS_PX),
         "module_title_padding_px": list(MODULE_TITLE_PADDING_PX),
@@ -3262,7 +4711,8 @@ def view_model(params: dict) -> dict:
 
     Reads ``reset``, ``proposals``, ``meta``, ``show_active``,
     ``bot_statuses``, ``sector_text``, ``sector_class``,
-    ``toggle_timeframe``, ``scan_now``, ``step_zone``, ``toggle_zone``,
+    ``toggle_timeframe``, ``scan_now``, ``scan_all``, ``open_credentials``,
+    ``step_zone``, ``toggle_zone``,
     ``render``, ``refresh``, ``force`` and
     ``bot_symbol`` from the request parameters. The screen keeps its rows
     between calls because the shipped screen does; ``reset`` is what a
@@ -3289,13 +4739,18 @@ def view_model(params: dict) -> dict:
         model.toggle_timeframe(params["toggle_timeframe"])
     if params.get("scan_now", False):
         model.scan_now()
+    if params.get("scan_all", False):
+        model.scan_all()
     if params.get("push_action"):
         model.push_action(params["push_action"])
     if params.get("credential_text"):
         typed = list(params["credential_text"])
         model.set_credential_text(typed[0], typed[1], typed[2])
-    if params.get("save_credentials", False):
-        model.save_credentials()
+    if params.get("credential_held"):
+        finished = list(params["credential_held"])
+        model.hold_credential(finished[0], finished[1])
+    if params.get("open_credentials"):
+        model.open_credentials(params["open_credentials"])
     if params.get("set_setting"):
         asked = list(params["set_setting"])
         model.set_setting(asked[0], asked[1])

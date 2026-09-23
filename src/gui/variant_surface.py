@@ -15,19 +15,26 @@ from src._variant import QT, resolve_variant
 ALERTS = "Notifications and Alerts"
 BOT_LIVE_SETTINGS = "Bot live settings"
 BOT_SWARM = "Bot Swarm"
+BOT_WIZARD = "Bot creation wizard"
 BUY_CONFIRMATION = "Buy confirmation dialog"
+CHARTS = "Charts"
 CONSOLE = "Console"
 DASHBOARD_STAT_CARD = "Dashboard stat card"
 EMPTY_TAB = "Empty tab"
+EXCHANGE = "Exchange page"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
+PAPER_BOT_DETAIL = "Paper bot settings"
 PAPER_TRADER = "Paper"
 SETTINGS_DIALOG = "Settings dialog"
+SIM_BOT_DETAIL = "Simulator bot settings"
+SIM_BOT_WIZARD = "Simulator bot creation wizard"
 SIMULATOR = "Sim"
 SPENDABLE_PROFITS = "Spendable profits"
 START_ALL_PROGRESS = "Start All progress dialog"
+TRADING = "Trading"
 
 Loader = Callable[[], type]
 
@@ -149,9 +156,9 @@ def _react_empty_tab() -> type:
 
 def _qt_main_tab_book() -> type:
     """Import and return the Qt main tab book."""
-    from .main_tabs.main_tab_bar import MainTabBookQt
+    from PySide6.QtWidgets import QTabWidget
 
-    return MainTabBookQt
+    return QTabWidget
 
 
 def _react_main_tab_book() -> type:
@@ -246,31 +253,129 @@ def _react_start_all_progress() -> type:
 
 
 def _qt_simulator() -> type:
-    """Import and return the Qt Sim tab."""
-    from .simulator_tab import SimulatorTabQt
+    """Import and return the Qt Sim tab, ``SimTradingTab``."""
+    from .simulator.sim_trading_tab import SimTradingTab
 
-    return SimulatorTabQt
+    return SimTradingTab
 
 
 def _react_simulator() -> type:
-    """Import and return the React Sim tab."""
-    from .react_simulator_tab import SimulatorTabReact
+    """Import and return the React Sim tab, ``SimTradingTabReact``."""
+    from .simulator.sim_react_trading_tab import SimTradingTabReact
 
-    return SimulatorTabReact
+    return SimTradingTabReact
 
 
 def _qt_paper_trader() -> type:
-    """Import and return the Qt Paper tab."""
-    from .paper_trader_tab import PaperTraderTabQt
+    """Import and return the Qt Paper tab, ``PaperTradingTab``."""
+    from .paper.paper_trading_tab import PaperTradingTab
 
-    return PaperTraderTabQt
+    return PaperTradingTab
 
 
 def _react_paper_trader() -> type:
-    """Import and return the React Paper tab."""
-    from .react_paper_trader_tab import PaperTraderTabReact
+    """Import and return the React Paper tab, ``PaperTradingTabReact``."""
+    from .paper.paper_react_trading_tab import PaperTradingTabReact
 
-    return PaperTraderTabReact
+    return PaperTradingTabReact
+
+
+def _qt_paper_bot_detail() -> type:
+    """Import and return the Qt Paper Trader Bot Settings window."""
+    from .paper.paper_bot_detail import PaperBotDetailDialog
+
+    return PaperBotDetailDialog
+
+
+def _react_paper_bot_detail() -> type:
+    """Import and return the React Paper Trader Bot Settings window."""
+    from .paper.paper_react_bot_detail import dialog_class
+
+    return dialog_class()
+
+
+def _qt_trading() -> type:
+    """Import and return the Qt Live tab page, which ``TradingTabMixin`` fills."""
+    from PySide6.QtWidgets import QWidget
+
+    return QWidget
+
+
+def _react_trading() -> type:
+    """Import and return the React Live tab."""
+    from .react_trading_tab import TradingTabReact
+
+    return TradingTabReact
+
+
+def _qt_charts() -> type:
+    """Import and return the Qt Charts tab."""
+    from .widgets.trade_charts_tab import TradeChartsTab
+
+    return TradeChartsTab
+
+
+def _react_charts() -> type:
+    """Import and return the React Charts tab."""
+    from .react_charts_tab import ChartsTabReact
+
+    return ChartsTabReact
+
+
+def _qt_exchange() -> type:
+    """Import and return the Qt page of one venue."""
+    from .widgets.exchange_tab import ExchangeTab
+
+    return ExchangeTab
+
+
+def _react_exchange() -> type:
+    """Import and return the React page of one venue."""
+    from .react_exchange_tab import ExchangeTabReact
+
+    return ExchangeTabReact
+
+
+def _qt_bot_wizard() -> type:
+    """Import and return the Qt bot creation wizard."""
+    from .bot_wizard import BotCreationWizard
+
+    return BotCreationWizard
+
+
+def _react_bot_wizard() -> type:
+    """Import and return the React bot creation wizard."""
+    from .react_bot_wizard import BotWizardReactDialog
+
+    return BotWizardReactDialog
+
+
+def _qt_sim_bot_detail() -> type:
+    """Import and return the Qt Simulator Bot Settings window."""
+    from .simulator.sim_bot_detail import SimBotDetailDialog
+
+    return SimBotDetailDialog
+
+
+def _react_sim_bot_detail() -> type:
+    """Import and return the React Simulator Bot Settings window."""
+    from .simulator.sim_react_bot_detail import dialog_class
+
+    return dialog_class()
+
+
+def _qt_sim_bot_wizard() -> type:
+    """Import and return the Qt Simulator bot creation wizard."""
+    from .simulator.sim_bot_wizard import SimBotCreationWizard
+
+    return SimBotCreationWizard
+
+
+def _react_sim_bot_wizard() -> type:
+    """Import and return the React Simulator bot creation wizard."""
+    from .simulator.sim_react_bot_wizard import SimBotWizardReactDialog
+
+    return SimBotWizardReactDialog
 
 
 def _qt_buy_confirmation() -> type:
@@ -297,9 +402,16 @@ register(CONSOLE, _qt_console, _react_console)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
 register(SETTINGS_DIALOG, _qt_settings_dialog, _react_settings_dialog)
 register(BOT_LIVE_SETTINGS, _qt_bot_live_settings, _react_bot_live_settings)
+register(SIM_BOT_DETAIL, _qt_sim_bot_detail, _react_sim_bot_detail)
 register(SPENDABLE_PROFITS, _qt_spendable_profits, _react_spendable_profits)
 register(DASHBOARD_STAT_CARD, _qt_dashboard_stat_card, _react_dashboard_stat_card)
 register(START_ALL_PROGRESS, _qt_start_all_progress, _react_start_all_progress)
 register(BUY_CONFIRMATION, _qt_buy_confirmation, _react_buy_confirmation)
 register(SIMULATOR, _qt_simulator, _react_simulator)
 register(PAPER_TRADER, _qt_paper_trader, _react_paper_trader)
+register(PAPER_BOT_DETAIL, _qt_paper_bot_detail, _react_paper_bot_detail)
+register(TRADING, _qt_trading, _react_trading)
+register(CHARTS, _qt_charts, _react_charts)
+register(EXCHANGE, _qt_exchange, _react_exchange)
+register(BOT_WIZARD, _qt_bot_wizard, _react_bot_wizard)
+register(SIM_BOT_WIZARD, _qt_sim_bot_wizard, _react_sim_bot_wizard)

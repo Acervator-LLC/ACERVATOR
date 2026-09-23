@@ -176,6 +176,11 @@ PANE_MARGINS = (0, 0, 0, 0)
 PANE_SPACING = 6
 REFRESH_TEXT = "Refresh"
 REFRESH_TOOLTIP = "Rerun topology detectors on current market state."
+#: The Refresh button's own width. The header's two lines take an equal share
+#: of what is left of the row, so neither is sized by its own text.
+REFRESH_WIDTH_PX = 96
+#: Both header lines wrap at a word rather than run past the zone's edge.
+HEADER_WORD_WRAP = True
 STATUS_UNWIRED = "No proposal source wired yet."
 STATUS_READY = "Ready — press Refresh."
 STATUS_COUNT_FORMAT = "{proposals} proposal(s); {dismissed} dismissed"
@@ -1062,6 +1067,8 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "spacing": PANE_SPACING,
             "refresh_text": REFRESH_TEXT,
             "refresh_tooltip": REFRESH_TOOLTIP,
+            "refresh_width_px": REFRESH_WIDTH_PX,
+            "header_word_wrap": HEADER_WORD_WRAP,
             "status_unwired": STATUS_UNWIRED,
             "status_ready": STATUS_READY,
             "status_count_format": STATUS_COUNT_FORMAT,

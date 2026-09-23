@@ -91,7 +91,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def dialog_html(theme: str = "cyberpunk_dark") -> str:
+def dialog_html(theme: object = None) -> str:
     """The whole dialog page as one string, with no network fetch."""
     return page_html(
         (STYLE_ASSET,), DIALOG_SCRIPT_ASSETS, DIALOG_BODY, theme, (HOST_SCRIPT,)

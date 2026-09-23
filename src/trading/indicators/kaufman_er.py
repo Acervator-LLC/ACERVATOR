@@ -1,6 +1,7 @@
 """``KaufmanERIndicator``, Perry Kaufman's Efficiency Ratio.
 
-``compute`` returns a ``Signal`` named ``kaufman_er`` carrying ``er``,
+``lines`` answers the ratio for every candle; ``compute`` reads the last
+two entries into a ``Signal`` named ``kaufman_er`` carrying ``er``,
 ``er_prev`` and the regime flags it derives from them.
 """
 
@@ -11,18 +12,42 @@ from .types import (
     Signal,
 )
 
+#: One entry per candle, ``None`` before ``period`` bars and on a window
+#: whose closes never moved.
+_Line = list[float | None]
+
 
 class KaufmanERIndicator:
     """Efficiency Ratio over ``period`` candles.
 
-    ``compute`` reports ``er``, ``er_rising``, ``er_falling``,
-    ``ideal_ranging``, ``moderate``, ``trending``, ``highly_efficient``,
-    ``er_peak_falling`` and ``price_up`` in the ``Signal`` details.
+    ``lines`` answers the ratio a chart draws; ``compute`` reports ``er``,
+    ``er_rising``, ``er_falling``, ``ideal_ranging``, ``moderate``,
+    ``trending``, ``highly_efficient``, ``er_peak_falling`` and
+    ``price_up`` in the ``Signal`` details.
     """
 
     def __init__(self, period: int = 10, weight: float = 1.0):
         self.period = period
         self.weight = weight
+
+    def lines(self, candles: list) -> _Line:
+        """Kaufman's Efficiency Ratio per candle: the net change across ``window``
+        as a fraction of ``price_travel``, the total of its bar-to-bar moves.
+
+        A window with no travel divides by nothing and its entry stays ``None``.
+        """
+        closes = [c.close for c in candles]
+        n = len(closes)
+        out: _Line = [None] * n
+        for i in range(self.period, n):
+            window = closes[i - self.period : i + 1]
+            price_travel = sum(
+                abs(window[k] - window[k - 1]) for k in range(1, len(window))
+            )
+            if price_travel <= 0.0:
+                continue
+            out[i] = abs(window[-1] - window[0]) / price_travel
+        return out
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 2:
@@ -36,12 +61,10 @@ class KaufmanERIndicator:
             )
 
         closes = [c.close for c in candles[-(self.period + 1) :]]
-        net_change = abs(closes[-1] - closes[0])
-        price_travel = sum(
-            abs(closes[i] - closes[i - 1]) for i in range(1, len(closes))
-        )
+        ratios = self.lines(candles)
+        er = ratios[-1]
 
-        if price_travel <= 0.0:
+        if er is None:
             return Signal(
                 "kaufman_er",
                 timeframe,
@@ -51,15 +74,11 @@ class KaufmanERIndicator:
                 abstained=True,
             )
 
-        er = net_change / price_travel
-
+        # The previous window's ratio, read from the third bar past the
+        # window on; ``er`` where that window had no travel.
         er_prev = er
-        if len(candles) >= self.period + 3:
-            c2 = [c.close for c in candles[-(self.period + 2) : -1]]
-            nc2 = abs(c2[-1] - c2[0])
-            pl2 = sum(abs(c2[i] - c2[i - 1]) for i in range(1, len(c2)))
-            if pl2 > 0.0:
-                er_prev = nc2 / pl2
+        if len(candles) >= self.period + 3 and ratios[-2] is not None:
+            er_prev = ratios[-2]
 
         er_rising = er > er_prev
         er_falling = er < er_prev

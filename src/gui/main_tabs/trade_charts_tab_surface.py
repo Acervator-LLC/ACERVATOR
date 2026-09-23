@@ -35,15 +35,52 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+from .native_chart_surface import ARROW_GLYPH_FAMILY, ARROW_GLYPH_PX, CAPTION_PX
+from .native_chart_surface import CONTROL_FONT_FAMILY, CONTROL_FONT_PX
+from .native_chart_surface import CONTROL_HEIGHT_PX, TOGGLE_BOX_PX
 from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
 from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
 from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
+from .native_chart_surface import LEGEND_INVISIBLE_FIELD as PANEL_LEGEND_INVISIBLE_FIELD
 from .native_chart_surface import LEGEND_INVISIBLE_TEXT as PANEL_LEGEND_INVISIBLE
+from .native_chart_surface import LEGEND_ON_BOOK_FIELD as PANEL_LEGEND_ON_BOOK_FIELD
 from .native_chart_surface import LEGEND_SPACING_PX as PANEL_LEGEND_GAP_PX
 from .native_chart_surface import LEGEND_ON_BOOK_TEXT as PANEL_LEGEND_ON_BOOK
+from .native_chart_surface import TIMEFRAME_LABEL as PANEL_TIMEFRAME_LABEL
 from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
 
 METHOD = "trade_charts_tab.state"
+
+#: The bridge method the page's chart host asks with one pointer input; the
+#: answer carries the painter's window and, when the window moved, a new image.
+VIEW_METHOD = "trade_charts_tab.view"
+VIEW_ACTION_PARAM = "action"
+VIEW_X_PARAM = "x"
+VIEW_Y_PARAM = "y"
+VIEW_WIDTH_PARAM = "width"
+VIEW_HEIGHT_PARAM = "height"
+VIEW_RATIO_PARAM = "dpr"
+VIEW_DELTA_PARAM = "delta"
+VIEW_CONTROL_PARAM = "control"
+VIEW_CANDLE_PARAM = "candle"
+VIEW_ACTION_WHEEL = "wheel"
+VIEW_ACTION_PRESS = "press"
+VIEW_ACTION_DRAG = "drag"
+VIEW_ACTION_RELEASE = "release"
+VIEW_ACTION_RESET = "reset"
+VIEW_ACTION_CROSSHAIR = "crosshair"
+VIEW_ACTIONS = (
+    VIEW_ACTION_WHEEL,
+    VIEW_ACTION_PRESS,
+    VIEW_ACTION_DRAG,
+    VIEW_ACTION_RELEASE,
+    VIEW_ACTION_RESET,
+    VIEW_ACTION_CROSSHAIR,
+)
+VIEW_MOVED_KEY = "moved"
+VIEW_START_KEY = "start"
+VIEW_COUNT_KEY = "count"
+VIEW_IMAGE_KEY = "image"
 
 ACCESSIBLE_NAME = "Trade Charts Tab"
 
@@ -77,6 +114,10 @@ SYNTHETIC_KEY = "synthetic"
 VOTE_KEY = "vote"
 TIMEFRAMES_KEY = "timeframes"
 DEFAULT_VOTE = ""
+#: The ``ata_spm.ChartCall`` an ATA-SMP record carries, None while no run called it.
+CALL_KEY = "call"
+#: The pin ``ChartsTabReact._feed_painter`` writes when a called market's chart draws.
+ATA_RENDERED_PIN = "charts.ata.rendered"
 
 PANEL_TIMEFRAME = "1h"
 PANEL_MINIMUM_HEIGHT_PX = 300
@@ -93,9 +134,6 @@ STRETCH_SLOTS = 1
 PRICE_LABEL_FORMAT = "{symbol}  •  ${price:.8f}  •  {state}"
 NUCLEAR_LABEL_FORMAT = "{symbol}  •  ${price:.4f}  •  ⚡{scenario}"
 AWAITING_FORMAT = "{symbol}: awaiting candles"
-FLOOR_SMALL_FORMAT = "${price:.4f}"
-FLOOR_LARGE_FORMAT = "${price:.2f}"
-FLOOR_FORMAT_SWITCH = 1
 EMPTY_SOURCE = ""
 ERROR_TEXT_LIMIT = 60
 BOT_ID_LOG_LENGTH = 8
@@ -115,7 +153,56 @@ CONSUMED_ATTRIBUTE = "_fold_cycle_cap_consumed"
 HOLDINGS_ATTRIBUTE = "_current_holdings"
 QUOTE_RATE_ATTRIBUTE = "_quote_to_usd"
 GATE_STATE_ATTRIBUTE = "_last_gate_state"
-LOTS_ATTRIBUTE = "_main_lots"
+BB_ATTRIBUTE = "_last_bb"
+STATS_ATTRIBUTE = "stats"
+AVG_ENTRY_ATTRIBUTE = "avg_entry_exchange"
+CONFIG_ATTRIBUTE = "config"
+VISIBILITY_ATTRIBUTE = "visibility"
+DEFAULT_VISIBILITY = "orderbook"
+
+# The BBProximityResult fields the landing strip band reads.
+BB_STRIP_FLAG = "landing_strip"
+BB_STRIP_SIDE = "landing_strip_side"
+BB_STRIP_CANDLES = "landing_strip_candles"
+BB_UPPER = "upper"
+BB_LOWER = "lower"
+BB_TOLERANCE = "tolerance_pct"
+STRIP_SIDE_KEY = "side"
+STRIP_CANDLES_KEY = "candles"
+STRIP_UPPER_KEY = "upper"
+STRIP_LOWER_KEY = "lower"
+STRIP_TOLERANCE_KEY = "tolerance_pct"
+STRIP_TIMEFRAME_KEY = "timeframe"
+TIMEFRAME_ATTRIBUTE = "ta_timeframe"
+
+POSITION_PRICE_KEY = "price"
+POSITION_SIDE_KEY = "side"
+POSITION_VISIBILITY_KEY = "visibility"
+POSITION_HELD_KEY = "asset_held"
+
+# A fill row's keys, as the painter's markers read them.
+FILL_ID_KEY = "id"
+FILL_TS_KEY = "ts"
+FILL_SIDE_KEY = "side"
+FILL_PRICE_KEY = "price"
+FILL_ROLE_KEY = "role"
+FILL_TYPE_KEY = "type"
+FILL_DATA_KEY = "data"
+SCRUM_ROLE = "SCRUM"
+FOLD_ROLE = "FOLD"
+SELL_SIDE = "sell"
+BUY_SIDE = "buy"
+SIDE_ROLES = {SELL_SIDE: SCRUM_ROLE, BUY_SIDE: FOLD_ROLE}
+FILL_MATCH_WINDOW_S = 60
+FILL_MATCH_PRICE = 1e-9
+
+# The History tab, as the window names it and as its rows and its fetch read.
+HISTORY_TAB_ATTRIBUTE = "_history_tab"
+HISTORY_ROWS_ATTRIBUTE = "_all_trades"
+HISTORY_FETCHED_ATTRIBUTE = "_last_fetched_ts"
+HISTORY_IN_FLIGHT_ATTRIBUTE = "_fetch_in_flight"
+HISTORY_TIMESTAMP_KEY = "timestamp"
+NEVER_FETCHED_TS = 0.0
 
 DEFAULT_ANCHOR_USD = 0
 DEFAULT_CAP_USD = 0.0
@@ -123,12 +210,6 @@ DEFAULT_CONSUMED_USD = 0.0
 DEFAULT_HOLDINGS = 0
 DEFAULT_QUOTE_RATE = 1.0
 CYCLE_OPEN_FLOOR_USD = 0.0
-
-FLOOR_PRICE_KEY = "initial_buy_price"
-FLOOR_UNITS_KEY = "units"
-DEFAULT_FLOOR_PRICE = 0
-DEFAULT_FLOOR_UNITS = 0
-NO_FLOOR_UNITS = 0.0
 
 SCRUM_ARMED_KEY = "scrum_armed"
 FOLD_ARMED_KEY = "fold_armed"
@@ -190,17 +271,16 @@ UPDATE_LABEL_SET = "update.label_set"
 UPDATE_LABEL_SKIPPED = "update.label_skipped"
 UPDATE_NO_MANAGER = "update.no_manager"
 UPDATE_NO_BOT = "update.no_bot"
-UPDATE_MARKERS_SET = "update.markers_set"
-UPDATE_MARKERS_NONE = "update.markers_none"
-UPDATE_MARKERS_FAILED = "update.markers_failed"
 UPDATE_TB_DRAWN = "update.tb_drawn"
 UPDATE_TB_CLEARED = "update.tb_cleared"
 UPDATE_TB_FAILED = "update.tb_failed"
 UPDATE_FIRE_ARMED = "update.fire_armed"
 UPDATE_FIRE_FAILED = "update.fire_failed"
-UPDATE_FLOORS_SET = "update.floors_set"
-UPDATE_FLOORS_NONE = "update.floors_none"
-UPDATE_FLOORS_FAILED = "update.floors_failed"
+UPDATE_HISTORY_READ = "update.history_read"
+UPDATE_STRIP_SET = "update.strip_set"
+UPDATE_STRIP_FAILED = "update.strip_failed"
+UPDATE_POSITION_SET = "update.position_set"
+UPDATE_POSITION_FAILED = "update.position_failed"
 UPDATE_CHART_REPAINTED = "update.chart_repainted"
 UPDATE_PANEL_DROPPED = "update.panel_dropped"
 UPDATE_EMIT_MOUNTED = "update.emit_mounted"
@@ -212,6 +292,7 @@ TF_EMIT = "timeframe.emit"
 FETCH_START = "fetch.start"
 FETCH_THROTTLED = "fetch.throttled"
 FETCH_WILDCARD_SKIPPED = "fetch.wildcard_skipped"
+FETCH_CALL_SKIPPED = "fetch.call_skipped"
 FETCH_CANDLES = "fetch.candles"
 FETCH_EMPTY = "fetch.empty"
 FETCH_RAISED = "fetch.raised"
@@ -234,17 +315,12 @@ CALL_NAMES = (
     UPDATE_LABEL_SKIPPED,
     UPDATE_NO_MANAGER,
     UPDATE_NO_BOT,
-    UPDATE_MARKERS_SET,
-    UPDATE_MARKERS_NONE,
-    UPDATE_MARKERS_FAILED,
     UPDATE_TB_DRAWN,
     UPDATE_TB_CLEARED,
     UPDATE_TB_FAILED,
     UPDATE_FIRE_ARMED,
     UPDATE_FIRE_FAILED,
-    UPDATE_FLOORS_SET,
-    UPDATE_FLOORS_NONE,
-    UPDATE_FLOORS_FAILED,
+    UPDATE_HISTORY_READ,
     UPDATE_CHART_REPAINTED,
     UPDATE_PANEL_DROPPED,
     UPDATE_EMIT_MOUNTED,
@@ -256,6 +332,7 @@ CALL_NAMES = (
     FETCH_START,
     FETCH_THROTTLED,
     FETCH_WILDCARD_SKIPPED,
+    FETCH_CALL_SKIPPED,
     FETCH_CANDLES,
     FETCH_EMPTY,
     FETCH_RAISED,
@@ -268,13 +345,6 @@ CALL_NAMES = (
 )
 
 ModelCall = list
-
-
-def floor_label(price: Any) -> str:
-    """The text one tranche floor line carries: four places under a dollar."""
-    if price < FLOOR_FORMAT_SWITCH:
-        return FLOOR_SMALL_FORMAT.format(price=price)
-    return FLOOR_LARGE_FORMAT.format(price=price)
 
 
 def price_label(symbol: Any, price: Any, state: Any) -> str:
@@ -292,24 +362,6 @@ def awaiting_text(symbol: Any) -> str:
     return AWAITING_FORMAT.format(symbol=symbol)
 
 
-def tranche_floors(lots: Any) -> list:
-    """The dashed floor lines one bot's open lots draw, one per distinct price.
-
-    Lots at one price are folded together and the list comes back in
-    price order. A lot priced at or below zero anchors no line. Units
-    are read and totalled but reach no line: see the note in the parity
-    test on the shipped tab's unused total.
-    """
-    totals: dict = {}
-    for lot in lots:
-        price = float(lot.get(FLOOR_PRICE_KEY, DEFAULT_FLOOR_PRICE) or 0)
-        if price <= 0:
-            continue
-        units = float(lot.get(FLOOR_UNITS_KEY, DEFAULT_FLOOR_UNITS) or 0)
-        totals[price] = totals.get(price, NO_FLOOR_UNITS) + units
-    return [[price, floor_label(price)] for price in sorted(totals)]
-
-
 def fire_armed_state(gate_state: Any) -> dict:
     """The right-edge glow: whether auto-fire would fire now, and what blocks it."""
     return {
@@ -318,6 +370,164 @@ def fire_armed_state(gate_state: Any) -> dict:
         SCRUM_BLOCKERS_KEY: list(gate_state.get(SCRUM_BLOCKERS_KEY) or []),
         FOLD_BLOCKERS_KEY: list(gate_state.get(FOLD_BLOCKERS_KEY) or []),
     }
+
+
+def landing_strip(bb: Any, timeframe: Any = "") -> Optional[dict]:
+    """The band the bot's ``_last_bb`` names, or None while it names no strip.
+
+    Five keys are the ``BBProximityResult`` fields the painter draws from,
+    the side, the candle count, both Bollinger bands and the tolerance, and
+    ``timeframe`` is the bot's own, which the candle count is read on.
+    """
+    if bb is None or not bool(getattr(bb, BB_STRIP_FLAG, False)):
+        return None
+    return {
+        STRIP_SIDE_KEY: str(getattr(bb, BB_STRIP_SIDE, "") or ""),
+        STRIP_CANDLES_KEY: int(getattr(bb, BB_STRIP_CANDLES, 0) or 0),
+        STRIP_UPPER_KEY: float(getattr(bb, BB_UPPER, 0.0) or 0.0),
+        STRIP_LOWER_KEY: float(getattr(bb, BB_LOWER, 0.0) or 0.0),
+        STRIP_TOLERANCE_KEY: float(getattr(bb, BB_TOLERANCE, 0.0) or 0.0),
+        STRIP_TIMEFRAME_KEY: str(timeframe or ""),
+    }
+
+
+def bot_timeframe(bot: Any) -> str:
+    """The ``ta_timeframe`` the bot's config names, empty without one."""
+    config = getattr(bot, CONFIG_ATTRIBUTE, None)
+    return str(getattr(config, TIMEFRAME_ATTRIBUTE, "") or "")
+
+
+def position_reading(bot: Any) -> Optional[dict]:
+    """The bot's holding as one position: the venue's average entry, the units held and the visibility.
+
+    None while the venue has reported no average entry or the bot holds nothing.
+    """
+    stats = getattr(bot, STATS_ATTRIBUTE, None)
+    price = float(getattr(stats, AVG_ENTRY_ATTRIBUTE, 0.0) or 0.0)
+    holdings = float(getattr(bot, HOLDINGS_ATTRIBUTE, DEFAULT_HOLDINGS) or 0)
+    if price <= 0 or holdings <= 0:
+        return None
+    config = getattr(bot, CONFIG_ATTRIBUTE, None)
+    return {
+        POSITION_PRICE_KEY: price,
+        POSITION_SIDE_KEY: BUY_SIDE,
+        POSITION_VISIBILITY_KEY: str(
+            getattr(config, VISIBILITY_ATTRIBUTE, "") or DEFAULT_VISIBILITY
+        ),
+        POSITION_HELD_KEY: holdings,
+    }
+
+
+def history_of(window: Any) -> Any:
+    """The History tab the window built under ``HISTORY_TAB_ATTRIBUTE``, or None."""
+    return getattr(window, HISTORY_TAB_ATTRIBUTE, None)
+
+
+def history_state(history: Any) -> dict:
+    """The History tab's venue rows, its last fetch stamp and whether a fetch is in flight.
+
+    Read by the names the window reads on activation; a missing tab gives
+    no rows, ``NEVER_FETCHED_TS`` and no fetch in flight.
+    """
+    if history is None:
+        return {"rows": [], "fetched_ts": NEVER_FETCHED_TS, "in_flight": False}
+    return {
+        "rows": list(getattr(history, HISTORY_ROWS_ATTRIBUTE, None) or []),
+        "fetched_ts": float(
+            getattr(history, HISTORY_FETCHED_ATTRIBUTE, NEVER_FETCHED_TS)
+            or NEVER_FETCHED_TS
+        ),
+        "in_flight": bool(getattr(history, HISTORY_IN_FLIGHT_ATTRIBUTE, False)),
+    }
+
+
+def history_never_fetched(state: dict) -> bool:
+    """True when the History has never landed a fetch and none is in flight: the one time the Charts tab asks."""
+    return state["fetched_ts"] == NEVER_FETCHED_TS and not state["in_flight"]
+
+
+def history_fills(rows: Any, symbol: Any) -> list:
+    """One fill per History row of ``symbol``: the venue's id, side, price and stamp, the role from the side.
+
+    A row whose side is neither buy nor sell, or whose price or stamp is
+    not positive, gives no fill.
+    """
+    found = []
+    for row in rows or []:
+        if str(row.get(SYMBOL_KEY, "") or "") != symbol:
+            continue
+        side = str(row.get(FILL_SIDE_KEY, "") or "").lower()
+        try:
+            price = float(row.get(FILL_PRICE_KEY, 0) or 0)
+            stamp = float(row.get(HISTORY_TIMESTAMP_KEY, 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if side not in SIDE_ROLES or price <= 0 or stamp <= 0:
+            continue
+        found.append(
+            {
+                FILL_ID_KEY: str(row.get(FILL_ID_KEY, "") or ""),
+                SYMBOL_KEY: symbol,
+                FILL_TS_KEY: int(stamp),
+                FILL_SIDE_KEY: side,
+                FILL_PRICE_KEY: price,
+                FILL_ROLE_KEY: SIDE_ROLES[side],
+            }
+        )
+    return found
+
+
+def fill_record(stamp: Any, data: Any, symbol: Any) -> Optional[dict]:
+    """A ``trade.filled`` event as the row ``log_trade`` records, or None with no price.
+
+    A nested ``data`` dict is merged over the top-level fields, the side is
+    lowered and ``type`` becomes the upper-case role.
+    """
+    merged = dict(data or {})
+    inner = merged.get(FILL_DATA_KEY)
+    if isinstance(inner, dict):
+        merged.update(inner)
+    try:
+        price = float(merged.get(FILL_PRICE_KEY, 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if price <= 0:
+        return None
+    role = merged.get(FILL_TYPE_KEY) or merged.get(FILL_ROLE_KEY) or ""
+    return {
+        BOT_ID_KEY: str(merged.get(BOT_ID_KEY, "") or ""),
+        SYMBOL_KEY: str(symbol or merged.get(SYMBOL_KEY, "") or ""),
+        FILL_TS_KEY: int(float(stamp or 0)),
+        FILL_SIDE_KEY: str(merged.get(FILL_SIDE_KEY, "") or "").lower(),
+        FILL_PRICE_KEY: price,
+        FILL_ROLE_KEY: str(role).upper(),
+    }
+
+
+def merged_fills(venue: Any, logged: Any) -> list:
+    """``venue`` fills, then each ``logged`` fill no venue fill names.
+
+    A venue fill names a logged fill when both carry the same venue id, or
+    when their prices sit within ``FILL_MATCH_PRICE`` and their stamps
+    within ``FILL_MATCH_WINDOW_S`` of each other.
+    """
+    kept = [dict(one) for one in venue]
+    for fill in logged:
+        fill_id = str(fill.get(FILL_ID_KEY, "") or "")
+        price = float(fill.get(FILL_PRICE_KEY, 0) or 0)
+        stamp = int(fill.get(FILL_TS_KEY, 0) or 0)
+        named = any(
+            (fill_id and str(one.get(FILL_ID_KEY, "") or "") == fill_id)
+            or (
+                abs(float(one.get(FILL_PRICE_KEY, 0) or 0) - price) <= FILL_MATCH_PRICE
+                and abs(int(one.get(FILL_TS_KEY, 0) or 0) - stamp)
+                <= FILL_MATCH_WINDOW_S
+            )
+            for one in venue
+        )
+        if not named:
+            kept.append(dict(fill))
+    return kept
 
 
 def bot_readings(bot: Any) -> dict:
@@ -365,7 +575,7 @@ def target_balance_lines(readings: dict) -> list:
 
 
 def candle_row(candle: Any) -> list:
-    """One Nuclear Mode candle as six numbers, from an object or from a dict."""
+    """One candle as six numbers, from an ``OHLCVCandle``, a dict or a six-number row."""
     if hasattr(candle, CANDLE_OPEN_KEY):
         return [
             int(getattr(candle, CANDLE_TIME_KEY, DEFAULT_CANDLE_TIME)),
@@ -375,6 +585,8 @@ def candle_row(candle: Any) -> list:
             float(candle.close),
             float(getattr(candle, CANDLE_VOLUME_KEY, DEFAULT_CANDLE_VOLUME)),
         ]
+    if not isinstance(candle, dict):
+        return list(candle)
     return [
         int(candle.get(CANDLE_TIME_KEY, DEFAULT_CANDLE_TIME)),
         float(candle[CANDLE_OPEN_KEY]),
@@ -421,9 +633,9 @@ class PanelSink:
 
     Holds what the shipped ``ChartPanel`` and its ``CandlestickChart``
     hold after those calls: the symbol, the header text, the candles, the
-    error line, the source attribution, the markers, the floor lines, the
-    two overlay prices and the glow. ``timeframe`` is the combo reading the
-    fetch uses, which ``set_chart_timeframe`` does not move.
+    error line, the source attribution, the markers, the two overlay
+    prices and the glow. ``timeframe`` is the combo reading the fetch
+    uses, which ``set_chart_timeframe`` does not move.
     """
 
     def __init__(self, symbol: Any) -> None:
@@ -435,10 +647,14 @@ class PanelSink:
         self.error_text = ""
         self.source = ""
         self.markers: list = []
-        self.floors: list = []
         self.tb_anchor: Optional[float] = None
         self.tb_ceiling: Optional[float] = None
         self.armed: Optional[dict] = None
+        self.strip: Optional[dict] = None
+        self.position: Optional[dict] = None
+        self.overlays: Optional[list] = None
+        self.call: Optional[dict] = None
+        self.caption = ""
         self.minimum_height_px: Optional[int] = None
         self.maximum_height_px: Optional[int] = None
         self.chart_repaints = 0
@@ -512,16 +728,10 @@ class PanelSink:
         self.calls.append(["set_source", source])
 
     def set_markers(self, trades: Any) -> None:
-        """Replace the historical scrum and fold markers."""
+        """Replace the trade event markers: the History's fills and the bus fills."""
         self.markers = [dict(one) for one in trades]
         self.chart_repaints += 1
         self.calls.append(["chart.set_trade_history_markers", len(self.markers)])
-
-    def set_floors(self, floors: Any) -> None:
-        """Replace the dashed tranche floor lines."""
-        self.floors = [list(one) for one in floors]
-        self.chart_repaints += 1
-        self.calls.append(["chart.set_tranche_floors", len(self.floors)])
 
     def set_target_balance_lines(self, anchor: Any, ceiling: Any) -> None:
         """Set the anchor and ceiling overlay prices, or clear both."""
@@ -535,6 +745,41 @@ class PanelSink:
         self.armed = dict(state)
         self.chart_repaints += 1
         self.calls.append(["chart.set_fire_armed_state", dict(state)])
+
+    def set_landing_strip(self, strip: Optional[dict]) -> None:
+        """Set the landing strip band ``landing_strip`` read, or clear it."""
+        self.strip = None if strip is None else dict(strip)
+        self.chart_repaints += 1
+        self.calls.append(["chart.set_landing_strip", self.strip])
+
+    def set_position(self, position: Optional[dict]) -> None:
+        """Set the one position marker ``position_reading`` read, or clear it."""
+        self.position = None if position is None else dict(position)
+        self.chart_repaints += 1
+        self.calls.append(["chart.set_positions", self.position])
+
+    def set_overlays(self, keys: Optional[list]) -> None:
+        """Switch on exactly ``keys`` through ``ChartPainter.show_only``, or None to leave the toggles."""
+        self.overlays = None if keys is None else [str(one) for one in keys]
+        self.chart_repaints += 1
+        self.calls.append(["chart.show_only", self.overlays])
+
+    def set_call(self, direction: Any, readings: Any) -> None:
+        """Set the reversal badge, bar and reading strip ``ChartPainter.set_call`` draws, or clear them."""
+        self.call = {
+            "direction": str(direction or ""),
+            "readings": [list(one) for one in readings or ()],
+        }
+        self.chart_repaints += 1
+        self.calls.append(
+            ["chart.set_call", self.call["direction"], len(self.call["readings"])]
+        )
+
+    def set_caption(self, text: Any) -> None:
+        """Set the caption band ``ChartPainter.set_caption`` draws at the foot, or clear it."""
+        self.caption = str(text or "")
+        self.chart_repaints += 1
+        self.calls.append(["chart.set_caption", len(self.caption)])
 
     def repaint_chart(self) -> None:
         """Repaint the chart."""
@@ -564,10 +809,14 @@ class PanelSink:
             "error_text": self.error_text,
             "source": self.source,
             "markers": [dict(one) for one in self.markers],
-            "floors": [list(one) for one in self.floors],
             "tb_anchor": self.tb_anchor,
             "tb_ceiling": self.tb_ceiling,
             "armed": None if self.armed is None else dict(self.armed),
+            "strip": None if self.strip is None else dict(self.strip),
+            "position": None if self.position is None else dict(self.position),
+            "overlays": None if self.overlays is None else list(self.overlays),
+            "call": None if self.call is None else dict(self.call),
+            "caption": self.caption,
             "minimum_height_px": self.minimum_height_px,
             "maximum_height_px": self.maximum_height_px,
             "chart_repaints": self.chart_repaints,
@@ -651,17 +900,15 @@ LIST_TOGGLE_TOOLTIP = (
 ATA_EMPTY_TICKER_TEXT = "No called market"
 ATA_EMPTY_HINT = "A market joins this list when it reaches Ready to Send."
 LIST_TOGGLE_WIDTH_PX = 92
-LIST_TOGGLE_HEIGHT_PX = 26
 ATA_EXCHANGE_ID = ""
 NO_TIMEFRAMES: tuple = ()
 
 ARROW_WIDTH_PX = 34
-ARROW_HEIGHT_PX = 26
 TICKER_MIN_WIDTH_PX = 220
 SELECTOR_SPACING_PX = 8
 
-#: The list-toggle row, the selector row, the chart and the toggle row.
-LAYOUT_SLOTS = 4
+#: The control row, the chart and the toggle row.
+LAYOUT_SLOTS = 3
 ONE_PANEL = 1
 NO_PANEL = 0
 FIRST_ASSET = 0
@@ -682,6 +929,8 @@ SELECT_REFUSED = "select.refused"
 SELECT_UNCHANGED = "select.unchanged"
 SELECT_FOLLOWED = "select.followed"
 SELECT_ALREADY = "select.already"
+SELECT_CALL_DRAWN = "select.call_drawn"
+SELECT_CALL_LEFT = "select.call_left"
 UPDATE_ASSET_ADDED = "update.asset_added"
 UPDATE_ASSET_KEPT = "update.asset_kept"
 UPDATE_ASSET_DROPPED = "update.asset_dropped"
@@ -701,6 +950,8 @@ SELECTOR_CALL_NAMES = (
     SELECT_UNCHANGED,
     SELECT_FOLLOWED,
     SELECT_ALREADY,
+    SELECT_CALL_DRAWN,
+    SELECT_CALL_LEFT,
     SELECT_LIST_TOGGLED,
     UPDATE_ASSET_ADDED,
     UPDATE_ASSET_KEPT,
@@ -745,6 +996,9 @@ class TradeChartsTabModel:
         self.order: list = []
         self.shown = FIRST_ASSET
         self.ata_source: Any = None
+        self.ata_call_source: Any = None
+        self.live_overlays: list = []
+        self.live_timeframe = ""
         self.ata_assets: dict = {}
         self.ata_order: list = []
         self.ata_shown = FIRST_ASSET
@@ -752,6 +1006,8 @@ class TradeChartsTabModel:
         self.followed = ""
         self.dropped: list = []
         self.trade_log: list = []
+        self.history_rows: list = []
+        self.history_fetched_ts: float = NEVER_FETCHED_TS
         self.logs: list = []
         self.signals: list = []
         self.calls: list[ModelCall] = []
@@ -762,6 +1018,23 @@ class TradeChartsTabModel:
         ``PushBoard.watched_markets`` is what the running window binds here.
         """
         self.ata_source = source
+
+    def set_ata_call_source(self, source: Any) -> None:
+        """Take the callable answering one market's ``ata_spm.ChartCall``, or None.
+
+        ``SectorBoard.chart_call`` is what the running window binds here.
+        """
+        self.ata_call_source = source
+
+    def _call_of(self, symbol: Any) -> Any:
+        """The ``ChartCall`` the call source holds for ``symbol``, or None."""
+        if self.ata_call_source is None:
+            return None
+        try:
+            return self.ata_call_source(symbol)
+        except Exception as exc:
+            self.calls.append([UPDATE_ATA_REFUSED, type(exc).__name__])
+            return None
 
     def showing_ata(self) -> bool:
         """Whether ``list_mode`` is ``LIST_ATA``."""
@@ -795,9 +1068,14 @@ class TradeChartsTabModel:
         return ATA_EMPTY_TICKER_TEXT if self.showing_ata() else EMPTY_TICKER_TEXT
 
     def toggle_list(self) -> str:
-        """Move the arrows to the other list and answer the mode on screen."""
+        """Move the arrows to the other list and answer the mode on screen.
+
+        ``followed`` is cleared first: a market on both lists keeps one
+        symbol and draws two pictures, the bot's and the call's.
+        """
         self.list_mode = LIST_ATA if self.list_mode == LIST_LIVE else LIST_LIVE
         self.calls.append([SELECT_LIST_TOGGLED, self.list_mode, len(self.list_order())])
+        self.followed = DEFAULT_SYMBOL
         self._follow_shown()
         self._label_shown()
         self._feed_shown()
@@ -821,7 +1099,7 @@ class TradeChartsTabModel:
         return ONE_PANEL if self.panel is not None else NO_PANEL
 
     def _layout_slots(self) -> int:
-        """The selector row, the chart and the toggle row."""
+        """The control row, the chart and the toggle row."""
         return LAYOUT_SLOTS
 
     def shown_id(self) -> str:
@@ -898,11 +1176,67 @@ class TradeChartsTabModel:
         self.panel.set_candles([])
         self.panel.set_markers([])
         self.panel.set_source(EMPTY_SOURCE)
+        call = record.get(CALL_KEY) if self.showing_ata() else None
+        if call is not None:
+            self._draw_call(record, call)
+            return
+        self._leave_call()
         if symbol:
             self.panel.set_error(awaiting_text(symbol))
         if record:
             record[LAST_FETCH_KEY] = NEVER_FETCHED
         self.calls.append([SELECT_FOLLOWED, symbol])
+
+    def _draw_call(self, record: dict, call: Any) -> None:
+        """Put ``call`` on the panel: its candles at its timeframe, its overlays,
+        its badge and its caption, with no bot annotation.
+
+        The overlay set the Live list showed is held in ``live_overlays``
+        until ``_leave_call`` restores it.
+        """
+        if not self.live_overlays and self.panel.overlays is not None:
+            self.live_overlays = list(self.panel.overlays)
+        self._clear_annotations()
+        if not self.live_timeframe:
+            self.live_timeframe = self.panel.timeframe
+        self.panel.set_timeframe(str(call.timeframe))
+        self.panel.set_chart_timeframe(str(call.timeframe))
+        self.panel.set_overlays(list(call.overlays))
+        self.panel.set_candles([candle_row(one) for one in call.candles])
+        self.panel.set_call(call.direction, call.readings)
+        self.panel.set_caption(call.caption)
+        record[LAST_FETCH_KEY] = self._now()
+        self.calls.append(
+            [SELECT_CALL_DRAWN, call.symbol, call.timeframe, len(call.overlays)]
+        )
+
+    def _leave_call(self) -> None:
+        """Clear the call's badge and caption and restore the Live overlay set."""
+        if (
+            self.panel.call is None
+            and not self.panel.caption
+            and self.panel.overlays is None
+        ):
+            return
+        self.panel.set_call("", ())
+        self.panel.set_caption("")
+        self.panel.set_overlays(self.live_overlays or None)
+        self.live_overlays = []
+        if self.live_timeframe:
+            self.panel.set_timeframe(self.live_timeframe)
+            self.panel.set_chart_timeframe(self.live_timeframe)
+            self.live_timeframe = ""
+        if self.showing_ata():
+            self._clear_annotations()
+        self.calls.append([SELECT_CALL_LEFT])
+
+    def _clear_annotations(self) -> None:
+        """Take every annotation off the panel: markers, target lines, glow, strip, position."""
+        self.panel.set_markers([])
+        self.panel.set_target_balance_lines(None, None)
+        self.panel.set_armed(fire_armed_state({}))
+        self.panel.set_landing_strip(None)
+        self.panel.set_position(None)
 
     def update_charts(
         self,
@@ -986,6 +1320,7 @@ class TradeChartsTabModel:
         self.calls.append([UPDATE_SELECTOR, len(self.list_order()), self.list_shown()])
         self._follow_shown()
         self._label_shown()
+        self.feed_history()
         self._feed_shown()
         self.panel.repaint_chart()
         self.calls.append([UPDATE_CHART_REPAINTED, self.shown_id()])
@@ -1072,6 +1407,10 @@ class TradeChartsTabModel:
             record = self.ata_assets[symbol]
             record[VOTE_KEY] = vote
             record[TIMEFRAMES_KEY] = timeframes
+            call = self._call_of(symbol)
+            if call is not record.get(CALL_KEY) and self.followed == symbol:
+                self.followed = DEFAULT_SYMBOL
+            record[CALL_KEY] = call
             seen.append(symbol)
 
         for symbol in list(self.ata_assets):
@@ -1101,8 +1440,32 @@ class TradeChartsTabModel:
         else:
             self.calls.append([UPDATE_LABEL_SKIPPED, bot_id])
 
+    def set_history(self, rows: Any, fetched_ts: Any) -> None:
+        """Take the History tab's venue rows and its last fetch stamp, as ``history_state`` read them."""
+        self.history_rows = list(rows or [])
+        self.history_fetched_ts = float(fetched_ts or NEVER_FETCHED_TS)
+
+    def feed_history(self) -> None:
+        """Put the shown market's trade events on the chart: the History's fills for
+        its symbol, then each bus fill since launch the venue has not answered for.
+
+        A called market on the ATA-SMP list gets none, as ``_draw_call`` clears them.
+        """
+        if self.showing_ata():
+            return
+        symbol = self.current().get(SYMBOL_KEY, DEFAULT_SYMBOL)
+        if not symbol:
+            return
+        venue = history_fills(self.history_rows, symbol)
+        logged = [one for one in self.trade_log if one.get(SYMBOL_KEY) == symbol]
+        fills = merged_fills(venue, logged)
+        self.panel.set_markers(fills)
+        self.calls.append(
+            [UPDATE_HISTORY_READ, symbol, len(venue), len(logged), len(fills)]
+        )
+
     def _feed_shown(self) -> None:
-        """Put the shown bot's markers, lines, glow and floors on the chart."""
+        """Put the shown bot's strip, position, target lines and glow on the chart."""
         bot_id = self.shown_id()
         if not self.manager:
             self.calls.append([UPDATE_NO_MANAGER, bot_id])
@@ -1116,24 +1479,25 @@ class TradeChartsTabModel:
         )
 
     def _feed_overlays(self, bot_id: Any, symbol: Any, bot: Any, panel: Any) -> None:
-        """Put this bot's markers, overlay lines, glow and floors on the chart.
+        """Put this bot's strip, position, overlay lines and glow on the chart.
 
         Each of the four is guarded on its own, so one that refuses
         leaves the other three drawn.
         """
+        del symbol
         try:
-            for_this_bot = [
-                one
-                for one in self.trade_log
-                if one.get(BOT_ID_KEY) == bot_id and one.get(SYMBOL_KEY) == symbol
-            ]
-            if for_this_bot:
-                panel.set_markers(for_this_bot)
-                self.calls.append([UPDATE_MARKERS_SET, bot_id, len(for_this_bot)])
-            else:
-                self.calls.append([UPDATE_MARKERS_NONE, bot_id])
+            panel.set_landing_strip(
+                landing_strip(getattr(bot, BB_ATTRIBUTE, None), bot_timeframe(bot))
+            )
+            self.calls.append([UPDATE_STRIP_SET, bot_id, panel.strip is not None])
         except Exception as exc:
-            self.calls.append([UPDATE_MARKERS_FAILED, bot_id, type(exc).__name__])
+            self.calls.append([UPDATE_STRIP_FAILED, bot_id, type(exc).__name__])
+
+        try:
+            panel.set_position(position_reading(bot))
+            self.calls.append([UPDATE_POSITION_SET, bot_id, panel.position is not None])
+        except Exception as exc:
+            self.calls.append([UPDATE_POSITION_FAILED, bot_id, type(exc).__name__])
 
         try:
             lines = target_balance_lines(bot_readings(bot))
@@ -1158,17 +1522,6 @@ class TradeChartsTabModel:
             )
         except Exception as exc:
             self.calls.append([UPDATE_FIRE_FAILED, bot_id, type(exc).__name__])
-
-        try:
-            lots = getattr(bot, LOTS_ATTRIBUTE, [])
-            if lots:
-                floors = tranche_floors(lots)
-                panel.set_floors(floors)
-                self.calls.append([UPDATE_FLOORS_SET, bot_id, len(floors)])
-            else:
-                self.calls.append([UPDATE_FLOORS_NONE, bot_id])
-        except Exception as exc:
-            self.calls.append([UPDATE_FLOORS_FAILED, bot_id, type(exc).__name__])
 
     def move_timeframe_combo(self, timeframe: Any) -> bool:
         """Move the chart's combo to ``timeframe``, as Qt's own does.
@@ -1230,6 +1583,10 @@ class TradeChartsTabModel:
             self.calls.append([FETCH_NO_ASSET])
             self._emit_freshness(now, exchange_connectors)
             return None
+        if self.showing_ata() and record.get(CALL_KEY) is not None:
+            self.calls.append([FETCH_CALL_SKIPPED, bot_id])
+            self._emit_freshness(now, exchange_connectors)
+            return None
         if now - record.get(LAST_FETCH_KEY, NEVER_FETCHED) < FETCH_THROTTLE_S:
             self.calls.append([FETCH_THROTTLED, bot_id])
             self._emit_freshness(now, exchange_connectors)
@@ -1261,7 +1618,7 @@ class TradeChartsTabModel:
             returned = len(rows or [])
             source = str(answered)
             if rows:
-                self.panel.set_candles([list(one) for one in rows])
+                self.panel.set_candles([candle_row(one) for one in rows])
                 self.panel.set_source(answered)
                 outcome = OUTCOME_CANDLES
                 self.calls.append([FETCH_CANDLES, bot_id, returned, source])
@@ -1398,7 +1755,13 @@ def selector_values(model: TradeChartsTabModel) -> dict:
         "next_tooltip": NEXT_TOOLTIP,
         "ticker_tooltip": TICKER_TOOLTIP,
         "arrow_width_px": ARROW_WIDTH_PX,
-        "arrow_height_px": ARROW_HEIGHT_PX,
+        "arrow_glyph_px": ARROW_GLYPH_PX,
+        "arrow_glyph_family": ARROW_GLYPH_FAMILY,
+        "control_height_px": CONTROL_HEIGHT_PX,
+        "control_font_family": CONTROL_FONT_FAMILY,
+        "control_font_px": CONTROL_FONT_PX,
+        "caption_px": CAPTION_PX,
+        "timeframe_label": PANEL_TIMEFRAME_LABEL,
         "ticker_min_width_px": TICKER_MIN_WIDTH_PX,
         "spacing_px": SELECTOR_SPACING_PX,
         "items": model.ticker_items(),
@@ -1415,7 +1778,6 @@ def selector_values(model: TradeChartsTabModel) -> dict:
         "showing_ata": model.showing_ata(),
         "toggle_tooltip": LIST_TOGGLE_TOOLTIP,
         "toggle_width_px": LIST_TOGGLE_WIDTH_PX,
-        "toggle_height_px": LIST_TOGGLE_HEIGHT_PX,
         "live_empty_ticker_text": EMPTY_TICKER_TEXT,
         "ata_empty_ticker_text": ATA_EMPTY_TICKER_TEXT,
         "ata_empty_hint": ATA_EMPTY_HINT,
@@ -1536,7 +1898,14 @@ def build_view_model(
                 for key, label, colour in PANEL_INDICATOR_TOGGLES
             ],
             "legend": [PANEL_LEGEND_INVISIBLE, PANEL_LEGEND_ON_BOOK],
+            "legend_fields": [
+                PANEL_LEGEND_INVISIBLE_FIELD,
+                PANEL_LEGEND_ON_BOOK_FIELD,
+            ],
+            "legend_styles": [],
             "toggle_gap_px": PANEL_TOGGLE_GAP_PX,
+            "toggle_box_px": TOGGLE_BOX_PX,
+            "caption_px": CAPTION_PX,
             "legend_gap_px": PANEL_LEGEND_GAP_PX,
         },
         "nuclear_defaults": {
@@ -1561,11 +1930,8 @@ def build_view_model(
             "price_label": PRICE_LABEL_FORMAT,
             "nuclear_label": NUCLEAR_LABEL_FORMAT,
             "awaiting": AWAITING_FORMAT,
-            "floor_small": FLOOR_SMALL_FORMAT,
-            "floor_large": FLOOR_LARGE_FORMAT,
             "follow_log": FOLLOW_LOG_FORMAT,
         },
-        "floor_format_switch": FLOOR_FORMAT_SWITCH,
         "empty_source": EMPTY_SOURCE,
         "bot_id_log_length": BOT_ID_LOG_LENGTH,
         "candle_close_index": CANDLE_CLOSE_INDEX,
@@ -1582,8 +1948,6 @@ def build_view_model(
             "exchange_id": EXCHANGE_ID_KEY,
             "synthetic": SYNTHETIC_KEY,
             "timestamp": TIMESTAMP_KEY,
-            "floor_price": FLOOR_PRICE_KEY,
-            "floor_units": FLOOR_UNITS_KEY,
             "scrum_armed": SCRUM_ARMED_KEY,
             "fold_armed": FOLD_ARMED_KEY,
             "scrum_blockers": SCRUM_BLOCKERS_KEY,
@@ -1603,7 +1967,6 @@ def build_view_model(
             "holdings": HOLDINGS_ATTRIBUTE,
             "quote_rate": QUOTE_RATE_ATTRIBUTE,
             "gate_state": GATE_STATE_ATTRIBUTE,
-            "lots": LOTS_ATTRIBUTE,
         },
         "defaults": {
             "mode": DEFAULT_MODE,
@@ -1618,9 +1981,6 @@ def build_view_model(
             "holdings": DEFAULT_HOLDINGS,
             "quote_rate": DEFAULT_QUOTE_RATE,
             "cycle_open_floor_usd": CYCLE_OPEN_FLOOR_USD,
-            "floor_price": DEFAULT_FLOOR_PRICE,
-            "floor_units": DEFAULT_FLOOR_UNITS,
-            "no_floor_units": NO_FLOOR_UNITS,
             "candle_time": DEFAULT_CANDLE_TIME,
             "candle_volume": DEFAULT_CANDLE_VOLUME,
             "last_price": NO_LAST_PRICE,

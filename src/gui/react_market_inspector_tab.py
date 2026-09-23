@@ -14,6 +14,8 @@ import json
 import logging
 from typing import Any, Callable, Optional
 
+from ..trading import ata_spm_signin
+from . import sign_in_view
 from .main_tabs import market_inspector_surface as surface
 from .main_tabs import market_inspector_topologies_surface as topo_surface
 from .market_inspector import _HAS_QT, MarketInspectorTab
@@ -56,20 +58,35 @@ ADOPT_KEY = "adopt-button"
 STEP_BACK_KEY = "step-back"
 STEP_NEXT_KEY = "step-next"
 ENTRY_KEY = "zone-entry"
-SECTOR_FIELD_KEY = "sector-field"
+TICKER_FIELD_KEY = surface.TICKER_FIELD_PART
 CLASS_BOX_KEY = "class-box"
 TIMEFRAME_BOX_KEY = "timeframe-box"
 SCAN_NOW_KEY = "scan-now"
+SCAN_ALL_KEY = surface.SCAN_ALL_PART
 
 #: The parts phases five and six are pressed with, each handled by
 #: ``MarketInspectorScreenModel.push_action``.
 PUSH_KEYS = surface.PUSH_PARTS
+#: The three of them that send or open, run on the inherited hand-off worker.
+HAND_OFF_KEYS = (
+    surface.POST_SELECTED_PART,
+    surface.POST_ALL_PART,
+    surface.FULL_AUTO_PART,
+)
 
-SAVE_CREDENTIALS_KEY = surface.SAVE_CREDENTIALS_PART
 SETTING_FIELD_KEY = surface.SETTING_FIELD_PART
+VENUE_BUTTON_KEY = surface.VENUE_BUTTON_PART
+ASSET_CATEGORY_KEY = surface.ASSET_CATEGORY_PART
 
-#: The parts one push target's credential is typed into.
-CREDENTIAL_KEYS = tuple(one for one, _placeholder in surface.CREDENTIAL_FIELDS)
+#: The key one Level 1A link reports under, answered by ``_open_link``.
+LINK_KEY = surface.CREDENTIAL_LINK_PART
+
+LINK_REFUSED_LOG = "Level 1A refused a link the open page does not publish: %r"
+LINK_FAILED_LOG = "Level 1A link open failed for %r: %s"
+
+#: Every part one push target's credential is typed into, across all seven.
+CREDENTIAL_KEYS = surface.CREDENTIAL_FIELD_KEYS
+CREDENTIAL_HELD_KEY = surface.CREDENTIAL_HELD_PART
 
 #: The three positions one credential field press carries.
 CREDENTIAL_TARGET_AT = 0
@@ -152,7 +169,7 @@ HOST_SCRIPT = """(function (global) {
 }
 
 
-def tab_html(theme: str = "cyberpunk_dark") -> str:
+def tab_html(theme: object = None) -> str:
     """The whole tab page as one string, with no network fetch."""
     return page_html(
         TAB_STYLE_ASSETS, TAB_SCRIPT_ASSETS, TAB_BODY, theme, (HOST_SCRIPT,)
@@ -165,6 +182,15 @@ def screen_push_script(model: dict) -> str:
         "window.acervatorMarketInspector.setTab("
         + json.dumps(model, ensure_ascii=True)
         + ");window.acervatorMountTopologies();"
+    )
+
+
+def tile_push_script(rows: list) -> str:
+    """The JS that hands the timer tile rows alone to the screen, once a second."""
+    return (
+        "window.acervatorMarketInspector.setTimerTiles("
+        + json.dumps(list(rows), ensure_ascii=True)
+        + ");"
     )
 
 
@@ -312,6 +338,11 @@ if _HAS_QT and _HAS_WEBENGINE:
             # both read the sectors the ATA-SPM zone holds.
             self._ata_board = self._screen.board
             self._push_board = self._screen.push
+            # The screen model builds its own board, so the connector the
+            # inherited tab set is replaced here rather than inherited.
+            self._push_board.settings.set_connector(
+                ata_spm_signin.build_connector(sign_in_view.sign_in_session())
+            )
             # One dict, two names: the inherited Scan Now moves the same
             # zone index the page reads.
             self._zone_at = self._screen.zone_at
@@ -385,7 +416,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             elif key == ENTRY_KEY:
                 self._screen.toggle_zone(request.get("value"))
                 self.push()
-            elif key == SECTOR_FIELD_KEY:
+            elif key == TICKER_FIELD_KEY:
                 self._screen.set_sector_text(request.get("value"))
                 self.push()
             elif key == CLASS_BOX_KEY:
@@ -396,16 +427,45 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self.push()
             elif key == SCAN_NOW_KEY:
                 self._on_scan_now()
+            elif key == SCAN_ALL_KEY:
+                self._on_scan_all()
+            elif key in HAND_OFF_KEYS:
+                self._start_hand_off(key, lambda: self._screen.push_action(key))
             elif key in PUSH_KEYS:
                 self._screen.push_action(key)
+                self._say_lines(self._screen.press_lines)
                 self.push()
-            elif key == SAVE_CREDENTIALS_KEY:
-                self._screen.save_credentials()
+            elif key == VENUE_BUTTON_KEY:
+                self._screen.open_credentials(request.get("value"))
+                self.push()
+            elif key == ASSET_CATEGORY_KEY:
+                self._screen.set_sector_class(request.get("value"))
                 self.push()
             elif key in CREDENTIAL_KEYS:
                 self._take_credential_text(request.get("value"))
+            elif key == CREDENTIAL_HELD_KEY:
+                self._hold_credential(request.get("value"))
+            elif key == LINK_KEY:
+                self._open_link(request.get("value"))
             elif key == SETTING_FIELD_KEY:
                 self._write_setting(request.get("value"))
+
+        def _open_link(self, address: Any) -> None:
+            """Open one Level 1A address in the system browser.
+
+            ``surface.page_links`` is the whole list a press may name, so a
+            typed value and a venue reply each open nothing.
+            """
+            held = str(address or "")
+            if held not in surface.page_links(self._screen.push):
+                logger.warning(LINK_REFUSED_LOG, held)
+                return
+            try:
+                import webbrowser
+
+                webbrowser.open(held, new=2)
+            except Exception as exc:  # noqa: BLE001 - the browser is host-supplied
+                logger.warning(LINK_FAILED_LOG, held, exc)
 
         def _take_credential_text(self, sent: Any) -> None:
             """Hold what one credential field carries, then redraw.
@@ -420,6 +480,20 @@ if _HAS_QT and _HAS_WEBENGINE:
                 held[CREDENTIAL_TARGET_AT],
                 held[CREDENTIAL_FIELD_AT],
                 held[CREDENTIAL_TYPED_AT],
+            )
+            self.push()
+
+        def _hold_credential(self, sent: Any) -> None:
+            """Encrypt one finished credential box into the vault, then redraw.
+
+            ``sent`` is the target and the field, and carries no value. The
+            redraw is what turns the box's wording to the held one.
+            """
+            held = list(sent or [])
+            if len(held) <= CREDENTIAL_FIELD_AT:
+                return
+            self._screen.hold_credential(
+                held[CREDENTIAL_TARGET_AT], held[CREDENTIAL_FIELD_AT]
             )
             self.push()
 
@@ -493,6 +567,14 @@ if _HAS_QT and _HAS_WEBENGINE:
             writes its own widgets instead.
             """
             self.push()
+
+        def _render_timer_tiles(self) -> None:
+            """Hand the page the timer tile rows alone, the field a full push
+            also carries, so a countdown moves without the whole payload."""
+            rows = surface.timer_tile_rows(self._push_board)
+            self._tiles_drawn = bool(rows)
+            if self._page_ready:
+                self._run(tile_push_script(rows))
 
         # -- internals ------------------------------------------------------
 

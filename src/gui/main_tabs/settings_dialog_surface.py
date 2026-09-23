@@ -1,8 +1,8 @@
 """settings_dialog_surface.py -- the Settings dialog, without Qt.
 
-Describes the window the operator opens from the Settings menu. Eleven
-tabs -- User, Exchanges, Trading, Profit Folding, TA Indicators, Phantom
-Bots, Theme, Logging, Sound, SMS and AI Monitor -- above one Cancel and
+Describes the window the operator opens from the Settings menu. Nine
+tabs -- User, Exchanges, Trading, TA Indicators, Phantom
+Bots, Theme, Sound, SMS and AI Monitor -- above one Cancel and
 one Save button.
 
 ``SettingsDialogModel`` holds the dialog's state. ``build`` lays out
@@ -10,8 +10,8 @@ every tab and then seeds every control from the settings store, which is
 the order the shipped dialog does it in. ``save`` runs the Save button
 and reports which groups persisted and which were discarded.
 ``test_api_connection``, ``add_exchange`` and ``remove_exchange`` run the
-three Exchanges buttons. ``sfx_volume_changed``, ``test_sound``,
-``update_font_preview`` and ``test_ai_handshake`` run the rest.
+three Exchanges buttons. ``sfx_volume_changed``, ``test_sound`` and
+``test_ai_handshake`` run the rest.
 
 ``SettingsSource``, ``StatusLogSink``, ``ValidatorSource``,
 ``ValidationResult`` and ``SoundEngineSink`` are plain stand-ins for the
@@ -23,16 +23,33 @@ holds its values in memory and records every write.
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``settings_dialog.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
-``src.gui.settings_dialog``, so a value changed on one side alone is
-reported. Nothing here imports Qt, and nothing runs at import time that
+``src.gui.settings_dialog``, and nothing compares the two copies. Three
+values are not written out and so cannot drift: the twelve indicator weights
+read ``ta_engine.DEFAULT_WEIGHTS``, and ``crypto_exchange_items`` and
+``passphrase_exchange_ids`` read the connector registry.
+Nothing here imports Qt, and nothing runs at import time that
 reads a clock, opens a file or reaches a network.
 """
 
 from __future__ import annotations
 
 import math
+from functools import partial
 from typing import Any, Optional
 
+from ...core.encryption import looks_like_pem, unescape_pem_newlines, vault_phrase
+from ...exchange.timeframes import ALL_TIMEFRAMES
+from ...core.settings import CREDENTIAL_FIELDS, AppSettings
+from ...core.sms_engine import (
+    CARRIER_GATEWAYS,
+    EMAIL_GATEWAY,
+    FIELD_BOUNDS,
+    SETTINGS_GROUP,
+    TWILIO,
+    SMSConfig,
+    gateway_address,
+)
+from ...trading.ta_engine import DEFAULT_WEIGHTS
 from ..color_alpha import ALPHA_HIGHEST, rgba
 
 METHOD = "settings_dialog.state"
@@ -51,11 +68,9 @@ DEFAULT_WING = CRYPTO_WING
 USER_TAB = "User"
 EXCHANGE_TAB = "Exchanges"
 TRADING_TAB = "Trading"
-FOLDING_TAB = "Profit Folding"
 TA_TAB = "TA Indicators"
 PHANTOM_TAB = "Phantom Bots"
 THEME_TAB = "Theme"
-LOGGING_TAB = "Logging"
 SOUND_TAB = "Sound"
 SMS_TAB = "SMS"
 AI_TAB = "AI Monitor"
@@ -64,11 +79,9 @@ TAB_TITLES = (
     USER_TAB,
     EXCHANGE_TAB,
     TRADING_TAB,
-    FOLDING_TAB,
     TA_TAB,
     PHANTOM_TAB,
     THEME_TAB,
-    LOGGING_TAB,
     SOUND_TAB,
     SMS_TAB,
     AI_TAB,
@@ -94,26 +107,6 @@ EQUITY_EXCHANGE_IDS = frozenset(
         "etrade",
         "interactivebrokers",
     }
-)
-
-PASSPHRASE_EXCHANGE_IDS = frozenset({"bitget", "kucoin", "okx"})
-
-CRYPTO_EXCHANGE_ITEMS = (
-    ("Binance (blocked from US)", "binance"),
-    ("Bitfinex (untested)", "bitfinex"),
-    ("Bitget (untested, passphrase required)", "bitget"),
-    ("Bitstamp (untested)", "bitstamp"),
-    ("Bybit (blocked from US)", "bybit"),
-    ("Coinbase", "coinbase"),
-    ("Cryptocom (untested)", "cryptocom"),
-    ("Gateio (untested)", "gateio"),
-    ("Gemini (untested)", "gemini"),
-    ("Huobi (untested)", "huobi"),
-    ("Kraken (untested)", "kraken"),
-    ("Kucoin (untested, passphrase required)", "kucoin"),
-    ("Mexc (untested)", "mexc"),
-    ("Okx (untested, passphrase required)", "okx"),
-    ("Poloniex (untested)", "poloniex"),
 )
 
 EQUITY_ITEM_FORMAT = "{name} (planned, not yet live)"
@@ -193,11 +186,7 @@ CRYPTO_ADD_GROUP = "Add Crypto Exchange"
 STOCK_ADD_GROUP = "Add Stock Broker"
 REMOVE_BUTTON_TEXT = "Remove Selected"
 
-MODE_GROUP_TITLE = "Distribution Mode"
-FOLD_GROUP_TITLE = "Profit Folding Target"
-DIST_GROUP_TITLE = "Upward Distribution Target"
 LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
-FONT_GROUP_TITLE = "Font Settings"
 SMS_PROVIDER_GROUP_TITLE = "SMS Provider"
 SMS_EVENTS_GROUP_TITLE = "Notification Events"
 SMS_RATE_GROUP_TITLE = "Rate Limiting"
@@ -210,7 +199,6 @@ TA_HEADING = "Adjust indicator weights in the voting engine."
 PHANTOM_HEADING = "Default Phantom Timeframes:"
 THEME_HEADING = "Visual Theme:"
 ACCENT_HEADING = "Accent Color:"
-LOGGING_HEADING = "P/L Log Periodicity:"
 SOUND_EVENTS_HEADING = "Sound Events:"
 VOLUME_HEADING = "SFX Volume:"
 SMS_GATEWAY_HEADING = "Email Gateway Settings"
@@ -224,41 +212,44 @@ AI_INFO_TEXT = (
 AI_INFO_STYLE = "color: #888; font-size: 10px;"
 AI_INFO_WORD_WRAP = True
 
-TA_INDICATOR_WEIGHTS = (
-    ("bollinger_bands", 1.0),
-    ("vortex", 0.9),
-    ("macd", 1.2),
-    ("stochastic_rsi", 1.0),
-    ("ichimoku", 1.1),
-    ("volume", 0.8),
-    ("slingshot", 1.0),
-    ("adx", 1.0),
-    ("kaufman_er", 1.0),
-    ("supertrend", 1.0),
-    ("zscore", 0.9),
-    ("rsi", 0.8),
-)
+#: Read off DEFAULT_WEIGHTS so the page cannot hold a second set of figures.
+TA_INDICATOR_WEIGHTS = tuple(DEFAULT_WEIGHTS.items())
 TA_LABEL_FORMAT = "{name}:"
 TA_VALUE_FORMAT = "{weight:.2f}"
 TA_SLIDER_RANGE = (0, 200)
 TA_SLIDER_SCALE = 100
 TA_LABEL_MIN_WIDTH = 140
 TA_VALUE_MIN_WIDTH = 40
+TA_SLIDER_NAME_FORMAT = "ta_weight_{name}"
 
-PHANTOM_TIMEFRAMES = (
-    "1m",
-    "5m",
-    "15m",
-    "30m",
-    "1h",
-    "2h",
-    "4h",
-    "6h",
-    "12h",
-    "1d",
-    "1w",
-)
-PHANTOM_TIMEFRAMES_ON = ("5m", "15m", "1h", "4h", "1d")
+
+def ta_label(name: str) -> str:
+    """The printed name of one indicator weight row."""
+    return TA_LABEL_FORMAT.format(name=name.replace("_", " ").title())
+
+
+def ta_slider_name(name: str) -> str:
+    """The control name the indicator ``name`` weight slider answers to."""
+    return TA_SLIDER_NAME_FORMAT.format(name=name)
+
+
+def ta_slider_value(weight: float) -> int:
+    """One indicator weight as its slider position."""
+    return int(round(weight * TA_SLIDER_SCALE))
+
+
+def ta_value_text(weight: float) -> str:
+    """One indicator weight as the figure printed beside its slider."""
+    return TA_VALUE_FORMAT.format(weight=weight)
+
+
+PHANTOM_TIMEFRAMES = ALL_TIMEFRAMES
+PHANTOM_TIMEFRAME_ITEMS = tuple((one, one) for one in PHANTOM_TIMEFRAMES)
+#: The store declares the opening choice, so the page and the schema agree.
+PHANTOM_TIMEFRAME_DEFAULT = AppSettings().default_phantom_timeframe
+
+#: The lock spin box's opening figure and its fallback, declared once.
+LOCK_CANDLE_DEFAULT = AppSettings().default_lock_candle_count
 
 THEME_ITEMS = (
     ("Cyberpunk Dark", "cyberpunk_dark"),
@@ -268,40 +259,19 @@ THEME_ITEMS = (
     ("Glass & Metal", "glass_metal"),
 )
 
-FONT_FAMILIES = (
-    "Segoe UI",
-    "Consolas",
-    "Cascadia Code",
-    "Courier New",
-    "Arial",
-    "Helvetica",
-    "Roboto",
-    "Fira Code",
-    "JetBrains Mono",
-    "Source Code Pro",
-    "Ubuntu",
-    "Verdana",
-)
-FONT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog"
-FONT_PREVIEW_STYLE = "padding: 8px; border: 1px solid #333;"
-FONT_PREVIEW_FORMAT = (
-    "font-family: '{family}'; font-size: {size}pt; "
-    "padding: 8px; border: 1px solid #333;"
-)
+#: Read off CARRIER_GATEWAYS so the picker cannot offer a name the engine has
+#: no gateway template for.
+CARRIER_NAMES = tuple(CARRIER_GATEWAYS)
 
-CARRIER_NAMES = (
-    "AT&T",
-    "T-Mobile",
-    "Verizon",
-    "Sprint",
-    "US Cellular",
-    "Cricket",
-    "Boost",
-    "Metro PCS",
-    "Google Fi",
-    "Other (Manual)",
+#: The engine's own opening figures, so the page declares no second set.
+SMS_BUILT = SMSConfig()
+
+#: The printed label beside the value the send path tests, so the picker stores
+#: a provider the engine routes on.
+SMS_PROVIDERS = (
+    ("Email-to-SMS Gateway", EMAIL_GATEWAY),
+    ("Twilio API", TWILIO),
 )
-SMS_PROVIDERS = ("Email-to-SMS Gateway", "Twilio API")
 SMS_FORM_SPACING_PX = 6
 SMS_FORM_MARGINS = (8, 16, 8, 8)
 SMS_CONTENT_SPACING_PX = 8
@@ -346,7 +316,7 @@ DETAILS_FEEDBACK_FORMAT = "\n{details}"
 API_FAILED_LOG_FORMAT = "API failed ({eid}): {message}"
 TEST_FAILED_FEEDBACK_FORMAT = "Test failed: {error}"
 
-ADDED_WITH_CREDENTIALS = "with credentials (verified)"
+ADDED_WITH_CREDENTIALS = "with stored credentials"
 ADDED_WITHOUT_CREDENTIALS = "without credentials"
 ADDED_FEEDBACK_FORMAT = "{name} added {how}."
 ADDED_LOG_FORMAT = "Exchange added: {name} ({how})"
@@ -356,7 +326,6 @@ ADDED_BOX_FORMAT = (
 )
 EXCHANGE_ITEM_FORMAT = "{name} ({eid})"
 CONFIGURED_ITEM_FORMAT = "{name} ({eid})"
-MASTER_FORMAT = "qat_{username}_vault"
 KEY_FIELD = "api_key_enc"
 SIGNING_FIELD = "api_secret_enc"
 PHRASE_FIELD = "passphrase_enc"
@@ -382,7 +351,6 @@ EXCHANGE_CONFIG_DEFAULTS = (
     False,
     EMPTY_TEXT,
 )
-UNNAMED_OPERATOR = "user"
 
 NO_SELECTION_FEEDBACK = "Select an exchange to remove."
 REMOVED_FEEDBACK_FORMAT = "{name} removed."
@@ -413,39 +381,41 @@ SOUND_CONFIG_FIELDS = (
     ("profit_sound", "sound_profit"),
     ("drip_sound", "sound_drip"),
 )
+SOUND_GROUP_KEY = "sound"
+VOLUME_FIELD = "volume"
+VOLUME_NAME = "sound_volume"
 
-FOLD_ALL = "all_buy"
-FOLD_X = "x_buy"
-FOLD_RECENT = "most_recent_buy"
-DIST_ALL = "all_sell"
-DIST_X = "x_sell"
-DIST_RECENT = "most_recent_sell"
-EQUAL_MODE = "equal"
-LOG_MODE = "logarithmic"
-
-PERIOD_CONTROLS = (
-    ("log_24h", "24h"),
-    ("log_1w", "1_week"),
-    ("log_1m", "1_month"),
-    ("log_1y", "1_year"),
+#: One entry per SMSConfig field the SMS page sets: the field, and the control
+#: carrying it. The save and the load both walk this list.
+SMS_CONFIG_FIELDS = (
+    ("enabled", "sms_enabled"),
+    ("provider", "sms_provider"),
+    ("phone_number", "sms_phone"),
+    ("twilio_sid", "sms_twilio_sid"),
+    ("twilio_auth_token", "sms_twilio_token"),
+    ("twilio_from_number", "sms_twilio_from"),
+    ("carrier", "sms_carrier"),
+    ("gateway_email", "sms_gateway"),
+    ("smtp_server", "sms_smtp_server"),
+    ("smtp_port", "sms_smtp_port"),
+    ("smtp_username", "sms_smtp_user"),
+    ("smtp_password", "sms_smtp_pass"),
+    ("notify_buy_fills", "sms_buy"),
+    ("notify_sell_fills", "sms_sell"),
+    ("notify_bot_state_changes", "sms_state"),
+    ("notify_errors", "sms_errors"),
+    ("notify_pl_threshold", "sms_pl"),
+    ("pl_threshold_amount", "sms_pl_amount"),
+    ("notify_balance_warning", "sms_balance"),
+    ("notify_connection_status", "sms_connection"),
+    ("max_messages_per_hour", "sms_max_hour"),
+    ("cooldown_seconds", "sms_cooldown"),
 )
+#: The store key both builds persist the SMS page into, read off the engine so
+#: the page cannot name a group the engine does not read.
+MESSAGE_CHANNELS_GROUP_KEY = SETTINGS_GROUP
 
-SAVE_PAIRS = (
-    ("username", "username"),
-    ("position_distance_pct", "pos_distance"),
-    ("increment_style", "increment_style"),
-    ("default_position_count", "default_positions"),
-    ("default_target_balance", "default_balance"),
-    ("bot_visibility", "visibility"),
-    ("aggressive_trading", "aggressive"),
-    ("theme", "theme_combo"),
-    ("accent_color", "accent_color"),
-    ("font_family", "font_family"),
-    ("font_size", "font_size"),
-    ("heading_font_size", "heading_size"),
-    ("log_font_size", "log_font_size"),
-)
-SAVE_GROUP_KEYS = ("profit_folding", "data_logging", "ai_monitor")
+TA_WEIGHT_GROUP_KEY = "ta_indicator_weights"
 
 SAVE_CALLED_PRINT = "[SETTINGS] _save called"
 NO_MANAGER_PRINT = "[SETTINGS] No settings manager, closing"
@@ -467,13 +437,6 @@ PARTIAL_BOX_JOIN = "\n"
 WARNING_ICON = "warning"
 INFORMATION_ICON = "information"
 
-SETTING_LOAD_KEYS = (
-    ("username", "", "username"),
-    ("position_distance_pct", 2.0, "pos_distance"),
-    ("default_position_count", 10, "default_positions"),
-    ("default_target_balance", 200.0, "default_balance"),
-    ("accent_color", "#00ffcc", "accent_color"),
-)
 AI_LOAD_KEYS = (
     ("api_key", "", "ai_api_key"),
     ("interval_hours", 4.0, "ai_interval"),
@@ -484,24 +447,42 @@ AI_LOAD_KEYS = (
     ("log_feedback", True, "ai_log_feedback"),
 )
 AI_GROUP_KEY = "ai_monitor"
-FOLDING_GROUP_KEY = "profit_folding"
 THEME_KEY = "theme"
 THEME_DEFAULT = "cyberpunk_dark"
-INCREMENT_KEY = "increment_style"
-INCREMENT_DEFAULT = "linear"
-FOLDING_ACTIVE_KEY = "active"
-FOLDING_ACTIVE_DEFAULT = True
+#: Empty leaves the theme's own accent painting, so the box opens on its
+#: placeholder.
+ACCENT_DEFAULT = ""
 EXCHANGE_ID_KEY = "exchange_id"
 DISPLAY_NAME_KEY = "display_name"
 NO_MATCH_INDEX = -1
 FIRST_INDEX = 0
+
+
+#: One entry per setting the store holds at its top level: the store key, the
+#: control carrying it, and what stands in for a store without the key. ``save``
+#: and ``_load_current`` read this one list, so no setting can be written
+#: without also being loaded.
+PERSISTED_ROWS = (
+    ("username", "username", EMPTY_TEXT),
+    ("default_target_balance", "default_balance", 200.0),
+    ("bot_visibility", "visibility", "orderbook"),
+    ("aggressive_trading", "aggressive", False),
+    ("default_enable_phantoms", "phantoms_enabled", True),
+    ("default_phantom_timeframe", "phantom_timeframe", PHANTOM_TIMEFRAME_DEFAULT),
+    ("default_lock_candle_count", "lock_candles", LOCK_CANDLE_DEFAULT),
+    (THEME_KEY, "theme_combo", THEME_DEFAULT),
+    ("accent_color", "accent_color", ACCENT_DEFAULT),
+)
+SAVE_PAIRS = tuple((key, name) for key, name, _fallback in PERSISTED_ROWS)
+SETTING_LOAD_KEYS = tuple(
+    (key, fallback, name) for key, name, fallback in PERSISTED_ROWS
+)
 
 LINE = "line"
 TEXT_AREA = "text_area"
 COMBO_TEXT = "combo_text"
 COMBO_DATA = "combo_data"
 CHECK = "check"
-RADIO = "radio"
 SPIN = "spin"
 DOUBLE_SPIN = "double_spin"
 SLIDER = "slider"
@@ -512,7 +493,6 @@ SIGNAL_FOR_KIND = {
     COMBO_TEXT: "currentIndexChanged",
     COMBO_DATA: "currentIndexChanged",
     CHECK: "toggled",
-    RADIO: "toggled",
     SPIN: "valueChanged",
     DOUBLE_SPIN: "valueChanged",
     SLIDER: "valueChanged",
@@ -526,7 +506,7 @@ TIMERS_STARTED: tuple = ()
 THREADS_BUILT: tuple = ()
 THREADS_STARTED: tuple = ()
 
-CONTROL_SPECS = (
+CONTROL_SPECS: tuple[dict, ...] = (
     {
         "tab": USER_TAB,
         "group": None,
@@ -554,6 +534,7 @@ CONTROL_SPECS = (
         "label": "API Key:",
         "name": "new_api_key",
         "kind": LINE,
+        "echo": "password",
         "placeholder": "API Key or organizations/.../.../apiKeys/...",
         "tooltip": (
             "For Coinbase CDP keys, paste the full "
@@ -566,6 +547,7 @@ CONTROL_SPECS = (
         "label": "API Secret:",
         "name": "new_api_secret",
         "kind": TEXT_AREA,
+        "echo": "password",
         "max_height": 60,
         "placeholder": "API Secret or EC Private Key (PEM format with \\n is OK)",
         "tooltip": (
@@ -596,32 +578,6 @@ CONTROL_SPECS = (
     {
         "tab": TRADING_TAB,
         "group": None,
-        "label": "Position Distance:",
-        "name": "pos_distance",
-        "kind": DOUBLE_SPIN,
-        "range": (1.0, 50.0),
-        "suffix": "%",
-        "decimals": 1,
-    },
-    {
-        "tab": TRADING_TAB,
-        "group": None,
-        "label": "Increment Style:",
-        "name": "increment_style",
-        "kind": COMBO_TEXT,
-        "items": ("linear", "logarithmic"),
-    },
-    {
-        "tab": TRADING_TAB,
-        "group": None,
-        "label": "Default Positions:",
-        "name": "default_positions",
-        "kind": SPIN,
-        "range": (1, 100),
-    },
-    {
-        "tab": TRADING_TAB,
-        "group": None,
         "label": "Default Target Balance:",
         "name": "default_balance",
         "kind": DOUBLE_SPIN,
@@ -647,112 +603,23 @@ CONTROL_SPECS = (
         "checked": False,
     },
     {
-        "tab": FOLDING_TAB,
-        "group": None,
-        "label": None,
-        "name": "folding_active",
-        "kind": CHECK,
-        "text": "Profit Folding / Upward Distribution Active",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": MODE_GROUP_TITLE,
-        "label": None,
-        "name": "fold_equal",
-        "kind": RADIO,
-        "text": "Equal distribution",
-        "checked": True,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": MODE_GROUP_TITLE,
-        "label": None,
-        "name": "fold_log",
-        "kind": RADIO,
-        "text": "Logarithmic distribution",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": FOLD_GROUP_TITLE,
-        "label": None,
-        "name": "fold_all",
-        "kind": RADIO,
-        "text": "Fold to ALL buy positions",
-        "checked": True,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": FOLD_GROUP_TITLE,
-        "label": None,
-        "name": "fold_x",
-        "kind": RADIO,
-        "text": "Fold to X# of buy positions:",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": FOLD_GROUP_TITLE,
-        "label": None,
-        "name": "fold_x_count",
-        "kind": SPIN,
-        "range": (1, 100),
-        "value": 5,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": FOLD_GROUP_TITLE,
-        "label": None,
-        "name": "fold_recent",
-        "kind": RADIO,
-        "text": "Fold to most recent buy positions",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": DIST_GROUP_TITLE,
-        "label": None,
-        "name": "dist_all",
-        "kind": RADIO,
-        "text": "Distribute to ALL sell positions",
-        "checked": True,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": DIST_GROUP_TITLE,
-        "label": None,
-        "name": "dist_x",
-        "kind": RADIO,
-        "text": "Distribute to X# of sell positions:",
-        "checked": False,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": DIST_GROUP_TITLE,
-        "label": None,
-        "name": "dist_x_count",
-        "kind": SPIN,
-        "range": (1, 100),
-        "value": 5,
-    },
-    {
-        "tab": FOLDING_TAB,
-        "group": DIST_GROUP_TITLE,
-        "label": None,
-        "name": "dist_recent",
-        "kind": RADIO,
-        "text": "Distribute to most recent sell positions",
-        "checked": False,
-    },
-    {
         "tab": PHANTOM_TAB,
         "group": None,
         "label": None,
         "name": "phantoms_enabled",
         "kind": CHECK,
-        "text": "Enable Phantom Balance Bots for Scrumming",
+        "text": "Enable Phantom Bots for Scrumming",
         "checked": True,
+    },
+    {
+        "tab": PHANTOM_TAB,
+        "group": None,
+        "label": None,
+        "name": "phantom_timeframe",
+        "kind": COMBO_DATA,
+        "items": PHANTOM_TIMEFRAME_ITEMS,
+        "current_data": PHANTOM_TIMEFRAME_DEFAULT,
+        "tooltip": "The one phantom timeframe a new bot starts with",
     },
     {
         "tab": PHANTOM_TAB,
@@ -761,7 +628,7 @@ CONTROL_SPECS = (
         "name": "lock_candles",
         "kind": SPIN,
         "range": (1, 10),
-        "value": 2,
+        "value": LOCK_CANDLE_DEFAULT,
     },
     {
         "tab": THEME_TAB,
@@ -778,105 +645,6 @@ CONTROL_SPECS = (
         "name": "accent_color",
         "kind": LINE,
         "placeholder": "#00ffcc",
-    },
-    {
-        "tab": THEME_TAB,
-        "group": FONT_GROUP_TITLE,
-        "label": "Font Family:",
-        "name": "font_family",
-        "kind": COMBO_TEXT,
-        "signal": "currentTextChanged",
-        "items": FONT_FAMILIES,
-        "editable": True,
-        "current_text": "Segoe UI",
-        "tooltip": "Font family for all application text",
-    },
-    {
-        "tab": THEME_TAB,
-        "group": FONT_GROUP_TITLE,
-        "label": "Base Font Size:",
-        "name": "font_size",
-        "kind": SPIN,
-        "range": (8, 24),
-        "value": 11,
-        "suffix": " pt",
-        "tooltip": "Base font size for all UI text",
-    },
-    {
-        "tab": THEME_TAB,
-        "group": FONT_GROUP_TITLE,
-        "label": "Heading Font Size:",
-        "name": "heading_size",
-        "kind": SPIN,
-        "range": (10, 32),
-        "value": 14,
-        "suffix": " pt",
-        "tooltip": "Font size for headings and stat card values",
-    },
-    {
-        "tab": THEME_TAB,
-        "group": FONT_GROUP_TITLE,
-        "label": "Log Font Size:",
-        "name": "log_font_size",
-        "kind": SPIN,
-        "range": (8, 18),
-        "value": 10,
-        "suffix": " pt",
-        "tooltip": "Font size for Activity Log and API Log panels",
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "ta_logging",
-        "kind": CHECK,
-        "text": "Log TA signal samples with all values and timestamps",
-        "checked": True,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "highlight_trades",
-        "kind": CHECK,
-        "text": "Highlight entries near Scrumming Bot trades",
-        "checked": True,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "log_24h",
-        "kind": CHECK,
-        "text": "24 Hours",
-        "checked": True,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "log_1w",
-        "kind": CHECK,
-        "text": "1 Week",
-        "checked": True,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "log_1m",
-        "kind": CHECK,
-        "text": "1 Month",
-        "checked": False,
-    },
-    {
-        "tab": LOGGING_TAB,
-        "group": None,
-        "label": None,
-        "name": "log_1y",
-        "kind": CHECK,
-        "text": "1 Year",
-        "checked": False,
     },
     {
         "tab": SOUND_TAB,
@@ -998,7 +766,7 @@ CONTROL_SPECS = (
         "name": "sms_enabled",
         "kind": CHECK,
         "text": "Enable SMS notifications",
-        "checked": False,
+        "checked": SMS_BUILT.enabled,
         "tooltip": "Send text messages to your phone for trading events",
     },
     {
@@ -1006,7 +774,7 @@ CONTROL_SPECS = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Provider:",
         "name": "sms_provider",
-        "kind": COMBO_TEXT,
+        "kind": COMBO_DATA,
         "items": SMS_PROVIDERS,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
     },
@@ -1018,6 +786,34 @@ CONTROL_SPECS = (
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "+15551234567",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Twilio Account SID:",
+        "name": "sms_twilio_sid",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "AC...",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Twilio Auth Token:",
+        "name": "sms_twilio_token",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "echo": "password",
+        "placeholder": "Auth token from the Twilio console",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Twilio From Number:",
+        "name": "sms_twilio_from",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "+15559876543",
     },
     {
         "tab": SMS_TAB,
@@ -1059,12 +855,31 @@ CONTROL_SPECS = (
     },
     {
         "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Mail Server:",
+        "name": "sms_smtp_server",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": SMS_BUILT.smtp_server,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Mail Port:",
+        "name": "sms_smtp_port",
+        "kind": SPIN,
+        "range": FIELD_BOUNDS["smtp_port"],
+        "value": SMS_BUILT.smtp_port,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+    },
+    {
+        "tab": SMS_TAB,
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_buy",
         "kind": CHECK,
         "text": "Buy fills",
-        "checked": True,
+        "checked": SMS_BUILT.notify_buy_fills,
     },
     {
         "tab": SMS_TAB,
@@ -1073,7 +888,7 @@ CONTROL_SPECS = (
         "name": "sms_sell",
         "kind": CHECK,
         "text": "Sell fills",
-        "checked": True,
+        "checked": SMS_BUILT.notify_sell_fills,
     },
     {
         "tab": SMS_TAB,
@@ -1082,7 +897,7 @@ CONTROL_SPECS = (
         "name": "sms_state",
         "kind": CHECK,
         "text": "Bot state changes (start/stop/error)",
-        "checked": True,
+        "checked": SMS_BUILT.notify_bot_state_changes,
     },
     {
         "tab": SMS_TAB,
@@ -1091,7 +906,7 @@ CONTROL_SPECS = (
         "name": "sms_errors",
         "kind": CHECK,
         "text": "API errors and failures",
-        "checked": True,
+        "checked": SMS_BUILT.notify_errors,
     },
     {
         "tab": SMS_TAB,
@@ -1100,7 +915,7 @@ CONTROL_SPECS = (
         "name": "sms_pl",
         "kind": CHECK,
         "text": "P/L threshold alerts",
-        "checked": False,
+        "checked": SMS_BUILT.notify_pl_threshold,
     },
     {
         "tab": SMS_TAB,
@@ -1108,8 +923,8 @@ CONTROL_SPECS = (
         "label": "P/L threshold:",
         "name": "sms_pl_amount",
         "kind": DOUBLE_SPIN,
-        "range": (1.0, 100000.0),
-        "value": 100,
+        "range": FIELD_BOUNDS["pl_threshold_amount"],
+        "value": SMS_BUILT.pl_threshold_amount,
         "prefix": "$",
         "min_height": SMS_CONTROL_MIN_HEIGHT,
     },
@@ -1120,7 +935,7 @@ CONTROL_SPECS = (
         "name": "sms_balance",
         "kind": CHECK,
         "text": "Low balance warnings",
-        "checked": False,
+        "checked": SMS_BUILT.notify_balance_warning,
     },
     {
         "tab": SMS_TAB,
@@ -1129,7 +944,7 @@ CONTROL_SPECS = (
         "name": "sms_connection",
         "kind": CHECK,
         "text": "Exchange connection status",
-        "checked": False,
+        "checked": SMS_BUILT.notify_connection_status,
     },
     {
         "tab": SMS_TAB,
@@ -1137,8 +952,8 @@ CONTROL_SPECS = (
         "label": "Max messages per hour:",
         "name": "sms_max_hour",
         "kind": SPIN,
-        "range": (1, 100),
-        "value": 20,
+        "range": FIELD_BOUNDS["max_messages_per_hour"],
+        "value": SMS_BUILT.max_messages_per_hour,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
     },
     {
@@ -1147,8 +962,8 @@ CONTROL_SPECS = (
         "label": "Min time between messages:",
         "name": "sms_cooldown",
         "kind": SPIN,
-        "range": (5, 300),
-        "value": 30,
+        "range": FIELD_BOUNDS["cooldown_seconds"],
+        "value": SMS_BUILT.cooldown_seconds,
         "suffix": " sec",
         "min_height": SMS_CONTROL_MIN_HEIGHT,
     },
@@ -1219,15 +1034,25 @@ CONTROL_SPECS = (
         "text": "Log AI feedback to trade journal",
         "checked": True,
     },
+    # One per indicator weight. label None keeps them out of `rows`; the TA_ROWS
+    # layout item draws them.
+    *(
+        {
+            "tab": TA_TAB,
+            "group": None,
+            "label": None,
+            "name": ta_slider_name(name),
+            "kind": SLIDER,
+            "range": TA_SLIDER_RANGE,
+            "value": ta_slider_value(weight),
+        }
+        for name, weight in TA_INDICATOR_WEIGHTS
+    ),
 )
 
 GROUPS = (
     (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
-    (FOLDING_TAB, MODE_GROUP_TITLE),
-    (FOLDING_TAB, FOLD_GROUP_TITLE),
-    (FOLDING_TAB, DIST_GROUP_TITLE),
     (PHANTOM_TAB, LOCK_GROUP_TITLE),
-    (THEME_TAB, FONT_GROUP_TITLE),
     (SMS_TAB, SMS_PROVIDER_GROUP_TITLE),
     (SMS_TAB, SMS_EVENTS_GROUP_TITLE),
     (SMS_TAB, SMS_RATE_GROUP_TITLE),
@@ -1240,14 +1065,6 @@ GROUPS = (
 NO_STYLE = ""
 
 TEXT_ROWS = (
-    (
-        THEME_TAB,
-        FONT_GROUP_TITLE,
-        "Preview:",
-        "font_preview",
-        FONT_PREVIEW_TEXT,
-        FONT_PREVIEW_STYLE,
-    ),
     (
         AI_TAB,
         AI_STATUS_GROUP_TITLE,
@@ -1287,14 +1104,16 @@ EXCHANGE_CONNECTIONS = (
     ("add_btn.clicked", "add_exchange"),
     ("remove_btn.clicked", "remove_exchange"),
 )
-THEME_CONNECTIONS = (
-    ("font_family.currentTextChanged", "update_font_preview"),
-    ("font_size.valueChanged", "update_font_preview"),
-)
+SOUND_BOX_HANDLER = "push_sound_config"
+SOUND_BOX_SIGNAL_FORMAT = "{name}.toggled"
 SOUND_CONNECTIONS = (
     ("sound_volume.valueChanged", "update_volume_label"),
     ("sound_volume.valueChanged.2", "sfx_volume_changed"),
+) + tuple(
+    (SOUND_BOX_SIGNAL_FORMAT.format(name=name), SOUND_BOX_HANDLER)
+    for _field, name in SOUND_CONFIG_FIELDS
 )
+SMS_CARRIER_CONNECTIONS = (("sms_carrier.currentIndexChanged", "fill_gateway_email"),)
 AI_CONNECTIONS = (("ai_test_btn.clicked", "test_ai_handshake"),)
 FOOTER_CONNECTIONS = (
     ("cancel_btn.clicked", "reject"),
@@ -1302,7 +1121,7 @@ FOOTER_CONNECTIONS = (
 )
 TA_SLIDER_HANDLER = "update_weight_label"
 SOUND_BUTTON_HANDLER = "test_sound"
-TA_SLIDER_SIGNAL_FORMAT = "ta_slider[{name}].valueChanged"
+TA_SLIDER_SIGNAL_FORMAT = "{name}.valueChanged"
 SOUND_BUTTON_SIGNAL_FORMAT = "sound_test[{name}].clicked"
 
 
@@ -1310,13 +1129,18 @@ def connect_order() -> tuple:
     """Every signal connected, with its handler, in the order wired."""
     found = list(EXCHANGE_CONNECTIONS)
     for name, _weight in TA_INDICATOR_WEIGHTS:
-        found.append((TA_SLIDER_SIGNAL_FORMAT.format(name=name), TA_SLIDER_HANDLER))
-    found.extend(THEME_CONNECTIONS)
+        found.append(
+            (
+                TA_SLIDER_SIGNAL_FORMAT.format(name=ta_slider_name(name)),
+                TA_SLIDER_HANDLER,
+            )
+        )
     found.extend(SOUND_CONNECTIONS)
     for _text, name, _tip in SOUND_TEST_BUTTONS:
         found.append(
             (SOUND_BUTTON_SIGNAL_FORMAT.format(name=name), SOUND_BUTTON_HANDLER)
         )
+    found.extend(SMS_CARRIER_CONNECTIONS)
     found.extend(AI_CONNECTIONS)
     found.extend(FOOTER_CONNECTIONS)
     return tuple(found)
@@ -1324,8 +1148,8 @@ def connect_order() -> tuple:
 
 ACTION_HANDLERS = dict(
     EXCHANGE_CONNECTIONS
-    + THEME_CONNECTIONS
     + SOUND_CONNECTIONS
+    + SMS_CARRIER_CONNECTIONS
     + AI_CONNECTIONS
     + FOOTER_CONNECTIONS
 )
@@ -1361,7 +1185,6 @@ BUTTON = "button"
 STRETCH = "stretch"
 BANNER = "banner"
 TA_ROWS = "ta_rows"
-TF_ROW = "tf_row"
 SOUND_ROW = "sound_row"
 ADD_GROUP_BY_WING = "add_group"
 
@@ -1413,48 +1236,9 @@ LAYOUT = {
     TRADING_TAB: (
         FORM,
         (
-            (CONTROL, "pos_distance"),
-            (CONTROL, "increment_style"),
-            (CONTROL, "default_positions"),
             (CONTROL, "default_balance"),
             (CONTROL, "visibility"),
             (CONTROL, "aggressive"),
-        ),
-    ),
-    FOLDING_TAB: (
-        COLUMN,
-        (
-            (CONTROL, "folding_active"),
-            (
-                GROUP,
-                MODE_GROUP_TITLE,
-                (COLUMN, ((CONTROL, "fold_equal"), (CONTROL, "fold_log"))),
-            ),
-            (
-                GROUP,
-                FOLD_GROUP_TITLE,
-                (
-                    COLUMN,
-                    (
-                        (CONTROL, "fold_all"),
-                        (ROW, ((CONTROL, "fold_x"), (CONTROL, "fold_x_count"))),
-                        (CONTROL, "fold_recent"),
-                    ),
-                ),
-            ),
-            (
-                GROUP,
-                DIST_GROUP_TITLE,
-                (
-                    COLUMN,
-                    (
-                        (CONTROL, "dist_all"),
-                        (ROW, ((CONTROL, "dist_x"), (CONTROL, "dist_x_count"))),
-                        (CONTROL, "dist_recent"),
-                    ),
-                ),
-            ),
-            (STRETCH,),
         ),
     ),
     TA_TAB: (COLUMN, ((LABEL, TA_HEADING), (TA_ROWS,), (STRETCH,))),
@@ -1463,7 +1247,7 @@ LAYOUT = {
         (
             (CONTROL, "phantoms_enabled"),
             (LABEL, PHANTOM_HEADING),
-            (TF_ROW,),
+            (CONTROL, "phantom_timeframe"),
             (GROUP, LOCK_GROUP_TITLE, (FORM, ((CONTROL, "lock_candles"),))),
             (STRETCH,),
         ),
@@ -1475,33 +1259,6 @@ LAYOUT = {
             (CONTROL, "theme_combo"),
             (LABEL, ACCENT_HEADING),
             (CONTROL, "accent_color"),
-            (
-                GROUP,
-                FONT_GROUP_TITLE,
-                (
-                    FORM,
-                    (
-                        (CONTROL, "font_family"),
-                        (CONTROL, "font_size"),
-                        (CONTROL, "heading_size"),
-                        (CONTROL, "log_font_size"),
-                        (TEXT, "font_preview"),
-                    ),
-                ),
-            ),
-            (STRETCH,),
-        ),
-    ),
-    LOGGING_TAB: (
-        COLUMN,
-        (
-            (CONTROL, "ta_logging"),
-            (CONTROL, "highlight_trades"),
-            (LABEL, LOGGING_HEADING),
-            (CONTROL, "log_24h"),
-            (CONTROL, "log_1w"),
-            (CONTROL, "log_1m"),
-            (CONTROL, "log_1y"),
             (STRETCH,),
         ),
     ),
@@ -1544,11 +1301,16 @@ LAYOUT = {
                         (
                             (CONTROL, "sms_provider"),
                             (CONTROL, "sms_phone"),
+                            (CONTROL, "sms_twilio_sid"),
+                            (CONTROL, "sms_twilio_token"),
+                            (CONTROL, "sms_twilio_from"),
                             (LABEL, SMS_GATEWAY_HEADING),
                             (CONTROL, "sms_carrier"),
                             (CONTROL, "sms_gateway"),
                             (CONTROL, "sms_smtp_user"),
                             (CONTROL, "sms_smtp_pass"),
+                            (CONTROL, "sms_smtp_server"),
+                            (CONTROL, "sms_smtp_port"),
                         ),
                     ),
                 ),
@@ -1637,7 +1399,6 @@ PAINTED_KIND = {
     COMBO_TEXT: "combo",
     COMBO_DATA: "combo",
     CHECK: "check",
-    RADIO: "radio",
     SPIN: "spin",
     DOUBLE_SPIN: "double_spin",
     SLIDER: "slider",
@@ -1662,6 +1423,30 @@ def wing_or_default(wing: Any) -> str:
     return wing if wing in KNOWN_WINGS else DEFAULT_WING
 
 
+def crypto_exchange_items() -> tuple:
+    """Every ``SUPPORTED_EXCHANGES`` id with its ``exchange_label``, in id order.
+
+    ``SUPPORTED_EXCHANGES`` is imported when first asked, so importing this
+    file loads no exchange library and reads no settings.
+    """
+    from ...exchange.ccxt_connector import SUPPORTED_EXCHANGES, exchange_label
+
+    return tuple(
+        (exchange_label(eid), eid) for eid in sorted(SUPPORTED_EXCHANGES.keys())
+    )
+
+
+def passphrase_exchange_ids() -> frozenset:
+    """``PASSPHRASE_EXCHANGES``, the set ``on_exchange_changed`` ticks the box on.
+
+    ``PASSPHRASE_EXCHANGES`` is imported when first asked, so importing this
+    file loads no exchange library and reads no settings.
+    """
+    from ...exchange.ccxt_connector import PASSPHRASE_EXCHANGES
+
+    return frozenset(PASSPHRASE_EXCHANGES)
+
+
 def exchange_items(wing: str) -> tuple:
     """The Add-exchange dropdown items for one wing, as (text, id) pairs."""
     if wing == STOCK_WING:
@@ -1669,7 +1454,7 @@ def exchange_items(wing: str) -> tuple:
             (EQUITY_ITEM_FORMAT.format(name=eid.capitalize()), eid)
             for eid in sorted(EQUITY_EXCHANGE_IDS)
         )
-    return CRYPTO_EXCHANGE_ITEMS
+    return crypto_exchange_items()
 
 
 def list_label_for(wing: str) -> str:
@@ -1680,6 +1465,31 @@ def list_label_for(wing: str) -> str:
 def add_group_title(wing: str) -> str:
     """The title of the box holding the Add-exchange form."""
     return STOCK_ADD_GROUP if wing == STOCK_WING else CRYPTO_ADD_GROUP
+
+
+def listed_exchange_position(listed: Any, exchange_id: Any) -> int:
+    """Where ``exchange_id`` already sits in ``listed``, or ``NO_MATCH_INDEX``.
+
+    Both builds call this before adding a line, so one venue cannot be drawn
+    twice while ``add_exchange`` holds one entry for it.
+    """
+    tail = "(" + str(exchange_id) + ")"
+    for at, line in enumerate(listed or []):
+        if str(line).endswith(tail):
+            return at
+    return NO_MATCH_INDEX
+
+
+def stored_credential_phrase(entry: Any) -> str:
+    """The phrase an add reports, read off ``entry`` and not off the typed rows.
+
+    ``test_api_connection`` is the only step that reaches a venue, and it
+    reports that venue's own answer, so no phrase here claims one.
+    """
+    holder = entry if isinstance(entry, dict) else {}
+    if any(holder.get(name) for name in CREDENTIAL_FIELDS):
+        return ADDED_WITH_CREDENTIALS
+    return ADDED_WITHOUT_CREDENTIALS
 
 
 def banner_of(wing: str) -> dict:
@@ -1724,27 +1534,31 @@ def feedback_style(level: Any) -> str:
     )
 
 
-def ta_label(name: str) -> str:
-    """The printed name of one indicator weight row."""
-    return TA_LABEL_FORMAT.format(name=name.replace("_", " ").title())
+#: Every control name the TA Indicators page holds a weight slider under.
+TA_SLIDER_NAMES = frozenset(
+    ta_slider_name(name) for name, _weight in TA_INDICATOR_WEIGHTS
+)
 
 
-def ta_slider_value(weight: float) -> int:
-    """One indicator weight as its slider position."""
-    return int(weight * TA_SLIDER_SCALE)
+def ta_rows(values: Optional[dict] = None) -> tuple:
+    """Every indicator weight row: label, position, figure and control name.
 
-
-def ta_value_text(weight: float) -> str:
-    """One indicator weight as the figure printed beside its slider."""
-    return TA_VALUE_FORMAT.format(weight=weight)
-
-
-def ta_rows() -> tuple:
-    """Every indicator weight row: label, slider position and figure."""
-    return tuple(
-        (ta_label(name), ta_slider_value(weight), ta_value_text(weight))
-        for name, weight in TA_INDICATOR_WEIGHTS
-    )
+    ``values`` is a control-name-to-value mapping; a row whose slider it
+    carries draws at that position, and every other row at its default.
+    """
+    rows = []
+    for name, weight in TA_INDICATOR_WEIGHTS:
+        held = (values or {}).get(ta_slider_name(name))
+        position = ta_slider_value(weight) if held is None else int(held)
+        rows.append(
+            (
+                ta_label(name),
+                position,
+                slider_label_text(position),
+                ta_slider_name(name),
+            )
+        )
+    return tuple(rows)
 
 
 def slider_label_text(position: Any) -> str:
@@ -1755,11 +1569,6 @@ def slider_label_text(position: Any) -> str:
 def volume_label_text(position: Any) -> str:
     """The figure printed beside the volume slider."""
     return VOLUME_LABEL_FORMAT.format(value=position)
-
-
-def font_preview_style(family: Any, size: Any) -> str:
-    """The preview label's rule after the family or the size moves."""
-    return FONT_PREVIEW_FORMAT.format(family=family, size=size)
 
 
 def index_of_data(items: Any, wanted: Any) -> int:
@@ -1992,11 +1801,38 @@ class SettingsSource:
     def list_exchanges(self) -> list:
         return list(self.exchanges)
 
+    def get_exchange(self, exchange_id: Any) -> Optional[dict]:
+        for one in self.exchanges:
+            if isinstance(one, dict) and one.get(EXCHANGE_ID_KEY) == exchange_id:
+                return dict(one)
+        return None
+
     def add_exchange(self, config: Any) -> None:
-        self.exchanges.append(config)
+        """Store ``config`` under its id, keeping a token it leaves empty.
+
+        ``SettingsManager.add_exchange`` merges the same way, so a blank
+        re-add cannot read differently here.
+        """
+        entry = dict(config)
+        for at, one in enumerate(self.exchanges):
+            if not isinstance(one, dict):
+                continue
+            if one.get(EXCHANGE_ID_KEY) != entry.get(EXCHANGE_ID_KEY):
+                continue
+            for name in CREDENTIAL_FIELDS:
+                if not entry.get(name):
+                    entry[name] = one.get(name, "")
+            self.exchanges[at] = entry
+            return
+        self.exchanges.append(entry)
 
     def remove_exchange(self, exchange_id: Any) -> None:
         self.removed.append(exchange_id)
+        self.exchanges = [
+            one
+            for one in self.exchanges
+            if not isinstance(one, dict) or one.get(EXCHANGE_ID_KEY) != exchange_id
+        ]
 
 
 class StatusLogSink:
@@ -2121,10 +1957,7 @@ class SettingsDialogModel:
         self.values["new_exchange_items"] = [
             list(one) for one in exchange_items(self.wing)
         ]
-        self.values["ta_rows"] = [list(one) for one in ta_rows()]
-        self.values["phantom_timeframes"] = [
-            [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
-        ]
+        self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
         self.texts["vol_label"] = volume_label_text(spec_for("sound_volume")["value"])
         self.texts["api_feedback"] = ""
         self.styles["api_feedback"] = ""
@@ -2144,13 +1977,15 @@ class SettingsDialogModel:
 
     def _seed(self, spec: dict) -> Any:
         kind = spec["kind"]
-        if kind in (CHECK, RADIO):
+        if kind == CHECK:
             return spec["checked"]
         if kind in (SPIN, SLIDER):
             return seed_whole(spec.get("value", spec["range"][0]), *spec["range"])
         if kind == DOUBLE_SPIN:
             return self._decimal(spec, spec.get("value", spec["range"][0]))
         if kind == COMBO_DATA:
+            if "current_data" in spec:
+                return index_of_data(spec["items"], spec["current_data"])
             return FIRST_INDEX
         if kind == COMBO_TEXT:
             if "current_text" in spec:
@@ -2170,7 +2005,7 @@ class SettingsDialogModel:
         kind = spec["kind"]
         if kind in (LINE, TEXT_AREA):
             return seed_text(raw)
-        if kind in (CHECK, RADIO):
+        if kind == CHECK:
             return seed_flag(raw)
         if kind in (SPIN, SLIDER):
             return seed_whole(raw, *spec["range"])
@@ -2185,37 +2020,134 @@ class SettingsDialogModel:
             return self.values["new_exchange_items"]
         return spec["items"]
 
+    def _show_stored(self, name: str, raw: Any) -> None:
+        """One stored value put into one control, as that control admits it.
+
+        A drop-down holds a row number, so a value its list does not offer
+        leaves the row the build chose.
+        """
+        spec = spec_for(name)
+        kind = spec["kind"]
+        if kind == COMBO_TEXT:
+            found = text_index(self._items_for(spec), raw)
+        elif kind == COMBO_DATA:
+            found = data_index(self._items_for(spec), raw)
+        else:
+            self.values[name] = self._seed_control(name, raw)
+            return
+        if found >= FIRST_INDEX:
+            self.values[name] = found
+
+    def _load_stored(self, key: str, show: Any, raw: Any) -> None:
+        """Puts one stored value into its control, recording a value it refuses."""
+        try:
+            show(raw)
+        except Exception as exc:  # noqa: BLE001
+            self._record("load_refused", key, str(exc))
+
+    def _ai_rows(self) -> tuple:
+        """Every ``ai_monitor`` key, from the one list naming its controls."""
+        return tuple(
+            (
+                key,
+                partial(self._pair_value, name),
+                partial(self._show_stored, name),
+                fallback,
+            )
+            for key, fallback, name in AI_LOAD_KEYS
+        )
+
+    def _ta_weight_read(self, name: str) -> float:
+        """The weight the slider named ``name`` is showing."""
+        return self.values[name] / TA_SLIDER_SCALE
+
+    def _ta_weight_show(self, name: str, value: Any) -> None:
+        """Put the stored weight ``value`` on the slider named ``name``."""
+        self.admit(name, int(round(float(value) * TA_SLIDER_SCALE)))
+
+    def _ta_weight_rows(self) -> tuple:
+        """Every ``ta_indicator_weights`` key, one per indicator weight slider."""
+        return tuple(
+            (
+                name,
+                partial(self._ta_weight_read, ta_slider_name(name)),
+                partial(self._ta_weight_show, ta_slider_name(name)),
+                weight,
+            )
+            for name, weight in TA_INDICATOR_WEIGHTS
+        )
+
+    def _volume_read(self) -> float:
+        """The fraction the engine holds for the percent the slider is showing."""
+        return self.values[VOLUME_NAME] / VOLUME_SCALE
+
+    def _volume_show(self, value: Any) -> None:
+        """Put the stored fraction on the slider as whole percent."""
+        self.admit(VOLUME_NAME, int(round(float(value) * VOLUME_SCALE)))
+
+    def _sound_rows(self) -> tuple:
+        """Every ``sound`` key, from the one list naming its controls.
+
+        The slider shows whole percent and ``SoundConfig.volume`` holds a
+        fraction, so the volume row divides out and multiplies back.
+        """
+        switches = tuple(
+            (
+                key,
+                partial(self._pair_value, name),
+                partial(self._show_stored, name),
+                spec_for(name)["checked"],
+            )
+            for key, name in SOUND_CONFIG_FIELDS
+        )
+        return switches + (
+            (
+                VOLUME_FIELD,
+                self._volume_read,
+                self._volume_show,
+                spec_for(VOLUME_NAME)["value"] / VOLUME_SCALE,
+            ),
+        )
+
+    def _sms_rows(self) -> tuple:
+        """Every ``message_channels`` key, from the one list naming its controls."""
+        return tuple(
+            (
+                key,
+                partial(self._pair_value, name),
+                partial(self._show_stored, name),
+                getattr(SMS_BUILT, key),
+            )
+            for key, name in SMS_CONFIG_FIELDS
+        )
+
+    def _stored_groups(self) -> tuple:
+        """Every group the dialog persists as one key, with the rows inside it."""
+        return (
+            (AI_GROUP_KEY, self._ai_rows()),
+            (TA_WEIGHT_GROUP_KEY, self._ta_weight_rows()),
+            (SOUND_GROUP_KEY, self._sound_rows()),
+            (MESSAGE_CHANNELS_GROUP_KEY, self._sms_rows()),
+        )
+
     def _load_current(self) -> None:
         if not self.settings:
             self._record("load_skipped")
             return
         self._record("load_current")
         for key, fallback, name in SETTING_LOAD_KEYS:
-            self.values[name] = self._seed_control(
-                name, self.settings.get(key, fallback)
+            self._load_stored(
+                key,
+                partial(self._show_stored, name),
+                self.settings.get(key, fallback),
             )
 
-        stored_ai = self.settings.get(AI_GROUP_KEY, {})
-        for key, fallback, name in AI_LOAD_KEYS:
-            self.values[name] = self._seed_control(
-                name, read_mapping(stored_ai, key, fallback)
-            )
-
-        theme = self.settings.get(THEME_KEY, THEME_DEFAULT)
-        found = data_index(THEME_ITEMS, theme)
-        if found >= FIRST_INDEX:
-            self.values["theme_combo"] = found
-
-        style = self.settings.get(INCREMENT_KEY, INCREMENT_DEFAULT)
-        found = text_index(spec_for("increment_style")["items"], style)
-        if found >= FIRST_INDEX:
-            self.values["increment_style"] = found
-
-        stored_folding = self.settings.get(FOLDING_GROUP_KEY, {})
-        self.values["folding_active"] = self._seed_control(
-            "folding_active",
-            read_mapping(stored_folding, FOLDING_ACTIVE_KEY, FOLDING_ACTIVE_DEFAULT),
-        )
+        for group, rows in self._stored_groups():
+            stored = self.settings.get(group, {})
+            for key, _read, show, fallback in rows:
+                self._load_stored(
+                    group + "." + key, show, read_mapping(stored, key, fallback)
+                )
 
         for entry in self.settings.list_exchanges():
             eid = (entry.get(EXCHANGE_ID_KEY, "") or "").lower()
@@ -2231,6 +2163,8 @@ class SettingsDialogModel:
                 )
             )
         self.values["exchange_list"] = list(self.listed_exchanges)
+        if self.sound:
+            self.push_sound_config()
 
     def current_exchange_id(self) -> Any:
         """The id of the exchange the dropdown is showing."""
@@ -2241,11 +2175,15 @@ class SettingsDialogModel:
         return items[at][1]
 
     def on_exchange_changed(self) -> None:
-        """Tick the passphrase box for an exchange that needs one."""
+        """Tick the passphrase box for an exchange that needs one.
+
+        ``show_passphrase`` then draws ``new_passphrase`` for that venue alone.
+        """
         eid = self.current_exchange_id()
-        self.values["pp_check"] = eid in PASSPHRASE_EXCHANGE_IDS
+        self.values["pp_check"] = eid in passphrase_exchange_ids()
         self.texts["api_feedback"] = ""
         self._record("on_exchange_changed", eid)
+        self.show_passphrase(self.values["pp_check"])
 
     def show_passphrase(self, on: Any) -> None:
         """Show or hide the passphrase field."""
@@ -2261,6 +2199,8 @@ class SettingsDialogModel:
     def _typed_credentials(self) -> tuple:
         key = self.values["new_api_key"].strip()
         secret = self.values["new_api_secret"].strip()
+        if looks_like_pem(secret):
+            secret = unescape_pem_newlines(secret)
         phrase = (
             self.values["new_passphrase"].strip() if self.values["pp_check"] else ""
         )
@@ -2324,9 +2264,7 @@ class SettingsDialogModel:
             self.enabled["add_btn"] = True
 
     def _master_phrase(self) -> str:
-        return MASTER_FORMAT.format(
-            username=self.settings.get("username", UNNAMED_OPERATOR)
-        )
+        return vault_phrase(self.settings.get("username", ""))
 
     def add_exchange(self) -> None:
         """Check the credentials, store the exchange and close the dialog."""
@@ -2356,14 +2294,15 @@ class SettingsDialogModel:
                     config[PHRASE_FIELD] = self.encryptor(phrase, master)
 
             self.settings.add_exchange(config)
-            self.listed_exchanges.append(
-                EXCHANGE_ITEM_FORMAT.format(name=eid.capitalize(), eid=eid)
-            )
+            if listed_exchange_position(self.listed_exchanges, eid) == NO_MATCH_INDEX:
+                self.listed_exchanges.append(
+                    EXCHANGE_ITEM_FORMAT.format(name=eid.capitalize(), eid=eid)
+                )
             self.values["exchange_list"] = list(self.listed_exchanges)
             for name in TYPED_CREDENTIAL_CONTROLS:
                 self.values[name] = EMPTY_TEXT
 
-            how = ADDED_WITH_CREDENTIALS if key else ADDED_WITHOUT_CREDENTIALS
+            how = stored_credential_phrase(self.settings.get_exchange(eid))
             self.set_feedback(
                 ADDED_FEEDBACK_FORMAT.format(name=eid.capitalize(), how=how),
                 SUCCESS_LEVEL,
@@ -2402,20 +2341,15 @@ class SettingsDialogModel:
         if self.status_log:
             self.status_log.log(REMOVED_LOG_FORMAT.format(eid=eid), WARNING_LEVEL)
 
-    def update_font_preview(self) -> None:
-        """Repaint the preview line in the chosen family and size."""
-        family = self.values["font_family"]
-        if isinstance(family, int):
-            family = FONT_FAMILIES[family]
-        self.styles["font_preview"] = font_preview_style(
-            family, self.values["font_size"]
-        )
-        self._record("update_font_preview")
-
     def update_volume_label(self, position: Any) -> None:
         """Print the volume figure beside the slider."""
         self.texts["vol_label"] = volume_label_text(position)
         self._record("update_volume_label", position)
+
+    def update_weight_label(self) -> None:
+        """Redraw the twelve weight rows so each prints its slider's figure."""
+        self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
+        self._record("update_weight_label")
 
     def sfx_volume_changed(self, position: Any) -> None:
         """Hand the sound engine a fresh config and clear its cache.
@@ -2433,10 +2367,31 @@ class SettingsDialogModel:
         except Exception as exc:
             self._record("sfx_volume_failed", type(exc).__name__)
 
+    def push_sound_config(self) -> None:
+        """Hand the engine every switch at the volume the slider is showing.
+
+        Wired to each sound box, so one box ticked on its own reaches the
+        engine without the slider moving.
+        """
+        self._record("push_sound_config")
+        self.sfx_volume_changed(self.values[VOLUME_NAME])
+
+    def fill_gateway_email(self) -> None:
+        """Build the Gateway Email row from the carrier and the typed number.
+
+        A number the carrier's gateway cannot address, and the manual choice,
+        both leave the row as the operator left it.
+        """
+        self._record("fill_gateway_email")
+        carrier = CARRIER_NAMES[self.values["sms_carrier"]]
+        built = gateway_address(carrier, self.values["sms_phone"])
+        if built:
+            self.admit("sms_gateway", built)
+
     def test_sound(self, name: Any) -> None:
         """Apply the current volume, then play one sound."""
         self._record("test_sound", name)
-        self.sfx_volume_changed(self.values["sound_volume"])
+        self.sfx_volume_changed(self.values[VOLUME_NAME])
         self.sound.play(name)
 
     def test_ai_handshake(self) -> None:
@@ -2467,45 +2422,6 @@ class SettingsDialogModel:
             return value.strip()
         return value
 
-    def _folding_group(self) -> dict:
-        fold_target = FOLD_ALL
-        if self.values["fold_x"]:
-            fold_target = FOLD_X
-        elif self.values["fold_recent"]:
-            fold_target = FOLD_RECENT
-        dist_target = DIST_ALL
-        if self.values["dist_x"]:
-            dist_target = DIST_X
-        elif self.values["dist_recent"]:
-            dist_target = DIST_RECENT
-        return {
-            "active": self.values["folding_active"],
-            "mode": LOG_MODE if self.values["fold_log"] else EQUAL_MODE,
-            "fold_target": fold_target,
-            "fold_target_count": self.values["fold_x_count"],
-            "distribute_target": dist_target,
-            "distribute_target_count": self.values["dist_x_count"],
-        }
-
-    def _logging_group(self) -> dict:
-        periods = [period for name, period in PERIOD_CONTROLS if self.values[name]]
-        return {
-            "ta_signal_logging": self.values["ta_logging"],
-            "highlight_trade_proximity": self.values["highlight_trades"],
-            "active_periodicities": periods,
-        }
-
-    def _ai_group(self) -> dict:
-        return {
-            "api_key": self.values["ai_api_key"].strip(),
-            "interval_hours": self.values["ai_interval"],
-            "connect_phrase": self.values["ai_connect_phrase"].strip(),
-            "confirm_phrase": self.values["ai_confirm_phrase"].strip(),
-            "enabled": self.values["ai_enabled"],
-            "auto_handshake": self.values["ai_auto_handshake"],
-            "log_feedback": self.values["ai_log_feedback"],
-        }
-
     def save(self) -> dict:
         """Write every setting, report what failed, and close the dialog.
 
@@ -2529,13 +2445,11 @@ class SettingsDialogModel:
                 failed.append(FAILED_ENTRY_FORMAT.format(key=key, error=exc))
                 self.prints.append(SAVE_ERROR_PRINT_FORMAT.format(key=key, error=exc))
 
-        for key, builder in (
-            (SAVE_GROUP_KEYS[0], self._folding_group),
-            (SAVE_GROUP_KEYS[1], self._logging_group),
-            (SAVE_GROUP_KEYS[2], self._ai_group),
-        ):
+        for key, rows in self._stored_groups():
             try:
-                self.settings.set(key, builder())
+                self.settings.set(
+                    key, {name: read() for name, read, _show, _fallback in rows}
+                )
                 saved += 1
             except Exception as exc:
                 failed.append(FAILED_ENTRY_FORMAT.format(key=key, error=exc))
@@ -2591,6 +2505,8 @@ class SettingsDialogModel:
             self.values[name] = list(value or [])
         else:
             self.values[name] = self._seed_control(name, value)
+        if name in TA_SLIDER_NAMES:
+            self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
         return self.values[name]
 
     def edit(self, name: str, value: Any) -> None:
@@ -2646,7 +2562,7 @@ def control_painted_text(spec: dict, values: dict) -> str:
     kind = painted_kind(spec)
     if kind in SILENT_KINDS:
         return EMPTY_TEXT
-    if kind in ("check", "radio"):
+    if kind == "check":
         return spec["text"]
     if kind == "combo":
         if spec["kind"] == COMBO_DATA:
@@ -2709,14 +2625,10 @@ class _Walker:
             self.block(item[2])
             return
         if role == TA_ROWS:
-            for label, _position, printed in ta_rows():
+            for label, _position, printed, _name in ta_rows(self.model.values):
                 self.emit(LABEL, label)
                 self.emit("slider", EMPTY_TEXT)
                 self.emit(LABEL, printed)
-            return
-        if role == TF_ROW:
-            for timeframe in PHANTOM_TIMEFRAMES:
-                self.emit("check", timeframe)
             return
         if role == SOUND_ROW:
             for printed, _name, _tip in SOUND_TEST_BUTTONS:
@@ -2757,10 +2669,7 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "tooltips": dict(model.tooltips),
         "control_specs": [_plain(dict(one)) for one in CONTROL_SPECS],
         "exchange_items": [list(one) for one in exchange_items(model.wing)],
-        "ta_rows": [list(one) for one in ta_rows()],
-        "phantom_timeframes": [
-            [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
-        ],
+        TA_ROWS: [list(one) for one in ta_rows(model.values)],
         "sound_test_buttons": [list(one) for one in SOUND_TEST_BUTTONS],
         "spacing": {
             "content": dict(CONTENT_SPACING),
@@ -2785,7 +2694,6 @@ def build_view_model(model: SettingsDialogModel) -> dict:
             "phantom": PHANTOM_HEADING,
             "theme": THEME_HEADING,
             "accent": ACCENT_HEADING,
-            "logging": LOGGING_HEADING,
             "sound_events": SOUND_EVENTS_HEADING,
             "volume": VOLUME_HEADING,
             "sms_gateway": SMS_GATEWAY_HEADING,
@@ -2810,10 +2718,10 @@ def build_view_model(model: SettingsDialogModel) -> dict:
                 "test_api_connection",
                 "add_exchange",
                 "remove_exchange",
-                "update_font_preview",
                 "update_volume_label",
                 "sfx_volume_changed",
                 "sfx_volume_failed",
+                "push_sound_config",
                 "test_sound",
                 "test_ai_handshake",
                 "save",

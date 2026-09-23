@@ -243,6 +243,75 @@ file_menu.addAction("&Settings", self._open_settings)
 file_menu.addAction("&Reset All Settings", self._reset_settings)
 ```
 
+#### What the Theme menu does
+
+The Theme menu paints and it stores. One press applies the theme to the Qt
+window, repaints the tab labels, repaints every React page already open, and
+writes the name under the `theme` key, so the choice is still there at the next
+start.
+
+`src/gui/main_window.py` — `_switch_theme`
+
+```python
+painted = repaint_pages(self, name)
+self._remember_theme(name)
+```
+
+A page already up takes the new palette without being rebuilt. One statement per
+web view rewrites the six chrome colours on the document root, so every drawn row
+and the scroll position stay where they were.
+
+```
+the Market Inspector page, 900x600, 92,250 sampled pixels of ground
+
+before the press   #0a0a0f
+after the press    #f5f5fa    184,500 sampled pixels differing
+pressed back       #0a0a0f    identical to before
+the Activity Log   1 React pages repainted in neon_light
+```
+
+A page built later opens on the same theme. Every React page host named one
+theme in its own source; each now leaves the name unset, and the page reads back
+the theme the window is painted in.
+
+`src/gui/react_history_panel.py` — `page_theme`
+
+```python
+return stored_theme(applied_theme() if theme is None else theme)
+```
+
+Driven with nothing passed to the builder, the Alerts, Console, History and
+Market Inspector pages each painted a different ground under a stored Cyberpunk
+Dark and a stored Neon Light, at 184,500 to 187,500 sampled pixels differing per
+page. All four were identical before.
+
+The window's theme table and the chart chrome table are one declaration now. The
+chart table is built from the names the theme table declares, so a name cannot
+sit in one and not the other, and the five colour bodies it holds are unchanged.
+
+`src/gui/tradingview_chart.py` — `CHART_THEMES`
+
+```python
+CHART_THEMES: dict[str, dict[str, str]] = {
+    name: _CHART_CHROME.get(name, _CHART_CHROME[DEFAULT_THEME_NAME])
+    for name in THEMES
+}
+```
+
+The theme does not reach the contents of a page. A page's rows, panes and
+buttons arrive on the payload as a Qt stylesheet string built from the one dark
+token table, which carries no theme dimension. The Console tab, driven under
+three themes, painted the same five grounds every time, and each of the five is
+a token from that table.
+
+`src/gui/design_system.py` — the grounds the Console tab painted under all three
+
+```python
+SURFACE_CHART = "#0a0a12"  # Chart, console and group-box ground
+SURFACE_CONSOLE = "#05050a"  # Console ground
+SURFACE_CONSOLE_HEADER = "#0a0a14"  # Console header ground
+```
+
 Privacy Mode is off in the figure, so each field draws its own value rather
 than four asterisks. SPENDABLE and LOCKED carry dollar figures. EXCH counts the
 open exchange sub-tabs. Crypto Mode at the right swaps the window between the
@@ -294,6 +363,22 @@ column empty instead of drawing four asterisks over it.
 answered = int(data.get(EXCHANGE_FRESHNESS_KEY, 0) or 0)
 if answered <= 0:
     return None
+```
+
+The venue's portfolio breakdown answers each position's cost basis, average
+entry price and unrealised profit, and each bot reads those three from it. The
+breakdown carries no lifetime realised figure for a spot position, so REALISED
+is the platform's first-in, first-out match over every fill the venue holds for
+each bot's symbol, one figure per bot, summed across the fleet; a bot pages the
+whole history once and then one page per refresh, and logs the venue's cost
+basis against the cost of the buys left open.
+
+`src/trading/scrumming/reconciliation.py` — `fetch_fill_history`
+
+```python
+if self._fill_history is None:
+    self._fill_history = FillHistory(self.config.symbol)
+return await self._fill_history.refresh(self.exchange)
 ```
 
 Detail: [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md).
@@ -1227,7 +1312,7 @@ rather than typed.
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | - | in scope |
+| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | - | yes | shell | in scope |
@@ -1257,13 +1342,13 @@ rather than typed.
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | shell | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | shell | in scope |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | - | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | shell | in scope |
+| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
@@ -1293,31 +1378,37 @@ rather than typed.
 | `src/gui/widgets/__init__.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no | not a screen |
-| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | - | in scope |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no | shelved |
 | `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | - | in scope |
-| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | - | in scope |
+| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | yes | yes | shell | in scope |
-| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | shell | in scope |
+| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 The Simulator rebuild removed the files above; they are not in the tree.
+
+The Capital Registry row names a file the tree no longer holds. The registry it
+drew was built nowhere, so the table could draw no row. Four modules went
+together: `src/gui/widgets/capital_registry_panel.py`, its view model, its
+renderer page, and the registry behind them. The bridge no longer offers the
+method, and the renderer manifest no longer names the page.
 
 Totals across the 76 rows above, measured on 5 September 2026:
 
 ```
-React module             62
+React module             63
 Uses React               60
 Bridge                   72
 Manifest                 62
-Registers in Electron    18
-Ships in the build       59
-RENDERS                  48
-RENDERS, in scope        43 of 43
-out of scope             37
+Registers in Electron    25
+Ships in the build       58
+RENDERS                  44
+RENDERS, in scope        35 of 43
+out of scope             41
 ```
 
 Four columns are all but complete. RENDERS, the column that is the item, is not.
@@ -1968,6 +2059,10 @@ than a screen, and it stays where it is.
 | `widgets/notification_spool.py` | Not reachable from a live tab |
 | `widgets/pulse_manager.py` | Not reachable from a live tab |
 
+One row in that table names a file the tree no longer holds. The Capital
+Registry panel is removed with the registry that fed it, so no conversion is
+owed for it.
+
 The rows in that table are inside this item. The operator's 6 September 2026
 directive puts the whole interface in scope, so a screen the window does not
 build is converted like any other. A converted row keeps `shelved` in the Scope
@@ -2513,3 +2608,600 @@ Pointed at the real table the writer disagrees with the committed Scope column
 on twenty rows and moves five totals. That disagreement is not this entry's to
 resolve, so the column was not rewritten and the three cells above were set by
 the rule the column states.
+
+### 2026-09-12 - #665 - the Phantom Bots page takes one timeframe and keeps it
+
+The page holds three settings. All three now reach the bot they are drawn for,
+and two of them survive a restart.
+
+**One phantom, not a set.** The eleven timeframe boxes are one picker. It offers
+all eleven names, greys the ones the bot's venue does not serve, and opens on the
+timeframe the bot holds. A bot holding several, because it was restored before
+this, opens on the highest of them.
+
+| setting | label on the page | what it reaches |
+| ------- | ----------------- | --------------- |
+| enable | Enable Phantom Bots | the tick gate that builds the phantom set |
+| timeframe | Timeframe: | the timeframe list the phantom set is built from |
+| lock | Candles to lock: | the coordinator's candle count |
+
+**The constraint is the one the Comp field already stated.** A timeframe at or
+below the bot's own TA Timeframe is refused, and the reason is written beside the
+picker. A timeframe the venue does not serve carries a second message. Each pick
+below was made on a page freshly opened on 1d, on a Coinbase bot whose TA
+Timeframe is 1h:
+
+```
+picked  kept   told to the window       reason written beside the picker
+1d      1d     phantom_timeframes 1d    -
+6h      6h     phantom_timeframes 6h    -
+1h      1d     nothing                  1h is not above this bot's TA Timeframe 1h
+15m     1d     nothing                  15m is not above this bot's TA Timeframe 1h
+4h      1d     nothing                  4h is not offered by coinbase
+```
+
+The refusal is not new work for the engine. A phantom at or below the parent's
+own timeframe is already dropped twice over: the higher-timeframe bias keeps only
+a higher rank, and the Comp calculation skips a rank at or below the parent's. On
+the bot above, four of the five phantoms a restart used to build reached neither.
+
+**Two of the three now survive a restart.** The saved record carries the one
+timeframe and the candle count beside the enable flag it already carried. Driven
+through the fleet-load path on a record written for the run:
+
+```
+record carries                  restored bot holds                     lock
+phantom_timeframe 1d            1d                                        2
+lock_candle_count 7             5m 15m 30m 1h 1d                          7
+neither key                     5m 15m 30m 1h 1d                          2
+```
+
+**A bot nobody has chosen for is left exactly as it was.** The record takes a
+timeframe only when the bot holds one. A bot still on the engine's own six, which
+a Coinbase filter cuts to five, writes no timeframe key and restores to the same
+five. The narrowing to one happens when the operator picks one, and not before.
+
+```
+bot                 saved keys                                   restored holds  lock
+untouched           phantoms_enabled lock_candle_count                 5 names       2
+one timeframe set   phantoms_enabled lock_candle_count                 1 name        7
+                    phantom_timeframe
+```
+
+**The window now publishes what the page reads.** The answer a tab is asked for
+carried four values, and the page read five others off it that were never there,
+so every phantom reading on the React build drew at its own default. The answer
+carries them now.
+
+```
+published before    bot_id symbol mode state
+published now       bot_id symbol mode state exchange_id ta_timeframe
+                    enabled timeframes lock_candle_count
+```
+
+The candle count the page sets still sizes nothing. `TimeframeCoordinator`
+defines the one function that would read it and nothing calls that function, so
+the figure persists and waits.
+
+### 2026-09-13 - #23 - the venue page draws in the second build
+
+The venue page now has a host. `src/gui/react_exchange_tab.py` builds one web
+view for each venue and draws `exchange_tab.js` inside it.
+
+The host answers the four calls the main window already makes on the Qt venue
+tab. Each call drives a surface model and pushes the answer into the page.
+
+```
+call the window makes             what the host runs
+exchange_id                       the attribute the constructor sets
+update_bots(statuses)             the screen model, then both bot tables
+_refresh_privacy_mode_btn_style   the screen model, then the header dots
+stop_feeds                        the page script that takes the bridge away
+```
+
+The page carries nine modules and one style sheet. It fetches nothing, because
+every script and every rule is written into the document.
+
+```
+design_tokens.js         theme_engine.js          shared_widgets.js
+header_strip.js          table_cells.js           bot_status_table.js
+extractor_bot_table.js   crypto_news_ticker.js    exchange_tab.js
+one style sheet          exchange_tab.css         26 rules
+```
+
+The screen draws a header row, a data-pool line, two bot sections and a command
+bar of five buttons. `bot_status_table.js` draws the Scrumming rows and
+`extractor_bot_table.js` draws the Extractor rows, each into a space the screen
+keeps for it.
+
+The page names what it loaded. A venue holding seven bots reads like this.
+
+```
+page modules       all nine, exchange_tab.js last
+page style sheets  exchange_tab.css, 26 rules
+scrum-table rows   5
+extractor rows     2
+```
+
+The style sheet paints what the payload leaves unpainted. The Privacy Mode
+button, the data-pool line and the two section labels carry their own colours
+from the backend, so no rule touches them. The five command buttons and the New
+Bot button carry none, so the sheet gives each one a ground, an edge and a text
+colour.
+
+An emptied style sheet reads as zero rules, and a withheld module drops out of
+the module list and draws no row. Both readings fall when the thing they
+measure is taken away.
+
+```
+run              module list       style sheet rules   scrum rows
+whole page       nine modules                     26            5
+style emptied    nine modules                      0            5
+table withheld   eight modules                    26            0
+```
+
+The page reports every control press back to Python. `ExchangePage` reads the
+console line the page writes and hands it to `run_action`, which drives the
+surface that owns the method and then pushes the new payload.
+
+```
+pressed           reached Python             the screen recorded
+Start on row 1    bot-eth-02, start          command.sent start scrumming
+nothing pressed   no call                    no entry
+```
+
+The host starts no bot and places no order while it builds or draws. It reaches
+three names under the trading package, and none of them is a bot, a container or
+an exchange client.
+
+```
+src.trading                   the package
+src.trading.gate_vocabulary   the gate names
+src.trading.target_bands      the Target BTC and Target ETH arithmetic
+```
+
+The news strip is fed. `bind_news_transport` gives the strip the same reader the
+desktop bridge gives it, and the first ask carries the start the Qt strip
+performs as it builds.
+
+### 2026-09-13 - #23 - the bot wizard gets a host and a stylesheet
+
+`react_bot_wizard.py` builds the wizard page. `bot_wizard.css` paints it. The
+host answers the calls the window already makes on the Qt wizard, so one set of
+calls drives either build.
+
+| the window calls | the host answers with |
+| ---------------- | --------------------- |
+| the class, with the venue list and the stored defaults | `BotWizardReactDialog.__init__` |
+| exec | `QDialog.exec` |
+| DialogCode.Accepted | `QDialog.DialogCode` |
+| get_bot_config | `BotWizardReactDialog.get_bot_config` |
+
+**The page carries every asset it needs.** `dialog_html` inlines React, the four
+style sources, the table cells module, the wizard module and the sheet. The page
+fetches nothing over the network. `MODULE_GLOBALS` names the global each asset
+defines once its script tag has run.
+
+**The page says what it loaded.** `LOADED_MODULES_JS` reads each of those globals
+back. `LOADED_STYLES_JS` counts the sheets the browser parsed and the rules whose
+selector names the wizard class. One run of the built host read this:
+
+```
+modules   react  react-dom  design_tokens  theme_engine  shared_widgets
+          header_strip  table_cells  bot_wizard        all true
+styles    sheets 1    rules 56    wizard rules 50
+rail      asset  mode  params  phantom  extractor_pool   params current
+rows      47 field rows drawn
+```
+
+The same run with the sheet emptied on disk read `wizard rules 0`, and the
+browser drew all 47 rows in its own plain type. The same run with the module
+emptied on disk read `bot_wizard.js false`, no rail stops and no rows.
+
+**One model draws every page.** `BotWizardReactDialog.model` asks
+`bot_wizard_surface.view_model` for the whole wizard as one payload. The venue
+list, the stored defaults, the market list and the offered timeframes go in
+around the steps the page sends.
+
+**A press on the page comes back to Python.** The page writes one console line.
+`BotWizardPage` hands that line to `answer_call`, which builds a fresh payload
+and hands it back. A finished walk accepts the dialog, and a cancelled walk
+rejects it.
+
+**The sheet paints the parts the module names.** Every rule sits under the
+`acervator-bot-wizard` class and selects one `data-part` value.
+
+| part | what the sheet paints |
+| ---- | --------------------- |
+| wizard-title | the window name, in the accent colour, over a rule |
+| page-rail-stop | one pill per page, and the current page takes the accent |
+| page-title, page-subtitle | the page heading and its line of help |
+| field-group | a bordered block with its title in the accent |
+| field-row-label, field | a right-aligned label against a growing control |
+| target-combo, info-button | the pair box, its circle and the info button, on one line |
+| timeframe-row | one chip per timeframe, and a chip the venue refuses dims |
+| alt-list, alt-row | the pair list the pool page fills |
+| warning-box | the call-budget message the phantom page raises |
+| walk-step | the Next, Back, Cancel and Finish buttons |
+
+**The host reaches no venue and creates no bot.** The venue list and the market
+list are arguments, so the dialog opens no connection of its own. A run that
+built the host and drew all five pages at three widths imported no module under
+`src/trading` and wrote no file under the runtime tree.
+
+**The table row above still reads a dash.** `variant_surface.py` records no
+loader pair for this screen, so the running window builds the Qt wizard. The row
+changes when that pair is recorded.
+
+### 2026-09-13 - #23 - the window chooses the three new hosts
+
+`variant_surface.py` records three more loader pairs. `register` holds one Qt
+loader and one React loader for each screen. The running build selects one side
+of each pair.
+
+| screen name | the Qt loader returns | the React loader returns |
+| --- | --- | --- |
+| Charts | `TradeChartsTab`, in `widgets/trade_charts_tab.py` | `ChartsTabReact`, in `react_charts_tab.py` |
+| Exchange page | `ExchangeTab`, in `widgets/exchange_tab.py` | `ExchangeTabReact`, in `react_exchange_tab.py` |
+| Bot creation wizard | `BotCreationWizard`, in `bot_wizard.py` | `BotWizardReactDialog`, in `react_bot_wizard.py` |
+
+Three call sites ask `surface_class` for the class. `ChartsTabMixin` builds the
+Charts tab in `_build_charts_tab`. `MainWindow` builds one venue page in
+`add_exchange_tab` and opens the wizard in `_create_bot`. Each call site keeps
+the Qt class as its fallback, so a screen with no recorded pair still builds the
+original.
+
+The window names what it built. One window ran under each build, and each class
+came off the live object.
+
+```
+screen          qt build            react build
+Charts tab      TradeChartsTab      ChartsTabReact
+venue page      ExchangeTab         ExchangeTabReact
+wizard          BotCreationWizard   BotWizardReactDialog
+```
+
+Each React page names what it loaded, once the window reaches it.
+
+```
+Charts tab   header_strip, native_chart, trade_charts_tab, no faults
+venue page   nine modules, exchange_tab.js last, exchange_tab.css, 26 rules
+wizard       eight module globals, all true, one sheet, 56 rules
+```
+
+The reading falls when one pair goes away. A run with the Charts pair deleted
+built the Qt tab and logged the refusal. The venue page and the wizard still
+answered with their hosts.
+
+```
+recorded pairs        Charts tab       venue page         wizard
+all three             ChartsTabReact   ExchangeTabReact   BotWizardReactDialog
+Charts pair deleted   TradeChartsTab   ExchangeTabReact   BotWizardReactDialog
+```
+
+The venue page keeps a dash in the table above. `TradingTabMixin` holds the Qt
+layer page as a hidden child in `_react_trading_page`, and that page holds the
+venue tabs. The React venue page draws its nine modules as soon as a run shows
+that layer page, so the host is built and reachable, and the Live tab hides it.
+
+### 2026-09-13 - #23 - the two strips get a host and a stylesheet
+
+`react_status_log.py` builds the Activity Log page. `status_log.css` paints it.
+`react_crypto_news_ticker.py` builds the news strip page.
+`crypto_news_ticker.css` paints it. Each host answers the calls the window
+already makes on the Qt widget, so one set of calls drives either build.
+
+| the window calls on `StatusLog` | `StatusLogReact` answers with |
+| --- | --- |
+| log | `StatusLogReact.log` |
+| force_log | `StatusLogReact.force_log` |
+| pause, resume | `StatusLogReact.pause`, `StatusLogReact.resume` |
+| is_paused, toggle_pause | `StatusLogReact.is_paused`, `StatusLogReact.toggle_pause` |
+| health_stats | `StatusLogReact.health_stats` |
+| setMaximumHeight | `QWidget.setMaximumHeight` |
+
+| the header calls on `CryptoNewsTicker` | `CryptoNewsTickerReact` answers with |
+| --- | --- |
+| the class | `CryptoNewsTickerReact.__init__` |
+| start | `CryptoNewsTickerReact.start` |
+| stop | `CryptoNewsTickerReact.stop` |
+| force_refresh | `CryptoNewsTickerReact.force_refresh` |
+| current_headlines | `CryptoNewsTickerReact.current_headlines` |
+
+**Each page carries every asset it needs.** `panel_html` inlines React, the four
+style sources, the strip's own module and its sheet. Neither page fetches over
+the network. `MODULE_GLOBALS` names the global each asset defines once its
+script tag has run.
+
+**Each page says what it loaded.** `LOADED_MODULES_JS` reads those globals back.
+`LOADED_STYLES_JS` names each sheet and counts the rules the browser parsed from
+it. One run of the built hosts read this:
+
+```
+status log   modules  design_tokens theme_engine shared_widgets header_strip status_log
+             styles   status_log.css 12 rules             lines drawn 8
+news strip   modules  design_tokens theme_engine shared_widgets header_strip crypto_news_ticker
+             styles   crypto_news_ticker.css 8 rules      headlines drawn 1
+```
+
+**The readings fall when an asset goes.** The same run with each sheet emptied
+read no rules, and the browser drew both strips on white. The same run with each
+module emptied dropped that module from the roster and drew no line and no
+headline.
+
+```
+run         status log            news strip
+live        12 rules, 8 lines     8 rules, 1 headline
+no sheet     0 rules, 8 lines     0 rules, 1 headline
+no module   12 rules, 0 lines     8 rules, 0 headlines
+```
+
+**The pane paints a line by its kind.** `status_log_surface.line_style` reads the
+message prefix first and the level second. A pixel census of each saved picture
+read these counts.
+
+```
+live        0a0a0f 238504   0e0e1a 193353   7a7a9c 2594   00ff88 478   ffaa00 458
+no sheet    ffffff 430648   ffaa00 1759     00ff88 1365   ff66dd 531   ffcc44 461
+no module   0a0a0f 450000
+```
+
+The sheet carries the page ground, the pane ground and the border. The payload
+carries every line colour, so a line keeps its colour with no sheet at all.
+
+**One payload draws the whole pane.** `pane_payload` asks
+`status_log_surface.build_view_model` for the pane state, then puts every line
+the model holds under `document`. `build_view_model` drains `take_painted`, so
+its own `document` carries one call's batch. `document_blocks` counts the whole
+document, and the two agree once `pane_payload` has run.
+
+**The strip shows the story it holds.** `CryptoNewsTickerReact._run_fetch` runs
+the strip's worker only when the strip carries a `fetcher`.
+`CryptoNewsTickerModel.on_headlines` writes `NO_FEEDS_TEXT` for an empty answer,
+so a strip with no reader would report no feeds over the stories it holds.
+
+**The strip reached no feed.** A run built the host with four recorded stories
+and no `fetcher`. The strip drew the first story with its position and its feed
+name. The run refused every connect away from loopback and counted none.
+
+```
+fetcher              None
+fetches started      1
+headlines held       4
+connects attempted   0
+label                [1/4] The Defiant - SEC crypto custody rewrite enters White House review
+```
+
+**Each sheet paints the parts its module names.**
+
+| part | what the sheet paints |
+| ---- | --------------------- |
+| log | the read-only pane, its ground, its border and its scrollbar |
+| line | one block, wrapped rather than widened |
+| stamp | the leading time, in tabular figures |
+| body | the message span, which takes its colour from the payload |
+| placeholder | the line an empty pane shows |
+| ticker | the frame around the strip |
+| headline | one story on one line, clipped at the strip's edge |
+
+**Both table rows above still read `shell`.** `variant_surface.py` records no
+loader pair for either strip, so the running window builds the Qt pane and the
+Qt strip. Each row changes when its pair is recorded.
+
+### 2026-09-13 - #23 - four modules already had a host, and the tables get their skin
+
+Four rows read `-` or `shell`. All four already draw in the window the operator
+launches. No new host was written. The measurement is below, and four cells move.
+
+The venue page host mounts both bot tables inside itself. The Charts host mounts
+the chart module inside itself. The Status panel is its own host.
+
+```
+react_exchange_tab.CHILD_MODULES   table_cells, bot_status_table,
+                                   extractor_bot_table, crypto_news_ticker
+react_charts_tab.CHILD_MODULES     native_chart
+react_system_status_tab            PANEL_MODULE system_status_tab.js
+```
+
+The window reaches all three. `main_window.py` asks the seam for the venue page
+class, and `charts_tab.py` asks it for the Charts class. `SystemStatusTabMixin`
+builds the Status panel with no seam, because no Qt widget ever drew that tab.
+
+```
+main_window.py:1361            page_class = surface_class(EXCHANGE)
+main_tabs/charts_tab.py:29     built = surface_class(CHARTS)()
+main_tabs/system_status_tab.py SystemStatusReactPanel()
+```
+
+**Each page names itself off the live object.** A run built each screen, drove
+content into it and read the class and the accessible name back.
+
+```
+ExchangeTabReact           React Exchange Tab   widget and web view
+ChartsTabReact             React Charts Tab     widget and web view
+SystemStatusReactPanel     Status               widget and web view
+```
+
+**Each page reports what it loaded.** The venue page already answered this. The
+Charts page and the Status page now answer it too, because `page_html` gives
+every style sheet a `data-asset` name of its own.
+
+```
+venue page   9 modules, exchange_tab.css 31 rules
+Charts tab   3 modules, trade_charts_tab.css 20 rules, 0 panel faults
+Status tab   1 module, system_status_tab.css 25 rules
+```
+
+**Each page drew the content driven into it.** Six bots went into the venue page,
+forty candles into the chart, and the emitter read-out into Status.
+
+```
+venue page   4 Scrumming rows, 2 Extractor rows, 56 cells, 6 coin badges
+Charts tab   40 candles, 40 wicks, 40 volume bars, 3 indicator panels
+Status tab   17 subsystems, 11 tab groups, 78 emitter rows
+```
+
+**The readings can fail.** Each page was built again with its style sheet emptied
+and again with its module absent. Every reading reported the loss.
+
+```
+sheet emptied    rule count 0, page paints white
+venue module out modules drop both tables, rows 0 and 0, no cells
+chart module out modules drop native_chart, fault "registered no panel to draw"
+status module out modules empty, emitter rows 0
+```
+
+**Both variants drew the same content, and five colours did not match.** Each
+screen was built under the qt variant and the React variant with the same bots
+and the same candles. Every table cell agreed, header for header and row for
+row. Five colours read off the saved pictures did not.
+
+| element | qt variant | React before | React now |
+| ------- | ---------- | ------------ | --------- |
+| column header text | `#00ffcc` | `#e0e0f0` | `#00ffcc` |
+| header underline | 2px accent | 1px grey | 2px accent |
+| Detail button face | `#1a1a28` | `#efefef` | `#1a1a28` |
+| Fire button face | `#1a1a28` | `#efefef` | `#1a1a28` |
+| coin badge | a coloured disc | nothing drawn | a coloured disc |
+
+The badge is the disc `_get_coin_icon` paints when no logo file is cached. Its
+colour comes from the characters of the name. One function now answers for both
+sides, so the two cannot drift.
+
+```python
+def coin_disc_color(symbol: str) -> str:
+    hue = sum(ord(char) for char in str(symbol)) % HUE_WHEEL
+    red, green, blue = colorsys.hsv_to_rgb(
+        hue / HUE_WHEEL, DISC_SATURATION / ALPHA_HIGHEST, DISC_VALUE / ALPHA_HIGHEST
+    )
+```
+
+Four discs were read off the qt picture and the same four off the React picture.
+They agree to the digit.
+
+```
+BTC-USD   #5fb479      SOL-USD   #5fb496
+ETH-USD   #5fb484      LINK      #b45fb1
+```
+
+**Two differences stay, and each has a reason.** The header ground reads
+`#16162a` under Qt and `#1a1a28` under React. No design token holds the first
+value, and the sheet may name no colour the design system does not hold. The
+column rule reads a lighter grey under Qt for the same reason.
+
+**The Charts tab chrome differs above the chart, and that belongs to another
+row.** The qt arrows draw no glyph, the qt timeframe box carries a `TF:` label,
+and the qt indicator toggles paint filled squares where React draws check boxes.
+Every one of those sits in `trade_charts_tab.js`, whose row already reads `yes`.
+
+**Status draws the same under both variants.** It has no Qt original, so the
+window builds the React panel either way. The two pictures hold the same colours
+in the same counts at all three widths.
+
+```
+status qt      #141420 60397   #0a0a0f 28812   #ffffff 4080
+status react   #141420 60397   #0a0a0f 28812   #ffffff 4080
+```
+
+Four cells move to `yes`. The Status cell moves because the column reports what
+the operator sees, and he sees the React panel in the window.
+
+| Qt file | React module | before | after |
+| ------- | ------------ | ------ | ----- |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | - | yes |
+| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | - | yes |
+| `src/gui/native_chart.py` | `native_chart.js` | shell | yes |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | shell | yes |
+
+### 2026-09-13 - #23 - the tab bar paints from the theme again
+
+**The ten grounds are gone.** The bar paints no ground of its own. Every tab now
+takes the colours the running theme's own style sheet sets, which is what the bar
+did before the grounds were added.
+
+`src/gui/variant_surface.py` — `_qt_main_tab_book`
+
+```python
+def _qt_main_tab_book() -> type:
+    """Import and return the Qt main tab book."""
+    from PySide6.QtWidgets import QTabWidget
+
+    return QTabWidget
+```
+
+**Six theme tokens go with them.** Each of the five themes carried a ground
+colour and a text colour for black, white and gold. None of the thirty values is
+declared now, and no style sheet names one.
+
+**CITED AS ABSENT.** The file `src/gui/main_tabs/main_tab_bar.py` is deleted, so
+the paint block earlier on this page records what the bar did between the seventh
+and the thirteenth of September 2026.
+
+**Read off the rendered bar, five themes, both builds.** A bright pixel here is
+one reading at least 200 red, at least 150 green and at most 120 blue. The gold
+ground filled most of the bar before and none of it now.
+
+```
+theme             qt before  qt after   react before  react after
+cyberpunk_dark    20,880     0          14,262        0
+neon_light        20,771     0          14,178        0
+classic_terminal  22,027     0          14,262        0
+minimal_modern    20,643     0          14,091        0
+glass_metal       20,604     0          14,078        0
+```
+
+### 2026-09-13 - #23 - Accumulation leaves the bar in one place
+
+**One tuple names every tab the window does not build.** The window skips the
+builder for a name in it, and the tab list the frontend reads leaves that name
+out. The bar now reads Sim, Paper, Live, Charts, Inspector, Swarm, History,
+Status, Console.
+
+`src/gui/main_tabs/main_window_surface.py` — `UNBUILT_TABS`
+
+```python
+UNBUILT_TABS = (ACCUMULATION_TAB,)
+
+BAR_TAB_ORDER = tuple(name for name in CANONICAL_TAB_ORDER if name not in UNBUILT_TABS)
+```
+
+**Removing the name from that tuple puts the tab back.** The Accumulation screen
+is unfinished, not unwanted. Its builder, its panel, its bridge method and its
+manual page are all unchanged.
+
+### 2026-09-13 - #23 - a tab that fails to build no longer moves the tabs after it
+
+**The reorder advances its slot only over a tab the bar carries.** A name the bar
+does not carry took a slot before, so every tab after a missing one stayed where
+the builders left it. The Qt build fails to build Sim and Paper, and its bar now
+reads the canonical order of the seven tabs it does have.
+
+`src/gui/main_tabs/main_window_surface.py` — `reordered_tabs`
+
+```python
+    order = list(labels)
+    target_index = 0
+    for name in desired:
+        if target_index >= len(order):
+            break
+        for current_index in range(target_index, len(order)):
+            if order[current_index] == name:
+                if current_index != target_index:
+                    order.insert(target_index, order.pop(current_index))
+                target_index += 1
+                break
+```
+
+**Read off the two running bars.** The React build carries all nine tabs it
+builds. The Qt build carries seven, in the same order.
+
+```
+react   Sim, Paper, Live, Charts, Inspector, Swarm, History, Status, Console
+qt      Live, Charts, Inspector, Swarm, History, Status, Console
+qt was  Live, Charts, Inspector, Console, Swarm, Accumulation, Status, History
+```
+
+**The two missing tabs have one cause.** The Qt Sim page and the Qt Paper page
+each read a panel key their own surface no longer publishes, so each builder
+raises and the window logs the tab as unavailable. That belongs to the Simulator
+rebuild and to the Paper screen, not to the bar.

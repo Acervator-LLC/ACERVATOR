@@ -181,6 +181,9 @@
   var BRUSHES = "brushes";
   var TOOLTIPS = "tooltips";
   var ICONS = "icons";
+  var ICON_COLORS = "icon_colors";
+  var ICON_LETTERS = "icon_letters";
+  var ICON_SIZE = "icon_size";
   var STATE = "state";
   var POOL_COLOR_NAME = "pool_color_name";
 
@@ -194,6 +197,8 @@
     BRUSHES,
     TOOLTIPS,
     ICONS,
+    ICON_COLORS,
+    ICON_LETTERS,
     BUTTONS,
     STATE,
     POOL_COLOR_NAME,
@@ -216,7 +221,9 @@
     COLORS,
     BRUSHES,
     TOOLTIPS,
-    ICONS
+    ICONS,
+    ICON_COLORS,
+    ICON_LETTERS
   ];
 
   var KIND = "kind";
@@ -273,6 +280,7 @@
   var CELL_TAG = "td";
   var BUTTON_TAG = "button";
   var BUTTON_TYPE = "button";
+  var DISC_TAG = "span";
 
   var TABLE_PART = "table";
   var HEAD_PART = "head";
@@ -283,6 +291,7 @@
   var CELL_PART = "cell";
   var FIRE_PART = "fire-button";
   var DETAIL_PART = "detail-button";
+  var DISC_PART = "coin-icon";
 
   // The exchange screen leaves this named space for the table to fill.
   var EMPTY_SPACE_PART = "extractor-table";
@@ -304,6 +313,7 @@
   var BRUSH_ATTR = "data-brush";
   var ITEM_TYPE_ATTR = "data-item-type";
   var ICON_ATTR = "data-icon";
+  var ICON_SIZE_ATTR = "data-icon-size";
   var ALIGNMENT_ATTR = "data-alignment";
   var ALIGNMENT_VALUE_ATTR = "data-alignment-value";
   var FOCUS_ATTR = "data-focus-policy";
@@ -319,6 +329,8 @@
   var SWAPPED_LENGTH = HEX_MARK.length + "aabbccdd".length;
 
   var PX = "px";
+  // QFont point size in _get_coin_icon: int(size * 0.45).
+  var DISC_LETTER_SHARE = 0.45;
   var FIXED = "fixed";
   var FULL = "100%";
   var COLLAPSE = "collapse";
@@ -571,6 +583,23 @@
     });
   }
 
+  // The disc _get_coin_icon paints: colour fills it, letter names it and size
+  // sizes it.
+  function CoinDisc(props) {
+    var size = Number(props.size);
+    var style = { background: colour(props.colour) };
+    if (size > 0) {
+      style.width = size + PX;
+      style.height = size + PX;
+      style.lineHeight = size + PX;
+      style.fontSize = Math.round(size * DISC_LETTER_SHARE) + PX;
+    }
+    var discProps = { className: TABLE_CLASS, style: style };
+    discProps[PART_ATTR] = DISC_PART;
+    discProps[ICON_SIZE_ATTR] = text(props.size);
+    return element(DISC_TAG, discProps, text(props.letter));
+  }
+
   function BodyCell(props) {
     var model = props.model;
     var row = props.row;
@@ -597,6 +626,20 @@
     var button = buttonAt(model, row, column, row[BOT_ID]);
     if (button !== undefined) {
       return element(CELL_TAG, cellProps, button);
+    }
+    var disc = listField(row, ICON_COLORS)[column];
+    if (isFilledText(disc)) {
+      return element(
+        CELL_TAG,
+        cellProps,
+        element(CoinDisc, {
+          key: DISC_PART,
+          colour: disc,
+          letter: listField(row, ICON_LETTERS)[column],
+          size: model[ICON_SIZE]
+        }),
+        text(listField(row, TEXTS)[column])
+      );
     }
     return element(CELL_TAG, cellProps, text(listField(row, TEXTS)[column]));
   }

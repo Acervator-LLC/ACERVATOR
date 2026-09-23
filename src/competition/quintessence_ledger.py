@@ -5,13 +5,35 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 
 from ..core.io_utils import atomic_write_json
 
 QUINTESSENCE_SUPPLY_CAP = Decimal(33_000_000)
+
+#: One whole Quintessence holds QUINTESSENCE_UNITS_PER_WHOLE of these minimum units.
+QUINTESSENCE_MINIMUM_UNIT = Decimal("0.00000001")
+QUINTESSENCE_UNITS_PER_WHOLE = 100_000_000
+
 QUINTESSENCE_PER_FEE_USD = Decimal(1)
+
+#: What a movement of value on the PoA chain costs, charged in Quintessence.
+FLUOR = "Fluor"
+
+FLUOR_SOURCE = (
+    "Georgius Agricola printed fluores in Bermannus, sive de re metallica "
+    "dialogus, 1530, for the stones a smelter adds to lower a melting point so "
+    "the metal runs. The singular is fluor, a flowing"
+)
+
+FLUOR_RATE_ABSENT = (
+    "no source sets what one movement costs in Fluor, so this module declares "
+    "the name and no figure. Every fee the game charges is Quintessence, and a "
+    "fee a venue reports stays in dollars, which QUINTESSENCE_PER_FEE_USD "
+    "converts"
+)
+
 BLEED_FRACTION_AT_LEVEL_1 = Decimal("0.08")
 BLEED_FRACTION_AT_LEVEL_10 = Decimal("0.04")
 MIN_TRANSFER_SKILL_LEVEL = 1
@@ -65,6 +87,27 @@ def _as_amount(value: object, name: str) -> Decimal:
     return amount
 
 
+def quantize_quintessence(amount: Decimal) -> Decimal:
+    """Return ``amount`` rounded down onto the QUINTESSENCE_MINIMUM_UNIT grid."""
+    return amount.quantize(QUINTESSENCE_MINIMUM_UNIT, rounding=ROUND_DOWN)
+
+
+def is_on_quintessence_grid(amount: Decimal) -> bool:
+    """Return True while ``amount`` is a whole number of QUINTESSENCE_MINIMUM_UNIT."""
+    return amount == quantize_quintessence(amount)
+
+
+def _as_quintessence_amount(value: object, name: str) -> Decimal:
+    """Return ``value`` as a Decimal Quintessence amount on the minimum-unit grid."""
+    amount = _as_amount(value, name)
+    if amount > QUINTESSENCE_SUPPLY_CAP:
+        raise ValueError(
+            f"{name} {amount} is above the supply cap {QUINTESSENCE_SUPPLY_CAP}, "
+            f"so no such amount of Quintessence can exist"
+        )
+    return quantize_quintessence(amount)
+
+
 def amount_text(amount: Decimal) -> str:
     """Return ``amount`` in plain notation, with no exponent and no trailing zeros."""
     return format(amount.normalize(), "f")
@@ -75,6 +118,19 @@ def _as_address(value: object, name: str) -> str:
     if type(value) is not str or not value.strip():
         raise ValueError(f"{name} must be a non-empty address string, got {value!r}")
     return value
+
+
+def is_wallet_address(value: object) -> bool:
+    """Answer whether ``_as_address`` takes ``value`` as a wallet address.
+
+    Every caller that checks an address before a movement reads this one rule, so
+    no second reading of a valid address exists.
+    """
+    try:
+        _as_address(value, "address")
+    except ValueError:
+        return False
+    return True
 
 
 def _as_skill_level(value: object) -> int:
@@ -204,20 +260,25 @@ class QuintessenceLedger:
     # -- Write path ----------------------------------------------------------
 
     def distil(self, address: str, fee_usd: object, trade_grade: object) -> Decimal:
-        """Mint at QUINTESSENCE_PER_FEE_USD times trade_grade, under the supply cap."""
+        """Mint fee_usd times QUINTESSENCE_PER_FEE_USD times trade_grade, under the cap.
+
+        What falls below QUINTESSENCE_MINIMUM_UNIT is never minted, so no bucket
+        holds an amount the resolution cannot express and nothing is destroyed.
+        """
         wallet = _as_address(address, "address")
         fee = _as_amount(fee_usd, "fee_usd")
         grade = _as_amount(trade_grade, "trade_grade")
         if grade > 1:
             raise ValueError(f"trade_grade must be 0 to 1, got {trade_grade!r}")
-        amount = fee * QUINTESSENCE_PER_FEE_USD * grade
-        if amount == 0:
-            return Decimal(0)
-        if self._total_ever_minted + amount > QUINTESSENCE_SUPPLY_CAP:
+        distilled = fee * QUINTESSENCE_PER_FEE_USD * grade
+        if self._total_ever_minted + distilled > QUINTESSENCE_SUPPLY_CAP:
             raise OverflowError(
                 f"Supply cap {QUINTESSENCE_SUPPLY_CAP:,} Quintessence would be "
                 f"exceeded. Only {self.remaining_ever()} remain mintable."
             )
+        amount = quantize_quintessence(distilled)
+        if amount == 0:
+            return Decimal(0)
         self._commit([self._movement(DISTIL, amount, None, wallet)])
         return amount
 
@@ -225,7 +286,7 @@ class QuintessenceLedger:
         """Move ``amount`` from address's wallet to held_address, where it rests."""
         wallet = _as_address(address, "address")
         held = _as_address(held_address, "held_address")
-        spent = _as_amount(amount, "amount")
+        spent = _as_quintessence_amount(amount, "amount")
         if spent == 0:
             return Decimal(0)
         self._require_balance(wallet, spent)
@@ -239,18 +300,27 @@ class QuintessenceLedger:
         amount: object,
         skill_level: int,
     ) -> QuintessenceTransfer:
-        """Move ``amount`` from sender to recipient, less the bleed to the pleroma."""
+        """Move ``amount`` from sender to recipient, less the bleed to the pleroma.
+
+        The received amount rounds down to QUINTESSENCE_MINIMUM_UNIT and the bleed
+        takes the rest, so what the rounding leaves over joins the pleroma.
+        """
         from_wallet = _as_address(sender, "sender")
         to_wallet = _as_address(recipient, "recipient")
         if from_wallet == to_wallet:
             raise ValueError("sender and recipient must differ")
-        sent = _as_amount(amount, "amount")
+        sent = _as_quintessence_amount(amount, "amount")
         fraction = bleed_fraction(skill_level)
         if sent == 0:
             return QuintessenceTransfer(Decimal(0), Decimal(0), Decimal(0))
         self._require_balance(from_wallet, sent)
-        bled = sent * fraction
-        received = sent - bled
+        received = quantize_quintessence(sent - sent * fraction)
+        if received == 0:
+            raise ValueError(
+                f"a bleed of {amount_text(fraction)} on {amount_text(sent)} leaves "
+                f"the recipient less than {QUINTESSENCE_MINIMUM_UNIT}"
+            )
+        bled = sent - received
         moves = [self._movement(TRANSFER, received, from_wallet, to_wallet)]
         if bled > 0:
             moves.append(self._movement(BLEED, bled, from_wallet, None))
@@ -273,7 +343,7 @@ class QuintessenceLedger:
         total = Decimal(0)
         for address, amount in credits.items():
             wallet = _as_address(address, "address")
-            paid = _as_amount(amount, "amount")
+            paid = _as_quintessence_amount(amount, "amount")
             if paid == 0:
                 continue
             moves.append(self._movement(PAYOUT, paid, held, wallet))
@@ -287,7 +357,7 @@ class QuintessenceLedger:
     def respawn(self, address: str, amount: object) -> Decimal:
         """Move ``amount`` from the pleroma into address's wallet."""
         wallet = _as_address(address, "address")
-        respawned = _as_amount(amount, "amount")
+        respawned = _as_quintessence_amount(amount, "amount")
         if respawned == 0:
             return Decimal(0)
         if respawned > self._pleroma:
@@ -299,7 +369,7 @@ class QuintessenceLedger:
 
     def embed_from_pleroma(self, amount: object) -> Decimal:
         """Move ``amount`` out of the pleroma into the embedded bucket."""
-        embedded = _as_amount(amount, "amount")
+        embedded = _as_quintessence_amount(amount, "amount")
         if embedded == 0:
             return Decimal(0)
         if embedded > self._pleroma:
@@ -319,8 +389,8 @@ class QuintessenceLedger:
         the embedded bucket and the remainder into the pleroma.
         """
         wallet = _as_address(address, "address")
-        spent = _as_amount(amount, "amount")
-        embedded = _as_amount(embedded_amount, "embedded_amount")
+        spent = _as_quintessence_amount(amount, "amount")
+        embedded = _as_quintessence_amount(embedded_amount, "embedded_amount")
         if embedded > spent:
             raise ValueError(
                 f"embedded_amount {embedded} is above the amount {spent} spent"
@@ -347,8 +417,8 @@ class QuintessenceLedger:
         into address's wallet and the remainder into the pleroma.
         """
         wallet = _as_address(address, "address")
-        released = _as_amount(amount, "amount")
-        recovered = _as_amount(recovered_amount, "recovered_amount")
+        released = _as_quintessence_amount(amount, "amount")
+        recovered = _as_quintessence_amount(recovered_amount, "recovered_amount")
         if recovered > released:
             raise ValueError(
                 f"recovered_amount {recovered} is above the amount {released} released"
@@ -369,7 +439,7 @@ class QuintessenceLedger:
 
     def release_all_to_pleroma(self, amount: object) -> Decimal:
         """Move all of ``amount`` out of the embedded bucket into the pleroma."""
-        released = _as_amount(amount, "amount")
+        released = _as_quintessence_amount(amount, "amount")
         if released == 0:
             return Decimal(0)
         self._require_embedded(released)
@@ -381,6 +451,14 @@ class QuintessenceLedger:
     def balance(self, address: str) -> Decimal:
         """Return the Quintessence in address's wallet."""
         return self._wallets.get(address, Decimal(0))
+
+    def holds_wallet(self, address: str) -> bool:
+        """Answer whether any movement has put ``address`` in the wallet book.
+
+        ``balance`` answers zero for an address no movement names, so this is the
+        one query telling an unknown wallet from a wallet spent down to nothing.
+        """
+        return address in self._wallets
 
     def held_balance(self, held_address: str) -> Decimal:
         """Return the Quintessence resting at held_address."""
@@ -572,6 +650,11 @@ class QuintessenceLedger:
     def _apply(self, movement: QuintessenceMovement) -> None:
         """Debit and credit the buckets named by ``movement``."""
         amount = movement.amount
+        if not is_on_quintessence_grid(amount):
+            raise QuintessenceLedgerError(
+                f"{movement.kind} of {amount} is not a whole number of "
+                f"{QUINTESSENCE_MINIMUM_UNIT}, so no bucket can hold it"
+            )
         if movement.kind == DISTIL:
             self._total_ever_minted += amount
             self._credit_wallet(movement.target, amount)

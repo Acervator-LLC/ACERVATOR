@@ -39,7 +39,9 @@ from .storage import (
 logger = logging.getLogger("acervator.stone_tablets.ra_fetcher")
 
 RA_TIMEFRAME: str = "1d"
-"""The one timeframe RA-StoneTablets store; both sources serve daily candles."""
+"""The timeframe ``RaTabletBuilder`` writes; both sources serve daily candles.
+A crypto asset's 5m tablet lands beside them through ``StoneTabletsRegistry``
+on ``RA_STONE_TABLETS_DIR``, keyed by ``tablet_filename`` as these are."""
 
 DAY_MS: int = 86_400_000
 
@@ -70,17 +72,49 @@ YAHOO_STEP_MS: dict[str, int] = {"1h": HOUR_MS, RA_TIMEFRAME: DAY_MS}
 RA_CHUNK_DAYS: int = 300
 """Coinbase Exchange returns at most 300 candles per request."""
 
+FUTURES_CANDLE_CAP: int = 350
+"""Coinbase Advanced Trade's market candles endpoint returns at most 350 a request."""
+
+#: The endpoint's granularity name for each ATA-SPM timeframe key it serves.
+FUTURES_GRANULARITIES: dict[str, str] = {"1h": "ONE_HOUR", RA_TIMEFRAME: "ONE_DAY"}
+
+#: Milliseconds one bar of each ``FUTURES_GRANULARITIES`` key covers.
+FUTURES_STEP_MS: dict[str, int] = {"1h": HOUR_MS, RA_TIMEFRAME: DAY_MS}
+
+FUTURES_CANDLES_KEY: str = "candles"
+
 USER_AGENT: str = "acervator-stone-tablets/1.0"
 
+RATE_LIMIT_HTTP_CODE: int = 429
 RETRYABLE_HTTP_CODES: frozenset[int] = frozenset({408, 429, 500, 502, 503, 504})
 """Rate limit and server-side codes worth a second attempt; 400 and 404 are not."""
 
+RETRY_AFTER_HEADER: str = "Retry-After"
+RETRY_AFTER_FORMAT: str = "{error}; retry after {seconds:g} s"
 
-def is_transient_http(exc: BaseException) -> bool:
-    """True when ``exc`` is a rate limit, a server error or a transport failure."""
+
+def is_transient_http(
+    exc: BaseException, codes: frozenset[int] = RETRYABLE_HTTP_CODES
+) -> bool:
+    """True when ``exc`` is a ``codes`` answer, a server error or a transport failure."""
     if isinstance(exc, HTTPError):
-        return exc.code in RETRYABLE_HTTP_CODES
+        return exc.code in codes
     return isinstance(exc, (URLError, TimeoutError, json.JSONDecodeError))
+
+
+def error_text(exc: BaseException) -> str:
+    """One failed request as its refusal: the exception's name and text, and the
+    ``Retry-After`` seconds an ``HTTPError`` carries, in ``RETRY_AFTER_FORMAT``."""
+    text = f"{type(exc).__name__}: {exc}"
+    headers = getattr(exc, "headers", None)
+    held = headers.get(RETRY_AFTER_HEADER) if headers is not None else None
+    if held is None:
+        return text
+    try:
+        seconds = float(str(held).strip())
+    except ValueError:
+        return text
+    return RETRY_AFTER_FORMAT.format(error=text, seconds=seconds)
 
 
 class RaCoinbaseAdapter(CoinbaseAdapter):
@@ -197,12 +231,108 @@ class CoinbasePublicCandles:
         return out
 
 
+class CoinbaseFuturesCandles(ExchangeAdapter):
+    """Candles for one Coinbase Advanced Trade futures or perpetual product.
+
+    ``BASE_URL`` is the public market data route and carries no key.
+    ``fetch_chunk`` reads the newest ``FUTURES_CANDLE_CAP`` candles of a
+    ``FUTURES_GRANULARITIES`` key ending at ``until_ms``, the way
+    ``ata_asset_maps.venue_candle_read`` asks ``YahooChartAdapter``.
+    """
+
+    exchange_id = "coinbase-futures"
+    chunk_limit = FUTURES_CANDLE_CAP
+
+    BASE_URL: str = "https://api.coinbase.com/api/v3/brokerage/market/products"
+    SOURCE: str = "coinbase_advanced_trade_market_candles"
+
+    def __init__(self, timeout_s: float = 20.0) -> None:
+        super().__init__(connector=None)
+        self._timeout_s = timeout_s
+
+    async def fetch_chunk(
+        self,
+        asset: str,
+        quote: str,
+        since_ms: int,
+        until_ms: int,
+        timeframe: str = RA_TIMEFRAME,
+    ) -> FetchAttempt:
+        """Fetch ``asset``'s newest candles on ``timeframe`` and return a ``FetchAttempt``.
+
+        ``asset`` is the venue's ``product_id``; ``quote`` is carried, not checked.
+        """
+        del quote
+        granularity = FUTURES_GRANULARITIES.get(str(timeframe))
+        if granularity is None:
+            return FetchAttempt(
+                since_ms=since_ms,
+                until_ms=until_ms,
+                error=(
+                    f"{self.exchange_id} serves {sorted(FUTURES_GRANULARITIES)}, "
+                    f"not {timeframe}"
+                ),
+            )
+        step_s = FUTURES_STEP_MS[str(timeframe)] // 1000
+        end_s = int(until_ms) // 1000
+        start_s = max(int(since_ms) // 1000, end_s - FUTURES_CANDLE_CAP * step_s)
+        try:
+            payload = await asyncio.to_thread(
+                _get_json,
+                f"{self.BASE_URL}/{asset}/candles",
+                {"start": start_s, "end": end_s, "granularity": granularity},
+                self._timeout_s,
+            )
+        except Exception as exc:
+            return FetchAttempt(
+                since_ms=since_ms,
+                until_ms=until_ms,
+                error=error_text(exc),
+            )
+        return FetchAttempt(
+            since_ms=since_ms,
+            until_ms=until_ms,
+            candles=self._rows_from_candles(payload, since_ms, until_ms),
+        )
+
+    @staticmethod
+    def _rows_from_candles(
+        payload: Any, since_ms: int, until_ms: int
+    ) -> list[list[float]]:
+        """The ``FUTURES_CANDLES_KEY`` dicts of ``payload`` as OHLCV rows, oldest first.
+
+        Each dict carries ``start`` in seconds and ``open``, ``high``, ``low``,
+        ``close`` and ``volume`` as strings; a dict missing one is dropped.
+        """
+        rows: list[list[float]] = []
+        held = (
+            (payload or {}).get(FUTURES_CANDLES_KEY)
+            if isinstance(payload, dict)
+            else None
+        )
+        for one in held or []:
+            if not isinstance(one, dict):
+                continue
+            try:
+                ts_ms = int(one["start"]) * 1000
+                values = [float(one[key]) for key in ("open", "high", "low", "close")]
+                volume = float(one.get("volume") or 0.0)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if ts_ms < since_ms or ts_ms > until_ms:
+                continue
+            rows.append([float(ts_ms), *values, volume])
+        rows.sort(key=lambda r: r[0])
+        return _last_per_stamp(rows)
+
+
 class YahooChartAdapter(ExchangeAdapter):
     """Non-crypto candles from the Yahoo Finance chart endpoint.
 
     ``fetch_chunk`` serves every ``YAHOO_INTERVALS`` key, clamps ``since_ms``
-    to ``YAHOO_REACH_DAYS``, and retries a transient failure ``retry_max``
-    times; ``ticker_suffix`` reaches a ticker the endpoint spells with one.
+    to ``YAHOO_REACH_DAYS``, and retries a failure in ``retry_codes`` or a
+    transport failure ``retry_max`` times; ``ticker_suffix`` reaches a ticker
+    the endpoint spells with one.
     """
 
     exchange_id = "yahoo"
@@ -214,10 +344,16 @@ class YahooChartAdapter(ExchangeAdapter):
     BASE_URL: str = "https://query1.finance.yahoo.com/v8/finance/chart"
     SOURCE: str = "yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED"
 
-    def __init__(self, timeout_s: float = 20.0, ticker_suffix: str = "") -> None:
+    def __init__(
+        self,
+        timeout_s: float = 20.0,
+        ticker_suffix: str = "",
+        retry_codes: frozenset[int] = RETRYABLE_HTTP_CODES,
+    ) -> None:
         super().__init__(connector=None)
         self._timeout_s = timeout_s
         self._ticker_suffix = ticker_suffix
+        self._retry_codes = frozenset(retry_codes)
 
     def ticker_for(self, asset: str) -> str:
         """Return the endpoint's ticker for ``asset``, with ``ticker_suffix``."""
@@ -276,7 +412,7 @@ class YahooChartAdapter(ExchangeAdapter):
             return FetchAttempt(
                 since_ms=since_ms,
                 until_ms=until_ms,
-                error=f"{type(exc).__name__}: {exc}",
+                error=error_text(exc),
             )
         return self._read_payload(payload, quote, start_ms, until_ms, str(timeframe))
 
@@ -299,11 +435,14 @@ class YahooChartAdapter(ExchangeAdapter):
                 f"— sleeping {delay:.1f}s" if will_retry else "— no attempts left",
             )
 
+        def _retryable(exc: BaseException) -> bool:
+            return is_transient_http(exc, self._retry_codes)
+
         return await retry_async(
             op,
             attempts=self.retry_max,
             delay_for=exponential_delay(self.retry_base_s),
-            is_retryable=is_transient_http,
+            is_retryable=_retryable,
             on_failure=_note,
         )
 
@@ -648,6 +787,9 @@ class RaTabletBuilder:
 
 __all__ = [
     "DAY_MS",
+    "FUTURES_CANDLE_CAP",
+    "FUTURES_GRANULARITIES",
+    "FUTURES_STEP_MS",
     "HOUR_MS",
     "RA_CHUNK_DAYS",
     "RA_STONE_TABLETS_DIR",
@@ -657,6 +799,7 @@ __all__ = [
     "YAHOO_INTERVALS",
     "YAHOO_REACH_DAYS",
     "YAHOO_STEP_MS",
+    "CoinbaseFuturesCandles",
     "CoinbasePublicCandles",
     "RaCoinbaseAdapter",
     "RaTabletBuilder",
