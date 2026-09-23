@@ -474,9 +474,15 @@
   var TIMER_TILE_STYLE = "timer_tile_style";
   var TIMER_PAIR_STYLE = "timer_pair_style";
   var TIMER_EMPTY_STYLE = "timer_empty_style";
+  var TIMER_CLOSE_PART_FIELD = "timer_close_part";
+  var TIMER_CLOSE_TEXT = "timer_close_text";
+  var TIMER_CLOSE_STYLE = "timer_close_style";
+  var TIMER_CLOSE_SIZE_PX = "timer_close_size_px";
+  var TIMER_CLOSE_TOOLTIP = "timer_close_tooltip";
   var TILE_PAIR = "pair";
   var TILE_TEXT = "text";
   var TILE_LINE_STYLE = "line_style";
+  var TILE_CLOSE_VALUE = "close_value";
   var CLASS_TOOLTIP = "class_tooltip";
   var CLASS_WIDTH_PX = "class_width_px";
   var BOX_TOOLTIP_FORMAT = "box_tooltip_format";
@@ -536,7 +542,12 @@
     TIMER_TILES_EMPTY_TEXT,
     TIMER_TILE_STYLE,
     TIMER_PAIR_STYLE,
-    TIMER_EMPTY_STYLE
+    TIMER_EMPTY_STYLE,
+    TIMER_CLOSE_PART_FIELD,
+    TIMER_CLOSE_TEXT,
+    TIMER_CLOSE_STYLE,
+    TIMER_CLOSE_SIZE_PX,
+    TIMER_CLOSE_TOOLTIP
   ];
 
   var BAG_FIELDS = {};
@@ -961,6 +972,8 @@
   var CREDENTIAL_TEXT_FIELD = "credential_text";
   var CREDENTIAL_HELD_FIELD = "credential_held";
   var SET_SETTING_FIELD = "set_setting";
+  var DROP_TIMER_FIELD = "drop_timer";
+  var TIMER_CLOSE_PART = "timer-close";
   var PUSH_PARTS = "push_parts";
   var POINTER = "pointer";
   var INHERITED = "inherit";
@@ -1951,8 +1964,33 @@
     return element(BUTTON_TAG, buttonProps, text(shown));
   }
 
-  // TimerTile is one watched call: its pair line over its countdown, its
-  // reading word, or its outcome, each in the style the surface named.
+  // TimerClose is the small red x at one tile's top right. The press carries
+  // the row's close value, which names the market and the timeframe.
+  function TimerClose(props) {
+    var skin = props.skin;
+    var row = props.row;
+    var style = styleOf(skin[TIMER_CLOSE_STYLE]);
+    style.width = length(skin[TIMER_CLOSE_SIZE_PX]);
+    style.height = length(skin[TIMER_CLOSE_SIZE_PX]);
+    style.lineHeight = ONE;
+    style.flex = FLEX_NONE;
+    style.cursor = POINTER;
+    var closeProps = {
+      type: BUTTON_TAG,
+      title: label(skin[TIMER_CLOSE_TOOLTIP]),
+      style: style,
+      onClick: function () {
+        act(text(skin[TIMER_CLOSE_PART_FIELD]), text(row[TILE_CLOSE_VALUE]));
+      }
+    };
+    closeProps[PART_ATTR] = text(skin[TIMER_CLOSE_PART_FIELD]);
+    closeProps[NAME_ATTR] = text(row[TILE_PAIR]);
+    closeProps[ARIA_LABEL] = label(skin[TIMER_CLOSE_TOOLTIP]);
+    return element(BUTTON_TAG, closeProps, text(skin[TIMER_CLOSE_TEXT]));
+  }
+
+  // TimerTile is one watched call: its pair line and its close x over its
+  // countdown, its reading word, or its outcome, in the surface's styles.
   function TimerTile(props) {
     var skin = props.skin;
     var row = props.row;
@@ -1966,8 +2004,15 @@
     var frameProps = { style: frameStyle };
     frameProps[PART_ATTR] = text(skin[TIMER_TILE_PART]);
     frameProps[NAME_ATTR] = text(row[TILE_PAIR]);
-    var pairProps = { style: asLabel(styleOf(skin[TIMER_PAIR_STYLE]), false) };
+    var pairStyle = asLabel(styleOf(skin[TIMER_PAIR_STYLE]), false);
+    pairStyle.flex = ONE;
+    pairStyle.minWidth = ZERO;
+    pairStyle.overflow = CLIPPED;
+    var pairProps = { style: pairStyle };
     pairProps[PART_ATTR] = text(skin[TIMER_PAIR_PART]);
+    var headProps = {
+      style: { display: FLEX, flexDirection: ROW_WAY, alignItems: CENTER }
+    };
     var lineProps = { style: asLabel(styleOf(row[TILE_LINE_STYLE]), false) };
     lineProps[PART_ATTR] = text(skin[TIMER_COUNTDOWN_PART]);
     lineProps[NAME_ATTR] = text(row[TILE_PAIR]);
@@ -1975,7 +2020,12 @@
     return element(
       DIV_TAG,
       frameProps,
-      element(DIV_TAG, pairProps, text(row[TILE_PAIR])),
+      element(
+        DIV_TAG,
+        headProps,
+        element(DIV_TAG, pairProps, text(row[TILE_PAIR])),
+        element(TimerClose, { skin: skin, row: row })
+      ),
       element(DIV_TAG, lineProps, text(row[TILE_TEXT]))
     );
   }
@@ -3619,6 +3669,8 @@
       asked[SECTOR_CLASS_FIELD] = value;
     } else if (key === TIMEFRAME_BOX_PART) {
       asked[TOGGLE_TIMEFRAME_FIELD] = value;
+    } else if (key === TIMER_CLOSE_PART) {
+      asked[DROP_TIMER_FIELD] = value;
     } else if (key === SCAN_NOW_PART) {
       asked[SCAN_NOW_FIELD] = true;
     } else if (key === SCAN_ALL_PART) {

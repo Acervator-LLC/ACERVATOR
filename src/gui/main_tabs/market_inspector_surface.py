@@ -234,6 +234,25 @@ TIMER_READING_STYLE = f"color: {ds.WARNING}; font-size: {ds.TYPE_CAPTION}px;"
 TIMER_CONFIRMED_STYLE = f"color: {ds.SUCCESS}; font-size: {ds.TYPE_CAPTION}px;"
 TIMER_FAILED_STYLE = f"color: {ds.ERROR}; font-size: {ds.TYPE_CAPTION}px;"
 TIMER_EMPTY_STYLE = f"color: {ds.TEXT_LOW}; font-size: {ds.TYPE_CAPTION}px;"
+
+#: The small red x at each tile's top right, and the pop-up its press opens.
+#: ``TIMER_CLOSE_VALUE_FORMAT`` is what the page's press carries back, so one
+#: press names one market and one timeframe.
+TIMER_CLOSE_PART = "timer-close"
+TIMER_CLOSE_TEXT = "×"
+TIMER_CLOSE_SIZE_PX = 14
+TIMER_CLOSE_TOOLTIP = "Delete this confirmation timer."
+TIMER_CLOSE_STYLE = (
+    f"color: {ds.ERROR}; background: transparent; border: none; padding: 0px; "
+    f"font-size: {ds.TYPE_CAPTION}px; font-weight: bold;"
+)
+TIMER_CLOSE_VALUE_FORMAT = "{symbol}|{timeframe}"
+TIMER_CLOSE_VALUE_SPLIT = "|"
+TIMER_DROP_TITLE = "Delete confirmation timer"
+TIMER_DROP_QUESTION_FORMAT = (
+    "Delete the confirmation timer for {pair}?\n\n"
+    "The call keeps its entry in Ready to Send."
+)
 #: The countdown line's style by the tile's state; ``reading`` overrides ``open``.
 TIMER_STATE_STYLES = {
     ata_spm_push.OUTCOME_OPEN: TIMER_COUNTDOWN_STYLE,
@@ -543,12 +562,14 @@ SETTING_ROW_WIDTH_PX = (
 SETTING_MAX_POSTS = "max_posts_per_hour"
 SETTING_MAX_INDICATORS = "max_supporting_indicators"
 SETTING_CONFIRMATION_SHARE = "confirmation_share_pct"
+SETTING_CONFIRMATION_CANDLES = "confirmation_candles"
 SETTING_MESSAGE_FORMAT = "message_format"
 SETTING_HITS_PER_SCAN = "hits_per_scan"
 SETTING_ROWS = (
     (SETTING_MAX_POSTS, "Max posts per hour"),
     (SETTING_MAX_INDICATORS, "Max supporting indicators"),
     (SETTING_CONFIRMATION_SHARE, "Confirmation share %"),
+    (SETTING_CONFIRMATION_CANDLES, "Confirmation read candles"),
     (SETTING_MESSAGE_FORMAT, "Standardised message text"),
     (SETTING_HITS_PER_SCAN, "Hits per scan"),
 )
@@ -556,6 +577,7 @@ COUNT_SETTINGS = (
     SETTING_MAX_POSTS,
     SETTING_MAX_INDICATORS,
     SETTING_CONFIRMATION_SHARE,
+    SETTING_CONFIRMATION_CANDLES,
     SETTING_HITS_PER_SCAN,
 )
 
@@ -3261,13 +3283,22 @@ def sector_candles(
 
 
 def timer_tile_rows(push: Any) -> list:
-    """One row per ``PushBoard.timer_tiles`` tile, each carrying its line style."""
+    """One row per ``PushBoard.timer_tiles`` tile, its line style and its close value."""
     rows = []
     for tile in push.timer_tiles():
         row = tile.row()
         row["line_style"] = timer_line_style(row)
+        row["close_value"] = TIMER_CLOSE_VALUE_FORMAT.format(
+            symbol=row["symbol"], timeframe=row["timeframe"]
+        )
         rows.append(row)
     return rows
+
+
+def timer_close_pair(value: Any) -> tuple:
+    """The market and timeframe one ``TIMER_CLOSE_VALUE_FORMAT`` press carries."""
+    symbol, _split, timeframe = str(value or "").partition(TIMER_CLOSE_VALUE_SPLIT)
+    return symbol, timeframe
 
 
 def ata_spm_skin(model: Any) -> dict:
@@ -3297,6 +3328,11 @@ def ata_spm_skin(model: Any) -> dict:
         "timer_tile_style": TIMER_TILE_STYLE,
         "timer_pair_style": TIMER_PAIR_STYLE,
         "timer_empty_style": TIMER_EMPTY_STYLE,
+        "timer_close_part": TIMER_CLOSE_PART,
+        "timer_close_text": TIMER_CLOSE_TEXT,
+        "timer_close_style": TIMER_CLOSE_STYLE,
+        "timer_close_size_px": TIMER_CLOSE_SIZE_PX,
+        "timer_close_tooltip": TIMER_CLOSE_TOOLTIP,
         "button_height_px": PUSH_BUTTON_HEIGHT_PX,
         "field_height_px": FIELD_HEIGHT_PX,
         "class_tooltip": CLASS_BOX_TOOLTIP,
