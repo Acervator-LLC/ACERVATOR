@@ -194,6 +194,50 @@ if _HAS_WEBENGINE:
             self._web.loadFinished.connect(self._on_load_finished)
             self._web.setHtml(tab_html(theme))
             layout.addWidget(self._web, 1)
+            self._bus_unsubs: list = []
+            self._subscribe_to_wires()
+
+        def _subscribe_to_wires(self) -> None:
+            """Take ``wire.created`` and ``wire.removed`` onto the wire board.
+
+            Without these the board stays empty, because the fleet's wires
+            reach every screen as those two messages and nothing else.
+            """
+            try:
+                from src.core.event_bus import get_event_bus
+
+                bus = get_event_bus()
+            except Exception:
+                logger.warning(
+                    "React Bot Swarm tab: no event bus, so no wire reaches "
+                    "the canvas"
+                )
+                return
+            for topic, action in (
+                (surface.WIRE_CREATED_TOPIC, "wire_created"),
+                (surface.WIRE_REMOVED_TOPIC, "wire_removed"),
+            ):
+                self._bus_unsubs.append(
+                    bus.subscribe(topic, self._wire_handler(action))
+                )
+
+        def _wire_handler(self, action: str):
+            """The handler that turns one bus message into ``action``."""
+
+            def take_event(event) -> None:
+                self.take({"action": action, "event": dict(event.data or {})})
+
+            return take_event
+
+        def closeEvent(self, event) -> None:
+            """Retract every bus subscription this tab made, then close."""
+            for off in list(self._bus_unsubs):
+                try:
+                    off()
+                except Exception as exc:
+                    logger.debug("bus detach skipped one handler: %s", exc)
+            self._bus_unsubs = []
+            super().closeEvent(event)
 
         # -- what the render path pushes through -------------------------
 

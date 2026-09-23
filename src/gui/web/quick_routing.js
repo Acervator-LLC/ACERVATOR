@@ -196,6 +196,8 @@
   var DISCONNECT_DETAIL = "disconnect_detail";
   var ALL_TITLE = "all_title";
   var ALL_BODY = "all_body";
+  var CONFIRM_YES = "yes";
+  var CONFIRM_NO = "no";
   var CONFIRMATION_FIELDS = [
     CREATE_VERB,
     DISCONNECT_VERB,
@@ -208,7 +210,9 @@
     CONNECT_DETAIL,
     DISCONNECT_DETAIL,
     ALL_TITLE,
-    ALL_BODY
+    ALL_BODY,
+    CONFIRM_YES,
+    CONFIRM_NO
   ];
 
   var WIRE_CREATED = "created";
@@ -243,6 +247,8 @@
   var ROUTES = "routes";
   var RATE_PARAM = "rate_param";
   var STEPS_PARAM = "steps_param";
+  var ANSWERS_PARAM = "answers_param";
+  var DISCONNECT_ALL_STEP = "disconnect_all_step";
   var CHECKED_PARAMS = "checked_params";
   var PANEL_CALLS = "panel_calls";
   var BRANCHES = "branches";
@@ -413,6 +419,11 @@
   var BUTTON_PART = "action-button";
   var NOTICES_PART = "notices";
   var NOTICE_PART = "notice";
+  var CONFIRM_PART = "confirm";
+  var CONFIRM_TITLE_PART = "confirm-title";
+  var CONFIRM_BODY_PART = "confirm-body";
+  var CONFIRM_YES_PART = "confirm-yes";
+  var CONFIRM_NO_PART = "confirm-no";
 
   var PART_ATTR = "data-part";
   var SLOT_ATTR = "data-slot";
@@ -429,7 +440,6 @@
   var ARIA_LABEL = "aria-label";
 
   var ZERO = Number(EMPTY);
-  var ONE = Number(true);
 
   var held = null;
   var routingFaults = [];
@@ -1024,6 +1034,43 @@
     return element(DIV_TAG, rowProps, drawn);
   }
 
+  // The question Disconnect All puts before it runs, drawn from the confirmation bag.
+  function Confirm(props) {
+    var model = props.model;
+    var words = objectField(model, CONFIRMATION);
+    var panelProps = {
+      className: MATRIX_CLASS,
+      style: { display: FLEX, flexDirection: COLUMN }
+    };
+    panelProps[PART_ATTR] = CONFIRM_PART;
+    var titleProps = {};
+    titleProps[PART_ATTR] = CONFIRM_TITLE_PART;
+    var bodyProps = {};
+    bodyProps[PART_ATTR] = CONFIRM_BODY_PART;
+    var yesProps = {
+      className: INPUT_CLASS,
+      type: BUTTON_TYPE,
+      onClick: props.onYes
+    };
+    yesProps[PART_ATTR] = CONFIRM_YES_PART;
+    yesProps[ARIA_LABEL] = label(words[ALL_TITLE]);
+    var noProps = {
+      className: INPUT_CLASS,
+      type: BUTTON_TYPE,
+      onClick: props.onNo
+    };
+    noProps[PART_ATTR] = CONFIRM_NO_PART;
+    noProps[ARIA_LABEL] = label(words[ALL_TITLE]);
+    return element(
+      DIV_TAG,
+      panelProps,
+      element(DIV_TAG, titleProps, text(words[ALL_TITLE])),
+      element(DIV_TAG, bodyProps, text(words[ALL_BODY])),
+      element(BUTTON_TAG, yesProps, text(words[CONFIRM_YES])),
+      element(BUTTON_TAG, noProps, text(words[CONFIRM_NO]))
+    );
+  }
+
   // Every notice the panel showed the operator, drawn as words and not as markup.
   function Notices(props) {
     var model = props.model;
@@ -1060,11 +1107,18 @@
     var state = hooks().useState(text(objectField(model, RATE)[RATE_TEXT]));
     var typed = state.shift();
     var setTyped = state.shift();
+    var pending = hooks().useState(null);
+    var asking = pending.shift();
+    var setAsking = pending.shift();
     var matrixProps = { className: MATRIX_CLASS, style: outerStyle(model) };
     matrixProps[PART_ATTR] = MATRIX_PART;
     matrixProps[SLOT_ATTR] = MATRIX_PART;
     matrixProps[COUNT_ATTR] = String(listField(model, SCOPE_IDS).length);
-    var columnsProps = { className: MATRIX_CLASS, style: columnsStyle(model) };
+    var columnsProps = {
+      key: COLUMNS_PART,
+      className: MATRIX_CLASS,
+      style: columnsStyle(model)
+    };
     columnsProps[PART_ATTR] = COLUMNS_PART;
     var zones = [];
     columnNames(model).forEach(function (name, at) {
@@ -1098,22 +1152,42 @@
         );
       }
     });
-    return element(
-      DIV_TAG,
-      matrixProps,
+    var drawn = [
       element(DIV_TAG, columnsProps, zones),
       element(ButtonRow, {
         key: BUTTON_ROW_PART,
         model: model,
         onPress: function (step, at) {
+          if (String(step) === text(names[DISCONNECT_ALL_STEP])) {
+            setAsking({ step: step, at: at });
+            return;
+          }
           dispatch(
             listField(wiring, ACTION_ORDER)[at],
             pressParams(model, step, typed)
           );
         }
-      }),
-      element(Notices, { key: NOTICES_PART, model: model })
-    );
+      })
+    ];
+    if (asking !== null && asking !== undefined) {
+      drawn.push(
+        element(Confirm, {
+          key: CONFIRM_PART,
+          model: model,
+          onYes: function () {
+            var params = pressParams(model, asking.step, typed);
+            params[text(names[ANSWERS_PARAM])] = [true];
+            setAsking(null);
+            dispatch(listField(wiring, ACTION_ORDER)[asking.at], params);
+          },
+          onNo: function () {
+            setAsking(null);
+          }
+        })
+      );
+    }
+    drawn.push(element(Notices, { key: NOTICES_PART, model: model }));
+    return element(DIV_TAG, matrixProps, drawn);
   }
 
   function checkFields(model) {

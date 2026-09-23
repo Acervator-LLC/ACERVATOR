@@ -112,6 +112,13 @@ CHECKED = 2
 UNCHECKED = 0
 EXPANDING = "Expanding"
 
+# Where the saved fleet load lives, and the fields LiveRoutingTab reads in it.
+STATE_DIR_NAME = ".acervator"
+STATE_FILE_NAME = "bot_state.json"
+BOTS_FIELD = "bots"
+CONFIG_FIELD = "config"
+SYMBOL_FIELD = "symbol"
+
 MASK_FIELD_ID = "bot_swarm.identifiers"
 SYMBOL_MASK = "****"
 SHORT_ID_MASK = "********"
@@ -158,6 +165,9 @@ DISCONNECT_WARNING = "This stops profit routing on every pair listed."
 CONNECT_DETAIL_FORMAT = "{sources} source(s) x {dests} destination(s) at {pct}% each."
 DISCONNECT_DETAIL_FORMAT = "{sources} source(s) x {dests} destination(s)."
 
+CONFIRM_YES_TEXT = "Yes"
+CONFIRM_NO_TEXT = "No"
+
 DISCONNECT_ALL_TITLE = "Disconnect All Wires?"
 DISCONNECT_ALL_BODY = (
     "Disconnect ALL Smart Wires across the entire swarm? This cannot be undone."
@@ -197,6 +207,9 @@ COLUMN_NAMES = (SOURCE_COLUMN, DEST_COLUMN)
 # The request fields view_model reads; CHECKED_PARAMS pairs with COLUMN_NAMES.
 RATE_PARAM = "rate"
 STEPS_PARAM = "steps"
+ANSWERS_PARAM = "answers"
+SYMBOLS_PARAM = "symbols"
+MASKED_PARAM = "masked"
 CHECKED_PARAMS = ("checked_sources", "checked_destinations")
 
 TAB_WIDGET_SYMBOL = "tab.widget_symbol"
@@ -442,6 +455,135 @@ class RoutingTabState:
             "default_answer": self.default_answer,
             "masked": self.masked,
             "widget_refusal": self.widget_refusal,
+            "asked": self.asked,
+            "saved": [
+                [[list(two) for two in one[0]], [list(two) for two in one[1]]]
+                for one in self.saved
+            ],
+            "emitted": [
+                [one[0], [list(two) for two in one[1]]] for one in self.emitted
+            ],
+            "cleared": [[list(two) for two in one] for one in self.cleared],
+            "shown": [list(one) for one in self.shown],
+            "calls": [list(one) for one in self.calls],
+        }
+
+
+class LiveRoutingTab:
+    """The visualizer tab as the matrix sees it, over the saved fleet.
+
+    ``clear_all_routes`` empties the stored wire list through
+    ``bot_visualizer_surface.clear_all_routes`` and writes the load back,
+    and ``emit`` puts each message on the running event bus. ``ask``
+    takes the operator's reply from ``answers`` and answers no once they
+    run out, so a bulk change nobody confirmed never goes through.
+    """
+
+    def __init__(self, answers: Any = None) -> None:
+        """Hold the operator's replies and the symbols the page reports."""
+        self.answers = list(answers or [])
+        self.widget_symbols: dict = {}
+        self.masked = False
+        self.calls: list = []
+        self.saved: list = []
+        self.emitted: list = []
+        self.cleared: list = []
+        self.shown: list = []
+        self.asked = 0
+
+    def load(self) -> dict:
+        """The saved fleet load, or an empty one when it cannot be read."""
+        from src.core.state_manager import StateManager
+
+        return StateManager().load_state() or {}
+
+    def save(self, state: dict) -> None:
+        """Write ``state`` back over the saved fleet file."""
+        from pathlib import Path
+
+        from src.core.io_utils import atomic_write_json
+
+        atomic_write_json(
+            Path.home() / STATE_DIR_NAME / STATE_FILE_NAME,
+            state,
+            indent=2,
+            default=str,
+        )
+
+    def record(self, *call: Any) -> None:
+        """Keep one question the matrix asked, in the order it was asked."""
+        self.calls.append(list(call))
+
+    def widget_symbol(self, bot_id: Any) -> Any:
+        """The symbol the page reported for one bot's card, or nothing."""
+        self.record(TAB_WIDGET_SYMBOL, bot_id)
+        return self.widget_symbols.get(bot_id)
+
+    def state_symbol(self, bot_id: Any) -> Any:
+        """The symbol the saved fleet load carries for one bot."""
+        self.record(TAB_STATE_SYMBOL, bot_id)
+        bots = self.load().get(BOTS_FIELD) or {}
+        config = (bots.get(str(bot_id)) or {}).get(CONFIG_FIELD) or {}
+        return config.get(SYMBOL_FIELD) or None
+
+    def apply_routes(self, add: Any, remove: Any) -> None:
+        """Write the wires to add and the wires to remove into the load."""
+        from . import bot_visualizer_surface
+
+        added = [list(one) for one in add]
+        dropped = [list(one) for one in remove]
+        self.record(TAB_APPLY_ROUTES, added, dropped)
+        state = self.load()
+        bot_visualizer_surface.apply_routes(state, added, dropped)
+        self.save(state)
+        self.saved.append([added, dropped])
+
+    def clear_all_routes(self) -> list:
+        """Empty the stored wire list and answer the pairs that were in it."""
+        from . import bot_visualizer_surface
+
+        self.record(TAB_CLEAR_ROUTES)
+        state = self.load()
+        gone = bot_visualizer_surface.clear_all_routes(state)
+        self.save(state)
+        self.cleared.append([list(one) for one in gone])
+        return gone
+
+    def emit(self, topic: Any, **named: Any) -> None:
+        """Put one message on the running event bus."""
+        from src.core.event_bus import get_event_bus
+
+        carried = [[key, named[key]] for key in sorted(named)]
+        self.record(TAB_EMIT, topic, carried)
+        get_event_bus().emit(str(topic), **named)
+        self.emitted.append([topic, carried])
+
+    def warn(self, title: Any, body: Any) -> None:
+        """Record why a click did nothing, for the page to draw."""
+        self.record(TAB_WARN, title, body)
+        self.shown.append([TAB_WARN, title, body])
+
+    def ask(self, title: Any, body: Any) -> bool:
+        """Take the next reply in ``answers``, or no once they run out."""
+        self.record(TAB_ASK, title, body)
+        self.asked += 1
+        self.shown.append([TAB_ASK, title, body])
+        if not self.answers:
+            return False
+        return bool(self.answers.pop(0))
+
+    def state(self) -> dict:
+        """Every value this tab holds, as one dict."""
+        return {
+            "widget_symbols": dict(self.widget_symbols),
+            "state_symbols": {},
+            "widget_symbol_order": list(self.widget_symbols),
+            "state_symbol_order": [],
+            "cleared_pairs": [],
+            "answers": list(self.answers),
+            "default_answer": False,
+            "masked": self.masked,
+            "widget_refusal": None,
             "asked": self.asked,
             "saved": [
                 [[list(two) for two in one[0]], [list(two) for two in one[1]]]
@@ -885,6 +1027,8 @@ def build_view_model(
             "disconnect_detail": DISCONNECT_DETAIL_FORMAT,
             "all_title": DISCONNECT_ALL_TITLE,
             "all_body": DISCONNECT_ALL_BODY,
+            "yes": CONFIRM_YES_TEXT,
+            "no": CONFIRM_NO_TEXT,
         },
         "bus": {
             "created": WIRE_CREATED,
@@ -909,6 +1053,10 @@ def build_view_model(
             "routes": list(ROUTE_NAMES),
             "rate_param": RATE_PARAM,
             "steps_param": STEPS_PARAM,
+            "answers_param": ANSWERS_PARAM,
+            "symbols_param": SYMBOLS_PARAM,
+            "masked_param": MASKED_PARAM,
+            "disconnect_all_step": DISCONNECT_ALL_STEP,
             "checked_params": list(CHECKED_PARAMS),
             "panel_calls": list(PANEL_CALL_NAMES),
             "branches": list(BRANCH_NAMES),
@@ -938,32 +1086,38 @@ MODEL: Optional[QuickRoutingModel] = None
 
 
 def active_model(fresh: Any = False) -> QuickRoutingModel:
-    """The panel the bridge keeps, built on the first request.
+    """The panel the bridge keeps, over ``LiveRoutingTab``, built on the first ask.
 
     Nothing is built while this module is imported, so importing it
     reaches no tab, no file and no clock.
     """
     global MODEL
     if MODEL is None or fresh:
-        MODEL = QuickRoutingModel(RoutingTabState())
+        MODEL = QuickRoutingModel(LiveRoutingTab())
     return MODEL
 
 
 def view_model(params: dict) -> dict:
     """Bridge handler for ``quick_routing.state``.
 
-    ``tab`` builds a fresh panel over the symbols and answers the
-    renderer sends, and ``reset`` clears the panel without changing
-    them. ``rate`` is what the operator typed in the Rate box,
-    ``checked_sources`` and ``checked_destinations`` are the ticks, and
-    ``steps`` runs the clicks before the values are read.
+    ``tab`` builds a fresh panel over ``RoutingTabState`` and without it
+    the panel runs over ``LiveRoutingTab``; ``answers`` carries the
+    operator's reply, ``reset`` clears the panel, ``rate`` is the Rate
+    box, ``checked_sources`` and ``checked_destinations`` are the ticks,
+    and ``steps`` runs the clicks before the values are read.
     """
     global MODEL
     if "tab" in params:
         MODEL = QuickRoutingModel(RoutingTabState(**(params.get("tab") or {})))
     elif params.get("reset", False):
-        MODEL = QuickRoutingModel(RoutingTabState())
+        MODEL = QuickRoutingModel(LiveRoutingTab())
     model = active_model()
+    if ANSWERS_PARAM in params:
+        model.tab.answers = list(params.get(ANSWERS_PARAM) or [])
+    if SYMBOLS_PARAM in params:
+        model.tab.widget_symbols = dict(params.get(SYMBOLS_PARAM) or {})
+    if MASKED_PARAM in params:
+        model.tab.masked = bool(params.get(MASKED_PARAM))
     if RATE_PARAM in params:
         model.rate_text = params[RATE_PARAM]
     if "source_scroll" in params:

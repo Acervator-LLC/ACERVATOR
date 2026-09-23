@@ -1451,6 +1451,12 @@ BOTS_KEY = "bots"
 DEST_KEY = "dest_bot_id"
 PCT_KEY = "pct"
 
+# The wires a stored fleet load holds, at its top level. StateManager.save_state
+# writes them from SmartWireManager.export_wires.
+WIRES_KEY = "smart_wires"
+SOURCE_KEY = "source_id"
+TARGET_KEY = "target_id"
+
 HYDRATION_SHORTFALL_WARNING = (
     "wire hydration: %d of %d route(s) in bot_state.json painted -- %d "
     "rejected by the bus, %d unusable; the wire overlay under-reports the "
@@ -1517,24 +1523,36 @@ def apply_routes(state: dict, add: list, remove: list) -> dict:
     return state
 
 
+def stored_wires(state: dict) -> list:
+    """Every wire under ``WIRES_KEY``, as source, target and share.
+
+    A record missing either end is skipped.
+    """
+    held = state.get(WIRES_KEY) if isinstance(state, dict) else None
+    found: list = []
+    for record in held or []:
+        if not isinstance(record, dict):
+            continue
+        source = str(record.get(SOURCE_KEY, "") or "")
+        target = str(record.get(TARGET_KEY, "") or "")
+        if not source or not target:
+            continue
+        try:
+            pct = float(record.get(PCT_KEY, 0) or 0)
+        except (TypeError, ValueError):
+            pct = 0.0
+        found.append([source, target, pct])
+    return found
+
+
 def clear_all_routes(state: dict) -> list:
-    """Empty every bot's routes and report the pairs that were there."""
-    bots = state.get(BOTS_KEY, {}) if isinstance(state, dict) else {}
-    removed: list = []
-    for bot_id, bot in bots.items():
-        if not isinstance(bot, dict):
-            continue
-        scrumming = bot.get(SCRUMMING_KEY, {})
-        if not isinstance(scrumming, dict):
-            continue
-        routes = scrumming.get(ROUTES_KEY, [])
-        if isinstance(routes, list):
-            for entry in routes:
-                if isinstance(entry, dict):
-                    dest = entry.get(DEST_KEY, "")
-                    if dest:
-                        removed.append([bot_id, str(dest)])
-        scrumming[ROUTES_KEY] = []
+    """Empty ``WIRES_KEY`` and report the pairs ``stored_wires`` found.
+
+    Each reported pair is one ``wire.removed`` the caller emits.
+    """
+    removed = [[source, target] for source, target, _pct in stored_wires(state)]
+    if isinstance(state, dict):
+        state[WIRES_KEY] = []
     return removed
 
 
@@ -1545,29 +1563,9 @@ def hydration_plan(state: dict) -> dict:
     painted, and `unusable` the rest. Nothing is emitted here; the
     caller sends the events and counts the ones the bus refused.
     """
-    bots = state.get(BOTS_KEY, {}) if isinstance(state, dict) else {}
-    events: list = []
-    seen = 0
-    for bot_id, bot in bots.items():
-        if not isinstance(bot, dict):
-            continue
-        scrumming = bot.get(SCRUMMING_KEY, {})
-        routes = scrumming.get(ROUTES_KEY, []) if isinstance(scrumming, dict) else []
-        if not isinstance(routes, list):
-            continue
-        for entry in routes:
-            seen += 1
-            if not isinstance(entry, dict):
-                continue
-            dest = str(entry.get(DEST_KEY, "") or "")
-            try:
-                pct = float(entry.get(PCT_KEY, 0) or 0)
-            except (TypeError, ValueError):
-                pct = 0.0
-            if not dest or pct <= MIN_WIRE_PCT:
-                continue
-            events.append([str(bot_id), dest, pct])
-    return {"events": events, "seen": seen, "unusable": seen - len(events)}
+    held = stored_wires(state)
+    events = [one for one in held if one[2] > MIN_WIRE_PCT]
+    return {"events": events, "seen": len(held), "unusable": len(held) - len(events)}
 
 
 def hydration_shortfall(painted: int, seen: int, rejected: int) -> Optional[list]:
