@@ -12,10 +12,11 @@ state in its tooltip. The Current Position Value cell is blank whenever
 no fresh exchange price exists, and its tooltip names what is missing;
 it never falls back to a last-known figure or to a ledger value.
 
-Every maskable column header carries a dot the operator clicks to hide
-or show that column. The Fire button changes its colour, its border and
-its tooltip with what the engine would do next, and with the risk
-controls the bot reports.
+Every column header wraps its own label inside its own column's width,
+and a maskable column carries one dot centred beneath that label, which
+the operator clicks to hide or show the column. The Fire button changes
+its colour, its border and its tooltip with what the engine would do
+next, and with the risk controls the bot reports.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``bot_status_table.state`` method, which is how the Electron
@@ -142,11 +143,35 @@ AMMO_COLUMN = 7
 
 REVEALED_GLYPH = "●"
 MASKED_GLYPH = "○"
-HEADER_TEXT_FORMAT = "{glyph} {label}"
 STATE_MASKED = "MASKED"
 STATE_REVEALED = "REVEALED"
 HEADER_STATE_TIP_FORMAT = (
-    "\n\nPrivacy: {state} (field {field_id}).\n" "Click this header to toggle."
+    "\n\nPrivacy: {state} (field {field_id}).\n" "Click the dot under this label."
+)
+HEADER_DOT_TIP_FORMAT = "{field_id}: {state}. Click to {action}."
+HEADER_DOT_ACTION_MASK = "mask"
+HEADER_DOT_ACTION_REVEAL = "reveal"
+
+HEADER_LABEL_WRAP = True
+HEADER_LABEL_FONT_PX = ds.TYPE_SMALL
+HEADER_LABEL_MIN_FONT_PX = ds.TYPE_CAPTION
+HEADER_DOT_FONT_PX = ds.TYPE_BODY
+HEADER_DOT_ROW_PX = ds.TYPE_BODY + ds.SPACE_XS
+HEADER_CELL_PAD_PX = ds.SPACE_XXS
+HEADER_CELL_GAP_PX = ds.SPACE_XXS
+# The skin carries no size, because a Qt style sheet's font-size outranks
+# the font a widget is given, and the label's size is chosen per column.
+HEADER_LABEL_SKIN = f"color: {ds.MAIN_TABLE_HEADER}; font-weight: bold;"
+HEADER_LABEL_SIZE_FORMAT = " font-size: {px}px;"
+HEADER_LABEL_STYLE = HEADER_LABEL_SKIN + HEADER_LABEL_SIZE_FORMAT.format(
+    px=HEADER_LABEL_FONT_PX
+)
+HEADER_DOT_STYLE = (
+    f"color: {ds.PRIMARY_BRIGHT}; "
+    "background: transparent; "
+    "border: none; "
+    "padding: 0; "
+    f"font-size: {HEADER_DOT_FONT_PX}px;"
 )
 
 ALIGNMENT = "AlignCenter"
@@ -378,7 +403,7 @@ TIMER_DELAYS_MS: tuple[int, ...] = ()
 BUS_TOPICS: tuple[str, ...] = ()
 
 ACTIONS = {
-    "header_clicked": "on_header_clicked",
+    "privacy_toggled": "on_privacy_toggled",
     "cell_clicked": "on_cell_clicked",
     "fire_clicked": "on_fire",
     "detail_clicked": "on_detail",
@@ -411,18 +436,13 @@ CellCall = list
 
 
 def header_glyph(masked: bool) -> str:
-    """The dot a maskable column header carries: filled shown, hollow hidden."""
+    """The dot under a maskable column's label: filled shown, hollow hidden."""
     return MASKED_GLYPH if masked else REVEALED_GLYPH
 
 
 def header_state(masked: bool) -> str:
     """The word the header tooltip names this column's privacy state with."""
     return STATE_MASKED if masked else STATE_REVEALED
-
-
-def header_text(label: str, masked: bool) -> str:
-    """One maskable column header, its dot in front of its label."""
-    return HEADER_TEXT_FORMAT.format(glyph=header_glyph(masked), label=label)
 
 
 def header_tooltip(column: int, field_id: str, masked: bool) -> str:
@@ -432,6 +452,41 @@ def header_tooltip(column: int, field_id: str, masked: bool) -> str:
         state=header_state(masked), field_id=field_id
     )
     return (tip + state_tip).strip()
+
+
+def header_dot_tooltip(field_id: str, masked: bool) -> str:
+    """The tooltip the dot under one column's label carries."""
+    return HEADER_DOT_TIP_FORMAT.format(
+        field_id=field_id,
+        state=header_state(masked),
+        action=HEADER_DOT_ACTION_REVEAL if masked else HEADER_DOT_ACTION_MASK,
+    )
+
+
+def header_view(column: int, label: str, masked: Optional[bool]) -> dict:
+    """One column header: its own label, and the dot that sits beneath it.
+
+    A ``masked`` of None names a column ``PRIVACY_FIELD_BY_COL`` does not
+    carry, which draws its label with no dot under it.
+    """
+    field_id = PRIVACY_FIELD_BY_COL.get(column, EMPTY_TEXT)
+    if not field_id or masked is None:
+        return {
+            "text": label,
+            "tooltip": COLUMN_TOOLTIPS.get(column, EMPTY_TEXT),
+            "field_id": EMPTY_TEXT,
+            "masked": False,
+            "dot_text": EMPTY_TEXT,
+            "dot_tooltip": EMPTY_TEXT,
+        }
+    return {
+        "text": label,
+        "tooltip": header_tooltip(column, field_id, masked),
+        "field_id": field_id,
+        "masked": bool(masked),
+        "dot_text": header_glyph(masked),
+        "dot_tooltip": header_dot_tooltip(field_id, masked),
+    }
 
 
 def target_text(target_val: float) -> str:
@@ -504,7 +559,7 @@ class BotStatusTableModel:
 
     ``update_bots`` rewrites every row from one list of bot statuses.
     ``refresh_header_dots`` rebuilds the ten column headers from the
-    privacy register. ``on_header_clicked``, ``on_cell_clicked``,
+    privacy register. ``on_privacy_toggled``, ``on_cell_clicked``,
     ``on_fire`` and ``on_detail`` are the four things the operator can
     press. Every step is appended to ``calls`` in the order the shipped
     table makes it.
@@ -532,7 +587,7 @@ class BotStatusTableModel:
     # ----- headers -----
 
     def refresh_header_dots(self) -> None:
-        """Rebuild the ten column headers from the privacy register."""
+        """Rebuild the ten column headers, each with its own dot's state."""
         try:
             registry = get_privacy_mask_registry()
         except Exception:
@@ -541,21 +596,12 @@ class BotStatusTableModel:
         found = []
         for column, label in enumerate(COLUMN_LABELS):
             field_id = PRIVACY_FIELD_BY_COL.get(column)
-            if not field_id:
-                found.append({"text": label, "tooltip": EMPTY_TEXT, "field_id": ""})
-                continue
-            masked = registry.is_masked(field_id)
-            found.append(
-                {
-                    "text": header_text(label, masked),
-                    "tooltip": header_tooltip(column, field_id, masked),
-                    "field_id": field_id,
-                }
-            )
+            masked = registry.is_masked(field_id) if field_id else None
+            found.append(header_view(column, label, masked))
         self.headers = found
         self.calls.append([HEADER_REFRESHED, len(found)])
 
-    def on_header_clicked(self, column: int) -> None:
+    def on_privacy_toggled(self, column: int) -> None:
         """Hide or show one column, then repaint the rows under the new state."""
         field_id = PRIVACY_FIELD_BY_COL.get(column)
         if not field_id:
@@ -993,7 +1039,9 @@ def pane_model() -> BotStatusTableModel:
 
 RESET_PARAM = "reset"
 STATUSES_PARAM = "statuses"
+# The Simulator and the Paper forks still send a header press under this name.
 HEADER_CLICK_PARAM = "header_click"
+PRIVACY_TOGGLE_PARAM = "privacy_toggle"
 CELL_CLICK_PARAM = "cell_click"
 # The three request names below differ from the row keys ``fire``, ``detail``
 # and ``exchange_id`` the payload already carries.
@@ -1125,8 +1173,19 @@ def build_view_model(model: BotStatusTableModel) -> dict:
             FIRE_PATH_NOT_SCRUMMING: FIRE_TIP_NOT_SCRUMMING,
         },
         "fire_inactive_tooltip_format": FIRE_TIP_INACTIVE_FORMAT,
-        "header_text_format": HEADER_TEXT_FORMAT,
         "header_state_tip_format": HEADER_STATE_TIP_FORMAT,
+        "header_dot_tip_format": HEADER_DOT_TIP_FORMAT,
+        "header_dot_action_mask": HEADER_DOT_ACTION_MASK,
+        "header_dot_action_reveal": HEADER_DOT_ACTION_REVEAL,
+        "header_label_wrap": HEADER_LABEL_WRAP,
+        "header_label_font_px": HEADER_LABEL_FONT_PX,
+        "header_label_min_font_px": HEADER_LABEL_MIN_FONT_PX,
+        "header_label_style": HEADER_LABEL_STYLE,
+        "header_dot_font_px": HEADER_DOT_FONT_PX,
+        "header_dot_row_px": HEADER_DOT_ROW_PX,
+        "header_dot_style": HEADER_DOT_STYLE,
+        "header_cell_pad_px": HEADER_CELL_PAD_PX,
+        "header_cell_gap_px": HEADER_CELL_GAP_PX,
         "mode_tip_format": MODE_TIP_FORMAT,
         "link_tip_format": LINK_TIP_FORMAT,
         "blockers_tip_format": BLOCKERS_TIP_FORMAT,
@@ -1169,6 +1228,7 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "statuses_param": STATUSES_PARAM,
         "exchange_id_param": EXCHANGE_ID_PARAM,
         "header_click_param": HEADER_CLICK_PARAM,
+        "privacy_toggle_param": PRIVACY_TOGGLE_PARAM,
         "cell_click_param": CELL_CLICK_PARAM,
         "fire_param": FIRE_PARAM,
         "detail_param": DETAIL_PARAM,
@@ -1186,8 +1246,8 @@ def drive(model: BotStatusTableModel, params: dict) -> dict:
     statuses = params.get(STATUSES_PARAM)
     if statuses is not None:
         model.update_bots(statuses)
-    if params.get(HEADER_CLICK_PARAM) is not None:
-        model.on_header_clicked(params[HEADER_CLICK_PARAM])
+    if params.get(PRIVACY_TOGGLE_PARAM) is not None:
+        model.on_privacy_toggled(params[PRIVACY_TOGGLE_PARAM])
     if params.get(CELL_CLICK_PARAM) is not None:
         row, column = params[CELL_CLICK_PARAM]
         model.on_cell_clicked(row, column)

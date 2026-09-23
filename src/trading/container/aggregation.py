@@ -10,7 +10,7 @@ import logging
 import math
 from typing import Any, Optional
 
-from ..smart_wire import mature_profit_usd
+from ..smart_wire import is_mature, mature_profit_usd
 from .config import DOLLAR_PEGGED_CURRENCIES, BotState
 
 logger = logging.getLogger("acervator.bot")
@@ -295,6 +295,7 @@ class FleetAggregationMixin:
         total_unrealized_exchange = 0.0
         total_fees_exchange = 0.0
         bots_with_fresh_exchange_data = 0
+        bots_with_complete_fill_history = 0
         wallet_cash_usd = 0.0  # max across bots (shared wallet)
         crypto_position_value_usd = 0.0  # sum of per-bot position values
         total_mature_exchange = 0.0
@@ -321,6 +322,8 @@ class FleetAggregationMixin:
             total_fees_exchange += _fe
             if _fresh_ts > 0:
                 bots_with_fresh_exchange_data += 1
+                if bool(getattr(bot.stats, "fill_history_complete", False)):
+                    bots_with_complete_fill_history += 1
             # Freshest non-zero cash balance wins.
             _bot_cash = float(getattr(bot.stats, "cash_balance_usd", 0.0) or 0.0)
             if _bot_cash > wallet_cash_usd:
@@ -349,9 +352,8 @@ class FleetAggregationMixin:
                 _basis = float(
                     getattr(bot.stats, "cost_basis_total_exchange", 0.0) or 0.0
                 )
-                _mature = mature_profit_usd(_basis, _bot_pos_val)
-                if _mature > 0:
-                    total_mature_exchange += _mature
+                if is_mature(_basis, _bot_pos_val):
+                    total_mature_exchange += mature_profit_usd(_basis, _bot_pos_val)
                     mature_positions += 1
             if bot.state == BotState.RUNNING:
                 running += 1
@@ -371,6 +373,12 @@ class FleetAggregationMixin:
             "total_mature_exchange": round(total_mature_exchange, 4),
             "mature_positions": mature_positions,
             "bots_with_fresh_exchange_data": bots_with_fresh_exchange_data,
+            # False while any answered bot's fill history was cut short, so the
+            # realised sum is never drawn from part of a history.
+            "realised_history_complete": (
+                bots_with_fresh_exchange_data > 0
+                and bots_with_complete_fill_history == bots_with_fresh_exchange_data
+            ),
             # `SpendableProfitsWidget` renders these two as spendable and locked.
             "wallet_cash_usd": round(wallet_cash_usd, 4),
             "crypto_position_value_usd": round(crypto_position_value_usd, 4),

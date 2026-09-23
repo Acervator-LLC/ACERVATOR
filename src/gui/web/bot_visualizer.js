@@ -333,7 +333,7 @@
 
   var LOCUST_CARDS = "locust_cards";
   var BOT_SYMBOLS = "bot_symbols";
-  var WIDGET_SYMBOLS_PARAM = "widget_symbols";
+  var SYMBOLS_PARAM = "symbols";
   var MASKED_PARAM = "masked";
   var ANY_MASKED = "any_masked";
   var WIRE_CANVAS_API = "acervatorWireCanvas";
@@ -342,7 +342,6 @@
   var BOXES_PARAM = "boxes";
   var QUICK_ROUTING_API = "acervatorQuickRouting";
   var QUICK_ROUTING_METHOD = "quick_routing.state";
-  var TAB_PARAM = "tab";
   var STEPS_PARAM = "steps";
   var REBUILD_STEP = "rebuild";
   var WIRE_OVERLAY_PART = "wire-overlay";
@@ -894,9 +893,8 @@
     hooks().useEffect(
       function () {
         var asked = {};
-        asked[TAB_PARAM] = {};
-        asked[TAB_PARAM][WIDGET_SYMBOLS_PARAM] = objectField(model, BOT_SYMBOLS);
-        asked[TAB_PARAM][MASKED_PARAM] = model[ANY_MASKED] === true;
+        asked[SYMBOLS_PARAM] = objectField(model, BOT_SYMBOLS);
+        asked[MASKED_PARAM] = model[ANY_MASKED] === true;
         asked[STEPS_PARAM] = [[REBUILD_STEP, ids]];
         var live = true;
         askSurface(QUICK_ROUTING_METHOD, asked).then(function (answer) {

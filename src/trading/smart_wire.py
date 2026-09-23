@@ -22,25 +22,52 @@ MATURE_GROWTH_PCT: float = 200.0
 """A position is mature once its value exceeds its cost basis by this percent."""
 
 
-def mature_profit_usd(cost_basis_usd: float, current_value_usd: float) -> float:
-    """Return the profit on one position whose growth passes MATURE_GROWTH_PCT.
+def mature_threshold_usd(cost_basis_usd: float) -> float:
+    """Return the value one position must reach to be mature.
 
-    A position under the threshold contributes 0.0, so the total selects
-    which positions qualify instead of taking a share of every profit.
-    BotLedger.mature_profit_total reads it against a bot's seed capital and
-    get_aggregate_stats reads it against the exchange cost basis of the
-    holdings.
+    The threshold is the cost basis plus MATURE_GROWTH_PCT per cent of it, so
+    a 200.0 threshold puts it at three times the cost. An unusable cost basis
+    answers 0.0, which is_mature reads as no position.
     """
     try:
         basis = float(cost_basis_usd or 0.0)
-        value = float(current_value_usd or 0.0)
     except (TypeError, ValueError):
         return 0.0
-    if not math.isfinite(basis) or not math.isfinite(value) or basis <= 0.0:
+    if not math.isfinite(basis) or basis <= 0.0:
         return 0.0
-    if value < basis * (1.0 + MATURE_GROWTH_PCT / 100.0):
+    return basis * (1.0 + MATURE_GROWTH_PCT / 100.0)
+
+
+def is_mature(cost_basis_usd: float, current_value_usd: float) -> bool:
+    """Return True when the position's value reaches mature_threshold_usd.
+
+    get_aggregate_stats counts the mature positions with it, so a position
+    sitting exactly on the threshold is counted even though mature_profit_usd
+    answers 0.0 for it.
+    """
+    threshold = mature_threshold_usd(cost_basis_usd)
+    if threshold <= 0.0:
+        return False
+    try:
+        value = float(current_value_usd or 0.0)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(value) and value >= threshold
+
+
+def mature_profit_usd(cost_basis_usd: float, current_value_usd: float) -> float:
+    """Return the part of one position's value that sits over mature_threshold_usd.
+
+    A position under the threshold contributes 0.0, and a mature one
+    contributes the amount over the threshold rather than its whole profit:
+    a 100.00 cost basis worth 350.00 contributes 50.00. BotLedger
+    .mature_profit_total reads it against a bot's seed capital and
+    get_aggregate_stats reads it against the exchange cost basis of the
+    holdings.
+    """
+    if not is_mature(cost_basis_usd, current_value_usd):
         return 0.0
-    return value - basis
+    return float(current_value_usd) - mature_threshold_usd(cost_basis_usd)
 
 
 def compute_safe_outflow_pct(
@@ -134,11 +161,12 @@ class BotLedger:
 
     @property
     def mature_profit_total(self) -> float:
-        """Return total_profit once this bot's capital passes MATURE_GROWTH_PCT.
+        """Return the capital this bot holds over its maturity threshold.
 
         starting_balance is the cost basis and starting_balance plus
         total_profit is the current value, so the result is 0.0 until the
-        capital has grown past the threshold.
+        capital has grown past MATURE_GROWTH_PCT and the amount over the
+        threshold after that.
         """
         return mature_profit_usd(
             self.starting_balance, self.starting_balance + self.total_profit
@@ -150,7 +178,8 @@ class BotLedger:
 
         can_fund_new_bot compares the result against
         primary_provenance_starting_balance; it goes negative when a
-        spawn is followed by a loss.
+        spawn is followed by a loss. The Bot Swarm settings tab of each build
+        draws it, and no caller in the application reaches the spawn gate.
         """
         return self.mature_profit_total - self.mature_profit_allocated
 
