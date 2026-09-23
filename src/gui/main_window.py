@@ -1390,6 +1390,27 @@ if _HAS_QT:
 
                 traceback.print_exc()
 
+        def _answer_votes(self, asked) -> dict:
+            """Apply one voting-panel ask from the React page and answer it.
+
+            ``TradingTabReact.set_votes_handler`` binds this, so an arrow, the
+            dropdown and the privacy dot on the page all move the one Qt panel
+            the window holds rather than a second model.
+            """
+            panel = getattr(self, "_indicator_panel", None)
+            if panel is None:
+                return {}
+            request = asked if isinstance(asked, dict) else {}
+            action = str(request.get("action") or "")
+            if action == "select_bot":
+                panel.select_bot(request.get("bot_id", ""))
+            elif action == "set_masked":
+                panel.set_masked(bool(request.get("masked", False)))
+            from .react_trading_tab import votes_payload
+
+            statuses = self._bot_manager.list_bots() if self._bot_manager else []
+            return votes_payload(statuses, panel.panel_reading())
+
         def _publish_votes(self, bot_statuses=None) -> bool:
             """Draw the same voting reading on the React Live tab.
 

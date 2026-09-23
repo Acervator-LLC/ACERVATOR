@@ -5566,3 +5566,120 @@ heading colour       0,255,204  0,255,204
 The bot selector is 34 pixels tall in the window. The whole header row is 23
 pixels on the page. The panel publishes ten heights and none of them names the
 header row, so each engine sizes that control from its own font.
+
+## 2026-09-23 - #154 - the voting panel's header row
+
+The row at the top of the Indicator Voting Panel now holds, from the left: the
+panel's title, a blue left arrow, the bot dropdown, a blue right arrow and the
+privacy control. The word `Bot:` is gone. A stretch sits on each side of the
+four controls, so the dropdown sits between the two arrows and the group sits
+in the middle of the space the title leaves.
+
+### The arrows
+
+Each arrow moves the dropdown one place along the list it already holds. The
+list does not wrap: a press at the first bot leaves the panel on the first bot,
+and a press at the last leaves it on the last. An arrow with nothing left to
+step to is greyed.
+
+`src/gui/indicator_panel.py` — `IndicatorVotingPanel._step_bot`
+
+```python
+def _step_bot(self, by: int) -> int:
+    """Move the dropdown ``by`` places and answer the index it lands on.
+
+    The list does not wrap: a press at either end leaves the
+    selection where it is.
+    """
+```
+
+The two glyphs, their size and their family are the Charts tab's own, imported
+rather than copied, so the two control rows cannot drift apart.
+
+`src/gui/main_tabs/indicator_panel_surface.py` — the arrows take the Charts
+tab's numbers
+
+```python
+from .native_chart_surface import (
+    ARROW_GLYPH_FAMILY,
+    ARROW_GLYPH_PX,
+    CONTROL_HEIGHT_PX,
+)
+```
+
+Read off both running builds, each arrow is 34 by 26 pixels and draws U+25C0 or
+U+25B6 in Segoe UI Symbol at 16 pixels.
+
+### The privacy control
+
+The panel draws the universal control, `PrivacyDot` in
+`src/gui/widgets/privacy_dot.py`, in place of the copy it used to carry. The
+glyph is a filled circle when the dropdown is readable and an empty circle when
+it is masked. The colour is the design system's `PRIMARY_BRIGHT`, and the
+control sizes to its own glyph rather than to a fixed square.
+
+`src/gui/design_system.py` — the token the dot paints in
+
+```python
+PRIMARY_BRIGHT = "#00ffee"  # Brighter cyan accent: privacy dot, Sim tab
+```
+
+Read off the running window, the mark paints `#00ffee` at 17 by 19 pixels. On
+the page it paints `rgb(0, 255, 238)` at 16 by 17. The Charts tab's own dot
+takes its colour from the same token.
+
+### The page answers a press
+
+The React page used to draw the dropdown and the dot with no handler behind
+either, and its bridge served every ask from the payload the page was built
+with. An ask that names an action now goes to the window and moves the one Qt
+panel the window holds, so the page and the window never show two selections.
+
+`src/gui/main_tabs/trading_tab.py` — `TradingTabMixin._wire_live_feeds` binds it
+
+```python
+bind = getattr(getattr(self, "_trading_tab", None), "set_votes_handler", None)
+answer = getattr(self, "_answer_votes", None)
+if callable(bind) and callable(answer):
+    bind(answer)
+```
+
+### What the two rows measure
+
+```
+                       window        page
+row order              title, ◀, dropdown, ▶, dot
+row height             30            30
+arrow size             34 x 26       34 x 26
+arrow glyph family     Segoe UI Symbol 16 px on both
+dropdown entries       38            38
+privacy mark           17 x 19       16 x 17
+privacy colour         #00ffee       rgb(0, 255, 238)
+Bot: label             absent        absent
+```
+
+Before this entry the same two rows measured a `Bot:` label, no arrow, and a
+privacy mark of 12 by 12 painting `#3344ff`, and the page's row measured 23
+pixels tall.
+
+### Four sentences this entry overtakes
+
+"The Bot selector at the top names the bot whose votes the panel draws. The
+list refills every tick. The badge beside it counts the bullish, bearish and
+neutral voters." — the list still refills every tick, and it is still the
+control that names the bot. No `Bot:` word stands before it and no badge after
+it; an arrow stands on each side and the privacy control follows.
+
+"TF Lock chooses a timeframe below which an opposing trade is refused. The list
+opens on 'None (no lock)'." — no such control is on the panel. The line at the
+foot that names an active timeframe lock is a readout and stays.
+
+"The bot selector and its privacy dot moved there." — they are still in the
+upper part of the row, with an arrow on each side of the dropdown, and the
+privacy dot is now the universal control rather than the panel's own copy.
+
+"The bot selector is 34 pixels tall in the window. The whole header row is 23
+pixels on the page." — the arrows carry a control height the surface publishes,
+so each arrow measures 26 pixels tall in the window and 26 on the page. The row
+that holds them measures 30 pixels in the window and 30 on the page. It measured
+23 on the page before the arrows joined it.

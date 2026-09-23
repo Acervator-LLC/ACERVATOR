@@ -47,6 +47,11 @@ ACCESSIBLE_NAME = "React Live Tab"
 #: The element ``trading_tab.js`` draws the tab into.
 PANEL_ROOT_ID = "panel-root"
 
+#: The console line an ask carrying an action goes out on, and the key
+#: that marks such an ask. A read is served from the page's own payload.
+ASK_PREFIX = "acervator-ask:"
+ACTION_PARAM = "action"
+
 #: The renderer module the page draws.
 PANEL_MODULE = "trading_tab.js"
 
@@ -188,6 +193,9 @@ _HOST_SOURCE = """(function (global, doc) {
   var ASSET = %(asset)s;
   var ROW = %(row)s;
   var SPACES = %(spaces)s;
+  var ACTION = %(action)s;
+  var waiting = {};
+  var nextAsk = 1;
 
   global.ACERVATOR_MODULES = %(roster)s;
 
@@ -276,8 +284,10 @@ _HOST_SOURCE = """(function (global, doc) {
     return tab && typeof tab.redraw === "function" ? tab.redraw() : 0;
   }
 
-  // A privacy toggle is the one press this page carries back to Python,
-  // because the register that answers it lives there. Every other call is
+  // Two presses leave this page. A privacy toggle goes out on PREFIX,
+  // because the register that answers it lives in Python. An ask naming an
+  // ACTION changes what the window holds, so it goes out on its own line
+  // and is answered by its own id. Every other call is a read and is
   // answered from the payload this page is already holding.
   global.acervator = {
     call: function (method, params) {
@@ -286,8 +296,32 @@ _HOST_SOURCE = """(function (global, doc) {
           PREFIX + JSON.stringify({ method: method, params: params })
         );
       }
+      if (params && owns(params, ACTION)) {
+        var id = nextAsk;
+        nextAsk += 1;
+        global.console.log(
+          "%(ask)s" + JSON.stringify({ id: id, method: method, params: params })
+        );
+        return new Promise(function (resolve, reject) {
+          waiting[id] = { resolve: resolve, reject: reject };
+        });
+      }
       return Promise.resolve(answer(method, params));
     }
+  };
+
+  global.acervatorTradingAnswer = function (id, model, refusal) {
+    var held = waiting[id];
+    delete waiting[id];
+    if (!held) {
+      return false;
+    }
+    if (refusal) {
+      held.reject(new Error(refusal));
+      return true;
+    }
+    held.resolve(model);
+    return true;
   };
 
   // One fresh payload per bridge method. LOG appends its batch, TAB
@@ -429,6 +463,8 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
     """The page's own glue: the models, the venues, and the panel to open."""
     return _HOST_SOURCE % {
         "models": json.dumps(built, ensure_ascii=True),
+        "ask": ASK_PREFIX,
+        "action": json.dumps(ACTION_PARAM, ensure_ascii=True),
         "ivp": json.dumps(indicator_panel_surface.METHOD, ensure_ascii=True),
         "log": json.dumps(status_log_surface.METHOD, ensure_ascii=True),
         "tab": json.dumps(trading_tab_surface.METHOD, ensure_ascii=True),
@@ -559,6 +595,28 @@ def _tag(source: str) -> str:
     return "<script>" + source + "</script>"
 
 
+def answer_script(ask_id: Any, model: Any) -> str:
+    """The statement that settles the ask ``ask_id`` with ``model``."""
+    return (
+        "window.acervatorTradingAnswer("
+        + json.dumps(ask_id, ensure_ascii=True)
+        + ","
+        + json.dumps(model, ensure_ascii=True, default=str)
+        + ",null);"
+    )
+
+
+def refusal_script(ask_id: Any, reason: str) -> str:
+    """The statement that refuses the ask ``ask_id`` with ``reason``."""
+    return (
+        "window.acervatorTradingAnswer("
+        + json.dumps(ask_id, ensure_ascii=True)
+        + ",null,"
+        + json.dumps(str(reason), ensure_ascii=True)
+        + ");"
+    )
+
+
 def page_body() -> str:
     """The page's body: the root, the panel host, React, then every module.
 
@@ -593,7 +651,7 @@ def panel_html(built: dict, venues: Optional[dict] = None, theme: object = None)
 if _HAS_WEBENGINE:
 
     class LivePage(QWebEnginePage):
-        """Routes the page's ``acervator-live:`` console lines to its owner."""
+        """Routes the page's ``acervator-live:`` and ``acervator-ask:`` lines."""
 
         def __init__(self, owner) -> None:
             """Hold ``owner`` as the widget that answers the page."""
@@ -601,10 +659,12 @@ if _HAS_WEBENGINE:
             self._owner = owner
 
         def javaScriptConsoleMessage(self, level, message, line, source) -> None:
-            """Hand a privacy toggle to the owner and drop every other line."""
+            """Hand a privacy toggle or a bridge ask on, and drop every other line."""
             del level, line, source
             if message.startswith(ACTION_PREFIX):
                 self._owner.run_action(message[len(ACTION_PREFIX) :])
+            elif message.startswith(ASK_PREFIX):
+                self._owner.run_ask(message[len(ASK_PREFIX) :])
 
     class TradingTabReact(QWidget):
         """The Live tab, drawn by ``trading_tab.js`` and its child modules.
@@ -631,6 +691,7 @@ if _HAS_WEBENGINE:
             self._venue_models: dict = {}
             self._tab_request: dict = {}
             self._waiting: dict = {}
+            self._votes_handler: Any = None
             self._page_ready = False
             self._web: Any = None
             self._layout = QVBoxLayout(self)
@@ -668,6 +729,57 @@ if _HAS_WEBENGINE:
                 self._waiting.update(held)
                 return True
             self._web.page().runJavaScript(models_script(held))
+            return True
+
+        def set_votes_handler(self, handler: Any) -> None:
+            """Take the callable that answers a voting-panel ask from the page.
+
+            ``MainWindow._answer_votes`` is what the running window binds
+            here; it applies the ask to the Qt panel and answers the payload
+            the page then draws.
+            """
+            self._votes_handler = handler
+
+        def run_ask(self, payload: str) -> None:
+            """Answer one bridge ask the page reported and hand it back by id."""
+            try:
+                ask = json.loads(payload)
+            except ValueError:
+                logger.warning("The React Live page sent an ask that is not JSON")
+                return
+            ask_id = ask.get("id")
+            try:
+                answered = self._answer_ask(
+                    str(ask.get("method") or ""), ask.get("params")
+                )
+            except Exception as exc:
+                logger.warning("The React Live page ask was refused: %s", exc)
+                self._run(refusal_script(ask_id, f"{type(exc).__name__}: {exc}"))
+                return
+            self._run(answer_script(ask_id, answered))
+
+        def _answer_ask(self, method: str, params: Any) -> Any:
+            """Apply one ask that names an action and answer the fresh payload.
+
+            Only the voting panel's method carries an action today; any
+            other method answers the payload the page was built with.
+            """
+            asked = params if isinstance(params, dict) else {}
+            if method != indicator_panel_surface.METHOD:
+                return self._models.get(method)
+            if not callable(self._votes_handler):
+                return self._votes
+            payload = self._votes_handler(asked)
+            if isinstance(payload, dict) and payload:
+                self._votes = dict(payload)
+                self._models[method] = self._votes
+            return self._votes
+
+        def _run(self, script: str) -> bool:
+            """Run one statement on the page, or answer False before it loads."""
+            if not (self._page_ready and self._web is not None):
+                return False
+            self._web.page().runJavaScript(script)
             return True
 
         def show_votes(self, payload: Any) -> bool:

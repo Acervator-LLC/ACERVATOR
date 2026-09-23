@@ -33,6 +33,7 @@ from pathlib import Path
 
 from ..core.io_utils import atomic_write_json
 from .main_tabs import indicator_panel_surface as ivp
+from .widgets.privacy_dot import PrivacyDot
 
 # ivp.bot_selector is the only IVP field in the privacy mask registry;
 # TA columns carry no privacy wiring.
@@ -472,60 +473,6 @@ except ImportError:
 
 if _HAS_QT:
 
-    class _IVPPrivacyDot(QPushButton):
-        """A dot toggling one ``field_id`` in the privacy-mask registry.
-
-        ``refresh`` shows the state as the button's background colour;
-        ``widgets.privacy_dot.PrivacyDot`` shows it as a glyph instead.
-        """
-
-        _SIZE_PX = 12
-
-        def __init__(self, field_id: str, on_toggle=None, parent=None):
-            super().__init__(parent)
-            self._field_id = field_id
-            self._on_toggle = on_toggle
-            self.setFixedSize(self._SIZE_PX, self._SIZE_PX)
-            self.setFocusPolicy(Qt.NoFocus)
-            self.setCursor(Qt.PointingHandCursor)
-            self.setText("")
-            self.clicked.connect(self._on_click)
-            self.refresh()
-
-        def _on_click(self):
-            try:
-                reg = get_privacy_mask_registry()
-                reg.set_masked(self._field_id, not reg.is_masked(self._field_id))
-            except Exception as _reg_exc:  # noqa: BLE001 - mask toggle best-effort
-                logger.debug("privacy mask toggle failed: %s", _reg_exc)
-            self.refresh()
-            if callable(self._on_toggle):
-                try:
-                    self._on_toggle()
-                except Exception as _cb_exc:  # noqa: BLE001 - callback best-effort
-                    logger.debug("privacy toggle callback raised: %s", _cb_exc)
-
-        def refresh(self) -> None:
-            try:
-                masked = get_privacy_mask_registry().is_masked(self._field_id)
-            except Exception:
-                masked = False
-            color = "#1a2a4a" if masked else "#3344ff"
-            state = "MASKED" if masked else "REVEALED"
-            self.setStyleSheet(
-                "_IVPPrivacyDot { "
-                f"  background-color: {color}; "
-                "  border: 1px solid rgba(0,0,0,120); "
-                f"  border-radius: {self._SIZE_PX // 2}px; "
-                "  padding: 0px; "
-                "} "
-                "_IVPPrivacyDot:hover { border: 1px solid #ffffff; }"
-            )
-            self.setToolTip(
-                f"{self._field_id}: {state}. "
-                f"Click to {'reveal' if masked else 'mask'}."
-            )
-
     # (key, label, group) for the panel's 12 indicators.
     # groups: T=Trend  M=Momentum  S=Structure
     INDICATOR_COLS = [
@@ -896,9 +843,9 @@ if _HAS_QT:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(2)
 
-            # --- Header with bot selector ---
+            # --- Header: an arrow, the bot dropdown, an arrow, the dot ---
             header = QHBoxLayout()
-            header.setContentsMargins(4, 2, 4, 2)
+            header.setContentsMargins(*ivp.HEADER["margins_px"])
             self._title = QLabel("Indicator Voting Panel")
             self._title.setProperty("heading", True)
             header.addWidget(self._title)
@@ -907,17 +854,30 @@ if _HAS_QT:
 
             header.addStretch()
 
-            header.addWidget(QLabel("Bot:"))
+            self._prev_bot_btn = self._build_bot_arrow(
+                ivp.PREV_BOT_TEXT,
+                ivp.PREV_BOT_TOOLTIP,
+                ivp.STEP_BACK,
+            )
+            header.addWidget(self._prev_bot_btn)
             self._bot_selector = QComboBox()
-            self._bot_selector.setMinimumWidth(180)
-            self._bot_selector.addItem("(select a bot)", "")
+            self._bot_selector.setMinimumWidth(ivp.HEADER["selector_minimum_width_px"])
+            self._bot_selector.addItem(ivp.SELECTOR_PLACEHOLDER_TEXT, "")
             self._bot_selector.currentIndexChanged.connect(self._on_bot_selected)
             header.addWidget(self._bot_selector)
-            self._privacy_dot = _IVPPrivacyDot(
-                "ivp.bot_selector", on_toggle=self._apply_privacy_mask
+            self._next_bot_btn = self._build_bot_arrow(
+                ivp.NEXT_BOT_TEXT,
+                ivp.NEXT_BOT_TOOLTIP,
+                ivp.STEP_ON,
+            )
+            header.addWidget(self._next_bot_btn)
+            self._privacy_dot = PrivacyDot(
+                ivp.PRIVACY_FIELD_ID, on_toggle=self._apply_privacy_mask
             )
             header.addWidget(self._privacy_dot)
+            header.addStretch()
             layout.addLayout(header)
+            self._refresh_bot_arrows()
 
             # Amber staleness banner, shown only for a stored reading.
             self._staleness_label = QLabel("")
@@ -952,9 +912,11 @@ if _HAS_QT:
             )
             self._rate_strip.setAccessibleName("Currency Rate Strip")
             layout.addWidget(self._rate_strip)
-            # Sim mode: hide the bot selector (a single sim bot)
+            # Sim mode: hide the bot selector and its arrows (a single sim bot)
             if getattr(self, "_sim_mode", False):
                 self._bot_selector.hide()
+                self._prev_bot_btn.hide()
+                self._next_bot_btn.hide()
                 (
                     self._bot_selector.parent().hide()
                     if self._bot_selector.parent()
@@ -1314,7 +1276,7 @@ if _HAS_QT:
             """
             try:
                 reg = get_privacy_mask_registry()
-                masked = reg.is_masked("ivp.bot_selector")
+                masked = reg.is_masked(ivp.PRIVACY_FIELD_ID)
             except Exception:
                 return
             # Caches each combo entry's raw display text in a Qt role
@@ -1337,6 +1299,44 @@ if _HAS_QT:
                 logger.debug("privacy dot refresh raised: %s", _dot_exc)
             self._apply_privacy_mask()
 
+        def _build_bot_arrow(self, glyph: str, tip: str, by: int):
+            """One arrow button, stepping the dropdown ``by`` places on a press.
+
+            The glyph, the size and the skin come from the surface, which
+            takes them from the Charts tab's own arrows.
+            """
+            button = QPushButton(glyph, self)
+            button.setToolTip(tip)
+            button.setFixedSize(ivp.ARROW_WIDTH_PX, ivp.ARROW_HEIGHT_PX)
+            button.setStyleSheet(ivp.ARROW_STYLE_SHEET)
+            button.setFocusPolicy(Qt.NoFocus)
+            button.setCursor(Qt.PointingHandCursor)
+            button.clicked.connect(lambda *_, step=by: self._step_bot(step))
+            return button
+
+        def _step_bot(self, by: int) -> int:
+            """Move the dropdown ``by`` places and answer the index it lands on.
+
+            The list does not wrap: a press at either end leaves the
+            selection where it is.
+            """
+            total = self._bot_selector.count()
+            if total == 0:
+                return -1
+            wanted = self._bot_selector.currentIndex() + int(by)
+            if wanted < 0 or wanted >= total:
+                return self._bot_selector.currentIndex()
+            self._bot_selector.setCurrentIndex(wanted)
+            self._refresh_bot_arrows()
+            return wanted
+
+        def _refresh_bot_arrows(self) -> None:
+            """Grey each arrow that has no bot left to step to."""
+            at = self._bot_selector.currentIndex()
+            total = self._bot_selector.count()
+            self._prev_bot_btn.setEnabled(at > 0)
+            self._next_bot_btn.setEnabled(0 <= at < total - 1)
+
         def _on_bot_selected(self):
             self._selected_bot_id = self._bot_selector.currentData() or ""
             from ..core.event_bus import get_event_bus
@@ -1347,6 +1347,7 @@ if _HAS_QT:
                 self._selected_bot_id[:12] if self._selected_bot_id else "(none)",
                 bool(self._data),
             )
+            self._refresh_bot_arrows()
             # Generate demo TA immediately when bot selected and no data exists
             if self._selected_bot_id and not self._data:
                 self._generate_demo_ta()
@@ -1354,6 +1355,29 @@ if _HAS_QT:
         @property
         def selected_bot_id(self) -> str:
             return self._selected_bot_id
+
+        def select_bot(self, bot_id: str) -> str:
+            """Draw ``bot_id`` and answer the bot the panel then holds.
+
+            A bot the dropdown does not carry leaves the selection where it
+            is, so a stale ask from the page cannot blank the panel.
+            """
+            at = self._bot_selector.findData(str(bot_id or ""))
+            if at >= 0:
+                self._bot_selector.setCurrentIndex(at)
+                self._refresh_bot_arrows()
+            return self._selected_bot_id
+
+        def set_masked(self, masked: bool) -> bool:
+            """Hide or show the dropdown's text and answer the state held."""
+            try:
+                get_privacy_mask_registry().set_masked(
+                    ivp.PRIVACY_FIELD_ID, bool(masked)
+                )
+            except Exception as _mask_exc:  # noqa: BLE001 - mask write best-effort
+                logger.debug("privacy mask write raised: %s", _mask_exc)
+            self.refresh_privacy_dot()
+            return bool(masked)
 
         def _has_real_bots(self) -> bool:
             """Is any real bot present in the selector?
@@ -1592,7 +1616,7 @@ if _HAS_QT:
             """
             masked = False
             try:
-                masked = get_privacy_mask_registry().is_masked("ivp.bot_selector")
+                masked = get_privacy_mask_registry().is_masked(ivp.PRIVACY_FIELD_ID)
             except Exception as _mask_exc:  # noqa: BLE001
                 logger.debug("privacy mask not read: %s", _mask_exc)
             read = {

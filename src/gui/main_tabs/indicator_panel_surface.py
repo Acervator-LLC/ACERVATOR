@@ -24,6 +24,14 @@ from typing import Any, Optional
 
 from ...exchange.timeframes import ALL_TIMEFRAMES
 
+from .. import design_system as ds
+from . import privacy_dot_surface
+from .native_chart_surface import (
+    ARROW_GLYPH_FAMILY,
+    ARROW_GLYPH_PX,
+    CONTROL_HEIGHT_PX,
+)
+
 METHOD = "indicator_panel.state"
 
 LOGGER_NAME = "acervator.gui"
@@ -71,6 +79,56 @@ HEADER = {
 
 TITLE_HEADING_PROPERTY = "heading"
 LOCKS_MUTED_PROPERTY = "muted"
+
+# -- the two arrows either side of the bot dropdown -------------------
+
+#: The glyphs, the size and the family the Charts tab's own arrows carry,
+#: imported rather than copied so the two control rows cannot drift.
+PREV_BOT_TEXT = "◀"
+NEXT_BOT_TEXT = "▶"
+PREV_BOT_TOOLTIP = "Show the previous bot."
+NEXT_BOT_TOOLTIP = "Show the next bot."
+ARROW_WIDTH_PX = 34
+ARROW_HEIGHT_PX = CONTROL_HEIGHT_PX
+
+#: A press moves the dropdown this many places, and stops at either end.
+STEP_BACK = -1
+STEP_ON = 1
+
+ARROW_STYLE_SHEET = (
+    f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
+    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; "
+    f"border-radius: {ds.RADIUS_XS}px; "
+    f"font-family: {ARROW_GLYPH_FAMILY}; font-size: {ARROW_GLYPH_PX}px; "
+    "padding: 0px; }"
+    f"QPushButton:hover {{ background: {ds.GLOW_PRIMARY_FAINT}; "
+    f"border: 1px solid {ds.PRIMARY}; }}"
+    f"QPushButton:disabled {{ background: {ds.CARD_METRIC_BORDER}; "
+    f"color: {ds.TEXT_PLACEHOLDER}; "
+    f"border: 1px solid {ds.CARD_METRIC_BORDER}; }}"
+)
+
+
+def arrows_payload() -> dict:
+    """The two arrows as the page draws them, glyphs, size and skin."""
+    return {
+        "previous": {
+            "text": PREV_BOT_TEXT,
+            "tooltip": PREV_BOT_TOOLTIP,
+            "step": STEP_BACK,
+        },
+        "next": {
+            "text": NEXT_BOT_TEXT,
+            "tooltip": NEXT_BOT_TOOLTIP,
+            "step": STEP_ON,
+        },
+        "width_px": ARROW_WIDTH_PX,
+        "height_px": ARROW_HEIGHT_PX,
+        "glyph_px": ARROW_GLYPH_PX,
+        "glyph_family": ARROW_GLYPH_FAMILY,
+        "style_sheet": ARROW_STYLE_SHEET,
+    }
+
 
 # -- the twelve indicator columns -------------------------------------
 
@@ -283,6 +341,23 @@ PRIVACY_STATE_REVEALED = "REVEALED"
 PRIVACY_TOOLTIP_FORMAT = "{field}: {state}. Click to {action}."
 PRIVACY_ACTION_REVEAL = "reveal"
 PRIVACY_ACTION_MASK = "mask"
+
+#: The universal control the Live panel draws. ``privacy_dot_surface`` is
+#: the one source for its glyph and its skin, so the page and
+#: ``widgets.privacy_dot.PrivacyDot`` cannot paint different marks. The
+#: block above stays for the Paper and Simulator pages, whose panels still
+#: draw their own copy.
+UNIVERSAL_DOT_KIND = "PrivacyDot"
+
+
+def universal_dot_payload(*, masked: bool) -> dict:
+    """The universal privacy control's glyph, tooltip and skin."""
+    found = dict(privacy_dot_surface.dot_view(PRIVACY_FIELD_ID, masked=masked))
+    found["kind"] = UNIVERSAL_DOT_KIND
+    found["base_kind"] = DOT_BASE_KIND
+    found["mask_text"] = PRIVACY_MASK_TEXT
+    return found
+
 
 # -- the staleness banner and the rate strip ---------------------------
 
@@ -1225,6 +1300,8 @@ def build_payload(model: IndicatorPanelModel) -> dict:
         },
         "selected_bot_id": model.selected_bot_id,
         "bot_timeframes": dict(model.bot_timeframes),
+        "arrows": arrows_payload(),
+        "privacy_dot": universal_dot_payload(masked=model.masked),
         "privacy": {
             "kind": DOT_KIND,
             "base_kind": DOT_BASE_KIND,
