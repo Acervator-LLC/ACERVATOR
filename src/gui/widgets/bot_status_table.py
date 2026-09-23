@@ -1,15 +1,22 @@
-"""Scrumming-bot dashboard table and its column specification."""
+"""Scrumming-bot dashboard table, its column specification and its header."""
 
 from __future__ import annotations
 
 import logging
 
-from ...core.privacy_mask_registry import (
-    get_privacy_mask_registry,
-    mask_or,
-)
+from ...core.privacy_mask_registry import mask_or
 
 from .. import design_system as ds
+from ..main_tabs.bot_status_table_surface import (
+    HEADER_CELL_GAP_PX,
+    HEADER_CELL_PAD_PX,
+    HEADER_DOT_ROW_PX,
+    HEADER_LABEL_FONT_PX,
+    HEADER_LABEL_MIN_FONT_PX,
+    HEADER_LABEL_SIZE_FORMAT,
+    HEADER_LABEL_SKIN,
+    HEADER_LABEL_WRAP,
+)
 from ..table_cells import (
     _ammo_price_pool,
     _compose_ammo_cell,
@@ -21,12 +28,20 @@ from ..table_cells import (
 logger = logging.getLogger("acervator.gui")
 
 try:
-    from PySide6.QtWidgets import QPushButton, QTableWidgetItem
+    from PySide6.QtWidgets import (
+        QHeaderView,
+        QLabel,
+        QPushButton,
+        QTableWidgetItem,
+        QVBoxLayout,
+        QWidget,
+    )
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QColor
+    from PySide6.QtGui import QColor, QFont, QFontMetrics
 
     from . import ColumnSpec, ColumnarTableWidget
     from .bot_selection import _reanchor_bot_selection, _select_row_for_bot
+    from .privacy_dot import PrivacyDot
 
     _HAS_QT = True
 except ImportError:
@@ -34,6 +49,151 @@ except ImportError:
 
 
 if _HAS_QT:
+
+    class ColumnHeaderCell(QWidget):
+        """One column's wrapped label, over the privacy dot that masks it.
+
+        ``fit`` re-sizes the label to a width and answers the height that
+        width needs, so ``WrappedColumnHeader`` can give every column the
+        same height.
+        """
+
+        def __init__(self, label: str, field_id: str, on_toggle=None, parent=None):
+            super().__init__(parent)
+            self.setAccessibleName(label)
+            self._label_text = label
+            self._font_px: int = HEADER_LABEL_FONT_PX
+            box = QVBoxLayout(self)
+            box.setContentsMargins(
+                HEADER_CELL_PAD_PX,
+                HEADER_CELL_PAD_PX,
+                HEADER_CELL_PAD_PX,
+                HEADER_CELL_PAD_PX,
+            )
+            box.setSpacing(HEADER_CELL_GAP_PX)
+            self._label = QLabel(label, self)
+            self._label.setWordWrap(HEADER_LABEL_WRAP)
+            self._label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
+            self._label.setStyleSheet(self._skin())
+            self._label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            box.addWidget(self._label, 1)
+            self.dot = None
+            if field_id:
+                self.dot = PrivacyDot(field_id, on_toggle=on_toggle, parent=self)
+                self.dot.setFixedHeight(HEADER_DOT_ROW_PX)
+                box.addWidget(self.dot, 0, Qt.AlignHCenter)
+            else:
+                # A column the privacy register does not carry leaves the
+                # dot's row empty, so every label sits on the same line.
+                box.addSpacing(HEADER_DOT_ROW_PX)
+
+        def label_text(self) -> str:
+            """The whole label this column draws, wrapped or not."""
+            return self._label_text
+
+        def font_px(self) -> int:
+            """The size this column's label is drawing at now."""
+            return self._font_px
+
+        def drawn_lines(self, width: int) -> int:
+            """How many lines the label takes at one column width."""
+            metrics = QFontMetrics(self._font())
+            return max(1, round(self._text_height(width) / metrics.lineSpacing()))
+
+        def fit(self, width: int) -> int:
+            """Size the label to ``width`` and answer the height it needs.
+
+            The label steps down to ``HEADER_LABEL_MIN_FONT_PX`` when its
+            longest word does not fit ``width`` at ``HEADER_LABEL_FONT_PX``.
+            """
+            inner = max(1, width - 2 * HEADER_CELL_PAD_PX)
+            chosen = self._size_that_fits(inner)
+            if chosen != self._font_px:
+                self._font_px = chosen
+                self._label.setStyleSheet(self._skin())
+            return (
+                self._text_height(width)
+                + HEADER_CELL_GAP_PX
+                + HEADER_DOT_ROW_PX
+                + 2 * HEADER_CELL_PAD_PX
+            )
+
+        def _skin(self) -> str:
+            return HEADER_LABEL_SKIN + HEADER_LABEL_SIZE_FORMAT.format(px=self._font_px)
+
+        def _font(self) -> QFont:
+            font = QFont(self._label.font())
+            font.setPixelSize(self._font_px)
+            return font
+
+        def _size_that_fits(self, inner: int) -> int:
+            for size in (HEADER_LABEL_FONT_PX, HEADER_LABEL_MIN_FONT_PX):
+                font = QFont(self._label.font())
+                font.setPixelSize(size)
+                if self._longest_word_width(font) <= inner:
+                    return size
+            return HEADER_LABEL_MIN_FONT_PX
+
+        def _longest_word_width(self, font: QFont) -> int:
+            metrics = QFontMetrics(font)
+            words = self._label_text.split() or [self._label_text]
+            return max(metrics.horizontalAdvance(word) for word in words)
+
+        def _text_height(self, width: int) -> int:
+            inner = max(1, width - 2 * HEADER_CELL_PAD_PX)
+            metrics = QFontMetrics(self._font())
+            return metrics.boundingRect(
+                0, 0, inner, 0, Qt.TextWordWrap | Qt.AlignHCenter, self._label_text
+            ).height()
+
+    class WrappedColumnHeader(QHeaderView):
+        """A header that draws each column's label as a wrapped widget.
+
+        ``build`` takes one cell a column, and every re-layout gives every
+        cell the height the tallest label needs, so the header is one height
+        across all columns.
+        """
+
+        def __init__(self, parent=None):
+            super().__init__(Qt.Horizontal, parent)
+            self._cells: list = []
+            # The label is not the control; the dot under it is.
+            self.setSectionsClickable(False)
+            self.setSectionsMovable(False)
+            self.sectionResized.connect(self._place)
+            self.geometriesChanged.connect(self._place)
+
+        def build(self, cells: list) -> None:
+            """Hold one ``ColumnHeaderCell`` a column and lay them out."""
+            for cell in self._cells:
+                cell.setParent(None)
+                cell.deleteLater()
+            self._cells = list(cells)
+            for cell in self._cells:
+                cell.setParent(self)
+                cell.show()
+            self._place()
+
+        def cells(self) -> list:
+            """Every column's header cell, in column order."""
+            return list(self._cells)
+
+        def resizeEvent(self, event):  # noqa: N802
+            """Re-fit every label whenever the header's own width changes."""
+            super().resizeEvent(event)
+            self._place()
+
+        def _place(self, *_args) -> None:
+            if not self._cells:
+                return
+            widths = [self.sectionSize(at) for at in range(len(self._cells))]
+            tallest = max(cell.fit(width) for cell, width in zip(self._cells, widths))
+            if self.height() != tallest:
+                self.setFixedHeight(tallest)
+            for at, cell in enumerate(self._cells):
+                cell.setGeometry(
+                    self.sectionViewportPosition(at), 0, widths[at], tallest
+                )
 
     SCRUMMING_COLUMNS = ColumnSpec(
         labels=(
@@ -127,62 +287,67 @@ if _HAS_QT:
             self._on_fire_clicked = on_fire_clicked
             self._bot_ids = []
 
-            # Last payload seen, so a header-dot toggle repopulates
+            # Last payload seen, so a dot toggle repopulates
             # without refetching from the bot manager.
             self._last_statuses: list = []
-
-            self.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
 
             # Symbol cell (col 1) is a hyperlink to the pair's chart on
             # the bot's exchange.
             self.cellClicked.connect(self._on_cell_clicked)
 
-            # Replaces every header item, so it must follow the base's
-            # tooltip pass.
-            self._refresh_header_dots()
+            self._build_header()
 
-        def _on_header_clicked(self, col: int) -> None:
-            """Toggle the mask for this column's field id, then
-            re-populate the table to apply the new state."""
-            field_id = self.PRIVACY_FIELD_BY_COL.get(col)
-            if not field_id:
-                return  # Detail column (col 7) — no mask.
-            try:
-                reg = get_privacy_mask_registry()
-                reg.set_masked(field_id, not reg.is_masked(field_id))
-            except Exception:
-                return
-            self._refresh_header_dots()
-            # Re-populate cells with current statuses so mask_or runs
-            # against the new state.
+        def _build_header(self) -> None:
+            """Put one wrapped label, over its own dot, on every column.
+
+            The header item keeps the tooltip and gives up its text, so the
+            section paints its ground and the cell paints the label.
+            """
+            header = WrappedColumnHeader(self)
+            cells = []
+            for col, label in enumerate(self.COLUMNS):
+                item = QTableWidgetItem("")
+                item.setToolTip(self.COLUMN_TOOLTIPS.get(col, ""))
+                self.setHorizontalHeaderItem(col, item)
+                cells.append(
+                    ColumnHeaderCell(
+                        label,
+                        self.PRIVACY_FIELD_BY_COL.get(col, ""),
+                        on_toggle=self._on_privacy_toggled,
+                        parent=header,
+                    )
+                )
+            self.setHorizontalHeader(header)
+            header.setSectionResizeMode(QHeaderView.Stretch)
+            for col, width in self.COLUMN_SPEC.fixed_widths.items():
+                header.setSectionResizeMode(col, QHeaderView.Fixed)
+                self.setColumnWidth(col, width)
+            header.build(cells)
+            self._header = header
+
+        def header_cells(self) -> list:
+            """Every column's header cell, in column order."""
+            return self._header.cells()
+
+        def refresh_privacy_dots(self) -> None:
+            """Re-read the privacy register into every column's own dot.
+
+            Three of the nine dots share a field with another column, so
+            one press repaints all of them.
+            """
+            for cell in self._header.cells():
+                if cell.dot is not None:
+                    cell.dot.refresh()
+
+        def _on_privacy_toggled(self) -> None:
+            """Repaint every dot and every cell after one dot was pressed.
+
+            ``PrivacyDot`` writes the register itself, so this repaints the
+            rows from the payload the table is already holding.
+            """
+            self.refresh_privacy_dots()
             if self._last_statuses:
                 self.update_bots(self._last_statuses)
-
-        def _refresh_header_dots(self) -> None:
-            """Paint each maskable column's header with a dot prefix:
-            ● (red) for REVEALED, ○ (open circle) for MASKED. Header
-            text becomes ``● Bot ID`` / ``○ Bot ID`` etc."""
-            try:
-                reg = get_privacy_mask_registry()
-            except Exception:
-                return
-            for col, base_label in enumerate(self.COLUMNS):
-                field_id = self.PRIVACY_FIELD_BY_COL.get(col)
-                if not field_id:
-                    self.setHorizontalHeaderItem(col, QTableWidgetItem(base_label))
-                    continue
-                masked = reg.is_masked(field_id)
-                # Visible glyph: ● (filled) = revealed, ○ (hollow) = masked
-                glyph = "○" if masked else "●"
-                item = QTableWidgetItem(f"{glyph} {base_label}")
-                tip = self.COLUMN_TOOLTIPS.get(col, "")
-                state_tip = (
-                    f"\n\nPrivacy: {'MASKED' if masked else 'REVEALED'} "
-                    f"(field {field_id}).\n"
-                    "Click this header to toggle."
-                )
-                item.setToolTip((tip + state_tip).strip())
-                self.setHorizontalHeaderItem(col, item)
 
         def update_bots(self, bot_statuses: list[dict]) -> None:
             # Kept so a header-dot toggle re-renders without refetching.
