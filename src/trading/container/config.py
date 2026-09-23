@@ -670,6 +670,9 @@ class BotStats:
     fees_paid_exchange: float = 0.0
     exchange_trade_count: int = 0
     exchange_data_fresh_ts: float = 0.0  # unix-seconds of last refresh
+    # True when realized_pnl_exchange and fees_paid_exchange were computed
+    # over every fill the venue holds, not a walk that stopped short.
+    fill_history_complete: bool = False
     # Exchange wallet USD + USDC cash; the aggregator takes the max across bots.
     cash_balance_usd: float = 0.0
 

@@ -116,6 +116,9 @@ TABLE_SPACES: tuple[str, ...] = (
     '[data-part="extractor-table"]',
 )
 
+#: The console line the page writes a privacy toggle on.
+ACTION_PREFIX = "acervator-live:"
+
 #: The JS expression naming every module whose global reached the page.
 LOADED_MODULES_JS = "window.acervatorTradingPage.modules().join(',')"
 
@@ -177,6 +180,8 @@ _HOST_SOURCE = """(function (global, doc) {
   var IVP = %(ivp)s;
   var LOG = %(log)s;
   var TAB = %(tab)s;
+  var TOGGLE = %(toggle)s;
+  var PREFIX = %(prefix)s;
   var FORGETS = %(forgets)s;
   var VENUES = %(venues)s;
   var SETTERS = %(setters)s;
@@ -279,22 +284,29 @@ _HOST_SOURCE = """(function (global, doc) {
     return tab && typeof tab.redraw === "function" ? tab.redraw() : 0;
   }
 
-  // An ask naming an action changes what the window holds, so it goes out
-  // as one console line and is answered by its own id. Every other ask is
-  // a read and is served from the payload the page was built with.
+  // Two presses leave this page. A privacy toggle goes out on PREFIX,
+  // because the register that answers it lives in Python. An ask naming an
+  // ACTION changes what the window holds, so it goes out on its own line
+  // and is answered by its own id. Every other call is a read and is
+  // answered from the payload this page is already holding.
   global.acervator = {
     call: function (method, params) {
-      if (!params || !owns(params, ACTION)) {
-        return Promise.resolve(answer(method, params));
+      if (params && owns(params, TOGGLE)) {
+        global.console.log(
+          PREFIX + JSON.stringify({ method: method, params: params })
+        );
       }
-      var id = nextAsk;
-      nextAsk += 1;
-      console.log(
-        "%(ask)s" + JSON.stringify({ id: id, method: method, params: params })
-      );
-      return new Promise(function (resolve, reject) {
-        waiting[id] = { resolve: resolve, reject: reject };
-      });
+      if (params && owns(params, ACTION)) {
+        var id = nextAsk;
+        nextAsk += 1;
+        global.console.log(
+          "%(ask)s" + JSON.stringify({ id: id, method: method, params: params })
+        );
+        return new Promise(function (resolve, reject) {
+          waiting[id] = { resolve: resolve, reject: reject };
+        });
+      }
+      return Promise.resolve(answer(method, params));
     }
   };
 
@@ -456,6 +468,8 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
         "ivp": json.dumps(indicator_panel_surface.METHOD, ensure_ascii=True),
         "log": json.dumps(status_log_surface.METHOD, ensure_ascii=True),
         "tab": json.dumps(trading_tab_surface.METHOD, ensure_ascii=True),
+        "toggle": json.dumps(scrum_surface.PRIVACY_TOGGLE_PARAM, ensure_ascii=True),
+        "prefix": json.dumps(ACTION_PREFIX, ensure_ascii=True),
         "forgets": json.dumps(MODULE_FORGETS, ensure_ascii=True),
         "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
         "setters": json.dumps(venue_setters(), ensure_ascii=True),
@@ -636,8 +650,8 @@ def panel_html(built: dict, venues: Optional[dict] = None, theme: object = None)
 
 if _HAS_WEBENGINE:
 
-    class TradingTabPage(QWebEnginePage):
-        """Routes the page's ``acervator-ask:`` console lines to its owner."""
+    class LivePage(QWebEnginePage):
+        """Routes the page's ``acervator-live:`` and ``acervator-ask:`` lines."""
 
         def __init__(self, owner) -> None:
             """Hold ``owner`` as the widget that answers the page."""
@@ -645,9 +659,11 @@ if _HAS_WEBENGINE:
             self._owner = owner
 
         def javaScriptConsoleMessage(self, level, message, line, source) -> None:
-            """Hand a bridge ask to the owner and drop every other line."""
+            """Hand a privacy toggle or a bridge ask on, and drop every other line."""
             del level, line, source
-            if message.startswith(ASK_PREFIX):
+            if message.startswith(ACTION_PREFIX):
+                self._owner.run_action(message[len(ACTION_PREFIX) :])
+            elif message.startswith(ASK_PREFIX):
                 self._owner.run_ask(message[len(ASK_PREFIX) :])
 
     class TradingTabReact(QWidget):
@@ -809,6 +825,32 @@ if _HAS_WEBENGINE:
             )
             return self.show_models({trading_tab_surface.METHOD: handler(built)})
 
+        def run_action(self, payload: str) -> bool:
+            """Answer one privacy toggle the page sent, and push the fleet back.
+
+            Only ``PRIVACY_TOGGLE_PARAM`` is answered here; every other press
+            on this page stays with the page, because the venue owns it.
+            """
+            try:
+                asked = json.loads(payload)
+            except ValueError:
+                logger.warning("The Live page sent a line that is not JSON")
+                return False
+            params = asked.get("params")
+            if not isinstance(params, dict):
+                return False
+            column = params.get(scrum_surface.PRIVACY_TOGGLE_PARAM)
+            if column is None:
+                return False
+            venue = self._venues.get(
+                str(params.get(scrum_surface.EXCHANGE_ID_PARAM, "") or "")
+            )
+            toggle = getattr(venue, "toggle_privacy", None)
+            if not callable(toggle):
+                return False
+            toggle(column)
+            return True
+
         def hold_venue(self, venue: Any) -> bool:
             """Draw ``venue`` in this tab and follow every payload it publishes.
 
@@ -840,7 +882,7 @@ if _HAS_WEBENGINE:
             self._venue_models = venue_models(self._venues)
             self._web = QWebEngineView(self)
             self._web.setAccessibleName(ACCESSIBLE_NAME)
-            self._web.setPage(TradingTabPage(self))
+            self._web.setPage(LivePage(self))
             self._web.loadFinished.connect(self._on_load_finished)
             self._web.setHtml(panel_html(self._models, self._venue_models, self._theme))
             self._layout.addWidget(self._web, 1)

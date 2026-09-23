@@ -71,6 +71,23 @@ venue's own matched profit and loss across the fleet. Mature is the profit held
 in positions worth more than three times what they cost, which is the growth
 threshold the platform applies everywhere it decides maturity.
 
+**Overtaken:** "Realised is the venue's own matched profit and loss across the
+fleet."
+
+The venue answers a cost basis, an average entry price and an unrealised
+profit per spot position, and no lifetime realised figure. Realised is the
+platform's own first in, first out match over the venue's own fills, one
+figure per bot, added across the fleet.
+
+**Overtaken:** "Mature is the profit held in positions worth more than three
+times what they cost, which is the growth threshold the platform applies
+everywhere it decides maturity."
+
+Mature is the part of a position's value that sits over three times its cost.
+A position worth $350 on a $100 cost basis holds $50 of mature profit. Three
+times the cost is still the threshold the platform applies everywhere it
+decides maturity.
+
 `src/gui/main_tabs/header_strip_surface.py` — `profits_payload`
 
 ```python
@@ -178,6 +195,64 @@ if value < basis * (1.0 + MATURE_GROWTH_PCT / 100.0):
     return 0.0
 return value - basis
 ```
+
+**Overtaken:** "the column sums the profit on the positions that qualify."
+
+The column adds up what each qualifying position holds over the threshold.
+`mature_threshold_usd` is the cost plus two hundred per cent of the cost, and
+`mature_profit_usd` answers the value above it.
+
+`src/trading/smart_wire.py` — `mature_profit_usd`
+
+```python
+if not is_mature(cost_basis_usd, current_value_usd):
+    return 0.0
+return float(current_value_usd) - mature_threshold_usd(cost_basis_usd)
+```
+
+A position at three times its cost exactly is mature and holds nothing over
+the threshold. `is_mature` carries that test on its own, so the count of
+mature positions reads the position while the money column adds nothing for
+it.
+
+`src/trading/smart_wire.py` — `is_mature`
+
+```python
+threshold = mature_threshold_usd(cost_basis_usd)
+if threshold <= 0.0:
+    return False
+return math.isfinite(value) and value >= threshold
+```
+
+### Realised reads the same on every start
+
+A bot writes its realised figure only when the walk reached the end of the
+venue's history. A walk that stops short keeps the last whole reading, writes
+`stats.fill_history_complete` False and says so in the log, so the same fills
+always answer the same figure.
+
+`src/trading/scrumming/reconciliation.py` — `refresh_exchange_position_health`
+
+```python
+_complete = bool(getattr(self._fill_history, "complete", False))
+self.stats.fill_history_complete = _complete
+if _complete:
+    self.stats.realized_pnl_exchange = float(_ph.realized_pnl_usd)
+```
+
+The fleet aggregate answers `realised_history_complete` False while any bot
+the venue answered for reads False, and the column then draws the empty
+marker. An absent figure never looks like a present one.
+
+`src/gui/main_tabs/header_strip_surface.py` — `realised_amount`
+
+```python
+if not bool(data.get(REALISED_COMPLETE_KEY, True)):
+    return None
+```
+
+The Paper and Simulator fleets walk no venue history, so their aggregates omit
+the key and their realised figure passes through whole.
 
 ## Right: the five counter cards
 

@@ -147,6 +147,30 @@ profit is the profit on positions that have grown past two hundred per cent over
 what they cost. Neither is computed from the platform's internal running totals,
 because the venue is the authority on money.
 
+**Overtaken:** "Realised profit is the exchange's own figure, matched buy
+against sell."
+
+The venue carries no lifetime realised figure for a spot position. Realised
+profit is the platform's own first in, first out match over the venue's own
+fills, one figure per bot, added across the fleet. The venue is still the
+authority: the fills are the venue's and the cost basis is the venue's.
+
+`src/exchange/position_health.py` — `compute_position_health`
+
+**Overtaken:** "Mature profit is the profit on positions that have grown past
+two hundred per cent over what they cost."
+
+Mature profit is the part of a position's value that sits over three times its
+cost. A position worth $350 on a $100 cost basis holds $50 of mature profit,
+not $250.
+
+`src/trading/smart_wire.py` — `mature_profit_usd`
+
+Realised draws the empty marker when the fill history cannot be walked to its
+end, so the column never shows a figure added up from part of a history.
+[08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) covers both columns
+in full.
+
 `src/gui/main_tabs/header_strip_surface.py` — `profits_payload`
 
 ```python
@@ -347,6 +371,45 @@ blank when the pair is unlisted or when the target already is that asset. The
 Extractor table sits underneath. Both tables start hidden and appear when their
 own list gains a row.
 
+**Functional.** Every column header wraps its own label inside its own column.
+`Current Position Value` reads over two or three lines rather than being cut.
+The label draws at `HEADER_LABEL_FONT_PX` and steps down to
+`HEADER_LABEL_MIN_FONT_PX` when its longest word does not fit the column at the
+first size. Every column's header is the same height, which is the tallest
+wrapped label plus one dot row. Nine of the ten columns carry one privacy dot
+centred beneath the label, and the tenth, the one holding the Detail button,
+leaves that row empty. `ColumnHeaderCell` draws one label over one dot and
+`WrappedColumnHeader` sizes and places one cell a column.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `header_view`
+
+```python
+return {
+    "text": label,
+    "tooltip": header_tooltip(column, field_id, masked),
+    "field_id": field_id,
+    "masked": bool(masked),
+    "dot_text": header_glyph(masked),
+    "dot_tooltip": header_dot_tooltip(field_id, masked),
+}
+```
+
+**Functional.** The dot is the `PrivacyDot` the manual calls the universal
+control. A press flips that column's field in the privacy register, repaints
+every dot that shares the field, and redraws the rows from the payload the
+table already holds. Three of the nine dots share a field with another column:
+`Current Position Value` and `Ammo` share `bot_table.ammo`, and `Target`,
+`Target BTC` and `Target ETH` share `bot_table.target`. A press on one of them
+masks every column that names the same field.
+
+`src/gui/widgets/bot_status_table.py` — `BotStatusTable.refresh_privacy_dots`
+
+```python
+for cell in self._header.cells():
+    if cell.dot is not None:
+        cell.dot.refresh()
+```
+
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable.SCRUMMING_COLUMNS`
 
 ```python
@@ -439,11 +502,14 @@ function mountScrumTable(target, model) {
 }
 ```
 
+**Overtaken.** *"A column header toggles that column's privacy mask."*
+
 **Functional.** The four things the operator can press on the table each send
-one request and redraw from the answer. A column header toggles that column's
-privacy mask, a Symbol cell opens the chart address, Fire hands the bot to
-Manual Fire, and Detail selects the row and opens the bot. `on_detail` is the
-handler behind the Detail button.
+one request and redraw from the answer. The dot under a column's label toggles
+that column's privacy mask, a Symbol cell opens the chart address, Fire hands
+the bot to Manual Fire, and Detail selects the row and opens the bot. A press
+on the label itself does nothing. `on_detail` is the handler behind the Detail
+button.
 
 `src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_detail`
 
