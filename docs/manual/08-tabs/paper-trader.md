@@ -1721,5 +1721,271 @@ prices sat within a cent of their openings. The Activity
 Log's lines are not readable through UI Automation's text pattern on the
 React page, so the bundle's own `system.log` and the paper log carry the
 React reading.
+## 2026-09-23 - #19 - The paper bot acts like its live equivalent
+
+Unit Q4 of issue #19. A paper run now writes what it does into the held
+record: a scrum's tranches reach the record and Detail's Fold Tranches tab,
+a fold's surplus compounds into the target under the cycle cap, the Target
+Delta reads the ticker's last trade instead of the newest bar's close, and
+the row's Trades, Current Position Value and Target move within two seconds
+of a fill. A bot reads `RUNNING` while the runner holds it and `STOPPED`
+after Stop Paper Run.
+
+### The sentences unit Q4 overtakes
+
+Three passages above describe the run as it was before this unit. Each is
+quoted here and kept above as it stands.
+
+- "`tick` builds the `GateContext` through the Simulator's `tape_context`
+  over the window's newest close" (Who evaluates and who sizes). `tick` now
+  builds it through `paper_tape_context` in `src/paper/paper_run.py`, which
+  prices the position at the ticker's last trade and leaves the candle
+  window to the indicators, as Live's tick does.
+- "A fold is planned under the cycle growth cap, as Live's `tick_phases`
+  plans it, and the target's growth from the surplus is unit Q4's." (Who
+  evaluates and who sizes). This is that unit: `apply_fold` calls
+  `grow_target` after it settles the plan.
+- "Q4 draws the tranches; this unit stores them" (What crosses to the GUI
+  thread, and the Q3 comment on the issue). The tranches now reach the
+  record on every snapshot, so Detail draws them mid-run.
+
+### The Target Delta reads the ticker
+
+The Simulator's `tape_context` in `src/simulator/back_test.py` prices a
+position at `window[-1].close`, the only price a stone tablet carries. Live's
+`ScrummingBot.tick` prices it at the ticker's last trade every five seconds
+and reads the candle window for the indicators alone. Paper has both, so the
+Simulator's function is left untouched and `src/paper/paper_run.py` carries
+its own `paper_tape_context`.
+
+`paper_tape_context` takes the tick's last trade for three fields only:
+`ticker_last`, the `delta` against the balance's grown `target_usd`, and
+`mem253_current_pos`. Every other field is unchanged: `bb_pos` comes from
+`bb_reading` over the window, the indicators from `VotingEngine.compute_all`,
+and `trend_reading` from the window itself. The same shared helpers size the
+figures, so only the price source differs.
+
+`src/paper/paper_run.py` — the delta at the ticker
+
+```python
+    last = float(ticker_last)
+    ...
+    position_usd = balance.value_usd(last)
+    delta = target_delta_usd(position_usd, target_usd)
+```
+
+This matters on the real venue. `PaperExchange` caches a ticker for five
+seconds and a 5m candle window for three hundred, so before this unit the
+Target Delta could be five minutes old while the book moved. In one stand-in
+reading the gate priced a position at a bar close of 100.61803399 while the
+same tick's last trade read 101.83.
+
+### A fold compounds its surplus into the target
+
+`apply_fold` settles its plan, books the bought units, and then calls
+`grow_target`, the Simulator's own function in `src/simulator/back_test.py`.
+It is imported, not forked: the growth step does not differ between a
+simulated bot and a paper bot by one figure, and the operator's rule for this
+issue is that trading logic is shared as pure code and only stateful shells
+are forked.
+
+`grow_target` reads `fold_surplus_usd` over the consumed slices, holds it to
+what `cycle_growth_cap_usd` and `fold_cap_remaining_usd` leave of the cycle,
+applies `target_growth_applied`, adds the applied figure to `target_usd` and
+to `cycle_cap_consumed_usd`, parks the rest as standing surplus, sets the
+growth side to `lower`, and records the step on `target_path`. A record with
+`profit_folding_active` off grows nothing. The cap is `max_target_growth_pct`
+of the target per cycle, one per cent on the operator's records.
+
+`reset_growth_cycle` runs at the top of every worked tick, before the context
+is built, so the growth cycle and the gates read the same bar. It is
+`growth_cycle_side` over the bar's band position: a cycle opened on the lower
+side zeroes its consumed cap when the band position reaches 0.75, and one
+opened on the upper side when it reaches 0.25.
+
+`src/paper/paper_run.py` — the growth step inside the fold
+
+```python
+    realized = fold_surplus_usd(units, slices, float(price))
+    grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
+```
+
+`FakeBalance` in `src/paper/fake_balance.py` gains the two fields
+`grow_target` writes, `growth_applied_usd` and `target_path`. Every
+`PaperTrade` now carries `target_usd_after`, the balance's target once the
+growth has been taken.
+
+### The run writes the record, and the row follows
+
+`PaperRunner` gains one seam, `on_stats`, beside `on_trade` and `on_figures`.
+`post_stats` builds a `BotStatsSnapshot` through `stats_snapshot`, the
+Simulator's own builder, so a paper row and a simulated row carry the same
+keys. The snapshot goes out at three moments: once with `SNAPSHOT_START` and
+the state `running` on the tick a bot's balance opens, once per worked tick
+with `SNAPSHOT_TICK` or `SNAPSHOT_FILL`, and once per opened balance with
+`SNAPSHOT_END` and the state `stopped` when the loop ends.
+
+Both hosts pass `on_stats=self.bot_stats.emit`, a fifth queued signal, so the
+write lands on the GUI thread in `_take_bot_stats`. That method calls
+`PaperFleetSource.write_stats`, which merges the snapshot's `stats` into the
+record's `stats` and its `scrumming_state` into the record's, then arms
+`_stats_redraw_timer`, a single-shot timer at `STATS_REDRAW_MS`, two
+thousand milliseconds, Live's own dashboard interval. A snapshot naming a
+record no longer held is dropped.
+
+The row reads the record, so one write moves every cell that reads it:
+Current Position Value from `stats.position_value` and the lots,
+Trades from `stats.total_trades`, and Target from
+`scrumming_state.target_balance`, the grown target. The five cards on the
+header strip read the same records through `aggregate_stats`, so Trades,
+Scrummed and Folded move with the row.
+
+`src/gui/paper/paper_trading_tab.py` — the record write
+
+```python
+            self._fleet_source.write_stats(
+                bot_id, snapshot.stats, snapshot.scrumming_state
+            )
+```
+
+### RUNNING while the runner holds the bot
+
+A snapshot carrying the state `running` moves the record through
+`PaperBotManager.start` and redraws the rows at once; one carrying `stopped`
+moves it through `PaperBotManager.stop` and redraws at once. Each writes two
+Activity Log lines: Live's own `✓ Bot <id> RUNNING.` or `Bot <id> stopped.`,
+and then `bot_opened_line` or `bot_ended_line` naming the units, the price,
+the fills and the target's two figures. The command bar keeps its own Start,
+Pause and Stop, and `PaperFleetSource.set_state` stays the only writer of a
+record's state underneath.
+
+### Detail draws the run's tranches
+
+Detail's Fold Tranches tab is unchanged code. It draws `PaperBotView`, which
+reads `scrumming_state.fold_tranches` off the record, and the record now
+carries the tranches the run's scrums queued, so a Detail window opened
+during a run draws the open tranche. Live refreshes no open Bot Settings
+window on a timer and this adds none: the window draws what the record held
+when it opened.
+
+### What the live-equivalent reading measured
+
+Both variants, the real `MainWindow` under `pdb` on a scratch home, every
+socket but loopback refused, against a loopback stand-in serving 1m bars and
+a ticker that moves inside each bar. Two records, targets $100 and $200, a
+0.5 per cent scrumming interval, phantoms off.
+
+```
+reading                                   Qt                        React
+-----------------------------------------------------------------------------
+fills in one 215 s run                    10                        10
+row Trades at +1 s after a fill           3                         3
+row Trades at +2 s after a fill           4                         4
+row Target before the first fold          $100.0000 / $200.0000     the same
+row Target after two folds                $100.0454 / $200.0910     $100.0470 /
+                                                                    $200.0942
+Current Position Value after a fold       $97.7949 / $195.5608      $97.7313 /
+                                                                    $195.4367
+growth steps recomputed by hand           4 of 4 equal to           4 of 4 equal
+                                          10 decimal places
+cycle cap on a $100 target                $1.00                     $1.00
+Detail Fold Tranches opened mid-run       2 rows                    2 tranches
+bar close held across two ticks           100.61803399              100.61803399
+gate ticker_last across those two ticks   100.00780971 ->           100.00746202 ->
+                                          101.90722988              101.88644039
+delta across those two ticks              0.00000000 -> 0.15219235  0.00000000 ->
+                                                                    0.10227326
+cards: Trades, Scrummed, Folded           10, $5.1931, $5.1620      10, $5.2814,
+                                                                    $5.2497
+state while the runner held the bot       RUNNING                   RUNNING
+state after Stop Paper Run                STOPPED                   STOPPED
+venue calls, all loopback                 93                        93
+non-loopback connections refused          0                         0
+```
+
+The same run before this unit filled ten times and moved nothing: Trades
+stayed `0`, Target stayed `$100.0000`, the Target Delta read the bar's close
+while the ticker stood 1.8 per cent away, Detail drew no tranche, the cards
+read zero, and both rows still read `running` after Stop.
+
+Two plants, each of which made a reading fail. With the redraw interval
+planted to sixty seconds the row held its old cells at +1, +2, +3 and +4
+seconds after a fill, and a forced `_redraw_stats` then moved Trades from 3
+to 5, so the instrument would have seen the move. With
+`profit_folding_active` planted off, four folds realised $0.022 to $0.047 of
+surplus each and the target stayed exactly $100.00000000 and $200.00000000
+with an empty `target_path`.
+
+### What the bundle reading measured, against the venue
+
+The Qt bundle, built from this branch and launched in isolation: a scratch home
+with no `bot_state.json` at launch and no credential file at any point, the
+window driven through the .NET UIAutomationClient assembly, every press an
+`InvokePattern` invoke or a `SelectionItemPattern` select on an element found
+under a window matched by its own process id. Two records on pairs the venue
+lists, `BTC/USD` at a $100 target and `ETH/USD` at $200, written to the scratch
+file after launch so no bot is ever restored.
+
+```
+moment                                    reading
+------------------------------------------------------------------------
+Import Live Fleet                         915 product(s) trade on coinbase;
+                                          2 of 2 fleet products among them;
+                                          2 of 2 tickers answered in 3 calls
+row after Import                          paperlive1 BTC/USD, Trades 0,
+                                          Target $100.0000
+Start on the first row                    "✓ Bot paperlive1 RUNNING."
+Start Paper Run                           the runner thread up, Bots card 1
+Current Position Value at 52 s            $99.9882
+                       72 s               $99.9868
+                       92 s               $99.9628
+                      112 s               $99.9428
+                      132 s               $99.9645
+                      152 s               $99.9623
+Ammo across the same marks                $0.0118 to $0.0377
+LOCKED on the header strip                $299.99 down to $299.94, back to $299.97
+SPENDABLE / REALISED / MATURE             $300.00 / $0.00 / $0.00
+cards: Scrummed, Folded, Trades, Errors   $0.00, $0.00, 0, 0
+the ETH row's Target BTC cell             0.002371 then 0.002372
+after Stop Paper Run                      $99.9694, Trades 0
+bot_state.json across every press         575DED46ED9CB7B7, unchanged
+the planted-byte control                  B7821D9854A0EB0F, a different digest
+```
+
+No fill was expected inside two minutes and none came; the position value is
+the live book moving under a fixed holding, which is what a two-minute reading
+shows.
+
+The call ledger, read off the API Interaction Log pane, carries 28 calls over
+150 seconds:
+
+```
+13:03:23  FETCH_MARKETS                     Import Live Fleet
+13:03:23  FETCH_TICKER  BTC/USD             the same press
+13:03:23  FETCH_TICKER  ETH/USD             the same press
+13:03:54  FETCH_TICKER                      the run's first worked tick
+13:03:55  FETCH_OHLCV   100 bars at 5m      the same tick, the only one
+13:04:00  FETCH_TICKER                      then one every five seconds
+   ...                                      to 13:05:53, 24 of them
+```
+
+One candle read serves the whole run, because the adapter holds a 5m window for
+three hundred seconds; the ticker is read once per five-second tick, the
+cadence `ScrummingBot.tick_interval` sets. That is 0.19 calls a second, and the
+adapter's own `PUBLIC_MIN_INTERVAL_S` paces them.
+
+**Two controls could not be pressed, and the routes are named.** The command
+bar starts the first row and no other: `PaperBotStatusTable.get_selected_bot_id`
+reads both `selectedItems()` and `currentRow()`, and only the first row's cell
+answers `HasKeyboardFocus=True`. Four attempts on the second row each reported
+`IsSelected=True HasKeyboardFocus=False`, and the Activity Log answered
+`Select a bot first.` or repeated the first bot's line. On the React bundle the
+Paper panel never reaches the accessibility tree at all: the Paper tab item
+answers `invoked` to an `InvokePattern` and `selected` to a
+`SelectionItemPattern`, and no child window contains the tab's own rect, so
+there is nothing to post a button message to. The window's descendant count
+stays at 225 through all three routes. Unit T1b of issue 34 read the same wall
+on the same bundle, and the React readings on this page stand on the
+source-tree React build.
 
 Back to [the subsystem index](README.md).

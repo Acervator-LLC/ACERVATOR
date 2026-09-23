@@ -139,6 +139,23 @@ RUN_ENDED_FORMAT = (
 )
 RUN_FAILED_FORMAT = "Paper run failed: {error}"
 
+#: The milliseconds between two redraws of the rows while a run writes stats,
+#: Live's own dashboard interval and the Simulator's ``STATS_REDRAW_MS``.
+STATS_REDRAW_MS = 2000
+
+#: The Activity Log lines a runner's ``running`` and ``stopped`` marks write,
+#: Live's own two per bot.
+BOT_RUNNING_FORMAT = "✓ Bot {bot_id} RUNNING."
+BOT_STOPPED_FORMAT = "Bot {bot_id} stopped."
+BOT_OPENED_FORMAT = (
+    "Paper bot {bot_id} opened on {symbol} at {timeframe}: {units:.8f} unit(s) "
+    "at ${price:,.8f}, target ${target:,.4f}."
+)
+BOT_ENDED_FORMAT = (
+    "Paper bot {bot_id} ended: {trades} fill(s), target ${target_open:,.4f} to "
+    "${target_end:,.4f}, position ${position:,.4f}, {tranches} tranche(s) queued."
+)
+
 #: The exchange chooser: Live's one-question dialog holding the bot wizard's
 #: ``Exchange:`` row, at the dialog width Live gives Configure Profit Wire.
 EXCHANGE_CHOICE_TITLE = IMPORT_LIVE_FLEET_TEXT
@@ -288,6 +305,49 @@ def run_ended_line(run: Any) -> str:
         folds=counts["fold_trades"],
         fees=counts["fees_usd"],
         realized=counts["realized_usd"],
+    )
+
+
+def bot_running_line(bot_id: Any) -> str:
+    """``BOT_RUNNING_FORMAT`` for ``bot_id``, Live's own RUNNING line."""
+    return BOT_RUNNING_FORMAT.format(bot_id=bot_id)
+
+
+def bot_stopped_line(bot_id: Any) -> str:
+    """``BOT_STOPPED_FORMAT`` for ``bot_id``, Live's own stopped line."""
+    return BOT_STOPPED_FORMAT.format(bot_id=bot_id)
+
+
+def bot_opened_line(snapshot: Any) -> str:
+    """``BOT_OPENED_FORMAT`` over a runner's opening ``BotStatsSnapshot``: the
+    bot, the pair, the timeframe, the units its ``main_lots`` hold, the price
+    they opened at and the record's target."""
+    saved = snapshot.scrumming_state
+    lots = saved.get("main_lots") or []
+    units = sum(float(lot.get("units", 0) or 0) for lot in lots)
+    return BOT_OPENED_FORMAT.format(
+        bot_id=snapshot.bot_id,
+        symbol=snapshot.symbol,
+        timeframe=snapshot.timeframe or "",
+        units=units,
+        price=float(snapshot.stats.get("current_price", 0.0) or 0.0),
+        target=float(saved.get("target_balance", 0.0) or 0.0),
+    )
+
+
+def bot_ended_line(snapshot: Any) -> str:
+    """``BOT_ENDED_FORMAT`` over a runner's closing ``BotStatsSnapshot``: the
+    bot, its fills, the target's opening and grown figures, the position it
+    ended holding and the tranches left queued."""
+    stats = snapshot.stats
+    saved = snapshot.scrumming_state
+    return BOT_ENDED_FORMAT.format(
+        bot_id=snapshot.bot_id,
+        trades=int(stats.get("total_trades", 0) or 0),
+        target_open=float(saved.get("anchor_target_balance", 0.0) or 0.0),
+        target_end=float(saved.get("target_balance", 0.0) or 0.0),
+        position=float(stats.get("position_value", 0.0) or 0.0),
+        tranches=len(saved.get("fold_tranches") or []),
     )
 
 
