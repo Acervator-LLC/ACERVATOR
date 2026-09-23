@@ -575,4 +575,30 @@ once every HEARTBEAT_INTERVAL seconds, which is 30. Two methods call it:
 A running bot stamps first, so it never drops its own claim. No setting
 changes either interval.
 
+## 2026-09-23 - #34 - the drained record carries three more fields
+
+`SignalSink.emit` in `src/core/signal_contract.py` stamps `cadence`, `budget_s`
+and `tab` on every record. The drain reads the same records, so every record
+this pane renders carries them. See
+[system-status.md](system-status.md) for what each field holds.
+
+### What the pane draws after the three fields land
+
+The rendered line does not change. `_drain_signals` in
+`src/gui/main_window.py` reads five attributes off each record: `ok`, `name`,
+`site`, `actual` and `expected`. None of the three new fields is one of them.
+
+`src/gui/main_window.py` - `_drain_signals`, the five it reads
+
+```python
+view.appendHtml(
+    f'<span style="color:{colour}">{mark}</span> '
+    f'<span style="color:{ds.MAIN_LOG_NAME}">{_esc(r.name)}</span>'
+    f'<span style="color:{ds.MAIN_LOG_SITE}"> {_esc(r.site)}</span>'
+)
+```
+
+The seven counters do not change either. They count drain ticks, records read
+and records rendered, and no counter reads a field of the record.
+
 Back to [the subsystem index](README.md).

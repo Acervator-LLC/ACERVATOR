@@ -563,6 +563,96 @@ undeclared, and the panel sits under the Inspector row.
 The page still draws once, when the window builds. A Status tab opened after
 a scan shows what the sink held at build. The redraw is a later unit of #34.
 
+### 2026-09-23 - #34 - the record carries its kind, its budget and its tab
+
+`SignalSink.emit` in `src/core/signal_contract.py` stamps three more fields on
+every record it builds. `Signal.to_json` writes them to the line on disk.
+`read_records` restores them. A line on `session.jsonl` is eighteen fields. A
+reader can now judge a silence from the line alone. Before this change a reader
+had to import the register of the build that wrote the line.
+
+| field | what it holds | the function that gives it |
+| --- | --- | --- |
+| `cadence` | `always_on` or `toggle`, empty for a name the register does not hold | `cadence_of` |
+| `budget_s` | the seconds an always-on emitter may stay silent, empty for every other emitter | `always_on_stale_after` |
+| `tab` | the tab the emitter's subsystem serves | `tab_of` |
+
+`src/core/signal_contract.py` - `SignalSink.emit`, the stamp
+
+```python
+                _cadence, _tab = self._declared_for(_name)
+                sig = Signal(
+                    cadence=_cadence,
+                    budget_s=(
+                        always_on_stale_after(_window)
+                        if _cadence == CADENCE_ALWAYS_ON
+                        else None
+                    ),
+                    tab=_tab,
+                )
+```
+
+`_window` is the widest `every=` window the sink holds for that emitter's
+identity. An emitter with no window keeps the flat budget, `ALWAYS_ON_STALE_AFTER`,
+ten seconds. An emitter with a window keeps `ALWAYS_ON_SLACK` times that window,
+which is 2.11 times. A toggle keeps no budget. `_declared_for` reads the register
+once per name and keeps the answer, so the register is not walked per record.
+
+#### What a restored record answers
+
+`read_records` reads each of the three through its own check: `_as_cadence`
+admits only a member of `CADENCE_CATEGORIES`, `_as_budget` admits only a finite
+number above zero, and `_as_tab` admits only a string with text in it. A value
+outside a check restores empty and the record is kept, the way a bad `dt` or a
+bad `duration` is kept today. A line written before this change carries none of
+the three, so all three restore empty and every other field restores as before.
+
+`src/core/signal_contract.py` - `read_records`, the restore
+
+```python
+                        cadence=_as_cadence(d.get("cadence")),
+                        budget_s=_as_budget(d.get("budget_s")),
+                        tab=_as_tab(d.get("tab")),
+```
+
+#### Overtaken by the record's three new fields
+
+The sentence below stands as written above. The sentence under it is the
+current reading.
+
+> The persisted row now names the subsystem it belongs to, so the report and the
+> log divide the network the same way.
+
+The row names the subsystem, the emitter's kind, the emitter's budget in seconds
+and the tab the subsystem serves. Four of the row's eighteen fields come from
+the register rather than from the call, and the `Signal.to_json` block above
+carries three more keys after `context`.
+
+#### Read on this change
+
+Read off the running program on a scratch home, with every socket but loopback
+refused, and on a read-only copy of a rotated file from the operator's own log
+root.
+
+```
+a line on session.jsonl          18 fields, 25 of 25 lines
+a line on session.digest.jsonl   19 fields, the three plus folded
+an always-on emitter, no window  ta.07.003.postcondition.computed  budget_s 10.0
+an always-on emitter, 30 s window console.14.001.invariant.records_rendered
+                                                          budget_s 63.34459459459459
+a toggle                         trading.12.001.postcondition.tab_assembled
+                                                          budget_s empty, tab Live
+the operator's rotated file      92,500 lines, 92,500 records restored,
+                                 all three empty on every record
+```
+
+Before the change the same reading gave fifteen fields on every line and no
+`cadence`, `budget_s` or `tab` on any of them.
+
+The panels do not read the three fields yet. `subsystem_health` still counts
+silence since launch, so the light is still Green or Yellow and never Red.
+Reading a budget off the record is a later unit of #34.
+
 ### 2026-09-23 - #34 - the qt bundle ships the shell renderer
 
 This tab draws through a React page, and the page host sits in the renderer
