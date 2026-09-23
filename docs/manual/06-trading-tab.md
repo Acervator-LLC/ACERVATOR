@@ -147,6 +147,30 @@ profit is the profit on positions that have grown past two hundred per cent over
 what they cost. Neither is computed from the platform's internal running totals,
 because the venue is the authority on money.
 
+**Overtaken:** "Realised profit is the exchange's own figure, matched buy
+against sell."
+
+The venue carries no lifetime realised figure for a spot position. Realised
+profit is the platform's own first in, first out match over the venue's own
+fills, one figure per bot, added across the fleet. The venue is still the
+authority: the fills are the venue's and the cost basis is the venue's.
+
+`src/exchange/position_health.py` — `compute_position_health`
+
+**Overtaken:** "Mature profit is the profit on positions that have grown past
+two hundred per cent over what they cost."
+
+Mature profit is the part of a position's value that sits over three times its
+cost. A position worth $350 on a $100 cost basis holds $50 of mature profit,
+not $250.
+
+`src/trading/smart_wire.py` — `mature_profit_usd`
+
+Realised draws the empty marker when the fill history cannot be walked to its
+end, so the column never shows a figure added up from part of a history.
+[08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) covers both columns
+in full.
+
 `src/gui/main_tabs/header_strip_surface.py` — `profits_payload`
 
 ```python
