@@ -110,6 +110,35 @@ def test_a_frozen_bundle_prefers_the_baked_value_over_a_repository() -> None: ..
 def test_a_baked_tree_keeps_its_version_after_git_is_removed() -> None: ...
 ```
 
+### What each variant ships
+
+`datas_candidates` names every source folder a build copies into the bundle.
+Four folders go into every variant. The Electron shell files go into a React
+build alone.
+
+| source folder | place in the bundle | qt | react |
+| --- | --- | --- | --- |
+| `src` | `src` | yes | yes |
+| `resources` | `resources` | yes | yes |
+| `data/historical` | `data/historical` | yes | yes |
+| `desktop/renderer` | `desktop/renderer` | yes | yes |
+| `desktop/main.js`, `desktop/preload.js`, `desktop/package.json` | `desktop` | no | yes |
+| `desktop/node_modules/electron/dist` | `desktop/node_modules/electron/dist` | no | yes |
+
+The renderer folder holds the page host that every React panel reads. The
+Status tab is a React panel under both builds, so both bundles carry that
+folder.
+
+```python
+SHELL_RENDERER = "renderer"                     # tools/spec_common.py
+def renderer_candidate(project_root: str) -> tuple[str, str]: ...
+def shell_candidates(project_root: str) -> list[tuple[str, str]]: ...
+def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]: ...
+```
+
+`build_graceful_datas` prints and skips a source folder that is not on disk. A
+clone that never installed the shell therefore builds with no Electron runtime.
+
 ## A version that moves while the suite runs
 
 Three test modules compare a freshly resolved version against the cached
