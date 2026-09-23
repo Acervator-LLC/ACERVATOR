@@ -84,10 +84,16 @@ class TradingTabMixin:
 
         ``set_relay`` reaches ``log``, ``force_log``, ``notice``, ``pause`` and
         ``resume``, which is every path that writes the Activity Log.
+        ``set_votes_handler`` carries the other way: a press on the page
+        reaches ``MainWindow._answer_votes`` and moves the Qt voting panel.
         """
         relay = getattr(getattr(self, "_trading_tab", None), "show_log_call", None)
         if callable(relay):
             self._status_log.set_relay(relay)
+        bind = getattr(getattr(self, "_trading_tab", None), "set_votes_handler", None)
+        answer = getattr(self, "_answer_votes", None)
+        if callable(bind) and callable(answer):
+            bind(answer)
 
     def _build_trading_tab(self) -> None:
         """Build the Trading tab and add it to the main tab widget."""

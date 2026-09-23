@@ -12,7 +12,6 @@
   var BASELINE_RGB = "baseline_rgb";
   var BODY_RADIUS_PX = "body_radius_px";
   var BORDER_ALPHA = "border_alpha";
-  var BORDER_RGB = "border_rgb";
   var CELLS = "cells";
   var COLORS = "colors";
   var CONFIDENCE = "confidence";
@@ -62,6 +61,15 @@
   var PAINT = "paint";
   var PILLARS = "pillars";
   var PRIVACY = "privacy";
+  var PRIVACY_DOT = "privacy_dot";
+  var ARROWS = "arrows";
+  var PREVIOUS = "previous";
+  var NEXT = "next";
+  var STEP = "step";
+  var ACTION = "action";
+  var BOT_ID = "bot_id";
+  var SELECT_BOT_ACTION = "select_bot";
+  var SET_MASKED_ACTION = "set_masked";
   var RATE_STRIP = "rate_strip";
   var ROWS = "rows";
   var RUNNING = "running";
@@ -92,6 +100,7 @@
   var DECLARED_FIELDS = [
     ALPHA_UNIT,
     "alpha_scale",
+    ARROWS,
     BARS,
     "base_kind",
     "bot_timeframes",
@@ -111,6 +120,7 @@
     PERCENT_SCALE,
     PILLARS,
     PRIVACY,
+    PRIVACY_DOT,
     RATE_STRIP,
     "raw_value_indicators",
     "row_a_cols",
@@ -150,6 +160,11 @@
   var HEADER_PART = "indicator-header";
   var TITLE_PART = "indicator-title";
   var SELECTOR_PART = "indicator-bot-selector";
+  var PREV_PART = "indicator-prev-bot";
+  var NEXT_PART = "indicator-next-bot";
+  var LEAD_SPACER_KEY = "indicator-lead-spacer";
+  var TRAIL_SPACER_KEY = "indicator-trail-spacer";
+  var NO_SHRINK = 0;
   var DOT_PART = "indicator-privacy-dot";
   var STALENESS_PART = "indicator-staleness";
   var RATE_PART = "indicator-rate-strip";
@@ -414,27 +429,51 @@
     return element(SPAN_TAG, titleProps, text(props.model[TITLE_TEXT]));
   }
 
+  // The universal control, drawn from privacy_dot_surface's own payload:
+  // the glyph is its text and the colour comes from its style sheet, so
+  // the page and widgets.privacy_dot.PrivacyDot paint the same mark.
   function PrivacyDot(props) {
     var model = props.model;
-    var dot = objectField(model, PRIVACY);
-    var size = length(dot.size_px);
-    var style = {
-      width: size,
-      height: size,
-      padding: ZERO,
-      borderRadius: length(dot.border_radius_px),
-      backgroundColor: text(dot[MASKED] ? dot.masked_color : dot.revealed_color),
-      borderColor: rgba(model, dot[BORDER_RGB], dot[BORDER_ALPHA]),
-      borderStyle: SOLID,
-      borderWidth: length(dot.border_width_px)
-    };
+    var dot = objectField(model, PRIVACY_DOT);
+    var style = sheetStyle(dot[STYLE_SHEET]);
     var dotProps = { style: style, onClick: props.onToggle };
     dotProps[PART_ATTR] = DOT_PART;
     dotProps[SLOT_ATTR] = DOT_PART;
-    dotProps[STATE_ATTR] = text(dot[STATE]);
+    dotProps[STATE_ATTR] = text(objectField(model, PRIVACY)[STATE]);
     dotProps[TITLE_ATTR] = label(dot[TOOLTIP]);
     dotProps[ARIA_LABEL] = label(dot[TOOLTIP]);
-    return element(BUTTON_TAG, dotProps, null);
+    return element(BUTTON_TAG, dotProps, text(dot[TEXT]));
+  }
+
+  // One arrow, drawn at the size and in the family the Charts tab's own
+  // arrows use. A press steps the selection by the payload's own number.
+  function ArrowButton(props) {
+    var model = props.model;
+    var row = objectField(model, ARROWS);
+    var one = objectField(row, props.side);
+    var style = sheetStyle(row[STYLE_SHEET]);
+    style.width = length(row.width_px);
+    style.height = length(row.height_px);
+    style.fontFamily = text(row.glyph_family);
+    style.fontSize = length(row.glyph_px);
+    style.padding = ZERO;
+    // Qt gives each arrow a fixed size, so the flex row may not shrink it.
+    style.flexShrink = NO_SHRINK;
+    style.boxSizing = BORDER_BOX;
+    var buttonProps = {
+      style: style,
+      disabled: props.atEnd === true,
+      onClick: function () {
+        if (typeof props.onStep === "function") {
+          props.onStep(one[STEP]);
+        }
+      }
+    };
+    buttonProps[PART_ATTR] = props.part;
+    buttonProps[SLOT_ATTR] = props.part;
+    buttonProps[TITLE_ATTR] = label(one[TOOLTIP]);
+    buttonProps[ARIA_LABEL] = label(one[TOOLTIP]);
+    return element(BUTTON_TAG, buttonProps, text(one[TEXT]));
   }
 
   function BotSelector(props) {
@@ -456,33 +495,70 @@
     return element(SELECT_TAG, selectProps, drawn);
   }
 
-  // Title, then a spacer, then BotSelector and PrivacyDot in the right corner.
+  // The place the dropdown holds in the list the arrows walk, and how
+  // many places that list has. An empty list answers 0 of 0.
+  function selectorPlace(model) {
+    var entries = listField(model, SELECTOR);
+    var chosen = text(model[SELECTED_BOT_ID]);
+    var at = -1;
+    entries.forEach(function (one, index) {
+      if (text(one[VALUE]) === chosen) {
+        at = index;
+      }
+    });
+    return { at: at, total: entries.length };
+  }
+
+  // Title, a spacer, the left arrow, the dropdown, the right arrow, the
+  // dot, a spacer. The arrows stop at each end rather than wrapping.
   function HeaderRow(props) {
     var model = props.model;
     var head = objectField(model, HEADER);
-    // The QHBoxLayout spaces its label, its selector and its dot apart; the
-    // panel's own spacing_px is the only spacing the payload declares.
+    // The QHBoxLayout spaces its arrows, its selector and its dot apart;
+    // the panel's own spacing_px is the only spacing the payload declares.
     var style = boxStyle(
       head[MARGINS_PX], objectField(model, CONTAINER)[SPACING_PX], ROW
     );
     style.alignItems = CENTER;
     var headProps = { style: style };
     headProps[PART_ATTR] = HEADER_PART;
-    var spacer = element(DIV_TAG, { key: PANEL_PART, style: { flex: FULL } }, null);
+    var place = selectorPlace(model);
+    var lead = element(
+      DIV_TAG, { key: LEAD_SPACER_KEY, style: { flex: FULL } }, null
+    );
+    var trail = element(
+      DIV_TAG, { key: TRAIL_SPACER_KEY, style: { flex: FULL } }, null
+    );
     return element(DIV_TAG, headProps, [
       element(Title, { key: TITLE_PART, model: model }),
-      spacer,
-      element(SPAN_TAG, { key: HEADER_PART }, text(head.bot_label_text)),
+      lead,
+      element(ArrowButton, {
+        key: PREV_PART,
+        model: model,
+        side: PREVIOUS,
+        part: PREV_PART,
+        atEnd: place.at <= 0,
+        onStep: props.onStep
+      }),
       element(BotSelector, {
         key: SELECTOR_PART,
         model: model,
         onSelect: props.onSelect
       }),
+      element(ArrowButton, {
+        key: NEXT_PART,
+        model: model,
+        side: NEXT,
+        part: NEXT_PART,
+        atEnd: place.at < 0 || place.at >= place.total - 1,
+        onStep: props.onStep
+      }),
       element(PrivacyDot, {
         key: DOT_PART,
         model: model,
         onToggle: props.onToggle
-      })
+      }),
+      trail
     ]);
   }
 
@@ -1180,7 +1256,8 @@
         key: HEADER_PART,
         model: model,
         onSelect: props.onSelect,
-        onToggle: props.onToggle
+        onToggle: props.onToggle,
+        onStep: props.onStep
       }),
       element(StalenessBanner, { key: STALENESS_PART, model: model })
     ];
@@ -1284,6 +1361,62 @@
         return null;
       });
     return asked;
+  }
+
+  // One action on the panel's own bridge method, whose answer is the whole
+  // payload. Every target already drawn into is drawn again from it, which
+  // is how a press on the page reaches the same model Qt reads.
+  function ask(params) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    return global.acervator
+      .call(METHOD, params)
+      .then(function (model) {
+        loadFault = null;
+        if (isPlainObject(model)) {
+          setPanel(model);
+          redraw();
+        }
+        return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
+  }
+
+  // The dropdown's own change, carrying the bot the operator picked.
+  function pickBot(event) {
+    var params = {};
+    params[ACTION] = SELECT_BOT_ACTION;
+    params[BOT_ID] = event.target.value;
+    return ask(params);
+  }
+
+  // An arrow press, which moves the choice one place and stops at each end.
+  function stepBot(by) {
+    var model = held === null ? null : held.model;
+    var place = selectorPlace(model);
+    var entries = listField(model, SELECTOR);
+    var wanted = place.at + Number(by);
+    if (place.total === 0 || wanted < 0 || wanted >= place.total) {
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[ACTION] = SELECT_BOT_ACTION;
+    params[BOT_ID] = text(entries[wanted][VALUE]);
+    return ask(params);
+  }
+
+  // A dot press, which flips the field the panel masks.
+  function toggleMask() {
+    var model = held === null ? null : held.model;
+    var params = {};
+    params[ACTION] = SET_MASKED_ACTION;
+    params[MASKED] = !objectField(model, PRIVACY)[MASKED];
+    return ask(params);
   }
 
   function payload() {
@@ -1413,19 +1546,37 @@
     }).observe(target);
   }
 
+  // The three presses the header row answers, handed to every Panel so a
+  // dropdown change, an arrow and the dot all reach the bridge method.
+  function panelNode(model) {
+    return element(Panel, {
+      model: model,
+      onSelect: pickBot,
+      onStep: stepBot,
+      onToggle: toggleMask
+    });
+  }
+
   function renderPanel(target, model) {
     var drawn = model;
     if (!isPlainObject(drawn)) {
       drawn = held === null ? null : held.model;
     }
-    draw(target, element(Panel, { model: drawn }));
+    draw(target, panelNode(drawn));
     var found = measuredArea(target);
     if (found > ALPHA_FLOOR && found !== areaHeight) {
       areaHeight = found;
-      draw(target, element(Panel, { model: drawn }));
+      draw(target, panelNode(drawn));
     }
     watchSize(target);
     return target;
+  }
+
+  // Every target already drawn into, drawn again from the state now held.
+  function redraw() {
+    roots.forEach(function (pair) {
+      renderPanel(pair.node, null);
+    });
   }
 
   function forget() {
