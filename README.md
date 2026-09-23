@@ -1,3 +1,15 @@
+WARNING: This is project that is being actively developed by a single human with no prior software development experience.  In some ways, it is meant to be this beat up veteran's 'last hoorah' and a gift to my fellow humans despite, for the most part, not really participating in humanity due to its identifiable loops becoming increasingly boring and my general inability to connect with people.  This is not a slight against people but an acknowledgement of my own 'glitches' which have also given me the ability to deliver this application to you.  Acervator is also being delivered after 26 years of increasing pain unjustly brought upon me and my family by the United States Navy and the Veteran's Administration.  Acervator is also arriving as a direct response to the collective 'wiggly chart deceptions' and 'white paper promises' that pervade the entire investment topic.  It is all of these things.  It works.  And it might be disruptive as fuck...I hope...maybe...a little...   
+
+I started this project in April of 2026 within a Claude ChatBot and developed my own HOP protocol to allow different Claude instances to orient to each other's work.  I had to migrate between the hard context window limit no fewer than four times before upgrading to Claude Code.  It is now September 2026 and I am seeing AI frontier labs announce similar concepts for building 'seams' between agents or context windows.  I also conceptualized and Claude happily hallucinated a proto-harness we called SADP (Structured AI Development Protocol) which was, and has now actually become, a rules based framework featuring subagents that have operational archetypes or specialties.  The working SADP 2.0 harness now consists of 31 actual SKILLS combined with Python enforcement but much of it has been trained in direct relation to Acervator's development arc so it might be quirky if deploying it for a different project until I build an isolated version.  
+
+But the harness and its story is just the method and its forced refinement over time.  The product, Acervator, is the real focus.  It represents a significant departure from digital asset trading methodologies.  It contains an array of innovations that would likely cost thousands per user if developed by the firms that typically build Governance Execution Platforms.  It allows a single user to interface with and actively trade dozens of positions across multiple exchanges via a single complex yet layered and organized interface.    
+
+I did all of this without watching a single tutorial, reading a single book, or completing a single YouTube video.  I did it because I was told years ago that 'you cannot predict the markets' yet the primary methods I witnessed and have been expected to adopt as a day trader hinge heavily on predicting market movements.  It was the strangest of introductory paradoxes.  Combine this with my reading only the intro of 'Way of the Turtle' which basically said you have to have a system and you have to be consistent.  I was being told to be consistent about doing something that cannot presumably be done with all this coming from many of the same sources who seemed unable to note the contradictions.  This ultimately lead to me taking Technical Analysis seriously but only from the angle of humans and their algorithms responding to the visualizations thus making the entire memeplex a statistically variable yet still self-confirming prophecy with the variance or distribution depending on who is using which indicators and how as well as the combined volume of traders using similar or identical indicator sets or methods.  
+
+My Indicator Voting Panel housing 12 reversals indicators is a culmination of this thought process where I have attempted to create a voting matrix that identifies consensus realities between indicator sets or combinations.  It is designed to find the hidden cross sections and collate them into a trading gate that opens or closes based on their consensus.  Imagine this now with each position or bot having its own isolated voting panel and trading logic gate chain.  Imagine this multiplied dozens of times across any compatible API and exchange.  Imagine this operating across multiple digital asset classes.  Imagine a trading system that never has to close a position but persistently optimizes its VWAP towards profitability while also compounding it over time in direct response to the local volatility of the selected timeframe via such a chain and in combination with specific metrics that 1) help prevent or inhibit trades of a given type happening on the on the wrong side of the market and 2) ensures a sell is never bought back higher and a buy is never sold lower by using a concept called Minimum Opposing Trade Distance and Bollinger Band proximity controls.   There is much, much more and you can find it all in the Product Manual (which is also a Development Journal...) that now has over 1100 pages and my personal trading evidence as further proof that this system works which is the actual and far more important goal I suppose.  I have, of course, obscured certain elements of said data but hopefully there is enough here to convince others to try it and beam a little suport my way.
+
+- Thanks, Ekthelius / Tony 
+
 # ⬡ Acervator
 
 **Acervator - The Accumulation Trading Platform.** 
@@ -12,79 +24,7 @@ guarantee — every completed cycle ends with more asset than it began with
 No prediction required. The volatility that destroys emotional traders is the
 engine.
 
-> *"Stop predicting. Stop HODLing. Stop waiting. Start accumulating."*
-
-Built by Anthony L. Brown, Ekthelius the Accumulator. Released to humanity.
-
-This page is the product manual. The front matter and the full catalogue of
-novel concepts are printed below in full. Every remaining part is one click
-away in the [map](#the-rest-of-the-manual), a row per section.
-
-## What is built, and what is not
-
-The manual is a design document as well as a description. It says what each
-part of the platform is meant to be, and some of those parts are not built yet.
-Read it that way.
-
-Built and running on live capital: the Live tab, the Market Inspector, the
-Bot Swarm, the Asset Charts, the History tab and the Console. The Trading tab
-is the Live tab renamed.
-
-**Built since: the Simulator and the Paper Trader. Not built: System Status and
-Proof of Accumulation.** The
-manual describes each of the four at length as a design. This product ships a
-backtesting engine, a paper-trading engine and no competition screen. Each one
-is named again, with its issue, under
-[the map](#four-subsystems-and-the-two-not-built).
-
-The window carries ten tabs. Every label is one word, and the order below is
-what the bar ends with.
-
-`src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
-
-```python
-CANONICAL_TAB_ORDER = (
-    SIM_TAB,
-    PAPER_TAB,
-    LIVE_TAB,
-    CHARTS_TAB,
-    INSPECTOR_TAB,
-    SWARM_TAB,
-    ACCUMULATION_TAB,
-    HISTORY_TAB,
-    STATUS_TAB,
-    CONSOLE_TAB,
-)
-```
-
-The Simulator was rebuilt and runs three modes: Validation, Back Test and
-Portfolio Battery. Nuclear Mode is cancelled and its code is deleted. The Paper
-Trader runs in real time against the venue's public market feed with a fake
-balance held in memory. Both reach their data downstream only: each source
-object answers a fixed set of read names and raises `SendRefused` for every
-other name, so neither can express an order.
-
-`src/simulator/tablet_source.py` — the Simulator's one data path
-
-```python
-class SendRefused(AttributeError):
-```
-
-Stone Tablets are the data layer under both. The live tablets sit under
-`~/.acervator/stone_tablets` and carry the assets the operator trades.
-RA-StoneTablets sit under `~/.acervator_ra_tablets` and carry the daily prices
-for the 35 portfolios the Portfolio Battery runs.
-
-```
-Price rises → SCRUM (sell excess above target → fold queue fills)
-Price dips  → FOLD  (buy back with queued USD at lower price → net accumulation)
-Repeat      → Target grows via compound profit folding
-```
-
-The running version is `__version__` in [`src/__init__.py`](src/__init__.py).
-It is not restated here, so it cannot go stale.
-
----
+Built Ekthelius the Accumulator aka Anthony L. Brown. Released to humanity.
 
 ## ACERVATOR
 
@@ -96,7 +36,7 @@ User Manual and Feature Design Intention Guide
 >
 > “The disturber of the balance is to be dissolved and reformed.”
 
-> “You are either gaining more territory cheaper or you are selling for higher than you bought it in direct response to the market’s moment to moment volatility.” - Ekthelius
+> *"Stop predicting. Stop HODLing. Stop waiting. Start accumulating."*
 
 ## Copyright and Attribution
 
