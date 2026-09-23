@@ -981,4 +981,95 @@ Both builds were opened with the change in place. Qt draws eight main tabs and
 React draws ten, the same counts as before, and the Swarm tab in each carries no
 View picker, no row list and no lane sheet.
 
+## 2026-09-23 - #239 - Disconnect All clears the key the fleet is stored under
+
+### Every control the tab carries
+
+The tab holds three sub-tabs, six header controls and three routing buttons. A
+wire also carries two menus of its own.
+
+| Control | What it does | Behind it |
+| ------- | ------------ | --------- |
+| Bot Swarm, Simulator Swarm, Paper Swarm | Picks the layer on show | the sub-tab bar |
+| Identifier privacy dot | Masks the bot hashes and the symbol labels together | `_toggle_bot_swarm_identifier_mask` |
+| Privacy Mode | Turns every mask on, or every mask off | `_on_privacy_mode_btn_clicked` |
+| Exchange | Filters the swarm and the routing scope | `_on_exchange_filter_changed` |
+| Theme | Picks one of the four palettes | `_on_theme_changed` |
+| Wires | Sets the overlay opacity, 0 to 100 % | `_on_wire_opacity_changed` |
+| Connect | Wires every ticked source to every ticked destination | `connect_clicked` |
+| Disconnect | Removes the wire on every ticked pair | `disconnect_clicked` |
+| Disconnect All | Removes every wire in the swarm | `disconnect_all_clicked` |
+| Right-click a wire | Offers that wire, and both directions when both are wired | `_show_disconnect_menu` |
+| Drag onto empty space | Offers the bot's own wires, one entry each | `_show_disconnect_picker` |
+
+Every one of the three routing buttons refuses out loud rather than doing
+nothing. With no bot ticked, Connect and Disconnect both answer **"No SOURCE
+bots are checked."**
+
+### What Disconnect All clears
+
+A wire is stored once, at the top level of the fleet file, under `smart_wires`.
+`StateManager.save_state` writes that list from `SmartWireManager.export_wires`,
+and `restore_smart_wires_from_state` reads it back at the next launch.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — the key a wire is stored under
+
+```python
+WIRES_KEY = "smart_wires"
+SOURCE_KEY = "source_id"
+TARGET_KEY = "target_id"
+```
+
+`clear_all_routes` empties that list and answers the pairs that were in it. Both
+builds call it: the Qt tab through `_clear_all_routes_in_state`, and the React
+page through `LiveRoutingTab.clear_all_routes`. Each answered pair becomes one
+`wire.removed` on the bus, which `BotManager._on_wire_removed_mgr` turns into an
+`unregister_wire` on the topology's owner. The canvas empties as those messages
+arrive, and the next launch reads an empty list and paints nothing back.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `clear_all_routes`
+
+```python
+def clear_all_routes(state: dict) -> list:
+    """Empty ``WIRES_KEY`` and report the pairs ``stored_wires`` found.
+
+    Each reported pair is one ``wire.removed`` the caller emits.
+    """
+```
+
+**The sentence this overtakes.** The page carried no sentence naming the key
+Disconnect All cleared. The older wording that describes the routes a wire is
+stored as lives on in `apply_routes`, which Connect and Disconnect still use;
+only the clear and the paint read `smart_wires`.
+
+### The question, on both screens
+
+The Qt build puts the question in a message box. The React page now draws the
+same two sentences itself, from the words the surface already published to it,
+and sends the operator's reply back with the press. A press that carries no
+reply is refused, because a bulk change nobody confirmed must not go through.
+
+`src/gui/main_tabs/quick_routing_surface.py` — `LiveRoutingTab.ask`
+
+```python
+def ask(self, title: Any, body: Any) -> bool:
+    """Take the next reply in ``answers``, or no once they run out."""
+```
+
+### The React page takes the wires onto its board
+
+The React host subscribes to `wire.created` and `wire.removed` at build, the two
+messages every wire reaches a screen as, and retracts both subscriptions when
+the tab closes. Before that it held none, so its wire board drew nothing however
+many wires the fleet carried.
+
+`src/gui/react_bot_swarm_tab.py` — `BotSwarmReactTab._subscribe_to_wires`
+
+```python
+for topic, action in (
+    (surface.WIRE_CREATED_TOPIC, "wire_created"),
+    (surface.WIRE_REMOVED_TOPIC, "wire_removed"),
+):
+```
+
 Back to [the subsystem index](README.md).

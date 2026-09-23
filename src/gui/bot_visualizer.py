@@ -210,9 +210,9 @@ if _HAS_QT:
             self._bot_swarm_tab = viz_tab
             self._tabs.addTab(viz_tab, "⚡ Bot Swarm")
 
-            # Stored routes replay as wire.created, through the drag handler.
+            # Stored wires replay as wire.created, through the drag handler.
             try:
-                painted = self._hydrate_smart_wire_routes_from_disk()
+                painted = self._hydrate_wires_from_disk()
             except Exception:
                 logger.exception(
                     "wire hydration failed; the wire overlay may show"
@@ -1475,8 +1475,8 @@ if _HAS_QT:
             """Write bot_state.json through ``atomic_write_json``.
 
             This is the second writer of that file after
-            ``StateManager.save_state``, and it maintains only
-            ``scrumming_state.smart_wire_routes``. A failed write is
+            ``StateManager.save_state``, and it maintains the
+            ``smart_wires`` list the same call writes. A failed write is
             logged.
             """
             try:
@@ -1541,29 +1541,25 @@ if _HAS_QT:
             self._save_bot_state_dict(state)
 
         def _clear_all_routes_in_state(self) -> list[tuple[str, str]]:
-            """Empty every bot's ``smart_wire_routes`` list.
+            """Empty the stored wire list and answer the pairs that were in it.
 
-            Returns the (source, dest) pairs that existed before the
-            call, one per ``wire.removed`` the caller emits.
+            Each pair is one ``wire.removed`` the caller emits, which
+            ``BotManager._on_wire_removed_mgr`` turns into an
+            ``unregister_wire`` on the topology's owner.
             """
+            from .main_tabs import bot_visualizer_surface as surface
+
             state = self._load_bot_state_dict()
-            bots = state.get("bots", {}) if isinstance(state, dict) else {}
-            removed_pairs: list[tuple[str, str]] = []
-            for bid, bot in bots.items():
-                if not isinstance(bot, dict):
-                    continue
-                scr = bot.get("scrumming_state", {})
-                if not isinstance(scr, dict):
-                    continue
-                routes = scr.get("smart_wire_routes", [])
-                if isinstance(routes, list):
-                    for entry in routes:
-                        if isinstance(entry, dict):
-                            dst = entry.get("dest_bot_id", "")
-                            if dst:
-                                removed_pairs.append((bid, str(dst)))
-                scr["smart_wire_routes"] = []
+            removed_pairs = [
+                (str(source), str(target))
+                for source, target in surface.clear_all_routes(state)
+            ]
             self._save_bot_state_dict(state)
+            logger.info(
+                "Disconnect All: %d wire(s) removed from %s",
+                len(removed_pairs),
+                surface.WIRES_KEY,
+            )
             return removed_pairs
 
         def _report_wire_hydration_shortfall(
@@ -1589,16 +1585,16 @@ if _HAS_QT:
                 seen - painted - rejected,
             )
 
-        def _hydrate_smart_wire_routes_from_disk(self) -> int:
-            """Emit one ``wire.created`` per stored route and return the count.
+        def _hydrate_wires_from_disk(self) -> int:
+            """Emit one ``wire.created`` per stored wire and return the count.
 
-            ``_on_external_wire_created`` receives them, and any route
+            ``_on_external_wire_created`` receives them, and any wire
             that does not reach ``_wires`` is recorded first.
             """
-            state = self._load_bot_state_dict()
-            bots = state.get("bots", {}) if isinstance(state, dict) else {}
+            from .main_tabs import bot_visualizer_surface as surface
+
+            plan = surface.hydration_plan(self._load_bot_state_dict())
             n = 0
-            seen = 0
             rejected = 0
             try:
                 from ..core.event_bus import get_event_bus
@@ -1606,47 +1602,28 @@ if _HAS_QT:
                 bus = get_event_bus()
             except Exception:
                 logger.exception(
-                    "wire hydration: no event bus, so no route in"
+                    "wire hydration: no event bus, so no wire in"
                     " bot_state.json reaches the canvas"
                 )
                 return 0
-            for bid, bot in bots.items():
-                if not isinstance(bot, dict):
-                    continue
-                scr = bot.get("scrumming_state", {})
-                routes = (
-                    scr.get("smart_wire_routes", []) if isinstance(scr, dict) else []
-                )
-                if not isinstance(routes, list):
-                    continue
-                for entry in routes:
-                    seen += 1
-                    if not isinstance(entry, dict):
-                        continue
-                    dst = str(entry.get("dest_bot_id", "") or "")
-                    try:
-                        pct = float(entry.get("pct", 0) or 0)
-                    except Exception:
-                        pct = 0.0
-                    if not dst or pct <= 0:
-                        continue
-                    try:
-                        bus.emit(
-                            "wire.created", source_id=str(bid), target_id=dst, pct=pct
-                        )
-                        n += 1
-                    except Exception:
-                        rejected += 1
-                        logger.warning(
-                            "wire hydration: the bus rejected route"
-                            " %s -> %s (%s%%), so that wire is not"
-                            " painted",
-                            bid,
-                            dst,
-                            pct,
-                            exc_info=True,
-                        )
-            self._report_wire_hydration_shortfall(n, seen, rejected)
+            for source, target, pct in plan["events"]:
+                try:
+                    bus.emit(
+                        "wire.created", source_id=source, target_id=target, pct=pct
+                    )
+                    n += 1
+                except Exception:
+                    rejected += 1
+                    logger.warning(
+                        "wire hydration: the bus rejected wire"
+                        " %s -> %s (%s%%), so that wire is not"
+                        " painted",
+                        source,
+                        target,
+                        pct,
+                        exc_info=True,
+                    )
+            self._report_wire_hydration_shortfall(n, plan["seen"], rejected)
             return n
 
         def _animate(self):
