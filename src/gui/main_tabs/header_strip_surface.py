@@ -266,11 +266,17 @@ PROFITS_SOURCE_KEYS = (
     "total_realized_exchange",
     "total_mature_exchange",
     "bots_with_fresh_exchange_data",
+    "realised_history_complete",
 )
 
 #: `get_aggregate_stats` counts the bots the venue has answered for. At zero
 #: neither exchange figure is a reading, so both columns stay absent.
 EXCHANGE_FRESHNESS_KEY = "bots_with_fresh_exchange_data"
+
+#: `get_aggregate_stats` answers False while any answered bot's fill history
+#: was cut short. The realised sum is then not a reading. An aggregate without
+#: the key walks no venue fill history at all, so its realised figure is whole.
+REALISED_COMPLETE_KEY = "realised_history_complete"
 
 STATS_KEYS = (
     tuple(card["source_key"] for card in COUNTER_CARDS)
@@ -500,6 +506,22 @@ def exchange_amount(stats: Optional[dict], key: str) -> Any:
     return money_amount(float(data.get(key, 0.0) or 0.0))
 
 
+def realised_amount(stats: Optional[dict]) -> Any:
+    """The fleet realised figure, or ``None`` when it is not a reading.
+
+    ``exchange_amount`` answers ``None`` while the venue has answered for no
+    bot; this answers ``None`` as well when ``REALISED_COMPLETE_KEY`` reads
+    False, which is a venue fill history the walk could not finish. The column
+    then draws the strip's empty marker rather than a sum over part of a
+    history. The Paper and Simulator aggregates carry no such walk and omit
+    the key, so their realised figure passes through whole.
+    """
+    data = stats if isinstance(stats, dict) else {}
+    if not bool(data.get(REALISED_COMPLETE_KEY, True)):
+        return None
+    return exchange_amount(data, "total_realized_exchange")
+
+
 def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
     """The payload the spendable panel receives for one snapshot."""
     data = stats if isinstance(stats, dict) else {}
@@ -508,7 +530,7 @@ def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
     known = wallet_cash > 0 or position_value > 0
     return {
         "spendable": wallet_cash if known else None,
-        "total_realised": exchange_amount(data, "total_realized_exchange"),
+        "total_realised": realised_amount(data),
         "locked": position_value if known else None,
         "mature": exchange_amount(data, "total_mature_exchange"),
         "exchange_count": int(exchange_count),

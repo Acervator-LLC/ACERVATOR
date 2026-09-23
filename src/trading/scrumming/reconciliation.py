@@ -88,6 +88,12 @@ class ReconciliationEngineMixin:
     async def refresh_exchange_position_health(self, force: bool = False) -> bool:
         """Refresh the exchange-pulled fields on ``stats``.
 
+        The fill-derived fields are written only when ``FillHistory.complete``
+        reads True, so a walk that stopped short leaves the last complete
+        reading in place and ``stats.fill_history_complete`` False; the header
+        strip's realised column draws its empty marker while any answered bot
+        reads False.
+
         Returns True when a fetch updated ``stats``; returns False when
         ``EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC`` throttles the call without
         ``force``, and when ``self.exchange`` cannot serve ``get_my_trades``.
@@ -110,15 +116,31 @@ class ReconciliationEngineMixin:
             _trades = await self.fetch_fill_history()
             if _trades is None:
                 return False
+            _complete = bool(getattr(self._fill_history, "complete", False))
+            self.stats.fill_history_complete = _complete
             _asset_base = self.config.symbol.split("/")[0]
             _ph = compute_position_health(_trades, _asset_base)
 
-            self.stats.realized_pnl_exchange = float(_ph.realized_pnl_usd)
-            self.stats.fees_paid_exchange = float(_ph.fees_paid_total)
+            if _complete:
+                self.stats.realized_pnl_exchange = float(_ph.realized_pnl_usd)
+                self.stats.fees_paid_exchange = float(_ph.fees_paid_total)
+            else:
+                logger.warning(
+                    "Bot %s %s: %d fills, history incomplete; realised P/L and "
+                    "fees keep their last complete reading of %.4f and %.4f",
+                    self.bot_id,
+                    self.config.symbol,
+                    len(_trades),
+                    float(self.stats.realized_pnl_exchange),
+                    float(self.stats.fees_paid_exchange),
+                )
             _venue = await self.fetch_spot_position(_asset_base)
             if _venue is None:
-                self.stats.avg_entry_exchange = float(_ph.avg_entry)
-                self.stats.cost_basis_total_exchange = float(_ph.cost_basis_total_usd)
+                if _complete:
+                    self.stats.avg_entry_exchange = float(_ph.avg_entry)
+                    self.stats.cost_basis_total_exchange = float(
+                        _ph.cost_basis_total_usd
+                    )
             else:
                 self.stats.avg_entry_exchange = float(_venue.avg_entry_price)
                 self.stats.cost_basis_total_exchange = float(_venue.cost_basis_usd)

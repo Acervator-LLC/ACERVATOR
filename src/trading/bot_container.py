@@ -558,6 +558,11 @@ class BotContainer:
                 "exchange_data_fresh_ts": float(
                     getattr(self.stats, "exchange_data_fresh_ts", 0.0) or 0.0
                 ),
+                # Saved beside the figure it describes, so a restart draws the
+                # last complete reading instead of recomputing a short one.
+                "fill_history_complete": bool(
+                    getattr(self.stats, "fill_history_complete", False)
+                ),
             },
             # A single bot's portfolio contribution is its position
             # value.
