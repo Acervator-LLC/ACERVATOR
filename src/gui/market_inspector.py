@@ -124,11 +124,19 @@ from .main_tabs.market_inspector_surface import (
     SCAN_ALL_LABEL,
     SCAN_ALL_PART,
     SCAN_ALL_TOOLTIP,
+    TIMER_CLOSE_PART,
+    TIMER_CLOSE_SIZE_PX,
+    TIMER_CLOSE_STYLE,
+    TIMER_CLOSE_TEXT,
+    TIMER_CLOSE_TOOLTIP,
     TIMER_COUNTDOWN_PART,
+    TIMER_DROP_QUESTION_FORMAT,
+    TIMER_DROP_TITLE,
     TIMER_EMPTY_STYLE,
     TIMER_PAIR_PART,
     TIMER_PAIR_STYLE,
     TIMER_TILE_PART,
+    timer_close_pair,
     TIMER_TILE_SPACING_PX,
     TIMER_REGION_HEIGHT_PX,
     TIMER_REGION_STYLE,
@@ -217,6 +225,7 @@ try:
         QStackedWidget,
         QGridLayout,
         QCompleter,
+        QMessageBox,
     )
     from PySide6.QtCore import Qt, QTimer, Signal
     from PySide6.QtGui import (
@@ -739,14 +748,16 @@ if _HAS_QT:
     class TimerTiles(QWidget):
         """The confirmation timer tiles right of the Timeframe row.
 
-        One frame per ``ata_spm_push.TimerTile`` row, its pair line over its
-        countdown line, placed on a grid ``TIMER_TILE_WIDTH_PX`` wide per
-        column and re-laid at the width the region has; the empty text
-        while no call is watched.
+        One frame per ``ata_spm_push.TimerTile`` row, its pair line and its
+        close x over its countdown line, placed on a grid
+        ``TIMER_TILE_WIDTH_PX`` wide per column and re-laid at the width the
+        region has; the empty text while no call is watched. ``on_close``
+        takes one tile's market and timeframe when its x is pressed.
         """
 
-        def __init__(self, parent=None) -> None:
+        def __init__(self, on_close=None, parent=None) -> None:
             super().__init__(parent)
+            self._on_close = on_close
             self.setAccessibleName(TIMER_TILES_PART)
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             self.grid = QGridLayout(self)
@@ -769,18 +780,20 @@ if _HAS_QT:
             """Draw one tile per row, building or dropping frames as the count moves."""
             self.rows = [dict(one) for one in rows]
             while len(self.tiles) > len(self.rows):
-                frame, _pair, _line = self.tiles.pop()
+                frame, _pair, _line, _close = self.tiles.pop()
                 self.grid.removeWidget(frame)
                 frame.setParent(None)
                 frame.deleteLater()
             while len(self.tiles) < len(self.rows):
                 self.tiles.append(self._build_tile())
-            for (frame, pair, line), row in zip(self.tiles, self.rows):
+            for (frame, pair, line, close), row in zip(self.tiles, self.rows):
                 frame.setAccessibleName(f"{TIMER_TILE_PART} {row['pair']}")
                 pair.setText(str(row["pair"]))
                 line.setText(str(row["text"]))
                 line.setStyleSheet(str(row.get("line_style") or ""))
                 line.setAccessibleName(f"{TIMER_COUNTDOWN_PART} {row['pair']}")
+                close.setAccessibleName(f"{TIMER_CLOSE_PART} {row['pair']}")
+                close.setProperty(TIMER_CLOSE_PART, str(row.get("close_value") or ""))
             self.empty_label.setVisible(not self.rows)
             self._place()
 
@@ -792,20 +805,37 @@ if _HAS_QT:
             column = QVBoxLayout(frame)
             column.setContentsMargins(0, 0, 0, 0)
             column.setSpacing(0)
+            head = QHBoxLayout()
+            head.setContentsMargins(0, 0, 0, 0)
+            head.setSpacing(0)
             pair = QLabel()
             pair.setStyleSheet(TIMER_PAIR_STYLE)
             pair.setAccessibleName(TIMER_PAIR_PART)
+            close = QPushButton(TIMER_CLOSE_TEXT)
+            close.setStyleSheet(TIMER_CLOSE_STYLE)
+            close.setToolTip(TIMER_CLOSE_TOOLTIP)
+            close.setFixedSize(TIMER_CLOSE_SIZE_PX, TIMER_CLOSE_SIZE_PX)
+            close.setCursor(Qt.PointingHandCursor)
+            close.clicked.connect(lambda _checked=False, held=close: self._press(held))
+            head.addWidget(pair, 1)
+            head.addWidget(close)
             line = QLabel()
-            column.addWidget(pair)
+            column.addLayout(head)
             column.addWidget(line)
-            return (frame, pair, line)
+            return (frame, pair, line, close)
+
+        def _press(self, close) -> None:
+            """Hand ``on_close`` the market and timeframe one x names."""
+            if self._on_close is None:
+                return
+            self._on_close(str(close.property(TIMER_CLOSE_PART) or ""))
 
         def _place(self) -> None:
             """Put every frame on the grid, wrapping at ``columns``."""
-            for frame, _pair, _line in self.tiles:
+            for frame, _pair, _line, _close in self.tiles:
                 self.grid.removeWidget(frame)
             across = self.columns()
-            for at, (frame, _pair, _line) in enumerate(self.tiles):
+            for at, (frame, _pair, _line, _close) in enumerate(self.tiles):
                 self.grid.addWidget(frame, at // across, at % across)
                 frame.setVisible(True)
 
@@ -1102,7 +1132,7 @@ if _HAS_QT:
             left.addLayout(self._build_scan_line())
             left.addStretch()
             block.addLayout(left)
-            self._timer_tiles = TimerTiles()
+            self._timer_tiles = TimerTiles(on_close=self._ask_drop_timer)
             self._timer_scroll = QScrollArea()
             self._timer_scroll.setWidgetResizable(True)
             self._timer_scroll.setFrameShape(QFrame.NoFrame)
@@ -2210,6 +2240,42 @@ if _HAS_QT:
             tiles = getattr(self, "_timer_tiles", None)
             if tiles is not None:
                 tiles.show_tiles(rows)
+
+        def _ask_drop_timer(self, value) -> bool:
+            """Ask before deleting one tile's confirmation timer, and answer whether it went.
+
+            A No leaves the timer and its tile as they were; a Yes drops the
+            timer alone through ``PushBoard.drop_timer`` and redraws, so the
+            call keeps its Ready to Send entry.
+            """
+            symbol, timeframe = timer_close_pair(value)
+            if not symbol or not timeframe:
+                return False
+            pair = ata_spm_push.TIMER_PAIR_FORMAT.format(
+                symbol=symbol, label=ata_spm.timeframe_label(timeframe)
+            )
+            answer = QMessageBox.question(
+                self,
+                TIMER_DROP_TITLE,
+                TIMER_DROP_QUESTION_FORMAT.format(pair=pair),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return False
+            call = self._push_board.drop_timer(symbol, timeframe)
+            if call is None:
+                return False
+            self._say(
+                ata_spm_push.FOLLOW_UP_STOPPED_LINE_FORMAT.format(
+                    symbol=symbol,
+                    label=ata_spm.timeframe_label(timeframe),
+                    reason=ata_spm_push.TIMER_STOPPED_DELETED,
+                ),
+                ACTIVITY_INFO,
+            )
+            self._render_timer_tiles()
+            return True
 
         def _read_follow_ups(self, timers) -> None:
             """Read each timer's candles and judge its call, then cross to the GUI thread.

@@ -63,6 +63,8 @@ CLASS_BOX_KEY = "class-box"
 TIMEFRAME_BOX_KEY = "timeframe-box"
 SCAN_NOW_KEY = "scan-now"
 SCAN_ALL_KEY = surface.SCAN_ALL_PART
+#: The x one timer tile carries; the press names the market and the timeframe.
+TIMER_CLOSE_KEY = surface.TIMER_CLOSE_PART
 
 #: The parts phases five and six are pressed with, each handled by
 #: ``MarketInspectorScreenModel.push_action``.
@@ -429,6 +431,9 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._on_scan_now()
             elif key == SCAN_ALL_KEY:
                 self._on_scan_all()
+            elif key == TIMER_CLOSE_KEY:
+                if self._ask_drop_timer(request.get("value")):
+                    self.push()
             elif key in HAND_OFF_KEYS:
                 self._start_hand_off(key, lambda: self._screen.push_action(key))
             elif key in PUSH_KEYS:

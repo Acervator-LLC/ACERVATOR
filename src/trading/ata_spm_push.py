@@ -167,6 +167,12 @@ FIRST_DAY = 1
 #: A ``FollowUpCall`` carrying this ``at_ts`` is anchored by its bar index.
 NO_READ_TS = 0.0
 
+#: How many closed candles of the hit's own timeframe one confirmation read
+#: waits after the first. ``AtaSpmSettings.confirmation_candles`` holds the
+#: operator's count and ``next_read_ts`` steps the grid by it.
+DEFAULT_CONFIRMATION_CANDLES = 3
+ONE_CANDLE = 1
+
 #: A venue that has not published the candle a timer waited for is read again
 #: after ``FOLLOW_UP_RETRY_S``, at most ``FOLLOW_UP_RETRY_CAP`` times.
 FOLLOW_UP_RETRY_S = 60.0
@@ -190,6 +196,7 @@ FOLLOW_UP_STOPPED_LINE_FORMAT = (
     "ATA-SPM confirmation timer for {symbol} {label} stopped: {reason}"
 )
 TIMER_STOPPED_LEFT_BUCKET = "the entry left the bucket"
+TIMER_STOPPED_DELETED = "the operator deleted it"
 
 #: One watched call's tile: the market and its timeframe on the first line,
 #: the seconds to its next read counted down on the second, ``reading`` while
@@ -661,7 +668,11 @@ SETTINGS_WRITE_FAILED_LOG = "ATA-SPM settings write failed on %s: %s"
 #: of the fleet state under the same directory, and reads it back on build.
 STATE_DIR_NAME = ".acervator"
 ATA_SPM_SETTINGS_NAME = "ata_spm_settings.json"
-PERSISTED_SETTINGS = ("hits_per_scan", "confirmation_share_pct")
+PERSISTED_SETTINGS = (
+    "hits_per_scan",
+    "confirmation_share_pct",
+    "confirmation_candles",
+)
 
 #: Every ``connect`` outcome, accepted or not. ``CONNECT_FAILED_LOG`` covers only
 #: the branch a connector raises on, and four other branches raise nothing.
@@ -1167,12 +1178,13 @@ class FollowUpWatch:
         """Every call still under watch, in the order its timer started."""
         return [one.call for one in self.timers.values()]
 
-    def watch_run(self, run: Any, now: Any = None) -> list:
+    def watch_run(self, run: Any, now: Any = None, candles: Any = ONE_CANDLE) -> list:
         """Start one timer per charted reversal call, and answer the timers started.
 
         A call already watched, one already settled, and one the gates refused
         a chart are not taken; a later call on a watched market and timeframe
-        replaces that timer, so one entry carries one timer.
+        replaces that timer, so one entry carries one timer. ``candles`` is
+        how many closes each read after the first waits.
         """
         pulls = {(one.symbol, one.timeframe): one for one in getattr(run, "pulls", [])}
         clock = float(now if now is not None else time.time())
@@ -1205,7 +1217,7 @@ class FollowUpWatch:
                 del self.timers[key]
             timer = FollowUpTimer(
                 call=call,
-                next_read_ts=next_read_ts(call.at_ts, call.timeframe, clock),
+                next_read_ts=next_read_ts(call.at_ts, call.timeframe, clock, candles),
             )
             self.timers[call.key] = timer
             started.append(timer)
@@ -1217,12 +1229,16 @@ class FollowUpWatch:
         return [one for one in self.timers.values() if one.due(clock)]
 
     def take_outcome(
-        self, timer: FollowUpTimer, outcome: FollowUpOutcome, now: Any
+        self,
+        timer: FollowUpTimer,
+        outcome: FollowUpOutcome,
+        now: Any,
+        candles: Any = ONE_CANDLE,
     ) -> FollowUpTimer:
         """Write one read's outcome onto its timer and set the next read.
 
         A settled call moves to ``settled`` and its timer is dropped; an
-        open one reads again at the next close, or after
+        open one reads again ``candles`` closes on, or after
         ``FOLLOW_UP_RETRY_S`` while the venue has not published the candle
         the timer waited for.
         """
@@ -1244,9 +1260,24 @@ class FollowUpWatch:
         else:
             timer.retries = NO_RETRIES
             timer.next_read_ts = next_read_ts(
-                timer.call.at_ts, timer.call.timeframe, clock
+                timer.call.at_ts, timer.call.timeframe, clock, candles
             )
         return timer
+
+    def drop(self, symbol: Any, timeframe: Any) -> Optional[FollowUpCall]:
+        """Drop one market and timeframe's timer, or its settled call, and answer it.
+
+        Nothing else is touched, so the call's bucket entry, its posts and
+        every other timer stand.
+        """
+        key = (str(symbol), str(timeframe))
+        for held in [one for one in self.timers if one[:2] == key]:
+            call = self.timers[held].call
+            del self.timers[held]
+            return call
+        for held in [one for one in self.settled if one[:2] == key]:
+            return self.settled.pop(held)
+        return None
 
     def keep_entries(self, posts: Any) -> list:
         """Drop every timer whose market and timeframe hold no bucket entry, and answer them."""
@@ -1329,12 +1360,20 @@ def candle_close_ts(open_ts: Any, timeframe: Any) -> float:
     return opened + TIMEFRAME_SECONDS[str(timeframe)]
 
 
-def next_read_ts(at_ts: Any, timeframe: Any, now: Any) -> float:
-    """The first candle close after ``now`` on the grid of closes that begins at ``at_ts``."""
+def next_read_ts(
+    at_ts: Any, timeframe: Any, now: Any, candles: Any = ONE_CANDLE
+) -> float:
+    """The next confirmation read after ``now`` on the grid that begins at ``at_ts``.
+
+    The first read is the close of the candle opened at ``at_ts``; every read
+    after it waits ``candles`` more closes of the same timeframe.
+    """
     close = candle_close_ts(at_ts, timeframe)
     clock = float(now)
+    step = max(ONE_CANDLE, int(candles))
     while close <= clock:
-        close = candle_close_ts(close, timeframe)
+        for _ in range(step):
+            close = candle_close_ts(close, timeframe)
     return close
 
 
@@ -1814,20 +1853,38 @@ def share_percent(asked: Any) -> int:
     return max(NO_SHARE_SET, held)
 
 
+def read_candles(asked: Any) -> int:
+    """The candles one confirmation read waits between reads.
+
+    Text that is not a whole number, and any count under one, read as
+    ``DEFAULT_CONFIRMATION_CANDLES``.
+    """
+    try:
+        held = int(str(asked).strip())
+    except (TypeError, ValueError):
+        return DEFAULT_CONFIRMATION_CANDLES
+    if held < ONE_CANDLE:
+        return DEFAULT_CONFIRMATION_CANDLES
+    return held
+
+
 class AtaSpmSettings:
     """The ATA-SPM settings page, carrying only what a phase reads.
 
     ``max_posts_per_hour`` is the ceiling ``SendRate`` obeys,
     ``max_supporting_indicators`` the cap phase four draws under,
     ``confirmation_share_pct`` the share of the run to the Bollinger midline
-    ``confirmation_target`` reads, and ``hits_per_scan`` the hits an
-    empty-field Scan Now stops at, written to ``settings_path`` on each set.
+    ``confirmation_target`` reads, ``confirmation_candles`` the closed
+    candles of the hit's own timeframe each read after the first waits, and
+    ``hits_per_scan`` the hits an empty-field Scan Now stops at, written to
+    ``settings_path`` on each set.
     """
 
     def __init__(self, path: Optional[Path] = None) -> None:
         self.max_posts_per_hour = NO_CEILING_SET
         self.max_supporting_indicators = NO_INDICATOR_CAP
         self._confirmation_share_pct = NO_SHARE_SET
+        self._confirmation_candles = DEFAULT_CONFIRMATION_CANDLES
         self.message_format = ata_spm.MESSAGE_FORMAT
         self._hits_per_scan = ata_spm.DEFAULT_HITS_PER_SCAN
         self.vault: Any = None
@@ -1858,6 +1915,17 @@ class AtaSpmSettings:
         self._confirmation_share_pct = share_percent(asked)
         self.save()
 
+    @property
+    def confirmation_candles(self) -> int:
+        """The closed candles of the hit's own timeframe each read after the first waits."""
+        return self._confirmation_candles
+
+    @confirmation_candles.setter
+    def confirmation_candles(self, asked: Any) -> None:
+        """Take a count; ``read_candles`` reads text and anything under one as the default."""
+        self._confirmation_candles = read_candles(asked)
+        self.save()
+
     def persisted(self) -> dict:
         """Each ``PERSISTED_SETTINGS`` name and the value it holds now."""
         return {name: getattr(self, name) for name in PERSISTED_SETTINGS}
@@ -1877,6 +1945,8 @@ class AtaSpmSettings:
             self._hits_per_scan = ata_spm.hits_target(held["hits_per_scan"])
         if "confirmation_share_pct" in held:
             self._confirmation_share_pct = share_percent(held["confirmation_share_pct"])
+        if "confirmation_candles" in held:
+            self._confirmation_candles = read_candles(held["confirmation_candles"])
         return True
 
     def save(self) -> bool:
@@ -2625,12 +2695,22 @@ class PushBoard:
         reads run from ``due_timers`` and ``take_outcome``, never here.
         """
         stopped = self.follow_up.keep_entries(self.bucket.posts)
-        started = self.follow_up.watch_run(run, self.now())
+        started = self.follow_up.watch_run(
+            run, self.now(), self.settings.confirmation_candles
+        )
         for timer in started:
             self.bucket.set_follow_up(
                 timer.call.symbol, timer.call.timeframe, timer.status
             )
         return stopped, started
+
+    def drop_timer(self, symbol: Any, timeframe: Any) -> Optional[FollowUpCall]:
+        """Delete one market and timeframe's confirmation timer, and answer its call.
+
+        The call's bucket entry, its posts and every other timer are left as
+        they were, so only the tile and its timer go.
+        """
+        return self.follow_up.drop(symbol, timeframe)
 
     def due_timers(self) -> list:
         """Every ``FollowUpTimer`` whose candle has closed, marked as reading."""
@@ -2693,7 +2773,9 @@ class PushBoard:
         if timer is None:
             return None
         now = self.now()
-        self.follow_up.take_outcome(timer, outcome, now)
+        self.follow_up.take_outcome(
+            timer, outcome, now, self.settings.confirmation_candles
+        )
         self.bucket.set_follow_up(timer.call.symbol, timer.call.timeframe, timer.status)
         if outcome.settled:
             self.bucket.load_follow_ups([outcome])
