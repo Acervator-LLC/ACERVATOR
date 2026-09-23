@@ -176,7 +176,6 @@ class PaperTradingTab(QWidget):
         self._corner_buttons: dict[str, QPushButton] = {}
         self._card_buttons: dict[str, QPushButton] = {}
         self._run_buttons: list[QPushButton] = []
-        self._stats_dirty = False
         self._stats_redraw_timer = QTimer(self)
         self._stats_redraw_timer.setSingleShot(True)
         self._stats_redraw_timer.setInterval(tab_surface.STATS_REDRAW_MS)
@@ -366,15 +365,13 @@ class PaperTradingTab(QWidget):
         except KeyError:
             logger.debug("paper stats for %s dropped: no record held", bot_id)
             return
-        self._stats_dirty = True
         if not self._stats_redraw_timer.isActive():
             self._stats_redraw_timer.start()
 
     def _redraw_stats(self) -> None:
         """Redraw every venue's rows through ``refresh_bots``, refresh the
-        state map the runner reads and clear the dirty mark; the header strip
+        state map the runner reads; the header strip
         reads the same records on the window's own tick."""
-        self._stats_dirty = False
         self._stats_redraw_timer.stop()
         self._refresh_states()
         self.refresh_bots()

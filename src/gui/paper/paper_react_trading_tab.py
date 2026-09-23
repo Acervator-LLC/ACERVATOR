@@ -836,7 +836,6 @@ if _HAS_WEBENGINE:
             self.run_finished.connect(self._take_paper_run)
             self.run_figures.connect(self._take_figures)
             self.bot_stats.connect(self._take_bot_stats)
-            self._stats_dirty = False
             self._stats_redraw_timer = QTimer(self)
             self._stats_redraw_timer.setSingleShot(True)
             self._stats_redraw_timer.setInterval(tab_surface.STATS_REDRAW_MS)
@@ -1033,15 +1032,13 @@ if _HAS_WEBENGINE:
             except KeyError:
                 logger.debug("paper stats for %s dropped: no record held", bot_id)
                 return
-            self._stats_dirty = True
             if not self._stats_redraw_timer.isActive():
                 self._stats_redraw_timer.start()
 
         def _redraw_stats(self) -> None:
             """Redraw every venue's rows through ``refresh_bots``, refresh the
-            state map the runner reads and clear the dirty mark; the header
+            state map the runner reads; the header
             strip reads the same records on the window's own tick."""
-            self._stats_dirty = False
             self._stats_redraw_timer.stop()
             self._refresh_states()
             self.refresh_bots()
