@@ -2112,3 +2112,131 @@ holds seven bands, so a sub-pane is 14 + 7 x 14 = 112 px.
 "each takes 84 px on the tab at every window height" - each takes 112 px at
 every window height, and a drag of the bottom bar raises that figure with the
 chart.
+
+## 2026-09-23 22:10 - #55 - the trade markers draw on every timeframe
+
+His words, 2026-09-23: *"Historical trade markers ... do not consistently appear and I could
+only get them to do so on the weekly timeframe during the previous test."* The chart now draws
+a fill's glyph at 5m, 1h, 1d and 1w, and where a timeframe cannot reach a fill it says so in
+the header.
+
+### The window rule and what each timeframe reaches
+
+One fetch asks for `FETCH_LIMIT` candles, and a fill can only be drawn on a candle the fetch
+brought back. The window a chart draws is therefore the candle count times the timeframe's own
+length, and a fill older than the first candle is counted, named in the header, and not drawn.
+
+`FETCH_LIMIT` is 300. One request carries at most 300 candles on the Coinbase candles route,
+which the tree records as `RA_CHUNK_DAYS`, and the Advanced Trade route's own ceiling is 350.
+The lower of the two is the figure the chart asks for, so no fetch asks a route for more than it
+serves. The fetch is one request either way, because the count is a parameter of that one call.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` - the one declaration
+
+```python
+#: Candles one fetch asks for, and so the span a fill's glyph can land in;
+#: 300 is the Coinbase candles route's one-request ceiling, recorded as
+#: ``RA_CHUNK_DAYS``. ``src.gui.widgets.trade_charts_tab`` imports this name.
+FETCH_LIMIT = 300
+```
+
+What 300 candles reach, from `TIMEFRAME_SECONDS`:
+
+| timeframe | window span | reaches a fill this old |
+| --- | --- | --- |
+| 5m | 1.042 days | one day |
+| 1h | 12.500 days | twelve and a half days |
+| 1d | 300.000 days | ten months |
+| 1w | 2100.000 days | five years nine months |
+
+A five-minute chart cannot reach a fill five months old. Reaching 152 days at 5m needs 44,011
+candles, which is 147 requests and 0.014 px a candle in the pane; at 1h it needs 3,668 candles
+and 12 requests. The daily and the weekly reach every fill a bot of this fleet holds, and the
+two short timeframes draw what they reach and name the rest.
+
+### One declaration of the candle count
+
+`FETCH_LIMIT` was declared in two files with the same value. Nothing compares the two, so the
+two copies could disagree without anything reporting it. The surface declares the name now, and
+the Qt tab imports it.
+
+`src/gui/widgets/trade_charts_tab.py` - the import
+
+```python
+from ..main_tabs.trade_charts_tab_surface import (
+    FETCH_LIMIT,
+    bot_timeframe,
+    fill_record,
+```
+
+### The header names the fills it could not draw
+
+The paint pass counts each fill it refused, under the reason it refused it: older than the first
+candle, past the last one, or at a price outside the drawn scale. The header carries one phrase
+per reason that counted anything, beside the symbol, the timeframe, the source and the candle
+count. A chart with nothing refused carries none of them, and its picture is unchanged.
+
+`src/gui/native_chart.py` - the three phrases
+
+```python
+FILLS_OLDER_HEADER_FORMAT = "{count} {fills} older than this chart"
+FILLS_NEWER_HEADER_FORMAT = "{count} {fills} newer than this chart"
+FILLS_OFF_SCALE_HEADER_FORMAT = "{count} {fills} off the price scale"
+```
+
+`charts.annotations.drawn` carries the same counts split by reason:
+`fills_older_than_window`, `fills_newer_than_window` and `fills_off_price_scale`, with
+`fills_off_window` the sum of the first two. It previously folded a fill at a price off the
+drawn scale into `fills_off_window`, which named the window for an absence the window did not
+cause.
+
+### The marker readings per timeframe
+
+One market, 37 fills fed, read off the running program in both builds at 700, 900 and 1400 px
+wide. The candles come from a read-only copy of one five-minute stone tablet on disk, folded to
+each timeframe by the registry's own rollup; the fills carry the fill ages of the running
+fleet, read from a read-only copy of its state file. No venue was contacted, every socket but
+loopback was refused, and no bot was started and no order placed, priced or cancelled.
+
+| timeframe | candles before | candles after | window before | window after | drawn before | drawn after | header after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 5m | 100 | 300 | 0.347 days | 1.042 days | **0** | **6** | 31 fills older than this chart |
+| 1h | 100 | 300 | 4.167 days | 12.500 days | 12 | **18** | 19 fills older than this chart |
+| 1d | 100 | 213 | 100.0 days | 213.0 days | 31 | **37** | none |
+| 1w | 31 | 31 | 217.0 days | 217.0 days | 37 | 37 | none |
+
+The daily and the weekly answered fewer candles than the 300 asked for, because the tablet on
+disk holds 212.771 days; a venue serving the whole 300 reaches 300 days at 1d.
+
+Every marker sat on the candle holding its own stamp at every timeframe and every width, with
+no fault in any reading. One fill planted at 400 days, outside every window including the
+weekly's, raised every timeframe's refused count by exactly one and turned the daily and the
+weekly from no phrase to `1 fill older than this chart`.
+
+Read off the saved renders rather than off the painter: at the weekly, before and after differ
+by **0 pixels** in both builds and in the image the page is handed, and the planted phrase
+differs by 720 pixels inside rows 14 to 22, the header's own band. At 700 px wide the longest
+header this draws ends 89 px clear of the right edge, so no phrase is clipped at the narrowest
+width.
+
+A paint pass costs 40.58 ms at 300 candles against 27.64 ms at 100, at 700 px; 28.10 against
+15.82 at 900; 30.51 against 19.43 at 1400. The tick that redraws the chart runs every two
+seconds.
+
+Renders sit under `artifacts/u55/C11a/`, one per build, stage, width and timeframe.
+
+### Sentences the window rule overtakes
+
+They were not reworded. They are quoted here.
+
+"A fill whose stamp falls before the window or past its end is counted and not drawn." - it is
+counted, named in the header under the reason it was refused, and not drawn.
+
+"A row outside the window is counted and not drawn." - a row outside the window is counted,
+named in the header, and not drawn.
+
+"`charts.annotations.drawn` is written when the set of annotations the paint pass drew changes,
+with the counts drawn against the counts fed that fall inside the pane, and the fills fed and
+the fills off the window in its context." - the context now carries the fills fed, the fills off
+the window, and that figure split into the fills older than the window, the fills newer than it
+and the fills at a price off the drawn scale.

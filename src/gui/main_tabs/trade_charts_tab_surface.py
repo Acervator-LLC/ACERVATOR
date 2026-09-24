@@ -140,7 +140,11 @@ BOT_ID_LOG_LENGTH = 8
 FOLLOW_LOG_FORMAT = "Asset Charts: panel for bot %s follows %s -> %s"
 
 FETCH_THROTTLE_S = 30
-FETCH_LIMIT = 100
+
+#: Candles one fetch asks for, and so the span a fill's glyph can land in;
+#: 300 is the Coinbase candles route's one-request ceiling, recorded as
+#: ``RA_CHUNK_DAYS``. ``src.gui.widgets.trade_charts_tab`` imports this name.
+FETCH_LIMIT = 300
 STALE_AFTER_S = 90.0
 AGE_DECIMALS = 3
 NEVER_FETCHED = 0

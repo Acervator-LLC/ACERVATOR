@@ -150,6 +150,14 @@ POSITION_TAG_FORMAT = "POSITION {price}"
 STRIP_UPPER = "upper"
 STRIP_LOWER = "lower"
 
+#: The header texts naming the fills the paint refused, one format a reason,
+#: so a market whose fills fall outside the drawn candles says so on screen.
+FILLS_OLDER_HEADER_FORMAT = "{count} {fills} older than this chart"
+FILLS_NEWER_HEADER_FORMAT = "{count} {fills} newer than this chart"
+FILLS_OFF_SCALE_HEADER_FORMAT = "{count} {fills} off the price scale"
+FILL_WORD = "fill"
+FILLS_WORD = "fills"
+
 #: The published reference levels each sub-pane rules: Wilder's RSI 30 and
 #: 70, ADX 20 and 25, and the Z-Score reversal threshold either side of 0.
 RSI_BANDS = (30.0, 70.0)
@@ -939,6 +947,11 @@ if _HAS_QT:
             self._readout_candle: Optional[int] = None
             # The fills of the window keyed by candle index, for the readout.
             self._fills_on_candle: dict = {}
+            # The fills the last paint refused, by the reason it refused them:
+            # older than the drawn window, past its end, or off the price scale.
+            self._fills_before_window = 0
+            self._fills_after_window = 0
+            self._fills_off_price = 0
 
         @property
         def symbol(self) -> str:
@@ -1728,6 +1741,10 @@ if _HAS_QT:
             font_ohlc = ohlc_font()
             fm = QFontMetrics(font_sm)
 
+            self._fills_before_window = 0
+            self._fills_after_window = 0
+            self._fills_off_price = 0
+
             if not self._candles:
                 p.setPen(QPen(self.TEXT_DIM))
                 p.setFont(design_font(ds.FONT_FAMILY_UI, ds.TYPE_BODY))
@@ -2207,12 +2224,17 @@ if _HAS_QT:
             # Every glyph draws first; a tag is placed against the glyphs and
             # the tags already drawn, and is left out where it would cross one.
             for m in self._markers:
-                if m.time < t_first or m.time >= t_end:
+                if m.time < t_first:
+                    self._fills_before_window += 1
+                    continue
+                if m.time >= t_end:
+                    self._fills_after_window += 1
                     continue
                 idx = max(0, bisect_right(times, m.time) - 1)
                 self._fills_on_candle.setdefault(v_start + idx, []).append(m)
                 my = p2y(m.price)
                 if not price_top <= my <= price_bot:
+                    self._fills_off_price += 1
                     continue
                 fills_in_window += 1
                 mx = i2x(idx) + cw / 2
@@ -2448,7 +2470,11 @@ if _HAS_QT:
                 },
                 {
                     "fills_fed": len(self._markers),
-                    "fills_off_window": len(self._markers) - fills_in_window,
+                    "fills_off_window": self._fills_before_window
+                    + self._fills_after_window,
+                    "fills_older_than_window": self._fills_before_window,
+                    "fills_newer_than_window": self._fills_after_window,
+                    "fills_off_price_scale": self._fills_off_price,
                 },
             )
 
@@ -3330,6 +3356,24 @@ if _HAS_QT:
             p.drawRect(QRectF(x, y + 2, CALL_SWATCH_PX, CALL_SWATCH_PX))
             p.setPen(QPen(self.TEXT_LIGHT))
 
+        def _refused_fill_texts(self) -> list:
+            """One header text per reason the last paint refused a fill, empty
+            when every fill it was fed landed on a candle.
+
+            A market whose fills are older than the fetched candles draws no
+            glyph, so the count says so rather than leaving the chart blank.
+            """
+            counted = (
+                (self._fills_before_window, FILLS_OLDER_HEADER_FORMAT),
+                (self._fills_after_window, FILLS_NEWER_HEADER_FORMAT),
+                (self._fills_off_price, FILLS_OFF_SCALE_HEADER_FORMAT),
+            )
+            return [
+                fmt.format(count=count, fills=FILL_WORD if count == 1 else FILLS_WORD)
+                for count, fmt in counted
+                if count > 0
+            ]
+
         def _draw_header(self, p: QPainter, w: int, font_hdr: QFont, font_sm: QFont):
             p.setFont(font_hdr)
             p.setPen(QPen(self.ACCENT))
@@ -3352,6 +3396,7 @@ if _HAS_QT:
                 if n_vis:
                     parts.append(f"{n_vis} on book")
                 info_parts.append(" | ".join(parts))
+            info_parts.extend(self._refused_fill_texts())
             p.drawText(int(offset), 18, "  \u2022  ".join(info_parts))
 
             if self._error_text:
