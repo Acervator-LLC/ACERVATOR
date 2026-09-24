@@ -463,14 +463,17 @@ if _HAS_QT:
             super().__init__(parent)
             self.cells: list = []
 
-        def show_panel(self, panel: dict) -> None:
+        def show_panel(self, panel: dict) -> bool:
             """Draw one ``voting_panel`` payload at the size it declares.
 
-            A payload of the same shape writes into the labels already
-            drawn; only a different shape builds any.
+            Answers False, and draws nothing, while the payload asks for a
+            different count of cells than the labels already drawn; the
+            owner then replaces this whole panel with a fresh one.
             """
             wanted = [len(cells) for _height, cells in panel["rows"]]
-            if wanted != [len(row) for row in self.cells]:
+            if self.cells and wanted != [len(row) for row in self.cells]:
+                return False
+            if not self.cells:
                 self._build_cells(panel)
             self.setFixedSize(int(panel["width_px"]), int(panel["height_px"]))
             self.setStyleSheet(str(panel["box_style"]))
@@ -483,25 +486,17 @@ if _HAS_QT:
                     drawn.setAccessibleName(str(part))
                     drawn.setToolTip(str(tip))
                     drawn.setText(str(text))
+            return True
 
         def _build_cells(self, panel: dict) -> None:
-            """Replace every row of labels with one row per ``panel`` row.
+            """Build one row of labels per ``panel`` row, on an empty panel.
 
-            Each label is hidden before it leaves its parent, so a show
-            already posted for it cannot open it as a window of its own.
+            ``show_panel`` calls this only while ``cells`` is empty, so the
+            column layout is built once and never taken apart.
             """
-            while self.cells:
-                for gone in self.cells.pop():
-                    gone.hide()
-                    gone.setParent(None)
-                    gone.deleteLater()
-            shape = self.layout()
-            if shape is None:
-                shape = QVBoxLayout(self)
-                shape.setContentsMargins(0, 0, 0, 0)
-                shape.setSpacing(0)
-            while shape.count():
-                shape.takeAt(0)
+            shape = QVBoxLayout(self)
+            shape.setContentsMargins(0, 0, 0, 0)
+            shape.setSpacing(0)
             for height_px, cells in panel["rows"]:
                 row = QHBoxLayout()
                 row.setContentsMargins(0, 0, 0, 0)
@@ -720,31 +715,38 @@ if _HAS_QT:
             The lines sit under the panel of the asset they name, which is
             what puts the gate chain result beside its own voting grid. Each
             panel keeps its own box across redraws, so a walk that redraws
-            once a market builds no widget and tears none down.
+            once a market builds no widget while the grid keeps its shape.
             """
             while len(self.panels) > len(rows):
-                gone = self.panels.pop()[0]
-                gone.hide()
-                self.panel_box.removeWidget(gone)
-                gone.setParent(None)
-                gone.deleteLater()
+                self._drop_panel_box(self.panels.pop())
             while len(self.panels) < len(rows):
-                self.panels.append(self._build_panel_box())
-            for held, panel in zip(self.panels, rows):
-                held[1].show_panel(panel)
-                self._show_panel_lines(held, panel)
+                self.panels.append(self._build_panel_box(len(self.panels)))
+            for at, panel in enumerate(rows):
+                if not self.panels[at][1].show_panel(panel):
+                    self._drop_panel_box(self.panels[at])
+                    self.panels[at] = self._build_panel_box(at)
+                    self.panels[at][1].show_panel(panel)
+                self._show_panel_lines(self.panels[at], panel)
 
-        def _build_panel_box(self) -> list:
-            """One panel's box: the grid, then the labels its gate lines take."""
+        def _build_panel_box(self, at: int) -> list:
+            """One panel's box at row ``at``: the grid, then its gate lines."""
             box = QWidget(self.entry)
             column = QVBoxLayout(box)
             column.setContentsMargins(0, 0, 0, 0)
             column.setSpacing(ENTRY_SPACING_PX)
             grid = _VotingPanel(box)
             column.addWidget(grid)
-            self.panel_box.addWidget(box)
+            self.panel_box.insertWidget(at, box)
             box.show()
             return [box, grid, []]
+
+        def _drop_panel_box(self, held: list) -> None:
+            """Take one panel's box off the entry, hidden before it is reparented."""
+            box = held[0]
+            box.hide()
+            self.panel_box.removeWidget(box)
+            box.setParent(None)
+            box.deleteLater()
 
         def _show_panel_lines(self, held: list, panel: dict) -> None:
             """Write one label per gate line under one panel, reusing its labels.
