@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
+from ..main_tabs.bot_visualizer_surface import MS_PER_S
 from ..main_tabs.wire_canvas_surface import (
     ARROW_BACK_PERCENT,
     ARROW_PERCENT,
@@ -99,6 +101,7 @@ if _HAS_QT:
         def paintEvent(self, event):
             if not self._viz._wires and not self._viz._dragging_wire:
                 return
+            started = time.monotonic()
 
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
@@ -172,6 +175,7 @@ if _HAS_QT:
                     p.drawLine(src, self._viz._wire_mouse_pos)
 
             p.end()
+            self._viz.observe_frame(started, (time.monotonic() - started) * MS_PER_S)
 
         def _draw_glow_wire(
             self,
