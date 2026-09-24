@@ -47,20 +47,29 @@ logger = logging.getLogger("acervator.ata_spm")
 
 CLASS_CRYPTO = "crypto"
 CLASS_STOCKS = "stocks"
-CLASS_METALS = "metals"
+CLASS_COMMODITIES = "commodities"
 CLASS_DERIVATIVES = "derivatives"
 CLASS_FOREX = "forex"
-CLASS_ENERGY = "energy"
 
 #: Every major asset class that charts and takes TA.
 ASSET_CLASSES = (
     CLASS_CRYPTO,
     CLASS_STOCKS,
-    CLASS_METALS,
+    CLASS_COMMODITIES,
     CLASS_DERIVATIVES,
     CLASS_FOREX,
-    CLASS_ENERGY,
 )
+
+#: What ``asset_class_named`` answers for a name no live or retired class holds.
+NO_ASSET_CLASS = ""
+
+#: A class name an earlier taxonomy drew, and the live class now holding its
+#: markets. The S&P GSCI makes energy and metals sectors of commodities, so a
+#: held selection naming either still reaches the markets it named.
+RETIRED_CLASSES = {
+    "metals": CLASS_COMMODITIES,
+    "energy": CLASS_COMMODITIES,
+}
 
 CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
 SLOWER_TIMEFRAMES = ("1h", "1d", "1w", "1M")
@@ -343,6 +352,22 @@ SCAN_FINISHED_TEXT = "ATA-SPM scan finished: {headline} · {meta}. {method}"
 SCAN_NOTE_TEXT = "ATA-SPM scan finished: {note}"
 SCAN_EMPTY_TEXT = "ATA-SPM scan finished: no sector to scan"
 SCAN_FAILED_TEXT = "ATA-SPM scan failed: {error}"
+
+
+def asset_class_named(name: Any) -> str:
+    """The live ``ASSET_CLASSES`` name one given class name resolves to.
+
+    A name ``ASSET_CLASSES`` holds answers itself, a name ``RETIRED_CLASSES``
+    maps answers that class whatever its case and spaces, and every other name
+    answers ``NO_ASSET_CLASS``.
+    """
+    asked = str(name or "")
+    if asked in ASSET_CLASSES:
+        return asked
+    folded = asked.strip().lower()
+    if folded in ASSET_CLASSES:
+        return folded
+    return RETIRED_CLASSES.get(folded, NO_ASSET_CLASS)
 
 
 def timeframes_for(asset_class: Any) -> tuple:
@@ -1959,13 +1984,13 @@ class SectorBoard:
     def set_class(self, at: Any, name: Any) -> bool:
         """Take the asset class named, and answer whether it was accepted.
 
-        A class outside ``ASSET_CLASSES`` is refused, so no sector carries
-        one with no timeframes behind it. A placed market keeps the class
-        that lists it; ``take`` moved the box to that class.
+        ``asset_class_named`` resolves the name, so a retired class name still
+        lands on the class holding its markets and a name outside both is
+        refused, leaving no sector with a class that has no timeframes.
         """
         self.note = ""
-        asked = str(name or "")
-        if asked not in ASSET_CLASSES:
+        asked = asset_class_named(name)
+        if not asked:
             return False
         self.asset_class = asked
         self.timeframes = timeframes_for(asked)
@@ -2206,7 +2231,7 @@ class SectorBoard:
         One ``walk_all`` sector per class in ``ASSET_CLASSES``, on every
         timeframe ``timeframes_for`` lists for it and every market
         ``class_source`` lists, replaces what the board held; ``run`` walks
-        the six with no hit target. ``progress`` reads each sector's place
+        every one of them with no hit target. ``progress`` reads each sector's place
         in the walk and the hits of every sector so far. Nothing on the board
         is written until ``take``.
         """
