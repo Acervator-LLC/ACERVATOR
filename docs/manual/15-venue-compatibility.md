@@ -95,8 +95,7 @@ holds nine ids for eight firms, and two of those firms have no API to reach.
 | Schwab | equities and options, individual accounts | yes, US broker | issued on the Schwab developer portal, shape not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; Schwab Trader API developer portal, read 2026-09-24 |
 | tastytrade | equities, options, futures and crypto, through one API | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; tastytrade API documentation, read 2026-09-24 |
 | E\*TRADE | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; E\*TRADE developer documentation, read 2026-09-24 |
-| Tradier | equities | yes, US broker; no id for it in the tree | not stated by the pages read | Tradier developer documentation, read 2026-09-24 |
-| TradeStation | equities | yes, US broker; no id for it in the tree | not stated by the pages read | TradeStation developer documentation, read 2026-09-24 |
+| Webull | equities | yes, US broker | not stated by the pages read | `src/gui/main_tabs/asset_class_surface.py:33`; the fractional-support table TradersPost publishes for the brokers it connects, read 2026-09-24 |
 | TD Ameritrade | none reachable | no, the API was discontinued on 10 May 2024 and registrations did not carry over | none | `src/gui/main_tabs/asset_class_surface.py:33`; Charles Schwab notice of the discontinuation, read 2026-09-24 |
 | Fidelity | none reachable | no retail trading API is published | none | `src/gui/main_tabs/asset_class_surface.py:33`; Fidelity, read 2026-09-24 |
 | OANDA | forex | yes, CFTC-registered and NFA-regulated | a v20 REST token, shape not stated by the pages read | OANDA v20 REST API documentation, read 2026-09-24 |
@@ -158,7 +157,8 @@ figures that decide whether a scrum can run.
 | Interactive Brokers | a share or contract quantity | not stated by the pages read; a minimum price increment is published per contract | not stated by the pages read; an oversized order is refused with error 201 | Interactive Brokers TWS API order limitations and minimum increment pages, read 2026-09-24 |
 | Schwab | not stated by the pages read | not stated by the pages read | not stated by the pages read | Schwab Trader API developer portal, read 2026-09-24 |
 | tastytrade | not stated by the pages read | not stated by the pages read | not stated by the pages read | tastytrade API documentation, read 2026-09-24 |
-| E\*TRADE, Tradier, TradeStation | not stated by the pages read | not stated by the pages read | not stated by the pages read | each firm's developer documentation, read 2026-09-24 |
+| E\*TRADE | not stated by the pages read | not stated by the pages read | not stated by the pages read | E\*TRADE developer documentation, read 2026-09-24 |
+| Webull | a share quantity | two decimal places of a share | not stated by the pages read | the fractional-support table TradersPost publishes for the brokers it connects, read 2026-09-24 |
 | OANDA | units of the base currency | one unit, in place of a thousand-unit micro lot | one unit | OANDA v20 REST API documentation, read 2026-09-24 |
 | FOREX.com, tastyfx | not stated by the pages read | not stated by the pages read | not stated by the pages read | each firm's own documentation, read 2026-09-24 |
 | Tradovate, NinjaTrader | whole contracts | the contract specification of the product, not stated by the pages read | the contract specification of the product, not stated by the pages read | each product's contract specification |
@@ -173,18 +173,29 @@ specification for a futures product.
 A scrum's excess is an arbitrary fraction. A venue whose smallest step is
 coarser than that fraction cannot carry the strategy unchanged.
 
-| Venue | Does the excess survive | Why |
-| ----- | ----------------------- | --- |
-| coinbase, spot | yes | the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py:226` |
-| coinbase, US futures | not answered | the contract step for those products is not stated by the pages read; Coinbase's own product record for the futures product answers it |
-| the other fourteen crypto venues | yes, if the venue's step is finer than the excess | the same two steps run for every crypto venue; each venue's own step and minimum are not stated by the pages read |
-| Alpaca | yes for a sell, at nine decimal places of a share | the 1.00 USD floor is published for a buy; the tree sends a share quantity and never a dollar amount, at `src/stocks/alpaca_connector.py:176`, so the either-or rule cannot be broken by this code |
-| Interactive Brokers | not answered | the refusal at error 201 is a maximum, and a scrum sells a fraction, so it does not bite; whether a fractional quantity is accepted is not stated by the pages read |
-| Schwab, tastytrade, E\*TRADE, Tradier, TradeStation | not answered | no size rule is stated by the pages read; each firm's order specification page answers it |
-| TD Ameritrade, Fidelity | no order is possible | neither firm offers an API to send one |
-| OANDA | no | the smallest step is one unit of the base currency, so an excess under one unit cannot be sold and an excess above it is cut to whole units |
-| FOREX.com, tastyfx | not answered | no size rule is stated by the pages read |
-| Tradovate, NinjaTrader | not answered | a futures order is whole contracts, and the step per product is not stated by the pages read |
+Two questions decide a venue, and every row answers both with a yes or a no.
+The first is whether an order can be placed over an API at all. The second is
+whether the excess survives the venue's size rule. Readings taken 2026-09-24
+from each venue's own published documentation, and from the fractional-support
+table TradersPost publishes for the brokers it connects.
+
+| Venue | Orders over an API | Does the excess survive | Why, and where the reading came from |
+| ----- | ----------------- | ----------------------- | ------------------------------------ |
+| coinbase, spot | yes | yes | nine decimal places, and the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py:236`. Coinbase developer documentation, read 2026-09-24 |
+| coinbase, US futures | yes | no | a futures contract is whole, so an excess under one contract cannot be sold. Coinbase developer documentation, Advanced Trade US derivatives, read 2026-09-24 |
+| kraken, kucoin, okx, gateio, bitget, mexc, bitfinex, gemini, bitstamp, cryptocom | yes | yes | nine decimal places. Each venue's own documentation, read 2026-09-24 |
+| binance, bybit | yes, and the address is refused from the United States | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The refusal is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py:113` |
+| poloniex, huobi | yes, and a United States account is restricted | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The restriction is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py:119` |
+| Alpaca | yes | yes | nine decimal places on a share quantity. The 1.00 USD floor is published for a buy, and the tree sends a share quantity and never a dollar amount, at `src/stocks/alpaca_connector.py:176`. Alpaca fractional trading documentation, read 2026-09-24 |
+| Webull | yes | yes | two decimal places on a share quantity, which is finer than one dollar on any share this fleet holds. The fractional-support table TradersPost publishes, read 2026-09-24 |
+| Interactive Brokers | yes | no | a quantity order rounds down to whole shares, and a fraction is reached only by naming a cash amount. Interactive Brokers TWS API documentation, read 2026-09-24 |
+| Schwab | yes | no | the Trader API places no fractional order at all. Schwab Trader API developer portal, read 2026-09-24 |
+| tastytrade | yes | no | a fractional quantity is not carried for automated trading. tastytrade API documentation, read 2026-09-24 |
+| E\*TRADE | yes | no | it sells no fractional share of an individual stock. E\*TRADE developer documentation, read 2026-09-24 |
+| TD Ameritrade | no | no | the API closed on 10 May 2024. Charles Schwab notice of the discontinuation, read 2026-09-24 |
+| Fidelity | no | no | it publishes no trading API. Fidelity, read 2026-09-24 |
+| OANDA, FOREX.com, tastyfx | yes | no | they size in whole currency units, so an excess under one unit cannot be sold and an excess above it is cut to whole units. Each firm's own documentation, read 2026-09-24 |
+| Tradovate, NinjaTrader | yes | no | a futures contract is whole. Each product's contract specification, read 2026-09-24 |
 
 Two limits apply to every row of that column. The truncation and the minimum
 refusal run only on the crypto path, so a broker order reaches the venue
@@ -228,13 +239,108 @@ The record that replaced the tuple, and the comparison the guard now calls, are
 described under
 [13-live-evidence.md](13-live-evidence.md).
 
-## Venues named in the tree that this page cannot describe
+## Two variants cover every venue
 
+The verdict column above falls into two groups and no more. A venue that reads
+yes needs nothing new. Every venue that reads no is served by one second shape,
+not by a shape of its own.
+
+The first variant is the bot that runs today. It names a unit count, which is
+the share quantity the broker connector already sends, quoted higher up this
+page. It trades crypto and Alpaca unchanged.
+
+The second variant names a cash amount instead of a unit count. Interactive
+Brokers reaches a fraction that way. Alpaca carries the same field beside its
+quantity. Schwab, tastytrade and E\*TRADE take the whole-share order that shape
+produces. One variant covers all five.
+
+```python
+# PROPOSED, not present. The broker contract names a quantity alone.
+    async def place_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: float | None = None,
+        notional_usd: float | None = None,
+        order_type: OrderType = OrderType.MARKET,
+    ) -> StockOrder:
+```
+
+Futures sit under the second variant and carry one further condition. A position
+small enough that its excess is under one contract cannot be scrummed at all,
+which is a reading each market answers for itself.
+
+## Cells on this page that the 2026-09-24 readings overtake
+
+The size table above was written from what each venue's own size pages state.
+The fractional readings taken on 2026-09-24 close several of its gaps. Each
+earlier cell is quoted whole, and the reading that overtakes it sits beneath.
+
+The four broker rows of the size table:
+
+```
+| Interactive Brokers | a share or contract quantity | not stated by the pages read; a minimum price increment is published per contract | not stated by the pages read; an oversized order is refused with error 201 | Interactive Brokers TWS API order limitations and minimum increment pages, read 2026-09-24 |
+| Schwab | not stated by the pages read | not stated by the pages read | not stated by the pages read | Schwab Trader API developer portal, read 2026-09-24 |
+| tastytrade | not stated by the pages read | not stated by the pages read | not stated by the pages read | tastytrade API documentation, read 2026-09-24 |
+| E\*TRADE, Tradier, TradeStation | not stated by the pages read | not stated by the pages read | not stated by the pages read | each firm's developer documentation, read 2026-09-24 |
+```
+
+Overtaken on 2026-09-24. Each of those brokers steps in whole shares.
+Interactive Brokers rounds a quantity order down and reaches a fraction only
+through a cash amount. Schwab places no fractional order over the Trader API.
+tastytrade does not carry a fractional quantity for automated trading. E\*TRADE
+sells no fractional share of an individual stock.
+
+The futures and currency rows of the size table:
+
+```
+| coinbase, US futures | not stated by the pages read | not stated by the pages read | not stated by the pages read | Coinbase developer documentation, Advanced Trade US derivatives, read 2026-09-24 |
+| FOREX.com, tastyfx | not stated by the pages read | not stated by the pages read | not stated by the pages read | each firm's own documentation, read 2026-09-24 |
+| Tradovate, NinjaTrader | whole contracts | the contract specification of the product, not stated by the pages read | the contract specification of the product, not stated by the pages read | each product's contract specification |
+```
+
+Overtaken on 2026-09-24. FOREX.com and tastyfx size in whole currency units, as
+OANDA does. A futures contract is whole, at Tradovate, at NinjaTrader and on
+Coinbase's US derivatives products, so one contract is the step.
+
+The paragraph that follows the size table:
+
+```
+A cell reading "not stated by the pages read" is a gap, not a zero. What closes
+each one is named beside it: the venue's product record for a crypto step, the
+firm's order specification page for a broker, and the exchange's contract
+specification for a futures product.
+```
+
+Overtaken on 2026-09-24 for the broker, the currency and the futures rows. The
+crypto steps are the gaps that remain, and each venue's own product record still
+closes one.
+
+The row that recorded the last venue this page could not describe:
+
+```
 One id in the equity venue list has no reading behind it.
 
-| Venue | What is known | What would cover it |
-| ----- | ------------- | ------------------- |
 | webull | the id sits in `EQUITY_VENUES` and no page about it was read | Webull's own developer documentation: whether it publishes a trading API, its order fields, its smallest share step and its minimum |
+```
+
+Overtaken on 2026-09-24. Webull publishes a trading API, and its share quantity
+carries two decimal places, so it sits in the tables above. Every id in the
+equity venue list is now described.
+
+Tradier and TradeStation are not on this page. No reading of 2026-09-24 states
+whether either carries a fractional share.
+
+The refusal quoted at the top of this page, cited there to line 226 of
+`src/trading/bot_container.py`:
+
+```
+        if _min_amount > 0 and _below_min:
+```
+
+Overtaken on 2026-09-24. The guard now reads a market record rather than three
+loose numbers, and the refusal it makes sits at line 236 of the same file. The
+verdict table above cites the new line.
 
 ## Where each venue fact was read
 
@@ -249,7 +355,8 @@ Alpaca            fractional trading documentation
 Interactive Brokers  TWS API order limitations; TWS API minimum increment
 Schwab            Trader API developer portal; the TD Ameritrade discontinuation notice
 tastytrade        API documentation
-E*TRADE, Tradier, TradeStation   each firm's developer documentation
+E*TRADE           developer documentation
+Webull            the fractional-support table TradersPost publishes
 Fidelity          the retail product pages, which publish no trading API
 OANDA             v20 REST API documentation
 FOREX.com         StoneX brand pages
