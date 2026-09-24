@@ -6,7 +6,9 @@
 and ``_apply_asset_class`` narrows the Live sub-tabs, the fleet the Swarm, the
 Charts and the Inspector are fed, and the rows the History, the Sim and the
 Paper tab hold. ``class_filter_surface`` decides which class a market belongs
-to and writes the sentence an emptied tab draws.
+to and writes the sentence an emptied tab draws, and ``_tab_keeps_card`` leaves
+a tab its own card while it holds no venue of the class, so an Add Exchange
+button on that card stays reachable.
 """
 
 from __future__ import annotations
@@ -193,7 +195,26 @@ class ClassFilterTabMixin:
             self._show_class_note(title, bare)
         for title, attr in SELF_COUNTING_TABS.items():
             kept, held = self._ask_tab_for_class(attr, key)
-            self._show_class_note(title, bare or (held > 0 and kept == 0))
+            empty = bare or (held > 0 and kept == 0)
+            self._show_class_note(title, empty and not self._tab_keeps_card(attr, key))
+
+    def _tab_keeps_card(self, attr: str, key: str) -> bool:
+        """Whether one tab keeps its own card in place of the class note.
+
+        A tab answering ``class_venues`` keeps its card while it holds no venue
+        of ``key``, so the Add Exchange button on that card stays reachable —
+        the rule the Live tab already follows through ``visible``. A tab
+        offering no ``class_venues`` never keeps its card.
+        """
+        tab = getattr(self, attr, None)
+        ask = getattr(tab, "class_venues", None)
+        if not callable(ask):
+            return False
+        try:
+            return not ask(key)
+        except Exception as exc:  # noqa: BLE001 - a silent tab is worse
+            logger.debug("%s refused the class venue ask: %s", attr, exc)
+            return False
 
     def _ask_tab_for_class(self, attr: str, key: str) -> tuple:
         """The rows one tab keeps for ``key`` and the rows it holds in all.

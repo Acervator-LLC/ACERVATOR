@@ -69,6 +69,7 @@
   var PLACEHOLDER_SHOWN = "placeholder_shown";
   var TEXT = "text";
   var TOOLTIP = "tooltip";
+  var ENABLED = "enabled";
   var MINIMUM_WIDTH = "minimum_width_px";
   var MINIMUM_SIZE = "minimum_size_px";
   var CORNER_WIDGET = "corner_widget";
@@ -697,10 +698,14 @@
       className: LAYER_CLASS,
       style: style,
       type: BUTTON_TYPE,
+      title: label(model[TOOLTIP]),
       onClick: function () {
         wayInAsked(text(model[ACTION]));
       }
     };
+    if (owns(model, ENABLED) && model[ENABLED] === false) {
+      buttonProps.disabled = true;
+    }
     buttonProps[PART_ATTR] = CORNER_BUTTON_PART;
     buttonProps[KEY_ATTR] = text(props.layerKey);
     buttonProps[INDEX_ATTR] = String(props.at);
@@ -750,10 +755,14 @@
       className: LAYER_CLASS,
       style: style,
       type: BUTTON_TYPE,
+      title: label(model[TOOLTIP]),
       onClick: function () {
         wayInAsked(text(model[ACTION]));
       }
     };
+    if (owns(model, ENABLED) && model[ENABLED] === false) {
+      buttonProps.disabled = true;
+    }
     buttonProps[PART_ATTR] = PLACEHOLDER_WAY_IN_PART;
     buttonProps[KEY_ATTR] = text(props.layerKey);
     buttonProps[INDEX_ATTR] = String(props.at);

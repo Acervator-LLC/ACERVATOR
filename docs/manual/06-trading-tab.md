@@ -6576,3 +6576,33 @@ it stands, with the sentence that is true today beneath it.
 > built."
 
 It is built. Seven tabs follow the active class, and Status and Console do not.
+
+### The Add Exchange button reaches the Paper tab
+
+**Functional.** The Paper tab now carries the same Add Exchange button, in the
+same two seats, reading the same class. The header strip's group is the window's
+and needed no change to reach it.
+
+The Paper Trader page carries the readings, the press and the card rule:
+[the Paper Trader](08-tabs/paper-trader.md).
+
+#### One reading the Paper Add Exchange button overtakes
+
+The tabs-filter entry above reads each tab's page per class. Its Paper column is
+quoted as it stands, with the reading that is true today beneath it.
+
+> "Stock: Sim note, Paper note, Live Add card, Charts note, Inspector note,
+> Swarm note, History note."
+
+Paper draws its own card, not the note, while it holds no venue of the class, so
+its Add Exchange button stays on screen and names the class. Read on the running
+window at 700, 900 and 1400 with no venue seated:
+
+```
+Stock         Paper draws its own card, the button reads Add Stock Broker
+Commodities   Paper draws its own card, the button reads Commodities - no venue yet
+Forex         Paper draws its own card, the button reads Forex - no venue yet
+```
+
+Sim and History are untouched and still draw the note. The class list read four
+entries on that run, because Derivatives had by then been retired onto Crypto.
