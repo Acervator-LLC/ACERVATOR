@@ -7287,4 +7287,136 @@ Inspector's scan state, which decides which sentence an empty pane carries.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-23 - #23 - The ATA-SMP field draws the reading of the market under read, and neither build moves its scroll
+
+His words, 2026-09-23: *"Observed a very strange issue with the lower
+information panel when attempting to scroll down to see more text. This seemed
+to trigger a chart re-read loop of some kind. During this I saw the rapidly
+spawning and despawning windows again. Need to get rid of the informational text
+during reads and only display the really nice looking IVP information that has
+only been visible in the larger floating windows up to this point. The IVP data
+keeps the symbology consistent and its really well designed from what I have
+seen of it. We have no use a for a repeating spool of identical data lines."*
+
+### What the field draws while a walk runs
+
+The Indicator Voting Panel of the market under read, and nothing else. One row
+per timeframe that answered candles, one cell per voter, and the Net, Comp and
+Conf columns, in the cell colours `indicator_panel_surface` gives the Live tab's
+own panel. The title names the market, the word `reading`, and the tally of
+bullish, bearish and neutral votes over the rows.
+
+`src/trading/ata_spm.py` - the reading the walk reports after each market
+
+```python
+    #: The market just read, empty before one.
+    symbol: str = ""
+    #: ``panel_rows_for`` over the market just read: its Indicator Voting
+    #: Panel rows, one per timeframe, which the zone draws while it walks.
+    panel: dict = field(default_factory=dict)
+```
+
+`src/gui/main_tabs/market_inspector_surface.py` - one builder, two callers
+
+```python
+def panel_grid(symbol: Any, label: Any, rows: Any, lines: Any = ()) -> Optional[dict]:
+    """One Indicator Voting Panel: its title, its two ``panel_table`` tables
+    and its ``lines``.
+
+    ``voting_panel`` and ``scan_panel`` both build through this, so a called
+    asset and a market under read draw the same reading the same way.
+    """
+```
+
+`voting_panel` is the called asset's grid, drawn in an open entry with its gate
+chain lines under it. `scan_panel` is the same grid for the market under read,
+with no gate line, because no chain has run over that market yet. Both are one
+`panel_grid` call, so the two cannot drift.
+
+A walk that has read no market yet holds no reading. The entry then keeps the
+zone's own sentence as its headline, so the field names its state rather than
+drawing nothing.
+
+### Neither build moves the field's scroll
+
+The Qt stepper no longer drags its scroll bar to the bottom at each progress,
+and the page's entry no longer sets `scrollTop` to `scrollHeight` on each
+render. The field holds where the operator left it.
+
+### The field readings, both builds, at 700, 900 and 1400
+
+Read off the running program, the home on a scratch directory, every socket but
+loopback refused, the candles served from read-only copies of the Coinbase 5 m
+stone tablets aggregated to 1 h, 1 d and 1 w. No venue was contacted. One scan
+of 93 markets in each build, one wheel step up on each of six readings.
+
+| Reading, while the walk runs | before | after |
+| ---------------------------- | ------ | ----- |
+| text lines in the field, Qt 1400 | 35, 42, 54, 70, 83, 92 | 0 at every step |
+| voting grids in the field, Qt 1400 | 0 at every step | 1 at every step |
+| text lines in the field, the page 1400 | 36, 44, 63, 81 | 0 at every step |
+| voting grids in the field, the page 1400 | 0 at every step | 1 at every step |
+| the scroll 0.8 s after one wheel step up | back at its own maximum, 6 of 6 Qt and 4 of 4 page | where the wheel left it, every step, both builds |
+| market reads over one whole scan, Qt | 372 | 372 |
+| market reads over one whole scan, the page | 372 | 372 |
+
+372 is 93 markets times 4 timeframes. The same scan run with no scroll at all
+reads 372 as well, so **a scroll causes no read** and caused none before this
+entry either. What looped was the field: every market rewrote it and dragged its
+scroll back to the bottom, 93 times in one scan. The same readings at 900 and at
+700 hold: 0 text lines, 1 voting grid, the scroll where it was left, 372 reads.
+
+The open entry is unchanged: 30 expanded lines and 2 voting grids before and
+after, at all three widths, in both builds.
+
+### What the grid asks for, and where it does not fit
+
+`panel_column_widths` adds to 592 px: a 44 px TF column, six 58 px voter
+columns, two 52 px columns and a 96 px Conf column. The left pane holds about
+840 px at a 1400 px window, about 530 px at 900 and about 415 px at 700. The
+grid therefore draws whole at 1400 and, at 900 and 700, draws its first columns
+with the Net, Comp and Conf columns past the pane edge and a horizontal scroll
+bar under it. This is the width `voting_panel` has always asked for in an open
+entry; the field now asks for it during a read as well. The grid is reachable at
+every width and complete at 1400. Fitting it to the pane changes the width
+contract for both hosts and for the open entry, and is not done here.
+
+### The windows, counted two ways
+
+Two instruments ran together: a Qt event filter counting every parentless widget
+that receives a show, and an `EnumWindows` poll counting every visible top-level
+window this process owns. Over a whole scan with six scrolls, a scroll pass on
+the open entry, and ten opens and closes of an entry holding two voting grids:
+**0 parentless shows and 1 native window, before and after, in both builds.**
+A planted parentless label raised the first count from 0 to 1 and the second
+from 1 to 2 on every run, so each reading can fail.
+
+The spawn he reports did not reproduce on this commit through the field's
+scroll, its read or its open. The teardowns that could still open one are
+closed. `_drop_panel_box`, `_show_panel_lines`, `_show_actions` and
+`TimerTiles.show_tiles` each hide a widget before reparenting it, the way
+`_show_lines` already did. `_VotingPanel` tears no cell down at all: a payload
+asking for a different count of cells is refused, and `_show_panels` replaces
+that whole panel. `TimerTiles._build_tile` gives its frame a parent at birth
+instead of after its style.
+
+### The two sentences the field overtakes
+
+Neither is reworded. Both are quoted here and the true sentence follows.
+
+`docs/manual/08-tabs/market-inspector.md:5411` - "While the scan walks, the
+field draws one line per market as it is read, newest last: the market, the
+timeframes that answered candles, the vote count and the verdict". The field now
+draws the Indicator Voting Panel of the market under read. That line still
+exists and still carries the same four things; it is written to the Activity
+Log, beside the read lines it names, rather than into the field.
+
+`docs/manual/08-tabs/market-inspector.md:6447` - "While the counter is set the
+scroll follows the newest line, in both variants." Neither build moves the
+field's scroll now. The counter still sits at the right of the position row
+above the field.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
