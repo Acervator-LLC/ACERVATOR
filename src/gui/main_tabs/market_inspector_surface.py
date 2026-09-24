@@ -3135,10 +3135,14 @@ def class_names(asset_class: Any, connectors: Any = None) -> list:
 
 
 def class_walk(asset_class: Any) -> list:
-    """``ata_spm.ASSET_CLASSES`` with ``asset_class`` first."""
-    chosen = str(asset_class)
+    """``ata_spm.ASSET_CLASSES`` with the class ``asset_class`` names first.
+
+    ``ata_spm.asset_class_named`` resolves the name, so a class named as an
+    earlier taxonomy named it walks the class holding its markets first.
+    """
+    chosen = ata_spm.asset_class_named(asset_class)
     rest = [one for one in ata_spm.ASSET_CLASSES if one != chosen]
-    return ([chosen] if chosen in ata_spm.ASSET_CLASSES else []) + rest
+    return ([chosen] if chosen else []) + rest
 
 
 def class_listing(symbol: Any, asset_class: Any) -> Any:
@@ -3247,14 +3251,20 @@ def empty_sector_line(asset_class: Any) -> str:
     )
 
 
-def ticker_note(asset_class: Any, note: Any = "") -> str:
+def ticker_note(asset_class: Any, note: Any = "", typed: Any = "") -> str:
     """The line under the ticker field, from the last press or from the sector.
 
-    A ``note`` the last press left is what the field carries; a class holding
+    A ``typed`` name the class declares and lists no market for carries
+    ``empty_sector_line`` ahead of the press's own note, so a press on one of
+    those sectors does not replace the count of zero the tree states. Then a
+    ``note`` the last press left is what the field carries; a class holding
     tickers carries ``empty_sector_line``; a sector ``class_tickers`` lists
     nothing for carries ``TICKER_PRESS_LIST_FORMAT`` while
     ``CLASS_PRESS_SOURCES`` names its venue, else ``TICKER_NO_LIST_FORMAT``.
     """
+    unlisted = ata_asset_maps.unlisted_sectors(asset_class)
+    if unlisted and ata_asset_maps.sector_named(typed, asset_class) in unlisted:
+        return empty_sector_line(asset_class)
     if note:
         return str(note)
     if class_tickers(asset_class):
@@ -3487,7 +3497,9 @@ def ata_spm_skin(model: Any) -> dict:
         "sector_text": row["sector_text"],
         "sector_class": row["sector_class"],
         "ticker_matches": ticker_matches(row["sector_text"], row["sector_class"]),
-        "ticker_note": ticker_note(row["sector_class"], model.board.note),
+        "ticker_note": ticker_note(
+            row["sector_class"], model.board.note, row["sector_text"]
+        ),
         "ticker_note_part": TICKER_NOTE_PART,
         "ticker_note_colour": TICKER_NOTE_COLOUR,
         "ticker_note_size_px": TICKER_NOTE_SIZE_PX,
