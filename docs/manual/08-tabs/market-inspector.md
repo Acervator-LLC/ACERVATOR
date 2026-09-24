@@ -7629,4 +7629,182 @@ own control." Five asset classes keep their own control.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-24 - #23 - The scanner walks the standard tree on every route, and a retired sector name is scanned under the sector holding it
+
+The class and sector names moved to the published ones. This entry is the
+scanner that reads them: every route that names a class or a sector, what each
+one counts, and what each one calls the thing it found.
+
+### The routes that name a class or a sector
+
+Twenty-three routes name one, and each was read off the running program.
+
+| route | where |
+| --- | --- |
+| the class menu's items | `src/gui/market_inspector.py:1235` |
+| the Asset Category buttons | `src/gui/market_inspector.py:1372` |
+| the page's class rows and its class list | `src/gui/main_tabs/market_inspector_surface.py:2203,4082` |
+| the class a press takes | `src/trading/ata_spm.py:1984,357` |
+| the timeframes and the round budget a class sets | `src/trading/ata_spm.py:373,389,397` |
+| Scan Now on an empty field, a sector name, a ticker | `src/trading/ata_spm.py:2086,2078,2074` |
+| the market list, the ticker list and the listing of one class | `src/gui/main_tabs/market_inspector_surface.py:3062,2834,3144` |
+| the class order a typed ticker is placed against | `src/gui/main_tabs/market_inspector_surface.py:3137,3182` |
+| the rows one sector holds | `src/gui/main_tabs/market_inspector_surface.py:2810` |
+| the sectors a class holds, and the ones it lists nothing for | `src/trading/ata_asset_maps.py:559,569,579` |
+| the sector one name resolves to, and its rows | `src/trading/ata_asset_maps.py:584,598` |
+| the line under the ticker field | `src/gui/main_tabs/market_inspector_surface.py:3254,3230` |
+| Scan All's walk and its place line | `src/trading/ata_spm.py:2218,681` |
+| the zone headline and its counts | `src/gui/main_tabs/market_inspector_surface.py:1557,1573` |
+| the confirmation timers and their tiles | `src/trading/ata_spm_push.py:1164,1436` |
+
+### What Scan All walks, and the two sectors it leaves out
+
+A Scan All press builds one walking sector per class, and that sector holds
+the whole class's market list. Every listed market of every listed sector is
+therefore walked, with no stop at a hit count.
+
+```python
+def compute_all(self, ...):
+    """One ``walk_all`` sector per class in ``ASSET_CLASSES``, on every
+    timeframe ``timeframes_for`` lists for it and every market
+    ``class_source`` lists."""
+```
+
+Agriculture and livestock are left out, and the reason is stated rather than
+silent: `sectors_for` answers only the sectors holding a market, both hold
+zero, and `unlisted_sectors` names both under the ticker field with their
+count. The same rule leaves forex's exotic tier out.
+
+### A retired sector name is labelled by the sector holding it
+
+Typing `spot` and pressing Scan Now scanned the precious metals rows and drew
+the zone as `spot (commodities)`. The markets were right and the word was the
+retired one, while the class side already normalised: `metals` chosen in the
+class menu leaves the menu reading `commodities`.
+
+Each map row now carries the sector it is listed under, and the board names a
+typed sector by the name its rows carry.
+
+```python
+def sector_key_of(rows: Any, typed: Any) -> str:
+    """The sector name the asset rows carry, ``typed`` while they carry none."""
+```
+
+| typed, commodities chosen | zone headline before | zone headline after | assets |
+| --- | --- | --- | --- |
+| `spot` | `spot (commodities)` | `precious metals (commodities)` | 4 |
+| `base` | `base (commodities)` | `industrial metals (commodities)` | 2 |
+| `petroleum` | `petroleum (commodities)` | `energy (commodities)` | 4 |
+| `gas` | `gas (commodities)` | `energy (commodities)` | 4 |
+| `precious metals` | `precious metals (commodities)` | `precious metals (commodities)` | 4 |
+
+No count moved. The field keeps what the operator typed.
+
+### The chosen class is walked first whatever it is named
+
+A typed ticker is matched against each class's names, the chosen class first.
+With a retired class name held, that walk started at crypto and reached
+commodities fourth, so a ticker two classes both list landed in the wrong one.
+The walk resolves the name now.
+
+```python
+def class_walk(asset_class: Any) -> list:
+    """``ata_spm.ASSET_CLASSES`` with the class ``asset_class`` names first."""
+```
+
+Read in both builds: `class_walk("metals")` answered
+`crypto stocks commodities derivatives forex` before and
+`commodities crypto stocks derivatives forex` after.
+
+### A declared sector with no market keeps its line through a press
+
+With commodities chosen, the line under the field reads
+`agriculture, livestock: 0 market(s) listed, no fund listed in dollars holds
+them, and this map carries no futures.` Typing `agriculture` and pressing Scan
+Now replaced that line with `No class lists ticker agriculture. Pick one the
+field offers.`, so the screen said two different things about one standard
+sector name.
+
+The field now keeps the true line for any name the class declares and lists no
+market for. The press still runs nothing, which is what a sector of zero
+markets is.
+
+### The confirmation timers carry no class name
+
+A watched reversal call is told apart by its asset, its timeframe and its
+bar's open time, and by nothing else.
+
+```python
+@property
+def key(self) -> tuple:
+    """What tells two watched calls apart: the asset, its timeframe, its bar's open time."""
+```
+
+A hit recorded while a retired class name was chosen therefore resolves and
+draws its tile unchanged.
+
+### The scanner read off both running builds, before and after
+
+Read on 2026-09-24 in the Qt window and on the React page, home on a scratch
+directory, no bot manager, every socket but loopback refused and no venue
+contacted. A loopback listener answered the Coinbase product list, the
+Coinbase product candles, the Yahoo chart endpoint and the Yahoo predefined
+screener in the shapes those routes serve. The crypto list was held to three
+names so one walk is readable in one run.
+
+| Scan Now, empty field | markets listed | markets read | zone headline |
+| --- | --- | --- | --- |
+| crypto | 3 | 3 | `crypto in map order` |
+| stocks | 3 | 3 | `stocks by volume` |
+| commodities | 14 | 10 | `commodities by volume` |
+| derivatives | 3 | 3 | `derivatives by volume` |
+| forex | 28 | 28 | `forex in map order` |
+
+Commodities lists 14 and reads 10 because the four spot pairs carry no venue.
+Every figure above is the same before this entry and after it, and the same in
+both builds.
+
+| Scan All | before | after |
+| --- | --- | --- |
+| walking sectors built | 5 | 5 |
+| markets read | 47 | 47 |
+| walk steps reported | 57 | 57 |
+| place line | `Scanning crypto (1 of 5)` to `Scanning forex (5 of 5)` | the same |
+| seconds, window and page | 97.6 and 98.4 | 97.8 and 97.4 |
+| voting rows drawn under the field while it walked | 2 and 4 | 2 and 4 |
+
+### The readings can fail
+
+The sector name `precious metals` was planted as `planted sector` and the
+scanner was driven again. `sectors_for` answered `energy`, `industrial metals`,
+`planted sector`, and typing `spot` drew `planted sector (commodities)` while
+`base` and `petroleum` kept their own names. The file compares byte identical
+after the plant was taken out.
+
+The new line-keeping branch was then blinded, with the declared-empty list
+forced to none. Typing `agriculture` went back to
+`No class lists ticker agriculture. Pick one the field offers.` and the other
+three names did not move. The file compares byte identical after.
+
+### The three sentences this entry overtakes
+
+None is reworded. Each is quoted and the true sentence follows.
+
+`docs/manual/08-tabs/market-inspector.md:4754` - "matched against each class's
+names, the chosen class first and then the others in the order the class box
+lists them". A class named as the earlier taxonomy named it is resolved first,
+so the chosen class leads the walk under either name.
+
+`docs/manual/08-tabs/market-inspector.md:7510` - "their count is drawn under
+the ticker field". The count stays under the field through a press on one of
+those sector names.
+
+`docs/manual/08-tabs/market-inspector.md:7539` - "Typing `spot`, `base`,
+`petroleum` or `gas` scans the sector those markets moved to." It scans that
+sector and the zone names it, so the entry reads `precious metals
+(commodities)`, `industrial metals (commodities)` or `energy (commodities)`.
+
+**Figures.** This entry adds none. A count of the markdown image tags on the
+page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
