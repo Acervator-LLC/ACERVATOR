@@ -48,7 +48,6 @@ logger = logging.getLogger("acervator.ata_spm")
 CLASS_CRYPTO = "crypto"
 CLASS_STOCKS = "stocks"
 CLASS_COMMODITIES = "commodities"
-CLASS_DERIVATIVES = "derivatives"
 CLASS_FOREX = "forex"
 
 #: Every major asset class that charts and takes TA.
@@ -56,19 +55,28 @@ ASSET_CLASSES = (
     CLASS_CRYPTO,
     CLASS_STOCKS,
     CLASS_COMMODITIES,
-    CLASS_DERIVATIVES,
     CLASS_FOREX,
 )
 
 #: What ``asset_class_named`` answers for a name no live or retired class holds.
 NO_ASSET_CLASS = ""
 
+#: A class name an earlier taxonomy drew for every futures contract. ISO 10962
+#: sorts a future as one of six instrument categories, beside equities and
+#: debt, so the class belongs to the underlying and the contract form rides on
+#: the listing. ``ata_asset_maps.futures_placement`` reads each product's own
+#: underlying and answers the class holding it.
+RETIRED_CLASS_DERIVATIVES = "derivatives"
+
 #: A class name an earlier taxonomy drew, and the live class now holding its
 #: markets. The S&P GSCI makes energy and metals sectors of commodities, so a
-#: held selection naming either still reaches the markets it named.
+#: held selection naming either still reaches the markets it named. Every CDE
+#: product this repository has read carries a crypto underlying, so a held
+#: ``derivatives`` selection reaches crypto.
 RETIRED_CLASSES = {
     "metals": CLASS_COMMODITIES,
     "energy": CLASS_COMMODITIES,
+    RETIRED_CLASS_DERIVATIVES: CLASS_CRYPTO,
 }
 
 CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
@@ -205,12 +213,21 @@ SECTOR_EXHAUSTED_TEXT = "sector exhausted"
 ORDER_LINE_FORMAT = "Order by {source}: {markets}"
 ORDER_UNREAD_FORMAT = "{markets} ({unread} not read)"
 ORDER_UNFIGURED_FORMAT = "{source}, {unfigured} with no figure last by name"
+#: The sentence ``MarketOrder.source_line`` ends with: what the class declares
+#: about being reached from home and about a wired venue.
+ORDER_DEPLOY_FORMAT = "{source}. {deploy}"
 #: The order line's tail naming the products the venue does not trade, once.
 ORDER_DEAD_FORMAT = "{line}; {count} not trading, never fetched: {names}"
 #: The order line's tail naming the products the venue answered no candle for.
 ORDER_NO_CANDLE_FORMAT = (
     "{line}; {count} dropped, the venue answered no candle on any "
     "granularity: {names}"
+)
+#: The order line's tail naming the products whose underlying no class holds,
+#: so a product the venue lists is reported rather than guessed into a class.
+ORDER_UNPLACED_FORMAT = (
+    "{line}; {count} placed in no class, the record names a root no class "
+    "holds: {names}"
 )
 MAP_ORDER_SOURCE_TEXT = "map order, no volume figure"
 UNSTATED_ORDER_SOURCE_TEXT = "the order the source listed"
@@ -551,6 +568,12 @@ class MarketOrder:
     #: The names the venue trades and answers no candle for, kept off
     #: ``listings`` at list time so no row is drawn for them.
     no_candle: list = field(default_factory=list)
+    #: The product ids whose underlying no class holds, kept off ``listings``
+    #: and named on the order line rather than guessed into a class.
+    unplaced: list = field(default_factory=list)
+    #: What the class declares about being reached from home and about a wired
+    #: venue, drawn at the end of ``source_line`` so no count sits after it.
+    deploy: str = ""
 
     @property
     def by_volume(self) -> bool:
@@ -564,12 +587,17 @@ class MarketOrder:
 
     @property
     def source_line(self) -> str:
-        """``source``, with ``ORDER_UNFIGURED_FORMAT`` while rows had no figure."""
+        """``source``, with ``ORDER_UNFIGURED_FORMAT`` while rows had no figure.
+
+        ``deploy`` ends the line through ``ORDER_DEPLOY_FORMAT``, so the class
+        declaration is read last and no count follows it.
+        """
+        held = self.source
         if self.by_volume and self.unfigured:
-            return ORDER_UNFIGURED_FORMAT.format(
-                source=self.source, unfigured=self.unfigured
-            )
-        return self.source
+            held = ORDER_UNFIGURED_FORMAT.format(source=held, unfigured=self.unfigured)
+        if self.deploy:
+            held = ORDER_DEPLOY_FORMAT.format(source=held, deploy=self.deploy)
+        return held
 
 
 @dataclass
@@ -599,8 +627,8 @@ def order_line(order: MarketOrder, read: Any) -> str:
     """``ORDER_LINE_FORMAT`` over the first ``read`` symbols of ``order``.
 
     The symbols after ``read`` are counted into ``ORDER_UNREAD_FORMAT``, and
-    ``order.dead`` and ``order.no_candle`` are each named once, through
-    ``ORDER_DEAD_FORMAT`` and ``ORDER_NO_CANDLE_FORMAT``.
+    ``order.dead``, ``order.no_candle`` and ``order.unplaced`` are each named
+    once through their own format.
     """
     symbols = order.symbols
     held = max(0, int(read or 0))
@@ -619,6 +647,12 @@ def order_line(order: MarketOrder, read: Any) -> str:
             line=line,
             count=len(order.no_candle),
             names=SYMBOL_SEPARATOR.join(str(one) for one in order.no_candle),
+        )
+    if order.unplaced:
+        line = ORDER_UNPLACED_FORMAT.format(
+            line=line,
+            count=len(order.unplaced),
+            names=SYMBOL_SEPARATOR.join(str(one) for one in order.unplaced),
         )
     return line
 

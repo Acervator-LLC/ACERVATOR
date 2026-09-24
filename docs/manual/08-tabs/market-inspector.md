@@ -7807,4 +7807,244 @@ sector and the zone names it, so the entry reads `precious metals
 **Figures.** This entry adds none. A count of the markdown image tags on the
 page answers 0 before this entry and 0 after it.
 
+## 2026-09-24 - #23 - Derivatives is not an asset class, each product takes the class of its underlying, and every class says whether a bot can deploy there
+
+A futures contract is an instrument, not an asset class. Each Coinbase CDE
+product now sits under the class of the thing it is written on, and carries
+the contract form as a property of its row. Every class and every sector states
+two separate things: whether a retail trader can reach it from home, and
+whether this program has a venue wired to it.
+
+### The standard this follows
+
+`MAP_SOURCES` cites ISO 10962, the CFI standard,
+https://www.iso.org/standard/81140.html. It sorts a financial product into six
+categories: equities, debt, entitlements, options, futures and other. A future
+is therefore one category of instrument beside equities, not a class of asset.
+The contract is written on an underlying and the underlying carries the class.
+
+### The class list
+
+```
+before   crypto  stocks  commodities  derivatives  forex
+after    crypto  stocks  commodities  forex
+```
+
+Read in the class box on the Inspector and on the Asset Category buttons under
+Settings, in both builds, at 700, 900 and 1400. Five names before, four after,
+in both menus and at all three widths.
+
+`derivatives` still resolves. Typed into the class box, held in settings, or
+read off a stored selection, it answers `crypto`, the same way `metals` and
+`energy` answer `commodities`.
+
+| name given | class answered before | class answered after |
+| --- | --- | --- |
+| `derivatives` | derivatives | crypto |
+| `DERIVATIVES` | derivatives | crypto |
+| ` derivatives ` | derivatives | crypto |
+| `metals` | commodities | commodities |
+| `energy` | commodities | commodities |
+| `bullion` | none | none |
+
+### How one product is placed
+
+```mermaid
+flowchart TD
+    A[CDE product record] --> B{non_crypto set?}
+    B -- no --> C{root names a crypto asset?}
+    C -- yes --> D[crypto, sector from the sector map]
+    C -- no --> E[placed in no class, named and counted]
+    B -- yes --> F{root in the published root table?}
+    F -- yes --> G[that class and that sector]
+    F -- no --> E
+```
+
+`futures_placement` reads `future_product_details.non_crypto` and
+`future_product_details.contract_root_unit` off the product's own record, with
+`base_currency_id` as the fallback root. Nothing is guessed: a root neither
+side resolves is held back, named on the order line and counted.
+
+```python
+def futures_placement(product: dict) -> tuple[str, str, str]:
+    """The underlying, the asset class and the sector one futures product takes."""
+```
+
+### Every product the list answered, and where it went
+
+Read on the running program in both builds, against a loopback stand-in for
+Coinbase's product route and its candle route. No venue was contacted.
+
+| product id | underlying | class | sector | form |
+| --- | --- | --- | --- | --- |
+| BIT-25SEP26-CDE | BTC | crypto | l1 | future |
+| BIT-27FEB26-CDE | BTC | crypto | l1 | future |
+| ET-25SEP26-CDE | ETH | crypto | l1 | future |
+| SOL-25SEP26-CDE | SOL | crypto | l1 | future |
+| LTC-25SEP26-CDE | LTC | crypto | payments | future |
+| XRP-25SEP26-CDE | XRP | crypto | l1 | future |
+| DOG-25SEP26-CDE | DOGE | crypto | meme | future |
+| ADA-25SEP26-CDE | ADA | crypto | l1 | future |
+| AVX-25OCT31-CDE | AVAX | crypto | l1 | future |
+| BIP-20DEC30-CDE | BTC | crypto | l1 | future |
+| OND-20DEC30-CDE | ONDO | crypto | rwa | future |
+| SIL-25DEC26-CDE | silver | commodities | precious metals | future |
+| GLD-25DEC26-CDE | gold | commodities | precious metals | future |
+| NQ-25DEC26-CDE | Nasdaq-100 index | stocks | portfolio | future |
+| LNK-25OCT31-CDE | LINK | crypto | oracle | future |
+
+Two more products the venue lists answered no candle on any granularity and are
+dropped at list time with their names on the order line: DOT-25OCT31-CDE and
+NER-25OCT31-CDE. One product the venue lists does not trade and is never
+fetched. **One product named a root no class holds - ZZZ-25DEC26-CDE - and is
+reported rather than placed: 1 product, named on the order line.**
+
+### The contract form each listing takes
+
+| listing | form drawn |
+| --- | --- |
+| a crypto pair on the exchange | spot |
+| XAU/USD, XAG/USD, XPT/USD, XPD/USD | spot |
+| GLD, SLV, PPLT, PALL, CPER, DBB, USO, BNO, UGA, UNG | ETF |
+| the RA portfolio equities and the screener's quotes | equity |
+| a dated CDE contract | future |
+| a perpetual CDE contract | perpetual |
+
+The form rides on the row and is drawn on it. No control was added and no menu
+gained an entry.
+
+### What a row says now
+
+```
+BIT-25SEP26-CDE  (crypto · future · charts only)
+GLD              (commodities · ETF · charts only)
+GLD-25DEC26-CDE  (commodities · future · charts only)
+XAU/USD          (commodities · spot · charts only, not retail)
+AAPL             (stocks · equity · charts only)
+EUR/USD          (forex · spot · charts only)
+BTC              (crypto · spot · bot ready)
+```
+
+`bot ready` means a venue is wired and a bot can deploy. `charts only` means a
+retail trader can reach the market from home and no venue here can place an
+order on it. `charts only, not retail` means the row carries no venue at all,
+so nothing in this program reaches it.
+
+### What each class and sector declares
+
+| class | reachable from home | venue wired |
+| --- | --- | --- |
+| crypto | yes - a retail account on a crypto venue takes orders over its API | yes - the connector the live bots trade on |
+| stocks | yes - a retail broker account takes equity orders over its API | no - no broker connector is reachable and the quote source is not a broker |
+| commodities | yes - every listed row is an ETF share a retail broker account buys | no - the same missing broker connector |
+| forex | yes - a retail account at a registered FX dealer takes spot orders | no - no FX dealer connector exists |
+
+Two sectors answer differently from their class.
+
+| sector | reachable from home | venue wired |
+| --- | --- | --- |
+| commodities / precious metals | yes for the four funds; the four spot pairs carry no venue and nothing here reaches them | no |
+| a CDE futures row, in any class | yes - the venue takes orders on its US futures products over the same API | no - the futures adapter reads candles and places no order |
+
+The two questions are kept apart. A market can be reachable in principle and
+have no venue wired here; ATA-SPM scans it either way, for its charts.
+
+### ATA-SMP scans a class it cannot trade
+
+Scan Now was pressed on the real control with **commodities** chosen, a class
+whose declaration reads `venue wired no`. The scan ran and the zone headline
+read `commodities by volume`. The order line inside the card carried the
+declaration:
+
+```
+Order by last complete daily bar volume x close on yahoo; 2 futures
+product(s) joined, 4 with no figure last by name. commodities: reachable from
+home yes -- every listed row is an ETF share a retail broker account buys;
+venue wired no -- the same missing broker connector as the stocks class:
+GLD-25DEC26-CDE, BNO, CPER, DBB (12 not read); 1 placed in no class, the
+record names a root no class holds: ZZZ-25DEC26-CDE
+```
+
+### What each class lists now
+
+| class | markets listed before | markets listed after |
+| --- | --- | --- |
+| crypto | 120 | 132 |
+| stocks | 47 | 48 |
+| commodities | 14 | 16 |
+| derivatives | 16 | class retired |
+| forex | 28 | 28 |
+
+The CDE products moved from one class of their own into the three classes their
+underlyings belong to. No product was added and none was dropped.
+
+### The venue map with the class gone
+
+Coinbase answered `crypto, derivatives` before and answers `crypto` after. A
+Coinbase spot pair and a Coinbase CDE product both answer `crypto` now, so the
+Live, Swarm, Charts, Inspector, History, Sim and Paper tabs all show a futures
+bot under Crypto. Read on the running window: under Crypto the Live tab held
+2 bots, a spot pair and a CDE product; before the change it held 1, and the CDE
+product sat under a Derivatives button that no longer exists.
+
+### The header strip and the tab filter
+
+The class group reads `ASSET_CLASSES` when the window is built, so four names
+replace five with no edit to the strip.
+
+| reading | before | after |
+| --- | --- | --- |
+| class buttons in the row | 5 | 4 |
+| every button reachable inside the pane | 5 of 5 | 4 of 4 |
+| the group's own floor | 178 px | 142 px |
+| the window's floor, first build | 1145 px | 1145 px |
+| the window's floor, second build | 634 px | 598 px |
+
+Read at 700, 900 and 1400 in both builds. Status and Console still do not
+filter; the other seven tabs still do.
+
+### The placement readings can fail
+
+A class name was planted into the class box and the menu was read again: six
+names with the plant in, four with it out, at all three widths in both builds.
+
+The placement rule was then blinded twice. With the crypto names emptied, 15 of
+the 18 products fell to `placed in no class` and only the silver, gold and index
+contracts listed. With a planted root added to the root table, the one product
+that names an unknown root placed into commodities / agriculture under the
+planted underlying and the unplaced count went to 0. With both plants removed
+the reading returned to 15 listed and 1 unplaced.
+
+### The six sentences this contract-form entry overtakes
+
+None is reworded. Each is quoted and the true sentence follows.
+
+`docs/manual/08-tabs/market-inspector.md:7450` - "Crypto, stocks, derivatives
+and forex are untouched." Crypto, stocks and forex are untouched, and
+derivatives is retired by this entry.
+
+`docs/manual/08-tabs/market-inspector.md:7609` - "Stocks, commodities,
+derivatives and forex share it." Stocks, commodities and forex share the slower
+timeframe set.
+
+`docs/manual/08-tabs/market-inspector.md:7614` - "holds crypto, stocks,
+commodities, derivatives and forex." It holds crypto, stocks, commodities and
+forex.
+
+`docs/manual/08-tabs/market-inspector.md:7627` - "Five asset classes keep their
+own control." Four asset classes keep their own control.
+
+`docs/manual/08-tabs/market-inspector.md:7716` - "`crypto stocks commodities
+derivatives forex` before and `commodities crypto stocks derivatives forex`
+after." The walk reads `crypto stocks commodities forex`, and a retired class
+name still leads the walk with the class holding its markets.
+
+`docs/manual/08-tabs/market-inspector.md:7760` - "| derivatives | 3 | 3 |
+`derivatives by volume` |" That row is gone from the class walk. The CDE
+products are read under crypto, commodities and stocks, and each class's
+headline names that class.
+
+**Figures.** This entry adds none. A count of the markdown image tags on the
+page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
