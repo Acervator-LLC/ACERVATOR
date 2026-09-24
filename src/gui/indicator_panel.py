@@ -83,24 +83,6 @@ PILLAR_PAD_FRACTION = 0.12
 #: The alpha of the halo drawn behind a pillar body.
 PILLAR_GLOW_ALPHA = 30
 
-#: A pillar fills its column, so its bar record carries this and no reading.
-_PILLAR_FILL = 1.0
-
-
-def _sign_direction(value) -> str:
-    """The vote direction one signed score reads as; ``None`` reads NEUTRAL."""
-    if value is None:
-        return "NEUTRAL"
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return "NEUTRAL"
-    if number > 0.0:
-        return "BULLISH"
-    if number < 0.0:
-        return "BEARISH"
-    return "NEUTRAL"
-
 
 #: The ``CurrencyRates`` fields ``update_currency_rates`` paints from.
 RATE_FIELDS = (
@@ -728,26 +710,26 @@ if _HAS_QT:
     class CollatedPillarsWidget(QWidget):
         """Paints one pillar per collated column behind both mini-panels.
 
-        ``set_pillars`` takes ``(x, width, name, direction)`` per pillar in
-        this widget's own coordinates. Each pillar fills the widget from the
-        base label strip to the top, so one column runs past both tables and
-        both bar graphs.
+        ``set_pillars`` takes one mapping per pillar in this widget's own
+        coordinates, carrying ``x``, ``width``, ``name``, ``fraction`` and
+        ``rgb``. Each pillar stands on the base label strip at its own
+        fraction of the span, behind both tables and both bar graphs.
         """
 
         def __init__(self, parent=None):
             super().__init__(parent)
-            self._pillars: list[tuple] = []
+            self._pillars: list[dict] = []
             self._top = 0
             self._base = 0
             self.setAccessibleName("Collated Indicator Pillars")
             self.setToolTip(
-                "Net, Comp and Conf run the height of the panel because "
-                "they are derived from the twelve voters above them."
+                "Net, Comp and Conf stand behind both tables. Each one's "
+                "height and colour follow its own reading."
             )
 
         def set_pillars(self, pillars: list) -> None:
-            """Hold ``(x, width, name, direction)`` per pillar and repaint."""
-            self._pillars = list(pillars)
+            """Hold one placed mapping per pillar and repaint."""
+            self._pillars = [dict(one) for one in pillars]
             self.update()
 
         def set_span(self, top: int, base: int) -> None:
@@ -767,16 +749,18 @@ if _HAS_QT:
             p.fillRect(0, 0, w, h, QColor(*PANEL_GROUND_RGB))
             top = self._top
             base = self._base
-            for x, width, name, direction in self._pillars:
-                r, g, b = ConfidenceBarsWidget.BAR_COLORS.get(
-                    direction, ConfidenceBarsWidget.BAR_COLORS["NEUTRAL"]
-                )
+            for one in self._pillars:
+                r, g, b = one["rgb"]
+                x = one["x"]
+                width = one["width"]
+                name = one["name"]
                 pad = max(2, width * PILLAR_PAD_FRACTION)
-                body = QRectF(x + pad, top, max(2, width - pad * 2), base - top)
+                stands = max(2, (base - top) * float(one["fraction"]))
+                body = QRectF(x + pad, base - stands, max(2, width - pad * 2), stands)
                 p.setPen(Qt.NoPen)
                 p.setBrush(QColor(r, g, b, PILLAR_GLOW_ALPHA))
                 p.drawRoundedRect(body.adjusted(-3, 0, 3, 0), 6, 6)
-                grad = QLinearGradient(body.x(), top, body.x(), base)
+                grad = QLinearGradient(body.x(), body.top(), body.x(), base)
                 grad.setColorAt(0, QColor(r, g, b, 220))
                 grad.setColorAt(0.6, QColor(r, g, b, 160))
                 grad.setColorAt(1, QColor(r, g, b, 60))
@@ -811,7 +795,7 @@ if _HAS_QT:
             # the Net, Comp and Conf columns.
             self._symbol: str = ""
             self._vote_totals: tuple = (0, 0, 0)
-            self._pillar_directions: list = ["NEUTRAL"] * len(_AGGREGATE_TITLES)
+            self._pillar_specs: list = ivp.collated_pillars({})
             self._last_bot_ids: list[str] = []
             self._bot_timeframes: dict[str, str] = {}  # bot_id → ta_timeframe
             # TA snapshot directory; None until set_ta_state_dir()
@@ -923,121 +907,7 @@ if _HAS_QT:
                     else None
                 )
 
-            self._HEADER_TOOLTIPS = {
-                "TF": (
-                    "Timeframe identifier. Each row = one timeframe's "
-                    "verdict (5m/15m/1h/4h/1d/phantoms)."
-                ),
-                "BB": (
-                    "Bollinger Bands — distance from band extremes as "
-                    "% conviction. ▲▼ shows direction; NN% shows "
-                    "vote confidence."
-                ),
-                "VTX": (
-                    "Vortex — VI+ vs VI− crossover conviction. "
-                    "▲▼ direction + NN% confidence."
-                ),
-                "MACD": (
-                    "MACD — histogram + crossover + divergence. "
-                    "▲▼ direction + NN% confidence."
-                ),
-                "SRsi": (
-                    "Stochastic RSI — K/D crossover in oversold/"
-                    "overbought zones. ▲▼ direction + NN% confidence."
-                ),
-                "Ichi": (
-                    "Ichimoku Cloud — future twist + cloud breakout + "
-                    "Tenkan/Kijun. ▲▼ direction + NN% confidence."
-                ),
-                "Vol": (
-                    "Volume composite — OBV divergence + MFI + CMF + "
-                    "volume spike ratio. ▲▼ direction + NN% confidence."
-                ),
-                "Sling": (
-                    # Attribution matches SlingshotIndicator's corrected
-                    # docstring in trading/indicators/slingshot.py.
-                    "Slingshot — name is Chris Moody's; squeeze is Carter's "
-                    "TTM Squeeze (via LazyBear), snapback is Bollinger's own "
-                    "band rules. ▲▼ direction + NN% confidence."
-                ),
-                "ADX": (
-                    "ADX — Average Directional Index. Cell shows the "
-                    "RAW ADX value (NOT a percentage), 0–100. "
-                    "ADX <20: ranging (cell reads 'Rng NN'). "
-                    "ADX 20–35: developing trend. ADX >35: strong "
-                    "trend. ADX >50: parabolic / unsustainable. "
-                    "Direction symbol from DI+/DI− cross when "
-                    "trending.\n\nDUAL THRESHOLDS (intentional): the "
-                    "voter goes NEUTRAL below ADX 20; the separate "
-                    "ADXTrendSuppressionGate blocks SCRUM only at "
-                    "ADX≥30, not below it. An ADX of 25 shows a "
-                    "developing trend here and does not trip the "
-                    "gate."
-                ),
-                "STrd": (
-                    "Supertrend — ATR-banded trend line. ▲▼ direction "
-                    "+ NN% confidence (proportional to distance from "
-                    "band)."
-                ),
-                "ZSc": (
-                    "Z-Score — statistical extremity. Cell shows the "
-                    "RAW signed z-value (NOT a percentage). "
-                    "|z| >2: strong bearish/bullish mean-revert "
-                    "signal. |z| <1.5: NEUTRAL (no action).\n\n"
-                    "v3.20.7 added ZScoreExtremityGate — ASYMMETRIC: "
-                    "blocks SCRUM at z<-2 (don't sell the statistical "
-                    "bottom), blocks FOLD at z>+2 (don't buy the "
-                    "statistical top). High +z is exactly the right "
-                    "condition for SCRUM; low -z is exactly the right "
-                    "condition for FOLD; the gate filters only the "
-                    "contrarian-wrong action on each side."
-                ),
-                "KER": (
-                    "Kaufman Efficiency Ratio — trend efficiency 0–1. "
-                    "Cell shows the RAW ER value (NOT a percentage). "
-                    "ER ≤0.05: no-edge market (gate suppresses scrum). "
-                    "ER ≥0.50: trending (voter contributes direction). "
-                    "ER ≥0.70: highly efficient trend.\n\nDIRECTION "
-                    "SYMBOL SEMANTICS: at ER <0.50 the voter is "
-                    "NEUTRAL (─), not directional. The ▲/▼ symbols "
-                    "only appear when ER ≥0.50 and reflect the "
-                    "PRICE direction during the trend, not 'KER says "
-                    "market is bullish/bearish.' KER doesn't have an "
-                    "opinion about market direction — it measures "
-                    "trend QUALITY only.\n\nDUAL THRESHOLDS "
-                    "(intentional): voter activates at ER ≥0.50; gate "
-                    "(EfficiencyRatioRegimeGate) suppresses scrum at "
-                    "ER ≤0.05 or ER ≥0.70. Different consumers, "
-                    "different thresholds, same field."
-                ),
-                "RSI": (
-                    "RSI — classic 70/30 overbought/oversold + "
-                    "divergence. ▲▼ direction + NN% confidence."
-                ),
-                "Net": (
-                    "Net — weighted bull − bear vote tally. "
-                    "Sum of (confidence × weight) for BULLISH voters "
-                    "minus same for BEARISH voters. NEUTRAL voters "
-                    "contribute 0. Theoretical range ±11.7; in "
-                    "practice rarely outside ±3."
-                ),
-                "Comp": (
-                    "Composite Net — parent Net rank-weighted with all "
-                    "active higher-TF phantom bot summaries. "
-                    "Phantoms boost (bullish) or suppress (bearish) "
-                    "the parent's signal only when Phantom Bots "
-                    "are enabled and have completed their first "
-                    "signal cycle. Populated on the parent bot's TF "
-                    "row only; phantom TF rows read “—”."
-                ),
-                "Conf": (
-                    "Confidence — |Net| / total_weight_of_active_voters, "
-                    "capped at 1.0. Reflects BREADTH of agreement, not "
-                    "magnitude. A 30% reading typically means 6 voters "
-                    "strongly agree + 6 are NEUTRAL — not 'panel "
-                    "disagrees'. Green ≥60%, amber ≥30%, gray <30%."
-                ),
-            }
+            self._HEADER_TOOLTIPS = dict(ivp.HEADER_TOOLTIPS)
             row_a_container, self._table_a, self._conf_bars_a = (
                 self._make_indicator_row(_ROW_A_INDICATOR_COLS, include_aggregates=True)
             )
@@ -1984,9 +1854,7 @@ if _HAS_QT:
 
                 self._conf_bars_a.set_bars(_bars_for(_ROW_A_INDICATOR_COLS))
                 self._conf_bars_b.set_bars(_bars_for(_ROW_B_INDICATOR_COLS))
-                self._pillar_directions = [
-                    one["direction"] for one in self._collated_bars(tf_data)
-                ]
+                self._pillar_specs = self._collated_bars(tf_data)
                 # Deferred one event-loop tick so the tables finish
                 # laying out columns before bars align to them.
                 QTimer.singleShot(0, self._sync_bar_columns)
@@ -2044,64 +1912,37 @@ if _HAS_QT:
             table.setItem(row, col, cell)
 
         def _collated_bars(self, tf_data) -> list:
-            """_AGGREGATE_TITLES pillars, each taking its own metric's sign.
+            """_AGGREGATE_TITLES pillars, each drawn from its own reading.
 
-            The table cell above carries the value; the pillar carries only
-            the direction, and one pillar spans both mini-panels.
+            ``ivp.collated_pillars`` settles the height fraction and the
+            colour, so this host and the page draw one definition.
             """
-            ways = [
-                _sign_direction(tf_data.get("net_score", 0)),
-                _sign_direction(tf_data.get("composite_net")),
-                tf_data.get("direction", "NEUTRAL"),
-            ]
-            return [
-                {"name": title, "direction": way}
-                for title, way in zip(_AGGREGATE_TITLES, ways)
-            ]
+            return ivp.collated_pillars(tf_data)
+
+        def _place_aggregate_cell(self, table, row, col, cell) -> QTableWidgetItem:
+            """Put one built aggregate cell on the grid and hand it back.
+
+            ``cell`` is what ``net_cell``, ``comp_cell`` or ``conf_cell``
+            returns, so this host and the page draw one definition.
+            """
+            item = QTableWidgetItem(cell["text"])
+            item.setTextAlignment(Qt.AlignCenter)
+            if cell.get("text_color"):
+                item.setForeground(QBrush(QColor(cell["text_color"])))
+            if cell.get("tooltip"):
+                item.setToolTip(cell["tooltip"])
+            table.setItem(row, col, item)
+            return item
 
         def _populate_net_cell(self, table, row, col, tf_data) -> None:
-            net = tf_data.get("net_score", 0)
-            item = QTableWidgetItem(f"{net:+.2f}")
-            item.setTextAlignment(Qt.AlignCenter)
-            if net > 0:
-                item.setForeground(QBrush(QColor("#00ff88")))
-            elif net < 0:
-                item.setForeground(QBrush(QColor("#ff3366")))
-            table.setItem(row, col, item)
+            self._place_aggregate_cell(table, row, col, ivp.net_cell(tf_data))
 
         def _populate_comp_net_cell(self, table, row, col, tf_data) -> None:
-            comp = tf_data.get("composite_net")
-            if comp is None:
-                item = QTableWidgetItem("—")
-                item.setForeground(QBrush(QColor("#666666")))
-            else:
-                comp_val = float(comp)
-                item = QTableWidgetItem(f"{comp_val:+.2f}")
-                if comp_val > 0:
-                    item.setForeground(QBrush(QColor("#00ff88")))
-                elif comp_val < 0:
-                    item.setForeground(QBrush(QColor("#ff3366")))
-            item.setTextAlignment(Qt.AlignCenter)
-            from src.gui.main_tabs.indicator_panel_surface import (
-                comp_skipped_tooltip,
-            )
-
-            item.setToolTip(comp_skipped_tooltip(tf_data))
-            table.setItem(row, col, item)
+            self._place_aggregate_cell(table, row, col, ivp.comp_cell(tf_data))
 
         def _populate_conf_cell(self, table, row, col, tf_data) -> None:
-            conf = tf_data.get("confidence", 0)
-            conf_bar = "█" * int(conf * 10) + "░" * (10 - int(conf * 10))
-            item = QTableWidgetItem(f"{conf_bar} {conf:.0%}")
-            item.setTextAlignment(Qt.AlignCenter)
+            item = self._place_aggregate_cell(table, row, col, ivp.conf_cell(tf_data))
             item.setFont(QFont("Consolas", 8))
-            if conf >= 0.6:
-                item.setForeground(QBrush(QColor("#00ff88")))
-            elif conf >= 0.3:
-                item.setForeground(QBrush(QColor("#ffaa00")))
-            else:
-                item.setForeground(QBrush(QColor("#666666")))
-            table.setItem(row, col, item)
 
         def _sync_bar_columns(self):
             """Sync both mini-panels' bar widgets to their own table's
@@ -2139,12 +1980,11 @@ if _HAS_QT:
                         QPoint(header.sectionPosition(column), 0)
                     )
                     local = self._body.mapFromGlobal(origin)
-                    way = (
-                        self._pillar_directions[at]
-                        if at < len(self._pillar_directions)
-                        else "NEUTRAL"
-                    )
-                    placed.append((local.x(), header.sectionSize(column), title, way))
+                    spec = dict(self._pillar_specs[at])
+                    spec["x"] = local.x()
+                    spec["width"] = header.sectionSize(column)
+                    spec["name"] = title
+                    placed.append(spec)
                 self._body.set_pillars(placed)
                 self._body.set_span(*self._pillar_span())
             except Exception as _pillar_exc:  # noqa: BLE001 - placement is best-effort
