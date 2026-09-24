@@ -363,6 +363,10 @@ if _HAS_WEBENGINE:
             self._history_connected = False
             self._image: dict = {}
             self._image_key_held = ""
+            # Where a press in the image's bottom grip strip started, and the
+            # image height it started from; None between drags.
+            self._grip_start_y: Optional[int] = None
+            self._grip_start_height: Optional[int] = None
             self._payload: dict = {}
             self._page_ready = False
             self._drawn = False
@@ -640,6 +644,7 @@ if _HAS_WEBENGINE:
                 ],
                 "width": int(width_px),
                 "height": int(height_px),
+                "sub_pane": self._painter._sub_pane_height(),
                 "ratio": float(ratio),
             }
             digest = hashlib.sha256(
@@ -706,18 +711,33 @@ if _HAS_WEBENGINE:
             A wheel tick, a drag move and a double-click move ``painter``'s
             window through the same methods the Qt widget's handlers call;
             a press and a release bound the drag; a crosshair names the
-            candle the page drew under the pointer. The answer carries the
-            window and, when it moved, the repainted image with its geometry.
+            candle the page drew under the pointer. A press in the image's
+            bottom grip strip starts a height drag instead of a pan, which
+            ``_grip_drag`` answers as the Qt widget's ``mouseMoveEvent`` does.
+            The answer carries the window and, when it moved, the repainted
+            image with its geometry.
             """
             action = str(asked.get(surface.VIEW_ACTION_PARAM) or "")
             if action not in surface.VIEW_ACTIONS:
                 raise ValueError(f"unknown chart view action {action!r}")
             painter = self._painter
             x = int(asked.get(surface.VIEW_X_PARAM) or 0)
+            y = int(asked.get(surface.VIEW_Y_PARAM) or 0)
             width = (
                 int(asked.get(surface.VIEW_WIDTH_PARAM) or 0) or FALLBACK_IMAGE_WIDTH_PX
             )
             moved = False
+            if action == surface.VIEW_ACTION_PRESS and self._grip_pressed(y):
+                return self._view_answer(action, False, None)
+            if action == surface.VIEW_ACTION_DRAG and self._grip_start_y is not None:
+                return self._view_answer(
+                    action,
+                    True,
+                    self._grip_drag(y, width, asked.get(surface.VIEW_RATIO_PARAM)),
+                )
+            if action == surface.VIEW_ACTION_RELEASE:
+                self._grip_start_y = None
+                self._grip_start_height = None
             if action == surface.VIEW_ACTION_WHEEL:
                 moved = painter.wheel_turned(
                     x,
@@ -737,20 +757,50 @@ if _HAS_WEBENGINE:
             else:
                 named = asked.get(surface.VIEW_CANDLE_PARAM)
                 painter.crosshair_named(x, width, None if named is None else int(named))
-            answer = {
-                surface.VIEW_ACTION_PARAM: action,
-                surface.VIEW_MOVED_KEY: moved,
-                surface.VIEW_START_KEY: painter._visible_start,
-                surface.VIEW_COUNT_KEY: painter._visible_count,
-                surface.VIEW_IMAGE_KEY: None,
-            }
+            image = None
             if moved:
-                answer[surface.VIEW_IMAGE_KEY] = self.chart_image(
+                image = self.chart_image(
                     asked.get(surface.VIEW_WIDTH_PARAM),
                     asked.get(surface.VIEW_RATIO_PARAM),
                     asked.get(surface.VIEW_HEIGHT_PARAM),
                 )
-            return answer
+            return self._view_answer(action, moved, image)
+
+        def _view_answer(self, action: str, moved: bool, image) -> dict:
+            """One ``chart_view`` answer: the action, whether the window or the
+            height moved, the window bounds and ``image`` when one was
+            repainted."""
+            return {
+                surface.VIEW_ACTION_PARAM: action,
+                surface.VIEW_MOVED_KEY: moved,
+                surface.VIEW_START_KEY: self._painter._visible_start,
+                surface.VIEW_COUNT_KEY: self._painter._visible_count,
+                surface.VIEW_IMAGE_KEY: image,
+            }
+
+        def _grip_pressed(self, y: int) -> bool:
+            """Whether ``y`` lands in the last image's bottom grip strip, which
+            starts a height drag and records the height it starts from."""
+            held = int(self._image.get("height_px") or 0)
+            if not held or not native_chart_surface.in_grip(int(y), held):
+                return False
+            self._grip_start_y = int(y)
+            self._grip_start_height = held
+            return True
+
+        def _grip_drag(self, y: int, width: int, ratio) -> dict:
+            """The image the chart draws after the bottom bar is dragged to ``y``.
+
+            The height never goes under ``_readable_height_for_panes`` at
+            ``width``, and ``set_pane_drag_height`` gives every sub-pane its
+            share of it, as ``CandlestickChart.mouseMoveEvent`` does.
+            """
+            asked = native_chart_surface.resize_height(
+                self._grip_start_height, int(self._grip_start_y or 0), int(y)
+            )
+            height = max(self._painter._readable_height_for_panes(width), asked)
+            self._painter.set_pane_drag_height(height, width)
+            return self.chart_image(width, ratio, height)
 
         # -- the calls the main window makes on the tab ------------------
 

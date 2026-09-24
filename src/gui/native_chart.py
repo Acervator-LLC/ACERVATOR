@@ -62,6 +62,7 @@ from src.gui.main_tabs.native_chart_surface import (
     gmt_label,
     pan_start,
     readout_lines,
+    sub_pane_height,
     zoom_factor,
     zoom_window,
 )
@@ -921,6 +922,10 @@ if _HAS_QT:
             # The grip band the paint routine draws along the bottom edge.
             self._resize_grip_h = 8
 
+            # None draws every sub-pane at SUB_PANE_READABLE_PX; a grip drag
+            # writes the height set_pane_drag_height works out.
+            self._sub_pane_px: Optional[int] = None
+
             # None on either bound fits all candles; _y_zoom_pct scales price padding.
             self._visible_start: Optional[int] = None
             self._visible_count: Optional[int] = None
@@ -1426,17 +1431,38 @@ if _HAS_QT:
         def set_timeframe(self, tf: str) -> None:
             self._current_tf = tf
 
+        def _sub_pane_height(self) -> int:
+            """The height every sub-pane draws at: what a grip drag set, else
+            ``SUB_PANE_READABLE_PX``."""
+            return int(self._sub_pane_px or SUB_PANE_READABLE_PX)
+
+        def set_pane_drag_height(
+            self, dragged_height_px: int, width: int = NO_CAPTION_WIDTH
+        ) -> int:
+            """Take the widget height a grip drag asks for and write the
+            sub-pane height ``sub_pane_height`` works out against
+            ``_readable_height_for_panes`` at ``width``."""
+            self._sub_pane_px = sub_pane_height(
+                int(dragged_height_px), self._readable_height_for_panes(width)
+            )
+            return self._sub_pane_px
+
+        def _readable_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
+            """The pixel height the toggled-on panes need with every sub-pane at
+            ``SUB_PANE_READABLE_PX``, which no grip drag moves."""
+            return self._height_for_panes(width, SUB_PANE_READABLE_PX)
+
         def _natural_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
             """Return the pixel height the toggled-on panes need.
 
             The price pane takes ``PRICE_PANE_LAYOUT_FLOOR_PX``, the volume
             strip adds 28, each entry of ``_sub_overlays_with_data`` adds
-            ``SUB_PANE_READABLE_PX``, ``_call_strip_h`` adds the voter rows and
+            ``_sub_pane_height``, ``_call_strip_h`` adds the voter rows and
             ``_caption_strip_h`` adds the caption wrapped at ``width``, over a
             64px header. The value field draws inside the price pane and adds
             nothing.
             """
-            return self._height_for_panes(width, SUB_PANE_READABLE_PX)
+            return self._height_for_panes(width, self._sub_pane_height())
 
         def _minimum_height_for_panes(self, width: int = NO_CAPTION_WIDTH) -> int:
             """The least pixel height the toggled-on panes draw in: each
@@ -1726,10 +1752,11 @@ if _HAS_QT:
             show_volume = self._overlay_shown["volume"]
 
             VOL_H = 28 if show_volume else 0
-            # Every sub-pane takes SUB_PANE_READABLE_PX. Only a fixed-height
-            # image whose h cannot hold them shrinks each toward SUB_PANE_FOLD_PX.
+            # Every sub-pane takes _sub_pane_height, which a grip drag raises.
+            # Only a fixed-height image whose h cannot hold them shrinks each
+            # toward SUB_PANE_FOLD_PX.
             fixed_h = MT + OHLC_H + MB + VOL_H
-            SUB_H = SUB_PANE_READABLE_PX
+            SUB_H = self._sub_pane_height()
             if (
                 sub_overlays
                 and h - fixed_h - SUB_H * len(sub_overlays) < PRICE_PANE_LAYOUT_FLOOR_PX
@@ -3387,7 +3414,12 @@ if _HAS_QT:
                 self.updateGeometry()
 
         def mouseMoveEvent(self, event):
-            """The grip drag when one is active, else ``pointer_moved`` on the painter."""
+            """The grip drag when one is active, else ``pointer_moved`` on the painter.
+
+            A drag sets the widget's height and, through
+            ``set_pane_drag_height``, the height every sub-pane draws at, so
+            the price pane and the oscillators follow the bottom bar together.
+            """
             mouse_y = int(event.position().y())
             grip_top_px = self.height() - self._resize_grip_h
             in_grip = mouse_y >= grip_top_px
@@ -3400,9 +3432,10 @@ if _HAS_QT:
                 self._mouse_y = mouse_y
                 delta = self._mouse_y - self._resize_start_y
                 new_h = max(
-                    self._natural_height_for_panes(self.width()),
+                    self._readable_height_for_panes(self.width()),
                     (self._resize_start_height or 200) + delta,
                 )
+                self.set_pane_drag_height(new_h, self.width())
                 self._height_override = new_h
                 self.setMinimumHeight(new_h)
                 self.updateGeometry()
