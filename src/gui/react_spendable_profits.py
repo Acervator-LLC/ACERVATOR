@@ -15,6 +15,7 @@ import logging
 from typing import Any, Callable
 
 from .main_tabs import privacy_dot_surface as dot_surface
+from .main_tabs import header_strip_surface as header
 from .main_tabs import spendable_profits_surface as surface
 from .react_history_panel import STYLE_SOURCE_ASSETS, page_html
 from .widgets.spendable_profits import SpendableProfitsWidget, _HAS_QT
@@ -22,6 +23,7 @@ from .widgets.spendable_profits import SpendableProfitsWidget, _HAS_QT
 try:
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
+    from PySide6.QtCore import QSize
     from PySide6.QtWidgets import QVBoxLayout
 
     _HAS_WEBENGINE = True
@@ -38,6 +40,10 @@ CALL_PREFIX = "acervator-call:"
 STRIP_ROOT_ID = "spendable-profits-root"
 
 ACCESSIBLE_NAME = "React Spendable Profits"
+
+#: The width the strip asks for. The page inside a ``QWebEngineView``
+#: reports none, so the header row would otherwise draw it at its floor.
+STRIP_WIDTH_PX = header.spendable_natural_w()
 
 #: The height the strip asks for, matching the Qt columns it replaces.
 STRIP_HEIGHT_PX = 72
@@ -159,6 +165,10 @@ if _HAS_QT and _HAS_WEBENGINE:
         ``update_profits`` and ``refresh_privacy_dots`` are the two calls
         the main window makes, and both redraw the page.
         """
+
+        def sizeHint(self) -> "QSize":
+            """The room every KPI column needs, which the page cannot report."""
+            return QSize(STRIP_WIDTH_PX, STRIP_HEIGHT_PX)
 
         def _setup_ui(self) -> None:
             """Build the one web view the whole strip is drawn in."""

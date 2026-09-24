@@ -12,6 +12,7 @@ try:
     from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
     from PySide6.QtCore import Qt
 
+    from .eliding_label import ElidingLabel
     from .privacy_dot import PrivacyDot
 
     _HAS_QT = True
@@ -77,7 +78,7 @@ if _HAS_QT:
             spend_col = QVBoxLayout()
             spend_col.setSpacing(2)
             spend_col.setContentsMargins(0, 0, 0, 0)
-            self._spend_label = QLabel("SPENDABLE")
+            self._spend_label = ElidingLabel("SPENDABLE")
             self._spend_label.setStyleSheet(
                 f"color: {ds.PRIMARY}; font-size: 10px; letter-spacing: 1px; "
                 "font-weight: 700;"
@@ -87,7 +88,7 @@ if _HAS_QT:
                 "sharing one wallet."
             )
             spend_col.addWidget(self._spend_label)
-            self._amount = QLabel(_ABSENT_TEXT)
+            self._amount = ElidingLabel(_ABSENT_TEXT)
             self._amount.setStyleSheet(self._VALUE_STYLE_MUTED)
             spend_col.addWidget(self._amount)
             # The dot sits at index 2, keeping label at 0 and value at 1.
@@ -123,10 +124,10 @@ if _HAS_QT:
                 col = QVBoxLayout()
                 col.setSpacing(2)
                 col.setContentsMargins(0, 0, 0, 0)
-                lbl = QLabel(label_text)
+                lbl = ElidingLabel(label_text)
                 lbl.setStyleSheet(self._LABEL_STYLE)
                 col.addWidget(lbl)
-                val = QLabel(_ABSENT_TEXT)
+                val = ElidingLabel(_ABSENT_TEXT)
                 val.setStyleSheet(self._VALUE_STYLE_DEFAULT)
                 self._stats[key] = val
                 col.addWidget(val)

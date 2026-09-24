@@ -26,6 +26,9 @@ BUTTON_MIN_W = 34
 #: The border and padding the button skin takes off its own text room.
 BUTTON_TEXT_PAD = 12
 
+#: The gap one class button leaves to the next, in both variants.
+GROUP_SPACING_PX = 2
+
 #: The venue ids that trade equities. Every consumer reads this one name.
 EQUITY_VENUES = frozenset(
     {
@@ -52,10 +55,8 @@ LAYERED_CLASSES = frozenset({"crypto", "stocks"})
 CLASS_NAMES = {
     "crypto": "Crypto",
     "stocks": "Stock",
-    "metals": "Metals",
     "derivatives": "Derivatives",
     "forex": "Forex",
-    "energy": "Energy",
     "commodities": "Commodities",
 }
 
@@ -67,10 +68,8 @@ DEFAULT_VENUE_NOUN = "Exchange"
 CLASS_ACCENTS = {
     "crypto": ds.LAYER_CRYPTO,
     "stocks": ds.LAYER_STOCK,
-    "metals": ds.ACCENT_GOLD,
     "derivatives": ds.SECONDARY,
     "forex": ds.INFO,
-    "energy": ds.WARNING_STRONG,
     "commodities": ds.WARNING,
 }
 DEFAULT_ACCENT = ds.STATUS_NEUTRAL
@@ -97,14 +96,32 @@ def asset_classes() -> tuple:
     return tuple(ASSET_CLASSES)
 
 
+def group_min_w(count: Any = None) -> int:
+    """The narrowest the whole group draws at, holding every class button.
+
+    ``count`` classes each take ``BUTTON_MIN_W`` and leave
+    ``GROUP_SPACING_PX`` to the next. A ``count`` of None reads the live
+    class list, so a class added to the taxonomy widens the floor with it.
+    """
+    held = len(asset_classes()) if count is None else int(count)
+    if held <= 0:
+        return 0
+    return held * BUTTON_MIN_W + (held - 1) * GROUP_SPACING_PX
+
+
 def normalise(name: Any) -> str:
     """The declared asset class *name* names, or the first declared class.
 
-    ``LEGACY_CLASS_WORDS`` resolves a stored ``"stock"`` onto ``"stocks"``.
+    ``LEGACY_CLASS_WORDS`` resolves a stored ``"stock"`` onto ``"stocks"``,
+    and ``ata_spm.RETIRED_CLASSES`` resolves a retired name onto the live
+    class now holding its markets.
     """
+    from src.trading.ata_spm import RETIRED_CLASSES
+
     classes = asset_classes()
     asked = str(name or "").strip().lower()
     asked = LEGACY_CLASS_WORDS.get(asked, asked)
+    asked = RETIRED_CLASSES.get(asked, asked)
     if asked in classes:
         return asked
     return classes[0] if classes else ""

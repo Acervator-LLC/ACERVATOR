@@ -14,6 +14,7 @@ import logging
 from typing import Any, Callable, Optional
 
 from .main_tabs import dashboard_stat_card_surface as surface
+from .main_tabs import header_strip_surface as header
 from .main_tabs import privacy_dot_surface as dot_surface
 from .react_history_panel import STYLE_SOURCE_ASSETS, page_html
 from .widgets.dashboard_stat_card import StatCard, _HAS_QT
@@ -21,6 +22,7 @@ from .widgets.dashboard_stat_card import StatCard, _HAS_QT
 try:
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
+    from PySide6.QtCore import QSize
     from PySide6.QtWidgets import QVBoxLayout
 
     _HAS_WEBENGINE = True
@@ -40,6 +42,10 @@ CARD_METHOD = "dashboard_stat_card.clicked"
 CARD_ROOT_ID = "stat-card-root"
 
 ACCESSIBLE_NAME = "React Stat Card"
+
+#: The width one card asks for. The page inside a ``QWebEngineView``
+#: reports none, so the header row would otherwise draw it at its floor.
+CARD_WIDTH_PX = header.COUNTER_NATURAL_W
 
 #: The height the card asks for, matching the Qt card it replaces.
 CARD_HEIGHT_PX = 72
@@ -161,6 +167,10 @@ if _HAS_QT and _HAS_WEBENGINE:
         ``set_value``, ``attach_privacy_dot``, ``refresh_privacy_dot`` and
         ``set_clickable`` are the four calls the header strip makes.
         """
+
+        def sizeHint(self) -> "QSize":
+            """The room one amount needs, which the page cannot report."""
+            return QSize(CARD_WIDTH_PX, CARD_HEIGHT_PX)
 
         def _setup_ui(self, label: str, value: str) -> None:
             """Build the one web view the whole card is drawn in."""

@@ -13,10 +13,11 @@ from ...core.privacy_mask_registry import mask_or
 from .. import design_system as ds
 
 try:
-    from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
+    from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout
     from PySide6.QtCore import Qt, Signal
     from PySide6.QtGui import QMouseEvent
 
+    from .eliding_label import ElidingLabel
     from .privacy_dot import PrivacyDot
 
     _HAS_QT = True
@@ -43,7 +44,7 @@ if _HAS_QT:
             self._label_row = QHBoxLayout()
             self._label_row.setContentsMargins(0, 0, 0, 0)
             self._label_row.setSpacing(4)
-            self._label = QLabel(label)
+            self._label = ElidingLabel(label)
             self._label.setProperty("muted", True)
             self._label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
             self._label.setStyleSheet(f"font-size: 10px; color: {ds.MAIN_CAPTION};")
@@ -52,7 +53,7 @@ if _HAS_QT:
             self._privacy_dot: Optional[PrivacyDot] = None
             self._privacy_field_id: Optional[str] = None
             self._label_row.addStretch()
-            self._value = QLabel(value)
+            self._value = ElidingLabel(value)
             self._value.setProperty("heading", True)
             self._value.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
             self._value.setStyleSheet(

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from .asset_class_surface import BUTTON_MIN_W as CLASS_BUTTON_MIN_W
 from .asset_class_surface import BUTTON_TEXT_PAD as CLASS_BUTTON_TEXT_PAD
+from .asset_class_surface import GROUP_SPACING_PX as CLASS_GROUP_SPACING
 
 
 class ClassGroupBar(QWidget):
@@ -108,7 +109,12 @@ class HeaderStripMixin:
         One checkable button per ``asset_class_surface.asset_classes`` entry
         sits in an exclusive ``QButtonGroup``, so exactly one class is active.
         """
-        from .asset_class_surface import asset_classes, class_button, normalise
+        from .asset_class_surface import (
+            asset_classes,
+            class_button,
+            group_min_w,
+            normalise,
+        )
 
         stored = None
         settings = getattr(self, "_settings", None)
@@ -120,7 +126,7 @@ class HeaderStripMixin:
         holder = ClassGroupBar()
         row = QHBoxLayout(holder)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(2)
+        row.setSpacing(CLASS_GROUP_SPACING)
 
         self._class_buttons = QButtonGroup(holder)
         self._class_buttons.setExclusive(True)
@@ -145,6 +151,7 @@ class HeaderStripMixin:
             row.addWidget(button, stretch=1)
 
         holder.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        holder.setMinimumWidth(group_min_w())
         holder.set_labels(
             {
                 button: self._class_names[key]
@@ -259,6 +266,8 @@ class HeaderStripMixin:
 
         Returns the ``QVBoxLayout`` the main tab widget is added to.
         """
+        from . import header_strip_surface as surface
+
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
@@ -266,11 +275,14 @@ class HeaderStripMixin:
         main_layout.setSpacing(4)
 
         top_row = QHBoxLayout()
-        top_row.setSpacing(4)
+        top_row.setSpacing(surface.TOP_ROW_SPACING_PX)
         top_row.setContentsMargins(0, 0, 0, 0)
 
         self._spendable_widget = _spendable_profits_class()()
-        top_row.addWidget(self._spendable_widget, stretch=3)
+        self._spendable_widget.setMinimumWidth(surface.slot_min_w("spendable"))
+        top_row.addWidget(
+            self._spendable_widget, stretch=surface.slot_stretch("spendable")
+        )
 
         card_class = _stat_card_class()
         self._stat_scrummed = card_class("Scrummed", "$0.00")
@@ -313,18 +325,23 @@ class HeaderStripMixin:
         self._stat_trades.attach_privacy_dot("counter.trades")
         self._stat_bots.attach_privacy_dot("counter.bots")
         self._stat_errors.attach_privacy_dot("counter.errors")
-        for card in [
-            self._stat_scrummed,
-            self._stat_folded,
-            self._stat_trades,
-            self._stat_bots,
-            self._stat_errors,
-        ]:
-            top_row.addWidget(card, stretch=1)
+        for slot, card in zip(
+            surface.COUNTER_SLOTS,
+            [
+                self._stat_scrummed,
+                self._stat_folded,
+                self._stat_trades,
+                self._stat_bots,
+                self._stat_errors,
+            ],
+        ):
+            card.setMinimumWidth(surface.slot_min_w(slot))
+            top_row.addWidget(card, stretch=surface.slot_stretch(slot))
 
-        # The group's share grows with the class count; a counter holds one value.
+        # The group takes the room the figures leave; its floor holds every
+        # button, so a wide figure elides a class name and never a figure.
         class_group = self._build_class_group()
-        top_row.addWidget(class_group, stretch=max(1, len(self._class_group)))
+        top_row.addWidget(class_group, stretch=surface.slot_stretch("mode_button"))
 
         # _on_main_tab_changed hides _header_strip_container on the Simulator tab.
         self._header_strip_container = QWidget()
