@@ -1072,4 +1072,126 @@ for topic, action in (
 ):
 ```
 
+## 2026-09-23 - #239 - every control read on the running program
+
+### What each control does, in both builds
+
+The Qt tab carries **33** controls and the React page carries **21**. Every one was pressed or
+read on the running program, against a read-only copy of the saved fleet: 38 bots, 33 wires, 51
+ledgers.
+
+| Control | What it does | Qt | React |
+| ------- | ------------ | -- | ----- |
+| Bot Swarm, Simulator Swarm, Paper Swarm | Picks the layer on show | yes | yes |
+| Identifier privacy dot | Masks the bot hashes and the symbol labels together, in the shared register | yes | yes |
+| Privacy Mode | Turns every mask in the shared register on, or every one off | yes | yes |
+| Exchange | Narrows the swarm and the routing scope to one exchange | yes | yes |
+| Theme | Picks one of the four palettes | yes | yes |
+| Wires | Sets the overlay opacity, 0 to 100 % | yes | yes |
+| Source ticks, Destination ticks | Pick the bots a routing press acts on | yes | yes |
+| Rate | The share a new wire carries, 0 to 100 % | yes | yes |
+| Connect | Writes one wire per ticked pair into the stored wire list | yes | yes |
+| Disconnect | Removes the stored wire on every ticked pair | yes | yes |
+| Disconnect All | Empties the stored wire list | yes | yes |
+| Drag between two bots | Asks for a share, then stores that wire | yes | yes |
+| Right-click a wire | Removes that wire, and offers both directions when both are wired | yes | **absent** |
+| Drag onto empty space | Offers the bot's own wires, one entry each | yes | yes |
+| + Add Sim Bot, Run All, Stop All | Adds a Simulator bench row, and flips every row's own button | yes | **draws, acts on nothing** |
+| + Add Paper Bot, Start All, Stop All | Adds a Paper bench row, and flips every row's own button | yes | **draws, acts on nothing** |
+| A bench row's asset, preset and capital | The values that row carries | yes | **absent** |
+| A bench row's Run or Start | Flips that row's own button and status | yes | **absent** |
+| A bench row's cross | Drops that row | yes | **absent** |
+
+The three routing buttons refuse out loud rather than doing nothing. Read on the running
+program: no source answers **"No SOURCE bots are checked."**, no destination answers **"No
+DESTINATION bots are checked."**, a rate that is not a number answers **"Rate 'abc' is not a
+number. Enter a percentage between 0 and 100."**, a rate of 0 answers **"Rate is 0% — that
+would create wires that route nothing."**, and a rate of 140 answers **"Rate 140.0 is outside
+0–100%."**
+
+**A `yes` in the React column means the control acts when it is pressed.** It does not mean the
+operator can reach it: only the sub-tab bar and the header strip paint on that page today. The
+section on how wide the tab has to be carries the measurement.
+
+### The key every connectivity press writes
+
+**The sentence this overtakes**, from the section above:
+
+> The older wording that describes the routes a wire is stored as lives on in `apply_routes`,
+> which Connect and Disconnect still use; only the clear and the paint read `smart_wires`.
+
+**The true sentence.** `apply_routes` now writes `WIRES_KEY`, so every connectivity press reads
+and writes the one list `stored_wires`, `clear_all_routes` and `hydration_plan` already read.
+Connect adds a record, a second Connect on the same pair replaces its share rather than adding
+a second record, and Disconnect drops it. Read on the running program with 33 wires stored: a
+Connect takes the list to **34** and a Disconnect takes it to **32**.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `apply_routes`
+
+```python
+def apply_routes(state: dict, add: list, remove: list) -> dict:
+    """Write each ``add`` pair into ``WIRES_KEY`` and drop each ``remove`` pair.
+
+    ``stored_wires``, ``clear_all_routes`` and ``hydration_plan`` read
+    that same list.
+    """
+```
+
+The Qt tab calls the same function, so the widget and the page store a wire the same way. The
+right-click menu and the drag picker both land in `remove_wire`, which now drops the pair from
+the store as well as from the canvas, and the drag that makes a wire stores it when the
+operator accepts the share.
+
+A direct write is refused when the load it came from carries no fleet, because
+`_load_bot_state_dict` answers an empty dict when the read fails. Read on the running program:
+a write from an empty load leaves the file byte-identical and logs the refusal; the same call
+from a real load moves the file.
+
+### The dot and the Privacy Mode button read one register
+
+`PrivacyMaskRegistry` owns all 19 masks and the Trading tab writes the same one. Both builds now
+write it and both read it back.
+
+- The dot flips `bot_swarm.identifiers`, the glyph turns from `●` to `○`, and the routing row
+  labels turn from the symbol and short id to `**** [********]`.
+- Privacy Mode sets all 19 masks on, or all 19 off, and its own word follows.
+- **The dot also rewrites the Privacy Mode button.** Before this unit the button read
+  `Privacy Mode: OFF` while one mask was on.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `any_mask_on`
+
+```python
+def any_mask_on(self) -> bool:
+    """Whether ``mask_registry`` holds any mask on.
+
+    Answers ``masked`` or ``any_masked`` with no registry.
+    """
+```
+
+### What the page does not carry yet
+
+The page draws the six bench layer buttons and no bench row. Each button carries no handler, so
+pressing all six leaves the row count at 0. The page has no right-click menu on a wire either:
+nothing under `src/gui/web/` binds a context menu. The Simulator bench belongs to #117 and the
+Paper bench to #19; a bench row's own Run and Start buttons flip a label and a status and start
+no session in either build.
+
+### How wide the Swarm tab has to be
+
+The Qt tab refuses to draw narrower than **1086 px**: the locust grid asks 786 px across its
+eight columns and the Quick Routing panel asks 278. Asked for 700 or for 900 the tab is 1086
+wide both times, so in a pane under 1086 px the Wires slider and the three routing buttons sit
+past the right edge. At 1400 the whole tab draws — 38 locusts, 33 wires with their share
+labels, the two tick columns, the Rate box and the three buttons.
+
+The React page fits every width sideways and **none of it downwards**. At 700, 900 and 1400 the
+body needs no sideways scroll and every header control and routing button reports its right
+edge inside the viewport. Read down the page instead: `tab-body` is 873 px tall and stacks all
+three layer panes in the flow — 287 + 293 + 293 — because a pane's own `display: flex` beats
+the `hidden` attribute. Inside the 287 px that leaves, `header-row` measures 900 px tall over
+children of 17 to 24 px, so `inner-row` starts at y = 931 with a height of 0, `quick-routing`
+has a height of 0, a routing button sits at y = 1754, and `wire-canvas` is `display: none`.
+The captured page shows the tab bar and the header strip and nothing under them. The locust
+grid, the wires and the routing panel are in the document and are not on the screen.
+
 Back to [the subsystem index](README.md).

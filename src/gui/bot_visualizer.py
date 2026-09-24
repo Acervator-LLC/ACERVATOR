@@ -1244,8 +1244,9 @@ if _HAS_QT:
         def _toggle_bot_swarm_identifier_mask(self) -> None:
             """Flip the shared ``bot_swarm.identifiers`` mask.
 
-            The privacy dot and every ``BotNodeWidget`` repaint; a
-            registry failure writes to stderr and recolours the dot.
+            The privacy dot, the Privacy Mode button and every
+            ``BotNodeWidget`` repaint; a registry failure writes to
+            stderr and recolours the dot.
             """
             try:
                 if _get_privacy_mask_registry is None:
@@ -1274,6 +1275,7 @@ if _HAS_QT:
                 )
                 return
             self._refresh_bot_swarm_privacy_dot()
+            self._refresh_privacy_mode_btn()
             for w in self._bot_widgets.values():
                 w.update()
             # The Source and Destination labels re-read the mask on re-render.
@@ -1462,7 +1464,7 @@ if _HAS_QT:
             if hasattr(self, "_wire_canvas") and self._wire_canvas:
                 self._wire_canvas.update()
 
-        # Routing lives in each source bot's scrumming_state.smart_wire_routes.
+        # A wire is stored once, at the top level, under smart_wires.
         def _load_bot_state_dict(self) -> dict:
             try:
                 from ..core.state_manager import StateManager
@@ -1474,11 +1476,19 @@ if _HAS_QT:
         def _save_bot_state_dict(self, state: dict) -> None:
             """Write bot_state.json through ``atomic_write_json``.
 
-            This is the second writer of that file after
-            ``StateManager.save_state``, and it maintains the
-            ``smart_wires`` list the same call writes. A failed write is
-            logged.
+            A ``state`` carrying no ``bots`` key is refused, because
+            ``_load_bot_state_dict`` answers an empty dict when the read
+            fails.
             """
+            from .main_tabs import bot_visualizer_surface as surface
+
+            if not isinstance(state, dict) or surface.BOTS_KEY not in state:
+                logger.error(
+                    "bot_visualizer: refusing to write bot_state.json from a "
+                    "load carrying no %r key; the file is left as it is",
+                    surface.BOTS_KEY,
+                )
+                return
             try:
                 from pathlib import Path
 
@@ -1499,46 +1509,22 @@ if _HAS_QT:
         def _apply_routes_to_state(
             self, add: list[tuple[str, str, float]], remove: list[tuple[str, str]]
         ) -> None:
-            """Update each source bot's ``smart_wire_routes`` list and save.
+            """Write every ``add`` wire and drop every ``remove`` wire, then save.
 
-            An ``add`` entry is deduped by ``dest_bot_id``, replacing the
-            pct when that destination is already wired.
+            ``bot_visualizer_surface.apply_routes`` holds the wires under
+            the key the next launch reads.
             """
+            from .main_tabs import bot_visualizer_surface as surface
+
             state = self._load_bot_state_dict()
-            bots = state.setdefault("bots", {})
-
-            def _ensure_routes(bid: str) -> list:
-                bot = bots.setdefault(bid, {})
-                scr = bot.setdefault("scrumming_state", {})
-                routes = scr.setdefault("smart_wire_routes", [])
-                if not isinstance(routes, list):
-                    routes = []
-                    scr["smart_wire_routes"] = routes
-                return routes
-
-            for src, dst, pct in add:
-                routes = _ensure_routes(src)
-                replaced = False
-                for entry in routes:
-                    if isinstance(entry, dict) and (entry.get("dest_bot_id") == dst):
-                        entry["pct"] = float(pct)
-                        replaced = True
-                        break
-                if not replaced:
-                    routes.append({"dest_bot_id": dst, "pct": float(pct)})
-
-            for src, dst in remove:
-                if src not in bots:
-                    continue
-                routes = _ensure_routes(src)
-                new_routes = [
-                    e
-                    for e in routes
-                    if not (isinstance(e, dict) and e.get("dest_bot_id") == dst)
-                ]
-                bots[src]["scrumming_state"]["smart_wire_routes"] = new_routes
-
+            surface.apply_routes(state, list(add), list(remove))
             self._save_bot_state_dict(state)
+            logger.info(
+                "Quick Routing: %d wire(s) written and %d removed in %s",
+                len(add),
+                len(remove),
+                surface.WIRES_KEY,
+            )
 
         def _clear_all_routes_in_state(self) -> list[tuple[str, str]]:
             """Empty the stored wire list and answer the pairs that were in it.
@@ -1852,6 +1838,9 @@ if _HAS_QT:
                         "phase": 0.0,
                     }
                 )
+                self._apply_routes_to_state(
+                    add=[(source_id, target_id, float(pct))], remove=[]
+                )
                 from ..core.event_bus import get_event_bus
 
                 bus = get_event_bus()
@@ -1913,12 +1902,18 @@ if _HAS_QT:
                 pass
 
         def remove_wire(self, source_id: str, target_id: str):
+            """Drop one wire from ``_wires`` and from the stored wire list.
+
+            The right-click menu and the drag picker both land here, so
+            the pair leaves the store and the next launch paints none.
+            """
             self._wires = [
                 w
                 for w in self._wires
                 if not (w["source_id"] == source_id and w["target_id"] == target_id)
             ]
             self._wire_canvas.update()
+            self._apply_routes_to_state(add=[], remove=[(source_id, target_id)])
             from ..core.event_bus import get_event_bus
 
             get_event_bus().emit(
