@@ -352,6 +352,10 @@
   var RELATIVE_POSITION = "relative";
   var ABSOLUTE_POSITION = "absolute";
   var MARK_EDGE = "0";
+  // The CSS spelling of the elide a Qt table cell does by default.
+  var CELL_OVERFLOW = "hidden";
+  var CELL_TEXT_OVERFLOW = "ellipsis";
+  var CELL_WHITE_SPACE = "nowrap";
 
   var PART_ATTR = "data-part";
   var TABLE_PART = "table";
@@ -764,7 +768,13 @@
     var model = props.model;
     var found = props.cell;
     var column = props.column;
-    var style = {};
+    // The window's own cells elide inside their column; these did not, so
+    // a long pair ran over the column beside it at a narrow width.
+    var style = {
+      overflow: CELL_OVERFLOW,
+      textOverflow: CELL_TEXT_OVERFLOW,
+      whiteSpace: CELL_WHITE_SPACE
+    };
     var cellProps = { className: TABLE_CLASS, style: style };
     cellProps[PART_ATTR] = CELL_PART;
     cellProps[COLUMN_ATTR] = text(column);
