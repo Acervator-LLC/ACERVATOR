@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import time
 from datetime import datetime
 from typing import Any, Callable, Optional
@@ -51,6 +52,9 @@ TRADE_PREFIX = "TRADE NOTIFICATION:"
 WIRE_FLOW_PREFIXES = ("WIRE FLOW", "WIRE INCOME")
 WIRE_STACK_PREFIX = "WIRE STACK"
 WIRE_BULLET = "⚡ "
+
+#: ``MainWindow._on_bot_log`` opens a bot's line with ``[TICKER/last4] ``.
+BOT_TAG_PATTERN = re.compile(r"^\[[^\[\]]*\]\s+")
 
 TRADE_FONT_SIZE_PX = 14
 WIRE_FONT_SIZE_PX = 12
@@ -134,23 +138,36 @@ def level_color(level: Any) -> str:
     return LEVEL_COLORS.get(level, DEFAULT_LEVEL_COLOR)
 
 
+def shape_source(message: str) -> str:
+    """The part of one message the prefix rules read.
+
+    A bot's line reaches the pane behind the ``[TICKER/last4]`` tag
+    ``MainWindow._on_bot_log`` adds, so the tag is dropped before a prefix
+    is matched. The drawn text keeps the tag.
+    """
+    return BOT_TAG_PATTERN.sub("", message, count=1)
+
+
 def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
     """The colour, size, weight and bullet one message paints with.
 
     The prefix decides before the level does: a trade notification, then
     a wire-flow or wire-income message, then a wire-stack message. Only a
-    message matching no prefix is coloured by its level.
+    message matching no prefix is coloured by its level. The prefix is read
+    from ``shape_source``, so a bot's tagged line takes the same shape as
+    the same text written straight to the pane.
     """
-    if message.startswith(TRADE_PREFIX):
+    shaped = shape_source(message)
+    if shaped.startswith(TRADE_PREFIX):
         return {
             "kind": KIND_TRADE,
-            "color": stage_color(message),
+            "color": stage_color(shaped),
             "font_size_px": TRADE_FONT_SIZE_PX,
             "bold": True,
             "italic": False,
             "bullet": "",
         }
-    if any(message.startswith(prefix) for prefix in WIRE_FLOW_PREFIXES):
+    if any(shaped.startswith(prefix) for prefix in WIRE_FLOW_PREFIXES):
         return {
             "kind": KIND_WIRE_FLOW,
             "color": WIRE_FLOW_COLOR,
@@ -159,7 +176,7 @@ def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
             "italic": False,
             "bullet": WIRE_BULLET,
         }
-    if message.startswith(WIRE_STACK_PREFIX):
+    if shaped.startswith(WIRE_STACK_PREFIX):
         return {
             "kind": KIND_WIRE_STACK,
             "color": WIRE_STACK_COLOR,

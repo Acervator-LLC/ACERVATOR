@@ -58,6 +58,8 @@
   var MINIMUM_HEIGHT_PX = "minimum_height_px";
   var NAME = "name";
   var OUTLINE_ALPHA = "outline_alpha";
+  var PILLAR_FRACTION = "fraction";
+  var PILLAR_RGB = "rgb";
   var PAINT = "paint";
   var PILLARS = "pillars";
   var PRIVACY = "privacy";
@@ -200,6 +202,7 @@
   var AUTO = "auto";
   var HIDDEN = "hidden";
   var CENTER = "center";
+  var END = "end";
   var RELATIVE = "relative";
   var BOLD = "bold";
   var NORMAL = "normal";
@@ -1077,11 +1080,13 @@
 
   // One pillar per collated column, behind both mini-panels. The body is a
   // grid, so a pillar takes its own column and the row above the label strip.
+  // Qt stands the body on the floor of that row at its own fraction of it,
+  // in the colour the payload shaded for that fraction.
   function Pillar(props) {
     var model = props.model;
     var spec = props.spec;
     var pillars = props.pillars;
-    var channels = objectField(pillars, COLORS)[text(spec[DIRECTION])];
+    var channels = listField(spec, PILLAR_RGB);
     var alphas = listField(pillars, GRADIENT_ALPHAS);
     var stops = listField(pillars, GRADIENT_STOPS);
     var pad = percent(model, number(pillars.pad_fraction, ALPHA_FLOOR));
@@ -1093,6 +1098,8 @@
       style: {
         gridColumn: cell,
         gridRow: PILLAR_ROWS,
+        height: percent(model, number(spec[PILLAR_FRACTION], ALPHA_FLOOR)),
+        alignSelf: END,
         marginLeft: pad,
         marginRight: pad,
         borderRadius: length(pillars.body_radius_px),

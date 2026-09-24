@@ -3399,6 +3399,47 @@ in magenta behind a bolt character. A wire stack line draws in the pending
 colour behind the same character. The pane holds 5,000 lines and drops the
 oldest past that.
 
+##### How a line takes its shape
+
+One line is a timestamp, then an optional bolt character, then the message:
+
+```
+[hh:mm:ss] <bullet><message>
+```
+
+The words the message opens with choose the shape. `TRADE NOTIFICATION:` takes
+the trade shape, and the stage word inside it chooses the colour: green for
+`FILLED`, amber for `PLACED`, the primary colour for `SENT`, and red for a
+message naming no stage, which is what a cancellation gets. `WIRE FLOW` and
+`WIRE INCOME` take magenta, `WIRE STACK` the pending colour. Every other
+message takes its level colour.
+
+A line a bot wrote opens with that bot's own tag, `[TICKER/last4]`, added so
+you can tell which bot spoke. The tag sits before the message and is not part
+of it, so the shape is read from the text after the tag. A bot's fill
+therefore draws in the trade shape, the same as those words written straight
+to the pane, and still names its bot.
+
+One function decides the shape for both builds, so the Qt pane and the React
+page cannot drift apart:
+
+```python
+def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
+    """The colour, size, weight and bullet one message paints with."""
+    shaped = shape_source(message)
+    if shaped.startswith(TRADE_PREFIX):
+        return {
+            "kind": KIND_TRADE,
+            "color": stage_color(shaped),
+            "font_size_px": TRADE_FONT_SIZE_PX,
+            "bold": True,
+            "italic": False,
+            "bullet": "",
+        }
+```
+
+`src/gui/main_tabs/status_log_surface.py` — `line_style` and `shape_source`
+
 Pause Console is a toggle. While it is down, each new line goes into a buffer
 of 2,000 instead of the screen, and a full buffer drops the newest rather than
 the oldest. Resume replays the buffer with the original timestamps and adds a
@@ -3798,6 +3839,65 @@ else:
 
 The same file carries the gate logic chain that turns those twelve votes into a
 trade decision.
+
+### Net, Comp and Conf
+
+The three columns that close the first table each read one field. Each one
+draws a number in its cell and a bar behind both tables, and both the number
+and the bar follow that column's own field.
+
+| Column | Its field | What it holds | Its range |
+| ------ | --------- | ------------- | --------- |
+| Net | `net_score` | the bullish weight of the twelve voters, less their bearish weight | a signed tally, zero when the voters cancel out |
+| Comp | `composite_net` | Net joined with the Net of each higher timeframe a phantom bot watches | the same units as Net; a dash when the row carries no composite |
+| Conf | `confidence` | how far the voters agree with each other | 0 to 1 |
+
+`src/gui/main_tabs/indicator_panel_surface.py` — one definition, read by the
+window and by the page
+
+```python
+drawn = [
+    (sign_direction(net), net_fraction(net), BAR_COLORS[sign_direction(net)]),
+    (sign_direction(comp), net_fraction(comp), BAR_COLORS[sign_direction(comp)]),
+    (band, conf, _channels(CONF_BAND_COLORS[band])),
+]
+```
+
+**Bar height.** Conf's bar is its own percentage. Net's and Comp's bar stands
+full at `NET_PILLAR_FULL_SCALE`, which is 3.00 either way; a reading past that
+draws a full bar. The twelve voters could together produce a much larger tally
+than 3.00, and a bar scaled to that ceiling would never leave the floor.
+
+**Bar colour.** The hue names the kind of reading: green above zero and red
+below it for Net and Comp, and for Conf grey under 30 per cent, amber at 30 and
+over, green at 60 and over. The brightness names the size of the reading, from
+`PILLAR_SHADE_FLOOR` of the hue at zero to the whole hue at full scale. The
+cell's text takes the same hue and brightens toward white by `CELL_LIFT_SPAN`
+instead of dimming, so a weak reading is never harder to read than a strong
+one.
+
+**The descriptions.** Each of the three carries the same text on its column
+heading and on its cell, so a hover over either one answers.
+
+> **Net.** Net vote. The bullish weight of the twelve voters above, less their
+> bearish weight. Above zero the panel leans up. Below zero it leans down. A
+> voter with no opinion adds nothing. The bar below stands full at 3.00 either
+> way, and a bigger vote draws a brighter bar.
+
+> **Comp.** Comp is short for composite Net. It is this bot's Net vote, joined
+> with the Net vote of each higher timeframe a phantom bot watches. A higher
+> timeframe pulls the reading its own way. With no phantom bot running, Comp
+> reads the same as Net. A dash means this row carries no composite of its own.
+
+> **Conf.** Conf is short for confidence. It measures how far the voters agree
+> with each other, and nothing else. It is the Net vote divided by the weight
+> of every voter that cast one. 0% means the voters cancel out or none has an
+> opinion. 100% means every voter that cast one agrees. A high reading does not
+> say the trade is a good one, only that the panel is of one mind. Grey is
+> under 30%, amber is 30% and over, green is 60% and over.
+
+The maths behind Net and Conf lives with the voters, in
+[07-indicators.md](07-indicators.md).
 
 ### The Indicator Voting Panel, restyled
 
@@ -5288,6 +5388,10 @@ while the fleet traded. The pane now reports every call to one listener.
 tab is built. The listener drives `status_log_surface`, which paints the same
 line the Qt pane paints, so a pause, a resume and a watchdog line all arrive.
 
+The Qt pane paints through `status_log_surface` as well. It asks `line_style`
+for the shape and `line_html` for the line, rather than building either itself,
+so the two panes cannot disagree about what a message looks like.
+
 **Read off the running page, 38 bots restored.** The two panes hold the same
 seven lines in the same order.
 
@@ -5433,6 +5537,12 @@ The window draws the same header through `QHeaderView::section`, which is
 transparent for the same reason. The pillar now runs from the upper graph to
 the lower one without a break.
 
+**Overtaken.** *"The pillar now runs from the upper graph to the lower one
+without a break."* A pillar now stands on the floor of that same space at its
+own fraction of it, so it reaches the upper graph only at a full reading. The
+space it may occupy, and the header it draws through without a band, are
+unchanged. See [Net, Comp and Conf](#net-comp-and-conf).
+
 ### What the page now reads off the payload
 
 Eleven published values reached nothing. The page took a header ground the
@@ -5512,6 +5622,14 @@ table.setStyleSheet(
 The three pillars now run from the upper graph to the lower one without a
 break. Read off the rendered panel at the centre of the Net pillar, one colour
 runs from row 160 to row 599 with no other colour inside it.
+
+**Overtaken.** *"The three pillars now run from the upper graph to the lower
+one without a break."* Each pillar now stands at its own fraction of that
+space. One colour still runs the whole of a pillar with no other colour inside
+it, which is what this passage measured; the run is as tall as the reading.
+The `pillar 374 px / 369 px` row above measured a full-height pillar and now
+holds for a reading at full scale only. See
+[Net, Comp and Conf](#net-comp-and-conf).
 
 ### The pillars are named at their tops
 
