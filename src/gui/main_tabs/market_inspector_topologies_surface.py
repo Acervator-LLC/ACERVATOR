@@ -29,6 +29,9 @@ from typing import Any, Callable, Optional
 
 from .market_inspector_surface import (
     METHOD_LINE_FORMAT,
+    SCAN_FINISHED,
+    SCAN_NOT_ASKED,
+    SCAN_RUNNING,
     TOPOLOGIES_ZONE,
     action_row,
     method_detail_rows,
@@ -197,6 +200,13 @@ FOOTER_STYLE = "color: #666; font-size: 10px;"
 EMPTY_TEXT = "No proposals right now.  Try Refresh, or wait for market state to shift."
 EMPTY_STYLE = "color: #888; padding: 10px;"
 EMPTY_WORD_WRAP = True
+#: Three of the four detectors test each candidate over the closes an Inspector
+#: scan writes, so a pane asked before that scan can only ever answer nothing.
+EMPTY_NO_SCAN_TEXT = (
+    "No proposals yet. The detector reads the closes the scanner writes, so "
+    "press Refresh on the left half first."
+)
+EMPTY_SCANNING_TEXT = "A scan is running. Proposals are built from what it finds."
 
 CONFIRM_TITLE = "Dismiss proposal"
 CONFIRM_TEXT_FORMAT = "Suppress this proposal for 24 h?\n\nId: {proposal_id}"
@@ -427,11 +437,31 @@ def proposal_entry(proposal: Any) -> dict:
     return entry
 
 
-def pane_view(proposals: Any, at: Any, expanded: Any) -> dict:
+def empty_proposals_text(scan_state: Any) -> str:
+    """The sentence an empty pane carries for one Inspector scan state.
+
+    ``SCAN_NOT_ASKED`` answers ``EMPTY_NO_SCAN_TEXT``, ``SCAN_RUNNING`` answers
+    ``EMPTY_SCANNING_TEXT``, and every other state answers ``EMPTY_TEXT``.
+    """
+    if scan_state == SCAN_NOT_ASKED:
+        return EMPTY_NO_SCAN_TEXT
+    if scan_state == SCAN_RUNNING:
+        return EMPTY_SCANNING_TEXT
+    return EMPTY_TEXT
+
+
+def pane_view(
+    proposals: Any, at: Any, expanded: Any, scan_state: Any = SCAN_FINISHED
+) -> dict:
     """The proposals pane as the one zone view all three hosts draw."""
     entries = [proposal_entry(one) for one in (proposals or [])]
     view = zone_view(
-        TOPOLOGIES_ZONE, LIST_GROUP_TITLE, entries, at, expanded, EMPTY_TEXT
+        TOPOLOGIES_ZONE,
+        LIST_GROUP_TITLE,
+        entries,
+        at,
+        expanded,
+        empty_proposals_text(scan_state),
     )
     shown = entries[view["at"]] if entries else {}
     view["badge"] = shown.get("badge", NO_TEXT)
@@ -725,11 +755,25 @@ class TopologiesPaneModel:
         self.confirm_answer = CONFIRM_YES
         self.warnings: list = []
         self.calls: list = []
+        self.scan_state_source: Optional[Callable[[], Any]] = None
         self.scroll_body = [STRETCH]
 
     def at(self, now: Optional[float]) -> float:
         """The second to work from: the one handed in, or the pane's own."""
         return self.now if now is None else float(now)
+
+    def set_scan_state_source(self, getter: Callable[[], Any]) -> None:
+        """Wire the Inspector scan state the empty sentence is built from."""
+        self.scan_state_source = getter
+
+    def scan_state(self) -> Any:
+        """The Inspector scan state, or ``SCAN_FINISHED`` with no source wired."""
+        if self.scan_state_source is None:
+            return SCAN_FINISHED
+        try:
+            return self.scan_state_source()
+        except Exception:
+            return SCAN_FINISHED
 
     def set_proposal_source(self, getter: Callable[[], Any]) -> None:
         """Wire the detector and tell the operator the pane is ready."""
@@ -1083,6 +1127,8 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "footer_text": FOOTER_TEXT,
             "footer_style": FOOTER_STYLE,
             "empty_text": EMPTY_TEXT,
+            "empty_no_scan_text": EMPTY_NO_SCAN_TEXT,
+            "empty_scanning_text": EMPTY_SCANNING_TEXT,
             "empty_style": EMPTY_STYLE,
             "empty_word_wrap": EMPTY_WORD_WRAP,
             "label_class": LABEL_CLASS,
@@ -1116,7 +1162,9 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
         },
         "now": model.now,
         "stepper": stepper_skin(),
-        "zone": pane_view(model.proposals, model.shown(), model.expanded),
+        "zone": pane_view(
+            model.proposals, model.shown(), model.expanded, model.scan_state()
+        ),
         "position": model.position(),
         "at": model.shown(),
         "expanded": model.expanded,

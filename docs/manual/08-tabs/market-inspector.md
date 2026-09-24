@@ -7155,4 +7155,136 @@ read 74.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-23 - #290 - Topology Proposals refreshes when the scan lands, and both panels name their own condition
+
+Two zones read empty and gave no reason. This entry describes what each one's
+source is, when each reads it, and what each now says when its source answers
+nothing.
+
+### Opposing Trades: its source, and the sentence it now carries
+
+The zone draws the pairs `MarketInspector._find_opposing_pairs` kept on the last
+scan. That producer takes every long-signal market against every short-signal
+market, keeps the ones whose 30-day return correlation sits in the negative
+window, and hands each survivor to the equilibrium test. A market reaches long
+or short only when two or more of its timeframes sit at the same Bollinger
+extreme.
+
+Three counts decide what the zone says when it holds no pair, and all three come
+off the analyzer the scan wrote:
+
+| Count | Read from |
+| ----- | --------- |
+| markets read | `MarketInspector.last_signals` |
+| markets with a direction | the `direction` each signal carries |
+| pairs tested | `MarketInspector.last_tested` |
+
+`src/gui/main_tabs/market_inspector_surface.py` - the three counts
+
+```python
+def scan_counts(signals: Any, tested: Any) -> dict:
+    """The three counts the Opposing Trades funnel line names.
+```
+
+`last_tested` holds one entry per candidate the equilibrium test ran on,
+whether it passed or not. Before this entry no screen read it.
+
+Read on the running program, both builds, after a scan over a four-market
+snapshot: **Scan finished. 4 market(s) read, 0 with a direction, 0 pair(s)
+tested, none held equilibrium.**
+
+A scan that kept a pair is unchanged: the zone draws the pair and the line names
+the profit share.
+
+### Topology Proposals: when it reads, and what it says before the scan
+
+The pane asks `MainWindow._build_topology_proposals`, which builds the
+detector's context. Three of the four detectors test every candidate over
+`closes_by_asset`, and that map comes from `get_shared_inspector().last_closes`
+— written only by a finished Inspector scan. The fourth,
+`detect_distance_to_band`, reads the bot roster alone and pairs a scrum-deep bot
+with a fold-deep bot on the same asset.
+
+The pane now reads the detector again the moment a scan finishes, as well as on
+its own Refresh press and its ten-minute timer.
+
+`src/gui/market_inspector.py` - the read a finished scan triggers
+
+```python
+def _refresh_proposals(self) -> None:
+    """Ask the proposals pane to read the detector again.
+```
+
+Both panes answer `refresh` under that one name, so the Qt widget and the React
+host take the same call.
+
+Before any scan the pane says: **No proposals yet. The detector reads the closes
+the scanner writes, so press Refresh on the left half first.** While a scan runs
+it says: **A scan is running. Proposals are built from what it finds.** After a
+scan it keeps the sentence it already had.
+
+`src/gui/main_tabs/market_inspector_topologies_surface.py` - the three sentences
+
+```python
+def empty_proposals_text(scan_state: Any) -> str:
+    """The sentence an empty pane carries for one Inspector scan state.
+```
+
+The sentence is a value inside the payload the page already draws, so the React
+build carries it with no page change.
+
+### The readings, both builds, at 700, 900 and 1400
+
+| Reading | Opposing Trades rows | Proposals rows |
+| ------- | -------------------- | -------------- |
+| before a scan | 0 | 0 |
+| after a scan over the four-market snapshot | 0 | 0 |
+| with a pair and a proposal handed in | 1 | 1 |
+
+The third row is the control: each panel draws when its source answers. Both
+builds read the same at all three widths. The pane was asked 0 times before the
+scan and 1 time after it, in both builds, which is the read this entry adds.
+
+### The reading with each source planted blind
+
+Clearing the three counts returns the zone to `Scan finished. No opposing trades
+found.` Dropping the scan-state source returns the pane to `No proposals right
+now.  Try Refresh, or wait for market state to shift.` A pane whose `refresh`
+raises is asked once, the tab logs a warning and the scan still finishes. That
+is what proves each reading can fail rather than pass by emptiness.
+
+### Why both zones still read zero on real data
+
+Neither count is a defect in the zone. Measured with no venue contacted:
+
+- The scan snapshot on disk holds four markets. None reached a direction, so the
+  producer had no candidate to test.
+- `HTF_TIMEFRAMES` names three timeframes and the fetcher builds two, so a
+  market must sit at the same extreme on both the daily and the weekly before it
+  carries a direction at all.
+- `detect_all_topologies` answers 0 on the bot roster alone, because every bot
+  in the fleet read here trades a different asset and `detect_distance_to_band`
+  needs two bots on one asset.
+- Over real daily closes for five assets the correlation test passes on two
+  pairs and every cluster it can form holds two members, under the three
+  `detect_momentum_funnel` needs and the four `detect_sector_cluster` needs.
+
+### The two sentences this entry overtakes
+
+Neither is reworded. Both are quoted here and the true sentence follows.
+
+`docs/manual/08-tabs/market-inspector.md:163` - "a scan finished and found
+nothing". For Opposing Trades a finished scan that kept no pair now names how
+many markets it read, how many carried a direction and how many pairs it tested.
+The wording quoted at line 180 is still what the zone says when those counts are
+not available.
+
+`docs/manual/08-tabs/market-inspector.md:213` - "`MarketInspectorTopologies` in
+`src/gui/market_inspector_topologies.py` renders one card per proposal and opens
+a preview dialog on Preview." It still does, and it now also takes the
+Inspector's scan state, which decides which sentence an empty pane carries.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).

@@ -173,6 +173,10 @@
 
   var EMPTY_STYLE = "empty_style";
   var EMPTY_TEXT = "empty_text";
+  // The two sentences empty_proposals_text answers instead of EMPTY_TEXT when
+  // the Inspector scan the detector reads has not run or is still running.
+  var EMPTY_NO_SCAN_TEXT = "empty_no_scan_text";
+  var EMPTY_SCANNING_TEXT = "empty_scanning_text";
   var EMPTY_WORD_WRAP = "empty_word_wrap";
   var FOOTER_STYLE = "footer_style";
   var FOOTER_TEXT = "footer_text";
@@ -308,6 +312,8 @@
     TITLE_WORD_WRAP
   ];
   BAG_FIELDS[PANE] = [
+    EMPTY_NO_SCAN_TEXT,
+    EMPTY_SCANNING_TEXT,
     EMPTY_STYLE,
     EMPTY_TEXT,
     EMPTY_WORD_WRAP,

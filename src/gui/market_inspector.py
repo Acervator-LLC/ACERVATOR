@@ -111,6 +111,7 @@ from .main_tabs.market_inspector_surface import page_links as _page_links
 from .main_tabs.market_inspector_surface import settings_page as _settings_page_view
 from .main_tabs.market_inspector_surface import right_zone_rows as _right_zone_rows
 from .main_tabs.market_inspector_surface import left_module_rows as _left_module_rows
+from .main_tabs.market_inspector_surface import scan_counts as _scan_counts
 from .main_tabs.market_inspector_surface import sector_entry as _sector_entry
 from .main_tabs.market_inspector_surface import (
     ATA_ROW_SPACING_PX,
@@ -970,6 +971,7 @@ if _HAS_QT:
             self._zone_at: dict = {}
             self._zone_open: dict = {}
             self._pairs: list = []
+            self._scan_counts: dict = {}
             self._left_zone_groups: list = []
             self._right_zone_groups: list = []
             for key, title, status in _left_module_rows(
@@ -2635,6 +2637,7 @@ if _HAS_QT:
                 self._connectors_now(),
                 len(self._ata_board.sectors),
                 self._ata_board.note,
+                self._scan_counts,
             ) + _right_zone_rows(self._ata_report(), self._push_board.bucket)
             return [
                 zone_view(
@@ -2729,14 +2732,32 @@ if _HAS_QT:
         def set_proposal_source(self, getter) -> None:
             """Wire the topology-proposal source into ``_topologies_pane``.
 
-            ``getter`` is a zero-arg callable returning ``list[dict]``.
-            No-op when the pane was not constructed.
+            ``getter`` is a zero-arg callable returning ``list[dict]``. The
+            pane also takes this tab's scan state, which its empty sentence
+            names, since three of the four detectors read the closes a
+            finished scan writes. No-op when the pane was not constructed.
             """
             pane = getattr(self, "_topologies_pane", None)
             if pane is None:
                 return
             if hasattr(pane, "set_proposal_source"):
                 pane.set_proposal_source(getter)
+            if hasattr(pane, "set_scan_state_source"):
+                pane.set_scan_state_source(lambda: self._scan_state)
+
+        def _refresh_proposals(self) -> None:
+            """Ask the proposals pane to read the detector again.
+
+            Called once a scan has written its closes, which is the moment
+            the detector's own inputs change.
+            """
+            pane = getattr(self, "_topologies_pane", None)
+            if pane is None or not hasattr(pane, "refresh"):
+                return
+            try:
+                pane.refresh()
+            except Exception as exc:  # noqa: BLE001 - detector surface
+                logger.warning("topology proposals refresh after scan failed: %s", exc)
 
         def set_adopt_handler(self, handler) -> None:
             """v3.23.69 — wire the Adopt handoff (proposal → main window).
@@ -2887,6 +2908,7 @@ if _HAS_QT:
             self._set_refresh_enabled(True)
             self._finish_scan_record(_time.monotonic() - started_at)
             self._render_signals()
+            self._refresh_proposals()
 
         def _on_progress(self, msg: str) -> None:
             self._set_status(msg)
@@ -2974,6 +2996,9 @@ if _HAS_QT:
                 return
 
             self._set_status(self._status_line())
+            self._scan_counts = _scan_counts(
+                inspector.last_signals, getattr(inspector, "last_tested", [])
+            )
             self._fill_signal_rows(self._shown_signals(inspector.last_signals))
             self._fill_pair_rows(list(inspector.last_pairs))
             self._render_empty_notes()
