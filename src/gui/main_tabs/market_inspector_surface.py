@@ -2722,6 +2722,8 @@ def zone_view(
     line is the ``counter`` drawn just above the entry at its right corner
     while a scan runs, and ``running_panel`` is then the entry's only
     content: ``scan_panel`` over the market under read, and no text line.
+    A walk that has read no market yet keeps ``empty_text`` as the
+    headline, so the entry names its state rather than drawing nothing.
     """
     held = list(entries or [])
     total = len(held)
@@ -2743,7 +2745,9 @@ def zone_view(
         "position": position_text(shown, total),
         "counter": str(running) if busy else "",
         "headline": (
-            "" if busy else (entry.get("headline", "") if total else empty_text)
+            ""
+            if reading is not None
+            else (entry.get("headline", "") if total and not busy else empty_text)
         ),
         "meta": entry.get("meta", "") if total and not busy else "",
         "method": "" if open_now or busy else (written if total else ""),
