@@ -60,11 +60,13 @@ if _HAS_QT:
             parent=None,
             on_mode=None,
             mode: str = MODES[0],
+            on_bot_selected=None,
         ):
             super().__init__(parent)
             self.exchange_id = exchange_id
             self._status_log = status_log
             self._on_bot_cmd = on_bot_cmd
+            self._on_bot_selected = on_bot_selected
 
             layout = QVBoxLayout(self)
 
@@ -150,6 +152,8 @@ if _HAS_QT:
                     self._extractor_table.clearSelection()
                     self._extractor_table.setCurrentCell(-1, -1)
                     self._extractor_table.blockSignals(False)
+                if self._on_bot_selected:
+                    self._on_bot_selected(self._bot_table.get_selected_bot_id())
 
             def _on_extractor_selection_changed():
                 if self._extractor_table.selectedItems():
@@ -184,6 +188,14 @@ if _HAS_QT:
                 btn.clicked.connect(lambda _checked, c=cmd: self._cmd(c))
                 cmd_bar.addWidget(btn)
             layout.addLayout(cmd_bar)
+
+        def highlight_bot(self, bot_id: str) -> str:
+            """Put the Scrumming table's highlight on the Voting Panel's bot.
+
+            ``BotListPanelLink.panel_moved`` calls this, so the move reports
+            nothing back and cannot answer its own ask.
+            """
+            return self._bot_table.highlight_bot(bot_id)
 
         def mode_buttons(self) -> dict[str, QPushButton]:
             """The three mode buttons, keyed by ``MODES`` entry."""

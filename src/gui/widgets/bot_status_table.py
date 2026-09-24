@@ -517,6 +517,27 @@ if _HAS_QT:
             if self._last_statuses:
                 self.update_bots(self._last_statuses)
 
+        def _sort_lookups(self) -> SortLookups:
+            """The two readings ``order_statuses`` orders this table's rows by."""
+            return _qt_lookups()
+
+        def _display_price(self, status: dict, stats: dict) -> tuple:
+            """One row's drawn price and its age, read from the price pool."""
+            return _fresh_display_price(
+                _ammo_price_pool(),
+                str(status.get("exchange", "") or ""),
+                str(status.get("symbol", "") or ""),
+                float(stats.get("current_price", 0.0)),
+            )
+
+        def _denom_cell(
+            self, quote: str, base_asset: str, exchange_id: str, target_val: float
+        ) -> tuple:
+            """One Target-BTC or Target-ETH cell: its text and its colour."""
+            return _compose_table_target_denom_cell(
+                quote, base_asset, exchange_id, target_val
+            )
+
         def update_bots(self, bot_statuses: list[dict]) -> None:
             """Rewrite every row from one list of bot statuses.
 
@@ -529,7 +550,7 @@ if _HAS_QT:
                 self._last_statuses,
                 self._sort_column,
                 self._sort_descending,
-                _qt_lookups(),
+                self._sort_lookups(),
             )
             # Read before setRowCount: a row index cannot name its bot afterwards.
             _selected_before = self.get_selected_bot_id()
@@ -589,12 +610,7 @@ if _HAS_QT:
             stats_pv = float(stats.get("position_value", 0.0))
             holdings = float(status.get("current_holdings", 0.0))
             # Display only; the trading path still reads stats.current_price.
-            cur_price, _price_age = _fresh_display_price(
-                _ammo_price_pool(),
-                str(status.get("exchange", "") or ""),
-                str(status.get("symbol", "") or ""),
-                float(stats.get("current_price", 0.0)),
-            )
+            cur_price, _price_age = self._display_price(status, stats)
             # quote_to_usd is 1.0 for USD-quoted pairs.
             qrate = float(status.get("quote_to_usd", 1.0) or 1.0)
             _position = _compose_position_value_cell(
@@ -624,10 +640,10 @@ if _HAS_QT:
             symbol = status.get("symbol", "") or ""
             base_asset = symbol.split("/")[0].upper() if "/" in symbol else ""
             exchange_id = status.get("exchange", "") or ""
-            target_btc_text, target_btc_color = _compose_table_target_denom_cell(
+            target_btc_text, target_btc_color = self._denom_cell(
                 "BTC", base_asset, exchange_id, target_val
             )
-            target_eth_text, target_eth_color = _compose_table_target_denom_cell(
+            target_eth_text, target_eth_color = self._denom_cell(
                 "ETH", base_asset, exchange_id, target_val
             )
             items = [

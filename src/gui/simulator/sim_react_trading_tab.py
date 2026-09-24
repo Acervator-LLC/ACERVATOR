@@ -265,7 +265,9 @@ MODULE_FORGETS: dict[str, str] = {
 TABLE_PRESS_PARAMS: tuple[str, ...] = (
     scrum_surface.FIRE_PARAM,
     scrum_surface.DETAIL_PARAM,
-    scrum_surface.HEADER_CLICK_PARAM,
+    scrum_surface.PRIVACY_TOGGLE_PARAM,
+    scrum_surface.SORT_COLUMN_PARAM,
+    scrum_surface.SELECT_BOT_PARAM,
     scrum_surface.CELL_CLICK_PARAM,
 )
 
@@ -637,6 +639,7 @@ class SimVenue:
         on_bot_fire: Any = None,
         on_new_bot: Any = None,
         on_bot_cmd: Any = None,
+        on_bot_selected: Any = None,
     ) -> None:
         self.exchange_id = exchange_id
         self.exchange_name = exchange_name
@@ -652,6 +655,7 @@ class SimVenue:
         self.scrum = sim_scrum_surface.SimBotStatusTableModel(
             on_bot_clicked=self._scrum_detail,
             on_fire_clicked=on_bot_fire,
+            on_bot_selected=on_bot_selected,
         )
         self.scrum.exchange_id = exchange_id
         self.extractor = extractor_surface.ExtractorBotTableModel(
@@ -1914,6 +1918,7 @@ if _HAS_WEBENGINE:
                 on_bot_fire=self._on_bot_fire,
                 on_new_bot=self._create_bot,
                 on_bot_cmd=self._on_bot_command,
+                on_bot_selected=self._on_bot_row_selected,
             )
             self._state.seat(exchange_id, display_name)
             self._venue_published()
@@ -1948,6 +1953,17 @@ if _HAS_WEBENGINE:
             self._panel.set_bots(statuses)
             self._panel.set_rates(rate_fields(tab_surface.rate_snapshot(statuses)))
             return self._feed_votes(self._panel.selected_bot_id)
+
+        def _on_bot_row_selected(self, bot_id: str) -> str:
+            """Draw the pressed bot on the Simulator's own panel model.
+
+            The page's bot table calls this with the bot its own press left
+            selected, which is empty on a second press of one row.
+            """
+            chosen = self._panel.select_bot(str(bot_id or ""))
+            self._feed_votes(chosen)
+            self._follow_bot_tablet()
+            return chosen
 
         def _feed_votes(self, bot_id: str = "") -> dict:
             """Apply ``ivp_feed`` for ``bot_id``, or the selected bot, to the panel

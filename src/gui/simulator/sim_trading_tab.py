@@ -189,6 +189,7 @@ from ..main_tabs.trading_tab_surface import (
 from ..simulator_tab import LineView, PlaybackView
 from ..theme_engine import NIGREDO, TONE_PROPERTY
 from ..variant_surface import SIM_BOT_DETAIL, SIM_BOT_WIZARD, surface_class
+from ..widgets.bot_selection import BotListPanelLink
 from . import sim_bot_wizard_surface as wizard_surface
 from .sim_bot_status_table_surface import usd_rates
 from .sim_exchange_choice import SimExchangeChoiceDialog, SimPortfolioChoiceDialog
@@ -386,6 +387,10 @@ class SimTradingTab(QWidget):
         self._api_log.add_listener(self._on_api_event)
         self._indicator_panel.bot_selected.connect(self._feed_votes)
         self._indicator_panel.bot_selected.connect(self._follow_bot_tablet)
+        self._bot_list_link = BotListPanelLink(
+            self._indicator_panel, self._bot_list_hosts
+        )
+        self._indicator_panel.bot_selected.connect(self._bot_list_link.panel_moved)
         self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
         self.battery_line.connect(self._status_log.log)
@@ -494,6 +499,20 @@ class SimTradingTab(QWidget):
     def exchange_count(self) -> int:
         """How many venue sub-tabs ``add_exchange_tab`` has seated; EXCH reads it."""
         return len(self._exchange_tabs)
+
+    def _bot_list_hosts(self) -> list:
+        """Every venue sub-tab that draws a bot list, both layers together."""
+        return list(self._crypto_exchange_tabs.values()) + list(
+            self._stock_exchange_tabs.values()
+        )
+
+    def _on_bot_row_selected(self, bot_id: str) -> str:
+        """Draw the pressed bot on the Simulator's own Voting Panel.
+
+        Every venue sub-tab calls this, so the tab does not wait for its next
+        refresh to show what the operator just pressed.
+        """
+        return self._bot_list_link.row_selected(bot_id)
 
     def layer(self) -> str:
         """The layer the stack is showing, ``indicators`` or ``playback``."""
@@ -1619,6 +1638,7 @@ class SimTradingTab(QWidget):
             status_log=self._status_log,
             on_mode=self.set_mode,
             mode=self._mode,
+            on_bot_selected=self._on_bot_row_selected,
         )
         target_widget.addTab(tab, display_name)
         target_tabs[exchange_id] = tab

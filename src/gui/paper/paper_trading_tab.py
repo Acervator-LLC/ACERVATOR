@@ -109,6 +109,7 @@ from ..main_tabs.trading_tab_surface import (
     placeholder_add_style,
 )
 from ..variant_surface import PAPER_BOT_DETAIL, surface_class
+from ..widgets.bot_selection import BotListPanelLink
 from . import paper_trading_tab_surface as tab_surface
 from .paper_bot_status_table_surface import usd_rates
 from .paper_exchange_choice import PaperExchangeChoiceDialog
@@ -196,6 +197,10 @@ class PaperTradingTab(QWidget):
         self._api_log.add_listener(self._cross_api_event)
         self.feedRead.connect(self._on_feed_read)
         self._indicator_panel.bot_selected.connect(self._feed_votes)
+        self._bot_list_link = BotListPanelLink(
+            self._indicator_panel, self._bot_list_hosts
+        )
+        self._indicator_panel.bot_selected.connect(self._bot_list_link.panel_moved)
         self.fleet_changed.connect(self._fleet_source.save)
         self.fleet_changed.connect(self._sync_exchange_tabs)
         self._sync_exchange_tabs()
@@ -251,6 +256,20 @@ class PaperTradingTab(QWidget):
     def exchange_count(self) -> int:
         """How many venue sub-tabs ``add_exchange_tab`` has seated; EXCH reads it."""
         return len(self._exchange_tabs)
+
+    def _bot_list_hosts(self) -> list:
+        """Every venue sub-tab that draws a bot list, both layers together."""
+        return list(self._crypto_exchange_tabs.values()) + list(
+            self._stock_exchange_tabs.values()
+        )
+
+    def _on_bot_row_selected(self, bot_id: str) -> str:
+        """Draw the pressed bot on the Paper Trader's own Voting Panel.
+
+        Every venue sub-tab calls this, so the tab does not wait for its next
+        refresh to show what the operator just pressed.
+        """
+        return self._bot_list_link.row_selected(bot_id)
 
     def corner_buttons(self) -> dict[str, QPushButton]:
         """The crypto layer's corner buttons, keyed by action."""
@@ -758,6 +777,7 @@ class PaperTradingTab(QWidget):
             on_fleet_cmd=self._global_bot_cmd,
             on_bot_fire=self._on_bot_fire,
             status_log=self._status_log,
+            on_bot_selected=self._on_bot_row_selected,
         )
         target_widget.addTab(tab, display_name)
         target_tabs[exchange_id] = tab

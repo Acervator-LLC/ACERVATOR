@@ -109,10 +109,20 @@ class BotListPanelLink:
             self._settling = False
 
     def panel_selected(self, event: Any = None) -> str:
-        """Highlight the bot the panel now draws in every bot list."""
+        """Highlight the bot the panel now draws, off a bus ``event``."""
+        return self.panel_moved(
+            str((getattr(event, "data", None) or {}).get("bot_id", "") or "")
+        )
+
+    def panel_moved(self, bot_id: str) -> str:
+        """Highlight ``bot_id`` in every bot list ``hosts`` names.
+
+        The Simulator's and the Paper Trader's panels carry the bot on a Qt
+        signal rather than on a bus topic, and reach the same move here.
+        """
         if self._settling:
             return self.bot_id
-        wanted = str((getattr(event, "data", None) or {}).get("bot_id", "") or "")
+        wanted = str(bot_id or "")
         self._settling = True
         try:
             for host in self._hosts() or ():
