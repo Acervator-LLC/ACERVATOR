@@ -16,6 +16,7 @@ from typing import Callable, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..exchange.base import (
         ExchangeInterface,
+        MarketRules,
         Order,
         OrderSide,
         OrderType,
@@ -102,47 +103,79 @@ class BotContainer:
         self._bus = get_event_bus()
         self._volume_guard = None  # set by BotManager.set_volume_guard
         self._data_pool = None  # set by BotManager.set_data_pool
-        self._market_limits_cache: dict[str, tuple] = {}
+        self._market_rules_cache: dict[str, "MarketRules"] = {}
         self._phantoms_enabled: bool = False
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual fire hook; the base implementation does nothing."""
         return
 
-    async def _get_market_limits(
-        self,
-        symbol: str,
-    ) -> tuple[float, float, int]:
-        """Return ``(min_amount, min_cost, amount_precision)`` for
-        ``symbol``, cached; ``(0.0, 0.0, 8)`` on any lookup failure."""
-        cached = self._market_limits_cache.get(symbol)
+    async def _get_market_rules(self, symbol: str) -> "MarketRules":
+        """Return the venue's published ``MarketRules`` for ``symbol``, cached,
+        and an all-``None`` record when the lookup fails or the venue lists no
+        such market."""
+        from ..exchange.base import MarketRules
+
+        cached = self._market_rules_cache.get(symbol)
         if cached is not None:
             return cached
+        unread = MarketRules(read=False)
         try:
             markets = await self.exchange.get_markets()
         except Exception as exc:
-            logger.debug(
-                "Bot %s could not fetch markets for precision check: %s",
+            logger.warning(
+                "Bot %s could not fetch markets for %s, so its order limits "
+                "are unknown: %s",
                 self.bot_id,
+                symbol,
                 exc,
             )
-            # Cache the failure so get_markets() is not retried per order.
-            fallback = (0.0, 0.0, 8)
-            self._market_limits_cache[symbol] = fallback
-            return fallback
+            # A failure is not cached: caching it left the guard blind for the
+            # container's life after one transient error.
+            return unread
         for m in markets or []:
             if getattr(m, "symbol", None) == symbol:
-                limits = (
-                    float(getattr(m, "min_amount", 0.0) or 0.0),
-                    float(getattr(m, "min_cost", 0.0) or 0.0),
-                    int(getattr(m, "amount_precision", 8) or 8),
+                rules = getattr(m, "rules", None)
+                if not isinstance(rules, MarketRules):
+                    rules = unread
+                self._market_rules_cache[symbol] = rules
+                return rules
+        logger.warning(
+            "Bot %s: %s is absent from the venue's market list, so its order "
+            "limits are unknown",
+            self.bot_id,
+            symbol,
+        )
+        return unread
+
+    def _warn_order(self, message: str) -> None:
+        """Put ``message`` on the Console through ``bot.log`` and in the log,
+        so an order the guard could not check is read where the operator
+        watches."""
+        logger.warning("Bot %s %s", getattr(self, "bot_id", "?"), message)
+        bus = getattr(self, "_bus", None)
+        if bus is None:
+            return
+        try:
+            bus.emit("bot.log", bot_id=getattr(self, "bot_id", "?"), message=message)
+        except Exception as exc:
+            logger.debug("bot.log emit for an unchecked order raised: %s", exc)
+
+    def _refuse_order(self, message: str) -> None:
+        """Put ``message`` on the Console through ``bot.log``, log it, and raise
+        it, so a refused order is read where the operator watches."""
+        logger.error("Bot %s %s", getattr(self, "bot_id", "?"), message)
+        bus = getattr(self, "_bus", None)
+        if bus is not None:
+            try:
+                bus.emit(
+                    "bot.log",
+                    bot_id=getattr(self, "bot_id", "?"),
+                    message=message,
                 )
-                self._market_limits_cache[symbol] = limits
-                return limits
-        # Symbol absent from markets; cache zero to stop re-looping.
-        fallback = (0.0, 0.0, 8)
-        self._market_limits_cache[symbol] = fallback
-        return fallback
+            except Exception as exc:
+                logger.debug("bot.log emit for a refused order raised: %s", exc)
+        raise Exception(message)
 
     async def guarded_place_order(
         self,
@@ -154,8 +187,9 @@ class BotContainer:
         purpose: str = "trade",
     ) -> "Order":
         """Place an order via the VolumeGuard or ``exchange.place_order``,
-        refusing a non-finite, non-positive or sub-minimum ``amount``
-        with ``PRE-FLIGHT REJECTED``."""
+        sizing ``amount`` onto the market's own rules first and refusing a
+        non-finite, non-positive or sub-minimum size with ``PRE-FLIGHT
+        REJECTED``."""
         from ..exchange.base import OrderSide, OrderType, Order, OrderStatus
 
         # Exact type test: ``isinstance`` would admit bool, and every
@@ -173,17 +207,7 @@ class BotContainer:
         if not _amt_is_number or not math.isfinite(_amt) or _amt <= 0.0:
             # ``math.isfinite`` runs before the positivity test because
             # ``nan <= 0.0`` is False.
-            logger.error(
-                "Bot %s PRE-FLIGHT REJECTED %s %s: amount is not a finite "
-                "positive number: %r (type %s). Upstream produced an "
-                "unusable size; the API was not called.",
-                getattr(self, "bot_id", "?"),
-                _side_str,
-                symbol,
-                amount,
-                type(amount).__name__,
-            )
-            raise Exception(
+            self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount is not "
                 f"a finite positive number: {amount!r} "
                 f"(type {type(amount).__name__}). An amount that is not a "
@@ -192,57 +216,43 @@ class BotContainer:
                 f"API not called."
             )
 
-        # The symbol's min_amount, min_cost and precision, or safe zeros.
+        # The market's own published rules. A rule the venue did not publish is
+        # None, and None never satisfies a comparison the way 0.0 did.
         try:
-            _min_amount, _min_cost, _amount_prec = await self._get_market_limits(symbol)
+            _rules = await self._get_market_rules(symbol)
         except Exception:
-            _min_amount, _min_cost, _amount_prec = 0.0, 0.0, 8
+            from ..exchange.base import MarketRules as _MarketRules
 
-        # Truncate, not round: the exchange discards sub-step size, so
-        # the request floors and the minimum ceils to whole steps.
-        import math as _math
+            _rules = _MarketRules(read=False)
 
-        _amt_steps: Optional[int] = None
-        _min_steps: Optional[int] = None
-        if _amount_prec >= 0:
-            try:
-                _scale = 10 ** int(_amount_prec)
-                _amt_steps = _math.floor(_amt * _scale)
-                _min_steps = _math.ceil(_min_amount * _scale)
-                _amt_trunc = _amt_steps / _scale
-            except (TypeError, ValueError, OverflowError):
-                _amt_steps = None
-                _min_steps = None
-                _amt_trunc = _amt
-        else:
-            _amt_trunc = _amt
-
-        # No step counts (negative precision or overflow): compare the
-        # untruncated size.
-        if _amt_steps is None or _min_steps is None:
-            _below_min = _amt < _min_amount
-        else:
-            _below_min = _amt_steps < _min_steps
-        if _min_amount > 0 and _below_min:
-            raise Exception(
-                f"PRE-FLIGHT REJECTED: {_side_str} amount {_amt:.8f} "
-                f"({_amt_trunc:.{max(_amount_prec,0)}f} after truncating "
-                f"to precision={_amount_prec}) is below {symbol} "
-                f"min_amount {_min_amount}. API not called."
+        if not _rules.read:
+            self._warn_order(
+                f"LIMITS NOT READ: {symbol} market record could not be "
+                f"obtained, so no minimum size or cost is known for this "
+                f"{_side_str} of {_amt:.10f}. The venue enforces its own; "
+                f"Acervator checks nothing here."
             )
 
-        if _min_cost > 0 and price is not None:
+        if _rules.steps_below_minimum(_amt):
+            self._refuse_order(
+                f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
+                f"{_amt:.10f} is below min_amount {_rules.min_amount} "
+                f"on a size increment of {_rules.amount_increment}. "
+                f"API not called."
+            )
+
+        if _rules.min_cost is not None and price is not None:
             try:
                 _px = float(price)
             except (TypeError, ValueError):
                 _px = 0.0
             if _px > 0:
                 _notional = _amt * _px
-                if _notional < _min_cost:
-                    raise Exception(
-                        f"PRE-FLIGHT REJECTED: {_side_str} notional "
-                        f"${_notional:.4f} ({_amt:.8f} \u00d7 ${_px:.8f}) "
-                        f"is below {symbol} min_cost ${_min_cost:.4f}. "
+                if _notional < _rules.min_cost:
+                    self._refuse_order(
+                        f"PRE-FLIGHT REJECTED: {_side_str} {symbol} notional "
+                        f"${_notional:.4f} ({_amt:.10f} \u00d7 ${_px:.8f}) "
+                        f"is below min_cost ${_rules.min_cost:.4f}. "
                         f"API not called."
                     )
 

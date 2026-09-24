@@ -34,6 +34,7 @@ meaning; the Part column below is what places a file in the manual.
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Market Inspector and Asset Charts, and the pointers to every other screen's own section under [08-tabs/](08-tabs/README.md) |
 | [13-live-evidence.md](13-live-evidence.md) | 4 | — | The readers of the year-to-date venue record, the connectors, and what the exchange tests reach |
+| [15-venue-compatibility.md](15-venue-compatibility.md) | 4 | — | Every API-reachable venue against the classes it serves, how each one names an order's size, and whether a scrum's excess survives that size rule |
 | [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate |

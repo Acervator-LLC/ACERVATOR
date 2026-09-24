@@ -12,6 +12,7 @@ from ..core.retry import linear_delay, retry_any, retry_sync, with_retry
 from ..core.safe_url import SafeRequest, safe_urlopen
 import asyncio
 import logging
+import math
 import threading
 import time
 from decimal import Decimal, InvalidOperation
@@ -51,6 +52,7 @@ from .base import (
     AssetInfo,
     Balance,
     ExchangeInterface,
+    MarketRules,
     Order,
     OrderBook,
     OrderSide,
@@ -202,6 +204,41 @@ def precision_to_decimals(
     if dec <= 0:
         return default
     return max(0, -dec.normalize().as_tuple().exponent)
+
+
+def precision_to_increment(value: Any, precision_mode: int) -> Optional[float]:
+    """One CCXT market ``precision`` entry as the step a value moves by, None
+    where the venue published none and under ``SIGNIFICANT_DIGITS``, which names
+    no step."""
+    if value is None:
+        return None
+    if precision_mode == CCXT_SIGNIFICANT_DIGITS:
+        return None
+    try:
+        dec = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    if not dec.is_finite() or dec <= 0:
+        return None
+    if precision_mode == CCXT_TICK_SIZE:
+        return float(dec)
+    if precision_mode == CCXT_DECIMAL_PLACES:
+        return float(Decimal(1).scaleb(-int(dec)))
+    return None
+
+
+def limit_to_float(value: Any) -> Optional[float]:
+    """One CCXT market ``limits`` bound as a float, None where the venue
+    published none."""
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
 
 
 _LOGO_CDN = "https://assets.coingecko.com/coins/images/{id}/small/{symbol}.png"
@@ -1318,13 +1355,14 @@ class CCXTConnector(ExchangeInterface):
                     symbol=sym,
                     base=info.get("base", ""),
                     quote=info.get("quote", ""),
-                    min_amount=float(limits.get("amount", {}).get("min", 0) or 0),
-                    min_cost=float(limits.get("cost", {}).get("min", 0) or 0),
-                    price_precision=precision_to_decimals(
-                        precision.get("price"), precision_mode
-                    ),
-                    amount_precision=precision_to_decimals(
-                        precision.get("amount"), precision_mode
+                    rules=MarketRules(
+                        min_amount=limit_to_float(
+                            (limits.get("amount") or {}).get("min")
+                        ),
+                        min_cost=limit_to_float((limits.get("cost") or {}).get("min")),
+                        amount_increment=precision_to_increment(
+                            precision.get("amount"), precision_mode
+                        ),
                     ),
                     maker_fee=float(info.get("maker", 0.001) or 0.001),
                     taker_fee=float(info.get("taker", 0.001) or 0.001),
