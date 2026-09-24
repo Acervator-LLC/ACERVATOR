@@ -197,6 +197,37 @@ eight assumed decimal places, which stands the refusal down for that symbol.
             self._market_limits_cache[symbol] = fallback
 ```
 
+### 2026-09-24 - the failed-lookup half of that paragraph is repaired
+
+The sentence above is kept as written:
+
+> And a market lookup that fails leaves the bot with no minimum and
+> eight assumed decimal places, which stands the refusal down for that symbol.
+
+That is what the code did. The true sentence is: a market lookup that fails
+leaves the bot with no minimum, which it now holds as unknown rather than as
+zero, so the refusal makes no comparison instead of silently passing every
+size; the bot says so on the Console, and the failure is no longer remembered,
+so the next order reads the market again.
+
+The block quoted above is replaced by the block below. The coinbase, spot row
+in the table still holds: while the lookup succeeds, the truncation and the
+refusal are unchanged.
+
+`src/trading/bot_container.py` — what a failed lookup answers now
+
+```python
+        unread = MarketRules(read=False)
+        ...
+            # A failure is not cached: caching it left the guard blind for the
+            # container's life after one transient error.
+            return unread
+```
+
+The record that replaced the tuple, and the comparison the guard now calls, are
+described under
+[13-live-evidence.md](13-live-evidence.md).
+
 ## Venues named in the tree that this page cannot describe
 
 One id in the equity venue list has no reading behind it.

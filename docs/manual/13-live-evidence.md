@@ -309,6 +309,90 @@ guarded_place_order called by       src/trading/scrumming/execution.py
 tests/test_u6_venue_amount_gate.py      five checks
 ```
 
+## When the order guard could not read the market's limits
+
+A venue decides the smallest order it will take. The bot reads that figure off
+the market before it sends anything, and turns an order away that falls under
+it. The reading can fail — the venue can be down, or the market can be missing
+from the list it returns — and what the guard did with a failed reading was the
+defect.
+
+A failed reading used to answer with a minimum of zero. Nothing is ever under
+zero, so the check that turns small orders away could not turn anything away,
+and the order went out unchecked. Nothing was said on any screen. The failed
+reading was also remembered, so one moment of trouble at the venue left that
+market unchecked until the bot was restarted.
+
+`src/exchange/base.py` — what a market reports now
+
+```python
+@dataclass(frozen=True)
+class MarketRules:
+    min_amount: Optional[float] = None       # base units
+    min_cost: Optional[float] = None         # quote units
+    amount_increment: Optional[float] = None # base units a size steps by
+    read: bool = True
+```
+
+Nothing in that record stands in for a figure the venue did not give. A minimum
+that was never read is held as nothing at all, and nothing is not a number the
+check can be satisfied by. The `read` field separates the two cases that used to
+look the same: a venue that published no minimum, and a reading that never
+happened.
+
+Three things now follow a failed reading. The check makes no comparison, because
+it has nothing to compare against and says so rather than pretending. A line
+goes to the Console under the bot's own name. The failure is not remembered, so
+the next order reads the market again and the check comes back as soon as the
+venue does.
+
+```
+LIMITS NOT READ: TONE/USD market record could not be obtained, so no minimum
+size or cost is known for this SELL of 20.0000000000. The venue enforces its
+own; Acervator checks nothing here.
+```
+
+### What a bot does differently
+
+Nothing changes while the reading succeeds, which is every ordinary moment. The
+same sizes go to the venue and the same undersized orders are turned away. Read
+over four order sizes on two real Coinbase markets, every size and every refusal
+is identical before and after.
+
+What changes is the bad moment. Where a reading failed, an order under the
+market's minimum used to go out silently and the bot stayed blind for the rest
+of its run. Now it still goes out — the venue applies its own minimum and
+refuses it there — but the Console says the check did not run, and the very next
+order after the venue recovers is checked again.
+
+### The sentence this overtakes
+
+The refusal table above carries this row, and it is kept as written:
+
+> | `guarded_place_order` | `src/trading/bot_container.py` | an order whose amount is not a finite positive number, at the single point every engine order passes through |
+
+That row is narrower than what the method does. The true sentence is: an order
+whose amount is not a finite positive number, an order under the market's
+published minimum size, or an order under its published minimum cost — at the
+single point every engine order passes through, with each refusal put on the
+Console, and with an order the guard could not check named there too.
+
+### The broker side has no such step
+
+The crypto side reads a market's limits and checks an order against them. The
+equities side does not. Measured across both broker files, no minimum size, no
+minimum value, no step size and no fractional flag is read anywhere.
+
+```
+src/stocks/broker_base.py         0 occurrences
+src/stocks/alpaca_connector.py    0 occurrences
+  searched for: min_amount, min_qty, min_notional, increment,
+                precision, fractionable
+```
+
+Nothing on any screen builds a bot on that path today, so this is recorded and
+not repaired here.
+
 ## The simulation battery
 
 The venue record above is live money. Beside it sits a second body of evidence
