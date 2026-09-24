@@ -1999,3 +1999,116 @@ candle column wide and a twentieth of the price pane tall, with a tag naming
 the role and the price beside it." - the glyph holds; its tag draws only
 where it crosses no glyph and no other tag, and the readout names the fill
 under the pointer.
+
+## 2026-09-23 17:30 - #55 - the oscillators are a third taller, and the bottom bar drags both heights
+
+His words, 2026-09-23: *"Oscillator default height should be increased by 30%
+- Oscillator and chart height needs to be adjustable by dragging the bottom
+bar. Said adjustments must move all subsequent elements down and not overlap
+them"*.
+
+### The default height
+
+A sub-pane's plot now holds seven tag-tall bands, not five: two over the
+upper ruled level, the upper level, the value tag at the middle, the lower
+level, and two under it. A tag is 14 px, so a sub-pane is 14 + 7 x 14 = 112
+px. Read off the running chart before the change it was 84.0 px. His figure,
+84 x 1.3, is 109.2 px, which is not a whole number of bands; seven bands is
+the least count that reaches it, and it gives the plot the same room above
+the upper level as below the lower one. The rise is 33.3%.
+
+`src/gui/main_tabs/native_chart_surface.py` - the band count
+
+```python
+#: The tag-tall bands a sub-pane's plot holds: two over the upper ruled level,
+#: the upper level, the value tag at the middle, the lower level, two under the
+#: lower level. Seven is the least count whose height clears 84 px by the 30%
+#: the operator asked for: 14 + 7 x 14 = 112, a rise of 33.3%.
+SUB_PANE_PLOT_BANDS = 7
+```
+
+The chart's natural height follows. With the volume strip and the seven
+sub-panes it is 28 + 18 + 220 + 28 + 7 x 112 + 18 = 1096 px, where it was
+900. A panel shorter than that scrolls to it.
+
+### The bottom bar
+
+Three short dashes draw across the chart's bottom edge, in a strip 8 px tall.
+Pressing in that strip and dragging down sets the chart's height, and every
+sub-pane keeps the share of the chart it holds at the natural height. One
+drag therefore raises the price pane and every oscillator together. Dragged up, the
+height stops at the natural 1096 and the sub-panes return to 112 px. The
+pointer turns to the vertical resize arrows over the strip on the Qt widget.
+
+`src/gui/main_tabs/native_chart_surface.py` - the share the drag gives a sub-pane
+
+```python
+def sub_pane_height(dragged_height_px: int, readable_height_px: int) -> int:
+    scaled = SUB_PANE_READABLE_PX * int(dragged_height_px) // int(readable_height_px)
+    return max(SUB_PANE_READABLE_PX, scaled)
+```
+
+`CandlestickChart.mouseMoveEvent` drives it on the widget, and `chart_view`
+drives it on the page from the same press, drag and release the page already
+sends. Both call `set_pane_drag_height`, so both builds answer one grab of
+the bar the same way.
+
+### Nothing below the drag overlaps
+
+Inside the chart the panes are laid one under the next: each pane's top is the
+pane above's bottom, so a drag moves every pane under it down by the height it
+won. Outside the chart the panes sit in a scroll host, with the toggle row
+under the host, so the host's own height never changes and the toggle row
+never moves. Read on the running program at 700, 900 and 1400 px wide:
+
+| drag | sub-pane | price pane | vortex | rsi | time axis | chart bottom |
+| ---- | -------- | ---------- | ------ | --- | --------- | ------------ |
+| at rest | 112.0 | 46.0 - 266.0 | 294.0 - 406.0 | 966.0 - 1078.0 | 1078.0 - 1096.0 | 1096 |
+| +260 | 138.0 | 46.0 - 344.0 | 372.0 - 510.0 | 1200.0 - 1338.0 | 1338.0 - 1356.0 | 1356 |
+| +4000 | 520.0 | 46.0 - 1410.0 | 1438.0 - 1958.0 | 4558.0 - 5078.0 | 5078.0 - 5096.0 | 5096 |
+| dragged up | 112.0 | 46.0 - 266.0 | 294.0 - 406.0 | 966.0 - 1078.0 | 1078.0 - 1096.0 | 1096 |
+
+On the Qt panel at 700 px wide the scroll host reads 0.0 - 668.0 and the
+toggle row 674.0 - 686.0 at every one of those positions; at 900 the host
+reads 0.0 - 878.0 and the row 884.0 - 896.0; at 1400 the host reads
+0.0 - 1078.0 and the row 1084.0 - 1096.0. On the page at 700 the chart mount
+reads 50.8 - 656.8 and the toggle row 660.6 - 674.6 at every position, and
+the image inside the mount grows from 1146.8 to 4002.8 while the mount
+scrolls.
+
+### The height and drag readings, off the running program, both builds
+
+Each build ran with the home on a scratch directory and every socket but
+loopback refused, 100 BTC 1h candles, seven sub-panes on, the panel at 700,
+900 and 1400 px wide. The Qt numbers come from `ChartPainter.geometry_payload`,
+which reports what the last paint laid out; the page's numbers come from the
+same payload carried on the image answer, and its element rectangles from the
+page's own `getBoundingClientRect`.
+
+| reading | before, Qt / React | after, Qt / React |
+| ------- | ------------------ | ----------------- |
+| each sub-pane at rest, every width | 84.0 / 84.0 | 112.0 / 112.0 |
+| the chart's natural height | 900 / 900 | 1096 / 1096 |
+| the bar dragged +260 | 84.0, the chart 1160 / no answer, the image 900 | 138.0, the chart 1356 / 138.0, the image 1356 |
+| the bar dragged +4000 | 84.0, the chart 4900 / no answer, the image 900 | 520.0, the chart 5096 / 520.0, the image 5096 |
+| the bar dragged up | 84.0, the chart 900 / 900 | 112.0, the chart 1096 / 1096 |
+| the panes' tops and bottoms, every position | each top the one above's bottom | the same |
+| the toggle row against the scroll host | 674.0 under 668.0 / 660.6 under 656.8 | the same at every drag position |
+| the band count planted back to 5 | - | 84.0 at rest and the natural height 900, in both builds; 112.0 restored |
+
+Renders sit under `artifacts/u55/C9/`, one per width and drag position in each
+build.
+
+### Three sentences the drag overtakes
+
+They were not reworded. They are quoted here.
+
+"A tag is 14 px, so a sub-pane is 14 + 5 x 14 = 84 px." - a sub-pane's plot
+holds seven bands, so a sub-pane is 14 + 7 x 14 = 112 px.
+
+"With the volume strip and the seven sub-panes it is 28 + 18 + 220 + 28 + 7 x
+84 + 18 = 900 px." - it is 28 + 18 + 220 + 28 + 7 x 112 + 18 = 1096 px.
+
+"each takes 84 px on the tab at every window height" - each takes 112 px at
+every window height, and a drag of the bottom bar raises that figure with the
+chart.

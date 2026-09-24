@@ -265,9 +265,11 @@ VOLUME_STRIP_PX = 28
 TAG_HEIGHT_PX = 14
 #: A sub-pane's label row, one tag tall, over its plot.
 SUB_PANE_LABEL_PX = TAG_HEIGHT_PX
-#: The tag-tall bands a sub-pane's plot holds: over the upper ruled level, the
-#: upper level, the value tag at the middle, the lower level, under the lower level.
-SUB_PANE_PLOT_BANDS = 5
+#: The tag-tall bands a sub-pane's plot holds: two over the upper ruled level,
+#: the upper level, the value tag at the middle, the lower level, two under the
+#: lower level. Seven is the least count whose height clears 84 px by the 30%
+#: the operator asked for: 14 + 7 x 14 = 112, a rise of 33.3%.
+SUB_PANE_PLOT_BANDS = 7
 #: The height every sub-pane draws at on the Charts tab: the label row over
 #: the plot's bands. A host shorter than the panes' height scrolls.
 SUB_PANE_READABLE_PX = SUB_PANE_LABEL_PX + SUB_PANE_PLOT_BANDS * TAG_HEIGHT_PX
@@ -1326,6 +1328,21 @@ def resize_height(start_height_px: int | None, start_y: int, mouse_y: int) -> in
 def in_grip(mouse_y: int, height_px: int) -> bool:
     """Whether a pointer row sits in the bottom resize strip."""
     return mouse_y >= height_px - RESIZE_GRIP_PX
+
+
+def sub_pane_height(dragged_height_px: int, readable_height_px: int) -> int:
+    """The sub-pane height a grip drag to ``dragged_height_px`` asks for.
+
+    Every sub-pane keeps the share of the widget it holds at
+    ``readable_height_px``, the height the panes draw at with each sub-pane at
+    ``SUB_PANE_READABLE_PX``, so a drag of the bottom bar grows the price pane
+    and every sub-pane together and never returns under
+    ``SUB_PANE_READABLE_PX``.
+    """
+    if readable_height_px <= 0:
+        return SUB_PANE_READABLE_PX
+    scaled = SUB_PANE_READABLE_PX * int(dragged_height_px) // int(readable_height_px)
+    return max(SUB_PANE_READABLE_PX, scaled)
 
 
 def header_parts(
