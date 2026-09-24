@@ -3399,6 +3399,47 @@ in magenta behind a bolt character. A wire stack line draws in the pending
 colour behind the same character. The pane holds 5,000 lines and drops the
 oldest past that.
 
+##### How a line takes its shape
+
+One line is a timestamp, then an optional bolt character, then the message:
+
+```
+[hh:mm:ss] <bullet><message>
+```
+
+The words the message opens with choose the shape. `TRADE NOTIFICATION:` takes
+the trade shape, and the stage word inside it chooses the colour: green for
+`FILLED`, amber for `PLACED`, the primary colour for `SENT`, and red for a
+message naming no stage, which is what a cancellation gets. `WIRE FLOW` and
+`WIRE INCOME` take magenta, `WIRE STACK` the pending colour. Every other
+message takes its level colour.
+
+A line a bot wrote opens with that bot's own tag, `[TICKER/last4]`, added so
+you can tell which bot spoke. The tag sits before the message and is not part
+of it, so the shape is read from the text after the tag. A bot's fill
+therefore draws in the trade shape, the same as those words written straight
+to the pane, and still names its bot.
+
+One function decides the shape for both builds, so the Qt pane and the React
+page cannot drift apart:
+
+```python
+def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
+    """The colour, size, weight and bullet one message paints with."""
+    shaped = shape_source(message)
+    if shaped.startswith(TRADE_PREFIX):
+        return {
+            "kind": KIND_TRADE,
+            "color": stage_color(shaped),
+            "font_size_px": TRADE_FONT_SIZE_PX,
+            "bold": True,
+            "italic": False,
+            "bullet": "",
+        }
+```
+
+`src/gui/main_tabs/status_log_surface.py` — `line_style` and `shape_source`
+
 Pause Console is a toggle. While it is down, each new line goes into a buffer
 of 2,000 instead of the screen, and a full buffer drops the newest rather than
 the oldest. Resume replays the buffer with the original timestamps and adds a
@@ -5287,6 +5328,10 @@ while the fleet traded. The pane now reports every call to one listener.
 `TradingTabMixin._wire_live_feeds` hands that listener to the React tab when the
 tab is built. The listener drives `status_log_surface`, which paints the same
 line the Qt pane paints, so a pause, a resume and a watchdog line all arrive.
+
+The Qt pane paints through `status_log_surface` as well. It asks `line_style`
+for the shape and `line_html` for the line, rather than building either itself,
+so the two panes cannot disagree about what a message looks like.
 
 **Read off the running page, 38 bots restored.** The two panes hold the same
 seven lines in the same order.

@@ -53,9 +53,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* The message span. A trade or wire line raises its own size and weight. */
+/* The message span. A trade or wire line raises its own size and weight, and
+ * the resume line its own slant, so this rule inherits the family and the line
+ * box only: the `font` shorthand reset the weight a `b` tag carries and the
+ * slant an `i` tag carries back to the body's own normal. */
 .acervator-status-log-body[data-part="body"] {
-  font: inherit;
+  font-family: inherit;
+  line-height: inherit;
 }
 
 /* QTextEdit's placeholder, which the pane shows while it holds no line. */
