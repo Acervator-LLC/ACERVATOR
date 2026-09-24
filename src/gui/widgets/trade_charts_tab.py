@@ -17,6 +17,7 @@ from ..main_tabs.native_chart_surface import (
     CONTROL_HEIGHT_PX,
 )
 from ..main_tabs.trade_charts_tab_surface import (
+    FETCH_LIMIT,
     bot_timeframe,
     fill_record,
     history_fills,
@@ -83,7 +84,6 @@ PANEL_MINIMUM_HEIGHT_PX = 300
 NUCLEAR_TIMEFRAME = "1m"
 
 FETCH_THROTTLE_S = 30
-FETCH_LIMIT = 100
 STALE_AFTER_S = 90.0
 AGE_DECIMALS = 3
 
