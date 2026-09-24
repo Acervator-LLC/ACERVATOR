@@ -229,6 +229,9 @@ NAME_GLOBAL = "acervatorInlinedModule"
 #: The console line the page writes a bridge ask on.
 ACTION_PREFIX = "acervator-paper:"
 
+#: The four all-bots verbs a SHIFT press on the command bar may name.
+FLEET_VERBS = tuple(pair[1] for pair in venue_surface.live.FLEET_COMMANDS.values())
+
 #: The page ground. Every colour a part paints arrives on its own ``style``
 #: attribute from the payload, so no rule here may set one on a part.
 PAGE_STYLE = (
@@ -504,6 +507,7 @@ class PaperVenue:
         on_bot_fire: Any = None,
         on_new_bot: Any = None,
         on_bot_cmd: Any = None,
+        on_fleet_cmd: Any = None,
     ) -> None:
         self.exchange_id = exchange_id
         self.exchange_name = exchange_name
@@ -515,6 +519,7 @@ class PaperVenue:
             on_bot_fire=on_bot_fire,
             on_new_bot=on_new_bot,
             on_bot_cmd=on_bot_cmd,
+            on_fleet_cmd=on_fleet_cmd,
         )
         self.scrum = paper_scrum_surface.PaperBotStatusTableModel(
             on_bot_clicked=self._scrum_detail,
@@ -1151,6 +1156,7 @@ if _HAS_WEBENGINE:
                 on_bot_fire=self._on_bot_fire,
                 on_new_bot=self._create_bot,
                 on_bot_cmd=self._on_bot_command,
+                on_fleet_cmd=self._global_bot_cmd,
             )
             self._state.seat(exchange_id, display_name)
             self._venue_published()
@@ -1367,6 +1373,27 @@ if _HAS_WEBENGINE:
                     self._notify(f"Bot {bot_id} DELETED", "warning")
                     sound.play_state_change()
 
+            if moved:
+                self.fleet_changed.emit()
+
+        def _global_bot_cmd(self, command: str) -> None:
+            """One SHIFT press on the command bar: the named all-bots verb run
+            over ``PaperBotManager``, which moves a saved state per bot and
+            connects to no venue."""
+            if command not in FLEET_VERBS:
+                self.log(f"{command} is not a fleet command.", "error")
+                return
+            self.log(f"Executing {command} on all paper bots...", "info")
+            sound = get_sound_engine()
+            try:
+                moved = getattr(self._bot_manager, command)()
+            except Exception as exc:  # noqa: BLE001 - Live's handler catches all
+                self.log(f"{command} failed: {exc}", "error")
+                sound.play_error()
+                return
+            self.log(f"{command}: {moved} bot(s) moved.", "success")
+            self._notify(f"{moved} paper bot(s): {command}", "success")
+            sound.play_state_change()
             if moved:
                 self.fleet_changed.emit()
 

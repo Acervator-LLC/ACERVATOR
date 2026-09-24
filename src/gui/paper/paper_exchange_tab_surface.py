@@ -37,16 +37,19 @@ def screen(
     on_bot_fire: Any = None,
     on_new_bot: Any = None,
     on_bot_cmd: Any = None,
+    on_fleet_cmd: Any = None,
 ) -> live.ExchangeTabModel:
     """One venue's ``ExchangeTabModel`` with no news strip and no pool reader,
     its Detail, Fire, ``+ New Bot`` and command bar reaching ``on_bot_clicked``,
-    ``on_bot_fire``, ``on_new_bot`` and ``on_bot_cmd``."""
+    ``on_bot_fire``, ``on_new_bot`` and ``on_bot_cmd``, and its all-bots form
+    reaching ``on_fleet_cmd``."""
     return live.ExchangeTabModel(
         exchange_id,
         exchange_name,
         on_new_bot=on_new_bot,
         on_bot_clicked=on_bot_clicked,
         on_bot_cmd=on_bot_cmd,
+        on_fleet_cmd=on_fleet_cmd,
         on_bot_fire=on_bot_fire,
         status_log=status_log,
     )
@@ -87,7 +90,11 @@ def build_view_model(model: live.ExchangeTabModel) -> dict:
         "extractor_section_visible": model.extractor_section_visible,
         "command_buttons": [list(pair) for pair in live.COMMAND_BUTTONS],
         "danger_command_label": live.DANGER_COMMAND_LABEL,
+        "fleet_commands": {
+            key: list(pair) for key, pair in live.FLEET_COMMANDS.items()
+        },
         "commands_sent": [list(sent) for sent in model.commands_sent],
+        "fleet_commands_sent": list(model.fleet_commands_sent),
         "scrum_table": live.table_view(model.scrum_table),
         "extractor_table": live.table_view(model.extractor_table),
         "last_clicked_table": model.last_clicked_table,
@@ -143,6 +150,7 @@ def build_view_model(model: live.ExchangeTabModel) -> dict:
         "select_scrum_param": live.SELECT_SCRUM_PARAM,
         "select_extractor_param": live.SELECT_EXTRACTOR_PARAM,
         "command_param": live.COMMAND_PARAM,
+        "shift_param": live.SHIFT_PARAM,
         "new_bot_param": live.NEW_BOT_PARAM,
         "close_bot_wizard_param": live.CLOSE_BOT_WIZARD_PARAM,
         "privacy_param": live.PRIVACY_PARAM,
@@ -162,7 +170,7 @@ def drive(model: live.ExchangeTabModel, params: dict) -> dict:
     if params.get(live.SELECT_EXTRACTOR_PARAM) is not None:
         model.select_extractor_row(params[live.SELECT_EXTRACTOR_PARAM])
     if params.get(live.COMMAND_PARAM) is not None:
-        model.cmd(params[live.COMMAND_PARAM])
+        model.cmd(params[live.COMMAND_PARAM], bool(params.get(live.SHIFT_PARAM, False)))
     if params.get(live.NEW_BOT_PARAM, False):
         model.on_new_bot_clicked()
     if params.get(live.CLOSE_BOT_WIZARD_PARAM, False):

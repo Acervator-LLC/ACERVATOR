@@ -45,6 +45,19 @@ from .table_cells import (
 
 logger = logging.getLogger("acervator.gui")
 
+#: How long the fleet sequence waits for one bot to read running, how often it
+#: looks, and the gap it leaves before the next bot.
+FLEET_SEQUENCE_VERIFY_TIMEOUT_S = 8.0
+FLEET_SEQUENCE_POLL_INTERVAL_MS = 250
+FLEET_SEQUENCE_MIN_GAP_MS = 2000
+
+#: The bot states the fleet sequence takes as eligible, by command. A command
+#: absent from here takes every held bot.
+FLEET_SEQUENCE_STATES = {"start": ("idle", "stopped")}
+
+#: The progress topic ``StartAllProgressDialog`` draws from.
+FLEET_SEQUENCE_TOPIC = "bot_manager.start_all_progress"
+
 
 def _main_tab_book_class() -> type:
     """The main tab book class the running variant draws, Qt or React."""
@@ -1531,6 +1544,7 @@ if _HAS_QT:
                 on_new_bot=self._create_bot,
                 on_bot_clicked=self._on_bot_clicked,
                 on_bot_cmd=self._on_bot_command,
+                on_fleet_cmd=self._global_bot_cmd,
                 on_bot_fire=self._on_bot_fire,
                 status_log=self._status_log,
                 on_bot_selected=self._on_bot_row_selected,
@@ -2983,28 +2997,140 @@ if _HAS_QT:
             elif command == "adjust_stack":
                 self._on_bot_clicked(bot_id)
 
+        def run_fleet_sequence(self, command: str = "start") -> int:
+            """Move every eligible bot through ``_on_bot_command`` one at a
+            time, with the Start All progress window open, waiting for each to
+            read running before the next.
+
+            This is the sequence the application runs at launch: ``main.py``
+            calls it after the instance consent gate, and the command bar's
+            Start All and Restart All call the same method. Answers how many
+            bots it took as eligible.
+            """
+            if not self._bot_manager:
+                return 0
+            wanted = FLEET_SEQUENCE_STATES.get(command)
+            eligible = [
+                bot
+                for bot in self._bot_manager._bots.values()
+                if wanted is None or bot.state.value in wanted
+            ]
+            total = len(eligible)
+            if total == 0:
+                return 0
+            logger.info(
+                "Fleet %s: %d bot(s) eligible, verify-then-next staggered on "
+                "the GUI thread",
+                command,
+                total,
+            )
+            from .variant_surface import START_ALL_PROGRESS, surface_class
+
+            dlg = surface_class(START_ALL_PROGRESS)(self._bot_manager, parent=self)
+            dlg.show()
+            dlg.raise_()
+            dlg.activateWindow()
+
+            self._bot_manager._start_all_cancel = False
+            bus = self._bot_manager._bus
+            bus.emit(FLEET_SEQUENCE_TOPIC, phase="begin", total=total, started=0)
+
+            def _move_one(idx: int) -> None:
+                if idx >= total:
+                    bus.emit(
+                        FLEET_SEQUENCE_TOPIC,
+                        phase="done",
+                        total=total,
+                        started=total,
+                    )
+                    return
+                if getattr(self._bot_manager, "_start_all_cancel", False):
+                    bus.emit(
+                        FLEET_SEQUENCE_TOPIC,
+                        phase="cancelled",
+                        total=total,
+                        started=idx,
+                    )
+                    return
+                bot = eligible[idx]
+                bus.emit(
+                    FLEET_SEQUENCE_TOPIC,
+                    phase="bot_starting",
+                    total=total,
+                    started=idx,
+                    bot_id=bot.bot_id,
+                )
+                try:
+                    self._on_bot_command(bot.bot_id, command)
+                except Exception as exc:
+                    logger.warning(
+                        "Fleet %s of bot %s raised: %s", command, bot.bot_id, exc
+                    )
+
+                started_at = time.monotonic()
+
+                def _verify_or_next() -> None:
+                    elapsed = time.monotonic() - started_at
+                    if getattr(self._bot_manager, "_start_all_cancel", False):
+                        bus.emit(
+                            FLEET_SEQUENCE_TOPIC,
+                            phase="cancelled",
+                            total=total,
+                            started=idx,
+                        )
+                        return
+                    if bot.state.value == "running":
+                        bus.emit(
+                            FLEET_SEQUENCE_TOPIC,
+                            phase="bot_started",
+                            total=total,
+                            started=idx + 1,
+                            bot_id=bot.bot_id,
+                        )
+                    elif elapsed >= FLEET_SEQUENCE_VERIFY_TIMEOUT_S:
+                        bus.emit(
+                            FLEET_SEQUENCE_TOPIC,
+                            phase="bot_timeout",
+                            total=total,
+                            started=idx + 1,
+                            bot_id=bot.bot_id,
+                            timeout_seconds=FLEET_SEQUENCE_VERIFY_TIMEOUT_S,
+                        )
+                    else:
+                        QTimer.singleShot(
+                            FLEET_SEQUENCE_POLL_INTERVAL_MS, _verify_or_next
+                        )
+                        return
+                    QTimer.singleShot(
+                        FLEET_SEQUENCE_MIN_GAP_MS, lambda: _move_one(idx + 1)
+                    )
+
+                QTimer.singleShot(FLEET_SEQUENCE_POLL_INTERVAL_MS, _verify_or_next)
+
+            _move_one(0)
+            return total
+
         def _global_bot_cmd(self, command: str) -> None:
+            """One all-bots command from the command bar's SHIFT press.
+
+            Start All and Restart All run ``run_fleet_sequence``, the same
+            sequence the application runs at launch; Pause All and Stop All
+            reach the bot manager's own coroutines, which need no venue.
+            """
             if not self._bot_manager:
                 return
             self._status_log.log(f"Executing {command} on all bots...", "info")
             try:
                 if command == "start_all":
-                    from .variant_surface import START_ALL_PROGRESS, surface_class
-
-                    eligible = [
-                        b
-                        for b in self._bot_manager._bots.values()
-                        if b.state.value in ("idle", "stopped")
-                    ]
-                    if not eligible:
+                    if not self.run_fleet_sequence("start"):
                         self._status_log.log(
                             "start_all: no bots eligible (none idle/stopped).", "info"
                         )
                         return
-                    _cls = surface_class(START_ALL_PROGRESS)
-                    dlg = _cls(self._bot_manager, parent=self)
-                    dlg.show()
-                    self._schedule_async(self._bot_manager.start_all())
+                elif command == "restart_all":
+                    if not self.run_fleet_sequence("restart"):
+                        self._status_log.log("restart_all: no bots held.", "info")
+                        return
                 elif command == "pause_all":
                     self._schedule_async(self._bot_manager.pause_all())
                 elif command == "stop_all":

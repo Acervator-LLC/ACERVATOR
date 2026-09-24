@@ -525,6 +525,7 @@ WIRED_PATHS = (
     "_wire_is_registered",
     "_wire_manager",
     "add_exchange_tab",
+    "run_fleet_sequence",
     "set_async_loop",
 )
 

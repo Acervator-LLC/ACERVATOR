@@ -367,6 +367,7 @@ if _HAS_WEBENGINE:
             parent: Optional[QWidget] = None,
             theme: object = None,
             on_bot_selected=None,
+            on_fleet_cmd=None,
         ) -> None:
             """Build the venue's three surface models from the window's wiring."""
             super().__init__(parent)
@@ -380,6 +381,7 @@ if _HAS_WEBENGINE:
                 on_new_bot=on_new_bot,
                 on_bot_clicked=on_bot_clicked,
                 on_bot_cmd=on_bot_cmd,
+                on_fleet_cmd=on_fleet_cmd,
                 on_bot_fire=on_bot_fire,
                 status_log=status_log,
                 news_ticker_factory=surface.react_news_ticker,
