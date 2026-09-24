@@ -4,7 +4,8 @@ Describes the screen the operator sees for one exchange. It holds a
 Privacy Mode button that hides or shows every masked value at once, a
 news strip, a "+ New Bot" button, a data-pool freshness line, two bot
 tables with a heading each, and a command bar of five buttons: Start,
-Pause, Stop, Restart and Delete.
+Pause, Stop, Restart and Delete. Four of the five take an all-bots form
+from ``FLEET_COMMANDS`` while SHIFT is held, and reach ``on_fleet_cmd``.
 
 The two tables are described here only as far as this screen reads them:
 which bot went into which table, which row is highlighted, and how many
@@ -132,6 +133,15 @@ COMMAND_BUTTONS = (
 )
 DANGER_COMMAND_LABEL = "Delete"
 
+#: The label and the command each single-bot command becomes while SHIFT is
+#: held. Delete has no all-bots form, so SHIFT leaves it alone.
+FLEET_COMMANDS = {
+    "start": ("Start All", "start_all"),
+    "pause": ("Pause All", "pause_all"),
+    "stop": ("Stop All", "stop_all"),
+    "restart": ("Restart All", "restart_all"),
+}
+
 DEFAULT_EXCHANGE_ID = "coinbase"
 DEFAULT_EXCHANGE_NAME = "Coinbase"
 
@@ -176,6 +186,7 @@ SELECT_EXTRACTOR_PARAM = "select_extractor"
 POOL_SUMMARY_PARAM = "pool_summary"
 PULL_RATE_PARAM = "pull_rate"
 COMMAND_PARAM = "command"
+SHIFT_PARAM = "shift_held"
 NEW_BOT_PARAM = "new_bot"
 CLOSE_BOT_WIZARD_PARAM = "close_bot_wizard"
 PRIVACY_PARAM = "privacy"
@@ -200,6 +211,7 @@ ROUTED = "bots.routed"
 SECTIONS_SHOWN = "sections.shown"
 COMMAND_REFUSED = "command.refused"
 COMMAND_SENT = "command.sent"
+FLEET_COMMAND_SENT = "command.fleet"
 BOT_OPENED = "bot.opened"
 SIBLING_CLEARED = "sibling.cleared"
 NEW_BOT_ASKED = "bot.new"
@@ -458,12 +470,14 @@ class ExchangeTabModel:
         news_ticker_factory=None,
         pool_reader=None,
         window_refresh=None,
+        on_fleet_cmd=None,
     ) -> None:
         self.exchange_id = exchange_id
         self.exchange_name = exchange_name
         self.on_new_bot = on_new_bot
         self.on_bot_clicked = on_bot_clicked
         self.on_bot_cmd = on_bot_cmd
+        self.on_fleet_cmd = on_fleet_cmd
         self.on_bot_fire = on_bot_fire
         self.status_log = status_log
         self.news_ticker_factory = news_ticker_factory
@@ -475,6 +489,7 @@ class ExchangeTabModel:
         self.new_bot_asks: list = []
         self.bot_opens: list = []
         self.commands_sent: list = []
+        self.fleet_commands_sent: list = []
         self.privacy_label_text = PRIVACY_LABEL_OFF
         self.privacy_style_sheet = PRIVACY_STYLE_OFF
         self.pull_rate_label_text = PULL_RATE_INITIAL_TEXT
@@ -661,8 +676,15 @@ class ExchangeTabModel:
 
     # ----- the command bar -----
 
-    def cmd(self, command: str) -> None:
-        """Send one command to the bot the operator highlighted."""
+    def cmd(self, command: str, shift_held: bool = False) -> None:
+        """Send one command to the bot the operator highlighted.
+
+        ``shift_held`` sends the whole fleet the all-bots form of ``command``
+        from ``FLEET_COMMANDS`` instead, which needs no highlighted bot.
+        """
+        if shift_held and command in FLEET_COMMANDS:
+            self.fleet_cmd(FLEET_COMMANDS[command][1])
+            return
         if self.last_clicked_table == TABLE_EXTRACTOR:
             bot_id = self.extractor_table.get_selected_bot_id()
             if not bot_id:
@@ -712,6 +734,15 @@ class ExchangeTabModel:
             self.commands_sent.append([bot_id, command])
             self.calls.append([COMMAND_SENT, command, came_from])
             self.on_bot_cmd(bot_id, command)
+
+    def fleet_cmd(self, fleet_command: str) -> None:
+        """Send one all-bots command to ``on_fleet_cmd``, which the window
+        answers over every held bot."""
+        self.calls.append([FLEET_COMMAND_SENT, fleet_command])
+        if not self.on_fleet_cmd:
+            return
+        self.fleet_commands_sent.append(fleet_command)
+        self.on_fleet_cmd(fleet_command)
 
     # ----- Privacy Mode -----
 
@@ -946,7 +977,9 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "extractor_section_visible": model.extractor_section_visible,
         "command_buttons": [list(pair) for pair in COMMAND_BUTTONS],
         "danger_command_label": DANGER_COMMAND_LABEL,
+        "fleet_commands": {key: list(pair) for key, pair in FLEET_COMMANDS.items()},
         "commands_sent": [list(sent) for sent in model.commands_sent],
+        "fleet_commands_sent": list(model.fleet_commands_sent),
         "scrum_table": table_view(model.scrum_table),
         "extractor_table": table_view(model.extractor_table),
         "last_clicked_table": model.last_clicked_table,
@@ -1003,6 +1036,7 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "select_extractor_param": SELECT_EXTRACTOR_PARAM,
         "pull_rate_param": PULL_RATE_PARAM,
         "command_param": COMMAND_PARAM,
+        "shift_param": SHIFT_PARAM,
         "new_bot_param": NEW_BOT_PARAM,
         "close_bot_wizard_param": CLOSE_BOT_WIZARD_PARAM,
         "privacy_param": PRIVACY_PARAM,
@@ -1030,7 +1064,7 @@ def drive(model: ExchangeTabModel, params: dict) -> dict:
     if params.get(PULL_RATE_PARAM, False):
         model.update_pull_rate_label()
     if params.get(COMMAND_PARAM) is not None:
-        model.cmd(params[COMMAND_PARAM])
+        model.cmd(params[COMMAND_PARAM], bool(params.get(SHIFT_PARAM, False)))
     if params.get(NEW_BOT_PARAM, False):
         model.on_new_bot_clicked()
     if params.get(CLOSE_BOT_WIZARD_PARAM, False):

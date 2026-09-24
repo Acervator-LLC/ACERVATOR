@@ -4,7 +4,9 @@
 
 ``PaperBotManager`` answers ``get_bot``, ``bots``, ``start``, ``pause``,
 ``stop``, ``restart`` and ``unregister``, the verbs the command bar's handler
-asks of the live bot manager and the live bot. Each verb moves
+asks of the live bot manager and the live bot, and ``start_all``, ``pause_all``,
+``stop_all`` and ``restart_all``, the four the command bar asks with SHIFT
+held. Each verb moves
 ``state_when_saved`` on one held record through ``PaperFleetSource.set_state``
 under ``BotContainer``'s own rule for that verb, and ``unregister`` drops the
 record through ``PaperFleetSource.remove``. ``PaperBotManager`` holds one
@@ -74,6 +76,40 @@ class PaperBotManager:
         ``start``, so the bot lands on ``running``."""
         self.stop(bot_id)
         return self.start(bot_id)
+
+    def start_all(self) -> int:
+        """Run ``start`` over every held bot and answer how many landed on
+        ``running``. A paper bot moves a saved state and connects to nothing,
+        so the fleet needs no staggering."""
+        return self._over_fleet(self.start, BotState.RUNNING.value)
+
+    def pause_all(self) -> int:
+        """Run ``pause`` over every held bot that reads ``running`` and answer
+        how many landed on ``paused``."""
+        return self._over_fleet(
+            self.pause, BotState.PAUSED.value, only=(BotState.RUNNING.value,)
+        )
+
+    def stop_all(self) -> int:
+        """Run ``stop`` over every held bot and answer how many landed on
+        ``stopped``."""
+        return self._over_fleet(self.stop, BotState.STOPPED.value)
+
+    def restart_all(self) -> int:
+        """Run ``restart`` over every held bot and answer how many landed on
+        ``running``."""
+        return self._over_fleet(self.restart, BotState.RUNNING.value)
+
+    def _over_fleet(self, verb, wanted: str, only: Optional[tuple] = None) -> int:
+        bots = [b for b in self.bots() if only is None or b.state in only]
+        landed = 0
+        for bot in bots:
+            try:
+                if verb(bot.bot_id) == wanted:
+                    landed += 1
+            except KeyError:
+                logger.warning("Bot %s left the fleet mid-command", bot.bot_id)
+        return landed
 
     def unregister(self, bot_id: str) -> bool:
         """Drop the held record through ``PaperFleetSource.remove``, as

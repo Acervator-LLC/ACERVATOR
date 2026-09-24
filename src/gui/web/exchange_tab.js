@@ -12,6 +12,9 @@
   var COMMAND_PARAM = "command_param";
   var CURRENT_ROW = "current_row";
   var DANGER_COMMAND_LABEL = "danger_command_label";
+  var FLEET_COMMANDS = "fleet_commands";
+  var FLEET_COMMANDS_SENT = "fleet_commands_sent";
+  var SHIFT_PARAM = "shift_param";
   var DRAWN = "drawn";
   var DRAWN_ROWS = "drawn_rows";
   var EXCHANGE_ID = "exchange_id";
@@ -99,6 +102,9 @@
     COMMAND_PARAM,
     "commands_sent",
     DANGER_COMMAND_LABEL,
+    FLEET_COMMANDS,
+    FLEET_COMMANDS_SENT,
+    SHIFT_PARAM,
     "default_exchange_id",
     "default_exchange_name",
     "default_table",
@@ -189,7 +195,15 @@
     TIMERS
   ];
 
-  var DECLARED_BAGS = [ACTIONS, EXTRACTOR_TABLE, "row_checks", SCRUM_TABLE, SKIN, TIMERS];
+  var DECLARED_BAGS = [
+    ACTIONS,
+    EXTRACTOR_TABLE,
+    FLEET_COMMANDS,
+    "row_checks",
+    SCRUM_TABLE,
+    SKIN,
+    TIMERS
+  ];
 
   var DECLARED_LISTS = [
     "bot_opens",
@@ -198,6 +212,7 @@
     "checks_before_first_cell",
     COMMAND_BUTTONS,
     "commands_sent",
+    FLEET_COMMANDS_SENT,
     "logged",
     "new_bot_asks",
     "number_fields",
@@ -628,9 +643,19 @@
     );
   }
 
-  function sendCommand(key) {
+  // The command and the modifier travel in one request, so a key held for
+  // one press cannot reach the next.
+  function sendCommand(key, shift) {
     var model = heldModel();
-    return dispatch(actionNamed(model, COMMAND_CLICKED), request(model, COMMAND_PARAM, key));
+    var params = request(model, COMMAND_PARAM, key);
+    params[String(paramNamed(model, SHIFT_PARAM))] = Boolean(shift);
+    return dispatch(actionNamed(model, COMMAND_CLICKED), params);
+  }
+
+  // The all-bots label and command for one key, or null where there is none.
+  function fleetPair(model, key) {
+    var pairs = objectField(model, FLEET_COMMANDS);
+    return Array.isArray(pairs[key]) ? pairs[key] : null;
   }
 
   // One tick of the one-second timer Qt runs on the freshness line.
@@ -786,11 +811,12 @@
     var pair = Array.isArray(props.pair) ? props.pair.slice() : [];
     var words = pair.shift();
     var key = pair.shift();
+    var fleet = props.fleet ? fleetPair(props.model, key) : null;
     var buttonProps = {
       className: TAB_CLASS,
       type: BUTTON_TYPE,
-      onClick: function () {
-        sendCommand(key);
+      onClick: function (event) {
+        sendCommand(key, Boolean(event && event.shiftKey));
       }
     };
     buttonProps[PART_ATTR] = COMMAND_BUTTON_PART;
@@ -798,11 +824,36 @@
     buttonProps[INDEX_ATTR] = String(props.at);
     buttonProps[ACTION_ATTR] = text(actionNamed(props.model, COMMAND_CLICKED));
     buttonProps[DANGER_ATTR] = text(words === props.model[DANGER_COMMAND_LABEL]);
-    return element(BUTTON_TAG, buttonProps, text(words));
+    return element(BUTTON_TAG, buttonProps, text(fleet === null ? words : fleet[0]));
+  }
+
+  // True while Shift is down. The page reads the key itself, so the labels
+  // change before any press, and a lost window drops the key.
+  function useShiftHeld() {
+    var state = hooks().useState(false);
+    var set = state[1];
+    hooks().useEffect(function () {
+      function read(event) {
+        set(Boolean(event.shiftKey));
+      }
+      function drop() {
+        set(false);
+      }
+      global.document.addEventListener("keydown", read);
+      global.document.addEventListener("keyup", read);
+      global.addEventListener("blur", drop);
+      return function () {
+        global.document.removeEventListener("keydown", read);
+        global.document.removeEventListener("keyup", read);
+        global.removeEventListener("blur", drop);
+      };
+    }, []);
+    return state[0];
   }
 
   function CommandBar(props) {
     var model = props.model;
+    var held = useShiftHeld();
     var barProps = { style: { display: FLEX, flexDirection: ROW, alignItems: CENTER } };
     barProps[PART_ATTR] = COMMAND_BAR_PART;
     var drawn = listField(model, COMMAND_BUTTONS).map(function (pair, at) {
@@ -810,6 +861,7 @@
         key: String(at),
         at: at,
         pair: pair,
+        fleet: held,
         model: model
       });
     });
