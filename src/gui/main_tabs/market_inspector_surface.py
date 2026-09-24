@@ -363,6 +363,12 @@ OPPOSING_TRADES_NOUN = "opposing trades"
 OPPOSING_TRADES_FOUND_FORMAT = (
     "{count} {noun}. {share}% of profit goes to the opposite side."
 )
+#: A pair needs one long market against one short one, so a finished scan that
+#: kept none names where its funnel closed rather than only that it is empty.
+OPPOSING_TRADES_FUNNEL_FORMAT = (
+    "Scan finished. {covered} market(s) read, {directed} with a direction, "
+    "{tested} pair(s) tested, none held equilibrium."
+)
 
 READY_TO_SEND_ZONE = "ready_to_send"
 TOPOLOGIES_ZONE = "topologies"
@@ -2452,14 +2458,35 @@ def bucket_skin(board: Any, asset_class: Any = "") -> dict:
     }
 
 
-def opposing_trades_text(scan_state: Any, count: Any) -> str:
+def scan_counts(signals: Any, tested: Any) -> dict:
+    """The three counts the Opposing Trades funnel line names.
+
+    ``covered`` is one per market the scan scored, ``directed`` one per market
+    that reached long or short, and ``tested`` one per candidate pair.
+    """
+    scored = list(signals or [])
+    return {
+        "covered": len(scored),
+        "directed": len([one for one in scored if getattr(one, "direction", "")]),
+        "tested": len(list(tested or [])),
+    }
+
+
+def opposing_trades_text(scan_state: Any, count: Any, counts: Any = None) -> str:
     """The Opposing Trades region's line for one scan state and pair count.
 
-    An unasked, a running and a finished scan each get their own
-    wording, and a finished scan holding pairs names the profit share
-    the bullish side feeds to the opposite one.
+    An unasked, a running and a finished scan each get their own wording, a
+    finished scan holding pairs names the profit share the bullish side feeds
+    to the opposite one, and a finished scan holding none names the counts in
+    ``counts`` where it has them.
     """
     found = int(count or 0)
+    if scan_state == SCAN_FINISHED and not found and counts:
+        return OPPOSING_TRADES_FUNNEL_FORMAT.format(
+            covered=int(counts.get("covered", 0) or 0),
+            directed=int(counts.get("directed", 0) or 0),
+            tested=int(counts.get("tested", 0) or 0),
+        )
     if scan_state != SCAN_FINISHED or not found:
         return empty_table_text(scan_state, OPPOSING_TRADES_NOUN)
     return OPPOSING_TRADES_FOUND_FORMAT.format(
@@ -2523,6 +2550,7 @@ def left_module_rows(
     connectors: Any,
     sector_count: Any = 0,
     ata_note: Any = "",
+    counts: Any = None,
 ) -> list:
     """The three left-side regions as key, title and status, in screen order."""
     return [
@@ -2534,7 +2562,7 @@ def left_module_rows(
         [
             OPPOSING_TRADES_MODULE,
             OPPOSING_TRADES_GROUP_TITLE,
-            opposing_trades_text(scan_state, pair_count),
+            opposing_trades_text(scan_state, pair_count, counts),
         ],
         [ARBITRAGE_MODULE, ARBITRAGE_GROUP_TITLE, arbitrage_text(connectors)],
     ]
@@ -3630,6 +3658,7 @@ class MarketInspectorScreenModel:
         self.signal_rows: list = []
         self.pair_rows: list = []
         self.pairs: list = []
+        self.scan_counts: dict = {}
         self.zone_at: dict = {}
         self.zone_open: dict = {}
         self.scheduled: list = []
@@ -4021,6 +4050,7 @@ class MarketInspectorScreenModel:
             self.connectors_now(),
             len(self.board.sectors),
             self.board.note,
+            self.scan_counts,
         )
 
     def right_zones(self) -> list:
@@ -4340,6 +4370,9 @@ class MarketInspectorScreenModel:
             return
         self.set_status(self.status_line())
         self.calls.append([STATUS_WRITTEN])
+        self.scan_counts = scan_counts(
+            inspector.last_signals, getattr(inspector, "last_tested", [])
+        )
         self.fill_signal_rows(self.shown_signals(inspector.last_signals))
         self.fill_pair_rows(inspector.last_pairs)
 

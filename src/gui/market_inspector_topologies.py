@@ -28,7 +28,7 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
-from .main_tabs.market_inspector_surface import step_to
+from .main_tabs.market_inspector_surface import SCAN_FINISHED, step_to
 from .main_tabs.market_inspector_topologies_surface import (
     DISMISS_PART,
     FOOTER_STYLE,
@@ -271,6 +271,8 @@ if _HAS_QT:
         def __init__(self, parent: Optional[QWidget] = None) -> None:
             super().__init__(parent)
             self._proposal_source: Optional[Callable[[], list[dict]]] = None
+            # Injected by ``set_scan_state_source``; unset reads SCAN_FINISHED.
+            self._scan_state_source: Optional[Callable[[], Any]] = None
             # dismissed_id -> expiry_epoch_seconds
             self._dismissed: dict[str, float] = {}
             # Injected by ``set_dismiss_store``; unset keeps dismissals in memory.
@@ -332,6 +334,21 @@ if _HAS_QT:
         ) -> None:
             self._proposal_source = getter
             self._status_lbl.setText("Ready — press Refresh.")
+
+        def set_scan_state_source(self, getter: Callable[[], Any]) -> None:
+            """Wire the Inspector scan state the empty sentence is built from."""
+            self._scan_state_source = getter
+            self._render()
+
+        def scan_state(self) -> Any:
+            """The Inspector scan state, or ``SCAN_FINISHED`` with no source wired."""
+            if self._scan_state_source is None:
+                return SCAN_FINISHED
+            try:
+                return self._scan_state_source()
+            except Exception as exc:  # noqa: BLE001 - owner's state surface
+                logger.debug("topology scan-state read failed: %s", exc)
+                return SCAN_FINISHED
 
         def refresh(self) -> None:
             if self._proposal_source is None:
@@ -491,7 +508,12 @@ if _HAS_QT:
 
         def _render(self) -> None:
             self._stepper.show_view(
-                pane_view(self._proposals, self._shown(), self._expanded)
+                pane_view(
+                    self._proposals,
+                    self._shown(),
+                    self._expanded,
+                    self.scan_state(),
+                )
             )
 
         def _find_proposal(self, proposal_id: str) -> Optional[dict[str, Any]]:

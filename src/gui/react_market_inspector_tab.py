@@ -250,6 +250,14 @@ class TopologiesPaneHost:
         """Take the callable the pane pulls its proposals from."""
         self.model.set_proposal_source(getter)
 
+    def set_scan_state_source(self, getter: Callable[[], Any]) -> None:
+        """Take the Inspector scan state the pane's empty sentence is built from."""
+        self.model.set_scan_state_source(getter)
+
+    def refresh(self) -> None:
+        """Ask the detector again, the call ``MarketInspectorTopologies`` answers."""
+        self.model.refresh()
+
     def current_proposals(self) -> list:
         """The proposals the pane is showing."""
         return self.model.current_proposals()
@@ -351,6 +359,8 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._topologies_pane = TopologiesPaneHost()
             self._page_ready = False
             self._last_model: dict = {}
+            # Written by the inherited _render_signals once a scan has run.
+            self._scan_counts: dict = {}
 
             self.setAccessibleName(ACCESSIBLE_NAME)
             layout = QVBoxLayout(self)
@@ -386,6 +396,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             screen.connectors_getter = self._connectors_getter
             screen.scheduler = self._scheduler
             screen.ata_run_source = self._ata_run_source
+            screen.scan_counts = dict(self._scan_counts)
             return surface.build_view_model(screen)
 
         def push(self) -> None:
