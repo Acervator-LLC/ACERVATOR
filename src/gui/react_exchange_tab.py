@@ -366,6 +366,7 @@ if _HAS_WEBENGINE:
             status_log=None,
             parent: Optional[QWidget] = None,
             theme: object = None,
+            on_bot_selected=None,
         ) -> None:
             """Build the venue's three surface models from the window's wiring."""
             super().__init__(parent)
@@ -388,6 +389,7 @@ if _HAS_WEBENGINE:
             self._scrum = scrum_surface.BotStatusTableModel(
                 on_bot_clicked=self._scrum_detail,
                 on_fire_clicked=on_bot_fire,
+                on_bot_selected=on_bot_selected,
             )
             self._scrum.exchange_id = exchange_id
             self._extractor = extractor_surface.ExtractorBotTableModel(
@@ -468,6 +470,26 @@ if _HAS_WEBENGINE:
             """
             scrum_surface.drive(self._scrum, {scrum_surface.SORT_COLUMN_PARAM: column})
             self._publish()
+
+        def select_bot(self, bot_id: Any) -> None:
+            """Answer a press on one bot row, then publish the fleet again.
+
+            ``TradingTabReact.run_action`` calls this when a row is pressed
+            on the Live page, and the model's ``on_bot_selected`` carries the
+            bot to the window's Voting Panel.
+            """
+            scrum_surface.drive(self._scrum, {scrum_surface.SELECT_BOT_PARAM: bot_id})
+            self._publish()
+
+        def highlight_bot(self, bot_id: Any) -> str:
+            """Put the bot table's highlight on the Voting Panel's bot.
+
+            ``BotListPanelLink.panel_selected`` calls this, which is why it
+            drives ``highlight_bot`` and not the press.
+            """
+            found = self._scrum.highlight_bot(str(bot_id or ""))
+            self._publish()
+            return found
 
         def _refresh_privacy_mode_btn_style(self) -> None:
             """Rewrite the Privacy Mode button from the register's own answer."""

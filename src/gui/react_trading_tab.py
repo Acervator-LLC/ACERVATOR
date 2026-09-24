@@ -182,6 +182,7 @@ _HOST_SOURCE = """(function (global, doc) {
   var TAB = %(tab)s;
   var TOGGLE = %(toggle)s;
   var SORT = %(sort)s;
+  var PICK = %(pick)s;
   var PREFIX = %(prefix)s;
   var FORGETS = %(forgets)s;
   var VENUES = %(venues)s;
@@ -285,15 +286,18 @@ _HOST_SOURCE = """(function (global, doc) {
     return tab && typeof tab.redraw === "function" ? tab.redraw() : 0;
   }
 
-  // Three presses leave this page. A privacy toggle and a column sort go
-  // out on PREFIX, because the register and the fleet that answer them
-  // live in Python. An ask naming an ACTION changes what the window
-  // holds, so it goes out on its own line and is answered by its own id.
-  // Every other call is a read and is answered from the payload this page
-  // is already holding.
+  // Four presses leave this page. A privacy toggle, a column sort and a
+  // row press go out on PREFIX, because the register, the fleet and the
+  // panel that answer them live in Python. An ask naming an ACTION changes
+  // what the window holds, so it goes out on its own line and is answered
+  // by its own id. Every other call is a read and is answered from the
+  // payload this page is already holding.
   global.acervator = {
     call: function (method, params) {
-      if (params && (owns(params, TOGGLE) || owns(params, SORT))) {
+      if (
+        params &&
+        (owns(params, TOGGLE) || owns(params, SORT) || owns(params, PICK))
+      ) {
         global.console.log(
           PREFIX + JSON.stringify({ method: method, params: params })
         );
@@ -472,6 +476,7 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
         "tab": json.dumps(trading_tab_surface.METHOD, ensure_ascii=True),
         "toggle": json.dumps(scrum_surface.PRIVACY_TOGGLE_PARAM, ensure_ascii=True),
         "sort": json.dumps(scrum_surface.SORT_COLUMN_PARAM, ensure_ascii=True),
+        "pick": json.dumps(scrum_surface.SELECT_BOT_PARAM, ensure_ascii=True),
         "prefix": json.dumps(ACTION_PREFIX, ensure_ascii=True),
         "forgets": json.dumps(MODULE_FORGETS, ensure_ascii=True),
         "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
@@ -511,7 +516,10 @@ def votes_payload(bots: Any, reading: Any = None) -> dict:
     read = dict(reading or {})
     surface.view_model({"action": "set_bots", "bots": list(bots or [])})
     selected = str(read.get("selected_bot_id") or "")
-    if selected:
+    # An empty reading of the selection is a reading: it is what the panel
+    # holds after a second press on one bot list row. ``set_bots`` keeps the
+    # bot it already had, so the clear has to be sent.
+    if "selected_bot_id" in read:
         surface.view_model({"action": "select_bot", "bot_id": selected})
     surface.view_model({"action": "set_masked", "masked": bool(read.get("masked"))})
     if "rates" in read:
@@ -828,17 +836,20 @@ if _HAS_WEBENGINE:
             )
             return self.show_models({trading_tab_surface.METHOD: handler(built)})
 
-        # The two presses the venue answers, each naming the column it is on.
+        # The three presses the venue answers, each naming the field it is on.
         VENUE_PRESSES = (
             (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
             (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
+            (scrum_surface.SELECT_BOT_PARAM, "select_bot"),
         )
 
         def run_action(self, payload: str) -> bool:
             """Answer one bot-table press the page sent, and push the fleet back.
 
-            ``VENUE_PRESSES`` names the two this tab answers; every other
-            press on this page stays with the page, which owns it.
+            ``VENUE_PRESSES`` names the three this tab answers; every other
+            press on this page stays with the page, which owns it. A row
+            press also moves the Voting Panel, so the panel is redrawn from
+            the window's own reading rather than at the next tick.
             """
             try:
                 asked = json.loads(payload)
@@ -861,7 +872,19 @@ if _HAS_WEBENGINE:
                     continue
                 method(column)
                 answered = True
+            if params.get(scrum_surface.SELECT_BOT_PARAM) is not None:
+                self.refresh_votes()
             return answered
+
+        def refresh_votes(self) -> bool:
+            """Redraw the voting panel from the reading the window holds now.
+
+            ``set_votes_handler`` bound that reading, and an ask carrying no
+            action reads it without moving the selection.
+            """
+            if not callable(self._votes_handler):
+                return False
+            return self.show_votes(self._votes_handler({}))
 
         def hold_venue(self, venue: Any) -> bool:
             """Draw ``venue`` in this tab and follow every payload it publishes.

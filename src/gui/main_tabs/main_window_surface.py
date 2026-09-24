@@ -467,6 +467,7 @@ BUS_SUBSCRIPTIONS = (
     "bot.log",
     "wire.created",
     "indicator.tf_lock_changed",
+    "indicator.bot_selected",
     "ai.feedback",
     "trade.filled",
     "bot.error",
@@ -489,6 +490,7 @@ WIRED_TABS = (
 
 WIRED_PATHS = (
     "_apply_abbreviation_tooltips",
+    "_bot_list_hosts",
     "_build_error_log_dialog",
     "_build_topology_proposals",
     "_cancel_if_pending",
@@ -504,6 +506,7 @@ WIRED_PATHS = (
     "_on_bot_error_for_log",
     "_on_bot_fire",
     "_on_bot_log",
+    "_on_bot_row_selected",
     "_on_live_settings_changed",
     "_on_tf_lock_changed",
     "_on_wire_created",
@@ -513,6 +516,7 @@ WIRED_PATHS = (
     "_register_fire_glow",
     "_report_stored_credentials_on_startup",
     "_schedule_async",
+    "_setup_bot_list_link",
     "_show_error_log_dialog",
     "_snapshot_wires_for_adopt",
     "_sync_exchange_tabs",

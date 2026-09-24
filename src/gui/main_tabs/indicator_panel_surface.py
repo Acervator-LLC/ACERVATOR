@@ -1318,6 +1318,11 @@ class IndicatorPanelModel:
         self.summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
         self.symbol = str(symbol or EMPTY_TEXT)
         self.showing_stored = False
+        # Votes have arrived, so the payload stops naming an empty-state
+        # cause. show_no_data hands an empty summary and keeps its own.
+        if self.summary:
+            self.no_data_cause = EMPTY_TEXT
+            self.no_data_message = EMPTY_TEXT
         self.staleness_line = EMPTY_TEXT
         self.table_a.set_summary(self.summary)
         self.table_b.set_summary(self.summary)
@@ -1342,11 +1347,15 @@ class IndicatorPanelModel:
     def show_stored(self, stored: dict, when: str, age: str, message: str) -> None:
         """Draw a persisted reading under the amber banner naming its age."""
         reading = stored if isinstance(stored, dict) else {}
+        held_cause = self.no_data_cause
         self.set_summary(
             reading.get("timeframes") or {},
             str(reading.get("symbol") or self.symbol or EMPTY_TEXT),
         )
         self.showing_stored = True
+        # The stored votes are data; the cause of the missing live reading
+        # is still what the payload has to name.
+        self.no_data_cause = held_cause
         self.no_data_message = str(message or EMPTY_TEXT)
         self.staleness_line = STALENESS_FORMAT.format(
             when=when, age=age, message=self.no_data_message

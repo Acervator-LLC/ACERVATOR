@@ -310,7 +310,8 @@ def age_phrase(seconds: float) -> str:
 
 
 _NO_DATA_CAUSE_TEXT: dict[str, str] = {
-    "no_selection": "no bot is selected — pick one from the Bot dropdown.",
+    "no_selection": "no bot is selected — press a bot row, or pick one from the "
+    "dropdown above.",
     "bot_missing": "bot {bot} is selected but no longer present in the fleet.",
     "not_running": "bot is {state} — a bot that is not running evaluates no TA.",
     "bot_error": "bot stopped in ERROR: {error}",
@@ -791,6 +792,9 @@ if _HAS_QT:
             self._data: dict = {}
             self._last_demo_error: str = ""
             self._selected_bot_id: str = ""
+            # Set by an empty select_bot, so a fleet rewrite does not put the
+            # first bot back after the operator turned the panel off.
+            self._selection_cleared: bool = False
             # The pair the panel last drew, and the vote tallies behind
             # the Net, Comp and Conf columns.
             self._symbol: str = ""
@@ -1201,11 +1205,15 @@ if _HAS_QT:
             return wanted
 
         def _refresh_bot_arrows(self) -> None:
-            """Grey each arrow that has no bot left to step to."""
+            """Grey each arrow that has no bot left to step to.
+
+            At no selection the next arrow stays live, because
+            ``_step_bot`` lands on the first bot from there.
+            """
             at = self._bot_selector.currentIndex()
             total = self._bot_selector.count()
             self._prev_bot_btn.setEnabled(at > 0)
-            self._next_bot_btn.setEnabled(0 <= at < total - 1)
+            self._next_bot_btn.setEnabled(total > 0 and at < total - 1)
 
         def _on_bot_selected(self):
             self._selected_bot_id = self._bot_selector.currentData() or ""
@@ -1229,11 +1237,19 @@ if _HAS_QT:
         def select_bot(self, bot_id: str) -> str:
             """Draw ``bot_id`` and answer the bot the panel then holds.
 
-            A bot the dropdown does not carry leaves the selection where it
-            is, so a stale ask from the page cannot blank the panel.
+            An empty ask draws no bot and is what a second press on one bot
+            list row sends; a bot the dropdown does not carry leaves the
+            selection where it is, so a stale ask cannot blank the panel.
             """
-            at = self._bot_selector.findData(str(bot_id or ""))
+            wanted = str(bot_id or "")
+            if not wanted:
+                self._selection_cleared = True
+                self._bot_selector.setCurrentIndex(-1)
+                self._refresh_bot_arrows()
+                return self._selected_bot_id
+            at = self._bot_selector.findData(wanted)
             if at >= 0:
+                self._selection_cleared = False
                 self._bot_selector.setCurrentIndex(at)
                 self._refresh_bot_arrows()
             return self._selected_bot_id
@@ -1456,7 +1472,12 @@ if _HAS_QT:
             taken_at = float(stored.get("taken_at", 0.0) or 0.0)
             age_s = max(0.0, time.time() - taken_at)
             stored_symbol = str(stored.get("symbol") or symbol or "")
+            held_cause = self._no_data_cause
             self.update_data(dict(stored.get("timeframes") or {}), stored_symbol)
+            # The stored votes are data, and the cause of the missing live
+            # reading is still what panel_reading has to name.
+            self._no_data_cause = held_cause
+            self._no_data_message = message
             self._showing_stored = True
             when = time.strftime("%H:%M:%S", time.localtime(taken_at))
             self._shown_stored = {
@@ -1685,7 +1706,7 @@ if _HAS_QT:
             idx = self._bot_selector.findData(current)
             if idx >= 0:
                 self._bot_selector.setCurrentIndex(idx)
-            elif accumulation_bots:
+            elif accumulation_bots and not self._selection_cleared:
                 self._bot_selector.setCurrentIndex(0)
             self._bot_selector.blockSignals(False)
             # Dropdown was just rebuilt; re-apply the privacy mask so
@@ -1713,6 +1734,11 @@ if _HAS_QT:
             # Only _render_stored_reading raises the stale band after this.
             self._showing_stored = False
             self._shown_stored = None
+            # Votes have arrived, so panel_reading stops naming an empty-state
+            # cause. show_no_data hands an empty summary and keeps its own.
+            if multi_tf_summary:
+                self._no_data_cause = ""
+                self._no_data_message = ""
             self._staleness_label.setText("")
             self._staleness_label.hide()
             self._symbol = str(symbol)
