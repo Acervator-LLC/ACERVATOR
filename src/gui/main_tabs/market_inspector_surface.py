@@ -1287,6 +1287,18 @@ def market_timeframe_rows(scan: Any) -> list:
     ]
 
 
+def order_holds_back(scan: Any) -> bool:
+    """Whether one scan's order names products it kept off ``listings``.
+
+    ``MarketOrder.dead`` and ``MarketOrder.no_candle`` are the two it keeps
+    back, and a scan with no order holds nothing back.
+    """
+    order = getattr(scan, "order", None)
+    if order is None:
+        return False
+    return bool(getattr(order, "dead", ()) or getattr(order, "no_candle", ()))
+
+
 def phase_one_rows(scan: Any) -> list:
     """The expanded lines phase one leaves: one per timeframe scanned.
 
@@ -1294,9 +1306,21 @@ def phase_one_rows(scan: Any) -> list:
     venue gap never reads as a timeframe that voted nothing; a by-volume scan
     opens with ``ata_spm.order_line`` under ``ORDER_TAG``, and a one-market
     scan's rows come from ``market_timeframe_rows``.
+
+    A scan whose ``note`` stands still carries that order line while its order
+    kept products off the list, so a list emptied by the admission reports its
+    count rather than reading as nothing found.
     """
     if scan.note:
         rows = [detail_row(PHASE_NOTE_NAME, scan.note)]
+        if order_holds_back(scan):
+            rows.append(
+                phase_row(
+                    PHASE_ONE_NAME,
+                    ORDER_TAG,
+                    ata_spm.order_line(scan.order, scan.markets_read),
+                )
+            )
     elif not scan.timeframes:
         rows = [detail_row(PHASE_NOTE_NAME, ata_spm.NO_TIMEFRAME_TEXT)]
     elif scan.ticker:
@@ -2863,18 +2887,42 @@ def stocks_markets() -> Any:
     )
 
 
-def derivatives_markets() -> Any:
+def paced_candle_read(pace: Any = None) -> Any:
+    """A two-value ``ata_asset_maps.venue_candle_read`` through ``pace``.
+
+    ``ata_spm.paced_read`` keeps the walk's gap on the symbol's host and reads
+    a three-value answer, which this drops back to candles and refusal.
+    """
+
+    def read(symbol: Any, timeframe: Any) -> tuple:
+        host = ata_asset_maps.host_of(symbol)
+        answered = ata_spm.paced_read(
+            pace,
+            host,
+            lambda: (host,)
+            + tuple(ata_asset_maps.venue_candle_read(symbol, timeframe)),
+        )
+        return answered[1], answered[2]
+
+    return read
+
+
+def derivatives_markets(pace: Any = None) -> Any:
     """The derivatives ``ata_spm.MarketOrder``: ``futures_listings`` ranked by
     the venue's own figures, or no rows under the refusal it answered.
 
-    The source names the venue and how many products expire or are perpetual.
+    The source names the venue and how many products expire or are perpetual,
+    and ``no_candle`` carries every product the admission read dropped.
     """
-    rows, figures, refusal = ata_asset_maps.futures_listings()
+    rows, figures, refusal, silent = ata_asset_maps.futures_listings(
+        read=paced_candle_read(pace)
+    )
     if not rows:
         return ata_spm.MarketOrder(
-            source=FUTURES_REFUSED_SOURCE_FORMAT.format(refusal=refusal)
+            source=FUTURES_REFUSED_SOURCE_FORMAT.format(refusal=refusal),
+            no_candle=list(silent),
         )
-    return ranked_order(
+    order = ranked_order(
         rows,
         figures,
         FUTURES_ORDER_SOURCE_FORMAT.format(
@@ -2887,6 +2935,8 @@ def derivatives_markets() -> Any:
             ),
         ),
     )
+    order.no_candle = list(silent)
+    return order
 
 
 def crypto_markets(connectors: Any) -> Any:
@@ -2952,7 +3002,7 @@ def class_markets(asset_class: Any, connectors: Any = None, pace: Any = None) ->
     if str(asset_class) == ata_spm.CLASS_STOCKS:
         return stocks_markets()
     if str(asset_class) == ata_spm.CLASS_DERIVATIVES:
-        return derivatives_markets()
+        return derivatives_markets(pace)
     rows = [
         one
         for sector in ata_asset_maps.sectors_for(asset_class)

@@ -2456,13 +2456,14 @@ if _HAS_QT:
             _pin_emit(
                 LIST_SOURCE_PIN,
                 actual=len(symbols),
-                expected=len(symbols) + len(order.dead),
+                expected=len(symbols) + len(order.dead) + len(order.no_candle),
                 ok=bool(symbols),
                 context={
                     "asset_class": str(asset_class),
                     "source": order.source,
                     "count": len(symbols),
                     "dead": [str(one) for one in order.dead],
+                    "no_candle": [str(one) for one in order.no_candle],
                 },
             )
             return order

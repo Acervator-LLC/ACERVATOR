@@ -7033,4 +7033,126 @@ sits at the right of the first one.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-23 23:40 - #23 - The derivatives list serves only products the venue answers a candle for, and the dropped count sits on the order line
+
+The operator, 2026-09-23: *"Inspector -> ATA-SMP -> Market Sectors -> Several
+slots for derivatives are empty or were showing no candles returned."*
+
+### The admission rule for a derivatives product
+
+The product list alone is no longer enough. A product reaches the derivatives
+list when the venue says it trades it **and** answers at least one candle for
+it. The candle route serves two granularities, and the weekly line is a rollup
+of the daily one, so the read asks the hourly granularity, then the daily one,
+and stops at the first that answers. A product that answers on one of them and
+not the other is not a no-candle product: it stays in the list.
+
+`src/trading/ata_asset_maps.py` - the two functions the rule is
+
+```python
+def venue_granularities(venue: Any) -> tuple:
+    """The timeframes one venue answers from its own route, rolled keys aside."""
+
+
+def candle_served(symbol: Any, read: Any = None) -> bool:
+    """Whether the venue answers a candle for ``symbol`` on any granularity."""
+```
+
+A product every granularity answers none for is dropped where the list is
+built, so no row is ever drawn for it and the scan never reads it. The dropped
+rows stay reachable by name, so a product id typed into the ticker field still
+resolves and still scans.
+
+### Where the dropped count is drawn
+
+The count is the point: a shorter list with nothing said about it reads as lost
+data. Press the ATA-SMP card to open it, and the first line inside it is the
+order line. It now carries a tail naming how many products were dropped and
+which.
+
+`src/trading/ata_spm.py` - the tail on the order line
+
+```python
+ORDER_NO_CANDLE_FORMAT = (
+    "{line}; {count} dropped, the venue answered no candle on any "
+    "granularity: {names}"
+)
+```
+
+### The list read off both running builds
+
+Read on 2026-09-23 with a loopback stand-in answering both public Coinbase
+routes, in the Qt window and on the React page, home on a scratch directory,
+every name lookup outside loopback refused. The stand-in lists 14 products and
+says it trades 12. Three of the 12 answer no candle on either granularity, and
+one answers no candle on the hourly granularity and 40 candles on the daily
+one.
+
+| reading | before, Qt | before, React | after, Qt | after, React |
+| --- | --- | --- | --- | --- |
+| rows on the order | 12 | 12 | 9 | 9 |
+| lines drawn in the field | 12 | 12 | 9 | 9 |
+| lines reading `no candles` | 3 | 3 | 0 | 0 |
+| products counted as dropped | 0 | 0 | 3 | 3 |
+| the one-granularity product in the list | yes | yes | yes | yes |
+| candle reads over the press | 36 | 36 | 43 | 43 |
+
+The order line the open card draws after the change, identical on both builds:
+
+```
+Phase 1 Evaluate order: Order by coinbase futures and perpetuals, 24 h volume
+x price, 9 expiring, 0 perpetual, 1 with no figure last by name:
+BIT-25SEP26-CDE, BIP-20DEC30-CDE, ET-25SEP26-CDE, SOL-25SEP26-CDE,
+LTC-25SEP26-CDE, XRP-25SEP26-CDE, DOG-25SEP26-CDE, ADA-25SEP26-CDE,
+AVX-25OCT31-CDE; 3 dropped, the venue answered no candle on any granularity:
+LNK-25OCT31-CDE, DOT-25OCT31-CDE, NER-25OCT31-CDE
+```
+
+The one-granularity product is `AVX-25OCT31-CDE`, and the same card reports
+which granularity carried it:
+
+```
+Phase 1 Evaluate 1hr: 8 vote(s), 1 without candles, 0 under 30 candles
+Phase 1 Evaluate 1d: 9 vote(s), 0 without candles, 0 under 30 candles
+```
+
+### The reading with every candle read answering none
+
+With the stand-in answering no candle for every product on every granularity,
+the list holds 0 rows, the field draws 0 lines, and the open card counts all 12
+on the order line. Both builds read the same. That is what proves the reading
+can fail rather than pass by emptiness.
+
+### No other class moves
+
+Read on the same press path, on the commit this entry branched from and on the
+change, in the Qt window: metals 10 rows, energy 4, forex 28, stocks 47, crypto
+120, and none of the five carries a dropped product. The rule reads the
+derivatives venue's own granularity table, so no other class can reach it.
+
+### The two sentences the admission rule overtakes
+
+Neither is reworded. Both are quoted here and the true sentence follows.
+
+`docs/manual/08-tabs/market-inspector.md:6327` - "Each product the venue says
+it trades becomes one row on the futures venue, ranked by the venue's own 24 h
+volume times price, and the rows stay in the process so the ticker field offers
+them after the press." Each product the venue says it trades **and answers a
+candle for** becomes one row, ranked the same way. The ticker field offers the
+products that reached the list; a dropped product id typed in full still
+resolves and scans.
+
+`docs/manual/08-tabs/market-inspector.md:6371` - "Read once against the venue
+on 2026-09-20, on both bundles: the list held 117 trading products, every one a
+dated contract on the CDE venue marked `EXPIRING`, and none carrying the
+`-PERP-INTX` suffix the venue gives its perpetuals; 57 of the 117 carried no 24
+h volume, and 43 answered no candle on any granularity. The scan read all 117
+and found no hit." Those figures stand as the 2026-09-20 reading and are not
+re-measured here: the change was built and read with no venue contacted. Under
+the rule above, the 43 would not have reached the list and the scan would have
+read 74.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
