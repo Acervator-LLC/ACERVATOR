@@ -11,7 +11,9 @@ and ``add_exchange_tab`` seats one ``PaperVenue`` per exchange
 and on every ``fleet_changed``, which first writes the paper fleet file through
 ``PaperFleetSource.save``. ``PaperTradingPage`` reads the page's asks off the
 console line the host script writes, and ``run_action`` answers the corner and
-card way-ins through ``_way_in``, the two pause presses through
+card way-ins through ``_way_in`` — Add Exchange reaching ``_add_exchange``,
+whose seat reads its words from ``asset_class_surface`` over the class
+``set_asset_class`` last pushed — the two pause presses through
 ``set_activity_paused`` and ``set_api_paused``, a venue sub-tab press, the
 panel's ``select_bot``, both bot tables' asks and the venue page's ``+ New Bot``
 (``_create_bot``), Privacy Mode and command bar (``_on_bot_command`` over
@@ -66,7 +68,7 @@ from ...paper.paper_bot_view import PaperBotView
 from ...paper.paper_exchange import PaperExchange, read_fleet
 from ...paper.paper_run import PaperRun, PaperRunner, PaperTrade
 from ..main_tabs import bot_status_table_surface as scrum_surface
-from ..main_tabs import class_filter_surface
+from ..main_tabs import asset_class_surface, class_filter_surface
 from ..main_tabs import design_system_surface as token_surface
 from ..main_tabs import extractor_bot_table_surface as extractor_surface
 from ..main_tabs import indicator_panel_surface, status_log_surface
@@ -829,6 +831,7 @@ if _HAS_WEBENGINE:
             self._votes: dict = {}
             self._venues: dict = {}
             self._asset_class = class_filter_surface.active()
+            self._state.asset_class = self._asset_class
             self._venue_models: dict = {}
             self._waiting: dict = {}
             self._page_ready = False
@@ -932,9 +935,13 @@ if _HAS_WEBENGINE:
         # -- the ways in --------------------------------------------------
 
         def _way_in(self, action: str) -> None:
-            """Run the corner or card press ``action``: ``_import_live_fleet``
-            for Import Live Fleet, ``_start_paper_run`` for Start Paper Run with
-            no run up, ``_stop_paper_run`` for the same seat while one is up."""
+            """Run the corner or card press ``action``: ``_add_exchange`` for
+            Add Exchange, ``_import_live_fleet`` for Import Live Fleet,
+            ``_start_paper_run`` for Start Paper Run with no run up,
+            ``_stop_paper_run`` for the same seat while one is up."""
+            if action == tab_surface.ADD_EXCHANGE_ACTION:
+                self._add_exchange()
+                return
             if action == tab_surface.IMPORT_LIVE_FLEET_ACTION:
                 self._import_live_fleet()
                 return
@@ -1064,12 +1071,35 @@ if _HAS_WEBENGINE:
             self._states = {bot.bot_id: bot.state for bot in self._bot_manager.bots()}
             return self._states
 
-        def _import_live_fleet(self) -> None:
+        def _add_exchange(self) -> None:
+            """Add Exchange: seat a venue of the active asset class.
+
+            A class ``asset_class_surface`` reports unserved writes its note
+            and seats nothing, as Live's own Add Exchange refuses; otherwise
+            the stored venues narrowed to that class are offered and the one
+            chosen is imported, which seats its page.
+            """
+            key = asset_class_surface.normalise(self._asset_class)
+            if not asset_class_surface.add_exchange_enabled(key):
+                self.log(asset_class_surface.class_state(key)["note"], "warning")
+                return
+            self._import_live_fleet(key)
+
+        def _import_live_fleet(self, asset_class: Any = None) -> None:
             """Import Live Fleet: ``exchange_choice`` over the exchanges
             ``PaperFleetSource.stored_exchanges`` names, ``PaperExchangeChoiceDialog``
             when it prompts, then ``PaperFleetSource.import_live_fleet`` on the
-            exchange chosen, one Activity Log line and ``fleet_changed``."""
+            exchange chosen, one Activity Log line and ``fleet_changed``.
+
+            ``asset_class`` narrows the options to the venues serving that class.
+            """
             options = self._fleet_source.stored_exchanges()
+            if asset_class is not None:
+                narrowed = class_filter_surface.venues_of_class(options, asset_class)
+                if options and not narrowed:
+                    self.log(tab_surface.no_class_venue_line(asset_class), "warning")
+                    return
+                options = narrowed
             if not options:
                 self.log(tab_surface.no_stored_bot_line(), "warning")
                 return
@@ -1181,13 +1211,23 @@ if _HAS_WEBENGINE:
             return handed
 
         def set_asset_class(self, name) -> tuple:
-            """Hold ``name`` as the class this tab shows.
+            """Hold ``name`` as the class this tab shows and redraw the page.
 
-            Answers the rows ``refresh_bots`` kept for ``name`` and the rows
+            The class reaches the page through ``show_tab``, so its Add
+            Exchange seats read the same words the Qt buttons read. Answers
+            the rows ``refresh_bots`` kept for ``name`` and the rows
             ``PaperFleetSource.statuses`` holds in all.
             """
             self._asset_class = class_filter_surface.normalise(name)
+            self.show_tab({tab_surface.ASSET_CLASS_PARAM: self._asset_class})
             return (self.refresh_bots(), len(self._fleet_source.statuses()))
+
+        def class_venues(self, name: Any = None) -> list:
+            """The venue ids this host has seated that serve one asset class."""
+            key = class_filter_surface.normalise(
+                self._asset_class if name is None else name
+            )
+            return class_filter_surface.venues_of_class(list(self._venues), key)
 
         def refresh_votes(self) -> dict:
             """Hand the panel model the fleet's statuses, the fleet's own rate

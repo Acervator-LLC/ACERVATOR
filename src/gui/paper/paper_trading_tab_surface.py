@@ -44,6 +44,7 @@ ISSUE = 19
 
 TAB_TITLE = HEADING
 
+ADD_EXCHANGE_ACTION = "add_exchange"
 IMPORT_LIVE_FLEET_ACTION = "import_live_fleet"
 START_RUN_ACTION = "start_paper_run"
 STOP_RUN_ACTION = "stop_paper_run"
@@ -58,6 +59,9 @@ CORNER_BUTTONS = (
     (IMPORT_LIVE_FLEET_ACTION, IMPORT_LIVE_FLEET_TEXT),
     (START_RUN_ACTION, START_RUN_TEXT),
 )
+
+#: The Activity Log line a class whose stored fleet names no venue writes.
+NO_CLASS_VENUE_FORMAT = "{file} names no {name} venue to add."
 
 #: The second button's face while a run is up: the same seat, Stop.
 STOP_RUN_BUTTON = (STOP_RUN_ACTION, STOP_RUN_TEXT)
@@ -87,6 +91,7 @@ LOG_PAUSED_PARAM = "paused"
 ACTIVITY_PAUSED_PARAM = "activity_paused"
 API_PAUSED_PARAM = "api_paused"
 API_LINES_PARAM = "api_lines"
+ASSET_CLASS_PARAM = "asset_class"
 
 #: The page's ask when the bot selector changes.
 SELECT_BOT_ACTION = "select_bot"
@@ -168,35 +173,63 @@ def card_button_name(action: str) -> str:
     return button_name(action) + "-card"
 
 
-def corner_buttons(running: bool = False) -> list:
-    """The two corner buttons as the page draws them, ``run_buttons`` over
-    ``running``, each at ``live.ADD_BUTTON_MIN_WIDTH_PX``."""
-    return [
-        {
-            "action": action,
-            "text": text,
-            "accessible_name": button_name(action),
-            "minimum_width_px": live.ADD_BUTTON_MIN_WIDTH_PX,
-            "corner_widget": True,
-        }
-        for action, text in run_buttons(running)
-    ]
+def add_exchange_seat(asset_class: Any = None) -> dict:
+    """The Add Exchange button's text, tooltip and enabled mark for one class.
+
+    ``asset_class_surface`` owns all three, so Paper's button reads the words
+    Live's reads and a class no venue serves names that state here too.
+    """
+    from ..main_tabs import asset_class_surface as acs
+
+    key = acs.normalise(asset_class)
+    return {
+        "action": ADD_EXCHANGE_ACTION,
+        "text": acs.add_exchange_label(key),
+        "tooltip": acs.add_exchange_tooltip(key),
+        "enabled": acs.add_exchange_enabled(key),
+    }
 
 
-def placeholder_way_in_buttons(accent: Any, running: bool = False) -> list:
-    """The card's two buttons at Live's card-button size and sheet,
-    ``run_buttons`` over ``running``."""
-    return [
+def corner_buttons(running: bool = False, asset_class: Any = None) -> list:
+    """The corner buttons as the page draws them: Add Exchange for
+    ``asset_class`` then ``run_buttons`` over ``running``, each at
+    ``live.ADD_BUTTON_MIN_WIDTH_PX``."""
+    seats = [
         {
-            "action": action,
-            "text": text,
-            "accessible_name": card_button_name(action),
-            "minimum_size_px": list(live.PLACEHOLDER_ADD_MIN_SIZE_PX),
-            "style_sheet": live.placeholder_add_style(accent),
-            "align": "center",
+            **add_exchange_seat(asset_class),
+            "accessible_name": button_name(ADD_EXCHANGE_ACTION),
         }
+    ]
+    seats += [
+        {"action": action, "text": text, "accessible_name": button_name(action)}
         for action, text in run_buttons(running)
     ]
+    for seat in seats:
+        seat["minimum_width_px"] = live.ADD_BUTTON_MIN_WIDTH_PX
+        seat["corner_widget"] = True
+    return seats
+
+
+def placeholder_way_in_buttons(
+    accent: Any, running: bool = False, asset_class: Any = None
+) -> list:
+    """The card's buttons at Live's card-button size and sheet: Add Exchange
+    for ``asset_class`` then ``run_buttons`` over ``running``."""
+    seats = [
+        {
+            **add_exchange_seat(asset_class),
+            "accessible_name": card_button_name(ADD_EXCHANGE_ACTION),
+        }
+    ]
+    seats += [
+        {"action": action, "text": text, "accessible_name": card_button_name(action)}
+        for action, text in run_buttons(running)
+    ]
+    for seat in seats:
+        seat["minimum_size_px"] = list(live.PLACEHOLDER_ADD_MIN_SIZE_PX)
+        seat["style_sheet"] = live.placeholder_add_style(accent)
+        seat["align"] = "center"
+    return seats
 
 
 def placeholder_title_text(label: Any) -> str:
@@ -213,21 +246,37 @@ PLACEHOLDER_ORDER = ["title", "way_in_buttons", "hint"]
 
 
 def layer_card(
-    key: Any, exchanges: Any = None, current: Any = None, running: bool = False
+    key: Any,
+    exchanges: Any = None,
+    current: Any = None,
+    running: bool = False,
+    asset_class: Any = None,
 ) -> dict:
     """Live's ``layer_card`` with ``corner_buttons`` in place of ``add_button``
     and the Get Started card asking for a fleet under ``PLACEHOLDER_ORDER``,
-    the run button reading Stop while ``running``."""
+    the run button reading Stop while ``running`` and the Add Exchange seat
+    reading ``asset_class``."""
     card = live.layer_card(key, exchanges, current)
-    card["corner_buttons"] = corner_buttons(running)
+    card["corner_buttons"] = corner_buttons(running, asset_class)
     del card["add_button"]
     placeholder = card["placeholder"]
     placeholder["order"] = list(PLACEHOLDER_ORDER)
     placeholder["title"]["text"] = placeholder_title_text(card["label"])
     placeholder["hint"]["text"] = placeholder_hint_text(card["label"])
-    placeholder["way_in_buttons"] = placeholder_way_in_buttons(card["accent"], running)
+    placeholder["way_in_buttons"] = placeholder_way_in_buttons(
+        card["accent"], running, asset_class
+    )
     del placeholder["add_button"]
     return card
+
+
+def no_class_venue_line(asset_class: Any) -> str:
+    """The Activity Log line for a stored fleet naming no venue of one class."""
+    from ..main_tabs import asset_class_surface as acs
+
+    return NO_CLASS_VENUE_FORMAT.format(
+        file=BOT_STATE_NAME, name=acs.display_name(asset_class)
+    )
 
 
 def exchange_choice_options(exchanges: Any) -> list:
@@ -472,10 +521,12 @@ def build_view_model(
     exchanges: Any = None,
     current_exchange: Any = None,
     run_running: bool = False,
+    asset_class: Any = None,
 ) -> dict:
     """Return the whole Paper tab state as one serialisable dict; ``layer``
-    names the stack page on show, ``exchanges`` the venues seated and
-    ``run_running`` whether the run button reads Stop."""
+    names the stack page on show, ``exchanges`` the venues seated,
+    ``run_running`` whether the run button reads Stop and ``asset_class`` the
+    class the Add Exchange seat reads."""
     key = "stock" if str(layer) == "stock" else "crypto"
     buffer = live.ApiPauseBuffer() if api_buffer is None else api_buffer
     pane = live.ApiLogPane() if api_pane is None else api_pane
@@ -493,7 +544,7 @@ def build_view_model(
             "current_index": live.LAYER_ORDER.index(key),
         },
         "layers": [
-            layer_card(name, routed[name], current_exchange, run_running)
+            layer_card(name, routed[name], current_exchange, run_running, asset_class)
             for name in live.LAYER_ORDER
         ],
         "alias_layer": live.ALIAS_LAYER,
@@ -538,6 +589,7 @@ class PaperTradingTabState:
         self.exchanges: list = []
         self.current_exchange = ""
         self.run_running = False
+        self.asset_class = ""
 
     def seat(self, exchange_id: str, display_name: str) -> None:
         """Record one venue for the layer stack to draw."""
@@ -573,6 +625,8 @@ class PaperTradingTabState:
             self.layer = str(asked.get("layer"))
         if asked.get(live.EXCHANGE_PARAM) is not None:
             self.current_exchange = str(asked.get(live.EXCHANGE_PARAM))
+        if asked.get(ASSET_CLASS_PARAM) is not None:
+            self.asset_class = str(asked.get(ASSET_CLASS_PARAM))
         return build_view_model(
             layer=self.layer,
             activity_paused=self.activity_paused,
@@ -581,6 +635,7 @@ class PaperTradingTabState:
             exchanges=self.exchanges,
             current_exchange=self.current_exchange,
             run_running=self.run_running,
+            asset_class=self.asset_class,
         )
 
 
@@ -592,6 +647,7 @@ def view_model(params: dict) -> dict:
     return build_view_model(
         layer=str(asked.get("layer") or "crypto"),
         activity_paused=bool(asked.get(ACTIVITY_PAUSED_PARAM, False)),
+        asset_class=asked.get(ASSET_CLASS_PARAM),
     )
 
 

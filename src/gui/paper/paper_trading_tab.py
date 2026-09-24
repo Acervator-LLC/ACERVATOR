@@ -4,10 +4,14 @@
 ``src/gui/main_tabs/trading_tab.py`` as a widget of its own: the exchange layer
 stack, the forked ``PaperIndicatorVotingPanel``, and the Activity Log and API
 Interaction Log spools, in Live's four splitters at Live's sizes; the corner
-Live gives ``＋ Add Crypto Exchange`` holds ``CORNER_BUTTONS``, Import Live
-Fleet and Start Paper Run at Live's corner-button width, and the Get Started
-card holds the same two where Live's card holds its add button, each reaching
-``_way_in``. ``add_exchange_tab`` is the window's method of that name, forked,
+Live gives ``＋ Add Crypto Exchange`` holds ``tab_surface.corner_buttons`` —
+Add Exchange, Import Live Fleet and Start Paper Run at Live's corner-button
+width — and the Get Started card holds the same three, each reaching
+``_way_in``. Add Exchange reads its text, its tooltip and whether it can act
+from ``asset_class_surface`` over the active asset class, ``set_asset_class``
+relabels it through ``_retitle_add_exchange``, and its press seats a venue of
+that class through ``_add_exchange``; a class no venue serves draws its note
+and seats nothing. ``add_exchange_tab`` is the window's method of that name, forked,
 and seats a ``PaperExchangeTab``; ``_sync_exchange_tabs`` seats one per
 exchange ``PaperFleetSource.exchanges`` names, at build and on every
 ``fleet_changed``, drops the rest as the window's ``_drop_unlisted_exchange_tabs``
@@ -92,21 +96,20 @@ from ...paper.paper_exchange import PaperExchange, read_fleet
 from ...paper.paper_run import PaperRun, PaperRunner, PaperTrade
 from .. import design_system as ds
 from ..color_alpha import rgba
+from ..main_tabs import asset_class_surface as acs
 from ..main_tabs import class_filter_surface
 from ..main_tabs.exchange_tab_surface import FLEET_COMMANDS
+from ..main_tabs.header_strip import HeaderStripMixin
 from ..main_tabs.trading_tab_surface import (
-    ADD_BUTTON_MIN_WIDTH_PX,
     BOTTOM_SPLITTER_SIZES_PX,
     LOG_SPLITTER_SIZES_PX,
     MAIN_SPLITTER_SIZES_PX,
-    PLACEHOLDER_ADD_MIN_SIZE_PX,
     PLACEHOLDER_TAB_TITLE,
     TOP_SPLITTER_SIZES_PX,
     WATCHDOG_INTERVAL_MS,
     WATCHDOG_STAT_FAILURE_FORMAT,
     WatchdogState,
     exchange_display_name,
-    placeholder_add_style,
 )
 from ..variant_surface import PAPER_BOT_DETAIL, surface_class
 from ..widgets.bot_selection import BotListPanelLink
@@ -117,9 +120,6 @@ from .paper_exchange_tab import PaperExchangeTab
 from .paper_indicator_panel import PaperIndicatorVotingPanel
 from .paper_status_log import PaperStatusLog
 from .paper_trading_tab_surface import (
-    CORNER_BUTTONS,
-    button_name,
-    card_button_name,
     notification_line,
     placeholder_hint_text,
     placeholder_title_text,
@@ -183,6 +183,7 @@ class PaperTradingTab(QWidget):
         self._corner_buttons: dict[str, QPushButton] = {}
         self._card_buttons: dict[str, QPushButton] = {}
         self._run_buttons: list[QPushButton] = []
+        self._add_exchange_buttons: list[QPushButton] = []
         self._stats_redraw_timer = QTimer(self)
         self._stats_redraw_timer.setSingleShot(True)
         self._stats_redraw_timer.setInterval(tab_surface.STATS_REDRAW_MS)
@@ -282,9 +283,13 @@ class PaperTradingTab(QWidget):
     # -- the ways in ------------------------------------------------------
 
     def _way_in(self, action: str) -> None:
-        """Run the corner or card press ``action``: ``_import_live_fleet`` for
-        Import Live Fleet, ``_start_paper_run`` for Start Paper Run with no
-        run up, ``_stop_paper_run`` for the same seat while one is up."""
+        """Run the corner or card press ``action``: ``_add_exchange`` for Add
+        Exchange, ``_import_live_fleet`` for Import Live Fleet,
+        ``_start_paper_run`` for Start Paper Run with no run up,
+        ``_stop_paper_run`` for the same seat while one is up."""
+        if action == tab_surface.ADD_EXCHANGE_ACTION:
+            self._add_exchange()
+            return
         if action == tab_surface.IMPORT_LIVE_FLEET_ACTION:
             self._import_live_fleet()
             return
@@ -424,12 +429,37 @@ class PaperTradingTab(QWidget):
                 else tab_surface.button_name(action)
             )
 
-    def _import_live_fleet(self) -> None:
+    def _add_exchange(self) -> None:
+        """Add Exchange: seat a venue of the active asset class.
+
+        A class ``asset_class_surface`` reports unserved writes its note and
+        seats nothing, as Live's own Add Exchange refuses; otherwise the
+        stored venues narrowed to that class are offered and the one chosen
+        is imported, which seats its sub-tab.
+        """
+        key = acs.normalise(self._asset_class)
+        if not acs.add_exchange_enabled(key):
+            self._status_log.log(acs.class_state(key)["note"], "warning")
+            return
+        self._import_live_fleet(key)
+
+    def _import_live_fleet(self, asset_class: Any = None) -> None:
         """Import Live Fleet: ``exchange_choice`` over the exchanges
         ``PaperFleetSource.stored_exchanges`` names, ``PaperExchangeChoiceDialog``
         when it prompts, then ``PaperFleetSource.import_live_fleet`` on the
-        exchange chosen, one Activity Log line and ``fleet_changed``."""
+        exchange chosen, one Activity Log line and ``fleet_changed``.
+
+        ``asset_class`` narrows the options to the venues serving that class.
+        """
         options = self._fleet_source.stored_exchanges()
+        if asset_class is not None:
+            narrowed = class_filter_surface.venues_of_class(options, asset_class)
+            if options and not narrowed:
+                self._status_log.log(
+                    tab_surface.no_class_venue_line(asset_class), "warning"
+                )
+                return
+            options = narrowed
         if not options:
             self._status_log.log(tab_surface.no_stored_bot_line(), "warning")
             return
@@ -489,17 +519,7 @@ class PaperTradingTab(QWidget):
         top_splitter.setChildrenCollapsible(False)
 
         # ── Equity exchange IDs (routes to Stock layer) ────────────
-        self._equity_exchange_ids = {
-            "alpaca",
-            "ibkr",
-            "schwab",
-            "tdameritrade",
-            "webull",
-            "tastytrade",
-            "fidelity",
-            "etrade",
-            "interactivebrokers",
-        }
+        self._equity_exchange_ids = acs.EQUITY_VENUES
 
         # ── QStackedWidget: page 0 = Crypto, page 1 = Stock ────────
         self._trading_stack = QStackedWidget()
@@ -512,15 +532,19 @@ class PaperTradingTab(QWidget):
             page_layout.setContentsMargins(0, 0, 0, 0)
 
             tab_w = QTabWidget()
-            # The corner Live gives its add button holds the two ways in.
+            # The corner Live gives its add button holds Add Exchange and the
+            # two ways in, each seat read from tab_surface.corner_buttons.
             corner = QWidget()
             corner_row = QHBoxLayout(corner)
             corner_row.setContentsMargins(0, 0, 0, 0)
             corner_row.setSpacing(2)
-            for action, text in CORNER_BUTTONS:
-                way_btn = QPushButton(text)
-                way_btn.setMinimumWidth(ADD_BUTTON_MIN_WIDTH_PX)
-                way_btn.setAccessibleName(button_name(action))
+            for seat in tab_surface.corner_buttons(False, self._asset_class):
+                action = seat["action"]
+                way_btn = QPushButton(seat["text"])
+                way_btn.setMinimumWidth(seat["minimum_width_px"])
+                way_btn.setAccessibleName(seat["accessible_name"])
+                way_btn.setToolTip(seat.get("tooltip", ""))
+                way_btn.setEnabled(bool(seat.get("enabled", True)))
                 way_btn.clicked.connect(
                     lambda _checked=False, key=action: self._way_in(key)
                 )
@@ -529,6 +553,8 @@ class PaperTradingTab(QWidget):
                     self._corner_buttons[action] = way_btn
                 if action == tab_surface.START_RUN_ACTION:
                     self._run_buttons.append(way_btn)
+                if action == tab_surface.ADD_EXCHANGE_ACTION:
+                    self._add_exchange_buttons.append(way_btn)
             tab_w.setCornerWidget(corner)
 
             # Empty state placeholder
@@ -549,13 +575,18 @@ class PaperTradingTab(QWidget):
             ph_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
             ph_title.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_title)
-            # The card's button position holds the two ways in at Live's
-            # card-button size and sheet.
-            for action, text in CORNER_BUTTONS:
-                ph_add = QPushButton(text)
-                ph_add.setMinimumSize(*PLACEHOLDER_ADD_MIN_SIZE_PX)
-                ph_add.setStyleSheet(placeholder_add_style(accent))
-                ph_add.setAccessibleName(card_button_name(action))
+            # The card's button position holds Add Exchange and the two ways
+            # in, each seat read from tab_surface.placeholder_way_in_buttons.
+            for seat in tab_surface.placeholder_way_in_buttons(
+                accent, False, self._asset_class
+            ):
+                action = seat["action"]
+                ph_add = QPushButton(seat["text"])
+                ph_add.setMinimumSize(*seat["minimum_size_px"])
+                ph_add.setStyleSheet(seat["style_sheet"])
+                ph_add.setAccessibleName(seat["accessible_name"])
+                ph_add.setToolTip(seat.get("tooltip", ""))
+                ph_add.setEnabled(bool(seat.get("enabled", True)))
                 ph_add.clicked.connect(
                     lambda _checked=False, key=action: self._way_in(key)
                 )
@@ -564,6 +595,8 @@ class PaperTradingTab(QWidget):
                     self._card_buttons[action] = ph_add
                 if action == tab_surface.START_RUN_ACTION:
                     self._run_buttons.append(ph_add)
+                if action == tab_surface.ADD_EXCHANGE_ACTION:
+                    self._add_exchange_buttons.append(ph_add)
             ph_hint = QLabel(placeholder_hint_text(label_text))
             ph_hint.setStyleSheet(
                 f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
@@ -845,13 +878,25 @@ class PaperTradingTab(QWidget):
         return handed
 
     def set_asset_class(self, name) -> tuple:
-        """Hold ``name`` as the class this tab shows.
+        """Hold ``name`` as the class this tab shows and relabel Add Exchange.
 
         Answers the rows ``refresh_bots`` kept for ``name`` and the rows
         ``PaperFleetSource.statuses`` holds in all.
         """
         self._asset_class = class_filter_surface.normalise(name)
+        self._retitle_add_exchange()
         return (self.refresh_bots(), len(self._fleet_source.statuses()))
+
+    #: Live's relabel loop, over this tab's own buttons and its own class.
+    _retitle_add_exchange = HeaderStripMixin._retitle_add_exchange
+
+    def class_venues(self, name: Any = None) -> list:
+        """The venue ids this tab has seated that serve one asset class."""
+        key = class_filter_surface.normalise(
+            self._asset_class if name is None else name
+        )
+        seated = list(self._crypto_exchange_tabs) + list(self._stock_exchange_tabs)
+        return class_filter_surface.venues_of_class(seated, key)
 
     # -- the voting panel -----------------------------------------------
 

@@ -2103,4 +2103,178 @@ would be finds no row.
 | a heading press | no error, still no row | no error, still no row |
 | a row press | answers no bot | finds no row |
 
+## 2026-09-24 - #571 - the asset class group and Add Exchange reach the Paper Trader
+
+### The class group is the window's, and the Paper tab draws it
+
+**Functional.** The segmented asset class group is part of the header strip at
+the top of the window, not part of any one tab. It is on screen while the Paper
+tab is in front, and a press on a class button reaches the Paper tab like every
+other.
+
+Read off the running window with the Paper tab in front, in both builds, at 700,
+900 and 1400 pixels wide:
+
+```
+Crypto   Stock   Commodities   Forex
+```
+
+All four buttons sit inside the window at every one of those three widths. The
+group holds 142 pixels whatever the window gives it, and each button shortens
+its own name to the room it has, so a narrow window elides a label and never
+pushes a button off the right edge.
+
+**One class for the whole window.** The Paper tab holds no second class of its
+own. The window keeps the active class, the settings file stores it for the next
+launch, and the window tells the Paper tab which class that is.
+
+`src/gui/main_tabs/class_filter_tab.py` — the table that reaches Paper
+
+```python
+SELF_COUNTING_TABS = {
+    "History": "_history_tab",
+    "Sim": "_simulator_tab",
+    "Paper": "_paper_trader_tab",
+}
+```
+
+### Paper's Add Exchange button follows the active class
+
+**Functional.** The Paper tab now carries the Add Exchange button in the two
+seats Live gives it: the right of the venue sub-tab row, and the Get Started
+card. It reads the class the header strip has active, and it sits before Import
+Live Fleet and Start Paper Run in both seats.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the seat both builds read
+
+```python
+def add_exchange_seat(asset_class: Any = None) -> dict:
+    from ..main_tabs import asset_class_surface as acs
+
+    key = acs.normalise(asset_class)
+    return {
+        "action": ADD_EXCHANGE_ACTION,
+        "text": acs.add_exchange_label(key),
+        "tooltip": acs.add_exchange_tooltip(key),
+        "enabled": acs.add_exchange_enabled(key),
+    }
+```
+
+Read for each class in turn, on the running program, in both builds:
+
+| class | the button reads | it can act |
+|---|---|---|
+| Crypto | `＋ Add Crypto Exchange` | yes |
+| Stock | `＋ Add Stock Broker` | yes |
+| Commodities | `Commodities — no venue yet` | no |
+| Forex | `Forex — no venue yet` | no |
+
+**A class with no venue says so here too.** The button states the class, its
+tooltip names what is missing, and the press is refused. It never offers another
+class's venue list.
+
+**Both builds draw the same button.** The words, the tooltip and whether the
+button can act come from one place, so the Qt widget and the page cannot drift.
+Read at 700, 900 and 1400, four classes, two seats: 24 readings a build, and
+every value the same on both sides.
+
+### What the Add Exchange press does on the Paper tab
+
+**Functional.** Paper never opens the live venue settings. A venue page exists
+on Paper once the paper fleet holds a bot on that venue, so the press offers the
+venues of the active class that the live fleet file names, and seats the one
+chosen.
+
+`src/gui/paper/paper_trading_tab.py` — the handler
+
+```python
+key = acs.normalise(self._asset_class)
+if not acs.add_exchange_enabled(key):
+    self._status_log.log(acs.class_state(key)["note"], "warning")
+    return
+self._import_live_fleet(key)
+```
+
+Driven once per class on the running program, with the live fleet file naming
+Coinbase and nothing else. The Activity Log line and the venue count after the
+press:
+
+| class pressed | the Activity Log line | venues seated |
+|---|---|---|
+| Crypto | `Imported 38 bot(s) from bot_state.json on coinbase.` | 1 |
+| Stock | `bot_state.json names no Stock venue to add.` | unchanged |
+| Commodities | `No configured venue serves Commodities yet.` | unchanged |
+| Forex | `No configured venue serves Forex yet.` | unchanged |
+
+Both builds write the same four lines. No venue was contacted: every non-loopback
+connection was refused during the run, and the live fleet file hashed the same
+before and after.
+
+### The Paper tab keeps its own card while no venue serves the class
+
+**Functional.** The class filter replaces a tab with a note when the tab holds
+nothing for the class. The Paper tab is left its own card instead while it holds
+no venue of that class, so the Add Exchange button on that card stays on screen
+and names the state. That is the rule the Live tab already follows.
+
+`src/gui/main_tabs/class_filter_tab.py` — the gate
+
+```python
+tab = getattr(self, attr, None)
+ask = getattr(tab, "class_venues", None)
+if not callable(ask):
+    return False
+return not ask(key)
+```
+
+Read on the running window, before and after one Coinbase venue is seated:
+
+| class | venues Paper holds, none seated | keeps its card | after Coinbase | keeps its card |
+|---|---|---|---|---|
+| Crypto | none | yes | Coinbase | no |
+| Stock | none | yes | none | yes |
+| Commodities | none | yes | none | yes |
+| Forex | none | yes | none | yes |
+
+Once the class has a venue on Paper, the note takes over again. A tab that does
+not answer which venues it holds is untouched by this: the History tab and the
+Simulator tab draw their notes exactly as before, read on the running window at
+all three widths under all four classes, 134 values compared and none of them
+moved but Paper's own.
+
+### One venue list, read by every consumer
+
+The nine broker ids that route a venue to the stock layer were written out four
+times. The Paper tab held the fourth copy; it now reads the one name the venue
+map declares, as the Live tab does.
+
+`src/gui/paper/paper_trading_tab.py` — the venue ids
+
+```python
+self._equity_exchange_ids = acs.EQUITY_VENUES
+```
+
+### Three sentences this entry overtakes
+
+The manual carries these sentences about the Paper Trader's corner. Each is
+quoted as it stands, with the sentence that is true today beneath it.
+
+> "The corner Live gives `＋ Add Crypto Exchange` holds Import Live Fleet and
+> Start Paper Run, each at Live's corner-button width."
+
+The corner holds three buttons: Add Exchange, Import Live Fleet and Start Paper
+Run, each at Live's corner-button width.
+
+> "The Get Started card holds the same two where Live's card holds its add
+> button."
+
+The Get Started card holds the same three, and Live's add button is among them.
+
+> "The corner holds Import Live Fleet and Start Paper Run in Live's
+> corner-button chrome, and the Get Started card holds the same two at Live's
+> card-button size."
+
+Both seats hold Add Exchange first, then those two, in the same chrome and at
+the same sizes.
+
 Back to [the subsystem index](README.md).
