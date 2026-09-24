@@ -158,7 +158,7 @@ TICKER_FIELD_MIN_WIDTH_PX = 72
 TICKER_MATCH_LIMIT = 8
 #: What one offer reads on the completer and the page's list: the symbol
 #: and the class that lists it.
-TICKER_OFFER_FORMAT = "{symbol}  ({asset_class})"
+TICKER_OFFER_FORMAT = "{symbol}  ({asset_class} · {form} · {deploy})"
 #: The characters a typed ticker may carry between its base and its quote.
 TICKER_SEPARATORS = ("-", "_", " ")
 TICKER_JOIN = "/"
@@ -173,8 +173,18 @@ TICKER_PRESS_LIST_FORMAT = (
 )
 #: The classes whose list a press reads off a venue, and what the note names.
 CLASS_PRESS_SOURCES = {
-    ata_spm.CLASS_DERIVATIVES: "Coinbase's futures and perpetual products",
+    ata_spm.CLASS_CRYPTO: "Coinbase's futures products on the CDE venue",
+    ata_spm.CLASS_COMMODITIES: "Coinbase's futures products on the CDE venue",
+    ata_spm.CLASS_STOCKS: "Coinbase's futures products on the CDE venue",
 }
+
+#: The classes a CDE product can be placed under, which is every class
+#: ``ata_asset_maps.NON_CRYPTO_ROOTS`` names plus crypto.
+FUTURES_CLASSES = (
+    ata_spm.CLASS_CRYPTO,
+    ata_spm.CLASS_STOCKS,
+    ata_spm.CLASS_COMMODITIES,
+)
 #: What the field carries for the sectors a class declares and lists no market
 #: for. The count is drawn under the field rather than the sector left out of
 #: the menu with no word said about it.
@@ -206,7 +216,7 @@ SCAN_ALL_TOOLTIP = (
 #: The Scan All button, named so a reader can find it beside Scan Now.
 SCAN_ALL_PART = "scan-all"
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
-#: Wide enough for the longest class name, derivatives, beside the menu's arrow.
+#: Wide enough for the longest class name, commodities, beside the menu's arrow.
 CLASS_BOX_WIDTH_PX = 120
 
 #: The confirmation timer tiles, right of the Timeframe row: one per watched
@@ -356,6 +366,9 @@ STOCKS_PORTFOLIO_SOURCE_FORMAT = (
 )
 FUTURES_ORDER_SOURCE_FORMAT = "{source}, {expiring} expiring, {perpetual} perpetual"
 FUTURES_REFUSED_SOURCE_FORMAT = "no derivatives list, the venue refused: {refusal}"
+#: What the order line adds for the futures products one class took on, and
+#: for the products the venue's own record placed in no class at all.
+FUTURES_JOINED_SOURCE_FORMAT = "{source}; {count} futures product(s) joined"
 ORDER_VENUE_JOIN = ", "
 ORDER_LOG_FORMAT = "ATA-SPM order for {asset_class}: {line}"
 VOLUME_FIGURE_REFUSED_LOG = "volume figure refused for %s: %s"
@@ -1303,13 +1316,18 @@ def market_timeframe_rows(scan: Any) -> list:
 def order_holds_back(scan: Any) -> bool:
     """Whether one scan's order names products it kept off ``listings``.
 
-    ``MarketOrder.dead`` and ``MarketOrder.no_candle`` are the two it keeps
-    back, and a scan with no order holds nothing back.
+    ``MarketOrder.dead``, ``MarketOrder.no_candle`` and
+    ``MarketOrder.unplaced`` are the three it keeps back, and a scan with no
+    order holds nothing back.
     """
     order = getattr(scan, "order", None)
     if order is None:
         return False
-    return bool(getattr(order, "dead", ()) or getattr(order, "no_candle", ()))
+    return bool(
+        getattr(order, "dead", ())
+        or getattr(order, "no_candle", ())
+        or getattr(order, "unplaced", ())
+    )
 
 
 def phase_one_rows(scan: Any) -> list:
@@ -2831,11 +2849,11 @@ def sector_assets(sector: Any, asset_class: Any) -> list:
     ]
 
 
-def class_tickers(asset_class: Any) -> list:
-    """Every ticker one sector names, read from the lists already in this process.
+def mapped_tickers(asset_class: Any) -> list:
+    """Every ticker one class's own map names, with no futures product.
 
-    ``ata_spm.CLASS_CRYPTO`` reads the shipped sector map, derivatives the last
-    ``futures_tickers`` press read, and every other class ``ata_asset_maps.MAPS``.
+    ``ata_spm.CLASS_CRYPTO`` reads the shipped sector map and every other class
+    reads ``ata_asset_maps.MAPS``.
     """
     if str(asset_class) == ata_spm.CLASS_CRYPTO:
         from ...trading.topology_proposals import load_sector_map
@@ -2846,14 +2864,24 @@ def class_tickers(asset_class: Any) -> list:
             logger.debug(SECTOR_MAP_FAILED_LOG, exc)
             return []
         return sorted(str(one) for one in held)
-    if str(asset_class) == ata_spm.CLASS_DERIVATIVES:
-        return ata_asset_maps.futures_tickers()
-    found = {
-        str(one.symbol)
-        for sector in ata_asset_maps.sectors_for(asset_class)
-        for one in ata_asset_maps.listings_for(sector, asset_class)
-    }
-    return sorted(found)
+    return sorted(
+        {
+            str(one.symbol)
+            for sector in ata_asset_maps.sectors_for(asset_class)
+            for one in ata_asset_maps.listings_for(sector, asset_class)
+        }
+    )
+
+
+def class_tickers(asset_class: Any) -> list:
+    """Every ticker one sector names, read from the lists already in this process.
+
+    ``mapped_tickers`` answers the class's own map and the class also takes the
+    futures products the last ``futures_tickers`` press placed under it.
+    """
+    name = ata_spm.asset_class_named(asset_class)
+    futures = ata_asset_maps.futures_tickers(name) if name else []
+    return sorted(set(mapped_tickers(asset_class)) | set(futures))
 
 
 def class_volumes(asset_class: Any, connectors: Any) -> dict:
@@ -2977,40 +3005,71 @@ def paced_candle_read(pace: Any = None) -> Any:
     return read
 
 
-def derivatives_markets(pace: Any = None) -> Any:
-    """The derivatives ``ata_spm.MarketOrder``: ``futures_listings`` ranked by
-    the venue's own figures, or no rows under the refusal it answered.
+def futures_markets(asset_class: Any, pace: Any = None) -> Any:
+    """The futures ``ata_spm.MarketOrder`` for one class: the rows
+    ``futures_listings`` placed under it, ranked by the venue's own figures.
 
     The source names the venue and how many products expire or are perpetual,
-    and ``no_candle`` carries every product the admission read dropped.
+    ``no_candle`` carries every product the admission read dropped, and
+    ``unplaced`` every product the venue's record placed in no class.
     """
     rows, figures, refusal, silent = ata_asset_maps.futures_listings(
         read=paced_candle_read(pace)
     )
-    if not rows:
+    unplaced = ata_asset_maps.futures_unplaced()
+    key = ata_spm.asset_class_named(asset_class)
+    mine = [one for one in rows if one.asset_class == key]
+    quiet = [
+        one
+        for one in silent
+        if getattr(ata_asset_maps.listing_of(one), "asset_class", "") == key
+    ]
+    if not mine:
         return ata_spm.MarketOrder(
             source=FUTURES_REFUSED_SOURCE_FORMAT.format(refusal=refusal),
-            no_candle=list(silent),
+            no_candle=quiet,
+            unplaced=unplaced,
         )
     order = ranked_order(
-        rows,
-        figures,
+        mine,
+        {one.symbol: figures[one.symbol] for one in mine if one.symbol in figures},
         FUTURES_ORDER_SOURCE_FORMAT.format(
             source=ata_asset_maps.FUTURES_SOURCE_TEXT,
-            expiring=sum(
-                1 for one in rows if one.sector == ata_asset_maps.SECTOR_EXPIRING
-            ),
+            expiring=sum(1 for one in mine if one.form == ata_asset_maps.FORM_FUTURE),
             perpetual=sum(
-                1 for one in rows if one.sector == ata_asset_maps.SECTOR_PERPETUAL
+                1 for one in mine if one.form == ata_asset_maps.FORM_PERPETUAL
             ),
         ),
     )
-    order.no_candle = list(silent)
+    order.no_candle = quiet
+    order.unplaced = unplaced
+    return order
+
+
+def merge_orders(base: Any, joined: Any, asset_class: Any) -> Any:
+    """``base`` with ``joined``'s rows and figures folded in, largest first.
+
+    ``ranked_order`` reranks the two lists together, the source names how many
+    rows joined, and the class's ``deployability_line`` ends the line.
+    """
+    rows = list(base.listings) + list(joined.listings)
+    figures = dict(base.figures)
+    figures.update(joined.figures)
+    source = base.source
+    if joined.listings:
+        source = FUTURES_JOINED_SOURCE_FORMAT.format(
+            source=source, count=len(joined.listings)
+        )
+    order = ranked_order(rows, figures, source, source)
+    order.dead = list(base.dead) + list(joined.dead)
+    order.no_candle = list(base.no_candle) + list(joined.no_candle)
+    order.unplaced = list(base.unplaced) + list(joined.unplaced)
+    order.deploy = ata_asset_maps.deployability_line(asset_class)
     return order
 
 
 def crypto_markets(connectors: Any) -> Any:
-    """The crypto ``ata_spm.MarketOrder``: the ``class_tickers`` names the
+    """The crypto ``ata_spm.MarketOrder``: the ``mapped_tickers`` names the
     venue trades, ranked by ``class_volumes``, with the rest on ``dead``.
 
     ``trading_products`` reads the connectors' loaded tables and
@@ -3025,7 +3084,7 @@ def crypto_markets(connectors: Any) -> Any:
 
     served = exchange_timeframes(connectors)
     trading = trading_products(connectors) if connectors else public_products()
-    names = sorted(class_tickers(ata_spm.CLASS_CRYPTO))
+    names = sorted(mapped_tickers(ata_spm.CLASS_CRYPTO))
     dead = [one for one in names if trading and not trading.get(one.upper(), False)]
     rows = [
         ata_asset_maps.exchange_listing(one, served) for one in names if one not in dead
@@ -3062,28 +3121,31 @@ def crypto_markets(connectors: Any) -> Any:
 def class_markets(asset_class: Any, connectors: Any = None, pace: Any = None) -> Any:
     """Every market one class holds as an ``ata_spm.MarketOrder``, largest first.
 
-    Crypto is ``crypto_markets``, stocks ``stocks_markets`` and derivatives
-    ``derivatives_markets``; every other mapped class ranks ``listing_volumes``
-    over its ``ata_asset_maps.MAPS`` rows, through ``pace`` when a Scan All
-    walk hands one, and rows with no figure keep map order.
+    Crypto is ``crypto_markets`` and stocks ``stocks_markets``, every other
+    mapped class ranks ``listing_volumes`` over its ``ata_asset_maps.MAPS``
+    rows through ``pace``, and a ``FUTURES_CLASSES`` class then takes the CDE
+    products ``futures_markets`` placed under it through ``merge_orders``.
     """
     if str(asset_class) == ata_spm.CLASS_CRYPTO:
-        return crypto_markets(connectors)
-    if str(asset_class) == ata_spm.CLASS_STOCKS:
-        return stocks_markets()
-    if str(asset_class) == ata_spm.CLASS_DERIVATIVES:
-        return derivatives_markets(pace)
-    rows = [
-        one
-        for sector in ata_asset_maps.sectors_for(asset_class)
-        for one in ata_asset_maps.listings_for(sector, asset_class)
-    ]
-    venues = sorted({one.venue for one in rows if one.venue})
-    return ranked_order(
-        rows,
-        listing_volumes(rows, pace),
-        VENUE_ORDER_SOURCE_FORMAT.format(venue=ORDER_VENUE_JOIN.join(venues)),
-    )
+        base = crypto_markets(connectors)
+    elif str(asset_class) == ata_spm.CLASS_STOCKS:
+        base = stocks_markets()
+    else:
+        rows = [
+            one
+            for sector in ata_asset_maps.sectors_for(asset_class)
+            for one in ata_asset_maps.listings_for(sector, asset_class)
+        ]
+        venues = sorted({one.venue for one in rows if one.venue})
+        base = ranked_order(
+            rows,
+            listing_volumes(rows, pace),
+            VENUE_ORDER_SOURCE_FORMAT.format(venue=ORDER_VENUE_JOIN.join(venues)),
+        )
+    if ata_spm.asset_class_named(asset_class) not in FUTURES_CLASSES:
+        base.deploy = ata_asset_maps.deployability_line(asset_class)
+        return base
+    return merge_orders(base, futures_markets(asset_class, pace), asset_class)
 
 
 def fold_ticker(typed: Any) -> str:
@@ -3152,6 +3214,9 @@ def class_listing(symbol: Any, asset_class: Any) -> Any:
     """
     name = str(symbol)
     if str(asset_class) == ata_spm.CLASS_CRYPTO:
+        held = ata_asset_maps.listing_of(name)
+        if held is not None and held.venue == ata_asset_maps.VENUE_FUTURES:
+            return held
         return ata_asset_maps.exchange_listing(name)
     for sector in ata_asset_maps.sectors_for(asset_class):
         for one in ata_asset_maps.listings_for(sector, asset_class):
@@ -3204,11 +3269,22 @@ def placements_of(typed: Any, asset_class: Any, connectors: Any = None) -> list:
 
 
 def ticker_offer(symbol: Any, asset_class: Any) -> list:
-    """One completer row: the symbol, its class and ``TICKER_OFFER_FORMAT``."""
+    """One completer row: the symbol, its class and ``TICKER_OFFER_FORMAT``.
+
+    The row carries the listing's own contract form and the word
+    ``ata_asset_maps.deployability_badge`` answers, so a market a bot can
+    deploy on and one the scanner only charts are told apart on the row.
+    """
+    listing = class_listing(symbol, asset_class)
     return [
         str(symbol),
         str(asset_class),
-        TICKER_OFFER_FORMAT.format(symbol=symbol, asset_class=asset_class),
+        TICKER_OFFER_FORMAT.format(
+            symbol=symbol,
+            asset_class=asset_class,
+            form=listing.form_label,
+            deploy=ata_asset_maps.deployability_badge(listing, asset_class),
+        ),
     ]
 
 
@@ -3285,7 +3361,7 @@ def market_listing(ticker: Any, asset_class: Any, connectors: Any = None) -> Any
     with no list read yet reads it first, through ``futures_listings``.
     """
     if (
-        str(asset_class) == ata_spm.CLASS_DERIVATIVES
+        ata_spm.asset_class_named(asset_class) in FUTURES_CLASSES
         and fold_ticker(ticker)
         and not ata_asset_maps.futures_tickers()
     ):

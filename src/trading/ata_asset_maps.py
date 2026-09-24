@@ -33,9 +33,10 @@ from ..simulator.portfolios import CRYPTO_SYMBOLS, SYMBOLS
 from .ata_spm import (
     CLASS_COMMODITIES,
     CLASS_CRYPTO,
-    CLASS_DERIVATIVES,
     CLASS_FOREX,
     CLASS_STOCKS,
+    NO_ASSET_CLASS,
+    RETIRED_CLASS_DERIVATIVES,
     EXCHANGE_PACE_S,
     EXCHANGE_RATE_LIMIT_WAIT_S,
     YAHOO_PACE_S,
@@ -105,6 +106,14 @@ FUTURES_EXPIRING = "EXPIRING"
 FUTURES_PERPETUAL = "PERPETUAL"
 FUTURES_VOLUME_KEY = "volume_24h"
 FUTURES_PRICE_KEY = "price"
+#: The record fields naming what one futures product is written on. The venue
+#: sets ``non_crypto`` on a contract whose underlying is not a digital asset,
+#: and ``contract_root_unit`` names the underlying itself.
+FUTURES_ROOT_KEY = "contract_root_unit"
+FUTURES_NON_CRYPTO_KEY = "non_crypto"
+FUTURES_BASE_KEY = "base_currency_id"
+FUTURES_UNPLACED_LOG = "ata asset map: %s names root %r, no class holds it"
+SECTOR_MAP_READ_LOG = "ata asset map: crypto sector map read failed: %s"
 FUTURES_SOURCE_TEXT = "coinbase futures and perpetuals, 24 h volume x price"
 FUTURES_EMPTY_TEXT = "the product list answered no trading futures product"
 #: What ``futures_listings`` answers when every trading product read dropped.
@@ -114,7 +123,8 @@ FUTURES_ACTION = "FETCH_MARKETS"
 FUTURES_REASON = "ATA-SPM scan: which futures and perpetual products the venue trades"
 FUTURES_RESULT_FORMAT = (
     "{count} trading products received, {dead} not trading, "
-    "{silent} answered no candle, {expiring} expiring, {perpetual} perpetual"
+    "{silent} answered no candle, {unplaced} placed in no class, "
+    "{expiring} expiring, {perpetual} perpetual"
 )
 FUTURES_SILENT_LOG = "ata asset map: %s answered no candle on %s, dropped"
 
@@ -125,6 +135,11 @@ _FUTURES_SILENT: dict[str, "AssetListing"] = {}
 """The rows that read dropped, by upper-case symbol: the venue lists and
 trades each one and answered no candle on any granularity it serves. They stay
 reachable through ``listing_of`` so a typed product name still scans."""
+
+_FUTURES_UNPLACED: dict[str, str] = {}
+"""The product ids ``futures_placement`` could place in no class, by upper-case
+symbol, each holding the root unit read off its own record. They are counted
+and named on the order line rather than guessed into a class."""
 
 #: What a public product read raises: a transport or HTTP failure, a refused
 #: scheme or a body that is not JSON, and a body of an unexpected shape.
@@ -257,8 +272,6 @@ MIN_WINDOW_DAYS: int = 1
 SECTOR_MAJOR = "major"
 SECTOR_MINOR = "minor"
 SECTOR_EXOTIC = "exotic"
-SECTOR_EXPIRING = "expiring"
-SECTOR_PERPETUAL = "perpetual"
 SECTOR_PORTFOLIO = "portfolio"
 
 #: The five sectors the S&P GSCI divides the commodities class into, spelled
@@ -279,7 +292,54 @@ RETIRED_SECTORS: dict[str, str] = {
     "gas": SECTOR_ENERGY,
 }
 
+#: The published exchange root codes a non-crypto futures contract can carry,
+#: each with the class, the sector and the underlying that root names.
+#: ``futures_placement`` reads it for a product the venue flags non_crypto; a
+#: root outside it is named by ``futures_unplaced`` and placed in no class.
+NON_CRYPTO_ROOTS: dict[str, tuple] = {
+    "SI": (CLASS_COMMODITIES, SECTOR_PRECIOUS_METALS, "silver"),
+    "GC": (CLASS_COMMODITIES, SECTOR_PRECIOUS_METALS, "gold"),
+    "PL": (CLASS_COMMODITIES, SECTOR_PRECIOUS_METALS, "platinum"),
+    "PA": (CLASS_COMMODITIES, SECTOR_PRECIOUS_METALS, "palladium"),
+    "HG": (CLASS_COMMODITIES, SECTOR_INDUSTRIAL_METALS, "copper"),
+    "ALI": (CLASS_COMMODITIES, SECTOR_INDUSTRIAL_METALS, "aluminium"),
+    "CL": (CLASS_COMMODITIES, SECTOR_ENERGY, "WTI crude oil"),
+    "BZ": (CLASS_COMMODITIES, SECTOR_ENERGY, "Brent crude oil"),
+    "NG": (CLASS_COMMODITIES, SECTOR_ENERGY, "natural gas"),
+    "RB": (CLASS_COMMODITIES, SECTOR_ENERGY, "RBOB gasoline"),
+    "HO": (CLASS_COMMODITIES, SECTOR_ENERGY, "heating oil"),
+    "ZC": (CLASS_COMMODITIES, SECTOR_AGRICULTURE, "corn"),
+    "ZW": (CLASS_COMMODITIES, SECTOR_AGRICULTURE, "wheat"),
+    "ZS": (CLASS_COMMODITIES, SECTOR_AGRICULTURE, "soybeans"),
+    "SB": (CLASS_COMMODITIES, SECTOR_AGRICULTURE, "sugar"),
+    "LE": (CLASS_COMMODITIES, SECTOR_LIVESTOCK, "live cattle"),
+    "HE": (CLASS_COMMODITIES, SECTOR_LIVESTOCK, "lean hogs"),
+    "ES": (CLASS_STOCKS, SECTOR_PORTFOLIO, "S&P 500 index"),
+    "NQ": (CLASS_STOCKS, SECTOR_PORTFOLIO, "Nasdaq-100 index"),
+    "YM": (CLASS_STOCKS, SECTOR_PORTFOLIO, "Dow Jones Industrial Average"),
+    "RTY": (CLASS_STOCKS, SECTOR_PORTFOLIO, "Russell 2000 index"),
+}
+
 USD = "USD"
+
+#: The contract form one listing takes. ISO 10962, the CFI standard, sorts a
+#: financial product by the instrument it is rather than by its underlying, so
+#: the form is a property of the listing and the class belongs to what the
+#: listing is written on.
+FORM_SPOT = "spot"
+FORM_EQUITY = "equity"
+FORM_ETF = "etf"
+FORM_FUTURE = "future"
+FORM_PERPETUAL = "perpetual future"
+
+#: The words a row and an offer draw for each ``FORM_`` key.
+FORM_LABELS: dict[str, str] = {
+    FORM_SPOT: "spot",
+    FORM_EQUITY: "equity",
+    FORM_ETF: "ETF",
+    FORM_FUTURE: "future",
+    FORM_PERPETUAL: "perpetual",
+}
 
 
 @dataclass(frozen=True)
@@ -290,7 +350,9 @@ class AssetListing:
     ``YahooChartAdapter.fetch_chunk`` checks its answer against; ``volumed``
     says whether ``venue`` sends a volume figure on ``ticker``'s bars;
     ``served`` is the venue's own timeframe table when the row was read off
-    one, and ``sector`` the sector the venue's quote named.
+    one; ``sector`` the sector the venue's quote named; ``form`` the contract
+    form the row takes, drawn by ``form_label``; and ``underlying`` what the
+    row is written on, answered by ``underlying_name``.
     """
 
     symbol: str
@@ -300,11 +362,24 @@ class AssetListing:
     volumed: bool = True
     served: tuple = ()
     sector: str = ""
+    form: str = FORM_SPOT
+    underlying: str = ""
+    asset_class: str = ""
 
     @property
     def listed(self) -> bool:
         """True when ``venue`` and ``ticker`` both name something."""
         return bool(self.venue) and bool(self.ticker)
+
+    @property
+    def form_label(self) -> str:
+        """The word ``FORM_LABELS`` draws for this row's ``form``."""
+        return FORM_LABELS.get(self.form, self.form)
+
+    @property
+    def underlying_name(self) -> str:
+        """``underlying`` while the row carries one, else ``symbol``."""
+        return self.underlying or self.symbol
 
     def serves(self, timeframe: Any) -> bool:
         """True when ``venue`` answers candles on ``timeframe``: ``served``
@@ -326,6 +401,7 @@ def _yahoo_fx(symbol: str) -> AssetListing:
         venue=VENUE_YAHOO,
         ticker=f"{base}{quote}=X",
         volumed=False,
+        form=FORM_SPOT,
     )
 
 
@@ -359,34 +435,34 @@ FOREX_EXOTIC: tuple[AssetListing, ...] = ()
 #: The four spot pairs, quoted per troy ounce. ``VENUE_YAHOO`` answers 404
 #: for every spelling of all four, measured 2026-09-09.
 METALS_SPOT: tuple[AssetListing, ...] = tuple(
-    AssetListing(symbol=one, quote=USD)
+    AssetListing(symbol=one, quote=USD, form=FORM_SPOT)
     for one in ("XAU/USD", "XAG/USD", "XPT/USD", "XPD/USD")
 )
 
 #: The listed instrument for each ``METALS_SPOT`` metal: a fund holding the
 #: metal, priced in dollars, with no expiry and no contract roll.
 METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
-    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one, form=FORM_ETF)
     for one in ("GLD", "SLV", "PPLT", "PALL")
 )
 
 #: The listed instrument for each base metal, a fund of the same kind: CPER
 #: for copper and DBB for aluminium, zinc and copper together.
 METALS_BASE: tuple[AssetListing, ...] = tuple(
-    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one, form=FORM_ETF)
     for one in ("CPER", "DBB")
 )
 
 #: The listed instrument for each petroleum product: a fund priced in
 #: dollars whose shares carry no expiry, so its chart is one series.
 ENERGY_PETROLEUM: tuple[AssetListing, ...] = tuple(
-    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one, form=FORM_ETF)
     for one in ("USO", "BNO", "UGA")
 )
 
 #: The listed instrument for natural gas, a fund of the same kind.
 ENERGY_GAS: tuple[AssetListing, ...] = tuple(
-    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one, form=FORM_ETF)
     for one in ("UNG",)
 )
 
@@ -398,7 +474,7 @@ _MAPPED_FUNDS: frozenset[str] = frozenset(
 #: The operator's RA portfolio equities, every non-crypto ``SYMBOLS`` name
 #: no other map carries, on ``VENUE_YAHOO`` in ``SYMBOLS`` order.
 STOCKS_PORTFOLIO: tuple[AssetListing, ...] = tuple(
-    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one, form=FORM_EQUITY)
     for one in SYMBOLS
     if one not in CRYPTO_SYMBOLS and one not in _MAPPED_FUNDS
 )
@@ -441,6 +517,19 @@ SECTOR_ABSENCE: dict[str, str] = {
     ),
 }
 
+#: The standard naming the instrument categories a listing's ``form`` spells.
+#: ``MAP_SOURCES`` cites it for the contract-form point and every class record
+#: below reads against it.
+FORM_SOURCE = (
+    "ISO 10962, the CFI standard, https://www.iso.org/standard/81140.html. It "
+    "sorts a financial product into six categories -- equities, debt, "
+    "entitlements, options, futures and other -- so a future is an instrument "
+    "category and not an asset class. A futures contract is written on an "
+    "underlying and that underlying carries the asset class, which is why "
+    "AssetListing.form holds the contract form and futures_placement reads "
+    "each product's own underlying for its class and its sector."
+)
+
 #: What each class's map was built from, and when its tickers were measured.
 MAP_SOURCES: dict[str, str] = {
     CLASS_CRYPTO: (
@@ -449,7 +538,13 @@ MAP_SOURCES: dict[str, str] = {
         "connector's candle call. The market list at press time keeps the "
         "products the venue's market table says it trades: status online and "
         "trading_disabled false; the rest are named on the order line and "
-        "never fetched."
+        "never fetched. "
+        "ADDED 2026-09-24: this class also holds the Coinbase CDE futures "
+        "products whose underlying is a crypto asset. futures_placement reads "
+        "future_product_details.non_crypto and contract_root_unit off each "
+        "product record; a root the sector map or CRYPTO_SYMBOLS names is a "
+        "crypto underlying, the row is placed here with FORM_FUTURE, and its "
+        "sector is the tag load_sector_map holds for that root. " + FORM_SOURCE
     ),
     CLASS_FOREX: (
         "Liquidity tiers: major holds USD, minor crosses two majors, exotic "
@@ -521,7 +616,7 @@ MAP_SOURCES: dict[str, str] = {
         "same tuples, so the names kept off this list are unchanged. Nothing "
         "about the stocks class or its portfolio sector changed."
     ),
-    CLASS_DERIVATIVES: (
+    RETIRED_CLASS_DERIVATIVES: (
         "Coinbase Advanced Trade's public product list, read at press time by "
         "futures_listings: GET /api/v3/brokerage/market/products with "
         "product_type FUTURE, unauthenticated, the venue's dated futures "
@@ -550,9 +645,201 @@ MAP_SOURCES: dict[str, str] = {
         "lines after it with none, and 3 counted on the order line. One "
         "product answered no candle on 1h and 40 candles on 1d and stayed in "
         "the list. With every candle read answering none, 0 rows and 12 "
-        "counted."
+        "counted. "
+        "OVERTAKEN 2026-09-24, the first sentence above reading 'Coinbase "
+        "Advanced Trade's public product list, read at press time by "
+        "futures_listings': that list is still read the same way and by the "
+        "same function, and derivatives is no longer an asset class holding "
+        "it. " + FORM_SOURCE + " Each product now carries FORM_FUTURE or "
+        "FORM_PERPETUAL as its form and is placed under the class of its "
+        "underlying by futures_placement; ASSET_CLASSES holds crypto, stocks, "
+        "commodities and forex, and RETIRED_CLASSES resolves the name "
+        "derivatives onto crypto. NON_CRYPTO_ROOTS names the published "
+        "exchange root codes a non-crypto contract can carry; a root no table "
+        "resolves is placed nowhere, held in _FUTURES_UNPLACED, and counted "
+        "on the order line through MarketOrder.unplaced rather than guessed."
     ),
 }
+
+#: What the two deployability questions answer for one class or sector.
+#: ``reachable`` is whether a retail trader can reach the market from home at
+#: all, in law and market structure; ``wired`` is whether this program has a
+#: venue that can place an order on it. ATA-SPM scans either way.
+DEPLOY_CHARTS_ONLY = "charts only"
+DEPLOY_BOT_READY = "bot ready"
+DEPLOY_NOT_RETAIL = "charts only, not retail"
+DEPLOY_LINE_FORMAT = (
+    "{name}: reachable from home {reachable} -- {reason}; venue wired "
+    "{wired} -- {wired_reason}"
+)
+DEPLOY_YES = "yes"
+DEPLOY_NO = "no"
+
+
+@dataclass(frozen=True)
+class Deployability:
+    """The two answers one class or sector gives about being traded.
+
+    ``reachable`` says whether a retail trader can reach the market from home
+    at all and ``reason`` why; ``wired`` says whether this program has a venue
+    that can place an order on it and ``wired_reason`` why; ``badge`` is the
+    word a row draws and ``line`` the sentence an order line carries.
+    """
+
+    reachable: bool
+    reason: str
+    wired: bool
+    wired_reason: str
+
+    @property
+    def badge(self) -> str:
+        """``DEPLOY_BOT_READY``, ``DEPLOY_CHARTS_ONLY`` or ``DEPLOY_NOT_RETAIL``."""
+        if not self.reachable:
+            return DEPLOY_NOT_RETAIL
+        return DEPLOY_BOT_READY if self.wired else DEPLOY_CHARTS_ONLY
+
+    def line(self, name: Any) -> str:
+        """``DEPLOY_LINE_FORMAT`` filled for ``name``, both answers apart."""
+        return DEPLOY_LINE_FORMAT.format(
+            name=name,
+            reachable=DEPLOY_YES if self.reachable else DEPLOY_NO,
+            reason=self.reason,
+            wired=DEPLOY_YES if self.wired else DEPLOY_NO,
+            wired_reason=self.wired_reason,
+        )
+
+
+#: What every live asset class answers. No class outside crypto has a venue
+#: this program can place an order through: VENUE_YAHOO is a quote source and
+#: the equities layer is unbuilt.
+CLASS_DEPLOYABILITY: dict[str, Deployability] = {
+    CLASS_CRYPTO: Deployability(
+        reachable=True,
+        reason="a retail account on a crypto venue takes orders over its API",
+        wired=True,
+        wired_reason="VENUE_EXCHANGE is the connector the live bots trade on",
+    ),
+    CLASS_STOCKS: Deployability(
+        reachable=True,
+        reason="a retail broker account takes equity orders over its API",
+        wired=False,
+        wired_reason=(
+            "no broker connector is reachable from the running program and "
+            "VENUE_YAHOO is a quote source, not a broker"
+        ),
+    ),
+    CLASS_COMMODITIES: Deployability(
+        reachable=True,
+        reason="every listed row is an ETF share a retail broker account buys",
+        wired=False,
+        wired_reason="the same missing broker connector as the stocks class",
+    ),
+    CLASS_FOREX: Deployability(
+        reachable=True,
+        reason="a retail account at a registered FX dealer takes spot orders",
+        wired=False,
+        wired_reason="no FX dealer connector exists and VENUE_YAHOO only quotes",
+    ),
+}
+
+#: What one sector answers where its own reading differs from its class's.
+#: A sector absent here takes its class's answer through ``deployability``.
+SECTOR_DEPLOYABILITY: dict[tuple, Deployability] = {
+    (CLASS_COMMODITIES, SECTOR_PRECIOUS_METALS): Deployability(
+        reachable=True,
+        reason=(
+            "the four METALS_PHYSICAL funds are ETF shares a retail broker "
+            "account buys, while the four METALS_SPOT rows carry NO_VENUE and "
+            "no dealer quote reaches them through this program"
+        ),
+        wired=False,
+        wired_reason="the same missing broker connector as the stocks class",
+    ),
+}
+
+#: What one contract form answers wherever the form decides rather than the
+#: class. A futures row is reachable at the venue listing it and no order path
+#: reaches it from here.
+FORM_DEPLOYABILITY: dict[str, Deployability] = {
+    FORM_FUTURE: Deployability(
+        reachable=True,
+        reason=(
+            "Coinbase Advanced Trade takes orders on its US futures products "
+            "over the same API the spot products use"
+        ),
+        wired=False,
+        wired_reason=(
+            "VENUE_FUTURES is a candle adapter with no order path, so no bot "
+            "deploys on a CDE product"
+        ),
+    ),
+}
+FORM_DEPLOYABILITY[FORM_PERPETUAL] = FORM_DEPLOYABILITY[FORM_FUTURE]
+
+#: What a row carrying ``NO_VENUE`` answers. ``METALS_SPOT`` is the only such
+#: listing tuple and no configured venue quotes any of its four pairs.
+UNVENUED_DEPLOYABILITY = Deployability(
+    reachable=False,
+    reason=(
+        "the row carries NO_VENUE, so no quote and no order route reaches it "
+        "through this program"
+    ),
+    wired=False,
+    wired_reason="no venue is named on the row at all",
+)
+
+
+def deployability(asset_class: Any, sector: Any = "") -> Deployability:
+    """What one class, or one sector inside it, answers about being traded.
+
+    ``SECTOR_DEPLOYABILITY`` answers first where it holds the pair, else
+    ``CLASS_DEPLOYABILITY``; a class neither holds reads as unreachable.
+    """
+    key = asset_class_named(asset_class)
+    held = SECTOR_DEPLOYABILITY.get((key, str(sector).strip().lower()))
+    if held is not None:
+        return held
+    return CLASS_DEPLOYABILITY.get(
+        key,
+        Deployability(
+            reachable=False,
+            reason="no class record names this name",
+            wired=False,
+            wired_reason="no venue is declared for it",
+        ),
+    )
+
+
+def deployability_line(asset_class: Any, sector: Any = "") -> str:
+    """``Deployability.line`` for one class, or for one sector inside it."""
+    name = (
+        f"{asset_class_named(asset_class)} / {sector}"
+        if sector
+        else str(asset_class_named(asset_class))
+    )
+    return deployability(asset_class, sector).line(name)
+
+
+def listing_deployability(listing: Any, asset_class: Any = "") -> Deployability:
+    """What one row answers: its venue first, then its form, then its sector.
+
+    A row carrying no venue reads ``UNVENUED_DEPLOYABILITY`` and a futures row
+    reads ``FORM_DEPLOYABILITY``, so a market the class can trade and a market
+    it cannot are told apart on the row itself.
+    """
+    if listing is None:
+        return deployability(asset_class)
+    if not getattr(listing, "listed", False):
+        return UNVENUED_DEPLOYABILITY
+    held = FORM_DEPLOYABILITY.get(str(getattr(listing, "form", "")))
+    if held is not None:
+        return held
+    return deployability(asset_class, getattr(listing, "sector", ""))
+
+
+def deployability_badge(listing: Any, asset_class: Any = "") -> str:
+    """The word one listing's row draws, from ``listing_deployability``."""
+    return listing_deployability(listing, asset_class).badge
 
 
 def exchange_listing(symbol: Any, served: Any = ()) -> AssetListing:
@@ -564,6 +851,8 @@ def exchange_listing(symbol: Any, served: Any = ()) -> AssetListing:
         quote=USD,
         venue=VENUE_EXCHANGE,
         ticker=name,
+        form=FORM_SPOT,
+        asset_class=CLASS_CRYPTO,
         served=tuple(str(one) for one in served or ()),
     )
 
@@ -638,14 +927,36 @@ def screened_listings() -> tuple[AssetListing, ...]:
     return tuple(_SCREENED.values())
 
 
-def futures_tickers() -> list:
-    """The symbols the last ``futures_listings`` read admitted, sorted."""
-    return sorted(_FUTURES)
+def futures_tickers(asset_class: Any = "") -> list:
+    """The symbols the last ``futures_listings`` read admitted, sorted.
+
+    An ``asset_class`` narrows the answer to the products ``futures_placement``
+    put under that class; the default answers every admitted product.
+    """
+    key = asset_class_named(asset_class) if asset_class else ""
+    if not key:
+        return sorted(_FUTURES)
+    return sorted(name for name, one in _FUTURES.items() if one.asset_class == key)
+
+
+def futures_of_class(asset_class: Any) -> list:
+    """The rows the last ``futures_listings`` read put under one class."""
+    key = asset_class_named(asset_class)
+    return [one for one in _FUTURES.values() if one.asset_class == key]
 
 
 def futures_silent() -> list:
     """The symbols the last ``futures_listings`` read dropped, sorted."""
     return sorted(_FUTURES_SILENT)
+
+
+def futures_unplaced() -> list:
+    """The symbols the last ``futures_listings`` read could place in no class.
+
+    ``futures_placement`` resolved neither a crypto underlying nor a
+    ``NON_CRYPTO_ROOTS`` root for each one, so none is guessed into a class.
+    """
+    return sorted(_FUTURES_UNPLACED)
 
 
 def venue_granularities(venue: Any) -> tuple:
@@ -705,6 +1016,52 @@ def _expiry_type(product: dict) -> str:
     return str(held or "").upper()
 
 
+def _root_of(product: dict) -> str:
+    """``FUTURES_ROOT_KEY`` off the product's details, else ``FUTURES_BASE_KEY``."""
+    details = product.get(FUTURES_DETAILS_KEY) or {}
+    held = details.get(FUTURES_ROOT_KEY) if isinstance(details, dict) else ""
+    return str(held or product.get(FUTURES_BASE_KEY) or "").strip().upper()
+
+
+def _non_crypto(product: dict) -> bool:
+    """``FUTURES_NON_CRYPTO_KEY`` off the product's details, False while absent."""
+    details = product.get(FUTURES_DETAILS_KEY) or {}
+    if not isinstance(details, dict):
+        return False
+    return bool(details.get(FUTURES_NON_CRYPTO_KEY))
+
+
+def _crypto_sector(root: str) -> str:
+    """The sector tag ``load_sector_map`` holds for one crypto root, else empty."""
+    from .topology_proposals import load_sector_map
+
+    try:
+        held = load_sector_map()
+    except Exception as exc:  # noqa: BLE001 - the map is operator-editable
+        logger.debug(SECTOR_MAP_READ_LOG, exc)
+        return ""
+    return str(held.get(root, "")).lower()
+
+
+def futures_placement(product: dict) -> tuple[str, str, str]:
+    """The underlying, the asset class and the sector one futures product takes.
+
+    ``_non_crypto`` and ``_root_of`` read the venue's own record: a root the
+    crypto names hold places the product under ``CLASS_CRYPTO`` with the
+    sector map's tag, a root ``NON_CRYPTO_ROOTS`` names places it under that
+    class and sector, and every other root answers ``NO_ASSET_CLASS``.
+    """
+    root = _root_of(product)
+    if not root:
+        return "", NO_ASSET_CLASS, ""
+    if not _non_crypto(product) and (root in CRYPTO_SYMBOLS or _crypto_sector(root)):
+        return root, CLASS_CRYPTO, _crypto_sector(root)
+    held = NON_CRYPTO_ROOTS.get(root)
+    if held is None:
+        return root, NO_ASSET_CLASS, ""
+    return held[2], held[0], held[1]
+
+
 def _figure_of(product: dict) -> float:
     """``FUTURES_VOLUME_KEY`` times ``FUTURES_PRICE_KEY``, or ``NO_VOLUME_FIGURE``."""
     try:
@@ -719,13 +1076,15 @@ def _figure_of(product: dict) -> float:
 def futures_listings(
     timeout_s: float = FUTURES_TIMEOUT_S, read: Any = None
 ) -> tuple[list, dict, str, list]:
-    """The derivatives rows ``FUTURES_PRODUCTS_URL`` lists as trading and
+    """The futures rows ``FUTURES_PRODUCTS_URL`` lists as trading and
     ``candle_served`` admits, their figures by symbol, the refusal when the
     list answered none, and the symbols the admission dropped.
 
-    Each product is one ``AssetListing`` on ``VENUE_FUTURES`` under
-    ``SECTOR_EXPIRING`` or ``SECTOR_PERPETUAL``; the admitted rows fill
-    ``_FUTURES`` and the dropped ones ``_FUTURES_SILENT``.
+    Each product is one ``AssetListing`` on ``VENUE_FUTURES`` carrying
+    ``FORM_FUTURE`` or ``FORM_PERPETUAL`` and the class, the sector and the
+    underlying ``futures_placement`` read off its own record; the admitted rows
+    fill ``_FUTURES``, the dropped ones ``_FUTURES_SILENT``, and a product no
+    class holds ``_FUTURES_UNPLACED``.
     """
     start = time.monotonic()
     try:
@@ -748,6 +1107,7 @@ def futures_listings(
     rows: list = []
     figures: dict = {}
     dead = 0
+    _FUTURES_UNPLACED.clear()
     for product in products:
         if not isinstance(product, dict):
             continue
@@ -758,6 +1118,11 @@ def futures_listings(
             dead += 1
             continue
         expiry = _expiry_type(product)
+        underlying, placed_class, placed_sector = futures_placement(product)
+        if not placed_class:
+            _FUTURES_UNPLACED[symbol] = underlying
+            logger.debug(FUTURES_UNPLACED_LOG, symbol, underlying)
+            continue
         rows.append(
             AssetListing(
                 symbol=symbol,
@@ -765,9 +1130,10 @@ def futures_listings(
                 venue=VENUE_FUTURES,
                 ticker=symbol,
                 served=VENUE_TIMEFRAMES[VENUE_FUTURES],
-                sector=(
-                    SECTOR_PERPETUAL if expiry == FUTURES_PERPETUAL else SECTOR_EXPIRING
-                ),
+                sector=placed_sector,
+                form=(FORM_PERPETUAL if expiry == FUTURES_PERPETUAL else FORM_FUTURE),
+                underlying=underlying,
+                asset_class=placed_class,
             )
         )
         figure = _figure_of(product)
@@ -796,8 +1162,9 @@ def futures_listings(
             count=len(rows),
             dead=dead,
             silent=len(silent),
-            expiring=sum(1 for one in rows if one.sector == SECTOR_EXPIRING),
-            perpetual=sum(1 for one in rows if one.sector == SECTOR_PERPETUAL),
+            unplaced=len(_FUTURES_UNPLACED),
+            expiring=sum(1 for one in rows if one.form == FORM_FUTURE),
+            perpetual=sum(1 for one in rows if one.form == FORM_PERPETUAL),
         ),
         elapsed_ms=(time.monotonic() - start) * 1000,
         level=API_LEVEL_SUCCESS if rows else API_LEVEL_WARNING,
@@ -871,6 +1238,8 @@ def screener_listings(
                 venue=VENUE_YAHOO,
                 ticker=symbol,
                 sector=str(quote.get(SCREENER_SECTOR_KEY) or ""),
+                form=FORM_EQUITY,
+                asset_class=CLASS_STOCKS,
             )
         )
         if volume > NO_VOLUME_FIGURE:
@@ -1050,7 +1419,16 @@ def _candles_of(ticker: str, rows: Any) -> list:
 
 __all__ = [
     "AssetListing",
+    "CLASS_DEPLOYABILITY",
     "CROSS_ORDER",
+    "Deployability",
+    "FORM_ETF",
+    "FORM_EQUITY",
+    "FORM_FUTURE",
+    "FORM_LABELS",
+    "FORM_PERPETUAL",
+    "FORM_SOURCE",
+    "FORM_SPOT",
     "FOREX_EXOTIC",
     "FOREX_MAJOR",
     "FOREX_MINOR",
@@ -1062,18 +1440,17 @@ __all__ = [
     "METALS_PHYSICAL",
     "METALS_SPOT",
     "MIN_WINDOW_DAYS",
+    "NON_CRYPTO_ROOTS",
     "NO_VENUE",
     "NO_VOLUME_FIGURE",
     "SECTOR_ABSENCE",
     "SECTOR_AGRICULTURE",
     "SECTOR_ENERGY",
     "SECTOR_EXOTIC",
-    "SECTOR_EXPIRING",
     "SECTOR_INDUSTRIAL_METALS",
     "SECTOR_LIVESTOCK",
     "SECTOR_MAJOR",
     "SECTOR_MINOR",
-    "SECTOR_PERPETUAL",
     "SECTOR_PORTFOLIO",
     "SECTOR_PRECIOUS_METALS",
     "RETIRED_SECTORS",
@@ -1094,10 +1471,17 @@ __all__ = [
     "WEEKLY_TIMEFRAME",
     "candle_served",
     "complete_bar",
+    "deployability",
+    "deployability_badge",
+    "deployability_line",
     "exchange_listing",
     "futures_listings",
+    "futures_of_class",
+    "futures_placement",
     "futures_silent",
     "futures_tickers",
+    "futures_unplaced",
+    "listing_deployability",
     "listing_of",
     "listings_for",
     "screened_listings",
