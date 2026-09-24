@@ -1018,7 +1018,29 @@ def mask_registry() -> Any:
 WIRE_KEYS = ("source_id", "target_id", "pct", "phase")
 START_PHASE = 0.0
 PHASE_RATE = 2.5
-FRAME_INTERVAL_MS = 33
+
+MS_PER_S = 1000.0
+TARGET_FRAMES_PER_S = 30
+SCHEDULER_TICK_MS = 15.625
+"""The Windows scheduler tick a timer wait is rounded up to, in milliseconds."""
+
+FRAME_INTERVAL_MS = int(
+    math.floor(MS_PER_S / TARGET_FRAMES_PER_S / SCHEDULER_TICK_MS) * SCHEDULER_TICK_MS
+)
+"""The animation timer's interval: the largest whole number of scheduler ticks
+inside one frame at ``TARGET_FRAMES_PER_S``. A wait longer than a tick multiple
+is rounded up to the next tick, so asking for the 33 ms that ``1000 / 30`` reads
+as delivers 46.875 ms, which is 21 frames a second and not 30.
+"""
+
+PERCENT_SCALE = 100.0
+MEDIAN_PERCENT = 50.0
+NEAR_WORST_PERCENT = 95.0
+FRAME_LATE_RATIO = 1.5
+FRAME_BUDGET_MS = FRAME_INTERVAL_MS * FRAME_LATE_RATIO
+CADENCE_WINDOW_S = 5.0
+FRAME_CADENCE_SIGNAL = "swarm.11.003.invariant.frame_cadence"
+NO_LATE_FRAMES = 0
 
 BIDIRECTIONAL_OFFSET_PX = 25.0
 NO_OFFSET_PX = 0.0
@@ -1064,6 +1086,100 @@ def point_in_rect(point: tuple, origin: tuple, size: tuple) -> bool:
         origin[0] <= point[0] <= origin[0] + size[0] - 1
         and origin[1] <= point[1] <= origin[1] + size[1] - 1
     )
+
+
+def nearest_rank(ascending: list, percent: float) -> float:
+    """The nearest-rank percentile of an ascending list of numbers.
+
+    Nearest rank takes the ``ceil(percent / 100 * N)``th value, so the
+    answer is a value the list holds and not an interpolation between
+    two of them. An empty list answers 0.0.
+    """
+    held = len(ascending)
+    if held <= 0:
+        return 0.0
+    rank = math.ceil(percent / PERCENT_SCALE * held)
+    return float(ascending[max(1, min(held, rank)) - 1])
+
+
+class FrameCadence:
+    """The gaps between wire-flow paints, folded one ``window_s`` at a time.
+
+    ``observe`` takes each paint's start and its work, ``due`` answers
+    when a window is full, ``take`` answers it through ``reading``, which
+    carries the median, the 95th and the worst gap beside the paint work.
+    """
+
+    def __init__(
+        self,
+        window_s: float = CADENCE_WINDOW_S,
+        budget_ms: float = FRAME_BUDGET_MS,
+    ) -> None:
+        self.window_s = float(window_s)
+        self.budget_ms = float(budget_ms)
+        self.gaps_ms: list[float] = []
+        self.work_ms: list[float] = []
+        self.previous_frame: Optional[float] = None
+        self.window_start: Optional[float] = None
+
+    def observe(self, started: float, work_ms: float) -> Optional[float]:
+        """Keep this paint's gap and work; answer the gap, None for the first."""
+        moment = float(started)
+        if self.window_start is None:
+            self.window_start = moment
+        before = self.previous_frame
+        self.previous_frame = moment
+        self.work_ms.append(max(0.0, float(work_ms)))
+        if before is None:
+            return None
+        gap_ms = (moment - before) * MS_PER_S
+        if gap_ms < 0.0:
+            return None
+        self.gaps_ms.append(gap_ms)
+        return gap_ms
+
+    def due(self, now: float) -> bool:
+        """Whether a full ``window_s`` of paints has been folded."""
+        if self.window_start is None or not self.gaps_ms:
+            return False
+        return (float(now) - self.window_start) >= self.window_s
+
+    def reading(self) -> dict:
+        """This window's gap and work distribution, in milliseconds."""
+        gaps = sorted(self.gaps_ms)
+        work = sorted(self.work_ms)
+        frames = len(gaps)
+        if frames <= 0:
+            return {
+                "frames": 0,
+                "mean_ms": 0.0,
+                "median_ms": 0.0,
+                "near_worst_ms": 0.0,
+                "worst_ms": 0.0,
+                "median_work_ms": 0.0,
+                "worst_work_ms": 0.0,
+                "late_frames": NO_LATE_FRAMES,
+                "budget_ms": self.budget_ms,
+            }
+        return {
+            "frames": frames,
+            "mean_ms": round(sum(gaps) / frames, 2),
+            "median_ms": round(nearest_rank(gaps, MEDIAN_PERCENT), 2),
+            "near_worst_ms": round(nearest_rank(gaps, NEAR_WORST_PERCENT), 2),
+            "worst_ms": round(gaps[-1], 2),
+            "median_work_ms": round(nearest_rank(work, MEDIAN_PERCENT), 2),
+            "worst_work_ms": round(work[-1], 2),
+            "late_frames": sum(1 for gap in gaps if gap > self.budget_ms),
+            "budget_ms": self.budget_ms,
+        }
+
+    def take(self, now: float) -> dict:
+        """Answer this window's ``reading`` and start the next window at ``now``."""
+        window = self.reading()
+        self.gaps_ms = []
+        self.work_ms = []
+        self.window_start = float(now)
+        return window
 
 
 class WireBoard:

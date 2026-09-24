@@ -63,9 +63,12 @@ if _HAS_QT:
 
         def __init__(self, parent=None):
             super().__init__(parent)
+            from .main_tabs.bot_visualizer_surface import FrameCadence
+
             self._theme_key = "quantum"
             self._bot_widgets: dict[str, BotNodeWidget] = {}
             self._last_time = time.monotonic()
+            self._frame_cadence = FrameCadence()
             self._wires: list[dict] = []  # [{source_id, target_id, pct, phase}]
             self._dragging_wire = False
             self._wire_start_id: str = ""
@@ -467,10 +470,11 @@ if _HAS_QT:
             # Qt fires no currentChanged for the first tab.
             _on_tab_changed(self._tabs.currentIndex())
 
-            # 33 ms is 30 frames a second.
+            from .main_tabs import bot_visualizer_surface as surface
+
             self._anim_timer = QTimer(self)
             self._anim_timer.timeout.connect(self._animate)
-            self._anim_timer.start(33)
+            self._anim_timer.start(surface.FRAME_INTERVAL_MS)
 
         def _create_sim_bot_row(self):
             """Append one row to ``_sim_bots`` and ``_sim_swarm_layout``."""
@@ -1625,6 +1629,41 @@ if _HAS_QT:
                 if self._wire_canvas.isVisible():
                     self._wire_canvas.raise_()
                 self._wire_canvas.update()
+            if self._frame_cadence.due(now):
+                self._report_frame_cadence(now)
+
+        def observe_frame(self, started: float, work_ms: float) -> None:
+            """Take one wire-canvas paint's start time and its work, in milliseconds.
+
+            ``_WireCanvas.paintEvent`` calls this at the end of every paint it
+            draws, which is the cadence the operator watches.
+            """
+            self._frame_cadence.observe(started, work_ms)
+
+        def _report_frame_cadence(self, now: float) -> None:
+            """Emit one window of animation frame gaps on the cadence pin.
+
+            ``actual`` is how many gaps in the window ran past the frame
+            budget, which is the stutter count, and the context carries the
+            window's median, 95th and worst gap in milliseconds.
+            """
+            from .main_tabs import bot_visualizer_surface as surface
+
+            window = self._frame_cadence.take(now)
+            context = dict(window)
+            context["wires"] = len(self._wires)
+            context["cards"] = len(self._bot_widgets)
+            try:
+                from src.core.signal_contract import emit as _sw_emit
+
+                _sw_emit(
+                    surface.FRAME_CADENCE_SIGNAL,
+                    actual=window["late_frames"],
+                    expected=surface.NO_LATE_FRAMES,
+                    context=context,
+                )
+            except Exception:  # noqa: BLE001,S110 - advisory
+                pass
 
         def _get_bot_center(self, bot_id: str) -> Optional[QPointF]:
             """Return a ``BotNodeWidget`` centre in ``_wire_canvas`` coordinates."""

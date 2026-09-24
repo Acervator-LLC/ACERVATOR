@@ -111,6 +111,40 @@ if pct <= 0:
 `_confirm_mass` puts a count and a description in front of the operator before
 a bulk connect or disconnect runs.
 
+## The flow along a wire
+
+One `QTimer` on the Bot Swarm tab drives the whole animation.
+`BotVisualizationTab._animate` in `src/gui/bot_visualizer.py` runs on every
+tick: it moves each locust card on, adds the elapsed time to every wire's
+phase, and asks the wire overlay to repaint. `_WireCanvas.paintEvent` in
+`src/gui/visualizer/wire_canvas.py` draws the frame, and the travelling dot
+sits at `pulse_percent(phase)` along the wire.
+
+The timer's interval is `FRAME_INTERVAL_MS` in
+`src/gui/main_tabs/bot_visualizer_surface.py`, worked out rather than written
+down: the largest whole number of Windows scheduler ticks that fits inside one
+frame at `TARGET_FRAMES_PER_S`. A wait is rounded up to the next
+`SCHEDULER_TICK_MS`, so asking for the 33 ms that `1000 / 30` reads as
+delivers 46.875 ms — 21 frames a second, not 30. Two ticks is 31.25 ms, so the
+timer asks for 31 ms and the flow runs at 30 frames a second.
+
+Every frame reports itself. `_WireCanvas.paintEvent` hands its start time and
+its own duration to `FrameCadence`, and once a `CADENCE_WINDOW_S` window is
+folded `BotVisualizationTab._report_frame_cadence` emits
+`swarm.11.003.invariant.frame_cadence`. The record carries the window's frame
+count, the mean, median, 95th and worst gap between paints, the median and
+worst paint duration, and how many gaps ran past `FRAME_BUDGET_MS`. A stutter
+is one long gap among short ones, so `FrameCadence.reading` reports the median
+and the 95th apart — a mean alone hides it.
+
+The React Bot Swarm page draws no flow. Its `wire-canvas` element is
+`display: none`, `WireOverlay` in `src/gui/web/bot_visualizer.js` redraws only
+when the wire list, the opacity or the theme changes, and no caller on the page
+sends the `animate` action that `apply_action` in
+`src/gui/main_tabs/bot_visualizer_surface.py` provides. Read on the running
+page with 38 bots and 33 wires loaded, it calls `requestAnimationFrame` zero
+times and `setInterval` zero times.
+
 ## Routing the profit
 
 `SmartWireManager` in `src/trading/smart_wire.py` owns the topology and one

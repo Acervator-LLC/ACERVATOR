@@ -190,8 +190,12 @@ _ALWAYS_ON_PINS: dict[str, str] = {
     "exchange.15.003.invariant.selection_survives_refresh": (
         "the same timer, the same call"
     ),
+    "swarm.11.003.invariant.frame_cadence": (
+        "the Bot Swarm animation timer folds every frame gap and reports each "
+        "five-second window"
+    ),
 }
-"""The fifteen pins a loop or a timer reaches on every pass, categorised
+"""The sixteen pins a loop or a timer reaches on every pass, categorised
 `CADENCE_ALWAYS_ON`. Each value is the reason, read at the call site.
 """
 
