@@ -7,6 +7,8 @@
   var CENTRAL_LAYOUT = "central_layout";
   var TOP_ROW = "top_row";
   var TOP_ROW_ORDER = "top_row_order";
+  var WIDTH_BUDGET = "width_budget";
+  var BUDGET_SLOTS = "slots";
   var VISIBLE = "visible";
   var ISOLATED_TABS = "isolated_tabs";
   var SPENDABLE = "spendable";
@@ -37,7 +39,8 @@
     SPENDABLE,
     TOP_ROW,
     TOP_ROW_ORDER,
-    VISIBLE
+    VISIBLE,
+    WIDTH_BUDGET
   ];
 
   var KEY = "key";
@@ -400,6 +403,23 @@
     return style;
   }
 
+  // Every top row slot declares a floor, so a long amount cannot widen the
+  // row past the pane and push the class group off its right edge.
+  function slotFloor(model, slot) {
+    var budget = objectField(model, WIDTH_BUDGET);
+    var slots = objectField(budget, BUDGET_SLOTS);
+    return owns(slots, slot) ? slots[slot] : undefined;
+  }
+
+  // A slot never spills: it shrinks to its floor and clips what will not fit.
+  function withFloor(style, floor) {
+    if (floor !== undefined) {
+      style.minWidth = length(floor);
+      style.overflow = "hidden";
+    }
+    return style;
+  }
+
   function stretchOf(layout, at) {
     var stretch = listField(layout, CHILD_STRETCH);
     return at < stretch.length ? stretch[at] : undefined;
@@ -409,12 +429,13 @@
     return listField(layout, CHILD_STRETCH).slice().shift();
   }
 
-  // A QHBoxLayout stretch divides the whole row, so the flex basis is zero
-  // and min-content still holds each slot off its own floor.
+  // A stretch of zero draws the slot at its own width; a stretch above zero
+  // divides what the zero slots leave, as the QHBoxLayout stretch does.
   function withStretch(style, stretch) {
     if (stretch !== undefined) {
       style.flexGrow = stretch;
-      style.flexBasis = 0;
+      style.flexShrink = 1;
+      style.flexBasis = stretch > 0 ? 0 : "auto";
     }
     return style;
   }
@@ -459,6 +480,7 @@
       style.gap = length(layout[COLUMN_SPACING_PX]);
     }
     withStretch(style, props.stretch);
+    withFloor(style, props.floor);
     var panelProps = { className: SPENDABLE_CLASS, style: style };
     panelProps[PART_ATTR] = SPENDABLE;
     panelProps[SLOT_ATTR] = SPENDABLE;
@@ -570,6 +592,7 @@
 
     var groupStyle = { display: "flex", gap: "2px" };
     withStretch(groupStyle, props.stretch);
+    withFloor(groupStyle, props.floor);
     var groupProps = {
       className: MODE_GROUP_CLASS,
       style: groupStyle,
@@ -595,11 +618,13 @@
 
   function slotNode(model, slot, at) {
     var stretch = stretchOf(objectField(model, TOP_ROW), at);
+    var floor = slotFloor(model, slot);
     if (slot === SPENDABLE) {
       return element(SpendablePanel, {
         key: slot,
         spendable: model[SPENDABLE],
-        stretch: stretch
+        stretch: stretch,
+        floor: floor
       });
     }
     if (slot === MODE_BUTTON) {
@@ -607,7 +632,8 @@
         key: slot,
         button: model[MODE_BUTTON],
         actions: objectField(model, ACTIONS),
-        stretch: stretch
+        stretch: stretch,
+        floor: floor
       });
     }
     var card = counterFor(model, slot);
@@ -618,7 +644,8 @@
       key: slot,
       model: model,
       card: card,
-      stretch: stretch
+      stretch: stretch,
+      floor: floor
     });
   }
 

@@ -6175,6 +6175,30 @@ The class list is read from `ASSET_CLASSES` at run time. Unit S13 of issue 23
 replaced Metals and Energy with Commodities while this unit was open, and the
 group followed with no edit: it dropped to five buttons and drew the new class.
 
+**A retired class name reaches the class that holds its markets.** `ata_spm`
+names the pair, and the group reads that name rather than carrying its own copy,
+so a selection stored under the old taxonomy still opens on the right class.
+
+`src/gui/main_tabs/asset_class_surface.py` — `normalise`
+
+```python
+asked = LEGACY_CLASS_WORDS.get(asked, asked)
+asked = RETIRED_CLASSES.get(asked, asked)
+```
+
+Read for each name in turn, on the running window:
+
+| stored name | the class it opens on | the button reads | its accent |
+|---|---|---|---|
+| `metals` | commodities | Commodities | `#ffaa00` |
+| `energy` | commodities | Commodities | `#ffaa00` |
+| `stock` | stocks | Stock | `#6699ff` |
+| `equities` | stocks | Stock | `#6699ff` |
+| a name no class holds | crypto | Crypto | `#00ccaa` |
+
+Each of the five live classes draws its own label and its own accent. None
+falls back to the neutral default.
+
 **A venue may serve more than one class.** The active class filters the venue
 list; it never owns it. Coinbase serves crypto and derivatives, so it is offered
 under both.
@@ -6202,17 +6226,98 @@ active_asset_class: str = "crypto"
 their own text to the room each has, so no label is cut mid-letter and no
 counter is pushed off the strip. The full class name stays in the tooltip.
 
-Measured on the running window, at five widths:
+The table below replaces an earlier one on this page. That one measured the
+group on its own. This one measures it in the assembled window, where the KPI
+columns and the five counters share the row with it.
 
-| window | group | each button | the labels |
-|---|---|---|---|
-| 700 | 255 px | 49 px | none in full |
-| 900 | 332 px | 64 px | Stock and Forex in full |
-| 1086 | 404 px | 79 px | Crypto, Stock and Forex in full |
-| 1400 | 525 px | 103 px | Crypto, Stock and Forex in full |
-| 1920 | 725 px | 143 px | all five in full |
+> "Measured on the running window, at five widths: | 700 | 255 px | 49 px |
+> none in full |"
 
-Nothing is clipped and nothing is pushed off the strip at any of the five.
+The group draws 178 px at a 700 px window, not 255, because the KPI columns and
+the counters take the room they need first.
+
+#### The header row's width budget
+
+**Every part of the row declares a floor.** A floor is what the part draws at
+when the row cannot give it more, and the sum of the floors is the narrowest the
+window opens at. Without them a part's minimum is the width of its own text, and
+a six-figure amount widens the whole window past the screen.
+
+`src/gui/main_tabs/header_strip_surface.py` — the floors
+
+```python
+SPENDABLE_MIN_W = 180
+COUNTER_MIN_W = 48
+```
+
+The class group's floor is arithmetic over the class count, so a class added to
+the taxonomy widens the group and the window with it.
+
+`src/gui/main_tabs/asset_class_surface.py` — `group_min_w`
+
+```python
+held = len(asset_classes()) if count is None else int(count)
+return held * BUTTON_MIN_W + (held - 1) * GROUP_SPACING_PX
+```
+
+Five classes at 34 px with four gaps at 2 px is **178 px**. The whole row is
+180 + five counters at 48 + 178 + six gaps at 4 px = **622 px**, and the window
+is that plus the central layout's 6 px either side: **634 px**.
+
+**What each part gets, read off the running window.** Both builds, every class
+button reachable at every width.
+
+Qt:
+
+| window | pane | KPI strip | Scrummed | Folded | Trades | Bots | Errors | group | each button | reachable |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 700 | 688 | 246 | 48 | 48 | 48 | 48 | 48 | 178 | 34 | 5 of 5 |
+| 900 | 888 | 446 | 48 | 48 | 48 | 48 | 48 | 178 | 34 | 5 of 5 |
+| 1400 | 1388 | 709 | 98 | 88 | 78 | 58 | 78 | 255 | 49 | 5 of 5 |
+| 1550 | 1538 | 709 | 98 | 88 | 78 | 58 | 78 | 405 | 79 | 5 of 5 |
+| 1920 | 1908 | 709 | 98 | 88 | 78 | 58 | 78 | 775 | 153 | 5 of 5 |
+
+React:
+
+| window | pane | KPI strip | Scrummed | Folded | Trades | Bots | Errors | group | each button | reachable |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 700 | 688 | 246 | 48 | 48 | 48 | 48 | 48 | 178 | 34 | 5 of 5 |
+| 900 | 888 | 446 | 48 | 48 | 48 | 48 | 48 | 178 | 34 | 5 of 5 |
+| 1400 | 1388 | 686 | 100 | 100 | 100 | 100 | 100 | 178 | 34 | 5 of 5 |
+| 1550 | 1538 | 686 | 100 | 100 | 100 | 100 | 100 | 328 | 64 | 5 of 5 |
+| 1920 | 1908 | 686 | 100 | 100 | 100 | 100 | 100 | 698 | 138 | 5 of 5 |
+
+**The class group takes what the figures leave.** Every other part of the row
+draws at the width its own text asks for, and the group takes the rest down to
+its floor. A wide amount therefore shortens a class name and never a figure.
+
+`src/gui/main_tabs/header_strip_surface.py` — the stretch each slot takes
+
+```python
+TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 1]
+```
+
+**A shortened amount ends in an ellipsis.** Every caption and every amount in
+the KPI strip and the counters is an `ElidingLabel`. It keeps the whole text and
+draws what the width holds, so `$128,456.78` in a narrow row reads `$128,45…`
+and never `$128,45`.
+
+`src/gui/widgets/eliding_label.py` — `sizeHint`
+
+```python
+hint = super().sizeHint()
+metrics = self.fontMetrics()
+pad = hint.width() - metrics.horizontalAdvance(super().text())
+return QSize(metrics.horizontalAdvance(self._full) + max(pad, 0), hint.height())
+```
+
+The whole text goes to `setAccessibleName`, so a shortened amount still reaches
+a screen reader whole.
+
+**Below 634 px the row runs out.** Held to 500 px, in both builds, Derivatives
+and Forex fall outside the pane and the row's own hit test stops finding them.
+That is what the floor prevents: 634 px is the narrowest the window opens at,
+so the operator never reaches 500.
 
 **One venue list, read from one place.** The equity venue ids were written out
 three times, and the three copies were held together by a comment. They are now
