@@ -111,8 +111,14 @@ class PaperTableCellsModel(cells.TableCellsModel):
 class PaperBotStatusTableModel(live.BotStatusTableModel):
     """Live's table model over the row's own price and the fleet's own rates."""
 
-    def __init__(self, on_bot_clicked=None, on_fire_clicked=None) -> None:
-        super().__init__(on_bot_clicked=on_bot_clicked, on_fire_clicked=on_fire_clicked)
+    def __init__(
+        self, on_bot_clicked=None, on_fire_clicked=None, on_bot_selected=None
+    ) -> None:
+        super().__init__(
+            on_bot_clicked=on_bot_clicked,
+            on_fire_clicked=on_fire_clicked,
+            on_bot_selected=on_bot_selected,
+        )
         self.cells = PaperTableCellsModel()
 
     def update_bots(self, bot_statuses: list) -> None:
@@ -129,6 +135,21 @@ class PaperBotStatusTableModel(live.BotStatusTableModel):
         )
         return price, PAPER_PRICE_AGE_S, quote_rate
 
+    def _sort_lookups(self) -> live.SortLookups:
+        """``order_statuses``' two readings, over the Paper Trader's figures."""
+        held = dict(getattr(self.cells, "rates", {}) or {})
+
+        def price(status) -> tuple:
+            stats = status.get("stats") or {}
+            found = self._price_reading(status, stats)
+            return found[0], found[1]
+
+        def denom_text(quote: str, base: str, exchange_id: str, target: float) -> str:
+            del exchange_id
+            return paper_target_denom_cell(quote, base, target, held)[0]
+
+        return live.SortLookups(price, denom_text)
+
 
 def build_view_model(model: live.BotStatusTableModel) -> dict:
     """Live's ``build_view_model`` under ``METHOD``."""
@@ -138,21 +159,13 @@ def build_view_model(model: live.BotStatusTableModel) -> dict:
 
 
 def drive(model: live.BotStatusTableModel, params: dict) -> dict:
-    """Apply one request to ``model``, reading each ``*_PARAM`` field Live
-    reads, and answer ``build_view_model``."""
-    statuses = params.get(live.STATUSES_PARAM)
-    if statuses is not None:
-        model.update_bots(statuses)
-    if params.get(live.HEADER_CLICK_PARAM) is not None:
-        model.on_header_clicked(params[live.HEADER_CLICK_PARAM])
-    if params.get(live.CELL_CLICK_PARAM) is not None:
-        row, column = params[live.CELL_CLICK_PARAM]
-        model.on_cell_clicked(row, column)
-    if params.get(live.FIRE_PARAM) is not None:
-        model.on_fire(params[live.FIRE_PARAM])
-    if params.get(live.DETAIL_PARAM) is not None:
-        model.on_detail(params[live.DETAIL_PARAM])
-    return build_view_model(model)
+    """Apply one request to ``model`` through ``live.drive``, under ``METHOD``.
+
+    Every ``*_PARAM`` field Live reads reaches the Paper Trader's table here.
+    """
+    payload = dict(live.drive(model, params))
+    payload["method"] = METHOD
+    return payload
 
 
 def venue_of(params: Optional[dict]) -> str:

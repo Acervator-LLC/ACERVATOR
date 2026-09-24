@@ -971,6 +971,10 @@ class BotStatusTableModel:
             self.rows.append(blank_row())
         self.calls.append([ROW_COUNT_SET, count])
 
+    def _sort_lookups(self) -> SortLookups:
+        """The two readings ``order_statuses`` orders this model's rows by."""
+        return surface_lookups()
+
     def update_bots(self, bot_statuses: list) -> None:
         """Rewrite every row from one list of bot statuses.
 
@@ -982,7 +986,7 @@ class BotStatusTableModel:
             self.last_statuses,
             self.sort_column,
             self.sort_descending,
-            surface_lookups(),
+            self._sort_lookups(),
         )
         selected_before = self.get_selected_bot_id()
         self.set_row_count(len(bot_statuses))

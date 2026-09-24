@@ -594,6 +594,9 @@ if _HAS_QT:
             self._setup_ui()
             self._data: dict = {}
             self._selected_bot_id: str = ""
+            # Set by select_bot(""); update_bot_list leaves the dropdown
+            # empty while it holds, so a tick cannot re-pick row 0.
+            self._selection_cleared: bool = False
             # The pair the panel last drew, and the vote tallies behind
             # the Net, Comp and Conf columns.
             self._symbol: str = ""
@@ -1010,6 +1013,23 @@ if _HAS_QT:
         def selected_bot_id(self) -> str:
             return self._selected_bot_id
 
+        def select_bot(self, bot_id: str) -> str:
+            """Draw ``bot_id`` and answer the bot the panel then holds.
+
+            An empty ask draws no bot, and a bot the dropdown does not carry
+            leaves the selection where it is.
+            """
+            wanted = str(bot_id or "")
+            if not wanted:
+                self._selection_cleared = True
+                self._bot_selector.setCurrentIndex(-1)
+                return self._selected_bot_id
+            at = self._bot_selector.findData(wanted)
+            if at >= 0:
+                self._selection_cleared = False
+                self._bot_selector.setCurrentIndex(at)
+            return self._selected_bot_id
+
         def _render_no_data(self, reason: str) -> None:
             """Show an explicit empty state instead of invented numbers.
 
@@ -1181,7 +1201,7 @@ if _HAS_QT:
             idx = self._bot_selector.findData(current)
             if idx >= 0:
                 self._bot_selector.setCurrentIndex(idx)
-            elif accumulation_bots:
+            elif accumulation_bots and not self._selection_cleared:
                 self._bot_selector.setCurrentIndex(0)
             self._bot_selector.blockSignals(False)
             # Dropdown was just rebuilt; re-apply the privacy mask so

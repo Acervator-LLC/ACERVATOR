@@ -1988,4 +1988,119 @@ stays at 225 through all three routes. Unit T1b of issue 34 read the same wall
 on the same bundle, and the React readings on this page stand on the
 source-tree React build.
 
+
+## 2026-09-24 - #858 - the bot list upgrades reach the Paper Trader
+
+His line closes the bot-list list on that item: "Transpose these upgrades to Sim
+and Paper once completed." Three upgrades are in it. Columns that sort. Labels
+that wrap, with the privacy button centred beneath each one. A row press that
+moves the Indicator Voting Panel to that bot. All three now draw on the Paper
+Trader's own Scrumming Bots table, in both builds, over the paper fleet's own
+figures.
+
+### The paper columns sort over the paper fleet's own price
+
+A press on a column heading orders the rows by that column. A second press on
+the same heading reverses the order. The order is recomputed on every rewrite,
+so a figure that keeps moving does not unsort the list. The Paper Trader orders
+by the row's own reading and never by the live price pool, because the table
+and the page model each answer their own lookups.
+
+`src/gui/paper/paper_bot_status_table.py` - the paper fleet's own sort readings
+
+```python
+        def _sort_lookups(self) -> SortLookups:
+            """``order_statuses``' two readings, over the Paper Trader's figures."""
+
+            def price(status) -> tuple:
+                stats = status.get("stats", {}) or {}
+                return self._display_price(status, stats)
+
+            def denom_text(
+                quote: str, base: str, exchange_id: str, target: float
+            ) -> str:
+                return self._denom_cell(quote, base, exchange_id, target)[0]
+
+            return SortLookups(price, denom_text)
+```
+
+Read off the running program, both builds, at 700, 900 and 1400 pixels wide,
+over the 38 rows the paper fleet file holds:
+
+| reading | window | page |
+|---|---|---|
+| columns that move on a press | 9 of 10 | 9 of 10 |
+| a second press reverses | 7 of 9 exactly | yes |
+| the order survives a fresh fleet | yes | yes |
+
+The Detail column holds one identical button a row, so it carries no value to
+order by and is the one column a press does not sort.
+
+### The paper labels wrap and the privacy dot sits beneath each one
+
+Each of the ten labels sits inside its own column, over as many lines as it
+needs, with one blue dot centred under the nine that carry a mask. The label
+steps down one size when its longest word will not fit the column. A press on
+the dot masks that column; a press on the words sorts it.
+
+| width | Current Position Value, window | the page | dots | largest offset |
+|---|---|---|---|---|
+| 700 | 3 lines in 67 px, size 10 | 46.2 px over a 15.4 px line | 9 | 0.5 px |
+| 900 | 3 lines in 92 px, size 11 | 30.8 px over a 15.4 px line | 9 | 0.5 px |
+| 1400 | 3 lines in 154 px, size 11 | 15.4 px over a 15.4 px line | 9 | 0.008 px |
+
+No label is cut at any of the three widths, in either build. The tenth column
+draws no dot and keeps the same empty dot row, so every label sits on one line.
+
+### A row press moves the Paper Trader's own Voting Panel
+
+A press on a row draws that bot on the Paper Trader's panel. A second press on
+the same row takes the panel to its empty state. A press on another row moves
+the panel to that bot. The panel's own dropdown still picks a bot, and the row
+it names highlights itself in the list. The panel is the Paper Trader's own,
+never Live's.
+
+`src/gui/paper/paper_trading_tab.py` - the one bot both sides read
+
+```python
+        self._bot_list_link = BotListPanelLink(
+            self._indicator_panel, self._bot_list_hosts
+        )
+        self._indicator_panel.bot_selected.connect(self._bot_list_link.panel_moved)
+```
+
+Read on the running program, both builds, at all three widths: a first press
+puts the pressed row's bot on the panel, a second press on that row answers no
+bot, and a press on another row answers that row's bot.
+
+### The paper table is Live's table with three readings of its own
+
+The Paper Trader's window table was a copy of Live's, taken before the header
+was rebuilt. It is now Live's table with the Paper Trader's three readings over
+it: the display price, the Target-denomination cell and the sort lookups. The
+page module carries the same relationship to Live's module, and the model
+already read the shared surface.
+
+`src/gui/paper/paper_bot_status_table.py` - the row's own price
+
+```python
+        def _display_price(self, status: dict, stats: dict) -> tuple:
+            """The row's own ``current_price``, at ``PAPER_PRICE_AGE_S``."""
+            del status
+            return float(stats.get("current_price", 0.0) or 0.0), PAPER_PRICE_AGE_S
+```
+
+### An empty paper fleet still draws the header
+
+With no row at all the header still draws its ten labels and its nine dots, a
+press on a heading changes nothing and raises nothing, and a press where a row
+would be finds no row.
+
+| reading, no rows | window | page |
+|---|---|---|
+| labels drawn | 10 | 10 |
+| dots drawn | 9 | 9 |
+| a heading press | no error, still no row | no error, still no row |
+| a row press | answers no bot | finds no row |
+
 Back to [the subsystem index](README.md).
