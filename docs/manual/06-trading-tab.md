@@ -410,6 +410,80 @@ for cell in self._header.cells():
         cell.dot.refresh()
 ```
 
+**Functional.** A press on a column's label orders the rows by that column.
+The first press sorts smallest first, and a second press on the same label
+reverses it. Nine of the ten columns sort. The tenth holds one identical Detail
+button on every row, so it carries no value to order by, and a press on it
+changes nothing. A small arrow in the label's top-right corner names the sorted
+column and its direction. The arrow sits outside the header's own layout, so
+neither the wrapped label nor the dot beneath it moves when a column sorts.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `SORT_KIND_BY_COL`
+
+```python
+SORT_KIND_BY_COL = {
+    BOT_ID_COLUMN: SORT_KIND_TEXT,
+    SYMBOL_COLUMN: SORT_KIND_TEXT,
+    POSITION_VALUE_COLUMN: SORT_KIND_NUMBER,
+    TRADES_COLUMN: SORT_KIND_NUMBER,
+    TARGET_COLUMN: SORT_KIND_NUMBER,
+    TARGET_BTC_COLUMN: SORT_KIND_NUMBER,
+    TARGET_ETH_COLUMN: SORT_KIND_NUMBER,
+    AMMO_COLUMN: SORT_KIND_NUMBER,
+    FIRE_COLUMN: SORT_KIND_NUMBER,
+    DETAIL_COLUMN: SORT_KIND_NONE,
+}
+```
+
+**Functional.** Bot ID and Symbol sort as words. The other seven sort as
+figures, each reading the number its cell was computed from rather than the
+text the cell draws, so nine never sorts above ten. Ammo sorts on the distance
+from target without its sign, which is the amount that would fire and the
+figure the cell prints; the colour still says which side of the target the bot
+sits on. Fire sorts by what the engine would do next, armed first and disabled
+last. A row whose cell draws nothing sits beneath every row that draws a
+figure, whichever way the sort runs, and the bot's own identifier breaks a tie.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `order_statuses`
+
+```python
+drawn.sort(key=lambda row: (row[0], row[1]), reverse=descending)
+return [row[2] for row in drawn] + blank
+```
+
+**Functional.** The order is recomputed every time the rows are rewritten, not
+once at the press. A fleet arriving a second later is ordered again before it
+is drawn, so a column whose figures keep moving keeps the order the last press
+asked for and the rows travel as the figures change. Read on the running window
+with a fleet of 38 bots: lifting one bot's price moved that bot from the first
+row to the last, and every remaining pair still ran in order.
+
+`src/gui/widgets/bot_status_table.py` — `BotStatusTable.update_bots`
+
+```python
+bot_statuses = order_statuses(
+    self._last_statuses,
+    self._sort_column,
+    self._sort_descending,
+    _qt_lookups(),
+)
+```
+
+**Functional.** One bad field now stops one row instead of the whole paint.
+Each row is written inside its own guard. A row that refuses is logged, emptied
+and left empty, and every other bot still draws. A row whose bot is not a
+scrumming bot is emptied the same way, so it can no longer keep the previous
+bot's figures.
+
+`src/gui/widgets/bot_status_table.py` — `BotStatusTable._clear_row`
+
+```python
+for col in range(self.columnCount()):
+    self.setItem(row, col, None)
+    if self.cellWidget(row, col) is not None:
+        self.removeCellWidget(row, col)
+```
+
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable.SCRUMMING_COLUMNS`
 
 ```python
@@ -521,6 +595,42 @@ def on_detail(self, bot_id: str) -> None:
     self.calls.append([DETAIL_CLICKED, bot_id])
     if self.on_bot_clicked:
         self.on_bot_clicked(bot_id)
+```
+
+**Overtaken.** *"A press on the label itself does nothing."*
+
+**Functional.** A press on the label sorts that column, exactly as the window
+does. Five things can now be pressed on the page's table. The press goes back
+to Python, because the fleet that answers it lives there, and the venue
+republishes the ordered rows. The dot keeps its own press to itself, so masking
+a column never reorders the table.
+
+`src/gui/web/bot_status_table.js` — `sendSort`
+
+```javascript
+function sendSort(model, column) {
+  return dispatch(
+    model,
+    actionNamed(model, HEADER_SORTED),
+    request(model, SORT_COLUMN_PARAM, column)
+  );
+}
+```
+
+**Functional.** One ordering serves both builds. The window and the page both
+call the same function on the same fleet, so neither can put the same 38 bots
+in an order the other would not. Read on both running builds at 700, 900 and
+1400 pixels wide, each of the nine sortable columns ordered its figures the
+same way on the first press and reversed them on the second.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_header_sorted`
+
+```python
+if column == self.sort_column:
+    self.sort_descending = not self.sort_descending
+else:
+    self.sort_column = column
+    self.sort_descending = False
 ```
 
 **Design intention.** The exchange screen redraws itself once a second to keep
