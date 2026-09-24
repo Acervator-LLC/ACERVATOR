@@ -39,18 +39,8 @@ from src.gui.qt_safe_events import safe_process_events
 
 if _HAS_QT:
 
-    # Must match _equity_exchange_ids in main_tabs/trading_tab.py.
-    EQUITY_EXCHANGE_IDS = {
-        "alpaca",
-        "ibkr",
-        "schwab",
-        "tdameritrade",
-        "webull",
-        "tastytrade",
-        "fidelity",
-        "etrade",
-        "interactivebrokers",
-    }
+    from .main_tabs import asset_class_surface as acs
+    from .main_tabs.asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS
 
     class SettingsDialog(QDialog):
 
@@ -88,7 +78,8 @@ if _HAS_QT:
             self._sm = settings_manager
             self._status_log = status_log
             self._last_validation = None
-            self._wing = wing if wing in ("crypto", "stock") else "crypto"
+            # normalise resolves the legacy wing word "stock" onto "stocks".
+            self._wing = acs.normalise(wing)
             self._setup_ui()
             self._load_current()
 
@@ -129,7 +120,7 @@ if _HAS_QT:
             w = QWidget()
             layout = QVBoxLayout(w)
 
-            if self._wing == "stock":
+            if self._wing == "stocks":
                 _banner = QLabel(
                     "<b>Stock Wing:</b> equity-broker integration is "
                     "queued — no live brokers are wired up yet. The "
@@ -149,15 +140,14 @@ if _HAS_QT:
 
             self._exchange_list = QListWidget()
             _list_label = (
-                "Configured Stock Brokers:"
-                if self._wing == "stock"
-                else "Configured Crypto Exchanges:"
+                f"Configured {acs.display_name(self._wing)} "
+                f"{acs.venue_noun(self._wing)}s:"
             )
             layout.addWidget(QLabel(_list_label))
             layout.addWidget(self._exchange_list)
 
             add_group = QGroupBox(
-                "Add Stock Broker" if self._wing == "stock" else "Add Crypto Exchange"
+                f"Add {acs.display_name(self._wing)} {acs.venue_noun(self._wing)}"
             )
             add_form = QFormLayout(add_group)
 
@@ -170,14 +160,15 @@ if _HAS_QT:
 
             self._passphrase_exchanges = PASSPHRASE_EXCHANGES
 
-            if self._wing == "stock":
-                for eid in sorted(EQUITY_EXCHANGE_IDS):
+            # The active class filters the venue list. A venue serving two
+            # classes is offered under both.
+            for eid in sorted(acs.venues_for_class(self._wing)):
+                if eid in EQUITY_EXCHANGE_IDS:
                     self._new_exchange.addItem(
                         f"{eid.capitalize()} (planned, not yet live)",
                         eid,
                     )
-            else:
-                for eid in sorted(SUPPORTED_EXCHANGES.keys()):
+                elif eid in SUPPORTED_EXCHANGES:
                     self._new_exchange.addItem(exchange_label(eid), eid)
             self._new_exchange.currentIndexChanged.connect(self._on_exchange_changed)
             add_form.addRow("Exchange:", self._new_exchange)
@@ -232,7 +223,7 @@ if _HAS_QT:
             self._api_feedback.setWordWrap(True)
             add_form.addRow(self._api_feedback)
 
-            if self._wing == "stock":
+            if self._wing == "stocks":
                 _disabled_tip = (
                     "Stock broker connector integration is queued; "
                     "no live brokers ship yet. Use the Crypto Wing "
@@ -1298,10 +1289,7 @@ if _HAS_QT:
                     self._show_stored(f"{group}.{key}", show, stored.get(key, fallback))
             for exch in self._sm.list_exchanges():
                 _eid = (exch.get("exchange_id", "") or "").lower()
-                _is_equity = _eid in EQUITY_EXCHANGE_IDS
-                if self._wing == "stock" and not _is_equity:
-                    continue
-                if self._wing == "crypto" and _is_equity:
+                if not acs.serves(_eid, self._wing):
                     continue
                 self._exchange_list.addItem(
                     f"{exch.get('display_name', '')} ({exch.get('exchange_id', '')})"

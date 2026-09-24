@@ -13,7 +13,7 @@ from ...core.privacy_mask_registry import (
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
-from . import main_window_surface, privacy_dot_surface
+from . import asset_class_surface, main_window_surface, privacy_dot_surface
 
 METHOD = "header.strip"
 
@@ -309,45 +309,16 @@ STATS_PARAM = "stats"
 EXCHANGE_COUNT_PARAM = "exchange_count"
 
 MODE_BUTTON = {
-    "minimum_width_px": 110,
+    "minimum_width_px": asset_class_surface.BUTTON_MIN_W,
     "horizontal_policy": "Preferred",
     "vertical_policy": "Expanding",
     "checkable": True,
-    "tooltip": "Toggle between Crypto and Stock trading layers",
-}
-
-MODE_CARDS = {
-    "crypto": {
-        "text": "Crypto Mode",
-        "checked": False,
-        "color": ds.LAYER_CRYPTO,
-        "style_sheet": (
-            "QPushButton { background: rgba(0, 200, 160, 40); "
-            f"color: {ds.LAYER_CRYPTO}; border: 1px solid rgba(0, 200, 160, "
-            "100); "
-            "border-radius: 4px; font-weight: bold; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(0, 200, 160, 70); }"
-        ),
-        "window_title": "Acervator — CRYPTO WING",
-    },
-    "stock": {
-        "text": "Stock Mode",
-        "checked": True,
-        "color": ds.LAYER_STOCK,
-        "style_sheet": (
-            "QPushButton { background: rgba(80, 140, 255, 40); "
-            f"color: {ds.LAYER_STOCK}; border: 1px solid rgba(80, 140, 255, "
-            "100); "
-            "border-radius: 4px; font-weight: bold; font-size: 11px; }"
-            "QPushButton:hover { background: rgba(80, 140, 255, 70); }"
-        ),
-        "window_title": "Acervator — STOCK WING",
-    },
+    "tooltip": "Pick the asset class every tab filters to",
 }
 
 ACTIONS = {
     "errors.clicked": "show_error_log_dialog",
-    "mode_button.clicked": "toggle_trading_mode",
+    "mode_button.clicked": "select_asset_class",
 }
 
 
@@ -538,19 +509,34 @@ def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
 
 
 def next_mode(mode: Any) -> str:
-    """The wing the button moves to, so a frontend spells no mode name."""
-    return DEFAULT_MODE if str(mode) == "stock" else "stock"
+    """The class the group steps to, so a frontend spells no class name."""
+    classes = asset_class_surface.asset_classes()
+    if not classes:
+        return DEFAULT_MODE
+    here = classes.index(asset_class_surface.normalise(mode))
+    return classes[(here + 1) % len(classes)]
 
 
 def mode_card(mode: Any) -> dict:
-    """The mode button's text, checked state and skin for one wing."""
-    key = "stock" if str(mode) == "stock" else DEFAULT_MODE
+    """The whole segmented group: one button per class, and the active one.
+
+    ``asset_class_surface.class_buttons`` builds the buttons, so the group
+    follows ``ASSET_CLASSES`` with no edit here.
+    """
+    key = asset_class_surface.normalise(mode)
     return {
         "mode": key,
         "next_mode": next_mode(key),
         "mode_param": MODE_PARAM,
+        "buttons": asset_class_surface.class_buttons(key),
+        "text_pad_px": asset_class_surface.BUTTON_TEXT_PAD,
+        "window_title": asset_class_surface.window_title(key),
+        "add_exchange": {
+            "label": asset_class_surface.add_exchange_label(key),
+            "tooltip": asset_class_surface.add_exchange_tooltip(key),
+            "enabled": asset_class_surface.add_exchange_enabled(key),
+        },
         **MODE_BUTTON,
-        **MODE_CARDS[key],
     }
 
 
