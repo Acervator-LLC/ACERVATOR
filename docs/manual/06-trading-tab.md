@@ -6125,10 +6125,10 @@ for name in asset_classes():
     self._class_buttons.addButton(button)
 ```
 
-Read off the running window, the group holds six buttons:
+Read off the running window, the group holds five buttons:
 
 ```
-Crypto   Stock   Metals   Derivatives   Forex   Energy
+Crypto   Stock   Commodities   Derivatives   Forex
 ```
 
 **One class at a time.** The buttons sit in a `QButtonGroup` set exclusive, so a
@@ -6153,10 +6153,9 @@ Read for each class in turn, on the running window:
 |---|---|---|---|
 | Crypto | `＋ Add Crypto Exchange` | yes | 15 |
 | Stock | `＋ Add Stock Broker` | yes | 9 |
-| Metals | `Metals — no venue yet` | no | 0 |
+| Commodities | `Commodities — no venue yet` | no | 0 |
 | Derivatives | `＋ Add Derivatives Exchange` | yes | 1 |
 | Forex | `Forex — no venue yet` | no | 0 |
-| Energy | `Energy — no venue yet` | no | 0 |
 
 **A class with no venue says so.** It does not offer another class's venue list.
 The button states the class and refuses the press, and the Trading tab draws a
@@ -6169,8 +6168,12 @@ NO_VENUE_NOTE = "No configured venue serves {name} yet."
 NO_LAYER_NOTE = "{name} has no trading layer yet."
 ```
 
-Metals, Forex and Energy have no configured venue. Derivatives has one venue and
-no trading layer, so it draws the second note.
+Commodities and Forex have no configured venue. Derivatives has one venue and no
+trading layer, so it draws the second note.
+
+The class list is read from `ASSET_CLASSES` at run time. Unit S13 of issue 23
+replaced Metals and Energy with Commodities while this unit was open, and the
+group followed with no edit: it dropped to five buttons and drew the new class.
 
 **A venue may serve more than one class.** The active class filters the venue
 list; it never owns it. Coinbase serves crypto and derivatives, so it is offered
@@ -6203,11 +6206,11 @@ Measured on the running window, at five widths:
 
 | window | group | each button | the labels |
 |---|---|---|---|
-| 700 | 285 px | 46 px | shortened to two letters |
-| 900 | 370 px | 60 px | shortened to three letters |
-| 1086 | 450 px | 74 px | five of six in full |
-| 1400 | 585 px | 96 px | five of six in full |
-| 1920 | 807 px | 134 px | all six in full |
+| 700 | 255 px | 49 px | none in full |
+| 900 | 332 px | 64 px | Stock and Forex in full |
+| 1086 | 404 px | 79 px | Crypto, Stock and Forex in full |
+| 1400 | 525 px | 103 px | Crypto, Stock and Forex in full |
+| 1920 | 725 px | 143 px | all five in full |
 
 Nothing is clipped and nothing is pushed off the strip at any of the five.
 
