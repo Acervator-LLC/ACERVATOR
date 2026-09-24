@@ -173,6 +173,7 @@ from ...simulator.ytd_trade_source import ROOT_READY, YtdTradeSource
 from ...trading.stone_tablets.storage import tablet_filename
 from .. import design_system as ds
 from ..color_alpha import rgba
+from ..main_tabs import class_filter_surface
 from ..main_tabs import simulator_tab_surface as surface
 from ..main_tabs.trading_tab_surface import (
     BOTTOM_SPLITTER_SIZES_PX,
@@ -362,6 +363,7 @@ class SimTradingTab(QWidget):
         self._bus = new_sim_bus()
         self._log_manager = sim_log_manager(self._bus, self._symbol_of)
         self._layer = surface.LAYER_INDICATORS
+        self._asset_class = class_filter_surface.active()
         self._battery_thread: Optional[threading.Thread] = None
         self._battery_stop = threading.Event()
         self._battery: dict = {}
@@ -1684,10 +1686,21 @@ class SimTradingTab(QWidget):
         handed = 0
         for store in (self._crypto_exchange_tabs, self._stock_exchange_tabs):
             for eid, tab in list(store.items()):
-                statuses = self._fleet_source.statuses(eid)
+                statuses = class_filter_surface.bots_of_class(
+                    self._fleet_source.statuses(eid), self._asset_class
+                )
                 tab.update_bots(statuses)
                 handed += len(statuses)
         return handed
+
+    def set_asset_class(self, name) -> tuple:
+        """Hold ``name`` as the class this tab shows.
+
+        Answers the rows ``refresh_bots`` kept for ``name`` and the rows
+        ``FleetSource.statuses`` holds in all.
+        """
+        self._asset_class = class_filter_surface.normalise(name)
+        return (self.refresh_bots(), len(self._fleet_source.statuses()))
 
     # -- the voting panel -----------------------------------------------
 

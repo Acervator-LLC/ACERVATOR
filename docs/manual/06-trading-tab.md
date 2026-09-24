@@ -6375,3 +6375,131 @@ level is the **asset class**, and a sector is the tier below it. GICS names
 sectors inside equities. S&P GSCI names sectors inside commodities. The group
 therefore selects an asset class. Sectors stay the tier below, where the ATA-SMP
 scanner uses them.
+
+### Every tab but Status and Console follows the active asset class
+
+**Functional.** Pressing a class button in the header strip filters the whole
+window. The bar carries nine tabs, and seven of them show only the exchanges,
+the bots, the charts and the rows of the class on show. Status and Console are
+left alone.
+
+Read off the running window, the bar holds these nine, left to right:
+
+```
+Sim   Paper   Live   Charts   Inspector   Swarm   History   Status   Console
+```
+
+What the filter means for each:
+
+| tab | what it shows for the active class |
+|---|---|
+| Sim | the simulated fleet and the venue pages whose venue serves the class |
+| Paper | the paper fleet and its venue pages, on the same rule |
+| Live | the exchange sub-tabs whose venue serves the class, and inside each the bots trading a market of that class |
+| Charts | one chart per bot of the class, so the asset list holds only those |
+| Inspector | the ATA-SPM zone's own class follows the group, and the active-symbol list holds only the class's bots |
+| Swarm | one node per bot of the class |
+| History | one row per fill on a market of the class |
+| Status | nothing an asset class owns. It reports emitters and the process, and it never filters |
+| Console | nothing an asset class owns. It is a log tail, and it never filters |
+
+`src/gui/main_tabs/class_filter_tab.py` — the one method every press reaches
+
+```python
+def select_asset_class(self, name: Any) -> None:
+    super().select_asset_class(name)
+    self._apply_asset_class()
+```
+
+**A bot belongs to the class of the market it trades.** A status carries the
+venue it trades on and the market it trades, and those two answer the class.
+
+`src/gui/main_tabs/class_filter_surface.py` — `market_class`
+
+```python
+served = venue_classes(venue_id)
+if len(served) == 1:
+    return next(iter(served))
+if DERIVATIVES in served and is_derivative(symbol):
+    return DERIVATIVES
+```
+
+**One venue, two classes, and the bots split between them.** Coinbase serves
+crypto and derivatives, so its sub-tab is offered under both. Its spot pairs
+answer crypto and its dated futures answer derivatives.
+
+Read on the running window with two markets added to the fleet, one Alpaca
+equity and one Coinbase dated future:
+
+```
+alpaca AAPL              -> stocks
+coinbase BIT-26DEC25-CDE -> derivatives
+crypto 38   stocks 1   commodities 0   derivatives 1   forex 0
+```
+
+The 38 Coinbase spot bots stayed under crypto while the one Coinbase future
+moved to derivatives, off the same venue.
+
+**A tab with nothing for the class says so.** It draws a heading, the thing it
+has none of, and the way back.
+
+`src/gui/main_tabs/class_filter_surface.py` — the sentences
+
+```python
+EMPTY_HEADING = "{name} — nothing to show"
+EMPTY_NOTE = "No {name} {subject} to show."
+EMPTY_HINT = (
+    "{name} is the active asset class. Press another class button in the "
+    "header strip to see that class."
+)
+```
+
+Read off the Swarm tab with Forex active:
+
+```
+Forex — nothing to show
+No Forex bot to show.
+Forex is the active asset class. Press another class button in the header
+strip to see that class.
+```
+
+Both builds draw that note. The Qt build draws it in `EmptyTabQtPanel` and the
+React build draws it with `src/gui/web/class_note.js`, from the one model
+`note_model` writes, so neither side holds a word of its own.
+
+**The Live tab keeps its own card when no venue serves the class.** With Stock
+active and no broker added, the Trading tab draws `No Stock Exchanges
+Configured` and its Add button stays on screen. The note replaces the Live tab
+only when a venue does serve the class and no bot trades it.
+
+**The whole fleet is 38 crypto bots, so most classes are empty, and that is the
+correct reading.** Read on the running window in both builds, at 700, 900 and
+1400, with which page each tab draws:
+
+| class | Sim | Paper | Live | Charts | Inspector | Swarm | History |
+|---|---|---|---|---|---|---|---|
+| Crypto | its own | its own | 38 bots | 45 assets | its own | 76 nodes | its own |
+| Stock | note | note | Add card | note | note | note | note |
+| Commodities | note | note | Add card | note | note | note | note |
+| Derivatives | note | note | note | note | note | note | note |
+| Forex | note | note | Add card | note | note | note | note |
+
+Status drew the same 1317 page elements under all five, and Console the same
+tail. Neither carries a stack, so neither can be switched.
+
+**A filter hides rows and changes nothing else.** Switching class five times
+left the stored fleet byte-identical, hashed before and after. No bot is
+stopped, no position is closed and no state is written by a press.
+
+**The class survives a restart.** A fresh window with `forex` stored drew every
+one of the seven tabs on its note at first draw, with no button pressed.
+
+#### Sentences the tabs filter overtakes
+
+The page carries this sentence about the work that came before. It is quoted as
+it stands, with the sentence that is true today beneath it.
+
+> "Showing only that class's bots, charts and history is unit F2 and is not
+> built."
+
+It is built. Seven tabs follow the active class, and Status and Console do not.

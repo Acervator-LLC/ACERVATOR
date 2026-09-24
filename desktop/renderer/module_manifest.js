@@ -94,4 +94,5 @@ window.ACERVATOR_MODULES = [
   "paper_status_log.js",
   "paper_table_cells.js",
   "paper_trading_tab.js",
+  "class_note.js",
 ];
