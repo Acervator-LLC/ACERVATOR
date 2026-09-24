@@ -59,7 +59,7 @@ class TickPhaseMixin:
     _fold_queue_usd: float
     _fold_tranches: list[dict]
     _get_balance: Callable[..., Any]
-    _get_market_limits: Callable[..., Any]
+    _get_market_rules: Callable[..., Any]
     _get_ohlcv: Callable[..., Any]
     _get_ticker: Callable[..., Any]
     _hedge_bal: float
@@ -1152,13 +1152,14 @@ class TickPhaseMixin:
             _scrum_notional_usd = priced_usd(
                 scrum_asset, float(ticker.last), _qrate_for_cost
             )
-            _min_amt_sc, _min_cost_sc, _ = await self._get_market_limits(
-                self.config.symbol
+            _rules_sc = await self._get_market_rules(self.config.symbol)
+            _min_amt_sc = _rules_sc.min_amount
+            _min_cost_sc = _rules_sc.min_cost
+            _below_min_cost_sc = (
+                _min_cost_sc is not None and _scrum_notional_usd < _min_cost_sc
             )
-            _below_min_cost_sc = _min_cost_sc > 0 and _scrum_notional_usd < _min_cost_sc
-            _below_min_amt_sc = (
-                _min_amt_sc > 0
-                and _scrum_notional_usd < _min_amt_sc * float(ticker.last)
+            _below_min_amt_sc = _min_amt_sc is not None and _scrum_notional_usd < (
+                _min_amt_sc * float(ticker.last)
             )
             if _below_min_cost_sc or _below_min_amt_sc:
                 _scrum_skipped_below_min = True
@@ -1629,15 +1630,14 @@ class TickPhaseMixin:
             try:
                 _qrate_fc = float(self._quote_to_usd or 1.0)
                 _fold_notional_usd = buy_cost * _qrate_fc
-                _min_amt_fc, _min_cost_fc, _ = await self._get_market_limits(
-                    self.config.symbol
-                )
-                buy_cost / float(ticker.last) if ticker.last > 0 else 0.0
+                _rules_fc = await self._get_market_rules(self.config.symbol)
+                _min_amt_fc = _rules_fc.min_amount
+                _min_cost_fc = _rules_fc.min_cost
                 _below_min_cost_fc = (
-                    _min_cost_fc > 0 and _fold_notional_usd < _min_cost_fc
+                    _min_cost_fc is not None and _fold_notional_usd < _min_cost_fc
                 )
-                _below_min_amt_fc = _min_amt_fc > 0 and buy_cost < _min_amt_fc * float(
-                    ticker.last
+                _below_min_amt_fc = _min_amt_fc is not None and buy_cost < (
+                    _min_amt_fc * float(ticker.last)
                 )
                 if _below_min_cost_fc or _below_min_amt_fc:
                     _fold_skipped_below_min = True

@@ -181,7 +181,7 @@ table TradersPost publishes for the brokers it connects.
 
 | Venue | Orders over an API | Does the excess survive | Why, and where the reading came from |
 | ----- | ----------------- | ----------------------- | ------------------------------------ |
-| coinbase, spot | yes | yes | nine decimal places, and the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py:226`. Coinbase developer documentation, read 2026-09-24 |
+| coinbase, spot | yes | yes | nine decimal places, and the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py:236`. Coinbase developer documentation, read 2026-09-24 |
 | coinbase, US futures | yes | no | a futures contract is whole, so an excess under one contract cannot be sold. Coinbase developer documentation, Advanced Trade US derivatives, read 2026-09-24 |
 | kraken, kucoin, okx, gateio, bitget, mexc, bitfinex, gemini, bitstamp, cryptocom | yes | yes | nine decimal places. Each venue's own documentation, read 2026-09-24 |
 | binance, bybit | yes, and the address is refused from the United States | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The refusal is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py:113` |
@@ -207,6 +207,37 @@ eight assumed decimal places, which stands the refusal down for that symbol.
             fallback = (0.0, 0.0, 8)
             self._market_limits_cache[symbol] = fallback
 ```
+
+### 2026-09-24 - the failed-lookup half of that paragraph is repaired
+
+The sentence above is kept as written:
+
+> And a market lookup that fails leaves the bot with no minimum and
+> eight assumed decimal places, which stands the refusal down for that symbol.
+
+That is what the code did. The true sentence is: a market lookup that fails
+leaves the bot with no minimum, which it now holds as unknown rather than as
+zero, so the refusal makes no comparison instead of silently passing every
+size; the bot says so on the Console, and the failure is no longer remembered,
+so the next order reads the market again.
+
+The block quoted above is replaced by the block below. The coinbase, spot row
+in the table still holds: while the lookup succeeds, the truncation and the
+refusal are unchanged.
+
+`src/trading/bot_container.py` — what a failed lookup answers now
+
+```python
+        unread = MarketRules(read=False)
+        ...
+            # A failure is not cached: caching it left the guard blind for the
+            # container's life after one transient error.
+            return unread
+```
+
+The record that replaced the tuple, and the comparison the guard now calls, are
+described under
+[13-live-evidence.md](13-live-evidence.md).
 
 ## Two variants cover every venue
 
@@ -299,6 +330,17 @@ equity venue list is now described.
 
 Tradier and TradeStation are not on this page. No reading of 2026-09-24 states
 whether either carries a fractional share.
+
+The refusal quoted at the top of this page, cited there to line 226 of
+`src/trading/bot_container.py`:
+
+```
+        if _min_amount > 0 and _below_min:
+```
+
+Overtaken on 2026-09-24. The guard now reads a market record rather than three
+loose numbers, and the refusal it makes sits at line 236 of the same file. The
+verdict table above cites the new line.
 
 ## Where each venue fact was read
 

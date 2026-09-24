@@ -2,13 +2,16 @@
 
 ``ExchangeInterface`` declares the methods a connector class implements.
 ``Ticker``, ``OrderBook``, ``Order``, ``Trade``, ``Balance`` and ``AssetInfo``
-are the records those methods return.
+are the records those methods return, and ``MarketRules`` carries the order
+rules ``AssetInfo`` reports for one market.
 """
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
 from enum import Enum
 from typing import Optional
 
@@ -111,6 +114,41 @@ class Balance:
     absent: bool = False
 
 
+@dataclass(frozen=True)
+class MarketRules:
+    """The order rules a venue publishes for one market.
+
+    ``None`` is a rule the venue did not publish, never a rule of zero, and
+    ``read`` is False when no market record was obtained at all.
+    """
+
+    min_amount: Optional[float] = None  # base units
+    min_cost: Optional[float] = None  # quote units
+    amount_increment: Optional[float] = None  # base units a size steps by
+    read: bool = True
+
+    def steps_below_minimum(self, amount: float) -> bool:
+        """True when ``amount`` floored onto ``amount_increment`` falls under
+        ``min_amount`` ceiled to the same step, and False when the venue
+        published no minimum."""
+        if self.min_amount is None:
+            return False
+        increment = self.amount_increment
+        if increment is None or not math.isfinite(increment) or increment <= 0.0:
+            return amount < self.min_amount
+        try:
+            step = Decimal(repr(increment))
+            amount_steps = (Decimal(repr(amount)) / step).to_integral_value(
+                rounding=ROUND_FLOOR
+            )
+            minimum_steps = (Decimal(repr(self.min_amount)) / step).to_integral_value(
+                rounding=ROUND_CEILING
+            )
+        except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+            return amount < self.min_amount
+        return amount_steps < minimum_steps
+
+
 @dataclass
 class AssetInfo:
     """Market metadata, as ``get_markets`` returns it."""
@@ -118,10 +156,7 @@ class AssetInfo:
     symbol: str  # e.g. "BTC/USDT"
     base: str  # e.g. "BTC"
     quote: str  # e.g. "USDT"
-    min_amount: float  # Minimum order size
-    min_cost: float  # Minimum order cost (in quote)
-    price_precision: int  # Decimal places for price
-    amount_precision: int  # Decimal places for amount
+    rules: MarketRules
     maker_fee: float
     taker_fee: float
     active: bool = True
