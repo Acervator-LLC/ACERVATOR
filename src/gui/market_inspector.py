@@ -174,8 +174,8 @@ from .main_tabs.market_inspector_surface import (
     push_press_lines,
     sector_assets,
     sector_candle_read,
-    ticker_matches,
     ticker_note,
+    ticker_offers,
 )
 from ..core.signal_contract import emit as _pin_emit
 from ..core.signal_contract import get_sink as _pin_sink
@@ -1254,19 +1254,23 @@ if _HAS_QT:
         def _refresh_ticker_matches(self) -> None:
             """Write the offered tickers into the completer, and the field's note.
 
-            ``ticker_matches`` and ``ticker_note`` read the lists already in the
+            ``ticker_offers`` and ``ticker_note`` read the lists already in the
             process, so no venue is asked for a symbol.
             """
             asset_class = self._ata_board.asset_class
             self._ticker_model.clear()
-            for symbol, _class_name, offer in ticker_matches(
-                self._ticker_edit.text(), asset_class
-            ):
+            offered = ticker_offers(
+                self._ticker_edit.text(), asset_class, self._connectors_now()
+            )
+            for symbol, _class_name, offer in offered.rows:
                 item = QStandardItem(offer)
                 item.setData(symbol, TICKER_SYMBOL_ROLE)
                 self._ticker_model.appendRow(item)
             note = ticker_note(
-                asset_class, self._ata_board.note, self._ticker_edit.text()
+                asset_class,
+                self._ata_board.note,
+                self._ticker_edit.text(),
+                offered.dropped,
             )
             self._ticker_note.setText(note)
             self._ticker_note.setVisible(bool(note))

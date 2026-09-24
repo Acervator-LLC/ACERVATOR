@@ -241,6 +241,33 @@ def limit_to_float(value: Any) -> Optional[float]:
     return parsed
 
 
+def market_rules(market: Any, precision_mode: int) -> MarketRules:
+    """The ``MarketRules`` one loaded CCXT market record publishes.
+
+    ``get_markets`` and ``market_inspector_fetcher.trading_rules`` both read a
+    record through this, so one record maps to one rule set.
+    """
+    limits = (market or {}).get("limits") or {}
+    precision = (market or {}).get("precision") or {}
+    return MarketRules(
+        min_amount=limit_to_float((limits.get("amount") or {}).get("min")),
+        min_cost=limit_to_float((limits.get("cost") or {}).get("min")),
+        amount_increment=precision_to_increment(
+            precision.get("amount"), precision_mode
+        ),
+    )
+
+
+def record_price(market: Any) -> Optional[float]:
+    """The last price the venue's own product record carries under ``info``,
+    None where the record carries none; no venue is asked."""
+    raw = (market or {}).get("info") or {}
+    parsed = limit_to_float(raw.get("price"))
+    if parsed is None or parsed <= 0.0:
+        return None
+    return parsed
+
+
 _LOGO_CDN = "https://assets.coingecko.com/coins/images/{id}/small/{symbol}.png"
 _LOGO_FALLBACK = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 
@@ -1347,23 +1374,13 @@ class CCXTConnector(ExchangeInterface):
         for sym, info in self._ex.markets.items():
             if not info.get("active", True):
                 continue
-            limits = info.get("limits", {})
-            precision = info.get("precision", {})
 
             markets.append(
                 AssetInfo(
                     symbol=sym,
                     base=info.get("base", ""),
                     quote=info.get("quote", ""),
-                    rules=MarketRules(
-                        min_amount=limit_to_float(
-                            (limits.get("amount") or {}).get("min")
-                        ),
-                        min_cost=limit_to_float((limits.get("cost") or {}).get("min")),
-                        amount_increment=precision_to_increment(
-                            precision.get("amount"), precision_mode
-                        ),
-                    ),
+                    rules=market_rules(info, precision_mode),
                     maker_fee=float(info.get("maker", 0.001) or 0.001),
                     taker_fee=float(info.get("taker", 0.001) or 0.001),
                     active=info.get("active", True),

@@ -342,6 +342,88 @@ Overtaken on 2026-09-24. The guard now reads a market record rather than three
 loose numbers, and the refusal it makes sits at line 236 of the same file. The
 verdict table above cites the new line.
 
+## A market answers the same question for itself
+
+The verdict column above is per venue and was read from published pages. A
+market answers the same question from the figures its own record carries, and
+the Market Inspector's ticker rows draw that answer.
+
+```python
+def tradeable_answer(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> str:
+```
+
+### One rule, three answers
+
+A market can be traded by the built variant when the smallest order the venue
+accepts costs no more than the excess a scrum submits. The smallest order is
+the venue's published minimum size, ceiled onto its own size increment, valued
+at the venue's own last price, and never under its minimum order cost.
+
+| answer | drawn on the row | when |
+| --- | --- | --- |
+| yes | `can size a scrum` | the smallest order costs no more than the excess |
+| no | `cannot size a scrum` | it costs more |
+| unknown | `size rules not read` | no market record was obtained |
+
+Unknown is a third answer and never folds into either other. `MarketRules`
+carries an unpublished rule as `None` and sets `read` to False when no record
+was obtained at all, so a venue that publishes nothing and a venue nobody
+reached are told apart.
+
+```python
+# src/exchange/base.py:122
+    ``None`` is a rule the venue did not publish, never a rule of zero, and
+    ``read`` is False when no market record was obtained at all.
+```
+
+### The excess the rule measures against
+
+The excess figure is the largest one the saved fleet produces. Every bot in it
+carries the same 5 per cent scrumming interval and the highest Target Balance
+is 350 dollars.
+
+```python
+# src/trading/scrumming/sizing.py
+LARGEST_FLEET_TARGET_USD = 350.0
+FLEET_SCRUMMING_INTERVAL_PCT = 5.0
+
+REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
+    LARGEST_FLEET_TARGET_USD, FLEET_SCRUMMING_INTERVAL_PCT
+)
+```
+
+The largest is the right end of the fleet, not the smallest. `cannot size a
+scrum` has to mean no bot at any target this fleet carries could size one
+there. Read off a copy of the saved fleet: 38 bots, one interval value, targets
+from 25 to 350 dollars, and an excess from 1 dollar 25 to 17 dollars 50. A
+caller that knows one bot's own interval passes it instead.
+
+### Which venues this reaches today
+
+Only the crypto connector loads a market table, so only its markets answer yes
+or no. Every other row answers unknown until a broker connector is wired. That
+matches the verdict column: no Coinbase spot product reads `cannot size a
+scrum`, because its minimum order cost is one dollar on most products and ten
+on ether, and both sit under the excess.
+
+The whole-share brokers, the whole-unit currency dealers and the futures venues
+that read no in the verdict column are the markets the `no` answer is for. None
+of them is wired, so none is drawn today.
+
+### What this entry overtakes on this page
+
+Nothing. Every sentence above it stands as written, and this entry only adds
+the per-market answer beside the per-venue verdict.
+
+The answer is for the one variant that exists, the bot that names a unit count.
+The second variant names a cash amount and nothing in the tree constructs it,
+so the ticker rows answer for the built variant alone and the offered list is
+narrowed by that answer. It widens when the second variant lands.
+
 ## Where each venue fact was read
 
 Each publisher's page was opened as a document outside this repository and

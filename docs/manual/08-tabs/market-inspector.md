@@ -8047,4 +8047,180 @@ headline names that class.
 **Figures.** This entry adds none. A count of the markdown image tags on the
 page answers 0 before this entry and 0 after it.
 
+## 2026-09-24 - #881 - Every ticker row says whether a bot can size a scrum on that market, and a market none can is left off the list
+
+A scrum sells the excess above a dollar target. A venue only accepts an order
+at or above its own published minimum, stepped onto its own increment. Until
+now no market on this screen said whether those two figures leave a scrum
+anything to submit.
+
+One place answers it.
+
+```python
+def tradeable_answer(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> str:
+```
+
+### The three answers a market gives
+
+| answer | drawn as | what it means |
+| --- | --- | --- |
+| yes | `can size a scrum` | the smallest order the venue accepts costs no more than the excess |
+| no | `cannot size a scrum` | it costs more, so a scrum there would have nothing to submit |
+| unknown | `size rules not read` | no market record was obtained, so no rule was read |
+
+Unknown is never read as either other. A market whose rules were never read
+stays on the list and draws its own state.
+
+### Where the excess figure came from
+
+The figure is the largest excess the saved fleet produces. Every bot in it
+carries the same 5 per cent scrumming interval, and the highest Target Balance
+is 350 dollars, so the largest excess is 17 dollars 50.
+
+```python
+LARGEST_FLEET_TARGET_USD = 350.0
+FLEET_SCRUMMING_INTERVAL_PCT = 5.0
+
+REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
+    LARGEST_FLEET_TARGET_USD, FLEET_SCRUMMING_INTERVAL_PCT
+)
+```
+
+The largest is the right end, not the smallest. `cannot size a scrum` has to
+mean no bot at any target this fleet carries could size one there. Measured on
+a read-only copy of the saved fleet: 38 bots, one interval value, targets from
+25 to 350 dollars, excess from 1 dollar 25 to 17 dollars 50.
+
+### The smallest order a market accepts
+
+The venue's published minimum is ceiled onto its own increment, valued at the
+venue's own last price, and never falls under the venue's minimum order cost.
+
+```python
+def smallest_order_usd(rules: Any, price: Optional[float]) -> Optional[float]:
+```
+
+The rules and the price both come off the market table each connector has
+already loaded. No venue is asked, and the rows redraw on every keystroke.
+
+```python
+def trading_rules(
+    exchange_connectors: Any, accepted_quotes: Iterable[str] = DEFAULT_QUOTES
+) -> dict[str, tuple]:
+```
+
+### What a ticker row says now
+
+```
+BTC    (crypto · spot · bot ready · can size a scrum)
+CBBTC  (crypto · spot · bot ready · size rules not read)
+AAPL   (stocks · equity · charts only · size rules not read)
+```
+
+### The list is narrowed, and what leaves it is named
+
+A market answering `cannot size a scrum` is kept off the offered list. It is
+counted and named on the line under the field, never dropped in silence.
+
+```python
+TICKER_UNTRADEABLE_FORMAT = (
+    "{count} market(s) left off, the smallest order costs more than a scrum's "
+    "excess: {names}"
+)
+```
+
+### Read off both running variants
+
+Both builds were driven with sockets refused and the home directory redirected,
+at 700, 900 and 1400 pixels wide. This host has no font for the offscreen
+platform, so the pictures draw boxes; every reading below is the text the
+widgets themselves report, not the picture.
+
+Before the change, twelve readings of twelve carried three parts and said
+nothing about trading:
+
+```
+BTC  (crypto · spot · bot ready)
+```
+
+After it, with no connector wired, every row read `size rules not read` in both
+builds at all three widths.
+
+With a stand-in market table that ccxt's own `parse_spot_market` built from the
+product records ccxt records for Coinbase, typing `BTC` offered three rows in
+both builds:
+
+```
+BTC    (crypto · spot · bot ready · can size a scrum)
+CBBTC  (crypto · spot · bot ready · size rules not read)
+WBTC   (crypto · spot · bot ready · size rules not read)
+```
+
+Adding one whole-unit market of the same shape, priced at 67060 dollars with an
+increment of one unit, moved the reading. The same press offered two rows, and
+the line under the field named what left:
+
+```
+1 market(s) left off, the smallest order costs more than a scrum's excess: WBTC
+```
+
+Removing it returned the reading to three rows and an empty line. Both builds
+read the same at all three widths.
+
+No Coinbase spot product reads `cannot size a scrum` today. Its minimum order
+cost is one dollar on most products and ten on ether, both under the excess.
+The answer is for the whole-share brokers, the whole-unit currency dealers and
+the futures venues the [venue compatibility map](../15-venue-compatibility.md)
+names, none of which is wired yet.
+
+### The blocks this entry overtakes
+
+Neither is reworded. Each is quoted whole and the true block follows.
+
+`docs/manual/08-tabs/market-inspector.md:4725` -
+
+```
+TICKER_OFFER_FORMAT = "{symbol}  ({asset_class})"
+```
+
+The format carries four parts now:
+
+```python
+TICKER_OFFER_FORMAT = "{symbol}  ({asset_class} · {form} · {deploy} · {tradeable})"
+```
+
+`docs/manual/08-tabs/market-inspector.md:4739` -
+
+```
+def ticker_matches(typed: Any, asset_class: Any) -> list:
+```
+
+That function is gone. The rows and the names left off them come back together:
+
+```python
+def ticker_offers(typed: Any, asset_class: Any, connectors: Any = None) -> TickerOffers:
+```
+
+`docs/manual/08-tabs/market-inspector.md:7918` -
+
+```
+BIT-25SEP26-CDE  (crypto · future · charts only)
+GLD              (commodities · ETF · charts only)
+GLD-25DEC26-CDE  (commodities · future · charts only)
+XAU/USD          (commodities · spot · charts only, not retail)
+AAPL             (stocks · equity · charts only)
+EUR/USD          (forex · spot · charts only)
+BTC              (crypto · spot · bot ready)
+```
+
+Every one of those rows now ends with a fourth word, which is whichever of the
+three answers its market gives.
+
+**Figures.** This entry adds none. A count of the markdown image tags on the
+page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).

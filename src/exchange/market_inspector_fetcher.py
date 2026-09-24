@@ -9,7 +9,9 @@ fetch_quote_volumes serves the 24 h quote volume per base symbol those same
 ticker rows carry, over the same cache window. trading_products reads which
 bases the venue trades off the connector's loaded market table, and
 public_products and public_candles read the same two things through
-CoinbasePublicCandles while no connector is in reach.
+CoinbasePublicCandles while no connector is in reach. trading_rules reads each
+base's published order rules and the venue's own last price off that same loaded
+table, which is what the ticker rows measure a scrum's excess against.
 """
 
 from __future__ import annotations
@@ -355,6 +357,36 @@ def trading_products(
             )
             base_u = base.upper()
             found[base_u] = found.get(base_u, False) or trades
+    return found
+
+
+def trading_rules(
+    exchange_connectors: Any, accepted_quotes: Iterable[str] = DEFAULT_QUOTES
+) -> dict[str, tuple]:
+    """Each base's published order rules and the venue's own last price, off
+    the same loaded _ex.markets tables trading_products walks.
+
+    The value is (MarketRules, price or None). An empty answer says no
+    connector holds a table; no venue is asked.
+    """
+    from .ccxt_connector import CCXT_DECIMAL_PLACES, market_rules, record_price
+
+    quotes = tuple(accepted_quotes)
+    found: dict[str, tuple] = {}
+    for connector in (exchange_connectors or {}).values():
+        holder = getattr(connector, "_ex", None)
+        markets = getattr(holder, "markets", None) or {}
+        mode = getattr(holder, "precisionMode", CCXT_DECIMAL_PLACES)
+        for symbol, market in markets.items():
+            if not isinstance(symbol, str) or "/" not in symbol:
+                continue
+            base, quote = symbol.split("/", 1)
+            if quote.upper() not in quotes:
+                continue
+            base_u = base.upper()
+            if base_u in found:
+                continue
+            found[base_u] = (market_rules(market, mode), record_price(market))
     return found
 
 

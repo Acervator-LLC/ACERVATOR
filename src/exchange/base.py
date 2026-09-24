@@ -127,6 +127,26 @@ class MarketRules:
     amount_increment: Optional[float] = None  # base units a size steps by
     read: bool = True
 
+    @property
+    def smallest_amount(self) -> Optional[float]:
+        """The smallest amount the venue accepts: ``min_amount`` ceiled onto
+        ``amount_increment``, whichever of the two it published alone, or None
+        when it published neither."""
+        increment = self.amount_increment
+        stepped = increment is not None and math.isfinite(increment) and increment > 0.0
+        if self.min_amount is None:
+            return increment if stepped else None
+        if not stepped:
+            return self.min_amount
+        try:
+            step = Decimal(repr(increment))
+            steps = (Decimal(repr(self.min_amount)) / step).to_integral_value(
+                rounding=ROUND_CEILING
+            )
+            return float(steps * step)
+        except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+            return self.min_amount
+
     def steps_below_minimum(self, amount: float) -> bool:
         """True when ``amount`` floored onto ``amount_increment`` falls under
         ``min_amount`` ceiled to the same step, and False when the venue

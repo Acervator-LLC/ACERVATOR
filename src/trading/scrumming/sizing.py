@@ -10,14 +10,17 @@ a venue, ``scrum_units`` and ``fold_units`` size under that rule through
 ``sized_units``, and ``trim_fold_plan`` keeps what a whole-unit fold could not
 spend in its tranches. ``plan_source_price`` reads the scrum price a fold plan
 re-enters against, and ``opposing_trade_distances`` reads the distance between
-each fold and that scrum over a run's pairs.
+each fold and that scrum over a run's pairs. ``tradeable_answer`` is the one
+place that says whether the built variant can trade one market, measuring
+``smallest_order_usd`` against ``REFERENCE_SCRUM_EXCESS_USD``; the Market
+Inspector's ticker rows read it.
 """
 
 from __future__ import annotations
 
 import math
 import statistics
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
 DRAWDOWN_STATE = "drawdown"
@@ -103,6 +106,63 @@ def unit_rule(asset_class: str, venue: str) -> Optional[str]:
     """The unit rule ``CITED_UNIT_RULES`` cites for ``asset_class`` on
     ``venue``, or None when the table cites none for the pair."""
     return CITED_UNIT_RULES.get((str(asset_class), str(venue)))
+
+
+#: The three answers a market gives about the built variant, the bot that names
+#: a unit count. ``TRADEABLE_UNKNOWN`` is never read as either other.
+TRADEABLE_YES = "can size a scrum"
+TRADEABLE_NO = "cannot size a scrum"
+TRADEABLE_UNKNOWN = "size rules not read"
+
+#: The highest Target Balance in the saved fleet and the interval every one of
+#: its bots carries, read from ``bot_state.json`` on 2026-09-24.
+LARGEST_FLEET_TARGET_USD = 350.0
+FLEET_SCRUMMING_INTERVAL_PCT = 5.0
+
+#: The largest excess any bot in the saved fleet submits. ``tradeable_answer``
+#: measures a market's smallest order against it, so ``TRADEABLE_NO`` means no
+#: bot at any target this fleet carries could size a scrum there.
+REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
+    LARGEST_FLEET_TARGET_USD, FLEET_SCRUMMING_INTERVAL_PCT
+)
+
+
+def smallest_order_usd(rules: Any, price: Optional[float]) -> Optional[float]:
+    """The smallest order ``rules`` accepts, in quote currency, at ``price``.
+
+    ``MarketRules.smallest_amount`` at ``price`` and the venue's own minimum
+    order cost, whichever is larger; None when a published size rule needs a
+    price and none is known.
+    """
+    cost = getattr(rules, "min_cost", None)
+    floor_usd = float(cost) if cost is not None and math.isfinite(cost) else 0.0
+    amount = getattr(rules, "smallest_amount", None)
+    if amount is None:
+        return floor_usd
+    if price is None or not math.isfinite(price) or price <= 0.0:
+        return None
+    return max(floor_usd, float(amount) * float(price))
+
+
+def tradeable_answer(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> str:
+    """Whether the built variant can trade the market ``rules`` describes.
+
+    ``TRADEABLE_YES`` while the smallest order the venue accepts costs no more
+    than ``excess_usd``, ``TRADEABLE_NO`` while it costs more, and
+    ``TRADEABLE_UNKNOWN`` while no record was read or no price is known.
+    """
+    if rules is None or not getattr(rules, "read", False):
+        return TRADEABLE_UNKNOWN
+    if not math.isfinite(excess_usd) or excess_usd <= 0.0:
+        return TRADEABLE_UNKNOWN
+    floor_usd = smallest_order_usd(rules, price)
+    if floor_usd is None:
+        return TRADEABLE_UNKNOWN
+    return TRADEABLE_YES if floor_usd <= excess_usd else TRADEABLE_NO
 
 
 def sized_units(units: float, rule: str) -> float:
@@ -367,13 +427,19 @@ __all__ = [
     "CLASS_CRYPTO",
     "CLASS_STOCKS",
     "DRAWDOWN_STATE",
+    "FLEET_SCRUMMING_INTERVAL_PCT",
     "FRACTIONAL_UNITS",
     "GROWTH_CYCLE_LOWER_BB",
     "GROWTH_CYCLE_UPPER_BB",
     "GROWTH_SIDE_LOWER",
     "GROWTH_SIDE_UPPER",
+    "LARGEST_FLEET_TARGET_USD",
+    "REFERENCE_SCRUM_EXCESS_USD",
     "TAPER_DROP",
     "TAPER_START_RATIO",
+    "TRADEABLE_NO",
+    "TRADEABLE_UNKNOWN",
+    "TRADEABLE_YES",
     "UNIT_RULES",
     "WHOLE_UNITS",
     "WHOLE_UNIT_GRAIN",
@@ -400,9 +466,11 @@ __all__ = [
     "scrumming_interval_usd",
     "settle_fold_plan",
     "sized_units",
+    "smallest_order_usd",
     "target_delta_pct",
     "target_delta_usd",
     "target_growth_applied",
+    "tradeable_answer",
     "trim_fold_plan",
     "unit_rule",
     "wallet_capped_spend_usd",
