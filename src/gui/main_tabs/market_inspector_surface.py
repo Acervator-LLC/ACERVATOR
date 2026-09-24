@@ -305,8 +305,6 @@ NO_CANDLE_TEXT = "No candles came back for {symbols}."
 REFUSAL_SAID_FORMAT = "{text} {venue} said: {refusal}"
 #: The venue name on that sentence when the scan names none.
 UNNAMED_VENUE_TEXT = "The venue"
-#: The row name each market line takes in the field while a scan runs.
-SCAN_LINE_NAME_FORMAT = "scan-line-{at}"
 UNREAD_SYMBOL_CAP = 6
 UNREAD_MORE_FORMAT = "{symbols} and {count} more"
 METHOD_SENTENCE_JOIN = " "
@@ -646,6 +644,10 @@ PANEL_HEADER_STYLE_FORMAT = "color: {color}; font-size: 11px; font-weight: bold;
 PANEL_TITLE_FORMAT = "{symbol} {label}   {summary}"
 PANEL_SUMMARY_FORMAT = "▲ {bullish}  ▼ {bearish}  ─ {neutral}"
 PANEL_TOOLTIP_FORMAT = "The Indicator Voting Panel ATA-SMP read for {symbol}."
+
+#: What ``scan_panel`` writes where a called panel writes its call timeframe.
+#: The market under read has no call, and its rows name every timeframe.
+SCAN_PANEL_LABEL = "reading"
 
 #: The gate chain result the same open entry draws beside the panel.
 GATE_NAME = "Gate chain"
@@ -1958,14 +1960,15 @@ def panel_summary_text(rows: Any) -> str:
     )
 
 
-def voting_panel(pull: Any) -> Optional[dict]:
-    """The Indicator Voting Panel one scanned asset carries, as its rows.
+def panel_grid(symbol: Any, label: Any, rows: Any, lines: Any = ()) -> Optional[dict]:
+    """One Indicator Voting Panel: its title, its two ``panel_table`` tables
+    and its ``lines``.
 
-    The rows are the timeframes ATA-SMP read for this asset alone, and
-    every cell is drawn from ``indicator_panel_surface``.
+    ``voting_panel`` and ``scan_panel`` both build through this, so a called
+    asset and a market under read draw the same reading the same way.
     """
-    rows = dict(getattr(pull, "panel", None) or {})
-    if not rows:
+    held = dict(rows or {})
+    if not held:
         return None
     width = sum(panel_column_widths(ivp.ROW_A_INDICATOR_COLS, True))
     title = panel_row(
@@ -1973,9 +1976,9 @@ def voting_panel(pull: Any) -> Optional[dict]:
             panel_cell(
                 width,
                 PANEL_TITLE_FORMAT.format(
-                    symbol=pull.symbol,
-                    label=ata_spm.timeframe_label(pull.timeframe),
-                    summary=panel_summary_text(rows),
+                    symbol=symbol,
+                    label=label,
+                    summary=panel_summary_text(held),
                 ),
                 PANEL_HEADER_STYLE_FORMAT.format(color=PANEL_PLAIN_COLOR),
             )
@@ -1984,9 +1987,9 @@ def voting_panel(pull: Any) -> Optional[dict]:
     gap = panel_row([], PANEL_TABLE_GAP_PX)
     built = (
         [title]
-        + panel_table(rows, ivp.ROW_A_INDICATOR_COLS, True)
+        + panel_table(held, ivp.ROW_A_INDICATOR_COLS, True)
         + [gap]
-        + panel_table(rows, ivp.ROW_B_INDICATOR_COLS, False)
+        + panel_table(held, ivp.ROW_B_INDICATOR_COLS, False)
     )
     return {
         "part": PANEL_PART,
@@ -1999,10 +2002,39 @@ def voting_panel(pull: Any) -> Optional[dict]:
         "box_style": PANEL_BOX_STYLE,
         "line_style": DETAIL_STYLE,
         "rows": built,
-        "lines": gate_rows(pull),
-        "symbol": pull.symbol,
-        "tooltip": PANEL_TOOLTIP_FORMAT.format(symbol=pull.symbol),
+        "lines": list(lines),
+        "symbol": str(symbol),
+        "tooltip": PANEL_TOOLTIP_FORMAT.format(symbol=symbol),
     }
+
+
+def voting_panel(pull: Any) -> Optional[dict]:
+    """The Indicator Voting Panel one scanned asset carries, as its rows.
+
+    The rows are the timeframes ATA-SMP read for this asset alone, and
+    every cell is drawn from ``indicator_panel_surface``.
+    """
+    rows = dict(getattr(pull, "panel", None) or {})
+    if not rows:
+        return None
+    return panel_grid(
+        pull.symbol,
+        ata_spm.timeframe_label(pull.timeframe),
+        rows,
+        gate_rows(pull),
+    )
+
+
+def scan_panel(reading: Any) -> Optional[dict]:
+    """The Indicator Voting Panel of the market a running walk is reading.
+
+    ``reading`` is ``ata_spm.SectorBoard.progress_panel``, and the panel
+    carries no ``gate_rows`` line: no chain has run over the market yet.
+    """
+    if not reading:
+        return None
+    symbol, rows = reading
+    return panel_grid(symbol, SCAN_PANEL_LABEL, rows)
 
 
 def gate_rows(pull: Any) -> list:
@@ -2678,7 +2710,7 @@ def zone_view(
     expanded: Any,
     empty_text: Any,
     running: Any = "",
-    running_lines: Any = (),
+    running_panel: Any = None,
 ) -> dict:
     """One zone as all three hosts draw it.
 
@@ -2688,8 +2720,8 @@ def zone_view(
     hint, which the four expanded lines already say, so every zone's open
     entry takes the same height whatever buttons it carries. A ``running``
     line is the ``counter`` drawn just above the entry at its right corner
-    while a scan runs, and ``running_lines`` are then the entry's rows, one
-    per market read, with no headline, meta or method.
+    while a scan runs, and ``running_panel`` is then the entry's only
+    content: ``scan_panel`` over the market under read, and no text line.
     """
     held = list(entries or [])
     total = len(held)
@@ -2702,10 +2734,7 @@ def zone_view(
     open_now = bool(expanded) and total > 0 and not busy
     lines = own_detail if own_detail is not None else method_detail_rows(method)
     written = own_method_text if own_method_text is not None else method_line(method)
-    walked = [
-        [SCAN_LINE_NAME_FORMAT.format(at=index + 1), str(line)]
-        for index, line in enumerate(running_lines or ())
-    ]
+    reading = scan_panel(running_panel) if busy else None
     return {
         "key": key,
         "title": title,
@@ -2720,13 +2749,17 @@ def zone_view(
         "method": "" if open_now or busy else (written if total else ""),
         "hint": total > 0 and not open_now and not busy,
         "expanded": open_now or busy,
-        "detail": walked if busy else (lines if open_now else []),
+        "detail": [] if busy else (lines if open_now else []),
         "thumbnail": entry.get("thumbnail") if total else None,
         "preview": entry.get("preview") if open_now else None,
         "actions": (entry.get("actions") or []) if open_now else [],
         "vote": entry.get("vote") if total else None,
         "headline_width_px": entry.get("headline_width_px") if total else None,
-        "panels": (entry.get("panels") or []) if open_now else [],
+        "panels": (
+            [reading]
+            if reading is not None
+            else ((entry.get("panels") or []) if open_now else [])
+        ),
         "badge": str(entry.get("badge") or "") if total and not busy else "",
         "badge_style": str(entry.get("badge_style") or "") if total else "",
     }
@@ -4095,7 +4128,7 @@ class MarketInspectorScreenModel:
         """All six zones as the stepper draws them, left three then right three.
 
         The ATA-SPM zone carries ``board.progress_text`` as its counter and
-        ``board.progress_lines`` as its rows while a scan runs.
+        ``board.progress_panel`` as its only content while a scan runs.
         """
         rows = self.left_modules() + self.right_zones()
         return [
@@ -4107,7 +4140,7 @@ class MarketInspectorScreenModel:
                 self.zone_open.get(key, False),
                 status,
                 self.board.progress_text if key == ATA_SPM_MODULE else "",
-                self.board.progress_lines if key == ATA_SPM_MODULE else (),
+                self.board.progress_panel if key == ATA_SPM_MODULE else None,
             )
             for key, title, status in rows
         ]

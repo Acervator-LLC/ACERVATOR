@@ -459,16 +459,42 @@ if _HAS_QT:
         """
 
         def __init__(self, parent=None) -> None:
-            """Hold the labels ``show_panel`` replaces on each redraw."""
+            """Hold the labels ``show_panel`` writes into, row by row."""
             super().__init__(parent)
             self.cells: list = []
 
         def show_panel(self, panel: dict) -> None:
-            """Draw one ``voting_panel`` payload at the size it declares."""
+            """Draw one ``voting_panel`` payload at the size it declares.
+
+            A payload of the same shape writes into the labels already
+            drawn; only a different shape builds any.
+            """
+            wanted = [len(cells) for _height, cells in panel["rows"]]
+            if wanted != [len(row) for row in self.cells]:
+                self._build_cells(panel)
+            self.setFixedSize(int(panel["width_px"]), int(panel["height_px"]))
+            self.setStyleSheet(str(panel["box_style"]))
+            self.setAccessibleName(str(panel["part"]))
+            self.setToolTip(str(panel.get("tooltip", "")))
+            for drawn_row, (height_px, cells) in zip(self.cells, panel["rows"]):
+                for drawn, (part, width_px, text, style, tip) in zip(drawn_row, cells):
+                    drawn.setFixedSize(int(width_px), int(height_px))
+                    drawn.setStyleSheet(str(style))
+                    drawn.setAccessibleName(str(part))
+                    drawn.setToolTip(str(tip))
+                    drawn.setText(str(text))
+
+        def _build_cells(self, panel: dict) -> None:
+            """Replace every row of labels with one row per ``panel`` row.
+
+            Each label is hidden before it leaves its parent, so a show
+            already posted for it cannot open it as a window of its own.
+            """
             while self.cells:
-                gone = self.cells.pop()
-                gone.setParent(None)
-                gone.deleteLater()
+                for gone in self.cells.pop():
+                    gone.hide()
+                    gone.setParent(None)
+                    gone.deleteLater()
             shape = self.layout()
             if shape is None:
                 shape = QVBoxLayout(self)
@@ -476,25 +502,21 @@ if _HAS_QT:
                 shape.setSpacing(0)
             while shape.count():
                 shape.takeAt(0)
-            self.setFixedSize(int(panel["width_px"]), int(panel["height_px"]))
-            self.setStyleSheet(str(panel["box_style"]))
-            self.setAccessibleName(str(panel["part"]))
-            self.setToolTip(str(panel.get("tooltip", "")))
             for height_px, cells in panel["rows"]:
                 row = QHBoxLayout()
                 row.setContentsMargins(0, 0, 0, 0)
                 row.setSpacing(0)
-                for part, width_px, text, style, tip in cells:
-                    drawn = QLabel(str(text), self)
+                drawn_row = []
+                for _part, width_px, _text, _style, _tip in cells:
+                    drawn = QLabel(self)
                     drawn.setFixedSize(int(width_px), int(height_px))
-                    drawn.setStyleSheet(str(style))
-                    drawn.setAccessibleName(str(part))
-                    drawn.setToolTip(str(tip))
                     drawn.setAlignment(Qt.AlignCenter)
                     row.addWidget(drawn)
-                    self.cells.append(drawn)
+                    drawn.show()
+                    drawn_row.append(drawn)
                 row.addStretch()
                 shape.addLayout(row)
+                self.cells.append(drawn_row)
 
     class ProposalStepper(QWidget):
         """One zone's entries shown one at a time, with arrows and a expansion.
@@ -656,8 +678,6 @@ if _HAS_QT:
             shape.invalidate()
             shape.activate()
             self.entry.hold_height()
-            if counter:
-                self._scroll_to_newest()
 
         def _show_lines(self, lines: list) -> None:
             """Write one detail label per line, reusing the labels already drawn.
@@ -682,11 +702,6 @@ if _HAS_QT:
                 drawn.show()
                 self.detail_labels.append(drawn)
 
-        def _scroll_to_newest(self) -> None:
-            """Move the entry scroll to its end, so the last line drawn is on screen."""
-            bar = self.entry_scroll.verticalScrollBar()
-            bar.setValue(bar.maximum())
-
         def _show_strips(self, view: dict) -> None:
             """Draw the thumbnail and, while the entry is open, the larger chart."""
             pairs = ((self.thumbnail, "thumbnail"), (self.preview, "preview"))
@@ -703,34 +718,72 @@ if _HAS_QT:
             """Draw one ``_VotingPanel`` and its gate lines per ``voting_panel``.
 
             The lines sit under the panel of the asset they name, which is
-            what puts the gate chain result beside its own voting grid.
+            what puts the gate chain result beside its own voting grid. Each
+            panel keeps its own box across redraws, so a walk that redraws
+            once a market builds no widget and tears none down.
             """
-            while self.panels:
-                gone = self.panels.pop()
+            while len(self.panels) > len(rows):
+                gone = self.panels.pop()[0]
+                gone.hide()
                 self.panel_box.removeWidget(gone)
                 gone.setParent(None)
                 gone.deleteLater()
-            for panel in rows:
-                drawn = _VotingPanel()
-                drawn.show_panel(panel)
-                self.panel_box.addWidget(drawn)
-                self.panels.append(drawn)
-                for _name, line in panel.get("lines") or []:
-                    written = QLabel(line)
-                    written.setStyleSheet(str(panel["line_style"]))
-                    written.setAccessibleName(str(panel["line_part"]))
-                    written.setWordWrap(True)
-                    self.panel_box.addWidget(written)
-                    self.panels.append(written)
+            while len(self.panels) < len(rows):
+                self.panels.append(self._build_panel_box())
+            for held, panel in zip(self.panels, rows):
+                held[1].show_panel(panel)
+                self._show_panel_lines(held, panel)
+
+        def _build_panel_box(self) -> list:
+            """One panel's box: the grid, then the labels its gate lines take."""
+            box = QWidget(self.entry)
+            column = QVBoxLayout(box)
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(ENTRY_SPACING_PX)
+            grid = _VotingPanel(box)
+            column.addWidget(grid)
+            self.panel_box.addWidget(box)
+            box.show()
+            return [box, grid, []]
+
+        def _show_panel_lines(self, held: list, panel: dict) -> None:
+            """Write one label per gate line under one panel, reusing its labels.
+
+            A label past the last line is hidden before it leaves the box,
+            so a show already posted for it cannot open it as a window.
+            """
+            box, _grid, labels = held
+            column = box.layout()
+            lines = [str(line) for _name, line in panel.get("lines") or []]
+            while len(labels) > len(lines):
+                gone = labels.pop()
+                gone.hide()
+                column.removeWidget(gone)
+                gone.setParent(None)
+                gone.deleteLater()
+            for at, line in enumerate(lines):
+                if at < len(labels):
+                    labels[at].setText(line)
+                    continue
+                written = QLabel(box)
+                written.setStyleSheet(str(panel["line_style"]))
+                written.setAccessibleName(str(panel["line_part"]))
+                written.setWordWrap(True)
+                written.setText(line)
+                column.addWidget(written)
+                written.show()
+                labels.append(written)
 
         def _show_actions(self, rows: list) -> None:
             """Draw one button per action row, replacing the buttons drawn before.
 
             The buttons sit before the stretch ``action_row`` ends with, so
-            each takes its own width.
+            each takes its own width. A button is hidden before it leaves
+            the row, so a show already posted for it opens no window.
             """
             while self.action_buttons:
                 gone = self.action_buttons.pop()
+                gone.hide()
                 self.action_row.removeWidget(gone)
                 gone.setParent(None)
                 gone.deleteLater()
@@ -782,6 +835,7 @@ if _HAS_QT:
             self.rows = [dict(one) for one in rows]
             while len(self.tiles) > len(self.rows):
                 frame, _pair, _line, _close = self.tiles.pop()
+                frame.hide()
                 self.grid.removeWidget(frame)
                 frame.setParent(None)
                 frame.deleteLater()
@@ -799,7 +853,7 @@ if _HAS_QT:
             self._place()
 
         def _build_tile(self) -> tuple:
-            frame = QFrame()
+            frame = QFrame(self)
             frame.setObjectName(TIMER_TILE_PART)
             frame.setStyleSheet(f"QFrame#{TIMER_TILE_PART} {{ {TIMER_TILE_STYLE} }}")
             frame.setFixedWidth(TIMER_TILE_WIDTH_PX)
@@ -1907,7 +1961,6 @@ if _HAS_QT:
             )
             self._scan_refusals = {}
             self._chimed_hits = NO_HITS_CHIMED
-            self._ata_board.progress_lines = []
             self._ata_board.progress = ata_spm.ScanProgress(
                 asset_class=board.asset_class,
                 read=ata_spm.NO_MARKETS_READ,
@@ -1970,7 +2023,6 @@ if _HAS_QT:
             settings = self._push_board.settings
             self._scan_refusals = {}
             self._chimed_hits = NO_HITS_CHIMED
-            self._ata_board.progress_lines = []
             self._ata_board.progress = ata_spm.ScanProgress(
                 asset_class=ata_spm.ASSET_CLASSES[0],
                 read=ata_spm.NO_MARKETS_READ,
@@ -2050,12 +2102,16 @@ if _HAS_QT:
 
         def _take_scan_progress(self, progress) -> None:
             """Write one ``ata_spm.ScanProgress`` onto the board, redraw the
-            zone, and pin every ``PROGRESS_PIN_EVERY`` markets and at the end."""
+            zone, and pin every ``PROGRESS_PIN_EVERY`` markets and at the end.
+
+            The market's own line goes to the Activity Log beside the reads
+            it names; the zone draws ``progress.panel`` instead.
+            """
             if self._ata_board.progress is None:
                 return
             self._ata_board.progress = progress
             if progress.line:
-                self._ata_board.progress_lines.append(str(progress.line))
+                self._say(str(progress.line))
             hits = int(progress.hits)
             if hits > self._chimed_hits:
                 self._chime_for(
@@ -2628,7 +2684,8 @@ if _HAS_QT:
             """All six zones as the stepper draws them, left three then right three.
 
             The ATA-SPM zone carries the board's ``progress_text`` as its
-            counter and ``progress_lines`` as its rows while a scan runs.
+            counter and ``progress_panel`` as its only content while a scan
+            runs.
             """
             rows = _left_module_rows(
                 self._ata_report(),
@@ -2648,7 +2705,7 @@ if _HAS_QT:
                     self._zone_open.get(key, False),
                     status,
                     self._ata_board.progress_text if key == ATA_SPM_MODULE else "",
-                    self._ata_board.progress_lines if key == ATA_SPM_MODULE else (),
+                    self._ata_board.progress_panel if key == ATA_SPM_MODULE else None,
                 )
                 for key, title, status in rows
             ]
