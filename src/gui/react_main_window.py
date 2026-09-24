@@ -261,9 +261,10 @@ if _HAS_WEBENGINE:
     class MainTabBookReact(QWidget):
         """The main tab book with its bar in React and its pages in Qt.
 
-        Answers ``addTab``, ``insertTab``, ``count``, ``tabText``, ``widget``,
-        ``indexOf``, ``currentIndex``, ``setCurrentIndex``, ``setMovable`` and
-        ``tabBar`` over the ``QTabWidget`` it holds, whose own bar is hidden.
+        Answers ``addTab``, ``insertTab``, ``removeTab``, ``count``,
+        ``tabText``, ``widget``, ``indexOf``, ``currentIndex``,
+        ``setCurrentIndex``, ``setMovable`` and ``tabBar`` over the
+        ``QTabWidget`` it holds, whose own bar is hidden.
         """
 
         def __init__(self, parent=None) -> None:
@@ -295,6 +296,11 @@ if _HAS_WEBENGINE:
             at = self._book.insertTab(index, widget, label)
             self._push_tabs()
             return at
+
+        def removeTab(self, index: int) -> None:  # noqa: N802 - the QTabWidget name
+            """Take the tab at ``index`` off the book and redraw the bar."""
+            self._book.removeTab(index)
+            self._push_tabs()
 
         def count(self) -> int:
             """How many tabs the book holds."""

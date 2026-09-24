@@ -149,6 +149,7 @@ from ...simulator.tablet_source import TabletSource, tablet_key
 from ...simulator.ytd_trade_source import ROOT_READY, YtdTradeSource
 from ...trading.stone_tablets.storage import tablet_filename
 from ..main_tabs import bot_status_table_surface as scrum_surface
+from ..main_tabs import class_filter_surface
 from ..main_tabs import design_system_surface as token_surface
 from ..main_tabs import extractor_bot_table_surface as extractor_surface
 from ..main_tabs import indicator_panel_surface, status_log_surface
@@ -1007,6 +1008,7 @@ if _HAS_WEBENGINE:
             self._models: dict = {}
             self._votes: dict = {}
             self._venues: dict = {}
+            self._asset_class = class_filter_surface.active()
             self._venue_models: dict = {}
             self._waiting: dict = {}
             self._page_ready = False
@@ -1922,11 +1924,22 @@ if _HAS_WEBENGINE:
             push the fleet to the page; answers how many rows were handed out."""
             handed = 0
             for eid, venue in list(self._venues.items()):
-                statuses = self._fleet_source.statuses(eid)
+                statuses = class_filter_surface.bots_of_class(
+                    self._fleet_source.statuses(eid), self._asset_class
+                )
                 venue.update_bots(statuses)
                 handed += len(statuses)
             self._venue_published()
             return handed
+
+        def set_asset_class(self, name) -> tuple:
+            """Hold ``name`` as the class this tab shows.
+
+            Answers the rows ``refresh_bots`` kept for ``name`` and the rows
+            ``FleetSource.statuses`` holds in all.
+            """
+            self._asset_class = class_filter_surface.normalise(name)
+            return (self.refresh_bots(), len(self._fleet_source.statuses()))
 
         def refresh_votes(self) -> dict:
             """Hand the panel model the fleet's statuses, the fleet's own rate

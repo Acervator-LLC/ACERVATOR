@@ -92,6 +92,7 @@ from ...paper.paper_exchange import PaperExchange, read_fleet
 from ...paper.paper_run import PaperRun, PaperRunner, PaperTrade
 from .. import design_system as ds
 from ..color_alpha import rgba
+from ..main_tabs import class_filter_surface
 from ..main_tabs.trading_tab_surface import (
     ADD_BUTTON_MIN_WIDTH_PX,
     BOTTOM_SPLITTER_SIZES_PX,
@@ -168,6 +169,7 @@ class PaperTradingTab(QWidget):
             exchange if exchange is not None else PaperExchange(api_log=self._api_log)
         )
         self._bot_manager = PaperBotManager(self._fleet_source)
+        self._asset_class = class_filter_surface.active()
         self._ledger = PaperLedger()
         self._figures: dict = {}
         self._states: dict = {}
@@ -810,10 +812,21 @@ class PaperTradingTab(QWidget):
         handed = 0
         for store in (self._crypto_exchange_tabs, self._stock_exchange_tabs):
             for eid, tab in list(store.items()):
-                statuses = self._fleet_source.statuses(eid)
+                statuses = class_filter_surface.bots_of_class(
+                    self._fleet_source.statuses(eid), self._asset_class
+                )
                 tab.update_bots(statuses)
                 handed += len(statuses)
         return handed
+
+    def set_asset_class(self, name) -> tuple:
+        """Hold ``name`` as the class this tab shows.
+
+        Answers the rows ``refresh_bots`` kept for ``name`` and the rows
+        ``PaperFleetSource.statuses`` holds in all.
+        """
+        self._asset_class = class_filter_surface.normalise(name)
+        return (self.refresh_bots(), len(self._fleet_source.statuses()))
 
     # -- the voting panel -----------------------------------------------
 

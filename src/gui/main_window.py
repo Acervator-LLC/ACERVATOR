@@ -68,6 +68,8 @@ try:
 
     from .main_tabs.bot_swarm_tab import BotSwarmTabMixin
     from .main_tabs.charts_tab import ChartsTabMixin
+    from .main_tabs import class_filter_surface as _class_filter
+    from .main_tabs.class_filter_tab import ClassFilterTabMixin
     from .main_tabs.console_tab import ConsoleTabMixin
     from .main_tabs import header_strip_surface
     from .main_tabs.header_strip import HeaderStripMixin
@@ -163,6 +165,7 @@ if _HAS_QT:
         return 1
 
     class MainWindow(
+        ClassFilterTabMixin,
         BotSwarmTabMixin,
         ChartsTabMixin,
         ConsoleTabMixin,
@@ -356,10 +359,12 @@ if _HAS_QT:
                 self._build_proof_of_accumulation_tab()
 
             self._reorder_main_tabs(list(BAR_TAB_ORDER))
+            self._wrap_tabs_for_class()
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
 
             main_layout.addWidget(self._main_tabs, 1)
+            self._apply_asset_class()
 
         def _reorder_main_tabs(self, desired: list[str]) -> None:
             """Move each label in ``desired`` to the next slot; unlisted tabs stay put.
@@ -1181,17 +1186,25 @@ if _HAS_QT:
                 agg = self._bot_manager.get_aggregate_stats()
                 self._refresh_header_strip(agg)
 
+                # Every feed below takes the active asset class's bots only.
+                _class = _class_filter.active()
                 all_statuses = []
                 for eid, tab in self._exchange_tabs.items():
-                    exchange_statuses = self._bot_manager.list_bots_by_exchange(eid)
+                    exchange_statuses = _class_filter.bots_of_class(
+                        self._bot_manager.list_bots_by_exchange(eid), _class
+                    )
                     tab.update_bots(exchange_statuses)
                     all_statuses.extend(exchange_statuses)
 
-                all_bot_statuses = self._bot_manager.list_bots()
+                all_bot_statuses = _class_filter.bots_of_class(
+                    self._bot_manager.list_bots(), _class
+                )
                 seen_ids = {s.get("bot_id") for s in all_statuses}
                 for s in all_bot_statuses:
                     if s.get("bot_id") not in seen_ids:
                         all_statuses.append(s)
+
+                self._refresh_class_notes(all_statuses)
 
                 # Unconditional: `update_bots([])` drops every widget when all bots go.
                 try:

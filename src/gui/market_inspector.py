@@ -2780,6 +2780,18 @@ if _HAS_QT:
             self._active_symbols = active
             self._render_signals()
 
+        def set_asset_class(self, name) -> int:
+            """Point the ATA-SPM zone's own class at ``name`` and redraw.
+
+            Answers how many symbols ``update_active_symbols`` last held.
+            """
+            from .main_tabs.class_filter_surface import normalise
+
+            self._ata_board.set_class(self._ata_at(), normalise(name))
+            self._render_ata_row()
+            self._render_left_modules()
+            return len(self._active_symbols)
+
         def set_dismiss_store(self, store) -> None:
             """Forward ``store`` to ``_topologies_pane`` for dismissal persistence.
 

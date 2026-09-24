@@ -13,6 +13,7 @@ from typing import Optional
 from src.exchange import history_read_contract as hrc
 
 from . import design_system as ds
+from .main_tabs import class_filter_surface
 
 try:
     from PySide6.QtCore import QDateTime, Qt, QTimer, Signal
@@ -78,6 +79,7 @@ if _HAS_QT:
             self._bot_manager = None
             self._all_trades: list[dict] = []
             self._filtered: list[dict] = []
+            self._asset_class = class_filter_surface.active()
             self._page = 0
             self._fetch_in_flight = False
             self._last_fetched_ts: float = 0.0
@@ -88,6 +90,21 @@ if _HAS_QT:
 
         def set_bot_manager(self, bot_manager) -> None:
             self._bot_manager = bot_manager
+
+        def set_asset_class(self, name) -> tuple:
+            """Hold ``name`` as the class this table shows.
+
+            Answers the rows kept for ``name`` and the rows ``_all_trades``
+            holds in all; ``_apply_filters`` narrows them through
+            ``class_filter_surface.trades_of_class``.
+            """
+            self._asset_class = class_filter_surface.normalise(name)
+            if self._all_trades:
+                self._apply_filters()
+                self._render_page()
+            else:
+                self._filtered = []
+            return (len(self._filtered), len(self._all_trades))
 
         def refresh(self) -> None:
             """Start an async trade fetch and re-render when it lands."""
@@ -519,7 +536,9 @@ if _HAS_QT:
                 if side_f != "(all)" and r.get("side") != side_f:
                     continue
                 out.append(r)
-            self._filtered = out
+            self._filtered = class_filter_surface.trades_of_class(
+                out, self._asset_class
+            )
             _filter_s = time.monotonic() - _filter_t0
             # Read back from the controls, not the loop locals, so a
             # mis-wired predicate disagrees here.
@@ -583,11 +602,8 @@ if _HAS_QT:
 
         def _render_page(self) -> None:
             total = len(self._filtered)
-            max_page = max(0, (total - 1) // self.PAGE_SIZE)
-            if self._page > max_page:
-                self._page = max_page
-            if self._page < 0:
-                self._page = 0
+            last_page = max(0, (total - 1) // self.PAGE_SIZE)
+            self._page = min(max(self._page, 0), last_page)
             start = self._page * self.PAGE_SIZE
             end = min(start + self.PAGE_SIZE, total)
             rows = self._filtered[start:end]
@@ -617,7 +633,7 @@ if _HAS_QT:
                         expected=_want_rows,
                         context={
                             "page": _page_now,
-                            "pages": max_page + 1,
+                            "pages": last_page + 1,
                             "filtered": total,
                             "pushed_rows": len(model["page"]["rows"]),
                             "readback": _actual >= 0,
@@ -628,7 +644,7 @@ if _HAS_QT:
             if not self._table.row_count(_emit_drawn):
                 _emit_drawn(-1)
 
-            self._paint_chrome(total, max_page)
+            self._paint_chrome(total, last_page)
 
         def _grade_row(self, row_i: int, page_rows: list, r: dict) -> str:
             """Return the A-to-F grade for one row, delegating to grade_row."""
