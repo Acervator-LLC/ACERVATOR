@@ -1177,6 +1177,20 @@ def _listings_for(asset_source: Any, sector: Sector) -> list:
         return []
 
 
+def sector_key_of(rows: Any, typed: Any) -> str:
+    """The sector name the asset rows carry, ``typed`` while they carry none.
+
+    ``ata_asset_maps.MAPS`` stamps each row with the sector it is listed
+    under, so a sector typed as an earlier taxonomy named it is scanned and
+    labelled under the sector now holding its markets.
+    """
+    for one in rows or []:
+        named = str(getattr(one, "sector", "") or "")
+        if named:
+            return named
+    return str(typed)
+
+
 def symbol_of(listing: Any) -> str:
     """The symbol one asset row names, whether it is a row or a bare name."""
     return str(getattr(listing, "symbol", listing))
@@ -2059,7 +2073,8 @@ class SectorBoard:
 
         A ``self.text`` that ``market_of`` places scans that one market under
         the class the placement names, a ``self.text`` the ``asset_source``
-        answers rows for scans that whole sector, anything else answers
+        answers rows for scans that whole sector under the name
+        ``sector_key_of`` reads off the rows, anything else answers
         ``TICKER_UNHELD_FORMAT`` and runs nothing, and an empty ``self.text``
         scans what ``class_source`` lists for ``asset_class`` until
         ``hit_target`` hits; nothing on the board is written until ``take``.
@@ -2073,12 +2088,14 @@ class SectorBoard:
         ticked = self.ticked_at(at)
         if named:
             placed = market_of(market_source, named, self.asset_class)
+            rows = [] if placed is not None else self._sector_rows(asset_source, named)
             if placed is not None:
                 self._say_resolved(named, placed.asset_class, placed=placed)
                 added = self._market_at(sectors, placed, ticked)
-            elif self._sector_holds(asset_source, named):
-                self._say_resolved(named, self.asset_class, sector=named)
-                added = self._sector_at(sectors, named, ticked)
+            elif rows:
+                key = sector_key_of(rows, named)
+                self._say_resolved(named, self.asset_class, sector=key)
+                added = self._sector_at(sectors, key, ticked)
             else:
                 note = TICKER_UNHELD_FORMAT.format(ticker=named)
                 self._say_resolved(named, "", refusal=note)
@@ -2127,10 +2144,10 @@ class SectorBoard:
             },
         )
 
-    def _sector_holds(self, asset_source: Any, named: str) -> bool:
-        """True while ``asset_source`` answers any row for ``named`` as a sector."""
+    def _sector_rows(self, asset_source: Any, named: str) -> list:
+        """The rows ``asset_source`` answers for ``named`` as a sector of the class."""
         asked = Sector(name=named, asset_class=self.asset_class)
-        return bool(_listings_for(asset_source, asked))
+        return _listings_for(asset_source, asked)
 
     def _sector_at(self, sectors: list, named: str, ticked: tuple) -> int:
         """The index one new sector took in ``sectors``, ``NO_NEW_SECTOR`` when held."""

@@ -1265,7 +1265,9 @@ if _HAS_QT:
                 item = QStandardItem(offer)
                 item.setData(symbol, TICKER_SYMBOL_ROLE)
                 self._ticker_model.appendRow(item)
-            note = ticker_note(asset_class, self._ata_board.note)
+            note = ticker_note(
+                asset_class, self._ata_board.note, self._ticker_edit.text()
+            )
             self._ticker_note.setText(note)
             self._ticker_note.setVisible(bool(note))
 

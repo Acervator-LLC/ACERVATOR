@@ -19,7 +19,7 @@ import math
 import threading
 import time
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Optional
 
 from ..core.safe_url import SafeRequest, safe_urlopen
@@ -403,20 +403,32 @@ STOCKS_PORTFOLIO: tuple[AssetListing, ...] = tuple(
     if one not in CRYPTO_SYMBOLS and one not in _MAPPED_FUNDS
 )
 
+
+def _under(sector: str, rows: tuple[AssetListing, ...]) -> tuple[AssetListing, ...]:
+    """``rows`` each carrying ``sector`` as the sector this map lists it under.
+
+    ``ata_spm.sector_key_of`` reads the field back, so a scan of a sector named
+    as an earlier taxonomy named it is labelled by the sector holding it.
+    """
+    return tuple(replace(one, sector=sector) for one in rows)
+
+
 MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
     CLASS_FOREX: {
-        SECTOR_MAJOR: FOREX_MAJOR,
-        SECTOR_MINOR: FOREX_MINOR,
-        SECTOR_EXOTIC: FOREX_EXOTIC,
+        SECTOR_MAJOR: _under(SECTOR_MAJOR, FOREX_MAJOR),
+        SECTOR_MINOR: _under(SECTOR_MINOR, FOREX_MINOR),
+        SECTOR_EXOTIC: _under(SECTOR_EXOTIC, FOREX_EXOTIC),
     },
     CLASS_COMMODITIES: {
-        SECTOR_ENERGY: ENERGY_PETROLEUM + ENERGY_GAS,
-        SECTOR_INDUSTRIAL_METALS: METALS_BASE,
-        SECTOR_PRECIOUS_METALS: METALS_SPOT + METALS_PHYSICAL,
+        SECTOR_ENERGY: _under(SECTOR_ENERGY, ENERGY_PETROLEUM + ENERGY_GAS),
+        SECTOR_INDUSTRIAL_METALS: _under(SECTOR_INDUSTRIAL_METALS, METALS_BASE),
+        SECTOR_PRECIOUS_METALS: _under(
+            SECTOR_PRECIOUS_METALS, METALS_SPOT + METALS_PHYSICAL
+        ),
         SECTOR_AGRICULTURE: (),
         SECTOR_LIVESTOCK: (),
     },
-    CLASS_STOCKS: {SECTOR_PORTFOLIO: STOCKS_PORTFOLIO},
+    CLASS_STOCKS: {SECTOR_PORTFOLIO: _under(SECTOR_PORTFOLIO, STOCKS_PORTFOLIO)},
 }
 
 #: Why one class's declared sectors hold no listed market. ``ticker_note``
