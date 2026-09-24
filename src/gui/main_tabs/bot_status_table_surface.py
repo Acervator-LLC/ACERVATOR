@@ -36,8 +36,10 @@ from .table_cells_surface import (
     NO_TARGET_TEXT,
     POSITION_BLANK_TEXT,
     POSITION_PATHS,
+    PRICE_STALE_AFTER_S,
     TableCellsModel,
     magnitude,
+    priced_position,
 )
 
 logger = logging.getLogger("acervator.gui")
@@ -137,6 +139,8 @@ BUTTON_COLUMNS = (FIRE_COLUMN, DETAIL_COLUMN)
 BOT_ID_COLUMN = 0
 SYMBOL_COLUMN = 1
 POSITION_VALUE_COLUMN = 2
+TRADES_COLUMN = 3
+TARGET_COLUMN = 4
 TARGET_BTC_COLUMN = 5
 TARGET_ETH_COLUMN = 6
 AMMO_COLUMN = 7
@@ -174,6 +178,16 @@ HEADER_DOT_STYLE = (
     f"font-size: {HEADER_DOT_FONT_PX}px;"
 )
 
+# The mark sits in the header cell's own top-right corner, over the label,
+# so neither the wrap nor the dot's centring moves when a column sorts.
+HEADER_SORT_MARK_FONT_PX = ds.TYPE_CAPTION
+HEADER_SORT_MARK_STYLE = (
+    f"color: {ds.PRIMARY_BRIGHT}; "
+    "background: transparent; "
+    f"font-size: {HEADER_SORT_MARK_FONT_PX}px;"
+)
+HEADER_SORT_MARK_BOX_PX = ds.TYPE_CAPTION + ds.SPACE_XS
+
 ALIGNMENT = "AlignCenter"
 ALIGNMENT_VALUE = 132
 
@@ -189,6 +203,8 @@ SKIP_LOG_FORMAT = (
 )
 SKIP_BOT_ID_LENGTH = 8
 SKIP_BOT_ID_MISSING = "?"
+
+ROW_REFUSED_LOG = "Bot table row %d refused for bot %r: %s: %s"
 
 ICON_ASSET_SIZE_PX = ds.COIN_ICON_SIZE_PX
 ICON_DOWNLOAD = False
@@ -388,7 +404,64 @@ EMPTY_TEXT = ""
 NO_SELECTION_ROW = -1
 NO_SELECTION_BOT_ID = ""
 
-SORTING_ENABLED = False
+SORT_KIND_TEXT = "text"
+SORT_KIND_NUMBER = "number"
+SORT_KIND_NONE = "none"
+
+# The Detail column holds one identical button a row, so it carries no
+# value to order by and is the one column a press does not sort.
+SORT_KIND_BY_COL = {
+    BOT_ID_COLUMN: SORT_KIND_TEXT,
+    SYMBOL_COLUMN: SORT_KIND_TEXT,
+    POSITION_VALUE_COLUMN: SORT_KIND_NUMBER,
+    TRADES_COLUMN: SORT_KIND_NUMBER,
+    TARGET_COLUMN: SORT_KIND_NUMBER,
+    TARGET_BTC_COLUMN: SORT_KIND_NUMBER,
+    TARGET_ETH_COLUMN: SORT_KIND_NUMBER,
+    AMMO_COLUMN: SORT_KIND_NUMBER,
+    FIRE_COLUMN: SORT_KIND_NUMBER,
+    DETAIL_COLUMN: SORT_KIND_NONE,
+}
+
+SORTABLE_COLUMNS = tuple(
+    column
+    for column, kind in sorted(SORT_KIND_BY_COL.items())
+    if kind != SORT_KIND_NONE
+)
+
+NO_SORT_COLUMN = -1
+SORT_ASCENDING = "ascending"
+SORT_DESCENDING = "descending"
+SORT_UNSORTED = ""
+SORT_MARK_ASCENDING = "▲"
+SORT_MARK_DESCENDING = "▼"
+SORT_MARK_NONE = ""
+
+SORT_TIP_BY_KIND = {
+    SORT_KIND_TEXT: {
+        SORT_ASCENDING: "\n\nSorted A to Z. Press the label to reverse.",
+        SORT_DESCENDING: "\n\nSorted Z to A. Press the label to reverse.",
+        SORT_UNSORTED: "\n\nPress the label to sort this column A to Z.",
+    },
+    SORT_KIND_NUMBER: {
+        SORT_ASCENDING: "\n\nSorted lowest first. Press the label to reverse.",
+        SORT_DESCENDING: "\n\nSorted highest first. Press the label to reverse.",
+        SORT_UNSORTED: "\n\nPress the label to sort this column lowest first.",
+    },
+    SORT_KIND_NONE: {
+        SORT_ASCENDING: EMPTY_TEXT,
+        SORT_DESCENDING: EMPTY_TEXT,
+        SORT_UNSORTED: EMPTY_TEXT,
+    },
+}
+
+# Armed first, then the two organic phases, then idle, then the rows whose
+# Fire button is disabled.
+FIRE_SORT_RANK = {"scrum": 0.0, "fold": 1.0, "fire": 2.0, "track": 3.0}
+FIRE_SORT_IDLE = 4.0
+FIRE_SORT_DISABLED = 5.0
+
+SORTING_ENABLED = True
 SELECTION_BEHAVIOR = "SelectRows"
 EDIT_TRIGGERS = "NoEditTriggers"
 ALTERNATING_ROW_COLORS = True
@@ -404,6 +477,7 @@ BUS_TOPICS: tuple[str, ...] = ()
 
 ACTIONS = {
     "privacy_toggled": "on_privacy_toggled",
+    "header_sorted": "on_header_sorted",
     "cell_clicked": "on_cell_clicked",
     "fire_clicked": "on_fire",
     "detail_clicked": "on_detail",
@@ -411,6 +485,7 @@ ACTIONS = {
 
 ROW_COUNT_SET = "rows.count"
 ROW_SKIPPED = "row.skipped"
+ROW_REFUSED = "row.refused"
 ROW_BUILT = "row.built"
 ROW_TARGET = "row.target"
 ROW_SYMBOL_LINK = "row.link"
@@ -421,6 +496,8 @@ FIRE_GLOW = "fire.glow"
 DETAIL_BUILT = "detail.built"
 HEADER_REFRESHED = "header.refreshed"
 HEADER_TOGGLED = "header.toggled"
+SORT_APPLIED = "sort.applied"
+SORT_IGNORED = "sort.ignored"
 HEADER_IGNORED = "header.ignored"
 HEADER_FAILED = "header.failed"
 SELECTION_READ = "selection.read"
@@ -463,30 +540,40 @@ def header_dot_tooltip(field_id: str, masked: bool) -> str:
     )
 
 
-def header_view(column: int, label: str, masked: Optional[bool]) -> dict:
-    """One column header: its own label, and the dot that sits beneath it.
+def header_view(
+    column: int,
+    label: str,
+    masked: Optional[bool],
+    sort_column: int = NO_SORT_COLUMN,
+    descending: bool = False,
+) -> dict:
+    """One column header: its label, its sort mark, and the dot beneath it.
 
     A ``masked`` of None names a column ``PRIVACY_FIELD_BY_COL`` does not
     carry, which draws its label with no dot under it.
     """
     field_id = PRIVACY_FIELD_BY_COL.get(column, EMPTY_TEXT)
-    if not field_id or masked is None:
-        return {
-            "text": label,
-            "tooltip": COLUMN_TOOLTIPS.get(column, EMPTY_TEXT),
-            "field_id": EMPTY_TEXT,
-            "masked": False,
-            "dot_text": EMPTY_TEXT,
-            "dot_tooltip": EMPTY_TEXT,
-        }
-    return {
+    direction = sort_direction(column, sort_column, descending)
+    found = {
         "text": label,
-        "tooltip": header_tooltip(column, field_id, masked),
-        "field_id": field_id,
-        "masked": bool(masked),
-        "dot_text": header_glyph(masked),
-        "dot_tooltip": header_dot_tooltip(field_id, masked),
+        "tooltip": COLUMN_TOOLTIPS.get(column, EMPTY_TEXT),
+        "field_id": EMPTY_TEXT,
+        "masked": False,
+        "dot_text": EMPTY_TEXT,
+        "dot_tooltip": EMPTY_TEXT,
+        "sortable": column in SORTABLE_COLUMNS,
+        "sort_kind": SORT_KIND_BY_COL.get(column, SORT_KIND_NONE),
+        "sort_direction": direction,
+        "sort_mark": sort_mark(direction),
     }
+    if field_id and masked is not None:
+        found["tooltip"] = header_tooltip(column, field_id, masked)
+        found["field_id"] = field_id
+        found["masked"] = bool(masked)
+        found["dot_text"] = header_glyph(masked)
+        found["dot_tooltip"] = header_dot_tooltip(field_id, masked)
+    found["tooltip"] = (found["tooltip"] + sort_tooltip(column, direction)).strip()
+    return found
 
 
 def target_text(target_val: float) -> str:
@@ -522,6 +609,211 @@ def blockers_text(blockers: list) -> str:
     if not blockers:
         return NO_BLOCKERS_TEXT
     return BLOCKERS_TIP_FORMAT.format(blockers=BLOCKERS_SEPARATOR.join(blockers))
+
+
+def target_value(status: Any) -> float:
+    """The target the engine re-zeros to, or the configured target_balance."""
+    return float(
+        status.get("live_target_balance", status.get("target_balance", NO_TARGET_VALUE))
+        or status.get("target_balance", NO_TARGET_VALUE)
+        or NO_TARGET_VALUE
+    )
+
+
+def quote_rate_of(status: Any) -> float:
+    """The quote_to_usd rate that turns this bot's quote asset into dollars."""
+    return float(
+        status.get("quote_to_usd", DEFAULT_QUOTE_TO_USD) or DEFAULT_QUOTE_TO_USD
+    )
+
+
+def holdings_of(status: Any) -> float:
+    """The current_holdings of the target asset this bot reports."""
+    return float(status.get("current_holdings", NO_HOLDINGS) or NO_HOLDINGS)
+
+
+class SortLookups:
+    """The two live readings ``sort_value`` needs, one pair per build variant.
+
+    ``price`` answers one bot's price and its age in seconds, and
+    ``denom_text`` answers what a Target-BTC or Target-ETH cell would draw.
+    """
+
+    def __init__(self, price, denom_text) -> None:
+        self.price = price
+        self.denom_text = denom_text
+
+
+def surface_lookups() -> SortLookups:
+    """The ``SortLookups`` the page's own ``TableCellsModel`` answers.
+
+    The recorder is a throwaway ``TableCellsModel``, which keeps the
+    ordering pass out of the table's own ``calls`` list.
+    """
+    cells = TableCellsModel()
+
+    def price(status: Any) -> tuple:
+        stats = status.get("stats") or {}
+        return cells.fresh_price(
+            cells.price_pool(),
+            str(status.get("exchange", EMPTY_TEXT) or EMPTY_TEXT),
+            str(status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT),
+            float(stats.get("current_price", NO_PRICE) or NO_PRICE),
+        )
+
+    def denom_text(quote: str, base: str, exchange_id: str, target: float) -> str:
+        return cells.target_denom_cell(quote, base, exchange_id, target)[0]
+
+    return SortLookups(price, denom_text)
+
+
+def position_sort_value(status: Any, lookups: SortLookups):
+    """The figure the Position Value cell draws, or None where it is blank.
+
+    The cell blanks on no holdings, on no price, on a price ``lookups``
+    did not age, and on an age past ``PRICE_STALE_AFTER_S``.
+    """
+    holdings = holdings_of(status)
+    if holdings <= NO_HOLDINGS:
+        return None
+    price, age_s = lookups.price(status)
+    if float(price or NO_PRICE) <= NO_PRICE:
+        return None
+    if age_s is None or float(age_s) > PRICE_STALE_AFTER_S:
+        return None
+    return priced_position(holdings, float(price), quote_rate_of(status))
+
+
+def ammo_sort_value(status: Any, lookups: SortLookups):
+    """The figure the Ammo cell draws, or None where that cell is blank.
+
+    ``ammo_text`` writes that distance from target without its sign, so
+    ``ammo_sort_value`` answers it without its sign too.
+    """
+    stats = status.get("stats") or {}
+    holdings = holdings_of(status)
+    price, _age_s = lookups.price(status)
+    price = float(price or NO_PRICE)
+    stats_pv = float(stats.get("position_value", NO_TARGET_VALUE) or NO_TARGET_VALUE)
+    fresh = holdings > NO_HOLDINGS and price > NO_PRICE
+    position = (
+        priced_position(holdings, price, quote_rate_of(status)) if fresh else stats_pv
+    )
+    target = target_value(status)
+    if position <= NO_TARGET_VALUE and holdings > NO_HOLDINGS:
+        return None
+    if target <= NO_TARGET_VALUE:
+        return None
+    if position <= NO_TARGET_VALUE:
+        return abs(NO_TARGET_VALUE - target)
+    return abs(position - target)
+
+
+def denom_sort_value(column: int, status: Any, lookups: SortLookups):
+    """The target a denom column orders by, or None where the cell is blank.
+
+    Every row divides its target by one quote price, so ordering on the
+    target orders on the units ``denom_text`` draws.
+    """
+    target = target_value(status)
+    if target <= NO_TARGET_VALUE:
+        return None
+    quote = QUOTE_BTC if column == TARGET_BTC_COLUMN else QUOTE_ETH
+    base = base_asset_of(status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT)
+    if not base or base == quote:
+        return None
+    drawn = lookups.denom_text(
+        quote, base, str(status.get("exchange", EMPTY_TEXT) or EMPTY_TEXT), target
+    )
+    return target if drawn else None
+
+
+def fire_sort_value(status: Any) -> float:
+    """Where one bot ranks in FIRE_SORT_RANK: armed first, disabled last."""
+    if status.get("mode", EMPTY_TEXT) != MODE_SCRUMMING:
+        return FIRE_SORT_DISABLED
+    if status.get("state", EMPTY_TEXT) not in ACTIVE_STATES:
+        return FIRE_SORT_DISABLED
+    armed = status.get("armed_action")
+    if armed in FIRE_SORT_RANK:
+        return FIRE_SORT_RANK[armed]
+    phase = status.get("scrum_target_mode")
+    if phase in FIRE_SORT_RANK:
+        return FIRE_SORT_RANK[phase]
+    return FIRE_SORT_IDLE
+
+
+def sort_value(column: int, status: Any, lookups: SortLookups):
+    """What one bot sorts by in one column, or None where its cell is blank.
+
+    A SORT_KIND_NUMBER column answers the figure its cell was computed
+    from, never the text the cell draws.
+    """
+    if SORT_KIND_BY_COL.get(column, SORT_KIND_NONE) == SORT_KIND_NONE:
+        return None
+    if column == BOT_ID_COLUMN:
+        return str(status.get("bot_id", EMPTY_TEXT) or EMPTY_TEXT).casefold()
+    if column == SYMBOL_COLUMN:
+        return str(status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT).casefold()
+    if column == POSITION_VALUE_COLUMN:
+        return position_sort_value(status, lookups)
+    if column == TRADES_COLUMN:
+        stats = status.get("stats") or {}
+        return float(stats.get("total_trades", NO_TRADES) or NO_TRADES)
+    if column == TARGET_COLUMN:
+        target = target_value(status)
+        return target if target > NO_TARGET_VALUE else None
+    if column in (TARGET_BTC_COLUMN, TARGET_ETH_COLUMN):
+        return denom_sort_value(column, status, lookups)
+    if column == AMMO_COLUMN:
+        return ammo_sort_value(status, lookups)
+    return fire_sort_value(status)
+
+
+def order_statuses(
+    statuses: list, column: int, descending: bool, lookups: SortLookups
+) -> list:
+    """One fleet ordered by one column, every blank cell beneath the figures.
+
+    A column outside SORTABLE_COLUMNS answers the list unchanged, and the
+    bot's own id breaks a tie so one fleet always lands one way.
+    """
+    if column not in SORTABLE_COLUMNS:
+        return list(statuses)
+    drawn = []
+    blank = []
+    for status in statuses:
+        found = sort_value(column, status, lookups)
+        if found is None:
+            blank.append(status)
+        else:
+            drawn.append(
+                (found, str(status.get("bot_id", EMPTY_TEXT) or EMPTY_TEXT), status)
+            )
+    drawn.sort(key=lambda row: (row[0], row[1]), reverse=descending)
+    return [row[2] for row in drawn] + blank
+
+
+def sort_direction(column: int, sort_column: int, descending: bool) -> str:
+    """Which way one column is ordered, or SORT_UNSORTED when it is not sorted."""
+    if column != sort_column or column not in SORTABLE_COLUMNS:
+        return SORT_UNSORTED
+    return SORT_DESCENDING if descending else SORT_ASCENDING
+
+
+def sort_mark(direction: str) -> str:
+    """The arrow one column's heading carries for its own sort_direction."""
+    if direction == SORT_ASCENDING:
+        return SORT_MARK_ASCENDING
+    if direction == SORT_DESCENDING:
+        return SORT_MARK_DESCENDING
+    return SORT_MARK_NONE
+
+
+def sort_tooltip(column: int, direction: str) -> str:
+    """The line one column's tooltip carries from SORT_TIP_BY_KIND."""
+    kind = SORT_KIND_BY_COL.get(column, SORT_KIND_NONE)
+    return SORT_TIP_BY_KIND[kind][direction]
 
 
 def cell(
@@ -582,6 +874,8 @@ class BotStatusTableModel:
         self.fire_clicks: list = []
         self.glows: list = []
         self.cells = TableCellsModel()
+        self.sort_column = NO_SORT_COLUMN
+        self.sort_descending = False
         self.refresh_header_dots()
 
     # ----- headers -----
@@ -597,9 +891,31 @@ class BotStatusTableModel:
         for column, label in enumerate(COLUMN_LABELS):
             field_id = PRIVACY_FIELD_BY_COL.get(column)
             masked = registry.is_masked(field_id) if field_id else None
-            found.append(header_view(column, label, masked))
+            found.append(
+                header_view(
+                    column, label, masked, self.sort_column, self.sort_descending
+                )
+            )
         self.headers = found
         self.calls.append([HEADER_REFRESHED, len(found)])
+
+    def on_header_sorted(self, column: int) -> None:
+        """Order the rows by one column, reversing when it is already the one.
+
+        A column outside SORTABLE_COLUMNS is recorded and changes nothing.
+        """
+        if column not in SORTABLE_COLUMNS:
+            self.calls.append([SORT_IGNORED, column])
+            return
+        if column == self.sort_column:
+            self.sort_descending = not self.sort_descending
+        else:
+            self.sort_column = column
+            self.sort_descending = False
+        self.calls.append([SORT_APPLIED, column, self.sort_descending])
+        self.refresh_header_dots()
+        if self.last_statuses:
+            self.update_bots(self.last_statuses)
 
     def on_privacy_toggled(self, column: int) -> None:
         """Hide or show one column, then repaint the rows under the new state."""
@@ -634,8 +950,18 @@ class BotStatusTableModel:
         self.calls.append([ROW_COUNT_SET, count])
 
     def update_bots(self, bot_statuses: list) -> None:
-        """Rewrite every row from one list of bot statuses."""
+        """Rewrite every row from one list of bot statuses.
+
+        The order is recomputed here, on every rewrite, so a column whose
+        figures keep moving keeps the order the operator pressed for.
+        """
         self.last_statuses = list(bot_statuses)
+        bot_statuses = order_statuses(
+            self.last_statuses,
+            self.sort_column,
+            self.sort_descending,
+            surface_lookups(),
+        )
         selected_before = self.get_selected_bot_id()
         self.set_row_count(len(bot_statuses))
         self.bot_ids = []
@@ -652,10 +978,25 @@ class BotStatusTableModel:
                     mode,
                     bot_id[:SKIP_BOT_ID_LENGTH] if bot_id else SKIP_BOT_ID_MISSING,
                 )
+                self.rows[row] = blank_row()
                 self.skipped_rows.append(row)
                 self.calls.append([ROW_SKIPPED, row, mode])
                 continue
-            self._write_row(row, status, stats, bot_id, state, mode)
+            try:
+                self._write_row(row, status, stats, bot_id, state, mode)
+            except Exception as exc:
+                # One bad field stops one row; every other bot still paints.
+                logger.warning(
+                    ROW_REFUSED_LOG,
+                    row,
+                    bot_id[:SKIP_BOT_ID_LENGTH] if bot_id else SKIP_BOT_ID_MISSING,
+                    type(exc).__name__,
+                    exc,
+                )
+                self.rows[row] = blank_row()
+                self.skipped_rows.append(row)
+                self.calls.append([ROW_REFUSED, row, type(exc).__name__])
+                continue
             self.calls.append([ROW_BUILT, row, bot_id])
         self.reanchor_selection(selected_before)
 
@@ -727,14 +1068,8 @@ class BotStatusTableModel:
         self.rows[row]["detail"] = self._detail_button()
 
     def _target_value(self, status) -> float:
-        """The target the engine re-zeros to, or the configured one."""
-        found = float(
-            status.get(
-                "live_target_balance", status.get("target_balance", NO_TARGET_VALUE)
-            )
-            or status.get("target_balance", NO_TARGET_VALUE)
-            or NO_TARGET_VALUE
-        )
+        """The ``target_value`` of one status, recorded as the row reads it."""
+        found = target_value(status)
         self.calls.append([ROW_TARGET, found])
         return found
 
@@ -1042,6 +1377,7 @@ STATUSES_PARAM = "statuses"
 # The Simulator and the Paper forks still send a header press under this name.
 HEADER_CLICK_PARAM = "header_click"
 PRIVACY_TOGGLE_PARAM = "privacy_toggle"
+SORT_COLUMN_PARAM = "sort_column"
 CELL_CLICK_PARAM = "cell_click"
 # The three request names below differ from the row keys ``fire``, ``detail``
 # and ``exchange_id`` the payload already carries.
@@ -1195,6 +1531,7 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "ceiling_normal_format": CEILING_NORMAL_FORMAT,
         "detonation_format": DETONATION_FORMAT,
         "skip_log_format": SKIP_LOG_FORMAT,
+        "row_refused_log": ROW_REFUSED_LOG,
         "chart_url_skipped_log": CHART_URL_SKIPPED_LOG,
         "chart_open_failed_log": CHART_OPEN_FAILED_LOG,
         "fire_style_head": FIRE_STYLE_HEAD,
@@ -1211,6 +1548,20 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "no_holdings": NO_HOLDINGS,
         "no_trades": NO_TRADES,
         "sorting_enabled": SORTING_ENABLED,
+        "sortable_columns": list(SORTABLE_COLUMNS),
+        "sort_kind_by_col": dict(SORT_KIND_BY_COL),
+        "sort_column": model.sort_column,
+        "sort_descending": model.sort_descending,
+        "no_sort_column": NO_SORT_COLUMN,
+        "sort_ascending": SORT_ASCENDING,
+        "sort_descending_word": SORT_DESCENDING,
+        "sort_unsorted": SORT_UNSORTED,
+        "sort_mark_ascending": SORT_MARK_ASCENDING,
+        "sort_mark_descending": SORT_MARK_DESCENDING,
+        "sort_mark_none": SORT_MARK_NONE,
+        "sort_column_param": SORT_COLUMN_PARAM,
+        "header_sort_mark_style": HEADER_SORT_MARK_STYLE,
+        "header_sort_mark_box_px": HEADER_SORT_MARK_BOX_PX,
         "selection_behavior": SELECTION_BEHAVIOR,
         "edit_triggers": EDIT_TRIGGERS,
         "alternating_row_colors": ALTERNATING_ROW_COLORS,
@@ -1248,6 +1599,8 @@ def drive(model: BotStatusTableModel, params: dict) -> dict:
         model.update_bots(statuses)
     if params.get(PRIVACY_TOGGLE_PARAM) is not None:
         model.on_privacy_toggled(params[PRIVACY_TOGGLE_PARAM])
+    if params.get(SORT_COLUMN_PARAM) is not None:
+        model.on_header_sorted(int(params[SORT_COLUMN_PARAM]))
     if params.get(CELL_CLICK_PARAM) is not None:
         row, column = params[CELL_CLICK_PARAM]
         model.on_cell_clicked(row, column)

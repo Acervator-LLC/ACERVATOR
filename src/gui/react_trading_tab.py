@@ -181,6 +181,7 @@ _HOST_SOURCE = """(function (global, doc) {
   var LOG = %(log)s;
   var TAB = %(tab)s;
   var TOGGLE = %(toggle)s;
+  var SORT = %(sort)s;
   var PREFIX = %(prefix)s;
   var FORGETS = %(forgets)s;
   var VENUES = %(venues)s;
@@ -284,14 +285,15 @@ _HOST_SOURCE = """(function (global, doc) {
     return tab && typeof tab.redraw === "function" ? tab.redraw() : 0;
   }
 
-  // Two presses leave this page. A privacy toggle goes out on PREFIX,
-  // because the register that answers it lives in Python. An ask naming an
-  // ACTION changes what the window holds, so it goes out on its own line
-  // and is answered by its own id. Every other call is a read and is
-  // answered from the payload this page is already holding.
+  // Three presses leave this page. A privacy toggle and a column sort go
+  // out on PREFIX, because the register and the fleet that answer them
+  // live in Python. An ask naming an ACTION changes what the window
+  // holds, so it goes out on its own line and is answered by its own id.
+  // Every other call is a read and is answered from the payload this page
+  // is already holding.
   global.acervator = {
     call: function (method, params) {
-      if (params && owns(params, TOGGLE)) {
+      if (params && (owns(params, TOGGLE) || owns(params, SORT))) {
         global.console.log(
           PREFIX + JSON.stringify({ method: method, params: params })
         );
@@ -469,6 +471,7 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
         "log": json.dumps(status_log_surface.METHOD, ensure_ascii=True),
         "tab": json.dumps(trading_tab_surface.METHOD, ensure_ascii=True),
         "toggle": json.dumps(scrum_surface.PRIVACY_TOGGLE_PARAM, ensure_ascii=True),
+        "sort": json.dumps(scrum_surface.SORT_COLUMN_PARAM, ensure_ascii=True),
         "prefix": json.dumps(ACTION_PREFIX, ensure_ascii=True),
         "forgets": json.dumps(MODULE_FORGETS, ensure_ascii=True),
         "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
@@ -825,11 +828,17 @@ if _HAS_WEBENGINE:
             )
             return self.show_models({trading_tab_surface.METHOD: handler(built)})
 
-        def run_action(self, payload: str) -> bool:
-            """Answer one privacy toggle the page sent, and push the fleet back.
+        # The two presses the venue answers, each naming the column it is on.
+        VENUE_PRESSES = (
+            (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
+            (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
+        )
 
-            Only ``PRIVACY_TOGGLE_PARAM`` is answered here; every other press
-            on this page stays with the page, because the venue owns it.
+        def run_action(self, payload: str) -> bool:
+            """Answer one bot-table press the page sent, and push the fleet back.
+
+            ``VENUE_PRESSES`` names the two this tab answers; every other
+            press on this page stays with the page, which owns it.
             """
             try:
                 asked = json.loads(payload)
@@ -839,17 +848,20 @@ if _HAS_WEBENGINE:
             params = asked.get("params")
             if not isinstance(params, dict):
                 return False
-            column = params.get(scrum_surface.PRIVACY_TOGGLE_PARAM)
-            if column is None:
-                return False
             venue = self._venues.get(
                 str(params.get(scrum_surface.EXCHANGE_ID_PARAM, "") or "")
             )
-            toggle = getattr(venue, "toggle_privacy", None)
-            if not callable(toggle):
-                return False
-            toggle(column)
-            return True
+            answered = False
+            for name, method_name in self.VENUE_PRESSES:
+                column = params.get(name)
+                if column is None:
+                    continue
+                method = getattr(venue, method_name, None)
+                if not callable(method):
+                    continue
+                method(column)
+                answered = True
+            return answered
 
         def hold_venue(self, venue: Any) -> bool:
             """Draw ``venue`` in this tab and follow every payload it publishes.
