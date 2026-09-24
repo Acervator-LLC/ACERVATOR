@@ -80,7 +80,12 @@ try:
     from .main_tabs.system_status_tab import SystemStatusTabMixin
     from .main_tabs.trading_tab import TradingTabMixin
     from .widgets.api_tester_tab import APITesterTab
-    from .widgets.bot_selection import _reanchor_bot_selection, _select_row_for_bot
+    from .main_tabs import indicator_panel_surface as _ivp_surface
+    from .widgets.bot_selection import (
+        BotListPanelLink as _BotListPanelLink,
+        _reanchor_bot_selection,
+        _select_row_for_bot,
+    )
     from .widgets.bot_status_table import SCRUMMING_COLUMNS, BotStatusTable
     from .widgets.dashboard_stat_card import StatCard
     from .widgets.exchange_tab import ExchangeTab
@@ -237,6 +242,7 @@ if _HAS_QT:
 
             self._setup_menu()
             self._setup_ui()
+            self._setup_bot_list_link()
             self._setup_status_bar()
             self._setup_refresh_timer()
             self._setup_pulse()
@@ -251,6 +257,47 @@ if _HAS_QT:
                 + " — Console logging active. All system messages appear here."
             )
             self._report_stored_credentials_on_startup()
+
+        def _setup_bot_list_link(self) -> None:
+            """Tie the bot lists and the Indicator Voting Panel to one bot.
+
+            ``BotListPanelLink.row_selected`` is what every venue tab reports
+            a row press to, and ``panel_selected`` reads the panel's own
+            ``indicator.bot_selected`` topic back the other way.
+            """
+            panel = getattr(self, "_indicator_panel", None)
+            self._bot_list_link = (
+                None
+                if panel is None
+                else _BotListPanelLink(panel, self._bot_list_hosts)
+            )
+            if self._bot_list_link is None:
+                logger.warning(
+                    "BOT LIST: no Indicator Voting Panel, so a row press "
+                    "moves no panel"
+                )
+                return
+            self._bus.subscribe(
+                _ivp_surface.BOT_SELECTED_TOPIC, self._bot_list_link.panel_selected
+            )
+
+        def _bot_list_hosts(self) -> list:
+            """Every venue tab that draws a bot list, both layers together."""
+            return list(self._crypto_exchange_tabs.values()) + list(
+                self._stock_exchange_tabs.values()
+            )
+
+        def _on_bot_row_selected(self, bot_id: str) -> str:
+            """Draw the pressed bot on the panel and redraw the React page.
+
+            Every venue tab calls this, so the window does not wait for the
+            next refresh tick to show what the operator just pressed.
+            """
+            if self._bot_list_link is None:
+                return ""
+            found = self._bot_list_link.row_selected(bot_id)
+            self._publish_votes()
+            return found
 
         def set_async_loop(self, loop) -> None:
             """Store the asyncio loop `main.py` runs every coroutine on."""
@@ -1473,6 +1520,7 @@ if _HAS_QT:
                 on_bot_cmd=self._on_bot_command,
                 on_bot_fire=self._on_bot_fire,
                 status_log=self._status_log,
+                on_bot_selected=self._on_bot_row_selected,
             )
             target_widget.addTab(tab, display_name)
             target_tabs[exchange_id] = tab

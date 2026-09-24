@@ -481,6 +481,7 @@ ACTIONS = {
     "cell_clicked": "on_cell_clicked",
     "fire_clicked": "on_fire",
     "detail_clicked": "on_detail",
+    "row_pressed": "on_row_pressed",
 }
 
 ROW_COUNT_SET = "rows.count"
@@ -504,6 +505,8 @@ SELECTION_READ = "selection.read"
 SELECTION_ANCHORED = "selection.anchored"
 SELECTION_CLEARED = "selection.cleared"
 SELECTION_ROW = "selection.row"
+ROW_PRESSED = "row.pressed"
+ROW_HIGHLIGHTED = "row.highlighted"
 DETAIL_CLICKED = "detail.clicked"
 FIRE_CLICKED = "fire.clicked"
 CELL_IGNORED = "cell.ignored"
@@ -816,6 +819,21 @@ def sort_tooltip(column: int, direction: str) -> str:
     return SORT_TIP_BY_KIND[kind][direction]
 
 
+def selection_after_press(pressed_bot_id: str, shown_bot_id: str) -> str:
+    """The bot a press on one row leaves selected.
+
+    A press naming the bot already shown answers no bot, so the second
+    press on one row turns the Voting Panel off; a press naming another
+    bot answers that bot. ``BotStatusTable.mousePressEvent`` and
+    ``BotStatusTableModel.on_row_pressed`` both decide it here, so the
+    two build variants cannot drift apart.
+    """
+    pressed = str(pressed_bot_id or "")
+    if not pressed or pressed == str(shown_bot_id or ""):
+        return NO_SELECTION_BOT_ID
+    return pressed
+
+
 def cell(
     text: str, color: str = EMPTY_TEXT, tooltip: str = EMPTY_TEXT, **extra
 ) -> dict:
@@ -852,14 +870,18 @@ class BotStatusTableModel:
     ``update_bots`` rewrites every row from one list of bot statuses.
     ``refresh_header_dots`` rebuilds the ten column headers from the
     privacy register. ``on_privacy_toggled``, ``on_cell_clicked``,
-    ``on_fire`` and ``on_detail`` are the four things the operator can
-    press. Every step is appended to ``calls`` in the order the shipped
-    table makes it.
+    ``on_fire``, ``on_detail`` and ``on_row_pressed`` are the five things
+    the operator can press. ``highlight_bot`` is the one the window calls
+    instead, when the Voting Panel moved the selection. Every step is
+    appended to ``calls`` in the order the shipped table makes it.
     """
 
-    def __init__(self, on_bot_clicked=None, on_fire_clicked=None) -> None:
+    def __init__(
+        self, on_bot_clicked=None, on_fire_clicked=None, on_bot_selected=None
+    ) -> None:
         self.on_bot_clicked = on_bot_clicked
         self.on_fire_clicked = on_fire_clicked
+        self.on_bot_selected = on_bot_selected
         self.exchange_id = ""
         self.bot_ids: list = []
         self.last_statuses: list = []
@@ -1320,7 +1342,40 @@ class BotStatusTableModel:
             return
         self.select_row(target)
 
-    # ----- the four things the operator can press -----
+    def highlight_bot(self, bot_id: str) -> str:
+        """Put the highlight on the bot the Voting Panel draws, and answer it.
+
+        The window calls this when the panel's own dropdown or an arrow
+        moved the selection, so it tells nobody back.
+        """
+        wanted = str(bot_id or "")
+        if wanted:
+            self.select_row_for_bot(wanted)
+        else:
+            self.clear_selection()
+            self.current_row = NO_SELECTION_ROW
+        found = self.get_selected_bot_id()
+        self.calls.append([ROW_HIGHLIGHTED, wanted, found])
+        return found
+
+    # ----- the five things the operator can press -----
+
+    def on_row_pressed(self, bot_id: str) -> str:
+        """Answer a press on one row and report the bot it leaves selected.
+
+        ``selection_after_press`` decides it, so a press on the row already
+        shown clears the selection instead of setting it again.
+        """
+        wanted = selection_after_press(str(bot_id or ""), self.get_selected_bot_id())
+        if wanted:
+            self.select_row_for_bot(wanted)
+        else:
+            self.clear_selection()
+            self.current_row = NO_SELECTION_ROW
+        self.calls.append([ROW_PRESSED, str(bot_id or ""), wanted])
+        if self.on_bot_selected:
+            self.on_bot_selected(wanted)
+        return wanted
 
     def on_detail(self, bot_id: str) -> None:
         """Select the row, then hand the bot to whatever opens the detail."""
@@ -1383,6 +1438,7 @@ CELL_CLICK_PARAM = "cell_click"
 # and ``exchange_id`` the payload already carries.
 FIRE_PARAM = "fire_bot"
 DETAIL_PARAM = "detail_bot"
+SELECT_BOT_PARAM = "select_bot"
 EXCHANGE_ID_PARAM = "for_exchange"
 
 
@@ -1583,6 +1639,7 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "cell_click_param": CELL_CLICK_PARAM,
         "fire_param": FIRE_PARAM,
         "detail_param": DETAIL_PARAM,
+        "select_bot_param": SELECT_BOT_PARAM,
         "logger_name": LOGGER_NAME,
         "skip_logger_name": SKIP_LOGGER_NAME,
         "calls": [list(call) for call in model.calls],
@@ -1608,6 +1665,8 @@ def drive(model: BotStatusTableModel, params: dict) -> dict:
         model.on_fire(params[FIRE_PARAM])
     if params.get(DETAIL_PARAM) is not None:
         model.on_detail(params[DETAIL_PARAM])
+    if params.get(SELECT_BOT_PARAM) is not None:
+        model.on_row_pressed(str(params[SELECT_BOT_PARAM]))
     return build_view_model(model)
 
 

@@ -22,6 +22,7 @@ from ..main_tabs.bot_status_table_surface import (
     SORTABLE_COLUMNS,
     SortLookups,
     order_statuses,
+    selection_after_press,
     sort_direction,
     sort_mark,
     sort_tooltip,
@@ -68,7 +69,7 @@ try:
         QVBoxLayout,
         QWidget,
     )
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QSignalBlocker, Qt
     from PySide6.QtGui import QColor, QFont, QFontMetrics
 
     from . import ColumnSpec, ColumnarTableWidget
@@ -389,6 +390,40 @@ if _HAS_QT:
             self.cellClicked.connect(self._on_cell_clicked)
 
             self._build_header()
+
+        def mousePressEvent(self, event):  # noqa: N802
+            """Apply the press, then settle the selection the panel follows.
+
+            Qt moves the highlight itself, so a press on the row already
+            shown leaves it where it was; ``selection_after_press`` reads
+            that as the second press and clears the selection.
+            """
+            shown = self.get_selected_bot_id()
+            super().mousePressEvent(event)
+            pressed = self.get_selected_bot_id()
+            if not selection_after_press(pressed, shown):
+                self.clear_bot_selection()
+
+        def clear_bot_selection(self) -> str:
+            """Take the highlight off every row and answer the bot then held."""
+            self.clearSelection()
+            self.setCurrentCell(-1, -1)
+            return self.get_selected_bot_id()
+
+        def highlight_bot(self, bot_id: str) -> str:
+            """Put the highlight on the bot the Voting Panel draws.
+
+            The window calls this when the panel's dropdown or an arrow
+            moved the selection, so the move emits nothing back.
+            """
+            wanted = str(bot_id or "")
+            with QSignalBlocker(self):
+                if wanted:
+                    _select_row_for_bot(self, wanted, self._bot_ids)
+                else:
+                    self.clearSelection()
+                    self.setCurrentCell(-1, -1)
+            return self.get_selected_bot_id()
 
         def _build_header(self) -> None:
             """Put one wrapped label, over its own dot, on every column.
