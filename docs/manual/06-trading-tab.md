@@ -469,6 +469,36 @@ bot_statuses = order_statuses(
 )
 ```
 
+**Functional.** A press on a bot's row draws that bot in the Indicator Voting
+Panel. A press on the row the panel already draws takes the panel off it
+instead, and the panel shows its empty state; a third press brings the bot
+back. A press naming another bot never blanks the panel, it moves it. The press
+names the bot on the row and never the row's position, so a column can be
+sorted first and the panel still draws the bot whose row was pressed.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `selection_after_press`
+
+```python
+pressed = str(pressed_bot_id or "")
+if not pressed or pressed == str(shown_bot_id or ""):
+    return NO_SELECTION_BOT_ID
+return pressed
+```
+
+**Functional.** The highlight runs the other way as well. When the panel's own
+dropdown or one of its arrows moves the selection, the bot list puts its
+highlight on that bot's row. One value stands behind both, the bot the Voting
+Panel holds, so the list and the panel cannot name two different bots.
+
+`src/gui/widgets/bot_selection.py` — `BotListPanelLink.panel_selected`
+
+```python
+for host in self._hosts() or ():
+    mark = getattr(host, "highlight_bot", None)
+    if callable(mark):
+        mark(wanted)
+```
+
 **Functional.** One bad field now stops one row instead of the whole paint.
 Each row is written inside its own guard. A row that refuses is logged, emptied
 and left empty, and every other bot still draws. A row whose bot is not a
@@ -3872,6 +3902,24 @@ def exchange_display_name(entry: Any) -> str:
   of the column above.
 - The line at the foot names any timeframe lock that is active.
 
+**Functional.** The dropdown is not the only way to pick the bot. A press on a
+row of the Scrumming Bots table draws that bot here, and the dropdown moves to
+it. A press on the row of the bot already drawn empties the panel, and the
+panel then reads *"no bot is selected — press a bot row, or pick one from the
+dropdown above."* Whichever control the operator uses, the bot list's highlight
+and this panel name the same bot.
+
+`src/gui/indicator_panel.py` — `IndicatorVotingPanel.select_bot`
+
+```python
+wanted = str(bot_id or "")
+if not wanted:
+    self._selection_cleared = True
+    self._bot_selector.setCurrentIndex(-1)
+    self._refresh_bot_arrows()
+    return self._selected_bot_id
+```
+
 `src/gui/indicator_panel.py` — `IndicatorVotingPanel.INDICATOR_COLS`
 
 ```python
@@ -5911,3 +5959,147 @@ pixels on the page." — the arrows carry a control height the surface publishes
 so each arrow measures 26 pixels tall in the window and 26 on the page. The row
 that holds them measures 30 pixels in the window and 30 on the page. It measured
 23 on the page before the arrows joined it.
+
+## 2026-09-23 - #858 - the bot list moves the Indicator Voting Panel
+
+A press on a row of the Scrumming Bots table draws that bot in the Indicator
+Voting Panel. Before this entry the two picked their bots apart: the table's
+selection reached one handler, which cleared the other table and named no
+panel, and the panel read its own dropdown.
+
+### One value behind both
+
+The bot the panel holds is the value. `IndicatorVotingPanel.select_bot` is the
+only thing that writes it, and every other control asks that one method.
+
+`src/gui/widgets/bot_selection.py` — `BotListPanelLink`
+
+```python
+def row_selected(self, bot_id: Optional[str]) -> str:
+    """Draw the pressed bot on the panel and answer the bot it holds."""
+    if self._settling:
+        return self.bot_id
+    self._settling = True
+    try:
+        return str(self._panel.select_bot(str(bot_id or "")) or "")
+    finally:
+        self._settling = False
+```
+
+The window builds one link and gives the panel's own topic a reader. The topic
+was already declared and the emit already ran; nothing listened to it.
+
+`src/gui/main_window.py` — `MainWindow._setup_bot_list_link`
+
+```python
+self._bus.subscribe(
+    _ivp_surface.BOT_SELECTED_TOPIC, self._bot_list_link.panel_selected
+)
+```
+
+### What a second press on one row does
+
+The decision is one function, and both build variants call it, so a press
+cannot mean two different things on the two screens.
+
+`src/gui/widgets/bot_status_table.py` — `BotStatusTable.mousePressEvent`
+
+```python
+shown = self.get_selected_bot_id()
+super().mousePressEvent(event)
+pressed = self.get_selected_bot_id()
+if not selection_after_press(pressed, shown):
+    self.clear_bot_selection()
+```
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_row_pressed`
+
+```python
+wanted = selection_after_press(str(bot_id or ""), self.get_selected_bot_id())
+if wanted:
+    self.select_row_for_bot(wanted)
+else:
+    self.clear_selection()
+    self.current_row = NO_SELECTION_ROW
+```
+
+### How the press leaves the page
+
+The page's row carries a press of its own, alongside the four it already sent.
+It goes out on the same console line the privacy toggle and the column sort
+use, and the Fire and Detail buttons stop the press reaching the row so they
+keep their window behaviour.
+
+`src/gui/web/bot_status_table.js` — `sendRowPress`
+
+```javascript
+function sendRowPress(model, botId) {
+  return dispatch(
+    model,
+    actionNamed(model, ROW_PRESSED),
+    request(model, SELECT_BOT_PARAM, botId)
+  );
+}
+```
+
+`src/gui/react_trading_tab.py` — the venue answers three presses now
+
+```python
+VENUE_PRESSES = (
+    (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
+    (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
+    (scrum_surface.SELECT_BOT_PARAM, "select_bot"),
+)
+```
+
+### What both builds now read
+
+Read off the running program in both builds at 700, 900 and 1400 pixels, with
+a fleet of 38 bots, the home on a scratch directory and every socket but
+loopback refused. Every figure below is identical at all three widths and in
+both builds.
+
+```
+press                          bot list highlight     panel draws
+none yet                       the panel's own bot    that bot
+a row                          that row's bot         that row's bot
+the same row again             no row                 the empty state
+that row a third time          that row's bot         that row's bot
+the panel's dropdown           that bot's row         that bot
+a column sorted, then row 0    row 0's bot            row 0's bot
+```
+
+The sorted reading moved the first row from one bot to another before the
+press, so the press could not have passed by position.
+
+### The empty state and the bot that is gone
+
+Two empty states, read in both builds. A selection cleared by a second press
+reports the cause `no_selection` and reads *"no bot is selected — press a bot
+row, or pick one from the dropdown above."* A bot the fleet no longer carries
+reports `bot_missing` and reads *"bot … is selected but no longer present in
+the fleet."* A bot the dropdown does not carry leaves the panel where it is, so
+a stale ask cannot blank it.
+
+### A reading the panel used to keep after it was over
+
+`panel_reading` names the cause of an empty state, and nothing cleared that
+cause when votes arrived. A panel drawing twelve voters still reported the
+reason it had been blank. It clears when a summary arrives now, and a stored
+reading keeps the cause of the missing live read, which is what its banner is
+about.
+
+`src/gui/indicator_panel.py` — `IndicatorVotingPanel.update_data`
+
+```python
+if multi_tf_summary:
+    self._no_data_cause = ""
+    self._no_data_message = ""
+```
+
+### One sentence this entry overtakes
+
+"The Bot selector at the top names the bot whose votes the panel draws." — the
+selector still names it and still refills every tick. It is no longer the only
+control that names it: a press on a row of the Scrumming Bots table names it
+too, and a second press on that row takes the panel off that bot.

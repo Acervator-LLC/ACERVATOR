@@ -1,13 +1,14 @@
-"""Row-selection helpers for BotStatusTable and ExtractorBotTable.
+"""Row selection for the bot tables, and the link that ties it to the panel.
 
 ``_reanchor_bot_selection`` puts the highlight back on ``previous_bot_id``
-after a row rewrite. ``_select_row_for_bot`` selects the row holding one
-``bot_id``. Both take the caller's ``bot_ids`` row map.
+after a row rewrite, and ``_select_row_for_bot`` selects the row holding one
+``bot_id``; both take the caller's ``bot_ids`` row map. ``BotListPanelLink``
+carries one selection between the bot list and the Indicator Voting Panel.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .bot_status_table import BotStatusTable
@@ -76,3 +77,48 @@ if _HAS_QT:
             return
         table.setCurrentCell(target, 0)
         table.selectRow(target)
+
+
+class BotListPanelLink:
+    """One bot, held by the Voting Panel, shown by every bot list.
+
+    ``MainWindow`` builds one per window: ``row_selected`` takes a press
+    from a bot list and draws that bot on ``panel``, and
+    ``panel_selected`` answers the ``indicator.bot_selected`` topic by
+    highlighting that bot in every host ``hosts`` names.
+    """
+
+    def __init__(self, panel: Any, hosts: Callable[[], Any]) -> None:
+        self._panel = panel
+        self._hosts = hosts
+        self._settling = False
+
+    @property
+    def bot_id(self) -> str:
+        """The bot the panel holds, which is the one value both sides read."""
+        return str(getattr(self._panel, "selected_bot_id", "") or "")
+
+    def row_selected(self, bot_id: Optional[str]) -> str:
+        """Draw the pressed bot on the panel and answer the bot it holds."""
+        if self._settling:
+            return self.bot_id
+        self._settling = True
+        try:
+            return str(self._panel.select_bot(str(bot_id or "")) or "")
+        finally:
+            self._settling = False
+
+    def panel_selected(self, event: Any = None) -> str:
+        """Highlight the bot the panel now draws in every bot list."""
+        if self._settling:
+            return self.bot_id
+        wanted = str((getattr(event, "data", None) or {}).get("bot_id", "") or "")
+        self._settling = True
+        try:
+            for host in self._hosts() or ():
+                mark = getattr(host, "highlight_bot", None)
+                if callable(mark):
+                    mark(wanted)
+        finally:
+            self._settling = False
+        return wanted

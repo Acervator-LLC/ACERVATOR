@@ -35,6 +35,7 @@
   var HEADER_RESIZE_MODE = "header_resize_mode";
   var PRIVACY_TOGGLE_PARAM = "privacy_toggle_param";
   var SORT_COLUMN_PARAM = "sort_column_param";
+  var SELECT_BOT_PARAM = "select_bot_param";
   var HEADER_LABEL_STYLE = "header_label_style";
   var HEADER_LABEL_WRAP = "header_label_wrap";
   var HEADER_DOT_STYLE = "header_dot_style";
@@ -188,6 +189,7 @@
     "sort_ascending",
     "sort_column",
     SORT_COLUMN_PARAM,
+    SELECT_BOT_PARAM,
     "sort_descending",
     "sort_descending_word",
     "sort_kind_by_col",
@@ -285,6 +287,7 @@
   var CELL_CLICKED = "cell_clicked";
   var FIRE_CLICKED = "fire_clicked";
   var DETAIL_CLICKED = "detail_clicked";
+  var ROW_PRESSED = "row_pressed";
 
   // -- what a payload can be wrong about -------------------------------
 
@@ -707,7 +710,10 @@
       title: label(button[TOOLTIP]),
       type: BUTTON_TYPE,
       disabled: !button[ENABLED],
-      onClick: function () {
+      // Qt's Fire button takes the press off the row, so the row's own
+      // press must not run as well.
+      onClick: function (event) {
+        event.stopPropagation();
         sendFire(model, props.botId);
       }
     };
@@ -734,7 +740,10 @@
       title: label(button[TOOLTIP]),
       type: BUTTON_TYPE,
       disabled: !button[ENABLED],
-      onClick: function () {
+      // Detail selects the row itself, through on_detail, so the row's own
+      // press must not run as well and toggle it back off.
+      onClick: function (event) {
+        event.stopPropagation();
         sendDetail(model, props.botId);
       }
     };
@@ -843,7 +852,12 @@
       });
     });
     var selected = model[HAS_SELECTION] === true && at === model[CURRENT_ROW];
-    var rowProps = { className: TABLE_CLASS };
+    var rowProps = {
+      className: TABLE_CLASS,
+      onClick: function () {
+        sendRowPress(model, botId);
+      }
+    };
     rowProps[PART_ATTR] = ROW_PART;
     rowProps[ROW_ATTR] = text(at);
     rowProps[BOT_ID_ATTR] = text(botId);
@@ -1253,6 +1267,16 @@
     );
   }
 
+  // A press on one row, which moves the Voting Panel to that row's bot and
+  // takes it off that bot when the row is the one already shown.
+  function sendRowPress(model, botId) {
+    return dispatch(
+      model,
+      actionNamed(model, ROW_PRESSED),
+      request(model, SELECT_BOT_PARAM, botId)
+    );
+  }
+
   function sent() {
     return dispatched.slice();
   }
@@ -1558,6 +1582,7 @@
     sendCellClick: sendCellClick,
     sendFire: sendFire,
     sendDetail: sendDetail,
+    sendRowPress: sendRowPress,
     sent: sent,
     forget: forget
   };
