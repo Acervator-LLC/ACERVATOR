@@ -609,6 +609,11 @@ class ScanProgress:
     hits: int
     #: ``SCAN_MARKET_LINE_FORMAT`` over the market just read, empty before one.
     line: str = ""
+    #: The market just read, empty before one.
+    symbol: str = ""
+    #: ``panel_rows_for`` over the market just read: its Indicator Voting
+    #: Panel rows, one per timeframe, which the zone draws while it walks.
+    panel: dict = field(default_factory=dict)
     #: This sector's place in an all-sectors walk, ``NO_SECTORS_WALKED`` outside one.
     at: int = NO_SECTORS_WALKED
     sectors: int = NO_SECTORS_WALKED
@@ -681,6 +686,8 @@ class WalkProgress:
                 total=progress.total,
                 hits=sum(self._hits.values()),
                 line=progress.line,
+                symbol=progress.symbol,
+                panel=progress.panel,
                 at=self.place_of(progress.asset_class),
                 sectors=len(self._classes),
             )
@@ -1370,10 +1377,18 @@ def _gate_judge(
 
 
 def _tell_progress(
-    progress: Optional[Callable], scan: SectorScan, total: int, line: str = ""
+    progress: Optional[Callable],
+    scan: SectorScan,
+    total: int,
+    line: str = "",
+    symbol: str = "",
 ) -> None:
-    """Hand ``progress`` one ``ScanProgress`` over ``scan`` carrying ``line``;
-    a callable that raises never stops the walk."""
+    """Hand ``progress`` one ``ScanProgress`` over ``scan`` carrying ``line``
+    and ``symbol``'s voting rows; a callable that raises never stops the walk.
+
+    The rows are what the ATA-SPM zone draws while the walk runs, so the
+    panel shows the reading of the market under read rather than its line.
+    """
     if progress is None:
         return
     try:
@@ -1384,6 +1399,8 @@ def _tell_progress(
                 total=total,
                 hits=len(scan.hits),
                 line=line,
+                symbol=str(symbol),
+                panel=panel_rows_for([scan], symbol) if symbol else {},
             )
         )
     except Exception as exc:  # noqa: BLE001 - the callable is host-supplied
@@ -1500,11 +1517,15 @@ def _scan_until_hits(
             if NO_HIT_TARGET < scan.hit_target <= len(scan.hits):
                 scan.stopped_at_target = True
                 _tell_progress(
-                    progress, scan, total, market_line(symbol, frames, votes, judged)
+                    progress,
+                    scan,
+                    total,
+                    market_line(symbol, frames, votes, judged),
+                    symbol,
                 )
                 return
         _tell_progress(
-            progress, scan, total, market_line(symbol, frames, votes, judged)
+            progress, scan, total, market_line(symbol, frames, votes, judged), symbol
         )
 
 
@@ -1894,8 +1915,6 @@ class SectorBoard:
         self.note = ""
         #: Where the running scan stands, None while none runs.
         self.progress: Optional[ScanProgress] = None
-        #: One ``market_line`` per market the running scan has read, in order.
-        self.progress_lines: list = []
         #: One ``ChartCall`` per called symbol across every run ``take`` took.
         self.chart_calls: dict = {}
 
@@ -1912,6 +1931,18 @@ class SectorBoard:
     def progress_text(self) -> str:
         """``SCAN_PROGRESS_FORMAT`` over ``progress``, empty while none runs."""
         return self.progress.text if self.progress is not None else ""
+
+    @property
+    def progress_panel(self) -> Optional[tuple]:
+        """The market under read and its voting rows, None while none runs.
+
+        The ATA-SPM zone draws this as its Indicator Voting Panel while the
+        walk runs, in place of one text line per market.
+        """
+        held = self.progress
+        if held is None or not held.symbol or not held.panel:
+            return None
+        return (held.symbol, dict(held.panel))
 
     def sector_at(self, at: Any) -> Optional[Sector]:
         """The sector one zone index shows, or None while the board is empty."""
@@ -2148,7 +2179,6 @@ class SectorBoard:
         self.sectors = list(sectors)
         self.note = str(note or "")
         self.progress = None
-        self.progress_lines = []
         if found is not None:
             self.run = found
             pulls = {(one.symbol, one.timeframe): one for one in found.pulls}
