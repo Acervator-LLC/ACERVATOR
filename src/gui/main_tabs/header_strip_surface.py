@@ -23,16 +23,27 @@ MONEY_FORMAT = ",.2f"
 PNL_FORMAT = "+,.4f"
 COUNT_FORMAT = "str"
 
+#: What the central layout leaves either side of the top row.
+CENTRAL_SIDE_MARGIN_PX = 6
+
+#: The gap the top row leaves between two of its slots.
+TOP_ROW_SPACING_PX = 4
+
 CENTRAL_LAYOUT = {
-    "margins_px": [6, 4, 6, 4],
+    "margins_px": [CENTRAL_SIDE_MARGIN_PX, 4, CENTRAL_SIDE_MARGIN_PX, 4],
     "spacing_px": 4,
     "child_stretch": [0],
 }
 
+#: The stretch each ``TOP_ROW_ORDER`` slot takes. A zero slot draws at the
+#: width its own text asks for; the class group takes what is left, so a
+#: long amount elides a class name and never a figure.
+TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 1]
+
 TOP_ROW = {
     "margins_px": [0, 0, 0, 0],
-    "spacing_px": 4,
-    "child_stretch": [3, 1, 1, 1, 1, 1, 1],
+    "spacing_px": TOP_ROW_SPACING_PX,
+    "child_stretch": TOP_ROW_STRETCH,
 }
 
 TOP_ROW_ORDER = [
@@ -45,6 +56,24 @@ TOP_ROW_ORDER = [
     "mode_button",
 ]
 
+#: The narrowest the spendable strip draws at. Its widest column, SPENDABLE,
+#: keeps its caption and an elided amount at this width.
+SPENDABLE_MIN_W = 180
+
+#: The narrowest one counter card draws at, caption and amount both elided.
+COUNTER_MIN_W = 48
+
+#: The room one KPI column needs for a whole money amount at its own size.
+KPI_COLUMN_W = 110
+
+#: The room one counter needs for a whole money amount at its own size.
+COUNTER_NATURAL_W = 100
+
+#: The slot names the top row gives a declared floor, in row order. The
+#: class group is not here; ``asset_class_surface.group_min_w`` answers it,
+#: because the group's floor grows with the class count.
+COUNTER_SLOTS = ("scrummed", "folded", "trades", "bots", "errors")
+
 #: The window's own tuple, so a tab renamed there renames here too.
 ISOLATED_TABS = main_window_surface.ISOLATED_TABS
 
@@ -55,16 +84,26 @@ SPENDABLE_STYLE = (
     "  border: 1px solid rgba(0,255,180,80); border-radius: 4px; }"
 )
 
+#: What the strip leaves either side of its own columns.
+SPENDABLE_SIDE_MARGIN_PX = 12
+
+#: What the strip's own margins take off the room its text has.
+SPENDABLE_TEXT_PAD = 2 * SPENDABLE_SIDE_MARGIN_PX
+
+#: The gap the strip leaves either side of a rule between two columns.
+SPENDABLE_COLUMN_GAP_PX = 14
+
 SPENDABLE_LAYOUT = {
-    "margins_px": [12, 6, 12, 6],
+    "margins_px": [SPENDABLE_SIDE_MARGIN_PX, 6, SPENDABLE_SIDE_MARGIN_PX, 6],
     "spacing_px": 0,
-    "column_spacing_px": 14,
+    "column_spacing_px": SPENDABLE_COLUMN_GAP_PX,
     "column_margins_px": [0, 0, 0, 0],
     "column_spacing": 2,
     "frame_shape": "StyledPanel",
     "separator_align": "vcenter",
     "dot_align": "hcenter",
 }
+
 
 KPI_LABEL_STYLE = (
     f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; "
@@ -141,8 +180,14 @@ KPI_COLUMNS = (
     },
 )
 
+#: What a card leaves either side of its caption and its amount.
+CARD_SIDE_MARGIN_PX = 8
+
+#: What a card's own margins take off the room its text has.
+COUNTER_TEXT_PAD = 2 * CARD_SIDE_MARGIN_PX
+
 CARD_LAYOUT = {
-    "margins_px": [8, 4, 8, 4],
+    "margins_px": [CARD_SIDE_MARGIN_PX, 4, CARD_SIDE_MARGIN_PX, 4],
     "spacing_px": 2,
     "frame_shape": "StyledPanel",
     "label_align": "hcenter|bottom",
@@ -320,6 +365,86 @@ ACTIONS = {
     "errors.clicked": "show_error_log_dialog",
     "mode_button.clicked": "select_asset_class",
 }
+
+
+def spendable_natural_w() -> int:
+    """The room the whole strip needs for every ``KPI_COLUMNS`` amount.
+
+    ``KPI_COLUMN_W`` per column, the ``SPENDABLE_LAYOUT`` gap either side of
+    each rule between two of them, and ``SPENDABLE_TEXT_PAD`` for the frame.
+    """
+    held = len(KPI_COLUMNS)
+    rules = max(held - 1, 0) * 2 * SPENDABLE_COLUMN_GAP_PX
+    return held * KPI_COLUMN_W + rules + SPENDABLE_TEXT_PAD
+
+
+def slot_natural_w(slot: Any) -> int:
+    """The width one slot draws at where the row can afford it.
+
+    The Qt widgets read their own text instead; the React pages cannot, so
+    they answer ``sizeHint`` from this.
+    """
+    name = str(slot or "")
+    if name == "spendable":
+        return spendable_natural_w()
+    if name in COUNTER_SLOTS:
+        return COUNTER_NATURAL_W
+    return slot_min_w(name)
+
+
+def slot_stretch(slot: Any) -> int:
+    """The stretch one ``TOP_ROW_ORDER`` slot takes of the row."""
+    name = str(slot or "")
+    if name not in TOP_ROW_ORDER:
+        return 0
+    return int(TOP_ROW_STRETCH[TOP_ROW_ORDER.index(name)])
+
+
+def slot_min_w(slot: Any) -> int:
+    """The narrowest one ``TOP_ROW_ORDER`` slot draws at.
+
+    Every slot declares a floor, so ``top_row_min_w`` never reads the width
+    of the text a slot happens to hold.
+    """
+    name = str(slot or "")
+    if name == "spendable":
+        return SPENDABLE_MIN_W
+    if name == "mode_button":
+        return asset_class_surface.group_min_w()
+    if name in COUNTER_SLOTS:
+        return COUNTER_MIN_W
+    return 0
+
+
+def top_row_min_w() -> int:
+    """The narrowest the header top row draws at, holding every slot.
+
+    The sum of every ``slot_min_w``, plus the ``TOP_ROW`` gap between two
+    of them.
+    """
+    held = [slot for slot in TOP_ROW_ORDER if slot_min_w(slot) > 0]
+    gaps = max(len(held) - 1, 0) * TOP_ROW_SPACING_PX
+    return sum(slot_min_w(slot) for slot in held) + gaps
+
+
+def window_min_w() -> int:
+    """The narrowest the main window draws at, as ``top_row_min_w`` sets it."""
+    return top_row_min_w() + 2 * CENTRAL_SIDE_MARGIN_PX
+
+
+def width_budget() -> dict:
+    """Every floor the top row holds, as one serialisable dict.
+
+    The React page writes each ``slot_min_w`` as that slot's CSS
+    ``min-width``, so both variants shrink to the same numbers.
+    """
+    return {
+        "slots": {slot: slot_min_w(slot) for slot in TOP_ROW_ORDER},
+        "spendable_text_pad_px": SPENDABLE_TEXT_PAD,
+        "counter_text_pad_px": COUNTER_TEXT_PAD,
+        "top_row_min_w_px": top_row_min_w(),
+        "window_min_w_px": window_min_w(),
+    }
 
 
 def money_amount(value: Any) -> Any:
@@ -566,6 +691,7 @@ def build_view_model(
         "central_layout": CENTRAL_LAYOUT,
         "top_row": TOP_ROW,
         "top_row_order": list(TOP_ROW_ORDER),
+        "width_budget": width_budget(),
         "visible": strip_visible(tab_name),
         "isolated_tabs": list(ISOLATED_TABS),
         "spendable": {
