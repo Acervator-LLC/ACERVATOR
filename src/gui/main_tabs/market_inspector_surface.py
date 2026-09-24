@@ -28,11 +28,13 @@ from __future__ import annotations
 import base64
 import logging
 import struct
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
 from ...core import encryption
+from ...exchange.base import MarketRules
 from ...exchange.market_inspector_fetcher import DEFAULT_MIN_REFRESH_S, DEFAULT_QUOTES
 from ...trading import (
     ata_asset_maps,
@@ -42,6 +44,7 @@ from ...trading import (
     ata_spm_send,
     ata_spm_signin,
 )
+from ...trading.scrumming import sizing
 from .. import design_system as ds
 from . import indicator_panel_surface as ivp
 
@@ -158,7 +161,14 @@ TICKER_FIELD_MIN_WIDTH_PX = 72
 TICKER_MATCH_LIMIT = 8
 #: What one offer reads on the completer and the page's list: the symbol
 #: and the class that lists it.
-TICKER_OFFER_FORMAT = "{symbol}  ({asset_class} · {form} · {deploy})"
+TICKER_OFFER_FORMAT = "{symbol}  ({asset_class} · {form} · {deploy} · {tradeable})"
+#: The sentence the note carries for the markets kept off the offered list
+#: because no built variant can size a scrum on them.
+TICKER_UNTRADEABLE_FORMAT = (
+    "{count} market(s) left off, the smallest order costs more than a scrum's "
+    "excess: {names}"
+)
+UNTRADEABLE_JOIN = ", "
 #: The characters a typed ticker may carry between its base and its quote.
 TICKER_SEPARATORS = ("-", "_", " ")
 TICKER_JOIN = "/"
@@ -873,6 +883,7 @@ HANDLER_REFUSED_TEXT = "the operating system's handler refused"
 CANDLE_READ_FAILED_LOG = "scanned candle read failed on %s %s: %s"
 VOLUME_READ_FAILED_LOG = "quote volume read failed for %s: %s"
 CONNECTORS_READ_FAILED_LOG = "exchange connector read failed: %s"
+MARKET_RULES_FAILED_LOG = "market rule read failed: %s"
 
 SCAN_NOT_ASKED = "not_asked"
 SCAN_RUNNING = "running"
@@ -3268,12 +3279,41 @@ def placements_of(typed: Any, asset_class: Any, connectors: Any = None) -> list:
     return found
 
 
-def ticker_offer(symbol: Any, asset_class: Any) -> list:
+def market_rules_map(connectors: Any = None) -> dict:
+    """Each base's ``(MarketRules, price)`` off the connectors' loaded tables.
+
+    Empty while no connector holds a table, which makes a row read
+    ``sizing.TRADEABLE_UNKNOWN``.
+    """
+    if not connectors:
+        return {}
+    from ...exchange.market_inspector_fetcher import trading_rules
+
+    try:
+        return trading_rules(connectors)
+    except Exception as exc:  # noqa: BLE001 - the connector table is off-process
+        logger.debug(MARKET_RULES_FAILED_LOG, exc)
+        return {}
+
+
+def ticker_tradeable(symbol: Any, rules_map: Any = None) -> str:
+    """What ``sizing.tradeable_answer`` says about one symbol's market.
+
+    A symbol ``rules_map`` does not name takes ``MarketRules(read=False)``.
+    """
+    held = (rules_map or {}).get(str(symbol).upper())
+    if held is None:
+        return sizing.tradeable_answer(MarketRules(read=False))
+    rules, price = held
+    return sizing.tradeable_answer(rules, price)
+
+
+def ticker_offer(symbol: Any, asset_class: Any, rules_map: Any = None) -> list:
     """One completer row: the symbol, its class and ``TICKER_OFFER_FORMAT``.
 
-    The row carries the listing's own contract form and the word
-    ``ata_asset_maps.deployability_badge`` answers, so a market a bot can
-    deploy on and one the scanner only charts are told apart on the row.
+    The row carries the listing's contract form, the word
+    ``ata_asset_maps.deployability_badge`` answers and the word
+    ``ticker_tradeable`` answers.
     """
     listing = class_listing(symbol, asset_class)
     return [
@@ -3284,32 +3324,51 @@ def ticker_offer(symbol: Any, asset_class: Any) -> list:
             asset_class=asset_class,
             form=listing.form_label,
             deploy=ata_asset_maps.deployability_badge(listing, asset_class),
+            tradeable=ticker_tradeable(symbol, rules_map),
         ),
     ]
 
 
-def ticker_matches(typed: Any, asset_class: Any) -> list:
+@dataclass
+class TickerOffers:
+    """The ``ticker_offer`` rows the field lists and the names kept off them.
+
+    ``dropped`` names every market ``ticker_tradeable`` read as
+    ``sizing.TRADEABLE_NO``.
+    """
+
+    rows: list = field(default_factory=list)
+    dropped: list = field(default_factory=list)
+
+
+def ticker_offers(typed: Any, asset_class: Any, connectors: Any = None) -> TickerOffers:
     """The ``ticker_offer`` rows ``typed`` names across every class, prefix
     matches first and the chosen class first inside each, capped at
-    ``TICKER_MATCH_LIMIT``. A typed pair offers the crypto base while its
-    quote part starts one of ``DEFAULT_QUOTES``; no venue is asked."""
+    ``TICKER_MATCH_LIMIT``, with a ``sizing.TRADEABLE_NO`` market on
+    ``dropped`` instead. A typed pair offers the crypto base while its quote
+    part starts one of ``DEFAULT_QUOTES``; no venue is asked."""
     asked = fold_ticker(typed)
     if not asked:
-        return []
+        return TickerOffers()
     base, _, quote_part = asked.partition(TICKER_JOIN)
     pair_typed = TICKER_JOIN in asked and any(
         one.startswith(quote_part) for one in DEFAULT_QUOTES
     )
+    rules_map = market_rules_map(connectors)
     starts: list = []
     holds: list = []
+    dropped: list = []
     for one in class_walk(asset_class):
         for symbol in class_names(one):
             folded = symbol.upper()
-            if folded.startswith(asked) or (pair_typed and folded == base):
-                starts.append(ticker_offer(symbol, one))
-            elif asked in folded:
-                holds.append(ticker_offer(symbol, one))
-    return (starts + holds)[:TICKER_MATCH_LIMIT]
+            starting = folded.startswith(asked) or (pair_typed and folded == base)
+            if not starting and asked not in folded:
+                continue
+            if ticker_tradeable(symbol, rules_map) == sizing.TRADEABLE_NO:
+                dropped.append(str(symbol))
+                continue
+            (starts if starting else holds).append(ticker_offer(symbol, one, rules_map))
+    return TickerOffers(rows=(starts + holds)[:TICKER_MATCH_LIMIT], dropped=dropped)
 
 
 def empty_sector_line(asset_class: Any) -> str:
@@ -3327,7 +3386,20 @@ def empty_sector_line(asset_class: Any) -> str:
     )
 
 
-def ticker_note(asset_class: Any, note: Any = "", typed: Any = "") -> str:
+def untradeable_line(dropped: Any = ()) -> str:
+    """``TICKER_UNTRADEABLE_FORMAT`` over the names ``ticker_offers`` dropped,
+    empty while ``dropped`` names none."""
+    names = [str(one) for one in dropped or ()]
+    if not names:
+        return ""
+    return TICKER_UNTRADEABLE_FORMAT.format(
+        count=len(names), names=UNTRADEABLE_JOIN.join(names)
+    )
+
+
+def ticker_note(
+    asset_class: Any, note: Any = "", typed: Any = "", dropped: Any = ()
+) -> str:
     """The line under the ticker field, from the last press or from the sector.
 
     A ``typed`` name the class declares and lists no market for carries
@@ -3337,18 +3409,26 @@ def ticker_note(asset_class: Any, note: Any = "", typed: Any = "") -> str:
     tickers carries ``empty_sector_line``; a sector ``class_tickers`` lists
     nothing for carries ``TICKER_PRESS_LIST_FORMAT`` while
     ``CLASS_PRESS_SOURCES`` names its venue, else ``TICKER_NO_LIST_FORMAT``.
+    ``untradeable_line`` ends the note while ``dropped`` names a market.
     """
     unlisted = ata_asset_maps.unlisted_sectors(asset_class)
     if unlisted and ata_asset_maps.sector_named(typed, asset_class) in unlisted:
-        return empty_sector_line(asset_class)
-    if note:
-        return str(note)
-    if class_tickers(asset_class):
-        return empty_sector_line(asset_class)
-    source = CLASS_PRESS_SOURCES.get(str(asset_class))
-    if source:
-        return TICKER_PRESS_LIST_FORMAT.format(sector=asset_class, source=source)
-    return TICKER_NO_LIST_FORMAT.format(sector=asset_class)
+        held = empty_sector_line(asset_class)
+    elif note:
+        held = str(note)
+    elif class_tickers(asset_class):
+        held = empty_sector_line(asset_class)
+    else:
+        source = CLASS_PRESS_SOURCES.get(str(asset_class))
+        held = (
+            TICKER_PRESS_LIST_FORMAT.format(sector=asset_class, source=source)
+            if source
+            else TICKER_NO_LIST_FORMAT.format(sector=asset_class)
+        )
+    tail = untradeable_line(dropped)
+    if not tail:
+        return held
+    return f"{held} {tail}" if held else tail
 
 
 def market_listing(ticker: Any, asset_class: Any, connectors: Any = None) -> Any:
@@ -3526,6 +3606,9 @@ def timer_close_pair(value: Any) -> tuple:
 def ata_spm_skin(model: Any) -> dict:
     """Every value the ATA-SPM control row is drawn from, and its state."""
     row = model.ata_row()
+    offered = ticker_offers(
+        row["sector_text"], row["sector_class"], model.connectors_now()
+    )
     return {
         "ticker_placeholder": TICKER_FIELD_PLACEHOLDER,
         "ticker_tooltip": TICKER_FIELD_TOOLTIP,
@@ -3572,9 +3655,12 @@ def ata_spm_skin(model: Any) -> dict:
         "field_border_px": FIELD_BORDER_PX,
         "sector_text": row["sector_text"],
         "sector_class": row["sector_class"],
-        "ticker_matches": ticker_matches(row["sector_text"], row["sector_class"]),
+        "ticker_matches": offered.rows,
         "ticker_note": ticker_note(
-            row["sector_class"], model.board.note, row["sector_text"]
+            row["sector_class"],
+            model.board.note,
+            row["sector_text"],
+            offered.dropped,
         ),
         "ticker_note_part": TICKER_NOTE_PART,
         "ticker_note_colour": TICKER_NOTE_COLOUR,
