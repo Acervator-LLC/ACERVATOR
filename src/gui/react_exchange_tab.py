@@ -460,6 +460,15 @@ if _HAS_WEBENGINE:
             )
             self._publish()
 
+        def sort_by(self, column: Any) -> None:
+            """Order the bot table by one column, then publish the fleet again.
+
+            ``TradingTabReact.run_action`` calls this when a column heading
+            is pressed on the Live page.
+            """
+            scrum_surface.drive(self._scrum, {scrum_surface.SORT_COLUMN_PARAM: column})
+            self._publish()
+
         def _refresh_privacy_mode_btn_style(self) -> None:
             """Rewrite the Privacy Mode button from the register's own answer."""
             self._screen.refresh_privacy_mode_btn_style()

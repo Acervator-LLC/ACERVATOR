@@ -34,11 +34,14 @@
   var HEADER_CLICK_PARAM = "header_click_param";
   var HEADER_RESIZE_MODE = "header_resize_mode";
   var PRIVACY_TOGGLE_PARAM = "privacy_toggle_param";
+  var SORT_COLUMN_PARAM = "sort_column_param";
   var HEADER_LABEL_STYLE = "header_label_style";
   var HEADER_LABEL_WRAP = "header_label_wrap";
   var HEADER_DOT_STYLE = "header_dot_style";
   var HEADER_DOT_ROW_PX = "header_dot_row_px";
   var HEADER_CELL_PAD_PX = "header_cell_pad_px";
+  var HEADER_SORT_MARK_STYLE = "header_sort_mark_style";
+  var HEADER_SORT_MARK_BOX_PX = "header_sort_mark_box_px";
   var RESET_PARAM_FIELD = "reset_param";
   var STATUSES_PARAM_FIELD = "statuses_param";
   var FIRE_GLOWS = "fire_glows";
@@ -138,6 +141,8 @@
     HEADER_LABEL_STYLE,
     HEADER_LABEL_WRAP,
     HEADER_RESIZE_MODE,
+    HEADER_SORT_MARK_BOX_PX,
+    HEADER_SORT_MARK_STYLE,
     "header_state_tip_format",
     HEADERS,
     "icon_download",
@@ -180,7 +185,20 @@
     "skip_log_format",
     "skip_logger_name",
     SKIPPED_ROWS,
+    "sort_ascending",
+    "sort_column",
+    SORT_COLUMN_PARAM,
+    "sort_descending",
+    "sort_descending_word",
+    "sort_kind_by_col",
+    "sort_mark_ascending",
+    "sort_mark_descending",
+    "sort_mark_none",
+    "sort_unsorted",
+    "sortable_columns",
     "sorting_enabled",
+    "no_sort_column",
+    "row_refused_log",
     STATE_COLORS,
     "state_masked",
     "state_revealed",
@@ -223,6 +241,9 @@
   var MASKED = "masked";
   var DOT_TEXT = "dot_text";
   var DOT_TOOLTIP = "dot_tooltip";
+  var SORTABLE = "sortable";
+  var SORT_DIRECTION = "sort_direction";
+  var SORT_MARK = "sort_mark";
 
   var ROW_FIELDS = [BOT_ID, SKIPPED, CELLS, FIRE, DETAIL];
   var CELL_FIELDS = [
@@ -249,9 +270,18 @@
     GLOW_OFFSET
   ];
   var DETAIL_FIELDS = [TEXT, ENABLED, HEIGHT, STYLE_SHEET, TOOLTIP];
-  var HEADER_FIELDS = [TEXT, TOOLTIP, FIELD_ID, DOT_TEXT, DOT_TOOLTIP];
+  var HEADER_FIELDS = [
+    TEXT,
+    TOOLTIP,
+    FIELD_ID,
+    DOT_TEXT,
+    DOT_TOOLTIP,
+    SORT_DIRECTION,
+    SORT_MARK
+  ];
 
   var PRIVACY_TOGGLED = "privacy_toggled";
+  var HEADER_SORTED = "header_sorted";
   var CELL_CLICKED = "cell_clicked";
   var FIRE_CLICKED = "fire_clicked";
   var DETAIL_CLICKED = "detail_clicked";
@@ -310,11 +340,18 @@
   var WRAP_OVERFLOW = "break-word";
   var BLOCK_DISPLAY = "block";
   var CENTRE_ALIGN = "center";
+  var RIGHT_ALIGN = "right";
   var HEADER_VERTICAL_ALIGN = "bottom";
   var DOT_MARGIN = "0 auto";
   var DOT_CURSOR = "pointer";
   var LABEL_KEY = "label";
   var DOT_KEY = "dot";
+  var MARK_KEY = "mark";
+  // The mark sits in the header cell's own top-right corner, over the
+  // label, so neither the wrap nor the dot's centring moves when it draws.
+  var RELATIVE_POSITION = "relative";
+  var ABSOLUTE_POSITION = "absolute";
+  var MARK_EDGE = "0";
 
   var PART_ATTR = "data-part";
   var TABLE_PART = "table";
@@ -322,6 +359,7 @@
   var HEADER_PART = "header";
   var HEADER_LABEL_PART = "header-label";
   var PRIVACY_DOT_PART = "privacy-dot";
+  var SORT_MARK_PART = "sort-mark";
   var ROW_PART = "row";
   var CELL_PART = "cell";
   var FIRE_PART = "fire-button";
@@ -339,6 +377,8 @@
   var FIELD_ID_ATTR = "data-field-id";
   var MASKED_ATTR = "data-masked";
   var ACTION_ATTR = "data-action";
+  var SORT_DIRECTION_ATTR = "data-sort-direction";
+  var SORTABLE_ATTR = "data-sortable";
   var CHART_URL_ATTR = "data-chart-url";
   var ICON_ATTR = "data-icon";
   var ICON_SIZE_ATTR = "data-icon-size";
@@ -570,7 +610,9 @@
       type: BUTTON_TYPE,
       style: style,
       title: label(header[DOT_TOOLTIP]),
-      onClick: function () {
+      onClick: function (press) {
+        // The heading sorts, so the dot keeps its own press to itself.
+        press.stopPropagation();
         sendPrivacyToggle(model, column);
       }
     };
@@ -582,10 +624,25 @@
     return element(BUTTON_TAG, dotProps, text(header[DOT_TEXT]));
   }
 
+  // The arrow marks which column the rows are ordered by, and which way.
+  function SortMark(props) {
+    var model = props.model;
+    var style = styleOf(model[HEADER_SORT_MARK_STYLE]);
+    style.position = ABSOLUTE_POSITION;
+    style.top = MARK_EDGE;
+    style.right = MARK_EDGE;
+    style.width = length(model[HEADER_SORT_MARK_BOX_PX]);
+    style.textAlign = RIGHT_ALIGN;
+    var markProps = { className: TABLE_CLASS, style: style };
+    markProps[PART_ATTR] = SORT_MARK_PART;
+    return element(DOT_TAG, markProps, text(props.mark));
+  }
+
   function HeaderCell(props) {
     var model = props.model;
     var header = isPlainObject(props.header) ? props.header : {};
     var column = props.column;
+    var sortable = Boolean(header[SORTABLE]);
     var style = {};
     var width = fixedWidthOf(model, column);
     if (width !== undefined) {
@@ -593,6 +650,10 @@
     }
     style.verticalAlign = HEADER_VERTICAL_ALIGN;
     style.padding = length(model[HEADER_CELL_PAD_PX]);
+    style.position = RELATIVE_POSITION;
+    if (sortable) {
+      style.cursor = DOT_CURSOR;
+    }
     var headProps = {
       className: TABLE_CLASS,
       style: style,
@@ -602,6 +663,14 @@
     headProps[COLUMN_ATTR] = text(column);
     headProps[FIELD_ID_ATTR] = text(header[FIELD_ID]);
     headProps[ARIA_LABEL] = label(header[TEXT]);
+    headProps[SORTABLE_ATTR] = String(sortable);
+    headProps[SORT_DIRECTION_ATTR] = text(header[SORT_DIRECTION]);
+    if (sortable) {
+      headProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[HEADER_SORTED]);
+      headProps.onClick = function () {
+        sendSort(model, column);
+      };
+    }
     return element(
       HEAD_CELL_TAG,
       headProps,
@@ -611,7 +680,8 @@
         model: model,
         header: header,
         column: column
-      })
+      }),
+      element(SortMark, { key: MARK_KEY, model: model, mark: header[SORT_MARK] })
     );
   }
 
@@ -1141,6 +1211,14 @@
     );
   }
 
+  function sendSort(model, column) {
+    return dispatch(
+      model,
+      actionNamed(model, HEADER_SORTED),
+      request(model, SORT_COLUMN_PARAM, column)
+    );
+  }
+
   function sendCellClick(model, row, column) {
     return dispatch(
       model,
@@ -1423,6 +1501,8 @@
     BotRow: BotRow,
     BodyCell: BodyCell,
     HeaderCell: HeaderCell,
+    SortMark: SortMark,
+    sendSort: sendSort,
     FireButton: FireButton,
     DetailButton: DetailButton,
     payload: payload,
