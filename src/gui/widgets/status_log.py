@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Callable
 
-from .. import design_system as ds
+from ..main_tabs import status_log_surface as surface
 
 logger = logging.getLogger("acervator.gui")
 
@@ -93,12 +93,7 @@ if _HAS_QT:
             for ts, message, level in buffered:
                 self._render(ts, message, level)
             if buffered:
-                self.append(
-                    f'<span style="color:{ds.CARD_METRIC_LABEL}">[—]</span> '
-                    f'<span style="color:{ds.PRIMARY};font-style:italic;">'
-                    f"(resumed — {len(buffered)} buffered message(s) above)"
-                    f"</span>"
-                )
+                self.append(surface.resume_line(len(buffered))["html"])
                 self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
         def toggle_pause(self) -> bool:
@@ -169,49 +164,6 @@ if _HAS_QT:
                     )
 
         def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
-            if message.startswith("TRADE NOTIFICATION:"):
-                stage_color = ds.ERROR
-                if "FILLED" in message:
-                    stage_color = ds.SUCCESS
-                elif "PLACED" in message:
-                    stage_color = ds.WARNING
-                elif "SENT" in message:
-                    stage_color = ds.PRIMARY
-                self.append(
-                    f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
-                    f'<span style="color:{stage_color};font-size:14px;'
-                    f'font-weight:bold;">{message}</span>'
-                )
-                self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
-                return
-            # SmartWireManager.distribute_fold_profit prefixes its notices "WIRE FLOW".
-            if message.startswith("WIRE FLOW") or message.startswith("WIRE INCOME"):
-                self.append(
-                    f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
-                    f'<span style="color:{ds.MAIN_BADGE_MAGENTA};font-size:12px;'
-                    f'font-weight:bold;">⚡ {message}</span>'
-                )
-                self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
-                return
-            if message.startswith("WIRE STACK") or message.startswith(
-                "WIRE STACK FIRE"
-            ):
-                self.append(
-                    f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
-                    f'<span style="color:{ds.STATE_PENDING};font-size:12px;'
-                    f'font-weight:bold;">⚡ {message}</span>'
-                )
-                self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
-                return
-            colors = {
-                "info": ds.PRIMARY,
-                "success": ds.SUCCESS,
-                "warning": ds.WARNING,
-                "error": ds.ERROR,
-            }
-            color = colors.get(level, ds.TEXT_HIGH)
-            self.append(
-                f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
-                f'<span style="color:{color}">{message}</span>'
-            )
+            style = surface.line_style(message, level)
+            self.append(surface.line_html(ts, message, style))
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())

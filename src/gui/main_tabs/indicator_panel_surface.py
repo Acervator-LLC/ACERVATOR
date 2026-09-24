@@ -229,6 +229,37 @@ CELL_ALPHA_FLOOR = 5
 CONF_STRONG_LIMIT = 0.6
 CONF_FAIR_LIMIT = 0.3
 
+#: Conf's three levels, weakest first, and the colour each one draws in.
+CONF_WEAK_BAND = "WEAK"
+CONF_FAIR_BAND = "FAIR"
+CONF_STRONG_BAND = "STRONG"
+CONF_BAND_COLORS = {
+    CONF_WEAK_BAND: ABSENT_TEXT_COLOR,
+    CONF_FAIR_BAND: WARNING_TEXT_COLOR,
+    CONF_STRONG_BAND: BULLISH_TEXT_COLOR,
+}
+
+#: The Net magnitude that draws a full-height Net or Comp pillar. A live
+#: reading sits far below the tally the twelve voters could together produce,
+#: so the pillar is scaled to the range Net works in rather than to that
+#: ceiling, where it would never leave the floor.
+NET_PILLAR_FULL_SCALE = 3.0
+
+#: The share of its colour a pillar keeps at a reading of zero.
+PILLAR_SHADE_FLOOR = 0.45
+
+#: How far a reading at full scale lifts a cell's text toward white. Text is
+#: lifted rather than dimmed, so no reading is ever harder to read than the
+#: weakest one.
+CELL_LIFT_SPAN = 0.45
+
+#: The colour a cell's text is lifted toward.
+CELL_LIFT_RGB = (255, 255, 255)
+
+#: The smallest share of its span a pillar draws, so an empty column is
+#: still placed on the grid rather than absent.
+PILLAR_MINIMUM_FRACTION = 0.02
+
 # -- the confidence bar graph -----------------------------------------
 
 BAR_COLORS = {
@@ -455,6 +486,73 @@ def _clamped(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return min(max(value, low), high)
 
 
+def _channels(color: str) -> tuple:
+    """The three colour channels one ``#rrggbb`` string names."""
+    digits = str(color).lstrip("#")
+    return tuple(int(digits[at : at + 2], 16) for at in (0, 2, 4))
+
+
+def _hex(channels: Any) -> str:
+    """Three colour channels as the ``#rrggbb`` string both hosts take."""
+    return "#" + "".join(
+        "%02x" % int(_clamped(float(one), 0.0, 255.0)) for one in channels
+    )
+
+
+def _shaded(channels: Any, fraction: Any, floor: float) -> tuple:
+    """``channels`` dimmed toward the panel ground by how small ``fraction`` is.
+
+    ``floor`` is the share of the colour a reading of zero keeps, so the
+    faintest a value ever draws is still visible against the ground.
+    """
+    share = floor + (1.0 - floor) * _clamped(_number(fraction))
+    return tuple(
+        int(round(ground + (one - ground) * share))
+        for one, ground in zip(channels, PANEL_GROUND_RGB)
+    )
+
+
+def _lifted(channels: Any, fraction: Any) -> tuple:
+    """``channels`` carried toward ``CELL_LIFT_RGB`` by how big ``fraction`` is.
+
+    ``CELL_LIFT_SPAN`` bounds the lift, so a reading of zero draws the colour
+    unchanged and the largest reading draws the brightest one.
+    """
+    share = CELL_LIFT_SPAN * _clamped(_number(fraction))
+    return tuple(
+        int(round(one + (lift - one) * share))
+        for one, lift in zip(channels, CELL_LIFT_RGB)
+    )
+
+
+def net_fraction(value: Any) -> float:
+    """One Net or Comp reading as a share of ``NET_PILLAR_FULL_SCALE``."""
+    return _clamped(abs(_number(value)) / NET_PILLAR_FULL_SCALE)
+
+
+def conf_band(value: Any) -> str:
+    """Which of Conf's three levels one reading falls in."""
+    conf = _number(value)
+    if conf >= CONF_STRONG_LIMIT:
+        return CONF_STRONG_BAND
+    if conf >= CONF_FAIR_LIMIT:
+        return CONF_FAIR_BAND
+    return CONF_WEAK_BAND
+
+
+def signed_text_color(value: Any) -> str:
+    """The colour one signed tally's text draws in.
+
+    The sign picks the hue and the size of the reading picks the brightness,
+    so the cell and the pillar under it never disagree.
+    """
+    number = _number(value)
+    if number == 0.0:
+        return NEUTRAL_TEXT_COLOR
+    base = BULLISH_TEXT_COLOR if number > 0.0 else BEARISH_TEXT_COLOR
+    return _hex(_lifted(_channels(base), net_fraction(number)))
+
+
 def cell_alpha(confidence: Any) -> int:
     """The tint's Qt alpha byte for one vote confidence.
 
@@ -537,14 +635,18 @@ def indicator_cell_colors(signal: Optional[dict]) -> dict:
 
 
 def net_cell(tf_data: dict) -> dict:
-    """The Net column's cell: the weighted bull-minus-bear tally."""
+    """The Net column's cell: the weighted bull-minus-bear tally.
+
+    Carries ``HEADER_TOOLTIPS`` so the reading answers a hover as well as the
+    heading above it does, and ``signed_text_color`` so it agrees with its
+    pillar.
+    """
     net = _number((tf_data or {}).get("net_score"))
-    color = None
-    if net > 0:
-        color = BULLISH_TEXT_COLOR
-    elif net < 0:
-        color = BEARISH_TEXT_COLOR
-    return {"text": NET_FORMAT.format(value=net), "text_color": color}
+    return {
+        "text": NET_FORMAT.format(value=net),
+        "text_color": signed_text_color(net),
+        "tooltip": HEADER_TOOLTIPS["Net"],
+    }
 
 
 def comp_skipped_tooltip(tf_data: dict) -> str:
@@ -561,10 +663,13 @@ def comp_skipped_tooltip(tf_data: dict) -> str:
 def comp_cell(tf_data: dict) -> dict:
     """The Comp column's cell, an em-dash on a row carrying no composite.
 
-    Carries ``comp_skipped_tooltip`` so a phantom the composite refused is
-    named on the cell the operator reads.
+    Carries ``comp_skipped_tooltip`` under ``HEADER_TOOLTIPS`` so a phantom the
+    composite refused is named on the cell the operator reads.
     """
-    tooltip = comp_skipped_tooltip(tf_data)
+    skipped = comp_skipped_tooltip(tf_data)
+    tooltip = HEADER_TOOLTIPS["Comp"]
+    if skipped:
+        tooltip = tooltip + "\n\n" + skipped
     comp = (tf_data or {}).get("composite_net")
     if comp is None:
         return {
@@ -573,30 +678,25 @@ def comp_cell(tf_data: dict) -> dict:
             "tooltip": tooltip,
         }
     value = _number(comp)
-    color = None
-    if value > 0:
-        color = BULLISH_TEXT_COLOR
-    elif value < 0:
-        color = BEARISH_TEXT_COLOR
     return {
         "text": COMP_FORMAT.format(value=value),
-        "text_color": color,
+        "text_color": signed_text_color(value),
         "tooltip": tooltip,
     }
 
 
 def conf_cell(tf_data: dict) -> dict:
-    """The Conf column's cell: a block bar, then the breadth percentage."""
-    conf = _number((tf_data or {}).get("confidence"))
-    if conf >= CONF_STRONG_LIMIT:
-        color = BULLISH_TEXT_COLOR
-    elif conf >= CONF_FAIR_LIMIT:
-        color = WARNING_TEXT_COLOR
-    else:
-        color = ABSENT_TEXT_COLOR
+    """The Conf column's cell: a block bar, then the agreement percentage.
+
+    ``conf_band`` picks the hue and the reading itself picks the brightness,
+    so the cell and the pillar under it never disagree.
+    """
+    conf = _clamped(_number((tf_data or {}).get("confidence")))
+    color = CONF_BAND_COLORS[conf_band(conf)]
     return {
         "text": CONF_FORMAT.format(bar=confidence_bar(conf), value=conf),
-        "text_color": color,
+        "text_color": _hex(_lifted(_channels(color), conf)),
+        "tooltip": HEADER_TOOLTIPS["Conf"],
     }
 
 
@@ -768,27 +868,27 @@ HEADER_TOOLTIPS = {
         "divergence. ▲▼ direction + NN% confidence."
     ),
     "Net": (
-        "Net — weighted bull − bear vote tally. "
-        "Sum of (confidence × weight) for BULLISH voters "
-        "minus same for BEARISH voters. NEUTRAL voters "
-        "contribute 0. Theoretical range ±11.7; in "
-        "practice rarely outside ±3."
+        "Net vote. The bullish weight of the twelve voters above, less "
+        "their bearish weight. Above zero the panel leans up. Below zero "
+        "it leans down. A voter with no opinion adds nothing. The bar "
+        f"below stands full at {NET_PILLAR_FULL_SCALE:.2f} either way, and "
+        "a bigger vote draws a brighter bar."
     ),
     "Comp": (
-        "Composite Net — parent Net rank-weighted with all "
-        "active higher-TF phantom bot summaries. "
-        "Phantoms boost (bullish) or suppress (bearish) "
-        "the parent's signal only when Phantom Bots "
-        "are enabled and have completed their first "
-        "signal cycle. Populated on the parent bot's TF "
-        "row only; phantom TF rows read “—”."
+        "Comp is short for composite Net. It is this bot's Net vote, "
+        "joined with the Net vote of each higher timeframe a phantom bot "
+        "watches. A higher timeframe pulls the reading its own way. With "
+        "no phantom bot running, Comp reads the same as Net. A dash means "
+        "this row carries no composite of its own."
     ),
     "Conf": (
-        "Confidence — |Net| / total_weight_of_active_voters, "
-        "capped at 1.0. Reflects BREADTH of agreement, not "
-        "magnitude. A 30% reading typically means 6 voters "
-        "strongly agree + 6 are NEUTRAL — not 'panel "
-        "disagrees'. Green ≥60%, amber ≥30%, gray <30%."
+        "Conf is short for confidence. It measures how far the voters "
+        "agree with each other, and nothing else. It is the Net vote "
+        "divided by the weight of every voter that cast one. 0% means "
+        "the voters cancel out or none has an opinion. 100% means every "
+        "voter that cast one agrees. A high reading does not say the "
+        "trade is a good one, only that the panel is of one mind. Grey "
+        "is under 30%, amber is 30% and over, green is 60% and over."
     ),
 }
 
@@ -1130,22 +1230,35 @@ def column_body_fraction() -> float:
 
 
 def collated_pillars(tf_data: dict) -> list:
-    """One pillar per AGGREGATE_TITLES entry, each taking its own sign.
+    """One pillar per AGGREGATE_TITLES entry, each drawn from its own reading.
 
-    A pillar carries a name, a direction and the grid column it stands in.
-    The table cell above carries the value; the pillar runs the height of
-    the panel, past both mini-panels.
+    A pillar carries its name, its state, the grid column it stands in, the
+    share of the span it fills and the colour that share draws it in; Net and
+    Comp take ``net_fraction`` and their sign, and Conf takes its own
+    percentage and ``conf_band``.
     """
     entry = tf_data if isinstance(tf_data, dict) else {}
-    directions = [
-        sign_direction(entry.get("net_score")),
-        sign_direction(entry.get("composite_net")),
-        str(entry.get("direction", DEFAULT_DIRECTION)),
+    net = entry.get("net_score")
+    comp = entry.get("composite_net")
+    conf = _clamped(_number(entry.get("confidence")))
+    band = conf_band(conf)
+    drawn = [
+        (sign_direction(net), net_fraction(net), BAR_COLORS[sign_direction(net)]),
+        (sign_direction(comp), net_fraction(comp), BAR_COLORS[sign_direction(comp)]),
+        (band, conf, _channels(CONF_BAND_COLORS[band])),
     ]
     first = PANEL_COLUMN_COUNT - len(AGGREGATE_TITLES)
     return [
-        {"name": title, "direction": way, "column": first + at}
-        for at, (title, way) in enumerate(zip(AGGREGATE_TITLES, directions))
+        {
+            "name": title,
+            "direction": state,
+            "column": first + at,
+            "fraction": round(max(fraction, PILLAR_MINIMUM_FRACTION), 4),
+            "rgb": list(_shaded(channels, fraction, PILLAR_SHADE_FLOOR)),
+        }
+        for at, (title, (state, fraction, channels)) in enumerate(
+            zip(AGGREGATE_TITLES, drawn)
+        )
     ]
 
 
@@ -1355,7 +1468,6 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "glow_inset_px": BARS_GLOW_INSET_PX,
             "label_rgb": list(BARS_LABEL_RGB),
             "label_font": list(BARS_LABEL_FONT),
-            "colors": {name: list(rgb) for name, rgb in BAR_COLORS.items()},
             "gradient_alphas": list(BARS_GRADIENT_ALPHAS),
             "gradient_stops": list(BARS_GRADIENT_STOPS),
             "outline_alpha": BARS_OUTLINE_ALPHA,
