@@ -198,6 +198,11 @@ ORDER_UNREAD_FORMAT = "{markets} ({unread} not read)"
 ORDER_UNFIGURED_FORMAT = "{source}, {unfigured} with no figure last by name"
 #: The order line's tail naming the products the venue does not trade, once.
 ORDER_DEAD_FORMAT = "{line}; {count} not trading, never fetched: {names}"
+#: The order line's tail naming the products the venue answered no candle for.
+ORDER_NO_CANDLE_FORMAT = (
+    "{line}; {count} dropped, the venue answered no candle on any "
+    "granularity: {names}"
+)
 MAP_ORDER_SOURCE_TEXT = "map order, no volume figure"
 UNSTATED_ORDER_SOURCE_TEXT = "the order the source listed"
 NO_MARKET_TEXT = "none"
@@ -518,6 +523,9 @@ class MarketOrder:
     unfigured: int = 0
     #: The names the venue lists but does not trade, kept off ``listings``.
     dead: list = field(default_factory=list)
+    #: The names the venue trades and answers no candle for, kept off
+    #: ``listings`` at list time so no row is drawn for them.
+    no_candle: list = field(default_factory=list)
 
     @property
     def by_volume(self) -> bool:
@@ -566,7 +574,8 @@ def order_line(order: MarketOrder, read: Any) -> str:
     """``ORDER_LINE_FORMAT`` over the first ``read`` symbols of ``order``.
 
     The symbols after ``read`` are counted into ``ORDER_UNREAD_FORMAT``, and
-    ``order.dead`` is named once through ``ORDER_DEAD_FORMAT``.
+    ``order.dead`` and ``order.no_candle`` are each named once, through
+    ``ORDER_DEAD_FORMAT`` and ``ORDER_NO_CANDLE_FORMAT``.
     """
     symbols = order.symbols
     held = max(0, int(read or 0))
@@ -579,6 +588,12 @@ def order_line(order: MarketOrder, read: Any) -> str:
             line=line,
             count=len(order.dead),
             names=SYMBOL_SEPARATOR.join(str(one) for one in order.dead),
+        )
+    if order.no_candle:
+        line = ORDER_NO_CANDLE_FORMAT.format(
+            line=line,
+            count=len(order.no_candle),
+            names=SYMBOL_SEPARATOR.join(str(one) for one in order.no_candle),
         )
     return line
 

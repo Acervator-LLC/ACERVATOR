@@ -107,16 +107,24 @@ FUTURES_VOLUME_KEY = "volume_24h"
 FUTURES_PRICE_KEY = "price"
 FUTURES_SOURCE_TEXT = "coinbase futures and perpetuals, 24 h volume x price"
 FUTURES_EMPTY_TEXT = "the product list answered no trading futures product"
+#: What ``futures_listings`` answers when every trading product read dropped.
+FUTURES_SILENT_TEXT = "{count} trading products answered no candle on any granularity"
 FUTURES_REFUSED_LOG = "ata asset map: futures product list refused: %s"
 FUTURES_ACTION = "FETCH_MARKETS"
 FUTURES_REASON = "ATA-SPM scan: which futures and perpetual products the venue trades"
 FUTURES_RESULT_FORMAT = (
     "{count} trading products received, {dead} not trading, "
-    "{expiring} expiring, {perpetual} perpetual"
+    "{silent} answered no candle, {expiring} expiring, {perpetual} perpetual"
 )
+FUTURES_SILENT_LOG = "ata asset map: %s answered no candle on %s, dropped"
 
 _FUTURES: dict[str, "AssetListing"] = {}
 """The rows the last ``futures_listings`` read answered, by upper-case symbol."""
+
+_FUTURES_SILENT: dict[str, "AssetListing"] = {}
+"""The rows that read dropped, by upper-case symbol: the venue lists and
+trades each one and answered no candle on any granularity it serves. They stay
+reachable through ``listing_of`` so a typed product name still scans."""
 
 #: What a public product read raises: a transport or HTTP failure, a refused
 #: scheme or a body that is not JSON, and a body of an unexpected shape.
@@ -451,7 +459,25 @@ MAP_SOURCES: dict[str, str] = {
         "ONE_DAY, 350 a request, and 1w from the daily rollup. Measured "
         "2026-09-20: 117 trading products, every one EXPIRING on the CDE "
         "venue and none carrying the -PERP-INTX suffix; 57 of them carried no "
-        "24 h volume, and 43 answered no candle on any granularity."
+        "24 h volume, and 43 answered no candle on any granularity. "
+        "OVERTAKEN 2026-09-23, the sentence above reading 'The list keeps the "
+        "products whose status is online and trading_disabled is not set, "
+        "ranked by volume_24h x price': the list now keeps the products that "
+        "candle_served admits as well. venue_granularities asks 1h, then 1d, "
+        "and the first key answering a candle admits the product, so a product "
+        "answering on one key and not the other stays; 1w rolls from 1d and is "
+        "never asked. A product every key answers none for is dropped at list "
+        "time, held in _FUTURES_SILENT so a typed name still scans, and "
+        "counted on the order line through MarketOrder.no_candle. The "
+        "2026-09-20 figures above are NOT re-measured: the unit that added "
+        "this rule contacted no venue. Measured 2026-09-23 instead, on a "
+        "loopback stand-in for both routes, in the Qt window and on the React "
+        "page: 14 products listed, 12 trading, 12 rows and 12 field lines "
+        "before the rule with 3 lines reading no candles, 9 rows and 9 field "
+        "lines after it with none, and 3 counted on the order line. One "
+        "product answered no candle on 1h and 40 candles on 1d and stayed in "
+        "the list. With every candle read answering none, 0 rows and 12 "
+        "counted."
     ),
     CLASS_ENERGY: (
         "S&P GSCI groups energy as petroleum and natural gas. The listed "
@@ -494,14 +520,18 @@ def listings_for(sector: Any, asset_class: Any) -> tuple[AssetListing, ...]:
 
 def listing_of(symbol: Any) -> Optional[AssetListing]:
     """The row every map holds for one symbol, else the row the last
-    ``screener_listings`` or ``futures_listings`` read holds for it, else None."""
+    ``screener_listings`` or ``futures_listings`` read holds for it, else None.
+
+    A row in ``_FUTURES_SILENT`` still answers here, so a product name typed
+    into the field resolves and scans.
+    """
     asked = str(symbol).strip().upper()
     for sectors in MAPS.values():
         for rows in sectors.values():
             for one in rows:
                 if one.symbol.upper() == asked:
                     return one
-    return _SCREENED.get(asked) or _FUTURES.get(asked)
+    return _SCREENED.get(asked) or _FUTURES.get(asked) or _FUTURES_SILENT.get(asked)
 
 
 def screened_listings() -> tuple[AssetListing, ...]:
@@ -510,8 +540,43 @@ def screened_listings() -> tuple[AssetListing, ...]:
 
 
 def futures_tickers() -> list:
-    """The symbols the last ``futures_listings`` read answered, sorted."""
+    """The symbols the last ``futures_listings`` read admitted, sorted."""
     return sorted(_FUTURES)
+
+
+def futures_silent() -> list:
+    """The symbols the last ``futures_listings`` read dropped, sorted."""
+    return sorted(_FUTURES_SILENT)
+
+
+def venue_granularities(venue: Any) -> tuple:
+    """The timeframes one venue answers from its own route, rolled keys aside.
+
+    ``VENUE_ROLLED_TIMEFRAMES`` names the keys served through another key, so
+    reading them asks the same route twice.
+    """
+    rolled = VENUE_ROLLED_TIMEFRAMES.get(str(venue), {})
+    return tuple(
+        one for one in VENUE_TIMEFRAMES.get(str(venue), ()) if one not in rolled
+    )
+
+
+def candle_served(symbol: Any, read: Any = None) -> bool:
+    """Whether the venue answers a candle for ``symbol`` on any granularity.
+
+    Each key ``venue_granularities`` names is read through ``read``,
+    ``venue_candle_read`` by default, and a venue with no key is served.
+    """
+    found = listing_of(symbol)
+    keys = venue_granularities(getattr(found, "venue", ""))
+    if not keys:
+        return True
+    source = read or venue_candle_read
+    for timeframe in keys:
+        if source(symbol, timeframe)[0]:
+            return True
+    logger.debug(FUTURES_SILENT_LOG, symbol, ", ".join(keys))
+    return False
 
 
 def _futures_products(timeout_s: float) -> list:
@@ -552,12 +617,16 @@ def _figure_of(product: dict) -> float:
     return figure if figure > NO_VOLUME_FIGURE else NO_VOLUME_FIGURE
 
 
-def futures_listings(timeout_s: float = FUTURES_TIMEOUT_S) -> tuple[list, dict, str]:
-    """The derivatives rows ``FUTURES_PRODUCTS_URL`` lists as trading, their
-    figures by symbol, and the refusal when it answered none.
+def futures_listings(
+    timeout_s: float = FUTURES_TIMEOUT_S, read: Any = None
+) -> tuple[list, dict, str, list]:
+    """The derivatives rows ``FUTURES_PRODUCTS_URL`` lists as trading and
+    ``candle_served`` admits, their figures by symbol, the refusal when the
+    list answered none, and the symbols the admission dropped.
 
     Each product is one ``AssetListing`` on ``VENUE_FUTURES`` under
-    ``SECTOR_EXPIRING`` or ``SECTOR_PERPETUAL``, and the rows fill ``_FUTURES``.
+    ``SECTOR_EXPIRING`` or ``SECTOR_PERPETUAL``; the admitted rows fill
+    ``_FUTURES`` and the dropped ones ``_FUTURES_SILENT``.
     """
     start = time.monotonic()
     try:
@@ -576,7 +645,7 @@ def futures_listings(timeout_s: float = FUTURES_TIMEOUT_S) -> tuple[list, dict, 
             level=API_LEVEL_WARNING,
             data_usage=API_DATA_USAGE,
         )
-        return [], {}, refusal
+        return [], {}, refusal, []
     rows: list = []
     figures: dict = {}
     dead = 0
@@ -605,6 +674,19 @@ def futures_listings(timeout_s: float = FUTURES_TIMEOUT_S) -> tuple[list, dict, 
         figure = _figure_of(product)
         if figure > NO_VOLUME_FIGURE:
             figures[symbol] = figure
+    silent: list = []
+    if rows:
+        _FUTURES.clear()
+        _FUTURES_SILENT.clear()
+        _FUTURES.update({one.symbol: one for one in rows})
+        for one in list(rows):
+            if candle_served(one.symbol, read):
+                continue
+            _FUTURES.pop(one.symbol, None)
+            _FUTURES_SILENT[one.symbol] = one
+            figures.pop(one.symbol, None)
+            silent.append(one.symbol)
+        rows = [one for one in rows if one.symbol in _FUTURES]
     get_api_log().record(
         exchange=VENUE_FUTURES,
         action=FUTURES_ACTION,
@@ -614,6 +696,7 @@ def futures_listings(timeout_s: float = FUTURES_TIMEOUT_S) -> tuple[list, dict, 
         result=FUTURES_RESULT_FORMAT.format(
             count=len(rows),
             dead=dead,
+            silent=len(silent),
             expiring=sum(1 for one in rows if one.sector == SECTOR_EXPIRING),
             perpetual=sum(1 for one in rows if one.sector == SECTOR_PERPETUAL),
         ),
@@ -622,10 +705,13 @@ def futures_listings(timeout_s: float = FUTURES_TIMEOUT_S) -> tuple[list, dict, 
         data_usage=API_DATA_USAGE,
     )
     if not rows:
-        return [], {}, FUTURES_EMPTY_TEXT
-    _FUTURES.clear()
-    _FUTURES.update({one.symbol: one for one in rows})
-    return rows, figures, ""
+        empty = (
+            FUTURES_SILENT_TEXT.format(count=len(silent))
+            if silent
+            else FUTURES_EMPTY_TEXT
+        )
+        return [], {}, empty, silent
+    return rows, figures, "", silent
 
 
 def _screener_quotes(count: int, timeout_s: float) -> list:
@@ -902,9 +988,11 @@ __all__ = [
     "VOLUME_TIMEFRAME",
     "VOLUME_WINDOW_DAYS",
     "WEEKLY_TIMEFRAME",
+    "candle_served",
     "complete_bar",
     "exchange_listing",
     "futures_listings",
+    "futures_silent",
     "futures_tickers",
     "listing_of",
     "listings_for",
@@ -913,6 +1001,7 @@ __all__ = [
     "sectors_for",
     "venue_candle_read",
     "venue_candles",
+    "venue_granularities",
     "venue_quote_volume",
     "venue_window_days",
 ]
