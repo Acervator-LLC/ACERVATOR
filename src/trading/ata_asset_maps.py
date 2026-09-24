@@ -31,16 +31,16 @@ from ..exchange.market_inspector_fetcher import (
 )
 from ..simulator.portfolios import CRYPTO_SYMBOLS, SYMBOLS
 from .ata_spm import (
+    CLASS_COMMODITIES,
     CLASS_CRYPTO,
     CLASS_DERIVATIVES,
-    CLASS_ENERGY,
     CLASS_FOREX,
-    CLASS_METALS,
     CLASS_STOCKS,
     EXCHANGE_PACE_S,
     EXCHANGE_RATE_LIMIT_WAIT_S,
     YAHOO_PACE_S,
     YAHOO_RATE_LIMIT_WAIT_S,
+    asset_class_named,
     ReadPace,
 )
 from .indicators.types import CandleDomainError, candles_from_raw
@@ -257,13 +257,27 @@ MIN_WINDOW_DAYS: int = 1
 SECTOR_MAJOR = "major"
 SECTOR_MINOR = "minor"
 SECTOR_EXOTIC = "exotic"
-SECTOR_SPOT = "spot"
-SECTOR_BASE = "base"
 SECTOR_EXPIRING = "expiring"
 SECTOR_PERPETUAL = "perpetual"
-SECTOR_PETROLEUM = "petroleum"
-SECTOR_GAS = "gas"
 SECTOR_PORTFOLIO = "portfolio"
+
+#: The five sectors the S&P GSCI divides the commodities class into, spelled
+#: as that index spells them, in the lower case every sector key here uses.
+SECTOR_ENERGY = "energy"
+SECTOR_INDUSTRIAL_METALS = "industrial metals"
+SECTOR_PRECIOUS_METALS = "precious metals"
+SECTOR_AGRICULTURE = "agriculture"
+SECTOR_LIVESTOCK = "livestock"
+
+#: A sector name an earlier taxonomy drew, and the sector now holding those
+#: markets. ``sector_named`` reads it only where the class's own map has no
+#: key of the name typed, so a name a live sector already uses is never moved.
+RETIRED_SECTORS: dict[str, str] = {
+    "spot": SECTOR_PRECIOUS_METALS,
+    "base": SECTOR_INDUSTRIAL_METALS,
+    "petroleum": SECTOR_ENERGY,
+    "gas": SECTOR_ENERGY,
+}
 
 USD = "USD"
 
@@ -376,7 +390,7 @@ ENERGY_GAS: tuple[AssetListing, ...] = tuple(
     for one in ("UNG",)
 )
 
-#: The names the metals and energy maps already carry, kept off the stocks map.
+#: The names the commodities map already carries, kept off the stocks map.
 _MAPPED_FUNDS: frozenset[str] = frozenset(
     one.symbol for one in METALS_PHYSICAL + METALS_BASE + ENERGY_PETROLEUM + ENERGY_GAS
 )
@@ -395,15 +409,24 @@ MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
         SECTOR_MINOR: FOREX_MINOR,
         SECTOR_EXOTIC: FOREX_EXOTIC,
     },
-    CLASS_METALS: {
-        SECTOR_SPOT: METALS_SPOT + METALS_PHYSICAL,
-        SECTOR_BASE: METALS_BASE,
-    },
-    CLASS_ENERGY: {
-        SECTOR_PETROLEUM: ENERGY_PETROLEUM,
-        SECTOR_GAS: ENERGY_GAS,
+    CLASS_COMMODITIES: {
+        SECTOR_ENERGY: ENERGY_PETROLEUM + ENERGY_GAS,
+        SECTOR_INDUSTRIAL_METALS: METALS_BASE,
+        SECTOR_PRECIOUS_METALS: METALS_SPOT + METALS_PHYSICAL,
+        SECTOR_AGRICULTURE: (),
+        SECTOR_LIVESTOCK: (),
     },
     CLASS_STOCKS: {SECTOR_PORTFOLIO: STOCKS_PORTFOLIO},
+}
+
+#: Why one class's declared sectors hold no listed market. ``ticker_note``
+#: reads it beside ``unlisted_sectors``, so a sector the standard names and
+#: this map cannot fill says so under the field instead of drawing nothing.
+SECTOR_ABSENCE: dict[str, str] = {
+    CLASS_FOREX: "no pair is named for this tier yet",
+    CLASS_COMMODITIES: (
+        "no fund listed in dollars holds them, and this map carries no futures"
+    ),
 }
 
 #: What each class's map was built from, and when its tickers were measured.
@@ -423,19 +446,52 @@ MAP_SOURCES: dict[str, str] = {
         "bar carries volume 0, so VolumeAnalysis abstains on every pair: "
         "0 of 2,676 bars over 10 pairs, measured 2026-09-09."
     ),
-    CLASS_METALS: (
-        "Spot pairs against the dollar, quoted per troy ounce. No configured "
-        "venue lists any of the four, measured 2026-09-09. The listed "
-        "instrument for each metal is the fund holding it, measured the same "
-        "day: GLD SLV PPLT PALL, 274 daily rows each, every bar carrying "
-        "volume. The futures GC=F SI=F PL=F PA=F answer the same window and "
-        "are not carried: a chart of them joins contracts at a price nobody "
-        "traded, and PL=F sends 132 of 275 bars with volume 0. The base "
-        "metals under the same rule, measured 2026-09-20: CPER for copper and "
-        "DBB for aluminium, zinc and copper together, 250 daily rows each, "
-        "the last complete daily bar carrying volume; the notes JJN JJU JJT "
-        "LD for nickel, aluminium, tin and lead answered HTTP 404, so no "
-        "listed instrument carries any of those four alone."
+    CLASS_COMMODITIES: (
+        "S&P Dow Jones Indices, S&P GSCI methodology, "
+        "https://www.spglobal.com/spdji/en/documents/methodologies/"
+        "methodology-sp-gsci-quick-guide.pdf. That index makes commodities the "
+        "asset class and divides it into five sectors: energy (crude oil, "
+        "heating oil, natural gas, gasoline), industrial metals (aluminium, "
+        "copper, lead, nickel, zinc), precious metals (gold, silver), "
+        "agriculture (wheat, corn, soybeans, sugar) and livestock (lean hogs, "
+        "live cattle). MAPS carries those five names. Energy holds the four "
+        "petroleum and gas funds, industrial metals the two base-metal funds, "
+        "and precious metals the four spot pairs with the four metal funds; "
+        "platinum and palladium are placed there by kind, and the index's own "
+        "constituents name gold and silver alone. Agriculture and livestock "
+        "hold 0 listed markets: no fund listed in dollars holds them, and this "
+        "map carries no futures because a chart of a futures series joins "
+        "contracts at a price nobody traded. sectors_for answers only the "
+        "sectors holding a market, so neither is walked or offered; "
+        "unlisted_sectors names both under the ticker field with "
+        "SECTOR_ABSENCE. "
+        "OVERTAKEN 2026-09-24, metals and energy were asset classes and this "
+        "record replaces both. The metals record read: 'Spot pairs against "
+        "the dollar, quoted per troy ounce. No configured venue lists any of "
+        "the four, measured 2026-09-09. The listed instrument for each metal "
+        "is the fund holding it, measured the same day: GLD SLV PPLT PALL, "
+        "274 daily rows each, every bar carrying volume. The futures GC=F "
+        "SI=F PL=F PA=F answer the same window and are not carried: a chart "
+        "of them joins contracts at a price nobody traded, and PL=F sends 132 "
+        "of 275 bars with volume 0. The base metals under the same rule, "
+        "measured 2026-09-20: CPER for copper and DBB for aluminium, zinc and "
+        "copper together, 250 daily rows each, the last complete daily bar "
+        "carrying volume; the notes JJN JJU JJT LD for nickel, aluminium, tin "
+        "and lead answered HTTP 404, so no listed instrument carries any of "
+        "those four alone.' "
+        "The energy record read: 'S&P GSCI groups energy as petroleum and "
+        "natural gas. The listed instrument for each product is the fund "
+        "holding it, measured on the yahoo chart endpoint 2026-09-15: USO for "
+        "WTI crude, BNO for Brent crude, UGA for gasoline, UNG for natural "
+        "gas, 252 daily rows each, every bar carrying volume. The futures "
+        "CL=F BZ=F NG=F answer the same window and are not carried: a chart "
+        "of them joins contracts at a price nobody traded. UHN, the heating "
+        "oil fund, answered 0 rows, so no listed instrument carries heating "
+        "oil; read again 2026-09-20 it answered HTTP 404 on every timeframe, "
+        "and no fund holding gasoil is listed, so the class stays at the four "
+        "funds.' Every ticker and every figure both records measured is "
+        "unchanged: this unit contacted no venue and re-measured nothing. The "
+        "readings above are what the 14 markets were last read at."
     ),
     CLASS_STOCKS: (
         "GICS names 11 sectors over 25 industry groups, 74 industries and 163 "
@@ -446,7 +502,12 @@ MAP_SOURCES: dict[str, str] = {
         "screener refuses or answers no quote, the list is STOCKS_PORTFOLIO: "
         "the operator's RA portfolio equities from src/simulator/portfolios.py, "
         "every non-crypto SYMBOLS name the metals and energy maps do not carry, "
-        "on the yahoo chart endpoint in SYMBOLS order."
+        "on the yahoo chart endpoint in SYMBOLS order. "
+        "OVERTAKEN 2026-09-24, the phrase above reading 'the metals and energy "
+        "maps': those two maps are now the commodities class's precious "
+        "metals, industrial metals and energy sectors. _MAPPED_FUNDS reads the "
+        "same tuples, so the names kept off this list are unchanged. Nothing "
+        "about the stocks class or its portfolio sector changed."
     ),
     CLASS_DERIVATIVES: (
         "Coinbase Advanced Trade's public product list, read at press time by "
@@ -479,18 +540,6 @@ MAP_SOURCES: dict[str, str] = {
         "the list. With every candle read answering none, 0 rows and 12 "
         "counted."
     ),
-    CLASS_ENERGY: (
-        "S&P GSCI groups energy as petroleum and natural gas. The listed "
-        "instrument for each product is the fund holding it, measured on the "
-        "yahoo chart endpoint 2026-09-15: USO for WTI crude, BNO for Brent "
-        "crude, UGA for gasoline, UNG for natural gas, 252 daily rows each, "
-        "every bar carrying volume. The futures CL=F BZ=F NG=F answer the same "
-        "window and are not carried: a chart of them joins contracts at a "
-        "price nobody traded. UHN, the heating oil fund, answered 0 rows, so "
-        "no listed instrument carries heating oil; read again 2026-09-20 it "
-        "answered HTTP 404 on every timeframe, and no fund holding gasoil is "
-        "listed, so the class stays at the four funds."
-    ),
 }
 
 
@@ -508,14 +557,52 @@ def exchange_listing(symbol: Any, served: Any = ()) -> AssetListing:
 
 
 def sectors_for(asset_class: Any) -> tuple[str, ...]:
-    """The sector names one class carries a map for."""
-    return tuple(MAPS.get(str(asset_class), {}))
+    """The sector names one class carries a listed market for.
+
+    A sector ``MAPS`` declares and holds no row for is left out, so no walk
+    and no ticker offer reaches one; ``unlisted_sectors`` names those instead.
+    """
+    held = MAPS.get(asset_class_named(asset_class), {})
+    return tuple(name for name, rows in held.items() if rows)
+
+
+def unlisted_sectors(asset_class: Any) -> tuple[str, ...]:
+    """The sector names one class declares and holds no listed market for.
+
+    ``SECTOR_ABSENCE`` says why the class holds none, and ``ticker_note``
+    draws both under the ticker field.
+    """
+    held = MAPS.get(asset_class_named(asset_class), {})
+    return tuple(name for name, rows in held.items() if not rows)
+
+
+def sector_absence(asset_class: Any) -> str:
+    """Why one class's ``unlisted_sectors`` hold no listed market, empty for none."""
+    return SECTOR_ABSENCE.get(asset_class_named(asset_class), "")
+
+
+def sector_named(sector: Any, asset_class: Any) -> str:
+    """The key one class's map holds for a given sector name, empty for none.
+
+    A name the map holds answers itself without regard to case or spaces, and
+    a ``RETIRED_SECTORS`` name answers the key its markets moved to.
+    """
+    held = MAPS.get(asset_class_named(asset_class), {})
+    asked = str(sector).strip().lower()
+    if asked in held:
+        return asked
+    moved = RETIRED_SECTORS.get(asked, "")
+    return moved if moved in held else ""
 
 
 def listings_for(sector: Any, asset_class: Any) -> tuple[AssetListing, ...]:
-    """The rows one named sector holds, matched without regard to case."""
-    held = MAPS.get(str(asset_class), {})
-    return held.get(str(sector).strip().lower(), ())
+    """The rows one named sector holds, matched without regard to case.
+
+    ``asset_class_named`` and ``sector_named`` resolve the pair, so a class or
+    a sector named as an earlier taxonomy named it still answers its markets.
+    """
+    held = MAPS.get(asset_class_named(asset_class), {})
+    return held.get(sector_named(sector, asset_class), ())
 
 
 def listing_of(symbol: Any) -> Optional[AssetListing]:
@@ -965,14 +1052,19 @@ __all__ = [
     "MIN_WINDOW_DAYS",
     "NO_VENUE",
     "NO_VOLUME_FIGURE",
-    "SECTOR_BASE",
+    "SECTOR_ABSENCE",
+    "SECTOR_AGRICULTURE",
+    "SECTOR_ENERGY",
     "SECTOR_EXOTIC",
     "SECTOR_EXPIRING",
+    "SECTOR_INDUSTRIAL_METALS",
+    "SECTOR_LIVESTOCK",
     "SECTOR_MAJOR",
     "SECTOR_MINOR",
     "SECTOR_PERPETUAL",
     "SECTOR_PORTFOLIO",
-    "SECTOR_SPOT",
+    "SECTOR_PRECIOUS_METALS",
+    "RETIRED_SECTORS",
     "SCREENER_COUNT",
     "SCREENER_SOURCE_TEXT",
     "SCREENER_URL",
@@ -998,7 +1090,10 @@ __all__ = [
     "listings_for",
     "screened_listings",
     "screener_listings",
+    "sector_absence",
+    "sector_named",
     "sectors_for",
+    "unlisted_sectors",
     "venue_candle_read",
     "venue_candles",
     "venue_granularities",
