@@ -754,6 +754,79 @@ if not bot_id:
     return
 ```
 
+#### SHIFT turns each command into its all-bots form
+
+> "Bot List Upgrades Pt. 2 (Live and Paper Only) - Holding SHIFT makes Start
+> become Start All and launches bot start sequencer used during boot up -
+> Holding SHIFT makes Stop, Pause, and Restart all become Stop All, Pause All,
+> and Restart All respectively"
+
+**Overtaken.** *"Start, Pause, Stop, Restart and Delete all act on one bot."*
+
+**Functional.** Four of the five act on one bot, or on the whole fleet while you
+hold SHIFT. Hold the key and Start, Pause, Stop and Restart read Start All,
+Pause All, Stop All and Restart All. Let go and they read their own names again.
+Delete has no all-bots form and never changes its name. The key is read at the
+moment you press the button, so a key held for one press cannot reach the next
+one. An all-bots press needs no bot selected.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `FLEET_COMMANDS`
+
+```python
+FLEET_COMMANDS = {
+    "start": ("Start All", "start_all"),
+    "pause": ("Pause All", "pause_all"),
+    "stop": ("Stop All", "stop_all"),
+    "restart": ("Restart All", "restart_all"),
+}
+```
+
+**Design intention.** Start All runs the same sequence the application runs at
+launch. It opens the Start All window, starts one bot at a time, waits for that
+bot to read running, and moves on after two seconds or after eight seconds of
+waiting. Each bot goes through the same handler a single Start goes through, so
+each one connects to its venue before it starts. Restart All runs that sequence
+over every bot held, not only the idle ones. Pause All and Stop All need no
+venue, so they go straight to the bot manager.
+
+`src/gui/main_window.py` — `MainWindow._global_bot_cmd`
+
+```python
+if command == "start_all":
+    if not self.run_fleet_sequence("start"):
+        self._status_log.log(
+            "start_all: no bots eligible (none idle/stopped).", "info"
+        )
+        return
+elif command == "restart_all":
+    if not self.run_fleet_sequence("restart"):
+        self._status_log.log("restart_all: no bots held.", "info")
+        return
+elif command == "pause_all":
+    self._schedule_async(self._bot_manager.pause_all())
+elif command == "stop_all":
+    self._schedule_async(self._bot_manager.stop_all())
+```
+
+**Functional, on the Paper tab.** The Paper command bar reads the key the same
+way, over the paper fleet. A paper bot moves a saved state and connects to
+nothing, so the four all-bots verbs run straight down the held list, with no
+staggering and no progress window.
+
+`src/paper/paper_bot_manager.py` — `PaperBotManager.start_all`
+
+```python
+def start_all(self) -> int:
+    """Run ``start`` over every held bot and answer how many landed on
+    ``running``. A paper bot moves a saved state and connects to nothing,
+    so the fleet needs no staggering."""
+    return self._over_fleet(self.start, BotState.RUNNING.value)
+```
+
+**Functional, on the Simulator.** The Simulator command bar does not read the
+key. He named Live and Paper only, and the Simulator's own venue page and its
+own view model are separate files that carry none of this.
+
 #### The rest of the screen
 
 The right half is the Indicator Voting Panel, described at the end of this

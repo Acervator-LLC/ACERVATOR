@@ -5,7 +5,8 @@ The header row holds Privacy Mode where Live draws it, plain space where Live
 draws the news line, then ``+ New Bot`` where Live draws it; the data-pool row
 keeps Live's height and holds ``DATA_POOL_ROW_NAME``'s empty label. The two
 tables are ``PaperBotStatusTable`` and ``PaperExtractorBotTable``, and the
-command bar reaches ``on_bot_cmd`` as Live's does.
+command bar reaches ``on_bot_cmd`` as Live's does, or ``on_fleet_cmd`` while
+SHIFT is held.
 """
 
 from __future__ import annotations
@@ -15,7 +16,10 @@ import logging
 from ...core.privacy_mask_registry import get_privacy_mask_registry
 from .. import design_system as ds
 from ..main_tabs.exchange_tab_surface import (
+    COMMAND_BUTTONS,
+    DANGER_COMMAND_LABEL,
     EXTRACTOR_TABLE_STRETCH,
+    FLEET_COMMANDS,
     SCRUM_TABLE_STRETCH,
 )
 
@@ -23,13 +27,14 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
+        QApplication,
         QHBoxLayout,
         QLabel,
         QPushButton,
         QVBoxLayout,
         QWidget,
     )
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QEvent, Qt
 
     from .paper_bot_status_table import PaperBotStatusTable
     from .paper_extractor_bot_table import PaperExtractorBotTable
@@ -55,11 +60,14 @@ if _HAS_QT:
             on_bot_fire=None,
             status_log=None,
             parent=None,
+            on_fleet_cmd=None,
         ):
             super().__init__(parent)
             self.exchange_id = exchange_id
             self._status_log = status_log
             self._on_bot_cmd = on_bot_cmd
+            self._on_fleet_cmd = on_fleet_cmd
+            self._cmd_buttons: dict = {}
 
             layout = QVBoxLayout(self)
 
@@ -166,21 +174,53 @@ if _HAS_QT:
             self._extractor_table.setVisible(False)
 
             cmd_bar = QHBoxLayout()
-            for label, cmd in [
-                ("Start", "start"),
-                ("Pause", "pause"),
-                ("Stop", "stop"),
-                ("Restart", "restart"),
-                ("Delete", "delete"),
-            ]:
+            for label, cmd in COMMAND_BUTTONS:
                 btn = QPushButton(label)
-                if label == "Delete":
+                if label == DANGER_COMMAND_LABEL:
                     btn.setProperty("danger", True)
                 btn.clicked.connect(lambda _checked, c=cmd: self._cmd(c))
                 cmd_bar.addWidget(btn)
+                self._cmd_buttons[cmd] = btn
             layout.addLayout(cmd_bar)
+            QApplication.instance().installEventFilter(self)
+
+        def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt name
+            """Redraw the command bar's labels whenever the Shift key moves.
+
+            The filter sits on the application, so the key reaches the bar
+            while the focus is on a bot table.
+            """
+            kind = event.type()
+            if kind in (QEvent.KeyPress, QEvent.KeyRelease):
+                self._draw_cmd_labels(
+                    bool(QApplication.keyboardModifiers() & Qt.ShiftModifier)
+                )
+            elif kind == QEvent.WindowDeactivate:
+                self._draw_cmd_labels(False)
+            return super().eventFilter(watched, event)
+
+        def _draw_cmd_labels(self, fleet: bool) -> None:
+            """Write each button's all-bots label when ``fleet``, its own when
+            not. A command with no all-bots form keeps its own label."""
+            for label, command in COMMAND_BUTTONS:
+                btn = self._cmd_buttons.get(command)
+                if btn is None:
+                    continue
+                wanted = (
+                    FLEET_COMMANDS[command][0]
+                    if fleet and command in FLEET_COMMANDS
+                    else label
+                )
+                if btn.text() != wanted:
+                    btn.setText(wanted)
 
         def _cmd(self, command: str) -> None:
+            if bool(QApplication.keyboardModifiers() & Qt.ShiftModifier):
+                fleet = FLEET_COMMANDS.get(command)
+                if fleet is not None:
+                    if self._on_fleet_cmd:
+                        self._on_fleet_cmd(fleet[1])
+                    return
             if self._last_clicked_table == "extractor":
                 bot_id = self._extractor_table.get_selected_bot_id()
                 if not bot_id:

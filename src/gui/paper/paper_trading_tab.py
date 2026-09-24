@@ -93,6 +93,7 @@ from ...paper.paper_run import PaperRun, PaperRunner, PaperTrade
 from .. import design_system as ds
 from ..color_alpha import rgba
 from ..main_tabs import class_filter_surface
+from ..main_tabs.exchange_tab_surface import FLEET_COMMANDS
 from ..main_tabs.trading_tab_surface import (
     ADD_BUTTON_MIN_WIDTH_PX,
     BOTTOM_SPLITTER_SIZES_PX,
@@ -128,6 +129,9 @@ logger = logging.getLogger("acervator.gui")
 PLACEHOLDER_CARD_BORDER_ALPHA = 68
 
 ACCESSIBLE_NAME = "Paper"
+
+#: The four all-bots verbs a SHIFT press on the command bar may name.
+FLEET_VERBS = tuple(pair[1] for pair in FLEET_COMMANDS.values())
 
 
 class PaperTradingTab(QWidget):
@@ -751,6 +755,7 @@ class PaperTradingTab(QWidget):
             on_new_bot=self._create_bot,
             on_bot_clicked=self._on_bot_detail,
             on_bot_cmd=self._on_bot_command,
+            on_fleet_cmd=self._global_bot_cmd,
             on_bot_fire=self._on_bot_fire,
             status_log=self._status_log,
         )
@@ -1003,6 +1008,27 @@ class PaperTradingTab(QWidget):
                 self._notify(f"Bot {bot_id} DELETED", "warning")
                 sound.play_state_change()
 
+        if moved:
+            self.fleet_changed.emit()
+
+    def _global_bot_cmd(self, command: str) -> None:
+        """One SHIFT press on the command bar: the named all-bots verb run over
+        ``PaperBotManager``, which moves a saved state per bot and connects to
+        no venue."""
+        if command not in FLEET_VERBS:
+            self._status_log.log(f"{command} is not a fleet command.", "error")
+            return
+        self._status_log.log(f"Executing {command} on all paper bots...", "info")
+        sound = get_sound_engine()
+        try:
+            moved = getattr(self._bot_manager, command)()
+        except Exception as exc:  # noqa: BLE001 - Live's handler catches all
+            self._status_log.log(f"{command} failed: {exc}", "error")
+            sound.play_error()
+            return
+        self._status_log.log(f"{command}: {moved} bot(s) moved.", "success")
+        self._notify(f"{moved} paper bot(s): {command}", "success")
+        sound.play_state_change()
         if moved:
             self.fleet_changed.emit()
 
