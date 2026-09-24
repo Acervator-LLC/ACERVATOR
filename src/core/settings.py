@@ -112,6 +112,10 @@ class AppSettings:
     bot_visibility: str = BotVisibility.ORDERBOOK.value
     aggressive_trading: bool = False
 
+    # The asset class the header strip group last had active. _build_class_group
+    # reads it at build; select_asset_class writes it on every press.
+    active_asset_class: str = "crypto"
+
     theme: str = VisualTheme.CYBERPUNK_DARK.value
     # Empty leaves each theme's own accent painting. theme_engine.stored_accent
     # takes a hex colour here and refuses anything else.

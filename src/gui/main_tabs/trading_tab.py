@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from .. import design_system as ds
 from ..color_alpha import rgba
+from . import asset_class_surface as acs
 from ..widgets.status_log import StatusLog
 from .main_window_surface import LIVE_TAB
 from .trading_tab_surface import (
@@ -95,6 +96,44 @@ class TradingTabMixin:
         if callable(bind) and callable(answer):
             bind(answer)
 
+    def _make_unlayered_page(self) -> QWidget:
+        """Build the page every asset class with no trading layer shows.
+
+        ``MainWindow._show_unlayered_class`` writes ``_unlayered_title`` and
+        ``_unlayered_note`` from ``asset_class_surface.class_state``.
+        """
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setAlignment(Qt.AlignCenter)
+
+        card = QFrame()
+        card.setMinimumSize(280, 140)
+        card.setStyleSheet(
+            f"QFrame {{ background: rgba(0,0,0,0); "
+            f"border: 1px solid {rgba(ds.OUTLINE, PLACEHOLDER_CARD_BORDER_ALPHA)}; "
+            f"border-radius: 6px; }}"
+        )
+        inner = QVBoxLayout(card)
+        inner.setAlignment(Qt.AlignCenter)
+        inner.setSpacing(12)
+
+        self._unlayered_title = QLabel("No trading layer")
+        self._unlayered_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
+        self._unlayered_title.setAlignment(Qt.AlignCenter)
+        inner.addWidget(self._unlayered_title)
+
+        self._unlayered_note = QLabel("")
+        self._unlayered_note.setWordWrap(True)
+        self._unlayered_note.setStyleSheet(
+            f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
+        )
+        self._unlayered_note.setAlignment(Qt.AlignCenter)
+        inner.addWidget(self._unlayered_note)
+
+        outer.addWidget(card, alignment=Qt.AlignCenter)
+        self._unlayered_page = page
+        return page
+
     def _build_trading_tab(self) -> None:
         """Build the Trading tab and add it to the main tab widget."""
         # --- Tab 1: Trading ---
@@ -114,35 +153,28 @@ class TradingTabMixin:
         top_splitter.setChildrenCollapsible(False)
 
         # ── Equity exchange IDs (routes to Stock layer) ────────────
-        self._equity_exchange_ids = {
-            "alpaca",
-            "ibkr",
-            "schwab",
-            "tdameritrade",
-            "webull",
-            "tastytrade",
-            "fidelity",
-            "etrade",
-            "interactivebrokers",
-        }
+        self._equity_exchange_ids = acs.EQUITY_VENUES
 
-        # ── QStackedWidget: page 0 = Crypto, page 1 = Stock ────────
+        # ── QStackedWidget: page 0 Crypto, 1 Stock, 2 every unlayered class ──
         from PySide6.QtWidgets import QStackedWidget
 
         self._trading_stack = QStackedWidget()
+        self._add_exchange_buttons: list = []
 
-        def _make_layer(label_text: str, accent: str) -> tuple:
+        def _make_layer(asset_class: str, accent: str) -> tuple:
             """Build one trading layer — returns (page_widget, tab_widget,
             exchange_tabs_dict, placeholder_widget)."""
+            label_text = acs.display_name(asset_class)
             page = QWidget()
             page_layout = QVBoxLayout(page)
             page_layout.setContentsMargins(0, 0, 0, 0)
 
             tab_w = QTabWidget()
-            add_btn = QPushButton(f"＋ Add {label_text} Exchange")
+            add_btn = QPushButton(acs.add_exchange_label(asset_class))
             add_btn.setMinimumWidth(140)
-            add_btn.setToolTip(f"Add a {label_text} exchange connection")
+            add_btn.setToolTip(acs.add_exchange_tooltip(asset_class))
             add_btn.clicked.connect(self._add_exchange)
+            self._add_exchange_buttons.append(add_btn)
             tab_w.setCornerWidget(add_btn)
 
             # Empty state placeholder
@@ -163,13 +195,14 @@ class TradingTabMixin:
             ph_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
             ph_title.setAlignment(Qt.AlignCenter)
             ph_layout.addWidget(ph_title)
-            ph_add = QPushButton(f"＋ Add {label_text} Exchange")
+            ph_add = QPushButton(acs.add_exchange_label(asset_class))
             ph_add.setMinimumSize(180, 36)
             ph_add.setStyleSheet(
                 f"QPushButton {{ border: 1px solid {accent}; "
                 f"color: {accent}; border-radius: 4px; }}"
             )
             ph_add.clicked.connect(self._add_exchange)
+            self._add_exchange_buttons.append(ph_add)
             ph_layout.addWidget(ph_add, alignment=Qt.AlignCenter)
             ph_hint = QLabel(f"Add a {label_text} exchange to begin trading")
             ph_hint.setStyleSheet(
@@ -189,19 +222,20 @@ class TradingTabMixin:
             self._crypto_tab_widget,
             _crypto_tabs,
             self._crypto_placeholder,
-        ) = _make_layer("Crypto", ds.LAYER_CRYPTO)
+        ) = _make_layer("crypto", ds.LAYER_CRYPTO)
         (
             stock_page,
             self._stock_tab_widget,
             _stock_tabs,
             self._stock_placeholder,
-        ) = _make_layer("Stock", ds.LAYER_STOCK)
+        ) = _make_layer("stocks", ds.LAYER_STOCK)
 
         self._crypto_exchange_tabs: dict = _crypto_tabs
         self._stock_exchange_tabs: dict = _stock_tabs
 
         self._trading_stack.addWidget(crypto_page)  # index 0
         self._trading_stack.addWidget(stock_page)  # index 1
+        self._trading_stack.addWidget(self._make_unlayered_page())
         self._trading_stack.setCurrentIndex(0)  # start in crypto
 
         # Legacy alias: points to whichever layer is active

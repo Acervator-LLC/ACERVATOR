@@ -6103,3 +6103,170 @@ if multi_tf_summary:
 selector still names it and still refills every tick. It is no longer the only
 control that names it: a press on a row of the Scrumming Bots table names it
 too, and a second press on that row takes the panel off that bot.
+
+### The asset class group, and the Add Exchange button that follows it
+
+**Functional.** The header strip ends in a segmented group, at the upper right
+of the window. It holds one button per asset class, and exactly one is active.
+Pressing a button makes that class active, retitles the Add Exchange button and
+stores the choice, so the next launch opens on the same class.
+
+The group builds its buttons from the taxonomy at run time, so a class added to
+`ASSET_CLASSES` gets a button with no further edit.
+
+`src/gui/main_tabs/header_strip.py` — `_build_class_group`
+
+```python
+for name in asset_classes():
+    model = class_button(name, self._asset_class)
+    button = QPushButton(model["text"])
+    button.setCheckable(True)
+    button.clicked.connect(partial(self._on_class_clicked, model["class"]))
+    self._class_buttons.addButton(button)
+```
+
+Read off the running window, the group holds five buttons:
+
+```
+Crypto   Stock   Commodities   Derivatives   Forex
+```
+
+**One class at a time.** The buttons sit in a `QButtonGroup` set exclusive, so a
+second active button is refused before any code of ours runs. The active class
+is readable off the window as `_asset_class`.
+
+**The Add Exchange button follows the class.** Its text, its tooltip and whether
+it can act all come from the class, and each is read from one place.
+
+`src/gui/main_tabs/asset_class_surface.py` — `add_exchange_label`
+
+```python
+state = class_state(name)
+if not state["served"]:
+    return EMPTY_LABEL.format(name=state["name"])
+return f"{ADD_PREFIX} {state['name']} {state['noun']}"
+```
+
+Read for each class in turn, on the running window:
+
+| class | the button reads | it can act | venues |
+|---|---|---|---|
+| Crypto | `＋ Add Crypto Exchange` | yes | 15 |
+| Stock | `＋ Add Stock Broker` | yes | 9 |
+| Commodities | `Commodities — no venue yet` | no | 0 |
+| Derivatives | `＋ Add Derivatives Exchange` | yes | 1 |
+| Forex | `Forex — no venue yet` | no | 0 |
+
+**A class with no venue says so.** It does not offer another class's venue list.
+The button states the class and refuses the press, and the Trading tab draws a
+card naming what is missing.
+
+`src/gui/main_tabs/asset_class_surface.py` — the notes a class draws
+
+```python
+NO_VENUE_NOTE = "No configured venue serves {name} yet."
+NO_LAYER_NOTE = "{name} has no trading layer yet."
+```
+
+Commodities and Forex have no configured venue. Derivatives has one venue and no
+trading layer, so it draws the second note.
+
+The class list is read from `ASSET_CLASSES` at run time. Unit S13 of issue 23
+replaced Metals and Energy with Commodities while this unit was open, and the
+group followed with no edit: it dropped to five buttons and drew the new class.
+
+**A venue may serve more than one class.** The active class filters the venue
+list; it never owns it. Coinbase serves crypto and derivatives, so it is offered
+under both.
+
+`src/gui/main_tabs/asset_class_surface.py` — `venue_classes`
+
+```python
+found = set(EXTRA_VENUE_CLASSES.get(asked, ()))
+if asked in EQUITY_VENUES:
+    found.add("stocks")
+elif asked in crypto_venues():
+    found.add("crypto")
+```
+
+**The choice survives a restart.** `select_asset_class` writes the class into
+settings on every press, and `_build_class_group` reads it back at build.
+
+`src/core/settings.py` — the stored field
+
+```python
+active_asset_class: str = "crypto"
+```
+
+**The group at narrow widths.** The buttons share the group's width and shorten
+their own text to the room each has, so no label is cut mid-letter and no
+counter is pushed off the strip. The full class name stays in the tooltip.
+
+Measured on the running window, at five widths:
+
+| window | group | each button | the labels |
+|---|---|---|---|
+| 700 | 255 px | 49 px | none in full |
+| 900 | 332 px | 64 px | Stock and Forex in full |
+| 1086 | 404 px | 79 px | Crypto, Stock and Forex in full |
+| 1400 | 525 px | 103 px | Crypto, Stock and Forex in full |
+| 1920 | 725 px | 143 px | all five in full |
+
+Nothing is clipped and nothing is pushed off the strip at any of the five.
+
+**One venue list, read from one place.** The equity venue ids were written out
+three times, and the three copies were held together by a comment. They are now
+one name that all three sites import.
+
+`src/gui/main_tabs/asset_class_surface.py` — the one declaration
+
+```python
+EQUITY_VENUES = frozenset(
+    {
+        "alpaca",
+        "ibkr",
+        "schwab",
+        "tdameritrade",
+        "webull",
+        "tastytrade",
+        "fidelity",
+        "etrade",
+        "interactivebrokers",
+    }
+)
+```
+
+#### Sentences the asset class group overtakes
+
+The page carries these sentences about the control that came before the group.
+Each is quoted as it stands, with the sentence that is true today beneath it.
+
+> "Press the mode button once and the title is rewritten to name the wing."
+
+The group has one button per class, so a press names a class rather than
+stepping to the next one. The title is rewritten to name the class:
+`Acervator — CRYPTO LAYER`.
+
+> "Pressing the mode button swaps the whole wing, tables and Paper Trader
+> together."
+
+A press makes one asset class active. Crypto and Stock each swap to their own
+trading layer. A class with no layer draws the card that names what is missing.
+Showing only that class's bots, charts and history is unit F2 and is not built.
+
+> "Crypto Mode at the right swaps the window between the two." — `08-tabs.md`
+
+The right of the strip now holds one button per asset class, and a press selects
+that class.
+
+> "The mode button on the right ends the row." — `08-tabs/portfolio-panels.md`
+
+The segmented asset class group ends the row.
+
+#### The naming the asset class group uses
+
+The operator's words are "market sector". Under the published standards the top
+level is the **asset class**, and a sector is the tier below it. GICS names
+sectors inside equities. S&P GSCI names sectors inside commodities. The group
+therefore selects an asset class. Sectors stay the tier below, where the ATA-SMP
+scanner uses them.
