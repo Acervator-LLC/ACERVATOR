@@ -175,6 +175,11 @@ TICKER_PRESS_LIST_FORMAT = (
 CLASS_PRESS_SOURCES = {
     ata_spm.CLASS_DERIVATIVES: "Coinbase's futures and perpetual products",
 }
+#: What the field carries for the sectors a class declares and lists no market
+#: for. The count is drawn under the field rather than the sector left out of
+#: the menu with no word said about it.
+TICKER_EMPTY_SECTORS_FORMAT = "{sectors}: 0 market(s) listed, {reason}."
+EMPTY_SECTOR_JOIN = ", "
 TICKER_FIELD_PART = "ticker-field"
 CLASS_BOX_PART = "class-box"
 TICKER_NOTE_PART = "ticker-note"
@@ -3227,17 +3232,33 @@ def ticker_matches(typed: Any, asset_class: Any) -> list:
     return (starts + holds)[:TICKER_MATCH_LIMIT]
 
 
+def empty_sector_line(asset_class: Any) -> str:
+    """The line naming one class's sectors that list no market, with its count.
+
+    ``ata_asset_maps.unlisted_sectors`` names them and
+    ``ata_asset_maps.sector_absence`` says why, empty while the class has none.
+    """
+    empty = ata_asset_maps.unlisted_sectors(asset_class)
+    if not empty:
+        return ""
+    return TICKER_EMPTY_SECTORS_FORMAT.format(
+        sectors=EMPTY_SECTOR_JOIN.join(empty),
+        reason=ata_asset_maps.sector_absence(asset_class),
+    )
+
+
 def ticker_note(asset_class: Any, note: Any = "") -> str:
     """The line under the ticker field, from the last press or from the sector.
 
-    A ``note`` the last press left is what the field carries; a sector
-    ``class_tickers`` lists nothing for carries ``TICKER_PRESS_LIST_FORMAT``
-    while ``CLASS_PRESS_SOURCES`` names its venue, else ``TICKER_NO_LIST_FORMAT``.
+    A ``note`` the last press left is what the field carries; a class holding
+    tickers carries ``empty_sector_line``; a sector ``class_tickers`` lists
+    nothing for carries ``TICKER_PRESS_LIST_FORMAT`` while
+    ``CLASS_PRESS_SOURCES`` names its venue, else ``TICKER_NO_LIST_FORMAT``.
     """
     if note:
         return str(note)
     if class_tickers(asset_class):
-        return ""
+        return empty_sector_line(asset_class)
     source = CLASS_PRESS_SOURCES.get(str(asset_class))
     if source:
         return TICKER_PRESS_LIST_FORMAT.format(sector=asset_class, source=source)
