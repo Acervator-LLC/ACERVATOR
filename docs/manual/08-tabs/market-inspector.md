@@ -7419,4 +7419,214 @@ above the field.
 **Figures.** This page carries no figure and this entry adds none. A count of
 the markdown image tags on the page answers 0 before this entry and 0 after it.
 
+## 2026-09-24 - #23 - Commodities is the asset class, and Energy and Metals are its sectors under the S&P GSCI names
+
+The operator, 2026-09-24, on whether Energy and Metals sit under Commodities or
+beside it: *"I just want to adopt the standard categorization and language so
+that the implementation is professional and accurate..."*
+
+### The authority the names now follow
+
+S&P Dow Jones Indices publishes the S&P GSCI methodology, at
+`https://www.spglobal.com/spdji/en/documents/methodologies/methodology-sp-gsci-quick-guide.pdf`.
+That index makes **commodities** the asset class and divides it into five
+sectors:
+
+| sector | what the index puts in it |
+| --- | --- |
+| energy | crude oil, heating oil, natural gas, gasoline |
+| industrial metals | aluminium, copper, lead, nickel, zinc |
+| precious metals | gold, silver |
+| agriculture | wheat, corn, soybeans, sugar |
+| livestock | lean hogs, live cattle |
+
+The map already cited that index. The energy class record read *"S&P GSCI groups
+energy as petroleum and natural gas"*, and under the same index energy is a
+sector of commodities, not a peer of equities.
+
+### The class menu
+
+`metals` and `energy` are no longer classes. `commodities` takes their place and
+holds their markets. Crypto, stocks, derivatives and forex are untouched.
+
+```
+before   crypto  stocks  metals  derivatives  forex  energy
+after    crypto  stocks  commodities  derivatives  forex
+```
+
+`src/trading/ata_spm.py` - the class list
+
+```python
+ASSET_CLASSES = (
+    CLASS_CRYPTO,
+    CLASS_STOCKS,
+    CLASS_COMMODITIES,
+    CLASS_DERIVATIVES,
+    CLASS_FOREX,
+)
+```
+
+### Where every market landed
+
+Each market is placed by what the asset is, not by the list it sat in. The four
+spot pairs and the four metal funds are precious metals. The two base-metal
+funds are industrial metals. The three petroleum funds and the gas fund are one
+energy sector, as the index puts crude, heating oil, gasoline and natural gas
+together.
+
+| market | what it is | old sector | new sector |
+| --- | --- | --- | --- |
+| XAU/USD | gold spot | metals / spot | commodities / precious metals |
+| XAG/USD | silver spot | metals / spot | commodities / precious metals |
+| XPT/USD | platinum spot | metals / spot | commodities / precious metals |
+| XPD/USD | palladium spot | metals / spot | commodities / precious metals |
+| GLD | gold fund | metals / spot | commodities / precious metals |
+| SLV | silver fund | metals / spot | commodities / precious metals |
+| PPLT | platinum fund | metals / spot | commodities / precious metals |
+| PALL | palladium fund | metals / spot | commodities / precious metals |
+| CPER | copper fund | metals / base | commodities / industrial metals |
+| DBB | aluminium, zinc and copper fund | metals / base | commodities / industrial metals |
+| USO | WTI crude fund | energy / petroleum | commodities / energy |
+| BNO | Brent crude fund | energy / petroleum | commodities / energy |
+| UGA | gasoline fund | energy / petroleum | commodities / energy |
+| UNG | natural gas fund | energy / gas | commodities / energy |
+
+Fourteen markets before, fourteen after. None was added, dropped or re-read: no
+venue was contacted for this change.
+
+Platinum and palladium are placed in precious metals by what they are. The
+index's own constituent list names gold and silver alone, so neither metal is
+an S&P GSCI member; both are precious metals in every market convention and
+that is where they sit.
+
+### The two sectors that list nothing
+
+Agriculture and livestock are sectors of the standard and this map holds no
+market for either. No fund listed in dollars holds them, and the map carries no
+futures, because a chart of a futures series joins contracts at a price nobody
+traded.
+
+**They are not drawn as a sector the scan can walk, and their count is drawn
+under the ticker field.** A sector with no market is a slot that returns
+nothing, and a slot that returns nothing does not belong in the list. Leaving
+them out with nothing said would read as lost data, so the line names both and
+gives the count.
+
+```
+agriculture, livestock: 0 market(s) listed, no fund listed in dollars holds
+them, and this map carries no futures.
+```
+
+The same line names any class's empty sector. Choosing forex draws:
+
+```
+exotic: 0 market(s) listed, no pair is named for this tier yet.
+```
+
+`src/gui/main_tabs/market_inspector_surface.py` - the line and what fills it
+
+```python
+TICKER_EMPTY_SECTORS_FORMAT = "{sectors}: 0 market(s) listed, {reason}."
+
+
+def empty_sector_line(asset_class: Any) -> str:
+    """The line naming one class's sectors that list no market, with its count."""
+```
+
+### A held selection naming a retired name still scans
+
+A class name and a sector name the earlier taxonomy used both resolve. Choosing
+`metals` or `energy` lands on commodities. Typing `spot`, `base`, `petroleum` or
+`gas` scans the sector those markets moved to. A name neither taxonomy holds is
+still refused, so no scan runs on a class with no timeframes behind it.
+
+`src/trading/ata_spm.py` and `src/trading/ata_asset_maps.py` - the two seams
+
+```python
+def asset_class_named(name: Any) -> str:
+    """The live ``ASSET_CLASSES`` name one given class name resolves to."""
+
+
+def sector_named(sector: Any, asset_class: Any) -> str:
+    """The key one class's map holds for a given sector name, empty for none."""
+```
+
+`~/.acervator/ata_spm_settings.json` never held a class name. Read on a scratch
+copy, the file carries `hits_per_scan`, `confirmation_share_pct` and
+`confirmation_candles`, and no value in it is a class or a sector name.
+
+### The menu read off both running builds
+
+Read on 2026-09-24 in the Qt window and on the React page, home on a scratch
+directory, no bot manager, every name lookup outside loopback refused and no
+venue contacted. Taken at client widths 700, 900 and 1400. All six readings
+agree.
+
+| reading | before | after |
+| --- | --- | --- |
+| names in the class box | 6 | 5 |
+| buttons under Asset Category | 6 | 5 |
+| classes holding a sector map | 4 | 3 |
+| sectors the commodities markets sit in | 4, over two classes | 3, in one class |
+| markets in those sectors | 14 | 14 |
+| sectors drawn that list no market | 0 named, 1 silent | 0 drawn, 3 named with a count |
+| class box inside the pane at 700 | yes | yes |
+| sideways scroll on the page at 700 | none | none |
+
+The sectors and their counts after the change:
+
+| class | sector | markets |
+| --- | --- | --- |
+| commodities | energy | 4 |
+| commodities | industrial metals | 2 |
+| commodities | precious metals | 8 |
+| commodities | agriculture | 0, named under the field |
+| commodities | livestock | 0, named under the field |
+| forex | major | 7 |
+| forex | minor | 21 |
+| forex | exotic | 0, named under the field |
+| stocks | portfolio | 47 |
+
+Each sector's own line, as the entry headline draws it:
+
+```
+energy (commodities)
+industrial metals (commodities)
+precious metals (commodities)
+```
+
+### The reading can fail
+
+A class name was planted into the class box in the window and into the select on
+the page, and the menus were read again. Both answered seven names with the
+plant in and five with it out, at all three widths in both builds.
+
+### The six sentences this entry overtakes
+
+None is reworded. Each is quoted and the true sentence follows.
+
+`docs/manual/08-tabs/market-inspector.md:459` - "Stocks, metals, derivatives
+and forex share the slower one." Stocks, commodities, derivatives and forex
+share it.
+
+`docs/manual/08-tabs/market-inspector.md:3126` - "The menu beside it is the
+sector menu, and it holds crypto, stocks, metals, derivatives and forex." It
+holds crypto, stocks, commodities, derivatives and forex.
+
+`docs/manual/08-tabs/market-inspector.md:4113` - "Energy shares it too."
+Commodities shares it, and energy is one of its sectors.
+
+`docs/manual/08-tabs/market-inspector.md:4117` - "holds energy too." The menu
+holds commodities, and energy is a sector inside it.
+
+`docs/manual/08-tabs/market-inspector.md:4120` - "Four carry a list. Energy
+holds 4 names." Three classes carry a sector map. Commodities holds 14 names
+over three sectors that list a market.
+
+`docs/manual/08-tabs/market-inspector.md:4123` - "Six asset classes keep their
+own control." Five asset classes keep their own control.
+
+**Figures.** This page carries no figure and this entry adds none. A count of
+the markdown image tags on the page answers 0 before this entry and 0 after it.
+
 Back to [the subsystem index](README.md).
