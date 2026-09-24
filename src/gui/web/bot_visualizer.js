@@ -906,7 +906,11 @@
           live = false;
         };
       },
-      [JSON.stringify(ids), JSON.stringify(objectField(model, BOT_SYMBOLS))]
+      [
+        JSON.stringify(ids),
+        JSON.stringify(objectField(model, BOT_SYMBOLS)),
+        model[ANY_MASKED] === true
+      ]
     );
     var api = global[QUICK_ROUTING_API];
     if (!api || typeof api.Matrix !== FUNCTION_KIND || !isPlainObject(held)) {

@@ -1000,6 +1000,19 @@ def privacy_mode_style_sheet(any_on: bool) -> str:
     return PRIVACY_ON_STYLE_SHEET if any_on else PRIVACY_OFF_STYLE_SHEET
 
 
+def mask_registry() -> Any:
+    """The one ``PrivacyMaskRegistry`` the Trading tab also writes.
+
+    Answers nothing when ``get_privacy_mask_registry`` cannot be read.
+    """
+    try:
+        from src.core.privacy_mask_registry import get_privacy_mask_registry
+
+        return get_privacy_mask_registry()
+    except Exception:
+        return None
+
+
 # The wires
 
 WIRE_KEYS = ("source_id", "target_id", "pct", "phase")
@@ -1483,43 +1496,41 @@ STATE_WRITE_FAILED_ERROR = (
 
 
 def apply_routes(state: dict, add: list, remove: list) -> dict:
-    """Write wires into a stored fleet load and hand the whole load back.
+    """Write each ``add`` pair into ``WIRES_KEY`` and drop each ``remove`` pair.
 
-    A route added for a destination that is already wired takes the new
-    share rather than a second entry. A route removed from a bot the
-    load does not carry is skipped.
+    ``stored_wires``, ``clear_all_routes`` and ``hydration_plan`` read
+    that same list.
     """
-    bots = state.setdefault(BOTS_KEY, {})
+    held = state.get(WIRES_KEY)
+    records = [one for one in (held or []) if isinstance(one, dict)]
 
-    def routes_of(bot_id: str) -> list:
-        bot = bots.setdefault(bot_id, {})
-        scrumming = bot.setdefault(SCRUMMING_KEY, {})
-        routes = scrumming.setdefault(ROUTES_KEY, [])
-        if not isinstance(routes, list):
-            routes = []
-            scrumming[ROUTES_KEY] = routes
-        return routes
+    def record_for(source: str, target: str) -> Optional[dict]:
+        """The ``records`` entry naming ``source`` and ``target``, or nothing."""
+        for one in records:
+            same_source = str(one.get(SOURCE_KEY, "")) == source
+            if same_source and str(one.get(TARGET_KEY, "")) == target:
+                return one
+        return None
 
-    for source, dest, pct in add:
-        routes = routes_of(source)
-        replaced = False
-        for entry in routes:
-            if isinstance(entry, dict) and entry.get(DEST_KEY) == dest:
-                entry[PCT_KEY] = float(pct)
-                replaced = True
-                break
-        if not replaced:
-            routes.append({DEST_KEY: dest, PCT_KEY: float(pct)})
+    for source, target, pct in add:
+        found = record_for(str(source), str(target))
+        if found is None:
+            records.append(
+                {
+                    SOURCE_KEY: str(source),
+                    TARGET_KEY: str(target),
+                    PCT_KEY: float(pct),
+                }
+            )
+        else:
+            found[PCT_KEY] = float(pct)
 
-    for source, dest in remove:
-        if source not in bots:
-            continue
-        routes = routes_of(source)
-        bots[source][SCRUMMING_KEY][ROUTES_KEY] = [
-            entry
-            for entry in routes
-            if not (isinstance(entry, dict) and entry.get(DEST_KEY) == dest)
-        ]
+    dropped = {(str(source), str(target)) for source, target in remove}
+    state[WIRES_KEY] = [
+        one
+        for one in records
+        if (str(one.get(SOURCE_KEY, "")), str(one.get(TARGET_KEY, ""))) not in dropped
+    ]
     return state
 
 
@@ -1828,14 +1839,36 @@ class BotVisualizerModel:
         return {one: self.grid.exchange_of(one) for one in self.grid.bot_ids}
 
     def toggle_identifier_mask(self, masked: Optional[bool] = None) -> None:
-        """Flip the Bot Swarm identifier mask.
+        """Flip ``MASK_FIELD_ID`` on ``mask_registry`` and follow it.
 
-        The dot follows immediately. The Privacy Mode button does NOT:
-        the screen never rewrites it here, so it can read OFF while this
-        mask is on.
+        ``privacy_mode_shown`` is rewritten from every mask the registry
+        holds.
         """
-        self.masked = (not self.masked) if masked is None else bool(masked)
-        self.any_masked = self.any_masked or self.masked
+        registry = mask_registry()
+        if registry is None:
+            self.masked = (not self.masked) if masked is None else bool(masked)
+        else:
+            if masked is None:
+                wanted = not registry.is_masked(MASK_FIELD_ID)
+            else:
+                wanted = bool(masked)
+            registry.set_masked(MASK_FIELD_ID, wanted)
+            self.masked = wanted
+        self.any_masked = self.any_mask_on()
+        self.privacy_mode_shown = {
+            "text": privacy_mode_text(self.any_masked),
+            "style_sheet": privacy_mode_style_sheet(self.any_masked),
+        }
+
+    def any_mask_on(self) -> bool:
+        """Whether ``mask_registry`` holds any mask on.
+
+        Answers ``masked`` or ``any_masked`` with no registry.
+        """
+        registry = mask_registry()
+        if registry is None:
+            return bool(self.any_masked or self.masked)
+        return any(bool(one) for one in registry.to_dict().values())
 
     def finish_drag(self, source_id: str, target_id: str) -> Optional[dict]:
         """Set ``panel`` to what a wire drag from ``source_id`` asks for next.
@@ -1921,8 +1954,14 @@ class BotVisualizerModel:
                 self.board.remove(chosen[1], chosen[2])
 
     def toggle_privacy_mode(self) -> None:
-        """Turn every mask on, or every mask off, and rewrite the button."""
-        turning_on = not self.any_masked
+        """Set every mask in ``mask_registry`` on, or every one off.
+
+        ``any_mask_on`` decides the direction and the button is rewritten.
+        """
+        turning_on = not self.any_mask_on()
+        registry = mask_registry()
+        if registry is not None:
+            registry.set_all(turning_on)
         self.any_masked = turning_on
         self.masked = turning_on
         self.privacy_mode_shown = {
