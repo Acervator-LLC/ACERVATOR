@@ -66,6 +66,8 @@
   var CHECKED = "checked";
   var WINDOW_TITLE = "window_title";
   var MODE = "mode";
+  var BUTTONS = "buttons";
+  var CLASS_KEY = "class";
   var NEXT_MODE = "next_mode";
   var MODE_PARAM_FIELD = "mode_param";
 
@@ -129,6 +131,8 @@
   var CARD_CLASS = "acervator-header-card";
   var DOT_CLASS = "acervator-header-dot";
   var MODE_CLASS = "acervator-header-mode";
+  var MODE_GROUP_CLASS = "acervator-header-class-group";
+  var GROUP_LABEL = "Asset class group";
 
   var STRIP_PART = "strip";
   var TOP_ROW_PART = "top-row";
@@ -161,6 +165,7 @@
   var ACTION_ATTR = "data-action";
   var FRAME_SHAPE_ATTR = "data-frame-shape";
   var MODE_ATTR = "data-mode";
+  var CLASS_ATTR = "data-asset-class";
   var FORMAT_ATTR = "data-format";
   var SOURCE_KEY_ATTR = "data-source-key";
   var LABEL_PROPERTY_ATTR = "data-label-property";
@@ -516,12 +521,13 @@
   }
 
   // Asks METHOD for the wing NEXT_MODE names, then redraws.
-  function modePressed(button) {
+  function modePressed(button, askedClass) {
     if (!global.acervator || typeof global.acervator.call !== "function") {
       return Promise.resolve(null);
     }
     var field = text(button[MODE_PARAM_FIELD]);
-    var wing = text(button[NEXT_MODE]);
+    // A class button names itself; NEXT_MODE serves a caller holding no class.
+    var wing = askedClass === undefined ? text(button[NEXT_MODE]) : askedClass;
     if (field === undefined || wing === undefined) {
       return Promise.resolve(null);
     }
@@ -534,29 +540,47 @@
     });
   }
 
+  // One button per asset class. The group's own element carries the active
+  // class, so a reader finds it without walking the buttons.
   function ModeButton(props) {
     var model = isPlainObject(props.button) ? props.button : {};
-    var style = styleOf(model[STYLE_SHEET]);
-    style.minWidth = length(model[MINIMUM_WIDTH]);
-    withStretch(style, props.stretch);
-    var buttonProps = {
-      className: MODE_CLASS,
-      style: style,
-      title: label(model[TOOLTIP]),
-      type: "button",
-      onClick: function () {
-        return modePressed(model);
-      }
-    };
-    buttonProps[PART_ATTR] = MODE_BUTTON_PART;
-    buttonProps[SLOT_ATTR] = MODE_BUTTON;
-    buttonProps[MODE_ATTR] = text(model[MODE]);
-    buttonProps[WINDOW_TITLE_ATTR] = text(model[WINDOW_TITLE]);
-    buttonProps[ACTION_ATTR] = text(
+    var action = text(
       isPlainObject(props.actions) ? props.actions[MODE_ACTION] : undefined
     );
-    buttonProps[ARIA_PRESSED] = text(model[CHECKED]);
-    return element("button", buttonProps, text(model[TEXT]));
+    var buttons = listField(model, BUTTONS).map(function (each) {
+      var key = text(each[CLASS_KEY]);
+      var style = styleOf(each[STYLE_SHEET]);
+      style.minWidth = length(model[MINIMUM_WIDTH]);
+      style.flex = "1 1 0";
+      var one = {
+        key: key,
+        className: MODE_CLASS,
+        style: style,
+        title: label(each[TOOLTIP]),
+        type: "button",
+        onClick: function () {
+          return modePressed(model, key);
+        }
+      };
+      one[PART_ATTR] = MODE_BUTTON_PART;
+      one[CLASS_ATTR] = key;
+      one[ARIA_PRESSED] = text(each[CHECKED]);
+      return element("button", one, text(each[TEXT]));
+    });
+
+    var groupStyle = { display: "flex", gap: "2px" };
+    withStretch(groupStyle, props.stretch);
+    var groupProps = {
+      className: MODE_GROUP_CLASS,
+      style: groupStyle,
+      role: "group",
+      "aria-label": GROUP_LABEL
+    };
+    groupProps[SLOT_ATTR] = MODE_BUTTON;
+    groupProps[MODE_ATTR] = text(model[MODE]);
+    groupProps[WINDOW_TITLE_ATTR] = text(model[WINDOW_TITLE]);
+    groupProps[ACTION_ATTR] = action;
+    return element("div", groupProps, buttons);
   }
 
   function counterFor(model, slot) {

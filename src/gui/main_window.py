@@ -3088,35 +3088,14 @@ if _HAS_QT:
                 )
 
         def _toggle_trading_mode(self):
-            """Flip the Trading stack and the Paper Trader stack together."""
-            if self._trading_mode == "crypto":
-                self._trading_mode = "stock"
-                self._mode_btn.setText("Stock Mode")
-                self._mode_btn.setChecked(True)
-                self._trading_stack.setCurrentIndex(1)
-                self._tab_widget = self._stock_tab_widget
-                self._exchange_tabs = self._stock_exchange_tabs
-                self._empty_placeholder = self._stock_placeholder
-                self.setWindowTitle("Acervator — STOCK WING")
-                self._status_log.log(
-                    "→ STOCK WING: equity exchanges. (Crypto wing paused.)",
-                    "info",
-                )
-            else:
-                self._trading_mode = "crypto"
-                self._mode_btn.setText("Crypto Mode")
-                self._mode_btn.setChecked(False)
-                self._trading_stack.setCurrentIndex(0)
-                self._tab_widget = self._crypto_tab_widget
-                self._exchange_tabs = self._crypto_exchange_tabs
-                self._empty_placeholder = self._crypto_placeholder
-                self.setWindowTitle("Acervator — CRYPTO WING")
-                self._status_log.log(
-                    "→ CRYPTO WING: crypto exchanges. (Stock wing paused.)",
-                    "info",
-                )
-            self._push_live_tab({"layer": self._trading_mode})
-            self._update_mode_btn_style()
+            """Step to the next asset class, for a caller holding no class name."""
+            from .main_tabs.asset_class_surface import asset_classes, normalise
+
+            classes = asset_classes()
+            if not classes:
+                return
+            here = classes.index(normalise(getattr(self, "_asset_class", None)))
+            self.select_asset_class(classes[(here + 1) % len(classes)])
 
             # `_alias_page` comes from `_tab_widget`'s parent, not from either branch.
             _alias_host = self._tab_widget.parentWidget() if self._tab_widget else None
@@ -3155,46 +3134,37 @@ if _HAS_QT:
                 )
 
         def _update_mode_btn_style(self):
-            """Restyle the mode button, and tint the layer tab bars once both exist."""
+            """Tint the layer tab bars with the active asset class's accent."""
+            from .main_tabs.asset_class_surface import accent
+
             tabs_ready = hasattr(self, "_crypto_tab_widget") and hasattr(
                 self, "_stock_tab_widget"
             )
+            if not tabs_ready:
+                return
 
-            if self._trading_mode == "crypto":
-                self._mode_btn.setStyleSheet(
-                    "QPushButton { background: rgba(0, 200, 160, 40); "
-                    f"color: {ds.LAYER_CRYPTO}; border: 1px solid rgba(0, 200, 160, "
-                    "100); "
-                    "border-radius: 4px; font-weight: bold; font-size: 11px; }"
-                    "QPushButton:hover { background: rgba(0, 200, 160, 70); }"
-                )
-                if tabs_ready:
-                    self._crypto_tab_widget.setStyleSheet(
-                        "QTabBar::tab:selected { border-bottom: 2px solid "
-                        f"{ds.LAYER_CRYPTO}; "
-                        f"color: {ds.LAYER_CRYPTO}; }}"
-                    )
-                    self._stock_tab_widget.setStyleSheet("")
-            else:
-                self._mode_btn.setStyleSheet(
-                    "QPushButton { background: rgba(80, 140, 255, 40); "
-                    f"color: {ds.LAYER_STOCK}; border: 1px solid rgba(80, 140, 255, "
-                    "100); "
-                    "border-radius: 4px; font-weight: bold; font-size: 11px; }"
-                    "QPushButton:hover { background: rgba(80, 140, 255, 70); }"
-                )
-                if tabs_ready:
-                    self._stock_tab_widget.setStyleSheet(
-                        "QTabBar::tab:selected { border-bottom: 2px solid "
-                        f"{ds.LAYER_STOCK}; "
-                        f"color: {ds.LAYER_STOCK}; }}"
-                    )
-                    self._crypto_tab_widget.setStyleSheet("")
+            key = getattr(self, "_asset_class", "crypto")
+            colour = accent(key)
+            selected = (
+                "QTabBar::tab:selected { border-bottom: 2px solid "
+                f"{colour}; color: {colour}; }}"
+            )
+            self._crypto_tab_widget.setStyleSheet(selected if key == "crypto" else "")
+            self._stock_tab_widget.setStyleSheet(selected if key == "stocks" else "")
 
         def _add_exchange(self) -> None:
-            _wing = getattr(self, "_trading_mode", "crypto") or "crypto"
+            from .main_tabs.asset_class_surface import (
+                add_exchange_enabled,
+                class_state,
+                normalise,
+            )
+
+            _wing = normalise(getattr(self, "_asset_class", None))
+            if not add_exchange_enabled(_wing):
+                self._status_log.log(class_state(_wing)["note"], "warning")
+                return
             self._status_log.log(
-                f"Opening settings to add exchange " f"({_wing} wing)..."
+                f"Opening settings to add exchange " f"({_wing} class)..."
             )
             from .variant_surface import SETTINGS_DIALOG, surface_class
 

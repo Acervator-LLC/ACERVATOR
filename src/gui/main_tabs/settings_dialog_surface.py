@@ -95,19 +95,7 @@ SAVE_BUTTON_STYLE = "font-weight: bold; padding: 6px 24px;"
 ACCENT_PROPERTY = "accent"
 DANGER_PROPERTY = "danger"
 
-EQUITY_EXCHANGE_IDS = frozenset(
-    {
-        "alpaca",
-        "ibkr",
-        "schwab",
-        "tdameritrade",
-        "webull",
-        "tastytrade",
-        "fidelity",
-        "etrade",
-        "interactivebrokers",
-    }
-)
+from .asset_class_surface import EQUITY_VENUES as EQUITY_EXCHANGE_IDS  # noqa: E402
 
 EQUITY_ITEM_FORMAT = "{name} (planned, not yet live)"
 
