@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, TYPE_CHECKING
 
+from ...core.event_bus import LINE_KIND_WIRE_FLOW, LINE_KIND_WIRE_STACK
 from .sizing import priced_usd
 
 logger = logging.getLogger("acervator.scrumming")
@@ -400,6 +401,7 @@ class WireRoutingMixin(_Host):
                         f"{u:.2f}-USD-worth of {self.config.target_asset} "
                         f"via aggressive rebalance. ref={rf}"
                     ),
+                    kind=LINE_KIND_WIRE_STACK,
                 )
             except Exception as _sup:  # noqa: BLE001 - best-effort mirror
                 logger.debug(
@@ -425,6 +427,7 @@ class WireRoutingMixin(_Host):
                         f"Income falls through to "
                         f"{'distribute' if self._fold_tranches else 'pending'}."
                     ),
+                    kind=LINE_KIND_WIRE_STACK,
                 )
             except Exception as _sup:  # noqa: BLE001 - best-effort mirror
                 logger.debug(
@@ -446,6 +449,7 @@ class WireRoutingMixin(_Host):
                     f"tranche(s) (${share:.4f}/tranche). Fold queue "
                     f"now ${self._fold_queue_usd:.4f}."
                 ),
+                kind=LINE_KIND_WIRE_FLOW,
             )
             logger.info(
                 "Bot %s wire income %.4f from %s → %d tranches",
@@ -474,6 +478,7 @@ class WireRoutingMixin(_Host):
                 f"${self._pending_wire_credits:.4f}. Lands in the "
                 f"fold queue when the next sell opens a tranche."
             ),
+            kind=LINE_KIND_WIRE_FLOW,
         )
         logger.info(
             "Bot %s wire income %.4f from %s → pending " "(no tranches)",

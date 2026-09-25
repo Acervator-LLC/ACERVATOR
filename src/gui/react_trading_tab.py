@@ -576,12 +576,18 @@ def votes_payload(bots: Any, reading: Any = None) -> dict:
     )
 
 
-def log_request(action: str, message: str = "", level: Any = None) -> Optional[dict]:
+def log_request(
+    action: str, message: str = "", level: Any = None, kind: Any = None
+) -> Optional[dict]:
     """The ``status_log.lines`` request one ``StatusLog`` call makes."""
     if action == "log":
-        return {"messages": [{"message": message, "level": level}]}
+        return {"messages": [{"message": message, "level": level, "kind": kind}]}
     if action == "force_log":
-        return {"messages": [{"message": message, "level": level, "force": True}]}
+        return {
+            "messages": [
+                {"message": message, "level": level, "force": True, "kind": kind}
+            ]
+        }
     if action == "notice":
         return {"notices": [message]}
     if action == "pause":
@@ -826,13 +832,19 @@ if _HAS_WEBENGINE:
             self._votes = held
             return self.show_models({indicator_panel_surface.METHOD: held})
 
-        def show_log_call(self, action: str, message: str = "", level: Any = None):
+        def show_log_call(
+            self,
+            action: str,
+            message: str = "",
+            level: Any = None,
+            kind: Any = None,
+        ):
             """Apply one ``StatusLog`` call to the surface and draw its lines.
 
             ``StatusLog.set_relay`` reports ``log``, ``force_log``, ``notice``,
             ``pause`` and ``resume`` here as the Qt pane paints them.
             """
-            asked = log_request(action, message, level)
+            asked = log_request(action, message, level, kind)
             if asked is None:
                 return False
             payload = status_log_surface.view_model(asked)

@@ -3795,6 +3795,80 @@ Each part, and what already sets it:
 | the side | the trade's own role, in square brackets, the way a gate line already writes its side |
 | the market and the numbers | the pair traded and the writer's own figures, to the places they were always drawn |
 
+##### The field that names a line's shape
+
+The sentence naming what chooses the shape is overtaken. Quoted whole:
+
+> The words the message opens with choose the shape.
+
+The writer names the kind of line it is writing, and the pane draws the shape
+that kind carries. A trade writer names a trade, a wire flow or wire income
+writer names a wire flow line, a wire stack writer names a wire stack line, and
+every other writer names nothing and its line draws in its level colour.
+
+Sixteen writers name a kind today, all of them in the bot brain, and the count
+is the whole set: one trade writer and fifteen wire writers.
+
+```python
+LINE_KIND_TRADE = "trade"
+LINE_KIND_WIRE_FLOW = "wire_flow"
+LINE_KIND_WIRE_STACK = "wire_stack"
+```
+
+`src/core/event_bus.py` — the three kinds a writer names on its own bot line
+
+The stage word inside a trade message still chooses that line's colour, and the
+bot's tag still opens a line a bot wrote. What changed is that a trade line no
+longer has to open with the words `TRADE NOTIFICATION:` to draw in the trade
+shape. A line that names a trade later in its text draws in the trade shape too,
+because the kind decides and the words do not.
+
+```python
+def line_style(
+    message: str, level: Any = DEFAULT_LOG_LEVEL, kind: Optional[str] = None
+) -> dict:
+    tag = bot_tag(message)
+    shaped = shape_source(message)
+    if kind == KIND_TRADE:
+        drawn, role = trade_text(shaped)
+```
+
+`src/gui/main_tabs/status_log_surface.py` — `line_style`
+
+##### What the pane says about a writer that names no kind
+
+A line whose writer names no kind still draws. It draws at the plain size in its
+level colour, exactly as a plain line does, and nothing is lost from the pane.
+
+The pane reports it when that line's own words ask for a shape. The report
+carries the words the line opens with, which name the writer, beside the kind the
+pane drew. A writer that should name a kind and does not is then visible on the
+System Status tab instead of quietly drawing the wrong shape.
+
+```python
+_log_emit(
+    "trading.12.008.postcondition.line_kind_named_by_writer",
+    actual=kind or surface.NO_KIND,
+    expected=asked,
+    context={
+        "writer": surface.writer_mark(message),
+        "drawn_kind": style["kind"],
+        "font_size_px": style["font_size_px"],
+        "bold": style["bold"],
+    },
+)
+```
+
+`src/gui/widgets/status_log.py` — `StatusLog._report_named_kind`
+
+Read on the running program in both builds, with the home on a scratch directory
+and every socket but loopback refused, driving invented tickers and figures: ten
+lines drove, ten drew the shape their writer named, and the Qt pane and the page
+agreed on every size, weight and colour. The one line driven with no kind drew
+plain in both builds and produced the one report reading a fault. The Simulator's
+own pane drew all ten the same as the Live pane. Before the change, a fill whose
+trade words did not open the text drew plain in both builds.
+
 A trade line drops the words `TRADE NOTIFICATION:`. Those nineteen characters
 tell the pane which shape to draw and tell you nothing you cannot already see:
 a larger, bold, stage-coloured line is a trade.

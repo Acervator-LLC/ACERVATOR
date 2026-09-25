@@ -811,12 +811,18 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
     }
 
 
-def log_request(action: str, message: str = "", level: Any = None) -> Optional[dict]:
+def log_request(
+    action: str, message: str = "", level: Any = None, kind: Any = None
+) -> Optional[dict]:
     """The ``sim_status_log.lines`` request one ``SimStatusLog`` call makes."""
     if action == "log":
-        return {"messages": [{"message": message, "level": level}]}
+        return {"messages": [{"message": message, "level": level, "kind": kind}]}
     if action == "force_log":
-        return {"messages": [{"message": message, "level": level, "force": True}]}
+        return {
+            "messages": [
+                {"message": message, "level": level, "force": True, "kind": kind}
+            ]
+        }
     if action == "notice":
         return {"notices": [message]}
     if action == "pause":
@@ -1885,13 +1891,19 @@ if _HAS_WEBENGINE:
             self._votes = held
             return self.show_models({PANEL_METHOD: held})
 
-        def show_log_call(self, action: str, message: str = "", level: Any = None):
+        def show_log_call(
+            self,
+            action: str,
+            message: str = "",
+            level: Any = None,
+            kind: Any = None,
+        ):
             """Apply one ``SimStatusLog`` call to the tab's log and draw its lines.
 
             ``log``, ``force_log``, ``notice``, ``pause`` and ``resume`` are
             the calls ``set_relay`` reports.
             """
-            asked = log_request(action, message, level)
+            asked = log_request(action, message, level, kind)
             if asked is None:
                 return False
             return self.show_models({LOG_METHOD: log_payload(self._log, asked)})
@@ -2097,10 +2109,12 @@ if _HAS_WEBENGINE:
                     "log", f"Fire on {bot_id[:8]} failed: {exc}", "error"
                 )
 
-        def log(self, message: str, level: str = "info") -> None:
+        def log(
+            self, message: str, level: str = "info", kind: str | None = None
+        ) -> None:
             """One Activity Log line through ``show_log_call``, the ``log`` a
             venue's ``ExchangeTabModel`` calls on its ``status_log``."""
-            self.show_log_call("log", message, level)
+            self.show_log_call("log", message, level, kind)
 
         def _notify(self, message: str, level: str) -> None:
             """Write the window notification's line, ``notification_line``, into

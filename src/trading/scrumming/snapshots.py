@@ -11,6 +11,8 @@ import logging
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Optional
 
+from ...core.event_bus import LINE_KIND_TRADE
+
 logger = logging.getLogger("acervator.scrumming")
 
 if TYPE_CHECKING:
@@ -110,6 +112,10 @@ def _panel_line(summary: Optional[VotingSummary]) -> str:
 
 
 class SnapshotEmitterMixin(_Host):
+    # One sentence of the docstring below is overtaken. Quoted whole:
+    #   "The StatusLog widget detects the prefix and colors by stage (SENT /
+    #   PLACED / FILLED / CANCELLED)."
+    # The emit names ``LINE_KIND_TRADE``, and ``stage_color`` reads the stage.
     def _emit_trade_notification(self, role: str, stage: str, extra: str = "") -> None:
         """Emit a uniformly-formatted trade lifecycle notification.
 
@@ -128,7 +134,12 @@ class SnapshotEmitterMixin(_Host):
             msg = f"TRADE NOTIFICATION: {role}: {sym}: {stage}"
             if extra:
                 msg += f" — {extra}"
-            self._bus.emit("bot.log", bot_id=self.bot_id, message=msg)
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=msg,
+                kind=LINE_KIND_TRADE,
+            )
         except Exception as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s",

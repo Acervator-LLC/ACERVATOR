@@ -36,9 +36,9 @@ if _HAS_QT:
             self.setMaximumHeight(150)
             self.setPlaceholderText("Activity log...")
             self._paused: bool = False
-            self._pause_buffer: list[tuple[str, str, str]] = []
+            self._pause_buffer: list[tuple[str, str, str, str | None]] = []
             self._pause_buffer_cap: int = 2000
-            self._relay: Callable[[str, str, str], None] | None = None
+            self._relay: Callable[[str, str, str, str | None], None] | None = None
 
             # setMaximumBlockCount drops the oldest line once 5000 are held.
             try:
@@ -61,12 +61,18 @@ if _HAS_QT:
             ``notice`` call is reported to."""
             self._relay = relay
 
-        def _tell(self, action: str, message: str = "", level: str = "") -> None:
+        def _tell(
+            self,
+            action: str,
+            message: str = "",
+            level: str = "",
+            kind: str | None = None,
+        ) -> None:
             """Report one call to ``_relay`` without stopping ``_render``."""
             if self._relay is None:
                 return
             try:
-                self._relay(action, message, level)
+                self._relay(action, message, level, kind)
             except Exception:
                 logger.debug("StatusLog relay raised on %s", action, exc_info=True)
 
@@ -90,8 +96,8 @@ if _HAS_QT:
             self._tell("resume")
             buffered = list(self._pause_buffer)
             self._pause_buffer.clear()
-            for ts, message, level in buffered:
-                self._render(ts, message, level)
+            for ts, message, level, kind in buffered:
+                self._render(ts, message, level, kind)
             if buffered:
                 self.append(surface.resume_line(len(buffered))["html"])
                 self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
@@ -104,21 +110,25 @@ if _HAS_QT:
                 self.pause()
             return self._paused
 
-        def log(self, message: str, level: str = "info") -> None:
+        def log(
+            self, message: str, level: str = "info", kind: str | None = None
+        ) -> None:
             ts = datetime.now().strftime("%H:%M:%S")
-            self._tell("log", message, level)
+            self._tell("log", message, level, kind)
             if self._paused:
                 # A full ``_pause_buffer`` drops the newest entry, not the oldest.
                 if len(self._pause_buffer) < self._pause_buffer_cap:
-                    self._pause_buffer.append((ts, message, level))
+                    self._pause_buffer.append((ts, message, level, kind))
                 return
-            self._render(ts, message, level)
+            self._render(ts, message, level, kind)
 
-        def force_log(self, message: str, level: str = "warning") -> None:
+        def force_log(
+            self, message: str, level: str = "warning", kind: str | None = None
+        ) -> None:
             """Render *message* now, whatever ``_paused`` holds."""
             ts = datetime.now().strftime("%H:%M:%S")
-            self._tell("force_log", message, level)
-            self._render(ts, message, level)
+            self._tell("force_log", message, level, kind)
+            self._render(ts, message, level, kind)
 
         def health_stats(self) -> dict:
             """Return ``_paused``, the ``_pause_buffer`` size, the age and count
@@ -140,9 +150,15 @@ if _HAS_QT:
                 "document_blocks": blocks,
             }
 
-        def _render(self, ts: str, message: str, level: str = "info") -> None:
+        def _render(
+            self,
+            ts: str,
+            message: str,
+            level: str = "info",
+            kind: str | None = None,
+        ) -> None:
             try:
-                self._render_safe(ts, message, level)
+                self._render_safe(ts, message, level, kind)
                 import time as _t
 
                 self._last_render_time = _t.time()
@@ -163,11 +179,41 @@ if _HAS_QT:
                         level,
                     )
 
-        def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
-            style = surface.line_style(message, level)
+        def _render_safe(
+            self,
+            ts: str,
+            message: str,
+            level: str = "info",
+            kind: str | None = None,
+        ) -> None:
+            style = surface.line_style(message, level, kind)
             self.append(surface.line_html(ts, style))
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
             self._report_trade_shape(message, style)
+            self._report_named_kind(message, kind, style)
+
+        def _report_named_kind(
+            self, message: str, kind: str | None, style: dict
+        ) -> None:
+            """Report the kind a writer named against the kind its own words ask
+            for, naming the writer through ``writer_mark``."""
+            asked = surface.asked_kind(message)
+            if asked == surface.NO_KIND:
+                return
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _log_emit
+
+                _log_emit(
+                    "trading.12.008.postcondition.line_kind_named_by_writer",
+                    actual=kind or surface.NO_KIND,
+                    expected=asked,
+                    context={
+                        "writer": surface.writer_mark(message),
+                        "drawn_kind": style["kind"],
+                        "font_size_px": style["font_size_px"],
+                        "bold": style["bold"],
+                    },
+                )
 
         def _report_trade_shape(self, message: str, style: dict) -> None:
             """Report the drawn kind of a message holding ``TRADE_PREFIX``, against
