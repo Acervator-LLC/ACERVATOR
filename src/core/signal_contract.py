@@ -259,6 +259,9 @@ _TOGGLE_PINS: dict[str, str] = {
     "trading.12.006.postcondition.notification_relayed": (
         "the legacy notify stub relays a message"
     ),
+    "trading.12.007.postcondition.trade_line_drawn_as_trade": (
+        "only a message the Activity Log paints that names a trade"
+    ),
     "charts.13.003.postcondition.timeframe_rearmed": (
         "the operator moves a panel's timeframe combo"
     ),
@@ -353,6 +356,8 @@ _TOGGLE_PINS: dict[str, str] = {
 value is the reason, read at the call site.
 """
 
+# Overtaken: "The seventy-two pins that need a trigger." `_TOGGLE_PINS` holds 73.
+
 CADENCE_BY_NAME = MappingProxyType(
     {
         **{pin: CADENCE_ALWAYS_ON for pin in _ALWAYS_ON_PINS},
@@ -360,6 +365,8 @@ CADENCE_BY_NAME = MappingProxyType(
     }
 )
 """Every pin's declared category, by current name. 87 entries."""
+
+# Overtaken: "87 entries." `CADENCE_BY_NAME` holds 89, and held 88 before this pin.
 
 _NAME_TEMPLATE = "{}"
 """How a templated pin name is written; the trailing `{}` stands for a leaf built at run
