@@ -3589,7 +3589,7 @@ nobody has named, and the toggle waits on it.
 | Drawdown threshold | `extractor_bot.py:894` | when a position counts as down |
 | Hedge budget (USD) | `extractor_bot.py:260` | the reserve corrections spend before the pool, and part of the claim |
 | Trend Strength Threshold | `extractor_bot.py:211` | the threshold the signal provider is built with, once |
-| Arbiter, on a tranche | `extractor_bot.py:1714` | a word on the tranche; no decision reads it |
+| Arbiter, on a tranche | `extractor_bot.py:125` | a word on the tranche; no decision reads it |
 
 Two of the eight can only be set before a bot exists and have no running-bot
 control: the trend strength threshold, because its provider is built one time, and
@@ -6413,6 +6413,51 @@ EQUITY_VENUES = frozenset(
     }
 )
 ```
+
+#### Where the equity venue list lives
+
+The page carries the sentence above about that list. It is quoted whole here,
+marked overtaken, with the sentence that is true today beneath it.
+
+> "The equity venue ids were written out three times, and the three copies were
+> held together by a comment. They are now one name that all three sites
+> import."
+
+**Overtaken.** Three copies were collapsed onto the one name in that change, and
+three more were still in the tree: the Paper tab, the Live tab's view model and
+the Qt Simulator tab. All three now read the one name as well. Six files read it
+today and one file declares it.
+
+`src/gui/main_tabs/trading_tab_surface.py` — the order the pages are given
+
+```python
+EQUITY_EXCHANGE_IDS = tuple(sorted(EQUITY_VENUES))
+```
+
+`src/gui/simulator/sim_trading_tab.py` — the Simulator tab's own read
+
+```python
+self._equity_exchange_ids = acs.EQUITY_VENUES
+```
+
+**Order matters to the pages and membership matters to the layers.** Three view
+models publish the list to a page, so it is sorted where the Live view model
+reads it and every launch gives the pages the same nine in the same order.
+Nothing else reads the order. Which layer a venue is put on is decided by
+membership alone.
+
+| what reads the list | what it decides |
+|---|---|
+| the Live view model | the layer each venue is published under |
+| the Paper and Simulator view models | the same, on their own pages |
+| the Qt Live tab | the layer a venue tab is seated on |
+| the Qt Simulator tab | the layer a venue page is seated on |
+| the Settings dialog | whether a venue's row is an equity row |
+
+**Two of the nine trade nowhere today.** One closed its interface on 10 May 2024
+and one publishes none, both recorded on
+[15-venue-compatibility.md](15-venue-compatibility.md). Both stay on the list.
+This entry records where the list lives, not what is on it.
 
 #### Sentences the asset class group overtakes
 
