@@ -8680,6 +8680,38 @@ MARK_HEIGHT_FRACTION = 0.05
 MARK_OUTLINE_PX = 1.5
 ```
 
+#### The two glyphs are hermetic characters
+
+Two sentences above are overtaken. Each is quoted whole, with the true sentence
+under it.
+
+Overtaken: *"Each glyph is three corners in a unit mark, y down, centred on the
+fill."*
+
+True now: each glyph is one character, centred on the fill.
+
+Overtaken: *"`dissolve` is the scrum: the corners `(-0.5, -0.5)`, `(0.5, -0.5)`,
+`(0, 0.5)`, an outline. `reform` is the fold: `(-0.5, 0.5)`, `(0.5, 0.5)`,
+`(0, -0.5)`, filled."*
+
+True now: the scrum is U+1F761, named ALCHEMICAL SYMBOL FOR DISSOLVE. The fold is
+U+1F75F, named ALCHEMICAL SYMBOL FOR PRECIPITATE. A mark is set at a twentieth of
+the pane in the symbol family, which resolves to Segoe UI Symbol, and both
+characters resolve on it. The corner lists, the fill flags and the outline width
+are gone with the triangles they described.
+
+The definition lives in the chart's surface and the Simulator imports it, so both
+tabs draw the same two characters from the same object.
+
+```python
+DISSOLVE_GLYPH = "\U0001f761"
+REFORM_GLYPH = "\U0001f75f"
+MARK_GLYPHS = {
+    SCRUM_SIDE: {"name": DISSOLVE_GLYPH},
+    FOLD_SIDE: {"name": REFORM_GLYPH},
+}
+```
+
 ### The marks on the payload
 
 `playback_payload` takes the shown bot's fills beside the candles and answers
@@ -8690,6 +8722,19 @@ counted in `fills` and not in `mark_count`. The Qt view draws each mark as a
 polygon after the candles; the page draws one `polygon` element per mark with
 `data-side`, `data-glyph`, `data-price` and `data-candle-index`, its outline
 kept at pixel width under the window's non-uniform scale.
+
+The last sentence above is overtaken. It is quoted whole, with the true sentence
+under it.
+
+Overtaken: *"The Qt view draws each mark as a polygon after the candles; the page
+draws one `polygon` element per mark with `data-side`, `data-glyph`, `data-price`
+and `data-candle-index`, its outline kept at pixel width under the window's
+non-uniform scale."*
+
+True now: the Qt view draws each mark's character after the candles. The page
+draws one text element per mark, carrying the same four data attributes, centred
+on the fill's point across and down. Neither takes an outline, and the payload no
+longer carries one.
 
 `src/gui/main_tabs/simulator_tab_surface.py` — one mark
 

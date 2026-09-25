@@ -40,9 +40,9 @@ from ..theme_engine import NIGREDO_FRACTION, toward_black
 from . import indicator_panel_surface as ivp
 from .bot_status_table_surface import COLUMN_LABELS, FIXED_WIDTHS
 from .native_chart_surface import (
+    MARK_GLYPH_FAMILY,
     MARK_GLYPHS,
     MARK_HEIGHT_FRACTION,
-    MARK_OUTLINE_PX,
     MARK_WIDTH_RATIO,
 )
 
@@ -704,7 +704,7 @@ def playback_payload(
         "glyphs": {side: dict(glyph) for side, glyph in MARK_GLYPHS.items()},
         "mark_width_ratio": MARK_WIDTH_RATIO,
         "mark_height_fraction": MARK_HEIGHT_FRACTION,
-        "mark_outline_px": MARK_OUTLINE_PX,
+        "mark_glyph_family": MARK_GLYPH_FAMILY,
     }
 
 

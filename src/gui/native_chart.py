@@ -34,9 +34,9 @@ from src.gui.main_tabs.native_chart_surface import (
     LEGEND_INVISIBLE_TEXT,
     LEGEND_ON_BOOK_FIELD,
     LEGEND_ON_BOOK_TEXT,
+    MARK_GLYPH_FAMILY,
     MARK_GLYPHS,
     MARK_HEIGHT_FRACTION,
-    MARK_OUTLINE_PX,
     MARK_WIDTH_RATIO,
     PANEL_SOURCE_FIELD,
     PRICE_FORMAT_BANDS,
@@ -2241,15 +2241,14 @@ if _HAS_QT:
                 is_buy = m.side == "buy"
                 glyph = MARK_GLYPHS[FOLD_SIDE if is_buy else SCRUM_SIDE]
                 tc = type_colors.get(m.label, default_buy if is_buy else default_sell)
-                polygon = QPolygonF(
-                    [
-                        QPointF(mx + dx * mark_w, my + dy * mark_h)
-                        for dx, dy in glyph["points"]
-                    ]
+                p.setFont(design_font(MARK_GLYPH_FAMILY, max(1, int(round(mark_h)))))
+                p.setPen(QPen(tc))
+                p.setBrush(Qt.NoBrush)
+                p.drawText(
+                    QRectF(mx - mark_w / 2, my - mark_h / 2, mark_w, mark_h),
+                    Qt.AlignCenter,
+                    glyph["name"],
                 )
-                p.setPen(QPen(tc, pen_w(MARK_OUTLINE_PX)))
-                p.setBrush(QBrush(tc) if glyph["filled"] else Qt.NoBrush)
-                p.drawPolygon(polygon)
                 drawn_counts["fills"] += 1
                 placed.append((m, mx, my, tc))
             obstacles = [
