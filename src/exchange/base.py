@@ -134,15 +134,6 @@ class MarketRules:
     price_increment: Optional[float] = None  # quote units a price steps by
     read: bool = True
 
-    @property
-    def fractionable(self) -> Optional[bool]:
-        """True when ``amount_increment`` is under one unit, False when it is a
-        whole unit or more, and None while the venue published no increment."""
-        increment = self.amount_increment
-        if increment is None or not math.isfinite(increment) or increment <= 0.0:
-            return None
-        return increment < 1.0
-
     def price_on_tick(self, price: float) -> Optional[float]:
         """``price`` moved to the nearest ``price_increment`` step, and None
         while the venue published no tick or ``price`` is not finite."""

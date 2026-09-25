@@ -474,36 +474,60 @@ a fixed number of places.
 
 ### Whether a market can be held in fractions
 
-The size step answers it. A market whose step is under one unit accepts a
-fraction of a unit; a market whose step is a whole unit or larger does not. A
-market whose step the venue never published answers neither.
+The size step already answers it, and no separate field says it again. A market
+whose step is under one unit accepts a fraction of a unit; a market whose step is
+a whole unit or larger takes whole units only; a market whose step the venue
+never published answers neither.
 
 ```python
-# src/exchange/base.py
-    @property
-    def fractionable(self) -> Optional[bool]:
-        """True when ``amount_increment`` is under one unit, False when it is a
-        whole unit or more, and None while the venue published no increment."""
+# src/exchange/base.py:133
+    amount_increment: Optional[float] = None  # base units a size steps by
 ```
 
-Read off the same recorded products: bitcoin and ether answer yes, TE-FOOD and
-the expiring contract answer no, and the product with no published step answers
-nothing.
+Read off the recorded products: bitcoin steps by a hundred-millionth and ether by
+a ten-thousandth, so both take fractions. TE-FOOD and the expiring contract both
+step by 1, so both take whole units only.
 
-### The row this entry overtakes
+A field carrying the same answer a second time was written and then taken out,
+because nothing in the running program read it. The reader arrives with the layer
+that sizes an amount onto the step, and with the layer that picks the bot variant
+a market needs. Until then the step is the answer.
+
+### A floor of zero the venue never published
 
 The unknown row of the three-answer table above is kept as written. It says the
 unknown answer is drawn when no market record was obtained.
 
 The true row is: the unknown answer is drawn when no market record was obtained,
-and also when the record carries no size step, because a market that has not said
-whether it can be held in fractions has not said whether the excess a scrum
-submits is expressible there.
+and also when the venue published no size rule and no minimum order cost, because
+the smallest order then costs an unknown amount rather than nothing.
 
-Driven on the six recorded products, four of which publish a step: the four
-answer exactly as they did before, and the two that publish no step move off the
-yes answer. No Coinbase spot product publishes no step, so no row the operator
-sees today changes.
+A market that published nothing used to be offered as tradeable with a smallest
+order of zero dollars. Zero is not a floor the venue gave; it is the figure left
+over when no floor was read.
+
+```python
+# src/trading/scrumming/sizing.py:149
+    if amount is None:
+        return floor_usd if cost_published else None
+```
+
+A minimum cost the venue published **as** zero is a different thing, and it stays
+a known floor of zero. Both were driven, and they answer differently.
+
+| What the venue published | Smallest order | Answer |
+| --- | --- | --- |
+| nothing at all | not known | size rules not read |
+| a minimum size alone | that size at the last price | yes or no |
+| a size step alone | one step at the last price | yes or no |
+| a minimum cost of zero, no size rule | zero dollars | yes |
+| every rule | the larger of the two floors | yes or no |
+
+Only the first row moves. Every market that published enough to answer still
+answers, including a market whose venue published a minimum size and no step.
+That matters for one venue Acervator offers: of 104 exchange classes in the
+trading library, 102 publish a step-shaped size rule and 2 do not, and one of
+those 2 is on the offered list.
 
 Nothing else on this page is overtaken. The per-venue verdict column, the excess
 figure and the two-variant reading all stand as written.

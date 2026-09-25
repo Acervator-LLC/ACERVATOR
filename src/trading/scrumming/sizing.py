@@ -133,12 +133,20 @@ def smallest_order_usd(rules: Any, price: Optional[float]) -> Optional[float]:
     ``MarketRules.smallest_amount`` at ``price`` and the venue's own minimum
     order cost, whichever is larger; None when a published size rule needs a
     price and none is known.
+
+    OVERTAKEN: "None when a published size rule needs a price and none is
+    known."
+    None when a published size rule needs a price and none is known, and also
+    when the venue published no size rule and no ``min_cost``, because the floor
+    is then unknown rather than zero. A ``min_cost`` the venue published AS zero
+    is a known floor of zero and stays one.
     """
     cost = getattr(rules, "min_cost", None)
-    floor_usd = float(cost) if cost is not None and math.isfinite(cost) else 0.0
+    cost_published = cost is not None and math.isfinite(cost)
+    floor_usd = float(cost) if cost_published else 0.0
     amount = getattr(rules, "smallest_amount", None)
     if amount is None:
-        return floor_usd
+        return floor_usd if cost_published else None
     if price is None or not math.isfinite(price) or price <= 0.0:
         return None
     return max(floor_usd, float(amount) * float(price))
@@ -158,12 +166,10 @@ def tradeable_answer(
     OVERTAKEN: "``TRADEABLE_UNKNOWN`` while no record was read or no price is
     known."
     ``TRADEABLE_UNKNOWN`` while no record was read, no price is known, or
-    ``MarketRules.fractionable`` is None because the venue published no size
-    increment.
+    ``smallest_order_usd`` answers None because the venue published no size rule
+    and no minimum cost.
     """
     if rules is None or not getattr(rules, "read", False):
-        return TRADEABLE_UNKNOWN
-    if getattr(rules, "fractionable", None) is None:
         return TRADEABLE_UNKNOWN
     if not math.isfinite(excess_usd) or excess_usd <= 0.0:
         return TRADEABLE_UNKNOWN
