@@ -45,11 +45,9 @@
   var MARKS = "marks";
   var MARK_COUNT = "mark_count";
   var GLYPHS = "glyphs";
-  var GLYPH_POINTS = "points";
-  var GLYPH_FILLED = "filled";
-  var MARK_WIDTH_RATIO = "mark_width_ratio";
+  var GLYPH_NAME = "name";
   var MARK_HEIGHT_FRACTION = "mark_height_fraction";
-  var MARK_OUTLINE_PX = "mark_outline_px";
+  var MARK_GLYPH_FAMILY = "mark_glyph_family";
   var FIGURES = "figures";
   var SCRUM_SIDE = "scrum";
   var NAME = "name";
@@ -238,10 +236,11 @@
   var LINE_TAG = "line";
   var RECT_TAG = "rect";
   var GROUP_TAG = "g";
-  var POLYGON_TAG = "polygon";
+  var TEXT_TAG = "text";
   var NONE_FILL = "none";
-  // The mark outline keeps its pixel width under the window's non-uniform scale.
-  var NON_SCALING_STROKE = "non-scaling-stroke";
+  // A mark's character centres on the fill's own point, across and down.
+  var MIDDLE_ANCHOR = "middle";
+  var CENTRAL_BASELINE = "central";
   // The unit square the surface's points and shapes are scaled from.
   var VIEW_BOX = "0 0 1000 1000";
   var PRESERVE_NONE = "none";
@@ -1300,40 +1299,35 @@
     );
   }
 
-  // One mark per fill on a window candle: the surface's glyph corners scaled
-  // to the candle column and the pane height, dissolve as an outline and
-  // reform filled, at the candle's x and the price's y.
+  // One mark per fill on a window candle: the surface's glyph character set at
+  // the pane's mark height in the mark family, at the candle's x and the
+  // price's y.
   function playbackMarks(model, colours) {
-    var shapes = listField(model, CANDLES);
     var glyphs = objectField(model, GLYPHS);
-    var column = shapes.length > 0 ? UNIT / shapes.length : UNIT;
-    var markWidth = column * Number(model[MARK_WIDTH_RATIO] || 1);
     var markHeight = UNIT * Number(model[MARK_HEIGHT_FRACTION] || 0);
-    var outline = Number(model[MARK_OUTLINE_PX] || 1);
+    var family = text(model[MARK_GLYPH_FAMILY]);
     return listField(model, MARKS).map(function (mark, index) {
       var glyph = objectField(glyphs, text(mark.side));
-      var points = listField(glyph, GLYPH_POINTS);
       var centreX = Number(mark.x) * UNIT;
       var centreY = Number(mark.y) * UNIT;
       var colour = text(mark.side) === SCRUM_SIDE ? colours.mark_scrum : colours.mark_fold;
       var markProps = {
         key: MARKS + String(index),
-        points: points
-          .map(function (corner) {
-            return (centreX + corner[0] * markWidth).toFixed(3) + "," + (centreY + corner[1] * markHeight).toFixed(3);
-          })
-          .join(GAP),
-        fill: glyph[GLYPH_FILLED] ? colour : NONE_FILL,
-        stroke: colour,
-        strokeWidth: outline,
-        vectorEffect: NON_SCALING_STROKE
+        x: centreX.toFixed(3),
+        y: centreY.toFixed(3),
+        fill: colour,
+        stroke: NONE_FILL,
+        fontFamily: family,
+        fontSize: markHeight.toFixed(3),
+        textAnchor: MIDDLE_ANCHOR,
+        dominantBaseline: CENTRAL_BASELINE
       };
       markProps[PART_ATTR] = PLAYBACK_MARK_PART;
       markProps[SIDE_ATTR] = text(mark.side);
       markProps[GLYPH_ATTR] = text(mark.glyph);
       markProps[PRICE_ATTR] = String(mark.price);
       markProps[CANDLE_INDEX_ATTR] = String(mark.index);
-      return element(POLYGON_TAG, markProps);
+      return element(TEXT_TAG, markProps, text(glyph[GLYPH_NAME]));
     });
   }
 

@@ -459,32 +459,24 @@ INDICATOR_TOGGLES = (
     ("bbullseye", "BBull", "chart_zone_fold"),
 )
 
-#: The two hermetic glyphs a fill is marked with, one definition the Charts
-#: painter and the Simulator's playback both read: ``dissolve`` for a scrum, a
-#: triangle pointing down drawn as an outline; ``reform`` for a fold, a
-#: triangle pointing up drawn filled. Each corner is ``(dx, dy)`` in the unit
-#: mark, y down, centred on the fill.
+#: The two hermetic characters a fill is marked with, one definition the Charts
+#: painter and the Simulator's playback both read.
 SCRUM_SIDE = "scrum"
 FOLD_SIDE = "fold"
-DISSOLVE_GLYPH = "dissolve"
-REFORM_GLYPH = "reform"
+# U+1F761 is named ALCHEMICAL SYMBOL FOR DISSOLVE, the scrum's operation.
+DISSOLVE_GLYPH = "\U0001f761"
+# U+1F75F is named ALCHEMICAL SYMBOL FOR PRECIPITATE, a substance leaving
+# solution and re-forming solid, which is the fold's operation.
+REFORM_GLYPH = "\U0001f75f"
 MARK_GLYPHS = {
-    SCRUM_SIDE: {
-        "name": DISSOLVE_GLYPH,
-        "points": [[-0.5, -0.5], [0.5, -0.5], [0.0, 0.5]],
-        "filled": False,
-    },
-    FOLD_SIDE: {
-        "name": REFORM_GLYPH,
-        "points": [[-0.5, 0.5], [0.5, 0.5], [0.0, -0.5]],
-        "filled": True,
-    },
+    SCRUM_SIDE: {"name": DISSOLVE_GLYPH},
+    FOLD_SIDE: {"name": REFORM_GLYPH},
 }
-#: A mark's width as a share of one candle column, its height as a share of
-#: the pane's height, and its outline width in logical pixels.
+#: A mark's width as a share of one candle column, its height as a share of the
+#: pane's height, and the family its character is set in.
 MARK_WIDTH_RATIO = 1.0
 MARK_HEIGHT_FRACTION = 0.05
-MARK_OUTLINE_PX = 1.5
+MARK_GLYPH_FAMILY = ds.FONT_FAMILY_GLYPH
 
 #: An overlay that paints a fill or a mark over the price pane, so it starts off.
 INDICATOR_OCCLUDES = {
@@ -792,7 +784,7 @@ METRICS = {
     "mark_glyphs": MARK_GLYPHS,
     "mark_width_ratio": MARK_WIDTH_RATIO,
     "mark_height_fraction": MARK_HEIGHT_FRACTION,
-    "mark_outline_px": MARK_OUTLINE_PX,
+    "mark_glyph_family": MARK_GLYPH_FAMILY,
     "candle_border_width_px": CANDLE_BORDER_WIDTH_PX,
     "wick_width_px": WICK_WIDTH_PX,
     "grid_line_width_px": GRID_LINE_WIDTH_PX,

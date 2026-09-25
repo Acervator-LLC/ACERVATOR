@@ -15,8 +15,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -213,7 +213,7 @@ class PlaybackView(QWidget):
         width: float,
         height: float,
     ) -> None:
-        """Draw each payload mark as its ``MARK_GLYPHS`` polygon, ``mark_scrum``
+        """Draw each payload mark as its ``MARK_GLYPHS`` character, ``mark_scrum``
         or ``mark_fold`` coloured, ``mark_width_ratio`` of ``column_px`` wide
         and ``mark_height_fraction`` of ``height`` tall."""
         glyphs = self._payload.get("glyphs") or {}
@@ -223,27 +223,29 @@ class PlaybackView(QWidget):
         mark_h = height * float(
             self._payload.get("mark_height_fraction", surface.MARK_HEIGHT_FRACTION)
         )
-        outline = float(self._payload.get("mark_outline_px", surface.MARK_OUTLINE_PX))
+        family = str(self._payload.get("mark_glyph_family", surface.MARK_GLYPH_FAMILY))
+        font = QFont()
+        font.setFamilies([one.strip().strip("'\"") for one in family.split(",")])
+        font.setPixelSize(max(1, int(round(mark_h))))
+        painter.setFont(font)
         for mark in self._payload.get("marks") or []:
             glyph = glyphs.get(mark["side"])
             if glyph is None or mark.get("y") is None:
                 continue
             centre_x = float(mark["x"]) * width
             centre_y = float(mark["y"]) * height
-            polygon = QPolygonF(
-                [
-                    QPointF(centre_x + dx * mark_w, centre_y + dy * mark_h)
-                    for dx, dy in glyph["points"]
-                ]
-            )
             colour = _colour(
                 colours["mark_scrum"]
                 if mark["side"] == surface.back_test.SCRUM
                 else colours["mark_fold"]
             )
-            painter.setPen(QPen(colour, outline))
-            painter.setBrush(QBrush(colour) if glyph["filled"] else Qt.NoBrush)
-            painter.drawPolygon(polygon)
+            painter.setPen(QPen(colour))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawText(
+                QRectF(centre_x - mark_w / 2, centre_y - mark_h / 2, mark_w, mark_h),
+                Qt.AlignCenter,
+                glyph["name"],
+            )
 
 
 class SimulatorTabQt(QWidget):

@@ -938,6 +938,51 @@ MARK_GLYPHS = {
 }
 ```
 
+#### The two glyphs are hermetic characters
+
+Two sentences above are overtaken. Each is quoted whole, with the true sentence
+under it.
+
+Overtaken: *"A fill is drawn as one of the two hermetic glyphs the Simulator's
+playback draws, from one definition both read: a sell as `dissolve`, a triangle
+pointing down as an outline, and a buy as `reform`, a triangle pointing up
+filled."*
+
+True now: a fill is drawn as one of two hermetic characters the Simulator's
+playback draws, from one definition both read. A sell draws U+1F761, named
+ALCHEMICAL SYMBOL FOR DISSOLVE, in gold. A buy draws U+1F75F, named ALCHEMICAL
+SYMBOL FOR PRECIPITATE, in blue. The alchemical block carries no COAGULATE
+character, and precipitate is the standard's name for a substance leaving
+solution and re-forming solid, which is what a fold does.
+
+Overtaken: *"The glyph sits on the candle whose interval holds the fill's stamp,
+one candle column wide and a twentieth of the price pane tall, with a tag naming
+the role and the price beside it."*
+
+True now: the character sits on the candle whose interval holds the fill's stamp,
+set at a twentieth of the price pane in the symbol family, with a tag naming the
+role and the price beside it. One candle column still sets the mark's footprint
+for placing that tag. The corner list and the fill flag are gone with the
+triangles they described, and so is the outline width, because a drawn character
+takes no outline.
+
+```python
+# U+1F761 is named ALCHEMICAL SYMBOL FOR DISSOLVE, the scrum's operation.
+DISSOLVE_GLYPH = "\U0001f761"
+# U+1F75F is named ALCHEMICAL SYMBOL FOR PRECIPITATE, a substance leaving
+# solution and re-forming solid, which is the fold's operation.
+REFORM_GLYPH = "\U0001f75f"
+MARK_GLYPHS = {
+    SCRUM_SIDE: {"name": DISSOLVE_GLYPH},
+    FOLD_SIDE: {"name": REFORM_GLYPH},
+}
+MARK_GLYPH_FAMILY = ds.FONT_FAMILY_GLYPH
+```
+
+The family resolves to Segoe UI Symbol, and both characters resolve on it. The
+Simulator's two playback windows draw the same two characters from the same
+object.
+
 The fills come from two figures of the bot. Each tab subscribes to the bus
 topic every fill crosses and records it, so a fill made after launch draws on
 the next status tick. And each standing fold tranche the bot holds was made at
