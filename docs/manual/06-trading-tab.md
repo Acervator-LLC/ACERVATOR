@@ -3192,6 +3192,41 @@ restored bot read Inverted back — taking its entry side as a sell and its exit
 as a buy. The reader of the standing number is still uncalled, so the number
 itself reaches nothing.
 
+**Three sentences above are overtaken.** None is edited and none is removed. Each
+is quoted here with the reading that replaces it.
+
+> The one method that reads the number, `set_initial_chunk_rate`, has no caller in
+> the product source either. Only tests call it.
+
+> The reader of the standing number is still uncalled, so the number
+> itself reaches nothing.
+
+The reader has a caller. The Extractor's own rate reader calls it once, on the
+first tick of a bot with no position open, and the tick awaits that reader on
+every due watch-list refresh.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._acquire_usd_per_base_rate`, the
+first-rate call
+
+```python
+if not self._recent_rates and self._tick_counter <= 1 and not self._positions:
+    self.set_initial_chunk_rate(
+        rate, total_holdings=await self._read_base_holdings(base)
+    )
+```
+
+> Creation carries both names today.
+
+Neither name is in the product source. Both were removed with the settings that
+carried them. Searched over the git index across every tracked Python file, each
+returns no occurrence, against sixteen for a refresh key that is still read.
+
+```
+inverted_extractor_standing_alt_units    0 occurrences
+extractor_direction                      0 occurrences
+extractor_scan_refresh_candles          16 occurrences
+```
+
 `src/trading/extractor_bot.py` — `ExtractorBot.set_initial_chunk_rate`, the
 inverted branch
 
@@ -3387,6 +3422,19 @@ list to the ranked top-N.
 | Direction | `extractor_bot.py:620` | whether entry buys or sells |
 | Standing alt units (inverted) | `extractor_bot.py:228` | nothing; its method has no caller |
 
+**The last row's reason is overtaken.** The row stays as it is written. Its
+verdict of nothing still holds; the reason beside it does not.
+
+> | Standing alt units (inverted) | `extractor_bot.py:228` | nothing; its method has no caller |
+
+The method has a caller. The setting reaches nothing because the name the row
+stands for is in no Python file, not because the reader is uncalled.
+
+```
+inverted_extractor_standing_alt_units    0 occurrences in tracked Python
+set_initial_chunk_rate                   1 call site in tracked Python
+```
+
 Three of the fifteen are read once, at construction, and never again: the pool
 size, the hedge budget and the trend strength threshold. The other twelve are
 read off the config as the bot ticks, so an edit to a running bot reaches them.
@@ -3482,6 +3530,31 @@ waiting. And a record written before that stamp existed restores it as zero, whi
 reads as long ago and admits a correction at once — the same answer the tick
 counter gave for a pair it had never seen.
 
+**This whole throttle is overtaken.** Every sentence above stays as it is
+written. The section describes a throttle between two averaging-down rounds, and
+averaging down went with the settings the ruling of 13 September 2026 removed.
+
+> The throttle reads the stamp the position already carries from its last
+> correction, and from its entry before that, so the first correction after an
+> entry waits the same span as every correction after it.
+
+No Python file defines the correction method the citation above names, and no
+Python file defines the helper inside it. Searched over the git index across
+every tracked Python file:
+
+```
+_maybe_fire_correction       0 occurrences
+_correction_skip_seconds     0 occurrences
+_last_correction_tick        0 occurrences
+_candle_seconds              3 occurrences
+_refresh_interval_seconds    5 occurrences
+```
+
+The last two rows are the control: the same search finds the candle-length helper
+and the refresh interval that still read it, so a zero above is a reading of the
+tree and not of the search. The watch-list refresh is the one candle count that
+survives.
+
 #### What the pool picker does when it is empty, and when it is not
 
 Both settings of the picker run today. Leave every box clear and the bot ranks
@@ -3523,6 +3596,23 @@ Driven with a forty dollar budget against a base priced at sixteen dollars, the
 reserve read 2.5 base units, and the claim written against the venue covered the
 pool and the reserve together.
 
+**The hedge conversion above is overtaken.** Every sentence stays as it is
+written. The entry earlier on this page already records that the hedge budget is
+removed, and the two fields the block above cites went with it.
+
+> At zero the reserve is off and every averaging-down round spends the pool.
+
+No Python file defines either field. Searched over the git index across every
+tracked Python file, against the pool field that still carries the claim:
+
+```
+_hedge_budget_usd     0 occurrences
+_hedge_free_base      0 occurrences
+_chunk_size_base     22 occurrences
+```
+
+The claim the bot writes against the venue now covers the pool alone.
+
 #### The standing alt quantity reaches the pool now
 
 The method that reads it runs. An Extractor reads its base currency's dollar
@@ -3544,6 +3634,32 @@ Driven on a record holding 31.25 standing units against a base priced at sixteen
 dollars, the restored bot read a pool of 31.25 base units and five hundred
 dollars, where the same bot before the rate held four hundred of each. The
 quantity also sizes the claim the bot writes against the venue.
+
+**The inverted branch above is overtaken.** Every sentence stays as it is
+written. Its opening sentence is still true, and the branch it credits is not.
+
+> The method that reads it runs.
+
+That much holds. The rebase runs on the first tick of a bot with no position
+open, which is the call this page records two sections above.
+
+> For an Inverted Extractor holding a standing
+> position, the quantity becomes the pool and the dollar figure becomes a reading of
+> it rather than an input.
+
+No Python file defines the direction field the branch tests, and no Python file
+defines the standing-quantity name it reads. Searched over the git index across
+every tracked Python file, against the two names the rebase still uses:
+
+```
+_is_inverted                             0 occurrences
+inverted_extractor_standing_alt_units    0 occurrences
+_chunk_size_usd                         76 occurrences
+_usd_per_base_rate                      37 occurrences
+```
+
+The pool now rebases from the dollar figure on every Extractor, and the dollar
+figure is the input rather than a reading.
 
 #### Who may close an Extractor Tranche
 
@@ -4279,6 +4395,32 @@ moved. The corrected reading for each:
 Five entries already read "bot creation passes it through": Read Rate, Band
 Travel, Pool Reserve, Exit % and Max cost-basis multiple. Those sentences stand
 unchanged.
+
+**Two cells in the table above are overtaken.** Both rows stay as they are
+written. The table corrected the entries above it, and two of its own corrections
+have since gone stale.
+
+> Bot creation passes `inverted_extractor_standing_alt_units` and `extractor_direction`. `set_initial_chunk_rate` still has no caller in the product source.
+
+Both halves of that cell are false now. The rebase has one call site, and the two
+names the cell credits to bot creation are in no Python file.
+
+> Bot creation passes `extractor_correction_skip_candles`. The reader still counts ticks rather than candles.
+
+The name is in no Python file either, and neither is the reader. Searched over
+the git index across every tracked Python file:
+
+```
+set_initial_chunk_rate                   1 call site
+inverted_extractor_standing_alt_units    0 occurrences
+extractor_direction                      0 occurrences
+extractor_correction_skip_candles        0 occurrences
+_maybe_fire_correction                   0 occurrences
+extractor_scan_refresh_candles          16 occurrences
+```
+
+The last row is the control. The same search finds the refresh key that is still
+read, so a zero above is a reading of the tree and not of the search.
 
 ### What the run measured
 
