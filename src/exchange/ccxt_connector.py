@@ -255,6 +255,8 @@ def market_rules(market: Any, precision_mode: int) -> MarketRules:
         amount_increment=precision_to_increment(
             precision.get("amount"), precision_mode
         ),
+        # CCXT maps Coinbase's price_increment, else its quote_increment, here.
+        price_increment=precision_to_increment(precision.get("price"), precision_mode),
     )
 
 

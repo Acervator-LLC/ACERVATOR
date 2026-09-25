@@ -11,7 +11,13 @@ from __future__ import annotations
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
+from decimal import (
+    Decimal,
+    InvalidOperation,
+    ROUND_CEILING,
+    ROUND_FLOOR,
+    ROUND_HALF_UP,
+)
 from enum import Enum
 from typing import Optional
 
@@ -125,7 +131,34 @@ class MarketRules:
     min_amount: Optional[float] = None  # base units
     min_cost: Optional[float] = None  # quote units
     amount_increment: Optional[float] = None  # base units a size steps by
+    price_increment: Optional[float] = None  # quote units a price steps by
     read: bool = True
+
+    @property
+    def fractionable(self) -> Optional[bool]:
+        """True when ``amount_increment`` is under one unit, False when it is a
+        whole unit or more, and None while the venue published no increment."""
+        increment = self.amount_increment
+        if increment is None or not math.isfinite(increment) or increment <= 0.0:
+            return None
+        return increment < 1.0
+
+    def price_on_tick(self, price: float) -> Optional[float]:
+        """``price`` moved to the nearest ``price_increment`` step, and None
+        while the venue published no tick or ``price`` is not finite."""
+        increment = self.price_increment
+        if increment is None or not math.isfinite(increment) or increment <= 0.0:
+            return None
+        try:
+            if not math.isfinite(price):
+                return None
+            step = Decimal(repr(increment))
+            steps = (Decimal(repr(price)) / step).to_integral_value(
+                rounding=ROUND_HALF_UP
+            )
+            return float(steps * step)
+        except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+            return None
 
     @property
     def smallest_amount(self) -> Optional[float]:

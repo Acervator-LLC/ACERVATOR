@@ -154,8 +154,16 @@ def tradeable_answer(
     ``TRADEABLE_YES`` while the smallest order the venue accepts costs no more
     than ``excess_usd``, ``TRADEABLE_NO`` while it costs more, and
     ``TRADEABLE_UNKNOWN`` while no record was read or no price is known.
+
+    OVERTAKEN: "``TRADEABLE_UNKNOWN`` while no record was read or no price is
+    known."
+    ``TRADEABLE_UNKNOWN`` while no record was read, no price is known, or
+    ``MarketRules.fractionable`` is None because the venue published no size
+    increment.
     """
     if rules is None or not getattr(rules, "read", False):
+        return TRADEABLE_UNKNOWN
+    if getattr(rules, "fractionable", None) is None:
         return TRADEABLE_UNKNOWN
     if not math.isfinite(excess_usd) or excess_usd <= 0.0:
         return TRADEABLE_UNKNOWN

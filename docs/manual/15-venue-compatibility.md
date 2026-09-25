@@ -424,6 +424,114 @@ The second variant names a cash amount and nothing in the tree constructs it,
 so the ticker rows answer for the built variant alone and the offered list is
 narrowed by that answer. It widens when the second variant lands.
 
+## 2026-09-25 - the price step and the fraction declaration
+
+A venue publishes three order rules, not two. Beside the smallest size it will
+accept and the step that size moves by, it publishes the step a price moves by.
+Coinbase names that third one `quote_increment` on its own product record, and
+the record a bot reads now carries it.
+
+```python
+# src/exchange/base.py:131
+    min_amount: Optional[float] = None  # base units
+    min_cost: Optional[float] = None  # quote units
+    amount_increment: Optional[float] = None  # base units a size steps by
+    price_increment: Optional[float] = None  # quote units a price steps by
+    read: bool = True
+```
+
+Read off four recorded Coinbase products: bitcoin and ether step by one cent,
+TE-FOOD steps by a hundredth of a cent, and a product that publishes no step at
+all carries the step as absent rather than as zero.
+
+### The price a venue books
+
+A venue does not book the price a bot names. It moves that price to its own
+nearest step and books the result, so the money an order is worth is the size
+times the stepped price. The minimum order cost is now compared against that
+number.
+
+```python
+# src/trading/bot_container.py:252
+                # The venue books a price on its own tick, so min_cost is
+                # compared against the notional at that price.
+                _booked_px = _rules.price_on_tick(_px)
+```
+
+The refusal the operator reads on the Console names both figures, so a price
+that moved and a price that did not are told apart.
+
+```
+PRE-FLIGHT REJECTED: SELL ETH/USD notional $0.3631 (0.0001000000 x
+$3630.98000000) is below min_cost $10.0000. Priced at $3630.98000000 on a
+price tick of 0.01. API not called.
+```
+
+A sub-cent market keeps its digits. A product priced at 0.0000037 dollars with a
+step of a ten-millionth of a dollar reads `$0.00000370` on that line, because
+every step is taken in exact decimal arithmetic and never by cutting a price to
+a fixed number of places.
+
+### Whether a market can be held in fractions
+
+The size step answers it. A market whose step is under one unit accepts a
+fraction of a unit; a market whose step is a whole unit or larger does not. A
+market whose step the venue never published answers neither.
+
+```python
+# src/exchange/base.py
+    @property
+    def fractionable(self) -> Optional[bool]:
+        """True when ``amount_increment`` is under one unit, False when it is a
+        whole unit or more, and None while the venue published no increment."""
+```
+
+Read off the same recorded products: bitcoin and ether answer yes, TE-FOOD and
+the expiring contract answer no, and the product with no published step answers
+nothing.
+
+### The row this entry overtakes
+
+The unknown row of the three-answer table above is kept as written. It says the
+unknown answer is drawn when no market record was obtained.
+
+The true row is: the unknown answer is drawn when no market record was obtained,
+and also when the record carries no size step, because a market that has not said
+whether it can be held in fractions has not said whether the excess a scrum
+submits is expressible there.
+
+Driven on the six recorded products, four of which publish a step: the four
+answer exactly as they did before, and the two that publish no step move off the
+yes answer. No Coinbase spot product publishes no step, so no row the operator
+sees today changes.
+
+Nothing else on this page is overtaken. The per-venue verdict column, the excess
+figure and the two-variant reading all stand as written.
+
+### The tuple this record replaced
+
+The block under *What a scrum asks of a venue* is kept as written. It quotes a
+docstring saying the lookup returns a minimum amount, a minimum cost and an
+amount precision, cached, and zero, zero and eight on any lookup failure.
+
+That tuple is gone. The bot reads a record instead, and the record holds an
+unpublished rule as absent.
+
+```python
+# src/trading/bot_container.py
+    async def _get_market_rules(self, symbol: str) -> "MarketRules":
+        """Return the venue's published ``MarketRules`` for ``symbol``, cached,
+        and an all-``None`` record when the lookup fails or the venue lists no
+        such market."""
+```
+
+### What the broker path still carries
+
+Nothing. `src/stocks/broker_base.py` names no size rule, no price step and no
+market record, and no code in the tree constructs a broker connector, so there
+is nothing on that path for a rule to reach. The crypto record carries the
+rules; the two order contracts stay separate.
+
 ## Where each venue fact was read
 
 Each publisher's page was opened as a document outside this repository and
