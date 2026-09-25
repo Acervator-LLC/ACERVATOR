@@ -1440,6 +1440,8 @@ class ExecutionEngineMixin:
                     )
                 except Exception as _crr_who:  # noqa: BLE001
                     # Must not raise: the outer except turns a refusal into a sell.
+                    # The outer except refuses the sell, so a raise here costs
+                    # only _crr_holders.
                     _crr_holders = ""
                     logger.debug(
                         "Bot %s could not list claim holders on %s: %s",
@@ -1484,6 +1486,24 @@ class ExecutionEngineMixin:
                 type(_crr_exc).__name__,
                 _crr_exc,
             )
+            # A raised pre-check has not answered, so this sell stops instead
+            # of running on _current_holdings alone.
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"SELL REFUSED (capital reservation unreadable): the "
+                    f"pre-check raised {type(_crr_exc).__name__}: "
+                    f"{_crr_exc}. No sibling bot's claim on "
+                    f"{self.config.target_asset} could be read, so this sell "
+                    f"of {amount:.6f} is refused instead of placed unbounded. "
+                    f"The next tick reads the claim table again."
+                ),
+            )
+            self._emit_trade_notification(
+                "SCRUM", "CANCELLED", "capital reservation unreadable"
+            )
+            return None
 
         try:
             _open = await self.exchange.get_open_orders(self.config.symbol)

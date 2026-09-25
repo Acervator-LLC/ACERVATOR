@@ -510,6 +510,42 @@ removed, so no dollar grant is made and that warning can no longer be written.
 The Extractor writes a second warning now, described under the next heading but
 one.
 
+### The sale stops when the claim cannot be read
+
+One sentence above is overtaken for the first of the four places, and it stays as
+written:
+
+> "Four places let a bot carry on when that claim is not there, and all four now
+> write a warning naming what was lost."
+
+The true sentence for the place that bears on a sale: the warning is written and
+then the sale is refused. A check that cannot answer is not an allowance, which
+is what the open-orders read one screen below already does with a failure of its
+own.
+
+`src/trading/scrumming/execution.py` — the refusal that follows the warning
+
+```python
+self._emit_trade_notification(
+    "SCRUM", "CANCELLED", "capital reservation unreadable"
+)
+return None
+```
+
+Driven on the real sell path with the claim read raising, twice: once on a claim
+table holding a quantity that is not a number, and once on a registry that could
+not be resolved. Both readings are the record the bot itself emitted.
+
+```
+before   SELL signal: 20.000000 @ $100.00000000 (VH:clean, MARKET)
+         SCRUM SENT, venue order calls 1
+after    SELL REFUSED (capital reservation unreadable)
+         SCRUM CANCELLED, venue order calls 0
+```
+
+The operator sees a cancelled scrum with its reason in the upper pane, where a
+completed sale used to appear.
+
 ### A claim that never reached the disk
 
 The registry keeps the claim table in memory and writes it to a file. The
