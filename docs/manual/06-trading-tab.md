@@ -3855,6 +3855,44 @@ def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
     self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 ```
 
+##### What the pane reports about a trade line
+
+The Live pane reports every line it draws whose text names a trade. A trade line
+that drew plain then shows on the System Status tab as a fault, instead of
+passing unnoticed. The report carries the shape the pane drew and the shape the
+text asked for, and it reads the two apart: the drawn shape comes from the text
+after the bot's tag, and the asked-for shape from those words being anywhere in
+the message at all. A line that names no trade gets no report, so the report
+follows fills rather than every line.
+
+`src/gui/widgets/status_log.py` — `StatusLog._report_trade_shape`
+
+```python
+if surface.TRADE_PREFIX not in message:
+    return
+with contextlib.suppress(Exception):
+    from src.core.signal_contract import emit as _log_emit
+
+    _log_emit(
+        "trading.12.007.postcondition.trade_line_drawn_as_trade",
+        actual=style["kind"],
+        expected=surface.KIND_TRADE,
+        context={
+            "tag": style["tag"],
+            "font_size_px": style["font_size_px"],
+            "bold": style["bold"],
+            "color": style["color"],
+        },
+    )
+```
+
+Read on the running program, with the home on a scratch directory and every
+socket but loopback refused, driving invented tickers and figures: six lines
+naming a trade produced six reports. Five read matched. One read unmatched — a
+line whose trade words did not open the text, and which drew plain, which is the
+fault this report exists to show. Wire and plain lines drove in the same run and
+produced none. Before the change the same run produced no report at all.
+
 Pause Console is a toggle. While it is down, each new line goes into a buffer
 of 2,000 instead of the screen, and a full buffer drops the newest rather than
 the oldest. Resume replays the buffer with the original timestamps and adds a
@@ -6998,3 +7036,107 @@ Read off the running window, before and after:
 ```
 trading.12.001.postcondition.tab_assembled   1 fault  ->  0 faults
 ```
+
+## 2026-09-25 - #858 - the command bar reaches Python on the React page
+
+The five controls of the bot list were read on the running program in both
+builds and set beside one another. Four matched. The command bar did not: on the
+Live page no button reached the application at all, so nothing happened when it
+was pressed.
+
+### The overtaken sentence
+
+**Overtaken.** *"Four of the five act on one bot, or on the whole fleet while you
+hold SHIFT."*
+
+**The true sentence.** Four of the five act on one bot, or on the whole fleet
+while you hold SHIFT, in the window build and in the page build. Before this
+entry that held in the window build only.
+
+### What the command bar press reached
+
+**Functional.** A press on the Live page goes out to the application only when it
+carries one of the fields the page forwards. The command bar's press carried none
+of them, so it was answered from the page's own held payload and the application
+never saw it. The command field now goes out beside the other three.
+
+`src/gui/react_trading_tab.py` — the page's own bridge
+
+```javascript
+if (
+  params &&
+  (owns(params, TOGGLE) ||
+    owns(params, SORT) ||
+    owns(params, PICK) ||
+    owns(params, COMMAND))
+) {
+```
+
+**Design intention.** The page answers a read from what it already holds, and
+sends a press on to the application, because the register, the fleet, the voting
+panel and the bot manager all live there. A command is a press, so it travels.
+
+### The venue a press names
+
+**Functional.** One page can draw more than one venue, so every press carries the
+exchange it came from. The bot table names that field one way and the venue page
+names it another, and the lookup read only the table's name. A command press
+therefore found no venue even once it arrived. The lookup now reads every name a
+press can use.
+
+`src/gui/react_trading_tab.py` — `venue_of_press`
+
+```python
+def venue_of_press(params: Any) -> str:
+    held = params if isinstance(params, dict) else {}
+    for name in VENUE_KEYS:
+        found = held.get(name)
+        if found:
+            return str(found)
+    return ""
+```
+
+### The bot the bar acts on
+
+**Functional.** The bar takes its bot from the table the operator pressed last.
+The page keeps two records of the Scrumming table: the one it draws, which a row
+press moves, and the one the bar reads. A row press moved only the first, so the
+bar found no bot and said "Select a bot first." The bar's own record now takes
+the bot the drawn list holds, every time a press arrives.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `ExchangeTabModel.hold_scrum_bot`
+
+```python
+row = (
+    table.bot_ids.index(wanted)
+    if wanted in table.bot_ids
+    else NO_SELECTION_ROW
+)
+was = table.block_signals(True)
+try:
+    table.clear_selection()
+    table.set_current_cell(row, 0)
+    if row != NO_SELECTION_ROW:
+        table.select_row(row)
+finally:
+    table.block_signals(was)
+```
+
+**Design intention.** The Paper tab and the Simulator keep the same two records,
+so the same call runs on all three. The Detail button already moved both records
+this way, and the row press now does what the Detail button did.
+
+### What the two builds read, after
+
+Read on the running program over 38 bots, at 700, 900 and 1400 pixels wide, with
+every socket but loopback refused. Identical at all three widths:
+
+```
+                  window build          page build
+plain press       1 bot, "stop"         1 bot, "stop"
+SHIFT press       stop_all, 0 bots      stop_all, 0 bots
+SHIFT labels      Start All, Pause All, Stop All, Restart All, Delete
+```
+
+Before the change the page build read 0 bots on the plain press and nothing at
+all on the SHIFT press.
