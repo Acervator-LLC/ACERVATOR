@@ -164,6 +164,5 @@ if _HAS_QT:
                     )
 
         def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
-            style = surface.line_style(message, level)
-            self.append(surface.line_html(ts, message, style))
+            self.append(surface.line_html(ts, surface.line_style(message, level)))
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
