@@ -173,6 +173,7 @@ from ...simulator.ytd_trade_source import ROOT_READY, YtdTradeSource
 from ...trading.stone_tablets.storage import tablet_filename
 from .. import design_system as ds
 from ..color_alpha import rgba
+from ..main_tabs import asset_class_surface as acs
 from ..main_tabs import class_filter_surface
 from ..main_tabs import simulator_tab_surface as surface
 from ..main_tabs.trading_tab_surface import (
@@ -1282,17 +1283,7 @@ class SimTradingTab(QWidget):
         top_splitter.setChildrenCollapsible(False)
 
         # ── Equity exchange IDs (routes to Stock layer) ────────────
-        self._equity_exchange_ids = {
-            "alpaca",
-            "ibkr",
-            "schwab",
-            "tdameritrade",
-            "webull",
-            "tastytrade",
-            "fidelity",
-            "etrade",
-            "interactivebrokers",
-        }
+        self._equity_exchange_ids = acs.EQUITY_VENUES
 
         # ── QStackedWidget: page 0 = Crypto, page 1 = Stock ────────
         self._trading_stack = QStackedWidget()

@@ -25,6 +25,7 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ..color_alpha import rgba
+from .asset_class_surface import EQUITY_VENUES
 
 METHOD = "trading.tab"
 
@@ -33,17 +34,8 @@ TAB_TITLE = "Trading"
 CRYPTO_LABEL = "Crypto"
 STOCK_LABEL = "Stock"
 
-EQUITY_EXCHANGE_IDS = (
-    "alpaca",
-    "etrade",
-    "fidelity",
-    "ibkr",
-    "interactivebrokers",
-    "schwab",
-    "tastytrade",
-    "tdameritrade",
-    "webull",
-)
+#: ``EQUITY_VENUES`` sorted, the order ``view_model`` publishes.
+EQUITY_EXCHANGE_IDS = tuple(sorted(EQUITY_VENUES))
 
 CONTAINER = {
     "margins_px": [2, 2, 2, 2],

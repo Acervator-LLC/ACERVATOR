@@ -6018,6 +6018,23 @@ together. The card's Clear Fleet is the way to empty a fleet held on the
 other layer, such as an imported `bot_state.json` fleet on an equity venue,
 which the stack does not show.
 
+#### Which layer a Simulator venue is seated on
+
+The tab asks one list whether a venue trades equities. The list is declared once,
+in the module the header's asset class group reads, and the Simulator tab reads
+that same name.
+
+`src/gui/simulator/sim_trading_tab.py` — the read, in the tab's own build
+
+```python
+self._equity_exchange_ids = acs.EQUITY_VENUES
+```
+
+A venue on the list is seated on the stock layer and every other venue on the
+crypto layer. The id is matched in lower case, so a venue seated under a
+capitalised name reaches the same layer. Where the list lives, and what reads it,
+is on [06-trading-tab.md](../06-trading-tab.md).
+
 ### The confirmation and the clear
 
 A press reaches `_way_in` on either host and then `_clear_fleet`. The box is
