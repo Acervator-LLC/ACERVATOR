@@ -43,16 +43,15 @@ except ImportError:
     _HAS_QT = False
 from src.gui.qt_safe_events import safe_process_events
 from src.exchange.lazy_singleton import LazySingleton, ThrottledFault
+from src.trading.container.config import as_finite_float
+
+#: The volume a pair row sorts and labels by when `as_finite_float` refuses it.
+VOLUME_REFUSED_USD: float = 0.0
 
 
 def _market_text(value) -> str:
     """The text one market row carries, empty where it carries no text."""
     return value if type(value) is str else ""
-
-
-def _market_number(value):
-    """The number one market row carries, nothing where it carries no number."""
-    return float(value) if type(value) in (int, float) else None
 
 
 def _build_asset_manager():
@@ -296,10 +295,11 @@ if _HAS_QT:
             ]
             # Cached volume only, since a network fetch here blocks the GUI thread.
             filtered.sort(
-                key=lambda m: _market_number(m.get("volume")) or 0.0, reverse=True
+                key=lambda m: as_finite_float(m.get("volume")) or VOLUME_REFUSED_USD,
+                reverse=True,
             )
             for m in filtered:
-                vol = _market_number(m.get("volume"))
+                vol = as_finite_float(m.get("volume"))
                 vol_s = ""
                 if vol is not None:
                     vol_s = (
@@ -329,7 +329,8 @@ if _HAS_QT:
                 + (
                     " (sorted by volume)"
                     if any(
-                        (_market_number(m.get("volume")) or 0.0) > 0 for m in filtered
+                        (as_finite_float(m.get("volume")) or VOLUME_REFUSED_USD) > 0
+                        for m in filtered
                     )
                     else ""
                 )
@@ -560,10 +561,11 @@ if _HAS_QT:
             ]
             # Descending volume matches the auto-scan top-N order.
             filtered.sort(
-                key=lambda m: _market_number(m.get("volume")) or 0.0, reverse=True
+                key=lambda m: as_finite_float(m.get("volume")) or VOLUME_REFUSED_USD,
+                reverse=True,
             )
             for m in filtered:
-                vol = _market_number(m.get("volume"))
+                vol = as_finite_float(m.get("volume"))
                 if vol is None:
                     vol_s = ""
                 elif vol >= 1e9:

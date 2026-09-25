@@ -471,15 +471,21 @@ def shine_min_fraction() -> float:
     return _bar_fraction(BARS_SHINE_MIN_HEIGHT_PX)
 
 
-def _number(value: Any, fallback: float = 0.0) -> float:
-    """One published reading as a float, or ``fallback`` when it is not one."""
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return fallback
-    if number != number:
-        return fallback
-    return number
+#: What a cell, bar, pillar or tint draws when as_finite_float refuses its reading.
+REFUSED_READING: float = 0.0
+
+#: Frames one animation step runs when as_finite_float refuses params frames.
+REFUSED_FRAME_COUNT: float = 1.0
+
+
+def as_finite_float(value: Any) -> Optional[float]:
+    """`value` as a float when it is EXACTLY int or float AND finite.
+
+    Imports `as_finite_float` from `src.trading.container.config` inside the call.
+    """
+    from ...trading.container.config import as_finite_float as admitted
+
+    return admitted(value)
 
 
 def _clamped(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -505,7 +511,8 @@ def _shaded(channels: Any, fraction: Any, floor: float) -> tuple:
     ``floor`` is the share of the colour a reading of zero keeps, so the
     faintest a value ever draws is still visible against the ground.
     """
-    share = floor + (1.0 - floor) * _clamped(_number(fraction))
+    read = as_finite_float(fraction)
+    share = floor + (1.0 - floor) * _clamped(REFUSED_READING if read is None else read)
     return tuple(
         int(round(ground + (one - ground) * share))
         for one, ground in zip(channels, PANEL_GROUND_RGB)
@@ -518,7 +525,8 @@ def _lifted(channels: Any, fraction: Any) -> tuple:
     ``CELL_LIFT_SPAN`` bounds the lift, so a reading of zero draws the colour
     unchanged and the largest reading draws the brightest one.
     """
-    share = CELL_LIFT_SPAN * _clamped(_number(fraction))
+    read = as_finite_float(fraction)
+    share = CELL_LIFT_SPAN * _clamped(REFUSED_READING if read is None else read)
     return tuple(
         int(round(one + (lift - one) * share))
         for one, lift in zip(channels, CELL_LIFT_RGB)
@@ -527,12 +535,15 @@ def _lifted(channels: Any, fraction: Any) -> tuple:
 
 def net_fraction(value: Any) -> float:
     """One Net or Comp reading as a share of ``NET_PILLAR_FULL_SCALE``."""
-    return _clamped(abs(_number(value)) / NET_PILLAR_FULL_SCALE)
+    read = as_finite_float(value)
+    net = REFUSED_READING if read is None else read
+    return _clamped(abs(net) / NET_PILLAR_FULL_SCALE)
 
 
 def conf_band(value: Any) -> str:
     """Which of Conf's three levels one reading falls in."""
-    conf = _number(value)
+    read = as_finite_float(value)
+    conf = REFUSED_READING if read is None else read
     if conf >= CONF_STRONG_LIMIT:
         return CONF_STRONG_BAND
     if conf >= CONF_FAIR_LIMIT:
@@ -546,7 +557,8 @@ def signed_text_color(value: Any) -> str:
     The sign picks the hue and the size of the reading picks the brightness,
     so the cell and the pillar under it never disagree.
     """
-    number = _number(value)
+    read = as_finite_float(value)
+    number = REFUSED_READING if read is None else read
     if number == 0.0:
         return NEUTRAL_TEXT_COLOR
     base = BULLISH_TEXT_COLOR if number > 0.0 else BEARISH_TEXT_COLOR
@@ -559,12 +571,16 @@ def cell_alpha(confidence: Any) -> int:
     Runs from ``CELL_ALPHA_FLOOR`` at no confidence to
     ``CELL_ALPHA_FLOOR + CELL_ALPHA_SPAN`` at full confidence.
     """
-    return int(_clamped(_number(confidence)) * CELL_ALPHA_SPAN) + CELL_ALPHA_FLOOR
+    read = as_finite_float(confidence)
+    conf = REFUSED_READING if read is None else read
+    return int(_clamped(conf) * CELL_ALPHA_SPAN) + CELL_ALPHA_FLOOR
 
 
 def confidence_bar(confidence: Any) -> str:
     """The ten-cell block bar the Conf column prints."""
-    filled = int(_clamped(_number(confidence)) * CONF_BAR_CELLS)
+    read = as_finite_float(confidence)
+    conf = REFUSED_READING if read is None else read
+    filled = int(_clamped(conf) * CONF_BAR_CELLS)
     return CONF_BAR_FILLED * filled + CONF_BAR_EMPTY * (CONF_BAR_CELLS - filled)
 
 
@@ -580,16 +596,24 @@ def indicator_cell_text(indicator_key: str, signal: Optional[dict]) -> str:
     details = reading.get("details")
     details = details if isinstance(details, dict) else {}
     if indicator_key == "adx":
-        value = _number(details.get("adx"))
+        read = as_finite_float(details.get("adx"))
+        value = REFUSED_READING if read is None else read
         if details.get("ranging"):
             return ADX_RANGING_FORMAT.format(value=value)
         return ADX_TRENDING_FORMAT.format(symbol=symbol, value=value)
     if indicator_key == "zscore":
-        return ZSCORE_FORMAT.format(symbol=symbol, value=_number(details.get("z")))
+        read = as_finite_float(details.get("z"))
+        return ZSCORE_FORMAT.format(
+            symbol=symbol, value=REFUSED_READING if read is None else read
+        )
     if indicator_key == "kaufman_er":
-        return KAUFMAN_FORMAT.format(symbol=symbol, value=_number(details.get("er")))
+        read = as_finite_float(details.get("er"))
+        return KAUFMAN_FORMAT.format(
+            symbol=symbol, value=REFUSED_READING if read is None else read
+        )
+    read = as_finite_float(reading.get("confidence"))
     return CONFIDENCE_FORMAT.format(
-        symbol=symbol, value=_number(reading.get("confidence"))
+        symbol=symbol, value=REFUSED_READING if read is None else read
     )
 
 
@@ -597,7 +621,8 @@ def indicator_cell_tooltip(indicator_key: str, signal: Optional[dict]) -> str:
     """The hover text one indicator cell carries: its vote, then its details."""
     reading = signal if isinstance(signal, dict) else {}
     direction = str(reading.get("direction", DEFAULT_DIRECTION))
-    confidence = _number(reading.get("confidence"))
+    read = as_finite_float(reading.get("confidence"))
+    confidence = REFUSED_READING if read is None else read
     lines = [f"{str(indicator_key).upper()}: {direction}  ({confidence:.0%} conf)"]
     details = reading.get("details")
     for name, value in (details if isinstance(details, dict) else {}).items():
@@ -641,7 +666,8 @@ def net_cell(tf_data: dict) -> dict:
     heading above it does, and ``signed_text_color`` so it agrees with its
     pillar.
     """
-    net = _number((tf_data or {}).get("net_score"))
+    read = as_finite_float((tf_data or {}).get("net_score"))
+    net = REFUSED_READING if read is None else read
     return {
         "text": NET_FORMAT.format(value=net),
         "text_color": signed_text_color(net),
@@ -677,7 +703,8 @@ def comp_cell(tf_data: dict) -> dict:
             "text_color": ABSENT_TEXT_COLOR,
             "tooltip": tooltip,
         }
-    value = _number(comp)
+    read = as_finite_float(comp)
+    value = REFUSED_READING if read is None else read
     return {
         "text": COMP_FORMAT.format(value=value),
         "text_color": signed_text_color(value),
@@ -691,7 +718,8 @@ def conf_cell(tf_data: dict) -> dict:
     ``conf_band`` picks the hue and the reading itself picks the brightness,
     so the cell and the pillar under it never disagree.
     """
-    conf = _clamped(_number((tf_data or {}).get("confidence")))
+    read = as_finite_float((tf_data or {}).get("confidence"))
+    conf = _clamped(REFUSED_READING if read is None else read)
     color = CONF_BAND_COLORS[conf_band(conf)]
     return {
         "text": CONF_FORMAT.format(bar=confidence_bar(conf), value=conf),
@@ -1042,8 +1070,10 @@ class ConfidenceBarsModel:
         for at, target in enumerate(self.targets):
             if at >= len(self.current):
                 break
-            here = _number(self.current[at].get("confidence"))
-            there = _number(target.get("confidence"))
+            here_read = as_finite_float(self.current[at].get("confidence"))
+            there_read = as_finite_float(target.get("confidence"))
+            here = REFUSED_READING if here_read is None else here_read
+            there = REFUSED_READING if there_read is None else there_read
             gap = there - here
             if abs(gap) > BARS_SETTLE_DELTA:
                 self.current[at]["confidence"] = here + gap * BARS_LERP_FACTOR
@@ -1161,24 +1191,30 @@ def rate_strip_text(snapshot: Optional[dict]) -> str:
         return RATE_STRIP_ABSENT_TEXT
     reading = snapshot if isinstance(snapshot, dict) else {}
     parts = []
-    btc = _number(reading.get("btc_usd"))
+    btc_read = as_finite_float(reading.get("btc_usd"))
+    btc = REFUSED_READING if btc_read is None else btc_read
     if btc > 0:
+        sat_dollar = as_finite_float(reading.get("sat_per_dollar"))
+        sat_cent = as_finite_float(reading.get("sat_per_cent"))
         parts.append(
             RATE_STRIP_BTC_FORMAT.format(
                 usd=btc,
-                per_dollar=_number(reading.get("sat_per_dollar")),
-                per_cent=_number(reading.get("sat_per_cent")),
+                per_dollar=REFUSED_READING if sat_dollar is None else sat_dollar,
+                per_cent=REFUSED_READING if sat_cent is None else sat_cent,
             )
         )
     else:
         parts.append(RATE_STRIP_BTC_ABSENT_TEXT)
-    eth = _number(reading.get("eth_usd"))
+    eth_read = as_finite_float(reading.get("eth_usd"))
+    eth = REFUSED_READING if eth_read is None else eth_read
     if eth > 0:
+        gwei_dollar = as_finite_float(reading.get("gwei_per_dollar"))
+        gwei_cent = as_finite_float(reading.get("gwei_per_cent"))
         parts.append(
             RATE_STRIP_ETH_FORMAT.format(
                 usd=eth,
-                per_dollar=_number(reading.get("gwei_per_dollar")),
-                per_cent=_number(reading.get("gwei_per_cent")),
+                per_dollar=REFUSED_READING if gwei_dollar is None else gwei_dollar,
+                per_cent=REFUSED_READING if gwei_cent is None else gwei_cent,
             )
         )
     else:
@@ -1216,7 +1252,8 @@ def sign_direction(value: Any) -> str:
     """The vote direction one signed score reads as; ``None`` reads NEUTRAL."""
     if value is None:
         return DEFAULT_DIRECTION
-    number = _number(value)
+    read = as_finite_float(value)
+    number = REFUSED_READING if read is None else read
     if number > 0.0:
         return "BULLISH"
     if number < 0.0:
@@ -1240,7 +1277,8 @@ def collated_pillars(tf_data: dict) -> list:
     entry = tf_data if isinstance(tf_data, dict) else {}
     net = entry.get("net_score")
     comp = entry.get("composite_net")
-    conf = _clamped(_number(entry.get("confidence")))
+    read = as_finite_float(entry.get("confidence"))
+    conf = _clamped(REFUSED_READING if read is None else read)
     band = conf_band(conf)
     drawn = [
         (sign_direction(net), net_fraction(net), BAR_COLORS[sign_direction(net)]),
@@ -1265,17 +1303,19 @@ def collated_pillars(tf_data: dict) -> list:
 def bars_for(subset: list, tf_data: dict) -> list:
     """One mini-panel's bars for the timeframe the table lists first."""
     signals = signals_by_indicator(tf_data)
-    return [
-        {
-            "name": short,
-            "confidence": _number((signals.get(key) or {}).get("confidence")),
-            "direction": str(
-                (signals.get(key) or {}).get("direction", DEFAULT_DIRECTION)
-            ),
-            "group": group,
-        }
-        for key, short, group in subset
-    ]
+    bars = []
+    for key, short, group in subset:
+        signal = signals.get(key) or {}
+        read = as_finite_float(signal.get("confidence"))
+        bars.append(
+            {
+                "name": short,
+                "confidence": REFUSED_READING if read is None else read,
+                "direction": str(signal.get("direction", DEFAULT_DIRECTION)),
+                "group": group,
+            }
+        )
+    return bars
 
 
 class IndicatorPanelModel:
@@ -1562,7 +1602,9 @@ def _apply(model: IndicatorPanelModel, action: str, params: dict) -> None:
     elif action == "set_rates":
         model.set_rates(params.get("snapshot"))
     elif action == "step_bars":
-        for _frame in range(int(_number(params.get("frames"), 1.0)) or 1):
+        read = as_finite_float(params.get("frames"))
+        frames = REFUSED_FRAME_COUNT if read is None else read
+        for _frame in range(int(frames) or 1):
             model.bars_a.step()
             model.bars_b.step()
     elif action == "set_column_positions":

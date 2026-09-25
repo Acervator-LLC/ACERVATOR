@@ -19,6 +19,7 @@ from ..trading.container.config import (
     BotConfig,
     BotMode,
     BotStats,
+    as_finite_float,
     bot_config_kwargs,
     make_bot_config,
 )
@@ -81,11 +82,8 @@ SCRUMMING_LISTS = (
 )
 
 
-def _number(value: Any, fallback: float) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return fallback
+#: Units, dollars and counts a record draws when as_finite_float refuses them.
+REFUSED_FIGURE: float = 0.0
 
 
 def _dicts(value: Any) -> list:
@@ -137,14 +135,22 @@ class PaperBotView:
         self.config = config_of(stored) if stored else _config_from_bot(bot)
         self.stats = stats_of(stored)
         for key in SCRUMMING_FLOATS:
-            setattr(self, "_" + key, _number(saved.get(key), 0.0))
+            read = as_finite_float(saved.get(key))
+            setattr(self, "_" + key, REFUSED_FIGURE if read is None else read)
         for key in SCRUMMING_INTS:
-            setattr(self, "_" + key, int(_number(saved.get(key), 0)))
+            read = as_finite_float(saved.get(key))
+            setattr(self, "_" + key, int(REFUSED_FIGURE if read is None else read))
         for key in SCRUMMING_LISTS:
             setattr(self, "_" + key, _dicts(saved.get(key)))
         if "target_balance" not in saved:
-            self._target_balance = _number(bot.live_target_usd, 0.0)
-        self._current_holdings = _number(bot.holdings, 0.0)
+            target_read = as_finite_float(bot.live_target_usd)
+            self._target_balance = (
+                REFUSED_FIGURE if target_read is None else target_read
+            )
+        holdings_read = as_finite_float(bot.holdings)
+        self._current_holdings = (
+            REFUSED_FIGURE if holdings_read is None else holdings_read
+        )
         self._phantoms_enabled = bool(
             stored.get("phantoms_enabled", PHANTOMS_ENABLED_DEFAULT)
         )
@@ -153,15 +159,16 @@ class PaperBotView:
         ]
         lock = stored.get("lock_candle_count")
         self._coordinator = PhantomLock(lock) if lock is not None else None
-        self._chunk_size_usd = _number(pool.get("chunk_size_usd"), bot.chunk_size_usd)
-        self._chunk_size_base = _number(
-            pool.get("chunk_size_base"), bot.chunk_size_base
-        )
-        self._chunk_free_base = _number(
-            pool.get("chunk_free_base"), bot.chunk_free_base
-        )
-        self._chunk_extracted_total = _number(pool.get("chunk_extracted_total"), 0.0)
-        self._usd_per_base_rate = _number(pool.get("chunk_to_base_rate"), 1.0)
+        size_usd = as_finite_float(pool.get("chunk_size_usd"))
+        size_base = as_finite_float(pool.get("chunk_size_base"))
+        free_base = as_finite_float(pool.get("chunk_free_base"))
+        extracted = as_finite_float(pool.get("chunk_extracted_total"))
+        base_rate = as_finite_float(pool.get("chunk_to_base_rate"))
+        self._chunk_size_usd = bot.chunk_size_usd if size_usd is None else size_usd
+        self._chunk_size_base = bot.chunk_size_base if size_base is None else size_base
+        self._chunk_free_base = bot.chunk_free_base if free_base is None else free_base
+        self._chunk_extracted_total = REFUSED_FIGURE if extracted is None else extracted
+        self._usd_per_base_rate = 1.0 if base_rate is None else base_rate
         self._positions = _dicts(pool.get("positions"))
         self.cycle_growth_cap_usd = cycle_growth_cap_usd(
             self._target_balance,
@@ -186,9 +193,13 @@ class PaperBotView:
         """One row per stored position, keyed as ``ExtractorBot.positions_for_gui``."""
         rows = []
         for one in self._positions:
-            alt_units = _number(one.get("alt_units"), 0.0)
-            avg_buy = _number(one.get("avg_buy_price_base_per_alt"), 0.0)
-            entry_usd = _number(one.get("artillery_size_usd_at_entry"), 0.0)
+            units_read = as_finite_float(one.get("alt_units"))
+            buy_read = as_finite_float(one.get("avg_buy_price_base_per_alt"))
+            entry_read = as_finite_float(one.get("artillery_size_usd_at_entry"))
+            basis_read = as_finite_float(one.get("cost_basis_base"))
+            alt_units = REFUSED_FIGURE if units_read is None else units_read
+            avg_buy = REFUSED_FIGURE if buy_read is None else buy_read
+            entry_usd = REFUSED_FIGURE if entry_read is None else entry_read
             current_usd = alt_units * avg_buy * self._usd_per_base_rate
             delta_pct = (
                 (current_usd - entry_usd) / entry_usd * 100.0 if entry_usd > 0 else 0.0
@@ -201,7 +212,9 @@ class PaperBotView:
                     "entry_usd": entry_usd,
                     "current_usd_approx": current_usd,
                     "delta_pct_usd_approx": delta_pct,
-                    "cost_basis_base": _number(one.get("cost_basis_base"), 0.0),
+                    "cost_basis_base": (
+                        REFUSED_FIGURE if basis_read is None else basis_read
+                    ),
                     "avg_buy_price_base_per_alt": avg_buy,
                     "opened_at": one.get("opened_at"),
                 }

@@ -12,8 +12,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from ...trading.container.config import as_finite_float
 from .. import design_system as ds
-from ..bot_wizard import _get_coin_icon, _market_number, _market_text
+from ..bot_wizard import VOLUME_REFUSED_USD, _get_coin_icon, _market_text
 
 logger = logging.getLogger("acervator.gui")
 
@@ -143,10 +144,11 @@ if _HAS_QT:
             ]
             # Cached volume only, since a network fetch here blocks the GUI thread.
             filtered.sort(
-                key=lambda m: _market_number(m.get("volume")) or 0.0, reverse=True
+                key=lambda m: as_finite_float(m.get("volume")) or VOLUME_REFUSED_USD,
+                reverse=True,
             )
             for m in filtered:
-                vol = _market_number(m.get("volume"))
+                vol = as_finite_float(m.get("volume"))
                 vol_s = ""
                 if vol is not None:
                     vol_s = (
@@ -176,7 +178,8 @@ if _HAS_QT:
                 + (
                     " (sorted by volume)"
                     if any(
-                        (_market_number(m.get("volume")) or 0.0) > 0 for m in filtered
+                        (as_finite_float(m.get("volume")) or VOLUME_REFUSED_USD) > 0
+                        for m in filtered
                     )
                     else ""
                 )
@@ -359,10 +362,11 @@ if _HAS_QT:
             ]
             # Descending volume matches the auto-scan top-N order.
             filtered.sort(
-                key=lambda m: _market_number(m.get("volume")) or 0.0, reverse=True
+                key=lambda m: as_finite_float(m.get("volume")) or VOLUME_REFUSED_USD,
+                reverse=True,
             )
             for m in filtered:
-                vol = _market_number(m.get("volume"))
+                vol = as_finite_float(m.get("volume"))
                 if vol is None:
                     vol_s = ""
                 elif vol >= 1e9:
