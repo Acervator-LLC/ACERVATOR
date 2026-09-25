@@ -183,6 +183,7 @@ _HOST_SOURCE = """(function (global, doc) {
   var TOGGLE = %(toggle)s;
   var SORT = %(sort)s;
   var PICK = %(pick)s;
+  var COMMAND = %(command)s;
   var PREFIX = %(prefix)s;
   var FORGETS = %(forgets)s;
   var VENUES = %(venues)s;
@@ -292,11 +293,16 @@ _HOST_SOURCE = """(function (global, doc) {
   // what the window holds, so it goes out on its own line and is answered
   // by its own id. Every other call is a read and is answered from the
   // payload this page is already holding.
+  // Overtaken: "Four presses leave this page." Five do. A COMMAND press
+  // goes out on PREFIX as well, because the bot manager lives in Python.
   global.acervator = {
     call: function (method, params) {
       if (
         params &&
-        (owns(params, TOGGLE) || owns(params, SORT) || owns(params, PICK))
+        (owns(params, TOGGLE) ||
+          owns(params, SORT) ||
+          owns(params, PICK) ||
+          owns(params, COMMAND))
       ) {
         global.console.log(
           PREFIX + JSON.stringify({ method: method, params: params })
@@ -416,6 +422,20 @@ def models(live: Any = None, asked: Any = None) -> dict:
     }
 
 
+def venue_of_press(params: Any) -> str:
+    """The exchange one press names, under any name in ``VENUE_KEYS``.
+
+    The bot table names it ``for_exchange`` and the venue module names it
+    ``exchange_id``, so a lookup under one name misses the other's presses.
+    """
+    held = params if isinstance(params, dict) else {}
+    for name in VENUE_KEYS:
+        found = held.get(name)
+        if found:
+            return str(found)
+    return ""
+
+
 def venue_models(venues: Any) -> dict:
     """Each venue page's own payloads, keyed by the exchange it draws.
 
@@ -477,6 +497,7 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
         "toggle": json.dumps(scrum_surface.PRIVACY_TOGGLE_PARAM, ensure_ascii=True),
         "sort": json.dumps(scrum_surface.SORT_COLUMN_PARAM, ensure_ascii=True),
         "pick": json.dumps(scrum_surface.SELECT_BOT_PARAM, ensure_ascii=True),
+        "command": json.dumps(venue_surface.COMMAND_PARAM, ensure_ascii=True),
         "prefix": json.dumps(ACTION_PREFIX, ensure_ascii=True),
         "forgets": json.dumps(MODULE_FORGETS, ensure_ascii=True),
         "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
@@ -837,6 +858,7 @@ if _HAS_WEBENGINE:
             return self.show_models({trading_tab_surface.METHOD: handler(built)})
 
         # The three presses the venue answers, each naming the field it is on.
+        # The command bar is answered beside them, on COMMAND_PARAM.
         VENUE_PRESSES = (
             (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
             (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
@@ -850,6 +872,8 @@ if _HAS_WEBENGINE:
             press on this page stays with the page, which owns it. A row
             press also moves the Voting Panel, so the panel is redrawn from
             the window's own reading rather than at the next tick.
+            ``venue_surface.COMMAND_PARAM`` carries the command bar's press,
+            which this tab answers beside those three.
             """
             try:
                 asked = json.loads(payload)
@@ -859,9 +883,7 @@ if _HAS_WEBENGINE:
             params = asked.get("params")
             if not isinstance(params, dict):
                 return False
-            venue = self._venues.get(
-                str(params.get(scrum_surface.EXCHANGE_ID_PARAM, "") or "")
-            )
+            venue = self._venues.get(venue_of_press(params))
             answered = False
             for name, method_name in self.VENUE_PRESSES:
                 column = params.get(name)
@@ -872,6 +894,12 @@ if _HAS_WEBENGINE:
                     continue
                 method(column)
                 answered = True
+            command = params.get(venue_surface.COMMAND_PARAM)
+            if command is not None:
+                press = getattr(venue, "press_command", None)
+                if callable(press):
+                    press(command, params.get(venue_surface.SHIFT_PARAM))
+                    answered = True
             if params.get(scrum_surface.SELECT_BOT_PARAM) is not None:
                 self.refresh_votes()
             return answered

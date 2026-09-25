@@ -214,6 +214,7 @@ COMMAND_SENT = "command.sent"
 FLEET_COMMAND_SENT = "command.fleet"
 BOT_OPENED = "bot.opened"
 SIBLING_CLEARED = "sibling.cleared"
+SCRUM_BOT_HELD = "scrum.held"
 NEW_BOT_ASKED = "bot.new"
 BOT_WIZARD_CLOSED = "wizard.closed"
 PRIVACY_FLIPPED = "privacy.flipped"
@@ -611,6 +612,28 @@ class ExchangeTabModel:
         """Highlight one Extractor row the way an operator click does."""
         self.extractor_table.select_row(row)
         self.on_extractor_selection_changed()
+
+    def hold_scrum_bot(self, bot_id: str) -> str:
+        """Put ``scrum_table`` on ``bot_id`` and answer the bot it then holds.
+
+        ``cmd`` reads ``scrum_table``; a page's row press reaches the host's
+        own drawn table, so the host hands the bot it holds over here.
+        """
+        table = self.scrum_table
+        wanted = str(bot_id or NO_SELECTION_BOT_ID)
+        row = (
+            table.bot_ids.index(wanted) if wanted in table.bot_ids else NO_SELECTION_ROW
+        )
+        was = table.block_signals(True)
+        try:
+            table.clear_selection()
+            table.set_current_cell(row, 0)
+            if row != NO_SELECTION_ROW:
+                table.select_row(row)
+        finally:
+            table.block_signals(was)
+        self.calls.append([SCRUM_BOT_HELD, row])
+        return table.get_selected_bot_id()
 
     def update_bots(self, statuses: list) -> None:
         """Route one fleet list to the two tables and show or hide each section."""

@@ -483,6 +483,16 @@ if _HAS_WEBENGINE:
             scrum_surface.drive(self._scrum, {scrum_surface.SELECT_BOT_PARAM: bot_id})
             self._publish()
 
+        def press_command(self, command: Any, shift_held: Any = False) -> None:
+            """Send one command-bar press on, then publish the fleet again.
+
+            ``TradingTabReact.run_action`` calls this; the bar acts on the bot
+            the drawn list holds, or on the whole fleet while SHIFT is held.
+            """
+            self._screen.hold_scrum_bot(self._scrum.get_selected_bot_id())
+            self._screen.cmd(str(command or ""), bool(shift_held))
+            self._publish()
+
         def highlight_bot(self, bot_id: Any) -> str:
             """Put the bot table's highlight on the Voting Panel's bot.
 
@@ -571,6 +581,9 @@ if _HAS_WEBENGINE:
 
         def _answer(self, method: str, params: dict) -> None:
             if method == surface.METHOD:
+                # The command bar reads _screen.scrum_table; the row press
+                # reaches _scrum.
+                self._screen.hold_scrum_bot(self._scrum.get_selected_bot_id())
                 surface.drive(self._screen, params)
             elif method == scrum_surface.METHOD:
                 scrum_surface.drive(self._scrum, params)

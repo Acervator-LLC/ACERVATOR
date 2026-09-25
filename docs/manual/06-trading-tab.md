@@ -6998,3 +6998,107 @@ Read off the running window, before and after:
 ```
 trading.12.001.postcondition.tab_assembled   1 fault  ->  0 faults
 ```
+
+## 2026-09-25 - #858 - the command bar reaches Python on the React page
+
+The five controls of the bot list were read on the running program in both
+builds and set beside one another. Four matched. The command bar did not: on the
+Live page no button reached the application at all, so nothing happened when it
+was pressed.
+
+### The overtaken sentence
+
+**Overtaken.** *"Four of the five act on one bot, or on the whole fleet while you
+hold SHIFT."*
+
+**The true sentence.** Four of the five act on one bot, or on the whole fleet
+while you hold SHIFT, in the window build and in the page build. Before this
+entry that held in the window build only.
+
+### What the command bar press reached
+
+**Functional.** A press on the Live page goes out to the application only when it
+carries one of the fields the page forwards. The command bar's press carried none
+of them, so it was answered from the page's own held payload and the application
+never saw it. The command field now goes out beside the other three.
+
+`src/gui/react_trading_tab.py` — the page's own bridge
+
+```javascript
+if (
+  params &&
+  (owns(params, TOGGLE) ||
+    owns(params, SORT) ||
+    owns(params, PICK) ||
+    owns(params, COMMAND))
+) {
+```
+
+**Design intention.** The page answers a read from what it already holds, and
+sends a press on to the application, because the register, the fleet, the voting
+panel and the bot manager all live there. A command is a press, so it travels.
+
+### The venue a press names
+
+**Functional.** One page can draw more than one venue, so every press carries the
+exchange it came from. The bot table names that field one way and the venue page
+names it another, and the lookup read only the table's name. A command press
+therefore found no venue even once it arrived. The lookup now reads every name a
+press can use.
+
+`src/gui/react_trading_tab.py` — `venue_of_press`
+
+```python
+def venue_of_press(params: Any) -> str:
+    held = params if isinstance(params, dict) else {}
+    for name in VENUE_KEYS:
+        found = held.get(name)
+        if found:
+            return str(found)
+    return ""
+```
+
+### The bot the bar acts on
+
+**Functional.** The bar takes its bot from the table the operator pressed last.
+The page keeps two records of the Scrumming table: the one it draws, which a row
+press moves, and the one the bar reads. A row press moved only the first, so the
+bar found no bot and said "Select a bot first." The bar's own record now takes
+the bot the drawn list holds, every time a press arrives.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `ExchangeTabModel.hold_scrum_bot`
+
+```python
+row = (
+    table.bot_ids.index(wanted)
+    if wanted in table.bot_ids
+    else NO_SELECTION_ROW
+)
+was = table.block_signals(True)
+try:
+    table.clear_selection()
+    table.set_current_cell(row, 0)
+    if row != NO_SELECTION_ROW:
+        table.select_row(row)
+finally:
+    table.block_signals(was)
+```
+
+**Design intention.** The Paper tab and the Simulator keep the same two records,
+so the same call runs on all three. The Detail button already moved both records
+this way, and the row press now does what the Detail button did.
+
+### What the two builds read, after
+
+Read on the running program over 38 bots, at 700, 900 and 1400 pixels wide, with
+every socket but loopback refused. Identical at all three widths:
+
+```
+                  window build          page build
+plain press       1 bot, "stop"         1 bot, "stop"
+SHIFT press       stop_all, 0 bots      stop_all, 0 bots
+SHIFT labels      Start All, Pause All, Stop All, Restart All, Delete
+```
+
+Before the change the page build read 0 bots on the plain press and nothing at
+all on the SHIFT press.

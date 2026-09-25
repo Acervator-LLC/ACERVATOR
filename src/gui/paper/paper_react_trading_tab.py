@@ -572,6 +572,9 @@ class PaperVenue:
         if method == venue_surface.METHOD:
             if not any(params.get(name) is not None for name in VENUE_PRESS_PARAMS):
                 return False
+            # The command bar reads screen.scrum_table; the row press reaches
+            # self.scrum.
+            self.screen.hold_scrum_bot(self.scrum.get_selected_bot_id())
             venue_surface.drive(self.screen, params)
             return True
         if method == EXTRACTOR_METHOD:
