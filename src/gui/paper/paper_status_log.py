@@ -11,7 +11,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from ..main_tabs import status_log_surface as surface
 from ..main_tabs.status_log_surface import DEFAULT_LOG_LEVEL, StatusLogModel
@@ -22,13 +22,19 @@ logger = logging.getLogger("acervator.gui")
 class PaperStatusLogModel(StatusLogModel):
     """``StatusLogModel`` with ``log_at``: ``log`` under a stamp the caller gives."""
 
-    def log_at(self, stamp: str, message: str, level: Any = DEFAULT_LOG_LEVEL) -> None:
+    def log_at(
+        self,
+        stamp: str,
+        message: str,
+        level: Any = DEFAULT_LOG_LEVEL,
+        kind: Optional[str] = None,
+    ) -> None:
         """Paint ``message`` under ``stamp``, or hold it under a pause as ``log`` does."""
         if self.paused:
             if len(self.pause_buffer) < self.pause_buffer_cap:
-                self.pause_buffer.append((stamp, message, level))
+                self.pause_buffer.append((stamp, message, level, kind))
             return
-        self.render(stamp, message, level)
+        self.render(stamp, message, level, kind)
 
 
 try:
@@ -56,9 +62,9 @@ if _HAS_QT:
             self.setMaximumHeight(150)
             self.setPlaceholderText("Activity log...")
             self._paused: bool = False
-            self._pause_buffer: list[tuple[str, str, str]] = []
+            self._pause_buffer: list[tuple[str, str, str, str | None]] = []
             self._pause_buffer_cap: int = 2000
-            self._relay: Callable[[str, str, str], None] | None = None
+            self._relay: Callable[[str, str, str, str | None], None] | None = None
 
             # setMaximumBlockCount drops the oldest line once 5000 are held.
             try:
@@ -81,12 +87,18 @@ if _HAS_QT:
             ``notice`` call is reported to."""
             self._relay = relay
 
-        def _tell(self, action: str, message: str = "", level: str = "") -> None:
+        def _tell(
+            self,
+            action: str,
+            message: str = "",
+            level: str = "",
+            kind: str | None = None,
+        ) -> None:
             """Report one call to ``_relay`` without stopping ``_render``."""
             if self._relay is None:
                 return
             try:
-                self._relay(action, message, level)
+                self._relay(action, message, level, kind)
             except Exception:
                 logger.debug("PaperStatusLog relay raised on %s", action, exc_info=True)
 
@@ -110,8 +122,8 @@ if _HAS_QT:
             self._tell("resume")
             buffered = list(self._pause_buffer)
             self._pause_buffer.clear()
-            for ts, message, level in buffered:
-                self._render(ts, message, level)
+            for ts, message, level, kind in buffered:
+                self._render(ts, message, level, kind)
             if buffered:
                 self.append(surface.resume_line(len(buffered))["html"])
                 self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
@@ -124,30 +136,40 @@ if _HAS_QT:
                 self.pause()
             return self._paused
 
-        def log(self, message: str, level: str = "info") -> None:
+        def log(
+            self, message: str, level: str = "info", kind: str | None = None
+        ) -> None:
             ts = datetime.now().strftime("%H:%M:%S")
-            self._tell("log", message, level)
+            self._tell("log", message, level, kind)
             if self._paused:
                 # A full ``_pause_buffer`` drops the newest entry, not the oldest.
                 if len(self._pause_buffer) < self._pause_buffer_cap:
-                    self._pause_buffer.append((ts, message, level))
+                    self._pause_buffer.append((ts, message, level, kind))
                 return
-            self._render(ts, message, level)
+            self._render(ts, message, level, kind)
 
-        def log_at(self, stamp: str, message: str, level: str = "info") -> None:
+        def log_at(
+            self,
+            stamp: str,
+            message: str,
+            level: str = "info",
+            kind: str | None = None,
+        ) -> None:
             """``log`` under ``stamp`` instead of the clock: held under a pause, else rendered."""
-            self._tell("log", message, level)
+            self._tell("log", message, level, kind)
             if self._paused:
                 if len(self._pause_buffer) < self._pause_buffer_cap:
-                    self._pause_buffer.append((stamp, message, level))
+                    self._pause_buffer.append((stamp, message, level, kind))
                 return
-            self._render(stamp, message, level)
+            self._render(stamp, message, level, kind)
 
-        def force_log(self, message: str, level: str = "warning") -> None:
+        def force_log(
+            self, message: str, level: str = "warning", kind: str | None = None
+        ) -> None:
             """Render *message* now, whatever ``_paused`` holds."""
             ts = datetime.now().strftime("%H:%M:%S")
-            self._tell("force_log", message, level)
-            self._render(ts, message, level)
+            self._tell("force_log", message, level, kind)
+            self._render(ts, message, level, kind)
 
         def health_stats(self) -> dict:
             """Return ``_paused``, the ``_pause_buffer`` size, the age and count
@@ -169,9 +191,15 @@ if _HAS_QT:
                 "document_blocks": blocks,
             }
 
-        def _render(self, ts: str, message: str, level: str = "info") -> None:
+        def _render(
+            self,
+            ts: str,
+            message: str,
+            level: str = "info",
+            kind: str | None = None,
+        ) -> None:
             try:
-                self._render_safe(ts, message, level)
+                self._render_safe(ts, message, level, kind)
                 import time as _t
 
                 self._last_render_time = _t.time()
@@ -192,6 +220,12 @@ if _HAS_QT:
                         level,
                     )
 
-        def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
-            self.append(surface.line_html(ts, surface.line_style(message, level)))
+        def _render_safe(
+            self,
+            ts: str,
+            message: str,
+            level: str = "info",
+            kind: str | None = None,
+        ) -> None:
+            self.append(surface.line_html(ts, surface.line_style(message, level, kind)))
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())

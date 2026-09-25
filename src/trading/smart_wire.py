@@ -16,6 +16,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..core.event_bus import LINE_KIND_WIRE_FLOW
+
 logger = logging.getLogger("acervator.smart_wire")
 
 MATURE_GROWTH_PCT: float = 200.0
@@ -694,6 +696,8 @@ class SmartWireManager:
                     }
                 )
                 # WIRE FLOW prefix gets magenta styling in StatusLog._render.
+                # Overtaken: "WIRE FLOW prefix gets magenta styling in
+                # StatusLog._render." The emit's ``kind`` gets the magenta.
                 if _vis_bus is not None:
                     _dust_msg = (
                         f"WIRE FLOW (dust skip): ${share:.4f} from "
@@ -701,8 +705,18 @@ class SmartWireManager:
                         f"floor ${self._min_wire:.2f} (pct={pct:.1f}%)"
                     )
                     try:
-                        _vis_bus.emit("bot.log", bot_id=source_id, message=_dust_msg)
-                        _vis_bus.emit("bot.log", bot_id=target_id, message=_dust_msg)
+                        _vis_bus.emit(
+                            "bot.log",
+                            bot_id=source_id,
+                            message=_dust_msg,
+                            kind=LINE_KIND_WIRE_FLOW,
+                        )
+                        _vis_bus.emit(
+                            "bot.log",
+                            bot_id=target_id,
+                            message=_dust_msg,
+                            kind=LINE_KIND_WIRE_FLOW,
+                        )
                     except Exception as _emit_exc:
                         _notice_emit_fails.append("dust-skip")
                         logger.debug(
@@ -732,7 +746,12 @@ class SmartWireManager:
                         f"\u2014 target bot not attached. Wire is orphaned."
                     )
                     try:
-                        _vis_bus.emit("bot.log", bot_id=source_id, message=_orphan_msg)
+                        _vis_bus.emit(
+                            "bot.log",
+                            bot_id=source_id,
+                            message=_orphan_msg,
+                            kind=LINE_KIND_WIRE_FLOW,
+                        )
                     except Exception as _emit_exc:
                         _notice_emit_fails.append("target-unreachable")
                         logger.debug(
@@ -782,6 +801,7 @@ class SmartWireManager:
                                     f"{_refusal_reason}. NO transfer "
                                     f"booked."
                                 ),
+                                kind=LINE_KIND_WIRE_FLOW,
                             )
                             _vis_bus.emit(
                                 "bot.log",
@@ -792,6 +812,7 @@ class SmartWireManager:
                                     f"{_tgt_short} — apply_wire_income "
                                     f"refused. Reason: {_refusal_reason}."
                                 ),
+                                kind=LINE_KIND_WIRE_FLOW,
                             )
                         except (
                             AttributeError,
@@ -867,8 +888,18 @@ class SmartWireManager:
                         from ..core.event_bus import get_event_bus as _gb
 
                         _bus = _gb()
-                    _bus.emit("bot.log", bot_id=source_id, message=_flow_msg)
-                    _bus.emit("bot.log", bot_id=target_id, message=_flow_msg)
+                    _bus.emit(
+                        "bot.log",
+                        bot_id=source_id,
+                        message=_flow_msg,
+                        kind=LINE_KIND_WIRE_FLOW,
+                    )
+                    _bus.emit(
+                        "bot.log",
+                        bot_id=target_id,
+                        message=_flow_msg,
+                        kind=LINE_KIND_WIRE_FLOW,
+                    )
                 except Exception as _emit_exc:
                     # The transfer is already in _transactions; only the
                     # console notice is lost.
@@ -915,6 +946,7 @@ class SmartWireManager:
                                 f"{_src_short_skip} \u2192 {_tgt_short_skip} "
                                 f"raised {type(exc).__name__}: {exc}"
                             ),
+                            kind=LINE_KIND_WIRE_FLOW,
                         )
                     except Exception as _emit_exc:
                         logger.debug(
@@ -949,6 +981,7 @@ class SmartWireManager:
                         f"checked: {dust} dust-skipped, "
                         f"{unreach} unreachable, {errs} errored)"
                     ),
+                    kind=LINE_KIND_WIRE_FLOW,
                 )
         except Exception as _emit_exc:
             logger.debug(

@@ -262,6 +262,9 @@ _TOGGLE_PINS: dict[str, str] = {
     "trading.12.007.postcondition.trade_line_drawn_as_trade": (
         "only a message the Activity Log paints that names a trade"
     ),
+    "trading.12.008.postcondition.line_kind_named_by_writer": (
+        "only a message the Activity Log paints whose own words ask for a shape"
+    ),
     "charts.13.003.postcondition.timeframe_rearmed": (
         "the operator moves a panel's timeframe combo"
     ),
@@ -358,6 +361,8 @@ value is the reason, read at the call site.
 
 # Overtaken: "The seventy-two pins that need a trigger." `_TOGGLE_PINS` holds 73.
 
+# Overtaken: "`_TOGGLE_PINS` holds 73." `_TOGGLE_PINS` holds 74.
+
 CADENCE_BY_NAME = MappingProxyType(
     {
         **{pin: CADENCE_ALWAYS_ON for pin in _ALWAYS_ON_PINS},
@@ -367,6 +372,9 @@ CADENCE_BY_NAME = MappingProxyType(
 """Every pin's declared category, by current name. 87 entries."""
 
 # Overtaken: "87 entries." `CADENCE_BY_NAME` holds 89, and held 88 before this pin.
+
+# Overtaken: "`CADENCE_BY_NAME` holds 89, and held 88 before this pin."
+# `CADENCE_BY_NAME` holds 90: 16 always-on pins and 74 toggle pins.
 
 _NAME_TEMPLATE = "{}"
 """How a templated pin name is written; the trailing `{}` stands for a leaf built at run

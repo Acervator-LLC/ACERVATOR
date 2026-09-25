@@ -7,6 +7,7 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
+from ...core.event_bus import LINE_KIND_WIRE_STACK
 from ..target_bands import at_target_dust_band
 from ..ta_engine import VotingEngine, candles_from_raw, detect_bb_proximity
 from .sizing import (
@@ -469,6 +470,7 @@ class TickPhaseMixin:
                 f"{self.config.target_asset} via aggressive rebalance "
                 f"to new target ${self._target_balance:.2f}."
             ),
+            kind=LINE_KIND_WIRE_STACK,
         )
         try:
             self._emit_trade_notification(
@@ -493,6 +495,7 @@ class TickPhaseMixin:
                 message=(
                     f"WIRE STACK FIRE: rebalance raised " f"{type(exc).__name__}: {exc}"
                 ),
+                kind=LINE_KIND_WIRE_STACK,
             )
             logger.exception("Wire stack rebalance failed")
 

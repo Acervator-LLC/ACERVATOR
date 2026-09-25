@@ -28,6 +28,11 @@ import time
 from datetime import datetime
 from typing import Any, Callable, Optional
 
+from ...core.event_bus import (
+    LINE_KIND_TRADE,
+    LINE_KIND_WIRE_FLOW,
+    LINE_KIND_WIRE_STACK,
+)
 from .. import design_system as ds
 from .native_chart_surface import READOUT_BUY_GLYPH, READOUT_SELL_GLYPH
 from .trade_charts_tab_surface import BUY_SIDE, SELL_SIDE, SIDE_ROLES
@@ -99,11 +104,25 @@ DEFAULT_LEVEL_COLOR = ds.TEXT_HIGH
 RENDER_ERROR_FORMAT = "StatusLog._render exception (#%d): %s | message=%r level=%r"
 RENDER_ERROR_MESSAGE_CHARS = 200
 
-KIND_TRADE = "trade"
-KIND_WIRE_FLOW = "wire_flow"
-KIND_WIRE_STACK = "wire_stack"
+#: A writer names one of the first three on its own ``bot.log`` emit.
+KIND_TRADE = LINE_KIND_TRADE
+KIND_WIRE_FLOW = LINE_KIND_WIRE_FLOW
+KIND_WIRE_STACK = LINE_KIND_WIRE_STACK
 KIND_PLAIN = "plain"
 KIND_RESUME = "resume"
+
+#: The words a message opens with that ``asked_kind`` reads its kind from, in the
+#: order it reads them.
+KIND_MARKERS = (
+    (KIND_TRADE, (TRADE_PREFIX,)),
+    (KIND_WIRE_FLOW, WIRE_FLOW_PREFIXES),
+    (KIND_WIRE_STACK, (WIRE_STACK_PREFIX,)),
+)
+NO_KIND = ""
+
+#: How much of a line's own opening ``writer_mark`` keeps to name its writer.
+WRITER_MARK_SPLIT = ":"
+WRITER_MARK_CHARS = 40
 
 WIDGET = {
     "accessible_name": ACCESSIBLE_NAME,
@@ -162,15 +181,38 @@ def bot_tag(message: str) -> str:
     return found.group(0) if found else ""
 
 
+# The first sentence of the docstring below is overtaken. Quoted whole:
+#   "The part of one message the prefix rules read."
+# It is the part of one message ``line_style`` draws as the line's text.
 def shape_source(message: str) -> str:
     """The part of one message the prefix rules read. ``bot_tag`` comes off
     before ``TRADE_PREFIX`` or a wire prefix is matched."""
     return message[len(bot_tag(message)) :]
 
 
+def asked_kind(message: str) -> str:
+    """The kind one message's own words ask for, read from a marker anywhere in
+    it, or ``NO_KIND``."""
+    for kind, markers in KIND_MARKERS:
+        if any(marker in message for marker in markers):
+            return kind
+    return NO_KIND
+
+
+def writer_mark(message: str) -> str:
+    """The words one line opens with after ``bot_tag``, which name the writer
+    that wrote it, cut at ``WRITER_MARK_SPLIT`` and ``WRITER_MARK_CHARS``."""
+    head = shape_source(message).split(WRITER_MARK_SPLIT, 1)[0]
+    return head[:WRITER_MARK_CHARS]
+
+
+# A message not opening with ``TRADE_PREFIX`` carries no ``<ROLE>: <SYMBOL>:
+# <STAGE>`` to read, and draws unchanged.
 def trade_text(shaped: str) -> tuple[str, str]:
     """The stage-first text a trade message draws, and the role it named.
     A message short of ``TRADE_FIELD_COUNT`` fields draws unchanged, no role."""
+    if not shaped.startswith(TRADE_PREFIX):
+        return shaped, ""
     body = shaped[len(TRADE_PREFIX) :].strip()
     fields = body.split(TRADE_FIELD_SPLIT, TRADE_FIELD_COUNT - 1)
     if len(fields) < TRADE_FIELD_COUNT:
@@ -205,12 +247,18 @@ def style_of(
     }
 
 
-def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
+# The second sentence of the docstring below is overtaken. Quoted whole:
+#   "``TRADE_PREFIX`` then the wire prefixes decide before ``level_color`` does."
+# The ``kind`` the writer named decides, and ``level_color`` paints a line naming
+# none.
+def line_style(
+    message: str, level: Any = DEFAULT_LOG_LEVEL, kind: Optional[str] = None
+) -> dict:
     """The three parts one message draws, and the weights it draws them in.
     ``TRADE_PREFIX`` then the wire prefixes decide before ``level_color`` does."""
     tag = bot_tag(message)
-    shaped = message[len(tag) :]
-    if shaped.startswith(TRADE_PREFIX):
+    shaped = shape_source(message)
+    if kind == KIND_TRADE:
         drawn, role = trade_text(shaped)
         glyph = ROLE_GLYPHS.get(role, "")
         return style_of(
@@ -222,7 +270,7 @@ def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
             bold=True,
             bullet=GLYPH_FORMAT.format(glyph=glyph) if glyph else "",
         )
-    if any(shaped.startswith(prefix) for prefix in WIRE_FLOW_PREFIXES):
+    if kind == KIND_WIRE_FLOW:
         return style_of(
             KIND_WIRE_FLOW,
             tag,
@@ -232,7 +280,7 @@ def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
             bold=True,
             bullet=WIRE_BULLET,
         )
-    if shaped.startswith(WIRE_STACK_PREFIX):
+    if kind == KIND_WIRE_STACK:
         return style_of(
             KIND_WIRE_STACK,
             tag,
@@ -288,9 +336,14 @@ def painted_line(stamp: str, level: Any, style: dict) -> dict:
     }
 
 
-def build_line(stamp: str, message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
+def build_line(
+    stamp: str,
+    message: str,
+    level: Any = DEFAULT_LOG_LEVEL,
+    kind: Optional[str] = None,
+) -> dict:
     """One painted line for ``message``, shaped by ``line_style``."""
-    return painted_line(stamp, level, line_style(message, level))
+    return painted_line(stamp, level, line_style(message, level, kind))
 
 
 def resume_line(buffered_count: int) -> dict:
@@ -329,7 +382,7 @@ class StatusLogModel:
         self.pause_buffer_cap = pause_buffer_cap
         self.clock = clock or now_seconds
         self.paused = False
-        self.pause_buffer: list[tuple[str, str, Any]] = []
+        self.pause_buffer: list[tuple[str, str, Any, Optional[str]]] = []
         self.lines: list[dict] = []
         self.painted: list[dict] = []
         self.scroll_count = 0
@@ -354,8 +407,8 @@ class StatusLogModel:
         self.paused = False
         buffered = list(self.pause_buffer)
         self.pause_buffer.clear()
-        for stamp, message, level in buffered:
-            self.render(stamp, message, level)
+        for stamp, message, level, kind in buffered:
+            self.render(stamp, message, level, kind)
         if buffered:
             self.append(resume_line(len(buffered)))
             self.scroll_to_end()
@@ -373,27 +426,29 @@ class StatusLogModel:
         message: str,
         level: Any = DEFAULT_LOG_LEVEL,
         now: Optional[datetime] = None,
+        kind: Optional[str] = None,
     ) -> None:
         """Take the stamp, then paint the line or hold it under a pause."""
         stamp = timestamp(now)
         if self.paused:
             if len(self.pause_buffer) < self.pause_buffer_cap:
-                self.pause_buffer.append((stamp, message, level))
+                self.pause_buffer.append((stamp, message, level, kind))
             return
-        self.render(stamp, message, level)
+        self.render(stamp, message, level, kind)
 
     def force_log(
         self,
         message: str,
         level: Any = DEFAULT_FORCE_LEVEL,
         now: Optional[datetime] = None,
+        kind: Optional[str] = None,
     ) -> None:
         """Paint a line whether or not the pane is paused.
 
         The Activity-Log watchdog reports through this, so a pause cannot
         hide the report that the log stopped painting.
         """
-        self.render(timestamp(now), message, level)
+        self.render(timestamp(now), message, level, kind)
 
     def append_text(self, text: str) -> None:
         """Paint one unstamped line through ``notice_line``, whatever ``paused``
@@ -419,14 +474,20 @@ class StatusLogModel:
         """The pane's block count: one per painted line, never below one."""
         return max(1, len(self.lines))
 
-    def render(self, stamp: str, message: str, level: Any = DEFAULT_LOG_LEVEL) -> None:
+    def render(
+        self,
+        stamp: str,
+        message: str,
+        level: Any = DEFAULT_LOG_LEVEL,
+        kind: Optional[str] = None,
+    ) -> None:
         """Paint one line and count the outcome.
 
         A sink that raises is counted and reported to the file logger, so
         a message lost at the pane leaves a trace the watchdog can read.
         """
         try:
-            self.render_line(stamp, message, level)
+            self.render_line(stamp, message, level, kind)
             self.last_render_time = self.clock()
             self.total_renders += 1
         except Exception as exc:
@@ -443,10 +504,14 @@ class StatusLogModel:
                 )
 
     def render_line(
-        self, stamp: str, message: str, level: Any = DEFAULT_LOG_LEVEL
+        self,
+        stamp: str,
+        message: str,
+        level: Any = DEFAULT_LOG_LEVEL,
+        kind: Optional[str] = None,
     ) -> None:
         """Build one line, send it to the sink and follow the newest line."""
-        self.append(build_line(stamp, message, level))
+        self.append(build_line(stamp, message, level, kind))
         self.scroll_to_end()
 
     def append(self, line: dict) -> None:
@@ -484,6 +549,10 @@ def pane_model() -> StatusLogModel:
     return PANE_MODEL
 
 
+# One sentence of the docstring below is overtaken. Quoted whole:
+#   "A message is a mapping with ``message``, ``level`` and an optional ``force``
+#   that paints it through a pause."
+# A message also carries ``kind``, the kind its writer named.
 def build_view_model(
     model: StatusLogModel,
     messages: Optional[list] = None,
@@ -515,13 +584,14 @@ def build_view_model(
             text = str(entry.get("message", ""))
             level = entry.get("level", DEFAULT_LOG_LEVEL)
             forced = bool(entry.get("force", False))
+            named = entry.get("kind")
         except Exception as exc:
             logger.warning("status log message skipped: %s", exc)
             continue
         if forced:
-            model.force_log(text, level)
+            model.force_log(text, level, kind=named)
         else:
-            model.log(text, level)
+            model.log(text, level, kind=named)
     for relayed in notices or []:
         model.append_text(str(relayed))
     batch = model.take_painted()

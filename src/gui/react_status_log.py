@@ -312,16 +312,24 @@ if _HAS_WEBENGINE:
 
         # -- what the window already calls ----------------------------------
 
-        def log(self, message: str, level: str = surface.DEFAULT_LOG_LEVEL) -> None:
+        def log(
+            self,
+            message: str,
+            level: str = surface.DEFAULT_LOG_LEVEL,
+            kind: Optional[str] = None,
+        ) -> None:
             """Paint one line, or hold it while the pane is paused."""
-            self._log.log(message, level)
+            self._log.log(message, level, kind=kind)
             self._publish()
 
         def force_log(
-            self, message: str, level: str = surface.DEFAULT_FORCE_LEVEL
+            self,
+            message: str,
+            level: str = surface.DEFAULT_FORCE_LEVEL,
+            kind: Optional[str] = None,
         ) -> None:
             """Paint one line whether or not the pane is paused."""
-            self._log.force_log(message, level)
+            self._log.force_log(message, level, kind=kind)
             self._publish()
 
         def is_paused(self) -> bool:

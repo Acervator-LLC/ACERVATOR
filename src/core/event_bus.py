@@ -18,6 +18,12 @@ from typing import Any, Callable
 
 logger = logging.getLogger("acervator.events")
 
+#: The value a ``bot.log`` writer puts in the event's ``kind`` field to name the
+#: kind of line it is writing. ``status_log_surface.line_style`` reads it.
+LINE_KIND_TRADE = "trade"
+LINE_KIND_WIRE_FLOW = "wire_flow"
+LINE_KIND_WIRE_STACK = "wire_stack"
+
 
 @dataclass
 class Event:
