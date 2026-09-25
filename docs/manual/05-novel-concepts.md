@@ -697,6 +697,28 @@ capital reservation registry answers before a sale is placed, and of the five
 bot construction sites only the two Simulator controllers hand the bot a
 registry (issue #427).
 
+**The sentence above is overtaken.** It is not edited and not removed. It read:
+
+> The capital reservation registry answers before a sale is placed, and of the
+> five bot construction sites only the two Simulator controllers hand the bot a
+> registry (issue #427).
+
+Three sites build a bot, and none of them hands it a registry. The constructor
+accepts one and every caller leaves it unset, so each bot resolves the
+process-wide registry instead.
+
+```
+src/gui/live_bot_window.py:352      builds a bot, passes no registry
+src/gui/main_window.py:3723         builds a bot, passes no registry
+src/trading/container/restore.py:259  builds a bot, passes no registry
+src/trading/scrumming_bot.py:344    capital_registry defaults to None
+```
+
+The engine already records the consequence at
+`src/trading/container/registry.py:42`, which states that the setter has no
+caller. A sale is therefore admitted against the process-wide table rather than
+an injected one.
+
 ## 12 - Technical Analysis Indicator Confidence Tiers
 
 Most TA systems stack indicators additively. The Tier-4 suite organizes signals into four confidence tiers with cumulative weighting: Tier-1 (structural, highest weight), Tier-2 (confirmation, medium weight), Tier-3 (momentum), Tier-4 (context). Entries require Tier-1 + Tier-2 alignment; Tier-3/4 scale confidence but cannot override. This tier system arose out of queries with Claude Code while it was roleplaying as a TA Archetype and is only one such example where most of the other such contributions deal with bug fixes.
