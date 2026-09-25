@@ -3274,7 +3274,7 @@ if _HAS_QT:
 
         def _update_mode_btn_style(self):
             """Tint the layer tab bars with the active asset class's accent."""
-            from .main_tabs.asset_class_surface import accent
+            from .main_tabs.main_window_surface import mode_tab_styles
 
             tabs_ready = hasattr(self, "_crypto_tab_widget") and hasattr(
                 self, "_stock_tab_widget"
@@ -3282,14 +3282,9 @@ if _HAS_QT:
             if not tabs_ready:
                 return
 
-            key = getattr(self, "_asset_class", "crypto")
-            colour = accent(key)
-            selected = (
-                "QTabBar::tab:selected { border-bottom: 2px solid "
-                f"{colour}; color: {colour}; }}"
-            )
-            self._crypto_tab_widget.setStyleSheet(selected if key == "crypto" else "")
-            self._stock_tab_widget.setStyleSheet(selected if key == "stocks" else "")
+            sheets = mode_tab_styles(getattr(self, "_asset_class", None), tabs_ready)
+            self._crypto_tab_widget.setStyleSheet(sheets.get("crypto", ""))
+            self._stock_tab_widget.setStyleSheet(sheets.get("stocks", ""))
 
         def _add_exchange(self) -> None:
             from .main_tabs.asset_class_surface import (

@@ -175,6 +175,7 @@ class HeaderStripMixin:
         """
         from .asset_class_surface import (
             has_layer,
+            layer_page,
             normalise,
             selection_log,
             window_title,
@@ -186,18 +187,20 @@ class HeaderStripMixin:
 
         stack = getattr(self, "_trading_stack", None)
         if stack is not None:
-            if key == "stocks":
-                stack.setCurrentIndex(1)
-                self._tab_widget = self._stock_tab_widget
-                self._exchange_tabs = self._stock_exchange_tabs
-                self._empty_placeholder = self._stock_placeholder
-            elif has_layer(key):
-                stack.setCurrentIndex(0)
-                self._tab_widget = self._crypto_tab_widget
-                self._exchange_tabs = self._crypto_exchange_tabs
-                self._empty_placeholder = self._crypto_placeholder
-            else:
+            if not has_layer(key):
                 self._show_unlayered_class(key)
+            else:
+                stack.setCurrentIndex(layer_page(key))
+                stock = key == "stocks"
+                self._tab_widget = (
+                    self._stock_tab_widget if stock else self._crypto_tab_widget
+                )
+                self._exchange_tabs = (
+                    self._stock_exchange_tabs if stock else self._crypto_exchange_tabs
+                )
+                self._empty_placeholder = (
+                    self._stock_placeholder if stock else self._crypto_placeholder
+                )
 
         self.setWindowTitle(window_title(key))
         self._status_log.log(selection_log(key), "info")

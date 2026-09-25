@@ -6651,3 +6651,122 @@ Forex         Paper draws its own card, the button reads Forex - no venue yet
 
 Sim and History are untouched and still draw the note. The class list read four
 entries on that run, because Derivatives had by then been retired onto Crypto.
+
+## 2026-09-24 - #571 - the window model draws the asset class group
+
+### The window model publishes one button per class
+
+**Functional.** The window keeps a model of itself, apart from the widgets, and
+the bridge answers `main_window.state` from it. That model held a single button
+of its own, reading Crypto Mode, while the header strip already drew the
+segmented group. It now publishes the same group the strip draws, built from
+the same function, so one press names any class and nothing carries two
+answers.
+
+`src/gui/main_tabs/main_window_surface.py` — `MainWindowModel.select_asset_class`
+
+```python
+key = asset_class_surface.normalise(name)
+self.trading_mode = key
+self.class_buttons = asset_class_surface.class_buttons(key)
+self.trading_stack_index = asset_class_surface.layer_page(key)
+self.window_title = asset_class_surface.window_title(key)
+```
+
+**Design intention.** The model exists to report a value that moved on one side
+and not the other. It could not report this one, because nothing on a screen
+drew its button, so the drift sat unseen from the day the group landed. Reading
+the class list at call time removes the class the model can refuse: every
+declared class answers, and a class added to the taxonomy needs no edit here.
+
+Read on the running program, one press a class, in both builds:
+
+```
+Crypto        stack page 0    Acervator - CRYPTO LAYER
+Stock         stack page 1    Acervator - STOCK LAYER
+Commodities   stack page 2    Commodities - no trading layer
+Forex         stack page 2    Forex - no trading layer
+```
+
+### The trading stack page comes from one place
+
+**Functional.** Three files used to state which page a class draws: the builder
+that adds the pages, the emitter that checks them, and the class selector that
+switches them. The taxonomy states it once now. A class with a trading layer
+takes its position in the layer list; every class without one draws the single
+card that names what is missing.
+
+`src/gui/main_tabs/asset_class_surface.py` — `layer_page`
+
+```python
+layered = layered_classes()
+key = normalise(name)
+return layered.index(key) if key in layered else len(layered)
+```
+
+**Design intention.** The stack holds one page a trading layer, and one card
+for every class that has none. Commodities and Forex share that card rather
+than getting empty layers of their own, because an empty layer would offer a
+venue list it cannot serve.
+
+### Blocks the window model overtakes
+
+Three code blocks near the top of this page describe the control that came
+before the group. Each is named where it stands, with what is true today
+beneath it.
+
+**The title block, under the heading naming the title after a swap.** It writes
+the wing title `Acervator — CRYPTO WING`. A press names a class, and the title
+is written from the class:
+
+```python
+self.setWindowTitle(window_title(key))
+```
+
+**The wing block, under the design intention for the two-layer stack.** It sets
+a mode word, retitles one button, checks it, and moves the stack to page one.
+The window holds no such button. One button per class sits in a group, the
+group checks the button the active class names, and the stack page is read off
+the taxonomy:
+
+```python
+stack.setCurrentIndex(layer_page(key))
+```
+
+**The stack block, under the screen itself.** It adds two pages and opens on
+page zero. The stack holds a third page, the card every class without a layer
+draws, and the opening page is read rather than typed:
+
+```python
+self._trading_stack.addWidget(crypto_page)
+self._trading_stack.addWidget(stock_page)
+self._trading_stack.addWidget(self._make_unlayered_page())
+self._trading_stack.setCurrentIndex(acs.layer_page("crypto"))
+```
+
+> "It makes two layers, one for crypto and one for equities, and stacks them so
+> only one is on show at a time."
+
+Still true, and a third page sits beside the two layers: the card a class with
+no trading layer draws.
+
+### What the builder's own check reported
+
+**Functional.** The builder emits one reading when it finishes, counting the
+things it got wrong. That count read one on every launch, because the check
+named two stack pages while the builder added three. It reads zero now, and the
+count it compares against is the taxonomy's.
+
+`src/gui/main_tabs/trading_tab.py` — `TradingTabMixin._build_trading_tab`
+
+```python
+self._trading_stack.count() != acs.stack_pages(),
+_crypto_page != acs.layer_page("crypto"),
+_stock_page != acs.layer_page("stocks"),
+```
+
+Read off the running window, before and after:
+
+```
+trading.12.001.postcondition.tab_assembled   1 fault  ->  0 faults
+```
