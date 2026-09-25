@@ -525,6 +525,20 @@ unpublished rule as absent.
         such market."""
 ```
 
+### Which step actually changes the size
+
+The first sentence of *What a scrum asks of a venue* is kept as written. It says
+two steps stand between the computed size and the venue, one of which truncates
+the size.
+
+Driven on the seven order readings above, the size the bot computes reaches the
+connector unchanged in every one of them: 1234.56789 in and 1234.56789 out,
+0.012345678912345 in and 0.012345678912345 out. The guard reads the market's
+rules to refuse a size under the minimum and a notional under the minimum cost,
+and it changes no size. The one place a size is stepped is the connector, at the
+line quoted in that section. The docstring that said otherwise now carries the
+true sentence beneath it.
+
 ### What the broker path still carries
 
 Nothing. `src/stocks/broker_base.py` names no size rule, no price step and no

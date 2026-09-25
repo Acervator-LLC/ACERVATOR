@@ -189,7 +189,13 @@ class BotContainer:
         """Place an order via the VolumeGuard or ``exchange.place_order``,
         sizing ``amount`` onto the market's own rules first and refusing a
         non-finite, non-positive or sub-minimum size with ``PRE-FLIGHT
-        REJECTED``."""
+        REJECTED``.
+
+        OVERTAKEN: "sizing ``amount`` onto the market's own rules first".
+        ``amount`` reaches ``place_order`` unchanged; the market's rules are read
+        to refuse a sub-minimum size and a sub-minimum notional, and
+        ``CCXTConnector.place_order`` is where a size is stepped.
+        """
         from ..exchange.base import OrderSide, OrderType, Order, OrderStatus
 
         # Exact type test: ``isinstance`` would admit bool, and every
