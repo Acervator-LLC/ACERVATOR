@@ -164,5 +164,27 @@ if _HAS_QT:
                     )
 
         def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
-            self.append(surface.line_html(ts, surface.line_style(message, level)))
+            style = surface.line_style(message, level)
+            self.append(surface.line_html(ts, style))
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+            self._report_trade_shape(message, style)
+
+        def _report_trade_shape(self, message: str, style: dict) -> None:
+            """Report the drawn kind of a message holding ``TRADE_PREFIX``, against
+            ``KIND_TRADE``."""
+            if surface.TRADE_PREFIX not in message:
+                return
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _log_emit
+
+                _log_emit(
+                    "trading.12.007.postcondition.trade_line_drawn_as_trade",
+                    actual=style["kind"],
+                    expected=surface.KIND_TRADE,
+                    context={
+                        "tag": style["tag"],
+                        "font_size_px": style["font_size_px"],
+                        "bold": style["bold"],
+                        "color": style["color"],
+                    },
+                )

@@ -3855,6 +3855,44 @@ def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
     self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 ```
 
+##### What the pane reports about a trade line
+
+The Live pane reports every line it draws whose text names a trade. A trade line
+that drew plain then shows on the System Status tab as a fault, instead of
+passing unnoticed. The report carries the shape the pane drew and the shape the
+text asked for, and it reads the two apart: the drawn shape comes from the text
+after the bot's tag, and the asked-for shape from those words being anywhere in
+the message at all. A line that names no trade gets no report, so the report
+follows fills rather than every line.
+
+`src/gui/widgets/status_log.py` — `StatusLog._report_trade_shape`
+
+```python
+if surface.TRADE_PREFIX not in message:
+    return
+with contextlib.suppress(Exception):
+    from src.core.signal_contract import emit as _log_emit
+
+    _log_emit(
+        "trading.12.007.postcondition.trade_line_drawn_as_trade",
+        actual=style["kind"],
+        expected=surface.KIND_TRADE,
+        context={
+            "tag": style["tag"],
+            "font_size_px": style["font_size_px"],
+            "bold": style["bold"],
+            "color": style["color"],
+        },
+    )
+```
+
+Read on the running program, with the home on a scratch directory and every
+socket but loopback refused, driving invented tickers and figures: six lines
+naming a trade produced six reports. Five read matched. One read unmatched — a
+line whose trade words did not open the text, and which drew plain, which is the
+fault this report exists to show. Wire and plain lines drove in the same run and
+produced none. Before the change the same run produced no report at all.
+
 Pause Console is a toggle. While it is down, each new line goes into a buffer
 of 2,000 instead of the screen, and a full buffer drops the newest rather than
 the oldest. Resume replays the buffer with the original timestamps and adds a
