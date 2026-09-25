@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 # Every argv below runs `sys.executable` or a `shutil.which` result, so no
 # bare program name is resolved through PATH at build time.
@@ -22,6 +23,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST_DIRNAME = "dist"
 WINDOWS_BUILDER = "build_windows.ps1"
 SMARTSCREEN_HELP_NAME = "IF_BLOCKED_READ_THIS.txt"
+BUILDER_NAMES = ("Qt_BUILD.py", "React_BUILD.py")
 
 # Selects the core dependency set plus the `build` and `report` extras, which
 # is what a PyInstaller host installs.
@@ -252,6 +254,24 @@ def build_outputs(skip: frozenset[str] = frozenset()) -> list[str]:
     return found
 
 
+def stamp_builder_dates(finished_at: float) -> list[str]:
+    """Set both ``BUILDER_NAMES`` mtimes under ``PROJECT_ROOT`` to ``finished_at``."""
+    stamped = []
+    for name in BUILDER_NAMES:
+        path = os.path.join(PROJECT_ROOT, name)
+        if not os.path.exists(path):
+            print(f"  NOTE: {name} is not under {PROJECT_ROOT}; its date is unchanged.")
+            continue
+        try:
+            # os.utime rewrites the two times only, so the tracked bytes never move.
+            os.utime(path, (finished_at, finished_at))
+        except OSError as exc:
+            print(f"  NOTE: {name} date not set: {exc}")
+            continue
+        stamped.append(name)
+    return stamped
+
+
 def write_smartscreen_help(folder: str) -> None:
     """Write the "if Windows blocks this" note beside a built executable."""
     help_path = os.path.join(folder, SMARTSCREEN_HELP_NAME)
@@ -358,6 +378,10 @@ def launch(variants: tuple[str, ...]) -> bool:
         print(f"\n  Build reported success but added no folder under {dist_dir()}.")
         return False
 
+    stamped = stamp_builder_dates(time.time())
+    if stamped:
+        print(f"\n  Build date set on: {', '.join(stamped)}")
+
     for exe in built:
         print(f"\n  Build complete: {exe}")
         write_smartscreen_help(os.path.dirname(exe))
@@ -366,6 +390,7 @@ def launch(variants: tuple[str, ...]) -> bool:
 
 
 __all__ = [
+    "BUILDER_NAMES",
     "CONSUMER",
     "HEADER",
     "PROJECT_ROOT",
@@ -382,5 +407,6 @@ __all__ = [
     "powershell_exe",
     "required_python",
     "run_build",
+    "stamp_builder_dates",
     "write_smartscreen_help",
 ]
