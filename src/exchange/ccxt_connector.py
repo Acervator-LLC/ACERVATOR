@@ -62,6 +62,7 @@ from .base import (
 )
 from .api_logger import get_api_log
 from .market_pairs_scout import row_quote_volume_24h
+from .market_rules_store import record_venue
 
 logger = logging.getLogger("acervator.exchange")
 
@@ -1389,6 +1390,14 @@ class CCXTConnector(ExchangeInterface):
                 )
             )
         self._markets_cache = markets
+        # The Simulator and the Paper Trader reach no venue, so the rules read
+        # here are recorded once per read for them to size an order by.
+        try:
+            record_venue(self._exchange_id, markets)
+        except OSError as exc:
+            logger.warning(
+                "market rules for %s not recorded: %s", self._exchange_id, exc
+            )
         return markets
 
     async def get_asset_logo_url(self, currency: str) -> str:

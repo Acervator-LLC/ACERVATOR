@@ -9597,3 +9597,39 @@ where a row would be finds no row.
 | dots drawn | 9 | 9 |
 | a heading press | no error, still no row | no error, still no row |
 | a row press | answers no bot | finds no row |
+
+## 2026-09-25 - a back test's orders are formatted to the venue
+
+A Back Test now sizes every order to the rules the execution venue publishes for
+that market. The rules come from a recording the live connector writes when it
+reads its markets, so a run that reaches no venue still knows what the venue
+would accept. `src/exchange/market_rules_store.py` holds the recording under the
+runtime home.
+
+The bar source and the execution venue are two different things. A tablet names
+both, and the rules are read against the venue that would execute the order.
+
+```python
+# src/simulator/back_test.py:673
+def venue_rules_for(asset: str, exchange_id: str, symbol: str) -> MarketRules:
+```
+
+### Two cells the Back Test report gains
+
+Each fill row carries a **sized by** cell, reading `recorded venue rules` when
+the market's own record answered and `cited unit rule` when nothing was
+recorded. Each bot row carries an **orders refused** count, and the Activity Log
+carries one line per bot naming the reason behind that count.
+
+```
+u881l1-fractional: ADA/USD sizes on coinbase's recorded rules, minimum 0.1 on a
+size step of 0.01.
+u881l1-fractional: ADA/USD refused 710 order(s): 710 below the venue's minimum
+size.
+```
+
+### A refusal costs no tranche
+
+A fold refused under the venue's minimum settles no plan and spends no cash, so
+its tranches stay queued. They accumulate until a later fold buys a legal size.
+On the reading above, 19 of 730 latched folds filled and the rest waited.

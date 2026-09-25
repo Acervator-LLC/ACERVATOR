@@ -572,6 +572,8 @@ def back_test_bot(result: BotResult, bot: Optional[SimBot]) -> dict:
         "stopped_at": result.stopped_at,
         "scrum_latched": int(result.scrum_latched),
         "fold_latched": int(result.fold_latched),
+        "order_refusals": dict(result.order_refusals),
+        "orders_refused": sum(int(n) for n in result.order_refusals.values()),
         "trades": len(result.trades),
         "scrums": int(result.scrum_trades),
         "folds": int(result.fold_trades),
@@ -591,6 +593,9 @@ def back_test_bot(result: BotResult, bot: Optional[SimBot]) -> dict:
     return row
 
 
+# OVERTAKEN: "each with the higher-timeframe bias its gates read, the target
+# after it and the growth it applied".
+# Each row also carries the ``rule_source`` that sized the fill's units.
 def back_test_trades(run: BackTestRun) -> list[dict]:
     """Every fill of ``run`` in fill order, each with the higher-timeframe
     bias its gates read, the target after it and the growth it applied."""
@@ -611,6 +616,7 @@ def back_test_trades(run: BackTestRun) -> list[dict]:
                     "htf_bias": trade.htf_bias or None,
                     "target_usd_after": trade.target_usd_after,
                     "growth_applied_usd": trade.growth_applied_usd,
+                    "rule_source": trade.rule_source or None,
                 }
             )
     return out
@@ -1361,6 +1367,7 @@ BOT_COLUMNS = {
         ("trades", "trades"),
         ("scrums", "scrums"),
         ("folds", "folds"),
+        ("orders_refused", "orders refused"),
         ("start_units", "start units"),
         ("end_units", "end units"),
         ("units_gained", "units gained"),
@@ -1697,6 +1704,7 @@ FILL_COLUMNS = (
     ("htf_bias", "HTF bias"),
     ("target_usd_after", "target after"),
     ("growth_applied_usd", "growth applied"),
+    ("rule_source", "sized by"),
 )
 
 COMPOUNDING_RULE = (

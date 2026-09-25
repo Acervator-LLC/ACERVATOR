@@ -26,6 +26,14 @@ trades under on its venue, every fill is sized under it, and a bot with no
 cited rule is ``UNCITED_RULE`` and walks nothing. ``missing_pairs`` names the
 tablets a run needs and ``download_missing`` fills them through the shipped
 ``GapFiller``.
+
+OVERTAKEN: "``cited_rule_for`` names the unit rule a bot's class trades under on
+its venue, every fill is sized under it".
+``venue_rules_for`` reads the ``MarketRules`` recorded for the bot's market on
+the venue that would execute the order, and ``sized_order`` sizes every fill on
+those rules where they were recorded and on the cited rule where they were not.
+``rule_source_line`` names which of the two sized the bot's orders, and every
+``SimTrade`` carries that source.
 """
 
 from __future__ import annotations
@@ -37,12 +45,14 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Sequence
 
 from ..core.signal_contract import emit as pin_emit
+from ..exchange.base import MarketRules
+from ..exchange.market_rules_store import recorded_rules
 from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
+    BELOW_ONE_UNIT,
     GROWTH_SIDE_LOWER,
-    WHOLE_UNITS,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -51,17 +61,17 @@ from ..trading.scrumming.sizing import (
     fold_rate_taper,
     fold_spend_usd,
     fold_surplus_usd,
-    fold_units,
     growth_cycle_side,
     plan_fold_consumption,
     plan_source_price,
     position_ceiling,
     priced_usd,
     ratio_to_ceiling,
+    recorded_size_rules,
     sale_proceeds_usd,
-    scrum_units,
     scrumming_interval_usd,
     settle_fold_plan,
+    sized_order,
     target_delta_pct,
     target_delta_usd,
     target_growth_applied,
@@ -148,7 +158,8 @@ UNCITED_RULE = "uncited_rule"
 BOT_OUTCOMES = (NO_TABLET, SHORT_TABLET, BACK_TESTED, UNCITED_RULE)
 
 #: Why a whole-unit scrum or fold fills nothing: its dollars buy under one unit.
-BELOW_ONE_UNIT = "below one unit"
+#: OVERTAKEN: the reason now comes from ``sizing.BELOW_ONE_UNIT`` and covers a
+#: recorded size step as well as a whole-unit rule.
 
 #: Back Test: each bot's fold spends its own scrum proceeds and no more.
 FUNDED_BY_PROCEEDS = "proceeds"
@@ -255,7 +266,11 @@ class SimTrade:
     ``ta_timeframe`` the walk ran at, empty when unknown; ``htf_bias`` is the
     higher-timeframe bias name the fill's gates read, empty for none;
     ``target_usd_after`` the position's target after the fill and
-    ``growth_applied_usd`` what the fill added to it."""
+    ``growth_applied_usd`` what the fill added to it.
+
+    ``rule_source`` is the ``sizing.RULE_SOURCE`` that sized ``units``: the
+    market's own recorded rules, or the cited unit rule for its class and venue.
+    """
 
     bot_id: str
     symbol: str
@@ -270,6 +285,7 @@ class SimTrade:
     htf_bias: str = ""
     target_usd_after: float = 0.0
     growth_applied_usd: float = 0.0
+    rule_source: str = ""
 
 
 #: The seam ``walk`` hands each ``SimTrade`` to as it fills, as ``run_battery``
@@ -588,6 +604,8 @@ class BotResult:
     htf: dict = field(default_factory=dict)
     #: The tablet files the walk read, by year, without their suffix.
     tablet_files: tuple[str, ...] = ()
+    #: How many latched orders ``sized_order`` refused, by its refusal reason.
+    order_refusals: dict = field(default_factory=dict)
     #: The timeframe the bars were read at, the bot's own.
     timeframe: str = ""
     #: The bars in the tape at ``timeframe``; ``candles_read`` is how many the
@@ -638,6 +656,45 @@ def cited_rule_for(asset: str, exchange_id: str) -> tuple[str, str, Optional[str
     class_name = asset_class(asset, exchange_id) or ""
     venue = trading_venue(class_name, exchange_id)
     return class_name, venue, unit_rule(class_name, venue)
+
+
+def venue_rules_for(asset: str, exchange_id: str, symbol: str) -> MarketRules:
+    """The ``MarketRules`` recorded for ``symbol`` on the venue
+    ``trading_venue`` names for ``asset``'s class, which is the venue that would
+    execute the order and never the tablet's bar source.
+
+    ``read`` is False when nothing was recorded for the pair.
+    """
+    class_name = asset_class(asset, exchange_id) or ""
+    return recorded_rules(trading_venue(class_name, exchange_id), symbol)
+
+
+def rule_source_line(
+    bot_id: str, symbol: str, venue: str, rules: Any, rule: str
+) -> str:
+    """The Activity Log line naming which rule will size ``bot_id``'s orders.
+
+    A ``rules`` carrying a recorded size step or minimum names both figures and
+    the ``venue`` they came from; anything else names ``rule`` from the cited
+    table.
+    """
+    if recorded_size_rules(rules):
+        return (
+            f"{bot_id}: {symbol} sizes on {venue}'s recorded rules, "
+            f"minimum {rules.min_amount} on a size step of "
+            f"{rules.amount_increment}."
+        )
+    return (
+        f"{bot_id}: {symbol} has no recorded rules on venue "
+        f"{venue or 'none'}; sizing on the cited {rule} unit rule."
+    )
+
+
+def order_refusal_line(bot_id: str, symbol: str, refusals: dict) -> str:
+    """The Activity Log line naming how many of ``bot_id``'s latched orders were
+    refused on ``symbol``, and the count behind each reason."""
+    named = ", ".join(f"{count} {reason}" for reason, count in sorted(refusals.items()))
+    return f"{bot_id}: {symbol} refused {sum(refusals.values())} order(s): {named}."
 
 
 def uncited_rule_line(result: Any) -> str:
@@ -1018,6 +1075,12 @@ def tape_context(
     )
 
 
+# OVERTAKEN: "Sell ``scrum_units`` of ``delta`` at ``price`` under ``rule``".
+# ``sized_order`` sizes the sale: ``rules`` floors it onto the venue's recorded
+# size step and refuses it under the venue's recorded minimum, and ``rule``
+# sizes it only where ``rules`` holds no recorded size rule.
+# OVERTAKEN: "when a whole-unit ``delta`` buys under one unit, which is logged".
+# Every zero-unit sale is logged, carrying the reason ``sized_order`` named.
 def apply_scrum(
     bot: SimBot,
     position: SimPosition,
@@ -1025,6 +1088,8 @@ def apply_scrum(
     ts_ms: int,
     delta: float,
     rule: str,
+    rules: Optional[MarketRules] = None,
+    on_refusal: Optional[Callable[[str], None]] = None,
 ) -> Optional[SimTrade]:
     """Sell ``scrum_units`` of ``delta`` at ``price`` under ``rule`` from the
     highest-priced ``main_lots`` first and queue the proceeds net of
@@ -1036,16 +1101,18 @@ def apply_scrum(
     Nothing fills when ``position`` holds fewer units than the sell needs, or
     when a whole-unit ``delta`` buys under one unit, which is logged.
     """
-    units = scrum_units(float(delta), float(price), rule)
+    order = sized_order(abs(float(delta)) / float(price), rule, rules)
+    units = order.units
     if units <= 0.0:
-        if rule == WHOLE_UNITS:
-            logger.info(
-                "%s: a scrum of $%.2f at %.8f is %s; nothing fills",
-                bot.bot_id,
-                abs(float(delta)),
-                float(price),
-                BELOW_ONE_UNIT,
-            )
+        logger.info(
+            "%s: a scrum of $%.2f at %.8f is %s; nothing fills",
+            bot.bot_id,
+            abs(float(delta)),
+            float(price),
+            order.refusal,
+        )
+        if on_refusal is not None:
+            on_refusal(order.refusal)
         return None
     if units > position.units:
         return None
@@ -1096,6 +1163,7 @@ def apply_scrum(
         fee_usd=fee,
         scrum_price=float(price),
         timeframe=str(bot.ta_timeframe or ""),
+        rule_source=order.source,
     )
 
 
@@ -1115,6 +1183,12 @@ def fold_taper(bot: SimBot, position: SimPosition) -> float:
     return fold_rate_taper(ratio_to_ceiling(value, ceiling))
 
 
+# OVERTAKEN: "booked as ``fold_units`` at ``price`` under ``rule``".
+# ``sized_order`` books the buy: ``rules`` floors the units onto the venue's
+# recorded size step and refuses them under the venue's recorded minimum, and
+# ``rule`` sizes them only where ``rules`` holds no recorded size rule.
+# OVERTAKEN: "under ``WHOLE_UNITS`` the fold spends the whole units' price".
+# The fold spends the stepped units' price whenever the step left dollars over.
 def apply_fold(
     bot: SimBot,
     position: SimPosition,
@@ -1124,6 +1198,8 @@ def apply_fold(
     funding: str = FUNDED_BY_PROCEEDS,
     *,
     rule: str,
+    rules: Optional[MarketRules] = None,
+    on_refusal: Optional[Callable[[str], None]] = None,
 ) -> Optional[SimTrade]:
     """Rebuy the eligible tranches as ``_tick_execute_fold`` does: the tranches
     ``eligible_fold_tranches`` names under ``fold_rebuy_factor``, sorted highest
@@ -1170,19 +1246,21 @@ def apply_fold(
         spend = wallet_capped_spend_usd(spend, position.cash_usd)
     if spend <= 0.0:
         return None
-    units = fold_units(spend, float(price), rule)
+    order = sized_order(spend / float(price), rule, rules)
+    units = order.units
     if units <= 0.0:
-        if rule == WHOLE_UNITS:
-            logger.info(
-                "%s: a fold of $%.2f at %.8f is %s; nothing fills",
-                bot.bot_id,
-                spend,
-                float(price),
-                BELOW_ONE_UNIT,
-            )
+        logger.info(
+            "%s: a fold of $%.2f at %.8f is %s; nothing fills",
+            bot.bot_id,
+            spend,
+            float(price),
+            order.refusal,
+        )
+        if on_refusal is not None:
+            on_refusal(order.refusal)
         return None
-    if rule == WHOLE_UNITS:
-        bought_usd = priced_usd(units, float(price))
+    bought_usd = priced_usd(units, float(price))
+    if bought_usd < spend:
         plan = trim_fold_plan(plan, spend - bought_usd)
         spend = bought_usd
     fee = estimated_fee_usd(spend, fee_pct)
@@ -1221,6 +1299,7 @@ def apply_fold(
         timeframe=str(bot.ta_timeframe or ""),
         target_usd_after=float(position.target_usd),
         growth_applied_usd=growth,
+        rule_source=order.source,
     )
 
 
@@ -1296,12 +1375,21 @@ def reset_growth_cycle(position: SimPosition, reading: Any) -> bool:
     return reset
 
 
-def opening_position(bot: SimBot, price: float, rule: str) -> SimPosition:
+# OVERTAKEN: "the ``fold_units`` the initial entry's buy of the target books".
+# ``sized_order`` sizes the opening entry, on ``rules`` where the venue's step
+# was recorded and on ``rule`` where it was not.
+def opening_position(
+    bot: SimBot, price: float, rule: str, rules: Optional[MarketRules] = None
+) -> SimPosition:
     """A ``SimPosition`` worth ``bot.target_usd`` at ``price`` under ``rule``,
     the ``fold_units`` the initial entry's buy of the target books as one lot
     at ``price``, its target and anchor the bot's own."""
     target_usd = float(bot.target_usd or 0.0)
-    units = fold_units(target_usd, float(price), rule) if price > 0.0 else 0.0
+    units = (
+        sized_order(target_usd / float(price), rule, rules).units
+        if price > 0.0
+        else 0.0
+    )
     lots = [{"units": units, "initial_buy_price": float(price)}] if units > 0 else []
     return SimPosition(
         units=units,
@@ -1319,6 +1407,9 @@ def run_budget_usd(bots: Sequence[SimBot]) -> float:
     return sum(float(bot.target_usd) for bot in bots if bot.target_usd is not None)
 
 
+# OVERTAKEN: "every fill sized under ``rule``".
+# Every fill is sized by ``sized_order``, on ``rules`` where the venue's step was
+# recorded for this market and on ``rule`` where it was not.
 def walk(
     bot: SimBot,
     candles: Sequence[Any],
@@ -1326,6 +1417,7 @@ def walk(
     funding: str = FUNDED_BY_PROCEEDS,
     *,
     rule: str,
+    rules: Optional[MarketRules] = None,
     on_trade: Optional[TradeSink] = None,
     stop: Optional[Callable[[], bool]] = None,
     emitter: Optional[RunEmitter] = None,
@@ -1367,7 +1459,12 @@ def walk(
     for name, reason in refused.items():
         logger.info("%s: phantom %s reads no summary: %s", bot.bot_id, name, reason)
     bias_counts: dict[str, int] = {}
-    position = opening_position(bot, float(candles[MIN_CANDLES - 1].close), rule)
+    order_refusals: dict[str, int] = {}
+
+    def note_refusal(reason: str) -> None:
+        order_refusals[reason] = order_refusals.get(reason, 0) + 1
+
+    position = opening_position(bot, float(candles[MIN_CANDLES - 1].close), rule, rules)
     start_units = position.units
     trades: list[SimTrade] = []
     scrum_latched = 0
@@ -1406,11 +1503,21 @@ def walk(
         filled = None
         if armed["scrum_armed"]:
             scrum_latched += 1
-            filled = apply_scrum(bot, position, price, stamp, context.delta, rule)
+            filled = apply_scrum(
+                bot, position, price, stamp, context.delta, rule, rules, note_refusal
+            )
         elif armed["fold_armed"]:
             fold_latched += 1
             filled = apply_fold(
-                bot, position, price, stamp, context.delta, funding, rule=rule
+                bot,
+                position,
+                price,
+                stamp,
+                context.delta,
+                funding,
+                rule=rule,
+                rules=rules,
+                on_refusal=note_refusal,
             )
         if filled is not None:
             filled = replace(
@@ -1468,11 +1575,16 @@ def walk(
     )
     emit_stats(emitter, closing)
     pin_stats_written(closing, len(trades), run_id)
+    if order_refusals and emitter is not None:
+        emitter.bot_line(
+            bot.bot_id, order_refusal_line(bot.bot_id, bot.symbol, order_refusals)
+        )
     return BotResult(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
         tablet_key="",
         outcome=BACK_TESTED,
+        order_refusals=dict(order_refusals),
         candles_read=end_index + 1,
         ticks=ticks,
         scrum_latched=scrum_latched,
@@ -1777,6 +1889,7 @@ def _walk_bot(
     stop: Optional[Callable[[], bool]],
     emitter: Optional[RunEmitter],
     say: Callable[[str], None],
+    rules: Optional[MarketRules] = None,
 ) -> BotResult:
     """``walk`` over every bar of ``bars`` for ``bot``, timed around the walk
     alone, with ``WALK_STARTED_LINE_FORMAT`` before it,
@@ -1828,6 +1941,7 @@ def _walk_bot(
         candles_from_raw(bars),
         funding=funding,
         rule=rule,
+        rules=rules,
         on_trade=took,
         stop=stop,
         emitter=emitter,
@@ -1843,6 +1957,8 @@ def _walk_bot(
         evaluations_expected=expected,
         walk_seconds=seconds,
     )
+    if result.order_refusals:
+        say(order_refusal_line(bot.bot_id, bot.symbol, result.order_refusals))
     if result.stopped:
         say(result.stopped_at)
     else:
@@ -1959,7 +2075,14 @@ def _walk_fleet(
             continue
         if not interval_ms and len(raw) > 1:
             interval_ms = candle_interval_ms([int(one[0]) for one in raw])
-        walked = _walk_bot(bot, files, raw, funding, rule, on_trade, stop, emitter, say)
+        market = venue_rules_for(bot.asset, bot.exchange_id, bot.symbol)
+        line = rule_source_line(bot.bot_id, bot.symbol, venue, market, rule)
+        if emitter is not None:
+            emitter.bot_line(bot.bot_id, line)
+        say(line)
+        walked = _walk_bot(
+            bot, files, raw, funding, rule, on_trade, stop, emitter, say, market
+        )
         halted = halted or walked.stopped
         results.append(replace(walked, asset_class=class_name, venue=venue))
         outcomes[walked.outcome] += 1
@@ -2083,12 +2206,14 @@ __all__ = [
     "new_bots",
     "no_tablet_line",
     "opening_position",
+    "order_refusal_line",
     "phantom_tapes",
     "phantom_timeframes_for",
     "pin_htf_bias",
     "pin_stats_written",
     "reset_growth_cycle",
     "rolled_bars",
+    "rule_source_line",
     "run",
     "run_budget_usd",
     "seconds_per_thousand",
@@ -2100,5 +2225,6 @@ __all__ = [
     "tape_context",
     "trend_reading",
     "uncited_rule_line",
+    "venue_rules_for",
     "walk",
 ]

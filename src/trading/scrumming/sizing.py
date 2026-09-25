@@ -14,12 +14,23 @@ each fold and that scrum over a run's pairs. ``tradeable_answer`` is the one
 place that says whether the built variant can trade one market, measuring
 ``smallest_order_usd`` against ``REFERENCE_SCRUM_EXCESS_USD``; the Market
 Inspector's ticker rows read it.
+
+OVERTAKEN: "``unit_rule`` answers the rule ``CITED_UNIT_RULES`` cites for an
+asset class on a venue, ``scrum_units`` and ``fold_units`` size under that rule
+through ``sized_units``".
+``sized_order`` is the one place an order's amount is sized: a market's own
+recorded ``MarketRules`` floor it through ``amount_on_increment`` and refuse it
+through ``steps_below_minimum``, and ``CITED_UNIT_RULES`` answers through
+``sized_units`` only where no record was recorded. Every ``SizedOrder`` carries
+the ``RULE_SOURCE`` that sized it and the refusal reason behind zero units.
 """
 
 from __future__ import annotations
 
 import math
 import statistics
+from dataclasses import dataclass
+from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Any, Optional, Sequence
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
@@ -194,6 +205,92 @@ def scrum_units(delta_usd: float, price: float, rule: str) -> float:
     """The units a scrum sells: ``delta_usd`` at ``price``, sized under
     ``rule``."""
     return sized_units(abs(delta_usd) / price, rule)
+
+
+#: Which rule sized an order's amount: the market's own recorded rules, the
+#: ``CITED_UNIT_RULES`` row for its class and venue, or neither.
+RULE_SOURCE_RECORDED = "recorded venue rules"
+RULE_SOURCE_CITED = "cited unit rule"
+RULE_SOURCE_NONE = "no rule"
+
+#: Why a sized order fills nothing: its dollars buy under one whole unit, the
+#: amount steps under the venue's published minimum, or no rule sized it.
+BELOW_ONE_UNIT = "below one unit"
+BELOW_MINIMUM_AMOUNT = "below the venue's minimum size"
+NO_SIZE_RULE = "no size rule for the pair"
+
+
+@dataclass(frozen=True)
+class SizedOrder:
+    """The amount an order may name, the ``RULE_SOURCE`` that sized it, and the
+    refusal reason while ``units`` is zero."""
+
+    units: float
+    source: str
+    refusal: str = ""
+
+
+def rule_published(value: Any) -> bool:
+    """True while ``value`` is a finite number the venue published, False for
+    the None an unpublished rule carries."""
+    if value is None:
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def amount_on_increment(units: float, increment: Optional[float]) -> float:
+    """``units`` floored onto ``increment`` in exact decimal steps.
+
+    ``units`` is answered unchanged where ``increment`` is no positive finite
+    step, and zero where ``units`` is not a positive finite amount.
+    """
+    if not math.isfinite(units) or units <= 0.0:
+        return 0.0
+    if not rule_published(increment) or float(increment or 0.0) <= 0.0:
+        return units
+    try:
+        step = Decimal(repr(float(increment or 0.0)))
+        steps = (Decimal(repr(units)) / step).to_integral_value(rounding=ROUND_FLOOR)
+        return float(steps * step)
+    except (ArithmeticError, InvalidOperation, TypeError, ValueError):
+        return units
+
+
+def recorded_size_rules(rules: Any) -> bool:
+    """True while ``rules`` was read and published a size step or a minimum
+    amount, the two figures ``sized_order`` sizes and refuses by."""
+    if rules is None or not getattr(rules, "read", False):
+        return False
+    if rule_published(getattr(rules, "amount_increment", None)):
+        return True
+    return rule_published(getattr(rules, "min_amount", None))
+
+
+def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOrder:
+    """``units`` sized to the market's own recorded rules where it has them, and
+    to ``rule`` from ``CITED_UNIT_RULES`` where it has none.
+
+    A recorded ``amount_increment`` floors the amount through
+    ``amount_increment`` and a recorded ``min_amount`` refuses it through
+    ``MarketRules.steps_below_minimum``; a pair with neither a recorded rule nor
+    a cited one answers ``NO_SIZE_RULE`` and zero units.
+    """
+    if recorded_size_rules(rules):
+        if rules.steps_below_minimum(units):
+            return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_MINIMUM_AMOUNT)
+        stepped = amount_on_increment(units, rules.amount_increment)
+        if stepped <= 0.0:
+            return SizedOrder(0.0, RULE_SOURCE_RECORDED, BELOW_ONE_UNIT)
+        return SizedOrder(stepped, RULE_SOURCE_RECORDED)
+    if rule in UNIT_RULES:
+        cited = sized_units(units, str(rule))
+        if cited <= 0.0:
+            return SizedOrder(0.0, RULE_SOURCE_CITED, BELOW_ONE_UNIT)
+        return SizedOrder(cited, RULE_SOURCE_CITED)
+    return SizedOrder(0.0, RULE_SOURCE_NONE, NO_SIZE_RULE)
 
 
 def sale_proceeds_usd(gross_usd: float, fee_usd: float) -> float:

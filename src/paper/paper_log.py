@@ -139,6 +139,7 @@ def gate_half(tick: Any) -> dict:
         "scrum_fixture": dict(tick.scrum_fixture),
         "fold_fixture": dict(tick.fold_fixture),
         "refusal": str(tick.refusal),
+        "order_refusal": str(getattr(tick, "order_refusal", "") or ""),
     }
 
 
