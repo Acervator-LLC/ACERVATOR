@@ -3633,25 +3633,96 @@ of it, so the shape is read from the text after the tag. A bot's fill
 therefore draws in the trade shape, the same as those words written straight
 to the pane, and still names its bot.
 
+##### The parts one line draws
+
+The sentence opening this section is overtaken. Quoted whole:
+
+> One line is a timestamp, then an optional bolt character, then the message:
+> `[hh:mm:ss] <bullet><message>`
+
+A line is a timestamp, then the bot's own tag, then the glyph, then the event,
+the side, the market and the numbers:
+
+```
+[hh:mm:ss] [TICKER/last4] <glyph> <EVENT> [<side>] <market> — <numbers>
+
+[16:46:30] [BTC/c7a2] ▼ FILLED [SCRUM] BTC-USD — 0.001842 @ $61234.50000000
+[16:46:30] [BTC/c7a2] ▲ FILLED [FOLD] BTC-USD — 0.003000 @ $60100.00000000
+[16:46:30] [BTC/c7a2] ⚡ WIRE INCOME: +$1.2345 from a1b2c3d4 distributed evenly
+[16:46:30] [BTC/c7a2] RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317
+```
+
+Each part, and what already sets it:
+
+| part | what sets it |
+|---|---|
+| the timestamp | taken when the message arrives, drawn in a muted colour |
+| the bot's tag | the window adds it so you can tell which bot spoke |
+| the glyph | a scrum sells, so it draws the chart's own sell glyph; a fold buys, so it draws the chart's buy glyph |
+| the bolt | a wire line keeps the bolt it always had, now behind the tag rather than in front of it |
+| the event | the stage of the trade, in capitals, which is the same word the line's colour comes from |
+| the side | the trade's own role, in square brackets, the way a gate line already writes its side |
+| the market and the numbers | the pair traded and the writer's own figures, to the places they were always drawn |
+
+A trade line drops the words `TRADE NOTIFICATION:`. Those nineteen characters
+tell the pane which shape to draw and tell you nothing you cannot already see:
+a larger, bold, stage-coloured line is a trade.
+
+A role the chart sets no side for draws no glyph, which is what a wire-stack
+acquisition and a self-destruct sale get. Nothing is drawn for where a trade
+leaves the position, because no trade message carries a holdings figure. That
+figure sits on the plain line a fold writes beside its trade line.
+
 One function decides the shape for both builds, so the Qt pane and the React
 page cannot drift apart:
 
 ```python
 def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
-    """The colour, size, weight and bullet one message paints with."""
-    shaped = shape_source(message)
+    """The three parts one message draws, and the weights it draws them in.
+    ``TRADE_PREFIX`` then the wire prefixes decide before ``level_color`` does."""
+    tag = bot_tag(message)
+    shaped = message[len(tag) :]
     if shaped.startswith(TRADE_PREFIX):
-        return {
-            "kind": KIND_TRADE,
-            "color": stage_color(shaped),
-            "font_size_px": TRADE_FONT_SIZE_PX,
-            "bold": True,
-            "italic": False,
-            "bullet": "",
-        }
+        drawn, role = trade_text(shaped)
+        glyph = ROLE_GLYPHS.get(role, "")
+        return style_of(
+            KIND_TRADE,
+            tag,
+            drawn,
+            stage_color(shaped),
+            font_size_px=TRADE_FONT_SIZE_PX,
+            bold=True,
+            bullet=GLYPH_FORMAT.format(glyph=glyph) if glyph else "",
+        )
 ```
 
-`src/gui/main_tabs/status_log_surface.py` — `line_style` and `shape_source`
+`src/gui/main_tabs/status_log_surface.py` — `line_style`, `trade_text` and
+`ROLE_GLYPHS`
+
+The glyph is read from the declaration the Asset Charts readout already draws
+its fills with, so the two screens cannot disagree about which way a trade went:
+
+```python
+ROLE_GLYPHS = {
+    SIDE_ROLES[SELL_SIDE]: READOUT_SELL_GLYPH,
+    SIDE_ROLES[BUY_SIDE]: READOUT_BUY_GLYPH,
+}
+```
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` — `SIDE_ROLES`
+
+The Simulator and the Paper Trader draw their own Activity Log through the same
+function. Each held its own copy of the four shapes, 48 lines apiece, with its
+own numbers for the sizes and its own copy of the bolt; both now call the one
+composer, so a change to the shape reaches all three panes at once.
+
+`src/gui/simulator/sim_status_log.py` — `SimStatusLog._render_safe`
+
+```python
+def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
+    self.append(surface.line_html(ts, surface.line_style(message, level)))
+    self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+```
 
 Pause Console is a toggle. While it is down, each new line goes into a buffer
 of 2,000 instead of the screen, and a full buffer drops the newest rather than

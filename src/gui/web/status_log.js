@@ -47,7 +47,8 @@
 
   var STAMP = "stamp";
   var STAMP_TEXT = "stamp_text";
-  var MESSAGE = "message";
+  var TAG = "tag";
+  var TEXT = "text";
   var LEVEL = "level";
   var KIND = "kind";
   var COLOR = "color";
@@ -114,6 +115,7 @@
   var LINE_PART = "line";
   var STAMP_PART = "stamp";
   var BODY_PART = "body";
+  var TAG_PART = "tag";
   var BULLET_PART = "bullet";
   var MESSAGE_PART = "message";
 
@@ -243,8 +245,8 @@
     return global.React.createElement.apply(null, arguments);
   }
 
-  // Qt paints the bullet and the message in one span, so the emphasis
-  // tag wraps both.
+  // Qt paints the tag, the bullet and the text in one span, so the emphasis
+  // tag wraps all three.
   function bodyTag(line) {
     if (line[BOLD] === true) {
       return STRONG_TAG;
@@ -275,6 +277,8 @@
     bodyProps[BOLD_ATTR] = text(line[BOLD]);
     bodyProps[ITALIC_ATTR] = text(line[ITALIC]);
 
+    var tagProps = {};
+    tagProps[PART_ATTR] = TAG_PART;
     var bulletProps = {};
     bulletProps[PART_ATTR] = BULLET_PART;
     var messageProps = {};
@@ -285,8 +289,9 @@
     var body = element(
       bodyTag(line),
       bodyProps,
+      element(SPAN_TAG, tagProps, text(line[TAG])),
       element(SPAN_TAG, bulletProps, text(line[BULLET])),
-      element(SPAN_TAG, messageProps, text(line[MESSAGE]))
+      element(SPAN_TAG, messageProps, text(line[TEXT]))
     );
     if (painted === EMPTY) {
       return element(DIV_TAG, lineProps, body);
