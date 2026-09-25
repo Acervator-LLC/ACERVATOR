@@ -189,7 +189,13 @@ class BotContainer:
         """Place an order via the VolumeGuard or ``exchange.place_order``,
         sizing ``amount`` onto the market's own rules first and refusing a
         non-finite, non-positive or sub-minimum size with ``PRE-FLIGHT
-        REJECTED``."""
+        REJECTED``.
+
+        OVERTAKEN: "sizing ``amount`` onto the market's own rules first".
+        ``amount`` reaches ``place_order`` unchanged; the market's rules are read
+        to refuse a sub-minimum size and a sub-minimum notional, and
+        ``CCXTConnector.place_order`` is where a size is stepped.
+        """
         from ..exchange.base import OrderSide, OrderType, Order, OrderStatus
 
         # Exact type test: ``isinstance`` would admit bool, and every
@@ -247,12 +253,19 @@ class BotContainer:
             except (TypeError, ValueError):
                 _px = 0.0
             if _px > 0:
-                _notional = _amt * _px
+                # The venue books a price on its own tick, so min_cost is
+                # compared against the notional at that price.
+                _booked_px = _rules.price_on_tick(_px)
+                if _booked_px is None or _booked_px <= 0.0:
+                    _booked_px = _px
+                _notional = _amt * _booked_px
                 if _notional < _rules.min_cost:
                     self._refuse_order(
                         f"PRE-FLIGHT REJECTED: {_side_str} {symbol} notional "
                         f"${_notional:.4f} ({_amt:.10f} \u00d7 ${_px:.8f}) "
                         f"is below min_cost ${_rules.min_cost:.4f}. "
+                        f"Priced at ${_booked_px:.8f} on a price tick of "
+                        f"{_rules.price_increment}. "
                         f"API not called."
                     )
 

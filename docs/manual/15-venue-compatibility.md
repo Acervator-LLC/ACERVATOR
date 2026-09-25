@@ -424,6 +424,152 @@ The second variant names a cash amount and nothing in the tree constructs it,
 so the ticker rows answer for the built variant alone and the offered list is
 narrowed by that answer. It widens when the second variant lands.
 
+## 2026-09-25 - the price step and the fraction declaration
+
+A venue publishes three order rules, not two. Beside the smallest size it will
+accept and the step that size moves by, it publishes the step a price moves by.
+Coinbase names that third one `quote_increment` on its own product record, and
+the record a bot reads now carries it.
+
+```python
+# src/exchange/base.py:131
+    min_amount: Optional[float] = None  # base units
+    min_cost: Optional[float] = None  # quote units
+    amount_increment: Optional[float] = None  # base units a size steps by
+    price_increment: Optional[float] = None  # quote units a price steps by
+    read: bool = True
+```
+
+Read off four recorded Coinbase products: bitcoin and ether step by one cent,
+TE-FOOD steps by a hundredth of a cent, and a product that publishes no step at
+all carries the step as absent rather than as zero.
+
+### The price a venue books
+
+A venue does not book the price a bot names. It moves that price to its own
+nearest step and books the result, so the money an order is worth is the size
+times the stepped price. The minimum order cost is now compared against that
+number.
+
+```python
+# src/trading/bot_container.py:252
+                # The venue books a price on its own tick, so min_cost is
+                # compared against the notional at that price.
+                _booked_px = _rules.price_on_tick(_px)
+```
+
+The refusal the operator reads on the Console names both figures, so a price
+that moved and a price that did not are told apart.
+
+```
+PRE-FLIGHT REJECTED: SELL ETH/USD notional $0.3631 (0.0001000000 x
+$3630.98000000) is below min_cost $10.0000. Priced at $3630.98000000 on a
+price tick of 0.01. API not called.
+```
+
+A sub-cent market keeps its digits. A product priced at 0.0000037 dollars with a
+step of a ten-millionth of a dollar reads `$0.00000370` on that line, because
+every step is taken in exact decimal arithmetic and never by cutting a price to
+a fixed number of places.
+
+### Whether a market can be held in fractions
+
+The size step already answers it, and no separate field says it again. A market
+whose step is under one unit accepts a fraction of a unit; a market whose step is
+a whole unit or larger takes whole units only; a market whose step the venue
+never published answers neither.
+
+```python
+# src/exchange/base.py:133
+    amount_increment: Optional[float] = None  # base units a size steps by
+```
+
+Read off the recorded products: bitcoin steps by a hundred-millionth and ether by
+a ten-thousandth, so both take fractions. TE-FOOD and the expiring contract both
+step by 1, so both take whole units only.
+
+A field carrying the same answer a second time was written and then taken out,
+because nothing in the running program read it. The reader arrives with the layer
+that sizes an amount onto the step, and with the layer that picks the bot variant
+a market needs. Until then the step is the answer.
+
+### A floor of zero the venue never published
+
+The unknown row of the three-answer table above is kept as written. It says the
+unknown answer is drawn when no market record was obtained.
+
+The true row is: the unknown answer is drawn when no market record was obtained,
+and also when the venue published no size rule and no minimum order cost, because
+the smallest order then costs an unknown amount rather than nothing.
+
+A market that published nothing used to be offered as tradeable with a smallest
+order of zero dollars. Zero is not a floor the venue gave; it is the figure left
+over when no floor was read.
+
+```python
+# src/trading/scrumming/sizing.py:149
+    if amount is None:
+        return floor_usd if cost_published else None
+```
+
+A minimum cost the venue published **as** zero is a different thing, and it stays
+a known floor of zero. Both were driven, and they answer differently.
+
+| What the venue published | Smallest order | Answer |
+| --- | --- | --- |
+| nothing at all | not known | size rules not read |
+| a minimum size alone | that size at the last price | yes or no |
+| a size step alone | one step at the last price | yes or no |
+| a minimum cost of zero, no size rule | zero dollars | yes |
+| every rule | the larger of the two floors | yes or no |
+
+Only the first row moves. Every market that published enough to answer still
+answers, including a market whose venue published a minimum size and no step.
+That matters for one venue Acervator offers: of 104 exchange classes in the
+trading library, 102 publish a step-shaped size rule and 2 do not, and one of
+those 2 is on the offered list.
+
+Nothing else on this page is overtaken. The per-venue verdict column, the excess
+figure and the two-variant reading all stand as written.
+
+### The tuple this record replaced
+
+The block under *What a scrum asks of a venue* is kept as written. It quotes a
+docstring saying the lookup returns a minimum amount, a minimum cost and an
+amount precision, cached, and zero, zero and eight on any lookup failure.
+
+That tuple is gone. The bot reads a record instead, and the record holds an
+unpublished rule as absent.
+
+```python
+# src/trading/bot_container.py
+    async def _get_market_rules(self, symbol: str) -> "MarketRules":
+        """Return the venue's published ``MarketRules`` for ``symbol``, cached,
+        and an all-``None`` record when the lookup fails or the venue lists no
+        such market."""
+```
+
+### Which step actually changes the size
+
+The first sentence of *What a scrum asks of a venue* is kept as written. It says
+two steps stand between the computed size and the venue, one of which truncates
+the size.
+
+Driven on the seven order readings above, the size the bot computes reaches the
+connector unchanged in every one of them: 1234.56789 in and 1234.56789 out,
+0.012345678912345 in and 0.012345678912345 out. The guard reads the market's
+rules to refuse a size under the minimum and a notional under the minimum cost,
+and it changes no size. The one place a size is stepped is the connector, at the
+line quoted in that section. The docstring that said otherwise now carries the
+true sentence beneath it.
+
+### What the broker path still carries
+
+Nothing. `src/stocks/broker_base.py` names no size rule, no price step and no
+market record, and no code in the tree constructs a broker connector, so there
+is nothing on that path for a rule to reach. The crypto record carries the
+rules; the two order contracts stay separate.
+
 ## Where each venue fact was read
 
 Each publisher's page was opened as a document outside this repository and
