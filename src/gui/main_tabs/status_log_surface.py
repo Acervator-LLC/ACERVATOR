@@ -2,7 +2,7 @@
 
 Builds the line the Activity Log paints for one message: the timestamp
 stamp, the colour the message text takes, the size and weight a trade or
-wire message is raised to, and the bullet a wire message carries. Colours
+wire message is raised to, and the glyph a trade or wire line carries. Colours
 come from ``design_system`` tokens, so a line on a page carries the value
 the Qt pane paints rather than a second palette.
 
@@ -21,6 +21,7 @@ package imports Qt in its ``__init__``.
 from __future__ import annotations
 
 import contextlib
+import html
 import logging
 import re
 import time
@@ -28,6 +29,8 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from .. import design_system as ds
+from .native_chart_surface import READOUT_BUY_GLYPH, READOUT_SELL_GLYPH
+from .trade_charts_tab_surface import BUY_SIDE, SELL_SIDE, SIDE_ROLES
 
 logger = logging.getLogger("acervator.gui")
 
@@ -55,6 +58,20 @@ WIRE_BULLET = "⚡ "
 
 #: ``MainWindow._on_bot_log`` opens a bot's line with ``[TICKER/last4] ``.
 BOT_TAG_PATTERN = re.compile(r"^\[[^\[\]]*\]\s+")
+
+#: The glyph a trade role draws, by the side ``SIDE_ROLES`` gives that role.
+ROLE_GLYPHS = {
+    SIDE_ROLES[SELL_SIDE]: READOUT_SELL_GLYPH,
+    SIDE_ROLES[BUY_SIDE]: READOUT_BUY_GLYPH,
+}
+GLYPH_FORMAT = "{glyph} "
+
+#: ``_emit_trade_notification`` writes ``<ROLE>: <SYMBOL>: <STAGE>`` after
+#: ``TRADE_PREFIX``, then the stage's own numbers.
+TRADE_FIELD_SPLIT = ": "
+TRADE_FIELD_COUNT = 3
+TRADE_STAGE_SPLIT = " "
+TRADE_TEXT_FORMAT = "{stage} [{role}] {symbol}"
 
 TRADE_FONT_SIZE_PX = 14
 WIRE_FONT_SIZE_PX = 12
@@ -138,61 +155,94 @@ def level_color(level: Any) -> str:
     return LEVEL_COLORS.get(level, DEFAULT_LEVEL_COLOR)
 
 
-def shape_source(message: str) -> str:
-    """The part of one message the prefix rules read.
+def bot_tag(message: str) -> str:
+    """The ``[TICKER/last4] `` tag ``MainWindow._on_bot_log`` opens a bot's line
+    with. ``BOT_TAG_PATTERN`` matching nothing gives an empty string."""
+    found = BOT_TAG_PATTERN.match(message)
+    return found.group(0) if found else ""
 
-    A bot's line reaches the pane behind the ``[TICKER/last4]`` tag
-    ``MainWindow._on_bot_log`` adds, so the tag is dropped before a prefix
-    is matched. The drawn text keeps the tag.
-    """
-    return BOT_TAG_PATTERN.sub("", message, count=1)
+
+def shape_source(message: str) -> str:
+    """The part of one message the prefix rules read. ``bot_tag`` comes off
+    before ``TRADE_PREFIX`` or a wire prefix is matched."""
+    return message[len(bot_tag(message)) :]
+
+
+def trade_text(shaped: str) -> tuple[str, str]:
+    """The stage-first text a trade message draws, and the role it named.
+    A message short of ``TRADE_FIELD_COUNT`` fields draws unchanged, no role."""
+    body = shaped[len(TRADE_PREFIX) :].strip()
+    fields = body.split(TRADE_FIELD_SPLIT, TRADE_FIELD_COUNT - 1)
+    if len(fields) < TRADE_FIELD_COUNT:
+        return shaped, ""
+    role, symbol, tail = fields
+    stage, _, rest = tail.partition(TRADE_STAGE_SPLIT)
+    drawn = TRADE_TEXT_FORMAT.format(stage=stage, role=role, symbol=symbol)
+    return (drawn + TRADE_STAGE_SPLIT + rest if rest else drawn), role
+
+
+def style_of(
+    kind: str,
+    tag: str,
+    text: str,
+    color: str,
+    font_size_px: Optional[int] = None,
+    bold: bool = False,
+    italic: bool = False,
+    bullet: str = "",
+) -> dict:
+    """One line's drawn shape: ``kind``, ``tag``, ``bullet``, ``text`` and its
+    weights. ``line_style``, ``resume_line`` and ``notice_line`` all return it."""
+    return {
+        "kind": kind,
+        "tag": tag,
+        "text": text,
+        "color": color,
+        "font_size_px": font_size_px,
+        "bold": bold,
+        "italic": italic,
+        "bullet": bullet,
+    }
 
 
 def line_style(message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
-    """The colour, size, weight and bullet one message paints with.
-
-    The prefix decides before the level does: a trade notification, then
-    a wire-flow or wire-income message, then a wire-stack message. Only a
-    message matching no prefix is coloured by its level. The prefix is read
-    from ``shape_source``, so a bot's tagged line takes the same shape as
-    the same text written straight to the pane.
-    """
-    shaped = shape_source(message)
+    """The three parts one message draws, and the weights it draws them in.
+    ``TRADE_PREFIX`` then the wire prefixes decide before ``level_color`` does."""
+    tag = bot_tag(message)
+    shaped = message[len(tag) :]
     if shaped.startswith(TRADE_PREFIX):
-        return {
-            "kind": KIND_TRADE,
-            "color": stage_color(shaped),
-            "font_size_px": TRADE_FONT_SIZE_PX,
-            "bold": True,
-            "italic": False,
-            "bullet": "",
-        }
+        drawn, role = trade_text(shaped)
+        glyph = ROLE_GLYPHS.get(role, "")
+        return style_of(
+            KIND_TRADE,
+            tag,
+            drawn,
+            stage_color(shaped),
+            font_size_px=TRADE_FONT_SIZE_PX,
+            bold=True,
+            bullet=GLYPH_FORMAT.format(glyph=glyph) if glyph else "",
+        )
     if any(shaped.startswith(prefix) for prefix in WIRE_FLOW_PREFIXES):
-        return {
-            "kind": KIND_WIRE_FLOW,
-            "color": WIRE_FLOW_COLOR,
-            "font_size_px": WIRE_FONT_SIZE_PX,
-            "bold": True,
-            "italic": False,
-            "bullet": WIRE_BULLET,
-        }
+        return style_of(
+            KIND_WIRE_FLOW,
+            tag,
+            shaped,
+            WIRE_FLOW_COLOR,
+            font_size_px=WIRE_FONT_SIZE_PX,
+            bold=True,
+            bullet=WIRE_BULLET,
+        )
     if shaped.startswith(WIRE_STACK_PREFIX):
-        return {
-            "kind": KIND_WIRE_STACK,
-            "color": WIRE_STACK_COLOR,
-            "font_size_px": WIRE_FONT_SIZE_PX,
-            "bold": True,
-            "italic": False,
-            "bullet": WIRE_BULLET,
-        }
-    return {
-        "kind": KIND_PLAIN,
-        "color": level_color(level),
-        "font_size_px": None,
-        "bold": False,
-        "italic": False,
-        "bullet": "",
-    }
+        return style_of(
+            KIND_WIRE_STACK,
+            tag,
+            shaped,
+            WIRE_STACK_COLOR,
+            font_size_px=WIRE_FONT_SIZE_PX,
+            bold=True,
+            bullet=WIRE_BULLET,
+        )
+    return style_of(KIND_PLAIN, tag, shaped, level_color(level))
 
 
 def stamp_text(stamp: str) -> str:
@@ -205,86 +255,55 @@ def stamp_html(stamp: str) -> str:
     return f'<span style="color:{TIMESTAMP_COLOR}">{stamp_text(stamp)}</span> '
 
 
-def body_html(message: str, style: dict) -> str:
-    """The message span, built from the style the prefix or level chose."""
+def body_html(style: dict) -> str:
+    """The body span: the bot's tag, then the glyph, then the drawn text.
+    ``html.escape`` keeps a message carrying ``<`` from vanishing as a tag."""
     declarations = f"color:{style['color']}"
     if style["font_size_px"] is not None:
         declarations += f";font-size:{style['font_size_px']}px;font-weight:bold;"
     if style["italic"]:
         declarations += ";font-style:italic;"
-    return f'<span style="{declarations}">{style["bullet"]}{message}</span>'
+    tag = html.escape(style["tag"], quote=False)
+    drawn = html.escape(style["text"], quote=False)
+    return f'<span style="{declarations}">{tag}{style["bullet"]}{drawn}</span>'
 
 
-def line_html(stamp: str, message: str, style: dict) -> str:
+def line_html(stamp: str, style: dict) -> str:
     """The whole HTML string the Activity Log appends for one line."""
-    return stamp_html(stamp) + body_html(message, style)
+    return stamp_html(stamp) + body_html(style)
 
 
-def build_line(stamp: str, message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
-    """One painted line: its HTML, its colour and the style it carries."""
-    style = line_style(message, level)
+def painted_line(stamp: str, level: Any, style: dict) -> dict:
+    """One painted line: its stamp, its level, its HTML and its whole shape."""
     red, green, blue = rgb(style["color"])
     return {
         "stamp": stamp,
         "stamp_text": stamp_text(stamp),
-        "message": message,
         "level": level,
-        "html": line_html(stamp, message, style),
+        "html": line_html(stamp, style),
         "r": red,
         "g": green,
         "b": blue,
         **style,
     }
+
+
+def build_line(stamp: str, message: str, level: Any = DEFAULT_LOG_LEVEL) -> dict:
+    """One painted line for ``message``, shaped by ``line_style``."""
+    return painted_line(stamp, level, line_style(message, level))
 
 
 def resume_line(buffered_count: int) -> dict:
     """The notice closing a resume, naming how many lines were held."""
-    style = {
-        "kind": KIND_RESUME,
-        "color": RESUME_MARKER_COLOR,
-        "font_size_px": None,
-        "bold": False,
-        "italic": True,
-        "bullet": "",
-    }
-    message = f"(resumed — {buffered_count} buffered message(s) above)"
-    red, green, blue = rgb(style["color"])
-    return {
-        "stamp": RESUME_STAMP,
-        "stamp_text": stamp_text(RESUME_STAMP),
-        "message": message,
-        "level": None,
-        "html": line_html(RESUME_STAMP, message, style),
-        "r": red,
-        "g": green,
-        "b": blue,
-        **style,
-    }
+    text = f"(resumed — {buffered_count} buffered message(s) above)"
+    style = style_of(KIND_RESUME, "", text, RESUME_MARKER_COLOR, italic=True)
+    return painted_line(RESUME_STAMP, None, style)
 
 
 def notice_line(text: str) -> dict:
     """One unstamped line, which is what ``StatusLog.notice`` appends."""
-    style = {
-        "kind": KIND_PLAIN,
-        "color": DEFAULT_LEVEL_COLOR,
-        "font_size_px": None,
-        "bold": False,
-        "italic": False,
-        "bullet": "",
-    }
-    message = str(text)
-    red, green, blue = rgb(style["color"])
-    return {
-        "stamp": NOTICE_STAMP,
-        "stamp_text": stamp_text(NOTICE_STAMP),
-        "message": message,
-        "level": None,
-        "html": line_html(NOTICE_STAMP, message, style),
-        "r": red,
-        "g": green,
-        "b": blue,
-        **style,
-    }
+    style = style_of(KIND_PLAIN, "", str(text), DEFAULT_LEVEL_COLOR)
+    return painted_line(NOTICE_STAMP, None, style)
 
 
 class StatusLogModel:
