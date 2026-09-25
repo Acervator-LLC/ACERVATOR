@@ -13,7 +13,7 @@ is what this window itself decides.
 the menus, the tab book and the status line. ``refresh`` is one tick of
 the two-second timer: it rewrites the six stat cards, the spendable
 panel and the API-load pill. ``change_tab``, ``toggle_console_pause``,
-``toggle_trading_mode``, ``switch_theme``, ``reset_settings``,
+``select_asset_class``, ``switch_theme``, ``reset_settings``,
 ``settings_changed``, ``delete_bot``, ``create_extractor``,
 ``adopt_topology``, ``api_event``, ``tracking_beep``, ``trade_filled``,
 ``pulse_tick`` and ``show_about`` are the window's other paths. Every
@@ -41,6 +41,7 @@ import math
 from typing import Any, Optional
 
 from .. import design_system as ds
+from . import asset_class_surface
 from . import bot_visualizer_surface
 from . import console_tab_surface
 from . import history_tab_surface
@@ -75,37 +76,9 @@ def running_version() -> str:
 MINIMUM_WIDTH_PX = 1400
 MINIMUM_HEIGHT_PX = 900
 
-CRYPTO_MODE = "crypto"
-STOCK_MODE = "stock"
-CRYPTO_WING_TITLE = "Acervator — CRYPTO WING"
-STOCK_WING_TITLE = "Acervator — STOCK WING"
-WING_TITLES = {CRYPTO_MODE: CRYPTO_WING_TITLE, STOCK_MODE: STOCK_WING_TITLE}
+#: The settings key both this model and the header strip open the window on.
+ASSET_CLASS_SETTING = "active_asset_class"
 
-CRYPTO_MODE_BUTTON_TEXT = "Crypto Mode"
-STOCK_MODE_BUTTON_TEXT = "Stock Mode"
-MODE_BUTTON_TEXTS = {
-    CRYPTO_MODE: CRYPTO_MODE_BUTTON_TEXT,
-    STOCK_MODE: STOCK_MODE_BUTTON_TEXT,
-}
-MODE_BUTTON_CHECKED = {CRYPTO_MODE: False, STOCK_MODE: True}
-MODE_STACK_INDEX = {CRYPTO_MODE: 0, STOCK_MODE: 1}
-
-CRYPTO_WING_LOG = (
-    "→ CRYPTO WING: crypto exchanges + crypto Paper Trader. (Stock wing paused.)"
-)
-STOCK_WING_LOG = (
-    "→ STOCK WING: equity exchanges + equity Paper Trader. (Crypto wing paused.)"
-)
-WING_LOGS = {CRYPTO_MODE: CRYPTO_WING_LOG, STOCK_MODE: STOCK_WING_LOG}
-
-MODE_BUTTON_RGB = {CRYPTO_MODE: "0, 200, 160", STOCK_MODE: "80, 140, 255"}
-MODE_BUTTON_COLOUR = {CRYPTO_MODE: ds.LAYER_CRYPTO, STOCK_MODE: ds.LAYER_STOCK}
-MODE_BUTTON_STYLE_FORMAT = (
-    "QPushButton {{ background: rgba({rgb}, 40); "
-    "color: {colour}; border: 1px solid rgba({rgb}, 100); "
-    "border-radius: 4px; font-weight: bold; font-size: 11px; }}"
-    "QPushButton:hover {{ background: rgba({rgb}, 70); }}"
-)
 MODE_TAB_STYLE_FORMAT = (
     "QTabBar::tab:selected {{ border-bottom: 2px solid {colour}; color: {colour}; }}"
 )
@@ -662,11 +635,6 @@ def window_title(version: Any) -> str:
     return WINDOW_TITLE_FORMAT.format(version=version)
 
 
-def wing_title(mode: Any) -> str:
-    """The title bar after the operator flips the trading wing."""
-    return WING_TITLES[mode]
-
-
 def constructed_tabs(failed: Any = None) -> list:
     """The tab bar the builders leave, with `failed` and `UNBUILT_TABS` skipped.
 
@@ -1050,21 +1018,20 @@ def menu_model(themes: Any) -> list:
     ]
 
 
-def mode_button_style(mode: Any) -> str:
-    """The style rule the mode button carries in one wing."""
-    return MODE_BUTTON_STYLE_FORMAT.format(
-        rgb=MODE_BUTTON_RGB[mode], colour=MODE_BUTTON_COLOUR[mode]
-    )
+def mode_tab_styles(name: Any, tabs_ready: Any) -> dict:
+    """One style rule per layered tab book while one asset class is active.
 
-
-def mode_tab_styles(mode: Any, tabs_ready: Any) -> dict:
-    """The style rules the two layer tab books carry in one wing."""
+    The active class's book carries its own accent, and a class with no
+    trading layer clears every book.
+    """
     if not tabs_ready:
         return {}
-    active = MODE_TAB_STYLE_FORMAT.format(colour=MODE_BUTTON_COLOUR[mode])
-    if mode == CRYPTO_MODE:
-        return {CRYPTO_MODE: active, STOCK_MODE: MODE_TAB_STYLE_CLEARED}
-    return {STOCK_MODE: active, CRYPTO_MODE: MODE_TAB_STYLE_CLEARED}
+    key = asset_class_surface.normalise(name)
+    active = MODE_TAB_STYLE_FORMAT.format(colour=asset_class_surface.accent(key))
+    return {
+        each: active if each == key else MODE_TAB_STYLE_CLEARED
+        for each in asset_class_surface.layered_classes()
+    }
 
 
 # Stand-ins
@@ -1302,7 +1269,7 @@ class MainWindowModel:
         equity_exchange_ids: Any = None,
         exchange_tab_ids: Any = None,
         connector_ids: Any = None,
-        trading_mode: Any = CRYPTO_MODE,
+        trading_mode: Any = None,
         tabs_ready: Any = True,
         failed_tabs: Any = None,
     ) -> None:
@@ -1316,7 +1283,9 @@ class MainWindowModel:
         self.equity_exchange_ids = set(equity_exchange_ids or ())
         self.exchange_tab_ids = list(exchange_tab_ids or [])
         self.connector_ids = list(connector_ids or [])
-        self.trading_mode = trading_mode
+        self.trading_mode = asset_class_surface.normalise(
+            trading_mode if trading_mode is not None else self.stored_asset_class()
+        )
         self.tabs_ready = tabs_ready
         self.failed_tabs = set(failed_tabs or ())
 
@@ -1350,11 +1319,10 @@ class MainWindowModel:
         self.console_paused = False
         self.console_button_text = CONSOLE_PAUSE_TEXT
         self.console_indicator = CONSOLE_RUNNING_INDICATOR
-        self.mode_button_text = MODE_BUTTON_TEXTS[CRYPTO_MODE]
-        self.mode_button_checked = MODE_BUTTON_CHECKED[CRYPTO_MODE]
-        self.mode_button_style = ""
+        self.class_buttons = asset_class_surface.class_buttons(self.trading_mode)
         self.mode_tab_styles: dict = {}
-        self.trading_stack_index = MODE_STACK_INDEX[CRYPTO_MODE]
+        self.trading_stack_index = asset_class_surface.layer_page(self.trading_mode)
+        self.trading_stack_pages = asset_class_surface.stack_pages()
         self.pulse_phase = 0.0
         self.pulse_opacity = 1.0
         self.glow_blur = 0.0
@@ -1398,8 +1366,7 @@ class MainWindowModel:
         self.ai_pill_text = pill["text"]
         self.ai_pill_style = pill["style"]
         self._record("status_bar", self.status_text)
-        self.mode_button_text = MODE_BUTTON_TEXTS[self.trading_mode]
-        self.mode_button_checked = MODE_BUTTON_CHECKED[self.trading_mode]
+        self.class_buttons = asset_class_surface.class_buttons(self.trading_mode)
         self.current_tab = self.tab_labels[0] if self.tab_labels else ""
         self.log(STARTED_LOG_FORMAT.format(version=self.version), "success")
         return self
@@ -1511,20 +1478,27 @@ class MainWindowModel:
         self._record("console_indicator", self.console_indicator)
         return self
 
-    def toggle_trading_mode(self) -> "MainWindowModel":
-        """The Crypto / Stock wing button."""
-        self.trading_mode = (
-            STOCK_MODE if self.trading_mode == CRYPTO_MODE else CRYPTO_MODE
-        )
-        self.mode_button_text = MODE_BUTTON_TEXTS[self.trading_mode]
-        self.mode_button_checked = MODE_BUTTON_CHECKED[self.trading_mode]
-        self.trading_stack_index = MODE_STACK_INDEX[self.trading_mode]
-        self.window_title = wing_title(self.trading_mode)
-        self.log(WING_LOGS[self.trading_mode], "info")
-        self.mode_button_style = mode_button_style(self.trading_mode)
-        self.mode_tab_styles = mode_tab_styles(self.trading_mode, self.tabs_ready)
+    def select_asset_class(self, name: Any) -> "MainWindowModel":
+        """One press of the segmented asset class group.
+
+        Any declared class is one press away, and a class with no trading
+        layer takes ``trading_stack_index`` to the note page.
+        """
+        key = asset_class_surface.normalise(name)
+        self.trading_mode = key
+        self.class_buttons = asset_class_surface.class_buttons(key)
+        self.trading_stack_index = asset_class_surface.layer_page(key)
+        self.window_title = asset_class_surface.window_title(key)
+        self.log(asset_class_surface.selection_log(key), "info")
+        self.mode_tab_styles = mode_tab_styles(key, self.tabs_ready)
         self._record("trading_mode", self.trading_mode)
         return self
+
+    def stored_asset_class(self) -> Any:
+        """The asset class the store opens the window on, or '' with no store."""
+        if self.settings is None:
+            return ""
+        return self.settings.get(ASSET_CLASS_SETTING, "")
 
     def stored_theme(self) -> Any:
         """The stored theme name, or ``DEFAULT_THEME`` when the menu lacks it.
@@ -1797,11 +1771,10 @@ class MainWindowModel:
             "console_paused": self.console_paused,
             "console_button_text": self.console_button_text,
             "console_indicator": self.console_indicator,
-            "mode_button_text": self.mode_button_text,
-            "mode_button_checked": self.mode_button_checked,
-            "mode_button_style": self.mode_button_style,
+            "class_buttons": [dict(button) for button in self.class_buttons],
             "mode_tab_styles": dict(self.mode_tab_styles),
             "trading_stack_index": self.trading_stack_index,
+            "trading_stack_pages": self.trading_stack_pages,
             "trading_mode": self.trading_mode,
             "pulse_phase": self.pulse_phase,
             "pulse_opacity": self.pulse_opacity,
@@ -1831,10 +1804,12 @@ def build_view_model(params: Any = None) -> dict:
         equity_exchange_ids=given.get("equity_exchange_ids"),
         exchange_tab_ids=given.get("exchange_tab_ids"),
         connector_ids=given.get("connector_ids"),
-        trading_mode=given.get("trading_mode", CRYPTO_MODE),
+        trading_mode=given.get("trading_mode"),
         failed_tabs=given.get("failed_tabs"),
     )
     model.build()
+    if given.get("trading_mode") is not None:
+        model.select_asset_class(given["trading_mode"])
     if given.get("console_pause") is not None:
         model.toggle_console_pause(bool(given["console_pause"]))
     if fleet is not None:

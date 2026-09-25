@@ -233,13 +233,12 @@ class TradingTabMixin:
         self._crypto_exchange_tabs: dict = _crypto_tabs
         self._stock_exchange_tabs: dict = _stock_tabs
 
-        self._trading_stack.addWidget(crypto_page)  # index 0
-        self._trading_stack.addWidget(stock_page)  # index 1
+        self._trading_stack.addWidget(crypto_page)
+        self._trading_stack.addWidget(stock_page)
         self._trading_stack.addWidget(self._make_unlayered_page())
-        self._trading_stack.setCurrentIndex(0)  # start in crypto
+        self._trading_stack.setCurrentIndex(acs.layer_page("crypto"))
 
-        # Legacy alias: points to whichever layer is active
-        # Updated by _toggle_trading_mode()
+        # Alias: whichever layer select_asset_class made current.
         self._tab_widget = self._crypto_tab_widget
         self._exchange_tabs = self._crypto_exchange_tabs
         self._empty_placeholder = self._crypto_placeholder
@@ -278,9 +277,9 @@ class TradingTabMixin:
         _panel_slot = top_splitter.indexOf(self._indicator_panel)
         _faults = sum(
             (
-                self._trading_stack.count() != 2,
-                _crypto_page != 0,
-                _stock_page != 1,
+                self._trading_stack.count() != acs.stack_pages(),
+                _crypto_page != acs.layer_page("crypto"),
+                _stock_page != acs.layer_page("stocks"),
                 _stack_slot != 0,
                 _panel_slot != 1,
                 _alias_page != _visible_page,

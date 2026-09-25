@@ -189,6 +189,27 @@ def has_layer(name: Any) -> bool:
     return normalise(name) in LAYERED_CLASSES
 
 
+def layered_classes() -> tuple:
+    """Every declared class a trading layer stands behind, in taxonomy order."""
+    return tuple(name for name in asset_classes() if name in LAYERED_CLASSES)
+
+
+def layer_page(name: Any) -> int:
+    """The trading stack page one asset class draws.
+
+    A layered class takes its position in ``layered_classes``, and every
+    class without a layer draws the one page after them.
+    """
+    layered = layered_classes()
+    key = normalise(name)
+    return layered.index(key) if key in layered else len(layered)
+
+
+def stack_pages() -> int:
+    """How many pages the trading stack holds: one a layer, and one note page."""
+    return len(layered_classes()) + 1
+
+
 def class_state(name: Any) -> dict:
     """What one asset class holds, and the note it draws.
 
