@@ -36,6 +36,9 @@ happened here. Every rule below has a named incident behind it.
   TA011  chart: fixed-precision rounding of a price (medium)
   TA000  the file could not be read or parsed (info)
 
+OVERTAKEN, kept whole: "TA011  chart: fixed-precision rounding of a
+price (medium)". TA011 emits high and turns `passed` false.
+
 This list was WRONG until 2026-08-13. It advertised a fifth quant
 rule that no line of this file emits, and omitted both chart rules.
 A rule list is a claim about what a clean report means, so a reader
@@ -464,7 +467,7 @@ def _run_chart(target: Path) -> list[Finding]:
             findings.append(
                 Finding(
                     tool="ta-chart",
-                    severity="medium",
+                    severity="high",
                     file=str(target),
                     line=i,
                     rule_id="TA011",
@@ -508,6 +511,7 @@ class TAArchetype:
             "absolute one (TA004); a range normalisation with no zero "
             "guard (TA010); or a fixed-precision round on a price "
             "(TA011, medium, reported not blocking). "
+            "OVERTAKEN: TA011 emits high and turns passed false. "
             "tests/test_ta_archetype.py reconstructs one real "
             "incident per rule, with the corrected body beside it."
         )

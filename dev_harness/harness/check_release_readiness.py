@@ -45,30 +45,9 @@ SIDECAR_PATH = REPO / ".release_ready.json"
 TESTS_DIR = REPO / "tests"
 
 # Fixtures the archetype self-check runs against
-CODING_GOOD = (
-    REPO
-    / "docs"
-    / "audits"
-    / "2026-07-24_coding_archetype_multi_agent_test"
-    / "fixtures"
-    / "known_good.py"
-)
-GUI_GOOD = (
-    REPO
-    / "docs"
-    / "audits"
-    / "2026-07-24_gui_docs_archetypes"
-    / "gui_fixtures"
-    / "known_good_widget.py"
-)
-DOCS_GOOD = (
-    REPO
-    / "docs"
-    / "audits"
-    / "2026-07-24_gui_docs_archetypes"
-    / "docs_fixtures"
-    / "known_good.md"
-)
+CODING_GOOD = REPO / "harness_fixtures" / "coding_archetype" / "known_good.py"
+GUI_GOOD = REPO / "harness_fixtures" / "gui_archetype" / "known_good_widget.py"
+DOCS_GOOD = REPO / "harness_fixtures" / "docs_archetype" / "known_good.md"
 
 # Analyzers whose absence is reported but does not fail the gate. Every
 # analyzer not listed is required, and its absence turns the gate red.
