@@ -2538,3 +2538,63 @@ def log_gate_decision(
     scrum_blockers: Optional[list] = None,
     fold_blockers: Optional[list] = None,
 ```
+
+## 2026-09-24 22:50 - #202 - one admission rule for every panel reading
+
+Four rules read a stored number and they disagreed. A saved flag read as the
+number one on the panel and as nothing in the trading package. A 400-digit
+saved number ended the panel's refresh, which left one timeframe's label above
+the previous reading's numbers.
+
+One rule reads every number now, and it is the trading package's own.
+
+`src/trading/container/config.py` — the one admission rule
+
+```python
+def as_finite_float(value) -> Optional[float]:
+    if type(value) is float:
+        return value if math.isfinite(value) else None
+    if type(value) is int and -_FLOAT_SAFE_INT <= value <= _FLOAT_SAFE_INT:
+        return float(value)
+    return None
+```
+
+It answers nothing for a saved flag, for a not-a-number, for either infinity,
+for a number written as text and for an integer too large to be a float. It
+never raises, so a refusal cannot end a refresh.
+
+**What a refused reading draws.** Each cell says for itself. The panel draws
+zero, so a refused Net reads `+0.00`, a refused Conf reads an empty bar at
+`0%`, and a refused indicator cell reads its direction beside `0%`.
+
+`src/gui/main_tabs/indicator_panel_surface.py` — the figure a refusal draws
+
+```python
+#: What a cell, bar, pillar or tint draws when as_finite_float refuses its reading.
+REFUSED_READING: float = 0.0
+```
+
+The Qt panel and the React panel now build one cell from one pair of builders,
+`indicator_cell_text` and `indicator_cell_colors`, so the two draw the same
+text and the same tint from the same reading.
+
+**Three sentences the retired rules carried.** Each is quoted whole, and each
+is overtaken by the sentence written under it.
+
+> "One published reading as a float, or `fallback` when it is not one."
+
+Overtaken. That rule read a saved flag as the number one and raised on a saved
+integer too large to be a float. `as_finite_float` answers nothing for either,
+and `REFUSED_READING` is the figure the panel draws in its place.
+
+> "`value` as a float, or `fallback` when it is not one."
+
+Overtaken, and this sentence stood in two files. Both read either infinity as a
+dollar figure. `as_finite_float` answers nothing for either, and
+`REFUSED_FIGURE` is the figure a Paper record and a Simulator record draw.
+
+> "The number one market row carries, nothing where it carries no number."
+
+Overtaken. That rule refused a saved flag and still raised on a saved number
+too large to be a float. `as_finite_float` refuses both, and
+`VOLUME_REFUSED_USD` is the volume a refused pair row sorts by.

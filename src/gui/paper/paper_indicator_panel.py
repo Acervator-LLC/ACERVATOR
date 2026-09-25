@@ -286,12 +286,6 @@ if _HAS_QT:
         "S": "#00FFAA",  # Structure — teal
     }
 
-    DIR_SYMBOLS = {
-        "BULLISH": "▲",
-        "BEARISH": "▼",
-        "NEUTRAL": "─",
-    }
-
     class ConfidenceBarsWidget(QWidget):
         """Animated confidence bar graph for each indicator.
         Bars smoothly animate to target heights over ~400ms.
@@ -1389,44 +1383,13 @@ if _HAS_QT:
         ) -> None:
             if sig is None:
                 sig = {"direction": "NEUTRAL", "confidence": 0}
-            direction = sig.get("direction", "NEUTRAL")
-            confidence = sig.get("confidence", 0)
-            details = sig.get("details", {})
-            sym = DIR_SYMBOLS.get(direction, "─")
-            if ind_key == "adx":
-                adx_v = details.get("adx", 0)
-                if details.get("ranging"):
-                    cell_text = f"Rng {adx_v:.0f}"
-                else:
-                    cell_text = f"{sym} {adx_v:.0f}"
-            elif ind_key == "zscore":
-                cell_text = f"{sym} {details.get('z', 0):+.1f}"
-            elif ind_key == "kaufman_er":
-                cell_text = f"{sym} {details.get('er', 0):.2f}"
-            else:
-                cell_text = f"{sym} {confidence:.0%}"
-            cell = QTableWidgetItem(cell_text)
+            cell = QTableWidgetItem(ivp.indicator_cell_text(ind_key, sig))
             cell.setTextAlignment(Qt.AlignCenter)
-            alpha = int(min(confidence, 1.0) * 50) + 5
-            if direction == "BULLISH":
-                cell.setForeground(QBrush(QColor("#00ff88")))
-                cell.setBackground(QBrush(QColor(0, 200, 100, alpha)))
-            elif direction == "BEARISH":
-                cell.setForeground(QBrush(QColor("#ff3366")))
-                cell.setBackground(QBrush(QColor(255, 51, 100, alpha)))
-            else:
-                cell.setForeground(QBrush(QColor("#888888")))
-                cell.setBackground(QBrush(QColor(60, 60, 80, 12)))
-            tip_lines = [f"{ind_key.upper()}: {direction}  " f"({confidence:.0%} conf)"]
-            for k, v in details.items():
-                if isinstance(v, bool):
-                    if v:
-                        tip_lines.append(f"  {k}: ✓")
-                elif isinstance(v, float):
-                    tip_lines.append(f"  {k}: {v:.3f}")
-                else:
-                    tip_lines.append(f"  {k}: {v}")
-            cell.setToolTip("\n".join(tip_lines))
+            colors = ivp.indicator_cell_colors(sig)
+            red, green, blue = colors["fill_rgb"]
+            cell.setForeground(QBrush(QColor(colors["text_color"])))
+            cell.setBackground(QBrush(QColor(red, green, blue, colors["fill_alpha"])))
+            cell.setToolTip(ivp.indicator_cell_tooltip(ind_key, sig))
             table.setItem(row, col, cell)
 
         def _collated_bars(self, tf_data) -> list:

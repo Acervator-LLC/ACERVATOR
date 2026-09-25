@@ -1048,6 +1048,21 @@ filtered.sort(
 )
 ```
 
+**The block above is overtaken.** `_market_number` was the wizard's own
+reading rule. It read either infinity as a volume and it raised on a saved
+number too large to be a float, which lost the whole pair list. The wizard now
+reads through the one admission rule the trading package owns, and a refused
+volume sorts as `VOLUME_REFUSED_USD` and labels as nothing.
+
+`src/gui/bot_wizard.py` — the volume sort as it stands
+
+```python
+filtered.sort(
+    key=lambda m: as_finite_float(m.get("volume")) or VOLUME_REFUSED_USD,
+    reverse=True,
+)
+```
+
 ### Trading Parameters
 
 Next we come to the combined Scrumming Bot configuration page which has several sections for fine tuning how the specific instance behaves. Given that Acervator, at the time of this writing, is still in active development the description for each setting should be seen as a design intention should any issues be encountered.

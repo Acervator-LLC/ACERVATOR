@@ -31,6 +31,7 @@ from ..core.io_utils import atomic_write_json
 from ..trading.container.config import (
     BotMode,
     BotState,
+    as_finite_float,
     bot_config_kwargs,
     make_bot_config,
 )
@@ -190,20 +191,17 @@ class PaperBot:
         return self.symbol.split("/")[0] if self.symbol else ""
 
 
-def _number(value: Any, fallback: float) -> float:
-    """``value`` as a float, or ``fallback`` when it is not one."""
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return fallback
+#: Units, dollars and counts a record draws when as_finite_float refuses them.
+REFUSED_FIGURE: float = 0.0
 
 
 def _lots_units(lots: Any) -> float:
     """The units held across ``lots``, which is how the live bot sets
     ``_current_holdings`` from ``_main_lots``."""
     if not isinstance(lots, list):
-        return 0.0
-    return sum(_number(lot.get("units"), 0.0) for lot in lots if isinstance(lot, dict))
+        return REFUSED_FIGURE
+    reads = [as_finite_float(lot.get("units")) for lot in lots if isinstance(lot, dict)]
+    return sum(REFUSED_FIGURE if read is None else read for read in reads)
 
 
 def _extractor_figures(config: dict, record: dict) -> dict:
@@ -222,12 +220,14 @@ def _extractor_figures(config: dict, record: dict) -> dict:
         }
     state = record.get("extractor_state")
     state = state if isinstance(state, dict) else {}
-    chunk_size_usd = _number(
-        state.get("chunk_size_usd"),
-        _number(config.get("extractor_chunk_size_usd"), 0.0),
-    )
-    chunk_size_base = _number(state.get("chunk_size_base"), chunk_size_usd)
-    chunk_free_base = _number(state.get("chunk_free_base"), chunk_size_base)
+    configured_size = as_finite_float(config.get("extractor_chunk_size_usd"))
+    configured_size = REFUSED_FIGURE if configured_size is None else configured_size
+    size_usd = as_finite_float(state.get("chunk_size_usd"))
+    chunk_size_usd = configured_size if size_usd is None else size_usd
+    size_base = as_finite_float(state.get("chunk_size_base"))
+    chunk_size_base = chunk_size_usd if size_base is None else size_base
+    free_base = as_finite_float(state.get("chunk_free_base"))
+    chunk_free_base = chunk_size_base if free_base is None else free_base
     positions = state.get("positions")
     positions = (
         [one for one in positions if isinstance(one, dict)]
@@ -276,9 +276,44 @@ def paper_bot_from_record(
     saved = record.get("scrumming_state")
     saved = saved if isinstance(saved, dict) else {}
     raw_target = config.get("target_balance")
-    config_target = None if raw_target is None else _number(raw_target, 0.0)
+    target_read = None if raw_target is None else as_finite_float(raw_target)
+    config_target = (
+        None
+        if raw_target is None
+        else (REFUSED_FIGURE if target_read is None else target_read)
+    )
     pool = _extractor_figures(config, record)
     phantom_tfs = tuple(str(one) for one in (record.get("phantom_timeframes") or []))
+    interval_pct = as_finite_float(config.get("scrumming_interval_pct"))
+    read_rate_min = as_finite_float(config.get("scrum_read_rate_min"))
+    fee_pct = as_finite_float(config.get("trading_fee_pct"))
+    tolerance_pct = as_finite_float(config.get("bb_tolerance_pct"))
+    landing_candles = as_finite_float(config.get("bb_landing_strip_candles"))
+    detect_pct = as_finite_float(config.get("scrum_detect_pct"))
+    price = as_finite_float(stats.get("current_price"))
+    position_value = as_finite_float(stats.get("position_value"))
+    quote_rate = as_finite_float(saved.get("quote_to_usd"))
+    grown_target = as_finite_float(saved.get("target_balance"))
+    trades = as_finite_float(stats.get("total_trades"))
+    buys = as_finite_float(stats.get("active_buy_orders"))
+    sells = as_finite_float(stats.get("active_sell_orders"))
+    scrummed = as_finite_float(stats.get("total_scrummed_usd"))
+    folded = as_finite_float(stats.get("total_folded_usd"))
+    realised = as_finite_float(stats.get("realised_pnl"))
+    unrealised = as_finite_float(stats.get("unrealised_pnl"))
+    errors = as_finite_float(stats.get("total_errors"))
+    uptime = as_finite_float(stats.get("uptime_seconds"))
+    venue_realised = as_finite_float(stats.get("realized_pnl_exchange"))
+    venue_entry = as_finite_float(stats.get("avg_entry_exchange"))
+    venue_basis = as_finite_float(stats.get("cost_basis_total_exchange"))
+    venue_fees = as_finite_float(stats.get("fees_paid_exchange"))
+    venue_trades = as_finite_float(stats.get("exchange_trade_count"))
+    venue_fresh_ts = as_finite_float(stats.get("exchange_data_fresh_ts"))
+    ceiling_multiple = as_finite_float(config.get("position_ceiling_multiple"))
+    growth_cap_pct = as_finite_float(config.get("max_target_growth_pct"))
+    cash = as_finite_float(stats.get("cash_balance_usd"))
+    ytd_scrummed = as_finite_float(stats.get("ytd_scrummed_usd"))
+    ytd_folded = as_finite_float(stats.get("ytd_folded_usd"))
     return PaperBot(
         bot_id=str(bot_id),
         symbol=symbol,
@@ -287,17 +322,17 @@ def paper_bot_from_record(
         origin=origin,
         target_usd=config_target,
         ta_timeframe=str(config.get("ta_timeframe") or ""),
-        scrumming_interval_pct=_number(config.get("scrumming_interval_pct"), 0.0),
+        scrumming_interval_pct=(
+            REFUSED_FIGURE if interval_pct is None else interval_pct
+        ),
         scrum_read_rate_min=int(
-            _number(config.get("scrum_read_rate_min"), SCRUM_READ_RATE_MIN_DEFAULT)
+            SCRUM_READ_RATE_MIN_DEFAULT if read_rate_min is None else read_rate_min
         ),
-        trading_fee_pct=_number(config.get("trading_fee_pct"), 0.0),
+        trading_fee_pct=REFUSED_FIGURE if fee_pct is None else fee_pct,
         bb_midline_gate=bool(config.get("bb_midline_gate", True)),
-        bb_tolerance_pct=_number(config.get("bb_tolerance_pct"), 1.0),
-        bb_landing_strip_candles=int(
-            _number(config.get("bb_landing_strip_candles"), 2)
-        ),
-        scrum_detect_pct=_number(config.get("scrum_detect_pct"), 75.0),
+        bb_tolerance_pct=1.0 if tolerance_pct is None else tolerance_pct,
+        bb_landing_strip_candles=int(2 if landing_candles is None else landing_candles),
+        scrum_detect_pct=75.0 if detect_pct is None else detect_pct,
         scrum_require_ta_bullish=bool(config.get("scrum_require_ta_bullish", True)),
         scrum_hold_in_uptrend=bool(config.get("scrum_hold_in_uptrend", True)),
         scrum_defer_to_htf=bool(config.get("scrum_defer_to_htf", True)),
@@ -305,35 +340,49 @@ def paper_bot_from_record(
         fold_defer_to_htf=bool(config.get("fold_defer_to_htf", True)),
         mode=str(config.get("mode") or SCRUMMING_MODE),
         state=str(record.get("state_when_saved") or ""),
-        current_price=_number(stats.get("current_price"), 0.0),
+        current_price=REFUSED_FIGURE if price is None else price,
         holdings=_lots_units(saved.get("main_lots")),
-        position_value_usd=_number(stats.get("position_value"), 0.0),
-        quote_to_usd=_number(saved.get("quote_to_usd"), 1.0) or 1.0,
-        live_target_usd=_number(saved.get("target_balance"), config_target or 0.0),
-        total_trades=int(_number(stats.get("total_trades"), 0)),
-        active_buys=int(_number(stats.get("active_buy_orders"), 0)),
-        active_sells=int(_number(stats.get("active_sell_orders"), 0)),
-        total_scrummed_usd=_number(stats.get("total_scrummed_usd"), 0.0),
-        total_folded_usd=_number(stats.get("total_folded_usd"), 0.0),
-        realised_pnl_usd=_number(stats.get("realised_pnl"), 0.0),
-        unrealised_pnl_usd=_number(stats.get("unrealised_pnl"), 0.0),
-        total_errors=int(_number(stats.get("total_errors"), 0)),
+        position_value_usd=(
+            REFUSED_FIGURE if position_value is None else position_value
+        ),
+        quote_to_usd=(1.0 if quote_rate is None else quote_rate) or 1.0,
+        live_target_usd=(
+            (config_target or REFUSED_FIGURE) if grown_target is None else grown_target
+        ),
+        total_trades=int(REFUSED_FIGURE if trades is None else trades),
+        active_buys=int(REFUSED_FIGURE if buys is None else buys),
+        active_sells=int(REFUSED_FIGURE if sells is None else sells),
+        total_scrummed_usd=REFUSED_FIGURE if scrummed is None else scrummed,
+        total_folded_usd=REFUSED_FIGURE if folded is None else folded,
+        realised_pnl_usd=REFUSED_FIGURE if realised is None else realised,
+        unrealised_pnl_usd=REFUSED_FIGURE if unrealised is None else unrealised,
+        total_errors=int(REFUSED_FIGURE if errors is None else errors),
         last_error=str(stats.get("last_error") or ""),
-        uptime_s=_number(stats.get("uptime_seconds"), 0.0),
-        realized_pnl_exchange_usd=_number(stats.get("realized_pnl_exchange"), 0.0),
-        avg_entry_exchange=_number(stats.get("avg_entry_exchange"), 0.0),
-        cost_basis_exchange_usd=_number(stats.get("cost_basis_total_exchange"), 0.0),
-        fees_paid_exchange_usd=_number(stats.get("fees_paid_exchange"), 0.0),
-        exchange_trade_count=int(_number(stats.get("exchange_trade_count"), 0)),
-        exchange_data_fresh_ts=_number(stats.get("exchange_data_fresh_ts"), 0.0),
+        uptime_s=REFUSED_FIGURE if uptime is None else uptime,
+        realized_pnl_exchange_usd=(
+            REFUSED_FIGURE if venue_realised is None else venue_realised
+        ),
+        avg_entry_exchange=REFUSED_FIGURE if venue_entry is None else venue_entry,
+        cost_basis_exchange_usd=(
+            REFUSED_FIGURE if venue_basis is None else venue_basis
+        ),
+        fees_paid_exchange_usd=REFUSED_FIGURE if venue_fees is None else venue_fees,
+        exchange_trade_count=int(
+            REFUSED_FIGURE if venue_trades is None else venue_trades
+        ),
+        exchange_data_fresh_ts=(
+            REFUSED_FIGURE if venue_fresh_ts is None else venue_fresh_ts
+        ),
         scrum_target_mode=(
             str(saved["scrum_target_mode"])
             if saved.get("scrum_target_mode") is not None
             else None
         ),
         position_ceiling_enabled=bool(config.get("position_ceiling_enabled", False)),
-        position_ceiling_multiple=_number(config.get("position_ceiling_multiple"), 5.0),
-        max_target_growth_pct=_number(config.get("max_target_growth_pct"), 1.0),
+        position_ceiling_multiple=(
+            5.0 if ceiling_multiple is None else ceiling_multiple
+        ),
+        max_target_growth_pct=1.0 if growth_cap_pct is None else growth_cap_pct,
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
         chunk_size_usd=pool["chunk_size_usd"],
@@ -343,9 +392,9 @@ def paper_bot_from_record(
         n_positions_drawdown=pool["n_positions_drawdown"],
         phantoms_enabled=bool(record.get("phantoms_enabled", PHANTOMS_ENABLED_DEFAULT)),
         phantom_timeframes=phantom_tfs,
-        cash_balance_usd=_number(stats.get("cash_balance_usd"), 0.0),
-        ytd_scrummed_usd=_number(stats.get("ytd_scrummed_usd"), 0.0),
-        ytd_folded_usd=_number(stats.get("ytd_folded_usd"), 0.0),
+        cash_balance_usd=REFUSED_FIGURE if cash is None else cash,
+        ytd_scrummed_usd=REFUSED_FIGURE if ytd_scrummed is None else ytd_scrummed,
+        ytd_folded_usd=REFUSED_FIGURE if ytd_folded is None else ytd_folded,
         profit_folding_active=bool(config.get("profit_folding_active", True)),
     )
 
@@ -585,12 +634,19 @@ def strip_aggregate(bots: Sequence[PaperBot], figures: Optional[dict] = None) ->
     out = aggregate_stats(bots)
     held = dict(figures or {})
     for ledger_key, aggregate_key in LEDGER_TO_AGGREGATE:
-        out[aggregate_key] = round(_number(held.get(ledger_key), 0.0), 4)
+        read = as_finite_float(held.get(ledger_key))
+        out[aggregate_key] = round(REFUSED_FIGURE if read is None else read, 4)
     out["total_account_value_usd"] = round(
         out["wallet_cash_usd"] + out["crypto_position_value_usd"], 4
     )
-    out["bots_with_fresh_exchange_data"] = int(_number(held.get("bots_open"), 0))
-    out["mature_positions"] = int(_number(held.get("mature_positions"), 0))
+    open_read = as_finite_float(held.get("bots_open"))
+    mature_read = as_finite_float(held.get("mature_positions"))
+    out["bots_with_fresh_exchange_data"] = int(
+        REFUSED_FIGURE if open_read is None else open_read
+    )
+    out["mature_positions"] = int(
+        REFUSED_FIGURE if mature_read is None else mature_read
+    )
     return out
 
 
