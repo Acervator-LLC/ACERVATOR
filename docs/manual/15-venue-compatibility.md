@@ -601,3 +601,66 @@ this repository holds, dated in the file that carries them.
 # Date the venue facts below were last measured.
 VENUE_MEASUREMENT_DATE: str = "2026-08-28"
 ```
+
+## 2026-09-25 - a back-tested order obeys the venue that would execute it
+
+The Simulator and the Paper Trader reach no venue, so they could not read a
+venue's order rules. They sized every order from a two-row table of cited unit
+rules instead, and that table carries one fact: whether fractions are allowed.
+An order sized that way says nothing about whether the venue would take it.
+
+The live connector already reads each market's record. It now writes what it
+read, once per read, into a recording under the runtime home, and the Simulator
+and the Paper Trader read the recording.
+
+```python
+# src/exchange/market_rules_store.py:28
+def store_path() -> Path:
+    return Path.home() / ".acervator" / STORE_NAME
+```
+
+### What the recording changes about a back test
+
+An order's amount is floored onto the venue's own size step, and an amount under
+the venue's own minimum fills nothing. Where no recording exists for the market,
+the cited table still answers, and the run says which of the two sized each
+order.
+
+```python
+# src/trading/scrumming/sizing.py:272
+def sized_order(units: float, rule: Optional[str], rules: Any = None) -> SizedOrder:
+```
+
+### The two figures a run reports
+
+Every fill row on a Back Test report carries a **sized by** cell reading either
+`recorded venue rules` or `cited unit rule`. Every bot row carries an **orders
+refused** count, and the Activity Log names the reason behind each count.
+
+Measured on `ADA_5m_2026_coinbase`, 5,102 bars rolled to one hour, one bot at a
+$350 target, sockets refused and the home redirected:
+
+| Recorded size step | Orders filled | Orders refused | Fills on the step | Whole-unit fills |
+| ------------------ | ------------- | -------------- | ----------------- | ---------------- |
+| a hundredth of a unit | 21 | 710 | 21 of 21 | 0 of 21 |
+| one whole unit | 20 | 709 | 20 of 20 | 20 of 20 |
+| a hundredth, minimum 200 units | 0 | 25 | none to read | none to read |
+| nothing recorded | 21 | 0 | not measurable | 0 of 21 |
+
+The last row is the reading the Simulator gave before this change: amounts such
+as `92.62189809510927` units, which sit on no step Coinbase publishes. The same
+tape with a recorded step reads `92.61`, and with a whole-unit step reads `92`.
+
+### Why the refusal count runs high
+
+A fold spends what its queued tranches hold. Many of those spends buy under a
+tenth of a unit, and Coinbase refuses an order that small. Those 710 orders were
+previously booked as fills. A refused fold consumes no tranche, so the tranches
+accumulate and a later fold fills at a legal size.
+
+### What the recording does not yet reach
+
+The minimum order cost is recorded and is not yet measured against a
+back-tested order's notional. The live order guard already compares it, at
+`src/trading/bot_container.py:263`. The live path also still sizes on the cited
+fractional rule and does not floor onto the step.

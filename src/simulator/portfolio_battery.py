@@ -59,6 +59,7 @@ from .back_test import (
     new_bot,
     run_budget_usd,
     seconds_per_thousand,
+    venue_rules_for,
     walk,
 )
 from .fleet_source import BATTERY_ORIGIN, SCRUMMING_MODE, SimBot
@@ -896,6 +897,7 @@ def run_symbol(
         candles_from_raw(bars),
         funding=FUNDED_BY_TARGETS,
         rule=rule,
+        rules=venue_rules_for(asset, exchange_id, symbol),
         on_trade=took,
         stop=stop,
         emitter=emitter,

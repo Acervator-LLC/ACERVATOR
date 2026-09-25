@@ -15,6 +15,13 @@ then compounding its surplus into the target through ``grow_target``.
 ``record`` files each ``PaperTick`` on the ``PaperRun`` with one ``paper_log``
 row, the only file a run writes, and ``post_stats`` hands ``on_stats`` the
 ``stats_snapshot`` a host writes into the held record.
+
+OVERTAKEN: "``apply_scrum`` and ``apply_fold`` are the Simulator's two fills
+forked over ``src.trading.scrumming.sizing`` and a ``FakeBalance``".
+``run_market_rules`` reads the ``MarketRules`` recorded for every bot's market at
+``start``, and ``sized_order`` sizes both fills on those rules where they were
+recorded and on the cited unit rule where they were not. Every ``PaperTrade``
+carries the ``rule_source`` that sized it.
 """
 
 from __future__ import annotations
@@ -27,7 +34,6 @@ from typing import Any, Callable, Optional, Sequence
 
 from ..simulator.back_test import (
     BEARISH,
-    BELOW_ONE_UNIT,
     BULLISH,
     DEFAULT_TRADING_FEE_PCT,
     FOLD,
@@ -50,13 +56,14 @@ from ..simulator.back_test import (
     ta_direction,
     trend_reading,
 )
+from ..exchange.base import MarketRules
+from ..exchange.market_rules_store import recorded_rules
 from ..simulator.validation import BB_MIDLINE, bb_reading, latch
 from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
     CLASS_CRYPTO,
-    WHOLE_UNITS,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -65,16 +72,15 @@ from ..trading.scrumming.sizing import (
     fold_rate_taper,
     fold_spend_usd,
     fold_surplus_usd,
-    fold_units,
     plan_fold_consumption,
     plan_source_price,
     position_ceiling,
     priced_usd,
     ratio_to_ceiling,
     sale_proceeds_usd,
-    scrum_units,
     scrumming_interval_usd,
     settle_fold_plan,
+    sized_order,
     target_delta_pct,
     target_delta_usd,
     trim_fold_plan,
@@ -167,6 +173,9 @@ class PaperTrade:
     scrum_price: float = 0.0
     timeframe: str = ""
     target_usd_after: float = 0.0
+    #: The ``sizing.RULE_SOURCE`` that sized ``units``: the market's own recorded
+    #: rules, or the cited unit rule for its class and venue.
+    rule_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -183,6 +192,9 @@ class PaperTick:
     fold_armed: bool
     filled: Optional[PaperTrade] = None
     refusal: str = ""
+    #: Why ``sized_order`` refused the latched order, empty when none latched or
+    #: the order filled.
+    order_refusal: str = ""
     scrum_blockers: tuple[str, ...] = ()
     fold_blockers: tuple[str, ...] = ()
     scrum_fixture: dict = field(default_factory=dict)
@@ -323,6 +335,10 @@ def paper_tape_context(
     )
 
 
+# OVERTAKEN: "Sell ``scrum_units`` of ``delta`` at ``price``".
+# ``sized_order`` sizes the sale: ``rules`` floors it onto the venue's recorded
+# size step and refuses it under the venue's recorded minimum, and ``rule``
+# sizes it only where ``rules`` holds no recorded size rule.
 def apply_scrum(
     bot: PaperBot,
     balance: FakeBalance,
@@ -331,6 +347,8 @@ def apply_scrum(
     candle_ts_ms: int,
     delta: float,
     rule: str,
+    rules: Optional[MarketRules] = None,
+    on_refusal: Optional[Callable[[str], None]] = None,
 ) -> Optional[PaperTrade]:
     """Sell ``scrum_units`` of ``delta`` at ``price``, the tick's ``best_bid``,
     under ``rule`` from the highest-priced ``main_lots`` first, and queue the
@@ -338,16 +356,18 @@ def apply_scrum(
     fold tranche per lot sold from, the Simulator's ``apply_scrum`` over a
     ``FakeBalance``; nothing fills when the balance holds fewer units than
     the sell needs or a whole-unit ``delta`` buys under one unit."""
-    units = scrum_units(float(delta), float(price), rule)
+    order = sized_order(abs(float(delta)) / float(price), rule, rules)
+    units = order.units
     if units <= 0.0:
-        if rule == WHOLE_UNITS:
-            logger.info(
-                "%s: a scrum of $%.2f at %.8f is %s; nothing fills",
-                bot.bot_id,
-                abs(float(delta)),
-                float(price),
-                BELOW_ONE_UNIT,
-            )
+        logger.info(
+            "%s: a scrum of $%.2f at %.8f is %s; nothing fills",
+            bot.bot_id,
+            abs(float(delta)),
+            float(price),
+            order.refusal,
+        )
+        if on_refusal is not None:
+            on_refusal(order.refusal)
         return None
     if units > balance.units:
         return None
@@ -401,9 +421,14 @@ def apply_scrum(
         delta_usd=float(delta),
         scrum_price=float(price),
         timeframe=str(bot.ta_timeframe or ""),
+        rule_source=order.source,
     )
 
 
+# OVERTAKEN: "booked as ``fold_units`` at ``price`` under ``rule``".
+# ``sized_order`` books the buy: ``rules`` floors the units onto the venue's
+# recorded size step and refuses them under the venue's recorded minimum, and
+# ``rule`` sizes them only where ``rules`` holds no recorded size rule.
 def apply_fold(
     bot: PaperBot,
     balance: FakeBalance,
@@ -412,6 +437,8 @@ def apply_fold(
     now_s: float,
     candle_ts_ms: int,
     rule: str,
+    rules: Optional[MarketRules] = None,
+    on_refusal: Optional[Callable[[str], None]] = None,
 ) -> Optional[PaperTrade]:
     """Rebuy the tranches ``eligible_fold_tranches`` names at ``ticker_last``
     under ``fold_rebuy_factor``, planned under ``cycle_growth_cap_usd`` by
@@ -452,19 +479,21 @@ def apply_fold(
     spend = fold_spend_usd(eligible_usd, taper)
     if spend <= 0.0:
         return None
-    units = fold_units(spend, float(price), rule)
+    order = sized_order(spend / float(price), rule, rules)
+    units = order.units
     if units <= 0.0:
-        if rule == WHOLE_UNITS:
-            logger.info(
-                "%s: a fold of $%.2f at %.8f is %s; nothing fills",
-                bot.bot_id,
-                spend,
-                float(price),
-                BELOW_ONE_UNIT,
-            )
+        logger.info(
+            "%s: a fold of $%.2f at %.8f is %s; nothing fills",
+            bot.bot_id,
+            spend,
+            float(price),
+            order.refusal,
+        )
+        if on_refusal is not None:
+            on_refusal(order.refusal)
         return None
-    if rule == WHOLE_UNITS:
-        bought_usd = priced_usd(units, float(price))
+    bought_usd = priced_usd(units, float(price))
+    if bought_usd < spend:
         plan = trim_fold_plan(plan, spend - bought_usd)
         spend = bought_usd
     fee = estimated_fee_usd(spend, fee_pct)
@@ -507,6 +536,7 @@ def apply_fold(
         taper=taper,
         scrum_price=scrum_price,
         timeframe=str(bot.ta_timeframe or ""),
+        rule_source=order.source,
     )
 
 
@@ -525,12 +555,21 @@ def refusal_for(
     return ""
 
 
-def opening_balance(bot: PaperBot, price: float, rule: str) -> FakeBalance:
+# OVERTAKEN: "the ``fold_units`` the target buys as one lot at ``price``".
+# ``sized_order`` sizes the opening buy, on ``rules`` where the venue's step was
+# recorded and on ``rule`` where it was not.
+def opening_balance(
+    bot: PaperBot, price: float, rule: str, rules: Optional[MarketRules] = None
+) -> FakeBalance:
     """A ``FakeBalance`` worth ``bot.target_usd`` at ``price`` under ``rule``,
     the ``fold_units`` the target buys as one lot at ``price``, plus
     ``cash_usd`` of the target, the bot's share of the unbounded budget."""
     target_usd = float(bot.target_usd or 0.0)
-    units = fold_units(target_usd, float(price), rule) if price > 0.0 else 0.0
+    units = (
+        sized_order(target_usd / float(price), rule, rules).units
+        if price > 0.0
+        else 0.0
+    )
     lots = [{"units": units, "initial_buy_price": float(price)}] if units > 0 else []
     return FakeBalance(
         units=units,
@@ -550,6 +589,7 @@ def tick(
     rule: str,
     now_s: float,
     engine: Any = None,
+    rules: Optional[MarketRules] = None,
 ) -> PaperTick:
     """Evaluate the shipped chains against ``book``'s last trade over the
     newest bar of ``candles`` and fill what latched at ``book``'s
@@ -593,10 +633,15 @@ def tick(
     context = paper_tape_context(bot, balance, window, reading, summary, last)
     armed = latch(context)
     filled = None
+    refused: list[str] = []
     if armed["scrum_armed"]:
-        filled = apply_scrum(bot, balance, bid, now_s, stamp, context.delta, rule)
+        filled = apply_scrum(
+            bot, balance, bid, now_s, stamp, context.delta, rule, rules, refused.append
+        )
     elif armed["fold_armed"]:
-        filled = apply_fold(bot, balance, ask, last, now_s, stamp, rule)
+        filled = apply_fold(
+            bot, balance, ask, last, now_s, stamp, rule, rules, refused.append
+        )
     if filled is not None:
         filled = replace(
             filled,
@@ -614,6 +659,7 @@ def tick(
         scrum_armed=bool(armed["scrum_armed"]),
         fold_armed=bool(armed["fold_armed"]),
         filled=filled,
+        order_refusal=refused[0] if refused else "",
         scrum_blockers=tuple(str(one) for one in armed["scrum_blockers"]),
         fold_blockers=tuple(str(one) for one in armed["fold_blockers"]),
         scrum_fixture=paper_log.scrum_fixture(context),
@@ -643,6 +689,9 @@ class PaperRun:
     ticks: list[PaperTick] = field(default_factory=list)
     refusals: dict[str, str] = field(default_factory=dict)
     ticks_made: int = 0
+    #: The ``MarketRules`` recorded for each bot's market, by ``bot_id``, read
+    #: once at ``start`` and handed to every ``tick``.
+    market_rules: dict[str, MarketRules] = field(default_factory=dict)
 
     @property
     def running(self) -> bool:
@@ -691,6 +740,16 @@ def run_rule(venue: str) -> Optional[str]:
     return unit_rule(CLASS_CRYPTO, str(venue or ""))
 
 
+def run_market_rules(bots: Sequence[PaperBot]) -> dict[str, MarketRules]:
+    """The ``MarketRules`` recorded for each bot's market, by ``bot_id``.
+
+    Every bot's own ``exchange_id`` is the venue that would execute its order,
+    and a market with nothing recorded answers a ``MarketRules`` whose ``read``
+    is False.
+    """
+    return {bot.bot_id: recorded_rules(bot.exchange_id, bot.symbol) for bot in bots}
+
+
 def start(bots: Sequence[PaperBot], rule: str) -> PaperRun:
     """Mark a run started over ``bots`` under ``rule``, asking the feed for
     nothing yet; ``opening_ledger`` sets Paper Spendable and Paper Locked to
@@ -700,6 +759,7 @@ def start(bots: Sequence[PaperBot], rule: str) -> PaperRun:
         state=STARTED,
         started_at_ms=wall_clock_ms(),
         rule=rule,
+        market_rules=run_market_rules(bots),
         ledger=opening_ledger(bots),
     )
 
@@ -868,10 +928,11 @@ class PaperRunner:
         book = self._exchange.ticker(bot.symbol)
         candles = candles_for(self._exchange, bot)
         balance = self._run.balances.get(bot.bot_id)
+        market = self._run.market_rules.get(bot.bot_id)
         opened = False
         if balance is None and not refusal_for(bot, candles, book):
             price = float((book or {}).get("last") or candles[-1].close)
-            balance = opening_balance(bot, price, self._run.rule)
+            balance = opening_balance(bot, price, self._run.rule, market)
             self._run.balances[bot.bot_id] = balance
             opened = True
         held = balance or FakeBalance()
@@ -883,6 +944,7 @@ class PaperRunner:
             self._run.rule,
             self._clock.now(),
             self._engine,
+            market,
         )
         record(self._run, bot, seen)
         priced = seen.last or seen.price
@@ -964,6 +1026,7 @@ __all__ = [
     "opening_balance",
     "record",
     "refusal_for",
+    "run_market_rules",
     "run_rule",
     "start",
     "stop",
