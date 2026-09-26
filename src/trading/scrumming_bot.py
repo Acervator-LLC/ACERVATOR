@@ -387,6 +387,7 @@ class ScrummingBot(
             "fold_blockers": ["pre-tick"],
             "evaluated_at_tick": 0,
         }
+        self._last_gate_light_key: str = ""
 
         self._scrum_chain = build_scrumming_scrum_chain()
         self._fold_chain = build_scrumming_fold_chain()
@@ -3752,9 +3753,6 @@ class ScrummingBot(
             z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
         )
         _scrum_chain_result = self._scrum_chain.evaluate(_scrum_ctx)
-        self._emit_risk_gate_snapshot(
-            "scrum", _scrum_chain_result, summary, float(ticker.last)
-        )
         _stack_spent = 0
         if _scrum_chain_result.should_fire:
             _stack_spent = await self._spend_activated_stack_tranches(
@@ -4116,8 +4114,10 @@ class ScrummingBot(
             z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
         )
         _fold_chain_result = self._fold_chain.evaluate(_fold_ctx)
-        self._emit_risk_gate_snapshot(
-            "fold", _fold_chain_result, summary, float(ticker.last)
+        # Both banks are fresh here: the scrum blockers are written above and
+        # the fold blockers just above this line, so one line carries the tick.
+        self._emit_gate_light_line(
+            _scrum_chain_result, _fold_chain_result, summary, float(ticker.last)
         )
         if _fold_chain_result.should_fire:
             if await self._tick_execute_fold(

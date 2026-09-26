@@ -33,6 +33,7 @@ from ...core.event_bus import (
     LINE_KIND_WIRE_FLOW,
     LINE_KIND_WIRE_STACK,
 )
+from ...trading.gate_vocabulary import BANK_MARKER_COLOR, LIGHT_LABEL_COLOR
 from .. import design_system as ds
 from .native_chart_surface import READOUT_BUY_GLYPH, READOUT_SELL_GLYPH
 from .trade_charts_tab_surface import BUY_SIDE, SELL_SIDE, SIDE_ROLES
@@ -80,6 +81,10 @@ TRADE_TEXT_FORMAT = "{stage} [{role}] {symbol}"
 
 TRADE_FONT_SIZE_PX = 14
 WIRE_FONT_SIZE_PX = 12
+
+#: A gate light draws its own colour behind two spaces, so no glyph is needed.
+LIGHT_DOT_TEXT = "&nbsp;&nbsp;"
+LIGHT_SEPARATOR = " "
 
 TIMESTAMP_COLOR = ds.CARD_METRIC_LABEL
 WIRE_FLOW_COLOR = ds.MAIN_BADGE_MAGENTA
@@ -223,6 +228,10 @@ def trade_text(shaped: str) -> tuple[str, str]:
     return (drawn + TRADE_STAGE_SPLIT + rest if rest else drawn), role
 
 
+# One sentence of the docstring below is overtaken. Quoted whole:
+#   "One line's drawn shape: ``kind``, ``tag``, ``bullet``, ``text`` and its
+#   weights."
+# The shape also carries ``lights``, the gate lights a per-tick line draws.
 def style_of(
     kind: str,
     tag: str,
@@ -232,6 +241,7 @@ def style_of(
     bold: bool = False,
     italic: bool = False,
     bullet: str = "",
+    lights: Optional[list] = None,
 ) -> dict:
     """One line's drawn shape: ``kind``, ``tag``, ``bullet``, ``text`` and its
     weights. ``line_style``, ``resume_line`` and ``notice_line`` all return it."""
@@ -244,6 +254,7 @@ def style_of(
         "bold": bold,
         "italic": italic,
         "bullet": bullet,
+        "lights": [dict(one) for one in lights or []],
     }
 
 
@@ -252,7 +263,10 @@ def style_of(
 # The ``kind`` the writer named decides, and ``level_color`` paints a line naming
 # none.
 def line_style(
-    message: str, level: Any = DEFAULT_LOG_LEVEL, kind: Optional[str] = None
+    message: str,
+    level: Any = DEFAULT_LOG_LEVEL,
+    kind: Optional[str] = None,
+    lights: Optional[list] = None,
 ) -> dict:
     """The three parts one message draws, and the weights it draws them in.
     ``TRADE_PREFIX`` then the wire prefixes decide before ``level_color`` does."""
@@ -290,7 +304,7 @@ def line_style(
             bold=True,
             bullet=WIRE_BULLET,
         )
-    return style_of(KIND_PLAIN, tag, shaped, level_color(level))
+    return style_of(KIND_PLAIN, tag, shaped, level_color(level), lights=lights)
 
 
 def stamp_text(stamp: str) -> str:
@@ -313,9 +327,50 @@ def body_html(style: dict) -> str:
         declarations += ";font-style:italic;"
     tag = html.escape(style["tag"], quote=False)
     drawn = html.escape(style["text"], quote=False)
-    return f'<span style="{declarations}">{tag}{style["bullet"]}{drawn}</span>'
+    lit = lights_html(style.get("lights"))
+    return f'<span style="{declarations}">{tag}{style["bullet"]}{drawn}{lit}</span>'
 
 
+def light_html(light: dict) -> str:
+    """One gate light: its label, then its own resolved colour as a block."""
+    label = html.escape(str(light.get("label", "")), quote=False)
+    tone = str(light.get("color", "") or "")
+    return (
+        f'<span style="color:{LIGHT_LABEL_COLOR}">{label}</span>'
+        f'<span style="background-color:{tone}">{LIGHT_DOT_TEXT}</span>'
+    )
+
+
+def bank_marker_html(bank: str) -> str:
+    """The marker closing one bank of gate lights."""
+    marked = html.escape(str(bank), quote=False)
+    return f'<span style="color:{BANK_MARKER_COLOR}">{marked}</span>'
+
+
+def lights_html(lights: Optional[list]) -> str:
+    """Every gate light one line carries, each bank closed by its own marker.
+
+    ``gate_light_row`` gives the draw order and each light's colour, so no
+    order and no colour is decided here.
+    """
+    parts: list[str] = []
+    bank = ""
+    for light in lights or []:
+        named = str(light.get("bank", ""))
+        if bank and named != bank:
+            parts.append(bank_marker_html(bank))
+        bank = named
+        parts.append(light_html(light))
+    if bank:
+        parts.append(bank_marker_html(bank))
+    if not parts:
+        return ""
+    return LIGHT_SEPARATOR + LIGHT_SEPARATOR.join(parts)
+
+
+# One sentence of the docstring below is overtaken. Quoted whole:
+#   "The whole HTML string the Activity Log appends for one line."
+# A per-tick line closes with ``lights_html``, inside the body span.
 def line_html(stamp: str, style: dict) -> str:
     """The whole HTML string the Activity Log appends for one line."""
     return stamp_html(stamp) + body_html(style)
@@ -341,9 +396,10 @@ def build_line(
     message: str,
     level: Any = DEFAULT_LOG_LEVEL,
     kind: Optional[str] = None,
+    lights: Optional[list] = None,
 ) -> dict:
     """One painted line for ``message``, shaped by ``line_style``."""
-    return painted_line(stamp, level, line_style(message, level, kind))
+    return painted_line(stamp, level, line_style(message, level, kind, lights))
 
 
 def resume_line(buffered_count: int) -> dict:
@@ -382,7 +438,7 @@ class StatusLogModel:
         self.pause_buffer_cap = pause_buffer_cap
         self.clock = clock or now_seconds
         self.paused = False
-        self.pause_buffer: list[tuple[str, str, Any, Optional[str]]] = []
+        self.pause_buffer: list[tuple] = []
         self.lines: list[dict] = []
         self.painted: list[dict] = []
         self.scroll_count = 0
@@ -407,8 +463,8 @@ class StatusLogModel:
         self.paused = False
         buffered = list(self.pause_buffer)
         self.pause_buffer.clear()
-        for stamp, message, level, kind in buffered:
-            self.render(stamp, message, level, kind)
+        for stamp, message, level, kind, lights in buffered:
+            self.render(stamp, message, level, kind, lights)
         if buffered:
             self.append(resume_line(len(buffered)))
             self.scroll_to_end()
@@ -427,14 +483,15 @@ class StatusLogModel:
         level: Any = DEFAULT_LOG_LEVEL,
         now: Optional[datetime] = None,
         kind: Optional[str] = None,
+        lights: Optional[list] = None,
     ) -> None:
         """Take the stamp, then paint the line or hold it under a pause."""
         stamp = timestamp(now)
         if self.paused:
             if len(self.pause_buffer) < self.pause_buffer_cap:
-                self.pause_buffer.append((stamp, message, level, kind))
+                self.pause_buffer.append((stamp, message, level, kind, lights))
             return
-        self.render(stamp, message, level, kind)
+        self.render(stamp, message, level, kind, lights)
 
     def force_log(
         self,
@@ -442,13 +499,14 @@ class StatusLogModel:
         level: Any = DEFAULT_FORCE_LEVEL,
         now: Optional[datetime] = None,
         kind: Optional[str] = None,
+        lights: Optional[list] = None,
     ) -> None:
         """Paint a line whether or not the pane is paused.
 
         The Activity-Log watchdog reports through this, so a pause cannot
         hide the report that the log stopped painting.
         """
-        self.render(timestamp(now), message, level, kind)
+        self.render(timestamp(now), message, level, kind, lights)
 
     def append_text(self, text: str) -> None:
         """Paint one unstamped line through ``notice_line``, whatever ``paused``
@@ -480,6 +538,7 @@ class StatusLogModel:
         message: str,
         level: Any = DEFAULT_LOG_LEVEL,
         kind: Optional[str] = None,
+        lights: Optional[list] = None,
     ) -> None:
         """Paint one line and count the outcome.
 
@@ -487,7 +546,7 @@ class StatusLogModel:
         a message lost at the pane leaves a trace the watchdog can read.
         """
         try:
-            self.render_line(stamp, message, level, kind)
+            self.render_line(stamp, message, level, kind, lights)
             self.last_render_time = self.clock()
             self.total_renders += 1
         except Exception as exc:
@@ -509,9 +568,10 @@ class StatusLogModel:
         message: str,
         level: Any = DEFAULT_LOG_LEVEL,
         kind: Optional[str] = None,
+        lights: Optional[list] = None,
     ) -> None:
         """Build one line, send it to the sink and follow the newest line."""
-        self.append(build_line(stamp, message, level, kind))
+        self.append(build_line(stamp, message, level, kind, lights))
         self.scroll_to_end()
 
     def append(self, line: dict) -> None:
@@ -553,6 +613,7 @@ def pane_model() -> StatusLogModel:
 #   "A message is a mapping with ``message``, ``level`` and an optional ``force``
 #   that paints it through a pause."
 # A message also carries ``kind``, the kind its writer named.
+# A message also carries ``lights``, the gate lights its writer resolved.
 def build_view_model(
     model: StatusLogModel,
     messages: Optional[list] = None,
@@ -585,13 +646,14 @@ def build_view_model(
             level = entry.get("level", DEFAULT_LOG_LEVEL)
             forced = bool(entry.get("force", False))
             named = entry.get("kind")
+            lit = entry.get("lights")
         except Exception as exc:
             logger.warning("status log message skipped: %s", exc)
             continue
         if forced:
-            model.force_log(text, level, kind=named)
+            model.force_log(text, level, kind=named, lights=lit)
         else:
-            model.log(text, level, kind=named)
+            model.log(text, level, kind=named, lights=lit)
     for relayed in notices or []:
         model.append_text(str(relayed))
     batch = model.take_painted()
@@ -613,6 +675,8 @@ def build_view_model(
         "wire_flow_color": list(rgb(WIRE_FLOW_COLOR)),
         "wire_stack_color": list(rgb(WIRE_STACK_COLOR)),
         "resume_marker_color": list(rgb(RESUME_MARKER_COLOR)),
+        "light_label_color": list(rgb(LIGHT_LABEL_COLOR)),
+        "bank_marker_color": list(rgb(BANK_MARKER_COLOR)),
     }
 
 

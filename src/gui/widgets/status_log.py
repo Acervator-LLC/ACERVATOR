@@ -12,6 +12,7 @@ from ..main_tabs import status_log_surface as surface
 logger = logging.getLogger("acervator.gui")
 
 try:
+    from PySide6.QtGui import QFontMetrics, QTextBlockFormat, QTextCursor
     from PySide6.QtWidgets import QTextEdit
 
     _HAS_QT = True
@@ -36,7 +37,7 @@ if _HAS_QT:
             self.setMaximumHeight(150)
             self.setPlaceholderText("Activity log...")
             self._paused: bool = False
-            self._pause_buffer: list[tuple[str, str, str, str | None]] = []
+            self._pause_buffer: list[tuple] = []
             self._pause_buffer_cap: int = 2000
             self._relay: Callable[[str, str, str, str | None], None] | None = None
 
@@ -67,12 +68,13 @@ if _HAS_QT:
             message: str = "",
             level: str = "",
             kind: str | None = None,
+            lights: list | None = None,
         ) -> None:
             """Report one call to ``_relay`` without stopping ``_render``."""
             if self._relay is None:
                 return
             try:
-                self._relay(action, message, level, kind)
+                self._relay(action, message, level, kind, lights)
             except Exception:
                 logger.debug("StatusLog relay raised on %s", action, exc_info=True)
 
@@ -96,8 +98,8 @@ if _HAS_QT:
             self._tell("resume")
             buffered = list(self._pause_buffer)
             self._pause_buffer.clear()
-            for ts, message, level, kind in buffered:
-                self._render(ts, message, level, kind)
+            for ts, message, level, kind, lights in buffered:
+                self._render(ts, message, level, kind, lights)
             if buffered:
                 self.append(surface.resume_line(len(buffered))["html"])
                 self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
@@ -111,24 +113,32 @@ if _HAS_QT:
             return self._paused
 
         def log(
-            self, message: str, level: str = "info", kind: str | None = None
+            self,
+            message: str,
+            level: str = "info",
+            kind: str | None = None,
+            lights: list | None = None,
         ) -> None:
             ts = datetime.now().strftime("%H:%M:%S")
-            self._tell("log", message, level, kind)
+            self._tell("log", message, level, kind, lights)
             if self._paused:
                 # A full ``_pause_buffer`` drops the newest entry, not the oldest.
                 if len(self._pause_buffer) < self._pause_buffer_cap:
-                    self._pause_buffer.append((ts, message, level, kind))
+                    self._pause_buffer.append((ts, message, level, kind, lights))
                 return
-            self._render(ts, message, level, kind)
+            self._render(ts, message, level, kind, lights)
 
         def force_log(
-            self, message: str, level: str = "warning", kind: str | None = None
+            self,
+            message: str,
+            level: str = "warning",
+            kind: str | None = None,
+            lights: list | None = None,
         ) -> None:
             """Render *message* now, whatever ``_paused`` holds."""
             ts = datetime.now().strftime("%H:%M:%S")
-            self._tell("force_log", message, level, kind)
-            self._render(ts, message, level, kind)
+            self._tell("force_log", message, level, kind, lights)
+            self._render(ts, message, level, kind, lights)
 
         def health_stats(self) -> dict:
             """Return ``_paused``, the ``_pause_buffer`` size, the age and count
@@ -156,9 +166,10 @@ if _HAS_QT:
             message: str,
             level: str = "info",
             kind: str | None = None,
+            lights: list | None = None,
         ) -> None:
             try:
-                self._render_safe(ts, message, level, kind)
+                self._render_safe(ts, message, level, kind, lights)
                 import time as _t
 
                 self._last_render_time = _t.time()
@@ -185,12 +196,31 @@ if _HAS_QT:
             message: str,
             level: str = "info",
             kind: str | None = None,
+            lights: list | None = None,
         ) -> None:
-            style = surface.line_style(message, level, kind)
+            style = surface.line_style(message, level, kind, lights)
             self.append(surface.line_html(ts, style))
+            self._hang_message_column(surface.stamp_text(ts))
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
             self._report_trade_shape(message, style)
             self._report_named_kind(message, kind, style)
+
+        def _hang_message_column(self, stamp_text: str) -> None:
+            """Indent the block just appended so the stamp keeps its own column.
+
+            The width comes from this widget's own font, so a wrapped message
+            starts where the message starts and never under ``stamp_text``.
+            """
+            width = 0.0
+            if stamp_text:
+                advance = QFontMetrics(self.font()).horizontalAdvance(stamp_text + " ")
+                width = float(advance)
+            shape = QTextBlockFormat()
+            shape.setLeftMargin(width)
+            shape.setTextIndent(-width)
+            spot = self.textCursor()
+            spot.movePosition(QTextCursor.MoveOperation.End)
+            spot.setBlockFormat(shape)
 
         def _report_named_kind(
             self, message: str, kind: str | None, style: dict
