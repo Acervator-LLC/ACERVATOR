@@ -134,12 +134,12 @@ if _HAS_QT:
                 # A column the privacy register does not carry leaves the
                 # dot's row empty, so every label sits on the same line.
                 box.addSpacing(HEADER_DOT_ROW_PX)
-            # The mark is outside the layout, in the cell's top-right corner,
-            # so neither the wrap nor the dot's centring moves when it appears.
+            # The mark is outside the layout, so neither the wrap nor the
+            # dot's centring moves when it appears.
             self.mark = QLabel("", self)
             self.mark.setStyleSheet(HEADER_SORT_MARK_STYLE)
             self.mark.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-            self.mark.setAlignment(Qt.AlignRight | Qt.AlignTop)
+            self.mark.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.mark.raise_()
 
         def set_sort_mark(self, text: str) -> None:
@@ -152,14 +152,27 @@ if _HAS_QT:
             return self.mark.text()
 
         def resizeEvent(self, event):  # noqa: N802
-            """Keep the sort mark in the cell's top-right corner."""
+            """Keep the sort mark on the privacy dot's row, at the cell's right edge."""
             super().resizeEvent(event)
-            self.mark.setGeometry(
-                max(0, self.width() - HEADER_SORT_MARK_BOX_PX),
-                0,
-                HEADER_SORT_MARK_BOX_PX,
-                HEADER_SORT_MARK_BOX_PX,
-            )
+            self._place_mark()
+
+        def _place_mark(self) -> None:
+            """Give the mark the dot's row, right of the dot, inside the cell."""
+            top, height = self._dot_row()
+            left = max(self._dot_right(), self.width() - HEADER_SORT_MARK_BOX_PX)
+            self.mark.setGeometry(left, top, max(0, self.width() - left), height)
+
+        def _dot_row(self) -> tuple:
+            """The top and the height of the row this cell's privacy dot sits on."""
+            if self.dot is not None:
+                box = self.dot.geometry()
+                return box.y(), box.height()
+            height = min(HEADER_DOT_ROW_PX, self.height())
+            return max(0, self.height() - HEADER_CELL_PAD_PX - height), height
+
+        def _dot_right(self) -> int:
+            """The x this cell's privacy dot ends at, or 0 when it carries none."""
+            return 0 if self.dot is None else self.dot.geometry().x() + self.dot.width()
 
         def mousePressEvent(self, event):  # noqa: N802
             """Take the press, so the release arrives at this same cell."""
