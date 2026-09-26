@@ -87,6 +87,9 @@ from ..trading.scrumming.sizing import (
     target_delta_usd,
     trim_fold_plan,
     unit_rule,
+    untradeable_reason,
+    variant_trades_market,
+    venue_order_types,
     venue_session,
 )
 from . import paper_log
@@ -369,6 +372,17 @@ def apply_scrum(
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
         return None
+    if not variant_trades_market(rules, float(price)):
+        held = untradeable_reason(rules, float(price))
+        logger.info(
+            "%s: a scrum of $%.2f is read and not traded: %s",
+            bot.bot_id,
+            abs(float(delta)),
+            held,
+        )
+        if on_refusal is not None:
+            on_refusal(held)
+        return None
     order = sized_order(abs(float(delta)) / float(price), rule, rules)
     units = order.units
     if units <= 0.0:
@@ -475,6 +489,16 @@ def apply_fold(
         )
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
+        return None
+    if not variant_trades_market(rules, float(ticker_last)):
+        held = untradeable_reason(rules, float(ticker_last))
+        logger.info(
+            "%s: a fold is read and not traded: %s; the tranches stay queued",
+            bot.bot_id,
+            held,
+        )
+        if on_refusal is not None:
+            on_refusal(held)
         return None
     fee_pct = taker_fee_pct(bot)
     factor = fold_rebuy_factor(bot.scrumming_interval_pct, fee_pct)
@@ -773,6 +797,7 @@ def run_market_rules(bots: Sequence[PaperBot]) -> dict[str, MarketRules]:
         bot.bot_id: replace(
             recorded_rules(bot.exchange_id, bot.symbol),
             session=venue_session(CLASS_CRYPTO, bot.exchange_id),
+            order_types=venue_order_types(CLASS_CRYPTO, bot.exchange_id),
         )
         for bot in bots
     }

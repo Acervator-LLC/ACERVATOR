@@ -133,6 +133,7 @@ class MarketRules:
     amount_increment: Optional[float] = None  # base units a size steps by
     price_increment: Optional[float] = None  # quote units a price steps by
     session: Optional[str] = None  # the session name the venue publishes
+    order_types: Optional[str] = None  # the order types the venue declares
     read: bool = True
 
     def price_on_tick(self, price: float) -> Optional[float]:
