@@ -74,6 +74,12 @@
   var CLASS_KEY = "class";
   var NEXT_MODE = "next_mode";
   var MODE_PARAM_FIELD = "mode_param";
+  var SIDE = "side_px";
+  var GRID_ROWS = "grid_rows";
+  var GRID_COLUMNS = "grid_columns";
+  var SEGMENT_ROW = "row";
+  var SEGMENT_COLUMN = "grid_column";
+  var SEGMENT_SPAN = "column_span";
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -255,6 +261,22 @@
       return text(value);
     }
     return VAR_OPEN + name + VAR_SPLIT + String(value) + VAR_CLOSE;
+  }
+
+  // A row or column of the square, each track an equal share and none sized
+  // by the class name it holds.
+  function tracks(count) {
+    return "repeat(" + String(count) + ", minmax(0, 1fr))";
+  }
+
+  // A grid row, column or span arrives as a whole number and never a token.
+  function cell(value, floor) {
+    var read = Number(value);
+    var least = floor === undefined ? 0 : floor;
+    if (!isFinite(read) || read < least) {
+      return least;
+    }
+    return Math.floor(read);
   }
 
   // A token holds a bare number, so `calc` scales it to a CSS length.
@@ -576,8 +598,9 @@
     });
   }
 
-  // One button per asset class. The group's own element carries the active
-  // class, so a reader finds it without walking the buttons.
+  // One segment per asset class, placed at its own grid row and column. The
+  // group's element carries the active class, so a reader finds it without
+  // walking the segments.
   function ModeButton(props) {
     var model = isPlainObject(props.button) ? props.button : {};
     var action = text(
@@ -592,8 +615,17 @@
           style[property] = fill[property];
         });
       }
+      // `MINIMUM_WIDTH` equals the track's own width, because `SIDE` is that
+      // floor times the columns. The class name elides, as the Qt segment does.
       style.minWidth = length(model[MINIMUM_WIDTH]);
-      style.flex = "1 1 0";
+      style.overflow = "hidden";
+      style.textOverflow = "ellipsis";
+      style.whiteSpace = "nowrap";
+      style.gridRow = String(cell(each[SEGMENT_ROW]) + 1);
+      style.gridColumn =
+        String(cell(each[SEGMENT_COLUMN]) + 1) +
+        " / span " +
+        String(cell(each[SEGMENT_SPAN], 1));
       var one = {
         key: key,
         className: MODE_CLASS,
@@ -610,9 +642,23 @@
       return element("button", one, text(each[TEXT]));
     });
 
-    var groupStyle = { display: "flex", gap: length(model[GROUP_SPACING]) };
-    withStretch(groupStyle, props.stretch);
-    withFloor(groupStyle, props.floor);
+    // Both sides are `SIDE`, the number the Qt widget is fixed to, so a track
+    // is `minmax(0, 1fr)` and no class name widens the square.
+    var side = length(model[SIDE]);
+    var groupStyle = {
+      display: "grid",
+      gap: length(model[GROUP_SPACING]),
+      gridTemplateColumns: tracks(cell(model[GRID_COLUMNS], 1)),
+      gridTemplateRows: tracks(cell(model[GRID_ROWS], 1)),
+      width: side,
+      height: side,
+      minWidth: side,
+      maxWidth: side,
+      flexGrow: 0,
+      flexShrink: 0,
+      alignSelf: "center",
+      overflow: "hidden"
+    };
     var groupProps = {
       className: MODE_GROUP_CLASS,
       style: groupStyle,

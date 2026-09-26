@@ -592,6 +592,156 @@ def _tainted_locals(fn: ast.AST) -> set[str]:
     return tainted
 
 
+_SEGMENT_EDGES = ("top", "right", "bottom", "left")
+_SEGMENT_CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
+
+
+_SEGMENT_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def _segment_docstring_node(node: ast.AST) -> object:
+    """The ``Constant`` node holding ``node``'s docstring, or None.
+
+    Identity, never the cleaned text: ``ast.get_docstring`` re-indents, so a
+    value comparison keeps the docstring in the literals a rule reads.
+    """
+    body = getattr(node, "body", None)
+    if not body or not isinstance(body[0], ast.Expr):
+        return None
+    first = body[0].value
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first
+    return None
+
+
+def _segment_strings(node: ast.AST) -> list[str]:
+    """Every string literal in ``node`` that is not its own docstring."""
+    doc = _segment_docstring_node(node)
+    found = []
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+            if sub is doc:
+                continue
+            found.append(sub.value)
+    return found
+
+
+def _segment_writes_box(said: list[str]) -> bool:
+    """Whether these literals declare a segment's own border box.
+
+    A function that only tints a border colour is styling, not the box, so it
+    is left to whichever function writes ``border:`` or ``border-radius``.
+    """
+    return any("border-radius" in one or "border: " in one for one in said)
+
+
+def _segment_subjects(tree: ast.AST) -> list[ast.AST]:
+    """Every function that names a segment and writes its own border box."""
+    subjects = []
+    for node in ast.walk(tree):
+        if not isinstance(node, _SEGMENT_DEFS):
+            continue
+        doc = (ast.get_docstring(node) or "").lower()
+        if "segment" not in node.name.lower() and "segment" not in doc:
+            continue
+        if _segment_writes_box(_segment_strings(node)):
+            subjects.append(node)
+    return subjects
+
+
+def _segment_gap_faults(path: Path, tree: ast.AST) -> list[Finding]:
+    """Every module-level spacing or gap constant a segmented group must keep at zero."""
+    faults = []
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            name = target.id
+            if not name.endswith("_PX"):
+                continue
+            if "SPACING" not in name and "GAP" not in name:
+                continue
+            value = node.value
+            if isinstance(value, ast.Constant) and value.value == 0:
+                continue
+            faults.append(
+                Finding(
+                    tool="gui-static",
+                    severity="high",
+                    file=str(path),
+                    line=node.lineno,
+                    rule_id="GUI007",
+                    message=(
+                        f"{name} is not zero in a module that styles a segmented "
+                        "group; a gap between two segments draws two borders where "
+                        "the group must draw one. Set it to 0."
+                    ),
+                )
+            )
+    return faults
+
+
+def _scan_segmented_group_skin(path: Path, tree: ast.AST) -> list[Finding]:
+    """GUI007 — a segmented group must share its edges and round only its outer corners.
+
+    A group whose segments each carry a full border, or each round more than
+    one corner, or that keeps a non-zero gap between segments, is refused.
+    """
+    subjects = _segment_subjects(tree)
+    if not subjects:
+        return []
+    findings: list[Finding] = []
+    for node in subjects:
+        said = _segment_strings(node)
+        joined = " ".join(said)
+        shared = any(f"border-{edge}: none" in joined for edge in _SEGMENT_EDGES)
+        if not shared:
+            findings.append(
+                Finding(
+                    tool="gui-static",
+                    severity="high",
+                    file=str(path),
+                    line=node.lineno,
+                    rule_id="GUI007",
+                    message=(
+                        f"{node.name} styles a segmented group and suppresses no "
+                        "shared edge, so every segment carries a full border and "
+                        "two lines draw between neighbours. Drop the shared edge "
+                        "with border-<edge>: none."
+                    ),
+                )
+            )
+        for branch in ast.walk(node):
+            if not isinstance(branch, ast.If):
+                continue
+            rounded = set()
+            for sub in branch.body:
+                for one in _segment_strings(sub):
+                    for corner in _SEGMENT_CORNERS:
+                        if f"border-{corner}-radius" in one:
+                            rounded.add(corner)
+            if len(rounded) > 1:
+                findings.append(
+                    Finding(
+                        tool="gui-static",
+                        severity="high",
+                        file=str(path),
+                        line=branch.lineno,
+                        rule_id="GUI007",
+                        message=(
+                            f"{node.name} rounds {sorted(rounded)} in one branch, so "
+                            "that segment rounds more than one corner and the group "
+                            "is a strip with two rounded ends, not a square whose "
+                            "outer corners each belong to one segment."
+                        ),
+                    )
+                )
+    findings.extend(_segment_gap_faults(path, tree))
+    return findings
+
+
 def _scan_model_only_colour_asserts(path: Path, tree: ast.AST) -> list[Finding]:
     """GUI006 — a colour assertion on a live widget with no pixel check.
 
@@ -685,6 +835,7 @@ def _run_gui_static(target: Path) -> list[Finding]:
         analyzer.visit(tree)
         findings.extend(analyzer.findings)
         findings.extend(_scan_model_only_colour_asserts(f, tree))
+        findings.extend(_scan_segmented_group_skin(f, tree))
     return findings
 
 
