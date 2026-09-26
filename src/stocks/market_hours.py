@@ -8,7 +8,7 @@ and US market holidays. Provides schedule-aware bot control.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time as dt_time, date, timedelta
+from datetime import datetime, time as dt_time, date, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
@@ -56,6 +56,78 @@ REGULAR_OPEN = dt_time(9, 30)
 REGULAR_CLOSE = dt_time(16, 0)
 AFTER_HOURS_CLOSE = dt_time(20, 0)
 
+#: Eastern Time's two offsets from UTC, standard and daylight.
+ET_STANDARD_OFFSET_HOURS = -5
+ET_DAYLIGHT_OFFSET_HOURS = -4
+
+#: US daylight time runs from the second Sunday in March at 07:00 UTC to the
+#: first Sunday in November at 06:00 UTC, unchanged since 2007.
+DST_START_MONTH = 3
+DST_START_SUNDAY = 2
+DST_START_UTC_HOUR = 7
+DST_END_MONTH = 11
+DST_END_SUNDAY = 1
+DST_END_UTC_HOUR = 6
+
+
+def nth_sunday(year: int, month: int, nth: int) -> date:
+    """The ``nth`` Sunday of ``month`` in ``year``."""
+    first = date(year, month, 1)
+    return first + timedelta(days=(6 - first.weekday()) % 7 + 7 * (nth - 1))
+
+
+def et_offset_hours(utc: datetime) -> int:
+    """Eastern Time's offset from UTC at naive ``utc``, by the US daylight time
+    rule the two DST constants state."""
+    start = datetime.combine(
+        nth_sunday(utc.year, DST_START_MONTH, DST_START_SUNDAY),
+        dt_time(DST_START_UTC_HOUR),
+    )
+    end = datetime.combine(
+        nth_sunday(utc.year, DST_END_MONTH, DST_END_SUNDAY),
+        dt_time(DST_END_UTC_HOUR),
+    )
+    if start <= utc < end:
+        return ET_DAYLIGHT_OFFSET_HOURS
+    return ET_STANDARD_OFFSET_HOURS
+
+
+def eastern_at(moment_s: float) -> datetime:
+    """``moment_s``, epoch seconds, as a naive Eastern Time datetime; no local
+    timezone is read."""
+    utc = datetime.fromtimestamp(float(moment_s), tz=timezone.utc).replace(tzinfo=None)
+    return utc + timedelta(hours=et_offset_hours(utc))
+
+
+def session_of(et: datetime) -> MarketSession:
+    """The ``MarketSession`` Eastern Time ``et`` falls in."""
+    if et.weekday() >= 5:  # Saturday or Sunday
+        return MarketSession.WEEKEND
+    if et.date() in US_MARKET_HOLIDAYS_2025_2026:
+        return MarketSession.HOLIDAY
+    t = et.time()
+    if t < PRE_MARKET_OPEN:
+        return MarketSession.CLOSED
+    if t < REGULAR_OPEN:
+        return MarketSession.PRE_MARKET
+    if t < REGULAR_CLOSE:
+        return MarketSession.REGULAR
+    if t < AFTER_HOURS_CLOSE:
+        return MarketSession.AFTER_HOURS
+    return MarketSession.CLOSED
+
+
+def session_at(moment_s: float) -> MarketSession:
+    """The ``MarketSession`` US equity venues are in at ``moment_s``, epoch
+    seconds."""
+    return session_of(eastern_at(moment_s))
+
+
+def accepts_order(moment_s: float) -> bool:
+    """True when US equity venues take an order at ``moment_s``: the regular
+    session only, with pre-market and after-hours excluded."""
+    return session_at(moment_s) == MarketSession.REGULAR
+
 
 class MarketHours:
     """
@@ -74,24 +146,8 @@ class MarketHours:
         et = self._to_eastern(dt)
 
         # Check weekend
-        if et.weekday() >= 5:  # Saturday or Sunday
-            return MarketSession.WEEKEND
-
         # Check holidays
-        if et.date() in US_MARKET_HOLIDAYS_2025_2026:
-            return MarketSession.HOLIDAY
-
-        t = et.time()
-        if t < PRE_MARKET_OPEN:
-            return MarketSession.CLOSED
-        elif t < REGULAR_OPEN:
-            return MarketSession.PRE_MARKET
-        elif t < REGULAR_CLOSE:
-            return MarketSession.REGULAR
-        elif t < AFTER_HOURS_CLOSE:
-            return MarketSession.AFTER_HOURS
-        else:
-            return MarketSession.CLOSED
+        return session_of(et)
 
     def is_market_open(self, dt: datetime = None) -> bool:
         """Check if regular market is currently open."""

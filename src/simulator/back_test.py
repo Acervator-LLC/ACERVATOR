@@ -53,6 +53,7 @@ from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
     BELOW_ONE_UNIT,
     GROWTH_SIDE_LOWER,
+    HELD_OUTSIDE_SESSION,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -70,6 +71,7 @@ from ..trading.scrumming.sizing import (
     recorded_size_rules,
     sale_proceeds_usd,
     scrumming_interval_usd,
+    outside_session,
     settle_fold_plan,
     sized_order,
     target_delta_pct,
@@ -77,6 +79,7 @@ from ..trading.scrumming.sizing import (
     target_growth_applied,
     trim_fold_plan,
     unit_rule,
+    venue_session,
     wallet_capped_spend_usd,
 )
 from ..trading.scrumming.sizing import estimated_fee_usd as fee_usd
@@ -666,7 +669,10 @@ def venue_rules_for(asset: str, exchange_id: str, symbol: str) -> MarketRules:
     ``read`` is False when nothing was recorded for the pair.
     """
     class_name = asset_class(asset, exchange_id) or ""
-    return recorded_rules(trading_venue(class_name, exchange_id), symbol)
+    venue = trading_venue(class_name, exchange_id)
+    return replace(
+        recorded_rules(venue, symbol), session=venue_session(class_name, venue)
+    )
 
 
 def rule_source_line(
@@ -1101,6 +1107,16 @@ def apply_scrum(
     Nothing fills when ``position`` holds fewer units than the sell needs, or
     when a whole-unit ``delta`` buys under one unit, which is logged.
     """
+    if outside_session(getattr(rules, "session", None), float(ts_ms) / 1000.0):
+        logger.info(
+            "%s: a scrum of $%.2f is %s; nothing fills and nothing changes",
+            bot.bot_id,
+            abs(float(delta)),
+            HELD_OUTSIDE_SESSION,
+        )
+        if on_refusal is not None:
+            on_refusal(HELD_OUTSIDE_SESSION)
+        return None
     order = sized_order(abs(float(delta)) / float(price), rule, rules)
     units = order.units
     if units <= 0.0:
@@ -1220,6 +1236,15 @@ def apply_fold(
     ``_apply_fold_target_growth`` grows a live bot's target.
     """
     del delta
+    if outside_session(getattr(rules, "session", None), float(ts_ms) / 1000.0):
+        logger.info(
+            "%s: a fold is %s; nothing fills and the tranches stay queued",
+            bot.bot_id,
+            HELD_OUTSIDE_SESSION,
+        )
+        if on_refusal is not None:
+            on_refusal(HELD_OUTSIDE_SESSION)
+        return None
     fee_pct = bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT
     factor = fold_rebuy_factor(bot.scrumming_interval_pct, fee_pct)
     eligible = eligible_fold_tranches(position.fold_tranches, float(price), factor)

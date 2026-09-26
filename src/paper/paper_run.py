@@ -64,6 +64,7 @@ from ..trading.gate_chain import GateContext
 from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
     CLASS_CRYPTO,
+    HELD_OUTSIDE_SESSION,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -73,6 +74,7 @@ from ..trading.scrumming.sizing import (
     fold_spend_usd,
     fold_surplus_usd,
     plan_fold_consumption,
+    outside_session,
     plan_source_price,
     position_ceiling,
     priced_usd,
@@ -85,6 +87,7 @@ from ..trading.scrumming.sizing import (
     target_delta_usd,
     trim_fold_plan,
     unit_rule,
+    venue_session,
 )
 from . import paper_log
 from .fake_balance import FakeBalance, PaperLedger, opening_ledger
@@ -356,6 +359,16 @@ def apply_scrum(
     fold tranche per lot sold from, the Simulator's ``apply_scrum`` over a
     ``FakeBalance``; nothing fills when the balance holds fewer units than
     the sell needs or a whole-unit ``delta`` buys under one unit."""
+    if outside_session(getattr(rules, "session", None), float(now_s)):
+        logger.info(
+            "%s: a scrum of $%.2f is %s; nothing fills and nothing changes",
+            bot.bot_id,
+            abs(float(delta)),
+            HELD_OUTSIDE_SESSION,
+        )
+        if on_refusal is not None:
+            on_refusal(HELD_OUTSIDE_SESSION)
+        return None
     order = sized_order(abs(float(delta)) / float(price), rule, rules)
     units = order.units
     if units <= 0.0:
@@ -454,6 +467,15 @@ def apply_fold(
     under the cycle cap, as ``_apply_fold_target_growth`` compounds a live
     bot's.
     """
+    if outside_session(getattr(rules, "session", None), float(now_s)):
+        logger.info(
+            "%s: a fold is %s; nothing fills and the tranches stay queued",
+            bot.bot_id,
+            HELD_OUTSIDE_SESSION,
+        )
+        if on_refusal is not None:
+            on_refusal(HELD_OUTSIDE_SESSION)
+        return None
     fee_pct = taker_fee_pct(bot)
     factor = fold_rebuy_factor(bot.scrumming_interval_pct, fee_pct)
     eligible = eligible_fold_tranches(balance.fold_tranches, float(ticker_last), factor)
@@ -747,7 +769,13 @@ def run_market_rules(bots: Sequence[PaperBot]) -> dict[str, MarketRules]:
     and a market with nothing recorded answers a ``MarketRules`` whose ``read``
     is False.
     """
-    return {bot.bot_id: recorded_rules(bot.exchange_id, bot.symbol) for bot in bots}
+    return {
+        bot.bot_id: replace(
+            recorded_rules(bot.exchange_id, bot.symbol),
+            session=venue_session(CLASS_CRYPTO, bot.exchange_id),
+        )
+        for bot in bots
+    }
 
 
 def start(bots: Sequence[PaperBot], rule: str) -> PaperRun:
