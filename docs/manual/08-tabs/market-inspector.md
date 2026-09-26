@@ -8322,4 +8322,166 @@ one that needs a price; the expiry refusal reads a date and keeps its sentence.
 Leave the crypto row on its own and the note is empty, which is the bound above,
 measured rather than argued.
 
+### The logo one asset draws by
+
+**Functional.** One asset's logo is fetched once, kept on disk, and read off
+disk every time after. The cache lives beside the program, not in the runtime
+directory, and it is made the first time a logo is actually kept, so nothing is
+created on a run that keeps none. An asset no address answers for is remembered
+by name, so the walk never runs twice for it.
+
+`src/core/asset_logos.py` — the one walk, and what it answers
+
+```python
+    def resolve(
+        self,
+        symbol: str,
+        candidates: Iterable[str],
+        timeout_s: float = LOGO_TIMEOUT_S,
+    ) -> LogoAnswer:
+        """``symbol``'s kept logo, fetching ``candidates`` in order at most once ever."""
+```
+
+**Functional.** A kept body has to be an image, read from the body's own leading
+bytes rather than from its length. A length alone cannot tell an image from a
+page: read live once on 2026-09-26, the ticker-keyed crypto icon address
+answered 6,186 bytes of HTML with no failure code, and a length floor of 100
+bytes kept that page as a PNG file. The same 6,186 bytes are refused now, and a
+body carrying a PNG, JPEG, GIF, ICO, BMP, WebP or SVG signature is kept under
+the extension its own signature names.
+
+`src/core/asset_logos.py` — what a body must be
+
+```python
+IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "png"),
+    (b"\xff\xd8\xff", "jpg"),
+    (b"GIF87a", "gif"),
+    (b"GIF89a", "gif"),
+    (b"\x00\x00\x01\x00", "ico"),
+    (b"BM", "bmp"),
+)
+```
+
+**Functional.** The file name is built from the symbol with every character a
+file name may not carry replaced. A symbol arrives from outside this repository,
+so a pair spelled with a slash and a name holding a parent-directory step both
+stay inside the cache directory: EUR/USD is kept as EUR-USD.png.
+
+`src/core/asset_logos.py` — the file name
+
+```python
+def kept_name(symbol: str) -> str:
+    """``symbol`` as the file name stem a kept logo takes, every other character ``KEPT_NAME_GAP``."""
+    text = str(symbol).strip().upper()
+    return "".join(
+        one if one.isascii() and one.isalnum() else KEPT_NAME_GAP for one in text
+    )
+```
+
+**Functional.** A crypto asset's addresses come from its own record: the
+confirmed CoinGecko image address where the record carries one, then the
+ticker-keyed icon address. That second one needs no lookup and no identifier, so
+a coin the database has never heard of still resolves an address to try. Thirty
+rows used to carry a generated CoinGecko address that named image directory 1,
+Bitcoin's, for every one of them, because the format string put the coin into
+the file name and left the directory fixed. Those rows now carry the ticker-keyed
+address alone.
+
+`src/exchange/crypto_assets.py` — the address a coin nobody entered still has
+
+```python
+SYMBOL_ICON_URL = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
+```
+
+**Functional.** A stock, a fund share, a metal and a currency pair do not
+resolve the way a coin does. No coin data source covers them, and three keyless
+services keyed on a ticker were read and rejected: one wanted a publishable
+token, one wanted a visible attribution link on every screen drawing a logo, and
+one was keyed on a company domain instead of on a ticker. The mark is therefore
+read from the organisation's own domain, at the two standard locations a site
+serves its own icon at. No third party is contacted, no key is held, and nothing
+has to appear on the screen.
+
+`src/trading/ata_asset_maps.py` — the two standard locations
+
+```python
+ORGANISATION_ICON_FORMATS: tuple[str, ...] = (
+    "https://{domain}/apple-touch-icon.png",
+    "https://{domain}/favicon.ico",
+)
+```
+
+### The way out to an asset's own organisation
+
+**Functional.** Every address offered as openable is checked for its scheme
+first, and a refused one is an empty address carrying the reason it is empty.
+Some schemes open a local file or run script instead of visiting a site, and an
+address for an asset arrives from outside this repository. The check reads the
+same allowed set the guarded fetch reads, so the two can never drift apart.
+
+`src/core/safe_url.py` — the check every offered address passes
+
+```python
+def openable_url(
+    url: object,
+    allowed_schemes: Optional[Iterable[str]] = None,
+) -> tuple[str, str]:
+```
+
+Driven over seven addresses, the two allowed ones pass and the five others open
+nothing.
+
+```
+https://bitcoin.org                     opens
+http://example.org/logo.png             opens
+file:///C:/Windows/System32/calc.exe    the file scheme does not open
+javascript:alert(1)                     the javascript scheme does not open
+vbscript:msgbox(1)                      the vbscript scheme does not open
+data:text/html;base64,PHNjcmlwdD4=      the data scheme does not open
+(an empty address)                      no address is known
+```
+
+**Functional.** A fund share and a currency pair answer their organisation's own
+site. Every other US-listed ticker answers the regulator's own company page,
+which is keyed on the ticker alone and needs no lookup, so an equity the map
+never carried still answers. A metal quote answers nothing: gold has no issuer.
+
+`src/trading/ata_asset_maps.py` — the regulator route
+
+```python
+REGISTRY_URL_FORMAT = (
+    "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+    "&ticker={ticker}&type=10-K&dateb=&owner=include&count=10"
+)
+```
+
+### What a logo resolves for, and what it does not
+
+**Functional.** Counted over every row the three non-crypto maps hold, and over
+the 48 crypto records. A logo address exists for a row when its organisation's
+domain is known; an organisation address exists for every US-listed ticker.
+
+```
+class         rows   a logo address   an organisation address
+stocks          47                0                        47
+commodities     14               10                        10
+forex           28               28                        28
+crypto          48               48                        10
+```
+
+Four readings, and each one is an absence with its own reason.
+
+```
+the 47 stocks rows have no logo address
+    a company's own domain is not a fact this repository holds for a ticker,
+    and no keyless service keyed on a ticker was accepted
+the 4 metal spot pairs have no address of either kind
+    a metal quote has no issuer and no company
+the 38 crypto records with no organisation address
+    the record's website field is filled for 10 of the 48
+nothing is fetched until a row asks
+    the cache holds 0 files, and no screen asks yet
+```
+
 Back to [the subsystem index](README.md).
