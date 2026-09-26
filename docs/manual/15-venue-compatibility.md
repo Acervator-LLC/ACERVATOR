@@ -1292,7 +1292,7 @@ market no built variant trades.
 src/trading/bot_container.py:370     the live order path
 src/paper/paper_run.py:507           the Paper Trader's fold
 src/simulator/back_test.py:1297      the back test's fold
-src/trading/ata_spm.py:1287          the scan naming the market
+src/trading/ata_spm.py:1323          the scan naming the market
 ```
 
 ### Why the two sides differ
