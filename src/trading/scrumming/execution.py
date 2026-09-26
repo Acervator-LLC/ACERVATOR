@@ -23,7 +23,9 @@ from .sizing import (
     priced_usd,
     sale_proceeds_usd,
     scrum_units,
+    spend_less_unsettled_usd,
     target_delta_usd,
+    unsettled_usd,
     wallet_capped_spend_usd,
 )
 
@@ -941,15 +943,35 @@ class ExecutionEngineMixin:
             _wallet_free = quote_free * _qrate
             usd_balance = _reservations.available(_wallet_key, _wallet_free)
             _held_by_others = _reservations.reserved(_wallet_key)
-            buy_usd = wallet_capped_spend_usd(buy_usd_target, usd_balance)
+            # A sale the venue has not settled has not returned its cash, so its
+            # dollars are held back before the buy is sized against the wallet.
+            try:
+                _fold_rules = await self._get_market_rules(self.config.symbol)
+                _settlement = getattr(_fold_rules, "settlement_days", None)
+            except Exception:
+                _settlement = None
+            _unsettled = unsettled_usd(
+                getattr(self, "_fold_tranches", ()), time.time(), _settlement
+            )
+            buy_usd = spend_less_unsettled_usd(
+                wallet_capped_spend_usd(buy_usd_target, usd_balance),
+                usd_balance,
+                _unsettled,
+            )
             if buy_usd <= 0:
                 err_tail = f" (fetch error: {_bal_err})" if _bal_err else ""
+                unsettled_tail = (
+                    f", of which ${_unsettled:.4f} is cash the venue has not "
+                    f"settled at {_settlement} day(s)"
+                    if _unsettled > 1e-9
+                    else ""
+                )
                 held_tail = (
                     f", of which ${_held_by_others:.4f} is reserved by "
                     f"other bots' in-flight orders"
                     if _held_by_others > 1e-9
                     else ""
-                )
+                ) + unsettled_tail
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,

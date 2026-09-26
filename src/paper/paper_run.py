@@ -65,6 +65,7 @@ from ..trading.otd_math import fold_rebuy_factor
 from ..trading.scrumming.sizing import (
     CLASS_CRYPTO,
     HELD_OUTSIDE_SESSION,
+    HELD_UNSETTLED_CASH,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -83,14 +84,18 @@ from ..trading.scrumming.sizing import (
     scrumming_interval_usd,
     settle_fold_plan,
     sized_order,
+    spend_less_unsettled_usd,
     target_delta_pct,
     target_delta_usd,
     trim_fold_plan,
     unit_rule,
+    unsettled_usd,
     untradeable_reason,
+    variant_refuses_sale,
     variant_trades_market,
     venue_order_types,
     venue_session,
+    venue_settlement_days,
 )
 from . import paper_log
 from .fake_balance import FakeBalance, PaperLedger, opening_ledger
@@ -345,6 +350,8 @@ def paper_tape_context(
 # ``sized_order`` sizes the sale: ``rules`` floors it onto the venue's recorded
 # size step and refuses it under the venue's recorded minimum, and ``rule``
 # sizes it only where ``rules`` holds no recorded size rule.
+# ``variant_refuses_sale`` replaces ``variant_trades_market`` here, so a sale out
+# of a market ``MarketRules.expires`` names still fills where a fold refuses.
 def apply_scrum(
     bot: PaperBot,
     balance: FakeBalance,
@@ -372,7 +379,9 @@ def apply_scrum(
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
         return None
-    if not variant_trades_market(rules, float(price)):
+    # A sale out of a market the venue expires still fills, because a position
+    # that cannot be sold cannot close before its expiry.
+    if variant_refuses_sale(rules, float(price)):
         held = untradeable_reason(rules, float(price))
         logger.info(
             "%s: a scrum of $%.2f is read and not traded: %s",
@@ -456,6 +465,11 @@ def apply_scrum(
 # ``sized_order`` books the buy: ``rules`` floors the units onto the venue's
 # recorded size step and refuses them under the venue's recorded minimum, and
 # ``rule`` sizes them only where ``rules`` holds no recorded size rule.
+# OVERTAKEN in apply_fold's docstring below: "spent as ``fold_spend_usd`` under
+# ``fold_taper`` with no wallet cap".
+# ``spend_less_unsettled_usd`` holds the spend to the cash ``unsettled_usd``
+# leaves settled at the tick's ``now_s``, and answers the spend unchanged where
+# the venue published no ``settlement_days``, so the wallet is still uncapped.
 def apply_fold(
     bot: PaperBot,
     balance: FakeBalance,
@@ -523,7 +537,26 @@ def apply_fold(
         return None
     eligible_usd = sum(one["usd"] for one in slices)
     spend = fold_spend_usd(eligible_usd, taper)
+    # The tick's own ``now_s``, never a real clock read here. A sale the venue
+    # has not settled has not returned its cash, so the fold may not spend it.
+    unsettled = unsettled_usd(
+        balance.fold_tranches,
+        float(now_s),
+        getattr(rules, "settlement_days", None),
+    )
+    spend = spend_less_unsettled_usd(spend, balance.cash_usd, unsettled)
     if spend <= 0.0:
+        if unsettled > 0.0:
+            logger.info(
+                "%s: a fold finds $%.4f of $%.4f cash unsettled at %s day(s); "
+                "nothing fills and the tranches stay queued",
+                bot.bot_id,
+                unsettled,
+                balance.cash_usd,
+                getattr(rules, "settlement_days", None),
+            )
+            if on_refusal is not None:
+                on_refusal(HELD_UNSETTLED_CASH)
         return None
     order = sized_order(spend / float(price), rule, rules)
     units = order.units
@@ -798,6 +831,7 @@ def run_market_rules(bots: Sequence[PaperBot]) -> dict[str, MarketRules]:
             recorded_rules(bot.exchange_id, bot.symbol),
             session=venue_session(CLASS_CRYPTO, bot.exchange_id),
             order_types=venue_order_types(CLASS_CRYPTO, bot.exchange_id),
+            settlement_days=venue_settlement_days(CLASS_CRYPTO, bot.exchange_id),
         )
         for bot in bots
     }

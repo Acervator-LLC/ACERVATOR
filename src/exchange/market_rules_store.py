@@ -22,7 +22,17 @@ logger = logging.getLogger(__name__)
 STORE_NAME = "market_rules.json"
 
 #: The four rules ``MarketRules`` carries, each recorded under its own name.
-RULE_FIELDS = ("min_amount", "min_cost", "amount_increment", "price_increment")
+# OVERTAKEN, the comment above reading "The four rules ``MarketRules`` carries":
+# ``expiry_ms`` is a fifth, so the Simulator and the Paper Trader read an expiry
+# the venue published. A row recorded before it holds no such key and answers
+# None, which changes nothing for a market already recorded.
+RULE_FIELDS = (
+    "min_amount",
+    "min_cost",
+    "amount_increment",
+    "price_increment",
+    "expiry_ms",
+)
 
 
 def store_path() -> Path:
@@ -100,6 +110,7 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
         min_cost=rule_value(row.get("min_cost")),
         amount_increment=rule_value(row.get("amount_increment")),
         price_increment=rule_value(row.get("price_increment")),
+        expiry_ms=rule_value(row.get("expiry_ms")),
         read=True,
     )
 
