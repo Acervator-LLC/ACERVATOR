@@ -2318,7 +2318,13 @@ if _HAS_QT:
                     prefix = f"[{bot_id[-8:]}] " if len(bot_id) >= 8 else ""
             # The writer names the kind on its own emit; a writer naming none
             # sends None and the line draws plain.
-            self._status_log.log(prefix + message, "info", kind=event.data.get("kind"))
+            # A per-tick writer also sends ``lights``, resolved on its own emit.
+            self._status_log.log(
+                prefix + message,
+                "info",
+                kind=event.data.get("kind"),
+                lights=event.data.get("lights"),
+            )
 
         def _on_wire_created(self, event) -> None:
             """Log whether the source bot has profit folding on; writes no config."""

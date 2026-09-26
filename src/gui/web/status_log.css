@@ -43,9 +43,56 @@ body {
 }
 
 /* One QTextEdit block. A long message wraps rather than widening the pane. */
+
+/* The sentence above is overtaken. The stamp and the body are the line's two
+ * columns, so a wrapped message stays inside the body column and no text sits
+ * under the stamp. */
 .acervator-status-log-line[data-part="line"] {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 1ch;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+/* The gate lights a per-tick line carries. Sizes match history_panel.css;
+ * every colour arrives on a style attribute from the Python payload. */
+.acervator-status-log-line[data-part="line"] .gate-lights {
+  display: inline-flex;
+  gap: 10px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.acervator-status-log-line[data-part="line"] .light-bank {
+  display: inline-flex;
+  gap: 3px;
+  align-items: flex-end;
+}
+
+.acervator-status-log-line[data-part="line"] .light {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.acervator-status-log-line[data-part="line"] .light-label {
+  font-size: 7px;
+  line-height: 1;
+  letter-spacing: 0.2px;
+}
+
+.acervator-status-log-line[data-part="line"] .light-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: block;
+}
+
+.acervator-status-log-line[data-part="line"] .bank-marker {
+  font-size: 8px;
+  align-self: flex-end;
 }
 
 /* The leading `[hh:mm:ss]` span, painted by the payload in tabular figures. */
@@ -60,6 +107,11 @@ body {
 .acervator-status-log-body[data-part="body"] {
   font-family: inherit;
   line-height: inherit;
+}
+
+/* An unstamped line holds only a body, which then takes the whole width. */
+.acervator-status-log-body[data-part="body"]:only-child {
+  grid-column: 1 / -1;
 }
 
 /* QTextEdit's placeholder, which the pane shows while it holds no line. */

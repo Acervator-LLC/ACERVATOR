@@ -20,8 +20,11 @@
   var WIRE_FLOW_COLOR = "wire_flow_color";
   var WIRE_STACK_COLOR = "wire_stack_color";
   var RESUME_MARKER_COLOR = "resume_marker_color";
+  var LIGHT_LABEL_COLOR = "light_label_color";
+  var BANK_MARKER_COLOR = "bank_marker_color";
 
   var DECLARED_FIELDS = [
+    BANK_MARKER_COLOR,
     BUFFERED,
     BUFFER_CAP,
     DEFAULT_LEVEL_COLOR,
@@ -29,6 +32,7 @@
     DOCUMENT_BLOCKS,
     HEALTH,
     LEVEL_COLORS,
+    LIGHT_LABEL_COLOR,
     PAUSED,
     RESUME_MARKER_COLOR,
     STAGE_COLORS,
@@ -56,6 +60,10 @@
   var BOLD = "bold";
   var ITALIC = "italic";
   var BULLET = "bullet";
+  var LIGHTS = "lights";
+  var BANK = "bank";
+  var LABEL = "label";
+  var STATE = "state";
   var RED = "r";
   var GREEN = "g";
   var BLUE = "b";
@@ -109,6 +117,12 @@
   var LINE_CLASS = "acervator-status-log-line";
   var STAMP_CLASS = "acervator-status-log-stamp";
   var BODY_CLASS = "acervator-status-log-body";
+  var LIGHTS_CLASS = "gate-lights";
+  var BANK_CLASS = "light-bank";
+  var LIGHT_CLASS = "light";
+  var LIGHT_LABEL_CLASS = "light-label";
+  var LIGHT_DOT_CLASS = "light-dot";
+  var BANK_MARKER_CLASS = "bank-marker";
 
   var LOG_PART = "log";
   var PLACEHOLDER_PART = "placeholder";
@@ -118,8 +132,15 @@
   var TAG_PART = "tag";
   var BULLET_PART = "bullet";
   var MESSAGE_PART = "message";
+  var LIGHTS_PART = "lights";
 
   var PART_ATTR = "data-part";
+  var LIGHT_COUNT_ATTR = "data-light-count";
+  var LIGHT_BANK_ATTR = "data-light-bank";
+  var LIGHT_LABEL_ATTR = "data-light-label";
+  var LIGHT_STATE_ATTR = "data-light-state";
+  var LIGHT_COLOR_ATTR = "data-light-color";
+  var BANK_ATTR = "data-bank";
   var KIND_ATTR = "data-kind";
   var LEVEL_ATTR = "data-level";
   var INDEX_ATTR = "data-index";
@@ -257,6 +278,82 @@
     return SPAN_TAG;
   }
 
+  // The lights `gate_light_row` resolved, drawn the way `history_panel.js`
+  // draws them: label then dot, each bank closed by its own marker.
+  function lineLights(line) {
+    return Array.isArray(line[LIGHTS]) ? line[LIGHTS] : [];
+  }
+
+  function bankRuns(lights) {
+    var banks = [];
+    lights.forEach(function (light) {
+      var run = banks.length ? banks[banks.length - 1] : null;
+      if (run === null || run.name !== light[BANK]) {
+        run = { name: light[BANK], items: [] };
+        banks.push(run);
+      }
+      run.items.push(light);
+    });
+    return banks;
+  }
+
+  function LightDot(props) {
+    var light = props.light;
+    var holder = { className: LIGHT_CLASS };
+    holder[LIGHT_BANK_ATTR] = text(light[BANK]);
+    holder[LIGHT_LABEL_ATTR] = text(light[LABEL]);
+    holder[LIGHT_STATE_ATTR] = text(light[STATE]);
+    holder[LIGHT_COLOR_ATTR] = text(light[COLOR]);
+    return element(
+      SPAN_TAG,
+      holder,
+      element(
+        SPAN_TAG,
+        { className: LIGHT_LABEL_CLASS, style: { color: props.labelColour } },
+        text(light[LABEL])
+      ),
+      element(SPAN_TAG, {
+        className: LIGHT_DOT_CLASS,
+        style: { background: text(light[COLOR]) }
+      })
+    );
+  }
+
+  function GateLights(props) {
+    var lights = props.lights;
+    if (!lights.length) {
+      return null;
+    }
+    var holder = { className: LIGHTS_CLASS };
+    holder[PART_ATTR] = LIGHTS_PART;
+    holder[LIGHT_COUNT_ATTR] = String(lights.length);
+    return element(
+      SPAN_TAG,
+      holder,
+      GAP,
+      bankRuns(lights).map(function (run) {
+        var runProps = { key: run.name, className: BANK_CLASS };
+        runProps[BANK_ATTR] = text(run.name);
+        return element(
+          SPAN_TAG,
+          runProps,
+          run.items.map(function (light, at) {
+            return element(LightDot, {
+              key: run.name + ":" + light[LABEL] + ":" + String(at),
+              light: light,
+              labelColour: props.labelColour
+            });
+          }),
+          element(
+            SPAN_TAG,
+            { className: BANK_MARKER_CLASS, style: { color: props.markerColour } },
+            text(run.name)
+          )
+        );
+      })
+    );
+  }
+
   function Line(props) {
     var line = props.line;
     var lineProps = { className: LINE_CLASS };
@@ -285,13 +382,21 @@
     messageProps[PART_ATTR] = MESSAGE_PART;
 
     // An unstamped line carries no span and no gap, as `notice` appends it.
+    // That sentence is overtaken. The stamp and the body are the line's only
+    // two children, so the stamp keeps a column of its own and a wrapped
+    // message never runs under it.
     var painted = text(line[STAMP_TEXT]);
     var body = element(
       bodyTag(line),
       bodyProps,
       element(SPAN_TAG, tagProps, text(line[TAG])),
       element(SPAN_TAG, bulletProps, text(line[BULLET])),
-      element(SPAN_TAG, messageProps, text(line[TEXT]))
+      element(SPAN_TAG, messageProps, text(line[TEXT])),
+      element(GateLights, {
+        lights: lineLights(line),
+        labelColour: props.labelColour,
+        markerColour: props.markerColour
+      })
     );
     if (painted === EMPTY) {
       return element(DIV_TAG, lineProps, body);
@@ -300,7 +405,6 @@
       DIV_TAG,
       lineProps,
       element(SPAN_TAG, stampProps, painted),
-      GAP,
       body
     );
   }
@@ -321,6 +425,8 @@
     var health = objectField(model, HEALTH);
     var lines = documentLines(model);
     var stampColour = rgbOf(model[TIMESTAMP_COLOR]);
+    var labelColour = rgbOf(model[LIGHT_LABEL_COLOR]);
+    var markerColour = rgbOf(model[BANK_MARKER_COLOR]);
 
     var logProps = {
       id: props.id,
@@ -362,7 +468,9 @@
           key: String(at),
           at: at,
           line: isPlainObject(line) ? line : {},
-          stampColour: stampColour
+          stampColour: stampColour,
+          labelColour: labelColour,
+          markerColour: markerColour
         });
       })
     );
@@ -666,6 +774,19 @@
     return field(RESUME_MARKER_COLOR);
   }
 
+  function lightLabelColor() {
+    return field(LIGHT_LABEL_COLOR);
+  }
+
+  function bankMarkerColor() {
+    return field(BANK_MARKER_COLOR);
+  }
+
+  function lineLightsAt(at) {
+    var line = lineAt(at);
+    return isPlainObject(line) ? lineLights(line) : [];
+  }
+
   function declaredFields() {
     return DECLARED_FIELDS.slice();
   }
@@ -817,6 +938,10 @@
     wireFlowColor: wireFlowColor,
     wireStackColor: wireStackColor,
     resumeMarkerColor: resumeMarkerColor,
+    lightLabelColor: lightLabelColor,
+    bankMarkerColor: bankMarkerColor,
+    lineLights: lineLightsAt,
+    GateLights: GateLights,
     declaredFields: declaredFields,
     bodyTag: bodyTag,
     rgbOf: rgbOf,
