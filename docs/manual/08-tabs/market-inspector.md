@@ -7644,16 +7644,16 @@ Twenty-three routes name one, and each was read off the running program.
 | the class menu's items | `src/gui/market_inspector.py:1235` |
 | the Asset Category buttons | `src/gui/market_inspector.py:1372` |
 | the page's class rows and its class list | `src/gui/main_tabs/market_inspector_surface.py:2203,4082` |
-| the class a press takes | `src/trading/ata_spm.py:1984,357` |
-| the timeframes and the round budget a class sets | `src/trading/ata_spm.py:373,389,397` |
-| Scan Now on an empty field, a sector name, a ticker | `src/trading/ata_spm.py:2086,2078,2074` |
+| the class a press takes | `src/trading/ata_spm.py:2115,381` |
+| the timeframes and the round budget a class sets | `src/trading/ata_spm.py:397,413,421` |
+| Scan Now on an empty field, a sector name, a ticker | `src/trading/ata_spm.py:2217,2209,2205` |
 | the market list, the ticker list and the listing of one class | `src/gui/main_tabs/market_inspector_surface.py:3062,2834,3144` |
 | the class order a typed ticker is placed against | `src/gui/main_tabs/market_inspector_surface.py:3137,3182` |
 | the rows one sector holds | `src/gui/main_tabs/market_inspector_surface.py:2810` |
 | the sectors a class holds, and the ones it lists nothing for | `src/trading/ata_asset_maps.py:559,569,579` |
 | the sector one name resolves to, and its rows | `src/trading/ata_asset_maps.py:584,598` |
 | the line under the ticker field | `src/gui/main_tabs/market_inspector_surface.py:3254,3230` |
-| Scan All's walk and its place line | `src/trading/ata_spm.py:2218,681` |
+| Scan All's walk and its place line | `src/trading/ata_spm.py:2349,722` |
 | the zone headline and its counts | `src/gui/main_tabs/market_inspector_surface.py:1557,1573` |
 | the confirmation timers and their tiles | `src/trading/ata_spm_push.py:1164,1436` |
 
@@ -8222,5 +8222,104 @@ three answers its market gives.
 
 **Figures.** This entry adds none. A count of the markdown image tags on the
 page answers 0 before this entry and 0 after it.
+
+## 2026-09-26 - #881 - the sector note names each refused market at the price the scan read
+
+A sector scan ends with one sentence on the Activity Log, and that sentence is
+the scan's own note. It already said which names no venue lists and which
+timeframe no venue serves. It now also names each market no built bot variant
+trades, with that market's own reason. No market leaves the scan: a named market
+keeps its place in the asset list, charts, and reports.
+
+### The note names the market and its own reason
+
+The reason names the variant the market needs and the market shape that variant
+absorbs, so a reader sees what is missing rather than a bare refusal.
+
+`src/trading/ata_spm.py` — the sentence one reason writes
+
+```python
+UNTRADEABLE_TEXT = "Read and not traded, no bot variant trades {symbols}: {reason}"
+```
+
+### Two reasons read two sentences
+
+A sector can hold two markets refused for two different reasons. The note groups
+the markets by reason and writes one sentence per group, each naming the markets
+that carry it. Before this change the note wrote one sentence and gave every
+named market the first market's reason, which was wrong for the rest.
+
+`src/trading/ata_spm.py` — what ends one sentence before the next
+
+```python
+UNTRADEABLE_SEPARATOR = ". "
+```
+
+### The price comes from the scan's own candles
+
+Whether the smallest order a venue accepts costs more than a scrum's excess is a
+question about money, and money needs a price. The scan already read candles for
+every market it voted on, so each timeframe keeps that market's last close beside
+the candle count it already keeps. The note reads those closes and asks no venue
+for anything.
+
+`src/trading/ata_spm.py` — the closes one scan holds
+
+```python
+def scanned_closes(timeframes: Any) -> dict:
+    """Each market's last close across a scan's timeframes, the first timeframe
+    that read one answering for it."""
+```
+
+The note carries no price for a market no read answered, and that market keeps
+the answer it had before. The size question stays open rather than guessed.
+
+### The bound on this entry today
+
+The crypto rows this screen lists carry no size rules at all. One function builds
+every one of them, and it passes none, so the refusal about a smallest order
+cannot fire on any crypto row the scan walks today. The whole-unit sentence
+appears once a scanned row carries its venue's own size rules.
+
+`src/trading/ata_asset_maps.py` — the field a crypto row leaves unset
+
+```python
+    # ata_spm.untradeable_markets reads this; None is a row read off a source
+    # publishing no order rules.
+    rules: Optional[MarketRules] = None
+```
+
+This bound is about the sector scan alone. The ticker field beside it reads its
+rules off each connector's own loaded market table, which is a different path and
+already answers all three states.
+
+### What the driven note answered
+
+Three rows drove the real note in one pass: a crypto row as this screen builds
+it, a whole-unit market priced at 67,060 dollars with an increment of one unit,
+and an expiring contract. The excess figure is the fleet's largest, 17 dollars 50.
+
+```
+crypto row as listed, rules             None
+crypto row reason                       '' - no sentence
+smallest order on the whole-unit row    $67,060.00 against a $17.50 excess
+one refused market, the note reads
+  Read and not traded, no bot variant trades WBTC: whole-unit position is
+  not built: a market whose smallest order costs more than the excess
+two refused markets, the note reads
+  Read and not traded, no bot variant trades WBTC: whole-unit position is
+  not built: a market whose smallest order costs more than the excess.
+  Read and not traded, no bot variant trades BIT-25SEP26-CDE: rolling
+  position is not built: a market the venue expires on a date
+the same three rows at no price          the whole-unit sentence is gone,
+                                         the expiry sentence stays
+the crypto row on its own                the note is empty
+```
+
+The two readings at the bottom are what tell the price apart from the rest. Take
+the price away and the whole-unit sentence goes, because that refusal is the only
+one that needs a price; the expiry refusal reads a date and keeps its sentence.
+Leave the crypto row on its own and the note is empty, which is the bound above,
+measured rather than argued.
 
 Back to [the subsystem index](README.md).
