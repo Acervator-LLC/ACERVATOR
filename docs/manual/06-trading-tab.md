@@ -7764,10 +7764,10 @@ place reads it from there.
 MIN_CANDLES_FOR_TA = 30
 ```
 
-The value did not change. Driven on the built panel, a bot whose market holds
-twenty-nine bars still draws the refusal, and a bot whose market holds thirty draws
-the cold-start sentence instead. The sentence the operator reads is the same
-sentence, character for character, as the one this page already quotes.
+The value did not change. Driven on the three real panels, a market holding
+twenty-nine bars still draws the refusal, and a market holding thirty draws the
+cold-start sentence instead. The sentence the operator reads is the same sentence,
+character for character, as the one this page already quotes.
 
 | reading | before | after |
 |---|---|---|
@@ -7776,8 +7776,8 @@ sentence, character for character, as the one this page already quotes.
 | the cause at thirty bars | cold start | cold start |
 | the tightening detector's own window | 25 | 25 |
 
-The block higher in this entry's page quotes the panel's template with the figure
-typed into the prose. It is kept as written, and it is overtaken:
+A block earlier on this page quotes the panel's template with the figure typed into
+the prose. It is kept as written, and it is overtaken:
 
 ```python
     "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
