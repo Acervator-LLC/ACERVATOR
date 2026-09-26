@@ -142,6 +142,22 @@ FLEET_COMMANDS = {
     "restart": ("Restart All", "restart_all"),
 }
 
+
+def shift_held_after_key(
+    is_press: bool, key_is_shift: bool, event_has_shift: bool
+) -> bool:
+    """Whether SHIFT is down once a key event has happened.
+
+    Both window forks pick their ``FLEET_COMMANDS`` labels through this, so
+    the two cannot disagree about what a key event leaves SHIFT in.
+    """
+    # A SHIFT event settles its own state: down on its press, up on its release.
+    # event_has_shift is unreliable for SHIFT itself, and correct for other keys.
+    if key_is_shift:
+        return is_press
+    return event_has_shift
+
+
 DEFAULT_EXCHANGE_ID = "coinbase"
 DEFAULT_EXCHANGE_NAME = "Coinbase"
 
