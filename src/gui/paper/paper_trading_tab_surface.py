@@ -168,6 +168,18 @@ EXCHANGE_CHOICE_ROW_LABEL = "Exchange:"
 EXCHANGE_CHOICE_MIN_WIDTH_PX = 350
 
 
+def config_writer(fleet_source: Any, bot_id: str, changed: Any) -> Any:
+    """One callable writing ``bot_id``'s stored field through the fleet source
+    and calling ``changed``, so the paper fleet file and the rows follow it."""
+
+    def write(field: str, value: Any) -> Any:
+        stored = fleet_source.set_config_field(bot_id, field, value)
+        changed()
+        return stored
+
+    return write
+
+
 def card_button_name(action: str) -> str:
     """The accessible name of the Get Started card's button that sends ``action``."""
     return button_name(action) + "-card"

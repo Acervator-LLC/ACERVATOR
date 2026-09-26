@@ -10,6 +10,11 @@ keys, the pool figures and ``positions_for_gui`` from ``extractor_state``.
 ``SendRefused`` too, which ``getattr`` with a default reads as absent.
 """
 
+# OVERTAKEN: "``SEND_NAMES`` lists every method the window writes through; each
+# raises ``SendRefused``."
+# ``SEND_NAMES`` lists every method that raises; ``set_config_field`` is a
+# method of its own and writes the record through ``writer``.
+
 from __future__ import annotations
 
 from dataclasses import fields
@@ -27,6 +32,7 @@ from ..trading.scrumming.sizing import cycle_growth_cap_usd
 from .fleet_source import (
     EXTRACTOR_MODE,
     PHANTOMS_ENABLED_DEFAULT,
+    RECORD_FIELDS,
     PaperBot,
     extractor_pool_color,
     row_status,
@@ -35,8 +41,10 @@ from .live_feed_source import SendRefused
 
 #: Every name the Bot Settings window writes a bot through; ``set_config_field``
 #: stands for Live's ``setattr`` on the config.
+# OVERTAKEN: the two lines above.
+# Every name the Bot Settings window writes a bot through EXCEPT
+# ``set_config_field``, which writes the held record through ``writer``.
 SEND_NAMES = (
-    "set_config_field",
     "clear_fold_tranches",
     "clear_pending_wire_credits",
     "clear_lifetime_tranche_counters",
@@ -122,8 +130,14 @@ class PhantomLock:
 class PaperBotView:
     """One ``PaperBot`` and its record, read through a live bot's attribute names."""
 
-    def __init__(self, bot: PaperBot, record: Optional[dict] = None) -> None:
+    def __init__(
+        self,
+        bot: PaperBot,
+        record: Optional[dict] = None,
+        writer: Optional[Callable[[str, Any], Any]] = None,
+    ) -> None:
         stored = dict(record) if isinstance(record, dict) else {}
+        self._writer = writer
         saved = stored.get("scrumming_state")
         saved = saved if isinstance(saved, dict) else {}
         pool = stored.get("extractor_state")
@@ -220,6 +234,20 @@ class PaperBotView:
                 }
             )
         return rows
+
+    def set_config_field(self, field: str, value: Any) -> Any:
+        """Write one field of this bot's stored record through ``writer`` and
+        answer what it stored, raising ``SendRefused`` when none was given."""
+        if self._writer is None:
+            raise SendRefused(
+                f"PaperBotView was built with no writer and cannot set {field!r}."
+            )
+        stored = self._writer(field, value)
+        if field in RECORD_FIELDS:
+            self.record[RECORD_FIELDS[field]] = stored
+        else:
+            setattr(self.config, field, stored)
+        return stored
 
     def __getattr__(self, name: str) -> Any:
         """Refuse every send in ``SEND_NAMES`` and every runtime name not held."""
