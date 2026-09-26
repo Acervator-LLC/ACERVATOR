@@ -22,6 +22,7 @@ from .indicators.bollinger import BollingerBands
 from .indicators.landing_strip import detect_landing_strip_v2
 from .indicators.types import SignalDirection
 from .otd_math import minimum_opposing_trade_distance_pct
+from .ta_engine import MIN_CANDLES_FOR_TA
 
 #: The keys ``BollingerBands.compute`` publishes in ``Signal.details``.
 BAND_POSITION_KEY = "bb_position"
@@ -133,7 +134,6 @@ RAMP_FIRE = "fire"
 BAND_SPAN_FLOOR = 1e-12
 RETREAT_DIVISOR = 2.0
 
-MIN_CANDLES_FOR_TA = 30
 HTF_MIN_CONFIDENCE = 0.30
 NO_WEIGHT = 0.0
 

@@ -100,6 +100,7 @@ from ..trading.stone_tablets.registry import (
     StoneTabletsRegistry,
     _rollup,
 )
+from ..trading.ta_engine import MIN_CANDLES_FOR_TA
 from .fleet_source import NEW_ORIGIN, SimBot
 from .portfolios import asset_class, trading_venue
 from .sim_bus import (
@@ -249,7 +250,7 @@ HTF_BIAS_PIN_EVERY_S = 5.0
 #: The candles one phantom reads, ``PhantomBot._tick``'s ``limit``, and the
 #: fewest it sets a summary from, ``phantom_balance.MIN_TICK_CANDLES``.
 PHANTOM_WINDOW_CANDLES = 100
-PHANTOM_MIN_CANDLES = 30
+PHANTOM_MIN_CANDLES = MIN_CANDLES_FOR_TA
 
 #: The four snapshot events: the walk's opening, a tick, a fill, the walk's end.
 SNAPSHOT_START = "start"

@@ -24,7 +24,13 @@ if TYPE_CHECKING:
 from ..core.event_bus import get_event_bus
 from ..exchange.timeframes import ALL_TIMEFRAMES
 from .bot_container import BotState
-from .ta_engine import VotingEngine, VotingSummary, SignalDirection, candles_from_raw
+from .ta_engine import (
+    MIN_CANDLES_FOR_TA,
+    VotingEngine,
+    VotingSummary,
+    SignalDirection,
+    candles_from_raw,
+)
 
 logger = logging.getLogger("acervator.phantom")
 
@@ -45,7 +51,7 @@ TIMEFRAME_SECONDS: dict[str, int] = {
     "1w": 604800,
 }
 
-MIN_TICK_CANDLES: int = 30
+MIN_TICK_CANDLES: int = MIN_CANDLES_FOR_TA
 
 #: Written into ``get_higher_tf_bias`` contributors for a phantom ``tf_rank``
 #: places at or below its parent, which the Comp field never weighs.

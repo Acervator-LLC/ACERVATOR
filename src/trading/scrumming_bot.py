@@ -34,6 +34,7 @@ from .bot_container import (
     as_finite_float,
 )
 from .ta_engine import (
+    MIN_CANDLES_FOR_TA,
     VotingEngine,
     VotingSummary,
     SignalDirection,
@@ -2977,7 +2978,7 @@ class ScrummingBot(
 
         summary = None
         bb_result = None
-        if len(candles) >= 30:
+        if len(candles) >= MIN_CANDLES_FOR_TA:
             summary = self._voting_engine.compute_all(
                 candles, ta_tf, symbol=self.config.symbol
             )
@@ -4380,7 +4381,7 @@ class ScrummingBot(
             )
             return False
 
-        if not candles or len(candles) < 30:
+        if not candles or len(candles) < MIN_CANDLES_FOR_TA:
             return False
 
         try:

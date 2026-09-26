@@ -9,7 +9,12 @@ from typing import Any, Callable, Optional
 
 from ...core.event_bus import LINE_KIND_WIRE_STACK
 from ..target_bands import at_target_dust_band
-from ..ta_engine import VotingEngine, candles_from_raw, detect_bb_proximity
+from ..ta_engine import (
+    MIN_CANDLES_FOR_TA,
+    VotingEngine,
+    candles_from_raw,
+    detect_bb_proximity,
+)
 from .sizing import (
     FRACTIONAL_UNITS,
     fold_cap_remaining_usd,
@@ -803,7 +808,7 @@ class TickPhaseMixin:
         self._underfunded_log_counter = 0
 
         candles = await self._get_ohlcv(symbol, self.config.ta_timeframe, limit=100)
-        if candles and len(candles) >= 30:
+        if candles and len(candles) >= MIN_CANDLES_FOR_TA:
             engine = VotingEngine()
             parsed = candles_from_raw(candles)
             summary = engine.compute_all(

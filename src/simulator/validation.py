@@ -26,6 +26,7 @@ from ..trading.gate_chain import (
 )
 from ..trading.gate_vocabulary import gate_light_row, unknown_blockers
 from ..trading.scrumming.sizing import target_delta_pct
+from ..trading.ta_engine import MIN_CANDLES_FOR_TA
 from .fleet_source import LIVE_ORIGIN, SimBot
 
 if TYPE_CHECKING:
@@ -38,7 +39,7 @@ logger = logging.getLogger("acervator.simulator.validation")
 RERUN_WINDOW_CANDLES = 100
 
 #: Below this the voting engine and the Bollinger window have too few candles.
-MIN_RERUN_CANDLES = 30
+MIN_RERUN_CANDLES = MIN_CANDLES_FOR_TA
 
 #: Used when a tablet holds too few rows for a gap to be measured.
 FALLBACK_INTERVAL_MS = 300_000

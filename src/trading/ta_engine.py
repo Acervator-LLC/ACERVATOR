@@ -133,6 +133,7 @@ __all__ = [
     "IchimokuCloud",
     "KaufmanERIndicator",
     "MACD",
+    "MIN_CANDLES_FOR_TA",
     "NO_SHRINK_RATIO",
     "PERCENT_PER_RATIO_UNIT",
     "RSIIndicator",
@@ -167,6 +168,10 @@ __all__ = [
 
 
 logger = logging.getLogger("acervator.ta_engine")
+
+
+#: The candles ``VotingEngine.compute_all`` needs before any indicator votes.
+MIN_CANDLES_FOR_TA = 30
 
 
 DEFAULT_WEIGHTS = {
