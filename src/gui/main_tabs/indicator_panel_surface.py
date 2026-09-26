@@ -401,7 +401,9 @@ STALENESS_TOOLTIP = (
     "Shown when the panel is displaying the LAST TA read "
     "this bot produced rather than a current one, with the "
     "age of that reading and the reason no current one "
-    "exists. Nothing is recomputed to draw it."
+    "exists. Nothing is recomputed to draw it. "
+    "Also shown when this bot has no stored reading either, "
+    "naming the one cause that applies."
 )
 
 RATE_STRIP_TEXT_COLOR = "#66ccff"
@@ -1383,6 +1385,9 @@ class IndicatorPanelModel:
         self.no_data_cause = str(cause or EMPTY_TEXT)
         self.no_data_message = str(message or EMPTY_TEXT)
         self.set_summary({}, self.symbol)
+        # set_summary cleared staleness_line; the cause goes back on it so
+        # empty tables name their own cause.
+        self.staleness_line = self.no_data_message
 
     def show_stored(self, stored: dict, when: str, age: str, message: str) -> None:
         """Draw a persisted reading under the amber banner naming its age."""
@@ -1483,7 +1488,7 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "tooltip": privacy_tooltip(masked=model.masked),
         },
         "staleness": {
-            "visible": model.showing_stored,
+            "visible": bool(model.staleness_line),
             "text": model.staleness_line,
             "style_sheet": STALENESS_STYLE_SHEET,
             "text_color": STALENESS_TEXT_COLOR,

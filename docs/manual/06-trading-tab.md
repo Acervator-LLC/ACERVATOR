@@ -7454,3 +7454,71 @@ never wrong.
 plain press       1 bot, 0 fleet        1 bot, 0 fleet
 SHIFT press       stop_all, 0 bots      stop_all, 0 bots
 ```
+
+## 2026-09-25 - #858 - the Indicator Voting Panel says why it is empty
+
+> "Live - Bug - IVP - Some bots IVP panels are not loading when selecting.
+> Observed with IMU, GROVE, CAP, and AGLD. Most are working. Cycled to through
+> the bot list a few times and some are consistently failing to load and also
+> giving the candle cache notice in the console but the panels never populate."
+
+### The two causes an empty panel names
+
+**Functional.** A panel holding no votes prints one sentence saying why. Before
+this entry it printed nothing and wrote that sentence to the Console alone, which
+made a market that cannot be voted look exactly like a fault.
+
+Two causes reach the panel. Too few candles means the venue returned fewer bars
+than the engine needs. Cold start means the bot is running and has computed no
+reading since the platform launched.
+
+`src/gui/indicator_panel.py` — the sentence each cause prints
+
+```python
+    "cold_start": "cold start — this bot is running and has computed no TA since "
+    "the platform launched. Its first read lands on the next TA "
+    "evaluation.",
+    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
+    "and the TA engine needs 30.",
+```
+
+### The floor, and a market that sits under it legitimately
+
+**Functional.** The engine needs thirty candles before any indicator votes. A
+market with a shorter history is refused a vote, and that refusal is correct
+rather than a fault, because an indicator computed on too little history is a
+wrong number. The floor was not lowered to make these panels fill.
+
+Measured on the markets named above, at five minutes:
+
+| market | candles the venue returned | the panel reads |
+|---|---|---|
+| GROVE | 6 to 9 | too few candles |
+| LSETH | 10 to 12 | too few candles |
+| AGLD | 13 to 16 | too few candles |
+| IMU | 11 to 18 | too few candles |
+| CAP | 95 to 96 | cold start |
+| a market that votes | 100 | twelve voters |
+
+CAP holds three times the floor and reports the other cause, so a full panel is
+not the only healthy reading.
+
+### A stored reading draws with its age
+
+**Functional.** When a bot has a reading saved from an earlier evaluation, the
+panel draws that reading rather than emptying, with the time it was taken, how
+old it is, and the cause sentence after it. This is why some empty panels already
+explained themselves and others stayed blank: the ones that spoke had a saved
+reading behind them.
+
+`src/gui/indicator_panel.py` — the banner over a stored reading
+
+```python
+            self._staleness_label.setText(
+                f"⏱ LAST TA READ, NOT CURRENT — taken {when}, "
+                f"{age_phrase(age_s)}. {message}"
+            )
+            self._staleness_label.show()
+```
+
+The window build and the page build draw the same sentence in the same place.
