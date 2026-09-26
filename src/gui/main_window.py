@@ -58,6 +58,13 @@ FLEET_SEQUENCE_STATES = {"start": ("idle", "stopped")}
 #: The progress topic ``StartAllProgressDialog`` draws from.
 FLEET_SEQUENCE_TOPIC = "bot_manager.start_all_progress"
 
+#: What the status log carries when no configured venue serves the active class,
+#: so New Bot never opens a wizard with an empty venue list.
+NO_MATCHING_VENUE_LOG = (
+    "No configured venue serves this asset class. "
+    "Add one from this class's Add Exchange button first."
+)
+
 
 def _main_tab_book_class() -> type:
     """The main tab book class the running variant draws, Qt or React."""
@@ -3523,6 +3530,40 @@ if _HAS_QT:
                 f"create this Extractor."
             )
 
+        def _matching_exchanges(self) -> list:
+            """Every configured exchange serving the active asset class.
+
+            The wizard offers these alone, so a venue that cannot trade the
+            active class never reaches its venue drop-down.
+            """
+            from .main_tabs.asset_class_surface import normalise, serves
+
+            held = self._settings.list_exchanges() if self._settings else []
+            wing = normalise(getattr(self, "_asset_class", None))
+            return [one for one in held if serves(one.get("exchange_id", ""), wing)]
+
+        def _build_wizard(self, wizard_class, exchanges: list, defaults: dict):
+            """The Bot Creation Wizard, handed each venue's recorded market rows.
+
+            The React wizard draws the market list from the payload alone, so the
+            rows the local recording holds are passed in; the Qt wizard fetches
+            its own and ignores them.
+            """
+            import inspect
+
+            from .main_tabs.bot_wizard_surface import recorded_market_rows
+
+            if "markets" not in inspect.signature(wizard_class).parameters:
+                return wizard_class(exchanges, defaults, self)
+            rows = {
+                str(one.get("exchange_id", "")): recorded_market_rows(
+                    one.get("exchange_id", "")
+                )
+                for one in exchanges
+                if one.get("exchange_id", "")
+            }
+            return wizard_class(exchanges, defaults, self, markets=rows)
+
         def _create_bot(
             self,
             exchange_id: str = "",
@@ -3551,11 +3592,14 @@ if _HAS_QT:
                 from .bot_wizard import BotCreationWizard
 
                 wizard_class = BotCreationWizard
-            exchanges = self._settings.list_exchanges() if self._settings else []
+            exchanges = self._matching_exchanges()
+            if not exchanges:
+                self._status_log.log(NO_MATCHING_VENUE_LOG, "warning")
+                return
             defaults = self._settings.get_all() if self._settings else {}
             if defaults_override:
                 defaults = {**defaults, **defaults_override}
-            wizard = wizard_class(exchanges, defaults, self)
+            wizard = self._build_wizard(wizard_class, exchanges, defaults)
             if wizard.exec() == wizard.DialogCode.Accepted:
                 config = wizard.get_bot_config()
                 logger.info("Bot creation config: %s", config)

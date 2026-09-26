@@ -994,6 +994,21 @@ NO_PAIRS_TEXT = "No pairs found"
 NO_PAIRS_DATA = EMPTY_TEXT
 POOL_SIGIL = "*"
 
+#: What a market no built bot variant trades carries beside its own entry. The
+#: market keeps its place in the list and Finish refuses it.
+UNTRADEABLE_LABEL_FORMAT = "{label} — no bot yet: {reason}"
+UNTRADEABLE_COUNT_FORMAT = " ({count} cannot carry a bot)"
+NO_CREATABLE_PAIR_TEXT = "No pair on this venue can carry a bot yet."
+
+#: What the wizard says when Finish is pressed on such a market.
+UNTRADEABLE_TITLE = "No bot variant trades this market"
+UNTRADEABLE_FORMAT = (
+    "This market is scanned and charted, and no bot can be created on it: "
+    "{reason}.\n\nPick another market, or create the bot once that variant is "
+    "built."
+)
+UNTRADEABLE_REFUSAL_FORMAT = "No bot can be created on this market: {reason}."
+
 NO_INFO_FORMAT = "No info available for {symbol}"
 INFO_TITLE_FORMAT = "Asset Info — {symbol}"
 NO_DESCRIPTION_FORMAT = "{symbol}\nNo detailed description available for this asset."
@@ -1044,6 +1059,13 @@ MARKET_QUOTE_KEY = "quote"
 MARKET_VOLUME_KEY = "volume"
 MARKET_VOLATILITY_KEY = "volatility"
 
+#: The last traded price a market row carries. `market_reason` measures the
+#: venue's smallest order against it.
+MARKET_PRICE_KEY = "price"
+
+#: What divides the base from the quote in a recorded market symbol.
+MARKET_SYMBOL_SEPARATOR = "/"
+
 REFUSAL_WRONG_NUMBER = "a number field takes a number, not {kind}"
 REFUSAL_WRONG_CHECK = "a check box takes a whole number, not {kind}"
 REFUSAL_WRONG_TEXT = "a text field takes text, not {kind}"
@@ -1067,6 +1089,7 @@ REFUSAL_NO_ROUTE = "no_next_page"
 REFUSAL_NO_HISTORY = "no_previous_page"
 REFUSAL_PHANTOM_NOT_HIGHER = "phantom_not_higher"
 REFUSAL_PHANTOM_NOT_OFFERED = "phantom_not_offered"
+REFUSAL_UNTRADEABLE = "market_untradeable"
 REFUSAL_TYPES = (
     REFUSAL_NONE,
     REFUSAL_API_LOAD,
@@ -1075,6 +1098,7 @@ REFUSAL_TYPES = (
     REFUSAL_NO_HISTORY,
     REFUSAL_PHANTOM_NOT_HIGHER,
     REFUSAL_PHANTOM_NOT_OFFERED,
+    REFUSAL_UNTRADEABLE,
 )
 
 WIZARD_SET_WINDOW_TITLE = "wizard.setWindowTitle"
@@ -1339,6 +1363,68 @@ def bag_number(bag: Any, key: str) -> Optional[float]:
     return float(found) if type(found) in (int, float) else None
 
 
+def recorded_venue_rows(venue: Any) -> dict:
+    """Every market rule row recorded for ``venue``, read from the local
+    recording with no venue call, empty while nothing was recorded for it."""
+    from ...exchange.market_rules_store import load_document
+
+    rows = load_document().get(str(venue or ""))
+    return rows if isinstance(rows, dict) else {}
+
+
+def rules_from_row(row: Any) -> Any:
+    """The ``MarketRules`` one recorded row describes, ``read`` False for a row
+    the recording does not hold."""
+    from ...exchange.base import MarketRules
+    from ...exchange.market_rules_store import RULE_FIELDS, rule_value
+
+    if not isinstance(row, dict):
+        return MarketRules(read=False)
+    return MarketRules(
+        read=True, **{name: rule_value(row.get(name)) for name in RULE_FIELDS}
+    )
+
+
+def recorded_market_rows(venue: Any) -> list:
+    """One market row per pair the recording holds for ``venue``, in symbol
+    order, each carrying its symbol, base and quote and no traded figure.
+
+    The asset page lists these where no live market fetch answered, so the pairs
+    offered are the ones that venue published rather than an invented set.
+    """
+    found = []
+    for symbol in sorted(recorded_venue_rows(venue)):
+        base, _, quote = str(symbol).partition(MARKET_SYMBOL_SEPARATOR)
+        if not base or not quote:
+            continue
+        found.append(
+            {
+                MARKET_SYMBOL_KEY: symbol,
+                MARKET_BASE_KEY: base,
+                MARKET_QUOTE_KEY: quote,
+                MARKET_VOLUME_KEY: 0,
+                MARKET_VOLATILITY_KEY: 0,
+            }
+        )
+    return found
+
+
+def market_reason(rows: Any, market: Any) -> str:
+    """Why no built bot variant trades one market, empty while one does.
+
+    ``rows`` are the venue's recorded rule rows. The answer is
+    ``sizing.untradeable_reason`` at the market's own price, so the asset page
+    names a market it keeps in the list and Finish refuses.
+    """
+    from ...trading.scrumming.sizing import untradeable_reason
+
+    symbol = bag_text(market, MARKET_SYMBOL_KEY)
+    if not symbol:
+        return EMPTY_TEXT
+    rules = rules_from_row(readable_bag(rows).get(symbol))
+    return untradeable_reason(rules, bag_number(market, MARKET_PRICE_KEY))
+
+
 def volume_text(volume: Any) -> str:
     """The short volume the pair list shows, empty below one thousand or unread."""
     if type(volume) not in (int, float):
@@ -1452,6 +1538,7 @@ class BotWizardModel:
         self.pool_exchange_index = 0 if self.exchanges else -1
         self.target_items: list[list] = []
         self.target_hues: list[int] = []
+        self.target_reasons: list[str] = []
         self.target_index = -1
         self.alt_items: list[list] = []
         self.asset_status = EMPTY_TEXT
@@ -1734,14 +1821,21 @@ class BotWizardModel:
         )
         self.target_items = []
         self.target_hues = []
+        self.target_reasons = []
+        recorded = recorded_venue_rows(found)
         for row in kept:
             label = pair_label(row)
             named = bag_text(row, MARKET_BASE_KEY)
+            reason = market_reason(recorded, row)
+            if reason:
+                label = UNTRADEABLE_LABEL_FORMAT.format(label=label, reason=reason)
             self.target_items.append([label, named])
             self.target_hues.append(icon_hue(named))
+            self.target_reasons.append(reason)
             self.calls.append([COMBO_ADD_ITEM, "asset_target", label, named])
         if not kept:
             self.target_items.append([NO_PAIRS_TEXT, NO_PAIRS_DATA])
+            self.target_reasons.append(EMPTY_TEXT)
             self.calls.append(
                 [COMBO_ADD_ITEM, "asset_target", NO_PAIRS_TEXT, NO_PAIRS_DATA]
             )
@@ -1751,11 +1845,33 @@ class BotWizardModel:
             if any((bag_number(row, MARKET_VOLUME_KEY) or 0.0) > 0 for row in kept)
             else EMPTY_TEXT
         )
+        refused = sum(1 for one in self.target_reasons if one)
+        held = UNTRADEABLE_COUNT_FORMAT.format(count=refused) if refused else EMPTY_TEXT
+        if kept and refused == len(kept):
+            sorted_note = f"{sorted_note} {NO_CREATABLE_PAIR_TEXT}".rstrip()
         self.asset_status = (
-            PAIR_COUNT_FORMAT.format(count=len(kept), base=base) + sorted_note
+            PAIR_COUNT_FORMAT.format(count=len(kept), base=base) + held + sorted_note
         )
         self.calls.append([LABEL_SET_TEXT, "asset_status", self.asset_status])
         self.update_info()
+
+    def target_reason(self) -> str:
+        """Why no built bot variant trades the pair the target list shows, empty
+        while one does."""
+        if 0 <= self.target_index < len(self.target_reasons):
+            return self.target_reasons[self.target_index]
+        return EMPTY_TEXT
+
+    def creatable(self) -> bool:
+        """Whether a bot can be created on the pair the target list shows."""
+        return bool(self.target_data()) and not self.target_reason()
+
+    def refusal_text(self) -> str:
+        """The sentence the refusal line carries, empty for a refusal the page
+        draws by its own name."""
+        if self.refusal == REFUSAL_UNTRADEABLE:
+            return UNTRADEABLE_REFUSAL_FORMAT.format(reason=self.target_reason())
+        return EMPTY_TEXT
 
     def set_target_index(self, value: Any) -> None:
         """Pick one pair in the target list."""
@@ -2204,12 +2320,21 @@ class BotWizardModel:
         self.calls.append([WIZARD_REJECT, self.current_page])
         self.closed_page = True
 
+    # OVERTAKEN, quoted whole:
+    #   "Create the bot, if the page the wizard is on offers Finish."
+    # True today: create the bot if the page offers Finish and a built variant
+    # trades the picked market; an accumulation bot on a market `target_reason`
+    # names is refused under `REFUSAL_UNTRADEABLE`.
     def finish(self) -> bool:
         """Create the bot, if the page the wizard is on offers Finish."""
         self.refusal = REFUSAL_NONE
         if not self.is_final_page():
             self.refusal = REFUSAL_NOT_FINAL
             self.refusals.append(REFUSAL_NOT_FINAL)
+            return False
+        if not self.is_extractor() and self.target_reason():
+            self.refusal = REFUSAL_UNTRADEABLE
+            self.refusals.append(REFUSAL_UNTRADEABLE)
             return False
         self.outcome = OUTCOME_FINISHED
         self.calls.append([WIZARD_ACCEPT, self.current_page])
@@ -2402,6 +2527,7 @@ def refusal_catalogue() -> dict:
         "not_final": REFUSAL_NOT_FINAL,
         "no_route": REFUSAL_NO_ROUTE,
         "no_history": REFUSAL_NO_HISTORY,
+        "untradeable": REFUSAL_UNTRADEABLE,
     }
 
 
@@ -2468,8 +2594,11 @@ def asset_page_state(model: BotWizardModel) -> dict:
         "exchange_items": model.exchange_items(),
         "target_items": [list(one) for one in model.target_items],
         "target_hues": list(model.target_hues),
+        "target_reasons": list(model.target_reasons),
         "target_index": model.target_index,
         "target_data": model.target_data(),
+        "target_reason": model.target_reason(),
+        "creatable": model.creatable(),
         "status": model.asset_status,
         "info_tool_tip": model.info_tool_tip,
         "info_box": model.info_box,
@@ -2589,6 +2718,7 @@ def build_view_model(
             "open_outcome": OUTCOME_OPEN,
             "outcomes": list(OUTCOMES),
             "refusal": model.refusal,
+            "refusal_text": model.refusal_text(),
             "refusals": list(model.refusals),
             "refusal_types": list(REFUSAL_TYPES),
             "steps": list(WALK_STEPS),
@@ -2604,6 +2734,7 @@ def build_view_model(
             "market_quote": MARKET_QUOTE_KEY,
             "market_volume": MARKET_VOLUME_KEY,
             "market_volatility": MARKET_VOLATILITY_KEY,
+            "market_price": MARKET_PRICE_KEY,
         },
         "refusals": refusal_catalogue(),
         **counter_catalogue(),
