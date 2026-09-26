@@ -41,6 +41,7 @@ from .indicators.types import (
     VotingSummary,
 )
 from .otd_math import minimum_opposing_trade_distance_pct
+from .scrumming import sizing
 from .ta_engine import VotingEngine
 
 logger = logging.getLogger("acervator.ata_spm")
@@ -301,6 +302,9 @@ CLASS_MOVED_TEXT = (
 )
 UNLISTED_TEXT = "No configured venue lists {symbols}."
 UNSERVED_TEXT = "No venue serves {labels}."
+#: The scan's own sentence for the markets it read that no built bot variant
+#: trades. They stay in ``SectorScan.assets``, so they chart and they report.
+UNTRADEABLE_TEXT = "Read and not traded, no bot variant trades {symbols}: {reason}"
 SYMBOL_SEPARATOR = ", "
 CALL_LINE_FORMAT = "{symbol} on {label}: {direction} reversal"
 CALL_META_FORMAT = (
@@ -948,6 +952,9 @@ class SectorScan:
     deferred: tuple = ()
     unlisted: tuple = ()
     unserved: tuple = ()
+    #: The symbols this scan read that no built bot variant trades, kept in
+    #: ``assets`` so each one still charts and still reports.
+    untradeable: tuple = ()
     hit_target: int = NO_HIT_TARGET
     markets_read: int = NO_MARKETS_READ
     stopped_at_target: bool = False
@@ -1277,6 +1284,34 @@ def is_listed(listing: Any) -> bool:
     return bool(getattr(listing, "listed", True))
 
 
+def untradeable_markets(listings: Any) -> tuple:
+    """The symbol of every row whose own published rules select a bot variant
+    ``sizing.VARIANTS_BUILT`` does not hold, read with no venue asked."""
+    return tuple(
+        symbol_of(one)
+        for one in listings or ()
+        if sizing.untradeable_reason(getattr(one, "rules", None))
+    )
+
+
+def untradeable_note(note: Any, listings: Any) -> str:
+    """``note`` with ``UNTRADEABLE_TEXT`` after it over the rows
+    ``untradeable_markets`` named, and ``note`` unchanged while it named none."""
+    named = untradeable_markets(listings)
+    if not named:
+        return str(note or "")
+    reason = ""
+    for one in listings or ():
+        reason = sizing.untradeable_reason(getattr(one, "rules", None))
+        if reason:
+            break
+    sentence = UNTRADEABLE_TEXT.format(
+        symbols=SYMBOL_SEPARATOR.join(named), reason=reason
+    )
+    held = str(note or "")
+    return f"{held} {sentence}" if held else sentence
+
+
 def serves(listing: Any, timeframe: Any) -> bool:
     """True while a row's venue answers ``timeframe``, or the row states none."""
     asked = getattr(listing, "serves", None)
@@ -1333,6 +1368,10 @@ def evaluate(
             )
         elif not ticked:
             scan.note = NO_TIMEFRAME_TEXT
+        # Named after the note above, so a market no variant trades is reported
+        # beside whatever else the scan has to say about the sector.
+        scan.untradeable = untradeable_markets(listed)
+        scan.note = untradeable_note(scan.note, listed)
         if walks_order(sector) or sector.ticker:
             scan.hit_target = int(sector.hit_target)
             scan.walk_all = bool(sector.walk_all)

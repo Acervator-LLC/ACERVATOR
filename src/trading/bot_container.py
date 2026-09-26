@@ -116,14 +116,15 @@ class BotContainer:
         and an all-``None`` record when the lookup fails or the venue lists no
         such market."""
         from ..exchange.base import MarketRules
-        from .scrumming.sizing import CLASS_CRYPTO, venue_session
+        from .scrumming.sizing import CLASS_CRYPTO, venue_order_types, venue_session
 
         cached = self._market_rules_cache.get(symbol)
         if cached is not None:
             return cached
         # Every connector a container holds is a crypto connector.
         session = venue_session(CLASS_CRYPTO, self.config.exchange_id)
-        unread = MarketRules(read=False, session=session)
+        order_types = venue_order_types(CLASS_CRYPTO, self.config.exchange_id)
+        unread = MarketRules(read=False, session=session, order_types=order_types)
         try:
             markets = await self.exchange.get_markets()
         except Exception as exc:
@@ -143,7 +144,7 @@ class BotContainer:
                 if not isinstance(rules, MarketRules):
                     rules = unread
                 else:
-                    rules = replace(rules, session=session)
+                    rules = replace(rules, session=session, order_types=order_types)
                 self._market_rules_cache[symbol] = rules
                 return rules
         logger.warning(
@@ -189,6 +190,8 @@ class BotContainer:
     # stepped."
     # ``sized_order`` floors ``amount`` onto ``MarketRules.amount_increment``
     # here, before ``min_cost`` is measured and before ``place_order`` is called.
+    # ``venue_variant`` then refuses an unbuilt variant and replaces
+    # ``OrderType.MARKET`` where the venue declares none.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -261,6 +264,10 @@ class BotContainer:
             outside_session,
             sized_order,
             unit_rule,
+            untradeable_reason,
+            variant_built,
+            variant_replaces_market_order,
+            venue_variant,
         )
 
         # Every connector a container holds is a crypto connector; nothing
@@ -329,6 +336,45 @@ class BotContainer:
                 f"again. API not called."
             )
             return None
+
+        # The venue's own rules pick the variant. Both branches run before the
+        # VolumeGuard, which reads ``order_type`` for its own word.
+        _ref_px = 0.0
+        if price is not None and type(price) in (int, float):
+            _ref_px = float(price)
+        if not math.isfinite(_ref_px) or _ref_px <= 0.0:
+            _ref_px = float(getattr(self.stats, "current_price", 0.0) or 0.0)
+        if not math.isfinite(_ref_px) or _ref_px <= 0.0:
+            _ref_px = 0.0
+        _variant = venue_variant(_rules, _ref_px or None)
+
+        if not variant_built(_variant):
+            self._refuse_order(
+                f"PRE-FLIGHT REJECTED: {_side_str} {symbol} needs a bot "
+                f"variant the program does not hold. "
+                f"{untradeable_reason(_rules, _ref_px or None)}. "
+                f"The market is still read and still charted. "
+                f"API not called."
+            )
+
+        if variant_replaces_market_order(_variant) and order_type == OrderType.MARKET:
+            _limit_px = _rules.price_on_tick(_ref_px) if _ref_px else None
+            if _limit_px is None or not math.isfinite(_limit_px) or _limit_px <= 0.0:
+                _limit_px = _ref_px
+            if _limit_px <= 0.0:
+                self._refuse_order(
+                    f"PRE-FLIGHT REJECTED: {_side_str} {symbol} needs a limit "
+                    f"price on a venue declaring no market order, and no price "
+                    f"is known for this market. "
+                    f"API not called."
+                )
+            order_type = OrderType.LIMIT
+            price = _limit_px
+            self._warn_order(
+                f"LIMIT FOR A VENUE TAKING NO MARKET ORDER: {_side_str} "
+                f"{symbol} {_amt:.10f} at ${_limit_px:.8f} on a price tick of "
+                f"{_rules.price_increment} ({_variant})."
+            )
 
         if self._volume_guard and self._volume_guard.enabled:
             side_str = "buy" if side == OrderSide.BUY else "sell"

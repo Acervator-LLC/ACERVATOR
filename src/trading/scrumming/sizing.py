@@ -136,6 +136,25 @@ CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
 #: The reason a held order carries, never one of ``sized_order``'s refusals.
 HELD_OUTSIDE_SESSION = "outside the venue's session"
 
+#: The two order-type declarations a venue publishes: one taking a market order
+#: beside a limit order, and one taking a limit order alone.
+ORDER_TYPES_WITH_MARKET = "market and limit"
+ORDER_TYPES_LIMIT_ONLY = "limit only"
+
+#: The order types each ``(asset class, venue)`` declares, keyed as
+#: ``CITED_UNIT_RULES`` is keyed. A pair absent here declares nothing, which
+#: ``venue_variant`` never reads as declining a type.
+CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
+    (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
+}
+
+
+def venue_order_types(asset_class: str, venue: str) -> Optional[str]:
+    """The order types ``CITED_VENUE_ORDER_TYPES`` cites for ``asset_class`` on
+    ``venue``, or None when the table cites none for the pair."""
+    return CITED_VENUE_ORDER_TYPES.get((str(asset_class), str(venue)))
+
 
 def venue_session(asset_class: str, venue: str) -> Optional[str]:
     """The session ``CITED_VENUE_SESSIONS`` cites for ``asset_class`` on
@@ -225,6 +244,99 @@ def tradeable_answer(
     if floor_usd is None:
         return TRADEABLE_UNKNOWN
     return TRADEABLE_YES if floor_usd <= excess_usd else TRADEABLE_NO
+
+
+# OVERTAKEN in this module's docstring: "``tradeable_answer`` is the one place
+# that says whether the built variant can trade one market, measuring
+# ``smallest_order_usd`` against ``REFERENCE_SCRUM_EXCESS_USD``; the Market
+# Inspector's ticker rows read it."
+# ``variant_trades_market`` is the one place that says whether a built variant
+# trades one market; ``tradeable_answer`` answers the size question it reads.
+
+#: The bot as written, and the three variants the venue comparison names. Each
+#: variant is named by the venue shape it absorbs.
+VARIANT_NONE = "none"
+VARIANT_LIMIT_ONLY = "limit-only order"
+VARIANT_CASH_AMOUNT = "cash-amount order"
+VARIANT_WHOLE_UNIT = "whole-unit position"
+
+#: The market shape each variant absorbs, one row per variant.
+VARIANT_MARKETS: dict[str, str] = {
+    VARIANT_NONE: "a market naming a unit count on a venue taking a market order",
+    VARIANT_LIMIT_ONLY: "a market on a venue declaring no market order",
+    VARIANT_CASH_AMOUNT: "a market whose size is a whole share",
+    VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
+}
+
+#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
+#: to reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling.
+VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
+
+#: What a market no built variant trades carries, naming the variant it needs
+#: and the shape that variant absorbs.
+UNTRADEABLE_REASON_FORMAT = "{variant} is not built: {market}"
+
+
+def venue_variant(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> str:
+    """The variant one market's own rules select.
+
+    ``VARIANT_WHOLE_UNIT`` while ``tradeable_answer`` reads ``TRADEABLE_NO``,
+    ``VARIANT_LIMIT_ONLY`` while the record declares ``ORDER_TYPES_LIMIT_ONLY``,
+    and ``VARIANT_NONE`` for every other record, an unread one included.
+    """
+    if rules is None or not getattr(rules, "read", False):
+        return VARIANT_NONE
+    if tradeable_answer(rules, price, excess_usd) == TRADEABLE_NO:
+        return VARIANT_WHOLE_UNIT
+    if getattr(rules, "order_types", None) == ORDER_TYPES_LIMIT_ONLY:
+        return VARIANT_LIMIT_ONLY
+    return VARIANT_NONE
+
+
+def variant_built(variant: Any) -> bool:
+    """True while ``VARIANTS_BUILT`` holds ``variant``."""
+    return str(variant) in VARIANTS_BUILT
+
+
+def variant_market(variant: Any) -> str:
+    """The market shape ``VARIANT_MARKETS`` names for ``variant``, empty for a
+    name no row holds."""
+    return VARIANT_MARKETS.get(str(variant), "")
+
+
+def variant_replaces_market_order(variant: Any) -> bool:
+    """True only for ``VARIANT_LIMIT_ONLY``, which names a limit order where the
+    bot names a market order."""
+    return str(variant) == VARIANT_LIMIT_ONLY
+
+
+def variant_trades_market(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> bool:
+    """True while the variant ``venue_variant`` selects for one market is one
+    ``VARIANTS_BUILT`` holds."""
+    return variant_built(venue_variant(rules, price, excess_usd))
+
+
+def untradeable_reason(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> str:
+    """Why one market is read and not traded, through
+    ``UNTRADEABLE_REASON_FORMAT``, and empty while a built variant trades it."""
+    variant = venue_variant(rules, price, excess_usd)
+    if variant_built(variant):
+        return ""
+    return UNTRADEABLE_REASON_FORMAT.format(
+        variant=variant, market=variant_market(variant)
+    )
 
 
 def sized_units(units: float, rule: str) -> float:
@@ -572,6 +684,7 @@ __all__ = [
     "CEILING_MULTIPLE_MAX",
     "CEILING_MULTIPLE_MIN",
     "CITED_UNIT_RULES",
+    "CITED_VENUE_ORDER_TYPES",
     "CITED_VENUE_SESSIONS",
     "CLASS_CRYPTO",
     "CLASS_STOCKS",
@@ -584,6 +697,8 @@ __all__ = [
     "GROWTH_SIDE_UPPER",
     "HELD_OUTSIDE_SESSION",
     "LARGEST_FLEET_TARGET_USD",
+    "ORDER_TYPES_LIMIT_ONLY",
+    "ORDER_TYPES_WITH_MARKET",
     "REFERENCE_SCRUM_EXCESS_USD",
     "SESSION_CONTINUOUS",
     "SESSION_US_EQUITY",
@@ -593,6 +708,13 @@ __all__ = [
     "TRADEABLE_UNKNOWN",
     "TRADEABLE_YES",
     "UNIT_RULES",
+    "UNTRADEABLE_REASON_FORMAT",
+    "VARIANTS_BUILT",
+    "VARIANT_CASH_AMOUNT",
+    "VARIANT_LIMIT_ONLY",
+    "VARIANT_MARKETS",
+    "VARIANT_NONE",
+    "VARIANT_WHOLE_UNIT",
     "WHOLE_UNITS",
     "WHOLE_UNIT_GRAIN",
     "cartridge_threshold_usd",
@@ -626,6 +748,13 @@ __all__ = [
     "tradeable_answer",
     "trim_fold_plan",
     "unit_rule",
+    "untradeable_reason",
+    "variant_built",
+    "variant_market",
+    "variant_replaces_market_order",
+    "variant_trades_market",
+    "venue_order_types",
     "venue_session",
+    "venue_variant",
     "wallet_capped_spend_usd",
 ]

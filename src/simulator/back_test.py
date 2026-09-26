@@ -79,7 +79,12 @@ from ..trading.scrumming.sizing import (
     target_growth_applied,
     trim_fold_plan,
     unit_rule,
+    untradeable_reason,
+    variant_built,
+    variant_trades_market,
+    venue_order_types,
     venue_session,
+    venue_variant,
     wallet_capped_spend_usd,
 )
 from ..trading.scrumming.sizing import estimated_fee_usd as fee_usd
@@ -671,7 +676,9 @@ def venue_rules_for(asset: str, exchange_id: str, symbol: str) -> MarketRules:
     class_name = asset_class(asset, exchange_id) or ""
     venue = trading_venue(class_name, exchange_id)
     return replace(
-        recorded_rules(venue, symbol), session=venue_session(class_name, venue)
+        recorded_rules(venue, symbol),
+        session=venue_session(class_name, venue),
+        order_types=venue_order_types(class_name, venue),
     )
 
 
@@ -693,6 +700,21 @@ def rule_source_line(
     return (
         f"{bot_id}: {symbol} has no recorded rules on venue "
         f"{venue or 'none'}; sizing on the cited {rule} unit rule."
+    )
+
+
+def variant_line(bot_id: str, symbol: str, rules: Any, price: Any) -> str:
+    """The Activity Log line naming the variant ``symbol``'s own rules select at
+    ``price``, and naming ``untradeable_reason`` for an unbuilt one."""
+    reference: Optional[float] = float(price) if type(price) in (int, float) else None
+    if reference is not None and not math.isfinite(reference):
+        reference = None
+    variant = venue_variant(rules, reference)
+    if variant_built(variant):
+        return f"{bot_id}: {symbol} trades under bot variant {variant}."
+    return (
+        f"{bot_id}: {symbol} is read and not traded: "
+        f"{untradeable_reason(rules, reference)}."
     )
 
 
@@ -1117,6 +1139,17 @@ def apply_scrum(
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
         return None
+    if not variant_trades_market(rules, float(price)):
+        held = untradeable_reason(rules, float(price))
+        logger.info(
+            "%s: a scrum of $%.2f is read and not traded: %s",
+            bot.bot_id,
+            abs(float(delta)),
+            held,
+        )
+        if on_refusal is not None:
+            on_refusal(held)
+        return None
     order = sized_order(abs(float(delta)) / float(price), rule, rules)
     units = order.units
     if units <= 0.0:
@@ -1244,6 +1277,16 @@ def apply_fold(
         )
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
+        return None
+    if not variant_trades_market(rules, float(price)):
+        held = untradeable_reason(rules, float(price))
+        logger.info(
+            "%s: a fold is read and not traded: %s; the tranches stay queued",
+            bot.bot_id,
+            held,
+        )
+        if on_refusal is not None:
+            on_refusal(held)
         return None
     fee_pct = bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT
     factor = fold_rebuy_factor(bot.scrumming_interval_pct, fee_pct)
@@ -2105,6 +2148,11 @@ def _walk_fleet(
         if emitter is not None:
             emitter.bot_line(bot.bot_id, line)
         say(line)
+        # The last close is the price the variant's smallest order is measured at.
+        line = variant_line(bot.bot_id, bot.symbol, market, raw[-1][4] if raw else None)
+        if emitter is not None:
+            emitter.bot_line(bot.bot_id, line)
+        say(line)
         walked = _walk_bot(
             bot, files, raw, funding, rule, on_trade, stop, emitter, say, market
         )
@@ -2250,6 +2298,7 @@ __all__ = [
     "tape_context",
     "trend_reading",
     "uncited_rule_line",
+    "variant_line",
     "venue_rules_for",
     "walk",
 ]
