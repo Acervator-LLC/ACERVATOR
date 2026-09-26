@@ -242,7 +242,35 @@ def limit_to_float(value: Any) -> Optional[float]:
     return parsed
 
 
-def market_rules(market: Any, precision_mode: int) -> MarketRules:
+def declared_order_types(exchange: Any) -> Optional[str]:
+    """The order types one CCXT exchange's own ``has`` map declares, None where
+    ``createMarketOrder`` or ``createLimitOrder`` is no bool."""
+    from ..trading.scrumming.sizing import (
+        ORDER_TYPES_LIMIT_ONLY,
+        ORDER_TYPES_WITH_MARKET,
+    )
+
+    has = getattr(exchange, "has", None)
+    if not isinstance(has, dict):
+        return None
+    if has.get("createLimitOrder") is not True:
+        return None
+    # Across the 104 installed classes both keys carry only True or False, so
+    # any other value is a map this reader does not recognise.
+    if has.get("createMarketOrder") is True:
+        return ORDER_TYPES_WITH_MARKET
+    if has.get("createMarketOrder") is False:
+        return ORDER_TYPES_LIMIT_ONLY
+    return None
+
+
+# OVERTAKEN in market_rules's docstring below: "The ``MarketRules`` one loaded
+# CCXT market record publishes."
+# ``order_types`` comes from the exchange's own ``has`` map through
+# ``declared_order_types``; no market record carries it.
+def market_rules(
+    market: Any, precision_mode: int, order_types: Optional[str] = None
+) -> MarketRules:
     """The ``MarketRules`` one loaded CCXT market record publishes.
 
     ``get_markets`` and ``market_inspector_fetcher.trading_rules`` both read a
@@ -251,6 +279,7 @@ def market_rules(market: Any, precision_mode: int) -> MarketRules:
     limits = (market or {}).get("limits") or {}
     precision = (market or {}).get("precision") or {}
     return MarketRules(
+        order_types=order_types,
         min_amount=limit_to_float((limits.get("amount") or {}).get("min")),
         min_cost=limit_to_float((limits.get("cost") or {}).get("min")),
         amount_increment=precision_to_increment(
@@ -1377,6 +1406,9 @@ class CCXTConnector(ExchangeInterface):
 
         markets = []
         precision_mode = getattr(self._ex, "precisionMode", CCXT_DECIMAL_PLACES)
+        # The capability map belongs to the exchange, not to a market record, so
+        # it is read once here and stamped onto every market of this venue.
+        declared = declared_order_types(self._ex)
         for sym, info in self._ex.markets.items():
             if not info.get("active", True):
                 continue
@@ -1386,7 +1418,7 @@ class CCXTConnector(ExchangeInterface):
                     symbol=sym,
                     base=info.get("base", ""),
                     quote=info.get("quote", ""),
-                    rules=market_rules(info, precision_mode),
+                    rules=market_rules(info, precision_mode, declared),
                     maker_fee=float(info.get("maker", 0.001) or 0.001),
                     taker_fee=float(info.get("taker", 0.001) or 0.001),
                     active=info.get("active", True),
