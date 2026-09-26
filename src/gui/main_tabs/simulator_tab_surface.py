@@ -35,6 +35,7 @@ from ...trading.scrumming.sizing import opposing_trade_distances
 from ...trading.stone_tablets.ra_paths import RA_STONE_TABLETS_DIR
 from ...trading.stone_tablets.registry import NATIVE_TIMEFRAME
 from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
+from ...trading.ta_engine import MIN_CANDLES_FOR_TA
 from .. import design_system as ds
 from ..theme_engine import NIGREDO_FRACTION, toward_black
 from . import indicator_panel_surface as ivp
@@ -66,7 +67,7 @@ BATTERY_TABLET_ROOT = RA_STONE_TABLETS_DIR
 WINDOW_CANDLES = 100
 
 #: Below this the voting engine has too few candles for its own formulae.
-MIN_CANDLES = 30
+MIN_CANDLES = MIN_CANDLES_FOR_TA
 
 PRIVACY_ON_TEXT = "Privacy Mode: ON"
 PRIVACY_OFF_TEXT = "Privacy Mode: OFF"

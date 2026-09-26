@@ -1813,8 +1813,10 @@ if _HAS_QT:
                 )
                 return "parked_at_target", detail
 
+            from ..trading.ta_engine import MIN_CANDLES_FOR_TA
+
             cached = self._ivp_cached_candle_count(bot)
-            if cached is not None and cached < 30:
+            if cached is not None and cached < MIN_CANDLES_FOR_TA:
                 detail.update(
                     {
                         "candles": cached,

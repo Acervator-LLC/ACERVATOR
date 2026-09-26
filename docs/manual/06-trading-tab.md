@@ -7747,3 +7747,48 @@ At five minutes a slot holding thirteen bars gains one every five minutes, and t
 engine's floor of thirty is reached about eighty-five minutes after the bot starts.
 Until then the panel prints the same sentence it printed before, and the venue is
 called once every five minutes rather than once for every request.
+
+### The floor is written once, and every reader resolves it there
+
+**Functional.** The number of candles the engine needs before it votes was written
+in twelve separate places, and three of those were the digits typed inside the
+sentence the panel prints. A sentence that states a threshold it does not read can
+go stale without anything reporting it, and the three panels held three copies of
+it. The figure now has one home, beside the engine that needs it, and every other
+place reads it from there.
+
+`src/trading/ta_engine.py` - the one place the floor is written
+
+```python
+#: The candles ``VotingEngine.compute_all`` needs before any indicator votes.
+MIN_CANDLES_FOR_TA = 30
+```
+
+The value did not change. Driven on the built panel, a bot whose market holds
+twenty-nine bars still draws the refusal, and a bot whose market holds thirty draws
+the cold-start sentence instead. The sentence the operator reads is the same
+sentence, character for character, as the one this page already quotes.
+
+| reading | before | after |
+|---|---|---|
+| places holding the figure | 12 | 1 |
+| the cause at twenty-nine bars | too few candles | too few candles |
+| the cause at thirty bars | cold start | cold start |
+| the tightening detector's own window | 25 | 25 |
+
+The block higher in this entry's page quotes the panel's template with the figure
+typed into the prose. It is kept as written, and it is overtaken:
+
+```python
+    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
+    "and the TA engine needs 30.",
+```
+
+What the tree holds is this. The figure arrives as a field, filled from the name the
+engine owns, so the prose carries no number and all three panels print the figure
+the engine is actually using:
+
+```python
+    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
+    "and the TA engine needs {floor}.",
+```

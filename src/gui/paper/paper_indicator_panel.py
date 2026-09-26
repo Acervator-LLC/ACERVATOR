@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 
+from ...trading.ta_engine import MIN_CANDLES_FOR_TA
 from ..main_tabs import indicator_panel_surface as ivp
 
 # ivp.bot_selector is the only IVP field in the privacy mask registry;
@@ -116,7 +117,7 @@ _NO_DATA_CAUSE_TEXT: dict[str, str] = {
     "the platform launched. Its first read lands on the next TA "
     "evaluation.",
     "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
-    "and the TA engine needs 30.",
+    "and the TA engine needs {floor}.",
     "new_bot": "new bot — created just now, still ahead of its first TA read.",
 }
 
@@ -163,6 +164,7 @@ def describe_no_data_cause(cause: str, detail: dict | None = None) -> str:
         "target": _money(data.get("target")),
         "delta": _money(data.get("delta")),
         "candles": str(data.get("candles", "?")),
+        "floor": str(MIN_CANDLES_FOR_TA),
         "symbol": str(data.get("symbol", "") or "this pair"),
         "timeframe": str(data.get("timeframe", "") or "its timeframe"),
     }
