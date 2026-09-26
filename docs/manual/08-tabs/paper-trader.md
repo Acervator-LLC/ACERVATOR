@@ -747,6 +747,19 @@ NEW_BOT_FORMAT = (
 START_RUN_TEXT = "Start Paper Run: no paper run is built; nothing started."
 ```
 
+**THE FORM THE WIZARD REPLACED.** The block above stays here, because a reader
+who saw that line needs to find it. `NEW_BOT_FORMAT` left the tree, and the press
+opens the Bot Creation Wizard instead of writing a line. Its neighbour in that
+module now holds the button's caption rather than a refusal.
+
+`src/gui/paper/paper_trading_tab_surface.py` — what stands there today
+
+```python
+IMPORT_LIVE_FLEET_TEXT = "Import Live Fleet"
+START_RUN_TEXT = "Start Paper Run"
+STOP_RUN_TEXT = "Stop Paper Run"
+```
+
 ### What the fork does not carry
 
 The copies hold no live bot manager, no connector and no event bus. Every
@@ -2345,6 +2358,21 @@ NEW_BOT_FORMAT = (
 )
 ```
 
+**THE FORM THE WIZARD REPLACED.** The block above stays here, because a reader
+who saw that line needs to find it. That constant left the tree. The press now
+reaches a handler that opens the wizard and hands its settings to the paper
+fleet source.
+
+`src/gui/paper/paper_trading_tab.py` — the handler that replaced it
+
+```python
+        wizard_class = surface_class(PAPER_BOT_WIZARD)
+        exchanges = wizard_surface.wizard_exchanges(self._exchange_tabs, self._exchange)
+        defaults = wizard_surface.stored_defaults()
+        markets = wizard_surface.venue_markets(self._exchange)
+        wizard = wizard_class(exchanges, defaults, self, markets=markets)
+```
+
 ### Four sentences this entry overtakes
 
 Each is quoted as it stands, with the sentence that is true today beneath it.
@@ -2452,5 +2480,148 @@ the two fill times five minutes and thirty-three seconds apart.
 The two stamps hold that gap although one pass drew them both. A stamp read off
 the clock would have put both lines on the same second, which is the reading
 that tells the two apart.
+
+## 2026-09-26 - #19 - a paper bot is created from scratch
+
+The Paper tab could hold a fleet only by copying the live one. Its new-bot
+button wrote one Activity Log line naming Import Live Fleet and opened nothing.
+That button now opens the Paper Trader's Bot Creation Wizard on both hosts, and
+the settings it collects reach `PaperFleetSource.create`, which had been in the
+tree with no caller at all.
+
+The wizard's shape is the Simulator's, which already had one on both hosts
+against the same contract. One module holds Paper's own readings, and both hosts
+read it.
+
+`src/gui/paper/paper_bot_wizard_surface.py` — the request the React fork asks
+
+```python
+METHOD = "paper_bot_wizard.state"
+```
+
+### The press that opens the wizard
+
+The route is the same on both hosts and starts on the tab bar. Press Paper,
+press the venue sub-tab, then press the button beside the bot tables. The Qt tab
+opens the wizard at once. The React tab opens it one turn later, because a web
+view opened inside another page's own callback never finishes loading.
+
+`src/gui/paper/paper_exchange_tab.py` — the button the route starts at
+
+```python
+self._add_bot_btn = QPushButton("+ New Bot")
+```
+
+### Each host draws the wizard from one registry line
+
+One screen name carries both loaders, as every other forked screen does. The Qt
+loader answers a five-page window and the React loader answers the dialog that
+draws those pages in a browser.
+
+`src/gui/variant_surface.py` — the screen and its two loaders
+
+```python
+register(PAPER_BOT_WIZARD, _qt_paper_bot_wizard, _react_paper_bot_wizard)
+```
+
+### The pair list carries the venue's own last price
+
+The venue's product list is what the asset page offers. A product record holds a
+last price and carries neither a volume nor a volatility, and the page orders the
+list by name rather than by size. Each row carries that price in the currency the
+pair prices in, because a pair against Bitcoin prices in Bitcoin and not in
+dollars. A price at one unit or more reads to two decimal places and a smaller
+one reads to eight with its trailing zeros cut. A row the venue priced at nothing
+carries no price at all.
+
+`src/gui/paper/paper_bot_wizard_surface.py` — the label one row carries
+
+```python
+def price_label(price: Any, quote: str) -> str:
+    """The last-price tail an asset row carries, empty when ``price`` is not a
+    finite number.
+
+    A price of ``WHOLE_UNIT_PRICE`` or more prints to two places and a smaller
+    one to ``SMALL_PRICE_PLACES``, with the trailing zeros cut; the quote is
+    named because a row on ``ETH/BTC`` prices in BTC, not in dollars.
+    """
+```
+
+### The wizard's settings become the paper record
+
+A finished wizard hands one settings map to the paper fleet source. The record
+built from it takes the shape a stored live record has, its state idle, and its
+own mark naming the wizard as its source rather than a copy. Every reader of that
+mark answers for a made bot as it answers for a copied one, and the command bar
+starts and stops it the same way.
+
+`src/paper/fleet_source.py` — the call the wizard's Finish reaches
+
+```python
+    def create(self, config: dict) -> PaperBot:
+        """Hold one record built from the bot wizard's config through
+        ``wizard_record`` and answer its ``PaperBot``, its ``bot_id`` the first
+        ``BOT_ID_LENGTH`` characters of a ``uuid4`` as a live bot draws its own.
+        """
+```
+
+### What the driven wizard answered
+
+One pass drove each host at three pane widths, with the venue's product read
+stood in for by a recorded answer, and read the made bot back off the real fleet
+source beside a copied bot the same pass had loaded.
+
+```
+Qt      5 pages    ETH/USD made, marked as made here
+                   SOL/USD held, marked as copied
+React   8 of 8 page scripts, 5 page stops, 2 mode rows
+                   ETH/USD made, marked as made here
+both    49 of 49 settings agree, none differs
+labels  BTC  (64,231.07 USD)   ETH  (2,410.55 USD)   XRP  (0.00004312 USD)
+status  3 USD pairs, 3 carrying a last price
+widths  700   900   1400   every control inside the pane
+```
+
+### Three sentences and one heading this entry overtakes
+
+Each is quoted here and kept above as it stands, with the sentence that is true
+today beneath it.
+
+> "A press on `+ New Bot` writes one Activity Log line naming Import Live Fleet
+> as the fleet's way in; the paper bot wizard is a later unit's."
+
+A press on that button opens the Bot Creation Wizard, and its Finish creates the
+bot.
+
+> "The venue page's new-bot button writes a line naming the way in, because no
+> paper bot wizard is built."
+
+That button opens the wizard, and the Activity Log carries the opening line and
+then the created bot's own line.
+
+> "A variant is made by importing the live fleet and changing the imported bot's
+> settings."
+
+A variant is made either way: by changing an imported bot's settings, or by the
+wizard on a pair no live bot trades.
+
+> "Creating a paper bot is still the one way in"
+
+Creating a paper bot is a way in of its own, standing beside Import Live Fleet.
+
+### Two code blocks this entry retires
+
+Both blocks name a constant the tree no longer holds. Each stays where it
+stands, marked as the form the wizard replaced, with today's code beneath it. The
+two sites are the corner-button passage and the settings-record entry above.
+
+`src/gui/paper/paper_trading_tab_surface.py` — what neither block names any more
+
+```python
+CORNER_BUTTONS = (
+    (IMPORT_LIVE_FLEET_ACTION, IMPORT_LIVE_FLEET_TEXT),
+    (START_RUN_ACTION, START_RUN_TEXT),
+)
+```
 
 Back to [the subsystem index](README.md).
