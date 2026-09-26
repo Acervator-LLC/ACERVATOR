@@ -8346,3 +8346,212 @@ The panel's dropdown still puts the highlight on that bot's row, and now only
 while that row is drawn. The two can name different bots: the panel holds the
 bot it is drawing and the list holds a highlight it can release, which is what
 keeps the scroll bar still.
+
+## 2026-09-26 - #937 - the first column draws the target asset's logo
+
+The operator reaches the Scrumming Bots table from the title bar and the menu
+row, through the tab row to the Live tab, then the exchange sub-tab that fills
+the left of that tab. The first column no longer shows an eight-character bot
+id. It shows the target asset the bot accumulates.
+
+### The first column is the asset's own mark
+
+**Functional.** The column is headed Asset. Where a logo file is already kept
+for that asset, the cell draws it and holds no text. Where none is kept, the
+cell draws the asset's ticker instead, so the row still names what the bot
+accumulates. Nothing on this path fetches anything: the cell reads the kept
+directory and no further.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `logo_cell`
+
+```python
+if shown != asset or not asset:
+    return cell(shown)
+address = logo_data_address(path)
+if path and address:
+    return cell(
+        EMPTY_TEXT,
+        tooltip=LOGO_TIP_FORMAT.format(asset=asset),
+        logo_path=path,
+        logo_image=address,
+        logo_size=LOGO_SIZE_PX,
+    )
+return cell(asset, tooltip=NO_LOGO_TIP_FORMAT.format(asset=asset))
+```
+
+The asset a crypto bot names is kept under its base, and a currency pair under
+the whole pair, so both keys are asked in that order.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `kept_logo_path`
+
+```python
+for asked in (icon_asset_of(symbol), symbol):
+    if not asked:
+        continue
+    found = KEPT_LOGOS.kept_path(asked)
+    if found is not None:
+        _LOGO_PATHS[symbol] = str(found)
+        return str(found)
+```
+
+The React page cannot open a file by its path: the page's own rule allows an
+image from the page itself or from a data address and nothing else. The same
+bytes therefore travel to it as a data address, read once per file.
+
+`src/gui/web/bot_status_table.js` — `AssetLogo`
+
+```javascript
+var logoProps = {
+  src: text(found[LOGO_IMAGE]),
+  alt: label(found[TOOLTIP]),
+  draggable: false,
+  className: TABLE_CLASS,
+  style: style
+};
+```
+
+Read on the running list, nine bots, one per state, at 700, 900 and 1400 wide:
+
+```
+the bot's asset       first column            kept file
+BTC/USD               the logo, 32 by 32      BTC.png
+ETH/USD               the logo, 32 by 32      ETH.png
+SOL/USD               the logo, 32 by 32      SOL.png
+AAPL                  the logo, 32 by 32      AAPL.png
+GLD                   the logo, 32 by 32      GLD.png
+EUR/USD               the logo, 32 by 32      EUR-USD.png
+ONDO/USD              the ticker, ONDO        none
+ZZZQ/USD              the ticker, ZZZQ        none
+DOGE/USD              the ticker, DOGE        none
+```
+
+### The state colour and the mode tooltip sit on the Symbol cell
+
+**Functional.** The colour that says what a bot is doing moved one column right.
+The Symbol cell carries it, in the same seven named colours as before, with one
+further colour for a state the list does not name. That cell's tooltip names the
+mode and the state, and where the pair has a chart the chart's line follows
+underneath it. The underline is what marks the cell as the chart's link.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel._symbol_cell`
+
+```python
+found = cell(text, state_color(state), mode_tooltip(mode, state))
+```
+
+Read on the running list, nine bots, one per state:
+
+```
+state       the Symbol cell's colour
+running     #00ff88
+idle        #888888
+paused      #ffaa00
+error       #ff3366
+cooldown    #ff6600
+stopped     #666666
+starting    #00e6ff
+not named   #e0e0f0
+not set     #e0e0f0
+```
+
+### The stand-in disc beside each symbol is gone
+
+**Functional.** The coloured circle carrying the asset's first letter no longer
+draws in the Symbol cell. The cell sets no fill and no letter, so the window
+paints no badge and the page draws no circle.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — the Symbol cell's own fields
+
+```python
+found = cell(text, state_color(state), mode_tooltip(mode, state))
+```
+
+### The row height comes from the logo's drawn size
+
+**Functional.** A logo draws at 32 pixels square. A row keeps two pixels above
+and two below its content, which is what this widget's style answers for its own
+item margin, so a row takes 36 pixels. Before this change a row took 30, which
+was the size the style chose for a row of text.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — the two figures and the sum
+
+```python
+LOGO_SIZE_PX = 32
+ROW_LOGO_MARGIN_PX = 2
+ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
+```
+
+Read on the running tab at all three widths, with every other element of the tab
+read beside it:
+
+```
+reading                         before   after
+the row height                      30      36
+the icon size the table asks     style      32
+all ten column widths            same    same
+the header row's height             60      60
+the ten privacy dots             same    same
+the ten sort marks               same    same
+the table's size hint            same    same
+the table's minimum size hint    same    same
+the scroll bars                  same    same
+every other widget in the tab    same    same
+```
+
+### The bot id keeps its places outside the table
+
+**Functional.** The bot id is still the thing a row is identified by. It stays in
+the payload, once as the list of every drawn row's bot and once on each row. It
+stays in the line the list writes when a row is built. The Detail button still
+carries it, and the window that button opens still names its first eight
+characters in its own title.
+
+`src/gui/main_tabs/bot_live_settings_surface.py` — the title that names it
+
+```python
+WINDOW_TITLE_FORMAT = "Bot Settings — {symbol} [{short_id}]"
+```
+
+Read on the running list, one bot, five routes:
+
+```
+route                                   read back
+the payload's list of bots              bot01ddddeeeeffff
+the row's own bot                       bot01ddddeeeeffff
+the line written when the row was built bot01ddddeeeeffff
+the window's selected bot               bot01ddddeeeeffff
+the Detail button, pressed              bot01ddddeeeeffff
+```
+
+### The privacy dot over the first column still hides it
+
+**Functional.** The dot beneath the Asset label still masks that column. A masked
+first column draws no image and no ticker, only the mask, and revealing it brings
+the logo back.
+
+Read on the running list, the dot driven twice:
+
+```
+the dot         first column
+revealed        the logo, 32 by 32
+masked          ****, no image
+revealed again  the logo, 32 by 32
+```
+
+### The sentence about the state colour on the Bot ID cell is overtaken
+
+**Overtaken.** *"The state colour now sits on the Bot ID cell, which is green
+while running, amber while paused, grey while idle or stopped, red on error,
+orange in cooldown and cyan while starting. That cell's tooltip names the mode
+and the state."*
+
+The state colour now sits on the Symbol cell, in those same colours. That cell's
+tooltip names the mode and the state, and the chart's line follows it where the
+pair has a chart.
+
+### The sentence about Bot ID sorting as a word is overtaken
+
+**Overtaken.** *"**Functional.** Bot ID and Symbol sort as words."*
+
+The first column is headed Asset and sorts as a word, on the asset's ticker.
+Symbol still sorts as a word.

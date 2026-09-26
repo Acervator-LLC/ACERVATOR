@@ -1,13 +1,13 @@
 """bot_status_table_surface.py -- the scrumming-bot dashboard table.
 
 Describes the table the operator's running bots are listed in. Ten
-columns per bot: the bot's id, its pair, what its holdings are worth at
-the exchange's own price, how many trades it has done, the target
-balance in dollars and restated in BTC and in ETH, the Ammo figure that
-says how far the position sits from that target, a Manual Fire button
-and a Detail button.
+columns per bot: the target asset's logo, its pair, what its holdings
+are worth at the exchange's own price, how many trades it has done, the
+target balance in dollars and restated in BTC and in ETH, the Ammo
+figure that says how far the position sits from that target, a Manual
+Fire button and a Detail button.
 
-The Bot ID cell carries the state colour and names the mode and the
+The Symbol cell carries the state colour and names the mode and the
 state in its tooltip. The Current Position Value cell is blank whenever
 no fresh exchange price exists, and its tooltip names what is missing;
 it never falls back to a last-known figure or to a ledger value.
@@ -25,13 +25,14 @@ renderer reaches it. Nothing here imports Qt.
 
 from __future__ import annotations
 
+import base64
 import logging
 from typing import Any, Dict, Optional
 
+from ...core.asset_logos import LogoCache, image_extension
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 from ...exchange.exchange_chart_urls import chart_url
 from .. import design_system as ds
-from ..color_alpha import coin_disc_color
 from .table_cells_surface import (
     NO_TARGET_TEXT,
     POSITION_BLANK_TEXT,
@@ -50,7 +51,7 @@ LOGGER_NAME = "acervator.gui"
 SKIP_LOGGER_NAME = __name__
 
 COLUMN_LABELS = (
-    "Bot ID",
+    "Asset",
     "Symbol",
     "Current Position Value",
     "Trades",
@@ -66,11 +67,17 @@ COLUMN_COUNT = len(COLUMN_LABELS)
 
 COLUMN_TOOLTIPS = {
     0: (
-        "Unique identifier for this bot instance, coloured by current state.\n"
-        "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-        "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
+        "The target asset this bot accumulates, drawn as that asset's own\n"
+        "official logo. An asset with no logo kept yet shows its ticker.\n"
+        "The bot's own id is no longer shown here: it stays in the record\n"
+        "and in the logs, and the Detail button opens the bot that holds it."
     ),
-    1: "Trading pair (Target Asset / Base Currency)",
+    1: (
+        "Trading pair (Target Asset / Base Currency), coloured by current state.\n"
+        "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
+        "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING\n"
+        "Hover a cell to read the mode and the state in full."
+    ),
     2: (
         "Current Position Value — what this bot's holdings are worth now,\n"
         "priced from the exchange (holdings × exchange price × quote rate).\n"
@@ -195,6 +202,7 @@ MODE_SCRUMMING = "scrumming"
 ACTIVE_STATES = ("running", "paused")
 UNKNOWN_STATE_TEXT = "UNKNOWN"
 MODE_TIP_FORMAT = "Mode: {mode}\nState: {state}"
+TOOLTIP_LINE_GAP = "\n"
 
 SKIP_LOG_FORMAT = (
     "BotStatusTable.update_bots received non-scrumming "
@@ -208,6 +216,23 @@ ROW_REFUSED_LOG = "Bot table row %d refused for bot %r: %s: %s"
 
 ICON_ASSET_SIZE_PX = ds.COIN_ICON_SIZE_PX
 ICON_DOWNLOAD = False
+
+#: The size the first column draws a kept logo at, and the row that fits it.
+LOGO_SIZE_PX = 32
+#: The room a row keeps above and below its content, ``PM_FocusFrameVMargin``.
+ROW_LOGO_MARGIN_PX = 2
+ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
+
+LOGO_TIP_FORMAT = "{asset} — the target asset this bot accumulates"
+NO_LOGO_TIP_FORMAT = "{asset} — no logo is kept for this asset yet"
+LOGO_DATA_FORMAT = "data:image/{extension};base64,{body}"
+LOGO_READ_FAILED_LOG = "Logo read failed for %r: %s: %s"
+LOGO_READ_ERRORS = (OSError, ValueError, TypeError)
+
+#: One ``LogoCache`` reader over the kept directory; ``resolve`` is never called.
+KEPT_LOGOS = LogoCache()
+_LOGO_PATHS: Dict[str, str] = {}
+_LOGO_DATA: Dict[str, str] = {}
 
 LINK_COLOR = ds.TEXT_INFO_SOFT
 LINK_UNDERLINE = True
@@ -492,7 +517,7 @@ ROW_BUILT = "row.built"
 ROW_TARGET = "row.target"
 ROW_SYMBOL_LINK = "row.link"
 ROW_SYMBOL_LINK_FAILED = "row.link_failed"
-ROW_ICON = "row.icon"
+ROW_LOGO = "row.logo"
 FIRE_BUILT = "fire.built"
 FIRE_GLOW = "fire.glow"
 DETAIL_BUILT = "detail.built"
@@ -587,12 +612,12 @@ def target_text(target_val: float) -> str:
 
 
 def state_color(state: Any) -> str:
-    """The colour the Bot ID cell is drawn in for one bot state."""
+    """The colour the Symbol cell is drawn in for one bot state."""
     return STATE_COLORS.get(state, DEFAULT_STATE_COLOR)
 
 
 def mode_tooltip(mode: Any, state: Any) -> str:
-    """The Bot ID cell tooltip, which names the mode and the state in full."""
+    """The Symbol cell tooltip, which names the mode and the state in full."""
     shown = state.upper() if state else UNKNOWN_STATE_TEXT
     return MODE_TIP_FORMAT.format(mode=mode, state=shown)
 
@@ -605,8 +630,75 @@ def base_asset_of(symbol: Any) -> str:
 
 
 def icon_asset_of(text: str) -> str:
-    """The asset whose logo the Symbol cell asks for, masked text included."""
+    """The asset whose logo the first column asks for, masked text included."""
     return text.split(SYMBOL_SEPARATOR)[0] if SYMBOL_SEPARATOR in text else text
+
+
+def kept_logo_path(symbol: str) -> str:
+    """``KEPT_LOGOS.kept_path`` for ``symbol``'s base asset, then for the whole pair.
+
+    A crypto record is kept under its base and a currency pair under the
+    pair, so both keys are asked and a hit is held in ``_LOGO_PATHS``.
+    """
+    if not symbol:
+        return EMPTY_TEXT
+    held = _LOGO_PATHS.get(symbol)
+    if held:
+        return held
+    for asked in (icon_asset_of(symbol), symbol):
+        if not asked:
+            continue
+        try:
+            found = KEPT_LOGOS.kept_path(asked)
+        except LOGO_READ_ERRORS as exc:
+            logger.debug(LOGO_READ_FAILED_LOG, asked, type(exc).__name__, exc)
+            continue
+        if found is not None:
+            _LOGO_PATHS[symbol] = str(found)
+            return str(found)
+    return EMPTY_TEXT
+
+
+def logo_data_address(path: str) -> str:
+    """``path``'s bytes in ``LOGO_DATA_FORMAT``, held in ``_LOGO_DATA`` after one read."""
+    if not path:
+        return EMPTY_TEXT
+    held = _LOGO_DATA.get(path)
+    if held is not None:
+        return held
+    try:
+        with open(path, "rb") as handle:
+            body = handle.read()
+    except LOGO_READ_ERRORS as exc:
+        logger.debug(LOGO_READ_FAILED_LOG, path, type(exc).__name__, exc)
+        _LOGO_DATA[path] = EMPTY_TEXT
+        return EMPTY_TEXT
+    extension = image_extension(body)
+    found = (
+        LOGO_DATA_FORMAT.format(
+            extension=extension, body=base64.b64encode(body).decode("ascii")
+        )
+        if extension
+        else EMPTY_TEXT
+    )
+    _LOGO_DATA[path] = found
+    return found
+
+
+def logo_cell(asset: str, shown: str, path: str) -> dict:
+    """The first column's cell: ``asset``'s logo at ``path``, its ticker, or ``shown``."""
+    if shown != asset or not asset:
+        return cell(shown)
+    address = logo_data_address(path)
+    if path and address:
+        return cell(
+            EMPTY_TEXT,
+            tooltip=LOGO_TIP_FORMAT.format(asset=asset),
+            logo_path=path,
+            logo_image=address,
+            logo_size=LOGO_SIZE_PX,
+        )
+    return cell(asset, tooltip=NO_LOGO_TIP_FORMAT.format(asset=asset))
 
 
 def blockers_text(blockers: list) -> str:
@@ -757,7 +849,9 @@ def sort_value(column: int, status: Any, lookups: SortLookups):
     if SORT_KIND_BY_COL.get(column, SORT_KIND_NONE) == SORT_KIND_NONE:
         return None
     if column == BOT_ID_COLUMN:
-        return str(status.get("bot_id", EMPTY_TEXT) or EMPTY_TEXT).casefold()
+        return icon_asset_of(
+            str(status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT)
+        ).casefold()
     if column == SYMBOL_COLUMN:
         return str(status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT).casefold()
     if column == POSITION_VALUE_COLUMN:
@@ -870,6 +964,9 @@ def cell(
         "icon_size": ICON_ASSET_SIZE_PX,
         "icon_color": EMPTY_TEXT,
         "icon_letter": EMPTY_TEXT,
+        "logo_path": EMPTY_TEXT,
+        "logo_image": EMPTY_TEXT,
+        "logo_size": LOGO_SIZE_PX,
         "chart_url": EMPTY_TEXT,
         "underline": False,
     }
@@ -1031,7 +1128,7 @@ class BotStatusTableModel:
                 self.calls.append([ROW_SKIPPED, row, mode])
                 continue
             try:
-                self._write_row(row, status, stats, bot_id, state, mode)
+                self._write_row(row, status, stats, state, mode)
             except Exception as exc:
                 # One bad field stops one row; every other bot still paints.
                 logger.warning(
@@ -1058,7 +1155,7 @@ class BotStatusTableModel:
             return None
         return self.rows[row]["cells"][column]
 
-    def _write_row(self, row, status, stats, bot_id, state, mode) -> None:
+    def _write_row(self, row, status, stats, state, mode) -> None:
         """Write one row's eight cells and its two buttons, in paint order.
 
         Every value the row needs is computed before the first cell is
@@ -1083,8 +1180,9 @@ class BotStatusTableModel:
         eth_text, eth_color = self.cells.target_denom_cell(
             QUOTE_ETH, base_asset, exchange_id, target_val
         )
+        logo_asset = icon_asset_of(symbol)
         texts = [
-            mask_or(bot_id, PRIVACY_FIELD_BY_COL[0]),
+            mask_or(logo_asset, PRIVACY_FIELD_BY_COL[0]),
             mask_or(status.get("symbol", EMPTY_TEXT), PRIVACY_FIELD_BY_COL[1]),
             mask_or(position["text"], PRIVACY_FIELD_BY_COL[2]),
             mask_or(str(stats.get("total_trades", NO_TRADES)), PRIVACY_FIELD_BY_COL[3]),
@@ -1100,9 +1198,9 @@ class BotStatusTableModel:
         }
         for column, text in enumerate(texts):
             if column == BOT_ID_COLUMN:
-                found = cell(text, state_color(state), mode_tooltip(mode, state))
+                found = self._logo_cell(symbol, text)
             elif column == SYMBOL_COLUMN:
-                found = self._symbol_cell(text, status, exchange_id)
+                found = self._symbol_cell(text, status, exchange_id, state, mode)
             elif column == POSITION_VALUE_COLUMN:
                 found = cell(text, position["color"], position["tip"])
             elif column == AMMO_COLUMN:
@@ -1147,18 +1245,18 @@ class BotStatusTableModel:
             stats_pv, holdings, price, quote_rate, target_val, price_age_s=price_age_s
         )
 
-    def _symbol_cell(self, text, status, exchange_id) -> dict:
-        """The Symbol cell: its logo, and its link to the pair's chart."""
+    def _logo_cell(self, symbol, shown) -> dict:
+        """The first column's cell, ``logo_cell`` over ``symbol``'s kept file."""
+        asset = icon_asset_of(symbol)
+        path = kept_logo_path(symbol)
+        self.calls.append([ROW_LOGO, asset, LOGO_SIZE_PX, bool(path)])
+        return logo_cell(asset, shown, path)
+
+    def _symbol_cell(self, text, status, exchange_id, state, mode) -> dict:
+        """The Symbol cell: the state colour, the mode tooltip, and the chart link."""
         if not text:
             return cell(text)
-        asset = icon_asset_of(text)
-        self.calls.append([ROW_ICON, asset, ICON_ASSET_SIZE_PX])
-        found = cell(
-            text,
-            icon_asset=asset,
-            icon_color=coin_disc_color(asset),
-            icon_letter=asset[:1],
-        )
+        found = cell(text, state_color(state), mode_tooltip(mode, state))
         try:
             url = chart_url(exchange_id, status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT)
         except Exception as exc:
@@ -1167,9 +1265,12 @@ class BotStatusTableModel:
             return found
         if url:
             found["chart_url"] = url
-            found["color"] = LINK_COLOR
             found["underline"] = LINK_UNDERLINE
-            found["tooltip"] = LINK_TIP_FORMAT.format(exchange_id=exchange_id, url=url)
+            found["tooltip"] = (
+                found["tooltip"]
+                + TOOLTIP_LINE_GAP
+                + LINK_TIP_FORMAT.format(exchange_id=exchange_id, url=url)
+            )
             self.calls.append([ROW_SYMBOL_LINK, url])
         return found
 
@@ -1579,6 +1680,8 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "glows": [dict(found) for found in model.glows],
         "icon_size": ICON_ASSET_SIZE_PX,
         "icon_download": ICON_DOWNLOAD,
+        "logo_size": LOGO_SIZE_PX,
+        "row_height": ROW_HEIGHT_PX,
         "link_color": LINK_COLOR,
         "link_underline": LINK_UNDERLINE,
         "browser_new_window": BROWSER_NEW_WINDOW,
