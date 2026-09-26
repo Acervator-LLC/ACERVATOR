@@ -11,6 +11,7 @@ import logging
 import math
 import time
 import uuid
+from dataclasses import replace
 from typing import Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -115,11 +116,14 @@ class BotContainer:
         and an all-``None`` record when the lookup fails or the venue lists no
         such market."""
         from ..exchange.base import MarketRules
+        from .scrumming.sizing import CLASS_CRYPTO, venue_session
 
         cached = self._market_rules_cache.get(symbol)
         if cached is not None:
             return cached
-        unread = MarketRules(read=False)
+        # Every connector a container holds is a crypto connector.
+        session = venue_session(CLASS_CRYPTO, self.config.exchange_id)
+        unread = MarketRules(read=False, session=session)
         try:
             markets = await self.exchange.get_markets()
         except Exception as exc:
@@ -138,6 +142,8 @@ class BotContainer:
                 rules = getattr(m, "rules", None)
                 if not isinstance(rules, MarketRules):
                     rules = unread
+                else:
+                    rules = replace(rules, session=session)
                 self._market_rules_cache[symbol] = rules
                 return rules
         logger.warning(
@@ -191,7 +197,7 @@ class BotContainer:
         amount: float,
         price: Optional[float] = None,
         purpose: str = "trade",
-    ) -> "Order":
+    ) -> Optional["Order"]:
         """Place an order via the VolumeGuard or ``exchange.place_order``,
         sizing ``amount`` onto the market's own rules first and refusing a
         non-finite, non-positive or sub-minimum size with ``PRE-FLIGHT
@@ -251,6 +257,8 @@ class BotContainer:
             BELOW_MINIMUM_AMOUNT,
             BELOW_ONE_UNIT,
             CLASS_CRYPTO,
+            HELD_OUTSIDE_SESSION,
+            outside_session,
             sized_order,
             unit_rule,
         )
@@ -310,6 +318,17 @@ class BotContainer:
                         f"{_rules.price_increment}. "
                         f"API not called."
                     )
+
+        # Last point before any venue contact, so a hold can only stop an order
+        # that every check above already passed.
+        if outside_session(_rules.session, time.time()):
+            self._warn_order(
+                f"HELD: {_side_str} {symbol} {_amt:.10f} is "
+                f"{HELD_OUTSIDE_SESSION} ({_rules.session}). Nothing is "
+                f"submitted and no state changes; the next tick decides "
+                f"again. API not called."
+            )
+            return None
 
         if self._volume_guard and self._volume_guard.enabled:
             side_str = "buy" if side == OrderSide.BUY else "sell"

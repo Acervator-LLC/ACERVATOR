@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Any, Optional, Sequence
 
+from ...stocks.market_hours import accepts_order
+
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
 DRAWDOWN_STATE = "drawdown"
 
@@ -117,6 +119,41 @@ def unit_rule(asset_class: str, venue: str) -> Optional[str]:
     """The unit rule ``CITED_UNIT_RULES`` cites for ``asset_class`` on
     ``venue``, or None when the table cites none for the pair."""
     return CITED_UNIT_RULES.get((str(asset_class), str(venue)))
+
+
+#: The two sessions a venue publishes: one that takes an order at any hour, and
+#: the NYSE and NASDAQ session ``market_hours`` declares.
+SESSION_CONTINUOUS = "continuous"
+SESSION_US_EQUITY = "us_equity"
+
+#: The session each ``(asset class, venue)`` publishes, keyed as
+#: ``CITED_UNIT_RULES`` is keyed. A pair absent here publishes no session.
+CITED_VENUE_SESSIONS: dict[tuple[str, str], str] = {
+    (CLASS_CRYPTO, "coinbase"): SESSION_CONTINUOUS,
+    (CLASS_STOCKS, "alpaca"): SESSION_US_EQUITY,
+}
+
+#: The reason a held order carries, never one of ``sized_order``'s refusals.
+HELD_OUTSIDE_SESSION = "outside the venue's session"
+
+
+def venue_session(asset_class: str, venue: str) -> Optional[str]:
+    """The session ``CITED_VENUE_SESSIONS`` cites for ``asset_class`` on
+    ``venue``, or None when the table cites none for the pair."""
+    return CITED_VENUE_SESSIONS.get((str(asset_class), str(venue)))
+
+
+def outside_session(session: Optional[str], moment_s: Any) -> bool:
+    """True only where ``session`` names a session taking no order at
+    ``moment_s``, epoch seconds; an unpublished session holds nothing."""
+    if session != SESSION_US_EQUITY:
+        return False
+    if type(moment_s) not in (int, float) or not math.isfinite(float(moment_s)):
+        return False
+    try:
+        return not accepts_order(float(moment_s))
+    except (OSError, OverflowError, ValueError):
+        return False
 
 
 #: The three answers a market gives about the built variant, the bot that names
@@ -535,6 +572,7 @@ __all__ = [
     "CEILING_MULTIPLE_MAX",
     "CEILING_MULTIPLE_MIN",
     "CITED_UNIT_RULES",
+    "CITED_VENUE_SESSIONS",
     "CLASS_CRYPTO",
     "CLASS_STOCKS",
     "DRAWDOWN_STATE",
@@ -544,8 +582,11 @@ __all__ = [
     "GROWTH_CYCLE_UPPER_BB",
     "GROWTH_SIDE_LOWER",
     "GROWTH_SIDE_UPPER",
+    "HELD_OUTSIDE_SESSION",
     "LARGEST_FLEET_TARGET_USD",
     "REFERENCE_SCRUM_EXCESS_USD",
+    "SESSION_CONTINUOUS",
+    "SESSION_US_EQUITY",
     "TAPER_DROP",
     "TAPER_START_RATIO",
     "TRADEABLE_NO",
@@ -567,6 +608,7 @@ __all__ = [
     "growth_cycle_side",
     "opposing_trade_distance_pct",
     "opposing_trade_distances",
+    "outside_session",
     "plan_fold_consumption",
     "plan_source_price",
     "position_ceiling",
@@ -584,5 +626,6 @@ __all__ = [
     "tradeable_answer",
     "trim_fold_plan",
     "unit_rule",
+    "venue_session",
     "wallet_capped_spend_usd",
 ]
