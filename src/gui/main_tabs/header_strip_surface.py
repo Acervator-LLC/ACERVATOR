@@ -35,10 +35,15 @@ CENTRAL_LAYOUT = {
     "child_stretch": [0],
 }
 
+# OVERTAKEN, quoted whole:
+#   "The stretch each ``TOP_ROW_ORDER`` slot takes. A zero slot draws at the
+#   width its own text asks for; the class group takes what is left, so a
+#   long amount elides a class name and never a figure."
+# True today: the class group is a square as wide as it is tall, so it cannot
+# take what is left; the spendable strip takes it and no figure elides.
 #: The stretch each ``TOP_ROW_ORDER`` slot takes. A zero slot draws at the
-#: width its own text asks for; the class group takes what is left, so a
-#: long amount elides a class name and never a figure.
-TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 1]
+#: width its own text asks for; the spendable strip takes what is left.
+TOP_ROW_STRETCH = [1, 0, 0, 0, 0, 0, 0]
 
 TOP_ROW = {
     "margins_px": [0, 0, 0, 0],
@@ -70,7 +75,7 @@ KPI_COLUMN_W = 110
 COUNTER_NATURAL_W = 100
 
 #: The slot names the top row gives a declared floor, in row order. The
-#: class group is not here; ``asset_class_surface.group_min_w`` answers it,
+#: class group is not here; ``asset_class_surface.group_side_px`` answers it,
 #: because the group's floor grows with the class count.
 COUNTER_SLOTS = ("scrummed", "folded", "trades", "bots", "errors")
 
@@ -410,7 +415,7 @@ def slot_min_w(slot: Any) -> int:
     if name == "spendable":
         return SPENDABLE_MIN_W
     if name == "mode_button":
-        return asset_class_surface.group_min_w()
+        return asset_class_surface.group_side_px()
     if name in COUNTER_SLOTS:
         return COUNTER_MIN_W
     return 0
@@ -649,6 +654,7 @@ def mode_card(mode: Any) -> dict:
     follows ``ASSET_CLASSES`` with no edit here.
     """
     key = asset_class_surface.normalise(mode)
+    rows, columns = asset_class_surface.grid_shape()
     return {
         "mode": key,
         "next_mode": next_mode(key),
@@ -656,6 +662,9 @@ def mode_card(mode: Any) -> dict:
         "buttons": asset_class_surface.class_buttons(key),
         "text_pad_px": asset_class_surface.BUTTON_TEXT_PAD,
         "group_spacing_px": asset_class_surface.GROUP_SPACING_PX,
+        "grid_rows": rows,
+        "grid_columns": columns,
+        "side_px": asset_class_surface.group_side_px(),
         "window_title": asset_class_surface.window_title(key),
         "add_exchange": {
             "label": asset_class_surface.add_exchange_label(key),

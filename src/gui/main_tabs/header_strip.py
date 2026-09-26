@@ -8,6 +8,7 @@ from typing import Any, Callable
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QGridLayout,
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
@@ -22,10 +23,10 @@ from .asset_class_surface import GROUP_SPACING_PX as CLASS_GROUP_SPACING
 
 
 class ClassGroupBar(QWidget):
-    """The segmented asset class group, holding one button per class.
+    """The segmented asset class group, one square holding one segment per class.
 
     ``set_labels`` keeps each button's full class name, and every resize
-    re-elides that name to the width the button then has.
+    re-elides that name to the width its own segment has.
     """
 
     def __init__(self, parent=None):
@@ -33,8 +34,8 @@ class ClassGroupBar(QWidget):
         self._labels: dict = {}
         self.setAccessibleName("Asset class group")
         self.setAccessibleDescription(
-            "One button per asset class. The active class filters the "
-            "exchanges and bots every tab shows."
+            "One segment per asset class, in one square. The active class "
+            "filters the exchanges and bots every tab shows."
         )
 
     def set_labels(self, labels: dict) -> None:
@@ -42,8 +43,16 @@ class ClassGroupBar(QWidget):
         self._labels = dict(labels)
         self._elide()
 
+    def set_side(self, side: int) -> None:
+        """Fix both of the square's sides to ``side`` pixels.
+
+        The same number reaches the React page, so neither variant measures a
+        row height and the two squares cannot differ in size.
+        """
+        self.setFixedSize(int(side), int(side))
+
     def resizeEvent(self, event):
-        """Re-elide every button label to the width the resize gave it."""
+        """Re-elide every label to the width its own segment now has."""
         super().resizeEvent(event)
         self._elide()
 
@@ -104,14 +113,15 @@ class HeaderStripMixin:
     _asset_class: str
 
     def _build_class_group(self) -> QWidget:
-        """Build the segmented asset class group of the header top row.
+        """Build the one square the asset classes segment, on the header top row.
 
         One checkable button per ``asset_class_surface.asset_classes`` entry
-        sits in an exclusive ``QButtonGroup``, so exactly one class is active.
+        sits at its ``segment_cell`` in a ``QGridLayout`` of zero spacing.
         """
         from .asset_class_surface import (
             class_buttons,
-            group_min_w,
+            grid_shape,
+            group_side_px,
             normalise,
         )
 
@@ -122,10 +132,16 @@ class HeaderStripMixin:
         self._asset_class = normalise(stored)
         self._trading_mode = self._asset_class
 
+        rows, columns = grid_shape()
         holder = ClassGroupBar()
-        row = QHBoxLayout(holder)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(CLASS_GROUP_SPACING)
+        grid = QGridLayout(holder)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(CLASS_GROUP_SPACING)
+        grid.setVerticalSpacing(CLASS_GROUP_SPACING)
+        for at in range(columns):
+            grid.setColumnStretch(at, 1)
+        for at in range(rows):
+            grid.setRowStretch(at, 1)
 
         self._class_buttons = QButtonGroup(holder)
         self._class_buttons.setExclusive(True)
@@ -140,16 +156,22 @@ class HeaderStripMixin:
             button.setStyleSheet(model["style_sheet"])
             # Preferred, never Minimum: the group must give width back to the
             # counters when the window is narrow.
-            button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             button.setMinimumWidth(CLASS_BUTTON_MIN_W)
             button.clicked.connect(partial(self._on_class_clicked, model["class"]))
             self._class_buttons.addButton(button)
             self._class_group[model["class"]] = button
             self._class_names[model["class"]] = model["text"]
-            row.addWidget(button, stretch=1)
+            grid.addWidget(
+                button,
+                int(model["row"]),
+                int(model["grid_column"]),
+                1,
+                int(model["column_span"]),
+            )
 
-        holder.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        holder.setMinimumWidth(group_min_w())
+        holder.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        holder.set_side(group_side_px())
         holder.set_labels(
             {
                 button: self._class_names[key]
@@ -339,10 +361,14 @@ class HeaderStripMixin:
             card.setMinimumWidth(surface.slot_min_w(slot))
             top_row.addWidget(card, stretch=surface.slot_stretch(slot))
 
-        # The group takes the room the figures leave; its floor holds every
-        # button, so a wide figure elides a class name and never a figure.
+        # The square is one fixed side, so it takes no room from the figures
+        # and sits centred on the row's height at the row's right end.
         class_group = self._build_class_group()
-        top_row.addWidget(class_group, stretch=surface.slot_stretch("mode_button"))
+        top_row.addWidget(
+            class_group,
+            surface.slot_stretch("mode_button"),
+            Qt.AlignVCenter | Qt.AlignRight,
+        )
 
         # _on_main_tab_changed hides _header_strip_container on the Simulator tab.
         self._header_strip_container = QWidget()
