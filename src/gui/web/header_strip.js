@@ -62,8 +62,6 @@
   var MARGINS = "margins_px";
   var SPACING = "spacing_px";
   var CHILD_STRETCH = "child_stretch";
-  var SPACER_BEFORE = "spacer_before";
-  var SPACER_STRETCH = "spacer_stretch";
   var COLUMN_SPACING_PX = "column_spacing_px";
   var FRAME_SHAPE = "frame_shape";
   var LABEL_ALIGN = "label_align";
@@ -140,7 +138,6 @@
 
   var STRIP_CLASS = "acervator-header-strip";
   var TOP_ROW_CLASS = "acervator-header-top-row";
-  var SPACER_CLASS = "acervator-header-spare-width";
   var SPENDABLE_CLASS = "acervator-header-spendable";
   var CARD_CLASS = "acervator-header-card";
   var DOT_CLASS = "acervator-header-dot";
@@ -150,7 +147,6 @@
 
   var STRIP_PART = "strip";
   var TOP_ROW_PART = "top-row";
-  var SPACER_PART = "spare-width";
   var DOT_PART = "privacy-dot";
   var COUNTER_PART = "counter";
   var COUNTER_LABEL_PART = "counter-label";
@@ -732,24 +728,6 @@
     });
   }
 
-  // Empty space that takes every spare pixel of the row, so no slot drawing
-  // text or figures absorbs it.
-  function spareWidthNode(topRow) {
-    var props = {
-      key: SPACER_PART,
-      className: SPACER_CLASS,
-      style: {
-        flexGrow: cell(topRow[SPACER_STRETCH], 1),
-        flexShrink: 1,
-        flexBasis: 0,
-        minWidth: 0
-      },
-      "aria-hidden": "true"
-    };
-    props[PART_ATTR] = SPACER_PART;
-    return element("div", props);
-  }
-
   // `Strip` draws nothing for a payload that is not an object.
   function Strip(props) {
     if (!isPlainObject(props.model)) {
@@ -781,9 +759,6 @@
 
     var children = [];
     order.forEach(function (slot, at) {
-      if (slot === topRow[SPACER_BEFORE]) {
-        children.push(spareWidthNode(topRow));
-      }
       children.push(slotNode(model, slot, at));
     });
     return element(
