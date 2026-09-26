@@ -171,6 +171,7 @@ if _HAS_QT:
             self._status.setWordWrap(True)
             form.addRow(self._status)
             self._markets_cache: dict = {}
+            self._target_reasons: list = []
             self._descriptions_cache: dict = {}
             try:
                 from src.exchange.crypto_assets import ASSETS
@@ -241,6 +242,7 @@ if _HAS_QT:
                                 "quote": q,
                                 "volume": 0,
                                 "volatility": 0,
+                                "price": 0,
                             }
                         )
                 try:
@@ -253,6 +255,9 @@ if _HAS_QT:
                             float(t.get("low", 0) or 0),
                             float(t.get("last", 0) or 0),
                         )
+                        # market_reason measures the venue's smallest order
+                        # against this price.
+                        m["price"] = c
                         if c > 0:
                             m["volatility"] = round((h - l) / c * 100, 2)
                 except Exception as _vol_exc:
@@ -268,26 +273,30 @@ if _HAS_QT:
             except Exception as exc:
                 logger.warning("Market fetch failed for %s: %s", exchange_id, exc)
                 try:
-                    from src.exchange.crypto_assets import ASSETS
+                    # OVERTAKEN, quoted whole:
+                    #   every crypto_assets ASSETS name as "<asset>/USDT"
+                    # True today: the pairs this venue's own recording holds,
+                    # so an unreachable venue offers no pair it does not list.
+                    from .main_tabs.bot_wizard_surface import recorded_market_rows
 
-                    return [
-                        {
-                            "symbol": f"{s}/USDT",
-                            "base": s,
-                            "quote": "USDT",
-                            "volume": 0,
-                            "volatility": 0,
-                        }
-                        for s in sorted(ASSETS)
-                    ]
+                    return recorded_market_rows(exchange_id)
                 except Exception:
                     return []
 
         def _filter_assets(self):
+            from .main_tabs.bot_wizard_surface import (
+                NO_CREATABLE_PAIR_TEXT,
+                UNTRADEABLE_COUNT_FORMAT,
+                UNTRADEABLE_LABEL_FORMAT,
+                market_reason,
+                recorded_venue_rows,
+            )
+
             eid = self._exchange.currentData()
             base = self._base.currentText().strip().upper()
             markets = self._markets_cache.get(eid, [])
             self._target.clear()
+            self._target_reasons = []
             filtered = [
                 m
                 for m in markets
@@ -298,6 +307,7 @@ if _HAS_QT:
                 key=lambda m: as_finite_float(m.get("volume")) or VOLUME_REFUSED_USD,
                 reverse=True,
             )
+            recorded = recorded_venue_rows(eid)
             for m in filtered:
                 vol = as_finite_float(m.get("volume"))
                 vol_s = ""
@@ -316,6 +326,10 @@ if _HAS_QT:
                     parts.append(f"Volat: {m['volatility']:.1f}%")
                 named = _market_text(m.get("base"))
                 label = named + (f"  ({', '.join(parts)})" if parts else "")
+                reason = market_reason(recorded, m)
+                if reason:
+                    label = UNTRADEABLE_LABEL_FORMAT.format(label=label, reason=reason)
+                self._target_reasons.append(reason)
                 # The cached icon only, since a download here blocks the GUI thread.
                 icon = _get_coin_icon(named, download=False)
                 if icon:
@@ -324,8 +338,11 @@ if _HAS_QT:
                     self._target.addItem(label, named)
             if not filtered:
                 self._target.addItem("No pairs found", "")
+                self._target_reasons.append("")
+            refused = sum(1 for one in self._target_reasons if one)
             self._status.setText(
                 f"{len(filtered)} {base} pairs"
+                + (UNTRADEABLE_COUNT_FORMAT.format(count=refused) if refused else "")
                 + (
                     " (sorted by volume)"
                     if any(
@@ -334,8 +351,20 @@ if _HAS_QT:
                     )
                     else ""
                 )
+                + (
+                    f" {NO_CREATABLE_PAIR_TEXT}"
+                    if filtered and refused == len(filtered)
+                    else ""
+                )
             )
             self._update_info()
+
+        def target_reason(self) -> str:
+            """Why no built bot variant trades the pair the target combo shows,
+            empty while one does."""
+            at = self._target.currentIndex()
+            held = getattr(self, "_target_reasons", [])
+            return held[at] if 0 <= at < len(held) else ""
 
         def _update_info(self):
             sym = self._target.currentData()
@@ -1644,6 +1673,36 @@ if _HAS_QT:
             if current == PAGE_PHANTOM:
                 return -1
             return current + 1
+
+        def untradeable_reason(self) -> str:
+            """Why no built bot variant trades the picked market, empty while one
+            does and empty for the Extractor, which picks no single market."""
+            if self._mode_page.is_extractor():
+                return ""
+            return self._asset_page.target_reason()
+
+        def accept(self) -> None:
+            """Create the bot, refusing a market no built bot variant trades.
+
+            The refusal names the market and the variant it needs, and the wizard
+            stays open on the page the operator pressed Finish from.
+            """
+            held = self.untradeable_reason()
+            if held:
+                from PySide6.QtWidgets import QMessageBox
+
+                from .main_tabs.bot_wizard_surface import (
+                    UNTRADEABLE_FORMAT,
+                    UNTRADEABLE_TITLE,
+                )
+
+                box = QMessageBox(self)
+                box.setIcon(QMessageBox.Warning)
+                box.setWindowTitle(UNTRADEABLE_TITLE)
+                box.setText(UNTRADEABLE_FORMAT.format(reason=held))
+                box.exec()
+                return
+            super().accept()
 
         def get_bot_config(self):
             config = {}
