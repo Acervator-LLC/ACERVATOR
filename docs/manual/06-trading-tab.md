@@ -7522,3 +7522,33 @@ reading behind them.
 ```
 
 The window build and the page build draw the same sentence in the same place.
+
+## 2026-09-25 - #881 - the dollar registry citation names no file
+
+One sentence on this page cites a module a reader cannot open. It is kept as
+written:
+
+> The dollar registry is gone. `src/trading/capital_registry.py` is removed, with
+> the Qt table, the view model and the renderer page that drew it.
+
+What the tree holds is this. The path in that sentence is in neither the git index
+nor the working tree, and the commit that removed the module is the same commit
+that wrote the sentence citing it, on 2026-09-13. Nothing took the removed
+module's place. The reservation path sits in a second module that already existed
+at that commit, that still carries the registry class, and that six modules read.
+
+```
+src/trading/capital_reservation.py:87    CapitalReservationRegistry, 566 lines
+src/trading/capital_reservation.py:426   effective_available, the reader a sale uses
+```
+
+The six readers are the bot, its reservation mixin, the scrumming package, the
+container restore path, the Extractor and the emitter contract. The removed
+module declared a different class, over 518 lines, and it was built zero times,
+which is why its removal changed no behaviour.
+
+The absence was measured two ways, each with a control beside it. A lookup of the
+cited path in the git index exits non-zero, and the same lookup of the reservation
+module beside it exits zero. The documentation archetype reports one dead path on
+this page, at the line carrying that sentence, and reports none against the
+hundreds of other paths the page cites.
