@@ -23,12 +23,14 @@ import logging
 import time
 import uuid
 from dataclasses import asdict, dataclass
+from dataclasses import fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
 from ..core.io_utils import atomic_write_json
 from ..trading.container.config import (
+    BotConfig,
     BotMode,
     BotState,
     as_finite_float,
@@ -63,6 +65,7 @@ READ_NAMES = (
     "create",
     "paper_bot_for",
     "set_state",
+    "set_config_field",
     "write_stats",
     "remove",
     "clear",
@@ -73,6 +76,18 @@ READ_NAMES = (
     "paper_path",
     "save",
 )
+
+#: Every field ``BotConfig`` declares, the names a paper record's ``config``
+#: may hold.
+CONFIG_FIELD_NAMES = frozenset(one.name for one in dataclass_fields(BotConfig))
+
+#: The Bot Settings window's three non-``BotConfig`` fields and the record key
+#: each one is stored under.
+RECORD_FIELDS = {
+    "enable_phantoms": "phantoms_enabled",
+    "phantom_timeframes": "phantom_timeframes",
+    "lock_candle_count": "lock_candle_count",
+}
 
 LIVE_ORIGIN = "live"
 NEW_ORIGIN = "new"
@@ -852,6 +867,29 @@ class PaperFleetSource:
             stats["consecutive_errors"] = 0
         return str(state)
 
+    def set_config_field(self, bot_id: str, field: str, value: Any) -> Any:
+        """Write ``field`` into the held record under ``bot_id`` and answer the
+        value stored, a ``BotConfig`` name landing in the record's ``config``
+        and a ``RECORD_FIELDS`` name at the record's top level."""
+        wanted = str(bot_id)
+        record = self._records.get(wanted)
+        if not isinstance(record, dict):
+            raise KeyError(f"no paper record is held under {wanted!r}")
+        name = str(field)
+        if name in RECORD_FIELDS:
+            record[RECORD_FIELDS[name]] = value
+            return value
+        if name not in CONFIG_FIELD_NAMES:
+            raise SendRefused(
+                f"BotConfig declares no {name!r}, so no paper record holds it."
+            )
+        config = record.get("config")
+        if not isinstance(config, dict):
+            config = {}
+            record["config"] = config
+        config[name] = value
+        return value
+
     def write_stats(
         self,
         bot_id: str,
@@ -1008,6 +1046,7 @@ paper_fleet = live_fleet
 __all__ = [
     "BOT_ID_LENGTH",
     "BOT_STATE_NAME",
+    "CONFIG_FIELD_NAMES",
     "EMPTY_AGGREGATE",
     "EXTRACTOR_DRAWDOWN_STATE",
     "EXTRACTOR_MODE",
@@ -1020,6 +1059,7 @@ __all__ = [
     "POOL_YELLOW",
     "PRE_TICK_AUTO_FIRE",
     "READ_NAMES",
+    "RECORD_FIELDS",
     "SAVED_AT_HUMAN_FORMAT",
     "SCRUMMING_MODE",
     "SCRUM_READ_RATE_MIN_DEFAULT",

@@ -411,6 +411,16 @@ grey not evaluated at this candle, and cyan a landing-strip override. The
 blocker text and the light banks overlap in the figure; both occupy the one
 cell.
 
+One sentence above is overtaken. Quoted whole:
+
+> The blocker text and the light banks overlap in the figure; both occupy the one
+> cell.
+
+The blocker text and the light banks share the one cell and no longer overlap.
+The Qt table writes the text once, into the lights cell's own label, and leaves
+the table item under that cell blank. A row whose gate log holds no entry has no
+lights cell, and there the table item carries the `no record` text itself.
+
 Prev, the page counter and Next page the result at the foot, and Export CSV
 writes the current selection out. The tab builds the summary line and the page
 counter itself, and the read contract already declares both, so two

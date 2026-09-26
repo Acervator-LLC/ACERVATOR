@@ -655,6 +655,7 @@ def mode_card(mode: Any) -> dict:
         "mode_param": MODE_PARAM,
         "buttons": asset_class_surface.class_buttons(key),
         "text_pad_px": asset_class_surface.BUTTON_TEXT_PAD,
+        "group_spacing_px": asset_class_surface.GROUP_SPACING_PX,
         "window_title": asset_class_surface.window_title(key),
         "add_exchange": {
             "label": asset_class_surface.add_exchange_label(key),
