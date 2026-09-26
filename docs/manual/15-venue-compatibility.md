@@ -1232,3 +1232,244 @@ ten rows name a connector that does not exist, because the Webull cell words the
 same absence differently. The Alpaca cell names a connector that does exist and
 has no caller, which is why the figure for a missing connector is ten rather than
 eleven.
+
+## 2026-09-26 - a venue's expiry stops a buy and not a sale, and cash the venue has not settled is not spent twice
+
+A venue can close a market on a date of its own, and it can take days to hand
+over the cash from a sale. The record a bot reads carries both of those facts
+now, beside the size and price rules already on this page. A venue that
+publishes neither leaves both absent, and absent changes nothing.
+
+```python
+# src/exchange/base.py:141
+    expiry_ms: Optional[float] = None  # epoch ms the venue closes the contract on
+    settlement_days: Optional[float] = None  # days the venue takes to settle a sale
+```
+
+### The two rules the record carries beside the other four
+
+Two members read the expiry. The first answers whether the venue published one
+at all. The second answers how many days remain, and it turns negative once the
+date has passed. A record holding no expiry answers False and nothing.
+
+```python
+    @property
+    def expires(self) -> bool:
+        """True while ``expiry_ms`` is a finite positive epoch, and False for the
+        None a venue publishing no expiry carries."""
+
+    def days_to_expiry(self, moment_s: float) -> Optional[float]:
+        """Days from ``moment_s`` to ``expiry_ms``, negative once it has passed.
+
+        None while ``expires`` is False or ``moment_s`` is not a finite number.
+        """
+```
+
+### A buy refuses on every order path, and a sale passes
+
+A market that publishes an expiry selects a fifth variant name, and the program
+does not hold it. The function asks the expiry question first, before the size
+question and before the order-type question, so a market with a date on it never
+reaches either of them.
+
+```python
+# src/trading/scrumming/sizing.py:331
+VARIANT_ROLLING_POSITION = "rolling position"
+
+VARIANT_MARKETS[VARIANT_ROLLING_POSITION] = "a market the venue expires on a date"
+
+# src/trading/scrumming/sizing.py:375
+    if getattr(rules, "expires", False):
+        return VARIANT_ROLLING_POSITION
+```
+
+Three order paths read that answer, one per data source, and each of the three
+refuses a buy into such a market by name. The scan keeps the symbol in its own
+asset list and names it in a field of its own, exactly as it does for any other
+market no built variant trades.
+
+```
+src/trading/bot_container.py:370     the live order path
+src/paper/paper_run.py:507           the Paper Trader's fold
+src/simulator/back_test.py:1297      the back test's fold
+src/trading/ata_spm.py:1287          the scan naming the market
+```
+
+### Why the two sides differ
+
+The asymmetry looks inconsistent until a reader has the reason. Buying into a
+market the venue removes on its own date takes on a thing that ends; the bot
+would accumulate into a market that stops existing, and no rule in the tree yet
+says which contract a position rolls into. Selling out of a position already
+held takes on nothing. A bot holding such a position keeps scrumming it down by
+its own cycles and closes it before the date, and nothing rebuys it.
+
+```python
+# src/trading/bot_container.py:375
+        _closing = variant_permits_close(_variant) and side == OrderSide.SELL
+
+        if not variant_built(_variant) and not _closing:
+            self._refuse_order(...)
+```
+
+The sell that passes says so where the operator watches. The Console line names
+the days left and states that nothing will rebuy the position.
+
+```
+CLOSING AN EXPIRING MARKET: SELL <symbol> <units> is submitted where a BUY is
+refused, because the venue expires this contract in <n> days (rolling
+position). Nothing rebuys it.
+```
+
+### A fold waits while the venue holds the cash
+
+A sale whose cash the venue has not handed over has not returned its money, and
+spending it would spend the same dollars twice. One figure answers how much of a
+fold's own cash sits inside the delay, and a second holds the rebuy to the
+wallet less that figure. With nothing to spend, the fold fills nothing, names the
+reason, and leaves its tranches queued for the next round.
+
+```python
+# src/trading/scrumming/sizing.py:169
+CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {
+    (CLASS_CRYPTO, "coinbase"): 0.0,
+}
+
+HELD_UNSETTLED_CASH = "the venue has not settled the sale"
+
+def unsettled_usd(tranches, moment_s, settlement_days) -> float:
+def spend_less_unsettled_usd(spend, cash_usd, held_usd) -> float:
+```
+
+A cited delay of zero is a venue returning the cash at once, and it holds
+nothing. A pair absent from that table publishes no delay, which also holds
+nothing. Only a positive figure can hold a fold back.
+
+### Where the settlement hold reaches
+
+Two of the three folds read the delay at the point they size a rebuy. The third,
+the live autonomous fold, does not read it. Live's manual rebalance does read it
+and names the held amount on the Console.
+
+```
+src/paper/paper_run.py:542           the Paper Trader's fold reads the delay
+src/simulator/back_test.py:1333      the back test's fold reads the delay
+src/trading/scrumming/execution.py:953   live's manual rebalance reads the delay
+the live autonomous fold             does not read the delay
+```
+
+The one venue this program records cites zero days, so no fold on any path holds
+cash today. A venue citing a positive figure would reach the two folds above and
+leave the live autonomous one spending cash it does not yet have.
+
+### Which markets carry an expiry today
+
+None of them. The recording every back test and every paper run reads holds one
+venue and 1,146 markets, and not one row carries an expiry. The recording holds
+only four field names, and the expiry is not among them, because the recording
+predates the field. Each such row answers absent, which is exactly what a venue
+publishing no expiry answers.
+
+```
+recorded coinbase markets                                1146
+rows with a non-null expiry                                 0
+CONTROL rows with a non-null minimum size                1146
+CONTROL rows with a non-null minimum cost                1146
+CONTROL rows with a planted absent key                      0
+rows carrying a dated contract suffix                     100
+dated rows with a non-null expiry                           0
+CONTROL dated rows with a non-null minimum cost           100
+distinct symbols the saved fleet names                     38
+of those, symbols carrying a dated contract suffix          0
+CONTROL of those, symbols carrying a quote separator       38
+```
+
+The controls sit in the same run as the figures they support, so a zero above is
+a reading of the file and not of the reader. Two of the rows matter together: one
+hundred recorded symbols carry a dated contract suffix and none of them carries
+an expiry, because the recording predates the field. A fresh recording of that
+venue would fill those hundred rows, and those hundred markets would then select
+the fifth variant.
+
+This reaches no live market. No symbol the saved fleet trades carries a dated
+contract suffix, no recorded row carries an expiry, and the settlement table
+cites this venue at zero days.
+
+### The sentences on this page that this entry overtakes
+
+Nine passages are overtaken. Each one stays exactly as written, with the sentence
+that is true today beneath it.
+
+The first is the count of a venue's order rules:
+
+> A venue publishes three order rules, not two.
+
+The true sentence is: a venue's own product record publishes five rules, not
+three. The four already named on this page sit beside the date the venue closes
+the contract on. Three further fields on the record come from cited tables
+rather than from the product record, and they are the trading session, the order
+types and the settlement delay.
+
+The second is the field block under that sentence. It lists four rules and the
+read flag, and it stays as written. The true block carries eight fields before
+that flag: the four it already lists, then the trading session, the order types,
+the expiry and the settlement delay.
+
+```python
+# src/exchange/base.py:135
+    min_amount: Optional[float] = None  # base units
+    min_cost: Optional[float] = None  # quote units
+    amount_increment: Optional[float] = None  # base units a size steps by
+    price_increment: Optional[float] = None  # quote units a price steps by
+    session: Optional[str] = None  # the session name the venue publishes
+    order_types: Optional[str] = None  # the order types the venue declares
+    expiry_ms: Optional[float] = None  # epoch ms the venue closes the contract on
+    settlement_days: Optional[float] = None  # days the venue takes to settle a sale
+    read: bool = True
+```
+
+The third is the variant function quoted under *a venue's own rules select the
+bot variant*. The block stands as written, and the function answers the
+rolling-position name first, before the size question and the order-type
+question it already showed.
+
+The fourth is the count of variant names:
+
+> Four names exist, counting the bot as written, and each one is named by the
+> market shape it absorbs. The program holds two of the four, and one function
+> answers per market whether the variant that market selects is one of the two.
+
+The true sentence is: five names exist, counting the bot as written, and the
+program still holds two of them. The fifth name is the rolling position, which
+the program names and does not build.
+
+The fifth is the market table quoted under that count. It stands as written, and
+it carries a fifth row now, naming a market the venue expires on a date.
+
+The sixth is the heading over the unbuilt variants:
+
+> The two variants named and not built
+
+The true count is three named and not built: the cash-amount variant with no
+caller, the whole-unit variant waiting on a decision, and the rolling position
+waiting on the rule that names which contract a position rolls into.
+
+The seventh is the sentence about what an order path does with such a market:
+
+> Every order path refuses that market carrying the reason, and the reason names
+> the variant the market needs beside the shape that variant absorbs.
+
+The true sentence is: every order path refuses a buy into that market carrying
+the reason, and one unbuilt variant lets a sale out of it through. The rolling
+position is that one, and only a sell passes.
+
+The eighth and ninth are the two corrected counts written when the variants were
+first set out:
+
+> The true sentence is: four variant names exist, counting the bot as written,
+> and the program holds two of them.
+
+> The true count is four names, two of them built.
+
+The same figure overtakes both. Five variant names exist and the program holds two
+of them.
