@@ -2277,4 +2277,101 @@ The Get Started card holds the same three, and Live's add button is among them.
 Both seats hold Add Exchange first, then those two, in the same chrome and at
 the same sizes.
 
+## 2026-09-25 - #19 - a paper bot's settings reach its stored record
+
+### Apply Changes writes the paper record
+
+The Paper Trader's Bot Settings window drew every field a live bot's window
+draws, and Apply Changes refused each one. A paper bot could therefore only ever
+be a copy of a live bot, which left no way to prove a variant before real money
+touched it. Apply Changes now writes each pending field into the bot's own
+stored record, and the paper fleet file keeps it.
+
+`src/paper/fleet_source.py` — the write
+
+```python
+def set_config_field(self, bot_id: str, field: str, value: Any) -> Any:
+    wanted = str(bot_id)
+    record = self._records.get(wanted)
+    if not isinstance(record, dict):
+        raise KeyError(f"no paper record is held under {wanted!r}")
+    name = str(field)
+    if name in RECORD_FIELDS:
+        record[RECORD_FIELDS[name]] = value
+        return value
+```
+
+### A field the config does not declare is still refused
+
+The write accepts the fifty-four fields the bot config declares, plus the three
+the record holds outside it — the phantom switch, its timeframes and the lock
+count. Any other name is refused, and the window says so on the same line it
+uses for an applied change.
+
+`src/gui/paper/paper_bot_live_settings_surface.py` — the two lines
+
+```python
+CHANGE_REFUSED_FORMAT = "Refused {count} change(s) — the Paper Trader sends nothing"
+CHANGE_APPLIED_FORMAT = "Applied {count} change(s) to the paper record"
+```
+
+### What the driven window reported
+
+Both readings came from the real window, with the venue's market read stood in
+for by a recorded answer. The target balance was changed from twenty-five
+dollars to seventy-seven dollars fifty, and the row, the record and the file all
+followed it.
+
+```
+no writer   Refused 1 change(s) — the Paper Trader sends nothing
+            record 25.0   row 25.0
+writer      Applied 1 change(s) to the paper record
+            record 77.5   row 77.5   paper fleet file 77.5
+React page  Applied 1 change(s)   bot rebuilt at 77.5
+```
+
+### Creating a paper bot is still the one way in
+
+The venue page's new-bot button writes a line naming the way in, because no
+paper bot wizard is built. A variant is made by importing the live fleet and
+changing the imported bot's settings.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the line that button writes
+
+```python
+NEW_BOT_FORMAT = (
+    "+ New Bot on {exchange}: the Paper fleet is loaded through "
+    "{way_in}; the paper bot wizard is not built."
+)
+```
+
+### Four sentences this entry overtakes
+
+Each is quoted as it stands, with the sentence that is true today beneath it.
+
+> "`src/gui/paper_trader_tab.py` draws them in Qt and
+> `src/gui/web/paper_trader_tab.js` draws them in React, from one view model."
+
+**CITED AS ABSENT.** Neither file is in the tree. The Qt tab is
+`src/gui/paper/paper_trading_tab.py` and the React tab is
+`src/gui/paper/paper_react_trading_tab.py`.
+
+> "`src/gui/main_tabs/paper_trader_tab_surface.py` — the fields both hosts read"
+
+**CITED AS ABSENT.** That file is not in the tree either. The fields both hosts
+read are declared in `src/gui/paper/paper_trading_tab_surface.py`.
+
+> "The paper budget is twice the dollar target, so a bot has room to fold without
+> the exercise ending on the first dip."
+
+The opening figures are the fleet's summed targets and the budget is unbounded,
+so a run never ends on a balance.
+
+> "`_apply_changes` asks the view for every pending field, and the view raises
+> `SendRefused` for each, so the pending line reads `refused_text` and nothing is
+> written."
+
+Every pending field is written to the stored record; only a field the config
+does not declare still raises, and it is counted on its own.
+
 Back to [the subsystem index](README.md).
