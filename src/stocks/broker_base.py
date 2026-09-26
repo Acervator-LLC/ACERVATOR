@@ -11,7 +11,10 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Iterable, Optional
+
+from ..exchange.base import AssetInfo, MarketRules
+from ..exchange.market_rules_store import record_venue
 
 logger = logging.getLogger("acervator.stocks")
 
@@ -119,7 +122,8 @@ class BrokerBase(ABC):
     @abstractmethod
     async def connect(self, api_key: str, api_secret: str, paper: bool = True) -> bool:
         """Connect to broker. paper=True for paper trading."""
-        ...
+        del api_key, api_secret, paper
+        raise NotImplementedError
 
     @abstractmethod
     async def disconnect(self):
@@ -139,7 +143,8 @@ class BrokerBase(ABC):
     @abstractmethod
     async def get_position(self, symbol: str) -> Optional[StockPosition]:
         """Get position for a specific symbol."""
-        ...
+        del symbol
+        raise NotImplementedError
 
     @abstractmethod
     async def place_order(
@@ -153,17 +158,21 @@ class BrokerBase(ABC):
         time_in_force: TimeInForce = TimeInForce.DAY,
     ) -> StockOrder:
         """Place an order."""
-        ...
+        del symbol, side, quantity, order_type
+        del limit_price, stop_price, time_in_force
+        raise NotImplementedError
 
     @abstractmethod
     async def cancel_order(self, order_id: str) -> bool:
         """Cancel an open order."""
-        ...
+        del order_id
+        raise NotImplementedError
 
     @abstractmethod
     async def get_order(self, order_id: str) -> StockOrder:
         """Get order status."""
-        ...
+        del order_id
+        raise NotImplementedError
 
     @abstractmethod
     async def get_open_orders(self) -> list[StockOrder]:
@@ -173,16 +182,60 @@ class BrokerBase(ABC):
     @abstractmethod
     async def get_quote(self, symbol: str) -> StockQuote:
         """Get real-time quote for a symbol."""
-        ...
+        del symbol
+        raise NotImplementedError
 
     @abstractmethod
     async def get_bars(
         self, symbol: str, timeframe: str = "1D", limit: int = 100
     ) -> list[dict]:
         """Get OHLCV bars. timeframe: 1Min, 5Min, 15Min, 1H, 1D, 1W."""
-        ...
+        del symbol, timeframe, limit
+        raise NotImplementedError
 
     @abstractmethod
     async def get_market_status(self) -> dict:
         """Get current market status (open/closed/pre/post)."""
         ...
+
+    @abstractmethod
+    def market_rules(self, asset: Any) -> MarketRules:
+        """The ``MarketRules`` one of this broker's own asset records publishes.
+
+        An unpublished rule is None, and ``read`` is False for a record this
+        broker did not obtain.
+        """
+        del asset
+        raise NotImplementedError
+
+    def record_markets(self, assets: Iterable[Any]) -> list[AssetInfo]:
+        """Every asset record of ``assets`` as an ``AssetInfo``, recorded under
+        ``broker_id`` so ``recorded_rules`` answers each market's rules.
+
+        Each record is read as handed in and no broker is contacted; a record
+        naming no symbol is skipped.
+        """
+        built: list[AssetInfo] = []
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+            symbol = str(asset.get("symbol") or "")
+            if not symbol:
+                continue
+            base, _, quote = symbol.partition("/")
+            built.append(
+                AssetInfo(
+                    symbol=symbol,
+                    base=base,
+                    quote=quote,
+                    rules=self.market_rules(asset),
+                    # An asset record publishes no fee, so AssetInfo carries zero.
+                    maker_fee=0.0,
+                    taker_fee=0.0,
+                )
+            )
+        try:
+            record_venue(self.broker_id, built)
+        except OSError as exc:
+            logger.warning("market rules for %s not recorded: %s", self.broker_id, exc)
+        return built

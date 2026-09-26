@@ -8,9 +8,11 @@ Supports paper trading for testing. REST + WebSocket.
 from __future__ import annotations
 
 import logging
+import math
 import time
-from typing import Optional
+from typing import Any, Optional
 
+from ..exchange.base import MarketRules
 from .broker_base import (
     BrokerBase,
     AccountInfo,
@@ -50,6 +52,59 @@ SUPPORTED_BROKERS = {
     },
 }
 
+#: The size a market trades in where its asset record reads ``fractionable``
+#: False: one whole share, and no smaller amount the broker accepts.
+WHOLE_SHARE_INCREMENT = 1.0
+
+
+def rule_number(value: Any) -> Optional[float]:
+    """``value`` as a positive finite float where the asset record published a
+    number or a decimal string, else None.
+
+    Alpaca writes ``min_order_size``, ``min_trade_increment`` and
+    ``price_increment`` as decimal strings, so a string is a published rule.
+    """
+    if type(value) not in (int, float, str):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        return None
+    return parsed
+
+
+def size_increment(asset: dict) -> Optional[float]:
+    """The size step one asset record publishes: ``min_trade_increment`` where it
+    names one, ``WHOLE_SHARE_INCREMENT`` where ``fractionable`` reads False, and
+    None where the record published neither.
+
+    ``fractionable`` carries only a bool, so any other value is a record this
+    reader does not recognise and publishes no step.
+    """
+    published = rule_number(asset.get("min_trade_increment"))
+    if published is not None:
+        return published
+    if asset.get("fractionable") is False:
+        return WHOLE_SHARE_INCREMENT
+    return None
+
+
+def asset_rules(asset: Any) -> MarketRules:
+    """The ``MarketRules`` one Alpaca asset record publishes.
+
+    ``read`` is False for anything that is not a record, and a rule the record
+    does not name is None rather than zero.
+    """
+    if not isinstance(asset, dict):
+        return MarketRules(read=False)
+    return MarketRules(
+        min_amount=rule_number(asset.get("min_order_size")),
+        amount_increment=size_increment(asset),
+        price_increment=rule_number(asset.get("price_increment")),
+    )
+
 
 class AlpacaConnector(BrokerBase):
     """
@@ -64,8 +119,7 @@ class AlpacaConnector(BrokerBase):
 
     def __init__(self):
         super().__init__("alpaca")
-        self._api_key = ""
-        self._api_secret = ""
+        self._auth_headers: dict[str, str] = {}
         self._base_url = PAPER_BASE
         self._data_url = DATA_BASE
         self._paper = True
@@ -73,8 +127,10 @@ class AlpacaConnector(BrokerBase):
 
     async def connect(self, api_key: str, api_secret: str, paper: bool = True) -> bool:
         """Connect to Alpaca API."""
-        self._api_key = api_key
-        self._api_secret = api_secret
+        self._auth_headers = {
+            "APCA-API-KEY-ID": api_key,
+            "APCA-API-SECRET-KEY": api_secret,
+        }
         self._paper = paper
         self._base_url = PAPER_BASE if paper else LIVE_BASE
 
@@ -101,10 +157,8 @@ class AlpacaConnector(BrokerBase):
         if self._session:
             try:
                 await self._session.close()
-            except (
-                Exception
-            ):  # R28-OK: shutdown best-effort; session may already be closed
-                pass
+            except Exception as exc:
+                logger.warning("Alpaca session already closed: %s", exc)
             self._session = None
 
     async def get_account(self) -> AccountInfo:
@@ -268,6 +322,11 @@ class AlpacaConnector(BrokerBase):
             "next_close": data.get("next_close", ""),
         }
 
+    def market_rules(self, asset: Any) -> MarketRules:
+        """The ``MarketRules`` one of this broker's own asset records publishes,
+        read through ``asset_rules`` so no broker is contacted."""
+        return asset_rules(asset)
+
     def _parse_order(self, data: dict) -> StockOrder:
         """Parse Alpaca order response."""
         return StockOrder(
@@ -291,10 +350,7 @@ class AlpacaConnector(BrokerBase):
         import aiohttp
 
         url = (base_url or self._base_url) + path
-        headers = {
-            "APCA-API-KEY-ID": self._api_key,
-            "APCA-API-SECRET-KEY": self._api_secret,
-        }
+        headers = dict(self._auth_headers)
 
         if not self._session:
             self._session = aiohttp.ClientSession()
