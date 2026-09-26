@@ -119,6 +119,9 @@ if _HAS_QT:
             super().__init__(parent)
             self.setAccessibleName(GATE_LIGHTS_NAME)
             self._lights = [dict(light) for light in lights]
+            self._text = str(cell.get("text", ""))
+            self._color = str(cell.get("color") or "")
+            self._tooltip = str(cell.get("tooltip") or "")
             box = QHBoxLayout(self)
             box.setContentsMargins(0, 0, 0, 0)
             box.setSpacing(TEXT_SPACING_PX)
@@ -133,6 +136,15 @@ if _HAS_QT:
         def lights(self) -> list:
             """The light records this cell drew, in draw order."""
             return [dict(light) for light in self._lights]
+
+        def draws(self, cell: dict, lights: list) -> bool:
+            """True when ``cell`` and ``lights`` are what this widget already drew."""
+            return (
+                self._text == str(cell.get("text", ""))
+                and self._color == str(cell.get("color") or "")
+                and self._tooltip == str(cell.get("tooltip") or "")
+                and self._lights == [dict(light) for light in lights]
+            )
 
         def _text_widget(self, cell: dict) -> "QLabel":
             """The blocker text, in the colour the cell carries."""
@@ -267,29 +279,45 @@ if _HAS_QT:
         def _draw_rows(self, model: dict) -> None:
             rows = model_rows(model)
             self._table.setRowCount(len(rows))
+            regrew = False
             for row_index, row in enumerate(rows):
                 lights = row_lights(row)
                 for cell_index, cell in enumerate(row.get("cells", [])):
-                    self._table.setItem(row_index, cell_index, self._cell_item(cell))
-                    if cell.get("key") != GATES_COLUMN_KEY:
+                    gates = cell.get("key") == GATES_COLUMN_KEY
+                    # GateLightsCell draws the Gates text; its item stays blank.
+                    text = "" if gates and lights else str(cell.get("text", ""))
+                    self._table.setItem(
+                        row_index, cell_index, self._cell_item(cell, text)
+                    )
+                    if not gates:
                         continue
-                    self._draw_gates(row_index, cell_index, cell, lights)
+                    if self._draw_gates(row_index, cell_index, cell, lights):
+                        regrew = True
+            if regrew:
+                self._table.resizeRowsToContents()
 
+        # Overtaken: "Put a lights widget on the Gates cell, or take a stale one off."
+        # True: it keeps an unchanged widget, and answers whether it built one.
         def _draw_gates(
             self, row_index: int, cell_index: int, cell: dict, lights: list
-        ) -> None:
+        ) -> bool:
             """Put a lights widget on the Gates cell, or take a stale one off."""
             if not lights:
                 self._table.removeCellWidget(row_index, cell_index)
-                return
+                return False
+            held = self._table.cellWidget(row_index, cell_index)
+            if isinstance(held, GateLightsCell) and held.draws(cell, lights):
+                return False
             self._table.setCellWidget(
                 row_index, cell_index, GateLightsCell(cell, lights, self._table)
             )
-            self._table.resizeRowToContents(row_index)
+            return True
 
-        def _cell_item(self, cell: dict) -> "QTableWidgetItem":
+        # Overtaken: "One table item carrying the cell's own text, colour and tooltip."
+        # True: the caller supplies ``text``, blank where GateLightsCell draws it.
+        def _cell_item(self, cell: dict, text: str) -> "QTableWidgetItem":
             """One table item carrying the cell's own text, colour and tooltip."""
-            item = QTableWidgetItem(str(cell.get("text", "")))
+            item = QTableWidgetItem(text)
             colour = cell.get("color")
             if colour:
                 item.setForeground(QColor(str(colour)))
