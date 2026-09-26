@@ -884,23 +884,25 @@ if _HAS_WEBENGINE:
             )
             return self.show_models({trading_tab_surface.METHOD: handler(built)})
 
-        # The three presses the venue answers, each naming the field it is on.
+        # The four presses the venue answers, each naming the field it is on.
         # The command bar is answered beside them, on COMMAND_PARAM.
         VENUE_PRESSES = (
             (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
             (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
             (scrum_surface.SELECT_BOT_PARAM, "select_bot"),
+            (scrum_surface.VIEW_BAND_PARAM, "scroll_view"),
         )
 
         def run_action(self, payload: str) -> bool:
             """Answer one bot-table press the page sent, and push the fleet back.
 
-            ``VENUE_PRESSES`` names the three this tab answers; every other
+            ``VENUE_PRESSES`` names the four this tab answers; every other
             press on this page stays with the page, which owns it. A row
             press also moves the Voting Panel, so the panel is redrawn from
-            the window's own reading rather than at the next tick.
+            the window's own reading rather than at the next tick. A scroll
+            band does not, so the panel keeps its bot.
             ``venue_surface.COMMAND_PARAM`` carries the command bar's press,
-            which this tab answers beside those three.
+            which this tab answers beside those four.
             """
             try:
                 asked = json.loads(payload)
@@ -913,13 +915,13 @@ if _HAS_WEBENGINE:
             venue = self._venues.get(venue_of_press(params))
             answered = False
             for name, method_name in self.VENUE_PRESSES:
-                column = params.get(name)
-                if column is None:
+                sent = params.get(name)
+                if sent is None:
                     continue
                 method = getattr(venue, method_name, None)
                 if not callable(method):
                     continue
-                method(column)
+                method(sent)
                 answered = True
             command = params.get(venue_surface.COMMAND_PARAM)
             if command is not None:

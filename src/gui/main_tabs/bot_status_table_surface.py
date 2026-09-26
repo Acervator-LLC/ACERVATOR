@@ -482,6 +482,7 @@ ACTIONS = {
     "fire_clicked": "on_fire",
     "detail_clicked": "on_detail",
     "row_pressed": "on_row_pressed",
+    "view_scrolled": "on_view_scrolled",
 }
 
 ROW_COUNT_SET = "rows.count"
@@ -504,6 +505,7 @@ HEADER_FAILED = "header.failed"
 SELECTION_READ = "selection.read"
 SELECTION_ANCHORED = "selection.anchored"
 SELECTION_CLEARED = "selection.cleared"
+SELECTION_RELEASED = "selection.released"
 SELECTION_ROW = "selection.row"
 ROW_PRESSED = "row.pressed"
 ROW_HIGHLIGHTED = "row.highlighted"
@@ -832,6 +834,26 @@ def selection_after_press(pressed_bot_id: str, shown_bot_id: str) -> str:
     if not pressed or pressed == str(shown_bot_id or ""):
         return NO_SELECTION_BOT_ID
     return pressed
+
+
+def selection_after_view_moved(
+    selected_row: int, first_drawn_row: int, last_drawn_row: int
+) -> int:
+    """The row that keeps the highlight once the rows or the scroll moved.
+
+    A ``selected_row`` outside the drawn band answers ``NO_SELECTION_ROW``, so
+    a bot list releases its highlight rather than scroll to it.
+    ``BotStatusTable.release_selection_off_view`` and
+    ``BotStatusTableModel.on_view_scrolled`` both decide it here.
+    """
+    row = int(selected_row)
+    first = int(first_drawn_row)
+    last = int(last_drawn_row)
+    if row < 0 or first < 0 or last < first:
+        return NO_SELECTION_ROW
+    if first <= row <= last:
+        return row
+    return NO_SELECTION_ROW
 
 
 def cell(
@@ -1381,6 +1403,23 @@ class BotStatusTableModel:
             self.on_bot_selected(wanted)
         return wanted
 
+    def on_view_scrolled(self, band: Any) -> str:
+        """Release the highlight when the rows drawn no longer carry it.
+
+        ``band`` is the first and last drawn row. ``on_bot_selected`` is not
+        called, so the Voting Panel keeps the bot it is drawing.
+        """
+        first, last = band
+        if not self.has_selection:
+            return NO_SELECTION_BOT_ID
+        kept = selection_after_view_moved(self.current_row, first, last)
+        self.calls.append([SELECTION_RELEASED, int(first), int(last), kept])
+        if kept != NO_SELECTION_ROW:
+            return self.get_selected_bot_id()
+        self.clear_selection()
+        self.current_row = NO_SELECTION_ROW
+        return NO_SELECTION_BOT_ID
+
     def on_detail(self, bot_id: str) -> None:
         """Select the row, then hand the bot to whatever opens the detail."""
         self.select_row_for_bot(bot_id)
@@ -1443,6 +1482,7 @@ CELL_CLICK_PARAM = "cell_click"
 FIRE_PARAM = "fire_bot"
 DETAIL_PARAM = "detail_bot"
 SELECT_BOT_PARAM = "select_bot"
+VIEW_BAND_PARAM = "view_band"
 EXCHANGE_ID_PARAM = "for_exchange"
 
 
@@ -1644,6 +1684,7 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "fire_param": FIRE_PARAM,
         "detail_param": DETAIL_PARAM,
         "select_bot_param": SELECT_BOT_PARAM,
+        "view_band_param": VIEW_BAND_PARAM,
         "logger_name": LOGGER_NAME,
         "skip_logger_name": SKIP_LOGGER_NAME,
         "calls": [list(call) for call in model.calls],
@@ -1671,6 +1712,8 @@ def drive(model: BotStatusTableModel, params: dict) -> dict:
         model.on_detail(params[DETAIL_PARAM])
     if params.get(SELECT_BOT_PARAM) is not None:
         model.on_row_pressed(str(params[SELECT_BOT_PARAM]))
+    if params.get(VIEW_BAND_PARAM) is not None:
+        model.on_view_scrolled(params[VIEW_BAND_PARAM])
     return build_view_model(model)
 
 

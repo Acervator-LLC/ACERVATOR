@@ -36,6 +36,7 @@
   var PRIVACY_TOGGLE_PARAM = "privacy_toggle_param";
   var SORT_COLUMN_PARAM = "sort_column_param";
   var SELECT_BOT_PARAM = "select_bot_param";
+  var VIEW_BAND_PARAM = "view_band_param";
   var HEADER_LABEL_STYLE = "header_label_style";
   var HEADER_LABEL_WRAP = "header_label_wrap";
   var HEADER_DOT_STYLE = "header_dot_style";
@@ -190,6 +191,7 @@
     "sort_column",
     SORT_COLUMN_PARAM,
     SELECT_BOT_PARAM,
+    VIEW_BAND_PARAM,
     "sort_descending",
     "sort_descending_word",
     "sort_kind_by_col",
@@ -288,6 +290,7 @@
   var FIRE_CLICKED = "fire_clicked";
   var DETAIL_CLICKED = "detail_clicked";
   var ROW_PRESSED = "row_pressed";
+  var VIEW_SCROLLED = "view_scrolled";
 
   // -- what a payload can be wrong about -------------------------------
 
@@ -423,6 +426,9 @@
   // One payload per exchange, so a re-mount redraws that screen's own rows
   // rather than whichever exchange answered last.
   var models = {};
+  // Each scroll box `watchScroll` has already bound, so one box takes one
+  // listener however many times the rows are redrawn.
+  var watched = [];
 
   // -- reading a payload safely ----------------------------------------
 
@@ -1277,6 +1283,79 @@
     );
   }
 
+  // The nearest ancestor that scrolls the rows, or null while none does.
+  function scrollBoxOf(node) {
+    var found = node;
+    while (found && found !== global.document.body) {
+      if (found.scrollHeight > found.clientHeight + 1) {
+        return found;
+      }
+      found = found.parentElement;
+    }
+    return null;
+  }
+
+  // The first and last row index the scroll box draws whole.
+  function visibleRowBand(node) {
+    var box = scrollBoxOf(node);
+    if (box === null) {
+      return null;
+    }
+    var edge = box.getBoundingClientRect();
+    var first = -1;
+    var last = -1;
+    var found = node.querySelectorAll("[" + PART_ATTR + '="' + ROW_PART + '"]');
+    Array.prototype.forEach.call(found, function (one) {
+      var at = Number(one.getAttribute(ROW_ATTR));
+      var span = one.getBoundingClientRect();
+      if (span.top >= edge.top - 1 && span.bottom <= edge.bottom + 1) {
+        if (first < 0) {
+          first = at;
+        }
+        last = at;
+      }
+    });
+    return first < 0 ? null : [first, last];
+  }
+
+  // The payload one drawn host is holding, or null for a host not drawn into.
+  function modelAt(target) {
+    var found = null;
+    roots.forEach(function (pair) {
+      if (pair.node === target) {
+        found = pair.model;
+      }
+    });
+    return found;
+  }
+
+  // The rows drawn after a hand scroll, which releases a highlight the box
+  // no longer shows. The Voting Panel keeps the bot it is drawing.
+  function sendViewBand(model, band) {
+    return dispatch(
+      model,
+      actionNamed(model, VIEW_SCROLLED),
+      request(model, VIEW_BAND_PARAM, band)
+    );
+  }
+
+  // One listener per scroll box, bound once the rows overflow it.
+  function watchScroll(target) {
+    var box = scrollBoxOf(target);
+    if (box === null || watched.indexOf(box) >= 0) {
+      return null;
+    }
+    watched.push(box);
+    box.addEventListener("scroll", function () {
+      var band = visibleRowBand(target);
+      var model = modelAt(target);
+      if (band !== null && isPlainObject(model)) {
+        sendViewBand(model, band);
+      }
+    });
+    return box;
+  }
+
   function sent() {
     return dispatched.slice();
   }
@@ -1515,6 +1594,7 @@
         pair.model = drawn;
       }
     });
+    watchScroll(target);
     return host;
   }
 
@@ -1525,6 +1605,7 @@
     asked = null;
     dispatched = [];
     models = {};
+    watched = [];
   }
 
   global.acervatorSetBotTable = setTable;
@@ -1583,6 +1664,9 @@
     sendFire: sendFire,
     sendDetail: sendDetail,
     sendRowPress: sendRowPress,
+    sendViewBand: sendViewBand,
+    visibleRowBand: visibleRowBand,
+    scrollBoxOf: scrollBoxOf,
     sent: sent,
     forget: forget
   };
