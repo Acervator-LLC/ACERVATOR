@@ -177,6 +177,12 @@ class BotContainer:
                 logger.debug("bot.log emit for a refused order raised: %s", exc)
         raise Exception(message)
 
+    # OVERTAKEN in the docstring below: "``amount`` reaches ``place_order``
+    # unchanged; the market's rules are read to refuse a sub-minimum size and a
+    # sub-minimum notional, and ``CCXTConnector.place_order`` is where a size is
+    # stepped."
+    # ``sized_order`` floors ``amount`` onto ``MarketRules.amount_increment``
+    # here, before ``min_cost`` is measured and before ``place_order`` is called.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -239,13 +245,49 @@ class BotContainer:
                 f"Acervator checks nothing here."
             )
 
-        if _rules.steps_below_minimum(_amt):
+        # Every live order passes here, so the venue's own step is applied at
+        # the one submitting site and not at each composing site.
+        from .scrumming.sizing import (
+            BELOW_MINIMUM_AMOUNT,
+            BELOW_ONE_UNIT,
+            CLASS_CRYPTO,
+            sized_order,
+            unit_rule,
+        )
+
+        # Every connector a container holds is a crypto connector; nothing
+        # constructs a broker one.
+        _sized = sized_order(
+            _amt, unit_rule(CLASS_CRYPTO, self.config.exchange_id), _rules
+        )
+
+        if _sized.refusal == BELOW_MINIMUM_AMOUNT:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
                 f"{_amt:.10f} is below min_amount {_rules.min_amount} "
                 f"on a size increment of {_rules.amount_increment}. "
+                f"{BELOW_MINIMUM_AMOUNT}. "
                 f"API not called."
             )
+
+        if _sized.refusal == BELOW_ONE_UNIT:
+            self._refuse_order(
+                f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount "
+                f"{_amt:.10f} floors to nothing on a size increment of "
+                f"{_rules.amount_increment}. {BELOW_ONE_UNIT}. "
+                f"API not called."
+            )
+
+        # A venue that published no step and a pair with no cited rule both
+        # leave the amount as it came in, and neither refuses on that ground.
+        if 0.0 < _sized.units < _amt:
+            self._warn_order(
+                f"SIZED ON THE VENUE'S STEP: {_side_str} {symbol} "
+                f"{_amt:.10f} to {_sized.units:.10f} on a size increment of "
+                f"{_rules.amount_increment} ({_sized.source})."
+            )
+            _amt = _sized.units
+            amount = _sized.units
 
         if _rules.min_cost is not None and price is not None:
             try:
