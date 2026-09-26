@@ -26,12 +26,20 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+from ...core.event_bus import LINE_KIND_TRADE
 from ...core.log_paths import get_log_root
 from ...paper import paper_run
 from ...paper.fleet_source import BOT_STATE_NAME
+from ...simulator.back_test import FOLD, SCRUM
 from ...trading.container.config import BotState
 from ..main_tabs import simulator_tab_surface as sim
 from ..main_tabs import trading_tab_surface as live
+from ..main_tabs.status_log_surface import (
+    TIMESTAMP_FORMAT,
+    TRADE_FIELD_SPLIT,
+    TRADE_PREFIX,
+)
+from ..main_tabs.trade_charts_tab_surface import BUY_SIDE, SELL_SIDE, SIDE_ROLES
 from .paper_bot_status_table_surface import base_of, usd_rates
 
 logger = logging.getLogger("acervator.gui")
@@ -160,6 +168,20 @@ BOT_ENDED_FORMAT = (
     "Paper bot {bot_id} ended: {trades} fill(s), target ${target_open:,.4f} to "
     "${target_end:,.4f}, position ${position:,.4f}, {tranches} tranche(s) queued."
 )
+
+#: The Activity Log line one fill writes, ``_emit_trade_notification``'s own
+#: shape, at the kind ``line_style`` reads and the level a plain line takes.
+FILL_LINE_KIND = LINE_KIND_TRADE
+FILL_LINE_LEVEL = "info"
+FILL_STAGE = "FILLED"
+FILL_EXTRA_SPLIT = " — "
+FILL_LINE_FORMAT = (
+    "{prefix} {role}{split}{symbol}{split}{stage}"
+    "{extra_split}{units:.6f} @ ${price:.8f}"
+)
+
+#: The role a fill's ``side`` names, read from the table ``ROLE_GLYPHS`` keys on.
+FILL_ROLES = {SCRUM: SIDE_ROLES[SELL_SIDE], FOLD: SIDE_ROLES[BUY_SIDE]}
 
 #: The exchange chooser: Live's one-question dialog holding the bot wizard's
 #: ``Exchange:`` row, at the dialog width Live gives Configure Profit Wire.
@@ -409,6 +431,30 @@ def bot_ended_line(snapshot: Any) -> str:
         target_end=float(saved.get("target_balance", 0.0) or 0.0),
         position=float(stats.get("position_value", 0.0) or 0.0),
         tranches=len(saved.get("fold_tranches") or []),
+    )
+
+
+def fill_stamp(trade: Any) -> str:
+    """The stamp a fill's Activity Log line carries: ``TIMESTAMP_FORMAT`` over the
+    trade's ``wall_ms``, the fill's own time rather than the clock."""
+    return datetime.fromtimestamp(int(trade.wall_ms) / 1000.0).strftime(
+        TIMESTAMP_FORMAT
+    )
+
+
+def fill_line(trade: Any) -> str:
+    """``FILL_LINE_FORMAT`` over one ``PaperTrade``, the shape
+    ``_emit_trade_notification`` writes a Live fill in: the role, the market,
+    ``FILL_STAGE``, the units and the price."""
+    return FILL_LINE_FORMAT.format(
+        prefix=TRADE_PREFIX,
+        role=FILL_ROLES.get(str(trade.side), FILL_ROLES[SCRUM]),
+        split=TRADE_FIELD_SPLIT,
+        symbol=str(trade.symbol),
+        stage=FILL_STAGE,
+        extra_split=FILL_EXTRA_SPLIT,
+        units=float(trade.units),
+        price=float(trade.price),
     )
 
 
