@@ -7627,3 +7627,201 @@ cited path in the git index exits non-zero, and the same lookup of the reservati
 module beside it exits zero. The documentation archetype reports one dead path on
 this page, at the line carrying that sentence, and reports none against the
 hundreds of other paths the page cites.
+
+## 2026-09-26 - #571 - the asset class group becomes one square of two rows
+
+### Two columns by two rows, in one square boundary
+
+**HIS.**
+
+> "Get these mode buttons corrected. I gave you a properly elaborated spec for
+> how this segmented of the ONE square was supposed to be done and yet, here I
+> am, in the latest build still seeing a STUPID design that the GUI Archetype
+> should have flagged as pure grade shit."
+
+And the elaborated spec he gave, on this issue:
+
+> "the large Crypto / Stock Wing button in the upper right of the GUI which will
+> now become a segmented group featuring one layer button per available market
+> sector"
+
+**Functional.** The group is one square. Four asset classes divide it into four
+rectangles, two across and two down, by one vertical line and one horizontal
+line. The square is 68 pixels on each side and each segment is 34 by 34.
+
+A segment past the first column drops the border it shares with the segment to
+its left. A segment past the first row drops the border it shares with the
+segment above. One line therefore draws between two neighbours, never two.
+
+Each of the four segments rounds exactly one corner, and only the corner it
+shares with the square. Every corner inside the square is square.
+
+`src/gui/main_tabs/asset_class_surface.py` — `segment_box`
+
+```python
+said = [f"border: 1px solid {ds.OUTLINE}"]
+if column > 0:
+    said.append("border-left: none")
+if row > 0:
+    said.append("border-top: none")
+said.append("border-radius: 0px")
+if top and left:
+    said.append(f"border-top-left-radius: {corner}")
+```
+
+**Design intention.** A model that treats its members as a line cannot produce
+a square, so a segment now carries a row and a column instead of a place on a
+line. `segment_cell` answers that place and `segment_box` reads it, and both
+builds take the same answer.
+
+`src/gui/main_tabs/asset_class_surface.py` — `grid_shape`
+
+```python
+columns = math.isqrt(held)
+if columns * columns < held:
+    columns += 1
+rows = held // columns + (1 if held % columns else 0)
+```
+
+The side is one declared number, `group_side_px`, so the window build and the
+page build cannot draw two different squares. Neither build measures its own
+row height.
+
+`src/gui/web/header_strip.js` — the square's own style
+
+```js
+var side = length(model[SIDE]);
+var groupStyle = {
+  display: "grid",
+  gridTemplateColumns: tracks(cell(model[GRID_COLUMNS], 1)),
+  gridTemplateRows: tracks(cell(model[GRID_ROWS], 1)),
+  width: side,
+  height: side
+};
+```
+
+### The sentences the square overtakes
+
+Each is quoted whole, marked overtaken, with the sentence that is true today
+beneath it.
+
+**Overtaken.** *"The group is one rectangle divided by three lines."*
+
+The group is one square divided by one vertical line and one horizontal line.
+
+**Overtaken.** *"The two end segments round the group's outer corners and the
+segments between them round nothing."*
+
+Each of the four segments rounds one of the square's four outer corners, and
+rounds nothing else.
+
+**Overtaken.** *"Every segment but the last drops the border it shares with its
+neighbour, so one line separates two segments rather than two lines meeting."*
+
+A segment past the first column drops its shared left border and a segment past
+the first row drops its shared top border, so one line separates two
+neighbours in both directions.
+
+**Overtaken.** *"Read off the running window in both builds, the group holds
+four buttons, and the positions are first, middle, middle, last."*
+
+The group holds four buttons at row 0 column 0, row 0 column 1, row 1 column 0
+and row 1 column 1.
+
+**Overtaken.** *"The group's floor fell from 142 to 136 pixels, because four
+segments that touch ask for six pixels less than four that do not."*
+
+The square's side is 68 pixels, which is its two columns times the 34 pixel
+minimum one segment draws at.
+
+### What a class count other than four divides into
+
+The columns are the integer square root of the count rounded up, and the rows
+follow from that, so the grid is the one nearest to square. The last row's
+segments share the columns the full rows use, so every row fills the width.
+
+```
+count   columns x rows   the last row
+1       1 x 1            one segment, rounding all four corners
+2       2 x 1            full
+3       2 x 2            one segment spanning both columns
+4       2 x 2            full
+5       3 x 2            two segments spanning 2 and 1 columns
+6       3 x 2            full
+9       3 x 3            full
+12      4 x 3            full
+```
+
+Nothing is written as four. The count comes from
+`src.trading.ata_spm.ASSET_CLASSES` when the group is built.
+
+### What the two builds read of the square
+
+Read off the running program at 700, 900 and 1400 pixels wide, with the home
+directory redirected to a scratch folder. The window build was read from each
+widget's own geometry and style sheet. The page build was read inside the
+shell's renderer page, from each drawn element's client rectangle and computed
+style.
+
+```
+reading                                 window build   page build
+the group's width and height             68 x 68        68 x 68
+the width over the height                  1.0            1.0
+the rows and the columns                  2 x 2          2 x 2
+each segment's width and height          34 x 34        34 x 34
+the gap between two neighbours, across      0              0
+the gap between two neighbours, down        0              0
+segments rounding more than one corner      0              0
+```
+
+Both builds read the same seven rows at all three widths, and the page build
+reads them again with its row forced taller, so the side follows the declared
+number and not a row's height.
+
+Before the change both builds read one row of four, a group 136 by 58 in the
+window build and 389 by 17 in the page build, and two of the four segments
+rounding two corners each.
+
+### The rule that refuses a separated group
+
+**HIS.**
+
+> "a STUPID design that the GUI Archetype should have flagged"
+
+The GUI archetype now carries GUI007. It reads every function that names a
+segment and writes its own border box, and it refuses three shapes: a group
+that suppresses no shared edge, a branch that rounds more than one corner, and
+a spacing or gap constant that is not zero.
+
+`dev_harness/harness/gui_archetype.py` — `_scan_segmented_group_skin`
+
+```python
+shared = any(f"border-{edge}: none" in joined for edge in _SEGMENT_EDGES)
+if not shared:
+    findings.append(Finding(..., rule_id="GUI007", ...))
+```
+
+Run against the file as it stood before this change, the rule reports two high
+findings and the archetype reads `passed=False`. Run against the file as it
+stands now, it reports none and reads `passed=True`. Its fixture pair is
+`harness_fixtures/gui_archetype/known_good_segmented.py`, which exits zero, and
+`harness_fixtures/gui_archetype/known_bad_separated.py`, which exits one.
+
+### Where the spare width in the header row goes now
+
+The square is one fixed side, so it can no longer take the width the figures
+leave. The spendable strip takes it instead, which is the first slot of the row,
+so the square stays at the row's right end and the money figures elide less.
+
+`src/gui/main_tabs/header_strip_surface.py` — `TOP_ROW_STRETCH`
+
+```python
+TOP_ROW_STRETCH = [1, 0, 0, 0, 0, 0, 0]
+```
+
+**Overtaken.** *"A zero slot draws at the width its own text asks for; the class
+group takes what is left, so a long amount elides a class name and never a
+figure."*
+
+A zero slot draws at the width its own text asks for, and the spendable strip
+takes what is left.
