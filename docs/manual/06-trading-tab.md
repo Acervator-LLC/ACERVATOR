@@ -6656,6 +6656,81 @@ NO_LAYER_NOTE = "{name} has no trading layer yet."
 Commodities and Forex have no configured venue. Derivatives has one venue and no
 trading layer, so it draws the second note.
 
+**The Derivatives row above is overtaken, and so is the sentence naming its one
+venue.** Both stay exactly as written. The class they name retired on purpose,
+and the row records a taxonomy the program no longer declares.
+
+The row, quoted whole as the page sets it:
+
+```
+the row: | Derivatives | `＋ Add Derivatives Exchange` | yes | 1 |
+```
+
+> Commodities and Forex have no configured venue. Derivatives has one venue and no trading layer, so it draws the second note.
+
+The true sentence is: the taxonomy declares four classes, and Derivatives is not
+one of them. Read at run time, the tuple answers crypto, stocks, commodities and
+forex, and the group draws one button for each.
+
+```python
+# src/trading/ata_spm.py:55
+ASSET_CLASSES = (
+    CLASS_CRYPTO,
+    CLASS_STOCKS,
+    CLASS_COMMODITIES,
+    CLASS_FOREX,
+)
+```
+
+The one venue that row named is Coinbase. Asked which classes it serves, the
+surface answers crypto alone, because it answers only classes the live tuple
+holds. Coinbase's dated futures and perpetuals are still read, from the same
+public product list, and each product now takes the class of its own underlying
+instead of a class of its own.
+
+```python
+# src/trading/ata_asset_maps.py:1082
+def futures_placement(product: dict) -> tuple[str, str, str]:
+    """The underlying, the asset class and the sector one futures product takes.
+```
+
+A stored selection under the old name still opens on a live class. One map
+answers the old name, and for this one it answers crypto.
+
+```python
+# src/trading/ata_spm.py:77
+RETIRED_CLASSES = {
+    "metals": CLASS_COMMODITIES,
+    "energy": CLASS_COMMODITIES,
+    RETIRED_CLASS_DERIVATIVES: CLASS_CRYPTO,
+}
+```
+
+The retirement was a decision and not a slip. Derivatives names no sector. A
+futures contract is a form a contract takes, and the class belongs to the thing
+underneath it, so a future on an index sits with equities and a future on ether
+sits with crypto. A market a retail trader cannot reach from
+home still charts under its own class, and no bot deploys there.
+
+Read at run time, and searched over the git index across every tracked Python
+file:
+
+```
+classes the tuple declares                                  4
+the tuple holds derivatives                             False
+CONTROL the tuple holds crypto                           True
+classes the surface says Coinbase serves                    1
+buttons the group draws                                     4
+RETIRED_CLASS_DERIVATIVES                       4 occurrences
+CLASS_COMMODITIES                              29 occurrences
+CLASS_FOREX                                     7 occurrences
+CONTROL CLASS_ZORBONICS                         0 occurrences
+```
+
+The last row is the control. The same search finds three class names that are
+still read, so a zero above is a reading of the tree and not of the search.
+
+
 The class list is read from `ASSET_CLASSES` at run time. Unit S13 of issue 23
 replaced Metals and Energy with Commodities while this unit was open, and the
 group followed with no edit: it dropped to five buttons and drew the new class.
