@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 )
 
 
-from .asset_class_surface import BUTTON_MIN_W as CLASS_BUTTON_MIN_W
 from .asset_class_surface import BUTTON_TEXT_PAD as CLASS_BUTTON_TEXT_PAD
 from .asset_class_surface import GROUP_SPACING_PX as CLASS_GROUP_SPACING
 
@@ -123,6 +122,7 @@ class HeaderStripMixin:
             grid_shape,
             group_side_px,
             normalise,
+            segment_width_px,
         )
 
         stored = None
@@ -147,6 +147,7 @@ class HeaderStripMixin:
         self._class_buttons.setExclusive(True)
         self._class_group = {}
         self._class_names: dict = {}
+        segment_w = segment_width_px()
 
         for model in class_buttons(self._asset_class):
             button = QPushButton(model["text"])
@@ -157,7 +158,7 @@ class HeaderStripMixin:
             # Preferred, never Minimum: the group must give width back to the
             # counters when the window is narrow.
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            button.setMinimumWidth(CLASS_BUTTON_MIN_W)
+            button.setMinimumWidth(segment_w)
             button.clicked.connect(partial(self._on_class_clicked, model["class"]))
             self._class_buttons.addButton(button)
             self._class_group[model["class"]] = button

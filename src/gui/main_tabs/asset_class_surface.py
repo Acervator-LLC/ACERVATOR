@@ -33,8 +33,11 @@ SEGMENT_FONT_PX = 10
 # OVERTAKEN, quoted whole:
 #   "The narrowest one class button draws at. The group's floor is this times
 #   the class count, which the counters share the header top row with."
-# True today: the square's side is this times its widest row's segment count,
-# because the segments fill a square rather than a line.
+# OVERTAKEN, quoted whole:
+#   "True today: the square's side is this times its widest row's segment count,
+#   because the segments fill a square rather than a line."
+# True today: the floor segment_width_px may not fall below, which the widest
+# class name sets above that floor.
 #: The narrowest one class button draws at.
 BUTTON_MIN_W = 34
 
@@ -204,7 +207,58 @@ def segment_cell(at: Any, count: Any = None) -> dict:
     }
 
 
-def group_side_px(count: Any = None) -> int:
+def segment_font() -> Any:
+    """The font one segment draws its class name in, at ``SEGMENT_FONT_PX``."""
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
+
+    running = QApplication.instance() is not None
+    font = QFont(QApplication.font()) if running else QFont()
+    font.setPixelSize(SEGMENT_FONT_PX)
+    font.setBold(True)
+    return font
+
+
+def label_width_px(text: Any) -> int:
+    """The room one class name takes at ``segment_font``, or 0 with no toolkit.
+
+    ``QFontMetrics`` needs a running ``QApplication``, so a caller holding
+    none reads 0 and ``segment_width_px`` answers ``BUTTON_MIN_W``.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    if QApplication.instance() is None:
+        return 0
+    from PySide6.QtGui import QFontMetrics
+
+    return int(QFontMetrics(segment_font()).horizontalAdvance(str(text)))
+
+
+def widest_label_px(labels: Any = None) -> int:
+    """The widest declared class name's room at ``segment_font``."""
+    names = (
+        [display_name(each) for each in asset_classes()]
+        if labels is None
+        else [str(each) for each in labels]
+    )
+    return max((label_width_px(each) for each in names), default=0)
+
+
+def segment_width_px(labels: Any = None) -> int:
+    """One segment's width: its widest class name plus ``BUTTON_TEXT_PAD``.
+
+    ``BUTTON_MIN_W`` is the floor the measured width may not fall below, so a
+    shorter class list never narrows a segment past it.
+    """
+    return max(BUTTON_MIN_W, widest_label_px(labels) + BUTTON_TEXT_PAD)
+
+
+# OVERTAKEN, quoted whole:
+#   "Its widest row holds ``columns`` segments of ``BUTTON_MIN_W`` each, so the
+#   side follows the class count and no variant measures its own row height."
+# True today: its widest row holds ``columns`` segments of ``segment_width_px``
+# each, so the side follows the class count and the widest class name.
+def group_side_px(count: Any = None, labels: Any = None) -> int:
     """The square's side in pixels, the same number in both variants.
 
     Its widest row holds ``columns`` segments of ``BUTTON_MIN_W`` each, so the
@@ -214,7 +268,7 @@ def group_side_px(count: Any = None) -> int:
     if held <= 0:
         return 0
     columns = grid_shape(held)[1]
-    return columns * BUTTON_MIN_W + (columns - 1) * GROUP_SPACING_PX
+    return columns * segment_width_px(labels) + (columns - 1) * GROUP_SPACING_PX
 
 
 def normalise(name: Any) -> str:

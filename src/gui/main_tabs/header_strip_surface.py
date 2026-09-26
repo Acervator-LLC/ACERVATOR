@@ -359,7 +359,6 @@ STATS_PARAM = "stats"
 EXCHANGE_COUNT_PARAM = "exchange_count"
 
 MODE_BUTTON = {
-    "minimum_width_px": asset_class_surface.BUTTON_MIN_W,
     "horizontal_policy": "Preferred",
     "vertical_policy": "Expanding",
     "checkable": True,
@@ -405,6 +404,11 @@ def slot_stretch(slot: Any) -> int:
     return int(TOP_ROW_STRETCH[TOP_ROW_ORDER.index(name)])
 
 
+# OVERTAKEN, quoted whole:
+#   "Every slot declares a floor, so ``top_row_min_w`` never reads the width
+#   of the text a slot happens to hold."
+# True today: every slot declares a floor, and the mode_button floor is the
+# square's side, which the widest class name sets.
 def slot_min_w(slot: Any) -> int:
     """The narrowest one ``TOP_ROW_ORDER`` slot draws at.
 
@@ -664,6 +668,7 @@ def mode_card(mode: Any) -> dict:
         "group_spacing_px": asset_class_surface.GROUP_SPACING_PX,
         "grid_rows": rows,
         "grid_columns": columns,
+        "minimum_width_px": asset_class_surface.segment_width_px(),
         "side_px": asset_class_surface.group_side_px(),
         "window_title": asset_class_surface.window_title(key),
         "add_exchange": {

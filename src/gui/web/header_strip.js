@@ -642,8 +642,11 @@
       return element("button", one, text(each[TEXT]));
     });
 
-    // Both sides are `SIDE`, the number the Qt widget is fixed to, so a track
-    // is `minmax(0, 1fr)` and no class name widens the square.
+    // OVERTAKEN, quoted whole:
+    //   "Both sides are `SIDE`, the number the Qt widget is fixed to, so a track
+    //   is `minmax(0, 1fr)` and no class name widens the square."
+    // True today: both sides are `SIDE`, the number the Qt widget is fixed to,
+    // and the widest class name is what widens it.
     var side = length(model[SIDE]);
     var groupStyle = {
       display: "grid",
