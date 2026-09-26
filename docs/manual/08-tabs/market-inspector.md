@@ -7644,7 +7644,7 @@ Twenty-three routes name one, and each was read off the running program.
 | the class menu's items | `src/gui/market_inspector.py:1235` |
 | the Asset Category buttons | `src/gui/market_inspector.py:1372` |
 | the page's class rows and its class list | `src/gui/main_tabs/market_inspector_surface.py:2203,4082` |
-| the class a press takes | `src/trading/ata_spm.py:2115,381` |
+| the class a press takes | `src/trading/ata_spm.py:2129,381` |
 | the timeframes and the round budget a class sets | `src/trading/ata_spm.py:397,413,421` |
 | Scan Now on an empty field, a sector name, a ticker | `src/trading/ata_spm.py:2217,2209,2205` |
 | the market list, the ticker list and the listing of one class | `src/gui/main_tabs/market_inspector_surface.py:3062,2834,3144` |
@@ -7653,7 +7653,7 @@ Twenty-three routes name one, and each was read off the running program.
 | the sectors a class holds, and the ones it lists nothing for | `src/trading/ata_asset_maps.py:559,569,579` |
 | the sector one name resolves to, and its rows | `src/trading/ata_asset_maps.py:584,598` |
 | the line under the ticker field | `src/gui/main_tabs/market_inspector_surface.py:3254,3230` |
-| Scan All's walk and its place line | `src/trading/ata_spm.py:2349,722` |
+| Scan All's walk and its place line | `src/trading/ata_spm.py:2368,243` |
 | the zone headline and its counts | `src/gui/main_tabs/market_inspector_surface.py:1557,1573` |
 | the confirmation timers and their tiles | `src/trading/ata_spm_push.py:1164,1436` |
 
