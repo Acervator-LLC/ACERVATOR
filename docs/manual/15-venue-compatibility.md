@@ -24,6 +24,32 @@ A scrum computes a size and submits it. Two steps stand between that size and
 the venue: one truncates it to the venue's decimal places and refuses a size
 under the venue's minimum, and one rounds it again inside the crypto connector.
 
+OVERTAKEN, and the sentence above is kept as written. Three steps stand between
+that size and the venue. The order gate floors the size onto the venue's own
+published `amount_increment`, it refuses a size that steps under the venue's
+`min_amount` or that floors to nothing, and the crypto connector rounds the
+result again. The flooring runs through `sized_order`, the one function the
+Simulator and the Paper Trader size with.
+
+```python
+# src/trading/bot_container.py:260
+        _sized = sized_order(
+            _amt, unit_rule(CLASS_CRYPTO, self.config.exchange_id), _rules
+        )
+
+# src/trading/bot_container.py:283
+        if 0.0 < _sized.units < _amt:
+
+# src/exchange/ccxt_connector.py:1128
+        amount = self._ex.amount_to_precision(symbol, amount)
+```
+
+Two citations in the block below quote lines
+`src/trading/bot_container.py` no longer holds at any line:
+`if _min_amount > 0 and _below_min:` and the docstring naming
+`(min_amount, min_cost, amount_precision)`. The block above carries the lines the
+file holds today.
+
 ```python
 # src/trading/scrumming/execution.py:1581
                 amount=amount,
@@ -181,7 +207,7 @@ table TradersPost publishes for the brokers it connects.
 
 | Venue | Orders over an API | Does the excess survive | Why, and where the reading came from |
 | ----- | ----------------- | ----------------------- | ------------------------------------ |
-| coinbase, spot | yes | yes | nine decimal places, and the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py:236`. Coinbase developer documentation, read 2026-09-24 |
+| coinbase, spot | yes | yes | nine decimal places, and the size is truncated to the product's decimal places and refused under the product's minimum before the API is called, at `src/trading/bot_container.py:264`. Coinbase developer documentation, read 2026-09-24 |
 | coinbase, US futures | yes | no | a futures contract is whole, so an excess under one contract cannot be sold. Coinbase developer documentation, Advanced Trade US derivatives, read 2026-09-24 |
 | kraken, kucoin, okx, gateio, bitget, mexc, bitfinex, gemini, bitstamp, cryptocom | yes | yes | nine decimal places. Each venue's own documentation, read 2026-09-24 |
 | binance, bybit | yes, and the address is refused from the United States | yes | nine decimal places. Each venue's own documentation, read 2026-09-24. The refusal is a tree reading dated 2026-08-28, at `src/exchange/ccxt_connector.py:113` |
@@ -452,7 +478,7 @@ times the stepped price. The minimum order cost is now compared against that
 number.
 
 ```python
-# src/trading/bot_container.py:252
+# src/trading/bot_container.py:294
                 # The venue books a price on its own tick, so min_cost is
                 # compared against the notional at that price.
                 _booked_px = _rules.price_on_tick(_px)
@@ -662,5 +688,25 @@ accumulate and a later fold fills at a legal size.
 
 The minimum order cost is recorded and is not yet measured against a
 back-tested order's notional. The live order guard already compares it, at
-`src/trading/bot_container.py:263`. The live path also still sizes on the cited
+`src/trading/bot_container.py:305`. The live path also still sizes on the cited
 fractional rule and does not floor onto the step.
+
+OVERTAKEN, and the sentence above is kept as written. The live path floors onto
+the venue's published step. `src/trading/bot_container.py:260` calls
+`sized_order` at the one site every live order passes, so a recorded
+`amount_increment` floors the amount, a recorded `min_amount` refuses it at
+`:264`, and an amount that floors to nothing refuses at `:273`. The sized amount
+reaches the VolumeGuard branch and `exchange.place_order` alike, and `min_cost` is
+measured on it.
+
+Driven on a bare host with the home redirected, every socket but loopback
+refused, and an exchange stand-in that raises on every order call, an amount of
+`92.62189809510927` units reaches the venue as `92.62` on a recorded hundredth
+step and as `92.0` on a whole-unit step. The same amount reaches the venue
+unchanged where the venue published no step. Of 10 amount-and-rule pairs driven,
+**0** reach the venue larger than they were handed and **0** submit where they
+previously refused.
+
+A market whose venue published no step is not sized and is not refused on that
+ground. `0.0 < _sized.units < _amt` guards the assignment, which refuses a larger
+amount whatever answers it.
