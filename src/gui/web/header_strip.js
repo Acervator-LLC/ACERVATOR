@@ -66,6 +66,7 @@
   var FRAME_SHAPE = "frame_shape";
   var LABEL_ALIGN = "label_align";
   var MINIMUM_WIDTH = "minimum_width_px";
+  var GROUP_SPACING = "group_spacing_px";
   var CHECKED = "checked";
   var WINDOW_TITLE = "window_title";
   var MODE = "mode";
@@ -97,6 +98,7 @@
 
   var SEMICOLON = ";";
   var COLON = ":";
+  var CHECKED_STATE = ":checked";
   var BLOCK_OPEN = "{";
   var BLOCK_CLOSE = "}";
   var DASH = "-";
@@ -368,6 +370,18 @@
     return style;
   }
 
+  // `styleOf` reads a base block, so the accent the active segment fills
+  // with reaches the page through this and nothing else.
+  function checkedStyle(sheet) {
+    var found = {};
+    stateRules(sheet).forEach(function (block) {
+      if (carries(block.selector, CHECKED_STATE)) {
+        found = styleOf(block.body);
+      }
+    });
+    return found;
+  }
+
   // -- the styles the components paint with ----------------------------
 
   function marginStyle(layout, field) {
@@ -572,6 +586,12 @@
     var buttons = listField(model, BUTTONS).map(function (each) {
       var key = text(each[CLASS_KEY]);
       var style = styleOf(each[STYLE_SHEET]);
+      if (each[CHECKED]) {
+        var fill = checkedStyle(each[STYLE_SHEET]);
+        Object.keys(fill).forEach(function (property) {
+          style[property] = fill[property];
+        });
+      }
       style.minWidth = length(model[MINIMUM_WIDTH]);
       style.flex = "1 1 0";
       var one = {
@@ -590,7 +610,7 @@
       return element("button", one, text(each[TEXT]));
     });
 
-    var groupStyle = { display: "flex", gap: "2px" };
+    var groupStyle = { display: "flex", gap: length(model[GROUP_SPACING]) };
     withStretch(groupStyle, props.stretch);
     withFloor(groupStyle, props.floor);
     var groupProps = {

@@ -23,11 +23,24 @@ HOVER_TINT_ALPHA = 70
 #: the class count, which the counters share the header top row with.
 BUTTON_MIN_W = 34
 
+# OVERTAKEN, quoted whole:
+#   "The border and padding the button skin takes off its own text room."
+# True today: the most the skin takes, since every segment but the last
+# suppresses its shared right border and takes 1px less.
 #: The border and padding the button skin takes off its own text room.
 BUTTON_TEXT_PAD = 12
 
 #: The gap one class button leaves to the next, in both variants.
-GROUP_SPACING_PX = 2
+GROUP_SPACING_PX = 0
+
+#: Where one segment sits in the group, which decides its ends and dividers.
+SEGMENT_FIRST = "first"
+SEGMENT_MIDDLE = "middle"
+SEGMENT_LAST = "last"
+SEGMENT_ONLY = "only"
+
+#: The radius the group's two outer ends carry, in both variants.
+END_RADIUS_PX = 3
 
 #: The venue ids that trade equities. Every consumer reads this one name.
 EQUITY_VENUES = frozenset(
@@ -262,13 +275,55 @@ def add_exchange_enabled(name: Any) -> bool:
     return class_state(name)["served"]
 
 
-def button_style(colour: Any) -> str:
+def segment_position(at: Any, count: Any) -> str:
+    """Where the segment numbered ``at`` of ``count`` sits in the group.
+
+    A ``count`` of one answers ``SEGMENT_ONLY``, which rounds every corner and
+    keeps all four borders.
+    """
+    held = int(count)
+    index = int(at)
+    if held <= 1:
+        return SEGMENT_ONLY
+    if index <= 0:
+        return SEGMENT_FIRST
+    if index >= held - 1:
+        return SEGMENT_LAST
+    return SEGMENT_MIDDLE
+
+
+def segment_box(position: Any) -> str:
+    """The border and radius declarations one segment carries at ``position``.
+
+    ``SEGMENT_FIRST`` rounds the left corners and ``SEGMENT_LAST`` the right,
+    and every position but ``SEGMENT_LAST`` drops its shared right border.
+    """
+    asked = str(position or SEGMENT_ONLY)
+    ends = (SEGMENT_FIRST, SEGMENT_ONLY)
+    end = f"{END_RADIUS_PX}px"
+    said = [f"border: 1px solid {ds.OUTLINE}"]
+    if asked not in (SEGMENT_LAST, SEGMENT_ONLY):
+        said.append("border-right: none")
+    said.append("border-radius: 0px")
+    if asked in ends:
+        said.append(f"border-top-left-radius: {end}")
+        said.append(f"border-bottom-left-radius: {end}")
+    if asked in (SEGMENT_LAST, SEGMENT_ONLY):
+        said.append(f"border-top-right-radius: {end}")
+        said.append(f"border-bottom-right-radius: {end}")
+    return "; ".join(said) + "; "
+
+
+# OVERTAKEN, quoted whole:
+#   "The segmented group's skin for one accent colour."
+# True today: the skin for one accent colour at one segment_position.
+def button_style(colour: Any, position: Any = None) -> str:
     """The segmented group's skin for one accent colour."""
     tint = str(colour)
     return (
         "QPushButton { background: transparent; "
-        f"color: {ds.TEXT_LOW}; border: 1px solid {ds.OUTLINE}; "
-        "border-radius: 3px; font-weight: bold; font-size: 10px; "
+        f"color: {ds.TEXT_LOW}; {segment_box(position)}"
+        "font-weight: bold; font-size: 10px; "
         "padding: 2px 4px; }"
         f"QPushButton:hover {{ color: {tint}; border-color: {tint}; "
         f"background: {rgba(tint, HOVER_TINT_ALPHA)}; }}"
@@ -279,19 +334,28 @@ def button_style(colour: Any) -> str:
     )
 
 
-def class_button(name: Any, active: Any = None) -> dict:
+def class_button(name: Any, active: Any = None, position: Any = None) -> dict:
     """One segmented group button, as both variants render it."""
     state = class_state(name)
     state["text"] = state["name"]
     state["checked"] = state["class"] == normalise(active) if active else False
     state["tooltip"] = state["note"]
-    state["style_sheet"] = button_style(state["accent"])
+    state["position"] = str(position or SEGMENT_ONLY)
+    state["style_sheet"] = button_style(state["accent"], state["position"])
     return state
 
 
 def class_buttons(active: Any = None) -> list:
-    """The whole segmented group, one button per declared asset class."""
-    return [class_button(name, active) for name in asset_classes()]
+    """The whole segmented group, one button per declared asset class.
+
+    Each button carries the ``segment_position`` its index names, so the two
+    end segments round the group's outer corners and the rest round nothing.
+    """
+    held = asset_classes()
+    return [
+        class_button(name, active, segment_position(at, len(held)))
+        for at, name in enumerate(held)
+    ]
 
 
 def window_title(name: Any) -> str:

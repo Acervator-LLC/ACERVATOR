@@ -7214,3 +7214,98 @@ SHIFT labels      Start All, Pause All, Stop All, Restart All, Delete
 
 Before the change the page build read 0 bots on the plain press and nothing at
 all on the SHIFT press.
+
+## 2026-09-25 - #571 - the asset class group becomes one segmented control
+
+### One square, divided into rectangular buttons
+
+**HIS.**
+
+> "This should be one square segmented into rectangular buttons. You stated you
+> had inferred the meaning. This is not segmenting. This is copy / paste /
+> repurpose. OCIR. Will need to be fixed."
+
+**Functional.** The group is one rectangle divided by three lines. Neighbours
+touch, so there is no gap between them. The two end segments round the group's
+outer corners and the segments between them round nothing. Every segment but
+the last drops the border it shares with its neighbour, so one line separates
+two segments rather than two lines meeting.
+
+The active segment still fills with its class accent and keeps its own outline,
+which is what marks it at a glance.
+
+`src/gui/main_tabs/asset_class_surface.py` — `segment_box`
+
+```python
+said = [f"border: 1px solid {ds.OUTLINE}"]
+if asked not in (SEGMENT_LAST, SEGMENT_ONLY):
+    said.append("border-right: none")
+said.append("border-radius: 0px")
+if asked in ends:
+    said.append(f"border-top-left-radius: {end}")
+    said.append(f"border-bottom-left-radius: {end}")
+```
+
+**Design intention.** One function decides where a segment sits, and one style
+sheet carries the answer. The page build reads that same sheet, so the two
+builds cannot drift apart on the shape. A class added to the taxonomy still
+needs no edit: the new button takes its position from its index.
+
+The page build also reads the active fill from that sheet now. It drew every
+segment alike before, because the reader took a sheet's plain block and left
+the state blocks behind.
+
+`src/gui/web/header_strip.js` — `checkedStyle`
+
+```js
+function checkedStyle(sheet) {
+  var found = {};
+  stateRules(sheet).forEach(function (block) {
+    if (carries(block.selector, CHECKED_STATE)) {
+      found = styleOf(block.body);
+    }
+  });
+  return found;
+}
+```
+
+### The sentence the segment positions overtake
+
+The page carries this sentence about how many buttons the group holds. It is
+quoted as it stands, with the sentence that is true today beneath it.
+
+> "Read off the running window, the group holds five buttons:"
+
+The taxonomy holds four classes — Crypto, Stock, Commodities, Forex — because
+Derivatives retired onto Crypto. Read off the running window in both builds,
+the group holds four buttons, and the positions are first, middle, middle, last.
+
+### What the two builds read, after the segmentation
+
+Read off the running program at 700, 900 and 1400 pixels wide, with every
+socket but loopback refused. The window build was read from the widget's own
+style and geometry. The page build was read inside the desktop shell, from the
+drawn element's computed style.
+
+```
+reading                                   first    middle    last
+the gap to the next segment                 0         0        -
+the border on the shared edge            suppressed suppressed -
+the outer border present                    yes       yes      yes
+top-left / bottom-left radius              round      0        0
+top-right / bottom-right radius              0        0      round
+the active segment reads as active         yes       yes      yes
+```
+
+Both builds read the same six rows at all three widths. The group's outer
+bounds form one rectangle: the segment widths sum to the group's own width with
+nothing between them, 136 of 136 at 700 and 900, and 464.46 of 464.46 at 1400.
+
+Before the change both builds read a 2 pixel gap, a border on all four sides of
+every segment, and a 3 pixel radius on all four corners of every segment. The
+page build also drew the active segment with the same background and text
+colour as the three inactive ones.
+
+The group's floor fell from 142 to 136 pixels, because four segments that touch
+ask for six pixels less than four that do not. The five counters and the
+spendable strip beside it fit at every width.
