@@ -8179,3 +8179,132 @@ the bot starts."*
 
 A slot short of the floor asks for an older window on each refresh instead of waiting
 for new bars, so the floor is reached from the history the venue already holds.
+
+## 2026-09-26 - #936 - the bot list scrolls only by hand
+
+The operator reaches the Scrumming Bots table from the title bar and the menu
+row, through the tab row to the Trading tab, then the exchange sub-tab that
+fills the left of that tab. The Indicator Voting Panel fills the right.
+
+### The scroll bar stays where he put it
+
+**Functional.** The list no longer moves itself. Qt scrolls an item view to its
+current item while auto-scroll is on, and the bot list now turns that off, so
+the only thing that moves the scroll bar is the operator.
+
+`src/gui/widgets/bot_status_table.py` — `BotStatusTable.__init__`
+
+```python
+self.setAutoScroll(False)
+self.verticalScrollBar().valueChanged.connect(
+    lambda _value: self.release_selection_off_view()
+)
+```
+
+### A highlight that leaves the drawn rows is released
+
+**Functional.** One rule decides it, and both builds ask that one function: a
+highlighted row the viewport no longer draws loses the highlight. The drop runs
+with the table's signals blocked, so nothing downstream hears it.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `selection_after_view_moved`
+
+```python
+if row < 0 or first < 0 or last < first:
+    return NO_SELECTION_ROW
+if first <= row <= last:
+    return row
+return NO_SELECTION_ROW
+```
+
+The React page reads its own drawn rows off the scroll box it sits in and sends
+the first and last of them, and the same function answers there.
+
+`src/gui/web/bot_status_table.js` — `visibleRowBand`
+
+```javascript
+if (span.top >= edge.top - 1 && span.bottom <= edge.bottom + 1) {
+  if (first < 0) {
+    first = at;
+  }
+  last = at;
+}
+```
+
+### A column sort counts as leaving the view
+
+**Functional.** A sort reorders every row while the scroll position stays, so the
+bot that was highlighted can land far below the rows on screen. That is the
+highlight leaving the view and it is released, the same as any other cause.
+
+Read on the running list, a 38-bot fleet, one column pressed twice with the
+scroll at the top:
+
+```
+                          before this entry    after
+scroll position           0 then 27            0 then 0
+rows drawn                0 to 11 then 26-37   0 to 11 both times
+that bot's row            37                   37
+its highlight             held, off screen     released
+```
+
+### The Voting Panel keeps its bot
+
+**Functional.** The list's highlight and the panel's bot are now two values. A
+release changes the list alone. The panel changes only when a bot is chosen, from
+a row or from the panel's own dropdown, and the Live page does not redraw the
+panel on a scroll.
+
+`src/gui/react_trading_tab.py` — the venue answers four presses now
+
+```python
+VENUE_PRESSES = (
+    (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
+    (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
+    (scrum_surface.SELECT_BOT_PARAM, "select_bot"),
+    (scrum_surface.VIEW_BAND_PARAM, "scroll_view"),
+)
+```
+
+### What both builds read
+
+Read off the running program in both builds at 700, 900 and 1400 pixels, with a
+fleet of 38 bots, the home on a scratch directory and every host but loopback
+refused. Every figure is the same at all three widths.
+
+```
+the window build                       before    after
+auto-scroll                            on        off
+scroll after an off-screen highlight    27        13, unmoved
+that highlight                          held      released
+scroll after a hand drag                moves     moves
+the panel's bot after a release         held      held
+the panel after a row is chosen         follows   follows
+the panel after its dropdown is used    follows   follows
+```
+
+```
+the page build                         reading
+rows drawn                             38
+rows drawn before a hand drag          0 to 7
+rows drawn after it                    28 to 37
+the pair the page sent                 28 and 37
+the list's highlight after             released
+a pair still holding that row          highlight kept
+```
+
+Sibling widgets measured the same on both sides at all three widths: the table,
+the window, the panel, the header row, all ten column widths and the row
+heights.
+
+### The sentence about one value behind both is overtaken
+
+**Overtaken.** *"**Functional.** The highlight runs the other way as well. When
+the panel's own dropdown or one of its arrows moves the selection, the bot list
+puts its highlight on that bot's row. One value stands behind both, the bot the
+Voting Panel holds, so the list and the panel cannot name two different bots."*
+
+The panel's dropdown still puts the highlight on that bot's row, and now only
+while that row is drawn. The two can name different bots: the panel holds the
+bot it is drawing and the list holds a highlight it can release, which is what
+keeps the scroll bar still.

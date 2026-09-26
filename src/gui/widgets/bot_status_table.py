@@ -18,11 +18,14 @@ from ..main_tabs.bot_status_table_surface import (
     HEADER_LABEL_WRAP,
     HEADER_SORT_MARK_BOX_PX,
     HEADER_SORT_MARK_STYLE,
+    NO_SELECTION_BOT_ID,
+    NO_SELECTION_ROW,
     NO_SORT_COLUMN,
     SORTABLE_COLUMNS,
     SortLookups,
     order_statuses,
     selection_after_press,
+    selection_after_view_moved,
     sort_direction,
     sort_mark,
     sort_tooltip,
@@ -385,6 +388,13 @@ if _HAS_QT:
             # without refetching from the bot manager.
             self._last_statuses: list = []
 
+            # Qt scrolls to its current item while autoScroll is on, which
+            # takes the scroll bar away from the operator.
+            self.setAutoScroll(False)
+            self.verticalScrollBar().valueChanged.connect(
+                lambda _value: self.release_selection_off_view()
+            )
+
             # Symbol cell (col 1) is a hyperlink to the pair's chart on
             # the bot's exchange.
             self.cellClicked.connect(self._on_cell_clicked)
@@ -410,6 +420,30 @@ if _HAS_QT:
             self.setCurrentCell(-1, -1)
             return self.get_selected_bot_id()
 
+        def visible_row_band(self) -> tuple[int, int]:
+            """The first and last row the viewport draws, in row indexes."""
+            last = self.rowAt(self.viewport().height() - 1)
+            if last < 0:
+                last = self.rowCount() - 1
+            return self.rowAt(0), last
+
+        def release_selection_off_view(self) -> str:
+            """Drop the highlight when its row is outside the drawn band.
+
+            ``QSignalBlocker`` keeps the drop off ``itemSelectionChanged``, so
+            the Voting Panel keeps the bot it is drawing.
+            """
+            if not self.selectedItems():
+                return NO_SELECTION_BOT_ID
+            first, last = self.visible_row_band()
+            kept = selection_after_view_moved(self.currentRow(), first, last)
+            if kept != NO_SELECTION_ROW:
+                return self.get_selected_bot_id()
+            with QSignalBlocker(self):
+                self.clearSelection()
+                self.setCurrentCell(-1, -1)
+            return NO_SELECTION_BOT_ID
+
         def highlight_bot(self, bot_id: str) -> str:
             """Put the highlight on the bot the Voting Panel draws.
 
@@ -423,7 +457,7 @@ if _HAS_QT:
                 else:
                     self.clearSelection()
                     self.setCurrentCell(-1, -1)
-            return self.get_selected_bot_id()
+            return self.release_selection_off_view()
 
         def _build_header(self) -> None:
             """Put one wrapped label, over its own dot, on every column.
@@ -587,6 +621,10 @@ if _HAS_QT:
                     self._clear_row(row)
             # The highlight follows the bot, not the row.
             _reanchor_bot_selection(self, _selected_before, self._bot_ids)
+            # A sort or a rewrite can put that bot on a row the viewport
+            # no longer draws, and then the highlight goes rather than the
+            # scroll position.
+            self.release_selection_off_view()
 
         def _clear_row(self, row: int) -> None:
             """Empty one row's cells and take its two buttons off it."""

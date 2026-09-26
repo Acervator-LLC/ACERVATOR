@@ -483,6 +483,15 @@ if _HAS_WEBENGINE:
             scrum_surface.drive(self._scrum, {scrum_surface.SELECT_BOT_PARAM: bot_id})
             self._publish()
 
+        def scroll_view(self, band: Any) -> None:
+            """Release a highlight the scrolled rows no longer show.
+
+            ``TradingTabReact.run_action`` calls this when the page reports the
+            rows it draws; the Voting Panel keeps the bot it is drawing.
+            """
+            scrum_surface.drive(self._scrum, {scrum_surface.VIEW_BAND_PARAM: band})
+            self._publish()
+
         def press_command(self, command: Any, shift_held: Any = False) -> None:
             """Send one command-bar press on, then publish the fleet again.
 
