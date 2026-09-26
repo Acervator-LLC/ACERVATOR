@@ -23,9 +23,11 @@ import urllib.parse
 from dataclasses import dataclass, replace
 from typing import Any, Optional
 
-from ..core.safe_url import SafeRequest, safe_urlopen
+from ..core.asset_logos import LogoAnswer, LogoCache
+from ..core.safe_url import SafeRequest, openable_url, safe_urlopen
 from ..exchange.api_logger import get_api_log
 from ..exchange.base import MarketRules
+from ..exchange.crypto_assets import AssetManager
 from ..exchange.market_inspector_fetcher import (
     DAILY_BARS,
     WEEKLY_BARS,
@@ -140,6 +142,10 @@ _FUTURES_SILENT: dict[str, "AssetListing"] = {}
 """The rows that read dropped, by upper-case symbol: the venue lists and
 trades each one and answered no candle on any granularity it serves. They stay
 reachable through ``listing_of`` so a typed product name still scans."""
+
+_LOGOS = LogoCache()
+"""The one logo cache ``asset_logo`` reads when a caller passes none. Building it
+writes nothing; the directory is made when the first logo is kept."""
 
 _FUTURES_UNPLACED: dict[str, str] = {}
 """The product ids ``futures_placement`` could place in no class, by upper-case
@@ -543,6 +549,78 @@ FORM_SOURCE = (
     "each product's own underlying for its class and its sector."
 )
 
+#: The organisation behind one non-crypto listing, by the map's own symbol: the
+#: issuer for a fund share, and the currency's issuing central bank for a pair,
+#: keyed on the base currency. ``organisation_site`` reads it, and both
+#: ``logo_candidates`` and ``organisation_url`` build their addresses from the
+#: same domain, so one entry answers the mark and the way out together.
+ORGANISATION_SITES: dict[str, str] = {
+    "GLD": "spdrgoldshares.com",
+    "SLV": "ishares.com",
+    "PPLT": "abrdn.com",
+    "PALL": "abrdn.com",
+    "CPER": "uscfinvestments.com",
+    "DBB": "invesco.com",
+    "USO": "uscfinvestments.com",
+    "BNO": "uscfinvestments.com",
+    "UGA": "uscfinvestments.com",
+    "UNG": "uscfinvestments.com",
+    "USD": "federalreserve.gov",
+    "EUR": "ecb.europa.eu",
+    "JPY": "boj.or.jp",
+    "GBP": "bankofengland.co.uk",
+    "CHF": "snb.ch",
+    "AUD": "rba.gov.au",
+    "NZD": "rbnz.govt.nz",
+    "CAD": "bankofcanada.ca",
+}
+
+#: The organisation's own site, the address a logo click opens.
+ORGANISATION_URL_FORMAT = "https://{domain}"
+
+#: The two standard locations an organisation serves its own mark at, asked in
+#: this order: the touch icon carries the higher fidelity and the second is the
+#: default every browser already asks for.
+ORGANISATION_ICON_FORMATS: tuple[str, ...] = (
+    "https://{domain}/apple-touch-icon.png",
+    "https://{domain}/favicon.ico",
+)
+
+#: The regulator's own page for one US-listed ticker, the organisation address
+#: for a listing ``ORGANISATION_SITES`` holds no domain for. It is keyed on the
+#: ticker alone and needs no lookup, so it answers for a screened equity the
+#: map never carried.
+REGISTRY_URL_FORMAT = (
+    "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+    "&ticker={ticker}&type=10-K&dateb=&owner=include&count=10"
+)
+
+#: The forms whose listing is a share in a US-listed company or fund, and so
+#: carries a regulator page.
+REGISTERED_FORMS: frozenset[str] = frozenset({FORM_EQUITY, FORM_ETF})
+
+#: Where the non-crypto organisation domains and the regulator route came from,
+#: and what each one does not answer.
+SITE_SOURCES = (
+    "The 10 fund tickers name their own issuer: State Street's SPDR Gold "
+    "Shares for GLD, BlackRock's iShares Silver Trust for SLV, abrdn for PPLT "
+    "and PALL, Invesco for DBB, and United States Commodity Funds for CPER, "
+    "USO, BNO, UGA and UNG. The 8 currencies name their issuing central bank, "
+    "which ISO 4217 assigns one of to each code. Each mark is read from the "
+    "organisation's own domain at the two standard icon locations, so no "
+    "third-party logo service is contacted and no key and no on-screen "
+    "attribution is required; three keyless ticker-keyed services were read "
+    "and every one of them wanted a publishable token, an on-screen "
+    "attribution link, or a domain rather than a ticker. The regulator route "
+    "is the SEC's own company browse page, read 2026-09-26 with ticker=AAPL "
+    "alone and answering Apple Inc., CIK 0000320193. NOT PROVEN LIVE: no icon "
+    "address above was fetched, because this unit's one permitted logo fetch "
+    "went to the crypto record's own address. WHAT IS NOT ANSWERED: the four "
+    "METALS_SPOT pairs, which are metal quotes and have no issuer; and every "
+    "STOCKS_PORTFOLIO equity's mark, because a company's own domain is not a "
+    "fact this repository holds for a ticker."
+)
+
 #: What each class's map was built from, and when its tickers were measured.
 MAP_SOURCES: dict[str, str] = {
     CLASS_CRYPTO: (
@@ -893,6 +971,68 @@ def unlisted_sectors(asset_class: Any) -> tuple[str, ...]:
 def sector_absence(asset_class: Any) -> str:
     """Why one class's ``unlisted_sectors`` hold no listed market, empty for none."""
     return SECTOR_ABSENCE.get(asset_class_named(asset_class), "")
+
+
+def organisation_site(symbol: Any) -> str:
+    """The ``ORGANISATION_SITES`` domain one listing holds, empty for a name holding none.
+
+    A pair keys on its base currency.
+    """
+    asked = str(symbol).strip().upper()
+    base, separator, _ = asked.partition("/")
+    return ORGANISATION_SITES.get(base if separator else asked, "")
+
+
+def logo_candidates(symbol: Any) -> tuple[str, ...]:
+    """Every ``ORGANISATION_ICON_FORMATS`` address one listing's mark is served at, best first."""
+    domain = organisation_site(symbol)
+    if not domain:
+        return ()
+    return tuple(one.format(domain=domain) for one in ORGANISATION_ICON_FORMATS)
+
+
+def organisation_url(symbol: Any) -> tuple[str, str]:
+    """One listing's organisation address a browser may open, with the refusal text for one it may not.
+
+    A name ``ORGANISATION_SITES`` holds answers its own site, a ``REGISTERED_FORMS``
+    listing answers ``REGISTRY_URL_FORMAT`` on its ticker, and every other name
+    answers an empty address.
+    """
+    domain = organisation_site(symbol)
+    if domain:
+        return openable_url(ORGANISATION_URL_FORMAT.format(domain=domain))
+    found = listing_of(symbol)
+    if found is not None and found.form in REGISTERED_FORMS and found.ticker:
+        return openable_url(REGISTRY_URL_FORMAT.format(ticker=found.ticker.upper()))
+    return openable_url("")
+
+
+def _is_crypto(symbol: Any, asset_class: Any) -> bool:
+    """True when one name carries ``CLASS_CRYPTO``, and when no map lists it."""
+    named = asset_class_named(asset_class)
+    if named == CLASS_CRYPTO:
+        return True
+    if named != NO_ASSET_CLASS:
+        return False
+    return listing_of(symbol) is None
+
+
+def asset_logo(
+    symbol: Any,
+    asset_class: Any = "",
+    cache: Optional[LogoCache] = None,
+) -> LogoAnswer:
+    """One asset's kept logo file, or a ``LogoAnswer`` naming what it has none for.
+
+    A listing with an ``organisation_site`` reads that organisation's icon
+    addresses, a crypto name reads ``AssetManager.logo_candidates``, and every
+    other listing answers with no address fetched.
+    """
+    held = cache if cache is not None else _LOGOS
+    addresses = logo_candidates(symbol)
+    if not addresses and _is_crypto(symbol, asset_class):
+        addresses = AssetManager(held.cache_dir).logo_candidates(symbol)
+    return held.resolve(symbol, addresses)
 
 
 def sector_named(sector: Any, asset_class: Any) -> str:
@@ -1480,6 +1620,12 @@ __all__ = [
     "NON_CRYPTO_ROOTS",
     "NO_VENUE",
     "NO_VOLUME_FIGURE",
+    "ORGANISATION_ICON_FORMATS",
+    "ORGANISATION_SITES",
+    "ORGANISATION_URL_FORMAT",
+    "REGISTERED_FORMS",
+    "REGISTRY_URL_FORMAT",
+    "SITE_SOURCES",
     "SECTOR_ABSENCE",
     "SECTOR_AGRICULTURE",
     "SECTOR_ENERGY",
@@ -1506,6 +1652,7 @@ __all__ = [
     "VOLUME_TIMEFRAME",
     "VOLUME_WINDOW_DAYS",
     "WEEKLY_TIMEFRAME",
+    "asset_logo",
     "candle_served",
     "complete_bar",
     "deployability",
@@ -1521,6 +1668,9 @@ __all__ = [
     "listing_deployability",
     "listing_of",
     "listings_for",
+    "logo_candidates",
+    "organisation_site",
+    "organisation_url",
     "screened_listings",
     "screener_listings",
     "sector_absence",
