@@ -75,6 +75,7 @@ from ..trading.scrumming.sizing import (
     fold_spend_usd,
     fold_surplus_usd,
     plan_fold_consumption,
+    order_types_for,
     outside_session,
     plan_source_price,
     position_ceiling,
@@ -93,7 +94,6 @@ from ..trading.scrumming.sizing import (
     untradeable_reason,
     variant_refuses_sale,
     variant_trades_market,
-    venue_order_types,
     venue_session,
     venue_settlement_days,
 )
@@ -826,15 +826,16 @@ def run_market_rules(bots: Sequence[PaperBot]) -> dict[str, MarketRules]:
     and a market with nothing recorded answers a ``MarketRules`` whose ``read``
     is False.
     """
-    return {
-        bot.bot_id: replace(
-            recorded_rules(bot.exchange_id, bot.symbol),
+    found: dict[str, MarketRules] = {}
+    for bot in bots:
+        recorded = recorded_rules(bot.exchange_id, bot.symbol)
+        found[bot.bot_id] = replace(
+            recorded,
             session=venue_session(CLASS_CRYPTO, bot.exchange_id),
-            order_types=venue_order_types(CLASS_CRYPTO, bot.exchange_id),
+            order_types=order_types_for(recorded, CLASS_CRYPTO, bot.exchange_id),
             settlement_days=venue_settlement_days(CLASS_CRYPTO, bot.exchange_id),
         )
-        for bot in bots
-    }
+    return found
 
 
 def start(bots: Sequence[PaperBot], rule: str) -> PaperRun:

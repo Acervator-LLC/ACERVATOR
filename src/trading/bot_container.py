@@ -118,7 +118,7 @@ class BotContainer:
         from ..exchange.base import MarketRules
         from .scrumming.sizing import (
             CLASS_CRYPTO,
-            venue_order_types,
+            order_types_for,
             venue_session,
             venue_settlement_days,
         )
@@ -128,7 +128,8 @@ class BotContainer:
             return cached
         # Every connector a container holds is a crypto connector.
         session = venue_session(CLASS_CRYPTO, self.config.exchange_id)
-        order_types = venue_order_types(CLASS_CRYPTO, self.config.exchange_id)
+        # No record was read here, so only the cited table can answer.
+        order_types = order_types_for(None, CLASS_CRYPTO, self.config.exchange_id)
         settlement = venue_settlement_days(CLASS_CRYPTO, self.config.exchange_id)
         unread = MarketRules(
             read=False,
@@ -158,7 +159,10 @@ class BotContainer:
                     rules = replace(
                         rules,
                         session=session,
-                        order_types=order_types,
+                        # The venue's own declaration rode in on this record.
+                        order_types=order_types_for(
+                            rules, CLASS_CRYPTO, self.config.exchange_id
+                        ),
                         settlement_days=settlement,
                     )
                 self._market_rules_cache[symbol] = rules

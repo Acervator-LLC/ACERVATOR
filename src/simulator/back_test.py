@@ -72,6 +72,7 @@ from ..trading.scrumming.sizing import (
     recorded_size_rules,
     sale_proceeds_usd,
     scrumming_interval_usd,
+    order_types_for,
     outside_session,
     settle_fold_plan,
     sized_order,
@@ -86,7 +87,6 @@ from ..trading.scrumming.sizing import (
     variant_built,
     variant_refuses_sale,
     variant_trades_market,
-    venue_order_types,
     venue_session,
     venue_settlement_days,
     venue_variant,
@@ -680,10 +680,11 @@ def venue_rules_for(asset: str, exchange_id: str, symbol: str) -> MarketRules:
     """
     class_name = asset_class(asset, exchange_id) or ""
     venue = trading_venue(class_name, exchange_id)
+    recorded = recorded_rules(venue, symbol)
     return replace(
-        recorded_rules(venue, symbol),
+        recorded,
         session=venue_session(class_name, venue),
-        order_types=venue_order_types(class_name, venue),
+        order_types=order_types_for(recorded, class_name, venue),
         settlement_days=venue_settlement_days(class_name, venue),
     )
 

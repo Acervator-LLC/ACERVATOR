@@ -142,6 +142,10 @@ HELD_OUTSIDE_SESSION = "outside the venue's session"
 ORDER_TYPES_WITH_MARKET = "market and limit"
 ORDER_TYPES_LIMIT_ONLY = "limit only"
 
+#: The two names above, closed. A declaration outside this pair is no
+#: declaration, so a corrupt recorded value reads as a venue that said nothing.
+ORDER_TYPES_DECLARED = (ORDER_TYPES_WITH_MARKET, ORDER_TYPES_LIMIT_ONLY)
+
 #: The order types each ``(asset class, venue)`` declares, keyed as
 #: ``CITED_UNIT_RULES`` is keyed. A pair absent here declares nothing, which
 #: ``venue_variant`` never reads as declining a type.
@@ -155,6 +159,26 @@ def venue_order_types(asset_class: str, venue: str) -> Optional[str]:
     """The order types ``CITED_VENUE_ORDER_TYPES`` cites for ``asset_class`` on
     ``venue``, or None when the table cites none for the pair."""
     return CITED_VENUE_ORDER_TYPES.get((str(asset_class), str(venue)))
+
+
+# OVERTAKEN, the CITED_VENUE_ORDER_TYPES comment above reading "The order types
+# each ``(asset class, venue)`` declares": the venue's own record declares them
+# through ``declared_order_types``, and the table answers where it declared none.
+def order_types_for(recorded: Any, asset_class: str, venue: str) -> Optional[str]:
+    """The order types governing one market: ``recorded.order_types`` where the
+    venue declared one ``ORDER_TYPES_DECLARED`` holds, else the
+    ``CITED_VENUE_ORDER_TYPES`` row for the pair.
+
+    ``ORDER_TYPES_LIMIT_ONLY`` wins wherever either reads it, so neither source
+    can widen what the other refuses.
+    """
+    declared = getattr(recorded, "order_types", None)
+    if type(declared) is not str or declared not in ORDER_TYPES_DECLARED:
+        declared = None
+    cited = venue_order_types(asset_class, venue)
+    if declared == ORDER_TYPES_LIMIT_ONLY or cited == ORDER_TYPES_LIMIT_ONLY:
+        return ORDER_TYPES_LIMIT_ONLY
+    return declared or cited
 
 
 def venue_session(asset_class: str, venue: str) -> Optional[str]:
@@ -804,6 +828,7 @@ __all__ = [
     "HELD_OUTSIDE_SESSION",
     "HELD_UNSETTLED_CASH",
     "LARGEST_FLEET_TARGET_USD",
+    "ORDER_TYPES_DECLARED",
     "ORDER_TYPES_LIMIT_ONLY",
     "ORDER_TYPES_WITH_MARKET",
     "REFERENCE_SCRUM_EXCESS_USD",
@@ -839,6 +864,7 @@ __all__ = [
     "growth_cycle_side",
     "opposing_trade_distance_pct",
     "opposing_trade_distances",
+    "order_types_for",
     "outside_session",
     "plan_fold_consumption",
     "plan_source_price",
