@@ -861,6 +861,8 @@ if _HAS_QT:
             layout.addLayout(header)
             self._refresh_bot_arrows()
 
+            # OVERTAKEN: "Amber staleness banner, shown only for a stored reading."
+            # show_no_data also sets this label, with the empty-state cause.
             # Amber staleness banner, shown only for a stored reading.
             self._staleness_label = QLabel("")
             self._staleness_label.setStyleSheet(
@@ -874,7 +876,9 @@ if _HAS_QT:
                 "Shown when the panel is displaying the LAST TA read "
                 "this bot produced rather than a current one, with the "
                 "age of that reading and the reason no current one "
-                "exists. Nothing is recomputed to draw it."
+                "exists. Nothing is recomputed to draw it. "
+                "Also shown when this bot has no stored reading either, "
+                "naming the one cause that applies."
             )
             self._staleness_label.hide()
             layout.addWidget(self._staleness_label)
@@ -1438,8 +1442,10 @@ if _HAS_QT:
                     return
                 self._showing_stored = False
                 self.update_data({}, symbol_text)
-                self._staleness_label.setText("")
-                self._staleness_label.hide()
+                # update_data cleared the banner; message goes back on it so
+                # an empty table names its own cause.
+                self._staleness_label.setText(message)
+                self._staleness_label.show()
                 logger.info(
                     "INDICATOR PANEL: empty state for %s (%s) [%s]: %s",
                     str(bot_id)[:8] or "(none)",
