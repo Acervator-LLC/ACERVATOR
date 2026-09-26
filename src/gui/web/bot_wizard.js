@@ -201,6 +201,8 @@
   var ACCESSIBLE_DESCRIPTION = "accessible_description";
 
   var REFUSAL = "refusal";
+  // The sentence a refusal carries, where it has one. Falls back to the name.
+  var REFUSAL_TEXT = "refusal_text";
   var STEPS = "steps";
 
   var GROUPS_SPACING_PX = "groups_spacing_px";
@@ -2113,7 +2115,7 @@
         pageTitle: pageTitle(here),
         pageSubtitle: pageSubtitle(here),
         body: here === undefined ? [] : pageBody(here, bound),
-        refusal: bag(WALK)[REFUSAL],
+        refusal: text(bag(WALK)[REFUSAL_TEXT]) || bag(WALK)[REFUSAL],
         steps: walkSteps(),
         isFinal: bag(PAGES)[IS_FINAL],
         gap: bag(LAYOUT)[GROUPS_SPACING_PX],

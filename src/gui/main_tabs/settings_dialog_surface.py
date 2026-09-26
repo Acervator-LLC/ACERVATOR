@@ -65,6 +65,10 @@ STOCK_WING = "stock"
 KNOWN_WINGS = (CRYPTO_WING, STOCK_WING)
 DEFAULT_WING = CRYPTO_WING
 
+#: The wing each asset class name reaches. `asset_class_surface.normalise`
+#: answers `stocks`, where this module's own wing word is `stock`.
+CLASS_WINGS = {"crypto": CRYPTO_WING, "stocks": STOCK_WING}
+
 USER_TAB = "User"
 EXCHANGE_TAB = "Exchanges"
 TRADING_TAB = "Trading"
@@ -1406,9 +1410,15 @@ def title_for(wing: Any) -> str:
     return PLAIN_WINDOW_TITLE
 
 
+# OVERTAKEN, quoted whole:
+#   "`wing` when the dialog knows it, the crypto wing otherwise."
+# True today: `wing` when the dialog knows it, the wing `CLASS_WINGS` names for
+# an asset class, and the crypto wing otherwise.
 def wing_or_default(wing: Any) -> str:
     """`wing` when the dialog knows it, the crypto wing otherwise."""
-    return wing if wing in KNOWN_WINGS else DEFAULT_WING
+    if wing in KNOWN_WINGS:
+        return str(wing)
+    return CLASS_WINGS.get(str(wing or "").strip().lower(), DEFAULT_WING)
 
 
 def crypto_exchange_items() -> tuple:
@@ -1902,7 +1912,7 @@ class SettingsDialogModel:
         self.validator = validator
         self.sound = sound
         self.encryptor = encryptor
-        self.window_title = title_for(wing)
+        self.window_title = title_for(self.wing)
         self.minimum_size = MINIMUM_SIZE
         self.last_validation: Any = None
         self.values: dict = {}
