@@ -35,22 +35,15 @@ CENTRAL_LAYOUT = {
     "child_stretch": [0],
 }
 
-#: The stretch each ``TOP_ROW_ORDER`` slot takes, zero throughout, so every
-#: slot draws at the width its own text asks for.
-TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 0]
-
-#: The slot the row inserts its spare width before, as empty space.
-TOP_ROW_SPACER_BEFORE = "mode_button"
-
-#: The stretch that empty space takes, which is every spare pixel.
-TOP_ROW_SPACER_STRETCH = 1
+#: The stretch each ``TOP_ROW_ORDER`` slot takes. A zero slot draws at the
+#: width its own text asks for; the class group's slot takes what is left.
+#: The group draws its own square inside that slot and never fills it.
+TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 1]
 
 TOP_ROW = {
     "margins_px": [0, 0, 0, 0],
     "spacing_px": TOP_ROW_SPACING_PX,
     "child_stretch": TOP_ROW_STRETCH,
-    "spacer_before": TOP_ROW_SPACER_BEFORE,
-    "spacer_stretch": TOP_ROW_SPACER_STRETCH,
 }
 
 TOP_ROW_ORDER = [
@@ -70,26 +63,11 @@ SPENDABLE_MIN_W = 180
 #: The room one KPI column needs for a whole money amount at its own size.
 KPI_COLUMN_W = 110
 
+#: The narrowest one counter card draws at, caption and amount both elided.
+COUNTER_MIN_W = 48
+
 #: The room one counter needs for a whole money amount at its own size.
 COUNTER_NATURAL_W = 100
-
-#: The characters a counter money amount draws at its widest, ``$12,345.67``.
-COUNTER_AMOUNT_CHARS = 10
-
-#: The characters a counter trade or error count draws at its widest.
-COUNTER_COUNT_CHARS = 6
-
-#: The characters the running bot count draws at its widest.
-COUNTER_BOTS_CHARS = 3
-
-#: The characters each counter's own figure draws, keyed by slot.
-COUNTER_CHARS = {
-    "scrummed": COUNTER_AMOUNT_CHARS,
-    "folded": COUNTER_AMOUNT_CHARS,
-    "trades": COUNTER_COUNT_CHARS,
-    "bots": COUNTER_BOTS_CHARS,
-    "errors": COUNTER_COUNT_CHARS,
-}
 
 #: The slot names the top row gives a declared floor, in row order. The
 #: class group is not here; ``asset_class_surface.group_side_px`` answers it,
@@ -413,17 +391,6 @@ def slot_natural_w(slot: Any) -> int:
     return slot_min_w(name)
 
 
-def counter_min_w(slot: Any) -> int:
-    """The narrowest one counter card draws at, holding its own whole figure.
-
-    A money counter's floor is ``COUNTER_NATURAL_W``; a shorter figure scales
-    that room by ``COUNTER_CHARS`` over ``COUNTER_AMOUNT_CHARS``.
-    """
-    chars = COUNTER_CHARS.get(str(slot or ""), 0)
-    room = COUNTER_NATURAL_W - COUNTER_TEXT_PAD
-    return (room * chars) // COUNTER_AMOUNT_CHARS + COUNTER_TEXT_PAD
-
-
 def slot_stretch(slot: Any) -> int:
     """The stretch one ``TOP_ROW_ORDER`` slot takes of the row."""
     name = str(slot or "")
@@ -444,18 +411,18 @@ def slot_min_w(slot: Any) -> int:
     if name == "mode_button":
         return asset_class_surface.group_side_px()
     if name in COUNTER_SLOTS:
-        return counter_min_w(name)
+        return COUNTER_MIN_W
     return 0
 
 
 def top_row_min_w() -> int:
     """The narrowest the header top row draws at, holding every slot.
 
-    The sum of every ``slot_min_w``, plus one ``TOP_ROW_SPACING_PX`` gap per
-    slot, which counts the gap the ``TOP_ROW_SPACER_BEFORE`` space adds.
+    The sum of every ``slot_min_w``, plus the ``TOP_ROW`` gap between two
+    of them.
     """
     held = [slot for slot in TOP_ROW_ORDER if slot_min_w(slot) > 0]
-    gaps = len(held) * TOP_ROW_SPACING_PX
+    gaps = max(len(held) - 1, 0) * TOP_ROW_SPACING_PX
     return sum(slot_min_w(slot) for slot in held) + gaps
 
 

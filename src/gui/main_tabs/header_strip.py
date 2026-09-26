@@ -363,19 +363,13 @@ class HeaderStripMixin:
             top_row.addWidget(card, stretch=surface.slot_stretch(slot))
 
         # The square is one fixed side, so it takes no room from the figures
-        # and sits centred on the row's height at the row's right end.
+        # and sits centred on the row's height at the row's left end. The slot
+        # takes the row's spare width; the square keeps its own size inside it.
         class_group = self._build_class_group()
         top_row.addWidget(
             class_group,
             surface.slot_stretch("mode_button"),
-            Qt.AlignVCenter | Qt.AlignRight,
-        )
-
-        # Every spare pixel of the row goes to this empty space, so no slot
-        # drawing text or figures absorbs it.
-        top_row.insertStretch(
-            surface.TOP_ROW_ORDER.index(surface.TOP_ROW_SPACER_BEFORE),
-            surface.TOP_ROW_SPACER_STRETCH,
+            Qt.AlignVCenter | Qt.AlignLeft,
         )
 
         # _on_main_tab_changed hides _header_strip_container on the Simulator tab.
