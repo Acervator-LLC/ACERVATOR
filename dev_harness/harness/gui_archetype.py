@@ -742,6 +742,92 @@ def _scan_segmented_group_skin(path: Path, tree: ast.AST) -> list[Finding]:
     return findings
 
 
+#: A slot name carrying one of these words is empty space, not drawn content.
+_SPARE_WIDTH_NAMES = ("spacer", "stretch", "spare", "filler", "padding")
+
+_STRETCH_SUFFIX = "_STRETCH"
+_ORDER_SUFFIX = "_ORDER"
+
+
+def _whole_number_lists(tree: ast.AST, suffix: str) -> dict:
+    """Each module-level list of whole numbers whose name ends in ``suffix``."""
+    found = {}
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if not isinstance(target, ast.Name) or not target.id.endswith(suffix):
+                continue
+            if not isinstance(node.value, (ast.List, ast.Tuple)):
+                continue
+            held = [
+                one.value
+                for one in node.value.elts
+                if isinstance(one, ast.Constant) and isinstance(one.value, int)
+            ]
+            if len(held) == len(node.value.elts) and held:
+                found[target.id[: -len(suffix)]] = (node.lineno, target.id, held)
+    return found
+
+
+def _name_lists(tree: ast.AST, suffix: str) -> dict:
+    """Each module-level list of plain names whose name ends in ``suffix``."""
+    found = {}
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if not isinstance(target, ast.Name) or not target.id.endswith(suffix):
+                continue
+            if not isinstance(node.value, (ast.List, ast.Tuple)):
+                continue
+            held = [
+                one.value
+                for one in node.value.elts
+                if isinstance(one, ast.Constant) and isinstance(one.value, str)
+            ]
+            if len(held) == len(node.value.elts) and held:
+                found[target.id[: -len(suffix)]] = held
+    return found
+
+
+def _scan_row_spare_width(path: Path, tree: ast.AST) -> list[Finding]:
+    """GUI008 — a row's spare width belongs to empty space, never to a drawn slot.
+
+    A ``*_STRETCH`` list whose non-zero share sits at the index of a named
+    ``*_ORDER`` slot is refused; a share on a spacer slot passes.
+    """
+    shares = _whole_number_lists(tree, _STRETCH_SUFFIX)
+    orders = _name_lists(tree, _ORDER_SUFFIX)
+    findings: list[Finding] = []
+    for prefix, (line, name, held) in shares.items():
+        slots = orders.get(prefix)
+        if slots is None:
+            continue
+        for at, share in enumerate(held):
+            if share <= 0 or at >= len(slots):
+                continue
+            slot = str(slots[at]).lower()
+            if any(word in slot for word in _SPARE_WIDTH_NAMES):
+                continue
+            findings.append(
+                Finding(
+                    tool="gui-static",
+                    severity="high",
+                    file=str(path),
+                    line=line,
+                    rule_id="GUI008",
+                    message=(
+                        f"{name} gives the row's spare width to slot "
+                        f"{slots[at]!r}, which draws text or figures, so a long "
+                        "amount takes every spare pixel and the other slots fall "
+                        "to their floor. Give the share to a spacer slot."
+                    ),
+                )
+            )
+    return findings
+
+
 def _scan_model_only_colour_asserts(path: Path, tree: ast.AST) -> list[Finding]:
     """GUI006 — a colour assertion on a live widget with no pixel check.
 
@@ -836,6 +922,7 @@ def _run_gui_static(target: Path) -> list[Finding]:
         findings.extend(analyzer.findings)
         findings.extend(_scan_model_only_colour_asserts(f, tree))
         findings.extend(_scan_segmented_group_skin(f, tree))
+        findings.extend(_scan_row_spare_width(f, tree))
     return findings
 
 
