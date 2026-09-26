@@ -110,8 +110,7 @@ class HeaderStripMixin:
         sits in an exclusive ``QButtonGroup``, so exactly one class is active.
         """
         from .asset_class_surface import (
-            asset_classes,
-            class_button,
+            class_buttons,
             group_min_w,
             normalise,
         )
@@ -133,8 +132,7 @@ class HeaderStripMixin:
         self._class_group = {}
         self._class_names: dict = {}
 
-        for name in asset_classes():
-            model = class_button(name, self._asset_class)
+        for model in class_buttons(self._asset_class):
             button = QPushButton(model["text"])
             button.setCheckable(True)
             button.setChecked(model["class"] == self._asset_class)
