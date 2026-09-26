@@ -1053,3 +1053,182 @@ theirs rather than line 50.
 Every other sentence above stands as written. The per-venue size table, the
 excess figure, the three-answer rule and the per-market answer are unchanged by
 this entry.
+
+## 2026-09-25 - a venue's own rules select the bot variant
+
+A venue's own published rules pick the bot's shape. No setting offers the choice
+and no screen exposes it. One function reads one market's record and answers with
+a variant name, and the order path acts on that name at the single site every
+live order passes. A record nothing has read selects the bot as written.
+
+```python
+# src/trading/scrumming/sizing.py:280
+def venue_variant(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> str:
+    if rules is None or not getattr(rules, "read", False):
+        return VARIANT_NONE
+    if tradeable_answer(rules, price, excess_usd) == TRADEABLE_NO:
+        return VARIANT_WHOLE_UNIT
+    if getattr(rules, "order_types", None) == ORDER_TYPES_LIMIT_ONLY:
+        return VARIANT_LIMIT_ONLY
+    return VARIANT_NONE
+```
+
+### Which markets each variant states it can trade
+
+Four names exist, counting the bot as written, and each one is named by the
+market shape it absorbs. The program holds two of the four, and one function
+answers per market whether the variant that market selects is one of the two.
+
+```python
+# src/trading/scrumming/sizing.py:264
+VARIANT_MARKETS: dict[str, str] = {
+    VARIANT_NONE: "a market naming a unit count on a venue taking a market order",
+    VARIANT_LIMIT_ONLY: "a market on a venue declaring no market order",
+    VARIANT_CASH_AMOUNT: "a market whose size is a whole share",
+    VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
+}
+
+#: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
+#: to reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling.
+VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
+```
+
+### The limit-only variant, and the one venue it reaches
+
+The limit-only variant is built. It sends a limit order where the bot sends a
+market order, and it changes one field. Gemini is its one venue. The order-type
+table cites two pairs, Gemini is the only one of the two declaring no market
+order, and a pair absent from that table declares nothing and is never read as
+declining a type.
+
+```python
+# src/trading/scrumming/sizing.py:147
+CITED_VENUE_ORDER_TYPES: dict[tuple[str, str], str] = {
+    (CLASS_CRYPTO, "coinbase"): ORDER_TYPES_WITH_MARKET,
+    (CLASS_CRYPTO, "gemini"): ORDER_TYPES_LIMIT_ONLY,
+}
+```
+
+### The two variants named and not built
+
+The cash-amount variant is named and nothing reaches it, because the equities
+order path has no caller. The broker base declares the order method and no module
+calls it, and no file outside its own imports the one broker connector that
+exists.
+
+```
+src/stocks/broker_base.py:145      place_order, declared, called by nothing
+src/stocks/alpaca_connector.py     imported by no file in src/, main.py or tools/
+```
+
+The whole-unit variant is named and waits on a decision that is the operator's.
+It would hold an excess until that excess reaches one whole unit, then sell one
+unit. Refusing a market too small to scrum and changing that market's scrum
+trigger build two different variants, and the issue's first open decision picks
+between them.
+
+```
+In development. Decision 1 on the issue owns it.
+```
+
+### A market no variant trades is scanned, charted and reported
+
+Exclusion is from trading, not from sight. A scan keeps such a symbol in its own
+asset list and names it in a field of its own, so the market still draws its
+chart and still reports. Every order path refuses that market carrying the
+reason, and the reason names the variant the market needs beside the shape that
+variant absorbs.
+
+```python
+# src/trading/ata_spm.py:955
+    #: The symbols this scan read that no built bot variant trades, kept in
+    #: ``assets`` so each one still charts and still reports.
+    untradeable: tuple = ()
+```
+
+### The variant sentences this entry overtakes
+
+Two passages above are overtaken. Both are kept as written. The first is the
+count under the variants this comparison implies:
+
+> Three, and no more. Each is named by what it absorbs. None is built here, and
+> one of the three cannot be designed until a decision on the issue is answered.
+
+The true sentence is: four variant names exist, counting the bot as written, and
+the program holds two of them. The limit-only variant is built and Gemini is its
+one venue. The cash-amount variant is named and has no caller. The whole-unit
+variant is named and waits on the issue's first open decision.
+
+The second is the heading over the earlier proposal:
+
+> Two variants cover every venue
+
+The true count is four names, two of them built. That heading counts the two
+shapes the size rule can see, a unit count and a cash amount. It counts neither
+the order-type shape, which the size rule cannot see, nor the whole-unit shape,
+which waits on a ruling.
+
+## 2026-09-25 - what each count over the verdict table measures
+
+The verdict table above holds twenty-nine rows, and the prose around it carries
+four counts of them. Three of the four are right about three different questions,
+and the fourth matches no set the table holds. The figures below name the
+question each count answers.
+
+### The recount, and the control it was taken with
+
+Read from the table's own two verdict columns, and from its reason column counted
+by phrase:
+
+```
+rows in the table                                   29
+the bot's shape fits reads yes                      16
+both columns read yes                               10
+the reason names the venue refusing the account      4
+the reason ends "and no connector exists"            9
+the reason names a connector at all                 11
+rows a named variant absorbs                        11
+rows no named variant absorbs                       18
+```
+
+The counter was calibrated on those same twenty-nine rows before any figure above
+was taken. Three reason phrases the table carries returned 5, 3 and 1, and a
+phrase planted for the purpose returned nothing and exited non-zero.
+
+Three different questions therefore produce three different counts over one set
+of rows, and none of the three is wrong about its own question. Sixteen rows need
+no variant, because the bot's shape already fits the venue. Eighteen rows are
+absorbed by no named variant, because no shape helps a venue that refuses the
+account or a connector that is missing. Eleven rows are absorbed by a named
+variant: four by the cash-amount shape, one by the limit-only shape, and six by
+the whole-unit shape.
+
+### The counting sentences this entry overtakes
+
+Two passages are overtaken. Both are kept as written. The first is the closing
+count:
+
+> Nineteen of the twenty-nine rows above need no variant at all. Ten trade today,
+> four are refused by their own venue, and nine wait on a connector rather than on
+> a shape.
+
+The true sentence is: sixteen of the twenty-nine rows read yes in the
+bot's-shape-fits column, which is the column that says a variant is not needed.
+The three figures beside that count answer three different questions and sum to
+twenty-three, leaving six rows outside all three — gemini, coinbase US futures,
+Alpaca, Webull, TD Ameritrade and Fidelity.
+
+The second is the connector count above the variant list:
+
+> Nine rows say no because no connector exists. Those nine are a construction
+> that is missing, not a rule the bot cannot satisfy.
+
+The true sentence is: nine rows carry a reason cell ending in that phrase, and
+ten rows name a connector that does not exist, because the Webull cell words the
+same absence differently. The Alpaca cell names a connector that does exist and
+has no caller, which is why the figure for a missing connector is ten rather than
+eleven.
