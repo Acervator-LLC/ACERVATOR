@@ -309,14 +309,20 @@ class PaperBotDetailDialog(
             self._apply_btn.setEnabled(False)
             self._change_lbl.setText(surface.CHANGE_EMPTY_TEXT)
 
+    # OVERTAKEN: "Ask the view for every pending field; each is refused and
+    # logged."
+    # Every pending field is written to the stored record; a field BotConfig
+    # does not declare still raises SendRefused and is counted separately.
     def _apply_changes(self) -> None:
         """Ask the view for every pending field; each is refused and logged."""
         if not self._changes:
             return
         refused = []
+        applied = 0
         for field, value in list(self._changes.items()):
             try:
                 self._route_change(field, value)
+                applied += 1
             except SendRefused as exc:
                 logger.warning(
                     surface.ROUTE_REFUSED_LOG, self._bot.bot_id[:8], field, exc
@@ -333,18 +339,18 @@ class PaperBotDetailDialog(
         )
         self._changes.clear()
         self._apply_btn.setEnabled(False)
-        self._change_lbl.setText(paper_surface.refused_text(len(refused)))
-        self._change_lbl.setStyleSheet(paper_surface.CHANGE_REFUSED_STYLE)
+        self._change_lbl.setText(paper_surface.applied_text(applied, len(refused)))
+        self._change_lbl.setStyleSheet(
+            paper_surface.CHANGE_REFUSED_STYLE
+            if refused
+            else paper_surface.CHANGE_APPLIED_STYLE
+        )
 
+    # OVERTAKEN: "Send one field the way Live routes it; every route raises."
+    # A paper bot is a stored record with no running object, so every field
+    # goes to set_config_field, including the six RUNTIME_ROUTED names.
     def _route_change(self, field: str, value) -> None:
         """Send one field the way Live routes it; every route raises."""
-        if field in surface.PHANTOM_FIELDS:
-            self._bot.update_phantom_config(**{field: value})
-            return
-        route = surface.RUNTIME_ROUTED.get(field)
-        if route:
-            getattr(self._bot, route)(value)
-            return
         self._bot.set_config_field(field, value)
 
     def _bot_manager_for_save(self) -> object | None:

@@ -13,15 +13,36 @@ from typing import Any
 
 from ..main_tabs import bot_live_settings_surface as live
 
+# ``applied_text`` is the pending line after Apply Changes writes the record,
+# and carries ``refused_text`` beside it when a field was refused too.
+
 METHOD = "paper_bot_live_settings.state"
 
 CHANGE_REFUSED_FORMAT = "Refused {count} change(s) — the Paper Trader sends nothing"
 CHANGE_REFUSED_STYLE = live.CHANGE_PENDING_STYLE
 
+CHANGE_APPLIED_FORMAT = "Applied {count} change(s) to the paper record"
+CHANGE_APPLIED_STYLE = live.CHANGE_APPLIED_STYLE
+CHANGE_MIXED_JOIN = "; "
+
 
 def refused_text(count: Any) -> str:
     """The pending line after Apply Changes is refused for ``count`` fields."""
     return CHANGE_REFUSED_FORMAT.format(count=count)
+
+
+# OVERTAKEN: "The pending line after Apply Changes writes ``applied`` fields to
+# the record, carrying ``refused_text`` as well when a field was refused."
+# An ``applied`` count of zero answers ``refused_text`` alone.
+def applied_text(applied: Any, refused: Any = 0) -> str:
+    """The pending line after Apply Changes writes ``applied`` fields to the
+    record, carrying ``refused_text`` as well when a field was refused."""
+    if int(applied or 0) <= 0:
+        return refused_text(refused)
+    written = CHANGE_APPLIED_FORMAT.format(count=applied)
+    if int(refused or 0) <= 0:
+        return written
+    return written + CHANGE_MIXED_JOIN + refused_text(refused)
 
 
 class PaperBotLiveSettingsModel(live.BotLiveSettingsModel):

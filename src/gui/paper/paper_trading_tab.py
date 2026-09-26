@@ -1115,7 +1115,13 @@ class PaperTradingTab(QWidget):
                 if one.exchange_id == bot.exchange_id
             ]
             rates = usd_rates(self._fleet_source.statuses(bot.exchange_id))
-            view = PaperBotView(bot, self._fleet_source.record_for(bot.bot_id))
+            view = PaperBotView(
+                bot,
+                self._fleet_source.record_for(bot.bot_id),
+                tab_surface.config_writer(
+                    self._fleet_source, bot.bot_id, self.fleet_changed.emit
+                ),
+            )
             dlg = window_class(view, siblings, self, rates)
             if saved_geometry is not None:
                 dlg.setGeometry(saved_geometry)

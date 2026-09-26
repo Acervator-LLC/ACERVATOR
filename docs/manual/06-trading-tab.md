@@ -4056,6 +4056,78 @@ def _panel_line(summary: Optional[VotingSummary]) -> str:
         return PANEL_ABSENT_TEXT
 ```
 
+##### One gate indicator line for each position tick
+
+Two sentences earlier on this page are overtaken. Quoted whole:
+
+> One line is a timestamp, then an optional bolt character, then the message:
+> `[hh:mm:ss] <bullet><message>`
+
+> `[16:46:30] [BTC/c7a2] RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317`
+
+A position tick now draws one line, and that line ends in the same gate lights
+the History tab's Gates column draws. The line names each bank, the price and
+the panel's three counts, and the lights carry the rest. No tick writes a
+paragraph of voter readings to the pane any more.
+
+```
+[hh:mm:ss] GATES Scrum <state>. Fold <state>. Price $<price>. Panel <counts>. <lights>
+
+[16:46:30] GATES Scrum blocked TGT, BB, OTD. Fold blocked OTD. Price $0.00003210.
+           Panel 4 bullish, 5 bearish, 3 neutral. Latched hysteresis_fold.
+[16:46:30] GATES Scrum armed. Fold armed. Price $0.00003210.
+           Panel 4 bullish, 5 bearish, 3 neutral.
+```
+
+Nineteen lights close the line: the ten scrum gates, the scrum bank's marker,
+the nine fold gates, then the fold bank's marker. Each light is its label above
+its own colour, and the colour says what that gate did on this tick.
+
+| light | what it says |
+|---|---|
+| green | the gate passed and its bank is armed |
+| red | the gate is blocking its bank |
+| amber | the gate was read and something else is blocking |
+| grey | the gate was not read on this tick |
+| cyan | the landing strip is overriding that bank |
+
+A tick draws its line when the lights are not the same as the last line's. A
+tick whose gate state has not moved spends no line, which is what stops the
+spool. A latched gate is named in words as well, because that block holds until
+its own condition clears rather than turning over each tick.
+
+```python
+def _emit_gate_light_line(
+    self,
+    scrum_result,
+    fold_result,
+    summary,
+    ticker_last: float,
+) -> None:
+```
+
+`src/trading/scrumming/snapshots.py` — the one per-tick writer
+
+The whole voter panel and every blocker phrase still exist. They go to the
+Console tab's own log on each line the pane draws, so a reading a tick produced
+is never lost, and the History tab keeps the full blocker text in its Gates
+column.
+
+##### The timestamp keeps a column of its own
+
+A wrapped message used to continue under the timestamp. The timestamp is now its
+own column, and a message that wraps continues where the message starts.
+
+Read on the running program in both builds, with the home on a scratch directory
+and every socket but loopback refused, driving an invented ticker and figures:
+twelve ticks asked the pane for sixteen lines before the change and three after,
+and the characters drawn fell from 5,248 to 396. A tick with two blocked gates
+and a tick with none drew different lines. In the Qt pane the wrapped lines
+started under the timestamp on all five before the change and on none of seven
+after. On the page the message box began at the same place as the timestamp
+before the change and to the right of it after. The nineteen lights drew in both
+builds, in one order, from one colour table.
+
 #### API Interaction Log
 
 This spool displays API handshake information and data transfer speeds for these messages.
