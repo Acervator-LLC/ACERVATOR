@@ -27,6 +27,7 @@ HISTORY_TABLE = "History table"
 MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
 PAPER_BOT_DETAIL = "Paper bot settings"
+PAPER_BOT_WIZARD = "Paper bot creation wizard"
 PAPER_TRADER = "Paper"
 SETTINGS_DIALOG = "Settings dialog"
 SIM_BOT_DETAIL = "Simulator bot settings"
@@ -364,6 +365,20 @@ def _react_sim_bot_detail() -> type:
     return dialog_class()
 
 
+def _qt_paper_bot_wizard() -> type:
+    """Import and return the Qt Paper Trader bot creation wizard."""
+    from .paper.paper_bot_wizard import PaperBotCreationWizard
+
+    return PaperBotCreationWizard
+
+
+def _react_paper_bot_wizard() -> type:
+    """Import and return the React Paper Trader bot creation wizard."""
+    from .paper.paper_react_bot_wizard import PaperBotWizardReactDialog
+
+    return PaperBotWizardReactDialog
+
+
 def _qt_sim_bot_wizard() -> type:
     """Import and return the Qt Simulator bot creation wizard."""
     from .simulator.sim_bot_wizard import SimBotCreationWizard
@@ -415,3 +430,4 @@ register(CHARTS, _qt_charts, _react_charts)
 register(EXCHANGE, _qt_exchange, _react_exchange)
 register(BOT_WIZARD, _qt_bot_wizard, _react_bot_wizard)
 register(SIM_BOT_WIZARD, _qt_sim_bot_wizard, _react_sim_bot_wizard)
+register(PAPER_BOT_WIZARD, _qt_paper_bot_wizard, _react_paper_bot_wizard)

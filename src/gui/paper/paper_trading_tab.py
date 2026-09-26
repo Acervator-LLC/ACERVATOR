@@ -38,8 +38,11 @@ follow a fill; a ``running`` or ``stopped`` mark moves the record through
 ``PaperFleetSource.stored_exchanges``, opens ``PaperExchangeChoiceDialog`` when
 it prompts, copies the chosen exchange's records through
 ``PaperFleetSource.import_live_fleet`` and fires ``fleet_changed``. A venue's
-``+ New Bot`` reaches ``_create_bot``, which writes ``new_bot_line``; the
-command bar's Start, Pause, Stop, Restart and Delete reach ``_on_bot_command``,
+``+ New Bot`` reaches ``_create_bot``, which opens ``PaperBotCreationWizard``
+through ``surface_class(PAPER_BOT_WIZARD)`` over
+``paper_bot_wizard_surface.venue_markets`` and hands its config to
+``PaperFleetSource.create``; the command bar's Start, Pause, Stop, Restart and
+Delete reach ``_on_bot_command``,
 the window's handler forked over ``PaperBotManager`` with no venue connect; a
 row's Detail reaches ``_on_bot_detail``, which opens the Paper Trader's Bot
 Settings window through ``surface_class(PAPER_BOT_DETAIL)`` over a
@@ -85,6 +88,7 @@ from ...exchange.api_logger import APIInteractionLog
 from ...paper import paper_run
 from ...paper.fake_balance import PaperLedger
 from ...paper.fleet_source import (
+    EXTRACTOR_MODE,
     PaperFleetSource,
     SendRefused,
     exchange_choice,
@@ -111,8 +115,9 @@ from ..main_tabs.trading_tab_surface import (
     WatchdogState,
     exchange_display_name,
 )
-from ..variant_surface import PAPER_BOT_DETAIL, surface_class
+from ..variant_surface import PAPER_BOT_DETAIL, PAPER_BOT_WIZARD, surface_class
 from ..widgets.bot_selection import BotListPanelLink
+from . import paper_bot_wizard_surface as wizard_surface
 from . import paper_trading_tab_surface as tab_surface
 from .paper_bot_status_table_surface import usd_rates
 from .paper_exchange_choice import PaperExchangeChoiceDialog
@@ -942,10 +947,60 @@ class PaperTradingTab(QWidget):
 
     # -- what the operator presses --------------------------------------
 
-    def _create_bot(self, exchange_id: str = "") -> None:
-        """A venue's ``+ New Bot`` press: one Activity Log line,
-        ``new_bot_line``, naming Import Live Fleet as the fleet's way in."""
-        self._status_log.log(tab_surface.new_bot_line(exchange_id), "warning")
+    def _create_bot(
+        self,
+        exchange_id: str = "",
+        defaults_override: Optional[dict] = None,
+    ) -> None:
+        """Open the Paper Trader's Bot Creation Wizard over ``wizard_exchanges``,
+        the stored defaults and the venue market table; on Finish hand its config
+        to ``PaperFleetSource.create`` and fire ``fleet_changed``.
+
+        The window's ``_create_bot``, forked, with no pre-flight, no
+        ``ScrummingBot`` and no bot manager; ``defaults_override`` merges over
+        the stored defaults.
+        """
+        self._status_log.log(
+            wizard_surface.OPENING_FORMAT.format(exchange_id=exchange_id)
+        )
+        wizard_class = surface_class(PAPER_BOT_WIZARD)
+        exchanges = wizard_surface.wizard_exchanges(self._exchange_tabs, self._exchange)
+        defaults = wizard_surface.stored_defaults()
+        if defaults_override:
+            defaults = {**defaults, **defaults_override}
+        markets = wizard_surface.venue_markets(self._exchange)
+        wizard = wizard_class(exchanges, defaults, self, markets=markets)
+        if wizard.exec() != wizard.DialogCode.Accepted:
+            self._status_log.log(wizard_surface.CANCELLED_TEXT, "warning")
+            return
+        config = wizard.get_bot_config()
+        logger.info("Paper bot creation config: %s", config)
+        if config.get("mode") == EXTRACTOR_MODE:
+            reason = wizard_surface.extractor_parent_refusal(
+                self._fleet_source.bots(),
+                str(config.get("base_currency") or ""),
+                str(config.get("exchange_id") or exchange_id),
+            )
+            if reason is not None:
+                QMessageBox.critical(
+                    self,
+                    wizard_surface.REFUSAL_TITLE,
+                    wizard_surface.REFUSAL_BOX_FORMAT.format(reason=reason),
+                )
+                self._status_log.log(
+                    wizard_surface.REFUSED_FORMAT.format(reason=reason), "error"
+                )
+                return
+        try:
+            bot = self._fleet_source.create(config)
+        except (ValueError, TypeError) as exc:
+            self._status_log.log(
+                wizard_surface.REJECTED_FORMAT.format(error=exc), "error"
+            )
+            logger.error("Paper bot creation rejected: %s", exc)
+            return
+        self._status_log.log(wizard_surface.created_line(bot), "success")
+        self.fleet_changed.emit()
 
     def _on_bot_fire(self, bot_id: str) -> None:
         """Manual Fire on a paper bot: ask ``PaperFleetSource`` to ``fire`` and

@@ -9,7 +9,7 @@ API-log listener are not carried in the payload. ``PaperTradingTabState`` owns
 the ``ApiPauseBuffer`` and ``ApiLogPane`` the React host reads and the venues
 it has seated and ``run_running``, which turns the run button's face to
 ``STOP_RUN_BUTTON`` through ``run_buttons``; ``imported_line``,
-``no_stored_bot_line``, ``new_bot_line``, ``run_started_line``,
+``no_stored_bot_line``, ``run_started_line``,
 ``run_no_rule_line`` and ``run_ended_line`` are the Activity Log lines both
 hosts write, ``running_bot_ids`` names the records the runner ticks, and
 ``exchange_choice_options`` and ``exchange_prompt_text`` what
@@ -128,12 +128,6 @@ ACTIONS = {
 IMPORTED_FORMAT = "Imported {count} bot(s) from {file} on {exchange}."
 NO_STORED_BOT_FORMAT = "{file} holds no bot to import."
 IMPORT_CANCELLED_TEXT = "Import Live Fleet cancelled."
-
-#: The Activity Log line ``+ New Bot`` writes: the fleet's one way in.
-NEW_BOT_FORMAT = (
-    "+ New Bot on {exchange}: the Paper fleet is loaded through "
-    "{way_in}; the paper bot wizard is not built."
-)
 
 #: The Activity Log lines the paper run writes: at Start Paper Run, at a
 #: fleet holding no record, at a venue with no cited unit rule, at Stop
@@ -346,12 +340,6 @@ def imported_line(count: int, exchange_id: Any) -> str:
 def no_stored_bot_line() -> str:
     """The Activity Log line for a ``BOT_STATE_NAME`` naming no bot."""
     return NO_STORED_BOT_FORMAT.format(file=BOT_STATE_NAME)
-
-
-def new_bot_line(exchange_id: Any) -> str:
-    """The Activity Log line a ``+ New Bot`` press writes, naming
-    ``IMPORT_LIVE_FLEET_TEXT`` as the fleet's way in."""
-    return NEW_BOT_FORMAT.format(exchange=exchange_id, way_in=IMPORT_LIVE_FLEET_TEXT)
 
 
 def run_started_line(held: int, running: int, target_usd: float) -> str:

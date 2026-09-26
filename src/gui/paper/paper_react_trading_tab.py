@@ -58,6 +58,7 @@ from ...exchange.api_logger import APIInteractionLog
 from ...paper import paper_run
 from ...paper.fake_balance import PaperLedger
 from ...paper.fleet_source import (
+    EXTRACTOR_MODE,
     PaperFleetSource,
     SendRefused,
     exchange_choice,
@@ -82,8 +83,9 @@ from ..main_tabs.trading_tab_surface import (
 from ..react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from ..react_main_window import read_renderer_asset
 from ..react_trading_tab import settled_frames
-from ..variant_surface import PAPER_BOT_DETAIL, surface_class
+from ..variant_surface import PAPER_BOT_DETAIL, PAPER_BOT_WIZARD, surface_class
 from . import paper_bot_status_table_surface as paper_scrum_surface
+from . import paper_bot_wizard_surface as wizard_surface
 from . import paper_exchange_tab_surface as venue_surface
 from . import paper_trading_tab_surface as tab_surface
 from .paper_indicator_panel import describe_no_data_cause, rate_fields
@@ -1295,10 +1297,90 @@ if _HAS_WEBENGINE:
 
         # -- what the operator presses ------------------------------------
 
-        def _create_bot(self, exchange_id: str = "") -> None:
-            """A venue's ``+ New Bot`` press: one Activity Log line,
-            ``new_bot_line``, naming Import Live Fleet as the fleet's way in."""
-            self.log(tab_surface.new_bot_line(exchange_id), "warning")
+        def _create_bot(
+            self,
+            exchange_id: str = "",
+            defaults_override: Optional[dict] = None,
+        ) -> None:
+            """Open the wizard one turn later, off the page's console callback.
+
+            A ``QWebEngineView`` opened inside another page's console callback
+            never finishes loading; one turn later it loads.
+            """
+            QTimer.singleShot(
+                0, lambda: self._open_bot_wizard(exchange_id, defaults_override)
+            )
+
+        def _open_bot_wizard(
+            self,
+            exchange_id: str = "",
+            defaults_override: Optional[dict] = None,
+        ) -> None:
+            """Open the Paper Trader's Bot Creation Wizard over
+            ``wizard_exchanges``, the stored defaults, the venue market table and
+            each venue's ``venue_timeframes``; on Finish hand its config to
+            ``PaperFleetSource.create`` and fire ``fleet_changed``.
+
+            The window's ``_create_bot``, forked, with no pre-flight, no
+            ``ScrummingBot`` and no bot manager; ``defaults_override`` merges over
+            the stored defaults.
+            """
+            self.show_log_call(
+                "log", wizard_surface.OPENING_FORMAT.format(exchange_id=exchange_id)
+            )
+            wizard_class = surface_class(PAPER_BOT_WIZARD)
+            exchanges = wizard_surface.wizard_exchanges(self._venues, self._exchange)
+            defaults = wizard_surface.stored_defaults()
+            if defaults_override:
+                defaults = {**defaults, **defaults_override}
+            markets = wizard_surface.venue_markets(self._exchange)
+            wizard = wizard_class(
+                exchanges,
+                defaults,
+                self,
+                theme=self._theme,
+                markets=markets,
+                timeframes=wizard_surface.venue_timeframes(exchanges),
+            )
+            try:
+                accepted = wizard.exec() == wizard.DialogCode.Accepted
+                config = wizard.get_bot_config() if accepted else {}
+            finally:
+                # The dialog's QWebEngineView is deleted on this thread by the
+                # event loop; a worker thread's garbage collection would abort.
+                wizard.deleteLater()
+            if not accepted:
+                self.show_log_call("log", wizard_surface.CANCELLED_TEXT, "warning")
+                return
+            logger.info("Paper bot creation config: %s", config)
+            if config.get("mode") == EXTRACTOR_MODE:
+                reason = wizard_surface.extractor_parent_refusal(
+                    self._fleet_source.bots(),
+                    str(config.get("base_currency") or ""),
+                    str(config.get("exchange_id") or exchange_id),
+                )
+                if reason is not None:
+                    QMessageBox.critical(
+                        self,
+                        wizard_surface.REFUSAL_TITLE,
+                        wizard_surface.REFUSAL_BOX_FORMAT.format(reason=reason),
+                    )
+                    self.show_log_call(
+                        "log",
+                        wizard_surface.REFUSED_FORMAT.format(reason=reason),
+                        "error",
+                    )
+                    return
+            try:
+                bot = self._fleet_source.create(config)
+            except (ValueError, TypeError) as exc:
+                self.show_log_call(
+                    "log", wizard_surface.REJECTED_FORMAT.format(error=exc), "error"
+                )
+                logger.error("Paper bot creation rejected: %s", exc)
+                return
+            self.show_log_call("log", wizard_surface.created_line(bot), "success")
+            self.fleet_changed.emit()
 
         def _on_bot_fire(self, bot_id: str) -> None:
             """Manual Fire on a paper bot: ask ``PaperFleetSource`` to ``fire``
