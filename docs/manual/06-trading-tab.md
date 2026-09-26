@@ -7627,3 +7627,123 @@ cited path in the git index exits non-zero, and the same lookup of the reservati
 module beside it exits zero. The documentation archetype reports one dead path on
 this page, at the line carrying that sentence, and reports none against the
 hundreds of other paths the page cites.
+
+## 2026-09-26 - #928 - the candle cache keeps what it has and stops re-asking
+
+> "IMU stuck at 13...GROVE stuck at 11...probably others...need to isolate the
+> issue."
+
+### A short series is no longer a cache miss
+
+**Functional.** The shared candle cache holds one slot for each exchange, symbol
+and timeframe. Before this entry a slot answered a request only while it held as
+many bars as the request asked for. A market that cannot supply that many failed
+the test on every call, so the venue was called again every time and the panel
+still drew nothing.
+
+The slot now records how many bars the venue supplied, whenever that is fewer than
+the number asked for. A slot holding all of them answers the request instead of
+sending another call.
+
+`src/exchange/data_pool.py` - the one test both call sites now share
+
+```python
+    def can_serve(self, limit: int) -> bool:
+        """True when this slot is fresh and holds ``limit`` rows, or holds every row
+        ``venue_row_cap`` says the venue has."""
+        if self.is_stale or not self.candles:
+            return False
+        if len(self.candles) >= limit:
+            return True
+        return (
+            self.venue_row_cap is not None and len(self.candles) >= self.venue_row_cap
+        )
+```
+
+Driven on one market at five minutes, the venue answering thirteen bars, the slot
+never aged:
+
+| requests made | venue calls before | venue calls after |
+|---|---|---|
+| 5 | 5 | 1 |
+| 60 | 60 | 1 |
+
+### The series grows instead of being replaced
+
+**Functional.** A fetch used to replace the stored bars with whatever came back, so
+the count could never rise above one venue answer. A fetch now merges what came
+back into the bars already held, keeps one row for each bar time, orders them
+oldest first, and keeps the newest rows up to the number the pool asked for.
+
+`src/exchange/data_pool.py` - the merge
+
+```python
+def _merge_candle_rows(stored: list, fetched: list) -> Optional[list]:
+    """One row per timestamp from ``stored`` then ``fetched``, oldest first, None
+    when a row carries no finite ``row[0]``."""
+    by_time: dict[float, list] = {}
+    for row in list(stored) + list(fetched):
+        at = _row_timestamp(row)
+        if at is None:
+            return None
+        by_time[at] = row
+    return [by_time[at] for at in sorted(by_time)]
+```
+
+Driven with two answers of thirteen and fourteen bars that share eleven, so
+twenty-seven rows arrive in all:
+
+| reading | before | after |
+|---|---|---|
+| bars held after the second answer | 14 | 16 |
+| repeated bar times held | 0 | 0 |
+| bars in time order | yes | yes |
+| the oldest bar of the first answer | dropped | kept |
+
+Two further readings, taken the same way. When the venue answers newest first, the
+stored bars were left out of order before this entry and are in order after it.
+When the venue repeats a bar time inside one answer, the repeat was stored before
+this entry and is dropped after it.
+
+### One venue call for each slot life, not one for each request
+
+**Functional.** A slot lives for the number of seconds its own timeframe names,
+which is three hundred at five minutes. A market that stays short is now called
+once inside that window rather than once for each request, the same rate every
+other market already had. Nothing new sets this rate. It is the slot's own life,
+and it was already in the file.
+
+`src/exchange/data_pool.py` - where the rate comes from
+
+```python
+    @property
+    def ttl_seconds(self) -> float:
+        return TF_SECONDS.get(self.timeframe, 3600)
+
+    @property
+    def is_stale(self) -> bool:
+        return self.age_seconds > self.ttl_seconds
+```
+
+A market that genuinely has more bars still gets them. Driven with the venue
+answering one hundred bars and the slot aged past its life, the venue is called
+again on both sides of this entry, once each.
+
+### The sentence this overtakes
+
+One sentence on this page reads the count as what one venue answer returned. It is
+kept as written:
+
+> Too few candles means the venue returned fewer bars than the engine needs.
+
+What the tree holds is this. The count the panel reads is the number of bars the
+slot holds, and the slot now keeps bars from earlier answers beside the newest
+ones, so that count can rise between answers without any single answer returning
+more. The measured table above that sentence records what one answer returned on
+those markets, which is what it still says.
+
+A market that stays short now draws its indicators once enough bars have gathered.
+At five minutes a slot holding thirteen bars gains one every five minutes, and the
+engine's floor of thirty is reached about eighty-five minutes after the bot starts.
+Until then the panel prints the same sentence it printed before, and the venue is
+called once every five minutes rather than once for every request.

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Optional, cast
@@ -38,6 +39,27 @@ TF_SECONDS = {
 }
 
 
+def _row_timestamp(row) -> Optional[float]:
+    """The finite ``row[0]`` of one OHLCV row as a float, None when it has none."""
+    try:
+        at = float(row[0])
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+    return at if math.isfinite(at) else None
+
+
+def _merge_candle_rows(stored: list, fetched: list) -> Optional[list]:
+    """One row per timestamp from ``stored`` then ``fetched``, oldest first, None
+    when a row carries no finite ``row[0]``."""
+    by_time: dict[float, list] = {}
+    for row in list(stored) + list(fetched):
+        at = _row_timestamp(row)
+        if at is None:
+            return None
+        by_time[at] = row
+    return [by_time[at] for at in sorted(by_time)]
+
+
 @dataclass
 class CacheEntry:
     """Candles for one exchange, symbol and timeframe.
@@ -54,6 +76,7 @@ class CacheEntry:
     subscribers: int = 0
     fetch_count: int = 0
     errors: int = 0
+    venue_row_cap: Optional[int] = None
 
     @property
     def age_seconds(self) -> float:
@@ -66,6 +89,30 @@ class CacheEntry:
     @property
     def is_stale(self) -> bool:
         return self.age_seconds > self.ttl_seconds
+
+    def can_serve(self, limit: int) -> bool:
+        """True when this slot is fresh and holds ``limit`` rows, or holds every row
+        ``venue_row_cap`` says the venue has."""
+        if self.is_stale or not self.candles:
+            return False
+        if len(self.candles) >= limit:
+            return True
+        return (
+            self.venue_row_cap is not None and len(self.candles) >= self.venue_row_cap
+        )
+
+    def merge_fetch(self, fetched: list, requested: int) -> None:
+        """Merge ``fetched`` into ``candles`` on timestamp, keep the newest
+        ``requested`` rows, and set ``venue_row_cap`` from the distinct rows fetched."""
+        rows = list(fetched or [])
+        if not rows:
+            return
+        keep = max(1, int(requested))
+        merged = _merge_candle_rows(self.candles, rows)
+        distinct_rows = _merge_candle_rows([], rows)
+        supplied_rows = len(rows) if distinct_rows is None else len(distinct_rows)
+        self.candles = rows[-keep:] if merged is None else merged[-keep:]
+        self.venue_row_cap = supplied_rows if supplied_rows < keep else None
 
 
 @dataclass
@@ -401,12 +448,7 @@ class MarketDataPool:
         key = _candle_key(exchange_id, symbol, timeframe)
         entry = self._candles.get(key)
 
-        if (
-            entry is not None
-            and not entry.is_stale
-            and entry.candles
-            and len(entry.candles) >= limit
-        ):
+        if entry is not None and entry.can_serve(limit):
             self._ohlcv_cache_hits += 1
             return list(entry.candles[-limit:])
 
@@ -435,12 +477,7 @@ class MarketDataPool:
 
         async with cast(asyncio.Lock, lock):
             entry = self._candles.get(key)
-            if (
-                entry is not None
-                and not entry.is_stale
-                and entry.candles
-                and len(entry.candles) >= limit
-            ):
+            if entry is not None and entry.can_serve(limit):
                 self._ohlcv_cache_hits += 1
                 return list(entry.candles[-limit:])
 
@@ -451,10 +488,9 @@ class MarketDataPool:
                 )
                 self._candles[key] = entry
 
-            candles = await connector.get_ohlcv(
-                symbol, timeframe, limit=max(limit, 100)
-            )
-            entry.candles = list(candles or [])
+            requested = max(limit, 100)
+            candles = await connector.get_ohlcv(symbol, timeframe, limit=requested)
+            entry.merge_fetch(list(candles or []), requested)
             entry.fetch_time = time.time()
             entry.fetch_count += 1
             self._ohlcv_fetches += 1
@@ -695,10 +731,11 @@ class MarketDataPool:
                 if not connector:
                     continue
                 try:
+                    rows_requested = 100
                     candles = await connector.get_ohlcv(
-                        entry.symbol, entry.timeframe, limit=100
+                        entry.symbol, entry.timeframe, limit=rows_requested
                     )
-                    entry.candles = candles
+                    entry.merge_fetch(list(candles or []), rows_requested)
                     entry.fetch_time = time.time()
                     entry.fetch_count += 1
                     fetched += 1
