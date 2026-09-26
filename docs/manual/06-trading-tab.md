@@ -435,6 +435,27 @@ SORT_KIND_BY_COL = {
 }
 ```
 
+**Overtaken.** *"A small arrow in the label's top-right corner names the sorted
+column and its direction."*
+
+**Functional.** The arrow draws on the privacy dot's own row, at the right edge
+of its own column. Its rectangle takes the dot's top and the dot's height, so
+the two sit on one line, and its left edge never crosses the dot's right edge.
+The box is clamped to the column, so no arrow is drawn outside the column it
+belongs to. The arrow is still outside the header's own layout: the wrapped
+label and the dot both measured unchanged. Read on the running header with a
+fleet of 38 bots at 700, 900 and 1400 pixels wide, on all nine sorting columns,
+the arrow's vertical centre equalled the dot's, its left edge sat at or right of
+the dot's right edge, and its rectangle sat wholly inside the column's.
+
+`src/gui/widgets/bot_status_table.py` — `ColumnHeaderCell._place_mark`
+
+```python
+top, height = self._dot_row()
+left = max(self._dot_right(), self.width() - HEADER_SORT_MARK_BOX_PX)
+self.mark.setGeometry(left, top, max(0, self.width() - left), height)
+```
+
 **Functional.** Bot ID and Symbol sort as words. The other seven sort as
 figures, each reading the number its cell was computed from rather than the
 text the cell draws, so nine never sorts above ten. Ammo sorts on the distance
@@ -661,6 +682,23 @@ if column == self.sort_column:
 else:
     self.sort_column = column
     self.sort_descending = False
+```
+
+**Functional.** The page places its arrow the same way the window does. The
+arrow's box takes the dot row's height, sits against the heading's bottom edge
+above the cell's padding, and is held to the column's width. Read on the running
+page with a fleet of 38 bots at 700, 900 and 1400 pixels wide, on all nine
+sorting columns, the arrow's rectangle matched the dot's top and height, its
+left edge sat right of the dot's right edge, and it stayed inside the column.
+
+`src/gui/web/bot_status_table.js` — `SortMark`
+
+```javascript
+style.bottom = length(model[HEADER_CELL_PAD_PX]);
+style.right = MARK_EDGE;
+style.width = length(model[HEADER_SORT_MARK_BOX_PX]);
+style.maxWidth = MARK_MAX_WIDTH;
+style.height = length(model[HEADER_DOT_ROW_PX]);
 ```
 
 **Design intention.** The exchange screen redraws itself once a second to keep

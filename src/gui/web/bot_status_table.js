@@ -353,11 +353,12 @@
   var LABEL_KEY = "label";
   var DOT_KEY = "dot";
   var MARK_KEY = "mark";
-  // The mark sits in the header cell's own top-right corner, over the
-  // label, so neither the wrap nor the dot's centring moves when it draws.
+  // The mark is outside the flow, so neither the wrap nor the dot's
+  // centring moves when it draws.
   var RELATIVE_POSITION = "relative";
   var ABSOLUTE_POSITION = "absolute";
   var MARK_EDGE = "0";
+  var MARK_MAX_WIDTH = "100%";
   // The CSS spelling of the elide a Qt table cell does by default.
   var CELL_OVERFLOW = "hidden";
   var CELL_TEXT_OVERFLOW = "ellipsis";
@@ -642,9 +643,12 @@
     var model = props.model;
     var style = styleOf(model[HEADER_SORT_MARK_STYLE]);
     style.position = ABSOLUTE_POSITION;
-    style.top = MARK_EDGE;
+    style.bottom = length(model[HEADER_CELL_PAD_PX]);
     style.right = MARK_EDGE;
     style.width = length(model[HEADER_SORT_MARK_BOX_PX]);
+    style.maxWidth = MARK_MAX_WIDTH;
+    style.height = length(model[HEADER_DOT_ROW_PX]);
+    style.lineHeight = length(model[HEADER_DOT_ROW_PX]);
     style.textAlign = RIGHT_ALIGN;
     var markProps = { className: TABLE_CLASS, style: style };
     markProps[PART_ATTR] = SORT_MARK_PART;
