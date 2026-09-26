@@ -116,7 +116,12 @@ class BotContainer:
         and an all-``None`` record when the lookup fails or the venue lists no
         such market."""
         from ..exchange.base import MarketRules
-        from .scrumming.sizing import CLASS_CRYPTO, venue_order_types, venue_session
+        from .scrumming.sizing import (
+            CLASS_CRYPTO,
+            venue_order_types,
+            venue_session,
+            venue_settlement_days,
+        )
 
         cached = self._market_rules_cache.get(symbol)
         if cached is not None:
@@ -124,7 +129,13 @@ class BotContainer:
         # Every connector a container holds is a crypto connector.
         session = venue_session(CLASS_CRYPTO, self.config.exchange_id)
         order_types = venue_order_types(CLASS_CRYPTO, self.config.exchange_id)
-        unread = MarketRules(read=False, session=session, order_types=order_types)
+        settlement = venue_settlement_days(CLASS_CRYPTO, self.config.exchange_id)
+        unread = MarketRules(
+            read=False,
+            session=session,
+            order_types=order_types,
+            settlement_days=settlement,
+        )
         try:
             markets = await self.exchange.get_markets()
         except Exception as exc:
@@ -144,7 +155,12 @@ class BotContainer:
                 if not isinstance(rules, MarketRules):
                     rules = unread
                 else:
-                    rules = replace(rules, session=session, order_types=order_types)
+                    rules = replace(
+                        rules,
+                        session=session,
+                        order_types=order_types,
+                        settlement_days=settlement,
+                    )
                 self._market_rules_cache[symbol] = rules
                 return rules
         logger.warning(
@@ -192,6 +208,10 @@ class BotContainer:
     # here, before ``min_cost`` is measured and before ``place_order`` is called.
     # ``venue_variant`` then refuses an unbuilt variant and replaces
     # ``OrderType.MARKET`` where the venue declares none.
+    # OVERTAKEN, the sentence above reading "``venue_variant`` then refuses an
+    # unbuilt variant": ``variant_permits_close`` exempts one unbuilt variant,
+    # ``VARIANT_ROLLING_POSITION``, and only for ``OrderSide.SELL``, so a
+    # position in a market the venue expires can still be closed.
     async def guarded_place_order(
         self,
         symbol: str,
@@ -266,6 +286,7 @@ class BotContainer:
             unit_rule,
             untradeable_reason,
             variant_built,
+            variant_permits_close,
             variant_replaces_market_order,
             venue_variant,
         )
@@ -348,13 +369,28 @@ class BotContainer:
             _ref_px = 0.0
         _variant = venue_variant(_rules, _ref_px or None)
 
-        if not variant_built(_variant):
+        # A position already open in an expiring market must still be able to
+        # close, so a SELL passes where a BUY refuses and only that one variant
+        # reaches the exception.
+        _closing = variant_permits_close(_variant) and side == OrderSide.SELL
+
+        if not variant_built(_variant) and not _closing:
             self._refuse_order(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} needs a bot "
                 f"variant the program does not hold. "
                 f"{untradeable_reason(_rules, _ref_px or None)}. "
                 f"The market is still read and still charted. "
                 f"API not called."
+            )
+
+        if _closing:
+            _left = _rules.days_to_expiry(time.time())
+            _left_text = "an unreadable number of" if _left is None else f"{_left:.2f}"
+            self._warn_order(
+                f"CLOSING AN EXPIRING MARKET: SELL {symbol} {_amt:.10f} is "
+                f"submitted where a BUY is refused, because the venue expires "
+                f"this contract in {_left_text} days ({_variant}). Nothing "
+                f"rebuys it."
             )
 
         if variant_replaces_market_order(_variant) and order_type == OrderType.MARKET:

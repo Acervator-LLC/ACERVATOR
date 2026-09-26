@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Any, Optional, Sequence
 
+from ...exchange.base import SETTLEMENT_DAY_SECONDS
 from ...stocks.market_hours import accepts_order
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
@@ -162,6 +163,71 @@ def venue_session(asset_class: str, venue: str) -> Optional[str]:
     return CITED_VENUE_SESSIONS.get((str(asset_class), str(venue)))
 
 
+#: The settlement delay each ``(asset class, venue)`` publishes, in days, keyed
+#: as ``CITED_UNIT_RULES`` is keyed. A pair absent here publishes none, and a
+#: cited zero is a venue returning the cash of a sale at once.
+CITED_VENUE_SETTLEMENT: dict[tuple[str, str], float] = {
+    (CLASS_CRYPTO, "coinbase"): 0.0,
+}
+
+#: What a fold carries when ``unsettled_usd`` leaves it nothing to spend.
+HELD_UNSETTLED_CASH = "the venue has not settled the sale"
+
+
+def venue_settlement_days(asset_class: str, venue: str) -> Optional[float]:
+    """The settlement delay ``CITED_VENUE_SETTLEMENT`` cites for ``asset_class``
+    on ``venue`` in days, or None when the table cites none for the pair."""
+    return CITED_VENUE_SETTLEMENT.get((str(asset_class), str(venue)))
+
+
+def unsettled_usd(tranches: Any, moment_s: Any, settlement_days: Any) -> float:
+    """The dollars in ``tranches`` the venue has not settled at ``moment_s``: the
+    ``usd`` of each whose ``created_ts`` falls inside ``settlement_days``.
+
+    Zero where the venue published no delay, where ``settlement_days`` is no
+    positive finite figure, and where ``moment_s`` is not a finite number.
+    """
+    if not rule_published(settlement_days):
+        return 0.0
+    days = float(settlement_days)
+    if days <= 0.0:
+        return 0.0
+    if type(moment_s) not in (int, float) or not math.isfinite(float(moment_s)):
+        return 0.0
+    cutoff = float(moment_s) - days * SETTLEMENT_DAY_SECONDS
+    held = 0.0
+    for one in tranches or ():
+        if not isinstance(one, dict):
+            continue
+        created = one.get("created_ts")
+        if type(created) not in (int, float) or not math.isfinite(float(created)):
+            continue
+        if float(created) <= cutoff:
+            continue
+        usd = one.get("usd")
+        if type(usd) not in (int, float) or not math.isfinite(float(usd)):
+            continue
+        if float(usd) <= 0.0:
+            continue
+        held += float(usd)
+    return held
+
+
+def spend_less_unsettled_usd(spend: float, cash_usd: Any, held_usd: Any) -> float:
+    """``spend`` held to ``cash_usd`` less ``held_usd``, never below zero.
+
+    ``spend`` is answered unchanged while ``held_usd`` is no positive finite
+    amount, so a venue publishing no settlement delay caps nothing.
+    """
+    if type(held_usd) not in (int, float) or not math.isfinite(float(held_usd)):
+        return spend
+    if float(held_usd) <= 0.0:
+        return spend
+    if type(cash_usd) not in (int, float) or not math.isfinite(float(cash_usd)):
+        return spend
+    return min(spend, max(0.0, float(cash_usd) - float(held_usd)))
+
+
 def outside_session(session: Optional[str], moment_s: Any) -> bool:
     """True only where ``session`` names a session taking no order at
     ``moment_s``, epoch seconds; an unpublished session holds nothing."""
@@ -260,23 +326,39 @@ VARIANT_LIMIT_ONLY = "limit-only order"
 VARIANT_CASH_AMOUNT = "cash-amount order"
 VARIANT_WHOLE_UNIT = "whole-unit position"
 
+# OVERTAKEN, the comment above reading "the three variants the venue comparison
+# names": ``VARIANT_ROLLING_POSITION`` is a fourth, named the same way.
+VARIANT_ROLLING_POSITION = "rolling position"
+
 #: The market shape each variant absorbs, one row per variant.
 VARIANT_MARKETS: dict[str, str] = {
     VARIANT_NONE: "a market naming a unit count on a venue taking a market order",
     VARIANT_LIMIT_ONLY: "a market on a venue declaring no market order",
     VARIANT_CASH_AMOUNT: "a market whose size is a whole share",
     VARIANT_WHOLE_UNIT: "a market whose smallest order costs more than the excess",
+    VARIANT_ROLLING_POSITION: "a market the venue expires on a date",
 }
 
 #: The variants the running program holds. ``VARIANT_CASH_AMOUNT`` has no caller
 #: to reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling.
 VARIANTS_BUILT = frozenset({VARIANT_NONE, VARIANT_LIMIT_ONLY})
 
+# OVERTAKEN, the comment above reading "``VARIANT_CASH_AMOUNT`` has no caller to
+# reach it and ``VARIANT_WHOLE_UNIT`` waits on the scrum trigger's ruling":
+# ``VARIANT_ROLLING_POSITION`` is also absent, and it waits on the rule naming
+# which contract a position rolls into.
+
 #: What a market no built variant trades carries, naming the variant it needs
 #: and the shape that variant absorbs.
 UNTRADEABLE_REASON_FORMAT = "{variant} is not built: {market}"
 
 
+# OVERTAKEN in venue_variant's docstring below: "``VARIANT_WHOLE_UNIT`` while
+# ``tradeable_answer`` reads ``TRADEABLE_NO``, ``VARIANT_LIMIT_ONLY`` while the
+# record declares ``ORDER_TYPES_LIMIT_ONLY``, and ``VARIANT_NONE`` for every
+# other record, an unread one included."
+# ``VARIANT_ROLLING_POSITION`` is answered first, while ``MarketRules.expires``
+# is True; the three answers above follow it unchanged and read no expiry.
 def venue_variant(
     rules: Any,
     price: Optional[float] = None,
@@ -290,11 +372,19 @@ def venue_variant(
     """
     if rules is None or not getattr(rules, "read", False):
         return VARIANT_NONE
+    if getattr(rules, "expires", False):
+        return VARIANT_ROLLING_POSITION
     if tradeable_answer(rules, price, excess_usd) == TRADEABLE_NO:
         return VARIANT_WHOLE_UNIT
     if getattr(rules, "order_types", None) == ORDER_TYPES_LIMIT_ONLY:
         return VARIANT_LIMIT_ONLY
     return VARIANT_NONE
+
+
+def variant_permits_close(variant: Any) -> bool:
+    """True only for ``VARIANT_ROLLING_POSITION``, out of whose market a bot may
+    still sell although ``VARIANTS_BUILT`` does not hold the variant."""
+    return str(variant) == VARIANT_ROLLING_POSITION
 
 
 def variant_built(variant: Any) -> bool:
@@ -322,6 +412,21 @@ def variant_trades_market(
     """True while the variant ``venue_variant`` selects for one market is one
     ``VARIANTS_BUILT`` holds."""
     return variant_built(venue_variant(rules, price, excess_usd))
+
+
+def variant_refuses_sale(
+    rules: Any,
+    price: Optional[float] = None,
+    excess_usd: float = REFERENCE_SCRUM_EXCESS_USD,
+) -> bool:
+    """True while a sale out of one market refuses as a buy into it refuses: the
+    variant is one ``VARIANTS_BUILT`` lacks and ``variant_permits_close`` denies.
+
+    A market publishing no expiry answers exactly what ``variant_trades_market``
+    denies, so nothing a venue leaves unpublished changes here.
+    """
+    variant = venue_variant(rules, price, excess_usd)
+    return not variant_built(variant) and not variant_permits_close(variant)
 
 
 def untradeable_reason(
@@ -686,6 +791,7 @@ __all__ = [
     "CITED_UNIT_RULES",
     "CITED_VENUE_ORDER_TYPES",
     "CITED_VENUE_SESSIONS",
+    "CITED_VENUE_SETTLEMENT",
     "CLASS_CRYPTO",
     "CLASS_STOCKS",
     "DRAWDOWN_STATE",
@@ -696,12 +802,14 @@ __all__ = [
     "GROWTH_SIDE_LOWER",
     "GROWTH_SIDE_UPPER",
     "HELD_OUTSIDE_SESSION",
+    "HELD_UNSETTLED_CASH",
     "LARGEST_FLEET_TARGET_USD",
     "ORDER_TYPES_LIMIT_ONLY",
     "ORDER_TYPES_WITH_MARKET",
     "REFERENCE_SCRUM_EXCESS_USD",
     "SESSION_CONTINUOUS",
     "SESSION_US_EQUITY",
+    "SETTLEMENT_DAY_SECONDS",
     "TAPER_DROP",
     "TAPER_START_RATIO",
     "TRADEABLE_NO",
@@ -714,6 +822,7 @@ __all__ = [
     "VARIANT_LIMIT_ONLY",
     "VARIANT_MARKETS",
     "VARIANT_NONE",
+    "VARIANT_ROLLING_POSITION",
     "VARIANT_WHOLE_UNIT",
     "WHOLE_UNITS",
     "WHOLE_UNIT_GRAIN",
@@ -742,19 +851,24 @@ __all__ = [
     "settle_fold_plan",
     "sized_units",
     "smallest_order_usd",
+    "spend_less_unsettled_usd",
     "target_delta_pct",
     "target_delta_usd",
     "target_growth_applied",
     "tradeable_answer",
     "trim_fold_plan",
     "unit_rule",
+    "unsettled_usd",
     "untradeable_reason",
     "variant_built",
     "variant_market",
+    "variant_permits_close",
+    "variant_refuses_sale",
     "variant_replaces_market_order",
     "variant_trades_market",
     "venue_order_types",
     "venue_session",
+    "venue_settlement_days",
     "venue_variant",
     "wallet_capped_spend_usd",
 ]

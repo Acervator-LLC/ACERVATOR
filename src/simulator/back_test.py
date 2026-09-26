@@ -54,6 +54,7 @@ from ..trading.scrumming.sizing import (
     BELOW_ONE_UNIT,
     GROWTH_SIDE_LOWER,
     HELD_OUTSIDE_SESSION,
+    HELD_UNSETTLED_CASH,
     cycle_growth_cap_usd,
     delta_below_interval,
     eligible_fold_tranches,
@@ -74,16 +75,20 @@ from ..trading.scrumming.sizing import (
     outside_session,
     settle_fold_plan,
     sized_order,
+    spend_less_unsettled_usd,
     target_delta_pct,
     target_delta_usd,
     target_growth_applied,
     trim_fold_plan,
     unit_rule,
+    unsettled_usd,
     untradeable_reason,
     variant_built,
+    variant_refuses_sale,
     variant_trades_market,
     venue_order_types,
     venue_session,
+    venue_settlement_days,
     venue_variant,
     wallet_capped_spend_usd,
 )
@@ -679,6 +684,7 @@ def venue_rules_for(asset: str, exchange_id: str, symbol: str) -> MarketRules:
         recorded_rules(venue, symbol),
         session=venue_session(class_name, venue),
         order_types=venue_order_types(class_name, venue),
+        settlement_days=venue_settlement_days(class_name, venue),
     )
 
 
@@ -1109,6 +1115,8 @@ def tape_context(
 # sizes it only where ``rules`` holds no recorded size rule.
 # OVERTAKEN: "when a whole-unit ``delta`` buys under one unit, which is logged".
 # Every zero-unit sale is logged, carrying the reason ``sized_order`` named.
+# ``variant_refuses_sale`` replaces ``variant_trades_market`` here, so a sale out
+# of a market ``MarketRules.expires`` names still fills where a fold refuses.
 def apply_scrum(
     bot: SimBot,
     position: SimPosition,
@@ -1139,7 +1147,9 @@ def apply_scrum(
         if on_refusal is not None:
             on_refusal(HELD_OUTSIDE_SESSION)
         return None
-    if not variant_trades_market(rules, float(price)):
+    # A sale out of a market the venue expires still fills, because a position
+    # that cannot be sold cannot close before its expiry.
+    if variant_refuses_sale(rules, float(price)):
         held = untradeable_reason(rules, float(price))
         logger.info(
             "%s: a scrum of $%.2f is read and not traded: %s",
@@ -1238,6 +1248,12 @@ def fold_taper(bot: SimBot, position: SimPosition) -> float:
 # ``rule`` sizes them only where ``rules`` holds no recorded size rule.
 # OVERTAKEN: "under ``WHOLE_UNITS`` the fold spends the whole units' price".
 # The fold spends the stepped units' price whenever the step left dollars over.
+# OVERTAKEN in apply_fold's docstring below: "``FUNDED_BY_PROCEEDS`` holds the
+# spend to ``position.cash_usd`` through ``wallet_capped_spend_usd`` and
+# ``FUNDED_BY_TARGETS`` caps nothing".
+# ``spend_less_unsettled_usd`` then holds the spend to the cash ``unsettled_usd``
+# leaves settled at the bar's own moment, under both funding words, and answers
+# the spend unchanged where the venue published no ``settlement_days``.
 def apply_fold(
     bot: SimBot,
     position: SimPosition,
@@ -1312,7 +1328,26 @@ def apply_fold(
     spend = fold_spend_usd(sum(one["usd"] for one in slices), taper)
     if funding == FUNDED_BY_PROCEEDS:
         spend = wallet_capped_spend_usd(spend, position.cash_usd)
+    # The bar's own moment, never a real clock. A sale the venue has not settled
+    # has not returned its cash, so the fold may not spend it yet.
+    unsettled = unsettled_usd(
+        position.fold_tranches,
+        float(ts_ms) / 1000.0,
+        getattr(rules, "settlement_days", None),
+    )
+    spend = spend_less_unsettled_usd(spend, position.cash_usd, unsettled)
     if spend <= 0.0:
+        if unsettled > 0.0:
+            logger.info(
+                "%s: a fold finds $%.4f of $%.4f cash unsettled at %s day(s); "
+                "nothing fills and the tranches stay queued",
+                bot.bot_id,
+                unsettled,
+                position.cash_usd,
+                getattr(rules, "settlement_days", None),
+            )
+            if on_refusal is not None:
+                on_refusal(HELD_UNSETTLED_CASH)
         return None
     order = sized_order(spend / float(price), rule, rules)
     units = order.units

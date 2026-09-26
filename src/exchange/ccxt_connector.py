@@ -258,6 +258,9 @@ def market_rules(market: Any, precision_mode: int) -> MarketRules:
         ),
         # CCXT maps Coinbase's price_increment, else its quote_increment, here.
         price_increment=precision_to_increment(precision.get("price"), precision_mode),
+        # CCXT parses Coinbase's future_product_details.contract_expiry here; a
+        # spot record and a perpetual both carry None.
+        expiry_ms=limit_to_float((market or {}).get("expiry")),
     )
 
 

@@ -21,6 +21,10 @@ from decimal import (
 from enum import Enum
 from typing import Optional
 
+#: Seconds in one day, the grain ``MarketRules.days_to_expiry`` answers in and
+#: the grain a venue's ``settlement_days`` is stated in.
+SETTLEMENT_DAY_SECONDS = 86400.0
+
 
 class OrderSide(str, Enum):
     BUY = "buy"
@@ -134,7 +138,36 @@ class MarketRules:
     price_increment: Optional[float] = None  # quote units a price steps by
     session: Optional[str] = None  # the session name the venue publishes
     order_types: Optional[str] = None  # the order types the venue declares
+    expiry_ms: Optional[float] = None  # epoch ms the venue closes the contract on
+    settlement_days: Optional[float] = None  # days the venue takes to settle a sale
     read: bool = True
+
+    @property
+    def expires(self) -> bool:
+        """True while ``expiry_ms`` is a finite positive epoch, and False for the
+        None a venue publishing no expiry carries."""
+        if self.expiry_ms is None:
+            return False
+        try:
+            held = float(self.expiry_ms)
+        except (TypeError, ValueError):
+            return False
+        return math.isfinite(held) and held > 0.0
+
+    def days_to_expiry(self, moment_s: float) -> Optional[float]:
+        """Days from ``moment_s`` to ``expiry_ms``, negative once it has passed.
+
+        None while ``expires`` is False or ``moment_s`` is not a finite number.
+        """
+        held = self.expiry_ms
+        if held is None or not self.expires:
+            return None
+        if type(moment_s) not in (int, float):
+            return None
+        moment = float(moment_s)
+        if not math.isfinite(moment):
+            return None
+        return (float(held) / 1000.0 - moment) / SETTLEMENT_DAY_SECONDS
 
     def price_on_tick(self, price: float) -> Optional[float]:
         """``price`` moved to the nearest ``price_increment`` step, and None

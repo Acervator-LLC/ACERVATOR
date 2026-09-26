@@ -12,6 +12,7 @@ reads the derivatives list at press time from Coinbase's public product list.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import http.client
 import json
 import logging
@@ -24,6 +25,7 @@ from typing import Any, Optional
 
 from ..core.safe_url import SafeRequest, safe_urlopen
 from ..exchange.api_logger import get_api_log
+from ..exchange.base import MarketRules
 from ..exchange.market_inspector_fetcher import (
     DAILY_BARS,
     WEEKLY_BARS,
@@ -102,6 +104,9 @@ FUTURES_STATUS_ONLINE = "online"
 FUTURES_DISABLED_KEY = "trading_disabled"
 FUTURES_DETAILS_KEY = "future_product_details"
 FUTURES_EXPIRY_KEY = "contract_expiry_type"
+#: The date the venue closes a dated contract on, an ISO 8601 string on the
+#: product's ``FUTURES_DETAILS_KEY``, absent on a perpetual.
+FUTURES_EXPIRY_DATE_KEY = "contract_expiry"
 FUTURES_EXPIRING = "EXPIRING"
 FUTURES_PERPETUAL = "PERPETUAL"
 FUTURES_VOLUME_KEY = "volume_24h"
@@ -355,6 +360,11 @@ class AssetListing:
     row is written on, answered by ``underlying_name``.
     """
 
+    # OVERTAKEN, the docstring above listing the fields and ending at
+    # ``underlying``: ``rules`` follows it, carrying the order rules the source
+    # published for this row, and ``expiry_ms`` is the only one a futures product
+    # fills today.
+
     symbol: str
     quote: str = USD
     venue: str = NO_VENUE
@@ -365,6 +375,9 @@ class AssetListing:
     form: str = FORM_SPOT
     underlying: str = ""
     asset_class: str = ""
+    # ata_spm.untradeable_markets reads this; None is a row read off a source
+    # publishing no order rules.
+    rules: Optional[MarketRules] = None
 
     @property
     def listed(self) -> bool:
@@ -1016,6 +1029,29 @@ def _expiry_type(product: dict) -> str:
     return str(held or "").upper()
 
 
+def _expiry_rules(product: dict) -> Optional[MarketRules]:
+    """A ``MarketRules`` carrying ``expiry_ms`` off the product's
+    ``FUTURES_EXPIRY_DATE_KEY``, and None while the product names no date.
+
+    ``ata_spm.untradeable_markets`` reads this off each ``AssetListing``, so a
+    dated contract is named by the scan without any venue being asked again.
+    """
+    details = product.get(FUTURES_DETAILS_KEY) or {}
+    held = product.get(FUTURES_EXPIRY_DATE_KEY) or (
+        details.get(FUTURES_EXPIRY_DATE_KEY) if isinstance(details, dict) else ""
+    )
+    text = str(held or "").strip()
+    if not text:
+        return None
+    try:
+        moment = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=datetime.timezone.utc)
+    return MarketRules(expiry_ms=moment.timestamp() * 1000.0)
+
+
 def _root_of(product: dict) -> str:
     """``FUTURES_ROOT_KEY`` off the product's details, else ``FUTURES_BASE_KEY``."""
     details = product.get(FUTURES_DETAILS_KEY) or {}
@@ -1134,6 +1170,7 @@ def futures_listings(
                 form=(FORM_PERPETUAL if expiry == FUTURES_PERPETUAL else FORM_FUTURE),
                 underlying=underlying,
                 asset_class=placed_class,
+                rules=_expiry_rules(product),
             )
         )
         figure = _figure_of(product)
