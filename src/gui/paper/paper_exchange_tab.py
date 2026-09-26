@@ -21,6 +21,7 @@ from ..main_tabs.exchange_tab_surface import (
     EXTRACTOR_TABLE_STRETCH,
     FLEET_COMMANDS,
     SCRUM_TABLE_STRETCH,
+    shift_held_after_key,
 )
 
 logger = logging.getLogger("acervator.gui")
@@ -197,7 +198,11 @@ if _HAS_QT:
             kind = event.type()
             if kind in (QEvent.KeyPress, QEvent.KeyRelease):
                 self._draw_cmd_labels(
-                    bool(QApplication.keyboardModifiers() & Qt.ShiftModifier)
+                    shift_held_after_key(
+                        kind == QEvent.KeyPress,
+                        event.key() == Qt.Key_Shift,
+                        bool(event.modifiers() & Qt.ShiftModifier),
+                    )
                 )
             elif kind == QEvent.WindowDeactivate:
                 self._draw_cmd_labels(False)

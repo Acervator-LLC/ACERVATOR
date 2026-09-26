@@ -7286,3 +7286,76 @@ SHIFT labels      Start All, Pause All, Stop All, Restart All, Delete
 
 Before the change the page build read 0 bots on the plain press and nothing at
 all on the SHIFT press.
+
+## 2026-09-25 - #858 - the SHIFT labels on the command bar read backwards
+
+> "Live - Bug - Bot List - Start / Stop / Pause (All) toggles 'normally on'
+> instead of remaining 'normally off' after releasing the SHIFT key. Can hold
+> SHIFT key to toggle back to the normal state but this is incorrect / inverted
+> behavior."
+
+### The sentence the labels contradicted
+
+**Overtaken.** *"Let go and they read their own names again."*
+
+**The true sentence.** Let go and they read their own names again, in the window
+build and in the page build. Before this entry the window build did the reverse:
+it read the all-bots names with no key held, and the buttons' own names while
+SHIFT was held down.
+
+### Where the label state came from
+
+**Functional.** The window build asked the application for the state of the SHIFT
+key. The application keeps one such value for the whole program, and for the
+SHIFT key's own press and release that value is the one thing this code does not
+decide. The labels followed it, and they read backwards. The window build now
+takes the state off the key event it is already holding: a SHIFT press means the
+key is down, a SHIFT release means it is up, and no other reading is possible.
+The page build always did this and was never wrong.
+
+### The label rule both window forks share
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `shift_held_after_key`
+
+```python
+def shift_held_after_key(
+    is_press: bool, key_is_shift: bool, event_has_shift: bool
+) -> bool:
+    if key_is_shift:
+        return is_press
+    return event_has_shift
+```
+
+**Design intention.** The Live tab and the Paper tab drew the same labels from
+the same wrong reading, so both now call one rule and cannot drift apart. The
+rule holds whichever way the computer reports the key, which is why the reading
+below is identical under both.
+
+### The five label readings, per build
+
+Read on the real command bar and the real page, labels taken off each button and
+never off a picture, every socket but loopback refused:
+
+```
+                                 window build   page build
+at rest, no key held             single-bot     single-bot
+SHIFT pressed and held           all-bots       all-bots
+SHIFT released                   single-bot     single-bot
+window deactivated while held    single-bot     single-bot
+SHIFT pressed twice in a row     all-bots       all-bots
+```
+
+Before the change the window build read rows two, three and five wrong. The
+Paper window build read the same three wrong and now reads all five right.
+
+### The press target after the label repair
+
+**Functional.** The button still acts on what its label says. The press reads
+SHIFT from the mouse press, which carries the true state, and that reading was
+never wrong.
+
+```
+                  window build          page build
+plain press       1 bot, 0 fleet        1 bot, 0 fleet
+SHIFT press       stop_all, 0 bots      stop_all, 0 bots
+```
