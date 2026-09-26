@@ -577,15 +577,29 @@ def votes_payload(bots: Any, reading: Any = None) -> dict:
 
 
 def log_request(
-    action: str, message: str = "", level: Any = None, kind: Any = None
+    action: str,
+    message: str = "",
+    level: Any = None,
+    kind: Any = None,
+    lights: Any = None,
 ) -> Optional[dict]:
     """The ``status_log.lines`` request one ``StatusLog`` call makes."""
     if action == "log":
-        return {"messages": [{"message": message, "level": level, "kind": kind}]}
+        return {
+            "messages": [
+                {"message": message, "level": level, "kind": kind, "lights": lights}
+            ]
+        }
     if action == "force_log":
         return {
             "messages": [
-                {"message": message, "level": level, "force": True, "kind": kind}
+                {
+                    "message": message,
+                    "level": level,
+                    "force": True,
+                    "kind": kind,
+                    "lights": lights,
+                }
             ]
         }
     if action == "notice":
@@ -838,13 +852,14 @@ if _HAS_WEBENGINE:
             message: str = "",
             level: Any = None,
             kind: Any = None,
+            lights: Any = None,
         ):
             """Apply one ``StatusLog`` call to the surface and draw its lines.
 
             ``StatusLog.set_relay`` reports ``log``, ``force_log``, ``notice``,
             ``pause`` and ``resume`` here as the Qt pane paints them.
             """
-            asked = log_request(action, message, level, kind)
+            asked = log_request(action, message, level, kind, lights)
             if asked is None:
                 return False
             payload = status_log_surface.view_model(asked)

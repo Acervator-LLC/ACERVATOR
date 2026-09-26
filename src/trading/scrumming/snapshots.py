@@ -12,6 +12,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Optional
 
 from ...core.event_bus import LINE_KIND_TRADE
+from ..gate_vocabulary import gate_light_row, unknown_blockers
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -42,6 +43,12 @@ PANEL_ABSENT_TEXT = "Panel not computed on this tick."
 NONE_TEXT = "none"
 YES_TEXT = "yes"
 NO_TEXT = "no"
+
+#: The word the per-tick gate line opens with, and the two banks it reads.
+GATE_LINE_PREFIX = "GATES"
+_GATE_LINE_BANKS: tuple[tuple[str, str], ...] = (("S", "Scrum"), ("F", "Fold"))
+_LANDING_STRIP_SIDE_KEY = "landing_strip_side"
+_SCRUM_FIXTURE_KEY = "scrum_fixture"
 
 
 def yes_no(flag: Any) -> str:
@@ -84,6 +91,72 @@ def _build_panel_snapshot(summary: Optional[VotingSummary]) -> dict:
     return snap
 
 
+def _panel_counts(panel: dict) -> str:
+    """The three direction counts one panel snapshot holds, as one sentence.
+
+    ``_panel_line`` opens with it and the GATES line carries it alone.
+    """
+    tally: dict[str, int] = {name: 0 for name in _PANEL_GROUPS}
+    for cell in panel.values():
+        direction = str(cell.get("dir", "") or UNKNOWN_DIRECTION)
+        tally[direction] = tally.get(direction, 0) + 1
+    counts = ", ".join(f"{tally[name]} {name.lower()}" for name in _PANEL_GROUPS)
+    return f"Panel {counts}."
+
+
+def _light_key(lights: list) -> str:
+    """One string naming every light's bank, label and state in draw order.
+
+    Two ticks whose gate state is identical produce the same key, which is
+    what the GATES line compares to decide whether it has anything to say.
+    """
+    return "|".join(
+        f"{one.get('bank', '')}{one.get('label', '')}={one.get('state', '')}"
+        for one in lights or []
+    )
+
+
+def _blocked_labels_on(lights: list, bank: str) -> list[str]:
+    """The labels one bank's blocked lights carry, in draw order."""
+    return [
+        str(one.get("label", ""))
+        for one in lights or []
+        if one.get("bank") == bank and one.get("state") == "blocked"
+    ]
+
+
+def _latched_risk_gates(blockers: list) -> list[str]:
+    """The names in ``blockers`` that ``_RISK_GATE_NAMES`` holds.
+
+    ``_gate_line_text`` names them, so the operator reads that the block
+    holds until its own condition clears.
+    """
+    # Stable ordering for grep + diff.
+    return sorted({str(one) for one in blockers or []} & _RISK_GATE_NAMES)
+
+
+def _gate_line_text(
+    lights: list, ticker_last: float, panel: dict, unknown: list, latched: list
+) -> str:
+    """The words the GATES line carries beside its lights.
+
+    Each bank reads ``armed`` or the labels ``_blocked_labels_on`` returns,
+    then ``ticker_last``, ``panel``, ``latched`` and ``unknown`` close it.
+    """
+    banks = []
+    for bank, title in _GATE_LINE_BANKS:
+        blocked = _blocked_labels_on(lights, bank)
+        state = f"blocked {', '.join(blocked)}" if blocked else "armed"
+        banks.append(f"{title} {state}.")
+    said = " ".join(banks)
+    tail = f" Latched {', '.join(latched)}." if latched else ""
+    tail += f" Unmapped {', '.join(sorted(set(unknown)))}." if unknown else ""
+    return (
+        f"{GATE_LINE_PREFIX} {said} "
+        f"Price ${ticker_last:.8f}. {_panel_counts(panel)}{tail}"
+    )
+
+
 def _panel_line(summary: Optional[VotingSummary]) -> str:
     """Render ``_build_panel_snapshot`` as a count and one group per
     direction, strongest ``conf`` first. A NEUTRAL vote holds zero
@@ -102,8 +175,7 @@ def _panel_line(summary: Optional[VotingSummary]) -> str:
             shown = f"{reading:.4f}" if isinstance(reading, float) else reading
             text = f"{text} ({cell['detail_key']} {shown})"
         grouped.setdefault(direction, []).append((confidence, text))
-    counts = ", ".join(f"{len(grouped[name])} {name.lower()}" for name in _PANEL_GROUPS)
-    rows = [f"Panel {counts}."]
+    rows = [_panel_counts(panel)]
     for direction, voters in grouped.items():
         voters.sort(key=lambda one: (-one[0], one[1]))
         named = ", ".join(text for _, text in voters) or NONE_TEXT
@@ -112,6 +184,10 @@ def _panel_line(summary: Optional[VotingSummary]) -> str:
 
 
 class SnapshotEmitterMixin(_Host):
+    #: ``ScrummingBot.__init__`` sets it; the GATES line reads it to stay quiet
+    #: while the gate state has not moved.
+    _last_gate_light_key: str
+
     # One sentence of the docstring below is overtaken. Quoted whole:
     #   "The StatusLog widget detects the prefix and colors by stage (SENT /
     #   PLACED / FILLED / CANCELLED)."
@@ -148,10 +224,29 @@ class SnapshotEmitterMixin(_Host):
                 _sup,
             )
 
-    def _emit_risk_gate_snapshot(
+    def _chain_risk_gates(self, chain_result) -> list:
+        """The ``_RISK_GATE_NAMES`` entries one ``ChainResult`` blocked on.
+
+        ``_last_gate_state`` carries a phrase per condition the bot tests, and
+        this adds the risk gates ``gate_chain`` reports under its own names.
+        """
+        try:
+            named = [str(name) for name, _msg in (chain_result.blocked or [])]
+        except Exception:
+            return []
+        return _latched_risk_gates(named)
+
+    # Two sentences of the docstring below are overtaken. Quoted whole:
+    #   "Write a RISK GATE line to bot.log when a risk gate blocked this
+    #   side's chain, naming the blockers and the voter panel behind them."
+    #   "Quiet by design: emits nothing when no risk gate is in the blocked
+    #   list."
+    # It writes one GATES line a tick carrying ``gate_light_row``'s nineteen
+    # lights for both banks, and it is quiet while the light row is unchanged.
+    def _emit_gate_light_line(
         self,
-        side: str,
-        chain_result,
+        scrum_result,
+        fold_result,
         summary,
         ticker_last: float,
     ) -> None:
@@ -164,25 +259,42 @@ class SnapshotEmitterMixin(_Host):
         design: emits nothing when no risk gate is in the blocked list.
         """
         try:
-            blocked_names = {n for n, _msg in (chain_result.blocked or [])}
-        except Exception:
-            return
-        risk_blockers = blocked_names & _RISK_GATE_NAMES
-        if not risk_blockers:
-            return
-        try:
-            # Stable ordering for grep + diff.
-            risk_blockers_sorted = sorted(risk_blockers)
-            msg = (
-                f"RISK GATE [{side.upper()}] blocked by "
-                f"{', '.join(risk_blockers_sorted)}. "
-                f"Price ${ticker_last:.8f}. "
-                f"{_panel_line(summary)}"
+            state = self._last_gate_state
+            scrum_blockers = list(state.get("scrum_blockers") or [])
+            scrum_blockers += self._chain_risk_gates(scrum_result)
+            fold_blockers = list(state.get("fold_blockers") or [])
+            fold_blockers += self._chain_risk_gates(fold_result)
+            fixture = state.get(_SCRUM_FIXTURE_KEY) or {}
+            lights = gate_light_row(
+                scrum_armed=bool(state.get("scrum_armed", False)),
+                fold_armed=bool(state.get("fold_armed", False)),
+                scrum_blockers=scrum_blockers,
+                fold_blockers=fold_blockers,
+                landing_strip_side=str(fixture.get(_LANDING_STRIP_SIDE_KEY, "") or ""),
             )
+            key = _light_key(lights)
+            # A host without the attribute draws every tick; it never goes dark.
+            if key == getattr(self, "_last_gate_light_key", ""):
+                return
+            self._last_gate_light_key = key
+            unknown = unknown_blockers(scrum_blockers) + unknown_blockers(fold_blockers)
+            latched = _latched_risk_gates(scrum_blockers + fold_blockers)
+            panel = _build_panel_snapshot(summary)
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=msg,
+                message=_gate_line_text(lights, ticker_last, panel, unknown, latched),
+                lights=lights,
+            )
+            # The whole voter panel and the blocker phrases the pane no longer
+            # draws; system.log keeps them for the Console tab to read.
+            logger.info(
+                "Bot %s GATES %s | scrum %s | fold %s | %s",
+                self.bot_id[:8],
+                key,
+                scrum_blockers,
+                fold_blockers,
+                _panel_line(summary),
             )
         except Exception as exc:
             # Don't disrupt the tick if the forensic emit itself fails.
@@ -197,7 +309,7 @@ class SnapshotEmitterMixin(_Host):
             except Exception as _sup:
                 logger.debug(
                     "suppressed in %s: %s: %s",
-                    "_emit_risk_gate_snapshot",
+                    "_emit_gate_light_line",
                     type(_sup).__name__,
                     _sup,
                 )

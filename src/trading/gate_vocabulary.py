@@ -40,6 +40,11 @@ _GATE_ORDER_FOLD: tuple[str, ...] = (
 # LS is an override, not a pass/fail gate, and never appears in a blocker list.
 _GATE_OVERRIDE = "LS"
 
+# One sentence of the module docstring above is overtaken. Quoted whole:
+#   "The labels and the blocker prefixes are the ones ScrummingBot writes into
+#   ``_last_gate_state.{scrum,fold}_blockers``."
+# The prefixes also carry the ``Gate.name`` values ``ChainResult.blocked``
+# reports, so a blocker named by either source resolves to the same label.
 # Ordered most-specific-first; sorting breaks the prefix match.
 _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     # scrum -- specific before general
@@ -62,6 +67,12 @@ _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     ("CB-soft-trip", "CB"),
     ("CB-hard", "CB"),
     ("OTD-hyst", "OTD"),
+    # Gate.name in src/trading/gate_chain.py, as ChainResult.blocked names it.
+    ("circuit_breaker_scrum", "CB"),
+    ("circuit_breaker_fold", "CB"),
+    ("smart_ceiling", "CEIL"),
+    ("hysteresis_scrum", "OTD"),
+    ("hysteresis_fold", "OTD"),
 )
 
 # The five light states and the colour each one paints.

@@ -317,9 +317,10 @@ if _HAS_WEBENGINE:
             message: str,
             level: str = surface.DEFAULT_LOG_LEVEL,
             kind: Optional[str] = None,
+            lights: Optional[list] = None,
         ) -> None:
             """Paint one line, or hold it while the pane is paused."""
-            self._log.log(message, level, kind=kind)
+            self._log.log(message, level, kind=kind, lights=lights)
             self._publish()
 
         def force_log(
@@ -327,9 +328,10 @@ if _HAS_WEBENGINE:
             message: str,
             level: str = surface.DEFAULT_FORCE_LEVEL,
             kind: Optional[str] = None,
+            lights: Optional[list] = None,
         ) -> None:
             """Paint one line whether or not the pane is paused."""
-            self._log.force_log(message, level, kind=kind)
+            self._log.force_log(message, level, kind=kind, lights=lights)
             self._publish()
 
         def is_paused(self) -> bool:
