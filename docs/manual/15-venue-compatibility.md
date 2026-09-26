@@ -1473,3 +1473,67 @@ first set out:
 
 The same figure overtakes both. Five variant names exist and the program holds two
 of them.
+
+## 2026-09-26 - a market buy with no price is refused by the connector and names why
+
+A market buy carries no price of its own. The venue prices it by multiplying the
+amount by a price, so it needs one. The connector fetches a ticker to supply it,
+for every venue, with no venue test in front of the fetch. That fetch fails in
+two ways: the call raises, or the ticker carries neither a last price nor an ask
+price.
+
+Until now both failures dropped the price and sent the order anyway. The trading
+library then refused it, from inside its own order builder, with a sentence about
+its own argument list. The order reached no venue either way. What a reader could
+not tell was which of the two failures had happened.
+
+The connector refuses first now. It names the venue, the market and which of the
+two failures occurred, writes one record at error level, counts one failure
+against that market's breaker, and sends nothing.
+
+```python
+# src/exchange/ccxt_connector.py:1180
+            if exec_price is None:
+                from ccxt.base.errors import InvalidOrder
+
+                refusal = (
+                    f"{self._exchange_id} refuses a MARKET BUY on {symbol} with "
+                    f"no price: {no_price_cause}"
+                )
+```
+
+### What a reader sees when the ticker serves no price
+
+Two sentences, one per failure, read off a run with every socket refused and the
+home redirected.
+
+```
+coinbase refuses a MARKET BUY on BTC/USD with no price:
+  fetch_ticker raised RuntimeError: ticker endpoint down
+
+coinbase refuses a MARKET BUY on BTC/USD with no price:
+  fetch_ticker served no last and no ask price
+```
+
+A market buy that does get a price is unchanged, and so are a limit order and a
+market sell. Driven on the same run, the market buy reached the order call
+carrying the figure the ticker served, the limit order reached it carrying its
+own price with no ticker fetched, and the market sell reached it with no price
+and no ticker fetched.
+
+### The sentence this entry adds beneath
+
+The page already carries the fetch, and that sentence stands as written.
+
+> src/exchange/ccxt_connector.py:1132   a spot market buy on Coinbase needs a
+> price, so a ticker is fetched first
+
+The sentence beneath it: when that ticker serves no price the connector refuses
+the order itself, names which step failed, and sends nothing to the venue.
+
+The fetch stays unconditional, and the reason is a reading of the trading
+library. The requirement is not declared in the library's capability map for the
+venue the fleet trades. It sits in that class's own option map instead, where it
+defaults to on. A reader that asked the capability map whether a price is needed
+would answer no, and removing the price would break every live market buy on
+that venue.

@@ -1166,13 +1166,43 @@ class CCXTConnector(ExchangeInterface):
             and side == OrderSide.BUY
             and exec_price is None
         ):
+            no_price_cause = ""
             try:
                 ticker = await self._call_sync(self._ex.fetch_ticker, symbol)
                 exec_price = float(ticker.get("last", 0) or ticker.get("ask", 0) or 0)
                 if exec_price <= 0:
-                    exec_price = None  # Fall back to no price
-            except Exception:  # The exchange accepts None here
+                    exec_price = None
+                    no_price_cause = "fetch_ticker served no last and no ask price"
+            except Exception as exc:
                 exec_price = None
+                no_price_cause = f"fetch_ticker raised {type(exc).__name__}: {exc}"
+            # create_order raises InvalidOrder on a MARKET BUY priced None.
+            if exec_price is None:
+                from ccxt.base.errors import InvalidOrder
+
+                refusal = (
+                    f"{self._exchange_id} refuses a MARKET BUY on {symbol} with "
+                    f"no price: {no_price_cause}"
+                )
+                _log.record(
+                    exchange=self._exchange_id,
+                    action="ORDER_REFUSED",
+                    reason=refusal,
+                    endpoint="create_order",
+                    params={
+                        "symbol": symbol,
+                        "side": side.value,
+                        "type": order_type.value,
+                        "amount": float(amount),
+                        "price": None,
+                    },
+                    result="Not sent. The venue prices a MARKET BUY as amount * price.",
+                    level="error",
+                    data_usage="No order reaches the venue and no fill is booked.",
+                )
+                refusal_error = InvalidOrder(refusal)
+                _breaker.record_failure(refusal_error)
+                raise refusal_error
 
         if exec_price is not None:
             exec_price = float(self._ex.price_to_precision(symbol, exec_price))
