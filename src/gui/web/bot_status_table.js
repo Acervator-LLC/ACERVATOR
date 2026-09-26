@@ -426,6 +426,8 @@
   // The unit factor that turns a unitless token into a CSS length.
   var PX_FACTOR = " * 1px)";
   var PX = "px";
+  // The CSS spelling of no padding and no line box, for the logo's own cell.
+  var NO_PAD = "0";
   // QFont point size in _get_coin_icon: int(size * 0.45).
   var DISC_LETTER_SHARE = 0.45;
 
@@ -862,6 +864,12 @@
       return element(CELL_TAG, cellProps, props.children);
     }
     if (isFilledText(found[LOGO_IMAGE])) {
+      // The sheet gives every cell CELL_PAD_PX above and below its content.
+      // A logo_size mark plus that padding is taller than row_height, so the
+      // logo's own cell drops it and the row keeps the height the surface set.
+      style.paddingTop = NO_PAD;
+      style.paddingBottom = NO_PAD;
+      style.lineHeight = NO_PAD;
       return element(
         CELL_TAG,
         cellProps,

@@ -8498,6 +8498,60 @@ the scroll bars                  same    same
 every other widget in the tab    same    same
 ```
 
+### The page reads the same row height as the window
+
+**Functional.** The page's own sheet gives every cell three pixels above and
+three below its content and a one-pixel rule beneath it, which is more room than
+the window's style leaves. A thirty-two pixel mark plus that padding is thirty-
+nine pixels, so the logo's own cell drops its vertical padding and the row keeps
+the height the payload set. No other cell and no rule in the sheet changes, so
+the Extractor table beneath is untouched.
+
+`src/gui/web/bot_status_table.js` — the logo's own cell
+
+```javascript
+style.paddingTop = NO_PAD;
+style.paddingBottom = NO_PAD;
+style.lineHeight = NO_PAD;
+```
+
+Read off the drawn page, nine rows, at all three widths:
+
+```
+reading                          before   after
+every row's drawn height          29-30      36
+the logo's drawn box                none   32 by 32
+the image behind it                 none   64 by 64
+the first column's drawn width      same    same
+every other column's drawn width    same    same
+the header row's drawn boxes        same    same
+the ten privacy dots               same    same
+the ten sort marks                 same    same
+```
+
+### The first column drawn off the page itself
+
+**Functional.** The same nine bots were driven through the React venue page and
+read off its own elements rather than off the payload. The page reported no fault
+of its own at any of the three widths.
+
+```
+state       first cell, before   Symbol cell, before   Symbol cell, after
+running     rgb(0,255,136)       rgb(102,204,255)      rgb(0,255,136)
+idle        rgb(136,136,136)     rgb(102,204,255)      rgb(136,136,136)
+paused      rgb(255,170,0)       rgb(102,204,255)      rgb(255,170,0)
+error       rgb(255,51,102)      rgb(102,204,255)      rgb(255,51,102)
+cooldown    rgb(255,102,0)       rgb(102,204,255)      rgb(255,102,0)
+stopped     rgb(102,102,102)     rgb(224,224,240)      rgb(102,102,102)
+starting    rgb(0,230,255)       rgb(224,224,240)      rgb(0,230,255)
+not named   rgb(224,224,240)     rgb(102,204,255)      rgb(224,224,240)
+not set     rgb(224,224,240)     rgb(102,204,255)      rgb(224,224,240)
+```
+
+The stand-in circle was present in all nine Symbol cells of the page before and
+in none of the nine after. Six of the nine first cells hold a drawn image and
+three hold their asset's ticker.
+
 ### The bot id keeps its places outside the table
 
 **Functional.** The bot id is still the thing a row is identified by. It stays in
