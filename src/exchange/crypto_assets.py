@@ -9,11 +9,17 @@ Maintains metadata for supported cryptocurrencies including:
 
 Logo caching: logos are downloaded once and cached in
 ``resources/logos/`` for offline use.
+
+``AssetManager.logo_answer`` reads that cache through ``LogoCache``, walking
+``logo_candidates`` once per asset and answering a reason rather than a path
+when no address serves an image. ``organisation_url`` answers the asset's
+``website`` only after its scheme is allowed.
 """
 
 from __future__ import annotations
 
-from ..core.safe_url import SafeRequest, safe_urlopen
+from ..core.asset_logos import LOGO_CACHE_DIR, LogoAnswer, LogoCache
+from ..core.safe_url import openable_url
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,7 +27,13 @@ from typing import Optional
 
 logger = logging.getLogger("acervator.assets")
 
-LOGO_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "resources" / "logos"
+#: The icon address keyed on the ticker alone, so a symbol no ``ASSETS`` entry
+#: names still resolves an address. It carries no CoinGecko image id and needs
+#: no lookup, which is what makes it the one address an unlisted asset has.
+#: Read live once, 2026-09-26, for the symbol ONDO: it answered 6,186 bytes of
+#: HTML and no failure code, so ``image_extension`` refuses that body. One
+#: symbol is not every symbol, and the address is kept for the rest.
+SYMBOL_ICON_URL = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 
 
 # Asset descriptor
@@ -460,12 +472,14 @@ for sym, name, cgid, cat, desc in [
         "Solana DEX aggregator routing trades through multiple liquidity sources.",
     ),
 ]:
+    # No logo_url: the address these rows carried named CoinGecko image
+    # directory 1, BTC's, for every one of them, because the format string
+    # substituted cgid into the file name only.
     _register(
         sym,
         name=name,
         coingecko_id=cgid,
-        logo_url=f"https://assets.coingecko.com/coins/images/1/small/{cgid}.png",
-        logo_fallback_url=f"https://www.cryptocompare.com/media/img/cc_icons/{sym}.png",
+        logo_fallback_url=SYMBOL_ICON_URL.format(symbol=sym),
         category=cat,
         description=desc,
     )
@@ -537,7 +551,7 @@ for sym, name, cgid, cat, desc in [
         sym,
         name=name,
         coingecko_id=cgid,
-        logo_fallback_url=f"https://www.cryptocompare.com/media/img/cc_icons/{sym}.png",
+        logo_fallback_url=SYMBOL_ICON_URL.format(symbol=sym),
         category=cat,
         description=desc,
     )
@@ -550,8 +564,9 @@ class AssetManager:
     """
 
     def __init__(self, cache_dir: Optional[Path] = None) -> None:
+        """Hold the logo cache; the directory is made on the first kept file, not here."""
         self._cache_dir = cache_dir or LOGO_CACHE_DIR
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._logos = LogoCache(self._cache_dir)
 
     def get_asset(self, symbol: str) -> Optional[CryptoAsset]:
         """Look up asset by ticker symbol (case-insensitive)."""
@@ -570,43 +585,44 @@ class AssetManager:
 
     def get_logo_path(self, symbol: str) -> Optional[Path]:
         """Return local cached logo path, or None if not cached."""
-        sym = symbol.upper()
-        for ext in ("png", "svg", "jpg"):
-            path = self._cache_dir / f"{sym}.{ext}"
-            if path.exists():
-                return path
-        return None
+        return self._logos.kept_path(symbol)
+
+    def logo_candidates(self, symbol: str) -> tuple[str, ...]:
+        """Every address ``symbol``'s logo may be served at, best first.
+
+        A symbol no ``ASSETS`` entry names still answers one address, built from
+        ``SYMBOL_ICON_URL`` on the ticker, so an asset the database does not
+        carry resolves without a lookup.
+        """
+        name = str(symbol).strip().upper()
+        if not name:
+            return ()
+        asset = self.get_asset(name)
+        addresses = [asset.logo_url, asset.logo_fallback_url] if asset else []
+        addresses.append(SYMBOL_ICON_URL.format(symbol=name))
+        seen: list[str] = []
+        for one in addresses:
+            if one and one not in seen:
+                seen.append(one)
+        return tuple(seen)
+
+    def logo_answer(self, symbol: str) -> LogoAnswer:
+        """``symbol``'s kept logo file, or a ``LogoAnswer`` naming why there is none."""
+        return self._logos.resolve(symbol, self.logo_candidates(symbol))
+
+    def organisation_url(self, symbol: str) -> tuple[str, str]:
+        """``symbol``'s ``website`` a browser may open, and the reason a refused one is not."""
+        asset = self.get_asset(symbol)
+        return openable_url(asset.website if asset else "")
 
     def download_logo(self, symbol: str) -> Optional[Path]:
         """Download logo to cache if not already present. Returns cached path."""
-        cached = self.get_logo_path(symbol)
-        if cached:
-            return cached
-
-        url = self.get_logo_url(symbol)
-        if not url:
-            return None
-
-        try:
-            dest = self._cache_dir / f"{symbol.upper()}.png"
-            req = SafeRequest(url)
-            req.add_header("User-Agent", "Acervator/2.8")
-            with safe_urlopen(req, timeout=10) as resp:
-                data = resp.read()
-            if len(data) > 100:  # Valid image
-                dest.write_bytes(data)
-                logger.info("Cached logo for %s (%d bytes)", symbol, len(data))
-                return dest
-        except Exception as exc:
-            logger.debug("Logo download failed for %s: %s", symbol, exc)
-        return None
+        return self.logo_answer(symbol).path
 
     def get_logo_url(self, symbol: str) -> str:
         """Return the best logo URL for an asset."""
-        asset = self.get_asset(symbol)
-        if asset:
-            return asset.logo_url or asset.logo_fallback_url
-        return f"https://www.cryptocompare.com/media/img/cc_icons/{symbol.upper()}.png"
+        candidates = self.logo_candidates(symbol)
+        return candidates[0] if candidates else ""
 
     def get_description(self, symbol: str) -> str:
         """Return the whitepaper-derived description for an asset."""

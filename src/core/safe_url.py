@@ -5,7 +5,10 @@ is outside ``DEFAULT_ALLOWED_SCHEMES``, and it runs both at ``SafeRequest``
 construction and inside ``safe_urlopen``. ``_build_restricted_opener``
 installs http and https handlers only; a ``file:``, ``ftp:`` or ``data:``
 URL raises ``URLError`` from ``UnknownHandler``. The ``allowed_schemes``
-argument narrows that allowlist and never widens it.
+argument narrows that allowlist and never widens it. ``openable_url`` checks the
+same allowlist for an address bound for the system browser, and answers a
+refused one as an empty address carrying ``NO_ADDRESS_REASON`` or
+``REFUSED_SCHEME_REASON``.
 """
 
 from __future__ import annotations
@@ -17,9 +20,22 @@ from typing import TYPE_CHECKING, Iterable, Optional, Union
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     import ssl
 
-__all__ = ["DEFAULT_ALLOWED_SCHEMES", "SafeRequest", "safe_urlopen"]
+__all__ = [
+    "DEFAULT_ALLOWED_SCHEMES",
+    "NO_ADDRESS_REASON",
+    "REFUSED_SCHEME_REASON",
+    "SafeRequest",
+    "openable_url",
+    "safe_urlopen",
+]
 
 DEFAULT_ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
+
+#: What ``openable_url`` answers for an address holding no scheme at all.
+NO_ADDRESS_REASON = "no address is known"
+
+#: What ``openable_url`` answers for a scheme outside the allowlist.
+REFUSED_SCHEME_REASON = "the {scheme} scheme does not open; allowed: {allowed}"
 
 
 def _extract_url(req_or_url: Union[str, urllib.request.Request]) -> str:
@@ -46,6 +62,29 @@ def _require_allowed_scheme(
             f"safe_urlopen: refused scheme {scheme!r} "
             f"(URL: {url!r}). Allowed schemes: {sorted(allowed)}."
         )
+
+
+def openable_url(
+    url: object,
+    allowed_schemes: Optional[Iterable[str]] = None,
+) -> tuple[str, str]:
+    """An address a browser may open, with ``NO_ADDRESS_REASON`` or ``REFUSED_SCHEME_REASON`` for one it may not."""
+    text = str(url)
+    allowed = (
+        DEFAULT_ALLOWED_SCHEMES
+        if allowed_schemes is None
+        else frozenset(one.lower() for one in allowed_schemes)
+    )
+    try:
+        _require_allowed_scheme(text, allowed)
+    except ValueError:
+        scheme = (urllib.parse.urlparse(text).scheme or "").lower()
+        if not scheme:
+            return "", NO_ADDRESS_REASON
+        return "", REFUSED_SCHEME_REASON.format(
+            scheme=scheme, allowed=", ".join(sorted(allowed))
+        )
+    return text, ""
 
 
 def _build_restricted_opener(
