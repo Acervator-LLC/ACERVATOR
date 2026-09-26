@@ -8484,4 +8484,115 @@ nothing is fetched until a row asks
     the cache holds 0 files, and no screen asks yet
 ```
 
+### A stock resolves its own organisation's mark
+
+**Functional.** A stock ticker answers the company's own internet domain, and the
+company's own site answers the mark. The domain sits beside the fund and central
+bank domains already held, keyed on the ticker the map uses. Nothing is looked
+up, no key is held, and nothing has to appear on a screen.
+
+`src/trading/ata_asset_maps.py` — a company's own domain, keyed on its ticker
+
+```python
+ORGANISATION_SITES: dict[str, str] = {
+    "AAPL": "apple.com",
+    "MSFT": "microsoft.com",
+    "NVDA": "nvidia.com",
+    "ROKU": "roku.com",
+    "KOSS": "koss.com",
+    "SPY": "ssga.com",
+}
+```
+
+One sentence in the section above is overtaken. Quoted whole:
+
+> "A stock, a fund share, a metal and a currency pair do not resolve the way a
+> coin does."
+
+**OVERTAKEN.** A stock and a fund share now resolve the same way a fund share
+already did: from the organisation's own domain. A metal quote still resolves
+nothing.
+
+### The third location a mark is served at
+
+**Functional.** Two standard locations are asked first. Where neither answers an
+image, the organisation's own page is read and the icon that page declares for
+itself is asked next. That is the third place a browser looks, and it is what
+resolves a company that publishes a mark without serving either standard path.
+
+`src/core/asset_logos.py` — the icon a page declares for itself
+
+```python
+def declared_icons(page_url: str, body: bytes) -> tuple[str, ...]:
+    """Every icon address ``body``'s own link tags declare, absolute against ``page_url``."""
+```
+
+Driven live over six tickers, one read per line, each kept file read back off
+disk afterwards.
+
+```
+ticker  size   domain           reads  what came back
+AAPL    large  apple.com          1    a PNG of 4,506 bytes
+MSFT    large  microsoft.com      1    a JPEG of 843 bytes
+NVDA    large  nvidia.com         2    an ICO of 25,214 bytes
+ROKU    mid    roku.com           1    a PNG of 4,342 bytes
+GME     mid    gamestop.com       2    nothing: its own certificate chain
+KOSS    small  koss.com           3    a PNG of 2,997 bytes
+```
+
+Five of the six answered a mark. The first location on `nvidia.com` answered
+success and was not an image, and the signature check refused it before it could
+be kept. GME is the one failure: that host's certificate chain does not verify,
+and no verification was relaxed to reach it.
+
+### What the company register answers
+
+**Functional.** The regulator's own company page carries a field for a company's
+web address and the field is empty. The register names the company and not its
+site, so the domain is held here instead of being looked up.
+
+```
+data.sec.gov, ticker CIK 0000320193     "website": ""
+the same record                         "investorWebsite": ""
+the same record                         "name": "Apple Inc."
+```
+
+### What resolves per class after the stock rows land
+
+**Functional.** Counted again over every row the three non-crypto maps hold, and
+over the crypto records.
+
+```
+class         rows   a logo address   an organisation address
+stocks          47               43                        47
+commodities     14               10                        10
+forex           28               28                        28
+crypto          48               48                        10
+```
+
+Two readings in the section above are overtaken. Quoted whole:
+
+> "the 47 stocks rows have no logo address
+>     a company's own domain is not a fact this repository holds for a ticker,
+>     and no keyless service keyed on a ticker was accepted"
+
+**OVERTAKEN.** Forty-three of the 47 stock rows carry a logo address. A company's
+own domain is now a fact this repository holds, against the ticker, for every
+company on the list that still trades.
+
+What still resolves nothing, and why each one does not.
+
+```
+4 stock rows            the company no longer trades, so it publishes nothing:
+                        BBBY, CCIV, EXPR, IPOF
+4 metal spot pairs      a metal has no issuer, and no venue quotes these four,
+                        so no bot targets one
+1 of 43 stock domains   gamestop.com answers, and its certificate chain does
+                        not verify
+38 of 43 stock domains  the domain is held and was not read live
+```
+
+Each of those answers a reason rather than a blank, and a row with no mark draws
+its symbol exactly as it does today.
+
 Back to [the subsystem index](README.md).
