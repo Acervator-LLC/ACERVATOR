@@ -1376,12 +1376,21 @@ def rules_from_row(row: Any) -> Any:
     """The ``MarketRules`` one recorded row describes, ``read`` False for a row
     the recording does not hold."""
     from ...exchange.base import MarketRules
-    from ...exchange.market_rules_store import RULE_FIELDS, rule_value
+    from ...exchange.market_rules_store import (
+        RULE_FIELDS,
+        TEXT_RULE_FIELDS,
+        rule_text,
+        rule_value,
+    )
 
     if not isinstance(row, dict):
         return MarketRules(read=False)
+    # market_reason holds no venue name, so the recorded declaration is the only
+    # order-type source here.
     return MarketRules(
-        read=True, **{name: rule_value(row.get(name)) for name in RULE_FIELDS}
+        read=True,
+        **{name: rule_value(row.get(name)) for name in RULE_FIELDS},
+        **{name: rule_text(row.get(name)) for name in TEXT_RULE_FIELDS},
     )
 
 

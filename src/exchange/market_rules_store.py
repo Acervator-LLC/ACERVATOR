@@ -34,6 +34,12 @@ RULE_FIELDS = (
     "expiry_ms",
 )
 
+# OVERTAKEN, the comment above reading "``expiry_ms`` is a fifth": ``RULE_FIELDS``
+# holds the five NUMERIC rules, and ``order_types`` is a string.
+#: The text rules ``MarketRules`` carries, each recorded under its own name. A row
+#: recorded before one holds no such key and answers None.
+TEXT_RULE_FIELDS = ("order_types",)
+
 
 def store_path() -> Path:
     """``STORE_NAME`` under the runtime home, resolved on every call and never
@@ -49,9 +55,24 @@ def rule_value(value: Any) -> Optional[float]:
     return parsed if math.isfinite(parsed) else None
 
 
-def rules_row(rules: Any) -> dict[str, Optional[float]]:
+def rule_text(value: Any) -> Optional[str]:
+    """``value`` as a string when it is a non-empty string, else None."""
+    if type(value) is not str:
+        return None
+    return value or None
+
+
+# OVERTAKEN in rules_row's docstring below: "``rules``'s ``RULE_FIELDS`` as one
+# row, an unpublished rule None."
+# ``TEXT_RULE_FIELDS`` is written into the same row through ``rule_text``.
+def rules_row(rules: Any) -> dict[str, Any]:
     """``rules``'s ``RULE_FIELDS`` as one row, an unpublished rule None."""
-    return {name: rule_value(getattr(rules, name, None)) for name in RULE_FIELDS}
+    row: dict[str, Any] = {
+        name: rule_value(getattr(rules, name, None)) for name in RULE_FIELDS
+    }
+    for name in TEXT_RULE_FIELDS:
+        row[name] = rule_text(getattr(rules, name, None))
+    return row
 
 
 def load_document(path: Optional[Path] = None) -> dict:
@@ -111,6 +132,7 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
         amount_increment=rule_value(row.get("amount_increment")),
         price_increment=rule_value(row.get("price_increment")),
         expiry_ms=rule_value(row.get("expiry_ms")),
+        order_types=rule_text(row.get("order_types")),
         read=True,
     )
 
@@ -118,9 +140,11 @@ def recorded_rules(venue: str, symbol: str, path: Optional[Path] = None) -> Mark
 __all__ = [
     "RULE_FIELDS",
     "STORE_NAME",
+    "TEXT_RULE_FIELDS",
     "load_document",
     "record_venue",
     "recorded_rules",
+    "rule_text",
     "rule_value",
     "rules_row",
     "store_path",
