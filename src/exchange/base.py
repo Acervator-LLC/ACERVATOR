@@ -307,13 +307,18 @@ class ExchangeInterface(ABC):
 
     @abstractmethod
     async def get_ohlcv(
-        self, symbol: str, timeframe: str = "1h", limit: int = 100
+        self,
+        symbol: str,
+        timeframe: str = "1h",
+        limit: int = 100,
+        since: Optional[int] = None,
     ) -> list[list[float]]:
         """Return rows ``[timestamp_ms, open, high, low, close, volume]``.
 
-        ``timeframe`` names the candle interval and ``limit`` the row count.
+        ``timeframe`` names the candle interval, ``limit`` the row count, and
+        ``since`` the epoch milliseconds the rows start at.
         """
-        del symbol, timeframe, limit
+        del symbol, timeframe, limit, since
         raise NotImplementedError
 
     @abstractmethod

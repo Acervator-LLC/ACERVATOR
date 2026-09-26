@@ -18,9 +18,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional, cast
 
+from ..trading.ta_engine import MIN_CANDLES_FOR_TA
 from .market_pairs_scout import row_quote_volume_24h
 
 logger = logging.getLogger("acervator.data_pool")
+
+# MIN_CANDLES_FOR_TA periods per candle MIN_CANDLES_FOR_TA needs, so
+# next_reach_back_ms stops at one traded row in MIN_CANDLES_FOR_TA.
+REACH_BACK_PERIODS = MIN_CANDLES_FOR_TA * MIN_CANDLES_FOR_TA
 
 TF_SECONDS = {
     "1m": 60,
@@ -77,6 +82,7 @@ class CacheEntry:
     fetch_count: int = 0
     errors: int = 0
     venue_row_cap: Optional[int] = None
+    reach_back_since: Optional[int] = None
 
     @property
     def age_seconds(self) -> float:
@@ -113,6 +119,27 @@ class CacheEntry:
         supplied_rows = len(rows) if distinct_rows is None else len(distinct_rows)
         self.candles = rows[-keep:] if merged is None else merged[-keep:]
         self.venue_row_cap = supplied_rows if supplied_rows < keep else None
+
+    def next_reach_back_ms(self, requested: int) -> Optional[int]:
+        """Epoch milliseconds of the window before the oldest row or last
+        ``reach_back_since``, recorded, None at ``MIN_CANDLES_FOR_TA`` rows or past
+        ``REACH_BACK_PERIODS``."""
+        if self.venue_row_cap is None or len(self.candles) >= MIN_CANDLES_FOR_TA:
+            return None
+        stamps = [
+            at for at in (_row_timestamp(row) for row in self.candles) if at is not None
+        ]
+        if not stamps:
+            return None
+        edge = min(stamps)
+        if self.reach_back_since is not None:
+            edge = min(edge, float(self.reach_back_since))
+        period = TF_SECONDS.get(self.timeframe, 3600)
+        since = int(edge) - max(1, int(requested)) * period * 1000
+        if since < int((time.time() - REACH_BACK_PERIODS * period) * 1000):
+            return None
+        self.reach_back_since = since
+        return since
 
 
 @dataclass
@@ -489,7 +516,12 @@ class MarketDataPool:
                 self._candles[key] = entry
 
             requested = max(limit, 100)
-            candles = await connector.get_ohlcv(symbol, timeframe, limit=requested)
+            candles = await connector.get_ohlcv(
+                symbol,
+                timeframe,
+                limit=requested,
+                since=entry.next_reach_back_ms(requested),
+            )
             entry.merge_fetch(list(candles or []), requested)
             entry.fetch_time = time.time()
             entry.fetch_count += 1
@@ -733,7 +765,10 @@ class MarketDataPool:
                 try:
                     rows_requested = 100
                     candles = await connector.get_ohlcv(
-                        entry.symbol, entry.timeframe, limit=rows_requested
+                        entry.symbol,
+                        entry.timeframe,
+                        limit=rows_requested,
+                        since=entry.next_reach_back_ms(rows_requested),
                     )
                     entry.merge_fetch(list(candles or []), rows_requested)
                     entry.fetch_time = time.time()

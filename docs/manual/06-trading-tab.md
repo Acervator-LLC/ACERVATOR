@@ -8085,3 +8085,97 @@ takes that room scaled by its own characters.
 row's floors now sum to 137 px more than before, so the narrowest the window
 opens at rises by the same 137 px. Nothing is cut off at any width the window
 reaches; the window refuses to open narrower than its floors.
+
+## 2026-09-26 - #928 - the pool reaches back for the bars the engine needs
+
+### A short answer is not a short history
+
+**Functional.** A market that returns eleven bars is not a market that has eleven
+bars. The venue answers with the periods that traded inside a window ending now, so
+a market that trades rarely returns a handful however long it has been listed.
+
+Read from the console log for one of the named markets at five minutes, over four
+days and 5,494 recorded answers:
+
+| day | bars the venue returned |
+|---|---|
+| 2026-09-23 | 11 to 35 |
+| 2026-09-24 | 14 to 39 |
+| 2026-09-25 | 11 to 27 |
+| 2026-09-26 | 7 to 21 |
+
+The count falls as well as rises, and falls across days. A market limited by its own
+record gains bars and never loses them, so this count is the trading inside the
+window and not the length of the record. The history is there. The request was never
+reaching back for it.
+
+### The request asks for a span of time, not a count of bars
+
+**Functional.** The pool asked for the most recent bars and nothing else, so a
+market that fills few of the recent periods was sent the same short answer for ever.
+A slot the venue cannot fill now asks for the window immediately before the oldest
+bar it holds. Each refresh therefore adds older bars, the merge already in place
+folds them in on bar time, and the stored series grows until it holds what the engine
+needs.
+
+`src/exchange/data_pool.py` - the window a short slot asks for next
+
+```python
+    def next_reach_back_ms(self, requested: int) -> Optional[int]:
+        """Epoch milliseconds of the window before the oldest row or last
+        ``reach_back_since``, recorded, None at ``MIN_CANDLES_FOR_TA`` rows or past
+        ``REACH_BACK_PERIODS``."""
+```
+
+### Where the span comes from, and what bounds it
+
+**Functional.** Two figures already in the tree set the span, and no third figure was
+chosen. The engine's floor lives beside the engine that needs it, and the length of
+one period lives in the pool's own table of timeframes. The pool reaches back thirty
+periods for each of the thirty bars the engine needs, which is nine hundred periods,
+or seventy-five hours at five minutes.
+
+`src/exchange/data_pool.py` - the bound, built from the floor and the period
+
+```python
+REACH_BACK_PERIODS = MIN_CANDLES_FOR_TA * MIN_CANDLES_FOR_TA
+```
+
+A market that trades in fewer than one period in thirty cannot reach the floor inside
+that span. At that point the pool stops reaching back, keeps the bars it has, and the
+panel prints the sentence it printed before.
+
+Driven on a market trading one period in nine, twelve refreshes, the venue answering
+only what traded inside each window:
+
+| reading | before | after |
+|---|---|---|
+| bars the slot holds | 12 | 34 |
+| venue calls | 12 | 12 |
+| refreshes that asked for an older window | 0 | 2 |
+| repeated bar times | 0 | 0 |
+| bars in time order | yes | yes |
+
+Driven again on a market trading one period in two hundred, the same twelve
+refreshes: five bars held, twelve venue calls, eight refreshes asked for an older
+window and the bound then stopped it, no repeated bar time, bars in time order. That
+market never reaches the floor, and it stops asking.
+
+### A market that fills the count is untouched
+
+**Functional.** A slot records how many bars the venue supplied only when that is
+fewer than the number asked for. A market that fills the count carries no such
+record, so no start time is computed for it and none is sent.
+
+Driven on a market where every period trades, twelve refreshes, every reading is the
+same on both sides of this entry: one hundred bars held, twelve venue calls, no start
+time sent, and the same oldest bar.
+
+### The sentence about waiting is overtaken
+
+**Overtaken.** *"At five minutes a slot holding thirteen bars gains one every five
+minutes, and the engine's floor of thirty is reached about eighty-five minutes after
+the bot starts."*
+
+A slot short of the floor asks for an older window on each refresh instead of waiting
+for new bars, so the floor is reached from the history the venue already holds.
