@@ -1023,9 +1023,19 @@ if _HAS_WEBENGINE:
             """Hold the ledger figures the runner posted, what ``aggregate`` reads."""
             self._figures = dict(figures or {})
 
+        # One sentence of the docstring below is overtaken. Quoted whole:
+        #   "Hold one fill the runner posted, in fill order."
+        # The fill also paints ``fill_line`` through ``log_at`` and pushes it.
         def _take_trade(self, trade: PaperTrade) -> None:
             """Hold one fill the runner posted, in fill order."""
             self._fills.append(trade)
+            self._log.log_at(
+                tab_surface.fill_stamp(trade),
+                tab_surface.fill_line(trade),
+                tab_surface.FILL_LINE_LEVEL,
+                tab_surface.FILL_LINE_KIND,
+            )
+            self.show_models({LOG_METHOD: log_payload(self._log)})
 
         def _take_bot_stats(self, snapshot: Any) -> None:
             """Write one ``BotStatsSnapshot`` into the held record through
