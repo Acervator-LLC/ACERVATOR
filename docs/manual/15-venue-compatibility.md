@@ -710,3 +710,346 @@ previously refused.
 A market whose venue published no step is not sized and is not refused on that
 ground. `0.0 < _sized.units < _amt` guards the assignment, which refuses a larger
 amount whatever answers it.
+
+## 2026-09-25 - every venue set beside every other, and the verdict per venue
+
+This page already answers one question per venue: does a scrum's excess survive
+the venue's own size rule. That is one of five things the bot needs. This entry
+adds the other four, sets all five side by side, and closes with a single yes or
+no per venue.
+
+Nothing above this heading is deleted or reworded. Two cells are overtaken and
+both are quoted whole under *What this entry overtakes and what it corrects*.
+
+### What the bot as written requires of a venue
+
+Five requirements, each read off the tree. A venue meeting all five is traded by
+the bot that exists today, with no variant.
+
+```
+1  a connector the running program constructs
+   src/exchange/ccxt_connector.py:284   CCXTConnector, 30 importing sites
+   src/stocks/broker_base.py:108        BrokerBase, no caller
+
+2  an order whose size is a count of base units
+   src/exchange/base.py:299   place_order(symbol, side, order_type, amount, price, ...)
+
+3  a market order, a limit order, and a limit order carried immediate-or-cancel
+   src/exchange/base.py:30    OrderType MARKET, LIMIT, IOC_LIMIT
+
+4  a size rule the record can hold, and a smallest order under the excess
+   src/trading/scrumming/sizing.py:272   sized_order
+
+5  a market record the connector can read
+   src/exchange/ccxt_connector.py:245    market_rules
+```
+
+### Whether Acervator itself can reach a venue today
+
+The reachability column higher up this page answers whether the venue accepts a
+United States account. This one answers a different question: does the running
+program hold code that submits an order there.
+
+| Venue | Class | A connector the program constructs | What was measured |
+| ----- | ----- | ---------------------------------- | ----------------- |
+| the fifteen crypto ids | crypto | yes, one connector serves all fifteen | `git grep` finds 30 sites importing the crypto connector |
+| Alpaca | stocks | no | the one broker connector is imported by nothing |
+| Interactive Brokers, Schwab, tastytrade, E\*TRADE, Webull, TD Ameritrade, Fidelity | stocks | no | no module names any of the seven |
+| OANDA, FOREX.com, tastyfx | forex | no | no venue list holds a forex id |
+| Tradovate, NinjaTrader | futures | no | no venue list holds a futures id |
+
+Two searches over the git index give that column, and the second is the control
+for the first.
+
+```
+git grep -n alpaca_connector -- src/ main.py tools/
+  -> src/stocks/alpaca_connector.py:2, its own docstring, and nothing else
+
+git grep -n broker_base -- src/ main.py tools/
+  -> src/stocks/alpaca_connector.py:14, and the module's own docstring
+
+control, the same command on the crypto connector
+git grep -n ccxt_connector -- src/ main.py tools/
+  -> 30 sites, one of them importing it under an alias
+```
+
+The equities order path is a contract with no caller. A venue served only by
+that path cannot be traded today whatever its own rules allow, and that is the
+reason every stocks row above reads no.
+
+### Every venue's order shape, set side by side
+
+One order, two contracts, and the differences are visible in one table. The
+crypto contract names an amount and hands it to the trading library, which
+translates to each venue's own endpoint. The broker contract names a quantity
+and posts it as JSON.
+
+| | Crypto, the fifteen ids | Alpaca, the one broker | Interactive Brokers, Schwab, tastytrade, E\*TRADE | OANDA, FOREX.com, tastyfx | Tradovate, NinjaTrader |
+| --- | --- | --- | --- | --- | --- |
+| What an order must carry | symbol, side, type, amount, optional price, optional client order id | symbol, side, quantity, type, time in force, optional limit and stop prices | not stated by the pages read | not stated by the pages read | not stated by the pages read |
+| Size named as | a count of base units | a share count, sent as a string | a share count | a count of currency units | a whole contract count |
+| Price named as | a float moved to the venue's own tick | a string, only on a limit or stop order | a per-contract minimum increment | not stated by the pages read | the product's own tick |
+| Order types the tree sends | market, limit, limit with immediate-or-cancel | market, limit, stop, stop limit, trailing stop are declared; nothing sends one | none, no connector exists | none, no connector exists | none, no connector exists |
+| How it is submitted | the library's own create-order call | a POST to the broker's orders endpoint | not reached | not reached | not reached |
+| Where it is read | `src/exchange/base.py:299` | `src/stocks/alpaca_connector.py:180` | this page's venue table | this page's venue table | this page's venue table |
+
+Three differences the crypto path already absorbs per venue, and each is a line
+in one connector rather than a variant.
+
+```
+src/exchange/ccxt_connector.py:1169   the client-order-id field name per venue
+                                      coinbase   client_order_id
+                                      binance    newClientOrderId
+                                      kraken     userref
+                                      every other  clientOrderId
+
+src/exchange/ccxt_connector.py:1183   no venue carries an immediate-or-cancel
+                                      type, so it is sent as a limit order
+                                      carrying timeInForce IOC
+
+src/exchange/ccxt_connector.py:1132   a spot market buy on Coinbase needs a
+                                      price, so a ticker is fetched first
+```
+
+### The order types each crypto venue declares
+
+The trading library publishes a capability map per exchange class. Read as
+installed, with every socket refused and no venue contacted, it answers which
+order shapes each of the fifteen offered venues declares.
+
+| Venue | market order | limit order | market buy by cash amount | market sell by cash amount |
+| ----- | ------------ | ----------- | ------------------------- | -------------------------- |
+| binance | yes | yes | yes | yes |
+| bitfinex | yes | yes | not declared | not declared |
+| bitget | yes | yes | yes | no |
+| bitstamp | yes | yes | not declared | not declared |
+| bybit | yes | yes | yes | yes |
+| coinbase | yes | yes | yes | no |
+| cryptocom | yes | yes | no | no |
+| gateio | yes | yes | yes | no |
+| gemini | **no** | yes | not declared | not declared |
+| huobi | yes | yes | yes | no |
+| kraken | yes | yes | yes | no |
+| kucoin | yes | yes | yes | yes |
+| mexc | yes | yes | yes | yes |
+| okx | yes | yes | yes | yes |
+| poloniex | yes | yes | yes | no |
+
+Three counts fall out of that table and each one bears on a variant. Every one
+of the fifteen declares a limit order. Fourteen declare a market order, and the
+exception is gemini. Eleven declare a market buy by cash amount, and only five
+declare the sell side of it.
+
+```
+createOrder                     15 of 15
+createLimitOrder                15 of 15
+createMarketOrder               14 of 15   gemini declares it False
+createMarketBuyOrderWithCost    11 of 15
+createMarketSellOrderWithCost    5 of 15
+createStopLimitOrder            11 of 15
+createStopMarketOrder            8 of 15
+
+control, the same reader on a capability the library does not carry
+  has["createOrder"]          -> True
+  has["zzNoSuchCapability"]   -> None
+  keys in coinbase.has        -> 246
+```
+
+The fifth line matters more than its size suggests. A scrum sells, and a cash
+amount reaches the sell side at a third of the offered venues.
+
+### The size rule shape, and the two venues that publish none
+
+The record a bot reads holds a size step. Of the 104 exchange classes the
+installed trading library carries, 102 publish a step-shaped size rule and 2
+publish significant-digit precision instead. One of those two is on the offered
+list.
+
+| Reading | Figure |
+| ------- | ------ |
+| exchange classes in the installed library | 104 |
+| classes publishing a step-shaped size rule | 102 |
+| classes publishing significant digits instead | 2, bitfinex and bithumb |
+| of those two, on Acervator's offered list | 1, bitfinex |
+
+Two controls sit beside that count. The reader answers a step under the
+step-shaped mode and nothing under the significant-digit one, which makes the
+figure 2 a fact about the venues rather than about the reader. Every class was
+read with the socket constructor replaced by one that raises.
+
+```
+precision_to_increment("0.01", TICK_SIZE)           -> 0.01
+precision_to_increment("2",    DECIMAL_PLACES)      -> 0.01
+precision_to_increment("5",    SIGNIFICANT_DIGITS)  -> None
+
+104 classes instantiated, 0 failed, sockets refused for the whole census
+```
+
+Driven on the five rule shapes a record can carry, the order gate floors an
+amount only where a step was published. A venue publishing a minimum and no
+step keeps its minimum refusal and takes no flooring.
+
+| What the record carries | An amount of 92.62189809510927 becomes | Sized by |
+| ----------------------- | -------------------------------------- | -------- |
+| step 0.01, minimum 0.1 | 92.62 | recorded venue rules |
+| minimum 0.1, no step | 92.62189809510927 | recorded venue rules |
+| no minimum, no step | 92.62189809510927 | cited unit rule |
+| step 1.0, minimum 1.0 | 92.0 | recorded venue rules |
+| no record read | 92.62189809510927 | cited unit rule |
+
+The control on that table is an amount under the minimum, which refuses rather
+than sizing, so an empty refusal above is a reading and not a silence.
+
+```
+sized_order(0.05, fractional, MarketRules(min_amount=0.1))
+  -> units 0.0, refusal "below the venue's minimum size"
+```
+
+The trading library still rounds the amount inside the connector for every
+venue, so a significant-digit venue is not handed raw float digits. bitfinex
+carries its own override of that rounding. Read with a planted market record and
+no network, an amount of 92.62189809510927 came back as 92.62189 for a published
+5 and as 92.62189809 for a published 8.
+
+```
+coinbase, published step 0.01   -> "92.62"
+coinbase, published step 1.0    -> "92"
+bitfinex, published 5           -> "92.62189"
+bitfinex, published 8           -> "92.62189809"
+bithumb,  published 4           -> "92.6218"
+```
+
+### Can the bot as written trade here
+
+The deliverable. One row per venue, two yes-or-no columns, and every no naming
+what would have to change. The first column asks whether the bot's own order
+shape fits the venue's rules. The second asks whether an order can reach the
+venue at all from this program and a United States account.
+
+| Venue | The bot's shape fits | An order can reach it today | What the no is |
+| ----- | -------------------- | --------------------------- | -------------- |
+| coinbase, spot | yes | yes | — |
+| kraken | yes | yes | — |
+| kucoin | yes | yes | — |
+| okx | yes | yes | — |
+| gateio | yes | yes | — |
+| bitget | yes | yes | — |
+| mexc | yes | yes | — |
+| bitstamp | yes | yes | — |
+| cryptocom | yes | yes | — |
+| bitfinex | yes | yes | — |
+| gemini | **no** | yes | the venue declares no market order, and the bot names a market order at nine of the thirteen places it names an order type |
+| binance | yes | **no** | the venue refuses a United States address; the bot's shape is not the obstacle |
+| bybit | yes | **no** | the venue refuses a United States address; the bot's shape is not the obstacle |
+| poloniex | yes | **no** | the venue restricts a United States account; the bot's shape is not the obstacle |
+| huobi | yes | **no** | the venue restricts a United States account; the bot's shape is not the obstacle |
+| coinbase, US futures | **no** | **no** | a contract is whole, and an excess under one contract cannot be sold |
+| Alpaca | yes | **no** | nothing constructs the broker connector, so the order path has no caller |
+| Webull | yes | **no** | nothing constructs a connector for it, and none exists |
+| Interactive Brokers | **no** | **no** | a quantity order rounds down to whole shares, and no connector exists |
+| Schwab | **no** | **no** | the Trader API places no fractional order, and no connector exists |
+| tastytrade | **no** | **no** | no fractional quantity for automated trading, and no connector exists |
+| E\*TRADE | **no** | **no** | no fractional share of an individual stock, and no connector exists |
+| TD Ameritrade | **no** | **no** | the API closed on 10 May 2024 |
+| Fidelity | **no** | **no** | no retail trading API is published |
+| OANDA | **no** | **no** | whole currency units, and no connector exists |
+| FOREX.com | **no** | **no** | whole currency units, and no connector exists |
+| tastyfx | **no** | **no** | whole currency units, and no connector exists |
+| Tradovate | **no** | **no** | a contract is whole, and no connector exists |
+| NinjaTrader | **no** | **no** | a contract is whole, and no connector exists |
+
+Ten venues answer yes to both. Every one of the ten is crypto spot, and every
+one is reached by the single connector the program already constructs.
+
+Four rows say no to the second column for a reason no variant can absorb: the
+venue itself refuses the account. Nine rows say no because no connector exists.
+Those nine are a construction that is missing, not a rule the bot cannot satisfy.
+
+Two verdicts on this page are not answered and are written as such rather than
+guessed. Whether each whole-share broker accepts a sell named as a cash amount
+is not stated by any page read for this manual, and each firm's own
+order-submission page answers it. The order types Schwab, tastytrade, E\*TRADE,
+Interactive Brokers and the three currency dealers accept are likewise not
+stated, and each firm's own order specification answers that.
+
+### The variants this comparison implies
+
+Three, and no more. Each is named by what it absorbs. None is built here, and
+one of the three cannot be designed until a decision on the issue is answered.
+
+The first names a cash amount where the bot names a unit count. It is already
+proposed higher up this page and it absorbs a whole-share size rule. It reaches
+Interactive Brokers, Schwab, tastytrade and E\*TRADE, and Alpaca carries the
+same field beside its quantity.
+
+```
+# PROPOSED, not present. Quoted from this page's own proposal above.
+    async def place_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: float | None = None,
+        notional_usd: float | None = None,
+        order_type: OrderType = OrderType.MARKET,
+    ) -> StockOrder:
+```
+
+The second sends a limit order where the bot sends a market order. It absorbs
+one venue, gemini, which is the only one of the fifteen that declares no market
+order. It is the smallest of the three and it changes one field.
+
+```
+# PROPOSED, not present. The order type a venue declines is replaced.
+#   gemini declares createMarketOrder False; createLimitOrder True.
+#   A market order becomes a limit order priced to cross.
+```
+
+The third holds an excess until it reaches one whole unit, then sells one. It
+absorbs every market whose smallest order costs more than a scrum's excess:
+each futures venue, the three currency dealers, and any market whose own row
+already reads that it cannot size a scrum. **It cannot be designed yet.** The
+issue's first open decision is whether such a market is refused or whether the
+scrum trigger changes for it, and the two answers build different variants.
+
+```
+In development. Decision 1 on the issue owns it.
+```
+
+Nineteen of the twenty-nine rows above need no variant at all. Ten trade today,
+four are refused by their own venue, and nine wait on a connector rather than on
+a shape. Saying so is the useful answer, and inventing a fourth variant to round
+the list out would not be.
+
+### What this entry overtakes and what it corrects
+
+One sentence of this page is overtaken. It is kept as written:
+
+> The verdict column above falls into two groups and no more. A venue that reads
+> yes needs nothing new. Every venue that reads no is served by one second shape,
+> not by a shape of its own.
+
+The true sentence is: the verdict column falls into two groups on the size rule
+alone, and the whole requirement set splits the no group into three. A
+whole-share venue is served by the cash-amount shape. A venue declining a market
+order is served by a limit-only shape, which the size rule cannot see. A market
+whose smallest order costs more than the excess is served by neither, and waits
+on the issue's first open decision.
+
+One citation on this page has moved and the cells that carry it are kept as
+written. The venue table names the equity venue list at line 33 of its module,
+in nine of its source cells. That constant now sits at line 46, and line 33
+holds a comment about button spacing.
+
+```
+src/gui/main_tabs/asset_class_surface.py:46   EQUITY_VENUES, nine ids
+src/gui/main_tabs/asset_class_surface.py:65   LAYERED_CLASSES, crypto and stocks
+```
+
+Two further citations elsewhere in this arc have moved the same way, and both
+name a constant that exists. The cited unit rule table sits at line 57 of its
+module rather than line 46, and the per-venue candle lengths sit at line 47 of
+theirs rather than line 50.
+
+Every other sentence above stands as written. The per-venue size table, the
+excess figure, the three-answer rule and the per-market answer are unchanged by
+this entry.
