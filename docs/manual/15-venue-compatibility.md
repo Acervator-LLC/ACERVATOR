@@ -1144,7 +1144,7 @@ reason, and the reason names the variant the market needs beside the shape that
 variant absorbs.
 
 ```python
-# src/trading/ata_spm.py:955
+# src/trading/ata_spm.py:965
     #: The symbols this scan read that no built bot variant trades, kept in
     #: ``assets`` so each one still charts and still reports.
     untradeable: tuple = ()
