@@ -7991,6 +7991,101 @@ figure."*
 A zero slot draws at the width its own text asks for, and the spendable strip
 takes what is left.
 
+### The row's spare width is empty space
+
+The page carries two sentences about where that width goes. Both are quoted
+whole here, marked overtaken, with the sentence that is true today beneath.
+
+> "The class group takes what the figures leave. Every other part of the row
+> draws at the width its own text asks for, and the group takes the rest down
+> to its floor. A wide amount therefore shortens a class name and never a
+> figure."
+
+> "The square is one fixed side, so it can no longer take the width the figures
+> leave. The spendable strip takes it instead, which is the first slot of the
+> row, so the square stays at the row's right end and the money figures elide
+> less."
+
+**Overtaken.** No slot of the row takes the width the figures leave. Every
+share is zero, and the row inserts empty space before the square, which takes
+every spare pixel.
+
+`src/gui/main_tabs/header_strip_surface.py` — the shares and the empty space
+
+```python
+TOP_ROW_STRETCH = [0, 0, 0, 0, 0, 0, 0]
+TOP_ROW_SPACER_BEFORE = "mode_button"
+TOP_ROW_SPACER_STRETCH = 1
+```
+
+Both builds insert the same space. The Qt row inserts it at the index the
+order gives, and the page draws one empty division at the same place.
+
+`src/gui/main_tabs/header_strip.py` — the Qt insertion
+
+```python
+top_row.insertStretch(
+    surface.TOP_ROW_ORDER.index(surface.TOP_ROW_SPACER_BEFORE),
+    surface.TOP_ROW_SPACER_STRETCH,
+)
+```
+
+**What the operator sees.** Measured on the real widgets, Qt build, with the
+square held at the side it had before the square work, so the two rows differ
+in nothing but this change. At 1400 px and wider every slot is the width it
+was before the square work, and the empty space holds the remainder.
+
+| window | strip | Scrummed | Folded | Trades | Bots | Errors | empty space |
+|---|---|---|---|---|---|---|---|
+| 1400 | 706 | 155 | 156 | 75 | 55 | 75 | 0 |
+| 2560 | 709 | 158 | 158 | 78 | 58 | 78 | 1143 |
+| 3840 | 709 | 158 | 158 | 78 | 58 | 78 | 2423 |
+
+Before this change the strip drew 1750 px of a 2560 px window and 3030 px of a
+3840 px window, and every counter fell to 48 px.
+
+### Each counter's floor holds its own figure
+
+The page carries a sentence about the counter floor. It is quoted whole here,
+marked overtaken, with the sentence that is true today beneath.
+
+> "COUNTER_MIN_W = 48"
+
+**Overtaken.** One flat floor served five counters, and 48 px holds neither a
+ten-character amount nor a six-figure count. Each counter now declares the
+characters its own figure draws, and its floor is the room those characters
+take.
+
+`src/gui/main_tabs/header_strip_surface.py` — the characters and the floor
+
+```python
+COUNTER_CHARS = {
+    "scrummed": COUNTER_AMOUNT_CHARS,
+    "folded": COUNTER_AMOUNT_CHARS,
+    "trades": COUNTER_COUNT_CHARS,
+    "bots": COUNTER_BOTS_CHARS,
+    "errors": COUNTER_COUNT_CHARS,
+}
+```
+
+The money counters draw `$12,345.67` at their widest, so their floor is
+`COUNTER_NATURAL_W`, the room this page already records for a whole money
+amount. A trade or error count draws six figures and a bot count three, so each
+takes that room scaled by its own characters.
+
+| counter | characters | floor |
+|---|---|---|
+| Scrummed | 10 | 100 |
+| Folded | 10 | 100 |
+| Trades | 6 | 66 |
+| Bots | 3 | 41 |
+| Errors | 6 | 66 |
+
+**The tile holds the figure, and the window's narrowest grows with it.** The
+row's floors now sum to 137 px more than before, so the narrowest the window
+opens at rises by the same 137 px. Nothing is cut off at any width the window
+reaches; the window refuses to open narrower than its floors.
+
 ## 2026-09-26 - #928 - the pool reaches back for the bars the engine needs
 
 ### A short answer is not a short history

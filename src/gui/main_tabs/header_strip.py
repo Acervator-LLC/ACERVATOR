@@ -371,6 +371,13 @@ class HeaderStripMixin:
             Qt.AlignVCenter | Qt.AlignRight,
         )
 
+        # Every spare pixel of the row goes to this empty space, so no slot
+        # drawing text or figures absorbs it.
+        top_row.insertStretch(
+            surface.TOP_ROW_ORDER.index(surface.TOP_ROW_SPACER_BEFORE),
+            surface.TOP_ROW_SPACER_STRETCH,
+        )
+
         # _on_main_tab_changed hides _header_strip_container on the Simulator tab.
         self._header_strip_container = QWidget()
         self._header_strip_container.setLayout(top_row)
