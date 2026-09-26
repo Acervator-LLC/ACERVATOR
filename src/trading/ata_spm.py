@@ -305,6 +305,9 @@ UNSERVED_TEXT = "No venue serves {labels}."
 #: The scan's own sentence for the markets it read that no built bot variant
 #: trades. They stay in ``SectorScan.assets``, so they chart and they report.
 UNTRADEABLE_TEXT = "Read and not traded, no bot variant trades {symbols}: {reason}"
+#: What ends one UNTRADEABLE_TEXT sentence before the next, since the format
+#: itself carries no stop; the last sentence keeps none, as it does today.
+UNTRADEABLE_SEPARATOR = ". "
 SYMBOL_SEPARATOR = ", "
 CALL_LINE_FORMAT = "{symbol} on {label}: {direction} reversal"
 CALL_META_FORMAT = (
@@ -849,6 +852,10 @@ class AssetVote:
         return direction_name(self.direction)
 
 
+# OVERTAKEN in TimeframeScan's docstring below: "``read`` holds the candle count
+# each asset's read answered."
+# ``read`` holds the candle count each asset's read answered, and ``last_close``
+# the last close those candles carried.
 @dataclass
 class TimeframeScan:
     """What one ticked timeframe of one sector returned.
@@ -863,6 +870,9 @@ class TimeframeScan:
     unread: list = field(default_factory=list)
     short: list = field(default_factory=list)
     read: dict = field(default_factory=dict)
+    #: Each asset's last close, the price untradeable_markets reads; a read that
+    #: answered no candle leaves the asset out.
+    last_close: dict = field(default_factory=dict)
 
     @property
     def calls(self) -> list:
@@ -1284,32 +1294,65 @@ def is_listed(listing: Any) -> bool:
     return bool(getattr(listing, "listed", True))
 
 
-def untradeable_markets(listings: Any) -> tuple:
+def candle_close(candle: Any) -> Optional[float]:
+    """One candle's close as a finite number, None for a row carrying none."""
+    held = getattr(candle, "close", None)
+    return float(held) if sizing.rule_published(held) else None
+
+
+def scanned_closes(timeframes: Any) -> dict:
+    """Each market's last close across a scan's timeframes, the first timeframe
+    that read one answering for it."""
+    found: dict = {}
+    for one in timeframes or ():
+        for symbol, close in dict(getattr(one, "last_close", None) or {}).items():
+            found.setdefault(str(symbol), float(close))
+    return found
+
+
+def price_of(listing: Any, prices: Any = None) -> Optional[float]:
+    """One row's own price out of ``prices``, None while no read answered one."""
+    held = (prices or {}).get(symbol_of(listing))
+    return float(held) if held is not None else None
+
+
+# OVERTAKEN in untradeable_markets's docstring below: "read with no venue asked."
+# Read at the price each row's own candles closed at, out of ``prices``, with no
+# venue asked; a row ``prices`` does not name is read at no price, which is what
+# sizing.tradeable_answer answers TRADEABLE_UNKNOWN for.
+def untradeable_markets(listings: Any, prices: Any = None) -> tuple:
     """The symbol of every row whose own published rules select a bot variant
     ``sizing.VARIANTS_BUILT`` does not hold, read with no venue asked."""
     return tuple(
         symbol_of(one)
         for one in listings or ()
-        if sizing.untradeable_reason(getattr(one, "rules", None))
+        if sizing.untradeable_reason(getattr(one, "rules", None), price_of(one, prices))
     )
 
 
-def untradeable_note(note: Any, listings: Any) -> str:
+# OVERTAKEN in untradeable_note's docstring below: "``note`` with
+# ``UNTRADEABLE_TEXT`` after it over the rows ``untradeable_markets`` named".
+# One ``UNTRADEABLE_TEXT`` sentence per distinct reason, each naming the rows
+# carrying that reason, so two markets refused for two reasons read two
+# sentences.
+def untradeable_note(note: Any, listings: Any, prices: Any = None) -> str:
     """``note`` with ``UNTRADEABLE_TEXT`` after it over the rows
     ``untradeable_markets`` named, and ``note`` unchanged while it named none."""
-    named = untradeable_markets(listings)
-    if not named:
-        return str(note or "")
-    reason = ""
+    grouped: dict = {}
     for one in listings or ():
-        reason = sizing.untradeable_reason(getattr(one, "rules", None))
+        reason = sizing.untradeable_reason(
+            getattr(one, "rules", None), price_of(one, prices)
+        )
         if reason:
-            break
-    sentence = UNTRADEABLE_TEXT.format(
-        symbols=SYMBOL_SEPARATOR.join(named), reason=reason
-    )
+            grouped.setdefault(reason, []).append(symbol_of(one))
     held = str(note or "")
-    return f"{held} {sentence}" if held else sentence
+    for at, (reason, symbols) in enumerate(grouped.items()):
+        sentence = UNTRADEABLE_TEXT.format(
+            symbols=SYMBOL_SEPARATOR.join(symbols), reason=reason
+        )
+        joiner = UNTRADEABLE_SEPARATOR if at else " "
+        held = f"{held}{joiner}{sentence}" if held else sentence
+    return held
 
 
 def serves(listing: Any, timeframe: Any) -> bool:
@@ -1368,10 +1411,6 @@ def evaluate(
             )
         elif not ticked:
             scan.note = NO_TIMEFRAME_TEXT
-        # Named after the note above, so a market no variant trades is reported
-        # beside whatever else the scan has to say about the sector.
-        scan.untradeable = untradeable_markets(listed)
-        scan.note = untradeable_note(scan.note, listed)
         if walks_order(sector) or sector.ticker:
             scan.hit_target = int(sector.hit_target)
             scan.walk_all = bool(sector.walk_all)
@@ -1393,6 +1432,7 @@ def evaluate(
                 progress,
             )
             scan.assets = assets[: scan.markets_read]
+            _name_untradeable(scan, listed)
             scan.round_seconds = cost.per_round_s
             scans.append(scan)
             continue
@@ -1405,9 +1445,20 @@ def evaluate(
             scan.timeframes.append(
                 _scan_timeframe(voter, assets, timeframe, candle_source, cost, ticker)
             )
+        _name_untradeable(scan, listed)
         scan.round_seconds = cost.per_round_s
         scans.append(scan)
     return scans
+
+
+# Named after the note above, so a market no variant trades is reported
+# beside whatever else the scan has to say about the sector.
+def _name_untradeable(scan: SectorScan, listed: list) -> None:
+    """``scan.untradeable`` and the note's ``UNTRADEABLE_TEXT`` sentences, each
+    row read at the last close ``scanned_closes`` holds for it."""
+    prices = scanned_closes(scan.timeframes)
+    scan.untradeable = untradeable_markets(listed, prices)
+    scan.note = untradeable_note(scan.note, listed, prices)
 
 
 def _scan_timeframe(
@@ -1429,6 +1480,10 @@ def _scan_timeframe(
     return found
 
 
+# OVERTAKEN in _vote_one's docstring below: "One asset on one timeframe: read,
+# vote, and record the round on ``found``."
+# One asset on one timeframe: read, vote, and record the round and the read's own
+# last close on ``found``.
 def _vote_one(
     voter: VotingEngine,
     symbol: str,
@@ -1450,6 +1505,9 @@ def _vote_one(
         found.unread.append(symbol)
         cost.take(clock() - started)
         return None
+    close = candle_close(candles[-1])
+    if close is not None:
+        found.last_close[symbol] = close
     if len(candles) < MIN_CANDLES_TO_VOTE:
         found.short.append(symbol)
         cost.take(clock() - started)
