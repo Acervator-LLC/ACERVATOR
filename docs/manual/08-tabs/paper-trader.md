@@ -2374,4 +2374,83 @@ so a run never ends on a balance.
 Every pending field is written to the stored record; only a field the config
 does not declare still raises, and it is counted on its own.
 
+## 2026-09-26 - #19 - a paper fill draws its own Activity Log line
+
+A paper run held each fill and drew none of them. The pane beside the bot table
+carried the run's start and end and each bot's mark, and a reader watching a run
+fill ten times read nothing about any of the ten. A fill now draws its own line
+on the Paper Activity Log, on both hosts.
+
+### A fill draws the moment it happens
+
+The line takes the same trade shape the Live Activity Log uses, and it carries
+the market, the side, the size and the price. The size reads to six decimals and
+the price to eight, which is what Live's own trade line reads.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the line one fill writes
+
+```python
+FILL_LINE_FORMAT = (
+    "{prefix} {role}{split}{symbol}{split}{stage}"
+    "{extra_split}{units:.6f} @ ${price:.8f}"
+)
+```
+
+### The line carries the fill's own time
+
+The stamp is the fill's own moment, never the moment the pane drew it. The runner
+stamps each fill on its own thread, and the line reads that stamp back instead of
+asking the clock.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the stamp
+
+```python
+def fill_stamp(trade: Any) -> str:
+    """The stamp a fill's Activity Log line carries: ``TIMESTAMP_FORMAT`` over the
+    trade's ``wall_ms``, the fill's own time rather than the clock."""
+```
+
+### Each record names the side in its own words
+
+One fill leaves two records, and each names the side in its own vocabulary. The
+pane line says SCRUM or FOLD. The stored row says SELL or BUY. Neither is a
+drift, and the reason is a different reader at each end. The pane line has to
+match Live's trade line, because the glyph table keys on Live's two role words.
+The stored row has to match the reader that reads a Coinbase fill back, because
+Validation reads a paper row through the reader it reads a live row through.
+
+The paper log module records that reason itself. Its own docstring says the two
+sides come from the stored-trade module, and the paper log spells neither of
+them.
+
+`src/paper/paper_log.py` — the two sides, in the stored reader's words
+
+```python
+#: A scrum sells and a fold buys, in the vocabulary ``YtdTrade.side`` uses.
+SIDE_FOR = {SCRUM: SIDE_SELL, FOLD: SIDE_BUY}
+```
+
+The pane's two role words come from the table the glyph reads, so a line's role
+and its glyph cannot disagree.
+
+`src/gui/paper/paper_trading_tab_surface.py` — the pane's two role words
+
+```python
+FILL_ROLES = {SCRUM: SIDE_ROLES[SELL_SIDE], FOLD: SIDE_ROLES[BUY_SIDE]}
+```
+
+### What the driven composer answered
+
+One pass drove both functions over two paper trades, a scrum and a fold, with
+the two fill times five minutes and thirty-three seconds apart.
+
+```
+08:22:03 TRADE NOTIFICATION: SCRUM: BTC: FILLED — 0.000153 @ $65432.10000000
+08:27:36 TRADE NOTIFICATION: FOLD: BTC: FILLED — 0.000154 @ $64980.55000000
+```
+
+The two stamps hold that gap although one pass drew them both. A stamp read off
+the clock would have put both lines on the same second, which is the reading
+that tells the two apart.
+
 Back to [the subsystem index](README.md).
