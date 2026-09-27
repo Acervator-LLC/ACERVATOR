@@ -1,7 +1,7 @@
-"""A row whose spare width goes to the ``amount`` slot, which draws a figure.
+"""A row that parks all its spare width on the ``amount`` slot alone.
 
-GUI008 refuses this file: the ``ROW_STRETCH`` share above zero sits at the
-index of the ``ROW_ORDER`` slot named ``amount``.
+GUI008 refuses this file: exactly one ``ROW_STRETCH`` share is above zero, so
+``count`` and ``button`` fall to their ``ROW_FLOORS`` entry.
 """
 
 #: The slots the row draws, in the order it draws them.

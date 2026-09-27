@@ -31,8 +31,12 @@ logger = logging.getLogger("acervator.assets")
 #: names still resolves an address. It carries no CoinGecko image id and needs
 #: no lookup, which is what makes it the one address an unlisted asset has.
 #: Read live once, 2026-09-26, for the symbol ONDO: it answered 6,186 bytes of
-#: HTML and no failure code, so ``image_extension`` refuses that body. One
-#: symbol is not every symbol, and the address is kept for the rest.
+#: HTML and no failure code, so ``image_extension`` refuses that body.
+# OVERTAKEN, the sentence above reading "One symbol is not every symbol, and the
+# address is kept for the rest": read live for six tickers on 2026-09-26 -- ONDO,
+# PEPE, LTC, UNI, AAVE and ATOM -- and all six answered the same 6,186-byte HTML
+# page. The address is kept, and 451 of the 542 logo-library targets hold no other
+# one, so each is recorded unresolved by name rather than left silent.
 SYMBOL_ICON_URL = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 
 
