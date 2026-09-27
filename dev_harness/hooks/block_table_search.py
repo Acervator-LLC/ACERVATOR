@@ -1,15 +1,22 @@
-"""Refuses a search for a fact the conversion table already states.
+"""Refuses a search for a fact the conversion table already states, on issue #128's units only.
 
-`DISCOVERY` matches a command that lists or searches the converted screens, and
-`READING` matches opening one file the table names. `main` returns 2 when
-`DISCOVERY` fires without `READING`.
+`CONVERSION_ITEM` matches a `unit/128-` or `fix-128-` branch or a `u128` or `wt-128`
+worktree path in the branch under the payload's `cwd` or in the command text; `DISCOVERY` matches a command that
+lists or searches the converted screens, and `READING` matches opening one file the
+table names. `main` returns 2 when `CONVERSION_ITEM` and `DISCOVERY` fire without
+`READING`.
 """
 
 import json
 import re
 import sys
+from pathlib import Path
 
 GATED_TOOLS = {"Bash", "PowerShell", "Grep", "Glob"}
+
+CONVERSION_ITEM = re.compile(
+    r"\b(?:unit|fix)[\\/-]128-|[\\/](?:u128|wt-128)(?:[\\/_-]|\b)", re.IGNORECASE
+)
 
 CONVERTED = re.compile(
     r"src[\\/]gui[\\/]web\b|module_manifest|desktop[\\/]renderer\b"
@@ -32,8 +39,40 @@ def text_of(payload):
     return " ".join(part for part in parts if isinstance(part, str))
 
 
+def branch_of(payload):
+    """Returns the branch the `HEAD` file names for the git tree holding the payload's
+    `cwd`, or an empty string when `cwd` sits in no tree or on a detached `HEAD`."""
+    cwd = payload.get("cwd") or ""
+    if not cwd:
+        return ""
+    start = Path(cwd)
+    for folder in [start] + list(start.parents):
+        marker = folder / ".git"
+        if marker.is_dir():
+            head = marker / "HEAD"
+        elif marker.is_file():
+            pointer = marker.read_text(encoding="utf-8", errors="replace").strip()
+            if not pointer.startswith("gitdir:"):
+                return ""
+            head = Path(pointer[len("gitdir:"):].strip()) / "HEAD"
+        else:
+            continue
+        try:
+            text = head.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            return ""
+        prefix = "ref: refs/heads/"
+        return text[len(prefix):] if text.startswith(prefix) else ""
+    return ""
+
+
+def on_conversion_item(payload, text):
+    """Returns True when `CONVERSION_ITEM` matches the branch under `cwd` or the text."""
+    return bool(CONVERSION_ITEM.search(branch_of(payload)) or CONVERSION_ITEM.search(text))
+
+
 def main():
-    """Reads the tool payload on stdin and refuses a table lookup by search."""
+    """Reads the tool payload on stdin and refuses a table lookup by search on issue #128."""
     try:
         payload = json.load(sys.stdin)
     except ValueError:
@@ -45,6 +84,8 @@ def main():
     if not text.strip():
         return 0
     if not CONVERTED.search(text):
+        return 0
+    if not on_conversion_item(payload, text):
         return 0
     if name in {"Grep", "Glob"} or (DISCOVERY.search(text)
                                     and not READING.search(text)):

@@ -195,6 +195,27 @@ Five archetypes, one per domain:
 - `watchdog_archetype.py` — the out-of-process crash watchdog, checking that
   every test pin reaches the one handler.
 
+**Overtaken.** *"`coding_archetype.py` — Python source through ruff, mypy,
+pyright, bandit, vulture and semgrep, each normalised into one `Finding`
+schema."*
+
+The bullet above keeps its wording. The coding archetype reads four languages,
+not one. Python takes the six analyzers the bullet names. JavaScript takes
+eslint. A shell script takes shellcheck. A YAML settings file takes yamllint.
+For a file of any other type the archetype answers `unhandled`, which is
+neither a pass nor a failure.
+
+```
+.py .pyi .pyw .spec    ruff, mypy, pyright, bandit, vulture, semgrep
+.js .mjs .cjs .jsx     eslint
+.sh .bash .zsh         shellcheck
+.yml .yaml             yamllint
+anything else          unhandled - no analyzer ran
+```
+
+The archetype marks an absent analyzer missing, and a report carrying a missing
+analyzer never counts as a pass.
+
 The gate and the ledger:
 
 - `check_release_readiness.py` — the release gate. It runs the suite, runs each
@@ -300,7 +321,9 @@ rather than warn about it.
 - `archetype_gate.py` — in its pre mode, denies a write whose pending content
   would introduce a high or critical finding the file does not already carry; in
   its post mode, runs the archetype on what was written and reports the verdict.
-  It blocks a rise, never a level.
+  It blocks a rise, never a level. It routes a shell script and a workflow file
+  to the coding archetype, and for a type with no analyzer it reports that the
+  file was not examined rather than saying nothing.
 - `block_heavy_run.py` — denies a test run above the memory ceiling, a run while
   another is resident, and `-n auto` outright.
 - `block_heredoc.py` — denies a shell command carrying a heredoc.
@@ -348,6 +371,32 @@ listing marks every entry the count leaves out.
     verify_release_gate.py.before_pointer_repair not counted, a saved copy
     __pycache__/                                 not counted, a directory
 ```
+
+### The hooks are in the tree now
+
+Three sentences above are overtaken. Each is quoted whole below, and the true
+sentence follows it.
+
+> Eight hooks sit under `~/.claude/hooks/`, also machine-local and also not
+> committed.
+
+Overtaken. Twenty-eight hook files are tracked in `dev_harness/hooks/`, and the
+same twenty-eight run from the machine profile.
+
+> The count reads the directory, not a list. Eight names end in `.py` and each of
+> those runs.
+
+Overtaken. Twenty-eight names end in the Python extension. Twenty-two of them run
+at an event, and six sit in the directory with no event calling them.
+
+> The skills and the hooks run, and they are not in the tree — a reader who
+> searches this repository for them finds nothing, and that is the correct result
+> rather than a missing file.
+
+Overtaken. A reader who searches this repository for a hook finds its source, and
+`dev_harness/hooks/REGISTRATIONS.md` records the event each one runs at. The
+skills are tracked the same way, under `dev_harness/skills/`, one directory per
+skill.
 
 ### Where each layer resolves
 

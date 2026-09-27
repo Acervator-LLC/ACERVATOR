@@ -1,0 +1,15 @@
+---
+# Calibration body for yamllint. Every key is unique, every boolean is
+# spelled the way YAML defines it, and no line passes 80 characters, so the
+# archetype must report passed=True on this file.
+name: acervator-known-good
+version: 1
+limits:
+  ceiling: 70
+  floor: 10
+flags:
+  verbose: true
+  strict: false
+labels:
+  - first
+  - second

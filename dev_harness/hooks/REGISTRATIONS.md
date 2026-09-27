@@ -10,6 +10,9 @@ Each hook in `dev_harness/hooks/` runs at the event below.
 - `block_heredoc.py` on `Bash|PowerShell`
 - `block_heavy_run.py` on `Bash|PowerShell`
 - `check_directive_drift.py` on `Agent`
+- `block_uncanonized_workflow.py` on `Agent` — refuses a commissioning brief that
+  omits the six questions, a reading shown to fail, the merge gate command, or a
+  bare skill line. A brief that is not commissioning exits 0.
 - `block_unreachable_done.py` on `Agent`
 - `block_off_item.py` on `Agent|SendMessage`
 - `block_new_test.py` on `Write|NotebookEdit`
@@ -57,9 +60,20 @@ These files sit in the directory and no event runs them.
   2026-09-07 in a reply and in an `Agent` or `SendMessage` brief.
   `block_coined_instrument.py` refuses only such a thing being made, so the
   words still reached him inside ordinary prose.
+- `block_conversion_table_grounding.py` — refuses an `Agent` or `SendMessage`
+  brief that grounds a unit to the conversion table. Driven two-sided: a brief
+  naming the table exits 2, a brief naming its own issue exits 0.
+- `block_stand_in_without_source.py` — refuses an `Agent` or `SendMessage` brief
+  that stands in for an outside source without a `### Real conditions` section
+  carrying a figure, and refuses a brief that reads an empty end state as a pass.
+  Driven two-sided: the bare brief exits 2, the brief with the section exits 0.
+- `block_screen_point_input.py` — refuses a `Write`, `Edit` or `NotebookEdit` of
+  a script file that posts input at a screen point or reads the window under a
+  point. Driven two-sided: the screen-point script exits 2, a window-handle
+  script exits 0, and the hook's own path exits 0.
 
 Each needs an entry in `settings.json`, and the auto-mode classifier refuses the
-edit that adds one. Until it is added, none of the three fires.
+edit that adds one. Until it is added, none of the six fires.
 
 `block_deflection.py` and `block_banned_words.py` go under `Stop`:
 

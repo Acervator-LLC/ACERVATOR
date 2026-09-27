@@ -6,6 +6,11 @@ the maps hold, each carrying the folder ``library_folder`` files it under.
 ``FillReport`` naming every asset that resolved nothing. A kept file or an
 ``unresolved.json`` entry is skipped, so a stopped fill resumes where it stopped,
 and ``lock_is_held`` refuses the whole fill while the application is running.
+``build_coin_index`` looks every crypto ticker up through the coin list and the
+market records its ids name, and writes one picture address per ticker to
+``coin_index_path``; ``choose_coin`` settles a ticker several coins carry by the
+recorded name, then by market rank, and writes down the candidates of one it
+cannot settle.
 """
 
 from __future__ import annotations
@@ -20,12 +25,29 @@ from typing import Any, Callable, Iterable, Optional, Sequence
 
 from ..core.asset_logos import (
     LOGO_CACHE_DIR,
+    LOGO_READ_ERRORS,
+    LOGO_USER_AGENT,
     LogoBudgetSpent,
     LogoCache,
     kept_folder,
 )
 from ..core.instance_guard import lock_is_held
 from ..core.io_utils import atomic_write_json
+from ..core.safe_url import SafeRequest, safe_urlopen
+from ..exchange.crypto_assets import (
+    ASSETS,
+    COIN_INDEX_ASSETS_KEY,
+    COIN_INDEX_CHOSEN_KEY,
+    COIN_INDEX_ID_KEY,
+    COIN_INDEX_IMAGE_KEY,
+    COIN_INDEX_REASON_KEY,
+    COIN_INDEX_VERSION,
+    COIN_INDEX_VERSION_KEY,
+    COIN_LIST_URL,
+    COIN_MARKETS_PAGE,
+    COIN_MARKETS_URL,
+    coin_index_path,
+)
 from ..exchange.market_rules_store import load_document, store_path
 from .ata_asset_maps import CLASS_CRYPTO, MAPS, asset_logo, listing_of
 from .ata_spm import YAHOO_PACE_S, YAHOO_RATE_LIMIT_WAIT_S, ReadPace
@@ -234,6 +256,272 @@ def write_unresolved(held: dict, library_dir: Optional[Path] = None) -> Path:
     return path
 
 
+#: The host every coin lookup is paced under, with the gap it keeps between two
+#: reads and the hold a 429 leaves. One read answers up to ``COIN_MARKETS_PAGE``
+#: coins, so a whole fleet costs a handful of reads.
+COIN_API_HOST = "coin-api"
+COIN_API_PACE_S = 8.0
+COIN_API_HOLD_S = 70.0
+COIN_API_TRIES = 4
+COIN_TIMEOUT_S = 30.0
+
+#: How much better the best candidate's market rank must be than the next one's
+#: before a ticker several coins carry is settled on rank alone. A ticker the
+#: margin cannot settle is written down with its candidates and no address.
+COIN_RANK_MARGIN = 10.0
+
+COIN_ID_KEY = "id"
+COIN_SYMBOL_KEY = "symbol"
+COIN_NAME_KEY = "name"
+COIN_RANK_KEY = "market_cap_rank"
+COIN_IMAGE_KEY = "image"
+
+COIN_AMBIGUOUS_REASON = (
+    "{count} coins carry the ticker {symbol} at comparable market rank, {candidates}"
+)
+COIN_UNRANKED_REASON = (
+    "{count} coins carry the ticker {symbol} and none carries a market rank, "
+    "{candidates}"
+)
+COIN_ABSENT_REASON = "no coin record carries the ticker {symbol}, or its name"
+COIN_NO_IMAGE_REASON = "the coin record for {symbol} carries no picture address"
+
+COIN_LIST_LOG = "logo library: the coin list names %d coin(s)"
+COIN_RECORD_LOG = "logo library: %d coin record(s) read over %d page(s)"
+COIN_INDEX_LOG = "logo library: coin index holds %d address(es) and %d refusal(s)"
+COIN_READ_REFUSED_LOG = "logo library: %s answered nothing: %s"
+COIN_RATE_LOG = "logo library: %s refused for rate, holding %.0f s"
+
+#: What ``CoinIndexReport.line`` reads.
+COIN_REPORT_FORMAT = (
+    "{tickers} ticker(s) looked up, {listed} coin(s) listed, {records} record(s) "
+    "read over {reads} read(s), {addressed} address(es) indexed, {refused} unsettled"
+)
+
+
+def coin_folded(text: Any) -> str:
+    """``text`` lowered with every character outside ASCII letters and digits removed."""
+    return "".join(one for one in str(text).lower() if one.isascii() and one.isalnum())
+
+
+def _coin_read(address: str, clock: Any) -> Optional[Any]:
+    """The parsed body one coin address answers, None for one that answers nothing.
+
+    A refusal naming a 429 holds through ``clock`` and is read again, never
+    recorded as an absence.
+    """
+    for attempt in range(COIN_API_TRIES):
+        clock.wait(COIN_API_HOST)
+        try:
+            request = SafeRequest(address)
+            request.add_header("User-Agent", LOGO_USER_AGENT)
+            with safe_urlopen(request, timeout=COIN_TIMEOUT_S) as response:
+                body = response.read()
+        except LOGO_READ_ERRORS as exc:
+            hold = clock.take(COIN_API_HOST, exc)
+            if hold and attempt < COIN_API_TRIES - 1:
+                logger.warning(COIN_RATE_LOG, address, hold)
+                continue
+            logger.warning(COIN_READ_REFUSED_LOG, address, exc)
+            return None
+        clock.take(COIN_API_HOST)
+        try:
+            return json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            logger.warning(COIN_READ_REFUSED_LOG, address, exc)
+            return None
+    return None
+
+
+def coin_candidates(symbol: Any, by_symbol: dict, by_name: dict) -> tuple[str, ...]:
+    """Every coin id one ticker may name, matched on the ticker and then on the name."""
+    found = by_symbol.get(str(symbol).strip().upper(), ())
+    if found:
+        return tuple(str(one[COIN_ID_KEY]) for one in found)
+    return tuple(str(one[COIN_ID_KEY]) for one in by_name.get(coin_folded(symbol), ()))
+
+
+def coin_rank(record: Any) -> float:
+    """The market rank one coin record carries, infinity for a record carrying none."""
+    value = (record or {}).get(COIN_RANK_KEY)
+    return float(value) if type(value) in (int, float) else float("inf")
+
+
+def _coin_named(candidates: Sequence[str], records: dict) -> str:
+    """``candidates`` as a list of each coin's own name beside its id."""
+    return ", ".join(
+        f"{(records.get(one) or {}).get(COIN_NAME_KEY, one)} ({one})"
+        for one in candidates
+    )
+
+
+def choose_coin(
+    symbol: str, candidates: Sequence[str], records: dict
+) -> tuple[str, str]:
+    """One coin id for ``symbol`` and how it was chosen, or an empty id and the refusal.
+
+    A recorded name decides first, then a lone ranked candidate, then a rank
+    ``COIN_RANK_MARGIN`` better than the next.
+    """
+    present = [one for one in candidates if one in records]
+    if not present:
+        return "", COIN_ABSENT_REASON.format(symbol=symbol)
+    if len(present) == 1:
+        return present[0], "the only coin carrying this ticker"
+
+    recorded = ASSETS[symbol].name if symbol in ASSETS else ""
+    if recorded:
+        matched = [
+            one
+            for one in present
+            if coin_folded(records[one].get(COIN_NAME_KEY)) == coin_folded(recorded)
+        ]
+        if len(matched) == 1:
+            return matched[0], f"its recorded name {recorded}"
+
+    ranked = sorted(present, key=lambda one: coin_rank(records.get(one)))
+    carried = [one for one in present if coin_rank(records.get(one)) != float("inf")]
+    if len(carried) == 1:
+        return carried[0], "the only candidate carrying a market rank"
+    if not carried:
+        return "", COIN_UNRANKED_REASON.format(
+            count=len(present), symbol=symbol, candidates=_coin_named(ranked, records)
+        )
+
+    best, second = ranked[0], ranked[1]
+    if coin_rank(records[second]) >= COIN_RANK_MARGIN * coin_rank(records[best]):
+        return best, (
+            f"market rank {int(coin_rank(records[best]))} against "
+            f"{int(coin_rank(records[second]))} for the next"
+        )
+    return "", COIN_AMBIGUOUS_REASON.format(
+        count=len(present), symbol=symbol, candidates=_coin_named(ranked[:4], records)
+    )
+
+
+@dataclass(frozen=True)
+class CoinIndexReport:
+    """What one ``build_coin_index`` walk wrote, with every unsettled ticker in ``refused``."""
+
+    tickers: int = 0
+    listed: int = 0
+    records: int = 0
+    reads: int = 0
+    addressed: int = 0
+    refused: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    path: Optional[Path] = None
+
+    @property
+    def line(self) -> str:
+        """``COIN_REPORT_FORMAT`` filled from this report."""
+        return COIN_REPORT_FORMAT.format(
+            tickers=self.tickers,
+            listed=self.listed,
+            records=self.records,
+            reads=self.reads,
+            addressed=self.addressed,
+            refused=len(self.refused),
+        )
+
+
+def build_coin_index(
+    symbols: Iterable[str],
+    library_dir: Optional[Path] = None,
+    pace: Optional[Any] = None,
+) -> CoinIndexReport:
+    """Look every ticker up through the coin list and its market records, and write the index.
+
+    ``choose_coin`` settles a ticker several coins carry; one it cannot settle is
+    written with its candidates and no address.
+    """
+    library = Path(library_dir) if library_dir else LIBRARY_DIR
+    clock = (
+        pace
+        if pace is not None
+        else ReadPace(
+            {COIN_API_HOST: COIN_API_PACE_S}, {COIN_API_HOST: COIN_API_HOLD_S}
+        )
+    )
+    asked = tuple(
+        sorted({str(one).strip().upper() for one in symbols if str(one).strip()})
+    )
+
+    listed = _coin_read(COIN_LIST_URL, clock)
+    reads = 1
+    if not isinstance(listed, list):
+        return CoinIndexReport(tickers=len(asked), reads=reads)
+    logger.info(COIN_LIST_LOG, len(listed))
+
+    by_symbol: dict[str, list[dict]] = {}
+    by_name: dict[str, list[dict]] = {}
+    for coin in listed:
+        if not isinstance(coin, dict) or COIN_ID_KEY not in coin:
+            continue
+        key = str(coin.get(COIN_SYMBOL_KEY, "")).strip().upper()
+        by_symbol.setdefault(key, []).append(coin)
+        by_name.setdefault(coin_folded(coin.get(COIN_NAME_KEY)), []).append(coin)
+
+    wanted = {one: coin_candidates(one, by_symbol, by_name) for one in asked}
+    every = sorted({one for ids in wanted.values() for one in ids})
+
+    records: dict[str, dict] = {}
+    pages = 0
+    for start in range(0, len(every), COIN_MARKETS_PAGE):
+        page = every[start : start + COIN_MARKETS_PAGE]
+        rows = _coin_read(
+            COIN_MARKETS_URL.format(size=COIN_MARKETS_PAGE, ids=",".join(page)), clock
+        )
+        reads += 1
+        pages += 1
+        for row in rows if isinstance(rows, list) else ():
+            if isinstance(row, dict) and COIN_ID_KEY in row:
+                records[str(row[COIN_ID_KEY])] = row
+    logger.info(COIN_RECORD_LOG, len(records), pages)
+
+    assets: dict[str, dict] = {}
+    refused: list[tuple[str, str]] = []
+    for symbol in asked:
+        chosen, why = choose_coin(symbol, wanted[symbol], records)
+        address = (
+            str((records.get(chosen) or {}).get(COIN_IMAGE_KEY) or "").strip()
+            if chosen
+            else ""
+        )
+        if chosen and not address:
+            why = COIN_NO_IMAGE_REASON.format(symbol=symbol)
+        if address:
+            assets[symbol] = {
+                COIN_INDEX_IMAGE_KEY: address,
+                COIN_INDEX_ID_KEY: chosen,
+                COIN_INDEX_CHOSEN_KEY: why,
+            }
+            continue
+        assets[symbol] = {COIN_INDEX_REASON_KEY: why}
+        refused.append((symbol, why))
+
+    path = coin_index_path(library)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(
+        path,
+        {
+            COIN_INDEX_VERSION_KEY: COIN_INDEX_VERSION,
+            COIN_INDEX_ASSETS_KEY: {name: assets[name] for name in sorted(assets)},
+        },
+        indent=2,
+    )
+    addressed = len(assets) - len(refused)
+    logger.info(COIN_INDEX_LOG, addressed, len(refused))
+    return CoinIndexReport(
+        tickers=len(asked),
+        listed=len(listed),
+        records=len(records),
+        reads=reads,
+        addressed=addressed,
+        refused=tuple(refused),
+        path=path,
+    )
+
+
 @dataclass(frozen=True)
 class FillReport:
     """What one ``fill_library`` walk did, with every unresolved asset named in ``failures``."""
@@ -357,12 +645,17 @@ MAIN_LOG_FORMAT = "%(asctime)s %(message)s"
 
 
 def _parser() -> argparse.ArgumentParser:
-    """The arguments ``main`` reads: the read budget, the library, the runtime directory."""
+    """The arguments ``main`` reads: the read budget, the library, the runtime directory.
+
+    ``--coin-index`` rebuilds the coin index; ``main`` builds it anyway when
+    ``coin_index_path`` names no file.
+    """
     parser = argparse.ArgumentParser(description="Fill the logo library.")
     parser.add_argument("--reads", type=int, default=DEFAULT_READ_LIMIT)
     parser.add_argument("--library", type=Path, default=None)
     parser.add_argument("--config-dir", type=Path, default=None)
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--coin-index", action="store_true")
     return parser
 
 
@@ -380,6 +673,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         for folder in sorted(counts):
             print(FOLDER_FORMAT.format(folder=folder, count=counts[folder]))
         return 0
+    library = Path(args.library) if args.library else LIBRARY_DIR
+    if args.coin_index or not coin_index_path(library).is_file():
+        looked = build_coin_index(
+            [one.symbol for one in rows if one.asset_class == CLASS_CRYPTO],
+            library_dir=library,
+        )
+        print(looked.line)
+        for symbol, reason in looked.refused:
+            print(FAILURE_FORMAT.format(symbol=symbol, reason=reason))
     report = fill_library(
         targets=rows,
         library_dir=args.library,
@@ -401,9 +703,18 @@ if __name__ == "__main__":  # pragma: no cover - console entry
 
 
 __all__ = [
+    "COIN_API_HOST",
+    "COIN_API_PACE_S",
+    "COIN_RANK_MARGIN",
+    "CoinIndexReport",
     "DEFAULT_READ_LIMIT",
     "LIBRARY_DIR",
     "LOGO_HOST",
+    "build_coin_index",
+    "choose_coin",
+    "coin_candidates",
+    "coin_folded",
+    "coin_rank",
     "LOGO_PACE_S",
     "MAP_SOURCE",
     "TRADING_REFUSAL",

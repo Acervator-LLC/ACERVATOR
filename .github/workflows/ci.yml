@@ -1,31 +1,28 @@
-# Acervator CI — the mechanism that replaces the local pre-push gate.
+# Acervator CI — the checks a pull request must pass before it can merge.
 #
-# History: enforcement used to live in a git `pre-push` hook
-# (.githooks/pre-push) that refused to push a commit the local release gate
-# had not stamped. A local hook only binds a clone that opted into it
-# (`git config core.hooksPath .githooks`), so it protected nothing on a fresh
-# clone or in review. This workflow moves that enforcement to the server:
-# every push and pull request runs the real checks, and the branch-protection
-# rule "require status checks to pass before merging" is what actually keeps
-# ungated code off the default branch.
+# Four lanes, and each one adjudicates something this repository actually holds:
 #
-# Two test lanes, so a PR gets a fast signal without losing coverage:
-#   * test       — FAST lane, every push and PR. Installs the lean [test]
-#                  extra only and runs `-m "not slow and not archetype"` with
-#                  `pytest -n auto` process parallelism.
-#   * test-full  — FULL lane, on push to `main` and manual dispatch. Installs
-#                  the heavy [dev] analyzer toolchain + vale and runs the
-#                  complement (`-m "slow or archetype"`). The engine-replay
-#                  suites and archetype-harness tests live here; they are
-#                  minutes of CPU and/or need semgrep/opencv/vale, none of
-#                  which the fast lane pays for.
+#   * changes    — diffs the push or pull request and publishes the changed file
+#                  list the archetype lane reads, plus two flags: `any` (the diff
+#                  is non-empty) and `code` (at least one changed file can affect
+#                  the build). Always runs.
+#   * lint       — black --check and flake8 over `src tests tools *.py`, from the
+#                  [lint] extra. Runs when `code` is true.
+#   * contracts  — `forge test` over tests/contracts, the six Solidity test files
+#                  that are the only tests in the tree. foundry.toml resolves its
+#                  libraries from node_modules, so `npm ci` runs first. Runs when
+#                  `code` is true.
+#   * archetypes — runs the archetype that owns each changed file: coding for
+#                  .py, .sh/.bash/.zsh and .yml/.yaml, gui for
+#                  .js/.mjs/.cjs/.css/.html, docs for .md. A file of
+#                  any other extension has no owning archetype; the step names it
+#                  and counts it as unowned. The lane fails when any archetype
+#                  reports passed=false. Runs when `any` is true, so a
+#                  documentation-only pull request is still adjudicated.
 #
-# Early bail on non-functional changes: a `changes` job diffs the push/PR and
-# decides whether anything that can affect the build or tests actually changed.
-# When only non-functional files did (docs, *.md, .claude/, license/ignore
-# metadata), the lint and test lanes are skipped entirely so no runner wall time
-# is spent on them. The `ci-gate` job still reports a green status in that case,
-# so a docs-only change is never blocked by a "skipped" required check.
+# There are no pytest lanes. `git ls-files tests/` returns 7 files: six Solidity
+# tests and conftest.py. No `test_*.py` exists, so pytest collected nothing and
+# exited 5 on every run, for a reason that was never the change under it.
 #
 # Python version: ONE version, pinned in `.python-version` at the repo root and
 # read from there by every job (`python-version-file`). Acervator targets a
@@ -34,15 +31,11 @@
 # CI never fans out across versions. To move the whole project to a new Python,
 # edit `.python-version` (and `requires-python` in pyproject.toml); nothing here.
 #
-# To finish the pre-push→CI conversion, enable in the repo settings:
-#   Settings → Branches → Branch protection for `main`:
-#     - Require a pull request before merging
-#     - Require status checks to pass: select "ci-gate".
-#       ci-gate is the single stable check that aggregates the lint and test
-#       lanes: it passes when they succeed OR when they were skipped because the
-#       change was non-functional. Requiring the lanes ("lint"/"test") directly
-#       would instead wedge every docs-only PR, whose lanes report "skipped"
-#       rather than "success". ("test-full" runs post-merge on main and on demand.)
+# `ci-gate` is the single status the repository ruleset requires. It always runs,
+# and it passes when no required lane failed — a lane skipped because the change
+# did not call for it counts as acceptable, so a documentation-only pull request
+# is never wedged by a lane reporting "skipped" rather than "success". Requiring
+# the lanes by name would wedge exactly those pull requests.
 name: CI
 
 on:
@@ -50,7 +43,7 @@ on:
     branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Lets the full lane be run on demand against any branch from the Actions tab.
+  # Lets every lane be run on demand against any branch from the Actions tab.
   workflow_dispatch:
 
 # A newer push to the same ref cancels the older, still-running CI for it.
@@ -60,14 +53,17 @@ concurrency:
 
 jobs:
   changes:
-    # Decides whether this push/PR touches anything that can affect the build or
-    # the test suite. `code=false` means every changed file is non-functional
-    # (docs, *.md, .claude/, license/ignore metadata), and the lint/test lanes
-    # below are skipped so no runner time is spent on them.
+    # Publishes the changed file list and the two flags the lanes below read.
+    # `code=false` means every changed file is non-functional (docs, *.md,
+    # .claude/, license/ignore metadata), so the lint and contracts lanes are
+    # skipped and no runner time is spent on them. The archetype lane reads
+    # `any` instead, because the docs archetype adjudicates markdown.
     name: changes
     runs-on: ubuntu-latest
     outputs:
+      any: ${{ steps.detect.outputs.any }}
       code: ${{ steps.detect.outputs.code }}
+      files: ${{ steps.detect.outputs.files }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,43 +81,66 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Paths that never affect the build or the test suite. If EVERY changed
-          # file matches one of these, the code lanes are skipped. Anything not
-          # matched here is treated as functional and runs the full suite, so the
-          # list is deliberately conservative — add to it, don't broaden it.
+          # Paths that never affect the build. If EVERY changed file matches one
+          # of these, the lint and contracts lanes are skipped. Anything not
+          # matched here is treated as functional, so the list is deliberately
+          # conservative — add to it, don't broaden it.
           IGNORE='^\.claude/|^docs/|\.md$|^LICENSE$|^\.gitignore$|^\.gitattributes$|^\.editorconfig$'
 
+          case "$EVENT_NAME" in
+            pull_request) BASE="$PR_BASE_SHA"; HEAD="$PR_HEAD_SHA" ;;
+            push)         BASE="$PUSH_BEFORE"; HEAD="$PUSH_AFTER" ;;
+            *)            BASE="";             HEAD="$PUSH_AFTER" ;;
+          esac
+
+          # A zeroed base (first push to a ref, or a force-push) and a manual
+          # dispatch both have no base to diff against. The head's own parent is
+          # a real one, so the archetype lane always reads a real file list
+          # instead of an empty one that would pass having scanned nothing.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$(git rev-parse --verify --quiet "${HEAD}^" || true)"
+          fi
+
+          if [ -n "$BASE" ]; then
+            CHANGED="$(git diff --name-only "$BASE" "$HEAD")"
+          else
+            CHANGED=""
+          fi
+          echo "Base: ${BASE:-none}"
+          echo "Changed files:"; echo "$CHANGED"
+
+          # A multiline job output needs a delimiter GitHub reads back whole.
+          {
+            echo 'files<<ACERVATOR_CHANGED_FILES'
+            printf '%s\n' "$CHANGED"
+            echo 'ACERVATOR_CHANGED_FILES'
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -n "$CHANGED" ]; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
           # A draft pull request is not asking for a verdict, so the code lanes
-          # are skipped. Without this a long-lived draft re-runs the whole suite
-          # every time anything merges into its base branch.
+          # are skipped. Without this a long-lived draft re-runs everything every
+          # time anything merges into its base branch.
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$PR_DRAFT" = "true" ]; then
             echo "Draft pull request - skipping code lanes."
             echo "code=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
 
-          case "$EVENT_NAME" in
-            pull_request) BASE="$PR_BASE_SHA"; HEAD="$PR_HEAD_SHA" ;;
-            push)         BASE="$PUSH_BEFORE"; HEAD="$PUSH_AFTER" ;;
-            *)
-              # workflow_dispatch or anything else: no reliable diff — run all.
-              echo "code=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
-          esac
-
-          # A zeroed base (first push to a ref, or a force-push) has no comparable
-          # history — fall back to running the full suite.
-          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+          # A manual dispatch asks for every lane, whatever the diff holds.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ -z "$BASE" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
 
-          CHANGED="$(git diff --name-only "$BASE" "$HEAD")"
-          echo "Changed files:"; echo "$CHANGED"
-
           CODE_FILES="$(printf '%s\n' "$CHANGED" | grep -vE "$IGNORE" || true)"
           if [ -n "$CODE_FILES" ]; then
-            echo "Functional changes detected — running code lanes."
+            echo "Functional changes detected — running the code lanes."
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Only non-functional files changed — skipping code lanes."
+            echo "Only non-functional files changed — skipping the code lanes."
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -138,7 +157,7 @@ jobs:
           cache: pip
       - name: Install lint tooling
         # From the [lint] extra, not a list here: pyproject.toml is the one
-        # dependency source and tests/test_one_dependency_source.py enforces it.
+        # dependency source.
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[lint]"
@@ -147,15 +166,37 @@ jobs:
       - name: flake8 (lint)
         run: flake8 src tests tools *.py
 
-  test:
-    name: test
+  contracts:
+    # The six files under tests/contracts are the only tests in the tree.
+    name: contracts
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # package-lock.json was written by npm 11, which ships with node 24.
+          # Node 22 carries npm 10, and npm 10 reads that lock file as out of
+          # sync with the aliased @openzeppelin overrides and refuses `npm ci`.
+          node-version: '24'
+          cache: npm
+      - name: Install the Solidity libraries
+        # foundry.toml sets libs = ["node_modules"], so forge resolves
+        # @openzeppelin and @chainlink out of what npm installs.
+        run: npm ci
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: forge test
+        run: forge test -vv
+
+  archetypes:
+    # Each changed file, through the archetype that owns its type.
+    name: archetypes
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
     env:
-      # PySide6 widgets are constructed in the suite; run them without a
-      # display server. The conftest redirects all runtime-tree writes to
-      # temp dirs, so nothing touches a real ~/.acervator tree.
+      # gui_archetype imports PySide6; run it without a display server.
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
@@ -163,18 +204,19 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          # See the contracts lane: npm 10 refuses this lock file.
+          node-version: '24'
+          cache: npm
       - name: Cache installed Python packages
-        # PySide6 alone is ~1.2 GB installed, so a cold `pip install` spends
-        # ~40s just unpacking it. Caching the whole interpreter tree
-        # (env.pythonLocation is where setup-python installs packages) means
-        # that cost is paid only when the dependency set actually changes —
-        # the key is keyed to pyproject.toml + the interpreter. On a hit the
-        # install step below is a no-op verification (~5s). The `-test` key
-        # namespace keeps this lane's lean env separate from test-full's [dev].
+        # [dev] carries the analyzers the archetypes shell out to, and PySide6
+        # alone is ~1.2 GB installed. Caching the interpreter tree means that
+        # cost is paid only when the dependency set changes.
         uses: actions/cache@v4
         with:
           path: ${{ env.pythonLocation }}
-          key: py-test-${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml', '.python-version') }}
+          key: py-arch-${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml', '.python-version') }}
       - name: Install Qt runtime libraries
         # PySide6 needs these shared libs to import even under the offscreen
         # platform plugin; the GitHub Ubuntu image does not ship them.
@@ -182,87 +224,85 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libegl1 libgl1 libxkbcommon0 libdbus-1-3
-      - name: Install project + lean test dependencies
-        # [test] only — pytest + asyncio/qt plugins + xdist. The heavy
-        # analyzers (semgrep/mypy/vulture/opencv) and vale live in [dev] and
-        # are needed only by the archetype tests, which this lane deselects.
-        # A no-op on a package-cache hit; a full install on a miss.
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[test]"
-      - name: Run fast test suite
-        # `-n auto` fans the CPU-bound suite across every available core;
-        # `-m "not slow and not archetype"` drops the engine-replay and
-        # analyzer-backed tests, which run in the full lane.
-        run: pytest -n auto -m "not slow and not archetype" -q
-
-  test-full:
-    name: test-full
-    # Post-merge on main, and on-demand. NOT on pull_request — that is what
-    # keeps PR feedback fast. Also skipped when the push changed only
-    # non-functional files (workflow_dispatch always reports code=true).
-    needs: changes
-    if: >-
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-      && needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    env:
-      QT_QPA_PLATFORM: offscreen
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
-          cache: pip
-      - name: Cache installed Python packages
-        # [dev] adds semgrep + opencv + mypy on top of PySide6 — several
-        # hundred MB more. Caching the interpreter tree makes the full-lane
-        # install a no-op except when dependencies change. Separate `-full`
-        # key namespace so this heavier env never restores into the fast lane.
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.pythonLocation }}
-          key: py-full-${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml', '.python-version') }}
-      - name: Install Qt runtime libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libegl1 libgl1 libxkbcommon0 libdbus-1-3
-      - name: Install project + dev dependencies
-        # A no-op on a package-cache hit; a full install on a miss.
+      - name: Install project + analyzer toolchain
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
-      - name: Install vale (docs-archetype prose linter)
-        # `vale` is a Go binary, not pip-installable, and the docs archetype
-        # (dev_harness/harness/docs_archetype.py) requires it — an absent required
-        # analyzer makes ArchetypeReport.passed fail closed. The pip analyzers
-        # (ruff/bandit/mypy/vulture/semgrep/proselint) come in via .[dev].
+      - name: Install the JavaScript, CSS and HTML analyzers
+        # gui_archetype runs eslint, stylelint and html-validate out of
+        # node_modules at the repository root.
+        run: npm ci
+      - name: Install vale (the prose analyzer docs_archetype requires)
+        # vale is a Go binary, not pip-installable, and an absent required
+        # analyzer makes the archetype report fail closed.
         run: |
           VALE_VERSION=3.7.1
           curl -sSL -o /tmp/vale.tar.gz \
             "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
           sudo tar -xzf /tmp/vale.tar.gz -C /usr/local/bin vale
           vale --version
-      - name: Run full (slow + archetype) test suite
-        run: pytest -n auto -m "slow or archetype" -q
+      - name: Run the owning archetype on each changed file
+        env:
+          CHANGED_FILES: ${{ needs.changes.outputs.files }}
+        run: |
+          set -uo pipefail
+          # Without this, the first red archetype ends the step and the
+          # remaining files are never read.
+          set +e
+
+          scanned=0
+          unowned=0
+          failed=0
+
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            if [ ! -f "$path" ]; then
+              echo "deleted by this change, nothing to scan: $path"
+              continue
+            fi
+            case "$path" in
+              *.py)                          module=coding_archetype ;;
+              *.sh|*.bash|*.zsh)             module=coding_archetype ;;
+              *.yml|*.yaml)                  module=coding_archetype ;;
+              *.js|*.mjs|*.cjs|*.css|*.html) module=gui_archetype ;;
+              *.md)                          module=docs_archetype ;;
+              *)
+                echo "no owning archetype: $path"
+                unowned=$((unowned + 1))
+                continue
+                ;;
+            esac
+            echo "::group::$module $path"
+            python -m "dev_harness.harness.$module" "$path"
+            code=$?
+            echo "::endgroup::"
+            scanned=$((scanned + 1))
+            if [ "$code" -eq 0 ]; then
+              echo "$module $path passed=true"
+            else
+              echo "$module $path passed=false (exit $code)"
+              failed=$((failed + 1))
+            fi
+          done <<< "$CHANGED_FILES"
+
+          echo "scanned=$scanned unowned=$unowned failed=$failed"
+          [ "$failed" -eq 0 ]
 
   ci-gate:
-    # Single stable status for branch protection. It always runs — even when the
-    # code lanes were skipped for a non-functional change — and passes iff no
-    # required lane actually failed. Require THIS check instead of lint/test, so
-    # a docs-only PR whose lanes were skipped still reports a green required
-    # status and can merge.
+    # The single stable status the repository ruleset requires. It always runs —
+    # even when a lane was skipped because the change did not call for it — and
+    # passes only when no required lane actually failed.
     name: ci-gate
     if: always()
-    needs: [changes, lint, test]
+    needs: [changes, lint, contracts, archetypes]
     runs-on: ubuntu-latest
     steps:
       - name: Verify required lanes
         env:
           CHANGES: ${{ needs.changes.result }}
           LINT: ${{ needs.lint.result }}
-          TEST: ${{ needs.test.result }}
+          CONTRACTS: ${{ needs.contracts.result }}
+          ARCHETYPES: ${{ needs.archetypes.result }}
         run: |
           set -euo pipefail
           fail=0
@@ -275,8 +315,8 @@ jobs:
           fi
 
           # A lane is acceptable when it succeeded or was skipped; skipped means
-          # the change was non-functional. Any other result fails the gate.
-          for name in LINT TEST; do
+          # the change did not call for it. Any other result fails the gate.
+          for name in LINT CONTRACTS ARCHETYPES; do
             result="$(eval "echo \$$name")"
             case "$result" in
               success|skipped) echo "$name: $result — ok" ;;

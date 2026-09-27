@@ -6,6 +6,8 @@ the first one answering an image under ``LOGO_CACHE_DIR``, and answers a
 that page and tries the icon addresses the page declares itself, which
 ``declared_icons`` reads off its own link tags; that is the third location a
 browser looks in and it is what resolves a site serving neither standard one.
+``declared_share_image`` reads the page's own share image last, which resolves a
+site answering one page body at every icon address.
 ``image_extension`` decides whether a body is an image at all and
 what it is kept as, so a page served with no failure code is never kept. An asset
 no address answers for is remembered, so the walk runs once per asset and every
@@ -42,13 +44,15 @@ LOGO_EXTENSIONS: tuple[str, ...] = ("png", "svg", "jpg", "ico", "gif", "bmp", "w
 #: carrying them is kept under. A length alone cannot tell an image from an
 #: error page: measured 2026-09-26, one keyless icon address answered 6,186
 #: bytes of HTML and no failure code, and a length check kept it as a PNG.
+#: A BMP body is refused: abc.xyz and sndl.com each answer an 822-byte
+#: single-colour square at favicon.ico, and both assets keep a drawable mark
+#: from the icon their own page declares.
 IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
     (b"\x89PNG\r\n\x1a\n", "png"),
     (b"\xff\xd8\xff", "jpg"),
     (b"GIF87a", "gif"),
     (b"GIF89a", "gif"),
     (b"\x00\x00\x01\x00", "ico"),
-    (b"BM", "bmp"),
 )
 
 #: What a WebP body carries: the container head, then the format mark.
@@ -74,6 +78,16 @@ ICON_LINK_TAG = re.compile(
 )
 ICON_LINK_HREF = re.compile(rb"""\bhref\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
 
+#: The share image a page declares for itself, read last. A site answering one
+#: page body at every path declares no icon address and still declares this one:
+#: www.alibabagroup.com answers 58,268 bytes of its own page at five icon
+#: locations and declares a 15,358-byte PNG here.
+SHARE_IMAGE_TAG = re.compile(
+    rb"""<meta\b[^>]*\b(?:property|name)\s*=\s*["'](?:og:image|twitter:image)["']"""
+    rb"""[^>]*\bcontent\s*=\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+
 #: How much of a page ``_read_page`` takes while looking for its link tags.
 PAGE_WINDOW = 200_000
 
@@ -96,6 +110,7 @@ NO_SOURCE_REASON = "no logo address is known for {symbol}"
 NO_ANSWER_REASON = "no logo address answered an image for {symbol}"
 PAGE_REFUSED_LOG = "asset logo: %s answered no page for %s: %s"
 PAGE_DECLARED_LOG = "asset logo: %s declares %d icon address(es) for %s"
+PAGE_SHARED_LOG = "asset logo: %s declares %d share image address(es) for %s"
 
 LOGO_KEPT_LOG = "asset logo: kept %s for %s, %d bytes"
 LOGO_REFUSED_LOG = "asset logo: %s answered no image for %s: %s"
@@ -146,6 +161,20 @@ def declared_icons(page_url: str, body: bytes) -> tuple[str, ...]:
             continue
         address = urllib.parse.urljoin(
             page_url, href.group(1).decode("utf-8", "replace").strip()
+        )
+        if address not in found:
+            found.append(address)
+    return tuple(found)
+
+
+def declared_share_image(page_url: str, body: bytes) -> tuple[str, ...]:
+    """Every share image address ``body``'s own meta tags declare, absolute against ``page_url``."""
+    if not isinstance(body, bytes) or not page_url:
+        return ()
+    found: list[str] = []
+    for match in SHARE_IMAGE_TAG.finditer(body[:PAGE_WINDOW]):
+        address = urllib.parse.urljoin(
+            page_url, match.group(1).decode("utf-8", "replace").strip()
         )
         if address not in found:
             found.append(address)
@@ -320,6 +349,15 @@ class LogoCache:
                 ]
                 logger.debug(PAGE_DECLARED_LOG, page, len(spare), name)
                 answer = self._walk(name, spare, timeout_s, folder)
+                if answer is not None:
+                    return answer
+                shared = [
+                    one
+                    for one in declared_share_image(page, body)
+                    if one not in addresses and one not in spare
+                ]
+                logger.debug(PAGE_SHARED_LOG, page, len(shared), name)
+                answer = self._walk(name, shared, timeout_s, folder)
                 if answer is not None:
                     return answer
 
