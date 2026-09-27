@@ -8,6 +8,7 @@
   var TOP_ROW = "top_row";
   var TOP_ROW_ORDER = "top_row_order";
   var WIDTH_BUDGET = "width_budget";
+  var SLOTS = "slots";
   var VISIBLE = "visible";
   var ISOLATED_TABS = "isolated_tabs";
   var SPENDABLE = "spendable";
@@ -448,12 +449,16 @@
   }
 
   // A stretch of zero draws the slot at its own width; a stretch above zero
-  // divides what the zero slots leave, as the QHBoxLayout stretch does.
-  function withStretch(style, stretch) {
+  // divides what the zero slots leave, as the QHBoxLayout stretch does. `floor`
+  // is the slot's `width_budget` width, which setMinimumWidth sets in Qt.
+  function withStretch(style, stretch, floor) {
     if (stretch !== undefined) {
       style.flexGrow = stretch;
-      style.flexShrink = 1;
+      style.flexShrink = 0;
       style.flexBasis = stretch > 0 ? 0 : "auto";
+    }
+    if (typeof floor === "number") {
+      style.minWidth = length(floor);
     }
     return style;
   }
@@ -497,7 +502,7 @@
     if (owns(layout, COLUMN_SPACING_PX)) {
       style.gap = length(layout[COLUMN_SPACING_PX]);
     }
-    withStretch(style, props.stretch);
+    withStretch(style, props.stretch, props.floor);
     var panelProps = { className: SPENDABLE_CLASS, style: style };
     panelProps[PART_ATTR] = SPENDABLE;
     panelProps[SLOT_ATTR] = SPENDABLE;
@@ -514,7 +519,7 @@
     var style = boxStyle(layout, COLUMN, MARGINS, SPACING);
     withAlign(style, layout, LABEL_ALIGN);
     style.cursor = cursorOf(card);
-    withStretch(style, props.stretch);
+    withStretch(style, props.stretch, props.floor);
     var cardProps = { className: CARD_CLASS, style: style, title: label(card[TOOLTIP]) };
     cardProps[PART_ATTR] = COUNTER_PART;
     cardProps[SLOT_ATTR] = text(card[KEY]);
@@ -666,13 +671,20 @@
     return found;
   }
 
+  function floorOf(model, slot) {
+    var floors = objectField(objectField(model, WIDTH_BUDGET), SLOTS);
+    return owns(floors, slot) ? floors[slot] : undefined;
+  }
+
   function slotNode(model, slot, at) {
     var stretch = stretchOf(objectField(model, TOP_ROW), at);
+    var floor = floorOf(model, slot);
     if (slot === SPENDABLE) {
       return element(SpendablePanel, {
         key: slot,
         spendable: model[SPENDABLE],
-        stretch: stretch
+        stretch: stretch,
+        floor: floor
       });
     }
     if (slot === MODE_BUTTON) {
@@ -691,7 +703,8 @@
       key: slot,
       model: model,
       card: card,
-      stretch: stretch
+      stretch: stretch,
+      floor: floor
     });
   }
 
