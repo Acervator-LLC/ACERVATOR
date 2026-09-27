@@ -2,7 +2,11 @@
 
 ``LogoCache.resolve`` walks a listing's candidate addresses, keeps the bytes of
 the first one answering an image under ``LOGO_CACHE_DIR``, and answers a
-``LogoAnswer``. ``image_extension`` decides whether a body is an image at all and
+``LogoAnswer``. Where no candidate answers and a ``page_url`` is given, it reads
+that page and tries the icon addresses the page declares itself, which
+``declared_icons`` reads off its own link tags; that is the third location a
+browser looks in and it is what resolves a site serving neither standard one.
+``image_extension`` decides whether a body is an image at all and
 what it is kept as, so a page served with no failure code is never kept. An asset
 no address answers for is remembered, so the walk runs once per asset and every
 call after it reads the kept file or the kept reason.
@@ -15,6 +19,8 @@ symbol carrying a separator or a parent-directory step stays inside
 from __future__ import annotations
 
 import logging
+import re
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
@@ -56,6 +62,17 @@ HTML_MARKS: tuple[bytes, ...] = (b"<!doctype html", b"<html", b"<!-- ")
 #: How far into a body a text mark is looked for.
 SIGNATURE_WINDOW = 512
 
+#: A link tag whose ``rel`` names an icon, and the address inside it. A site
+#: that serves neither standard icon location still declares its own mark here,
+#: which is where a browser reads it from.
+ICON_LINK_TAG = re.compile(
+    rb"""<link\b[^>]*\brel\s*=\s*["'][^"']*\bicon\b[^"']*["'][^>]*>""", re.IGNORECASE
+)
+ICON_LINK_HREF = re.compile(rb"""\bhref\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+
+#: How much of a page ``_read_page`` takes while looking for its link tags.
+PAGE_WINDOW = 200_000
+
 #: What ``kept_name`` puts in place of a character a file name may not carry. A
 #: symbol arrives from outside this repository, so a pair like ``EUR/USD`` and a
 #: name holding a parent-directory step must both stay inside ``cache_dir``.
@@ -70,6 +87,8 @@ LOGO_USER_AGENT = "Acervator"
 
 NO_SOURCE_REASON = "no logo address is known for {symbol}"
 NO_ANSWER_REASON = "no logo address answered an image for {symbol}"
+PAGE_REFUSED_LOG = "asset logo: %s answered no page for %s: %s"
+PAGE_DECLARED_LOG = "asset logo: %s declares %d icon address(es) for %s"
 
 LOGO_KEPT_LOG = "asset logo: kept %s for %s, %d bytes"
 LOGO_REFUSED_LOG = "asset logo: %s answered no image for %s: %s"
@@ -96,6 +115,23 @@ def image_extension(body: bytes) -> str:
     if SVG_MARK in head:
         return SVG_EXTENSION
     return ""
+
+
+def declared_icons(page_url: str, body: bytes) -> tuple[str, ...]:
+    """Every icon address ``body``'s own link tags declare, absolute against ``page_url``."""
+    if not isinstance(body, bytes) or not page_url:
+        return ()
+    found: list[str] = []
+    for tag in ICON_LINK_TAG.finditer(body[:PAGE_WINDOW]):
+        href = ICON_LINK_HREF.search(tag.group(0))
+        if href is None:
+            continue
+        address = urllib.parse.urljoin(
+            page_url, href.group(1).decode("utf-8", "replace").strip()
+        )
+        if address not in found:
+            found.append(address)
+    return tuple(found)
 
 
 def kept_name(symbol: str) -> str:
@@ -158,8 +194,11 @@ class LogoCache:
         symbol: str,
         candidates: Iterable[str],
         timeout_s: float = LOGO_TIMEOUT_S,
+        *,
+        page_url: str = "",
+        no_source_reason: str = "",
     ) -> LogoAnswer:
-        """``symbol``'s kept logo, fetching ``candidates`` in order at most once ever."""
+        """``symbol``'s kept logo, fetching ``candidates`` then ``page_url``'s own icons at most once ever."""
         name = str(symbol).strip().upper()
         if not name:
             return LogoAnswer(symbol=name, reason=NO_SOURCE_REASON.format(symbol=name))
@@ -173,23 +212,61 @@ class LogoCache:
             return LogoAnswer(symbol=name, reason=remembered)
 
         addresses = [str(one) for one in candidates if str(one).strip()]
-        if not addresses:
-            reason = NO_SOURCE_REASON.format(symbol=name)
+        page = str(page_url).strip()
+        if not addresses and not page:
+            reason = no_source_reason or NO_SOURCE_REASON.format(symbol=name)
             self._refusals[name] = reason
             return LogoAnswer(symbol=name, reason=reason)
 
-        for address in addresses:
-            read = self._read(address, name, timeout_s)
-            if read is None:
-                continue
-            body, extension = read
-            path = self._keep(name, body, extension)
-            logger.info(LOGO_KEPT_LOG, path.name, name, len(body))
-            return LogoAnswer(symbol=name, path=path, source_url=address)
+        answer = self._walk(name, addresses, timeout_s)
+        if answer is not None:
+            return answer
+
+        if page:
+            body = self._read_page(page, name, timeout_s)
+            if body is not None:
+                spare = [
+                    one for one in declared_icons(page, body) if one not in addresses
+                ]
+                logger.debug(PAGE_DECLARED_LOG, page, len(spare), name)
+                answer = self._walk(name, spare, timeout_s)
+                if answer is not None:
+                    return answer
 
         reason = NO_ANSWER_REASON.format(symbol=name)
         self._refusals[name] = reason
         return LogoAnswer(symbol=name, reason=reason)
+
+    def _walk(
+        self, symbol: str, addresses: Iterable[str], timeout_s: float
+    ) -> Optional[LogoAnswer]:
+        """The answer for the first of ``addresses`` holding an image, None when none does."""
+        for address in addresses:
+            read = self._read(address, symbol, timeout_s)
+            if read is None:
+                continue
+            body, extension = read
+            path = self._keep(symbol, body, extension)
+            logger.info(LOGO_KEPT_LOG, path.name, symbol, len(body))
+            return LogoAnswer(symbol=symbol, path=path, source_url=address)
+        return None
+
+    def _read_page(
+        self, address: str, symbol: str, timeout_s: float
+    ) -> Optional[bytes]:
+        """``address``'s first ``PAGE_WINDOW`` bytes, None when it answers nothing."""
+        try:
+            request = SafeRequest(address)
+            request.add_header("User-Agent", LOGO_USER_AGENT)
+            with safe_urlopen(request, timeout=timeout_s) as response:
+                body = response.read(PAGE_WINDOW)
+        except LOGO_READ_ERRORS as exc:
+            closer = getattr(exc, "close", None)
+            if callable(closer):
+                closer()
+            logger.debug(PAGE_REFUSED_LOG, address, symbol, exc)
+            return None
+        return body if isinstance(body, bytes) else None
 
     def _read(
         self, address: str, symbol: str, timeout_s: float

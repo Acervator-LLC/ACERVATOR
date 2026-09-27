@@ -550,10 +550,11 @@ FORM_SOURCE = (
 )
 
 #: The organisation behind one non-crypto listing, by the map's own symbol: the
-#: issuer for a fund share, and the currency's issuing central bank for a pair,
-#: keyed on the base currency. ``organisation_site`` reads it, and both
-#: ``logo_candidates`` and ``organisation_url`` build their addresses from the
-#: same domain, so one entry answers the mark and the way out together.
+#: operating company for an equity, the issuer for a fund share, and the
+#: currency's issuing central bank for a pair, keyed on the base currency.
+#: ``organisation_site`` reads it, and ``logo_candidates``, ``organisation_page``
+#: and ``organisation_url`` all build their addresses from the same domain, so
+#: one entry answers the mark and the way out together.
 ORGANISATION_SITES: dict[str, str] = {
     "GLD": "spdrgoldshares.com",
     "SLV": "ishares.com",
@@ -573,7 +574,70 @@ ORGANISATION_SITES: dict[str, str] = {
     "AUD": "rba.gov.au",
     "NZD": "rbnz.govt.nz",
     "CAD": "bankofcanada.ca",
+    "AAPL": "apple.com",
+    "AGG": "ishares.com",
+    "AMC": "amctheatres.com",
+    "AMD": "amd.com",
+    "AMZN": "amazon.com",
+    "ARKF": "ark-funds.com",
+    "ARKG": "ark-funds.com",
+    "ARKK": "ark-funds.com",
+    "ARKW": "ark-funds.com",
+    "BABA": "alibabagroup.com",
+    "BIDU": "baidu.com",
+    "BND": "vanguard.com",
+    "COIN": "coinbase.com",
+    "CVNA": "carvana.com",
+    "DKNG": "draftkings.com",
+    "GME": "gamestop.com",
+    "GOOGL": "abc.xyz",
+    "IEF": "ishares.com",
+    "IWM": "ishares.com",
+    "JD": "jd.com",
+    "KOSS": "koss.com",
+    "MCHI": "ishares.com",
+    "META": "meta.com",
+    "MSFT": "microsoft.com",
+    "NIO": "nio.com",
+    "NVDA": "nvidia.com",
+    "OPEN": "opendoor.com",
+    "PLTR": "palantir.com",
+    "PRNT": "ark-funds.com",
+    "PTON": "onepeloton.com",
+    "QQQ": "invesco.com",
+    "ROKU": "roku.com",
+    "SNDL": "sndl.com",
+    "SOFI": "sofi.com",
+    "SPY": "ssga.com",
+    "TDOC": "teladochealth.com",
+    "TIP": "ishares.com",
+    "TLT": "ishares.com",
+    "TSLA": "tesla.com",
+    "UWMC": "uwm.com",
+    "VNQ": "vanguard.com",
+    "XLU": "sectorspdrs.com",
+    "ZM": "zoom.com",
 }
+
+#: The ``STOCKS_PORTFOLIO`` tickers whose company no longer trades, so no
+#: organisation publishes a mark for them: Bed Bath & Beyond, Churchill Capital
+#: IV, Express, and Social Capital Hedosophia VI. ``logo_absence`` names them.
+DELISTED_TICKERS: frozenset[str] = frozenset({"BBBY", "CCIV", "EXPR", "IPOF"})
+
+#: The ``METALS_SPOT`` symbols, a metal quoted per troy ounce rather than a
+#: share in anything. ``logo_absence`` reads it.
+UNISSUED_SYMBOLS: frozenset[str] = frozenset(
+    {"XAU/USD", "XAG/USD", "XPT/USD", "XPD/USD"}
+)
+
+#: Why one listing resolves no mark. A metal has no issuer; a company that no
+#: longer trades publishes nothing; and a listing holding no domain has no site
+#: to read one from.
+NO_ISSUER_REASON = (
+    "{symbol} is a metal quote with no issuer, so no organisation publishes a mark"
+)
+NO_COMPANY_REASON = "{symbol} no longer trades, so no organisation publishes a mark"
+NO_DOMAIN_REASON = "no web address is held for {symbol}, so its own mark cannot be read"
 
 #: The organisation's own site, the address a logo click opens.
 ORGANISATION_URL_FORMAT = "https://{domain}"
@@ -613,12 +677,33 @@ SITE_SOURCES = (
     "and every one of them wanted a publishable token, an on-screen "
     "attribution link, or a domain rather than a ticker. The regulator route "
     "is the SEC's own company browse page, read 2026-09-26 with ticker=AAPL "
-    "alone and answering Apple Inc., CIK 0000320193. NOT PROVEN LIVE: no icon "
+    "alone and answering Apple Inc., CIK 0000320193. "
+    "OVERTAKEN, the two sentences that followed here: 'NOT PROVEN LIVE: no icon "
     "address above was fetched, because this unit's one permitted logo fetch "
     "went to the crypto record's own address. WHAT IS NOT ANSWERED: the four "
     "METALS_SPOT pairs, which are metal quotes and have no issuer; and every "
     "STOCKS_PORTFOLIO equity's mark, because a company's own domain is not a "
-    "fact this repository holds for a ticker."
+    "fact this repository holds for a ticker.' "
+    "The 43 STOCKS_PORTFOLIO domains added 2026-09-26 name the company or the "
+    "fund issuer the ticker belongs to: the operating company for an equity, and "
+    "BlackRock's iShares, Vanguard, Invesco, ARK Invest, State Street Global "
+    "Advisors and Select Sector SPDRs for a fund share. PROVEN LIVE 2026-09-26, "
+    "each read once through the guarded fetch and each kept file read back off "
+    "disk: apple.com answered a 4,506-byte PNG, microsoft.com an 843-byte JPEG, "
+    "nvidia.com a 25,214-byte ICO at its second location, roku.com a 4,342-byte "
+    "PNG, and koss.com a 2,997-byte PNG at the address its own page declares. "
+    "nvidia.com/apple-touch-icon.png answered 200 and was not an image, and the "
+    "signature check refused it. gamestop.com answered neither location: its "
+    "certificate chain does not verify, and no verification was relaxed to get "
+    "past it. NOT PROVEN LIVE: the other 38 domains, because 12 reads was this "
+    "unit's whole bound; and coinbase.com and sofi.com specifically, which were "
+    "not read at all because that unit may not contact a venue or a broker. "
+    "The public company register was read once for a company's own web address "
+    "and does not hold one: data.sec.gov answered website and investorWebsite "
+    "both empty for Apple Inc., so the association is held here rather than "
+    "looked up. WHAT IS NOT ANSWERED: the four METALS_SPOT pairs, named by "
+    "UNISSUED_SYMBOLS, and the four DELISTED_TICKERS companies; logo_absence "
+    "answers each with its own reason."
 )
 
 #: What each class's map was built from, and when its tickers were measured.
@@ -991,6 +1076,31 @@ def logo_candidates(symbol: Any) -> tuple[str, ...]:
     return tuple(one.format(domain=domain) for one in ORGANISATION_ICON_FORMATS)
 
 
+def organisation_page(symbol: Any) -> str:
+    """One listing's own site, empty for a name holding no ``ORGANISATION_SITES`` domain."""
+    # The regulator page organisation_url falls back to declares the regulator's
+    # own mark, so it is never answered here.
+    domain = organisation_site(symbol)
+    if not domain:
+        return ""
+    address, _ = openable_url(ORGANISATION_URL_FORMAT.format(domain=domain))
+    return address
+
+
+def logo_absence(symbol: Any) -> str:
+    """Why one listed name resolves no mark, empty for one that resolves a mark."""
+    if logo_candidates(symbol):
+        return ""
+    asked = str(symbol).strip().upper()
+    if asked in UNISSUED_SYMBOLS:
+        return NO_ISSUER_REASON.format(symbol=asked)
+    if asked in DELISTED_TICKERS:
+        return NO_COMPANY_REASON.format(symbol=asked)
+    if listing_of(symbol) is not None:
+        return NO_DOMAIN_REASON.format(symbol=asked)
+    return ""
+
+
 def organisation_url(symbol: Any) -> tuple[str, str]:
     """One listing's organisation address a browser may open, with the refusal text for one it may not.
 
@@ -1025,14 +1135,22 @@ def asset_logo(
     """One asset's kept logo file, or a ``LogoAnswer`` naming what it has none for.
 
     A listing with an ``organisation_site`` reads that organisation's icon
-    addresses, a crypto name reads ``AssetManager.logo_candidates``, and every
-    other listing answers with no address fetched.
+    addresses and then the icon its own page declares, a crypto name reads
+    ``AssetManager.logo_candidates``, and every other listing answers the reason
+    ``logo_absence`` gives with no address fetched.
     """
     held = cache if cache is not None else _LOGOS
     addresses = logo_candidates(symbol)
     if not addresses and _is_crypto(symbol, asset_class):
-        addresses = AssetManager(held.cache_dir).logo_candidates(symbol)
-    return held.resolve(symbol, addresses)
+        return held.resolve(
+            symbol, AssetManager(held.cache_dir).logo_candidates(symbol)
+        )
+    return held.resolve(
+        symbol,
+        addresses,
+        page_url=organisation_page(symbol),
+        no_source_reason=logo_absence(symbol),
+    )
 
 
 def sector_named(sector: Any, asset_class: Any) -> str:
@@ -1598,6 +1716,7 @@ __all__ = [
     "AssetListing",
     "CLASS_DEPLOYABILITY",
     "CROSS_ORDER",
+    "DELISTED_TICKERS",
     "Deployability",
     "FORM_ETF",
     "FORM_EQUITY",
@@ -1618,6 +1737,9 @@ __all__ = [
     "METALS_SPOT",
     "MIN_WINDOW_DAYS",
     "NON_CRYPTO_ROOTS",
+    "NO_COMPANY_REASON",
+    "NO_DOMAIN_REASON",
+    "NO_ISSUER_REASON",
     "NO_VENUE",
     "NO_VOLUME_FIGURE",
     "ORGANISATION_ICON_FORMATS",
@@ -1641,6 +1763,7 @@ __all__ = [
     "SCREENER_SOURCE_TEXT",
     "SCREENER_URL",
     "STOCKS_PORTFOLIO",
+    "UNISSUED_SYMBOLS",
     "TIMEFRAME_BARS_ASKED",
     "TIMEFRAME_BAR_DAYS",
     "VENUE_EXCHANGE",
@@ -1668,7 +1791,9 @@ __all__ = [
     "listing_deployability",
     "listing_of",
     "listings_for",
+    "logo_absence",
     "logo_candidates",
+    "organisation_page",
     "organisation_site",
     "organisation_url",
     "screened_listings",
