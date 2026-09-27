@@ -99,8 +99,9 @@ census.
 
 ## The skills — how the work is done
 
-Loaded by name. 31 of them under `dev_harness/skills/`, mirrored to the user's
-own directory, and the two copies must match.
+Loaded by name. 33 of them under `dev_harness/skills/`, mirrored to the user's
+own directory, and the two copies must match byte for byte once carriage returns
+are folded on both sides.
 
 **Read these before working:** `ground-to-issue-and-manual` · `harness-law` ·
 `ocir` · `w5h` · `hyper-refocus` · `canonized-code-testing` ·
