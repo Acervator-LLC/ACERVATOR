@@ -360,6 +360,7 @@
   var RIGHT_ALIGN = "right";
   var HEADER_VERTICAL_ALIGN = "bottom";
   var DOT_MARGIN = "0 auto";
+  var AUTO_SIZE = "auto";
   var DOT_CURSOR = "pointer";
   var LABEL_KEY = "label";
   var DOT_KEY = "dot";
@@ -800,14 +801,22 @@
   }
 
   // The mark the first column draws: logo_image carries the bytes the page's
-  // own img-src rule allows, and logo_size sizes it as the window's icon.
+  // own img-src rule allows, and logo_size bounds it as the window's icon does.
+  // Bounding both sides rather than setting them keeps a mark that is not
+  // square in shape and leaves one smaller than logo_size at its own size,
+  // which is what QIcon gives the window for the same file.
   function AssetLogo(props) {
     var found = props.cell;
     var size = Number(found[LOGO_SIZE]);
-    var style = { display: BLOCK_DISPLAY, margin: DOT_MARGIN };
+    var style = {
+      display: BLOCK_DISPLAY,
+      margin: DOT_MARGIN,
+      width: AUTO_SIZE,
+      height: AUTO_SIZE
+    };
     if (size > 0) {
-      style.width = size + PX;
-      style.height = size + PX;
+      style.maxWidth = size + PX;
+      style.maxHeight = size + PX;
     }
     var logoProps = {
       src: text(found[LOGO_IMAGE]),

@@ -8609,3 +8609,107 @@ pair has a chart.
 
 The first column is headed Asset and sorts as a word, on the asset's ticker.
 Symbol still sorts as a word.
+
+## 2026-09-27 - #937 - the mark a row draws comes from the library on disk
+
+The first column of the Scrumming Bots table draws the target asset's own
+official mark. The mark is a file the logo library has already put on disk. The
+list never fetches one.
+
+### Where a row's mark comes from
+
+**Functional.** The library sits at `resources/logos`, under the repository, and
+is filled ahead of any bot. A crypto asset's mark comes from a coin data source;
+every other asset's mark comes from that organisation's own web site, read at
+the two places a browser reads one from. The library files each mark under its
+asset class and its sector, so one asset has one file wherever it is met.
+
+`src/trading/logo_library.py` — where one asset's file is put
+
+```python
+def library_folder(asset_class: Any, sector: Any = "") -> str:
+    return kept_folder(f"{asset_class}/{sector}")
+```
+
+The list reads that directory at any depth, so a mark filed under a sector
+answers the same way a mark filed flat does.
+
+`src/core/asset_logos.py` — the read at any depth
+
+```python
+for found in self._cache_dir.rglob(f"{stem}.*"):
+    rank = ranks.get(found.name)
+    if rank is None or rank >= best_rank or not found.is_file():
+        continue
+    best, best_rank = found, rank
+```
+
+Read with fifteen real marks on disk, nine bots, at 700, 900 and 1400 wide:
+
+```
+sector                       marks on disk   an example
+crypto                                  10   BTC, ETH, LINK, DOT
+stocks                                   4   AAPL, AMZN
+commodities                              1   SLV
+forex                                    0   none answered an image
+```
+
+### A mark keeps its own shape and its own detail
+
+**Functional.** A mark is drawn inside a box of the logo's own size and is never
+squeezed to fill it. A mark that is not square keeps its proportions in both
+builds. A mark whose file holds several sizes is drawn from the size nearest the
+box rather than from the smallest. A mark smaller than the box is drawn at its
+own size rather than enlarged.
+
+`src/gui/widgets/bot_status_table.py` — the window hands the file to the icon whole
+
+```python
+icon = QIcon(path)
+found = icon if icon.availableSizes() else None
+```
+
+`src/gui/web/bot_status_table.js` — the page bounds the mark rather than setting it
+
+```javascript
+style.maxWidth = size + PX;
+style.maxHeight = size + PX;
+```
+
+Read on both builds, at all three widths, one row per mark:
+
+```
+the asset   the file holds            the window draws   the page draws
+BTC         50 by 50                  32 by 32           32 by 32
+ETH         50 by 50                  32 by 32           32 by 32
+LINK        50 by 50                  32 by 32           32 by 32
+AAPL        152 by 152                32 by 32           32 by 32
+SLV         16 by 16 and 32 by 32     32 by 32           32 by 32
+AMZN        48, 32 and 16 square      32 by 32           32 by 32
+DOT         47 by 50                  30 by 32           30.08 by 32
+ONDO        no file                   the ticker         the ticker
+ZZZQ        no file                   the ticker         the ticker
+```
+
+### A bot whose asset has no mark reads the same as before
+
+**Functional.** The cell draws that asset's ticker, and its tooltip says no mark
+is kept for it yet. Nothing about such a row changes: its height, its columns
+and every other cell read the same before and after.
+
+### The row height with real marks on the rows
+
+**Functional.** A row is 36 pixels tall, in the window and on the page, with a
+mark on it and without one. That is the figure the payload already carried, and
+real marks on real rows did not move it.
+
+```
+reading                              before   after
+the row height, the window               36       36
+the row height, the page                 36       36
+the icon size the table asks             32       32
+all ten column widths, the window      same     same
+all ten column widths, the page        same     same
+the header row above the list          same     same
+the seven slots of the header strip    same     same
+```

@@ -84,7 +84,7 @@ try:
         QWidget,
     )
     from PySide6.QtCore import QSignalBlocker, QSize, Qt
-    from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPixmap
+    from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon
 
     from . import ColumnSpec, ColumnarTableWidget
     from .bot_selection import _reanchor_bot_selection, _select_row_for_bot
@@ -614,23 +614,18 @@ if _HAS_QT:
                     self.removeCellWidget(row, col)
 
         def _logo_icon(self, path: str):
-            """``path``'s pixmap at ``LOGO_SIZE_PX``, held in ``_logo_icons`` after one read."""
+            """``path``'s own icon, held in ``_logo_icons`` after one read, None for a file holding no image.
+
+            The file is handed to ``QIcon`` whole rather than as one pixmap
+            scaled to ``LOGO_SIZE_PX``, so an icon file carrying several sizes
+            draws the size nearest that figure and a mark smaller than it draws
+            at its own size rather than enlarged.
+            """
             held = self._logo_icons.get(path)
             if held is not None:
                 return held
-            pixmap = QPixmap(path)
-            found = (
-                None
-                if pixmap.isNull()
-                else QIcon(
-                    pixmap.scaled(
-                        LOGO_SIZE_PX,
-                        LOGO_SIZE_PX,
-                        Qt.KeepAspectRatio,
-                        Qt.SmoothTransformation,
-                    )
-                )
-            )
+            icon = QIcon(path)
+            found = icon if icon.availableSizes() else None
             self._logo_icons[path] = found
             return found
 
