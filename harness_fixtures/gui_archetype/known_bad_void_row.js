@@ -1,6 +1,5 @@
-// The undrawn half of the geometry rule's fixture pair. Its holder is set to
-// display none, so every slot reports a size of zero while the computed height
-// still answers 36px, which is the reading the rule must refuse.
+// A drawn row whose three slots fill only part of its width, so the rest of the
+// row is empty background. GUI008 refuses this file on the tail void.
 (function (global) {
   "use strict";
 
@@ -8,14 +7,15 @@
   var SLOT_NAMES = ["spendable", "scrummed", "mode_button"];
   var SLOT_HEIGHT = "36px";
   var SLOT_WIDTH = "120px";
-  var HOLDER_DISPLAY = "none";
+  var HOLDER_DISPLAY = "block";
 
   function slot(name) {
     var node = document.createElement("div");
     node.setAttribute("data-slot", name);
     node.style.width = SLOT_WIDTH;
     node.style.height = SLOT_HEIGHT;
-    node.style.flexGrow = "1";
+    node.style.flexGrow = "0";
+    node.style.flexShrink = "0";
     node.textContent = name;
     return node;
   }

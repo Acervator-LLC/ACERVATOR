@@ -1,5 +1,6 @@
 // The drawn half of the geometry rule's fixture pair. Its row sits inside a
-// holder that draws, so every slot reports a size the rule can read.
+// holder that draws, and its three slots share the row's spare width, so every
+// slot reports a size the rule can read and no empty background is left.
 (function (global) {
   "use strict";
 
@@ -14,6 +15,7 @@
     node.setAttribute("data-slot", name);
     node.style.width = SLOT_WIDTH;
     node.style.height = SLOT_HEIGHT;
+    node.style.flexGrow = "1";
     node.textContent = name;
     return node;
   }
@@ -25,6 +27,7 @@
     var row = document.createElement("div");
     row.setAttribute("data-part", ROW_PART);
     row.style.display = "flex";
+    row.style.width = "100%";
     row.style.height = SLOT_HEIGHT;
     SLOT_NAMES.forEach(function (name) {
       row.appendChild(slot(name));

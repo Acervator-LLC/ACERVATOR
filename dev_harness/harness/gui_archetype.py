@@ -746,9 +746,6 @@ def _scan_segmented_group_skin(path: Path, tree: ast.AST) -> list[Finding]:
     return findings
 
 
-#: A slot name carrying one of these words is empty space, not drawn content.
-_SPARE_WIDTH_NAMES = ("spacer", "stretch", "spare", "filler", "padding")
-
 _STRETCH_SUFFIX = "_STRETCH"
 _ORDER_SUFFIX = "_ORDER"
 
@@ -796,39 +793,40 @@ def _name_lists(tree: ast.AST, suffix: str) -> dict:
 
 
 def _scan_row_spare_width(path: Path, tree: ast.AST) -> list[Finding]:
-    """GUI008 — a row's spare width belongs to empty space, never to a drawn slot.
+    """GUI008 — a row's spare width is shared by its slots, never parked on one.
 
-    A ``*_STRETCH`` list whose non-zero share sits at the index of a named
-    ``*_ORDER`` slot is refused; a share on a spacer slot passes.
+    A named `*_STRETCH` list of more than one slot that carries exactly one
+    non-zero share is refused: that slot holds every spare pixel and every other
+    slot falls to its floor.
     """
     shares = _whole_number_lists(tree, _STRETCH_SUFFIX)
-    orders = _name_lists(tree, _ORDER_SUFFIX)
+    slots_by_prefix = _name_lists(tree, _ORDER_SUFFIX)
     findings: list[Finding] = []
-    for prefix, (line, name, held) in shares.items():
-        slots = orders.get(prefix)
-        if slots is None:
+    for source, (line, name, held) in shares.items():
+        if len(held) < 2:
             continue
-        for at, share in enumerate(held):
-            if share <= 0 or at >= len(slots):
-                continue
-            slot = str(slots[at]).lower()
-            if any(word in slot for word in _SPARE_WIDTH_NAMES):
-                continue
-            findings.append(
-                Finding(
-                    tool="gui-static",
-                    severity="high",
-                    file=str(path),
-                    line=line,
-                    rule_id="GUI008",
-                    message=(
-                        f"{name} gives the row's spare width to slot "
-                        f"{slots[at]!r}, which draws text or figures, so a long "
-                        "amount takes every spare pixel and the other slots fall "
-                        "to their floor. Give the share to a spacer slot."
-                    ),
-                )
+        sharing = [at for at, share in enumerate(held) if share > 0]
+        if len(sharing) != 1:
+            continue
+        at = sharing[0]
+        names = slots_by_prefix.get(source, [])
+        slot = repr(names[at]) if at < len(names) else f"index {at}"
+        findings.append(
+            Finding(
+                tool="gui-static",
+                severity="high",
+                file=str(path),
+                line=line,
+                rule_id="GUI008",
+                message=(
+                    f"{name} is {held}, so slot {slot} is the only one carrying a "
+                    f"share of the row's spare width. Every other slot falls to "
+                    f"its floor, and whatever that one slot cannot fill is drawn "
+                    f"as empty background. Share the spare width across the slots "
+                    f"that draw."
+                ),
             )
+        )
     return findings
 
 
@@ -942,13 +940,15 @@ _GEOMETRY_SCREEN_FILES: dict[str, str] = {
     "src/gui/web/header_strip.js": "header_row",
     "harness_fixtures/gui_archetype/known_good_rendered_row.js": "fixture_row_visible",
     "harness_fixtures/gui_archetype/known_bad_hidden_row.js": "fixture_row_hidden",
+    "harness_fixtures/gui_archetype/known_bad_void_row.js": "fixture_row_void",
 }
 
 #: The variants a screen is built in, where it has fewer than both. The fixture
-#: pair is a page and has no Qt half.
+#: rows are pages and have no Qt half.
 _GEOMETRY_SCREEN_VARIANTS: dict[str, tuple[str, ...]] = {
     "fixture_row_visible": ("react",),
     "fixture_row_hidden": ("react",),
+    "fixture_row_void": ("react",),
 }
 
 #: The paths the reference tree is read from, so a fixture screen is comparable
@@ -1073,10 +1073,15 @@ _HEADER_ROW_READ_JS = """(function () {
     walk = walk.parentElement;
   }
   var box = row.getBoundingClientRect();
+  var rowStyle = window.getComputedStyle(row);
+  var declaredGap = parseFloat(rowStyle.columnGap);
+  if (isNaN(declaredGap)) { declaredGap = 0; }
   var slots = [];
+  var edges = [];
   for (var at = 0; at < row.children.length; at++) {
     var node = row.children[at];
     var seen = node.getBoundingClientRect();
+    edges.push({ "left": seen.left, "right": seen.right });
     slots.push({
       "slot": node.getAttribute("data-slot") || ("child[" + at + "]"),
       "x": Math.round(seen.left - box.left),
@@ -1087,9 +1092,27 @@ _HEADER_ROW_READ_JS = """(function () {
       "overflow_px": overflow(node)
     });
   }
+  // The voids are summed from the unrounded edges and rounded once, so half a
+  // pixel of layout rounding on each of eight boundaries is not read as a void.
+  edges.sort(function (a, b) { return a.left - b.left; });
+  var head = 0;
+  var gap = 0;
+  var tail = 0;
+  if (edges.length > 0) {
+    head = Math.max(0, edges[0].left - box.left);
+    tail = Math.max(0, box.right - edges[edges.length - 1].right);
+    for (var step = 1; step < edges.length; step++) {
+      gap += Math.max(0, edges[step].left - edges[step - 1].right - declaredGap);
+    }
+  }
   return JSON.stringify({
     "row": { "w": Math.round(box.width), "h": Math.round(box.height) },
     "slots": slots,
+    "voids": {
+      "head_px": Math.round(head),
+      "gap_px": Math.round(gap),
+      "tail_px": Math.round(tail)
+    },
     "rendered": unrendered === "",
     "unrendered": unrendered,
     "ancestors": chain
@@ -1147,7 +1170,11 @@ def _qt_text_overflow_px(widget: object) -> int:
 
 
 def _react_reading(drawn: dict, spacing: int) -> dict:
-    """One page reading, with the void widths and the ancestor verdict filled in."""
+    """One page reading, with the void widths and the ancestor verdict filled in.
+
+    The page sums its own voids off the unrounded edges, so `_row_voids` answers
+    only where the page returned none.
+    """
     row = drawn.get("row") or {"w": 0, "h": 0}
     slots = drawn.get("slots") or []
     rendered = bool(drawn.get("rendered"))
@@ -1156,7 +1183,7 @@ def _react_reading(drawn: dict, spacing: int) -> dict:
         "variant": "react",
         "row": row,
         "slots": slots,
-        "voids": _row_voids(int(row.get("w", 0)), slots, spacing),
+        "voids": drawn.get("voids") or _row_voids(int(row.get("w", 0)), slots, spacing),
         "rendered": rendered,
         "unrendered": "" if rendered else (said or "the page returned no reading"),
         "ancestors": drawn.get("ancestors") or [],
@@ -1426,6 +1453,11 @@ def _fixture_row_hidden_geometry(width: int, height: int) -> dict:
     return _fixture_row_geometry("known_bad_hidden_row.js", width, height)
 
 
+def _fixture_row_void_geometry(width: int, height: int) -> dict:
+    """Read the fixture row whose slots fill only part of its width."""
+    return _fixture_row_geometry("known_bad_void_row.js", width, height)
+
+
 #: How long one page load or one page reading may take.
 _GEOMETRY_PAGE_TIMEOUT_MS = 20000
 
@@ -1437,6 +1469,7 @@ _GEOMETRY_BUILDERS: dict[tuple[str, str], Callable[[int, int], dict]] = {
     ("header_row", "react"): _header_row_react_geometry,
     ("fixture_row_visible", "react"): _fixture_row_visible_geometry,
     ("fixture_row_hidden", "react"): _fixture_row_hidden_geometry,
+    ("fixture_row_void", "react"): _fixture_row_void_geometry,
 }
 
 
@@ -1685,6 +1718,40 @@ def _unrendered(path: Path, where: str, now: dict) -> list[Finding]:
     return findings
 
 
+def _row_empty_background(path: Path, where: str, now: dict) -> list[Finding]:
+    """GUI008 read off the laid-out row: empty background anywhere in it.
+
+    The void is the defect and no reference is needed for it, so this fires on
+    the row as drawn rather than on a share list a reader can miss.
+    """
+    findings: list[Finding] = []
+    voids = now.get("voids") or {}
+    if not now.get("rendered", False):
+        return findings
+    for edge, told in (
+        ("head_px", "before its first slot"),
+        ("gap_px", "between its slots"),
+        ("tail_px", "after its last slot"),
+    ):
+        empty = int(voids.get(edge, 0))
+        if empty <= 0:
+            continue
+        findings.append(
+            Finding(
+                tool=_GEOMETRY_TOOL,
+                severity="high",
+                file=str(path),
+                line=0,
+                rule_id="GUI008",
+                message=(
+                    f"{where}: the row draws {empty} px of empty background "
+                    f"{told}. Share that width across the slots that draw."
+                ),
+            )
+        )
+    return findings
+
+
 def _variant_gap(qt: dict, react: dict) -> dict[str, tuple[int, int]]:
     """Per slot, how far the React page's size sits from the Qt screen's."""
     on_qt, on_page = _slots_by_name(qt), _slots_by_name(react)
@@ -1790,6 +1857,7 @@ def scan_geometry_drift(
             now = readings[("now", variant, width, height)]
             where = f"{variant} at {at}"
             report.findings.extend(_unrendered(target, where, now))
+            report.findings.extend(_row_empty_background(target, where, now))
             report.findings.extend(_resized_slots(target, where, was, now, reshaped))
             report.findings.extend(_new_voids(target, where, was, now))
             report.findings.extend(_new_overflow(target, where, was, now))
