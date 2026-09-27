@@ -31,6 +31,9 @@ BUILDER_NAMES = ("Qt_BUILD.py", "React_BUILD.py")
 # is what a PyInstaller host installs.
 CONSUMER = "build"
 
+# The administrator prompt `add_defender_exclusion` raises waits for a click.
+DEFENDER_PROMPT_SECONDS = 120
+
 _PYTHON_FLOOR = re.compile(r">=\s*(\d+)\.(\d+)")
 
 HEADER = """
@@ -385,7 +388,11 @@ def write_smartscreen_help(folder: str) -> None:
 
 
 def add_defender_exclusion(powershell: str) -> None:
-    """Ask Windows Defender to exclude the whole ``dist_dir``, which builds add to."""
+    """Ask Windows Defender to exclude the whole ``dist_dir``, which builds add to.
+
+    ``RunAs`` raises an administrator prompt, so the wait is capped at
+    ``DEFENDER_PROMPT_SECONDS`` and an unanswered prompt reports as skipped.
+    """
     root = dist_dir()
     if not os.path.isdir(root):
         return
@@ -396,11 +403,19 @@ def add_defender_exclusion(powershell: str) -> None:
         f"-ArgumentList '-Command Add-MpPreference "
         f"-ExclusionPath {quoted}'"
     )
-    exclusion = subprocess.run(
-        [powershell, "-Command", inner],
-        capture_output=True,
-        check=False,
-    )
+    try:
+        exclusion = subprocess.run(
+            [powershell, "-Command", inner],
+            capture_output=True,
+            check=False,
+            timeout=DEFENDER_PROMPT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"  Defender exclusion skipped (no answer in "
+            f"{DEFENDER_PROMPT_SECONDS}s)."
+        )
+        return
     if exclusion.returncode == 0:
         print("  Defender exclusion added.")
     else:
@@ -500,6 +515,7 @@ __all__ = [
     "APP_SUFFIX",
     "BUILDER_NAMES",
     "CONSUMER",
+    "DEFENDER_PROMPT_SECONDS",
     "GATEKEEPER_NOTICE",
     "HEADER",
     "MACOS_BUILDER",
