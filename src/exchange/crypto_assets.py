@@ -20,12 +20,38 @@ from __future__ import annotations
 
 from ..core.asset_logos import LOGO_CACHE_DIR, LogoAnswer, LogoCache
 from ..core.safe_url import openable_url
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("acervator.assets")
+
+#: The two addresses one coin's own picture is looked up through. The list is
+#: keyed on nothing and names every coin's id; the market records name the
+#: picture each id serves. Neither is a venue and neither takes a key.
+COIN_LIST_URL = "https://api.coingecko.com/api/v3/coins/list"
+COIN_MARKETS_URL = (
+    "https://api.coingecko.com/api/v3/coins/markets"
+    "?vs_currency=usd&per_page={size}&page=1&ids={ids}"
+)
+
+#: How many coin ids one ``COIN_MARKETS_URL`` read asks for.
+COIN_MARKETS_PAGE = 250
+
+#: The file under the logo cache holding one looked-up picture address per
+#: ticker, written by ``logo_library.build_coin_index``.
+COIN_INDEX_NAME = "coin_index.json"
+COIN_INDEX_VERSION = 1
+COIN_INDEX_VERSION_KEY = "version"
+COIN_INDEX_ASSETS_KEY = "assets"
+COIN_INDEX_IMAGE_KEY = "image"
+COIN_INDEX_REASON_KEY = "reason"
+COIN_INDEX_ID_KEY = "coin_id"
+COIN_INDEX_CHOSEN_KEY = "chosen_by"
+
+COIN_INDEX_READ_LOG = "crypto assets: %s will not parse: %s"
 
 #: The icon address keyed on the ticker alone, so a symbol no ``ASSETS`` entry
 #: names still resolves an address. It carries no CoinGecko image id and needs
@@ -38,6 +64,31 @@ logger = logging.getLogger("acervator.assets")
 # page. The address is kept, and 451 of the 542 logo-library targets hold no other
 # one, so each is recorded unresolved by name rather than left silent.
 SYMBOL_ICON_URL = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
+
+
+def coin_index_path(cache_dir: Optional[Path] = None) -> Path:
+    """``COIN_INDEX_NAME`` under ``cache_dir``, defaulting to ``LOGO_CACHE_DIR``."""
+    return (Path(cache_dir) if cache_dir else LOGO_CACHE_DIR) / COIN_INDEX_NAME
+
+
+def load_coin_index(cache_dir: Optional[Path] = None) -> dict[str, dict]:
+    """Every ticker the coin index holds, keyed on the upper-case symbol, empty for none."""
+    path = coin_index_path(cache_dir)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        logger.warning(COIN_INDEX_READ_LOG, path, exc)
+        return {}
+    assets = raw.get(COIN_INDEX_ASSETS_KEY) if isinstance(raw, dict) else None
+    if not isinstance(assets, dict):
+        return {}
+    return {
+        str(name).strip().upper(): row
+        for name, row in assets.items()
+        if isinstance(row, dict)
+    }
 
 
 # Asset descriptor
@@ -571,6 +622,21 @@ class AssetManager:
         """Hold the logo cache; the directory is made on the first kept file, not here."""
         self._cache_dir = cache_dir or LOGO_CACHE_DIR
         self._logos = LogoCache(self._cache_dir)
+        self._coins: Optional[dict[str, dict]] = None
+
+    @property
+    def coin_index(self) -> dict[str, dict]:
+        """``load_coin_index`` over ``cache_dir``, read once per ``AssetManager``."""
+        if self._coins is None:
+            self._coins = load_coin_index(self._cache_dir)
+        return self._coins
+
+    def coin_index_reason(self, symbol: str) -> str:
+        """Why the coin index holds no picture address for ``symbol``, empty when it holds one."""
+        row = self.coin_index.get(str(symbol).strip().upper()) or {}
+        if str(row.get(COIN_INDEX_IMAGE_KEY) or "").strip():
+            return ""
+        return str(row.get(COIN_INDEX_REASON_KEY) or "").strip()
 
     def get_asset(self, symbol: str) -> Optional[CryptoAsset]:
         """Look up asset by ticker symbol (case-insensitive)."""
@@ -594,15 +660,20 @@ class AssetManager:
     def logo_candidates(self, symbol: str) -> tuple[str, ...]:
         """Every address ``symbol``'s logo may be served at, best first.
 
-        A symbol no ``ASSETS`` entry names still answers one address, built from
-        ``SYMBOL_ICON_URL`` on the ticker, so an asset the database does not
-        carry resolves without a lookup.
+        ``coin_index`` answers first where it holds a looked-up address; a symbol
+        no ``ASSETS`` entry names still answers ``SYMBOL_ICON_URL`` on the ticker.
         """
         name = str(symbol).strip().upper()
         if not name:
             return ()
         asset = self.get_asset(name)
-        addresses = [asset.logo_url, asset.logo_fallback_url] if asset else []
+        indexed = str(
+            (self.coin_index.get(name) or {}).get(COIN_INDEX_IMAGE_KEY) or ""
+        ).strip()
+        if not indexed and self.coin_index_reason(name):
+            return ()
+        addresses = [indexed] if indexed else []
+        addresses += [asset.logo_url, asset.logo_fallback_url] if asset else []
         addresses.append(SYMBOL_ICON_URL.format(symbol=name))
         seen: list[str] = []
         for one in addresses:

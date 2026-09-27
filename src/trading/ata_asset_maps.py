@@ -1199,9 +1199,11 @@ def asset_logo(
     held = cache if cache is not None else _LOGOS
     addresses = logo_candidates(symbol)
     if not addresses and _is_crypto(symbol, asset_class):
+        manager = AssetManager(held.cache_dir)
         return held.resolve(
             symbol,
-            AssetManager(held.cache_dir).logo_candidates(symbol),
+            manager.logo_candidates(symbol),
+            no_source_reason=manager.coin_index_reason(symbol),
             folder=folder,
         )
     return held.resolve(
