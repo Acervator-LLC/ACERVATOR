@@ -8,6 +8,9 @@ from ...core.privacy_mask_registry import mask_or
 
 from .. import design_system as ds
 from ..main_tabs.bot_status_table_surface import (
+    COLUMN_LABELS,
+    COLUMN_TOOLTIPS,
+    FIXED_WIDTHS,
     HEADER_CELL_GAP_PX,
     HEADER_CELL_PAD_PX,
     HEADER_DOT_ROW_PX,
@@ -18,11 +21,19 @@ from ..main_tabs.bot_status_table_surface import (
     HEADER_LABEL_WRAP,
     HEADER_SORT_MARK_BOX_PX,
     HEADER_SORT_MARK_STYLE,
+    LOGO_SIZE_PX,
+    LOGO_TIP_FORMAT,
+    NO_LOGO_TIP_FORMAT,
     NO_SELECTION_BOT_ID,
     NO_SELECTION_ROW,
     NO_SORT_COLUMN,
+    ROW_HEIGHT_PX,
     SORTABLE_COLUMNS,
+    TOOLTIP_LINE_GAP,
     SortLookups,
+    icon_asset_of,
+    kept_logo_path,
+    mode_tooltip,
     order_statuses,
     selection_after_press,
     selection_after_view_moved,
@@ -72,8 +83,8 @@ try:
         QVBoxLayout,
         QWidget,
     )
-    from PySide6.QtCore import QSignalBlocker, Qt
-    from PySide6.QtGui import QColor, QFont, QFontMetrics
+    from PySide6.QtCore import QSignalBlocker, QSize, Qt
+    from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPixmap
 
     from . import ColumnSpec, ColumnarTableWidget
     from .bot_selection import _reanchor_bot_selection, _select_row_for_bot
@@ -303,63 +314,12 @@ if _HAS_QT:
                     self.sectionViewportPosition(at), 0, widths[at], tallest
                 )
 
+    #: The labels, tooltips and widths the surface publishes, so the window and
+    #: the renderer cannot drift apart on any of the three.
     SCRUMMING_COLUMNS = ColumnSpec(
-        labels=(
-            "Bot ID",
-            "Symbol",
-            "Current Position Value",
-            "Trades",
-            "Target",
-            "Target BTC",
-            "Target ETH",
-            "Ammo",
-            "Fire",
-            "",
-        ),
-        tooltips={
-            0: (
-                "Unique identifier for this bot instance, coloured by current state.\n"
-                "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-                "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
-            ),
-            1: "Trading pair (Target Asset / Base Currency)",
-            2: (
-                "Current Position Value — what this bot's holdings are worth now,\n"
-                "priced from the exchange (holdings × exchange price × quote rate).\n"
-                "Blank whenever no fresh exchange price exists: the cell never shows\n"
-                "a last-known figure, a computed stand-in or a ledger value.\n"
-                "Hover a blank cell to read which of those is missing."
-            ),
-            3: "Total number of executed buy and sell trades",
-            4: "Target Balance — the operator-set balance this bot trades\n"
-            "relative to. Hard-capped per MEM-246 Phase B.",
-            5: (
-                "Target Balance denominated in BTC (target USD ÷ BTC/USD spot).\n"
-                "Suffix Δ = 24h % change of <target>/BTC minus 24h % of "
-                "<target>/USD.\n"
-                "Positive Δ (green) = BTC-quoted pair cheaper in USD terms than USD-quoted.\n"
-                "Blank when pair unlisted on this exchange or target is BTC itself."
-            ),
-            6: (
-                "Target Balance denominated in ETH (target USD ÷ ETH/USD spot).\n"
-                "Suffix Δ = 24h % change of <target>/ETH minus 24h % of "
-                "<target>/USD.\n"
-                "Positive Δ (green) = ETH-quoted pair cheaper in USD terms than USD-quoted.\n"
-                "Blank when pair unlisted on this exchange or target is ETH itself."
-            ),
-            7: (
-                "Ammo — distance of current position value from Target.\n"
-                "Green = surplus above target (Scrum territory, next action = SELL).\n"
-                "Red = deficit below target (Fold territory, next action = BUY).\n"
-                "Neutral grey = within dust band around target (no action pending)."
-            ),
-            8: "Manual Fire — force immediate scrum/fold evaluation on next tick",
-            9: "Click for full bot detail and status explanation",
-        },
-        fixed_widths={
-            8: ds.TABLE_COL_FIRE_W,
-            9: ds.TABLE_COL_DETAIL_W,
-        },
+        labels=COLUMN_LABELS,
+        tooltips=dict(COLUMN_TOOLTIPS),
+        fixed_widths=dict(FIXED_WIDTHS),
     )
 
     class BotStatusTable(ColumnarTableWidget):
@@ -396,10 +356,17 @@ if _HAS_QT:
             self._bot_ids = []
             self._sort_column = NO_SORT_COLUMN
             self._sort_descending = False
+            # One QIcon per kept logo file, so a rewrite reads no file twice.
+            self._logo_icons: dict = {}
 
             # Last payload seen, so a dot toggle repopulates
             # without refetching from the bot manager.
             self._last_statuses: list = []
+
+            # The first column draws a LOGO_SIZE_PX mark, so every row takes
+            # ROW_HEIGHT_PX rather than the style's own section size.
+            self.setIconSize(QSize(LOGO_SIZE_PX, LOGO_SIZE_PX))
+            self.verticalHeader().setDefaultSectionSize(ROW_HEIGHT_PX)
 
             # Qt scrolls to its current item while autoScroll is on, which
             # takes the scroll bar away from the operator.
@@ -646,6 +613,41 @@ if _HAS_QT:
                 if self.cellWidget(row, col) is not None:
                     self.removeCellWidget(row, col)
 
+        def _logo_icon(self, path: str):
+            """``path``'s pixmap at ``LOGO_SIZE_PX``, held in ``_logo_icons`` after one read."""
+            held = self._logo_icons.get(path)
+            if held is not None:
+                return held
+            pixmap = QPixmap(path)
+            found = (
+                None
+                if pixmap.isNull()
+                else QIcon(
+                    pixmap.scaled(
+                        LOGO_SIZE_PX,
+                        LOGO_SIZE_PX,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation,
+                    )
+                )
+            )
+            self._logo_icons[path] = found
+            return found
+
+        def _draw_logo(self, item, symbol: str, shown: str) -> None:
+            """Put ``symbol``'s kept logo on ``item``, or leave ``shown`` as its text."""
+            asset = icon_asset_of(symbol)
+            if not asset or shown != asset:
+                return
+            path = kept_logo_path(symbol)
+            icon = self._logo_icon(path) if path else None
+            if icon is None:
+                item.setToolTip(NO_LOGO_TIP_FORMAT.format(asset=asset))
+                return
+            item.setIcon(icon)
+            item.setText("")
+            item.setToolTip(LOGO_TIP_FORMAT.format(asset=asset))
+
         def _write_row(self, row: int, status: dict) -> None:
             """Write one bot's eight cells, its Fire button and its Detail button."""
             stats = status.get("stats", {})
@@ -697,8 +699,9 @@ if _HAS_QT:
             target_eth_text, target_eth_color = self._denom_cell(
                 "ETH", base_asset, exchange_id, target_val
             )
+            logo_asset = icon_asset_of(symbol)
             items = [
-                mask_or(bid, "bot_table.bot_id"),
+                mask_or(logo_asset, "bot_table.bot_id"),
                 mask_or(status.get("symbol", ""), "bot_table.symbol"),
                 mask_or(_position["text"], "bot_table.ammo"),
                 mask_or(str(stats.get("total_trades", 0)), "bot_table.trades"),
@@ -715,17 +718,9 @@ if _HAS_QT:
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(Qt.AlignCenter)
                 if col == 1 and text:
-                    try:
-                        base = text.split("/")[0] if "/" in text else text
-                        from ..bot_wizard import _get_coin_icon
-
-                        icon = _get_coin_icon(
-                            base, ds.COIN_ICON_SIZE_PX, download=False
-                        )
-                        if icon:
-                            item.setIcon(icon)
-                    except Exception:  # noqa: S110
-                        pass
+                    color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
+                    item.setForeground(color)
+                    item.setToolTip(mode_tooltip(mode, state))
                     # UserRole carries (exchange_id, raw_symbol) for _on_cell_clicked.
                     try:
                         from ...exchange.exchange_chart_urls import (
@@ -737,12 +732,15 @@ if _HAS_QT:
                             from PySide6.QtCore import Qt as _Qt
 
                             item.setData(_Qt.UserRole, _url)
-                            item.setForeground(QColor(ds.TEXT_INFO_SOFT))
+                            # The state colour stays; the underline is what
+                            # marks the cell as the chart's link.
                             _f = item.font()
                             _f.setUnderline(True)
                             item.setFont(_f)
                             item.setToolTip(
-                                f"Open chart on {exchange_id} "
+                                item.toolTip()
+                                + TOOLTIP_LINE_GAP
+                                + f"Open chart on {exchange_id} "
                                 f"in default browser: {_url}"
                             )
                     except Exception as _chart_url_exc:
@@ -753,12 +751,7 @@ if _HAS_QT:
                             _chart_url_exc,
                         )
                 if col == 0:
-                    color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
-                    item.setForeground(color)
-                    # Tooltip on the cell shows the actual state text
-                    item.setToolTip(
-                        f"Mode: {mode}\nState: {state.upper() if state else 'UNKNOWN'}"
-                    )
+                    self._draw_logo(item, symbol, text)
                 if col == 2:
                     item.setToolTip(_position["tip"])
                 if col == 5:

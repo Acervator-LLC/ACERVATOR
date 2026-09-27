@@ -60,7 +60,9 @@
   var POSITION_VALUE_COLUMN = "position_value_column";
   var PRIVACY_FIELD_BY_COL = "privacy_field_by_col";
   var ROW_COUNT = "row_count";
+  var ROW_HEIGHT = "row_height";
   var ROWS = "rows";
+  var SYMBOL_COLUMN = "symbol_column";
   var SELECTED_BOT_ID = "selected_bot_id";
   var SKIPPED_ROWS = "skipped_rows";
   var STATE_COLORS = "state_colors";
@@ -149,6 +151,8 @@
     HEADERS,
     "icon_download",
     "icon_size",
+    "logo_size",
+    ROW_HEIGHT,
     "link_color",
     "link_tip_format",
     "link_underline",
@@ -208,7 +212,7 @@
     "state_revealed",
     STATUSES_PARAM_FIELD,
     STYLE_SHEET,
-    "symbol_column",
+    SYMBOL_COLUMN,
     "symbol_separator",
     "target_btc_column",
     "target_eth_column",
@@ -233,6 +237,9 @@
   var ICON_SIZE = "icon_size";
   var ICON_COLOR = "icon_color";
   var ICON_LETTER = "icon_letter";
+  var LOGO_PATH = "logo_path";
+  var LOGO_IMAGE = "logo_image";
+  var LOGO_SIZE = "logo_size";
   var CHART_URL = "chart_url";
   var UNDERLINE = "underline";
 
@@ -258,6 +265,9 @@
     ALIGNMENT_VALUE,
     ICON_ASSET,
     ICON_SIZE,
+    LOGO_PATH,
+    LOGO_IMAGE,
+    LOGO_SIZE,
     CHART_URL,
     UNDERLINE
   ];
@@ -334,6 +344,7 @@
   var BUTTON_TAG = "button";
   var BUTTON_TYPE = "button";
   var DISC_TAG = "span";
+  var IMG_TAG = "img";
   var LABEL_TAG = "span";
   var DOT_TAG = "span";
 
@@ -376,6 +387,7 @@
   var FIRE_PART = "fire-button";
   var DETAIL_PART = "detail-button";
   var DISC_PART = "coin-icon";
+  var LOGO_PART = "asset-logo";
 
   var ROW_ATTR = "data-row";
   var COLUMN_ATTR = "data-column";
@@ -393,6 +405,8 @@
   var CHART_URL_ATTR = "data-chart-url";
   var ICON_ATTR = "data-icon";
   var ICON_SIZE_ATTR = "data-icon-size";
+  var LOGO_PATH_ATTR = "data-logo-path";
+  var LOGO_SIZE_ATTR = "data-logo-size";
   var ALIGNMENT_ATTR = "data-alignment";
   var ALIGNMENT_VALUE_ATTR = "data-alignment-value";
   var DECLARED_ROWS_ATTR = "data-declared-rows";
@@ -412,6 +426,8 @@
   // The unit factor that turns a unitless token into a CSS length.
   var PX_FACTOR = " * 1px)";
   var PX = "px";
+  // The CSS spelling of no padding and no line box, for the logo's own cell.
+  var NO_PAD = "0";
   // QFont point size in _get_coin_icon: int(size * 0.45).
   var DISC_LETTER_SHARE = 0.45;
 
@@ -783,6 +799,29 @@
     return element(DISC_TAG, discProps, text(found[ICON_LETTER]));
   }
 
+  // The mark the first column draws: logo_image carries the bytes the page's
+  // own img-src rule allows, and logo_size sizes it as the window's icon.
+  function AssetLogo(props) {
+    var found = props.cell;
+    var size = Number(found[LOGO_SIZE]);
+    var style = { display: BLOCK_DISPLAY, margin: DOT_MARGIN };
+    if (size > 0) {
+      style.width = size + PX;
+      style.height = size + PX;
+    }
+    var logoProps = {
+      src: text(found[LOGO_IMAGE]),
+      alt: label(found[TOOLTIP]),
+      draggable: false,
+      className: TABLE_CLASS,
+      style: style
+    };
+    logoProps[PART_ATTR] = LOGO_PART;
+    logoProps[LOGO_PATH_ATTR] = text(found[LOGO_PATH]);
+    logoProps[LOGO_SIZE_ATTR] = text(found[LOGO_SIZE]);
+    return element(IMG_TAG, logoProps, null);
+  }
+
   function BodyCell(props) {
     var model = props.model;
     var found = props.cell;
@@ -813,6 +852,7 @@
     cellProps[ALIGNMENT_VALUE_ATTR] = text(found[ALIGNMENT_VALUE]);
     cellProps[ICON_ATTR] = text(found[ICON_ASSET]);
     cellProps[ICON_SIZE_ATTR] = text(found[ICON_SIZE]);
+    cellProps[LOGO_PATH_ATTR] = text(found[LOGO_PATH]);
     cellProps[CHART_URL_ATTR] = text(found[CHART_URL]);
     if (isFilledText(found[CHART_URL])) {
       cellProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[CELL_CLICKED]);
@@ -822,6 +862,19 @@
     }
     if (props.children !== undefined) {
       return element(CELL_TAG, cellProps, props.children);
+    }
+    if (isFilledText(found[LOGO_IMAGE])) {
+      // The sheet gives every cell CELL_PAD_PX above and below its content.
+      // A logo_size mark plus that padding is taller than row_height, so the
+      // logo's own cell drops it and the row keeps the height the surface set.
+      style.paddingTop = NO_PAD;
+      style.paddingBottom = NO_PAD;
+      style.lineHeight = NO_PAD;
+      return element(
+        CELL_TAG,
+        cellProps,
+        element(AssetLogo, { key: LOGO_PART, cell: found })
+      );
     }
     if (isFilledText(found[ICON_COLOR])) {
       return element(
@@ -862,8 +915,10 @@
       });
     });
     var selected = model[HAS_SELECTION] === true && at === model[CURRENT_ROW];
+    var tall = Number(model[ROW_HEIGHT]);
     var rowProps = {
       className: TABLE_CLASS,
+      style: tall > 0 ? { height: tall + PX } : {},
       onClick: function () {
         sendRowPress(model, botId);
       }
@@ -1026,7 +1081,7 @@
       checkTypeAgainst(at, found, TEXT, model[EMPTY_TEXT]);
       checkTypeAgainst(at, found, ALIGNMENT, model[ALIGNMENT]);
       checkTypeAgainst(at, found, ALIGNMENT_VALUE, model[ALIGNMENT_VALUE]);
-      if (column === model[BOT_ID_COLUMN]) {
+      if (column === model[SYMBOL_COLUMN]) {
         checkTypeAgainst(at, found, COLOR, model[DEFAULT_STATE_COLOR]);
       }
     });
