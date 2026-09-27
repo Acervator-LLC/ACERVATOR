@@ -175,9 +175,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          # No node version file exists in the tree; 22 is the current LTS and
-          # satisfies the eslint and stylelint engine ranges in package.json.
-          node-version: '22'
+          # package-lock.json was written by npm 11, which ships with node 24.
+          # Node 22 carries npm 10, and npm 10 reads that lock file as out of
+          # sync with the aliased @openzeppelin overrides and refuses `npm ci`.
+          node-version: '24'
           cache: npm
       - name: Install the Solidity libraries
         # foundry.toml sets libs = ["node_modules"], so forge resolves
@@ -204,7 +205,8 @@ jobs:
           cache: pip
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          # See the contracts lane: npm 10 refuses this lock file.
+          node-version: '24'
           cache: npm
       - name: Cache installed Python packages
         # [dev] carries the analyzers the archetypes shell out to, and PySide6
