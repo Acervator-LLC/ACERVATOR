@@ -252,6 +252,7 @@ request exists and the one status reports green.
 ```
 current   a pull request is required before a merge
 current   ci-gate must report success, and the branch must be up to date
+current   a red ci-gate leaves the merge blocked, and no one may bypass it
 current   a force-push is refused, and a deletion is refused
 main      a force-push is refused, and a deletion is refused
 main      a direct push is allowed, which is how the branch is synced
