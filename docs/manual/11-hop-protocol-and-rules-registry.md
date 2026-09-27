@@ -372,6 +372,32 @@ listing marks every entry the count leaves out.
     __pycache__/                                 not counted, a directory
 ```
 
+### The hooks are in the tree now
+
+Three sentences above are overtaken. Each is quoted whole below, and the true
+sentence follows it.
+
+> Eight hooks sit under `~/.claude/hooks/`, also machine-local and also not
+> committed.
+
+Overtaken. Twenty-eight hook files are tracked in `dev_harness/hooks/`, and the
+same twenty-eight run from the machine profile.
+
+> The count reads the directory, not a list. Eight names end in `.py` and each of
+> those runs.
+
+Overtaken. Twenty-eight names end in the Python extension. Twenty-two of them run
+at an event, and six sit in the directory with no event calling them.
+
+> The skills and the hooks run, and they are not in the tree — a reader who
+> searches this repository for them finds nothing, and that is the correct result
+> rather than a missing file.
+
+Overtaken. A reader who searches this repository for a hook finds its source, and
+`dev_harness/hooks/REGISTRATIONS.md` records the event each one runs at. The
+skills are tracked the same way, under `dev_harness/skills/`, one directory per
+skill.
+
 ### Where each layer resolves
 
 The harness is in the tree, so every claim above about it resolves to a path a
