@@ -321,7 +321,9 @@ rather than warn about it.
 - `archetype_gate.py` — in its pre mode, denies a write whose pending content
   would introduce a high or critical finding the file does not already carry; in
   its post mode, runs the archetype on what was written and reports the verdict.
-  It blocks a rise, never a level.
+  It blocks a rise, never a level. It routes a shell script and a workflow file
+  to the coding archetype, and for a type with no analyzer it reports that the
+  file was not examined rather than saying nothing.
 - `block_heavy_run.py` — denies a test run above the memory ceiling, a run while
   another is resident, and `-n auto` outright.
 - `block_heredoc.py` — denies a shell command carrying a heredoc.

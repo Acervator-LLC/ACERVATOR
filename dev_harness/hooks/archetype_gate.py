@@ -347,6 +347,10 @@ def _is_forbidden(path: Path) -> bool:
 _PY_SUFFIXES = (".py", ".pyw", ".pyi")
 _MD_SUFFIXES = (".md", ".markdown")
 
+# coding_archetype runs shellcheck on these and yamllint on the YAML pair.
+_SH_SUFFIXES = (".sh", ".bash", ".zsh")
+_YAML_SUFFIXES = (".yml", ".yaml")
+
 _QT_BASES = frozenset({
     "QWidget", "QDialog", "QMainWindow", "QFrame",
     "QPushButton", "QLineEdit", "QTextEdit", "QLabel",
@@ -445,6 +449,8 @@ def _pick_archetypes(path: Path, source: str) -> list:
             mods.append("dev_harness.harness.ta_archetype")
     elif suffix in _MD_SUFFIXES:
         mods.append("dev_harness.harness.docs_archetype")
+    elif suffix in _SH_SUFFIXES or suffix in _YAML_SUFFIXES:
+        mods.append("dev_harness.harness.coding_archetype")
     return mods
 
 
@@ -766,7 +772,10 @@ def _evaluate_content(
         for node in created:
             node.mkdir()
         _sweep_directory(staged.parent, staged)
-        staged.write_text(content, encoding="utf-8", errors="replace")
+        # newline="" keeps the content's own endings; the default adds \r and
+        # shellcheck then reports SC1017 on every line.
+        staged.write_text(
+            content, encoding="utf-8", errors="replace", newline="")
     except OSError as exc:
         _cleanup_staging(staged, created, record)
         return {"_staging": {"_error": f"cannot stage pending content: {exc}"}}
@@ -1133,8 +1142,10 @@ def _run_post(data: dict) -> int:
         return 0
     modules = _pick_archetypes(path, _read_text(path))
     if not modules:
-        _debug_log(f"post: skipped {path.name} - no archetype for this suffix")
-        return 0
+        _debug_log(f"post: unowned {path.name} - no archetype for this suffix")
+        return _emit_note(
+            f"[archetype-gate] no owning archetype: {_rel(path)} - this file "
+            "type was NOT examined, which is not the same as clean")
 
     deadline = time.monotonic() + POST_BUDGET_S
     parts = []
