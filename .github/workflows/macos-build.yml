@@ -1,0 +1,308 @@
+# Acervator macOS build — the runner that replaces carrying a zip to a Mac.
+#
+# The operator builds Windows on his own machine and has no way to build macOS
+# there. This workflow runs `build_mac.sh --dmg` on a real macOS runner, so both
+# variants come back as a .app and a .dmg he downloads from the run page.
+#
+# The bar is an application that STARTS, both variants. A run that produced a
+# bundle nobody opened proves nothing, so every artefact is read back here:
+#
+#   1 the .app and the .dmg exist, with their byte sizes printed
+#   2 each .dmg mounts, and the .app inside carries the same binary and the
+#     variant that was built
+#   3 each .app is launched and its OWN system.log is read for the line
+#     main.py prints after the main window is shown, and its own heartbeat.txt
+#     is read to show the event loop is running
+#   4 the screen is captured while each variant runs, against a control capture
+#     of the bare desktop, so a bundle that starts and draws nothing fails
+#   5 QtWebEngineProcess is counted while each variant runs. The React main
+#     window draws its tab bar in a web view, so that count separates the two
+#     variants and is the positive reading that React rendered
+#
+# The launch runs with HOME on a scratch directory. No bot state file exists
+# there, so `_autostart_bot_count` is 0 and no bot is ever started, and no
+# credential file exists, so no venue is reachable.
+name: macOS build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - build_mac.sh
+      - Acervator_mac.spec
+      - tools/build_launcher.py
+      - tools/build_variants.py
+      - tools/spec_common.py
+      - .github/workflows/macos-build.yml
+
+concurrency:
+  group: macos-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macos
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      # Chromium inside QtWebEngine cannot use its own sandbox on a runner.
+      QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
+      # Where a launched bundle writes its logs. Not the runner's own HOME.
+      LAUNCH_ROOT: ${{ github.workspace }}/launch
+      # Seconds to wait for a bundle to report its window.
+      LAUNCH_WAIT_SECONDS: 180
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # src/_version.py runs `git describe`, so the tags have to be here.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Report the runner and the version the build will carry
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -m
+          python3 -V
+          python3 -c 'import src; print("version:", src.__version__)'
+          python3 -m tools.build_variants env-var
+          python3 -m tools.build_variants select
+
+      - name: Build both variants, each with a disk image
+        run: |
+          set -euo pipefail
+          chmod +x build_mac.sh
+          ./build_mac.sh --dmg
+
+      - name: Read every artefact back with its byte size
+        run: |
+          set -uo pipefail
+          echo "=== dist ==="
+          ls -1 dist
+          echo
+          fail=0
+          for variant in qt react; do
+            app="$(ls -d dist/*-"$variant".app 2>/dev/null | head -1)"
+            dmg="$(ls -1 dist/*-"$variant".dmg 2>/dev/null | head -1)"
+            if [ -z "$app" ] || [ ! -d "$app" ]; then
+              echo "MISSING: no .app for the $variant variant"; fail=1; continue
+            fi
+            if [ -z "$dmg" ] || [ ! -f "$dmg" ]; then
+              echo "MISSING: no .dmg for the $variant variant"; fail=1; continue
+            fi
+            name="$(basename "$app" .app)"
+            binary="$app/Contents/MacOS/$name"
+            baked="$app/Contents/Resources/src/_baked_variant.txt"
+            echo "$variant  app      $app"
+            echo "$variant  app      $(du -sk "$app" | cut -f1) KiB on disk"
+            echo "$variant  binary   $binary"
+            echo "$variant  binary   $(stat -f%z "$binary") bytes"
+            echo "$variant  dmg      $dmg"
+            echo "$variant  dmg      $(stat -f%z "$dmg") bytes"
+            echo "$variant  baked    $(cat "$baked" 2>/dev/null || echo ABSENT)"
+            if [ "$(cat "$baked" 2>/dev/null)" != "$variant" ]; then
+              echo "WRONG VARIANT BAKED into $app"; fail=1
+            fi
+            echo
+          done
+          exit "$fail"
+
+      - name: Mount each disk image and read the bundle inside
+        run: |
+          set -uo pipefail
+          fail=0
+          mkdir -p "$RUNNER_TEMP/mnt"
+          for variant in qt react; do
+            dmg="$(ls -1 dist/*-"$variant".dmg | head -1)"
+            app="$(ls -d dist/*-"$variant".app | head -1)"
+            name="$(basename "$app" .app)"
+            point="$RUNNER_TEMP/mnt/$variant"
+            mkdir -p "$point"
+            echo "=== $variant: attaching $dmg ==="
+            if ! hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$point"; then
+              echo "ATTACH FAILED for $dmg"; fail=1; continue
+            fi
+            echo "--- volume contents ---"
+            ls -1 "$point"
+            inside="$point/$name.app"
+            if [ ! -d "$inside" ]; then
+              echo "MISSING: $name.app is not inside $dmg"; fail=1
+            else
+              built="$(shasum -a 256 "$app/Contents/MacOS/$name" | cut -d' ' -f1)"
+              shipped="$(shasum -a 256 "$inside/Contents/MacOS/$name" | cut -d' ' -f1)"
+              echo "built   binary sha256 $built"
+              echo "shipped binary sha256 $shipped"
+              if [ "$built" = "$shipped" ]; then
+                echo "MATCH: the .app inside the .dmg is the one that was built"
+              else
+                echo "MISMATCH: the .app in the .dmg is not the one that was built"
+                fail=1
+              fi
+              echo "shipped baked variant $(cat "$inside/Contents/Resources/src/_baked_variant.txt")"
+            fi
+            hdiutil detach "$point" -force || true
+            echo
+          done
+          exit "$fail"
+
+      - name: Capture the bare desktop as the control
+        run: |
+          set -euo pipefail
+          mkdir -p "$LAUNCH_ROOT"
+          screencapture -x "$LAUNCH_ROOT/desktop-control.png" || true
+          ls -l "$LAUNCH_ROOT/desktop-control.png" || echo "no control capture"
+
+      - name: Launch each bundle and read what it reports about itself
+        run: |
+          set -uo pipefail
+          fail=0
+          for variant in qt react; do
+            app="$(ls -d dist/*-"$variant".app | head -1)"
+            name="$(basename "$app" .app)"
+            home="$LAUNCH_ROOT/$variant"
+            rm -rf "$home"
+            mkdir -p "$home"
+
+            echo "=============================================================="
+            echo "=== launching the $variant bundle: $app"
+            echo "=== HOME is $home"
+            echo "=============================================================="
+            env -i \
+              PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+              HOME="$home" \
+              TMPDIR="$home/tmp" \
+              LANG=en_US.UTF-8 \
+              QTWEBENGINE_CHROMIUM_FLAGS="$QTWEBENGINE_CHROMIUM_FLAGS" \
+              ACERVATOR_DEBUG_BOOT=1 \
+              "$app/Contents/MacOS/$name" > "$home/console.txt" 2>&1 &
+            pid=$!
+            echo "pid $pid"
+
+            ready=timeout
+            for _ in $(seq 1 "$LAUNCH_WAIT_SECONDS"); do
+              if grep -rqs "main window displayed" "$home/.acervator_logs"; then
+                ready=log; break
+              fi
+              if grep -qs "main window displayed" "$home/console.txt"; then
+                ready=console; break
+              fi
+              if ! kill -0 "$pid" 2>/dev/null; then
+                ready=died; break
+              fi
+              sleep 1
+            done
+            echo "--- the $variant bundle reported its window through: $ready"
+
+            echo "--- QtWebEngineProcess instances while $variant runs ---"
+            web="$(pgrep -f QtWebEngineProcess | wc -l | tr -d ' ')"
+            echo "$variant QtWebEngineProcess count: $web"
+
+            screencapture -x "$home/screen.png" || true
+
+            echo "--- the log tree the $variant bundle created under its HOME ---"
+            find "$home/.acervator_logs" -type f 2>/dev/null | head -40 || true
+
+            echo "--- heartbeat.txt, which only a running event loop writes ---"
+            cat "$home/.acervator_logs/heartbeat.txt" 2>/dev/null \
+              || echo "NO HEARTBEAT: the event loop never ran"
+
+            echo "--- the last 40 lines the $variant bundle logged about itself ---"
+            sysl="$(find "$home/.acervator_logs" -name system.log | head -1)"
+            if [ -n "$sysl" ]; then
+              tail -40 "$sysl"
+            else
+              echo "NO system.log"
+            fi
+
+            echo "--- the last 60 lines on its console ---"
+            tail -60 "$home/console.txt" || true
+
+            echo "--- React tab bar load failures logged ($variant) ---"
+            grep -rc "tab bar failed to load" "$home/.acervator_logs" 2>/dev/null \
+              || echo "none"
+
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            echo "--- reaped pid $pid; still alive: $(pgrep -f "$name" | wc -l | tr -d ' ')"
+            pkill -f "$name" 2>/dev/null || true
+
+            if [ "$ready" != "log" ] && [ "$ready" != "console" ]; then
+              echo "FAILURE: the $variant bundle never reported its main window"
+              fail=1
+            fi
+            echo
+          done
+          exit "$fail"
+
+      - name: Match the react screen against the qt screen
+        shell: python
+        run: |
+          import os
+          import sys
+          from pathlib import Path
+
+          from PIL import Image
+
+          root = Path(os.environ["LAUNCH_ROOT"])
+          shots = {
+              "desktop-control": root / "desktop-control.png",
+              "qt": root / "qt" / "screen.png",
+              "react": root / "react" / "screen.png",
+          }
+          read = {}
+          for label, path in shots.items():
+              if not path.exists():
+                  print(f"{label:16} MISSING {path}")
+                  continue
+              image = Image.open(path).convert("RGB")
+              colours = image.getcolors(maxcolors=1 << 24) or []
+              digest = image.tobytes()
+              read[label] = (image.size, len(colours), path.stat().st_size, digest)
+              print(
+                  f"{label:16} {image.size[0]}x{image.size[1]}  "
+                  f"{len(colours):>7} distinct colours  "
+                  f"{path.stat().st_size:>9} bytes"
+              )
+
+          control = read.get("desktop-control")
+          bad = []
+          for label in ("qt", "react"):
+              if label not in read:
+                  bad.append(f"{label}: no capture, so nothing was read")
+                  continue
+              if read[label][1] < 2:
+                  bad.append(f"{label}: one flat colour, so nothing drew")
+              if control and read[label][3] == control[3]:
+                  bad.append(f"{label}: identical to the bare desktop control")
+          if "qt" in read and "react" in read:
+              same = read["qt"][3] == read["react"][3]
+              print()
+              print(f"the two variants drew the same pixels: {same}")
+          if bad:
+              print()
+              for line in bad:
+                  print("FAILURE", line)
+              sys.exit(1)
+          print("both variants drew a screen that differs from the bare desktop")
+
+      - name: Upload the applications and the disk images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acervator-macos
+          path: |
+            dist/*.app
+            dist/*.dmg
+          if-no-files-found: error
+
+      - name: Upload what the launches produced
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acervator-macos-launch-evidence
+          path: ${{ env.LAUNCH_ROOT }}
+          if-no-files-found: warn

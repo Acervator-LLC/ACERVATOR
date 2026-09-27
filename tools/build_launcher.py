@@ -22,6 +22,8 @@ import time
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST_DIRNAME = "dist"
 WINDOWS_BUILDER = "build_windows.ps1"
+MACOS_BUILDER = "build_mac.sh"
+APP_SUFFIX = ".app"
 SMARTSCREEN_HELP_NAME = "IF_BLOCKED_READ_THIS.txt"
 BUILDER_NAMES = ("Qt_BUILD.py", "React_BUILD.py")
 
@@ -88,6 +90,21 @@ Option 4: Add Defender exclusion (done automatically by build)
   - Click Manage Settings under Virus & Threat Protection Settings
   - Scroll to Exclusions > Add or Remove Exclusions
   - Add this folder as an exclusion
+"""
+
+GATEKEEPER_NOTICE = """
+------------------------------------------------------------
+  IF macOS REFUSES TO OPEN THE APP:
+
+  The bundle carries no Apple Developer signature, so
+  Gatekeeper blocks a double-click the first time.
+
+  1. Right-click (or Control-click) the .app
+  2. Choose Open
+  3. Choose Open again in the dialog
+
+  That is once per build. Later launches open normally.
+------------------------------------------------------------
 """
 
 
@@ -214,9 +231,73 @@ def check_and_install_deps() -> bool:
     return True
 
 
+def is_macos() -> bool:
+    """Report whether ``sys.platform`` is darwin."""
+    return sys.platform == "darwin"
+
+
+def is_windows() -> bool:
+    """Report whether ``sys.platform`` starts with win."""
+    return sys.platform.startswith("win")
+
+
+def builder_name() -> str:
+    """Return ``MACOS_BUILDER`` or ``WINDOWS_BUILDER`` for this platform, else ''."""
+    if is_macos():
+        return MACOS_BUILDER
+    if is_windows():
+        return WINDOWS_BUILDER
+    return ""
+
+
 def powershell_exe() -> str:
     """Return the absolute PowerShell path ``shutil.which`` resolves, or ''."""
     return shutil.which("powershell") or ""
+
+
+def bash_exe() -> str:
+    """Return the absolute bash path ``shutil.which`` resolves, or ''."""
+    return shutil.which("bash") or ""
+
+
+def build_argv(script: str, variants: tuple[str, ...]) -> list[str]:
+    """Return the argv running ``script`` for ``variants``, or [] with no interpreter.
+
+    ``MACOS_BUILDER`` takes one ``--variant`` per name and ``--dmg``;
+    ``WINDOWS_BUILDER`` takes the names comma-joined behind one ``-Variant``.
+    """
+    if is_macos():
+        bash = bash_exe()
+        if not bash:
+            return []
+        argv = [bash, script, "--dmg"]
+        for variant in variants:
+            argv += ["--variant", variant]
+        return argv
+    powershell = powershell_exe()
+    if not powershell:
+        return []
+    return [
+        powershell,
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        script,
+        "-Variant",
+        ",".join(variants),
+    ]
+
+
+def application_path(root: str, entry: str) -> str:
+    """Return where a build folder named ``entry`` under ``root`` holds its application.
+
+    A name that cannot hold one for this platform answers ''.
+    """
+    if is_macos():
+        if not entry.endswith(APP_SUFFIX):
+            return ""
+        return os.path.join(root, entry)
+    return os.path.join(root, entry, f"{entry}.exe")
 
 
 def dist_dir() -> str:
@@ -235,10 +316,10 @@ def build_folder_names() -> set[str]:
 
 
 def build_outputs(skip: frozenset[str] = frozenset()) -> list[str]:
-    """Return the executables under ``dist_dir`` outside ``skip``, newest first.
+    """Return the ``application_path`` results under ``dist_dir`` outside ``skip``.
 
     Each build claims a folder of its own, so passing the ``build_folder_names``
-    taken before a run leaves only what that run produced.
+    taken before a run leaves only what that run produced, newest first.
     """
     root = dist_dir()
     if not os.path.isdir(root):
@@ -247,11 +328,31 @@ def build_outputs(skip: frozenset[str] = frozenset()) -> list[str]:
     for name in os.listdir(root):
         if name in skip:
             continue
-        exe = os.path.join(root, name, f"{name}.exe")
-        if os.path.exists(exe):
-            found.append(exe)
+        application = application_path(root, name)
+        if application and os.path.exists(application):
+            found.append(application)
     found.sort(key=os.path.getmtime, reverse=True)
     return found
+
+
+def disk_image_names() -> set[str]:
+    """Return the .dmg names present directly under ``dist_dir`` right now."""
+    root = dist_dir()
+    if not os.path.isdir(root):
+        return set()
+    return {name for name in os.listdir(root) if name.endswith(".dmg")}
+
+
+def disk_images(skip: frozenset[str] = frozenset()) -> list[str]:
+    """Return the .dmg paths under ``dist_dir`` whose name is outside ``skip``."""
+    root = dist_dir()
+    if not os.path.isdir(root):
+        return []
+    return sorted(
+        os.path.join(root, name)
+        for name in os.listdir(root)
+        if name.endswith(".dmg") and name not in skip
+    )
 
 
 def stamp_builder_dates(finished_at: float) -> list[str]:
@@ -283,62 +384,61 @@ def write_smartscreen_help(folder: str) -> None:
         print(f"  NOTE: help file not written: {exc}")
 
 
-def run_build(variants: tuple[str, ...]) -> bool:
-    """Execute the PowerShell build script for ``variants``."""
-    ps1_path = os.path.join(PROJECT_ROOT, WINDOWS_BUILDER)
+def add_defender_exclusion(powershell: str) -> None:
+    """Ask Windows Defender to exclude the whole ``dist_dir``, which builds add to."""
+    root = dist_dir()
+    if not os.path.isdir(root):
+        return
+    print("\n  Adding Windows Defender exclusion...")
+    quoted = f'"{root}"'
+    inner = (
+        f'Start-Process "{powershell}" -Verb RunAs -Wait '
+        f"-ArgumentList '-Command Add-MpPreference "
+        f"-ExclusionPath {quoted}'"
+    )
+    exclusion = subprocess.run(
+        [powershell, "-Command", inner],
+        capture_output=True,
+        check=False,
+    )
+    if exclusion.returncode == 0:
+        print("  Defender exclusion added.")
+    else:
+        print("  Defender exclusion skipped (admin prompt declined).")
 
-    if not os.path.exists(ps1_path):
-        print(f"\n  ERROR: {WINDOWS_BUILDER} not found at:\n  {ps1_path}")
-        print(f"  Make sure the build entry point and {WINDOWS_BUILDER} are")
+
+def run_build(variants: tuple[str, ...]) -> bool:
+    """Execute this platform's ``builder_name`` script for ``variants``."""
+    script_name = builder_name()
+    if not script_name:
+        print(f"\n  ERROR: no build script is known for platform {sys.platform!r}.")
+        print(f"  {WINDOWS_BUILDER} builds on Windows and {MACOS_BUILDER} on macOS.")
+        return False
+
+    script_path = os.path.join(PROJECT_ROOT, script_name)
+    if not os.path.exists(script_path):
+        print(f"\n  ERROR: {script_name} not found at:\n  {script_path}")
+        print(f"  Make sure the build entry point and {script_name} are")
         print("  in the same folder.")
         return False
 
-    powershell = powershell_exe()
-    if not powershell:
-        print("\n  ERROR: powershell not found on PATH.")
-        print(f"  The Windows build runs {WINDOWS_BUILDER} and needs it.")
+    argv = build_argv(script_path, variants)
+    if not argv:
+        interpreter = "bash" if is_macos() else "powershell"
+        print(f"\n  ERROR: {interpreter} not found on PATH.")
+        print(f"  This build runs {script_name} and needs it.")
         return False
 
-    print(f"\n  Script: {ps1_path}")
+    print(f"\n  Script: {script_path}")
     print(f"  Variants: {', '.join(variants)}")
     print("  Starting build...\n")
     print("=" * 60)
 
-    # -Variant binds one argv token, so several names travel comma-joined.
-    result = subprocess.run(
-        [
-            powershell,
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            ps1_path,
-            "-Variant",
-            ",".join(variants),
-        ],
-        cwd=PROJECT_ROOT,
-        check=False,
-    )
+    result = subprocess.run(argv, cwd=PROJECT_ROOT, check=False)
     print("=" * 60)
 
-    # The whole dist root, because each build adds another folder under it.
-    root = dist_dir()
-    if os.path.isdir(root):
-        print("\n  Adding Windows Defender exclusion...")
-        quoted = f'"{root}"'
-        inner = (
-            f'Start-Process "{powershell}" -Verb RunAs -Wait '
-            f"-ArgumentList '-Command Add-MpPreference "
-            f"-ExclusionPath {quoted}'"
-        )
-        exclusion = subprocess.run(
-            [powershell, "-Command", inner],
-            capture_output=True,
-            check=False,
-        )
-        if exclusion.returncode == 0:
-            print("  Defender exclusion added.")
-        else:
-            print("  Defender exclusion skipped (admin prompt declined).")
+    if is_windows():
+        add_defender_exclusion(argv[0])
 
     return result.returncode == 0
 
@@ -369,6 +469,7 @@ def launch(variants: tuple[str, ...]) -> bool:
 
     print("\n[3/3] Building application...")
     before = build_folder_names()
+    images_before = disk_image_names()
     if not run_build(variants):
         print("\n  Build failed. Check the output above for errors.")
         return False
@@ -382,27 +483,46 @@ def launch(variants: tuple[str, ...]) -> bool:
     if stamped:
         print(f"\n  Build date set on: {', '.join(stamped)}")
 
-    for exe in built:
-        print(f"\n  Build complete: {exe}")
-        write_smartscreen_help(os.path.dirname(exe))
-    print(SMARTSCREEN_NOTICE)
+    for application in built:
+        print(f"\n  Build complete: {application}")
+        if is_windows():
+            write_smartscreen_help(os.path.dirname(application))
+    if is_macos():
+        for image in disk_images(skip=frozenset(images_before)):
+            print(f"  Disk image: {image}")
+        print(GATEKEEPER_NOTICE)
+    else:
+        print(SMARTSCREEN_NOTICE)
     return True
 
 
 __all__ = [
+    "APP_SUFFIX",
     "BUILDER_NAMES",
     "CONSUMER",
+    "GATEKEEPER_NOTICE",
     "HEADER",
+    "MACOS_BUILDER",
     "PROJECT_ROOT",
     "SMARTSCREEN_HELP",
     "SMARTSCREEN_NOTICE",
+    "WINDOWS_BUILDER",
+    "add_defender_exclusion",
+    "application_path",
+    "bash_exe",
+    "build_argv",
     "build_folder_names",
     "build_outputs",
+    "builder_name",
     "check_and_install_deps",
     "check_pip",
     "check_python",
+    "disk_image_names",
+    "disk_images",
     "dist_dir",
     "install_package",
+    "is_macos",
+    "is_windows",
     "launch",
     "powershell_exe",
     "required_python",
