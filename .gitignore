@@ -126,3 +126,9 @@ desktop/node_modules/
 # paths; the contracts in contracts/ are the tracked source.
 /out/
 /cache/
+
+# The logo library fills here, one folder per asset class and sector. Every file
+# is another organisation's own mark, fetched on the operator's own machine and
+# never committed; unresolved.json beside them names each asset that resolved
+# nothing.
+resources/logos/

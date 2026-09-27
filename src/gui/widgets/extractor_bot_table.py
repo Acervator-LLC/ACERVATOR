@@ -167,9 +167,7 @@ if _HAS_QT:
                         try:
                             from ..bot_wizard import _get_coin_icon
 
-                            icon = _get_coin_icon(
-                                text, ds.COIN_ICON_SIZE_PX, download=False
-                            )
+                            icon = _get_coin_icon(text, ds.COIN_ICON_SIZE_PX)
                             if icon:
                                 item.setIcon(icon)
                         except Exception:  # noqa: S110

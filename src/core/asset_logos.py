@@ -11,9 +11,13 @@ what it is kept as, so a page served with no failure code is never kept. An asse
 no address answers for is remembered, so the walk runs once per asset and every
 call after it reads the kept file or the kept reason.
 The addresses themselves come from the asset registries; this module holds no
-asset and names no market sector. ``kept_name`` decides the file name, so a
-symbol carrying a separator or a parent-directory step stays inside
-``cache_dir``.
+asset and names no market sector. ``kept_name`` decides the file name and
+``kept_folder`` the directory under ``cache_dir``, so a symbol or a folder
+carrying a separator or a parent-directory step stays inside ``cache_dir``.
+``kept_path`` reads at any depth under ``cache_dir``, so a file kept in a folder
+is found by a caller that names only the symbol. ``read_budget`` counts every
+address read and raises ``LogoBudgetSpent`` rather than read past its figure, so
+a step filling many assets at once cannot exceed the reads it was given.
 """
 
 from __future__ import annotations
@@ -78,6 +82,9 @@ PAGE_WINDOW = 200_000
 #: name holding a parent-directory step must both stay inside ``cache_dir``.
 KEPT_NAME_GAP = "-"
 
+#: What separates one folder segment from the next in a ``kept_folder`` path.
+FOLDER_SEPARATOR = "/"
+
 #: The least length a kept body may have, so a truncated or empty answer is
 #: never kept as an image.
 MIN_LOGO_BYTES = 100
@@ -98,6 +105,17 @@ LOGO_NOT_IMAGE_LOG = "asset logo: %s answered %d bytes for %s starting %r, not a
 #: What a logo read raises: a transport or HTTP failure, a refused scheme, and
 #: a body the reader cannot take bytes from.
 LOGO_READ_ERRORS = (OSError, ValueError, TypeError, AttributeError)
+
+#: What ``LogoCache`` logs when ``read_budget`` leaves no read for an address.
+BUDGET_SPENT_LOG = "asset logo: %s not read for %s, the %d-read budget is spent"
+BUDGET_SPENT_TEXT = "the {budget}-read budget is spent"
+
+#: A ``read_budget`` of this many reads, which no call may exceed.
+NO_READS_LEFT = 0
+
+
+class LogoBudgetSpent(RuntimeError):
+    """``LogoCache`` was asked for a read and ``read_budget`` leaves none."""
 
 
 def image_extension(body: bytes) -> str:
@@ -142,6 +160,24 @@ def kept_name(symbol: str) -> str:
     )
 
 
+def kept_folder(folder: str) -> str:
+    """``folder`` as the path under ``cache_dir`` a kept logo sits in, each segment sanitised.
+
+    A segment is lowered and every character outside ASCII letters and digits
+    becomes ``KEPT_NAME_GAP``, so a parent-directory step arriving from a caller
+    cannot name a directory above ``cache_dir``.
+    """
+    segments: list[str] = []
+    for part in str(folder).replace("\\", FOLDER_SEPARATOR).split(FOLDER_SEPARATOR):
+        cleaned = "".join(
+            one if one.isascii() and one.isalnum() else KEPT_NAME_GAP
+            for one in part.strip().lower()
+        ).strip(KEPT_NAME_GAP)
+        if cleaned:
+            segments.append(cleaned)
+    return FOLDER_SEPARATOR.join(segments)
+
+
 @dataclass(frozen=True)
 class LogoAnswer:
     """One asset's kept logo ``path``, the ``source_url`` it came from, or a ``reason``."""
@@ -164,18 +200,53 @@ class LogoCache:
     write, never at construction, so building a cache writes nothing.
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None) -> None:
-        """Hold ``cache_dir`` and the refusals; no directory is made and no file is read."""
+    def __init__(
+        self, cache_dir: Optional[Path] = None, read_budget: Optional[int] = None
+    ) -> None:
+        """Hold ``cache_dir``, ``read_budget`` and the refusals; no directory is made and no file is read."""
         self._cache_dir: Path = Path(cache_dir) if cache_dir else LOGO_CACHE_DIR
         self._refusals: dict[str, str] = {}
+        self._read_budget: Optional[int] = (
+            None if read_budget is None else max(int(read_budget), NO_READS_LEFT)
+        )
+        self._reads: int = 0
 
     @property
     def cache_dir(self) -> Path:
         """The directory ``resolve`` keeps every logo file in."""
         return self._cache_dir
 
+    @property
+    def reads(self) -> int:
+        """How many addresses this cache has read, kept or refused."""
+        return self._reads
+
+    @property
+    def read_budget(self) -> Optional[int]:
+        """The reads this cache was built with, None for a cache that counts and never refuses."""
+        return self._read_budget
+
+    @property
+    def reads_left(self) -> Optional[int]:
+        """The reads ``read_budget`` leaves, None for a cache built without one."""
+        if self._read_budget is None:
+            return None
+        return max(self._read_budget - self._reads, NO_READS_LEFT)
+
+    def _take_read(self, address: str, symbol: str) -> None:
+        """Count one read of ``address`` for ``symbol``, raising ``LogoBudgetSpent`` at the budget."""
+        if self._read_budget is not None and self._reads >= self._read_budget:
+            logger.info(BUDGET_SPENT_LOG, address, symbol, self._read_budget)
+            raise LogoBudgetSpent(BUDGET_SPENT_TEXT.format(budget=self._read_budget))
+        self._reads += 1
+
     def kept_path(self, symbol: str) -> Optional[Path]:
-        """The kept logo file for ``symbol``, None while no ``LOGO_EXTENSIONS`` file exists."""
+        """The kept logo file for ``symbol`` at any depth under ``cache_dir``, else None.
+
+        ``cache_dir`` itself is read first, so a file kept flat wins over one
+        kept in a folder, and ``LOGO_EXTENSIONS`` order decides between two
+        folders holding the same stem.
+        """
         stem = kept_name(symbol)
         if not stem:
             return None
@@ -183,7 +254,20 @@ class LogoCache:
             path = self._cache_dir / f"{stem}.{extension}"
             if path.exists():
                 return path
-        return None
+        if not self._cache_dir.is_dir():
+            return None
+        ranks = {
+            f"{stem}.{extension}": rank
+            for rank, extension in enumerate(LOGO_EXTENSIONS)
+        }
+        best: Optional[Path] = None
+        best_rank = len(LOGO_EXTENSIONS)
+        for found in self._cache_dir.rglob(f"{stem}.*"):
+            rank = ranks.get(found.name)
+            if rank is None or rank >= best_rank or not found.is_file():
+                continue
+            best, best_rank = found, rank
+        return best
 
     def refusal(self, symbol: str) -> str:
         """The remembered reason ``symbol`` has no logo, empty while none is remembered."""
@@ -197,8 +281,14 @@ class LogoCache:
         *,
         page_url: str = "",
         no_source_reason: str = "",
+        folder: str = "",
     ) -> LogoAnswer:
-        """``symbol``'s kept logo, fetching ``candidates`` then ``page_url``'s own icons at most once ever."""
+        """``symbol``'s kept logo, fetching ``candidates`` then ``page_url``'s own icons at most once ever.
+
+        ``folder`` is the path under ``cache_dir`` a newly kept file is written
+        to; ``kept_folder`` sanitises it, so a caller outside this module cannot
+        name a directory above ``cache_dir``.
+        """
         name = str(symbol).strip().upper()
         if not name:
             return LogoAnswer(symbol=name, reason=NO_SOURCE_REASON.format(symbol=name))
@@ -218,7 +308,7 @@ class LogoCache:
             self._refusals[name] = reason
             return LogoAnswer(symbol=name, reason=reason)
 
-        answer = self._walk(name, addresses, timeout_s)
+        answer = self._walk(name, addresses, timeout_s, folder)
         if answer is not None:
             return answer
 
@@ -229,7 +319,7 @@ class LogoCache:
                     one for one in declared_icons(page, body) if one not in addresses
                 ]
                 logger.debug(PAGE_DECLARED_LOG, page, len(spare), name)
-                answer = self._walk(name, spare, timeout_s)
+                answer = self._walk(name, spare, timeout_s, folder)
                 if answer is not None:
                     return answer
 
@@ -238,7 +328,11 @@ class LogoCache:
         return LogoAnswer(symbol=name, reason=reason)
 
     def _walk(
-        self, symbol: str, addresses: Iterable[str], timeout_s: float
+        self,
+        symbol: str,
+        addresses: Iterable[str],
+        timeout_s: float,
+        folder: str = "",
     ) -> Optional[LogoAnswer]:
         """The answer for the first of ``addresses`` holding an image, None when none does."""
         for address in addresses:
@@ -246,7 +340,7 @@ class LogoCache:
             if read is None:
                 continue
             body, extension = read
-            path = self._keep(symbol, body, extension)
+            path = self._keep(symbol, body, extension, folder)
             logger.info(LOGO_KEPT_LOG, path.name, symbol, len(body))
             return LogoAnswer(symbol=symbol, path=path, source_url=address)
         return None
@@ -255,6 +349,7 @@ class LogoCache:
         self, address: str, symbol: str, timeout_s: float
     ) -> Optional[bytes]:
         """``address``'s first ``PAGE_WINDOW`` bytes, None when it answers nothing."""
+        self._take_read(address, symbol)
         try:
             request = SafeRequest(address)
             request.add_header("User-Agent", LOGO_USER_AGENT)
@@ -272,6 +367,7 @@ class LogoCache:
         self, address: str, symbol: str, timeout_s: float
     ) -> Optional[tuple[bytes, str]]:
         """``address``'s body with the extension ``image_extension`` reads off it, else None."""
+        self._take_read(address, symbol)
         try:
             request = SafeRequest(address)
             request.add_header("User-Agent", LOGO_USER_AGENT)
@@ -294,9 +390,11 @@ class LogoCache:
             return None
         return body, extension
 
-    def _keep(self, symbol: str, body: bytes, extension: str) -> Path:
-        """Write ``body`` to ``kept_name``'s ``extension`` file, making ``cache_dir`` first."""
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
-        path = self._cache_dir / f"{kept_name(symbol)}.{extension}"
+    def _keep(self, symbol: str, body: bytes, extension: str, folder: str = "") -> Path:
+        """Write ``body`` to ``kept_name``'s ``extension`` file under ``folder``, making the directory first."""
+        held = kept_folder(folder)
+        directory = self._cache_dir / held if held else self._cache_dir
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{kept_name(symbol)}.{extension}"
         path.write_bytes(body)
         return path

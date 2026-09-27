@@ -703,7 +703,14 @@ SITE_SOURCES = (
     "both empty for Apple Inc., so the association is held here rather than "
     "looked up. WHAT IS NOT ANSWERED: the four METALS_SPOT pairs, named by "
     "UNISSUED_SYMBOLS, and the four DELISTED_TICKERS companies; logo_absence "
-    "answers each with its own reason."
+    "answers each with its own reason. "
+    "ADDED 2026-09-26, read live through the logo library's fill: apple.com "
+    "answered a 4,506-byte PNG and microsoft.com an 843-byte JPEG at the first "
+    "location, nvidia.com a 25,214-byte ICO at the second. Two domains answered "
+    "nothing and neither was worked around: spdrgoldshares.com answered HTTP 530 "
+    "at both icon locations and at the favicon-96x96.png its own page declares, "
+    "and ecb.europa.eu failed certificate verification at both locations and at "
+    "its own page, with no verification relaxed."
 )
 
 #: What each class's map was built from, and when its tickers were measured.
@@ -1131,6 +1138,7 @@ def asset_logo(
     symbol: Any,
     asset_class: Any = "",
     cache: Optional[LogoCache] = None,
+    folder: str = "",
 ) -> LogoAnswer:
     """One asset's kept logo file, or a ``LogoAnswer`` naming what it has none for.
 
@@ -1143,13 +1151,16 @@ def asset_logo(
     addresses = logo_candidates(symbol)
     if not addresses and _is_crypto(symbol, asset_class):
         return held.resolve(
-            symbol, AssetManager(held.cache_dir).logo_candidates(symbol)
+            symbol,
+            AssetManager(held.cache_dir).logo_candidates(symbol),
+            folder=folder,
         )
     return held.resolve(
         symbol,
         addresses,
         page_url=organisation_page(symbol),
         no_source_reason=logo_absence(symbol),
+        folder=folder,
     )
 
 

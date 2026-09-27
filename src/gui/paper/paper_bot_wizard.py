@@ -148,7 +148,7 @@ if _HAS_QT:
                 named = _market_text(m.get("base"))
                 label = named + price_label(m.get("price"), base)
                 # The cached icon only, since a download here blocks the GUI thread.
-                icon = _get_coin_icon(named, download=False)
+                icon = _get_coin_icon(named)
                 if icon:
                     self._target.addItem(icon, label, named)
                 else:

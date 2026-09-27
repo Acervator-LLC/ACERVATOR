@@ -41,8 +41,9 @@ try:
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
+from src.core.asset_logos import LogoCache
 from src.gui.qt_safe_events import safe_process_events
-from src.exchange.lazy_singleton import LazySingleton, ThrottledFault
+from src.exchange.lazy_singleton import ThrottledFault
 from src.trading.container.config import as_finite_float
 
 #: The volume a pair row sorts and labels by when `as_finite_float` refuses it.
@@ -54,18 +55,9 @@ def _market_text(value) -> str:
     return value if type(value) is str else ""
 
 
-def _build_asset_manager():
-    """Construct the AssetManager. Import deferred to keep GUI imports cheap."""
-    from src.exchange.crypto_assets import AssetManager
-
-    return AssetManager()
-
-
-_ASSET_MANAGER = LazySingleton(
-    _build_asset_manager,
-    "coin icons",
-    "Every asset row will show a lettered circle instead of its logo.",
-)
+#: One reader over the logo library; ``resolve`` is never called, so a wizard row
+#: draws the kept file or the lettered disc and never waits on a network read.
+KEPT_LOGOS = LogoCache()
 
 _ICON_LOAD_FAULT = ThrottledFault(
     "coin icon loading",
@@ -73,10 +65,8 @@ _ICON_LOAD_FAULT = ThrottledFault(
 )
 
 
-def _get_coin_icon(
-    symbol: str, size: int = 20, download: bool = True
-) -> Optional["QIcon"]:
-    """Get coin logo as QIcon — cached file or generated fallback.
+def _get_coin_icon(symbol: str, size: int = 20) -> Optional["QIcon"]:
+    """Get coin logo as QIcon — the logo library's kept file, or a generated fallback.
 
     Returns None when PySide6 is absent, because there is no QIcon type
     to build. All three callers already read the result as optional and
@@ -85,27 +75,22 @@ def _get_coin_icon(
     ExtractorBotTable. Each guards with `if icon:`. The annotation now
     says what the function does.
 
-    Set download=False to avoid network calls on UI thread.
+    KEPT_LOGOS.kept_path reads the library and fetches nothing, so creating
+    a position never waits on a network read.
     """
     if not _HAS_QT:
         return None
-    mgr = _ASSET_MANAGER.get()
-    if mgr is not None:
-        try:
-            path = mgr.get_logo_path(symbol)
-            if not path and download:
-                path = mgr.download_logo(symbol)
-            if path and path.exists():
-                px = QPixmap(str(path))
-                if not px.isNull():
-                    _ICON_LOAD_FAULT.note_success()
-                    return QIcon(
-                        px.scaled(
-                            size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                        )
-                    )
-        except Exception as _icon_exc:  # noqa: BLE001 - GUI fallback path
-            _ICON_LOAD_FAULT.note_failure(_icon_exc)
+    try:
+        path = KEPT_LOGOS.kept_path(symbol)
+        if path and path.exists():
+            px = QPixmap(str(path))
+            if not px.isNull():
+                _ICON_LOAD_FAULT.note_success()
+                return QIcon(
+                    px.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
+    except Exception as _icon_exc:  # noqa: BLE001 - GUI fallback path
+        _ICON_LOAD_FAULT.note_failure(_icon_exc)
     px = QPixmap(size, size)
     px.fill(QColor(0, 0, 0, 0))
     p = QPainter(px)
@@ -331,7 +316,7 @@ if _HAS_QT:
                     label = UNTRADEABLE_LABEL_FORMAT.format(label=label, reason=reason)
                 self._target_reasons.append(reason)
                 # The cached icon only, since a download here blocks the GUI thread.
-                icon = _get_coin_icon(named, download=False)
+                icon = _get_coin_icon(named)
                 if icon:
                     self._target.addItem(icon, label, named)
                 else:
