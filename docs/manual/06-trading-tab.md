@@ -5282,6 +5282,11 @@ Three of those five rows named code with no caller, and that code is gone.
 The dollar registry is gone. `src/trading/capital_registry.py` is removed, with
 the Qt table, the view model and the renderer page that drew it.
 
+That path is in neither the git index nor the working tree, so a reader cannot
+open it. The commit `d72f69cf` removed it. What holds the reservation behaviour
+now is the module named in the next paragraph, and the dated entry on this page
+for issue 881 reads the same absence back.
+
 The whole-table read is gone. `CapitalReservationRegistry` in
 `src/trading/capital_reservation.py` no longer declares `snapshot`. A bot reads
 another bot's claim through `reservations_for`, and a sale is decided by
@@ -8713,3 +8718,178 @@ all ten column widths, the page        same     same
 the header row above the list          same     same
 the seven slots of the header strip    same     same
 ```
+## 2026-09-26 - #937 - a mark opens the organisation that owns the asset
+
+His words:
+
+> "Logos should also double as hyperlinks to the company or organization beyond
+> each asset. Want Acervator to feel like it is connected to all of these corners
+> of the investment world simultaneously like a creature with a thousand
+> tendrils..."
+
+The first column's mark is a link. Clicking it opens the front door of the
+company or organisation that owns the traded asset, in the operator's own
+browser. A mark whose asset has no known web address is not a link: it draws
+exactly as it drew before, it opens nothing, and its tooltip says so.
+
+### Where a mark's address comes from
+
+**Functional.** Two readers already in the tree answer an address, and the table
+asks them in one place. A crypto base answers the site its own record carries. A
+listed name answers the domain the asset maps hold for it. The regulator's
+company-search page is never answered, because a search result is not an
+organisation's own front door.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `organisation_address`
+
+```python
+for asked in (icon_asset_of(symbol), symbol):
+    if not asked:
+        continue
+    site, _ = CRYPTO_RECORDS.organisation_url(asked)
+    found = site or organisation_page(asked)
+    if found:
+        break
+address = opening_address(found)
+```
+
+Read by driving both readers over every row the asset maps hold and every record
+the crypto database holds:
+
+```
+class            rows   an organisation address   none
+stocks             47                        43      4
+currencies         28                        28      0
+commodities        14                        10      4
+crypto records     48                        10     38
+```
+
+The negative control: a planted asset name no map and no record holds answers an
+empty address, with the reason "no address is known".
+
+### What the address check refuses
+
+**Functional.** An address is checked before any browser is asked to open it.
+Only a secure web address with a host opens. Everything else is refused and
+nothing is opened, whatever the data carries.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `opening_address`
+
+```python
+OPENING_SCHEMES: tuple[str, ...] = ("https",)
+```
+
+Read by handing each value to the check, one per line, on both clickable
+columns:
+
+```
+what the data carried                     what happened
+http://evil.example/x                     refused
+file:///C:/Windows/System32/calc.exe      refused
+javascript:alert(document.cookie)         refused
+data:text/html;base64,...                 refused
+ftp://evil.example/x                      refused
+evil.example, a bare host                 refused
+https:///etc/passwd, no host              refused
+C:\Windows\System32\calc.exe              refused
+https://bitcoin.org                       opened
+```
+
+Twelve refusing shapes were driven and twelve were refused. Three secure
+addresses were driven and three opened, which is the control that the check can
+still say yes.
+
+### What a mark with no address draws
+
+**Functional.** The cell draws what it drew before the mark became a link. Its
+tooltip carries one extra line naming the absence, so the operator can see which
+marks are links and which are not without pressing one.
+
+Read off the running list and off the drawn page, one asset of each kind:
+
+```
+asset   the tooltip's second line
+BTC     Open bitcoin.org in default browser: https://bitcoin.org
+PEPE    no web address is known for PEPE, so this mark is not a link
+```
+
+Of the target assets the saved fleet holds, 7 carry an organisation address and
+31 carry none.
+
+### The window and the page open the same address
+
+**Functional.** The window reads the address off the clicked cell and opens it.
+The page sends the row and the column out and Python opens it, so the page never
+opens anything itself. Both go through the one check.
+
+Read on the running window and on the drawn page, the same five bots:
+
+```
+what was pressed                     the window        the page
+a mark whose asset resolves          the same three addresses opened
+a mark whose asset resolves nothing  nothing opened    nothing opened
+an insecure address in the data      refused           refused
+a script address in the data         refused           refused
+every mark hovered, none pressed     nothing opened    nothing opened
+```
+
+The control on the quiet rows: after each of them, one real press was made and
+the same instrument recorded an address, so the quiet was the product and not
+the reading.
+
+### The overtaken sentence about what the table can be pressed on
+
+**Overtaken.** *"**Functional.** The four things the operator can press on the
+table each send one request and redraw from the answer. The dot under a column's
+label toggles that column's privacy mask, a Symbol cell opens the chart address,
+Fire hands the bot to Manual Fire, and Detail selects the row and opens the bot.
+A press on the label itself does nothing."*
+
+Five things are pressable. The dot under a column's label toggles that column's
+privacy mask, a mark in the first column opens its asset's own organisation, a
+Symbol cell opens the chart address, Fire hands the bot to Manual Fire, and
+Detail selects the row and opens the bot. A press on the label itself still does
+nothing.
+
+### The row heights and every column are unchanged
+
+**Functional.** The only thing this work changed in the first column is what a
+press on it does. Nothing was resized.
+
+Read at four window widths, on the window and on the page, against the state
+before this work and against the state before the logo column landed:
+
+```
+width   before the logo column   the current tip   this work
+         window    page           window   page     window   page
+900          30      29               36     36         36     36
+1100         30      30               36     36         36     36
+1400         30      30               36     36         36     36
+1800         30      30               36     36         36     36
+```
+
+Every column width, the header's height and the mark's own size read identical
+between the current tip and this work, at all four widths, on both. The reading
+reports 0 differences there and 14 between the two earlier states, which is the
+row growing from 30 to 36 to fit a mark at its proper size — the change his own
+words asked for, and one that landed before this work.
+
+### The removed dollar registry names where to look instead
+
+**Functional.** Two sentences on this page cite a module a reader cannot open.
+Both are kept as written, and each now carries the module that holds the
+behaviour today. The path was removed in the commit that also wrote the first of
+those sentences.
+
+Read with a search of the git index, and with the documentation check:
+
+```
+what was counted                                        figure
+the removed path, occurrences on this page                   2
+the check's findings for that path on this page              2
+a path on this page that does exist, occurrences             4
+```
+
+The reservation path lives in `src/trading/capital_reservation.py`, which still
+carries its registry class and which six modules read. A bot reads another bot's
+claim through `reservations_for`, and a sale is decided by `effective_available`.

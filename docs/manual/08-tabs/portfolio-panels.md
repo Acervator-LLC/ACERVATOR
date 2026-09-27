@@ -17,6 +17,53 @@ self._spendable_widget = SpendableProfitsWidget()
 top_row.addWidget(self._spendable_widget, stretch=3)
 ```
 
+The row draws seven slots: the money strip, the five counter cards, and the
+asset class square that ends it. The first six divide the whole row between
+them, at three shares for the money strip and one for each card. The square
+takes no share, so its slot shrinks to the square and the square draws hard
+against the row's right edge. No background is left anywhere in the row.
+
+`src/gui/main_tabs/header_strip_surface.py`
+
+```python
+TOP_ROW_STRETCH = [3, 1, 1, 1, 1, 1, 0]
+```
+
+Each of the six also carries a floor, the width its own whole amounts need, so
+a long figure is never cut.
+
+`src/gui/main_tabs/header_strip.py` — `HeaderStripMixin._build_header_strip`
+
+```python
+card.setMinimumWidth(surface.slot_natural_w(slot))
+```
+
+Overtaken, quoted whole: "The first six divide the whole row between them, at
+three shares for the money strip and one for each card."
+
+True today: the money strip's three shares come out below its own floor at every
+window up to about 1950 pixels wide, so it draws at that floor and the five cards
+take the whole surplus between them.
+
+Both builds draw the row at the same geometry. The floor the Qt row sets on a
+widget is the number the React page sets on the same slot, and the surface serves
+that number to both.
+
+`src/gui/main_tabs/header_strip_surface.py`
+
+```python
+"slots": {slot: slot_natural_w(slot) for slot in TOP_ROW_ORDER}
+```
+
+`src/gui/web/header_strip.js`
+
+```javascript
+style.minWidth = length(floor);
+```
+
+Measured at a 1920 pixel window, in both builds: the money strip 686, each card
+217, the square 112.
+
 ## Left: the spendable columns
 
 Five labelled columns fill the left half, divided by thin vertical rules.
@@ -291,6 +338,23 @@ self._stat_pnl.setVisible(False)
 
 The mode button on the right ends the row. `_toggle_trading_mode` swaps the
 window between the crypto and stock layers.
+
+Overtaken, quoted whole: "The mode button on the right ends the row.
+`_toggle_trading_mode` swaps the window between the crypto and stock layers."
+
+True today: one square ends the row. It is segmented two by two into one button
+per asset class, and a press makes that class active. The square keeps its own
+size, never stretches, and sits in the row's right corner.
+
+`src/gui/main_tabs/header_strip.py` — `HeaderStripMixin._build_header_strip`
+
+```python
+top_row.addWidget(
+    class_group,
+    surface.slot_stretch("mode_button"),
+    Qt.AlignVCenter | Qt.AlignRight,
+)
+```
 
 ## Privacy
 

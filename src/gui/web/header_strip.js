@@ -439,23 +439,6 @@
     return style;
   }
 
-  // Every top row slot declares a floor, so a long amount cannot widen the
-  // row past the pane and push the class group off its right edge.
-  function slotFloor(model, slot) {
-    var budget = objectField(model, WIDTH_BUDGET);
-    var slots = objectField(budget, BUDGET_SLOTS);
-    return owns(slots, slot) ? slots[slot] : undefined;
-  }
-
-  // A slot never spills: it shrinks to its floor and clips what will not fit.
-  function withFloor(style, floor) {
-    if (floor !== undefined) {
-      style.minWidth = length(floor);
-      style.overflow = "hidden";
-    }
-    return style;
-  }
-
   function stretchOf(layout, at) {
     var stretch = listField(layout, CHILD_STRETCH);
     return at < stretch.length ? stretch[at] : undefined;
@@ -466,12 +449,16 @@
   }
 
   // A stretch of zero draws the slot at its own width; a stretch above zero
-  // divides what the zero slots leave, as the QHBoxLayout stretch does.
-  function withStretch(style, stretch) {
+  // divides what the zero slots leave, as the QHBoxLayout stretch does. `floor`
+  // is the slot's `width_budget` width, which setMinimumWidth sets in Qt.
+  function withStretch(style, stretch, floor) {
     if (stretch !== undefined) {
       style.flexGrow = stretch;
-      style.flexShrink = 1;
+      style.flexShrink = 0;
       style.flexBasis = stretch > 0 ? 0 : "auto";
+    }
+    if (typeof floor === "number") {
+      style.minWidth = length(floor);
     }
     return style;
   }
@@ -515,8 +502,7 @@
     if (owns(layout, COLUMN_SPACING_PX)) {
       style.gap = length(layout[COLUMN_SPACING_PX]);
     }
-    withStretch(style, props.stretch);
-    withFloor(style, props.floor);
+    withStretch(style, props.stretch, props.floor);
     var panelProps = { className: SPENDABLE_CLASS, style: style };
     panelProps[PART_ATTR] = SPENDABLE;
     panelProps[SLOT_ATTR] = SPENDABLE;
@@ -533,7 +519,7 @@
     var style = boxStyle(layout, COLUMN, MARGINS, SPACING);
     withAlign(style, layout, LABEL_ALIGN);
     style.cursor = cursorOf(card);
-    withStretch(style, props.stretch);
+    withStretch(style, props.stretch, props.floor);
     var cardProps = { className: CARD_CLASS, style: style, title: label(card[TOOLTIP]) };
     cardProps[PART_ATTR] = COUNTER_PART;
     cardProps[SLOT_ATTR] = text(card[KEY]);
@@ -685,9 +671,14 @@
     return found;
   }
 
+  function floorOf(model, slot) {
+    var floors = objectField(objectField(model, WIDTH_BUDGET), BUDGET_SLOTS);
+    return owns(floors, slot) ? floors[slot] : undefined;
+  }
+
   function slotNode(model, slot, at) {
     var stretch = stretchOf(objectField(model, TOP_ROW), at);
-    var floor = slotFloor(model, slot);
+    var floor = floorOf(model, slot);
     if (slot === SPENDABLE) {
       return element(SpendablePanel, {
         key: slot,
@@ -701,8 +692,7 @@
         key: slot,
         button: model[MODE_BUTTON],
         actions: objectField(model, ACTIONS),
-        stretch: stretch,
-        floor: floor
+        stretch: stretch
       });
     }
     var card = counterFor(model, slot);
