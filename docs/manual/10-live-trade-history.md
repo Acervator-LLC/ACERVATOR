@@ -274,6 +274,178 @@ Read the buy line as a trajectory of average cost. A falling line says the
 average cost of the units bought so far fell. That fall is not profit, for the
 same reason the combined chart above carries none: no sale enters that line.
 
+## The Bollinger band behind the price
+
+A grey channel sits behind the fills on the upper panel. It is a Bollinger
+band, and it is there so a trade at a volatility extreme can be seen rather
+than asserted. A scrum sells into the top of the channel and a fold buys into
+the bottom, and the channel puts both on the picture.
+
+The band is the published one. A middle line is a simple moving average over a
+fixed number of bars, and the outer lines sit a fixed number of population
+standard deviations above and below it, taken over the same bars.
+
+```
+Middle = SMA(period)
+Upper  = Middle + std_dev * sigma(period)
+Lower  = Middle - std_dev * sigma(period)
+```
+
+The setting is the conventional one: period 20, width 2 standard deviations.
+
+### Where the band maths comes from
+
+The platform already computes this band for its own trading decisions, and the
+charts read the same code rather than a second copy of the formula. The method
+returns one upper, middle and lower value per bar, and nothing before the
+twentieth bar, because no window has closed yet.
+
+```python
+# src/trading/indicators/bollinger.py
+BollingerBands(period=20, std_dev=2.0).bands(candles)
+```
+
+The deviation is the population one, divided by the window length, which is
+what Bollinger publishes. It is computed in `src/trading/indicators/helpers.py`
+and shared by every indicator that needs a rolling deviation.
+
+### What a fill at a band edge means
+
+The upper line is two standard deviations above the recent average price, so a
+sell dot sitting on it or above it is a sale made while the price was at the
+top of its own recent range. The lower line is the mirror of that, so a buy dot
+on it or below it is a purchase made into the bottom of that range. Those two
+readings are the whole reason the band is drawn.
+
+A dot inside the channel is an ordinary trade. Nothing about a fill at an edge
+says it was profitable. It says where in the recent price distribution the
+trade landed.
+
+### Which bar length the band uses
+
+The export carries a timestamp and a price per fill and no candles, so the bars
+are built from the fills: the last fill in a bar closes it, and a bar with no
+fill closes where the one before it closed. That construction decides whether a
+short bar can carry a band at all. Twenty consecutive bars with no trade have
+no spread between them, so the deviation is zero and the band collapses onto
+the price line.
+
+Measured over all 38 charted bases, counting every band the method returned and
+how many of them had zero width:
+
+| Bar length | Bands drawn | Zero width | Share | At or above upper | At or below lower | Fills in a banded bar |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5 minutes | 1,288,981 | 1,064,990 | 82.6% | 2,921 | 3,134 | 6,868 |
+| 15 minutes | 429,202 | 315,054 | 73.4% | 2,578 | 2,609 | 6,842 |
+| 1 hour | 106,790 | 52,205 | 48.9% | 1,972 | 1,854 | 6,702 |
+| 4 hours | 26,182 | 4,994 | 19.1% | 1,167 | 939 | 6,272 |
+| 1 day | 3,792 | 35 | 0.9% | 605 | 460 | 4,955 |
+
+At five minutes, 82.6 percent of the channel has no width. The band traces the
+price line as a hairline and shows no extreme at all. At one day, 0.9 percent
+has no width and the channel is wide enough to read across the whole window.
+The charts use one-day bars.
+
+The cost of the coarse bar is the warm-up. Twenty one-day bars must close
+before the first band appears, so the first twenty days of each asset carry no
+channel, and 4,955 of the 6,997 fills land in a bar that has one.
+
+### The band edges, counted over every base
+
+One row per charted base, in fill-count order. The two edge columns count fills
+against the band of the bar holding them, on one-day bars at period 20 and
+width 2.
+
+| Asset | Fills | Buy | Sell | At or above upper | At or below lower | In a banded bar | First buy VWAP | Final buy VWAP | Index | Window |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| RAVE | 925 | 551 | 374 | 20 | 56 | 400 | 1.5915 | 0.652338 | 0.410 | 21 Apr to 25 Sep |
+| CHIP | 589 | 314 | 275 | 57 | 10 | 454 | 0.10842 | 0.0449093 | 0.414 | 22 Apr to 26 Sep |
+| BILL | 537 | 315 | 222 | 13 | 28 | 409 | 0.11868 | 0.0257786 | 0.217 | 9 May to 27 Sep |
+| ALLO | 378 | 170 | 208 | 21 | 13 | 225 | 0.2478 | 0.277471 | 1.120 | 29 May to 27 Sep |
+| ZEC | 323 | 172 | 151 | 35 | 28 | 283 | 359.67 | 534.024 | 1.485 | 24 Apr to 26 Sep |
+| KAT | 292 | 165 | 127 | 21 | 11 | 218 | 0.01581 | 0.00614089 | 0.388 | 24 Apr to 26 Sep |
+| SPK | 274 | 165 | 109 | 20 | 19 | 209 | 0.0508 | 0.0223169 | 0.439 | 23 Apr to 27 Sep |
+| BIO | 261 | 171 | 90 | 10 | 14 | 198 | 0.05537 | 0.0320055 | 0.578 | 3 May to 27 Sep |
+| BONK | 237 | 122 | 115 | 25 | 24 | 167 | 5.71e-06 | 5.84811e-06 | 1.024 | 12 Apr to 27 Sep |
+| CAP | 220 | 95 | 125 | 49 | 7 | 166 | 0.01722 | 0.033729 | 1.959 | 13 Jul to 25 Sep |
+| ORCA | 215 | 118 | 97 | 18 | 9 | 138 | 1.4622 | 1.38509 | 0.947 | 27 Apr to 27 Sep |
+| PENGU | 210 | 118 | 92 | 26 | 20 | 181 | 0.009814 | 0.00778479 | 0.793 | 27 Apr to 27 Sep |
+| VVV | 205 | 93 | 112 | 21 | 7 | 170 | 15.7253 | 16.3105 | 1.037 | 9 May to 27 Sep |
+| ETH | 169 | 108 | 61 | 18 | 31 | 149 | 2308.68 | 2037.61 | 0.883 | 23 Apr to 24 Sep |
+| TAO | 157 | 80 | 77 | 13 | 20 | 141 | 273.4 | 243.486 | 0.891 | 2 May to 27 Sep |
+| ONDO | 155 | 82 | 73 | 10 | 4 | 132 | 0.35136 | 0.364156 | 1.036 | 7 May to 27 Sep |
+| BTC | 152 | 107 | 45 | 11 | 39 | 143 | 77782.1 | 70016.9 | 0.900 | 23 Apr to 24 Sep |
+| XRP | 148 | 97 | 51 | 18 | 22 | 123 | 1.4278 | 1.39586 | 0.978 | 23 Apr to 26 Sep |
+| IMU | 147 | 79 | 68 | 2 | 3 | 40 | 0.00395 | 0.0024861 | 0.629 | 9 Aug to 27 Sep |
+| SUI | 121 | 55 | 66 | 19 | 5 | 101 | 1.0673 | 0.850641 | 0.797 | 9 May to 27 Sep |
+| BICO | 116 | 44 | 72 | 0 | 1 | 42 | 0.0697757 | 0.0309713 | 0.444 | 9 Aug to 27 Sep |
+| DOGE | 112 | 56 | 56 | 15 | 22 | 103 | 0.09814 | 0.0884351 | 0.901 | 25 Apr to 26 Sep |
+| GROVE | 108 | 62 | 46 | 4 | 3 | 73 | 0.02809 | 0.0104166 | 0.371 | 8 Jul to 27 Sep |
+| LINK | 107 | 53 | 54 | 10 | 18 | 102 | 9.296 | 9.38981 | 1.010 | 24 Apr to 25 Sep |
+| SOL | 101 | 52 | 49 | 11 | 24 | 88 | 85.32 | 84.0803 | 0.985 | 23 Apr to 25 Sep |
+| PUMP | 98 | 40 | 58 | 15 | 5 | 85 | 0.001603 | 0.00239143 | 1.492 | 7 Jul to 27 Sep |
+| NEAR | 98 | 40 | 58 | 21 | 2 | 69 | 2.411 | 2.2074 | 0.916 | 29 May to 27 Sep |
+| XLM | 87 | 51 | 36 | 9 | 4 | 44 | 0.205737 | 0.197296 | 0.959 | 29 May to 25 Sep |
+| ENA | 86 | 36 | 50 | 20 | 0 | 60 | 0.14222 | 0.155404 | 1.093 | 22 Aug to 26 Sep |
+| RE | 85 | 46 | 39 | 6 | 1 | 42 | 0.5153 | 0.471505 | 0.915 | 13 Jul to 27 Sep |
+| HYPE | 81 | 35 | 46 | 9 | 0 | 46 | 64.42 | 63.7886 | 0.990 | 29 May to 27 Sep |
+| AERO | 49 | 15 | 34 | 15 | 0 | 37 | 0.42307 | 0.465448 | 1.100 | 23 Jul to 26 Sep |
+| HBAR | 42 | 21 | 21 | 9 | 4 | 28 | 0.09457 | 0.0825252 | 0.873 | 29 May to 24 Sep |
+| ADA | 36 | 15 | 21 | 7 | 0 | 26 | 0.1696 | 0.179876 | 1.061 | 23 Jul to 26 Sep |
+| AGLD | 35 | 15 | 20 | 13 | 0 | 27 | 0.1695 | 0.166708 | 0.984 | 13 Jul to 25 Sep |
+| LTC | 18 | 6 | 12 | 8 | 0 | 17 | 46.33 | 47.883 | 1.034 | 23 Jul to 25 Sep |
+| WLFI | 15 | 7 | 8 | 1 | 5 | 12 | 0.05997 | 0.057538 | 0.959 | 23 Jul to 25 Sep |
+| LSETH | 8 | 2 | 6 | 5 | 1 | 7 | 2148.63 | 2168.26 | 1.009 | 23 Jul to 21 Sep |
+
+Across the 38, 605 fills sit at or above the upper band and 460 at or below the
+lower one. CHIP and CAP sell into the top most often, at 57 and 49. RAVE buys
+into the bottom most often, at 56.
+
+## The newest export, beside the one the figures above measure
+
+The figures and tables above were measured on an earlier export. A later one
+covers the same account over a longer window. Both sets of numbers are below,
+so a reader holding either can tell which is which.
+
+The following sentence is overtaken:
+
+> The export holds 5,709 physical rows and 5,705 body rows. 5,661 of the body
+> rows are fills.
+
+The later export holds 7,049 physical rows and 7,045 body rows, and 6,997 of
+the body rows are fills on a charted base.
+
+The following sentence is overtaken:
+
+> Of the eight assets with the most fills, six trend down to between 0.4 and
+> 0.6. ZEC and ALLO trend up.
+
+On the later export, five of the eight trend down to between 0.388 and 0.578,
+BILL falls further to 0.217, and ZEC and ALLO still trend up, to 1.485 and
+1.120.
+
+Side by side:
+
+| Reading | Earlier export | Later export |
+| --- | ---: | ---: |
+| Physical rows | 5,709 | 7,049 |
+| Body rows | 5,705 | 7,045 |
+| Fills on a charted base | 5,661 | 6,997 |
+| Charted bases | 38 | 38 |
+| First fill | 12 Apr | 12 Apr |
+| Last fill | 3 Sep | 27 Sep |
+| Rows carrying no fill | 44 | 48 |
+
+The charted bases are the same 38 assets in both. The later export adds 1,336
+fills and 24 days, and its extra rows carrying no fill are three more reward
+payments and one more cash leg.
+
+One check separates a longer record from a different calculation. Of the 38
+first buy VWAP values the table above publishes, 37 come out of the later
+export identical to the digit, and the one that differs is BICO, published
+rounded to 0.069776 against a computed 0.0697757. A different price column or a
+different weighting would have moved all 38.
+
 ## What this repository holds for these charts
 
 The rows behind the charts take the shape `fetch_all_history_chunked` in
