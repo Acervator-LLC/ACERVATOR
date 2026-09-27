@@ -435,9 +435,8 @@ def window_min_w() -> int:
 def width_budget() -> dict:
     """Every floor the top row holds, as one serialisable dict.
 
-    ``slots`` carries the ``slot_natural_w`` the Qt row sets on each widget.
-    The page sets none: a browser already holds a flex item at the width its
-    own text needs.
+    ``slots`` carries the ``slot_natural_w`` both variants set on each slot:
+    ``setMinimumWidth`` on the Qt row, ``min-width`` on the page's flex item.
     """
     return {
         "slots": {slot: slot_natural_w(slot) for slot in TOP_ROW_ORDER},
