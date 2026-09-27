@@ -127,6 +127,9 @@ desktop/node_modules/
 /out/
 /cache/
 
+# ensure_root() creates this beside the tablets on every registry build. The
+# 407 tablet files next to it are tracked; this holds nothing durable.
+/stone_tablets/_scratch/
 # The logo library fills here, one folder per asset class and sector. Every file
 # is another organisation's own mark, fetched on the operator's own machine and
 # never committed; unresolved.json beside them names each asset that resolved

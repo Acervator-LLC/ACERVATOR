@@ -18,11 +18,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from ..._version import is_frozen, project_root
 from ...core.io_utils import atomic_write_json
 
 logger = logging.getLogger("acervator.stone_tablets.storage")
 
-STONE_TABLETS_DIR: Path = Path(os.path.expanduser("~/.acervator/stone_tablets"))
+HOME_TABLETS_DIR: Path = Path(os.path.expanduser("~/.acervator/stone_tablets"))
+
+
+def _tablet_root() -> Path:
+    """Return the tracked ``stone_tablets`` directory, or ``HOME_TABLETS_DIR``
+    when ``is_frozen``.
+
+    A bundle carries no ``stone_tablets`` directory, so ``project_root`` there
+    names the unpacked bundle and the home tree answers instead.
+    """
+    if is_frozen():
+        return HOME_TABLETS_DIR
+    return project_root() / "stone_tablets"
+
+
+STONE_TABLETS_DIR: Path = _tablet_root()
 MANIFEST_PATH: Path = STONE_TABLETS_DIR / "MANIFEST.json"
 SCRATCH_DIR: Path = STONE_TABLETS_DIR / "_scratch"
 
@@ -281,6 +297,7 @@ def entry_from_tablet(tab: Tablet) -> TabletEntry:
 
 
 __all__ = [
+    "HOME_TABLETS_DIR",
     "MANIFEST_PATH",
     "SCHEMA_VERSION",
     "SCRATCH_DIR",
