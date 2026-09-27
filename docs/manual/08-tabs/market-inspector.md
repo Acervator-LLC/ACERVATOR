@@ -8596,3 +8596,291 @@ Each of those answers a reason rather than a blank, and a row with no mark draws
 its symbol exactly as it does today.
 
 Back to [the subsystem index](README.md).
+
+
+## 2026-09-26 - #937 - the logos become a library, divided by sector and filled ahead of need
+
+The logos are no longer fetched one at a time when a row happens to need one.
+They are a library on disk, divided into a folder per asset class and per sector
+inside it, filled by a step the operator starts himself. Creating a position
+reads that library and never fetches. An asset the library cannot resolve is
+written down by name with its own reason, so the gap is countable rather than
+silent.
+
+The library covers every asset the connected venues list plus every asset the
+maps hold. Measured on the recorded venue rules: 1,146 Coinbase markets, 467
+distinct base assets, 89 non-crypto rows in the maps, and 542 assets once the
+ten names both sources carry are counted once and the four multiplier
+perpetuals are folded into the assets they are written on.
+
+### The library, one folder per asset class and sector
+
+A kept mark sits under the class holding the asset and, where the maps or the
+sector tags name one, under that sector below it. An asset with no sector tag
+sits in the class folder itself; no sector is guessed for it.
+
+`src/trading/logo_library.py` - the folder one asset is filed under
+
+```python
+def library_folder(asset_class: Any, sector: Any = "") -> str:
+    """``asset_class`` over ``sector`` as a ``kept_folder`` path, the class alone for an untagged asset."""
+    return kept_folder(f"{asset_class}/{sector}")
+```
+
+The folder name arrives from outside this repository, so every segment is
+sanitised the way a file name already is. A sector spelled with a space becomes
+one word joined by a dash, and a parent-directory step cannot name a directory
+above the library root.
+
+```
+commodities/precious metals   ->  commodities/precious-metals
+../../etc  with  x/y          ->  etc/x/y
+crypto  with no sector tag    ->  crypto
+```
+
+The 542 assets fall into 25 folders. The largest is the class folder for crypto
+assets carrying no sector tag, with 361 of them.
+
+```
+crypto                        361      forex/minor                 21
+stocks/portfolio               47      crypto/l1                   18
+crypto/dex                      9      crypto/defi                  8
+crypto/meme                     8      commodities/precious-metals  8
+crypto/ai                       7      crypto/l2                    7
+forex/major                     7      crypto/gaming                6
+crypto/interop                  5      crypto/oracle                5
+commodities/energy              4      crypto/depin                 3
+crypto/identity                 3      crypto/wallet-infra          3
+commodities/industrial-metals   2      crypto/payments              2
+crypto/privacy                  2      crypto/stablecoin            2
+crypto/storage                  2      crypto/rwa                   1
+crypto/wrapped                  1
+```
+
+### The fill reads the venues' own listings
+
+The fill takes its asset list from the order rules already recorded for each
+venue, not from a fresh venue call. Nothing is asked of any exchange or broker
+while the library fills.
+
+`src/trading/logo_library.py` - where the asset list comes from
+
+```python
+def venue_bases(document: Optional[dict] = None) -> tuple[str, ...]:
+    """Every base asset the recorded venues list, sorted, each folded by ``underlying_base``."""
+```
+
+A venue lists some contracts on a multiple of an asset. The base is folded back
+onto the asset only when the remainder names an asset some source already lists,
+so no name is shortened on a guess.
+
+```
+1000BONK  ->  BONK      BONK is a recorded base
+1000MOG   ->  MOG       MOG is a recorded base
+1000PEPE  ->  PEPE      PEPE is a recorded base
+1000SHIB  ->  SHIB      SHIB is a recorded base
+00        ->  00        nothing is left after the digits
+1INCH     ->  1INCH     INCH is not a recorded base
+2Z        ->  2Z        Z is not a recorded base
+```
+
+### The fill never runs while the fleet trades
+
+Nothing in the running program starts the fill. Measured on this change: no
+module outside the fill itself names it, against a control where the same search
+reports five files for the module the fill writes through.
+
+The fill is started by hand, and it refuses outright while the application holds
+the lock on the runtime directory.
+
+```
+python -m src.trading.logo_library --reads 40
+python -m src.trading.logo_library --list
+```
+
+`src/trading/logo_library.py` - what a refused fill answers
+
+```python
+TRADING_REFUSAL = (
+    "the application is running and holds the instance lock; close it first"
+)
+```
+
+The fill also states the gap it keeps between two reads, and holds to it. The
+figure is the one the market scan already uses for a host that publishes no
+limit, and a logo host publishes none.
+
+```
+the gap between two reads                0.5 s
+the hold after a rate refusal            60 s
+16 reads in one run                      4.50 s of waiting
+```
+
+Driven both ways on a scratch runtime directory, never on the operator's own:
+
+```
+no lock file present         the fill proceeds
+the lock held                refused, 0 reads, 0 kept
+the lock released            the fill proceeds again
+```
+
+### Stopping the fill and starting it again
+
+A run is bounded by the number of addresses it may read, and the bound is not
+advice: the store counts every address and refuses a read past the figure rather
+than taking it. A run that stops leaves the marks it kept on disk and the assets
+it could not resolve in a file beside them, so the next run reads only what is
+left.
+
+`src/core/asset_logos.py` - the bound a run cannot exceed
+
+```python
+class LogoBudgetSpent(RuntimeError):
+    """``LogoCache`` was asked for a read and ``read_budget`` leaves none."""
+```
+
+Four runs against the real sources, every kept file read back off disk:
+
+```
+                                          reads   kept   failed   files on disk
+a slice across all four sectors             16      8       2          8
+the same slice run a second time             0      0       0          8
+a fill stopped partway                       3      3       0         11
+the same fill started again                  3      2       1         13
+an asset whose source answers nothing        1      0       1         13
+```
+
+The second row is what proves the reading is not blind. The first run read
+sixteen addresses; the same slice run again read none, because every asset was
+already held. The stopped run kept three of six and the run after it skipped
+those three and read the three that were left.
+
+Every kept file carries the leading bytes of a real image format. None is empty,
+and a body that is a web page is refused rather than kept.
+
+```
+crypto/l1/BTC.png              1,844 bytes   89 50 4E 47
+crypto/l1/ETH.png              1,270 bytes   89 50 4E 47
+crypto/meme/DOGE.png           4,395 bytes   89 50 4E 47
+crypto/oracle/LINK.png         1,982 bytes   89 50 4E 47
+stocks/portfolio/AAPL.png      4,506 bytes   89 50 4E 47
+stocks/portfolio/MSFT.jpg        843 bytes   FF D8 FF E0
+stocks/portfolio/NVDA.ico     25,214 bytes   00 00 01 00
+```
+
+Reading a mark back by its symbol alone finds it at whatever depth it sits,
+which is why the bot list and the wizard need no knowledge of the folders.
+
+```
+BTC   ->  crypto/l1/BTC.png
+MSFT  ->  stocks/portfolio/MSFT.jpg
+NVDA  ->  stocks/portfolio/NVDA.ico
+a name no venue lists  ->  nothing
+```
+
+OVERTAKEN, the code block under "The logo one asset draws by" earlier on this
+page, quoted whole:
+
+```python
+    def resolve(
+        self,
+        symbol: str,
+        candidates: Iterable[str],
+        timeout_s: float = LOGO_TIMEOUT_S,
+    ) -> LogoAnswer:
+        """``symbol``'s kept logo, fetching ``candidates`` in order at most once ever."""
+```
+
+The walk now also reads the icon addresses a site declares itself, keeps the file
+under a folder the caller names, and counts every address against a budget.
+
+`src/core/asset_logos.py` - the walk as it stands
+
+```python
+    def resolve(
+        self,
+        symbol: str,
+        candidates: Iterable[str],
+        timeout_s: float = LOGO_TIMEOUT_S,
+        *,
+        page_url: str = "",
+        no_source_reason: str = "",
+        folder: str = "",
+    ) -> LogoAnswer:
+```
+
+### What the library does not hold yet
+
+The library holds 13 marks. Eight assets are recorded as resolving nothing, and
+521 have not been read at all, because this change was bounded to 36 reads in
+total across every run.
+
+`src/trading/logo_library.py` - where an unresolved asset is written down
+
+```python
+UNRESOLVED_NAME = "unresolved.json"
+```
+
+Each of the eight carries the reason its own source gave:
+
+```
+GLD      commodities/precious-metals   spdrgoldshares.com answered HTTP 530 at
+                                       both icon locations and at the
+                                       favicon-96x96.png its own page declares
+EUR/USD  forex/major                   ecb.europa.eu failed certificate
+                                       verification at both icon locations and
+                                       at its own page; nothing was relaxed
+AAVE     crypto/defi                   the ticker-keyed icon address answered
+ATOM     crypto/l1                     6,186 bytes of a web page, refused by
+LTC      crypto/payments                the image check, identically for all six
+ONDO     crypto/rwa                     of these tickers
+PEPE     crypto/meme
+UNI      crypto/dex
+```
+
+The last six matter beyond themselves. Of the 542 assets, 451 hold no address
+but that one, so the route six of six tickers failed on is the only route those
+451 have. The 81 assets whose organisation publishes its own domain resolved
+three of four tried, and all ten assets carrying a confirmed coin-record address
+resolved.
+
+```
+an organisation's own domain          81 assets    3 of 4 tried resolved
+a confirmed coin-record address       10 assets    10 of 10 resolved
+the ticker-keyed address only        451 assets    0 of 6 tried resolved
+```
+
+Walking the remaining 521 assets would read at most 677 addresses. At the fill's
+own rate that is about five and a half minutes of waiting plus the time each
+read itself takes, and on the evidence above it would resolve the organisation
+and coin-record assets and record the rest by name.
+
+### The mark a new position draws by
+
+Choosing an asset in the wizard used to read the kept file and, finding none,
+fetch one on the interface thread. It now reads the library and stops there.
+
+`src/gui/bot_wizard.py` - what a wizard row reads
+
+```python
+#: One reader over the logo library; ``resolve`` is never called, so a wizard row
+#: draws the kept file or the lettered disc and never waits on a network read.
+KEPT_LOGOS = LogoCache()
+```
+
+The flag that used to let a row fetch is gone, and so is the six-line fallback
+that built an asset database to fetch through. Every one of the six places that
+draws an asset icon now reads the library.
+
+```
+src/gui/bot_wizard.py                          the asset list in the wizard
+src/gui/paper/paper_bot_wizard.py              the same, for a paper bot
+src/gui/simulator/sim_bot_wizard.py            the same, for a simulated bot
+src/gui/widgets/extractor_bot_table.py         the Extractor row
+src/gui/paper/paper_extractor_bot_table.py     the same, on paper
+src/gui/simulator/sim_extractor_bot_table.py   the same, in the simulator
+```
+
+None of the kept images enters this repository. The library directory is ignored,
+proved after the fill with a control: the same reading reports an unignored file
+placed beside it.
