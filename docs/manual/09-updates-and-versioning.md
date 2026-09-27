@@ -243,6 +243,10 @@ pytest -m "not slow and not archetype"    exit 5, nothing collected
 pytest -m "slow or archetype"             exit 5, nothing collected
 ```
 
+### What a green result means
+
+A duplicate heading, which the docs archetype refuses under DOC005.
+
 ### What the branch rules refuse
 
 Two rulesets guard the branches. The first refuses a rewrite or a deletion of
