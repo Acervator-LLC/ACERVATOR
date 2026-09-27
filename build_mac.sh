@@ -122,8 +122,10 @@ if [ "$MAKE_DMG" = true ]; then
         cp -R "$APP_PATH" "$STAGING/"
         ln -s /Applications "$STAGING/Applications"
 
+        # The volume name carries the variant too, so mounting both at once
+        # gives two volumes a reader can tell apart.
         hdiutil create \
-            -volname "$APP_NAME" \
+            -volname "$BUNDLE_NAME" \
             -srcfolder "$STAGING" \
             -ov -format UDZO \
             -imagekey zlib-level=9 \
