@@ -35,18 +35,18 @@ token multiset and both its controls before you land.
 
 ## The check
 
-```
-python C:/Users/brown/AppData/Local/Temp/claude/manual_drift.py <tree>
-```
+**No drift reader is committed, and none may be written** — a file that reports
+on other code is forbidden here. Read the three drifts yourself, against the
+issue tracker and the tree.
 
-It reports three kinds of drift: an issue the manual cites as open that GitHub
+The three kinds of drift are: an issue the manual cites as open that GitHub
 has closed, an entry saying "In development." whose named symbol now exists in
-the tree, and a proposal marked "Proposed, not present" that is present. Exit 1
-while any remains.
+the tree, and a proposal marked "Proposed, not present" that is present. The
+manual is not current while any remains.
 
-Run it when you close an issue and when you land a feature. A green from it is
-not proof the manual is right — it proves only that these three drifts are
-absent. Reading the entry is still the job.
+Look for all three when you close an issue and when you land a feature. Finding
+none is not proof the manual is right — it proves only that these three drifts
+are absent. Reading the entry is still the job.
 
 ## Why this is a rule and not a habit
 
